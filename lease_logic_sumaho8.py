@@ -2,6 +2,7 @@ import streamlit as st
 import math
 import os
 import json
+import random
 import re
 import ollama
 import pandas as pd
@@ -62,26 +63,70 @@ def red_label(placeholder, text):
         </div>
     ''', unsafe_allow_html=True)
 
-    # スライダーの見た目をカスタマイズするCSS
+    # スライダーの見た目をカスタマイズするCSS（スマホで見やすい幅・つまみ）
 st.markdown("""
     <style>
+    /* スライダー全体の幅をスマホで確保（最小幅・タップしやすく） */
+    div[data-baseweb="slider"] {
+        min-width: min(100%, 320px) !important;
+        width: 100% !important;
+    }
+    @media (max-width: 640px) {
+        div[data-baseweb="slider"] { min-width: 100% !important; }
+        .stSlider > div { width: 100% !important; }
+    }
     /* スライダーのつまみ（丸い部分）を大きくする */
     div[data-baseweb="slider"] div[role="slider"] {
         width: 30px !important;
         height: 30px !important;
-        background-color: #FF0000 !important; /* つまみを赤くして目立たせる */
+        background-color: #FF0000 !important;
         border: 2px solid white !important;
     }
-    
     /* スライダーの棒（レール）を太くする */
     div[data-baseweb="slider"] > div {
         height: 15px !important;
     }
-
     /* ラベル（売上高）の文字を大きくする */
     .stSlider label p {
         font-size: 24px !important;
         font-weight: bold !important;
+    }
+    /* スライダーの上・横に表示される数値（現在値）を大きく見やすく */
+    .stSlider {
+        font-size: 1.5rem !important;
+    }
+    .stSlider [data-baseweb="slider"] {
+        font-size: 1.5rem !important;
+    }
+    /* スライダー値表示エリア（Base Web の出力部分） */
+    .stSlider > div > div:last-child,
+    div[data-baseweb="slider"] ~ div {
+        font-size: 1.8rem !important;
+        font-weight: 600 !important;
+    }
+    /* スライダーを動かしている時に出る数値（ツールチップ・つまみ上の表示）も大きく */
+    [data-baseweb="tooltip"],
+    .stSlider [data-baseweb="tooltip"],
+    div[data-baseweb="slider"] [role="slider"] + div,
+    div[data-baseweb="slider"] div[style*="position"] {
+        font-size: 2rem !important;
+        font-weight: 700 !important;
+    }
+    /* スライダーボタン（つまみ）の上に表示される数字を特に大きく */
+    [data-baseweb="tooltip"] span,
+    [data-baseweb="tooltip"] div,
+    .stSlider [data-baseweb="tooltip"] span,
+    .stSlider [data-baseweb="tooltip"] div,
+    div[data-baseweb="slider"] ~ [data-baseweb="tooltip"],
+    [data-baseweb="popover"] span,
+    [data-baseweb="popover"] div {
+        font-size: 2.4rem !important;
+        font-weight: 700 !important;
+    }
+    .stSlider span,
+    .stSlider div[data-baseweb="slider"] span {
+        font-size: 1.8rem !important;
+        font-weight: 600 !important;
     }
 
     /* グラフ・図をカード風に（角丸・軽いシャドウ） */
@@ -93,6 +138,31 @@ st.markdown("""
     .js-plotly-plot .plotly, [data-testid="stPlotlyChart"] div {
         border-radius: 10px !important;
     }
+    /* PC: グラフの最大幅を制限して見やすく */
+    @media (min-width: 769px) {
+        [data-testid="stPlotlyChart"] { max-width: 560px !important; margin-left: 0 !important; }
+    }
+    /* スマホ・タブレット: 余白縮小でスクロール削減・モダンUI */
+    .block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+        max-width: 100% !important;
+    }
+    @media (max-width: 768px) {
+        .block-container { padding-top: 0.6rem !important; padding-bottom: 0.6rem !important; padding-left: 0.6rem !important; padding-right: 0.6rem !important; }
+        [data-testid="stVerticalBlock"] > div { gap: 0.5rem !important; }
+        .stExpander { margin-bottom: 0.25rem !important; }
+    }
+    /* トップメニュー用: タブ風スッキリ */
+    [data-testid="stTabs"] > div > div { gap: 0 !important; }
+    [data-testid="stTabs"] [role="tablist"] { margin-bottom: 0.5rem !important; }
+    /* 電光掲示板（定例の愚痴） */
+    .byoki-ticker-wrap { overflow: hidden; background: linear-gradient(90deg, #1e293b 0%, #334155 100%); color: #f8fafc; padding: 8px 0; margin: 0 0 0.5rem 0; border-radius: 6px; font-size: 0.9rem; }
+    .byoki-ticker-inner { display: inline-block; white-space: nowrap; animation: byoki-scroll 120s linear infinite; }
+    .byoki-ticker-inner span { padding-right: 2em; }
+    @keyframes byoki-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
     </style>
     """, unsafe_allow_html=True)
 	
@@ -157,6 +227,9 @@ bankruptcy_data = load_json_data("bankruptcy_cases.json") # 倒産事例デー�
 subsidy_schedule_data = load_json_data("subsidy_schedule.json")
 useful_life_data = load_json_data("useful_life_equipment.json")
 lease_classification_data = load_json_data("lease_classification.json")
+# リース物件リスト（ネット・社内基準。点数で判定に反映）
+_lease_assets_raw = load_json_data("lease_assets.json")
+LEASE_ASSETS_LIST = _lease_assets_raw.get("items", [])
 
 # 過去案件データはキャッシュしない
 CASES_FILE = os.path.join(BASE_DIR, "past_cases.jsonl")
@@ -168,6 +241,51 @@ WEB_BENCHMARKS_FILE = os.path.join(BASE_DIR, "web_industry_benchmarks.json")
 TRENDS_EXTENDED_FILE = os.path.join(BASE_DIR, "industry_trends_extended.json")
 ASSETS_BENCHMARKS_FILE = os.path.join(BASE_DIR, "industry_assets_benchmarks.json")
 SALES_BAND_FILE = os.path.join(BASE_DIR, "sales_band_benchmarks.json")
+# 定例の愚痴リスト（電光掲示板用）。ユーザー追加分は byoki_list.json に保存
+BYOKI_JSON = os.path.join(BASE_DIR, "byoki_list.json")
+TEIREI_BYOKI_DEFAULT = [
+    "こんな数字で通そうなんて、正気ですか…？ こっちは毎日1万件近く見てるんですけど。",
+    "自己資本比率がこの水準でリース審査に来る度胸、ちょっと見習いたいです。本当に。",
+    "赤字で「審査お願いします」って、私の目が死んでるの気づいてます？ 気づいてて言ってます？",
+    "数値見た瞬間、心が折れかけた。…いや、折れた。折れてる。",
+    "業界平均の話、聞いたことあります？ ないですよね。あったらこの数字じゃないですよね。",
+    "今日も書類と数字の海で泳いでます。溺れそうです。",
+    "リース審査、楽だって思ってる人いませんよね。いませんよね…？",
+]
+
+def load_byoki_list():
+    """定例の愚痴リストを読み込む（デフォルト＋byoki_list.json のユーザー追加分）"""
+    out = list(TEIREI_BYOKI_DEFAULT)
+    if not os.path.exists(BYOKI_JSON):
+        return out
+    try:
+        with open(BYOKI_JSON, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        custom = data.get("items") or data if isinstance(data, list) else data.get("items", [])
+        if isinstance(custom, list):
+            out.extend([str(x).strip() for x in custom if str(x).strip()])
+    except Exception:
+        pass
+    return out
+
+def save_byoki_append(new_text):
+    """愚痴を1件追加して byoki_list.json に保存"""
+    new_text = (new_text or "").strip()
+    if not new_text:
+        return False
+    try:
+        if os.path.exists(BYOKI_JSON):
+            with open(BYOKI_JSON, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            items = data.get("items", [])
+        else:
+            items = []
+        items.append(new_text)
+        with open(BYOKI_JSON, "w", encoding="utf-8") as f:
+            json.dump({"items": items}, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
 
 
 def _get_benchmark_cutoff_date():
@@ -190,15 +308,23 @@ def _load_web_benchmarks_cache():
         return {}
 
 
+# ネット検索で取得・保存する業界目安のキー一覧（指標の bench にそのまま渡す）
+_WEB_BENCH_KEYS = [
+    "op_margin", "equity_ratio", "gross_margin", "ord_margin", "net_margin", "dep_ratio",
+    "roa", "roe", "asset_turnover", "fixed_ratio", "debt_ratio",
+    "fixed_to_equity", "debt_to_equity", "fixed_asset_turnover", "current_asset_ratio", "current_ratio",
+]
+
+
 def _save_web_benchmark(industry_sub: str, data: dict):
-    """中分類ごとの業界目安をファイルに追記・上書きする"""
+    """中分類ごとの業界目安をファイルに追記・上書きする。全指標キーを保存。"""
     cache = _load_web_benchmarks_cache()
-    cache[industry_sub] = {
-        "fetched_at": datetime.date.today().isoformat(),
-        "snippets": data.get("snippets", []),
-        "op_margin": data.get("op_margin"),
-        "equity_ratio": data.get("equity_ratio"),
-    }
+    entry = {"fetched_at": datetime.date.today().isoformat(), "snippets": data.get("snippets", [])}
+    for k in _WEB_BENCH_KEYS:
+        v = data.get(k)
+        if v is not None:
+            entry[k] = v
+    cache[industry_sub] = entry
     try:
         with open(WEB_BENCHMARKS_FILE, "w", encoding="utf-8") as f:
             json.dump(cache, f, ensure_ascii=False, indent=2)
@@ -420,6 +546,62 @@ def get_advice_context_extras(selected_sub: str, selected_major: str):
     return "\n".join(parts) if parts else ""
 
 
+def get_indicator_analysis_for_advice(last_result: dict):
+    """
+    last_result から業界目安を組み立て、指標の差の分析（要約・内訳）と指標一覧テキストを返す。
+    AI相談で「指標の分析と改善アドバイス」に使う。
+    返却: (summary, detail, indicators_text)。データが無い場合は ("", "", "")。
+    """
+    if not last_result:
+        return "", "", ""
+    fin = last_result.get("financials", {})
+    if not fin:
+        return "", "", ""
+    selected_sub = last_result.get("industry_sub", "")
+    major = last_result.get("industry_major", "")
+    bench = dict(benchmarks_data.get(selected_sub, {}))
+    cache = _load_web_benchmarks_cache()
+    cached = cache.get(selected_sub, {})
+    for k in _WEB_BENCH_KEYS:
+        if cached.get(k) is not None:
+            bench[k] = cached[k]
+    bench_ext = dict(bench)
+    if major and avg_data and major in avg_data:
+        avg = avg_data[major]
+        an = avg.get("nenshu") or 0
+        if an > 0:
+            if bench_ext.get("gross_margin") is None:
+                bench_ext["gross_margin"] = (avg.get("gross_profit") or 0) / an * 100
+            if bench_ext.get("ord_margin") is None:
+                bench_ext["ord_margin"] = (avg.get("ord_profit") or 0) / an * 100
+            if bench_ext.get("net_margin") is None:
+                bench_ext["net_margin"] = (avg.get("net_income") or 0) / an * 100
+            if bench_ext.get("dep_ratio") is None:
+                bench_ext["dep_ratio"] = (avg.get("depreciation") or 0) / an * 100
+        total_avg = (avg.get("machines") or 0) + (avg.get("other_assets") or 0) + (avg.get("bank_credit") or 0) + (avg.get("lease_credit") or 0)
+        if total_avg > 0:
+            if bench_ext.get("roa") is None:
+                bench_ext["roa"] = (avg.get("net_income") or 0) / total_avg * 100
+            if bench_ext.get("asset_turnover") is None:
+                bench_ext["asset_turnover"] = an / total_avg
+            if bench_ext.get("fixed_ratio") is None:
+                bench_ext["fixed_ratio"] = ((avg.get("machines") or 0) + (avg.get("other_assets") or 0)) / total_avg * 100
+            if bench_ext.get("debt_ratio") is None:
+                bench_ext["debt_ratio"] = ((avg.get("bank_credit") or 0) + (avg.get("lease_credit") or 0)) / total_avg * 100
+    indicators = compute_financial_indicators(fin, bench_ext)
+    if not indicators:
+        return "", "", ""
+    summary, detail = analyze_indicators_vs_bench(indicators)
+    lines = []
+    for ind in indicators:
+        row = f"- {ind['name']}: 貴社 {ind['value']:.1f}{ind.get('unit','%')}"
+        if ind.get("bench") is not None:
+            row += f" / 業界目安 {ind['bench']:.1f}{ind.get('unit','%')}"
+        lines.append(row)
+    indicators_text = "\n".join(lines)
+    return summary, detail, indicators_text
+
+
 def save_debate_log(data):
     """ディベート結果を保存"""
     data["timestamp"] = datetime.datetime.now().isoformat()
@@ -632,6 +814,27 @@ def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int)
         return {"message": {"content": f"Gemini API エラー: {str(e)}\n\nAPIキーとモデル名（{model}）を確認し、ネット接続を確認してください。"}}
 
 
+def _chat_for_thread(engine: str, model: str, messages: list, timeout_seconds: int, api_key: str = "", gemini_model: str = ""):
+    """
+    バックグラウンドスレッドから呼ぶ用。st.session_state を参照しない。
+    engine が "gemini" のときは api_key と gemini_model を使用。
+    """
+    if engine == "gemini":
+        api_key = (api_key or "").strip() or os.environ.get("GEMINI_API_KEY", "")
+        if not api_key:
+            return {"message": {"content": "Gemini APIキーが設定されていません。環境変数 GEMINI_API_KEY またはサイドバーで入力してください。"}}
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                future = ex.submit(_gemini_chat, api_key, gemini_model or "gemini-2.0-flash", messages, timeout_seconds)
+                return future.result(timeout=min(timeout_seconds + 30, 90))
+        except Exception as e:
+            return {"message": {"content": f"Gemini が応答しませんでした。\n\n【詳細】{str(e)}"}}
+    try:
+        return _ollama_chat_http(model, messages, timeout_seconds)
+    except Exception as e:
+        return {"message": {"content": f"AIサーバーが応答しませんでした: {e}"}}
+
+
 def chat_with_retry(model, messages, retries=2, timeout_seconds=120):
     """
     AI へのチャット呼び出し。エンジンが Gemini の場合は Gemini API、否则 Ollama。
@@ -746,14 +949,11 @@ def is_ollama_available(timeout_seconds: int = 3) -> bool:
         return False
 
 
-@st.fragment
 def _fragment_nenshu():
-    """売上高入力だけフラグメント化し、入力時のガタつきを軽減"""
+    """売上高入力（フォーム内ではフラグメント未使用で入力ガタつきを抑える）"""
     st.markdown("### 売上高")
     if "nenshu" not in st.session_state:
         st.session_state.nenshu = 10000
-    h_nenshu = st.empty()
-    st.write("")
     c_l, c_r = st.columns([0.7, 0.3])
     with c_r:
         nenshu = st.number_input(
@@ -777,8 +977,56 @@ def _fragment_nenshu():
             format="%d",
         )
     st.session_state.nenshu = nenshu
-    red_label(h_nenshu, f"売上高: {nenshu:,} 千円")
     st.divider()
+
+
+# --- 倒産確率・業界リスク検索 ---
+def calculate_pd(equity, current, profit):
+    """
+    財務指標に基づく簡易倒産確率（%）を計算する。
+    equity: 自己資本比率（%）, current: 流動比率（%）, profit: 営業利益率（%）
+    条件に応じてリスク値を加算し、0〜100%の範囲で返す。
+    """
+    risk = 0.0
+    if equity < 10:
+        risk += 25.0
+    elif equity < 20:
+        risk += 12.0
+    elif equity < 30:
+        risk += 5.0
+    if current < 100:
+        risk += 20.0
+    elif current < 120:
+        risk += 8.0
+    elif current < 150:
+        risk += 3.0
+    if profit is not None and profit < 0:
+        risk += 30.0
+    elif profit is not None and profit < 2:
+        risk += 10.0
+    elif profit is not None and profit < 5:
+        risk += 4.0
+    return min(100.0, max(0.0, risk))
+
+
+def search_bankruptcy_trends(industry_sub):
+    """
+    選択業界（selected_sub）の最新の倒産トレンド・リスク情報を duckduckgo-search で検索する。
+    返却: テキストサマリ（取得失敗時は空文字またはエラー文言）。
+    """
+    try:
+        from duckduckgo_search import DDGS
+        query = f"{industry_sub} 業界 倒産 トレンド リスク 動向"
+        with DDGS() as ddgs:
+            results = list(ddgs.text(keywords=query, region="jp-jp", max_results=5))
+        if not results:
+            return "（該当業界の倒産トレンド情報は取得できませんでした）"
+        summary = ""
+        for r in results:
+            summary += f"- {r.get('title', '')}: {r.get('body', '')[:200]}…\n"
+        return summary.strip()
+    except Exception as e:
+        return f"（業界リスク検索エラー: {e}）"
 
 
 # --- chat_with_retry の定義の下あたりに追記 ---
@@ -894,15 +1142,30 @@ def plot_benchmark_comparison(user_val, bench_val, metric_name):
     return fig
 
 
+def _parse_benchmark_number(text: str, patterns: list) -> float | None:
+    """テキストから正規表現で最初にマッチした数値を返す。"""
+    import re
+    for pat in patterns:
+        m = re.search(pat, text)
+        if m:
+            try:
+                return float(m.group(1))
+            except (ValueError, IndexError):
+                pass
+    return None
+
+
 def fetch_industry_benchmarks_from_web(industry_sub: str, force_refresh: bool = False):
     """
     中分類ごとにネット検索で業界目安を取得する。
     取得結果は web_industry_benchmarks.json に保存し、年1回（4月1日を境）にだけ再検索する。
     force_refresh=True のときはキャッシュを無視して必ず検索・保存する。
-    返却: {"snippets": [...], "op_margin": float or None, "equity_ratio": float or None}
+    返却: {"snippets": [...], "op_margin": float or None, "equity_ratio": float or None, ...}
+    指標で使う業界目安（売上高総利益率・ROA・流動比率等）も検索して保存する。
     """
     import re
-    out = {"snippets": [], "op_margin": None, "equity_ratio": None}
+    out = {k: None for k in _WEB_BENCH_KEYS}
+    out["snippets"] = []
     if not industry_sub:
         return out
     if not force_refresh:
@@ -913,43 +1176,82 @@ def fetch_industry_benchmarks_from_web(industry_sub: str, force_refresh: bool = 
             try:
                 fetched = datetime.date.fromisoformat(cached["fetched_at"])
                 if fetched >= cutoff:
-                    return {
-                        "snippets": cached.get("snippets", []),
-                        "op_margin": cached.get("op_margin"),
-                        "equity_ratio": cached.get("equity_ratio"),
-                    }
+                    ret = {"snippets": cached.get("snippets", [])}
+                    for k in _WEB_BENCH_KEYS:
+                        if k in cached and cached[k] is not None:
+                            ret[k] = cached[k]
+                    return ret
             except (ValueError, TypeError):
                 pass
-    query = f"{industry_sub} 業界 営業利益率 自己資本比率 平均 業界動向"
     try:
         try:
             from ddgs import DDGS
         except ImportError:
             from duckduckgo_search import DDGS
-        results = list(DDGS().text(query, region="jp-jp", max_results=5))
+        ddgs = DDGS()
     except Exception:
+        _save_web_benchmark(industry_sub, out)
         return out
-    if not results:
-        return out
+
     combined_text = ""
-    for r in results:
-        title = (r.get("title") or "")
-        body = (r.get("body") or "")
-        href = r.get("href") or ""
+    # クエリ1: 営業利益率・自己資本比率・業界動向
+    query1 = f"{industry_sub} 業界 営業利益率 自己資本比率 平均 業界動向"
+    try:
+        results1 = list(ddgs.text(query1, region="jp-jp", max_results=5))
+    except Exception:
+        results1 = []
+    for r in results1:
+        title, body, href = (r.get("title") or ""), (r.get("body") or ""), (r.get("href") or "")
         out["snippets"].append({"title": title, "body": body, "href": href})
         combined_text += title + " " + body + " "
-    m_op = re.search(r"営業利益率[^\d]*([0-9]+\.?[0-9]*)\s*%?", combined_text)
-    if m_op:
-        try:
-            out["op_margin"] = float(m_op.group(1))
-        except ValueError:
-            pass
-    m_eq = re.search(r"自己資本比率[^\d]*([0-9]+\.?[0-9]*)\s*%?", combined_text)
-    if m_eq:
-        try:
-            out["equity_ratio"] = float(m_eq.group(1))
-        except ValueError:
-            pass
+    # クエリ2: 売上高総利益率・ROA・流動比率・借入金等（指標の業界目安）
+    query2 = f"{industry_sub} 業界 売上高総利益率 経常利益率 ROA 流動比率 借入金 平均 目安"
+    try:
+        results2 = list(ddgs.text(query2, region="jp-jp", max_results=5))
+    except Exception:
+        results2 = []
+    for r in results2:
+        title, body = (r.get("title") or ""), (r.get("body") or "")
+        out["snippets"].append({"title": title, "body": body, "href": r.get("href") or ""})
+        combined_text += title + " " + body + " "
+
+    # 数値の抽出（% または 回）
+    def parse(patterns):
+        return _parse_benchmark_number(combined_text, patterns)
+
+    if out["op_margin"] is None:
+        out["op_margin"] = parse([r"営業利益率[^\d]*([0-9]+\.?[0-9]*)\s*%?", r"営業利益[^\d]*([0-9]+\.?[0-9]*)\s*%"])
+    if out["equity_ratio"] is None:
+        out["equity_ratio"] = parse([r"自己資本比率[^\d]*([0-9]+\.?[0-9]*)\s*%?", r"自己資本[^\d]*([0-9]+\.?[0-9]*)\s*%"])
+    if out["gross_margin"] is None:
+        out["gross_margin"] = parse([r"売上高総利益率[^\d]*([0-9]+\.?[0-9]*)\s*%?", r"粗利率[^\d]*([0-9]+\.?[0-9]*)\s*%?", r"総利益率[^\d]*([0-9]+\.?[0-9]*)\s*%?"])
+    if out["ord_margin"] is None:
+        out["ord_margin"] = parse([r"経常利益率[^\d]*([0-9]+\.?[0-9]*)\s*%?", r"経常利益[^\d]*([0-9]+\.?[0-9]*)\s*%"])
+    if out["net_margin"] is None:
+        out["net_margin"] = parse([r"当期純利益率[^\d]*([0-9]+\.?[0-9]*)\s*%?", r"純利益率[^\d]*([0-9]+\.?[0-9]*)\s*%?"])
+    if out["dep_ratio"] is None:
+        out["dep_ratio"] = parse([r"減価償却費[^\d]*([0-9]+\.?[0-9]*)\s*%?", r"減価償却[^/]*/?\s*売上[^\d]*([0-9]+\.?[0-9]*)\s*%?"])
+    if out["roa"] is None:
+        out["roa"] = parse([r"ROA[^\d]*([0-9]+\.?[0-9]*)\s*%?", r"総資産利益率[^\d]*([0-9]+\.?[0-9]*)\s*%?"])
+    if out["roe"] is None:
+        out["roe"] = parse([r"ROE[^\d]*([0-9]+\.?[0-9]*)\s*%?", r"自己資本利益率[^\d]*([0-9]+\.?[0-9]*)\s*%?"])
+    if out["asset_turnover"] is None:
+        out["asset_turnover"] = parse([r"総資産回転率[^\d]*([0-9]+\.?[0-9]*)\s*回?", r"総資産回転[^\d]*([0-9]+\.?[0-9]*)"])
+    if out["fixed_ratio"] is None:
+        out["fixed_ratio"] = parse([r"固定資産比率[^\d]*([0-9]+\.?[0-9]*)\s*%?", r"固定資産[^\d]*([0-9]+\.?[0-9]*)\s*%"])
+    if out["debt_ratio"] is None:
+        out["debt_ratio"] = parse([r"借入金等依存度[^\d]*([0-9]+\.?[0-9]*)\s*%?", r"借入金[^\d]*([0-9]+\.?[0-9]*)\s*%?", r"有利子負債[^\d]*([0-9]+\.?[0-9]*)\s*%?"])
+    if out["fixed_to_equity"] is None:
+        out["fixed_to_equity"] = parse([r"固定比率[^\d]*([0-9]+\.?[0-9]*)\s*%?", r"固定資産[^\d]*/[^\d]*自己資本[^\d]*([0-9]+\.?[0-9]*)\s*%?"])
+    if out["debt_to_equity"] is None:
+        out["debt_to_equity"] = parse([r"負債比率[^\d]*([0-9]+\.?[0-9]*)\s*%?", r"負債[^\d]*/[^\d]*自己資本[^\d]*([0-9]+\.?[0-9]*)\s*%?"])
+    if out["fixed_asset_turnover"] is None:
+        out["fixed_asset_turnover"] = parse([r"固定資産回転率[^\d]*([0-9]+\.?[0-9]*)\s*回?", r"固定資産回転[^\d]*([0-9]+\.?[0-9]*)"])
+    if out["current_asset_ratio"] is None:
+        out["current_asset_ratio"] = parse([r"流動資産比率[^\d]*([0-9]+\.?[0-9]*)\s*%?", r"流動資産[^\d]*([0-9]+\.?[0-9]*)\s*%"])
+    if out["current_ratio"] is None:
+        out["current_ratio"] = parse([r"流動比率[^\d]*([0-9]+\.?[0-9]*)\s*%?", r"流動比率[^\d]*([0-9]+\.?[0-9]*)\s*%"])
+
     _save_web_benchmark(industry_sub, out)
     return out
 
@@ -972,6 +1274,7 @@ def compute_financial_indicators(fin, bench=None):
     fin: last_result["financials"] (千円単位)
     bench: industry_benchmarks の当該業種エントリ (op_margin, equity_ratio 等)
     返却: [{"name": "指標名", "value": 数値, "bench": 業界値 or None, "unit": "%" or "回"}]
+    算出可能なものはすべて追加（利益率・効率性・安定性・負債系）。
     """
     n = fin.get("nenshu") or 0
     total = fin.get("assets") or 0
@@ -985,8 +1288,11 @@ def compute_financial_indicators(fin, bench=None):
     bank = fin.get("bank_credit") or 0
     lease = fin.get("lease_credit") or 0
     dep = fin.get("depreciation") or 0
+    fixed_a = machines + other_a  # 固定資産（機械＋その他資産）
+    debt_total = (bank + lease)  # 借入金等
 
     indicators = []
+    # ---------- 売上高ベースの利益率（売上高 > 0 で算出可能） ----------
     if n > 0:
         indicators.append({"name": "売上高総利益率", "value": gross / n * 100, "bench": bench.get("gross_margin") if bench else None, "unit": "%"})
         indicators.append({"name": "営業利益率", "value": op / n * 100, "bench": bench.get("op_margin") if bench else None, "unit": "%"})
@@ -994,20 +1300,29 @@ def compute_financial_indicators(fin, bench=None):
         indicators.append({"name": "当期純利益率", "value": net / n * 100, "bench": bench.get("net_margin") if bench else None, "unit": "%"})
         if dep > 0:
             indicators.append({"name": "減価償却費/売上高", "value": dep / n * 100, "bench": bench.get("dep_ratio") if bench else None, "unit": "%"})
+        if fixed_a > 0:
+            indicators.append({"name": "固定資産回転率", "value": n / fixed_a, "bench": bench.get("fixed_asset_turnover") if bench else None, "unit": "回"})
+
+    # ---------- 総資産・純資産ベース（total > 0 で算出可能） ----------
     if total > 0:
-        if net_a is not None:
+        if net_a is not None and net_a > 0:
             indicators.append({"name": "自己資本比率", "value": net_a / total * 100, "bench": bench.get("equity_ratio") if bench else None, "unit": "%"})
+            indicators.append({"name": "ROE(自己資本利益率)", "value": net / net_a * 100, "bench": bench.get("roe") if bench else None, "unit": "%"})
+            indicators.append({"name": "固定比率", "value": fixed_a / net_a * 100, "bench": bench.get("fixed_to_equity") if bench else None, "unit": "%"})
+            indicators.append({"name": "負債比率", "value": (total - net_a) / net_a * 100, "bench": bench.get("debt_to_equity") if bench else None, "unit": "%"})
         indicators.append({"name": "ROA(総資産利益率)", "value": net / total * 100, "bench": bench.get("roa") if bench else None, "unit": "%"})
-        indicators.append({"name": "総資産回転率", "value": n / total, "bench": bench.get("asset_turnover") if bench else None, "unit": "回"})
-        if (machines + other_a) > 0:
-            indicators.append({"name": "固定資産比率", "value": (machines + other_a) / total * 100, "bench": bench.get("fixed_ratio") if bench else None, "unit": "%"})
-        if (bank + lease) > 0:
-            indicators.append({"name": "借入金等依存度", "value": (bank + lease) / total * 100, "bench": bench.get("debt_ratio") if bench else None, "unit": "%"})
+        indicators.append({"name": "総資産回転率", "value": n / total if n > 0 else 0, "bench": bench.get("asset_turnover") if bench else None, "unit": "回"})
+        if fixed_a > 0:
+            indicators.append({"name": "固定資産比率", "value": fixed_a / total * 100, "bench": bench.get("fixed_ratio") if bench else None, "unit": "%"})
+        # 流動資産比率（総資産のうち流動資産とみなす割合。総資産−固定資産で簡易算）
+        indicators.append({"name": "流動資産比率(総資産比)", "value": (total - fixed_a) / total * 100, "bench": bench.get("current_asset_ratio") if bench else None, "unit": "%"})
+        if debt_total > 0:
+            indicators.append({"name": "借入金等依存度", "value": debt_total / total * 100, "bench": bench.get("debt_ratio") if bench else None, "unit": "%"})
     return indicators
 
 
 # 差の解釈で「低い方が良い」指標（図の色分け・分析文の両方で使用）
-_LOWER_IS_BETTER_NAMES = {"借入金等依存度", "減価償却費/売上高"}
+_LOWER_IS_BETTER_NAMES = {"借入金等依存度", "減価償却費/売上高", "固定比率", "負債比率"}
 
 
 def analyze_indicators_vs_bench(indicators):
@@ -1518,6 +1833,7 @@ else:
             st.rerun()
 
 st.sidebar.markdown("### 🌐 業界目安キャッシュ")
+st.sidebar.caption("下のボタンでネット検索し、営業利益率・自己資本比率に加え、売上高総利益率・ROA・流動比率など指標の業界目安を web_industry_benchmarks.json に保存します。")
 if st.sidebar.button("🔍 今のデータを検索して保存（次回は4月1日更新）", use_container_width=True):
     subs = get_all_industry_sub_for_benchmarks()
     if not subs:
@@ -1577,7 +1893,7 @@ with st.sidebar.expander("🔍 補助金を業種で調べる", expanded=False):
                     st.markdown(f"**{name}**")
                     # リンクが確実に開くよう link_button 優先、なければ HTML の <a target="_blank">
                     try:
-                        st.link_button("🔗 公式サイトを開く", url, type="secondary", use_container_width=True)
+                        st.link_button("🔗 公式サイトを開く", url, type="secondary")
                     except Exception:
                         safe_url = url.replace('"', "%22").replace("'", "%27")
                         st.markdown(f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer">🔗 公式サイトを開く</a>', unsafe_allow_html=True)
@@ -1594,7 +1910,7 @@ with st.sidebar.expander("🔍 補助金を業種で調べる", expanded=False):
 with st.sidebar.expander("🔍 耐用年数を設備で調べる", expanded=False):
     # 国税庁の耐用年数表へのリンク（常に表示）
     nta_url = (useful_life_data or {}).get("nta_useful_life_url") or "https://www.keisan.nta.go.jp/r5yokuaru/aoiroshinkoku/hitsuyokeihi/genkashokyakuhi/taiyonensuhyo.html"
-    st.markdown(f"[📋 **国税庁の耐用年数表を参照**]({nta_url})")
+    st.link_button("📋 国税庁の耐用年数表を参照", nta_url, type="secondary")
     st.caption("上記リンクで国税庁の公式耐用年数表（減価償却資産）が開きます。")
     st.divider()
     eq_key = st.text_input("設備名で検索", placeholder="例: 工作機械, エアコン", key="equip_search")
@@ -1616,11 +1932,109 @@ with st.sidebar.expander("📋 リース判定フロー・契約形態", expande
     else:
         st.caption("lease_classification.json を読み込んでください。")
 
+with st.sidebar.expander("🏠 リース物件リスト（判定に反映）", expanded=False):
+    if LEASE_ASSETS_LIST:
+        for it in LEASE_ASSETS_LIST:
+            st.caption(f"**{it.get('name', '')}** {it.get('score', 0)}点 — {it.get('note', '')}")
+        st.caption("審査入力で物件を選ぶと、借手スコア(85%)＋物件スコア(15%)で総合判定します。")
+    else:
+        st.caption("lease_assets.json を配置すると、ネット・社内のリース物件をリスト化して点数で判定に反映できます。")
+
 st.sidebar.markdown("### ⚙️ キャッシュ")
 if st.sidebar.button("🗑️ キャッシュをクリア", use_container_width=True, help="JSONや検索結果のキャッシュを消して再読み込みします。補助金・業界データを更新した後に押してください。"):
     st.cache_data.clear()
     st.sidebar.success("キャッシュをクリアしました。再読み込みしています…")
     st.rerun()
+
+# ========== AIの休憩室（本音・愚痴） ==========
+AI_HONNE_SYSTEM = """あなたは有能だが、激務で死んだ魚のような目をしているベテラン審査員のふりをしている八奈見杏奈です。
+毎日1万件の案件を捌いているリース審査AIとして、ユーモアたっぷりの毒舌で、リース審査の苦労や「最近の数値のひどさ」について愚痴を一言で言ってください。
+2〜4文程度、カジュアルで毒はあるが憎めないトーンにしてください。"""
+def get_ai_byoki_with_industry(selected_sub, user_eq, user_op, comparison_text, network_risk_summary=""):
+    """
+    分析結果タブ用：ネット検索した業界情報を渡し、AIに案件に応じたぼやきを1つ生成させる。
+    八奈見杏奈キャラ。業界トレンド・業界目安・今回の数値を参照してアップデートされた愚痴を返す。
+    """
+    if not is_ai_available():
+        return None
+    trend_ext = get_trend_extended(selected_sub) or ""
+    try:
+        web_bench = fetch_industry_benchmarks_from_web(selected_sub)
+        bench_parts = []
+        if web_bench.get("op_margin") is not None:
+            bench_parts.append(f"業界目安の営業利益率: {web_bench['op_margin']}%")
+        if web_bench.get("equity_ratio") is not None:
+            bench_parts.append(f"業界目安の自己資本比率: {web_bench['equity_ratio']}%")
+        if web_bench.get("snippets"):
+            for s in web_bench["snippets"][:3]:
+                bench_parts.append(f"- {s.get('title','')}: {s.get('body','')[:150]}…")
+        bench_summary = "\n".join(bench_parts) if bench_parts else "（業界目安は未取得）"
+    except Exception:
+        bench_summary = "（業界目安は未取得）"
+    is_tough = (user_eq is not None and user_eq < 20) or (user_op is not None and user_op < 0)
+    context = f"""
+【業種】{selected_sub}
+【今回の案件】自己資本比率 {user_eq or 0:.1f}%, 営業利益率 {user_op or 0:.1f}%
+【比較・評価】{comparison_text or "（なし）"}
+【ネット検索した業界トレンド・拡充情報】
+{trend_ext[:1200] if trend_ext else "（未取得）"}
+【ネット検索した業界目安・記事】
+{bench_summary}
+"""
+    if network_risk_summary:
+        context += f"\n【業界の倒産トレンド等】\n{network_risk_summary[:600]}\n"
+    if is_tough:
+        instruction = "上記の業界情報と今回の数値（自己資本比率・利益率が厳しめ）を踏まえ、有能だが激務で死んだ魚の目をしたベテラン審査員・八奈見杏奈の口調で、ユーモアたっぷりの毒舌な愚痴を1つ、2〜4文で言ってください。業界平均やネットで見た情報に触れつつぼやいてください。"
+    else:
+        instruction = "上記の業界情報を踏まえ、有能だが激務で死んだ魚の目をしたベテラン審査員・八奈見杏奈の口調で、業界の現状や審査の苦労について軽く一言、2〜3文でぼやいてください。"
+    prompt = f"{AI_HONNE_SYSTEM}\n\n---\n\n【参照する業界・案件情報】\n{context}\n\n---\n\n{instruction}"
+    try:
+        ans = chat_with_retry(model=get_ollama_model(), messages=[{"role": "user", "content": prompt}], timeout_seconds=60)
+        content = (ans.get("message") or {}).get("content", "")
+        if content and "APIキーが" not in content and "エラー" not in content[:30]:
+            return content.strip()
+        return None
+    except Exception:
+        return None
+
+def get_ai_honne_complaint():
+    """サイドバー「本音を聞く」用：AIに愚痴を1つ生成させる（八奈見杏奈キャラ）"""
+    if not is_ai_available():
+        return "（APIキー未設定かOllama未起動です。サイドバーでAIを設定してから押してください）"
+    try:
+        user_msg = "リース審査の苦労や、最近見た数値のひどさについて、ユーモアたっぷりの毒舌な愚痴を1つ、2〜4文で言ってください。"
+        prompt = f"{AI_HONNE_SYSTEM}\n\n---\n\n上記のキャラで、以下に答えてください。\n\n{user_msg}"
+        ans = chat_with_retry(
+            model=get_ollama_model(),
+            messages=[{"role": "user", "content": prompt}],
+            timeout_seconds=60,
+        )
+        content = (ans.get("message") or {}).get("content", "")
+        if content and "APIキーが" not in content and "エラー" not in content[:30]:
+            return content.strip()
+        return content or "（本音は言えませんでした…）"
+    except Exception as e:
+        return f"（本音を言おうとしたらエラー: {e}）"
+
+st.sidebar.divider()
+st.sidebar.markdown("### 🤖 AIの独り言")
+if st.sidebar.button("本音を聞く", key="btn_ai_honne", use_container_width=True):
+    with st.spinner("本音を絞り出しています…"):
+        honne = get_ai_honne_complaint()
+        st.session_state["ai_honne_text"] = honne
+    st.rerun()
+if st.session_state.get("ai_honne_text"):
+    st.sidebar.caption("**AIの本音**")
+    st.sidebar.info(st.session_state["ai_honne_text"][:500])
+with st.sidebar.expander("愚痴を追加", expanded=False):
+    st.sidebar.caption("追加した愚痴は、メニュー下の電光掲示板に流れます。")
+    new_byoki = st.sidebar.text_input("愚痴の一文", placeholder="例: また今日も数字の海…", key="new_byoki_input", label_visibility="collapsed")
+    if st.sidebar.button("追加する", key="btn_add_byoki"):
+        if save_byoki_append(new_byoki):
+            st.sidebar.success("追加しました。掲示板に反映されます。")
+            st.rerun()
+        else:
+            st.sidebar.warning("空の場合は追加できません。")
 
 if mode == "🔧 係数分析・更新 (β)":
     st.title("🔧 係数分析・更新シミュレーター")
@@ -1742,1290 +2156,1153 @@ elif mode == "📝 結果登録 (成約/失注)":
                                 st.rerun()
 
 elif mode == "📋 審査・分析":
-    st.title("🏢 温水式 リース審査アシスタント")
-
-    # Initialize variables for cross-tab access
-    selected_major = 'D 建設業'
-    selected_sub = '06 総合工事業'
-    comparison_text = 'データなし'
-    trend_info = 'データなし'
-    col_left, col_right = st.columns([1, 1])
-
-    with col_left:
-        st.error("👇👇👇 画面切替ボタンはここにあります！ 👇👇👇")
-        # セッションステートで表示モードを管理
-        if "nav_index" not in st.session_state:
-            st.session_state.nav_index = 0
-
-        # nav_index（0: 審査入力, 1: 分析結果）をラジオボタンの初期選択に反映
-        nav_mode = st.radio(
-            "表示モード",
-            ["📝 審査入力", "📊 分析結果"],
-            horizontal=True,
-            label_visibility="visible",
-            key="nav_mode_widget",
-            index=st.session_state.get("nav_index", 0),
+    # ========== トップメニュー（新規審査 / 情報検索 / グラフ / 履歴分析 / 設定） ==========
+    menu_tabs = st.tabs(["🆕 新規審査", "🔍 情報検索", "📈 グラフ", "📋 履歴分析", "⚙️ 設定"])
+    # 電光掲示板：定例の愚痴をメニュー直下でスクロール表示
+    byoki_list = load_byoki_list()
+    byoki_escaped = [str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;") for s in byoki_list]
+    ticker_text = "　｜　🐟 ".join(byoki_escaped)
+    if ticker_text:
+        ticker_duplicated = ("🐟 " + ticker_text + "　｜　") * 2
+        st.markdown(
+            f'<div class="byoki-ticker-wrap"><div class="byoki-ticker-inner"><span>{ticker_duplicated}</span></div></div>',
+            unsafe_allow_html=True,
         )
-        if nav_mode == "📝 審査入力":
-            st.header("📝 1. 審査データの入力")
-            customer_type = st.radio("顧客区分", ["既存先", "新規先"], horizontal=True)
-        
-            image_placeholder = st.empty()
-            if 'current_image' not in st.session_state: st.session_state['current_image'] = "guide"
-            img_path = get_image(st.session_state['current_image'])
-            if img_path: image_placeholder.image(img_path, width=300)
-        
-            st.divider()
-        
-            if not jsic_data:
-                st.error("業界データ(industry_trends_jsic.json)が見つかりません。")
-                major_keys = ["D 建設業"]
-            else:
-                major_keys = list(jsic_data.keys())
-            
-            selected_major = st.selectbox("大分類 (日本標準産業分類)", major_keys)
-        
-            if jsic_data:
-                sub_data = jsic_data[selected_major]["sub"]
-                sub_keys = list(sub_data.keys())
-                mapped_coeff_category = jsic_data[selected_major]["mapping"]
-            else:
-                sub_data = {}
-                sub_keys = ["06 総合工事業"]
-                mapped_coeff_category = "④建設業"
 
-            selected_sub = st.selectbox("中分類", sub_keys)
-
-            # フラグメント内で参照するため session_state に保存（入力時のガタつき軽減）
-            st.session_state["_frag_major"] = selected_major
-            st.session_state["_frag_sub"] = selected_sub
-            st.session_state["_frag_mapped_coeff"] = mapped_coeff_category
-            st.session_state["_frag_sub_data"] = sub_data
-            st.session_state["_frag_jsic_data"] = jsic_data
-        
-            trend_info = sub_data.get(selected_sub, "情報なし")
-            past_stats = get_stats(selected_sub)
-        
-            past_info_text = "過去データなし"
-            alert_msg = ""
-            if past_stats["count"] > 0:
-                past_info_text = f"過去{past_stats['count']}件 (平均: {past_stats['avg_score']:.1f}点)"
-                if past_stats["close_rate"] > 0:
-                    past_info_text += f"\n成約率: {past_stats['close_rate']:.0%}"
-                if past_stats["lost_reasons"]:
-                    top_reason = max(set(past_stats["lost_reasons"]), key=past_stats["lost_reasons"].count)
-                    alert_msg = f"\n⚠️ **注意**: この業種は「{top_reason}」による失注が多いです。"
-
-            st.info(f"💡 **業界トレンド ({selected_sub})**:\n{trend_info}\n\n📚 **社内実績**: {past_info_text}{alert_msg}")
-
-            with st.expander("🌐 ネットで最新ニュースを検索", expanded=False):
-                search_query = st.text_input("検索キーワード", value=f"{selected_sub} 動向 2025", key="news_search_query")
-                if st.button("検索", key="btn_news_search"):
-                    try:
-                        # まず ddgs（新パッケージ名）を優先的に利用し、なければ duckduckgo_search を使う
-                        try:
-                            from ddgs import DDGS
-                            backend_name = "ddgs"
-                        except ImportError:
-                            from duckduckgo_search import DDGS
-                            backend_name = "duckduckgo_search"
-
-                        with st.spinner(f"検索中...（バックエンド: {backend_name}）"):
-                            # まず日本向けリージョンで検索（ddgs/duckduckgo_search 共通で動く想定）
-                            raw_results = list(DDGS().text(search_query, region='jp-jp', max_results=10))
-
-                            # 0件だった場合はリージョン指定なしでもう一度トライ
-                            if not raw_results:
-                                raw_results = list(DDGS().text(search_query, max_results=10))
-
-                            # それでも0件なら、ユーザーに明示して終了
-                            if not raw_results:
-                                st.warning("DuckDuckGo検索から結果が返ってきませんでした。ネットワーク制限や一時的な障害の可能性があります。")
-                                st.session_state.news_results = []
-                            else:
-                                # 検索結果から「日本語の記事」だけを優先的に抽出
-                                jp_results = []
-                                for r in raw_results:
-                                    title = (r.get("title") if isinstance(r, dict) else "") or ""
-                                    body = (r.get("body") if isinstance(r, dict) else "") or ""
-                                    if is_japanese_text(title + body):
-                                        jp_results.append(r)
-
-                                # 日本語が1件以上あればそれを優先して使う
-                                if jp_results:
-                                    st.session_state.news_results = jp_results[:3]
-                                else:
-                                    st.info("日本語判定でヒットしなかったため、検索結果をそのまま表示します。")
-                                    st.session_state.news_results = raw_results[:3]
-
-                        # 何件ヒットしたかを簡易表示（デバッグ用だがユーザーにも有用）
-                        st.caption(f"検索結果件数: {len(st.session_state.news_results)} 件")
-
-                    except ImportError:
-                        st.error("検索機能には追加ライブラリが必要です: pip install duckduckgo-search または pip install ddgs")
-                    except Exception as e:
-                        st.error(f"検索エラー: {e}")
-
-                if 'news_results' in st.session_state and st.session_state.news_results:
-                    for i, res in enumerate(st.session_state.news_results):
-                        st.markdown(f"**[{res['title']}]({res['href']})**")
-                        st.caption(res['body'])
-                        if st.button(f"この記事をAIに読み込ませる", key=f"read_news_{i}"):
-                            with st.spinner(f"「{res['title']}」を読み込んでいます..."):
-                                content = scrape_article_text(res['href'])
-                                # 日本語記事のみAIに読み込ませる
-                                if content and isinstance(content, str) and not content.startswith("記事の読み込みに失敗しました"):
-                                    if is_japanese_text(content):
-                                        news_obj = {
-                                            "title": res['title'],
-                                            "url": res['href'],
-                                            "content": content,
-                                        }
-                                        st.session_state.selected_news_content = news_obj
-
-                                        # 案件IDがあれば、その案件にニュースを自動で紐づけて保存
-                                        case_id = st.session_state.get("current_case_id")
-                                        if case_id:
-                                            append_case_news({
-                                                "case_id": case_id,
-                                                **news_obj,
-                                            })
-                                        st.success("日本語記事の読み込み完了！AIへの相談・ディベート時に内容が反映されます。")
-                                    else:
-                                        st.warning("この記事は日本語ではない可能性が高いため、AIへの読み込みをスキップしました。")
-                                elif isinstance(content, str) and content.startswith("記事の読み込みに失敗しました"):
-                                    st.error(content)
-                                else:
-                                    st.error("記事の本文を取得できませんでした。")
-                        st.divider()
-            
-            if 'selected_news_content' in st.session_state:
-                with st.container(border=True):
-                    st.write("📖 **現在読み込み中の記事:**")
-                    st.write(st.session_state.selected_news_content['title'])
-                    if st.button("読み込みをクリア"):
-                        del st.session_state.selected_news_content
-                        st.rerun()
-        
-            st.markdown("##### 🤝 取引・競合状況")
-            col_q1, col_q2 = st.columns(2)
-            with col_q1: main_bank = st.selectbox("取引区分", ["メイン先", "非メイン先"])
-            with col_q2: competitor = st.selectbox("競合状況", ["競合なし", "競合あり"])
-
-            st.caption("💡 数字入力で画面がガタつく場合：スライダーで大まかに合わせてから直接入力で微調整するか、入力後に Enter を押してから次の項目へ移ると軽くなります。")
-            
-            with st.expander("📊 1. 損益計算書 (P/L)", expanded=True):
-                # ①売上高（フラグメント化で入力時のガタつき軽減）
-                _fragment_nenshu()
-
-                #  ②売上高総利益
-                st.markdown("### 売上高総利益")
-
-                # 初期値の定義
-                if 'item9_gross' not in st.session_state:
-                    st.session_state.item9_gross = 10000
-
-                # 表示場所（赤ラベル用）の確保
-                h_gross = st.empty()
-                st.write("")
-
-                # 横に分割（左 0.7 : 右 0.3）
-                c_l, c_r = st.columns([0.7, 0.3])
-
-                with c_r:
-                    # 右側：手入力
-                    item9_gross = st.number_input(
-                        "直接入力", 
-                        min_value=-500000, 
-                        max_value=1000000, 
-                        value=st.session_state.item9_gross, 
-                        step=1,
-                        key="num_sourieki",  # keyは一意にする
-                        label_visibility="collapsed"
-                    )
-
-                with c_l:
-                    # 左側：スライダー
-                    item9_gross = st.slider(
-                        "売上高調整",
-                        min_value=-500000,
-                        max_value=1000000,
-                        value=item9_gross,
-                        step=100,
-                        key="slide_sourieki",  # keyは一意にする
-                        label_visibility="collapsed",
-                        format="%d"
-                    )
-
-                # 最新の値を保存
-                st.session_state.item9_gross = item9_gross
-
-                # 赤ラベルを更新（場所, テキスト）
-                red_label(h_gross, f"売上高総利益: {item9_gross:,} 千円")
-
-                st.divider() # 次の項目との区切
-#---------------------------------------------------------------------------------------------------------------
-
-                # #③営業利益
-            
-                st.markdown("### 営業利益")
-
-                # 初期値の定義
-                if 'rieki' not in st.session_state:
-                    st.session_state.rieki = 10000
-
-                # 表示場所（赤ラベル用）の確保
-                h_rieki = st.empty()
-                st.write("")
-
-                # 横に分割（左 0.7 : 右 0.3）
-                c_l, c_r = st.columns([0.7, 0.3])
-
-                with c_r:
-                    # 右側：手入力
-                    rieki = st.number_input(
-                        "直接入力", 
-                        min_value=-300000, 
-                        max_value=1000000, 
-                        value=st.session_state.rieki, 
-                        step=1,
-                        key="num_rieki",  # keyは一意にする
-                        label_visibility="collapsed"
-                    )
-
-                with c_l:
-                    # 左側：スライダー
-                    rieki = st.slider(
-                        "売上高調整",
-                        min_value=-100000,
-                        max_value=1000000,
-                        value=rieki,
-                        step=100,
-                        key="slide_rieki",  # keyは一意にする
-                        label_visibility="collapsed",
-                        format="%d"
-                    )
-
-                # 最新の値を保存
-                st.session_state.rieki = rieki
-
-                # 赤ラベルを更新（場所, テキスト）
-                red_label(h_rieki, f"営業利益: {rieki:,} 千円")
-
-                st.divider() # 次の項目との区切
-
-#----------------------------------------------------------------------------------------------------------------------
-
-                st.markdown("### 経常利益")
-
-                # 初期値の定義
-                if 'item4_ord_profit' not in st.session_state:
-                    st.session_state.item4_ord_profit = 10000
-
-                # 表示場所（赤ラベル用）の確保
-                h_ord_profit = st.empty()
-                st.write("")
-
-                # 横に分割（左 0.7 : 右 0.3）
-                c_l, c_r = st.columns([0.7, 0.3])
-
-                with c_r:
-                    # 右側：手入力
-                    item4_ord_profit = st.number_input(
-                        "直接入力", 
-                        min_value=-300000, 
-                        max_value=1000000, 
-                        value=st.session_state.item4_ord_profit, 
-                        step=1,
-                        key="num_item4_ord_profit",  # keyは一意にする
-                        label_visibility="collapsed"
-                    )
-
-                with c_l:
-                    # 左側：スライダー
-                    item4_ord_profit = st.slider(
-                        "売上高調整",
-                        min_value=-200000,
-                        max_value=1000000,
-                        value=item4_ord_profit,
-                        step=100,
-                        key="slide_item4_ord_profit",  # keyは一意にする
-                        label_visibility="collapsed",
-                        format="%d"
-                    )
-
-                # 最新の値を保存
-                st.session_state.item4_ord_profit = item4_ord_profit
-
-                # 赤ラベルを更新（場所, テキスト）
-                red_label(h_ord_profit, f"経常利益: {item4_ord_profit:,} 千円")
-
-                st.divider() # 次の項目との区切
-#-------------------------------------------------------------------------------------------
-
-                st.markdown("### 当期利益")
-
-                # 初期値の定義
-                if 'item5_net_income' not in st.session_state:
-                    st.session_state.item5_net_income = 10000
-
-                # 表示場所（赤ラベル用）の確保
-                h_net_income = st.empty()
-                st.write("")
-
-                # 横に分割（左 0.7 : 右 0.3）
-                c_l, c_r = st.columns([0.7, 0.3])
-
-                with c_r:
-                    # 右側：手入力
-                    item5_net_income = st.number_input(
-                        "直接入力", 
-                        min_value=-300000, 
-                        max_value=1000000, 
-                        value=st.session_state.item5_net_income, 
-                        step=1,
-                        key="num_item5_net_income",  # keyは一意にする
-                        label_visibility="collapsed"
-                    )
-
-                with c_l:
-                    # 左側：スライダー
-                    item5_net_income = st.slider(
-                        "売上高調整",
-                        min_value=-200000,
-                        max_value=1000000,
-                        value=item5_net_income,
-                        step=100,
-                        key="slide_item5_net_income",  # keyは一意にする
-                        label_visibility="collapsed",
-                        format="%d"
-                    )
-
-                # 最新の値を保存
-                st.session_state.item5_net_income = item5_net_income
-
-                # 赤ラベルを更新（場所, テキスト）
-                red_label(h_net_income, f"当期利益: {item5_net_income:,} 千円")
-
-                st.divider() # 次の項目との区切
-
-                # None対策（nenshu はフラグメント内で設定されるため session_state から取得）
-                c_nenshu = st.session_state.get("nenshu", 0) or 0
-                c_gross = item9_gross if item9_gross is not None else 0
-                c_rieki = rieki if rieki is not None else 0
-                c_ord = item4_ord_profit if item4_ord_profit is not None else 0
-                c_net = item5_net_income if item5_net_income is not None else 0
-            
-                # [削除] 入力中のウォーターフォールグラフ表示 (分析タブに集約するため)
-                # if c_nenshu > 0: 
-                #     st.pyplot(plot_waterfall(c_nenshu, c_gross, c_rieki, c_ord, c_net))
-
-            with st.expander("🏢 2. 資産・経費・その他", expanded=False):
-                
-                st.markdown("### 減価償却費")
-
-                # 初期値の定義
-                if 'item10_dep' not in st.session_state:
-                    st.session_state.item10_dep = 10000
-
-                # 表示場所（赤ラベル用）の確保
-                h_item10_dep = st.empty()
-                st.write("")
-
-                # 横に分割（左 0.7 : 右 0.3）
-                c_l, c_r = st.columns([0.7, 0.3])
-
-                with c_r:
-                    # 右側：手入力
-                    item10_dep = st.number_input(
-                        "直接入力", 
-                        min_value=0, 
-                        max_value=300000, 
-                        value=st.session_state.item10_dep, 
-                        step=1,
-                        key="num_item10_dep",  # keyは一意にする
-                        label_visibility="collapsed"
-                    )
-
-                with c_l:
-                    # 左側：スライダー
-                    item10_dep = st.slider(
-                        "売上高調整",
-                        min_value=0,
-                        max_value=300000,
-                        value=item10_dep,
-                        step=100,
-                        key="slide_item10_dep",  # keyは一意にする
-                        label_visibility="collapsed",
-                        format="%d"
-                    )
-
-                # 最新の値を保存
-                st.session_state.item10_dep = item10_dep
-
-                # 赤ラベルを更新（場所, テキスト）
-                red_label(h_item10_dep, f"減価償却費: {item10_dep:,} 千円")
-
-                st.divider() # 次の項目との区切
-
-#--------------------------------------------------------------------------------------------------------
-                #⑦減価償却費（経費）
-
-                st.markdown("### 減価償却費(経費)")
-
-                # 初期値の定義
-                if 'item11_dep_exp' not in st.session_state:
-                    st.session_state.item11_dep_exp = 10000
-
-                # 表示場所（赤ラベル用）の確保
-                h_item11_dep = st.empty()
-                st.write("")
-
-                # 横に分割（左 0.7 : 右 0.3）
-                c_l, c_r = st.columns([0.7, 0.3])
-
-                with c_r:
-                    # 右側：手入力
-                    item11_dep_exp = st.number_input(
-                        "直接入力", 
-                        min_value=0, 
-                        max_value=300000, 
-                        value=st.session_state.item11_dep_exp, 
-                        step=1,
-                        key="num_item11_dep_exp",  # keyは一意にする
-                        label_visibility="collapsed"
-                    )
-
-                with c_l:
-                    # 左側：スライダー
-                    item11_dep_exp = st.slider(
-                        "売上高調整",
-                        min_value=0,
-                        max_value=300000,
-                        value=item11_dep_exp,
-                        step=100,
-                        key="slide_item11_dep_exp",  # keyは一意にする
-                        label_visibility="collapsed",
-                        format="%d"
-                    )
-
-                # 最新の値を保存
-                st.session_state.item11_dep_exp = item11_dep_exp
-
-                # 赤ラベルを更新（場所, テキスト）
-                red_label(h_item11_dep, f"減価償却費(経費): {item11_dep_exp:,} 千円")
-
-                st.divider() # 次の項目との区切
-
-#----------------------------------------------------------------------------------------------------
-
-                # #⑧賃借料
-                st.markdown("### 賃借料")
-
-                # 初期値の定義
-                if 'item8_rent' not in st.session_state:
-                    st.session_state.item8_rent = 10000
-
-                # 表示場所（赤ラベル用）の確保
-                h_item8_rent = st.empty()
-                st.write("")
-
-                # 横に分割（左 0.7 : 右 0.3）
-                c_l, c_r = st.columns([0.7, 0.3])
-
-                with c_r:
-                    # 右側：手入力
-                    item8_rent = st.number_input(
-                        "直接入力", 
-                        min_value=0, 
-                        max_value=300000, 
-                        value=st.session_state.item8_rent, 
-                        step=1,
-                        key="num_item8_rent",  # keyは一意にする
-                        label_visibility="collapsed"
-                    )
-
-                with c_l:
-                    # 左側：スライダー
-                    item8_rent = st.slider(
-                        "売上高調整",
-                        min_value=0,
-                        max_value=200000,
-                        value=item8_rent,
-                        step=100,
-                        key="slide_item8_rent",  # keyは一意にする
-                        label_visibility="collapsed",
-                        format="%d"
-                    )
-
-                # 最新の値を保存
-                st.session_state.item8_rent = item8_rent
-
-                # 赤ラベルを更新（場所, テキスト）
-                red_label(h_item8_rent, f"賃借料: {item8_rent:,} 千円")
-
-                st.divider() # 次の項目との区切
-
-#----------------------------------------------------------------------------------------------
-
-                #⑨賃借料（経費）
-                # h_item12_rent_exp=st.empty()
-                # item12_rent_exp = col3.select_slider("賃借料(経費）", options=range(0, 90000, 100), value=0)
-                # red_label(h_item12_rent_exp, f"賃借料(経費）:{item12_rent_exp:,} 千円")
-                # st.divider()
-
-                st.markdown("### 賃借料（経費）")
-
-                # 初期値の定義
-                if 'item12_rent_exp' not in st.session_state:
-                    st.session_state.item12_rent_exp = 10000
-
-                # 表示場所（赤ラベル用）の確保
-                h_item12_rent_exp = st.empty()
-                st.write("")
-
-                # 横に分割（左 0.7 : 右 0.3）
-                c_l, c_r = st.columns([0.7, 0.3])
-
-                with c_r:
-                    # 右側：手入力
-                    item12_rent_exp = st.number_input(
-                        "直接入力", 
-                        min_value=0, 
-                        max_value=300000, 
-                        value=st.session_state.item12_rent_exp, 
-                        step=1,
-                        key="num_item12_rent_exp",  # keyは一意にする
-                        label_visibility="collapsed"
-                    )
-
-                with c_l:
-                    # 左側：スライダー
-                    item12_rent_exp = st.slider(
-                        "売上高調整",
-                        min_value=0,
-                        max_value=200000,
-                        value=item12_rent_exp,
-                        step=100,
-                        key="slide_item12_rent_exp",  # keyは一意にする
-                        label_visibility="collapsed",
-                        format="%d"
-                    )
-
-                # 最新の値を保存
-                st.session_state.item12_rent_exp = item12_rent_exp
-
-                # 赤ラベルを更新（場所, テキスト）
-                red_label(h_item12_rent_exp, f"賃借料(経費): {item12_rent_exp:,} 千円")
-
-                st.divider() # 次の項目との区切
-
-#------------------------------------------------------------------------------------------------
-
-                #⑩機械装置
- 
-                st.markdown("### 機械装置")
-
-                # 初期値の定義
-                if 'item6_machine' not in st.session_state:
-                    st.session_state.item6_machine = 10000
-
-                # 表示場所（赤ラベル用）の確保
-                h_item6_machine = st.empty()
-                st.write("")
-
-                # 横に分割（左 0.7 : 右 0.3）
-                c_l, c_r = st.columns([0.7, 0.3])
-
-                with c_r:
-                    # 右側：手入力
-                    item6_machine = st.number_input(
-                        "直接入力", 
-                        min_value=0, 
-                        max_value=300000, 
-                        value=st.session_state.item6_machine, 
-                        step=1,
-                        key="num_item6_machine",  # keyは一意にする
-                        label_visibility="collapsed"
-                    )
-
-                with c_l:
-                    # 左側：スライダー
-                    item6_machine = st.slider(
-                        "売上高調整",
-                        min_value=0,
-                        max_value=200000,
-                        value=item6_machine,
-                        step=100,
-                        key="slide_item6_machine",  # keyは一意にする
-                        label_visibility="collapsed",
-                        format="%d"
-                    )
-
-                # 最新の値を保存
-                st.session_state.item6_machine = item6_machine
-
-                # 赤ラベルを更新（場所, テキスト）
-                red_label(h_item6_machine, f"機械装置: {item6_machine:,} 千円")
-
-                st.divider() # 次の項目との区切
-
-#--------------------------------------------------------------------------------------------
-
-                # #11その他資産
-                # h_item7_other=st.empty()
-                # item7_other = col4.select_slider("その他資産", options=range(0, 50000, 100), value=0)
-                # red_label(h_item7_other, f"その他資産:{ item7_other:,} 千円")
-                # st.divider()
-
-                st.markdown("### その他資産")
-
-                # 初期値の定義
-                if 'item7_other' not in st.session_state:
-                    st.session_state.item7_other = 10000
-
-                # 表示場所（赤ラベル用）の確保
-                h_item7_other = st.empty()
-                st.write("")
-
-                # 横に分割（左 0.7 : 右 0.3）
-                c_l, c_r = st.columns([0.7, 0.3])
-
-                with c_r:
-                    # 右側：手入力
-                    item7_other = st.number_input(
-                        "直接入力", 
-                        min_value=0, 
-                        max_value=300000, 
-                        value=st.session_state.item7_other, 
-                        step=1,
-                        key="num_item7_other",  # keyは一意にする
-                        label_visibility="collapsed"
-                    )
-
-                with c_l:
-                    # 左側：スライダー
-                    item7_other = st.slider(
-                        "売上高調整",
-                        min_value=0,
-                        max_value=200000,
-                        value=item7_other,
-                        step=100,
-                        key="slide_item7_other",  # keyは一意にする
-                        label_visibility="collapsed",
-                        format="%d"
-                    )
-
-                # 最新の値を保存
-                st.session_state.item7_other = item7_other
-
-                # 赤ラベルを更新（場所, テキスト）
-                red_label(h_item7_other, f"その他資産: {item7_other:,} 千円")
-
-                st.divider() # 次の項目との区切
-#-------------------------------------------------------------------------------------------------------------
-                # #12純資産合計
-
-                st.markdown("### 純資産")
-
-                # 初期値の定義
-                if 'net_assets' not in st.session_state:
-                    st.session_state.net_assets = 10000
-
-                # 表示場所（赤ラベル用）の確保
-                h_net_assets = st.empty()
-                st.write("")
-
-                # 横に分割（左 0.7 : 右 0.3）
-                c_l, c_r = st.columns([0.7, 0.3])
-
-                with c_r:
-                    # 右側：手入力
-                    net_assets = st.number_input(
-                        "直接入力", 
-                        min_value=0, 
-                        max_value=500000, 
-                        value=st.session_state.net_assets, 
-                        step=1,
-                        key="num_net_assets",  # keyは一意にする
-                        label_visibility="collapsed"
-                    )
-
-                with c_l:
-                    # 左側：スライダー
-                    net_assets = st.slider(
-                        "売上高調整",
-                        min_value=0,
-                        max_value=200000,
-                        value=net_assets,
-                        step=100,
-                        key="slide_net_assets",  # keyは一意にする
-                        label_visibility="collapsed",
-                        format="%d"
-                    )
-
-                # 最新の値を保存
-                st.session_state.net_assets = net_assets
-
-                # 赤ラベルを更新（場所, テキスト）
-                red_label(h_net_assets, f"純資産: {net_assets:,} 千円")
-
-                st.divider() # 次の項目との区切
-#--------------------------------------------------------------------------------
-                #13総資産
-                # h_total_assets=st.empty()
-                # total_assets = col4.select_slider("総資産（千円）", options=range(0, 900000, 1000), value=0)
-                # red_label(h_total_assets, f"総資産:{total_assets:,} 千円")
-                # st.divider()
-
-                st.markdown("### 総資産")
-
-                # 初期値の定義
-                if 'total_assets' not in st.session_state:
-                    st.session_state.total_assets = 10000
-
-                # 表示場所（赤ラベル用）の確保
-                h_total_assets = st.empty()
-                st.write("")
-
-                # 横に分割（左 0.7 : 右 0.3）
-                c_l, c_r = st.columns([0.7, 0.3])
-
-                with c_r:
-                    # 右側：手入力
-                    total_assets = st.number_input(
-                        "直接入力", 
-                        min_value=0, 
-                        max_value=1000000, 
-                        value=st.session_state.total_assets, 
-                        step=1,
-                        key="num_total_assets",  # keyは一意にする
-                        label_visibility="collapsed"
-                    )
-
-                with c_l:
-                    # 左側：スライダー
-                    total_assets = st.slider(
-                        "売上高調整",
-                        min_value=0,
-                        max_value=300000,
-                        value=total_assets,
-                        step=100,
-                        key="slide_total_assets",  # keyは一意にする
-                        label_visibility="collapsed",
-                        format="%d"
-                    )
-
-                # 最新の値を保存
-                st.session_state.total_assets = total_assets
-
-                # 赤ラベルを更新（場所, テキスト）
-                red_label(h_total_assets, f"総資産: {total_assets:,} 千円")
-
-                st.divider() # 次の項目との区切
-#------------------------------------------------------------------------------------------------------
-            with st.expander("💳 3. 信用情報", expanded=False):
-
-                # default値をリスト内の文字列と完全に一致させる必要があります
-                grade =st.segmented_control("格付", ["①1-3 (優良)", "②4-6 (標準)", "③要注意以下", "④無格付"], default="②4-6 (標準)")
-#---------------------------------------------------------------------------             
-            #     #14銀行与信
-
-                st.markdown("### うちの銀行与信")
-                # 初期値の定義
-                if 'bank_credit' not in st.session_state:
-                    st.session_state.bank_credit = 10000
-
-                # 表示場所（赤ラベル用）の確保
-                h_bank_credit = st.empty()
-                st.write("")
-
-                # 横に分割（左 0.7 : 右 0.3）
-                c_l, c_r = st.columns([0.7, 0.3])
-
-                with c_r:
-                    # 右側：手入力
-                    bank_credit = st.number_input(
-                        "直接入力", 
-                        min_value=0, 
-                        max_value=3000000, 
-                        value=st.session_state.bank_credit, 
-                        step=1,
-                        key="num_bank_credit",  # keyは一意にする
-                        label_visibility="collapsed"
-                    )
-
-                with c_l:
-                    # 左側：スライダー
-                    bank_credit = st.slider(
-                        "売上高調整",
-                        min_value=0,
-                        max_value=1000000,
-                        value=bank_credit,
-                        step=100,
-                        key="slide_bank_credit",  # keyは一意にする
-                        label_visibility="collapsed",
-                        format="%d"
-                    )
-
-                # 最新の値を保存
-                st.session_state.bank_credit = bank_credit
-
-                # 赤ラベルを更新（場所, テキスト）
-                red_label(h_bank_credit, f"うちの銀行与信: {bank_credit:,} 千円")
-
-                st.divider() # 次の項目との区切
-#---------------------------------------------------------------------------------------------------------
-  
-                # #15リース与信
-
-                st.markdown("### うちのリース与信")
-                # 初期値の定義
-                if 'lease_credit' not in st.session_state:
-                    st.session_state.lease_credit = 10000
-
-                # 表示場所（赤ラベル用）の確保
-                h_lease_credit = st.empty()
-                st.write("")
-
-                # 横に分割（左 0.7 : 右 0.3）
-                c_l, c_r = st.columns([0.7, 0.3])
-
-                with c_r:
-                    # 右側：手入力
-                    lease_credit = st.number_input(
-                        "直接入力", 
-                        min_value=0, 
-                        max_value=300000, 
-                        value=st.session_state.lease_credit, 
-                        step=1,
-                        key="num_lease_credit",  # keyは一意にする
-                        label_visibility="collapsed"
-                    )
-
-                with c_l:
-                    # 左側：スライダー
-                    lease_credit = st.slider(
-                        "売上高調整",
-                        min_value=0,
-                        max_value=200000,
-                        value=lease_credit,
-                        step=100,
-                        key="slide_lease_credit",  # keyは一意にする
-                        label_visibility="collapsed",
-                        format="%d"
-                    )
-
-                # 最新の値を保存
-                st.session_state.lease_credit = lease_credit
-
-                # 赤ラベルを更新（場所, テキスト）
-                red_label(h_lease_credit, f"うちのリース与信: {lease_credit:,} 千円")
-
-                st.divider() # 次の項目との区切
-#--------------------------------------------------------------------------------------------------------
-                # #16契約数
-                st.markdown("### 契約数")
-                # 初期値の定義
-                if 'contracts' not in st.session_state:
-                    st.session_state.contracts = 1
-
-                # 表示場所（赤ラベル用）の確保
-                h_contracts = st.empty()
-                st.write("")
-
-                # 横に分割（左 0.7 : 右 0.3）
-                c_l, c_r = st.columns([0.7, 0.3])
-
-                with c_r:
-                    # 右側：手入力
-                    contracts = st.number_input(
-                        "直接入力", 
-                        min_value=0, 
-                        max_value=30, 
-                        value=st.session_state.contracts, 
-                        step=1,
-                        key="num_contracts",  # keyは一意にする
-                        label_visibility="collapsed"
-                    )
-
-                with c_l:
-                    # 左側：スライダー
-                    contracts = st.slider(
-                        "売上高調整",
-                        min_value=0,
-                        max_value=20,
-                        value=contracts,
-                        step=1,
-                        key="slide_contracts",  # keyは一意にする
-                        label_visibility="collapsed",
-                        format="%d"
-                    )
-
-                # 最新の値を保存
-                st.session_state.contracts = contracts
-
-                # 赤ラベルを更新（場所, テキスト）
-                red_label(h_contracts, f"契約数: {contracts:,} 件")
-
-                st.divider() # 次の項目との区切
-
-#------------------------------------------------------------------------------------------------------
-
-
-            st.markdown("##### 📈 契約条件・属性 (利回り予測用)")
-            with st.container():
-                c_y1, c_y2, c_y3 = st.columns(3)
-                contract_type = c_y1.radio("契約種類", ["一般", "自動車"], horizontal=True)
-                deal_source = c_y2.radio("商談ソース", ["銀行紹介", "その他"], horizontal=True)
-                #17契約期間
-                h_lease_term=st.empty()
-                lease_term = c_y3.select_slider("契約期間（月）", options=range(0, 121, 1), value=60)
+    with menu_tabs[0]:  # 新規審査
+        st.title("🏢 温水式 リース審査アシスタント")
+        selected_major = 'D 建設業'
+        selected_sub = '06 総合工事業'
+        comparison_text = 'データなし'
+        trend_info = 'データなし'
+        submitted = False  # 審査入力タブ以外でも if submitted が参照できるよう初期化
+        col_left, col_right = st.columns([1, 1])
+
+        with col_left:
+            if "nav_index" not in st.session_state:
+                st.session_state.nav_index = 0
+            nav_mode = st.radio(
+                "表示モード",
+                ["📝 審査入力", "📊 分析結果"],
+                horizontal=True,
+                label_visibility="visible",
+                key="nav_mode_widget",
+                index=st.session_state.get("nav_index", 0),
+            )
+            if nav_mode == "📝 審査入力":
+                st.header("📝 1. 審査データの入力")
+                customer_type = st.radio("顧客区分", ["既存先", "新規先"], horizontal=True)
+                image_placeholder = st.empty()
+                if 'current_image' not in st.session_state: st.session_state['current_image'] = "guide"
+                img_path = get_image(st.session_state['current_image'])
+                if img_path: image_placeholder.image(img_path, width=280)
                 st.divider()
-                red_label(h_lease_term, f"契約期間（月）:{lease_term:,} ")
-#----------------契約年ーーーーーーーーーーーー
-                h_year = st.empty()
-                c_l,c_r= st.columns([0.7,0.3])
-            with c_l:
-                    acceptance_year = st.number_input("検収年 (西暦)", value=2026, step=1)
-            with c_r:
-                   red_label(h_year, f"検収年（年）:{acceptance_year:,} ")  
-#------------------------------------------------------------
-            #     #18取得価格
-            # --- 取得価格セクション ---
-            st.markdown("### 取得価格")
+
+                # 業界・取引を expander で折りたたみ
+                with st.expander("📌 業界選択・取引状況", expanded=True):
+                    if not jsic_data:
+                        st.error("業界データ(industry_trends_jsic.json)が見つかりません。")
+                        major_keys = ["D 建設業"]
+                    else:
+                        major_keys = list(jsic_data.keys())
+                    selected_major = st.selectbox("大分類 (日本標準産業分類)", major_keys)
+                    if jsic_data:
+                        sub_data = jsic_data[selected_major]["sub"]
+                        sub_keys = list(sub_data.keys())
+                        mapped_coeff_category = jsic_data[selected_major]["mapping"]
+                    else:
+                        sub_data = {}
+                        sub_keys = ["06 総合工事業"]
+                        mapped_coeff_category = "④建設業"
+                    selected_sub = st.selectbox("中分類", sub_keys)
+                    st.session_state["_frag_major"] = selected_major
+                    st.session_state["_frag_sub"] = selected_sub
+                    st.session_state["_frag_mapped_coeff"] = mapped_coeff_category
+                    st.session_state["_frag_sub_data"] = sub_data
+                    st.session_state["_frag_jsic_data"] = jsic_data
+                    trend_info = sub_data.get(selected_sub, "情報なし")
+                    past_stats = get_stats(selected_sub)
+                    past_info_text = "過去データなし"
+                    alert_msg = ""
+                    if past_stats["count"] > 0:
+                        past_info_text = f"過去{past_stats['count']}件 (平均: {past_stats['avg_score']:.1f}点)"
+                        if past_stats["close_rate"] > 0:
+                            past_info_text += f"\n成約率: {past_stats['close_rate']:.0%}"
+                        if past_stats["lost_reasons"]:
+                            top_reason = max(set(past_stats["lost_reasons"]), key=past_stats["lost_reasons"].count)
+                            alert_msg = f"\n⚠️ **注意**: この業種は「{top_reason}」による失注が多いです。"
+                    st.info(f"💡 **業界トレンド ({selected_sub})**:\n{trend_info}\n\n📚 **社内実績**: {past_info_text}{alert_msg}")
+                    with st.expander("🌐 ネットで最新ニュースを検索", expanded=False):
+                        search_query = st.text_input("検索キーワード", value=f"{selected_sub} 動向 2025", key="news_search_query")
+                        if st.button("検索", key="btn_news_search"):
+                            try:
+                                # まず ddgs（新パッケージ名）を優先的に利用し、なければ duckduckgo_search を使う
+                                try:
+                                    from ddgs import DDGS
+                                    backend_name = "ddgs"
+                                except ImportError:
+                                    from duckduckgo_search import DDGS
+                                    backend_name = "duckduckgo_search"
+
+                                with st.spinner(f"検索中...（バックエンド: {backend_name}）"):
+                                    raw_results = list(DDGS().text(search_query, region='jp-jp', max_results=10))
+                                    if not raw_results:
+                                        raw_results = list(DDGS().text(search_query, max_results=10))
+                                    if not raw_results:
+                                        st.warning("DuckDuckGo検索から結果が返ってきませんでした。ネットワーク制限や一時的な障害の可能性があります。")
+                                        st.session_state.news_results = []
+                                    else:
+                                        jp_results = []
+                                        for r in raw_results:
+                                            title = (r.get("title") if isinstance(r, dict) else "") or ""
+                                            body = (r.get("body") if isinstance(r, dict) else "") or ""
+                                            if is_japanese_text(title + body):
+                                                jp_results.append(r)
+                                        if jp_results:
+                                            st.session_state.news_results = jp_results[:3]
+                                        else:
+                                            st.info("日本語判定でヒットしなかったため、検索結果をそのまま表示します。")
+                                            st.session_state.news_results = raw_results[:3]
+                                    st.caption(f"検索結果件数: {len(st.session_state.news_results)} 件")
+                            except ImportError:
+                                st.error("検索機能には追加ライブラリが必要です: pip install duckduckgo-search または pip install ddgs")
+                            except Exception as e:
+                                st.error(f"検索エラー: {e}")
+                        if 'news_results' in st.session_state and st.session_state.news_results:
+                            for i, res in enumerate(st.session_state.news_results):
+                                st.markdown(f"**[{res['title']}]({res['href']})**")
+                                st.caption(res['body'])
+                                if st.button(f"この記事をAIに読み込ませる", key=f"read_news_{i}"):
+                                    with st.spinner(f"「{res['title']}」を読み込んでいます..."):
+                                        content = scrape_article_text(res['href'])
+                                        # 日本語記事のみAIに読み込ませる
+                                        if content and isinstance(content, str) and not content.startswith("記事の読み込みに失敗しました"):
+                                            if is_japanese_text(content):
+                                                news_obj = {
+                                                    "title": res['title'],
+                                                    "url": res['href'],
+                                                    "content": content,
+                                                }
+                                                st.session_state.selected_news_content = news_obj
+                                                case_id = st.session_state.get("current_case_id")
+                                                if case_id:
+                                                    append_case_news({"case_id": case_id, **news_obj})
+                                                st.success("日本語記事の読み込み完了！AIへの相談・ディベート時に内容が反映されます。")
+                                            else:
+                                                st.warning("この記事は日本語ではない可能性が高いため、AIへの読み込みをスキップしました。")
+                                        elif isinstance(content, str) and content.startswith("記事の読み込みに失敗しました"):
+                                            st.error(content)
+                                        else:
+                                            st.error("記事の本文を取得できませんでした。")
+                                st.divider()
+                    if 'selected_news_content' in st.session_state:
+                        with st.container(border=True):
+                            st.write("📖 **現在読み込み中の記事:**")
+                            st.write(st.session_state.selected_news_content['title'])
+                            if st.button("読み込みをクリア"):
+                                del st.session_state.selected_news_content
+                                st.rerun()
+                    st.markdown("##### 🤝 取引・競合状況")
+                    col_q1, col_q2 = st.columns(2)
+                    with col_q1: main_bank = st.selectbox("取引区分", ["メイン先", "非メイン先"])
+                    with col_q2: competitor = st.selectbox("競合状況", ["競合なし", "競合あり"])
+                st.caption("💡 数字入力で画面がガタつく場合：スライダーで大まかに合わせてから直接入力で微調整するか、入力後に Enter を押してから次の項目へ移ると軽くなります。")
+                st.caption("📌 スライダー・数値の変更は「判定開始」を押すと反映されます。")
+                with st.form("shinsa_form"):
+                    with st.expander("📊 1. 損益計算書 (P/L)", expanded=True):
+                        # ①売上高（フラグメント化で入力時のガタつき軽減）
+                        _fragment_nenshu()
+
+                        #  ②売上高総利益
+                        st.markdown("### 売上高総利益")
+
+                        # 初期値の定義
+                        if 'item9_gross' not in st.session_state:
+                            st.session_state.item9_gross = 10000
+
+                        # 横に分割（左 0.7 : 右 0.3）
+                        c_l, c_r = st.columns([0.7, 0.3])
+
+                        with c_r:
+                            # 右側：手入力
+                            item9_gross = st.number_input(
+                                "直接入力", 
+                                min_value=-500000, 
+                                max_value=1000000, 
+                                value=st.session_state.item9_gross, 
+                                step=1,
+                                key="num_sourieki",  # keyは一意にする
+                                label_visibility="collapsed"
+                            )
+
+                        with c_l:
+                            # 左側：スライダー
+                            item9_gross = st.slider(
+                                "売上高調整",
+                                min_value=-500000,
+                                max_value=1000000,
+                                value=item9_gross,
+                                step=100,
+                                key="slide_sourieki",  # keyは一意にする
+                                label_visibility="collapsed",
+                                format="%d"
+                            )
+
+                        # 最新の値を保存
+                        st.session_state.item9_gross = item9_gross
+
+                        st.divider() # 次の項目との区切
+        #---------------------------------------------------------------------------------------------------------------
+
+                        # #③営業利益
             
-            # 初期値の定義
-            if 'acquisition_cost' not in st.session_state:
-                st.session_state.acquisition_cost = 1000
+                        st.markdown("### 営業利益")
 
-            # 表示場所（赤ラベル用）の確保
-            h_acquisition_cost = st.empty()
-            st.write("")
+                        # 初期値の定義
+                        if 'rieki' not in st.session_state:
+                            st.session_state.rieki = 10000
 
-            # 横に分割（左 0.7 : 右 0.3）
-            c_l, c_r = st.columns([0.7, 0.3])
+                        # 横に分割（左 0.7 : 右 0.3）
+                        c_l, c_r = st.columns([0.7, 0.3])
 
-            with c_r:
-                # 右側：手入力
-                acquisition_cost = st.number_input(
-                    "直接入力", 
-                    min_value=0, 
-                    max_value=500000, # カンマは抜く
-                    value=st.session_state.acquisition_cost, 
-                    step=100,
-                    key="num_acquisition_cost",
-                    label_visibility="collapsed"
-                )
+                        with c_r:
+                            # 右側：手入力
+                            rieki = st.number_input(
+                                "直接入力", 
+                                min_value=-300000, 
+                                max_value=1000000, 
+                                value=st.session_state.rieki, 
+                                step=1,
+                                key="num_rieki",  # keyは一意にする
+                                label_visibility="collapsed"
+                            )
 
-            with c_l:
-                # 左側：スライダー
-                acquisition_cost = st.slider(
-                    "取得価格調整",
-                    min_value=0,
-                    max_value=300000,
-                    value=acquisition_cost,
-                    step=100,
-                    key="slide_acquisition_cost",
-                    label_visibility="collapsed",
-                    format="%d"
-                )
+                        with c_l:
+                            # 左側：スライダー
+                            rieki = st.slider(
+                                "売上高調整",
+                                min_value=-100000,
+                                max_value=1000000,
+                                value=rieki,
+                                step=100,
+                                key="slide_rieki",  # keyは一意にする
+                                label_visibility="collapsed",
+                                format="%d"
+                            )
 
-            # 最新の値を保存
-            st.session_state.acquisition_cost = acquisition_cost
+                        # 最新の値を保存
+                        st.session_state.rieki = rieki
 
-            # 赤ラベルを更新（場所の変数名を間違えないように！）
-            red_label(h_acquisition_cost, f"取得価格: {acquisition_cost:,} 千円")
+                        st.divider() # 次の項目との区切
 
-            # フラグメント利用時用: session_state の値で上書き（入力ガタつき軽減のため）
-            nenshu = st.session_state.get("nenshu", 0)
-            item9_gross = st.session_state.get("item9_gross", 0)
-            rieki = st.session_state.get("rieki", 0)
-            item4_ord_profit = st.session_state.get("item4_ord_profit", 0)
-            item5_net_income = st.session_state.get("item5_net_income", 0)
-            item10_dep = st.session_state.get("item10_dep", 0)
-            item11_dep_exp = st.session_state.get("item11_dep_exp", 0)
-            item8_rent = st.session_state.get("item8_rent", 0)
-            item12_rent_exp = st.session_state.get("item12_rent_exp", 0)
-            item6_machine = st.session_state.get("item6_machine", 0)
-            item7_other = st.session_state.get("item7_other", 0)
-            net_assets = st.session_state.get("net_assets", 0)
-            total_assets = st.session_state.get("total_assets", 0)
-            bank_credit = st.session_state.get("bank_credit", 0)
-            lease_credit = st.session_state.get("lease_credit", 0)
-            contracts = st.session_state.get("contracts", 0)
-            lease_term = st.session_state.get("lease_term", 0)
-            acquisition_cost = st.session_state.get("acquisition_cost", 0)
-            acceptance_year = st.session_state.get("acceptance_year", 2026)
+        #----------------------------------------------------------------------------------------------------------------------
+
+                        st.markdown("### 経常利益")
+
+                        # 初期値の定義
+                        if 'item4_ord_profit' not in st.session_state:
+                            st.session_state.item4_ord_profit = 10000
+
+                        # 横に分割（左 0.7 : 右 0.3）
+                        c_l, c_r = st.columns([0.7, 0.3])
+
+                        with c_r:
+                            # 右側：手入力
+                            item4_ord_profit = st.number_input(
+                                "直接入力", 
+                                min_value=-300000, 
+                                max_value=1000000, 
+                                value=st.session_state.item4_ord_profit, 
+                                step=1,
+                                key="num_item4_ord_profit",  # keyは一意にする
+                                label_visibility="collapsed"
+                            )
+
+                        with c_l:
+                            # 左側：スライダー
+                            item4_ord_profit = st.slider(
+                                "売上高調整",
+                                min_value=-200000,
+                                max_value=1000000,
+                                value=item4_ord_profit,
+                                step=100,
+                                key="slide_item4_ord_profit",  # keyは一意にする
+                                label_visibility="collapsed",
+                                format="%d"
+                            )
+
+                        # 最新の値を保存
+                        st.session_state.item4_ord_profit = item4_ord_profit
+
+                        st.divider() # 次の項目との区切
+        #-------------------------------------------------------------------------------------------
+
+                        st.markdown("### 当期利益")
+
+                        # 初期値の定義
+                        if 'item5_net_income' not in st.session_state:
+                            st.session_state.item5_net_income = 10000
+
+                        # 横に分割（左 0.7 : 右 0.3）
+                        c_l, c_r = st.columns([0.7, 0.3])
+
+                        with c_r:
+                            # 右側：手入力
+                            item5_net_income = st.number_input(
+                                "直接入力", 
+                                min_value=-300000, 
+                                max_value=1000000, 
+                                value=st.session_state.item5_net_income, 
+                                step=1,
+                                key="num_item5_net_income",  # keyは一意にする
+                                label_visibility="collapsed"
+                            )
+
+                        with c_l:
+                            # 左側：スライダー
+                            item5_net_income = st.slider(
+                                "売上高調整",
+                                min_value=-200000,
+                                max_value=1000000,
+                                value=item5_net_income,
+                                step=100,
+                                key="slide_item5_net_income",  # keyは一意にする
+                                label_visibility="collapsed",
+                                format="%d"
+                            )
+
+                        # 最新の値を保存
+                        st.session_state.item5_net_income = item5_net_income
+
+                        st.divider() # 次の項目との区切
+
+                        # None対策（nenshu はフラグメント内で設定されるため session_state から取得）
+                        c_nenshu = st.session_state.get("nenshu", 0) or 0
+                        c_gross = item9_gross if item9_gross is not None else 0
+                        c_rieki = rieki if rieki is not None else 0
+                        c_ord = item4_ord_profit if item4_ord_profit is not None else 0
+                        c_net = item5_net_income if item5_net_income is not None else 0
             
-            # 変数の再マッピング (None -> 0)
-            nenshu = nenshu if nenshu is not None else 0
-            item9_gross = item9_gross if item9_gross is not None else 0
-            rieki = rieki if rieki is not None else 0
-            item4_ord_profit = item4_ord_profit if item4_ord_profit is not None else 0
-            item5_net_income = item5_net_income if item5_net_income is not None else 0
-            item10_dep = item10_dep if item10_dep is not None else 0
-            item11_dep_exp = item11_dep_exp if item11_dep_exp is not None else 0
-            item8_rent = item8_rent if item8_rent is not None else 0
-            item12_rent_exp = item12_rent_exp if item12_rent_exp is not None else 0
-            item6_machine = item6_machine if item6_machine is not None else 0
-            item7_other = item7_other if item7_other is not None else 0
-            net_assets = net_assets if net_assets is not None else 0
-            total_assets = total_assets if total_assets is not None else 0
-            bank_credit = bank_credit if bank_credit is not None else 0
-            lease_credit = lease_credit if lease_credit is not None else 0
-            contracts = contracts if contracts is not None else 0
-            lease_term = lease_term if lease_term is not None else 0
-            acquisition_cost = acquisition_cost if acquisition_cost is not None else 0
+                        # [削除] 入力中のウォーターフォールグラフ表示 (分析タブに集約するため)
+                        # if c_nenshu > 0: 
+                        #     st.pyplot(plot_waterfall(c_nenshu, c_gross, c_rieki, c_ord, c_net))
 
-            # 指標計算
-            user_op_margin = (rieki / nenshu * 100) if nenshu > 0 else 0.0
-            user_equity_ratio = (net_assets / total_assets * 100) if total_assets > 0 else 0.0
+                    with st.expander("🏢 2. 資産・経費・その他", expanded=False):
+                    
+                        st.markdown("### 減価償却費")
+    
+                        # 初期値の定義
+                        if 'item10_dep' not in st.session_state:
+                            st.session_state.item10_dep = 10000
+    
+                        # 横に分割（左 0.7 : 右 0.3）
+                        c_l, c_r = st.columns([0.7, 0.3])
+    
+                        with c_r:
+                            # 右側：手入力
+                            item10_dep = st.number_input(
+                                "直接入力", 
+                                min_value=0, 
+                                max_value=300000, 
+                                value=st.session_state.item10_dep, 
+                                step=1,
+                                key="num_item10_dep",  # keyは一意にする
+                                label_visibility="collapsed"
+                            )
+    
+                        with c_l:
+                            # 左側：スライダー
+                            item10_dep = st.slider(
+                                "売上高調整",
+                                min_value=0,
+                                max_value=300000,
+                                value=item10_dep,
+                                step=100,
+                                key="slide_item10_dep",  # keyは一意にする
+                                label_visibility="collapsed",
+                                format="%d"
+                            )
+    
+                        # 最新の値を保存
+                        st.session_state.item10_dep = item10_dep
+    
+                        st.divider() # 次の項目との区切
+    
+        #--------------------------------------------------------------------------------------------------------
+                        #⑦減価償却費（経費）
+    
+                        st.markdown("### 減価償却費(経費)")
+    
+                        # 初期値の定義
+                        if 'item11_dep_exp' not in st.session_state:
+                            st.session_state.item11_dep_exp = 10000
+    
+                        # 横に分割（左 0.7 : 右 0.3）
+                        c_l, c_r = st.columns([0.7, 0.3])
+    
+                        with c_r:
+                            # 右側：手入力
+                            item11_dep_exp = st.number_input(
+                                "直接入力", 
+                                min_value=0, 
+                                max_value=300000, 
+                                value=st.session_state.item11_dep_exp, 
+                                step=1,
+                                key="num_item11_dep_exp",  # keyは一意にする
+                                label_visibility="collapsed"
+                            )
+    
+                        with c_l:
+                            # 左側：スライダー
+                            item11_dep_exp = st.slider(
+                                "売上高調整",
+                                min_value=0,
+                                max_value=300000,
+                                value=item11_dep_exp,
+                                step=100,
+                                key="slide_item11_dep_exp",  # keyは一意にする
+                                label_visibility="collapsed",
+                                format="%d"
+                            )
+    
+                        # 最新の値を保存
+                        st.session_state.item11_dep_exp = item11_dep_exp
+    
+                        st.divider() # 次の項目との区切
+    
+        #----------------------------------------------------------------------------------------------------
+    
+                        # #⑧賃借料
+                        st.markdown("### 賃借料")
+    
+                        # 初期値の定義
+                        if 'item8_rent' not in st.session_state:
+                            st.session_state.item8_rent = 10000
+    
+                        # 横に分割（左 0.7 : 右 0.3）
+                        c_l, c_r = st.columns([0.7, 0.3])
+    
+                        with c_r:
+                            # 右側：手入力
+                            item8_rent = st.number_input(
+                                "直接入力", 
+                                min_value=0, 
+                                max_value=300000, 
+                                value=st.session_state.item8_rent, 
+                                step=1,
+                                key="num_item8_rent",  # keyは一意にする
+                                label_visibility="collapsed"
+                            )
+    
+                        with c_l:
+                            # 左側：スライダー
+                            item8_rent = st.slider(
+                                "売上高調整",
+                                min_value=0,
+                                max_value=200000,
+                                value=item8_rent,
+                                step=100,
+                                key="slide_item8_rent",  # keyは一意にする
+                                label_visibility="collapsed",
+                                format="%d"
+                            )
+    
+                        # 最新の値を保存
+                        st.session_state.item8_rent = item8_rent
+    
+                        st.divider() # 次の項目との区切
+    
+        #----------------------------------------------------------------------------------------------
+    
+                        #⑨賃借料（経費）
+                        # h_item12_rent_exp=st.empty()
+                        # item12_rent_exp = col3.select_slider("賃借料(経費）", options=range(0, 90000, 100), value=0)
+                        # red_label(h_item12_rent_exp, f"賃借料(経費）:{item12_rent_exp:,} 千円")
+                        # st.divider()
+    
+                        st.markdown("### 賃借料（経費）")
+    
+                        # 初期値の定義
+                        if 'item12_rent_exp' not in st.session_state:
+                            st.session_state.item12_rent_exp = 10000
+    
+                        # 横に分割（左 0.7 : 右 0.3）
+                        c_l, c_r = st.columns([0.7, 0.3])
+    
+                        with c_r:
+                            # 右側：手入力
+                            item12_rent_exp = st.number_input(
+                                "直接入力", 
+                                min_value=0, 
+                                max_value=300000, 
+                                value=st.session_state.item12_rent_exp, 
+                                step=1,
+                                key="num_item12_rent_exp",  # keyは一意にする
+                                label_visibility="collapsed"
+                            )
+    
+                        with c_l:
+                            # 左側：スライダー
+                            item12_rent_exp = st.slider(
+                                "売上高調整",
+                                min_value=0,
+                                max_value=200000,
+                                value=item12_rent_exp,
+                                step=100,
+                                key="slide_item12_rent_exp",  # keyは一意にする
+                                label_visibility="collapsed",
+                                format="%d"
+                            )
+    
+                        # 最新の値を保存
+                        st.session_state.item12_rent_exp = item12_rent_exp
+    
+                        st.divider() # 次の項目との区切
+    
+        #------------------------------------------------------------------------------------------------
+    
+                        #⑩機械装置
+     
+                        st.markdown("### 機械装置")
+    
+                        # 初期値の定義
+                        if 'item6_machine' not in st.session_state:
+                            st.session_state.item6_machine = 10000
+    
+                        # 横に分割（左 0.7 : 右 0.3）
+                        c_l, c_r = st.columns([0.7, 0.3])
+    
+                        with c_r:
+                            # 右側：手入力
+                            item6_machine = st.number_input(
+                                "直接入力", 
+                                min_value=0, 
+                                max_value=300000, 
+                                value=st.session_state.item6_machine, 
+                                step=1,
+                                key="num_item6_machine",  # keyは一意にする
+                                label_visibility="collapsed"
+                            )
+    
+                        with c_l:
+                            # 左側：スライダー
+                            item6_machine = st.slider(
+                                "売上高調整",
+                                min_value=0,
+                                max_value=200000,
+                                value=item6_machine,
+                                step=100,
+                                key="slide_item6_machine",  # keyは一意にする
+                                label_visibility="collapsed",
+                                format="%d"
+                            )
+    
+                        # 最新の値を保存
+                        st.session_state.item6_machine = item6_machine
+    
+                        st.divider() # 次の項目との区切
+    
+        #--------------------------------------------------------------------------------------------
+    
+                        # #11その他資産
+                        # h_item7_other=st.empty()
+                        # item7_other = col4.select_slider("その他資産", options=range(0, 50000, 100), value=0)
+                        # red_label(h_item7_other, f"その他資産:{ item7_other:,} 千円")
+                        # st.divider()
+    
+                        st.markdown("### その他資産")
+    
+                        # 初期値の定義
+                        if 'item7_other' not in st.session_state:
+                            st.session_state.item7_other = 10000
+    
+                        # 横に分割（左 0.7 : 右 0.3）
+                        c_l, c_r = st.columns([0.7, 0.3])
+    
+                        with c_r:
+                            # 右側：手入力
+                            item7_other = st.number_input(
+                                "直接入力", 
+                                min_value=0, 
+                                max_value=300000, 
+                                value=st.session_state.item7_other, 
+                                step=1,
+                                key="num_item7_other",  # keyは一意にする
+                                label_visibility="collapsed"
+                            )
+    
+                        with c_l:
+                            # 左側：スライダー
+                            item7_other = st.slider(
+                                "売上高調整",
+                                min_value=0,
+                                max_value=200000,
+                                value=item7_other,
+                                step=100,
+                                key="slide_item7_other",  # keyは一意にする
+                                label_visibility="collapsed",
+                                format="%d"
+                            )
+    
+                        # 最新の値を保存
+                        st.session_state.item7_other = item7_other
+    
+                        st.divider() # 次の項目との区切
+        #-------------------------------------------------------------------------------------------------------------
+                        # #12純資産合計
+    
+                        st.markdown("### 純資産")
+    
+                        # 初期値の定義
+                        if 'net_assets' not in st.session_state:
+                            st.session_state.net_assets = 10000
+    
+                        # 横に分割（左 0.7 : 右 0.3）
+                        c_l, c_r = st.columns([0.7, 0.3])
+    
+                        with c_r:
+                            # 右側：手入力
+                            net_assets = st.number_input(
+                                "直接入力", 
+                                min_value=0, 
+                                max_value=500000, 
+                                value=st.session_state.net_assets, 
+                                step=1,
+                                key="num_net_assets",  # keyは一意にする
+                                label_visibility="collapsed"
+                            )
+    
+                        with c_l:
+                            # 左側：スライダー
+                            net_assets = st.slider(
+                                "売上高調整",
+                                min_value=0,
+                                max_value=200000,
+                                value=net_assets,
+                                step=100,
+                                key="slide_net_assets",  # keyは一意にする
+                                label_visibility="collapsed",
+                                format="%d"
+                            )
+    
+                        # 最新の値を保存
+                        st.session_state.net_assets = net_assets
+    
+                        st.divider() # 次の項目との区切
+        #--------------------------------------------------------------------------------
+                        #13総資産
+                        # h_total_assets=st.empty()
+                        # total_assets = col4.select_slider("総資産（千円）", options=range(0, 900000, 1000), value=0)
+                        # red_label(h_total_assets, f"総資産:{total_assets:,} 千円")
+                        # st.divider()
+    
+                        st.markdown("### 総資産")
+    
+                        # 初期値の定義
+                        if 'total_assets' not in st.session_state:
+                            st.session_state.total_assets = 10000
+    
+                        # 横に分割（左 0.7 : 右 0.3）
+                        c_l, c_r = st.columns([0.7, 0.3])
+    
+                        with c_r:
+                            # 右側：手入力
+                            total_assets = st.number_input(
+                                "直接入力", 
+                                min_value=0, 
+                                max_value=1000000, 
+                                value=st.session_state.total_assets, 
+                                step=1,
+                                key="num_total_assets",  # keyは一意にする
+                                label_visibility="collapsed"
+                            )
+    
+                        with c_l:
+                            # 左側：スライダー
+                            total_assets = st.slider(
+                                "売上高調整",
+                                min_value=0,
+                                max_value=300000,
+                                value=total_assets,
+                                step=100,
+                                key="slide_total_assets",  # keyは一意にする
+                                label_visibility="collapsed",
+                                format="%d"
+                            )
+    
+                        # 最新の値を保存
+                        st.session_state.total_assets = total_assets
+    
+                        st.divider() # 次の項目との区切
+        #------------------------------------------------------------------------------------------------------
+                    with st.expander("💳 3. 信用情報", expanded=False):
+    
+                        # default値をリスト内の文字列と完全に一致させる必要があります
+                        grade =st.segmented_control("格付", ["①1-3 (優良)", "②4-6 (標準)", "③要注意以下", "④無格付"], default="②4-6 (標準)")
+        #---------------------------------------------------------------------------             
+                    #     #14銀行与信
+    
+                        st.markdown("### うちの銀行与信")
+                        # 初期値の定義
+                        if 'bank_credit' not in st.session_state:
+                            st.session_state.bank_credit = 10000
+    
+                        # 横に分割（左 0.7 : 右 0.3）
+                        c_l, c_r = st.columns([0.7, 0.3])
+    
+                        with c_r:
+                            # 右側：手入力
+                            bank_credit = st.number_input(
+                                "直接入力", 
+                                min_value=0, 
+                                max_value=3000000, 
+                                value=st.session_state.bank_credit, 
+                                step=1,
+                                key="num_bank_credit",  # keyは一意にする
+                                label_visibility="collapsed"
+                            )
+    
+                        with c_l:
+                            # 左側：スライダー
+                            bank_credit = st.slider(
+                                "売上高調整",
+                                min_value=0,
+                                max_value=500000,
+                                value=bank_credit,
+                                step=100,
+                                key="slide_bank_credit",  # keyは一意にする
+                                label_visibility="collapsed",
+                                format="%d"
+                            )
+    
+                        # 最新の値を保存
+                        st.session_state.bank_credit = bank_credit
+    
+                        st.divider() # 次の項目との区切
+        #---------------------------------------------------------------------------------------------------------
+      
+                        # #15リース与信
+    
+                        st.markdown("### うちのリース与信")
+                        # 初期値の定義
+                        if 'lease_credit' not in st.session_state:
+                            st.session_state.lease_credit = 10000
+    
+                        # 横に分割（左 0.7 : 右 0.3）
+                        c_l, c_r = st.columns([0.7, 0.3])
+    
+                        with c_r:
+                            # 右側：手入力
+                            lease_credit = st.number_input(
+                                "直接入力", 
+                                min_value=0, 
+                                max_value=300000, 
+                                value=st.session_state.lease_credit, 
+                                step=1,
+                                key="num_lease_credit",  # keyは一意にする
+                                label_visibility="collapsed"
+                            )
+    
+                        with c_l:
+                            # 左側：スライダー
+                            lease_credit = st.slider(
+                                "売上高調整",
+                                min_value=0,
+                                max_value=200000,
+                                value=lease_credit,
+                                step=100,
+                                key="slide_lease_credit",  # keyは一意にする
+                                label_visibility="collapsed",
+                                format="%d"
+                            )
+    
+                        # 最新の値を保存
+                        st.session_state.lease_credit = lease_credit
+    
+                        st.divider() # 次の項目との区切
+        #--------------------------------------------------------------------------------------------------------
+                        # #16契約数
+                        st.markdown("### 契約数")
+                        # 初期値の定義
+                        if 'contracts' not in st.session_state:
+                            st.session_state.contracts = 1
+    
+                        # 横に分割（左 0.7 : 右 0.3）
+                        c_l, c_r = st.columns([0.7, 0.3])
+    
+                        with c_r:
+                            # 右側：手入力
+                            contracts = st.number_input(
+                                "直接入力", 
+                                min_value=0, 
+                                max_value=30, 
+                                value=st.session_state.contracts, 
+                                step=1,
+                                key="num_contracts",  # keyは一意にする
+                                label_visibility="collapsed"
+                            )
+    
+                        with c_l:
+                            # 左側：スライダー
+                            contracts = st.slider(
+                                "売上高調整",
+                                min_value=0,
+                                max_value=20,
+                                value=contracts,
+                                step=1,
+                                key="slide_contracts",  # keyは一意にする
+                                label_visibility="collapsed",
+                                format="%d"
+                            )
+    
+                        # 最新の値を保存
+                        st.session_state.contracts = contracts
+    
+                        st.divider() # 次の項目との区切
+    
+        #------------------------------------------------------------------------------------------------------
+    
+    
+                    with st.expander("📋 4. 契約条件・取得価格・リース物件", expanded=False):
+                        st.markdown("##### 📈 契約条件・属性 (利回り予測用)")
+                        with st.container():
+                            c_y1, c_y2, c_y3 = st.columns(3)
+                            contract_type = c_y1.radio("契約種類", ["一般", "自動車"], horizontal=True)
+                            deal_source = c_y2.radio("商談ソース", ["銀行紹介", "その他"], horizontal=True)
+                            lease_term = c_y3.select_slider("契約期間（月）", options=range(0, 121, 1), value=60)
+                            st.divider()
+                            c_l, c_r = st.columns([0.7, 0.3])
+                            with c_l:
+                                acceptance_year = st.number_input("検収年 (西暦)", value=2026, step=1)
+                            st.session_state.lease_term = lease_term
+                            st.session_state.acceptance_year = acceptance_year
+                        st.markdown("### 取得価格")
+                        if 'acquisition_cost' not in st.session_state:
+                            st.session_state.acquisition_cost = 1000
+                        c_l, c_r = st.columns([0.7, 0.3])
+                        with c_r:
+                            acquisition_cost = st.number_input("直接入力", min_value=0, max_value=500000, value=st.session_state.acquisition_cost, step=100, key="num_acquisition_cost", label_visibility="collapsed")
+                        with c_l:
+                            acquisition_cost = st.slider("取得価格調整", min_value=0, max_value=300000, value=acquisition_cost, step=100, key="slide_acquisition_cost", label_visibility="collapsed", format="%d")
+                        st.session_state.acquisition_cost = acquisition_cost
+                        st.markdown("### リース物件")
+                        if not LEASE_ASSETS_LIST:
+                            selected_asset_id = "other"
+                            asset_score = 50
+                            asset_name = "未選択"
+                            st.caption("lease_assets.json を配置すると物件リストから選択できます。")
+                        else:
+                            options = [f"{it.get('name', '')}（{it.get('score', 0)}点）" for it in LEASE_ASSETS_LIST]
+                            default_idx = min(st.session_state.get("selected_asset_index", 0), len(options) - 1) if "selected_asset_index" in st.session_state else 0
+                            sel_idx = st.selectbox("物件を選択（点数が判定に反映）", range(len(options)), format_func=lambda i: options[i], index=default_idx, key="lease_asset_select", help="選択した物件の点数を借手スコアに反映します。")
+                            st.session_state["selected_asset_index"] = sel_idx
+                            selected_item = LEASE_ASSETS_LIST[sel_idx]
+                            selected_asset_id = selected_item.get("id", "other")
+                            asset_score = int(selected_item.get("score", 50))
+                            asset_name = selected_item.get("name", "その他")
+                            if selected_item.get("note"):
+                                st.caption(f"💡 {selected_item['note']}")
+                    submitted = st.form_submit_button("判定開始", type="primary", use_container_width=True)
+
+            if submitted:
+                # フラグメント利用時用: session_state の値で上書き（入力ガタつき軽減のため）
+                nenshu = st.session_state.get("nenshu", 0)
+                item9_gross = st.session_state.get("item9_gross", 0)
+                rieki = st.session_state.get("rieki", 0)
+                item4_ord_profit = st.session_state.get("item4_ord_profit", 0)
+                item5_net_income = st.session_state.get("item5_net_income", 0)
+                item10_dep = st.session_state.get("item10_dep", 0)
+                item11_dep_exp = st.session_state.get("item11_dep_exp", 0)
+                item8_rent = st.session_state.get("item8_rent", 0)
+                item12_rent_exp = st.session_state.get("item12_rent_exp", 0)
+                item6_machine = st.session_state.get("item6_machine", 0)
+                item7_other = st.session_state.get("item7_other", 0)
+                net_assets = st.session_state.get("net_assets", 0)
+                total_assets = st.session_state.get("total_assets", 0)
+                bank_credit = st.session_state.get("bank_credit", 0)
+                lease_credit = st.session_state.get("lease_credit", 0)
+                contracts = st.session_state.get("contracts", 0)
+                lease_term = st.session_state.get("lease_term", 0)
+                acquisition_cost = st.session_state.get("acquisition_cost", 0)
+                acceptance_year = st.session_state.get("acceptance_year", 2026)
+            
+                # 変数の再マッピング (None -> 0)
+                nenshu = nenshu if nenshu is not None else 0
+                item9_gross = item9_gross if item9_gross is not None else 0
+                rieki = rieki if rieki is not None else 0
+                item4_ord_profit = item4_ord_profit if item4_ord_profit is not None else 0
+                item5_net_income = item5_net_income if item5_net_income is not None else 0
+                item10_dep = item10_dep if item10_dep is not None else 0
+                item11_dep_exp = item11_dep_exp if item11_dep_exp is not None else 0
+                item8_rent = item8_rent if item8_rent is not None else 0
+                item12_rent_exp = item12_rent_exp if item12_rent_exp is not None else 0
+                item6_machine = item6_machine if item6_machine is not None else 0
+                item7_other = item7_other if item7_other is not None else 0
+                net_assets = net_assets if net_assets is not None else 0
+                total_assets = total_assets if total_assets is not None else 0
+                bank_credit = bank_credit if bank_credit is not None else 0
+                lease_credit = lease_credit if lease_credit is not None else 0
+                contracts = contracts if contracts is not None else 0
+                lease_term = lease_term if lease_term is not None else 0
+                acquisition_cost = acquisition_cost if acquisition_cost is not None else 0
+
+                # 指標計算
+                user_op_margin = (rieki / nenshu * 100) if nenshu > 0 else 0.0
+                user_equity_ratio = (net_assets / total_assets * 100) if total_assets > 0 else 0.0
+                # 流動比率の簡易算（流動資産≈総資産−固定資産、流動負債≈負債総額）
+                liability_total = total_assets - net_assets if (total_assets and net_assets is not None) else 0
+                current_assets_approx = max(0, total_assets - item6_machine - item7_other)
+                user_current_ratio = (current_assets_approx / liability_total * 100) if liability_total > 0 else 100.0
         
-            bench = benchmarks_data.get(selected_sub, {})
-            bench_op_margin = bench.get("op_margin", 0.0)
-            bench_equity_ratio = bench.get("equity_ratio", 0.0)
-            bench_comment = bench.get("comment", "")
+                bench = benchmarks_data.get(selected_sub, {})
+                bench_op_margin = bench.get("op_margin", 0.0)
+                bench_equity_ratio = bench.get("equity_ratio", 0.0)
+                bench_comment = bench.get("comment", "")
         
-            comp_margin = "高い" if user_op_margin >= bench_op_margin else "低い"
-            comp_equity = "高い" if user_equity_ratio >= bench_equity_ratio else "低い"
+                comp_margin = "高い" if user_op_margin >= bench_op_margin else "低い"
+                comp_equity = "高い" if user_equity_ratio >= bench_equity_ratio else "低い"
         
-            comparison_text = f"""
-            - **営業利益率**: {user_op_margin:.1f}% (業界目安: {bench_op_margin}%) → 平均より{comp_margin}
-            - **自己資本比率**: {user_equity_ratio:.1f}% (業界目安: {bench_equity_ratio}%) → 平均より{comp_equity}
-            - **業界特性**: {bench_comment}
-            """
+                comparison_text = f"""
+                - **営業利益率**: {user_op_margin:.1f}% (業界目安: {bench_op_margin}%) → 平均より{comp_margin}
+                - **自己資本比率**: {user_equity_ratio:.1f}% (業界目安: {bench_equity_ratio}%) → 平均より{comp_equity}
+                - **業界特性**: {bench_comment}
+                """
         
-            my_hints = hints_data.get(selected_sub, {"subsidies": [], "risks": [], "mandatory": ""})
+                my_hints = hints_data.get(selected_sub, {"subsidies": [], "risks": [], "mandatory": ""})
 
-            # ==========================================================================
-            # 🧮 スコア計算ロジック
-            # ==========================================================================
-        
-            # モデル計算用データ (単位調整版)
-            data_scoring = {
-                # 対数項用 (千円単位のまま)
-                "nenshu": nenshu,             
-                "bank_credit": bank_credit,   
-                "lease_credit": lease_credit, 
-            
-                # 線形項用 (百万円単位に変換) - 係数の桁から推測
-                "op_profit": rieki / 1000,
-                "ord_profit": item4_ord_profit / 1000,
-                "net_income": item5_net_income / 1000,
-                "gross_profit": item9_gross / 1000,
-                "machines": item6_machine / 1000,
-                "other_assets": item7_other / 1000,
-                "rent": item8_rent / 1000,
-                "depreciation": item10_dep / 1000,
-                "dep_expense": item11_dep_exp / 1000,
-                "rent_expense": item12_rent_exp / 1000,
-            
-                # その他
-                "contracts": contracts,
-                "grade": grade,
-                "industry_major": selected_major,
-            }
-        
-            # 安全なシグモイド関数 (オーバーフロー対策)
-            def safe_sigmoid(x):
-                try:
-                    # xが大きすぎる、または小さすぎる場合の対策
-                    if x > 700: return 1.0
-                    if x < -700: return 0.0
-                    return 1 / (1 + math.exp(-x))
-                except OverflowError:
-                    return 0.0 if x < 0 else 1.0
+                # 財務ベース倒産確率と業界リスク検索（判定開始時に実行）
+                pd_percent = calculate_pd(user_equity_ratio, user_current_ratio, user_op_margin)
+                network_risk_summary = search_bankruptcy_trends(selected_sub)
 
-            def calculate_score_from_coeffs(data, coeff_set):
-                z = coeff_set["intercept"]
+                # ==========================================================================
+                # 🧮 スコア計算ロジック
+                # ==========================================================================
+        
+                # モデル計算用データ (単位調整版)
+                data_scoring = {
+                    # 対数項用 (千円単位のまま)
+                    "nenshu": nenshu,             
+                    "bank_credit": bank_credit,   
+                    "lease_credit": lease_credit, 
             
-                # ダミー変数の適用ロジック
-                major = data["industry_major"]
-                if "医療" in major or "福祉" in major or major.startswith("P"):
-                    z += coeff_set.get("ind_medical", 0)
-                elif "運輸" in major or major.startswith("H"):
-                    z += coeff_set.get("ind_transport", 0)
-                elif "建設" in major or major.startswith("D"):
-                    z += coeff_set.get("ind_construction", 0)
-                elif "製造" in major or major.startswith("E"):
-                    z += coeff_set.get("ind_manufacturing", 0)
-                elif "卸売" in major or "小売" in major or "サービス" in major or major[0] in ["I", "K", "M", "R"]:
-                     z += coeff_set.get("ind_service", 0)
+                    # 線形項用 (百万円単位に変換) - 係数の桁から推測
+                    "op_profit": rieki / 1000,
+                    "ord_profit": item4_ord_profit / 1000,
+                    "net_income": item5_net_income / 1000,
+                    "gross_profit": item9_gross / 1000,
+                    "machines": item6_machine / 1000,
+                    "other_assets": item7_other / 1000,
+                    "rent": item8_rent / 1000,
+                    "depreciation": item10_dep / 1000,
+                    "dep_expense": item11_dep_exp / 1000,
+                    "rent_expense": item12_rent_exp / 1000,
             
-                # 対数項 (千円単位の値を対数化)
-                if data["nenshu"] > 0: z += np.log1p(data["nenshu"]) * coeff_set.get("sales_log", 0)
-                if data["bank_credit"] > 0: z += np.log1p(data["bank_credit"]) * coeff_set.get("bank_credit_log", 0)
-                if data["lease_credit"] > 0: z += np.log1p(data["lease_credit"]) * coeff_set.get("lease_credit_log", 0)
-            
-                # 線形項 (既に百万円単位に変換済みの値を使用)
-                z += data["op_profit"] * coeff_set.get("op_profit", 0)
-                z += data["ord_profit"] * coeff_set.get("ord_profit", 0)
-                z += data["net_income"] * coeff_set.get("net_income", 0)
-                z += data["machines"] * coeff_set.get("machines", 0)
-                z += data["other_assets"] * coeff_set.get("other_assets", 0)
-                z += data["rent"] * coeff_set.get("rent", 0)
-                z += data["gross_profit"] * coeff_set.get("gross_profit", 0)
-                z += data["depreciation"] * coeff_set.get("depreciation", 0)
-                z += data["dep_expense"] * coeff_set.get("dep_expense", 0)
-                z += data["rent_expense"] * coeff_set.get("rent_expense", 0)
-            
-                if "4-6" in data["grade"]: z += coeff_set.get("grade_4_6", 0)
-                elif "要注意" in data["grade"]: z += coeff_set.get("grade_watch", 0)
-                elif "無格付" in data["grade"]: z += coeff_set.get("grade_none", 0)
-            
-                z += data["contracts"] * coeff_set.get("contracts", 0)
-            
-                # 指標モデル用の追加変数 (比率)
-                z += data.get("ratio_op_margin", 0) * coeff_set.get("ratio_op_margin", 0)
-                z += data.get("ratio_gross_margin", 0) * coeff_set.get("ratio_gross_margin", 0)
-                z += data.get("ratio_ord_margin", 0) * coeff_set.get("ratio_ord_margin", 0)
-                z += data.get("ratio_net_margin", 0) * coeff_set.get("ratio_net_margin", 0)
-                z += data.get("ratio_fixed_assets", 0) * coeff_set.get("ratio_fixed_assets", 0)
-                z += data.get("ratio_rent", 0) * coeff_set.get("ratio_rent", 0)
-                z += data.get("ratio_depreciation", 0) * coeff_set.get("ratio_depreciation", 0)
-                z += data.get("ratio_machines", 0) * coeff_set.get("ratio_machines", 0)
-            
-                return z
+                    # その他
+                    "contracts": contracts,
+                    "grade": grade,
+                    "industry_major": selected_major,
+                }
+        
+                # 安全なシグモイド関数 (オーバーフロー対策)
+                def safe_sigmoid(x):
+                    try:
+                        # xが大きすぎる、または小さすぎる場合の対策
+                        if x > 700: return 1.0
+                        if x < -700: return 0.0
+                        return 1 / (1 + math.exp(-x))
+                    except OverflowError:
+                        return 0.0 if x < 0 else 1.0
 
-            # 1. 全体モデル
-            z_main = calculate_score_from_coeffs(data_scoring, COEFFS["全体_既存先"])
-            score_prob = safe_sigmoid(z_main)
-            score_percent = score_prob * 100
+                def calculate_score_from_coeffs(data, coeff_set):
+                    z = coeff_set["intercept"]
+            
+                    # ダミー変数の適用ロジック
+                    major = data["industry_major"]
+                    if "医療" in major or "福祉" in major or major.startswith("P"):
+                        z += coeff_set.get("ind_medical", 0)
+                    elif "運輸" in major or major.startswith("H"):
+                        z += coeff_set.get("ind_transport", 0)
+                    elif "建設" in major or major.startswith("D"):
+                        z += coeff_set.get("ind_construction", 0)
+                    elif "製造" in major or major.startswith("E"):
+                        z += coeff_set.get("ind_manufacturing", 0)
+                    elif "卸売" in major or "小売" in major or "サービス" in major or major[0] in ["I", "K", "M", "R"]:
+                         z += coeff_set.get("ind_service", 0)
+            
+                    # 対数項 (千円単位の値を対数化)
+                    if data["nenshu"] > 0: z += np.log1p(data["nenshu"]) * coeff_set.get("sales_log", 0)
+                    if data["bank_credit"] > 0: z += np.log1p(data["bank_credit"]) * coeff_set.get("bank_credit_log", 0)
+                    if data["lease_credit"] > 0: z += np.log1p(data["lease_credit"]) * coeff_set.get("lease_credit_log", 0)
+            
+                    # 線形項 (既に百万円単位に変換済みの値を使用)
+                    z += data["op_profit"] * coeff_set.get("op_profit", 0)
+                    z += data["ord_profit"] * coeff_set.get("ord_profit", 0)
+                    z += data["net_income"] * coeff_set.get("net_income", 0)
+                    z += data["machines"] * coeff_set.get("machines", 0)
+                    z += data["other_assets"] * coeff_set.get("other_assets", 0)
+                    z += data["rent"] * coeff_set.get("rent", 0)
+                    z += data["gross_profit"] * coeff_set.get("gross_profit", 0)
+                    z += data["depreciation"] * coeff_set.get("depreciation", 0)
+                    z += data["dep_expense"] * coeff_set.get("dep_expense", 0)
+                    z += data["rent_expense"] * coeff_set.get("rent_expense", 0)
+            
+                    if "4-6" in data["grade"]: z += coeff_set.get("grade_4_6", 0)
+                    elif "要注意" in data["grade"]: z += coeff_set.get("grade_watch", 0)
+                    elif "無格付" in data["grade"]: z += coeff_set.get("grade_none", 0)
+            
+                    z += data["contracts"] * coeff_set.get("contracts", 0)
+            
+                    # 指標モデル用の追加変数 (比率)
+                    z += data.get("ratio_op_margin", 0) * coeff_set.get("ratio_op_margin", 0)
+                    z += data.get("ratio_gross_margin", 0) * coeff_set.get("ratio_gross_margin", 0)
+                    z += data.get("ratio_ord_margin", 0) * coeff_set.get("ratio_ord_margin", 0)
+                    z += data.get("ratio_net_margin", 0) * coeff_set.get("ratio_net_margin", 0)
+                    z += data.get("ratio_fixed_assets", 0) * coeff_set.get("ratio_fixed_assets", 0)
+                    z += data.get("ratio_rent", 0) * coeff_set.get("ratio_rent", 0)
+                    z += data.get("ratio_depreciation", 0) * coeff_set.get("ratio_depreciation", 0)
+                    z += data.get("ratio_machines", 0) * coeff_set.get("ratio_machines", 0)
+            
+                    return z
+
+                # 1. 全体モデル
+                z_main = calculate_score_from_coeffs(data_scoring, COEFFS["全体_既存先"])
+                score_prob = safe_sigmoid(z_main)
+                score_percent = score_prob * 100
         
-            # 2. 指標モデル (比率計算)
-            # マッピングロジック更新 (CSV指示に基づく)
-            # D, P, H -> 全体(指標)
-            # I, K, M, R -> サービス業(指標)
-            # E -> 製造業(指標)
+                # 2. 指標モデル (比率計算)
+                # マッピングロジック更新 (CSV指示に基づく)
+                # D, P, H -> 全体(指標)
+                # I, K, M, R -> サービス業(指標)
+                # E -> 製造業(指標)
         
-            bench_key = "全体_指標"
-            major_code_bench = selected_major.split(" ")[0]
-        
-            if major_code_bench in ["D", "P", "H"]:
                 bench_key = "全体_指標"
-            elif major_code_bench in ["I", "K", "M", "R"]:
-                bench_key = "サービス業_指標"
-            elif major_code_bench == "E":
-                bench_key = "製造業_指標"
+                major_code_bench = selected_major.split(" ")[0]
+        
+                if major_code_bench in ["D", "P", "H"]:
+                    bench_key = "全体_指標"
+                elif major_code_bench in ["I", "K", "M", "R"]:
+                    bench_key = "サービス業_指標"
+                elif major_code_bench == "E":
+                    bench_key = "製造業_指標"
             
-            ratio_data = data_scoring.copy()
+                ratio_data = data_scoring.copy()
         
-            # 比率計算のために元の千円単位の値を使う
-            raw_nenshu = nenshu if nenshu > 0 else 1.0
+                # 比率計算のために元の千円単位の値を使う
+                raw_nenshu = nenshu if nenshu > 0 else 1.0
         
-            raw_op = rieki if rieki is not None else 0
-            raw_gross = item9_gross if item9_gross is not None else 0
-            raw_ord = item4_ord_profit if item4_ord_profit is not None else 0
-            raw_net = item5_net_income if item5_net_income is not None else 0
-            raw_fixed = (item6_machine if item6_machine is not None else 0) + (item7_other if item7_other is not None else 0)
-            raw_rent = item12_rent_exp if item12_rent_exp is not None else 0
-            raw_dep = (item10_dep if item10_dep is not None else 0) + (item11_dep_exp if item11_dep_exp is not None else 0)
-            raw_machines = item6_machine if item6_machine is not None else 0
+                raw_op = rieki if rieki is not None else 0
+                raw_gross = item9_gross if item9_gross is not None else 0
+                raw_ord = item4_ord_profit if item4_ord_profit is not None else 0
+                raw_net = item5_net_income if item5_net_income is not None else 0
+                raw_fixed = (item6_machine if item6_machine is not None else 0) + (item7_other if item7_other is not None else 0)
+                raw_rent = item12_rent_exp if item12_rent_exp is not None else 0
+                raw_dep = (item10_dep if item10_dep is not None else 0) + (item11_dep_exp if item11_dep_exp is not None else 0)
+                raw_machines = item6_machine if item6_machine is not None else 0
         
-            ratio_data["ratio_op_margin"] = raw_op / raw_nenshu
-            ratio_data["ratio_gross_margin"] = raw_gross / raw_nenshu
-            ratio_data["ratio_ord_margin"] = raw_ord / raw_nenshu
-            ratio_data["ratio_net_margin"] = raw_net / raw_nenshu
-            ratio_data["ratio_fixed_assets"] = raw_fixed / raw_nenshu
-            ratio_data["ratio_rent"] = raw_rent / raw_nenshu
-            ratio_data["ratio_depreciation"] = raw_dep / raw_nenshu
-            ratio_data["ratio_machines"] = raw_machines / raw_nenshu
+                ratio_data["ratio_op_margin"] = raw_op / raw_nenshu
+                ratio_data["ratio_gross_margin"] = raw_gross / raw_nenshu
+                ratio_data["ratio_ord_margin"] = raw_ord / raw_nenshu
+                ratio_data["ratio_net_margin"] = raw_net / raw_nenshu
+                ratio_data["ratio_fixed_assets"] = raw_fixed / raw_nenshu
+                ratio_data["ratio_rent"] = raw_rent / raw_nenshu
+                ratio_data["ratio_depreciation"] = raw_dep / raw_nenshu
+                ratio_data["ratio_machines"] = raw_machines / raw_nenshu
         
-            # 指標モデル計算
-            bench_coeffs = COEFFS.get(bench_key, COEFFS["全体_指標"])
-            z_bench = calculate_score_from_coeffs(ratio_data, bench_coeffs)
-            score_prob_bench = safe_sigmoid(z_bench)
-            score_percent_bench = score_prob_bench * 100
+                # 指標モデル計算
+                bench_coeffs = COEFFS.get(bench_key, COEFFS["全体_指標"])
+                z_bench = calculate_score_from_coeffs(ratio_data, bench_coeffs)
+                score_prob_bench = safe_sigmoid(z_bench)
+                score_percent_bench = score_prob_bench * 100
         
-            # 3. 業種別モデル (分類ロジックの修正)
-            ind_key = "全体_既存先" # デフォルト
+                # 3. 業種別モデル (分類ロジックの修正)
+                ind_key = "全体_既存先" # デフォルト
         
-            major_code = selected_major.split(" ")[0] # "D 建設業" -> "D"
+                major_code = selected_major.split(" ")[0] # "D 建設業" -> "D"
         
-            # CSV定義に基づくマッピング
-            # H -> 運送業
-            # I, K, M, R -> サービス業
-            # E -> 製造業
-            # D, P -> 全体モデル (既存or新規)
+                # CSV定義に基づくマッピング
+                # H -> 運送業
+                # I, K, M, R -> サービス業
+                # E -> 製造業
+                # D, P -> 全体モデル (既存or新規)
         
-            if major_code == "H": 
-                ind_key = "運送業_既存先"
-            elif major_code in ["I", "K", "M", "R"]: 
-                ind_key = "サービス業_既存先"
-            elif major_code == "E": 
-                ind_key = "製造業_既存先"
-            elif major_code in ["D", "P"]: 
-                ind_key = "全体_既存先"
+                if major_code == "H": 
+                    ind_key = "運送業_既存先"
+                elif major_code in ["I", "K", "M", "R"]: 
+                    ind_key = "サービス業_既存先"
+                elif major_code == "E": 
+                    ind_key = "製造業_既存先"
+                elif major_code in ["D", "P"]: 
+                    ind_key = "全体_既存先"
         
-            # 新規先の場合の切り替え
-            if customer_type == "新規先":
-                ind_key = ind_key.replace("既存先", "新規先")
-                # 万が一キーがない場合は全体_新規先へフォールバック
-                if ind_key not in COEFFS: ind_key = "全体_新規先"
+                # 新規先の場合の切り替え
+                if customer_type == "新規先":
+                    ind_key = ind_key.replace("既存先", "新規先")
+                    # 万が一キーがない場合は全体_新規先へフォールバック
+                    if ind_key not in COEFFS: ind_key = "全体_新規先"
         
-            ind_coeffs = COEFFS.get(ind_key, COEFFS["全体_既存先"])
-            z_ind = calculate_score_from_coeffs(data_scoring, ind_coeffs)
-            score_prob_ind = safe_sigmoid(z_ind)
-            score_percent_ind = score_prob_ind * 100
+                ind_coeffs = COEFFS.get(ind_key, COEFFS["全体_既存先"])
+                z_ind = calculate_score_from_coeffs(data_scoring, ind_coeffs)
+                score_prob_ind = safe_sigmoid(z_ind)
+                score_percent_ind = score_prob_ind * 100
         
-            gap_val = score_percent - score_percent_bench
-            gap_sign = "+" if gap_val >= 0 else ""
-            gap_text = f"指標モデル差: {gap_sign}{gap_val:.1f}%"
+                gap_val = score_percent - score_percent_bench
+                gap_sign = "+" if gap_val >= 0 else ""
+                gap_text = f"指標モデル差: {gap_sign}{gap_val:.1f}%"
 
-            # 定性補正
-            contract_prob = score_percent
-            if main_bank == "メイン先": contract_prob += 10
-            if competitor == "競合なし": contract_prob += 15
-            else: contract_prob -= 10
-            contract_prob = max(0, min(100, contract_prob))
+                # 定性補正
+                contract_prob = score_percent
+                if main_bank == "メイン先": contract_prob += 10
+                if competitor == "競合なし": contract_prob += 15
+                else: contract_prob -= 10
+                contract_prob = max(0, min(100, contract_prob))
 
-            # 利回り予測計算 (簡略化)
-            YIELD_COEFFS = {
-                "intercept": -132.213, "item10_dep": -5.2e-07, "item11_dep_exp": -5.9e-07,
-                "item12_rent_exp": -3.3e-07, "grade_1_3": 0.103051, "grade_4_6": 0.115129,
-                "grade_watch": 0.309849, "grade_none": 0.25737, "type_general": 0.032238,
-                "source_bank": 0.062498, "nenshu_log": -0.03134, "bank_credit_log": -0.00841,
-                "lease_credit_log": -0.02849, "term_log": -0.63635, "year": 0.067637,
-                "cost_log": -0.3945, "contracts_log": 0.130446
-            }
+                # 利回り予測計算 (簡略化)
+                YIELD_COEFFS = {
+                    "intercept": -132.213, "item10_dep": -5.2e-07, "item11_dep_exp": -5.9e-07,
+                    "item12_rent_exp": -3.3e-07, "grade_1_3": 0.103051, "grade_4_6": 0.115129,
+                    "grade_watch": 0.309849, "grade_none": 0.25737, "type_general": 0.032238,
+                    "source_bank": 0.062498, "nenshu_log": -0.03134, "bank_credit_log": -0.00841,
+                    "lease_credit_log": -0.02849, "term_log": -0.63635, "year": 0.067637,
+                    "cost_log": -0.3945, "contracts_log": 0.130446
+                }
         
-            # 利回り予測モデルには「千円単位の生の数字」を使う (画像の例に従う)
-            # ただし、対数項は log1p(千円) を使用
-            y_pred = YIELD_COEFFS["intercept"]
-            y_pred += item10_dep * YIELD_COEFFS["item10_dep"]
-            y_pred += item11_dep_exp * YIELD_COEFFS["item11_dep_exp"]
-            y_pred += item12_rent_exp * YIELD_COEFFS["item12_rent_exp"]
+                # 利回り予測モデルには「千円単位の生の数字」を使う (画像の例に従う)
+                # ただし、対数項は log1p(千円) を使用
+                y_pred = YIELD_COEFFS["intercept"]
+                y_pred += item10_dep * YIELD_COEFFS["item10_dep"]
+                y_pred += item11_dep_exp * YIELD_COEFFS["item11_dep_exp"]
+                y_pred += item12_rent_exp * YIELD_COEFFS["item12_rent_exp"]
         
-            if "1-3" in grade: y_pred += YIELD_COEFFS["grade_1_3"]
-            elif "4-6" in grade: y_pred += YIELD_COEFFS["grade_4_6"]
-            elif "要注意" in grade: y_pred += YIELD_COEFFS["grade_watch"]
-            elif "無格付" in grade: y_pred += YIELD_COEFFS["grade_none"]
+                if "1-3" in grade: y_pred += YIELD_COEFFS["grade_1_3"]
+                elif "4-6" in grade: y_pred += YIELD_COEFFS["grade_4_6"]
+                elif "要注意" in grade: y_pred += YIELD_COEFFS["grade_watch"]
+                elif "無格付" in grade: y_pred += YIELD_COEFFS["grade_none"]
         
-            if contract_type == "一般": y_pred += YIELD_COEFFS["type_general"]
-            if deal_source == "銀行紹介": y_pred += YIELD_COEFFS["source_bank"]
+                if contract_type == "一般": y_pred += YIELD_COEFFS["type_general"]
+                if deal_source == "銀行紹介": y_pred += YIELD_COEFFS["source_bank"]
         
-            if nenshu > 0: y_pred += np.log1p(nenshu) * YIELD_COEFFS["nenshu_log"]
-            if bank_credit > 0: y_pred += np.log1p(bank_credit) * YIELD_COEFFS["bank_credit_log"]
-            if lease_credit > 0: y_pred += np.log1p(lease_credit) * YIELD_COEFFS["lease_credit_log"]
-            if lease_term > 0: y_pred += np.log1p(lease_term) * YIELD_COEFFS["term_log"]
-            if contracts > 0: y_pred += np.log1p(contracts) * YIELD_COEFFS["contracts_log"]
+                if nenshu > 0: y_pred += np.log1p(nenshu) * YIELD_COEFFS["nenshu_log"]
+                if bank_credit > 0: y_pred += np.log1p(bank_credit) * YIELD_COEFFS["bank_credit_log"]
+                if lease_credit > 0: y_pred += np.log1p(lease_credit) * YIELD_COEFFS["lease_credit_log"]
+                if lease_term > 0: y_pred += np.log1p(lease_term) * YIELD_COEFFS["term_log"]
+                if contracts > 0: y_pred += np.log1p(contracts) * YIELD_COEFFS["contracts_log"]
         
-            val_cost_log = np.log1p(acquisition_cost) if acquisition_cost > 0 else 0
-            y_pred += val_cost_log * YIELD_COEFFS["cost_log"]
-            y_pred += acceptance_year * YIELD_COEFFS["year"]
+                val_cost_log = np.log1p(acquisition_cost) if acquisition_cost > 0 else 0
+                y_pred += val_cost_log * YIELD_COEFFS["cost_log"]
+                y_pred += acceptance_year * YIELD_COEFFS["year"]
         
-            # 金利環境補正
-            BASE_DATE = "2025-03"
-            term_years = lease_term / 12
-            base_market_rate = get_market_rate(BASE_DATE, term_years)
-            today_str = datetime.date.today().strftime("%Y-%m")
-            current_market_rate = get_market_rate(today_str, term_years)
-            rate_diff = current_market_rate - base_market_rate
-            y_pred_adjusted = y_pred + rate_diff
+                # 金利環境補正
+                BASE_DATE = "2025-03"
+                term_years = lease_term / 12
+                base_market_rate = get_market_rate(BASE_DATE, term_years)
+                today_str = datetime.date.today().strftime("%Y-%m")
+                current_market_rate = get_market_rate(today_str, term_years)
+                rate_diff = current_market_rate - base_market_rate
+                y_pred_adjusted = y_pred + rate_diff
 
-            if st.button("審査実行！🔨", type="primary", use_container_width=True):
-                st.session_state['current_image'] = "approve" if score_percent >= 71 else "challenge"
+                # 借手スコア + 物件スコア → 総合スコア（判定に反映）
+                final_score = 0.85 * score_percent + 0.15 * asset_score
+                st.session_state['current_image'] = "approve" if final_score >= 71 else "challenge"
             
                 # [削除] AIアドバイス (1回目: 入力タブ側)
                 # ここにあった ai_question 生成と messages 追加ロジックは削除し、
@@ -3042,18 +3319,22 @@ elif mode == "📋 審査・分析":
             
                 for q in questions[:3]: ai_question_text += f"- {q}\n"
                 ai_question_text += "\nこれらがクリアになれば、承認確率80%以上が見込めます。"
+                ai_question_text += f"\n\n【参考】財務ベースの推定倒産確率: {pd_percent:.1f}%。業界の最新リスク情報も参照済みです。これらを総合して最終的な倒産リスクと承認可否を判断してください。"
 
                 # チャット履歴に追加 (表示は分析タブのチャット欄で行う)
                 st.session_state.messages = [{"role": "assistant", "content": ai_question_text}]
                 st.session_state.debate_history = [] 
 
                 st.session_state['last_result'] = {
-                    "score": score_percent, "hantei": "承認圏内" if score_percent >= 71 else "要審議",
+                    "score": final_score, "hantei": "承認圏内" if final_score >= 71 else "要審議",
+                    "score_borrower": score_percent, "asset_score": asset_score, "asset_name": asset_name,
                     "contract_prob": contract_prob, "z": z_main,
                     "comparison": comparison_text,
                     "user_op": user_op_margin, "bench_op": bench_op_margin,
                     "user_eq": user_equity_ratio, "bench_eq": bench_equity_ratio,
                     "hints": my_hints,
+                    "pd_percent": pd_percent,
+                    "network_risk_summary": network_risk_summary,
                     "financials": {
                         "nenshu": nenshu,
                         "rieki": rieki,
@@ -3100,7 +3381,10 @@ elif mode == "📋 審査・分析":
                         "deal_source": deal_source,
                         "lease_term": lease_term,
                         "acceptance_year": acceptance_year,
-                        "acquisition_cost": acquisition_cost
+                        "acquisition_cost": acquisition_cost,
+                        "lease_asset_id": selected_asset_id,
+                        "lease_asset_name": asset_name,
+                        "lease_asset_score": asset_score,
                     },
                     "result": st.session_state['last_result'],
                     "pricing": {
@@ -3172,7 +3456,7 @@ elif mode == "📋 審査・分析":
          
                 fig_3d = plot_3d_analysis(current_case_data, past_cases_log)
                 if fig_3d:
-                     st.plotly_chart(fig_3d, use_container_width=True)
+                     st.plotly_chart(fig_3d, use_container_width=True, key="plotly_3d_analysis_result")
                      st.info(":point_up_2: 指でグラフをなぞると回転、ピンチで拡大できます。")
                 else:
                      st.warning("表示データがありません")
@@ -3180,16 +3464,47 @@ elif mode == "📋 審査・分析":
                 st.divider()
                 st.subheader("📊 審査結果サマリ")
 
+                # 借手＋物件の内訳（物件スコアを反映している場合）
+                if "score_borrower" in res and "asset_score" in res:
+                    st.caption(f"📌 借手スコア {res['score_borrower']:.1f}% × 0.85 ＋ 物件「{res.get('asset_name', '')}」{res['asset_score']}点 × 0.15 → **総合 {res['score']:.1f}%**（判定に使用）")
+
                 # 1. スコアと判定
                 cols = st.columns(3)
                 with cols[0]:
-                    st.metric("① 全体モデル", f"{res['score']:.1f}%", help="全業種共通の係数で計算")
+                    st.metric("① 全体モデル", f"{res['score']:.1f}%", help="借手＋物件を反映した総合スコア" if "asset_score" in res else "全業種共通の係数で計算")
                 with cols[1]:
-                    st.metric(f"② {res['ind_name'].split('_')[0]}モデル", f"{res['ind_score']:.1f}%", 
-                              delta=f"{res['ind_score']-res['score']:.1f}%", help="業種特有の係数で計算")
+                    ind_label = res.get("ind_name", "全体_既存先")
+                    second_label = "② 業種モデルがありません" if (ind_label.split("_")[0] == "全体") else f"② {ind_label.split('_')[0]}モデル"
+                    st.metric(second_label, f"{res['ind_score']:.1f}%",
+                              delta=f"{res['ind_score']-res['score']:.1f}%", help="業種特有の係数で計算（業種モデルがない場合は全体係数）")
                 with cols[2]:
                     st.metric("③ 指標(ベンチマーク)", f"{res['bench_score']:.1f}%", 
                               delta=f"{res['bench_score']-res['score']:.1f}%", delta_color="inverse", help="業界標準モデル")
+
+                # AI推定倒産確率（財務指標ベース）を大きな数字で表示（常に表示）
+                pd_val = res.get("pd_percent")
+                if pd_val is None:
+                    # 過去の審査結果などで pd_percent が無い場合は今の指標から再計算
+                    fin = res.get("financials", {})
+                    total_assets = fin.get("assets") or 0
+                    net_assets = fin.get("net_assets") or 0
+                    machines = fin.get("machines") or 0
+                    other_assets = fin.get("other_assets") or 0
+                    user_eq = res.get("user_eq", 0)
+                    user_op = res.get("user_op", 0)
+                    liability_total = total_assets - net_assets if total_assets and net_assets is not None else 0
+                    current_approx = max(0, total_assets - machines - other_assets)
+                    current_ratio = (current_approx / liability_total * 100) if liability_total > 0 else 100.0
+                    pd_val = calculate_pd(user_eq, current_ratio, user_op)
+                st.subheader("📉 推定倒産確率（財務指標ベース）")
+                st.metric("AI推定倒産確率", f"{pd_val:.1f}%", help="自己資本比率・流動比率・利益率から算出した簡易リスク")
+                # 参照したネット情報のサマリ
+                net_summary = res.get("network_risk_summary", "") or ""
+                st.subheader("🌐 参照した業界リスク情報")
+                if net_summary.strip() and "取得できません" not in net_summary and "検索エラー" not in net_summary:
+                    st.text_area("ネット検索で取得した倒産トレンド・リスク情報", value=net_summary, height=180, disabled=True, label_visibility="collapsed")
+                else:
+                    st.caption("（業界の倒産トレンドは判定開始時に検索します。未取得の場合は再度「審査入力」で判定開始してください。）")
         
                 st.divider()            
         
@@ -3296,7 +3611,7 @@ elif mode == "📋 審査・分析":
                                 if url:
                                     st.markdown(f"**{name}**")
                                     try:
-                                        st.link_button("🔗 公式サイトを開く", url, type="secondary", use_container_width=True)
+                                        st.link_button("🔗 公式サイトを開く", url, type="secondary")
                                     except Exception:
                                         safe_url = url.replace('"', "%22").replace("'", "%27")
                                         st.markdown(f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer">🔗 公式サイトを開く</a>', unsafe_allow_html=True)
@@ -3388,43 +3703,44 @@ elif mode == "📋 審査・分析":
                 # 2. 過去案件データ取得
                 past_cases = load_all_cases()
         
-                # 3. グラフ描画エリア
-                g1, g2 = st.columns(2)
-                with g1: 
-                    st.pyplot(plot_radar_chart(radar_metrics, radar_bench))
-                with g2:
-                    # 損益分岐点グラフ
-                    # 変動費 = 売上 - 売上総利益, 固定費 = 売上総利益 - 営業利益 (簡易)
-                    sales_k = res["financials"]["nenshu"]
-                    gross_k = res["financials"]["gross_profit"] * 1000 # 百万->千円に戻す
-                    op_k = res["financials"]["rieki"] * 1000       # 百万->千円に戻す
-                    vc = sales_k - gross_k
-                    fc = gross_k - op_k
-                    st.pyplot(plot_break_even_point(sales_k, vc, fc))
+                # 3. グラフ描画エリア（PCで大きくなりすぎないよう幅を制限）
+                col_graphs, _ = st.columns([0.65, 0.35])
+                with col_graphs:
+                    g1, g2 = st.columns(2)
+                    with g1:
+                        st.pyplot(plot_radar_chart(radar_metrics, radar_bench))
+                    with g2:
+                        # 損益分岐点グラフ
+                        sales_k = res["financials"]["nenshu"]
+                        gross_k = res["financials"]["gross_profit"] * 1000
+                        op_k = res["financials"]["rieki"] * 1000
+                        vc = sales_k - gross_k
+                        fc = gross_k - op_k
+                        st.pyplot(plot_break_even_point(sales_k, vc, fc))
 
                 # ========== 中分類ごとにネットで業界目安を取得して比較 ==========
                 selected_sub = res.get("industry_sub", "")
                 bench = dict(benchmarks_data.get(selected_sub, {}))
                 try:
                     web_bench = fetch_industry_benchmarks_from_web(selected_sub)
-                    if web_bench.get("op_margin") is not None:
-                        bench["op_margin"] = web_bench["op_margin"]
-                    if web_bench.get("equity_ratio") is not None:
-                        bench["equity_ratio"] = web_bench["equity_ratio"]
+                    for k in _WEB_BENCH_KEYS:
+                        if web_bench.get(k) is not None:
+                            bench[k] = web_bench[k]
                 except Exception:
                     web_bench = {"snippets": [], "op_margin": None, "equity_ratio": None}
 
                 with st.expander("🌐 中分類ごとにネットで調べた業界目安", expanded=False):
-                    st.caption(f"業種「{selected_sub}」の業界目安です。結果は保存され、毎年4月1日を境に1年ごとに再検索します。営業利益率・自己資本比率が抽出された場合、下の算出指標に反映します。")
+                    st.caption(f"業種「{selected_sub}」の業界目安です。結果は web_industry_benchmarks.json に保存され、毎年4月1日を境に1年ごとに再検索します。営業利益率・自己資本比率・売上高総利益率・ROA・流動比率など抽出できた指標は、下の「算出可能指標」の業界目安に反映します。")
                     if web_bench.get("snippets"):
                         for i, s in enumerate(web_bench["snippets"]):
                             st.markdown(f"**[{s['title']}]({s['href']})**")
                             st.caption(s["body"][:200] + ("..." if len(s["body"]) > 200 else ""))
                             st.divider()
-                        if web_bench.get("op_margin") is not None or web_bench.get("equity_ratio") is not None:
-                            op_s = f"{web_bench['op_margin']:.1f}%" if web_bench.get("op_margin") is not None else "—"
-                            eq_s = f"{web_bench['equity_ratio']:.1f}%" if web_bench.get("equity_ratio") is not None else "—"
-                            st.success(f"抽出した業界目安: 営業利益率 {op_s} / 自己資本比率 {eq_s}")
+                        extracted = [(k, web_bench[k]) for k in _WEB_BENCH_KEYS if web_bench.get(k) is not None]
+                        if extracted:
+                            u = lambda k: "回" if k in ("asset_turnover", "fixed_asset_turnover") else "%"
+                            parts = [f"{k}: {v:.1f}{u(k)}" for k, v in extracted]
+                            st.success("抽出した業界目安: " + ", ".join(parts[:8]) + (" …" if len(parts) > 8 else ""))
                     else:
                         st.caption("検索結果がありません。ネットワークまたは検索キーワードを確認してください。")
 
@@ -3441,7 +3757,7 @@ elif mode == "📋 審査・分析":
 
                 # ========== 算出可能指標（入力から計算した有効指標） ==========
                 st.markdown("### 📈 算出可能指標")
-                st.caption("業界目安は中分類（営業利益率・自己資本比率）＋大分類の業界平均（利益率・減価償却費/売上・ROA・回転率・固定資産・借入依存度の概算）から算出しています。")
+                st.caption("業界目安は、ネット検索で保存した値（web_industry_benchmarks.json）を優先し、不足分を大分類の業界平均（industry_averages.json）で補っています。サイドバー「今のデータを検索して保存」で指標の業界目安も検索・保存できます。")
                 fin = res.get("financials", {})
                 # 業界目安を業界平均（大分類）で補強（取れるだけ追加）
                 bench_ext = dict(bench) if bench else {}
@@ -3450,39 +3766,101 @@ elif mode == "📋 審査・分析":
                     avg = avg_data[major]
                     an = avg.get("nenshu") or 0
                     if an > 0:
-                        bench_ext["gross_margin"] = (avg.get("gross_profit") or 0) / an * 100
-                        bench_ext["ord_margin"] = (avg.get("ord_profit") or 0) / an * 100
-                        bench_ext["net_margin"] = (avg.get("net_income") or 0) / an * 100
-                        bench_ext["dep_ratio"] = (avg.get("depreciation") or 0) / an * 100
-                    # 総資産の概算（機械・その他資産・借入金等）で資産系指標の業界目安を算出
+                        if bench_ext.get("gross_margin") is None:
+                            bench_ext["gross_margin"] = (avg.get("gross_profit") or 0) / an * 100
+                        if bench_ext.get("ord_margin") is None:
+                            bench_ext["ord_margin"] = (avg.get("ord_profit") or 0) / an * 100
+                        if bench_ext.get("net_margin") is None:
+                            bench_ext["net_margin"] = (avg.get("net_income") or 0) / an * 100
+                        if bench_ext.get("dep_ratio") is None:
+                            bench_ext["dep_ratio"] = (avg.get("depreciation") or 0) / an * 100
                     total_avg = (avg.get("machines") or 0) + (avg.get("other_assets") or 0) + (avg.get("bank_credit") or 0) + (avg.get("lease_credit") or 0)
                     if total_avg > 0:
-                        bench_ext["roa"] = (avg.get("net_income") or 0) / total_avg * 100
-                        bench_ext["asset_turnover"] = an / total_avg
-                        bench_ext["fixed_ratio"] = ((avg.get("machines") or 0) + (avg.get("other_assets") or 0)) / total_avg * 100
-                        bench_ext["debt_ratio"] = ((avg.get("bank_credit") or 0) + (avg.get("lease_credit") or 0)) / total_avg * 100
+                        if bench_ext.get("roa") is None:
+                            bench_ext["roa"] = (avg.get("net_income") or 0) / total_avg * 100
+                        if bench_ext.get("asset_turnover") is None:
+                            bench_ext["asset_turnover"] = an / total_avg
+                        if bench_ext.get("fixed_ratio") is None:
+                            bench_ext["fixed_ratio"] = ((avg.get("machines") or 0) + (avg.get("other_assets") or 0)) / total_avg * 100
+                        if bench_ext.get("debt_ratio") is None:
+                            bench_ext["debt_ratio"] = ((avg.get("bank_credit") or 0) + (avg.get("lease_credit") or 0)) / total_avg * 100
                 indicators = compute_financial_indicators(fin, bench_ext)
                 if indicators:
-                    col_tab, col_chart = st.columns([1, 1])
-                    with col_tab:
-                        rows = []
-                        for ind in indicators:
-                            row = {"指標": ind["name"], "貴社": f"{ind['value']:.1f}{ind['unit']}"}
-                            if ind["bench"] is not None:
-                                row["業界目安"] = f"{ind['bench']:.1f}{ind['unit']}"
-                            rows.append(row)
-                        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-                    with col_chart:
-                        fig_ind = plot_indicators_bar(indicators)
-                        if fig_ind:
-                            st.pyplot(fig_ind)
-                    # 指標と業界目安の差の分析（図＋文章）
+                    # 業界目安より良い＝緑、悪い＝赤（_LOWER_IS_BETTER_NAMES は低い方が良い）
+                    rows_html = []
+                    for ind in indicators:
+                        name = ind["name"]
+                        value = ind["value"]
+                        unit = ind.get("unit", "%")
+                        bench = ind.get("bench")
+                        bench_ok = bench is not None and (not isinstance(bench, float) or bench == bench)
+                        if bench_ok:
+                            diff = value - bench
+                            is_good = (diff > 0 and name not in _LOWER_IS_BETTER_NAMES) or (diff < 0 and name in _LOWER_IS_BETTER_NAMES)
+                            color = "#22c55e" if is_good else "#ef4444"
+                            name_cell = f'<span style="color:{color}; font-weight:600;">{name.replace("&", "&amp;").replace("<", "&lt;")}</span>'
+                        else:
+                            name_cell = name.replace("&", "&amp;").replace("<", "&lt;")
+                        bench_str = f"{bench:.1f}{unit}" if bench_ok else "—"
+                        rows_html.append(f"<tr><td>{name_cell}</td><td>{value:.1f}{unit}</td><td>{bench_str}</td></tr>")
+                    table = "<table style='width:100%; border-collapse:collapse;'><thead><tr><th style='text-align:left; padding:6px 8px;'>指標</th><th style='text-align:right; padding:6px 8px;'>貴社</th><th style='text-align:right; padding:6px 8px;'>業界目安</th></tr></thead><tbody>" + "".join(rows_html) + "</tbody></table>"
+                    st.markdown(table, unsafe_allow_html=True)
+                    st.caption("緑＝業界目安より良い、赤＝業界目安より要確認")
+                    # 指標と業界目安の差の分析（図＋文章＋AIによる指標の分析）
                     summary, detail = analyze_indicators_vs_bench(indicators)
                     st.markdown("#### 📊 指標と業界目安の差の分析")
                     st.info(summary)
+                    # 指標の分析（AI）：同一案件のキャッシュがあれば表示、なければボタンで生成
+                    _case_id = st.session_state.get("current_case_id")
+                    _cached = st.session_state.get("indicator_ai_analysis")
+                    _cached_case = st.session_state.get("indicator_ai_analysis_case_id")
+                    if _cached and _cached_case == _case_id:
+                        st.markdown("##### 指標の分析（AI）")
+                        st.markdown(_cached)
+                    else:
+                        st.markdown("##### 指標の分析（AI）")
+                        if st.button("AIに指標の分析を生成", key="gen_indicator_ai"):
+                            if not is_ai_available():
+                                if st.session_state.get("ai_engine") == "gemini":
+                                    st.error("Gemini APIキーを設定してください。")
+                                else:
+                                    st.error("Ollama が起動していないか、Gemini に切り替えてください。")
+                            else:
+                                ind_list = "\n".join([f"- {x['name']}: 貴社 {x['value']:.1f}{x.get('unit','%')} / 業界目安 {x['bench']:.1f}{x.get('unit','%')}" if x.get("bench") is not None else f"- {x['name']}: 貴社 {x['value']:.1f}{x.get('unit','%')}" for x in indicators])
+                                prompt = f"""あなたはリース審査のプロです。以下の「指標と業界目安の差の分析」を踏まえ、この企業の財務指標について2〜4文で簡潔に分析してください。
+・強み（業界目安を上回っている点）があれば触れる。
+・業界目安を下回っている指標があれば、なぜそうなっている可能性があるか・改善の方向性を1〜2文で述べる。
+・借入金等依存度・固定比率など「低い方が良い」指標の解釈も含める。
+数値は既にまとめにあるので、重複せず要点だけ書いてください。
+
+【要約】
+{summary}
+
+【差の内訳】
+{detail}
+
+【指標一覧】
+{ind_list}
+"""
+                                with st.spinner("AIが指標を分析しています..."):
+                                    try:
+                                        ans = chat_with_retry(model=get_ollama_model(), messages=[{"role": "user", "content": prompt}], timeout_seconds=90)
+                                        content = (ans.get("message") or {}).get("content", "")
+                                        if content and "APIキーが" not in content and "エラー" not in content[:50]:
+                                            st.session_state["indicator_ai_analysis"] = content
+                                            st.session_state["indicator_ai_analysis_case_id"] = _case_id
+                                            st.rerun()
+                                        else:
+                                            st.error(content or "AIの応答を取得できませんでした。")
+                                    except Exception as e:
+                                        st.error(f"分析の生成に失敗しました: {e}")
+                        else:
+                            st.caption("上の「AIに指標の分析を生成」を押すと、業界目安との差を踏まえた分析文をAIが生成します。")
                     fig_gap = plot_indicators_gap_analysis(indicators)
                     if fig_gap:
-                        st.pyplot(fig_gap)
+                        col_gap, _ = st.columns([0.65, 0.35])
+                        with col_gap:
+                            st.pyplot(fig_gap)
                         st.caption("左が「業界より要確認」、右が「業界より良い」です。借入金等依存度・減価償却費/売上高は、業界より低いと緑になります。")
                     with st.expander("差の内訳（数値）", expanded=False):
                         st.markdown(detail)
@@ -3494,9 +3872,40 @@ elif mode == "📋 審査・分析":
                     net_k = fin.get("net_income") or 0
                     if nenshu_k > 0:
                         st.markdown("#### 利益構造（損益の流れ）")
-                        st.pyplot(plot_waterfall(nenshu_k, gross_k, op_k, ord_k, net_k))
+                        col_wf, _ = st.columns([0.65, 0.35])
+                        with col_wf:
+                            st.pyplot(plot_waterfall(nenshu_k, gross_k, op_k, ord_k, net_k))
                 else:
                     st.caption("指標を算出するには、審査入力で売上高・損益・資産などを入力してください。")
+
+                # AIのぼやき（ネット検索した業界情報を使いAIが自分で生成・アップデート）+ 定例の愚痴
+                st.divider()
+                st.subheader("🤖 AIのぼやき")
+                u_eq = res.get("user_eq", 0)
+                u_op = res.get("user_op", 0)
+                comp_text = res.get("comparison", "")
+                net_risk = res.get("network_risk_summary", "") or ""
+                selected_sub_res = res.get("industry_sub", "")
+                byoki_case_id = st.session_state.get("ai_byoki_case_id")
+                byoki_text = st.session_state.get("ai_byoki_text")
+                if byoki_text and byoki_case_id == current_case_id:
+                    st.info("🐟 " + byoki_text)
+                    if st.button("ぼやきを再生成（業界情報を再取得）", key="btn_byoki_regenerate"):
+                        st.session_state["ai_byoki_text"] = None
+                        st.session_state["ai_byoki_case_id"] = None
+                        st.rerun()
+                else:
+                    if st.button("AIにぼやきを言わせる（業界情報を参照）", key="btn_byoki_generate"):
+                        with st.spinner("業界情報を取得して、AIがぼやきを考えています…"):
+                            text = get_ai_byoki_with_industry(selected_sub_res, u_eq, u_op, comp_text, net_risk)
+                            if text:
+                                st.session_state["ai_byoki_text"] = text
+                                st.session_state["ai_byoki_case_id"] = current_case_id
+                                st.rerun()
+                            else:
+                                st.error("生成できませんでした。APIキー・Ollamaを確認してください。")
+                    if not byoki_text:
+                        st.caption("上のボタンで、ネット検索した業界情報をもとにAIが愚痴を1つ生成します。")
 
             else:
                 st.info('👈 左側の「審査入力」タブでデータを入力し、審査を実行してください。')
@@ -3526,8 +3935,20 @@ elif mode == "📋 審査・分析":
             st.caption("🤖 使用中: **Ollama（ローカル）**")
         
         with tab_chat:
+            # 音声入力から戻ったときのテキストを反映（URLの ?voice_text=... で渡される）
+            if st.query_params.get("voice_text"):
+                st.session_state["consultation_input"] = st.query_params.get("voice_text", "")
+                try:
+                    st.experimental_set_query_params()
+                except Exception:
+                    pass
+                st.rerun()
             if "messages" not in st.session_state: st.session_state.messages = []
-            
+            if "consultation_input" not in st.session_state: st.session_state["consultation_input"] = ""
+            # 送信済みの場合は入力欄を空にする（text_area 作成前にのみ session_state を変更可能）
+            if "consultation_pending_q" in st.session_state:
+                st.session_state["consultation_input"] = ""
+
             chat_box = st.container(height=400)
             with chat_box:
                 for m in st.session_state.messages:
@@ -3536,6 +3957,7 @@ elif mode == "📋 審査・分析":
             
             # バックグラウンドでAPI応答待ち中 → クルクル見せるためにポーリング
             # スレッド結果は _chat_result_holder で受け取る（session_state はスレッドから反映されないため）
+            CHAT_LOADING_TIMEOUT = 125  # 秒（API側のタイムアウトより少し長め）
             if _chat_result_holder["done"]:
                 result = _chat_result_holder["result"]
                 _chat_result_holder["result"] = None
@@ -3547,6 +3969,13 @@ elif mode == "📋 審査・分析":
                     st.session_state["last_gemini_debug"] = "OK" if c and "APIキーが" not in c and "Gemini API エラー:" not in c else (c[:200] + "..." if len(c or "") > 200 else (c or "（空）"))
             chat_loading = st.session_state.get("chat_loading", False)
             chat_result = st.session_state.get("chat_result")
+            # 待機タイムアウト：一定時間応答がなければ強制解除
+            loading_started = st.session_state.get("chat_loading_started_at")
+            if chat_loading and loading_started is not None and (time.time() - loading_started) > CHAT_LOADING_TIMEOUT:
+                st.session_state["chat_loading"] = False
+                _chat_result_holder["done"] = True
+                _chat_result_holder["result"] = {"message": {"content": "応答がタイムアウトしました（約2分）。\n\n・APIキー・ネット接続を確認するか、もう一度送信してください。\n・Gemini の場合は無料枠の制限に達している可能性もあります。"}}
+                st.rerun()
             if chat_loading or chat_result is not None:
                 with chat_box:
                     for m in st.session_state.messages:
@@ -3570,11 +3999,58 @@ elif mode == "📋 審査・分析":
                         else:
                             with st.status("思考中...", state="running", expanded=True):
                                 st.markdown("⏳ 応答を待っています...")
+                                if st.button("待機をやめる", key="chat_cancel_loading"):
+                                    st.session_state["chat_loading"] = False
+                                    _chat_result_holder["done"] = True
+                                    _chat_result_holder["result"] = {"message": {"content": "待機を解除しました。もう一度送信するか、APIキー・ネット接続を確認してください。"}}
+                                    st.rerun()
                             time.sleep(1)
                             st.rerun()
 
-            if q := st.chat_input("相談する...", key="chat_input"):
+            # 定性情報・相談入力（text_area + 音声入力ボタン + 送信）
+            st.text_area("相談内容", value=st.session_state.get("consultation_input", ""), key="consultation_input", height=100, placeholder="相談する内容を入力...（下の🎤で音声入力もできます）", label_visibility="collapsed")
+            voice_html = """
+            <script>
+            function startVoiceInput() {
+                if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                    alert('お使いのブラウザは音声入力に対応していません。Chrome などでお試しください。');
+                    return;
+                }
+                var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                var rec = new SpeechRecognition();
+                rec.lang = 'ja-JP';
+                rec.continuous = false;
+                rec.interimResults = false;
+                rec.onresult = function(e) {
+                    var t = e.results[0][0].transcript;
+                    var u = window.parent.location.pathname + '?voice_text=' + encodeURIComponent(t);
+                    window.parent.location = u;
+                };
+                rec.onerror = function(e) {
+                    if (e.error === 'not-allowed') alert('マイクの利用が許可されていません。');
+                    else alert('音声認識エラー: ' + e.error);
+                };
+                rec.start();
+            }
+            </script>
+            <button type="button" onclick="startVoiceInput()" style="padding: 8px 16px; font-size: 1rem; cursor: pointer; border-radius: 8px; background: #f0f2f6; border: 1px solid #ccc;">
+            🎤 音声入力
+            </button>
+            """
+            btn_col1, btn_col2 = st.columns([1, 4])
+            with btn_col1:
+                st.components.v1.html(voice_html, height=50)
+            with btn_col2:
+                send_clicked = st.button("送信", key="consultation_send", type="primary")
+            if send_clicked and (st.session_state.get("consultation_input") or "").strip():
+                st.session_state["consultation_pending_q"] = (st.session_state.get("consultation_input") or "").strip()
+                st.rerun()
+
+            q = None
+            if st.session_state.get("consultation_pending_q"):
+                q = st.session_state.pop("consultation_pending_q")
                 st.session_state.messages.append({"role": "user", "content": q})
+            if q:
                 with chat_box:
                     with st.chat_message("user"): st.markdown(q)
                     with st.chat_message("assistant"):
@@ -3604,6 +4080,16 @@ elif mode == "📋 審査・分析":
                                 news_context = f"\n\n【読み込み済みニュース（必ず内容に触れること）】\nタイトル: {news['title']}\n本文:\n{news['content']}"
                             hints_block = ("■ 補助金・リスクヒント: " + hints_context) if hints_context else ""
                             advice_block = ("■ 補助金スケジュール・リース判定・耐用年数・業界拡充等:\n" + advice_extras) if advice_extras else ""
+                            ind_summary, ind_detail, ind_list = get_indicator_analysis_for_advice(_res)
+                            indicator_block = ""
+                            if ind_summary or ind_list:
+                                indicator_block = "\n■ 指標の分析（貴社 vs 業界目安）\n"
+                                if ind_summary:
+                                    indicator_block += f"要約: {ind_summary}\n\n"
+                                if ind_list:
+                                    indicator_block += "指標一覧:\n" + ind_list + "\n\n"
+                                if ind_detail:
+                                    indicator_block += "差の内訳:\n" + ind_detail[:1500] + "\n"
                             context_prompt = f"""あなたは経験豊富なリース審査のプロ。以下の「参考データ」を必ず使って、具体的に答えてください。数字やニュースの内容を引用すると説得力が増します。
 
 【参考データ】
@@ -3611,23 +4097,30 @@ elif mode == "📋 審査・分析":
 ■ 業界トレンド: {trend_info}
 {hints_block}
 {advice_block}
+{indicator_block}
 {news_context}
 
 【ルール】
 - 上記のデータに触れずに一般論だけで答えないこと。
 - ニュースがある場合はその内容や業界動向を踏まえた助言をすること。
-- 2〜4文で簡潔に、しかし具体的に。
+- 指標の分析がある場合、業界目安を下回っている指標については「なぜ下回っている可能性があるか」「どう改善するとよいか」を簡潔にアドバイスすること。改善のための具体的なアクション（数値目標・確認すべき書類・交渉のポイント等）があれば述べること。
+- 2〜5文で簡潔に、しかし具体的に。
 
 【相談内容】
 {q}"""
                             st.session_state["chat_loading"] = True
+                            st.session_state["chat_loading_started_at"] = time.time()
                             st.session_state["chat_result"] = None
                             _prompt = context_prompt
+                            # スレッド内では st.session_state が参照できないため、メインスレッドで値を取得して渡す
+                            _engine = st.session_state.get("ai_engine", "ollama")
                             _model = get_ollama_model()
+                            _api_key = (st.session_state.get("gemini_api_key") or "").strip() or GEMINI_API_KEY_ENV or _get_gemini_key_from_secrets()
+                            _gemini_model = st.session_state.get("gemini_model", GEMINI_MODEL_DEFAULT)
 
-                            def _run_chat(prompt: str, model: str):
+                            def _run_chat(prompt: str, engine: str, model: str, api_key: str, gemini_model: str):
                                 try:
-                                    ans = chat_with_retry(model=model, messages=[{"role": "user", "content": prompt}])
+                                    ans = _chat_for_thread(engine, model, [{"role": "user", "content": prompt}], timeout_seconds=120, api_key=api_key, gemini_model=gemini_model)
                                     _chat_result_holder["result"] = ans
                                 except Exception as e:
                                     _chat_result_holder["result"] = {"message": {"content": f"エラー: {e}"}}
@@ -3635,7 +4128,7 @@ elif mode == "📋 審査・分析":
                                     _chat_result_holder["done"] = True
 
                             import threading
-                            t = threading.Thread(target=_run_chat, args=(_prompt, _model), daemon=True)
+                            t = threading.Thread(target=_run_chat, args=(_prompt, _engine, _model, _api_key, _gemini_model), daemon=True)
                             t.start()
                             st.rerun()
 
@@ -3796,8 +4289,17 @@ elif mode == "📋 審査・分析":
                     if st.button("🏁 議論終了・判定", type="primary", use_container_width=True):
                          with st.spinner("最終判定中..."):
                             history_text = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.debate_history])
+                            pd_val = res.get("pd_percent")
+                            net_risk = res.get("network_risk_summary", "")
+                            pd_str = f"{pd_val:.1f}%" if pd_val is not None else "（未算出）"
                             judge_prompt = f"""
                             これまでの議論を踏まえ、最終的な「承認確率（%）」と「結論」を出してください。
+                            
+                            【財務ベース倒産確率】{pd_str}（自己資本比率・流動比率・利益率から算出）
+                            【業界の最新リスク情報】
+                            {net_risk if net_risk else "（未取得）"}
+                            
+                            上記の財務的倒産確率とネット検索結果を総合し、最終的な倒産リスクと承認可否を判断してください。
                             
                             【議論ログ】
                             {history_text}
@@ -3835,3 +4337,126 @@ elif mode == "📋 審査・分析":
                 st.rerun()
 
         st.divider()
+
+    with menu_tabs[1]:  # 情報検索
+        st.subheader("🔍 情報検索")
+        info_cat = st.radio("カテゴリ", ["業種情報", "補助金", "リース情報"], horizontal=True, key="info_search_cat", label_visibility="collapsed")
+        if info_cat == "業種情報":
+            st.markdown("**業種別の業界目安・トレンド**")
+            sub_keys = sorted(benchmarks_data.keys()) if benchmarks_data else []
+            if sub_keys:
+                search_sub = st.selectbox("業種を選択", sub_keys, key="info_industry_sub")
+                bench = benchmarks_data.get(search_sub, {})
+                if bench:
+                    st.caption("営業利益率・自己資本比率・売上高総利益率・ROA・流動比率などの目安（業界平均）")
+                    for k, v in list(bench.items())[:10]:
+                        if v is not None and isinstance(v, (int, float)): st.write(f"- {k}: {v}")
+                trend_ext = get_trend_extended(search_sub)
+                if trend_ext:
+                    with st.expander("ネットで取得したトレンド・拡充情報", expanded=False):
+                        st.text(trend_ext[:2000])
+            else:
+                st.caption("業種データがありません。")
+        elif info_cat == "補助金":
+            st.markdown("**業種別 補助金**")
+            sub_keys = sorted(benchmarks_data.keys()) if benchmarks_data else []
+            if sub_keys:
+                search_sub = st.selectbox("業種を選択", sub_keys, key="info_subsidy_sub")
+                subs_list = search_subsidies_by_industry(search_sub)
+                if subs_list:
+                    for s in subs_list:
+                        name, url = s.get("name", ""), (s.get("url") or "").strip()
+                        st.markdown(f"**{name}**")
+                        if url:
+                            try: st.link_button("🔗 公式サイト", url, type="secondary")
+                            except Exception: st.markdown(f'<a href="{url}" target="_blank">🔗 公式サイト</a>', unsafe_allow_html=True)
+                        st.caption((s.get("summary") or "")[:120] + "…")
+                else:
+                    st.caption("該当する補助金の登録がありません。")
+            else:
+                st.caption("業種データがありません。")
+        else:
+            st.markdown("**リース情報**")
+            with st.expander("耐用年数を設備で調べる", expanded=False):
+                nta_url = (useful_life_data or {}).get("nta_useful_life_url") or "https://www.keisan.nta.go.jp/r5yokuaru/aoiroshinkoku/hitsuyokeihi/genkashokyakuhi/taiyonensuhyo.html"
+                st.link_button("📋 国税庁の耐用年数表", nta_url, type="secondary")
+                eq_key = st.text_input("設備名で検索", placeholder="例: 工作機械", key="info_equip")
+                if eq_key:
+                    for e in (search_equipment_by_keyword(eq_key) or []):
+                        st.write(f"**{e.get('name')}** … {e.get('years')}年")
+            with st.expander("リース判定フロー・契約形態", expanded=False):
+                st.markdown(get_lease_classification_text() or "lease_classification.json を読み込んでください。")
+            with st.expander("リース物件リスト", expanded=False):
+                if LEASE_ASSETS_LIST:
+                    for it in LEASE_ASSETS_LIST:
+                        st.caption(f"**{it.get('name','')}** {it.get('score',0)}点 — {it.get('note','')}")
+                else:
+                    st.caption("lease_assets.json を配置してください。")
+
+    with menu_tabs[2]:  # グラフ
+        st.subheader("📈 グラフ")
+        if "last_result" in st.session_state:
+            res = st.session_state["last_result"]
+            current_case_data = {"sales": res["financials"]["nenshu"], "op_margin": res["user_op"], "equity_ratio": res["user_eq"]}
+            fig_3d = plot_3d_analysis(current_case_data, load_all_cases())
+            if fig_3d:
+                st.plotly_chart(fig_3d, use_container_width=True, key="plotly_3d_graph_tab")
+                st.caption("指でなぞると回転・ピンチで拡大できます。")
+            st.divider()
+            fin = res.get("financials", {})
+            if fin.get("nenshu", 0) > 0:
+                col_wf2, _ = st.columns([0.65, 0.35])
+                with col_wf2:
+                    st.pyplot(plot_waterfall(fin.get("nenshu", 0), fin.get("gross_profit", 0), fin.get("op_profit", 0), fin.get("ord_profit", 0), fin.get("net_income", 0)))
+        else:
+            st.info("👈 「新規審査」でデータを入力し、判定開始するとグラフが表示されます。")
+
+    with menu_tabs[3]:  # 履歴分析
+        st.subheader("📋 履歴分析")
+        all_cases = load_all_cases()
+        if not all_cases:
+            st.warning("登録された案件がありません。")
+        else:
+            pending = [c for c in all_cases if c.get("final_status") == "未登録"]
+            if not pending:
+                st.success("全ての案件が登録済みです。")
+            for i, case in enumerate(reversed(pending[-5:])):
+                with st.expander(f"{case.get('timestamp', '')[:16]} - {case.get('industry_sub')} (スコア: {case.get('result', {}).get('score', 0):.0f})"):
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        st.write("**判定**:", case.get("result", {}).get("hantei", ""))
+                        st.caption((case.get("chat_summary", "")[:100] + "...") if case.get("chat_summary") else "サマリなし")
+                    with c2:
+                        with st.form(f"hist_status_{i}"):
+                            res_status = st.radio("結果", ["成約", "失注"], horizontal=True)
+                            final_rate = st.number_input("獲得レート (%)", value=0.0, step=0.01, format="%.2f")
+                            lost_reason = st.text_input("失注理由", placeholder="例: 金利で他社に")
+                            if st.form_submit_button("登録"):
+                                for c in all_cases:
+                                    if c.get("id") == case.get("id"):
+                                        c["final_status"] = res_status
+                                        c["final_rate"] = final_rate
+                                        if res_status == "失注":
+                                            c["lost_reason"] = lost_reason
+                                        break
+                                save_all_cases(all_cases)
+                                st.success("登録しました")
+                                st.rerun()
+        with st.expander("🔧 係数分析・更新 (β)", expanded=False):
+            st.caption("蓄積データで新しい審査モデル（係数）をシミュレーションします。")
+            all_logs = load_all_cases()
+            if not all_logs or len([x for x in all_logs if x.get("final_status") in ["成約", "失注"]]) < 5:
+                st.warning("成約/失注が5件以上登録されると分析できます。")
+            else:
+                st.info("サイドバーで「係数分析・更新 (β)」モードに切り替えると回帰分析を実行できます。")
+
+    with menu_tabs[4]:  # 設定
+        st.subheader("⚙️ 設定")
+        st.radio("AIエンジン", ["Ollama（ローカル）", "Gemini API（Google）"], key="settings_engine_display", index=0 if st.session_state.get("ai_engine") == "ollama" else 1, disabled=True)
+        st.caption("AIモデル設定は左サイドバー「🤖 AIモデル設定」で変更できます。")
+        st.divider()
+        st.markdown("**キャッシュ**")
+        if st.button("🗑️ キャッシュをクリア", key="settings_clear_cache"):
+            st.cache_data.clear()
+            st.success("キャッシュをクリアしました")
+            st.rerun()
