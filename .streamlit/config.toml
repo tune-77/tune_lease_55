@@ -1,0 +1,28 @@
+# プロ仕様ダッシュボード用テーマ（ネイビー・グレー・ゴールド／赤アクセント）
+# CHART_STYLE と統一: primary #1e3a5f, accent #b45309, danger #b91c1c
+
+[theme]
+primaryColor = "#1e3a5f"
+backgroundColor = "#f8fafc"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#334155"
+font = "sans-serif"
+baseRadius = "0.5rem"
+borderColor = "#e2e8f0"
+
+# グラフのカテゴリ色（ビジネス向けパレット）
+chartCategoricalColors = [
+  "#1e3a5f",
+  "#475569",
+  "#b45309",
+  "#0d9488",
+  "#b91c1c",
+  "#64748b",
+  "#94a3b8",
+  "#c2410c"
+]
+
+[theme.sidebar]
+backgroundColor = "#f1f5f9"
+secondaryBackgroundColor = "#e2e8f0"
+textColor = "#334155"

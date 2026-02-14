@@ -1,0 +1,14 @@
+# 温水式リース審査AI ダッシュボード
+# かっこいい無料フレームワーク: Streamlit + streamlit-extras
+
+streamlit>=1.28.0
+streamlit-extras>=0.4.0
+
+# 以下は既存プロジェクトで利用している想定（必要に応じて追加）
+# pandas
+# plotly
+# matplotlib
+# numpy
+# seaborn
+# scikit-learn
+# ollama
