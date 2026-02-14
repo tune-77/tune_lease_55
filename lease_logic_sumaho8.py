@@ -18,7 +18,12 @@ import matplotlib.font_manager as fm
 import numpy as np
 import seaborn as sns
 import datetime
-from coeff_definitions import COEFFS
+from coeff_definitions import (
+    COEFFS,
+    BAYESIAN_PRIOR_EXTRA,
+    STRENGTH_TAG_WEIGHTS,
+    DEFAULT_STRENGTH_WEIGHT,
+)
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
@@ -27,7 +32,7 @@ from sklearn.preprocessing import StandardScaler
 # ・Ollama: 環境変数 OLLAMA_MODEL、サイドバーでモデル選択
 # ・Gemini: 環境変数 GEMINI_API_KEY または サイドバーでAPIキー入力、モデルは gemini-2.0-flash 等
 # ============================================
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "lease-pro")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "lease-anna")
 GEMINI_API_KEY_ENV = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL_DEFAULT = "gemini-2.0-flash"  # または gemini-1.5-pro, gemini-1.5-flash
 
@@ -279,6 +284,34 @@ st.markdown("""
         color: #334155 !important;
         font-weight: 600 !important;
     }
+    /* 項目選択時（selectbox / radio / multiselect）の文字を小さく */
+    [data-testid="stSelectbox"] label,
+    [data-testid="stSelectbox"] div,
+    [data-testid="stSelectbox"] p,
+    [data-testid="stSelectbox"] span,
+    [data-testid="stSelectbox"] [role="listbox"],
+    [data-testid="stSelectbox"] [role="option"] {
+        font-size: 0.85rem !important;
+    }
+    [data-testid="stRadio"] label,
+    [data-testid="stRadio"] div,
+    [data-testid="stRadio"] p,
+    [data-testid="stRadio"] span {
+        font-size: 0.85rem !important;
+    }
+    [data-testid="stMultiSelect"] label,
+    [data-testid="stMultiSelect"] div,
+    [data-testid="stMultiSelect"] p,
+    [data-testid="stMultiSelect"] span,
+    [data-testid="stMultiSelect"] [role="listbox"],
+    [data-testid="stMultiSelect"] [role="option"] {
+        font-size: 0.85rem !important;
+    }
+    [data-testid="stNumberInput"] label,
+    [data-testid="stNumberInput"] div,
+    [data-testid="stNumberInput"] input {
+        font-size: 0.85rem !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 	
@@ -358,7 +391,9 @@ STRENGTH_TAG_OPTIONS = [
 
 # 過去案件データはキャッシュしない
 CASES_FILE = os.path.join(BASE_DIR, "past_cases.jsonl")
+COEFF_OVERRIDES_FILE = os.path.join(BASE_DIR, "data", "coeff_overrides.json")  # 成約/失注回帰で更新した係数
 DEBATE_FILE = os.path.join(BASE_DIR, "debate_logs.jsonl") # ディベートログ
+CONSULTATION_MEMORY_FILE = os.path.join(BASE_DIR, "consultation_memory.jsonl")  # AI審査オフィサー相談メモ（話せば話すほど蓄積）
 # 案件ごとに紐づけるニュース保存用
 CASE_NEWS_FILE = os.path.join(BASE_DIR, "case_news.jsonl")
 # ネットで取得した業界目安を中分類ごとに保存（年1回・4月1日を境に更新）
@@ -823,6 +858,44 @@ def save_debate_log(data):
     except Exception as e:
         st.error(f"ディベート保存エラー: {e}")
 
+
+def load_consultation_memory(max_entries=20):
+    """
+    AI審査オフィサー相談のメモを読み込む。話せば話すほど蓄積した過去のやり取りを返す。
+    直近 max_entries 件を返す（古い順）。
+    """
+    if not os.path.exists(CONSULTATION_MEMORY_FILE):
+        return []
+    entries = []
+    try:
+        with open(CONSULTATION_MEMORY_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entries.append(json.loads(line))
+                except Exception:
+                    continue
+    except Exception:
+        return []
+    return entries[-max_entries:] if len(entries) > max_entries else entries
+
+
+def append_consultation_memory(user_text: str, assistant_text: str):
+    """相談1往復をメモに追記。以後の相談で活用される。"""
+    try:
+        with open(CONSULTATION_MEMORY_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps({
+                "user": (user_text or "")[:5000],
+                "assistant": (assistant_text or "")[:5000],
+                "ts": datetime.datetime.now().isoformat(),
+            }, ensure_ascii=False) + "\n")
+    except Exception as e:
+        if "st" in dir():
+            st.error(f"相談メモ保存エラー: {e}")
+
+
 def load_all_cases():
     if not os.path.exists(CASES_FILE):
         return []
@@ -880,6 +953,360 @@ def save_all_cases(cases):
                 f.write(json.dumps(c, ensure_ascii=False) + "\n")
     except Exception as e:
         st.error(f"保存エラー: {e}")
+
+
+# ---------------------------------------------------------------------------
+# 成約/失注を目的変数とした回帰で係数を更新し、保存・読み込みする
+# ---------------------------------------------------------------------------
+COEFF_MAIN_KEYS = [
+    "ind_medical", "ind_transport", "ind_construction", "ind_manufacturing", "ind_service",
+    "sales_log", "bank_credit_log", "lease_credit_log",
+    "op_profit", "ord_profit", "net_income", "machines", "other_assets", "rent",
+    "gross_profit", "depreciation", "dep_expense", "rent_expense",
+    "grade_4_6", "grade_watch", "grade_none", "contracts",
+]
+# 追加項目（ベイズ補完）: 回帰・スコア両方で使用
+COEFF_EXTRA_KEYS = [
+    "main_bank", "competitor_present", "competitor_none",
+    "rate_diff_z", "industry_sentiment_z", "qualitative_tag_score", "qualitative_passion",
+    "equity_ratio",  # 自己資本比率（%）
+]
+
+# 業種ごと・既存先/新規先のモデルキー（ベイズ回帰で更新対象）
+INDUSTRY_MODEL_KEYS = [
+    "全体_既存先", "全体_新規先",
+    "医療_既存先", "医療_新規先",
+    "運送業_既存先", "運送業_新規先",
+    "サービス業_既存先", "サービス業_新規先",
+    "製造業_既存先", "製造業_新規先",
+]
+# 指標モデルも既存先/新規先で分けて回帰
+INDICATOR_MODEL_KEYS = [
+    "全体_指標_既存先", "全体_指標_新規先",
+    "医療_指標_既存先", "医療_指標_新規先",
+    "運送業_指標_既存先", "運送業_指標_新規先",
+    "サービス業_指標_既存先", "サービス業_指標_新規先",
+    "製造業_指標_既存先", "製造業_指標_新規先",
+]
+# 事前係数入力画面で編集可能なモデル一覧（業種＋指標のベース）
+PRIOR_COEFF_MODEL_KEYS = [
+    "全体_既存先", "全体_新規先", "医療_既存先", "医療_新規先",
+    "運送業_既存先", "運送業_新規先", "サービス業_既存先", "サービス業_新規先",
+    "製造業_既存先", "製造業_新規先",
+    "全体_指標", "医療_指標", "運送業_指標", "サービス業_指標", "製造業_指標",
+]
+# 指標モデル用の説明変数（ratio + grade + ind ダミー）。全体_指標の係数キー順に合わせる
+INDICATOR_MAIN_KEYS = [
+    "ind_service", "ind_medical", "ind_transport", "ind_construction", "ind_manufacturing",
+    "ratio_op_margin", "ratio_gross_margin", "ratio_ord_margin", "ratio_net_margin",
+    "ratio_fixed_assets", "ratio_rent", "ratio_depreciation", "ratio_machines",
+    "grade_4_6", "grade_watch", "grade_none",
+]
+
+
+def _get_ind_key_from_log(log):
+    """ログから業種モデルキー（既存先/新規先）を算出。"""
+    res = log.get("result") or {}
+    major = res.get("industry_major") or log.get("industry_major") or "D 建設業"
+    major_code = major.split(" ")[0] if isinstance(major, str) and " " in major else (major[0] if major else "D")
+    customer_type = log.get("customer_type") or "既存先"
+    if major_code == "H":
+        base = "運送業"
+    elif major_code == "P":
+        base = "医療"
+    elif major_code in ["I", "K", "M", "R"]:
+        base = "サービス業"
+    elif major_code == "E":
+        base = "製造業"
+    else:
+        base = "全体"
+    suffix = "新規先" if customer_type == "新規先" else "既存先"
+    return f"{base}_{suffix}"
+
+
+def _get_bench_key_from_log(log):
+    """ログから指標モデルのベースキー（業種）を算出。"""
+    res = log.get("result") or {}
+    major = res.get("industry_major") or log.get("industry_major") or "D 建設業"
+    major_code = major.split(" ")[0] if isinstance(major, str) and " " in major else (major[0] if major else "D")
+    if major_code == "D":
+        return "全体_指標"
+    if major_code == "P":
+        return "医療_指標"
+    if major_code == "H":
+        return "運送業_指標"
+    if major_code in ["I", "K", "M", "R"]:
+        return "サービス業_指標"
+    if major_code == "E":
+        return "製造業_指標"
+    return "全体_指標"
+
+
+def _get_indicator_model_key_from_log(log):
+    """ログから指標モデルキー（既存先/新規先付き）を算出。"""
+    base = _get_bench_key_from_log(log)
+    customer_type = log.get("customer_type") or "既存先"
+    suffix = "新規先" if customer_type == "新規先" else "既存先"
+    return f"{base}_{suffix}"
+
+
+def _log_to_data_scoring(log):
+    """1件のログからスコア計算用 data_scoring 相当の辞書を組み立てる（単位: 千円→百万円）。"""
+    inp = log.get("inputs") or {}
+    res = log.get("result") or {}
+    nenshu = float(inp.get("nenshu") or 0)
+    bank_credit = float(inp.get("bank_credit") or 0)
+    lease_credit = float(inp.get("lease_credit") or 0)
+    # 百万円換算
+    to_mill = 1.0 / 1000.0
+    op_profit = float(inp.get("op_profit") or 0) * to_mill
+    ord_profit = float(inp.get("ord_profit") or 0) * to_mill
+    net_income = float(inp.get("net_income") or 0) * to_mill
+    gross_profit = float(inp.get("gross_profit") or 0) * to_mill
+    machines = float(inp.get("machines") or 0) * to_mill
+    other_assets = float(inp.get("other_assets") or 0) * to_mill
+    rent = float(inp.get("rent") or 0) * to_mill
+    depreciation = float(inp.get("depreciation") or 0) * to_mill
+    dep_expense = float(inp.get("dep_expense") or 0) * to_mill
+    rent_expense = float(inp.get("rent_expense") or 0) * to_mill
+    contracts = float(inp.get("contracts") or 0)
+    grade = (inp.get("grade") or res.get("grade") or "")
+    industry_major = res.get("industry_major") or (log.get("industry_major") or "D 建設業")
+    return {
+        "nenshu": nenshu, "bank_credit": bank_credit, "lease_credit": lease_credit,
+        "op_profit": op_profit, "ord_profit": ord_profit, "net_income": net_income,
+        "gross_profit": gross_profit, "machines": machines, "other_assets": other_assets,
+        "rent": rent, "depreciation": depreciation, "dep_expense": dep_expense, "rent_expense": rent_expense,
+        "contracts": contracts, "grade": grade, "industry_major": industry_major,
+    }
+
+
+def _build_one_row_industry(log, data):
+    """1ログから業種モデル用の1行（既存22+追加8）を構築。"""
+    major = data["industry_major"]
+    ind_medical = 1.0 if ("医療" in major or "福祉" in major or (isinstance(major, str) and major.startswith("P"))) else 0.0
+    ind_transport = 1.0 if ("運輸" in major or (isinstance(major, str) and major.startswith("H"))) else 0.0
+    ind_construction = 1.0 if ("建設" in major or (isinstance(major, str) and major.startswith("D"))) else 0.0
+    ind_manufacturing = 1.0 if ("製造" in major or (isinstance(major, str) and major.startswith("E"))) else 0.0
+    ind_service = 1.0 if ("卸売" in major or "小売" in major or "サービス" in major or (isinstance(major, str) and major[0] in ["I", "K", "M", "R"])) else 0.0
+    sales_log = np.log1p(data["nenshu"])
+    bank_credit_log = np.log1p(data["bank_credit"])
+    lease_credit_log = np.log1p(data["lease_credit"])
+    grade = data["grade"]
+    grade_4_6 = 1.0 if "4-6" in grade else 0.0
+    grade_watch = 1.0 if "要注意" in grade else 0.0
+    grade_none = 1.0 if "無格付" in grade else 0.0
+    row = [
+        ind_medical, ind_transport, ind_construction, ind_manufacturing, ind_service,
+        sales_log, bank_credit_log, lease_credit_log,
+        data["op_profit"], data["ord_profit"], data["net_income"], data["machines"], data["other_assets"], data["rent"],
+        data["gross_profit"], data["depreciation"], data["dep_expense"], data["rent_expense"],
+        grade_4_6, grade_watch, grade_none, data["contracts"],
+    ]
+    inp, res = log.get("inputs") or {}, log.get("result") or {}
+    main_bank = 1.0 if log.get("main_bank") == "メイン先" else 0.0
+    competitor_present = 1.0 if log.get("competitor") == "競合あり" else 0.0
+    competitor_none = 1.0 if log.get("competitor") == "競合なし" else 0.0
+    y_pred, comp_rate = res.get("yield_pred"), log.get("competitor_rate")
+    if y_pred is not None and comp_rate is not None and isinstance(comp_rate, (int, float)):
+        rate_diff_pt = float(y_pred) - float(comp_rate)
+        rate_diff_z = max(-2.0, min(2.0, rate_diff_pt / 5.0))
+    else:
+        rate_diff_z = 0.0
+    industry_sentiment_z = float(res.get("industry_sentiment_z", 0))
+    qual = inp.get("qualitative") or {}
+    tags = qual.get("strength_tags") or []
+    qualitative_tag_score = min(sum(STRENGTH_TAG_WEIGHTS.get(t, DEFAULT_STRENGTH_WEIGHT) for t in tags), 10.0)
+    qualitative_passion = 1.0 if qual.get("passion_text") else 0.0
+    equity_ratio = float(res.get("user_eq") or 0)
+    row.extend([main_bank, competitor_present, competitor_none, rate_diff_z, industry_sentiment_z, qualitative_tag_score, qualitative_passion, equity_ratio])
+    return row
+
+
+def build_design_matrix_from_logs(all_logs, model_key=None):
+    """
+    成約/失注が登録されたログから、業種モデル用の説明変数行列 X と目的変数 y を構築する。
+    model_key を指定した場合はその業種・既存先/新規先のログのみ使用。
+    目的変数: 成約=1, 失注=0。
+    """
+    rows = []
+    y_list = []
+    for log in all_logs:
+        if log.get("final_status") not in ["成約", "失注"]:
+            continue
+        if "inputs" not in log:
+            continue
+        if model_key is not None and _get_ind_key_from_log(log) != model_key:
+            continue
+        data = _log_to_data_scoring(log)
+        row = _build_one_row_industry(log, data)
+        rows.append(row)
+        y_list.append(1 if log.get("final_status") == "成約" else 0)
+    if not rows:
+        return None, None
+    X = np.array(rows, dtype=float)
+    y = np.array(y_list, dtype=int)
+    return X, y
+
+
+def run_regression_and_get_coeffs(X, y):
+    """
+    X, y に対してロジスティック回帰を実行し、既存項目＋追加項目の係数辞書を返す。
+    X の列順: COEFF_MAIN_KEYS (22) + COEFF_EXTRA_KEYS (8)。
+    """
+    from sklearn.linear_model import LogisticRegression
+    model = LogisticRegression(C=1.0, solver="lbfgs", max_iter=2000, random_state=42)
+    model.fit(X, y)
+    intercept = float(model.intercept_[0])
+    coefs = model.coef_[0].tolist()
+    coeff_dict = {"intercept": intercept}
+    for i, key in enumerate(COEFF_MAIN_KEYS):
+        if i < len(coefs):
+            coeff_dict[key] = float(coefs[i])
+    for j, key in enumerate(COEFF_EXTRA_KEYS):
+        idx = len(COEFF_MAIN_KEYS) + j
+        if idx < len(coefs):
+            coeff_dict[key] = float(coefs[idx])
+    return coeff_dict, model
+
+
+def _build_one_row_indicator(log, data):
+    """1ログから指標モデル用の1行（ind+ratio+grade 16 + 追加8）を構築。"""
+    major = data["industry_major"]
+    ind_medical = 1.0 if ("医療" in major or "福祉" in major or (isinstance(major, str) and major.startswith("P"))) else 0.0
+    ind_transport = 1.0 if ("運輸" in major or (isinstance(major, str) and major.startswith("H"))) else 0.0
+    ind_construction = 1.0 if ("建設" in major or (isinstance(major, str) and major.startswith("D"))) else 0.0
+    ind_manufacturing = 1.0 if ("製造" in major or (isinstance(major, str) and major.startswith("E"))) else 0.0
+    ind_service = 1.0 if ("卸売" in major or "小売" in major or "サービス" in major or (isinstance(major, str) and major[0] in ["I", "K", "M", "R"])) else 0.0
+    grade = data["grade"]
+    grade_4_6 = 1.0 if "4-6" in grade else 0.0
+    grade_watch = 1.0 if "要注意" in grade else 0.0
+    grade_none = 1.0 if "無格付" in grade else 0.0
+    raw_nenshu = max(float(data["nenshu"] or 0), 1.0)
+    raw_op = data["op_profit"] * 1000
+    raw_gross = data["gross_profit"] * 1000
+    raw_ord = data["ord_profit"] * 1000
+    raw_net = data["net_income"] * 1000
+    raw_fixed = data["machines"] * 1000 + data["other_assets"] * 1000
+    raw_rent = data["rent_expense"] * 1000
+    raw_dep = data["depreciation"] * 1000 + data["dep_expense"] * 1000
+    raw_machines = data["machines"] * 1000
+    ratio_op = raw_op / raw_nenshu if raw_nenshu else 0
+    ratio_gross = raw_gross / raw_nenshu if raw_nenshu else 0
+    ratio_ord = raw_ord / raw_nenshu if raw_nenshu else 0
+    ratio_net = raw_net / raw_nenshu if raw_nenshu else 0
+    ratio_fixed = raw_fixed / raw_nenshu if raw_nenshu else 0
+    ratio_rent = raw_rent / raw_nenshu if raw_nenshu else 0
+    ratio_dep = raw_dep / raw_nenshu if raw_nenshu else 0
+    ratio_machines = raw_machines / raw_nenshu if raw_nenshu else 0
+    row = [
+        ind_service, ind_medical, ind_transport, ind_construction, ind_manufacturing,
+        ratio_op, ratio_gross, ratio_ord, ratio_net, ratio_fixed, ratio_rent, ratio_dep, ratio_machines,
+        grade_4_6, grade_watch, grade_none,
+    ]
+    inp, res = log.get("inputs") or {}, log.get("result") or {}
+    main_bank = 1.0 if log.get("main_bank") == "メイン先" else 0.0
+    competitor_present = 1.0 if log.get("competitor") == "競合あり" else 0.0
+    competitor_none = 1.0 if log.get("competitor") == "競合なし" else 0.0
+    y_pred, comp_rate = res.get("yield_pred"), log.get("competitor_rate")
+    if y_pred is not None and comp_rate is not None and isinstance(comp_rate, (int, float)):
+        rate_diff_z = max(-2.0, min(2.0, (float(y_pred) - float(comp_rate)) / 5.0))
+    else:
+        rate_diff_z = 0.0
+    industry_sentiment_z = float(res.get("industry_sentiment_z", 0))
+    qual = inp.get("qualitative") or {}
+    tags = qual.get("strength_tags") or []
+    qualitative_tag_score = min(sum(STRENGTH_TAG_WEIGHTS.get(t, DEFAULT_STRENGTH_WEIGHT) for t in tags), 10.0)
+    qualitative_passion = 1.0 if qual.get("passion_text") else 0.0
+    equity_ratio = float(res.get("user_eq") or 0)
+    row.extend([main_bank, competitor_present, competitor_none, rate_diff_z, industry_sentiment_z, qualitative_tag_score, qualitative_passion, equity_ratio])
+    return row
+
+
+def build_design_matrix_indicator_from_logs(all_logs, indicator_model_key):
+    """
+    指標モデル用の説明変数行列 X と目的変数 y を構築。
+    indicator_model_key は "全体_指標_既存先" などの形式。該当するログのみ使用。
+    """
+    rows = []
+    y_list = []
+    for log in all_logs:
+        if log.get("final_status") not in ["成約", "失注"]:
+            continue
+        if "inputs" not in log:
+            continue
+        if _get_indicator_model_key_from_log(log) != indicator_model_key:
+            continue
+        data = _log_to_data_scoring(log)
+        row = _build_one_row_indicator(log, data)
+        rows.append(row)
+        y_list.append(1 if log.get("final_status") == "成約" else 0)
+    if not rows:
+        return None, None
+    return np.array(rows, dtype=float), np.array(y_list, dtype=int)
+
+
+def run_regression_indicator_and_get_coeffs(X, y):
+    """指標モデル用の回帰。列順: INDICATOR_MAIN_KEYS (16) + COEFF_EXTRA_KEYS (8)。"""
+    from sklearn.linear_model import LogisticRegression
+    model = LogisticRegression(C=1.0, solver="lbfgs", max_iter=2000, random_state=42)
+    model.fit(X, y)
+    intercept = float(model.intercept_[0])
+    coefs = model.coef_[0].tolist()
+    coeff_dict = {"intercept": intercept}
+    for i, key in enumerate(INDICATOR_MAIN_KEYS):
+        if i < len(coefs):
+            coeff_dict[key] = float(coefs[i])
+    for j, key in enumerate(COEFF_EXTRA_KEYS):
+        idx = len(INDICATOR_MAIN_KEYS) + j
+        if idx < len(coefs):
+            coeff_dict[key] = float(coefs[idx])
+    return coeff_dict, model
+
+
+def load_coeff_overrides():
+    """保存済みの係数オーバーライドを読み込む。無ければ None。"""
+    if not os.path.exists(COEFF_OVERRIDES_FILE):
+        return None
+    try:
+        with open(COEFF_OVERRIDES_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def save_coeff_overrides(overrides_dict):
+    """係数オーバーライドを JSON で保存する。"""
+    dirpath = os.path.dirname(COEFF_OVERRIDES_FILE)
+    if dirpath and not os.path.isdir(dirpath):
+        os.makedirs(dirpath, exist_ok=True)
+    try:
+        with open(COEFF_OVERRIDES_FILE, "w", encoding="utf-8") as f:
+            json.dump(overrides_dict, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        st.error(f"係数保存エラー: {e}")
+        return False
+
+
+def get_effective_coeffs(key=None):
+    """
+    指定キーの係数セットを返す。成約/失注で更新した係数や事前入力した係数があればマージして返す。
+    key=None のときは 全体_既存先。
+    指標の既存先/新規先キー（例: 全体_指標_既存先）は、まずベース（全体_指標）のオーバーライドを適用し、次に _既存先/_新規先 用のオーバーライドを適用。
+    """
+    if key is None:
+        key = "全体_既存先"
+    overrides = load_coeff_overrides() or {}
+    base_key = key
+    if base_key not in COEFFS:
+        base_key = key.replace("_既存先", "").replace("_新規先", "")  # 全体_指標_既存先 -> 全体_指標
+    base = dict(COEFFS.get(base_key, COEFFS["全体_既存先"]))
+    if overrides.get(base_key):
+        base.update(overrides[base_key])
+    if overrides.get(key):
+        base.update(overrides[key])
+    return base
 
 
 def append_case_news(record: dict):
@@ -963,6 +1390,113 @@ def get_stats(target_sub_industry):
         "top_competitors_lost": top_competitors_lost,
         "avg_winning_rate": avg_winning_rate,
     }
+
+
+# =============================================================================
+# 成約要因分析
+# 成約データのみを抽出し、共通項（平均財務・定性タグランキング）を算出。
+# 成約に寄与する上位3ドライバーは回帰係数（全体_既存先）の絶対値で算出。
+# 利用箇所: 成約の正体レポート画面、分析結果ダッシュボード先頭の3因子表示。
+# =============================================================================
+COEFF_LABELS = {
+    "intercept": "定数項",
+    "ind_medical": "業種: 医療・福祉",
+    "ind_transport": "業種: 運輸",
+    "ind_construction": "業種: 建設",
+    "ind_manufacturing": "業種: 製造",
+    "ind_service": "業種: サービス",
+    "sales_log": "売上高(対数)",
+    "bank_credit_log": "銀行与信(対数)",
+    "lease_credit_log": "リース与信(対数)",
+    "op_profit": "営業利益",
+    "ord_profit": "経常利益",
+    "net_income": "当期純利益",
+    "machines": "機械装置",
+    "other_assets": "その他資産",
+    "rent": "賃借料",
+    "gross_profit": "売上総利益",
+    "depreciation": "減価償却",
+    "dep_expense": "減価償却費",
+    "rent_expense": "賃借料等",
+    "grade_4_6": "格付4〜6",
+    "grade_watch": "要注意",
+    "grade_none": "無格付",
+    "contracts": "契約数",
+    "main_bank": "メイン取引先",
+    "competitor_present": "競合あり",
+    "competitor_none": "競合なし",
+    "rate_diff_z": "金利差(有利)",
+    "industry_sentiment_z": "業界景気動向",
+    "qualitative_tag_score": "定性スコア(強みタグ)",
+    "qualitative_passion": "熱意・裏事情",
+    "equity_ratio": "自己資本比率",
+}
+
+
+def run_contract_driver_analysis():
+    """
+    成約要因分析: 成約データのみ抽出し、共通項（平均財務・定性タグランキング）と
+    成約に寄与する上位3ドライバー（回帰係数ベース）を返す。
+    成約が5件未満の場合は None を返す。
+    """
+    from collections import Counter
+    cases = load_all_cases()
+    closed = [c for c in cases if c.get("final_status") == "成約"]
+    if len(closed) < 5:
+        return None
+    # 平均財務数値（成約案件のみ）
+    fin_keys = ["nenshu", "op_profit", "ord_profit", "net_income", "bank_credit", "lease_credit", "contracts"]
+    fin_labels = {"nenshu": "売上高(千円)", "op_profit": "営業利益(千円)", "ord_profit": "経常利益(千円)", "net_income": "当期純利益(千円)", "bank_credit": "銀行与信(千円)", "lease_credit": "リース与信(千円)", "contracts": "契約数"}
+    sums = {k: 0.0 for k in fin_keys}
+    counts = {k: 0 for k in fin_keys}
+    for c in closed:
+        inp = c.get("inputs") or {}
+        res = c.get("result") or {}
+        for k in fin_keys:
+            v = inp.get(k) if k in inp else res.get("user_eq") if k == "user_eq" else None
+            if k == "contracts":
+                v = inp.get(k)
+            if v is not None and isinstance(v, (int, float)):
+                sums[k] += float(v)
+                counts[k] += 1
+    avg_financials = {}
+    for k in fin_keys:
+        if counts[k] > 0:
+            avg_financials[fin_labels.get(k, k)] = sums[k] / counts[k]
+    user_eq_list = []
+    for c in closed:
+        res = c.get("result") or {}
+        eq = res.get("user_eq")
+        if eq is not None and isinstance(eq, (int, float)):
+            user_eq_list.append(float(eq))
+    if user_eq_list:
+        avg_financials["自己資本比率(%)"] = sum(user_eq_list) / len(user_eq_list)
+    # 定性タグ頻出ランキング
+    tag_counter = Counter()
+    for c in closed:
+        inp = c.get("inputs") or {}
+        qual = inp.get("qualitative") or {}
+        for t in qual.get("strength_tags") or []:
+            tag_counter[t] += 1
+    tag_ranking = tag_counter.most_common(20)
+    # 成約に寄与する上位3ドライバー（全体_既存先の係数で絶対値が大きい順）
+    coeffs = get_effective_coeffs("全体_既存先")
+    driver_candidates = [(k, coeffs.get(k, 0)) for k in (COEFF_MAIN_KEYS + COEFF_EXTRA_KEYS) if k in coeffs]
+    driver_candidates = [(k, v) for k, v in driver_candidates if isinstance(v, (int, float)) and k != "intercept"]
+    driver_candidates.sort(key=lambda x: abs(x[1]), reverse=True)
+    top3_drivers = []
+    for k, v in driver_candidates[:3]:
+        label = COEFF_LABELS.get(k, k)
+        direction = "プラス" if v > 0 else "マイナス"
+        top3_drivers.append({"key": k, "label": label, "coef": v, "direction": direction})
+    return {
+        "closed_cases": closed,
+        "closed_count": len(closed),
+        "avg_financials": avg_financials,
+        "tag_ranking": tag_ranking,
+        "top3_drivers": top3_drivers,
+    }
+
 
 def save_case_log(data):
     """
@@ -2079,7 +2613,7 @@ def plot_break_even_point(sales, variable_cost, fixed_cost):
 # ==============================================================================
 # 画面構成
 # ==============================================================================
-mode = st.sidebar.radio("モード切替", ["📋 審査・分析", "📝 結果登録 (成約/失注)", "🔧 係数分析・更新 (β)"])
+mode = st.sidebar.radio("モード切替", ["📋 審査・分析", "📝 結果登録 (成約/失注)", "🔧 係数分析・更新 (β)", "📐 係数入力（事前係数）", "📊 成約の正体レポート"])
 
 # AI エンジン選択（Ollama / Gemini API）
 if "ai_engine" not in st.session_state:
@@ -2431,72 +2965,179 @@ with st.sidebar.expander("愚痴を追加", expanded=False):
             st.sidebar.warning("空の場合は追加できません。")
 
 if mode == "🔧 係数分析・更新 (β)":
-    st.title("🔧 係数分析・更新シミュレーター")
-    st.info("蓄積された過去データを使って、新しい審査モデル（係数）を計算・シミュレーションします。")
+    st.title("🔧 係数分析・更新（成約/失注で係数を更新）")
+    st.info("結果登録した「成約・失注」を目的変数に、審査モデルと同一仕様のロジスティック回帰で係数を推定し、審査スコアに反映できます。")
     
     all_logs = load_all_cases()
     if not all_logs:
-        st.warning("分析するためのデータがまだありません。審査を実行してデータを蓄積してください。")
+        st.warning("分析するためのデータがまだありません。審査を実行し、結果登録で成約/失注を登録してください。")
     else:
-        flat_data = []
-        for log in all_logs:
-            if "inputs" not in log: continue
-            
-            status = log.get("final_status")
-            if status not in ["成約", "失注"]: continue
-            target = 1 if status == "成約" else 0
-            
-            row = log["inputs"].copy()
-            row["target_y"] = target
-            flat_data.append(row)
-            
-        df = pd.DataFrame(flat_data)
+        X_reg, y_reg = build_design_matrix_from_logs(all_logs)
+        n_ok = int((y_reg == 1).sum()) if y_reg is not None else 0
+        n_ng = int((y_reg == 0).sum()) if y_reg is not None else 0
+        n_total = n_ok + n_ng
         
-        if len(df) < 5:
-            st.error(f"データ不足です。回帰分析には少なくとも5件以上の成約/失注データが必要です。(現在: {len(df)}件)")
+        if X_reg is None or n_total < 5:
+            st.error(f"回帰分析には成約/失注が登録されたデータが少なくとも5件必要です。（現在: 成約 {n_ok} 件・失注 {n_ng} 件）")
         else:
-            st.write(f"分析対象データ数: **{len(df)}件** (成約: {sum(df['target_y'])}, 失注: {len(df)-sum(df['target_y'])})")
-            with st.expander("データの確認"):
-                st.dataframe(df)
+            st.write(f"**目的変数**: 成約=1, 失注=0")
+            st.write(f"分析対象: **{n_total}件**（成約: {n_ok}件, 失注: {n_ng}件）")
             
-            st.subheader("1. モデル設定")
-            feature_cols = [
-                "nenshu", "op_profit", "ord_profit", "net_income", 
-                "machines", "bank_credit", "lease_credit", "grade"
-            ]
-            selected_features = st.multiselect("説明変数 (X) を選択", df.columns, default=[c for c in feature_cols if c in df.columns])
+            if st.button("🚀 回帰分析を実行して係数を算出", key="btn_run_regression"):
+                try:
+                    coeff_dict, model = run_regression_and_get_coeffs(X_reg, y_reg)
+                    acc = model.score(X_reg, y_reg)
+                    st.session_state["regression_coeffs"] = coeff_dict
+                    st.session_state["regression_accuracy"] = acc
+                    st.success("回帰完了。下記の係数を「係数を更新して保存」で審査スコアに反映できます。")
+                except Exception as e:
+                    st.error(f"回帰エラー: {e}")
+                    import traceback
+                    with st.expander("詳細", expanded=False):
+                        st.code(traceback.format_exc())
             
-            if st.button("🚀 回帰分析を実行"):
-                if not selected_features:
-                    st.error("変数を1つ以上選んでください。")
+            if "regression_coeffs" in st.session_state:
+                coeff_dict = st.session_state["regression_coeffs"]
+                acc = st.session_state.get("regression_accuracy", 0)
+                st.subheader("算出された係数（既存項目＋追加項目）")
+                res_rows = [{"変数": "intercept", "算出係数": coeff_dict.get("intercept", 0)}]
+                for k in COEFF_MAIN_KEYS:
+                    res_rows.append({"変数": k, "算出係数": coeff_dict.get(k, 0)})
+                for k in COEFF_EXTRA_KEYS:
+                    res_rows.append({"変数": k, "算出係数": coeff_dict.get(k, 0)})
+                st.dataframe(pd.DataFrame(res_rows).style.format({"算出係数": "{:.6f}"}), use_container_width=True)
+                st.metric("モデル予測精度 (Accuracy)", f"{acc:.1%}")
+                
+                if st.button("💾 係数を更新して保存", key="btn_save_coeffs"):
+                    overrides = load_coeff_overrides() or {}
+                    overrides["全体_既存先"] = coeff_dict
+                    if save_coeff_overrides(overrides):
+                        st.success("係数を保存しました。以降の審査スコアはこの係数で計算されます。")
+                    else:
+                        st.error("保存に失敗しました。")
+            
+            st.divider()
+            st.divider()
+            st.subheader("業種・指標ごとのベイズ回帰（既存項目＋追加項目）")
+            st.caption("業種モデル（全体/運送業/サービス業/製造業×既存先/新規先）と指標モデル（全体/運送業/サービス業/製造業 指標×既存先/新規先）を、それぞれデータが5件以上ある組だけ回帰し、係数を更新して保存します。")
+            if st.button("🔄 業種・指標ごとにベイズ回帰を実行して保存", key="btn_bayesian_all"):
+                overrides = load_coeff_overrides() or {}
+                min_n = 5
+                results = []
+                for model_key in INDUSTRY_MODEL_KEYS:
+                    X_k, y_k = build_design_matrix_from_logs(all_logs, model_key=model_key)
+                    n_k = len(y_k) if y_k is not None else 0
+                    if n_k >= min_n:
+                        try:
+                            coeff_k, mod_k = run_regression_and_get_coeffs(X_k, y_k)
+                            overrides[model_key] = coeff_k
+                            acc_k = mod_k.score(X_k, y_k)
+                            results.append(f"{model_key}: {n_k}件, Accuracy={acc_k:.1%}")
+                        except Exception as e:
+                            results.append(f"{model_key}: エラー {e}")
+                    else:
+                        results.append(f"{model_key}: データ不足 ({n_k}件)")
+                for ind_key in INDICATOR_MODEL_KEYS:
+                    X_i, y_i = build_design_matrix_indicator_from_logs(all_logs, ind_key)
+                    n_i = len(y_i) if y_i is not None else 0
+                    if n_i >= min_n:
+                        try:
+                            coeff_i, mod_i = run_regression_indicator_and_get_coeffs(X_i, y_i)
+                            overrides[ind_key] = coeff_i
+                            acc_i = mod_i.score(X_i, y_i)
+                            results.append(f"{ind_key}: {n_i}件, Accuracy={acc_i:.1%}")
+                        except Exception as e:
+                            results.append(f"{ind_key}: エラー {e}")
+                    else:
+                        results.append(f"{ind_key}: データ不足 ({n_i}件)")
+                if save_coeff_overrides(overrides):
+                    st.success("業種・指標ごとの係数を保存しました。")
+                for r in results:
+                    st.caption(r)
+
+            st.subheader("参考: 現在の審査で使っている係数（全体_既存先）")
+            current = get_effective_coeffs("全体_既存先")
+            overrides = load_coeff_overrides()
+            if overrides and "全体_既存先" in overrides:
+                st.caption("※ 成約/失注で更新した係数（既存＋追加項目）が適用されています。")
+            ref_rows = [{"変数": k, "現在の係数": current.get(k, 0)} for k in ["intercept"] + COEFF_MAIN_KEYS + COEFF_EXTRA_KEYS]
+            st.dataframe(pd.DataFrame(ref_rows).style.format({"現在の係数": "{:.6f}"}), use_container_width=True)
+
+elif mode == "📐 係数入力（事前係数）":
+    st.title("📐 事前係数入力")
+    st.info("運送業・医療など、業種ごとの基本事前係数を後から入力・編集できます。保存すると審査スコアに反映されます。")
+    overrides = load_coeff_overrides() or {}
+    selected_key = st.selectbox(
+        "編集するモデルを選択",
+        options=PRIOR_COEFF_MODEL_KEYS,
+        format_func=lambda k: k + (" （オーバーライド済み）" if k in overrides else " （初期値）"),
+        key="prior_coeff_model_select",
+    )
+    if selected_key:
+        current = get_effective_coeffs(selected_key)
+        keys_sorted = ["intercept"] + [k for k in sorted(current.keys()) if k != "intercept"]
+        edited = {}
+        st.subheader(f"係数: {selected_key}")
+        n_cols = 3
+        for i in range(0, len(keys_sorted), n_cols):
+            cols = st.columns(n_cols)
+            for j, k in enumerate(keys_sorted[i:i + n_cols]):
+                with cols[j]:
+                    val = current.get(k, 0)
+                    if isinstance(val, (int, float)):
+                        new_val = st.number_input(
+                            k,
+                            value=float(val),
+                            step=0.0001,
+                            format="%.6f",
+                            key=f"prior_{selected_key}_{k}",
+                        )
+                        edited[k] = new_val
+        if edited and st.button("💾 このモデルの係数を保存", key="btn_save_prior_coeffs"):
+            overrides = load_coeff_overrides() or {}
+            overrides[selected_key] = edited
+            if save_coeff_overrides(overrides):
+                st.success(f"{selected_key} の係数を保存しました。")
+            else:
+                st.error("保存に失敗しました。")
+        st.caption("※ 運送業・医療は個別に事前係数を入力できます。指標モデル（全体_指標など）を編集すると、既存先・新規先の両方の基準に反映されます。")
+
+elif mode == "📊 成約の正体レポート":
+    st.title("📊 成約の正体レポート")
+    analysis = run_contract_driver_analysis()
+    if analysis is None:
+        st.warning("成約データが5件以上貯まると表示されます。結果登録で「成約」を登録してください。")
+    else:
+        n = analysis["closed_count"]
+        st.success(f"成約 {n} 件を分析しました。")
+        st.divider()
+        # ---------- 成約要因分析 ----------
+        st.subheader("📈 成約要因分析")
+        st.caption("成約した案件だけを抽出し、共通項と成約に効く因子を分析した結果です。")
+        st.markdown("**成約に最も寄与している上位3つの因子（ドライバー）**")
+        for i, d in enumerate(analysis["top3_drivers"], 1):
+            st.markdown(f"**{i}. {d['label']}** … 係数 {d['coef']:.4f}（{d['direction']}に効く）")
+        st.divider()
+        st.subheader("成約案件の平均的な財務数値")
+        if analysis["avg_financials"]:
+            rows = []
+            for k, v in analysis["avg_financials"].items():
+                if "自己資本" in k:
+                    rows.append({"指標": k, "平均値": f"{v:.1f}%"})
+                elif isinstance(v, float) and abs(v) >= 1:
+                    rows.append({"指標": k, "平均値": f"{v:,.0f}"})
                 else:
-                    X = df[selected_features].fillna(0)
-                    X = pd.get_dummies(X, drop_first=True)
-                    y = df["target_y"]
-                    
-                    try:
-                        model = LogisticRegression(C=1.0, solver='lbfgs', max_iter=1000)
-                        model.fit(X, y)
-                        
-                        st.subheader("2. 分析結果 (新係数)")
-                        
-                        intercept = model.intercept_[0]
-                        coefs = model.coef_[0]
-                        
-                        res_df = pd.DataFrame({
-                            "変数": ["定数項 (Intercept)"] + list(X.columns),
-                            "算出係数": [intercept] + list(coefs)
-                        })
-                        
-                        st.dataframe(res_df.style.format({"算出係数": "{:.6f}"}))
-                        
-                        st.success("分析完了！この係数をメモして、`coeff_definitions.py` を更新することでモデルを改良できます。")
-                        
-                        acc = model.score(X, y)
-                        st.metric("モデル予測精度 (Accuracy)", f"{acc:.1%}")
-                        
-                    except Exception as e:
-                        st.error(f"分析エラー: {e}")
+                    rows.append({"指標": k, "平均値": f"{v:.4f}"})
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        else:
+            st.caption("財務データが取得できませんでした。")
+        st.divider()
+        st.subheader("成約案件で頻出する定性タグ（ランキング）")
+        if analysis["tag_ranking"]:
+            for rank, (tag, count) in enumerate(analysis["tag_ranking"], 1):
+                st.markdown(f"{rank}. **{tag}** … {count}件")
+        else:
+            st.caption("定性タグの登録がありません。")
 
 elif mode == "📝 結果登録 (成約/失注)":
     st.title("📝 案件結果登録")
@@ -2711,6 +3352,21 @@ elif mode == "📋 審査・分析":
                     col_q1, col_q2 = st.columns(2)
                     with col_q1: main_bank = st.selectbox("取引区分", ["メイン先", "非メイン先"])
                     with col_q2: competitor = st.selectbox("競合状況", ["競合なし", "競合あり"])
+                    # 競合ありの場合のみ「競合提示金利」を入力（金利差で成約率補正に利用）
+                    if competitor == "競合あり":
+                        comp_rate = st.number_input(
+                            "競合提示金利 (%)",
+                            min_value=0.0,
+                            max_value=30.0,
+                            value=float(st.session_state.get("competitor_rate") or 0.0),
+                            step=0.1,
+                            format="%.1f",
+                            key="competitor_rate_input",
+                            help="競合他社の提示金利を入力すると、自社が有利な場合に成約率をプラス補正します。"
+                        )
+                        st.session_state["competitor_rate"] = comp_rate if comp_rate > 0 else None
+                    else:
+                        st.session_state["competitor_rate"] = None
                 st.caption("💡 数字入力で画面がガタつく場合：スライダーで大まかに合わせてから直接入力で微調整するか、入力後に Enter を押してから次の項目へ移ると軽くなります。")
                 st.caption("📌 スライダー・数値の変更は「判定開始」を押すと反映されます。反応しない場合はページを再読み込みして再度お試しください。")
                 with st.form("shinsa_form"):
@@ -3597,8 +4253,8 @@ elif mode == "📋 審査・分析":
                 
                         return z
     
-                    # 1. 全体モデル
-                    z_main = calculate_score_from_coeffs(data_scoring, COEFFS["全体_既存先"])
+                    # 1. 全体モデル（成約/失注で更新した係数があればそれを優先）
+                    z_main = calculate_score_from_coeffs(data_scoring, get_effective_coeffs("全体_既存先"))
                     score_prob = safe_sigmoid(z_main)
                     score_percent = score_prob * 100
             
@@ -3611,8 +4267,12 @@ elif mode == "📋 審査・分析":
                     bench_key = "全体_指標"
                     major_code_bench = selected_major.split(" ")[0]
             
-                    if major_code_bench in ["D", "P", "H"]:
+                    if major_code_bench == "D":
                         bench_key = "全体_指標"
+                    elif major_code_bench == "P":
+                        bench_key = "医療_指標"
+                    elif major_code_bench == "H":
+                        bench_key = "運送業_指標"
                     elif major_code_bench in ["I", "K", "M", "R"]:
                         bench_key = "サービス業_指標"
                     elif major_code_bench == "E":
@@ -3641,8 +4301,9 @@ elif mode == "📋 審査・分析":
                     ratio_data["ratio_depreciation"] = raw_dep / raw_nenshu
                     ratio_data["ratio_machines"] = raw_machines / raw_nenshu
             
-                    # 指標モデル計算
-                    bench_coeffs = COEFFS.get(bench_key, COEFFS["全体_指標"])
+                    # 指標モデル計算（既存先/新規先で更新係数があれば使用）
+                    bench_key_with_type = f"{bench_key}_{'新規先' if customer_type == '新規先' else '既存先'}"
+                    bench_coeffs = get_effective_coeffs(bench_key_with_type)
                     z_bench = calculate_score_from_coeffs(ratio_data, bench_coeffs)
                     score_prob_bench = safe_sigmoid(z_bench)
                     score_percent_bench = score_prob_bench * 100
@@ -3658,13 +4319,15 @@ elif mode == "📋 審査・分析":
                     # E -> 製造業
                     # D, P -> 全体モデル (既存or新規)
             
-                    if major_code == "H": 
+                    if major_code == "H":
                         ind_key = "運送業_既存先"
-                    elif major_code in ["I", "K", "M", "R"]: 
+                    elif major_code == "P":
+                        ind_key = "医療_既存先"
+                    elif major_code in ["I", "K", "M", "R"]:
                         ind_key = "サービス業_既存先"
-                    elif major_code == "E": 
+                    elif major_code == "E":
                         ind_key = "製造業_既存先"
-                    elif major_code in ["D", "P"]: 
+                    elif major_code == "D":
                         ind_key = "全体_既存先"
             
                     # 新規先の場合の切り替え
@@ -3673,7 +4336,7 @@ elif mode == "📋 審査・分析":
                         # 万が一キーがない場合は全体_新規先へフォールバック
                         if ind_key not in COEFFS: ind_key = "全体_新規先"
             
-                    ind_coeffs = COEFFS.get(ind_key, COEFFS["全体_既存先"])
+                    ind_coeffs = get_effective_coeffs(ind_key)
                     z_ind = calculate_score_from_coeffs(data_scoring, ind_coeffs)
                     score_prob_ind = safe_sigmoid(z_ind)
                     score_percent_ind = score_prob_ind * 100
@@ -3682,19 +4345,68 @@ elif mode == "📋 審査・分析":
                     gap_sign = "+" if gap_val >= 0 else ""
                     gap_text = f"指標モデル差: {gap_sign}{gap_val:.1f}%"
     
-                    # 定性補正（取引・競合 + 逆転の鍵をエビデンスとして本気で反映）
-                    contract_prob = score_percent
-                    if main_bank == "メイン先": contract_prob += 10
-                    if competitor == "競合なし": contract_prob += 15
-                    else: contract_prob -= 10
-                    # 逆転の鍵: 強みタグは財務弱点を補うエビデンスとして加点（1タグあたり最大+2%、上限+10%）
+                    # ========== 完全版ベイズ初期モデル: 継承＋補完（回帰で更新した係数も反映） ==========
+                    effective = get_effective_coeffs()  # 成約/失注で更新した係数（既存+追加項目）があれば使用
                     strength_tags = st.session_state.get("strength_tags", []) or []
                     passion_text = (st.session_state.get("passion_text", "") or "").strip()
                     n_strength = len(strength_tags)
+                    contract_prob = score_percent
+                    ai_completed_factors = []  # AIが補完した判定要因（表示・バトル用）
+    
+                    # メイン先（係数: 更新値 or 既定10）
+                    main_bank_eff = effective.get("main_bank", 10)
+                    if main_bank == "メイン先":
+                        contract_prob += main_bank_eff
+                        ai_completed_factors.append({"factor": "メイン取引先", "effect_percent": int(round(main_bank_eff)), "detail": "取引行として優位"})
+    
+                    # 競合: 競合あり=負の係数、競合なし=プラス（更新値 or 既定）
+                    comp_present_eff = effective.get("competitor_present", BAYESIAN_PRIOR_EXTRA["competitor_present"])
+                    comp_none_eff = effective.get("competitor_none", 15)
+                    comp_effect = comp_present_eff if competitor == "競合あり" else comp_none_eff
+                    contract_prob += comp_effect
+                    if competitor == "競合あり":
+                        ai_completed_factors.append({"factor": "競合他社の存在", "effect_percent": int(round(comp_effect)), "detail": "他社がいる場合は成約率を下げる補正"})
+                    else:
+                        ai_completed_factors.append({"factor": "競合なし", "effect_percent": int(round(comp_effect)), "detail": "競合優位で成約率を上げる補正"})
+    
+                    # 業界景気動向: Z化（-1,0,1）。係数は更新値 or 既定
+                    _summary = (network_risk_summary or "").lower()
+                    if "景気" in _summary or "好調" in _summary or "拡大" in _summary or "堅調" in _summary:
+                        industry_z = 1.0
+                        ind_label = "業界動向（ポジティブ）"
+                    elif "倒産" in _summary or "減少" in _summary or "悪化" in _summary or "懸念" in _summary or "低下" in _summary:
+                        industry_z = -1.0
+                        ind_label = "業界動向（ネガティブ）"
+                    else:
+                        industry_z = 0.0
+                        ind_label = "業界動向（中立）"
+                    ind_coef = effective.get("industry_sentiment_z", BAYESIAN_PRIOR_EXTRA["industry_sentiment_per_z"])
+                    ind_effect = ind_coef * industry_z
+                    contract_prob += ind_effect
+                    if industry_z != 0:
+                        ai_completed_factors.append({"factor": ind_label, "effect_percent": int(round(ind_effect)), "detail": "業界の景気動向を成約率に反映"})
+    
+                    # 金利差は y_pred_adjusted 算出後に追加
+
+                    # 定性スコア: タグスコア(0-10)と熱意(0/1)。係数は「1ポイントあたり」「熱意ありで」の効果（更新値 or 既定）
+                    tag_score = min(sum(STRENGTH_TAG_WEIGHTS.get(t, DEFAULT_STRENGTH_WEIGHT) for t in strength_tags), 10)
+                    tag_coef = effective.get("qualitative_tag_score", 2.0)   # 1ptあたり%効果
+                    passion_coef = effective.get("qualitative_passion", BAYESIAN_PRIOR_EXTRA["qualitative_passion_bonus"])
+                    tag_effect = tag_coef * tag_score
+                    passion_effect = passion_coef if passion_text else 0
+                    contract_prob += tag_effect + passion_effect
                     if n_strength > 0:
-                        contract_prob += min(n_strength * 2, 10)
-                    if passion_text:
-                        contract_prob += 5  # 熱意・裏事情の記述ありで+5%
+                        ai_completed_factors.append({"factor": "定性スコア（強みタグ）", "effect_percent": int(round(tag_effect)), "detail": f"特許・人脈等{n_strength}件を標準重みで加点"})
+                    if passion_effect > 0:
+                        ai_completed_factors.append({"factor": "熱意・裏事情の記述", "effect_percent": int(round(passion_effect)), "detail": "記述ありで加点"})
+    
+                    # 自己資本比率（追加項目）: 係数は「1%あたり」の効果（更新値 or 0）
+                    equity_coef = effective.get("equity_ratio", 0)
+                    equity_effect = equity_coef * user_equity_ratio
+                    contract_prob += equity_effect
+                    if abs(equity_effect) >= 0.5:
+                        ai_completed_factors.append({"factor": "自己資本比率", "effect_percent": int(round(equity_effect)), "detail": f"自己資本比率 {user_equity_ratio:.1f}% を反映"})
+    
                     contract_prob = max(0, min(100, contract_prob))
     
                     # 利回り予測計算 (簡略化)
@@ -3740,7 +4452,18 @@ elif mode == "📋 審査・分析":
                     current_market_rate = get_market_rate(today_str, term_years)
                     rate_diff = current_market_rate - base_market_rate
                     y_pred_adjusted = y_pred + rate_diff
-    
+
+                    # 金利差（競合比）: 係数は更新値 or 既定
+                    competitor_rate_val = st.session_state.get("competitor_rate")
+                    if competitor_rate_val is not None and isinstance(competitor_rate_val, (int, float)):
+                        rate_diff_pt = float(y_pred_adjusted) - float(competitor_rate_val)
+                        rate_z = max(-2, min(2, rate_diff_pt / 5.0))
+                        rate_coef = effective.get("rate_diff_z", BAYESIAN_PRIOR_EXTRA["rate_diff_per_z"])
+                        rate_effect = rate_coef * (-rate_z)
+                        contract_prob += rate_effect
+                        ai_completed_factors.append({"factor": "金利差（競合比）", "effect_percent": int(round(rate_effect)), "detail": f"自社が競合より{'有利' if rate_diff_pt < 0 else '不利'}な金利"})
+                    contract_prob = max(0, min(100, contract_prob))
+
                     # 借手スコア + 物件スコア → 総合スコア（判定に反映）
                     final_score = 0.85 * score_percent + 0.15 * asset_score
                     st.session_state['current_image'] = "approve" if final_score >= 71 else "challenge"
@@ -3813,6 +4536,7 @@ elif mode == "📋 審査・分析":
                         "score": final_score, "hantei": "承認圏内" if final_score >= 71 else "要審議",
                         "score_borrower": score_percent, "asset_score": asset_score, "asset_name": asset_name,
                         "contract_prob": contract_prob, "z": z_main,
+                        "ai_completed_factors": ai_completed_factors,
                         "comparison": comparison_text,
                         "user_op": user_op_margin, "bench_op": bench_op_margin,
                         "user_eq": user_equity_ratio, "bench_eq": bench_equity_ratio,
@@ -3843,6 +4567,7 @@ elif mode == "📋 審査・分析":
                         "ind_score": score_percent_ind, "ind_name": ind_key,
                         "industry_major": selected_major,
                         "industry_sub": selected_sub,
+                        "industry_sentiment_z": industry_z,
                     }
                 
                     # 審査委員会カードバトル用データ（分析タブで表示）
@@ -3850,12 +4575,16 @@ elif mode == "📋 審査・分析":
                     atk_card = int(min(99, max(1, user_op_margin * 2)))
                     spd_card = int(min(99, max(1, user_current_ratio / 2)))
                     is_approved = final_score >= 71
+                    # 補完要因をスキル・環境効果としてバトルに渡す
+                    env_effects = [f"{f['factor']}: {f['effect_percent']:+.0f}%" for f in ai_completed_factors]
                     st.session_state["battle_data"] = {
                         "hp": hp_card, "atk": atk_card, "spd": spd_card,
                         "is_approved": is_approved,
                         "special_move_name": None, "special_effect": None,
                         "battle_log": [], "dice": None,
                         "score": final_score, "hantei": "承認圏内" if is_approved else "要審議",
+                        "environment_effects": env_effects,
+                        "ai_completed_factors": ai_completed_factors,
                     }
                     st.session_state["show_battle"] = True
 
@@ -3863,6 +4592,10 @@ elif mode == "📋 審査・分析":
                     log_payload = {
                         "industry_major": selected_major,
                         "industry_sub": selected_sub,
+                        "customer_type": customer_type,
+                        "main_bank": main_bank,
+                        "competitor": competitor,
+                        "competitor_rate": st.session_state.get("competitor_rate"),
                         "inputs": {
                             "nenshu": nenshu,
                             "gross_profit": item9_gross,
@@ -4016,6 +4749,12 @@ elif mode == "📋 審査・分析":
                     <span>{bd.get('special_effect', 'スコア+5%')}</span>
                     </div>
                     """, unsafe_allow_html=True)
+                    # 環境効果・スキル（AI補完した判定要因をバトル用に表示）
+                    env_effects = bd.get("environment_effects") or []
+                    if env_effects:
+                        st.markdown("**🌐 環境効果・スキル**")
+                        for eff in env_effects:
+                            st.caption(f"• {eff}")
                     # バトル実況ログ
                     st.markdown("**📜 バトル実況**")
                     for line in bd.get("battle_log", []):
@@ -4046,6 +4785,23 @@ elif mode == "📋 審査・分析":
                 else:
                     # ==================== ダッシュボードレイアウト（プロ仕様） ====================
                     st.markdown("---")
+                    # ----- 成約に最も寄与している上位3因子（データ5件以上で表示） -----
+                    _driver_analysis = run_contract_driver_analysis()
+                    if _driver_analysis and _driver_analysis["closed_count"] >= 5:
+                        st.markdown("**🎯 成約に最も寄与している上位3つの因子（ドライバー）**")
+                        d1, d2, d3 = st.columns(3)
+                        for idx, col in enumerate([d1, d2, d3]):
+                            if idx < len(_driver_analysis["top3_drivers"]):
+                                d = _driver_analysis["top3_drivers"][idx]
+                                with col:
+                                    st.markdown(f"""
+                                    <div style="background:linear-gradient(135deg,#1e3a5f 0%,#334155 100%);color:#fff;padding:0.8rem;border-radius:10px;font-size:0.9rem;">
+                                    <div style="opacity:0.9;">{idx+1}位</div>
+                                    <div style="font-weight:bold;">{d['label']}</div>
+                                    <div style="font-size:0.8rem;">係数 {d['coef']:.3f}（{d['direction']}）</div>
+                                    </div>
+                                    """, unsafe_allow_html=True)
+                        st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
                     # ----- タイトル + 画像 -----
                     img_path, img_caption = get_dashboard_image_path(hantei, industry_major, selected_sub, asset_name)
                     col_title, col_img = st.columns([3, 1])
@@ -4087,6 +4843,15 @@ elif mode == "📋 審査・分析":
                                 box_shadow=True,
                             )
                         st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
+
+                    # ----- AIが補完した判定要因（進化するダッシュボード） -----
+                    ai_factors = res.get("ai_completed_factors") or []
+                    if ai_factors:
+                        with st.expander("🤖 AIが補完した判定要因", expanded=True):
+                            st.caption("あなたの設定した財務指標に加え、以下の要因を成約率（契約期待度）に反映しました。")
+                            for f in ai_factors:
+                                sign = "+" if f.get("effect_percent", 0) >= 0 else ""
+                                st.markdown(f"- **{f.get('factor', '')}** … {sign}{f.get('effect_percent', 0)}% （{f.get('detail', '')}）")
 
                     st.divider()
                     # ----- カード: 本件スコア内訳・倒産確率・利回り -----
@@ -4628,6 +5393,10 @@ elif mode == "📋 審査・分析":
                                 st.error(content)
                             st.markdown(content or "（応答がありませんでした）")
                             st.session_state.messages.append({"role": "assistant", "content": content or "（応答がありませんでした）"})
+                            # ホルダー経由の応答も相談メモに保存（話せば話すほど蓄積）
+                            user_msgs = [m["content"] for m in st.session_state.messages if m.get("role") == "user"]
+                            if user_msgs:
+                                append_consultation_memory(user_msgs[-1], content or "（応答がありませんでした）")
                             st.session_state["chat_loading"] = False
                             st.session_state["chat_result"] = None
                         else:
@@ -4725,6 +5494,18 @@ elif mode == "📋 審査・分析":
                                     indicator_block += "指標一覧:\n" + ind_list + "\n\n"
                                 if ind_detail:
                                     indicator_block += "差の内訳:\n" + ind_detail[:1500] + "\n"
+                            # 過去の相談メモ（話せば話すほど蓄積）を読み込み、プロンプトに含める
+                            memory_entries = load_consultation_memory(max_entries=15)
+                            memory_block = ""
+                            if memory_entries:
+                                parts = []
+                                for e in memory_entries:
+                                    u = (e.get("user") or "").strip()
+                                    a = (e.get("assistant") or "").strip()
+                                    if u or a:
+                                        parts.append(f"ユーザー: {u[:800]}\nAI: {a[:1200]}")
+                                if parts:
+                                    memory_block = "\n\n【過去の相談で話したこと（話せば話すほど蓄積・参照して続きで答える）】\n" + "\n---\n".join(parts[-15:]) + "\n"
                             context_prompt = f"""あなたは経験豊富なリース審査のプロ。以下の「参考データ」を必ず使って、具体的に答えてください。数字やニュースの内容を引用すると説得力が増します。
 
 【参考データ】
@@ -4734,11 +5515,13 @@ elif mode == "📋 審査・分析":
 {advice_block}
 {indicator_block}
 {news_context}
+{memory_block}
 
 【ルール】
 - 上記のデータに触れずに一般論だけで答えないこと。
 - ニュースがある場合はその内容や業界動向を踏まえた助言をすること。
 - 指標の分析がある場合、業界目安を下回っている指標については「なぜ下回っている可能性があるか」「どう改善するとよいか」を簡潔にアドバイスすること。改善のための具体的なアクション（数値目標・確認すべき書類・交渉のポイント等）があれば述べること。
+- 過去の相談メモがある場合は、その流れを踏まえて「続き」として一貫した助言をすること。
 - 2〜5文で簡潔に、しかし具体的に。
 
 【相談内容】
@@ -4762,6 +5545,8 @@ elif mode == "📋 審査・分析":
                             else:
                                 st.markdown(content)
                             st.session_state.messages.append({"role": "assistant", "content": content})
+                            # 相談1往復をメモに保存（話せば話すほど以後の相談で活用）
+                            append_consultation_memory(q, content)
                             if st.session_state.get("ai_engine") == "gemini" and content and "APIキーが" not in content and "Gemini API エラー:" not in content:
                                 st.session_state["last_gemini_debug"] = "OK"
                             elif st.session_state.get("ai_engine") == "gemini":
