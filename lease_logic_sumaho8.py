@@ -72,7 +72,8 @@ def red_label(placeholder, text):
         </div>
     ''', unsafe_allow_html=True)
 
-    # スライダーの見た目をカスタマイズするCSS（スマホで見やすい幅・つまみ）
+
+# 以下はページ共通CSS（スライダー・グラフ・タブ・スマホ向けなど）
 st.markdown("""
     <style>
     /* スライダー全体の幅をスマホで確保（最小幅・タップしやすく） */
@@ -410,11 +411,13 @@ def _dashboard_image_base_dirs():
         yield DASHBOARD_IMAGES_ASSETS.rstrip(os.sep)
     if os.path.isdir(DASHBOARD_IMAGES_DIR):
         yield DASHBOARD_IMAGES_DIR
-    # フォールバック: 同環境の assets パス（analyze_images と同じ場所）
-    for candidate in [
-        os.path.join(os.path.dirname(BASE_DIR), ".cursor", "projects", "Users-kobayashiisaoryou-clawd", "assets"),
-        "/Users/kobayashiisaoryou/.cursor/projects/Users-kobayashiisaoryou-clawd/assets",
-    ]:
+    # フォールバック: 環境変数 DASHBOARD_IMAGES_FALLBACK または clawd 直下の assets
+    fallback_env = os.environ.get("DASHBOARD_IMAGES_FALLBACK", "").strip()
+    candidates = []
+    if fallback_env and os.path.isdir(fallback_env):
+        candidates.append(fallback_env)
+    candidates.append(os.path.join(os.path.dirname(BASE_DIR), "assets"))
+    for candidate in candidates:
         if candidate and os.path.isdir(candidate):
             yield candidate
             break
@@ -862,7 +865,7 @@ def save_debate_log(data):
 def load_consultation_memory(max_entries=20):
     """
     AI審査オフィサー相談のメモを読み込む。話せば話すほど蓄積した過去のやり取りを返す。
-    直近 max_entries 件を返す（古い順）。
+    直近 max_entries 件を返す（古い順）。ファイル破損・読み込み失敗時は空リストで落ちない。
     """
     if not os.path.exists(CONSULTATION_MEMORY_FILE):
         return []
@@ -875,15 +878,15 @@ def load_consultation_memory(max_entries=20):
                     continue
                 try:
                     entries.append(json.loads(line))
-                except Exception:
+                except (json.JSONDecodeError, TypeError):
                     continue
-    except Exception:
+    except (OSError, IOError, PermissionError):
         return []
     return entries[-max_entries:] if len(entries) > max_entries else entries
 
 
 def append_consultation_memory(user_text: str, assistant_text: str):
-    """相談1往復をメモに追記。以後の相談で活用される。"""
+    """相談1往復をメモに追記。以後の相談で活用される。失敗してもアプリは落とさない。"""
     try:
         with open(CONSULTATION_MEMORY_FILE, "a", encoding="utf-8") as f:
             f.write(json.dumps({
@@ -893,7 +896,7 @@ def append_consultation_memory(user_text: str, assistant_text: str):
             }, ensure_ascii=False) + "\n")
     except Exception as e:
         if "st" in dir():
-            st.error(f"相談メモ保存エラー: {e}")
+            st.warning(f"相談メモの保存に失敗しました（処理は続行します）: {e}")
 
 
 def load_all_cases():
@@ -905,7 +908,7 @@ def load_all_cases():
             for line in f:
                 try:
                     cases.append(json.loads(line))
-                except:
+                except json.JSONDecodeError:
                     continue
     except Exception:
         return []
@@ -2614,6 +2617,9 @@ def plot_break_even_point(sales, variable_cost, fixed_cost):
 # 画面構成
 # ==============================================================================
 mode = st.sidebar.radio("モード切替", ["📋 審査・分析", "📝 結果登録 (成約/失注)", "🔧 係数分析・更新 (β)", "📐 係数入力（事前係数）", "📊 成約の正体レポート"])
+
+with st.sidebar.expander("⚠️ 途中で落ちる場合", expanded=False):
+    st.caption("主な原因: (1) AI相談・Gemini/Ollama のタイムアウト (2) ブラウザのメモリ不足 (3) 分析結果タブでデータ不整合。ターミナルで `streamlit run lease_logic_sumaho8.py` を実行するとエラー内容が表示されます。F5で再読み込みも試してください。")
 
 # AI エンジン選択（Ollama / Gemini API）
 if "ai_engine" not in st.session_state:
@@ -4665,7 +4671,7 @@ elif mode == "📋 審査・分析":
             if 'last_result' in st.session_state:
                 res = st.session_state['last_result']
                 # --- 変数完全復元 (画面分割対策) ---
-                score_percent = res["score"]
+                score_percent = res.get("score", 0)
                 selected_major = res.get("industry_major", "D 建設業")
                 user_equity_ratio = res.get("user_eq", 0)
                 user_op_margin = res.get("user_op", 0)
