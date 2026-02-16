@@ -1,16 +1,28 @@
+"""
+温水式リース審査AI - lease_logic_sumaho9
+一つのフォルダ lease_logic_sumaho9 に配置。データファイルはリポジトリルートで sumaho8 と共通。
+起動: streamlit run lease_logic_sumaho9/lease_logic_sumaho9.py （リポジトリルートで実行）
+"""
+import sys
+import os
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 import streamlit as st
 try:
     from streamlit_extras.metric_cards import style_metric_cards
 except ImportError:
     style_metric_cards = None  # pip install streamlit-extras でメトリックをカード風に
 import math
-import os
 import json
 import random
 import re
 import ollama
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import time
 import concurrent.futures
 import matplotlib.pyplot as plt
@@ -327,9 +339,9 @@ st.markdown("""
 st.set_page_config(page_title="温水式リース審査AI", page_icon="🏢", layout="wide")
 
 # ==============================================================================
-# 共通機能 & キャッシュ最適化
+# 共通機能 & キャッシュ最適化（データはリポジトリルートで sumaho8 と共通）
 # ==============================================================================
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = _REPO_ROOT
 
 # フォント設定
 FONT_PATH = os.path.join(BASE_DIR, "NotoSansCJKjp-Regular.otf")
@@ -2004,6 +2016,45 @@ def plot_gauge(score, title="承認スコア"):
     plt.close(fig)
     return fig
 
+def plot_gauge_plotly(score, title="承認スコア"):
+    """Plotly版：ホバー・ズーム可能なゲージ"""
+    if score >= 71:
+        color = CHART_STYLE["good"]
+    elif score >= 41:
+        color = CHART_STYLE["warning"]
+    else:
+        color = CHART_STYLE["danger"]
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=score,
+        number={"suffix": "%", "font": {"size": 28}},
+        title={"text": title, "font": {"size": 14}},
+        gauge={
+            "axis": {"range": [0, 100], "tickwidth": 1},
+            "bar": {"color": color, "thickness": 0.7},
+            "bgcolor": "white",
+            "borderwidth": 2,
+            "bordercolor": CHART_STYLE["grid"],
+            "steps": [
+                {"range": [0, 41], "color": "#f1f5f9"},
+                {"range": [41, 71], "color": "#fef3c7"},
+                {"range": [71, 100], "color": "#ccfbf1"},
+            ],
+            "threshold": {
+                "line": {"color": color, "width": 3},
+                "thickness": 0.8,
+                "value": score,
+            },
+        },
+    ))
+    fig.update_layout(
+        paper_bgcolor=CHART_STYLE["bg"],
+        font={"color": "#334155"},
+        margin=dict(l=20, r=20, t=40, b=20),
+        height=220,
+    )
+    return fig
+
 def plot_waterfall(nenshu, gross, op_profit, ord_profit, net_income):
     cost_goods = nenshu - gross
     sga = gross - op_profit
@@ -2045,6 +2096,45 @@ def plot_waterfall(nenshu, gross, op_profit, ord_profit, net_income):
     plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
     plt.close(fig)
+    return fig
+
+def plot_waterfall_plotly(nenshu, gross, op_profit, ord_profit, net_income):
+    """Plotly版：ホバー・ズーム可能なウォーターフォール（単位:千円）"""
+    cost_goods = nenshu - gross
+    sga = gross - op_profit
+    non_op = ord_profit - op_profit
+    tax_extra = net_income - ord_profit
+    categories = ["売上高", "売上原価", "販管費", "営業外", "税引前", "当期利益"]
+    values = [nenshu, -cost_goods, -sga, non_op, tax_extra, net_income]
+    measures = ["absolute", "relative", "relative", "relative", "relative", "total"]
+    text_vals = [f"{int(v/1000)}k" for v in values]
+    colors = [CHART_STYLE["primary"], CHART_STYLE["danger"], CHART_STYLE["danger"],
+              CHART_STYLE["good"], CHART_STYLE["good"],
+              CHART_STYLE["good"] if net_income >= 0 else CHART_STYLE["danger"]]
+    fig = go.Figure(go.Waterfall(
+        name="利益構造",
+        orientation="v",
+        measure=measures,
+        x=categories,
+        y=values,
+        text=text_vals,
+        textposition="outside",
+        connector={"line": {"color": CHART_STYLE["grid"], "width": 1}},
+        increasing={"marker": {"color": CHART_STYLE["good"]}},
+        decreasing={"marker": {"color": CHART_STYLE["danger"]}},
+        totals={"marker": {"color": CHART_STYLE["good"] if net_income >= 0 else CHART_STYLE["danger"]}},
+    ))
+    fig.update_layout(
+        title="利益構造 (単位:千円)",
+        paper_bgcolor=CHART_STYLE["bg"],
+        plot_bgcolor="white",
+        font=dict(color="#334155", size=11),
+        margin=dict(t=50, b=80, l=50, r=30),
+        height=380,
+        xaxis_tickangle=-45,
+        showlegend=False,
+    )
+    fig.update_yaxes(gridcolor=CHART_STYLE["grid"], zeroline=True)
     return fig
 
 def plot_benchmark_comparison(user_val, bench_val, metric_name):
@@ -2355,6 +2445,51 @@ def plot_indicators_gap_analysis(indicators):
     return fig
 
 
+def plot_indicators_gap_analysis_plotly(indicators):
+    """Plotly版：指標と業界目安の差（横棒・ホバーで数値表示）"""
+    with_bench = []
+    for ind in indicators:
+        bench = ind.get("bench")
+        if bench is None or (isinstance(bench, float) and (bench != bench)):
+            continue
+        diff = ind["value"] - bench
+        name = ind["name"]
+        unit = ind.get("unit", "%")
+        is_good = (diff > 0 and name not in _LOWER_IS_BETTER_NAMES) or (diff < 0 and name in _LOWER_IS_BETTER_NAMES)
+        with_bench.append({"name": name, "diff": diff, "unit": unit, "is_good": is_good})
+    if not with_bench:
+        return None
+    names = [x["name"] for x in with_bench]
+    diffs = [x["diff"] for x in with_bench]
+    colors = [CHART_STYLE["good"] if x["is_good"] else CHART_STYLE["danger"] for x in with_bench]
+    hover_text = [f"{n}<br>差: {d:+.1f}{w['unit']}<br>{'業界より良い' if w['is_good'] else '要確認'}" for n, d, w in zip(names, diffs, with_bench)]
+    fig = go.Figure(go.Bar(
+        y=names,
+        x=diffs,
+        orientation="h",
+        marker_color=colors,
+        text=[f"{d:+.1f}{w['unit']}" for d, w in zip(diffs, with_bench)],
+        textposition="outside",
+        hovertemplate="%{customdata}<extra></extra>",
+        customdata=hover_text,
+    ))
+    fig.add_vline(x=0, line_dash="solid", line_color=CHART_STYLE["secondary"], line_width=1)
+    fig.update_layout(
+        title="指標と業界目安の差の解釈",
+        xaxis_title="差（貴社 − 業界目安）　← 要確認 | 良い →",
+        paper_bgcolor=CHART_STYLE["bg"],
+        plot_bgcolor="white",
+        font=dict(color="#334155", size=11),
+        margin=dict(t=45, b=45, l=20, r=80),
+        height=max(280, len(names) * 36),
+        showlegend=False,
+        yaxis=dict(autorange="reversed"),
+    )
+    fig.update_yaxes(gridcolor="white", zeroline=False)
+    fig.update_xaxes(gridcolor=CHART_STYLE["grid"], zeroline=True)
+    return fig
+
+
 def plot_indicators_bar(indicators):
     """算出指標を横棒グラフで表示（貴社・業界平均）"""
     if not indicators:
@@ -2480,6 +2615,44 @@ def plot_radar_chart(metrics, benchmarks):
     plt.close(fig)
     return fig
 
+def plot_radar_chart_plotly(metrics, benchmarks):
+    """Plotly版：ホバー・凡例トグル可能なレーダーチャート"""
+    labels = list(metrics.keys())
+    values = list(metrics.values()) + list(metrics.values())[:1]
+    bench_values = list(benchmarks.values()) + list(benchmarks.values())[:1]
+    angles = np.linspace(0, 360, len(labels), endpoint=False).tolist() + [0]
+    fig = go.Figure()
+    fig.add_trace(go.Scatterpolar(
+        r=values,
+        theta=labels + [labels[0]],
+        fill="toself",
+        name="貴社",
+        line=dict(color=CHART_STYLE["primary"], width=2),
+        fillcolor="rgba(30, 58, 95, 0.25)",
+    ))
+    fig.add_trace(go.Scatterpolar(
+        r=bench_values,
+        theta=labels + [labels[0]],
+        fill="toself",
+        name="業界平均",
+        line=dict(color=CHART_STYLE["secondary"], width=2, dash="dash"),
+        fillcolor="rgba(71, 85, 105, 0.15)",
+    ))
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(visible=True, range=[0, 100], gridcolor=CHART_STYLE["grid"]),
+            angularaxis=dict(gridcolor=CHART_STYLE["grid"], linecolor=CHART_STYLE["grid"]),
+            bgcolor="white",
+        ),
+        title="財務バランス分析 (偏差値)",
+        paper_bgcolor=CHART_STYLE["bg"],
+        font=dict(color="#334155", size=11),
+        margin=dict(t=50, b=30),
+        height=360,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+    )
+    return fig
+
 def plot_positioning_scatter(current_sales, current_op_margin, past_cases):
     """
     ポジショニング散布図 (過去案件との比較)
@@ -2583,6 +2756,182 @@ def plot_3d_analysis(current_data, past_cases):
     )
     return fig
 
+
+# --- 審査に有用な Plotly グラフ ---
+
+def plot_score_models_comparison_plotly(res):
+    """3モデル（全体・業種・指標ベンチ）のスコア比較＋承認ライン70"""
+    models = ["① 全体モデル", "② 業種モデル", "③ 指標ベンチ"]
+    scores = [
+        res.get("score", 0),
+        res.get("ind_score", 0),
+        res.get("bench_score", 0),
+    ]
+    colors = [CHART_STYLE["primary"], CHART_STYLE["secondary"], CHART_STYLE["accent"]]
+    fig = go.Figure(go.Bar(
+        x=models,
+        y=scores,
+        marker_color=colors,
+        text=[f"{s:.1f}%" for s in scores],
+        textposition="outside",
+        hovertemplate="%{x}<br>スコア: %{y:.1f}%<extra></extra>",
+    ))
+    fig.add_hline(y=70, line_dash="dash", line_color=CHART_STYLE["danger"], line_width=1.5,
+                  annotation_text="承認ライン 70%", annotation_position="right")
+    fig.update_layout(
+        title="スコア内訳（3モデル比較）",
+        yaxis_title="スコア (%)",
+        yaxis=dict(range=[0, 105]),
+        paper_bgcolor=CHART_STYLE["bg"],
+        plot_bgcolor="white",
+        font=dict(color="#334155", size=11),
+        margin=dict(t=45, b=50, l=50, r=30),
+        height=260,
+        showlegend=False,
+    )
+    fig.update_xaxes(gridcolor="white")
+    fig.update_yaxes(gridcolor=CHART_STYLE["grid"], zeroline=True)
+    return fig
+
+
+def plot_contract_prob_factors_plotly(ai_completed_factors):
+    """契約期待度への寄与（要因別）を横棒で表示"""
+    if not ai_completed_factors:
+        return None
+    factors = [f.get("factor", "") for f in ai_completed_factors]
+    effects = [f.get("effect_percent", 0) for f in ai_completed_factors]
+    colors = [CHART_STYLE["good"] if e >= 0 else CHART_STYLE["danger"] for e in effects]
+    hover_text = [f"{f.get('factor','')}: {f.get('effect_percent',0):+.0f}%<br>{f.get('detail','')}" for f in ai_completed_factors]
+    fig = go.Figure(go.Bar(
+        y=factors,
+        x=effects,
+        orientation="h",
+        marker_color=colors,
+        text=[f"{e:+.0f}%" for e in effects],
+        textposition="outside",
+        hovertemplate="%{customdata}<extra></extra>",
+        customdata=hover_text,
+    ))
+    fig.add_vline(x=0, line_dash="solid", line_color=CHART_STYLE["grid"], line_width=1)
+    fig.update_layout(
+        title="契約期待度への寄与（要因別）",
+        xaxis_title="効果 (%)",
+        paper_bgcolor=CHART_STYLE["bg"],
+        plot_bgcolor="white",
+        font=dict(color="#334155", size=10),
+        margin=dict(t=40, b=40, l=20, r=60),
+        height=max(220, len(factors) * 28),
+        yaxis=dict(autorange="reversed"),
+        showlegend=False,
+    )
+    fig.update_yaxes(gridcolor="white")
+    fig.update_xaxes(gridcolor=CHART_STYLE["grid"], zeroline=True)
+    return fig
+
+
+def plot_past_scores_histogram_plotly(current_score, past_cases):
+    """過去案件のスコア分布＋今回のスコアの位置"""
+    scores = []
+    for c in (past_cases or []):
+        s = c.get("result", {}).get("score")
+        if s is not None:
+            scores.append(float(s))
+    if not scores and current_score is None:
+        return None
+    fig = go.Figure()
+    if scores:
+        fig.add_trace(go.Histogram(
+            x=scores,
+            nbinsx=min(20, max(5, len(set(scores)))),
+            name="過去案件",
+            marker_color=CHART_STYLE["secondary"],
+            opacity=0.7,
+            hovertemplate="スコア: %{x:.1f}%<br>件数: %{y}<extra></extra>",
+        ))
+    if current_score is not None:
+        fig.add_vline(
+            x=current_score,
+            line_dash="solid",
+            line_color=CHART_STYLE["primary"],
+            line_width=2.5,
+            annotation_text="今回",
+            annotation_position="top",
+        )
+    fig.add_vline(
+        x=70,
+        line_dash="dash",
+        line_color=CHART_STYLE["danger"],
+        line_width=1.5,
+        annotation_text="承認70",
+        annotation_position="bottom",
+    )
+    fig.update_layout(
+        title="過去案件スコア分布 vs 今回",
+        xaxis_title="スコア (%)",
+        yaxis_title="件数",
+        paper_bgcolor=CHART_STYLE["bg"],
+        plot_bgcolor="white",
+        font=dict(color="#334155", size=11),
+        margin=dict(t=50, b=50, l=50, r=30),
+        height=280,
+        barmode="overlay",
+        showlegend=False,
+    )
+    fig.update_xaxes(range=[0, 105], gridcolor=CHART_STYLE["grid"])
+    fig.update_yaxes(gridcolor=CHART_STYLE["grid"])
+    return fig
+
+
+def plot_balance_sheet_plotly(financials):
+    """資産・負債の内訳（積み上げ感覚で比較）"""
+    if not financials:
+        return None
+    total_assets = financials.get("assets") or 0
+    net_assets = financials.get("net_assets") or 0
+    machines = financials.get("machines") or 0
+    other_assets = financials.get("other_assets") or 0
+    bank_credit = financials.get("bank_credit") or 0
+    lease_credit = financials.get("lease_credit") or 0
+    liability = total_assets - net_assets if total_assets else 0
+    # 資産内訳: 流動的近似 = 総資産 - 機械 - その他固定, 機械, その他固定
+    current_approx = max(0, total_assets - machines - other_assets) if total_assets else 0
+    if total_assets <= 0 and liability <= 0:
+        return None
+    labels = ["流動的資産(近似)", "機械・車両等", "その他固定", "銀行与信", "リース債務", "純資産"]
+    values = [current_approx, machines, other_assets, bank_credit, lease_credit, net_assets]
+    # 単位千円 → 百万円で表示
+    values_m = [v / 1000 for v in values]
+    colors = [
+        CHART_STYLE["primary"],
+        CHART_STYLE["secondary"],
+        CHART_STYLE["accent"],
+        CHART_STYLE["danger"],
+        CHART_STYLE["warning"],
+        CHART_STYLE["good"],
+    ]
+    fig = go.Figure(go.Bar(
+        x=labels,
+        y=values_m,
+        marker_color=colors,
+        text=[f"{v:.1f}M" for v in values_m],
+        textposition="outside",
+        hovertemplate="%{x}<br>%{y:.1f}百万円<extra></extra>",
+    ))
+    fig.update_layout(
+        title="資産・負債内訳 (百万円)",
+        yaxis_title="金額 (百万円)",
+        paper_bgcolor=CHART_STYLE["bg"],
+        plot_bgcolor="white",
+        font=dict(color="#334155", size=11),
+        margin=dict(t=45, b=80, l=50, r=30),
+        height=320,
+        xaxis_tickangle=-35,
+        showlegend=False,
+    )
+    fig.update_yaxes(gridcolor=CHART_STYLE["grid"], zeroline=True)
+    return fig
+
+
 def plot_break_even_point(sales, variable_cost, fixed_cost):
     """
     損益分岐点グラフ
@@ -2618,6 +2967,38 @@ def plot_break_even_point(sales, variable_cost, fixed_cost):
     sns.despine()
     plt.tight_layout()
     plt.close(fig)
+    return fig
+
+def plot_break_even_point_plotly(sales, variable_cost, fixed_cost):
+    """Plotly版：損益分岐点（ホバー・ズーム・パン可能）"""
+    if sales <= 0:
+        return None
+    vc_ratio = variable_cost / sales
+    bep = fixed_cost / (1 - vc_ratio) if (1 - vc_ratio) > 0 else sales * 2
+    max_x = max(sales, bep) * 1.2
+    x = np.linspace(0, max_x, 100)
+    y_revenue = x
+    y_cost = fixed_cost + (x * vc_ratio)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=x, y=y_revenue, mode="lines", name="売上高", line=dict(color=CHART_STYLE["primary"], width=2)))
+    fig.add_trace(go.Scatter(x=x, y=y_cost, mode="lines", name="総費用", line=dict(color=CHART_STYLE["danger"], width=2, dash="dash")))
+    fig.add_trace(go.Scatter(x=[sales], y=[sales], mode="markers+text", name="現在", marker=dict(size=14, color=CHART_STYLE["good"], line=dict(width=1.5, color="white")), text=["現在"], textposition="top center"))
+    if bep < max_x:
+        fig.add_trace(go.Scatter(x=[bep], y=[bep], mode="markers+text", name="損益分岐点", marker=dict(size=14, color=CHART_STYLE["warning"], line=dict(width=1.5, color="white")), text=[f"BEP {int(bep/1000)}M"], textposition="top center"))
+    fig.update_layout(
+        title="損益分岐点分析",
+        xaxis_title="売上規模",
+        yaxis_title="金額",
+        paper_bgcolor=CHART_STYLE["bg"],
+        plot_bgcolor="white",
+        font=dict(color="#334155", size=11),
+        margin=dict(t=45, b=45, l=50, r=30),
+        height=320,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        hovermode="x unified",
+    )
+    fig.update_xaxes(gridcolor=CHART_STYLE["grid"], zeroline=False)
+    fig.update_yaxes(gridcolor=CHART_STYLE["grid"], zeroline=False)
     return fig
 
 # ==============================================================================
@@ -3239,14 +3620,18 @@ elif mode == "📋 審査・分析":
             submitted_judge = False
             if "nav_index" not in st.session_state:
                 st.session_state.nav_index = 0
+            # 判定開始直後の rerun の1回だけ「分析結果」に合わせる（毎回上書きすると審査入力に戻れなくなる）
+            if st.session_state.pop("_jump_to_analysis", False):
+                st.session_state["nav_mode_widget"] = "📊 分析結果"
             nav_mode = st.radio(
                 "表示モード",
                 ["📝 審査入力", "📊 分析結果"],
                 horizontal=True,
                 label_visibility="visible",
                 key="nav_mode_widget",
-                index=st.session_state.get("nav_index", 0),
             )
+            # ユーザーがラジオで切り替えたとき nav_index を同期
+            st.session_state.nav_index = 1 if nav_mode == "📊 分析結果" else 0
             if nav_mode == "📝 審査入力":
                 st.header("📝 1. 審査データの入力")
                 image_placeholder = st.empty()
@@ -4345,11 +4730,8 @@ elif mode == "📋 審査・分析":
                     }
                     st.session_state["form_restored_from_submit"] = False
                     st.session_state.nav_index = 1  # 1番目（分析結果）に切り替える
+                    st.session_state["_jump_to_analysis"] = True  # 判定直後の1回だけ分析結果に飛ぶ
                     st.rerun()  # 画面を読み込み直して、実際にタブを移動させる
-                    
-                    # 自動的に「分析結果」タブへ遷移
-                    st.success("審査完了！分析結果を表示します。")
-                    st.rerun()
                 except Exception as e:
                     st.error("判定開始の処理中にエラーが発生しました。入力内容を確認するか、ページを再読み込みして再度お試しください。")
                     import traceback
@@ -4613,7 +4995,7 @@ elif mode == "📋 審査・分析":
                         # ----- 第3行: ゲージ・契約期待度・判定・業界比較（ダッシュボード内に統合） -----
                         g1, g2, g3 = st.columns(3)
                         with g1:
-                            st.pyplot(plot_gauge(res['score'], "総合スコア"))
+                            st.plotly_chart(plot_gauge_plotly(res['score'], "総合スコア"), use_container_width=True, key="gauge_score")
                         with g2:
                             st.metric("契約期待度", f"{res['contract_prob']:.1f}%")
                             if "yield_pred" in res:
@@ -4635,6 +5017,33 @@ elif mode == "📋 審査・分析":
                                 elif u_op_r < a_op_r: prof_msg = f"平均以下({u_op_r:.1f}%)"
                                 else: prof_msg = f"標準({u_op_r:.1f}%)"
                                 st.caption(f"規模: {sales_msg} / 収益: {prof_msg}")
+
+                    # ----- 審査に有用な Plotly グラフ（4種） -----
+                    st.divider()
+                    with st.expander("📊 審査に有用なグラフ", expanded=True):
+                        st.caption("スコア内訳・契約期待度の要因・過去分布・バランスシート内訳をインタラクティブに表示します。")
+                        row1_a, row1_b = st.columns(2)
+                        with row1_a:
+                            st.plotly_chart(plot_score_models_comparison_plotly(res), use_container_width=True, key="plotly_score_models")
+                        with row1_b:
+                            factors_fig = plot_contract_prob_factors_plotly(res.get("ai_completed_factors") or [])
+                            if factors_fig:
+                                st.plotly_chart(factors_fig, use_container_width=True, key="plotly_contract_factors")
+                            else:
+                                st.caption("契約期待度の要因は判定実行後に表示されます。")
+                        row2_a, row2_b = st.columns(2)
+                        with row2_a:
+                            hist_fig = plot_past_scores_histogram_plotly(res.get("score"), load_all_cases())
+                            if hist_fig:
+                                st.plotly_chart(hist_fig, use_container_width=True, key="plotly_past_hist")
+                            else:
+                                st.caption("過去案件データがあるとスコア分布を表示します。")
+                        with row2_b:
+                            bal_fig = plot_balance_sheet_plotly(res.get("financials"))
+                            if bal_fig:
+                                st.plotly_chart(bal_fig, use_container_width=True, key="plotly_balance_sheet")
+                            else:
+                                st.caption("審査入力で資産・負債を入力すると内訳を表示します。")
 
                     st.divider()
                     with st.container():
@@ -4812,7 +5221,7 @@ elif mode == "📋 審査・分析":
                     with col_graphs:
                         g1, g2 = st.columns(2)
                         with g1:
-                            st.pyplot(plot_radar_chart(radar_metrics, radar_bench))
+                            st.plotly_chart(plot_radar_chart_plotly(radar_metrics, radar_bench), use_container_width=True, key="radar_analysis")
                         with g2:
                             # 損益分岐点グラフ
                             sales_k = res["financials"]["nenshu"]
@@ -4820,7 +5229,13 @@ elif mode == "📋 審査・分析":
                             op_k = res["financials"]["rieki"] * 1000
                             vc = sales_k - gross_k
                             fc = gross_k - op_k
-                            st.pyplot(plot_break_even_point(sales_k, vc, fc))
+                            bep_fig = plot_break_even_point_plotly(sales_k, vc, fc)
+                            if bep_fig:
+                                st.plotly_chart(bep_fig, use_container_width=True, key="bep_analysis")
+                            else:
+                                fallback = plot_break_even_point(sales_k, vc, fc)
+                                if fallback:
+                                    st.pyplot(fallback)
 
                     # ========== 中分類ごとにネットで業界目安を取得して比較 ==========
                     selected_sub = res.get("industry_sub", "")
@@ -4861,7 +5276,8 @@ elif mode == "📋 審査・分析":
 
                     # ========== 算出可能指標（入力から計算した有効指標） ==========
                     st.markdown("### 📈 算出可能指標")
-                    st.caption("業界目安は、ネット検索で保存した値（web_industry_benchmarks.json）を優先し、不足分を大分類の業界平均（industry_averages.json）で補っています。サイドバー「今のデータを検索して保存」で指標の業界目安も検索・保存できます。")
+                    with st.expander("ℹ️ 業界目安の出典", expanded=False):
+                        st.caption("業界目安は、ネット検索で保存した値（web_industry_benchmarks.json）を優先し、不足分を大分類の業界平均（industry_averages.json）で補っています。サイドバー「今のデータを検索して保存」で指標の業界目安も検索・保存できます。")
                     fin = res.get("financials", {})
                     # 業界目安を業界平均（大分類）で補強（取れるだけ追加）
                     bench_ext = dict(bench) if bench else {}
@@ -4891,6 +5307,7 @@ elif mode == "📋 審査・分析":
                     indicators = compute_financial_indicators(fin, bench_ext)
                     if indicators:
                         # 業界目安より良い＝緑、悪い＝赤（_LOWER_IS_BETTER_NAMES は低い方が良い）
+                        cell_style = "text-align:center; vertical-align:middle; padding:4px 6px;"
                         rows_html = []
                         for ind in indicators:
                             name = ind["name"]
@@ -4902,22 +5319,36 @@ elif mode == "📋 審査・分析":
                                 diff = value - bench
                                 is_good = (diff > 0 and name not in _LOWER_IS_BETTER_NAMES) or (diff < 0 and name in _LOWER_IS_BETTER_NAMES)
                                 color = "#22c55e" if is_good else "#ef4444"
+                                row_bg = "background-color:rgba(34,197,94,0.18);" if is_good else "background-color:rgba(239,68,68,0.12);"
                                 name_cell = f'<span style="color:{color}; font-weight:600;">{name.replace("&", "&amp;").replace("<", "&lt;")}</span>'
                             else:
+                                row_bg = ""
                                 name_cell = name.replace("&", "&amp;").replace("<", "&lt;")
                             bench_str = f"{bench:.1f}{unit}" if bench_ok else "—"
-                            rows_html.append(f"<tr><td>{name_cell}</td><td>{value:.1f}{unit}</td><td>{bench_str}</td></tr>")
-                        table_html = "<table style='width:100%; max-width:100%; border-collapse:collapse; font-size:0.9rem; table-layout:auto;'><thead><tr><th style='text-align:left; padding:6px 10px;'>指標</th><th style='text-align:right; padding:6px 10px;'>貴社</th><th style='text-align:right; padding:6px 10px;'>業界目安</th></tr></thead><tbody>" + "".join(rows_html) + "</tbody></table>"
-                        # PC・スマホどちらでも全部表示されるようコンテナ幅100%（横スクロールのみ必要時）
+                            rows_html.append(f"<tr style='{row_bg}'><td style='{cell_style}'>{name_cell}</td><td style='{cell_style}'>{value:.1f}{unit}</td><td style='{cell_style}'>{bench_str}</td></tr>")
+                        table_html = (
+                            "<table style='border-collapse:collapse; font-size:0.8rem; line-height:1.2; table-layout:fixed; width:100%;'>"
+                            "<colgroup><col style='width:52%'><col style='width:24%'><col style='width:24%'></colgroup>"
+                            "<thead><tr>"
+                            f"<th style='{cell_style} font-weight:600;'>指標</th><th style='{cell_style} font-weight:600;'>貴社</th><th style='{cell_style} font-weight:600;'>業界目安</th>"
+                            "</tr></thead><tbody>"
+                            + "".join(rows_html) + "</tbody></table>"
+                        )
                         st.markdown(
-                            f"<div style='width:100%; overflow-x:auto; margin:0.5rem 0;'>{table_html}</div>",
+                            "<div style='max-width:400px; margin:0.25rem 0; overflow-x:auto;'>" + table_html + "</div>",
                             unsafe_allow_html=True,
                         )
-                        st.caption("緑＝業界目安より良い、赤＝業界目安より要確認")
+                        st.caption("緑＝業界より良い / 赤＝要確認")
                         # 指標と業界目安の差の分析（図＋文章＋AIによる指標の分析）
                         summary, detail = analyze_indicators_vs_bench(indicators)
-                        st.markdown("#### 📊 指標と業界目安の差の分析")
-                        st.info(summary)
+                        st.markdown("#### 📊 差の分析")
+                        col_sum, col_fig = st.columns([1, 1])
+                        with col_sum:
+                            st.info(summary)
+                        fig_gap = plot_indicators_gap_analysis_plotly(indicators)
+                        with col_fig:
+                            if fig_gap:
+                                st.plotly_chart(fig_gap, use_container_width=True, key="indicators_gap")
                         # 指標の分析（AI）：同一案件のキャッシュがあれば表示、なければボタンで生成
                         _case_id = st.session_state.get("current_case_id")
                         _cached = st.session_state.get("indicator_ai_analysis")
@@ -4964,12 +5395,7 @@ elif mode == "📋 審査・分析":
                                             st.error(f"分析の生成に失敗しました: {e}")
                             else:
                                 st.caption("上の「AIに指標の分析を生成」を押すと、業界目安との差を踏まえた分析文をAIが生成します。")
-                        fig_gap = plot_indicators_gap_analysis(indicators)
-                        if fig_gap:
-                            col_gap, _ = st.columns([0.65, 0.35])
-                            with col_gap:
-                                st.pyplot(fig_gap)
-                            st.caption("左が「業界より要確認」、右が「業界より良い」です。借入金等依存度・減価償却費/売上高は、業界より低いと緑になります。")
+                        st.caption("左＝要確認 / 右＝良い。借入金等依存度・減価償却費/売上は低いと緑。")
                         with st.expander("差の内訳（数値）", expanded=False):
                             st.markdown(detail)
                         # 利益構造（ウォーターフォール）
@@ -4979,10 +5405,10 @@ elif mode == "📋 審査・分析":
                         ord_k = fin.get("ord_profit") or 0
                         net_k = fin.get("net_income") or 0
                         if nenshu_k > 0:
-                            st.markdown("#### 利益構造（損益の流れ）")
+                            st.markdown("#### 利益構造")
                             col_wf, _ = st.columns([0.65, 0.35])
                             with col_wf:
-                                st.pyplot(plot_waterfall(nenshu_k, gross_k, op_k, ord_k, net_k))
+                                st.plotly_chart(plot_waterfall_plotly(nenshu_k, gross_k, op_k, ord_k, net_k), use_container_width=True, key="waterfall_result")
                     else:
                         st.caption("指標を算出するには、審査入力で売上高・損益・資産などを入力してください。")
 
@@ -5571,7 +5997,7 @@ elif mode == "📋 審査・分析":
             if fin.get("nenshu", 0) > 0:
                 col_wf2, _ = st.columns([0.65, 0.35])
                 with col_wf2:
-                    st.pyplot(plot_waterfall(fin.get("nenshu", 0), fin.get("gross_profit", 0), fin.get("op_profit", 0), fin.get("ord_profit", 0), fin.get("net_income", 0)))
+                    st.plotly_chart(plot_waterfall_plotly(fin.get("nenshu", 0), fin.get("gross_profit", 0), fin.get("op_profit", 0), fin.get("ord_profit", 0), fin.get("net_income", 0)), use_container_width=True, key="waterfall_tab")
         else:
             st.info("👈 「新規審査」でデータを入力し、判定開始するとグラフが表示されます。")
 
