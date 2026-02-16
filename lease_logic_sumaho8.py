@@ -313,6 +313,13 @@ st.markdown("""
     [data-testid="stNumberInput"] input {
         font-size: 0.85rem !important;
     }
+    /* スライダー値表示を大きく・3桁カンマ用 */
+    .stSlider [data-baseweb="slider"] ~ div,
+    .stSlider div[data-baseweb="slider"] + div,
+    [data-testid="stSlider"] > div > div:last-child {
+        font-size: 1.4rem !important;
+        font-weight: 700 !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 	
@@ -3373,9 +3380,15 @@ elif mode == "📋 審査・分析":
                         st.session_state["competitor_rate"] = comp_rate if comp_rate > 0 else None
                     else:
                         st.session_state["competitor_rate"] = None
-                st.caption("💡 数字入力で画面がガタつく場合：スライダーで大まかに合わせてから直接入力で微調整するか、入力後に Enter を押してから次の項目へ移ると軽くなります。")
-                st.caption("📌 スライダー・数値の変更は「判定開始」を押すと反映されます。反応しない場合はページを再読み込みして再度お試しください。")
+                st.caption("💡 数字入力で画面がガタつく場合：スライダーで大まかに合わせてから直接入力で微調整してください。")
+                st.caption("📌 数値とスライダーは連動します。Enter は「入力確定」にだけ効き、判定には行きません。")
+                # 審査後「戻る」で入力が消えないよう、直前の判定時の入力を復元する
+                if nav_mode == "📝 審査入力" and "last_submitted_inputs" in st.session_state and not st.session_state.get("form_restored_from_submit"):
+                    for k, v in st.session_state["last_submitted_inputs"].items():
+                        st.session_state[k] = v
+                    st.session_state["form_restored_from_submit"] = True
                 with st.form("shinsa_form"):
+                    submitted_apply = st.form_submit_button("入力確定（Enterで反映）", type="secondary", help="数字入力でEnterを押したときはここが押された扱いになり、判定には行きません。")
                     with st.expander("📊 1. 損益計算書 (P/L)", expanded=True):
                         # ①売上高（フラグメント化で入力時のガタつき軽減）
                         _fragment_nenshu()
@@ -3383,40 +3396,23 @@ elif mode == "📋 審査・分析":
                         #  ②売上高総利益
                         st.markdown("### 売上高総利益")
 
-                        # 初期値の定義
+                        # 初期値の定義（数値入力⇔スライダー連動で session_state を共通利用）
                         if 'item9_gross' not in st.session_state:
                             st.session_state.item9_gross = 10000
+                        _cur = st.session_state.item9_gross
 
                         # 横に分割（左 0.7 : 右 0.3）
                         c_l, c_r = st.columns([0.7, 0.3])
 
                         with c_r:
-                            # 右側：手入力
-                            item9_gross = st.number_input(
-                                "直接入力", 
-                                min_value=-500000, 
-                                max_value=1000000, 
-                                value=st.session_state.item9_gross, 
-                                step=1,
-                                key="num_sourieki",  # keyは一意にする
-                                label_visibility="collapsed"
-                            )
+                            _num = st.number_input("直接入力", min_value=-500000, max_value=1000000, value=_cur, step=1, key="num_sourieki", label_visibility="collapsed")
+                            st.session_state.item9_gross = _num
 
                         with c_l:
-                            # 左側：スライダー
-                            item9_gross = st.slider(
-                                "売上高調整",
-                                min_value=-500000,
-                                max_value=1000000,
-                                value=item9_gross,
-                                step=100,
-                                key="slide_sourieki",  # keyは一意にする
-                                label_visibility="collapsed",
-                                format="%d"
-                            )
+                            _slide = st.slider("売上高調整", min_value=-500000, max_value=1000000, value=st.session_state.item9_gross, step=100, key="slide_sourieki", label_visibility="collapsed", format_func=lambda x: f"{int(x):,}")
+                            st.session_state.item9_gross = _slide
 
-                        # 最新の値を保存
-                        st.session_state.item9_gross = item9_gross
+                        item9_gross = st.session_state.item9_gross
 
                         st.divider() # 次の項目との区切
         #---------------------------------------------------------------------------------------------------------------
@@ -3425,40 +3421,17 @@ elif mode == "📋 審査・分析":
             
                         st.markdown("### 営業利益")
 
-                        # 初期値の定義
                         if 'rieki' not in st.session_state:
                             st.session_state.rieki = 10000
-
-                        # 横に分割（左 0.7 : 右 0.3）
+                        _cur = st.session_state.rieki
                         c_l, c_r = st.columns([0.7, 0.3])
-
                         with c_r:
-                            # 右側：手入力
-                            rieki = st.number_input(
-                                "直接入力", 
-                                min_value=-300000, 
-                                max_value=1000000, 
-                                value=st.session_state.rieki, 
-                                step=1,
-                                key="num_rieki",  # keyは一意にする
-                                label_visibility="collapsed"
-                            )
-
+                            _num = st.number_input("直接入力", min_value=-300000, max_value=1000000, value=_cur, step=1, key="num_rieki", label_visibility="collapsed")
+                            st.session_state.rieki = _num
                         with c_l:
-                            # 左側：スライダー
-                            rieki = st.slider(
-                                "売上高調整",
-                                min_value=-100000,
-                                max_value=1000000,
-                                value=rieki,
-                                step=100,
-                                key="slide_rieki",  # keyは一意にする
-                                label_visibility="collapsed",
-                                format="%d"
-                            )
-
-                        # 最新の値を保存
-                        st.session_state.rieki = rieki
+                            _slide = st.slider("売上高調整", min_value=-100000, max_value=1000000, value=st.session_state.rieki, step=100, key="slide_rieki", label_visibility="collapsed", format_func=lambda x: f"{int(x):,}")
+                            st.session_state.rieki = _slide
+                        rieki = st.session_state.rieki
 
                         st.divider() # 次の項目との区切
 
@@ -3466,80 +3439,34 @@ elif mode == "📋 審査・分析":
 
                         st.markdown("### 経常利益")
 
-                        # 初期値の定義
                         if 'item4_ord_profit' not in st.session_state:
                             st.session_state.item4_ord_profit = 10000
-
-                        # 横に分割（左 0.7 : 右 0.3）
+                        _cur = st.session_state.item4_ord_profit
                         c_l, c_r = st.columns([0.7, 0.3])
-
                         with c_r:
-                            # 右側：手入力
-                            item4_ord_profit = st.number_input(
-                                "直接入力", 
-                                min_value=-300000, 
-                                max_value=1000000, 
-                                value=st.session_state.item4_ord_profit, 
-                                step=1,
-                                key="num_item4_ord_profit",  # keyは一意にする
-                                label_visibility="collapsed"
-                            )
-
+                            _num = st.number_input("直接入力", min_value=-300000, max_value=1000000, value=_cur, step=1, key="num_item4_ord_profit", label_visibility="collapsed")
+                            st.session_state.item4_ord_profit = _num
                         with c_l:
-                            # 左側：スライダー
-                            item4_ord_profit = st.slider(
-                                "売上高調整",
-                                min_value=-200000,
-                                max_value=1000000,
-                                value=item4_ord_profit,
-                                step=100,
-                                key="slide_item4_ord_profit",  # keyは一意にする
-                                label_visibility="collapsed",
-                                format="%d"
-                            )
-
-                        # 最新の値を保存
-                        st.session_state.item4_ord_profit = item4_ord_profit
+                            _slide = st.slider("売上高調整", min_value=-200000, max_value=1000000, value=st.session_state.item4_ord_profit, step=100, key="slide_item4_ord_profit", label_visibility="collapsed", format_func=lambda x: f"{int(x):,}")
+                            st.session_state.item4_ord_profit = _slide
+                        item4_ord_profit = st.session_state.item4_ord_profit
 
                         st.divider() # 次の項目との区切
         #-------------------------------------------------------------------------------------------
 
                         st.markdown("### 当期利益")
 
-                        # 初期値の定義
                         if 'item5_net_income' not in st.session_state:
                             st.session_state.item5_net_income = 10000
-
-                        # 横に分割（左 0.7 : 右 0.3）
+                        _cur = st.session_state.item5_net_income
                         c_l, c_r = st.columns([0.7, 0.3])
-
                         with c_r:
-                            # 右側：手入力
-                            item5_net_income = st.number_input(
-                                "直接入力", 
-                                min_value=-300000, 
-                                max_value=1000000, 
-                                value=st.session_state.item5_net_income, 
-                                step=1,
-                                key="num_item5_net_income",  # keyは一意にする
-                                label_visibility="collapsed"
-                            )
-
+                            _num = st.number_input("直接入力", min_value=-300000, max_value=1000000, value=_cur, step=1, key="num_item5_net_income", label_visibility="collapsed")
+                            st.session_state.item5_net_income = _num
                         with c_l:
-                            # 左側：スライダー
-                            item5_net_income = st.slider(
-                                "売上高調整",
-                                min_value=-200000,
-                                max_value=1000000,
-                                value=item5_net_income,
-                                step=100,
-                                key="slide_item5_net_income",  # keyは一意にする
-                                label_visibility="collapsed",
-                                format="%d"
-                            )
-
-                        # 最新の値を保存
-                        st.session_state.item5_net_income = item5_net_income
+                            _slide = st.slider("売上高調整", min_value=-200000, max_value=1000000, value=st.session_state.item5_net_income, step=100, key="slide_item5_net_income", label_visibility="collapsed", format_func=lambda x: f"{int(x):,}")
+                            st.session_state.item5_net_income = _slide
+                        item5_net_income = st.session_state.item5_net_income
 
                         st.divider() # 次の項目との区切
 
@@ -3557,41 +3484,17 @@ elif mode == "📋 審査・分析":
                     with st.expander("🏢 2. 資産・経費・その他", expanded=False):
                     
                         st.markdown("### 減価償却費")
-    
-                        # 初期値の定義
                         if 'item10_dep' not in st.session_state:
                             st.session_state.item10_dep = 10000
-    
-                        # 横に分割（左 0.7 : 右 0.3）
+                        _cur = st.session_state.item10_dep
                         c_l, c_r = st.columns([0.7, 0.3])
-    
                         with c_r:
-                            # 右側：手入力
-                            item10_dep = st.number_input(
-                                "直接入力", 
-                                min_value=0, 
-                                max_value=300000, 
-                                value=st.session_state.item10_dep, 
-                                step=1,
-                                key="num_item10_dep",  # keyは一意にする
-                                label_visibility="collapsed"
-                            )
-    
+                            _num = st.number_input("直接入力", min_value=0, max_value=300000, value=_cur, step=1, key="num_item10_dep", label_visibility="collapsed")
+                            st.session_state.item10_dep = _num
                         with c_l:
-                            # 左側：スライダー
-                            item10_dep = st.slider(
-                                "売上高調整",
-                                min_value=0,
-                                max_value=300000,
-                                value=item10_dep,
-                                step=100,
-                                key="slide_item10_dep",  # keyは一意にする
-                                label_visibility="collapsed",
-                                format="%d"
-                            )
-    
-                        # 最新の値を保存
-                        st.session_state.item10_dep = item10_dep
+                            _slide = st.slider("売上高調整", min_value=0, max_value=300000, value=st.session_state.item10_dep, step=100, key="slide_item10_dep", label_visibility="collapsed", format_func=lambda x: f"{int(x):,}")
+                            st.session_state.item10_dep = _slide
+                        item10_dep = st.session_state.item10_dep
     
                         st.divider() # 次の項目との区切
     
@@ -3599,41 +3502,17 @@ elif mode == "📋 審査・分析":
                         #⑦減価償却費（経費）
     
                         st.markdown("### 減価償却費(経費)")
-    
-                        # 初期値の定義
                         if 'item11_dep_exp' not in st.session_state:
                             st.session_state.item11_dep_exp = 10000
-    
-                        # 横に分割（左 0.7 : 右 0.3）
+                        _cur = st.session_state.item11_dep_exp
                         c_l, c_r = st.columns([0.7, 0.3])
-    
                         with c_r:
-                            # 右側：手入力
-                            item11_dep_exp = st.number_input(
-                                "直接入力", 
-                                min_value=0, 
-                                max_value=300000, 
-                                value=st.session_state.item11_dep_exp, 
-                                step=1,
-                                key="num_item11_dep_exp",  # keyは一意にする
-                                label_visibility="collapsed"
-                            )
-    
+                            _num = st.number_input("直接入力", min_value=0, max_value=300000, value=_cur, step=1, key="num_item11_dep_exp", label_visibility="collapsed")
+                            st.session_state.item11_dep_exp = _num
                         with c_l:
-                            # 左側：スライダー
-                            item11_dep_exp = st.slider(
-                                "売上高調整",
-                                min_value=0,
-                                max_value=300000,
-                                value=item11_dep_exp,
-                                step=100,
-                                key="slide_item11_dep_exp",  # keyは一意にする
-                                label_visibility="collapsed",
-                                format="%d"
-                            )
-    
-                        # 最新の値を保存
-                        st.session_state.item11_dep_exp = item11_dep_exp
+                            _slide = st.slider("売上高調整", min_value=0, max_value=300000, value=st.session_state.item11_dep_exp, step=100, key="slide_item11_dep_exp", label_visibility="collapsed", format_func=lambda x: f"{int(x):,}")
+                            st.session_state.item11_dep_exp = _slide
+                        item11_dep_exp = st.session_state.item11_dep_exp
     
                         st.divider() # 次の項目との区切
     
@@ -3641,41 +3520,17 @@ elif mode == "📋 審査・分析":
     
                         # #⑧賃借料
                         st.markdown("### 賃借料")
-    
-                        # 初期値の定義
                         if 'item8_rent' not in st.session_state:
                             st.session_state.item8_rent = 10000
-    
-                        # 横に分割（左 0.7 : 右 0.3）
+                        _cur = st.session_state.item8_rent
                         c_l, c_r = st.columns([0.7, 0.3])
-    
                         with c_r:
-                            # 右側：手入力
-                            item8_rent = st.number_input(
-                                "直接入力", 
-                                min_value=0, 
-                                max_value=300000, 
-                                value=st.session_state.item8_rent, 
-                                step=1,
-                                key="num_item8_rent",  # keyは一意にする
-                                label_visibility="collapsed"
-                            )
-    
+                            _num = st.number_input("直接入力", min_value=0, max_value=300000, value=_cur, step=1, key="num_item8_rent", label_visibility="collapsed")
+                            st.session_state.item8_rent = _num
                         with c_l:
-                            # 左側：スライダー
-                            item8_rent = st.slider(
-                                "売上高調整",
-                                min_value=0,
-                                max_value=200000,
-                                value=item8_rent,
-                                step=100,
-                                key="slide_item8_rent",  # keyは一意にする
-                                label_visibility="collapsed",
-                                format="%d"
-                            )
-    
-                        # 最新の値を保存
-                        st.session_state.item8_rent = item8_rent
+                            _slide = st.slider("売上高調整", min_value=0, max_value=200000, value=st.session_state.item8_rent, step=100, key="slide_item8_rent", label_visibility="collapsed", format_func=lambda x: f"{int(x):,}")
+                            st.session_state.item8_rent = _slide
+                        item8_rent = st.session_state.item8_rent
     
                         st.divider() # 次の項目との区切
     
@@ -3688,41 +3543,17 @@ elif mode == "📋 審査・分析":
                         # st.divider()
     
                         st.markdown("### 賃借料（経費）")
-    
-                        # 初期値の定義
                         if 'item12_rent_exp' not in st.session_state:
                             st.session_state.item12_rent_exp = 10000
-    
-                        # 横に分割（左 0.7 : 右 0.3）
+                        _cur = st.session_state.item12_rent_exp
                         c_l, c_r = st.columns([0.7, 0.3])
-    
                         with c_r:
-                            # 右側：手入力
-                            item12_rent_exp = st.number_input(
-                                "直接入力", 
-                                min_value=0, 
-                                max_value=300000, 
-                                value=st.session_state.item12_rent_exp, 
-                                step=1,
-                                key="num_item12_rent_exp",  # keyは一意にする
-                                label_visibility="collapsed"
-                            )
-    
+                            _num = st.number_input("直接入力", min_value=0, max_value=300000, value=_cur, step=1, key="num_item12_rent_exp", label_visibility="collapsed")
+                            st.session_state.item12_rent_exp = _num
                         with c_l:
-                            # 左側：スライダー
-                            item12_rent_exp = st.slider(
-                                "売上高調整",
-                                min_value=0,
-                                max_value=200000,
-                                value=item12_rent_exp,
-                                step=100,
-                                key="slide_item12_rent_exp",  # keyは一意にする
-                                label_visibility="collapsed",
-                                format="%d"
-                            )
-    
-                        # 最新の値を保存
-                        st.session_state.item12_rent_exp = item12_rent_exp
+                            _slide = st.slider("売上高調整", min_value=0, max_value=200000, value=st.session_state.item12_rent_exp, step=100, key="slide_item12_rent_exp", label_visibility="collapsed", format_func=lambda x: f"{int(x):,}")
+                            st.session_state.item12_rent_exp = _slide
+                        item12_rent_exp = st.session_state.item12_rent_exp
     
                         st.divider() # 次の項目との区切
     
@@ -3731,41 +3562,17 @@ elif mode == "📋 審査・分析":
                         #⑩機械装置
      
                         st.markdown("### 機械装置")
-    
-                        # 初期値の定義
                         if 'item6_machine' not in st.session_state:
                             st.session_state.item6_machine = 10000
-    
-                        # 横に分割（左 0.7 : 右 0.3）
+                        _cur = st.session_state.item6_machine
                         c_l, c_r = st.columns([0.7, 0.3])
-    
                         with c_r:
-                            # 右側：手入力
-                            item6_machine = st.number_input(
-                                "直接入力", 
-                                min_value=0, 
-                                max_value=300000, 
-                                value=st.session_state.item6_machine, 
-                                step=1,
-                                key="num_item6_machine",  # keyは一意にする
-                                label_visibility="collapsed"
-                            )
-    
+                            _num = st.number_input("直接入力", min_value=0, max_value=300000, value=_cur, step=1, key="num_item6_machine", label_visibility="collapsed")
+                            st.session_state.item6_machine = _num
                         with c_l:
-                            # 左側：スライダー
-                            item6_machine = st.slider(
-                                "売上高調整",
-                                min_value=0,
-                                max_value=200000,
-                                value=item6_machine,
-                                step=100,
-                                key="slide_item6_machine",  # keyは一意にする
-                                label_visibility="collapsed",
-                                format="%d"
-                            )
-    
-                        # 最新の値を保存
-                        st.session_state.item6_machine = item6_machine
+                            _slide = st.slider("売上高調整", min_value=0, max_value=200000, value=st.session_state.item6_machine, step=100, key="slide_item6_machine", label_visibility="collapsed", format_func=lambda x: f"{int(x):,}")
+                            st.session_state.item6_machine = _slide
+                        item6_machine = st.session_state.item6_machine
     
                         st.divider() # 次の項目との区切
     
@@ -3778,82 +3585,34 @@ elif mode == "📋 審査・分析":
                         # st.divider()
     
                         st.markdown("### その他資産")
-    
-                        # 初期値の定義
                         if 'item7_other' not in st.session_state:
                             st.session_state.item7_other = 10000
-    
-                        # 横に分割（左 0.7 : 右 0.3）
+                        _cur = st.session_state.item7_other
                         c_l, c_r = st.columns([0.7, 0.3])
-    
                         with c_r:
-                            # 右側：手入力
-                            item7_other = st.number_input(
-                                "直接入力", 
-                                min_value=0, 
-                                max_value=300000, 
-                                value=st.session_state.item7_other, 
-                                step=1,
-                                key="num_item7_other",  # keyは一意にする
-                                label_visibility="collapsed"
-                            )
-    
+                            _num = st.number_input("直接入力", min_value=0, max_value=300000, value=_cur, step=1, key="num_item7_other", label_visibility="collapsed")
+                            st.session_state.item7_other = _num
                         with c_l:
-                            # 左側：スライダー
-                            item7_other = st.slider(
-                                "売上高調整",
-                                min_value=0,
-                                max_value=200000,
-                                value=item7_other,
-                                step=100,
-                                key="slide_item7_other",  # keyは一意にする
-                                label_visibility="collapsed",
-                                format="%d"
-                            )
-    
-                        # 最新の値を保存
-                        st.session_state.item7_other = item7_other
+                            _slide = st.slider("売上高調整", min_value=0, max_value=200000, value=st.session_state.item7_other, step=100, key="slide_item7_other", label_visibility="collapsed", format_func=lambda x: f"{int(x):,}")
+                            st.session_state.item7_other = _slide
+                        item7_other = st.session_state.item7_other
     
                         st.divider() # 次の項目との区切
         #-------------------------------------------------------------------------------------------------------------
                         # #12純資産合計
     
                         st.markdown("### 純資産")
-    
-                        # 初期値の定義
                         if 'net_assets' not in st.session_state:
                             st.session_state.net_assets = 10000
-    
-                        # 横に分割（左 0.7 : 右 0.3）
+                        _cur = st.session_state.net_assets
                         c_l, c_r = st.columns([0.7, 0.3])
-    
                         with c_r:
-                            # 右側：手入力
-                            net_assets = st.number_input(
-                                "直接入力", 
-                                min_value=0, 
-                                max_value=500000, 
-                                value=st.session_state.net_assets, 
-                                step=1,
-                                key="num_net_assets",  # keyは一意にする
-                                label_visibility="collapsed"
-                            )
-    
+                            _num = st.number_input("直接入力", min_value=0, max_value=500000, value=_cur, step=1, key="num_net_assets", label_visibility="collapsed")
+                            st.session_state.net_assets = _num
                         with c_l:
-                            # 左側：スライダー
-                            net_assets = st.slider(
-                                "売上高調整",
-                                min_value=0,
-                                max_value=200000,
-                                value=net_assets,
-                                step=100,
-                                key="slide_net_assets",  # keyは一意にする
-                                label_visibility="collapsed",
-                                format="%d"
-                            )
-    
-                        # 最新の値を保存
-                        st.session_state.net_assets = net_assets
+                            _slide = st.slider("売上高調整", min_value=0, max_value=200000, value=st.session_state.net_assets, step=100, key="slide_net_assets", label_visibility="collapsed", format_func=lambda x: f"{int(x):,}")
+                            st.session_state.net_assets = _slide
+                        net_assets = st.session_state.net_assets
     
                         st.divider() # 次の項目との区切
         #--------------------------------------------------------------------------------
@@ -3864,41 +3623,17 @@ elif mode == "📋 審査・分析":
                         # st.divider()
     
                         st.markdown("### 総資産")
-    
-                        # 初期値の定義
                         if 'total_assets' not in st.session_state:
                             st.session_state.total_assets = 10000
-    
-                        # 横に分割（左 0.7 : 右 0.3）
+                        _cur = st.session_state.total_assets
                         c_l, c_r = st.columns([0.7, 0.3])
-    
                         with c_r:
-                            # 右側：手入力
-                            total_assets = st.number_input(
-                                "直接入力", 
-                                min_value=0, 
-                                max_value=1000000, 
-                                value=st.session_state.total_assets, 
-                                step=1,
-                                key="num_total_assets",  # keyは一意にする
-                                label_visibility="collapsed"
-                            )
-    
+                            _num = st.number_input("直接入力", min_value=0, max_value=1000000, value=_cur, step=1, key="num_total_assets", label_visibility="collapsed")
+                            st.session_state.total_assets = _num
                         with c_l:
-                            # 左側：スライダー
-                            total_assets = st.slider(
-                                "売上高調整",
-                                min_value=0,
-                                max_value=300000,
-                                value=total_assets,
-                                step=100,
-                                key="slide_total_assets",  # keyは一意にする
-                                label_visibility="collapsed",
-                                format="%d"
-                            )
-    
-                        # 最新の値を保存
-                        st.session_state.total_assets = total_assets
+                            _slide = st.slider("売上高調整", min_value=0, max_value=300000, value=st.session_state.total_assets, step=100, key="slide_total_assets", label_visibility="collapsed", format_func=lambda x: f"{int(x):,}")
+                            st.session_state.total_assets = _slide
+                        total_assets = st.session_state.total_assets
     
                         st.divider() # 次の項目との区切
         #------------------------------------------------------------------------------------------------------
@@ -3911,40 +3646,17 @@ elif mode == "📋 審査・分析":
     
                         st.markdown("### うちの銀行与信")
                         st.caption("当社の与信です（総銀行与信ではありません）")
-                        # 初期値の定義
                         if 'bank_credit' not in st.session_state:
                             st.session_state.bank_credit = 10000
-    
-                        # 横に分割（左 0.7 : 右 0.3）
+                        _cur = st.session_state.bank_credit
                         c_l, c_r = st.columns([0.7, 0.3])
-    
                         with c_r:
-                            # 右側：手入力
-                            bank_credit = st.number_input(
-                                "直接入力", 
-                                min_value=0, 
-                                max_value=3000000, 
-                                value=st.session_state.bank_credit, 
-                                step=1,
-                                key="num_bank_credit",  # keyは一意にする
-                                label_visibility="collapsed"
-                            )
-    
+                            _num = st.number_input("直接入力", min_value=0, max_value=3000000, value=_cur, step=1, key="num_bank_credit", label_visibility="collapsed")
+                            st.session_state.bank_credit = _num
                         with c_l:
-                            # 左側：スライダー
-                            bank_credit = st.slider(
-                                "売上高調整",
-                                min_value=0,
-                                max_value=500000,
-                                value=bank_credit,
-                                step=100,
-                                key="slide_bank_credit",  # keyは一意にする
-                                label_visibility="collapsed",
-                                format="%d"
-                            )
-    
-                        # 最新の値を保存
-                        st.session_state.bank_credit = bank_credit
+                            _slide = st.slider("売上高調整", min_value=0, max_value=500000, value=st.session_state.bank_credit, step=100, key="slide_bank_credit", label_visibility="collapsed", format_func=lambda x: f"{int(x):,}")
+                            st.session_state.bank_credit = _slide
+                        bank_credit = st.session_state.bank_credit
     
                         st.divider() # 次の項目との区切
         #---------------------------------------------------------------------------------------------------------
@@ -3953,79 +3665,33 @@ elif mode == "📋 審査・分析":
     
                         st.markdown("### うちのリース与信")
                         st.caption("当社の与信です（総リース与信ではありません）")
-                        # 初期値の定義
                         if 'lease_credit' not in st.session_state:
                             st.session_state.lease_credit = 10000
-    
-                        # 横に分割（左 0.7 : 右 0.3）
+                        _cur = st.session_state.lease_credit
                         c_l, c_r = st.columns([0.7, 0.3])
-    
                         with c_r:
-                            # 右側：手入力
-                            lease_credit = st.number_input(
-                                "直接入力", 
-                                min_value=0, 
-                                max_value=300000, 
-                                value=st.session_state.lease_credit, 
-                                step=1,
-                                key="num_lease_credit",  # keyは一意にする
-                                label_visibility="collapsed"
-                            )
-    
+                            _num = st.number_input("直接入力", min_value=0, max_value=300000, value=_cur, step=1, key="num_lease_credit", label_visibility="collapsed")
+                            st.session_state.lease_credit = _num
                         with c_l:
-                            # 左側：スライダー
-                            lease_credit = st.slider(
-                                "売上高調整",
-                                min_value=0,
-                                max_value=200000,
-                                value=lease_credit,
-                                step=100,
-                                key="slide_lease_credit",  # keyは一意にする
-                                label_visibility="collapsed",
-                                format="%d"
-                            )
-    
-                        # 最新の値を保存
-                        st.session_state.lease_credit = lease_credit
+                            _slide = st.slider("売上高調整", min_value=0, max_value=200000, value=st.session_state.lease_credit, step=100, key="slide_lease_credit", label_visibility="collapsed", format_func=lambda x: f"{int(x):,}")
+                            st.session_state.lease_credit = _slide
+                        lease_credit = st.session_state.lease_credit
     
                         st.divider() # 次の項目との区切
         #--------------------------------------------------------------------------------------------------------
                         # #16契約数
                         st.markdown("### 契約数")
-                        # 初期値の定義
                         if 'contracts' not in st.session_state:
                             st.session_state.contracts = 1
-    
-                        # 横に分割（左 0.7 : 右 0.3）
+                        _cur = st.session_state.contracts
                         c_l, c_r = st.columns([0.7, 0.3])
-    
                         with c_r:
-                            # 右側：手入力
-                            contracts = st.number_input(
-                                "直接入力", 
-                                min_value=0, 
-                                max_value=30, 
-                                value=st.session_state.contracts, 
-                                step=1,
-                                key="num_contracts",  # keyは一意にする
-                                label_visibility="collapsed"
-                            )
-    
+                            _num = st.number_input("直接入力", min_value=0, max_value=30, value=_cur, step=1, key="num_contracts", label_visibility="collapsed")
+                            st.session_state.contracts = _num
                         with c_l:
-                            # 左側：スライダー
-                            contracts = st.slider(
-                                "売上高調整",
-                                min_value=0,
-                                max_value=20,
-                                value=contracts,
-                                step=1,
-                                key="slide_contracts",  # keyは一意にする
-                                label_visibility="collapsed",
-                                format="%d"
-                            )
-    
-                        # 最新の値を保存
-                        st.session_state.contracts = contracts
+                            _slide = st.slider("売上高調整", min_value=0, max_value=20, value=st.session_state.contracts, step=1, key="slide_contracts", label_visibility="collapsed", format_func=lambda x: f"{int(x):,}")
+                            st.session_state.contracts = _slide
+                        contracts = st.session_state.contracts
     
                         st.divider() # 次の項目との区切
     
@@ -4092,9 +3758,31 @@ elif mode == "📋 審査・分析":
                                 key="passion_text",
                                 help="社長の経歴・導入背景・取引行の関係など、審査でプラス材料になる点を記入してください。",
                             )
-                    submitted = st.form_submit_button("判定開始", type="primary", use_container_width=True)
+                    submitted_judge = st.form_submit_button("判定開始", type="primary", use_container_width=True)
 
-            if submitted:
+            if submitted_apply:
+                # Enter や「入力確定」押下時: 判定は行わず、入力値を session_state に反映して再表示
+                st.session_state.item9_gross = item9_gross
+                st.session_state.rieki = rieki
+                st.session_state.item4_ord_profit = item4_ord_profit
+                st.session_state.item5_net_income = item5_net_income
+                st.session_state.item10_dep = item10_dep
+                st.session_state.item11_dep_exp = item11_dep_exp
+                st.session_state.item8_rent = item8_rent
+                st.session_state.item12_rent_exp = item12_rent_exp
+                st.session_state.item6_machine = item6_machine
+                st.session_state.item7_other = item7_other
+                st.session_state.net_assets = net_assets
+                st.session_state.total_assets = total_assets
+                st.session_state.bank_credit = bank_credit
+                st.session_state.lease_credit = lease_credit
+                st.session_state.contracts = contracts
+                st.session_state.lease_term = lease_term
+                st.session_state.acquisition_cost = acquisition_cost
+                st.session_state.acceptance_year = acceptance_year
+                st.rerun()
+
+            if submitted_judge:
                 try:
                     # フラグメント利用時用: session_state の値で上書き（入力ガタつき軽減のため）
                     nenshu = st.session_state.get("nenshu", 0)
@@ -4641,6 +4329,19 @@ elif mode == "📋 審査・分析":
                     # 案件ログを保存し、案件IDをセッションに保持しておく
                     case_id = save_case_log(log_payload)
                     st.session_state["current_case_id"] = case_id
+                    # 戻ったときにクリアされないよう、今回の入力値を保存
+                    st.session_state["last_submitted_inputs"] = {
+                        "nenshu": nenshu, "item9_gross": item9_gross, "rieki": rieki,
+                        "item4_ord_profit": item4_ord_profit, "item5_net_income": item5_net_income,
+                        "item10_dep": item10_dep, "item11_dep_exp": item11_dep_exp,
+                        "item8_rent": item8_rent, "item12_rent_exp": item12_rent_exp,
+                        "item6_machine": item6_machine, "item7_other": item7_other,
+                        "net_assets": net_assets, "total_assets": total_assets,
+                        "bank_credit": bank_credit, "lease_credit": lease_credit,
+                        "contracts": contracts, "lease_term": lease_term,
+                        "acquisition_cost": acquisition_cost, "acceptance_year": acceptance_year,
+                    }
+                    st.session_state["form_restored_from_submit"] = False
                     st.session_state.nav_index = 1  # 1番目（分析結果）に切り替える
                     st.rerun()  # 画面を読み込み直して、実際にタブを移動させる
                     
@@ -5526,7 +5227,7 @@ elif mode == "📋 審査・分析":
 【ルール】
 - 上記のデータに触れずに一般論だけで答えないこと。
 - ニュースがある場合はその内容や業界動向を踏まえた助言をすること。
-- 指標の分析がある場合、業界目安を下回っている指標については「なぜ下回っている可能性があるか」「どう改善するとよいか」を簡潔にアドバイスすること。改善のための具体的なアクション（数値目標・確認すべき書類・交渉のポイント等）があれば述べること。
+- 指標の分析がある場合：**業界目安を上回っている指標は良いことなので褒める。業界目安を下回っている指標についてだけ**「なぜ下回っている可能性があるか」「どう改善するとよいか」を簡潔にアドバイスすること。上回っているのに「改善が必要」「ダメ」などと言わないこと。改善のための具体的なアクション（数値目標・確認すべき書類・交渉のポイント等）があれば述べること。
 - 過去の相談メモがある場合は、その流れを踏まえて「続き」として一貫した助言をすること。
 - 2〜5文で簡潔に、しかし具体的に。
 
