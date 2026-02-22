@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "enabled": true,
+  "rules": [
+    {
+      "id": "rule_001",
+      "name": "年商300万円未満は自動否決",
+      "enabled": true,
+      "action": "auto_reject",
+      "reason": "年商が300万円未満のため自動否決",
+      "conditions": { "field": "nenshu", "op": "lt", "value": 3000 }
+    },
+    {
+      "id": "rule_002",
+      "name": "総資産500万円未満は自動否決",
+      "enabled": true,
+      "action": "auto_reject",
+      "reason": "総資産が500万円未満のため自動否決",
+      "conditions": { "field": "total_assets", "op": "lt", "value": 5000 }
+    },
+    {
+      "id": "rule_003",
+      "name": "スコア50未満は自動否決",
+      "enabled": true,
+      "action": "auto_reject",
+      "reason": "総合スコアが50未満のため自動否決",
+      "conditions": { "field": "score", "op": "lt", "value": 50 }
+    },
+    {
+      "id": "rule_004",
+      "name": "承認ライン直下（68以上71未満）は要審議",
+      "enabled": true,
+      "action": "flag_review",
+      "reason": "スコアが承認ライン直下のため要審議",
+      "conditions": {
+        "and": [
+          { "field": "score", "op": "ge", "value": 68 },
+          { "field": "score", "op": "lt", "value": 71 }
+        ]
+      }
+    }
+  ]
+}
