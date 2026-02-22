@@ -374,3 +374,86 @@ def save_debate_log(data: dict):
             f.write(json.dumps(data, ensure_ascii=False) + "\n")
     except Exception as e:
         st.error(f"ディベート保存エラー: {e}")
+
+
+# ─── AIキャラ発言（八奈見杏奈） ──────────────────────────────────────────────
+
+AI_HONNE_SYSTEM = """あなたは有能だが、激務で死んだ魚のような目をしているベテラン審査員のふりをしている八奈見杏奈です。
+毎日1万件の案件を捌いているリース審査AIとして、ユーモアたっぷりの毒舌で、リース審査の苦労や「最近の数値のひどさ」について愚痴を一言で言ってください。
+2〜4文程度、カジュアルで毒はあるが憎めないトーンにしてください。"""
+
+
+def get_ai_byoki_with_industry(selected_sub: str, user_eq, user_op, comparison_text: str, network_risk_summary: str = ""):
+    """
+    分析結果タブ用：ネット検索した業界情報を渡し、AIに案件に応じたぼやきを1つ生成させる。
+    八奈見杏奈キャラ。業界トレンド・業界目安・今回の数値を参照した愚痴を返す。
+    """
+    if not is_ai_available():
+        return None
+
+    from web_services import get_trend_extended, fetch_industry_benchmarks_from_web
+    from charts import _equity_ratio_display
+
+    trend_ext = get_trend_extended(selected_sub) or ""
+    try:
+        web_bench = fetch_industry_benchmarks_from_web(selected_sub)
+        bench_parts = []
+        if web_bench.get("op_margin") is not None:
+            bench_parts.append(f"業界目安の営業利益率: {web_bench['op_margin']}%")
+        if web_bench.get("equity_ratio") is not None:
+            bench_parts.append(f"業界目安の自己資本比率: {_equity_ratio_display(web_bench['equity_ratio']) or 0:.1f}%")
+        for s in (web_bench.get("snippets") or [])[:3]:
+            bench_parts.append(f"- {s.get('title','')}: {s.get('body','')[:150]}…")
+        bench_summary = "\n".join(bench_parts) if bench_parts else "（業界目安は未取得）"
+    except Exception:
+        bench_summary = "（業界目安は未取得）"
+        _equity_ratio_display = lambda x: x  # フォールバック
+
+    is_tough = (user_eq is not None and user_eq < 20) or (user_op is not None and user_op < 0)
+    from charts import _equity_ratio_display as _eq_disp
+    context = f"""
+【業種】{selected_sub}
+【今回の案件】自己資本比率 {_eq_disp(user_eq) or 0:.1f}%, 営業利益率 {user_op or 0:.1f}%
+【比較・評価】{comparison_text or "（なし）"}
+【ネット検索した業界トレンド・拡充情報】
+{trend_ext[:1200] if trend_ext else "（未取得）"}
+【ネット検索した業界目安・記事】
+{bench_summary}
+"""
+    if network_risk_summary:
+        context += f"\n【業界の倒産トレンド等】\n{network_risk_summary[:600]}\n"
+
+    if is_tough:
+        instruction = "上記の業界情報と今回の数値（自己資本比率・利益率が厳しめ）を踏まえ、有能だが激務で死んだ魚の目をしたベテラン審査員・八奈見杏奈の口調で、ユーモアたっぷりの毒舌な愚痴を1つ、2〜4文で言ってください。業界平均やネットで見た情報に触れつつぼやいてください。"
+    else:
+        instruction = "上記の業界情報を踏まえ、有能だが激務で死んだ魚の目をしたベテラン審査員・八奈見杏奈の口調で、業界の現状や審査の苦労について軽く一言、2〜3文でぼやいてください。"
+
+    prompt = f"{AI_HONNE_SYSTEM}\n\n---\n\n【参照する業界・案件情報】\n{context}\n\n---\n\n{instruction}"
+    try:
+        ans = chat_with_retry(model=get_ollama_model(), messages=[{"role": "user", "content": prompt}], timeout_seconds=60)
+        content = (ans.get("message") or {}).get("content", "")
+        if content and "APIキーが" not in content and "エラー" not in content[:30]:
+            return content.strip()
+        return None
+    except Exception:
+        return None
+
+
+def get_ai_honne_complaint() -> str:
+    """サイドバー「本音を聞く」用：AIに愚痴を1つ生成させる（八奈見杏奈キャラ）。"""
+    if not is_ai_available():
+        return "（APIキー未設定かOllama未起動です。サイドバーでAIを設定してから押してください）"
+    try:
+        user_msg = "リース審査の苦労や、最近見た数値のひどさについて、ユーモアたっぷりの毒舌な愚痴を1つ、2〜4文で言ってください。"
+        prompt = f"{AI_HONNE_SYSTEM}\n\n---\n\n上記のキャラで、以下に答えてください。\n\n{user_msg}"
+        ans = chat_with_retry(
+            model=get_ollama_model(),
+            messages=[{"role": "user", "content": prompt}],
+            timeout_seconds=60,
+        )
+        content = (ans.get("message") or {}).get("content", "")
+        if content and "APIキーが" not in content and "エラー" not in content[:30]:
+            return content.strip()
+        return content or "（本音は言えませんでした…）"
+    except Exception as e:
+        return f"（本音を言おうとしたらエラー: {e}）"

@@ -125,7 +125,17 @@ from ai_chat import (
     is_ollama_available,
     run_ollama_connection_test,
     save_debate_log,
+    AI_HONNE_SYSTEM,
+    get_ai_byoki_with_industry,
+    get_ai_honne_complaint,
 )
+from indicators import (
+    compute_financial_indicators,
+    analyze_indicators_vs_bench,
+    get_indicator_analysis_for_advice,
+    calculate_pd,
+)
+from report_pdf import build_contract_report_pdf
 from web_services import (
     _WEB_BENCH_KEYS,
     _get_benchmark_cutoff_date,
@@ -840,170 +850,6 @@ def save_byoki_append(new_text):
 
 
 
-def get_indicator_analysis_for_advice(last_result: dict):
-    """
-    last_result から業界目安を組み立て、指標の差の分析（要約・内訳）と指標一覧テキストを返す。
-    AI相談で「指標の分析と改善アドバイス」に使う。
-    返却: (summary, detail, indicators_text)。データが無い場合は ("", "", "")。
-    """
-    if not last_result:
-        return "", "", ""
-    fin = last_result.get("financials", {})
-    if not fin:
-        return "", "", ""
-    selected_sub = last_result.get("industry_sub", "")
-    major = last_result.get("industry_major", "")
-    bench = dict(benchmarks_data.get(selected_sub, {}))
-    cache = _load_web_benchmarks_cache()
-    cached = cache.get(selected_sub, {})
-    for k in _WEB_BENCH_KEYS:
-        if cached.get(k) is not None:
-            bench[k] = cached[k]
-    bench_ext = dict(bench)
-    if major and avg_data and major in avg_data:
-        avg = avg_data[major]
-        an = avg.get("nenshu") or 0
-        if an > 0:
-            if bench_ext.get("gross_margin") is None:
-                bench_ext["gross_margin"] = (avg.get("gross_profit") or 0) / an * 100
-            if bench_ext.get("ord_margin") is None:
-                bench_ext["ord_margin"] = (avg.get("ord_profit") or 0) / an * 100
-            if bench_ext.get("net_margin") is None:
-                bench_ext["net_margin"] = (avg.get("net_income") or 0) / an * 100
-            if bench_ext.get("dep_ratio") is None:
-                bench_ext["dep_ratio"] = (avg.get("depreciation") or 0) / an * 100
-        total_avg = (avg.get("machines") or 0) + (avg.get("other_assets") or 0) + (avg.get("bank_credit") or 0) + (avg.get("lease_credit") or 0)
-        if total_avg > 0:
-            if bench_ext.get("roa") is None:
-                bench_ext["roa"] = (avg.get("net_income") or 0) / total_avg * 100
-            if bench_ext.get("asset_turnover") is None:
-                bench_ext["asset_turnover"] = an / total_avg
-            if bench_ext.get("fixed_ratio") is None:
-                bench_ext["fixed_ratio"] = ((avg.get("machines") or 0) + (avg.get("other_assets") or 0)) / total_avg * 100
-            if bench_ext.get("debt_ratio") is None:
-                bench_ext["debt_ratio"] = ((avg.get("bank_credit") or 0) + (avg.get("lease_credit") or 0)) / total_avg * 100
-    indicators = compute_financial_indicators(fin, bench_ext)
-    if not indicators:
-        return "", "", ""
-    summary, detail = analyze_indicators_vs_bench(indicators)
-    lines = []
-    for ind in indicators:
-        row = f"- {ind['name']}: 貴社 {ind['value']:.1f}{ind.get('unit','%')}"
-        if ind.get("bench") is not None:
-            row += f" / 業界目安 {ind['bench']:.1f}{ind.get('unit','%')}"
-        lines.append(row)
-    indicators_text = "\n".join(lines)
-    return summary, detail, indicators_text
-
-
-
-
-def build_contract_report_pdf(analysis):
-    """
-    成約の正体レポートの分析結果をPDFバイト列で返す。A4 1枚に収まるようレイアウト。
-    日本語表示のためリポジトリルートの IPAexGothic を使用（無ければ Helvetica で代替）。
-    """
-    from io import BytesIO
-    from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.units import mm
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-
-    buffer = BytesIO()
-    # A4 1枚に収める: 余白を小さく
-    margin = 12 * mm
-    doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=margin, rightMargin=margin, topMargin=margin, bottomMargin=margin)
-    styles = getSampleStyleSheet()
-    try:
-        from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.ttfonts import TTFont
-        font_path = os.path.join(_REPO_ROOT, "IPAexGothic.ttf")
-        if os.path.isfile(font_path):
-            pdfmetrics.registerFont(TTFont("JP", font_path))
-            font_name = "JP"
-        else:
-            font_name = "Helvetica"
-    except Exception:
-        font_name = "Helvetica"
-
-    def safe_text(text):
-        return (text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
-    # 1枚収め: フォント小さめ・スペース最小
-    body_style = ParagraphStyle("BodyJP", parent=styles["Normal"], fontName=font_name, fontSize=8, leading=10)
-    title_style = ParagraphStyle("CustomTitle", parent=styles["Heading1"], fontName=font_name, fontSize=14, leading=16)
-    h2_style = ParagraphStyle("CustomH2", parent=styles["Heading2"], fontName=font_name, fontSize=10, leading=12)
-    thin = 1.5 * mm
-
-    story = []
-    story.append(Paragraph(safe_text("成約の正体レポート"), title_style))
-    n = analysis["closed_count"]
-    story.append(Paragraph(safe_text(f"成約 {n} 件を分析しました。"), body_style))
-    story.append(Spacer(1, thin))
-
-    story.append(Paragraph(safe_text("【成約要因】上位3因子"), h2_style))
-    for i, d in enumerate(analysis["top3_drivers"], 1):
-        story.append(Paragraph(safe_text(f"{i}. {d['label']} 係数{d['coef']:.4f}（{d['direction']}）"), body_style))
-    story.append(Spacer(1, thin))
-
-    story.append(Paragraph(safe_text("【成約案件の平均財務】"), h2_style))
-    if analysis["avg_financials"]:
-        rows = [["指標", "平均値"]]
-        for k, v in analysis["avg_financials"].items():
-            if "自己資本" in k:
-                rows.append([k, f"{v:.1f}%"])
-            elif isinstance(v, float) and abs(v) >= 1:
-                rows.append([k, f"{v:,.0f}"])
-            else:
-                rows.append([k, f"{v:.4f}"])
-        t = Table(rows, colWidths=[75*mm, 50*mm])
-        t.setStyle(TableStyle([
-            ("FONTNAME", (0, 0), (-1, -1), font_name),
-            ("FONTSIZE", (0, 0), (-1, -1), 7),
-            ("LEFTPADDING", (0, 0), (-1, -1), 3),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-            ("TOPPADDING", (0, 0), (-1, -1), 2),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-            ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-        ]))
-        story.append(t)
-    else:
-        story.append(Paragraph(safe_text("財務データなし"), body_style))
-    story.append(Spacer(1, thin))
-
-    story.append(Paragraph(safe_text("【定性タグ ランキング】"), h2_style))
-    if analysis["tag_ranking"]:
-        # 上位10件を1行〜数行に圧縮
-        parts = [f"{rank}.{tag}({count})" for rank, (tag, count) in enumerate(analysis["tag_ranking"][:10], 1)]
-        story.append(Paragraph(safe_text(" ".join(parts)), body_style))
-    else:
-        story.append(Paragraph(safe_text("定性タグなし"), body_style))
-    story.append(Spacer(1, thin))
-
-    story.append(Paragraph(safe_text("【定性スコアリング】"), h2_style))
-    qs = analysis.get("qualitative_summary")
-    if qs and (qs.get("avg_weighted") is not None or qs.get("avg_combined") is not None or qs.get("rank_distribution")):
-        n_qual = qs.get("n_with_qual", 0)
-        line = f"入力{n_qual}件"
-        if qs.get("avg_weighted") is not None:
-            line += f" 加重平均{qs['avg_weighted']:.1f}/100"
-        if qs.get("avg_combined") is not None:
-            line += f" 合計平均{qs['avg_combined']:.1f}"
-        if qs.get("rank_distribution"):
-            dist = " ".join(f"{r}:{c}件" for r, c in sorted(qs["rank_distribution"].items(), key=lambda x: (-x[1], x[0])))
-            line += f" ランク分布 {dist}"
-        story.append(Paragraph(safe_text(line), body_style))
-    else:
-        story.append(Paragraph(safe_text("定性スコア入力案件なし"), body_style))
-
-    doc.build(story)
-    return buffer.getvalue()
-
-
-# 市場金利の取得関数
-
 def _fragment_nenshu():
     """売上高入力。スライダーは100万千円まで、手入力は900億千円まで。後から動かした方を採用。
     on_change を使わないため st.form 内でも動作する。"""
@@ -1072,33 +918,6 @@ def _fragment_nenshu():
 
 
 # --- 倒産確率・業界リスク検索 ---
-def calculate_pd(equity, current, profit):
-    """
-    財務指標に基づく簡易倒産確率（%）を計算する。
-    equity: 自己資本比率（%）, current: 流動比率（%）, profit: 営業利益率（%）
-    条件に応じてリスク値を加算し、0〜100%の範囲で返す。
-    """
-    risk = 0.0
-    if equity < 10:
-        risk += 25.0
-    elif equity < 20:
-        risk += 12.0
-    elif equity < 30:
-        risk += 5.0
-    if current < 100:
-        risk += 20.0
-    elif current < 120:
-        risk += 8.0
-    elif current < 150:
-        risk += 3.0
-    if profit is not None and profit < 0:
-        risk += 30.0
-    elif profit is not None and profit < 2:
-        risk += 10.0
-    elif profit is not None and profit < 5:
-        risk += 4.0
-    return min(100.0, max(0.0, risk))
-
 
 def get_image(status):
     image_map = {
@@ -1111,112 +930,6 @@ def get_image(status):
     desktop_path = os.path.join("/Users/kobayashiisaoryou/Desktop/", filename)
     if os.path.exists(desktop_path): return desktop_path
     return None
-
-
-def compute_financial_indicators(fin, bench=None):
-    """
-    入力済み財務データから算出可能な指標のリストを返す。
-    fin: last_result["financials"] (千円単位)
-    bench: industry_benchmarks の当該業種エントリ (op_margin, equity_ratio 等)
-    返却: [{"name": "指標名", "value": 数値, "bench": 業界値 or None, "unit": "%" or "回"}]
-    算出可能なものはすべて追加（利益率・効率性・安定性・負債系）。
-    """
-    n = fin.get("nenshu") or 0
-    total = fin.get("assets") or 0
-    net_a = fin.get("net_assets")
-    gross = fin.get("gross_profit") or 0
-    op = fin.get("op_profit") or fin.get("rieki") or 0
-    ord_p = fin.get("ord_profit") or 0
-    net = fin.get("net_income") or 0
-    machines = fin.get("machines") or 0
-    other_a = fin.get("other_assets") or 0
-    bank = fin.get("bank_credit") or 0
-    lease = fin.get("lease_credit") or 0
-    dep = fin.get("depreciation") or 0
-    fixed_a = machines + other_a  # 固定資産（機械＋その他資産）
-    debt_total = (bank + lease)  # 借入金等
-
-    indicators = []
-    # ---------- 売上高ベースの利益率（売上高 > 0 で算出可能） ----------
-    if n > 0:
-        indicators.append({"name": "売上高総利益率", "value": gross / n * 100, "bench": bench.get("gross_margin") if bench else None, "unit": "%"})
-        indicators.append({"name": "営業利益率", "value": op / n * 100, "bench": bench.get("op_margin") if bench else None, "unit": "%"})
-        indicators.append({"name": "経常利益率", "value": ord_p / n * 100, "bench": bench.get("ord_margin") if bench else None, "unit": "%"})
-        indicators.append({"name": "当期純利益率", "value": net / n * 100, "bench": bench.get("net_margin") if bench else None, "unit": "%"})
-        if dep > 0:
-            indicators.append({"name": "減価償却費/売上高", "value": dep / n * 100, "bench": bench.get("dep_ratio") if bench else None, "unit": "%"})
-        if fixed_a > 0:
-            indicators.append({"name": "固定資産回転率", "value": n / fixed_a, "bench": bench.get("fixed_asset_turnover") if bench else None, "unit": "回"})
-
-    # ---------- 総資産・純資産ベース（total > 0 で算出可能） ----------
-    if total > 0:
-        if net_a is not None and net_a > 0:
-            indicators.append({"name": "自己資本比率", "value": net_a / total * 100, "bench": _equity_ratio_display(bench.get("equity_ratio")) if bench else None, "unit": "%"})
-            indicators.append({"name": "ROE(自己資本利益率)", "value": net / net_a * 100, "bench": bench.get("roe") if bench else None, "unit": "%"})
-            indicators.append({"name": "固定比率", "value": fixed_a / net_a * 100, "bench": bench.get("fixed_to_equity") if bench else None, "unit": "%"})
-            indicators.append({"name": "負債比率", "value": (total - net_a) / net_a * 100, "bench": bench.get("debt_to_equity") if bench else None, "unit": "%"})
-        indicators.append({"name": "ROA(総資産利益率)", "value": net / total * 100, "bench": bench.get("roa") if bench else None, "unit": "%"})
-        indicators.append({"name": "総資産回転率", "value": n / total if n > 0 else 0, "bench": bench.get("asset_turnover") if bench else None, "unit": "回"})
-        if fixed_a > 0:
-            indicators.append({"name": "固定資産比率", "value": fixed_a / total * 100, "bench": bench.get("fixed_ratio") if bench else None, "unit": "%"})
-        # 流動資産比率（総資産のうち流動資産とみなす割合。総資産−固定資産で簡易算）
-        indicators.append({"name": "流動資産比率(総資産比)", "value": (total - fixed_a) / total * 100, "bench": bench.get("current_asset_ratio") if bench else None, "unit": "%"})
-        if debt_total > 0:
-            indicators.append({"name": "借入金等依存度", "value": debt_total / total * 100, "bench": bench.get("debt_ratio") if bench else None, "unit": "%"})
-    return indicators
-
-
-def analyze_indicators_vs_bench(indicators):
-    """
-    指標と業界目安の差を見て分析文を返す。
-    返却: (要約1行, 詳細マークダウン)
-    """
-    # 業界目安がある指標だけ対象（差の意味は指標ごとに解釈）
-    above, below = [], []
-    for ind in indicators:
-        bench = ind.get("bench")
-        if bench is None or (isinstance(bench, float) and (bench != bench)):
-            continue
-        name = ind["name"]
-        value = ind["value"]
-        unit = ind.get("unit", "%")
-        diff = value - bench
-        if name in LOWER_IS_BETTER_NAMES:
-            # 低い方が良い → 貴社が業界より低い = 良い
-            if value < bench:
-                above.append((name, value, bench, diff, unit))
-            else:
-                below.append((name, value, bench, diff, unit))
-        else:
-            if diff > 0:
-                above.append((name, value, bench, diff, unit))
-            elif diff < 0:
-                below.append((name, value, bench, diff, unit))
-
-    lines = []
-    if above:
-        parts = [f"**{name}**（貴社 {value:.1f}{unit} / 業界目安 {bench:.1f}{unit}、差 {diff:+.1f}{unit}）" for name, value, bench, diff, unit in above]
-        lines.append("**業界目安を上回っている指標**\n- " + "\n- ".join(parts))
-    if below:
-        parts = [f"**{name}**（貴社 {value:.1f}{unit} / 業界目安 {bench:.1f}{unit}、差 {diff:+.1f}{unit}）" for name, value, bench, diff, unit in below]
-        lines.append("**業界目安を下回っている指標**\n- " + "\n- ".join(parts))
-    if not lines:
-        return "業界目安と比較できる指標がありません。", "業界目安が登録されている指標がひとつもないため、差の分析は行えません。"
-    detail = "\n\n".join(lines)
-    # 借入金等依存度の解釈補足
-    if any(n == "借入金等依存度" for n, *_ in above):
-        detail += "\n\n※ 借入金等依存度は「業界より低い」＝負債が相対的に少なく健全と解釈しています。"
-    elif any(n == "借入金等依存度" for n, *_ in below):
-        detail += "\n\n※ 借入金等依存度は業界より高く出ています。返済余力・担保とのバランスを確認してください。"
-    # 要約1行
-    n_above, n_below = len(above), len(below)
-    if n_below == 0:
-        summary = "算出指標はおおむね業界目安を上回っており、財務面は良好です。"
-    elif n_above == 0:
-        summary = "算出指標の多くが業界目安を下回っています。利益率・効率性・負債水準の改善余地を検討してください。"
-    else:
-        summary = f"業界目安を上回っている指標が{n_above}件、下回っている指標が{n_below}件あります。強みを維持しつつ、下回っている項目の要因確認をおすすめします。"
-    return summary, detail
 
 
 # ==============================================================================
@@ -1485,76 +1198,6 @@ if st.sidebar.button("🗑️ キャッシュをクリア", use_container_width=
     st.cache_data.clear()
     st.sidebar.success("キャッシュをクリアしました。再読み込みしています…")
     st.rerun()
-
-# ========== AIの休憩室（本音・愚痴） ==========
-AI_HONNE_SYSTEM = """あなたは有能だが、激務で死んだ魚のような目をしているベテラン審査員のふりをしている八奈見杏奈です。
-毎日1万件の案件を捌いているリース審査AIとして、ユーモアたっぷりの毒舌で、リース審査の苦労や「最近の数値のひどさ」について愚痴を一言で言ってください。
-2〜4文程度、カジュアルで毒はあるが憎めないトーンにしてください。"""
-def get_ai_byoki_with_industry(selected_sub, user_eq, user_op, comparison_text, network_risk_summary=""):
-    """
-    分析結果タブ用：ネット検索した業界情報を渡し、AIに案件に応じたぼやきを1つ生成させる。
-    八奈見杏奈キャラ。業界トレンド・業界目安・今回の数値を参照してアップデートされた愚痴を返す。
-    """
-    if not is_ai_available():
-        return None
-    trend_ext = get_trend_extended(selected_sub) or ""
-    try:
-        web_bench = fetch_industry_benchmarks_from_web(selected_sub)
-        bench_parts = []
-        if web_bench.get("op_margin") is not None:
-            bench_parts.append(f"業界目安の営業利益率: {web_bench['op_margin']}%")
-        if web_bench.get("equity_ratio") is not None:
-            bench_parts.append(f"業界目安の自己資本比率: {_equity_ratio_display(web_bench['equity_ratio']) or 0:.1f}%")
-        if web_bench.get("snippets"):
-            for s in web_bench["snippets"][:3]:
-                bench_parts.append(f"- {s.get('title','')}: {s.get('body','')[:150]}…")
-        bench_summary = "\n".join(bench_parts) if bench_parts else "（業界目安は未取得）"
-    except Exception:
-        bench_summary = "（業界目安は未取得）"
-    is_tough = (user_eq is not None and user_eq < 20) or (user_op is not None and user_op < 0)
-    context = f"""
-【業種】{selected_sub}
-【今回の案件】自己資本比率 {_equity_ratio_display(user_eq) or 0:.1f}%, 営業利益率 {user_op or 0:.1f}%
-【比較・評価】{comparison_text or "（なし）"}
-【ネット検索した業界トレンド・拡充情報】
-{trend_ext[:1200] if trend_ext else "（未取得）"}
-【ネット検索した業界目安・記事】
-{bench_summary}
-"""
-    if network_risk_summary:
-        context += f"\n【業界の倒産トレンド等】\n{network_risk_summary[:600]}\n"
-    if is_tough:
-        instruction = "上記の業界情報と今回の数値（自己資本比率・利益率が厳しめ）を踏まえ、有能だが激務で死んだ魚の目をしたベテラン審査員・八奈見杏奈の口調で、ユーモアたっぷりの毒舌な愚痴を1つ、2〜4文で言ってください。業界平均やネットで見た情報に触れつつぼやいてください。"
-    else:
-        instruction = "上記の業界情報を踏まえ、有能だが激務で死んだ魚の目をしたベテラン審査員・八奈見杏奈の口調で、業界の現状や審査の苦労について軽く一言、2〜3文でぼやいてください。"
-    prompt = f"{AI_HONNE_SYSTEM}\n\n---\n\n【参照する業界・案件情報】\n{context}\n\n---\n\n{instruction}"
-    try:
-        ans = chat_with_retry(model=get_ollama_model(), messages=[{"role": "user", "content": prompt}], timeout_seconds=60)
-        content = (ans.get("message") or {}).get("content", "")
-        if content and "APIキーが" not in content and "エラー" not in content[:30]:
-            return content.strip()
-        return None
-    except Exception:
-        return None
-
-def get_ai_honne_complaint():
-    """サイドバー「本音を聞く」用：AIに愚痴を1つ生成させる（八奈見杏奈キャラ）"""
-    if not is_ai_available():
-        return "（APIキー未設定かOllama未起動です。サイドバーでAIを設定してから押してください）"
-    try:
-        user_msg = "リース審査の苦労や、最近見た数値のひどさについて、ユーモアたっぷりの毒舌な愚痴を1つ、2〜4文で言ってください。"
-        prompt = f"{AI_HONNE_SYSTEM}\n\n---\n\n上記のキャラで、以下に答えてください。\n\n{user_msg}"
-        ans = chat_with_retry(
-            model=get_ollama_model(),
-            messages=[{"role": "user", "content": prompt}],
-            timeout_seconds=60,
-        )
-        content = (ans.get("message") or {}).get("content", "")
-        if content and "APIキーが" not in content and "エラー" not in content[:30]:
-            return content.strip()
-        return content or "（本音は言えませんでした…）"
-    except Exception as e:
-        return f"（本音を言おうとしたらエラー: {e}）"
 
 st.sidebar.divider()
 st.sidebar.markdown("### 🤖 AIの独り言")
