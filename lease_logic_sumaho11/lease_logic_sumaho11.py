@@ -286,6 +286,9 @@ def _reset_shinsa_inputs():
     for k in ("last_submitted_inputs", "last_result", "current_case_id",
                "selected_asset_index", "news_results", "selected_news_content"):
         st.session_state.pop(k, None)
+    # チャット履歴もリセット（新しい案件の相談が前の案件で汚染されないよう）
+    st.session_state["messages"] = []
+    st.session_state["debate_history"] = []
 
 
 # 以下はページ共通CSS（スライダー・グラフ・タブ・スマホ向けなど）
@@ -2656,6 +2659,10 @@ elif mode == "📋 審査・分析":
                                 qualitative_scoring_correction["rank"] = qual_rank["label"]
                                 qualitative_scoring_correction["rank_text"] = qual_rank["text"]
                                 qualitative_scoring_correction["rank_desc"] = qual_rank["desc"]
+
+                        # 新しい審査を実行したのでチャット履歴をリセット
+                        st.session_state["messages"] = []
+                        st.session_state["debate_history"] = []
 
                         st.session_state['last_result'] = {
                             "score": final_score, "hantei": "承認圏内" if final_score >= APPROVAL_LINE else "要審議",
