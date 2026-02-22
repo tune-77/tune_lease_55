@@ -136,6 +136,7 @@ from indicators import (
     calculate_pd,
 )
 from report_pdf import build_contract_report_pdf
+from knowledge import build_knowledge_context, search_faq, search_cases, get_improvement_guide_text
 from web_services import (
     _WEB_BENCH_KEYS,
     _get_benchmark_cutoff_date,
@@ -3739,6 +3740,15 @@ elif mode == "📋 審査・分析":
             st.caption("🤖 使用中: **Ollama（ローカル）**")
         
         with tab_chat:
+            # ナレッジ参照トグル（マニュアル・事例集・FAQ）
+            with st.expander("📚 マニュアル・事例集・FAQをAIに参照させる", expanded=False):
+                st.caption("有効にすると「審査マニュアル」「業種別ガイド」「FAQ集」「事例集」の内容がAIへの質問に自動的に付加されます。")
+                _kb_use_manual = st.checkbox("審査マニュアル・スコアリング基準", value=True, key="kb_use_manual")
+                _kb_use_industry = st.checkbox("業種別ガイド（財務目安・審査ポイント）", value=True, key="kb_use_industry")
+                _kb_use_faq = st.checkbox("FAQ集（よくある質問と回答）", value=True, key="kb_use_faq")
+                _kb_use_cases = st.checkbox("審査事例集（Bランク・Cランク・Dランクの実例）", value=True, key="kb_use_cases")
+                _kb_use_improvement = st.checkbox("スコア改善ガイド（短期・中期の改善アクション）", value=False, key="kb_use_improvement")
+
             # 音声入力から戻ったときのテキストを反映（URLの ?voice_text=... で渡される）
             if st.query_params.get("voice_text"):
                 st.session_state["consultation_input"] = st.query_params.get("voice_text", "")
@@ -3911,9 +3921,21 @@ elif mode == "📋 審査・分析":
                                         parts.append(f"ユーザー: {u[:800]}\nAI: {a[:1200]}")
                                 if parts:
                                     memory_block = "\n\n【過去の相談で話したこと（話せば話すほど蓄積・参照して続きで答える）】\n" + "\n---\n".join(parts[-15:]) + "\n"
-                            context_prompt = f"""あなたは経験豊富なリース審査のプロ。以下の「参考データ」を必ず使って、具体的に答えてください。数字やニュースの内容を引用すると説得力が増します。
+                            # ナレッジベースからコンテキストを構築
+                            _kb_industry = _res.get("industry_sub", "") if "last_result" in st.session_state else selected_sub
+                            _kb_context = build_knowledge_context(
+                                query=q,
+                                industry=_kb_industry,
+                                use_faq=st.session_state.get("kb_use_faq", True),
+                                use_cases=st.session_state.get("kb_use_cases", True),
+                                use_manual=st.session_state.get("kb_use_manual", True),
+                                use_industry_guide=st.session_state.get("kb_use_industry", True),
+                                use_improvement=st.session_state.get("kb_use_improvement", False),
+                                max_tokens_approx=2500,
+                            )
+                            context_prompt = f"""あなたは経験豊富なリース審査のプロ。以下の「参考データ」と「ナレッジベース」を必ず使って、具体的に答えてください。数字やニュースの内容を引用すると説得力が増します。
 
-【参考データ】
+【参考データ（今回の案件）】
 ■ 財務・比較: {comparison_text}
 ■ 業界トレンド: {trend_info}
 {hints_block}
@@ -3922,8 +3944,11 @@ elif mode == "📋 審査・分析":
 {news_context}
 {memory_block}
 
+{_kb_context}
+
 【ルール】
-- 上記のデータに触れずに一般論だけで答えないこと。
+- 参考データ・ナレッジベースに触れずに一般論だけで答えないこと。
+- FAQ・事例集に類似ケースがあれば引用して答えること。
 - ニュースがある場合はその内容や業界動向を踏まえた助言をすること。
 - 指標の分析がある場合：**業界目安を上回っている指標は良いことなので褒める。業界目安を下回っている指標についてだけ**「なぜ下回っている可能性があるか」「どう改善するとよいか」を簡潔にアドバイスすること。上回っているのに「改善が必要」「ダメ」などと言わないこと。改善のための具体的なアクション（数値目標・確認すべき書類・交渉のポイント等）があれば述べること。
 - 過去の相談メモがある場合は、その流れを踏まえて「続き」として一貫した助言をすること。
@@ -4012,7 +4037,18 @@ elif mode == "📋 審査・分析":
                             news_context = f"\n\n【参考ニュース記事: {news['title']}】\n{news['content']}"
                         advice_extras_debate = get_advice_context_extras(selected_sub, selected_major)
                         advice_debate_block = ("補助金・リース・業界拡充: " + advice_extras_debate[:800]) if advice_extras_debate else ""
-                        
+                        _debate_kb = build_knowledge_context(
+                            query=f"{selected_sub} スコア{res.get('score',0):.0f}",
+                            industry=selected_sub,
+                            use_faq=True,
+                            use_cases=True,
+                            use_manual=True,
+                            use_industry_guide=True,
+                            use_improvement=False,
+                            max_tokens_approx=1500,
+                        )
+                        _debate_kb_block = f"\n【審査マニュアル・FAQ・事例集（参考）】\n{_debate_kb}" if _debate_kb else ""
+
                         # ロール決定 & プロンプト作成（同一モデルでペルソナ切り替え）
                         if not st.session_state.debate_history:
                             next_role = "Pro"
@@ -4026,9 +4062,11 @@ elif mode == "📋 審査・分析":
 【ネット検索結果・業界材料】
 {advice_debate_block}
 {news_context if news_context else "（ニュース未読み込み）"}
+{_debate_kb_block}
 
 【指示】
 - 上記の「財務データ」と「ネット検索結果」のいずれかから必ず1つ以上具体的に引用し、根拠を示したうえで主張すること。
+- FAQや事例集に類似ケースがあれば引用してよい。
 - 企業の情熱・将来性・好材料を強調し、前向きな支援を主張せよ。
 - 140文字以内。
 """
