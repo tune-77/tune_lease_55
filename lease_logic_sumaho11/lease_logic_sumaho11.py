@@ -2945,6 +2945,9 @@ elif mode == "📋 審査・分析":
                     # 定性スコアリング
                     for _qid, _qval in _q_qual.items():
                         st.session_state[f"qual_corr_{_qid}"] = _qval
+                    # チャット履歴をリセット（新しい判定なので前の会話を引き継がない）
+                    st.session_state["messages"] = []
+                    st.session_state["debate_history"] = []
                     # 判定トリガー
                     st.session_state["_auto_judge"] = True
                     st.session_state["_nav_pending"] = "📝 審査入力"
