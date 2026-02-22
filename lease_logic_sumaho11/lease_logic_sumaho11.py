@@ -3890,36 +3890,55 @@ elif mode == "📋 審査・分析":
                                 st.error(f"AIサーバー（Ollama）が起動していません。\nターミナルで `ollama serve` を実行するか、サイドバーで「Gemini API」に切り替えてください。")
                         else:
                             _res = st.session_state.get("last_result") or {}
+                            _chat_sub = _res.get("industry_sub", selected_sub) or selected_sub
+                            _chat_major = _res.get("industry_major", "") or ""
                             comparison_text = _res.get("comparison", "（審査未実行のためデータなし）")
-                            trend_info = "（審査未実行のためデータなし）"
-                            if jsic_data and _res.get("industry_major") in (jsic_data or {}):
-                                trend_info = (jsic_data[_res["industry_major"]].get("sub") or {}).get(_res.get("industry_sub", ""), trend_info)
+
+                            # ── 業界平均との比較ブロック（毎回必須）──────────────────
+                            ind_summary, ind_detail, ind_list = get_indicator_analysis_for_advice(_res)
+                            indicator_block = f"\n■ 【業界平均との比較】業種: {_chat_sub}\n"
+                            if ind_list:
+                                indicator_block += "指標一覧（貴社 vs 業界目安）:\n" + ind_list + "\n"
+                            if ind_summary:
+                                indicator_block += f"総評: {ind_summary}\n"
+                            if ind_detail:
+                                indicator_block += "詳細:\n" + ind_detail[:1200] + "\n"
+                            if not ind_list and not ind_summary:
+                                indicator_block += "（審査を実行すると財務指標と業界目安の詳細比較が表示されます）\n"
+
+                            # ── 業種別トピックス（毎回必須）────────────────────────
+                            trend_info = ""
+                            if jsic_data and _chat_major in (jsic_data or {}):
+                                trend_info = (jsic_data[_chat_major].get("sub") or {}).get(_chat_sub, "")
+                            trend_ext = get_trend_extended(_chat_sub) or ""
+                            # ネット最新検索（キャッシュがなければリアルタイム検索）
+                            with st.spinner("業種別トピックスを取得中..."):
+                                latest_trends = search_latest_trends(f"{_chat_sub} 業界動向 最新 2025 2026")
+                            topics_block = f"\n■ 【業種別トピックス】業種: {_chat_sub}\n"
+                            if trend_info:
+                                topics_block += f"業界概況: {trend_info[:400]}\n"
+                            if trend_ext:
+                                topics_block += f"業界トレンド詳細: {trend_ext[:600]}\n"
+                            if latest_trends and "エラー" not in latest_trends and "見つかりません" not in latest_trends:
+                                topics_block += "最新ニュース:\n" + latest_trends[:800] + "\n"
+                            elif not trend_info and not trend_ext:
+                                topics_block += "（業界トピックスの取得に失敗しました。再度お試しください）\n"
+
+                            # ── 補助金・リスクヒント ──────────────────────────────
                             hints_context = ""
                             if 'last_result' in st.session_state:
                                 h = st.session_state['last_result'].get('hints', {})
                                 if h.get('subsidies'): hints_context += f"\n補助金候補: {', '.join(h['subsidies'])}"
                                 if h.get('risks'): hints_context += f"\nリスク確認点: {', '.join(h['risks'])}"
-                            advice_extras = ""
-                            if "last_result" in st.session_state:
-                                res_adv = st.session_state["last_result"]
-                                advice_extras = get_advice_context_extras(res_adv.get("industry_sub", ""), res_adv.get("industry_major", ""))
+                            advice_extras = get_advice_context_extras(_chat_sub, _chat_major) if _chat_sub else ""
                             news_context = ""
                             if 'selected_news_content' in st.session_state:
                                 news = st.session_state.selected_news_content
                                 news_context = f"\n\n【読み込み済みニュース（必ず内容に触れること）】\nタイトル: {news['title']}\n本文:\n{news['content']}"
                             hints_block = ("■ 補助金・リスクヒント: " + hints_context) if hints_context else ""
-                            advice_block = ("■ 補助金スケジュール・リース判定・耐用年数・業界拡充等:\n" + advice_extras) if advice_extras else ""
-                            ind_summary, ind_detail, ind_list = get_indicator_analysis_for_advice(_res)
-                            indicator_block = ""
-                            if ind_summary or ind_list:
-                                indicator_block = "\n■ 指標の分析（貴社 vs 業界目安）\n"
-                                if ind_summary:
-                                    indicator_block += f"要約: {ind_summary}\n\n"
-                                if ind_list:
-                                    indicator_block += "指標一覧:\n" + ind_list + "\n\n"
-                                if ind_detail:
-                                    indicator_block += "差の内訳:\n" + ind_detail[:1500] + "\n"
-                            # 過去の相談メモ（話せば話すほど蓄積）を読み込み、プロンプトに含める
+                            advice_block = ("■ 補助金スケジュール・リース判定・耐用年数・業界拡充等:\n" + advice_extras[:800]) if advice_extras else ""
+
+                            # ── 過去の相談メモ ────────────────────────────────────
                             memory_entries = load_consultation_memory(max_entries=15)
                             memory_block = ""
                             if memory_entries:
@@ -3931,38 +3950,40 @@ elif mode == "📋 審査・分析":
                                         parts.append(f"ユーザー: {u[:800]}\nAI: {a[:1200]}")
                                 if parts:
                                     memory_block = "\n\n【過去の相談で話したこと（話せば話すほど蓄積・参照して続きで答える）】\n" + "\n---\n".join(parts[-15:]) + "\n"
-                            # ナレッジベースからコンテキストを構築
-                            _kb_industry = _res.get("industry_sub", "") if "last_result" in st.session_state else selected_sub
+
+                            # ── ナレッジベース ────────────────────────────────────
                             _kb_context = build_knowledge_context(
                                 query=q,
-                                industry=_kb_industry,
+                                industry=_chat_sub,
                                 use_faq=st.session_state.get("kb_use_faq", True),
                                 use_cases=st.session_state.get("kb_use_cases", True),
                                 use_manual=st.session_state.get("kb_use_manual", True),
                                 use_industry_guide=st.session_state.get("kb_use_industry", True),
                                 use_improvement=st.session_state.get("kb_use_improvement", False),
-                                max_tokens_approx=2500,
+                                max_tokens_approx=2000,
                             )
-                            context_prompt = f"""あなたは経験豊富なリース審査のプロ。以下の「参考データ」と「ナレッジベース」を必ず使って、具体的に答えてください。数字やニュースの内容を引用すると説得力が増します。
 
-【参考データ（今回の案件）】
+                            context_prompt = f"""あなたは経験豊富なリース審査のプロ。以下の「案件データ」「業界比較」「業種別トピックス」を**必ず毎回**使い、具体的な数字・事実を引用して答えてください。
+
+【案件データ】
 ■ 財務・比較: {comparison_text}
-■ 業界トレンド: {trend_info}
 {hints_block}
 {advice_block}
-{indicator_block}
 {news_context}
 {memory_block}
 
+{indicator_block}
+{topics_block}
+
 {_kb_context}
 
-【ルール】
-- 参考データ・ナレッジベースに触れずに一般論だけで答えないこと。
-- FAQ・事例集に類似ケースがあれば引用して答えること。
-- ニュースがある場合はその内容や業界動向を踏まえた助言をすること。
-- 指標の分析がある場合：**業界目安を上回っている指標は良いことなので褒める。業界目安を下回っている指標についてだけ**「なぜ下回っている可能性があるか」「どう改善するとよいか」を簡潔にアドバイスすること。上回っているのに「改善が必要」「ダメ」などと言わないこと。改善のための具体的なアクション（数値目標・確認すべき書類・交渉のポイント等）があれば述べること。
-- 過去の相談メモがある場合は、その流れを踏まえて「続き」として一貫した助言をすること。
-- 2〜5文で簡潔に、しかし具体的に。
+【回答ルール（必ず守ること）】
+1. 毎回「業界平均との比較」に触れる。上回っている指標は褒め、下回っている指標だけ「なぜか・どう改善するか」を述べる（上回っているのに改善不要と言わない）。
+2. 毎回「業種別トピックス」の最新動向・ニュースに言及し、その業界特有の視点でアドバイスする。
+3. FAQ・事例集に類似ケースがあれば具体的な数値を引用して答える。
+4. ニュースが読み込まれている場合はその内容を必ず踏まえる。
+5. 過去の相談メモがある場合は流れを踏まえて「続き」として一貫した助言をする。
+6. 回答は3〜6文。簡潔だが具体的な数値・事実を1つ以上必ず含める。
 
 【相談内容】
 {q}"""
