@@ -1,0 +1,203 @@
+{
+  "06 総合工事業": {
+    "fetched_at": "2026-02-23",
+    "op_margin": 4.5,
+    "ord_margin": 4.0,
+    "net_margin": 2.5,
+    "equity_ratio": 35.0,
+    "roa": 3.0,
+    "roe": 8.0,
+    "snippets": []
+  },
+  "07 職別工事業(大工・とび等)": {
+    "fetched_at": "2026-02-23",
+    "op_margin": 3.8,
+    "ord_margin": 3.5,
+    "net_margin": 2.0,
+    "equity_ratio": 25.0,
+    "roa": 2.5,
+    "roe": 7.0,
+    "snippets": []
+  },
+  "08 設備工事業(電気・管工事)": {
+    "fetched_at": "2026-02-23",
+    "op_margin": 5.2,
+    "ord_margin": 4.8,
+    "net_margin": 3.0,
+    "equity_ratio": 40.0,
+    "roa": 3.5,
+    "roe": 8.0,
+    "snippets": []
+  },
+  "09 食料品製造業": {
+    "fetched_at": "2026-02-23",
+    "op_margin": 3.0,
+    "ord_margin": 3.2,
+    "net_margin": 2.0,
+    "gross_margin": 28.0,
+    "equity_ratio": 42.0,
+    "roa": 3.0,
+    "roe": 7.0,
+    "snippets": []
+  },
+  "21 金属製品製造業": {
+    "fetched_at": "2026-02-23",
+    "op_margin": 4.0,
+    "ord_margin": 4.2,
+    "net_margin": 2.5,
+    "equity_ratio": 42.0,
+    "roa": 3.5,
+    "roe": 8.0,
+    "asset_turnover": 1.2,
+    "snippets": []
+  },
+  "24 生産用機械器具製造業": {
+    "fetched_at": "2026-02-23",
+    "op_margin": 5.4,
+    "ord_margin": 5.0,
+    "net_margin": 3.5,
+    "equity_ratio": 50.0,
+    "roa": 4.5,
+    "roe": 9.0,
+    "snippets": []
+  },
+  "26 情報通信機械器具製造業": {
+    "fetched_at": "2026-02-23",
+    "op_margin": 7.0,
+    "ord_margin": 6.5,
+    "net_margin": 4.5,
+    "equity_ratio": 55.0,
+    "roa": 5.0,
+    "roe": 9.0,
+    "snippets": []
+  },
+  "43 道路旅客運送業(バス・タクシー)": {
+    "fetched_at": "2026-02-23",
+    "op_margin": 2.0,
+    "ord_margin": 2.0,
+    "net_margin": 1.0,
+    "equity_ratio": 25.0,
+    "roa": 2.0,
+    "roe": 5.0,
+    "snippets": []
+  },
+  "44 道路貨物運送業": {
+    "fetched_at": "2026-02-23",
+    "op_margin": 1.6,
+    "ord_margin": 1.8,
+    "net_margin": 1.0,
+    "gross_margin": 27.5,
+    "equity_ratio": 35.0,
+    "roa": 1.5,
+    "dep_ratio": 3.5,
+    "snippets": []
+  },
+  "50-55 各種卸売業": {
+    "fetched_at": "2026-02-23",
+    "op_margin": 1.8,
+    "ord_margin": 2.0,
+    "net_margin": 1.2,
+    "equity_ratio": 30.0,
+    "roa": 2.0,
+    "roe": 6.0,
+    "asset_turnover": 1.5,
+    "snippets": []
+  },
+  "56-61 各種小売業": {
+    "fetched_at": "2026-02-23",
+    "op_margin": 2.5,
+    "ord_margin": 2.5,
+    "net_margin": 1.5,
+    "gross_margin": 30.0,
+    "equity_ratio": 25.0,
+    "roa": 2.5,
+    "roe": 7.0,
+    "snippets": []
+  },
+  "68 不動産代理・仲介": {
+    "fetched_at": "2026-02-23",
+    "op_margin": 10.0,
+    "ord_margin": 10.0,
+    "net_margin": 6.0,
+    "gross_margin": 68.4,
+    "equity_ratio": 40.0,
+    "roa": 5.0,
+    "roe": 10.0,
+    "snippets": []
+  },
+  "70 物品賃貸業(リース・レンタル)": {
+    "fetched_at": "2026-02-23",
+    "op_margin": 4.0,
+    "ord_margin": 3.5,
+    "net_margin": 2.5,
+    "equity_ratio": 15.0,
+    "roa": 2.5,
+    "roe": 8.0,
+    "snippets": []
+  },
+  "75 宿泊業": {
+    "fetched_at": "2026-02-23",
+    "op_margin": 5.0,
+    "ord_margin": 4.5,
+    "net_margin": 2.0,
+    "equity_ratio": 17.0,
+    "roa": 2.5,
+    "roe": 6.0,
+    "debt_ratio": 45.0,
+    "snippets": []
+  },
+  "76 飲食店": {
+    "fetched_at": "2026-02-23",
+    "op_margin": 3.5,
+    "ord_margin": 3.5,
+    "net_margin": 1.5,
+    "gross_margin": 68.6,
+    "equity_ratio": 15.0,
+    "roa": 2.5,
+    "roe": 8.0,
+    "snippets": []
+  },
+  "83 医療業(病院・診療所)": {
+    "fetched_at": "2026-02-23",
+    "op_margin": 2.0,
+    "ord_margin": 2.5,
+    "net_margin": 1.5,
+    "equity_ratio": 25.0,
+    "roa": 3.0,
+    "roe": 8.0,
+    "snippets": []
+  },
+  "85 社会保険・社会福祉・介護事業": {
+    "fetched_at": "2026-02-23",
+    "op_margin": 2.0,
+    "ord_margin": 2.5,
+    "net_margin": 1.5,
+    "equity_ratio": 30.0,
+    "roa": 3.0,
+    "roe": 8.0,
+    "debt_ratio": 30.0,
+    "snippets": []
+  },
+  "89 自動車整備業": {
+    "fetched_at": "2026-02-23",
+    "op_margin": 4.9,
+    "ord_margin": 5.4,
+    "net_margin": 3.0,
+    "gross_margin": 28.1,
+    "equity_ratio": 35.0,
+    "roa": 4.0,
+    "roe": 8.0,
+    "snippets": []
+  },
+  "91 職業紹介・労働者派遣業": {
+    "fetched_at": "2026-02-23",
+    "op_margin": 4.0,
+    "ord_margin": 4.5,
+    "net_margin": 2.5,
+    "gross_margin": 37.5,
+    "equity_ratio": 40.0,
+    "roa": 4.5,
+    "roe": 8.0,
+    "snippets": []
+  }
+}

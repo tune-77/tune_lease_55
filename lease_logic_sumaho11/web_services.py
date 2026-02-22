@@ -83,6 +83,48 @@ _WEB_BENCH_KEYS = [
     "fixed_to_equity", "debt_to_equity", "fixed_asset_turnover", "current_asset_ratio", "current_ratio",
 ]
 
+# 各指標の妥当な値域（min, max）。この範囲外の値はスクレイプ失敗とみなし無視する。
+_BENCH_VALID_RANGES: dict[str, tuple[float, float]] = {
+    "op_margin":            (-30.0,  25.0),   # 営業利益率 %
+    "ord_margin":           (-30.0,  25.0),   # 経常利益率 %
+    "net_margin":           (-30.0,  20.0),   # 純利益率 %
+    "gross_margin":         (  0.0,  95.0),   # 売上総利益率 %
+    "dep_ratio":            (  0.0,  15.0),   # 減価償却費/売上高 %
+    "roa":                  (-20.0,  20.0),   # ROA %
+    "roe":                  (-50.0,  50.0),   # ROE %
+    "equity_ratio":         (  0.0,  90.0),   # 自己資本比率 %
+    "asset_turnover":       (  0.1,   8.0),   # 総資産回転率 回
+    "fixed_ratio":          (  0.0,  90.0),   # 固定資産比率（対総資産）%
+    "fixed_to_equity":      (  0.0, 400.0),   # 固定比率（対純資産）%
+    "debt_ratio":           (  0.0,  85.0),   # 借入金等依存度 %
+    "debt_to_equity":       (  0.0, 500.0),   # 負債比率（対純資産）%
+    "fixed_asset_turnover": (  0.1,  20.0),   # 固定資産回転率 回
+    "current_asset_ratio":  (  5.0,  95.0),   # 流動資産比率 %
+    "current_ratio":        ( 50.0, 300.0),   # 流動比率 %
+}
+
+
+def _validate_bench_value(key: str, value) -> float | None:
+    """
+    スクレイプした業界目安の値を検証し、妥当でなければ None を返す。
+    年号（2024, 2025等）や業種コードが混入した誤値を除外するために使用。
+    """
+    if value is None:
+        return None
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not (v == v):  # NaN チェック
+        return None
+    limits = _BENCH_VALID_RANGES.get(key)
+    if limits is None:
+        return v  # 未定義キーはそのまま通す
+    lo, hi = limits
+    if lo <= v <= hi:
+        return v
+    return None  # 範囲外 → 破棄
+
 
 def _get_benchmark_cutoff_date() -> datetime.date:
     """業界目安を『年1回・4月1日』で更新するための基準日。"""
@@ -94,24 +136,38 @@ def _get_benchmark_cutoff_date() -> datetime.date:
 
 
 def _load_web_benchmarks_cache() -> dict:
-    """保存済みのネット業界目安を読み込む。"""
+    """
+    保存済みのネット業界目安を読み込む。
+    各数値は _validate_bench_value でバリデーションし、範囲外の値は None 扱いにする。
+    """
     if not os.path.exists(WEB_BENCHMARKS_FILE):
         return {}
     try:
         with open(WEB_BENCHMARKS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            raw = json.load(f)
     except Exception:
         return {}
+    result = {}
+    for industry, entry in raw.items():
+        if not isinstance(entry, dict):
+            continue
+        cleaned = {k: v for k, v in entry.items() if k not in _WEB_BENCH_KEYS}
+        for k in _WEB_BENCH_KEYS:
+            validated = _validate_bench_value(k, entry.get(k))
+            if validated is not None:
+                cleaned[k] = validated
+        result[industry] = cleaned
+    return result
 
 
 def _save_web_benchmark(industry_sub: str, data: dict):
-    """中分類ごとの業界目安をファイルに追記・上書きする。"""
+    """中分類ごとの業界目安をファイルに追記・上書きする（バリデーション済み値のみ保存）。"""
     cache = _load_web_benchmarks_cache()
     entry = {"fetched_at": datetime.date.today().isoformat(), "snippets": data.get("snippets", [])}
     for k in _WEB_BENCH_KEYS:
-        v = data.get(k)
-        if v is not None:
-            entry[k] = v
+        validated = _validate_bench_value(k, data.get(k))
+        if validated is not None:
+            entry[k] = validated
     cache[industry_sub] = entry
     try:
         with open(WEB_BENCHMARKS_FILE, "w", encoding="utf-8") as f:
