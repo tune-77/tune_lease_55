@@ -155,36 +155,100 @@ def red_label(placeholder, text):
 
 
 def _slider_and_number(field_name, key_prefix, default, min_val, max_val, step_slider, step_num=None, fmt="{:,}", unit="千円", label_slider="売上高調整", max_val_number=None):
-    """スライダーと数値入力の両方に対応。max_val_number を指定すると手入力のみその上限を使用（スライダーは max_val のまま）。"""
+    """スライダーと数値入力の両方に対応。後から動かした方を採用値とする（on_change コールバック方式）。"""
     if step_num is None:
         step_num = step_slider
+    num_max = max_val_number if max_val_number is not None else max_val
+
     if field_name not in st.session_state:
         st.session_state[field_name] = default
     cur = st.session_state[field_name]
-    num_max = max_val_number if max_val_number is not None else max_val
-    slide_val = cur if min_val <= cur <= max_val else (max_val if cur > max_val else min_val)
+
+    # 外部（ケース読み込み等）からの変更を検知してウィジェットキーを再同期するためのマーカー
+    prev_key = f"_san_prev_{key_prefix}"
+    num_key = f"num_{key_prefix}"
+    slide_key = f"slide_{key_prefix}"
+    externally_changed = st.session_state.get(prev_key) != cur
+
+    if num_key not in st.session_state or externally_changed:
+        st.session_state[num_key] = max(min_val, min(cur, num_max))
+    if slide_key not in st.session_state or externally_changed:
+        st.session_state[slide_key] = max(min_val, min(cur, max_val))
+
+    def _on_num_change():
+        val = st.session_state[num_key]
+        st.session_state[field_name] = val
+        st.session_state[slide_key] = max(min_val, min(val, max_val))
+        st.session_state[prev_key] = val
+
+    def _on_slide_change():
+        val = st.session_state[slide_key]
+        st.session_state[field_name] = val
+        st.session_state[num_key] = val
+        st.session_state[prev_key] = val
 
     c_l, c_r = st.columns([0.7, 0.3])
     with c_r:
-        _num = st.number_input("直接入力", min_value=min_val, max_value=num_max, value=cur, step=step_num, key=f"num_{key_prefix}", label_visibility="collapsed")
+        st.number_input("直接入力", min_value=min_val, max_value=num_max,
+                        step=step_num, key=num_key,
+                        label_visibility="collapsed",
+                        on_change=_on_num_change)
     with c_l:
-        _slide = st.slider(label_slider, min_value=min_val, max_value=max_val, value=slide_val, step=step_slider, key=f"slide_{key_prefix}", label_visibility="collapsed")
+        st.slider(label_slider, min_value=min_val, max_value=max_val,
+                  step=step_slider, key=slide_key,
+                  label_visibility="collapsed",
+                  on_change=_on_slide_change)
 
-    # フォーム送信時: 前回値と比べてどちらが変わったかで「最後に動かした方」を推定（両方変わった場合は直接入力を優先）
-    prev = st.session_state[field_name]
-    if cur > max_val and max_val_number is not None:
-        adopted = _num  # 手入力で上限超の値がある場合は手入力を採用
-    elif _num != prev and _slide == prev:
-        adopted = _num
-    elif _slide != prev and _num == prev:
-        adopted = _slide
-    elif _num != prev and _slide != prev:
-        adopted = _num
-    else:
-        adopted = cur
-    st.session_state[field_name] = adopted
+    adopted = st.session_state[field_name]
+    st.session_state[prev_key] = adopted
     st.caption(f"**採用値: {fmt.format(adopted)} {unit}**")
     return adopted
+
+
+def _reset_shinsa_inputs():
+    """全入力フィールドをデフォルト値にリセットする。「新しく入力する」ボタン用。"""
+    field_defaults = {
+        "nenshu": 10000,
+        "item9_gross": 10000,
+        "rieki": 10000,
+        "item4_ord_profit": 10000,
+        "item5_net_income": 10000,
+        "item10_dep": 10000,
+        "item11_dep_exp": 10000,
+        "item8_rent": 10000,
+        "item12_rent_exp": 10000,
+        "item6_machine": 10000,
+        "item7_other": 10000,
+        "net_assets": 10000,
+        "total_assets": 10000,
+        "bank_credit": 10000,
+        "lease_credit": 10000,
+        "contracts": 1,
+        "acquisition_cost": 1000,
+        "lease_term": 60,
+        "acceptance_year": 2026,
+    }
+    # field_name ← デフォルト値にリセット
+    for k, v in field_defaults.items():
+        st.session_state[k] = v
+    # ウィジェットキー（num_* / slide_* / _san_prev_*）を削除して再初期化させる
+    widget_prefixes = [
+        "nenshuu", "sourieki", "rieki", "item4_ord_profit", "item5_net_income",
+        "item10_dep", "item11_dep_exp", "item8_rent", "item12_rent_exp",
+        "item6_machine", "item7_other", "net_assets", "total_assets",
+        "bank_credit", "lease_credit", "contracts", "acquisition_cost",
+    ]
+    for pfx in widget_prefixes:
+        for pre in ("num_", "slide_", "_san_prev_"):
+            st.session_state.pop(f"{pre}{pfx}", None)
+    # 定性スコアリングをリセット
+    for k in list(st.session_state.keys()):
+        if k.startswith("qual_corr_"):
+            st.session_state[k] = 0
+    # 最後の判定結果・送信入力をクリア
+    for k in ("last_submitted_inputs", "last_result", "current_case_id",
+               "selected_asset_index", "news_results", "selected_news_content"):
+        st.session_state.pop(k, None)
 
 
 # 以下はページ共通CSS（スライダー・グラフ・タブ・スマホ向けなど）
@@ -1646,46 +1710,60 @@ def run_ollama_connection_test(timeout_seconds: int = 10) -> str:
 
 
 def _fragment_nenshu():
-    """売上高入力。スライダーは100万千円まで、手入力は900億千円まで。"""
+    """売上高入力。スライダーは100万千円まで、手入力は900億千円まで。後から動かした方を採用。"""
     st.markdown("### 売上高")
-    NENSHU_SLIDER_MAX = 1_000_000   # スライダー上限（従来どおり）
-    NENSHU_NUM_MAX = 90_000_000    # 手入力のみ900億円（千円単位）
+    NENSHU_SLIDER_MAX = 1_000_000
+    NENSHU_NUM_MAX = 90_000_000
+
     if "nenshu" not in st.session_state:
         st.session_state.nenshu = 10000
     cur = st.session_state.nenshu
+
+    prev_key = "_san_prev_nenshuu"
+    externally_changed = st.session_state.get(prev_key) != cur
+
+    if "num_nenshuu" not in st.session_state or externally_changed:
+        st.session_state["num_nenshuu"] = max(0, min(cur, NENSHU_NUM_MAX))
+    if "slide_nenshuu" not in st.session_state or externally_changed:
+        st.session_state["slide_nenshuu"] = max(0, min(cur, NENSHU_SLIDER_MAX))
+
+    def _on_num_change():
+        val = st.session_state["num_nenshuu"]
+        st.session_state.nenshu = val
+        st.session_state["slide_nenshuu"] = max(0, min(val, NENSHU_SLIDER_MAX))
+        st.session_state[prev_key] = val
+
+    def _on_slide_change():
+        val = st.session_state["slide_nenshuu"]
+        st.session_state.nenshu = val
+        st.session_state["num_nenshuu"] = val
+        st.session_state[prev_key] = val
+
     c_l, c_r = st.columns([0.7, 0.3])
     with c_r:
-        _num = st.number_input(
+        st.number_input(
             "直接入力",
             min_value=0,
             max_value=NENSHU_NUM_MAX,
-            value=min(cur, NENSHU_NUM_MAX),
             step=10000,
             key="num_nenshuu",
             label_visibility="collapsed",
+            on_change=_on_num_change,
         )
     with c_l:
-        _slide = st.slider(
+        st.slider(
             "売上高調整",
             min_value=0,
             max_value=NENSHU_SLIDER_MAX,
-            value=min(cur, NENSHU_SLIDER_MAX),
             step=100,
             key="slide_nenshuu",
             label_visibility="collapsed",
             format="%d",
+            on_change=_on_slide_change,
         )
-    # 最後に変更された方を採用（直接入力優先は _slider_and_number と同様）
-    prev = st.session_state.nenshu
-    if _num != prev and _slide == prev:
-        nenshu = _num
-    elif _slide != prev and _num == prev:
-        nenshu = _slide
-    elif _num != prev and _slide != prev:
-        nenshu = _num
-    else:
-        nenshu = cur
-    st.session_state.nenshu = nenshu
+
+    nenshu = st.session_state.nenshu
+    st.session_state[prev_key] = nenshu
     st.caption(f"**採用値: {nenshu:,} 千円**")
     st.caption("※スライダー・直接入力のどちらかで変更後、**入力確定**または**判定開始**で反映されます。")
     st.divider()
@@ -2903,13 +2981,6 @@ elif mode == "📋 審査・分析":
             # ユーザーがラジオで切り替えたとき nav_index を同期
             st.session_state.nav_index = 1 if nav_mode == "📊 分析結果" else 0
             if nav_mode == "📝 審査入力":
-                # 分析結果から戻ったとき、直前の判定で使った入力値をフォームに復元
-                if "last_submitted_inputs" in st.session_state:
-                    inp = st.session_state["last_submitted_inputs"]
-                    for k, v in inp.items():
-                        if k in ("selected_major", "selected_sub"):
-                            continue
-                        st.session_state[k] = v
                 st.header("📝 1. 審査データの入力")
                 image_placeholder = st.empty()
                 if 'current_image' not in st.session_state: st.session_state['current_image'] = "guide"
@@ -3049,6 +3120,9 @@ elif mode == "📋 審査・分析":
                         st.session_state["competitor_rate"] = None
                 st.caption("💡 数字入力で画面がガタつく場合：スライダーで大まかに合わせてから直接入力で微調整してください。")
                 st.caption("📌 数値とスライダーは連動します。Enter は「入力確定」にだけ効き、判定には行きません。")
+                if st.button("🆕 新しく入力する", help="全フィールドを初期値にリセットします", use_container_width=False):
+                    _reset_shinsa_inputs()
+                    st.rerun()
                 with st.form("shinsa_form"):
                     st.info(
                         "**必須項目**: 売上高（1以上）、総資産（1以上）を入力しないと判定できません。\n\n"
@@ -3261,7 +3335,7 @@ elif mode == "📋 審査・分析":
                 st.session_state.acceptance_year = acceptance_year
                 st.rerun()
 
-            if submitted_judge:
+            if submitted_judge or st.session_state.pop("_auto_judge", False):
                 try:
                     # フラグメント利用時用: session_state の値で上書き（入力ガタつき軽減のため）
                     nenshu = st.session_state.get("nenshu", 0)
@@ -3934,6 +4008,154 @@ elif mode == "📋 審査・分析":
                         st.code(traceback.format_exc())
 
         if nav_mode == "📊 分析結果":
+            # ── クイック再入力パネル（全項目） ───────────────────────────
+            with st.expander("✏️ 全項目編集して再判定", expanded=False):
+                st.caption("すべての入力項目をここから変更できます。「🔄 再判定」で即座に再計算します。")
+
+                # ─── 業種 ───────────────────────────────────────────────
+                st.markdown("#### 🏭 業種")
+                _q_major_keys = list(jsic_data.keys()) if jsic_data else ["D 建設業"]
+                _q_cur_major = st.session_state.get("select_major") or st.session_state.get("last_submitted_inputs", {}).get("selected_major", _q_major_keys[0])
+                _q_major_idx = _q_major_keys.index(_q_cur_major) if _q_cur_major in _q_major_keys else 0
+                _q_major = st.selectbox("大分類", _q_major_keys, index=_q_major_idx, key="_quick_major")
+                _q_sub_keys = list(jsic_data[_q_major]["sub"].keys()) if jsic_data and _q_major in jsic_data else ["06 総合工事業"]
+                _q_cur_sub = st.session_state.get("select_sub") or st.session_state.get("last_submitted_inputs", {}).get("selected_sub", _q_sub_keys[0])
+                _q_sub_idx = _q_sub_keys.index(_q_cur_sub) if _q_cur_sub in _q_sub_keys else 0
+                _q_sub = st.selectbox("中分類", _q_sub_keys, index=_q_sub_idx, key="_quick_sub")
+
+                st.divider()
+
+                # ─── 損益計算書 ─────────────────────────────────────────
+                st.markdown("#### 📊 損益計算書 P/L（千円）")
+                _q1, _q2, _q3 = st.columns(3)
+                with _q1:
+                    _q_nenshu = st.number_input("売上高", min_value=0, max_value=90_000_000, value=int(st.session_state.get("nenshu", 10000)), step=1000, key="_quick_nenshu")
+                with _q2:
+                    _q_gross = st.number_input("売上総利益（粗利）", min_value=-90_000_000, max_value=90_000_000, value=int(st.session_state.get("item9_gross", 10000)), step=1000, key="_quick_gross")
+                with _q3:
+                    _q_rieki = st.number_input("営業利益", min_value=-90_000_000, max_value=90_000_000, value=int(st.session_state.get("rieki", 10000)), step=1000, key="_quick_rieki")
+                _q4, _q5 = st.columns(2)
+                with _q4:
+                    _q_ord = st.number_input("経常利益", min_value=-90_000_000, max_value=90_000_000, value=int(st.session_state.get("item4_ord_profit", 10000)), step=1000, key="_quick_ord")
+                with _q5:
+                    _q_net_income = st.number_input("当期利益", min_value=-90_000_000, max_value=90_000_000, value=int(st.session_state.get("item5_net_income", 10000)), step=1000, key="_quick_net_income")
+
+                st.divider()
+
+                # ─── 資産・経費 ──────────────────────────────────────────
+                st.markdown("#### 🏢 資産・経費（千円）")
+                _qA1, _qA2, _qA3 = st.columns(3)
+                with _qA1:
+                    _q_dep = st.number_input("減価償却費（資産）", min_value=0, max_value=90_000_000, value=int(st.session_state.get("item10_dep", 10000)), step=1000, key="_quick_dep")
+                    _q_dep_exp = st.number_input("減価償却費（経費）", min_value=0, max_value=90_000_000, value=int(st.session_state.get("item11_dep_exp", 10000)), step=1000, key="_quick_dep_exp")
+                with _qA2:
+                    _q_rent = st.number_input("賃借料（資産）", min_value=0, max_value=90_000_000, value=int(st.session_state.get("item8_rent", 10000)), step=1000, key="_quick_rent")
+                    _q_rent_exp = st.number_input("賃借料（経費）", min_value=0, max_value=90_000_000, value=int(st.session_state.get("item12_rent_exp", 10000)), step=1000, key="_quick_rent_exp")
+                with _qA3:
+                    _q_machine = st.number_input("機械装置", min_value=0, max_value=90_000_000, value=int(st.session_state.get("item6_machine", 10000)), step=1000, key="_quick_machine")
+                    _q_other = st.number_input("その他資産", min_value=0, max_value=90_000_000, value=int(st.session_state.get("item7_other", 10000)), step=1000, key="_quick_other")
+                _qB1, _qB2 = st.columns(2)
+                with _qB1:
+                    _q_net = st.number_input("純資産", min_value=-90_000_000, max_value=90_000_000, value=int(st.session_state.get("net_assets", 10000)), step=1000, key="_quick_net")
+                with _qB2:
+                    _q_total = st.number_input("総資産", min_value=0, max_value=90_000_000, value=int(st.session_state.get("total_assets", 10000)), step=1000, key="_quick_total")
+
+                st.divider()
+
+                # ─── 信用情報 ────────────────────────────────────────────
+                st.markdown("#### 💳 信用情報")
+                _qC1, _qC2 = st.columns(2)
+                with _qC1:
+                    _grade_opts = ["①1-3 (優良)", "②4-6 (標準)", "③要注意以下", "④無格付"]
+                    _q_cur_grade = st.session_state.get("grade", "②4-6 (標準)")
+                    _q_grade_idx = _grade_opts.index(_q_cur_grade) if _q_cur_grade in _grade_opts else 1
+                    _q_grade = st.selectbox("格付", _grade_opts, index=_q_grade_idx, key="_quick_grade")
+                    _q_bank = st.number_input("銀行与信（千円）", min_value=0, max_value=90_000_000, value=int(st.session_state.get("bank_credit", 10000)), step=1000, key="_quick_bank")
+                with _qC2:
+                    _q_lease = st.number_input("リース与信（千円）", min_value=0, max_value=90_000_000, value=int(st.session_state.get("lease_credit", 10000)), step=1000, key="_quick_lease")
+                    _q_contracts = st.number_input("契約数（件）", min_value=0, max_value=200, value=int(st.session_state.get("contracts", 1)), step=1, key="_quick_contracts")
+
+                st.divider()
+
+                # ─── 契約条件 ────────────────────────────────────────────
+                st.markdown("#### 📋 契約条件・物件")
+                _qD1, _qD2, _qD3 = st.columns(3)
+                with _qD1:
+                    _q_ctype = st.radio("顧客区分", ["既存先", "新規先"], index=0 if st.session_state.get("customer_type", "既存先") == "既存先" else 1, horizontal=True, key="_quick_ctype")
+                    _q_contract_type = st.radio("契約種類", ["一般", "自動車"], index=0 if st.session_state.get("contract_type", "一般") == "一般" else 1, horizontal=True, key="_quick_contract_type")
+                with _qD2:
+                    _q_deal_source = st.radio("商談ソース", ["銀行紹介", "その他"], index=0 if st.session_state.get("deal_source", "その他") == "銀行紹介" else 1, horizontal=True, key="_quick_deal_source")
+                    _q_lease_term = st.number_input("契約期間（月）", min_value=0, max_value=120, value=int(st.session_state.get("lease_term", 60)), step=1, key="_quick_lease_term")
+                with _qD3:
+                    _q_acceptance_year = st.number_input("検収年（西暦）", min_value=2000, max_value=2100, value=int(st.session_state.get("acceptance_year", 2026)), step=1, key="_quick_acceptance_year")
+                    _q_acq = st.number_input("取得価格（千円）", min_value=0, max_value=90_000_000, value=int(st.session_state.get("acquisition_cost", 1000)), step=100, key="_quick_acq")
+                if LEASE_ASSETS_LIST:
+                    _q_asset_opts = [f"{it.get('name', '')}（{it.get('score', 0)}点）" for it in LEASE_ASSETS_LIST]
+                    _q_asset_idx = min(st.session_state.get("selected_asset_index", 0), len(_q_asset_opts) - 1)
+                    _q_asset_sel = st.selectbox("リース物件", range(len(_q_asset_opts)), format_func=lambda i: _q_asset_opts[i], index=_q_asset_idx, key="_quick_asset")
+                else:
+                    _q_asset_sel = None
+
+                st.divider()
+
+                # ─── 定性スコアリング ────────────────────────────────────
+                st.markdown("#### 📝 定性スコアリング")
+                _q_qual = {}
+                for _qi, _qitem in enumerate(QUALITATIVE_SCORING_CORRECTION_ITEMS):
+                    _qopts = _qitem.get("options") or QUALITATIVE_SCORING_LEVELS
+                    _qopts_display = ["未選択"] + [o[1] for o in _qopts]
+                    _qcur = st.session_state.get(f"qual_corr_{_qitem['id']}", 0)
+                    _q_qual[_qitem["id"]] = st.selectbox(
+                        f"{_qitem['label']}（重み{_qitem['weight']}%）",
+                        range(len(_qopts_display)),
+                        format_func=lambda i, d=_qopts_display: d[i],
+                        index=_qcur,
+                        key=f"_quick_qual_{_qitem['id']}",
+                    )
+
+                st.divider()
+                if st.button("🔄 再判定", type="primary", use_container_width=True):
+                    # 業種
+                    st.session_state["select_major"] = _q_major
+                    st.session_state["select_sub"] = _q_sub
+                    # P/L
+                    st.session_state["nenshu"] = _q_nenshu
+                    st.session_state["item9_gross"] = _q_gross
+                    st.session_state["rieki"] = _q_rieki
+                    st.session_state["item4_ord_profit"] = _q_ord
+                    st.session_state["item5_net_income"] = _q_net_income
+                    # 資産・経費
+                    st.session_state["item10_dep"] = _q_dep
+                    st.session_state["item11_dep_exp"] = _q_dep_exp
+                    st.session_state["item8_rent"] = _q_rent
+                    st.session_state["item12_rent_exp"] = _q_rent_exp
+                    st.session_state["item6_machine"] = _q_machine
+                    st.session_state["item7_other"] = _q_other
+                    st.session_state["net_assets"] = _q_net
+                    st.session_state["total_assets"] = _q_total
+                    # 信用情報
+                    st.session_state["grade"] = _q_grade
+                    st.session_state["bank_credit"] = _q_bank
+                    st.session_state["lease_credit"] = _q_lease
+                    st.session_state["contracts"] = _q_contracts
+                    # 契約条件
+                    st.session_state["customer_type"] = _q_ctype
+                    st.session_state["contract_type"] = _q_contract_type
+                    st.session_state["deal_source"] = _q_deal_source
+                    st.session_state["lease_term"] = _q_lease_term
+                    st.session_state["acceptance_year"] = _q_acceptance_year
+                    st.session_state["acquisition_cost"] = _q_acq
+                    if _q_asset_sel is not None:
+                        st.session_state["selected_asset_index"] = _q_asset_sel
+                    # 定性スコアリング
+                    for _qid, _qval in _q_qual.items():
+                        st.session_state[f"qual_corr_{_qid}"] = _qval
+                    # 判定トリガー
+                    st.session_state["_auto_judge"] = True
+                    st.session_state["nav_mode_widget"] = "📝 審査入力"
+                    st.rerun()
+            # ──────────────────────────────────────────────────────────────
+
             # --- GLOBAL VARIABLE RECOVERY (Must be first) ---
             selected_major = "D 建設業" # Default
             selected_sub = "06 総合工事業" # Default
