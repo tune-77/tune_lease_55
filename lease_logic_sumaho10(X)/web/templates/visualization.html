@@ -1,0 +1,357 @@
+{% extends "base.html" %}
+{% block title %}スコア可視化{% endblock %}
+{% block head %}
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital@1&display=swap" rel="stylesheet">
+  <style>
+    .viz-page { background: linear-gradient(180deg, #000510 0%, #1a0933 50%, #0d1b2a 100%); min-height: 80vh; border-radius: 1rem; }
+    .viz-page .tab { padding: 0.75rem 1.25rem; border-radius: 0.5rem; font-weight: 500; transition: background 0.3s ease, color 0.3s ease; }
+    .viz-page .tab.active { background: rgba(255,255,255,0.15); color: #a8edea; }
+    .viz-page .tab:not(.active) { color: rgba(255,255,255,0.6); }
+    .viz-page .tab:not(.active):hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.9); }
+    .viz-page .card { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 0.75rem; }
+    .viz-page .text-muted { color: rgba(255,255,255,0.5); font-size: 13px; }
+    .viz-page .text-accent { color: #a8edea; }
+    .viz-page .font-display { font-family: 'Crimson Text', serif; font-size: 42px; font-style: italic; }
+    .viz-page table { font-size: 14px; }
+    .viz-page th { color: rgba(255,255,255,0.5); font-weight: 500; }
+    .viz-page td { color: rgba(255,255,255,0.9); }
+    #tuneSpace3dContainer { width: 100%; height: 480px; border-radius: 0.5rem; overflow: hidden; }
+    #tuneSpace3dContainer canvas { display: block; width: 100%; height: 100%; }
+  </style>
+{% endblock %}
+{% block content %}
+<div class="viz-page p-6 text-white">
+  <h1 class="font-display mb-2 text-center">Riemannian Credit Manifold</h1>
+  <p class="text-muted text-center mb-1" style="font-size: 13px;">ℝ² → M³ × S¹ / π₁(M) ≅ ℤ　　T² ≅ S¹×S¹　　ℍ² (Poincaré)　　Ulam Spiral</p>
+  <p class="text-muted text-center mb-2" style="font-size: 12px;">スコア可視化 — 下のタブで切り替え</p>
+  <p class="text-accent text-center mb-2 text-sm">「Manifold」タブで 3D 表示。ドラッグで回転・ホイールでズーム</p>
+  <p class="text-center mb-4"><a href="{{ url_for('static', filename='manifold_react.html') }}" target="_blank" rel="noopener" class="text-sm text-teal-400 hover:text-teal-300">→ React版（トーラス/双曲/素数）を別タブで開く</a></p>
+
+  <div class="flex gap-2 mb-6" style="margin-bottom: 20px;">
+    <button type="button" id="tabManifold" class="tab active" data-tab="manifold">データビュー</button>
+    <button type="button" id="tabTuneSpace" class="tab" data-tab="tuneSpace">Manifold</button>
+  </div>
+
+  <div id="panelManifold" class="panel">
+    <div class="card p-4 mb-4 flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <span class="text-muted">最終更新: </span><span id="lastUpdate">—</span>
+      </div>
+      <button type="button" id="btnLoadData" class="px-4 py-2 rounded-lg font-medium transition-colors"
+              style="background: linear-gradient(135deg, #302b63, #24243e); color: #a8edea; border: 1px solid rgba(168,237,234,0.3);">
+        データを更新
+      </button>
+    </div>
+    <div class="card overflow-hidden">
+      <div class="overflow-x-auto max-h-96 overflow-y-auto">
+        <table class="w-full border-collapse">
+          <thead class="sticky top-0" style="background: rgba(0,5,16,0.95);">
+            <tr>
+              <th class="text-left py-3 px-4">企業</th>
+              <th class="text-left py-3 px-4">業種</th>
+              <th class="text-right py-3 px-4">定量</th>
+              <th class="text-right py-3 px-4">定性</th>
+              <th class="text-right py-3 px-4">総合</th>
+              <th class="text-center py-3 px-4">ランク</th>
+              <th class="text-center py-3 px-4">承認</th>
+              <th class="text-center py-3 px-4">日付</th>
+            </tr>
+          </thead>
+          <tbody id="dataTableBody">
+            <tr><td colspan="8" class="py-8 text-center text-muted">「データを更新」をクリックしてください。</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="panelTuneSpace" class="panel hidden">
+    <div class="card p-4 mb-4">
+      <div class="flex flex-wrap items-center gap-3 mb-3">
+        <label for="starCountInput" class="text-muted text-sm">星の数</label>
+        <input type="number" id="starCountInput" min="100" max="50000" value="1500" step="100"
+               class="rounded border border-white/20 bg-white/10 px-2 py-1 text-white w-24 text-sm">
+        <button type="button" id="btnApplyStars" class="rounded px-3 py-1 text-sm font-medium text-accent hover:bg-white/10" style="border: 1px solid rgba(168,237,234,0.5);">反映</button>
+      </div>
+      <div id="tuneSpace3dContainer"></div>
+      <div class="flex flex-wrap gap-6 text-sm text-muted mt-3 mb-2">
+        <span>|M| = <strong id="statM" class="text-white">200</strong></span>
+        <span>π(x) = <strong id="statPi" class="text-white">43</strong></span>
+        <span>A = <strong id="statA" class="text-white">122</strong></span>
+      </div>
+      <p class="text-muted text-sm">Topological Interpretation: (u, v) ∈ ℝ²　　T² / ℍ² / Ulam Spiral（ドラッグで回転）</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block script %}
+<script>
+(function() {
+  const TAB_MANIFOLD = 'manifold';
+  const TAB_TUNE = 'tuneSpace';
+  let dataPoints = [];
+  let lastUpdate = '';
+  let tuneSpaceAnimId = null;
+  let tuneSpaceRenderer = null;
+  let tuneSpaceControls = null;
+  let toneStarted = false;
+
+  function setData(json) {
+    if (json && Array.isArray(json.data)) {
+      dataPoints = json.data;
+      lastUpdate = json.generated_at || '—';
+      document.getElementById('lastUpdate').textContent = lastUpdate;
+      renderTable();
+    }
+  }
+
+  function renderTable() {
+    const tbody = document.getElementById('dataTableBody');
+    if (!dataPoints.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="py-8 text-center text-muted">データがありません。</td></tr>';
+      return;
+    }
+    tbody.innerHTML = dataPoints.slice(0, 100).map(function(d) {
+      return '<tr class="border-t border-white/10">' +
+        '<td class="py-2 px-4">' + (d.company || '—') + '</td>' +
+        '<td class="py-2 px-4">' + (d.industry || '—') + '</td>' +
+        '<td class="py-2 px-4 text-right">' + (d.quantScore != null ? d.quantScore.toFixed(1) : '—') + '</td>' +
+        '<td class="py-2 px-4 text-right">' + (d.qualScore != null ? d.qualScore.toFixed(1) : '—') + '</td>' +
+        '<td class="py-2 px-4 text-right">' + (d.totalScore != null ? d.totalScore.toFixed(1) : '—') + '</td>' +
+        '<td class="py-2 px-4 text-center">' + (d.rank || '—') + '</td>' +
+        '<td class="py-2 px-4 text-center">' + (d.approved ? '✓' : '—') + '</td>' +
+        '<td class="py-2 px-4 text-center">' + (d.date || '—') + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  async function loadRealData() {
+    try {
+      const response = await fetch('/api/visualization/data');
+      const json = await response.json();
+      if (json.error) throw new Error(json.error);
+      setData(json);
+    } catch (e) {
+      console.warn('API取得失敗', e);
+      document.getElementById('lastUpdate').textContent = '取得失敗';
+    }
+  }
+
+  function startToneOnce() {
+    if (toneStarted) return;
+    toneStarted = true;
+    if (typeof Tone !== 'undefined' && Tone.context.state !== 'running') {
+      Tone.start();
+      var synth = new Tone.PolySynth(Tone.Synth).toDestination();
+      synth.triggerAttackRelease(['C4', 'E4', 'G4'], '8n');
+    }
+  }
+
+  function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach(function(t) {
+      t.classList.toggle('active', t.getAttribute('data-tab') === tab);
+    });
+    var panelData = document.getElementById('panelManifold');
+    var panelViz = document.getElementById('panelTuneSpace');
+    if (panelData) panelData.classList.toggle('hidden', tab !== TAB_MANIFOLD);
+    if (panelViz) panelViz.classList.toggle('hidden', tab !== TAB_TUNE);
+    if (tab === TAB_TUNE) {
+      setTimeout(function() { startTuneSpace(); }, 50);
+    } else {
+      stopTuneSpace();
+    }
+  }
+
+  function ulamSpiralXY(n) {
+    if (n <= 1) return [0, 0];
+    var x = 0, y = 0, step = 1, dir = 0, stepsInDir = 1, total = 1;
+    var dx = [1, 0, -1, 0], dy = [0, 1, 0, -1];
+    while (total < n) {
+      if (stepsInDir === 0) {
+        dir = (dir + 1) % 4;
+        if (dir === 0 || dir === 2) step++;
+        stepsInDir = step;
+      }
+      x += dx[dir];
+      y += dy[dir];
+      stepsInDir--;
+      total++;
+    }
+    return [x, y];
+  }
+
+  function isPrime(num) {
+    if (num < 2) return false;
+    num = Math.floor(num);
+    for (var p = 2; p * p <= num; p++) if (num % p === 0) return false;
+    return true;
+  }
+
+  function startTuneSpace() {
+    stopTuneSpace();
+    var container = document.getElementById('tuneSpace3dContainer');
+    if (!container || typeof THREE === 'undefined') return;
+
+    var width = container.offsetWidth;
+    var height = 480;
+    var N = 200;
+    var primesCount = 0;
+    for (var i = 1; i <= N; i++) if (isPrime(i)) primesCount++;
+    var statM = document.getElementById('statM');
+    var statPi = document.getElementById('statPi');
+    var statA = document.getElementById('statA');
+    if (statM) statM.textContent = N;
+    if (statPi) statPi.textContent = primesCount;
+    if (statA) statA.textContent = Math.round(N * 0.61);
+
+    var scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x030614);
+
+    var camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
+    camera.position.set(2.2, 1.8, 2.2);
+    camera.lookAt(0, 0, 0);
+
+    var renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(width, height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    container.appendChild(renderer.domElement);
+
+    if (typeof THREE.OrbitControls !== 'undefined') {
+      var controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      tuneSpaceControls = controls;
+    }
+
+    var starInput = document.getElementById('starCountInput');
+    var starCount = 1500;
+    if (starInput) {
+      var n = parseInt(starInput.value, 10);
+      if (!isNaN(n) && n >= 100 && n <= 50000) starCount = n;
+    }
+    var starPos = new Float32Array(starCount * 3);
+    var starCol = new Float32Array(starCount * 3);
+    for (var s = 0; s < starCount; s++) {
+      var th = Math.acos(2 * Math.random() - 1);
+      var ph = Math.random() * Math.PI * 2;
+      var r = 2.5 + Math.random() * 10;
+      starPos[s * 3] = r * Math.sin(th) * Math.cos(ph);
+      starPos[s * 3 + 1] = r * Math.sin(th) * Math.sin(ph);
+      starPos[s * 3 + 2] = r * Math.cos(th);
+      var cold = Math.random();
+      starCol[s * 3] = 0.85 + cold * 0.15;
+      starCol[s * 3 + 1] = 0.9 + cold * 0.1;
+      starCol[s * 3 + 2] = 1;
+    }
+    var starGeom = new THREE.BufferGeometry();
+    starGeom.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+    starGeom.setAttribute('color', new THREE.BufferAttribute(starCol, 3));
+    var starMat = new THREE.PointsMaterial({
+      size: 0.06,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.95,
+      sizeAttenuation: true,
+    });
+    var stars = new THREE.Points(starGeom, starMat);
+    scene.add(stars);
+
+    var torusGeom = new THREE.TorusGeometry(0.45, 0.12, 24, 48);
+    var torusMat = new THREE.MeshBasicMaterial({ color: 0xffeb3b });
+    var torus = new THREE.Mesh(torusGeom, torusMat);
+    torus.position.y = 0.6;
+    torus.rotation.x = Math.PI / 2 * 0.3;
+    scene.add(torus);
+
+    var diskR = 0.85;
+    var diskGeom = new THREE.RingGeometry(diskR * 0.98, diskR, 64);
+    var diskMat = new THREE.MeshBasicMaterial({ color: 0x1a4a8a, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
+    var disk = new THREE.Mesh(diskGeom, diskMat);
+    disk.rotation.x = -Math.PI / 2;
+    disk.position.y = -0.5;
+    scene.add(disk);
+
+    var lineMat = new THREE.LineBasicMaterial({ color: 0x2a6aba, transparent: true, opacity: 0.6 });
+    for (var d = 0; d < 4; d++) {
+      var a = (d / 4) * Math.PI * 2;
+      var pts = [new THREE.Vector3(diskR * Math.cos(a), -0.5, diskR * Math.sin(a)), new THREE.Vector3(-diskR * Math.cos(a), -0.5, -diskR * Math.sin(a))];
+      scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lineMat));
+    }
+
+    var ulamScale = 0.008;
+    var positions = new Float32Array(N * 3);
+    var colors = new Float32Array(N * 3);
+    for (var i = 0; i < N; i++) {
+      var uv = ulamSpiralXY(i + 1);
+      positions[i * 3] = uv[0] * ulamScale;
+      positions[i * 3 + 1] = -0.5 + 0.02 + Math.random() * 0.03;
+      positions[i * 3 + 2] = uv[1] * ulamScale;
+      var pr = isPrime(i + 1);
+      if (pr) primesCount++;
+      colors[i * 3] = pr ? 1 : 0.6;
+      colors[i * 3 + 1] = pr ? 0.6 : 0.75;
+      colors[i * 3 + 2] = pr ? 0.2 : 0.9;
+    }
+    var pGeom = new THREE.BufferGeometry();
+    pGeom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    pGeom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    var pMat = new THREE.PointsMaterial({ size: 0.025, vertexColors: true, transparent: true, opacity: 0.9 });
+    scene.add(new THREE.Points(pGeom, pMat));
+
+    tuneSpaceRenderer = renderer;
+    var t0 = Date.now();
+
+    function animate() {
+      tuneSpaceAnimId = requestAnimationFrame(animate);
+      var t = (Date.now() - t0) * 0.001;
+      torus.rotation.y += 0.008;
+      torus.rotation.x = Math.PI / 2 * 0.3 + Math.sin(t) * 0.05;
+      stars.material.opacity = 0.5 + 0.45 * Math.sin(t * 1.3);
+      stars.rotation.y = t * 0.02;
+      if (tuneSpaceControls) tuneSpaceControls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+  }
+
+  function stopTuneSpace() {
+    if (tuneSpaceAnimId) {
+      cancelAnimationFrame(tuneSpaceAnimId);
+      tuneSpaceAnimId = null;
+    }
+    var container = document.getElementById('tuneSpace3dContainer');
+    if (container && tuneSpaceRenderer && tuneSpaceRenderer.domElement && tuneSpaceRenderer.domElement.parentNode === container) {
+      container.removeChild(tuneSpaceRenderer.domElement);
+      tuneSpaceRenderer.dispose();
+    }
+    tuneSpaceRenderer = null;
+    tuneSpaceControls = null;
+  }
+
+  document.getElementById('tabManifold').addEventListener('click', function() {
+    startToneOnce();
+    switchTab(TAB_MANIFOLD);
+  });
+  document.getElementById('tabTuneSpace').addEventListener('click', function() {
+    startToneOnce();
+    switchTab(TAB_TUNE);
+  });
+  document.getElementById('btnLoadData').addEventListener('click', function() {
+    startToneOnce();
+    loadRealData();
+  });
+  var btnApplyStars = document.getElementById('btnApplyStars');
+  if (btnApplyStars) {
+    btnApplyStars.addEventListener('click', function() {
+      stopTuneSpace();
+      startTuneSpace();
+    });
+  }
+
+  loadRealData();
+})();
+</script>
+{% endblock %}

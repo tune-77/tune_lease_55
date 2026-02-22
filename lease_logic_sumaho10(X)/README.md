@@ -3,6 +3,9 @@
 温水式リース審査AI **sumaho9 とリース与信スコアリング（学習モデル）を融合した版**です。  
 データファイル（past_cases.jsonl 等）は **リポジトリルート** にあり、sumaho8/9 と共通です。
 
+- **past_cases.jsonl** … 本番用の過去案件のみ。類似案件検索・AIコンテキストで参照する。**サンプルデータはここに足さない。**
+- **past_cases_sample.jsonl** … 開発・デモ用サンプル。`python lease_logic_sumaho10/append_sample_cases.py` で生成（本体には書き込まない）。
+
 ## 起動方法
 
 リポジトリのルート（clawd）で実行してください。

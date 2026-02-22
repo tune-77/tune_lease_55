@@ -4,6 +4,12 @@
 streamlit>=1.28.0
 streamlit-extras>=0.4.0
 
+# PDF出力（成約の正体レポート）
+reportlab>=4.0.0
+
+# 定性要因分析（成約/不成約の予測）
+lightgbm>=4.0.0
+
 # 以下は既存プロジェクトで利用している想定（必要に応じて追加）
 # pandas
 # plotly

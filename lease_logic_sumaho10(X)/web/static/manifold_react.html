@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Riemannian Credit Manifold</title>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital@1&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { overflow-x: hidden; }
+body {
+  background: linear-gradient(180deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+  color: #fff;
+  font-family: 'Crimson Text', Palatino, serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+/* スマホでキャンバスがはみ出さない・タッチが効くように */
+#root { overflow-x: hidden; max-width: 100vw; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+function isPrime(n) {
+  if (n < 2) return false;
+  for (let i = 2; i <= Math.sqrt(n); i++) {
+    if (n % i === 0) return false;
+  }
+  return true;
+}
+
+function torusProjection(u, v, R = 200, r = 80) {
+  return {
+    x: (R + r * Math.cos(v)) * Math.cos(u),
+    y: (R + r * Math.cos(v)) * Math.sin(u),
+    z: r * Math.sin(v),
+  };
+}
+
+function project3D(x, y, z, distance = 500) {
+  const scale = distance / (distance + z);
+  return { x: x * scale, y: y * scale, scale: scale };
+}
+
+function formatYen(n) {
+  if (n >= 1e8) return (n / 1e8).toFixed(1) + '億円';
+  if (n >= 1e4) return (n / 1e4).toFixed(0) + '万円';
+  return String(n) + '円';
+}
+
+const TARGET_COUNT = 1000;
+const API_URL = '/api/visualization/data';
+
+function generateSamplePoints(count) {
+  const points = [];
+  const industries = ['総合工事業', '食料品製造業', '金属製品製造業', '道路貨物運送業', '各種卸売業', '飲食店', '社会福祉'];
+  for (let i = 0; i < count; i++) {
+    const score = Math.floor(30 + Math.random() * 70);
+    points.push({
+      id: 's' + i,
+      score,
+      quantScore: 30 + Math.random() * 70,
+      qualScore: 30 + Math.random() * 70,
+      isPrime: isPrime(score),
+      approved: Math.random() > 0.4,
+      company: `サンプル企業 ${String(i + 1).padStart(3, '0')}`,
+      industry: industries[i % industries.length],
+      date: '2026-01-01',
+      rank: score >= 80 ? 'A' : score >= 71 ? 'B' : score >= 50 ? 'C' : score >= 30 ? 'D' : 'E',
+      details: { revenue: Math.floor(Math.random() * 500000000), assets: Math.floor(Math.random() * 800000000), equity: Math.floor(Math.random() * 300000000) },
+    });
+  }
+  return points;
+}
+
+function mapApiToPoint(d, index) {
+  const score = Math.max(0, Math.min(100, Number(d.totalScore) || 50));
+  return {
+    id: d.id != null ? d.id : index,
+    score: Math.round(score * 10) / 10,
+    quantScore: Number(d.quantScore) || 50,
+    qualScore: Number(d.qualScore) || 50,
+    isPrime: Boolean(d.isPrime),
+    approved: Boolean(d.approved),
+    company: d.company || `案件 ${index + 1}`,
+    industry: d.industry || 'その他',
+    date: d.date || '',
+    rank: d.rank || 'C',
+    details: d.details && typeof d.details === 'object' ? d.details : { revenue: 0, assets: 0, equity: 0 },
+  };
+}
+
+function MathematicalManifold() {
+  const canvasRef = useRef(null);
+  const [rotation, setRotation] = useState({ x: 0.3, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [viewMode, setViewMode] = useState('torus');
+  const [dataPoints, setDataPoints] = useState([]);
+  const [dataSource, setDataSource] = useState('loading');
+  const [realCount, setRealCount] = useState(0);
+  const [selectedPointIndex, setSelectedPointIndex] = useState(null);
+  const [effectsOn, setEffectsOn] = useState(true);
+  const [showLorenzTrails, setShowLorenzTrails] = useState(true);
+  const [canvasSize, setCanvasSize] = useState(800);
+  const animationRef = useRef(null);
+  const screenPositionsRef = useRef([]);
+  const lorenzStateRef = useRef([]);
+  const dragRef = useRef({ active: false, lastX: 0, lastY: 0, startX: 0, startY: 0 });
+  const pinchRef = useRef({ active: false, initialDistance: 0, initialZoom: 1 });
+
+  useEffect(() => {
+    const updateSize = () => {
+      const w = typeof window !== 'undefined' ? window.innerWidth : 800;
+      const h = typeof window !== 'undefined' ? window.innerHeight : 800;
+      const pad = 40;
+      const max = Math.min(800, w - pad, h - 220);
+      setCanvasSize(Math.max(280, max));
+    };
+    updateSize();
+    window.addEventListener('resize', updateSize);
+    return () => window.removeEventListener('resize', updateSize);
+  }, []);
+
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const onTouchMove = (e) => { if (e.touches.length === 2) e.preventDefault(); };
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => el.removeEventListener('touchmove', onTouchMove);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(API_URL)
+      .then(res => res.json())
+      .then(json => {
+        if (cancelled) return;
+        const raw = Array.isArray(json.data) ? json.data : [];
+        const realNum = typeof json.real_count === 'number' ? json.real_count : raw.length;
+        setRealCount(realNum);
+        const mapped = raw.map((d, i) => mapApiToPoint(d, i));
+        if (mapped.length >= TARGET_COUNT) {
+          setDataPoints(mapped.slice(0, TARGET_COUNT));
+          setDataSource(realNum > 0 ? 'real' : 'sample');
+        } else if (mapped.length > 0) {
+          const need = TARGET_COUNT - mapped.length;
+          const extra = generateSamplePoints(need).map((p, i) => ({ ...p, id: 's' + i }));
+          setDataPoints([...mapped, ...extra]);
+          setDataSource('real_and_sample');
+        } else {
+          setDataPoints(generateSamplePoints(TARGET_COUNT));
+          setDataSource('sample');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDataPoints(generateSamplePoints(TARGET_COUNT));
+          setDataSource('sample');
+        }
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || dataPoints.length === 0) return;
+
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+    const centerX = width / 2;
+    const centerY = height / 2;
+
+    let time = 0;
+    const distance = 500 / zoom;
+
+    const animate = () => {
+      const bgGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 500);
+      bgGradient.addColorStop(0, '#0f0c29');
+      bgGradient.addColorStop(0.5, '#302b63');
+      bgGradient.addColorStop(1, '#24243e');
+      ctx.fillStyle = bgGradient;
+      ctx.fillRect(0, 0, width, height);
+
+      const rotX = rotation.x + time * 0.001;
+      const rotY = rotation.y + time * 0.002;
+      const positions = [];
+
+      if (viewMode === 'torus') {
+        dataPoints.forEach((point, i) => {
+          const u = (point.quantScore / 100) * Math.PI * 2;
+          const v = (point.qualScore / 100) * Math.PI * 2;
+          let pos3d = torusProjection(u, v, 180, 60);
+          const y1 = pos3d.y * Math.cos(rotX) - pos3d.z * Math.sin(rotX);
+          const z1 = pos3d.y * Math.sin(rotX) + pos3d.z * Math.cos(rotX);
+          const x2 = pos3d.x * Math.cos(rotY) - z1 * Math.sin(rotY);
+          const z2 = pos3d.x * Math.sin(rotY) + z1 * Math.cos(rotY);
+          const projected = project3D(x2, y1, z2, distance);
+          const screenX = centerX + projected.x;
+          const screenY = centerY + projected.y;
+          positions.push({ screenX, screenY, index: i });
+
+          const hue = point.score * 3.6;
+          const saturation = point.isPrime ? 90 : 50;
+          const lightness = 40 + projected.scale * 30;
+
+          if (effectsOn && !point.approved) {
+            const drift = Math.sin(time * 0.02 + i * 0.5) * 8;
+            const mistAlpha = 0.15 + 0.08 * Math.sin(time * 0.03 + i);
+            ctx.fillStyle = `rgba(20, 10, 40, ${mistAlpha})`;
+            ctx.beginPath();
+            ctx.ellipse(screenX + drift, screenY + drift * 0.6, 25, 15, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = `rgba(10, 5, 25, ${mistAlpha * 0.7})`;
+            ctx.beginPath();
+            ctx.ellipse(screenX - drift * 0.7, screenY + drift * 0.5, 18, 22, 0, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          const twinkle = (effectsOn && point.isPrime) ? (0.75 + 0.25 * Math.sin(time * 0.15 + i * 0.2)) : 1;
+          const glowSize = (point.isPrime ? 15 : 8) * projected.scale * twinkle;
+          const glowGradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, glowSize);
+          glowGradient.addColorStop(0, `hsla(${hue}, ${saturation}%, ${lightness}%, ${0.8 * twinkle})`);
+          glowGradient.addColorStop(1, `hsla(${hue}, ${saturation}%, ${lightness}%, 0)`);
+          ctx.fillStyle = glowGradient;
+          ctx.beginPath();
+          ctx.arc(screenX, screenY, glowSize, 0, Math.PI * 2);
+          ctx.fill();
+          const size = (point.isPrime ? 4 : 2) * projected.scale;
+          ctx.fillStyle = `hsla(${hue}, ${saturation + 20}%, ${lightness + 20}%, 0.9)`;
+          ctx.beginPath();
+          ctx.arc(screenX, screenY, size, 0, Math.PI * 2);
+          ctx.fill();
+          if (point.isPrime) {
+            ctx.strokeStyle = `hsla(${hue}, 80%, 60%, ${0.4 * projected.scale * twinkle})`;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(screenX, screenY, size + 5 * projected.scale, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        });
+        ctx.strokeStyle = 'rgba(138, 43, 226, 0.15)';
+        ctx.lineWidth = 0.5;
+        for (let u = 0; u < Math.PI * 2; u += 0.3) {
+          ctx.beginPath();
+          for (let v = 0; v <= Math.PI * 2; v += 0.1) {
+            const pos3d = torusProjection(u, v, 180, 60);
+            const y1 = pos3d.y * Math.cos(rotX) - pos3d.z * Math.sin(rotX);
+            const z1 = pos3d.y * Math.sin(rotX) + pos3d.z * Math.cos(rotX);
+            const x2 = pos3d.x * Math.cos(rotY) - z1 * Math.sin(rotY);
+            const z2 = pos3d.x * Math.sin(rotY) + z1 * Math.cos(rotY);
+            const proj = project3D(x2, y1, z2, distance);
+            if (v === 0) ctx.moveTo(centerX + proj.x, centerY + proj.y);
+            else ctx.lineTo(centerX + proj.x, centerY + proj.y);
+          }
+          ctx.stroke();
+        }
+      } else if (viewMode === 'hyperbolic') {
+        const scaleBase = 300 * zoom;
+        dataPoints.forEach((point, i) => {
+          const r = (point.score / 100) * 0.95;
+          const theta = (i / dataPoints.length) * Math.PI * 2 + time * 0.001;
+          const x = r * Math.cos(theta);
+          const y = r * Math.sin(theta);
+          const scale = 1 / (1 + r);
+          const screenX = centerX + x * scaleBase;
+          const screenY = centerY + y * scaleBase;
+          positions.push({ screenX, screenY, index: i });
+          const hue = point.score * 3.6;
+          const saturation = point.isPrime ? 90 : 50;
+          if (i > 0) {
+            const prevPoint = dataPoints[i - 1];
+            const prevR = (prevPoint.score / 100) * 0.95;
+            const prevTheta = ((i - 1) / dataPoints.length) * Math.PI * 2 + time * 0.001;
+            const prevX = centerX + prevR * Math.cos(prevTheta) * scaleBase;
+            const prevY = centerY + prevR * Math.sin(prevTheta) * scaleBase;
+            ctx.strokeStyle = `hsla(${hue}, 40%, 50%, 0.1)`;
+            ctx.lineWidth = 0.5;
+            ctx.beginPath();
+            ctx.moveTo(prevX, prevY);
+            ctx.lineTo(screenX, screenY);
+            ctx.stroke();
+          }
+          if (effectsOn && !point.approved) {
+            const drift = Math.sin(time * 0.02 + i * 0.5) * 6;
+            ctx.fillStyle = `rgba(20, 10, 40, ${0.12 + 0.06 * Math.sin(time * 0.03 + i)})`;
+            ctx.beginPath();
+            ctx.ellipse(screenX + drift, screenY + drift * 0.6, 20, 12, 0, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          const twinkle = (effectsOn && point.isPrime) ? (0.75 + 0.25 * Math.sin(time * 0.15 + i * 0.2)) : 1;
+          const glowSize = (point.isPrime ? 15 : 8) * scale * twinkle;
+          const glowGradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, glowSize);
+          glowGradient.addColorStop(0, `hsla(${hue}, ${saturation}%, 60%, ${0.8 * twinkle})`);
+          glowGradient.addColorStop(1, `hsla(${hue}, ${saturation}%, 60%, 0)`);
+          ctx.fillStyle = glowGradient;
+          ctx.beginPath();
+          ctx.arc(screenX, screenY, glowSize, 0, Math.PI * 2);
+          ctx.fill();
+          const size = (point.isPrime ? 4 : 2) * scale;
+          ctx.fillStyle = `hsla(${hue}, ${saturation + 20}%, 70%, 0.9)`;
+          ctx.beginPath();
+          ctx.arc(screenX, screenY, size, 0, Math.PI * 2);
+          ctx.fill();
+        });
+        ctx.strokeStyle = 'rgba(138, 43, 226, 0.4)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 300, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (viewMode === 'prime') {
+        const scalePrime = zoom;
+        const spiralRot = rotation.y;
+        dataPoints.forEach((point, i) => {
+          const angle = i * 2.39996322972 + spiralRot;
+          const radius = 10 * Math.sqrt(i + 1) * scalePrime;
+          const x = radius * Math.cos(angle);
+          const y = radius * Math.sin(angle);
+          const screenX = centerX + x;
+          const screenY = centerY + y;
+          positions.push({ screenX, screenY, index: i });
+          const hue = point.isPrime ? 280 : (point.score * 3.6);
+          const saturation = point.isPrime ? 95 : 40;
+          const lightness = point.isPrime ? 65 : 45;
+          if (effectsOn && !point.approved) {
+            const drift = Math.sin(time * 0.02 + i * 0.5) * 4;
+            ctx.fillStyle = `rgba(20, 10, 40, ${0.1 + 0.05 * Math.sin(time * 0.03 + i)})`;
+            ctx.beginPath();
+            ctx.ellipse(screenX + drift, screenY, 15, 10, 0, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          if (point.isPrime) {
+            const pulse = 1 + (effectsOn ? Math.sin(time * 0.05 + i * 0.1) * 0.3 : 0);
+            const twinkle = effectsOn ? (0.8 + 0.2 * Math.sin(time * 0.2 + i * 0.3)) : 1;
+            const glowSize = 20 * pulse * twinkle;
+            const glowGradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, glowSize);
+            glowGradient.addColorStop(0, `hsla(${hue}, ${saturation}%, ${lightness}%, ${0.9 * twinkle})`);
+            glowGradient.addColorStop(1, `hsla(${hue}, ${saturation}%, ${lightness}%, 0)`);
+            ctx.fillStyle = glowGradient;
+            ctx.beginPath();
+            ctx.arc(screenX, screenY, glowSize, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = `hsla(${hue}, 100%, 80%, ${0.95 * twinkle})`;
+            ctx.beginPath();
+            ctx.arc(screenX, screenY, 5 * pulse, 0, Math.PI * 2);
+            ctx.fill();
+            for (let ring = 1; ring <= 2; ring++) {
+              ctx.strokeStyle = `hsla(${hue}, 90%, 70%, ${0.3 / ring * twinkle})`;
+              ctx.lineWidth = 2 / ring;
+              ctx.beginPath();
+              ctx.arc(screenX, screenY, 8 * pulse + ring * 6, 0, Math.PI * 2);
+              ctx.stroke();
+            }
+          } else {
+            const glowSize = 8;
+            const glowGradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, glowSize);
+            glowGradient.addColorStop(0, `hsla(${hue}, ${saturation}%, ${lightness}%, 0.6)`);
+            glowGradient.addColorStop(1, `hsla(${hue}, ${saturation}%, ${lightness}%, 0)`);
+            ctx.fillStyle = glowGradient;
+            ctx.beginPath();
+            ctx.arc(screenX, screenY, glowSize, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = `hsla(${hue}, ${saturation + 20}%, ${lightness + 10}%, 0.7)`;
+            ctx.beginPath();
+            ctx.arc(screenX, screenY, 2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        });
+      } else if (viewMode === 'lorenz') {
+        const LORENZ_N = 50;
+        const LORENZ_TRAIL_MAX = 280;
+        const LORENZ_TRAIL_STEP = 2;
+        if (lorenzStateRef.current.length !== LORENZ_N) {
+          lorenzStateRef.current = dataPoints.slice(0, LORENZ_N).map((p, i) => ({
+            pointIndex: i,
+            state: { x: (p.quantScore - 50) / 5, y: (p.qualScore - 50) / 5, z: (p.score - 50) / 5 },
+            trajectory: [],
+            approved: p.approved,
+          }));
+        }
+        const lorenzPoints = lorenzStateRef.current;
+        const σ = 10, ρ = 28, β = 8/3;
+        const dt = 0.005;
+        function lorenzStep(x, y, z) {
+          const dx = σ * (y - x) * dt;
+          const dy = (x * (ρ - z) - y) * dt;
+          const dz = (x * y - β * z) * dt;
+          return { x: x + dx, y: y + dy, z: z + dz };
+        }
+        const rotX = rotation.x + time * 0.001;
+        const rotY = rotation.y + time * 0.002;
+        function projectLorenz(x, y, z) {
+          const x1 = x * Math.cos(rotY) - z * Math.sin(rotY);
+          const z1 = x * Math.sin(rotY) + z * Math.cos(rotY);
+          const y2 = y * Math.cos(rotX) - z1 * Math.sin(rotX);
+          const z2 = y * Math.sin(rotX) + z1 * Math.cos(rotX);
+          const scale = (400 / zoom) / ((400 / zoom) + z2);
+          return {
+            x: centerX + x1 * scale * 6,
+            y: centerY + y2 * scale * 6,
+            scale: scale,
+          };
+        }
+        if (showLorenzTrails) {
+          ctx.fillStyle = 'rgba(10, 0, 21, 0.06)';
+          ctx.fillRect(0, 0, width, height);
+        } else {
+          ctx.fillStyle = '#0a0015';
+          ctx.fillRect(0, 0, width, height);
+        }
+        lorenzPoints.forEach((lp) => {
+          lp.state = lorenzStep(lp.state.x, lp.state.y, lp.state.z);
+          lp.trajectory.push({ ...lp.state });
+          if (lp.trajectory.length > LORENZ_TRAIL_MAX) lp.trajectory.shift();
+          if (showLorenzTrails && lp.trajectory.length > 1) {
+            ctx.strokeStyle = lp.approved ? 'rgba(100, 255, 100, 0.35)' : 'rgba(255, 100, 100, 0.35)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            const tr = lp.trajectory;
+            for (let i = 0; i < tr.length; i += LORENZ_TRAIL_STEP) {
+              const proj = projectLorenz(tr[i].x, tr[i].y, tr[i].z);
+              if (i === 0) ctx.moveTo(proj.x, proj.y);
+              else ctx.lineTo(proj.x, proj.y);
+            }
+            if (tr.length > 1 && (tr.length - 1) % LORENZ_TRAIL_STEP !== 0) {
+              const p = projectLorenz(tr[tr.length - 1].x, tr[tr.length - 1].y, tr[tr.length - 1].z);
+              ctx.lineTo(p.x, p.y);
+            }
+            ctx.stroke();
+          }
+          const current = projectLorenz(lp.state.x, lp.state.y, lp.state.z);
+          positions.push({ screenX: current.x, screenY: current.y, index: lp.pointIndex });
+          const glowSize = 10 * current.scale;
+          const grad = ctx.createRadialGradient(current.x, current.y, 0, current.x, current.y, glowSize);
+          if (lp.approved) {
+            grad.addColorStop(0, 'rgba(100, 255, 100, 0.85)');
+            grad.addColorStop(1, 'rgba(100, 255, 100, 0)');
+          } else {
+            grad.addColorStop(0, 'rgba(255, 100, 100, 0.85)');
+            grad.addColorStop(1, 'rgba(255, 100, 100, 0)');
+          }
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(current.x, current.y, glowSize, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = lp.approved ? '#00ff00' : '#ff0000';
+          ctx.beginPath();
+          ctx.arc(current.x, current.y, 2.5 * current.scale, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+
+      screenPositionsRef.current = positions;
+      time++;
+      animationRef.current = requestAnimationFrame(animate);
+    };
+
+    animate();
+    return () => {
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    };
+  }, [dataPoints, rotation, viewMode, zoom, effectsOn, canvasSize, showLorenzTrails]);
+
+  const getClosestPointIndex = (clientX, clientY) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const cx = x * scaleX;
+    const cy = y * scaleY;
+    const positions = screenPositionsRef.current || [];
+    let best = null;
+    let bestD = 40;
+    positions.forEach(({ screenX, screenY, index }) => {
+      const d = Math.hypot(screenX - cx, screenY - cy);
+      if (d < bestD) { bestD = d; best = index; }
+    });
+    return best;
+  };
+
+  const handleCanvasPointerDown = (e) => {
+    if (e.button !== 0 && e.button !== undefined) return;
+    const clientX = e.clientX != null ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+    const clientY = e.clientY != null ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+    if (e.touches && e.touches.length === 2) return;
+    dragRef.current = { active: true, lastX: clientX, lastY: clientY, startX: clientX, startY: clientY };
+  };
+
+  const handleCanvasPointerMove = (e) => {
+    if (e.touches && e.touches.length === 2) e.preventDefault();
+    const clientX = e.clientX != null ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+    const clientY = e.clientY != null ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+    if (e.touches && e.touches.length === 2) {
+      const t0 = e.touches[0], t1 = e.touches[1];
+      const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+      if (pinchRef.current.active) {
+        const ratio = dist / pinchRef.current.initialDistance;
+        setZoom(Math.max(0.3, Math.min(3, pinchRef.current.initialZoom * ratio)));
+      } else {
+        pinchRef.current = { active: true, initialDistance: dist, initialZoom: zoom };
+      }
+      dragRef.current.active = false;
+      return;
+    }
+    pinchRef.current.active = false;
+    if (dragRef.current.active) {
+      const dx = clientX - dragRef.current.lastX;
+      const dy = clientY - dragRef.current.lastY;
+      setRotation(r => ({ x: r.x + dy * 0.01, y: r.y + dx * 0.01 }));
+      dragRef.current.lastX = clientX;
+      dragRef.current.lastY = clientY;
+    }
+  };
+
+  const handleCanvasPointerUp = (e) => {
+    const clientX = e.clientX != null ? e.clientX : (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientX : 0);
+    const clientY = e.clientY != null ? e.clientY : (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientY : 0);
+    if (e.touches && e.touches.length >= 2) return;
+    if (e.touches && e.touches.length === 1) return;
+    if (dragRef.current.active) {
+      const moved = Math.hypot(clientX - dragRef.current.startX, clientY - dragRef.current.startY);
+      if (moved < 10) {
+        const idx = getClosestPointIndex(clientX, clientY);
+        if (idx !== null) setSelectedPointIndex(idx);
+      }
+      dragRef.current.active = false;
+    }
+    pinchRef.current.active = false;
+  };
+
+  const primeCount = dataPoints.filter(p => p.isPrime).length;
+  const approvedCount = dataPoints.filter(p => p.approved).length;
+
+  if (dataSource === 'loading') {
+    return (
+      <div style={{ padding: 30, textAlign: 'center', minHeight: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div>
+          <div style={{ fontSize: 18, color: '#a8edea', marginBottom: 10 }}>データを読み込み中...</div>
+          <div style={{ fontSize: 12, color: '#9ca3af' }}>実データ取得後、1000件未満の場合はサンプルで補完します</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: canvasSize < 400 ? 12 : 30, maxWidth: '100%' }}>
+      <div style={{ textAlign: 'center', marginBottom: 40 }}>
+        <h1 style={{
+          margin: 0, fontSize: 42, fontWeight: 300, letterSpacing: '0.15em',
+          background: 'linear-gradient(90deg, #a8edea 0%, #fed6e3 100%)',
+          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+          fontStyle: 'italic',
+        }}>
+          Riemannian Credit Manifold
+        </h1>
+        <p style={{ margin: '15px 0 0 0', fontSize: 13, color: '#9ca3af', letterSpacing: '0.3em', fontFamily: 'monospace' }}>
+          ℝ² → M³ × S¹ / π₁(M) ≅ ℤ
+        </p>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 15, marginBottom: 30 }}>
+        {[
+          { id: 'torus', label: 'トーラス多様体', desc: 'T² ≅ S¹ × S¹' },
+          { id: 'hyperbolic', label: '双曲空間', desc: 'ℍ² (Poincaré)' },
+          { id: 'prime', label: '素数空間', desc: 'Ulam Spiral' },
+          { id: 'lorenz', label: 'カオス審査空間', desc: 'Lorenz' },
+        ].map(mode => (
+          <button key={mode.id} onClick={() => setViewMode(mode.id)} style={{
+            padding: '12px 24px',
+            background: viewMode === mode.id ? 'linear-gradient(135deg, rgba(168,237,234,0.2), rgba(254,214,227,0.2))' : 'rgba(255,255,255,0.05)',
+            border: viewMode === mode.id ? '2px solid rgba(168,237,234,0.6)' : '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 8, color: '#fff', cursor: 'pointer', transition: 'all 0.3s', fontFamily: 'inherit',
+          }}>
+            <div style={{ fontSize: 14, marginBottom: 4 }}>{mode.label}</div>
+            <div style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace' }}>{mode.desc}</div>
+          </button>
+        ))}
+        <button onClick={() => setEffectsOn(e => !e)} style={{
+          padding: '12px 20px',
+          background: effectsOn ? 'rgba(254,214,227,0.15)' : 'rgba(255,255,255,0.05)',
+          border: effectsOn ? '2px solid rgba(254,214,227,0.5)' : '1px solid rgba(255,255,255,0.2)',
+          borderRadius: 8, color: '#fff', cursor: 'pointer', transition: 'all 0.3s', fontFamily: 'inherit', marginLeft: 8,
+        }}>
+          <div style={{ fontSize: 14 }}>{effectsOn ? '✨ エフェクト ON' : 'エフェクト OFF'}</div>
+        </button>
+        {viewMode === 'lorenz' && (
+          <button onClick={() => setShowLorenzTrails(t => !t)} style={{
+            padding: '12px 20px', marginLeft: 8,
+            background: showLorenzTrails ? 'rgba(255,0,255,0.2)' : 'rgba(255,255,255,0.05)',
+            border: '1px solid rgba(255,0,255,0.4)', borderRadius: 8, color: '#ff00ff', cursor: 'pointer', fontFamily: 'inherit',
+          }}>
+            {showLorenzTrails ? '🌊 軌跡ON' : '⚫ 軌跡OFF'}
+          </button>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 30, marginBottom: 30, fontSize: 13, flexWrap: 'wrap' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ color: '#9ca3af', marginBottom: 5, fontFamily: 'monospace', fontSize: 11 }}>|M| = データ点</div>
+          <div style={{ fontSize: 24, color: '#a8edea' }}>{dataPoints.length}</div>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ color: '#9ca3af', marginBottom: 5, fontFamily: 'monospace', fontSize: 11 }}>π(x) = 素数</div>
+          <div style={{ fontSize: 24, color: '#fed6e3' }}>{primeCount}</div>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ color: '#9ca3af', marginBottom: 5, fontFamily: 'monospace', fontSize: 11 }}>A = 承認</div>
+          <div style={{ fontSize: 24, color: '#48bb78' }}>{approvedCount}</div>
+        </div>
+        <div style={{ textAlign: 'center', width: '100%', marginTop: 5 }}>
+          <span style={{ fontSize: 11, color: '#9ca3af' }}>
+            {dataSource === 'real' && `表示: データ優先 — 実データ ${realCount} 件を先頭に、不足分はサーバ側でサンプル補完`}
+            {dataSource === 'real_and_sample' && `表示: データ優先 — 実データ ${realCount} 件を先頭に、不足分のみクライアントでサンプル補完`}
+            {dataSource === 'sample' && '表示: サンプルのみ（API未取得・実データなし時）'}
+          </span>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 30, position: 'relative', overflow: 'hidden' }}>
+        <canvas
+          ref={canvasRef}
+          width={canvasSize}
+          height={canvasSize}
+          style={{
+            width: canvasSize, height: canvasSize, maxWidth: '100%',
+            border: '1px solid rgba(168,237,234,0.3)', borderRadius: 16,
+            boxShadow: '0 0 80px rgba(168,237,234,0.2)',
+            background: 'radial-gradient(circle at 50% 50%, rgba(48,43,99,0.3), transparent)',
+            cursor: 'grab',
+            touchAction: 'none',
+            WebkitTouchCallout: 'none',
+            userSelect: 'none',
+          }}
+          onMouseDown={handleCanvasPointerDown}
+          onMouseMove={handleCanvasPointerMove}
+          onMouseUp={handleCanvasPointerUp}
+          onMouseLeave={() => { dragRef.current.active = false; pinchRef.current.active = false; }}
+          onTouchStart={handleCanvasPointerDown}
+          onTouchMove={handleCanvasPointerMove}
+          onTouchEnd={handleCanvasPointerUp}
+          onTouchCancel={handleCanvasPointerUp}
+        />
+        <div style={{ position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)', fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>
+          ドラッグ: 回転　ピンチ: 拡大縮小　クリック: 企業詳細
+        </div>
+      </div>
+
+      {selectedPointIndex != null && dataPoints[selectedPointIndex] && (() => {
+        const p = dataPoints[selectedPointIndex];
+        const d = p.details || {};
+        const history = [{ date: p.date, rank: p.rank, result: p.approved ? '承認' : '否決', score: p.score }];
+        const forecastData = [p.score, Math.min(100, p.score + (Math.random() - 0.3) * 10), Math.min(100, p.score + (Math.random() - 0.2) * 8)];
+        return (
+          <div
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+            }}
+            onClick={() => setSelectedPointIndex(null)}
+          >
+            <div
+              style={{
+                background: 'linear-gradient(180deg, #1a1730 0%, #24243e 100%)',
+                border: '1px solid rgba(168,237,234,0.4)', borderRadius: 16, padding: 28, maxWidth: 420, width: '90%', maxHeight: '85vh', overflow: 'auto',
+                boxShadow: '0 0 60px rgba(168,237,234,0.2)',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <h3 style={{ margin: 0, fontSize: 18, color: '#a8edea' }}>{p.company}</h3>
+                <button onClick={() => setSelectedPointIndex(null)} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 24, cursor: 'pointer', lineHeight: 1 }}>×</button>
+              </div>
+              <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 16 }}>{p.industry}　スコア {p.score}　{p.approved ? '承認' : '否決'}　{p.isPrime ? '★素数' : ''}</div>
+              <section style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 13, color: '#a8edea', marginBottom: 8 }}>財務データ</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 12 }}>
+                  <div>売上高</div><div style={{ textAlign: 'right' }}>{formatYen(d.revenue || 0)}</div>
+                  <div>総資産</div><div style={{ textAlign: 'right' }}>{formatYen(d.assets || 0)}</div>
+                  <div>純資産</div><div style={{ textAlign: 'right' }}>{formatYen(d.equity || 0)}</div>
+                </div>
+              </section>
+              <section style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 13, color: '#a8edea', marginBottom: 8 }}>審査履歴</div>
+                <div style={{ fontSize: 12 }}>
+                  {history.map((h, i) => (
+                    <div key={i} style={{ padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                      {h.date}　ランク {h.rank}　{h.result}（スコア {h.score}）
+                    </div>
+                  ))}
+                </div>
+              </section>
+              <section>
+                <div style={{ fontSize: 13, color: '#a8edea', marginBottom: 8 }}>将来予測（スコア推移）</div>
+                <div style={{ height: 80, display: 'flex', alignItems: 'flex-end', gap: 12 }}>
+                  {forecastData.map((v, i) => (
+                    <div key={i} style={{ flex: 1, background: 'rgba(168,237,234,0.2)', borderRadius: 4, height: `${v}%`, minHeight: 8 }} title={`${v.toFixed(1)}`} />
+                  ))}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#9ca3af', marginTop: 6 }}><span>現在</span><span>予測1</span><span>予測2</span></div>
+              </section>
+            </div>
+          </div>
+        );
+      })()}
+
+      <div style={{
+        maxWidth: 800, margin: '0 auto',
+        background: 'rgba(255,255,255,0.02)', padding: 25,
+        borderRadius: 12, border: '1px solid rgba(168,237,234,0.2)',
+      }}>
+        <div style={{ fontSize: 14, marginBottom: 15, color: '#a8edea', fontStyle: 'italic' }}>Topological Interpretation</div>
+        <div style={{ fontSize: 12, lineHeight: 1.8, color: '#d1d5db' }}>
+          {viewMode === 'torus' && '各企業はトーラス多様体（ドーナツ型）上の点として配置される。定量スコア（u）と定性スコア（v）が極座標として機能し、企業はこの2次元多様体を時空間的に回転する。素数スコアを持つ企業は特異点として輝く。'}
+          {viewMode === 'hyperbolic' && 'データはポアンカレ円板（双曲幾何学）に射影される。スコアが高いほど円周に近づき、時空の歪みが増大する。中心は低スコア（ランクD付近）でリスクが高く、円周に近づくほどスコアが高く安全性が増す。素数性は曲率の特異点として可視化される。'}
+          {viewMode === 'prime' && 'ウラム螺旋（素数の渦）に沿ってデータが配置される。黄金角（φ ≈ 2.39996...）による螺旋配置により、素数性を持つ企業が宇宙的なパターンとして浮かび上がる。素数は信用の本質的な構造を暗示する。'}
+          {viewMode === 'lorenz' && '各企業はローレンツアトラクタの軌道上を移動する。初期値（定量・定性・総合スコア）がわずかに異なるだけで将来の軌道が全く異なる「蝶効果」を可視化。決定論的でありながら予測不可能な信用リスクの本質を表現する。承認＝緑・否決＝赤。'}
+        </div>
+        <div style={{ fontSize: 11, marginTop: 12, color: '#9ca3af', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 12 }}>
+          <strong style={{ color: '#fed6e3' }}>企業素数</strong>：審査スコア（100点満点の整数）が素数である企業を指す。スコアが 2, 3, 5, 7, 11, 13… などの素数になる案件は星として強調表示される。
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.render(<MathematicalManifold />, document.getElementById('root'));
+</script>
+</body>
+</html>

@@ -3915,298 +3915,315 @@ elif mode == "📋 審査・分析":
                 current_case_id = st.session_state.get("current_case_id")
 
                 # ==================== ダッシュボードレイアウト（プロ仕様） ====================
-                    st.markdown("---")
-                    # ----- 成約に最も寄与している上位3因子（データ5件以上で表示） -----
-                    _driver_analysis = run_contract_driver_analysis()
-                    if _driver_analysis and _driver_analysis["closed_count"] >= 5:
-                        st.markdown("**🎯 成約に最も寄与している上位3つの因子（ドライバー）**")
-                        d1, d2, d3 = st.columns(3)
-                        for idx, col in enumerate([d1, d2, d3]):
-                            if idx < len(_driver_analysis["top3_drivers"]):
-                                d = _driver_analysis["top3_drivers"][idx]
-                                with col:
-                                    st.markdown(f"""
-                                    <div style="background:linear-gradient(135deg,#1e3a5f 0%,#334155 100%);color:#fff;padding:0.8rem;border-radius:10px;font-size:0.9rem;">
-                                    <div style="opacity:0.9;">{idx+1}位</div>
-                                    <div style="font-weight:bold;">{d['label']}</div>
-                                    <div style="font-size:0.8rem;">係数 {d['coef']:.3f}（{d['direction']}）</div>
-                                    </div>
-                                    """, unsafe_allow_html=True)
-                        st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
-                    # ----- タイトル + 画像 -----
-                    img_path, img_caption = get_dashboard_image_path(hantei, industry_major, selected_sub, asset_name)
-                    col_title, col_img = st.columns([3, 1])
-                    with col_title:
-                        st.markdown(f"### 📊 分析ダッシュボード — {selected_sub}")
-                    with col_img:
-                        if img_path and os.path.isfile(img_path):
-                            st.image(img_path, caption=img_caption, use_container_width=True)
-                        else:
-                            st.caption("画像: dashboard_images に画像を配置するか、環境変数 DASHBOARD_IMAGES_ASSETS を指定してください。")
+                st.markdown("---")
+                # ----- 成約に最も寄与している上位3因子（データ5件以上で表示） -----
+                _driver_analysis = run_contract_driver_analysis()
+                if _driver_analysis and _driver_analysis["closed_count"] >= 5:
+                    st.markdown("**🎯 成約に最も寄与している上位3つの因子（ドライバー）**")
+                    d1, d2, d3 = st.columns(3)
+                    for idx, col in enumerate([d1, d2, d3]):
+                        if idx < len(_driver_analysis["top3_drivers"]):
+                            d = _driver_analysis["top3_drivers"][idx]
+                            with col:
+                                st.markdown(f"""
+                                <div style="background:linear-gradient(135deg,#1e3a5f 0%,#334155 100%);color:#fff;padding:0.8rem;border-radius:10px;font-size:0.9rem;">
+                                <div style="opacity:0.9;">{idx+1}位</div>
+                                <div style="font-weight:bold;">{d['label']}</div>
+                                <div style="font-size:0.8rem;">係数 {d['coef']:.3f}（{d['direction']}）</div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                    st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
+                # ----- タイトル + 画像 -----
+                img_path, img_caption = get_dashboard_image_path(hantei, industry_major, selected_sub, asset_name)
+                col_title, col_img = st.columns([3, 1])
+                with col_title:
+                    st.markdown(f"### 📊 分析ダッシュボード — {selected_sub}")
+                with col_img:
+                    if img_path and os.path.isfile(img_path):
+                        st.image(img_path, caption=img_caption, use_container_width=True)
+                    else:
+                        st.caption("画像: dashboard_images に画像を配置するか、環境変数 DASHBOARD_IMAGES_ASSETS を指定してください。")
 
-                    st.divider()
-                    # ----- 主要KPI（画面最上部・横並び）業界実績 + 本件 -----
-                    past_stats = get_stats(selected_sub)
-                    with st.container():
-                        st.markdown("**主要KPI**")
-                        kpi1, kpi2, kpi3, kpi4, kpi5, kpi6 = st.columns(6)
-                        with kpi1:
-                            st.metric("業界 成約率", f"{past_stats.get('close_rate', 0) * 100:.1f}%" if past_stats.get("count") else "—", help="同業種の成約率")
-                        with kpi2:
-                            st.metric("業界 成約件数", f"{past_stats.get('closed_count', 0)}件" if past_stats.get("count") else "—", help="同業種の成約件数")
-                        with kpi3:
-                            avg_r = past_stats.get("avg_winning_rate")
-                            st.metric("業界 平均金利", f"{avg_r:.2f}%" if avg_r is not None and avg_r > 0 else "—", help="同業種の平均成約金利")
-                        with kpi4:
-                            st.metric("本件 スコア", f"{res['score']:.1f}%", help="総合承認スコア")
-                        with kpi5:
-                            st.metric("本件 判定", res.get("hantei", "—"), help="承認圏内 or 要審議")
-                        with kpi6:
-                            st.metric("本件 契約期待度", f"{res.get('contract_prob', 0):.1f}%", help="定性補正後")
-                        # streamlit-extras: ページ内の全 st.metric をカード風に（ネイビー・ゴールドの左アクセント）
-                        if style_metric_cards is not None:
-                            style_metric_cards(
-                                background_color=CHART_STYLE["bg"],
-                                border_size_px=1,
-                                border_color=CHART_STYLE["grid"],
-                                border_radius_px=8,
-                                border_left_color=CHART_STYLE["primary"],
-                                box_shadow=True,
-                            )
-                        st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
+                st.divider()
+                # ----- 主要KPI（画面最上部・横並び）業界実績 + 本件 -----
+                past_stats = get_stats(selected_sub)
+                with st.container():
+                    st.markdown("**主要KPI**")
+                    kpi1, kpi2, kpi3, kpi4, kpi5, kpi6 = st.columns(6)
+                    with kpi1:
+                        st.metric("業界 成約率", f"{past_stats.get('close_rate', 0) * 100:.1f}%" if past_stats.get("count") else "—", help="同業種の成約率")
+                    with kpi2:
+                        st.metric("業界 成約件数", f"{past_stats.get('closed_count', 0)}件" if past_stats.get("count") else "—", help="同業種の成約件数")
+                    with kpi3:
+                        avg_r = past_stats.get("avg_winning_rate")
+                        st.metric("業界 平均金利", f"{avg_r:.2f}%" if avg_r is not None and avg_r > 0 else "—", help="同業種の平均成約金利")
+                    with kpi4:
+                        st.metric("本件 スコア", f"{res['score']:.1f}%", help="総合承認スコア")
+                    with kpi5:
+                        st.metric("本件 判定", res.get("hantei", "—"), help="承認圏内 or 要審議")
+                    with kpi6:
+                        st.metric("本件 契約期待度", f"{res.get('contract_prob', 0):.1f}%", help="定性補正後")
+                    # streamlit-extras: ページ内の全 st.metric をカード風に（ネイビー・ゴールドの左アクセント）
+                    if style_metric_cards is not None:
+                        style_metric_cards(
+                            background_color=CHART_STYLE["bg"],
+                            border_size_px=1,
+                            border_color=CHART_STYLE["grid"],
+                            border_radius_px=8,
+                            border_left_color=CHART_STYLE["primary"],
+                            box_shadow=True,
+                        )
+                    st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
 
-                    # ----- 要確認アラート（承認ライン直下・本社と学習モデルの判定差） -----
-                    review_need, review_reasons = get_review_alert(res)
-                    if review_need and review_reasons:
-                        st.warning("⚠️ **要確認**: " + " / ".join(review_reasons))
+                # ----- 要確認アラート（承認ライン直下・本社と学習モデルの判定差） -----
+                review_need, review_reasons = get_review_alert(res)
+                if review_need and review_reasons:
+                    st.warning("⚠️ **要確認**: " + " / ".join(review_reasons))
 
-                    # ----- AIが補完した判定要因（進化するダッシュボード） -----
-                    ai_factors = res.get("ai_completed_factors") or []
-                    if ai_factors:
-                        with st.expander("🤖 AIが補完した判定要因", expanded=True):
-                            st.caption("あなたの設定した財務指標に加え、以下の要因を成約率（契約期待度）に反映しました。")
-                            for f in ai_factors:
-                                sign = "+" if f.get("effect_percent", 0) >= 0 else ""
-                                st.markdown(f"- **{f.get('factor', '')}** … {sign}{f.get('effect_percent', 0)}% （{f.get('detail', '')}）")
+                # ----- AIが補完した判定要因（進化するダッシュボード） -----
+                ai_factors = res.get("ai_completed_factors") or []
+                if ai_factors:
+                    with st.expander("🤖 AIが補完した判定要因", expanded=True):
+                        st.caption("あなたの設定した財務指標に加え、以下の要因を成約率（契約期待度）に反映しました。")
+                        for f in ai_factors:
+                            sign = "+" if f.get("effect_percent", 0) >= 0 else ""
+                            st.markdown(f"- **{f.get('factor', '')}** … {sign}{f.get('effect_percent', 0)}% （{f.get('detail', '')}）")
 
-                    # ----- 定性スコアリング（総合×60%＋定性×40%でランクA〜E） -----
-                    qcorr = res.get("qualitative_scoring_correction")
-                    with st.expander("📋 定性スコアリング", expanded=bool(qcorr)):
-                        if qcorr:
-                            r = qcorr
-                            st.caption("**ランク（A〜E）は 総合×重み＋定性×重み（デフォルト60%/40%）に基づきます。**")
-                            total_score = res.get("score", 0)  # 総合スコア（借手+物件）
-                            qual_score = r.get("weighted_score", 0)
-                            combined = r.get("combined_score", 0)
-                            c1, c2, c3, c4 = st.columns(4)
-                            with c1:
-                                st.metric("総合スコア", f"{total_score:.1f}", help="借手スコア85%＋物件スコア15%")
-                            with c2:
-                                st.metric("定性スコア", f"{qual_score} / 100", help="項目別5段階の加重平均")
-                            with c3:
-                                st.metric("合計（総合×重み＋定性×重み）", f"{combined}", help="ランク算出の元")
-                            with c4:
-                                st.metric("ランク", f"{r.get('rank', '—')} {r.get('rank_text', '')}", help=r.get("rank_desc", ""))
-                            st.caption(r.get("rank_desc", ""))
-                            st.markdown("**項目別**")
-                            for item_id, data in (r.get("items") or {}).items():
-                                val = data.get("value")
-                                if val is not None:
-                                    label_short = data.get("level_label") or QUALITATIVE_SCORING_LEVEL_LABELS.get(val, f"{int((val or 0)/4*100)}点")
-                                    st.markdown(f"- **{data.get('label', item_id)}**（重み{data.get('weight', 0)}%）: {label_short}")
-                        else:
-                            st.info("審査入力の「定性スコアリング」で項目を選択すると、ここに集計結果が表示されます。ランクは総合×重み＋定性×重みで算出。定性を1件も選んでいない場合は総合スコアのみで判定します。")
+                # ----- 定性スコアリング（総合×60%＋定性×40%でランクA〜E） -----
+                qcorr = res.get("qualitative_scoring_correction")
+                with st.expander("📋 定性スコアリング", expanded=bool(qcorr)):
+                    if qcorr:
+                        r = qcorr
+                        st.caption("**ランク（A〜E）は 総合×重み＋定性×重み（デフォルト60%/40%）に基づきます。**")
+                        total_score = res.get("score", 0)  # 総合スコア（借手+物件）
+                        qual_score = r.get("weighted_score", 0)
+                        combined = r.get("combined_score", 0)
+                        c1, c2, c3, c4 = st.columns(4)
+                        with c1:
+                            st.metric("総合スコア", f"{total_score:.1f}", help="借手スコア85%＋物件スコア15%")
+                        with c2:
+                            st.metric("定性スコア", f"{qual_score} / 100", help="項目別5段階の加重平均")
+                        with c3:
+                            st.metric("合計（総合×重み＋定性×重み）", f"{combined}", help="ランク算出の元")
+                        with c4:
+                            st.metric("ランク", f"{r.get('rank', '—')} {r.get('rank_text', '')}", help=r.get("rank_desc", ""))
+                        st.caption(r.get("rank_desc", ""))
+                        st.markdown("**項目別**")
+                        for item_id, data in (r.get("items") or {}).items():
+                            val = data.get("value")
+                            if val is not None:
+                                label_short = data.get("level_label") or QUALITATIVE_SCORING_LEVEL_LABELS.get(val, f"{int((val or 0)/4*100)}点")
+                                st.markdown(f"- **{data.get('label', item_id)}**（重み{data.get('weight', 0)}%）: {label_short}")
+                    else:
+                        st.info("審査入力の「定性スコアリング」で項目を選択すると、ここに集計結果が表示されます。ランクは総合×重み＋定性×重みで算出。定性を1件も選んでいない場合は総合スコアのみで判定します。")
 
-                    # ----- 学習モデル（業種別ハイブリッド）の予測結果（融合機能）・常に表示 -----
-                    scoring_result = res.get("scoring_result")
-                    with st.expander("📈 学習モデル（業種別ハイブリッド）デフォルト確率", expanded=True):
-                        if scoring_result:
-                            st.caption("**いずれも「デフォルト確率」（高い＝リスク大）です。** 上記の本システム「契約期待度」（成約率）とは尺度が逆です。成約率に換算するなら 約 100% − デフォルト確率。ハイブリッドは「業種別回帰のデフォルト確率」と「AIのデフォルト確率」の加重平均なので、同じ尺度同士の組み合わせです。")
-                            sr1, sr2, sr3, sr4 = st.columns(4)
-                            with sr1:
-                                st.metric("既存（業種別回帰）デフォルト確率", f"{scoring_result.get('legacy_prob', 0)*100:.2f}%", help="学習モデル側の業種別回帰")
-                            with sr2:
-                                st.metric("AI（LightGBM）デフォルト確率", f"{scoring_result.get('ai_prob', 0)*100:.2f}%", help="LightGBM統合")
-                            with sr3:
-                                st.metric("ハイブリッド デフォルト確率", f"{scoring_result.get('hybrid_prob', 0)*100:.2f}%", help="0.3×既存+0.7×AI（同尺度）")
-                            with sr4:
-                                dec = scoring_result.get("decision", "—")
-                                st.metric("学習モデル判定", dec, help="デフォルト確率50%未満で承認")
-                            # グラフ表示（Top5要因のみ）
-                            st.divider()
-                            st.subheader("📊 学習モデル分析グラフ")
+                # ----- 学習モデル（業種別ハイブリッド）の予測結果（融合機能）・常に表示 -----
+                scoring_result = res.get("scoring_result")
+                with st.expander("📈 学習モデル（業種別ハイブリッド）デフォルト確率", expanded=True):
+                    if scoring_result:
+                        st.caption("**いずれも「デフォルト確率」（高い＝リスク大）です。** 上記の本システム「契約期待度」（成約率）とは尺度が逆です。成約率に換算するなら 約 100% − デフォルト確率。ハイブリッドは「業種別回帰のデフォルト確率」と「AIのデフォルト確率」の加重平均なので、同じ尺度同士の組み合わせです。")
+                        sr1, sr2, sr3, sr4 = st.columns(4)
+                        with sr1:
+                            st.metric("既存（業種別回帰）デフォルト確率", f"{scoring_result.get('legacy_prob', 0)*100:.2f}%", help="学習モデル側の業種別回帰")
+                        with sr2:
+                            st.metric("AI（LightGBM）デフォルト確率", f"{scoring_result.get('ai_prob', 0)*100:.2f}%", help="LightGBM統合")
+                        with sr3:
+                            st.metric("ハイブリッド デフォルト確率", f"{scoring_result.get('hybrid_prob', 0)*100:.2f}%", help="0.3×既存+0.7×AI（同尺度）")
+                        with sr4:
+                            dec = scoring_result.get("decision", "—")
+                            st.metric("学習モデル判定", dec, help="デフォルト確率50%未満で承認")
+                        # グラフ表示（Top5要因のみ）
+                        st.divider()
+                        st.subheader("📊 学習モデル分析グラフ")
                             
-                            # Top5要因グラフ
-                            top5 = scoring_result.get("top5_reasons") or []
-                            if top5:
-                                st.caption("**判定に効いている指標 Top5**")
-                                fig_top5 = plot_scoring_top5_factors_plotly(scoring_result)
-                                if fig_top5:
-                                    st.plotly_chart(fig_top5, use_container_width=True, key="plotly_scoring_top5")
-                                else:
-                                    # グラフが描けない場合はテキスト表示
-                                    _feat_ja = {
-                                        "ROA": "総資産利益率（ROA）", "ROE": "自己資本利益率（ROE）",
-                                        "operating_margin": "売上高営業利益率", "net_margin": "売上高純利益率",
-                                        "equity_ratio": "自己資本比率", "debt_ratio": "負債比率", "debt_equity_ratio": "負債対自己資本比率",
-                                        "machinery_ratio": "機械設備比率", "fixed_asset_ratio": "固定資産比率",
-                                        "fixed_to_equity": "固定資産対純資産比率", "machinery_equity_coverage": "機械設備の自己資本カバー率",
-                                        "rent_to_revenue": "リース料負担率（対売上高）", "operating_profit_to_rent": "営業利益のリース料カバー率",
-                                        "rent_to_equity": "リース料の純資産負担率", "lease_dependency": "リース依存度",
-                                        "total_fixed_cost_ratio": "総固定費負担率", "depreciation_to_revenue": "減価償却費率（対売上高）",
-                                        "EBITDA_margin": "EBITDAマージン", "depreciation_rate": "設備償却進行度",
-                                        "asset_turnover": "総資産回転率", "fixed_asset_turnover": "固定資産回転率",
-                                        "log_revenue": "売上高（対数）", "log_assets": "総資産（対数）",
-                                        "is_loss": "赤字フラグ", "is_operating_loss": "営業赤字フラグ",
-                                        "low_equity_ratio": "自己資本比率20%未満", "low_ROA": "ROA2%未満",
-                                        "high_rent_burden": "リース負担大", "rent_exceeds_profit": "リース料＞営業利益",
-                                        "industry_encoded": "業種（コード）",
-                                    }
-                                    for idx, r in enumerate(top5, 1):
-                                        if ":" in r:
-                                            _name, _val = r.split(":", 1)
-                                            _label = _feat_ja.get(_name.strip(), _name.strip())
-                                        else:
-                                            _label, _val = r, ""
-                                        st.caption(f"#{idx} {_label}: {_val.strip()}")
+                        # Top5要因グラフ
+                        top5 = scoring_result.get("top5_reasons") or []
+                        if top5:
+                            st.caption("**判定に効いている指標 Top5**")
+                            fig_top5 = plot_scoring_top5_factors_plotly(scoring_result)
+                            if fig_top5:
+                                st.plotly_chart(fig_top5, use_container_width=True, key="plotly_scoring_top5")
+                            else:
+                                # グラフが描けない場合はテキスト表示
+                                _feat_ja = {
+                                    "ROA": "総資産利益率（ROA）", "ROE": "自己資本利益率（ROE）",
+                                    "operating_margin": "売上高営業利益率", "net_margin": "売上高純利益率",
+                                    "equity_ratio": "自己資本比率", "debt_ratio": "負債比率", "debt_equity_ratio": "負債対自己資本比率",
+                                    "machinery_ratio": "機械設備比率", "fixed_asset_ratio": "固定資産比率",
+                                    "fixed_to_equity": "固定資産対純資産比率", "machinery_equity_coverage": "機械設備の自己資本カバー率",
+                                    "rent_to_revenue": "リース料負担率（対売上高）", "operating_profit_to_rent": "営業利益のリース料カバー率",
+                                    "rent_to_equity": "リース料の純資産負担率", "lease_dependency": "リース依存度",
+                                    "total_fixed_cost_ratio": "総固定費負担率", "depreciation_to_revenue": "減価償却費率（対売上高）",
+                                    "EBITDA_margin": "EBITDAマージン", "depreciation_rate": "設備償却進行度",
+                                    "asset_turnover": "総資産回転率", "fixed_asset_turnover": "固定資産回転率",
+                                    "log_revenue": "売上高（対数）", "log_assets": "総資産（対数）",
+                                    "is_loss": "赤字フラグ", "is_operating_loss": "営業赤字フラグ",
+                                    "low_equity_ratio": "自己資本比率20%未満", "low_ROA": "ROA2%未満",
+                                    "high_rent_burden": "リース負担大", "rent_exceeds_profit": "リース料＞営業利益",
+                                    "industry_encoded": "業種（コード）",
+                                }
+                                for idx, r in enumerate(top5, 1):
+                                    if ":" in r:
+                                        _name, _val = r.split(":", 1)
+                                        _label = _feat_ja.get(_name.strip(), _name.strip())
+                                    else:
+                                        _label, _val = r, ""
+                                    st.caption(f"#{idx} {_label}: {_val.strip()}")
+                    else:
+                        st.info(
+                            "**デフォルト確率を出すには、次の2つが必要です。**\n\n"
+                            "1. **総資産**と**純資産**を入力してから「判定開始」を押す\n\n"
+                            "2. **学習済みモデル（5個のpklファイル）**を用意する：\n"
+                            "   - 別ツール（リース与信スコアリング）で「業種別ハイブリッド」を学習すると、`models/industry_specific/` フォルダに pkl ができます\n"
+                            "   - その中身（industry_coefficients.pkl など5ファイル）を、このアプリのフォルダ内にある\n"
+                            "     `lease_logic_sumaho10/scoring/models/industry_specific/` にコピーしてください\n\n"
+                            "※ モデルがなくても、本システムのスコア（成約率）だけで審査はできます。"
+                        )
+
+                st.divider()
+                # ----- カード: 本件スコア内訳・利回り -----
+                pd_val = res.get("pd_percent")
+                if pd_val is None:
+                    fin = res.get("financials", {})
+                    total_assets = fin.get("assets") or 0
+                    net_assets = fin.get("net_assets") or 0
+                    machines = fin.get("machines") or 0
+                    other_assets = fin.get("other_assets") or 0
+                    user_eq = res.get("user_eq", 0)
+                    user_op = res.get("user_op", 0)
+                    liability_total = total_assets - net_assets if total_assets and net_assets is not None else 0
+                    current_approx = max(0, total_assets - machines - other_assets)
+                    current_ratio = (current_approx / liability_total * 100) if liability_total > 0 else 100.0
+                    pd_val = calculate_pd(user_eq, current_ratio, user_op)
+
+                with st.container():
+                    st.markdown("**本件スコア・利回り**")
+                    k1, k2, k3, k4 = st.columns(4)
+                    with k1:
+                        st.metric("総合スコア", f"{res['score']:.1f}%", help="借手＋物件を反映した判定用スコア")
+                    with k2:
+                        st.metric("判定", res.get("hantei", "—"), help="承認圏内 or 要審議")
+                    with k3:
+                        st.metric("契約期待度", f"{res.get('contract_prob', 0):.1f}%", help="定性補正後の期待度")
+                    with k4:
+                        if "yield_pred" in res:
+                            st.metric("予測利回り", f"{res['yield_pred']:.2f}%", delta=f"{res.get('rate_diff', 0):+.2f}%", help="AI予測利回り")
                         else:
-                            st.info(
-                                "**デフォルト確率を出すには、次の2つが必要です。**\n\n"
-                                "1. **総資産**と**純資産**を入力してから「判定開始」を押す\n\n"
-                                "2. **学習済みモデル（5個のpklファイル）**を用意する：\n"
-                                "   - 別ツール（リース与信スコアリング）で「業種別ハイブリッド」を学習すると、`models/industry_specific/` フォルダに pkl ができます\n"
-                                "   - その中身（industry_coefficients.pkl など5ファイル）を、このアプリのフォルダ内にある\n"
-                                "     `lease_logic_sumaho10/scoring/models/industry_specific/` にコピーしてください\n\n"
-                                "※ モデルがなくても、本システムのスコア（成約率）だけで審査はできます。"
-                            )
+                            st.metric("予測利回り", "—", help="利回りモデル未適用")
+                    # ----- 第2行: スコア内訳（借手・物件説明 + 3モデル） -----
+                    if "score_borrower" in res and "asset_score" in res:
+                        st.caption(f"📌 借手 {res['score_borrower']:.1f}% × 0.85 ＋ 物件「{res.get('asset_name', '')}」{res['asset_score']}点 × 0.15 → 総合 {res['score']:.1f}%")
+                    cols = st.columns(3)
+                    with cols[0]:
+                        st.metric("① 全体モデル", f"{res['score']:.1f}%", help="全業種共通係数")
+                    with cols[1]:
+                        ind_label = res.get("ind_name", "全体_既存先")
+                        second_label = "② 業種モデル" if (ind_label.split("_")[0] != "全体") else "② 業種(全体)"
+                        st.metric(second_label, f"{res['ind_score']:.1f}%", delta=f"{res['ind_score']-res['score']:+.1f}%")
+                    with cols[2]:
+                        st.metric("③ 指標ベンチマーク", f"{res['bench_score']:.1f}%", delta=f"{res['bench_score']-res['score']:+.1f}%", delta_color="inverse")
 
-                    st.divider()
-                    # ----- カード: 本件スコア内訳・利回り -----
-                    pd_val = res.get("pd_percent")
-                    if pd_val is None:
-                        fin = res.get("financials", {})
-                        total_assets = fin.get("assets") or 0
-                        net_assets = fin.get("net_assets") or 0
-                        machines = fin.get("machines") or 0
-                        other_assets = fin.get("other_assets") or 0
-                        user_eq = res.get("user_eq", 0)
-                        user_op = res.get("user_op", 0)
-                        liability_total = total_assets - net_assets if total_assets and net_assets is not None else 0
-                        current_approx = max(0, total_assets - machines - other_assets)
-                        current_ratio = (current_approx / liability_total * 100) if liability_total > 0 else 100.0
-                        pd_val = calculate_pd(user_eq, current_ratio, user_op)
+                st.divider()
+                with st.container():
+                    st.markdown("**スコアゲージ・判定**")
+                    # ----- 第3行: ゲージ・判定・業界比較（ダッシュボード内に統合） -----
+                    g1, g2 = st.columns(2)
+                    with g1:
+                        st.plotly_chart(plot_gauge_plotly(res['score'], "総合スコア"), use_container_width=True, key="gauge_score")
+                    with g2:
+                        st.success(f"**{res['hantei']}**")
+                        industry_key = res["industry_major"]
+                        if industry_key in avg_data:
+                            avg = avg_data[industry_key]
+                            u_sales = res["financials"]["nenshu"]
+                            a_sales = avg["nenshu"]
+                            u_op_r = res['user_op']
+                            a_op_r = (avg["op_profit"]/avg["nenshu"]*100) if avg["nenshu"] > 0 else 0
+                            sales_ratio = u_sales / a_sales
+                            if sales_ratio >= 1.2: sales_msg = f"平均の{sales_ratio:.1f}倍規模"
+                            elif sales_ratio <= 0.8: sales_msg = f"平均より小規模({sales_ratio:.1f}倍)"
+                            else: sales_msg = "業界平均並み"
+                            if u_op_r >= a_op_r + 2.0: prof_msg = f"高収益({u_op_r:.1f}%)"
+                            elif u_op_r < a_op_r: prof_msg = f"平均以下({u_op_r:.1f}%)"
+                            else: prof_msg = f"標準({u_op_r:.1f}%)"
+                            st.caption(f"規模: {sales_msg} / 収益: {prof_msg}")
 
-                    with st.container():
-                        st.markdown("**本件スコア・利回り**")
-                        k1, k2, k3, k4 = st.columns(4)
-                        with k1:
-                            st.metric("総合スコア", f"{res['score']:.1f}%", help="借手＋物件を反映した判定用スコア")
-                        with k2:
-                            st.metric("判定", res.get("hantei", "—"), help="承認圏内 or 要審議")
-                        with k3:
-                            st.metric("契約期待度", f"{res.get('contract_prob', 0):.1f}%", help="定性補正後の期待度")
-                        with k4:
-                            if "yield_pred" in res:
-                                st.metric("予測利回り", f"{res['yield_pred']:.2f}%", delta=f"{res.get('rate_diff', 0):+.2f}%", help="AI予測利回り")
-                            else:
-                                st.metric("予測利回り", "—", help="利回りモデル未適用")
-                        # ----- 第2行: スコア内訳（借手・物件説明 + 3モデル） -----
-                        if "score_borrower" in res and "asset_score" in res:
-                            st.caption(f"📌 借手 {res['score_borrower']:.1f}% × 0.85 ＋ 物件「{res.get('asset_name', '')}」{res['asset_score']}点 × 0.15 → 総合 {res['score']:.1f}%")
-                        cols = st.columns(3)
-                        with cols[0]:
-                            st.metric("① 全体モデル", f"{res['score']:.1f}%", help="全業種共通係数")
-                        with cols[1]:
-                            ind_label = res.get("ind_name", "全体_既存先")
-                            second_label = "② 業種モデル" if (ind_label.split("_")[0] != "全体") else "② 業種(全体)"
-                            st.metric(second_label, f"{res['ind_score']:.1f}%", delta=f"{res['ind_score']-res['score']:+.1f}%")
-                        with cols[2]:
-                            st.metric("③ 指標ベンチマーク", f"{res['bench_score']:.1f}%", delta=f"{res['bench_score']-res['score']:+.1f}%", delta_color="inverse")
-
-                    st.divider()
-                    with st.container():
-                        st.markdown("**スコアゲージ・判定**")
-                        # ----- 第3行: ゲージ・判定・業界比較（ダッシュボード内に統合） -----
-                        g1, g2 = st.columns(2)
-                        with g1:
-                            st.plotly_chart(plot_gauge_plotly(res['score'], "総合スコア"), use_container_width=True, key="gauge_score")
-                        with g2:
-                            st.success(f"**{res['hantei']}**")
-                            industry_key = res["industry_major"]
-                            if industry_key in avg_data:
-                                avg = avg_data[industry_key]
-                                u_sales = res["financials"]["nenshu"]
-                                a_sales = avg["nenshu"]
-                                u_op_r = res['user_op']
-                                a_op_r = (avg["op_profit"]/avg["nenshu"]*100) if avg["nenshu"] > 0 else 0
-                                sales_ratio = u_sales / a_sales
-                                if sales_ratio >= 1.2: sales_msg = f"平均の{sales_ratio:.1f}倍規模"
-                                elif sales_ratio <= 0.8: sales_msg = f"平均より小規模({sales_ratio:.1f}倍)"
-                                else: sales_msg = "業界平均並み"
-                                if u_op_r >= a_op_r + 2.0: prof_msg = f"高収益({u_op_r:.1f}%)"
-                                elif u_op_r < a_op_r: prof_msg = f"平均以下({u_op_r:.1f}%)"
-                                else: prof_msg = f"標準({u_op_r:.1f}%)"
-                                st.caption(f"規模: {sales_msg} / 収益: {prof_msg}")
-
-                    # ----- 審査に有用な Plotly グラフ（4種） -----
-                    st.divider()
-                    with st.expander("📊 審査に有用なグラフ", expanded=True):
-                        st.caption("スコア内訳・契約期待度の要因・過去分布・バランスシート内訳をインタラクティブに表示します。")
-                        row1_a, row1_b = st.columns(2)
-                        with row1_a:
-                            st.plotly_chart(plot_score_models_comparison_plotly(res), use_container_width=True, key="plotly_score_models")
-                        with row1_b:
-                            factors_fig = plot_contract_prob_factors_plotly(res.get("ai_completed_factors") or [])
-                            if factors_fig:
-                                st.plotly_chart(factors_fig, use_container_width=True, key="plotly_contract_factors")
-                            else:
-                                st.caption("契約期待度の要因は判定実行後に表示されます。")
-                        row2_a, row2_b = st.columns(2)
-                        with row2_a:
-                            hist_fig = plot_past_scores_histogram_plotly(res.get("score"), load_all_cases())
-                            if hist_fig:
-                                st.plotly_chart(hist_fig, use_container_width=True, key="plotly_past_hist")
-                            else:
-                                st.caption("過去案件データがあるとスコア分布を表示します。")
-                        with row2_b:
-                            bal_fig = plot_balance_sheet_plotly(res.get("financials"))
-                            if bal_fig:
-                                st.plotly_chart(bal_fig, use_container_width=True, key="plotly_balance_sheet")
-                            else:
-                                st.caption("審査入力で資産・負債を入力すると内訳を表示します。")
-
-                    st.divider()
-                    with st.container():
-                        st.subheader(":round_pushpin: 3D多角分析（回転・拡大可能）")
-                        current_case_data = {
-                             'sales': res['financials']['nenshu'],
-                             'op_margin': res['user_op'],
-                             'equity_ratio': res['user_eq']
-                        }
-                        past_cases_log = load_all_cases()
-                        fig_3d = plot_3d_analysis(current_case_data, past_cases_log)
-                        if fig_3d:
-                            st.plotly_chart(fig_3d, use_container_width=True, key="plotly_3d_analysis_result")
-                            st.caption("指でなぞると回転、ピンチで拡大できます。")
+                # ----- 審査に有用な Plotly グラフ（4種） -----
+                st.divider()
+                with st.expander("📊 審査に有用なグラフ", expanded=True):
+                    st.caption("スコア内訳・契約期待度の要因・過去分布・バランスシート内訳をインタラクティブに表示します。")
+                    row1_a, row1_b = st.columns(2)
+                    with row1_a:
+                        st.plotly_chart(plot_score_models_comparison_plotly(res), use_container_width=True, key="plotly_score_models")
+                    with row1_b:
+                        factors_fig = plot_contract_prob_factors_plotly(res.get("ai_completed_factors") or [])
+                        if factors_fig:
+                            st.plotly_chart(factors_fig, use_container_width=True, key="plotly_contract_factors")
                         else:
-                            st.warning("表示データがありません")
-
-                    st.divider()
-                    with st.container():
-                        st.subheader("🌐 業界リスク情報")
-                        # ----- 業界リスク情報（ダッシュボード直下・フル幅） -----
-                        net_summary = res.get("network_risk_summary", "") or ""
-                        if net_summary.strip() and "取得できません" not in net_summary and "検索エラー" not in net_summary:
-                            st.text_area("ネット検索で取得した倒産トレンド・リスク", value=net_summary[:1500] + ("…" if len(net_summary) > 1500 else ""), height=120, disabled=True, label_visibility="collapsed")
+                            st.caption("契約期待度の要因は判定実行後に表示されます。")
+                    row2_a, row2_b = st.columns(2)
+                    with row2_a:
+                        hist_fig = plot_past_scores_histogram_plotly(res.get("score"), load_all_cases())
+                        if hist_fig:
+                            st.plotly_chart(hist_fig, use_container_width=True, key="plotly_past_hist")
                         else:
-                            st.caption("判定開始時に業界リスクを検索します。未取得の場合は審査入力で再実行してください。")
+                            st.caption("過去案件データがあるとスコア分布を表示します。")
+                    with row2_b:
+                        bal_fig = plot_balance_sheet_plotly(res.get("financials"))
+                        if bal_fig:
+                            st.plotly_chart(bal_fig, use_container_width=True, key="plotly_balance_sheet")
+                        else:
+                            st.caption("審査入力で資産・負債を入力すると内訳を表示します。")
 
-                    st.divider()
-                    with st.container():
-                        st.subheader("🔮 審査突破のためのAIアドバイス")
-                        col_adv1, col_adv2 = st.columns(2)
-                        with col_adv1:
-                            st.subheader("📋 類似案件の「勝ちパターン」")
+                st.divider()
+                with st.container():
+                    st.subheader(":round_pushpin: 3D多角分析（回転・拡大可能）")
+                    current_case_data = {
+                         'sales': res['financials']['nenshu'],
+                         'op_margin': res['user_op'],
+                         'equity_ratio': res['user_eq']
+                    }
+                    past_cases_log = load_all_cases()
+                    fig_3d = plot_3d_analysis(current_case_data, past_cases_log)
+                    if fig_3d:
+                        st.plotly_chart(fig_3d, use_container_width=True, key="plotly_3d_analysis_result")
+                        st.caption("指でなぞると回転、ピンチで拡大できます。")
+                    else:
+                        st.warning("表示データがありません")
+
+                st.divider()
+                with st.container():
+                    st.subheader("🌐 業界リスク情報")
+                    # ----- 業界リスク情報（ダッシュボード直下・フル幅） -----
+                    net_summary = res.get("network_risk_summary", "") or ""
+                    if net_summary.strip() and "取得できません" not in net_summary and "検索エラー" not in net_summary:
+                        st.text_area("ネット検索で取得した倒産トレンド・リスク", value=net_summary[:1500] + ("…" if len(net_summary) > 1500 else ""), height=120, disabled=True, label_visibility="collapsed")
+                    else:
+                        st.caption("判定開始時に業界リスクを検索します。未取得の場合は審査入力で再実行してください。")
+
+                st.divider()
+                with st.container():
+                    st.subheader("🔮 審査突破のためのAIアドバイス")
+                    col_adv1, col_adv2 = st.columns(2)
+                    with col_adv1:
+                        st.subheader("📋 類似案件の「勝ちパターン」")
+                        # -----------------------------------------------------
+                        # [SAFETY] Ensure variables are defined for list comprehension
+                        if "res" in locals():
+                            selected_major = res.get("industry_major", "D 建設業")
+                            score_percent = res.get("score", 0)
+                        else:
+                            if "last_result" in st.session_state:
+                                res_safety = st.session_state["last_result"]
+                                selected_major = res_safety.get("industry_major", "D 建設業")
+                                score_percent = res_safety.get("score", 0)
+                            else:
+                                selected_major = "D 建設業"
+                                score_percent = 0
+                        # -----------------------------------------------------
+                        similar_success_cases = []
+                        if load_all_cases():
+                            cases = load_all_cases()
                             # -----------------------------------------------------
                             # [SAFETY] Ensure variables are defined for list comprehension
                             if "res" in locals():
@@ -4221,282 +4238,265 @@ elif mode == "📋 審査・分析":
                                     selected_major = "D 建設業"
                                     score_percent = 0
                             # -----------------------------------------------------
-                            similar_success_cases = []
-                            if load_all_cases():
-                                cases = load_all_cases()
-                                # -----------------------------------------------------
-                                # [SAFETY] Ensure variables are defined for list comprehension
-                                if "res" in locals():
-                                    selected_major = res.get("industry_major", "D 建設業")
-                                    score_percent = res.get("score", 0)
-                                else:
-                                    if "last_result" in st.session_state:
-                                        res_safety = st.session_state["last_result"]
-                                        selected_major = res_safety.get("industry_major", "D 建設業")
-                                        score_percent = res_safety.get("score", 0)
-                                    else:
-                                        selected_major = "D 建設業"
-                                        score_percent = 0
-                                # -----------------------------------------------------
-                                similar_success_cases = [
-                                    c for c in cases 
-                                    if c.get("industry_major") == selected_major
-                                    and abs(c.get("result", {}).get("score", 0) - score_percent) < 15
-                                    and c.get("result", {}).get("score", 0) >= 70
-                                ]
+                            similar_success_cases = [
+                                c for c in cases 
+                                if c.get("industry_major") == selected_major
+                                and abs(c.get("result", {}).get("score", 0) - score_percent) < 15
+                                and c.get("result", {}).get("score", 0) >= 70
+                            ]
 
-                            if similar_success_cases:
-                                st.info(f"スコアや業種が似ている承認事例が {len(similar_success_cases)} 件見つかりました。")
-                                for i, c in enumerate(similar_success_cases[:3]): 
-                                    with st.expander(f"事例{i+1}: {c.get('industry_sub')} (スコア {c['result']['score']:.0f})"):
-                                        summary = c.get("chat_summary", "詳細なし")
-                                        st.write(f"**承認の決め手**: {summary}")
-                            else:
-                                st.warning("条件の近い成功事例はまだありません。")
-                                # ノウハウデータからの代替提案
-                                if "qualitative_appeal" in knowhow_data:
-                                    st.markdown("**💡 一般的な定性アピールのヒント:**")
-                                    for k in knowhow_data["qualitative_appeal"]:
-                                        st.caption(f"- **{k['title']}**: {k['content']}")
-
-                        with col_adv2:
-                            st.subheader("🔧 決算書・スキーム調整のヒント")
-                            advice_list = []
-                            # ノウハウデータからの引用ロジック
-                            if knowhow_data:
-                                # 財務改善
-                                if user_equity_ratio < 20 and "financial_improvement" in knowhow_data:
-                                    k = knowhow_data["financial_improvement"][0] # 役員借入金
-                                    advice_list.append(f"💡 **{k['title']}**: {k['content']}")
-                                if user_op_margin < 0 and "financial_improvement" in knowhow_data:
-                                    k = knowhow_data["financial_improvement"][1] # 赤字除外
-                                    advice_list.append(f"💡 **{k['title']}**: {k['content']}")
-                                # スキーム
-                                if score_percent < 60 and "scheme_strategy" in knowhow_data:
-                                    k = knowhow_data["scheme_strategy"][1] # 連帯保証
-                                    advice_list.append(f"🛡️ **{k['title']}**: {k['content']}")
-                            # 業種別ノウハウ
-                            ind_key = res["industry_major"].split(" ")[1] if " " in res["industry_major"] else res["industry_major"]
-                            if "industry_specific" in knowhow_data and ind_key in knowhow_data["industry_specific"]:
-                                advice_list.append(f"🏭 **{ind_key}の鉄則**: {knowhow_data['industry_specific'][ind_key]}")
-                            if not advice_list:
-                                advice_list.append("特段の懸念点はありません。定性面（導入効果）の強化に集中してください。")
-                            for advice in advice_list:
-                                st.success(advice)
-                            # 該当業種の補助金（URLで公式サイトにすぐ飛べる）
-                            subs_adv = search_subsidies_by_industry(res.get("industry_sub", ""))
-                            if subs_adv:
-                                with st.expander("📎 該当業種の補助金（クリックで公式サイトへ）", expanded=False):
-                                    for s in subs_adv:
-                                        name = s.get("name") or ""
-                                        url = (s.get("url") or "").strip()
-                                        if url:
-                                            st.markdown(f"**{name}**")
-                                            try:
-                                                st.link_button("🔗 公式サイトを開く", url, type="secondary")
-                                            except Exception:
-                                                safe_url = url.replace('"', "%22").replace("'", "%27")
-                                                st.markdown(f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer">🔗 公式サイトを開く</a>', unsafe_allow_html=True)
-                                        else:
-                                            st.markdown(f"**{name}**")
-                                        st.caption((s.get("summary") or "")[:100] + "…")
-                                        st.caption(f"申請目安: {s.get('application_period')}")
-
-                        # ======================================================================
-                        # 📚 この案件に紐づくニュース（詳細はエキスパンダー）
-                        # ======================================================================
-                        with st.expander("📚 この案件に紐づくニュース", expanded=False):
-                            if current_case_id:
-                                case_news_list = load_case_news(current_case_id)
-                                if case_news_list:
-                                    for idx, news in enumerate(case_news_list):
-                                        with st.expander(f"{idx+1}. {news.get('title', 'タイトル不明')}"):
-                                            st.caption(f"保存日時: {news.get('saved_at', 'N/A')}")
-                                            if news.get("url"):
-                                                st.markdown(f"[記事URLを開く]({news['url']})")
-                                            content_preview = (news.get("content") or "")[:300]
-                                            if content_preview:
-                                                st.write(content_preview + ("..." if len(news.get("content", "")) > 300 else ""))
-                                            if st.button("このニュースをAIに反映する", key=f"use_news_{idx}"):
-                                                st.session_state.selected_news_content = {"title": news.get("title", ""), "content": news.get("content", "")}
-                                                st.success("このニュースを、以降のAIアドバイス・ディベートで参照するように設定しました。")
-                                else:
-                                    st.caption("この案件には、まだ紐づけられたニュースがありません。")
-                            else:
-                                st.caption("案件IDが未取得のため、紐づくニュースを特定できません。")
-
-                    st.divider()
-                    st.markdown("### 📊 財務ベンチマーク分析")
-                    # 1. 財務レーダーチャートの準備
-                    # 簡易偏差値ロジック (平均=50, 標準偏差=適当に仮定)
-                    def calc_hensachi(val, mean, is_higher_better=True):
-                        if mean == 0: return 50
-                        diff = (val - mean) / abs(mean) * 10 * (1 if is_higher_better else -1)
-                        return max(20, min(80, 50 + diff))
-
-                    radar_metrics = {
-                        "収益性": calc_hensachi(res['user_op'], res['bench_op']),
-                        "安全性": calc_hensachi(res['user_eq'], res['bench_eq']),
-                        "効率性": 50, # 仮
-                        "成長性": 50, # 仮
-                        "返済力": 50  # 仮
-                    }
-                    radar_bench = {k: 50 for k in radar_metrics.keys()}
-
-                    # 2. 過去案件データ取得
-                    past_cases = load_all_cases()
-
-                    # 3. グラフ描画エリア（PCで大きくなりすぎないよう幅を制限）
-                    col_graphs, _ = st.columns([0.65, 0.35])
-                    with col_graphs:
-                        g1, g2 = st.columns(2)
-                        with g1:
-                            st.plotly_chart(plot_radar_chart_plotly(radar_metrics, radar_bench), use_container_width=True, key="radar_analysis")
-                        with g2:
-                            # 損益分岐点グラフ
-                            sales_k = res["financials"]["nenshu"]
-                            gross_k = res["financials"]["gross_profit"] * 1000
-                            op_k = res["financials"]["rieki"] * 1000
-                            vc = sales_k - gross_k
-                            fc = gross_k - op_k
-                            bep_fig = plot_break_even_point_plotly(sales_k, vc, fc)
-                            if bep_fig:
-                                st.plotly_chart(bep_fig, use_container_width=True, key="bep_analysis")
-                            else:
-                                fallback = plot_break_even_point(sales_k, vc, fc)
-                                if fallback:
-                                    st.pyplot(fallback)
-
-                    # ========== 中分類ごとにネットで業界目安を取得して比較 ==========
-                    selected_sub = res.get("industry_sub", "")
-                    bench = dict(benchmarks_data.get(selected_sub, {}))
-                    try:
-                        web_bench = fetch_industry_benchmarks_from_web(selected_sub)
-                        for k in _WEB_BENCH_KEYS:
-                            if web_bench.get(k) is not None:
-                                bench[k] = web_bench[k]
-                    except Exception:
-                        web_bench = {"snippets": [], "op_margin": None, "equity_ratio": None}
-
-                    with st.expander("🌐 中分類ごとにネットで調べた業界目安", expanded=False):
-                        st.caption(f"業種「{selected_sub}」の業界目安です。結果は web_industry_benchmarks.json に保存され、毎年4月1日を境に1年ごとに再検索します。営業利益率・自己資本比率・売上高総利益率・ROA・流動比率など抽出できた指標は、下の「算出可能指標」の業界目安に反映します。")
-                        if web_bench.get("snippets"):
-                            for i, s in enumerate(web_bench["snippets"]):
-                                st.markdown(f"**[{s['title']}]({s['href']})**")
-                                st.caption(s["body"][:200] + ("..." if len(s["body"]) > 200 else ""))
-                                st.divider()
-                            extracted = [(k, web_bench[k]) for k in _WEB_BENCH_KEYS if web_bench.get(k) is not None]
-                            if extracted:
-                                u = lambda k: "回" if k in ("asset_turnover", "fixed_asset_turnover") else "%"
-                                parts = [f"{k}: {v:.1f}{u(k)}" for k, v in extracted]
-                                st.success("抽出した業界目安: " + ", ".join(parts[:8]) + (" …" if len(parts) > 8 else ""))
+                        if similar_success_cases:
+                            st.info(f"スコアや業種が似ている承認事例が {len(similar_success_cases)} 件見つかりました。")
+                            for i, c in enumerate(similar_success_cases[:3]): 
+                                with st.expander(f"事例{i+1}: {c.get('industry_sub')} (スコア {c['result']['score']:.0f})"):
+                                    summary = c.get("chat_summary", "詳細なし")
+                                    st.write(f"**承認の決め手**: {summary}")
                         else:
-                            st.caption("検索結果がありません。ネットワークまたは検索キーワードを確認してください。")
+                            st.warning("条件の近い成功事例はまだありません。")
+                            # ノウハウデータからの代替提案
+                            if "qualitative_appeal" in knowhow_data:
+                                st.markdown("**💡 一般的な定性アピールのヒント:**")
+                                for k in knowhow_data["qualitative_appeal"]:
+                                    st.caption(f"- **{k['title']}**: {k['content']}")
 
-                    with st.expander("📈 業界トレンド（拡充）", expanded=False):
-                        st.markdown(trend_info or "業界トレンドのデータがありません。")
-                        if st.button("📡 この業種のトレンドをネットで検索して拡充", key="btn_extend_trend"):
-                            with st.spinner("検索中…"):
-                                try:
-                                    fetch_industry_trend_extended(selected_sub, force_refresh=True)
-                                    st.success("拡充しました。表示を更新します。")
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"検索エラー: {e}")
-
-                    # ========== 算出可能指標（入力から計算した有効指標） ==========
-                    st.markdown("### 📈 算出可能指標")
-                    with st.expander("ℹ️ 業界目安の出典", expanded=False):
-                        st.caption("業界目安は、ネット検索で保存した値（web_industry_benchmarks.json）を優先し、不足分を大分類の業界平均（industry_averages.json）で補っています。サイドバー「今のデータを検索して保存」で指標の業界目安も検索・保存できます。")
-                    fin = res.get("financials", {})
-                    # 業界目安を業界平均（大分類）で補強（取れるだけ追加）
-                    bench_ext = dict(bench) if bench else {}
-                    major = res.get("industry_major")
-                    if major and avg_data and major in avg_data:
-                        avg = avg_data[major]
-                        an = avg.get("nenshu") or 0
-                        if an > 0:
-                            if bench_ext.get("gross_margin") is None:
-                                bench_ext["gross_margin"] = (avg.get("gross_profit") or 0) / an * 100
-                            if bench_ext.get("ord_margin") is None:
-                                bench_ext["ord_margin"] = (avg.get("ord_profit") or 0) / an * 100
-                            if bench_ext.get("net_margin") is None:
-                                bench_ext["net_margin"] = (avg.get("net_income") or 0) / an * 100
-                            if bench_ext.get("dep_ratio") is None:
-                                bench_ext["dep_ratio"] = (avg.get("depreciation") or 0) / an * 100
-                        total_avg = (avg.get("machines") or 0) + (avg.get("other_assets") or 0) + (avg.get("bank_credit") or 0) + (avg.get("lease_credit") or 0)
-                        if total_avg > 0:
-                            if bench_ext.get("roa") is None:
-                                bench_ext["roa"] = (avg.get("net_income") or 0) / total_avg * 100
-                            if bench_ext.get("asset_turnover") is None:
-                                bench_ext["asset_turnover"] = an / total_avg
-                            if bench_ext.get("fixed_ratio") is None:
-                                bench_ext["fixed_ratio"] = ((avg.get("machines") or 0) + (avg.get("other_assets") or 0)) / total_avg * 100
-                            if bench_ext.get("debt_ratio") is None:
-                                bench_ext["debt_ratio"] = ((avg.get("bank_credit") or 0) + (avg.get("lease_credit") or 0)) / total_avg * 100
-                    indicators = compute_financial_indicators(fin, bench_ext)
-                    if indicators:
-                        # 業界目安より良い＝緑、悪い＝赤（LOWER_IS_BETTER_NAMES は低い方が良い）
-                        cell_style = "text-align:center; vertical-align:middle; padding:4px 6px;"
-                        rows_html = []
-                        for ind in indicators:
-                            name = ind["name"]
-                            value = ind["value"]
-                            unit = ind.get("unit", "%")
-                            bench = ind.get("bench")
-                            bench_ok = bench is not None and (not isinstance(bench, float) or bench == bench)
-                            if bench_ok:
-                                diff = value - bench
-                                is_good = (diff > 0 and name not in LOWER_IS_BETTER_NAMES) or (diff < 0 and name in LOWER_IS_BETTER_NAMES)
-                                color = "#22c55e" if is_good else "#ef4444"
-                                row_bg = "background-color:rgba(34,197,94,0.18);" if is_good else "background-color:rgba(239,68,68,0.12);"
-                                name_cell = f'<span style="color:{color}; font-weight:600;">{name.replace("&", "&amp;").replace("<", "&lt;")}</span>'
-                            else:
-                                row_bg = ""
-                                name_cell = name.replace("&", "&amp;").replace("<", "&lt;")
-                            bench_str = f"{bench:.1f}{unit}" if bench_ok else "—"
-                            rows_html.append(f"<tr style='{row_bg}'><td style='{cell_style}'>{name_cell}</td><td style='{cell_style}'>{value:.1f}{unit}</td><td style='{cell_style}'>{bench_str}</td></tr>")
-                        table_html = (
-                            "<table style='border-collapse:collapse; font-size:0.8rem; line-height:1.2; table-layout:fixed; width:100%;'>"
-                            "<colgroup><col style='width:52%'><col style='width:24%'><col style='width:24%'></colgroup>"
-                            "<thead><tr>"
-                            f"<th style='{cell_style} font-weight:600;'>指標</th><th style='{cell_style} font-weight:600;'>貴社</th><th style='{cell_style} font-weight:600;'>業界目安</th>"
-                            "</tr></thead><tbody>"
-                            + "".join(rows_html) + "</tbody></table>"
-                        )
-                        st.markdown(
-                            "<div style='max-width:400px; margin:0.25rem 0; overflow-x:auto;'>" + table_html + "</div>",
-                            unsafe_allow_html=True,
-                        )
-                        st.caption("緑＝業界より良い / 赤＝要確認")
-                        # 指標と業界目安の差の分析（図＋文章＋AIによる指標の分析）
-                        summary, detail = analyze_indicators_vs_bench(indicators)
-                        st.markdown("#### 📊 差の分析")
-                        col_sum, col_fig = st.columns([1, 1])
-                        with col_sum:
-                            st.info(summary)
-                        fig_gap = plot_indicators_gap_analysis_plotly(indicators)
-                        with col_fig:
-                            if fig_gap:
-                                st.plotly_chart(fig_gap, use_container_width=True, key="indicators_gap")
-                        # 指標の分析（AI）：同一案件のキャッシュがあれば表示、なければボタンで生成
-                        _case_id = st.session_state.get("current_case_id")
-                        _cached = st.session_state.get("indicator_ai_analysis")
-                        _cached_case = st.session_state.get("indicator_ai_analysis_case_id")
-                        if _cached and _cached_case == _case_id:
-                            st.markdown("##### 指標の分析（AI）")
-                            st.markdown(_cached)
-                        else:
-                            st.markdown("##### 指標の分析（AI）")
-                            if st.button("AIに指標の分析を生成", key="gen_indicator_ai"):
-                                if not is_ai_available():
-                                    if st.session_state.get("ai_engine") == "gemini":
-                                        st.error("Gemini APIキーを設定してください。")
+                    with col_adv2:
+                        st.subheader("🔧 決算書・スキーム調整のヒント")
+                        advice_list = []
+                        # ノウハウデータからの引用ロジック
+                        if knowhow_data:
+                            # 財務改善
+                            if user_equity_ratio < 20 and "financial_improvement" in knowhow_data:
+                                k = knowhow_data["financial_improvement"][0] # 役員借入金
+                                advice_list.append(f"💡 **{k['title']}**: {k['content']}")
+                            if user_op_margin < 0 and "financial_improvement" in knowhow_data:
+                                k = knowhow_data["financial_improvement"][1] # 赤字除外
+                                advice_list.append(f"💡 **{k['title']}**: {k['content']}")
+                            # スキーム
+                            if score_percent < 60 and "scheme_strategy" in knowhow_data:
+                                k = knowhow_data["scheme_strategy"][1] # 連帯保証
+                                advice_list.append(f"🛡️ **{k['title']}**: {k['content']}")
+                        # 業種別ノウハウ
+                        ind_key = res["industry_major"].split(" ")[1] if " " in res["industry_major"] else res["industry_major"]
+                        if "industry_specific" in knowhow_data and ind_key in knowhow_data["industry_specific"]:
+                            advice_list.append(f"🏭 **{ind_key}の鉄則**: {knowhow_data['industry_specific'][ind_key]}")
+                        if not advice_list:
+                            advice_list.append("特段の懸念点はありません。定性面（導入効果）の強化に集中してください。")
+                        for advice in advice_list:
+                            st.success(advice)
+                        # 該当業種の補助金（URLで公式サイトにすぐ飛べる）
+                        subs_adv = search_subsidies_by_industry(res.get("industry_sub", ""))
+                        if subs_adv:
+                            with st.expander("📎 該当業種の補助金（クリックで公式サイトへ）", expanded=False):
+                                for s in subs_adv:
+                                    name = s.get("name") or ""
+                                    url = (s.get("url") or "").strip()
+                                    if url:
+                                        st.markdown(f"**{name}**")
+                                        try:
+                                            st.link_button("🔗 公式サイトを開く", url, type="secondary")
+                                        except Exception:
+                                            safe_url = url.replace('"', "%22").replace("'", "%27")
+                                            st.markdown(f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer">🔗 公式サイトを開く</a>', unsafe_allow_html=True)
                                     else:
-                                        st.error("Ollama が起動していないか、Gemini に切り替えてください。")
+                                        st.markdown(f"**{name}**")
+                                    st.caption((s.get("summary") or "")[:100] + "…")
+                                    st.caption(f"申請目安: {s.get('application_period')}")
+
+                    # ======================================================================
+                    # 📚 この案件に紐づくニュース（詳細はエキスパンダー）
+                    # ======================================================================
+                    with st.expander("📚 この案件に紐づくニュース", expanded=False):
+                        if current_case_id:
+                            case_news_list = load_case_news(current_case_id)
+                            if case_news_list:
+                                for idx, news in enumerate(case_news_list):
+                                    with st.expander(f"{idx+1}. {news.get('title', 'タイトル不明')}"):
+                                        st.caption(f"保存日時: {news.get('saved_at', 'N/A')}")
+                                        if news.get("url"):
+                                            st.markdown(f"[記事URLを開く]({news['url']})")
+                                        content_preview = (news.get("content") or "")[:300]
+                                        if content_preview:
+                                            st.write(content_preview + ("..." if len(news.get("content", "")) > 300 else ""))
+                                        if st.button("このニュースをAIに反映する", key=f"use_news_{idx}"):
+                                            st.session_state.selected_news_content = {"title": news.get("title", ""), "content": news.get("content", "")}
+                                            st.success("このニュースを、以降のAIアドバイス・ディベートで参照するように設定しました。")
+                            else:
+                                st.caption("この案件には、まだ紐づけられたニュースがありません。")
+                        else:
+                            st.caption("案件IDが未取得のため、紐づくニュースを特定できません。")
+
+                st.divider()
+                st.markdown("### 📊 財務ベンチマーク分析")
+                # 1. 財務レーダーチャートの準備
+                # 簡易偏差値ロジック (平均=50, 標準偏差=適当に仮定)
+                def calc_hensachi(val, mean, is_higher_better=True):
+                    if mean == 0: return 50
+                    diff = (val - mean) / abs(mean) * 10 * (1 if is_higher_better else -1)
+                    return max(20, min(80, 50 + diff))
+
+                radar_metrics = {
+                    "収益性": calc_hensachi(res['user_op'], res['bench_op']),
+                    "安全性": calc_hensachi(res['user_eq'], res['bench_eq']),
+                    "効率性": 50, # 仮
+                    "成長性": 50, # 仮
+                    "返済力": 50  # 仮
+                }
+                radar_bench = {k: 50 for k in radar_metrics.keys()}
+
+                # 2. 過去案件データ取得
+                past_cases = load_all_cases()
+
+                # 3. グラフ描画エリア（PCで大きくなりすぎないよう幅を制限）
+                col_graphs, _ = st.columns([0.65, 0.35])
+                with col_graphs:
+                    g1, g2 = st.columns(2)
+                    with g1:
+                        st.plotly_chart(plot_radar_chart_plotly(radar_metrics, radar_bench), use_container_width=True, key="radar_analysis")
+                    with g2:
+                        # 損益分岐点グラフ
+                        sales_k = res["financials"]["nenshu"]
+                        gross_k = res["financials"]["gross_profit"] * 1000
+                        op_k = res["financials"]["rieki"] * 1000
+                        vc = sales_k - gross_k
+                        fc = gross_k - op_k
+                        bep_fig = plot_break_even_point_plotly(sales_k, vc, fc)
+                        if bep_fig:
+                            st.plotly_chart(bep_fig, use_container_width=True, key="bep_analysis")
+                        else:
+                            fallback = plot_break_even_point(sales_k, vc, fc)
+                            if fallback:
+                                st.pyplot(fallback)
+
+                # ========== 中分類ごとにネットで業界目安を取得して比較 ==========
+                selected_sub = res.get("industry_sub", "")
+                bench = dict(benchmarks_data.get(selected_sub, {}))
+                try:
+                    web_bench = fetch_industry_benchmarks_from_web(selected_sub)
+                    for k in _WEB_BENCH_KEYS:
+                        if web_bench.get(k) is not None:
+                            bench[k] = web_bench[k]
+                except Exception:
+                    web_bench = {"snippets": [], "op_margin": None, "equity_ratio": None}
+
+                with st.expander("🌐 中分類ごとにネットで調べた業界目安", expanded=False):
+                    st.caption(f"業種「{selected_sub}」の業界目安です。結果は web_industry_benchmarks.json に保存され、毎年4月1日を境に1年ごとに再検索します。営業利益率・自己資本比率・売上高総利益率・ROA・流動比率など抽出できた指標は、下の「算出可能指標」の業界目安に反映します。")
+                    if web_bench.get("snippets"):
+                        for i, s in enumerate(web_bench["snippets"]):
+                            st.markdown(f"**[{s['title']}]({s['href']})**")
+                            st.caption(s["body"][:200] + ("..." if len(s["body"]) > 200 else ""))
+                            st.divider()
+                        extracted = [(k, web_bench[k]) for k in _WEB_BENCH_KEYS if web_bench.get(k) is not None]
+                        if extracted:
+                            u = lambda k: "回" if k in ("asset_turnover", "fixed_asset_turnover") else "%"
+                            parts = [f"{k}: {v:.1f}{u(k)}" for k, v in extracted]
+                            st.success("抽出した業界目安: " + ", ".join(parts[:8]) + (" …" if len(parts) > 8 else ""))
+                    else:
+                        st.caption("検索結果がありません。ネットワークまたは検索キーワードを確認してください。")
+
+                with st.expander("📈 業界トレンド（拡充）", expanded=False):
+                    st.markdown(trend_info or "業界トレンドのデータがありません。")
+                    if st.button("📡 この業種のトレンドをネットで検索して拡充", key="btn_extend_trend"):
+                        with st.spinner("検索中…"):
+                            try:
+                                fetch_industry_trend_extended(selected_sub, force_refresh=True)
+                                st.success("拡充しました。表示を更新します。")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"検索エラー: {e}")
+
+                # ========== 算出可能指標（入力から計算した有効指標） ==========
+                st.markdown("### 📈 算出可能指標")
+                with st.expander("ℹ️ 業界目安の出典", expanded=False):
+                    st.caption("業界目安は、ネット検索で保存した値（web_industry_benchmarks.json）を優先し、不足分を大分類の業界平均（industry_averages.json）で補っています。サイドバー「今のデータを検索して保存」で指標の業界目安も検索・保存できます。")
+                fin = res.get("financials", {})
+                # 業界目安を業界平均（大分類）で補強（取れるだけ追加）
+                bench_ext = dict(bench) if bench else {}
+                major = res.get("industry_major")
+                if major and avg_data and major in avg_data:
+                    avg = avg_data[major]
+                    an = avg.get("nenshu") or 0
+                    if an > 0:
+                        if bench_ext.get("gross_margin") is None:
+                            bench_ext["gross_margin"] = (avg.get("gross_profit") or 0) / an * 100
+                        if bench_ext.get("ord_margin") is None:
+                            bench_ext["ord_margin"] = (avg.get("ord_profit") or 0) / an * 100
+                        if bench_ext.get("net_margin") is None:
+                            bench_ext["net_margin"] = (avg.get("net_income") or 0) / an * 100
+                        if bench_ext.get("dep_ratio") is None:
+                            bench_ext["dep_ratio"] = (avg.get("depreciation") or 0) / an * 100
+                    total_avg = (avg.get("machines") or 0) + (avg.get("other_assets") or 0) + (avg.get("bank_credit") or 0) + (avg.get("lease_credit") or 0)
+                    if total_avg > 0:
+                        if bench_ext.get("roa") is None:
+                            bench_ext["roa"] = (avg.get("net_income") or 0) / total_avg * 100
+                        if bench_ext.get("asset_turnover") is None:
+                            bench_ext["asset_turnover"] = an / total_avg
+                        if bench_ext.get("fixed_ratio") is None:
+                            bench_ext["fixed_ratio"] = ((avg.get("machines") or 0) + (avg.get("other_assets") or 0)) / total_avg * 100
+                        if bench_ext.get("debt_ratio") is None:
+                            bench_ext["debt_ratio"] = ((avg.get("bank_credit") or 0) + (avg.get("lease_credit") or 0)) / total_avg * 100
+                indicators = compute_financial_indicators(fin, bench_ext)
+                if indicators:
+                    # 業界目安より良い＝緑、悪い＝赤（LOWER_IS_BETTER_NAMES は低い方が良い）
+                    cell_style = "text-align:center; vertical-align:middle; padding:4px 6px;"
+                    rows_html = []
+                    for ind in indicators:
+                        name = ind["name"]
+                        value = ind["value"]
+                        unit = ind.get("unit", "%")
+                        bench = ind.get("bench")
+                        bench_ok = bench is not None and (not isinstance(bench, float) or bench == bench)
+                        if bench_ok:
+                            diff = value - bench
+                            is_good = (diff > 0 and name not in LOWER_IS_BETTER_NAMES) or (diff < 0 and name in LOWER_IS_BETTER_NAMES)
+                            color = "#22c55e" if is_good else "#ef4444"
+                            row_bg = "background-color:rgba(34,197,94,0.18);" if is_good else "background-color:rgba(239,68,68,0.12);"
+                            name_cell = f'<span style="color:{color}; font-weight:600;">{name.replace("&", "&amp;").replace("<", "&lt;")}</span>'
+                        else:
+                            row_bg = ""
+                            name_cell = name.replace("&", "&amp;").replace("<", "&lt;")
+                        bench_str = f"{bench:.1f}{unit}" if bench_ok else "—"
+                        rows_html.append(f"<tr style='{row_bg}'><td style='{cell_style}'>{name_cell}</td><td style='{cell_style}'>{value:.1f}{unit}</td><td style='{cell_style}'>{bench_str}</td></tr>")
+                    table_html = (
+                        "<table style='border-collapse:collapse; font-size:0.8rem; line-height:1.2; table-layout:fixed; width:100%;'>"
+                        "<colgroup><col style='width:52%'><col style='width:24%'><col style='width:24%'></colgroup>"
+                        "<thead><tr>"
+                        f"<th style='{cell_style} font-weight:600;'>指標</th><th style='{cell_style} font-weight:600;'>貴社</th><th style='{cell_style} font-weight:600;'>業界目安</th>"
+                        "</tr></thead><tbody>"
+                        + "".join(rows_html) + "</tbody></table>"
+                    )
+                    st.markdown(
+                        "<div style='max-width:400px; margin:0.25rem 0; overflow-x:auto;'>" + table_html + "</div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.caption("緑＝業界より良い / 赤＝要確認")
+                    # 指標と業界目安の差の分析（図＋文章＋AIによる指標の分析）
+                    summary, detail = analyze_indicators_vs_bench(indicators)
+                    st.markdown("#### 📊 差の分析")
+                    col_sum, col_fig = st.columns([1, 1])
+                    with col_sum:
+                        st.info(summary)
+                    fig_gap = plot_indicators_gap_analysis_plotly(indicators)
+                    with col_fig:
+                        if fig_gap:
+                            st.plotly_chart(fig_gap, use_container_width=True, key="indicators_gap")
+                    # 指標の分析（AI）：同一案件のキャッシュがあれば表示、なければボタンで生成
+                    _case_id = st.session_state.get("current_case_id")
+                    _cached = st.session_state.get("indicator_ai_analysis")
+                    _cached_case = st.session_state.get("indicator_ai_analysis_case_id")
+                    if _cached and _cached_case == _case_id:
+                        st.markdown("##### 指標の分析（AI）")
+                        st.markdown(_cached)
+                    else:
+                        st.markdown("##### 指標の分析（AI）")
+                        if st.button("AIに指標の分析を生成", key="gen_indicator_ai"):
+                            if not is_ai_available():
+                                if st.session_state.get("ai_engine") == "gemini":
+                                    st.error("Gemini APIキーを設定してください。")
                                 else:
-                                    ind_list = "\n".join([f"- {x['name']}: 貴社 {x['value']:.1f}{x.get('unit','%')} / 業界目安 {x['bench']:.1f}{x.get('unit','%')}" if x.get("bench") is not None else f"- {x['name']}: 貴社 {x['value']:.1f}{x.get('unit','%')}" for x in indicators])
-                                    prompt = f"""あなたはリース審査のプロです。以下の「指標と業界目安の差の分析」を踏まえ、この企業の財務指標について2〜4文で簡潔に分析してください。
+                                    st.error("Ollama が起動していないか、Gemini に切り替えてください。")
+                            else:
+                                ind_list = "\n".join([f"- {x['name']}: 貴社 {x['value']:.1f}{x.get('unit','%')} / 業界目安 {x['bench']:.1f}{x.get('unit','%')}" if x.get("bench") is not None else f"- {x['name']}: 貴社 {x['value']:.1f}{x.get('unit','%')}" for x in indicators])
+                                prompt = f"""あなたはリース審査のプロです。以下の「指標と業界目安の差の分析」を踏まえ、この企業の財務指標について2〜4文で簡潔に分析してください。
 ・強み（業界目安を上回っている点）があれば触れる。
 ・業界目安を下回っている指標があれば、なぜそうなっている可能性があるか・改善の方向性を1〜2文で述べる。
 ・借入金等依存度・固定比率など「低い方が良い」指標の解釈も含める。
@@ -4511,20 +4511,20 @@ elif mode == "📋 審査・分析":
 【指標一覧】
 {ind_list}
 """
-                                    with st.spinner("AIが指標を分析しています..."):
-                                        try:
-                                            ans = chat_with_retry(model=get_ollama_model(), messages=[{"role": "user", "content": prompt}], timeout_seconds=90)
-                                            content = (ans.get("message") or {}).get("content", "")
-                                            if content and "APIキーが" not in content and "エラー" not in content[:50]:
-                                                st.session_state["indicator_ai_analysis"] = content
-                                                st.session_state["indicator_ai_analysis_case_id"] = _case_id
-                                                st.rerun()
-                                            else:
-                                                st.error(content or "AIの応答を取得できませんでした。")
-                                        except Exception as e:
-                                            st.error(f"分析の生成に失敗しました: {e}")
-                            else:
-                                st.caption("上の「AIに指標の分析を生成」を押すと、業界目安との差を踏まえた分析文をAIが生成します。")
+                                with st.spinner("AIが指標を分析しています..."):
+                                    try:
+                                        ans = chat_with_retry(model=get_ollama_model(), messages=[{"role": "user", "content": prompt}], timeout_seconds=90)
+                                        content = (ans.get("message") or {}).get("content", "")
+                                        if content and "APIキーが" not in content and "エラー" not in content[:50]:
+                                            st.session_state["indicator_ai_analysis"] = content
+                                            st.session_state["indicator_ai_analysis_case_id"] = _case_id
+                                            st.rerun()
+                                        else:
+                                            st.error(content or "AIの応答を取得できませんでした。")
+                                    except Exception as e:
+                                        st.error(f"分析の生成に失敗しました: {e}")
+                        else:
+                            st.caption("上の「AIに指標の分析を生成」を押すと、業界目安との差を踏まえた分析文をAIが生成します。")
                         st.caption("左＝要確認 / 右＝良い。借入金等依存度・減価償却費/売上は低いと緑。")
                         with st.expander("差の内訳（数値）", expanded=False):
                             st.markdown(detail)
@@ -4539,110 +4539,110 @@ elif mode == "📋 審査・分析":
                             col_wf, _ = st.columns([0.65, 0.35])
                             with col_wf:
                                 st.plotly_chart(plot_waterfall_plotly(nenshu_k, gross_k, op_k, ord_k, net_k), use_container_width=True, key="waterfall_result")
-                    else:
-                        st.caption("指標を算出するには、審査入力で売上高・損益・資産などを入力してください。")
+                else:
+                    st.caption("指標を算出するには、審査入力で売上高・損益・資産などを入力してください。")
 
-                    # AIのぼやき（ネット検索した業界情報を使いAIが自分で生成・アップデート）+ 定例の愚痴
-                    st.divider()
-                    st.subheader("🤖 AIのぼやき")
-                    u_eq = res.get("user_eq", 0)
-                    u_op = res.get("user_op", 0)
-                    comp_text = res.get("comparison", "")
-                    net_risk = res.get("network_risk_summary", "") or ""
-                    selected_sub_res = res.get("industry_sub", "")
-                    byoki_case_id = st.session_state.get("ai_byoki_case_id")
-                    byoki_text = st.session_state.get("ai_byoki_text")
-                    if byoki_text and byoki_case_id == current_case_id:
-                        st.info("🐟 " + byoki_text)
-                        if st.button("ぼやきを再生成（業界情報を再取得）", key="btn_byoki_regenerate"):
-                            st.session_state["ai_byoki_text"] = None
-                            st.session_state["ai_byoki_case_id"] = None
-                            st.rerun()
-                    else:
-                        if st.button("AIにぼやきを言わせる（業界情報を参照）", key="btn_byoki_generate"):
-                            with st.spinner("業界情報を取得して、AIがぼやきを考えています…"):
-                                text = get_ai_byoki_with_industry(selected_sub_res, u_eq, u_op, comp_text, net_risk)
-                                if text:
-                                    st.session_state["ai_byoki_text"] = text
-                                    st.session_state["ai_byoki_case_id"] = current_case_id
-                                    st.rerun()
-                                else:
-                                    st.error("生成できませんでした。APIキー・Ollamaを確認してください。")
-                        if not byoki_text:
-                            st.caption("上のボタンで、ネット検索した業界情報をもとにAIが愚痴を1つ生成します。")
+                # AIのぼやき（ネット検索した業界情報を使いAIが自分で生成・アップデート）+ 定例の愚痴
+                st.divider()
+                st.subheader("🤖 AIのぼやき")
+                u_eq = res.get("user_eq", 0)
+                u_op = res.get("user_op", 0)
+                comp_text = res.get("comparison", "")
+                net_risk = res.get("network_risk_summary", "") or ""
+                selected_sub_res = res.get("industry_sub", "")
+                byoki_case_id = st.session_state.get("ai_byoki_case_id")
+                byoki_text = st.session_state.get("ai_byoki_text")
+                if byoki_text and byoki_case_id == current_case_id:
+                    st.info("🐟 " + byoki_text)
+                    if st.button("ぼやきを再生成（業界情報を再取得）", key="btn_byoki_regenerate"):
+                        st.session_state["ai_byoki_text"] = None
+                        st.session_state["ai_byoki_case_id"] = None
+                        st.rerun()
+                else:
+                    if st.button("AIにぼやきを言わせる（業界情報を参照）", key="btn_byoki_generate"):
+                        with st.spinner("業界情報を取得して、AIがぼやきを考えています…"):
+                            text = get_ai_byoki_with_industry(selected_sub_res, u_eq, u_op, comp_text, net_risk)
+                            if text:
+                                st.session_state["ai_byoki_text"] = text
+                                st.session_state["ai_byoki_case_id"] = current_case_id
+                                st.rerun()
+                            else:
+                                st.error("生成できませんでした。APIキー・Ollamaを確認してください。")
+                    if not byoki_text:
+                        st.caption("上のボタンで、ネット検索した業界情報をもとにAIが愚痴を1つ生成します。")
 
-                    # ----- カードバトル（別枠・開発中） -----
-                    with st.expander("⚔️ 審査委員会カードバトル（開発中）", expanded=False):
-                        st.caption("判定結果をカードバトル風に振り返ります。仕様は変更される可能性があります。")
-                        if "battle_data" in st.session_state and res:
-                            bd = st.session_state["battle_data"]
-                            if bd.get("special_move_name") is None:
-                                strength_tags = res.get("strength_tags") or []
-                                passion_text = res.get("passion_text") or ""
-                                name, effect = generate_battle_special_move(strength_tags, passion_text)
-                                bd["special_move_name"] = name
-                                bd["special_effect"] = effect
-                                score = bd.get("score", 0)
-                                log_lines = [
-                                    "【実況】審査委員会、開廷。",
-                                    "慎重派「数値だけ見ると厳しいが、業界相対で見るべきだ。」",
-                                    f"推進派「スコア{score:.0f}%。逆転材料があれば十分戦える。」" if score < 75 else "推進派「スコアは十分圏内。定性面を確認しよう。」",
-                                    "【議事】定性エビデンスを検討中…",
-                                ]
-                                similar_prompt = res.get("similar_past_cases_prompt", "")
-                                if similar_prompt and "過去の類似案件" in similar_prompt:
-                                    log_lines.append("慎重派「過去の類似案件を参照した。同様のケースでは成約例あり。」")
-                                log_lines.append("【判定】採決に入ります。")
-                                bd["battle_log"] = log_lines
-                                bd["dice"] = random.randint(1, 6)
-                                st.session_state["battle_data"] = bd
-                            bd = st.session_state["battle_data"]
-                            c1, c2, c3 = st.columns(3)
-                            with c1:
-                                st.markdown(f"""
-                                <div style="background:linear-gradient(135deg,#1e3a5f 0%,#334155 100%);color:#fff;padding:1rem;border-radius:12px;text-align:center;">
-                                <div style="font-size:0.85rem;opacity:0.9;">HP</div>
-                                <div style="font-size:1.8rem;font-weight:bold;">{bd['hp']}</div>
-                                <div style="font-size:0.75rem;">自己資本</div>
-                                </div>
-                                """, unsafe_allow_html=True)
-                            with c2:
-                                st.markdown(f"""
-                                <div style="background:linear-gradient(135deg,#b45309 0%,#c2410c 100%);color:#fff;padding:1rem;border-radius:12px;text-align:center;">
-                                <div style="font-size:0.85rem;opacity:0.9;">ATK</div>
-                                <div style="font-size:1.8rem;font-weight:bold;">{bd['atk']}</div>
-                                <div style="font-size:0.75rem;">利益率</div>
-                                </div>
-                                """, unsafe_allow_html=True)
-                            with c3:
-                                st.markdown(f"""
-                                <div style="background:linear-gradient(135deg,#0d9488 0%,#0f766e 100%);color:#fff;padding:1rem;border-radius:12px;text-align:center;">
-                                <div style="font-size:0.85rem;opacity:0.9;">SPD</div>
-                                <div style="font-size:1.8rem;font-weight:bold;">{bd['spd']}</div>
-                                <div style="font-size:0.75rem;">流動性</div>
-                                </div>
-                                """, unsafe_allow_html=True)
-                            st.markdown("**🎴 必殺技**")
+                # ----- カードバトル（別枠・開発中） -----
+                with st.expander("⚔️ 審査委員会カードバトル（開発中）", expanded=False):
+                    st.caption("判定結果をカードバトル風に振り返ります。仕様は変更される可能性があります。")
+                    if "battle_data" in st.session_state and res:
+                        bd = st.session_state["battle_data"]
+                        if bd.get("special_move_name") is None:
+                            strength_tags = res.get("strength_tags") or []
+                            passion_text = res.get("passion_text") or ""
+                            name, effect = generate_battle_special_move(strength_tags, passion_text)
+                            bd["special_move_name"] = name
+                            bd["special_effect"] = effect
+                            score = bd.get("score", 0)
+                            log_lines = [
+                                "【実況】審査委員会、開廷。",
+                                "慎重派「数値だけ見ると厳しいが、業界相対で見るべきだ。」",
+                                f"推進派「スコア{score:.0f}%。逆転材料があれば十分戦える。」" if score < 75 else "推進派「スコアは十分圏内。定性面を確認しよう。」",
+                                "【議事】定性エビデンスを検討中…",
+                            ]
+                            similar_prompt = res.get("similar_past_cases_prompt", "")
+                            if similar_prompt and "過去の類似案件" in similar_prompt:
+                                log_lines.append("慎重派「過去の類似案件を参照した。同様のケースでは成約例あり。」")
+                            log_lines.append("【判定】採決に入ります。")
+                            bd["battle_log"] = log_lines
+                            bd["dice"] = random.randint(1, 6)
+                            st.session_state["battle_data"] = bd
+                        bd = st.session_state["battle_data"]
+                        c1, c2, c3 = st.columns(3)
+                        with c1:
                             st.markdown(f"""
-                            <div style="background:#f8fafc;border:2px solid #b45309;border-radius:10px;padding:1rem;">
-                            <span style="font-weight:bold;color:#1e3a5f;">{bd.get('special_move_name', '逆転の意気')}</span>
-                            <span style="color:#64748b;"> … </span>
-                            <span>{bd.get('special_effect', 'スコア+5%')}</span>
+                            <div style="background:linear-gradient(135deg,#1e3a5f 0%,#334155 100%);color:#fff;padding:1rem;border-radius:12px;text-align:center;">
+                            <div style="font-size:0.85rem;opacity:0.9;">HP</div>
+                            <div style="font-size:1.8rem;font-weight:bold;">{bd['hp']}</div>
+                            <div style="font-size:0.75rem;">自己資本</div>
                             </div>
                             """, unsafe_allow_html=True)
-                            for eff in (bd.get("environment_effects") or []):
-                                st.caption(f"• {eff}")
-                            st.markdown("**📜 バトル実況**")
-                            for line in bd.get("battle_log", []):
-                                st.caption(line)
-                            dice = bd.get("dice") or 1
-                            st.caption(f"🎲 運命のダイス: **{dice}** → {'やや有利' if dice >= 4 else 'やや不利'}")
-                            if bd.get("is_approved"):
-                                st.success("🏆 WIN — 承認圏内")
-                            else:
-                                st.info("📋 LOSE — 要審議")
+                        with c2:
+                            st.markdown(f"""
+                            <div style="background:linear-gradient(135deg,#b45309 0%,#c2410c 100%);color:#fff;padding:1rem;border-radius:12px;text-align:center;">
+                            <div style="font-size:0.85rem;opacity:0.9;">ATK</div>
+                            <div style="font-size:1.8rem;font-weight:bold;">{bd['atk']}</div>
+                            <div style="font-size:0.75rem;">利益率</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        with c3:
+                            st.markdown(f"""
+                            <div style="background:linear-gradient(135deg,#0d9488 0%,#0f766e 100%);color:#fff;padding:1rem;border-radius:12px;text-align:center;">
+                            <div style="font-size:0.85rem;opacity:0.9;">SPD</div>
+                            <div style="font-size:1.8rem;font-weight:bold;">{bd['spd']}</div>
+                            <div style="font-size:0.75rem;">流動性</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        st.markdown("**🎴 必殺技**")
+                        st.markdown(f"""
+                        <div style="background:#f8fafc;border:2px solid #b45309;border-radius:10px;padding:1rem;">
+                        <span style="font-weight:bold;color:#1e3a5f;">{bd.get('special_move_name', '逆転の意気')}</span>
+                        <span style="color:#64748b;"> … </span>
+                        <span>{bd.get('special_effect', 'スコア+5%')}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        for eff in (bd.get("environment_effects") or []):
+                            st.caption(f"• {eff}")
+                        st.markdown("**📜 バトル実況**")
+                        for line in bd.get("battle_log", []):
+                            st.caption(line)
+                        dice = bd.get("dice") or 1
+                        st.caption(f"🎲 運命のダイス: **{dice}** → {'やや有利' if dice >= 4 else 'やや不利'}")
+                        if bd.get("is_approved"):
+                            st.success("🏆 WIN — 承認圏内")
                         else:
-                            st.caption("判定を実行すると、ここにカードバトルが表示されます。")
+                            st.info("📋 LOSE — 要審議")
+                    else:
+                        st.caption("判定を実行すると、ここにカードバトルが表示されます。")
 
             else:
                 st.info('👈 左側の「審査入力」タブでデータを入力し、審査を実行してください。')

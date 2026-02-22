@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}エラー{% endblock %}
+{% block content %}
+<div class="bg-rose-50 border border-rose-200 rounded-2xl p-6 text-rose-800">
+  <p class="font-medium">{{ message }}</p>
+  <a href="{{ url_for('index') }}" class="inline-block mt-4 text-teal-600 hover:text-teal-700 font-medium">トップに戻る</a>
+</div>
+{% endblock %}
