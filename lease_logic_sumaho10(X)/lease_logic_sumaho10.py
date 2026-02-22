@@ -979,6 +979,64 @@ def get_lease_classification_text():
     return "\n".join(lines)
 
 
+def scrape_article_text(url):
+    """指定されたURLから記事本文をスクレイピングする（簡易版）。"""
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+    except ImportError:
+        st.error("記事読み込み機能には追加ライブラリが必要です: pip install requests beautifulsoup4")
+        return None
+
+    try:
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/58.0.3029.110 Safari/537.3"
+            )
+        }
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.content, "html.parser")
+
+        article_body = soup.find("article") or soup.find("main") or soup.body
+        if article_body is None:
+            return "本文を抽出できませんでした。ページ構造を解析できません。"
+
+        paragraphs = article_body.find_all("p")
+        if not paragraphs:
+            return "本文を抽出できませんでした。本文らしき段落が見つかりません。"
+
+        text = " ".join(p.get_text() for p in paragraphs)
+        return text[:5000] if text else "本文を抽出できませんでした。"
+    except Exception as e:
+        return f"記事の読み込みに失敗しました: {e}"
+
+
+def is_japanese_text(text: str, threshold: float = 0.2) -> bool:
+    """テキスト中に日本語（ひらがな・カタカナ・漢字）が一定割合以上含まれるかを判定する。"""
+    if not text:
+        return False
+
+    jp_count = 0
+    total = 0
+    for ch in text:
+        if ch.isspace():
+            continue
+        total += 1
+        if (
+            ("\u3040" <= ch <= "\u30ff")   # ひらがな・カタカナ
+            or ("\u4e00" <= ch <= "\u9faf") # CJK統合漢字
+            or ("\uff66" <= ch <= "\uff9d") # 半角カナ
+        ):
+            jp_count += 1
+
+    if total == 0:
+        return False
+    return jp_count / total >= threshold
+
+
 def get_advice_context_extras(selected_sub: str, selected_major: str):
     """AIアドバイス用に、補助金・耐用年数・リース分類・業界トレンド拡充・資産目安・売上規模帯のテキストをまとめて返す。"""
     parts = []
@@ -3009,18 +3067,18 @@ elif mode == "📋 審査・分析":
 
                         # #③営業利益
                         st.markdown("### 営業利益")
-                        rieki = _slider_and_number("rieki", "rieki", 10000, -100000, 200000, 100, 1)
+                        rieki = _slider_and_number("rieki", "rieki", 10000, -100000, 200000, 100, 1, max_val_number=90_000_000)
                         st.divider() # 次の項目との区切
 
         #----------------------------------------------------------------------------------------------------------------------
 
                         st.markdown("### 経常利益")
-                        item4_ord_profit = _slider_and_number("item4_ord_profit", "item4_ord_profit", 10000, -100000, 200000, 100, 1)
+                        item4_ord_profit = _slider_and_number("item4_ord_profit", "item4_ord_profit", 10000, -100000, 200000, 100, 1, max_val_number=90_000_000)
                         st.divider() # 次の項目との区切
         #-------------------------------------------------------------------------------------------
 
                         st.markdown("### 当期利益")
-                        item5_net_income = _slider_and_number("item5_net_income", "item5_net_income", 10000, -100000, 200000, 100, 1)
+                        item5_net_income = _slider_and_number("item5_net_income", "item5_net_income", 10000, -100000, 200000, 100, 1, max_val_number=90_000_000)
                         st.divider() # 次の項目との区切
 
                         # None対策（nenshu はフラグメント内で設定されるため session_state から取得）
@@ -3037,21 +3095,21 @@ elif mode == "📋 審査・分析":
                     with st.expander("🏢 2. 資産・経費・その他", expanded=False):
                     
                         st.markdown("### 減価償却費")
-                        item10_dep = _slider_and_number("item10_dep", "item10_dep", 10000, 0, 200000, 100, 1)
+                        item10_dep = _slider_and_number("item10_dep", "item10_dep", 10000, 0, 200000, 100, 1, max_val_number=90_000_000)
                         st.divider() # 次の項目との区切
     
         #--------------------------------------------------------------------------------------------------------
                         #⑦減価償却費（経費）
     
                         st.markdown("### 減価償却費(経費)")
-                        item11_dep_exp = _slider_and_number("item11_dep_exp", "item11_dep_exp", 10000, 0, 200000, 100, 1)
+                        item11_dep_exp = _slider_and_number("item11_dep_exp", "item11_dep_exp", 10000, 0, 200000, 100, 1, max_val_number=90_000_000)
                         st.divider() # 次の項目との区切
     
         #----------------------------------------------------------------------------------------------------
     
                         # #⑧賃借料
                         st.markdown("### 賃借料")
-                        item8_rent = _slider_and_number("item8_rent", "item8_rent", 10000, 0, 100000, 100, 1)
+                        item8_rent = _slider_and_number("item8_rent", "item8_rent", 10000, 0, 100000, 100, 1, max_val_number=90_000_000)
                         st.divider() # 次の項目との区切
     
         #----------------------------------------------------------------------------------------------
@@ -3063,7 +3121,7 @@ elif mode == "📋 審査・分析":
                         # st.divider()
     
                         st.markdown("### 賃借料（経費）")
-                        item12_rent_exp = _slider_and_number("item12_rent_exp", "item12_rent_exp", 10000, 0, 100000, 100, 1)
+                        item12_rent_exp = _slider_and_number("item12_rent_exp", "item12_rent_exp", 10000, 0, 100000, 100, 1, max_val_number=90_000_000)
                         st.divider() # 次の項目との区切
     
         #------------------------------------------------------------------------------------------------
@@ -3071,7 +3129,7 @@ elif mode == "📋 審査・分析":
                         #⑩機械装置
      
                         st.markdown("### 機械装置")
-                        item6_machine = _slider_and_number("item6_machine", "item6_machine", 10000, 0, 200000, 100, 1)
+                        item6_machine = _slider_and_number("item6_machine", "item6_machine", 10000, 0, 200000, 100, 1, max_val_number=90_000_000)
                         st.divider() # 次の項目との区切
     
         #--------------------------------------------------------------------------------------------
@@ -3083,13 +3141,13 @@ elif mode == "📋 審査・分析":
                         # st.divider()
     
                         st.markdown("### その他資産")
-                        item7_other = _slider_and_number("item7_other", "item7_other", 10000, 0, 200000, 100, 1)
+                        item7_other = _slider_and_number("item7_other", "item7_other", 10000, 0, 200000, 100, 1, max_val_number=90_000_000)
                         st.divider() # 次の項目との区切
         #-------------------------------------------------------------------------------------------------------------
                         # #12純資産合計
     
                         st.markdown("### 純資産")
-                        net_assets = _slider_and_number("net_assets", "net_assets", 10000, -30000, 500000, 100, 1)
+                        net_assets = _slider_and_number("net_assets", "net_assets", 10000, -30000, 500000, 100, 1, max_val_number=90_000_000)
                         st.divider() # 次の項目との区切
         #--------------------------------------------------------------------------------
                         #13総資産
@@ -3099,7 +3157,7 @@ elif mode == "📋 審査・分析":
                         # st.divider()
     
                         st.markdown("### 総資産")
-                        total_assets = _slider_and_number("total_assets", "total_assets", 10000, 0, 1000000, 100, 1)
+                        total_assets = _slider_and_number("total_assets", "total_assets", 10000, 0, 1000000, 100, 1, max_val_number=90_000_000)
                         st.divider() # 次の項目との区切
         #------------------------------------------------------------------------------------------------------
                     with st.expander("💳 3. 信用情報", expanded=False):
@@ -3111,7 +3169,7 @@ elif mode == "📋 審査・分析":
     
                         st.markdown("### うちの銀行与信")
                         st.caption("当社の与信です（総銀行与信ではありません）")
-                        bank_credit = _slider_and_number("bank_credit", "bank_credit", 10000, 0, 3000000, 100, 1)
+                        bank_credit = _slider_and_number("bank_credit", "bank_credit", 10000, 0, 3000000, 100, 1, max_val_number=90_000_000)
                         st.divider() # 次の項目との区切
         #---------------------------------------------------------------------------------------------------------
       
@@ -3119,7 +3177,7 @@ elif mode == "📋 審査・分析":
     
                         st.markdown("### うちのリース与信")
                         st.caption("当社の与信です（総リース与信ではありません）")
-                        lease_credit = _slider_and_number("lease_credit", "lease_credit", 10000, 0, 300000, 100, 1)
+                        lease_credit = _slider_and_number("lease_credit", "lease_credit", 10000, 0, 300000, 100, 1, max_val_number=90_000_000)
                         st.divider() # 次の項目との区切
         #--------------------------------------------------------------------------------------------------------
                         # #16契約数
@@ -3147,7 +3205,7 @@ elif mode == "📋 審査・分析":
                             st.session_state.lease_term = lease_term
                             st.session_state.acceptance_year = acceptance_year
                         st.markdown("### 取得価格")
-                        acquisition_cost = _slider_and_number("acquisition_cost", "acquisition_cost", 1000, 0, 500000, 100, 100, label_slider="取得価格調整")
+                        acquisition_cost = _slider_and_number("acquisition_cost", "acquisition_cost", 1000, 0, 500000, 100, 100, label_slider="取得価格調整", max_val_number=90_000_000)
                         st.markdown("### リース物件")
                         if not LEASE_ASSETS_LIST:
                             selected_asset_id = "other"

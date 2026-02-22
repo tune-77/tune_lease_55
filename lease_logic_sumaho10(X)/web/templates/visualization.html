@@ -28,7 +28,10 @@
   <p class="text-muted text-center mb-1" style="font-size: 13px;">ℝ² → M³ × S¹ / π₁(M) ≅ ℤ　　T² ≅ S¹×S¹　　ℍ² (Poincaré)　　Ulam Spiral</p>
   <p class="text-muted text-center mb-2" style="font-size: 12px;">スコア可視化 — 下のタブで切り替え</p>
   <p class="text-accent text-center mb-2 text-sm">「Manifold」タブで 3D 表示。ドラッグで回転・ホイールでズーム</p>
-  <p class="text-center mb-4"><a href="{{ url_for('static', filename='manifold_react.html') }}" target="_blank" rel="noopener" class="text-sm text-teal-400 hover:text-teal-300">→ React版（トーラス/双曲/素数）を別タブで開く</a></p>
+  <div class="flex flex-wrap justify-center gap-4 mb-4">
+    <a href="{{ url_for('static', filename='manifold_react.html') }}" target="_blank" rel="noopener" class="text-sm text-teal-400 hover:text-teal-300">→ React版（トーラス/双曲/素数）を別タブで開く</a>
+    <a href="{{ url_for('chaos_credit') }}" target="_blank" rel="noopener" class="text-sm text-purple-400 hover:text-purple-300">→ カオス審査空間（Lorenz Attractor）を別タブで開く</a>
+  </div>
 
   <div class="flex gap-2 mb-6" style="margin-bottom: 20px;">
     <button type="button" id="tabManifold" class="tab active" data-tab="manifold">データビュー</button>

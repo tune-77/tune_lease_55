@@ -153,6 +153,13 @@ def visualization():
     return render_template("visualization.html")
 
 
+@app.route("/chaos-credit")
+def chaos_credit():
+    """カオス審査空間（Lorenz Attractor ビジュアル）。"""
+    from flask import send_from_directory
+    return send_from_directory(os.path.join(_WEB_DIR, "static"), "chaos_credit.html")
+
+
 @app.route("/api/visualization/data")
 def api_visualization_data():
     """可視化用JSONを返す。past_cases ベース＋不足分はダミー。"""
