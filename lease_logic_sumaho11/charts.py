@@ -438,14 +438,23 @@ def plot_positioning_scatter(current_sales, current_op_margin, past_cases):
 
 def plot_3d_analysis(current_data, past_cases):
     """3Dポジショニング分析。current_data: {'sales': 百万円, 'op_margin': %, 'equity_ratio': %}"""
+    # 外れ値による軸の歪みを防ぐためクランプ範囲を定義
+    OP_MIN, OP_MAX = -30.0, 30.0
+    EQ_MIN, EQ_MAX = 0.0, 90.0
+
+    def clamp(val, lo, hi):
+        return max(lo, min(hi, val))
+
     plot_data = []
     for c in past_cases:
         res = c.get("result", {})
         f = res.get("financials", {})
-        if f:
+        if f and f.get("nenshu", 0) > 0:
             sales = f.get("nenshu", 0) / 1000
-            op_margin = (f.get("rieki", 0) / f.get("nenshu", 1)) * 100 if f.get("nenshu", 0) > 0 else 0
-            equity_ratio = _equity_ratio_display(res.get("user_eq", 0)) or 0
+            raw_op = (f.get("rieki", 0) / f.get("nenshu", 1)) * 100
+            op_margin = clamp(raw_op, OP_MIN, OP_MAX)
+            eq_raw = _equity_ratio_display(res.get("user_eq", 0)) or 0
+            equity_ratio = clamp(eq_raw, EQ_MIN, EQ_MAX)
             status = "承認済" if res.get("score", 0) >= 70 else "否決"
             plot_data.append({
                 "売上(M)": sales, "利益率(%)": op_margin,
@@ -453,8 +462,8 @@ def plot_3d_analysis(current_data, past_cases):
             })
     plot_data.append({
         "売上(M)": current_data["sales"] / 1000,
-        "利益率(%)": current_data["op_margin"],
-        "自己資本比率(%)": current_data["equity_ratio"],
+        "利益率(%)": clamp(current_data["op_margin"], OP_MIN, OP_MAX),
+        "自己資本比率(%)": clamp(current_data["equity_ratio"], EQ_MIN, EQ_MAX),
         "判定": "★今回の案件",
         "size": 15
     })
@@ -477,7 +486,9 @@ def plot_3d_analysis(current_data, past_cases):
         scene=dict(
             xaxis_title="売上(百万円)",
             yaxis_title="利益率(%)",
+            yaxis=dict(range=[OP_MIN, OP_MAX]),
             zaxis_title="自己資本比率(%)",
+            zaxis=dict(range=[EQ_MIN, EQ_MAX]),
             bgcolor="white",
         ),
         margin=dict(l=0, r=0, b=0, t=28),

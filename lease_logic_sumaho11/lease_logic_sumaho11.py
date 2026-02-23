@@ -1061,33 +1061,7 @@ if st.sidebar.button("💾 蓄積データをダウンロード (CSV)", use_cont
     else:
         st.sidebar.warning("データがありません")
 
-if "confirm_delete" not in st.session_state:
-    st.session_state.confirm_delete = False
 
-if not st.session_state.confirm_delete:
-    if st.sidebar.button("🗑️ 過去データを全て消去", use_container_width=True):
-        st.session_state.confirm_delete = True
-        st.rerun()
-else:
-    st.sidebar.warning("⚠️ 本当に全てのデータを消去しますか？")
-    col_del_yes, col_del_no = st.sidebar.columns(2)
-    with col_del_yes:
-        if st.button("✅ はい", use_container_width=True):
-            try:
-                if os.path.exists(CASES_FILE):
-                    os.remove(CASES_FILE)
-                if os.path.exists(DEBATE_FILE):
-                    os.remove(DEBATE_FILE)
-                st.sidebar.success("データを消去しました")
-                st.session_state.confirm_delete = False
-                time.sleep(1)
-                st.rerun()
-            except Exception as e:
-                st.sidebar.error(f"消去エラー: {e}")
-    with col_del_no:
-        if st.button("❌ いいえ", use_container_width=True):
-            st.session_state.confirm_delete = False
-            st.rerun()
 
 st.sidebar.markdown("### 🌐 業界目安キャッシュ")
 st.sidebar.caption("下のボタンでネット検索し、営業利益率・自己資本比率に加え、売上高総利益率・ROA・流動比率など指標の業界目安を web_industry_benchmarks.json に保存します。")
@@ -1821,7 +1795,7 @@ elif mode == "📋 審査・分析":
                             alert_msg = f"\n⚠️ **注意**: この業種は「{top_reason}」による失注が多いです。"
                     st.info(f"💡 **業界トレンド ({selected_sub})**:\n{trend_info}\n\n📚 **社内実績**: {past_info_text}{alert_msg}")
                     with st.expander("🌐 ネットで最新ニュースを検索", expanded=False):
-                        search_query = st.text_input("検索キーワード", value=f"{selected_sub} 動向 2025", key="news_search_query")
+                        search_query = st.text_input("検索キーワード", value=f"{selected_sub} 動向 2025", key=f"news_search_query_{selected_sub}")
                         if st.button("検索", key="btn_news_search"):
                             try:
                                 # まず ddgs（新パッケージ名）を優先的に利用し、なければ duckduckgo_search を使う
@@ -4403,10 +4377,4 @@ elif mode == "📋 審査・分析":
         if st.button("🗑️ キャッシュをクリア", key="settings_clear_cache"):
             st.cache_data.clear()
             st.success("キャッシュをクリアしました")
-            st.rerun()
-        st.divider()
-        st.markdown("**データクリア**")
-        st.caption("過去審査案件データ（past_cases.jsonl）をすべて削除します。サイドバーで確認後に実行されます。")
-        if st.button("🗑️ 全案件データをクリア", key="settings_clear_data", type="secondary"):
-            st.session_state.confirm_delete = True
             st.rerun()
