@@ -8,6 +8,7 @@ import json
 import time
 import concurrent.futures
 import datetime
+from typing import Optional
 import streamlit as st
 
 from config import (
@@ -461,7 +462,7 @@ def get_ai_honne_complaint() -> str:
 
 # ─── 総合AI評価（穴埋め形式・ローカルLLM向け） ──────────────────────────────
 
-def get_ai_comprehensive_evaluation(res: dict, avg_data: dict = None) -> str | None:
+def get_ai_comprehensive_evaluation(res: dict, avg_data: dict = None) -> Optional[str]:
     """
     穴埋め形式プロンプトで総合審査評価を生成する（ローカルLLM向け）。
     ①収益性 ②財務安定性 ③返済余力 ④成約見込み ⑤総合評価 の5項目で固定出力。
@@ -576,7 +577,7 @@ def get_ai_comprehensive_evaluation(res: dict, avg_data: dict = None) -> str | N
         return None
 
 
-def get_ai_quick_comment(res: dict) -> str | None:
+def get_ai_quick_comment(res: dict) -> Optional[str]:
     """
     審査結果を見て、AIが2〜3文のひとこと評価コメントを生成する。
     サマリーカード直下に自動表示する用。プロンプトを短くして応答速度を優先。
@@ -632,7 +633,7 @@ def get_ai_quick_comment(res: dict) -> str | None:
 
 # ─── 3D多角分析 AIポジショニングコメント ──────────────────────────────────────
 
-def get_ai_3d_comment(current_data: dict, past_cases: list) -> str | None:
+def get_ai_3d_comment(current_data: dict, past_cases: list) -> Optional[str]:
     """
     3D多角分析の過去クラスタとの位置関係を統計計算し、AIに2〜3文のコメントを生成させる。
     クラスタ距離・各次元の差分を数値で渡すことでローカルLLMでも安定した出力を得る。
