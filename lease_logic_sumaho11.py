@@ -136,6 +136,7 @@ from ai_chat import (
     get_ai_byoki_with_industry,
     get_ai_honne_complaint,
     get_ai_comprehensive_evaluation,
+    get_ai_quick_comment,
 )
 from indicators import (
     compute_financial_indicators,
@@ -3035,6 +3036,23 @@ elif mode == "📋 審査・分析":
                     """, unsafe_allow_html=True)
                 with _gauge_col:
                     st.plotly_chart(plot_gauge_plotly(res['score'], "総合スコア"), use_container_width=True, key="gauge_score")
+
+                # ----- 🤖 AIひとこと評価（自動生成） -----
+                _quick_key = "ai_quick_comment_result"
+                _quick_result_id = f"ai_quick_{res.get('score', 0):.1f}_{res.get('industry_sub', '')}"
+                # スコア+業種が変わったときだけ再生成
+                if st.session_state.get("ai_quick_comment_id") != _quick_result_id:
+                    st.session_state[_quick_key] = None
+                    st.session_state["ai_quick_comment_id"] = _quick_result_id
+                if is_ai_available() and st.session_state.get(_quick_key) is None:
+                    with st.spinner("AIコメント生成中…"):
+                        _qc = get_ai_quick_comment(res)
+                    st.session_state[_quick_key] = _qc if _qc else ""
+                _qc_text = st.session_state.get(_quick_key) or ""
+                if _qc_text:
+                    st.info(f"🤖 **AIコメント** {_qc_text}")
+                elif not is_ai_available():
+                    st.caption("💬 AIコメント: サイドバーでAIエンジンを設定すると自動評価が表示されます。")
 
                 # ----- 🤖 AI総合評価 -----
                 with st.expander("🤖 AI総合評価（5項目）", expanded=False):

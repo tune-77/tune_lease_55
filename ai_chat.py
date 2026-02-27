@@ -574,3 +574,57 @@ def get_ai_comprehensive_evaluation(res: dict, avg_data: dict = None) -> str | N
         return None
     except Exception:
         return None
+
+
+def get_ai_quick_comment(res: dict) -> str | None:
+    """
+    審査結果を見て、AIが2〜3文のひとこと評価コメントを生成する。
+    サマリーカード直下に自動表示する用。プロンプトを短くして応答速度を優先。
+
+    Args:
+        res: 審査結果dict
+
+    Returns:
+        コメント文字列（2〜3文）。失敗時は None。
+    """
+    if not is_ai_available():
+        return None
+
+    score = res.get("score", 0) or 0
+    hantei = res.get("hantei", "—") or "—"
+    user_op = res.get("user_op", 0) or 0
+    user_eq = res.get("user_eq", 0) or 0
+    bench_op = res.get("bench_op", 0) or 0
+    bench_eq = res.get("bench_eq", 0) or 0
+    industry_sub = res.get("industry_sub", "") or ""
+    contract_prob = res.get("contract_prob", 0) or 0
+
+    try:
+        from charts import _equity_ratio_display
+        user_eq_disp = _equity_ratio_display(user_eq) or 0
+        bench_eq_disp = _equity_ratio_display(bench_eq) or 0
+    except Exception:
+        user_eq_disp = user_eq
+        bench_eq_disp = bench_eq
+
+    prompt = (
+        f"リース審査専門家として、以下の案件を2〜3文で簡潔に評価してください。"
+        f"判定:{hantei} スコア:{score:.1f}% 業種:{industry_sub} "
+        f"営業利益率:{user_op:.1f}%（業界平均{bench_op:.1f}%）"
+        f" 自己資本比率:{user_eq_disp:.1f}%（業界平均{bench_eq_disp:.1f}%）"
+        f" 契約期待度:{contract_prob:.1f}%。"
+        f"強みと懸念点を含め、審査担当者への一言を日本語で。余計な前置きは不要。"
+    )
+    try:
+        ans = chat_with_retry(
+            model=get_ollama_model(),
+            messages=[{"role": "user", "content": prompt}],
+            retries=1,
+            timeout_seconds=60,
+        )
+        content = ((ans.get("message") or {}).get("content") or "").strip()
+        if content and "APIキーが" not in content and "エラー:" not in content[:30]:
+            return content
+        return None
+    except Exception:
+        return None
