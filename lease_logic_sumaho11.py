@@ -2971,20 +2971,19 @@ elif mode == "📋 審査・分析":
                 # ----- 成約に最も寄与している上位3因子（データ5件以上で表示） -----
                 _driver_analysis = run_contract_driver_analysis()
                 if _driver_analysis and _driver_analysis["closed_count"] >= 5:
-                    st.markdown("**🎯 成約に最も寄与している上位3つの因子（ドライバー）**")
-                    d1, d2, d3 = st.columns(3)
-                    for idx, col in enumerate([d1, d2, d3]):
-                        if idx < len(_driver_analysis["top3_drivers"]):
-                            d = _driver_analysis["top3_drivers"][idx]
-                            with col:
-                                st.markdown(f"""
-                                <div style="background:linear-gradient(135deg,#1e3a5f 0%,#334155 100%);color:#fff;padding:0.8rem;border-radius:10px;font-size:0.9rem;">
-                                <div style="opacity:0.9;">{idx+1}位</div>
-                                <div style="font-weight:bold;">{d['label']}</div>
-                                <div style="font-size:0.8rem;">係数 {d['coef']:.3f}（{d['direction']}）</div>
-                                </div>
-                                """, unsafe_allow_html=True)
-                    st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
+                    with st.expander("🎯 成約ドライバー上位3因子", expanded=False):
+                        d1, d2, d3 = st.columns(3)
+                        for idx, col in enumerate([d1, d2, d3]):
+                            if idx < len(_driver_analysis["top3_drivers"]):
+                                d = _driver_analysis["top3_drivers"][idx]
+                                with col:
+                                    st.markdown(f"""
+                                    <div style="background:linear-gradient(135deg,#1e3a5f 0%,#334155 100%);color:#fff;padding:0.8rem;border-radius:10px;font-size:0.9rem;">
+                                    <div style="opacity:0.9;">{idx+1}位</div>
+                                    <div style="font-weight:bold;">{d['label']}</div>
+                                    <div style="font-size:0.8rem;">係数 {d['coef']:.3f}（{d['direction']}）</div>
+                                    </div>
+                                    """, unsafe_allow_html=True)
                 # ----- タイトル + 画像 -----
                 img_path, img_caption = get_dashboard_image_path(hantei, industry_major, selected_sub, asset_name)
                 col_title, col_img = st.columns([3, 1])
@@ -2997,11 +2996,42 @@ elif mode == "📋 審査・分析":
                         st.caption("画像: dashboard_images に画像を配置するか、環境変数 DASHBOARD_IMAGES_ASSETS を指定してください。")
 
                 st.divider()
-                # ----- 主要KPI（画面最上部・横並び）業界実績 + 本件 -----
+                # ----- 判定サマリーカード（最重要項目 + スコアゲージ） -----
+                _hantei_color = "#0d9488" if "承認" in res.get("hantei", "") else "#b91c1c"
+                _yield_str = f"{res['yield_pred']:.2f}%" if "yield_pred" in res else "—"
+                _sum_col, _gauge_col = st.columns([3, 2])
+                with _sum_col:
+                    st.markdown(f"""
+                    <div style="background:linear-gradient(135deg,#1e3a5f 0%,#334155 100%);
+                                color:#fff;padding:1.2rem 1.5rem;border-radius:12px;height:100%;box-sizing:border-box;">
+                      <div style="font-size:0.85rem;opacity:0.75;margin-bottom:0.75rem;">📋 審査結果サマリー — {selected_sub}</div>
+                      <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-start;">
+                        <div>
+                          <div style="font-size:0.8rem;opacity:0.7;">判定</div>
+                          <div style="font-size:2rem;font-weight:bold;color:{_hantei_color};">{res.get("hantei","—")}</div>
+                        </div>
+                        <div>
+                          <div style="font-size:0.8rem;opacity:0.7;">総合スコア</div>
+                          <div style="font-size:2rem;font-weight:bold;">{res['score']:.1f}%</div>
+                        </div>
+                        <div>
+                          <div style="font-size:0.8rem;opacity:0.7;">契約期待度</div>
+                          <div style="font-size:2rem;font-weight:bold;">{res.get('contract_prob',0):.1f}%</div>
+                        </div>
+                        <div>
+                          <div style="font-size:0.8rem;opacity:0.7;">予測利回り</div>
+                          <div style="font-size:2rem;font-weight:bold;">{_yield_str}</div>
+                        </div>
+                      </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with _gauge_col:
+                    st.plotly_chart(plot_gauge_plotly(res['score'], "総合スコア"), use_container_width=True, key="gauge_score")
+
+                # ----- 主要KPI（業界実績）-----
                 past_stats = get_stats(selected_sub)
-                with st.container():
-                    st.markdown("**主要KPI**")
-                    kpi1, kpi2, kpi3, kpi4, kpi5, kpi6 = st.columns(6)
+                with st.expander("📊 業界実績KPI", expanded=False):
+                    kpi1, kpi2, kpi3 = st.columns(3)
                     with kpi1:
                         st.metric("業界 成約率", f"{past_stats.get('close_rate', 0) * 100:.1f}%" if past_stats.get("count") else "—", help="同業種の成約率")
                     with kpi2:
@@ -3009,23 +3039,6 @@ elif mode == "📋 審査・分析":
                     with kpi3:
                         avg_r = past_stats.get("avg_winning_rate")
                         st.metric("業界 平均金利", f"{avg_r:.2f}%" if avg_r is not None and avg_r > 0 else "—", help="同業種の平均成約金利")
-                    with kpi4:
-                        st.metric("本件 スコア", f"{res['score']:.1f}%", help="総合承認スコア")
-                    with kpi5:
-                        st.metric("本件 判定", res.get("hantei", "—"), help="承認圏内 or 要審議")
-                    with kpi6:
-                        st.metric("本件 契約期待度", f"{res.get('contract_prob', 0):.1f}%", help="定性補正後")
-                    # streamlit-extras: ページ内の全 st.metric をカード風に（ネイビー・ゴールドの左アクセント）
-                    if style_metric_cards is not None:
-                        style_metric_cards(
-                            background_color=CHART_STYLE["bg"],
-                            border_size_px=1,
-                            border_color=CHART_STYLE["grid"],
-                            border_radius_px=8,
-                            border_left_color=CHART_STYLE["primary"],
-                            box_shadow=True,
-                        )
-                    st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
 
                 # ----- 要確認アラート（承認ライン直下・本社と学習モデルの判定差） -----
                 review_need, review_reasons = get_review_alert(res)
@@ -3071,7 +3084,7 @@ elif mode == "📋 審査・分析":
 
                 # ----- 学習モデル（業種別ハイブリッド）の予測結果（融合機能）・常に表示 -----
                 scoring_result = res.get("scoring_result")
-                with st.expander("📈 学習モデル（業種別ハイブリッド）デフォルト確率", expanded=True):
+                with st.expander("📈 学習モデル（業種別ハイブリッド）デフォルト確率", expanded=False):
                     if scoring_result:
                         st.caption("**いずれも「デフォルト確率」（高い＝リスク大）です。** 上記の本システム「契約期待度」（成約率）とは尺度が逆です。成約率に換算するなら 約 100% − デフォルト確率。ハイブリッドは「業種別回帰のデフォルト確率」と「AIのデフォルト確率」の加重平均なので、同じ尺度同士の組み合わせです。")
                         sr1, sr2, sr3, sr4 = st.columns(4)
@@ -3148,11 +3161,8 @@ elif mode == "📋 審査・分析":
                     current_ratio = (current_approx / liability_total * 100) if liability_total > 0 else 100.0
                     pd_val = calculate_pd(user_eq, current_ratio, user_op)
 
-                with st.container():
-                    st.markdown("**本件スコア・利回り**")
-                    k1, k2, k3, k4 = st.columns(4)
-                    with k1:
-                        st.metric("総合スコア", f"{res['score']:.1f}%", help="借手＋物件を反映した判定用スコア")
+                with st.expander("📐 スコア内訳・利回り詳細", expanded=False):
+                    k2, k3, k4 = st.columns(3)
                     with k2:
                         st.metric("判定", res.get("hantei", "—"), help="承認圏内 or 要審議")
                     with k3:
@@ -3162,7 +3172,7 @@ elif mode == "📋 審査・分析":
                             st.metric("予測利回り", f"{res['yield_pred']:.2f}%", delta=f"{res.get('rate_diff', 0):+.2f}%", help="AI予測利回り")
                         else:
                             st.metric("予測利回り", "—", help="利回りモデル未適用")
-                    # ----- 第2行: スコア内訳（借手・物件説明 + 3モデル） -----
+                    # ----- スコア内訳（借手・物件説明 + 3モデル） -----
                     if "score_borrower" in res and "asset_score" in res:
                         st.caption(f"📌 借手 {res['score_borrower']:.1f}% × 0.85 ＋ 物件「{res.get('asset_name', '')}」{res['asset_score']}点 × 0.15 → 総合 {res['score']:.1f}%")
                     cols = st.columns(3)
@@ -3175,34 +3185,26 @@ elif mode == "📋 審査・分析":
                     with cols[2]:
                         st.metric("③ 指標ベンチマーク", f"{res['bench_score']:.1f}%", delta=f"{res['bench_score']-res['score']:+.1f}%", delta_color="inverse")
 
-                st.divider()
-                with st.container():
-                    st.markdown("**スコアゲージ・判定**")
-                    # ----- 第3行: ゲージ・判定・業界比較（ダッシュボード内に統合） -----
-                    g1, g2 = st.columns(2)
-                    with g1:
-                        st.plotly_chart(plot_gauge_plotly(res['score'], "総合スコア"), use_container_width=True, key="gauge_score")
-                    with g2:
-                        st.success(f"**{res['hantei']}**")
-                        industry_key = res["industry_major"]
-                        if industry_key in avg_data:
-                            avg = avg_data[industry_key]
-                            u_sales = res["financials"]["nenshu"]
-                            a_sales = avg["nenshu"]
-                            u_op_r = res['user_op']
-                            a_op_r = (avg["op_profit"]/avg["nenshu"]*100) if avg["nenshu"] > 0 else 0
-                            sales_ratio = u_sales / a_sales
-                            if sales_ratio >= 1.2: sales_msg = f"平均の{sales_ratio:.1f}倍規模"
-                            elif sales_ratio <= 0.8: sales_msg = f"平均より小規模({sales_ratio:.1f}倍)"
-                            else: sales_msg = "業界平均並み"
-                            if u_op_r >= a_op_r + 2.0: prof_msg = f"高収益({u_op_r:.1f}%)"
-                            elif u_op_r < a_op_r: prof_msg = f"平均以下({u_op_r:.1f}%)"
-                            else: prof_msg = f"標準({u_op_r:.1f}%)"
-                            st.caption(f"規模: {sales_msg} / 収益: {prof_msg}")
+                # ----- 業界比較テキスト（サマリー直下に表示） -----
+                industry_key = res["industry_major"]
+                if industry_key in avg_data:
+                    avg = avg_data[industry_key]
+                    u_sales = res["financials"]["nenshu"]
+                    a_sales = avg["nenshu"]
+                    u_op_r = res['user_op']
+                    a_op_r = (avg["op_profit"]/avg["nenshu"]*100) if avg["nenshu"] > 0 else 0
+                    sales_ratio = u_sales / a_sales
+                    if sales_ratio >= 1.2: sales_msg = f"平均の{sales_ratio:.1f}倍規模"
+                    elif sales_ratio <= 0.8: sales_msg = f"平均より小規模({sales_ratio:.1f}倍)"
+                    else: sales_msg = "業界平均並み"
+                    if u_op_r >= a_op_r + 2.0: prof_msg = f"高収益({u_op_r:.1f}%)"
+                    elif u_op_r < a_op_r: prof_msg = f"平均以下({u_op_r:.1f}%)"
+                    else: prof_msg = f"標準({u_op_r:.1f}%)"
+                    st.caption(f"業界比較 — 規模: {sales_msg} / 収益: {prof_msg}")
 
                 # ----- 審査に有用な Plotly グラフ（4種） -----
                 st.divider()
-                with st.expander("📊 審査に有用なグラフ", expanded=True):
+                with st.expander("📊 審査に有用なグラフ", expanded=False):
                     st.caption("スコア内訳・契約期待度の要因・過去分布・バランスシート内訳をインタラクティブに表示します。")
                     row1_a, row1_b = st.columns(2)
                     with row1_a:
