@@ -64,6 +64,10 @@ from charts import (
     plot_3d_analysis,
     plot_waterfall,
     plot_waterfall_plotly,
+    plot_ebitda_coverage_plotly,
+    plot_financial_bullet_plotly,
+    plot_score_boxplot_plotly,
+    plot_cash_flow_bridge_plotly,
 )
 from data_cases import (
     CASES_FILE,
@@ -3228,6 +3232,35 @@ elif mode == "📋 審査・分析":
                             st.plotly_chart(bal_fig, use_container_width=True, key="plotly_balance_sheet")
                         else:
                             st.caption("審査入力で資産・負債を入力すると内訳を表示します。")
+                    # ----- 追加グラフ（4種）-----
+                    st.divider()
+                    st.caption("📌 追加分析グラフ（返済余力・財務比率・スコア分布・CF構造）")
+                    row3_a, row3_b = st.columns(2)
+                    with row3_a:
+                        ebitda_fig = plot_ebitda_coverage_plotly(res.get("financials"))
+                        if ebitda_fig:
+                            st.plotly_chart(ebitda_fig, use_container_width=True, key="plotly_ebitda_cov")
+                        else:
+                            st.caption("財務データを入力するとEBITDAカバレッジを表示します。")
+                    with row3_b:
+                        bullet_fig = plot_financial_bullet_plotly(res, avg_data)
+                        if bullet_fig:
+                            st.plotly_chart(bullet_fig, use_container_width=True, key="plotly_fin_bullet")
+                        else:
+                            st.caption("業界データがあると財務指標比較を表示します。")
+                    row4_a, row4_b = st.columns(2)
+                    with row4_a:
+                        box_fig = plot_score_boxplot_plotly(res.get("score"), selected_sub, load_all_cases())
+                        if box_fig:
+                            st.plotly_chart(box_fig, use_container_width=True, key="plotly_score_box")
+                        else:
+                            st.caption("過去案件データが蓄積されるとスコアボックスプロットを表示します。")
+                    with row4_b:
+                        cf_fig = plot_cash_flow_bridge_plotly(res.get("financials"))
+                        if cf_fig:
+                            st.plotly_chart(cf_fig, use_container_width=True, key="plotly_cf_bridge")
+                        else:
+                            st.caption("財務データを入力するとCFブリッジを表示します。")
 
                 st.divider()
                 with st.container():

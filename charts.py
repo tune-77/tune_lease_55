@@ -795,3 +795,242 @@ def plot_break_even_point_plotly(sales, variable_cost, fixed_cost):
     fig.update_xaxes(gridcolor=CHART_STYLE["grid"], zeroline=False)
     fig.update_yaxes(gridcolor=CHART_STYLE["grid"], zeroline=False)
     return fig
+
+
+# ============================================================
+# 追加グラフ（4種）
+# ============================================================
+
+def plot_ebitda_coverage_plotly(financials):
+    """EBITDA vs リース債務・銀行与信 カバレッジ分析
+    EBITDA = 営業利益 + 減価償却費。リース債務を何倍カバーできるかを可視化。"""
+    if not financials:
+        return None
+    op_profit    = financials.get("op_profit") or financials.get("rieki") or 0
+    depreciation = financials.get("depreciation") or 0
+    lease_credit = financials.get("lease_credit") or 0
+    bank_credit  = financials.get("bank_credit") or 0
+    ebitda = op_profit + depreciation
+    if ebitda == 0 and lease_credit == 0 and bank_credit == 0:
+        return None
+
+    # 百万円換算
+    vals_m = {
+        "EBITDA\n(営業利益+減価償却)": ebitda / 1000,
+        "リース債務": lease_credit / 1000,
+        "銀行与信": bank_credit / 1000,
+    }
+    colors = [CHART_STYLE["good"], CHART_STYLE["warning"], CHART_STYLE["danger"]]
+    fig = go.Figure(go.Bar(
+        x=list(vals_m.keys()),
+        y=list(vals_m.values()),
+        marker_color=colors,
+        text=[f"{v:,.1f}M" for v in vals_m.values()],
+        textposition="outside",
+        hovertemplate="%{x}<br>%{y:,.1f} 百万円<extra></extra>",
+    ))
+    # カバレッジ倍率をアノテーション
+    if lease_credit > 0:
+        coverage = ebitda / lease_credit
+        fig.add_annotation(
+            x="EBITDA\n(営業利益+減価償却)", y=ebitda / 1000,
+            text=f"リース債務カバレッジ: {coverage:.1f}x",
+            showarrow=False, yshift=30,
+            font=dict(size=12, color=CHART_STYLE["primary"]),
+        )
+    fig.add_hline(y=0, line_color=CHART_STYLE["grid"], line_width=1)
+    fig.update_layout(
+        title="EBITDA vs 債務カバレッジ分析",
+        yaxis_title="金額（百万円）",
+        paper_bgcolor=CHART_STYLE["bg"],
+        plot_bgcolor="white",
+        font=dict(color=CHART_STYLE["text"], size=11),
+        margin=dict(t=60, b=60, l=50, r=30),
+        height=320,
+        showlegend=False,
+    )
+    fig.update_yaxes(gridcolor=CHART_STYLE["grid"], zeroline=True, zerolinecolor=CHART_STYLE["grid"])
+    return fig
+
+
+def plot_financial_bullet_plotly(res, avg_data):
+    """主要財務3指標（営業利益率・自己資本比率・ROA）を横棒で業界平均と比較。"""
+    if not res or not avg_data:
+        return None
+    fin          = res.get("financials", {})
+    industry_key = res.get("industry_major", "")
+    nenshu       = fin.get("nenshu") or 0
+    op_profit    = fin.get("op_profit") or fin.get("rieki") or 0
+    net_assets   = fin.get("net_assets") or 0
+    assets       = fin.get("assets") or 0
+
+    op_margin    = op_profit / nenshu * 100    if nenshu  > 0 else 0
+    equity_ratio = net_assets / assets  * 100  if assets  > 0 else 0
+    roa          = op_profit  / assets  * 100  if assets  > 0 else 0
+
+    avg = avg_data.get(industry_key, {})
+    a_nenshu  = avg.get("nenshu") or 1
+    a_assets  = (avg.get("machines", 0) + avg.get("other_assets", 0)
+                 + avg.get("bank_credit", 0) + avg.get("lease_credit", 0)) or 1
+    avg_op_margin    = avg.get("op_profit", 0) / a_nenshu * 100
+    avg_equity_ratio = None   # avg_dataには純資産直接値なし
+    avg_roa          = avg.get("net_income", 0) / a_assets * 100
+
+    metrics = [
+        ("営業利益率 (%)",   op_margin,    avg_op_margin,    5.0),
+        ("自己資本比率 (%)", equity_ratio, avg_equity_ratio, 30.0),
+        ("ROA (%)",          roa,          avg_roa,          3.0),
+    ]
+
+    fig = go.Figure()
+    for i, (label, val, avg_val, threshold) in enumerate(metrics):
+        color = CHART_STYLE["good"] if val >= threshold else CHART_STYLE["danger"]
+        fig.add_trace(go.Bar(
+            y=[label], x=[val],
+            orientation="h",
+            marker_color=color,
+            name=label,
+            text=[f"{val:.1f}%"],
+            textposition="outside",
+            hovertemplate=f"{label}: %{{x:.1f}}%<extra></extra>",
+            showlegend=False,
+        ))
+        # 業界平均マーカー
+        if avg_val is not None:
+            fig.add_shape(
+                type="line",
+                x0=avg_val, x1=avg_val,
+                y0=i - 0.4, y1=i + 0.4,
+                line=dict(color=CHART_STYLE["secondary"], width=2, dash="dash"),
+            )
+            fig.add_annotation(
+                x=avg_val, y=i,
+                text=f"業界平均<br>{avg_val:.1f}%",
+                showarrow=False, xshift=5,
+                font=dict(size=9, color=CHART_STYLE["secondary"]),
+                xanchor="left",
+            )
+        # 合格ラインマーカー
+        fig.add_shape(
+            type="line",
+            x0=threshold, x1=threshold,
+            y0=i - 0.4, y1=i + 0.4,
+            line=dict(color=CHART_STYLE["warning"], width=1.5, dash="dot"),
+        )
+    fig.update_layout(
+        title="主要財務指標 vs 業界平均",
+        xaxis_title="値 (%)",
+        paper_bgcolor=CHART_STYLE["bg"],
+        plot_bgcolor="white",
+        font=dict(color=CHART_STYLE["text"], size=11),
+        margin=dict(t=50, b=40, l=130, r=80),
+        height=280,
+        barmode="overlay",
+    )
+    fig.update_xaxes(gridcolor=CHART_STYLE["grid"])
+    fig.update_yaxes(gridcolor=CHART_STYLE["grid"])
+    return fig
+
+
+def plot_score_boxplot_plotly(current_score, industry_sub, past_cases):
+    """業種別スコアボックスプロット。同業種 vs 全体の分布と今回の位置を表示。"""
+    if not past_cases:
+        return None
+    same, all_scores = [], []
+    for c in past_cases:
+        s = c.get("result", {}).get("score")
+        if s is None:
+            continue
+        all_scores.append(float(s))
+        if c.get("result", {}).get("industry_sub") == industry_sub:
+            same.append(float(s))
+    if not all_scores:
+        return None
+
+    fig = go.Figure()
+    if same:
+        fig.add_trace(go.Box(
+            y=same, name=f"同業種<br>({industry_sub})",
+            marker_color=CHART_STYLE["primary"],
+            boxmean="sd",
+            hovertemplate="同業種 %{y:.1f}%<extra></extra>",
+        ))
+    fig.add_trace(go.Box(
+        y=all_scores, name="全業種",
+        marker_color=CHART_STYLE["secondary"],
+        boxmean="sd",
+        hovertemplate="全体 %{y:.1f}%<extra></extra>",
+    ))
+    if current_score is not None:
+        fig.add_hline(
+            y=current_score,
+            line_dash="solid", line_color=CHART_STYLE["warning"], line_width=2,
+            annotation_text=f"今回 {current_score:.1f}%",
+            annotation_position="right",
+        )
+    fig.add_hline(
+        y=70, line_dash="dash", line_color=CHART_STYLE["danger"], line_width=1.5,
+        annotation_text="承認ライン 70%",
+        annotation_position="left",
+    )
+    fig.update_layout(
+        title="業種別スコア分布 vs 今回",
+        yaxis_title="スコア (%)",
+        paper_bgcolor=CHART_STYLE["bg"],
+        plot_bgcolor="white",
+        font=dict(color=CHART_STYLE["text"], size=11),
+        margin=dict(t=50, b=40, l=50, r=80),
+        height=320,
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+    )
+    fig.update_yaxes(range=[0, 105], gridcolor=CHART_STYLE["grid"])
+    return fig
+
+
+def plot_cash_flow_bridge_plotly(financials):
+    """簡易キャッシュフロー構造ブリッジ。純利益→EBITDA→リース債務控除後の返済余力を可視化。"""
+    if not financials:
+        return None
+    net_income   = financials.get("net_income") or 0
+    depreciation = financials.get("depreciation") or 0
+    op_profit    = financials.get("op_profit") or financials.get("rieki") or 0
+    lease_credit = financials.get("lease_credit") or 0
+    ebitda       = op_profit + depreciation
+    余力         = ebitda - lease_credit
+    if net_income == 0 and depreciation == 0:
+        return None
+
+    # ウォーターフォール形式
+    labels = ["純利益", "＋減価償却費", "EBITDA", "－リース債務", "返済余力"]
+    values = [net_income, depreciation, None, -lease_credit, None]
+    measures = ["absolute", "relative", "total", "relative", "total"]
+    texts = [f"{v/1000:+,.1f}M" if v is not None else "" for v in values]
+
+    fig = go.Figure(go.Waterfall(
+        name="キャッシュフローブリッジ",
+        orientation="v",
+        measure=measures,
+        x=labels,
+        y=[net_income / 1000, depreciation / 1000, None, -lease_credit / 1000, None],
+        text=texts,
+        textposition="outside",
+        connector=dict(line=dict(color=CHART_STYLE["grid"], width=1)),
+        increasing=dict(marker=dict(color=CHART_STYLE["good"])),
+        decreasing=dict(marker=dict(color=CHART_STYLE["danger"])),
+        totals=dict(marker=dict(color=CHART_STYLE["primary"])),
+        hovertemplate="%{x}: %{y:+,.1f} 百万円<extra></extra>",
+    ))
+    fig.add_hline(y=0, line_color=CHART_STYLE["grid"], line_width=1)
+    fig.update_layout(
+        title="キャッシュフロー構造ブリッジ（簡易）",
+        yaxis_title="金額（百万円）",
+        paper_bgcolor=CHART_STYLE["bg"],
+        plot_bgcolor="white",
+        font=dict(color=CHART_STYLE["text"], size=11),
+        margin=dict(t=50, b=60, l=50, r=30),
+        height=320,
+        showlegend=False,
+    )
+    fig.update_yaxes(gridcolor=CHART_STYLE["grid"], zeroline=True, zerolinecolor=CHART_STYLE["grid"])
+    return fig
