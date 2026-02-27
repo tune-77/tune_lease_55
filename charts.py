@@ -663,6 +663,67 @@ def plot_3d_safety_score(current_data: dict, past_cases: list):
     return fig
 
 
+def compute_3d_positioning_stats(current_data: dict, past_cases: list) -> dict:
+    """
+    3D多角分析のAIコメント用に、今回案件と過去クラスタの位置関係を数値で計算する。
+
+    Returns dict with keys:
+        approved_count, rejected_count,
+        approved_centroid, rejected_centroid  (各dict: op_margin, equity_ratio, ebitda_cov, score)
+        current_vs_approved  (各次元での差分 / 同上)
+        nearest_approved, nearest_rejected  (最近傍件数)
+        closest_cluster  ("承認済" | "否決" | "不明")
+        closest_distance_ratio  (承認距離 / 否決距離。1未満 → 承認に近い)
+    """
+    df = _build_3d_extended_df(current_data, past_cases)
+    if df.empty or len(df) < 2:
+        return {}
+
+    approved = df[df["判定"] == "承認済"]
+    rejected = df[df["判定"] == "否決"]
+    current = df[df["判定"] == "★今回の案件"]
+    if current.empty:
+        return {}
+
+    dims = ["利益率(%)", "自己資本比率(%)", "EBITDAカバレッジ(倍)", "スコア(%)"]
+
+    def centroid(sub_df):
+        if sub_df.empty:
+            return {d: 0.0 for d in dims}
+        return {d: float(sub_df[d].mean()) for d in dims}
+
+    def euclidean(row_a, row_b):
+        return float(sum((row_a.get(d, 0) - row_b.get(d, 0)) ** 2 for d in dims) ** 0.5)
+
+    cur_vals = {d: float(current.iloc[0][d]) for d in dims}
+    apr_c = centroid(approved)
+    rej_c = centroid(rejected)
+    dist_apr = euclidean(cur_vals, apr_c)
+    dist_rej = euclidean(cur_vals, rej_c)
+
+    if dist_apr + dist_rej > 0:
+        ratio = dist_apr / (dist_apr + dist_rej + 1e-9)
+        closest = "承認済" if dist_apr <= dist_rej else "否決"
+    else:
+        ratio = 0.5
+        closest = "不明"
+
+    cur_vs_apr = {d: cur_vals[d] - apr_c[d] for d in dims}
+
+    return {
+        "approved_count": int(len(approved)),
+        "rejected_count": int(len(rejected)),
+        "approved_centroid": apr_c,
+        "rejected_centroid": rej_c,
+        "current_vals": cur_vals,
+        "current_vs_approved": cur_vs_apr,
+        "closest_cluster": closest,
+        "dist_to_approved": round(dist_apr, 2),
+        "dist_to_rejected": round(dist_rej, 2),
+        "closest_distance_ratio": round(ratio, 3),  # 0→承認に近い, 1→否決に近い
+    }
+
+
 def plot_score_models_comparison_plotly(res):
     """3モデル（全体・業種・指標ベンチ）のスコア比較＋承認ライン70"""
     models = ["① 全体モデル", "② 業種モデル", "③ 指標ベンチ"]

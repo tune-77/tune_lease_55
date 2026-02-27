@@ -628,3 +628,90 @@ def get_ai_quick_comment(res: dict) -> str | None:
         return None
     except Exception:
         return None
+
+
+# ─── 3D多角分析 AIポジショニングコメント ──────────────────────────────────────
+
+def get_ai_3d_comment(current_data: dict, past_cases: list) -> str | None:
+    """
+    3D多角分析の過去クラスタとの位置関係を統計計算し、AIに2〜3文のコメントを生成させる。
+    クラスタ距離・各次元の差分を数値で渡すことでローカルLLMでも安定した出力を得る。
+
+    Args:
+        current_data: 今回案件dict（sales, op_margin, equity_ratio, op_profit,
+                       depreciation, lease_credit, bank_credit, score）
+        past_cases:   load_all_cases() の結果
+
+    Returns:
+        コメント文字列。失敗時は None。
+    """
+    if not is_ai_available():
+        return None
+
+    try:
+        from charts import compute_3d_positioning_stats
+        stats = compute_3d_positioning_stats(current_data, past_cases)
+    except Exception:
+        return None
+
+    if not stats:
+        return None
+
+    apr_n = stats.get("approved_count", 0)
+    rej_n = stats.get("rejected_count", 0)
+    closest = stats.get("closest_cluster", "不明")
+    ratio = stats.get("closest_distance_ratio", 0.5)
+    d_apr = stats.get("dist_to_approved", 0)
+    d_rej = stats.get("dist_to_rejected", 0)
+    apr_c = stats.get("approved_centroid", {})
+    cur = stats.get("current_vals", {})
+    diff = stats.get("current_vs_approved", {})
+
+    # 承認済クラスタとの差が大きい次元トップ2を特定
+    dim_labels = {
+        "利益率(%)": "営業利益率",
+        "自己資本比率(%)": "自己資本比率",
+        "EBITDAカバレッジ(倍)": "EBITDAカバレッジ",
+        "スコア(%)": "審査スコア",
+    }
+    sorted_dims = sorted(diff.items(), key=lambda x: abs(x[1]), reverse=True)
+    gap_lines = ""
+    for dim_key, gap in sorted_dims[:2]:
+        label = dim_labels.get(dim_key, dim_key)
+        direction = "上回る" if gap > 0 else "下回る"
+        unit = "倍" if "カバレッジ" in dim_key else "%"
+        gap_lines += (
+            f"  ・{label}: 承認済平均{apr_c.get(dim_key, 0):.1f}{unit}に対し"
+            f"今回{cur.get(dim_key, 0):.1f}{unit}（差{gap:+.1f}{unit}、承認済を{direction}）\n"
+        )
+
+    prox_desc = (
+        f"承認済クラスタに近い（類似度目安 {100 - int(ratio * 100)}%）"
+        if closest == "承認済"
+        else f"否決クラスタに近い（類似度目安 {int(ratio * 100)}%）"
+    )
+
+    prompt = (
+        f"リース審査の3D多角分析の結果を見て、2〜3文で簡潔にコメントしてください。\n\n"
+        f"【分析結果】\n"
+        f"- 過去事例: 承認済{apr_n}件 / 否決{rej_n}件\n"
+        f"- 今回案件の位置: {prox_desc}\n"
+        f"  （承認済クラスタとの距離 {d_apr:.1f} / 否決クラスタとの距離 {d_rej:.1f}）\n"
+        f"- 承認済クラスタとの主な差分:\n{gap_lines}"
+        f"\n審査担当者向けに、ポジショニングの特徴と注目すべき点を日本語で。"
+        f"余計な前置きは不要。"
+    )
+
+    try:
+        ans = chat_with_retry(
+            model=get_ollama_model(),
+            messages=[{"role": "user", "content": prompt}],
+            retries=1,
+            timeout_seconds=60,
+        )
+        content = ((ans.get("message") or {}).get("content") or "").strip()
+        if content and "APIキーが" not in content and "エラー:" not in content[:30]:
+            return content
+        return None
+    except Exception:
+        return None

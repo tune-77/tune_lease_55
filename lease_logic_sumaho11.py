@@ -137,6 +137,7 @@ from ai_chat import (
     get_ai_honne_complaint,
     get_ai_comprehensive_evaluation,
     get_ai_quick_comment,
+    get_ai_3d_comment,
 )
 from indicators import (
     compute_financial_indicators,
@@ -3357,6 +3358,22 @@ elif mode == "📋 審査・分析":
                             st.caption("③ 自己資本比率 × 利益率 × スコア")
                         else:
                             st.caption("③過去データ不足")
+
+                    # ----- 3D AIポジショニングコメント（チャート下・全幅） -----
+                    _3d_comment_key = "ai_3d_comment_result"
+                    _3d_comment_id = f"3d_{current_case_data.get('score', 0):.0f}_{current_case_data.get('op_margin', 0):.1f}"
+                    if st.session_state.get("ai_3d_comment_id") != _3d_comment_id:
+                        st.session_state[_3d_comment_key] = None
+                        st.session_state["ai_3d_comment_id"] = _3d_comment_id
+                    if is_ai_available() and st.session_state.get(_3d_comment_key) is None:
+                        with st.spinner("3D分析コメント生成中…"):
+                            _3d_c = get_ai_3d_comment(current_case_data, past_cases_log)
+                        st.session_state[_3d_comment_key] = _3d_c if _3d_c else ""
+                    _3d_c_text = st.session_state.get(_3d_comment_key) or ""
+                    if _3d_c_text:
+                        st.info(f"🤖 **ポジショニング分析** {_3d_c_text}")
+                    elif not is_ai_available():
+                        st.caption("💬 ポジショニングコメント: サイドバーでAIを設定すると自動表示されます。")
 
                 st.divider()
                 with st.container():
