@@ -457,3 +457,120 @@ def get_ai_honne_complaint() -> str:
         return content or "（本音は言えませんでした…）"
     except Exception as e:
         return f"（本音を言おうとしたらエラー: {e}）"
+
+
+# ─── 総合AI評価（穴埋め形式・ローカルLLM向け） ──────────────────────────────
+
+def get_ai_comprehensive_evaluation(res: dict, avg_data: dict = None) -> str | None:
+    """
+    穴埋め形式プロンプトで総合審査評価を生成する（ローカルLLM向け）。
+    ①収益性 ②財務安定性 ③返済余力 ④成約見込み ⑤総合評価 の5項目で固定出力。
+
+    Args:
+        res: 審査結果dict（score, user_op, user_eq, financials等を含む）
+        avg_data: 業界平均データ（省略可・現状未使用）
+
+    Returns:
+        評価テキスト文字列。失敗時は None。
+    """
+    if not is_ai_available():
+        return None
+
+    # --- 値の抽出 ---
+    score = res.get("score", 0) or 0
+    hantei = res.get("hantei", "—") or "—"
+    user_op = res.get("user_op", 0) or 0
+    user_eq = res.get("user_eq", 0) or 0
+    bench_op = res.get("bench_op", 0) or 0
+    bench_eq = res.get("bench_eq", 0) or 0
+    ind_score = res.get("ind_score", score) or score
+    bench_score = res.get("bench_score", score) or score
+    yield_pred = res.get("yield_pred", 0) or 0
+    contract_prob = res.get("contract_prob", 0) or 0
+    industry_sub = res.get("industry_sub", "") or ""
+    asset_name = res.get("asset_name", "—") or "—"
+
+    fin = res.get("financials") or {}
+    nenshu = fin.get("nenshu", 0) or 0
+    op_profit = fin.get("op_profit") or fin.get("rieki", 0) or 0
+    ord_profit = fin.get("ord_profit", 0) or 0
+    net_income = fin.get("net_income", 0) or 0
+    net_assets = fin.get("net_assets", 0) or 0
+    assets = fin.get("assets", 0) or 0
+    dep = fin.get("depreciation", 0) or 0
+    bank_credit = fin.get("bank_credit", 0) or 0
+    lease_credit = fin.get("lease_credit", 0) or 0
+
+    # EBITDA（百万円単位で計算）
+    ebitda = op_profit + dep
+
+    # EBITDAカバレッジ（リース・銀行与信は百万円換算）
+    lease_credit_m = lease_credit        # すでに百万円単位
+    bank_credit_m = bank_credit          # すでに百万円単位
+    coverage_lease = ebitda / lease_credit_m if lease_credit_m and lease_credit_m > 0 else None
+    coverage_bank = ebitda / bank_credit_m if bank_credit_m and bank_credit_m > 0 else None
+
+    # 自己資本比率の補正（負値対応）
+    try:
+        from charts import _equity_ratio_display
+        user_eq_disp = _equity_ratio_display(user_eq) or 0
+        bench_eq_disp = _equity_ratio_display(bench_eq) or 0
+    except Exception:
+        user_eq_disp = user_eq
+        bench_eq_disp = bench_eq
+
+    op_diff = user_op - bench_op
+    eq_diff = user_eq_disp - bench_eq_disp
+
+    # カバレッジ行（データがある場合のみ）
+    coverage_lines = ""
+    if coverage_lease is not None:
+        coverage_lines += f"- EBITDAカバレッジ（対リース債務・保守値）: {coverage_lease:.2f}倍\n"
+    if coverage_bank is not None:
+        coverage_lines += f"- EBITDAカバレッジ（対銀行与信・保守値）: {coverage_bank:.2f}倍\n"
+
+    # --- 穴埋め形式プロンプト ---
+    prompt = f"""あなたは熟練したリース審査専門家です。
+以下の財務データと審査スコアを読んで、5項目の評価を【必ず下記形式だけ】で答えてください。
+
+【審査対象】
+- 業種: {industry_sub}
+- 物件: {asset_name}
+- 年商: {nenshu:,}万円
+- 営業利益: {op_profit:.0f}百万円 / 経常利益: {ord_profit:.0f}百万円 / 当期純利益: {net_income:.0f}百万円
+- 総資産: {assets:,}万円 / 純資産: {net_assets:,}万円
+- 減価償却費: {dep:.0f}百万円 / EBITDA（営業利益＋減価償却）: {ebitda:.0f}百万円
+- リース債務（当社＋関連会社）: {lease_credit:.0f}百万円
+- 銀行与信（当社＋関連会社）: {bank_credit:.0f}百万円
+
+【指標比較】
+- 営業利益率: {user_op:.1f}%（業界平均 {bench_op:.1f}%、差 {op_diff:+.1f}%）
+- 自己資本比率: {user_eq_disp:.1f}%（業界平均 {bench_eq_disp:.1f}%、差 {eq_diff:+.1f}%）
+{coverage_lines}
+【スコアリング】
+- 総合スコア: {score:.1f}% / 業種別スコア: {ind_score:.1f}% / ベンチマークスコア: {bench_score:.1f}%
+- 判定: {hantei} / 契約期待度: {contract_prob:.1f}% / 予測利回り: {yield_pred:.2f}%
+
+---
+必ず以下の形式のみで回答してください。①〜⑤以外は一切出力しないこと。
+
+①収益性：（業界比較を含む1文で評価）
+②財務安定性：（純資産・自己資本比率の評価1文）
+③返済余力：（EBITDAとリース・銀行債務のカバレッジ評価1文）
+④成約見込み：（スコアと業種を踏まえた成約可能性1文）
+⑤総合評価：（審査担当者への推奨アクション。2文以内）
+"""
+
+    try:
+        ans = chat_with_retry(
+            model=get_ollama_model(),
+            messages=[{"role": "user", "content": prompt}],
+            retries=1,
+            timeout_seconds=90,
+        )
+        content = ((ans.get("message") or {}).get("content") or "").strip()
+        if content and "APIキーが" not in content and "エラー:" not in content[:30]:
+            return content
+        return None
+    except Exception:
+        return None

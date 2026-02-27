@@ -132,6 +132,7 @@ from ai_chat import (
     AI_HONNE_SYSTEM,
     get_ai_byoki_with_industry,
     get_ai_honne_complaint,
+    get_ai_comprehensive_evaluation,
 )
 from indicators import (
     compute_financial_indicators,
@@ -3031,6 +3032,41 @@ elif mode == "📋 審査・分析":
                     """, unsafe_allow_html=True)
                 with _gauge_col:
                     st.plotly_chart(plot_gauge_plotly(res['score'], "総合スコア"), use_container_width=True, key="gauge_score")
+
+                # ----- 🤖 AI総合評価 -----
+                with st.expander("🤖 AI総合評価（5項目）", expanded=False):
+                    st.caption("ローカルLLM（またはGemini）が財務データ・スコアを総合的に判断して評価します。")
+                    _ai_eval_key = "ai_comprehensive_eval_result"
+                    _ai_eval_loading_key = "ai_comprehensive_eval_loading"
+
+                    if st.button("▶ AI評価を生成", key="btn_ai_comprehensive_eval"):
+                        st.session_state[_ai_eval_loading_key] = True
+                        st.session_state[_ai_eval_key] = None
+
+                    if st.session_state.get(_ai_eval_loading_key):
+                        with st.spinner("AI評価を生成中… （ローカルLLMは30〜90秒かかる場合があります）"):
+                            _eval_result = get_ai_comprehensive_evaluation(res)
+                        st.session_state[_ai_eval_key] = _eval_result
+                        st.session_state[_ai_eval_loading_key] = False
+
+                    _eval_text = st.session_state.get(_ai_eval_key)
+                    if _eval_text:
+                        # ①〜⑤ を色付きで表示
+                        _eval_lines = _eval_text.splitlines()
+                        _formatted = []
+                        for _line in _eval_lines:
+                            _line = _line.strip()
+                            if not _line:
+                                continue
+                            if _line.startswith("①") or _line.startswith("②") or _line.startswith("③") or _line.startswith("④"):
+                                _formatted.append(f"**{_line}**")
+                            elif _line.startswith("⑤"):
+                                _formatted.append(f"\n**{_line}**")
+                            else:
+                                _formatted.append(_line)
+                        st.markdown("\n\n".join(_formatted))
+                    elif _eval_text is not None:
+                        st.warning("AI評価を取得できませんでした。AIエンジンの設定（サイドバー）を確認してから再試行してください。")
 
                 # ----- 主要KPI（業界実績）-----
                 past_stats = get_stats(selected_sub)
