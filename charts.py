@@ -498,6 +498,171 @@ def plot_3d_analysis(current_data, past_cases):
     return fig
 
 
+# ─── 3D多角分析 共通DataBuilder + 2つの追加視点 ──────────────────────────────
+
+def _build_3d_extended_df(current_data: dict, past_cases: list) -> pd.DataFrame:
+    """
+    3D多角分析の全視点で共通して使うDataFrameを生成する。
+    current_data: {sales, op_margin, equity_ratio, op_profit, depreciation, lease_credit, bank_credit, score}
+    """
+    OP_MIN, OP_MAX = -30.0, 30.0
+    EQ_MIN, EQ_MAX = 0.0, 90.0
+    EBITDA_MAX = 2000.0
+    ECOV_MAX = 20.0
+    SCORE_MIN, SCORE_MAX = 0.0, 100.0
+
+    def clamp(val, lo, hi):
+        return max(lo, min(hi, float(val or 0)))
+
+    rows = []
+    for c in past_cases:
+        r = c.get("result", {})
+        f = r.get("financials", {})
+        if not f or not (f.get("nenshu", 0) or 0):
+            continue
+        nenshu = f.get("nenshu", 0) or 0
+        rieki = f.get("op_profit") or f.get("rieki", 0) or 0
+        dep = f.get("depreciation", 0) or 0
+        ebitda = rieki + dep
+        op_m = clamp((rieki / nenshu * 100) if nenshu else 0, OP_MIN, OP_MAX)
+        eq = clamp(_equity_ratio_display(r.get("user_eq", 0)) or 0, EQ_MIN, EQ_MAX)
+        score = clamp(r.get("score", 0) or 0, SCORE_MIN, SCORE_MAX)
+        lc = f.get("lease_credit", 0) or 0
+        bc = f.get("bank_credit", 0) or 0
+        total_credit = (lc + bc) or 0
+        ecov_lease = clamp(ebitda / lc if lc > 0 else 0, 0, ECOV_MAX)
+        ecov_total = clamp(ebitda / total_credit if total_credit > 0 else 0, 0, ECOV_MAX)
+        status = "承認済" if score >= 70 else "否決"
+        rows.append({
+            "売上(M)": nenshu / 1000,
+            "利益率(%)": op_m,
+            "自己資本比率(%)": eq,
+            "EBITDA(M)": clamp(ebitda, 0, EBITDA_MAX),
+            "EBITDAカバレッジ(倍)": ecov_lease,
+            "総与信カバレッジ(倍)": ecov_total,
+            "スコア(%)": score,
+            "判定": status,
+            "size": 6,
+        })
+
+    # 今回の案件
+    op_c = current_data.get("op_profit", 0) or 0
+    dep_c = current_data.get("depreciation", 0) or 0
+    ebitda_c = op_c + dep_c
+    lc_c = current_data.get("lease_credit", 0) or 0
+    bc_c = current_data.get("bank_credit", 0) or 0
+    tc_c = (lc_c + bc_c) or 0
+    rows.append({
+        "売上(M)": (current_data.get("sales", 0) or 0) / 1000,
+        "利益率(%)": clamp(current_data.get("op_margin", 0), OP_MIN, OP_MAX),
+        "自己資本比率(%)": clamp(current_data.get("equity_ratio", 0), EQ_MIN, EQ_MAX),
+        "EBITDA(M)": clamp(ebitda_c, 0, EBITDA_MAX),
+        "EBITDAカバレッジ(倍)": clamp(ebitda_c / lc_c if lc_c > 0 else 0, 0, ECOV_MAX),
+        "総与信カバレッジ(倍)": clamp(ebitda_c / tc_c if tc_c > 0 else 0, 0, ECOV_MAX),
+        "スコア(%)": clamp(current_data.get("score", 0) or 0, SCORE_MIN, SCORE_MAX),
+        "判定": "★今回の案件",
+        "size": 14,
+    })
+    return pd.DataFrame(rows)
+
+
+def _make_3d_layout(title: str, xaxis: str, yaxis: str, zaxis: str,
+                    yrange: list = None, zrange: list = None) -> dict:
+    """3Dチャートの共通レイアウト設定。"""
+    scene = dict(
+        xaxis_title=xaxis,
+        yaxis_title=yaxis,
+        zaxis_title=zaxis,
+        bgcolor="white",
+    )
+    if yrange:
+        scene["yaxis"] = dict(range=yrange)
+    if zrange:
+        scene["zaxis"] = dict(range=zrange)
+    return dict(
+        paper_bgcolor=CHART_STYLE["bg"],
+        scene=scene,
+        margin=dict(l=0, r=0, b=0, t=36),
+        font=dict(color="#334155", size=10),
+        legend=dict(bgcolor="white", bordercolor=CHART_STYLE["grid"], borderwidth=1,
+                    x=0, y=1, font=dict(size=9)),
+        title=dict(text=title, font=dict(size=12, color=CHART_STYLE["text"]), x=0.5),
+    )
+
+
+_3D_COLOR_MAP = {
+    "承認済": CHART_STYLE["primary"],
+    "否決": CHART_STYLE["warning"],
+    "★今回の案件": CHART_STYLE["danger"],
+}
+
+
+def plot_3d_profit_position(current_data: dict, past_cases: list):
+    """
+    視点①収益性ポジショニング: 売上(M) × 営業利益率(%) × 自己資本比率(%)
+    ※既存 plot_3d_analysis の多視点版。
+    """
+    df = _build_3d_extended_df(current_data, past_cases)
+    if df.empty:
+        return None
+    fig = px.scatter_3d(
+        df, x="売上(M)", y="利益率(%)", z="自己資本比率(%)",
+        color="判定", size="size", opacity=0.85,
+        color_discrete_map=_3D_COLOR_MAP,
+        hover_data={"size": False},
+    )
+    fig.update_layout(**_make_3d_layout(
+        "①収益性ポジショニング",
+        "売上(百万円)", "営業利益率(%)", "自己資本比率(%)",
+        yrange=[-30, 30], zrange=[0, 90],
+    ))
+    return fig
+
+
+def plot_3d_repayment(current_data: dict, past_cases: list):
+    """
+    視点②返済余力: 売上(M) × EBITDAカバレッジ(倍) × スコア(%)
+    EBITDAが対リース債務何倍あるかを3軸で可視化。
+    """
+    df = _build_3d_extended_df(current_data, past_cases)
+    if df.empty:
+        return None
+    fig = px.scatter_3d(
+        df, x="売上(M)", y="EBITDAカバレッジ(倍)", z="スコア(%)",
+        color="判定", size="size", opacity=0.85,
+        color_discrete_map=_3D_COLOR_MAP,
+        hover_data={"size": False},
+    )
+    fig.update_layout(**_make_3d_layout(
+        "②返済余力（EBITDAカバレッジ）",
+        "売上(百万円)", "EBITDAカバレッジ(倍)", "審査スコア(%)",
+        yrange=[0, 15], zrange=[0, 100],
+    ))
+    return fig
+
+
+def plot_3d_safety_score(current_data: dict, past_cases: list):
+    """
+    視点③財務安全性×スコア: 自己資本比率(%) × 営業利益率(%) × 審査スコア(%)
+    財務健全性とスコアの相関を3軸で可視化。
+    """
+    df = _build_3d_extended_df(current_data, past_cases)
+    if df.empty:
+        return None
+    fig = px.scatter_3d(
+        df, x="自己資本比率(%)", y="利益率(%)", z="スコア(%)",
+        color="判定", size="size", opacity=0.85,
+        color_discrete_map=_3D_COLOR_MAP,
+        hover_data={"size": False},
+    )
+    fig.update_layout(**_make_3d_layout(
+        "③財務安全性×審査スコア",
+        "自己資本比率(%)", "営業利益率(%)", "審査スコア(%)",
+        yrange=[-30, 30], zrange=[0, 100],
+    ))
+    return fig
+
+
 def plot_score_models_comparison_plotly(res):
     """3モデル（全体・業種・指標ベンチ）のスコア比較＋承認ライン70"""
     models = ["① 全体モデル", "② 業種モデル", "③ 指標ベンチ"]

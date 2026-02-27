@@ -62,6 +62,9 @@ from charts import (
     plot_scoring_top5_factors_plotly,
     plot_score_models_comparison_plotly,
     plot_3d_analysis,
+    plot_3d_profit_position,
+    plot_3d_repayment,
+    plot_3d_safety_score,
     plot_waterfall,
     plot_waterfall_plotly,
     plot_ebitda_coverage_plotly,
@@ -3301,18 +3304,41 @@ elif mode == "📋 審査・分析":
                 st.divider()
                 with st.container():
                     st.subheader(":round_pushpin: 3D多角分析（回転・拡大可能）")
+                    st.caption("過去事例と今回案件を3軸で比較。★今回の案件の位置を確認してください。")
+                    _fin3d = res.get("financials", {})
                     current_case_data = {
-                         'sales': res['financials']['nenshu'],
-                         'op_margin': res['user_op'],
-                         'equity_ratio': res['user_eq']
+                        "sales": _fin3d.get("nenshu", 0) or 0,
+                        "op_margin": res.get("user_op", 0) or 0,
+                        "equity_ratio": res.get("user_eq", 0) or 0,
+                        "op_profit": _fin3d.get("op_profit") or _fin3d.get("rieki", 0) or 0,
+                        "depreciation": _fin3d.get("depreciation", 0) or 0,
+                        "lease_credit": _fin3d.get("lease_credit", 0) or 0,
+                        "bank_credit": _fin3d.get("bank_credit", 0) or 0,
+                        "score": res.get("score", 0) or 0,
                     }
                     past_cases_log = load_all_cases()
-                    fig_3d = plot_3d_analysis(current_case_data, past_cases_log)
-                    if fig_3d:
-                        st.plotly_chart(fig_3d, use_container_width=True, key="plotly_3d_analysis_result")
-                        st.caption("指でなぞると回転、ピンチで拡大できます。")
-                    else:
-                        st.warning("表示データがありません")
+                    _3d_col1, _3d_col2, _3d_col3 = st.columns(3)
+                    with _3d_col1:
+                        fig_3d_1 = plot_3d_profit_position(current_case_data, past_cases_log)
+                        if fig_3d_1:
+                            st.plotly_chart(fig_3d_1, use_container_width=True, key="plotly_3d_v1")
+                            st.caption("① 売上 × 利益率 × 自己資本比率")
+                        else:
+                            st.caption("①過去データ不足")
+                    with _3d_col2:
+                        fig_3d_2 = plot_3d_repayment(current_case_data, past_cases_log)
+                        if fig_3d_2:
+                            st.plotly_chart(fig_3d_2, use_container_width=True, key="plotly_3d_v2")
+                            st.caption("② 売上 × EBITDAカバレッジ × スコア")
+                        else:
+                            st.caption("②過去データ不足")
+                    with _3d_col3:
+                        fig_3d_3 = plot_3d_safety_score(current_case_data, past_cases_log)
+                        if fig_3d_3:
+                            st.plotly_chart(fig_3d_3, use_container_width=True, key="plotly_3d_v3")
+                            st.caption("③ 自己資本比率 × 利益率 × スコア")
+                        else:
+                            st.caption("③過去データ不足")
 
                 st.divider()
                 with st.container():
