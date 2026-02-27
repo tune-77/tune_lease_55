@@ -815,10 +815,11 @@ def plot_ebitda_coverage_plotly(financials):
         return None
 
     # 百万円換算
+    # ※リース債務・銀行与信は当社＋関連会社合算のため、カバレッジは保守的な数値
     vals_m = {
-        "EBITDA\n(営業利益+減価償却)": ebitda / 1000,
-        "リース債務": lease_credit / 1000,
-        "銀行与信": bank_credit / 1000,
+        "EBITDA\n(営業利益+減価償却)\n[当社単体]": ebitda / 1000,
+        "リース債務\n[当社＋関連会社]": lease_credit / 1000,
+        "銀行与信\n[当社＋関連会社]": bank_credit / 1000,
     }
     colors = [CHART_STYLE["good"], CHART_STYLE["warning"], CHART_STYLE["danger"]]
     fig = go.Figure(go.Bar(
@@ -829,12 +830,12 @@ def plot_ebitda_coverage_plotly(financials):
         textposition="outside",
         hovertemplate="%{x}<br>%{y:,.1f} 百万円<extra></extra>",
     ))
-    # カバレッジ倍率をアノテーション
+    # カバレッジ倍率をアノテーション（保守的な旨を明記）
     if lease_credit > 0:
         coverage = ebitda / lease_credit
         fig.add_annotation(
-            x="EBITDA\n(営業利益+減価償却)", y=ebitda / 1000,
-            text=f"リース債務カバレッジ: {coverage:.1f}x",
+            x="EBITDA\n(営業利益+減価償却)\n[当社単体]", y=ebitda / 1000,
+            text=f"リース債務カバレッジ: {coverage:.1f}x（保守値）",
             showarrow=False, yshift=30,
             font=dict(size=12, color=CHART_STYLE["primary"]),
         )
@@ -845,9 +846,15 @@ def plot_ebitda_coverage_plotly(financials):
         paper_bgcolor=CHART_STYLE["bg"],
         plot_bgcolor="white",
         font=dict(color=CHART_STYLE["text"], size=11),
-        margin=dict(t=60, b=60, l=50, r=30),
-        height=320,
+        margin=dict(t=60, b=80, l=50, r=30),
+        height=340,
         showlegend=False,
+        annotations=[dict(
+            text="※EBITDAは当社単体、リース債務・銀行与信は当社＋関連会社合算のため、カバレッジは保守的な数値です",
+            xref="paper", yref="paper", x=0, y=-0.22,
+            showarrow=False, font=dict(size=9, color=CHART_STYLE["text_light"]),
+            xanchor="left",
+        )],
     )
     fig.update_yaxes(gridcolor=CHART_STYLE["grid"], zeroline=True, zerolinecolor=CHART_STYLE["grid"])
     return fig
