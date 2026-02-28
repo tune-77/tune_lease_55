@@ -4584,53 +4584,105 @@ elif mode == "📋 審査・分析":
             if "mc_companies" not in st.session_state:
                 st.session_state["mc_companies"] = []
 
-            # 審査結果から自動取り込み
-            _last_res = st.session_state.get("last_result")
+            from montecarlo import map_industry_from_major
+
+            # ── 審査結果からの自動取り込みパネル ──────────────────────────────
+            _last_res  = st.session_state.get("last_result")
+            _last_inp  = st.session_state.get("last_submitted_inputs") or {}
+
             if _last_res:
-                st.info("💡 直近の審査結果を下のフォームに自動入力できます。")
+                _fin = _last_res.get("financials") or {}
+                # 各フィールドを審査システムから取得（単位変換: 千円→百万円 or 万円）
+                _auto_revenue_m = max(1, int((_fin.get("nenshu", 0) or 0) / 1000))  # 千円→百万円
+                _auto_op        = max(-30.0, min(50.0, float(_last_res.get("user_op", 5.0) or 5.0)))
+                _auto_eq        = max(1.0, min(99.0, float(_last_res.get("user_eq", 30.0) or 30.0)))
+                # 負債合計 = 総資産 - 純資産（bank_credit/lease_creditは当社与信残高なので使わない）
+                _auto_assets    = (_fin.get("assets",     0) or 0)  # 千円
+                _auto_net       = (_fin.get("net_assets", 0) or 0)  # 千円
+                _auto_debt_m    = max(0, int((_auto_assets - _auto_net) / 1000))     # 千円→百万円
+                # リース希望額 = 当社リース与信残高（今回申請分）
+                _auto_lease_man = max(1, int((_last_inp.get("lease_credit",
+                                               _fin.get("lease_credit", 5000)) or 5000) / 10))  # 千円→万円
+                _auto_months    = max(6, min(120, int(_last_inp.get("lease_term", 36) or 36)))
+                _auto_industry  = map_industry_from_major(_last_res.get("industry_major", ""))
+                _auto_score     = _last_res.get("score", 0)
 
-            st.subheader("🏢 分析対象企業の入力")
-            with st.form("mc_add_company_form"):
-                _fc1, _fc2 = st.columns(2)
-                with _fc1:
-                    _mc_name = st.text_input("企業名", value=st.session_state.get("last_submitted_inputs", {}).get("company_name", "審査対象A社"), key="mc_name")
-                    _mc_industry = st.selectbox(
-                        "業種",
-                        options=list(INDUSTRY_VOLATILITY.keys()),
-                        index=0,
-                        key="mc_industry"
+                st.subheader("🔄 審査結果から取り込み")
+                with st.container(border=True):
+                    # 審査データ概要
+                    _ia1, _ia2, _ia3, _ia4 = st.columns(4)
+                    _ia1.metric("業種", _auto_industry)
+                    _ia2.metric("年商", f"{_auto_revenue_m:,}百万円")
+                    _ia3.metric("営業利益率", f"{_auto_op:.1f}%")
+                    _ia4.metric("自己資本比率", f"{_auto_eq:.1f}%")
+                    _ib1, _ib2, _ib3, _ib4 = st.columns(4)
+                    _ib1.metric("負債合計（総資産－純資産）", f"{_auto_debt_m:,}百万円")
+                    _ib2.metric("リース希望額（当社残高）", f"{_auto_lease_man:,}万円")
+                    _ib3.metric("リース期間", f"{_auto_months}ヶ月")
+                    _ib4.metric("審査スコア", f"{_auto_score:.1f}%")
+
+                    # 企業名だけ入力（審査フォームに会社名フィールドがないため）
+                    _auto_name = st.text_input(
+                        "企業名（任意）",
+                        placeholder="例：株式会社〇〇",
+                        key="mc_auto_name_input",
                     )
-                    _mc_revenue = st.number_input("年商（百万円）",
-                        value=int((_last_res.get("financials", {}).get("nenshu", 0) or 0) / 10) if _last_res else 500,
-                        min_value=1, step=10, key="mc_revenue")
-                    _mc_op_margin = st.number_input("営業利益率（%）",
-                        value=max(-30.0, min(50.0, float(_last_res.get("user_op", 5.0) or 5.0))) if _last_res else 5.0,
-                        min_value=-30.0, max_value=50.0, step=0.1, key="mc_op_margin")
-                with _fc2:
-                    _mc_eq = st.number_input("自己資本比率（%）",
-                        value=max(1.0, min(99.0, float(_last_res.get("user_eq", 30.0) or 30.0))) if _last_res else 30.0,
-                        min_value=1.0, max_value=99.0, step=0.5, key="mc_eq")
-                    _mc_debt = st.number_input("借入金残高（百万円）",
-                        value=int(((_last_res.get("financials", {}).get("bank_credit", 0) or 0) +
-                                   (_last_res.get("financials", {}).get("lease_credit", 0) or 0))) if _last_res else 100,
-                        min_value=0, step=10, key="mc_debt")
-                    _mc_lease_amt = st.number_input("リース希望額（万円）", value=500, min_value=1, step=100, key="mc_lease_amt")
-                    _mc_lease_mo  = st.number_input("リース期間（月）", value=36, min_value=6, max_value=120, step=6, key="mc_lease_mo")
-                _mc_submitted = st.form_submit_button("➕ リストに追加", use_container_width=True)
+                    if st.button("✅ この案件をリストに追加", type="primary",
+                                 use_container_width=True, key="mc_auto_add"):
+                        st.session_state["mc_companies"].append({
+                            "name": _auto_name or "審査対象",
+                            "industry": _auto_industry,
+                            "revenue_m": _auto_revenue_m,
+                            "op_margin": _auto_op,
+                            "equity_ratio": _auto_eq,
+                            "debt_m": _auto_debt_m,
+                            "lease_amt_man": _auto_lease_man,
+                            "lease_months": _auto_months,
+                        })
+                        st.success(f"✅ {_auto_name or '審査対象'} を追加しました。")
+                        st.rerun()
+            else:
+                st.info("💡 審査タブで審査を実行すると、結果がここに自動表示されます。")
 
-            if _mc_submitted:
-                st.session_state["mc_companies"].append({
-                    "name": _mc_name,
-                    "industry": _mc_industry,
-                    "revenue_m": _mc_revenue,
-                    "op_margin": _mc_op_margin,
-                    "equity_ratio": _mc_eq,
-                    "debt_m": _mc_debt,
-                    "lease_amt_man": _mc_lease_amt,
-                    "lease_months": int(_mc_lease_mo),
-                })
-                st.success(f"✅ {_mc_name} を追加しました。")
-                st.rerun()
+            # ── 手動追加フォーム（折りたたみ）──────────────────────────────────
+            st.divider()
+            with st.expander("➕ 手動で企業を追加（比較用）", expanded=not bool(_last_res)):
+                with st.form("mc_add_company_form"):
+                    _fc1, _fc2 = st.columns(2)
+                    with _fc1:
+                        _mc_name = st.text_input("企業名", value="比較企業A社", key="mc_name")
+                        _mc_industry = st.selectbox(
+                            "業種", options=list(INDUSTRY_VOLATILITY.keys()),
+                            index=0, key="mc_industry"
+                        )
+                        _mc_revenue = st.number_input("年商（百万円）",
+                            value=500, min_value=1, step=10, key="mc_revenue")
+                        _mc_op_margin = st.number_input("営業利益率（%）",
+                            value=5.0, min_value=-30.0, max_value=50.0, step=0.1, key="mc_op_margin")
+                    with _fc2:
+                        _mc_eq = st.number_input("自己資本比率（%）",
+                            value=30.0, min_value=1.0, max_value=99.0, step=0.5, key="mc_eq")
+                        _mc_debt = st.number_input("負債合計（総資産－純資産、百万円）",
+                            value=100, min_value=0, step=10, key="mc_debt")
+                        _mc_lease_amt = st.number_input("リース希望額（万円）",
+                            value=500, min_value=1, step=100, key="mc_lease_amt")
+                        _mc_lease_mo  = st.number_input("リース期間（月）",
+                            value=36, min_value=6, max_value=120, step=6, key="mc_lease_mo")
+                    _mc_submitted = st.form_submit_button("➕ リストに追加", use_container_width=True)
+
+                if _mc_submitted:
+                    st.session_state["mc_companies"].append({
+                        "name": _mc_name,
+                        "industry": _mc_industry,
+                        "revenue_m": _mc_revenue,
+                        "op_margin": _mc_op_margin,
+                        "equity_ratio": _mc_eq,
+                        "debt_m": _mc_debt,
+                        "lease_amt_man": _mc_lease_amt,
+                        "lease_months": int(_mc_lease_mo),
+                    })
+                    st.success(f"✅ {_mc_name} を追加しました。")
+                    st.rerun()
 
             # 登録済み企業リスト表示
             _mc_list = st.session_state.get("mc_companies", [])
