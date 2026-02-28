@@ -4713,7 +4713,7 @@ elif mode == "📋 審査・分析":
                 # PDF ダウンロード
                 with st.spinner("PDFレポート生成中…"):
                     _pdf_bytes = generate_pdf_bytes(_mc_pf)
-                _pdf_name = f"montecarlo_report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+                _pdf_name = f"montecarlo_report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
                 st.download_button(
                     label="📥 PDFレポートをダウンロード",
                     data=_pdf_bytes,
