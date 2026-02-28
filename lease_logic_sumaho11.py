@@ -4604,11 +4604,11 @@ elif mode == "📋 審査・分析":
                         value=int((_last_res.get("financials", {}).get("nenshu", 0) or 0) / 10) if _last_res else 500,
                         min_value=1, step=10, key="mc_revenue")
                     _mc_op_margin = st.number_input("営業利益率（%）",
-                        value=float(_last_res.get("user_op", 5.0) or 5.0) if _last_res else 5.0,
+                        value=max(-30.0, min(50.0, float(_last_res.get("user_op", 5.0) or 5.0))) if _last_res else 5.0,
                         min_value=-30.0, max_value=50.0, step=0.1, key="mc_op_margin")
                 with _fc2:
                     _mc_eq = st.number_input("自己資本比率（%）",
-                        value=max(float(_last_res.get("user_eq", 30.0) or 30.0), 1.0) if _last_res else 30.0,
+                        value=max(1.0, min(99.0, float(_last_res.get("user_eq", 30.0) or 30.0))) if _last_res else 30.0,
                         min_value=1.0, max_value=99.0, step=0.5, key="mc_eq")
                     _mc_debt = st.number_input("借入金残高（百万円）",
                         value=int(((_last_res.get("financials", {}).get("bank_credit", 0) or 0) +
