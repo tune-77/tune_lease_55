@@ -63,8 +63,11 @@ def _detect_jp_font_path() -> Optional[str]:
         ]
     elif sys == "Linux":
         candidates = [
+            "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+            "/usr/share/fonts/truetype/droid/DroidSansFallback.ttf",
             "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
             "/usr/share/fonts/truetype/noto/NotoSansCJKjp-Regular.otf",
+            "/usr/share/fonts/opentype/noto/NotoSansCJKjp-Regular.otf",
             "/usr/share/fonts/truetype/ipafont/ipagp.ttf",
             "/usr/share/fonts/truetype/ipafont-gothic/ipagp.ttf",
         ]
@@ -87,17 +90,32 @@ def _setup_matplotlib_jp():
         try:
             fe = fm.FontEntry(fname=font_path, name="JpFont")
             fm.fontManager.ttflist.append(fe)
-            plt.rcParams["font.family"] = "JpFont"
-            return
+            plt.rcParams["font.family"] = "sans-serif"
+            current = list(plt.rcParams.get("font.sans-serif", []))
+            plt.rcParams["font.sans-serif"] = ["DejaVu Sans", "JpFont"] + current
         except Exception:
             pass
-    # フォールバック: OSに登録済みの日本語フォントを探す
-    for name in ["Hiragino Sans", "Hiragino Kaku Gothic Pro", "IPAexGothic",
-                 "Noto Sans CJK JP", "Meiryo", "MS Gothic", "sans-serif"]:
-        plt.rcParams["font.family"] = name
-        break
 
 _setup_matplotlib_jp()
+
+# 日本語テキスト用 FontProperties（直接指定用）
+def _get_jp_font_prop(size: float = 10):
+    """日本語フォントの FontProperties を返す。フォントが見つからなければ None。"""
+    from matplotlib.font_manager import FontProperties
+    fp = _detect_jp_font_path()
+    if fp:
+        return FontProperties(fname=fp, size=size)
+    return None
+
+def _w(text: str) -> str:
+    """ASCII英数記号を全角に変換（日本語フォントで混在テキストを表示するため）。"""
+    _TBL = str.maketrans(
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+        "0123456789+-.,:%()[]",
+        "ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚ"
+        "０１２３４５６７８９＋－．，：％（）［］"
+    )
+    return text.translate(_TBL)
 
 # ============================================================
 # 1. 業種別ボラティリティ設定
@@ -309,14 +327,14 @@ class AdvancedMonteCarloEngine:
             np.array([c.equity_ratio]), np.array([c.total_debt])
         )[0]
         tests = {
-            "売上+10%":       dict(revenue=c.revenue * 1.1),
-            "売上-10%":       dict(revenue=c.revenue * 0.9),
-            "営業利益率+3pt": dict(operating_margin=c.operating_margin + 0.03),
-            "営業利益率-3pt": dict(operating_margin=c.operating_margin - 0.03),
-            "自己資本比率+5pt": dict(equity_ratio=min(c.equity_ratio + 0.05, 0.99)),
-            "自己資本比率-5pt": dict(equity_ratio=max(c.equity_ratio - 0.05, 0.01)),
-            "借入金+20%":     dict(total_debt=c.total_debt * 1.2),
-            "借入金-20%":     dict(total_debt=c.total_debt * 0.8),
+            "売上＋１０％":         dict(revenue=c.revenue * 1.1),
+            "売上－１０％":         dict(revenue=c.revenue * 0.9),
+            "営業利益率＋３ｐｔ":   dict(operating_margin=c.operating_margin + 0.03),
+            "営業利益率－３ｐｔ":   dict(operating_margin=c.operating_margin - 0.03),
+            "自己資本比率＋５ｐｔ": dict(equity_ratio=min(c.equity_ratio + 0.05, 0.99)),
+            "自己資本比率－５ｐｔ": dict(equity_ratio=max(c.equity_ratio - 0.05, 0.01)),
+            "借入金＋２０％":       dict(total_debt=c.total_debt * 1.2),
+            "借入金－２０％":       dict(total_debt=c.total_debt * 0.8),
         }
         out = {}
         for label, override in tests.items():
@@ -367,6 +385,9 @@ RISK_COLORS = {
 
 def make_company_chart(result: SimResult) -> bytes:
     """1社分の詳細チャート（PNG bytes）"""
+    jp_fp = _get_jp_font_prop(size=9)
+    jp_fp_lg = _get_jp_font_prop(size=11)
+
     fig = plt.figure(figsize=(14, 9))
     fig.patch.set_facecolor('#f8f9fa')
     gs = GridSpec(2, 3, figure=fig, hspace=0.4, wspace=0.35)
@@ -415,33 +436,45 @@ def make_company_chart(result: SimResult) -> bytes:
     labels = list(result.sensitivity.keys())
     vals = list(result.sensitivity.values())
     bar_colors = ['#27ae60' if v >= 0 else '#e74c3c' for v in vals]
-    bars = ax4.barh(labels, vals, color=bar_colors, alpha=0.8, height=0.6)
+    y_pos = range(len(labels))
+    bars = ax4.barh(y_pos, vals, color=bar_colors, alpha=0.8, height=0.6)
+    ax4.set_yticks(list(y_pos))
+    ax4.set_yticklabels([""] * len(labels))  # 軸ラベルはテキストで上書き
     ax4.axvline(0, color='black', lw=0.8)
-    for bar, val in zip(bars, vals):
-        sign = '+' if val >= 0 else ''
+    for i, (bar, val, lbl) in enumerate(zip(bars, vals, labels)):
+        sign = '＋' if val >= 0 else ''
         ax4.text(val + (0.05 if val >= 0 else -0.05), bar.get_y() + bar.get_height()/2,
                  f'{sign}{val:.2f}', va='center',
                  ha='left' if val >= 0 else 'right', fontsize=8)
+        # 日本語ラベルは全角テキストで左端に表示
+        ax4.text(-max(abs(v) for v in vals) * 1.05 - 0.3,
+                 bar.get_y() + bar.get_height()/2,
+                 lbl, va='center', ha='right', fontsize=8,
+                 **({'fontproperties': jp_fp} if jp_fp else {}))
     ax4.set_title('Sensitivity Analysis (Score Change)', fontsize=10, fontweight='bold')
     ax4.set_xlabel('Score Change'); ax4.grid(True, alpha=0.3, axis='x')
 
-    # 5. リスクサマリーテーブル
+    # 5. リスクサマリーテーブル（英語表記で確実に表示）
+    _RISK_EN = {"低リスク": "Low", "中リスク": "Medium", "高リスク": "High", "極高リスク": "V.High"}
+    _IND_EN  = {"製造業": "Manuf.", "小売業": "Retail", "建設業": "Constr.",
+                "IT・情報通信": "IT", "飲食・サービス": "F&B/Svc",
+                "卸売業": "Wholes.", "不動産": "Real Est.", "運輸・物流": "Transp."}
     ax5 = fig.add_subplot(gs[1, 2])
     ax5.axis('off')
     summary = [
-        ["Item", "Value"],
-        ["Risk Level", result.risk_level],
+        ["Item",         "Value"],
+        ["Risk Level",   _RISK_EN.get(result.risk_level, result.risk_level)],
         ["Default Prob", f"{result.default_prob:.1%}"],
-        ["Score (Median)", f"{result.score_median:.1f}"],
-        ["Score (5%ile)", f"{result.score_p5:.1f}"],
-        ["Score (95%ile)", f"{result.score_p95:.1f}"],
-        ["VaR (95%)", f"{result.var_95:.1f}pt"],
-        ["Industry", result.company.industry],
-        ["Lease Period", f"{result.company.lease_months}mo"],
+        ["Score(Med)",   f"{result.score_median:.1f}"],
+        ["Score(5%)",    f"{result.score_p5:.1f}"],
+        ["Score(95%)",   f"{result.score_p95:.1f}"],
+        ["VaR(95%)",     f"{result.var_95:.1f}pt"],
+        ["Industry",     _IND_EN.get(result.company.industry, "Other")],
+        ["Period",       f"{result.company.lease_months}mo"],
     ]
     tbl = ax5.table(cellText=summary[1:], colLabels=summary[0],
                     cellLoc='center', loc='center', bbox=[0, 0, 1, 1])
-    tbl.auto_set_font_size(False); tbl.set_fontsize(9)
+    tbl.auto_set_font_size(False); tbl.set_fontsize(8)
     for (r, c), cell in tbl.get_celld().items():
         if r == 0:
             cell.set_facecolor('#2c3e50'); cell.set_text_props(color='white', fontweight='bold')
@@ -450,8 +483,17 @@ def make_company_chart(result: SimResult) -> bytes:
         else:
             cell.set_facecolor('#ecf0f1' if r % 2 == 0 else 'white')
 
-    fig.suptitle(f'Monte Carlo Lease Assessment: {result.company.name}',
-                 fontsize=13, fontweight='bold', y=0.98)
+    # タイトル（企業名を日本語フォントで）
+    title_en = 'Monte Carlo Lease Assessment: '
+    if jp_fp_lg:
+        fig.text(0.5, 0.98, title_en, ha='center', va='top',
+                 fontsize=13, fontweight='bold')
+        fig.text(0.5 + len(title_en)*0.006, 0.98, result.company.name,
+                 ha='left', va='top', fontsize=13, fontweight='bold',
+                 fontproperties=jp_fp_lg)
+    else:
+        fig.suptitle(f'{title_en}{result.company.name}',
+                     fontsize=13, fontweight='bold', y=0.98)
     buf = io.BytesIO()
     plt.savefig(buf, format='png', dpi=130, bbox_inches='tight', facecolor=fig.get_facecolor())
     plt.close(fig)
@@ -461,6 +503,9 @@ def make_company_chart(result: SimResult) -> bytes:
 
 def make_portfolio_chart(portfolio: PortfolioResult) -> bytes:
     """ポートフォリオ全体のチャート（PNG bytes）"""
+    jp_fp = _get_jp_font_prop(size=7)
+    jp_fp9 = _get_jp_font_prop(size=9)
+
     results = portfolio.results
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     fig.patch.set_facecolor('#f8f9fa')
@@ -472,8 +517,10 @@ def make_portfolio_chart(portfolio: PortfolioResult) -> bytes:
         col = RISK_COLORS.get(r.risk_level, '#95a5a6')
         ax1.scatter(r.score_median, r.default_prob * 100, s=size, color=col,
                     alpha=0.7, edgecolors='white', lw=1.5)
+        ann_kw = {'fontproperties': jp_fp} if jp_fp else {'fontsize': 7}
         ax1.annotate(r.company.name, (r.score_median, r.default_prob * 100),
-                     textcoords="offset points", xytext=(5, 5), fontsize=7)
+                     textcoords="offset points", xytext=(5, 5),
+                     **(ann_kw if jp_fp else {'fontsize': 7}))
     ax1.axhline(15, color='orange', ls='--', lw=1, alpha=0.6)
     ax1.axhline(30, color='red', ls='--', lw=1, alpha=0.6)
     ax1.set_xlabel('Score (Median)'); ax1.set_ylabel('Default Prob (%)')
@@ -495,15 +542,18 @@ def make_portfolio_chart(portfolio: PortfolioResult) -> bytes:
     for bar, lv in zip(bars, levels):
         cnt = risk_counts[lv]
         if cnt > 0:
+            # jp_fp使用時は全角数字にしないと□になる
+            cnt_str = _w(str(cnt)) + '件' if jp_fp9 else f'{cnt}cases'
+            kw = {'fontproperties': jp_fp9} if jp_fp9 else {'fontsize': 9, 'fontweight': 'bold'}
             ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5,
-                     f'{cnt}件', ha='center', fontsize=9, fontweight='bold')
+                     cnt_str, ha='center', **kw)
     ax2.set_xticks(range(len(levels)))
     ax2.set_xticklabels(["Low", "Mid", "High", "Very\nHigh"], fontsize=9)
     ax2.set_ylabel('Lease Amount (M JPY)')
     ax2.set_title('Portfolio by Risk Level', fontsize=10, fontweight='bold')
     ax2.grid(True, alpha=0.3, axis='y')
 
-    # 期待損失ランキング
+    # 期待損失ランキング（企業名を日本語フォントで）
     ax3 = axes[2]
     el_list = sorted(
         [(r.company.name, r.company.lease_amount * r.default_prob * 0.4 / 1e4) for r in results],
@@ -514,7 +564,14 @@ def make_portfolio_chart(portfolio: PortfolioResult) -> bytes:
     bar_cols = [RISK_COLORS.get(
         next((r.risk_level for r in results if r.company.name == n), "中リスク"), '#95a5a6')
         for n in el_names]
-    ax3.barh(el_names, el_vals, color=bar_cols, alpha=0.8)
+    y_pos = range(len(el_names))
+    ax3.barh(y_pos, el_vals, color=bar_cols, alpha=0.8)
+    ax3.set_yticks(list(y_pos))
+    ax3.set_yticklabels([""] * len(el_names))
+    for i, name in enumerate(el_names):
+        kw = {'fontproperties': jp_fp} if jp_fp else {'fontsize': 7}
+        ax3.text(-max(el_vals)*0.02 if el_vals else 0, i, name,
+                 va='center', ha='right', **kw)
     ax3.set_xlabel('Expected Loss (10K JPY)')
     ax3.set_title('Expected Loss Ranking\n(LGD=40%)', fontsize=10, fontweight='bold')
     ax3.grid(True, alpha=0.3, axis='x')
@@ -649,6 +706,7 @@ def generate_pdf_bytes(portfolio: PortfolioResult) -> bytes:
     pf_tbl.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
         ('TEXTCOLOR',  (0, 0), (-1, 0), colors.white),
+        ('FONTNAME',   (0, 0), (-1, -1), _RL_JP_FONT),
         ('FONTSIZE',   (0, 0), (-1, -1), 9),
         ('ALIGN',      (1, 0), (-1, -1), 'CENTER'),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.HexColor('#ecf0f1'), colors.white]),
@@ -675,6 +733,7 @@ def generate_pdf_bytes(portfolio: PortfolioResult) -> bytes:
     ts = [
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
         ('TEXTCOLOR',  (0, 0), (-1, 0), colors.white),
+        ('FONTNAME',   (0, 0), (-1, -1), _RL_JP_FONT),
         ('FONTSIZE',   (0, 0), (-1, -1), 8),
         ('ALIGN',      (2, 0), (-1, -1), 'CENTER'),
         ('GRID',       (0, 0), (-1, -1), 0.5, colors.HexColor('#bdc3c7')),
@@ -713,13 +772,14 @@ def generate_pdf_bytes(portfolio: PortfolioResult) -> bytes:
             ["売上高", f"{c.revenue/1e6:,.1f}百万円", "リース期間", f"{c.lease_months}ヶ月"],
             ["営業利益率", f"{c.operating_margin:.1%}", "スコア(5%ile)", f"{result.score_p5:.1f}"],
             ["自己資本比率", f"{c.equity_ratio:.1%}", "スコア(95%ile)", f"{result.score_p95:.1f}"],
-            ["借入金残高", f"{c.total_debt/1e6:,.1f}百万円",
+            ["負債合計", f"{c.total_debt/1e6:,.1f}百万円",
              "業種特性", INDUSTRY_VOLATILITY.get(c.industry, DEFAULT_VOLATILITY)["description"][:12]],
         ]
         fin_tbl = Table(fin_data, colWidths=[35*mm, 45*mm, 35*mm, 50*mm])
         fin_tbl.setStyle(TableStyle([
             ('BACKGROUND',  (0, 0), (-1, 0), colors.HexColor('#34495e')),
             ('TEXTCOLOR',   (0, 0), (-1, 0), colors.white),
+            ('FONTNAME',    (0, 0), (-1, -1), _RL_JP_FONT),
             ('FONTSIZE',    (0, 0), (-1, -1), 8),
             ('ALIGN',       (1, 0), (1, -1), 'RIGHT'),
             ('ALIGN',       (3, 0), (3, -1), 'RIGHT'),
@@ -774,13 +834,14 @@ def res_to_company_data(res: dict, company_name: str = "審査対象",
         lease_months:     リース期間（月）
     """
     fin = res.get("financials") or {}
-    nenshu     = (fin.get("nenshu", 0) or 0) * 10_000          # 万円 → 円
-    op_margin  = (res.get("user_op", 0) or 0) / 100            # % → 小数
-    eq_ratio   = max((res.get("user_eq", 0) or 0) / 100, 0.01) # % → 小数、最低1%
-    bank_c     = (fin.get("bank_credit",  0) or 0) * 1_000_000 # 百万円 → 円
-    lease_c    = (fin.get("lease_credit", 0) or 0) * 1_000_000
-    total_debt = bank_c + lease_c
-    industry   = map_industry_from_major(res.get("industry_major", ""))
+    nenshu       = (fin.get("nenshu", 0) or 0) * 1_000           # 千円 → 円
+    op_margin    = (res.get("user_op", 0) or 0) / 100            # % → 小数
+    eq_ratio     = max((res.get("user_eq", 0) or 0) / 100, 0.01) # % → 小数、最低1%
+    # 借入金残高 = 総資産 - 純資産（負債合計）。bank_credit/lease_creditは当社与信残高なので使わない
+    total_assets = (fin.get("assets",     0) or 0) * 1_000       # 千円 → 円
+    net_assets_v = (fin.get("net_assets", 0) or 0) * 1_000       # 千円 → 円
+    total_debt   = max(total_assets - net_assets_v, 0)
+    industry     = map_industry_from_major(res.get("industry_major", ""))
 
     return CompanyData(
         name=company_name,
