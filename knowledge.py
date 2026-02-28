@@ -3,6 +3,8 @@
 PDF「1 リース審査システム概要書」「2 審査マニュアル」「3 業種別ガイド」「4 FAQ集」「5 審査事例集」
 の内容を構造化したJSONを読み込み、AIチャットのコンテキスト生成に使用する。
 """
+from __future__ import annotations
+
 import json
 import os
 from functools import lru_cache

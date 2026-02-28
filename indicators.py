@@ -7,6 +7,7 @@ indicators.py — 財務指標の計算・業界目安比較・倒産確率。
 - get_indicator_analysis_for_advice : AI相談用の指標分析サマリを生成
 - calculate_pd                  : 簡易倒産確率の計算
 """
+from __future__ import annotations
 
 import os
 import json

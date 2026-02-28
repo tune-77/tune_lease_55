@@ -9,6 +9,7 @@ web_services.py — 外部データ取得・キャッシュ・検索・スクレ
 - AIアドバイス用コンテキスト生成
 - 業種別統計（get_stats）
 """
+from __future__ import annotations
 
 import os
 import json
