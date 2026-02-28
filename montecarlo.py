@@ -18,6 +18,7 @@ import matplotlib.patches as mpatches
 from matplotlib.gridspec import GridSpec
 import io
 import os
+import platform
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
@@ -32,6 +33,71 @@ from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
     PageBreak, Image, HRFlowable
 )
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+
+# ── 日本語フォント設定 ────────────────────────────────────────────────────────
+
+# ReportLab: CIDフォント（PDFビューア内蔵・フォントファイル不要）
+_RL_JP_FONT = "HeiseiKakuGo-W5"
+_RL_JP_FONT_BOLD = "HeiseiKakuGo-W5"
+try:
+    pdfmetrics.registerFont(UnicodeCIDFont("HeiseiKakuGo-W5"))
+    pdfmetrics.registerFont(UnicodeCIDFont("HeiseiMin-W3"))
+    _RL_JP_FONT_BOLD = "HeiseiKakuGo-W5"
+except Exception:
+    _RL_JP_FONT = "Helvetica"
+    _RL_JP_FONT_BOLD = "Helvetica-Bold"
+
+# Matplotlib: OS別に日本語フォントを自動検出
+def _detect_jp_font_path() -> Optional[str]:
+    """macOS / Linux / Windows で日本語TTFを探して返す。見つからなければ None。"""
+    candidates: List[str] = []
+    sys = platform.system()
+    if sys == "Darwin":
+        candidates = [
+            "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
+            "/System/Library/Fonts/Hiragino Sans GB.ttc",
+            "/Library/Fonts/Arial Unicode MS.ttf",
+            "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+        ]
+    elif sys == "Linux":
+        candidates = [
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJKjp-Regular.otf",
+            "/usr/share/fonts/truetype/ipafont/ipagp.ttf",
+            "/usr/share/fonts/truetype/ipafont-gothic/ipagp.ttf",
+        ]
+    elif sys == "Windows":
+        candidates = [
+            "C:/Windows/Fonts/meiryo.ttc",
+            "C:/Windows/Fonts/msgothic.ttc",
+            "C:/Windows/Fonts/YuGothM.ttc",
+        ]
+    for p in candidates:
+        if os.path.isfile(p):
+            return p
+    return None
+
+def _setup_matplotlib_jp():
+    """matplotlibに日本語フォントを設定する。"""
+    import matplotlib.font_manager as fm
+    font_path = _detect_jp_font_path()
+    if font_path:
+        try:
+            fe = fm.FontEntry(fname=font_path, name="JpFont")
+            fm.fontManager.ttflist.append(fe)
+            plt.rcParams["font.family"] = "JpFont"
+            return
+        except Exception:
+            pass
+    # フォールバック: OSに登録済みの日本語フォントを探す
+    for name in ["Hiragino Sans", "Hiragino Kaku Gothic Pro", "IPAexGothic",
+                 "Noto Sans CJK JP", "Meiryo", "MS Gothic", "sans-serif"]:
+        plt.rcParams["font.family"] = name
+        break
+
+_setup_matplotlib_jp()
 
 # ============================================================
 # 1. 業種別ボラティリティ設定
@@ -531,15 +597,18 @@ def generate_pdf_bytes(portfolio: PortfolioResult) -> bytes:
     styles = getSampleStyleSheet()
 
     title_style = ParagraphStyle('CustomTitle', parent=styles['Title'],
-        fontSize=20, spaceAfter=6, textColor=colors.HexColor('#2c3e50'), alignment=TA_CENTER)
+        fontSize=20, spaceAfter=6, textColor=colors.HexColor('#2c3e50'),
+        alignment=TA_CENTER, fontName=_RL_JP_FONT)
     h1_style = ParagraphStyle('H1', parent=styles['Heading1'],
-        fontSize=14, textColor=colors.HexColor('#2c3e50'), spaceBefore=12, spaceAfter=6)
+        fontSize=14, textColor=colors.HexColor('#2c3e50'),
+        spaceBefore=12, spaceAfter=6, fontName=_RL_JP_FONT)
     h2_style = ParagraphStyle('H2', parent=styles['Heading2'],
-        fontSize=11, textColor=colors.HexColor('#34495e'), spaceBefore=8, spaceAfter=4)
+        fontSize=11, textColor=colors.HexColor('#34495e'),
+        spaceBefore=8, spaceAfter=4, fontName=_RL_JP_FONT)
     body_style = ParagraphStyle('Body', parent=styles['Normal'],
-        fontSize=9, leading=14, textColor=colors.HexColor('#2c3e50'))
+        fontSize=9, leading=14, textColor=colors.HexColor('#2c3e50'), fontName=_RL_JP_FONT)
     small_style = ParagraphStyle('Small', parent=styles['Normal'],
-        fontSize=8, textColor=colors.HexColor('#7f8c8d'))
+        fontSize=8, textColor=colors.HexColor('#7f8c8d'), fontName=_RL_JP_FONT)
 
     story = []
     now = datetime.now().strftime("%Y年%m月%d日 %H:%M")
@@ -549,18 +618,20 @@ def generate_pdf_bytes(portfolio: PortfolioResult) -> bytes:
     story.append(Paragraph("Monte Carlo Lease Assessment Report", title_style))
     story.append(Paragraph("モンテカルロ リース審査レポート",
         ParagraphStyle('SubTitle', parent=styles['Normal'],
-            fontSize=13, alignment=TA_CENTER, textColor=colors.HexColor('#7f8c8d'), spaceAfter=4)))
+            fontSize=13, alignment=TA_CENTER, textColor=colors.HexColor('#7f8c8d'),
+            spaceAfter=4, fontName=_RL_JP_FONT)))
     story.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor('#2c3e50')))
     story.append(Spacer(1, 8*mm))
     story.append(Paragraph(f"作成日時: {now}",
         ParagraphStyle('Date', parent=styles['Normal'],
-            fontSize=10, alignment=TA_RIGHT, textColor=colors.HexColor('#95a5a6'))))
+            fontSize=10, alignment=TA_RIGHT, textColor=colors.HexColor('#95a5a6'),
+            fontName=_RL_JP_FONT)))
     story.append(Paragraph(
         f"対象企業数: {len(portfolio.results)}社  |  "
         f"総リース額: {portfolio.total_exposure/1e6:,.1f}百万円",
         ParagraphStyle('Summary', parent=styles['Normal'],
             fontSize=11, alignment=TA_CENTER,
-            textColor=colors.HexColor('#2c3e50'), spaceBefore=8)))
+            textColor=colors.HexColor('#2c3e50'), spaceBefore=8, fontName=_RL_JP_FONT)))
     story.append(Spacer(1, 10*mm))
 
     # ポートフォリオサマリー
@@ -628,12 +699,13 @@ def generate_pdf_bytes(portfolio: PortfolioResult) -> bytes:
         rc = _risk_color_rl(result.risk_level)
         story.append(Paragraph(f"2-{i+1}. {c.name}",
             ParagraphStyle('CompName', parent=styles['Heading2'],
-                fontSize=12, textColor=colors.HexColor('#2c3e50'), spaceBefore=6)))
+                fontSize=12, textColor=colors.HexColor('#2c3e50'),
+                spaceBefore=6, fontName=_RL_JP_FONT)))
         story.append(Paragraph(
             f"[{result.risk_level}]  デフォルト確率: {result.default_prob:.2%}  |  "
             f"スコア: {result.score_median:.1f} / 100  |  VaR: {result.var_95:.1f}pt",
             ParagraphStyle('Badge', parent=styles['Normal'],
-                fontSize=11, textColor=rc, fontName='Helvetica-Bold')))
+                fontSize=11, textColor=rc, fontName=_RL_JP_FONT_BOLD)))
         story.append(Spacer(1, 2*mm))
         fin_data = [
             ["項目", "現在値", "項目", "現在値"],
