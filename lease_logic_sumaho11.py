@@ -1713,7 +1713,7 @@ elif mode == "📝 結果登録 (成約/失注)":
 
 elif mode == "📋 審査・分析":
     # ========== トップメニュー（新規審査 / 情報検索 / グラフ / 履歴分析 / 設定） ==========
-    menu_tabs = st.tabs(["🆕 審査", "🔍 検索", "📈 グラフ", "📋 履歴", "🛠 ツール", "⚙️ 設定"])
+    menu_tabs = st.tabs(["🆕 審査", "🔍 検索", "📈 グラフ", "📋 履歴", "🛠 ツール", "⚙️ 設定", "📊 モンテカルロ"])
     # 電光掲示板：定例の愚痴をメニュー直下でスクロール表示
     byoki_list = load_byoki_list()
     byoki_escaped = [str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;") for s in byoki_list]
@@ -4560,3 +4560,168 @@ elif mode == "📋 審査・分析":
             st.cache_data.clear()
             st.success("キャッシュをクリアしました")
             st.rerun()
+
+    # ── モンテカルロ分析タブ ──────────────────────────────────────────────────
+    with menu_tabs[6]:  # モンテカルロ
+        st.title("📊 モンテカルロ リース審査シミュレーション")
+        st.caption("業種別ボラティリティを用いたGBMで、リース期間中の財務悪化確率と審査スコア分布を10,000回シミュレーション。")
+
+        try:
+            from montecarlo import (
+                AdvancedMonteCarloEngine, CompanyData, res_to_company_data,
+                INDUSTRY_VOLATILITY, make_company_chart, make_portfolio_chart,
+                generate_pdf_bytes,
+            )
+            _mc_available = True
+        except ImportError as _mc_err:
+            st.error(f"montecarlo.py の読み込みに失敗しました: {_mc_err}")
+            _mc_available = False
+
+        if _mc_available:
+            st.divider()
+
+            # ── 企業リスト管理 ──
+            if "mc_companies" not in st.session_state:
+                st.session_state["mc_companies"] = []
+
+            # 審査結果から自動取り込み
+            _last_res = st.session_state.get("last_result")
+            if _last_res:
+                st.info("💡 直近の審査結果を下のフォームに自動入力できます。")
+
+            st.subheader("🏢 分析対象企業の入力")
+            with st.form("mc_add_company_form"):
+                _fc1, _fc2 = st.columns(2)
+                with _fc1:
+                    _mc_name = st.text_input("企業名", value=st.session_state.get("last_submitted_inputs", {}).get("company_name", "審査対象A社"), key="mc_name")
+                    _mc_industry = st.selectbox(
+                        "業種",
+                        options=list(INDUSTRY_VOLATILITY.keys()),
+                        index=0,
+                        key="mc_industry"
+                    )
+                    _mc_revenue = st.number_input("年商（百万円）",
+                        value=int((_last_res.get("financials", {}).get("nenshu", 0) or 0) / 10) if _last_res else 500,
+                        min_value=1, step=10, key="mc_revenue")
+                    _mc_op_margin = st.number_input("営業利益率（%）",
+                        value=float(_last_res.get("user_op", 5.0) or 5.0) if _last_res else 5.0,
+                        min_value=-30.0, max_value=50.0, step=0.1, key="mc_op_margin")
+                with _fc2:
+                    _mc_eq = st.number_input("自己資本比率（%）",
+                        value=max(float(_last_res.get("user_eq", 30.0) or 30.0), 1.0) if _last_res else 30.0,
+                        min_value=1.0, max_value=99.0, step=0.5, key="mc_eq")
+                    _mc_debt = st.number_input("借入金残高（百万円）",
+                        value=int(((_last_res.get("financials", {}).get("bank_credit", 0) or 0) +
+                                   (_last_res.get("financials", {}).get("lease_credit", 0) or 0))) if _last_res else 100,
+                        min_value=0, step=10, key="mc_debt")
+                    _mc_lease_amt = st.number_input("リース希望額（万円）", value=500, min_value=1, step=100, key="mc_lease_amt")
+                    _mc_lease_mo  = st.number_input("リース期間（月）", value=36, min_value=6, max_value=120, step=6, key="mc_lease_mo")
+                _mc_submitted = st.form_submit_button("➕ リストに追加", use_container_width=True)
+
+            if _mc_submitted:
+                st.session_state["mc_companies"].append({
+                    "name": _mc_name,
+                    "industry": _mc_industry,
+                    "revenue_m": _mc_revenue,
+                    "op_margin": _mc_op_margin,
+                    "equity_ratio": _mc_eq,
+                    "debt_m": _mc_debt,
+                    "lease_amt_man": _mc_lease_amt,
+                    "lease_months": int(_mc_lease_mo),
+                })
+                st.success(f"✅ {_mc_name} を追加しました。")
+                st.rerun()
+
+            # 登録済み企業リスト表示
+            _mc_list = st.session_state.get("mc_companies", [])
+            if _mc_list:
+                st.subheader(f"📋 分析対象 {len(_mc_list)}社")
+                for _i, _co in enumerate(_mc_list):
+                    _cx1, _cx2 = st.columns([5, 1])
+                    with _cx1:
+                        st.caption(
+                            f"**{_co['name']}** | {_co['industry']} | "
+                            f"年商{_co['revenue_m']}M | 利益率{_co['op_margin']:.1f}% | "
+                            f"自己資本{_co['equity_ratio']:.1f}% | リース{_co['lease_amt_man']}万円/{_co['lease_months']}ヶ月"
+                        )
+                    with _cx2:
+                        if st.button("🗑", key=f"mc_del_{_i}"):
+                            st.session_state["mc_companies"].pop(_i)
+                            st.rerun()
+
+                _mc_n_sim = st.select_slider("シミュレーション回数", options=[1000, 3000, 5000, 10000], value=5000)
+
+                st.divider()
+                _mc_run_col, _mc_clear_col = st.columns([3, 1])
+                with _mc_run_col:
+                    _mc_run = st.button("▶ シミュレーション実行", type="primary", use_container_width=True, key="mc_run_btn")
+                with _mc_clear_col:
+                    if st.button("🗑️ リストをクリア", use_container_width=True, key="mc_clear_btn"):
+                        st.session_state["mc_companies"] = []
+                        st.session_state.pop("mc_portfolio_result", None)
+                        st.rerun()
+
+                if _mc_run:
+                    with st.spinner(f"モンテカルロシミュレーション実行中… ({_mc_n_sim:,}回 × {len(_mc_list)}社)"):
+                        _engine = AdvancedMonteCarloEngine(n_simulations=_mc_n_sim)
+                        _companies = [
+                            CompanyData(
+                                name=co["name"],
+                                industry=co["industry"],
+                                revenue=co["revenue_m"] * 1_000_000,
+                                operating_margin=co["op_margin"] / 100,
+                                equity_ratio=max(co["equity_ratio"] / 100, 0.01),
+                                total_debt=co["debt_m"] * 1_000_000,
+                                lease_amount=co["lease_amt_man"] * 10_000,
+                                lease_months=co["lease_months"],
+                            )
+                            for co in _mc_list
+                        ]
+                        _portfolio = _engine.analyze_portfolio(_companies)
+                    st.session_state["mc_portfolio_result"] = _portfolio
+                    st.success("シミュレーション完了！")
+                    st.rerun()
+
+            # ── 結果表示 ──
+            _mc_pf = st.session_state.get("mc_portfolio_result")
+            if _mc_pf:
+                st.divider()
+                st.subheader("📈 ポートフォリオ分析結果")
+                _pf_c1, _pf_c2, _pf_c3, _pf_c4 = st.columns(4)
+                _pf_c1.metric("加重平均デフォルト確率", f"{_mc_pf.weighted_default_prob:.1%}")
+                _pf_c2.metric("集中リスク（上位3社）", f"{_mc_pf.concentration_risk:.1%}")
+                _pf_c3.metric("期待損失額", f"{_mc_pf.expected_loss/1e4:,.0f}万円")
+                _pf_c4.metric("ポートフォリオVaR(95%)", f"{_mc_pf.portfolio_var_95:.1f}pt")
+
+                # ポートフォリオチャート
+                _pf_chart = make_portfolio_chart(_mc_pf)
+                st.image(_pf_chart, use_container_width=True)
+
+                st.divider()
+                st.subheader("🏢 個社別 詳細結果")
+                for _r in _mc_pf.results:
+                    _risk_emoji = {"低リスク": "🟢", "中リスク": "🟡", "高リスク": "🔴", "極高リスク": "🟣"}.get(_r.risk_level, "⚪")
+                    with st.expander(f"{_risk_emoji} **{_r.company.name}** — {_r.risk_level}  |  デフォルト確率 {_r.default_prob:.1%}  |  スコア {_r.score_median:.1f}", expanded=False):
+                        _dc1, _dc2, _dc3 = st.columns(3)
+                        _dc1.metric("デフォルト確率", f"{_r.default_prob:.1%}")
+                        _dc2.metric("スコア中央値", f"{_r.score_median:.1f}")
+                        _dc3.metric("VaR (95%)", f"{_r.var_95:.1f}pt")
+                        _comp_chart = make_company_chart(_r)
+                        st.image(_comp_chart, use_container_width=True)
+
+                st.divider()
+                # PDF ダウンロード
+                with st.spinner("PDFレポート生成中…"):
+                    _pdf_bytes = generate_pdf_bytes(_mc_pf)
+                _pdf_name = f"montecarlo_report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+                st.download_button(
+                    label="📥 PDFレポートをダウンロード",
+                    data=_pdf_bytes,
+                    file_name=_pdf_name,
+                    mime="application/pdf",
+                    use_container_width=True,
+                    key="mc_pdf_download",
+                )
+            else:
+                if not _mc_list:
+                    st.info("👆 企業を追加してシミュレーションを実行してください。")
