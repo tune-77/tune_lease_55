@@ -10,6 +10,8 @@ import sys
 import json
 import datetime
 from typing import Optional
+import numpy as np
+import pandas as pd
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
@@ -216,6 +218,22 @@ def load_case_news(case_id: Optional[str] = None):
     return records
 
 
+class CustomJSONEncoder(json.JSONEncoder):
+    """
+    Numpyの各種数値型やPandasの欠損値等をPython標準型に変換して
+    JSONシリアライズ可能にするエンコーダ。
+    """
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif pd.isna(obj):  # np.nan や pd.NA の対応
+            return None
+        return super().default(obj)
+
 def save_case_log(data):
     """審査1件分のログを追記し、生成した案件IDを返す。失敗時は None。"""
     case_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
@@ -224,7 +242,10 @@ def save_case_log(data):
     data["final_status"] = "未登録"
     try:
         with open(CASES_FILE, "a", encoding="utf-8") as f:
-            f.write(json.dumps(data, ensure_ascii=False) + "\n")
+            f.write(json.dumps(data, ensure_ascii=False, cls=CustomJSONEncoder) + "\n")
         return case_id
-    except Exception:
+    except Exception as e:
+        import traceback
+        print(f"[Error in save_case_log]: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         return None

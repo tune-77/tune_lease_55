@@ -460,6 +460,71 @@ def get_ai_honne_complaint() -> str:
         return f"（本音を言おうとしたらエラー: {e}）"
 
 
+def get_ai_industry_advice(selected_sub: str, comparison_text: str = "") -> Optional[str]:
+    """
+    業界の最新トレンドや検索指標を分析し、審査担当者向けに特化したアドバイスを生成する機能を追加。
+    """
+    if not is_ai_available():
+        return None
+
+    from web_services import get_trend_extended, fetch_industry_benchmarks_from_web, search_latest_trends
+
+    trend_ext = get_trend_extended(selected_sub) or ""
+    try:
+        web_bench = fetch_industry_benchmarks_from_web(selected_sub)
+        bench_parts = []
+        if web_bench.get("op_margin") is not None:
+            bench_parts.append(f"業界標準の営業利益率: {web_bench['op_margin']}%")
+        for s in (web_bench.get("snippets") or [])[:3]:
+            bench_parts.append(f"- {s.get('title','')}: {s.get('body','')[:100]}")
+        bench_summary = "\n".join(bench_parts) if bench_parts else "（業界目安取得なし）"
+    except Exception:
+        bench_summary = "（業界目安取得なし）"
+        
+    try:
+        latest = search_latest_trends(f"{selected_sub} 業界動向 最新 2025")
+    except Exception:
+        latest = ""
+
+    context = f"""
+【業種】{selected_sub}
+【対象企業の財務概要・比較】{comparison_text or "（入力なし）"}
+
+【自動収集されたネット情報のサマリ】
+■トレンド・検索要約
+{trend_ext[:800]}
+
+■業界標準・ベンチマーク等
+{bench_summary}
+
+■最新ニュース
+{latest[:800]}
+"""
+    prompt = f"""あなたは法人リース審査の業界分析エキスパートです。
+上記の自動収集された業界情報（トレンド・目安・ニュース等）と対象企業の情報を分析し、
+審査担当者向けに「この業界における直近のリスク・好材料」と「審査時に着目すべきポイント」を3〜4文で具体的にアドバイスしてください。
+
+※ 一般論ではなく、収集した情報に必ず言及しながら簡潔にまとめてください。
+※ 回答の文末に『八奈見杏奈』のような食い意地の張ったアシスタントとしてのボケ（例えば、審査が通ったら○○をご馳走してください！など）を1文だけ必ず入れてください。
+
+情報のサマリ：
+{context}
+"""
+    try:
+        ans = chat_with_retry(
+            model=get_ollama_model(),
+            messages=[{"role": "user", "content": prompt}],
+            retries=1,
+            timeout_seconds=90,
+        )
+        content = (ans.get("message") or {}).get("content", "")
+        if content and "APIキーが" not in content and "エラー" not in content[:30]:
+            return content.strip()
+        return None
+    except Exception:
+        return None
+
+
 # ─── 総合AI評価（穴埋め形式・ローカルLLM向け） ──────────────────────────────
 
 def get_ai_comprehensive_evaluation(res: dict, avg_data: dict = None) -> Optional[str]:

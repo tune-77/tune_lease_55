@@ -1,7 +1,7 @@
 """
-温水式リース審査AI - lease_logic_sumaho11
+温水式リース審査AI - lease_logic_sumaho12
 sumaho10(X) からモジュール分割（ai_chat / web_services）を完了した版。
-起動: streamlit run lease_logic_sumaho11/lease_logic_sumaho11.py （リポジトリルートで実行）
+起動: streamlit run lease_logic_sumaho12/lease_logic_sumaho12.py （リポジトリルートで実行）
 """
 import sys
 import os
@@ -146,6 +146,7 @@ from indicators import (
     calculate_pd,
 )
 from report_pdf import build_contract_report_pdf
+from report_generator import generate_full_report_from_res
 from knowledge import build_knowledge_context, search_faq, search_cases, get_improvement_guide_text
 from web_services import (
     _WEB_BENCH_KEYS,
@@ -574,11 +575,30 @@ st.markdown("""
         font-size: 1.4rem !important;
         font-weight: 700 !important;
     }
-    </style>
+    
+    /* ── スマホ対応レスポンシブ ────────────────────────────────── */
+    @media screen and (max-width: 768px) {
+        .stColumns > div { width: 100% !important; }
+        div[data-testid="metric-container"] {
+            min-width: 70px !important;
+            padding: 0.3rem !important;
+            font-size: 0.8rem !important;
+        }
+        div[data-testid="stExpander"] { margin: 0.15rem 0; }
+        .element-container table { font-size: 0.72rem; }
+        .stButton > button { width: 100% !important; }
+    }
+</style>
     """, unsafe_allow_html=True)
 	
 # 🎨 画面のデザイン設定
 st.set_page_config(page_title="温水式リース審査AI", page_icon="🏢", layout="wide")
+
+# ── 認証チェック（ここより先はログイン済みのみ表示）──────────────────────
+from auth_logic import authenticate_user as _auth_check
+if not _auth_check():
+    st.stop()
+# ────────────────────────────────────────────────────────────────────────
 
 # ==============================================================================
 # 共通機能 & キャッシュ最適化（データはリポジトリルートで sumaho8 と共通）
@@ -854,6 +874,7 @@ TEIREI_BYOKI_DEFAULT = [
     "リース審査、楽だって思ってる人いませんよね。いませんよね…？",
 ]
 
+@st.cache_data(ttl=3600)
 def load_byoki_list():
     """定例の愚痴リストを読み込む（デフォルト＋byoki_list.json のユーザー追加分）"""
     out = list(TEIREI_BYOKI_DEFAULT)
@@ -959,6 +980,7 @@ def _fragment_nenshu():
 
 # --- 倒産確率・業界リスク検索 ---
 
+@st.cache_data(ttl=3600)
 def get_image(status):
     image_map = {
         "guide": "guide.jpg", "approve": "approve.jpg", "reject": "reject.jpg",
@@ -973,12 +995,286 @@ def get_image(status):
 
 
 # ==============================================================================
+# AssetFinanceEngine ― アセット・ファイナンス型 物件審査エンジン
+# ==============================================================================
+class AssetFinanceEngine:
+    """
+    ベイジアンネットワーク思想に基づく「アセット・ファイナンス型」リース審査エンジン。
+    物件の担保価値（動的LGD/BEP）と財務スコアを統合し、
+    銀行審査を超えた判定・逆転承認・ライフサイクル提案を行う。
+    """
+
+    ASSET_PARAMS = {
+        '建機':    {'r': 0.15, 'priority': '中',   'priority_score': 2, 'info': '海外需要による底値の硬さ'},
+        '工作機械': {'r': 0.20, 'priority': '高',   'priority_score': 3, 'info': '精度維持による長寿命価値'},
+        'PC/IT':   {'r': 0.40, 'priority': '低',   'priority_score': 1, 'info': '高速な陳腐化・資産価値なし'},
+        '医療機器': {'r': 0.10, 'priority': '極高', 'priority_score': 5, 'info': '診療報酬直結（最優先支払）'},
+        'ドローン': {'r': 0.50, 'priority': '中',   'priority_score': 2, 'info': '物理破損と超高速陳腐化'},
+        '車両':    {'r': 0.25, 'priority': '中高', 'priority_score': 3, 'info': '高換金性と確立された中古市場'},
+    }
+
+    def get_effective_depreciation_rate(self, asset_type, annual_km=0, has_maintenance_lease=False):
+        """実効減価率（走行距離補正・メンテリース補正を加えた実効値）"""
+        r = self.ASSET_PARAMS[asset_type]['r']
+        if asset_type == '車両':
+            if annual_km >= 20000:
+                r += 0.10  # 過走行補正（年2万km以上）
+            if has_maintenance_lease:
+                r -= 0.05  # メンテリースによる価値維持補正
+        return max(r, 0.0)
+
+    def get_maintenance_lgd_bonus(self, asset_type, has_maintenance_lease):
+        """メンテナンスリース受託時のLGD（中古売却価値）加算率"""
+        if asset_type == '車両' and has_maintenance_lease:
+            return 0.075  # 5〜10%の中間値：管理品質による与信枠拡大
+        return 0.0
+
+    def calculate_bep(self, asset_type, term_months, down_payment_rate,
+                      annual_km=0, has_maintenance_lease=False):
+        """
+        損益分岐点（BEP）算出。
+        V(t) = (1 + maint_bonus) × (1 - r)^(t/12)
+        L(t) = (1 - down_payment) × (1 - t/term)
+        V(t) > L(t) となる最初の月をBEPとする。
+        """
+        r = self.get_effective_depreciation_rate(asset_type, annual_km, has_maintenance_lease)
+        maint_bonus = self.get_maintenance_lgd_bonus(asset_type, has_maintenance_lease)
+
+        bep_month = term_months
+        v_curve = []
+        l_curve = []
+
+        for m in range(0, term_months + 1):
+            v = (1.0 + maint_bonus) * ((1 - r) ** (m / 12))
+            l = (1 - down_payment_rate) * (1 - m / term_months) if m < term_months else 0.0
+            v_curve.append(round(v, 4))
+            l_curve.append(round(l, 4))
+            if m > 0 and v > l and bep_month == term_months:
+                bep_month = m
+
+        return bep_month, v_curve, l_curve
+
+    def calculate_score(self, data):
+        """
+        総合承認スコアの算出。
+        定量（財務）最大40点 ＋ 物件LGD/BEP緩和最大50点 ＋ 逆転定性因子最大105点
+        """
+        asset_type = data['asset_type']
+        term = data['term']
+        down_payment = data['down_payment']
+        financial_score = data['financial_score']
+        annual_km = data.get('annual_km', 0)
+        has_maintenance_lease = data.get('has_maintenance_lease', False)
+
+        bep_month, v_curve, l_curve = self.calculate_bep(
+            asset_type, term, down_payment, annual_km, has_maintenance_lease
+        )
+        bep_ratio = bep_month / term
+        priority_score = self.ASSET_PARAMS[asset_type]['priority_score']
+
+        score = 0
+        reasons = []
+        deductions = []
+
+        # --- 1. 財務スコア（銀行視点） ---
+        fin_map = {'High': 40, 'Medium': 20, 'Low': -20}
+        fin_pts = fin_map.get(financial_score, 0)
+        score += fin_pts
+        fin_labels = {'High': '優良', 'Medium': '標準', 'Low': '低評価（赤字・債務超過）'}
+        if fin_pts >= 0:
+            reasons.append(f"財務{fin_labels[financial_score]}（+{fin_pts}点）")
+        else:
+            deductions.append(f"財務{fin_labels[financial_score]}（{fin_pts}点）")
+
+        # --- 2. 物件・LGD/BEP 緩和（リース独自視点） ---
+        if bep_ratio < 0.3:
+            pts = 35
+            reasons.append(f"BEP早期達成（{bep_month}ヶ月目 / {term}ヶ月）→ 物件保全性が極めて高い（+{pts}点）")
+        elif bep_ratio < 0.5:
+            pts = 20
+            reasons.append(f"BEP前半達成（{bep_month}ヶ月目）→ 物件保全性が高い（+{pts}点）")
+        elif bep_ratio < 0.7:
+            pts = 10
+            reasons.append(f"BEP中盤（{bep_month}ヶ月目）→ 物件保全性は標準（+{pts}点）")
+        else:
+            pts = 0
+            deductions.append(f"BEP後半（{bep_month}ヶ月目 / {term}ヶ月）→ 物件価値がリース期間全体でリスク（0点）")
+        score += pts
+
+        # 支払優先度ボーナス
+        if priority_score >= 5:
+            score += 15
+            reasons.append("支払優先度「極高」（診療報酬直結）→ +15点")
+        elif priority_score >= 3:
+            score += 8
+            reasons.append(f"支払優先度「{self.ASSET_PARAMS[asset_type]['priority']}」→ +8点")
+
+        # メンテナンスリース補正（車両）
+        if asset_type == '車両' and has_maintenance_lease:
+            score += 10
+            reasons.append("メンテナンスリース受託 → 管理品質による中古価値向上（+10点）")
+
+        # --- 3. 逆転因子（定性） ---
+        if data.get('main_bank_support'):
+            score += 50
+            reasons.append("メイン銀行の支援先（最強の緩和因子）→ +50点")
+        if data.get('bank_coordination'):
+            score += 20
+            reasons.append("銀行協調案件 → +20点")
+        if data.get('core_business'):
+            score += 20
+            reasons.append("本業利用物件（支払優先度UP）→ +20点")
+        if data.get('related_assets'):
+            score += 15
+            reasons.append("関係者資産による保全 → +15点")
+
+        # --- 4. 車両独自リスク（過走行） ---
+        if asset_type == '車両' and annual_km >= 20000:
+            score -= 10
+            deductions.append(f"過走行リスク（年{annual_km:,}km）→ 実効減価率+10%補正、−10点")
+
+        return score, bep_month, bep_ratio, v_curve, l_curve, reasons, deductions
+
+    def get_decision(self, score):
+        """スコアから判定区分を決定"""
+        if score >= 80:
+            return "承認", "✅"
+        elif score >= 50:
+            return "条件付き承認", "⚠️"
+        elif score >= 30:
+            return "要審議（上位承認）", "🔶"
+        else:
+            return "否決", "❌"
+
+    def get_marketing_advice(self, asset_type, term_months):
+        """ライフサイクル・マーケティング提案"""
+        if asset_type == '車両':
+            check_month = max(term_months - 6, 1)
+            return (
+                f"**車検タイミング戦略**: {check_month}ヶ月目（車検前6ヶ月）に"
+                f"リプレイス提案を予約。3〜5年サイクルでの入れ替えニーズを先行受注。"
+            )
+        elif asset_type == '医療機器':
+            return (
+                "**長期伴走戦略**: 満了後の再リース移行率が高い物件です。"
+                "7年以上を見据えた再リース・保守契約のセットプランを今から提示してください。"
+            )
+        elif asset_type == '建機':
+            return (
+                "**海外輸出戦略**: 4〜5年後の海外輸出相場（東南アジア・中東）に"
+                "合わせた下取り提案が有効。中古ブローカーとの連携も検討。"
+            )
+        elif asset_type == '工作機械':
+            return (
+                "**精度保証戦略**: 満了前にオーバーホール費用の試算を提示し、"
+                "リニューアルリースへの誘導を図ってください。"
+            )
+        elif asset_type == 'PC/IT':
+            return (
+                "**早期入れ替え戦略**: 陳腐化が速いため、2〜3年での早期入れ替えを前提に"
+                "短期リース設計を推奨。バルク更新需要を狙う。"
+            )
+        elif asset_type == 'ドローン':
+            return (
+                "**物理リスク対策**: 損害保険とのセット提案が必須。"
+                "法規制変化に合わせた入れ替えサイクル（2〜3年）を明示。"
+            )
+        return "満了の6ヶ月前に入れ替え需要を調査し、次案件の先行受注を狙ってください。"
+
+    def get_bank_comparison(self, asset_type, financial_score):
+        """銀行システムとの差異解説"""
+        asset_info = self.ASSET_PARAMS[asset_type]['info']
+        base = (
+            f"銀行は「財務諸表の健全性」のみで判断しますが、"
+            f"当エンジンは **{asset_type}**（{asset_info}）の物件価値・換金性を定量評価します。"
+        )
+        if financial_score == 'Low':
+            base += (
+                "\n\n財務が低評価でも、物件の保全性（BEP・残価）と定性緩和因子により、"
+                "銀行が『否決』とする案件を承認圏に引き上げることができます。"
+            )
+        return base
+
+    def get_action_plan(self, score, data, bep_month, bep_ratio):
+        """営業アクションプラン"""
+        plans = []
+        asset_type = data['asset_type']
+        down = data['down_payment']
+        decision, _ = self.get_decision(score)
+
+        if decision in ["否決", "要審議（上位承認）"]:
+            needed_down = min(down + 0.10, 0.50)
+            plans.append(
+                f"自己資金を **{needed_down*100:.0f}%以上**（現在{down*100:.0f}%）に引き上げると"
+                f"承認確率が大幅に上昇します。"
+            )
+            if not data.get('main_bank_support'):
+                plans.append("**メイン銀行の推薦・協調案件**として申請することで、最大+50点の緩和が可能です。")
+            if not data.get('core_business'):
+                plans.append("**本業利用**であることを明示する書類（事業計画書等）を追加してください。（+20点）")
+        if asset_type == '車両':
+            plans.append(
+                f"**{bep_month}ヶ月目**（BEP到達）以降は物件の換金価値がリース残債を上回ります。"
+                "この点を保全力として稟議書に記載してください。"
+            )
+            if not data.get('has_maintenance_lease'):
+                plans.append("**メンテナンスリース**を付帯させると中古売却価値が5〜10%向上します。（+10点）")
+        if asset_type == '医療機器':
+            plans.append("診療報酬との連動を稟議書に明記し、支払優先度の高さを強調してください。")
+            plans.append(
+                f"**{data['term'] + 12}ヶ月後**（満了後1年）の再リースプランを今から提示し、関係継続を確約。"
+            )
+        if bep_ratio > 0.7 and decision != "承認":
+            plans.append("物件の頭金比率を上げるか、リース期間を短縮してBEPを前倒しにすることを検討してください。")
+        if not plans:
+            plans.append("現状の条件で承認可能です。満了に向けて次回リプレイス提案の準備を進めてください。")
+        return plans
+
+    def run_inference(self, data):
+        """総合審査を実行し、結果辞書を返す"""
+        score, bep_month, bep_ratio, v_curve, l_curve, reasons, deductions = self.calculate_score(data)
+        decision, icon = self.get_decision(score)
+        return {
+            'score': score,
+            'decision': decision,
+            'icon': icon,
+            'bep_month': bep_month,
+            'bep_ratio': bep_ratio,
+            'v_curve': v_curve,
+            'l_curve': l_curve,
+            'reasons': reasons,
+            'deductions': deductions,
+            'marketing_advice': self.get_marketing_advice(data['asset_type'], data['term']),
+            'bank_comparison': self.get_bank_comparison(data['asset_type'], data['financial_score']),
+            'action_plan': self.get_action_plan(score, data, bep_month, bep_ratio),
+        }
+
+
+# ==============================================================================
 # 画面構成
 # ==============================================================================
-mode = st.sidebar.radio("モード切替", ["📋 審査・分析", "📝 結果登録 (成約/失注)", "🔧 係数分析・更新 (β)", "📐 係数入力（事前係数）", "📊 成約の正体レポート", "📉 定性要因分析 (50件〜)", "📈 定量要因分析 (50件〜)"])
+mode = st.sidebar.radio("モード切替", ["📋 審査・分析", "🏭 物件ファイナンス審査", "📝 結果登録 (成約/失注)", "🔧 係数分析・更新 (β)", "📐 係数入力（事前係数）", "📊 成約の正体レポート", "📉 定性要因分析 (50件〜)", "📈 定量要因分析 (50件〜)"])
 
 with st.sidebar.expander("⚠️ 途中で落ちる場合", expanded=False):
     st.caption("主な原因: (1) AI相談・Gemini/Ollama のタイムアウト (2) ブラウザのメモリ不足 (3) 分析結果タブでデータ不整合。ターミナルで `streamlit run lease_logic_sumaho8.py` を実行するとエラー内容が表示されます。F5で再読み込みも試してください。")
+
+# ── コメントスタイル切り替え ──────────────────────────────────────────
+st.sidebar.markdown("### 🎭 コメントスタイル")
+if "humor_style" not in st.session_state:
+    st.session_state["humor_style"] = "standard"
+_hs_labels = {"standard": "📊 標準モード", "yanami": "🎤 八奈見モード"}
+_hs_now = st.session_state.get("humor_style", "standard")
+_hs_choice = st.sidebar.radio(
+    "AIコメントの口調",
+    options=["standard", "yanami"],
+    format_func=lambda x: _hs_labels[x],
+    index=0 if _hs_now == "standard" else 1,
+    key="humor_style_radio",
+    help="八奈見モードにすると、AI分析コメントが八奈見口調になります。",
+)
+if _hs_choice != _hs_now:
+    st.session_state["humor_style"] = _hs_choice
+    st.rerun()
 
 # AI エンジン選択（Ollama / Gemini API）
 if "ai_engine" not in st.session_state:
@@ -1684,10 +1980,14 @@ elif mode == "📝 結果登録 (成約/失注)":
         
         for i, case in enumerate(reversed(pending_cases[-5:])): 
             case_id = case.get("id", "")
-            with st.expander(f"{case.get('timestamp')[:16]} - {case.get('industry_sub')} (スコア: {case['result']['score']:.0f})"):
+            res = case.get("result", {})
+            score = res.get("score", 0)
+            hantei = res.get("hantei", "不明")
+            
+            with st.expander(f"{case.get('timestamp', '')[:16]} - {case.get('industry_sub', '')} (スコア: {score:.0f})"):
                 c1, c2 = st.columns(2)
                 with c1:
-                    st.write(f"**判定**: {case['result']['hantei']}")
+                    st.write(f"**判定**: {hantei}")
                     summary = case.get("chat_summary", "")
                     st.caption((summary[:100] + "...") if summary else "サマリなし")
                 
@@ -2695,9 +2995,37 @@ elif mode == "📋 審査・分析":
                                 qualitative_scoring_correction["rank_text"] = qual_rank["text"]
                                 qualitative_scoring_correction["rank_desc"] = qual_rank["desc"]
 
+                        # デフォルト率50%以上の場合、総合スコアから-50点
+                        if pd_percent >= 50:
+                            final_score = max(0, final_score - 50)
+                            if qualitative_scoring_correction:
+                                combined_score = round(final_score * w_quant + qual_weighted_score * w_qual)
+                                combined_score = min(100, max(0, combined_score))
+                                qual_rank = next((r for r in QUALITATIVE_SCORE_RANKS if combined_score >= r["min"]), QUALITATIVE_SCORE_RANKS[-1])
+                                qualitative_scoring_correction["combined_score"] = combined_score
+                                qualitative_scoring_correction["rank"] = qual_rank["label"]
+                                qualitative_scoring_correction["rank_text"] = qual_rank["text"]
+                                qualitative_scoring_correction["rank_desc"] = qual_rank["desc"]
+
                         # 新しい審査を実行したのでチャット履歴をリセット
                         st.session_state["messages"] = []
                         st.session_state["debate_history"] = []
+
+                        # 将来予測シミュレーション（AI連携用の事前計算）
+                        future_sim_result = None
+                        if (nenshu or 0) > 0:
+                            try:
+                                from future_simulation import run_business_simulation
+                                future_sim_result = run_business_simulation(
+                                    current_sales=nenshu,
+                                    current_op_profit=rieki,
+                                    drift=0.01,
+                                    volatility=0.15,
+                                    years=5,
+                                    n_simulations=5000
+                                )
+                            except Exception:
+                                pass
 
                         st.session_state['last_result'] = {
                             "score": final_score, "hantei": "承認圏内" if final_score >= APPROVAL_LINE else "要審議",
@@ -2715,6 +3043,7 @@ elif mode == "📋 審査・分析":
                             "passion_text": passion_text,
                             "qualitative_onehot": qualitative_onehot,
                             "scoring_result": scoring_result,
+                            "future_sim_result": future_sim_result,
                             "qualitative_scoring_correction": qualitative_scoring_correction,
                             "financials": {
                                 "nenshu": nenshu,
@@ -3033,24 +3362,80 @@ elif mode == "📋 審査・分析":
                 # 現在の案件IDを取得（審査直後ならセッションに入っている想定）
                 current_case_id = st.session_state.get("current_case_id")
 
+                # ── 審査実績DB 自動保存（新規審査ごとに1回だけ） ──────────────────
+                try:
+                    from customer_db import save_record as _db_save_auto, init_db as _db_init_auto
+                    _db_auto_key = st.session_state.get("current_case_id") or (
+                        f"{res.get('pd_percent', 0):.4f}"
+                        f"_{res.get('score', 0):.4f}"
+                        f"_{res.get('industry_major', '')}"
+                    )
+                    if st.session_state.get("_db_auto_saved_for") != str(_db_auto_key):
+                        _db_init_auto()
+                        _db_inp_auto = st.session_state.get("last_submitted_inputs") or {}
+                        _new_db_id = _db_save_auto(res, _db_inp_auto, "")
+                        st.session_state["_db_auto_saved_for"] = str(_db_auto_key)
+                        if _new_db_id:
+                            st.session_state["db_last_saved_id"] = _new_db_id
+                except Exception:
+                    pass  # DB が利用不可の環境でも続行
+
+                # ── モンテカルロ 自動実行（新規審査ごとに1回だけ実行） ──────────────
+                try:
+                    from montecarlo import (
+                        AdvancedMonteCarloEngine, CompanyData,
+                        map_industry_from_major as _mc_map_ind,
+                    )
+                    _mc_auto_key = (
+                        f"{res.get('pd_percent', 0):.4f}"
+                        f"_{res.get('score', 0):.4f}"
+                        f"_{res.get('industry_major', '')}"
+                    )
+                    if st.session_state.get("mc_auto_run_done_for") != _mc_auto_key:
+                        _fin_ao   = res.get("financials") or {}
+                        _inp_ao   = st.session_state.get("last_submitted_inputs") or {}
+                        _ao_rev_m = max(1, int((_fin_ao.get("nenshu", 0) or 0) / 1000))
+                        _ao_op    = max(-30.0, min(50.0, float(res.get("user_op", 5.0) or 5.0)))
+                        _ao_eq    = max(1.0, min(99.0, float(res.get("user_eq", 30.0) or 30.0)))
+                        _ao_net   = float(_fin_ao.get("net_assets", 0) or 0)
+                        _ao_ast   = float(_fin_ao.get("assets", 0) or 0)
+                        _ao_debt_m = max(0, int((_ao_ast - _ao_net) / 1000))
+                        _ao_lease_m = max(1, int(
+                            (_inp_ao.get("lease_credit", _fin_ao.get("lease_credit", 5000)) or 5000) / 10
+                        ))
+                        _ao_months  = max(6, min(120, int(_inp_ao.get("lease_term", 36) or 36)))
+                        _ao_ind     = _mc_map_ind(res.get("industry_major", ""))
+                        _ao_name    = st.session_state.get("rep_company") or "審査対象"
+                        _ao_co = CompanyData(
+                            name=_ao_name,
+                            industry=_ao_ind,
+                            revenue=_ao_rev_m * 1_000_000,
+                            operating_margin=_ao_op / 100,
+                            equity_ratio=max(_ao_eq / 100, 0.01),
+                            total_debt=_ao_debt_m * 1_000_000,
+                            lease_amount=_ao_lease_m * 10_000,
+                            lease_months=_ao_months,
+                        )
+                        with st.spinner("モンテカルロ シミュレーション自動実行中…"):
+                            _ao_engine = AdvancedMonteCarloEngine(n_simulations=3000)
+                            _ao_pf = _ao_engine.analyze_portfolio([_ao_co])
+                        st.session_state["mc_portfolio_result"] = _ao_pf
+                        st.session_state["mc_companies"] = [{
+                            "name": _ao_name,
+                            "industry": _ao_ind,
+                            "revenue_m": _ao_rev_m,
+                            "op_margin": _ao_op,
+                            "equity_ratio": _ao_eq,
+                            "debt_m": _ao_debt_m,
+                            "lease_amt_man": _ao_lease_m,
+                            "lease_months": _ao_months,
+                        }]
+                        st.session_state["mc_auto_run_done_for"] = _mc_auto_key
+                except Exception:
+                    pass  # montecarlo が利用不可の環境でも続行
+
                 # ==================== ダッシュボードレイアウト（プロ仕様） ====================
                 st.markdown("---")
-                # ----- 成約に最も寄与している上位3因子（データ5件以上で表示） -----
-                _driver_analysis = run_contract_driver_analysis()
-                if _driver_analysis and _driver_analysis["closed_count"] >= 5:
-                    with st.expander("🎯 成約ドライバー上位3因子", expanded=False):
-                        d1, d2, d3 = st.columns(3)
-                        for idx, col in enumerate([d1, d2, d3]):
-                            if idx < len(_driver_analysis["top3_drivers"]):
-                                d = _driver_analysis["top3_drivers"][idx]
-                                with col:
-                                    st.markdown(f"""
-                                    <div style="background:linear-gradient(135deg,#1e3a5f 0%,#334155 100%);color:#fff;padding:0.8rem;border-radius:10px;font-size:0.9rem;">
-                                    <div style="opacity:0.9;">{idx+1}位</div>
-                                    <div style="font-weight:bold;">{d['label']}</div>
-                                    <div style="font-size:0.8rem;">係数 {d['coef']:.3f}（{d['direction']}）</div>
-                                    </div>
-                                    """, unsafe_allow_html=True)
                 # ----- タイトル + 画像 -----
                 img_path, img_caption = get_dashboard_image_path(hantei, industry_major, selected_sub, asset_name)
                 col_title, col_img = st.columns([3, 1])
@@ -3089,6 +3474,10 @@ elif mode == "📋 審査・分析":
                           <div style="font-size:0.8rem;opacity:0.7;">予測利回り</div>
                           <div style="font-size:2rem;font-weight:bold;">{_yield_str}</div>
                         </div>
+                        <div>
+                          <div style="font-size:0.8rem;opacity:0.7;">デフォルト率</div>
+                          <div style="font-size:2rem;font-weight:bold;">{res.get('pd_percent',0):.1f}%</div>
+                        </div>
                       </div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -3105,6 +3494,77 @@ elif mode == "📋 審査・分析":
                         from screening_report import build_screening_report_pdf
                         _rep_res = st.session_state["last_result"]
                         st.caption(f"業種：{_rep_res.get('industry_sub','')}　スコア：{_rep_res.get('score',0):.1f}")
+
+                        # ── BN逆転承認シミュレーター（スコア70以下のとき表示） ──────
+                        if _rep_res.get("score", 100) <= 70:
+                            st.divider()
+                            st.markdown("#### 🧠 BN逆転承認シミュレーター")
+                            st.caption("総合スコアが低い案件でも、追加条件を整えることで承認確率を高められます。入力項目をチェックして推論してください。")
+                            try:
+                                from bayesian_engine import (
+                                    run_inference as _bn_infer,
+                                    compute_reversal_suggestions as _bn_reversal,
+                                )
+                                _bn_c1, _bn_c2, _bn_c3 = st.columns(3)
+                                with _bn_c1:
+                                    st.markdown("**財務・信用**")
+                                    _bn_insolvent  = st.checkbox("債務超過",              key="bn_s_insolvent",  value=False)
+                                    _bn_main_bank  = st.checkbox("メイン銀行支援あり",    key="bn_s_main_bank",  value=False)
+                                    _bn_rel_bank   = st.checkbox("関係者の銀行取引良好",  key="bn_s_rel_bank",   value=False)
+                                    _bn_rel_assets = st.checkbox("関係者の個人資産あり",  key="bn_s_rel_assets", value=False)
+                                with _bn_c2:
+                                    st.markdown("**ヘッジ手段**")
+                                    _bn_co_lease = st.checkbox("銀行との協調リース",   key="bn_s_co_lease", value=False)
+                                    _bn_parent   = st.checkbox("親会社連帯保証",       key="bn_s_parent",   value=False)
+                                with _bn_c3:
+                                    st.markdown("**物件・取引条件**")
+                                    _bn_core      = st.checkbox("本業に不可欠な物件",      key="bn_s_core",      value=False)
+                                    _bn_liquidity = st.checkbox("物件の中古流動性あり",     key="bn_s_liquidity", value=False)
+                                    _bn_shorter   = st.checkbox("リース期間を短縮",         key="bn_s_shorter",   value=False)
+                                    _bn_one_time  = st.checkbox("業況改善まで本件限り",      key="bn_s_one_time",  value=False)
+                                # チェック変更のたびに即時再計算（ボタン不要）
+                                _bn_ev = {
+                                    "Insolvent_Status":    1 if _bn_insolvent  else 0,
+                                    "Main_Bank_Support":   1 if _bn_main_bank  else 0,
+                                    "Related_Bank_Status": 1 if _bn_rel_bank   else 0,
+                                    "Related_Assets":      1 if _bn_rel_assets else 0,
+                                    "Co_Lease":            1 if _bn_co_lease   else 0,
+                                    "Parent_Guarantor":    1 if _bn_parent     else 0,
+                                    "Core_Business_Use":   1 if _bn_core       else 0,
+                                    "Asset_Liquidity":     1 if _bn_liquidity  else 0,
+                                    "Shorter_Lease_Term":  1 if _bn_shorter    else 0,
+                                    "One_Time_Deal":       1 if _bn_one_time   else 0,
+                                }
+                                st.session_state["_bn_s_result"]   = _bn_infer(_bn_ev)
+                                st.session_state["_bn_s_evidence"] = _bn_ev
+                                _bnr = st.session_state.get("_bn_s_result")
+                                _bne = st.session_state.get("_bn_s_evidence", {})
+                                if _bnr:
+                                    _bn_prob = _bnr["approval_prob"]
+                                    _bn_dec  = _bnr["decision"]
+                                    _bn_col  = "#0d9488" if _bn_dec == "承認" else ("#f59e0b" if _bn_dec == "要審議" else "#b91c1c")
+                                    _im      = _bnr.get("intermediate", {})
+                                    st.divider()
+                                    _r1, _r2, _r3, _r4 = st.columns(4)
+                                    _r1.metric("🎯 承認確率",  f"{_bn_prob:.1%}")
+                                    _r2.metric("財務信用度",   f"{_im.get('Financial_Creditworthiness', 0):.1%}")
+                                    _r3.metric("ヘッジ条件",   f"{_im.get('Hedge_Condition', 0):.1%}")
+                                    _r4.metric("物件価値",     f"{_im.get('Asset_Value', 0):.1%}")
+                                    st.markdown(f"**判定: <span style='color:{_bn_col}'>{_bn_dec}</span>**", unsafe_allow_html=True)
+                                    _rev = _bn_reversal(_bne, top_n=5)
+                                    if _rev:
+                                        st.markdown("---")
+                                        st.markdown("**💡 逆転提案 — これを取り付けると承認確率が上がります（PDFに赤字で記載されます）**")
+                                        for _r in _rev:
+                                            _gain_pct = int(_r["delta"] * 100)
+                                            st.markdown(
+                                                f"- **{_r['label']}** を ON にする →"
+                                                f" {_r['before_prob']:.0%} → **{_r['after_prob']:.0%}**"
+                                                f"（+{_gain_pct}%pt）　{_r['after_decision']}"
+                                            )
+                            except Exception as _bn_err:
+                                st.caption(f"🧠 BNエンジン利用不可: {type(_bn_err).__name__}")
+
                         st.divider()
                         col_r1, col_r2 = st.columns(2)
                         with col_r1:
@@ -3115,10 +3575,70 @@ elif mode == "📋 審査・分析":
                         if st.button("📥 PDF を生成してダウンロード", type="primary", key="rep_gen"):
                             with st.spinner("PDF 生成中..."):
                                 try:
+                                    _bn_result_for_pdf   = st.session_state.get("_bn_s_result")
+                                    _bn_evidence_for_pdf = st.session_state.get("_bn_s_evidence") or {}
+                                    _bn_reversal_for_pdf = []
+                                    if _bn_result_for_pdf:
+                                        try:
+                                            from bayesian_engine import compute_reversal_suggestions as _bn_rev_fn
+                                            _bn_reversal_for_pdf = _bn_rev_fn(_bn_evidence_for_pdf, top_n=5)
+                                        except Exception:
+                                            pass
+                                    # モンテカルロ結果をサマリ化してPDFに渡す
+                                    _mc_pf_raw  = st.session_state.get("mc_portfolio_result")
+                                    _mc_summary = None
+                                    if _mc_pf_raw:
+                                        try:
+                                            try:
+                                                from montecarlo import _generate_comment as _mc_gen_cmt
+                                            except Exception:
+                                                _mc_gen_cmt = None
+                                            _mc_summary = {
+                                                "weighted_default_prob": float(getattr(_mc_pf_raw, "weighted_default_prob", 0)),
+                                                "concentration_risk":    float(getattr(_mc_pf_raw, "concentration_risk",    0)),
+                                                "expected_loss":         float(getattr(_mc_pf_raw, "expected_loss",         0)),
+                                                "portfolio_var_95":      float(getattr(_mc_pf_raw, "portfolio_var_95",      0)),
+                                                "results": [
+                                                    {
+                                                        "name":         getattr(getattr(_r, "company", None), "name", ""),
+                                                        "default_prob": float(getattr(_r, "default_prob", 0)),
+                                                        "score_median": float(getattr(_r, "score_median", 0)),
+                                                        "var_95":       float(getattr(_r, "var_95",       0)),
+                                                        "risk_level":   str(getattr(_r,  "risk_level",   "")),
+                                                        "comment":      (_mc_gen_cmt(_r) if _mc_gen_cmt else ""),
+                                                    }
+                                                    for _r in (getattr(_mc_pf_raw, "results", []) or [])[:5]
+                                                ],
+                                            }
+                                        except Exception:
+                                            _mc_summary = None
+                                    # 審査結果レポートテキスト生成（PDF埋め込み用）
+                                    try:
+                                        _report_text_for_pdf = generate_full_report_from_res(
+                                            _rep_res, st.session_state
+                                        )
+                                    except Exception:
+                                        _report_text_for_pdf = None
                                     _pdf_bytes = build_screening_report_pdf(
                                         _rep_res,
                                         st.session_state.get("last_submitted_inputs"),
-                                        {"company_name": _company_name, "screener": _screener, "note": _note},
+                                        {
+                                            "company_name": _company_name,
+                                            "screener":     _screener,
+                                            "note":         _note,
+                                            "bn_result":    _bn_result_for_pdf,
+                                            "bn_evidence":  _bn_evidence_for_pdf,
+                                            "bn_reversal":  _bn_reversal_for_pdf,
+                                            "mc_summary":   _mc_summary,
+                                            "report_text":  _report_text_for_pdf,
+                                            "mc_chart_bytes": (
+                                                __import__("montecarlo").make_portfolio_chart(
+                                                    st.session_state["mc_portfolio_result"]
+                                                )
+                                                if st.session_state.get("mc_portfolio_result")
+                                                else None
+                                            ),
+                                        },
                                     )
                                     import datetime as _dt
                                     _fname = f"審査報告書_{_company_name or '案件'}_{_dt.datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
@@ -3344,81 +3864,131 @@ elif mode == "📋 審査・分析":
                             if not _mc_list:
                                 st.info("👆 企業を追加してシミュレーションを実行してください。")
 
-                # ----- 🧠 BN審査エンジン（総合スコア70以下のときのみ表示） -----
-                if res.get("score", 0) <= 70:
+
+                # ── 審査実績DB 閲覧・分析 ──────────────────────────────────────────
+                with st.expander("📂 審査実績DB", expanded=False):
                     try:
-                        from bayesian_engine import (
-                            run_inference as _bn_infer,
-                            compute_reversal_suggestions as _bn_reversal,
-                            PGMPY_AVAILABLE as _BN_OK,
+                        from customer_db import (
+                            get_stats as _db_stats, get_records as _db_records,
+                            get_industry_list as _db_ind_list,
+                            get_total_count as _db_count, delete_record as _db_del,
+                            get_db_path as _db_path_fn,
                         )
-                        if _BN_OK:
-                            with st.expander("🧠 BN逆転承認シミュレーター（スコア低下時の打開策）", expanded=True):
-                                st.caption("総合スコアが低い案件でも、追加条件を整えることで承認確率を高められます。現在の状況を入力して推論してください。")
-                                _bn_c1, _bn_c2, _bn_c3 = st.columns(3)
-                                with _bn_c1:
-                                    st.markdown("**財務・信用**")
-                                    _bn_insolvent  = st.checkbox("債務超過",              key="bn_s_insolvent",  value=False)
-                                    _bn_main_bank  = st.checkbox("メイン銀行支援あり",    key="bn_s_main_bank",  value=False)
-                                    _bn_rel_bank   = st.checkbox("関係者の銀行取引良好",  key="bn_s_rel_bank",   value=False)
-                                    _bn_rel_assets = st.checkbox("関係者の個人資産あり",  key="bn_s_rel_assets", value=False)
-                                with _bn_c2:
-                                    st.markdown("**ヘッジ手段**")
-                                    _bn_co_lease = st.checkbox("銀行との協調リース",   key="bn_s_co_lease", value=False)
-                                    _bn_parent   = st.checkbox("親会社連帯保証",       key="bn_s_parent",   value=False)
-                                with _bn_c3:
-                                    st.markdown("**物件・取引条件**")
-                                    _bn_core      = st.checkbox("本業に不可欠な物件",        key="bn_s_core",      value=False)
-                                    _bn_liquidity = st.checkbox("物件の中古流動性あり",       key="bn_s_liquidity", value=False)
-                                    _bn_shorter   = st.checkbox("リース期間を短縮",           key="bn_s_shorter",   value=False)
-                                    _bn_one_time  = st.checkbox("業況改善まで本件限り",        key="bn_s_one_time",  value=False)
+                        import pandas as _pd_db
 
-                                if st.button("🧠 承認確率を推論", key="btn_bn_summary"):
-                                    _bn_ev = {
-                                        "Insolvent_Status":    1 if _bn_insolvent  else 0,
-                                        "Main_Bank_Support":   1 if _bn_main_bank  else 0,
-                                        "Related_Bank_Status": 1 if _bn_rel_bank   else 0,
-                                        "Related_Assets":      1 if _bn_rel_assets else 0,
-                                        "Co_Lease":            1 if _bn_co_lease   else 0,
-                                        "Parent_Guarantor":    1 if _bn_parent     else 0,
-                                        "Core_Business_Use":   1 if _bn_core       else 0,
-                                        "Asset_Liquidity":     1 if _bn_liquidity  else 0,
-                                        "Shorter_Lease_Term":  1 if _bn_shorter    else 0,
-                                        "One_Time_Deal":       1 if _bn_one_time   else 0,
-                                    }
-                                    st.session_state["_bn_s_result"]   = _bn_infer(_bn_ev)
-                                    st.session_state["_bn_s_evidence"] = _bn_ev
+                        _db_total = _db_count()
+                        if _db_total == 0:
+                            st.info("まだデータがありません。審査を実行すると自動的に蓄積されます。")
+                        else:
+                            _dbst = _db_stats()
 
-                                _bnr = st.session_state.get("_bn_s_result")
-                                _bne = st.session_state.get("_bn_s_evidence", {})
-                                if _bnr:
-                                    _bn_prob = _bnr["approval_prob"]
-                                    _bn_dec  = _bnr["decision"]
-                                    _bn_col  = "#0d9488" if _bn_dec == "承認" else ("#f59e0b" if _bn_dec == "要審議" else "#b91c1c")
-                                    _im      = _bnr.get("intermediate", {})
-                                    st.divider()
-                                    _r1, _r2, _r3, _r4 = st.columns(4)
-                                    _r1.metric("🎯 承認確率",  f"{_bn_prob:.1%}")
-                                    _r2.metric("財務信用度",   f"{_im.get('Financial_Creditworthiness', 0):.1%}")
-                                    _r3.metric("ヘッジ条件",   f"{_im.get('Hedge_Condition', 0):.1%}")
-                                    _r4.metric("物件価値",     f"{_im.get('Asset_Value', 0):.1%}")
-                                    st.markdown(f"**判定: <span style='color:{_bn_col}'>{_bn_dec}</span>**", unsafe_allow_html=True)
+                            # ── KPI ──
+                            st.markdown(f"**📊 蓄積件数: {_db_total:,} 件**")
+                            _kd1, _kd2, _kd3, _kd4 = st.columns(4)
+                            _kd1.metric("平均スコア", f"{_dbst['score_avg']}")
+                            _kd2.metric("最高スコア", f"{_dbst['score_max']}")
+                            _kd3.metric("最低スコア", f"{_dbst['score_min']}")
+                            _appr = _dbst["judgment_counts"].get("承認圏内", 0)
+                            _appr_r = _appr / _db_total * 100 if _db_total else 0
+                            _kd4.metric("承認率", f"{_appr_r:.1f}%")
 
-                                    # 逆転提案
-                                    _rev = _bn_reversal(_bne, top_n=5)
-                                    if _rev:
-                                        st.markdown("---")
-                                        st.markdown("**💡 逆転提案 — これを取り付けると承認確率が上がります**")
-                                        for _r in _rev:
-                                            _after_pct = int(_r["after_prob"] * 100)
-                                            _gain_pct  = int(_r["delta"] * 100)
-                                            st.markdown(
-                                                f"- **{_r['label']}** を ON にする →"
-                                                f" {_r['before_prob']:.0%} → **{_r['after_prob']:.0%}**"
-                                                f"（+{_gain_pct}%pt）　{_r['after_decision']}"
-                                            )
-                    except Exception as _bn_err:
-                        pass  # BNエンジン未ロードでも他機能に影響しない
+                            # ── 判定分布 ──
+                            st.divider()
+                            _dbc1, _dbc2 = st.columns(2)
+                            with _dbc1:
+                                st.markdown("**判定分布**")
+                                for _jt, _jc in _dbst["judgment_counts"].items():
+                                    _jr = _jc / _db_total * 100
+                                    _col = "🟢" if "承認" in _jt else "🟡"
+                                    st.write(f"{_col} {_jt}: **{_jc}件** ({_jr:.1f}%)")
+
+                            with _dbc2:
+                                st.markdown("**スコア帯分布**")
+                                for _band, _cnt in sorted(_dbst.get("score_dist", {}).items()):
+                                    _br = _cnt / _db_total * 100
+                                    st.write(f"スコア {_band}: **{_cnt}件** ({_br:.1f}%)")
+
+                            # ── 業種別集計 ──
+                            if _dbst.get("by_industry"):
+                                st.divider()
+                                st.markdown("**業種別 件数・平均スコア**")
+                                _ind_df = _pd_db.DataFrame(_dbst["by_industry"])
+                                _ind_df.columns = ["業種", "件数", "平均スコア"]
+                                st.dataframe(
+                                    _ind_df,
+                                    use_container_width=True,
+                                    hide_index=True,
+                                )
+
+                            # ── 平均財務指標 ──
+                            st.divider()
+                            st.markdown("**📈 平均財務指標（匿名化・全件）**")
+                            _fa1, _fa2, _fa3, _fa4 = st.columns(4)
+                            _fa1.metric("平均年商", f"{int(_dbst.get('avg_revenue_m') or 0):,}百万円")
+                            _fa2.metric("平均総資産", f"{int(_dbst.get('avg_assets_m') or 0):,}百万円")
+                            _fa3.metric("平均自己資本比率", f"{_dbst.get('avg_equity') or '—'}%")
+                            _fa4.metric("平均リース額", f"{int(_dbst.get('avg_lease_m') or 0):,}百万円")
+
+                            # ── レコード一覧 ──
+                            st.divider()
+                            st.markdown("**🗂 レコード一覧**")
+                            _fil1, _fil2, _fil3, _fil4 = st.columns(4)
+                            with _fil1:
+                                _f_ind = st.selectbox(
+                                    "業種フィルタ", ["（全て）"] + _db_ind_list(),
+                                    key="db_filter_ind"
+                                )
+                            with _fil2:
+                                _f_jdg = st.selectbox(
+                                    "判定フィルタ", ["（全て）", "承認圏内", "要審議"],
+                                    key="db_filter_jdg"
+                                )
+                            with _fil3:
+                                _f_sc_min = st.number_input("スコア下限", value=0, min_value=0,
+                                                             max_value=100, key="db_sc_min")
+                            with _fil4:
+                                _f_sc_max = st.number_input("スコア上限", value=100, min_value=0,
+                                                             max_value=100, key="db_sc_max")
+
+                            _recs = _db_records(
+                                industry_major=("" if _f_ind == "（全て）" else _f_ind),
+                                judgment=("" if _f_jdg == "（全て）" else _f_jdg),
+                                score_min=_f_sc_min,
+                                score_max=_f_sc_max,
+                                limit=100,
+                            )
+                            if _recs:
+                                _rec_df = _pd_db.DataFrame(_recs)
+                                _disp_cols = {
+                                    "id": "ID", "created_at": "審査日時",
+                                    "industry_sub": "業種（中）", "customer_type": "区分",
+                                    "revenue_m": "年商(百万)", "equity_ratio": "自己資本比率%",
+                                    "lease_amount_m": "リース額(百万)", "lease_term": "期間(月)",
+                                    "score": "スコア", "judgment": "判定",
+                                    "contract_prob": "成約確率", "memo": "メモ",
+                                }
+                                _rec_df = _rec_df[[c for c in _disp_cols if c in _rec_df.columns]]
+                                _rec_df = _rec_df.rename(columns=_disp_cols)
+                                st.dataframe(_rec_df, use_container_width=True, hide_index=True)
+                                st.caption(f"表示: {len(_recs)}件 / 全{_db_total}件")
+
+                                # 削除
+                                with st.expander("🗑 レコード削除", expanded=False):
+                                    _del_id = st.number_input(
+                                        "削除するID", min_value=1, step=1, key="db_del_id"
+                                    )
+                                    if st.button("削除実行", key="db_del_btn", type="secondary"):
+                                        _db_del(int(_del_id))
+                                        st.success(f"ID {_del_id} を削除しました。")
+                                        st.rerun()
+                            else:
+                                st.info("条件に一致するレコードがありません。")
+
+                            # DB ファイルパス
+                            st.caption(f"📁 DB: `{_db_path_fn()}`")
+
+                    except Exception as _db_view_err:
+                        st.error(f"DB表示エラー: {_db_view_err}")
 
                 # ----- 🤖 AIひとこと評価（自動生成） -----
                 _quick_key = "ai_quick_comment_result"
@@ -3498,6 +4068,14 @@ elif mode == "📋 審査・分析":
                             sign = "+" if f.get("effect_percent", 0) >= 0 else ""
                             st.markdown(f"- **{f.get('factor', '')}** … {sign}{f.get('effect_percent', 0)}% （{f.get('detail', '')}）")
 
+                # ── 将来事業計画シミュレーション（モンテカルロ法ベース） ─────────────────────
+                with st.expander("🔮 将来事業計画（売上・利益）シミュレーション", expanded=False):
+                    try:
+                        from future_simulation import render_future_simulation_ui
+                        render_future_simulation_ui(res)
+                    except ImportError as e:
+                        st.error(f"シミュレーション機能の読み込みに失敗しました: {e}")
+                        
                 # ----- 定性スコアリング（総合×60%＋定性×40%でランクA〜E） -----
                 qcorr = res.get("qualitative_scoring_correction")
                 with st.expander("📋 定性スコアリング", expanded=bool(qcorr)):
@@ -4108,6 +4686,35 @@ elif mode == "📋 審査・分析":
                 else:
                     st.caption("指標を算出するには、審査入力で売上高・損益・資産などを入力してください。")
 
+                # 新機能: 業界情報の自動収集と分析アドバイス
+                st.divider()
+                st.subheader("📈 AI業界分析アドバイス")
+                st.caption("自動収集したWeb上の最新業界情報や財務目安をもとに、本件特有の着眼点をAIがアドバイスします。")
+                
+                advice_case_id = st.session_state.get("ai_industry_advice_case_id")
+                advice_text = st.session_state.get("ai_industry_advice_text")
+                selected_sub_res = res.get("industry_sub", "")
+                comp_text = res.get("comparison", "")
+
+                if advice_text and advice_case_id == current_case_id:
+                    st.success("✨ **AI業界分析アドバイス**\n\n" + advice_text)
+                    if st.button("アドバイスを再生成", key="btn_advice_regenerate"):
+                        st.session_state["ai_industry_advice_text"] = None
+                        st.session_state["ai_industry_advice_case_id"] = None
+                        st.rerun()
+                else:
+                    if st.button("▶️ 業界情報の自動収集・分析を実行", key="btn_advice_generate"):
+                        with st.spinner("Webから最新の業界情報を収集・分析中... ⏳"):
+                            # 新規作成したAIチャット関数をインポートして呼び出す
+                            from ai_chat import get_ai_industry_advice
+                            text = get_ai_industry_advice(selected_sub_res, comp_text)
+                            if text:
+                                st.session_state["ai_industry_advice_text"] = text
+                                st.session_state["ai_industry_advice_case_id"] = current_case_id
+                                st.rerun()
+                            else:
+                                st.error("アドバイスの生成に失敗しました。AIサーバーやAPIキーの設定をご確認ください。")
+
                 # AIのぼやき（ネット検索した業界情報を使いAIが自分で生成・アップデート）+ 定例の愚痴
                 st.divider()
                 st.subheader("🤖 AIのぼやき")
@@ -4450,6 +5057,21 @@ elif mode == "📋 審査・分析":
                                 use_improvement=st.session_state.get("kb_use_improvement", False),
                                 max_tokens_approx=2000,
                             )
+                            
+                            # ── 将来事業計画シミュレーション結果（AI連動機能） ──────────────────
+                            sim_context = ""
+                            _sim_res = _res.get("future_sim_result")
+                            if _sim_res:
+                                deficit_prob = _sim_res.get("deficit_prob", 0)
+                                final_median = _sim_res.get("final_op_median", 0)
+                                final_worst10 = _sim_res.get("final_op_worst10", 0)
+                                sim_context = (
+                                    f"\n■ 【将来事業計画シミュレーション（5年・モンテカルロ法による予測）】\n"
+                                    f"・5年後の営業赤字確率: {deficit_prob:.1%}\n"
+                                    f"・5年後の予測営業利益（中央値）: {final_median/1000:,.1f} 百万円\n"
+                                    f"・5年後の悲観シナリオ（ワースト10%、大きな要因悪化時）の営業利益: {final_worst10/1000:,.1f} 百万円\n"
+                                    f"※上記のリスクを踏まえ、回収可能性や保全策（保証人や担保の要否など）について審査官の視点で必ず言及してください。\n"
+                                )
 
                             context_prompt = f"""あなたは経験豊富なリース審査のプロ。以下の「案件データ」「業界比較」「業種別トピックス」を**必ず毎回**使い、具体的な数字・事実を引用して答えてください。
 
@@ -4459,6 +5081,7 @@ elif mode == "📋 審査・分析":
 {advice_block}
 {news_context}
 {memory_block}
+{sim_context}
 
 {indicator_block}
 {topics_block}
@@ -4754,3 +5377,180 @@ elif mode == "📋 審査・分析":
 
 
         st.divider()
+
+# ==============================================================================
+# 物件ファイナンス審査モード
+# ==============================================================================
+elif mode == "🏭 物件ファイナンス審査":
+    st.title("🏭 物件ファイナンス審査エンジン")
+    st.caption(
+        "アセット・ファイナンス型：物件の担保価値（動的LGD / BEP）と定性緩和因子を統合し、"
+        "財務が弱い先でも「なぜ通せるか」を定量的に可視化します。"
+    )
+
+    _af_engine = AssetFinanceEngine()
+
+    col_input, col_result = st.columns([2, 3])
+
+    with col_input:
+        st.subheader("📋 審査条件の入力")
+
+        _af_asset = st.selectbox(
+            "物件種別",
+            list(AssetFinanceEngine.ASSET_PARAMS.keys()),
+            key="af_asset_type",
+        )
+        _af_params = AssetFinanceEngine.ASSET_PARAMS[_af_asset]
+        st.caption(
+            f"年間減価率 **{_af_params['r']*100:.0f}%** ／ 支払優先度 **{_af_params['priority']}** ／ {_af_params['info']}"
+        )
+
+        _af_term = st.slider("リース期間（月）", min_value=12, max_value=84, value=60, step=6, key="af_term")
+        _af_down = st.slider(
+            "自己資金率（頭金）",
+            min_value=0.0, max_value=0.50, value=0.20, step=0.05,
+            format="%.0f%%",
+            key="af_down",
+        )
+
+        _af_fin = st.radio(
+            "財務評価",
+            ['High', 'Medium', 'Low'],
+            format_func=lambda x: {
+                'High':   '✅ 優良（黒字・健全）',
+                'Medium': '📊 標準',
+                'Low':    '⚠️ 低評価（赤字・債務超過）',
+            }[x],
+            horizontal=True,
+            key="af_fin",
+        )
+
+        with st.expander("🔍 定性因子（緩和要素）", expanded=True):
+            _af_main_bank   = st.checkbox("メイン銀行の支援先（+50点）", key="af_main_bank",
+                                          help="メイン取引銀行が推薦・協調する案件")
+            _af_bank_coord  = st.checkbox("銀行協調案件（+20点）", key="af_bank_coord")
+            _af_core_biz    = st.checkbox("本業利用物件（+20点）", key="af_core_biz",
+                                          help="事業の根幹に関わる物件")
+            _af_related_ast = st.checkbox("関係者資産による保全（+15点）", key="af_related_ast")
+
+        # 車両独自ロジック
+        _af_annual_km = 0
+        _af_maint = False
+        if _af_asset == '車両':
+            with st.expander("🚗 車両独自設定", expanded=True):
+                _af_annual_km = st.number_input(
+                    "予想年間走行距離（km）",
+                    min_value=0, max_value=100000, value=15000, step=1000,
+                    key="af_annual_km",
+                )
+                if _af_annual_km >= 20000:
+                    st.warning("年2万km以上：過走行補正 → 実効減価率+10%・−10点")
+                _af_maint = st.checkbox(
+                    "メンテナンスリース付帯（+10点・中古価値+7.5%）",
+                    key="af_maint",
+                    help="自社管理により中古売却価値が5〜10%向上",
+                )
+
+        _af_submit = st.button("🔍 審査判定を実行", type="primary", use_container_width=True, key="af_submit")
+
+    with col_result:
+        _af_run = _af_submit or ("af_last_result" in st.session_state and not _af_submit)
+
+        if _af_submit:
+            _af_data = {
+                'asset_type':          _af_asset,
+                'term':                _af_term,
+                'down_payment':        _af_down,
+                'financial_score':     _af_fin,
+                'main_bank_support':   _af_main_bank,
+                'bank_coordination':   _af_bank_coord,
+                'core_business':       _af_core_biz,
+                'related_assets':      _af_related_ast,
+                'annual_km':           _af_annual_km,
+                'has_maintenance_lease': _af_maint,
+            }
+            _af_result = _af_engine.run_inference(_af_data)
+            st.session_state["af_last_result"] = _af_result
+            st.session_state["af_last_data"]   = _af_data
+
+        if "af_last_result" in st.session_state:
+            _af_result = st.session_state["af_last_result"]
+            _af_data   = st.session_state["af_last_data"]
+
+            # --- 判定バナー ---
+            _af_colors = {
+                "承認":          "#22c55e",
+                "条件付き承認":   "#f59e0b",
+                "要審議（上位承認）": "#f97316",
+                "否決":          "#ef4444",
+            }
+            _af_color = _af_colors.get(_af_result['decision'], "#6b7280")
+            st.markdown(
+                f"""<div style="background:{_af_color};color:white;padding:1rem 1.5rem;
+                border-radius:12px;text-align:center;font-size:1.6rem;font-weight:700;
+                margin-bottom:1rem;box-shadow:0 2px 8px rgba(0,0,0,0.15);">
+                {_af_result['icon']} {_af_result['decision']}　スコア: {_af_result['score']}点
+                </div>""",
+                unsafe_allow_html=True,
+            )
+
+            # --- BEP グラフ ---
+            st.subheader("📈 物件時価 vs リース残債（BEP 分析）")
+            _af_months = list(range(len(_af_result['v_curve'])))
+            _af_fig = go.Figure()
+            _af_fig.add_trace(go.Scatter(
+                x=_af_months, y=_af_result['v_curve'],
+                name="物件時価（残価率）",
+                line=dict(color="#2563eb", width=2.5),
+                fill='tozeroy', fillcolor='rgba(37,99,235,0.07)',
+            ))
+            _af_fig.add_trace(go.Scatter(
+                x=_af_months, y=_af_result['l_curve'],
+                name="リース残債率",
+                line=dict(color="#dc2626", width=2.5, dash="dash"),
+            ))
+            _af_fig.add_vline(
+                x=_af_result['bep_month'],
+                line_dash="dot", line_color="#22c55e", line_width=2,
+                annotation_text=f"BEP {_af_result['bep_month']}ヶ月",
+                annotation_position="top right",
+                annotation_font_color="#22c55e",
+            )
+            _af_fig.update_layout(
+                xaxis_title="経過月数",
+                yaxis_title="比率（1.0 = 取得価格）",
+                legend=dict(orientation="h", y=-0.2),
+                height=290,
+                margin=dict(l=0, r=0, t=20, b=0),
+            )
+            st.plotly_chart(_af_fig, use_container_width=True)
+
+            # --- 承認根拠・減点 ---
+            _col_r, _col_d = st.columns(2)
+            with _col_r:
+                st.markdown("**✅ 承認根拠**")
+                for _item in _af_result['reasons']:
+                    st.markdown(f"- {_item}")
+            with _col_d:
+                if _af_result['deductions']:
+                    st.markdown("**⚠️ 減点・リスク要因**")
+                    for _item in _af_result['deductions']:
+                        st.markdown(f"- {_item}")
+
+            st.divider()
+
+            # --- 銀行との差異解説 ---
+            st.subheader("🏦 銀行システムとの違い（なぜ通せるのか）")
+            st.info(_af_result['bank_comparison'])
+
+            # --- ライフサイクル提案 ---
+            st.subheader("🔄 ライフサイクル・マーケティング提案")
+            st.success(_af_result['marketing_advice'])
+
+            # --- アクションプラン ---
+            st.subheader("📌 営業アクションプラン")
+            for _i, _plan in enumerate(_af_result['action_plan'], 1):
+                st.markdown(f"**{_i}.** {_plan}")
+
+        else:
+            st.info("👈 左側で条件を入力し、「審査判定を実行」ボタンを押してください。")

@@ -28,8 +28,13 @@ COEFF_MAIN_KEYS = [
 COEFF_EXTRA_KEYS = [
     "main_bank", "competitor_present", "competitor_none",
     "rate_diff_z", "industry_sentiment_z", "qualitative_tag_score", "qualitative_passion",
-    "equity_ratio",  # 自己資本比率（%）
+    "equity_ratio",          # 自己資本比率（%）
     "qualitative_combined",  # 定性スコアリング合計（総合×60%＋定性×40%）を0-1で正規化
+    # BNエンジン出力（スコア≤70の案件でBN推論を実行した場合のみ値あり、未実行時は0）
+    "bn_approval_prob",      # BN最終承認確率（0-1）
+    "bn_fc",                 # 財務信用度（Financial_Creditworthiness, 0-1）
+    "bn_hc",                 # ヘッジ条件（Hedge_Condition, 0-1）
+    "bn_av",                 # 物件価値（Asset_Value, 0-1）
 ]
 
 # 業種ごと・既存先/新規先のモデルキー（ベイズ回帰で更新対象）
@@ -182,7 +187,16 @@ def _build_one_row_industry(log, data):
     qsc = (res.get("qualitative_scoring_correction") or inp.get("qualitative_scoring")) or {}
     combined = qsc.get("combined_score") or qsc.get("weighted_score")
     qualitative_combined = (float(combined) / 100.0) if combined is not None else 0.0
-    row.extend([main_bank, competitor_present, competitor_none, rate_diff_z, industry_sentiment_z, qualitative_tag_score, qualitative_passion, equity_ratio, qualitative_combined])
+    # BNエンジン出力（スコア≤70の案件のみ値あり、未実行時は 0 で埋める）
+    bn      = log.get("bn_engine") or {}
+    bn_im   = bn.get("intermediate") or {}
+    bn_approval_prob = float(bn.get("approval_prob") or 0)
+    bn_fc   = float(bn_im.get("Financial_Creditworthiness") or 0)
+    bn_hc   = float(bn_im.get("Hedge_Condition") or 0)
+    bn_av   = float(bn_im.get("Asset_Value") or 0)
+    row.extend([main_bank, competitor_present, competitor_none, rate_diff_z, industry_sentiment_z,
+                qualitative_tag_score, qualitative_passion, equity_ratio, qualitative_combined,
+                bn_approval_prob, bn_fc, bn_hc, bn_av])
     return row
 
 
