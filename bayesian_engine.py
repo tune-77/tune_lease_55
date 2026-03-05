@@ -33,8 +33,15 @@ from typing import Dict, List, Optional, Tuple
 # ==============================================================
 # 判定・逆走提案用の閾値設定
 # ==============================================================
-THRESHOLD_APPROVAL = 0.70
-THRESHOLD_REVIEW = 0.40
+RULES_FILE = os.path.join(os.path.dirname(__file__), "data", "business_rules.json")
+try:
+    with open(RULES_FILE, "r", encoding="utf-8") as _f:
+        _rules = json.load(_f)
+        THRESHOLD_APPROVAL = _rules.get("thresholds", {}).get("approval", 0.70)
+        THRESHOLD_REVIEW = _rules.get("thresholds", {}).get("review", 0.40)
+except Exception:
+    THRESHOLD_APPROVAL = 0.70
+    THRESHOLD_REVIEW = 0.40
 
 try:
     # pgmpy 1.0.0 以降: BayesianNetwork → DiscreteBayesianNetwork に変更

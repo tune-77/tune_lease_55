@@ -669,6 +669,25 @@ def get_advice_context_extras(selected_sub: str, selected_major: str) -> str:
     lc = get_lease_classification_text()
     if lc:
         parts.append("\n" + lc)
+        
+    # ▼ 新規追加: 事前生成A4レポートの読み込み
+    try:
+        import os
+        import json
+        from config import BASE_DIR
+        report_file = os.path.join(BASE_DIR, "industry_reports_a4.json")
+        if os.path.exists(report_file):
+            with open(report_file, "r", encoding="utf-8") as f:
+                ind_reports = json.load(f)
+            if selected_sub in ind_reports:
+                a4_report = ind_reports[selected_sub].get("report_text", "")
+                if a4_report:
+                    parts.append("\n【事前生成・調査済みの業界動向・課題レポート（A4サイズ）】\n"
+                                 "以下の内容を重要な事実として踏まえつつ、ユーザーに回答・アドバイスを提示してください。\n"
+                                 + a4_report[:2000])
+    except Exception as e:
+        pass
+        
     trend_ex = get_trend_extended(selected_sub)
     if trend_ex:
         parts.append("\n【業界トレンド（拡充）】\n" + trend_ex[:1200])

@@ -32,13 +32,9 @@ def build_contract_report_pdf(analysis: dict) -> bytes:
 
     try:
         from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.ttfonts import TTFont
-        font_path = os.path.join(BASE_DIR, "IPAexGothic.ttf")
-        if os.path.isfile(font_path):
-            pdfmetrics.registerFont(TTFont("JP", font_path))
-            font_name = "JP"
-        else:
-            font_name = "Helvetica"
+        from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+        font_name = "HeiseiKakuGo-W5"
+        pdfmetrics.registerFont(UnicodeCIDFont(font_name))
     except Exception:
         font_name = "Helvetica"
 

@@ -22,7 +22,8 @@ from coeff_definitions import COEFFS
 from charts import _equity_ratio_display
 
 # ファイルパス（リポジトリルート基準）
-CASES_FILE = os.path.join(_REPO_ROOT, "past_cases.jsonl")
+CASES_FILE = os.path.join(_REPO_ROOT, "past_cases.jsonl") # obsolete but kept for reference
+DB_PATH = os.path.join(_SCRIPT_DIR, "data", "lease_data.db")
 COEFF_OVERRIDES_FILE = os.path.join(_REPO_ROOT, "data", "coeff_overrides.json")
 CONSULTATION_MEMORY_FILE = os.path.join(_REPO_ROOT, "consultation_memory.jsonl")
 CASE_NEWS_FILE = os.path.join(_REPO_ROOT, "case_news.jsonl")
@@ -68,18 +69,25 @@ def append_consultation_memory(user_text: str, assistant_text: str):
 
 
 def load_all_cases():
-    """過去案件を全件読み込み。"""
-    if not os.path.exists(CASES_FILE):
+    """過去案件を全件読み込み（SQLiteから）。"""
+    if not os.path.exists(DB_PATH):
         return []
+        
+    import sqlite3
     cases = []
     try:
-        with open(CASES_FILE, "r", encoding="utf-8") as f:
-            for line in f:
-                try:
-                    cases.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
-    except Exception:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT data FROM past_cases ORDER BY timestamp ASC")
+        for row in cursor.fetchall():
+            try:
+                cases.append(json.loads(row[0]))
+            except json.JSONDecodeError:
+                continue
+        conn.close()
+    except Exception as e:
+        import traceback
+        print(f"[Error in load_all_cases]: {e}", file=sys.stderr)
         return []
     return cases
 
@@ -90,34 +98,77 @@ def load_past_cases():
 
 
 def find_similar_past_cases(selected_sub: str, user_equity_ratio: float, max_count: int = 3):
-    """業界が同じで自己資本比率が近い過去案件を最大 max_count 件返す。"""
-    cases = load_past_cases()
+    """業界が同じで自己資本比率が近い過去案件を最大 max_count 件返す（SQLite版）。"""
+    import sqlite3
+    if not os.path.exists(DB_PATH):
+        return []
+        
     candidates = []
-    for c in cases:
-        if c.get("industry_sub") != selected_sub:
-            continue
-        res = c.get("result") or {}
-        eq = res.get("user_eq")
-        if eq is None:
-            continue
-        try:
-            eq_val = float(_equity_ratio_display(eq) or 0)
-        except (TypeError, ValueError):
-            continue
-        diff = abs(eq_val - user_equity_ratio)
-        status = c.get("final_status", "未登録")
-        score = res.get("score")
-        candidates.append({"diff": diff, "case": c, "equity": eq_val, "status": status, "score": score})
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        # まずは同じ業種のデータをすべて引っ張る
+        cursor.execute("SELECT data, user_eq, score, final_status FROM past_cases WHERE industry_sub = ?", (selected_sub,))
+        for row in cursor.fetchall():
+            data_json, eq_val, score, status = row
+            if eq_val is None:
+                continue
+            
+            diff = abs(eq_val - user_equity_ratio)
+            try:
+                case_data = json.loads(data_json)
+                candidates.append({"diff": diff, "case": case_data, "equity": eq_val, "status": status, "score": score})
+            except:
+                pass
+        conn.close()
+    except Exception:
+        pass
+        
     candidates.sort(key=lambda x: x["diff"])
     return [x["case"] for x in candidates[:max_count]]
 
 
 def save_all_cases(cases):
-    """案件一覧を上書き保存。失敗時は False。"""
+    """案件一覧を上書き保存。(※SQLiteへの全移行では本来不要だがメソッドシグネチャ互換のため残す)"""
+    import sqlite3
+    if not os.path.exists(DB_PATH):
+        return False
+        
     try:
-        with open(CASES_FILE, "w", encoding="utf-8") as f:
-            for c in cases:
-                f.write(json.dumps(c, ensure_ascii=False) + "\n")
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        # 一旦すべて削除してからINSERTする（重い処理だが互換性維持のため）
+        cursor.execute("DELETE FROM past_cases")
+        for data in cases:
+            case_id = data.get("id")
+            timestamp = data.get("timestamp", "")
+            industry_sub = data.get("industry_sub", "")
+            final_status = data.get("final_status", "")
+            
+            score, user_eq = None, None
+            res = data.get("result", {})
+            if isinstance(res, dict):
+                score = res.get("score")
+                user_eq = res.get("user_eq")
+
+            try:
+                score_val = float(score) if score is not None else None
+            except:
+                score_val = None
+
+            try:
+                user_eq_val = float(user_eq) if user_eq is not None else None
+            except:
+                user_eq_val = None
+
+            json_str = json.dumps(data, ensure_ascii=False, cls=CustomJSONEncoder)
+            cursor.execute("""
+                INSERT INTO past_cases
+                (id, timestamp, industry_sub, score, user_eq, final_status, data)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (case_id, timestamp, industry_sub, score_val, user_eq_val, final_status, json_str))
+        conn.commit()
+        conn.close()
         return True
     except Exception:
         return False
@@ -235,17 +286,96 @@ class CustomJSONEncoder(json.JSONEncoder):
         return super().default(obj)
 
 def save_case_log(data):
-    """審査1件分のログを追記し、生成した案件IDを返す。失敗時は None。"""
+    """審査1件分のログをSQLiteに追記し、生成した案件IDを返す。失敗時は None。"""
+    import sqlite3
     case_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
     data["id"] = case_id
     data["timestamp"] = datetime.datetime.now().isoformat()
     data["final_status"] = "未登録"
+    
+    industry_sub = data.get("industry_sub", "")
+    score, user_eq = None, None
+    res = data.get("result", {})
+    if isinstance(res, dict):
+        score, user_eq = res.get("score"), res.get("user_eq")
+        
     try:
-        with open(CASES_FILE, "a", encoding="utf-8") as f:
-            f.write(json.dumps(data, ensure_ascii=False, cls=CustomJSONEncoder) + "\n")
+        score_val = float(score) if score is not None else None
+    except:
+        score_val = None
+
+    try:
+        user_eq_val = float(user_eq) if user_eq is not None else None
+    except:
+        user_eq_val = None
+        
+    try:
+        if not os.path.exists(DB_PATH):
+            from migrate_to_sqlite import init_db
+            init_db()
+            
+        json_str = json.dumps(data, ensure_ascii=False, cls=CustomJSONEncoder)
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO past_cases
+            (id, timestamp, industry_sub, score, user_eq, final_status, data)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (case_id, data["timestamp"], industry_sub, score_val, user_eq_val, data["final_status"], json_str))
+        conn.commit()
+        conn.close()
         return case_id
     except Exception as e:
         import traceback
-        print(f"[Error in save_case_log]: {e}", file=sys.stderr)
+        print(f"[Error in save_case_log (SQLite)]: {e}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
         return None
+
+
+def update_case_field(case_id: str, key: str, value: any) -> bool:
+    """指定された case_id のレコードに対して、[key] = value を追加・更新する（SQLite版）。"""
+    import sqlite3
+    if not case_id or not os.path.exists(DB_PATH):
+        return False
+        
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        # 該当レコードのdata(JSON文字列)を取得
+        cursor.execute("SELECT data FROM past_cases WHERE id = ?", (case_id,))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return False
+            
+        data_json = row[0]
+        try:
+            case_data = json.loads(data_json)
+        except:
+            case_data = {}
+            
+        # JSON側の更新
+        case_data[key] = value
+        new_json_str = json.dumps(case_data, ensure_ascii=False, cls=CustomJSONEncoder)
+        
+        # もし特定のキー（ステータス等）が単独カラムにもあれば一緒に更新する
+        update_cols = "data = ?"
+        update_args = [new_json_str]
+        
+        if key == "final_status":
+            update_cols += ", final_status = ?"
+            update_args.append(str(value))
+        elif key == "industry_sub":
+            update_cols += ", industry_sub = ?"
+            update_args.append(str(value))
+            
+        update_args.append(case_id)
+        
+        cursor.execute(f"UPDATE past_cases SET {update_cols} WHERE id = ?", tuple(update_args))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        import traceback
+        print(f"[Error in update_case_field (SQLite)]: {e}", file=sys.stderr)
+        return False

@@ -147,6 +147,7 @@ from indicators import (
 )
 from report_pdf import build_contract_report_pdf
 from report_generator import generate_full_report_from_res
+from rule_manager import load_business_rules, save_business_rules, evaluate_custom_rules
 from knowledge import build_knowledge_context, search_faq, search_cases, get_improvement_guide_text
 from web_services import (
     _WEB_BENCH_KEYS,
@@ -1253,7 +1254,7 @@ class AssetFinanceEngine:
 # ==============================================================================
 # 画面構成
 # ==============================================================================
-mode = st.sidebar.radio("モード切替", ["📋 審査・分析", "🏭 物件ファイナンス審査", "📝 結果登録 (成約/失注)", "🔧 係数分析・更新 (β)", "📐 係数入力（事前係数）", "📊 成約の正体レポート", "📉 定性要因分析 (50件〜)", "📈 定量要因分析 (50件〜)"])
+mode = st.sidebar.radio("モード切替", ["📋 審査・分析", "🏭 物件ファイナンス審査", "📝 結果登録 (成約/失注)", "🔧 係数分析・更新 (β)", "📐 係数入力（事前係数）", "📊 履歴分析・実績ダッシュボード", "📉 定性要因分析 (50件〜)", "📈 定量要因分析 (50件〜)", "⚙️ 審査ルール設定"], key="main_mode")
 
 with st.sidebar.expander("⚠️ 途中で落ちる場合", expanded=False):
     st.caption("主な原因: (1) AI相談・Gemini/Ollama のタイムアウト (2) ブラウザのメモリ不足 (3) 分析結果タブでデータ不整合。ターミナルで `streamlit run lease_logic_sumaho8.py` を実行するとエラー内容が表示されます。F5で再読み込みも試してください。")
@@ -1670,8 +1671,8 @@ elif mode == "📐 係数入力（事前係数）":
                 st.error("保存に失敗しました。")
         st.caption("※ 運送業・医療は個別に事前係数を入力できます。指標モデル（全体_指標など）を編集すると、既存先・新規先の両方の基準に反映されます。")
 
-elif mode == "📊 成約の正体レポート":
-    st.title("📊 成約の正体レポート")
+elif mode == "📊 履歴分析・実績ダッシュボード":
+    st.title("📊 履歴分析・実績ダッシュボード")
     analysis = run_contract_driver_analysis()
     if analysis is None:
         st.warning("成約データが5件以上貯まると表示されます。結果登録で「成約」を登録してください。")
@@ -1729,6 +1730,48 @@ elif mode == "📊 成約の正体レポート":
                     st.caption(f"- **{r}** … {cnt}件")
         else:
             st.caption("定性スコアリングを入力した成約案件がまだありません。審査入力で「定性スコアリング」を選択し、結果登録で成約にするとここに集計が表示されます。")
+
+    # ---------------- 案件履歴一覧 ----------------
+    st.divider()
+    st.subheader("📋 最新の案件履歴")
+    all_cases = load_all_cases()
+    if all_cases:
+        for case in reversed(all_cases[-15:]):  # 最新15件を表示
+            c_date = case.get('timestamp', '')[:16]
+            c_sub = case.get('industry_sub', '不明')
+            c_score = case.get('result', {}).get('score', 0)
+            c_status = case.get('final_status', '未登録')
+            title_emoji = "✅" if c_status == "成約" else "❌" if c_status == "失注" else "📝"
+            with st.expander(f"{title_emoji} {c_date} - {c_sub} (スコア: {c_score:.0f}) [{c_status}]"):
+                c1, c2 = st.columns([1, 2])
+                with c1:
+                    st.write(f"**判定**: {case.get('result', {}).get('hantei', '不明')}")
+                    if case.get('chat_summary'):
+                        st.caption(case['chat_summary'])
+                    if st.button("🔄 このデータを入力に復元", key=f"restore_hist_{case.get('id', c_date)}"):
+                        i_data = case.get('inputs', {})
+                        st.session_state["last_submitted_inputs"] = {
+                            "selected_major": case.get("industry_major", ""),
+                            "selected_sub": case.get("industry_sub", ""),
+                        }
+                        for k, v in i_data.items():
+                            if isinstance(v, dict):
+                                for sub_k, sub_v in v.items():
+                                    st.session_state[sub_k] = sub_v
+                            else:
+                                st.session_state[k] = v
+                        st.session_state["main_mode"] = "📋 審査・分析"
+                        st.session_state["nav_index"] = 0
+                        st.rerun()
+                with c2:
+                    if case.get('ai_industry_advice'):
+                        st.markdown("##### 📈 AI業界分析アドバイス")
+                        st.info(case['ai_industry_advice'])
+                    if case.get('ai_byoki'):
+                        st.markdown("##### 🤖 AIのぼやき")
+                        st.caption(case['ai_byoki'])
+    else:
+        st.caption("まだ案件履歴がありません。")
 
 elif mode == "📉 定性要因分析 (50件〜)":
     st.title("📉 定性要因で成約予測")
@@ -2774,7 +2817,10 @@ elif mode == "📋 審査・分析":
                         if abs(equity_effect) >= 0.5:
                             ai_completed_factors.append({"factor": "自己資本比率", "effect_percent": int(round(equity_effect)), "detail": f"自己資本比率 {user_equity_ratio:.1f}% を反映"})
 
-                        # BNエンジン出力（スコア≤70かつBN推論実行済の場合のみ有効）
+                        from bayesian_engine import THRESHOLD_APPROVAL
+                        approval_line = THRESHOLD_APPROVAL * 100
+                        
+                        # BNエンジン出力（スコア≤承認ライン かつ BN推論実行済の場合のみ有効）
                         _bn_res_sc = st.session_state.get("_bn_s_result")
                         if _bn_res_sc:
                             _bn_im_sc  = _bn_res_sc.get("intermediate") or {}
@@ -2895,11 +2941,14 @@ elif mode == "📋 審査・分析":
                                 ai_question_text += f"同業種の平均成約金利: {past_stats['avg_winning_rate']:.2f}%。\n"
                             ai_question_text += "上記を踏まえ、競合に勝つための対策も考慮してアドバイスしてください。\n\n"
                         ai_question_text += "審査お疲れ様です。手元の決算書から、以下の**3点だけ**確認させてください。\n\n"
+                        from bayesian_engine import THRESHOLD_APPROVAL
+                        approval_line = THRESHOLD_APPROVAL * 100
+                        
                         questions = []
                         if my_hints.get("mandatory"): questions.append(f"🏭 **業界確認**: {my_hints['mandatory']}")
-                        if score_percent < 70: questions.append("💡 **実質利益**: 販管費の内訳に「役員報酬」は十分計上されていますか？")
+                        if score_percent < approval_line: questions.append("💡 **実質利益**: 販管費の内訳に「役員報酬」は十分計上されていますか？")
                         elif user_op_margin < bench_op_margin: questions.append("📉 **利益率要因**: 今期の利益率低下は、一過性ですか？")
-                        if score_percent < 70: questions.append("🏦 **資金繰り**: 借入金明細表で、返済が「約定通り」進んでいるか確認してください。")
+                        if score_percent < approval_line: questions.append("🏦 **資金繰り**: 借入金明細表で、返済が「約定通り」進んでいるか確認してください。")
                         if my_hints["risks"]: questions.append(f"⚠️ **業界リスク**: {my_hints['risks'][0]} はクリアしていますか？")
                 
                         for q in questions[:3]: ai_question_text += f"- {q}\n"
@@ -3011,6 +3060,54 @@ elif mode == "📋 審査・分析":
                         st.session_state["messages"] = []
                         st.session_state["debate_history"] = []
 
+                        # カスタムルールの適用
+                        custom_rules_list = _rules.get("custom_rules", [])
+                        if custom_rules_list:
+                            context_data = {
+                                "industry": selected_major,
+                                "nenshu": nenshu,
+                                "op_profit": rieki,
+                                "ord_profit": item4_ord_profit,
+                                "net_income": item5_net_income,
+                                "net_assets": net_assets,
+                                "total_assets": total_assets,
+                                "user_eq_ratio": user_equity_ratio,
+                                "term": lease_term,
+                                "cost": acquisition_cost,
+                                "bank_credit": bank_credit,
+                                "lease_credit": lease_credit
+                            }
+                            cr_result = evaluate_custom_rules(custom_rules_list, context_data)
+                            
+                            # ペナルティ（減点）の適用
+                            if cr_result["score_delta"] != 0:
+                                delta = cr_result["score_delta"]
+                                final_score = max(0, final_score + delta)
+                            
+                            # リストに理由を追加し、AI用プロンプトにも結合
+                            if cr_result.get("applied_reasons"):
+                                for reason in cr_result["applied_reasons"]:
+                                    ai_completed_factors.append({
+                                        "factor": "社内独自ルール",
+                                        "effect_percent": int(round(cr_result["score_delta"])),
+                                        "detail": reason
+                                    })
+                                    similar_past_for_prompt += f"\n【重要: 社内カスタムルール発動】\n- {reason}\n※AIは、このルールに抵触したことを踏まえて、顧客への改善アドバイスや留意点をアクションプランに含めてください。\n"
+                                    
+                            # 定性スコアリングの合計等も再計算
+                            if qualitative_scoring_correction:
+                                combined_score = round(final_score * w_quant + qual_weighted_score * w_qual)
+                                combined_score = min(100, max(0, combined_score))
+                                qual_rank = next((r for r in QUALITATIVE_SCORE_RANKS if combined_score >= r["min"]), QUALITATIVE_SCORE_RANKS[-1])
+                                qualitative_scoring_correction["combined_score"] = combined_score
+                                qualitative_scoring_correction["rank"] = qual_rank["label"]
+                                qualitative_scoring_correction["rank_text"] = qual_rank["text"]
+                            
+                            # 強制ステータスの保持（後段の `hantei` トグル等で利用）
+                            forced_custom_status = cr_result.get("forced_status")
+                        else:
+                            forced_custom_status = None
+
                         # 将来予測シミュレーション（AI連携用の事前計算）
                         future_sim_result = None
                         if (nenshu or 0) > 0:
@@ -3067,7 +3164,15 @@ elif mode == "📋 審査・分析":
                             "industry_sub": selected_sub,
                             "industry_sentiment_z": industry_z,
                         }
-                
+
+                        # カスタムルールの影響や強制ステータスの上書き
+                        if forced_custom_status:
+                            st.session_state['last_result']["hantei"] = forced_custom_status
+                            st.session_state['current_image'] = "challenge" if forced_custom_status in ["要審議", "否決"] else "approve"
+                        elif final_score < REVIEW_LINE:
+                            st.session_state['last_result']["hantei"] = "否決"
+                            st.session_state['current_image'] = "challenge"
+                        
                         # 審査委員会カードバトル用データ（分析タブで表示）
                         hp_card = int(min(999, max(1, net_assets / 1000))) if net_assets else int(min(999, max(1, user_equity_ratio * 5)))
                         atk_card = int(min(99, max(1, user_op_margin * 2)))
@@ -3495,10 +3600,12 @@ elif mode == "📋 審査・分析":
                         _rep_res = st.session_state["last_result"]
                         st.caption(f"業種：{_rep_res.get('industry_sub','')}　スコア：{_rep_res.get('score',0):.1f}")
 
-                        # ── BN逆転承認シミュレーター（スコア70以下のとき表示） ──────
-                        if _rep_res.get("score", 100) <= 70:
-                            st.divider()
-                            st.markdown("#### 🧠 BN逆転承認シミュレーター")
+                        # ── BN逆転承認シミュレーター（スコア≤承認ライン のとき表示） ──────
+                        from bayesian_engine import THRESHOLD_APPROVAL
+                        approval_line = THRESHOLD_APPROVAL * 100
+                        if _rep_res.get("score", 100) <= approval_line:
+                            st.markdown("### 🔄 逆転承認シミュレーター（AI提案）")
+                            st.write("現在の財務スコアおよびBN判定では「否決」です。以下の条件を追加することで承認に持ち込めるかシミュレーションします。")
                             st.caption("総合スコアが低い案件でも、追加条件を整えることで承認確率を高められます。入力項目をチェックして推論してください。")
                             try:
                                 from bayesian_engine import (
@@ -3631,6 +3738,8 @@ elif mode == "📋 審査・分析":
                                             "bn_reversal":  _bn_reversal_for_pdf,
                                             "mc_summary":   _mc_summary,
                                             "report_text":  _report_text_for_pdf,
+                                            "ai_industry_advice": getattr(_rep_res, "ai_industry_advice", ""),
+                                            "ai_byoki":           getattr(_rep_res, "ai_byoki", ""),
                                             "mc_chart_bytes": (
                                                 __import__("montecarlo").make_portfolio_chart(
                                                     st.session_state["mc_portfolio_result"]
@@ -4381,12 +4490,17 @@ elif mode == "📋 審査・分析":
                                 else:
                                     selected_major = "D 建設業"
                                     score_percent = 0
-                            # -----------------------------------------------------
+                            try:
+                                from bayesian_engine import THRESHOLD_APPROVAL
+                                approval_line = THRESHOLD_APPROVAL * 100
+                            except ImportError:
+                                approval_line = 70.0
+
                             similar_success_cases = [
                                 c for c in cases 
                                 if c.get("industry_major") == selected_major
                                 and abs(c.get("result", {}).get("score", 0) - score_percent) < 15
-                                and c.get("result", {}).get("score", 0) >= 70
+                                and c.get("result", {}).get("score", 0) >= approval_line
                             ]
 
                         if similar_success_cases:
@@ -4707,10 +4821,12 @@ elif mode == "📋 審査・分析":
                         with st.spinner("Webから最新の業界情報を収集・分析中... ⏳"):
                             # 新規作成したAIチャット関数をインポートして呼び出す
                             from ai_chat import get_ai_industry_advice
+                            from data_cases import update_case_field
                             text = get_ai_industry_advice(selected_sub_res, comp_text)
                             if text:
                                 st.session_state["ai_industry_advice_text"] = text
                                 st.session_state["ai_industry_advice_case_id"] = current_case_id
+                                update_case_field(current_case_id, "ai_industry_advice", text)
                                 st.rerun()
                             else:
                                 st.error("アドバイスの生成に失敗しました。AIサーバーやAPIキーの設定をご確認ください。")
@@ -4734,10 +4850,12 @@ elif mode == "📋 審査・分析":
                 else:
                     if st.button("AIにぼやきを言わせる（業界情報を参照）", key="btn_byoki_generate"):
                         with st.spinner("業界情報を取得して、AIがぼやきを考えています…"):
+                            from data_cases import update_case_field
                             text = get_ai_byoki_with_industry(selected_sub_res, u_eq, u_op, comp_text, net_risk)
                             if text:
                                 st.session_state["ai_byoki_text"] = text
                                 st.session_state["ai_byoki_case_id"] = current_case_id
+                                update_case_field(current_case_id, "ai_byoki", text)
                                 st.rerun()
                             else:
                                 st.error("生成できませんでした。APIキー・Ollamaを確認してください。")
@@ -4984,120 +5102,22 @@ elif mode == "📋 審査・分析":
                             else:
                                 st.error(f"AIサーバー（Ollama）が起動していません。\nターミナルで `ollama serve` を実行するか、サイドバーで「Gemini API」に切り替えてください。")
                         else:
-                            _res = st.session_state.get("last_result") or {}
-                            _chat_sub = _res.get("industry_sub", selected_sub) or selected_sub
-                            _chat_major = _res.get("industry_major", "") or ""
-                            comparison_text = _res.get("comparison", "（審査未実行のためデータなし）")
-
-                            # ── 業界平均との比較ブロック（毎回必須）──────────────────
-                            ind_summary, ind_detail, ind_list = get_indicator_analysis_for_advice(_res)
-                            indicator_block = f"\n■ 【業界平均との比較】業種: {_chat_sub}\n"
-                            if ind_list:
-                                indicator_block += "指標一覧（貴社 vs 業界目安）:\n" + ind_list + "\n"
-                            if ind_summary:
-                                indicator_block += f"総評: {ind_summary}\n"
-                            if ind_detail:
-                                indicator_block += "詳細:\n" + ind_detail[:1200] + "\n"
-                            if not ind_list and not ind_summary:
-                                indicator_block += "（審査を実行すると財務指標と業界目安の詳細比較が表示されます）\n"
-
-                            # ── 業種別トピックス（毎回必須）────────────────────────
-                            trend_info = ""
-                            if jsic_data and _chat_major in (jsic_data or {}):
-                                trend_info = (jsic_data[_chat_major].get("sub") or {}).get(_chat_sub, "")
-                            trend_ext = get_trend_extended(_chat_sub) or ""
-                            # ネット最新検索（キャッシュがなければリアルタイム検索）
-                            with st.spinner("業種別トピックスを取得中..."):
-                                latest_trends = search_latest_trends(f"{_chat_sub} 業界動向 最新 2025 2026")
-                            topics_block = f"\n■ 【業種別トピックス】業種: {_chat_sub}\n"
-                            if trend_info:
-                                topics_block += f"業界概況: {trend_info[:400]}\n"
-                            if trend_ext:
-                                topics_block += f"業界トレンド詳細: {trend_ext[:600]}\n"
-                            if latest_trends and "エラー" not in latest_trends and "見つかりません" not in latest_trends:
-                                topics_block += "最新ニュース:\n" + latest_trends[:800] + "\n"
-                            elif not trend_info and not trend_ext:
-                                topics_block += "（業界トピックスの取得に失敗しました。再度お試しください）\n"
-
-                            # ── 補助金・リスクヒント ──────────────────────────────
-                            hints_context = ""
-                            if 'last_result' in st.session_state:
-                                h = st.session_state['last_result'].get('hints', {})
-                                if h.get('subsidies'): hints_context += f"\n補助金候補: {', '.join(h['subsidies'])}"
-                                if h.get('risks'): hints_context += f"\nリスク確認点: {', '.join(h['risks'])}"
-                            advice_extras = get_advice_context_extras(_chat_sub, _chat_major) if _chat_sub else ""
-                            news_context = ""
-                            if 'selected_news_content' in st.session_state:
-                                news = st.session_state.selected_news_content
-                                news_context = f"\n\n【読み込み済みニュース（必ず内容に触れること）】\nタイトル: {news['title']}\n本文:\n{news['content']}"
-                            hints_block = ("■ 補助金・リスクヒント: " + hints_context) if hints_context else ""
-                            advice_block = ("■ 補助金スケジュール・リース判定・耐用年数・業界拡充等:\n" + advice_extras[:800]) if advice_extras else ""
-
-                            # ── 過去の相談メモ ────────────────────────────────────
-                            memory_entries = load_consultation_memory(max_entries=15)
-                            memory_block = ""
-                            if memory_entries:
-                                parts = []
-                                for e in memory_entries:
-                                    u = (e.get("user") or "").strip()
-                                    a = (e.get("assistant") or "").strip()
-                                    if u or a:
-                                        parts.append(f"ユーザー: {u[:800]}\nAI: {a[:1200]}")
-                                if parts:
-                                    memory_block = "\n\n【過去の相談で話したこと（話せば話すほど蓄積・参照して続きで答える）】\n" + "\n---\n".join(parts[-15:]) + "\n"
-
-                            # ── ナレッジベース ────────────────────────────────────
-                            _kb_context = build_knowledge_context(
-                                query=q,
-                                industry=_chat_sub,
-                                use_faq=st.session_state.get("kb_use_faq", True),
-                                use_cases=st.session_state.get("kb_use_cases", True),
-                                use_manual=st.session_state.get("kb_use_manual", True),
-                                use_industry_guide=st.session_state.get("kb_use_industry", True),
-                                use_improvement=st.session_state.get("kb_use_improvement", False),
-                                max_tokens_approx=2000,
-                            )
+                            # ── ai_chat.py へ分離したプロンプト構築ロジックを呼び出す ──
+                            from ai_chat import get_ai_consultation_prompt
                             
-                            # ── 将来事業計画シミュレーション結果（AI連動機能） ──────────────────
-                            sim_context = ""
-                            _sim_res = _res.get("future_sim_result")
-                            if _sim_res:
-                                deficit_prob = _sim_res.get("deficit_prob", 0)
-                                final_median = _sim_res.get("final_op_median", 0)
-                                final_worst10 = _sim_res.get("final_op_worst10", 0)
-                                sim_context = (
-                                    f"\n■ 【将来事業計画シミュレーション（5年・モンテカルロ法による予測）】\n"
-                                    f"・5年後の営業赤字確率: {deficit_prob:.1%}\n"
-                                    f"・5年後の予測営業利益（中央値）: {final_median/1000:,.1f} 百万円\n"
-                                    f"・5年後の悲観シナリオ（ワースト10%、大きな要因悪化時）の営業利益: {final_worst10/1000:,.1f} 百万円\n"
-                                    f"※上記のリスクを踏まえ、回収可能性や保全策（保証人や担保の要否など）について審査官の視点で必ず言及してください。\n"
+                            with st.spinner("業種別トピックス等を取得中..."):
+                                context_prompt = get_ai_consultation_prompt(
+                                    q=q,
+                                    res=_res,
+                                    selected_sub=selected_sub,
+                                    jsic_data=jsic_data,
+                                    news_content=st.session_state.get('selected_news_content'),
+                                    kb_use_faq=st.session_state.get("kb_use_faq", True),
+                                    kb_use_cases=st.session_state.get("kb_use_cases", True),
+                                    kb_use_manual=st.session_state.get("kb_use_manual", True),
+                                    kb_use_industry=st.session_state.get("kb_use_industry", True),
+                                    kb_use_improvement=st.session_state.get("kb_use_improvement", False)
                                 )
-
-                            context_prompt = f"""あなたは経験豊富なリース審査のプロ。以下の「案件データ」「業界比較」「業種別トピックス」を**必ず毎回**使い、具体的な数字・事実を引用して答えてください。
-
-【案件データ】
-■ 財務・比較: {comparison_text}
-{hints_block}
-{advice_block}
-{news_context}
-{memory_block}
-{sim_context}
-
-{indicator_block}
-{topics_block}
-
-{_kb_context}
-
-【回答ルール（必ず守ること）】
-1. 毎回「業界平均との比較」に触れる。上回っている指標は褒め、下回っている指標だけ「なぜか・どう改善するか」を述べる（上回っているのに改善不要と言わない）。
-2. 毎回「業種別トピックス」の最新動向・ニュースに言及し、その業界特有の視点でアドバイスする。
-3. FAQ・事例集に類似ケースがあれば具体的な数値を引用して答える。
-4. ニュースが読み込まれている場合はその内容を必ず踏まえる。
-5. 過去の相談メモがある場合は流れを踏まえて「続き」として一貫した助言をする。
-6. 回答は3〜6文。簡潔だが具体的な数値・事実を1つ以上必ず含める。
-
-【相談内容】
-{q}"""
                             _engine = st.session_state.get("ai_engine", "ollama")
                             _model = get_ollama_model()
                             _api_key = (st.session_state.get("gemini_api_key") or "").strip() or GEMINI_API_KEY_ENV or _get_gemini_key_from_secrets()
@@ -5194,11 +5214,14 @@ elif mode == "📋 審査・分析":
                         # ロール決定 & プロンプト作成（同一モデルでペルソナ切り替え）
                         if not st.session_state.debate_history:
                             next_role = "Pro"
+                            from bayesian_engine import THRESHOLD_APPROVAL
+                            approval_line = THRESHOLD_APPROVAL * 100
+                            
                             prompt = f"""{PERSONA_PRO}
 
 【財務データ】（必ず引用すること）
 業種: {selected_sub}
-スコア: {score:.1f}点 (承認ライン70点)
+スコア: {score:.1f}点 (承認ライン{approval_line:.0f}点)
 財務評価: {comparison_text}
 
 【ネット検索結果・業界材料】
@@ -5554,3 +5577,216 @@ elif mode == "🏭 物件ファイナンス審査":
 
         else:
             st.info("👈 左側で条件を入力し、「審査判定を実行」ボタンを押してください。")
+
+elif mode == "⚙️ 審査ルール設定":
+    st.title("⚙️ 審査ルール設定")
+    st.info("この画面で設定したルールや閾値・ペナルティは、次回以降の「新規審査」から即座に反映されます。")
+    rules = load_business_rules()
+    
+    
+    # 既存のルールをフォーム上で編集
+    with st.form("rule_settings_form"):
+        st.subheader("基本判定ライン（閾値）")
+        st.caption("審査の総合スコアに対して、どのステータスに分類するかを設定します。")
+        col1, col2 = st.columns(2)
+        with col1:
+            curr_approval = int(rules.get("thresholds", {}).get("approval", 0.70) * 100)
+            approval = st.slider("✅ 承認ライン（点以上）", 0, 100, curr_approval, format="%d点")
+        with col2:
+            curr_review = int(rules.get("thresholds", {}).get("review", 0.40) * 100)
+            review = st.slider("⚠️ 要審議ライン（点未満は否決圏）", 0, 100, curr_review, format="%d点")
+            
+        st.subheader("減点・特別ルール設定")
+        st.caption("AIによる評価や財務状況が悪い場合のペナルティを設定します。")
+        
+        score_mod = rules.get("score_modifiers", {})
+        col3, col4 = st.columns(2)
+        with col3:
+            pen_model = st.number_input("🤖 AI否決時のペナルティ倍率", value=float(score_mod.get("learning_model_reject_penalty_multiplier", 0.5)), step=0.1)
+        with col4:
+            pen_cap = st.number_input("📉 債務超過時のペナルティ（マイナス点）", value=float(score_mod.get("capital_deficiency_penalty", -5.0)), step=1.0)
+            
+        submitted_basic_rules = st.form_submit_button("📝 基本設定を更新する (カスタムルールは下部で別途追加)", use_container_width=True)
+        if submitted_basic_rules:
+            if "thresholds" not in rules: rules["thresholds"] = {}
+            if "score_modifiers" not in rules: rules["score_modifiers"] = {}
+
+            rules["thresholds"]["approval"] = approval / 100.0
+            rules["thresholds"]["review"] = review / 100.0
+            rules["score_modifiers"]["learning_model_reject_penalty_multiplier"] = pen_model
+            rules["score_modifiers"]["capital_deficiency_penalty"] = pen_cap
+            
+            if save_business_rules(rules):
+                st.success("✅ 基本設定が正常に保存され、システムに反映されました。")
+            else:
+                st.error("❌ 設定の保存中にエラーが発生しました。")
+
+    st.divider()
+    st.divider()
+    st.subheader("🛠️ 自由追加カスタムルール（複数条件対応）")
+    st.caption("業種や各種条件式を組み合わせて、ペナルティ減点や判定の強制変更（要審議・否決等へ）を行うルール一覧を設定します。それぞれのルール中で「条件を追加」することで複数の条件（AND条件）を加えることができます。")
+
+    # --- セッションステートの初期化 ---
+    if "custom_rules_ui_data" not in st.session_state:
+        # DB(ビジネスルールJSON)からロードしてUI用に構造変換
+        loaded = rules.get("custom_rules", [])
+        ui_data = []
+        for r in loaded:
+            new_r = {
+                "industry": r.get("industry", "ALL"),
+                "action_type": r.get("action_type", "deduct_score"),
+                "action_value": str(r.get("action_value", "10")),
+                "conditions": r.get("conditions", [])
+            }
+            # 旧形式（conditionsがない場合）の互換性維持
+            if not new_r["conditions"] and r.get("condition_target"):
+                new_r["conditions"] = [{
+                    "target": r.get("condition_target"),
+                    "op": r.get("condition_op", "<"),
+                    "value": float(r.get("condition_value", 0.0))
+                }]
+            ui_data.append(new_r)
+        st.session_state["custom_rules_ui_data"] = ui_data
+
+    # UI表示用マッピング
+    TARGET_MAP = {
+        "op_profit": "営業利益", "net_assets": "純資産", "user_eq_ratio": "自己資本比率",
+        "nenshu": "売上高", "total_assets": "総資産", "bank_credit": "銀行借入", "lease_credit": "リース残高"
+    }
+    TARGET_INV_MAP = {v: k for k, v in TARGET_MAP.items()}
+    ACTION_MAP = {"deduct_score": "スコア減点", "force_status": "ステータス強制変更"}
+    ACTION_INV_MAP = {v: k for k, v in ACTION_MAP.items()}
+    IND_OPTS = ["ALL"] + (list(jsic_data.keys()) if "jsic_data" in globals() and jsic_data else ["D 建設業", "E 製造業", "G 情報通信業", "H 運送業", "I 卸売・小売業", "M 宿泊・飲食サービス業", "P 医療・福祉"])
+    ACT_VAL_OPTS = ["5", "10", "15", "20", "25", "30", "40", "50", "要審議", "否決"]
+
+    # 追加・削除のハンドラー
+    def add_new_rule():
+        st.session_state["custom_rules_ui_data"].append({
+            "industry": "ALL",
+            "action_type": "deduct_score",
+            "action_value": "10",
+            "conditions": [{"target": "op_profit", "op": "<", "value": 0.0}]
+        })
+    def delete_rule(r_idx):
+        st.session_state["custom_rules_ui_data"].pop(r_idx)
+    def add_condition(r_idx):
+        st.session_state["custom_rules_ui_data"][r_idx]["conditions"].append(
+            {"target": "op_profit", "op": "<", "value": 0.0}
+        )
+    def delete_condition(r_idx, c_idx):
+        st.session_state["custom_rules_ui_data"][r_idx]["conditions"].pop(c_idx)
+
+    # --- ルールエディタの描画 ---
+    for i, r in enumerate(st.session_state["custom_rules_ui_data"]):
+        # プレビュー文作成
+        act_preview = ACTION_MAP.get(r['action_type'], r['action_type']) + f" ({r['action_value']})"
+        cond_len = len(r['conditions'])
+        with st.expander(f"⚙️ ルール {i+1} : 業種[{r['industry']}] → {act_preview} (条件数: {cond_len})", expanded=True):
+            col1, col2, col3 = st.columns([2, 5, 3])
+            
+            with col1:
+                cur_ind = r["industry"] if r["industry"] in IND_OPTS else "ALL"
+                sel_ind = st.selectbox("①対象業種", IND_OPTS, index=IND_OPTS.index(cur_ind), key=f"r_ind_{i}")
+                st.session_state["custom_rules_ui_data"][i]["industry"] = sel_ind
+                
+            with col2:
+                cur_act = ACTION_MAP.get(r["action_type"], "スコア減点")
+                sel_act = st.selectbox("②アクション種別", list(ACTION_MAP.values()), index=list(ACTION_MAP.values()).index(cur_act), key=f"r_act_{i}")
+                st.session_state["custom_rules_ui_data"][i]["action_type"] = ACTION_INV_MAP.get(sel_act)
+                
+            with col3:
+                cur_val = r["action_value"]
+                opts = ACT_VAL_OPTS.copy()
+                if cur_val not in opts: opts.append(cur_val)
+                sel_val = st.selectbox("③アクション値 (減点数 or ステータス名)", opts, index=opts.index(cur_val), key=f"r_val_{i}")
+                st.session_state["custom_rules_ui_data"][i]["action_value"] = sel_val
+
+            st.markdown("---")
+            st.markdown("**④発動条件リスト（すべての条件を満たした場合に上記アクションを発動）**")
+            
+            for j, cond in enumerate(r["conditions"]):
+                cc1, cc2, cc3, cc4 = st.columns([4, 2, 3, 1])
+                with cc1:
+                    cur_tgt = TARGET_MAP.get(cond["target"], "営業利益")
+                    sel_tgt = st.selectbox("対象指標", list(TARGET_MAP.values()), index=list(TARGET_MAP.values()).index(cur_tgt), key=f"c_tgt_{i}_{j}", label_visibility="collapsed")
+                    st.session_state["custom_rules_ui_data"][i]["conditions"][j]["target"] = TARGET_INV_MAP.get(sel_tgt)
+                with cc2:
+                    sel_op = st.selectbox("比較", ["<", "<=", "=", ">=", ">"], index=["<", "<=", "=", ">=", ">"].index(cond.get("op", "<")), key=f"c_op_{i}_{j}", label_visibility="collapsed")
+                    st.session_state["custom_rules_ui_data"][i]["conditions"][j]["op"] = sel_op
+                with cc3:
+                    sel_val = st.number_input("閾値", value=float(cond.get("value", 0.0)), step=1.0, key=f"c_val_{i}_{j}", label_visibility="collapsed")
+                    st.session_state["custom_rules_ui_data"][i]["conditions"][j]["value"] = sel_val
+                with cc4:
+                    if st.button("🗑️ 削除", key=f"del_cond_{i}_{j}", help="この条件を削除します"):
+                        delete_condition(i, j)
+                        st.rerun()
+
+            col_btn1, col_btn2 = st.columns([1, 1])
+            with col_btn1:
+                if st.button("➕ AND条件を追加", key=f"add_cond_{i}"):
+                    add_condition(i)
+                    st.rerun()
+            with col_btn2:
+                if st.button("🗑️ このルール全体を削除", key=f"del_rule_{i}", type="secondary"):
+                    delete_rule(i)
+                    st.rerun()
+
+    if st.button("➕ 新しいルールを追加", key="add_new_rule", use_container_width=True):
+        add_new_rule()
+        st.rerun()
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("💾 上記の「カスタムルール」を保存して反映する", type="primary", use_container_width=True):
+        rules["custom_rules"] = st.session_state["custom_rules_ui_data"]
+        
+        if save_business_rules(rules):
+            
+            # 再読み込みが必要な可能性がある場合のためにセッションからクリア
+            # del st.session_state["custom_rules_ui_data"]
+            # ただ、そのまま使い続けられるので残しておく。
+            st.success("✅ カスタムルールの一覧が正常に保存され、新規の審査から適用されます。")
+        else:
+            st.error("❌ カスタムルールの保存中にエラーが発生しました。")
+
+    st.divider()
+    st.subheader("🧪 ルールの影響シミュレーション")
+    st.caption("現在保存されている社内ルール（基本設定＋カスタムルール）を過去の全案件データに適用し、判定結果が当時からどう変化するかをテストします。")
+    if st.button("▶️ 過去の全データでシミュレーションを実行する", use_container_width=True):
+        with st.spinner("過去の案件データベース(SQLite)から読み込み、全件シミュレーションを実行中..."):
+            from data_cases import load_all_cases
+            from rule_manager import simulate_rules_on_past_cases
+            
+            past_cases = load_all_cases()
+            if not past_cases:
+                st.warning("シミュレーションを実行するための過去データが見つかりません。")
+            else:
+                sim_res = simulate_rules_on_past_cases(past_cases, rules)
+                st.success(f"✅ 全 {sim_res['total']} 件のシミュレーションが完了しました！")
+                
+                # マトリクスの表示
+                matrix = sim_res["matrix"]
+                st.markdown("**■ ステータス変化マトリクス（行：過去の判定 ／ 列：新ルールでの判定）**")
+                
+                df_matrix = pd.DataFrame([
+                    {"過去の判定": "承認圏内", "➡️ 新: 承認圏内": matrix["承認圏内"]["承認圏内"], "➡️ 新: 要審議": matrix["承認圏内"]["要審議"], "➡️ 新: 否決": matrix["承認圏内"]["否決"]},
+                    {"過去の判定": "要審議", "➡️ 新: 承認圏内": matrix["要審議"]["承認圏内"], "➡️ 新: 要審議": matrix["要審議"]["要審議"], "➡️ 新: 否決": matrix["要審議"]["否決"]},
+                    {"過去の判定": "否決", "➡️ 新: 承認圏内": matrix["否決"]["承認圏内"], "➡️ 新: 要審議": matrix["否決"]["要審議"], "➡️ 新: 否決": matrix["否決"]["否決"]},
+                ])
+                st.dataframe(df_matrix, use_container_width=True, hide_index=True)
+                
+                # 変化があった案件のリストアップ
+                changes = sim_res.get("changed_cases", [])
+                st.markdown(f"**■ 判定が変化した案件の詳細 ({len(changes)}件)**")
+                if not changes:
+                    st.info("新ルールによる判定結果の変化（承認から要審議等への移動）はありませんでした。")
+                else:
+                    change_rows = []
+                    for c in changes:
+                        change_rows.append({
+                            "業種": c["industry"],
+                            "元判定": c["old_status"],
+                            "新判定": c["new_status"],
+                            "(新)スコア": round(c["new_score"], 1),
+                            "適用されたルール": " | ".join(c["reasons"]) if c["reasons"] else "基本閾値の影響"
+                        })
+                    st.dataframe(pd.DataFrame(change_rows), use_container_width=True, hide_index=True)

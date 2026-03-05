@@ -1130,5 +1130,62 @@ def build_screening_report_pdf(
         story.append(Paragraph("■ 担当者メモ", S_H2))
         story.append(Paragraph(note, S_BODY))
 
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ⑪ AIアナリストによる追加見解（業界分析・ぼやき）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    ai_advice = extra.get("ai_industry_advice")
+    ai_byoki = extra.get("ai_byoki")
+    if ai_advice or ai_byoki:
+        story.append(PageBreak())
+        story.append(Paragraph("■ AIアナリストによる追加見解", S_H2))
+        
+        if ai_advice:
+            story.append(Spacer(1, 2 * mm))
+            story.append(Paragraph("【AI業界分析アドバイス】", ps("ai_adv_head", 9, _STEEL)))
+            story.append(Spacer(1, 1 * mm))
+            for line in ai_advice.splitlines():
+                if line.strip() == "":
+                    story.append(Spacer(1, 1 * mm))
+                else:
+                    story.append(Paragraph(_md2rl(line), S_BODY))
+        
+        if ai_byoki:
+            story.append(Spacer(1, 3 * mm))
+            story.append(Paragraph("【AIのぼやき（担当ベースの率直な所見）】", ps("ai_b_head", 9, _NAVY)))
+            story.append(Spacer(1, 1 * mm))
+            for line in ai_byoki.splitlines():
+                if line.strip() == "":
+                    story.append(Spacer(1, 1 * mm))
+                else:
+                    story.append(Paragraph(_md2rl(line), S_BODY))
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ⑫ 業種別 事前生成A4レポート (あれば追加)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    industry_sub = res.get("industry_sub", "")
+    if industry_sub:
+        try:
+            import os
+            import json
+            from config import BASE_DIR
+            report_file = os.path.join(BASE_DIR, "industry_reports_a4.json")
+            if os.path.exists(report_file):
+                with open(report_file, "r", encoding="utf-8") as f:
+                    ind_reports = json.load(f)
+                if industry_sub in ind_reports:
+                    target_report = ind_reports[industry_sub].get("report_text", "")
+                    if target_report.strip():
+                        story.append(PageBreak())
+                        story.append(Paragraph(f"■ 【添付】業界動向レポート（{industry_sub}）", S_H2))
+                        story.append(Spacer(1, 3 * mm))
+                        for line in target_report.splitlines():
+                            if line.strip() == "":
+                                story.append(Spacer(1, 2 * mm))
+                            else:
+                                story.append(Paragraph(_md2rl(line), S_BODY))
+        except Exception as e:
+            # 読み込み失敗時は無視してPDF生成を続行
+            pass
+
     doc.build(story)
     return buffer.getvalue()
