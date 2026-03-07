@@ -8,6 +8,7 @@ import streamlit as st
 from ai_chat import (
     GEMINI_API_KEY_ENV,
     GEMINI_MODEL_DEFAULT,
+    _build_quick_comment_prompt,
     _chat_result_holder,
     _chat_for_thread,
     _get_gemini_key_from_secrets,
@@ -75,24 +76,40 @@ def _render_tab_chat(selected_sub: str, jsic_data: dict) -> None:
     res = st.session_state.get("last_result", {})
 
     # ── B: 審査直後のAI所見 ──────────────────────────────────────────────────
-    # Gemini: 自動生成 / Ollama: 手動ボタン（重いので自動は避ける）
-    _use_gemini = st.session_state.get("ai_engine") == "gemini"
-    if st.session_state.get("_need_auto_comment"):
+    # Geminiキーがあれば選択エンジン問わずGeminiで高速生成→保存
+    # Geminiキーなし + Ollama の場合のみ手動ボタン
+    _gemini_key = (
+        (st.session_state.get("gemini_api_key") or "").strip()
+        or GEMINI_API_KEY_ENV
+        or _get_gemini_key_from_secrets()
+    )
+    _gemini_model = st.session_state.get("gemini_model", GEMINI_MODEL_DEFAULT)
+
+    if st.session_state.get("_need_auto_comment") and res:
         st.session_state["_need_auto_comment"] = False
-        if _use_gemini and res and is_ai_available():
+        if _gemini_key:
+            # Geminiで高速生成（Ollama選択中でもGeminiキーがあれば使う）
             with st.spinner("AIが所見を作成中..."):
-                comment = get_ai_quick_comment(res)
-            st.session_state["auto_ai_comment"] = comment or ""
+                _prompt = _build_quick_comment_prompt(res)
+                _ans = _chat_for_thread(
+                    "gemini", "", [{"role": "user", "content": _prompt}],
+                    timeout_seconds=30, api_key=_gemini_key, gemini_model=_gemini_model,
+                )
+                comment = (_ans.get("message") or {}).get("content", "") or ""
+            st.session_state["auto_ai_comment"] = comment
+        elif st.session_state.get("ai_engine") == "gemini":
+            pass  # Gemini選択だがキーなし → 何もしない
+        # else: Ollama + キーなし → 下の手動ボタンで対応
 
     if st.session_state.get("auto_ai_comment"):
         st.info(f"💬 **AI所見（自動）**\n\n{st.session_state['auto_ai_comment']}")
         if st.button("所見を消す", key="clear_auto_comment", help="この所見を非表示にします"):
             st.session_state["auto_ai_comment"] = ""
             st.rerun()
-    elif res and not _use_gemini and is_ai_available():
-        # Ollama: 手動トリガーボタン
-        if st.button("🤖 AIに所見を求める", key="manual_auto_comment", use_container_width=True):
-            with st.spinner("AIが所見を作成中（Ollamaは少し時間がかかります）..."):
+    elif res and not _gemini_key and is_ai_available():
+        # Geminiキーなし・Ollama のみ: 手動ボタン
+        if st.button("🤖 AIに所見を求める（Ollama）", key="manual_auto_comment", use_container_width=True):
+            with st.spinner("AIが所見を作成中（少し時間がかかります）..."):
                 comment = get_ai_quick_comment(res)
             st.session_state["auto_ai_comment"] = comment or ""
             st.rerun()
