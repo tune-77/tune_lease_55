@@ -74,17 +74,27 @@ def _render_tab_chat(selected_sub: str, jsic_data: dict) -> None:
     """相談モード タブの描画。"""
     res = st.session_state.get("last_result", {})
 
-    # ── B: 審査直後の自動AI所見 ────────────────────────────────────────────
-    if st.session_state.get("_need_auto_comment") and res and is_ai_available():
+    # ── B: 審査直後のAI所見 ──────────────────────────────────────────────────
+    # Gemini: 自動生成 / Ollama: 手動ボタン（重いので自動は避ける）
+    _use_gemini = st.session_state.get("ai_engine") == "gemini"
+    if st.session_state.get("_need_auto_comment"):
         st.session_state["_need_auto_comment"] = False
-        with st.spinner("AIが所見を作成中..."):
-            comment = get_ai_quick_comment(res)
-        st.session_state["auto_ai_comment"] = comment or ""
+        if _use_gemini and res and is_ai_available():
+            with st.spinner("AIが所見を作成中..."):
+                comment = get_ai_quick_comment(res)
+            st.session_state["auto_ai_comment"] = comment or ""
 
     if st.session_state.get("auto_ai_comment"):
         st.info(f"💬 **AI所見（自動）**\n\n{st.session_state['auto_ai_comment']}")
         if st.button("所見を消す", key="clear_auto_comment", help="この所見を非表示にします"):
             st.session_state["auto_ai_comment"] = ""
+            st.rerun()
+    elif res and not _use_gemini and is_ai_available():
+        # Ollama: 手動トリガーボタン
+        if st.button("🤖 AIに所見を求める", key="manual_auto_comment", use_container_width=True):
+            with st.spinner("AIが所見を作成中（Ollamaは少し時間がかかります）..."):
+                comment = get_ai_quick_comment(res)
+            st.session_state["auto_ai_comment"] = comment or ""
             st.rerun()
 
     # ── A: ワンタップ質問ボタン ────────────────────────────────────────────
