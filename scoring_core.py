@@ -25,7 +25,7 @@ APPROVAL_LINE = 71  # 承認ライン（71点以上で承認圏内）
 
 def _load_benchmarks():
     """industry_benchmarks.json を読み込む。"""
-    path = os.path.join(_REPO_ROOT, "industry_benchmarks.json")
+    path = os.path.join(_SCRIPT_DIR, "industry_benchmarks.json")
     if not os.path.exists(path):
         return {}
     try:

@@ -11,8 +11,9 @@ from datetime import datetime, timedelta
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
+_DATA_DIR = os.path.join(_SCRIPT_DIR, "data")
 # 本体は触らない。サンプル専用ファイルにのみ出力する。
-SAMPLE_CASES_FILE = os.path.join(_REPO_ROOT, "past_cases_sample.jsonl")
+SAMPLE_CASES_FILE = os.path.join(_DATA_DIR, "past_cases_sample.jsonl")
 
 # 業種中分類 → 大分類の簡易マッピング
 def _sub_to_major(industry_sub):
@@ -36,7 +37,7 @@ def _sub_to_major(industry_sub):
 
 def main():
     # 業種一覧を読み込み
-    bench_path = os.path.join(_REPO_ROOT, "industry_benchmarks.json")
+    bench_path = os.path.join(_DATA_DIR, "industry_benchmarks.json")
     if not os.path.exists(bench_path):
         print("industry_benchmarks.json が見つかりません。")
         sys.exit(1)

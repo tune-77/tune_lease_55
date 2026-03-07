@@ -21,12 +21,13 @@ if _REPO_ROOT not in sys.path:
 from coeff_definitions import COEFFS
 from charts import _equity_ratio_display
 
-# ファイルパス（リポジトリルート基準）
+# ファイルパス（フォルダ内 data/ 基準）
+_DATA_DIR = os.path.join(_SCRIPT_DIR, "data")
 CASES_FILE = os.path.join(_REPO_ROOT, "past_cases.jsonl") # obsolete but kept for reference
-DB_PATH = os.path.join(_SCRIPT_DIR, "data", "lease_data.db")
-COEFF_OVERRIDES_FILE = os.path.join(_REPO_ROOT, "data", "coeff_overrides.json")
-CONSULTATION_MEMORY_FILE = os.path.join(_REPO_ROOT, "consultation_memory.jsonl")
-CASE_NEWS_FILE = os.path.join(_REPO_ROOT, "case_news.jsonl")
+DB_PATH = os.path.join(_DATA_DIR, "lease_data.db")
+COEFF_OVERRIDES_FILE = os.path.join(_DATA_DIR, "coeff_overrides.json")
+CONSULTATION_MEMORY_FILE = os.path.join(_DATA_DIR, "consultation_memory.jsonl")
+CASE_NEWS_FILE = os.path.join(_DATA_DIR, "case_news.jsonl")
 
 # スコア重みのデフォルト（借手/物件、総合/定性）。回帰最適化で上書き可能。
 DEFAULT_WEIGHT_BORROWER = 0.85

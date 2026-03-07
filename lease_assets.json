@@ -1,0 +1,15 @@
+{
+  "description": "リースとして取扱われている物件リスト。ネット情報・社内基準に基づく点数で判定に反映。",
+  "updated": "2026-02-01",
+  "items": [
+    { "id": "construction_machine", "name": "建設機械", "category": "建設", "score": 82, "note": "取扱実績多数・流動性高" },
+    { "id": "it_equipment", "name": "IT・OA機器", "category": "情報機器", "score": 88, "note": "リース取扱の代表格" },
+    { "id": "medical", "name": "医療機器", "category": "医療", "score": 75, "note": "専門性高・中古市場あり" },
+    { "id": "vehicle", "name": "車両・運搬車", "category": "運輸", "score": 78, "note": "査定しやすく流動性あり" },
+    { "id": "manufacturing", "name": "製造設備・工作機械", "category": "製造", "score": 70, "note": "業種により流動性にばらつき" },
+    { "id": "office_furniture", "name": "オフィス家具・内装", "category": "その他", "score": 65, "note": "減価が早い場合あり" },
+    { "id": "restaurant", "name": "飲食店設備", "category": "飲食", "score": 62, "note": "業態リスク要確認" },
+    { "id": "renewable", "name": "太陽光・省エネ設備", "category": "設備", "score": 72, "note": "政策・FITに依存" },
+    { "id": "other", "name": "その他・未選択", "category": "その他", "score": 50, "note": "物件スコアは中立" }
+  ]
+}

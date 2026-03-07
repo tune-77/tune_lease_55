@@ -1,0 +1,65 @@
+{
+  "description": "リース対象設備の法定耐用年数（年）。簡易一覧。詳細は国税庁の耐用年数表を参照。",
+  "nta_useful_life_url": "https://www.keisan.nta.go.jp/r5yokuaru/aoiroshinkoku/hitsuyokeihi/genkashokyakuhi/taiyonensuhyo.html",
+  "nta_url_note": "国税庁 確定申告書等作成コーナー「耐用年数表」",
+  "categories": [
+    {
+      "name": "建設・土木機械",
+      "items": [
+        {"name": "ブルドーザー", "years": 5, "note": "建設用"},
+        {"name": "ショベル・油圧ショベル", "years": 5, "note": "建設用"},
+        {"name": "クレーン", "years": 8, "note": "据置式は10年等"},
+        {"name": "測量用ドローン", "years": 3, "note": "航空機のうち無人航空機"}
+      ]
+    },
+    {
+      "name": "製造・加工機械",
+      "items": [
+        {"name": "工作機械（旋盤・フライス等）", "years": 10, "note": "金属加工用"},
+        {"name": "プレス機械", "years": 10, "note": ""},
+        {"name": "産業用ロボット", "years": 8, "note": ""},
+        {"name": "3Dプリンタ（業務用）", "years": 5, "note": ""},
+        {"name": "食品製造ライン・包装機", "years": 8, "note": ""},
+        {"name": "半導体製造装置", "years": 5, "note": ""}
+      ]
+    },
+    {
+      "name": "情報通信・オフィス",
+      "items": [
+        {"name": "サーバー・ストレージ", "years": 5, "note": ""},
+        {"name": "PC・タブレット", "years": 4, "note": ""},
+        {"name": "複合機（MFP）", "years": 5, "note": ""},
+        {"name": "POSレジ", "years": 5, "note": ""},
+        {"name": "電子カルテシステム", "years": 5, "note": "ソフトは5年"}
+      ]
+    },
+    {
+      "name": "運輸・車両",
+      "items": [
+        {"name": "トラック（貨物用）", "years": 5, "note": "小型4年等"},
+        {"name": "バス", "years": 5, "note": ""},
+        {"name": "タクシー", "years": 5, "note": ""},
+        {"name": "フォークリフト", "years": 5, "note": ""}
+      ]
+    },
+    {
+      "name": "空調・電気・設備",
+      "items": [
+        {"name": "業務用エアコン（ルームエアコン除く）", "years": 6, "note": "冷房能力による"},
+        {"name": "ルームエアコン", "years": 6, "note": ""},
+        {"name": "LED照明設備", "years": 5, "note": ""},
+        {"name": "受変電設備", "years": 15, "note": ""},
+        {"name": "コンプレッサー", "years": 8, "note": ""}
+      ]
+    },
+    {
+      "name": "宿泊・飲食・小売",
+      "items": [
+        {"name": "厨房機器（冷蔵庫・調理機器）", "years": 5, "note": ""},
+        {"name": "自動販売機", "years": 5, "note": ""},
+        {"name": "ホテルPMS・予約システム", "years": 5, "note": "ソフトウェア"},
+        {"name": "清掃ロボット", "years": 5, "note": ""}
+      ]
+    }
+  ]
+}
