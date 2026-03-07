@@ -329,12 +329,13 @@ QUALITATIVE_SCORE_RANKS = [
     {"min": 0, "label": "E", "text": "要警戒", "desc": "重点確認"},
 ]
 
-# キャッシュファイルへのパス系
-DEBATE_FILE = os.path.join(BASE_DIR, "debate_logs.jsonl") # ディベートログ
-WEB_BENCHMARKS_FILE = os.path.join(BASE_DIR, "web_industry_benchmarks.json")
-TRENDS_EXTENDED_FILE = os.path.join(BASE_DIR, "industry_trends_extended.json")
-ASSETS_BENCHMARKS_FILE = os.path.join(BASE_DIR, "industry_assets_benchmarks.json")
-SALES_BAND_FILE = os.path.join(BASE_DIR, "sales_band_benchmarks.json")
+# キャッシュファイルへのパス系（data/ サブディレクトリに移動済み）
+_DATA_DIR = os.path.join(BASE_DIR, "data")
+DEBATE_FILE = os.path.join(_DATA_DIR, "debate_logs.jsonl") # ディベートログ
+WEB_BENCHMARKS_FILE = os.path.join(_DATA_DIR, "web_industry_benchmarks.json")
+TRENDS_EXTENDED_FILE = os.path.join(_DATA_DIR, "industry_trends_extended.json")
+ASSETS_BENCHMARKS_FILE = os.path.join(_DATA_DIR, "industry_assets_benchmarks.json")
+SALES_BAND_FILE = os.path.join(_DATA_DIR, "sales_band_benchmarks.json")
 
 # 分析ダッシュボード用画像フォルダ
 DASHBOARD_IMAGES_DIR = os.path.join(BASE_DIR, "dashboard_images")

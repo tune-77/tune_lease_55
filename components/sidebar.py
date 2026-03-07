@@ -32,7 +32,7 @@ from web_services import (
 # ── 愚痴リスト ────────────────────────────────────────────────────────────────
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _BASE_DIR = os.path.dirname(_SCRIPT_DIR)  # lease_logic_sumaho12/ ディレクトリ
-BYOKI_JSON = os.path.join(_BASE_DIR, "byoki_list.json")
+BYOKI_JSON = os.path.join(_BASE_DIR, "data", "byoki_list.json")
 
 TEIREI_BYOKI_DEFAULT = [
     "こんな数字で通そうなんて、正気ですか…？ こっちは毎日1万件近く見てるんですけど。",

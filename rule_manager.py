@@ -118,17 +118,30 @@ def evaluate_custom_rules(custom_rules: list, context: dict) -> dict:
             var = cond.get("target")
             op = cond.get("op")
             val = cond.get("value")
-            
+            value_type = cond.get("value_type", "number")  # "number" or "field"
+
             if var not in context:
                 all_met = False
                 break
-                
+
             actual_value = context.get(var)
-            if not evaluate_condition(actual_value, op, val):
+
+            if value_type == "field":
+                # 比較先もコンテキストのフィールド値として解決する
+                if not isinstance(val, str) or val not in context:
+                    all_met = False
+                    break
+                compare_value = context.get(val)
+                reason_str = f"{var} {op} {val}"
+            else:
+                compare_value = val
+                reason_str = f"{var} が {val} {op}"
+
+            if not evaluate_condition(actual_value, op, compare_value):
                 all_met = False
                 break
-                
-            reasons_parts.append(f"{var} が {val} {op}")
+
+            reasons_parts.append(reason_str)
         
         if all_met:
             # 3. アクション適用

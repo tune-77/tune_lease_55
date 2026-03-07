@@ -13,6 +13,8 @@ if _SCRIPT_DIR not in sys.path:
     sys.path.insert(0, _SCRIPT_DIR)
 
 import streamlit as st
+# set_page_config は必ず最初の st 呼び出しにする必要がある
+st.set_page_config(page_title="温水式リース審査AI", page_icon="🏢", layout="wide")
 try:
     from streamlit_extras.metric_cards import style_metric_cards
 except ImportError:
@@ -20,6 +22,7 @@ except ImportError:
 import math
 import json
 import random
+import html
 import re
 import ollama
 import pandas as pd
@@ -185,15 +188,15 @@ def red_label(placeholder, text):
     # display: block にして、一つ一つのスライダーセットの範囲を明確にします
     placeholder.markdown(f'''
         <div style="
-            text-align: right; 
-            color: #FF0000; 
-            font-size: 20px; 
+            text-align: right;
+            color: #FF0000;
+            font-size: 20px;
             font-weight: bold;
             margin-bottom: -40px;
             padding-right: 5px;
             line-height: 1;
         ">
-            {text}
+            {html.escape(str(text))}
         </div>
     ''', unsafe_allow_html=True)
 
@@ -593,9 +596,6 @@ st.markdown("""
 </style>
     """, unsafe_allow_html=True)
 	
-# 🎨 画面のデザイン設定
-st.set_page_config(page_title="温水式リース審査AI", page_icon="🏢", layout="wide")
-
 # ── 認証チェック（ここより先はログイン済みのみ表示）──────────────────────
 from auth_logic import authenticate_user as _auth_check
 if not _auth_check():
@@ -618,12 +618,16 @@ else:
     sns.set_theme(style="whitegrid", font="sans-serif")
 
 # データのロード（キャッシュ化）
+_STATIC_DATA_DIR = os.path.join(BASE_DIR, "static_data")
+
 @st.cache_data(ttl=3600)
 def load_json_data(filename):
-    path = os.path.join(BASE_DIR, filename)
-    if os.path.exists(path):
-        with open(path, "r") as f:
-            return json.load(f)
+    # static_data/ を優先し、なければ BASE_DIR を確認（後方互換）
+    for base in [_STATIC_DATA_DIR, BASE_DIR]:
+        path = os.path.join(base, filename)
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                return json.load(f)
     return {}
 
 # 各種データのロード
@@ -753,12 +757,13 @@ REQUIRED_FIELDS = [
 # 推奨項目: 営業利益・純資産（未入力だと学習モデル・自己資本比率が使えない場合あり）。フォームで明示のみ。
 
 # 過去案件・係数・相談メモ・ニュースのパスは data_cases で定義（CASES_FILE, COEFF_OVERRIDES_FILE 等を import 済み）
-DEBATE_FILE = os.path.join(BASE_DIR, "debate_logs.jsonl") # ディベートログ
+_DATA_DIR = os.path.join(BASE_DIR, "data")
+DEBATE_FILE = os.path.join(_DATA_DIR, "debate_logs.jsonl") # ディベートログ
 # ネットで取得した業界目安を中分類ごとに保存（年1回・4月1日を境に更新）
-WEB_BENCHMARKS_FILE = os.path.join(BASE_DIR, "web_industry_benchmarks.json")
-TRENDS_EXTENDED_FILE = os.path.join(BASE_DIR, "industry_trends_extended.json")
-ASSETS_BENCHMARKS_FILE = os.path.join(BASE_DIR, "industry_assets_benchmarks.json")
-SALES_BAND_FILE = os.path.join(BASE_DIR, "sales_band_benchmarks.json")
+WEB_BENCHMARKS_FILE = os.path.join(_DATA_DIR, "web_industry_benchmarks.json")
+TRENDS_EXTENDED_FILE = os.path.join(_DATA_DIR, "industry_trends_extended.json")
+ASSETS_BENCHMARKS_FILE = os.path.join(_DATA_DIR, "industry_assets_benchmarks.json")
+SALES_BAND_FILE = os.path.join(_DATA_DIR, "sales_band_benchmarks.json")
 # 分析ダッシュボード用画像（承認レベル・業種・物件に沿って選択）
 DASHBOARD_IMAGES_DIR = os.path.join(BASE_DIR, "dashboard_images")
 DASHBOARD_IMAGES_ASSETS = os.environ.get("DASHBOARD_IMAGES_ASSETS", "").strip()
@@ -788,7 +793,8 @@ def get_dashboard_image_path(hantei: str, industry_major: str, industry_sub: str
 
     def pick_fname(base_dir):
         """フォルダに応じたファイル名を返す（assets 用長い名前 / dashboard_images 用短い名前）"""
-        use_long_names = "cursor" in base_dir or "assets" in base_dir
+        # 環境変数で指定された assets フォルダ（長いファイル名）か判定
+        use_long_names = bool(DASHBOARD_IMAGES_ASSETS) and base_dir == DASHBOARD_IMAGES_ASSETS.rstrip(os.sep)
         if use_long_names:
             if "建設" in (industry_major or "") or "D " in (industry_major or ""):
                 f = "IMG_1754-cc58ef0c-3f27-4ebd-b33b-81b57f1fb833.png"
@@ -846,65 +852,12 @@ def _fragment_nenshu():
     """売上高入力。スライダーは100万千円まで、手入力は900億千円まで。後から動かした方を採用。
     on_change を使わないため st.form 内でも動作する。"""
     st.markdown("### 売上高")
-    NENSHU_SLIDER_MAX = 1_000_000
-    NENSHU_NUM_MAX = 90_000_000
-
-    if "nenshu" not in st.session_state:
-        st.session_state.nenshu = 10000
-    cur = st.session_state.nenshu
-
-    prev_key = "_san_prev_nenshuu"
-    prev_num_key = "_san_prev_num_nenshuu"
-    prev_slide_key = "_san_prev_slide_nenshuu"
-    externally_changed = st.session_state.get(prev_key) != cur
-
-    if "num_nenshuu" not in st.session_state or externally_changed:
-        st.session_state["num_nenshuu"] = max(0, min(cur, NENSHU_NUM_MAX))
-    if "slide_nenshuu" not in st.session_state or externally_changed:
-        st.session_state["slide_nenshuu"] = max(0, min(cur, NENSHU_SLIDER_MAX))
-
-    c_l, c_r = st.columns([0.7, 0.3])
-    with c_r:
-        st.number_input(
-            "直接入力",
-            min_value=0,
-            max_value=NENSHU_NUM_MAX,
-            step=10000,
-            key="num_nenshuu",
-            label_visibility="collapsed",
-        )
-    with c_l:
-        st.slider(
-            "売上高調整",
-            min_value=0,
-            max_value=NENSHU_SLIDER_MAX,
-            step=100,
-            key="slide_nenshuu",
-            label_visibility="collapsed",
-            format="%d",
-        )
-
-    new_num = st.session_state["num_nenshuu"]
-    new_slide = st.session_state["slide_nenshuu"]
-    prev_num = st.session_state.get(prev_num_key, new_num)
-    prev_slide = st.session_state.get(prev_slide_key, new_slide)
-
-    num_changed = new_num != prev_num
-    slide_changed = new_slide != prev_slide
-    if num_changed and not slide_changed:
-        nenshu = new_num
-    elif slide_changed and not num_changed:
-        nenshu = new_slide
-    elif num_changed and slide_changed:
-        nenshu = new_num
-    else:
-        nenshu = cur
-
-    st.session_state.nenshu = nenshu
-    st.session_state[prev_key] = nenshu
-    st.session_state[prev_num_key] = new_num
-    st.session_state[prev_slide_key] = new_slide
-    st.caption(f"**採用値: {nenshu:,} 千円**")
+    _slider_and_number(
+        "nenshu", "nenshuu", 10000, 0, 1_000_000,
+        step_slider=100, step_num=10000,
+        unit="千円", label_slider="売上高調整",
+        max_val_number=90_000_000,
+    )
     st.caption("※スライダー・直接入力のどちらかで変更後、**入力確定**または**判定開始**で反映されます。")
     st.divider()
 
@@ -919,8 +872,9 @@ def get_image(status):
     }
     filename = image_map.get(status)
     if not filename: return None
-    if os.path.exists(filename): return filename
-    desktop_path = os.path.join("/Users/kobayashiisaoryou/Desktop/", filename)
+    base_path = os.path.join(BASE_DIR, filename)
+    if os.path.exists(base_path): return base_path
+    desktop_path = os.path.join(os.path.expanduser("~/Desktop/"), filename)
     if os.path.exists(desktop_path): return desktop_path
     return None
 
@@ -1435,7 +1389,7 @@ elif mode == "⚙️ 審査ルール設定":
         st.session_state["custom_rules_ui_data"].pop(r_idx)
     def add_condition(r_idx):
         st.session_state["custom_rules_ui_data"][r_idx]["conditions"].append(
-            {"target": "op_profit", "op": "<", "value": 0.0}
+            {"target": "op_profit", "op": "<", "value_type": "number", "value": 0.0}
         )
     def delete_condition(r_idx, c_idx):
         st.session_state["custom_rules_ui_data"][r_idx]["conditions"].pop(c_idx)
@@ -1485,10 +1439,10 @@ elif mode == "⚙️ 審査ルール設定":
             # ── 条件リスト ────────────────────────────────────────────
             st.markdown("---")
             st.markdown("**④ 発動条件リスト（すべて AND 一致したとき上記アクションを発動）**")
-            st.caption("指標 ／ 比較演算子 ／ 閾値　の順で設定。複数行はすべて同時に満たした場合のみ適用。")
+            st.caption("指標 ／ 比較演算子 ／ 値種別（数値 or 項目）／ 閾値または比較先項目　の順で設定。")
 
             for j, cond in enumerate(r["conditions"]):
-                cc1, cc2, cc3, cc4 = st.columns([4, 2, 3, 1])
+                cc1, cc2, cc3, cc4, cc5 = st.columns([3, 1.5, 1.5, 3, 1])
                 with cc1:
                     cur_tgt = TARGET_MAP.get(cond.get("target", "op_profit"), "営業利益")
                     if cur_tgt not in TARGET_MAP.values():
@@ -1508,12 +1462,38 @@ elif mode == "⚙️ 審査ルール設定":
                                           key=f"c_op_{i}_{j}", label_visibility="collapsed")
                     st.session_state["custom_rules_ui_data"][i]["conditions"][j]["op"] = sel_op
                 with cc3:
-                    sel_num = st.number_input(
-                        "閾値", value=float(cond.get("value", 0.0)), step=1.0,
-                        key=f"c_val_{i}_{j}", label_visibility="collapsed"
+                    cur_vtype = cond.get("value_type", "number")
+                    if cur_vtype not in ("number", "field"):
+                        cur_vtype = "number"
+                    sel_vtype = st.selectbox(
+                        "値種別", ["数値", "項目"],
+                        index=0 if cur_vtype == "number" else 1,
+                        key=f"c_vtype_{i}_{j}", label_visibility="collapsed"
                     )
-                    st.session_state["custom_rules_ui_data"][i]["conditions"][j]["value"] = sel_num
+                    vtype = "number" if sel_vtype == "数値" else "field"
+                    st.session_state["custom_rules_ui_data"][i]["conditions"][j]["value_type"] = vtype
                 with cc4:
+                    if vtype == "number":
+                        cur_num = cond.get("value", 0.0)
+                        if not isinstance(cur_num, (int, float)):
+                            cur_num = 0.0
+                        sel_num = st.number_input(
+                            "閾値", value=float(cur_num), step=1.0,
+                            key=f"c_val_num_{i}_{j}", label_visibility="collapsed"
+                        )
+                        st.session_state["custom_rules_ui_data"][i]["conditions"][j]["value"] = sel_num
+                    else:
+                        cur_field = cond.get("value", "op_profit")
+                        if not isinstance(cur_field, str) or cur_field not in TARGET_MAP:
+                            cur_field = "op_profit"
+                        cur_field_label = TARGET_MAP.get(cur_field, "営業利益")
+                        sel_field = st.selectbox(
+                            "比較先項目", list(TARGET_MAP.values()),
+                            index=list(TARGET_MAP.values()).index(cur_field_label),
+                            key=f"c_val_field_{i}_{j}", label_visibility="collapsed"
+                        )
+                        st.session_state["custom_rules_ui_data"][i]["conditions"][j]["value"] = TARGET_INV_MAP.get(sel_field)
+                with cc5:
                     if st.button("🗑️", key=f"del_cond_{i}_{j}", help="この条件を削除"):
                         delete_condition(i, j)
                         st.rerun()

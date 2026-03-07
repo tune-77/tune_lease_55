@@ -8,8 +8,10 @@ import os
 
 # このパッケージのディレクトリ
 _PKG_DIR = os.path.dirname(os.path.abspath(__file__))
-# データファイルはリポジトリルートに置く（sumaho8/9 と共通）
-BASE_DIR = os.path.dirname(_PKG_DIR)
+# サブパッケージ (lease_logic_sumaho12/) として動かす場合は親を BASE_DIR とし、
+# フラット展開（worktree 等）では _PKG_DIR 自身を使う
+BASE_DIR = os.path.dirname(_PKG_DIR) if os.path.basename(_PKG_DIR) == "lease_logic_sumaho12" else _PKG_DIR
+_DATA_DIR = os.path.join(BASE_DIR, "data")
 
 # 学習モデル（スコアリング）のパス。未設定なら scoring/models/industry_specific を参照
 SCORING_MODELS_DIR = os.environ.get("LEASE_SCORING_MODELS_DIR", os.path.join(_PKG_DIR, "scoring", "models", "industry_specific"))
@@ -22,16 +24,16 @@ GEMINI_MODEL_DEFAULT = "gemini-2.0-flash"
 # ファイルパス
 CASES_FILE = os.path.join(BASE_DIR, "past_cases.jsonl")
 COEFF_OVERRIDES_FILE = os.path.join(BASE_DIR, "data", "coeff_overrides.json")
-DEBATE_FILE = os.path.join(BASE_DIR, "debate_logs.jsonl")
-CONSULTATION_MEMORY_FILE = os.path.join(BASE_DIR, "consultation_memory.jsonl")
-CASE_NEWS_FILE = os.path.join(BASE_DIR, "case_news.jsonl")
-WEB_BENCHMARKS_FILE = os.path.join(BASE_DIR, "web_industry_benchmarks.json")
-TRENDS_EXTENDED_FILE = os.path.join(BASE_DIR, "industry_trends_extended.json")
-ASSETS_BENCHMARKS_FILE = os.path.join(BASE_DIR, "industry_assets_benchmarks.json")
-SALES_BAND_FILE = os.path.join(BASE_DIR, "sales_band_benchmarks.json")
+DEBATE_FILE = os.path.join(_DATA_DIR, "debate_logs.jsonl")
+CONSULTATION_MEMORY_FILE = os.path.join(_DATA_DIR, "consultation_memory.jsonl")
+CASE_NEWS_FILE = os.path.join(_DATA_DIR, "case_news.jsonl")
+WEB_BENCHMARKS_FILE = os.path.join(_DATA_DIR, "web_industry_benchmarks.json")
+TRENDS_EXTENDED_FILE = os.path.join(_DATA_DIR, "industry_trends_extended.json")
+ASSETS_BENCHMARKS_FILE = os.path.join(_DATA_DIR, "industry_assets_benchmarks.json")
+SALES_BAND_FILE = os.path.join(_DATA_DIR, "sales_band_benchmarks.json")
 DASHBOARD_IMAGES_DIR = os.path.join(BASE_DIR, "dashboard_images")
 DASHBOARD_IMAGES_ASSETS = os.environ.get("DASHBOARD_IMAGES_ASSETS", "").strip()
-BYOKI_JSON = os.path.join(BASE_DIR, "byoki_list.json")
+BYOKI_JSON = os.path.join(_DATA_DIR, "byoki_list.json")
 
 # グラフスタイル
 CHART_STYLE = {
