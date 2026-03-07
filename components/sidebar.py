@@ -105,15 +105,15 @@ def _render_humor_style() -> None:
 
 
 def _render_ai_model_settings() -> None:
-    """🤖 AIモデル設定（Ollama / Gemini 選択・APIキー・接続テスト）"""
+    """🤖 AIモデル設定（Gemini / Ollama 選択・APIキー・接続テスト）"""
     if "ai_engine" not in st.session_state:
-        st.session_state["ai_engine"] = "ollama"
+        st.session_state["ai_engine"] = "gemini"  # デフォルトはGemini
     st.sidebar.markdown("### 🤖 AIモデル設定")
     engine_choice = st.sidebar.radio(
         "AIエンジン",
-        ["Ollama（ローカル）", "Gemini API（Google）"],
-        index=0 if st.session_state.get("ai_engine") == "ollama" else 1,
-        help="Gemini を選ぶと Google の Gemini 2.0 等が使えます。APIキーが必要です。",
+        ["Gemini API（Google）", "Ollama（ローカル）"],
+        index=0 if st.session_state.get("ai_engine") == "gemini" else 1,
+        help="Gemini 2.0 Flash は無料枠で月50件なら実質0円。APIキーはGoogle AI Studioで取得できます。",
     )
     st.session_state["ai_engine"] = "gemini" if "Gemini" in engine_choice else "ollama"
 
@@ -147,7 +147,10 @@ def _render_ai_model_settings() -> None:
             index=0,
             help="gemini-2.0-flash がおすすめです。",
         )
-        st.sidebar.caption("⚠️ 無料枠は1日あたりのリクエスト数に上限があります。動かない場合は翌日までお待ちか、Google AI Studio で利用状況を確認してください。")
+        if not st.session_state.get("gemini_api_key", "").strip():
+            st.sidebar.warning("⚠️ APIキー未設定。[Google AI Studio](https://aistudio.google.com/app/apikey) で無料取得 → 上欄に貼り付けてください。")
+        else:
+            st.sidebar.caption("✅ Gemini 2.0 Flash：月50件審査なら無料枠で収まります。")
     else:
         MODEL_OPTIONS = [
             "自動（デフォルト設定）",
