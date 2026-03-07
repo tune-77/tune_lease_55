@@ -751,6 +751,146 @@ def build_screening_report_pdf(
             story.append(Spacer(1, 1.5 * mm))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ⑨ 軍師モード（承認奪取）推薦セクション
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    _gunshi = extra.get("gunshi") or {}
+    def _safe(t):
+        return (t or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    if _gunshi:
+        _gu_prob    = float(_gunshi.get("display_prob", 0))
+        _gu_post    = float(_gunshi.get("posterior", 0))
+        _gu_prior   = float(_gunshi.get("prior", 0))
+        _gu_phrases = _gunshi.get("top_phrases") or []
+        _gu_offers  = _gunshi.get("offers") or []
+        _gu_llm     = (_gunshi.get("llm_text") or "").strip()
+        _gu_resale  = _gunshi.get("resale", "中")
+        _gu_repeat  = int(_gunshi.get("repeat_cnt", 0))
+        _gu_sr      = float(_gunshi.get("success_ratio", 0))
+        _gu_wins    = int(_gunshi.get("similar_wins", 0))
+        _gu_cat     = _gunshi.get("industry_cat", "")
+        _gu_subsidy = bool(_gunshi.get("subsidy", False))
+        _gu_bank    = bool(_gunshi.get("bank", False))
+        _gu_vehicle = _gunshi.get("vehicle_type", "")
+        _gu_vboost  = float(_gunshi.get("vehicle_boost", 0.0))
+
+        _gu_pct = int(_gu_prob * 100)
+        _gu_col = _ACCENT if _gu_pct >= 70 else (_WARN if _gu_pct >= 50 else _DANGER)
+        _gu_lbl = "承認圏内" if _gu_pct >= 70 else ("要審議" if _gu_pct >= 50 else "再考必要")
+
+        story.append(HRFlowable(width="100%", thickness=0.8, color=_C(*_ACCENT)))
+        story.append(Spacer(1, 2 * mm))
+        story.append(Paragraph("■ ⚔️ 軍師モード — 承認奪取推薦", S_H2))
+
+        # KPIバー（承認確率）
+        _gu_kpi_rows = [
+            [Paragraph("ベイズ推定 承認確率", S_SMALL),
+             Paragraph("判定",               S_SMALL),
+             Paragraph("リセール",           S_SMALL),
+             Paragraph("リピート回数",        S_SMALL),
+             Paragraph("類似成約実績",        S_SMALL)],
+            [Paragraph(f"<b>{_gu_pct}%</b>",
+                       ps("guv1", 14, _gu_col, "CENTER")),
+             Paragraph(f"<b>{_gu_lbl}</b>",
+                       ps("guv2", 11, _gu_col, "CENTER")),
+             Paragraph(_gu_resale,
+                       ps("guv3", 10, _BLACK,  "CENTER")),
+             Paragraph(f"{_gu_repeat}回",
+                       ps("guv4", 10, _BLACK,  "CENTER")),
+             Paragraph(f"{_gu_wins}件 ({_gu_sr*100:.0f}%)",
+                       ps("guv5", 10, _BLACK,  "CENTER"))],
+        ]
+        _gu_kpi_tbl = Table(_gu_kpi_rows,
+                            colWidths=[40*mm, 28*mm, 26*mm, 30*mm, 53*mm])
+        _gu_kpi_tbl.setStyle(TableStyle([
+            ("FONTNAME",      (0, 0), (-1, -1), _JP),
+            ("BACKGROUND",    (0, 0), (-1,  0), _C(*_LIGHT)),
+            ("TEXTCOLOR",     (0, 0), (-1,  0), _C(*_GRAY)),
+            ("GRID",          (0, 0), (-1, -1), 0.4, colors.lightgrey),
+            ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 1.5 * mm),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5 * mm),
+        ]))
+        story.append(_gu_kpi_tbl)
+        story.append(Spacer(1, 2 * mm))
+
+        # 事前→事後確率の推移
+        _gu_vehicle_label = (
+            f" / 車種ブースト[{_safe(_gu_vehicle)}]: +{int(_gu_vboost*100)}%"
+            if _gu_vehicle and _gu_vboost > 0 else ""
+        )
+        story.append(Paragraph(
+            f"事前確率: {_gu_prior*100:.1f}%　→　証拠統合後: {_gu_post*100:.1f}%　"
+            f"→　フレーズ込み: {_gu_pct}%"
+            f"{_gu_vehicle_label}　"
+            f"（補助金: {'あり' if _gu_subsidy else 'なし'} / "
+            f"メイン銀行支援: {'あり' if _gu_bank else 'なし'}）",
+            S_BODY,
+        ))
+        story.append(Spacer(1, 2 * mm))
+
+        # 最強フレーズ3選
+        if _gu_phrases:
+            story.append(Paragraph("◆ 最強フレーズ 3選（業種別・ベイズ選出）",
+                                    ps("gup_hdr", 9, _STEEL, sb=1*mm)))
+            story.append(Spacer(1, 1 * mm))
+            _ph_data = [["#", "カテゴリ", "推薦フレーズ", "確率寄与"]]
+            for _pi, _ph in enumerate(_gu_phrases, 1):
+                _ph_data.append([
+                    Paragraph(f"<b>{_pi}</b>", ps(f"phi{_pi}", 8, _GREEN, "CENTER")),
+                    Paragraph(_ph.get("category", ""), ps(f"phc{_pi}", 7, _GRAY)),
+                    Paragraph(_safe(_ph.get("text", "")), ps(f"pht{_pi}", 7.5, _BLACK, leading=10)),
+                    Paragraph(f'+{int(_ph.get("prob_boost",0)*100)}%',
+                               ps(f"phb{_pi}", 8, _GREEN, "RIGHT")),
+                ])
+            _ph_tbl = Table(_ph_data, colWidths=[8*mm, 22*mm, 130*mm, 17*mm])
+            _ph_style = make_tbl_style(_C(*_GREEN), _ph_data)
+            for _pi2 in range(1, len(_gu_phrases) + 1):
+                _ph_style.append(("BACKGROUND", (0, _pi2), (-1, _pi2),
+                                   colors.HexColor("#f0fdf4")))
+            _ph_tbl.setStyle(TableStyle(_ph_style))
+            story.append(_ph_tbl)
+            story.append(Spacer(1, 2 * mm))
+
+        # カウンターオファー（あれば）
+        if _gu_offers:
+            story.append(Paragraph("◆ 逆転の条件（カウンターオファー）",
+                                    ps("guoff_hdr", 9, _DANGER, sb=1*mm)))
+            story.append(Spacer(1, 1 * mm))
+            _of_data = [["条件", "確率上昇幅", "内容"]]
+            for _oi, _of in enumerate(_gu_offers):
+                _of_data.append([
+                    Paragraph(_safe(_of.get("title", "")), ps(f"ofttl{_oi}", 8, _DANGER)),
+                    Paragraph(f'+{int(_of.get("prob_gain",0)*100)}%pt',
+                               ps(f"ofgn{_oi}", 8, _WARN, "CENTER")),
+                    Paragraph(_safe(_of.get("detail", "")), ps(f"ofdt{_oi}", 7, _BLACK, leading=10)),
+                ])
+            _of_tbl = Table(_of_data, colWidths=[38*mm, 20*mm, 119*mm])
+            _of_style = make_tbl_style(_C(*_WARN), _of_data)
+            for _oi2 in range(1, len(_gu_offers) + 1):
+                _of_style.append(("BACKGROUND", (0, _oi2), (-1, _oi2),
+                                   colors.HexColor("#fff7ed")))
+            _of_tbl.setStyle(TableStyle(_of_style))
+            story.append(_of_tbl)
+            story.append(Spacer(1, 2 * mm))
+
+        # LLM推薦文（生成済みの場合のみ）
+        if _gu_llm:
+            story.append(Paragraph("◆ 軍師の推薦文（LLM生成）",
+                                    ps("gullm_hdr", 9, _STEEL, sb=1*mm)))
+            story.append(Spacer(1, 1 * mm))
+            S_LLM = ps("gullm_body", 7.5, _BLACK, leading=11)
+            for _line in _gu_llm.splitlines():
+                if _line.strip():
+                    story.append(Paragraph(_safe(_line), S_LLM))
+                else:
+                    story.append(Spacer(1, 1 * mm))
+            story.append(Spacer(1, 1 * mm))
+
+        story.append(HRFlowable(width="100%", thickness=0.4, color=_C(*_LIGHT)))
+        story.append(Spacer(1, 1 * mm))
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # ② 財務指標グラフ（ダッシュボード）
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     story.append(Paragraph("■ 財務指標グラフ", S_H2))

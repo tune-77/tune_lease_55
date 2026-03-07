@@ -1,7 +1,7 @@
 {
     "thresholds": {
-        "approval": 0.70,
-        "review": 0.40
+        "approval": 0.7,
+        "review": 0.4
     },
     "score_modifiers": {
         "learning_model_reject_penalty_multiplier": 0.5,
@@ -14,5 +14,20 @@
         "construction": {
             "require_review_if_deficit": true
         }
-    }
+    },
+    "custom_rules": [
+        {
+            "name": "債務超過は要審議",
+            "industry": "ALL",
+            "action_type": "force_status",
+            "action_value": "要審議",
+            "conditions": [
+                {
+                    "target": "net_assets",
+                    "op": "<",
+                    "value": 0.0
+                }
+            ]
+        }
+    ]
 }
