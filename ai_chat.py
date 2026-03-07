@@ -781,3 +781,92 @@ def get_ai_3d_comment(current_data: dict, past_cases: list) -> Optional[str]:
         return None
     except Exception:
         return None
+
+
+def get_ai_consultation_prompt(
+    q: str,
+    res: dict,
+    selected_sub: str,
+    jsic_data: dict,
+    news_content=None,
+    kb_use_faq: bool = True,
+    kb_use_cases: bool = True,
+    kb_use_manual: bool = True,
+    kb_use_industry: bool = True,
+    kb_use_improvement: bool = False,
+) -> str:
+    """
+    AI相談チャット用のコンテキスト付きプロンプトを構築して返す。
+    業種情報・審査結果・ナレッジベース・過去相談メモを付加する。
+    """
+    from web_services import get_advice_context_extras
+    from knowledge import build_knowledge_context
+    from data_cases import load_consultation_memory
+
+    res = res or {}
+    score = res.get("score")
+    comparison = res.get("comparison", "")
+    selected_major = res.get("industry_major", "")
+
+    # 業界情報（Web検索キャッシュ）
+    advice_extras = get_advice_context_extras(selected_sub, selected_major) or ""
+    advice_block = f"【業界情報・補助金・リース情報】\n{advice_extras[:1000]}" if advice_extras else ""
+
+    # JSIC 業種トレンド
+    trend_block = ""
+    if jsic_data and selected_major and selected_major in jsic_data:
+        trend = jsic_data[selected_major]["sub"].get(selected_sub, "")
+        if trend:
+            trend_block = f"【業種トレンド】\n{str(trend)[:500]}"
+
+    # ニュース
+    news_block = ""
+    if news_content:
+        title = news_content.get("title", "")
+        body = news_content.get("content", "")[:600]
+        news_block = f"【参考ニュース: {title}】\n{body}"
+
+    # ナレッジベース（マニュアル・FAQ・事例集）
+    kb_block = ""
+    if any([kb_use_faq, kb_use_cases, kb_use_manual, kb_use_industry, kb_use_improvement]):
+        kb_text = build_knowledge_context(
+            query=q,
+            industry=selected_sub,
+            use_faq=kb_use_faq,
+            use_cases=kb_use_cases,
+            use_manual=kb_use_manual,
+            use_industry_guide=kb_use_industry,
+            use_improvement=kb_use_improvement,
+            max_tokens_approx=1500,
+        )
+        if kb_text:
+            kb_block = f"【審査マニュアル・FAQ・事例集（参考）】\n{kb_text}"
+
+    # 過去の相談メモ（蓄積コンテキスト）
+    memory_block = ""
+    try:
+        memos = load_consultation_memory()
+        if memos:
+            recent = memos[-5:]
+            lines = [f"Q: {m.get('q', '')[:80]} / A: {m.get('a', '')[:120]}" for m in recent]
+            memory_block = "【過去の相談メモ（参考）】\n" + "\n".join(lines)
+    except Exception:
+        pass
+
+    # 審査結果サマリー
+    result_block = ""
+    if score is not None:
+        result_block = f"【審査スコア】{score:.1f}点\n【財務評価】{comparison}"
+
+    # プロンプト組み立て
+    parts = [
+        "あなたはリース審査のAI審査オフィサーです。以下の情報を参照して、審査担当者の質問に答えてください。",
+        result_block,
+        trend_block,
+        advice_block,
+        news_block,
+        kb_block,
+        memory_block,
+        f"【質問】\n{q}",
+    ]
+    return "\n\n".join(p for p in parts if p)
