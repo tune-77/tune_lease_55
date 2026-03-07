@@ -222,7 +222,7 @@ def _render_tab_chat(selected_sub: str, jsic_data: dict) -> None:
         value=st.session_state.get("consultation_input", ""),
         key="consultation_input",
         height=100,
-        placeholder="相談する内容を入力...（下の🎤で音声入力もできます）",
+        placeholder="相談する内容を入力...（⚠️ 社名・個人名は入力しないでください / 🎤 下のボタンで音声入力も可）",
         label_visibility="collapsed",
     )
     voice_html = """
