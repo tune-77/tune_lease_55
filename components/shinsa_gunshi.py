@@ -463,6 +463,7 @@ def select_top_phrases(
     posterior: float,
     asset_name: str = "",
     n: int = 3,
+    bn_evidence: dict | None = None,
 ) -> list[dict]:
     """状況に合致する上位 n フレーズを返す。"""
     vehicle_boost_val, _ = _vehicle_boost_from_asset_name(asset_name)
@@ -591,6 +592,24 @@ def select_top_phrases(
         # ── 業種×車両フレーズを最優先（車両検出 + 非運送業の場合に強力にブースト）──
         if is_vehicle and industry_cat != "運送業" and "業種×車両" in (p.get("category") or ""):
             s += 0.20  # 業種固有の車両フレーズを必ずTOPに持ってくる
+        # ── BN逆転シミュレータで選択した条件に対応するフレーズを優先 ──
+        if bn_evidence:
+            _BN_TAG_BONUS: list[tuple[str, list[str], float]] = [
+                ("Asset_Liquidity",    ["中古", "リセール", "担保", "LGD", "残価", "流動"],  0.06),
+                ("Shorter_Lease_Term", ["期間短縮", "前受", "セット"],                        0.06),
+                ("Core_Business_Use",  ["本業直結", "支払優先"],                              0.06),
+                ("Co_Lease",           ["協調", "銀行協調"],                                  0.05),
+                ("Parent_Guarantor",   ["親会社", "保証"],                                    0.05),
+                ("Related_Assets",     ["個人資産", "保全完結"],                              0.04),
+                ("Main_Bank_Support",  ["メイン", "メイン銀行", "支援"],                      0.04),
+                ("Related_Bank_Status",["信用力", "実績", "銀行取引"],                        0.03),
+                ("One_Time_Deal",      ["本件限り", "条件付"],                                0.03),
+                ("Insolvent_Status",   ["逆転", "突破", "DSCR", "保証"],                      0.04),
+            ]
+            for ev_key, bonus_tags, bonus_val in _BN_TAG_BONUS:
+                if bn_evidence.get(ev_key) == 1:
+                    if any(bt in tag_str for bt in bonus_tags):
+                        s += bonus_val
         return s
 
     ranked = sorted(candidates, key=score_phrase, reverse=True)
@@ -1485,7 +1504,7 @@ def _bank_from_res(res: dict, submitted_inputs: dict | None) -> bool:
     return False
 
 
-def compute_gunshi_from_res(res: dict, submitted_inputs: dict | None = None) -> dict:
+def compute_gunshi_from_res(res: dict, submitted_inputs: dict | None = None, bn_evidence: dict | None = None) -> dict:
     """
     審査結果 res（st.session_state["last_result"]）から軍師モードの入力を自動抽出し、
     ベイズ推論・フレーズ選択・カウンターオファーを実行して結果 dict を返す。
@@ -1562,7 +1581,7 @@ def compute_gunshi_from_res(res: dict, submitted_inputs: dict | None = None) -> 
     # 車種別追加ブーストを事後確率に上乗せ
     posterior = min(0.99, posterior + vehicle_boost)
 
-    # フレーズ選択（asset_name を渡して商用車フレーズを優先）
+    # フレーズ選択（asset_name を渡して商用車フレーズを優先、BN条件があれば連携）
     top_phrases = select_top_phrases(
         industry_cat=industry_cat,
         score=score,
@@ -1574,6 +1593,7 @@ def compute_gunshi_from_res(res: dict, submitted_inputs: dict | None = None) -> 
         posterior=posterior,
         asset_name=asset_name,
         n=3,
+        bn_evidence=bn_evidence,
     )
 
     phrase_boost_total = sum(p["prob_boost"] for p in top_phrases)
@@ -1654,6 +1674,7 @@ def render_gunshi_in_results(
     res: dict,
     submitted_inputs: dict | None = None,
     model_name: str = DEFAULT_MODEL,
+    bn_evidence: dict | None = None,
 ) -> dict | None:
     """
     分析結果画面内に軍師セクションを表示する（サイドバー入力不要版）。
@@ -1664,12 +1685,15 @@ def render_gunshi_in_results(
 
     # ── 計算（キャッシュ利用） ──────────────────────────────────────
     cache_key = "gunshi_auto_result"
-    last_score = st.session_state.get("_gunshi_cache_score")
-    cur_score  = res.get("score", 0)
-    if cache_key not in st.session_state or last_score != cur_score:
+    last_score   = st.session_state.get("_gunshi_cache_score")
+    last_bn_hash = st.session_state.get("_gunshi_cache_bn_hash")
+    cur_score    = res.get("score", 0)
+    cur_bn_hash  = hash(frozenset((bn_evidence or {}).items()))
+    if cache_key not in st.session_state or last_score != cur_score or last_bn_hash != cur_bn_hash:
         with st.spinner("軍師データを計算中..."):
-            st.session_state[cache_key] = compute_gunshi_from_res(res, submitted_inputs)
-            st.session_state["_gunshi_cache_score"] = cur_score
+            st.session_state[cache_key] = compute_gunshi_from_res(res, submitted_inputs, bn_evidence=bn_evidence)
+            st.session_state["_gunshi_cache_score"]   = cur_score
+            st.session_state["_gunshi_cache_bn_hash"] = cur_bn_hash
 
     g = st.session_state[cache_key]
     pct       = int(g["display_prob"] * 100)

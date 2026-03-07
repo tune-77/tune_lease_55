@@ -452,6 +452,7 @@ def render_analysis_results(
                                         _g_raw = compute_gunshi_from_res(
                                             _rep_res,
                                             st.session_state.get("last_submitted_inputs"),
+                                            bn_evidence=st.session_state.get("_bn_s_evidence"),
                                         )
                                         _gunshi_pdf = build_gunshi_pdf_data(_g_raw)
                                 except Exception:
@@ -505,6 +506,7 @@ def render_analysis_results(
                             res=st.session_state["last_result"],
                             submitted_inputs=st.session_state.get("last_submitted_inputs"),
                             model_name=_gu_model,
+                            bn_evidence=st.session_state.get("_bn_s_evidence"),
                         )
                         if _gunshi_g:
                             st.session_state["_gunshi_pdf_data"] = _gunshi_g
