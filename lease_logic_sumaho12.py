@@ -1384,7 +1384,7 @@ elif mode == "⚙️ 審査ルール設定":
         st.session_state["custom_rules_ui_data"].pop(r_idx)
     def add_condition(r_idx):
         st.session_state["custom_rules_ui_data"][r_idx]["conditions"].append(
-            {"target": "op_profit", "op": "<", "value": 0.0}
+            {"target": "op_profit", "op": "<", "value_type": "number", "value": 0.0}
         )
     def delete_condition(r_idx, c_idx):
         st.session_state["custom_rules_ui_data"][r_idx]["conditions"].pop(c_idx)
@@ -1434,10 +1434,10 @@ elif mode == "⚙️ 審査ルール設定":
             # ── 条件リスト ────────────────────────────────────────────
             st.markdown("---")
             st.markdown("**④ 発動条件リスト（すべて AND 一致したとき上記アクションを発動）**")
-            st.caption("指標 ／ 比較演算子 ／ 閾値　の順で設定。複数行はすべて同時に満たした場合のみ適用。")
+            st.caption("指標 ／ 比較演算子 ／ 値種別（数値 or 項目）／ 閾値または比較先項目　の順で設定。")
 
             for j, cond in enumerate(r["conditions"]):
-                cc1, cc2, cc3, cc4 = st.columns([4, 2, 3, 1])
+                cc1, cc2, cc3, cc4, cc5 = st.columns([3, 1.5, 1.5, 3, 1])
                 with cc1:
                     cur_tgt = TARGET_MAP.get(cond.get("target", "op_profit"), "営業利益")
                     if cur_tgt not in TARGET_MAP.values():
@@ -1457,12 +1457,38 @@ elif mode == "⚙️ 審査ルール設定":
                                           key=f"c_op_{i}_{j}", label_visibility="collapsed")
                     st.session_state["custom_rules_ui_data"][i]["conditions"][j]["op"] = sel_op
                 with cc3:
-                    sel_num = st.number_input(
-                        "閾値", value=float(cond.get("value", 0.0)), step=1.0,
-                        key=f"c_val_{i}_{j}", label_visibility="collapsed"
+                    cur_vtype = cond.get("value_type", "number")
+                    if cur_vtype not in ("number", "field"):
+                        cur_vtype = "number"
+                    sel_vtype = st.selectbox(
+                        "値種別", ["数値", "項目"],
+                        index=0 if cur_vtype == "number" else 1,
+                        key=f"c_vtype_{i}_{j}", label_visibility="collapsed"
                     )
-                    st.session_state["custom_rules_ui_data"][i]["conditions"][j]["value"] = sel_num
+                    vtype = "number" if sel_vtype == "数値" else "field"
+                    st.session_state["custom_rules_ui_data"][i]["conditions"][j]["value_type"] = vtype
                 with cc4:
+                    if vtype == "number":
+                        cur_num = cond.get("value", 0.0)
+                        if not isinstance(cur_num, (int, float)):
+                            cur_num = 0.0
+                        sel_num = st.number_input(
+                            "閾値", value=float(cur_num), step=1.0,
+                            key=f"c_val_num_{i}_{j}", label_visibility="collapsed"
+                        )
+                        st.session_state["custom_rules_ui_data"][i]["conditions"][j]["value"] = sel_num
+                    else:
+                        cur_field = cond.get("value", "op_profit")
+                        if not isinstance(cur_field, str) or cur_field not in TARGET_MAP:
+                            cur_field = "op_profit"
+                        cur_field_label = TARGET_MAP.get(cur_field, "営業利益")
+                        sel_field = st.selectbox(
+                            "比較先項目", list(TARGET_MAP.values()),
+                            index=list(TARGET_MAP.values()).index(cur_field_label),
+                            key=f"c_val_field_{i}_{j}", label_visibility="collapsed"
+                        )
+                        st.session_state["custom_rules_ui_data"][i]["conditions"][j]["value"] = TARGET_INV_MAP.get(sel_field)
+                with cc5:
                     if st.button("🗑️", key=f"del_cond_{i}_{j}", help="この条件を削除"):
                         delete_condition(i, j)
                         st.rerun()
