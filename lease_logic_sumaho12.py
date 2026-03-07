@@ -1231,7 +1231,7 @@ class AssetFinanceEngine:
 # ==============================================================================
 # 画面構成
 # ==============================================================================
-mode = st.sidebar.radio("モード切替", ["📋 審査・分析", "🏭 物件ファイナンス審査", "📝 結果登録 (成約/失注)", "🔧 係数分析・更新 (β)", "📐 係数入力（事前係数）", "📊 履歴分析・実績ダッシュボード", "📉 定性要因分析 (50件〜)", "📈 定量要因分析 (50件〜)", "⚙️ 審査ルール設定"], key="main_mode")
+mode = st.sidebar.radio("モード切替", ["📋 審査・分析", "⚡ バッチ審査", "🏭 物件ファイナンス審査", "📝 結果登録 (成約/失注)", "🔧 係数分析・更新 (β)", "📐 係数入力（事前係数）", "📊 履歴分析・実績ダッシュボード", "📉 定性要因分析 (50件〜)", "📈 定量要因分析 (50件〜)", "⚙️ 審査ルール設定"], key="main_mode")
 
 with st.sidebar.expander("⚠️ 途中で落ちる場合", expanded=False):
     st.caption("主な原因: (1) AI相談・Gemini/Ollama のタイムアウト (2) ブラウザのメモリ不足 (3) 分析結果タブでデータ不整合。ターミナルで `streamlit run lease_logic_sumaho8.py` を実行するとエラー内容が表示されます。F5で再読み込みも試してください。")
@@ -1349,6 +1349,39 @@ try:
     render_sidebar_training_status()
 except Exception:
     pass
+
+# ── バックアップ ──────────────────────────────────────────────────────────────
+try:
+    from backup_manager import render_sidebar_backup, auto_backup_on_startup
+    if not st.session_state.get("_startup_backup_done"):
+        auto_backup_on_startup()
+        st.session_state["_startup_backup_done"] = True
+    render_sidebar_backup()
+except Exception:
+    pass
+
+# ── フォーム下書き保存 ────────────────────────────────────────────────────────
+try:
+    from draft_manager import render_sidebar_draft
+    render_sidebar_draft()
+except Exception:
+    pass
+
+# ── セッションクリーンアップ ──────────────────────────────────────────────────
+with st.sidebar.expander("🧹 セッション管理", expanded=False):
+    _ss = st.session_state
+    # チャット履歴を最新20件に切り詰め
+    if len(_ss.get("messages", [])) > 20:
+        _ss["messages"] = _ss["messages"][-20:]
+    if len(_ss.get("debate_history", [])) > 20:
+        _ss["debate_history"] = _ss["debate_history"][-20:]
+    # セッションサイズ概算
+    _cache_keys = [k for k in _ss if k.startswith(("_bn_s_", "_gunshi_cache_", "_ai_comment_", "gunshi_"))]
+    st.caption(f"キャッシュキー数: {len(_cache_keys)}")
+    if st.button("🗑️ キャッシュをクリア", use_container_width=True, key="_clear_session_cache"):
+        for _k in _cache_keys:
+            _ss.pop(_k, None)
+        st.success("クリアしました")
 
 if st.sidebar.button("💾 蓄積データをダウンロード (CSV)", use_container_width=True):
     all_logs = load_all_cases()
@@ -1535,6 +1568,10 @@ elif mode == "📉 定性要因分析 (50件〜)":
 elif mode == "📈 定量要因分析 (50件〜)":
     from components.analysis_quant import render_quantitative_analysis
     render_quantitative_analysis()
+
+elif mode == "⚡ バッチ審査":
+    from components.batch_scoring import render_batch_scoring
+    render_batch_scoring()
 
 elif mode == "📝 結果登録 (成約/失注)":
     from components.form_status import render_status_registration
