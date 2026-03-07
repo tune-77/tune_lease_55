@@ -855,6 +855,9 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     st.session_state["form_restored_from_submit"] = False
                     st.session_state.nav_index = 1  # 1番目（分析結果）に切り替える
                     st.session_state["_jump_to_analysis"] = True  # 判定直後の1回だけ分析結果に飛ぶ
+                    # AI自動所見・ワンタップ質問を有効化（ai_consultation.pyで生成）
+                    st.session_state["_need_auto_comment"] = True
+                    st.session_state["auto_ai_comment"] = None
                     st.rerun()  # 画面を読み込み直して、実際にタブを移動させる
         except Exception as e:
             st.error("判定開始の処理中にエラーが発生しました。入力内容を確認するか、ページを再読み込みして再度お試しください。")

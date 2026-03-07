@@ -13,6 +13,7 @@ from ai_chat import (
     _get_gemini_key_from_secrets,
     chat_with_retry,
     get_ai_consultation_prompt,
+    get_ai_quick_comment,
     get_ollama_model,
     is_ai_available,
     save_debate_log,
@@ -51,9 +52,55 @@ def _show_ai_error(content: str) -> None:
         st.error(content)
 
 
+def _quick_questions(res: dict, selected_sub: str) -> list[str]:
+    """スコア・業種に応じたワンタップ質問ボタンのテキスト一覧（最大4件）を返す。"""
+    score = res.get("score", 0) or 0
+    qs = []
+    if score < 50:
+        qs.append(f"スコア{score:.0f}%の主な原因は何？")
+        qs.append("どの指標を改善すれば承認に近づく？")
+    elif score < 70:
+        qs.append(f"スコア{score:.0f}%で通すには何が必要？")
+        qs.append("条件付き承認になった場合、どんな条件が想定される？")
+    else:
+        qs.append("承認圏内だが、見落としがちなリスクはある？")
+        qs.append("成約確率を上げるための提案ポイントは？")
+    qs.append(f"{selected_sub}業界で今注意すべきリスクは？")
+    qs.append("この案件、競合に勝てる？ 提案のコツを教えて")
+    return qs[:4]
+
+
 def _render_tab_chat(selected_sub: str, jsic_data: dict) -> None:
     """相談モード タブの描画。"""
     res = st.session_state.get("last_result", {})
+
+    # ── B: 審査直後の自動AI所見 ────────────────────────────────────────────
+    if st.session_state.get("_need_auto_comment") and res and is_ai_available():
+        st.session_state["_need_auto_comment"] = False
+        with st.spinner("AIが所見を作成中..."):
+            comment = get_ai_quick_comment(res)
+        st.session_state["auto_ai_comment"] = comment or ""
+
+    if st.session_state.get("auto_ai_comment"):
+        st.info(f"💬 **AI所見（自動）**\n\n{st.session_state['auto_ai_comment']}")
+        if st.button("所見を消す", key="clear_auto_comment", help="この所見を非表示にします"):
+            st.session_state["auto_ai_comment"] = ""
+            st.rerun()
+
+    # ── A: ワンタップ質問ボタン ────────────────────────────────────────────
+    if res:
+        st.markdown("**💡 ワンタップ相談**")
+        qs = _quick_questions(res, selected_sub)
+        cols = st.columns(2)
+        for i, q in enumerate(qs):
+            with cols[i % 2]:
+                if st.button(q, key=f"quick_q_{i}", use_container_width=True):
+                    if "messages" not in st.session_state:
+                        st.session_state.messages = []
+                    st.session_state.messages.append({"role": "user", "content": q})
+                    st.session_state["consultation_pending_q"] = q
+                    st.rerun()
+        st.divider()
 
     # ── ナレッジ参照トグル ──
     with st.expander("📚 マニュアル・事例集・FAQをAIに参照させる", expanded=False):
