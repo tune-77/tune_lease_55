@@ -774,6 +774,17 @@ def run_qualitative_contract_analysis(qual_correction_items):
         else:
             out["auc_lgb"] = None
         out["lgb_importance"] = list(zip(feature_names, lgb_model.feature_importances_.tolist()))
+        # SHAP 特徴量重要度（shapパッケージがあれば）
+        try:
+            import shap as _shap
+            _exp  = _shap.TreeExplainer(lgb_model)
+            _sv   = _exp.shap_values(X_te)
+            if isinstance(_sv, list):
+                _sv = _sv[1]   # 成約クラス
+            _mean = np.abs(_sv).mean(axis=0)
+            out["shap_importance"] = list(zip(feature_names, _mean.tolist()))
+        except Exception:
+            pass
     except Exception as e:
         out["lgb_error"] = str(e)
     if prob_lr_te is not None and prob_lgb_te is not None and len(np.unique(y_te)) >= 2:

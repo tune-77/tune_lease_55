@@ -88,6 +88,14 @@ def render_quantitative_analysis():
                 imp_df_q = pd.DataFrame([(labels_q[i], imp) for i, (_, imp) in enumerate(result_q["lgb_importance"])], columns=["項目", "重要度"])
                 imp_df_q = imp_df_q.sort_values("重要度", ascending=False)
                 st.dataframe(imp_df_q, use_container_width=True, hide_index=True)
+            if "shap_importance" in result_q:
+                st.divider()
+                st.subheader("SHAP 特徴量重要度（成約への影響）")
+                labels_q2 = [COEFF_LABELS.get(k, k) for k in result_q["feature_names"]]
+                shap_df_q = pd.DataFrame([(labels_q2[i], v) for i, (_, v) in enumerate(result_q["shap_importance"])], columns=["項目", "SHAP重要度"])
+                shap_df_q = shap_df_q.sort_values("SHAP重要度", ascending=False)
+                st.bar_chart(shap_df_q.set_index("項目")["SHAP重要度"])
+                st.caption("各項目の平均|SHAP値|。値が大きいほど成約判定への影響が大きい。")
         else:
             result_q = None
             

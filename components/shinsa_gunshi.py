@@ -30,6 +30,10 @@ OLLAMA_CHAT_URL = OLLAMA_BASE + "/api/chat"
 OLLAMA_STREAM_URL = OLLAMA_BASE + "/api/generate"
 DEFAULT_MODEL = "llama3"
 
+# Gemini フォールバック（GEMINI_API_KEY 環境変数が設定されている場合のみ有効）
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+_GEMINI_URL    = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+
 # ==============================================================================
 # DB 初期化
 # ==============================================================================
@@ -387,7 +391,7 @@ for _iv_cat, _iv_phrases in _INDUSTRY_VEHICLE_PHRASES.items():
 # ベイズ推論エンジン
 # ==============================================================================
 
-EVIDENCE_WEIGHTS = {
+_DEFAULT_EVIDENCE_WEIGHTS = {
     "resale_high":   0.15,  # リセール高
     "resale_mid":    0.05,  # リセール中
     "resale_low":   -0.05,  # リセール低
@@ -396,8 +400,69 @@ EVIDENCE_WEIGHTS = {
     "bank":          0.10,  # メイン銀行支援
     "intuition":     0.03,  # 直感スライダー1ポイントあたり（基準=3）
 }
+EVIDENCE_WEIGHTS = dict(_DEFAULT_EVIDENCE_WEIGHTS)  # 実績データで上書き可能
 
 LEARNING_RATE = 0.08  # 逐次学習の速さ
+
+# BN-CPD 自動学習: 実績件数の閾値
+_CPD_MIN_CASES = 20
+
+
+def _learn_evidence_weights_from_db() -> dict:
+    """
+    gunshi_cases テーブルの成約/非成約実績から EVIDENCE_WEIGHTS を統計的に推定する。
+    各証拠の「全体成約率との差分」を重みとして使う（最低 _CPD_MIN_CASES 件必要）。
+    件数不足時は空 dict を返す（デフォルト値を維持）。
+    """
+    try:
+        init_db()
+        conn = sqlite3.connect(GUNSHI_DB_PATH)
+        cur  = conn.cursor()
+        rows = cur.execute(
+            "SELECT bank, subsidy, repeat_cnt, resale, result FROM gunshi_cases "
+            "WHERE result IN ('成約','非成約')"
+        ).fetchall()
+        conn.close()
+    except Exception:
+        return {}
+
+    if len(rows) < _CPD_MIN_CASES:
+        return {}
+
+    total    = len(rows)
+    base_win = sum(1 for r in rows if r[4] == "成約") / total
+
+    def _diff(filtered):
+        if len(filtered) < 5:
+            return None
+        win = sum(1 for r in filtered if r[4] == "成約") / len(filtered)
+        return max(-0.20, min(0.30, win - base_win))
+
+    learned = {}
+    d = _diff([r for r in rows if r[0] == 1])
+    if d is not None:
+        learned["bank"] = d
+    d = _diff([r for r in rows if r[1] == 1])
+    if d is not None:
+        learned["subsidy"] = d
+    for val, key in [("高", "resale_high"), ("中", "resale_mid"), ("低", "resale_low")]:
+        d = _diff([r for r in rows if r[3] == val])
+        if d is not None:
+            learned[key] = d
+
+    return learned
+
+
+def refresh_evidence_weights() -> None:
+    """
+    DB 実績から EVIDENCE_WEIGHTS をインプレース更新する。
+    起動時および結果登録後に呼び出す。
+    """
+    global EVIDENCE_WEIGHTS
+    learned = _learn_evidence_weights_from_db()
+    merged  = dict(_DEFAULT_EVIDENCE_WEIGHTS)
+    merged.update(learned)           # 実績で上書き（intuition/repeat はデフォルト維持）
+    EVIDENCE_WEIGHTS = merged
 
 
 def compute_prior(score: float, pd_pct: float) -> float:
@@ -629,8 +694,30 @@ def select_top_phrases(
 # Ollama ストリーミング呼び出し
 # ==============================================================================
 
+def _gemini_generate(prompt: str) -> Generator[str, None, None]:
+    """Gemini API で生成（Ollama のフォールバック用）。"""
+    if not GEMINI_API_KEY:
+        yield "\n\n⚠️ Ollama に接続できません。`ollama serve` を起動するか、GEMINI_API_KEY 環境変数を設定してください。"
+        return
+    try:
+        resp = requests.post(
+            f"{_GEMINI_URL}?key={GEMINI_API_KEY}",
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.7, "maxOutputTokens": 800},
+            },
+            timeout=60,
+        )
+        resp.raise_for_status()
+        text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+        yield text
+    except Exception as e:
+        yield f"\n\n⚠️ Gemini フォールバックも失敗しました: {e}"
+
+
 def _ollama_stream(prompt: str, model: str) -> Generator[str, None, None]:
-    """Ollama /api/generate にストリーミングリクエストし、テキストを yield する。"""
+    """Ollama /api/generate にストリーミングリクエストし、テキストを yield する。
+    Ollama 未起動 / タイムアウト時は Gemini API に自動フォールバック。"""
     payload = {
         "model": model,
         "prompt": prompt,
@@ -654,12 +741,10 @@ def _ollama_stream(prompt: str, model: str) -> Generator[str, None, None]:
                     break
             except json.JSONDecodeError:
                 continue
-    except requests.exceptions.ConnectionError:
-        yield "\n\n⚠️ Ollama に接続できませんでした。`ollama serve` を起動してから再試行してください。"
-    except requests.exceptions.Timeout:
-        yield "\n\n⚠️ Ollama がタイムアウトしました。より軽いモデルをお試しください。"
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+        yield from _gemini_generate(prompt)
     except Exception as e:
-        yield f"\n\n⚠️ LLM エラー: {e}"
+        yield from _gemini_generate(prompt)
 
 
 def build_gunshi_prompt(

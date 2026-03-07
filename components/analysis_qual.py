@@ -64,6 +64,13 @@ def render_qualitative_analysis():
                 imp_df = pd.DataFrame(result["lgb_importance"], columns=["項目", "重要度"])
                 imp_df = imp_df.sort_values("重要度", ascending=False)
                 st.dataframe(imp_df, use_container_width=True, hide_index=True)
+            if "shap_importance" in result:
+                st.divider()
+                st.subheader("SHAP 特徴量重要度（成約への影響）")
+                shap_df = pd.DataFrame(result["shap_importance"], columns=["項目", "SHAP重要度"])
+                shap_df = shap_df.sort_values("SHAP重要度", ascending=False)
+                st.bar_chart(shap_df.set_index("項目")["SHAP重要度"])
+                st.caption("各項目の平均|SHAP値|。値が大きいほど成約判定への影響が大きい。")
         else:
             result = None
         if result is None and n_reg >= QUALITATIVE_ANALYSIS_MIN_CASES:

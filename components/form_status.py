@@ -71,6 +71,12 @@ def render_status_registration():
                             if updated:
                                 if save_all_cases(all_cases):
                                     st.success("登録しました！")
+                                    # BN 証拠重みを実績から再学習
+                                    try:
+                                        from components.shinsa_gunshi import refresh_evidence_weights
+                                        refresh_evidence_weights()
+                                    except Exception:
+                                        pass
                                     # 自動係数最適化チェック
                                     try:
                                         from auto_optimizer import run_auto_optimization, get_training_status
