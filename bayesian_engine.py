@@ -588,8 +588,9 @@ def compute_reversal_suggestions(
                     "delta": delta,
                     "after_decision": new_result["decision"],
                 })
-        except Exception:
-            pass
+        except Exception as e:
+            import traceback
+            print(f"[bayesian] compute_reversal_suggestions エラー: {e}\n{traceback.format_exc()}")
 
     suggestions.sort(key=lambda x: -x["delta"])
     return suggestions[:top_n]
@@ -618,8 +619,9 @@ def compute_combination_reversal(
                         "after_prob": result["approval_prob"],
                         "after_decision": result["decision"],
                     }
-        except Exception:
-            pass
+        except Exception as e:
+            import traceback
+            print(f"[bayesian] compute_combination_reversal エラー: {e}\n{traceback.format_exc()}")
     return best
 
 

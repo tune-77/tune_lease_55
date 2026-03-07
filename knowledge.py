@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import os
-from functools import lru_cache
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 KNOWLEDGE_FILE = os.path.join(BASE_DIR, "knowledge_base.json")

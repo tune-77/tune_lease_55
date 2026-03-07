@@ -159,13 +159,8 @@ def render_secondary_review_ui(res: Optional[dict] = None):
                 if item.get("required"):
                     if checked:
                         checked_required += 1
-                    checked_all += 1 if checked else 0
 
-        for item in cat_items:
-            if st.session_state["sr_checks"].get(item["id"]):
-                checked_all += 1
-
-    # checked_all は二重カウントを防ぐため再計算
+    # 全チェック数は items 全体から一括集計（ループ内の中間集計は削除）
     checked_all = sum(1 for i in items if st.session_state["sr_checks"].get(i["id"]))
 
     # ── 進捗サマリー ──────────────────────────────────────────

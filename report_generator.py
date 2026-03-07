@@ -252,7 +252,7 @@ def generate_humor_comment(result, style: str = HUMOR_STYLE_STANDARD) -> str:
 
         if matched:
             chosen = random.choice(matched)
-            return f"\n【ひとことコメント】\n{chosen['comment']}\n"
+            return f"\n【ひとことコメント】\n{chosen.get('comment', '')}\n"
         else:
             return "\n【ひとことコメント】\n（該当するコメントが見つかりませんでした）\n"
 

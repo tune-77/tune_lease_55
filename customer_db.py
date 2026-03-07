@@ -223,9 +223,9 @@ def get_total_count() -> int:
     """総レコード数"""
     init_db()
     conn = sqlite3.connect(_DB_PATH)
-    n = conn.execute("SELECT COUNT(*) FROM screening_records").fetchone()[0]
+    row = conn.execute("SELECT COUNT(*) FROM screening_records").fetchone()
     conn.close()
-    return n
+    return row[0] if row else 0
 
 
 def get_stats() -> dict:

@@ -1046,7 +1046,7 @@ class AssetFinanceEngine:
         bep_month, v_curve, l_curve = self.calculate_bep(
             asset_type, term, down_payment, annual_km, has_maintenance_lease
         )
-        bep_ratio = bep_month / term
+        bep_ratio = bep_month / term if term > 0 else 1.0
         priority_score = self.ASSET_PARAMS[asset_type]['priority_score']
 
         score = 0
@@ -1058,10 +1058,11 @@ class AssetFinanceEngine:
         fin_pts = fin_map.get(financial_score, 0)
         score += fin_pts
         fin_labels = {'High': '優良', 'Medium': '標準', 'Low': '低評価（赤字・債務超過）'}
+        fin_label = fin_labels.get(financial_score, financial_score)
         if fin_pts >= 0:
-            reasons.append(f"財務{fin_labels[financial_score]}（+{fin_pts}点）")
+            reasons.append(f"財務{fin_label}（+{fin_pts}点）")
         else:
-            deductions.append(f"財務{fin_labels[financial_score]}（{fin_pts}点）")
+            deductions.append(f"財務{fin_label}（{fin_pts}点）")
 
         # --- 2. 物件・LGD/BEP 緩和（リース独自視点） ---
         if bep_ratio < 0.3:
@@ -1501,6 +1502,7 @@ with st.sidebar.expander("愚痴を追加", expanded=False):
     new_byoki = st.sidebar.text_input("愚痴の一文", placeholder="例: また今日も数字の海…", key="new_byoki_input", label_visibility="collapsed")
     if st.sidebar.button("追加する", key="btn_add_byoki"):
         if save_byoki_append(new_byoki):
+            load_byoki_list.clear()  # キャッシュをクリアして即時反映
             st.sidebar.success("追加しました。掲示板に反映されます。")
             st.rerun()
         else:
@@ -1558,6 +1560,7 @@ elif mode == "📋 審査・分析":
         with col_left:
             submitted_apply = False
             submitted_judge = False
+            form_result = {}  # nav_mode が "📊 分析結果" 時も参照できるよう初期化
             if "nav_index" not in st.session_state:
                 st.session_state.nav_index = 0
             # 判定開始直後の rerun の1回だけ「分析結果」に合わせる（毎回上書きすると審査入力に戻れなくなる）
@@ -1641,7 +1644,7 @@ elif mode == "📋 審査・分析":
                 st.session_state.acceptance_year = acceptance_year
                 st.rerun()
 
-            if submitted_judge or st.session_state.pop("_auto_judge", False):
+            if submitted_judge or st.session_state.get("_auto_judge", False):
                 from components.score_calculation import run_scoring
                 
                 # Fetch _rules directly where it's defined (rule_manager.py)
@@ -1937,6 +1940,8 @@ elif mode == "📋 審査・分析":
                         risk_context = ""
                         for b in bankruptcy_data:
                             risk_context += f"- {b['type']}: {b['signal']} ({b['check_point']})\n"
+                        if "debate_history" not in st.session_state:
+                            st.session_state.debate_history = []
                         history_text = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.debate_history])
 
                         # ニュース記事の反映

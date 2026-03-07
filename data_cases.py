@@ -138,38 +138,44 @@ def save_all_cases(cases):
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        # 一旦すべて削除してからINSERTする（重い処理だが互換性維持のため）
-        cursor.execute("DELETE FROM past_cases")
-        for data in cases:
-            case_id = data.get("id")
-            timestamp = data.get("timestamp", "")
-            industry_sub = data.get("industry_sub", "")
-            final_status = data.get("final_status", "")
-            
-            score, user_eq = None, None
-            res = data.get("result", {})
-            if isinstance(res, dict):
-                score = res.get("score")
-                user_eq = res.get("user_eq")
+        try:
+            # DELETE→INSERT をトランザクションで保護（INSERT失敗時はロールバック）
+            cursor.execute("BEGIN")
+            cursor.execute("DELETE FROM past_cases")
+            for data in cases:
+                case_id = data.get("id")
+                timestamp = data.get("timestamp", "")
+                industry_sub = data.get("industry_sub", "")
+                final_status = data.get("final_status", "")
 
-            try:
-                score_val = float(score) if score is not None else None
-            except:
-                score_val = None
+                score, user_eq = None, None
+                res = data.get("result", {})
+                if isinstance(res, dict):
+                    score = res.get("score")
+                    user_eq = res.get("user_eq")
 
-            try:
-                user_eq_val = float(user_eq) if user_eq is not None else None
-            except:
-                user_eq_val = None
+                try:
+                    score_val = float(score) if score is not None else None
+                except (TypeError, ValueError):
+                    score_val = None
 
-            json_str = json.dumps(data, ensure_ascii=False, cls=CustomJSONEncoder)
-            cursor.execute("""
-                INSERT INTO past_cases
-                (id, timestamp, industry_sub, score, user_eq, final_status, data)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (case_id, timestamp, industry_sub, score_val, user_eq_val, final_status, json_str))
-        conn.commit()
-        conn.close()
+                try:
+                    user_eq_val = float(user_eq) if user_eq is not None else None
+                except (TypeError, ValueError):
+                    user_eq_val = None
+
+                json_str = json.dumps(data, ensure_ascii=False, cls=CustomJSONEncoder)
+                cursor.execute("""
+                    INSERT INTO past_cases
+                    (id, timestamp, industry_sub, score, user_eq, final_status, data)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (case_id, timestamp, industry_sub, score_val, user_eq_val, final_status, json_str))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
         return True
     except Exception:
         return False
@@ -333,7 +339,7 @@ def save_case_log(data):
         return None
 
 
-def update_case_field(case_id: str, key: str, value: any) -> bool:
+def update_case_field(case_id: str, key: str, value: object) -> bool:
     """指定された case_id のレコードに対して、[key] = value を追加・更新する（SQLite版）。"""
     import sqlite3
     if not case_id or not os.path.exists(DB_PATH):
