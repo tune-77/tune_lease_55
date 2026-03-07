@@ -20,6 +20,57 @@ def render_coeff_analysis():
     """🔧 係数分析・更新 (β) タブのUI表示とロジック"""
     st.title("🔧 係数分析・更新（成約/失注で係数を更新）")
     st.info("結果登録した「成約・失注」を目的変数に、審査モデルと同一仕様のロジスティック回帰で係数を推定し、審査スコアに反映できます。")
+
+    # ── 自動学習ステータスパネル ────────────────────────────────────────────
+    try:
+        from auto_optimizer import get_training_status, run_auto_optimization, MIN_START, RETRAIN_INTERVAL
+        _s = get_training_status()
+        with st.container(border=True):
+            st.markdown("#### 🧠 係数自動学習ステータス")
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("登録件数", f"{_s['count']}件")
+            c2.metric("前回学習", f"{_s['last_trained_count']}件" if _s['last_trained_count'] else "未実施")
+            c3.metric("累計学習回数", f"{_s['total_runs']}回")
+            c4.metric("前回AUC", f"{_s['last_auc']:.3f}" if _s['last_auc'] else "—")
+
+            if _s["phase"] == "waiting":
+                st.progress(_s["count"] / MIN_START,
+                            text=f"初回学習まであと {_s['next_trigger']}件（目標: {MIN_START}件）")
+            elif _s["phase"] == "active":
+                gap = _s["count"] - _s["last_trained_count"]
+                st.progress(gap / RETRAIN_INTERVAL,
+                            text=f"次回更新まであと {_s['next_trigger']}件（+{gap}/{RETRAIN_INTERVAL}件）")
+            else:
+                st.success(f"✅ 学習トリガー条件を満たしています（{_s['count']}件）")
+
+            if _s["last_trained_at"]:
+                st.caption(f"前回学習日時: {_s['last_trained_at']}")
+
+            _force_btn = st.button(
+                "🚀 今すぐ自動最適化を実行",
+                key="btn_auto_optimize",
+                disabled=(_s["count"] < MIN_START),
+                help=f"成約/失注が{MIN_START}件以上の場合に実行できます。",
+                type="primary" if _s["should_retrain"] else "secondary",
+            )
+            if _force_btn:
+                with st.spinner("係数を最適化中..."):
+                    _result = run_auto_optimization(force=True)
+                if _result:
+                    _auc = _result.get("auc_borrower_asset")
+                    st.success(
+                        f"✅ 最適化完了（{_result['n_cases']}件）　"
+                        f"借手重み: {_result['recommended_borrower_pct']:.1%} / "
+                        f"物件重み: {_result['recommended_asset_pct']:.1%}"
+                        + (f"　AUC: {_auc:.3f}" if _auc else "")
+                    )
+                    st.rerun()
+                else:
+                    st.warning("最適化できませんでした。成約/失注データが不足している可能性があります。")
+    except Exception as _ae:
+        st.caption(f"⚠️ 自動学習ステータス取得エラー: {_ae}")
+
+    st.divider()
     
     all_logs = load_all_cases()
     if not all_logs:

@@ -71,6 +71,22 @@ def render_status_registration():
                             if updated:
                                 if save_all_cases(all_cases):
                                     st.success("登録しました！")
+                                    # 自動係数最適化チェック
+                                    try:
+                                        from auto_optimizer import run_auto_optimization, get_training_status
+                                        _opt = run_auto_optimization()
+                                        if _opt:
+                                            _auc = _opt.get("auc_borrower_asset")
+                                            _auc_str = f"　AUC: {_auc:.3f}" if _auc else ""
+                                            st.success(f"🧠 係数を自動更新しました（{_opt['n_cases']}件{_auc_str}）")
+                                        else:
+                                            _s = get_training_status()
+                                            if _s["phase"] == "waiting":
+                                                st.caption(f"📊 初回学習まであと {_s['next_trigger']}件")
+                                            elif _s["phase"] == "active":
+                                                st.caption(f"📊 次回更新まであと {_s['next_trigger']}件")
+                                    except Exception:
+                                        pass
                                     time.sleep(1)
                                     st.rerun()
                                 else:

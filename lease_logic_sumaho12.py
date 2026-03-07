@@ -1343,6 +1343,13 @@ else:
             st.session_state["ollama_test_result"] = ""
             st.rerun()
 
+# ── 係数自動学習ステータス ────────────────────────────────────────────────
+try:
+    from auto_optimizer import render_sidebar_training_status
+    render_sidebar_training_status()
+except Exception:
+    pass
+
 if st.sidebar.button("💾 蓄積データをダウンロード (CSV)", use_container_width=True):
     all_logs = load_all_cases()
     if all_logs:
