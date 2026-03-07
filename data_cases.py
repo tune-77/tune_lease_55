@@ -26,6 +26,7 @@ _DATA_DIR = os.path.join(_SCRIPT_DIR, "data")
 CASES_FILE = os.path.join(_REPO_ROOT, "past_cases.jsonl") # obsolete but kept for reference
 DB_PATH = os.path.join(_DATA_DIR, "lease_data.db")
 COEFF_OVERRIDES_FILE = os.path.join(_DATA_DIR, "coeff_overrides.json")
+COEFF_AUTO_FILE      = os.path.join(_DATA_DIR, "coeff_auto.json")   # 自動最適化専用
 CONSULTATION_MEMORY_FILE = os.path.join(_DATA_DIR, "consultation_memory.jsonl")
 CASE_NEWS_FILE = os.path.join(_DATA_DIR, "case_news.jsonl")
 
@@ -182,7 +183,7 @@ def save_all_cases(cases):
 
 
 def load_coeff_overrides():
-    """保存済みの係数オーバーライドを読み込む。無ければ None。"""
+    """保存済みの係数オーバーライド（手動設定）を読み込む。無ければ None。"""
     if not os.path.exists(COEFF_OVERRIDES_FILE):
         return None
     try:
@@ -193,7 +194,7 @@ def load_coeff_overrides():
 
 
 def save_coeff_overrides(overrides_dict):
-    """係数オーバーライドを JSON で保存。失敗時は False。"""
+    """係数オーバーライド（手動設定）を JSON で保存。失敗時は False。"""
     dirpath = os.path.dirname(COEFF_OVERRIDES_FILE)
     if dirpath and not os.path.isdir(dirpath):
         os.makedirs(dirpath, exist_ok=True)
@@ -205,14 +206,44 @@ def save_coeff_overrides(overrides_dict):
         return False
 
 
+def load_auto_coeffs() -> dict:
+    """自動最適化で生成された推奨重みを読み込む。無ければ空 dict。"""
+    if not os.path.exists(COEFF_AUTO_FILE):
+        return {}
+    try:
+        with open(COEFF_AUTO_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def save_auto_coeffs(auto_dict: dict) -> bool:
+    """自動最適化の推奨重みを専用ファイルに保存。失敗時は False。"""
+    dirpath = os.path.dirname(COEFF_AUTO_FILE)
+    if dirpath and not os.path.isdir(dirpath):
+        os.makedirs(dirpath, exist_ok=True)
+    try:
+        with open(COEFF_AUTO_FILE, "w", encoding="utf-8") as f:
+            json.dump(auto_dict, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
+
+
 def get_score_weights():
-    """借手/物件・総合/定性の重みを返す。(w_borrower, w_asset, w_quant, w_qual)。"""
-    overrides = load_coeff_overrides() or {}
-    sw = overrides.get("score_weights") or {}
-    w_b = sw.get("borrower")
-    w_a = sw.get("asset")
-    w_q = sw.get("quant")
-    w_q2 = sw.get("qual")
+    """
+    借手/物件・総合/定性の重みを返す。(w_borrower, w_asset, w_quant, w_qual)。
+    優先順位: 手動設定 (coeff_overrides.json) > 自動最適化 (coeff_auto.json) > デフォルト値
+    """
+    auto     = load_auto_coeffs()
+    manual   = load_coeff_overrides() or {}
+    # score_weights キー（手動）vs _auto_weight_* キー（自動）を統合
+    sw = manual.get("score_weights") or {}
+    # 借手/物件重み: 手動 > 自動 > デフォルト
+    w_b  = sw.get("borrower") or auto.get("_auto_weight_borrower")
+    w_a  = sw.get("asset")    or auto.get("_auto_weight_asset")
+    w_q  = sw.get("quant")    or auto.get("_auto_weight_quant")
+    w_q2 = sw.get("qual")     or auto.get("_auto_weight_qual")
     if w_b is not None and w_a is not None and (w_b + w_a) > 0:
         s_ba = w_b + w_a
         w_borrower, w_asset = w_b / s_ba, w_a / s_ba

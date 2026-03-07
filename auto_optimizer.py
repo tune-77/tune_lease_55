@@ -120,20 +120,21 @@ def run_auto_optimization(force: bool = False) -> dict | None:
         return None
 
     from analysis_regression import optimize_score_weights_from_regression
-    from data_cases import load_coeff_overrides, save_coeff_overrides
+    from data_cases import load_auto_coeffs, save_auto_coeffs
 
     result = optimize_score_weights_from_regression()
     if result is None:
         return None
 
-    # 推奨重みを coeff_overrides に保存
-    overrides = load_coeff_overrides() or {}
-    overrides["_auto_weight_borrower"] = result["recommended_borrower_pct"]
-    overrides["_auto_weight_asset"]    = result["recommended_asset_pct"]
+    # 推奨重みを coeff_auto.json（自動専用）に保存
+    # → 手動設定の coeff_overrides.json は上書きしない
+    auto = load_auto_coeffs()
+    auto["_auto_weight_borrower"] = result["recommended_borrower_pct"]
+    auto["_auto_weight_asset"]    = result["recommended_asset_pct"]
     if "recommended_quant_pct" in result:
-        overrides["_auto_weight_quant"] = result["recommended_quant_pct"]
-        overrides["_auto_weight_qual"]  = result["recommended_qual_pct"]
-    save_coeff_overrides(overrides)
+        auto["_auto_weight_quant"] = result["recommended_quant_pct"]
+        auto["_auto_weight_qual"]  = result["recommended_qual_pct"]
+    save_auto_coeffs(auto)
 
     # メタ情報を更新
     meta = load_training_meta()

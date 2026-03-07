@@ -71,6 +71,14 @@ def render_status_registration():
                             if updated:
                                 if save_all_cases(all_cases):
                                     st.success("登録しました！")
+                                    # 軍師DBへ自動同期
+                                    try:
+                                        from components.shinsa_gunshi import sync_from_lease_case
+                                        _synced = next((c for c in all_cases if c.get("id") == target_id), None)
+                                        if _synced:
+                                            sync_from_lease_case(_synced)
+                                    except Exception:
+                                        pass
                                     # 自動係数最適化チェック
                                     try:
                                         from auto_optimizer import run_auto_optimization, get_training_status
