@@ -22,7 +22,7 @@ import streamlit as st
 # ==============================================================================
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _BASE = os.path.dirname(_DIR)  # lease_logic_sumaho12/
-GUNSHI_DB_PATH = os.path.join(_BASE, "gunshi_history.db")
+GUNSHI_DB_PATH = os.path.join(_BASE, "data", "lease_data.db")
 
 # Ollama ホスト（環境変数で上書き可）
 OLLAMA_BASE = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
@@ -67,69 +67,6 @@ def init_db() -> None:
     existing_cols = [r[1] for r in cur.execute("PRAGMA table_info(gunshi_cases)").fetchall()]
     if "lease_case_id" not in existing_cols:
         cur.execute("ALTER TABLE gunshi_cases ADD COLUMN lease_case_id TEXT DEFAULT ''")
-    conn.commit()
-    conn.close()
-
-
-def sync_from_lease_case(case: dict) -> None:
-    """
-    lease_data.db の案件を gunshi_history.db に同期する。
-    ・lease_case_id が一致するレコードがあれば result を更新。
-    ・なければ新規挿入。
-    form_status.py の結果登録後に呼ぶことで、軍師DBへの二重登録を不要にする。
-    """
-    from datetime import datetime as _dt
-    init_db()
-    lease_id     = str(case.get("id") or "")
-    final_status = case.get("final_status", "未登録")
-    result_map   = {"成約": "成約", "失注": "非成約"}
-    gunshi_result = result_map.get(final_status, "未登録")
-
-    res = case.get("result") or {}
-    inp = case.get("inputs") or {}
-
-    conn = sqlite3.connect(GUNSHI_DB_PATH)
-    cur  = conn.cursor()
-
-    existing = cur.execute(
-        "SELECT id FROM gunshi_cases WHERE lease_case_id=?", (lease_id,)
-    ).fetchone()
-
-    if existing:
-        cur.execute(
-            "UPDATE gunshi_cases SET result=? WHERE lease_case_id=?",
-            (gunshi_result, lease_id)
-        )
-    else:
-        # 案件データから軍師DB用フィールドを組み立て
-        industry_major = res.get("industry_major", "")
-        industry_cat   = _INDUSTRY_MAJOR_MAP.get(industry_major, "汎用")
-        score          = float(res.get("score") or 0)
-        pd_pct         = float(res.get("pd_percent") or 0)
-        asset_name     = res.get("asset_name") or inp.get("asset_name") or ""
-        resale         = _resale_from_asset_name(asset_name)
-        vehicle_boost, _ = _vehicle_boost_from_asset_name(asset_name)
-        repeat_cnt     = int(inp.get("contracts") or 0)
-        subsidy        = 1 if inp.get("subsidy") else 0
-        bank           = 1 if (inp.get("main_bank") == "メイン先") else 0
-        prior          = compute_prior(score, pd_pct)
-        posterior      = min(0.99, compute_posterior(
-            prior=prior, resale=resale, repeat_cnt=repeat_cnt,
-            subsidy=bool(subsidy), bank=bool(bank), intuition=3,
-            success_ratio=0.5, similar_case_count=0,
-        ) + vehicle_boost)
-        cur.execute("""
-            INSERT INTO gunshi_cases
-                (created_at, industry, score, pd_pct, resale, repeat_cnt,
-                 subsidy, bank, intuition, prior_prob, posterior, result, notes, lease_case_id)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (
-            _dt.now().isoformat(timespec="seconds"),
-            industry_cat, score, pd_pct, resale, repeat_cnt,
-            subsidy, bank, 3, prior, posterior,
-            gunshi_result, "", lease_id,
-        ))
-
     conn.commit()
     conn.close()
 
