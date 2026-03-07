@@ -31,14 +31,18 @@ from data_cases import load_all_cases
 
 # ─── ローカルJSONデータの遅延ロード ────────────────────────────────────────────
 
+_STATIC_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static_data")
+
 def _load_json(filename: str) -> dict:
-    path = os.path.join(BASE_DIR, filename)
-    if os.path.exists(path):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
+    # static_data/ を優先し、なければ BASE_DIR を確認（後方互換）
+    for base in [_STATIC_DATA_DIR, BASE_DIR]:
+        path = os.path.join(base, filename)
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
     return {}
 
 

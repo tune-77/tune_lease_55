@@ -20,7 +20,7 @@ try:
 except ImportError:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-ITEMS_FILE = os.path.join(BASE_DIR, "secondary_review_items.json")
+ITEMS_FILE = os.path.join(BASE_DIR, "data", "secondary_review_items.json")
 
 # ── カテゴリーの表示順 ──────────────────────────────────────
 CATEGORY_ORDER = ["財務確認", "信用調査", "担保・保証", "物件・契約", "事業性確認", "コンプライアンス"]

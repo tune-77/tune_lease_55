@@ -21,7 +21,7 @@ import datetime
 from typing import Optional
 
 # DB は lease_logic_sumaho12/ フォルダ内に保存
-_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "screening_db.sqlite")
+_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "screening_db.sqlite")
 
 
 # ─────────────────────────────────────────────

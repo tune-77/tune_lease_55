@@ -618,12 +618,16 @@ else:
     sns.set_theme(style="whitegrid", font="sans-serif")
 
 # データのロード（キャッシュ化）
+_STATIC_DATA_DIR = os.path.join(BASE_DIR, "static_data")
+
 @st.cache_data(ttl=3600)
 def load_json_data(filename):
-    path = os.path.join(BASE_DIR, filename)
-    if os.path.exists(path):
-        with open(path, "r") as f:
-            return json.load(f)
+    # static_data/ を優先し、なければ BASE_DIR を確認（後方互換）
+    for base in [_STATIC_DATA_DIR, BASE_DIR]:
+        path = os.path.join(base, filename)
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                return json.load(f)
     return {}
 
 # 各種データのロード
@@ -753,12 +757,13 @@ REQUIRED_FIELDS = [
 # 推奨項目: 営業利益・純資産（未入力だと学習モデル・自己資本比率が使えない場合あり）。フォームで明示のみ。
 
 # 過去案件・係数・相談メモ・ニュースのパスは data_cases で定義（CASES_FILE, COEFF_OVERRIDES_FILE 等を import 済み）
-DEBATE_FILE = os.path.join(BASE_DIR, "debate_logs.jsonl") # ディベートログ
+_DATA_DIR = os.path.join(BASE_DIR, "data")
+DEBATE_FILE = os.path.join(_DATA_DIR, "debate_logs.jsonl") # ディベートログ
 # ネットで取得した業界目安を中分類ごとに保存（年1回・4月1日を境に更新）
-WEB_BENCHMARKS_FILE = os.path.join(BASE_DIR, "web_industry_benchmarks.json")
-TRENDS_EXTENDED_FILE = os.path.join(BASE_DIR, "industry_trends_extended.json")
-ASSETS_BENCHMARKS_FILE = os.path.join(BASE_DIR, "industry_assets_benchmarks.json")
-SALES_BAND_FILE = os.path.join(BASE_DIR, "sales_band_benchmarks.json")
+WEB_BENCHMARKS_FILE = os.path.join(_DATA_DIR, "web_industry_benchmarks.json")
+TRENDS_EXTENDED_FILE = os.path.join(_DATA_DIR, "industry_trends_extended.json")
+ASSETS_BENCHMARKS_FILE = os.path.join(_DATA_DIR, "industry_assets_benchmarks.json")
+SALES_BAND_FILE = os.path.join(_DATA_DIR, "sales_band_benchmarks.json")
 # 分析ダッシュボード用画像（承認レベル・業種・物件に沿って選択）
 DASHBOARD_IMAGES_DIR = os.path.join(BASE_DIR, "dashboard_images")
 DASHBOARD_IMAGES_ASSETS = os.environ.get("DASHBOARD_IMAGES_ASSETS", "").strip()
