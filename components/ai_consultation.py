@@ -465,13 +465,21 @@ def _render_tab_debate(selected_sub: str, jsic_data: dict, bankruptcy_data: list
                     else:
                         st.error("AIサーバー（Ollama）が起動していません。\nターミナルで `ollama serve` を実行するか、サイドバーで「Gemini API」に切り替えてください。")
                 else:
+                    _d_engine = st.session_state.get("ai_engine", "ollama")
+                    _d_key = (
+                        (st.session_state.get("gemini_api_key") or "").strip()
+                        or GEMINI_API_KEY_ENV
+                        or _get_gemini_key_from_secrets()
+                    )
+                    _d_gmodel = st.session_state.get("gemini_model", GEMINI_MODEL_DEFAULT)
                     with st.spinner(f"{next_role}が思考中..."):
                         try:
-                            ans = chat_with_retry(
-                                model=get_ollama_model(),
-                                messages=[{"role": "user", "content": prompt}],
-                                retries=1,
+                            ans = _chat_for_thread(
+                                _d_engine, get_ollama_model(),
+                                [{"role": "user", "content": prompt}],
                                 timeout_seconds=120,
+                                api_key=_d_key,
+                                gemini_model=_d_gmodel,
                             )
                             if not ans or "message" not in ans:
                                 st.error("AIからの応答が不正です。")
@@ -538,13 +546,21 @@ def _render_tab_debate(selected_sub: str, jsic_data: dict, bankruptcy_data: list
                         else:
                             st.error("Ollama が起動していません。`ollama serve` を実行するか、サイドバーで「Gemini API」に切り替えてください。")
                     else:
-                        ans = chat_with_retry(
-                            model=get_ollama_model(),
-                            messages=[{"role": "user", "content": judge_prompt}],
-                            retries=1,
-                            timeout_seconds=120,
+                        _j_engine = st.session_state.get("ai_engine", "ollama")
+                        _j_key = (
+                            (st.session_state.get("gemini_api_key") or "").strip()
+                            or GEMINI_API_KEY_ENV
+                            or _get_gemini_key_from_secrets()
                         )
-                        result_text = ans["message"]["content"]
+                        _j_gmodel = st.session_state.get("gemini_model", GEMINI_MODEL_DEFAULT)
+                        ans = _chat_for_thread(
+                            _j_engine, get_ollama_model(),
+                            [{"role": "user", "content": judge_prompt}],
+                            timeout_seconds=120,
+                            api_key=_j_key,
+                            gemini_model=_j_gmodel,
+                        )
+                        result_text = (ans.get("message") or {}).get("content", "") or "（応答がありませんでした）"
                         st.success("✅ **ディベート結果**")
                         st.write(result_text)
                         save_debate_log({
