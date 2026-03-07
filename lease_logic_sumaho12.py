@@ -1645,6 +1645,14 @@ elif mode == "📋 審査・分析":
                 st.rerun()
 
             if submitted_judge or st.session_state.get("_auto_judge", False):
+                # 新規審査実行時: BN条件・軍師キャッシュをリセット
+                for _k in ["_bn_s_evidence", "_bn_s_result", "gunshi_auto_result",
+                           "_gunshi_cache_score", "_gunshi_cache_bn_hash",
+                           "bn_s_insolvent", "bn_s_main_bank", "bn_s_rel_bank", "bn_s_rel_assets",
+                           "bn_s_co_lease", "bn_s_parent", "bn_s_core", "bn_s_liquidity",
+                           "bn_s_shorter", "bn_s_one_time"]:
+                    st.session_state.pop(_k, None)
+
                 from components.score_calculation import run_scoring
                 
                 # Fetch _rules directly where it's defined (rule_manager.py)

@@ -601,13 +601,14 @@ def select_top_phrases(
                 ("Co_Lease",           ["協調", "銀行協調"],                                  0.05),
                 ("Parent_Guarantor",   ["親会社", "保証"],                                    0.05),
                 ("Related_Assets",     ["個人資産", "保全完結"],                              0.04),
-                ("Main_Bank_Support",  ["メイン", "メイン銀行", "支援"],                      0.04),
+                # Main_Bank_Support: bank=True（フォーム入力）と被る場合は二重加算しない
+                ("Main_Bank_Support",  ["メイン", "メイン銀行", "支援"],                      0.04 if not bank else 0.0),
                 ("Related_Bank_Status",["信用力", "実績", "銀行取引"],                        0.03),
                 ("One_Time_Deal",      ["本件限り", "条件付"],                                0.03),
                 ("Insolvent_Status",   ["逆転", "突破", "DSCR", "保証"],                      0.04),
             ]
             for ev_key, bonus_tags, bonus_val in _BN_TAG_BONUS:
-                if bn_evidence.get(ev_key) == 1:
+                if bonus_val > 0 and bn_evidence.get(ev_key) == 1:
                     if any(bt in tag_str for bt in bonus_tags):
                         s += bonus_val
         return s
@@ -1884,6 +1885,7 @@ def render_gunshi_ai_comment(
     submitted_inputs: dict | None = None,
     model_name: str = DEFAULT_MODEL,
     trend_info: str = "",   # ← 業界動向テキスト（analysis_results から渡す）
+    bn_evidence: dict | None = None,
 ) -> None:
     """
     審査結果画面の上部に直接表示するAIコメントセクション。
@@ -1896,13 +1898,16 @@ def render_gunshi_ai_comment(
         st.session_state["_gunshi_trend_info"] = trend_info
 
     # ── 計算（render_gunshi_in_results と共有キャッシュ） ─────────────────
-    cache_key = "gunshi_auto_result"
-    last_score = st.session_state.get("_gunshi_cache_score")
-    cur_score  = res.get("score", 0)
-    if cache_key not in st.session_state or last_score != cur_score:
+    cache_key    = "gunshi_auto_result"
+    last_score   = st.session_state.get("_gunshi_cache_score")
+    last_bn_hash = st.session_state.get("_gunshi_cache_bn_hash")
+    cur_score    = res.get("score", 0)
+    cur_bn_hash  = hash(frozenset((bn_evidence or {}).items()))
+    if cache_key not in st.session_state or last_score != cur_score or last_bn_hash != cur_bn_hash:
         with st.spinner("軍師AIを起動中..."):
-            st.session_state[cache_key] = compute_gunshi_from_res(res, submitted_inputs)
-            st.session_state["_gunshi_cache_score"] = cur_score
+            st.session_state[cache_key] = compute_gunshi_from_res(res, submitted_inputs, bn_evidence=bn_evidence)
+            st.session_state["_gunshi_cache_score"]   = cur_score
+            st.session_state["_gunshi_cache_bn_hash"] = cur_bn_hash
 
     g = st.session_state[cache_key]
     pct       = int(g["display_prob"] * 100)

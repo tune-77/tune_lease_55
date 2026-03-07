@@ -297,7 +297,8 @@ def render_analysis_results(
                     res=res,
                     submitted_inputs=st.session_state.get("last_submitted_inputs"),
                     model_name=st.session_state.get("ollama_model", "llama3") or "llama3",
-                    trend_info=trend_info or "",  # ← 業界動向データ（jsic + ネット拡充）
+                    trend_info=trend_info or "",
+                    bn_evidence=st.session_state.get("_bn_s_evidence"),
                 )
             except Exception as _gac_err:
                 st.caption(f"⚠️ 軍師AIコメント読み込みエラー: {_gac_err}")
@@ -312,78 +313,6 @@ def render_analysis_results(
                     from screening_report import build_screening_report_pdf
                     _rep_res = st.session_state["last_result"]
                     st.caption(f"業種：{_rep_res.get('industry_sub','')}　スコア：{_rep_res.get('score',0):.1f}")
-
-                    # ── BN逆転承認シミュレーター（スコア≤承認ライン のとき表示） ──────
-                    from bayesian_engine import THRESHOLD_APPROVAL
-                    approval_line = THRESHOLD_APPROVAL * 100
-                    if _rep_res.get("score", 100) <= approval_line:
-                        st.markdown("### 🔄 逆転承認シミュレーター（AI提案）")
-                        st.write("現在の財務スコアおよびBN判定では「否決」です。以下の条件を追加することで承認に持ち込めるかシミュレーションします。")
-                        st.caption("総合スコアが低い案件でも、追加条件を整えることで承認確率を高められます。入力項目をチェックして推論してください。")
-                        try:
-                            from bayesian_engine import (
-                                run_inference as _bn_infer,
-                                compute_reversal_suggestions as _bn_reversal,
-                            )
-                            _bn_c1, _bn_c2, _bn_c3 = st.columns(3)
-                            with _bn_c1:
-                                st.markdown("**財務・信用**")
-                                _bn_insolvent  = st.checkbox("債務超過",              key="bn_s_insolvent",  value=False)
-                                _bn_main_bank  = st.checkbox("メイン銀行支援あり",    key="bn_s_main_bank",  value=False)
-                                _bn_rel_bank   = st.checkbox("関係者の銀行取引良好",  key="bn_s_rel_bank",   value=False)
-                                _bn_rel_assets = st.checkbox("関係者の個人資産あり",  key="bn_s_rel_assets", value=False)
-                            with _bn_c2:
-                                st.markdown("**ヘッジ手段**")
-                                _bn_co_lease = st.checkbox("銀行との協調リース",   key="bn_s_co_lease", value=False)
-                                _bn_parent   = st.checkbox("親会社連帯保証",       key="bn_s_parent",   value=False)
-                            with _bn_c3:
-                                st.markdown("**物件・取引条件**")
-                                _bn_core      = st.checkbox("本業に不可欠な物件",      key="bn_s_core",      value=False)
-                                _bn_liquidity = st.checkbox("物件の中古流動性あり",     key="bn_s_liquidity", value=False)
-                                _bn_shorter   = st.checkbox("リース期間を短縮",         key="bn_s_shorter",   value=False)
-                                _bn_one_time  = st.checkbox("業況改善まで本件限り",      key="bn_s_one_time",  value=False)
-                            # チェック変更のたびに即時再計算（ボタン不要）
-                            _bn_ev = {
-                                "Insolvent_Status":    1 if _bn_insolvent  else 0,
-                                "Main_Bank_Support":   1 if _bn_main_bank  else 0,
-                                "Related_Bank_Status": 1 if _bn_rel_bank   else 0,
-                                "Related_Assets":      1 if _bn_rel_assets else 0,
-                                "Co_Lease":            1 if _bn_co_lease   else 0,
-                                "Parent_Guarantor":    1 if _bn_parent     else 0,
-                                "Core_Business_Use":   1 if _bn_core       else 0,
-                                "Asset_Liquidity":     1 if _bn_liquidity  else 0,
-                                "Shorter_Lease_Term":  1 if _bn_shorter    else 0,
-                                "One_Time_Deal":       1 if _bn_one_time   else 0,
-                            }
-                            st.session_state["_bn_s_result"]   = _bn_infer(_bn_ev)
-                            st.session_state["_bn_s_evidence"] = _bn_ev
-                            _bnr = st.session_state.get("_bn_s_result")
-                            _bne = st.session_state.get("_bn_s_evidence", {})
-                            if _bnr:
-                                _bn_prob = _bnr["approval_prob"]
-                                _bn_dec  = _bnr["decision"]
-                                _bn_col  = "#0d9488" if _bn_dec == "承認" else ("#f59e0b" if _bn_dec == "要審議" else "#b91c1c")
-                                _im      = _bnr.get("intermediate", {})
-                                st.divider()
-                                _r1, _r2, _r3, _r4 = st.columns(4)
-                                _r1.metric("🎯 承認確率",  f"{_bn_prob:.1%}")
-                                _r2.metric("財務信用度",   f"{_im.get('Financial_Creditworthiness', 0):.1%}")
-                                _r3.metric("ヘッジ条件",   f"{_im.get('Hedge_Condition', 0):.1%}")
-                                _r4.metric("物件価値",     f"{_im.get('Asset_Value', 0):.1%}")
-                                st.markdown(f"**判定: <span style='color:{_bn_col}'>{_bn_dec}</span>**", unsafe_allow_html=True)
-                                _rev = _bn_reversal(_bne, top_n=5)
-                                if _rev:
-                                    st.markdown("---")
-                                    st.markdown("**💡 逆転提案 — これを取り付けると承認確率が上がります（PDFに赤字で記載されます）**")
-                                    for _r in _rev:
-                                        _gain_pct = int(_r["delta"] * 100)
-                                        st.markdown(
-                                            f"- **{_r['label']}** を ON にする →"
-                                            f" {_r['before_prob']:.0%} → **{_r['after_prob']:.0%}**"
-                                            f"（+{_gain_pct}%pt）　{_r['after_decision']}"
-                                        )
-                        except Exception as _bn_err:
-                            st.caption(f"🧠 BNエンジン利用不可: {type(_bn_err).__name__}")
 
                     st.divider()
                     col_r1, col_r2 = st.columns(2)
@@ -499,11 +428,87 @@ def render_analysis_results(
                 if "last_result" not in st.session_state:
                     st.info("👈「新規審査」で審査を実行すると軍師分析が有効になります。")
                 else:
+                    _gu_res = st.session_state["last_result"]
+
+                    # ── STEP 1: BN逆転条件シミュレーション（否決・ボーダー時のみ） ──
+                    from bayesian_engine import THRESHOLD_APPROVAL
+                    _gu_approval_line = THRESHOLD_APPROVAL * 100
+                    if _gu_res.get("score", 100) <= _gu_approval_line:
+                        st.markdown("#### 🔄 STEP 1 — 逆転条件シミュレーション")
+                        st.caption("条件をチェックすると承認確率がリアルタイムで変化し、下の軍師フレーズにも反映されます。")
+                        try:
+                            from bayesian_engine import (
+                                run_inference as _bn_infer,
+                                compute_reversal_suggestions as _bn_reversal,
+                            )
+                            _bn_c1, _bn_c2, _bn_c3 = st.columns(3)
+                            with _bn_c1:
+                                st.markdown("**財務・信用**")
+                                _bn_insolvent  = st.checkbox("債務超過",              key="bn_s_insolvent",  value=False)
+                                _bn_main_bank  = st.checkbox("メイン銀行支援あり",    key="bn_s_main_bank",  value=False)
+                                _bn_rel_bank   = st.checkbox("関係者の銀行取引良好",  key="bn_s_rel_bank",   value=False)
+                                _bn_rel_assets = st.checkbox("関係者の個人資産あり",  key="bn_s_rel_assets", value=False)
+                            with _bn_c2:
+                                st.markdown("**ヘッジ手段**")
+                                _bn_co_lease = st.checkbox("銀行との協調リース",   key="bn_s_co_lease", value=False)
+                                _bn_parent   = st.checkbox("親会社連帯保証",       key="bn_s_parent",   value=False)
+                            with _bn_c3:
+                                st.markdown("**物件・取引条件**")
+                                _bn_core      = st.checkbox("本業に不可欠な物件",   key="bn_s_core",      value=False)
+                                _bn_liquidity = st.checkbox("物件の中古流動性あり",  key="bn_s_liquidity", value=False)
+                                _bn_shorter   = st.checkbox("リース期間を短縮",      key="bn_s_shorter",   value=False)
+                                _bn_one_time  = st.checkbox("業況改善まで本件限り",  key="bn_s_one_time",  value=False)
+                            _bn_ev = {
+                                "Insolvent_Status":    1 if _bn_insolvent  else 0,
+                                "Main_Bank_Support":   1 if _bn_main_bank  else 0,
+                                "Related_Bank_Status": 1 if _bn_rel_bank   else 0,
+                                "Related_Assets":      1 if _bn_rel_assets else 0,
+                                "Co_Lease":            1 if _bn_co_lease   else 0,
+                                "Parent_Guarantor":    1 if _bn_parent     else 0,
+                                "Core_Business_Use":   1 if _bn_core       else 0,
+                                "Asset_Liquidity":     1 if _bn_liquidity  else 0,
+                                "Shorter_Lease_Term":  1 if _bn_shorter    else 0,
+                                "One_Time_Deal":       1 if _bn_one_time   else 0,
+                            }
+                            st.session_state["_bn_s_result"]   = _bn_infer(_bn_ev)
+                            st.session_state["_bn_s_evidence"] = _bn_ev
+                            _bnr = st.session_state.get("_bn_s_result")
+                            _bne = st.session_state.get("_bn_s_evidence", {})
+                            if _bnr:
+                                _bn_prob = _bnr["approval_prob"]
+                                _bn_dec  = _bnr["decision"]
+                                _bn_col  = "#0d9488" if _bn_dec == "承認" else ("#f59e0b" if _bn_dec == "要審議" else "#b91c1c")
+                                _im      = _bnr.get("intermediate", {})
+                                _r1, _r2, _r3, _r4 = st.columns(4)
+                                _r1.metric("🎯 承認確率",  f"{_bn_prob:.1%}")
+                                _r2.metric("財務信用度",   f"{_im.get('Financial_Creditworthiness', 0):.1%}")
+                                _r3.metric("ヘッジ条件",   f"{_im.get('Hedge_Condition', 0):.1%}")
+                                _r4.metric("物件価値",     f"{_im.get('Asset_Value', 0):.1%}")
+                                st.markdown(f"**判定: <span style='color:{_bn_col}'>{_bn_dec}</span>**", unsafe_allow_html=True)
+                                _rev = _bn_reversal(_bne, top_n=5)
+                                if _rev:
+                                    st.markdown("**💡 逆転提案（PDFにも記載）**")
+                                    for _r in _rev:
+                                        _gain_pct = int(_r["delta"] * 100)
+                                        st.markdown(
+                                            f"- **{_r['label']}** → "
+                                            f"{_r['before_prob']:.0%} → **{_r['after_prob']:.0%}**"
+                                            f"（+{_gain_pct}%pt）　{_r['after_decision']}"
+                                        )
+                            _checked_count = sum(1 for v in _bn_ev.values() if v == 1)
+                            if _checked_count > 0:
+                                st.info(f"✅ {_checked_count}件の条件が選択されています。下の軍師フレーズに反映中...")
+                        except Exception as _bn_err:
+                            st.caption(f"🧠 BNエンジン利用不可: {type(_bn_err).__name__}")
+                        st.divider()
+                        st.markdown("#### ⚔️ STEP 2 — 承認奪取フレーズ & AI推薦")
+
+                    # ── STEP 2（良決は直接）: 軍師フレーズ・LLM ──────────────────
                     try:
                         from components.shinsa_gunshi import render_gunshi_in_results
                         _gu_model = st.session_state.get("ollama_model", "llama3") or "llama3"
                         _gunshi_g = render_gunshi_in_results(
-                            res=st.session_state["last_result"],
+                            res=_gu_res,
                             submitted_inputs=st.session_state.get("last_submitted_inputs"),
                             model_name=_gu_model,
                             bn_evidence=st.session_state.get("_bn_s_evidence"),
