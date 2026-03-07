@@ -13,6 +13,8 @@ if _SCRIPT_DIR not in sys.path:
     sys.path.insert(0, _SCRIPT_DIR)
 
 import streamlit as st
+# set_page_config は必ず最初の st 呼び出しにする必要がある
+st.set_page_config(page_title="温水式リース審査AI", page_icon="🏢", layout="wide")
 try:
     from streamlit_extras.metric_cards import style_metric_cards
 except ImportError:
@@ -20,6 +22,7 @@ except ImportError:
 import math
 import json
 import random
+import html
 import re
 import ollama
 import pandas as pd
@@ -185,15 +188,15 @@ def red_label(placeholder, text):
     # display: block にして、一つ一つのスライダーセットの範囲を明確にします
     placeholder.markdown(f'''
         <div style="
-            text-align: right; 
-            color: #FF0000; 
-            font-size: 20px; 
+            text-align: right;
+            color: #FF0000;
+            font-size: 20px;
             font-weight: bold;
             margin-bottom: -40px;
             padding-right: 5px;
             line-height: 1;
         ">
-            {text}
+            {html.escape(str(text))}
         </div>
     ''', unsafe_allow_html=True)
 
@@ -593,9 +596,6 @@ st.markdown("""
 </style>
     """, unsafe_allow_html=True)
 	
-# 🎨 画面のデザイン設定
-st.set_page_config(page_title="温水式リース審査AI", page_icon="🏢", layout="wide")
-
 # ── 認証チェック（ここより先はログイン済みのみ表示）──────────────────────
 from auth_logic import authenticate_user as _auth_check
 if not _auth_check():
@@ -788,7 +788,8 @@ def get_dashboard_image_path(hantei: str, industry_major: str, industry_sub: str
 
     def pick_fname(base_dir):
         """フォルダに応じたファイル名を返す（assets 用長い名前 / dashboard_images 用短い名前）"""
-        use_long_names = "cursor" in base_dir or "assets" in base_dir
+        # 環境変数で指定された assets フォルダ（長いファイル名）か判定
+        use_long_names = bool(DASHBOARD_IMAGES_ASSETS) and base_dir == DASHBOARD_IMAGES_ASSETS.rstrip(os.sep)
         if use_long_names:
             if "建設" in (industry_major or "") or "D " in (industry_major or ""):
                 f = "IMG_1754-cc58ef0c-3f27-4ebd-b33b-81b57f1fb833.png"
@@ -846,65 +847,12 @@ def _fragment_nenshu():
     """売上高入力。スライダーは100万千円まで、手入力は900億千円まで。後から動かした方を採用。
     on_change を使わないため st.form 内でも動作する。"""
     st.markdown("### 売上高")
-    NENSHU_SLIDER_MAX = 1_000_000
-    NENSHU_NUM_MAX = 90_000_000
-
-    if "nenshu" not in st.session_state:
-        st.session_state.nenshu = 10000
-    cur = st.session_state.nenshu
-
-    prev_key = "_san_prev_nenshuu"
-    prev_num_key = "_san_prev_num_nenshuu"
-    prev_slide_key = "_san_prev_slide_nenshuu"
-    externally_changed = st.session_state.get(prev_key) != cur
-
-    if "num_nenshuu" not in st.session_state or externally_changed:
-        st.session_state["num_nenshuu"] = max(0, min(cur, NENSHU_NUM_MAX))
-    if "slide_nenshuu" not in st.session_state or externally_changed:
-        st.session_state["slide_nenshuu"] = max(0, min(cur, NENSHU_SLIDER_MAX))
-
-    c_l, c_r = st.columns([0.7, 0.3])
-    with c_r:
-        st.number_input(
-            "直接入力",
-            min_value=0,
-            max_value=NENSHU_NUM_MAX,
-            step=10000,
-            key="num_nenshuu",
-            label_visibility="collapsed",
-        )
-    with c_l:
-        st.slider(
-            "売上高調整",
-            min_value=0,
-            max_value=NENSHU_SLIDER_MAX,
-            step=100,
-            key="slide_nenshuu",
-            label_visibility="collapsed",
-            format="%d",
-        )
-
-    new_num = st.session_state["num_nenshuu"]
-    new_slide = st.session_state["slide_nenshuu"]
-    prev_num = st.session_state.get(prev_num_key, new_num)
-    prev_slide = st.session_state.get(prev_slide_key, new_slide)
-
-    num_changed = new_num != prev_num
-    slide_changed = new_slide != prev_slide
-    if num_changed and not slide_changed:
-        nenshu = new_num
-    elif slide_changed and not num_changed:
-        nenshu = new_slide
-    elif num_changed and slide_changed:
-        nenshu = new_num
-    else:
-        nenshu = cur
-
-    st.session_state.nenshu = nenshu
-    st.session_state[prev_key] = nenshu
-    st.session_state[prev_num_key] = new_num
-    st.session_state[prev_slide_key] = new_slide
-    st.caption(f"**採用値: {nenshu:,} 千円**")
+    _slider_and_number(
+        "nenshu", "nenshuu", 10000, 0, 1_000_000,
+        step_slider=100, step_num=10000,
+        unit="千円", label_slider="売上高調整",
+        max_val_number=90_000_000,
+    )
     st.caption("※スライダー・直接入力のどちらかで変更後、**入力確定**または**判定開始**で反映されます。")
     st.divider()
 
@@ -919,8 +867,9 @@ def get_image(status):
     }
     filename = image_map.get(status)
     if not filename: return None
-    if os.path.exists(filename): return filename
-    desktop_path = os.path.join("/Users/kobayashiisaoryou/Desktop/", filename)
+    base_path = os.path.join(BASE_DIR, filename)
+    if os.path.exists(base_path): return base_path
+    desktop_path = os.path.join(os.path.expanduser("~/Desktop/"), filename)
     if os.path.exists(desktop_path): return desktop_path
     return None
 
