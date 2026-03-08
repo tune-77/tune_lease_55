@@ -877,7 +877,7 @@ def _fragment_nenshu():
     st.markdown("### 売上高 📌 必須（1以上）")
     _slider_and_number(
         "nenshu", "nenshuu", 10000, 0, 1_000_000,
-        step_slider=100, step_num=10000,
+        step_slider=100, step_num=1000,
         unit="千円", label_slider="売上高調整",
         max_val_number=90_000_000,
     )
