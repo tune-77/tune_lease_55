@@ -32,7 +32,7 @@ DEFAULT_MODEL = "llama3"
 
 # Gemini フォールバック（GEMINI_API_KEY 環境変数が設定されている場合のみ有効）
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-_GEMINI_URL    = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+_GEMINI_URL    = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
 # ==============================================================================
 # DB 初期化

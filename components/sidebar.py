@@ -140,7 +140,7 @@ def _render_ai_model_settings() -> None:
             or GEMINI_API_KEY_ENV
             or ""
         )
-        GEMINI_MODELS = ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.0-pro"]
+        GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-pro"]
         st.session_state["gemini_model"] = st.sidebar.selectbox(
             "Gemini モデル",
             GEMINI_MODELS,
