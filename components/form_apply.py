@@ -252,46 +252,46 @@ def render_apply_form(
 
             #  ②売上高総利益（スライダーは従来どおり、手入力のみ900億千円まで）
             st.markdown("### 売上高総利益")
-            item9_gross = _slider_and_number("item9_gross", "sourieki", 10000, -500000, 1000000, 100, 1000, max_val_number=90_000_000)
+            item9_gross = _slider_and_number("item9_gross", "sourieki", 10000, -500000, 1000000, 100, 1, max_val_number=90_000_000)
             st.divider() # 次の項目との区切
             # #③営業利益
             st.markdown("### 営業利益 💡 推奨（未入力だと営業利益率が 0% で計算されます）")
-            rieki = _slider_and_number("rieki", "rieki", 10000, -100000, 200000, 100, 1000, max_val_number=90_000_000)
+            rieki = _slider_and_number("rieki", "rieki", 10000, -100000, 200000, 100, 1, max_val_number=90_000_000)
             st.divider() # 次の項目との区切
             st.markdown("### 経常利益")
-            item4_ord_profit = _slider_and_number("item4_ord_profit", "item4_ord_profit", 10000, -100000, 200000, 100, 1000, max_val_number=90_000_000)
+            item4_ord_profit = _slider_and_number("item4_ord_profit", "item4_ord_profit", 10000, -100000, 200000, 100, 1, max_val_number=90_000_000)
             st.divider() # 次の項目との区切
             st.markdown("### 当期利益")
-            item5_net_income = _slider_and_number("item5_net_income", "item5_net_income", 10000, -100000, 200000, 100, 1000, max_val_number=90_000_000)
+            item5_net_income = _slider_and_number("item5_net_income", "item5_net_income", 10000, -100000, 200000, 100, 1, max_val_number=90_000_000)
             st.divider() # 次の項目との区切
 
         with st.expander("🏢 2. 資産・経費・その他", expanded=False):
         
             st.markdown("### 減価償却費")
-            item10_dep = _slider_and_number("item10_dep", "item10_dep", 10000, 0, 200000, 100, 1000, max_val_number=90_000_000)
+            item10_dep = _slider_and_number("item10_dep", "item10_dep", 10000, 0, 200000, 100, 1, max_val_number=90_000_000)
             st.divider() # 次の項目との区切
             st.markdown("### 減価償却費(経費)")
-            item11_dep_exp = _slider_and_number("item11_dep_exp", "item11_dep_exp", 10000, 0, 200000, 100, 1000, max_val_number=90_000_000)
+            item11_dep_exp = _slider_and_number("item11_dep_exp", "item11_dep_exp", 10000, 0, 200000, 100, 1, max_val_number=90_000_000)
             st.divider() # 次の項目との区切
             # #⑧賃借料
             st.markdown("### 賃借料")
-            item8_rent = _slider_and_number("item8_rent", "item8_rent", 10000, 0, 100000, 100, 1000, max_val_number=90_000_000)
+            item8_rent = _slider_and_number("item8_rent", "item8_rent", 10000, 0, 100000, 100, 1, max_val_number=90_000_000)
             st.divider() # 次の項目との区切
             st.markdown("### 賃借料（経費）")
-            item12_rent_exp = _slider_and_number("item12_rent_exp", "item12_rent_exp", 10000, 0, 100000, 100, 1000, max_val_number=90_000_000)
+            item12_rent_exp = _slider_and_number("item12_rent_exp", "item12_rent_exp", 10000, 0, 100000, 100, 1, max_val_number=90_000_000)
             st.divider() # 次の項目との区切
             #⑩機械装置
             st.markdown("### 機械装置")
-            item6_machine = _slider_and_number("item6_machine", "item6_machine", 10000, 0, 200000, 100, 1000, max_val_number=90_000_000)
+            item6_machine = _slider_and_number("item6_machine", "item6_machine", 10000, 0, 200000, 100, 1, max_val_number=90_000_000)
             st.divider() # 次の項目との区切
             st.markdown("### その他資産")
-            item7_other = _slider_and_number("item7_other", "item7_other", 10000, 0, 200000, 100, 1000, max_val_number=90_000_000)
+            item7_other = _slider_and_number("item7_other", "item7_other", 10000, 0, 200000, 100, 1, max_val_number=90_000_000)
             st.divider() # 次の項目との区切
             st.markdown("### 純資産 💡 推奨（未入力だと自己資本比率・学習モデル精度が低下します）")
-            net_assets = _slider_and_number("net_assets", "net_assets", 10000, -30000, 500000, 100, 1000, max_val_number=90_000_000)
+            net_assets = _slider_and_number("net_assets", "net_assets", 10000, -30000, 500000, 100, 1, max_val_number=90_000_000)
             st.divider() # 次の項目との区切
             st.markdown("### 総資産 📌 必須（1以上）")
-            total_assets = _slider_and_number("total_assets", "total_assets", 10000, 0, 1000000, 100, 1000, max_val_number=90_000_000)
+            total_assets = _slider_and_number("total_assets", "total_assets", 10000, 0, 1000000, 100, 1, max_val_number=90_000_000)
             st.divider() # 次の項目との区切
         with st.expander("💳 3. 信用情報", expanded=False):
 
@@ -299,11 +299,11 @@ def render_apply_form(
             grade = st.segmented_control("格付", ["①1-3 (優良)", "②4-6 (標準)", "③要注意以下", "④無格付"], default=st.session_state.get("grade", "②4-6 (標準)"), key="grade")
             st.markdown("### うちの銀行与信")
             st.caption("当社の与信です（総銀行与信ではありません）")
-            bank_credit = _slider_and_number("bank_credit", "bank_credit", 10000, 0, 3000000, 100, 1000, max_val_number=90_000_000)
+            bank_credit = _slider_and_number("bank_credit", "bank_credit", 10000, 0, 3000000, 100, 1, max_val_number=90_000_000)
             st.divider() # 次の項目との区切
             st.markdown("### うちのリース与信")
             st.caption("当社の与信です（総リース与信ではありません）")
-            lease_credit = _slider_and_number("lease_credit", "lease_credit", 10000, 0, 300000, 100, 1000, max_val_number=90_000_000)
+            lease_credit = _slider_and_number("lease_credit", "lease_credit", 10000, 0, 300000, 100, 1, max_val_number=90_000_000)
             st.divider() # 次の項目との区切
             # #16契約数
             st.markdown("### 契約数")
