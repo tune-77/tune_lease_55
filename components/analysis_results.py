@@ -1154,6 +1154,9 @@ def render_analysis_results(
                 elif u_op_r < a_op_r: prof_msg = f"平均以下({u_op_r:.1f}%)"
                 else: prof_msg = f"標準({u_op_r:.1f}%)"
                 st.caption(f"業界比較 — 規模: {sales_msg} / 収益: {prof_msg}")
+                if comparison_text:
+                    with st.expander("📊 財務指標 vs 業界目安", expanded=True):
+                        st.markdown(comparison_text)
 
             # ----- リース負担率 vs 業種平均（e-Stat 年度版）-----
             _lbd = res.get("lease_burden_data", {})
