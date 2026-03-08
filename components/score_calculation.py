@@ -695,32 +695,32 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     ai_completed_factors.append({"factor": "金利差（競合比）", "effect_percent": int(round(rate_effect)), "detail": f"自社が競合より{'有利' if rate_diff_pt < 0 else '不利'}な金利"})
                 contract_prob = max(0, min(100, contract_prob))
 
-                # ── 物件詳細スコアリング（total_scorer 統合） ──────────────────────────
-                # 物件カテゴリが選択され、物件スコアリングが有効な場合は
-                # ASSET_WEIGHT に基づく配分比率で総合スコアを算出する。
-                # カテゴリ未選択またはスコアリング未入力の場合は従来の重み計算にフォールバック。
+                # ── ASSET_WEIGHT 配分による総合スコア算出 ────────────────────────────
+                # カテゴリ対応物件は ASSET_WEIGHT 比率（物件スコア × asset_w + 借手スコア × obligor_w）、
+                # それ以外は従来の回帰最適化重みにフォールバック。
                 w_borrower, w_asset, w_quant, w_qual = get_score_weights()
                 _asset_category = form_result.get("asset_category")
-                _asset_item_scores = form_result.get("asset_item_scores") or {}
-                _asset_contract_cond = form_result.get("asset_contract_cond") or {}
                 _ts_result = None
                 if _asset_category:
-                    try:
-                        from total_scorer import calc_total_score
-                        _asset_contract_cond_full = dict(_asset_contract_cond)
-                        _asset_contract_cond_full["lease_months"] = lease_term
-                        _ts_result = calc_total_score(
-                            category=_asset_category,
-                            asset_item_scores=_asset_item_scores,
-                            obligor_score=contract_prob,
-                            contract=_asset_contract_cond_full,
-                        )
-                        final_score = _ts_result["total_score"]
-                    except Exception as _ts_err:
-                        _ts_result = None
-                        final_score = w_borrower * score_percent + w_asset * asset_score
+                    from category_config import ASSET_WEIGHT, SCORE_GRADES
+                    _wt = ASSET_WEIGHT.get(_asset_category, {})
+                    _aw  = _wt.get("asset_w", w_asset)
+                    _ow  = _wt.get("obligor_w", w_borrower)
+                    final_score = round(asset_score * _aw + contract_prob * _ow, 1)
+                    _grade_info = next((g for g in SCORE_GRADES if final_score >= g["min"]), SCORE_GRADES[-1])
+                    _ts_result = {
+                        "total_score":    final_score,
+                        "grade":          _grade_info["label"],
+                        "grade_text":     _grade_info["text"],
+                        "grade_color":    _grade_info["color"],
+                        "asset_score":    asset_score,
+                        "asset_weight":   _aw,
+                        "obligor_score":  contract_prob,
+                        "obligor_weight": _ow,
+                        "category":       _asset_category,
+                        "rationale":      _wt.get("rationale", ""),
+                    }
                 else:
-                    # 従来ロジック: 借手スコア + 物件スコア（重みは回帰最適化で変更可能）
                     final_score = w_borrower * score_percent + w_asset * asset_score
                 st.session_state["_ts_result"] = _ts_result
                 st.session_state['current_image'] = "approve" if final_score >= _eff_approval else "challenge"
