@@ -5,6 +5,7 @@ from constants import (
     QUALITATIVE_SCORING_LEVELS,
 )
 from utils import _slider_and_number, _reset_shinsa_inputs
+from category_config import CATEGORY_SCORE_ITEMS, ASSET_ID_TO_CATEGORY, ASSET_WEIGHT
 
 @st.fragment
 def _fragment_nenshu():
@@ -239,6 +240,88 @@ def render_apply_form(
                 asset_name = f"{asset_name} {asset_detail.strip()}"
     # ────────────────────────────────────────────────────────────────────────
 
+    # ── 物件詳細スコアリング（任意・カテゴリ対応物件のみ表示） ─────────────────
+    asset_category = ASSET_ID_TO_CATEGORY.get(selected_asset_id)
+    asset_item_scores = {}
+    asset_contract_cond = {}
+    if asset_category:
+        _wt_cfg = ASSET_WEIGHT.get(asset_category, {})
+        _asset_w_pct = int(_wt_cfg.get("asset_w", 0.15) * 100)
+        _obligor_w_pct = 100 - _asset_w_pct
+        with st.expander(
+            f"📊 物件詳細スコア【{asset_category}】（任意 — 入力すると配分比率 物件{_asset_w_pct}%：借手{_obligor_w_pct}% で総合スコアを計算）",
+            expanded=False,
+        ):
+            st.caption(
+                f"**{asset_category}** カテゴリの物件固有スコアを入力します（任意）。"
+                f"未入力項目は 50点（中立）で計算されます。"
+                f"\n\n配分根拠: {_wt_cfg.get('rationale', '')}"
+            )
+            # ── 契約条件（動的重み調整用） ──────────────────────────────
+            st.markdown("##### ⚙️ 契約条件（重み調整に使用）")
+            _cc1, _cc2, _cc3 = st.columns(3)
+            with _cc1:
+                _is_major = st.checkbox(
+                    "大手メーカー品",
+                    value=st.session_state.get("_as_major_maker", False),
+                    key="_as_major_maker",
+                    help="大手・有名メーカー品の場合はチェック → 流動性・サポート系ウェイトを1.2倍に引き上げ",
+                )
+            with _cc2:
+                _has_buyout = st.checkbox(
+                    "買取オプションあり",
+                    value=st.session_state.get("_as_buyout", False),
+                    key="_as_buyout",
+                    help="買取オプション付きの場合はチェック → 残価リスク系ウェイトを0.7倍に引き下げ",
+                )
+            with _cc3:
+                _tech_life = st.number_input(
+                    "想定技術寿命（月）",
+                    min_value=12,
+                    max_value=240,
+                    value=int(st.session_state.get("_as_tech_life", 60)),
+                    step=12,
+                    key="_as_tech_life",
+                    help="物件の技術的寿命（月）。リース期間/技術寿命 > 80% の場合、陳腐化リスク系の重みが1.3倍に引き上がります。",
+                )
+            asset_contract_cond = {
+                "is_major_maker": _is_major,
+                "has_buyout_option": _has_buyout,
+                "tech_life_months": int(_tech_life),
+            }
+            st.divider()
+            # ── スコアリング項目 ─────────────────────────────────────────
+            st.markdown("##### 📋 物件評価項目（各 0〜100 点）")
+            _score_opts_labels = [
+                "未入力（50点で補完）",
+                "20点 — D（非常に低い）",
+                "40点 — C（低い）",
+                "60点 — B（普通）",
+                "80点 — A（高い）",
+                "100点 — S（非常に高い）",
+            ]
+            _score_opts_vals = [None, 20, 40, 60, 80, 100]
+            _items = CATEGORY_SCORE_ITEMS.get(asset_category, [])
+            for _item in _items:
+                _item_key = f"_as_item_{asset_category}_{_item['id']}"
+                if _item_key not in st.session_state:
+                    st.session_state[_item_key] = 0  # 0 = 未入力
+                _cur_idx = st.session_state.get(_item_key, 0)
+                _sel = st.selectbox(
+                    f"**{_item['label']}**（基本重み {_item['weight']}%）",
+                    range(len(_score_opts_labels)),
+                    format_func=lambda i: _score_opts_labels[i],
+                    index=_cur_idx,
+                    key=_item_key,
+                    help=_item.get("help", ""),
+                )
+                _val = _score_opts_vals[_sel]
+                if _val is not None:
+                    asset_item_scores[_item["id"]] = _val
+            if not asset_item_scores:
+                st.info("すべて未入力のため、各項目は 50点（中立）で計算されます。1項目でも入力すると物件固有スコアが反映されます。")
+    # ────────────────────────────────────────────────────────────────────────
+
     with st.form("shinsa_form"):
         st.warning(
             "📌 **必須** 売上高・総資産は **1以上** を入力してください（未入力だと判定がブロックされます）。\n\n"
@@ -376,6 +459,10 @@ def render_apply_form(
         "asset_name": asset_name if lease_assets_list else "未選択",
         "num_competitors": num_competitors,
         "deal_occurrence": deal_occurrence,
+        # 物件詳細スコアリング（任意）
+        "asset_category": asset_category,           # "車両" / "医療機器" / "IT機器" / "産業機械" or None
+        "asset_item_scores": asset_item_scores,     # {item_id: score} 入力分のみ
+        "asset_contract_cond": asset_contract_cond, # {is_major_maker, has_buyout_option, tech_life_months}
     }
 
 def render_quick_edit_panel(jsic_data, lease_assets_list):

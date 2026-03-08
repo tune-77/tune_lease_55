@@ -290,6 +290,92 @@ def render_analysis_results(
 
             st.divider()
 
+            # ── 📊 物件詳細スコアリング結果（total_scorer） ──────────────────────
+            _ts = res.get("total_scorer_result") or st.session_state.get("_ts_result")
+            if _ts:
+                _ts_color = _ts.get("grade_color", "#6b7280")
+                _ts_label = _ts.get("grade", "—")
+                _ts_text  = _ts.get("grade_text", "—")
+                _ts_total = _ts.get("total_score", 0)
+                _as_score = _ts.get("asset_score", 0)
+                _as_grade = _ts.get("asset_grade", "—")
+                _ob_score = _ts.get("obligor_score", 0)
+                _asset_w  = int(_ts.get("asset_weight", 0) * 100)
+                _ob_w     = int(_ts.get("obligor_weight", 0) * 100)
+                _category = _ts.get("category", "—")
+                _rationale = _ts.get("rationale", "")
+                with st.expander(
+                    f"📊 物件詳細スコアリング【{_category}】— 総合 {_ts_total:.1f}点 / {_ts_label}（{_ts_text}）",
+                    expanded=True,
+                ):
+                    # サマリーカード
+                    st.markdown(f"""
+                    <div style="background:linear-gradient(135deg,#1e3a5f 0%,#334155 100%);
+                                color:#fff;padding:1rem 1.25rem;border-radius:10px;margin-bottom:0.75rem;">
+                      <div style="font-size:0.8rem;opacity:0.7;margin-bottom:0.5rem;">
+                        物件スコア × {_asset_w}%  ＋  借手スコア × {_ob_w}% ＝ 総合スコア
+                      </div>
+                      <div style="display:flex;gap:2rem;flex-wrap:wrap;align-items:flex-end;">
+                        <div>
+                          <div style="font-size:0.75rem;opacity:0.7;">物件スコア</div>
+                          <div style="font-size:1.6rem;font-weight:bold;">{_as_score:.1f}点 / {_as_grade}</div>
+                        </div>
+                        <div style="font-size:1.4rem;opacity:0.6;padding-bottom:0.2rem;">×{_asset_w}%  ＋</div>
+                        <div>
+                          <div style="font-size:0.75rem;opacity:0.7;">借手スコア</div>
+                          <div style="font-size:1.6rem;font-weight:bold;">{_ob_score:.1f}点</div>
+                        </div>
+                        <div style="font-size:1.4rem;opacity:0.6;padding-bottom:0.2rem;">×{_ob_w}%  ＝</div>
+                        <div>
+                          <div style="font-size:0.75rem;opacity:0.7;">総合スコア</div>
+                          <div style="font-size:2rem;font-weight:bold;color:{_ts_color};">{_ts_total:.1f}点 [{_ts_label}] {_ts_text}</div>
+                        </div>
+                      </div>
+                      <div style="font-size:0.72rem;opacity:0.6;margin-top:0.5rem;">配分根拠: {_rationale}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    # 推奨リース条件
+                    _rec = _ts.get("recommendation") or {}
+                    if _rec:
+                        _rec_years = _rec.get("max_lease_years", 0)
+                        _rec_res   = int(_rec.get("residual_rate", 0) * 100)
+                        _rec_note  = _rec.get("note", "")
+                        st.info(
+                            f"**推奨リース条件** — 最長リース年数: **{_rec_years}年** ／ "
+                            f"推奨残価率: **{_rec_res}%** ／ {_rec_note}"
+                        )
+
+                    # 警告（C/D 項目）
+                    _warns = _ts.get("warnings") or []
+                    if _warns:
+                        for _w in _warns:
+                            st.warning(_w)
+
+                    # 動的重み調整フラグ
+                    if _ts.get("weight_adjusted"):
+                        st.caption("⚙️ 契約条件（リース期間・買取オプション・大手メーカー）に基づき重みを動的に調整しています。")
+
+                    # 項目別スコア内訳
+                    _items_detail = _ts.get("item_scores") or {}
+                    if _items_detail:
+                        st.markdown("**物件評価項目 内訳**")
+                        import pandas as pd
+                        _rows = []
+                        for _iid, _iv in _items_detail.items():
+                            _rows.append({
+                                "評価項目": _iv.get("label", _iid),
+                                "スコア": f"{_iv.get('score', 0):.0f}点",
+                                "重み": f"{_iv.get('weight', 0):.1f}%",
+                                "寄与": f"{_iv.get('contribution', 0):.1f}点",
+                            })
+                        st.dataframe(
+                            pd.DataFrame(_rows),
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+                st.divider()
+
             # ── ⚔️ 軍師AIコメント（審査結果に直接表示）──────────────────────
             try:
                 from components.shinsa_gunshi import render_gunshi_ai_comment

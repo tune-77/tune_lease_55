@@ -695,9 +695,34 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     ai_completed_factors.append({"factor": "金利差（競合比）", "effect_percent": int(round(rate_effect)), "detail": f"自社が競合より{'有利' if rate_diff_pt < 0 else '不利'}な金利"})
                 contract_prob = max(0, min(100, contract_prob))
 
-                # 借手スコア + 物件スコア → 総合スコア（判定に反映）。重みは回帰最適化で変更可能。
+                # ── 物件詳細スコアリング（total_scorer 統合） ──────────────────────────
+                # 物件カテゴリが選択され、物件スコアリングが有効な場合は
+                # ASSET_WEIGHT に基づく配分比率で総合スコアを算出する。
+                # カテゴリ未選択またはスコアリング未入力の場合は従来の重み計算にフォールバック。
                 w_borrower, w_asset, w_quant, w_qual = get_score_weights()
-                final_score = w_borrower * score_percent + w_asset * asset_score
+                _asset_category = form_result.get("asset_category")
+                _asset_item_scores = form_result.get("asset_item_scores") or {}
+                _asset_contract_cond = form_result.get("asset_contract_cond") or {}
+                _ts_result = None
+                if _asset_category:
+                    try:
+                        from total_scorer import calc_total_score
+                        _asset_contract_cond_full = dict(_asset_contract_cond)
+                        _asset_contract_cond_full["lease_months"] = lease_term
+                        _ts_result = calc_total_score(
+                            category=_asset_category,
+                            asset_item_scores=_asset_item_scores,
+                            obligor_score=contract_prob,
+                            contract=_asset_contract_cond_full,
+                        )
+                        final_score = _ts_result["total_score"]
+                    except Exception as _ts_err:
+                        _ts_result = None
+                        final_score = w_borrower * score_percent + w_asset * asset_score
+                else:
+                    # 従来ロジック: 借手スコア + 物件スコア（重みは回帰最適化で変更可能）
+                    final_score = w_borrower * score_percent + w_asset * asset_score
+                st.session_state["_ts_result"] = _ts_result
                 st.session_state['current_image'] = "approve" if final_score >= _eff_approval else "challenge"
         
                 # [削除] AIアドバイス (1回目: 入力タブ側)
@@ -930,6 +955,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     "score": final_score, "hantei": "承認圏内" if _hantei_score >= _eff_approval else "要審議",
                     "hantei_score": _hantei_score, "hantei_score_label": _hantei_score_label,
                     "score_borrower": score_percent, "asset_score": asset_score, "asset_name": asset_name,
+                    "total_scorer_result": _ts_result,
                     "contract_prob": contract_prob, "z": z_main,
                     "ai_completed_factors": ai_completed_factors,
                     "comparison": comparison_text,
