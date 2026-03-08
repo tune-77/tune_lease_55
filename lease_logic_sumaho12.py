@@ -658,6 +658,7 @@ knowhow_data = load_json_data("leasing_knowhow.json")
 bankruptcy_data = load_json_data("bankruptcy_cases.json") # 倒産事例データ
 subsidy_schedule_data = load_json_data("subsidy_schedule.json")
 useful_life_data = load_json_data("useful_life_equipment.json")
+capex_lease_data = load_json_data("industry_capex_lease.json")  # e-Stat年度版: リース・設備投資ベンチマーク
 lease_classification_data = load_json_data("lease_classification.json")
 # リース物件リスト（ネット・社内基準。点数で判定に反映）
 _lease_assets_raw = load_json_data("lease_assets.json")
@@ -1089,7 +1090,8 @@ elif mode == "📋 審査・分析":
                     jsic_data=jsic_data,
                     avg_data=avg_data,
                     _rules=_rules,
-                    _SCRIPT_DIR=_SCRIPT_DIR
+                    _SCRIPT_DIR=_SCRIPT_DIR,
+                    capex_lease_data=capex_lease_data,
                 )
 
         if nav_mode == "📊 分析結果":

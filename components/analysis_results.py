@@ -1115,6 +1115,31 @@ def render_analysis_results(
                 else: prof_msg = f"標準({u_op_r:.1f}%)"
                 st.caption(f"業界比較 — 規模: {sales_msg} / 収益: {prof_msg}")
 
+            # ----- リース負担率 vs 業種平均（e-Stat 年度版）-----
+            _lbd = res.get("lease_burden_data", {})
+            if _lbd and _lbd.get("bench_lease_burden") is not None:
+                _ualp  = _lbd.get("user_annual_lease_pct")
+                _ulcp  = _lbd.get("user_lease_credit_pct")
+                _blb   = _lbd["bench_lease_burden"]
+                _bcs   = _lbd.get("bench_capex_to_sales")
+                _blc   = _lbd.get("bench_lease_to_capex")
+                _cv    = _ualp if _ualp is not None else _ulcp
+                _tlbl  = "年換算推定" if _ualp is not None else "与信/売上比（参考）"
+
+                if _cv is not None and _blb > 0:
+                    _lbr = _cv / _blb
+                    if   _lbr >= 3.0: _icon, _msg = "🔴", f"業種平均の{_lbr:.1f}倍（過大）"
+                    elif _lbr >= 2.0: _icon, _msg = "🟠", f"業種平均の{_lbr:.1f}倍（高め）"
+                    elif _lbr >= 1.5: _icon, _msg = "🟡", f"業種平均の{_lbr:.1f}倍（やや高め）"
+                    else:             _icon, _msg = "🟢", f"業種平均以下（良好）"
+                    _capex_txt = f" | 業種設備投資率: {_bcs:.2f}%" if _bcs else ""
+                    _lc_txt    = f" | 業種リース/設備投資: {_blc:.1f}%" if _blc else ""
+                    st.caption(
+                        f"{_icon} **リース負担率（{_tlbl}）**: "
+                        f"{_cv:.2f}% vs 業種平均 {_blb:.2f}% → **{_msg}**"
+                        f"{_capex_txt}{_lc_txt}"
+                    )
+
             # ----- SHAP 判定根拠の可視化 -----
             st.divider()
             with st.expander("🔍 SHAP 判定根拠の可視化（説明可能AI）", expanded=False):

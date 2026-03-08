@@ -27,7 +27,7 @@ from constants import (
     STRENGTH_TAG_OPTIONS
 )
 
-def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankruptcy_data, jsic_data, avg_data, _rules, _SCRIPT_DIR, RECOMMENDED_FIELDS=None):
+def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankruptcy_data, jsic_data, avg_data, _rules, _SCRIPT_DIR, RECOMMENDED_FIELDS=None, capex_lease_data=None):
     # Unpack form_result
     submitted_apply = form_result.get("submitted_apply")
     submitted_judge = form_result.get("submitted_judge")
@@ -164,14 +164,55 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 bench_op_margin = bench.get("op_margin", 0.0)
                 bench_equity_ratio = _equity_ratio_display(bench.get("equity_ratio")) or 0.0
                 bench_comment = bench.get("comment", "")
-    
+
+                # ── e-Stat 年度版: リース・設備投資ベンチマーク ──────────────────
+                bench_cl = (capex_lease_data or {}).get(selected_sub, {})
+                bench_lease_burden  = bench_cl.get("lease_burden_rate")   # 業種平均リース料/売上高 (%)
+                bench_capex_to_sales = bench_cl.get("capex_to_sales")     # 業種平均設備投資率 (%)
+                bench_lease_to_capex = bench_cl.get("lease_to_capex")     # 業種リース/設備投資比率 (%)
+
+                # 推定リース与信/売上高比率 (%)  ※lease_credit・nenshu ともに千円単位
+                try:
+                    if nenshu and nenshu > 0 and lease_credit and lease_credit > 0:
+                        user_lease_credit_pct = round(lease_credit / nenshu * 100, 2)
+                        if lease_term and lease_term > 0:
+                            # 月割りで年換算 → 年間支払額/売上高 (業種平均と同一概念)
+                            est_annual = lease_credit / lease_term * 12
+                            user_annual_lease_pct = round(est_annual / nenshu * 100, 2)
+                        else:
+                            user_annual_lease_pct = None
+                    else:
+                        user_lease_credit_pct = None
+                        user_annual_lease_pct = None
+                except Exception:
+                    user_lease_credit_pct = None
+                    user_annual_lease_pct = None
+
+                # リース負担率比較テキスト行
+                _lease_compare_line = ""
+                _compare_val = user_annual_lease_pct if user_annual_lease_pct is not None else user_lease_credit_pct
+                if bench_lease_burden is not None and _compare_val is not None:
+                    _type_label = "年換算推定" if user_annual_lease_pct is not None else "与信/売上比（参考）"
+                    _lb_ratio = _compare_val / bench_lease_burden if bench_lease_burden > 0 else None
+                    if _lb_ratio is not None:
+                        if _lb_ratio >= 3.0:   _lb_status = "⚠️ 過大（>3倍）"
+                        elif _lb_ratio >= 2.0: _lb_status = "⚠️ 高め（2〜3倍）"
+                        elif _lb_ratio >= 1.5: _lb_status = "注意（1.5〜2倍）"
+                        else:                  _lb_status = "✅ 問題なし"
+                    else:
+                        _lb_status = "N/A"
+                    _lease_compare_line = (
+                        f"\n- **リース負担率（{_type_label}）**: "
+                        f"{_compare_val:.2f}% (業種平均: {bench_lease_burden:.2f}%) → {_lb_status}"
+                    )
+
                 comp_margin = "高い" if user_op_margin >= bench_op_margin else "低い"
                 comp_equity = "高い" if user_equity_ratio >= bench_equity_ratio else "低い"
-    
+
                 comparison_text = f"""
                 - **営業利益率**: {user_op_margin:.1f}% (業界目安: {bench_op_margin}%) → 平均より{comp_margin}
                 - **自己資本比率**: {user_equity_ratio:.1f}% (業界目安: {bench_equity_ratio}%) → 平均より{comp_equity}
-                - **業界特性**: {bench_comment}
+                - **業界特性**: {bench_comment}{_lease_compare_line}
                 ※ **銀行与信・リース与信**は総銀行与信・総リース与信ではなく、**当社（弊社）の与信**である。判定・アドバイスではこの点を踏まえること。
                 """
     
@@ -430,6 +471,33 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 contract_prob += equity_effect
                 if abs(equity_effect) >= 0.5:
                     ai_completed_factors.append({"factor": "自己資本比率", "effect_percent": int(round(equity_effect)), "detail": f"自己資本比率 {user_equity_ratio:.1f}% を反映"})
+
+                # ── リース負担率による補正（e-Stat 年度版ベンチマーク対比）──────────────
+                # 年換算推定比率が業種平均の何倍かでペナルティ/ボーナスを付与
+                try:
+                    _lb_effect = 0
+                    _lb_detail = ""
+                    _cv = user_annual_lease_pct if user_annual_lease_pct is not None else user_lease_credit_pct
+                    if bench_lease_burden and bench_lease_burden > 0 and _cv is not None:
+                        _lbr = _cv / bench_lease_burden  # 業種平均比率
+                        if _lbr >= 3.0:
+                            _lb_effect = -6
+                            _lb_detail = f"リース負担率が業種平均の{_lbr:.1f}倍（過大）"
+                        elif _lbr >= 2.0:
+                            _lb_effect = -3
+                            _lb_detail = f"リース負担率が業種平均の{_lbr:.1f}倍（高め）"
+                        elif _lbr <= 0.5:
+                            _lb_effect = +2
+                            _lb_detail = f"リース負担率が業種平均の{_lbr:.1f}倍（低く良好）"
+                    if _lb_effect != 0:
+                        contract_prob += _lb_effect
+                        ai_completed_factors.append({
+                            "factor": "リース負担率（業種比）",
+                            "effect_percent": int(round(_lb_effect)),
+                            "detail": _lb_detail,
+                        })
+                except Exception:
+                    pass
 
                 from bayesian_engine import THRESHOLD_APPROVAL
                 approval_line = THRESHOLD_APPROVAL * 100
@@ -777,6 +845,14 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     "industry_major": selected_major,
                     "industry_sub": selected_sub,
                     "industry_sentiment_z": industry_z,
+                    # e-Stat 年度版: リース・設備投資ベンチマーク
+                    "lease_burden_data": {
+                        "user_lease_credit_pct":  user_lease_credit_pct,
+                        "user_annual_lease_pct":  user_annual_lease_pct,
+                        "bench_lease_burden":     bench_lease_burden,
+                        "bench_capex_to_sales":   bench_capex_to_sales,
+                        "bench_lease_to_capex":   bench_lease_to_capex,
+                    },
                 }
 
                 # カスタムルールの影響や強制ステータスの上書き
