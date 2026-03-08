@@ -1377,16 +1377,6 @@ def render_analysis_results(
 
             st.divider()
             with st.container():
-                st.subheader("🌐 業界リスク情報")
-                # ----- 業界リスク情報（ダッシュボード直下・フル幅） -----
-                net_summary = res.get("network_risk_summary", "") or ""
-                if net_summary.strip() and "取得できません" not in net_summary and "検索エラー" not in net_summary:
-                    st.text_area("ネット検索で取得した倒産トレンド・リスク", value=net_summary[:1500] + ("…" if len(net_summary) > 1500 else ""), height=120, disabled=True, label_visibility="collapsed")
-                else:
-                    st.caption("判定開始時に業界リスクを検索します。未取得の場合は審査入力で再実行してください。")
-
-            st.divider()
-            with st.container():
                 st.subheader("🔮 審査突破のためのAIアドバイス")
                 col_adv1, col_adv2 = st.columns(2)
                 with col_adv1:

@@ -15,7 +15,7 @@ from coeff_definitions import (
 
 from charts import _equity_ratio_display
 from indicators import calculate_pd
-from web_services import search_bankruptcy_trends, get_market_rate, get_stats
+from web_services import get_market_rate, get_stats
 from rule_manager import evaluate_custom_rules
 from data_cases import (
     get_effective_coeffs, get_score_weights, save_case_log,
@@ -329,12 +329,9 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
     
                 my_hints = hints_data.get(selected_sub, {"subsidies": [], "risks": [], "mandatory": ""})
     
-                # 財務ベース倒産確率と業界リスク検索（判定開始時に実行）
+                # 財務ベース倒産確率
                 pd_percent = calculate_pd(user_equity_ratio, user_current_ratio, user_op_margin)
-                try:
-                    network_risk_summary = search_bankruptcy_trends(selected_sub)
-                except Exception as _e:
-                    network_risk_summary = f"（業界リスクの取得でエラー: {_e}。判定は続行します。）"
+                network_risk_summary = ""
     
                 # ==========================================================================
                 # 🧮 スコア計算ロジック
@@ -545,22 +542,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 else:
                     ai_completed_factors.append({"factor": "競合なし", "effect_percent": int(round(comp_effect)), "detail": "競合優位で成約率を上げる補正"})
     
-                # 業界景気動向: Z化（-1,0,1）。係数は更新値 or 既定
-                _summary = (network_risk_summary or "").lower()
-                if "景気" in _summary or "好調" in _summary or "拡大" in _summary or "堅調" in _summary:
-                    industry_z = 1.0
-                    ind_label = "業界動向（ポジティブ）"
-                elif "倒産" in _summary or "減少" in _summary or "悪化" in _summary or "懸念" in _summary or "低下" in _summary:
-                    industry_z = -1.0
-                    ind_label = "業界動向（ネガティブ）"
-                else:
-                    industry_z = 0.0
-                    ind_label = "業界動向（中立）"
-                ind_coef = effective.get("industry_sentiment_z", BAYESIAN_PRIOR_EXTRA["industry_sentiment_per_z"])
-                ind_effect = ind_coef * industry_z
-                contract_prob += ind_effect
-                if industry_z != 0:
-                    ai_completed_factors.append({"factor": ind_label, "effect_percent": int(round(ind_effect)), "detail": "業界の景気動向を成約率に反映"})
+                industry_z = 0.0  # 業界リスク情報削除により中立固定
     
                 # 金利差は y_pred_adjusted 算出後に追加
 
