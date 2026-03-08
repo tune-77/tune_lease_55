@@ -175,41 +175,13 @@ def render_quantitative_analysis():
                             st.dataframe(imp.head(10), use_container_width=True, hide_index=True)
 
         st.divider()
-        st.subheader("重み最適化（回帰）")
-        st.caption("成約/失注データでロジスティック回帰を行い、借手スコア・物件スコアの推奨割合と、総合スコア・定性スコアの推奨割合を算出します。参考値として表示します。")
-        if st.button("🔄 回帰で重みを最適化", key="run_weight_optimize"):
-            with st.spinner("回帰で重みを算出中..."):
-                opt = optimize_score_weights_from_regression()
-            if opt is not None:
-                st.session_state["weight_optimize_result"] = opt
-            else:
-                st.session_state["weight_optimize_result"] = None
-            st.rerun()
-            
-        wopt = st.session_state.get("weight_optimize_result")
-        if wopt:
-            w_b_cur, w_a_cur, w_q_cur, w_ql_cur = get_score_weights()
-            st.success(f"分析件数: **{wopt['n_cases']}件**。回帰AUC: **{wopt.get('auc_borrower_asset', 0):.3f}**")
-            st.markdown("**推奨: 借手** " + f"**{wopt['recommended_borrower_pct']*100:.0f}%** / **物件** **{wopt['recommended_asset_pct']*100:.0f}%**（現在 {w_b_cur*100:.0f}% / {w_a_cur*100:.0f}%）")
-            if "recommended_quant_pct" in wopt and "recommended_qual_pct" in wopt:
-                st.markdown("**推奨: 総合** " + f"**{wopt['recommended_quant_pct']*100:.0f}%** / **定性** **{wopt['recommended_qual_pct']*100:.0f}%**（現在 {w_q_cur*100:.0f}% / {w_ql_cur*100:.0f}%）")
-                if wopt.get("n_cases_with_qual"):
-                    st.caption(f"定性あり {wopt['n_cases_with_qual']}件・AUC {wopt.get('auc_quant_qual', 0):.3f}")
-            else:
-                st.caption("定性データ不足のため総合/定性は 60%/40% のまま")
-                
-            if st.button("💾 推奨を保存してスコア計算に反映", key="save_weight_overrides"):
-                overrides = load_coeff_overrides() or {}
-                overrides["score_weights"] = {
-                    "borrower": wopt["recommended_borrower_pct"],
-                    "asset": wopt["recommended_asset_pct"],
-                    "quant": wopt.get("recommended_quant_pct", DEFAULT_WEIGHT_QUANT),
-                    "qual": wopt.get("recommended_qual_pct", DEFAULT_WEIGHT_QUAL),
-                }
-                if save_coeff_overrides(overrides):
-                    st.success("保存しました。今後の審査でこの重みを使います。")
-                    st.rerun()
-                else:
-                    st.error("保存に失敗しました。")
-        elif n_reg_q >= QUALITATIVE_ANALYSIS_MIN_CASES:
-            st.info("「回帰で重みを最適化」ボタンで、データに基づく推奨割合を算出できます。")
+        st.subheader("📌 スコアの位置づけについて")
+        st.info(
+            "**総合スコアは「信用力の業種内相対比較値（参考値）」です。デフォルト予測モデルではありません。**\n\n"
+            "このスコアは同業種・同規模先との財務指標比較に基づく相対評価です。"
+            "承認・否決の最終判断は審査担当者が行います。\n\n"
+            "⚠️ 回帰分析による重み最適化は、個別案件IDでの事後追跡が整備されていないため、"
+            "総合スコア・承認確率には適用しません。\n\n"
+            "📊 **契約期待度モデル（営業勝率）** は別途、競合社数・発生経緯などのデータを収集したうえで"
+            "設計予定です。現在は入力フォームにてデータを蓄積中です。"
+        )

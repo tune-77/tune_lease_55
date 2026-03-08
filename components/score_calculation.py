@@ -27,7 +27,7 @@ from constants import (
     STRENGTH_TAG_OPTIONS
 )
 
-def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankruptcy_data, jsic_data, avg_data, _rules, _SCRIPT_DIR):
+def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankruptcy_data, jsic_data, avg_data, _rules, _SCRIPT_DIR, RECOMMENDED_FIELDS=None):
     # Unpack form_result
     submitted_apply = form_result.get("submitted_apply")
     submitted_judge = form_result.get("submitted_judge")
@@ -63,9 +63,24 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
     nenshu = form_result.get("nenshu", 0)
     passion_text = form_result.get("passion_text", "")
     strength_tags = form_result.get("strength_tags", [])
+    num_competitors = form_result.get("num_competitors", "未入力")
+    deal_occurrence = form_result.get("deal_occurrence", "不明")
 
     if submitted_judge or st.session_state.pop("_auto_judge", False):
         try:
+            # ── 承認ライン: business_rules.json > constants.py の優先順位で解決 ──
+            # settings UI で変更した値が即座に判定に反映されるようにする。
+            _eff_approval = int(
+                (_rules or {}).get("thresholds", {}).get("approval", APPROVAL_LINE / 100) * 100
+            )
+            _eff_review = int(
+                (_rules or {}).get("thresholds", {}).get("review", REVIEW_LINE / 100) * 100
+            )
+            _eff_penalty = float(
+                (_rules or {}).get("score_modifiers", {}).get(
+                    "learning_model_reject_penalty_multiplier", SCORE_PENALTY_IF_LEARNING_REJECT
+                )
+            )
             # フラグメント利用時用: session_state の値で上書き（入力ガタつき軽減のため）
             nenshu = st.session_state.get("nenshu", 0)
             item9_gross = st.session_state.get("item9_gross", 0)
@@ -118,10 +133,24 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 validation_ok = False
                 st.error(
                     f"**判定には次の必須項目を入力してください。**\n\n"
-                    f"- 「{'」「'.join(missing)}」は **1以上** の値を入力してください。\n\n"
-                    "売上高は比率計算に、総資産は自己資本比率・学習モデルに必要です。"
+                    + "\n".join(f"- **{m}** は **1以上** の値を入力してください。" for m in missing)
+                    + "\n\n売上高は比率計算に、総資産は自己資本比率・学習モデルに必要です。"
                 )
-            
+
+            # 推奨項目チェック（警告のみ、判定は続行）
+            if validation_ok and RECOMMENDED_FIELDS:
+                rec_warnings = []
+                for key, label, reason in RECOMMENDED_FIELDS:
+                    val = st.session_state.get(key, 0) or 0
+                    if val == 0:
+                        rec_warnings.append(f"**{label}**: {reason}")
+                if rec_warnings:
+                    st.warning(
+                        "💡 **推奨項目が未入力（0）です。**入力すると審査精度が向上します。\n\n"
+                        + "\n".join(f"- {w}" for w in rec_warnings)
+                        + "\n\n※ このまま判定を続行します。"
+                    )
+
             if validation_ok:
                 # 指標計算
                 user_op_margin = (rieki / nenshu * 100) if nenshu > 0 else 0.0
@@ -490,7 +519,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 # 借手スコア + 物件スコア → 総合スコア（判定に反映）。重みは回帰最適化で変更可能。
                 w_borrower, w_asset, w_quant, w_qual = get_score_weights()
                 final_score = w_borrower * score_percent + w_asset * asset_score
-                st.session_state['current_image'] = "approve" if final_score >= APPROVAL_LINE else "challenge"
+                st.session_state['current_image'] = "approve" if final_score >= _eff_approval else "challenge"
         
                 # [削除] AIアドバイス (1回目: 入力タブ側)
                 # ここにあった ai_question 生成と messages 追加ロジックは削除し、
@@ -614,11 +643,11 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
 
                 # 学習モデル判定が「否決」のときはすべてのスコアを50%減
                 if scoring_result and (scoring_result.get("decision") or "").strip() == "否決":
-                    final_score = final_score * SCORE_PENALTY_IF_LEARNING_REJECT
-                    contract_prob = contract_prob * SCORE_PENALTY_IF_LEARNING_REJECT
-                    score_percent = score_percent * SCORE_PENALTY_IF_LEARNING_REJECT
-                    score_percent_bench = (score_percent_bench or 0) * SCORE_PENALTY_IF_LEARNING_REJECT
-                    score_percent_ind = (score_percent_ind or 0) * SCORE_PENALTY_IF_LEARNING_REJECT
+                    final_score = final_score * _eff_penalty
+                    contract_prob = contract_prob * _eff_penalty
+                    score_percent = score_percent * _eff_penalty
+                    score_percent_bench = (score_percent_bench or 0) * _eff_penalty
+                    score_percent_ind = (score_percent_ind or 0) * _eff_penalty
                     # 定性スコアリングの合計・ランクも否決後の総合で再計算
                     if qualitative_scoring_correction:
                         combined_score = round(final_score * w_quant + qual_weighted_score * w_qual)
@@ -710,7 +739,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         pass
 
                 st.session_state['last_result'] = {
-                    "score": final_score, "hantei": "承認圏内" if final_score >= APPROVAL_LINE else "要審議",
+                    "score": final_score, "hantei": "承認圏内" if final_score >= _eff_approval else "要審議",
                     "score_borrower": score_percent, "asset_score": asset_score, "asset_name": asset_name,
                     "contract_prob": contract_prob, "z": z_main,
                     "ai_completed_factors": ai_completed_factors,
@@ -754,7 +783,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 if forced_custom_status:
                     st.session_state['last_result']["hantei"] = forced_custom_status
                     st.session_state['current_image'] = "challenge" if forced_custom_status in ["要審議", "否決"] else "approve"
-                elif final_score < REVIEW_LINE:
+                elif final_score < _eff_review:
                     st.session_state['last_result']["hantei"] = "否決"
                     st.session_state['current_image'] = "challenge"
                 
@@ -762,7 +791,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 hp_card = int(min(999, max(1, net_assets / 1000))) if net_assets else int(min(999, max(1, user_equity_ratio * 5)))
                 atk_card = int(min(99, max(1, user_op_margin * 2)))
                 spd_card = int(min(99, max(1, user_current_ratio / 2)))
-                is_approved = final_score >= APPROVAL_LINE
+                is_approved = final_score >= _eff_approval
                 # 補完要因をスキル・環境効果としてバトルに渡す
                 env_effects = [f"{f['factor']}: {f['effect_percent']:+.0f}%" for f in ai_completed_factors]
                 st.session_state["battle_data"] = {
@@ -770,7 +799,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     "is_approved": is_approved,
                     "special_move_name": None, "special_effect": None,
                     "battle_log": [], "dice": None,
-                    "score": final_score, "hantei": "承認圏内" if is_approved else "要審議",  # is_approved = (final_score >= APPROVAL_LINE)
+                    "score": final_score, "hantei": "承認圏内" if is_approved else "要審議",  # is_approved = (final_score >= _eff_approval)
                     "environment_effects": env_effects,
                     "ai_completed_factors": ai_completed_factors,
                 }
@@ -784,6 +813,8 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     "main_bank": main_bank,
                     "competitor": competitor,
                     "competitor_rate": st.session_state.get("competitor_rate"),
+                    "num_competitors": num_competitors,
+                    "deal_occurrence": deal_occurrence,
                     "inputs": {
                         "nenshu": nenshu,
                         "gross_profit": item9_gross,
@@ -847,6 +878,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         "acquisition_cost": acquisition_cost, "acceptance_year": acceptance_year,
                         "selected_major": selected_major, "selected_sub": selected_sub,
                         "grade": grade, "main_bank": main_bank, "competitor": competitor,
+                        "num_competitors": num_competitors, "deal_occurrence": deal_occurrence,
                         "customer_type": customer_type, "contract_type": contract_type,
                         "deal_source": deal_source,
                         "selected_asset_index": st.session_state.get("selected_asset_index", 0),
@@ -858,6 +890,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     # AI自動所見・ワンタップ質問を有効化（ai_consultation.pyで生成）
                     st.session_state["_need_auto_comment"] = True
                     st.session_state["auto_ai_comment"] = None
+                    st.session_state["gemini_qa_cache"] = {}  # 新案件なのでキャッシュリセット
                     st.rerun()  # 画面を読み込み直して、実際にタブを移動させる
         except Exception as e:
             st.error("判定開始の処理中にエラーが発生しました。入力内容を確認するか、ページを再読み込みして再度お試しください。")

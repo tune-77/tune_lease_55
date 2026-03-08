@@ -267,11 +267,11 @@ def render_analysis_results(
                       <div style="font-size:2rem;font-weight:bold;color:{_hantei_color};">{res.get("hantei","—")}</div>
                     </div>
                     <div>
-                      <div style="font-size:0.8rem;opacity:0.7;">総合スコア</div>
+                      <div style="font-size:0.8rem;opacity:0.7;">総合スコア<span style="font-size:0.65rem;opacity:0.8;margin-left:4px;">（信用力参考値）</span></div>
                       <div style="font-size:2rem;font-weight:bold;">{res['score']:.1f}%</div>
                     </div>
                     <div>
-                      <div style="font-size:0.8rem;opacity:0.7;">契約期待度</div>
+                      <div style="font-size:0.8rem;opacity:0.7;">契約期待度<span style="font-size:0.65rem;opacity:0.8;margin-left:4px;">（暫定値・データ収集中）</span></div>
                       <div style="font-size:2rem;font-weight:bold;">{res.get('contract_prob',0):.1f}%</div>
                     </div>
                     <div>
@@ -286,7 +286,7 @@ def render_analysis_results(
                 </div>
                 """, unsafe_allow_html=True)
             with _gauge_col:
-                st.plotly_chart(plot_gauge_plotly(res['score'], "総合スコア"), use_container_width=True, key="gauge_score")
+                st.plotly_chart(plot_gauge_plotly(res['score'], "総合スコア（信用力参考値）"), use_container_width=True, key="gauge_score")
 
             st.divider()
 
@@ -324,15 +324,34 @@ def render_analysis_results(
                     if st.button("📥 PDF を生成してダウンロード", type="primary", key="rep_gen"):
                         with st.spinner("PDF 生成中..."):
                             try:
-                                _bn_result_for_pdf   = st.session_state.get("_bn_s_result")
-                                _bn_evidence_for_pdf = st.session_state.get("_bn_s_evidence") or {}
+                                # BN証拠をチェックボックスの widget キーから直接再構築
+                                # （PDF生成はBNエクスパンダーより上で実行されるため
+                                #   session_state の "_bn_s_evidence" は1描画前の値になる。
+                                #   widget キー自体は前描画で確定済みなので直接読む）
+                                _bn_ev_for_pdf = {
+                                    "Insolvent_Status":    1 if st.session_state.get("bn_s_insolvent",  False) else 0,
+                                    "Main_Bank_Support":   1 if st.session_state.get("bn_s_main_bank",  False) else 0,
+                                    "Related_Bank_Status": 1 if st.session_state.get("bn_s_rel_bank",   False) else 0,
+                                    "Related_Assets":      1 if st.session_state.get("bn_s_rel_assets", False) else 0,
+                                    "Co_Lease":            1 if st.session_state.get("bn_s_co_lease",   False) else 0,
+                                    "Parent_Guarantor":    1 if st.session_state.get("bn_s_parent",     False) else 0,
+                                    "Core_Business_Use":   1 if st.session_state.get("bn_s_core",       False) else 0,
+                                    "Asset_Liquidity":     1 if st.session_state.get("bn_s_liquidity",  False) else 0,
+                                    "Shorter_Lease_Term":  1 if st.session_state.get("bn_s_shorter",    False) else 0,
+                                    "One_Time_Deal":       1 if st.session_state.get("bn_s_one_time",   False) else 0,
+                                }
+                                _bn_result_for_pdf   = None
+                                _bn_evidence_for_pdf = _bn_ev_for_pdf
                                 _bn_reversal_for_pdf = []
-                                if _bn_result_for_pdf:
-                                    try:
-                                        from bayesian_engine import compute_reversal_suggestions as _bn_rev_fn
-                                        _bn_reversal_for_pdf = _bn_rev_fn(_bn_evidence_for_pdf, top_n=5)
-                                    except Exception:
-                                        pass
+                                try:
+                                    from bayesian_engine import (
+                                        run_inference as _bn_infer_pdf,
+                                        compute_reversal_suggestions as _bn_rev_fn,
+                                    )
+                                    _bn_result_for_pdf   = _bn_infer_pdf(_bn_ev_for_pdf)
+                                    _bn_reversal_for_pdf = _bn_rev_fn(_bn_ev_for_pdf, top_n=5)
+                                except Exception:
+                                    pass
                                 # モンテカルロ結果をサマリ化してPDFに渡す
                                 _mc_pf_raw  = st.session_state.get("mc_portfolio_result")
                                 _mc_summary = None
@@ -381,7 +400,7 @@ def render_analysis_results(
                                         _g_raw = compute_gunshi_from_res(
                                             _rep_res,
                                             st.session_state.get("last_submitted_inputs"),
-                                            bn_evidence=st.session_state.get("_bn_s_evidence"),
+                                            bn_evidence=_bn_ev_for_pdf,  # チェックボックスの現在値を使用
                                         )
                                         _gunshi_pdf = build_gunshi_pdf_data(_g_raw)
                                 except Exception:
@@ -424,15 +443,22 @@ def render_analysis_results(
                                 st.error(f"PDF 生成エラー: {_e}")
 
             # ── ⚔️ 軍師モード（承認奪取）────────────────────────────────────────
-            with st.expander("⚔️ 軍師モード（承認奪取）— ベイズ推薦 × 100選 × LLM", expanded=False):
+            # スコアが承認ライン未満のときは自動展開（BNシミュレータをすぐ見せる）
+            from bayesian_engine import THRESHOLD_APPROVAL
+            _gu_approval_line = THRESHOLD_APPROVAL * 100
+            _gunshi_auto_expand = (
+                st.session_state.get("last_result", {}).get("score", 100) < _gu_approval_line
+            )
+            with st.expander(
+                "⚔️ 軍師モード（承認奪取）— ベイズ推薦 × 100選 × LLM",
+                expanded=_gunshi_auto_expand,
+            ):
                 if "last_result" not in st.session_state:
                     st.info("👈「新規審査」で審査を実行すると軍師分析が有効になります。")
                 else:
                     _gu_res = st.session_state["last_result"]
 
                     # ── STEP 1: BN逆転条件シミュレーション（否決・ボーダー時のみ） ──
-                    from bayesian_engine import THRESHOLD_APPROVAL
-                    _gu_approval_line = THRESHOLD_APPROVAL * 100
                     if _gu_res.get("score", 100) <= _gu_approval_line:
                         st.markdown("#### 🔄 STEP 1 — 逆転条件シミュレーション")
                         st.caption("条件をチェックすると承認確率がリアルタイムで変化し、下の軍師フレーズにも反映されます。")
@@ -952,7 +978,7 @@ def render_analysis_results(
                     combined = r.get("combined_score", 0)
                     c1, c2, c3, c4 = st.columns(4)
                     with c1:
-                        st.metric("総合スコア", f"{total_score:.1f}", help="借手スコア85%＋物件スコア15%")
+                        st.metric("総合スコア（信用力参考値）", f"{total_score:.1f}", help="借手スコア85%＋物件スコア15%。業種内相対評価です。デフォルト予測値ではありません。")
                     with c2:
                         st.metric("定性スコア", f"{qual_score} / 100", help="項目別5段階の加重平均")
                     with c3:
@@ -1053,7 +1079,7 @@ def render_analysis_results(
                 with k2:
                     st.metric("判定", res.get("hantei", "—"), help="承認圏内 or 要審議")
                 with k3:
-                    st.metric("契約期待度", f"{res.get('contract_prob', 0):.1f}%", help="定性補正後の期待度")
+                    st.metric("契約期待度（暫定）", f"{res.get('contract_prob', 0):.1f}%", help="現在は定性補正ベースの暫定値。競合社数・発生経緯などのデータ収集後に専用モデルへ移行予定。")
                 with k4:
                     if "yield_pred" in res:
                         st.metric("予測利回り", f"{res['yield_pred']:.2f}%", delta=f"{res.get('rate_diff', 0):+.2f}%", help="AI予測利回り")
@@ -1088,6 +1114,20 @@ def render_analysis_results(
                 elif u_op_r < a_op_r: prof_msg = f"平均以下({u_op_r:.1f}%)"
                 else: prof_msg = f"標準({u_op_r:.1f}%)"
                 st.caption(f"業界比較 — 規模: {sales_msg} / 収益: {prof_msg}")
+
+            # ----- SHAP 判定根拠の可視化 -----
+            st.divider()
+            with st.expander("🔍 SHAP 判定根拠の可視化（説明可能AI）", expanded=False):
+                try:
+                    from components.shap_explanation import render_shap_explanation
+                    _shap_cases = load_all_cases()
+                    _shap_case = next(
+                        (c for c in _shap_cases if c.get("id") == current_case_id),
+                        None
+                    )
+                    render_shap_explanation(current_case=_shap_case)
+                except Exception as _shap_err:
+                    st.warning(f"SHAP表示エラー: {_shap_err}")
 
             # ----- 審査に有用な Plotly グラフ（4種） -----
             st.divider()

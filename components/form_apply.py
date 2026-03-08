@@ -154,6 +154,29 @@ def render_apply_form(
             st.session_state["competitor_rate"] = comp_rate if comp_rate > 0 else None
         else:
             st.session_state["competitor_rate"] = None
+
+        # ── 契約期待度モデル用データ収集（任意入力） ────────────────────────────
+        st.caption("📊 以下は「契約期待度」モデルのデータ収集用です。入力するとデータが蓄積され、将来の精度向上に役立ちます（任意）。")
+        _nc_options = ["未入力", "0社（指名）", "1社", "2社", "3社以上"]
+        _nc_default = last_inp.get("num_competitors", "未入力")
+        _nc_idx = _nc_options.index(_nc_default) if _nc_default in _nc_options else 0
+        num_competitors = st.selectbox(
+            "競合社数（任意）",
+            _nc_options,
+            index=_nc_idx,
+            key="num_competitors",
+            help="他社が何社参加しているか。0社＝指名案件。将来の契約期待度モデルに使用します。"
+        )
+        _do_options = ["不明", "指名", "相見積もり"]
+        _do_default = last_inp.get("deal_occurrence", "不明")
+        _do_idx = _do_options.index(_do_default) if _do_default in _do_options else 0
+        deal_occurrence = st.selectbox(
+            "発生経緯（任意）",
+            _do_options,
+            index=_do_idx,
+            key="deal_occurrence",
+            help="案件の発生経緯。指名＝当社指定、相見積もり＝複数社比較。将来の契約期待度モデルに使用します。"
+        )
     st.caption("💡 数字入力で画面がガタつく場合：スライダーで大まかに合わせてから直接入力で微調整してください。")
     st.caption("📌 数値とスライダーは連動します。Enter は「入力確定」にだけ効き、判定には行きません。")
     if st.button("🆕 新しく入力する", help="全フィールドを初期値にリセットします", use_container_width=False):
@@ -217,13 +240,14 @@ def render_apply_form(
     # ────────────────────────────────────────────────────────────────────────
 
     with st.form("shinsa_form"):
-        st.info(
-            "**必須項目**: 売上高（1以上）、総資産（1以上）を入力しないと判定できません。\n\n"
-            "**推奨**: 営業利益・純資産も入力してください。未入力だと学習モデル（総資産・純資産必須）や自己資本比率が使えません。"
+        st.warning(
+            "📌 **必須** 売上高・総資産は **1以上** を入力してください（未入力だと判定がブロックされます）。\n\n"
+            "💡 **推奨** 営業利益・純資産も入力すると精度が向上します（未入力でも判定は続行しますが警告を表示します）。"
         )
         submitted_apply = st.form_submit_button("入力確定（Enterで反映）", type="secondary", help="数字入力でEnterを押したときはここが押された扱いになり、判定には行きません。")
-        with st.expander("📊 1. 損益計算書 (P/L)", expanded=True):
+        with st.expander("📊 1. 損益計算書 (P/L) ― 📌必須・💡推奨あり", expanded=True):
             # ①売上高（フラグメント化で入力時のガタつき軽減）
+            # fragment_nenshu_func の内部で "### 売上高 📌 必須（1以上）" と表示するため、呼び出し前に注記なし
             fragment_nenshu_func()
 
             #  ②売上高総利益（スライダーは従来どおり、手入力のみ900億千円まで）
@@ -231,7 +255,7 @@ def render_apply_form(
             item9_gross = _slider_and_number("item9_gross", "sourieki", 10000, -500000, 1000000, 100, 1, max_val_number=90_000_000)
             st.divider() # 次の項目との区切
             # #③営業利益
-            st.markdown("### 営業利益")
+            st.markdown("### 営業利益 💡 推奨（未入力だと営業利益率が 0% で計算されます）")
             rieki = _slider_and_number("rieki", "rieki", 10000, -100000, 200000, 100, 1, max_val_number=90_000_000)
             st.divider() # 次の項目との区切
             st.markdown("### 経常利益")
@@ -263,10 +287,10 @@ def render_apply_form(
             st.markdown("### その他資産")
             item7_other = _slider_and_number("item7_other", "item7_other", 10000, 0, 200000, 100, 1, max_val_number=90_000_000)
             st.divider() # 次の項目との区切
-            st.markdown("### 純資産")
+            st.markdown("### 純資産 💡 推奨（未入力だと自己資本比率・学習モデル精度が低下します）")
             net_assets = _slider_and_number("net_assets", "net_assets", 10000, -30000, 500000, 100, 1, max_val_number=90_000_000)
             st.divider() # 次の項目との区切
-            st.markdown("### 総資産")
+            st.markdown("### 総資産 📌 必須（1以上）")
             total_assets = _slider_and_number("total_assets", "total_assets", 10000, 0, 1000000, 100, 1, max_val_number=90_000_000)
             st.divider() # 次の項目との区切
         with st.expander("💳 3. 信用情報", expanded=False):
@@ -349,7 +373,9 @@ def render_apply_form(
         "acquisition_cost": acquisition_cost,
         "selected_asset_id": selected_asset_id if lease_assets_list else "other",
         "asset_score": asset_score if lease_assets_list else 50,
-        "asset_name": asset_name if lease_assets_list else "未選択"
+        "asset_name": asset_name if lease_assets_list else "未選択",
+        "num_competitors": num_competitors,
+        "deal_occurrence": deal_occurrence,
     }
 
 def render_quick_edit_panel(jsic_data, lease_assets_list):
