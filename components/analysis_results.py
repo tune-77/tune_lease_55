@@ -549,7 +549,20 @@ def render_analysis_results(
                                 _r1.metric("🎯 承認確率",  f"{_bn_prob:.1%}")
                                 _r2.metric("財務信用度",   f"{_im.get('Financial_Creditworthiness', 0):.1%}")
                                 _r3.metric("ヘッジ条件",   f"{_im.get('Hedge_Condition', 0):.1%}")
-                                _r4.metric("物件価値",     f"{_im.get('Asset_Value', 0):.1%}")
+                                # 物件価値 — ASSET_WEIGHT と合わせて表示
+                                _ts_for_bn = _gu_res.get("total_scorer_result") or st.session_state.get("_ts_result")
+                                if _ts_for_bn:
+                                    _bn_asset_score = _ts_for_bn.get("asset_score", 0)
+                                    _bn_asset_w     = _ts_for_bn.get("asset_weight", 0)
+                                    _bn_category    = _ts_for_bn.get("category", "")
+                                    _r4.metric(
+                                        f"物件価値【{_bn_category}】",
+                                        f"{_bn_asset_score:.0f}点",
+                                        delta=f"ウェイト {int(_bn_asset_w * 100)}%",
+                                        delta_color="off",
+                                    )
+                                else:
+                                    _r4.metric("物件価値", f"{_im.get('Asset_Value', 0):.1%}")
                                 st.markdown(f"**判定: <span style='color:{_bn_col}'>{_bn_dec}</span>**", unsafe_allow_html=True)
                                 _rev = _bn_reversal(_bne, top_n=5)
                                 if _rev:
