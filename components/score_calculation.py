@@ -917,8 +917,18 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     except Exception:
                         pass
 
+                # ─────────────────────────────────────────────────────────────────
+                # 承認判定スコア:
+                #   定性項目が1件以上入力済 → combined_score（定量＋定性の総合）で判定
+                #   定性項目が未入力        → final_score（定量のみ）で判定（公平性確保）
+                # ─────────────────────────────────────────────────────────────────
+                _hantei_score = combined_score if qual_weight_sum > 0 else final_score
+                _hantei_score_label = "定量＋定性スコア" if qual_weight_sum > 0 else "定量スコア（定性未入力）"
+                st.session_state['current_image'] = "approve" if _hantei_score >= _eff_approval else "challenge"
+
                 st.session_state['last_result'] = {
-                    "score": final_score, "hantei": "承認圏内" if final_score >= _eff_approval else "要審議",
+                    "score": final_score, "hantei": "承認圏内" if _hantei_score >= _eff_approval else "要審議",
+                    "hantei_score": _hantei_score, "hantei_score_label": _hantei_score_label,
                     "score_borrower": score_percent, "asset_score": asset_score, "asset_name": asset_name,
                     "contract_prob": contract_prob, "z": z_main,
                     "ai_completed_factors": ai_completed_factors,
@@ -976,7 +986,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 if forced_custom_status:
                     st.session_state['last_result']["hantei"] = forced_custom_status
                     st.session_state['current_image'] = "challenge" if forced_custom_status in ["要審議", "否決"] else "approve"
-                elif final_score < _eff_review:
+                elif _hantei_score < _eff_review:
                     st.session_state['last_result']["hantei"] = "否決"
                     st.session_state['current_image'] = "challenge"
                 
@@ -984,7 +994,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 hp_card = int(min(999, max(1, net_assets / 1000))) if net_assets else int(min(999, max(1, user_equity_ratio * 5)))
                 atk_card = int(min(99, max(1, user_op_margin * 2)))
                 spd_card = int(min(99, max(1, user_current_ratio / 2)))
-                is_approved = final_score >= _eff_approval
+                is_approved = _hantei_score >= _eff_approval
                 # 補完要因をスキル・環境効果としてバトルに渡す
                 env_effects = [f"{f['factor']}: {f['effect_percent']:+.0f}%" for f in ai_completed_factors]
                 st.session_state["battle_data"] = {
