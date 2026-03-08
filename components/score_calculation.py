@@ -214,17 +214,33 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 # 総資本回転率 = 売上高 ÷ 総資産（回）
                 user_asset_turnover = round(nenshu / total_assets, 2) if total_assets > 0 else 0.0
 
-                # ── DSCR（債務返済余力）= (営業利益 + 減価償却費) ÷ 年間リース料推定 ──
+                # ── DSCR（債務返済余力）= (営業利益 + 減価償却費) ÷ 年間賃借料 ──
                 # DSCR ≥ 1.5：良好、1.0〜1.5：注意、< 1.0：要警戒
+                # 分母優先順位:
+                #   ① item12_rent_exp（P&L賃借料費用）= 全社の実績値（他社リース含む）← 最優先
+                #   ② lease_credit / lease_term * 12  = 当社与信のみの推計値（① が 0 の場合）
                 try:
                     _ebitda_approx = rieki + item11_dep_exp   # 営業利益 + P&L減価償却費
-                    if lease_term and lease_term > 0 and lease_credit > 0:
-                        _annual_lease_est = lease_credit / lease_term * 12   # 年換算リース料（千円）
-                        user_dscr = round(_ebitda_approx / _annual_lease_est, 2) if _annual_lease_est > 0 else None
+
+                    if item12_rent_exp and item12_rent_exp > 0:
+                        # ① 決算書の賃借料費用（全社・他社リース込み）を使用
+                        _annual_rent = item12_rent_exp
+                        _dscr_source = "決算書賃借料"
+                    elif lease_term and lease_term > 0 and lease_credit > 0:
+                        # ② 賃借料未入力 → 当社与信から推計（参考値）
+                        _annual_rent = lease_credit / lease_term * 12
+                        _dscr_source = "当社与信推計（参考）"
+                    else:
+                        _annual_rent = None
+                        _dscr_source = None
+
+                    if _annual_rent and _annual_rent > 0:
+                        user_dscr = round(_ebitda_approx / _annual_rent, 2)
                     else:
                         user_dscr = None
                 except Exception:
                     user_dscr = None
+                    _dscr_source = None
 
                 bench = benchmarks_data.get(selected_sub, {})
                 bench_op_margin = bench.get("op_margin", 0.0)
@@ -301,7 +317,8 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 _dscr_line = ""
                 if user_dscr is not None:
                     _dscr_lv = "良好✅" if user_dscr >= 1.5 else ("注意⚠️" if user_dscr >= 1.0 else "要警戒🔴")
-                    _dscr_line = f"\n- **DSCR（債務返済余力）**: {user_dscr:.2f}倍 → {_dscr_lv}（目安: 1.5倍以上）"
+                    _src_note = f"（分母: {_dscr_source}）" if _dscr_source else ""
+                    _dscr_line = f"\n- **DSCR（債務返済余力）**: {user_dscr:.2f}倍 → {_dscr_lv}（目安: 1.5倍以上）{_src_note}"
 
                 comparison_text = f"""
                 - **営業利益率**: {user_op_margin:.1f}% (業界目安: {bench_op_margin}%) → 平均より{comp_margin}
@@ -913,7 +930,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     "user_current_ratio": user_current_ratio, "bench_current_ratio": bench_current_r,
                     "user_debt_ratio": user_debt_ratio, "bench_debt_ratio": bench_debt_r,
                     "user_asset_turnover": user_asset_turnover, "bench_asset_turnover": bench_asset_turn,
-                    "user_dscr": user_dscr,
+                    "user_dscr": user_dscr, "dscr_source": _dscr_source,
                     "hints": my_hints,
                     "pd_percent": pd_percent,
                     "network_risk_summary": network_risk_summary,

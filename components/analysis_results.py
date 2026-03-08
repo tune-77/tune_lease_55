@@ -1141,7 +1141,8 @@ def render_analysis_results(
                     )
 
             # ----- DSCR ＋ 追加財務指標 vs 業種平均 -----
-            _u_dscr   = res.get("user_dscr")
+            _u_dscr      = res.get("user_dscr")
+            _dscr_source = res.get("dscr_source")
             _u_roa    = res.get("user_roa")
             _u_curr   = res.get("user_current_ratio")
             _u_debt   = res.get("user_debt_ratio")
@@ -1159,17 +1160,29 @@ def render_analysis_results(
                     if _u_dscr is not None:
                         _dscr_color = "normal" if _u_dscr >= 1.5 else ("off" if _u_dscr >= 1.0 else "inverse")
                         _dscr_label = "良好" if _u_dscr >= 1.5 else ("注意" if _u_dscr >= 1.0 else "要警戒🔴")
+                        _dscr_help = (
+                            "(営業利益＋減価償却費) ÷ 年間賃借料。1.5倍以上が目安。\n"
+                            f"分母: {_dscr_source}" if _dscr_source else
+                            "(営業利益＋減価償却費) ÷ 年間賃借料。1.5倍以上が目安。"
+                        )
                         st.metric(
                             "DSCR（債務返済余力）",
                             f"{_u_dscr:.2f} 倍",
                             delta=_dscr_label,
                             delta_color=_dscr_color,
-                            help="(営業利益＋減価償却費) ÷ 年間リース料推定。1.5倍以上が目安。"
+                            help=_dscr_help
                         )
-                        st.caption(
-                            "DSCR = (営業利益 ＋ 減価償却費) ÷ 年間リース料推定 "
-                            "（年間リース料推定 = 当社リース与信 ÷ 契約期間 × 12）"
-                        )
+                        # 分母の出所を明示
+                        if _dscr_source == "決算書賃借料":
+                            st.caption(
+                                "DSCR = (営業利益 ＋ 減価償却費) ÷ **決算書・賃借料費用**"
+                                "（他社リース・賃貸料を含む全社実績値）"
+                            )
+                        elif _dscr_source == "当社与信推計（参考）":
+                            st.caption(
+                                "⚠️ DSCR = (営業利益 ＋ 減価償却費) ÷ **当社与信から推計した年間リース料**"
+                                "（賃借料費用が未入力のため参考値。決算書の賃借料費用を入力すると精度が上がります）"
+                            )
                         st.divider()
 
                     # 追加財務指標 3列比較
