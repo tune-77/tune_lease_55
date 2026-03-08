@@ -151,6 +151,52 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         + "\n\n※ このまま判定を続行します。"
                     )
 
+            # ── 入力値の整合性チェック（論理的矛盾を検出して警告）─────────────────
+            if validation_ok:
+                _cons_warns = []
+                # 純資産 > 総資産 は会計上あり得ない
+                if total_assets > 0 and net_assets > total_assets:
+                    _cons_warns.append(
+                        f"**純資産（{net_assets:,}千円）> 総資産（{total_assets:,}千円）**"
+                        " — 入力値を確認してください。"
+                    )
+                # 固定資産合計 > 総資産
+                _fixed_total = item6_machine + item7_other
+                if total_assets > 0 and _fixed_total > total_assets:
+                    _cons_warns.append(
+                        f"**機械装置＋その他固定資産（{_fixed_total:,}千円）> 総資産（{total_assets:,}千円）**"
+                        " — 固定資産の入力値を確認してください。"
+                    )
+                # 営業利益率が100%超（売上より利益が大きい）
+                if nenshu > 0 and rieki > nenshu:
+                    _cons_warns.append(
+                        f"**営業利益率が{rieki/nenshu*100:.0f}%**"
+                        "（売上高を超えています）— 売上高・営業利益の単位または入力値を確認してください。"
+                    )
+                # 売上総利益 > 売上高
+                if nenshu > 0 and item9_gross > nenshu:
+                    _cons_warns.append(
+                        f"**売上総利益（{item9_gross:,}千円）> 売上高（{nenshu:,}千円）**"
+                        " — 入力値を確認してください。"
+                    )
+                # 経常利益 > 売上高
+                if nenshu > 0 and item4_ord_profit > nenshu:
+                    _cons_warns.append(
+                        f"**経常利益（{item4_ord_profit:,}千円）> 売上高（{nenshu:,}千円）**"
+                        " — 入力値を確認してください。"
+                    )
+                # 売上高が異常に小さい（100万円未満）→ 単位誤り疑い
+                if 0 < nenshu < 1_000:
+                    _cons_warns.append(
+                        f"**売上高が{nenshu:,}千円（= {nenshu/1000:.1f}百万円）**"
+                        " — 入力単位は「千円」です。百万円・億円で入力した可能性があります。"
+                    )
+                if _cons_warns:
+                    st.warning(
+                        "⚠️ **入力値の整合性に問題があります。判定は続行しますが確認を推奨します。**\n\n"
+                        + "\n".join(f"- {w}" for w in _cons_warns)
+                    )
+
             if validation_ok:
                 # 指標計算
                 user_op_margin = (rieki / nenshu * 100) if nenshu > 0 else 0.0
@@ -159,11 +205,37 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 liability_total = total_assets - net_assets if (total_assets and net_assets is not None) else 0
                 current_assets_approx = max(0, total_assets - item6_machine - item7_other)
                 user_current_ratio = (current_assets_approx / liability_total * 100) if liability_total > 0 else 100.0
-    
+
+                # ── 追加財務指標 ──────────────────────────────────────────────────
+                # ROA = 営業利益 ÷ 総資産
+                user_roa = round(rieki / total_assets * 100, 2) if total_assets > 0 else 0.0
+                # 負債比率 = (総資産 − 純資産) ÷ 総資産
+                user_debt_ratio = round((total_assets - net_assets) / total_assets * 100, 2) if total_assets > 0 else 0.0
+                # 総資本回転率 = 売上高 ÷ 総資産（回）
+                user_asset_turnover = round(nenshu / total_assets, 2) if total_assets > 0 else 0.0
+
+                # ── DSCR（債務返済余力）= (営業利益 + 減価償却費) ÷ 年間リース料推定 ──
+                # DSCR ≥ 1.5：良好、1.0〜1.5：注意、< 1.0：要警戒
+                try:
+                    _ebitda_approx = rieki + item11_dep_exp   # 営業利益 + P&L減価償却費
+                    if lease_term and lease_term > 0 and lease_credit > 0:
+                        _annual_lease_est = lease_credit / lease_term * 12   # 年換算リース料（千円）
+                        user_dscr = round(_ebitda_approx / _annual_lease_est, 2) if _annual_lease_est > 0 else None
+                    else:
+                        user_dscr = None
+                except Exception:
+                    user_dscr = None
+
                 bench = benchmarks_data.get(selected_sub, {})
                 bench_op_margin = bench.get("op_margin", 0.0)
                 bench_equity_ratio = _equity_ratio_display(bench.get("equity_ratio")) or 0.0
                 bench_comment = bench.get("comment", "")
+                # 追加ベンチマーク（四半期版）
+                bench_roa          = bench.get("roa")           # 業種平均ROA (%)
+                bench_current_r    = bench.get("current_ratio") # 業種平均流動比率 (%)
+                bench_debt_r       = bench.get("debt_ratio")    # 業種平均負債比率 (%)
+                bench_asset_turn   = bench.get("asset_turnover")# 業種平均総資本回転率（回）
+                bench_quick_r      = bench.get("quick_ratio")   # 業種平均当座比率 (%)
 
                 # ── e-Stat 年度版: リース・設備投資ベンチマーク ──────────────────
                 bench_cl = (capex_lease_data or {}).get(selected_sub, {})
@@ -209,10 +281,32 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 comp_margin = "高い" if user_op_margin >= bench_op_margin else "低い"
                 comp_equity = "高い" if user_equity_ratio >= bench_equity_ratio else "低い"
 
+                # 追加指標の比較テキスト生成
+                def _vs(user_val, bench_val, higher_is_good=True, fmt=".1f"):
+                    """業種比較の短評を返す。"""
+                    if bench_val is None:
+                        return "業種データなし"
+                    diff = user_val - bench_val
+                    if higher_is_good:
+                        label = "高い✅" if diff >= 0 else "低い⚠️"
+                    else:
+                        label = "低い✅" if diff <= 0 else "高い⚠️"
+                    return f"{user_val:{fmt}} (業種: {bench_val:{fmt}}) → {label}"
+
+                _roa_line  = f"\n- **ROA**: {_vs(user_roa, bench_roa)}" if bench_roa is not None else ""
+                _curr_line = (f"\n- **流動比率**: {_vs(user_current_ratio, bench_current_r, fmt='.0f')}%"
+                              if bench_current_r is not None else "")
+                _debt_line = (f"\n- **負債比率**: {_vs(user_debt_ratio, bench_debt_r, higher_is_good=False, fmt='.1f')}%"
+                              if bench_debt_r is not None else "")
+                _dscr_line = ""
+                if user_dscr is not None:
+                    _dscr_lv = "良好✅" if user_dscr >= 1.5 else ("注意⚠️" if user_dscr >= 1.0 else "要警戒🔴")
+                    _dscr_line = f"\n- **DSCR（債務返済余力）**: {user_dscr:.2f}倍 → {_dscr_lv}（目安: 1.5倍以上）"
+
                 comparison_text = f"""
                 - **営業利益率**: {user_op_margin:.1f}% (業界目安: {bench_op_margin}%) → 平均より{comp_margin}
-                - **自己資本比率**: {user_equity_ratio:.1f}% (業界目安: {bench_equity_ratio}%) → 平均より{comp_equity}
-                - **業界特性**: {bench_comment}{_lease_compare_line}
+                - **自己資本比率**: {user_equity_ratio:.1f}% (業界目安: {bench_equity_ratio}%) → 平均より{comp_equity}{_roa_line}{_curr_line}{_debt_line}{_dscr_line}{_lease_compare_line}
+                - **業界特性**: {bench_comment}
                 ※ **銀行与信・リース与信**は総銀行与信・総リース与信ではなく、**当社（弊社）の与信**である。判定・アドバイスではこの点を踏まえること。
                 """
     
@@ -814,6 +908,12 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     "comparison": comparison_text,
                     "user_op": user_op_margin, "bench_op": bench_op_margin,
                     "user_eq": user_equity_ratio, "bench_eq": bench_equity_ratio,
+                    # 追加財務指標
+                    "user_roa": user_roa, "bench_roa": bench_roa,
+                    "user_current_ratio": user_current_ratio, "bench_current_ratio": bench_current_r,
+                    "user_debt_ratio": user_debt_ratio, "bench_debt_ratio": bench_debt_r,
+                    "user_asset_turnover": user_asset_turnover, "bench_asset_turnover": bench_asset_turn,
+                    "user_dscr": user_dscr,
                     "hints": my_hints,
                     "pd_percent": pd_percent,
                     "network_risk_summary": network_risk_summary,

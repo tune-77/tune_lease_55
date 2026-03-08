@@ -1140,6 +1140,63 @@ def render_analysis_results(
                         f"{_capex_txt}{_lc_txt}"
                     )
 
+            # ----- DSCR ＋ 追加財務指標 vs 業種平均 -----
+            _u_dscr   = res.get("user_dscr")
+            _u_roa    = res.get("user_roa")
+            _u_curr   = res.get("user_current_ratio")
+            _u_debt   = res.get("user_debt_ratio")
+            _u_turn   = res.get("user_asset_turnover")
+            _b_roa    = res.get("bench_roa")
+            _b_curr   = res.get("bench_current_ratio")
+            _b_debt   = res.get("bench_debt_ratio")
+            _b_turn   = res.get("bench_asset_turnover")
+
+            _has_extra = any(v is not None for v in [_u_dscr, _b_roa, _b_curr, _b_debt])
+            if _has_extra:
+                with st.expander("📐 財務指標 詳細比較（DSCR・ROA・流動比率・負債比率）", expanded=False):
+
+                    # DSCR（最重要 → 先頭に大きく表示）
+                    if _u_dscr is not None:
+                        _dscr_color = "normal" if _u_dscr >= 1.5 else ("off" if _u_dscr >= 1.0 else "inverse")
+                        _dscr_label = "良好" if _u_dscr >= 1.5 else ("注意" if _u_dscr >= 1.0 else "要警戒🔴")
+                        st.metric(
+                            "DSCR（債務返済余力）",
+                            f"{_u_dscr:.2f} 倍",
+                            delta=_dscr_label,
+                            delta_color=_dscr_color,
+                            help="(営業利益＋減価償却費) ÷ 年間リース料推定。1.5倍以上が目安。"
+                        )
+                        st.caption(
+                            "DSCR = (営業利益 ＋ 減価償却費) ÷ 年間リース料推定 "
+                            "（年間リース料推定 = 当社リース与信 ÷ 契約期間 × 12）"
+                        )
+                        st.divider()
+
+                    # 追加財務指標 3列比較
+                    _cols = st.columns(3)
+                    def _metric_vs(col, label, user_v, bench_v, unit="%", higher_good=True, fmt=".1f"):
+                        if user_v is None:
+                            return
+                        delta_str = None
+                        delta_col = "normal"
+                        if bench_v is not None:
+                            diff = user_v - bench_v
+                            delta_str = f"業種比 {diff:+.1f}{unit}"
+                            if higher_good:
+                                delta_col = "normal" if diff >= 0 else "inverse"
+                            else:
+                                delta_col = "normal" if diff <= 0 else "inverse"
+                        col.metric(label, f"{user_v:{fmt}}{unit}",
+                                   delta=delta_str, delta_color=delta_col,
+                                   help=f"業種平均: {bench_v:{fmt}}{unit}" if bench_v is not None else "業種データなし")
+
+                    _metric_vs(_cols[0], "ROA", _u_roa, _b_roa, unit="%", higher_good=True)
+                    _metric_vs(_cols[1], "流動比率", _u_curr, _b_curr, unit="%", higher_good=True, fmt=".0f")
+                    _metric_vs(_cols[2], "負債比率", _u_debt, _b_debt, unit="%", higher_good=False)
+
+                    if _b_roa is None and _b_curr is None and _b_debt is None:
+                        st.caption("業種ベンチマークデータなし。industry_benchmarks.json を確認してください。")
+
             # ----- SHAP 判定根拠の可視化 -----
             st.divider()
             with st.expander("🔍 SHAP 判定根拠の可視化（説明可能AI）", expanded=False):
