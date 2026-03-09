@@ -900,15 +900,18 @@ def generate_counter_offers(
     bank: bool,
     pd_pct: float,
     score: float,
+    bn_evidence: dict | None = None,
 ) -> list[dict]:
     """
     承認確率が低い場合に逆転の条件を自動生成する（BN逆転シミュレーター統合版）。
     BN確認項目（債務超過は除く）をすべて候補に含め、上位5件を返す。
+    bn_evidence でチェック済み（=1）の条件は「既に実施中」として除外する。
     """
+    _bn = bn_evidence or {}
     offers = []
 
     # ── 財務・信用（BN: Main_Bank_Support） ─────────────────────────────
-    if not bank:
+    if not bank and _bn.get("Main_Bank_Support") != 1:
         offers.append({
             "title": "🏦 メイン銀行の支援確認書・推薦状を取得",
             "detail": "メイン銀行の支援を書面で証明。金融機関同士の信頼ネットワークが最強の保証書になり、審査部の最大懸念を即座に払拭します。",
@@ -917,23 +920,25 @@ def generate_counter_offers(
         })
 
     # ── 財務・信用（BN: Related_Bank_Status） ────────────────────────────
-    offers.append({
-        "title": "🏛️ 関係者の良好な銀行取引実績を追加提出",
-        "detail": "代表者・関係会社の良好な銀行取引履歴（残高証明・取引推移等）を追加資料として提出。グループ全体の信用力を数字で可視化します。",
-        "prob_gain": 0.09,
-        "bn_key": "Related_Bank_Status",
-    })
+    if _bn.get("Related_Bank_Status") != 1:
+        offers.append({
+            "title": "🏛️ 関係者の良好な銀行取引実績を追加提出",
+            "detail": "代表者・関係会社の良好な銀行取引履歴（残高証明・取引推移等）を追加資料として提出。グループ全体の信用力を数字で可視化します。",
+            "prob_gain": 0.09,
+            "bn_key": "Related_Bank_Status",
+        })
 
     # ── 財務・信用（BN: Related_Assets） ─────────────────────────────────
-    offers.append({
-        "title": "💼 関係者の個人資産（不動産等）を担保追加",
-        "detail": "代表者または関係者の個人資産を担保補完として提示。リスクの実質カバー率が大幅に上昇し、財務上の懸念を根本から解消します。",
-        "prob_gain": 0.11,
-        "bn_key": "Related_Assets",
-    })
+    if _bn.get("Related_Assets") != 1:
+        offers.append({
+            "title": "💼 関係者の個人資産（不動産等）を担保追加",
+            "detail": "代表者または関係者の個人資産を担保補完として提示。リスクの実質カバー率が大幅に上昇し、財務上の懸念を根本から解消します。",
+            "prob_gain": 0.11,
+            "bn_key": "Related_Assets",
+        })
 
     # ── ヘッジ手段（BN: Co_Lease） ───────────────────────────────────────
-    if not bank:
+    if not bank and _bn.get("Co_Lease") != 1:
         offers.append({
             "title": "🤝 メイン銀行との50%協調リース",
             "detail": "メインバンクが半額を担う協調形式にすれば、リスクが物理的に半減。金融機関同士のリスク共有構造は審査通過率を格段に高めます。",
@@ -942,23 +947,25 @@ def generate_counter_offers(
         })
 
     # ── ヘッジ手段（BN: Parent_Guarantor） ──────────────────────────────
-    offers.append({
-        "title": "🏢 親会社・グループ会社の連帯保証",
-        "detail": "親会社または関連会社が連帯保証に入ることで、実質的なデフォルトリスクがグループ全体に分散。個社の財務弱点が組織力でカバーされます。",
-        "prob_gain": 0.13,
-        "bn_key": "Parent_Guarantor",
-    })
+    if _bn.get("Parent_Guarantor") != 1:
+        offers.append({
+            "title": "🏢 親会社・グループ会社の連帯保証",
+            "detail": "親会社または関連会社が連帯保証に入ることで、実質的なデフォルトリスクがグループ全体に分散。個社の財務弱点が組織力でカバーされます。",
+            "prob_gain": 0.13,
+            "bn_key": "Parent_Guarantor",
+        })
 
     # ── 物件・取引条件（BN: Core_Business_Use） ─────────────────────────
-    offers.append({
-        "title": "📋 本業直結性を稟議書に明記（発注書・稼働計画添付）",
-        "detail": "物件が本業収益に直接貢献する証拠（受注書・稼働計画・使用目的書）を提出。『物件がなければ売上が止まる』構造を数字で示します。",
-        "prob_gain": 0.10,
-        "bn_key": "Core_Business_Use",
-    })
+    if _bn.get("Core_Business_Use") != 1:
+        offers.append({
+            "title": "📋 本業直結性を稟議書に明記（発注書・稼働計画添付）",
+            "detail": "物件が本業収益に直接貢献する証拠（受注書・稼働計画・使用目的書）を提出。『物件がなければ売上が止まる』構造を数字で示します。",
+            "prob_gain": 0.10,
+            "bn_key": "Core_Business_Use",
+        })
 
     # ── 物件・取引条件（BN: Asset_Liquidity） ───────────────────────────
-    if resale != "高":
+    if resale != "高" and _bn.get("Asset_Liquidity") != 1:
         offers.append({
             "title": "📊 中古業者の査定書取得（物件流動性を客観証明）",
             "detail": "中古業者の査定書を提出し、リセール価値を客観数値で証明。主観ではなく市場価格の『客観的証拠』を突き付けることで担保懸念を封じます。",
@@ -967,7 +974,7 @@ def generate_counter_offers(
         })
 
     # ── 物件・取引条件（BN: Shorter_Lease_Term） ────────────────────────
-    if posterior < 0.80:
+    if posterior < 0.80 and _bn.get("Shorter_Lease_Term") != 1:
         gain = min(0.15, (0.70 - posterior) * 0.8 + 0.05)
         offers.append({
             "title": "⏱️ リース期間を法定耐用年数より短く設定",
@@ -977,12 +984,13 @@ def generate_counter_offers(
         })
 
     # ── 物件・取引条件（BN: One_Time_Deal） ─────────────────────────────
-    offers.append({
-        "title": "🎯 業況改善まで本件限りの特例申請",
-        "detail": "今回限りの特例として稟議を立案し、次回以降は財務改善後に通常枠で対応する旨を明記。リスクを時間的に限定することで審査部の懸念が大幅に和らぎます。",
-        "prob_gain": 0.08,
-        "bn_key": "One_Time_Deal",
-    })
+    if _bn.get("One_Time_Deal") != 1:
+        offers.append({
+            "title": "🎯 業況改善まで本件限りの特例申請",
+            "detail": "今回限りの特例として稟議を立案し、次回以降は財務改善後に通常枠で対応する旨を明記。リスクを時間的に限定することで審査部の懸念が大幅に和らぎます。",
+            "prob_gain": 0.08,
+            "bn_key": "One_Time_Deal",
+        })
 
     # ── 取引条件（既存）: 前受金追加 ────────────────────────────────────
     if posterior < 0.80:
@@ -1594,7 +1602,12 @@ def _bank_from_res(res: dict, submitted_inputs: dict | None) -> bool:
     return False
 
 
-def compute_gunshi_from_res(res: dict, submitted_inputs: dict | None = None, bn_evidence: dict | None = None) -> dict:
+def compute_gunshi_from_res(
+    res: dict,
+    submitted_inputs: dict | None = None,
+    bn_evidence: dict | None = None,
+    bn_approval_prob: float | None = None,
+) -> dict:
     """
     審査結果 res（st.session_state["last_result"]）から軍師モードの入力を自動抽出し、
     ベイズ推論・フレーズ選択・カウンターオファーを実行して結果 dict を返す。
@@ -1687,9 +1700,14 @@ def compute_gunshi_from_res(res: dict, submitted_inputs: dict | None = None, bn_
     )
 
     phrase_boost_total = sum(p["prob_boost"] for p in top_phrases)
-    display_prob = min(0.99, posterior + phrase_boost_total * 0.3)
+    # BN逆転シミュレータでチェックが入っている場合は BN の承認確率を優先
+    _bn_active = bn_evidence and any(v == 1 for v in bn_evidence.values())
+    if _bn_active and bn_approval_prob is not None:
+        display_prob = min(0.99, bn_approval_prob + phrase_boost_total * 0.3)
+    else:
+        display_prob = min(0.99, posterior + phrase_boost_total * 0.3)
 
-    # カウンターオファー
+    # カウンターオファー（BNチェック済み条件は除外）
     offers = generate_counter_offers(
         posterior=posterior,
         resale=resale,
@@ -1698,6 +1716,7 @@ def compute_gunshi_from_res(res: dict, submitted_inputs: dict | None = None, bn_
         bank=bank,
         pd_pct=pd_pct,
         score=score,
+        bn_evidence=bn_evidence,
     ) if posterior < 0.85 else []
 
     # 役員車フラグ（UIでの警告表示に使用）
@@ -1765,6 +1784,7 @@ def render_gunshi_in_results(
     submitted_inputs: dict | None = None,
     model_name: str = DEFAULT_MODEL,
     bn_evidence: dict | None = None,
+    bn_approval_prob: float | None = None,
 ) -> dict | None:
     """
     分析結果画面内に軍師セクションを表示する（サイドバー入力不要版）。
@@ -1778,10 +1798,14 @@ def render_gunshi_in_results(
     last_score   = st.session_state.get("_gunshi_cache_score")
     last_bn_hash = st.session_state.get("_gunshi_cache_bn_hash")
     cur_score    = res.get("score", 0)
-    cur_bn_hash  = hash(frozenset((bn_evidence or {}).items()))
+    cur_bn_hash  = hash((frozenset((bn_evidence or {}).items()), bn_approval_prob))
     if cache_key not in st.session_state or last_score != cur_score or last_bn_hash != cur_bn_hash:
         with st.spinner("軍師データを計算中..."):
-            st.session_state[cache_key] = compute_gunshi_from_res(res, submitted_inputs, bn_evidence=bn_evidence)
+            st.session_state[cache_key] = compute_gunshi_from_res(
+                res, submitted_inputs,
+                bn_evidence=bn_evidence,
+                bn_approval_prob=bn_approval_prob,
+            )
             st.session_state["_gunshi_cache_score"]   = cur_score
             st.session_state["_gunshi_cache_bn_hash"] = cur_bn_hash
 
@@ -1975,6 +1999,7 @@ def render_gunshi_ai_comment(
     model_name: str = DEFAULT_MODEL,
     trend_info: str = "",   # ← 業界動向テキスト（analysis_results から渡す）
     bn_evidence: dict | None = None,
+    bn_approval_prob: float | None = None,
 ) -> None:
     """
     審査結果画面の上部に直接表示するAIコメントセクション。
@@ -1991,10 +2016,14 @@ def render_gunshi_ai_comment(
     last_score   = st.session_state.get("_gunshi_cache_score")
     last_bn_hash = st.session_state.get("_gunshi_cache_bn_hash")
     cur_score    = res.get("score", 0)
-    cur_bn_hash  = hash(frozenset((bn_evidence or {}).items()))
+    cur_bn_hash  = hash((frozenset((bn_evidence or {}).items()), bn_approval_prob))
     if cache_key not in st.session_state or last_score != cur_score or last_bn_hash != cur_bn_hash:
         with st.spinner("軍師AIを起動中..."):
-            st.session_state[cache_key] = compute_gunshi_from_res(res, submitted_inputs, bn_evidence=bn_evidence)
+            st.session_state[cache_key] = compute_gunshi_from_res(
+                res, submitted_inputs,
+                bn_evidence=bn_evidence,
+                bn_approval_prob=bn_approval_prob,
+            )
             st.session_state["_gunshi_cache_score"]   = cur_score
             st.session_state["_gunshi_cache_bn_hash"] = cur_bn_hash
 

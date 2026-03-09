@@ -339,6 +339,7 @@ def render_analysis_results(
                     model_name=st.session_state.get("ollama_model", "llama3") or "llama3",
                     trend_info=trend_info or "",
                     bn_evidence=st.session_state.get("_bn_s_evidence"),
+                    bn_approval_prob=(st.session_state.get("_bn_s_result") or {}).get("approval_prob"),
                 )
             except Exception as _gac_err:
                 st.caption(f"⚠️ 軍師AIコメント読み込みエラー: {_gac_err}")
@@ -591,6 +592,7 @@ def render_analysis_results(
                             submitted_inputs=st.session_state.get("last_submitted_inputs"),
                             model_name=_gu_model,
                             bn_evidence=st.session_state.get("_bn_s_evidence"),
+                            bn_approval_prob=(st.session_state.get("_bn_s_result") or {}).get("approval_prob"),
                         )
                         if _gunshi_g:
                             st.session_state["_gunshi_pdf_data"] = _gunshi_g
