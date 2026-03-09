@@ -6,6 +6,7 @@ BYOKI（愚痴リスト）関連の定数・関数もここで管理する。
 import os
 import json
 import datetime
+from pathlib import Path
 import streamlit as st
 import pandas as pd
 
@@ -140,6 +141,15 @@ def _render_ai_model_settings() -> None:
             or GEMINI_API_KEY_ENV
             or ""
         )
+        # 💾 保存ボタン：secrets.toml に書き込んで次回起動から自動入力
+        if widget_key.strip():
+            if st.sidebar.button("💾 APIキーを保存（次回から自動入力）", key="save_gemini_key"):
+                _secrets_path = Path(__file__).parent.parent / ".streamlit" / "secrets.toml"
+                _secrets_path.parent.mkdir(exist_ok=True)
+                _secrets_path.write_text(
+                    f'GEMINI_API_KEY = "{widget_key.strip()}"\n', encoding="utf-8"
+                )
+                st.sidebar.success("✅ 保存しました！次回から自動入力されます。")
         GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-pro"]
         st.session_state["gemini_model"] = st.sidebar.selectbox(
             "Gemini モデル",
@@ -424,6 +434,8 @@ SIDEBAR_MODES = [
     "📝 結果登録 (成約/失注)",
     "🔧 係数分析・更新 (β)",
     "📐 係数入力（事前係数）",
+    "📋 係数変更履歴",
+    "🪵 アプリログ",
     "📊 履歴分析・実績ダッシュボード",
     "📉 定性要因分析 (50件〜)",
     "📈 定量要因分析 (50件〜)",

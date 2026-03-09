@@ -30,7 +30,17 @@ OLLAMA_CHAT_URL = OLLAMA_BASE + "/api/chat"
 OLLAMA_STREAM_URL = OLLAMA_BASE + "/api/generate"
 DEFAULT_MODEL = "llama3"
 
-# Gemini フォールバック（GEMINI_API_KEY 環境変数が設定されている場合のみ有効）
+# Gemini API（環境変数 or サイドバー入力を実行時に参照）
+_GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+
+def _get_gemini_key() -> str:
+    """実行時にサイドバー入力値 → 環境変数の順でAPIキーを返す。"""
+    return (
+        st.session_state.get("gemini_api_key", "").strip()
+        or os.environ.get("GEMINI_API_KEY", "").strip()
+    )
+
+# 後方互換用（古いコードが参照している場合のため）
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 _GEMINI_URL    = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
@@ -695,13 +705,16 @@ def select_top_phrases(
 # ==============================================================================
 
 def _gemini_generate(prompt: str) -> Generator[str, None, None]:
-    """Gemini API で生成（Ollama のフォールバック用）。"""
-    if not GEMINI_API_KEY:
-        yield "\n\n⚠️ Ollama に接続できません。`ollama serve` を起動するか、GEMINI_API_KEY 環境変数を設定してください。"
+    """Gemini API で生成。サイドバー入力 → 環境変数の順でAPIキーを使用。"""
+    api_key = _get_gemini_key()
+    if not api_key:
+        yield "\n\n⚠️ Gemini APIキー未設定。サイドバーで入力するか、GEMINI_API_KEY 環境変数を設定してください。"
         return
+    model = st.session_state.get("gemini_model", "gemini-2.0-flash")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     try:
         resp = requests.post(
-            f"{_GEMINI_URL}?key={GEMINI_API_KEY}",
+            f"{url}?key={api_key}",
             json={
                 "contents": [{"parts": [{"text": prompt}]}],
                 "generationConfig": {"temperature": 0.7, "maxOutputTokens": 800},
@@ -712,7 +725,17 @@ def _gemini_generate(prompt: str) -> Generator[str, None, None]:
         text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
         yield text
     except Exception as e:
-        yield f"\n\n⚠️ Gemini フォールバックも失敗しました: {e}"
+        yield f"\n\n⚠️ Gemini 生成エラー: {e}"
+
+
+def _gemini_first_stream(prompt: str, ollama_model: str) -> Generator[str, None, None]:
+    """Gemini 優先で生成。APIキー未設定 or エラー時は Ollama にフォールバック。"""
+    api_key = _get_gemini_key()
+    if api_key:
+        yield from _gemini_generate(prompt)
+    else:
+        # Gemini キー未設定 → Ollama にフォールバック
+        yield from _ollama_stream(prompt, ollama_model)
 
 
 def _ollama_stream(prompt: str, model: str) -> Generator[str, None, None]:
@@ -1889,7 +1912,7 @@ def render_gunshi_in_results(
     # ── Step 3: LLM 推薦文 ────────────────────────────────────────
     st.markdown("#### 🧠 軍師の推薦文（LLM生成）")
     run_llm = st.button(
-        "🤖 軍師に推薦文を生成させる（Ollama必須）",
+        "🤖 軍師に推薦文を生成させる（Gemini優先）",
         key="gunshi_run_llm_in_results",
         use_container_width=True,
     )
@@ -1911,7 +1934,7 @@ def render_gunshi_in_results(
         )
         full_text = ""
         try:
-            full_text = st.write_stream(_ollama_stream(prompt, model_name))
+            full_text = st.write_stream(_gemini_first_stream(prompt, model_name))
         except Exception as e:
             full_text = (
                 f"【定型文フォールバック】\n\n"
@@ -2154,7 +2177,8 @@ def render_gunshi_ai_comment(
                 type="primary",
             )
         with col_info:
-            st.caption("※ ローカルOllama（llama3など）が起動中の場合にのみ動作します")
+            _has_key = bool(_get_gemini_key())
+            st.caption("✅ Gemini で生成します" if _has_key else "⚠️ APIキー未設定。サイドバーで入力してください（Ollamaにフォールバック）")
 
         if run_llm:
             # 業界動向は300文字サマリー版を使用（UIに表示済みのものと同一）
@@ -2179,7 +2203,7 @@ def render_gunshi_ai_comment(
             )
             full_text = ""
             try:
-                full_text = st.write_stream(_ollama_stream(prompt, model_name))
+                full_text = st.write_stream(_gemini_first_stream(prompt, model_name))
             except Exception as e:
                 full_text = (
                     f"【定型文フォールバック】\n\n"
@@ -2187,7 +2211,7 @@ def render_gunshi_ai_comment(
                     + g["top_phrases"][0]["text"] + "\n\n"
                     + g["top_phrases"][1]["text"] + "\n\n"
                     f"⚠️ LLM接続エラー: {e}\n"
-                    f"（Ollamaが未起動の場合は定型フレーズを参照してください）"
+                    f"（Gemini APIキーを確認するか、Ollamaを起動してください）"
                 )
                 st.markdown(full_text)
             st.session_state["gunshi_llm_text"] = full_text

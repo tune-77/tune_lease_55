@@ -27,6 +27,7 @@ CASES_FILE = os.path.join(_REPO_ROOT, "past_cases.jsonl") # obsolete but kept fo
 DB_PATH = os.path.join(_DATA_DIR, "lease_data.db")
 COEFF_OVERRIDES_FILE = os.path.join(_DATA_DIR, "coeff_overrides.json")
 COEFF_AUTO_FILE      = os.path.join(_DATA_DIR, "coeff_auto.json")   # 自動最適化専用
+COEFF_HISTORY_FILE   = os.path.join(_DATA_DIR, "coeff_history.jsonl")  # 係数変更履歴
 CONSULTATION_MEMORY_FILE = os.path.join(_DATA_DIR, "consultation_memory.jsonl")
 CASE_NEWS_FILE = os.path.join(_DATA_DIR, "case_news.jsonl")
 
@@ -193,14 +194,22 @@ def load_coeff_overrides():
         return None
 
 
-def save_coeff_overrides(overrides_dict):
-    """係数オーバーライド（手動設定）を JSON で保存。失敗時は False。"""
+def save_coeff_overrides(overrides_dict, comment: str = ""):
+    """係数オーバーライド（手動設定）を JSON で保存。変更履歴も記録。失敗時は False。"""
     dirpath = os.path.dirname(COEFF_OVERRIDES_FILE)
     if dirpath and not os.path.isdir(dirpath):
         os.makedirs(dirpath, exist_ok=True)
     try:
+        # 変更前の値を取得して差分を記録
+        before = load_coeff_overrides() or {}
         with open(COEFF_OVERRIDES_FILE, "w", encoding="utf-8") as f:
             json.dump(overrides_dict, f, ensure_ascii=False, indent=2)
+        _append_coeff_history(
+            change_type="manual",
+            before=before,
+            after=overrides_dict,
+            comment=comment,
+        )
         return True
     except Exception:
         return False
@@ -217,17 +226,59 @@ def load_auto_coeffs() -> dict:
         return {}
 
 
-def save_auto_coeffs(auto_dict: dict) -> bool:
-    """自動最適化の推奨重みを専用ファイルに保存。失敗時は False。"""
+def save_auto_coeffs(auto_dict: dict, comment: str = "") -> bool:
+    """自動最適化の推奨重みを専用ファイルに保存。変更履歴も記録。失敗時は False。"""
     dirpath = os.path.dirname(COEFF_AUTO_FILE)
     if dirpath and not os.path.isdir(dirpath):
         os.makedirs(dirpath, exist_ok=True)
     try:
+        before = load_auto_coeffs() or {}
         with open(COEFF_AUTO_FILE, "w", encoding="utf-8") as f:
             json.dump(auto_dict, f, ensure_ascii=False, indent=2)
+        _append_coeff_history(
+            change_type="auto",
+            before=before,
+            after=auto_dict,
+            comment=comment or "自動最適化による更新",
+        )
         return True
     except Exception:
         return False
+
+
+def _append_coeff_history(change_type: str, before: dict, after: dict, comment: str = "") -> None:
+    """係数変更履歴を JSONL に1行追記する。"""
+    try:
+        os.makedirs(os.path.dirname(COEFF_HISTORY_FILE), exist_ok=True)
+        # 変更されたキーだけ抽出
+        all_keys = set(before.keys()) | set(after.keys())
+        changed = {
+            k: {"before": before.get(k), "after": after.get(k)}
+            for k in all_keys
+            if before.get(k) != after.get(k)
+        }
+        record = {
+            "timestamp":   datetime.datetime.now().isoformat(timespec="seconds"),
+            "change_type": change_type,   # "manual" or "auto"
+            "comment":     comment,
+            "changed_keys": changed,
+            "snapshot_after": after,
+        }
+        with open(COEFF_HISTORY_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception:
+        pass  # 履歴書き込み失敗は本処理に影響させない
+
+
+def load_coeff_history() -> list:
+    """係数変更履歴を新しい順で返す。"""
+    if not os.path.exists(COEFF_HISTORY_FILE):
+        return []
+    try:
+        records = [json.loads(l) for l in open(COEFF_HISTORY_FILE, encoding="utf-8") if l.strip()]
+        return list(reversed(records))
+    except Exception:
+        return []
 
 
 def get_score_weights():
