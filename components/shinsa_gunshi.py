@@ -1621,7 +1621,7 @@ def compute_gunshi_from_res(
             "repeat_cnt": int,
             "subsidy": bool,
             "bank": bool,
-            "intuition": int,        # 直感は3固定（自動抽出時）
+            "intuition": int,        # 直感スコア（submitted_inputs["intuition"] 優先、なければ3）
             "prior": float,
             "posterior": float,
             "display_prob": float,
@@ -1664,8 +1664,14 @@ def compute_gunshi_from_res(
     subsidy = _subsidy_from_res(res, submitted_inputs)
     bank    = _bank_from_res(res, submitted_inputs)
 
-    # 直感スライダーは分析結果画面では3固定（中立）
-    intuition = 3
+    # 直感スコア：submitted_inputs に入力値があれば使用、なければ3（ニュートラル）
+    _raw_intuition = (submitted_inputs or {}).get("intuition")
+    if _raw_intuition is None:
+        _raw_intuition = (submitted_inputs or {}).get("intuition_score")  # セッション保存キーにも対応
+    try:
+        intuition = max(1, min(5, int(_raw_intuition))) if _raw_intuition is not None else 3
+    except (TypeError, ValueError):
+        intuition = 3
 
     # ベイズ計算
     prior    = compute_prior(score, pd_pct)

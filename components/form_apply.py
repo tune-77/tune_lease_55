@@ -345,6 +345,21 @@ def render_apply_form(
                         key=f"qual_corr_{item['id']}",
                     )
                 # 入力値は判定開始ブロックで session_state から取得
+        # ── 担当者の直感スコア ──────────────────────────────────────────────────
+        st.divider()
+        st.markdown("#### 🎯 担当者の直感スコア")
+        st.caption("この案件についての担当者の主観的な確信度です。軍師コメントに反映されます。")
+        intuition = st.slider(
+            "直感スコア（1=懸念 〜 5=確信）",
+            min_value=1, max_value=5,
+            value=st.session_state.get("intuition_score", 3),
+            step=1,
+            key="intuition_score",
+            help="3=ニュートラル（デフォルト）。1〜2=懸念あり、4〜5=確信あり。",
+        )
+        _intuition_labels = {1: "😟 かなり懸念", 2: "😐 やや懸念", 3: "😶 ニュートラル", 4: "🙂 やや確信", 5: "😄 強い確信"}
+        st.caption(f"現在の評価：{_intuition_labels.get(intuition, '')}")
+
         submitted_judge = st.form_submit_button("判定開始", type="primary", use_container_width=True)
 
     return {
@@ -382,6 +397,7 @@ def render_apply_form(
         "num_competitors": num_competitors,
         "deal_occurrence": deal_occurrence,
         "asset_category": asset_category,           # "車両" / "医療機器" / "IT機器" / "産業機械" or None
+        "intuition": intuition,                     # 担当者の直感スコア（1〜5、デフォルト3）
     }
 
 def render_quick_edit_panel(jsic_data, lease_assets_list):
