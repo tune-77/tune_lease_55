@@ -119,7 +119,7 @@ def run_auto_optimization(force: bool = False) -> dict | None:
     if not force and not status["should_retrain"]:
         return None
 
-    from analysis_regression import optimize_score_weights_from_regression
+    from analysis_regression import optimize_score_weights_from_regression, optimize_model_blend_weights
     from data_cases import load_auto_coeffs, save_auto_coeffs
 
     result = optimize_score_weights_from_regression()
@@ -134,6 +134,15 @@ def run_auto_optimization(force: bool = False) -> dict | None:
     if "recommended_quant_pct" in result:
         auto["_auto_weight_quant"] = result["recommended_quant_pct"]
         auto["_auto_weight_qual"]  = result["recommended_qual_pct"]
+
+    # 3モデル混合重み（①全体/②指標/③業種別）のクロスバリデーション最適化
+    blend_result = optimize_model_blend_weights()
+    if blend_result is not None:
+        auto["_auto_blend_w_main"]  = blend_result["w_main"]
+        auto["_auto_blend_w_bench"] = blend_result["w_bench"]
+        auto["_auto_blend_w_ind"]   = blend_result["w_ind"]
+        result["blend_weights"] = blend_result  # 結果に付加して呼び元で参照可能にする
+
     save_auto_coeffs(auto)
 
     # メタ情報を更新

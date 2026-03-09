@@ -7,7 +7,7 @@ import random
 import time
 import datetime
 
-from data_cases import load_all_cases, load_case_news, update_case_field
+from data_cases import load_all_cases, load_case_news, update_case_field, get_model_blend_weights
 from ai_chat import (
     is_ai_available, get_ollama_model, chat_with_retry, 
     get_ai_3d_comment, get_ai_industry_advice,
@@ -1145,9 +1145,10 @@ def render_analysis_results(
                     _sb = res['score_borrower']
                     _ib = res.get('ind_score', _sb)
                     _bb = res.get('bench_score', _sb)
-                    _wb = round(_sb * 0.5 + _bb * 0.3 + _ib * 0.2, 1)
+                    _wm, _wb2, _wi = get_model_blend_weights()
+                    _wb = round(_sb * _wm + _bb * _wb2 + _ib * _wi, 1)
                     st.caption(
-                        f"📌 成約可能性（借手）= ①{_sb:.1f}%×0.5 ＋ ②{_bb:.1f}%×0.3 ＋ ③{_ib:.1f}%×0.2 ＝ {_wb:.1f}%"
+                        f"📌 成約可能性（借手）= ①{_sb:.1f}%×{_wm:.0%} ＋ ②{_bb:.1f}%×{_wb2:.0%} ＋ ③{_ib:.1f}%×{_wi:.0%} ＝ {_wb:.1f}%"
                         f"　→ 成約可能性スコア {res['score']:.1f}%（物件スコア加味）"
                     )
                 cols = st.columns(3)

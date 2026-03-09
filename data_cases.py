@@ -1,7 +1,7 @@
 """
 案件・係数・重みの読み書きモジュール（lease_logic_sumaho10）
 load_all_cases, save_all_cases, save_case_log, load_coeff_overrides, save_coeff_overrides,
-get_score_weights, get_effective_coeffs, load_consultation_memory, append_consultation_memory,
+get_score_weights, get_model_blend_weights, get_effective_coeffs, load_consultation_memory, append_consultation_memory,
 load_case_news, append_case_news, find_similar_past_cases を提供。
 st は使わず、保存失敗時は False/None を返す。呼び元で st.error 等を表示すること。
 """
@@ -255,6 +255,28 @@ def get_score_weights():
     else:
         w_quant, w_qual = DEFAULT_WEIGHT_QUANT, DEFAULT_WEIGHT_QUAL
     return (w_borrower, w_asset, w_quant, w_qual)
+
+
+def get_model_blend_weights():
+    """
+    ① 全体モデル / ② 指標モデル / ③ 業種別モデル の混合重みを返す。
+    優先順位: 手動設定 (coeff_overrides.json) > 自動最適化 (coeff_auto.json) > デフォルト (0.5/0.3/0.2)
+    戻り値: (w_main, w_bench, w_ind) — 合計 1.0
+    """
+    _DEFAULT_MAIN  = 0.5
+    _DEFAULT_BENCH = 0.3
+    _DEFAULT_IND   = 0.2
+    auto   = load_auto_coeffs()
+    manual = load_coeff_overrides() or {}
+    mw = manual.get("model_blend_weights") or {}
+    w_m  = mw.get("main")  or auto.get("_auto_blend_w_main")
+    w_b  = mw.get("bench") or auto.get("_auto_blend_w_bench")
+    w_i  = mw.get("ind")   or auto.get("_auto_blend_w_ind")
+    if w_m is not None and w_b is not None and w_i is not None:
+        total = float(w_m) + float(w_b) + float(w_i)
+        if total > 0:
+            return float(w_m) / total, float(w_b) / total, float(w_i) / total
+    return _DEFAULT_MAIN, _DEFAULT_BENCH, _DEFAULT_IND
 
 
 def get_effective_coeffs(key=None):

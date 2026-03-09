@@ -676,6 +676,98 @@ def optimize_score_weights_from_regression():
     return out
 
 
+def optimize_model_blend_weights():
+    """
+    ① 全体モデル / ② 指標モデル / ③ 業種別モデル の3モデル混合比率を
+    成約/失注データからクロスバリデーションで最適化する。
+
+    手順:
+      1. ログから (score_borrower, bench_score, ind_score) と (成約=1/失注=0) を抽出
+      2. KFold(5) で各フォールドの LogisticRegression 係数を平均
+      3. 正の係数を正規化して (w_main, w_bench, w_ind) を推定
+      4. OOF AUC を返す
+
+    戻り値:
+      None（件数不足）、または dict:
+        {
+          "w_main":  float,  # ① 全体モデルの重み
+          "w_bench": float,  # ② 指標モデルの重み
+          "w_ind":   float,  # ③ 業種別モデルの重み
+          "auc_cv":  float,  # OOF AUC
+          "n_cases": int,
+        }
+    """
+    cases = load_all_cases()
+    registered = [c for c in cases if c.get("final_status") in ["成約", "失注"]]
+    if len(registered) < QUALITATIVE_ANALYSIS_MIN_CASES:
+        return None
+
+    rows = []
+    y_list = []
+    for c in registered:
+        res = c.get("result") or {}
+        sb  = res.get("score_borrower")   # ① 全体モデル (0-100)
+        bsc = res.get("bench_score")       # ② 指標モデル (0-100)
+        isc = res.get("ind_score")         # ③ 業種別モデル (0-100)
+        if sb is None or bsc is None or isc is None:
+            continue
+        rows.append([float(sb), float(bsc), float(isc)])
+        y_list.append(1 if c.get("final_status") == "成約" else 0)
+
+    if len(rows) < 20 or len(set(y_list)) < 2:
+        return None
+
+    try:
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.metrics import roc_auc_score
+        from sklearn.model_selection import StratifiedKFold
+        from sklearn.preprocessing import StandardScaler
+
+        X = np.array(rows)
+        y = np.array(y_list)
+
+        # --- KFold クロスバリデーション ---
+        kf = StratifiedKFold(n_splits=min(5, len(set(y_list)) * 5), shuffle=True, random_state=42)
+        oof_probs = np.zeros(len(y))
+        coef_list = []
+
+        for train_idx, val_idx in kf.split(X, y):
+            X_tr, X_val = X[train_idx], X[val_idx]
+            y_tr, y_val = y[train_idx], y[val_idx]
+            scaler = StandardScaler()
+            X_tr_s = scaler.fit_transform(X_tr)
+            X_val_s = scaler.transform(X_val)
+            lr = LogisticRegression(C=1.0, max_iter=1000, random_state=42, solver="lbfgs")
+            if len(set(y_tr)) < 2:
+                continue
+            lr.fit(X_tr_s, y_tr)
+            oof_probs[val_idx] = lr.predict_proba(X_val_s)[:, 1]
+            coef_list.append(lr.coef_[0])
+
+        if not coef_list:
+            return None
+
+        # --- 係数平均 → 正規化 ---
+        mean_coef = np.mean(coef_list, axis=0)
+        pos_coef = np.maximum(mean_coef, 1e-6)   # 負係数をフロア
+        total = pos_coef.sum()
+        w_main, w_bench, w_ind = (pos_coef / total).tolist()
+
+        # --- OOF AUC（oof_probs が計算された行のみ） ---
+        mask = oof_probs > 0
+        auc_cv = float(roc_auc_score(y[mask], oof_probs[mask])) if mask.sum() >= 10 else None
+
+        return {
+            "w_main":  round(w_main, 4),
+            "w_bench": round(w_bench, 4),
+            "w_ind":   round(w_ind, 4),
+            "auc_cv":  round(auc_cv, 4) if auc_cv else None,
+            "n_cases": len(y_list),
+        }
+    except Exception:
+        return None
+
+
 def run_qualitative_contract_analysis(qual_correction_items):
     """
     定性項目のみで成約/不成約をロジスティック回帰とLightGBMで分析する。

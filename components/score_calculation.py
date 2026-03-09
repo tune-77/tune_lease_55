@@ -18,7 +18,7 @@ from indicators import calculate_pd
 from web_services import get_market_rate, get_stats
 from rule_manager import evaluate_custom_rules
 from data_cases import (
-    get_effective_coeffs, get_score_weights, save_case_log,
+    get_effective_coeffs, get_score_weights, get_model_blend_weights, save_case_log,
     find_similar_past_cases
 )
 from constants import (
@@ -517,16 +517,18 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 gap_text = f"指標モデル差: {gap_sign}{gap_val:.1f}%"
     
                 # ========== 成約可能性スコア: 3モデル加重平均を借手スコアの基準値とする ==========
-                # ① 全体モデル × 0.5 + ② 指標モデル × 0.3 + ③ 業種別モデル × 0.2
+                # ① 全体モデル × w_main + ② 指標モデル × w_bench + ③ 業種別モデル × w_ind
+                # 重みはクロスバリデーション最適化値 or デフォルト (0.5/0.3/0.2)
                 # 「審査通過 × 成約」両方の実現可能性を表す複合スコア
                 effective = get_effective_coeffs()  # 成約/失注で更新した係数（既存+追加項目）があれば使用
                 strength_tags = []
                 passion_text = ""
                 n_strength = 0
+                _w_main, _w_bench, _w_ind = get_model_blend_weights()
                 contract_prob = round(
-                    score_percent       * 0.5
-                    + score_percent_bench * 0.3
-                    + score_percent_ind   * 0.2,
+                    score_percent       * _w_main
+                    + score_percent_bench * _w_bench
+                    + score_percent_ind   * _w_ind,
                     1,
                 )
                 ai_completed_factors = []  # AIが補完した判定要因（表示・バトル用）
