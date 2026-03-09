@@ -424,7 +424,8 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     return z
     
                 # 1. 全体モデル（成約/失注で更新した係数があればそれを優先）
-                z_main = calculate_score_from_coeffs(data_scoring, get_effective_coeffs("全体_既存先"))
+                _main_key = "全体_新規先" if customer_type == "新規先" else "全体_既存先"
+                z_main = calculate_score_from_coeffs(data_scoring, get_effective_coeffs(_main_key))
                 score_prob = safe_sigmoid(z_main)
                 score_percent = score_prob * 100
     
