@@ -267,7 +267,7 @@ def render_analysis_results(
                       <div style="font-size:2rem;font-weight:bold;color:{_hantei_color};">{res.get("hantei","—")}</div>
                     </div>
                     <div>
-                      <div style="font-size:0.8rem;opacity:0.7;">総合スコア<span style="font-size:0.65rem;opacity:0.8;margin-left:4px;">（信用力参考値）</span></div>
+                      <div style="font-size:0.8rem;opacity:0.7;">成約可能性スコア</div>
                       <div style="font-size:2rem;font-weight:bold;">{res['score']:.1f}%</div>
                     </div>
                     <div>
@@ -286,7 +286,7 @@ def render_analysis_results(
                 </div>
                 """, unsafe_allow_html=True)
             with _gauge_col:
-                st.plotly_chart(plot_gauge_plotly(res['score'], "総合スコア（信用力参考値）"), use_container_width=True, key="gauge_score")
+                st.plotly_chart(plot_gauge_plotly(res['score'], "成約可能性スコア"), use_container_width=True, key="gauge_score")
 
             st.divider()
 
@@ -316,12 +316,12 @@ def render_analysis_results(
                     </div>
                     <div style="font-size:1.3rem;opacity:0.6;padding-bottom:0.2rem;">＋</div>
                     <div>
-                      <div style="font-size:0.75rem;opacity:0.7;">借手スコア × {_ob_w}%</div>
+                      <div style="font-size:0.75rem;opacity:0.7;">成約可能性（借手） × {_ob_w}%</div>
                       <div style="font-size:1.5rem;font-weight:bold;">{_ob_score:.1f}点</div>
                     </div>
                     <div style="font-size:1.3rem;opacity:0.6;padding-bottom:0.2rem;">＝</div>
                     <div>
-                      <div style="font-size:0.75rem;opacity:0.7;">総合スコア</div>
+                      <div style="font-size:0.75rem;opacity:0.7;">成約可能性スコア</div>
                       <div style="font-size:2rem;font-weight:bold;color:{_ts_color};">{_ts_total:.1f}点 [{_ts_label}] {_ts_text}</div>
                     </div>
                   </div>
@@ -1028,12 +1028,12 @@ def render_analysis_results(
                 if qcorr:
                     r = qcorr
                     st.caption("**ランク（A〜E）は 総合×重み＋定性×重み（デフォルト60%/40%）に基づきます。**")
-                    total_score = res.get("score", 0)  # 総合スコア（借手+物件）
+                    total_score = res.get("score", 0)  # 成約可能性スコア（物件+借手）
                     qual_score = r.get("weighted_score", 0)
                     combined = r.get("combined_score", 0)
                     c1, c2, c3, c4 = st.columns(4)
                     with c1:
-                        st.metric("総合スコア（信用力参考値）", f"{total_score:.1f}", help="借手スコア85%＋物件スコア15%。業種内相対評価です。デフォルト予測値ではありません。")
+                        st.metric("成約可能性スコア", f"{total_score:.1f}", help="成約可能性（借手）× 物件ウェイト ＋ 物件スコア × 物件ウェイト。審査通過×成約の複合指標です。")
                     with c2:
                         st.metric("定性スコア", f"{qual_score} / 100", help="項目別5段階の加重平均")
                     with c3:
@@ -1048,7 +1048,7 @@ def render_analysis_results(
                             label_short = data.get("level_label") or QUALITATIVE_SCORING_LEVEL_LABELS.get(val, f"{int((val or 0)/4*100)}点")
                             st.markdown(f"- **{data.get('label', item_id)}**（重み{data.get('weight', 0)}%）: {label_short}")
                 else:
-                    st.info("審査入力の「定性スコアリング」で項目を選択すると、ここに集計結果が表示されます。ランクは総合×重み＋定性×重みで算出。定性を1件も選んでいない場合は総合スコアのみで判定します。")
+                    st.info("審査入力の「定性スコアリング」で項目を選択すると、ここに集計結果が表示されます。ランクは成約可能性スコア×重み＋定性×重みで算出。定性を1件も選んでいない場合は成約可能性スコアのみで判定します。")
 
             # ----- 学習モデル（業種別ハイブリッド）の予測結果（融合機能）・常に表示 -----
             scoring_result = res.get("scoring_result")
@@ -1142,10 +1142,17 @@ def render_analysis_results(
                         st.metric("予測利回り", "—", help="利回りモデル未適用")
                 # ----- スコア内訳（借手・物件説明 + 3モデル） -----
                 if "score_borrower" in res and "asset_score" in res:
-                    st.caption(f"📌 借手 {res['score_borrower']:.1f}% × 0.85 ＋ 物件「{res.get('asset_name', '')}」{res['asset_score']}点 × 0.15 → 総合 {res['score']:.1f}%")
+                    _sb = res['score_borrower']
+                    _ib = res.get('ind_score', _sb)
+                    _bb = res.get('bench_score', _sb)
+                    _wb = round(_sb * 0.5 + _bb * 0.3 + _ib * 0.2, 1)
+                    st.caption(
+                        f"📌 成約可能性（借手）= ①{_sb:.1f}%×0.5 ＋ ②{_bb:.1f}%×0.3 ＋ ③{_ib:.1f}%×0.2 ＝ {_wb:.1f}%"
+                        f"　→ 成約可能性スコア {res['score']:.1f}%（物件スコア加味）"
+                    )
                 cols = st.columns(3)
                 with cols[0]:
-                    st.metric("① 全体モデル", f"{res['score']:.1f}%", help="全業種共通係数")
+                    st.metric("① 全体モデル", f"{res.get('score_borrower', res.get('score', 0)):.1f}%", help="全業種共通・成約/失注データで学習した回帰係数")
                 with cols[1]:
                     ind_label = res.get("ind_name", "全体_既存先")
                     second_label = "② 業種モデル" if (ind_label.split("_")[0] != "全体") else "② 業種(全体)"

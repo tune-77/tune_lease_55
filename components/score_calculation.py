@@ -515,13 +515,19 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 gap_sign = "+" if gap_val >= 0 else ""
                 gap_text = f"指標モデル差: {gap_sign}{gap_val:.1f}%"
     
-                # ========== 完全版ベイズ初期モデル: 継承＋補完（回帰で更新した係数も反映） ==========
+                # ========== 成約可能性スコア: 3モデル加重平均を借手スコアの基準値とする ==========
+                # ① 全体モデル × 0.5 + ② 指標モデル × 0.3 + ③ 業種別モデル × 0.2
+                # 「審査通過 × 成約」両方の実現可能性を表す複合スコア
                 effective = get_effective_coeffs()  # 成約/失注で更新した係数（既存+追加項目）があれば使用
-                # 逆転の鍵は削除済み（定性は定性スコアリングのみ）
                 strength_tags = []
                 passion_text = ""
                 n_strength = 0
-                contract_prob = score_percent
+                contract_prob = round(
+                    score_percent       * 0.5
+                    + score_percent_bench * 0.3
+                    + score_percent_ind   * 0.2,
+                    1,
+                )
                 ai_completed_factors = []  # AIが補完した判定要因（表示・バトル用）
     
                 # メイン先（係数: 成約/失注で回帰更新されていればその値、なければ既定5）
@@ -677,7 +683,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     ai_completed_factors.append({"factor": "金利差（競合比）", "effect_percent": int(round(rate_effect)), "detail": f"自社が競合より{'有利' if rate_diff_pt < 0 else '不利'}な金利"})
                 contract_prob = max(0, min(100, contract_prob))
 
-                # ── ASSET_WEIGHT 配分による総合スコア算出 ────────────────────────────
+                # ── ASSET_WEIGHT 配分による成約可能性スコア算出 ──────────────────────
                 # カテゴリ対応物件は ASSET_WEIGHT 比率（物件スコア × asset_w + 借手スコア × obligor_w）、
                 # それ以外は従来の回帰最適化重みにフォールバック。
                 w_borrower, w_asset, w_quant, w_qual = get_score_weights()
@@ -844,7 +850,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         qualitative_scoring_correction["rank_text"] = qual_rank["text"]
                         qualitative_scoring_correction["rank_desc"] = qual_rank["desc"]
 
-                # デフォルト率50%以上の場合、総合スコアから-50点
+                # デフォルト率50%以上の場合、成約可能性スコアから-50点
                 if pd_percent >= 50:
                     final_score = max(0, final_score - 50)
                     if qualitative_scoring_correction:

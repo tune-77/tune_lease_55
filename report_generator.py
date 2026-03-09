@@ -56,7 +56,7 @@ def generate_metrics_summary(result) -> str:
         "\n【指標サマリー】\n"
         f"  - リスクレベル  : {level}\n"
         f"  - デフォルト確率: {prob:.2%}\n"
-        f"  - 総合スコア   : {score:.1f}点\n"
+        f"  - 成約可能性スコア: {score:.1f}点\n"
         f"  - リース依存度  : {lease_ratio:.1%}（リース額／売上高）\n"
     )
 
