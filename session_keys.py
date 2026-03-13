@@ -136,6 +136,25 @@ class SK:
     FRAG_SUB_DATA         = "_frag_sub_data"
 
     # ─────────────────────────────────────────────
+    # 資産ファイナンス（AF）
+    # ─────────────────────────────────────────────
+    AF_LAST_RESULT        = "af_last_result"       # AFタブの直前計算結果
+    AF_LAST_DATA          = "af_last_data"         # AFタブの直前入力データ
+
+    # ─────────────────────────────────────────────
+    # 感度分析
+    # ─────────────────────────────────────────────
+    YOUDEN_RESULT         = "_youden_result"       # ユーデン指数分析結果
+
+    # ─────────────────────────────────────────────
+    # 審査ルール設定
+    # ─────────────────────────────────────────────
+    CUSTOM_RULES_UI_DATA  = "custom_rules_ui_data"       # カスタムルールのUI用データ
+    RULES_SAVED_SNAPSHOT  = "_rules_saved_snapshot"      # 保存済みルールのスナップショット
+    RULES_FORCE_RELOAD    = "_rules_force_reload"        # ルール強制リロードフラグ
+    RULE_PAGE_PREV_MODE   = "_rule_page_prev_mode"       # ルールページの直前モード
+
+    # ─────────────────────────────────────────────
     # その他
     # ─────────────────────────────────────────────
     BATTLE_DATA           = "battle_data"          # バトルデータ
