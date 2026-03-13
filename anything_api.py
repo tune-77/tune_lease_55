@@ -1,0 +1,128 @@
+"""
+AnythingLLM ローカル知識ベースとの連携モジュール。
+
+ワークスペースに登録された審査マニュアル・業種ガイド・事例集を
+RAG（検索拡張生成）で参照し、AIチャットのコンテキストに追加する。
+
+使い方:
+    from anything_api import get_anything_llm_context, is_anything_llm_available
+"""
+import pathlib
+import requests
+import streamlit as st
+
+ANYTHING_LLM_BASE_URL = "http://127.0.0.1:3001/api/v1"
+ANYTHING_LLM_WORKSPACE = "71b18af2-ab59-4bcb-874c-4cb329bd1b41"
+
+
+def _get_anything_llm_key() -> str:
+    """
+    APIキーを取得する。優先順:
+      1. st.secrets（Streamlit が正しく読めた場合）
+      2. このファイルの親ディレクトリを遡って .streamlit/secrets.toml を検索
+         （worktree など secrets.toml が手元にない場合のフォールバック）
+    """
+    # 1. st.secrets から試みる
+    try:
+        if hasattr(st, "secrets"):
+            key = st.secrets.get("ANYTHING_LLM_API_KEY", "") or ""
+            if key:
+                return key
+    except Exception:
+        pass
+
+    # 2. ファイルシステムを遡って secrets.toml を探す（最大 6 階層）
+    search = pathlib.Path(__file__).resolve().parent
+    for _ in range(6):
+        candidate = search / ".streamlit" / "secrets.toml"
+        if candidate.exists():
+            try:
+                import toml
+                data = toml.load(str(candidate))
+                key = data.get("ANYTHING_LLM_API_KEY", "") or ""
+                if key:
+                    return key
+            except Exception:
+                pass
+        search = search.parent
+
+    return ""
+
+
+def is_anything_llm_available(timeout: int = 3) -> bool:
+    """AnythingLLM サーバーが起動していて認証が通るかチェック。"""
+    api_key = _get_anything_llm_key()
+    if not api_key:
+        return False
+    try:
+        resp = requests.get(
+            f"{ANYTHING_LLM_BASE_URL}/auth",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=timeout,
+        )
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
+def query_anything_llm(message: str, workspace_slug: str = ANYTHING_LLM_WORKSPACE) -> str:
+    """
+    AnythingLLM のワークスペースに問い合わせ、回答テキストを返す。
+    mode="query" で知識ベース検索（RAG）に特化させる。
+    失敗時は空文字を返す（例外は握りつぶす）。
+    """
+    api_key = _get_anything_llm_key()
+    if not api_key:
+        return ""
+    try:
+        url = f"{ANYTHING_LLM_BASE_URL}/workspace/{workspace_slug}/chat"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {"message": message, "mode": "query"}
+        resp = requests.post(url, json=payload, headers=headers, timeout=60)
+        if resp.status_code == 200:
+            return resp.json().get("textResponse", "") or ""
+        return ""
+    except Exception:
+        return ""
+
+
+def get_anything_llm_context(q: str, res: dict | None = None, industry: str = "") -> str:
+    """
+    審査案件情報を元に AnythingLLM で知識ベースを検索し、
+    AIチャットのコンテキストブロック文字列として返す。
+
+    Args:
+        q:        ユーザーの質問文
+        res:      審査結果 dict（score, hantei 等）
+        industry: 業種名（sub分類）
+
+    Returns:
+        空文字（利用不可 or 結果なし）または
+        "【社内知識ベース（AnythingLLM）】\n..." 形式の文字列
+    """
+    if not is_anything_llm_available():
+        return ""
+
+    res = res or {}
+    score = res.get("score", 0) or 0
+    hantei = res.get("hantei", "") or ""
+
+    # 案件情報を含む検索クエリを構築
+    parts = [q]
+    if industry:
+        parts.append(f"業種:{industry}")
+    if hantei:
+        parts.append(f"判定:{hantei}")
+    if score:
+        parts.append(f"スコア:{score:.0f}%")
+
+    search_query = " ".join(parts)
+
+    result = query_anything_llm(search_query)
+    if not result or len(result.strip()) < 10:
+        return ""
+
+    return f"【社内知識ベース（AnythingLLM）】\n{result[:1500]}"
