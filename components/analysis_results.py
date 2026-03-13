@@ -34,7 +34,10 @@ from charts import (
     plot_indicators_gap_analysis_plotly, plot_past_scores_histogram_plotly, plot_score_models_comparison_plotly,
     plot_balance_sheet_plotly, plot_cash_flow_bridge_plotly, plot_ebitda_coverage_plotly, plot_break_even_point_plotly
 )
-from ai_chat import get_ai_quick_comment, get_ai_comprehensive_evaluation
+from ai_chat import (
+    get_ai_quick_comment, get_ai_comprehensive_evaluation,
+    stream_quick_comment, stream_comprehensive_evaluation, stream_byoki_with_industry,
+)
 from constants import get_review_alert, QUALITATIVE_SCORING_LEVEL_LABELS, get_dashboard_image_path
 from screening_report import build_screening_report_pdf
 from montecarlo import (
@@ -253,34 +256,60 @@ def render_analysis_results(
 
             st.divider()
             # ----- 判定サマリーカード（最重要項目 + スコアゲージ） -----
-            _hantei_color = "#0d9488" if "承認" in res.get("hantei", "") else "#b91c1c"
+            # 判定状態ごとに専用の色を割り当て（同じ色に複数の意味を持たせない）
+            _h = res.get("hantei", "")
+            if "否決" in _h:
+                _hantei_color = "#dc2626"   # 否決: 赤（ここだけ）
+                _hantei_bg    = "#fef2f2"
+            elif "条件付き" in _h:
+                _hantei_color = "#d97706"   # 条件付き承認: 琥珀
+                _hantei_bg    = "#fffbeb"
+            elif "審議" in _h:
+                _hantei_color = "#ea580c"   # 要審議: オレンジ（否決ではないので赤を使わない）
+                _hantei_bg    = "#fff7ed"
+            elif "承認" in _h:
+                _hantei_color = "#16a34a"   # 承認: 緑
+                _hantei_bg    = "#f0fdf4"
+            else:
+                _hantei_color = "#64748b"   # 不明: グレー
+                _hantei_bg    = "#f8fafc"
             _yield_str = f"{res['yield_pred']:.2f}%" if "yield_pred" in res else "—"
+            _pd_val    = res.get("pd_percent", 0) or 0
+            _pd_color  = "#dc2626" if _pd_val > 5 else "#1e3a5f"  # PD高い場合のみ注意色
             _sum_col, _gauge_col = st.columns([3, 2])
             with _sum_col:
                 st.markdown(f"""
-                <div style="background:linear-gradient(135deg,#1e3a5f 0%,#334155 100%);
-                            color:#fff;padding:1.2rem 1.5rem;border-radius:12px;height:100%;box-sizing:border-box;">
-                  <div style="font-size:0.85rem;opacity:0.75;margin-bottom:0.75rem;">📋 審査結果サマリー — {selected_sub}</div>
-                  <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-start;">
+                <div style="
+                  background:{_hantei_bg};
+                  border:1px solid #e2e8f0;
+                  border-top:4px solid {_hantei_color};
+                  border-radius:8px;
+                  padding:1.25rem 1.5rem;
+                  height:100%;
+                  box-sizing:border-box;
+                ">
+                  <!-- 判定: 最初に目が行くヒーロー要素 -->
+                  <div style="margin-bottom:1rem;">
+                    <div style="font-size:0.7rem;color:#94a3b8;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:0.2rem;">審査判定 — {selected_sub}</div>
+                    <div style="font-size:2.25rem;font-weight:800;color:{_hantei_color};line-height:1.1;">{_h or "—"}</div>
+                  </div>
+                  <!-- 主要指標: 判定の根拠として比較する -->
+                  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:0.6rem 1.25rem;border-top:1px solid #e2e8f0;padding-top:0.875rem;">
                     <div>
-                      <div style="font-size:0.8rem;opacity:0.7;">判定</div>
-                      <div style="font-size:2rem;font-weight:bold;color:{_hantei_color};">{res.get("hantei","—")}</div>
+                      <div style="font-size:0.7rem;color:#94a3b8;margin-bottom:0.1rem;">成約可能性</div>
+                      <div style="font-size:1.4rem;font-weight:700;color:#1e3a5f;">{res['score']:.1f}%</div>
                     </div>
                     <div>
-                      <div style="font-size:0.8rem;opacity:0.7;">成約可能性スコア</div>
-                      <div style="font-size:2rem;font-weight:bold;">{res['score']:.1f}%</div>
+                      <div style="font-size:0.7rem;color:#94a3b8;margin-bottom:0.1rem;">契約期待度 <span style="font-size:0.62rem;color:#cbd5e1;">暫定</span></div>
+                      <div style="font-size:1.4rem;font-weight:700;color:#1e3a5f;">{res.get('contract_prob',0):.1f}%</div>
                     </div>
                     <div>
-                      <div style="font-size:0.8rem;opacity:0.7;">契約期待度<span style="font-size:0.65rem;opacity:0.8;margin-left:4px;">（暫定値・データ収集中）</span></div>
-                      <div style="font-size:2rem;font-weight:bold;">{res.get('contract_prob',0):.1f}%</div>
+                      <div style="font-size:0.7rem;color:#94a3b8;margin-bottom:0.1rem;">予測利回り</div>
+                      <div style="font-size:1.4rem;font-weight:700;color:#1e3a5f;">{_yield_str}</div>
                     </div>
                     <div>
-                      <div style="font-size:0.8rem;opacity:0.7;">予測利回り</div>
-                      <div style="font-size:2rem;font-weight:bold;">{_yield_str}</div>
-                    </div>
-                    <div>
-                      <div style="font-size:0.8rem;opacity:0.7;">デフォルト率</div>
-                      <div style="font-size:2rem;font-weight:bold;">{res.get('pd_percent',0):.1f}%</div>
+                      <div style="font-size:0.7rem;color:#94a3b8;margin-bottom:0.1rem;">デフォルト率</div>
+                      <div style="font-size:1.4rem;font-weight:700;color:{_pd_color};">{_pd_val:.1f}%</div>
                     </div>
                   </div>
                 </div>
@@ -303,29 +332,36 @@ def render_analysis_results(
                 _ob_w      = int(_ts.get("obligor_weight", 0) * 100)
                 _category  = _ts.get("category", "—")
                 _rationale = _ts.get("rationale", "")
+                _rationale_html = f'<div style="font-size:0.72rem;color:#94a3b8;margin-top:0.5rem;">{_rationale}</div>' if _rationale else ''
                 st.markdown(f"""
-                <div style="background:linear-gradient(135deg,#1e3a5f 0%,#334155 100%);
-                            color:#fff;padding:1rem 1.25rem;border-radius:10px;margin-bottom:0.75rem;">
-                  <div style="font-size:0.8rem;opacity:0.7;margin-bottom:0.5rem;">
-                    📊 スコア配分【{_category}】— 物件 {_asset_w}% ／ 借手 {_ob_w}%
+                <div style="
+                  background:#f8fafc;
+                  border:1px solid #e2e8f0;
+                  border-left:3px solid #1e3a5f;
+                  border-radius:8px;
+                  padding:0.875rem 1.125rem;
+                  margin-bottom:0.75rem;
+                ">
+                  <div style="font-size:0.78rem;color:#64748b;margin-bottom:0.5rem;">
+                    スコア構成【{_category}】— 物件 {_asset_w}% ／ 借手 {_ob_w}%
                   </div>
-                  <div style="display:flex;gap:2rem;flex-wrap:wrap;align-items:flex-end;">
+                  <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-end;">
                     <div>
-                      <div style="font-size:0.75rem;opacity:0.7;">物件スコア × {_asset_w}%</div>
-                      <div style="font-size:1.5rem;font-weight:bold;">{_as_score:.1f}点</div>
+                      <div style="font-size:0.72rem;color:#94a3b8;">物件スコア × {_asset_w}%</div>
+                      <div style="font-size:1.3rem;font-weight:700;color:#334155;">{_as_score:.1f}点</div>
                     </div>
-                    <div style="font-size:1.3rem;opacity:0.6;padding-bottom:0.2rem;">＋</div>
+                    <div style="color:#94a3b8;font-size:0.9rem;padding-bottom:0.15rem;">＋</div>
                     <div>
-                      <div style="font-size:0.75rem;opacity:0.7;">成約可能性（借手） × {_ob_w}%</div>
-                      <div style="font-size:1.5rem;font-weight:bold;">{_ob_score:.1f}点</div>
+                      <div style="font-size:0.72rem;color:#94a3b8;">成約可能性 × {_ob_w}%</div>
+                      <div style="font-size:1.3rem;font-weight:700;color:#334155;">{_ob_score:.1f}点</div>
                     </div>
-                    <div style="font-size:1.3rem;opacity:0.6;padding-bottom:0.2rem;">＝</div>
+                    <div style="color:#94a3b8;font-size:0.9rem;padding-bottom:0.15rem;">＝</div>
                     <div>
-                      <div style="font-size:0.75rem;opacity:0.7;">成約可能性スコア</div>
-                      <div style="font-size:2rem;font-weight:bold;color:{_ts_color};">{_ts_total:.1f}点 [{_ts_label}] {_ts_text}</div>
+                      <div style="font-size:0.72rem;color:#94a3b8;">総合スコア</div>
+                      <div style="font-size:1.6rem;font-weight:800;color:{_ts_color};">{_ts_total:.1f}点 <span style="font-size:0.95rem;font-weight:600;">[{_ts_label}]</span> <span style="font-size:0.85rem;font-weight:500;color:#475569;">{_ts_text}</span></div>
                     </div>
                   </div>
-                  <div style="font-size:0.72rem;opacity:0.6;margin-top:0.5rem;">{_rationale}</div>
+                  {_rationale_html}
                 </div>
                 """, unsafe_allow_html=True)
                 st.divider()
@@ -544,7 +580,8 @@ def render_analysis_results(
                             if _bnr:
                                 _bn_prob = _bnr["approval_prob"]
                                 _bn_dec  = _bnr["decision"]
-                                _bn_col  = "#0d9488" if _bn_dec == "承認" else ("#f59e0b" if _bn_dec == "要審議" else "#b91c1c")
+                                # 判定色: 承認=緑 / 要審議=オレンジ / 否決=赤（各状態に専用色）
+                                _bn_col  = "#16a34a" if _bn_dec == "承認" else ("#ea580c" if _bn_dec == "要審議" else "#dc2626")
                                 _im      = _bnr.get("intermediate", {})
                                 _r1, _r2, _r3, _r4 = st.columns(4)
                                 _r1.metric("🎯 承認確率",  f"{_bn_prob:.1%}")
@@ -936,22 +973,31 @@ def render_analysis_results(
                 except Exception as _db_view_err:
                     st.error(f"DB表示エラー: {_db_view_err}")
 
-            # ----- 🤖 AIひとこと評価（自動生成） -----
+            # ----- 🤖 AIひとこと評価（自動生成・ストリーミング） -----
             _quick_key = "ai_quick_comment_result"
             _quick_result_id = f"ai_quick_{res.get('score', 0):.1f}_{res.get('industry_sub', '')}"
             # スコア+業種が変わったときだけ再生成
             if st.session_state.get("ai_quick_comment_id") != _quick_result_id:
                 st.session_state[_quick_key] = None
                 st.session_state["ai_quick_comment_id"] = _quick_result_id
+            _qc_placeholder = st.empty()
             if is_ai_available() and st.session_state.get(_quick_key) is None:
-                with st.spinner("AIコメント生成中…"):
-                    _qc = get_ai_quick_comment(res)
-                st.session_state[_quick_key] = _qc if _qc else ""
+                # 初回: ストリーミングで表示し、完了後キャッシュ
+                with _qc_placeholder.container():
+                    st.caption("🤖 AIコメント生成中…")
+                    try:
+                        _qc_streamed = st.write_stream(stream_quick_comment(res))
+                        st.session_state[_quick_key] = _qc_streamed or ""
+                    except Exception:
+                        _qc_fallback = get_ai_quick_comment(res)
+                        st.session_state[_quick_key] = _qc_fallback or ""
             _qc_text = st.session_state.get(_quick_key) or ""
-            if _qc_text:
-                st.info(f"🤖 **AIコメント** {_qc_text}")
+            if _qc_text and st.session_state.get(_quick_key) is not None:
+                with _qc_placeholder.container():
+                    st.info(f"🤖 **AIコメント** — {_qc_text}")
             elif not is_ai_available():
-                st.caption("💬 AIコメント: サイドバーでAIエンジンを設定すると自動評価が表示されます。")
+                with _qc_placeholder.container():
+                    st.caption("💬 AIコメント: サイドバーでAIエンジンを設定すると自動評価が表示されます。")
 
             # ----- 🤖 AI総合評価 -----
             with st.expander("🤖 AI総合評価（5項目）", expanded=False):
@@ -964,28 +1010,34 @@ def render_analysis_results(
                     st.session_state[_ai_eval_key] = None
 
                 if st.session_state.get(_ai_eval_loading_key):
-                    with st.spinner("AI評価を生成中… （ローカルLLMは30〜90秒かかる場合があります）"):
-                        _eval_result = get_ai_comprehensive_evaluation(res)
-                    st.session_state[_ai_eval_key] = _eval_result
+                    # ストリーミングで直接表示（スピナー不要・文字が流れて生成感が出る）
+                    try:
+                        _eval_streamed = st.write_stream(stream_comprehensive_evaluation(res))
+                        st.session_state[_ai_eval_key] = _eval_streamed or ""
+                    except Exception:
+                        with st.spinner("AI評価を生成中…"):
+                            _eval_result = get_ai_comprehensive_evaluation(res)
+                        st.session_state[_ai_eval_key] = _eval_result
                     st.session_state[_ai_eval_loading_key] = False
 
                 _eval_text = st.session_state.get(_ai_eval_key)
                 if _eval_text:
-                    # ①〜⑤ を色付きで表示
-                    _eval_lines = _eval_text.splitlines()
-                    _formatted = []
-                    for _line in _eval_lines:
-                        _line = _line.strip()
-                        if not _line:
-                            continue
-                        if _line.startswith("①") or _line.startswith("②") or _line.startswith("③") or _line.startswith("④"):
-                            _formatted.append(f"**{_line}**")
-                        elif _line.startswith("⑤"):
-                            _formatted.append(f"\n**{_line}**")
-                        else:
-                            _formatted.append(_line)
-                    st.markdown("\n\n".join(_formatted))
-                elif _eval_text is not None:
+                    # ①〜⑤ を強調表示（キャッシュ済みテキストの再表示用）
+                    if not st.session_state.get(_ai_eval_loading_key):
+                        _eval_lines = _eval_text.splitlines()
+                        _formatted = []
+                        for _line in _eval_lines:
+                            _line = _line.strip()
+                            if not _line:
+                                continue
+                            if _line.startswith("①") or _line.startswith("②") or _line.startswith("③") or _line.startswith("④"):
+                                _formatted.append(f"**{_line}**")
+                            elif _line.startswith("⑤"):
+                                _formatted.append(f"\n**{_line}**")
+                            else:
+                                _formatted.append(_line)
+                        st.markdown("\n\n".join(_formatted))
+                elif _eval_text is not None and not st.session_state.get(_ai_eval_loading_key):
                     st.warning("AI評価を取得できませんでした。AIエンジンの設定（サイドバー）を確認してから再試行してください。")
 
             # ----- 主要KPI（業界実績）-----
@@ -1788,26 +1840,40 @@ def render_analysis_results(
             selected_sub_res = res.get("industry_sub", "")
             byoki_case_id = st.session_state.get("ai_byoki_case_id")
             byoki_text = st.session_state.get("ai_byoki_text")
-            if byoki_text and byoki_case_id == current_case_id:
+            _byoki_generating = st.session_state.get("_byoki_generating", False)
+            if byoki_text and byoki_case_id == current_case_id and not _byoki_generating:
                 st.info("🐟 " + byoki_text)
                 if st.button("ぼやきを再生成（業界情報を再取得）", key="btn_byoki_regenerate"):
                     st.session_state["ai_byoki_text"] = None
                     st.session_state["ai_byoki_case_id"] = None
                     st.rerun()
             else:
-                if st.button("AIにぼやきを言わせる（業界情報を参照）", key="btn_byoki_generate"):
-                    with st.spinner("業界情報を取得して、AIがぼやきを考えています…"):
-                        from data_cases import update_case_field
-                        text = get_ai_byoki_with_industry(selected_sub_res, u_eq, u_op, comp_text, net_risk)
-                        if text:
-                            st.session_state["ai_byoki_text"] = text
+                if not _byoki_generating:
+                    if st.button("AIにぼやきを言わせる（業界情報を参照）", key="btn_byoki_generate"):
+                        st.session_state["_byoki_generating"] = True
+                        st.session_state["ai_byoki_text"] = None
+                        st.rerun()
+                    if not byoki_text:
+                        st.caption("上のボタンで、ネット検索した業界情報をもとにAIが愚痴を1つ生成します。")
+                else:
+                    # ストリーミングで生成・表示
+                    st.caption("🐟 業界情報を取得してぼやきを考えています…")
+                    try:
+                        _byoki_streamed = st.write_stream(
+                            stream_byoki_with_industry(selected_sub_res, u_eq, u_op, comp_text, net_risk)
+                        )
+                        if _byoki_streamed:
+                            st.session_state["ai_byoki_text"] = _byoki_streamed
                             st.session_state["ai_byoki_case_id"] = current_case_id
-                            update_case_field(current_case_id, "ai_byoki", text)
-                            st.rerun()
+                            st.session_state["_byoki_generating"] = False
+                            from data_cases import update_case_field
+                            update_case_field(current_case_id, "ai_byoki", _byoki_streamed)
                         else:
+                            st.session_state["_byoki_generating"] = False
                             st.error("生成できませんでした。APIキー・Ollamaを確認してください。")
-                if not byoki_text:
-                    st.caption("上のボタンで、ネット検索した業界情報をもとにAIが愚痴を1つ生成します。")
+                    except Exception:
+                        st.session_state["_byoki_generating"] = False
+                        st.error("生成中にエラーが発生しました。")
 
             # ----- カードバトル（別枠・開発中） -----
             with st.expander("⚔️ 審査委員会カードバトル（開発中）", expanded=False):
