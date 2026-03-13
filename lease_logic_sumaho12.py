@@ -328,7 +328,17 @@ def _reset_shinsa_inputs():
 # 以下はページ共通CSS（スライダー・グラフ・タブ・スマホ向けなど）
 st.markdown("""
     <style>
-    /* スライダー全体の幅をスマホで確保（最小幅・タップしやすく） */
+    /*
+     * デザインシステム — 色は役割で決める
+     *   ブランド色  : #1e3a5f  ヘッダー・構造
+     *   操作色      : #2563eb  ボタン・スライダー（赤は否決専用）
+     *   承認        : #16a34a  (承認のみ)
+     *   条件付き承認: #d97706  (条件付き承認のみ)
+     *   要審議      : #ea580c  (要審議のみ)
+     *   否決        : #dc2626  (否決のみ)
+     */
+
+    /* ── スライダー: 操作色（青）で統一 ── */
     div[data-baseweb="slider"] {
         min-width: min(100%, 320px) !important;
         width: 100% !important;
@@ -337,74 +347,54 @@ st.markdown("""
         div[data-baseweb="slider"] { min-width: 100% !important; }
         .stSlider > div { width: 100% !important; }
     }
-    /* スライダーのつまみ（丸い部分）を大きくする */
+    /* つまみ: 操作色（青）— 赤は「否決」専用 */
     div[data-baseweb="slider"] div[role="slider"] {
-        width: 30px !important;
-        height: 30px !important;
-        background-color: #FF0000 !important;
-        border: 2px solid white !important;
+        width: 22px !important;
+        height: 22px !important;
+        background-color: #2563eb !important;
+        border: 2px solid #fff !important;
+        box-shadow: 0 1px 4px rgba(37, 99, 235, 0.35) !important;
     }
-    /* スライダーの棒（レール）を太くする */
+    /* レール: 細めで主張しすぎない */
     div[data-baseweb="slider"] > div {
-        height: 15px !important;
+        height: 7px !important;
     }
-    /* ラベル（売上高）の文字を大きくする */
+    /* ラベル: 読める程度・画面を占拠しない */
     .stSlider label p {
-        font-size: 24px !important;
-        font-weight: bold !important;
-    }
-    /* スライダーの上・横に表示される数値（現在値）を大きく見やすく */
-    .stSlider {
-        font-size: 1.5rem !important;
-    }
-    .stSlider [data-baseweb="slider"] {
-        font-size: 1.5rem !important;
-    }
-    /* スライダー値表示エリア（Base Web の出力部分） */
-    .stSlider > div > div:last-child,
-    div[data-baseweb="slider"] ~ div {
-        font-size: 1.8rem !important;
+        font-size: 15px !important;
         font-weight: 600 !important;
+        color: #334155 !important;
     }
-    /* スライダーを動かしている時に出る数値（ツールチップ・つまみ上の表示）も大きく */
-    [data-baseweb="tooltip"],
-    .stSlider [data-baseweb="tooltip"],
-    div[data-baseweb="slider"] [role="slider"] + div,
-    div[data-baseweb="slider"] div[style*="position"] {
-        font-size: 2rem !important;
-        font-weight: 700 !important;
+    /* 現在値表示 */
+    .stSlider [data-baseweb="slider"] ~ div,
+    .stSlider div[data-baseweb="slider"] + div,
+    [data-testid="stSlider"] > div > div:last-child {
+        font-size: 1.2rem !important;
+        font-weight: 600 !important;
+        color: #1e3a5f !important;
     }
-    /* スライダーボタン（つまみ）の上に表示される数字を特に大きく */
+    /* ツールチップ（ドラッグ中） */
     [data-baseweb="tooltip"] span,
     [data-baseweb="tooltip"] div,
-    .stSlider [data-baseweb="tooltip"] span,
-    .stSlider [data-baseweb="tooltip"] div,
-    div[data-baseweb="slider"] ~ [data-baseweb="tooltip"],
     [data-baseweb="popover"] span,
     [data-baseweb="popover"] div {
-        font-size: 2.4rem !important;
+        font-size: 1.25rem !important;
         font-weight: 700 !important;
     }
-    .stSlider span,
-    .stSlider div[data-baseweb="slider"] span {
-        font-size: 1.8rem !important;
-        font-weight: 600 !important;
-    }
 
-    /* グラフ・図をカード風に（角丸・軽いシャドウ） */
+    /* ── グラフ・画像 ── */
     .stImage img, [data-testid="stImage"] img {
-        border-radius: 10px !important;
-        box-shadow: 0 2px 12px rgba(15,23,42,0.08) !important;
+        border-radius: 8px !important;
+        box-shadow: 0 1px 8px rgba(15, 23, 42, 0.07) !important;
     }
-    /* Plotly チャートも角丸 */
     .js-plotly-plot .plotly, [data-testid="stPlotlyChart"] div {
-        border-radius: 10px !important;
+        border-radius: 8px !important;
     }
-    /* PC: グラフはコンテナ幅いっぱいに表示（全部見えるように） */
     @media (min-width: 769px) {
         [data-testid="stPlotlyChart"] { max-width: 100% !important; width: 100% !important; margin-left: 0 !important; }
     }
-    /* 右端が切れないように: メイン領域をフル幅・はみ出し表示許可 */
+
+    /* ── レイアウト: 右端切れ対策 ── */
     section[data-testid="stSidebar"] + div,
     section.main,
     [data-testid="stAppViewContainer"],
@@ -416,10 +406,6 @@ st.markdown("""
         box-sizing: border-box !important;
     }
     .block-container {
-        padding-right: 1.5rem !important;
-    }
-    /* スマホ・タブレット: 余白縮小でスクロール削減・モダンUI */
-    .block-container {
         padding-top: 1rem !important;
         padding-bottom: 1rem !important;
         padding-left: 1rem !important;
@@ -430,19 +416,17 @@ st.markdown("""
         [data-testid="stVerticalBlock"] > div { gap: 0.5rem !important; }
         .stExpander { margin-bottom: 0.25rem !important; }
     }
-    /* 左・右カラム（審査入力｜AI相談）: 右のAIオフィサー相談が切れないように */
+
+    /* ── 左右カラム: 右カラム（AI相談）が切れないように ── */
     [data-testid="stHorizontalBlock"] {
         overflow-x: visible !important;
         max-width: 100% !important;
     }
-    [data-testid="stHorizontalBlock"] > div:first-child {
-        min-width: 0 !important;
-    }
+    [data-testid="stHorizontalBlock"] > div:first-child { min-width: 0 !important; }
     [data-testid="stHorizontalBlock"] > div {
         overflow-x: visible !important;
         overflow-y: visible !important;
     }
-    /* 右カラム（AI相談）は最低幅を確保し、切れないように */
     [data-testid="stHorizontalBlock"] > div:last-child {
         min-width: 320px !important;
         flex: 1 1 auto !important;
@@ -454,7 +438,6 @@ st.markdown("""
         overflow-wrap: break-word !important;
         word-break: break-word !important;
     }
-    /* 右カラム内のコメント欄（相談内容 text_area）が右で切れないように */
     [data-testid="stHorizontalBlock"] > div:last-child [data-testid="stTextArea"],
     [data-testid="stHorizontalBlock"] > div:last-child [data-testid="stTextArea"] textarea,
     [data-testid="stHorizontalBlock"] > div:last-child [data-testid="stTextArea"] > div {
@@ -463,150 +446,92 @@ st.markdown("""
         min-width: 0 !important;
         box-sizing: border-box !important;
     }
-    [data-testid="stHorizontalBlock"] > div:last-child [data-testid="stHorizontalBlock"] {
-        max-width: 100% !important;
-    }
-    [data-testid="stHorizontalBlock"] > div:last-child iframe {
-        max-width: 100% !important;
-    }
-    /* 相談タブ内のテキストエリア全般（キー指定できないためラッパーで制約） */
-    [data-testid="stTextArea"] {
-        max-width: 100% !important;
-    }
+    [data-testid="stHorizontalBlock"] > div:last-child [data-testid="stHorizontalBlock"] { max-width: 100% !important; }
+    [data-testid="stHorizontalBlock"] > div:last-child iframe { max-width: 100% !important; }
+    [data-testid="stTextArea"] { max-width: 100% !important; }
     [data-testid="stTextArea"] > div,
-    [data-testid="stTextArea"] textarea {
-        max-width: 100% !important;
-        box-sizing: border-box !important;
-    }
-    /* 右カラム・相談内容の欄に色をつける（ダッシュコード風） */
+    [data-testid="stTextArea"] textarea { max-width: 100% !important; box-sizing: border-box !important; }
+
+    /* AI相談エリア: ブランド左ボーダー（役割を示す） */
     [data-testid="stHorizontalBlock"] > div:last-child [data-testid="stTextArea"] {
-        background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%) !important;
+        background: #f0f9ff !important;
         padding: 0.75rem !important;
-        border-radius: 10px !important;
-        border-left: 4px solid #1e3a5f !important;
-        box-shadow: 0 1px 3px rgba(30, 58, 95, 0.08) !important;
+        border-radius: 8px !important;
+        border-left: 3px solid #1e3a5f !important;
     }
     [data-testid="stHorizontalBlock"] > div:last-child [data-testid="stTextArea"] textarea {
         background: #ffffff !important;
         border: 1px solid #bae6fd !important;
-        border-radius: 8px !important;
+        border-radius: 6px !important;
     }
-    /* トップメニュー用: タブ風スッキリ */
+
+    /* ── タブナビゲーション ── */
     [data-testid="stTabs"] > div > div { gap: 0 !important; }
     [data-testid="stTabs"] [role="tablist"] { margin-bottom: 0.5rem !important; }
-    /* タブボタンのテキストを確実に表示（透明化バグ対策） */
-    button[role="tab"] {
-        color: #334155 !important;
-        opacity: 1 !important;
-    }
-    button[role="tab"] p,
-    button[role="tab"] span,
-    button[role="tab"] div {
-        color: #334155 !important;
-        opacity: 1 !important;
-    }
-    button[role="tab"][aria-selected="true"] {
-        color: #1e3a5f !important;
-        font-weight: 700 !important;
-        border-bottom: 2px solid #1e3a5f !important;
-    }
+    button[role="tab"] { color: #475569 !important; opacity: 1 !important; }
+    button[role="tab"] p, button[role="tab"] span, button[role="tab"] div { color: #475569 !important; opacity: 1 !important; }
+    button[role="tab"][aria-selected="true"] { color: #1e3a5f !important; font-weight: 700 !important; border-bottom: 2px solid #1e3a5f !important; }
     button[role="tab"][aria-selected="true"] p,
     button[role="tab"][aria-selected="true"] span,
-    button[role="tab"][aria-selected="true"] div {
-        color: #1e3a5f !important;
-        font-weight: 700 !important;
-    }
-    button[role="tab"]:hover {
-        color: #1e3a5f !important;
-        background-color: rgba(30, 58, 95, 0.06) !important;
-    }
-    /* 電光掲示板（定例の愚痴） */
-    .byoki-ticker-wrap { overflow: hidden; background: linear-gradient(90deg, #1e293b 0%, #334155 100%); color: #f8fafc; padding: 8px 0; margin: 0 0 0.5rem 0; border-radius: 6px; font-size: 0.9rem; }
+    button[role="tab"][aria-selected="true"] div { color: #1e3a5f !important; font-weight: 700 !important; }
+    button[role="tab"]:hover { color: #1e3a5f !important; background-color: rgba(30, 58, 95, 0.05) !important; }
+
+    /* ── 電光掲示板 ── */
+    .byoki-ticker-wrap { overflow: hidden; background: #1e293b; color: #94a3b8; padding: 6px 0; margin: 0 0 0.5rem 0; border-radius: 5px; font-size: 0.82rem; }
     .byoki-ticker-inner { display: inline-block; white-space: nowrap; animation: byoki-scroll 120s linear infinite; }
     .byoki-ticker-inner span { padding-right: 2em; }
     @keyframes byoki-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
-    /* ダッシュボード・カード風コンテナ */
-    .dashboard-card {
-        background: #fff;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        padding: 1rem 1.25rem;
-        margin-bottom: 1rem;
-        box-shadow: 0 1px 3px rgba(30,58,95,0.06);
-    }
+
+    /* ── カード: 汎用 ── */
+    .dashboard-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1rem; }
     .dashboard-kpi-row { margin-bottom: 1.25rem; }
-    .dashboard-section-title { color: #1e3a5f; font-size: 0.95rem; font-weight: 600; margin-bottom: 0.5rem; }
-    /* KPIメトリクス: カード内に色をつける + 余白 */
+    .dashboard-section-title { color: #1e3a5f; font-size: 0.9rem; font-weight: 600; margin-bottom: 0.5rem; }
+
+    /* ── KPIメトリクスカード: グラデなし・役割ボーダー ── */
     [data-testid="stMetric"],
     [data-testid="metric-container"] {
         margin-right: 0.6rem !important;
         margin-bottom: 0.6rem !important;
-        padding: 0.6rem 0.5rem !important;
+        padding: 0.7rem 0.6rem !important;
         min-width: 0 !important;
-        background: linear-gradient(145deg, #f0f4f8 0%, #e2e8f0 100%) !important;
-        border-radius: 10px !important;
-        border-left: 4px solid #1e3a5f !important;
-        box-shadow: 0 2px 8px rgba(30, 58, 95, 0.1) !important;
+        background: #f8fafc !important;
+        border-radius: 8px !important;
+        border: 1px solid #e2e8f0 !important;
+        border-left: 3px solid #1e3a5f !important;
     }
-    [data-testid="stMetric"] > div,
-    [data-testid="metric-container"] > div {
-        gap: 0.35rem !important;
+    [data-testid="stMetric"] > div, [data-testid="metric-container"] > div { gap: 0.3rem !important; }
+    [data-testid="stMetric"] p, [data-testid="metric-container"] p { margin-bottom: 0.15rem !important; line-height: 1.35 !important; }
+    [data-testid="stMetric"] label, [data-testid="metric-container"] label {
+        color: #64748b !important;
+        font-size: 0.78rem !important;
+        font-weight: 500 !important;
     }
-    [data-testid="stMetric"] p,
-    [data-testid="metric-container"] p {
-        margin-bottom: 0.2rem !important;
-        line-height: 1.3 !important;
-    }
-    /* ラベルをネイビー系で統一 */
-    [data-testid="stMetric"] label,
-    [data-testid="metric-container"] label {
-        color: #334155 !important;
-        font-weight: 600 !important;
-    }
-    /* 項目選択時（selectbox / radio / multiselect）の文字を小さく */
+
+    /* ── フォーム要素: 標準サイズ ── */
     [data-testid="stSelectbox"] label,
     [data-testid="stSelectbox"] div,
     [data-testid="stSelectbox"] p,
     [data-testid="stSelectbox"] span,
     [data-testid="stSelectbox"] [role="listbox"],
-    [data-testid="stSelectbox"] [role="option"] {
-        font-size: 0.85rem !important;
-    }
+    [data-testid="stSelectbox"] [role="option"] { font-size: 0.875rem !important; }
     [data-testid="stRadio"] label,
     [data-testid="stRadio"] div,
     [data-testid="stRadio"] p,
-    [data-testid="stRadio"] span {
-        font-size: 0.85rem !important;
-    }
+    [data-testid="stRadio"] span { font-size: 0.875rem !important; }
     [data-testid="stMultiSelect"] label,
     [data-testid="stMultiSelect"] div,
     [data-testid="stMultiSelect"] p,
     [data-testid="stMultiSelect"] span,
     [data-testid="stMultiSelect"] [role="listbox"],
-    [data-testid="stMultiSelect"] [role="option"] {
-        font-size: 0.85rem !important;
-    }
+    [data-testid="stMultiSelect"] [role="option"] { font-size: 0.875rem !important; }
     [data-testid="stNumberInput"] label,
     [data-testid="stNumberInput"] div,
-    [data-testid="stNumberInput"] input {
-        font-size: 0.85rem !important;
-    }
-    /* スライダー値表示を大きく・3桁カンマ用 */
-    .stSlider [data-baseweb="slider"] ~ div,
-    .stSlider div[data-baseweb="slider"] + div,
-    [data-testid="stSlider"] > div > div:last-child {
-        font-size: 1.4rem !important;
-        font-weight: 700 !important;
-    }
-    
-    /* ── スマホ対応レスポンシブ ────────────────────────────────── */
+    [data-testid="stNumberInput"] input { font-size: 0.875rem !important; }
+
+    /* ── スマホ対応 ── */
     @media screen and (max-width: 768px) {
         .stColumns > div { width: 100% !important; }
-        div[data-testid="metric-container"] {
-            min-width: 70px !important;
-            padding: 0.3rem !important;
-            font-size: 0.8rem !important;
-        }
+        div[data-testid="metric-container"] { min-width: 70px !important; padding: 0.3rem !important; font-size: 0.8rem !important; }
         div[data-testid="stExpander"] { margin: 0.15rem 0; }
         .element-container table { font-size: 0.72rem; }
         .stButton > button { width: 100% !important; }
@@ -1222,18 +1147,38 @@ elif mode == "🏭 物件ファイナンス審査":
             _af_data   = st.session_state["af_last_data"]
 
             # --- 判定バナー ---
+            # 各状態に専用色（色の役割を分離: 同じ色に複数の意味を持たせない）
             _af_colors = {
-                "承認":          "#22c55e",
-                "条件付き承認":   "#f59e0b",
-                "要審議（上位承認）": "#f97316",
-                "否決":          "#ef4444",
+                "承認":              "#16a34a",   # 緑: 承認のみ
+                "条件付き承認":       "#d97706",   # 琥珀: 条件付き承認のみ
+                "要審議（上位承認）":  "#ea580c",   # オレンジ: 要審議のみ
+                "否決":              "#dc2626",   # 赤: 否決のみ
             }
-            _af_color = _af_colors.get(_af_result['decision'], "#6b7280")
+            _af_bgs = {
+                "承認":              "#f0fdf4",
+                "条件付き承認":       "#fffbeb",
+                "要審議（上位承認）":  "#fff7ed",
+                "否決":              "#fef2f2",
+            }
+            _af_color = _af_colors.get(_af_result['decision'], "#64748b")
+            _af_bg    = _af_bgs.get(_af_result['decision'], "#f8fafc")
             st.markdown(
-                f"""<div style="background:{_af_color};color:white;padding:1rem 1.5rem;
-                border-radius:12px;text-align:center;font-size:1.6rem;font-weight:700;
-                margin-bottom:1rem;box-shadow:0 2px 8px rgba(0,0,0,0.15);">
-                {_af_result['icon']} {_af_result['decision']}　スコア: {_af_result['score']}点
+                f"""<div style="
+                  background:{_af_bg};
+                  border:1px solid #e2e8f0;
+                  border-top:4px solid {_af_color};
+                  border-radius:8px;
+                  padding:1rem 1.5rem;
+                  margin-bottom:1rem;
+                  display:flex;
+                  align-items:center;
+                  gap:0.875rem;
+                ">
+                  <div style="font-size:1.75rem;line-height:1;">{_af_result['icon']}</div>
+                  <div>
+                    <div style="font-size:1.5rem;font-weight:800;color:{_af_color};line-height:1.1;">{_af_result['decision']}</div>
+                    <div style="font-size:0.82rem;color:#64748b;margin-top:0.15rem;">スコア: <strong style="color:#1e3a5f;">{_af_result['score']}点</strong></div>
+                  </div>
                 </div>""",
                 unsafe_allow_html=True,
             )
