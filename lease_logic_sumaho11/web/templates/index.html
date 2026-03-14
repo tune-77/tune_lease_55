@@ -1,9 +1,47 @@
 {% extends "base.html" %}
 {% block title %}新規審査{% endblock %}
+
+{% block head %}
+<style>
+  /* ③ ステッパー: ブラウザ標準スピンボタンを非表示 */
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+  input[type=number] { -moz-appearance: textfield; }
+  /* ④ アコーディオン アイコンアニメーション */
+  .accordion-icon { display: inline-block; transition: transform 0.2s ease; }
+  /* ⑦ スマホ: フローティングボタン分の余白 */
+  @media (max-width: 639px) {
+    .form-bottom-space { padding-bottom: 5rem; }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="mb-8">
-  <h1 class="text-2xl font-bold text-slate-800 mb-1">新規審査</h1>
-  <p class="text-slate-600">必須項目（売上高・総資産）を入力して判定を実行してください。単位は<strong>千円</strong>で、1千円単位で入力できます。</p>
+<div class="mb-6">
+  <div class="flex items-start justify-between flex-wrap gap-3">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-800 mb-1">新規審査</h1>
+      <p class="text-slate-600 text-sm">必須項目（売上高・総資産）を入力して判定を実行してください。</p>
+    </div>
+
+    <!-- ① 万円スイッチ -->
+    <label for="unit-toggle" class="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 py-2 shadow-sm cursor-pointer select-none" title="入力単位を切り替えます">
+      <span id="lbl-sen" class="text-sm font-medium text-teal-700">千円</span>
+      <div class="relative w-11 h-6">
+        <input type="checkbox" id="unit-toggle" class="sr-only">
+        <div id="toggle-track" class="w-11 h-6 rounded-full" style="background:#cbd5e1; transition:background 0.2s;"></div>
+        <div id="toggle-thumb" class="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow" style="transition:transform 0.2s; transform:translateX(0);"></div>
+      </div>
+      <span id="lbl-man" class="text-sm font-medium text-slate-400">万円</span>
+    </label>
+  </div>
+
+  <!-- ② ドラフト復元バナー -->
+  <div id="restore-banner" class="hidden mt-3 flex items-center justify-between rounded-lg border border-teal-200 bg-teal-50 px-4 py-2 text-sm text-teal-700">
+    <span>✅ 前回の入力内容を復元しました</span>
+    <button type="button" id="clear-draft" class="ml-4 text-xs underline text-teal-800 hover:text-teal-900">クリア</button>
+  </div>
+
   <p class="mt-3">
     <a href="{{ url_for('visualization') }}" class="inline-block rounded-lg border-2 border-teal-500 bg-teal-50 px-4 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-100">→ スコア可視化（Riemannian Credit Manifold）</a>
   </p>
@@ -19,99 +57,185 @@
   {% endif %}
 {% endwith %}
 
-<form action="{{ url_for('result') }}" method="post" class="space-y-6" novalidate>
-  <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-    <h2 class="text-lg font-semibold text-teal-800 mb-4">財務データ（千円・1千円単位）</h2>
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div>
-        <label for="nenshu" class="block text-sm font-medium text-slate-700 mb-1">売上高（千円） <span class="text-red-500">*</span></label>
-        <input type="number" id="nenshu" name="nenshu" min="0" step="1"
-               class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-               placeholder="例: 500000">
-      </div>
-      <div>
-        <label for="op_profit" class="block text-sm font-medium text-slate-700 mb-1">営業利益（千円）</label>
-        <input type="number" id="op_profit" name="op_profit" min="0" step="1"
-               class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-               placeholder="例: 25000">
-      </div>
-      <div>
-        <label for="total_assets" class="block text-sm font-medium text-slate-700 mb-1">総資産（千円） <span class="text-red-500">*</span></label>
-        <input type="number" id="total_assets" name="total_assets" min="0" step="1"
-               class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-               placeholder="例: 300000">
-      </div>
-      <div>
-        <label for="net_assets" class="block text-sm font-medium text-slate-700 mb-1">純資産（千円）</label>
-        <input type="number" id="net_assets" name="net_assets" min="0" step="1"
-               class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-               placeholder="例: 120000">
-      </div>
-      <div>
-        <label for="ord_profit" class="block text-sm font-medium text-slate-700 mb-1">経常利益（千円）</label>
-        <input type="number" id="ord_profit" name="ord_profit" min="0" step="1"
-               class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-               placeholder="例: 22000">
-      </div>
-      <div>
-        <label for="net_income" class="block text-sm font-medium text-slate-700 mb-1">当期純利益（千円）</label>
-        <input type="number" id="net_income" name="net_income" min="0" step="1"
-               class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-               placeholder="例: 18000">
+<form id="shinsa-form" action="{{ url_for('result') }}" method="post" class="space-y-4 form-bottom-space" novalidate>
+
+  <!-- ④ アコーディオン: 財務データ（デフォルト展開） -->
+  <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+    <button type="button" class="accordion-toggle w-full flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition text-left" aria-expanded="true">
+      <h2 class="text-lg font-semibold text-teal-800">
+        財務データ
+        <span id="unit-badge" class="ml-2 text-xs font-normal rounded px-2 py-0.5" style="background:#ccfbf1; color:#0f766e;">千円単位</span>
+      </h2>
+      <span class="accordion-icon text-teal-600 text-base">▲</span>
+    </button>
+    <div class="accordion-body px-6 pb-6">
+      <!-- ⑦ スマホ優先順序: 売上高・総資産を先頭に配置 -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+        <!-- 売上高（スマホ優先1位） -->
+        <div class="stepper-field" data-sen-step="1000" data-man-step="100">
+          <label for="nenshu" class="block text-sm font-medium text-slate-700 mb-1">
+            売上高（<span class="unit-label">千円</span>） <span class="text-red-500">*</span>
+          </label>
+          <div class="flex gap-1">
+            <button type="button" class="stepper-minus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="減らす">－</button>
+            <input type="number" id="nenshu" name="nenshu" min="0" step="1"
+                   class="w-full min-h-[48px] rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-right"
+                   placeholder="500000">
+            <button type="button" class="stepper-plus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="増やす">＋</button>
+          </div>
+        </div>
+
+        <!-- 総資産（スマホ優先2位） -->
+        <div class="stepper-field" data-sen-step="1000" data-man-step="100">
+          <label for="total_assets" class="block text-sm font-medium text-slate-700 mb-1">
+            総資産（<span class="unit-label">千円</span>） <span class="text-red-500">*</span>
+          </label>
+          <div class="flex gap-1">
+            <button type="button" class="stepper-minus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="減らす">－</button>
+            <input type="number" id="total_assets" name="total_assets" min="0" step="1"
+                   class="w-full min-h-[48px] rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-right"
+                   placeholder="300000">
+            <button type="button" class="stepper-plus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="増やす">＋</button>
+          </div>
+        </div>
+
+        <!-- 純資産 -->
+        <div class="stepper-field" data-sen-step="100" data-man-step="10">
+          <label for="net_assets" class="block text-sm font-medium text-slate-700 mb-1">
+            純資産（<span class="unit-label">千円</span>）
+          </label>
+          <div class="flex gap-1">
+            <button type="button" class="stepper-minus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="減らす">－</button>
+            <input type="number" id="net_assets" name="net_assets" min="0" step="1"
+                   class="w-full min-h-[48px] rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-right"
+                   placeholder="120000">
+            <button type="button" class="stepper-plus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="増やす">＋</button>
+          </div>
+        </div>
+
+        <!-- 営業利益 -->
+        <div class="stepper-field" data-sen-step="100" data-man-step="10">
+          <label for="op_profit" class="block text-sm font-medium text-slate-700 mb-1">
+            営業利益（<span class="unit-label">千円</span>）
+          </label>
+          <div class="flex gap-1">
+            <button type="button" class="stepper-minus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="減らす">－</button>
+            <input type="number" id="op_profit" name="op_profit" min="0" step="1"
+                   class="w-full min-h-[48px] rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-right"
+                   placeholder="25000">
+            <button type="button" class="stepper-plus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="増やす">＋</button>
+          </div>
+        </div>
+
+        <!-- 経常利益 -->
+        <div class="stepper-field" data-sen-step="100" data-man-step="10">
+          <label for="ord_profit" class="block text-sm font-medium text-slate-700 mb-1">
+            経常利益（<span class="unit-label">千円</span>）
+          </label>
+          <div class="flex gap-1">
+            <button type="button" class="stepper-minus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="減らす">－</button>
+            <input type="number" id="ord_profit" name="ord_profit" min="0" step="1"
+                   class="w-full min-h-[48px] rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-right"
+                   placeholder="22000">
+            <button type="button" class="stepper-plus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="増やす">＋</button>
+          </div>
+        </div>
+
+        <!-- 当期純利益 -->
+        <div class="stepper-field" data-sen-step="100" data-man-step="10">
+          <label for="net_income" class="block text-sm font-medium text-slate-700 mb-1">
+            当期純利益（<span class="unit-label">千円</span>）
+          </label>
+          <div class="flex gap-1">
+            <button type="button" class="stepper-minus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="減らす">－</button>
+            <input type="number" id="net_income" name="net_income" min="0" step="1"
+                   class="w-full min-h-[48px] rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-right"
+                   placeholder="18000">
+            <button type="button" class="stepper-plus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="増やす">＋</button>
+          </div>
+        </div>
+
       </div>
     </div>
   </section>
 
-  <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-    <h2 class="text-lg font-semibold text-teal-800 mb-4">業種・与信</h2>
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div class="sm:col-span-2">
-        <label for="industry_sub" class="block text-sm font-medium text-slate-700 mb-1">業種（中分類）</label>
-        <select id="industry_sub" name="industry_sub"
-                class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500">
-          {% for sub in industry_subs %}
-          <option value="{{ sub }}">{{ sub }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div>
-        <label for="grade" class="block text-sm font-medium text-slate-700 mb-1">格付</label>
-        <select id="grade" name="grade" class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500">
-          <option value="1-3">1〜3</option>
-          <option value="4-6">4〜6</option>
-          <option value="要注意">要注意</option>
-          <option value="無格付">無格付</option>
-        </select>
-      </div>
-      <div>
-        <label for="customer_type" class="block text-sm font-medium text-slate-700 mb-1">先方</label>
-        <select id="customer_type" name="customer_type" class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500">
-          <option value="既存先">既存先</option>
-          <option value="新規先">新規先</option>
-        </select>
-      </div>
-      <div>
-        <label for="bank_credit" class="block text-sm font-medium text-slate-700 mb-1">銀行与信（千円）</label>
-        <input type="number" id="bank_credit" name="bank_credit" min="0" step="1"
-               class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-               placeholder="0">
-      </div>
-      <div>
-        <label for="lease_credit" class="block text-sm font-medium text-slate-700 mb-1">リース与信（千円）</label>
-        <input type="number" id="lease_credit" name="lease_credit" min="0" step="1"
-               class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-               placeholder="0">
-      </div>
-      <div>
-        <label for="contracts" class="block text-sm font-medium text-slate-700 mb-1">契約件数</label>
-        <input type="number" id="contracts" name="contracts" min="0"
-               class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-               placeholder="0">
+  <!-- ④ アコーディオン: 業種・与信（デフォルト折り畳み） -->
+  <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+    <button type="button" class="accordion-toggle w-full flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition text-left" aria-expanded="false">
+      <h2 class="text-lg font-semibold text-teal-800">業種・与信</h2>
+      <span class="accordion-icon text-teal-600 text-base" style="transform:rotate(180deg);">▲</span>
+    </button>
+    <div class="accordion-body hidden px-6 pb-6">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+        <div class="sm:col-span-2">
+          <label for="industry_sub" class="block text-sm font-medium text-slate-700 mb-1">業種（中分類）</label>
+          <select id="industry_sub" name="industry_sub"
+                  class="w-full min-h-[48px] rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500">
+            {% for sub in industry_subs %}
+            <option value="{{ sub }}">{{ sub }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label for="grade" class="block text-sm font-medium text-slate-700 mb-1">格付</label>
+          <select id="grade" name="grade" class="w-full min-h-[48px] rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500">
+            <option value="1-3">1〜3</option>
+            <option value="4-6">4〜6</option>
+            <option value="要注意">要注意</option>
+            <option value="無格付">無格付</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="customer_type" class="block text-sm font-medium text-slate-700 mb-1">先方</label>
+          <select id="customer_type" name="customer_type" class="w-full min-h-[48px] rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500">
+            <option value="既存先">既存先</option>
+            <option value="新規先">新規先</option>
+          </select>
+        </div>
+
+        <div class="stepper-field" data-sen-step="100" data-man-step="10">
+          <label for="bank_credit" class="block text-sm font-medium text-slate-700 mb-1">
+            銀行与信（<span class="unit-label">千円</span>）
+          </label>
+          <div class="flex gap-1">
+            <button type="button" class="stepper-minus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="減らす">－</button>
+            <input type="number" id="bank_credit" name="bank_credit" min="0" step="1"
+                   class="w-full min-h-[48px] rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-right"
+                   placeholder="0">
+            <button type="button" class="stepper-plus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="増やす">＋</button>
+          </div>
+        </div>
+
+        <div class="stepper-field" data-sen-step="100" data-man-step="10">
+          <label for="lease_credit" class="block text-sm font-medium text-slate-700 mb-1">
+            リース与信（<span class="unit-label">千円</span>）
+          </label>
+          <div class="flex gap-1">
+            <button type="button" class="stepper-minus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="減らす">－</button>
+            <input type="number" id="lease_credit" name="lease_credit" min="0" step="1"
+                   class="w-full min-h-[48px] rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-right"
+                   placeholder="0">
+            <button type="button" class="stepper-plus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="増やす">＋</button>
+          </div>
+        </div>
+
+        <div>
+          <label for="contracts" class="block text-sm font-medium text-slate-700 mb-1">契約件数</label>
+          <input type="number" id="contracts" name="contracts" min="0"
+                 class="w-full min-h-[48px] rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                 placeholder="0">
+        </div>
+
       </div>
     </div>
   </section>
 
-  <div class="flex flex-col sm:flex-row gap-3 justify-end">
+  <!-- ⑦ PC用ボタン（スマホでは非表示: フローティングボタンを使用） -->
+  <div class="hidden sm:flex flex-row gap-3 justify-end">
     <button type="submit"
             class="inline-flex items-center justify-center rounded-xl bg-teal-600 px-6 py-3 text-base font-medium text-white shadow-sm hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition">
       判定を実行
@@ -120,5 +244,225 @@
       クリア
     </a>
   </div>
+
 </form>
+
+<!-- ⑦ スマホ: 画面下固定フローティング送信ボタン -->
+<div class="fixed bottom-0 left-0 right-0 sm:hidden bg-white border-t border-slate-200 px-4 py-3 shadow-lg z-20">
+  <button type="submit" form="shinsa-form"
+          class="w-full inline-flex items-center justify-center rounded-xl bg-teal-600 px-6 py-3 text-base font-medium text-white shadow-sm hover:bg-teal-700 active:bg-teal-800 transition">
+    判定を実行
+  </button>
+</div>
+
+{% endblock %}
+
+{% block script %}
+<script>
+// ====================================================
+// ① 万円スイッチ  ② ドラフト自動保存
+// ③ ステッパーUI  ④ アコーディオン  ⑦ スマホ対応
+// ====================================================
+
+const DRAFT_KEY = 'shinsa_draft_v1';
+const UNIT_KEY  = 'shinsa_unit_v1';
+
+// 単位切替の対象フィールド（千円→万円変換が必要なもの）
+const MONEY_FIELDS = ['nenshu', 'total_assets', 'net_assets', 'op_profit', 'ord_profit', 'net_income', 'bank_credit', 'lease_credit'];
+// ドラフト保存するフィールド（money + その他）
+const ALL_FIELDS = [...MONEY_FIELDS, 'contracts', 'grade', 'customer_type', 'industry_sub'];
+
+let isMan = false; // false=千円モード, true=万円モード
+
+// ────────────────────────────────────────────
+// ① 万円スイッチ
+// ────────────────────────────────────────────
+const unitToggleEl = document.getElementById('unit-toggle');
+const toggleTrack  = document.getElementById('toggle-track');
+const toggleThumb  = document.getElementById('toggle-thumb');
+const lblSen       = document.getElementById('lbl-sen');
+const lblMan       = document.getElementById('lbl-man');
+const unitBadge    = document.getElementById('unit-badge');
+
+function applyUnitUI(man) {
+  toggleTrack.style.background = man ? '#14b8a6' : '#cbd5e1';
+  toggleThumb.style.transform  = man ? 'translateX(20px)' : 'translateX(0)';
+  lblSen.style.color = man ? '#94a3b8' : '#0f766e';
+  lblMan.style.color = man ? '#0f766e' : '#94a3b8';
+  unitBadge.textContent         = man ? '万円単位' : '千円単位';
+  unitBadge.style.background    = man ? '#fef3c7' : '#ccfbf1';
+  unitBadge.style.color         = man ? '#92400e' : '#0f766e';
+  document.querySelectorAll('.unit-label').forEach(el => {
+    el.textContent = man ? '万円' : '千円';
+  });
+}
+
+function convertMoneyFields(toMan) {
+  const factor = toMan ? 0.1 : 10;
+  MONEY_FIELDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.value !== '') {
+      const v = parseFloat(el.value);
+      if (!isNaN(v) && v !== 0) el.value = Math.round(v * factor);
+    }
+  });
+}
+
+unitToggleEl.addEventListener('change', () => {
+  convertMoneyFields(unitToggleEl.checked);
+  isMan = unitToggleEl.checked;
+  applyUnitUI(isMan);
+  localStorage.setItem(UNIT_KEY, isMan ? '1' : '0');
+  saveDraft();
+});
+
+// ────────────────────────────────────────────
+// ③ ステッパーUI (+/-ボタン＋長押し加速)
+// ────────────────────────────────────────────
+document.querySelectorAll('.stepper-field').forEach(container => {
+  const input    = container.querySelector('input[type=number]');
+  const minusBtn = container.querySelector('.stepper-minus');
+  const plusBtn  = container.querySelector('.stepper-plus');
+  if (!input || !minusBtn || !plusBtn) return;
+
+  function getStep() {
+    return isMan
+      ? parseInt(container.dataset.manStep || '10')
+      : parseInt(container.dataset.senStep || '100');
+  }
+
+  let pressTimer    = null;
+  let pressInterval = null;
+  let pressCount    = 0;
+
+  function doStep(delta) {
+    const step = getStep();
+    const cur  = parseFloat(input.value) || 0;
+    const next = Math.max(0, cur + delta * step);
+    input.value = next;
+    saveDraft();
+  }
+
+  function startPress(delta) {
+    doStep(delta);
+    pressCount = 0;
+    pressTimer = setTimeout(() => {
+      pressInterval = setInterval(() => {
+        pressCount++;
+        doStep(delta * (pressCount > 10 ? 5 : 1)); // 長押し10回超で5倍速
+      }, 100);
+    }, 400);
+  }
+
+  function stopPress() {
+    clearTimeout(pressTimer);
+    clearInterval(pressInterval);
+    pressTimer = pressInterval = null;
+  }
+
+  minusBtn.addEventListener('mousedown', () => startPress(-1));
+  plusBtn.addEventListener('mousedown',  () => startPress(1));
+  minusBtn.addEventListener('touchstart', e => { e.preventDefault(); startPress(-1); }, { passive: false });
+  plusBtn.addEventListener('touchstart',  e => { e.preventDefault(); startPress(1);  }, { passive: false });
+  ['mouseup', 'mouseleave', 'touchend', 'touchcancel'].forEach(ev => {
+    minusBtn.addEventListener(ev, stopPress);
+    plusBtn.addEventListener(ev, stopPress);
+  });
+});
+
+// ────────────────────────────────────────────
+// ④ アコーディオン
+// ────────────────────────────────────────────
+document.querySelectorAll('.accordion-toggle').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const expanded = btn.getAttribute('aria-expanded') === 'true';
+    const body = btn.nextElementSibling;
+    const icon = btn.querySelector('.accordion-icon');
+    btn.setAttribute('aria-expanded', String(!expanded));
+    body.classList.toggle('hidden', expanded);
+    icon.style.transform = expanded ? 'rotate(180deg)' : 'rotate(0deg)';
+  });
+});
+
+// ────────────────────────────────────────────
+// ② ドラフト自動保存（500msデバウンス）
+// ────────────────────────────────────────────
+let saveTimer = null;
+
+function saveDraft() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    const data = { isMan };
+    ALL_FIELDS.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) data[id] = el.value;
+    });
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
+  }, 500);
+}
+
+function restoreDraft() {
+  let raw;
+  try { raw = localStorage.getItem(DRAFT_KEY); } catch(e) { return; }
+  if (!raw) return;
+  try {
+    const data = JSON.parse(raw);
+    // 何かデータが入っているか確認
+    const hasData = MONEY_FIELDS.some(id => data[id] && String(data[id]) !== '');
+    if (!hasData) return;
+
+    // 単位モードを先に復元
+    if (data.isMan !== undefined) {
+      isMan = !!data.isMan;
+      unitToggleEl.checked = isMan;
+      applyUnitUI(isMan);
+    }
+    // フィールド値を復元
+    ALL_FIELDS.forEach(id => {
+      const el = document.getElementById(id);
+      if (el && data[id] !== undefined) el.value = data[id];
+    });
+    // 復元バナー表示
+    document.getElementById('restore-banner').classList.remove('hidden');
+  } catch(e) { /* 壊れたJSONは無視 */ }
+}
+
+document.getElementById('clear-draft').addEventListener('click', () => {
+  try { localStorage.removeItem(DRAFT_KEY); } catch(e) {}
+  document.getElementById('restore-banner').classList.add('hidden');
+  document.getElementById('shinsa-form').reset();
+});
+
+// フォーム変更をリッスンして自動保存
+document.getElementById('shinsa-form').addEventListener('input', saveDraft);
+document.getElementById('shinsa-form').addEventListener('change', saveDraft);
+
+// フォーム送信時: 万円モードなら千円に変換してからサーバーへ送信
+document.getElementById('shinsa-form').addEventListener('submit', () => {
+  if (!isMan) return;
+  MONEY_FIELDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.value !== '') {
+      const v = parseFloat(el.value);
+      if (!isNaN(v)) el.value = Math.round(v * 10);
+    }
+  });
+});
+
+// ────────────────────────────────────────────
+// 初期化
+// ────────────────────────────────────────────
+(function init() {
+  // 保存済み単位設定を復元
+  let savedUnit;
+  try { savedUnit = localStorage.getItem(UNIT_KEY); } catch(e) {}
+  if (savedUnit === '1') {
+    isMan = true;
+    unitToggleEl.checked = true;
+    applyUnitUI(true);
+  }
+  // ドラフトを復元
+  restoreDraft();
+})();
+</script>
 {% endblock %}
