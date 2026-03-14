@@ -1,0 +1,4 @@
+flask>=3.0.0
+numpy>=1.24.0
+# 403 が出る場合に利用（Host 検証なし）: pip install waitress
+waitress>=3.0.0

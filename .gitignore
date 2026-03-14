@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# macOS
+.DS_Store
+
+# テスト生成PDF（成果物なので除外）
+test_*.pdf
+screening_report_test.pdf

@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "enabled": true,
+  "rules": [
+    {
+      "id": "ai_teach_score_border",
+      "name": "スコア直下（承認ライン手前）",
+      "enabled": true,
+      "instruction": "承認ライン（71点）直下であることを伝え、具体的なスコアアップ策（数値目標・確認すべき書類）を1つ以上示すこと。",
+      "conditions": {
+        "and": [
+          { "field": "score", "op": "ge", "value": 68 },
+          { "field": "score", "op": "lt", "value": 71 }
+        ]
+      }
+    },
+    {
+      "id": "ai_teach_score_high",
+      "name": "スコア高め（承認圏内）",
+      "enabled": true,
+      "instruction": "スコアは十分圏内であることを簡潔に伝え、定性面や導入効果の確認を促す言い回しにすること。",
+      "conditions": { "field": "score", "op": "ge", "value": 75 }
+    },
+    {
+      "id": "ai_teach_score_low",
+      "name": "スコア低め（要フォロー）",
+      "enabled": true,
+      "instruction": "スコアが基準を下回っていることをやわらかく伝え、改善の優先順位（売上・利益率・自己資本のどれから手を付けるか）を1つ示すこと。",
+      "conditions": { "field": "score", "op": "lt", "value": 60 }
+    },
+    {
+      "id": "ai_teach_qual_de",
+      "name": "定性ランク D・E",
+      "enabled": true,
+      "instruction": "定性面の懸念をやわらかく伝えつつ、提出書類やヒアリングで補強できる点を具体的に述べること。否定的な表現を避け、次のアクションを明確にすること。",
+      "conditions": { "field": "qual_rank", "op": "in", "value": ["D", "E"] }
+    },
+    {
+      "id": "ai_teach_qual_low",
+      "name": "定性スコア低め",
+      "enabled": true,
+      "instruction": "定性スコアが低いことを指摘する際は、設立年数・返済履歴・事業将来性など「どの項目を補強するとよいか」を1つ以上挙げること。",
+      "conditions": { "field": "qual_weighted_score", "op": "lt", "value": 40 }
+    },
+    {
+      "id": "ai_teach_qual_ab",
+      "name": "定性ランク A・B（優良）",
+      "enabled": true,
+      "instruction": "定性面は問題なしと簡潔に褒め、財務指標や金利交渉など数値面のアドバイスを中心にすること。",
+      "conditions": { "field": "qual_rank", "op": "in", "value": ["A", "B"] }
+    },
+    {
+      "id": "ai_teach_score_high_qual_weak",
+      "name": "スコアは高いが定性が弱い",
+      "enabled": true,
+      "instruction": "スコアは承認圏内だが定性で引っかかっている旨を伝え、定性項目（返済履歴・事業将来性など）の補強で承認に近づくことを具体的に述べること。",
+      "conditions": {
+        "and": [
+          { "field": "score", "op": "ge", "value": 70 },
+          { "field": "qual_rank", "op": "in", "value": ["D", "E"] }
+        ]
+      }
+    }
+  ]
+}

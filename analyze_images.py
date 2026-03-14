@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 
-ASSETS_DIR = Path("/Users/kobayashiisaoryou/.cursor/projects/Users-kobayashiisaoryou-clawd/assets")
+ASSETS_DIR = Path(os.environ.get("DASHBOARD_IMAGES_ASSETS", "")).resolve() if os.environ.get("DASHBOARD_IMAGES_ASSETS") else Path(__file__).resolve().parent / "assets"
 OUTPUT_DIR = Path(__file__).resolve().parent / "image_analysis_results"
 
 # 会話で得られた画像の特徴説明（ファイル名ベースのキー）

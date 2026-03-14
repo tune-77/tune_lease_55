@@ -1,20 +1,15 @@
-# 温水式リース審査AI ダッシュボード
-# かっこいい無料フレームワーク: Streamlit + streamlit-extras
-
-streamlit>=1.28.0
-streamlit-extras>=0.4.0
-
-# PDF出力（成約の正体レポート）
-reportlab>=4.0.0
-
-# 定性要因分析（成約/不成約の予測）
+# Streamlit アプリ依存パッケージ
+streamlit>=1.40.0
+pandas>=2.0.0
+numpy>=1.24.0
+plotly>=5.0.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+scikit-learn>=1.3.0
 lightgbm>=4.0.0
-
-# 以下は既存プロジェクトで利用している想定（必要に応じて追加）
-# pandas
-# plotly
-# matplotlib
-# numpy
-# seaborn
-# scikit-learn
-# ollama
+# shap>=0.44.0  # Mac では llvmlite のビルドに失敗することがある。conda install -c conda-forge shap で対応
+reportlab>=4.0.0
+requests>=2.30.0
+tenacity>=8.0.0
+ollama>=0.5.0
+pgmpy>=0.1.25
