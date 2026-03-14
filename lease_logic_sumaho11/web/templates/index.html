@@ -160,6 +160,122 @@
     </div>
   </section>
 
+  <!-- ④ アコーディオン: 経費・資産（デフォルト折り畳み） -->
+  <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+    <button type="button" class="accordion-toggle w-full flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition text-left" aria-expanded="false">
+      <h2 class="text-lg font-semibold text-teal-800">経費・資産
+        <span class="ml-2 text-xs font-normal text-slate-400">（減価償却費・賃借料・機械装置など）</span>
+      </h2>
+      <span class="accordion-icon text-teal-600 text-base" style="transform:rotate(180deg);">▲</span>
+    </button>
+    <div class="accordion-body hidden px-6 pb-6">
+      <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+        ⚠️ これらの項目はスコア計算に直接使用されます。入力しないと <strong>0</strong> として計算されます。
+      </p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+        <!-- 売上総利益（粗利益） -->
+        <div class="stepper-field" data-sen-step="100" data-man-step="10">
+          <label for="gross_profit" class="block text-sm font-medium text-slate-700 mb-1">
+            売上総利益（<span class="unit-label">千円</span>）
+          </label>
+          <div class="flex gap-1">
+            <button type="button" class="stepper-minus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="減らす">－</button>
+            <input type="number" id="gross_profit" name="gross_profit" min="0" step="1"
+                   class="w-full min-h-[48px] rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-right"
+                   placeholder="0">
+            <button type="button" class="stepper-plus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="増やす">＋</button>
+          </div>
+        </div>
+
+        <!-- 減価償却費（資産） -->
+        <div class="stepper-field" data-sen-step="100" data-man-step="10">
+          <label for="depreciation" class="block text-sm font-medium text-slate-700 mb-1">
+            減価償却費・資産（<span class="unit-label">千円</span>）
+          </label>
+          <div class="flex gap-1">
+            <button type="button" class="stepper-minus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="減らす">－</button>
+            <input type="number" id="depreciation" name="depreciation" min="0" step="1"
+                   class="w-full min-h-[48px] rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-right"
+                   placeholder="0">
+            <button type="button" class="stepper-plus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="増やす">＋</button>
+          </div>
+        </div>
+
+        <!-- 減価償却費（経費） -->
+        <div class="stepper-field" data-sen-step="100" data-man-step="10">
+          <label for="dep_expense" class="block text-sm font-medium text-slate-700 mb-1">
+            減価償却費・経費（<span class="unit-label">千円</span>）
+          </label>
+          <div class="flex gap-1">
+            <button type="button" class="stepper-minus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="減らす">－</button>
+            <input type="number" id="dep_expense" name="dep_expense" min="0" step="1"
+                   class="w-full min-h-[48px] rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-right"
+                   placeholder="0">
+            <button type="button" class="stepper-plus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="増やす">＋</button>
+          </div>
+        </div>
+
+        <!-- 賃借料 -->
+        <div class="stepper-field" data-sen-step="100" data-man-step="10">
+          <label for="rent" class="block text-sm font-medium text-slate-700 mb-1">
+            賃借料（<span class="unit-label">千円</span>）
+          </label>
+          <div class="flex gap-1">
+            <button type="button" class="stepper-minus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="減らす">－</button>
+            <input type="number" id="rent" name="rent" min="0" step="1"
+                   class="w-full min-h-[48px] rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-right"
+                   placeholder="0">
+            <button type="button" class="stepper-plus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="増やす">＋</button>
+          </div>
+        </div>
+
+        <!-- 賃借料（経費） -->
+        <div class="stepper-field" data-sen-step="100" data-man-step="10">
+          <label for="rent_expense" class="block text-sm font-medium text-slate-700 mb-1">
+            賃借料・経費（<span class="unit-label">千円</span>）
+          </label>
+          <div class="flex gap-1">
+            <button type="button" class="stepper-minus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="減らす">－</button>
+            <input type="number" id="rent_expense" name="rent_expense" min="0" step="1"
+                   class="w-full min-h-[48px] rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-right"
+                   placeholder="0">
+            <button type="button" class="stepper-plus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="増やす">＋</button>
+          </div>
+        </div>
+
+        <!-- 機械装置 -->
+        <div class="stepper-field" data-sen-step="100" data-man-step="10">
+          <label for="machines" class="block text-sm font-medium text-slate-700 mb-1">
+            機械装置（<span class="unit-label">千円</span>）
+          </label>
+          <div class="flex gap-1">
+            <button type="button" class="stepper-minus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="減らす">－</button>
+            <input type="number" id="machines" name="machines" min="0" step="1"
+                   class="w-full min-h-[48px] rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-right"
+                   placeholder="0">
+            <button type="button" class="stepper-plus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="増やす">＋</button>
+          </div>
+        </div>
+
+        <!-- その他資産 -->
+        <div class="stepper-field" data-sen-step="100" data-man-step="10">
+          <label for="other_assets" class="block text-sm font-medium text-slate-700 mb-1">
+            その他資産（<span class="unit-label">千円</span>）
+          </label>
+          <div class="flex gap-1">
+            <button type="button" class="stepper-minus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="減らす">－</button>
+            <input type="number" id="other_assets" name="other_assets" min="0" step="1"
+                   class="w-full min-h-[48px] rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-right"
+                   placeholder="0">
+            <button type="button" class="stepper-plus flex-shrink-0 w-12 min-h-[48px] rounded-lg border border-slate-300 bg-slate-50 text-slate-700 text-xl hover:bg-slate-100 active:bg-slate-200 transition select-none" aria-label="増やす">＋</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
   <!-- ④ アコーディオン: 業種・与信（デフォルト折り畳み） -->
   <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
     <button type="button" class="accordion-toggle w-full flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition text-left" aria-expanded="false">
@@ -268,7 +384,11 @@ const DRAFT_KEY = 'shinsa_draft_v1';
 const UNIT_KEY  = 'shinsa_unit_v1';
 
 // 単位切替の対象フィールド（千円→万円変換が必要なもの）
-const MONEY_FIELDS = ['nenshu', 'total_assets', 'net_assets', 'op_profit', 'ord_profit', 'net_income', 'bank_credit', 'lease_credit'];
+const MONEY_FIELDS = [
+  'nenshu', 'total_assets', 'net_assets', 'op_profit', 'ord_profit', 'net_income',
+  'bank_credit', 'lease_credit',
+  'gross_profit', 'depreciation', 'dep_expense', 'rent', 'rent_expense', 'machines', 'other_assets',
+];
 // ドラフト保存するフィールド（money + その他）
 const ALL_FIELDS = [...MONEY_FIELDS, 'contracts', 'grade', 'customer_type', 'industry_sub'];
 
