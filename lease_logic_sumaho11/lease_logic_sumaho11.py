@@ -137,6 +137,7 @@ from indicators import (
 )
 from report_pdf import build_contract_report_pdf
 from knowledge import build_knowledge_context, search_faq, search_cases, get_improvement_guide_text
+from mobile_sales_agent import render_mobile_sales_agent_tab
 from web_services import (
     _WEB_BENCH_KEYS,
     _get_benchmark_cutoff_date,
@@ -1703,7 +1704,7 @@ elif mode == "📝 結果登録 (成約/失注)":
 
 elif mode == "📋 審査・分析":
     # ========== トップメニュー（新規審査 / 情報検索 / グラフ / 履歴分析 / 設定） ==========
-    menu_tabs = st.tabs(["🆕 新規審査", "🔍 情報検索", "📈 グラフ", "📋 履歴分析", "⚙️ 設定"])
+    menu_tabs = st.tabs(["🆕 新規審査", "🔍 情報検索", "📈 グラフ", "📋 履歴分析", "⚙️ 設定", "📱 営業AI"])
     # 電光掲示板：定例の愚痴をメニュー直下でスクロール表示
     byoki_list = load_byoki_list()
     byoki_escaped = [str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;") for s in byoki_list]
@@ -4378,3 +4379,6 @@ elif mode == "📋 審査・分析":
             st.cache_data.clear()
             st.success("キャッシュをクリアしました")
             st.rerun()
+
+    with menu_tabs[5]:  # 📱 営業AI
+        render_mobile_sales_agent_tab(chat_fn=chat_with_retry)
