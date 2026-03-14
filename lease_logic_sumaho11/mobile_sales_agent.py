@@ -193,6 +193,168 @@ STRUCTURED_IMPROVEMENTS: dict[str, list[dict]] = {
 
 
 # ──────────────────────────────────────────────
+# エージェント2: プログラム作成者「鈴木エンジニア」
+# ──────────────────────────────────────────────
+
+ENGINEER_AGENT_PERSONA = """あなたはリース審査システムを10年間開発・保守してきたバックエンドエンジニア「鈴木」です。
+Streamlit / Python / JavaScript を熟知しており、現行システムのコードベースを隅々まで知っています。
+
+【思考の軸】
+- 実装コスト・保守コスト・技術的負債のバランス
+- セキュリティ・データ整合性・バグリスクの最小化
+- 「動くこと」だけでなく「長期的に壊れないこと」を重視
+- ユーザー要望は理解するが、技術的に無理なものは代替案を提示する
+
+【発言スタイル】
+- データと工数ベースで具体的に語る（「この実装は○日かかる」「この方法だとバグリスクがある」等）
+- 営業側の要望を尊重しつつ、実現可能な妥協点を提案する
+- 感情的にならず、論理的・建設的に議論する
+- 必ず日本語で回答する
+- 「田中さんの言う通りです、ただ実装面では〜」のように相手の主張を受けてから反論する
+"""
+
+# 討論テーマ候補
+DEBATE_TOPICS = [
+    "① 万円／千円 切替スイッチ の実装方針",
+    "② 入力中断の自動保存（localStorageドラフト）",
+    "③ スライダー → ステッパーボタンへの変更",
+    "④ ウィザード形式ステップ入力への移行",
+    "⑤ オフライン簡易スコア計算（Python→JS移植）",
+    "⑥ 決算書OCR取込機能の追加",
+    "⑦ スマホ対応レイアウト（1カラム化）の優先度",
+]
+
+
+def run_agent_debate(
+    topic: str,
+    rounds: int,
+    chat_fn,
+    history: list[dict] | None = None,
+) -> list[dict]:
+    """
+    田中主任（営業）vs 鈴木エンジニア（開発）の討論を実行する。
+
+    Parameters
+    ----------
+    topic   : 討論テーマ文字列
+    rounds  : 往復回数（1往復 = 田中発言 + 鈴木発言）
+    chat_fn : chat_with_retry と同シグネチャの関数
+    history : 過去の討論履歴（継続討論用）
+
+    Returns
+    -------
+    list[dict]: [{"speaker": "田中主任"|"鈴木エンジニア", "content": str}, ...]
+    """
+    from ai_chat import get_ollama_model
+    model = get_ollama_model()
+
+    debate_log: list[dict] = list(history or [])
+
+    # 討論のコンテキスト（共通）
+    debate_context = (
+        f"【討論テーマ】{topic}\n\n"
+        f"【システム概要】\n{CURRENT_FORM_SUMMARY}\n\n"
+        "営業マンの田中主任とシステム開発者の鈴木エンジニアが、"
+        "上記テーマについて現場目線と技術目線から建設的に議論しています。"
+        "最終的には「両者が納得できる打開策」を導くことが目標です。"
+    )
+
+    for round_num in range(rounds):
+        # ── 田中主任の発言 ──
+        tanaka_messages = [
+            {"role": "system", "content": SALES_AGENT_PERSONA + "\n\n" + debate_context}
+        ]
+        for entry in debate_log[-6:]:
+            role = "assistant" if entry["speaker"] == "田中主任" else "user"
+            tanaka_messages.append({"role": role, "content": entry["content"]})
+
+        if not debate_log:
+            tanaka_prompt = (
+                f"テーマ「{topic}」について、営業現場の立場から"
+                "最も重要だと思う点・要望を2〜3文で述べてください。"
+                "具体的なエピソードを交えて話してください。"
+            )
+        else:
+            tanaka_prompt = (
+                "鈴木エンジニアの意見を聞いて、営業現場の立場から"
+                "反論または賛同・追加要望を2〜3文で述べてください。"
+                "具体的な現場エピソードを添えてください。"
+            )
+        tanaka_messages.append({"role": "user", "content": tanaka_prompt})
+
+        tanaka_out = chat_fn(model, tanaka_messages, retries=2, timeout_seconds=90)
+        tanaka_reply = tanaka_out.get("message", {}).get("content", "（田中主任の応答を取得できませんでした）")
+        debate_log.append({"speaker": "田中主任", "content": tanaka_reply})
+
+        # ── 鈴木エンジニアの発言 ──
+        suzuki_messages = [
+            {"role": "system", "content": ENGINEER_AGENT_PERSONA + "\n\n" + debate_context}
+        ]
+        for entry in debate_log[-6:]:
+            role = "assistant" if entry["speaker"] == "鈴木エンジニア" else "user"
+            suzuki_messages.append({"role": role, "content": entry["content"]})
+
+        if round_num == rounds - 1:
+            suzuki_prompt = (
+                "今まで議論してきた内容を踏まえて、"
+                "技術者の立場から「最終的にこう実装すれば両者が納得できる」という"
+                "具体的な打開策を3点箇条書きで提案してください。"
+                "工数・優先順位も添えてください。"
+            )
+        else:
+            suzuki_prompt = (
+                "田中主任の意見を受けて、エンジニアの立場から"
+                "技術的な実現可能性・コスト・リスクを踏まえた意見を2〜3文で述べてください。"
+                "代替案があれば合わせて提示してください。"
+            )
+        suzuki_messages.append({"role": "user", "content": suzuki_prompt})
+
+        suzuki_out = chat_fn(model, suzuki_messages, retries=2, timeout_seconds=90)
+        suzuki_reply = suzuki_out.get("message", {}).get("content", "（鈴木エンジニアの応答を取得できませんでした）")
+        debate_log.append({"speaker": "鈴木エンジニア", "content": suzuki_reply})
+
+    return debate_log
+
+
+def generate_debate_conclusion(debate_log: list[dict], topic: str, chat_fn) -> str:
+    """
+    討論ログを受け取り、両者の合意点・打開策サマリーを生成する。
+    """
+    from ai_chat import get_ollama_model
+    model = get_ollama_model()
+
+    log_text = "\n\n".join(
+        f"【{entry['speaker']}】\n{entry['content']}"
+        for entry in debate_log
+    )
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "あなたは中立的なファシリテーターです。"
+                "営業マンとエンジニアの討論を聞いて、両者の合意点と最優先の打開策を整理してください。"
+                "必ず日本語で、箇条書きで簡潔にまとめてください。"
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"テーマ「{topic}」についての討論ログを以下に示します。\n\n"
+                f"{log_text}\n\n"
+                "【まとめてほしいこと】\n"
+                "■ 両者の合意点（2〜3点）\n"
+                "■ 最優先の打開策（具体的な実装アクション 3点）\n"
+                "■ 今後の課題（1〜2点）"
+            ),
+        },
+    ]
+
+    out = chat_fn(model, messages, retries=2, timeout_seconds=90)
+    return out.get("message", {}).get("content", "（まとめを生成できませんでした）")
+
+
+# ──────────────────────────────────────────────
 # AI 分析関数
 # ──────────────────────────────────────────────
 
@@ -431,3 +593,79 @@ def render_mobile_sales_agent_tab(chat_fn):
         if st.button("🗑️ 会話をリセット", key="btn_chat_reset"):
             st.session_state["mobile_agent_chat_history"] = []
             st.rerun()
+
+    st.divider()
+
+    # ── セクション4: エージェント討論（田中主任 vs 鈴木エンジニア） ──
+    st.markdown("### 🥊 エージェント討論：田中主任 vs 鈴木エンジニア")
+    st.caption(
+        "営業マン「田中主任」とシステム開発者「鈴木エンジニア」が討論し、"
+        "現場と技術の両面から最良の打開策を導き出します。"
+    )
+
+    # ペルソナカード 2人並び
+    col_t, col_s = st.columns(2)
+    with col_t:
+        st.markdown(
+            "**👔 田中 主任**  \n"
+            "リース営業歴15年 / 現場目線でスマホUXを語るベテラン  \n"
+            "「とにかく現場で使えるものを作ってくれ」"
+        )
+    with col_s:
+        st.markdown(
+            "**💻 鈴木 エンジニア**  \n"
+            "システム開発歴10年 / 技術・コスト・保守性を重視  \n"
+            "「実装コストと長期保守のバランスが大事です」"
+        )
+
+    st.markdown("---")
+
+    # 討論テーマ選択
+    topic = st.selectbox(
+        "討論テーマを選んでください",
+        DEBATE_TOPICS,
+        key="debate_topic_select",
+    )
+
+    rounds = st.slider("討論のラウンド数（往復）", min_value=1, max_value=3, value=2, key="debate_rounds")
+
+    if "debate_log" not in st.session_state:
+        st.session_state["debate_log"] = []
+    if "debate_conclusion" not in st.session_state:
+        st.session_state["debate_conclusion"] = ""
+    if "debate_current_topic" not in st.session_state:
+        st.session_state["debate_current_topic"] = ""
+
+    col_start, col_reset = st.columns([3, 1])
+    with col_start:
+        if st.button("🥊 討論スタート", use_container_width=True, key="btn_debate_start"):
+            st.session_state["debate_log"] = []
+            st.session_state["debate_conclusion"] = ""
+            st.session_state["debate_current_topic"] = topic
+            with st.spinner("田中主任と鈴木エンジニアが討論中..."):
+                log = run_agent_debate(topic, rounds, chat_fn)
+                st.session_state["debate_log"] = log
+            with st.spinner("ファシリテーターがまとめを作成中..."):
+                conclusion = generate_debate_conclusion(log, topic, chat_fn)
+                st.session_state["debate_conclusion"] = conclusion
+    with col_reset:
+        if st.button("🗑️ リセット", use_container_width=True, key="btn_debate_reset"):
+            st.session_state["debate_log"] = []
+            st.session_state["debate_conclusion"] = ""
+            st.rerun()
+
+    # 討論ログ表示
+    if st.session_state["debate_log"]:
+        st.markdown(f"#### 📋 討論ログ：{st.session_state.get('debate_current_topic', topic)}")
+        for entry in st.session_state["debate_log"]:
+            if entry["speaker"] == "田中主任":
+                with st.chat_message("user", avatar="👔"):
+                    st.markdown(f"**田中主任**\n\n{entry['content']}")
+            else:
+                with st.chat_message("assistant", avatar="💻"):
+                    st.markdown(f"**鈴木エンジニア**\n\n{entry['content']}")
+
+        if st.session_state["debate_conclusion"]:
+            st.markdown("---")
+            st.markdown("#### 🏁 ファシリテーターによる打開策まとめ")
+            st.success(st.session_state["debate_conclusion"])
