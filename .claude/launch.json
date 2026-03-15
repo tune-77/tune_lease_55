@@ -4,8 +4,9 @@
     {
       "name": "lease_logic_sumaho12",
       "runtimeExecutable": "streamlit",
-      "runtimeArgs": ["run", "lease_logic_sumaho12.py", "--server.port=8502"],
-      "port": 8502
+      "runtimeArgs": ["run", "lease_logic_sumaho12.py"],
+      "port": 8503,
+      "autoPort": false
     }
   ]
 }

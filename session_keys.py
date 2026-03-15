@@ -136,6 +136,36 @@ class SK:
     FRAG_SUB_DATA         = "_frag_sub_data"
 
     # ─────────────────────────────────────────────
+    # 資産ファイナンス（AF）
+    # ─────────────────────────────────────────────
+    AF_LAST_RESULT        = "af_last_result"       # AFタブの直前計算結果
+    AF_LAST_DATA          = "af_last_data"         # AFタブの直前入力データ
+
+    # ─────────────────────────────────────────────
+    # 感度分析
+    # ─────────────────────────────────────────────
+    YOUDEN_RESULT         = "_youden_result"       # ユーデン指数分析結果
+
+    # ─────────────────────────────────────────────
+    # 審査ルール設定
+    # ─────────────────────────────────────────────
+    CUSTOM_RULES_UI_DATA  = "custom_rules_ui_data"       # カスタムルールのUI用データ
+    RULES_SAVED_SNAPSHOT  = "_rules_saved_snapshot"      # 保存済みルールのスナップショット
+    RULES_FORCE_RELOAD    = "_rules_force_reload"        # ルール強制リロードフラグ
+    RULE_PAGE_PREV_MODE   = "_rule_page_prev_mode"       # ルールページの直前モード
+
+    # ─────────────────────────────────────────────
+    # エージェントチーム (AT)
+    # ─────────────────────────────────────────────
+    AT_THEME              = "at_theme"             # 議論テーマ入力値
+    AT_HISTORY            = "at_history"           # ラウンド履歴リスト
+    AT_CURRENT_ROUND      = "at_current_round"     # 最新ラウンド結果（None可）
+    AT_RUNNING            = "at_running"           # 実行中フラグ（二重送信防止）
+    AT_CODE_RESULTS       = "at_code_results"      # 生成済みコード（round_num → code str）
+    AT_PENDING            = "at_pending"           # つね決裁待ち（4人の意見を保持）
+    AT_APPLIED_FILES      = "at_applied_files"     # 適用済みファイル履歴（round_num → list）
+
+    # ─────────────────────────────────────────────
     # その他
     # ─────────────────────────────────────────────
     BATTLE_DATA           = "battle_data"          # バトルデータ

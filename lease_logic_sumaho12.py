@@ -1244,6 +1244,10 @@ elif mode == "🏭 物件ファイナンス審査":
         else:
             st.info("👈 左側で条件を入力し、「審査判定を実行」ボタンを押してください。")
 
+elif mode == "🤝 エージェントチーム議論":
+    from components.agent_team import render_agent_team
+    render_agent_team()
+
 elif mode == "⚙️ 審査ルール設定":
     st.title("⚙️ 審査ルール設定")
     st.info("この画面で設定したルールや閾値・ペナルティは、次回以降の「新規審査」から即座に反映されます。")

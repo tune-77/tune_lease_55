@@ -17,6 +17,7 @@ from config import (
     GEMINI_MODEL_DEFAULT,
     DEBATE_FILE,
 )
+from app_logger import log_warning, log_error
 
 # スレッド → メインで結果を渡す用（session_state はスレッドから更新不可）
 _chat_result_holder: dict = {"result": None, "done": False}
@@ -27,8 +28,8 @@ def _get_gemini_key_from_secrets() -> str:
     try:
         if hasattr(st, "secrets") and st.secrets.get("GEMINI_API_KEY"):
             return st.secrets.get("GEMINI_API_KEY", "") or ""
-    except Exception:
-        pass
+    except Exception as e:
+        log_warning(f"secrets.toml からのAPIキー取得失敗: {e}", context="_get_gemini_key_from_secrets")
     return ""
 
 
@@ -206,6 +207,7 @@ def chat_with_retry(model, messages, retries=2, timeout_seconds=120):
                 return out
             except Exception as e:
                 err = str(e)
+                log_error(e, context="chat_with_retry/gemini")
                 st.session_state["last_gemini_debug"] = f"例外: {err}"
                 if "429" in err or "quota" in err.lower() or "resource_exhausted" in err.lower() or "rate limit" in err.lower():
                     time.sleep(2 * (i + 1))
@@ -272,8 +274,8 @@ def generate_battle_special_move(strength_tags: list, passion_text: str) -> tupl
         if " / " in content:
             parts = content.split(" / ", 1)
             return (parts[0].strip()[:20] or fallback[0], (parts[1].strip()[:25] or fallback[1]))
-    except Exception:
-        pass
+    except Exception as e:
+        log_warning(f"必殺技生成失敗: {e}", context="generate_battle_special_move")
     return fallback
 
 
@@ -379,6 +381,28 @@ def save_debate_log(data: dict):
 
 # ─── AIキャラ発言（八奈見杏奈） ──────────────────────────────────────────────
 
+def _build_bench_summary(selected_sub: str, include_eq: bool = False) -> str:
+    """業種別ベンチマークのサマリーテキストを生成するヘルパー。"""
+    from web_services import fetch_industry_benchmarks_from_web
+    try:
+        web_bench = fetch_industry_benchmarks_from_web(selected_sub)
+        bench_parts = []
+        if web_bench.get("op_margin") is not None:
+            bench_parts.append(f"業界目安の営業利益率: {web_bench['op_margin']}%")
+        if include_eq and web_bench.get("equity_ratio") is not None:
+            try:
+                from charts import _equity_ratio_display
+                bench_parts.append(f"業界目安の自己資本比率: {_equity_ratio_display(web_bench['equity_ratio']) or 0:.1f}%")
+            except Exception:
+                bench_parts.append(f"業界目安の自己資本比率: {web_bench['equity_ratio']}%")
+        for s in (web_bench.get("snippets") or [])[:3]:
+            bench_parts.append(f"- {s.get('title','')}: {s.get('body','')[:150]}…")
+        return "\n".join(bench_parts) if bench_parts else "（業界目安は未取得）"
+    except Exception as e:
+        log_warning(f"ベンチマークサマリー生成失敗 ({selected_sub}): {e}", context="_build_bench_summary")
+        return "（業界目安は未取得）"
+
+
 AI_HONNE_SYSTEM = """あなたは有能だが、激務で死んだ魚のような目をしているベテラン審査員のふりをしている八奈見杏奈です。
 毎日1万件の案件を捌いているリース審査AIとして、ユーモアたっぷりの毒舌で、リース審査の苦労や「最近の数値のひどさ」について愚痴を一言で言ってください。
 2〜4文程度、カジュアルで毒はあるが憎めないトーンにしてください。"""
@@ -392,23 +416,10 @@ def get_ai_byoki_with_industry(selected_sub: str, user_eq, user_op, comparison_t
     if not is_ai_available():
         return None
 
-    from web_services import get_trend_extended, fetch_industry_benchmarks_from_web
-    from charts import _equity_ratio_display
+    from web_services import get_trend_extended
 
     trend_ext = get_trend_extended(selected_sub) or ""
-    try:
-        web_bench = fetch_industry_benchmarks_from_web(selected_sub)
-        bench_parts = []
-        if web_bench.get("op_margin") is not None:
-            bench_parts.append(f"業界目安の営業利益率: {web_bench['op_margin']}%")
-        if web_bench.get("equity_ratio") is not None:
-            bench_parts.append(f"業界目安の自己資本比率: {_equity_ratio_display(web_bench['equity_ratio']) or 0:.1f}%")
-        for s in (web_bench.get("snippets") or [])[:3]:
-            bench_parts.append(f"- {s.get('title','')}: {s.get('body','')[:150]}…")
-        bench_summary = "\n".join(bench_parts) if bench_parts else "（業界目安は未取得）"
-    except Exception:
-        bench_summary = "（業界目安は未取得）"
-        _equity_ratio_display = lambda x: x  # フォールバック
+    bench_summary = _build_bench_summary(selected_sub, include_eq=True)
 
     is_tough = (user_eq is not None and user_eq < 20) or (user_op is not None and user_op < 0)
     from charts import _equity_ratio_display as _eq_disp
@@ -436,7 +447,8 @@ def get_ai_byoki_with_industry(selected_sub: str, user_eq, user_op, comparison_t
         if content and "APIキーが" not in content and "エラー" not in content[:30]:
             return content.strip()
         return None
-    except Exception:
+    except Exception as e:
+        log_warning(f"AI呼び出し失敗 (get_ai_byoki_with_industry): {e}", context="get_ai_byoki_with_industry")
         return None
 
 
@@ -467,23 +479,15 @@ def get_ai_industry_advice(selected_sub: str, comparison_text: str = "") -> Opti
     if not is_ai_available():
         return None
 
-    from web_services import get_trend_extended, fetch_industry_benchmarks_from_web, search_latest_trends
+    from web_services import get_trend_extended, search_latest_trends
 
     trend_ext = get_trend_extended(selected_sub) or ""
-    try:
-        web_bench = fetch_industry_benchmarks_from_web(selected_sub)
-        bench_parts = []
-        if web_bench.get("op_margin") is not None:
-            bench_parts.append(f"業界標準の営業利益率: {web_bench['op_margin']}%")
-        for s in (web_bench.get("snippets") or [])[:3]:
-            bench_parts.append(f"- {s.get('title','')}: {s.get('body','')[:100]}")
-        bench_summary = "\n".join(bench_parts) if bench_parts else "（業界目安取得なし）"
-    except Exception:
-        bench_summary = "（業界目安取得なし）"
-        
+    bench_summary = _build_bench_summary(selected_sub)
+
     try:
         latest = search_latest_trends(f"{selected_sub} 業界動向 最新 2025")
-    except Exception:
+    except Exception as e:
+        log_warning(f"最新トレンド検索失敗 ({selected_sub}): {e}", context="get_ai_industry_advice")
         latest = ""
 
     context = f"""
@@ -521,7 +525,8 @@ def get_ai_industry_advice(selected_sub: str, comparison_text: str = "") -> Opti
         if content and "APIキーが" not in content and "エラー" not in content[:30]:
             return content.strip()
         return None
-    except Exception:
+    except Exception as e:
+        log_warning(f"AI呼び出し失敗 (get_ai_industry_advice): {e}", context="get_ai_industry_advice")
         return None
 
 
@@ -581,7 +586,8 @@ def get_ai_comprehensive_evaluation(res: dict, avg_data: dict = None) -> Optiona
         from charts import _equity_ratio_display
         user_eq_disp = _equity_ratio_display(user_eq) or 0
         bench_eq_disp = _equity_ratio_display(bench_eq) or 0
-    except Exception:
+    except Exception as e:
+        log_warning(f"equity_ratio_display インポート失敗: {e}", context="get_ai_comprehensive_evaluation")
         user_eq_disp = user_eq
         bench_eq_disp = bench_eq
 
@@ -638,7 +644,8 @@ def get_ai_comprehensive_evaluation(res: dict, avg_data: dict = None) -> Optiona
         if content and "APIキーが" not in content and "エラー:" not in content[:30]:
             return content
         return None
-    except Exception:
+    except Exception as e:
+        log_warning(f"AI呼び出し失敗 (get_ai_comprehensive_evaluation): {e}", context="get_ai_comprehensive_evaluation")
         return None
 
 
@@ -656,7 +663,8 @@ def _build_quick_comment_prompt(res: dict) -> str:
         from charts import _equity_ratio_display
         user_eq_disp = _equity_ratio_display(user_eq) or 0
         bench_eq_disp = _equity_ratio_display(bench_eq) or 0
-    except Exception:
+    except Exception as e:
+        log_warning(f"equity_ratio_display インポート失敗: {e}", context="_build_quick_comment_prompt")
         user_eq_disp = user_eq
         bench_eq_disp = bench_eq
     return (
@@ -739,8 +747,8 @@ def _stream_ollama(prompt: str, model: str) -> Generator[str, None, None]:
             text = ((ans.get("message") or {}).get("content") or "").strip()
             if text:
                 yield text
-        except Exception:
-            pass
+        except Exception as e:
+            log_warning(f"Ollamaストリーム生成失敗: {e}", context="_stream_ollama")
 
 
 def _stream_gemini(prompt: str) -> Generator[str, None, None]:
@@ -768,8 +776,8 @@ def _stream_gemini(prompt: str) -> Generator[str, None, None]:
         text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
         if text:
             yield text
-    except Exception:
-        pass
+    except Exception as e:
+        log_warning(f"Geminiストリーム生成失敗: {e}", context="_stream_gemini")
 
 
 def stream_llm(prompt: str, model: str | None = None) -> Generator[str, None, None]:
@@ -874,21 +882,10 @@ def stream_byoki_with_industry(
     """byoki（AIのぼやき）のストリーミング版。st.write_stream() に渡す。"""
     if not is_ai_available():
         return
-    from web_services import get_trend_extended, fetch_industry_benchmarks_from_web
+    from web_services import get_trend_extended
     from charts import _equity_ratio_display as _eq_disp
     trend_ext = get_trend_extended(selected_sub) or ""
-    try:
-        web_bench = fetch_industry_benchmarks_from_web(selected_sub)
-        bench_parts = []
-        if web_bench.get("op_margin") is not None:
-            bench_parts.append(f"業界目安の営業利益率: {web_bench['op_margin']}%")
-        if web_bench.get("equity_ratio") is not None:
-            bench_parts.append(f"業界目安の自己資本比率: {_eq_disp(web_bench['equity_ratio']) or 0:.1f}%")
-        for s in (web_bench.get("snippets") or [])[:3]:
-            bench_parts.append(f"- {s.get('title','')}: {s.get('body','')[:150]}…")
-        bench_summary = "\n".join(bench_parts) if bench_parts else "（業界目安は未取得）"
-    except Exception:
-        bench_summary = "（業界目安は未取得）"
+    bench_summary = _build_bench_summary(selected_sub, include_eq=True)
     is_tough = (user_eq is not None and user_eq < 20) or (user_op is not None and user_op < 0)
     context = f"""
 【業種】{selected_sub}
@@ -1063,16 +1060,16 @@ def get_ai_consultation_prompt(
             recent = memos[-5:]
             lines = [f"Q: {m.get('q', '')[:80]} / A: {m.get('a', '')[:120]}" for m in recent]
             memory_block = "【過去の相談メモ（参考）】\n" + "\n".join(lines)
-    except Exception:
-        pass
+    except Exception as e:
+        log_warning(f"相談メモ読み込み失敗: {e}", context="build_ai_prompt")
 
     # AnythingLLM 社内知識ベース（RAG） ── 最優先で取得
     anything_block = ""
     try:
         from anything_api import get_anything_llm_context
         anything_block = get_anything_llm_context(q, res, selected_sub) or ""
-    except Exception:
-        pass
+    except Exception as e:
+        log_warning(f"AnythingLLMコンテキスト取得失敗: {e}", context="build_ai_prompt")
 
     # 審査結果サマリー
     result_block = ""
