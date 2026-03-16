@@ -834,8 +834,12 @@ from components.sidebar import render_sidebar, load_byoki_list
 mode = render_sidebar(benchmarks_data, useful_life_data, LEASE_ASSETS_LIST)
 
 
-# モード分岐（サイドバー先頭=審査・分析。elif の並びは実装都合。処理結果に影響なし）
-if mode == "🔧 係数分析・更新 (β)":
+# モード分岐（サイドバー先頭=ホーム。elif の並びは実装都合。処理結果に影響なし）
+if mode == "🏠 ホーム":
+    from components.home import render_home
+    render_home()
+
+elif mode == "🔧 係数分析・更新 (β)":
     from components.settings import render_coeff_analysis
     render_coeff_analysis()
 
@@ -1039,13 +1043,13 @@ elif mode == "📋 審査・分析":
                 benchmarks_data=benchmarks_data,
                 bankruptcy_data=bankruptcy_data,
                 trend_info=trend_info,
-                past_cases_log=None, # will be loaded inside if not passed
-                current_case_data=None, # will be loaded inside if not passed
+                past_cases_log=None,
+                current_case_data=None,
                 current_case_id=st.session_state.get("current_case_id")
             )
-    with col_right:
-        from components.ai_consultation import render_ai_consultation
-        render_ai_consultation(selected_sub, jsic_data, bankruptcy_data)
+        with col_right:
+            from components.ai_consultation import render_ai_consultation
+            render_ai_consultation(selected_sub, jsic_data, bankruptcy_data)
 
 # ==============================================================================
 # 物件ファイナンス審査モード

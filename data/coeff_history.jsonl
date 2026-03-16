@@ -1,0 +1,2 @@
+{"timestamp": "2026-03-08T05:29:33", "change_type": "manual", "comment": "テスト変更①", "changed_keys": {"sales_log": {"before": null, "after": 0.05}, "intercept": {"before": null, "after": 0.1}}, "snapshot_after": {"intercept": 0.1, "sales_log": 0.05}}
+{"timestamp": "2026-03-08T05:29:33", "change_type": "manual", "comment": "テスト変更②", "changed_keys": {"sales_log": {"before": 0.05, "after": 0.07}, "intercept": {"before": 0.1, "after": 0.2}}, "snapshot_after": {"intercept": 0.2, "sales_log": 0.07}}

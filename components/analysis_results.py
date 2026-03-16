@@ -132,6 +132,10 @@ def render_analysis_results(
         # ──────────────────────────────────────────────────────────────
 
         # --- GLOBAL VARIABLE RECOVERY (Must be first) ---
+        if "last_result" not in st.session_state:
+            st.info("📝 まず「審査入力」タブで情報を入力し「判定」ボタンを押してください。")
+            return
+
         selected_major = "D 建設業" # Default
         selected_sub = "06 総合工事業" # Default
         score_percent = 0

@@ -249,6 +249,7 @@ def render_apply_form(
             "📌 **必須** 売上高・総資産は **1以上** を入力してください（未入力だと判定がブロックされます）。\n\n"
             "💡 **推奨** 営業利益・純資産も入力すると精度が向上します（未入力でも判定は続行しますが警告を表示します）。"
         )
+        submitted_judge_top = st.form_submit_button("判定開始", type="primary", use_container_width=True, key="judge_top")
         submitted_apply = st.form_submit_button("入力確定（Enterで反映）", type="secondary", help="数字入力でEnterを押したときはここが押された扱いになり、判定には行きません。")
         with st.expander("📊 1. 損益計算書 (P/L) ― 📌必須・💡推奨あり", expanded=True):
             # ①売上高（フラグメント化で入力時のガタつき軽減）
@@ -258,46 +259,34 @@ def render_apply_form(
             #  ②売上高総利益（スライダーは従来どおり、手入力のみ900億千円まで）
             st.markdown("### 売上高総利益")
             item9_gross = _slider_and_number("item9_gross", "sourieki", 10000, -500000, 1000000, 100, 1, max_val_number=90_000_000)
-            st.divider() # 次の項目との区切
             # #③営業利益
             st.markdown("### 営業利益 💡 推奨（未入力だと営業利益率が 0% で計算されます）")
             rieki = _slider_and_number("rieki", "rieki", 10000, -100000, 200000, 100, 1, max_val_number=90_000_000)
-            st.divider() # 次の項目との区切
             st.markdown("### 経常利益")
             item4_ord_profit = _slider_and_number("item4_ord_profit", "item4_ord_profit", 10000, -100000, 200000, 100, 1, max_val_number=90_000_000)
-            st.divider() # 次の項目との区切
             st.markdown("### 当期利益")
             item5_net_income = _slider_and_number("item5_net_income", "item5_net_income", 10000, -100000, 200000, 100, 1, max_val_number=90_000_000)
-            st.divider() # 次の項目との区切
 
         with st.expander("🏢 2. 資産・経費・その他", expanded=False):
         
             st.markdown("### 減価償却費")
             item10_dep = _slider_and_number("item10_dep", "item10_dep", 10000, 0, 200000, 100, 1, max_val_number=90_000_000)
-            st.divider() # 次の項目との区切
             st.markdown("### 減価償却費(経費)")
             item11_dep_exp = _slider_and_number("item11_dep_exp", "item11_dep_exp", 10000, 0, 200000, 100, 1, max_val_number=90_000_000)
-            st.divider() # 次の項目との区切
             # #⑧賃借料
             st.markdown("### 賃借料")
             item8_rent = _slider_and_number("item8_rent", "item8_rent", 10000, 0, 100000, 100, 1, max_val_number=90_000_000)
-            st.divider() # 次の項目との区切
             st.markdown("### 賃借料（経費）")
             item12_rent_exp = _slider_and_number("item12_rent_exp", "item12_rent_exp", 10000, 0, 100000, 100, 1, max_val_number=90_000_000)
-            st.divider() # 次の項目との区切
             #⑩機械装置
             st.markdown("### 機械装置")
             item6_machine = _slider_and_number("item6_machine", "item6_machine", 10000, 0, 200000, 100, 1, max_val_number=90_000_000)
-            st.divider() # 次の項目との区切
             st.markdown("### その他資産")
             item7_other = _slider_and_number("item7_other", "item7_other", 10000, 0, 200000, 100, 1, max_val_number=90_000_000)
-            st.divider() # 次の項目との区切
             st.markdown("### 純資産 💡 推奨（未入力だと自己資本比率・学習モデル精度が低下します）")
             net_assets = _slider_and_number("net_assets", "net_assets", 10000, -30000, 500000, 100, 1, max_val_number=90_000_000)
-            st.divider() # 次の項目との区切
             st.markdown("### 総資産 📌 必須（1以上）")
             total_assets = _slider_and_number("total_assets", "total_assets", 10000, 0, 1000000, 100, 1, max_val_number=90_000_000)
-            st.divider() # 次の項目との区切
         with st.expander("💳 3. 信用情報", expanded=False):
 
             # default値をリスト内の文字列と完全に一致させる必要があります
@@ -305,26 +294,21 @@ def render_apply_form(
             st.markdown("### うちの銀行与信")
             st.caption("当社の与信です（総銀行与信ではありません）")
             bank_credit = _slider_and_number("bank_credit", "bank_credit", 10000, 0, 3000000, 100, 1, max_val_number=90_000_000)
-            st.divider() # 次の項目との区切
             st.markdown("### うちのリース与信")
             st.caption("当社の与信です（総リース与信ではありません）")
             lease_credit = _slider_and_number("lease_credit", "lease_credit", 10000, 0, 300000, 100, 1, max_val_number=90_000_000)
-            st.divider() # 次の項目との区切
             # #16契約数
             st.markdown("### 契約数")
             contracts = _slider_and_number("contracts", "contracts", 1, 0, 30, 1, 1, unit="件")
-            st.divider() # 次の項目との区切
 
         with st.expander("📋 4. 契約条件・取得価格", expanded=False):
             customer_type = st.radio("顧客区分", ["既存先", "新規先"], horizontal=True, index=0 if st.session_state.get("customer_type", "既存先") == "既存先" else 1, key="customer_type")
-            st.divider()
             st.markdown("##### 📈 契約条件・属性 (利回り予測用)")
             with st.container():
                 c_y1, c_y2, c_y3 = st.columns(3)
                 contract_type = c_y1.radio("契約種類", ["一般", "自動車"], horizontal=True, index=0 if st.session_state.get("contract_type", "一般") == "一般" else 1, key="contract_type")
                 deal_source = c_y2.radio("商談ソース", ["銀行紹介", "その他"], horizontal=True, index=0 if st.session_state.get("deal_source", "その他") == "銀行紹介" else 1, key="deal_source")
                 lease_term = c_y3.select_slider("契約期間（月）", options=range(0, 121, 1), value=60)
-                st.divider()
                 c_l, c_r = st.columns([0.7, 0.3])
                 with c_l:
                     acceptance_year = st.number_input("検収年 (西暦)", value=2026, step=1)
@@ -360,7 +344,8 @@ def render_apply_form(
         _intuition_labels = {1: "😟 かなり懸念", 2: "😐 やや懸念", 3: "😶 ニュートラル", 4: "🙂 やや確信", 5: "😄 強い確信"}
         st.caption(f"現在の評価：{_intuition_labels.get(intuition, '')}")
 
-        submitted_judge = st.form_submit_button("判定開始", type="primary", use_container_width=True)
+        submitted_judge_bottom = st.form_submit_button("判定開始", type="primary", use_container_width=True, key="judge_bottom")
+        submitted_judge = submitted_judge_top or submitted_judge_bottom
 
     return {
         "submitted_apply": submitted_apply,

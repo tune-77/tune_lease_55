@@ -428,6 +428,7 @@ def _render_cache_and_ai_honne() -> None:
 # ── メインエントリ ────────────────────────────────────────────────────────────
 
 SIDEBAR_MODES = [
+    "🏠 ホーム",
     "📋 審査・分析",
     "⚡ バッチ審査",
     "🏭 物件ファイナンス審査",
@@ -449,6 +450,21 @@ def render_sidebar(benchmarks_data: dict, useful_life_data: dict, lease_assets_l
     サイドバー全体を描画し、選択されたモード文字列を返す。
     メインファイルで: mode = render_sidebar(benchmarks_data, useful_life_data, LEASE_ASSETS_LIST)
     """
+    # ホーム画面のカードから遷移先が指定された場合に反映
+    pending = st.session_state.pop("_pending_mode", None)
+    if pending and pending in SIDEBAR_MODES:
+        st.session_state["main_mode"] = pending  # session_state を直接上書き（index 依存を排除）
+
+    st.sidebar.markdown(
+        "<small>"
+        "**審査**: ホーム / 審査・分析 / バッチ / 物件ファイナンス　"
+        "**管理**: 結果登録 / エージェント　"
+        "**係数**: 係数分析 / 係数入力 / 係数履歴 / ログ　"
+        "**分析**: 履歴ダッシュボード / 定性 / 定量　"
+        "**設定**: 審査ルール"
+        "</small>",
+        unsafe_allow_html=True,
+    )
     mode = st.sidebar.radio("モード切替", SIDEBAR_MODES, key="main_mode")
 
     with st.sidebar.expander("⚠️ 途中で落ちる場合", expanded=False):

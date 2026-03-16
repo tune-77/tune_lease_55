@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import re
+import subprocess
 import sys
 import time
 import datetime
@@ -40,6 +41,12 @@ from ai_chat import (
     get_ollama_model,
     GEMINI_API_KEY_ENV,
     GEMINI_MODEL_DEFAULT,
+)
+from anything_api import is_anything_llm_available, query_anything_llm
+from slack_screening import (
+    is_screening_active,
+    handle_screening_message,
+    start_screening,
 )
 
 # ── ログ設定 ────────────────────────────────────────────────────────────────
@@ -176,8 +183,15 @@ def _run_agent_discussion(theme: str) -> list[dict]:
 
 HELP_TEXT = """🤝 *リース審査AIボット — コマンド一覧*
 
-• *質問する* — そのままメッセージを送るだけ！AIが回答します
+• *`審査開始`* — リース審査データを対話形式で入力しAIスコアリングを実行
+  （13項目をステップごとに入力するだけ。途中で `キャンセル` と入力すると中止）
+
+• *質問する* — そのままメッセージを送るだけ！社内知識ベース（AnythingLLM）で回答します
   例: `リース期間36ヶ月と60ヶ月のメリット・デメリットは？`
+
+• *`claude: <指示>`* — Claude に直接指示します
+  例: `claude: scoring_core.py のロジックを説明して`
+  例: `claude: 審査スコアが低い原因を分析して`
 
 • *`討論 <テーマ>`* — 4人のエージェントチームが議論します
   例: `討論 審査フォームをもっと簡単にしたい`
@@ -202,6 +216,12 @@ def _parse_command(text: str) -> tuple[str, str]:
     for kw in ["ヘルプ", "help", "使い方"]:
         if kw in clean.lower():
             return "help", ""
+    for kw in ["審査開始", "審査スタート", "screening", "start screening"]:
+        if kw in clean.lower():
+            return "screening", ""
+    for kw in ["claude:", "claude："]:
+        if clean.lower().startswith(kw):
+            return "claude", clean[len(kw):].strip()
     return "chat", clean
 
 
@@ -211,8 +231,24 @@ def _parse_command(text: str) -> tuple[str, str]:
 
 def handle_message(client: WebClient, channel: str, text: str, user: str) -> None:
     """メッセージを処理してSlackに返答。"""
+
+    # ── 審査セッション進行中はそちらを優先 ──────────────────────────────────
+    if is_screening_active(channel):
+        reply = handle_screening_message(channel, text)
+        if reply is not None:
+            client.chat_postMessage(channel=channel, text=reply)
+            return
+
     command, argument = _parse_command(text)
-    logger.info(f"📩 処理: command={command}, arg={argument[:50]}")
+    logger.info(f"📩 処理: command={command}, arg={argument[:50] if argument else ''}")
+
+    if command == "screening":
+        first_question = start_screening(channel)
+        client.chat_postMessage(
+            channel=channel,
+            text=f"📋 *リース審査入力を開始します*\n（途中で `キャンセル`、最初からは `やり直し` と入力）\n\n{first_question}",
+        )
+        return
 
     if command == "help":
         client.chat_postMessage(channel=channel, text=HELP_TEXT)
@@ -231,6 +267,26 @@ def handle_message(client: WebClient, channel: str, text: str, user: str) -> Non
             client.chat_postMessage(channel=channel, text=f"⚠️ レポート読み込みエラー: {e}")
         return
 
+    if command == "claude":
+        client.chat_postMessage(channel=channel, text="🤖 Claude に問い合わせ中...")
+        try:
+            result = subprocess.run(
+                ["claude", "-p", argument, "--output-format", "text", "--dangerously-skip-permissions"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=str(_SCRIPT_DIR),
+            )
+            answer = result.stdout.strip() or result.stderr.strip() or "（応答がありませんでした）"
+        except subprocess.TimeoutExpired:
+            answer = "⚠️ タイムアウトしました（120秒）"
+        except Exception as e:
+            answer = f"⚠️ Claude 実行エラー: {e}"
+        # Slackの文字数制限(3000文字)に合わせて分割送信
+        for i in range(0, len(answer), 3000):
+            client.chat_postMessage(channel=channel, text=f"🤖 *Claude:*\n{answer[i:i+3000]}")
+        return
+
     if command == "discuss":
         client.chat_postMessage(
             channel=channel,
@@ -246,14 +302,22 @@ def handle_message(client: WebClient, channel: str, text: str, user: str) -> Non
             client.chat_postMessage(channel=channel, text=f"⚠️ 討論中にエラー: {e}")
         return
 
-    # デフォルト: AIチャット
+    # デフォルト: AIチャット（AnythingLLM RAG → Gemini フォールバック）
     client.chat_postMessage(channel=channel, text="🤔 考えています...")
-    prompt = (
-        "あなたはリース審査システムのAIアシスタントです。\n"
-        "ユーザーの質問に簡潔に日本語で回答してください。\n"
-        f"【質問】\n{argument}"
-    )
     try:
+        # まず AnythingLLM で社内知識ベースを検索
+        if is_anything_llm_available():
+            answer = query_anything_llm(argument)
+            if answer and len(answer.strip()) >= 10:
+                client.chat_postMessage(channel=channel, text=f"📚 *回答（社内知識ベース）:*\n{answer}")
+                return
+
+        # フォールバック: Gemini/Ollama
+        prompt = (
+            "あなたはリース審査システムのAIアシスタントです。\n"
+            "ユーザーの質問に簡潔に日本語で回答してください。\n"
+            f"【質問】\n{argument}"
+        )
         answer = _get_ai_response(prompt, timeout_seconds=60)
         if not answer:
             answer = "申し訳ありません、回答を生成できませんでした。"
