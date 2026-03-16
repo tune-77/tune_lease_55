@@ -166,6 +166,15 @@ class SK:
     AT_APPLIED_FILES      = "at_applied_files"     # 適用済みファイル履歴（round_num → list）
 
     # ─────────────────────────────────────────────
+    # Slack 連携
+    # ─────────────────────────────────────────────
+    SLACK_WEBHOOK_URL     = "slack_webhook_url"      # Incoming Webhook URL
+    SLACK_ENABLED         = "slack_enabled"           # Slack通知ON/OFFフラグ
+    SLACK_CHANNEL_NAME    = "slack_channel_name"      # 通知先チャンネル名（表示用）
+    SLACK_NOTIFY_VERDICT  = "slack_notify_verdict"    # 決裁時に通知するか
+    SLACK_NOTIFY_THREAD   = "slack_notify_thread"     # スレッド全体を含めるか
+
+    # ─────────────────────────────────────────────
     # その他
     # ─────────────────────────────────────────────
     BATTLE_DATA           = "battle_data"          # バトルデータ

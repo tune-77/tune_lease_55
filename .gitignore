@@ -8,6 +8,9 @@ __pycache__/
 # macOS
 .DS_Store
 
+# Secrets（Webhook URL, APIキー等）
+.streamlit/secrets.toml
+
 # テスト生成PDF（成果物なので除外）
 test_*.pdf
 screening_report_test.pdf

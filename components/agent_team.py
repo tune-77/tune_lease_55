@@ -19,6 +19,7 @@ import json
 import re
 import datetime
 import os
+import requests
 import streamlit as st
 
 from ai_chat import (
@@ -336,6 +337,181 @@ def save_agent_team_log(round_data: dict) -> None:
             f.write(json.dumps(round_data, ensure_ascii=False) + "\n")
     except Exception as e:
         st.error(f"ログ保存エラー: {e}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Slack 連携
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _get_slack_webhook_url() -> str:
+    """Slack Webhook URL を取得（session_state → 環境変数 → secrets の順に探索）。"""
+    url = (st.session_state.get(SK.SLACK_WEBHOOK_URL) or "").strip()
+    if url:
+        return url
+    url = os.environ.get("SLACK_WEBHOOK_URL", "").strip()
+    if url:
+        return url
+    try:
+        url = st.secrets.get("SLACK_WEBHOOK_URL", "").strip()
+    except Exception:
+        pass
+    return url
+
+
+def _is_slack_enabled() -> bool:
+    """Slack通知が有効かどうかを判定。"""
+    if not st.session_state.get(SK.SLACK_ENABLED, False):
+        return False
+    url = _get_slack_webhook_url()
+    return bool(url and url.startswith("https://hooks.slack.com/"))
+
+
+def _format_slack_verdict_message(round_data: dict) -> dict:
+    """つねの決裁結果をSlack Block Kit形式に整形。"""
+    theme = round_data.get("theme", "（テーマなし）")
+    round_num = round_data.get("round", "?")
+    verdict = round_data.get("tsune_verdict", {})
+    judgment = verdict.get("judgment", "不明")
+    raw = verdict.get("raw", "")
+    timestamp = round_data.get("timestamp", "")[:19].replace("T", " ")
+
+    # 判定に応じた絵文字
+    emoji_map = {"承認": ":white_check_mark:", "修正": ":warning:", "却下": ":x:"}
+    judgment_emoji = emoji_map.get(judgment, ":question:")
+
+    # スレッド要約（各発言者の最初の一言を抽出）
+    thread = round_data.get("thread", round_data.get("opinions", []))
+    include_thread = st.session_state.get(SK.SLACK_NOTIFY_THREAD, True)
+
+    blocks = [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": f"{judgment_emoji.replace(':', '')} エージェントチーム決裁通知",
+                "emoji": True,
+            },
+        },
+        {
+            "type": "section",
+            "fields": [
+                {"type": "mrkdwn", "text": f"*ラウンド:*\n{round_num}"},
+                {"type": "mrkdwn", "text": f"*判定:*\n{judgment_emoji} {judgment}"},
+                {"type": "mrkdwn", "text": f"*日時:*\n{timestamp}"},
+            ],
+        },
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"*議論テーマ:*\n{theme}"},
+        },
+        {"type": "divider"},
+    ]
+
+    # スレッド全体を含める場合
+    if include_thread and thread:
+        thread_lines = []
+        for msg in thread:
+            name = msg.get("name", "不明")
+            avatar = msg.get("avatar", "🤖")
+            content = msg.get("content", "")[:200]
+            if len(msg.get("content", "")) > 200:
+                content += "…"
+            thread_lines.append(f"{avatar} *{name}:* {content}")
+
+        # Slackのtext制限（3000文字）に収まるよう調整
+        thread_text = "\n\n".join(thread_lines)
+        if len(thread_text) > 2800:
+            thread_text = thread_text[:2800] + "\n…（省略）"
+
+        blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"*議論スレッド ({len(thread)}件):*\n\n{thread_text}"},
+        })
+        blocks.append({"type": "divider"})
+
+    # つねの決裁詳細
+    verdict_text = raw[:1500] if raw else "（詳細なし）"
+    if len(raw) > 1500:
+        verdict_text += "\n…（省略）"
+    blocks.append({
+        "type": "section",
+        "text": {"type": "mrkdwn", "text": f"*👔 つねの決裁:*\n{verdict_text}"},
+    })
+
+    # フッター
+    blocks.append({
+        "type": "context",
+        "elements": [
+            {"type": "mrkdwn", "text": "📡 _リース審査システム — エージェントチーム議論_"},
+        ],
+    })
+
+    # fallback テキスト
+    fallback_text = (
+        f"【エージェントチーム決裁】\n"
+        f"ラウンド{round_num} | 判定: {judgment}\n"
+        f"テーマ: {theme}\n"
+        f"つね: {raw[:300]}"
+    )
+
+    return {
+        "text": fallback_text,
+        "blocks": blocks,
+    }
+
+
+def send_slack_notification(round_data: dict) -> tuple[bool, str]:
+    """決裁結果をSlackに送信。
+
+    Returns:
+        (success: bool, message: str)
+    """
+    if not _is_slack_enabled():
+        return False, "Slack通知は無効です"
+
+    webhook_url = _get_slack_webhook_url()
+    payload = _format_slack_verdict_message(round_data)
+
+    try:
+        resp = requests.post(
+            webhook_url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=10,
+        )
+        if resp.status_code == 200 and resp.text == "ok":
+            return True, "✅ Slackに通知しました"
+        else:
+            return False, f"⚠️ Slack通知エラー (HTTP {resp.status_code}): {resp.text[:200]}"
+    except requests.exceptions.Timeout:
+        return False, "⚠️ Slack通知がタイムアウトしました（10秒）"
+    except requests.exceptions.ConnectionError:
+        return False, "⚠️ Slackに接続できませんでした"
+    except Exception as e:
+        return False, f"⚠️ Slack通知エラー: {e}"
+
+
+def send_slack_custom_message(text: str) -> tuple[bool, str]:
+    """任意のテキストをSlackに送信（テスト送信等に使用）。"""
+    if not _is_slack_enabled():
+        return False, "Slack通知は無効です"
+
+    webhook_url = _get_slack_webhook_url()
+    payload = {"text": text}
+
+    try:
+        resp = requests.post(
+            webhook_url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=10,
+        )
+        if resp.status_code == 200 and resp.text == "ok":
+            return True, "✅ Slackに送信しました"
+        else:
+            return False, f"⚠️ 送信エラー (HTTP {resp.status_code}): {resp.text[:200]}"
+    except Exception as e:
+        return False, f"⚠️ 送信エラー: {e}"
 
 
 def load_agent_team_logs() -> list[dict]:
@@ -657,6 +833,30 @@ def _render_log_history(logs: list[dict]) -> None:
 # フェーズ別 UI
 # ══════════════════════════════════════════════════════════════════════════════
 
+_PRESET_THEMES: list[dict] = [
+    {
+        "label": "🔟 改善点10個を検討",
+        "theme": (
+            "リースシステムの改善すべき点を10個検討してください。\n"
+            "各自の専門・立場から「今すぐ直すべき問題」を具体的に挙げ、\n"
+            "優先度（高/中/低）と改善方法の概要も添えてください。"
+        ),
+    },
+    {
+        "label": "📱 モバイル対応",
+        "theme": "審査画面をスマートフォンでも快適に使えるよう改善したい",
+    },
+    {
+        "label": "📊 ダッシュボード改善",
+        "theme": "審査スコアのダッシュボードをより直感的でわかりやすくしたい",
+    },
+    {
+        "label": "⚡ 審査スピード改善",
+        "theme": "審査判定にかかる時間を短縮し、営業の回転率を上げたい",
+    },
+]
+
+
 def _render_phase_a() -> None:
     """フェーズA: テーマ入力と開始ボタン。AT_PENDING が None のときに表示。"""
     # 過去ラウンドを折りたたんで表示
@@ -664,6 +864,20 @@ def _render_phase_a() -> None:
         _render_round_result(past_round, collapsed=True)
 
     st.markdown("---")
+
+    # ── プリセットテーマ ──────────────────────────────────────────────
+    st.caption("💡 クイックスタート")
+    preset_cols = st.columns(len(_PRESET_THEMES))
+    preset_clicked_theme = None
+    for i, preset in enumerate(_PRESET_THEMES):
+        with preset_cols[i]:
+            if st.button(preset["label"], key=f"preset_{i}", use_container_width=True):
+                preset_clicked_theme = preset["theme"]
+
+    if preset_clicked_theme:
+        st.session_state[SK.AT_THEME] = preset_clicked_theme
+        st.rerun()
+
     theme_input = st.text_area(
         "議論テーマ・課題を入力",
         height=100,
@@ -792,6 +1006,15 @@ def _render_phase_b(pending: dict) -> None:
                 st.warning("⚠️ 修正して継続してください。")
             else:
                 st.error("❌ 却下されました。テーマや方針を見直してください。")
+
+        # ── Slack 自動通知 ──────────────────────────────────────────
+        if st.session_state.get(SK.SLACK_NOTIFY_VERDICT, True) and _is_slack_enabled():
+            slack_ok, slack_msg = send_slack_notification(result)
+            if slack_ok:
+                st.toast("📡 Slackに通知しました", icon="✅")
+            else:
+                st.toast(f"Slack通知失敗: {slack_msg}", icon="⚠️")
+
         st.rerun()
 
     if reset_btn:
@@ -826,6 +1049,153 @@ def _render_discussion_tab() -> None:
         _render_phase_b(pending)
 
 
+def _render_slack_settings() -> None:
+    """Slack連携設定タブのUI。"""
+    st.markdown("### 📡 Slack 連携設定")
+    st.caption(
+        "Slack Incoming Webhook を使って、つねの決裁結果をSlackチャンネルに自動通知します。"
+    )
+
+    # ── Webhook URL 設定 ──────────────────────────────────────────────
+    st.markdown("#### 1. Webhook URL")
+    st.caption(
+        "Slack App → Incoming Webhooks → Webhook URLをコピーして貼り付けてください。\n"
+        "[Slack Webhook 設定ガイド](https://api.slack.com/messaging/webhooks)"
+    )
+
+    current_url = st.session_state.get(SK.SLACK_WEBHOOK_URL, "")
+    webhook_input = st.text_input(
+        "Webhook URL",
+        value=current_url,
+        type="password",
+        placeholder="Slack Incoming Webhook URL を貼り付け",
+        key="slack_webhook_input",
+    )
+
+    # URL が変わったら即保存
+    if webhook_input != current_url:
+        st.session_state[SK.SLACK_WEBHOOK_URL] = webhook_input
+
+    # URL バリデーション
+    if webhook_input:
+        if webhook_input.startswith("https://hooks.slack.com/"):
+            st.success("✅ Webhook URL の形式は正しいです")
+        else:
+            st.error("⚠️ URLは `https://hooks.slack.com/` で始まる必要があります")
+
+    st.markdown("---")
+
+    # ── 通知設定 ──────────────────────────────────────────────────────
+    st.markdown("#### 2. 通知設定")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        slack_enabled = st.toggle(
+            "Slack 通知を有効にする",
+            value=st.session_state.get(SK.SLACK_ENABLED, False),
+            key="slack_enabled_toggle",
+        )
+        st.session_state[SK.SLACK_ENABLED] = slack_enabled
+
+    with col2:
+        notify_thread = st.toggle(
+            "議論スレッドも含める",
+            value=st.session_state.get(SK.SLACK_NOTIFY_THREAD, True),
+            key="slack_notify_thread_toggle",
+            help="ONにすると全メンバーの発言がSlack通知に含まれます",
+        )
+        st.session_state[SK.SLACK_NOTIFY_THREAD] = notify_thread
+
+    notify_verdict = st.toggle(
+        "つねの決裁時に自動通知",
+        value=st.session_state.get(SK.SLACK_NOTIFY_VERDICT, True),
+        key="slack_notify_verdict_toggle",
+        help="ONにすると、つねが決裁を下した時点で自動的にSlackに通知されます",
+    )
+    st.session_state[SK.SLACK_NOTIFY_VERDICT] = notify_verdict
+
+    channel_name = st.text_input(
+        "通知先チャンネル名（メモ用）",
+        value=st.session_state.get(SK.SLACK_CHANNEL_NAME, ""),
+        placeholder="#lease-review-team",
+        key="slack_channel_name_input",
+        help="Webhook に紐付いたチャンネル名をメモとして記録します（通知先はWebhook側で決まります）",
+    )
+    st.session_state[SK.SLACK_CHANNEL_NAME] = channel_name
+
+    st.markdown("---")
+
+    # ── テスト送信 ──────────────────────────────────────────────────
+    st.markdown("#### 3. テスト送信")
+
+    test_col1, test_col2 = st.columns([3, 1])
+    with test_col1:
+        test_message = st.text_input(
+            "テストメッセージ",
+            value="🧪 リース審査システム — Slack連携テスト送信です！",
+            key="slack_test_msg",
+        )
+    with test_col2:
+        st.markdown("")  # 高さ調整
+        st.markdown("")
+        test_btn = st.button(
+            "📨 テスト送信",
+            key="btn_slack_test",
+            type="primary",
+            use_container_width=True,
+            disabled=not _is_slack_enabled(),
+        )
+
+    if test_btn:
+        with st.spinner("Slackに送信中..."):
+            ok, msg = send_slack_custom_message(test_message)
+        if ok:
+            st.success(msg)
+            st.balloons()
+        else:
+            st.error(msg)
+
+    if not _is_slack_enabled():
+        if not webhook_input:
+            st.info("💡 Webhook URL を入力してください。")
+        elif not slack_enabled:
+            st.info("💡 「Slack通知を有効にする」をONにしてください。")
+        else:
+            st.warning("⚠️ Webhook URL の形式が正しくありません。")
+
+    st.markdown("---")
+
+    # ── 手動送信（過去ラウンドの通知）──────────────────────────────
+    st.markdown("#### 4. 過去の決裁結果を手動送信")
+    st.caption("過去のラウンド結果を選んでSlackに手動送信できます。")
+
+    history = st.session_state.get(SK.AT_HISTORY, [])
+    if history:
+        options = [
+            f"ラウンド {r.get('round', '?')} — {r.get('tsune_verdict', {}).get('judgment', '?')} — {r.get('theme', '')[:40]}"
+            for r in history
+        ]
+        selected_idx = st.selectbox(
+            "送信するラウンド",
+            range(len(options)),
+            format_func=lambda i: options[i],
+            key="slack_manual_select",
+        )
+        if st.button(
+            "📨 このラウンドの結果をSlackに送信",
+            key="btn_slack_manual",
+            disabled=not _is_slack_enabled(),
+        ):
+            with st.spinner("Slackに送信中..."):
+                ok, msg = send_slack_notification(history[selected_idx])
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
+    else:
+        st.info("まだ決裁済みのラウンドがありません。")
+
+
 def render_agent_team() -> None:
     """エージェントチーム議論ページのメインエントリポイント。"""
     st.title("🤝 エージェントチーム議論")
@@ -835,9 +1205,10 @@ def render_agent_team() -> None:
     )
 
     engine = st.session_state.get(SK.AI_ENGINE, "ollama")
-    st.caption(f"🤖 使用中: {'Gemini API' if engine == 'gemini' else 'Ollama（ローカル）'}")
+    slack_status = "🟢 Slack通知ON" if _is_slack_enabled() else "⚪ Slack通知OFF"
+    st.caption(f"🤖 使用中: {'Gemini API' if engine == 'gemini' else 'Ollama（ローカル）'}　|　📡 {slack_status}")
 
-    tab_discuss, tab_logs = st.tabs(["💬 議論", "📋 決定事項ログ"])
+    tab_discuss, tab_logs, tab_slack = st.tabs(["💬 議論", "📋 決定事項ログ", "📡 Slack連携"])
 
     with tab_discuss:
         _render_discussion_tab()
@@ -845,3 +1216,6 @@ def render_agent_team() -> None:
     with tab_logs:
         logs = load_agent_team_logs()
         _render_log_history(logs)
+
+    with tab_slack:
+        _render_slack_settings()
