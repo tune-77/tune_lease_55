@@ -14,3 +14,21 @@ __pycache__/
 # テスト生成PDF（成果物なので除外）
 test_*.pdf
 screening_report_test.pdf
+
+# データベース・審査データ（個人情報・機密情報を含む可能性）
+data/*.db
+data/*.sqlite
+data/*.jsonl
+data/backups/
+
+# ログ・デバッグ出力
+logs/
+streamlit.log
+debug_agent_payload.txt
+*.log
+
+# ダッシュボード画像（生成物）
+dashboard_images/
+
+# Claude内部ワークツリー
+.claude/worktrees/
