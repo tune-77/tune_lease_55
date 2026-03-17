@@ -843,6 +843,10 @@ elif mode == "📄 審査レポート":
     from components.report import render_report
     render_report()
 
+elif mode == "🤖 汎用エージェントハブ":
+    from components.agent_hub import render_agent_hub
+    render_agent_hub()
+
 elif mode == "🔧 係数分析・更新 (β)":
     from components.settings import render_coeff_analysis
     render_coeff_analysis()
