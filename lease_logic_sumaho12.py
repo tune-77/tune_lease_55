@@ -165,6 +165,7 @@ from report_generator import generate_full_report_from_res
 from rule_manager import load_business_rules, save_business_rules, evaluate_custom_rules
 from constants import (
     APPROVAL_LINE, REVIEW_LINE, SCORE_PENALTY_IF_LEARNING_REJECT, ALERT_BORDERLINE_MIN,
+    REQUIRED_FIELDS, RECOMMENDED_FIELDS,
     QUALITATIVE_SCORING_CORRECTION_ITEMS as _CONST_QUAL_ITEMS,
     QUALITATIVE_SCORING_LEVELS as _CONST_QUAL_LEVELS,
     QUALITATIVE_SCORE_RANKS as _CONST_QUAL_RANKS,
@@ -693,16 +694,7 @@ QUALITATIVE_SCORE_RANKS = [
 # APPROVAL_LINE / REVIEW_LINE / SCORE_PENALTY_IF_LEARNING_REJECT / ALERT_BORDERLINE_MIN
 # は上の from constants import ... で取り込み済み。ここでの再定義は不要。
 
-# 必須項目（未入力・不正時は判定開始をブロック）
-REQUIRED_FIELDS = [
-    ("nenshu",       "売上高", lambda v: v is not None and (v or 0) > 0),
-    ("total_assets", "総資産", lambda v: v is not None and (v or 0) > 0),
-]
-# 推奨項目（0のとき警告を表示するが判定は続行）
-RECOMMENDED_FIELDS = [
-    ("rieki",      "営業利益", "営業利益率が 0% として計算されます（業界比較・スコアへの影響あり）"),
-    ("net_assets", "純資産",   "自己資本比率が 0% となり、学習モデル精度が低下します"),
-]
+# REQUIRED_FIELDS / RECOMMENDED_FIELDS は constants.py で定義済み（上の import で取り込み済み）
 
 # 過去案件・係数・相談メモ・ニュースのパスは data_cases で定義（CASES_FILE, COEFF_OVERRIDES_FILE 等を import 済み）
 _DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -834,10 +826,22 @@ from components.sidebar import render_sidebar, load_byoki_list
 mode = render_sidebar(benchmarks_data, useful_life_data, LEASE_ASSETS_LIST)
 
 
+# ホーム以外のすべての画面に「ホームに戻る」ボタンを表示
+if mode != "🏠 ホーム":
+    st.write("")
+    st.write("")
+    if st.button("🏠 ホームに戻る", key="btn_go_home", help="ホーム画面に戻ります"):
+        st.session_state["_pending_mode"] = "🏠 ホーム"
+        st.rerun()
+
 # モード分岐（サイドバー先頭=ホーム。elif の並びは実装都合。処理結果に影響なし）
 if mode == "🏠 ホーム":
     from components.home import render_home
     render_home()
+
+elif mode == "📄 審査レポート":
+    from components.report import render_report
+    render_report()
 
 elif mode == "🔧 係数分析・更新 (β)":
     from components.settings import render_coeff_analysis

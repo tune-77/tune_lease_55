@@ -108,15 +108,36 @@ def _render_humor_style() -> None:
 def _render_ai_model_settings() -> None:
     """🤖 AIモデル設定（Gemini / Ollama 選択・APIキー・接続テスト）"""
     if "ai_engine" not in st.session_state:
-        st.session_state["ai_engine"] = "gemini"  # デフォルトはGemini
+        st.session_state["ai_engine"] = "anythingllm"  # デフォルトはAnythingLLM
     st.sidebar.markdown("### 🤖 AIモデル設定")
+    _engine_options = ["AnythingLLM（社内知識ベース）", "Gemini API（Google）", "Ollama（ローカル）"]
+    _engine_map = {"anythingllm": 0, "gemini": 1, "ollama": 2}
+    _engine_current = st.session_state.get("ai_engine", "gemini")
     engine_choice = st.sidebar.radio(
         "AIエンジン",
-        ["Gemini API（Google）", "Ollama（ローカル）"],
-        index=0 if st.session_state.get("ai_engine") == "gemini" else 1,
-        help="Gemini 2.0 Flash は無料枠で月50件なら実質0円。APIキーはGoogle AI Studioで取得できます。",
+        _engine_options,
+        index=_engine_map.get(_engine_current, 1),
+        help="AnythingLLM: 社内知識ベース連携LLM（localhost:3001）。Gemini: 無料枠あり。Ollama: ローカル。",
     )
-    st.session_state["ai_engine"] = "gemini" if "Gemini" in engine_choice else "ollama"
+    if "AnythingLLM" in engine_choice:
+        st.session_state["ai_engine"] = "anythingllm"
+    elif "Gemini" in engine_choice:
+        st.session_state["ai_engine"] = "gemini"
+    else:
+        st.session_state["ai_engine"] = "ollama"
+
+    # AnythingLLM 設定UI
+    if st.session_state["ai_engine"] == "anythingllm":
+        try:
+            from anything_api import is_anything_llm_available, ANYTHING_LLM_BASE_URL, ANYTHING_LLM_WORKSPACE
+            _ok = is_anything_llm_available(timeout=2)
+            if _ok:
+                st.sidebar.success(f"✅ AnythingLLM 接続OK")
+            else:
+                st.sidebar.warning(f"⚠️ AnythingLLM に接続できません（{ANYTHING_LLM_BASE_URL}）。起動確認またはAPIキーを確認してください。")
+            st.sidebar.caption(f"接続先: {ANYTHING_LLM_BASE_URL}　ワークスペース: {ANYTHING_LLM_WORKSPACE[:8]}…")
+        except Exception as _ae:
+            st.sidebar.warning(f"AnythingLLM モジュールエラー: {_ae}")
 
     if st.session_state["ai_engine"] == "gemini":
         if "gemini_api_key" not in st.session_state and GEMINI_API_KEY_ENV:
@@ -430,6 +451,7 @@ def _render_cache_and_ai_honne() -> None:
 SIDEBAR_MODES = [
     "🏠 ホーム",
     "📋 審査・分析",
+    "📄 審査レポート",
     "⚡ バッチ審査",
     "🏭 物件ファイナンス審査",
     "📝 結果登録 (成約/失注)",
