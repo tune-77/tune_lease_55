@@ -30,12 +30,12 @@ _CSS = """
     align-items: flex-end;
     gap: 6px;
     pointer-events: none;
-    animation: yanami-life 6s ease-in-out forwards;
+    animation: yanami-life 10s ease-in-out forwards;
 }
 @keyframes yanami-life {
     0%   { opacity: 0; transform: translateY(18px); }
-    8%   { opacity: 1; transform: translateY(0); }
-    72%  { opacity: 1; }
+    5%   { opacity: 1; transform: translateY(0); }
+    80%  { opacity: 1; }
     100% { opacity: 0; transform: translateY(-8px); }
 }
 .yanami-bubble {
