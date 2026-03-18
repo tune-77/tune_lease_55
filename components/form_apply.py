@@ -64,6 +64,22 @@ def render_apply_form(
         if st.session_state.get("select_sub") not in sub_keys:
             st.session_state["select_sub"] = sub_keys[0]
         selected_sub = st.selectbox("中分類", sub_keys, key="select_sub")
+
+        # ── 詳細業種キーワード（任意入力）──────────────────────────────────
+        detail_keyword = st.text_input(
+            "詳細業種キーワード（任意）",
+            placeholder="例: 半導体製造装置　太陽光発電　冷凍冷蔵倉庫",
+            key="industry_detail_keyword",
+            help="より詳細な業種や設備を入力すると、その内容でも追加検索します",
+        )
+
+        # ── 業種変更を検知 → ホームチャットへ自動報告 ───────────────────────
+        try:
+            from components.industry_search_agent import trigger_if_changed
+            trigger_if_changed(selected_sub, detail_keyword)
+        except Exception:
+            pass
+
         st.session_state["_frag_major"] = selected_major
         st.session_state["_frag_sub"] = selected_sub
         st.session_state["_frag_mapped_coeff"] = mapped_coeff_category
