@@ -232,12 +232,12 @@ def _parse_command(text: str) -> tuple[str, str]:
 def handle_message(client: WebClient, channel: str, text: str, user: str) -> None:
     """メッセージを処理してSlackに返答。"""
 
-    # ── 審査セッション進行中はそちらを優先 ──────────────────────────────────
+    # ── 審査セッション進行中は審査入力のみ受け付ける（AIチャット完全抑制）──
     if is_screening_active(channel):
         reply = handle_screening_message(channel, text)
-        if reply is not None:
+        if reply:
             client.chat_postMessage(channel=channel, text=reply)
-            return
+        return  # 審査中は何があっても必ずここで終了
 
     command, argument = _parse_command(text)
     logger.info(f"📩 処理: command={command}, arg={argument[:50] if argument else ''}")

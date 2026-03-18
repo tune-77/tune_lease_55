@@ -443,26 +443,36 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
     elif sid == "pl":
         _bot("損益計算書の数字を教えてください 📄<br>"
              "<b>売上高は必須です</b>（スコア算出の基準になります）。<br>"
-             "わからない項目は 0 のままで大丈夫です。")
+             "わからない項目は空欄のまま「次へ」で 0 として扱います。")
         nenshu = st.number_input("売上高（千円）📌必須", 0, 90_000_000,
-                                 int(d.get("nenshu", 10_000)), 100, key="wiz_nenshu")
+                                 value=int(d["nenshu"]) if "nenshu" in d else None,
+                                 step=100, key="wiz_nenshu", placeholder="例: 50000")
         rieki  = st.number_input("営業利益（千円）💡推奨", -100_000, 90_000_000,
-                                 int(d.get("rieki", 10_000)), 100, key="wiz_rieki")
+                                 value=int(d["rieki"]) if "rieki" in d else None,
+                                 step=100, key="wiz_rieki", placeholder="例: 3000（赤字は -3000）")
         gross  = st.number_input("売上総利益（千円）", -500_000, 90_000_000,
-                                  int(d.get("item9_gross", 10_000)), 100, key="wiz_gross")
+                                 value=int(d["item9_gross"]) if "item9_gross" in d else None,
+                                 step=100, key="wiz_gross", placeholder="空欄→0")
         ord_p  = st.number_input("経常利益（千円）", -100_000, 90_000_000,
-                                  int(d.get("item4_ord_profit", 10_000)), 100, key="wiz_ordp")
+                                 value=int(d["item4_ord_profit"]) if "item4_ord_profit" in d else None,
+                                 step=100, key="wiz_ordp", placeholder="空欄→0")
         net_i  = st.number_input("当期純利益（千円）", -100_000, 90_000_000,
-                                  int(d.get("item5_net_income", 10_000)), 100, key="wiz_neti")
-        ok = nenshu > 0
+                                 value=int(d["item5_net_income"]) if "item5_net_income" in d else None,
+                                 step=100, key="wiz_neti", placeholder="空欄→0")
+        nenshu_v = nenshu or 0
+        rieki_v  = rieki  or 0
+        gross_v  = gross  or 0
+        ord_p_v  = ord_p  or 0
+        net_i_v  = net_i  or 0
+        ok = nenshu_v > 0
         _nav_buttons(step,
                      question="損益計算書の主要項目を教えてください",
-                     answer=f"売上高: {nenshu:,}千円 / 営業利益: {rieki:,}千円",
-                     updates={"nenshu": nenshu,
-                              "rieki": rieki, "num_rieki": rieki,
-                              "item9_gross": gross, "num_sourieki": gross,
-                              "item4_ord_profit": ord_p, "num_item4_ord_profit": ord_p,
-                              "item5_net_income": net_i, "num_item5_net_income": net_i},
+                     answer=f"売上高: {nenshu_v:,}千円 / 営業利益: {rieki_v:,}千円",
+                     updates={"nenshu": nenshu_v,
+                              "rieki": rieki_v, "num_rieki": rieki_v,
+                              "item9_gross": gross_v, "num_sourieki": gross_v,
+                              "item4_ord_profit": ord_p_v, "num_item4_ord_profit": ord_p_v,
+                              "item5_net_income": net_i_v, "num_item5_net_income": net_i_v},
                      can_proceed=ok,
                      warn_msg="⚠️ 売上高は1以上の値を入力してください。スコア算出の基準になります。")
 
@@ -472,21 +482,29 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
              "<b>総資産は必須です</b>（自己資本比率の計算に使います）。<br>"
              "決算書の「資産の部 合計」をそのまま入力してください。")
         total  = st.number_input("総資産（千円）📌必須", 0, 90_000_000,
-                                  int(d.get("total_assets", 10_000)), 100, key="wiz_total")
+                                 value=int(d["total_assets"]) if "total_assets" in d else None,
+                                 step=100, key="wiz_total", placeholder="例: 80000")
         net_a  = st.number_input("純資産（千円）💡推奨", -30_000, 90_000_000,
-                                  int(d.get("net_assets", 10_000)), 100, key="wiz_neta")
+                                 value=int(d["net_assets"]) if "net_assets" in d else None,
+                                 step=100, key="wiz_neta", placeholder="例: 25000")
         mach   = st.number_input("機械装置（千円）", 0, 90_000_000,
-                                  int(d.get("item6_machine", 10_000)), 100, key="wiz_mach")
+                                 value=int(d["item6_machine"]) if "item6_machine" in d else None,
+                                 step=100, key="wiz_mach", placeholder="空欄→0")
         other  = st.number_input("その他資産（千円）", 0, 90_000_000,
-                                  int(d.get("item7_other", 10_000)), 100, key="wiz_otha")
-        ok = total > 0
+                                 value=int(d["item7_other"]) if "item7_other" in d else None,
+                                 step=100, key="wiz_otha", placeholder="空欄→0")
+        total_v = total or 0
+        net_a_v = net_a or 0
+        mach_v  = mach  or 0
+        other_v = other or 0
+        ok = total_v > 0
         _nav_buttons(step,
                      question="資産情報を入力してください",
-                     answer=f"総資産: {total:,} / 純資産: {net_a:,}（千円）",
-                     updates={"total_assets": total, "num_total_assets": total,
-                              "net_assets": net_a, "num_net_assets": net_a,
-                              "item6_machine": mach, "num_item6_machine": mach,
-                              "item7_other": other, "num_item7_other": other},
+                     answer=f"総資産: {total_v:,} / 純資産: {net_a_v:,}（千円）",
+                     updates={"total_assets": total_v, "num_total_assets": total_v,
+                              "net_assets": net_a_v, "num_net_assets": net_a_v,
+                              "item6_machine": mach_v, "num_item6_machine": mach_v,
+                              "item7_other": other_v, "num_item7_other": other_v},
                      can_proceed=ok,
                      warn_msg="⚠️ 総資産は1以上の値を入力してください。自己資本比率の計算に必要です。")
 
@@ -495,13 +513,21 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
         _bot("経費・減価償却費を入力してください 💸<br>"
              "決算書に記載がない場合や分からない場合は、<b>スキップして 0 のまま</b>で構いません。")
         dep_a  = st.number_input("減価償却費（資産）千円", 0, 90_000_000,
-                                  int(d.get("item10_dep", 0)), 100, key="wiz_depa")
+                                  value=int(d["item10_dep"]) if "item10_dep" in d else None,
+                                  step=100, key="wiz_depa", placeholder="空欄→0")
         dep_e  = st.number_input("減価償却費（経費）千円", 0, 90_000_000,
-                                  int(d.get("item11_dep_exp", 0)), 100, key="wiz_depe")
+                                  value=int(d["item11_dep_exp"]) if "item11_dep_exp" in d else None,
+                                  step=100, key="wiz_depe", placeholder="空欄→0")
         rent_a = st.number_input("賃借料（資産）千円", 0, 90_000_000,
-                                  int(d.get("item8_rent", 0)), 100, key="wiz_renta")
+                                  value=int(d["item8_rent"]) if "item8_rent" in d else None,
+                                  step=100, key="wiz_renta", placeholder="空欄→0")
         rent_e = st.number_input("賃借料（経費）千円", 0, 90_000_000,
-                                  int(d.get("item12_rent_exp", 0)), 100, key="wiz_rente")
+                                  value=int(d["item12_rent_exp"]) if "item12_rent_exp" in d else None,
+                                  step=100, key="wiz_rente", placeholder="空欄→0")
+        dep_a_v  = dep_a  or 0
+        dep_e_v  = dep_e  or 0
+        rent_a_v = rent_a or 0
+        rent_e_v = rent_e or 0
 
         col_skip, _ = st.columns([1, 3])
         with col_skip:
@@ -514,11 +540,11 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
                                   "item12_rent_exp": 0, "num_item12_rent_exp": 0})
 
         _nav_buttons(step, question="経費・減価償却費を入力してください",
-                     answer=f"減価償却費（資産）{dep_a:,} / 賃借料（資産）{rent_a:,}千円",
-                     updates={"item10_dep": dep_a, "num_item10_dep": dep_a,
-                              "item11_dep_exp": dep_e, "num_item11_dep_exp": dep_e,
-                              "item8_rent": rent_a, "num_item8_rent": rent_a,
-                              "item12_rent_exp": rent_e, "num_item12_rent_exp": rent_e})
+                     answer=f"減価償却費（資産）{dep_a_v:,} / 賃借料（資産）{rent_a_v:,}千円",
+                     updates={"item10_dep": dep_a_v, "num_item10_dep": dep_a_v,
+                              "item11_dep_exp": dep_e_v, "num_item11_dep_exp": dep_e_v,
+                              "item8_rent": rent_a_v, "num_item8_rent": rent_a_v,
+                              "item12_rent_exp": rent_e_v, "num_item12_rent_exp": rent_e_v})
 
     # ── STEP: credit ────────────────────────────────────────────────────────
     elif sid == "credit":
@@ -529,16 +555,22 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
                           index=grade_opts.index(d.get("grade","②4-6 (標準)")),
                           horizontal=True, key="wiz_grade")
         bank_c = st.number_input("うちの銀行与信（千円）", 0, 90_000_000,
-                                  int(d.get("bank_credit", 0)), 100, key="wiz_bankc")
+                                  value=int(d["bank_credit"]) if "bank_credit" in d else None,
+                                  step=100, key="wiz_bankc", placeholder="なければ空欄→0")
         lease_c= st.number_input("うちのリース与信（千円）", 0, 90_000_000,
-                                  int(d.get("lease_credit", 0)), 100, key="wiz_leasec")
-        cont   = st.number_input("既存の契約数（件）", 0, 30, int(d.get("contracts", 1)), 1,
-                                  key="wiz_cont")
+                                  value=int(d["lease_credit"]) if "lease_credit" in d else None,
+                                  step=100, key="wiz_leasec", placeholder="なければ空欄→0")
+        cont   = st.number_input("既存の契約数（件）", 0, 30,
+                                  value=int(d["contracts"]) if "contracts" in d else None,
+                                  step=1, key="wiz_cont", placeholder="なければ空欄→0")
+        bank_c_v  = bank_c  or 0
+        lease_c_v = lease_c or 0
+        cont_v    = cont    or 0
         _nav_buttons(step, question="信用情報を入力してください",
-                     answer=f"格付: {grade} / 銀行与信: {bank_c:,}千円 / リース与信: {lease_c:,}千円",
-                     updates={"grade": grade, "bank_credit": bank_c, "num_bank_credit": bank_c,
-                              "lease_credit": lease_c, "num_lease_credit": lease_c,
-                              "contracts": cont, "num_contracts": cont})
+                     answer=f"格付: {grade} / 銀行与信: {bank_c_v:,}千円 / リース与信: {lease_c_v:,}千円",
+                     updates={"grade": grade, "bank_credit": bank_c_v, "num_bank_credit": bank_c_v,
+                              "lease_credit": lease_c_v, "num_lease_credit": lease_c_v,
+                              "contracts": cont_v, "num_contracts": cont_v})
 
     # ── STEP: contract ──────────────────────────────────────────────────────
     elif sid == "contract":
@@ -559,13 +591,15 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
                                     int(d.get("acceptance_year", datetime.date.today().year)),
                                     1, key="wiz_year")
         acq       = st.number_input("取得価格（千円）", 0, 90_000_000,
-                                    int(d.get("acquisition_cost", 1_000)), 100, key="wiz_acq")
+                                    value=int(d["acquisition_cost"]) if "acquisition_cost" in d else None,
+                                    step=100, key="wiz_acq", placeholder="例: 3000（＝300万円）")
+        acq_v = acq or 0
         _nav_buttons(step, question="契約条件を入力してください",
-                     answer=f"{cust_type} / {cont_type} / {term}ヶ月 / {acq:,}千円",
+                     answer=f"{cust_type} / {cont_type} / {term}ヶ月 / {acq_v:,}千円",
                      updates={"customer_type": cust_type, "contract_type": cont_type,
                               "deal_source": deal_src, "lease_term": term,
                               "acceptance_year": year,
-                              "acquisition_cost": acq, "num_acquisition_cost": acq})
+                              "acquisition_cost": acq_v, "num_acquisition_cost": acq_v})
 
     # ── STEP: qualitative ───────────────────────────────────────────────────
     elif sid == "qualitative":
