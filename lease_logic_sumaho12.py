@@ -1676,3 +1676,10 @@ elif mode == "⚙️ 審査ルール設定":
                             "適用されたルール": " | ".join(c["reasons"]) if c["reasons"] else "基本閾値の影響"
                         })
                     st.dataframe(pd.DataFrame(change_rows), use_container_width=True, hide_index=True)
+
+# ── フローティングBOT（八奈見さん）── 全ページ共通 ──────────────────────────
+try:
+    from components.floating_bot import render_floating_bot
+    render_floating_bot()
+except Exception:
+    pass
