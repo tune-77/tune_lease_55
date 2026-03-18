@@ -450,6 +450,7 @@ def _render_cache_and_ai_honne() -> None:
 
 SIDEBAR_MODES = [
     "🏠 ホーム",
+    "💬 リースくん",
     "📋 審査・分析",
     "📄 審査レポート",
     "🤖 汎用エージェントハブ",

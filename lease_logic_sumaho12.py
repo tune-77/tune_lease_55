@@ -839,6 +839,10 @@ if mode == "🏠 ホーム":
     from components.home import render_home
     render_home()
 
+elif mode == "💬 リースくん":
+    from components.chat_wizard import render_chat_wizard
+    render_chat_wizard()
+
 elif mode == "📄 審査レポート":
     from components.report import render_report
     render_report()
@@ -1001,6 +1005,13 @@ elif mode == "📋 審査・分析":
                 st.session_state.acquisition_cost = acquisition_cost
                 st.session_state.acceptance_year = acceptance_year
                 st.rerun()
+
+            # ウィザード（リースくん）からの自動審査実行
+            if st.session_state.pop("_wizard_submitted", False):
+                _wiz_form = st.session_state.get("wizard_form_result")
+                if _wiz_form:
+                    form_result = _wiz_form
+                    submitted_judge = True
 
             if submitted_judge or st.session_state.get("_auto_judge", False):
                 # 新規審査実行時: BN条件・軍師キャッシュをリセット
