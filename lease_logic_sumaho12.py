@@ -1041,6 +1041,8 @@ elif mode == "📋 審査・分析":
                     _SCRIPT_DIR=_SCRIPT_DIR,
                     capex_lease_data=capex_lease_data,
                 )
+                # ウィザード経由の場合、審査完了後に古いデータが混入しないようクリア
+                st.session_state.pop("wizard_form_result", None)
 
         if nav_mode == "📊 分析結果":
             from components.analysis_results import render_analysis_results
