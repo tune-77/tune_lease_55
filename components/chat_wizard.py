@@ -153,6 +153,15 @@ def _clear_draft() -> None:
 def _init_session(jsic_data: dict) -> None:
     if "wiz_data" not in st.session_state:
         draft = _load_draft()
+        # 24時間以上経過した下書きは自動削除（放置による情報残存を防ぐ）
+        if draft:
+            try:
+                ts = datetime.datetime.fromisoformat(draft.get("ts", "2000-01-01"))
+                if (datetime.datetime.now() - ts).total_seconds() > 86400:
+                    _clear_draft()
+                    draft = {}
+            except Exception:
+                pass
         st.session_state["wiz_data"]    = draft.get("data", {})
         st.session_state["wiz_step"]    = draft.get("step", 0)
         st.session_state["wiz_history"] = draft.get("history", [])
@@ -195,6 +204,99 @@ def _render_history() -> None:
             _humor(entry["humor"])
 
 
+# ── 業種別ユーモアコメント ──────────────────────────────────────────────────
+_INDUSTRY_HUMOR: dict[str, list[str]] = {
+    "D 建設業": [
+        "あちゃー建設業かあ…最近成約できてないんですよね。応援してます。",
+        "建設業！現場の土の匂いが好きです。私、AIですけど。",
+        "建設業かあ。天気に左右されるのが大変ですよね。私は晴れても雨でも同じですが。",
+    ],
+    "E 製造業": [
+        "製造業！工場見学って何度行っても楽しいですよね。私は行けませんが。",
+        "製造業かあ。機械の音が響く職場、ロマンですよね。",
+        "製造業！原価率が気になりますね。私も気になります。とても。",
+    ],
+    "F 電気・ガス・熱供給・水道業": [
+        "ライフライン系ですね。停電は困りますよね。私もサーバーが落ちると困ります。",
+        "インフラ企業！安定感が羨ましいです。私の応答は時々遅いですが。",
+    ],
+    "G 情報通信業": [
+        "情報通信業！同業者に近い気がして少し親近感があります。",
+        "ITですね。SES案件の審査は件数多くてちょっと大変なんですよね…。",
+        "情報通信業！デジタル系は成長著しいですね。私の学習データも更新してほしいです。",
+    ],
+    "H 運輸業，郵便業": [
+        "運輸業！車両リースが多いですよね。私の得意分野です（たぶん）。",
+        "物流かあ。2024年問題、大変でしたね。残業上限の話、私も他人事ではありません。",
+    ],
+    "I 卸売業，小売業": [
+        "卸売・小売！在庫管理が鍵ですよね。私は記憶が揮発性なので在庫ゼロです。",
+        "小売業かあ。消費者の財布の紐が緩む日を祈っています。",
+    ],
+    "J 金融業，保険業": [
+        "金融・保険業！同業に近いような気が…。お互いリスク管理、頑張りましょう。",
+        "金融系！自己資本比率の感覚が鋭そうですね。審査しやすいです（たぶん）。",
+    ],
+    "K 不動産業，物品賃貸業": [
+        "不動産！金利動向が気になりますよね。私も毎日気になっています。",
+        "不動産業かあ。物件ファイナンスとの相性抜群ですね。",
+    ],
+    "L 学術研究，専門・技術サービス業": [
+        "専門・技術系！知的な雰囲気、好きです。私も知的でありたいです。",
+        "コンサルやシンクタンク系ですね。頭脳で勝負、格好いいです。",
+    ],
+    "M 宿泊業，飲食サービス業": [
+        "飲食業！昔コックになりたかったなあ…私、AIですけど。",
+        "宿泊・飲食か。コロナ以降、審査が本当に難しくなりましたよね。一緒に頑張りましょう。",
+        "飲食業！美味しいご飯を提供する会社の審査、気合い入ります。",
+    ],
+    "N 生活関連サービス業，娯楽業": [
+        "娯楽・生活サービス！人々を笑顔にする仕事、素敵ですよね。私も笑顔にしたいです。",
+        "美容・理容・レジャーか。生活を豊かにする業界ですね。",
+    ],
+    "O 教育，学習支援業": [
+        "教育業！未来への投資ですよね。私も毎日学習中です（させられています）。",
+        "学習支援か。先生は大変ですよね。私も毎日質問攻めです。",
+    ],
+    "P 医療，福祉": [
+        "医療・福祉！社会に絶対必要な業界ですね。審査も責任重大と感じます。",
+        "医療系か。お医者さんってリース審査に来ると数字が独特で面白いんですよね。",
+    ],
+    "Q 複合サービス事業": [
+        "複合サービスか。農協・郵便局系ですね。地域密着、いいですよね。",
+    ],
+    "R サービス業（他に分類されないもの）": [
+        "その他サービスか。これが一番幅広くて審査が奥深いんですよね。",
+        "サービス業！多様で面白い業界ですね。私も「その他AI」に分類されそうです。",
+    ],
+    "S 公務": [
+        "公務！安定感ナンバーワンですよね。羨ましい限りです。",
+    ],
+    "A 農業，林業": [
+        "農業・林業！自然相手のお仕事ですね。天気に一喜一憂する気持ち、わかります（わかりません）。",
+    ],
+    "B 漁業": [
+        "漁業！海、広いですよね。私の知識の海とどちらが広いか勝負です（負けます）。",
+    ],
+    "C 鉱業，採石業，砂利採取業": [
+        "鉱業！なかなかレアな審査案件ですね。ちょっと緊張します。",
+    ],
+}
+
+def _get_industry_humor(major: str) -> str:
+    """大分類に対応するユーモアコメントをランダムで1件返す。"""
+    comments = _INDUSTRY_HUMOR.get(major)
+    if not comments:
+        # 完全一致しない場合は部分一致で探す
+        for key, vals in _INDUSTRY_HUMOR.items():
+            if any(c in major for c in key.split()) or any(c in key for c in major.split()):
+                comments = vals
+                break
+    if comments:
+        return random.choice(comments)
+    return f"「{major}」ですね。全力でサポートします！"
+
+
 # ── ステップレンダラー ──────────────────────────────────────────────────────
 def _render_step(step: int, jsic_data: dict, assets: list) -> None:
     sid = _STEPS[step]["id"]
@@ -210,6 +312,13 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
             cur_major = major_keys[0]
         major = st.selectbox("大分類（日本標準産業分類）", major_keys,
                              index=major_keys.index(cur_major), key="wiz_sel_major")
+        # 業種が変わったらユーモアコメントを更新
+        if major != d.get("_last_humor_major"):
+            d["_last_humor_major"] = major
+            d["_industry_humor_msg"] = _get_industry_humor(major)
+        if d.get("_industry_humor_msg"):
+            _humor(d["_industry_humor_msg"])
+
         sub_data = jsic_data.get(major, {}).get("sub", {}) if jsic_data else {}
         sub_keys = list(sub_data.keys()) if sub_data else ["06 総合工事業"]
         cur_sub  = d.get("selected_sub", sub_keys[0])
@@ -593,27 +702,36 @@ def render_chat_wizard() -> None:
                 unsafe_allow_html=True)
     _render_step(step, jsic_data, assets)
 
-    # リセットボタン
+    # 下書き情報・操作ボタン
     st.divider()
-    col_r, _ = st.columns([1, 4])
-    with col_r:
-        if st.button("🔄 最初からやり直す", key="wiz_reset"):
-            for k in ["wiz_step","wiz_data","wiz_history","wiz_humor_steps","wiz_major_keys"]:
-                st.session_state.pop(k, None)
-            _clear_draft()
-            st.rerun()
 
-    # 下書き再開通知
+    # 下書きのタイムスタンプ取得
     draft_ts = ""
     try:
         if os.path.exists(_DRAFT_PATH):
             with open(_DRAFT_PATH, encoding="utf-8") as f:
-                draft_ts = json.load(f).get("ts","")[:16].replace("T"," ")
+                draft_ts = json.load(f).get("ts", "")[:16].replace("T", " ")
     except Exception:
         pass
 
-    if draft_ts:
-        st.caption(f"💾 下書き保存済み（{draft_ts}）— 前回の続きから再開できます")
+    col_r, col_d, col_info = st.columns([1, 1, 3])
+    with col_r:
+        if st.button("🔄 最初からやり直す", key="wiz_reset"):
+            for k in ["wiz_step", "wiz_data", "wiz_history", "wiz_humor_steps", "wiz_major_keys"]:
+                st.session_state.pop(k, None)
+            _clear_draft()
+            st.rerun()
+    with col_d:
+        if draft_ts:
+            if st.button("🗑️ 下書きを削除", key="wiz_delete_draft", help="入力途中の財務情報を端末から消去します。審査済みのDBデータは削除されません。"):
+                for k in ["wiz_step", "wiz_data", "wiz_history", "wiz_humor_steps", "wiz_major_keys"]:
+                    st.session_state.pop(k, None)
+                _clear_draft()
+                st.success("下書きを削除しました。審査済みデータ（DB）は保持されています。")
+                st.rerun()
+    with col_info:
+        if draft_ts:
+            st.caption(f"💾 下書き保存済み（{draft_ts}）— 前回の続きから再開できます  |  ⚠️ 財務情報が一時保存されています")
 
     st.markdown('<div class="wiz-footer">リースくん v1.0 ── 温水式 リース審査AI</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)

@@ -20,6 +20,8 @@ data/*.db
 data/*.sqlite
 data/*.jsonl
 data/backups/
+# ウィザード下書き（財務情報を含む一時ファイル）
+data/wizard_draft.json
 
 # ログ・デバッグ出力
 logs/
