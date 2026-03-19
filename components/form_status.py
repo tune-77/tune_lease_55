@@ -51,6 +51,10 @@ def render_status_registration():
                         competitor_rate = st.number_input("他社提示金利 (%)", value=0.0, step=0.01, format="%.2f", help="競合の提示条件があれば入力")
                         
                         if st.form_submit_button("登録する"):
+                            if res_status == "成約" and final_rate == 0.0:
+                                st.warning("💡 獲得レートを入力すると成約分析の精度が向上します")
+                            if res_status == "失注" and lost_reason.strip() == "":
+                                st.warning("💡 失注理由を入力すると定性分析の精度が向上します")
                             target_id = case.get("id")
                             updated = False
                             for c in all_cases:

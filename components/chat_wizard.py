@@ -351,6 +351,27 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
 
     # ── STEP: industry ─────────────────────────────────────────────────────
     if sid == "industry":
+        # 前回案件の複写ボタン
+        _last_case_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "data", "last_case.json"
+        )
+        if os.path.exists(_last_case_path):
+            if st.button("📋 前回案件を複写", key="wiz_copy_last", help="前回入力した案件データを引き継ぎます"):
+                try:
+                    import json as _json
+                    with open(_last_case_path, encoding="utf-8") as _f:
+                        _last = _json.load(_f)
+                    # 内部管理キーは引き継がない
+                    _skip = {"_last_humor_major", "_industry_humor_msg", "_frag_major", "_frag_sub"}
+                    for _k, _v in _last.items():
+                        if _k not in _skip:
+                            st.session_state["wiz_data"][_k] = _v
+                    st.toast("✅ 前回案件を複写しました", icon="📋")
+                    st.rerun()
+                except Exception:
+                    st.warning("前回案件の読み込みに失敗しました")
+
         _bot("はじめまして！リースくんです 🎩<br>"
              "まず、審査対象の<b>業種</b>を選んでください。<br>"
              "大分類→中分類の順に絞り込んでいきます。")
@@ -710,6 +731,18 @@ def _submit_wizard(d: dict) -> None:
     }
 
     st.session_state["wizard_form_result"] = form_result
+
+    # 前回案件として保存（複写ボタン用）
+    try:
+        import json as _json
+        _last_case_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "data", "last_case.json"
+        )
+        with open(_last_case_path, "w", encoding="utf-8") as _f:
+            _json.dump(d, _f, ensure_ascii=False, default=str)
+    except Exception:
+        pass
 
     # score_calculation.py は st.session_state から数値を読み直すため全キーを書き込む
     for k in ["nenshu", "item9_gross", "rieki", "item4_ord_profit", "item5_net_income",

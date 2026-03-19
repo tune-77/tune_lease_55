@@ -12,8 +12,51 @@ components/floating_bot.py
     render_floating_bot()   # 各ページの末尾で呼ぶ
 """
 from __future__ import annotations
+import json
+import pathlib
 import random
+import time
 import streamlit as st
+
+# ── 審査結果コメント（humor_comments_yanami.json）─────────────────────────────
+_YANAMI_JSON = pathlib.Path(__file__).parent.parent / "data" / "humor_comments_yanami.json"
+
+def _load_yanami_result_data() -> list[dict]:
+    try:
+        return json.loads(_YANAMI_JSON.read_text(encoding="utf-8"))["comments"]
+    except Exception:
+        return []
+
+_YANAMI_RESULT_DATA: list[dict] = _load_yanami_result_data()
+
+
+def _pd_to_risk(pd_percent: float) -> str:
+    """pd_percent(%) → リスクラベル（report_generator.py と同基準）"""
+    p = pd_percent / 100
+    if p < 0.05:
+        return "低リスク"
+    elif p < 0.15:
+        return "中リスク"
+    elif p < 0.30:
+        return "高リスク"
+    return "極高リスク"
+
+
+def _pick_result_comment(risk_label: str, industry_major: str) -> str:
+    """審査結果に応じた八奈見コメントをJSONから選ぶ。業種優先・全業種フォールバック。"""
+    # 業種マッチング：JSONの industry 文字列が industry_major に含まれるか
+    industry_pool = [
+        c for c in _YANAMI_RESULT_DATA
+        if c["risk"] == risk_label and c["industry"] != "全業種"
+        and any(kw in (industry_major or "") for kw in c["industry"].replace("・", "/").split("/"))
+    ]
+    if industry_pool:
+        return random.choice(industry_pool)["comment"]
+    # 全業種フォールバック
+    fallback = [c for c in _YANAMI_RESULT_DATA if c["risk"] == risk_label and c["industry"] == "全業種"]
+    if fallback:
+        return random.choice(fallback)["comment"]
+    return random.choice(_COMMENTS.get("random_idle", ["審査完了です。"]))  # 最終フォールバック
 
 # ── CSS ────────────────────────────────────────────────────────────────────
 _CSS = """
@@ -247,6 +290,8 @@ _WATCH_KEYS = [
 _PREV_KEY   = "_fbot_prev"
 _CUR_MSG    = "_fbot_cur_msg"
 _CUR_SHOWN  = "_fbot_shown_triggers"  # 同一セッション内で既出のトリガー管理
+_INIT_TIME  = "_fbot_init_time"       # 起動時刻（初回コメント遅延用）
+_BOOT_DELAY = 10.0                    # 起動後この秒数はコメントを抑制
 
 
 def _snapshot(ss: dict) -> dict:
@@ -415,10 +460,19 @@ def render_floating_bot() -> None:
     各ページ末尾で呼ぶ。session_stateの変化を検知してコメントを表示する。
     """
     ss = st.session_state
+
+    # 起動時刻を記録（初回のみ）
+    if _INIT_TIME not in ss:
+        ss[_INIT_TIME] = time.time()
+
     changed = _changed_keys(ss)
 
     if not changed:
         # 変化なし → 前回のコメントをそのまま再表示（アニメーションは再生しない）
+        return
+
+    # 起動後 _BOOT_DELAY 秒間はコメントを抑制（起動直後の誤トリガー防止）
+    if time.time() - ss[_INIT_TIME] < _BOOT_DELAY:
         return
 
     trigger = _pick_trigger(ss, changed)

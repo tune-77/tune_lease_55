@@ -12,7 +12,7 @@ import requests
 import streamlit as st
 
 ANYTHING_LLM_BASE_URL = "http://127.0.0.1:3001/api/v1"
-ANYTHING_LLM_WORKSPACE = "71b18af2-ab59-4bcb-874c-4cb329bd1b41"
+ANYTHING_LLM_WORKSPACE = "lease"
 
 
 def _get_anything_llm_key() -> str:
@@ -87,6 +87,52 @@ def query_anything_llm(message: str, workspace_slug: str = ANYTHING_LLM_WORKSPAC
         return ""
     except Exception:
         return ""
+
+
+def chat_anything_llm(messages: list, workspace_slug: str = ANYTHING_LLM_WORKSPACE, timeout: int = 120) -> dict:
+    """
+    messages ([{"role": "...", "content": "..."}]) を受け取り AnythingLLM でチャットして
+    {"message": {"content": "..."}} 形式で返す。
+    Ollama / Gemini と同じ戻り値形式にすることで ai_chat.py から透過的に呼べる。
+    """
+    api_key = _get_anything_llm_key()
+    if not api_key:
+        return {"message": {"content": "AnythingLLM の APIキーが設定されていません。サイドバーで入力してください。"}}
+
+    # messages を1つのテキストに結合してAnythingLLMへ送る
+    # system → 先頭に、user/assistant はロールを明示して連結
+    system_parts = [m["content"] for m in messages if m.get("role") == "system"]
+    conv_parts = []
+    for m in messages:
+        role = m.get("role", "user")
+        if role == "system":
+            continue
+        label = "ユーザー" if role == "user" else "アシスタント"
+        conv_parts.append(f"[{label}] {m.get('content', '')}")
+
+    combined = ""
+    if system_parts:
+        combined += "\n".join(system_parts) + "\n\n"
+    combined += "\n".join(conv_parts)
+
+    try:
+        url = f"{ANYTHING_LLM_BASE_URL}/workspace/{workspace_slug}/chat"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {"message": combined, "mode": "chat"}
+        resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
+        if resp.status_code == 200:
+            text = resp.json().get("textResponse", "") or ""
+            return {"message": {"content": text or "（AnythingLLM から空の応答でした）"}}
+        return {"message": {"content": f"AnythingLLM エラー: HTTP {resp.status_code} — {resp.text[:200]}"}}
+    except requests.exceptions.ConnectionError:
+        return {"message": {"content": "AnythingLLM に接続できません。http://127.0.0.1:3001 が起動しているか確認してください。"}}
+    except requests.exceptions.Timeout:
+        return {"message": {"content": f"AnythingLLM がタイムアウトしました（{timeout}秒）。"}}
+    except Exception as e:
+        return {"message": {"content": f"AnythingLLM 呼び出しエラー: {e}"}}
 
 
 def get_anything_llm_context(q: str, res: dict | None = None, industry: str = "") -> str:
