@@ -1132,32 +1132,15 @@ def render_analysis_results(
                         fig_top5 = plot_scoring_top5_factors_plotly(scoring_result)
                         if fig_top5:
                             st.plotly_chart(fig_top5, use_container_width=True, key="plotly_scoring_top5")
-                        else:
-                            # グラフが描けない場合はテキスト表示
-                            _feat_ja = {
-                                "ROA": "総資産利益率（ROA）", "ROE": "自己資本利益率（ROE）",
-                                "operating_margin": "売上高営業利益率", "net_margin": "売上高純利益率",
-                                "equity_ratio": "自己資本比率", "debt_ratio": "負債比率", "debt_equity_ratio": "負債対自己資本比率",
-                                "machinery_ratio": "機械設備比率", "fixed_asset_ratio": "固定資産比率",
-                                "fixed_to_equity": "固定資産対純資産比率", "machinery_equity_coverage": "機械設備の自己資本カバー率",
-                                "rent_to_revenue": "リース料負担率（対売上高）", "operating_profit_to_rent": "営業利益のリース料カバー率",
-                                "rent_to_equity": "リース料の純資産負担率", "lease_dependency": "リース依存度",
-                                "total_fixed_cost_ratio": "総固定費負担率", "depreciation_to_revenue": "減価償却費率（対売上高）",
-                                "EBITDA_margin": "EBITDAマージン", "depreciation_rate": "設備償却進行度",
-                                "asset_turnover": "総資産回転率", "fixed_asset_turnover": "固定資産回転率",
-                                "log_revenue": "売上高（対数）", "log_assets": "総資産（対数）",
-                                "is_loss": "赤字フラグ", "is_operating_loss": "営業赤字フラグ",
-                                "low_equity_ratio": "自己資本比率20%未満", "low_ROA": "ROA2%未満",
-                                "high_rent_burden": "リース負担大", "rent_exceeds_profit": "リース料＞営業利益",
-                                "industry_encoded": "業種（コード）",
-                            }
-                            for idx, r in enumerate(top5, 1):
-                                if ":" in r:
-                                    _name, _val = r.split(":", 1)
-                                    _label = _feat_ja.get(_name.strip(), _name.strip())
-                                else:
-                                    _label, _val = r, ""
-                                st.caption(f"#{idx} {_label}: {_val.strip()}")
+                        # 自然言語説明（グラフの有無に関わらず常に表示）
+                        try:
+                            from scoring.explainer import explain_top_reasons
+                            explanations = explain_top_reasons(top5)
+                        except Exception:
+                            explanations = top5
+                        with st.expander("📖 判定要因の詳細説明", expanded=False):
+                            for idx, explanation in enumerate(explanations, 1):
+                                st.markdown(f"**#{idx}** {explanation}")
                 else:
                     st.info(
                         "**デフォルト確率を出すには、次の2つが必要です。**\n\n"
@@ -1168,6 +1151,14 @@ def render_analysis_results(
                         "     `lease_logic_sumaho10/scoring/models/industry_specific/` にコピーしてください\n\n"
                         "※ モデルがなくても、本システムのスコア（成約率）だけで審査はできます。"
                     )
+
+            # ── 補助金マッチング表示 ────────────────────────────────────────────
+            try:
+                from components.subsidy_master import render_subsidy_cards
+                _ind_code = (selected_sub.split(" ")[0] if " " in selected_sub else selected_sub)
+                render_subsidy_cards(industry_code=_ind_code, asset_name=asset_name)
+            except Exception:
+                pass
 
             st.divider()
             # ----- カード: 本件スコア内訳・利回り -----
