@@ -337,6 +337,31 @@ def render_analysis_results(
                 _category  = _ts.get("category", "—")
                 _rationale = _ts.get("rationale", "")
                 _rationale_html = f'<div style="font-size:0.72rem;color:#94a3b8;margin-top:0.5rem;">{_rationale}</div>' if _rationale else ''
+
+                # ── B-1: 物件グレードバッジ（スコアカード最上部） ────────────
+                try:
+                    from category_config import SCORE_GRADES as _SG
+                    _ag_info = next((g for g in _SG if _as_score >= g["min"]), _SG[-1])
+                    _ag_label = _ag_info["label"]
+                    _ag_color = _ag_info["color"]
+                    _ag_text  = _ag_info["text"]
+                    st.markdown(
+                        f'<div style="margin-bottom:0.5rem;">'
+                        f'<span style="background:{_ag_color};color:#fff;font-size:0.78rem;'
+                        f'font-weight:700;padding:3px 10px;border-radius:20px;letter-spacing:0.04em;">'
+                        f'物件グレード {_ag_label} — {_ag_text}</span>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                    # 物件グレードが総合グレードと乖離している場合にアラート
+                    if _ag_label != _ts_label:
+                        st.warning(
+                            f"⚠️ 物件グレード **[{_ag_label}]** と総合グレード **[{_ts_label}]** が乖離しています。"
+                            f"物件リスクが総合判断に影響しています。"
+                        )
+                except Exception:
+                    pass
+
                 st.markdown(f"""
                 <div style="
                   background:#f8fafc;
@@ -389,6 +414,87 @@ def render_analysis_results(
                         st.metric("💰 推奨残価率", _res_pct)
                     with _rec_col3:
                         st.info(_rec_note or "—", icon="📋")
+
+                # ── B-2: カテゴリ別評価ウェイト レーダーチャート ──────────────
+                try:
+                    from category_config import CATEGORY_SCORE_ITEMS as _CSI
+                    import plotly.graph_objects as _go
+
+                    _score_items = _ts.get("item_scores")  # calc_asset_score() 経由の詳細スコア
+                    _cat_items   = _CSI.get(_category, [])
+
+                    if _cat_items:
+                        _labels = [i["label"] for i in _cat_items]
+                        if _score_items:
+                            # 詳細スコアがある場合: 実スコアをレーダーチャートで表示
+                            _vals = [_score_items.get(i["id"], {}).get("score", 50) for i in _cat_items]
+                            _radar_title = f"物件評価 — {_category} 各項目スコア"
+                            _fill_color  = "rgba(30, 58, 95, 0.25)"
+                        else:
+                            # 詳細スコアがない場合: 重み構成を可視化
+                            _vals = [i["weight"] for i in _cat_items]
+                            _radar_title = f"評価ウェイト構成 — {_category}"
+                            _fill_color  = "rgba(245, 158, 11, 0.2)"
+
+                        _fig_radar = _go.Figure(_go.Scatterpolar(
+                            r=_vals + [_vals[0]],
+                            theta=_labels + [_labels[0]],
+                            fill="toself",
+                            fillcolor=_fill_color,
+                            line=dict(color="#1e3a5f", width=2),
+                            name=_category,
+                        ))
+                        _fig_radar.update_layout(
+                            polar=dict(
+                                radialaxis=dict(visible=True, range=[0, 100]),
+                                angularaxis=dict(gridcolor="#e2e8f0"),
+                                bgcolor="white",
+                            ),
+                            title=dict(text=_radar_title, font=dict(size=12, color="#334155")),
+                            paper_bgcolor="#f8fafc",
+                            margin=dict(t=55, b=20, l=20, r=20),
+                            height=310,
+                            showlegend=False,
+                        )
+                        st.plotly_chart(_fig_radar, use_container_width=True, key="asset_radar_chart")
+                        if not _score_items:
+                            st.caption("📌 詳細スコア未入力のため、評価ウェイト構成を表示しています")
+                except Exception:
+                    pass
+
+                # ── B-3: 動的ウェイト調整の差分テーブル ─────────────────────
+                try:
+                    from category_config import CATEGORY_SCORE_ITEMS as _CSI2
+                    _cat_items2   = _CSI2.get(_category, [])
+                    _item_scores2 = _ts.get("item_scores")  # 調整後ウェイトを含む
+                    _w_adjusted   = _ts.get("weight_adjusted", False)
+
+                    if _cat_items2:
+                        _expander_label = (
+                            "⚙️ 動的ウェイト調整が適用されました — 詳細を表示" if _w_adjusted
+                            else "⚙️ 評価項目ウェイト構成"
+                        )
+                        with st.expander(_expander_label, expanded=_w_adjusted):
+                            import pandas as _pd
+                            _rows = []
+                            for _it in _cat_items2:
+                                _base_w = _it["weight"]
+                                _adj_w  = (_item_scores2.get(_it["id"], {}).get("weight", _base_w)
+                                           if _item_scores2 else _base_w)
+                                _diff   = round(_adj_w - _base_w, 1)
+                                _diff_str = f"+{_diff}" if _diff > 0 else str(_diff) if _diff != 0 else "—"
+                                _rows.append({
+                                    "評価項目":   _it["label"],
+                                    "基本ウェイト": f"{_base_w}",
+                                    "調整後ウェイト": f"{_adj_w:.1f}" if _w_adjusted else "—",
+                                    "差分":        _diff_str if _w_adjusted else "—",
+                                    "タグ":        _it.get("tag") or "—",
+                                })
+                            st.dataframe(_pd.DataFrame(_rows), hide_index=True, use_container_width=True)
+                            if _w_adjusted:
+                                st.caption("契約条件（リース期間・買取オプション・大手メーカー）に応じてウェイトが動的調整されました")
+                except Exception:
+                    pass
 
                 st.divider()
 
