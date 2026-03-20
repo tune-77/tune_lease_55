@@ -11,8 +11,19 @@ import os
 import random
 import sqlite3
 import time
+from contextlib import closing
 from datetime import datetime
 from typing import Generator
+
+# DB 操作は専用モジュールに委譲（後方互換のため re-export）
+from components.shinsa_gunshi_db import (  # noqa: E402
+    init_db,
+    save_case,
+    update_result,
+    load_history,
+    get_success_patterns,
+    GUNSHI_DB_PATH as _GUNSHI_DB_PATH_FROM_DB,
+)
 
 import requests
 import streamlit as st
@@ -43,121 +54,6 @@ def _get_gemini_key() -> str:
 # 後方互換用（古いコードが参照している場合のため）
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 _GEMINI_URL    = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
-
-# ==============================================================================
-# DB 初期化
-# ==============================================================================
-
-def init_db() -> None:
-    """SQLite テーブルを初期化（なければ作成）。マイグレーションも実行。"""
-    conn = sqlite3.connect(GUNSHI_DB_PATH)
-    cur = conn.cursor()
-    cur.executescript("""
-        CREATE TABLE IF NOT EXISTS gunshi_cases (
-            id             INTEGER PRIMARY KEY AUTOINCREMENT,
-            created_at     TEXT    NOT NULL,
-            industry       TEXT    NOT NULL,
-            score          REAL    NOT NULL,
-            pd_pct         REAL    NOT NULL,
-            resale         TEXT    NOT NULL,
-            repeat_cnt     INTEGER NOT NULL DEFAULT 0,
-            subsidy        INTEGER NOT NULL DEFAULT 0,
-            bank           INTEGER NOT NULL DEFAULT 0,
-            intuition      INTEGER NOT NULL DEFAULT 3,
-            prior_prob     REAL    NOT NULL,
-            posterior      REAL    NOT NULL,
-            result         TEXT    NOT NULL DEFAULT '未登録',
-            notes          TEXT    NOT NULL DEFAULT ''
-        );
-
-        CREATE TABLE IF NOT EXISTS phrase_weights (
-            phrase_id   TEXT    PRIMARY KEY,
-            industry    TEXT    NOT NULL,
-            wins        INTEGER NOT NULL DEFAULT 0,
-            total       INTEGER NOT NULL DEFAULT 0
-        );
-    """)
-    # マイグレーション: lease_case_id カラムを追加（既存DBに対応）
-    existing_cols = [r[1] for r in cur.execute("PRAGMA table_info(gunshi_cases)").fetchall()]
-    if "lease_case_id" not in existing_cols:
-        cur.execute("ALTER TABLE gunshi_cases ADD COLUMN lease_case_id TEXT DEFAULT ''")
-    conn.commit()
-    conn.close()
-
-
-def save_case(data: dict) -> int:
-    """案件をDBに保存し、生成された ID を返す。"""
-    conn = sqlite3.connect(GUNSHI_DB_PATH)
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO gunshi_cases
-            (created_at, industry, score, pd_pct, resale, repeat_cnt,
-             subsidy, bank, intuition, prior_prob, posterior, result, notes)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-    """, (
-        datetime.now().isoformat(timespec="seconds"),
-        data["industry"], data["score"], data["pd_pct"],
-        data["resale"], data["repeat_cnt"], int(data["subsidy"]),
-        int(data["bank"]), data["intuition"],
-        data["prior_prob"], data["posterior"],
-        data.get("result", "未登録"), data.get("notes", ""),
-    ))
-    row_id = cur.lastrowid
-    conn.commit()
-    conn.close()
-    return row_id
-
-
-def update_result(case_id: int, result: str, notes: str = "") -> None:
-    """成約/非成約を登録する。"""
-    conn = sqlite3.connect(GUNSHI_DB_PATH)
-    cur = conn.cursor()
-    cur.execute(
-        "UPDATE gunshi_cases SET result=?, notes=? WHERE id=?",
-        (result, notes, case_id)
-    )
-    conn.commit()
-    conn.close()
-
-
-def load_history(limit: int = 200) -> list[dict]:
-    """最新 n 件の案件履歴を返す。"""
-    conn = sqlite3.connect(GUNSHI_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT * FROM gunshi_cases ORDER BY id DESC LIMIT ?", (limit,)
-    )
-    rows = [dict(r) for r in cur.fetchall()]
-    conn.close()
-    return rows
-
-
-def get_success_patterns(industry: str) -> dict:
-    """同業種の成約率と成功事例 3 件を返す。"""
-    conn = sqlite3.connect(GUNSHI_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT * FROM gunshi_cases WHERE industry=? ORDER BY id DESC LIMIT 50",
-        (industry,)
-    )
-    rows = [dict(r) for r in cur.fetchall()]
-    conn.close()
-
-    total = len(rows)
-    wins  = sum(1 for r in rows if r["result"] == "成約")
-    success_ratio = wins / total if total else 0.0
-    success_samples = [r for r in rows if r["result"] == "成約"][:3]
-    fail_samples    = [r for r in rows if r["result"] == "非成約"][:2]
-    return {
-        "total": total,
-        "wins": wins,
-        "success_ratio": success_ratio,
-        "success_samples": success_samples,
-        "fail_samples": fail_samples,
-    }
-
 
 # ==============================================================================
 # 100選マスターデータ
@@ -426,13 +322,12 @@ def _learn_evidence_weights_from_db() -> dict:
     """
     try:
         init_db()
-        conn = sqlite3.connect(GUNSHI_DB_PATH)
-        cur  = conn.cursor()
-        rows = cur.execute(
-            "SELECT bank, subsidy, repeat_cnt, resale, result FROM gunshi_cases "
-            "WHERE result IN ('成約','非成約')"
-        ).fetchall()
-        conn.close()
+        with closing(sqlite3.connect(GUNSHI_DB_PATH)) as conn:
+            cur = conn.cursor()
+            rows = cur.execute(
+                "SELECT bank, subsidy, repeat_cnt, resale, result FROM gunshi_cases "
+                "WHERE result IN ('成約','非成約')"
+            ).fetchall()
     except Exception:
         return {}
 
