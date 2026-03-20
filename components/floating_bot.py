@@ -466,8 +466,9 @@ def _pick_comment(trigger: str) -> str:
     return random.choice(pool)
 
 
-def _render_bubble(comment: str) -> None:
-    st.markdown(_CSS, unsafe_allow_html=True)
+def _render_bubble(comment: str, display_secs: float = 8.0) -> None:
+    css_with_duration = _CSS.replace("8s ease-in-out", f"{display_secs:.1f}s ease-in-out")
+    st.markdown(css_with_duration, unsafe_allow_html=True)
     safe = comment.replace("<", "&lt;").replace(">", "&gt;")
     st.markdown(f"""
 <div class="yanami-wrap">
@@ -510,4 +511,5 @@ def render_floating_bot() -> None:
 
     comment = _pick_comment(trigger)
     ss[_CUR_MSG] = comment
-    _render_bubble(comment)
+    display_secs = max(6.0, len(comment) * 0.2)
+    _render_bubble(comment, display_secs)
