@@ -12,6 +12,40 @@ from typing import Dict, Any, Optional, List
 
 warnings.filterwarnings("ignore")
 
+# ── モデルキャッシュ（Streamlit内外どちらでも動作）──────────────────────────
+_MODEL_CACHE: "dict[str, dict]" = {}
+
+
+def _load_models(base_path: str) -> dict:
+    """モデルファイルを初回のみロードしてキャッシュする。毎回のjoblib.loadを回避。"""
+    if base_path in _MODEL_CACHE:
+        return _MODEL_CACHE[base_path]
+
+    import joblib
+    from .feature_engineering_custom import CustomFinancialFeatures
+    from .industry_hybrid_model import IndustrySpecificHybridModel
+    from .model import CreditScoringModel
+
+    base = Path(base_path)
+    engine = CustomFinancialFeatures()
+    industry_model = IndustrySpecificHybridModel()
+    industry_model.industry_coefficients = joblib.load(base / "industry_coefficients.pkl")
+    industry_model.industry_intercepts = joblib.load(base / "industry_intercepts.pkl")
+    unified_ai = CreditScoringModel(model_type="lightgbm")
+    unified_ai.load_model(str(base / "unified_ai_model.pkl"))
+    scaler = joblib.load(base / "scaler.pkl")
+    label_encoder = joblib.load(base / "label_encoder.pkl")
+
+    _MODEL_CACHE[base_path] = {
+        "engine": engine,
+        "industry_model": industry_model,
+        "unified_ai": unified_ai,
+        "scaler": scaler,
+        "label_encoder": label_encoder,
+    }
+    return _MODEL_CACHE[base_path]
+
+
 # 円単位で渡す想定
 def _ensure_float(v: Any) -> float:
     if v is None: return 0.0
@@ -80,11 +114,7 @@ def predict_one(
     try:
         import numpy as np
         import pandas as pd
-        import joblib
-        from .feature_engineering_custom import CustomFinancialFeatures
-        from .industry_hybrid_model import IndustrySpecificHybridModel
-        from .model import CreditScoringModel
-    except Exception as e:
+    except Exception:
         return None
 
     if base_path is None:
@@ -110,14 +140,12 @@ def predict_one(
     rent_expense = _ensure_float(rent_expense)
 
     try:
-        engine = CustomFinancialFeatures()
-        industry_model = IndustrySpecificHybridModel()
-        industry_model.industry_coefficients = joblib.load(base / "industry_coefficients.pkl")
-        industry_model.industry_intercepts = joblib.load(base / "industry_intercepts.pkl")
-        unified_ai = CreditScoringModel(model_type="lightgbm")
-        unified_ai.load_model(str(base / "unified_ai_model.pkl"))
-        scaler = joblib.load(base / "scaler.pkl")
-        label_encoder = joblib.load(base / "label_encoder.pkl")
+        models = _load_models(str(base))
+        engine = models["engine"]
+        industry_model = models["industry_model"]
+        unified_ai = models["unified_ai"]
+        scaler = models["scaler"]
+        label_encoder = models["label_encoder"]
     except Exception:
         return None
 
