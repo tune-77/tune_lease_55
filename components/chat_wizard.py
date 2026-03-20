@@ -70,17 +70,48 @@ _WIZ_CSS = """
 </style>
 """
 
-# ── ユーモアコメント一覧 ──────────────────────────────────────────────────
+# ── ユーモアコメント一覧（観察者スタイルに統一）─────────────────────────
 _HUMOR_COMMENTS = [
-    "ちなみに弊社の審査AIは徹夜で学習しました。目の下のクマは業界平均より深いです。",
-    "この項目で高スコアの企業ほど、担当者の週末出勤率が低い傾向にあります（当社調べ）。",
-    "リース審査の神様がいるとすれば、今ちょうどあなたの入力内容を覗き見しています。",
-    "営業利益率がよければ、次の飲み会の経費は通りやすくなります。たぶん。",
-    "ここを入力し終えると、あなたは今日の審査AI最大の理解者になります。",
-    "この情報は厳重に管理されます。ただし弊社サーバーは少し暑がりです。",
-    "上司が「直感で行け」と言った瞬間、このシステムが産声を上げました。",
-    "DSCRが1.2倍を下回ると、私（リースくん）が少し不安な顔をします。見えませんが。",
+    "数字の向こう側にある現場を、想像しながら読んでいます。",
+    "財務データは、その会社の歴史を静かに語ってくれます。",
+    "良い審査とは、数字と現場の両方に耳を傾けることだと思っています。",
+    "ここまで入力してくれた情報が、判断の精度を高めてくれます。ありがとうございます。",
+    "数字は嘘をつかない。でも文脈を読むのは人間にしかできない。一緒に読みましょう。",
+    "業種によって「良い数字」の基準は変わります。比較する相手を間違えないように。",
+    "審査は減点ゲームではなく、可能性を見つける作業です。",
+    "入力中は難しく感じても、後で振り返ると意外とシンプルな話だったりします。",
 ]
+
+# ── ステップ別リアクション ───────────────────────────────────────────────
+def _get_step_reaction(sid: str, wiz_data: dict) -> str:
+    """ステップ完了時に入力値を見て返す一言コメント。空文字なら表示しない。"""
+    if sid == "pl":
+        rieki = wiz_data.get("rieki", 0)
+        try:
+            rieki = float(rieki)
+        except (TypeError, ValueError):
+            rieki = 0.0
+        if rieki < 0:
+            return "赤字ですね。でも先行投資の可能性もある。文脈を聞かせてほしいところです。"
+        if rieki == 0:
+            return "損益トントンですか。この状況がどこから来ているか、定性評価で補足できます。"
+    elif sid == "assets_main":
+        net = wiz_data.get("net_assets", 0)
+        try:
+            net = float(net)
+        except (TypeError, ValueError):
+            net = 0.0
+        if net < 0:
+            return "純資産がマイナスですか。数字の背景を定性評価で丁寧に補いましょう。"
+    elif sid == "credit":
+        grade = wiz_data.get("grade", "")
+        if str(grade) in ["C", "D", "E"]:
+            return "格付が低めですね。財務以外の強みが判断を左右することもあります。"
+    elif sid == "deal":
+        comp = wiz_data.get("competitor", "")
+        if str(comp) == "有":
+            return "競合がいる案件ですね。条件面だけでなく関係性の優位も大事です。"
+    return ""
 
 # ── ステップ定義（損益を1ステップに統合 → 10ステップ）─────────────────────
 _STEPS = [
@@ -326,9 +357,17 @@ def _advance(step: int, question: str, answer: str, updates: dict) -> None:
     next_step = step + 1 if step < _N_STEPS - 1 else step
     _save_draft(d, step=next_step, history=st.session_state.get("wiz_history", []))
 
+    # ランダムユーモア（既存の2ステップ）
     humor_comment = ""
     if step in st.session_state.get("wiz_humor_steps", []):
         humor_comment = random.choice(_HUMOR_COMMENTS)
+
+    # ステップ別リアクション（入力値に応じた一言）
+    sid = _STEPS[step]["id"] if step < len(_STEPS) else ""
+    step_reaction = _get_step_reaction(sid, d)
+    # リアクションがあればユーモアコメントより優先
+    if step_reaction:
+        humor_comment = step_reaction
 
     st.session_state["wiz_history"].append({
         "question": question,
