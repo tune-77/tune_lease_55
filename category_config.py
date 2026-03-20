@@ -76,14 +76,14 @@ CATEGORY_SCORE_ITEMS = {
         {
             "id": "versatility",
             "label": "汎用性",
-            "weight": 30,
+            "weight": 25,
             "help": "複数業種・用途に使える=スコア高",
             "tag": None,
         },
         {
             "id": "maker_brand",
             "label": "メーカーブランド",
-            "weight": 25,
+            "weight": 20,
             "help": "大手・有名メーカー=スコア高（流動性・サポート品質を反映）",
             "tag": "liquidity_support",
         },
@@ -102,9 +102,16 @@ CATEGORY_SCORE_ITEMS = {
             "tag": "residual_value",
         },
         {
+            "id": "customization_level",
+            "label": "カスタマイズ度の低さ",
+            "weight": 15,
+            "help": "標準仕様・汎用品=スコア高。専用品・カスタム品=転売困難でスコア低",
+            "tag": "residual_value",
+        },
+        {
             "id": "resale_market",
             "label": "再販市場",
-            "weight": 10,
+            "weight": 5,
             "help": "中古・転売市場が確立されている=スコア高",
             "tag": "residual_value",
         },
@@ -136,7 +143,7 @@ CATEGORY_SCORE_ITEMS = {
             "label": "EV技術変化リスク低さ",
             "weight": 10,
             "help": "ガソリン・ハイブリッド=中、純EV=技術変化リスクで要注意",
-            "tag": "obsolescence_risk",
+            "tag": "ev_risk",
         },
         {
             "id": "modification",

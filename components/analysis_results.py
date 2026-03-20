@@ -496,6 +496,37 @@ def render_analysis_results(
                 except Exception:
                     pass
 
+                # ── #7: 満了時推定スコア ────────────────────────────────────
+                try:
+                    from asset_scorer import calc_end_of_lease_score as _calc_eol
+                    _lease_mos = int(res.get("lease_months", 0) or 0)
+                    _asset_nm  = res.get("asset_name", "") or ""
+                    if _lease_mos > 0 and _as_score > 0:
+                        _eol = _calc_eol(_category, _as_score, _lease_mos, _asset_nm)
+                        _eol_color = (
+                            "#ef4444" if _eol["is_risky"] else
+                            "#f97316" if _eol["depreciation_ratio"] >= 0.7 else
+                            "#22c55e"
+                        )
+                        with st.expander("📉 満了時推定スコア（耐用年数ベース）", expanded=_eol["is_risky"]):
+                            _ec1, _ec2, _ec3 = st.columns(3)
+                            with _ec1:
+                                st.metric(
+                                    "満了時推定スコア",
+                                    f"{_eol['end_score']:.1f}点",
+                                    delta=f"{_eol['end_score'] - _as_score:.1f}点",
+                                    delta_color="normal",
+                                )
+                            with _ec2:
+                                st.metric("耐用年数消費率", f"{_eol['depreciation_ratio']:.0%}")
+                            with _ec3:
+                                st.metric("満了後残余寿命", f"{_eol['remaining_life_years']:.1f}年")
+                            st.caption(_eol["note"])
+                            if _eol["is_risky"]:
+                                st.warning("⚠️ 満了時の残余寿命が1年未満です。残価設定・延長リースには十分な注意が必要です。")
+                except Exception:
+                    pass
+
                 st.divider()
 
             # ── ⚔️ 軍師AIコメント（審査結果に直接表示）──────────────────────
