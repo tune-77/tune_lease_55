@@ -990,7 +990,136 @@ class ScreeningSession:
             "=" * 48,
         ]
 
-        return "\n".join(lines)
+        text_result = "\n".join(lines)
+
+        # Block Kit ブロック生成（スコアリング成功時のみ）
+        if result:
+            blocks = _build_result_blocks(
+                company=company,
+                industry=industry,
+                asset_name=d.get("asset_name", "—"),
+                lease_amount_man=lease_amount_man,
+                lease_term=lease_term,
+                score=score,
+                decision=decision,
+                hybrid=hybrid,
+                ai_prob=ai_prob,
+                legacy=legacy,
+                top5=top5,
+                equity_ratio=equity / total_assets if total_assets > 0 else None,
+                op_ratio=operating_profit / revenue if revenue > 0 else None,
+                roa=net_income / total_assets if total_assets > 0 else None,
+                intuition=int(d.get("intuition_score", 3)),
+            )
+            return {"text": text_result, "blocks": blocks}
+
+        return text_result
+
+
+def _build_result_blocks(
+    company: str,
+    industry: str,
+    asset_name: str,
+    lease_amount_man: float,
+    lease_term: int,
+    score: float,
+    decision: str,
+    hybrid: float,
+    ai_prob: float,
+    legacy: float,
+    top5: list,
+    equity_ratio: Optional[float],
+    op_ratio: Optional[float],
+    roa: Optional[float],
+    intuition: int,
+) -> list:
+    """審査結果を Slack Block Kit 形式で返す。"""
+    decision_emoji = "✅" if decision == "承認" else "❌"
+    # スコアに応じた色
+    if score >= 70:
+        color = "#2eb886"   # 緑
+    elif score >= 50:
+        color = "#daa038"   # 黄
+    else:
+        color = "#e01e5a"   # 赤
+
+    risk_level = (
+        "低リスク" if hybrid < 0.3 else
+        "中リスク" if hybrid < 0.5 else
+        "高リスク" if hybrid < 0.7 else
+        "要注意"
+    )
+
+    blocks: list = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": f"審査結果 — {company}", "emoji": True},
+        },
+        {
+            "type": "section",
+            "fields": [
+                {"type": "mrkdwn", "text": f"*判定:*\n{decision_emoji} {decision}"},
+                {"type": "mrkdwn", "text": f"*スコア:*\n{score}点 / 100点"},
+                {"type": "mrkdwn", "text": f"*リスクレベル:*\n{risk_level}"},
+                {"type": "mrkdwn", "text": f"*業種:*\n{industry}"},
+            ],
+        },
+        {"type": "divider"},
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": "*確率詳細*"},
+            "fields": [
+                {"type": "mrkdwn", "text": f"AIモデル: {ai_prob:.1%}"},
+                {"type": "mrkdwn", "text": f"業種別: {legacy:.1%}"},
+                {"type": "mrkdwn", "text": f"ハイブリッド: {hybrid:.1%}（低いほど良好）"},
+            ],
+        },
+    ]
+
+    # 財務サマリー
+    fin_fields = []
+    if equity_ratio is not None:
+        flag = "✅" if equity_ratio >= 0.3 else ("⚠️" if equity_ratio < 0.1 else "")
+        fin_fields.append({"type": "mrkdwn", "text": f"自己資本比率: {equity_ratio:.1%} {flag}"})
+    if op_ratio is not None:
+        flag = "✅" if op_ratio >= 0.05 else ("⚠️" if op_ratio < 0 else "")
+        fin_fields.append({"type": "mrkdwn", "text": f"営業利益率: {op_ratio:.1%} {flag}"})
+    if roa is not None:
+        fin_fields.append({"type": "mrkdwn", "text": f"ROA: {roa:.1%}"})
+    fin_fields.append({"type": "mrkdwn", "text": f"担当者直感: {intuition}点"})
+    if fin_fields:
+        blocks += [
+            {"type": "divider"},
+            {"type": "section", "text": {"type": "mrkdwn", "text": "*財務サマリー*"}, "fields": fin_fields},
+        ]
+
+    # Top5 要因
+    if top5:
+        reasons_text = "\n".join(f"• {r}" for r in top5)
+        blocks += [
+            {"type": "divider"},
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"*主要判定要因（Top5）:*\n{reasons_text}"},
+            },
+        ]
+
+    # フッター
+    blocks.append({
+        "type": "context",
+        "elements": [
+            {
+                "type": "mrkdwn",
+                "text": (
+                    f"物件: {asset_name}  |  リース申込: {lease_amount_man:,.0f}万円 / {lease_term}ヶ月  |"
+                    "  再審査は `審査開始` と入力"
+                ),
+            }
+        ],
+    })
+
+    # Attachment として color を付けるため attachment 形式でラップ
+    return [{"color": color, "blocks": blocks}]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
