@@ -104,12 +104,18 @@ def calc_asset_score(category: str, scores: dict, contract: dict = None) -> dict
     adj_weights = _adjust_weights(category, base_weights, contract)
     weight_adjusted = adj_weights != base_weights
 
+    # ── 入力完備率の算出 ────────────────────────────────────────────────────────
+    n_items = len(items)
+    n_provided = sum(1 for item in items if item["id"] in scores)
+    completeness_ratio = n_provided / n_items if n_items > 0 else 1.0
+
     total_score = 0.0
     item_scores = {}
     warnings = []
 
     for item in items:
         item_id = item["id"]
+        is_provided = item_id in scores
         raw_score = float(scores.get(item_id, 50))  # 未入力は中立 50 点
         raw_score = max(0.0, min(100.0, raw_score))
         adj_w = adj_weights.get(item_id, float(item["weight"])) / 100.0
@@ -121,6 +127,7 @@ def calc_asset_score(category: str, scores: dict, contract: dict = None) -> dict
             "weight": round(adj_weights.get(item_id, float(item["weight"])), 1),
             "base_weight": float(item["weight"]),
             "contribution": round(contribution, 2),
+            "provided": is_provided,
         }
         # C / D 項目は警告
         item_grade = _get_grade(raw_score)
@@ -129,6 +136,16 @@ def calc_asset_score(category: str, scores: dict, contract: dict = None) -> dict
                 f"⚠️ **{item['label']}**（{raw_score:.0f}点 / {item_grade['label']}）"
                 f" → {item_grade['text']} — 要注意項目"
             )
+
+    # ── 情報欠如ペナルティ係数の適用 ─────────────────────────────────────────
+    # total_score × completeness_ratio + 50 × (1 - completeness_ratio)
+    if completeness_ratio < 1.0:
+        missing = n_items - n_provided
+        total_score = total_score * completeness_ratio + 50.0 * (1.0 - completeness_ratio)
+        warnings.append(
+            f"⚠️ 入力情報が不完全です（{n_provided}/{n_items}項目入力済み）"
+            f" — 未入力{missing}項目に中立値(50点)を補完し、完備率{completeness_ratio:.0%}でペナルティ補正済み"
+        )
 
     total_score = round(min(100.0, max(0.0, total_score)), 1)
     grade = _get_grade(total_score)
@@ -141,6 +158,7 @@ def calc_asset_score(category: str, scores: dict, contract: dict = None) -> dict
         "item_scores": item_scores,
         "warnings": warnings,
         "weight_adjusted": weight_adjusted,
+        "completeness_ratio": round(completeness_ratio, 3),
     }
 
 

@@ -368,6 +368,28 @@ def render_analysis_results(
                   {_rationale_html}
                 </div>
                 """, unsafe_allow_html=True)
+
+                # ── 🔶 物件グレード警告 + 推奨リース条件 ─────────────────────
+                _asset_grade = _ts.get("asset_grade") or _ts.get("grade")
+                _ts_warnings = _ts.get("warnings", [])
+                if _ts_warnings:
+                    for _w in _ts_warnings:
+                        st.warning(_w)
+
+                _rec = _ts.get("recommendation")
+                if _rec and isinstance(_rec, dict):
+                    _max_yr = _rec.get("max_lease_years", "—")
+                    _res_rt = _rec.get("residual_rate")
+                    _res_pct = f"{_res_rt * 100:.0f}%" if _res_rt is not None else "—"
+                    _rec_note = _rec.get("note", "")
+                    _rec_col1, _rec_col2, _rec_col3 = st.columns(3)
+                    with _rec_col1:
+                        st.metric("📅 推奨最長リース年数", f"{_max_yr}年" if isinstance(_max_yr, int) and _max_yr > 0 else "取扱困難")
+                    with _rec_col2:
+                        st.metric("💰 推奨残価率", _res_pct)
+                    with _rec_col3:
+                        st.info(_rec_note or "—", icon="📋")
+
                 st.divider()
 
             # ── ⚔️ 軍師AIコメント（審査結果に直接表示）──────────────────────
