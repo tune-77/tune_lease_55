@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+from contextlib import closing
 import datetime
 import threading
 import statistics
@@ -35,6 +36,27 @@ _HUB_LOG    = os.path.join(_BASE_DIR, "data", "agent_hub_log.jsonl")
 # ── スケジューラ（グローバル — Streamlit rerenderをまたいで保持）──────────────
 _scheduler_store: dict = {}   # {"scheduler": BackgroundScheduler instance}
 _scheduler_lock = threading.Lock()
+
+# ── 審査専門家ペルソナ（AUDIT_AGENTS） ─────────────────────────────────────────
+# 「開発会議モード」の DEV ペルソナとは別に、審査目線の専門家チームを定義。
+AUDIT_AGENTS: dict[str, str] = {
+    "信用審査官": (
+        "あなたは銀行出身の「信用審査官」です。PD（デフォルト確率）・LGD・EAD の三角形で案件を評価します。"
+        "財務指標の定量面を中心に、100字以内でリスクと承認可否を述べてください。"
+    ),
+    "業種アナリスト": (
+        "あなたは産業調査部門の「業種アナリスト」です。業種の成長性・景気感応度・参入障壁を軸に評価します。"
+        "マクロ視点と業界動向を踏まえ、100字以内で意見を述べてください。"
+    ),
+    "担保評価士": (
+        "あなたは「担保評価士」です。リース物件の残存価値・換価性・市場流動性を専門とします。"
+        "物件保全の観点から、100字以内でリスクを評価してください。"
+    ),
+    "コンプライアンス担当": (
+        "あなたは「コンプライアンス担当」です。反社チェック・資金使途・規制リスクを担当します。"
+        "法的・倫理的リスクの観点から、100字以内で懸念点を述べてください。"
+    ),
+}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -123,12 +145,11 @@ def _hub_log(agent: str, status: str, detail: str = "") -> None:
 def _load_past_cases(limit: int = 200) -> list[dict]:
     """past_cases テーブルから最新N件を取得。"""
     try:
-        conn = sqlite3.connect(_DB_PATH)
-        rows = conn.execute(
-            "SELECT id, timestamp, industry_sub, score, user_eq, final_status, data "
-            "FROM past_cases ORDER BY timestamp DESC LIMIT ?", (limit,)
-        ).fetchall()
-        conn.close()
+        with closing(sqlite3.connect(_DB_PATH)) as conn:
+            rows = conn.execute(
+                "SELECT id, timestamp, industry_sub, score, user_eq, final_status, data "
+                "FROM past_cases ORDER BY timestamp DESC LIMIT ?", (limit,)
+            ).fetchall()
         result = []
         for r in rows:
             d = {}
@@ -378,46 +399,80 @@ def _render_report_gen_panel() -> None:
 # Agent 4 — エージェントチーム議論の自律化
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _run_auto_team_agent(res: dict) -> str:
-    """要審議ゾーンの案件をエージェントチームに自動投稿し、議論結果を返す。"""
+def _run_auto_team_agent(res: dict, mode: str = "dev") -> str:
+    """
+    要審議ゾーンの案件をエージェントチームに自動投稿し、議論結果を返す。
+
+    Args:
+        res:  審査結果 dict（score, hantei, industry_sub, asset_name 等を含む）
+        mode: "dev"（開発会議）または "audit"（審査会議）
+    """
     score   = res.get("score", 0)
     hantei  = res.get("hantei", "—")
     industry= res.get("industry_sub", "—")
     asset   = res.get("asset_name", "—")
+    pd_pct  = res.get("pd_pct", None)
+    equity  = res.get("equity_ratio", None)
 
-    theme = (
-        f"スコア {score:.0f}点（{hantei}）の案件について審議してください。"
-        f"業種: {industry}、物件: {asset}。"
-        "承認すべきか、条件付き承認か、否決かを議論し理由を述べてください。"
-    )
-    # AT_THEME に自動セット（エージェントチーム画面でも確認可能）
+    # 審査コンテキストを共有
+    ctx_parts = [
+        f"スコア {score:.0f}点（{hantei}）",
+        f"業種: {industry}",
+        f"物件: {asset}",
+    ]
+    if pd_pct is not None:
+        ctx_parts.append(f"PD: {pd_pct:.1%}")
+    if equity is not None:
+        ctx_parts.append(f"自己資本比率: {equity:.1%}")
+
+    if mode == "audit":
+        theme = (
+            "以下の案件を審査専門家として評価してください。\n"
+            + "、".join(ctx_parts)
+            + "。\n承認・条件付き承認・否決のいずれかを、リスク定量根拠とともに述べてください。"
+        )
+        active_personas: dict[str, str] = AUDIT_AGENTS
+        chair_name = "審査委員長"
+        chair_system = (
+            "あなたは「審査委員長」として、各専門家の意見を集約し、"
+            "最終判定（承認/条件付き承認/否決）と承認条件・リスク軽減策を200字以内で決裁します。"
+        )
+    else:
+        theme = (
+            "、".join(ctx_parts)
+            + " の案件について、開発・運用の観点から審議してください。"
+            "承認すべきか、条件付き承認か、否決かを議論し理由を述べてください。"
+        )
+        active_personas = {
+            "プランナー": "物理学者・行動経済学者視点から",
+            "ダッシュ":   "UI/UXと数値可視化の観点から",
+            "田中さん":   "営業現場の感覚から",
+            "鈴木さん":   "技術・実装リスクの観点から",
+        }
+        chair_name = "つね"
+        chair_system = "あなたは統括マネージャー「つね」として、チームの意見を集約し最終決裁を下します。"
+
     st.session_state[SK.AT_THEME] = theme
 
-    # 4エージェントの意見を並列生成（簡略版）
-    personas = {
-        "プランナー": "物理学者・行動経済学者視点から",
-        "ダッシュ":   "UI/UXと数値可視化の観点から",
-        "田中さん":   "営業現場の感覚から",
-        "鈴木さん":   "技術・実装リスクの観点から",
-    }
-    opinions = {}
-    for name, hint in personas.items():
-        system = f"あなたは「{name}」として、{hint}リース審査案件を評価する担当者です。100字以内で意見を述べてください。"
+    opinions: dict[str, str] = {}
+    for name, hint in active_personas.items():
+        if mode == "audit":
+            system = hint  # AUDIT_AGENTS は既にフル system プロンプト
+        else:
+            system = f"あなたは「{name}」として、{hint}リース審査案件を評価する担当者です。100字以内で意見を述べてください。"
         opinions[name] = _ai_call(f"テーマ: {theme}", system=system, timeout=60)
 
-    # つねが最終判断
-    tsune_prompt = (
+    chair_prompt = (
         f"テーマ: {theme}\n\n各担当者の意見:\n"
         + "\n".join(f"・{k}: {v}" for k, v in opinions.items())
-        + "\n\n以上を踏まえ、最終判断（承認/条件付き承認/否決）と理由を200字以内で述べてください。"
+        + f"\n\n以上を踏まえ、{chair_name}として最終判断と理由を200字以内で述べてください。"
     )
-    tsune_system = "あなたは統括マネージャー「つね」として、チームの意見を集約し最終決裁を下します。"
-    tsune = _ai_call(tsune_prompt, system=tsune_system, timeout=90)
+    chair = _ai_call(chair_prompt, system=chair_system, timeout=90)
 
     summary = f"**テーマ:** {theme}\n\n"
     for k, v in opinions.items():
         summary += f"**{k}:** {v}\n\n"
-    summary += f"**つね（最終判断）:** {tsune}"
+    summary += f"**{chair_name}（最終判断）:** {chair}"
     return summary
 
 
@@ -433,6 +488,21 @@ def _render_auto_team_panel() -> None:
     score  = res.get("score", 0)
     hantei = res.get("hantei", "—")
 
+    # ── 会議モード切替 ────────────────────────────────────────────────────────
+    col_m1, col_m2 = st.columns(2)
+    with col_m1:
+        mode_label = st.radio(
+            "会議モード",
+            options=["開発会議", "審査会議"],
+            horizontal=True,
+            key="hub_team_mode",
+        )
+    meeting_mode = "audit" if mode_label == "審査会議" else "dev"
+    if meeting_mode == "audit":
+        st.caption("👔 審査専門家（信用審査官・業種アナリスト・担保評価士・コンプライアンス担当）が議論します。")
+    else:
+        st.caption("🛠️ 開発チーム（プランナー・ダッシュ・田中さん・鈴木さん）が議論します。")
+
     thresh_low  = st.slider("要審議下限", 30, 50, 40, key="hub_team_low")
     thresh_high = st.slider("要審議上限", 60, 80, 70, key="hub_team_high")
 
@@ -447,10 +517,10 @@ def _render_auto_team_panel() -> None:
     manual = st.button("▶️ 今すぐチーム議論を起動", key="hub_team_manual")
     if manual or (auto_mode and in_zone and not st.session_state.get("hub_team_done")):
         with st.spinner("チームが議論中..."):
-            result = _run_auto_team_agent(res)
+            result = _run_auto_team_agent(res, mode=meeting_mode)
         st.session_state["hub_team_result"] = result
         st.session_state["hub_team_done"]   = True
-        _hub_log("auto_team", "success", f"score={score}")
+        _hub_log("auto_team", "success", f"score={score} mode={meeting_mode}")
 
         if _get_slack_url():
             _send_slack([{
@@ -649,11 +719,10 @@ def _render_anomaly_panel() -> None:
 def _count_labeled_cases() -> int:
     """final_status が記録された案件数を返す。"""
     try:
-        conn = sqlite3.connect(_DB_PATH)
-        n = conn.execute(
-            "SELECT COUNT(*) FROM past_cases WHERE final_status IS NOT NULL AND final_status != ''"
-        ).fetchone()[0]
-        conn.close()
+        with closing(sqlite3.connect(_DB_PATH)) as conn:
+            n = conn.execute(
+                "SELECT COUNT(*) FROM past_cases WHERE final_status IS NOT NULL AND final_status != ''"
+            ).fetchone()[0]
         return n
     except Exception:
         return 0
