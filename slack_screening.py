@@ -1095,7 +1095,12 @@ def _build_result_blocks(
 
     # Top5 要因
     if top5:
-        reasons_text = "\n".join(f"• {r}" for r in top5)
+        try:
+            from scoring.explainer import explain_top_reasons
+            display_reasons = explain_top_reasons(top5)
+        except Exception:
+            display_reasons = top5
+        reasons_text = "\n".join(f"• {r}" for r in display_reasons)
         blocks += [
             {"type": "divider"},
             {
