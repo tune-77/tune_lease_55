@@ -16,7 +16,7 @@ if _SCRIPT_DIR not in sys.path:
 
 import streamlit as st
 # set_page_config は必ず最初の st 呼び出しにする必要がある
-st.set_page_config(page_title="温水式リース審査AI", page_icon="🏢", layout="wide")
+st.set_page_config(page_title="温水式リース審査AI", page_icon="🏢", layout="wide", initial_sidebar_state="collapsed")
 
 @st.cache_resource
 def _intro_video_b64() -> str:

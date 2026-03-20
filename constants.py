@@ -235,11 +235,18 @@ REQUIRED_FIELDS = [
     ("total_assets", "総資産", lambda v: v is not None and (v or 0) > 0),
 ]
 
+# 推奨項目（0のとき警告を表示するが判定は続行）
+RECOMMENDED_FIELDS = [
+    ("rieki",      "営業利益", "営業利益率が 0% として計算されます（業界比較・スコアへの影響あり）"),
+    ("net_assets", "純資産",   "自己資本比率が 0% となり、学習モデル精度が低下します"),
+]
+
 # === 判定用定数 ===
-APPROVAL_LINE = 71  # 総合スコアがこの値以上で「承認圏内」
-REVIEW_LINE = 40    # 総合スコアがこれ未満で即「否決」扱いにするライン
-SCORE_PENALTY_IF_LEARNING_REJECT = 0.5  # 学習モデル判定が否決のとき全スコアに乗じる係数
-ALERT_BORDERLINE_MIN = 68  # この値以上71未満は「承認ライン直下」で要確認アラートを出す
+APPROVAL_LINE = 71                      # 社内承認ライン（過去実績ベース）
+REVIEW_LINE = 40                        # これ未満は即否決圏
+SCORE_PENALTY_IF_LEARNING_REJECT = 0.5  # AIモデル否決時の乗算ペナルティ
+ALERT_BORDERLINE_MIN = 68               # 承認ライン直下の要確認ゾーン下限
+CAPITAL_DEFICIENCY_PENALTY_DEFAULT = -5.0  # 債務超過時の減点
 
 def get_review_alert(res):
     """

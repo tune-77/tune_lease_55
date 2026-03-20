@@ -208,3 +208,71 @@ def render_prior_coeff_input():
             else:
                 st.error("保存に失敗しました。")
         st.caption("※ 運送業・医療は個別に事前係数を入力できます。指標モデル（全体_指標など）を編集すると、既存先・新規先の両方の基準に反映されます。")
+
+
+def render_coeff_history():
+    """係数変更履歴を表示する。"""
+    from data_cases import load_coeff_history
+    st.subheader("📋 係数変更履歴")
+    records = load_coeff_history()  # 新しい順で返る
+    if not records:
+        st.info("変更履歴がありません。係数を更新すると自動で記録されます。")
+        return
+    st.caption(f"全 {len(records)} 件（新しい順）")
+    for i, rec in enumerate(records):
+        ts = rec.get("timestamp", "—")
+        change_type = rec.get("change_type", "—")
+        comment = rec.get("comment", "")
+        changed_keys = rec.get("changed_keys") or {}
+        snapshot = rec.get("snapshot_after") or {}
+
+        type_label = {"manual": "手動", "auto": "自動"}.get(change_type, change_type)
+        header = f"{ts}　[{type_label}]　{comment or '（コメントなし）'}"
+        with st.expander(header, expanded=(i == 0)):
+            if changed_keys:
+                rows = [
+                    {"変数": k, "変更前": v.get("before"), "変更後": v.get("after")}
+                    for k, v in changed_keys.items()
+                ]
+                import pandas as pd
+                st.dataframe(
+                    pd.DataFrame(rows).style.format(
+                        {"変更前": lambda x: f"{x:.6f}" if isinstance(x, float) else ("—" if x is None else x),
+                         "変更後": lambda x: f"{x:.6f}" if isinstance(x, float) else ("—" if x is None else x)}
+                    ),
+                    use_container_width=True,
+                )
+            else:
+                st.caption("変更キーの記録なし")
+            if snapshot:
+                with st.expander("全係数スナップショット（保存後）", expanded=False):
+                    snap_rows = [{"変数": k, "値": v} for k, v in snapshot.items()]
+                    st.dataframe(
+                        pd.DataFrame(snap_rows).style.format(
+                            {"値": lambda x: f"{x:.6f}" if isinstance(x, float) else x}
+                        ),
+                        use_container_width=True,
+                    )
+
+
+def render_app_logs():
+    """アプリログを表示する。"""
+    import os
+    st.subheader("🪵 アプリログ")
+    log_candidates = [
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "streamlit.log"),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs", "app.log"),
+    ]
+    log_path = next((p for p in log_candidates if os.path.exists(p)), None)
+    if not log_path:
+        st.info("ログファイルが見つかりません。")
+        return
+    try:
+        with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+        n = st.slider("表示行数（末尾から）", min_value=50, max_value=1000, value=200, step=50)
+        tail = lines[-n:]
+        st.caption(f"{log_path}  （全 {len(lines)} 行 / 末尾 {n} 行表示）")
+        st.code("".join(tail), language="text")
+    except Exception as e:
+        st.error(f"ログ読み込みエラー: {e}")

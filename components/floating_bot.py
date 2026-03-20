@@ -12,8 +12,51 @@ components/floating_bot.py
     render_floating_bot()   # 各ページの末尾で呼ぶ
 """
 from __future__ import annotations
+import json
+import pathlib
 import random
+import time
 import streamlit as st
+
+# ── 審査結果コメント（humor_comments_yanami.json）─────────────────────────────
+_YANAMI_JSON = pathlib.Path(__file__).parent.parent / "data" / "humor_comments_yanami.json"
+
+def _load_yanami_result_data() -> list[dict]:
+    try:
+        return json.loads(_YANAMI_JSON.read_text(encoding="utf-8"))["comments"]
+    except Exception:
+        return []
+
+_YANAMI_RESULT_DATA: list[dict] = _load_yanami_result_data()
+
+
+def _pd_to_risk(pd_percent: float) -> str:
+    """pd_percent(%) → リスクラベル（report_generator.py と同基準）"""
+    p = pd_percent / 100
+    if p < 0.05:
+        return "低リスク"
+    elif p < 0.15:
+        return "中リスク"
+    elif p < 0.30:
+        return "高リスク"
+    return "極高リスク"
+
+
+def _pick_result_comment(risk_label: str, industry_major: str) -> str:
+    """審査結果に応じた八奈見コメントをJSONから選ぶ。業種優先・全業種フォールバック。"""
+    # 業種マッチング：JSONの industry 文字列が industry_major に含まれるか
+    industry_pool = [
+        c for c in _YANAMI_RESULT_DATA
+        if c["risk"] == risk_label and c["industry"] != "全業種"
+        and any(kw in (industry_major or "") for kw in c["industry"].replace("・", "/").split("/"))
+    ]
+    if industry_pool:
+        return random.choice(industry_pool)["comment"]
+    # 全業種フォールバック
+    fallback = [c for c in _YANAMI_RESULT_DATA if c["risk"] == risk_label and c["industry"] == "全業種"]
+    if fallback:
+        return random.choice(fallback)["comment"]
+    return random.choice(_COMMENTS.get("random_idle", ["審査完了です。"]))  # 最終フォールバック
 
 # ── CSS ────────────────────────────────────────────────────────────────────
 _CSS = """
@@ -94,15 +137,22 @@ _COMMENTS: dict[str, list[str]] = {
         "売上高ゼロ？　それ、設立初日の私の恋愛成功率と同じです。",
         "0円……。新設法人ですか？それとも入力し忘れですか？パン食べながら聞いてます。",
         "売上高が0なのは入力漏れだと信じてます。信じることが大事なんで。",
+        "まじで0円……？新規創業かな。夢だけは0じゃないといいですけど。",
+        "売上高なし。立ち上げたばかりなら応援します。そうじゃなかったら……（黙ってパンをかじる）",
     ],
     "nenshu_tiny": [
         "売上高が1,000万円以下……小規模だけどがんばってる感じ、好きです。私も小さいので。",
         "1億円未満か。でも小さくても夢は大きくていいよね。私の夢も大きかったんだよね（遠い目）",
+        "小規模事業者か。地域の底力って感じですよね。私は地元で失恋し続けたけど。",
+        "1000万以下……でも利益率が高ければ印象変わるから！数字はトータルで見るのよ。",
     ],
     "nenshu_large": [
         "売上高デカ……！これは通るやつの雰囲気しかしない。パン奢ってほしい。",
         "10億超え！すごい。私の心の傷の数より多いです。",
         "大企業じゃん。こういう案件が来ると審査担当者も元気になるよね。知らんけど。",
+        "売上高が大きいのはいいことだけど、利益もちゃんとついてきてますように。（こっそり祈る）",
+        "このスケール感、私の人生とは別次元。あ、比べてないですよ。比べてないですけどね。",
+        "大型案件キター！担当者さんのやる気が顔に出てそう。いい顔してそう。知らんけど。",
     ],
 
     # ── 営業利益 ─────────────────────────────────────────────────────────────
@@ -110,45 +160,67 @@ _COMMENTS: dict[str, list[str]] = {
         "営業赤字……。まあ、赤字でも次があるから。私も失恋したけど今こうして元気にしてるし。",
         "マイナスか〜。でも経常で黒字になってたりするやつあるよね。期待してます。",
         "赤字……（パンをかじる）……大丈夫、赤字の会社がリースを組もうとする根性は評価します。",
+        "営業赤字か。先行投資なら未来があるし、構造問題なら向き合う時期ね。どっちかしら。",
+        "マイナス……私の元カレへの好感度と似たような数字ね。最終的にはゼロになったけど。",
+        "赤字でもリース申し込む勇気、嫌いじゃないです。でも慎重にね。私みたいに突っ込まないで。",
     ],
     "rieki_excellent": [
         "営業利益率20%超！？優秀すぎて少し怪しいです（失礼）。",
         "この利益率、業界トップクラスじゃないですか。見習いたい。恋愛も黒字にしたい。",
+        "利益率20%越え……本物の実力派じゃないですか。私の審査への自信と同じくらい高い。",
+        "これは本物の高収益体質ね。こういう会社が好きです（個人の感想）。",
     ],
     "rieki_normal": [
         "営業利益、まあまあですね。まあまあって大事。私の恋愛偏差値もまあまあでした（過去形）。",
+        "利益は安定してる感じ。地味に見えるけど安定って実はすごいことよ。私には縁がなかったけど。",
+        "標準的な利益率ね。「普通」って言葉を軽く見てはいけない。普通の幸せが一番難しいんだから。",
     ],
 
     # ── 自己資本・総資産 ─────────────────────────────────────────────────────
     "equity_negative": [
         "純資産マイナス……債務超過かな。これは、うん、がんばって。",
         "自己資本がマイナス。私も一時期心の資本がマイナスだったけど立ち直りました。一緒にがんばりましょう。",
+        "債務超過ってワード、重いですよね……でも現実から目を逸らさないのが大事よ。（自戒）",
+        "純資産マイナスか……。定性や保証で補えるケースもあるから、諦めるのはまだ早い！",
     ],
     "equity_ratio_high": [
         "自己資本比率50%超！財務優等生じゃないですか。見習いたい（人間として）。",
         "堅実な財務体質ですね。恋愛でも堅実さは大事。私には縁がなかったけど。",
+        "50%超えてる！無借金経営に近い？こういう会社を見ると清々しくなりますね。",
+        "財務の健全さ、滲み出てる。この比率ならよほどのことがないと崩れないわね。羨ましい。",
     ],
     "equity_ratio_low": [
         "自己資本比率が低めですね……。でもDSCRが良ければ挽回できるから！（力説）",
         "レバレッジ高め。まあ借金して成長する会社もあるし。私は借金できないタイプだけど。",
+        "自己資本薄いな……でもキャッシュフローが良ければ話は変わるから！総合評価って大事よ。",
+        "借入に頼ってる体質ね。悪いとは言わないけど、金利上昇には気をつけて。（先輩風）",
     ],
 
     # ── 格付 ────────────────────────────────────────────────────────────────
     "grade_excellent": [
         "格付①！優良先！こういう案件、担当者も嬉しいよね。私も嬉しい。理由はない。",
         "最高グレード。これが続けば審査AIも楽になる。私も楽になりたい（別の意味で）。",
+        "格付①とか出ると、思わず「よし！」って心の中で拳を握るよね。（自分だけかな）",
+        "優良先！こういうの見ると、世の中捨てたもんじゃないって思える。（大げさ？）",
+        "格付①は信頼の証ですね。積み上げてきた歴史が数字に出てる。格好いい。",
     ],
     "grade_standard": [
         "格付②、標準ですね。普通って最強だと思う。普通に彼氏ほしかったな（独り言）。",
         "②4〜6、問題なし。可もなく不可もなく……いや、可がある！",
+        "格付②か。安定の中堅どころね。日本経済を支えてるのはこういう会社だと思う（持論）。",
+        "②は②でも、上か下かで全然違うから詳細も見てね。大雑把な括りが一番危険よ。（経験則）",
     ],
     "grade_bad": [
         "格付③以下……（パンをちぎる）。まあ、定性でカバーできる可能性はあります。",
         "要注意以下か〜。これは軍師エージェントの出番かも。私は応援するだけです。",
         "格付が低めですね。でも諦めないで！私だって何度振られても元気にしてますから！",
+        "③以下か……でも格付は過去の話。今と未来を見てあげてほしいな、担当者さん。",
+        "要注意先以下……正直しんどい数字だけど、定性で巻き返せることもあるから最後まで見て！",
     ],
     "grade_unknown": [
         "無格付か。新規先かな？これはゼロから関係構築ですね。私も得意分野です（得意じゃない）。",
+        "格付なし＝可能性未定数ってこと。マイナスじゃないわよ。データが少ないだけ。",
+        "新規取引先かな。ゼロからの評価って、実はワクワクする部分もあるよね。新鮮で。",
     ],
 
     # ── 競合 ────────────────────────────────────────────────────────────────
@@ -247,6 +319,8 @@ _WATCH_KEYS = [
 _PREV_KEY   = "_fbot_prev"
 _CUR_MSG    = "_fbot_cur_msg"
 _CUR_SHOWN  = "_fbot_shown_triggers"  # 同一セッション内で既出のトリガー管理
+_INIT_TIME  = "_fbot_init_time"       # 起動時刻（初回コメント遅延用）
+_BOOT_DELAY = 10.0                    # 起動後この秒数はコメントを抑制
 
 
 def _snapshot(ss: dict) -> dict:
@@ -392,8 +466,9 @@ def _pick_comment(trigger: str) -> str:
     return random.choice(pool)
 
 
-def _render_bubble(comment: str) -> None:
-    st.markdown(_CSS, unsafe_allow_html=True)
+def _render_bubble(comment: str, display_secs: float = 8.0) -> None:
+    css_with_duration = _CSS.replace("8s ease-in-out", f"{display_secs:.1f}s ease-in-out")
+    st.markdown(css_with_duration, unsafe_allow_html=True)
     safe = comment.replace("<", "&lt;").replace(">", "&gt;")
     st.markdown(f"""
 <div class="yanami-wrap">
@@ -415,10 +490,19 @@ def render_floating_bot() -> None:
     各ページ末尾で呼ぶ。session_stateの変化を検知してコメントを表示する。
     """
     ss = st.session_state
+
+    # 起動時刻を記録（初回のみ）
+    if _INIT_TIME not in ss:
+        ss[_INIT_TIME] = time.time()
+
     changed = _changed_keys(ss)
 
     if not changed:
         # 変化なし → 前回のコメントをそのまま再表示（アニメーションは再生しない）
+        return
+
+    # 起動後 _BOOT_DELAY 秒間はコメントを抑制（起動直後の誤トリガー防止）
+    if time.time() - ss[_INIT_TIME] < _BOOT_DELAY:
         return
 
     trigger = _pick_trigger(ss, changed)
@@ -427,4 +511,5 @@ def render_floating_bot() -> None:
 
     comment = _pick_comment(trigger)
     ss[_CUR_MSG] = comment
-    _render_bubble(comment)
+    display_secs = max(6.0, len(comment) * 0.2)
+    _render_bubble(comment, display_secs)

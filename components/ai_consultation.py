@@ -44,6 +44,8 @@ _ERROR_KEYWORDS = (
     "pip install",
     "応答が返りませんでした",
     "安全フィルターでブロック",
+    "AnythingLLM に接続できません",
+    "AnythingLLM エラー:",
 )
 
 
@@ -51,6 +53,16 @@ def _show_ai_error(content: str) -> None:
     """AIエラー内容を st.error で表示するヘルパー。"""
     if content and any(kw in content for kw in _ERROR_KEYWORDS):
         st.error(content)
+
+
+def _ai_unavailable_message() -> str:
+    """現在のエンジンに応じた「AI利用不可」エラーメッセージを返す。"""
+    engine = st.session_state.get("ai_engine", "ollama")
+    if engine == "anythingllm":
+        return "AnythingLLM に接続できません。http://127.0.0.1:3001 が起動しているか、APIキーを確認してください。"
+    if engine == "gemini":
+        return "Gemini APIキーを設定してください。サイドバー「AIモデル設定」で入力するか、環境変数 GEMINI_API_KEY を設定してください。"
+    return "AIサーバー（Ollama）が起動していません。\nターミナルで `ollama serve` を実行するか、サイドバーで別のエンジンに切り替えてください。"
 
 
 def _quick_questions(res: dict, selected_sub: str) -> list[str]:
@@ -274,10 +286,7 @@ def _render_tab_chat(selected_sub: str, jsic_data: dict) -> None:
                 st.markdown(q)
             with st.chat_message("assistant"):
                 if not is_ai_available():
-                    if st.session_state.get("ai_engine") == "gemini":
-                        st.error("Gemini APIキーを設定してください。サイドバー「AIモデル設定」で入力するか、環境変数 GEMINI_API_KEY を設定してください。")
-                    else:
-                        st.error("AIサーバー（Ollama）が起動していません。\nターミナルで `ollama serve` を実行するか、サイドバーで「Gemini API」に切り替えてください。")
+                    st.error(_ai_unavailable_message())
                 else:
                     with st.spinner("業種別トピックス等を取得中..."):
                         context_prompt = get_ai_consultation_prompt(
@@ -460,10 +469,7 @@ def _render_tab_debate(selected_sub: str, jsic_data: dict, bankruptcy_data: list
 """
 
                 if not is_ai_available():
-                    if st.session_state.get("ai_engine") == "gemini":
-                        st.error("Gemini APIキーを設定してください。サイドバー「AIモデル設定」で入力するか、環境変数 GEMINI_API_KEY を設定してください。")
-                    else:
-                        st.error("AIサーバー（Ollama）が起動していません。\nターミナルで `ollama serve` を実行するか、サイドバーで「Gemini API」に切り替えてください。")
+                    st.error(_ai_unavailable_message())
                 else:
                     _d_engine = st.session_state.get("ai_engine", "ollama")
                     _d_key = (
@@ -541,10 +547,7 @@ def _render_tab_debate(selected_sub: str, jsic_data: dict, bankruptcy_data: list
 理由: (80文字以内)
 """
                     if not is_ai_available():
-                        if st.session_state.get("ai_engine") == "gemini":
-                            st.error("Gemini APIキーを設定してください。サイドバー「AIモデル設定」で入力するか、環境変数 GEMINI_API_KEY を設定してください。")
-                        else:
-                            st.error("Ollama が起動していません。`ollama serve` を実行するか、サイドバーで「Gemini API」に切り替えてください。")
+                        st.error(_ai_unavailable_message())
                     else:
                         _j_engine = st.session_state.get("ai_engine", "ollama")
                         _j_key = (

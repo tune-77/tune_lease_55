@@ -157,6 +157,12 @@ def _chat_for_thread(engine: str, model: str, messages: list, timeout_seconds: i
     バックグラウンドスレッドから呼ぶ用。st.session_state を参照しない。
     engine が "gemini" のときは api_key と gemini_model を使用。
     """
+    if engine == "anythingllm":
+        try:
+            from anything_api import chat_anything_llm
+            return chat_anything_llm(messages, timeout=timeout_seconds)
+        except Exception as e:
+            return {"message": {"content": f"AnythingLLM が応答しませんでした: {e}"}}
     if engine == "gemini":
         api_key = (api_key or "").strip() or os.environ.get("GEMINI_API_KEY", "")
         if not api_key:
@@ -174,8 +180,16 @@ def _chat_for_thread(engine: str, model: str, messages: list, timeout_seconds: i
 
 
 def chat_with_retry(model, messages, retries=2, timeout_seconds=120):
-    """AI へのチャット呼び出し。エンジンが Gemini の場合は Gemini API、否则 Ollama。"""
+    """AI へのチャット呼び出し。エンジンが AnythingLLM / Gemini / Ollama を自動選択。"""
     engine = st.session_state.get("ai_engine", "ollama")
+
+    if engine == "anythingllm":
+        try:
+            from anything_api import chat_anything_llm
+            return chat_anything_llm(messages, timeout=timeout_seconds)
+        except Exception as e:
+            st.error(f"AnythingLLM エラー: {e}")
+            return {"message": {"content": f"AnythingLLM が応答しませんでした: {e}"}}
     if engine == "gemini":
         api_key = (st.session_state.get("gemini_api_key") or "").strip() or GEMINI_API_KEY_ENV
         api_key = api_key or _get_gemini_key_from_secrets()
@@ -302,10 +316,15 @@ def is_ollama_available(timeout_seconds: int = 3) -> bool:
 def is_ai_available(timeout_seconds: int = 3) -> bool:
     """
     現在選択中のAIエンジンが利用可能かどうか。
-    Gemini の場合は API キーが設定されていれば True。
-    Ollama の場合はサーバーが起動していれば True。
+    AnythingLLM / Gemini / Ollama に対応。
     """
     engine = st.session_state.get("ai_engine", "ollama")
+    if engine == "anythingllm":
+        try:
+            from anything_api import is_anything_llm_available
+            return is_anything_llm_available(timeout=timeout_seconds)
+        except Exception:
+            return False
     if engine == "gemini":
         key = st.session_state.get("gemini_api_key", "").strip() or GEMINI_API_KEY_ENV
         key = key or _get_gemini_key_from_secrets()
@@ -781,10 +800,21 @@ def _stream_gemini(prompt: str) -> Generator[str, None, None]:
 
 
 def stream_llm(prompt: str, model: str | None = None) -> Generator[str, None, None]:
-    """Gemini 優先でストリーミング生成。未設定なら Ollama にフォールバック。
+    """AnythingLLM 優先、次に Gemini、最後に Ollama でストリーミング生成。
     st.write_stream() に渡すことを想定したジェネレータ。"""
+    engine = st.session_state.get("ai_engine", "ollama") if hasattr(st, "session_state") else "ollama"
+    if engine == "anythingllm":
+        try:
+            from anything_api import chat_anything_llm
+            ans = chat_anything_llm([{"role": "user", "content": prompt}])
+            text = (ans.get("message") or {}).get("content", "")
+            if text:
+                yield text
+        except Exception:
+            pass
+        return
     api_key = _get_gemini_key_from_secrets() or os.environ.get(GEMINI_API_KEY_ENV, "").strip()
-    if api_key:
+    if api_key and engine == "gemini":
         yield from _stream_gemini(prompt)
     else:
         yield from _stream_ollama(prompt, model or get_ollama_model())
