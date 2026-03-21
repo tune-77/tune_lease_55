@@ -146,13 +146,20 @@ _COMMENTS: dict[str, list[str]] = {
         "小規模事業者か。地域の底力って感じですよね。私は地元で失恋し続けたけど。",
         "1000万以下……でも利益率が高ければ印象変わるから！数字はトータルで見るのよ。",
     ],
+    "nenshu_medium": [
+        "売上高1億〜10億か。中堅どころですね。日本経済の屋台骨ってやつ。",
+        "数億規模の会社か。オーナー企業が多い帯ですよね。個人保証の話も出てくるやつ。",
+        "中規模！安定感ある数字ね。このくらいの規模が一番審査のしがいがある気がする。",
+        "売上高、普通にいい感じじゃないですか。「普通にいい」って最高の褒め言葉だと思う。",
+        "数億の売上か。地域に根ざした優良企業のにおい、する。（鼻が利くんですよ私）",
+    ],
     "nenshu_large": [
-        "売上高デカ……！これは通るやつの雰囲気しかしない。パン奢ってほしい。",
         "10億超え！すごい。私の心の傷の数より多いです。",
         "大企業じゃん。こういう案件が来ると審査担当者も元気になるよね。知らんけど。",
         "売上高が大きいのはいいことだけど、利益もちゃんとついてきてますように。（こっそり祈る）",
         "このスケール感、私の人生とは別次元。あ、比べてないですよ。比べてないですけどね。",
         "大型案件キター！担当者さんのやる気が顔に出てそう。いい顔してそう。知らんけど。",
+        "売上高デカ……！これは通るやつの雰囲気しかしない。パン奢ってほしい。",
     ],
 
     # ── 営業利益 ─────────────────────────────────────────────────────────────
@@ -238,10 +245,18 @@ _COMMENTS: dict[str, list[str]] = {
     "term_long": [
         "契約期間7年以上！長期コミット、すごい。私は長続きしない人なので。",
         "84ヶ月超……長い。この案件が終わるころ私は何をしてるんだろう（哲学）。",
+        "長期リースか。物件の残価リスクがポイントになってくるよね。しっかり見てあげて。",
+    ],
+    "term_medium": [
+        "3〜5年のリース、王道ですよね。使いやすい期間。",
+        "36〜60ヶ月か。設備の法定耐用年数とも合ってるケースが多くて、安心感ある。",
+        "標準的なリース期間ね。この期間が一番担当者も説明しやすいんじゃないかな。",
+        "中期リースか。長すぎず短すぎず、バランスいいですね。私の人間関係も見習いたい。",
     ],
     "term_short": [
         "1〜2年の短期リース。サクッと終わる案件、嫌いじゃない。",
         "短期ですね。短くてもきちんと回収できればそれが正解。人生もそうかも。",
+        "2年以内か。回転早め。残価もしっかり見ておいて！",
     ],
 
     # ── 取得価格 ────────────────────────────────────────────────────────────
@@ -355,13 +370,15 @@ def _pick_trigger(ss: dict, changed: set[str]) -> str | None:
     major  = ss.get("select_major") or ss.get("wiz_sel_major") or ""
     qual_r = ss.get("qual_corr_repayment_history") or ss.get("wiz_qual_corr_repayment_history") or ""
 
-    # 売上高
+    # 売上高（千円単位: tiny<1億 / medium 1億〜10億 / large 10億超）
     if "nenshu" in changed or "wiz_nenshu" in changed:
         if nenshu == 0:
             _add("nenshu_zero")
         elif nenshu < 10_000:
             _add("nenshu_tiny")
-        elif nenshu >= 1_000_000:
+        elif nenshu < 100_000:
+            _add("nenshu_medium")
+        else:
             _add("nenshu_large")
 
     # 営業利益
@@ -405,11 +422,13 @@ def _pick_trigger(ss: dict, changed: set[str]) -> str | None:
         elif "なし" in comp:
             _add("competitor_no")
 
-    # 契約期間
+    # 契約期間（short≤24 / medium 25〜83 / long≥84ヶ月）
     if "lease_term" in changed or "wiz_term" in changed:
         if term >= 84:
             _add("term_long")
-        elif term > 0 and term <= 24:
+        elif term >= 25:
+            _add("term_medium")
+        elif term > 0:
             _add("term_short")
 
     # 取得価格
@@ -449,13 +468,13 @@ def _pick_trigger(ss: dict, changed: set[str]) -> str | None:
     if candidates:
         chosen = random.choice(candidates)
         shown.add(chosen)
-        # 同一トリガーは10件ごとにリセット（多すぎると全部既出になる）
-        if len(shown) > 10:
+        # 同一トリガーは8件ごとにリセット（10件だと全部既出になりコメントが出なくなる）
+        if len(shown) > 8:
             shown.clear()
         return chosen
 
-    # 変化なし or 既出 → ごく低確率でランダム idle
-    if changed and random.random() < 0.15:
+    # 変化なし or 既出 → ランダム idle（確率を上げて会話頻度を改善）
+    if changed and random.random() < 0.25:
         return "random_idle"
 
     return None
