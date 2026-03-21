@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>カオス審査空間 - Lorenz Attractor</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: linear-gradient(180deg, #0a0015 0%, #1a0030 100%);
+  color: #fff;
+  font-family: 'Courier New', monospace;
+  overflow-x: hidden;
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+function ChaosCredit() {
+  const canvasRef = useRef(null);
+  const [rotation, setRotation] = useState({ x: 0.5, y: 0 });
+  const animationRef = useRef(null);
+  const [showTrails, setShowTrails] = useState(true);
+  const companiesRef = useRef(null);
+
+  const [companies, setCompanies] = useState(() => {
+    return Array.from({ length: 50 }, (_, i) => {
+      const quantScore = 30 + Math.random() * 70;
+      const qualScore = 30 + Math.random() * 70;
+      const totalScore = 30 + Math.random() * 70;
+      return {
+        id: i,
+        name: `企業${i}`,
+        quantScore,
+        qualScore,
+        totalScore,
+        approved: Math.random() > 0.3,
+        state: {
+          x: (quantScore - 50) / 5,
+          y: (qualScore - 50) / 5,
+          z: (totalScore - 50) / 5,
+        },
+        trajectory: [],
+      };
+    });
+  });
+
+  companiesRef.current = companies;
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+    const centerX = width / 2;
+    const centerY = height / 2;
+
+    let time = 0;
+
+    function lorenz(x, y, z, dt = 0.005) {
+      const σ = 10, ρ = 28, β = 8/3;
+      const dx = σ * (y - x) * dt;
+      const dy = (x * (ρ - z) - y) * dt;
+      const dz = (x * y - β * z) * dt;
+      return { x: x + dx, y: y + dy, z: z + dz };
+    }
+
+    function project3D(x, y, z, rotX, rotY) {
+      const x1 = x * Math.cos(rotY) - z * Math.sin(rotY);
+      const z1 = x * Math.sin(rotY) + z * Math.cos(rotY);
+      const y2 = y * Math.cos(rotX) - z1 * Math.sin(rotX);
+      const z2 = y * Math.sin(rotX) + z1 * Math.cos(rotX);
+      const scale = 400 / (400 + z2);
+      return {
+        x: centerX + x1 * scale * 8,
+        y: centerY + y2 * scale * 8,
+        scale: scale,
+      };
+    }
+
+    const animate = () => {
+      const comps = companiesRef.current;
+      if (!comps) { time++; animationRef.current = requestAnimationFrame(animate); return; }
+
+      if (showTrails) {
+        ctx.fillStyle = 'rgba(10, 0, 21, 0.05)';
+        ctx.fillRect(0, 0, width, height);
+      } else {
+        ctx.fillStyle = '#0a0015';
+        ctx.fillRect(0, 0, width, height);
+      }
+
+      const rotX = rotation.x + time * 0.001;
+      const rotY = rotation.y + time * 0.002;
+
+      comps.forEach((company) => {
+        company.state = lorenz(company.state.x, company.state.y, company.state.z);
+        company.trajectory.push({ ...company.state });
+        if (company.trajectory.length > 1000) company.trajectory.shift();
+
+        if (company.trajectory.length > 1) {
+          ctx.strokeStyle = company.approved ? 'rgba(100, 255, 100, 0.3)' : 'rgba(255, 100, 100, 0.3)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          company.trajectory.forEach((point, i) => {
+            const projected = project3D(point.x, point.y, point.z, rotX, rotY);
+            if (i === 0) ctx.moveTo(projected.x, projected.y);
+            else ctx.lineTo(projected.x, projected.y);
+          });
+          ctx.stroke();
+        }
+
+        const current = project3D(company.state.x, company.state.y, company.state.z, rotX, rotY);
+        const glowSize = 12 * current.scale;
+        const gradient = ctx.createRadialGradient(current.x, current.y, 0, current.x, current.y, glowSize);
+        if (company.approved) {
+          gradient.addColorStop(0, 'rgba(100, 255, 100, 0.8)');
+          gradient.addColorStop(1, 'rgba(100, 255, 100, 0)');
+        } else {
+          gradient.addColorStop(0, 'rgba(255, 100, 100, 0.8)');
+          gradient.addColorStop(1, 'rgba(255, 100, 100, 0)');
+        }
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(current.x, current.y, glowSize, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = company.approved ? '#00ff00' : '#ff0000';
+        ctx.beginPath();
+        ctx.arc(current.x, current.y, 3 * current.scale, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      time++;
+      animationRef.current = requestAnimationFrame(animate);
+    };
+
+    animate();
+    return () => {
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    };
+  }, [companies, rotation, showTrails]);
+
+  const handleMouseMove = (e) => {
+    if (e.buttons === 1) {
+      setRotation(r => ({
+        x: r.x + e.movementY * 0.01,
+        y: r.y + e.movementX * 0.01,
+      }));
+    }
+  };
+
+  const handleReset = () => {
+    setCompanies(prev => prev.map(c => ({
+      ...c,
+      state: {
+        x: (c.quantScore - 50) / 5,
+        y: (c.qualScore - 50) / 5,
+        z: (c.totalScore - 50) / 5,
+      },
+      trajectory: [],
+    })));
+  };
+
+  return (
+    <div style={{ padding: 20 }}>
+      <div style={{ textAlign: 'center', marginBottom: 20 }}>
+        <h1 style={{
+          fontSize: 36, fontWeight: 300, letterSpacing: '0.2em',
+          background: 'linear-gradient(90deg, #ff00ff, #00ffff)',
+          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+        }}>
+          CHAOS CREDIT DYNAMICS
+        </h1>
+        <p style={{ fontSize: 12, color: '#888', letterSpacing: '0.1em', marginTop: 10 }}>
+          Lorenz Attractor × Butterfly Effect
+        </p>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 15, marginBottom: 20, flexWrap: 'wrap' }}>
+        <button onClick={() => setShowTrails(!showTrails)} style={{
+          padding: '10px 20px',
+          background: showTrails ? '#ff00ff' : '#333',
+          border: 'none', borderRadius: 8,
+          color: '#fff', cursor: 'pointer', fontWeight: 600,
+        }}>
+          {showTrails ? '🌊 軌跡ON' : '⚫ 軌跡OFF'}
+        </button>
+        <button onClick={handleReset} style={{
+          padding: '10px 20px', background: '#333',
+          border: 'none', borderRadius: 8,
+          color: '#fff', cursor: 'pointer',
+        }}>
+          🔄 リセット
+        </button>
+        <a href="/static/manifold_react.html" style={{
+          padding: '10px 20px', background: 'rgba(168,237,234,0.2)',
+          border: '1px solid rgba(168,237,234,0.5)', borderRadius: 8,
+          color: '#a8edea', cursor: 'pointer', textDecoration: 'none', fontSize: 14,
+        }}>
+          📐 Riemannian Manifold
+        </a>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
+        <canvas
+          ref={canvasRef}
+          width={900}
+          height={700}
+          onMouseMove={handleMouseMove}
+          style={{
+            border: '2px solid #ff00ff',
+            borderRadius: 8,
+            cursor: 'grab',
+            boxShadow: '0 0 40px rgba(255,0,255,0.3)',
+            maxWidth: '100%',
+          }}
+        />
+      </div>
+
+      <div style={{
+        maxWidth: 900, margin: '0 auto',
+        background: 'rgba(255,255,255,0.05)',
+        padding: 20, borderRadius: 8,
+        border: '1px solid rgba(255,0,255,0.3)',
+      }}>
+        <div style={{ fontSize: 13, marginBottom: 10, color: '#ff00ff' }}>
+          カオス理論の解釈
+        </div>
+        <div style={{ fontSize: 11, lineHeight: 1.8, color: '#ccc' }}>
+          各企業はローレンツアトラクタの軌道上を移動します。
+          初期値（財務状態）がわずかに異なるだけで、
+          将来の軌道が全く異なる経路を辿る「蝶効果」を可視化。
+          決定論的でありながら予測不可能な信用リスクの本質を表現します。
+        </div>
+        <div style={{
+          marginTop: 15, paddingTop: 15,
+          borderTop: '1px solid rgba(255,0,255,0.2)',
+          fontSize: 11, color: '#888',
+        }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div><span style={{ color: '#00ff00' }}>●</span> 承認企業（緑）</div>
+            <div><span style={{ color: '#ff0000' }}>●</span> 否決企業（赤）</div>
+            <div>dx/dt = σ(y - x)</div>
+            <div>dy/dt = x(ρ - z) - y</div>
+            <div>dz/dt = xy - βz</div>
+            <div>σ=10, ρ=28, β=8/3</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.render(<ChaosCredit />, document.getElementById('root'));
+</script>
+</body>
+</html>

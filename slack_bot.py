@@ -81,6 +81,7 @@ def _load_secrets() -> dict:
 _secrets = _load_secrets()
 
 SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", _secrets.get("SLACK_BOT_TOKEN", ""))
+SLACK_APP_TOKEN = os.environ.get("SLACK_APP_TOKEN", _secrets.get("SLACK_APP_TOKEN", ""))
 SLACK_WEBHOOK_URL = os.environ.get("SLACK_WEBHOOK_URL", _secrets.get("SLACK_WEBHOOK_URL", ""))
 
 POLL_INTERVAL = 3  # 秒
@@ -236,7 +237,19 @@ def handle_message(client: WebClient, channel: str, text: str, user: str) -> Non
     if is_screening_active(channel):
         reply = handle_screening_message(channel, text)
         if reply:
-            client.chat_postMessage(channel=channel, text=reply)
+            if isinstance(reply, dict):
+                # Block Kit 形式（スコアリング完了時）
+                attachments = reply.get("blocks")
+                if attachments:
+                    client.chat_postMessage(
+                        channel=channel,
+                        text=reply.get("text", "審査結果"),
+                        attachments=attachments,
+                    )
+                else:
+                    client.chat_postMessage(channel=channel, text=reply.get("text", str(reply)))
+            else:
+                client.chat_postMessage(channel=channel, text=reply)
         return  # 審査中は何があっても必ずここで終了
 
     command, argument = _parse_command(text)
@@ -409,18 +422,44 @@ def poll_loop(client: WebClient, bot_user_id: str) -> None:
 # エントリポイント
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _socket_mode_main(bot_token: str, app_token: str) -> None:
+    """Socket Mode でリアルタイムイベントを処理する（SLACK_APP_TOKEN が必要）。"""
+    try:
+        from slack_bolt import App
+        from slack_bolt.adapter.socket_mode import SocketModeHandler
+    except ImportError:
+        logger.error("slack-bolt が見つかりません。pip install slack-bolt でインストールしてください。")
+        raise
+
+    app = App(token=bot_token)
+    client = WebClient(token=bot_token)
+
+    @app.event("message")
+    def on_message(event, say):  # type: ignore[no-untyped-def]
+        channel = event.get("channel", "")
+        text = event.get("text", "")
+        user = event.get("user", "")
+        # ボット自身のメッセージや subtype はスキップ
+        if not user or event.get("subtype") or event.get("bot_id"):
+            return
+        logger.info(f"📩 Socket Mode メッセージ: user={user}, text={text[:80]}")
+        try:
+            handle_message(client, channel, text, user)
+        except Exception as e:
+            logger.error(f"メッセージ処理エラー: {e}")
+
+    logger.info("=" * 60)
+    logger.info("🤖 リース審査AIボット — Socket Mode で起動")
+    logger.info("=" * 60)
+    handler = SocketModeHandler(app, app_token)
+    handler.start()
+
+
 def main():
-    """ボット起動。"""
+    """ボット起動。SLACK_APP_TOKEN があれば Socket Mode、なければポーリングモード。"""
     if not SLACK_BOT_TOKEN:
         logger.error("❌ SLACK_BOT_TOKEN が設定されていません。")
         sys.exit(1)
-
-    client = WebClient(token=SLACK_BOT_TOKEN)
-
-    # ボット自身のIDを取得
-    auth = client.auth_test()
-    bot_user_id = auth["user_id"]
-    bot_name = auth["user"]
 
     # AI エンジン確認
     api_key = (
@@ -429,11 +468,28 @@ def main():
         or _secrets.get("GEMINI_API_KEY", "")
     )
 
+    if SLACK_APP_TOKEN:
+        # ── Socket Mode（リアルタイム・推奨） ──────────────────────────────
+        logger.info(f"   AI Engine: {'Gemini API' if api_key else 'Ollama (ローカル)'}")
+        try:
+            _socket_mode_main(SLACK_BOT_TOKEN, SLACK_APP_TOKEN)
+        except KeyboardInterrupt:
+            logger.info("\n👋 ボットを停止しました。")
+        return
+
+    # ── ポーリングモード（フォールバック） ───────────────────────────────────
+    client = WebClient(token=SLACK_BOT_TOKEN)
+
+    auth = client.auth_test()
+    bot_user_id = auth["user_id"]
+    bot_name = auth["user"]
+
     logger.info("=" * 60)
     logger.info("🤖 リース審査AIボット — ポーリングモードで起動")
     logger.info(f"   Bot: {bot_name} ({bot_user_id})")
     logger.info(f"   AI Engine: {'Gemini API' if api_key else 'Ollama (ローカル)'}")
     logger.info(f"   ポーリング間隔: {POLL_INTERVAL}秒")
+    logger.info("   ※ SLACK_APP_TOKEN を設定すると Socket Mode（リアルタイム）に切り替わります")
     logger.info("=" * 60)
     logger.info("📡 DMチャンネルを監視しています...")
     logger.info("   Slackでボットにダイレクトメッセージを送ってください！")

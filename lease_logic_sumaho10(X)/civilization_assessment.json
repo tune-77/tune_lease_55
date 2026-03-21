@@ -1,0 +1,27 @@
+{
+  "generated_at": "2026-02-22T19:40:15.394047",
+  "total_civilizations": 1,
+  "data": [
+    {
+      "tech_level": 65.75,
+      "ethical_dev": 43.0,
+      "sustainability": 33.0,
+      "total_score": 46.32,
+      "judgment": "monitor",
+      "action": "継続監視",
+      "description": "この文明は注視を要する。1000年後に再評価。",
+      "warnings": [],
+      "name": "地球文明",
+      "planet": "地球",
+      "age": 10000,
+      "population": 8000000000,
+      "kardashev_type": 0.73,
+      "assessed_at": "2026-02-22T19:40:15.393628"
+    }
+  ],
+  "summary": {
+    "preserve": 0,
+    "monitor": 1,
+    "terminate": 0
+  }
+}

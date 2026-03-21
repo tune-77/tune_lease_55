@@ -214,6 +214,7 @@ class CompanyData:
     total_debt: float        # 借入金残高（円）
     lease_amount: float = 0  # リース希望額（円）
     lease_months: int = 36   # リース期間（月）
+    subsidy_amount: float = 0  # 適用補助金額（円）。負債の初期値を圧縮する形でモデル化
 
 
 @dataclass
@@ -289,7 +290,9 @@ class AdvancedMonteCarloEngine:
         mar_paths = np.clip(mar_paths, -0.30, 0.50)
         eq_paths  = self._gbm_paths(company.equity_ratio, 0.005, vol["equity_vol"], T, dt)
         eq_paths  = np.clip(eq_paths, 0.01, 0.99)
-        debt_paths = self._gbm_paths(company.total_debt, -0.02, vol["debt_vol"], T, dt)
+        # 補助金は初期借入残高を圧縮する形でモデル化（補助分だけ調達不要になる）
+        effective_debt = max(company.total_debt - company.subsidy_amount, 0.0)
+        debt_paths = self._gbm_paths(effective_debt, -0.02, vol["debt_vol"], T, dt)
         debt_paths = np.clip(debt_paths, 0, None)
 
         ts_default = np.zeros(T + 1)

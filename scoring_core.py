@@ -139,7 +139,9 @@ def run_quick_scoring(inputs: dict) -> dict:
     bank_credit = _safe_float(inputs.get("bank_credit"))
     lease_credit = _safe_float(inputs.get("lease_credit"))
     contracts = _safe_int(inputs.get("contracts"))
-    asset_score = _safe_float(inputs.get("asset_score"), default=50.0)
+    _raw_asset_score = inputs.get("asset_score")
+    used_default_asset_score = _raw_asset_score is None or str(_raw_asset_score).strip() == ""
+    asset_score = _safe_float(_raw_asset_score, default=50.0)
 
     user_op_margin = (op_profit / nenshu * 100) if nenshu > 0 else 0.0
     user_equity_ratio = (net_assets / total_assets * 100) if total_assets > 0 else 0.0
@@ -195,6 +197,11 @@ def run_quick_scoring(inputs: dict) -> dict:
     final_score = max(0, min(100, round(final_score, 1)))
     hantei = "承認圏内" if final_score >= APPROVAL_LINE else "要審議"
 
+    # 物件スコアのデフォルト使用フラグ
+    asset_score_warnings = []
+    if used_default_asset_score:
+        asset_score_warnings.append("物件スコア未入力のためデフォルト値(50)を使用")
+
     return {
         "score": final_score,
         "hantei": hantei,
@@ -207,4 +214,6 @@ def run_quick_scoring(inputs: dict) -> dict:
         "industry_sub": industry_sub,
         "industry_major": industry_major,
         "approval_line": APPROVAL_LINE,
+        "used_default_asset_score": used_default_asset_score,
+        "asset_score_warnings": asset_score_warnings,
     }

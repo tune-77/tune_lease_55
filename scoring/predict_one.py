@@ -6,11 +6,48 @@ sumaho10 用: 1件分の入力辞書から学習モデル（業種別ハイブ�
 """
 from __future__ import annotations
 
+import logging
 import warnings
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
 warnings.filterwarnings("ignore")
+
+_logger = logging.getLogger(__name__)
+
+# ── モデルキャッシュ（Streamlit内外どちらでも動作）──────────────────────────
+_MODEL_CACHE: "dict[str, dict]" = {}
+
+
+def _load_models(base_path: str) -> dict:
+    """モデルファイルを初回のみロードしてキャッシュする。毎回のjoblib.loadを回避。"""
+    if base_path in _MODEL_CACHE:
+        return _MODEL_CACHE[base_path]
+
+    import joblib
+    from .feature_engineering_custom import CustomFinancialFeatures
+    from .industry_hybrid_model import IndustrySpecificHybridModel
+    from .model import CreditScoringModel
+
+    base = Path(base_path)
+    engine = CustomFinancialFeatures()
+    industry_model = IndustrySpecificHybridModel()
+    industry_model.industry_coefficients = joblib.load(base / "industry_coefficients.pkl")
+    industry_model.industry_intercepts = joblib.load(base / "industry_intercepts.pkl")
+    unified_ai = CreditScoringModel(model_type="lightgbm")
+    unified_ai.load_model(str(base / "unified_ai_model.pkl"))
+    scaler = joblib.load(base / "scaler.pkl")
+    label_encoder = joblib.load(base / "label_encoder.pkl")
+
+    _MODEL_CACHE[base_path] = {
+        "engine": engine,
+        "industry_model": industry_model,
+        "unified_ai": unified_ai,
+        "scaler": scaler,
+        "label_encoder": label_encoder,
+    }
+    return _MODEL_CACHE[base_path]
+
 
 # 円単位で渡す想定
 def _ensure_float(v: Any) -> float:
@@ -80,26 +117,26 @@ def predict_one(
     try:
         import numpy as np
         import pandas as pd
-        import joblib
-        from .feature_engineering_custom import CustomFinancialFeatures
-        from .industry_hybrid_model import IndustrySpecificHybridModel
-        from .model import CreditScoringModel
     except Exception as e:
+        _logger.warning("predict_one: numpy/pandas が利用できません: %s", e)
         return None
 
     if base_path is None:
         base_path = str(Path(__file__).resolve().parent / "models" / "industry_specific")
     base = Path(base_path)
     if not base.exists():
+        _logger.info("predict_one: モデルディレクトリが存在しません: %s", base_path)
         return None
-    for f in ("industry_coefficients.pkl", "industry_intercepts.pkl", "unified_ai_model.pkl", "scaler.pkl", "label_encoder.pkl"):
-        if not (base / f).exists():
-            return None
+    missing = [f for f in ("industry_coefficients.pkl", "industry_intercepts.pkl", "unified_ai_model.pkl", "scaler.pkl", "label_encoder.pkl") if not (base / f).exists()]
+    if missing:
+        _logger.info("predict_one: モデルファイルが不足しています: %s", missing)
+        return None
 
     revenue = _ensure_float(revenue)
     total_assets = _ensure_float(total_assets)
     equity = _ensure_float(equity)
     if total_assets <= 0 or equity < 0:
+        _logger.debug("predict_one: 入力値不正 total_assets=%s equity=%s", total_assets, equity)
         return None
 
     operating_profit = _ensure_float(operating_profit)
@@ -110,15 +147,14 @@ def predict_one(
     rent_expense = _ensure_float(rent_expense)
 
     try:
-        engine = CustomFinancialFeatures()
-        industry_model = IndustrySpecificHybridModel()
-        industry_model.industry_coefficients = joblib.load(base / "industry_coefficients.pkl")
-        industry_model.industry_intercepts = joblib.load(base / "industry_intercepts.pkl")
-        unified_ai = CreditScoringModel(model_type="lightgbm")
-        unified_ai.load_model(str(base / "unified_ai_model.pkl"))
-        scaler = joblib.load(base / "scaler.pkl")
-        label_encoder = joblib.load(base / "label_encoder.pkl")
-    except Exception:
+        models = _load_models(str(base))
+        engine = models["engine"]
+        industry_model = models["industry_model"]
+        unified_ai = models["unified_ai"]
+        scaler = models["scaler"]
+        label_encoder = models["label_encoder"]
+    except Exception as e:
+        _logger.error("predict_one: モデルロードに失敗しました: %s", e, exc_info=True)
         return None
 
     row = {

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}審査結果{% endblock %}
+{% block content %}
+<div class="mb-6 flex items-center justify-between">
+  <h1 class="text-2xl font-bold text-slate-800">審査結果</h1>
+  <a href="{{ url_for('index') }}" class="text-teal-600 hover:text-teal-700 font-medium text-sm">← もう一度審査する</a>
+</div>
+
+{% set r = result %}
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="lg:col-span-2 space-y-6">
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+      <div class="p-6 flex flex-wrap items-center gap-4">
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-slate-500 mb-0.5">総合スコア</p>
+          <p class="text-4xl font-bold text-slate-800">{{ "%.1f"|format(r.score) }}<span class="text-xl font-normal text-slate-500">点</span></p>
+          <p class="text-sm text-slate-600 mt-1">承認ライン {{ r.approval_line }} 点以上</p>
+        </div>
+        <div class="flex-shrink-0">
+          {% if r.hantei == "承認圏内" %}
+          <span class="inline-flex items-center rounded-full bg-teal-100 px-4 py-2 text-lg font-semibold text-teal-800">承認圏内</span>
+          {% else %}
+          <span class="inline-flex items-center rounded-full bg-amber-100 px-4 py-2 text-lg font-semibold text-amber-800">要審議</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+      <h2 class="text-lg font-semibold text-teal-800 mb-3">業界比較</h2>
+      <p class="text-sm text-slate-600 mb-2">{{ r.industry_sub }}</p>
+      <div class="prose prose-slate max-w-none text-sm whitespace-pre-line">{{ r.comparison }}</div>
+    </div>
+  </div>
+
+  <div class="space-y-4">
+    <div class="bg-slate-50 rounded-2xl border border-slate-200 p-5">
+      <h3 class="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-3">指標サマリ</h3>
+      <ul class="space-y-2 text-sm">
+        <li class="flex justify-between"><span class="text-slate-600">借手スコア</span><span class="font-medium">{{ "%.1f"|format(r.score_borrower) }}点</span></li>
+        <li class="flex justify-between"><span class="text-slate-600">営業利益率</span><span class="font-medium">{{ "%.1f"|format(r.user_op_margin) }}%</span></li>
+        <li class="flex justify-between"><span class="text-slate-600">自己資本比率</span><span class="font-medium">{{ "%.1f"|format(r.user_equity_ratio) }}%</span></li>
+        <li class="flex justify-between"><span class="text-slate-600">業界目安（利益率）</span><span class="font-medium">{{ "%.1f"|format(r.bench_op_margin) }}%</span></li>
+        <li class="flex justify-between"><span class="text-slate-600">業界目安（自己資本）</span><span class="font-medium">{{ "%.1f"|format(r.bench_equity_ratio) }}%</span></li>
+      </ul>
+    </div>
+    <p class="text-xs text-slate-500">定性・学習モデル・利回り補正等は Streamlit 版でご利用ください。</p>
+  </div>
+</div>
+{% endblock %}

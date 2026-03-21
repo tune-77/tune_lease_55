@@ -76,14 +76,14 @@ CATEGORY_SCORE_ITEMS = {
         {
             "id": "versatility",
             "label": "汎用性",
-            "weight": 30,
+            "weight": 25,
             "help": "複数業種・用途に使える=スコア高",
             "tag": None,
         },
         {
             "id": "maker_brand",
             "label": "メーカーブランド",
-            "weight": 25,
+            "weight": 20,
             "help": "大手・有名メーカー=スコア高（流動性・サポート品質を反映）",
             "tag": "liquidity_support",
         },
@@ -102,9 +102,16 @@ CATEGORY_SCORE_ITEMS = {
             "tag": "residual_value",
         },
         {
+            "id": "customization_level",
+            "label": "カスタマイズ度の低さ",
+            "weight": 15,
+            "help": "標準仕様・汎用品=スコア高。専用品・カスタム品=転売困難でスコア低",
+            "tag": "residual_value",
+        },
+        {
             "id": "resale_market",
             "label": "再販市場",
-            "weight": 10,
+            "weight": 5,
             "help": "中古・転売市場が確立されている=スコア高",
             "tag": "residual_value",
         },
@@ -136,7 +143,7 @@ CATEGORY_SCORE_ITEMS = {
             "label": "EV技術変化リスク低さ",
             "weight": 10,
             "help": "ガソリン・ハイブリッド=中、純EV=技術変化リスクで要注意",
-            "tag": "obsolescence_risk",
+            "tag": "ev_risk",
         },
         {
             "id": "modification",
@@ -185,12 +192,25 @@ CATEGORY_SCORE_ITEMS = {
     ],
 }
 
-# ── lease_assets.json の id → スコアリングカテゴリ マッピング ────────────────
+# ── lease_assets.json / Slack ASSET_LIST の id → スコアリングカテゴリ マッピング ──
+# None はカテゴリ別詳細スコアリング対象外（固定スコアをそのまま使用）
 ASSET_ID_TO_CATEGORY = {
-    "vehicle": "車両",
-    "medical": "医療機器",
-    "it_equipment": "IT機器",
-    "manufacturing": "産業機械",
+    # ── lease_assets.json の正規 ID ───────────────────────────────────────────
+    "vehicle":             "車両",
+    "medical":             "医療機器",
+    "it_equipment":        "IT機器",
+    "manufacturing":       "産業機械",
+    "construction_machine": "産業機械",   # 建設機械
+    "office_furniture":    "IT機器",      # OA機器・内装 → IT機器カテゴリで評価
+    "restaurant":          "産業機械",    # 飲食店設備
+    "renewable":           "産業機械",    # 太陽光・省エネ設備
+    "other":               None,          # その他: カテゴリ別スコアリング対象外
+    # ── Slack ASSET_LIST の ID（lease_assets.json に未登録のもの） ────────────
+    "machinery":           "産業機械",    # 機械設備
+    "construction":        "産業機械",    # 建設
+    "food":                "産業機械",    # 飲食店設備
+    "office":              "IT機器",      # オフィス機器
+    "solar":               "産業機械",    # 太陽光
 }
 
 # ── グレード閾値（物件スコア・総合スコア共通） ──────────────────────────────
