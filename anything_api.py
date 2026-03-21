@@ -83,7 +83,12 @@ def query_anything_llm(message: str, workspace_slug: str = ANYTHING_LLM_WORKSPAC
         payload = {"message": message, "mode": "query"}
         resp = requests.post(url, json=payload, headers=headers, timeout=60)
         if resp.status_code == 200:
-            return resp.json().get("textResponse", "") or ""
+            if not resp.text or not resp.text.strip():
+                return ""
+            try:
+                return resp.json().get("textResponse", "") or ""
+            except ValueError:
+                return ""
         return ""
     except Exception:
         return ""
@@ -124,7 +129,12 @@ def chat_anything_llm(messages: list, workspace_slug: str = ANYTHING_LLM_WORKSPA
         payload = {"message": combined, "mode": "chat"}
         resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
         if resp.status_code == 200:
-            text = resp.json().get("textResponse", "") or ""
+            if not resp.text or not resp.text.strip():
+                return {"message": {"content": "（AnythingLLM から空の応答が返りました。サーバーの状態を確認してください）"}}
+            try:
+                text = resp.json().get("textResponse", "") or ""
+            except ValueError:
+                return {"message": {"content": f"AnythingLLM の応答がJSONではありません。（受信内容: {resp.text[:100]}）"}}
             return {"message": {"content": text or "（AnythingLLM から空の応答でした）"}}
         return {"message": {"content": f"AnythingLLM エラー: HTTP {resp.status_code} — {resp.text[:200]}"}}
     except requests.exceptions.ConnectionError:
