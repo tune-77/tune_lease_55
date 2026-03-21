@@ -50,7 +50,7 @@ def health():
 
 
 def _load_benchmarks():
-    path = os.path.join(_REPO_ROOT, "industry_benchmarks.json")
+    path = os.path.join(_SUBMODULE, "industry_benchmarks.json")
     if not os.path.exists(path):
         return {}
     try:

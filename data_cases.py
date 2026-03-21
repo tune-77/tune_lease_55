@@ -1,7 +1,7 @@
 """
 案件・係数・重みの読み書きモジュール（lease_logic_sumaho10）
 load_all_cases, save_all_cases, save_case_log, load_coeff_overrides, save_coeff_overrides,
-get_score_weights, get_effective_coeffs, load_consultation_memory, append_consultation_memory,
+get_score_weights, get_model_blend_weights, get_effective_coeffs, load_consultation_memory, append_consultation_memory,
 load_case_news, append_case_news, find_similar_past_cases を提供。
 st は使わず、保存失敗時は False/None を返す。呼び元で st.error 等を表示すること。
 """
@@ -10,6 +10,8 @@ import sys
 import json
 import datetime
 from typing import Optional
+import numpy as np
+import pandas as pd
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
@@ -19,11 +21,15 @@ if _REPO_ROOT not in sys.path:
 from coeff_definitions import COEFFS
 from charts import _equity_ratio_display
 
-# ファイルパス（リポジトリルート基準）
-CASES_FILE = os.path.join(_REPO_ROOT, "past_cases.jsonl")
-COEFF_OVERRIDES_FILE = os.path.join(_REPO_ROOT, "data", "coeff_overrides.json")
-CONSULTATION_MEMORY_FILE = os.path.join(_REPO_ROOT, "consultation_memory.jsonl")
-CASE_NEWS_FILE = os.path.join(_REPO_ROOT, "case_news.jsonl")
+# ファイルパス（フォルダ内 data/ 基準）
+_DATA_DIR = os.path.join(_SCRIPT_DIR, "data")
+CASES_FILE = os.path.join(_REPO_ROOT, "past_cases.jsonl") # obsolete but kept for reference
+DB_PATH = os.path.join(_DATA_DIR, "lease_data.db")
+COEFF_OVERRIDES_FILE = os.path.join(_DATA_DIR, "coeff_overrides.json")
+COEFF_AUTO_FILE      = os.path.join(_DATA_DIR, "coeff_auto.json")   # 自動最適化専用
+COEFF_HISTORY_FILE   = os.path.join(_DATA_DIR, "coeff_history.jsonl")  # 係数変更履歴
+CONSULTATION_MEMORY_FILE = os.path.join(_DATA_DIR, "consultation_memory.jsonl")
+CASE_NEWS_FILE = os.path.join(_DATA_DIR, "case_news.jsonl")
 
 # スコア重みのデフォルト（借手/物件、総合/定性）。回帰最適化で上書き可能。
 DEFAULT_WEIGHT_BORROWER = 0.85
@@ -66,18 +72,25 @@ def append_consultation_memory(user_text: str, assistant_text: str):
 
 
 def load_all_cases():
-    """過去案件を全件読み込み。"""
-    if not os.path.exists(CASES_FILE):
+    """過去案件を全件読み込み（SQLiteから）。"""
+    if not os.path.exists(DB_PATH):
         return []
+        
+    import sqlite3
+    from contextlib import closing
     cases = []
     try:
-        with open(CASES_FILE, "r", encoding="utf-8") as f:
-            for line in f:
+        with closing(sqlite3.connect(DB_PATH)) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT data FROM past_cases ORDER BY timestamp ASC")
+            for row in cursor.fetchall():
                 try:
-                    cases.append(json.loads(line))
+                    cases.append(json.loads(row[0]))
                 except json.JSONDecodeError:
                     continue
-    except Exception:
+    except Exception as e:
+        import traceback
+        print(f"[Error in load_all_cases]: {e}", file=sys.stderr)
         return []
     return cases
 
@@ -87,42 +100,103 @@ def load_past_cases():
     return load_all_cases()
 
 
+try:
+    import streamlit as _st
+
+    @_st.cache_data(ttl=60)
+    def load_all_cases_cached() -> list:
+        """load_all_cases の 1 分キャッシュ版（Streamlit 環境専用）。"""
+        return load_all_cases()
+
+except Exception:
+    def load_all_cases_cached() -> list:  # type: ignore[misc]
+        return load_all_cases()
+
+
 def find_similar_past_cases(selected_sub: str, user_equity_ratio: float, max_count: int = 3):
-    """業界が同じで自己資本比率が近い過去案件を最大 max_count 件返す。"""
-    cases = load_past_cases()
+    """業界が同じで自己資本比率が近い過去案件を最大 max_count 件返す（SQLite版）。"""
+    import sqlite3
+    from contextlib import closing
+    if not os.path.exists(DB_PATH):
+        return []
+
     candidates = []
-    for c in cases:
-        if c.get("industry_sub") != selected_sub:
-            continue
-        res = c.get("result") or {}
-        eq = res.get("user_eq")
-        if eq is None:
-            continue
-        try:
-            eq_val = float(_equity_ratio_display(eq) or 0)
-        except (TypeError, ValueError):
-            continue
-        diff = abs(eq_val - user_equity_ratio)
-        status = c.get("final_status", "未登録")
-        score = res.get("score")
-        candidates.append({"diff": diff, "case": c, "equity": eq_val, "status": status, "score": score})
+    try:
+        with closing(sqlite3.connect(DB_PATH)) as conn:
+            cursor = conn.cursor()
+            # まずは同じ業種のデータをすべて引っ張る
+            cursor.execute("SELECT data, user_eq, score, final_status FROM past_cases WHERE industry_sub = ?", (selected_sub,))
+            for row in cursor.fetchall():
+                data_json, eq_val, score, status = row
+                if eq_val is None:
+                    continue
+
+                diff = abs(eq_val - user_equity_ratio)
+                try:
+                    case_data = json.loads(data_json)
+                    candidates.append({"diff": diff, "case": case_data, "equity": eq_val, "status": status, "score": score})
+                except:
+                    pass
+    except Exception:
+        pass
+        
     candidates.sort(key=lambda x: x["diff"])
     return [x["case"] for x in candidates[:max_count]]
 
 
 def save_all_cases(cases):
-    """案件一覧を上書き保存。失敗時は False。"""
+    """案件一覧を上書き保存。(※SQLiteへの全移行では本来不要だがメソッドシグネチャ互換のため残す)"""
+    if not os.path.exists(DB_PATH):
+        return False
+
     try:
-        with open(CASES_FILE, "w", encoding="utf-8") as f:
-            for c in cases:
-                f.write(json.dumps(c, ensure_ascii=False) + "\n")
+        import sqlite3
+        from contextlib import closing
+        with closing(sqlite3.connect(DB_PATH)) as conn:
+            cursor = conn.cursor()
+            try:
+                # DELETE→INSERT をトランザクションで保護（INSERT失敗時はロールバック）
+                cursor.execute("BEGIN")
+                cursor.execute("DELETE FROM past_cases")
+                for data in cases:
+                    case_id = data.get("id")
+                    timestamp = data.get("timestamp", "")
+                    industry_sub = data.get("industry_sub", "")
+                    final_status = data.get("final_status", "")
+
+                    score, user_eq = None, None
+                    res = data.get("result", {})
+                    if isinstance(res, dict):
+                        score = res.get("score")
+                        user_eq = res.get("user_eq")
+
+                    try:
+                        score_val = float(score) if score is not None else None
+                    except (TypeError, ValueError):
+                        score_val = None
+
+                    try:
+                        user_eq_val = float(user_eq) if user_eq is not None else None
+                    except (TypeError, ValueError):
+                        user_eq_val = None
+
+                    json_str = json.dumps(data, ensure_ascii=False, cls=CustomJSONEncoder)
+                    cursor.execute("""
+                        INSERT INTO past_cases
+                        (id, timestamp, industry_sub, score, user_eq, final_status, data)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, (case_id, timestamp, industry_sub, score_val, user_eq_val, final_status, json_str))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
         return True
     except Exception:
         return False
 
 
 def load_coeff_overrides():
-    """保存済みの係数オーバーライドを読み込む。無ければ None。"""
+    """保存済みの係数オーバーライド（手動設定）を読み込む。無ければ None。"""
     if not os.path.exists(COEFF_OVERRIDES_FILE):
         return None
     try:
@@ -132,27 +206,107 @@ def load_coeff_overrides():
         return None
 
 
-def save_coeff_overrides(overrides_dict):
-    """係数オーバーライドを JSON で保存。失敗時は False。"""
+def save_coeff_overrides(overrides_dict, comment: str = ""):
+    """係数オーバーライド（手動設定）を JSON で保存。変更履歴も記録。失敗時は False。"""
     dirpath = os.path.dirname(COEFF_OVERRIDES_FILE)
     if dirpath and not os.path.isdir(dirpath):
         os.makedirs(dirpath, exist_ok=True)
     try:
+        # 変更前の値を取得して差分を記録
+        before = load_coeff_overrides() or {}
         with open(COEFF_OVERRIDES_FILE, "w", encoding="utf-8") as f:
             json.dump(overrides_dict, f, ensure_ascii=False, indent=2)
+        _append_coeff_history(
+            change_type="manual",
+            before=before,
+            after=overrides_dict,
+            comment=comment,
+        )
         return True
     except Exception:
         return False
 
 
+def load_auto_coeffs() -> dict:
+    """自動最適化で生成された推奨重みを読み込む。無ければ空 dict。"""
+    if not os.path.exists(COEFF_AUTO_FILE):
+        return {}
+    try:
+        with open(COEFF_AUTO_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def save_auto_coeffs(auto_dict: dict, comment: str = "") -> bool:
+    """自動最適化の推奨重みを専用ファイルに保存。変更履歴も記録。失敗時は False。"""
+    dirpath = os.path.dirname(COEFF_AUTO_FILE)
+    if dirpath and not os.path.isdir(dirpath):
+        os.makedirs(dirpath, exist_ok=True)
+    try:
+        before = load_auto_coeffs() or {}
+        with open(COEFF_AUTO_FILE, "w", encoding="utf-8") as f:
+            json.dump(auto_dict, f, ensure_ascii=False, indent=2)
+        _append_coeff_history(
+            change_type="auto",
+            before=before,
+            after=auto_dict,
+            comment=comment or "自動最適化による更新",
+        )
+        return True
+    except Exception:
+        return False
+
+
+def _append_coeff_history(change_type: str, before: dict, after: dict, comment: str = "") -> None:
+    """係数変更履歴を JSONL に1行追記する。"""
+    try:
+        os.makedirs(os.path.dirname(COEFF_HISTORY_FILE), exist_ok=True)
+        # 変更されたキーだけ抽出
+        all_keys = set(before.keys()) | set(after.keys())
+        changed = {
+            k: {"before": before.get(k), "after": after.get(k)}
+            for k in all_keys
+            if before.get(k) != after.get(k)
+        }
+        record = {
+            "timestamp":   datetime.datetime.now().isoformat(timespec="seconds"),
+            "change_type": change_type,   # "manual" or "auto"
+            "comment":     comment,
+            "changed_keys": changed,
+            "snapshot_after": after,
+        }
+        with open(COEFF_HISTORY_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception:
+        pass  # 履歴書き込み失敗は本処理に影響させない
+
+
+def load_coeff_history() -> list:
+    """係数変更履歴を新しい順で返す。"""
+    if not os.path.exists(COEFF_HISTORY_FILE):
+        return []
+    try:
+        records = [json.loads(l) for l in open(COEFF_HISTORY_FILE, encoding="utf-8") if l.strip()]
+        return list(reversed(records))
+    except Exception:
+        return []
+
+
 def get_score_weights():
-    """借手/物件・総合/定性の重みを返す。(w_borrower, w_asset, w_quant, w_qual)。"""
-    overrides = load_coeff_overrides() or {}
-    sw = overrides.get("score_weights") or {}
-    w_b = sw.get("borrower")
-    w_a = sw.get("asset")
-    w_q = sw.get("quant")
-    w_q2 = sw.get("qual")
+    """
+    借手/物件・総合/定性の重みを返す。(w_borrower, w_asset, w_quant, w_qual)。
+    優先順位: 手動設定 (coeff_overrides.json) > 自動最適化 (coeff_auto.json) > デフォルト値
+    """
+    auto     = load_auto_coeffs()
+    manual   = load_coeff_overrides() or {}
+    # score_weights キー（手動）vs _auto_weight_* キー（自動）を統合
+    sw = manual.get("score_weights") or {}
+    # 借手/物件重み: 手動 > 自動 > デフォルト
+    w_b  = sw.get("borrower") or auto.get("_auto_weight_borrower")
+    w_a  = sw.get("asset")    or auto.get("_auto_weight_asset")
+    w_q  = sw.get("quant")    or auto.get("_auto_weight_quant")
+    w_q2 = sw.get("qual")     or auto.get("_auto_weight_qual")
     if w_b is not None and w_a is not None and (w_b + w_a) > 0:
         s_ba = w_b + w_a
         w_borrower, w_asset = w_b / s_ba, w_a / s_ba
@@ -164,6 +318,28 @@ def get_score_weights():
     else:
         w_quant, w_qual = DEFAULT_WEIGHT_QUANT, DEFAULT_WEIGHT_QUAL
     return (w_borrower, w_asset, w_quant, w_qual)
+
+
+def get_model_blend_weights():
+    """
+    ① 全体モデル / ② 指標モデル / ③ 業種別モデル の混合重みを返す。
+    優先順位: 手動設定 (coeff_overrides.json) > 自動最適化 (coeff_auto.json) > デフォルト (0.5/0.3/0.2)
+    戻り値: (w_main, w_bench, w_ind) — 合計 1.0
+    """
+    _DEFAULT_MAIN  = 0.5
+    _DEFAULT_BENCH = 0.3
+    _DEFAULT_IND   = 0.2
+    auto   = load_auto_coeffs()
+    manual = load_coeff_overrides() or {}
+    mw = manual.get("model_blend_weights") or {}
+    w_m  = mw.get("main")  or auto.get("_auto_blend_w_main")
+    w_b  = mw.get("bench") or auto.get("_auto_blend_w_bench")
+    w_i  = mw.get("ind")   or auto.get("_auto_blend_w_ind")
+    if w_m is not None and w_b is not None and w_i is not None:
+        total = float(w_m) + float(w_b) + float(w_i)
+        if total > 0:
+            return float(w_m) / total, float(w_b) / total, float(w_i) / total
+    return _DEFAULT_MAIN, _DEFAULT_BENCH, _DEFAULT_IND
 
 
 def get_effective_coeffs(key=None):
@@ -216,15 +392,112 @@ def load_case_news(case_id: Optional[str] = None):
     return records
 
 
+class CustomJSONEncoder(json.JSONEncoder):
+    """
+    Numpyの各種数値型やPandasの欠損値等をPython標準型に変換して
+    JSONシリアライズ可能にするエンコーダ。
+    """
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif pd.isna(obj):  # np.nan や pd.NA の対応
+            return None
+        return super().default(obj)
+
 def save_case_log(data):
-    """審査1件分のログを追記し、生成した案件IDを返す。失敗時は None。"""
+    """審査1件分のログをSQLiteに追記し、生成した案件IDを返す。失敗時は None。"""
+    import sqlite3
     case_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
     data["id"] = case_id
     data["timestamp"] = datetime.datetime.now().isoformat()
     data["final_status"] = "未登録"
+    
+    industry_sub = data.get("industry_sub", "")
+    score, user_eq = None, None
+    res = data.get("result", {})
+    if isinstance(res, dict):
+        score, user_eq = res.get("score"), res.get("user_eq")
+        
     try:
-        with open(CASES_FILE, "a", encoding="utf-8") as f:
-            f.write(json.dumps(data, ensure_ascii=False) + "\n")
+        score_val = float(score) if score is not None else None
+    except:
+        score_val = None
+
+    try:
+        user_eq_val = float(user_eq) if user_eq is not None else None
+    except:
+        user_eq_val = None
+        
+    try:
+        if not os.path.exists(DB_PATH):
+            from migrate_to_sqlite import init_db
+            init_db()
+            
+        json_str = json.dumps(data, ensure_ascii=False, cls=CustomJSONEncoder)
+        from contextlib import closing
+        with closing(sqlite3.connect(DB_PATH)) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO past_cases
+                (id, timestamp, industry_sub, score, user_eq, final_status, data)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (case_id, data["timestamp"], industry_sub, score_val, user_eq_val, data["final_status"], json_str))
+            conn.commit()
         return case_id
-    except Exception:
+    except Exception as e:
+        import traceback
+        print(f"[Error in save_case_log (SQLite)]: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         return None
+
+
+def update_case_field(case_id: str, key: str, value: object) -> bool:
+    """指定された case_id のレコードに対して、[key] = value を追加・更新する（SQLite版）。"""
+    import sqlite3
+    if not case_id or not os.path.exists(DB_PATH):
+        return False
+        
+    try:
+        from contextlib import closing
+        with closing(sqlite3.connect(DB_PATH)) as conn:
+            cursor = conn.cursor()
+            # 該当レコードのdata(JSON文字列)を取得
+            cursor.execute("SELECT data FROM past_cases WHERE id = ?", (case_id,))
+            row = cursor.fetchone()
+            if not row:
+                return False
+
+            data_json = row[0]
+            try:
+                case_data = json.loads(data_json)
+            except:
+                case_data = {}
+
+            # JSON側の更新
+            case_data[key] = value
+            new_json_str = json.dumps(case_data, ensure_ascii=False, cls=CustomJSONEncoder)
+
+            # もし特定のキー（ステータス等）が単独カラムにもあれば一緒に更新する
+            update_cols = "data = ?"
+            update_args = [new_json_str]
+
+            if key == "final_status":
+                update_cols += ", final_status = ?"
+                update_args.append(str(value))
+            elif key == "industry_sub":
+                update_cols += ", industry_sub = ?"
+                update_args.append(str(value))
+
+            update_args.append(case_id)
+
+            cursor.execute(f"UPDATE past_cases SET {update_cols} WHERE id = ?", tuple(update_args))
+            conn.commit()
+        return True
+    except Exception as e:
+        import traceback
+        print(f"[Error in update_case_field (SQLite)]: {e}", file=sys.stderr)
+        return False

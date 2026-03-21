@@ -1,0 +1,18 @@
+# Streamlit アプリ依存パッケージ
+# バージョンは動作確認済み環境（2026-03）に固定
+streamlit==1.54.0
+pandas==2.3.0
+numpy==1.26.4
+plotly==6.3.0
+matplotlib==3.10.7
+seaborn==0.13.2
+scikit-learn==1.2.2
+lightgbm==4.6.0
+# shap>=0.44.0  # Mac では llvmlite のビルドに失敗することがある。conda install -c conda-forge shap で対応
+reportlab==4.4.10
+requests==2.32.5
+tenacity==9.1.2
+ollama==0.6.1
+pgmpy==1.0.0
+slack-bolt==1.22.0
+slack-sdk==3.35.0

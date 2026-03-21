@@ -28,8 +28,17 @@ COEFF_MAIN_KEYS = [
 COEFF_EXTRA_KEYS = [
     "main_bank", "competitor_present", "competitor_none",
     "rate_diff_z", "industry_sentiment_z", "qualitative_tag_score", "qualitative_passion",
-    "equity_ratio",  # 自己資本比率（%）
+    "equity_ratio",          # 自己資本比率（%）
     "qualitative_combined",  # 定性スコアリング合計（総合×60%＋定性×40%）を0-1で正規化
+    # BNエンジン出力（スコア≤70の案件でBN推論を実行した場合のみ値あり、未実行時は0）
+    "bn_approval_prob",      # BN最終承認確率（0-1）
+    "bn_fc",                 # 財務信用度（Financial_Creditworthiness, 0-1）
+    "bn_hc",                 # ヘッジ条件（Hedge_Condition, 0-1）
+    "bn_av",                 # 物件価値（Asset_Value, 0-1）
+    # ── 定性スコアリング項目（IVで最重要と確認済み・sumaho13追加） ──
+    "qual_weighted",         # 定性スコアリング weighted_score を 0-1 正規化
+    "qual_rank_good",        # 定性ランク A/B = 1, それ以外 = 0（優良フラグ）
+    "qual_repayment",        # 返済履歴スコア（items.repayment_history.value / 4.0）
 ]
 
 # 業種ごと・既存先/新規先のモデルキー（ベイズ回帰で更新対象）
@@ -182,7 +191,24 @@ def _build_one_row_industry(log, data):
     qsc = (res.get("qualitative_scoring_correction") or inp.get("qualitative_scoring")) or {}
     combined = qsc.get("combined_score") or qsc.get("weighted_score")
     qualitative_combined = (float(combined) / 100.0) if combined is not None else 0.0
-    row.extend([main_bank, competitor_present, competitor_none, rate_diff_z, industry_sentiment_z, qualitative_tag_score, qualitative_passion, equity_ratio, qualitative_combined])
+    # BNエンジン出力（スコア≤70の案件のみ値あり、未実行時は 0 で埋める）
+    bn      = log.get("bn_engine") or {}
+    bn_im   = bn.get("intermediate") or {}
+    bn_approval_prob = float(bn.get("approval_prob") or 0)
+    bn_fc   = float(bn_im.get("Financial_Creditworthiness") or 0)
+    bn_hc   = float(bn_im.get("Hedge_Condition") or 0)
+    bn_av   = float(bn_im.get("Asset_Value") or 0)
+    # 定性スコアリング項目（sumaho13追加）
+    qsc_items  = qsc.get("items") or {}
+    qual_weighted   = (float(qsc.get("weighted_score") or 0) / 100.0)
+    qual_rank       = qsc.get("rank") or ""
+    qual_rank_good  = 1.0 if qual_rank in ("A", "B") else 0.0
+    repayment_val   = (qsc_items.get("repayment_history") or {}).get("value") or 0
+    qual_repayment  = float(repayment_val) / 4.0  # 最大4段階 → 0-1 正規化
+    row.extend([main_bank, competitor_present, competitor_none, rate_diff_z, industry_sentiment_z,
+                qualitative_tag_score, qualitative_passion, equity_ratio, qualitative_combined,
+                bn_approval_prob, bn_fc, bn_hc, bn_av,
+                qual_weighted, qual_rank_good, qual_repayment])
     return row
 
 
@@ -395,7 +421,17 @@ def _build_one_row_indicator(log, data):
     qualitative_tag_score = min(sum(STRENGTH_TAG_WEIGHTS.get(t, DEFAULT_STRENGTH_WEIGHT) for t in tags), 10.0)
     qualitative_passion = 1.0 if qual.get("passion_text") else 0.0
     equity_ratio = float(res.get("user_eq") or 0)
-    row.extend([main_bank, competitor_present, competitor_none, rate_diff_z, industry_sentiment_z, qualitative_tag_score, qualitative_passion, equity_ratio])
+    # 定性スコアリング項目（sumaho13追加）
+    qsc_i       = (res.get("qualitative_scoring_correction") or inp.get("qualitative_scoring")) or {}
+    qsc_items_i = qsc_i.get("items") or {}
+    qual_weighted_i  = float(qsc_i.get("weighted_score") or 0) / 100.0
+    qual_rank_i      = qsc_i.get("rank") or ""
+    qual_rank_good_i = 1.0 if qual_rank_i in ("A", "B") else 0.0
+    repayment_val_i  = (qsc_items_i.get("repayment_history") or {}).get("value") or 0
+    qual_repayment_i = float(repayment_val_i) / 4.0
+    row.extend([main_bank, competitor_present, competitor_none, rate_diff_z, industry_sentiment_z,
+                qualitative_tag_score, qualitative_passion, equity_ratio,
+                qual_weighted_i, qual_rank_good_i, qual_repayment_i])
     return row
 
 
@@ -476,6 +512,13 @@ COEFF_LABELS = {
     "qualitative_passion": "熱意・裏事情",
     "equity_ratio": "自己資本比率",
     "qualitative_combined": "定性スコアリング合計(0-1)",
+    "bn_approval_prob": "BN承認確率",
+    "bn_fc": "BN財務信用度",
+    "bn_hc": "BNヘッジ条件",
+    "bn_av": "BN物件価値",
+    "qual_weighted":    "定性加重スコア(0-1)",
+    "qual_rank_good":   "定性優良ランク(A/B)",
+    "qual_repayment":   "返済履歴スコア(0-1)",
 }
 
 
@@ -536,29 +579,56 @@ def run_contract_driver_analysis():
         direction = "プラス" if v > 0 else "マイナス"
         top3_drivers.append({"key": k, "label": label, "coef": v, "direction": direction})
     # 定性スコアリングの集計（成約案件で入力されているもののみ）
-    qual_weighted_list = []
-    qual_combined_list = []
-    rank_counter = Counter()
-    for c in closed:
-        q = (c.get("result") or {}).get("qualitative_scoring_correction") or (c.get("inputs") or {}).get("qualitative_scoring")
-        if not q:
-            continue
-        w = q.get("weighted_score")
-        if w is not None:
-            qual_weighted_list.append(float(w))
-        comb = q.get("combined_score")
-        if comb is not None:
-            qual_combined_list.append(float(comb))
-        r = q.get("rank")
-        if r:
-            rank_counter[r] += 1
+    # 失注案件も同様に集計（比較用）
+    lost = [c for c in cases if c.get("final_status") == "失注"]
+
+    def _collect_qual_data(case_list):
+        """案件リストから定性スコアデータを集計して返す。"""
+        weighted_list = []
+        combined_list = []
+        rank_cnt = Counter()
+        item_sums = {}   # item_id -> list[float]
+        for c in case_list:
+            q = (c.get("result") or {}).get("qualitative_scoring_correction") \
+                or (c.get("inputs") or {}).get("qualitative_scoring")
+            if not q:
+                continue
+            w = q.get("weighted_score")
+            if w is not None:
+                weighted_list.append(float(w))
+            comb = q.get("combined_score")
+            if comb is not None:
+                combined_list.append(float(comb))
+            r = q.get("rank")
+            if r:
+                rank_cnt[r] += 1
+            # 項目別スコア（items キー内: {item_id: {value: int, ...}}）
+            for item_id, item_data in (q.get("items") or {}).items():
+                val = item_data.get("value")
+                if val is not None:
+                    item_sums.setdefault(item_id, []).append(float(val))
+        item_avg = {k: sum(v) / len(v) for k, v in item_sums.items()}
+        return weighted_list, combined_list, rank_cnt, item_avg
+
+    qual_weighted_list, qual_combined_list, rank_counter, item_avg_closed = _collect_qual_data(closed)
+    qual_weighted_lost, qual_combined_lost, rank_counter_lost, item_avg_lost = _collect_qual_data(lost)
+
     qual_summary = None
     if qual_weighted_list or qual_combined_list or rank_counter:
         qual_summary = {
-            "avg_weighted": sum(qual_weighted_list) / len(qual_weighted_list) if qual_weighted_list else None,
-            "avg_combined": sum(qual_combined_list) / len(qual_combined_list) if qual_combined_list else None,
-            "n_with_qual": len(qual_weighted_list) or len(qual_combined_list) or sum(rank_counter.values()),
-            "rank_distribution": dict(rank_counter.most_common()),
+            # 成約案件の集計
+            "avg_weighted":       sum(qual_weighted_list) / len(qual_weighted_list) if qual_weighted_list else None,
+            "avg_combined":       sum(qual_combined_list) / len(qual_combined_list) if qual_combined_list else None,
+            "n_with_qual":        len(qual_weighted_list) or len(qual_combined_list) or sum(rank_counter.values()),
+            "rank_distribution":  dict(rank_counter.most_common()),
+            "qual_weighted_list": qual_weighted_list,          # 分布ヒストグラム用
+            "item_avg":           item_avg_closed,             # 項目別平均（成約）
+            # 失注案件の比較データ
+            "avg_weighted_lost":       sum(qual_weighted_lost) / len(qual_weighted_lost) if qual_weighted_lost else None,
+            "n_with_qual_lost":        len(qual_weighted_lost) or sum(rank_counter_lost.values()),
+            "rank_distribution_lost":  dict(rank_counter_lost.most_common()),
+            "qual_weighted_lost":      qual_weighted_lost,     # 分布ヒストグラム用（失注）
+            "item_avg_lost":           item_avg_lost,          # 項目別平均（失注）
         }
     return {
         "closed_cases": closed,
@@ -662,6 +732,98 @@ def optimize_score_weights_from_regression():
     return out
 
 
+def optimize_model_blend_weights():
+    """
+    ① 全体モデル / ② 指標モデル / ③ 業種別モデル の3モデル混合比率を
+    成約/失注データからクロスバリデーションで最適化する。
+
+    手順:
+      1. ログから (score_borrower, bench_score, ind_score) と (成約=1/失注=0) を抽出
+      2. KFold(5) で各フォールドの LogisticRegression 係数を平均
+      3. 正の係数を正規化して (w_main, w_bench, w_ind) を推定
+      4. OOF AUC を返す
+
+    戻り値:
+      None（件数不足）、または dict:
+        {
+          "w_main":  float,  # ① 全体モデルの重み
+          "w_bench": float,  # ② 指標モデルの重み
+          "w_ind":   float,  # ③ 業種別モデルの重み
+          "auc_cv":  float,  # OOF AUC
+          "n_cases": int,
+        }
+    """
+    cases = load_all_cases()
+    registered = [c for c in cases if c.get("final_status") in ["成約", "失注"]]
+    if len(registered) < QUALITATIVE_ANALYSIS_MIN_CASES:
+        return None
+
+    rows = []
+    y_list = []
+    for c in registered:
+        res = c.get("result") or {}
+        sb  = res.get("score_borrower")   # ① 全体モデル (0-100)
+        bsc = res.get("bench_score")       # ② 指標モデル (0-100)
+        isc = res.get("ind_score")         # ③ 業種別モデル (0-100)
+        if sb is None or bsc is None or isc is None:
+            continue
+        rows.append([float(sb), float(bsc), float(isc)])
+        y_list.append(1 if c.get("final_status") == "成約" else 0)
+
+    if len(rows) < 20 or len(set(y_list)) < 2:
+        return None
+
+    try:
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.metrics import roc_auc_score
+        from sklearn.model_selection import StratifiedKFold
+        from sklearn.preprocessing import StandardScaler
+
+        X = np.array(rows)
+        y = np.array(y_list)
+
+        # --- KFold クロスバリデーション ---
+        kf = StratifiedKFold(n_splits=min(5, len(set(y_list)) * 5), shuffle=True, random_state=42)
+        oof_probs = np.zeros(len(y))
+        coef_list = []
+
+        for train_idx, val_idx in kf.split(X, y):
+            X_tr, X_val = X[train_idx], X[val_idx]
+            y_tr, y_val = y[train_idx], y[val_idx]
+            scaler = StandardScaler()
+            X_tr_s = scaler.fit_transform(X_tr)
+            X_val_s = scaler.transform(X_val)
+            lr = LogisticRegression(C=1.0, max_iter=1000, random_state=42, solver="lbfgs")
+            if len(set(y_tr)) < 2:
+                continue
+            lr.fit(X_tr_s, y_tr)
+            oof_probs[val_idx] = lr.predict_proba(X_val_s)[:, 1]
+            coef_list.append(lr.coef_[0])
+
+        if not coef_list:
+            return None
+
+        # --- 係数平均 → 正規化 ---
+        mean_coef = np.mean(coef_list, axis=0)
+        pos_coef = np.maximum(mean_coef, 1e-6)   # 負係数をフロア
+        total = pos_coef.sum()
+        w_main, w_bench, w_ind = (pos_coef / total).tolist()
+
+        # --- OOF AUC（oof_probs が計算された行のみ） ---
+        mask = oof_probs > 0
+        auc_cv = float(roc_auc_score(y[mask], oof_probs[mask])) if mask.sum() >= 10 else None
+
+        return {
+            "w_main":  round(w_main, 4),
+            "w_bench": round(w_bench, 4),
+            "w_ind":   round(w_ind, 4),
+            "auc_cv":  round(auc_cv, 4) if auc_cv else None,
+            "n_cases": len(y_list),
+        }
+    except Exception:
+        return None
+
+
 def run_qualitative_contract_analysis(qual_correction_items):
     """
     定性項目のみで成約/不成約をロジスティック回帰とLightGBMで分析する。
@@ -760,6 +922,17 @@ def run_qualitative_contract_analysis(qual_correction_items):
         else:
             out["auc_lgb"] = None
         out["lgb_importance"] = list(zip(feature_names, lgb_model.feature_importances_.tolist()))
+        # SHAP 特徴量重要度（shapパッケージがあれば）
+        try:
+            import shap as _shap
+            _exp  = _shap.TreeExplainer(lgb_model)
+            _sv   = _exp.shap_values(X_te)
+            if isinstance(_sv, list):
+                _sv = _sv[1]   # 成約クラス
+            _mean = np.abs(_sv).mean(axis=0)
+            out["shap_importance"] = list(zip(feature_names, _mean.tolist()))
+        except Exception:
+            pass
     except Exception as e:
         out["lgb_error"] = str(e)
     if prob_lr_te is not None and prob_lgb_te is not None and len(np.unique(y_te)) >= 2:
@@ -888,3 +1061,103 @@ def run_quantitative_by_indicator():
             results[bench] = {"skip": True, "reason": str(e)}
     return results
 
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Youden 指数で最適承認ラインを自動計算
+# ──────────────────────────────────────────────────────────────────────────────
+
+def calc_optimal_approval_line() -> dict | None:
+    """
+    成約/失注の過去データから ROC 曲線と Youden 指数を用いて
+    最適な承認ライン（0〜100点スケール）を計算して返す。
+
+    必要最小件数: 成約・失注それぞれ3件以上（合計6件以上）
+
+    戻り値 dict:
+        optimal       : int   最適承認ライン（点）
+        youden_index  : float Youden 指数の最大値
+        sensitivity   : float 感度（成約を承認と判定できた割合）
+        specificity   : float 特異度（失注を要審議以下と判定できた割合）
+        auc           : float AUC
+        n_closed      : int   分析に使った成約件数
+        n_lost        : int   分析に使った失注件数
+        threshold_candidates : list[dict]  各閾値の詳細（上位5件）
+        current_line  : int   現在の設定値（business_rules.json）
+    """
+    try:
+        from sklearn.metrics import roc_curve, roc_auc_score
+    except ImportError:
+        return {"error": "scikit-learn が見つかりません。pip install scikit-learn でインストールしてください。"}
+
+    cases = load_all_cases()
+    registered = [c for c in cases if c.get("final_status") in ["成約", "失注"]]
+    closed = [c for c in registered if c.get("final_status") == "成約"]
+    lost   = [c for c in registered if c.get("final_status") == "失注"]
+
+    if len(closed) < 3 or len(lost) < 3:
+        return {
+            "error": f"件数不足です（成約 {len(closed)}件・失注 {len(lost)}件）。"
+                     "それぞれ3件以上の登録が必要です。",
+            "n_closed": len(closed),
+            "n_lost": len(lost),
+        }
+
+    scores, labels = [], []
+    for c in registered:
+        s = (c.get("result") or {}).get("score")
+        if s is None:
+            continue
+        scores.append(float(s))
+        labels.append(1 if c.get("final_status") == "成約" else 0)
+
+    if len(scores) < 6:
+        return {"error": "スコアが記録されていた案件が6件未満のため計算できません。"}
+
+    import numpy as np
+    scores_arr = np.array(scores)
+    labels_arr = np.array(labels)
+
+    fpr, tpr, thresholds = roc_curve(labels_arr, scores_arr)
+    youden_vals = tpr - fpr          # = 感度 + 特異度 - 1
+    best_idx   = int(np.argmax(youden_vals))
+    best_thresh = float(thresholds[best_idx])
+    best_thresh_int = int(round(best_thresh))
+
+    auc = float(roc_auc_score(labels_arr, scores_arr))
+
+    # 感度・特異度を計算
+    sensitivity = float(tpr[best_idx])
+    specificity = float(1 - fpr[best_idx])
+
+    # 上位5候補（Youden 指数が高い順）
+    top_idx = np.argsort(youden_vals)[::-1][:5]
+    candidates = []
+    for i in top_idx:
+        t = int(round(float(thresholds[i])))
+        candidates.append({
+            "threshold":   t,
+            "youden":      round(float(youden_vals[i]), 4),
+            "sensitivity": round(float(tpr[i]), 4),
+            "specificity": round(float(1 - fpr[i]), 4),
+        })
+
+    # 現在の設定値を取得
+    try:
+        from rule_manager import load_business_rules
+        _r = load_business_rules()
+        current_line = int(_r.get("thresholds", {}).get("approval", 0.71) * 100)
+    except Exception:
+        current_line = 71
+
+    return {
+        "optimal":      best_thresh_int,
+        "youden_index": round(float(youden_vals[best_idx]), 4),
+        "sensitivity":  round(sensitivity, 4),
+        "specificity":  round(specificity, 4),
+        "auc":          round(auc, 4),
+        "n_closed":     int(labels_arr.sum()),
+        "n_lost":       int((1 - labels_arr).sum()),
+        "threshold_candidates": candidates,
+        "current_line": current_line,
+    }

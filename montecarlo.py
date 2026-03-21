@@ -214,6 +214,7 @@ class CompanyData:
     total_debt: float        # 借入金残高（円）
     lease_amount: float = 0  # リース希望額（円）
     lease_months: int = 36   # リース期間（月）
+    subsidy_amount: float = 0  # 適用補助金額（円）。負債の初期値を圧縮する形でモデル化
 
 
 @dataclass
@@ -289,7 +290,9 @@ class AdvancedMonteCarloEngine:
         mar_paths = np.clip(mar_paths, -0.30, 0.50)
         eq_paths  = self._gbm_paths(company.equity_ratio, 0.005, vol["equity_vol"], T, dt)
         eq_paths  = np.clip(eq_paths, 0.01, 0.99)
-        debt_paths = self._gbm_paths(company.total_debt, -0.02, vol["debt_vol"], T, dt)
+        # 補助金は初期借入残高を圧縮する形でモデル化（補助分だけ調達不要になる）
+        effective_debt = max(company.total_debt - company.subsidy_amount, 0.0)
+        debt_paths = self._gbm_paths(effective_debt, -0.02, vol["debt_vol"], T, dt)
         debt_paths = np.clip(debt_paths, 0, None)
 
         ts_default = np.zeros(T + 1)
@@ -384,118 +387,148 @@ RISK_COLORS = {
 
 
 def make_company_chart(result: SimResult) -> bytes:
-    """1社分の詳細チャート（PNG bytes）"""
-    jp_fp = _get_jp_font_prop(size=9)
-    jp_fp_lg = _get_jp_font_prop(size=11)
+    """1社分の詳細チャート（PNG bytes）— 3行2列レイアウト"""
+    jp_fp    = _get_jp_font_prop(size=10)
+    jp_fp_lg = _get_jp_font_prop(size=13)
 
-    fig = plt.figure(figsize=(14, 9))
+    fig = plt.figure(figsize=(18, 17))
     fig.patch.set_facecolor('#f8f9fa')
-    gs = GridSpec(2, 3, figure=fig, hspace=0.4, wspace=0.35)
+    # 3行2列: 上段(売上/デフォルト) 中段(スコア分布/サマリー表) 下段(感度分析・全幅)
+    gs = GridSpec(3, 2, figure=fig, hspace=0.55, wspace=0.38,
+                  height_ratios=[1, 1, 0.85])
     col = RISK_COLORS.get(result.risk_level, "#95a5a6")
 
-    # 1. 売上シミュレーションパス
+    # ── 1. 売上シミュレーションパス（左上）────────────────────────
     ax1 = fig.add_subplot(gs[0, 0])
     months = np.arange(result.revenue_paths.shape[1])
     for path in result.revenue_paths:
-        ax1.plot(months, path / 1e6, alpha=0.08, color='steelblue', lw=0.7)
+        ax1.plot(months, path / 1e6, alpha=0.07, color='steelblue', lw=0.6)
     mean_path = result.revenue_paths.mean(axis=0)
-    ax1.plot(months, mean_path / 1e6, color='navy', lw=2, label='Mean')
+    ax1.plot(months, mean_path / 1e6, color='navy', lw=2.5, label='平均')
     ax1.fill_between(months,
-        np.percentile(result.revenue_paths, 5, axis=0) / 1e6,
+        np.percentile(result.revenue_paths, 5,  axis=0) / 1e6,
         np.percentile(result.revenue_paths, 95, axis=0) / 1e6,
-        alpha=0.15, color='steelblue', label='5-95%ile')
-    ax1.set_title('Revenue Simulation Paths', fontsize=10, fontweight='bold')
-    ax1.set_xlabel('Month'); ax1.set_ylabel('Revenue (M JPY)')
-    ax1.legend(fontsize=7); ax1.grid(True, alpha=0.3)
+        alpha=0.18, color='steelblue', label='5〜95%ile')
+    ax1.set_title('売上シミュレーションパス', fontsize=12, fontweight='bold',
+                  **({'fontproperties': jp_fp} if jp_fp else {}))
+    ax1.set_xlabel('Month', fontsize=10)
+    ax1.set_ylabel('Revenue (M JPY)', fontsize=10)
+    ax1.legend(fontsize=9,
+               prop=jp_fp if jp_fp else None)
+    ax1.grid(True, alpha=0.3)
 
-    # 2. 累積デフォルト確率
+    # ── 2. 累積デフォルト確率（右上）────────────────────────────
     ax2 = fig.add_subplot(gs[0, 1])
     ts = result.time_series_default_prob
-    x = np.arange(len(ts))
-    ax2.fill_between(x, ts * 100, alpha=0.3, color=col)
+    x  = np.arange(len(ts))
+    ax2.fill_between(x, ts * 100, alpha=0.25, color=col)
     ax2.plot(x, ts * 100, color=col, lw=2.5)
-    ax2.axhline(15, color='orange', ls='--', lw=1, alpha=0.7, label='15% warn')
-    ax2.axhline(30, color='red', ls='--', lw=1, alpha=0.7, label='30% danger')
-    ax2.set_title('Cumulative Default Probability', fontsize=10, fontweight='bold')
-    ax2.set_xlabel('Month'); ax2.set_ylabel('Prob (%)')
-    ax2.legend(fontsize=7); ax2.grid(True, alpha=0.3)
-    ax2.set_ylim(0, min(100, max(ts * 100) * 1.2 + 5))
+    ax2.axhline(15, color='orange', ls='--', lw=1.5, alpha=0.8, label='15% 警告')
+    ax2.axhline(30, color='red',    ls='--', lw=1.5, alpha=0.8, label='30% 危険')
+    ax2.set_title('累積デフォルト確率', fontsize=12, fontweight='bold',
+                  **({'fontproperties': jp_fp} if jp_fp else {}))
+    ax2.set_xlabel('Month', fontsize=10)
+    ax2.set_ylabel('確率 (%)', fontsize=10,
+                   **({'fontproperties': jp_fp} if jp_fp else {}))
+    ax2.legend(fontsize=9, prop=jp_fp if jp_fp else None)
+    ax2.grid(True, alpha=0.3)
+    ax2.set_ylim(0, min(100, max(ts * 100) * 1.25 + 5))
 
-    # 3. スコア分布
-    ax3 = fig.add_subplot(gs[0, 2])
-    ax3.hist(result.score_paths, bins=40, color='steelblue', alpha=0.7, edgecolor='white')
-    ax3.axvline(result.score_median, color='navy', lw=2, label=f'Median: {result.score_median:.1f}')
-    ax3.axvline(result.score_p5, color='red', ls='--', lw=1.5, label=f'5%ile: {result.score_p5:.1f}')
-    ax3.axvline(result.score_p95, color='green', ls='--', lw=1.5, label=f'95%ile: {result.score_p95:.1f}')
-    ax3.set_title('Score Distribution', fontsize=10, fontweight='bold')
-    ax3.set_xlabel('Score (0-100)'); ax3.set_ylabel('Frequency')
-    ax3.legend(fontsize=7); ax3.grid(True, alpha=0.3)
+    # ── 3. スコア分布ヒストグラム（左中）────────────────────────
+    ax3 = fig.add_subplot(gs[1, 0])
+    ax3.hist(result.score_paths, bins=50, color='steelblue', alpha=0.7, edgecolor='white')
+    ax3.axvline(result.score_median, color='navy',  lw=2.5,
+                label=f'中央値: {result.score_median:.1f}')
+    ax3.axvline(result.score_p5,     color='red',   ls='--', lw=2,
+                label=f'5%ile: {result.score_p5:.1f}')
+    ax3.axvline(result.score_p95,    color='green', ls='--', lw=2,
+                label=f'95%ile: {result.score_p95:.1f}')
+    ax3.set_title('スコア分布', fontsize=12, fontweight='bold',
+                  **({'fontproperties': jp_fp} if jp_fp else {}))
+    ax3.set_xlabel('Score (0-100)', fontsize=10)
+    ax3.set_ylabel('頻度', fontsize=10,
+                   **({'fontproperties': jp_fp} if jp_fp else {}))
+    ax3.legend(fontsize=9, prop=jp_fp if jp_fp else None)
+    ax3.grid(True, alpha=0.3)
 
-    # 4. 感度分析
-    ax4 = fig.add_subplot(gs[1, :2])
-    labels = list(result.sensitivity.keys())
-    vals = list(result.sensitivity.values())
-    bar_colors = ['#27ae60' if v >= 0 else '#e74c3c' for v in vals]
-    y_pos = range(len(labels))
-    bars = ax4.barh(y_pos, vals, color=bar_colors, alpha=0.8, height=0.6)
-    ax4.set_yticks(list(y_pos))
-    ax4.set_yticklabels([""] * len(labels))  # 軸ラベルはテキストで上書き
-    ax4.axvline(0, color='black', lw=0.8)
-    for i, (bar, val, lbl) in enumerate(zip(bars, vals, labels)):
-        sign = '＋' if val >= 0 else ''
-        ax4.text(val + (0.05 if val >= 0 else -0.05), bar.get_y() + bar.get_height()/2,
-                 f'{sign}{val:.2f}', va='center',
-                 ha='left' if val >= 0 else 'right', fontsize=8)
-        # 日本語ラベルは全角テキストで左端に表示
-        ax4.text(-max(abs(v) for v in vals) * 1.05 - 0.3,
-                 bar.get_y() + bar.get_height()/2,
-                 lbl, va='center', ha='right', fontsize=8,
-                 **({'fontproperties': jp_fp} if jp_fp else {}))
-    ax4.set_title('Sensitivity Analysis (Score Change)', fontsize=10, fontweight='bold')
-    ax4.set_xlabel('Score Change'); ax4.grid(True, alpha=0.3, axis='x')
-
-    # 5. リスクサマリーテーブル（英語表記で確実に表示）
-    _RISK_EN = {"低リスク": "Low", "中リスク": "Medium", "高リスク": "High", "極高リスク": "V.High"}
-    _IND_EN  = {"製造業": "Manuf.", "小売業": "Retail", "建設業": "Constr.",
-                "IT・情報通信": "IT", "飲食・サービス": "F&B/Svc",
-                "卸売業": "Wholes.", "不動産": "Real Est.", "運輸・物流": "Transp."}
-    ax5 = fig.add_subplot(gs[1, 2])
+    # ── 4. リスクサマリーテーブル（右中）────────────────────────
+    _RISK_JP = {"低リスク": "低リスク", "中リスク": "中リスク",
+                "高リスク": "高リスク", "極高リスク": "極高リスク"}
+    ax5 = fig.add_subplot(gs[1, 1])
     ax5.axis('off')
     summary = [
-        ["Item",         "Value"],
-        ["Risk Level",   _RISK_EN.get(result.risk_level, result.risk_level)],
-        ["Default Prob", f"{result.default_prob:.1%}"],
-        ["Score(Med)",   f"{result.score_median:.1f}"],
-        ["Score(5%)",    f"{result.score_p5:.1f}"],
-        ["Score(95%)",   f"{result.score_p95:.1f}"],
-        ["VaR(95%)",     f"{result.var_95:.1f}pt"],
-        ["Industry",     _IND_EN.get(result.company.industry, "Other")],
-        ["Period",       f"{result.company.lease_months}mo"],
+        ["項目",          "値"],
+        ["リスクレベル",   _RISK_JP.get(result.risk_level, result.risk_level)],
+        ["デフォルト確率", f"{result.default_prob:.1%}"],
+        ["スコア中央値",   f"{result.score_median:.1f}"],
+        ["スコア 5%ile",  f"{result.score_p5:.1f}"],
+        ["スコア 95%ile", f"{result.score_p95:.1f}"],
+        ["VaR (95%)",     f"{result.var_95:.1f}pt"],
+        ["業種",           result.company.industry],
+        ["リース期間",     f"{result.company.lease_months}ヶ月"],
+        ["リース金額",     f"{result.company.lease_amount/1e4:,.0f}万円"],
     ]
     tbl = ax5.table(cellText=summary[1:], colLabels=summary[0],
-                    cellLoc='center', loc='center', bbox=[0, 0, 1, 1])
-    tbl.auto_set_font_size(False); tbl.set_fontsize(8)
+                    cellLoc='center', loc='center', bbox=[0.05, 0, 0.95, 1])
+    tbl.auto_set_font_size(False)
+    tbl.set_fontsize(10)
     for (r, c), cell in tbl.get_celld().items():
+        cell.set_linewidth(0.5)
         if r == 0:
-            cell.set_facecolor('#2c3e50'); cell.set_text_props(color='white', fontweight='bold')
+            cell.set_facecolor('#2c3e50')
+            cell.set_text_props(color='white', fontweight='bold',
+                                **({'fontproperties': jp_fp} if jp_fp else {}))
         elif r == 1:
-            cell.set_facecolor(col + '40')
+            cell.set_facecolor(col + '55')
+            if jp_fp:
+                cell.set_text_props(fontproperties=jp_fp)
         else:
             cell.set_facecolor('#ecf0f1' if r % 2 == 0 else 'white')
+            if jp_fp:
+                cell.set_text_props(fontproperties=jp_fp)
+        cell.set_height(0.095)
+    ax5.set_title('リスクサマリー', fontsize=12, fontweight='bold', pad=10,
+                  **({'fontproperties': jp_fp} if jp_fp else {}))
 
-    # タイトル（企業名を日本語フォントで）
-    title_en = 'Monte Carlo Lease Assessment: '
+    # ── 5. 感度分析（下段・全幅）────────────────────────────────
+    ax4 = fig.add_subplot(gs[2, :])
+    labels = list(result.sensitivity.keys())
+    vals   = list(result.sensitivity.values())
+    bar_colors = ['#27ae60' if v >= 0 else '#e74c3c' for v in vals]
+    y_pos = range(len(labels))
+    bars  = ax4.barh(list(y_pos), vals, color=bar_colors, alpha=0.85, height=0.55)
+    ax4.set_yticks(list(y_pos))
+    ax4.set_yticklabels([""] * len(labels))
+    ax4.axvline(0, color='black', lw=1)
+    max_abs = max(abs(v) for v in vals) if vals else 1
+    for i, (bar, val, lbl) in enumerate(zip(bars, vals, labels)):
+        sign = '＋' if val >= 0 else ''
+        ax4.text(val + (max_abs * 0.02 if val >= 0 else -max_abs * 0.02),
+                 bar.get_y() + bar.get_height() / 2,
+                 f'{sign}{val:.2f}', va='center',
+                 ha='left' if val >= 0 else 'right', fontsize=10, fontweight='bold')
+        kw = {'fontproperties': jp_fp} if jp_fp else {'fontsize': 10}
+        ax4.text(-max_abs * 1.08, bar.get_y() + bar.get_height() / 2,
+                 lbl, va='center', ha='right', fontsize=10, **kw)
+    ax4.set_title('感度分析（スコアへの影響）', fontsize=12, fontweight='bold',
+                  **({'fontproperties': jp_fp} if jp_fp else {}))
+    ax4.set_xlabel('スコア変化量', fontsize=10,
+                   **({'fontproperties': jp_fp} if jp_fp else {}))
+    ax4.grid(True, alpha=0.3, axis='x')
+    ax4.margins(y=0.12)
+
+    # ── タイトル ─────────────────────────────────────────────────
     if jp_fp_lg:
-        fig.text(0.5, 0.98, title_en, ha='center', va='top',
-                 fontsize=13, fontweight='bold')
-        fig.text(0.5 + len(title_en)*0.006, 0.98, result.company.name,
-                 ha='left', va='top', fontsize=13, fontweight='bold',
-                 fontproperties=jp_fp_lg)
+        fig.suptitle(f'モンテカルロ リース審査: {result.company.name}',
+                     fontsize=14, fontweight='bold', y=1.005,
+                     fontproperties=jp_fp_lg)
     else:
-        fig.suptitle(f'{title_en}{result.company.name}',
-                     fontsize=13, fontweight='bold', y=0.98)
+        fig.suptitle(f'Monte Carlo Lease Assessment: {result.company.name}',
+                     fontsize=14, fontweight='bold', y=1.005)
+
     buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=130, bbox_inches='tight', facecolor=fig.get_facecolor())
+    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight',
+                facecolor=fig.get_facecolor())
     plt.close(fig)
     buf.seek(0)
     return buf.read()
@@ -507,11 +540,12 @@ def make_portfolio_chart(portfolio: PortfolioResult) -> bytes:
     jp_fp9 = _get_jp_font_prop(size=9)
 
     results = portfolio.results
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    fig = plt.figure(figsize=(16, 12))
     fig.patch.set_facecolor('#f8f9fa')
+    gs_pf = GridSpec(2, 2, figure=fig, hspace=0.45, wspace=0.35)
 
-    # バブルチャート
-    ax1 = axes[0]
+    # バブルチャート（左上）
+    ax1 = fig.add_subplot(gs_pf[0, 0])
     for r in results:
         size = max(r.company.lease_amount / 1e6 * 10, 50)
         col = RISK_COLORS.get(r.risk_level, '#95a5a6')
@@ -527,8 +561,8 @@ def make_portfolio_chart(portfolio: PortfolioResult) -> bytes:
     ax1.set_title('Risk Map\n(bubble = lease amount)', fontsize=10, fontweight='bold')
     ax1.grid(True, alpha=0.3)
 
-    # リスクレベル別 金額
-    ax2 = axes[1]
+    # リスクレベル別 金額（右上）
+    ax2 = fig.add_subplot(gs_pf[0, 1])
     levels = ["低リスク", "中リスク", "高リスク", "極高リスク"]
     risk_amounts = {lv: 0 for lv in levels}
     risk_counts  = {lv: 0 for lv in levels}
@@ -553,8 +587,8 @@ def make_portfolio_chart(portfolio: PortfolioResult) -> bytes:
     ax2.set_title('Portfolio by Risk Level', fontsize=10, fontweight='bold')
     ax2.grid(True, alpha=0.3, axis='y')
 
-    # 期待損失ランキング（企業名を日本語フォントで）
-    ax3 = axes[2]
+    # 期待損失ランキング（下段・横幅全体）
+    ax3 = fig.add_subplot(gs_pf[1, :])
     el_list = sorted(
         [(r.company.name, r.company.lease_amount * r.default_prob * 0.4 / 1e4) for r in results],
         key=lambda x: x[1], reverse=True
@@ -564,22 +598,25 @@ def make_portfolio_chart(portfolio: PortfolioResult) -> bytes:
     bar_cols = [RISK_COLORS.get(
         next((r.risk_level for r in results if r.company.name == n), "中リスク"), '#95a5a6')
         for n in el_names]
-    y_pos = range(len(el_names))
-    ax3.barh(y_pos, el_vals, color=bar_cols, alpha=0.8)
-    ax3.set_yticks(list(y_pos))
-    ax3.set_yticklabels([""] * len(el_names))
-    for i, name in enumerate(el_names):
-        kw = {'fontproperties': jp_fp} if jp_fp else {'fontsize': 7}
-        ax3.text(-max(el_vals)*0.02 if el_vals else 0, i, name,
-                 va='center', ha='right', **kw)
-    ax3.set_xlabel('Expected Loss (10K JPY)')
-    ax3.set_title('Expected Loss Ranking\n(LGD=40%)', fontsize=10, fontweight='bold')
-    ax3.grid(True, alpha=0.3, axis='x')
+    x_pos = range(len(el_names))
+    ax3.bar(x_pos, el_vals, color=bar_cols, alpha=0.8, width=0.6)
+    ax3.set_xticks(list(x_pos))
+    ax3.set_xticklabels([""] * len(el_names))
+    for i, (name, val) in enumerate(zip(el_names, el_vals)):
+        kw = {'fontproperties': jp_fp9} if jp_fp9 else {'fontsize': 9}
+        ax3.text(i, -max(el_vals) * 0.04 if el_vals else 0, name,
+                 va='top', ha='center', **kw)
+        ax3.text(i, val + max(el_vals) * 0.01 if el_vals else val,
+                 f"{val:,.0f}", va='bottom', ha='center', fontsize=9, fontweight='bold')
+    ax3.set_ylabel('Expected Loss (10K JPY)', fontsize=10)
+    ax3.set_title('Expected Loss Ranking (LGD=40%)', fontsize=11, fontweight='bold')
+    ax3.grid(True, alpha=0.3, axis='y')
+    ax3.margins(x=0.05)
 
-    fig.suptitle('Portfolio Risk Analysis', fontsize=13, fontweight='bold')
+    fig.suptitle('Portfolio Risk Analysis', fontsize=14, fontweight='bold', y=1.01)
     plt.tight_layout()
     buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=130, bbox_inches='tight', facecolor=fig.get_facecolor())
+    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor=fig.get_facecolor())
     plt.close(fig)
     buf.seek(0)
     return buf.read()

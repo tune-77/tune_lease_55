@@ -27,18 +27,23 @@ from config import (
     SALES_BAND_FILE,
 )
 from data_cases import load_all_cases
+from app_logger import log_warning, log_error
 
 
 # ─── ローカルJSONデータの遅延ロード ────────────────────────────────────────────
 
+_STATIC_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static_data")
+
 def _load_json(filename: str) -> dict:
-    path = os.path.join(BASE_DIR, filename)
-    if os.path.exists(path):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
+    # static_data/ を優先し、なければ BASE_DIR を確認（後方互換）
+    for base in [_STATIC_DATA_DIR, BASE_DIR]:
+        path = os.path.join(base, filename)
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as e:
+                log_warning(f"JSONファイル読み込み失敗 ({path}): {e}", context="_load_json")
     return {}
 
 
@@ -146,7 +151,8 @@ def _load_web_benchmarks_cache() -> dict:
     try:
         with open(WEB_BENCHMARKS_FILE, "r", encoding="utf-8") as f:
             raw = json.load(f)
-    except Exception:
+    except Exception as e:
+        log_warning(f"業界目安キャッシュ読み込み失敗: {e}", context="_load_web_benchmarks_cache")
         return {}
     result = {}
     for industry, entry in raw.items():
@@ -173,8 +179,8 @@ def _save_web_benchmark(industry_sub: str, data: dict):
     try:
         with open(WEB_BENCHMARKS_FILE, "w", encoding="utf-8") as f:
             json.dump(cache, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
+    except Exception as e:
+        log_error(e, context="_save_web_benchmark")
 
 
 def _load_json_cache(filepath: str) -> dict:
@@ -183,7 +189,8 @@ def _load_json_cache(filepath: str) -> dict:
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             return json.load(f)
-    except Exception:
+    except Exception as e:
+        log_warning(f"JSONキャッシュ読み込み失敗 ({filepath}): {e}", context="_load_json_cache")
         return {}
 
 
@@ -191,8 +198,8 @@ def _save_json_cache(filepath: str, data: dict):
     try:
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
+    except Exception as e:
+        log_error(e, context="_save_json_cache")
 
 
 # 業界トレンド拡充・資産目安・売上規模帯のキャッシュ（4月1日基準で再利用）
@@ -233,7 +240,8 @@ def fetch_industry_trend_extended(industry_sub: str, force_refresh: bool = False
         except ImportError:
             from duckduckgo_search import DDGS
         results = list(DDGS().text(query, region="jp-jp", max_results=4))
-    except Exception:
+    except Exception as e:
+        log_warning(f"業界トレンド検索失敗 ({industry_sub}): {e}", context="fetch_industry_trend_extended")
         return ""
     text_parts = []
     for r in results[:4]:
@@ -266,7 +274,8 @@ def fetch_industry_assets_from_web(industry_sub: str, force_refresh: bool = Fals
         except ImportError:
             from duckduckgo_search import DDGS
         results = list(DDGS().text(query, region="jp-jp", max_results=4))
-    except Exception:
+    except Exception as e:
+        log_warning(f"業界資産目安検索失敗 ({industry_sub}): {e}", context="fetch_industry_assets_from_web")
         return out
     combined = " ".join([(r.get("body") or "") for r in results])
     m = re.search(r"流動比率[^\d]*([0-9]+\.?[0-9]*)\s*%?", combined)
@@ -297,7 +306,8 @@ def fetch_sales_band_benchmarks(force_refresh: bool = False) -> str:
         except ImportError:
             from duckduckgo_search import DDGS
         results = list(DDGS().text(query, region="jp-jp", max_results=4))
-    except Exception:
+    except Exception as e:
+        log_warning(f"売上規模帯検索失敗: {e}", context="fetch_sales_band_benchmarks")
         return ""
     text = "\n".join([(r.get("body") or "")[:300] for r in results[:4]])
     sales_band_cache["fetched_at"] = datetime.date.today().isoformat()
@@ -349,7 +359,8 @@ def fetch_industry_benchmarks_from_web(industry_sub: str, force_refresh: bool = 
         except ImportError:
             from duckduckgo_search import DDGS
         ddgs = DDGS()
-    except Exception:
+    except Exception as e:
+        log_warning(f"DuckDuckGo初期化失敗 ({industry_sub}): {e}", context="fetch_industry_benchmarks_from_web")
         _save_web_benchmark(industry_sub, out)
         return out
 
@@ -357,7 +368,8 @@ def fetch_industry_benchmarks_from_web(industry_sub: str, force_refresh: bool = 
     query1 = f"{industry_sub} 業界 営業利益率 自己資本比率 平均 業界動向"
     try:
         results1 = list(ddgs.text(query1, region="jp-jp", max_results=5))
-    except Exception:
+    except Exception as e:
+        log_warning(f"業界目安クエリ1失敗 ({industry_sub}): {e}", context="fetch_industry_benchmarks_from_web")
         results1 = []
     for r in results1:
         title, body, href = (r.get("title") or ""), (r.get("body") or ""), (r.get("href") or "")
@@ -366,7 +378,8 @@ def fetch_industry_benchmarks_from_web(industry_sub: str, force_refresh: bool = 
     query2 = f"{industry_sub} 業界 売上高総利益率 経常利益率 ROA 流動比率 借入金 平均 目安"
     try:
         results2 = list(ddgs.text(query2, region="jp-jp", max_results=5))
-    except Exception:
+    except Exception as e:
+        log_warning(f"業界目安クエリ2失敗 ({industry_sub}): {e}", context="fetch_industry_benchmarks_from_web")
         results2 = []
     for r in results2:
         title, body = (r.get("title") or ""), (r.get("body") or "")
@@ -669,6 +682,25 @@ def get_advice_context_extras(selected_sub: str, selected_major: str) -> str:
     lc = get_lease_classification_text()
     if lc:
         parts.append("\n" + lc)
+        
+    # ▼ 新規追加: 事前生成A4レポートの読み込み
+    try:
+        import os
+        import json
+        from config import BASE_DIR
+        report_file = os.path.join(BASE_DIR, "industry_reports_a4.json")
+        if os.path.exists(report_file):
+            with open(report_file, "r", encoding="utf-8") as f:
+                ind_reports = json.load(f)
+            if selected_sub in ind_reports:
+                a4_report = ind_reports[selected_sub].get("report_text", "")
+                if a4_report:
+                    parts.append("\n【事前生成・調査済みの業界動向・課題レポート（A4サイズ）】\n"
+                                 "以下の内容を重要な事実として踏まえつつ、ユーザーに回答・アドバイスを提示してください。\n"
+                                 + a4_report[:2000])
+    except Exception as e:
+        log_warning(f"業界レポート読み込み失敗 ({selected_sub}): {e}", context="get_advice_context_extras")
+
     trend_ex = get_trend_extended(selected_sub)
     if trend_ex:
         parts.append("\n【業界トレンド（拡充）】\n" + trend_ex[:1200])

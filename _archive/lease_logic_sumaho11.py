@@ -470,6 +470,32 @@ st.markdown("""
     /* トップメニュー用: タブ風スッキリ */
     [data-testid="stTabs"] > div > div { gap: 0 !important; }
     [data-testid="stTabs"] [role="tablist"] { margin-bottom: 0.5rem !important; }
+    /* タブボタンのテキストを確実に表示（透明化バグ対策） */
+    button[role="tab"] {
+        color: #334155 !important;
+        opacity: 1 !important;
+    }
+    button[role="tab"] p,
+    button[role="tab"] span,
+    button[role="tab"] div {
+        color: #334155 !important;
+        opacity: 1 !important;
+    }
+    button[role="tab"][aria-selected="true"] {
+        color: #1e3a5f !important;
+        font-weight: 700 !important;
+        border-bottom: 2px solid #1e3a5f !important;
+    }
+    button[role="tab"][aria-selected="true"] p,
+    button[role="tab"][aria-selected="true"] span,
+    button[role="tab"][aria-selected="true"] div {
+        color: #1e3a5f !important;
+        font-weight: 700 !important;
+    }
+    button[role="tab"]:hover {
+        color: #1e3a5f !important;
+        background-color: rgba(30, 58, 95, 0.06) !important;
+    }
     /* 電光掲示板（定例の愚痴） */
     .byoki-ticker-wrap { overflow: hidden; background: linear-gradient(90deg, #1e293b 0%, #334155 100%); color: #f8fafc; padding: 8px 0; margin: 0 0 0.5rem 0; border-radius: 6px; font-size: 0.9rem; }
     .byoki-ticker-inner { display: inline-block; white-space: nowrap; animation: byoki-scroll 120s linear infinite; }

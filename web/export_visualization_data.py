@@ -19,7 +19,7 @@ _REPO_ROOT = os.path.dirname(_SUBMODULE)
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-CASES_FILE = os.path.join(_REPO_ROOT, "past_cases.jsonl")
+CASES_FILE = os.path.join(_SUBMODULE, "past_cases.jsonl")  # obsolete: SQLite移行済み。ファイルが存在しない場合はスキップ
 DEFAULT_OUTPUT = os.path.join(_WEB_DIR, "static", "data", "visualization.json")
 
 

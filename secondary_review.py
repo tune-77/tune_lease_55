@@ -20,7 +20,7 @@ try:
 except ImportError:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-ITEMS_FILE = os.path.join(BASE_DIR, "secondary_review_items.json")
+ITEMS_FILE = os.path.join(BASE_DIR, "data", "secondary_review_items.json")
 
 # ── カテゴリーの表示順 ──────────────────────────────────────
 CATEGORY_ORDER = ["財務確認", "信用調査", "担保・保証", "物件・契約", "事業性確認", "コンプライアンス"]
@@ -159,13 +159,8 @@ def render_secondary_review_ui(res: Optional[dict] = None):
                 if item.get("required"):
                     if checked:
                         checked_required += 1
-                    checked_all += 1 if checked else 0
 
-        for item in cat_items:
-            if st.session_state["sr_checks"].get(item["id"]):
-                checked_all += 1
-
-    # checked_all は二重カウントを防ぐため再計算
+    # 全チェック数は items 全体から一括集計（ループ内の中間集計は削除）
     checked_all = sum(1 for i in items if st.session_state["sr_checks"].get(i["id"]))
 
     # ── 進捗サマリー ──────────────────────────────────────────

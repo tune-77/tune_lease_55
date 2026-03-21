@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import json
+import math
 
 from charts import _equity_ratio_display, LOWER_IS_BETTER_NAMES
 from web_services import _WEB_BENCH_KEYS, _load_web_benchmarks_cache
@@ -113,7 +114,11 @@ def analyze_indicators_vs_bench(indicators: list) -> tuple:
     above, below = [], []
     for ind in indicators:
         bench = ind.get("bench")
-        if bench is None or (isinstance(bench, float) and bench != bench):
+        try:
+            _bench_is_nan = math.isnan(bench)
+        except (TypeError, ValueError):
+            _bench_is_nan = False
+        if bench is None or _bench_is_nan:
             continue
         name  = ind["name"]
         value = ind["value"]

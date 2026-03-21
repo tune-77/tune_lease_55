@@ -19,19 +19,41 @@ if _SCRIPT_DIR not in sys.path:
 
 from data_cases import get_effective_coeffs, get_score_weights
 from coeff_definitions import COEFFS
+from app_logger import log_warning
 
 APPROVAL_LINE = 71  # 承認ライン（71点以上で承認圏内）
 
 
+def _safe_float(val, default: float = 0.0) -> float:
+    """安全なfloat変換。Noneや変換不能な値はdefaultを返す。"""
+    if val is None:
+        return default
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_int(val, default: int = 0) -> int:
+    """安全なint変換。Noneや変換不能な値はdefaultを返す。"""
+    if val is None:
+        return default
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return default
+
+
 def _load_benchmarks():
     """industry_benchmarks.json を読み込む。"""
-    path = os.path.join(_REPO_ROOT, "industry_benchmarks.json")
+    path = os.path.join(_SCRIPT_DIR, "industry_benchmarks.json")
     if not os.path.exists(path):
         return {}
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
-    except Exception:
+    except Exception as e:
+        log_warning(f"業界目安JSON読み込み失敗: {e}", context="_load_benchmarks")
         return {}
 
 
@@ -104,20 +126,22 @@ def run_quick_scoring(inputs: dict) -> dict:
     返却: score, hantei, comparison, user_op_margin, user_equity_ratio, bench_op_margin, bench_equity_ratio,
           score_borrower, industry_sub, industry_major
     """
-    nenshu = max(0, float(inputs.get("nenshu") or 0))
-    op_profit = float(inputs.get("op_profit") or inputs.get("rieki") or 0)
-    ord_profit = float(inputs.get("ord_profit") or 0)
-    net_income = float(inputs.get("net_income") or 0)
-    net_assets = float(inputs.get("net_assets") or 0)
-    total_assets = float(inputs.get("total_assets") or 0)
+    nenshu = max(0, _safe_float(inputs.get("nenshu")))
+    op_profit = _safe_float(inputs.get("op_profit") or inputs.get("rieki"))
+    ord_profit = _safe_float(inputs.get("ord_profit"))
+    net_income = _safe_float(inputs.get("net_income"))
+    net_assets = _safe_float(inputs.get("net_assets"))
+    total_assets = _safe_float(inputs.get("total_assets"))
     industry_major = (inputs.get("industry_major") or "D 建設業").strip()
     industry_sub = (inputs.get("industry_sub") or "06 総合工事業").strip()
     grade = inputs.get("grade") or "1-3"
     customer_type = inputs.get("customer_type") or "既存先"
-    bank_credit = float(inputs.get("bank_credit") or 0)
-    lease_credit = float(inputs.get("lease_credit") or 0)
-    contracts = int(inputs.get("contracts") or 0)
-    asset_score = float(inputs.get("asset_score") or 50)
+    bank_credit = _safe_float(inputs.get("bank_credit"))
+    lease_credit = _safe_float(inputs.get("lease_credit"))
+    contracts = _safe_int(inputs.get("contracts"))
+    _raw_asset_score = inputs.get("asset_score")
+    used_default_asset_score = _raw_asset_score is None or str(_raw_asset_score).strip() == ""
+    asset_score = _safe_float(_raw_asset_score, default=50.0)
 
     user_op_margin = (op_profit / nenshu * 100) if nenshu > 0 else 0.0
     user_equity_ratio = (net_assets / total_assets * 100) if total_assets > 0 else 0.0
@@ -148,13 +172,13 @@ def run_quick_scoring(inputs: dict) -> dict:
         "op_profit": op_profit / 1000,
         "ord_profit": ord_profit / 1000,
         "net_income": net_income / 1000,
-        "gross_profit": float(inputs.get("gross_profit") or 0) / 1000,
-        "machines": float(inputs.get("machines") or 0) / 1000,
-        "other_assets": float(inputs.get("other_assets") or 0) / 1000,
-        "rent": float(inputs.get("rent") or 0) / 1000,
-        "depreciation": float(inputs.get("depreciation") or 0) / 1000,
-        "dep_expense": float(inputs.get("dep_expense") or 0) / 1000,
-        "rent_expense": float(inputs.get("rent_expense") or 0) / 1000,
+        "gross_profit": _safe_float(inputs.get("gross_profit")) / 1000,
+        "machines": _safe_float(inputs.get("machines")) / 1000,
+        "other_assets": _safe_float(inputs.get("other_assets")) / 1000,
+        "rent": _safe_float(inputs.get("rent")) / 1000,
+        "depreciation": _safe_float(inputs.get("depreciation")) / 1000,
+        "dep_expense": _safe_float(inputs.get("dep_expense")) / 1000,
+        "rent_expense": _safe_float(inputs.get("rent_expense")) / 1000,
         "contracts": contracts,
         "grade": grade,
         "industry_major": industry_major,
@@ -173,6 +197,11 @@ def run_quick_scoring(inputs: dict) -> dict:
     final_score = max(0, min(100, round(final_score, 1)))
     hantei = "承認圏内" if final_score >= APPROVAL_LINE else "要審議"
 
+    # 物件スコアのデフォルト使用フラグ
+    asset_score_warnings = []
+    if used_default_asset_score:
+        asset_score_warnings.append("物件スコア未入力のためデフォルト値(50)を使用")
+
     return {
         "score": final_score,
         "hantei": hantei,
@@ -185,4 +214,6 @@ def run_quick_scoring(inputs: dict) -> dict:
         "industry_sub": industry_sub,
         "industry_major": industry_major,
         "approval_line": APPROVAL_LINE,
+        "used_default_asset_score": used_default_asset_score,
+        "asset_score_warnings": asset_score_warnings,
     }

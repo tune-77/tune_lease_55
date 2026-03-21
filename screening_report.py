@@ -410,7 +410,7 @@ def build_screening_report_pdf(
     from reportlab.lib.units import mm
     from reportlab.platypus import (
         SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-        HRFlowable,
+        HRFlowable, Preformatted, PageBreak,
     )
 
     # ── スタイルファクトリ ────────────────────────────────────
@@ -602,9 +602,293 @@ def build_screening_report_pdf(
         ("BOTTOMPADDING",(0, 0), (-1, -1), 0),
     ]))
     story.append(top_layout)
-    story.append(Spacer(1, 3 * mm))
+    story.append(Spacer(1, 1.5 * mm))
     story.append(HRFlowable(width="100%", thickness=0.8, color=_C(*_ACCENT)))
-    story.append(Spacer(1, 2 * mm))
+    story.append(Spacer(1, 1 * mm))
+
+    # ── 審査結果レポートテキスト（①直後） ──────────────────────────
+    _rpt_inline = extra.get("report_text")
+    if _rpt_inline and _rpt_inline.strip():
+        S_RPT_INLINE = ps("rpt_il", 7, _BLACK, leading=10)
+        for _rl in _rpt_inline.splitlines():
+            if _rl.startswith("="):
+                story.append(HRFlowable(width="100%", thickness=0.4,
+                                        color=_C(*_STEEL)))
+            elif _rl.startswith("【") or _rl.startswith("■"):
+                story.append(Paragraph(f"<b>{_rl}</b>",
+                                       ps("rpt_ilh", 7.5, _STEEL, leading=11, sb=1*mm)))
+            elif _rl.strip() == "":
+                story.append(Spacer(1, 0.8 * mm))
+            else:
+                story.append(Paragraph(_rl, S_RPT_INLINE))
+        story.append(Spacer(1, 1 * mm))
+        story.append(HRFlowable(width="100%", thickness=0.3, color=_C(*_LIGHT)))
+        story.append(Spacer(1, 1 * mm))
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ⑧ BN逆転承認シミュレーター（審査結果レポート直下）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    bn_result   = extra.get("bn_result")
+    bn_evidence = extra.get("bn_evidence") or {}
+    bn_reversal = extra.get("bn_reversal") or []
+
+    if bn_result:
+        story.append(HRFlowable(width="100%", thickness=0.8, color=_C(*_ACCENT)))
+        story.append(Spacer(1, 2 * mm))
+        story.append(Paragraph("■ BN逆転承認シミュレーター", S_H2))
+
+        _bn_prob      = float(bn_result.get("approval_prob", 0))
+        _bn_dec       = bn_result.get("decision", "—")
+        _im           = bn_result.get("intermediate", {}) or {}
+        _bn_dec_color = _ACCENT if _bn_dec == "承認" else (_WARN if _bn_dec == "要審議" else _DANGER)
+
+        _bn_kpi_rows = [
+            [Paragraph("承認確率",   S_SMALL),
+             Paragraph("判定",       S_SMALL),
+             Paragraph("財務信用度", S_SMALL),
+             Paragraph("ヘッジ条件", S_SMALL),
+             Paragraph("物件価値",   S_SMALL)],
+            [Paragraph(f"<b>{_bn_prob:.1%}</b>",
+                       ps("bnv1", 13, _bn_dec_color, "CENTER")),
+             Paragraph(f"<b>{_bn_dec}</b>",
+                       ps("bnv2", 13, _bn_dec_color, "CENTER")),
+             Paragraph(f"{_im.get('Financial_Creditworthiness', 0):.1%}",
+                       ps("bnv3", 10, _BLACK, "CENTER")),
+             Paragraph(f"{_im.get('Hedge_Condition', 0):.1%}",
+                       ps("bnv4", 10, _BLACK, "CENTER")),
+             Paragraph(f"{_im.get('Asset_Value', 0):.1%}",
+                       ps("bnv5", 10, _BLACK, "CENTER"))],
+        ]
+        _bn_kpi_tbl = Table(_bn_kpi_rows,
+                            colWidths=[34*mm, 28*mm, 38*mm, 38*mm, 39*mm])
+        _bn_kpi_tbl.setStyle(TableStyle([
+            ("FONTNAME",      (0, 0), (-1, -1), _JP),
+            ("BACKGROUND",    (0, 0), (-1,  0), _C(*_LIGHT)),
+            ("TEXTCOLOR",     (0, 0), (-1,  0), _C(*_GRAY)),
+            ("GRID",          (0, 0), (-1, -1), 0.4, colors.lightgrey),
+            ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 2 * mm),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2 * mm),
+        ]))
+        story.append(_bn_kpi_tbl)
+        story.append(Spacer(1, 3 * mm))
+
+        _EV_LABELS = {
+            "Insolvent_Status":    "債務超過",
+            "Main_Bank_Support":   "メイン銀行支援あり",
+            "Related_Bank_Status": "関係者の銀行取引良好",
+            "Related_Assets":      "関係者の個人資産あり",
+            "Co_Lease":            "銀行との協調リース",
+            "Parent_Guarantor":    "親会社連帯保証",
+            "Core_Business_Use":   "本業に不可欠な物件",
+            "Asset_Liquidity":     "物件の中古流動性あり",
+            "Shorter_Lease_Term":  "リース期間を短縮",
+            "One_Time_Deal":       "業況改善まで本件限り",
+        }
+        _ev_on  = [_EV_LABELS.get(k, k) for k, v in bn_evidence.items() if v == 1]
+        _ev_off = [_EV_LABELS.get(k, k) for k, v in bn_evidence.items() if v == 0]
+
+        if _ev_on or _ev_off:
+            story.append(Paragraph("◆ 入力条件", ps("bnsub1", 8, _STEEL)))
+            story.append(Spacer(1, 1 * mm))
+            _ev_data = [
+                [Paragraph("確認条件", ps("evh0", 7, _WHITE)),
+                 Paragraph("状態",     ps("evh1", 7, _WHITE, "CENTER"))]
+            ]
+            for _lbl in _ev_on:
+                _ev_data.append([
+                    Paragraph(f"<b>{_lbl}</b>", ps("evon0", 8, _DANGER)),
+                    Paragraph("<b>✓ ON</b>",    ps("evon1", 8, _DANGER, "CENTER")),
+                ])
+            for _lbl in _ev_off:
+                _ev_data.append([
+                    Paragraph(_lbl,     ps("evoff0", 8, _GRAY)),
+                    Paragraph("— OFF",  ps("evoff1", 8, _GRAY, "CENTER")),
+                ])
+            _ev_tbl = Table(_ev_data, colWidths=[130*mm, 47*mm])
+            _ev_style = make_tbl_style(_C(*_NAVY), _ev_data)
+            for _oi in range(1, len(_ev_on) + 1):
+                _ev_style.append(("BACKGROUND", (0, _oi), (-1, _oi),
+                                   colors.HexColor("#fff0f0")))
+            _ev_tbl.setStyle(TableStyle(_ev_style))
+            story.append(_ev_tbl)
+            story.append(Spacer(1, 1.5 * mm))
+
+        if bn_reversal:
+            story.append(Spacer(1, 1 * mm))
+            story.append(Paragraph(
+                "◆ 追加で取り組むべき逆転提案（承認確率向上策）",
+                ps("bnsub2", 9, _DANGER, sb=1*mm),
+            ))
+            story.append(Spacer(1, 1 * mm))
+            _rev_data = [["提案条件", "現在確率", "改善後確率", "改善幅", "改善後判定"]]
+            for _ri, _rv in enumerate(bn_reversal[:5]):
+                _gain = int(_rv.get("delta", 0) * 100)
+                _rev_data.append([
+                    Paragraph(f"<b>{_rv.get('label', '')}</b>",
+                               ps(f"rlbl{_ri}", 8, _DANGER)),
+                    Paragraph(f"{_rv.get('before_prob', 0):.0%}",
+                               ps(f"rbf{_ri}", 8, _BLACK, "RIGHT")),
+                    Paragraph(f"<b>{_rv.get('after_prob', 0):.0%}</b>",
+                               ps(f"raf{_ri}", 8, _DANGER, "RIGHT")),
+                    Paragraph(f"<b>+{_gain}%pt</b>",
+                               ps(f"rdl{_ri}", 8, _DANGER, "RIGHT")),
+                    Paragraph(str(_rv.get("after_decision", "—")),
+                               ps(f"rdec{_ri}", 8, _BLACK, "CENTER")),
+                ])
+            _rev_tbl = Table(_rev_data, colWidths=[65*mm, 22*mm, 27*mm, 20*mm, 43*mm])
+            _rev_style = make_tbl_style(_C(*_DANGER), _rev_data)
+            _rev_style += [
+                ("BACKGROUND",  (0, 1), (-1, -1), colors.HexColor("#fff5f5")),
+                ("LINEBEFORE",  (0, 0), ( 0, -1), 2.0, _C(*_DANGER)),
+                ("LINEAFTER",   (-1, 0),(-1, -1), 2.0, _C(*_DANGER)),
+                ("LINEBELOW",   (0, -1),(-1, -1), 2.0, _C(*_DANGER)),
+                ("LINEABOVE",   (0, 1), (-1, -1), 0.4, _C(*_DANGER)),
+            ]
+            _rev_tbl.setStyle(TableStyle(_rev_style))
+            story.append(_rev_tbl)
+            story.append(Spacer(1, 1.5 * mm))
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ⑨ 軍師モード（承認奪取）推薦セクション
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    _gunshi = extra.get("gunshi") or {}
+    def _safe(t):
+        return (t or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    if _gunshi:
+        _gu_prob    = float(_gunshi.get("display_prob", 0))
+        _gu_post    = float(_gunshi.get("posterior", 0))
+        _gu_prior   = float(_gunshi.get("prior", 0))
+        _gu_phrases = _gunshi.get("top_phrases") or []
+        _gu_offers  = _gunshi.get("offers") or []
+        _gu_llm     = (_gunshi.get("llm_text") or "").strip()
+        _gu_resale  = _gunshi.get("resale", "中")
+        _gu_repeat  = int(_gunshi.get("repeat_cnt", 0))
+        _gu_sr      = float(_gunshi.get("success_ratio", 0))
+        _gu_wins    = int(_gunshi.get("similar_wins", 0))
+        _gu_cat     = _gunshi.get("industry_cat", "")
+        _gu_subsidy = bool(_gunshi.get("subsidy", False))
+        _gu_bank    = bool(_gunshi.get("bank", False))
+        _gu_vehicle = _gunshi.get("vehicle_type", "")
+        _gu_vboost  = float(_gunshi.get("vehicle_boost", 0.0))
+
+        _gu_pct = int(_gu_prob * 100)
+        _gu_col = _ACCENT if _gu_pct >= 70 else (_WARN if _gu_pct >= 50 else _DANGER)
+        _gu_lbl = "承認圏内" if _gu_pct >= 70 else ("要審議" if _gu_pct >= 50 else "再考必要")
+
+        story.append(HRFlowable(width="100%", thickness=0.8, color=_C(*_ACCENT)))
+        story.append(Spacer(1, 2 * mm))
+        story.append(Paragraph("■ ⚔️ 軍師モード — 承認奪取推薦", S_H2))
+
+        # KPIバー（承認確率）
+        _gu_kpi_rows = [
+            [Paragraph("ベイズ推定 承認確率", S_SMALL),
+             Paragraph("判定",               S_SMALL),
+             Paragraph("リセール",           S_SMALL),
+             Paragraph("リピート回数",        S_SMALL),
+             Paragraph("類似成約実績",        S_SMALL)],
+            [Paragraph(f"<b>{_gu_pct}%</b>",
+                       ps("guv1", 14, _gu_col, "CENTER")),
+             Paragraph(f"<b>{_gu_lbl}</b>",
+                       ps("guv2", 11, _gu_col, "CENTER")),
+             Paragraph(_gu_resale,
+                       ps("guv3", 10, _BLACK,  "CENTER")),
+             Paragraph(f"{_gu_repeat}回",
+                       ps("guv4", 10, _BLACK,  "CENTER")),
+             Paragraph(f"{_gu_wins}件 ({_gu_sr*100:.0f}%)",
+                       ps("guv5", 10, _BLACK,  "CENTER"))],
+        ]
+        _gu_kpi_tbl = Table(_gu_kpi_rows,
+                            colWidths=[40*mm, 28*mm, 26*mm, 30*mm, 53*mm])
+        _gu_kpi_tbl.setStyle(TableStyle([
+            ("FONTNAME",      (0, 0), (-1, -1), _JP),
+            ("BACKGROUND",    (0, 0), (-1,  0), _C(*_LIGHT)),
+            ("TEXTCOLOR",     (0, 0), (-1,  0), _C(*_GRAY)),
+            ("GRID",          (0, 0), (-1, -1), 0.4, colors.lightgrey),
+            ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 1.5 * mm),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5 * mm),
+        ]))
+        story.append(_gu_kpi_tbl)
+        story.append(Spacer(1, 2 * mm))
+
+        # 事前→事後確率の推移
+        _gu_vehicle_label = (
+            f" / 車種ブースト[{_safe(_gu_vehicle)}]: +{int(_gu_vboost*100)}%"
+            if _gu_vehicle and _gu_vboost > 0 else ""
+        )
+        story.append(Paragraph(
+            f"事前確率: {_gu_prior*100:.1f}%　→　証拠統合後: {_gu_post*100:.1f}%　"
+            f"→　フレーズ込み: {_gu_pct}%"
+            f"{_gu_vehicle_label}　"
+            f"（補助金: {'あり' if _gu_subsidy else 'なし'} / "
+            f"メイン銀行支援: {'あり' if _gu_bank else 'なし'}）",
+            S_BODY,
+        ))
+        story.append(Spacer(1, 2 * mm))
+
+        # 最強フレーズ3選
+        if _gu_phrases:
+            story.append(Paragraph("◆ 最強フレーズ 3選（業種別・ベイズ選出）",
+                                    ps("gup_hdr", 9, _STEEL, sb=1*mm)))
+            story.append(Spacer(1, 1 * mm))
+            _ph_data = [["#", "カテゴリ", "推薦フレーズ", "確率寄与"]]
+            for _pi, _ph in enumerate(_gu_phrases, 1):
+                _ph_data.append([
+                    Paragraph(f"<b>{_pi}</b>", ps(f"phi{_pi}", 8, _GREEN, "CENTER")),
+                    Paragraph(_ph.get("category", ""), ps(f"phc{_pi}", 7, _GRAY)),
+                    Paragraph(_safe(_ph.get("text", "")), ps(f"pht{_pi}", 7.5, _BLACK, leading=10)),
+                    Paragraph(f'+{int(_ph.get("prob_boost",0)*100)}%',
+                               ps(f"phb{_pi}", 8, _GREEN, "RIGHT")),
+                ])
+            _ph_tbl = Table(_ph_data, colWidths=[8*mm, 22*mm, 130*mm, 17*mm])
+            _ph_style = make_tbl_style(_C(*_GREEN), _ph_data)
+            for _pi2 in range(1, len(_gu_phrases) + 1):
+                _ph_style.append(("BACKGROUND", (0, _pi2), (-1, _pi2),
+                                   colors.HexColor("#f0fdf4")))
+            _ph_tbl.setStyle(TableStyle(_ph_style))
+            story.append(_ph_tbl)
+            story.append(Spacer(1, 2 * mm))
+
+        # カウンターオファー（あれば）
+        if _gu_offers:
+            story.append(Paragraph("◆ 逆転の条件（カウンターオファー）",
+                                    ps("guoff_hdr", 9, _DANGER, sb=1*mm)))
+            story.append(Spacer(1, 1 * mm))
+            _of_data = [["条件", "確率上昇幅", "内容"]]
+            for _oi, _of in enumerate(_gu_offers):
+                _of_data.append([
+                    Paragraph(_safe(_of.get("title", "")), ps(f"ofttl{_oi}", 8, _DANGER)),
+                    Paragraph(f'+{int(_of.get("prob_gain",0)*100)}%pt',
+                               ps(f"ofgn{_oi}", 8, _WARN, "CENTER")),
+                    Paragraph(_safe(_of.get("detail", "")), ps(f"ofdt{_oi}", 7, _BLACK, leading=10)),
+                ])
+            _of_tbl = Table(_of_data, colWidths=[38*mm, 20*mm, 119*mm])
+            _of_style = make_tbl_style(_C(*_WARN), _of_data)
+            for _oi2 in range(1, len(_gu_offers) + 1):
+                _of_style.append(("BACKGROUND", (0, _oi2), (-1, _oi2),
+                                   colors.HexColor("#fff7ed")))
+            _of_tbl.setStyle(TableStyle(_of_style))
+            story.append(_of_tbl)
+            story.append(Spacer(1, 2 * mm))
+
+        # LLM推薦文（生成済みの場合のみ）
+        if _gu_llm:
+            story.append(Paragraph("◆ 軍師の推薦文（LLM生成）",
+                                    ps("gullm_hdr", 9, _STEEL, sb=1*mm)))
+            story.append(Spacer(1, 1 * mm))
+            S_LLM = ps("gullm_body", 7.5, _BLACK, leading=11)
+            for _line in _gu_llm.splitlines():
+                if _line.strip():
+                    story.append(Paragraph(_safe(_line), S_LLM))
+                else:
+                    story.append(Spacer(1, 1 * mm))
+            story.append(Spacer(1, 1 * mm))
+
+        story.append(HRFlowable(width="100%", thickness=0.4, color=_C(*_LIGHT)))
+        story.append(Spacer(1, 1 * mm))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # ② 財務指標グラフ（ダッシュボード）
@@ -618,11 +902,11 @@ def build_screening_report_pdf(
         ("自己資本比", user_eq, bench_eq, _WARN),
         ("ROA",        roa,    None,      _NAVY),
     ]
-    fin_chart = _make_fin_metrics_chart(chart_items, 177 * mm, 54 * mm)
+    fin_chart = _make_fin_metrics_chart(chart_items, 177 * mm, 46 * mm)
     story.append(fin_chart)
-    story.append(Spacer(1, 2 * mm))
-    story.append(HRFlowable(width="100%", thickness=0.3, color=_C(*_LIGHT)))
     story.append(Spacer(1, 1 * mm))
+    story.append(HRFlowable(width="100%", thickness=0.3, color=_C(*_LIGHT)))
+    story.append(Spacer(1, 0.5 * mm))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # ③ AI自動分析コメント（事前実行不要・常に生成）
@@ -681,7 +965,101 @@ def build_screening_report_pdf(
              [colors.white, _C(*_LIGHT)] * (len(comment_rows) // 2 + 1)),
         ]))
         story.append(ai_card)
-        story.append(Spacer(1, 4 * mm))
+        story.append(Spacer(1, 2 * mm))
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ③' グラフ集（Plotly → kaleido → PNG → ReportLab Image）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def _fig_to_png(fig, w_mm=88, h_mm=62):
+        """Plotly Figure → PNG bytes（kaleido使用）"""
+        if fig is None:
+            return None
+        try:
+            import plotly.io as _pio
+            _dpi  = 150
+            _wpx  = int(w_mm / 25.4 * _dpi)
+            _hpx  = int(h_mm / 25.4 * _dpi)
+            return _pio.to_image(fig, format="png", width=_wpx, height=_hpx, scale=1)
+        except Exception:
+            return None
+
+    def _png_to_flowable(png_bytes, w_mm, h_mm):
+        """PNG bytes → ReportLab Image Flowable"""
+        if not png_bytes:
+            return None
+        from reportlab.platypus import Image as _RLImg
+        return _RLImg(BytesIO(png_bytes), width=w_mm * mm, height=h_mm * mm)
+
+    try:
+        from charts import (
+            plot_score_models_comparison_plotly,
+            plot_waterfall_plotly,
+            plot_balance_sheet_plotly,
+            plot_cash_flow_bridge_plotly,
+            plot_ebitda_coverage_plotly,
+            plot_contract_prob_factors_plotly,
+        )
+
+        # 生成する（タイトル, figure, w_mm, h_mm）
+        _chart_defs = [
+            ("3モデル スコア比較",
+             plot_score_models_comparison_plotly(res),          88, 62),
+            ("成約確率 要因分解",
+             plot_contract_prob_factors_plotly(ai_factors) if ai_factors else None,
+                                                               88, 62),
+            ("P&L ウォーターフォール",
+             plot_waterfall_plotly(nenshu, gross, rieki, ord_profit, net_income) if nenshu else None,
+                                                               88, 62),
+            ("バランスシート",
+             plot_balance_sheet_plotly(fin),                    88, 62),
+            ("EBITDA カバレッジ",
+             plot_ebitda_coverage_plotly(fin),                  88, 62),
+            ("キャッシュフロー ブリッジ",
+             plot_cash_flow_bridge_plotly(fin),                 88, 62),
+        ]
+
+        # 2列グリッドに並べる
+        _grid_rows = []
+        _pair      = []
+        for _title, _fig, _wm, _hm in _chart_defs:
+            _png = _fig_to_png(_fig, _wm, _hm)
+            if _png is None:
+                continue
+            _img = _png_to_flowable(_png, _wm, _hm)
+            if _img is None:
+                continue
+            _cell = [
+                Paragraph(f"<b>{_title}</b>",
+                          ps("gcap", 7, _STEEL, "CENTER")),
+                _img,
+            ]
+            _pair.append(_cell)
+            if len(_pair) == 2:
+                _grid_rows.append(_pair)
+                _pair = []
+        if _pair:                          # 奇数枚目は右セルを空に
+            _grid_rows.append([_pair[0], [Paragraph("", S_SMALL)]])
+
+        if _grid_rows:
+            story.append(PageBreak())
+            story.append(Paragraph("■ グラフ集", S_H2))
+            story.append(Spacer(1, 2 * mm))
+            _chart_grid = Table(
+                _grid_rows,
+                colWidths=[89 * mm, 89 * mm],
+            )
+            _chart_grid.setStyle(TableStyle([
+                ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+                ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+                ("LEFTPADDING",   (0, 0), (-1, -1), 1 * mm),
+                ("RIGHTPADDING",  (0, 0), (-1, -1), 1 * mm),
+                ("TOPPADDING",    (0, 0), (-1, -1), 1 * mm),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5 * mm),
+            ]))
+            story.append(_chart_grid)
+
+    except Exception as _ge:
+        story.append(Paragraph(f"（グラフ集の生成をスキップしました: {_ge}）", S_SMALL))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # ④ 財務サマリー（改ページ）
@@ -783,13 +1161,171 @@ def build_screening_report_pdf(
     story.append(Spacer(1, 3 * mm))
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # ⑧ 担当者メモ
+    # ⑨ モンテカルロ リース審査シミュレーション結果
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    mc_summary = extra.get("mc_summary")
+    if mc_summary:
+        story.append(HRFlowable(width="100%", thickness=0.8, color=_C(*_ACCENT)))
+        story.append(Spacer(1, 2 * mm))
+        story.append(Paragraph("■ モンテカルロ リース審査シミュレーション", S_H2))
+        story.append(Paragraph(
+            "GBMによる10,000回シミュレーションに基づくポートフォリオリスク指標", S_SMALL))
+        story.append(Spacer(1, 2 * mm))
+
+        # ── KPI バッジ ───────────────────────────────────────────
+        _mc_wdp  = mc_summary.get("weighted_default_prob", 0)
+        _mc_cr   = mc_summary.get("concentration_risk",    0)
+        _mc_el   = mc_summary.get("expected_loss",         0)
+        _mc_var  = mc_summary.get("portfolio_var_95",      0)
+
+        _mc_kpi_rows = [
+            [Paragraph("加重平均デフォルト確率", S_SMALL),
+             Paragraph("集中リスク（上位3社）",  S_SMALL),
+             Paragraph("期待損失額",             S_SMALL),
+             Paragraph("ポートフォリオVaR(95%)", S_SMALL)],
+            [Paragraph(f"<b>{_mc_wdp:.1%}</b>",
+                       ps("mcv1", 12,
+                          _DANGER if _mc_wdp > 0.1 else (_WARN if _mc_wdp > 0.05 else _ACCENT),
+                          "CENTER")),
+             Paragraph(f"<b>{_mc_cr:.1%}</b>",
+                       ps("mcv2", 12, _BLACK, "CENTER")),
+             Paragraph(f"<b>{_mc_el/1e4:,.0f}万円</b>",
+                       ps("mcv3", 12, _BLACK, "CENTER")),
+             Paragraph(f"<b>{_mc_var:.1f}pt</b>",
+                       ps("mcv4", 12, _BLACK, "CENTER"))],
+        ]
+        _mc_kpi_tbl = Table(_mc_kpi_rows, colWidths=[45*mm, 44*mm, 44*mm, 44*mm])
+        _mc_kpi_tbl.setStyle(TableStyle([
+            ("FONTNAME",      (0, 0), (-1, -1), _JP),
+            ("BACKGROUND",    (0, 0), (-1,  0), _C(*_LIGHT)),
+            ("TEXTCOLOR",     (0, 0), (-1,  0), _C(*_GRAY)),
+            ("GRID",          (0, 0), (-1, -1), 0.4, colors.lightgrey),
+            ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 2 * mm),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2 * mm),
+        ]))
+        story.append(_mc_kpi_tbl)
+        story.append(Spacer(1, 3 * mm))
+
+        # ── 個社別結果テーブル ──────────────────────────────────
+        _mc_results = mc_summary.get("results", [])
+        if _mc_results:
+            story.append(Paragraph("◆ 個社別シミュレーション結果", ps("mcsub", 8, _STEEL)))
+            story.append(Spacer(1, 1 * mm))
+            _RISK_EMOJI = {"低リスク": "●", "中リスク": "◆", "高リスク": "▲", "極高リスク": "★"}
+            _RISK_COLOR = {
+                "低リスク":  _ACCENT,
+                "中リスク":  _WARN,
+                "高リスク":  _DANGER,
+                "極高リスク": _DANGER,
+            }
+            _mc_res_data = [["企業名", "リスク区分", "デフォルト確率", "スコア中央値", "VaR(95%)"]]
+            for _mr in _mc_results:
+                _rl = _mr.get("risk_level", "")
+                _mc_res_data.append([
+                    str(_mr.get("name", "")),
+                    f"{_RISK_EMOJI.get(_rl, '－')} {_rl}",
+                    f"{_mr.get('default_prob', 0):.1%}",
+                    f"{_mr.get('score_median', 0):.1f}pt",
+                    f"{_mr.get('var_95', 0):.1f}pt",
+                ])
+            _mc_res_tbl = Table(_mc_res_data, colWidths=[50*mm, 35*mm, 32*mm, 32*mm, 28*mm])
+            _style = make_tbl_style(_C(*_NAVY), _mc_res_data)
+            # 高リスク行に色付け
+            for _ri, _row in enumerate(_mc_res_data[1:], start=1):
+                _rl_cell = _row[1] if len(_row) > 1 else ""
+                if "極高リスク" in _rl_cell or "高リスク" in _rl_cell:
+                    _style.append(("TEXTCOLOR", (1, _ri), (2, _ri), _C(*_DANGER)))
+            _mc_res_tbl.setStyle(TableStyle(_style))
+            story.append(_mc_res_tbl)
+            story.append(Spacer(1, 3 * mm))
+
+        # ── 審査コメント ────────────────────────────────────────
+        _mc_comments_data = [
+            (_r.get("name", ""), _r.get("comment", ""))
+            for _r in _mc_results
+            if _r.get("comment", "").strip()
+        ]
+        if _mc_comments_data:
+            story.append(Paragraph("◆ 審査コメント", ps("mcsub2", 8, _STEEL)))
+            story.append(Spacer(1, 1 * mm))
+            _comm_tbl_data = [["企業名", "審査コメント"]]
+            for _cname, _ctext in _mc_comments_data:
+                _comm_tbl_data.append([
+                    Paragraph(str(_cname), S_BODY),
+                    Paragraph(str(_ctext), S_BODY),
+                ])
+            _comm_tbl = Table(_comm_tbl_data, colWidths=[42 * mm, 135 * mm])
+            _comm_tbl.setStyle(TableStyle(make_tbl_style(_C(*_NAVY), _comm_tbl_data)))
+            story.append(_comm_tbl)
+            story.append(Spacer(1, 3 * mm))
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ⑩ 担当者メモ
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if note.strip():
         story.append(HRFlowable(width="100%", thickness=0.5, color=_C(*_LIGHT)))
         story.append(Spacer(1, 2 * mm))
         story.append(Paragraph("■ 担当者メモ", S_H2))
         story.append(Paragraph(note, S_BODY))
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ⑪ AIアナリストによる追加見解（業界分析・ぼやき）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    ai_advice = extra.get("ai_industry_advice")
+    ai_byoki = extra.get("ai_byoki")
+    if ai_advice or ai_byoki:
+        story.append(PageBreak())
+        story.append(Paragraph("■ AIアナリストによる追加見解", S_H2))
+        
+        if ai_advice:
+            story.append(Spacer(1, 2 * mm))
+            story.append(Paragraph("【AI業界分析アドバイス】", ps("ai_adv_head", 9, _STEEL)))
+            story.append(Spacer(1, 1 * mm))
+            for line in ai_advice.splitlines():
+                if line.strip() == "":
+                    story.append(Spacer(1, 1 * mm))
+                else:
+                    story.append(Paragraph(_md2rl(line), S_BODY))
+        
+        if ai_byoki:
+            story.append(Spacer(1, 3 * mm))
+            story.append(Paragraph("【AIのぼやき（担当ベースの率直な所見）】", ps("ai_b_head", 9, _NAVY)))
+            story.append(Spacer(1, 1 * mm))
+            for line in ai_byoki.splitlines():
+                if line.strip() == "":
+                    story.append(Spacer(1, 1 * mm))
+                else:
+                    story.append(Paragraph(_md2rl(line), S_BODY))
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ⑫ 業種別 事前生成A4レポート (あれば追加)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    industry_sub = res.get("industry_sub", "")
+    if industry_sub:
+        try:
+            import os
+            import json
+            from config import BASE_DIR
+            report_file = os.path.join(BASE_DIR, "industry_reports_a4.json")
+            if os.path.exists(report_file):
+                with open(report_file, "r", encoding="utf-8") as f:
+                    ind_reports = json.load(f)
+                if industry_sub in ind_reports:
+                    target_report = ind_reports[industry_sub].get("report_text", "")
+                    if target_report.strip():
+                        story.append(PageBreak())
+                        story.append(Paragraph(f"■ 【添付】業界動向レポート（{industry_sub}）", S_H2))
+                        story.append(Spacer(1, 3 * mm))
+                        for line in target_report.splitlines():
+                            if line.strip() == "":
+                                story.append(Spacer(1, 2 * mm))
+                            else:
+                                story.append(Paragraph(_md2rl(line), S_BODY))
+        except Exception as e:
+            # 読み込み失敗時は無視してPDF生成を続行
+            pass
 
     doc.build(story)
     return buffer.getvalue()
