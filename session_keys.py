@@ -175,6 +175,15 @@ class SK:
     SLACK_NOTIFY_THREAD   = "slack_notify_thread"     # スレッド全体を含めるか
 
     # ─────────────────────────────────────────────
+    # タム（子犬のAI）
+    # ─────────────────────────────────────────────
+    KOINU_CHAT_HISTORY    = "koinu_chat_history"      # タムとの会話履歴
+    KOINU_MEMO_LOG        = "koinu_memo_log"          # タムの謎のメモ帳
+    KOINU_LAST_COMMENT    = "koinu_last_comment"      # タムの直前コメント（floating bot用）
+    KOINU_SHOWN_TIME      = "koinu_shown_time"        # 直前コメント表示時刻
+    KOINU_INIT_TIME       = "_koinu_init_time"        # 起動時刻
+
+    # ─────────────────────────────────────────────
     # その他
     # ─────────────────────────────────────────────
     BATTLE_DATA           = "battle_data"          # バトルデータ

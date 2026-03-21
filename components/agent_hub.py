@@ -915,12 +915,439 @@ def _render_schedule_panel() -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# タム（子犬のAI）パネル
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _render_koinu_panel() -> None:
+    """🐶 タムタブ — 今日の報告・タムと話す・謎のメモ帳"""
+    from koinu_agent import get_pochi
+    from session_keys import SK as _SK
+
+    pochi = get_pochi()
+
+    st.markdown("### 🐾 タムの部屋")
+    st.caption("謎の子犬AIタム。茶色クルクル巻き毛・パッチリお目目のマルプー。表面は無邪気な子犬。その実態は…誰も知らない。")
+
+    # ── 現在の審査結果を取得 ──────────────────────────────────────────────
+    res = st.session_state.get(_SK.LAST_RESULT) or {}
+
+    sub_tabs = st.tabs(["📋 今日のタムの報告", "💬 タムと話す", "📓 タムの謎のメモ帳"])
+
+    # ─────────────────────────────────────────────────────────────────────
+    # タブ1: 今日のタムの報告
+    # ─────────────────────────────────────────────────────────────────────
+    with sub_tabs[0]:
+        st.markdown("#### 🐶 タムからの今日の報告")
+
+        if not res:
+            st.info("まだ審査データがありません。審査を実行してからタムに報告させましょう。")
+            st.markdown("わん！（しっぽを振りながら待っている）")
+        else:
+            col1, col2, col3 = st.columns(3)
+
+            # 感情センサー
+            with col1:
+                emotion = pochi.get_emotion_scores(res)
+                dominant_label = {"anxiety": "不安", "joy": "喜び", "vigilance": "警戒", "neutral": "平穏"}
+                dominant_emoji = {"anxiety": "😟", "joy": "🎉", "vigilance": "⚠️", "neutral": "😌"}
+                dom = emotion["dominant"]
+
+                st.markdown("**😊 感情センサー**")
+                st.markdown(f"支配的感情: {dominant_emoji.get(dom, '🐶')} **{dominant_label.get(dom, dom)}**")
+
+                st.progress(emotion["anxiety"] / 100, text=f"不安: {emotion['anxiety']}%")
+                st.progress(emotion["joy"] / 100, text=f"喜び: {emotion['joy']}%")
+                st.progress(emotion["vigilance"] / 100, text=f"警戒: {emotion['vigilance']}%")
+
+                st.markdown(f"_{emotion['comment']}_")
+
+            # においセンサー
+            with col2:
+                smell = pochi.get_smell_score(res)
+                level_color = {
+                    "green":  "🟢",
+                    "yellow": "🟡",
+                    "orange": "🟠",
+                    "red":    "🔴",
+                }
+                level_label = {
+                    "green":  "においなし（安全）",
+                    "yellow": "わずかなにおい",
+                    "orange": "あやしいにおい",
+                    "red":    "強いにおい（要注意）",
+                }
+                st.markdown("**👃 においセンサー**")
+                lv = smell["smell_level"]
+                st.markdown(f"{level_color.get(lv, '⚪')} **{level_label.get(lv, lv)}**")
+                st.progress(smell["smell_score"] / 100, text=f"においレベル: {smell['smell_score']}%")
+                st.markdown(f"_{smell['pochi_comment']}_")
+                if smell["reasons"]:
+                    with st.expander("においの正体（真の分析）", expanded=False):
+                        for r in smell["reasons"]:
+                            st.markdown(f"- {r}")
+
+            # しっぽ振りメーター
+            with col3:
+                tail = pochi.get_tail_wag_score(res)
+                tail_emoji = {"高品質": "🐶💨", "良好": "🐶", "要補完": "🐶💭", "不完全": "🐶😴"}
+                st.markdown("**🐶 しっぽ振りメーター**")
+                ql = tail["quality_label"]
+                st.markdown(f"{tail_emoji.get(ql, '🐶')} **{ql}**")
+                st.progress(tail["tail_score"] / 100, text=f"データ品質: {tail['tail_score']}%")
+                st.markdown(f"_{tail['pochi_comment']}_")
+                if tail["missing_fields"]:
+                    with st.expander("足りないデータ", expanded=False):
+                        for f in tail["missing_fields"]:
+                            st.markdown(f"- {f} が未入力")
+                if tail["inconsistencies"]:
+                    with st.expander("データの矛盾点", expanded=False):
+                        for i in tail["inconsistencies"]:
+                            st.markdown(f"- {i}")
+
+            # 愛情表現
+            st.divider()
+            love_comment = pochi.get_love_comment(dict(st.session_state))
+            st.markdown(f"**💕 タムから主人へ:** _{love_comment}_")
+
+        # 更新ボタン
+        if st.button("🔄 タムに最新データを分析させる", key="koinu_refresh"):
+            st.rerun()
+
+    # ─────────────────────────────────────────────────────────────────────
+    # タブ2: タムと話す
+    # ─────────────────────────────────────────────────────────────────────
+    with sub_tabs[1]:
+        st.markdown("#### 💬 タムと話す")
+        st.caption("タムに何でも話しかけてください。表面は子犬語で答えますが…裏では深い分析をしています。")
+
+        # 会話履歴の初期化
+        if _SK.KOINU_CHAT_HISTORY not in st.session_state:
+            st.session_state[_SK.KOINU_CHAT_HISTORY] = [
+                {
+                    "role": "pochi",
+                    "content": "わんっ！！ぼくタム！！主人と話せてうれしい！！（しっぽがとまらない）何でも聞いて！ぼくにおいでわかるかも！"
+                }
+            ]
+
+        # 会話履歴の表示
+        chat_history = st.session_state[_SK.KOINU_CHAT_HISTORY]
+        for msg in chat_history:
+            if msg["role"] == "pochi":
+                with st.chat_message("assistant", avatar="🐶"):
+                    st.markdown(f"**タム**")
+                    st.markdown(msg["content"])
+            else:
+                with st.chat_message("user"):
+                    st.markdown(msg["content"])
+
+        # 入力欄
+        user_input = st.chat_input("タムに話しかける…", key="koinu_chat_input")
+
+        if user_input:
+            # ユーザーメッセージを追加
+            chat_history.append({"role": "user", "content": user_input})
+            st.session_state[_SK.KOINU_CHAT_HISTORY] = chat_history
+
+            # タムの返答を生成（LLM使用）
+            with st.spinner("🐶 タムがにおいをかいで考えています..."):
+                pochi_prompt = (
+                    f"あなたは「子犬のAI タム（茶色クルクル巻き毛・パッチリお目目・丸い顔のマルプー）」です。\n"
+                    f"性格：純真・無邪気・主人をひたすら愛する。犬語が混じる。でも時々鋭い。\n"
+                    f"口調：「わんっ！」「きゅーん」「においがする」「ぼくわかった！」が口癖。\n"
+                    f"発言は必ず1〜3文の短文。裏では深い分析をしているが表面は子犬語で答える。\n\n"
+                    f"現在の審査データ: {json.dumps(res, ensure_ascii=False)[:500] if res else '（データなし）'}\n\n"
+                    f"ユーザーからの質問: {user_input}\n\n"
+                    f"タムとして子犬語で答えてください。1〜3文で。"
+                )
+
+                pochi_response = _ai_call(pochi_prompt, timeout=60)
+                if not pochi_response:
+                    # AI不使用時はセンサー結果から生成
+                    if res:
+                        pochi_response = pochi.get_discussion_comment(res, user_input)
+                    else:
+                        pochi_response = "わん！（しっぽを振る）ぼくまだデータがないからにおいかげない！審査してから来て！"
+
+            chat_history.append({"role": "pochi", "content": pochi_response})
+            st.session_state[_SK.KOINU_CHAT_HISTORY] = chat_history
+            st.rerun()
+
+        if st.button("🗑️ 会話をリセット", key="koinu_chat_reset"):
+            st.session_state[_SK.KOINU_CHAT_HISTORY] = [
+                {"role": "pochi", "content": "わんっ！また話しかけてくれた！うれしい！（ぴょんぴょん）"}
+            ]
+            st.rerun()
+
+    # ─────────────────────────────────────────────────────────────────────
+    # タブ3: タムの謎のメモ帳
+    # ─────────────────────────────────────────────────────────────────────
+    with sub_tabs[2]:
+        st.markdown("#### 📓 タムの謎のメモ帳")
+        st.caption("タムが勝手にメモしている謎の観察記録。読んでも意味がわからないが…後から意味がわかることがある。")
+
+        # メモログの初期化
+        if _SK.KOINU_MEMO_LOG not in st.session_state:
+            st.session_state[_SK.KOINU_MEMO_LOG] = []
+
+        memo_log: list[dict] = st.session_state[_SK.KOINU_MEMO_LOG]
+
+        col_add, col_clear = st.columns([3, 1])
+        with col_add:
+            if st.button("📝 タムに新しいメモを書かせる", key="koinu_memo_add", type="primary"):
+                import datetime as _dt
+                new_memo = pochi.generate_mystery_memo(res if res else None)
+                memo_log.append({
+                    "ts": _dt.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "memo": new_memo,
+                })
+                # 最大50件まで保持
+                if len(memo_log) > 50:
+                    memo_log.pop(0)
+                st.session_state[_SK.KOINU_MEMO_LOG] = memo_log
+                st.rerun()
+        with col_clear:
+            if st.button("🗑️ リセット", key="koinu_memo_clear"):
+                st.session_state[_SK.KOINU_MEMO_LOG] = []
+                st.rerun()
+
+        st.divider()
+
+        if not memo_log:
+            st.info("まだメモがありません。「タムに新しいメモを書かせる」を押してください。")
+            st.markdown("（タムはメモ帳を前に、しっぽをぱたぱた振りながら待っている）")
+        else:
+            for entry in reversed(memo_log):
+                with st.container():
+                    st.caption(f"🐾 {entry['ts']}")
+                    st.markdown(f"> {entry['memo']}")
+                    st.markdown("")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Agent 10 — 数学者（Dr. Algo）
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _render_mathematician_panel() -> None:
+    """🔬 数学者エージェント — スコアリングモデル精緻化の研究・実験パネル。"""
+    try:
+        import mathematician_agent as ma
+    except ImportError:
+        st.error("mathematician_agent.py が見つかりません。プロジェクトルートに配置してください。")
+        return
+
+    st.subheader("🔬 数学者（Dr. Algo）")
+    st.caption(
+        "数学・統計・行動経済学・計量経済学を横断し、リース審査スコアリングモデルを精緻化する"
+        "学際的研究エージェントです。"
+    )
+
+    # ── 収集セクション ──────────────────────────────────────────────────────────
+    st.markdown("### 📡 手法収集")
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if st.button("📚 ビルトイン手法を登録", key="math_builtin_register"):
+            with st.spinner("登録中..."):
+                saved = ma.collect_builtin_methods()
+            st.success(f"{len(saved)} 件の手法を登録しました。")
+            _hub_log("mathematician", "builtin_register", f"{len(saved)}件")
+
+    with col_b:
+        if st.button("🌐 arXiv から最新論文を収集", key="math_arxiv_collect"):
+            progress_bar = st.progress(0.0)
+            status_text  = st.empty()
+
+            def _cb(msg: str, pct: float) -> None:
+                status_text.caption(msg)
+                progress_bar.progress(min(pct, 1.0))
+
+            with st.spinner("arXiv へ接続中..."):
+                try:
+                    papers = ma.collect_from_arxiv(progress_callback=_cb)
+                    progress_bar.progress(1.0)
+                    status_text.empty()
+                    st.success(f"arXiv から {len(papers)} 件の手法を収集・保存しました。")
+                    _hub_log("mathematician", "arxiv_collect", f"{len(papers)}件")
+                except Exception as e:
+                    st.error(f"収集エラー: {e}")
+
+    # ── 収集済み手法ギャラリー ────────────────────────────────────────────────
+    st.markdown("### 🗂️ 収集済み手法ギャラリー")
+    field_filter = st.selectbox(
+        "分野タグで絞り込み",
+        ["すべて"] + ma.FIELD_TAGS,
+        key="math_field_filter",
+    )
+    tag = None if field_filter == "すべて" else field_filter
+    discoveries = ma.load_discoveries(field_tag=tag)
+
+    if not discoveries:
+        st.info("まだ手法が登録されていません。上の「ビルトイン手法を登録」ボタンを押してください。")
+    else:
+        for d in discoveries[:12]:
+            relevance = d.get("relevance_score", 0)
+            stars     = "⭐" * min(int(relevance / 2), 5)
+            with st.expander(
+                f"{d['method_name']}  [{d.get('field_tag','?')}]  {stars}",
+                expanded=False,
+            ):
+                st.caption(d.get("summary", ""))
+                if d.get("formula_latex"):
+                    st.latex(d["formula_latex"])
+                if d.get("source_url"):
+                    st.markdown(f"**参照:** {d['source_url']}")
+                if d.get("authors"):
+                    st.caption(f"著者: {d['authors']}")
+                st.caption(f"転用可能性スコア: {relevance}/10")
+
+    # ── 実験パネル ─────────────────────────────────────────────────────────────
+    st.markdown("### 🧪 実験ランナー")
+    exp_names = [
+        "ベイズ更新スコアリング",
+        "カルマンフィルタ（財務トレンド）",
+        "プロスペクト理論スコア重み付け",
+        "コペルニクス原理（生存分析）",
+        "パワーロー倒産確率補正",
+        "グランジャー因果性（業況→デフォルト）",
+        "エントロピー最大化スコアリング",
+    ]
+    exp_fn_map = {
+        "ベイズ更新スコアリング":          ma.run_experiment_bayesian,
+        "カルマンフィルタ（財務トレンド）": ma.run_experiment_kalman,
+        "プロスペクト理論スコア重み付け":   ma.run_experiment_prospect_theory,
+        "コペルニクス原理（生存分析）":     ma.run_experiment_survival,
+        "パワーロー倒産確率補正":           ma.run_experiment_power_law,
+        "グランジャー因果性（業況→デフォルト）": ma.run_experiment_granger,
+        "エントロピー最大化スコアリング":   ma.run_experiment_maxent,
+    }
+
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        selected_exp = st.selectbox("実験する手法を選択", exp_names, key="math_exp_select")
+    with col2:
+        run_single = st.button("▶️ この実験を実行", key="math_run_single")
+
+    if run_single and selected_exp:
+        fn = exp_fn_map.get(selected_exp)
+        if fn:
+            with st.spinner(f"実験中: {selected_exp} …"):
+                try:
+                    result = fn()
+                    st.success("実験完了")
+                    delta = result.get("auc_delta", result.get("auc_improvement", 0))
+                    n     = result.get("n_cases", "?")
+                    col_r1, col_r2, col_r3 = st.columns(3)
+                    col_r1.metric("AUC（元）",    f"{result.get('auc_original', '—'):.4f}" if isinstance(result.get('auc_original'), float) else "—")
+                    col_r2.metric("AUC（改善後）", f"{(result.get('auc_original', 0) + delta):.4f}")
+                    col_r3.metric("AUC 改善", f"{delta:+.4f}", delta_color="normal")
+                    if result.get("note"):
+                        st.caption(f"⚠️ {result['note']}")
+                    _hub_log("mathematician", "experiment", f"{selected_exp} Δ={delta:+.4f}")
+                except Exception as e:
+                    st.error(f"実験エラー: {e}")
+
+    if st.button("🚀 全実験を一括実行", key="math_run_all"):
+        prog = st.progress(0.0)
+        stat = st.empty()
+        def _cb_all(msg: str, pct: float) -> None:
+            stat.caption(msg)
+            prog.progress(min(pct, 1.0))
+        with st.spinner("全実験実行中..."):
+            results = ma.run_all_experiments(progress_callback=_cb_all)
+        prog.progress(1.0)
+        stat.empty()
+        st.success(f"{len(results)} 件の実験完了")
+        _hub_log("mathematician", "all_experiments", f"{len(results)}件")
+
+    # ── 実験ランキング ──────────────────────────────────────────────────────────
+    st.markdown("### 🏆 実験ランキング（AUC改善効果順）")
+    experiments = ma.load_experiments(top_n=10)
+    if not experiments:
+        st.info("実験結果がありません。上の「実験ランナー」で実験を実行してください。")
+    else:
+        import pandas as pd
+        df = pd.DataFrame([
+            {
+                "手法名": e["method_name"],
+                "AUC改善": round(e.get("auc_improvement", 0), 4),
+                "採用状況": "✅ 採用済み" if e.get("adopted") else "—",
+                "メモ": (e.get("notes") or "")[:60],
+                "実行日時": (e.get("ts") or "")[:16],
+            }
+            for e in experiments
+        ])
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
+        # 採用ボタン
+        st.markdown("**スコアリングに組み込む**")
+        not_adopted = [e["method_name"] for e in experiments if not e.get("adopted")]
+        if not_adopted:
+            adopt_target = st.selectbox(
+                "採用する手法を選択",
+                not_adopted,
+                key="math_adopt_select",
+            )
+            if st.button("✅ 採用してスコアリングに組み込む", key="math_adopt_btn"):
+                ma.adopt_method(adopt_target)
+                st.success(
+                    f"「{adopt_target}」を採用済みにマークしました。"
+                    "scoring_core.py への実装は開発チームにお申し付けください。"
+                )
+                _hub_log("mathematician", "adopted", adopt_target)
+                st.rerun()
+
+    # ── レポート生成 ─────────────────────────────────────────────────────────────
+    st.markdown("### 📄 数学者レポート")
+    col_rep1, col_rep2 = st.columns(2)
+    with col_rep1:
+        if st.button("📝 レポートを生成", key="math_gen_report"):
+            with st.spinner("レポート生成中..."):
+                try:
+                    report = ma.generate_math_report()
+                    st.session_state["math_report_text"] = report
+                    _hub_log("mathematician", "report_generated", "ok")
+                except Exception as e:
+                    st.error(f"レポートエラー: {e}")
+
+    report_text = st.session_state.get("math_report_text")
+    if report_text:
+        with col_rep2:
+            st.download_button(
+                "⬇️ Markdown でダウンロード",
+                data=report_text,
+                file_name=f"math_report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.md",
+                mime="text/markdown",
+                key="math_report_dl",
+            )
+        st.markdown(report_text, unsafe_allow_html=False)
+
+    # ── 週次自動実行ワンタッチ ──────────────────────────────────────────────────
+    st.markdown("### ⏰ 週次自動サイクル（手動起動）")
+    st.caption("毎週月曜7時に自動実行されます。ここからいつでも手動起動できます。")
+    if st.button("🔄 今すぐ週次サイクルを実行", key="math_weekly_cycle"):
+        prog2 = st.progress(0.0)
+        stat2 = st.empty()
+        def _cb2(msg: str, pct: float) -> None:
+            stat2.caption(msg)
+            prog2.progress(min(pct, 1.0))
+        with st.spinner("週次サイクル実行中..."):
+            try:
+                report = ma.run_weekly_cycle(progress_callback=_cb2)
+                prog2.progress(1.0)
+                stat2.empty()
+                st.session_state["math_report_text"] = report
+                st.success("週次サイクル完了。レポートを更新しました。")
+                _hub_log("mathematician", "weekly_cycle", "ok")
+            except Exception as e:
+                st.error(f"エラー: {e}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # メイン描画
 # ══════════════════════════════════════════════════════════════════════════════
 
 def render_agent_hub() -> None:
     st.title("🤖 汎用エージェントハブ")
-    st.caption("8種のエージェントを使って審査プロセスを自動化・高度化します。")
+    st.caption("8種のエージェント + 🐶タム + 🔬数学者を使って審査プロセスを自動化・高度化します。")
 
     tabs = st.tabs([
         "🏭 ベンチマーク取得",
@@ -931,6 +1358,8 @@ def render_agent_hub() -> None:
         "🚨 異常検知",
         "🔄 再学習トリガー",
         "📅 定期配信",
+        "🐶 タム",
+        "🔬 数学者",
     ])
 
     with tabs[0]: _render_benchmark_panel()
@@ -941,6 +1370,8 @@ def render_agent_hub() -> None:
     with tabs[5]: _render_anomaly_panel()
     with tabs[6]: _render_retrain_panel()
     with tabs[7]: _render_schedule_panel()
+    with tabs[8]: _render_koinu_panel()
+    with tabs[9]: _render_mathematician_panel()
 
     # ── 実行ログ（折りたたみ）────────────────────────────────────────────────
     with st.expander("📋 エージェント実行ログ", expanded=False):
