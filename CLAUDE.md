@@ -69,6 +69,32 @@ reads_from: [読んだ上流レポートのパス]
 
 [log-file-analyzer] → .claude/reports/log-analysis/latest.md
     reads: build, test-results（あれば）
+
+── リース審査ドメイン固有エージェント（独立起動）──────────────────────────
+
+[scoring-auditor]       → .claude/reports/scoring-audit/latest.md
+    起動タイミング: asset_scorer.py / category_config.py / total_scorer.py 変更後
+    reads: file-searcher（任意）
+
+[data-quality-checker]  → .claude/reports/data-quality/latest.md
+    起動タイミング: DBスキーマ変更後、定期監査時（週次推奨）
+    reads: なし（DB直接アクセス）
+
+[rule-validator]        → .claude/reports/rule-validation/latest.md
+    起動タイミング: rule_manager.py / coeff_definitions.py / category_config.py 変更後
+    reads: file-searcher, code-review
+
+[api-health-checker]    → .claude/reports/api-health/latest.md
+    起動タイミング: デプロイ後、障害発生時、定期監視時
+    reads: なし
+
+[report-stylist]        → .claude/reports/report-stylist/latest.md
+    起動タイミング: 審査完了後・スコアリング結果のUI改善要求時
+    reads: agent-team/*, scoring-audit/latest.md
+
+[migration-validator]   → .claude/reports/migration/latest.md
+    起動タイミング: SQLiteスキーマ変更（CREATE/ALTER/DROP）を含むコード変更後
+    reads: file-searcher, code-review
 ```
 
 ### 各エージェントの読み書きルール
@@ -83,6 +109,23 @@ reads_from: [読んだ上流レポートのパス]
 | test-runner | なし | `test-results/latest.md` |
 | test-result-analyzer | test-results | `test-results/latest.md` に分析セクション追記 |
 | log-file-analyzer | build, test-results（任意） | `log-analysis/latest.md` |
+| **scoring-auditor** | file-searcher（任意） | `scoring-audit/latest.md` |
+| **data-quality-checker** | なし | `data-quality/latest.md` |
+| **rule-validator** | file-searcher, code-review | `rule-validation/latest.md` |
+| **api-health-checker** | なし | `api-health/latest.md` |
+| **report-stylist** | agent-team/*, scoring-audit | `report-stylist/latest.md` |
+| **migration-validator** | file-searcher, code-review | `migration/latest.md` |
+
+### カスタムコマンド（スキル）
+
+`.claude/commands/` に以下のスラッシュコマンドが定義されている：
+
+| コマンド | 用途 | 所要時間 |
+|---------|-----|---------|
+| `/quick-score` | 物件IDと業種からクイックスコアを計算 | 10秒 |
+| `/check-health` | 全依存サービス（Gemini/Ollama/Slack/SQLite）の接続確認 | 30〜120秒 |
+| `/validate-rules` | ウェイト合計・グレード閾値の整合性チェック | 10〜数分 |
+| `/generate-report` | 審査レポートの生成・改善提案 | 数秒〜数分 |
 
 ---
 
