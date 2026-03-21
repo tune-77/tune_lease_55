@@ -1,0 +1,20 @@
+# Cursor の索引・検索から除外して動作を軽くする
+__pycache__/
+.git/
+node_modules/
+*.pyc
+*.pyo
+.DS_Store
+*.log
+image_analysis_results/
+model_data/
+sp500_forecast/
+dashboard_images/
+*.ttf
+*.otf
+formula.png
+*.bak
+*backup*
+*_backup_*
+case_news.jsonl
+past_cases.jsonl
