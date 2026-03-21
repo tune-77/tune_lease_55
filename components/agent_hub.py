@@ -1186,17 +1186,19 @@ def _render_mathematician_panel() -> None:
         for d in discoveries[:12]:
             relevance = d.get("relevance_score", 0)
             stars     = "⭐" * min(int(relevance / 2), 5)
+            method_name = d.get("method_name", "（名称不明）")
+            field_tag   = d.get("field_tag", "?")
             with st.expander(
-                f"{d['method_name']}  [{d.get('field_tag','?')}]  {stars}",
+                f"{method_name}  [{field_tag}]  {stars}",
                 expanded=False,
             ):
                 st.caption(d.get("summary", ""))
                 if d.get("formula_latex"):
-                    st.latex(d["formula_latex"])
+                    st.latex(d.get("formula_latex", ""))
                 if d.get("source_url"):
-                    st.markdown(f"**参照:** {d['source_url']}")
+                    st.markdown(f"**参照:** {d.get('source_url', '')}")
                 if d.get("authors"):
-                    st.caption(f"著者: {d['authors']}")
+                    st.caption(f"著者: {d.get('authors', '')}")
                 st.caption(f"転用可能性スコア: {relevance}/10")
 
     # ── 実験パネル ─────────────────────────────────────────────────────────────
