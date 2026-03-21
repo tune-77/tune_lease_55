@@ -866,6 +866,7 @@ def render_analysis_results(
                             )
                             if st.button("✅ この案件をリストに追加", type="primary",
                                          use_container_width=True, key="mc_auto_add"):
+                                _subsidy_man = st.session_state.get("matched_subsidy_total_man", 0)
                                 st.session_state["mc_companies"].append({
                                     "name": _auto_name or "審査対象",
                                     "industry": _auto_industry,
@@ -875,8 +876,9 @@ def render_analysis_results(
                                     "debt_m": _auto_debt_m,
                                     "lease_amt_man": _auto_lease_man,
                                     "lease_months": _auto_months,
+                                    "subsidy_amount_man": _subsidy_man,
                                 })
-                                st.success(f"✅ {_auto_name or '審査対象'} を追加しました。")
+                                st.success(f"✅ {_auto_name or '審査対象'} を追加しました。{'（補助金 ' + str(_subsidy_man) + '万円 反映）' if _subsidy_man else ''}")
                                 st.rerun()
                     else:
                         st.info("💡 審査タブで審査を実行すると、結果がここに自動表示されます。")
@@ -916,6 +918,7 @@ def render_analysis_results(
                                 "debt_m": _mc_debt,
                                 "lease_amt_man": _mc_lease_amt,
                                 "lease_months": int(_mc_lease_mo),
+                                "subsidy_amount_man": 0,  # 手動追加は補助金なし（デフォルト）
                             })
                             st.success(f"✅ {_mc_name} を追加しました。")
                             st.rerun()
@@ -926,10 +929,12 @@ def render_analysis_results(
                         for _i, _co in enumerate(_mc_list):
                             _cx1, _cx2 = st.columns([5, 1])
                             with _cx1:
+                                _sub_label = f" | 補助金{_co['subsidy_amount_man']}万円" if _co.get("subsidy_amount_man") else ""
                                 st.caption(
                                     f"**{_co['name']}** | {_co['industry']} | "
                                     f"年商{_co['revenue_m']}M | 利益率{_co['op_margin']:.1f}% | "
                                     f"自己資本{_co['equity_ratio']:.1f}% | リース{_co['lease_amt_man']}万円/{_co['lease_months']}ヶ月"
+                                    f"{_sub_label}"
                                 )
                             with _cx2:
                                 if st.button("🗑", key=f"mc_del_{_i}"):
@@ -961,6 +966,7 @@ def render_analysis_results(
                                         total_debt=co["debt_m"] * 1_000_000,
                                         lease_amount=co["lease_amt_man"] * 10_000,
                                         lease_months=co["lease_months"],
+                                        subsidy_amount=co.get("subsidy_amount_man", 0) * 10_000,
                                     )
                                     for co in _mc_list
                                 ]

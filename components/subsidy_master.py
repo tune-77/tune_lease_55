@@ -252,6 +252,10 @@ def render_subsidy_cards(industry_code: Optional[str], asset_name: Optional[str]
     init_subsidy_table()
     matches = match_subsidies(industry_code, asset_name, max_results=3)
 
+    # シミュレーション計算で参照できるよう session_state に保存
+    st.session_state["matched_subsidies"] = matches
+    st.session_state["matched_subsidy_total_man"] = sum(s["max_amount"] for s in matches)
+
     if not matches:
         return
 
