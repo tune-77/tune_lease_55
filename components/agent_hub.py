@@ -1269,7 +1269,7 @@ def _render_mathematician_panel() -> None:
         import pandas as pd
         df = pd.DataFrame([
             {
-                "手法名": e["method_name"],
+                "手法名": e.get("method_name", "（名称不明）"),
                 "AUC改善": round(e.get("auc_improvement", 0), 4),
                 "採用状況": "✅ 採用済み" if e.get("adopted") else "—",
                 "メモ": (e.get("notes") or "")[:60],
@@ -1281,7 +1281,7 @@ def _render_mathematician_panel() -> None:
 
         # 採用ボタン
         st.markdown("**スコアリングに組み込む**")
-        not_adopted = [e["method_name"] for e in experiments if not e.get("adopted")]
+        not_adopted = [e.get("method_name", "（名称不明）") for e in experiments if not e.get("adopted")]
         if not_adopted:
             adopt_target = st.selectbox(
                 "採用する手法を選択",
