@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "lease_logic_sumaho12",
+      "runtimeExecutable": "streamlit",
+      "runtimeArgs": ["run", "lease_logic_sumaho12.py"],
+      "port": 8503,
+      "autoPort": false
+    }
+  ]
+}

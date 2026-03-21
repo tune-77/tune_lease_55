@@ -1,0 +1,104 @@
+{
+  "subsidies": [
+    {
+      "name": "中小企業省力化投資補助金（カタログ型）",
+      "summary": "人手不足解消のための機械導入。ロボット・券売機・配膳ロボット等。補助率1/2、最大1,500万円。リース契約も対象になる場合あり。",
+      "industries": ["06 総合工事業", "76 飲食店", "75 宿泊業", "56-61 各種小売業", "44 道路貨物運送業"],
+      "application_period": "年数回公募（経済産業省・各所管省の公募要領を確認）",
+      "result_period": "申請後1〜3ヶ月程度",
+      "url": "https://shoryokuka.smrj.go.jp/",
+      "url_note": "中小企業基盤整備機構 省力化投資補助金ポータル（カタログ・公募案内）"
+    },
+    {
+      "name": "ものづくり補助金",
+      "summary": "革新的なサービス・製品開発のための設備投資。高度な工作機械・3Dプリンタ・生産ライン等。補助率1/2〜2/3。",
+      "industries": ["07 職別工事業(大工・とび等)", "21 金属製品製造業", "24 生産用機械器具製造業", "89 自動車整備業", "08 設備工事業(電気・管工事)"],
+      "application_period": "年数回公募（経済産業省）",
+      "result_period": "申請後2〜4ヶ月程度",
+      "url": "https://portal.monodukuri-hojo.jp/",
+      "url_note": "ものづくり・商業・サービス生産性向上促進補助金 公式総合サイト（公募要領・問い合わせ）"
+    },
+    {
+      "name": "IT導入補助金",
+      "summary": "ソフトウェア・PC・タブレット・受発注システム等の導入。補助率1/2〜3/4。",
+      "industries": ["08 設備工事業(電気・管工事)", "50-55 各種卸売業", "56-61 各種小売業", "75 宿泊業", "83 医療業(病院・診療所)"],
+      "application_period": "年数回公募（経済産業省）",
+      "result_period": "申請後1〜2ヶ月程度",
+      "url": "https://mirasapo-plus.go.jp/subsidy/ithojo/",
+      "url_note": "中小企業庁 デジタル化・AI導入補助金（旧IT導入補助金）案内"
+    },
+    {
+      "name": "事業再構築補助金",
+      "summary": "業態転換・大規模設備投資。補助率2/3等。リースでも活用可能な場合あり。",
+      "industries": ["09 食料品製造業", "76 飲食店", "89 自動車整備業"],
+      "application_period": "年1〜2回公募（経済産業省）",
+      "result_period": "申請後2〜4ヶ月程度",
+      "url": "https://jigyou-saikouchiku.go.jp/",
+      "url_note": "事業再構築補助金 事務局（公募要領・申請窓口）"
+    },
+    {
+      "name": "経営強化税制（即時償却・特別償却）",
+      "summary": "生産性向上設備の即時償却または特別償却。リース物件も対象となる場合あり。",
+      "industries": ["06 総合工事業", "24 生産用機械器具製造業", "21 金属製品製造業", "09 食料品製造業"],
+      "application_period": "税制のため申告時に適用",
+      "result_period": "ー",
+      "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/hojin/5434.htm",
+      "url_note": "国税庁 No.5434 中小企業経営強化税制（特別償却・税額控除）"
+    },
+    {
+      "name": "省エネ補助金",
+      "summary": "高効率空調・LED・コンプレッサー等の省エネ設備導入。施主向け・自社設備両方。",
+      "industries": ["08 設備工事業(電気・管工事)", "21 金属製品製造業", "56-61 各種小売業"],
+      "application_period": "環境省・経済産業省・自治体の公募を確認",
+      "result_period": "公募ごとに異なる",
+      "url": "https://www.enecho.meti.go.jp/category/saving_and_new/saving/subsidy/",
+      "url_note": "経済産業省 資源エネルギー庁 省エネ補助金等の公募情報"
+    },
+    {
+      "name": "働き方改革推進支援助成金",
+      "summary": "労働時間短縮・働き方改革のための設備・ツール導入。",
+      "industries": ["44 道路貨物運送業", "43 道路旅客運送業(バス・タクシー)"],
+      "application_period": "厚生労働省 随時または年数回",
+      "result_period": "申請後1〜2ヶ月程度",
+      "url": "https://hatarakikatakaikaku.mhlw.go.jp/subsidy.html",
+      "url_note": "厚生労働省 働き方改革推進支援助成金のご案内"
+    },
+    {
+      "name": "地域公共交通確保維持改善事業",
+      "summary": "バス・タクシー等の地域公共交通維持のための車両・設備。",
+      "industries": ["43 道路旅客運送業(バス・タクシー)"],
+      "application_period": "国土交通省・自治体の公募",
+      "result_period": "公募ごとに異なる",
+      "url": "https://www.mlit.go.jp/sogoseisaku/transport/sosei_transport_tk_000020.html",
+      "url_note": "国土交通省 地域公共交通の活性化及び再生に関する制度"
+    },
+    {
+      "name": "観光地再生・高付加価値化事業",
+      "summary": "宿泊施設の改修・高付加価値化。PMS・自動チェックイン等のITも対象。",
+      "industries": ["75 宿泊業"],
+      "application_period": "観光庁・自治体の公募",
+      "result_period": "公募ごとに異なる",
+      "url": "https://www.mlit.go.jp/kankocho/shisaku/kankocho/shisaku/shisaku_03_000007.html",
+      "url_note": "観光庁（国土交通省）観光地再生・高付加価値化事業"
+    },
+    {
+      "name": "医療施設等施設整備費補助金",
+      "summary": "医療機関の施設整備・医療機器導入。電子カルテ・予約システム等。",
+      "industries": ["83 医療業(病院・診療所)"],
+      "application_period": "厚生労働省・自治体の公募",
+      "result_period": "公募ごとに異なる",
+      "url": "https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/hukushi_kaigo/iryou/iryou_seibi/index.html",
+      "url_note": "厚生労働省 医療施設の整備・医療機器の整備"
+    },
+    {
+      "name": "小規模事業者持続化補助金",
+      "summary": "小規模事業者の販路開拓・生産性向上。WEBサイト・販促ツール等。",
+      "industries": ["56-61 各種小売業", "50-55 各種卸売業"],
+      "application_period": "年1回程度（商工会議所等経由）",
+      "result_period": "申請後1〜2ヶ月程度",
+      "url": "https://mirasapo-plus.go.jp/subsidy/jizokuka/",
+      "url_note": "中小企業庁 小規模事業者持続化補助金（申請は商工会・商工会議所経由）"
+    }
+  ],
+  "note": "申請時期・結果時期は年度により変動します。必ず各省庁の最新公募要領で確認してください。補助金は後払いが多く、リース契約前に公募スケジュールを確認することが重要です。URLは公式サイトのトップまたは制度案内ページです。公募要領・問い合わせ先は各URL内で確認してください。"
+}

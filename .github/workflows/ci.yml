@@ -1,0 +1,66 @@
+name: CI - ユニットテスト
+
+# ─────────────────────────────────────────────
+# トリガー: master への push / PR 作成・更新
+# ─────────────────────────────────────────────
+on:
+  push:
+    branches: [ master, main ]
+    paths:
+      - "lease_logic_sumaho12/**"
+      - "coeff_definitions.py"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  test:
+    name: pytest on Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11"]
+
+    steps:
+      # 1. コードを取得
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      # 2. Python をセットアップ
+      - name: Python ${{ matrix.python-version }} をセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      # 3. テスト用の最小依存ライブラリをインストール
+      #    （Streamlit / Ollama / pgmpy 等はモックするので不要）
+      - name: 依存ライブラリをインストール
+        run: |
+          pip install --upgrade pip
+          pip install -r lease_logic_sumaho12/requirements-dev.txt
+
+      # 4. 構文チェック（pyflakes）
+      - name: 構文チェック
+        run: |
+          pip install pyflakes -q
+          python -m pyflakes lease_logic_sumaho12/scoring_core.py
+          python -m pyflakes lease_logic_sumaho12/rule_manager.py
+          python -m pyflakes lease_logic_sumaho12/indicators.py
+          python -m pyflakes lease_logic_sumaho12/credit_limit.py
+
+      # 5. ユニットテスト実行
+      - name: pytest 実行
+        run: |
+          python -m pytest lease_logic_sumaho12/tests/ \
+            -v \
+            --tb=short \
+            --color=yes
+
+      # 6. テスト結果をサマリに表示
+      - name: テスト結果サマリ
+        if: always()
+        run: |
+          python -m pytest lease_logic_sumaho12/tests/ \
+            --tb=no -q 2>&1 | tail -3
