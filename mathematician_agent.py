@@ -160,7 +160,7 @@ def load_discoveries(field_tag: str | None = None) -> list[dict]:
         rows = conn.execute(
             "SELECT * FROM math_discoveries ORDER BY relevance_score DESC"
         ).fetchall()
-    cols = [d[0] for d in conn.execute("PRAGMA table_info(math_discoveries)").fetchall()]
+    cols = [d[1] for d in conn.execute("PRAGMA table_info(math_discoveries)").fetchall()]
     conn.close()
     return [dict(zip(cols, r)) for r in rows]
 
@@ -173,7 +173,7 @@ def load_experiments(top_n: int = 50) -> list[dict]:
         "SELECT * FROM math_experiments ORDER BY auc_improvement DESC LIMIT ?",
         (top_n,),
     ).fetchall()
-    cols = [d[0] for d in conn.execute("PRAGMA table_info(math_experiments)").fetchall()]
+    cols = [d[1] for d in conn.execute("PRAGMA table_info(math_experiments)").fetchall()]
     conn.close()
     return [dict(zip(cols, r)) for r in rows]
 
