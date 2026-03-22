@@ -86,6 +86,9 @@ def init_math_db() -> None:
             body    TEXT
         );
     """)
+    # 重複登録防止のUNIQUEインデックス（再起動のたびに適用される）
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_discoveries_method ON math_discoveries(method_name)")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_experiments_method ON math_experiments(method_name)")
     conn.commit()
     conn.close()
 
