@@ -92,8 +92,10 @@ def _setup_matplotlib_jp():
             fe = fm.FontEntry(fname=font_path, name="JpFont")
             fm.fontManager.ttflist.append(fe)
             plt.rcParams["font.family"] = "sans-serif"
+            plt.rcParams["axes.unicode_minus"] = False
             current = list(plt.rcParams.get("font.sans-serif", []))
-            plt.rcParams["font.sans-serif"] = ["DejaVu Sans", "JpFont"] + current
+            # JpFont を先頭に置いて全角文字も確実に描画する
+            plt.rcParams["font.sans-serif"] = ["JpFont", "DejaVu Sans"] + current
         except Exception:
             pass
 
