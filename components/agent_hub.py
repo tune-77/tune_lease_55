@@ -1344,6 +1344,107 @@ def _render_mathematician_panel() -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# タブ 10 — スタイリッシュレポート生成
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _render_visual_report_panel() -> None:
+    """📊 レポート生成タブ — HTML / PDF スタイリッシュレポートを生成する。"""
+    st.subheader("📊 スタイリッシュ審査レポート生成")
+    st.caption(
+        "ダークテーマのモダンデザインで、スコア・リスク分析・業界動向を1枚にまとめたレポートを生成します。"
+    )
+
+    if "last_result" not in st.session_state:
+        st.info("👈「新規審査」で審査を実行するとレポートを生成できます。")
+        return
+
+    res = st.session_state.get("last_result") or {}
+    st.caption(f"対象案件 — 業種：{res.get('industry_sub', '')}　スコア：{res.get('score', 0):.1f}　判定：{res.get('hantei', '—')}")
+    st.divider()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        vr_company  = st.text_input("企業名（任意）", key="hub_vr_company",  placeholder="例：株式会社〇〇")
+        vr_screener = st.text_input("担当者名（任意）", key="hub_vr_screener", placeholder="例：鈴木 一郎")
+    with col2:
+        vr_format = st.radio(
+            "出力形式",
+            ["📄 HTMLプレビュー", "⬇️ HTMLダウンロード", "⬇️ PDFダウンロード"],
+            key="hub_vr_format",
+        )
+        vr_preview_height = st.slider("プレビュー高さ (px)", 600, 1400, 950, 50, key="hub_vr_height")
+
+    st.divider()
+
+    col_btn, _ = st.columns([1, 3])
+    with col_btn:
+        vr_clicked = st.button("📊 レポートを生成", type="primary", key="hub_vr_gen", use_container_width=True)
+
+    if vr_clicked:
+        with st.spinner("レポート生成中…"):
+            try:
+                from report_visual_agent import collect_report_data, generate_html_report, generate_pdf_report
+                import datetime as _vr_dt
+
+                # 企業名・担当者を一時的にセッションに設定して collect が取得できるようにする
+                _vr_orig_c = st.session_state.get("rep_company")
+                _vr_orig_s = st.session_state.get("rep_screener")
+                st.session_state["rep_company"]  = vr_company
+                st.session_state["rep_screener"] = vr_screener
+
+                vr_data = collect_report_data(st.session_state)
+
+                st.session_state["rep_company"]  = _vr_orig_c
+                st.session_state["rep_screener"] = _vr_orig_s
+
+                fname_base = (
+                    f"審査レポート_{vr_company or '案件'}"
+                    f"_{_vr_dt.datetime.now().strftime('%Y%m%d_%H%M')}"
+                )
+
+                _hub_log("visual_report", "success", f"format={vr_format} company={vr_company}")
+
+                if vr_format == "📄 HTMLプレビュー":
+                    vr_html = generate_html_report(vr_data)
+                    import streamlit.components.v1 as _vr_comp
+                    _vr_comp.html(vr_html, height=vr_preview_height, scrolling=True)
+                    # HTMLダウンロードも併せて提供
+                    st.download_button(
+                        "⬇️ この HTML をダウンロード",
+                        data=vr_html.encode("utf-8"),
+                        file_name=f"{fname_base}.html",
+                        mime="text/html",
+                        key="hub_vr_html_dl_preview",
+                    )
+
+                elif vr_format == "⬇️ HTMLダウンロード":
+                    vr_html = generate_html_report(vr_data)
+                    st.download_button(
+                        "⬇️ HTML をダウンロード",
+                        data=vr_html.encode("utf-8"),
+                        file_name=f"{fname_base}.html",
+                        mime="text/html",
+                        key="hub_vr_html_dl",
+                    )
+                    st.success("HTML レポートを生成しました。上のボタンからダウンロードしてください。")
+
+                else:  # PDF
+                    vr_pdf = generate_pdf_report(vr_data)
+                    st.download_button(
+                        "⬇️ PDF をダウンロード",
+                        data=vr_pdf,
+                        file_name=f"{fname_base}.pdf",
+                        mime="application/pdf",
+                        key="hub_vr_pdf_dl",
+                    )
+                    st.success("PDF レポートを生成しました。上のボタンからダウンロードしてください。")
+
+            except Exception as _vr_e:
+                st.error(f"レポート生成エラー: {_vr_e}")
+                _hub_log("visual_report", "failure", str(_vr_e))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # メイン描画
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -1362,6 +1463,7 @@ def render_agent_hub() -> None:
         "📅 定期配信",
         "🐶 タム",
         "🔬 数学者",
+        "📊 レポート生成",
     ])
 
     with tabs[0]: _render_benchmark_panel()
@@ -1374,6 +1476,7 @@ def render_agent_hub() -> None:
     with tabs[7]: _render_schedule_panel()
     with tabs[8]: _render_koinu_panel()
     with tabs[9]: _render_mathematician_panel()
+    with tabs[10]: _render_visual_report_panel()
 
     # ── 実行ログ（折りたたみ）────────────────────────────────────────────────
     with st.expander("📋 エージェント実行ログ", expanded=False):

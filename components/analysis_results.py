@@ -682,6 +682,82 @@ def render_analysis_results(
                             except Exception as _e:
                                 st.error(f"PDF 生成エラー: {_e}")
 
+            # ── 📊 スタイリッシュレポート生成 ────────────────────────────────────
+            with st.expander("📊 スタイリッシュレポート生成", expanded=False):
+                if "last_result" not in st.session_state:
+                    st.info("👈「新規審査」で審査を実行するとレポートを生成できます。")
+                else:
+                    st.caption("モダンなダークテーマでスコア・リスク分析・業界動向を1枚にまとめたレポートを生成します。")
+                    _sv_col1, _sv_col2 = st.columns(2)
+                    with _sv_col1:
+                        _sv_company = st.text_input(
+                            "企業名（任意）", key="sv_company",
+                            placeholder="例：株式会社〇〇",
+                            value=st.session_state.get("rep_company", ""),
+                        )
+                        _sv_screener = st.text_input(
+                            "担当者名（任意）", key="sv_screener",
+                            placeholder="例：鈴木 一郎",
+                            value=st.session_state.get("rep_screener", ""),
+                        )
+                    with _sv_col2:
+                        _sv_fmt = st.radio(
+                            "出力形式",
+                            ["📄 HTMLプレビュー", "⬇️ HTMLダウンロード", "⬇️ PDFダウンロード"],
+                            key="sv_fmt",
+                            horizontal=True,
+                        )
+
+                    if st.button("📊 スタイリッシュレポート生成", type="primary", key="sv_gen"):
+                        with st.spinner("レポート生成中..."):
+                            try:
+                                from report_visual_agent import collect_report_data, generate_html_report, generate_pdf_report
+                                import datetime as _sv_dt
+
+                                # 企業名・担当者をセッションに一時反映（collect が参照するため）
+                                _sv_orig_company  = st.session_state.get("rep_company")
+                                _sv_orig_screener = st.session_state.get("rep_screener")
+                                st.session_state["rep_company"]  = _sv_company
+                                st.session_state["rep_screener"] = _sv_screener
+
+                                _sv_data = collect_report_data(st.session_state)
+
+                                # 元の値を復元
+                                st.session_state["rep_company"]  = _sv_orig_company
+                                st.session_state["rep_screener"] = _sv_orig_screener
+
+                                _sv_fname_base = f"審査レポート_{_sv_company or '案件'}_{_sv_dt.datetime.now().strftime('%Y%m%d_%H%M')}"
+
+                                if _sv_fmt == "📄 HTMLプレビュー":
+                                    _sv_html = generate_html_report(_sv_data)
+                                    import streamlit.components.v1 as _sv_components
+                                    _sv_components.html(_sv_html, height=900, scrolling=True)
+
+                                elif _sv_fmt == "⬇️ HTMLダウンロード":
+                                    _sv_html = generate_html_report(_sv_data)
+                                    st.download_button(
+                                        "⬇️ HTML をダウンロード",
+                                        data=_sv_html.encode("utf-8"),
+                                        file_name=f"{_sv_fname_base}.html",
+                                        mime="text/html",
+                                        key="sv_html_dl",
+                                    )
+                                    st.success("HTML レポートを生成しました。")
+
+                                else:  # PDF
+                                    _sv_pdf = generate_pdf_report(_sv_data)
+                                    st.download_button(
+                                        "⬇️ PDF をダウンロード",
+                                        data=_sv_pdf,
+                                        file_name=f"{_sv_fname_base}.pdf",
+                                        mime="application/pdf",
+                                        key="sv_pdf_dl",
+                                    )
+                                    st.success("PDF レポートを生成しました。")
+
+                            except Exception as _sv_e:
+                                st.error(f"レポート生成エラー: {_sv_e}")
+
             # ── ⚔️ 軍師モード（承認奪取）────────────────────────────────────────
             # スコアが承認ライン未満のときは自動展開（BNシミュレータをすぐ見せる）
             from bayesian_engine import THRESHOLD_APPROVAL
