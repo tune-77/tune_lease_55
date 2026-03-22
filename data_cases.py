@@ -440,6 +440,18 @@ def save_case_log(data):
         json_str = json.dumps(data, ensure_ascii=False, cls=CustomJSONEncoder)
         from contextlib import closing
         with closing(sqlite3.connect(DB_PATH)) as conn:
+            # テーブルが存在しない場合は作成（DBファイルが存在してもテーブルが欠けているケースに対応）
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS past_cases (
+                    id TEXT PRIMARY KEY,
+                    timestamp TEXT,
+                    industry_sub TEXT,
+                    score REAL,
+                    user_eq REAL,
+                    final_status TEXT,
+                    data TEXT
+                )
+            """)
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO past_cases
