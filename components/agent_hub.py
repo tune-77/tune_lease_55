@@ -449,8 +449,8 @@ def _run_auto_team_agent(res: dict, mode: str = "dev") -> str:
             "田中さん":   "営業現場の感覚から",
             "鈴木さん":   "技術・実装リスクの観点から",
         }
-        chair_name = "つね"
-        chair_system = "あなたは統括マネージャー「つね」として、チームの意見を集約し最終決裁を下します。"
+        chair_name = "Tune"
+        chair_system = "あなたは統括マネージャー「Tune」として、チームの意見を集約し最終決裁を下します。"
 
     st.session_state[SK.AT_THEME] = theme
 
@@ -1551,7 +1551,7 @@ def _render_novelist_panel() -> None:
     st.subheader("📖 文豪AI「波乱丸」")
     st.caption(
         "エージェント達のドタバタ劇を短編小説に。毎週火曜日更新。"
-        "登場人物：つね、タム、Dr.Algo、審査軍師、リースくん、他多数。"
+        "登場人物：Tune、タム、Dr.Algo、審査軍師、リースくん、他多数。"
     )
 
     try:

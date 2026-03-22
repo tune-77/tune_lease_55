@@ -162,7 +162,7 @@ class SK:
     AT_CURRENT_ROUND      = "at_current_round"     # 最新ラウンド結果（None可）
     AT_RUNNING            = "at_running"           # 実行中フラグ（二重送信防止）
     AT_CODE_RESULTS       = "at_code_results"      # 生成済みコード（round_num → code str）
-    AT_PENDING            = "at_pending"           # つね決裁待ち（4人の意見を保持）
+    AT_PENDING            = "at_pending"           # Tune決裁待ち（4人の意見を保持）
     AT_APPLIED_FILES      = "at_applied_files"     # 適用済みファイル履歴（round_num → list）
 
     # ─────────────────────────────────────────────
