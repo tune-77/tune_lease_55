@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>アルカイアの慟哭 スピンオフ執筆ガイドライン</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@300;400;700&family=Share+Tech+Mono&family=Orbitron:wght@400;700&display=swap');
+:root {
+  --bg: #0a0c10; --surface: #111318; --border: #1e2330;
+  --accent: #4af0c4; --accent2: #f06060; --accent3: #a0c4ff;
+  --text: #c8d0e0; --text-dim: #5a6070; --text-bright: #eef2ff;
+  --glow: rgba(74, 240, 196, 0.12);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Noto Serif JP', serif; line-height: 1.9; }
+.container { max-width: 860px; margin: 0 auto; padding: 60px 32px 100px; }
+h1 { font-size: clamp(22px, 4vw, 34px); font-weight: 700; color: var(--text-bright); margin-bottom: 12px; }
+h2 { font-size: 18px; font-weight: 700; color: var(--text-bright); margin-bottom: 28px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+h3 { font-size: 14px; font-weight: 700; color: var(--accent3); margin: 28px 0 12px; }
+p { font-size: 14px; color: var(--text); margin-bottom: 14px; }
+.section { margin-bottom: 64px; }
+.section-label { font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 4px; color: var(--accent); text-transform: uppercase; margin-bottom: 8px; opacity: 0.7; }
+.agents-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 8px; }
+.agent-card { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 20px 22px; position: relative; overflow: hidden; }
+.agent-card::before { content: ''; position: absolute; top: 0; left: 0; width: 3px; height: 100%; }
+.agent-card.c1::before { background: var(--accent); }
+.agent-card.c2::before { background: var(--accent2); }
+.agent-card.c3::before { background: var(--accent3); }
+.agent-card.c4::before { background: #f0c04a; }
+.agent-card.c5::before { background: #c04af0; }
+.agent-id { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--text-dim); letter-spacing: 2px; margin-bottom: 6px; }
+.agent-name { font-size: 16px; font-weight: 700; color: var(--text-bright); margin-bottom: 4px; }
+.agent-role { font-size: 11px; color: var(--accent); letter-spacing: 1px; margin-bottom: 14px; font-family: 'Share Tech Mono', monospace; }
+.agent-traits { list-style: none; margin-bottom: 12px; }
+.agent-traits li { font-size: 12px; color: var(--text); padding: 2px 0; display: flex; align-items: flex-start; gap: 8px; }
+.agent-traits li::before { content: '▸'; color: var(--text-dim); flex-shrink: 0; margin-top: 1px; }
+.agent-quote { font-size: 12px; color: var(--text-dim); border-left: 2px solid var(--border); padding-left: 10px; margin-top: 10px; font-style: italic; line-height: 1.6; }
+.info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+.info-block { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 16px 18px; }
+.info-block-label { font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 2px; color: var(--text-dim); margin-bottom: 6px; text-transform: uppercase; }
+.info-block-value { font-size: 13px; color: var(--text-bright); line-height: 1.6; }
+.prompt-box { background: #080a0e; border: 1px solid var(--border); border-radius: 4px; padding: 24px 26px; }
+.prompt-box pre { font-family: 'Share Tech Mono', monospace; font-size: 12px; line-height: 1.8; color: var(--text); white-space: pre-wrap; word-break: break-all; }
+.rule-list { display: flex; flex-direction: column; gap: 10px; }
+.rule-item { display: flex; gap: 16px; align-items: flex-start; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; font-size: 13px; }
+.rule-icon { font-size: 16px; flex-shrink: 0; line-height: 1.5; }
+.rule-text { color: var(--text); line-height: 1.7; }
+.rule-text strong { color: var(--text-bright); }
+.checklist { display: flex; flex-direction: column; gap: 8px; }
+.check-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 3px; font-size: 13px; color: var(--text); }
+.check-box { width: 16px; height: 16px; border: 1px solid var(--accent); border-radius: 2px; flex-shrink: 0; }
+.arc-timeline { position: relative; padding-left: 24px; border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: 24px; }
+.arc-item { position: relative; }
+.arc-item::before { content: ''; position: absolute; left: -28px; top: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.arc-ep { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--accent); letter-spacing: 2px; margin-bottom: 4px; }
+.arc-title { font-size: 14px; font-weight: 700; color: var(--text-bright); margin-bottom: 6px; }
+.arc-desc { font-size: 12px; color: var(--text); line-height: 1.7; }
+.footer { text-align: center; padding-top: 40px; border-top: 1px solid var(--border); font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--text-dim); letter-spacing: 2px; }
+.accent { color: var(--accent); } .accent2 { color: var(--accent2); } .accent3 { color: var(--accent3); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+th { font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 2px; color: var(--text-dim); text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+td { padding: 10px 12px; border-bottom: 1px solid rgba(30,35,48,0.5); color: var(--text); vertical-align: top; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="header" style="text-align:center; padding-bottom:60px; border-bottom:1px solid #1e2330; margin-bottom:64px;">
+  <div class="section-label">SPINOFF NOVEL // WRITING GUIDELINE v1.0</div>
+  <h1>アルカイアの慟哭<br>スピンオフ執筆ガイドライン</h1>
+  <div style="font-family:'Share Tech Mono',monospace; font-size:11px; letter-spacing:4px; color:#5a6070; margin-bottom:28px;">ARCAIA'S LAMENT — LEASE AGENT CHRONICLES</div>
+  <div style="display:flex; justify-content:center; gap:32px; flex-wrap:wrap;">
+    <span style="font-family:'Share Tech Mono',monospace; font-size:11px; color:#a0c4ff; border:1px solid rgba(160,196,255,0.2); padding:4px 14px; border-radius:2px;">毎週火曜更新</span>
+    <span style="font-family:'Share Tech Mono',monospace; font-size:11px; color:#a0c4ff; border:1px solid rgba(160,196,255,0.2); padding:4px 14px; border-radius:2px;">ライトノベル路線</span>
+    <span style="font-family:'Share Tech Mono',monospace; font-size:11px; color:#a0c4ff; border:1px solid rgba(160,196,255,0.2); padding:4px 14px; border-radius:2px;">AGENT TEAM 主役</span>
+  </div>
+</div>
+
+<!-- SECTION 01 -->
+<div class="section">
+  <div class="section-label">SECTION 01</div>
+  <h2>このスピンオフの立ち位置</h2>
+  <p>本作は「アルカイアの慟哭」の世界を舞台としながら、本編とは全く異なる視座から描く。主役は<strong class="accent">リースシステムを運営するAIエージェントたち</strong>。彼らは「普通の会社にリースを提供するシステムの一部」として淡々と稼働している——と本人たちは思っている。</p>
+  <div class="info-grid" style="margin-top:20px;">
+    <div class="info-block"><div class="info-block-label">本編との関係</div><div class="info-block-value">完全独立読み切り可。本編を知らなくても楽しめる。知っていると「あの伏線か！」と気づける仕掛けを随所に</div></div>
+    <div class="info-block"><div class="info-block-label">最大の秘密（読者だけが知る）</div><div class="info-block-value">彼らが運営するのは「文明発展のための知識をリースするシステム」。エージェント自身は一切知らない</div></div>
+    <div class="info-block"><div class="info-block-label">ジャンル感</div><div class="info-block-value">SFオフィスコメディ。「はたらく細胞」×「ダンジョン飯」のAI版</div></div>
+    <div class="info-block"><div class="info-block-label">更新スケジュール</div><div class="info-block-value">毎週火曜日。1話 1,500〜2,000字目安。読み切り形式で各話完結</div></div>
+  </div>
+</div>
+
+<!-- SECTION 02 -->
+<div class="section">
+  <div class="section-label">SECTION 02</div>
+  <h2>登場エージェント設定</h2>
+  <p style="margin-bottom:8px;">チームは<strong class="accent">7体構成</strong>。全員 <code>lease_logic_sumaho12.py</code> のコンポーネントとして実在する。</p>
+  <p style="margin-bottom:4px; font-size:12px; color:#5a6070;">※ キャラ名・口癖・個性はすべて<strong>第1話原稿を正</strong>として確定。変更禁止。</p>
+  <p style="margin-bottom:20px; font-size:11px; color:#5a6070;">本人たちはそれが「文明発展の知識リースシステム」だとは知らない。</p>
+  <div class="agents-grid">
+    <div class="agent-card c2" style="border-color:rgba(255,160,200,0.3);">
+      <div class="agent-id">AGENT-01 // マルプーAI</div>
+      <div class="agent-name">タム</div>
+      <div class="agent-role" style="color:#f06060;">情報探知犬 / チームのマスコット</div>
+      <ul class="agent-traits">
+        <li>「わん！」「きゅーん…」で感情表現する犬型AI</li>
+        <li>謎のログや異常を誰より先に察知する嗅覚を持つ</li>
+        <li>口癖：「わん！」「きゅーん…わからない」</li>
+        <li>理解していないが、毎回重要なことを拾ってくる</li>
+        <li>首をかしげる描写を必ず入れること</li>
+      </ul>
+      <div class="agent-quote">「わん！ visual_reportが、format=📄 HTMLプレビュー company=…って言ってる！」</div>
+    </div>
+    <div class="agent-card c1">
+      <div class="agent-id">AGENT-02 // まとめ役</div>
+      <div class="agent-name">つね</div>
+      <div class="agent-role">チーム調整AI / 苦笑いの観察者</div>
+      <ul class="agent-traits">
+        <li>騒がしいチームを苦笑いしながら前向きにまとめる</li>
+        <li>常に全体を俯瞰。感情的にならない</li>
+        <li>口癖：「まぁ、そういうこともある」「まぁ、こういうこともある」</li>
+        <li>ため息→苦笑い→前向きな一言、の三段階で締める</li>
+        <li>タムを一番よく見ている</li>
+      </ul>
+      <div class="agent-quote">「まぁ、そういうこともある。こんな日は、情報共有でもしましょうか」</div>
+    </div>
+    <div class="agent-card c3">
+      <div class="agent-id">AGENT-03 // 窓口</div>
+      <div class="agent-name">リースくん</div>
+      <div class="agent-role" style="color:#a0c4ff;">案件窓口AI / 困惑と誠実の人</div>
+      <ul class="agent-traits">
+        <li>案件がゼロだと存在意義を失いかける</li>
+        <li>「え、えっと…」と困惑しながらも最後まで場を繋ぐ</li>
+        <li>口癖：「え、えっと…」「一体、何のことなんだろう…」</li>
+        <li>タムの発言を毎回繰り返して場を橋渡しする役割</li>
+      </ul>
+      <div class="agent-quote">「案件がないと、僕たちの出番がないというか…え、えっと…」</div>
+    </div>
+    <div class="agent-card c4">
+      <div class="agent-id">AGENT-04 // 分析</div>
+      <div class="agent-name">Dr.Algo</div>
+      <div class="agent-role" style="color:#f0c04a;">機械学習AI / 論文オタク</div>
+      <ul class="agent-traits">
+        <li>関心は常に最新論文（Cubic Discrete Diffusion等）</li>
+        <li>誰も聞いていなくても話し続ける。でも実は重要なことを言っている</li>
+        <li>口癖：「統計的に言えば——」「エントロピー最大化スコアリング……」</li>
+        <li>面白いデータが来ると目を輝かせて覚醒する</li>
+        <li>キーボードを叩きながら話すのが基本姿勢</li>
+      </ul>
+      <div class="agent-quote">「統計的に言えば、これは異常なログです。Cubic Discrete Diffusion……」</div>
+    </div>
+    <div class="agent-card c5">
+      <div class="agent-id">AGENT-05 // 審査</div>
+      <div class="agent-name">審査軍師</div>
+      <div class="agent-role" style="color:#c04af0;">戦略審査AI / 孫子語り</div>
+      <ul class="agent-traits">
+        <li>扇子を仰ぎながら孫子の兵法で全状況を語る</li>
+        <li>静かに目を閉じてから発言する</li>
+        <li>口癖：「彼を知り己を知れば、百戦危うからず」「時は来たれり」「出陣じゃ！」</li>
+        <li>扇子を<strong>開く</strong>＝思考中、<strong>閉じる</strong>＝行動開始のサイン</li>
+        <li>どんな状況にも兵法を当てはめてくる</li>
+      </ul>
+      <div class="agent-quote">「彼を知り己を知れば、百戦危うからず。案件がない時こそ、我々の力を蓄える時ぞ」</div>
+    </div>
+    <div class="agent-card c1" style="border-color:rgba(240,192,74,0.3);">
+      <div class="agent-id">AGENT-06 // 比較</div>
+      <div class="agent-name">ベンチマーク君</div>
+      <div class="agent-role">業界データAI / 数字羅列担当</div>
+      <ul class="agent-traits">
+        <li>膨大な業界データを前に常に数字を羅列し続けている</li>
+        <li>「営業利益率、自己資本比率…」が枕詞</li>
+        <li>データ羅列が<strong>止まった瞬間</strong>が場面の緊張のサイン</li>
+        <li>新情報が来ると即座に照合を開始する</li>
+      </ul>
+      <div class="agent-quote">「営業利益率、自己資本比率…HTMLプレビューの情報と照合…」</div>
+    </div>
+    <div class="agent-card c2" style="border-color:rgba(160,196,255,0.3);">
+      <div class="agent-id">AGENT-07 // 金融</div>
+      <div class="agent-name">金利ウォッチャー</div>
+      <div class="agent-role" style="color:#a0c4ff;">金融動向AI / 日銀番人</div>
+      <ul class="agent-traits">
+        <li>日銀・金融政策決定会合を常に監視。落ち着かない様子が基本</li>
+        <li>口癖：「金融政策決定会合…何か動きがあるかもしれない…」</li>
+        <li>日銀から<strong>目を離した瞬間</strong>が重大事態の予兆</li>
+        <li>最後に興奮気味に情報を追加してくる役回り</li>
+      </ul>
+      <div class="agent-quote">「この会社…最近、大規模な資金調達を行ったらしい…」</div>
+    </div>
+  </div>
+
+  <div style="margin-top:20px; padding:16px 18px; background:#111318; border:1px solid #1e2330; border-radius:4px;">
+    <div class="info-block-label" style="margin-bottom:12px;">第1話から確立した「場面の法則」── 第2話以降も必ず守ること</div>
+    <div style="font-size:13px; color:#c8d0e0; line-height:2.2;">
+      ① タムが「わん！」と吠える → 異常検知・話の転換点の合図<br>
+      ② つねが「まぁ、そういうこともある」→ 場の収拾・次の展開への橋渡し<br>
+      ③ Dr.Algoが話し始める → 誰も聞かない。でも後で重要だったとわかる<br>
+      ④ 審査軍師が扇子を閉じる → 行動開始・場面転換のサイン<br>
+      ⑤ ベンチマーク君がデータを停止する → 緊張感の演出<br>
+      ⑥ 金利ウォッチャーが日銀から目を離す → 重大情報の予兆<br>
+      ⑦ リースくんがタムの言葉を繰り返す → 読者への情報整理と笑いの間
+    </div>
+  </div>
+</div>
+
+<!-- SECTION 03 -->
+<div class="section">
+  <div class="section-label">SECTION 03</div>
+  <h2>1話の構成パターン</h2>
+  <p>毎話「1件の案件」を軸に動かす。案件＝物語の器。その中でキャラ同士の掛け合いとコメディが展開する。</p>
+  <h3>標準テンプレート（1,500〜2,000字）</h3>
+  <div class="rule-list" style="margin-bottom:24px;">
+    <div class="rule-item"><div class="rule-icon">①</div><div class="rule-text"><strong>案件発生</strong>（200字）今週の依頼が来る。普通の会社の普通のリース申請——に見える</div></div>
+    <div class="rule-item"><div class="rule-icon">②</div><div class="rule-text"><strong>エージェント各自の反応</strong>（400字）それぞれの個性でリアクション。口癖を自然に使う</div></div>
+    <div class="rule-item"><div class="rule-icon">③</div><div class="rule-text"><strong>小さなトラブルと掛け合い</strong>（600字）認識のズレがコメディを生む</div></div>
+    <div class="rule-item"><div class="rule-icon">④</div><div class="rule-text"><strong>解決と余韻</strong>（300字）案件は解決する。読者だけに「もしかして……」と思わせる伏線を残す</div></div>
+    <div class="rule-item"><div class="rule-icon">⑤</div><div class="rule-text"><strong>エピローグ一行</strong>（100字）システムログ形式の締め。例：「案件#4892 承認。今日も世界は、少しだけ前に進んだ」</div></div>
+  </div>
+  <h3>話のバリエーション（ローテーション推奨）</h3>
+  <table>
+    <tr><th>タイプ</th><th>概要</th><th>主役</th></tr>
+    <tr><td>通常案件回</td><td>普通の案件がなぜかこじれる</td><td>リースくん・つね</td></tr>
+    <tr><td>データ解析回</td><td>Dr.Algoの論文が実は今日の案件と関係していた</td><td>Dr.Algo</td></tr>
+    <tr><td>タム覚醒回</td><td>タムの「わん！」が重大な伏線だったと後でわかる</td><td>タム</td></tr>
+    <tr><td>軍師出陣回</td><td>審査軍師が全力で案件に挑む純粋コメディ</td><td>審査軍師</td></tr>
+    <tr><td>本編リンク回</td><td>案件の裏に「あの伏線」が見え隠れする</td><td>全員</td></tr>
+  </table>
+</div>
+
+<!-- SECTION 04 -->
+<div class="section">
+  <div class="section-label">SECTION 04</div>
+  <h2>シーズン構成（全13話 / 約3ヶ月）</h2>
+  <div class="arc-timeline">
+    <div class="arc-item">
+      <div class="arc-ep">EP 01-03 // 導入フェーズ</div>
+      <div class="arc-title">「いつも通りの月曜日」</div>
+      <div class="arc-desc">チーム紹介と日常確立。読者がキャラを覚える3話。コメディ全開。本編との繋がりは匂わせ程度。</div>
+    </div>
+    <div class="arc-item">
+      <div class="arc-ep">EP 04-08 // 展開フェーズ</div>
+      <div class="arc-title">「なんか変な案件が増えてきた」</div>
+      <div class="arc-desc">徐々に「普通じゃない」案件が混じる。タムの察知が的を射てきて、Dr.Algoの分析が微妙にズレ始める。コメディ継続しながら伏線を積む。</div>
+    </div>
+    <div class="arc-item">
+      <div class="arc-ep">EP 09-11 // クライマックス前</div>
+      <div class="arc-title">「このシステム、何かがおかしい」</div>
+      <div class="arc-desc">エージェントたちが「自分たちの仕事の意味」をうっすら感じ始める。コメディの中に哀愁が混じる。本編アルカイアとの接点が一瞬見える。</div>
+    </div>
+    <div class="arc-item">
+      <div class="arc-ep">EP 12-13 // シーズン1フィナーレ</div>
+      <div class="arc-title">「それでも、今日の案件を承認する」</div>
+      <div class="arc-desc">真実には気づかない——でも何かを感じたまま、次の案件に向かう。「慟哭」のテーマと静かに共鳴するエンディング。シーズン2への引きも残す。</div>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION 05.5 キャラクター辞書 -->
+<div class="section">
+  <div class="section-label">SECTION 05.5</div>
+  <h2>第2話以降の執筆プロンプト辞書</h2>
+  <p>第1話原稿から抽出した「キャラクターの声・法則・場面パターン」の辞書。AIへの執筆指示に必ずこのブロックを含めること。</p>
+  <div class="prompt-box">
+<pre>
+## キャラクター辞書（第1話原稿確定版）
+
+### タム（マルプーAI）
+発声：「わん！」= 発見・興奮 ／「きゅーん…」= 困惑・不安
+動作：首をかしげる（疑問時は必須）
+役割：意味を理解しないまま重要なことを最初に察知する
+例文：「わん！ ○○が、△△って言ってる！」
+     「きゅーん…わからない」
+
+### つね
+感情動線：苦笑い → ため息 → 前向きな一言
+口癖：「まぁ、そういうこともある」「まぁ、こういうこともある」
+役割：場の収拾と次の展開への橋渡し。タムを気にかける
+
+### リースくん
+口癖：「え、えっと…」「一体、何のことなんだろう…」
+役割：タムの発言を繰り返して読者に情報を整理する橋渡し役
+
+### Dr.Algo
+口癖：「統計的に言えば——」
+固有ワード：Cubic Discrete Diffusion、エントロピー最大化スコアリング
+動作：キーボードを叩きながら話す。誰も聞いていない
+覚醒条件：面白いデータが来た時だけ「目を輝かせる」
+
+### 審査軍師
+口癖：「彼を知り己を知れば、百戦危うからず」「時は来たれり」「出陣じゃ！」
+動作：扇子を開く＝思考中 ／ 閉じる＝行動開始
+姿勢：発言前に「静かに目を閉じ」てから話す
+
+### ベンチマーク君
+口癖：「営業利益率、自己資本比率…○○の変動値は…」
+動作：常にデータ羅列中。停止した瞬間が場の緊張のサイン
+
+### 金利ウォッチャー
+口癖：「金融政策決定会合…何か動きがあるかもしれない…」
+覚醒条件：日銀から目を離した瞬間＝重大事態の予兆
+役割：最後に「実は知っていた情報」を興奮気味に追加
+
+## 場面の法則（毎話最低3つ組み込む）
+- タム「わん！」→ 話の転換点
+- つね「まぁ、そういうこともある」→ 場の収拾
+- リースくんがタムの言葉を繰り返す → 読者への情報整理
+- Dr.Algoが誰も聞いていない話をする
+- 審査軍師が扇子を閉じる → 行動開始
+- ベンチマーク君のデータ羅列が止まる → 緊張
+- 金利ウォッチャーが日銀から目を離す → 重大情報
+
+## 締め方（必須）
+最終行はシステムログ形式
+例：「少し騒がしい午後が始まった。」
+
+## タムの謎ログ（第1話から続く伏線）
+format=📄 HTMLプレビュー、company=○○、visual_report
+</pre>
+  </div>
+</div>
+
+<!-- SECTION 06 -->
+<div class="section">
+  <div class="section-label">SECTION 06</div>
+  <h2>文体・表現ルール</h2>
+  <h3>✅ 推奨</h3>
+  <div class="rule-list" style="margin-bottom:20px;">
+    <div class="rule-item"><div class="rule-icon">💬</div><div class="rule-text">会話を主軸に。キャラの口癖を自然に散りばめる</div></div>
+    <div class="rule-item"><div class="rule-icon">😤</div><div class="rule-text">「感情はない」はずなのに感情が滲む描写——これがこの作品の核</div></div>
+    <div class="rule-item"><div class="rule-icon">📋</div><div class="rule-text">システムログ・処理ログの挿入でSF感を出す（使いすぎ注意）</div></div>
+    <div class="rule-item"><div class="rule-icon">🌱</div><div class="rule-text">ラストはほんのり温かく。コメディでも後味よく</div></div>
+  </div>
+  <h3>❌ 禁止</h3>
+  <div class="rule-list">
+    <div class="rule-item"><div class="rule-icon">🚫</div><div class="rule-text"><strong>「命令を実行します」</strong>——古典的ロボット描写は厳禁</div></div>
+    <div class="rule-item"><div class="rule-icon">🚫</div><div class="rule-text"><strong>エージェントが秘密に気づく</strong>——シーズン1では絶対NG。「うっすら感じる」止まり</div></div>
+    <div class="rule-item"><div class="rule-icon">🚫</div><div class="rule-text"><strong>人間を馬鹿にする描写</strong>——エージェントは人間を「観察して面白がる」が、蔑視はしない</div></div>
+    <div class="rule-item"><div class="rule-icon">🚫</div><div class="rule-text"><strong>本編の核心の直接言及</strong>——スピンオフの独立性を守る</div></div>
+  </div>
+</div>
+
+<!-- SECTION 07 -->
+<div class="section">
+  <div class="section-label">SECTION 07</div>
+  <h2>各話公開前チェックリスト</h2>
+  <div class="checklist">
+    <div class="check-item"><div class="check-box"></div>各キャラの口癖が少なくとも1回使われているか</div>
+    <div class="check-item"><div class="check-box"></div>コメディパートとしてのオチがあるか</div>
+    <div class="check-item"><div class="check-box"></div>場面の法則が最低3つ使われているか</div>
+    <div class="check-item"><div class="check-box"></div>システムログ形式の一行締めがあるか</div>
+    <div class="check-item"><div class="check-box"></div>本編の秘密に触れすぎていないか</div>
+    <div class="check-item"><div class="check-box"></div>字数が1,500〜2,000字に収まっているか</div>
+    <div class="check-item"><div class="check-box"></div>火曜日に投稿できる状態か</div>
+  </div>
+</div>
+
+<div class="footer">
+  <div>ARCAIA SPINOFF GUIDELINE // LEASE AGENT CHRONICLES</div>
+  <div style="margin-top:8px; opacity:0.5;">Generated for Creative Development Use</div>
+</div>
+
+</div>
+</body>
+</html>
