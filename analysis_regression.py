@@ -5,6 +5,8 @@
 import os
 import sys
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
@@ -922,7 +924,9 @@ def run_qualitative_contract_analysis(qual_correction_items):
         else:
             out["auc_lgb"] = None
         out["lgb_importance"] = list(zip(feature_names, lgb_model.feature_importances_.tolist()))
-        # SHAP 特徴量重要度（shapパッケージがあれば）
+        # SHAP 特徴量重要度（スキップ）
+        out["shap_importance"] = []
+        '''
         try:
             import shap as _shap
             _exp  = _shap.TreeExplainer(lgb_model)
@@ -933,6 +937,7 @@ def run_qualitative_contract_analysis(qual_correction_items):
             out["shap_importance"] = list(zip(feature_names, _mean.tolist()))
         except Exception:
             pass
+        '''
     except Exception as e:
         out["lgb_error"] = str(e)
     if prob_lr_te is not None and prob_lgb_te is not None and len(np.unique(y_te)) >= 2:

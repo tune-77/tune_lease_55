@@ -4,6 +4,8 @@ plot_gauge_plotly, plot_waterfall_plotly 等の Plotly/Matplotlib グラフを�
 """
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import plotly.express as px
