@@ -1464,6 +1464,7 @@ def render_agent_hub() -> None:
         "🐶 タム",
         "🔬 数学者",
         "📊 レポート生成",
+        "📖 文豪AI",
     ])
 
     with tabs[0]: _render_benchmark_panel()
@@ -1477,6 +1478,7 @@ def render_agent_hub() -> None:
     with tabs[8]: _render_koinu_panel()
     with tabs[9]: _render_mathematician_panel()
     with tabs[10]: _render_visual_report_panel()
+    with tabs[11]: _render_novelist_panel()
 
     # ── 実行ログ（折りたたみ）────────────────────────────────────────────────
     with st.expander("📋 エージェント実行ログ", expanded=False):
@@ -1494,3 +1496,58 @@ def render_agent_hub() -> None:
                 st.caption("ログなし")
         except Exception as e:
             st.caption(f"ログ読み込みエラー: {e}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Agent 12 — 文豪AI「波乱丸」
+# ══════════════════════════════════════════════════════════════════════════════
+def _render_novelist_panel() -> None:
+    """📖 文豪AI波乱丸 — 毎週火曜日更新のエージェントドタバタ小説パネル"""
+    st.subheader("📖 文豪AI「波乱丸」")
+    st.caption(
+        "エージェント達のドタバタ劇を短編小説に。毎週火曜日更新。"
+        "登場人物：つね、タム、Dr.Algo、審査軍師、リースくん、他多数。"
+    )
+
+    try:
+        import novelist_agent as na
+    except ImportError:
+        st.error("novelist_agent.py が見つかりません。")
+        return
+
+    # ── 今週号の生成ボタン ────────────────────────────────────────
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        custom_theme = st.text_input(
+            "今週の特別テーマ（任意）",
+            placeholder="例：カルマンフィルタがまた暴走した",
+            key="novel_theme_input",
+        )
+    with col2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        gen_btn = st.button("✍️ 今週号を書く", key="novel_generate_btn", type="primary")
+
+    if gen_btn:
+        with st.spinner("波乱丸が執筆中…（少々お待ちを）"):
+            result = na.generate_novel(custom_theme=custom_theme)
+        st.success(f"第{result['episode_no']}話「{result['title']}」完成！")
+        _hub_log("novelist", "generate", f"第{result['episode_no']}話: {result['title']}")
+
+    # ── 最新話の表示 ─────────────────────────────────────────────
+    latest = na.get_latest_novel()
+    if latest:
+        st.markdown("---")
+        st.markdown(f"#### 📰 {latest['week_label']} 第{latest['episode_no']}話")
+        st.markdown(f"**「{latest['title']}」**")
+        st.markdown(latest['body'])
+    else:
+        st.info("まだ小説がありません。「今週号を書く」ボタンで第1話を生成してください。")
+
+    # ── バックナンバー ────────────────────────────────────────────
+    all_novels = na.load_novels(20)
+    if len(all_novels) > 1:
+        st.markdown("---")
+        st.markdown("#### 📚 バックナンバー")
+        for nov in all_novels[1:]:  # 最新を除く
+            with st.expander(f"第{nov['episode_no']}話「{nov['title']}」— {nov['week_label']}"):
+                st.markdown(nov['body'])
