@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
+matplotlib.rcParams['axes.unicode_minus'] = False
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.gridspec import GridSpec
