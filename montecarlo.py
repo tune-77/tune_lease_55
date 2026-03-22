@@ -84,30 +84,18 @@ def _detect_jp_font_path() -> Optional[str]:
     return None
 
 def _setup_matplotlib_jp():
-    """matplotlibに日本語フォントを設定する。"""
-    import matplotlib.font_manager as fm
-    font_path = _detect_jp_font_path()
-    if font_path:
-        try:
-            fe = fm.FontEntry(fname=font_path, name="JpFont")
-            fm.fontManager.ttflist.append(fe)
-            plt.rcParams["font.family"] = "sans-serif"
-            plt.rcParams["axes.unicode_minus"] = False
-            current = list(plt.rcParams.get("font.sans-serif", []))
-            # JpFont を先頭に置いて全角文字も確実に描画する
-            plt.rcParams["font.sans-serif"] = ["JpFont", "DejaVu Sans"] + current
-        except Exception:
-            pass
+    """matplotlibの基本設定のみ。フォントロードは行わない（macOSでのCoreTextクラッシュ回避）。"""
+    try:
+        plt.rcParams["axes.unicode_minus"] = False
+        plt.rcParams["font.family"] = "sans-serif"
+    except Exception:
+        pass
 
 _setup_matplotlib_jp()
 
-# 日本語テキスト用 FontProperties(直接指定用)
+# 日本語テキスト用 FontProperties - macOSクラッシュ回避のため常にNoneを返す
 def _get_jp_font_prop(size: float = 10):
-    """日本語フォントの FontProperties を返す。フォントが見つからなければ None。"""
-    from matplotlib.font_manager import FontProperties
-    fp = _detect_jp_font_path()
-    if fp:
-        return FontProperties(fname=fp, size=size)
+    """フォントロードをスキップ（macOS CoreTextクラッシュ回避）。"""
     return None
 
 def _w(text: str) -> str:
@@ -617,7 +605,7 @@ def make_portfolio_chart(portfolio: PortfolioResult) -> bytes:
     ax3.margins(x=0.05)
 
     fig.suptitle('Portfolio Risk Analysis', fontsize=14, fontweight='bold', y=1.01)
-    plt.tight_layout()
+    # plt.tight_layout()
     buf = io.BytesIO()
     plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor=fig.get_facecolor())
     plt.close(fig)
