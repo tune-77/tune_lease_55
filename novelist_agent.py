@@ -31,7 +31,7 @@ _HUB_LOG     = os.path.join(_BASE_DIR, "data", "agent_hub_log.jsonl")
 
 def init_novel_db() -> None:
     conn = sqlite3.connect(_NOVEL_DB)
-    conn.execute("""
+    conn.executescript("""
         CREATE TABLE IF NOT EXISTS novels (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             ts          TEXT    NOT NULL,
@@ -39,6 +39,30 @@ def init_novel_db() -> None:
             title       TEXT    NOT NULL,
             body        TEXT    NOT NULL,
             episode_no  INTEGER DEFAULT 1
+        );
+
+        CREATE TABLE IF NOT EXISTS civilization_registry (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            civ_id          TEXT    NOT NULL UNIQUE,
+            company_name    TEXT    NOT NULL,
+            industry        TEXT,
+            civ_stage       TEXT,
+            civ_era         TEXT,
+            first_episode   INTEGER,
+            last_episode    INTEGER,
+            status          TEXT    DEFAULT 'active',
+            notes           TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS civ_appearances (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            civ_id      TEXT    NOT NULL,
+            episode_no  INTEGER NOT NULL,
+            ts          TEXT    NOT NULL,
+            event_type  TEXT,
+            description TEXT,
+            score       REAL,
+            result      TEXT
         );
     """)
     conn.commit()
@@ -293,6 +317,28 @@ def generate_novel(episode_no: int = None, custom_theme: str = "") -> dict:
     if custom_theme:
         neta_lines.append(f"\n【今回の特別テーマ】{custom_theme}")
 
+    # 過去文明の時系列コンテキストを注入
+    civ_context = _build_civ_context_for_novel()
+    if civ_context:
+        neta_lines.append(civ_context)
+        neta_lines.append("""
+【文明の時系列追跡ルール（重要）】
+・今話に登場する企業が過去に登場した文明と同じなら、その後日談として書いてもよい
+・「あの時リースした設備のおかげで○○が起きた（数千年後）」という因果を描く
+・逆に過去に承認した文明が「破産」として登場したら、その文明の滅亡を静かに描く
+・エージェントたちは「あの会社また来た」「あの会社潰れたのか」程度にしか思わない
+・読者だけが「あれは○○の文明が滅びたということだ」と気づく
+・末尾の小説内に【文明記録メモ】として出力する形式でお願いします：
+  civ_id: （英字ID）
+  company_name: （登場企業名）
+  industry: （業種）
+  civ_era: （時代 例：青銅器時代・情報黎明期・第三銀河暦など自由に）
+  civ_stage: （段階 例：都市国家形成期・技術加速期など）
+  event_type: （initial_contact / repeat_application / collapse / ascension / dormant）
+  result: （approved / rejected / bankrupt / transcended）
+  description: （1行で何が起きたか）
+""")
+
     prompt = "\n".join(neta_lines)
 
     # AI呼び出し
@@ -335,6 +381,9 @@ def generate_novel(episode_no: int = None, custom_theme: str = "") -> dict:
         if m:
             title = m.group(1)
 
+    # 文明記録メモをパースしてDBに保存
+    _parse_and_save_civ_record(body, episode_no)
+
     # DB保存
     conn = sqlite3.connect(_NOVEL_DB)
     conn.execute(
@@ -345,6 +394,34 @@ def generate_novel(episode_no: int = None, custom_theme: str = "") -> dict:
     conn.close()
 
     return {"title": title, "body": body, "week_label": week_label, "episode_no": episode_no}
+
+
+def _parse_and_save_civ_record(body: str, episode_no: int) -> None:
+    """小説本文から【文明記録メモ】を抽出してレジストリに保存する。"""
+    if "【文明記録メモ】" not in body:
+        return
+    try:
+        memo_block = body.split("【文明記録メモ】", 1)[1]
+        lines = memo_block.strip().split("\n")
+        rec = {}
+        for line in lines:
+            if ":" in line:
+                k, v = line.split(":", 1)
+                rec[k.strip()] = v.strip()
+        if "civ_id" in rec and "company_name" in rec:
+            register_civilization(
+                civ_id=rec.get("civ_id", ""),
+                company_name=rec.get("company_name", ""),
+                industry=rec.get("industry", ""),
+                civ_stage=rec.get("civ_stage", ""),
+                civ_era=rec.get("civ_era", ""),
+                episode_no=episode_no,
+                event_type=rec.get("event_type", "initial_contact"),
+                description=rec.get("description", ""),
+                result=rec.get("result", ""),
+            )
+    except Exception:
+        pass
 
 
 def _fallback_novel(episode_no: int, week_label: str) -> dict:
@@ -398,3 +475,121 @@ def get_latest_novel() -> dict | None:
     """最新話を返す。なければ None。"""
     novels = load_novels(1)
     return novels[0] if novels else None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 文明レジストリ
+# ══════════════════════════════════════════════════════════════════════════════
+
+def get_civilization_registry() -> list[dict]:
+    """登録済み文明の一覧を返す。"""
+    init_novel_db()
+    conn = sqlite3.connect(_NOVEL_DB)
+    rows = conn.execute("""
+        SELECT civ_id, company_name, industry, civ_stage, civ_era,
+               first_episode, last_episode, status, notes
+        FROM civilization_registry ORDER BY first_episode
+    """).fetchall()
+    conn.close()
+    return [
+        {"civ_id": r[0], "company_name": r[1], "industry": r[2],
+         "civ_stage": r[3], "civ_era": r[4], "first_episode": r[5],
+         "last_episode": r[6], "status": r[7], "notes": r[8]}
+        for r in rows
+    ]
+
+
+def get_civ_appearances(civ_id: str) -> list[dict]:
+    """特定文明の出現履歴を返す。"""
+    init_novel_db()
+    conn = sqlite3.connect(_NOVEL_DB)
+    rows = conn.execute("""
+        SELECT episode_no, ts, event_type, description, score, result
+        FROM civ_appearances WHERE civ_id=? ORDER BY episode_no
+    """, (civ_id,)).fetchall()
+    conn.close()
+    return [
+        {"episode_no": r[0], "ts": r[1], "event_type": r[2],
+         "description": r[3], "score": r[4], "result": r[5]}
+        for r in rows
+    ]
+
+
+def register_civilization(
+    civ_id: str, company_name: str, industry: str,
+    civ_stage: str, civ_era: str, episode_no: int,
+    event_type: str = "initial_contact", description: str = "",
+    score: float = None, result: str = None, notes: str = ""
+) -> None:
+    """文明を登録または更新し、出現記録を追加する。"""
+    init_novel_db()
+    conn = sqlite3.connect(_NOVEL_DB)
+    now = datetime.datetime.now().isoformat()
+    # 文明レジストリにupsert
+    conn.execute("""
+        INSERT INTO civilization_registry
+            (civ_id, company_name, industry, civ_stage, civ_era,
+             first_episode, last_episode, status, notes)
+        VALUES (?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(civ_id) DO UPDATE SET
+            last_episode=excluded.last_episode,
+            notes=COALESCE(excluded.notes, notes)
+    """, (civ_id, company_name, industry, civ_stage, civ_era,
+          episode_no, episode_no, "active", notes))
+    # 出現記録追加
+    conn.execute("""
+        INSERT INTO civ_appearances
+            (civ_id, episode_no, ts, event_type, description, score, result)
+        VALUES (?,?,?,?,?,?,?)
+    """, (civ_id, episode_no, now, event_type, description, score, result))
+    conn.commit()
+    conn.close()
+
+
+def update_civilization_status(civ_id: str, status: str, notes: str = "") -> None:
+    """文明のステータスを更新（active/collapsed/ascended/dormant）。"""
+    init_novel_db()
+    conn = sqlite3.connect(_NOVEL_DB)
+    conn.execute(
+        "UPDATE civilization_registry SET status=?, notes=? WHERE civ_id=?",
+        (status, notes, civ_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def _build_civ_context_for_novel() -> str:
+    """小説生成時に使う文明の時系列コンテキストを組み立てる。"""
+    civs = get_civilization_registry()
+    if not civs:
+        return ""
+
+    lines = ["
+【過去に登場した文明の記録（エージェントには「取引先企業の履歴」に見えている）】"]
+    for civ in civs[:8]:  # 最大8文明
+        appearances = get_civ_appearances(civ["civ_id"])
+        status_emoji = {
+            "active": "🟢",
+            "collapsed": "💀",
+            "ascended": "✨",
+            "dormant": "😴"
+        }.get(civ["status"], "❓")
+
+        lines.append(
+            f"
+{status_emoji} 【{civ['company_name']}】（業種: {civ['industry']}）"
+        )
+        lines.append(
+            f"   正体: {civ['civ_era']} の {civ['civ_stage']}"
+        )
+        lines.append(f"   初登場: 第{civ['first_episode']}話 / 最終: 第{civ['last_episode']}話 / 現状: {civ['status']}")
+
+        for ap in appearances[-3:]:  # 直近3回
+            result_str = f" → {ap['result']}" if ap['result'] else ""
+            lines.append(f"   ・第{ap['episode_no']}話: {ap['event_type']} — {ap['description']}{result_str}")
+
+        if civ["notes"]:
+            lines.append(f"   メモ: {civ['notes']}")
+
+    return "
+".join(lines)

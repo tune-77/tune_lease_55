@@ -1508,6 +1508,7 @@ def render_agent_hub() -> None:
         "🔬 数学者",
         "📊 レポート生成",
         "📖 文豪AI",
+        "🌍 文明年代記",
     ])
 
     with tabs[0]: _render_benchmark_panel()
@@ -1522,6 +1523,7 @@ def render_agent_hub() -> None:
     with tabs[9]: _render_mathematician_panel()
     with tabs[10]: _render_visual_report_panel()
     with tabs[11]: _render_novelist_panel()
+    with tabs[12]: _render_civilization_panel()
 
     # ── 実行ログ（折りたたみ）────────────────────────────────────────────────
     with st.expander("📋 エージェント実行ログ", expanded=False):
@@ -1594,3 +1596,93 @@ def _render_novelist_panel() -> None:
         for nov in all_novels[1:]:  # 最新を除く
             with st.expander(f"第{nov['episode_no']}話「{nov['title']}」— {nov['week_label']}"):
                 st.markdown(nov['body'])
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Agent 13 — 文明年代記
+# ══════════════════════════════════════════════════════════════════════════════
+def _render_civilization_panel() -> None:
+    """🌍 文明年代記 — 小説に登場した文明の時系列追跡パネル"""
+    st.subheader("🌍 文明年代記")
+    st.caption(
+        "エージェントには「取引先企業の履歴」に見えているが、読者には「文明の盛衰」が見える。"
+    )
+
+    try:
+        import novelist_agent as na
+    except ImportError:
+        st.error("novelist_agent.py が見つかりません。")
+        return
+
+    civs = na.get_civilization_registry()
+
+    if not civs:
+        st.info("まだ文明の記録がありません。文豪AIで小説を生成すると自動登録されます。")
+        return
+
+    # ステータス集計
+    status_counts = {}
+    for c in civs:
+        s = c["status"]
+        status_counts[s] = status_counts.get(s, 0) + 1
+
+    cols = st.columns(4)
+    cols[0].metric("活動中 🟢", status_counts.get("active", 0))
+    cols[1].metric("滅亡 💀", status_counts.get("collapsed", 0))
+    cols[2].metric("昇華 ✨", status_counts.get("ascended", 0))
+    cols[3].metric("休眠 😴", status_counts.get("dormant", 0))
+
+    st.markdown("---")
+
+    for civ in civs:
+        status_emoji = {"active": "🟢", "collapsed": "💀", "ascended": "✨", "dormant": "😴"}.get(civ["status"], "❓")
+        appearances = na.get_civ_appearances(civ["civ_id"])
+
+        with st.expander(
+            f"{status_emoji} **{civ['company_name']}** ｜ {civ['industry']} ｜ {civ.get('civ_era','?')}",
+            expanded=(civ["status"] == "active")
+        ):
+            col1, col2 = st.columns(2)
+            col1.markdown(f"**正体:** {civ.get('civ_era','?')} の {civ.get('civ_stage','?')}")
+            col2.markdown(f"**登場:** 第{civ['first_episode']}話 〜 第{civ['last_episode']}話")
+
+            if civ["notes"]:
+                st.caption(civ["notes"])
+
+            if appearances:
+                st.markdown("**時系列記録：**")
+                for ap in appearances:
+                    result_badge = ""
+                    if ap["result"] == "approved":
+                        result_badge = " ✅承認"
+                    elif ap["result"] == "rejected":
+                        result_badge = " ❌否決"
+                    elif ap["result"] == "bankrupt":
+                        result_badge = " 💀破産"
+                    elif ap["result"] == "transcended":
+                        result_badge = " ✨昇華"
+
+                    st.markdown(
+                        f"- **第{ap['episode_no']}話** `{ap['event_type']}`{result_badge} — {ap['description']}"
+                    )
+
+    # 手動登録フォーム
+    st.markdown("---")
+    with st.expander("✏️ 文明を手動登録"):
+        with st.form("civ_manual_form"):
+            c1, c2 = st.columns(2)
+            civ_id = c1.text_input("文明ID（英字）", placeholder="bronze_tribe_01")
+            company = c2.text_input("企業名（偽装名）")
+            industry = st.text_input("業種")
+            civ_era = st.text_input("時代", placeholder="青銅器時代・第三銀河暦など")
+            civ_stage = st.text_input("段階", placeholder="都市国家形成期など")
+            ep_no = st.number_input("初登場話数", min_value=1, value=1)
+            desc = st.text_area("記録メモ")
+            if st.form_submit_button("登録"):
+                na.register_civilization(
+                    civ_id=civ_id, company_name=company, industry=industry,
+                    civ_stage=civ_stage, civ_era=civ_era, episode_no=int(ep_no),
+                    description=desc
+                )
+                st.success(f"「{company}」を登録しました")
+                st.rerun()
