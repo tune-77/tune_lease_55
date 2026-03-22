@@ -378,7 +378,9 @@ def _advance(step: int, question: str, answer: str, updates: dict) -> None:
     if step < _N_STEPS - 1:
         st.session_state["wiz_step"] = step + 1
     else:
-        _submit_wizard(d)
+        # 二重実行防止: 既に審査提出済みフラグが立っている場合はスキップ
+        if not st.session_state.get("_wizard_submitted"):
+            _submit_wizard(d)
 
     st.rerun()
 
@@ -805,6 +807,11 @@ def _submit_wizard(d: dict) -> None:
 # ── メイン描画 ──────────────────────────────────────────────────────────────
 def render_chat_wizard() -> None:
     st.markdown(_WIZ_CSS, unsafe_allow_html=True)
+
+    # 審査提出後・スコアリング実行前の rerun では再レンダリングを抑制（二重審査防止）
+    if st.session_state.get("_wizard_submitted"):
+        st.info("審査を開始しています…しばらくお待ちください。")
+        return
 
     jsic_data = _load_jsic()
     assets    = _load_assets()
