@@ -931,7 +931,7 @@ def _render_koinu_panel() -> None:
     # ── 現在の審査結果を取得 ──────────────────────────────────────────────
     res = st.session_state.get(_SK.LAST_RESULT) or {}
 
-    sub_tabs = st.tabs(["📋 今日のタムの報告", "💬 タムと話す", "📓 タムの謎のメモ帳"])
+    sub_tabs = st.tabs(["📋 今日のタムの報告", "💬 タムと話す", "📓 タムの謎のメモ帳", "🏃 散歩ログ"])
 
     # ─────────────────────────────────────────────────────────────────────
     # タブ1: 今日のタムの報告
@@ -1121,6 +1121,49 @@ def _render_koinu_panel() -> None:
                     st.caption(f"🐾 {entry['ts']}")
                     st.markdown(f"> {entry['memo']}")
                     st.markdown("")
+
+    # タブ4: 散歩ログ
+    with sub_tabs[3]:
+        st.markdown("#### 🏃 タムと散歩ログ")
+        st.caption("iOSショートカットから送られてくる散歩データを表示します。")
+
+        walk_log_path = os.path.join(_BASE_DIR, "data", "tam_walk_log.json")
+        walk_records = []
+        if os.path.exists(walk_log_path):
+            try:
+                with open(walk_log_path, encoding="utf-8") as wf:
+                    walk_records = json.load(wf)
+            except Exception:
+                pass
+
+        if not walk_records:
+            st.info("まだ散歩ログがありません。iOSショートカットを設定してデータを送ってください。")
+            with st.expander("📱 設定方法"):
+                st.markdown("""
+**iPhone ショートカット設定手順：**
+1. ショートカットアプリ → 新規作成
+2. ヘルスケアサンプルを検索（歩行距離・今日・合計）
+3. URLの内容を取得 → SlackのWebhookへPOST
+4. オートメーション → 平日 6:30 と 20:00 に自動実行
+
+詳細は `docs/tam_walk_shortcut_setup.md` を参照。
+""")
+        else:
+            total_km = sum(r.get("walk_km", 0) for r in walk_records)
+            total_days = len(set(r["date"][:10] for r in walk_records if "date" in r))
+            col1, col2, col3 = st.columns(3)
+            col1.metric("累計距離", f"{total_km:.1f} km")
+            col2.metric("散歩回数", f"{len(walk_records)}回")
+            col3.metric("記録日数", f"{total_days}日")
+            st.markdown("---")
+            for rec in reversed(walk_records[-10:]):
+                st.markdown(
+                    f"🐾 **{rec.get('date','?')}** — "
+                    f"{rec.get('walk_km','?')} km / "
+                    f"{rec.get('steps','?')} 歩 / "
+                    f"{rec.get('time_label','')}",
+                )
+
 
 
 # ══════════════════════════════════════════════════════════════════════════════
