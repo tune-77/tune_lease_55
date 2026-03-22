@@ -1,8 +1,8 @@
 """
-高精度モンテカルロ リース審査システム（拡張版）
+高精度モンテカルロ リース審査システム(拡張版)
 
 機能:
-1. 業種別ボラティリティ（製造業・小売業・建設業など）
+1. 業種別ボラティリティ(製造業・小売業・建設業など)
 2. リース期間中の財務悪化を時系列で予測
 3. 複数企業のポートフォリオリスク分析
 4. 審査結果のPDF レポート出力
@@ -39,7 +39,7 @@ from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 
 # ── 日本語フォント設定 ────────────────────────────────────────────────────────
 
-# ReportLab: CIDフォント（PDFビューア内蔵・フォントファイル不要）
+# ReportLab: CIDフォント(PDFビューア内蔵・フォントファイル不要)
 _RL_JP_FONT = "HeiseiKakuGo-W5"
 _RL_JP_FONT_BOLD = "HeiseiKakuGo-W5"
 try:
@@ -99,7 +99,7 @@ def _setup_matplotlib_jp():
 
 _setup_matplotlib_jp()
 
-# 日本語テキスト用 FontProperties（直接指定用）
+# 日本語テキスト用 FontProperties(直接指定用)
 def _get_jp_font_prop(size: float = 10):
     """日本語フォントの FontProperties を返す。フォントが見つからなければ None。"""
     from matplotlib.font_manager import FontProperties
@@ -109,12 +109,12 @@ def _get_jp_font_prop(size: float = 10):
     return None
 
 def _w(text: str) -> str:
-    """ASCII英数記号を全角に変換（日本語フォントで混在テキストを表示するため）。"""
+    """ASCII英数記号を全角に変換(日本語フォントで混在テキストを表示するため)。"""
     _TBL = str.maketrans(
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
         "0123456789+-.,:%()[]",
-        "ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚ"
-        "０１２３４５６７８９＋－．，：％（）［］"
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+        "0123456789+-.,:%()[]"
     )
     return text.translate(_TBL)
 
@@ -146,7 +146,7 @@ INDUSTRY_VOLATILITY = {
     "飲食・サービス": {
         "revenue_vol": 0.25, "margin_vol": 0.08, "equity_vol": 0.04,
         "debt_vol": 0.18, "revenue_drift": 0.00,
-        "description": "外部環境（景気・疫病等）の影響が最大"
+        "description": "外部環境(景気・疫病等)の影響が最大"
     },
     "卸売業": {
         "revenue_vol": 0.14, "margin_vol": 0.04, "equity_vol": 0.02,
@@ -196,7 +196,7 @@ INDUSTRY_MAJOR_MAP: Dict[str, str] = {
 }
 
 def map_industry_from_major(industry_major: str) -> str:
-    """既存システムの industry_major（例: 'D 建設業'）をモンテカルロ業種名に変換。"""
+    """既存システムの industry_major(例: 'D 建設業')をモンテカルロ業種名に変換。"""
     code = (industry_major or "").split(" ")[0].strip().upper()
     return INDUSTRY_MAJOR_MAP.get(code, "製造業")
 
@@ -209,13 +209,13 @@ class CompanyData:
     """企業財務データ"""
     name: str
     industry: str
-    revenue: float           # 売上高（円）
-    operating_margin: float  # 営業利益率（小数）
-    equity_ratio: float      # 自己資本比率（小数）
-    total_debt: float        # 借入金残高（円）
-    lease_amount: float = 0  # リース希望額（円）
-    lease_months: int = 36   # リース期間（月）
-    subsidy_amount: float = 0  # 適用補助金額（円）。負債の初期値を圧縮する形でモデル化
+    revenue: float           # 売上高(円)
+    operating_margin: float  # 営業利益率(小数)
+    equity_ratio: float      # 自己資本比率(小数)
+    total_debt: float        # 借入金残高(円)
+    lease_amount: float = 0  # リース希望額(円)
+    lease_months: int = 36   # リース期間(月)
+    subsidy_amount: float = 0  # 適用補助金額(円)。負債の初期値を圧縮する形でモデル化
 
 
 @dataclass
@@ -291,7 +291,7 @@ class AdvancedMonteCarloEngine:
         mar_paths = np.clip(mar_paths, -0.30, 0.50)
         eq_paths  = self._gbm_paths(company.equity_ratio, 0.005, vol["equity_vol"], T, dt)
         eq_paths  = np.clip(eq_paths, 0.01, 0.99)
-        # 補助金は初期借入残高を圧縮する形でモデル化（補助分だけ調達不要になる）
+        # 補助金は初期借入残高を圧縮する形でモデル化(補助分だけ調達不要になる)
         effective_debt = max(company.total_debt - company.subsidy_amount, 0.0)
         debt_paths = self._gbm_paths(effective_debt, -0.02, vol["debt_vol"], T, dt)
         debt_paths = np.clip(debt_paths, 0, None)
@@ -331,14 +331,14 @@ class AdvancedMonteCarloEngine:
             np.array([c.equity_ratio]), np.array([c.total_debt])
         )[0]
         tests = {
-            "売上＋１０％":         dict(revenue=c.revenue * 1.1),
-            "売上－１０％":         dict(revenue=c.revenue * 0.9),
-            "営業利益率＋３ｐｔ":   dict(operating_margin=c.operating_margin + 0.03),
-            "営業利益率－３ｐｔ":   dict(operating_margin=c.operating_margin - 0.03),
-            "自己資本比率＋５ｐｔ": dict(equity_ratio=min(c.equity_ratio + 0.05, 0.99)),
-            "自己資本比率－５ｐｔ": dict(equity_ratio=max(c.equity_ratio - 0.05, 0.01)),
-            "借入金＋２０％":       dict(total_debt=c.total_debt * 1.2),
-            "借入金－２０％":       dict(total_debt=c.total_debt * 0.8),
+            "売上+10%":         dict(revenue=c.revenue * 1.1),
+            "売上-10%":         dict(revenue=c.revenue * 0.9),
+            "営業利益率+3pt":   dict(operating_margin=c.operating_margin + 0.03),
+            "営業利益率-3pt":   dict(operating_margin=c.operating_margin - 0.03),
+            "自己資本比率+5pt": dict(equity_ratio=min(c.equity_ratio + 0.05, 0.99)),
+            "自己資本比率-5pt": dict(equity_ratio=max(c.equity_ratio - 0.05, 0.01)),
+            "借入金+20%":       dict(total_debt=c.total_debt * 1.2),
+            "借入金-20%":       dict(total_debt=c.total_debt * 0.8),
         }
         out = {}
         for label, override in tests.items():
@@ -388,7 +388,7 @@ RISK_COLORS = {
 
 
 def make_company_chart(result: SimResult) -> bytes:
-    """1社分の詳細チャート（PNG bytes）— 3行2列レイアウト"""
+    """1社分の詳細チャート(PNG bytes)— 3行2列レイアウト"""
     jp_fp    = _get_jp_font_prop(size=10)
     jp_fp_lg = _get_jp_font_prop(size=13)
 
@@ -399,7 +399,7 @@ def make_company_chart(result: SimResult) -> bytes:
                   height_ratios=[1, 1, 0.85])
     col = RISK_COLORS.get(result.risk_level, "#95a5a6")
 
-    # ── 1. 売上シミュレーションパス（左上）────────────────────────
+    # ── 1. 売上シミュレーションパス(左上)────────────────────────
     ax1 = fig.add_subplot(gs[0, 0])
     months = np.arange(result.revenue_paths.shape[1])
     for path in result.revenue_paths:
@@ -418,7 +418,7 @@ def make_company_chart(result: SimResult) -> bytes:
                prop=jp_fp if jp_fp else None)
     ax1.grid(True, alpha=0.3)
 
-    # ── 2. 累積デフォルト確率（右上）────────────────────────────
+    # ── 2. 累積デフォルト確率(右上)────────────────────────────
     ax2 = fig.add_subplot(gs[0, 1])
     ts = result.time_series_default_prob
     x  = np.arange(len(ts))
@@ -435,7 +435,7 @@ def make_company_chart(result: SimResult) -> bytes:
     ax2.grid(True, alpha=0.3)
     ax2.set_ylim(0, min(100, max(ts * 100) * 1.25 + 5))
 
-    # ── 3. スコア分布ヒストグラム（左中）────────────────────────
+    # ── 3. スコア分布ヒストグラム(左中)────────────────────────
     ax3 = fig.add_subplot(gs[1, 0])
     ax3.hist(result.score_paths, bins=50, color='steelblue', alpha=0.7, edgecolor='white')
     ax3.axvline(result.score_median, color='navy',  lw=2.5,
@@ -452,7 +452,7 @@ def make_company_chart(result: SimResult) -> bytes:
     ax3.legend(fontsize=9, prop=jp_fp if jp_fp else None)
     ax3.grid(True, alpha=0.3)
 
-    # ── 4. リスクサマリーテーブル（右中）────────────────────────
+    # ── 4. リスクサマリーテーブル(右中)────────────────────────
     _RISK_JP = {"低リスク": "低リスク", "中リスク": "中リスク",
                 "高リスク": "高リスク", "極高リスク": "極高リスク"}
     ax5 = fig.add_subplot(gs[1, 1])
@@ -491,7 +491,7 @@ def make_company_chart(result: SimResult) -> bytes:
     ax5.set_title('リスクサマリー', fontsize=12, fontweight='bold', pad=10,
                   **({'fontproperties': jp_fp} if jp_fp else {}))
 
-    # ── 5. 感度分析（下段・全幅）────────────────────────────────
+    # ── 5. 感度分析(下段・全幅)────────────────────────────────
     ax4 = fig.add_subplot(gs[2, :])
     labels = list(result.sensitivity.keys())
     vals   = list(result.sensitivity.values())
@@ -503,7 +503,7 @@ def make_company_chart(result: SimResult) -> bytes:
     ax4.axvline(0, color='black', lw=1)
     max_abs = max(abs(v) for v in vals) if vals else 1
     for i, (bar, val, lbl) in enumerate(zip(bars, vals, labels)):
-        sign = '＋' if val >= 0 else ''
+        sign = '+' if val >= 0 else ''
         ax4.text(val + (max_abs * 0.02 if val >= 0 else -max_abs * 0.02),
                  bar.get_y() + bar.get_height() / 2,
                  f'{sign}{val:.2f}', va='center',
@@ -511,7 +511,7 @@ def make_company_chart(result: SimResult) -> bytes:
         kw = {'fontproperties': jp_fp} if jp_fp else {'fontsize': 10}
         ax4.text(-max_abs * 1.08, bar.get_y() + bar.get_height() / 2,
                  lbl, va='center', ha='right', fontsize=10, **kw)
-    ax4.set_title('感度分析（スコアへの影響）', fontsize=12, fontweight='bold',
+    ax4.set_title('感度分析(スコアへの影響)', fontsize=12, fontweight='bold',
                   **({'fontproperties': jp_fp} if jp_fp else {}))
     ax4.set_xlabel('スコア変化量', fontsize=10,
                    **({'fontproperties': jp_fp} if jp_fp else {}))
@@ -536,7 +536,7 @@ def make_company_chart(result: SimResult) -> bytes:
 
 
 def make_portfolio_chart(portfolio: PortfolioResult) -> bytes:
-    """ポートフォリオ全体のチャート（PNG bytes）"""
+    """ポートフォリオ全体のチャート(PNG bytes)"""
     jp_fp = _get_jp_font_prop(size=7)
     jp_fp9 = _get_jp_font_prop(size=9)
 
@@ -545,7 +545,7 @@ def make_portfolio_chart(portfolio: PortfolioResult) -> bytes:
     fig.patch.set_facecolor('#f8f9fa')
     gs_pf = GridSpec(2, 2, figure=fig, hspace=0.45, wspace=0.35)
 
-    # バブルチャート（左上）
+    # バブルチャート(左上)
     ax1 = fig.add_subplot(gs_pf[0, 0])
     for r in results:
         size = max(r.company.lease_amount / 1e6 * 10, 50)
@@ -562,7 +562,7 @@ def make_portfolio_chart(portfolio: PortfolioResult) -> bytes:
     ax1.set_title('Risk Map\n(bubble = lease amount)', fontsize=10, fontweight='bold')
     ax1.grid(True, alpha=0.3)
 
-    # リスクレベル別 金額（右上）
+    # リスクレベル別 金額(右上)
     ax2 = fig.add_subplot(gs_pf[0, 1])
     levels = ["低リスク", "中リスク", "高リスク", "極高リスク"]
     risk_amounts = {lv: 0 for lv in levels}
@@ -588,7 +588,7 @@ def make_portfolio_chart(portfolio: PortfolioResult) -> bytes:
     ax2.set_title('Portfolio by Risk Level', fontsize=10, fontweight='bold')
     ax2.grid(True, alpha=0.3, axis='y')
 
-    # 期待損失ランキング（下段・横幅全体）
+    # 期待損失ランキング(下段・横幅全体)
     ax3 = fig.add_subplot(gs_pf[1, :])
     el_list = sorted(
         [(r.company.name, r.company.lease_amount * r.default_prob * 0.4 / 1e4) for r in results],
@@ -665,22 +665,22 @@ def _generate_comment(result: SimResult) -> str:
             f"高く、慎重な審査が必要です。追加担保や保証人の確保を検討してください。"
         )
     comments.append(
-        f"業種（{c.industry}）の特性: {vol['description']}。"
+        f"業種({c.industry})の特性: {vol['description']}。"
         f"売上高ボラティリティ{vol['revenue_vol']:.0%}、"
         f"営業利益率ボラティリティ{vol['margin_vol']:.0%}を考慮したシミュレーションを実施。"
     )
     top_neg = min(result.sensitivity.items(), key=lambda x: x[1])
     top_pos = max(result.sensitivity.items(), key=lambda x: x[1])
     comments.append(
-        f"感度分析によると、「{top_neg[0]}」が最もスコアを引き下げるリスク要因（{top_neg[1]:.2f}pt）、"
-        f"「{top_pos[0]}」が最も改善に寄与する要因（+{top_pos[1]:.2f}pt）です。"
+        f"感度分析によると、「{top_neg[0]}」が最もスコアを引き下げるリスク要因({top_neg[1]:.2f}pt)、"
+        f"「{top_pos[0]}」が最も改善に寄与する要因(+{top_pos[1]:.2f}pt)です。"
     )
     return " ".join(comments)
 
 
 def generate_pdf_bytes(portfolio: PortfolioResult) -> bytes:
     """
-    PDFレポートをメモリ上（bytes）で生成して返す。
+    PDFレポートをメモリ上(bytes)で生成して返す。
     Streamlit の st.download_button に直接渡せる。
     """
     buf = io.BytesIO()
@@ -737,8 +737,8 @@ def generate_pdf_bytes(portfolio: PortfolioResult) -> bytes:
         ["指標", "値", "評価"],
         ["加重平均デフォルト確率", f"{portfolio.weighted_default_prob:.2%}", _pf_eval_text(portfolio.weighted_default_prob)],
         ["上位3社への集中度", f"{portfolio.concentration_risk:.1%}", "要注意" if portfolio.concentration_risk > 0.6 else "適切"],
-        ["期待損失額（LGD=40%）", f"{portfolio.expected_loss/1e4:,.0f}万円", ""],
-        ["ポートフォリオ VaR（95%）", f"{portfolio.portfolio_var_95:.1f}pt スコア下落", ""],
+        ["期待損失額(LGD=40%)", f"{portfolio.expected_loss/1e4:,.0f}万円", ""],
+        ["ポートフォリオ VaR(95%)", f"{portfolio.portfolio_var_95:.1f}pt スコア下落", ""],
     ]
     pf_tbl = Table(pf_data, colWidths=[65*mm, 55*mm, 45*mm])
     pf_tbl.setStyle(TableStyle([
@@ -866,16 +866,16 @@ def res_to_company_data(res: dict, company_name: str = "審査対象",
     lease_logic_sumaho11 の審査結果 dict から CompanyData を生成する。
 
     Args:
-        res:              審査結果dict（score, user_op, user_eq, financials 等）
-        company_name:     企業名（表示用）
-        lease_amount_man: リース希望額（万円）
-        lease_months:     リース期間（月）
+        res:              審査結果dict(score, user_op, user_eq, financials 等)
+        company_name:     企業名(表示用)
+        lease_amount_man: リース希望額(万円)
+        lease_months:     リース期間(月)
     """
     fin = res.get("financials") or {}
     nenshu       = (fin.get("nenshu", 0) or 0) * 1_000           # 千円 → 円
     op_margin    = (res.get("user_op", 0) or 0) / 100            # % → 小数
     eq_ratio     = max((res.get("user_eq", 0) or 0) / 100, 0.01) # % → 小数、最低1%
-    # 借入金残高 = 総資産 - 純資産（負債合計）。bank_credit/lease_creditは当社与信残高なので使わない
+    # 借入金残高 = 総資産 - 純資産(負債合計)。bank_credit/lease_creditは当社与信残高なので使わない
     total_assets = (fin.get("assets",     0) or 0) * 1_000       # 千円 → 円
     net_assets_v = (fin.get("net_assets", 0) or 0) * 1_000       # 千円 → 円
     total_debt   = max(total_assets - net_assets_v, 0)
