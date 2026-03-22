@@ -1,0 +1,8 @@
+{
+  "command": "navigate",
+  "payload": {
+    "page": "🏠 ホーム"
+  },
+  "timestamp": "2026-03-19 20:41:35",
+  "executed": true
+}
