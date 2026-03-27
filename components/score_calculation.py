@@ -689,14 +689,34 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 # ── ASSET_WEIGHT 配分による成約可能性スコア算出 ──────────────────────
                 # カテゴリ対応物件は ASSET_WEIGHT 比率（物件スコア × asset_w + 借手スコア × obligor_w）、
                 # それ以外は従来の回帰最適化重みにフォールバック。
+                # AI調査で残存価値率が取得済みの場合は担保ウェイトを動的算出。
+                #
+                # 仮置き定数（根拠: 業界通説）
+                # 校正式: 実際の売却額 ÷ (残存価値率 × 取得価格) の平均値
+                # 自社デフォルト事例が5件以上蓄積されたら実回収データで校正すること
+                _LIQUIDITY_DISCOUNT = 0.75
+                _MAX_ASSET_WEIGHT   = 0.50   # 物件スコアが最終判定の50%超を占めないよう上限
+
                 w_borrower, w_asset, w_quant, w_qual = get_score_weights()
                 _asset_category = form_result.get("asset_category")
                 _ts_result = None
                 if _asset_category:
                     from category_config import ASSET_WEIGHT, SCORE_GRADES
                     _wt = ASSET_WEIGHT.get(_asset_category, {})
-                    _aw  = _wt.get("asset_w", w_asset)
-                    _ow  = _wt.get("obligor_w", w_borrower)
+
+                    # AI調査で残存価値率が取れている場合は動的ウェイトを使用
+                    _residual_pct = st.session_state.get("asd_residual", 0)
+                    _use_detail   = form_result.get("asset_use_detail", False)
+                    if _use_detail and _residual_pct > 0:
+                        _aw = min(_MAX_ASSET_WEIGHT, (_residual_pct / 100) * _LIQUIDITY_DISCOUNT)
+                        _ow = 1.0 - _aw
+                        _weight_source = f"残存価値率{_residual_pct:.1f}%から動的算出"
+                        asset_score = form_result.get("asset_score_detail") or asset_score
+                    else:
+                        _aw = _wt.get("asset_w", w_asset)
+                        _ow = _wt.get("obligor_w", w_borrower)
+                        _weight_source = "カテゴリ固定値"
+
                     final_score = round(asset_score * _aw + contract_prob * _ow, 1)
                     _grade_info = next((g for g in SCORE_GRADES if final_score >= g["min"]), SCORE_GRADES[-1])
                     _ts_result = {
@@ -710,6 +730,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         "obligor_weight": _ow,
                         "category":       _asset_category,
                         "rationale":      _wt.get("rationale", ""),
+                        "weight_source":  _weight_source,
                     }
                 else:
                     final_score = w_borrower * score_percent + w_asset * asset_score
