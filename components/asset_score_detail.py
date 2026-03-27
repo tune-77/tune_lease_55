@@ -26,7 +26,7 @@ import re
 import requests
 import streamlit as st
 
-from category_config import CATEGORY_SCORE_ITEMS, SCORE_GRADES
+from category_config import CATEGORY_SCORE_ITEMS
 
 _GEMINI_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
@@ -352,16 +352,8 @@ def render_asset_score_detail(
 
         # ── 計算プレビュー ─────────────────────────────────────────────────
         detail_score = _calc_and_store_score(asset_category, new_scores)
-        grade_info = next(
-            (g for g in SCORE_GRADES if detail_score >= g["min"]),
-            SCORE_GRADES[-1],
-        )
-        st.markdown(
-            f"**計算プレビュー: {detail_score:.1f}点 → "
-            f"<span style='color:{grade_info['color']}'>グレード{grade_info['label']} "
-            f"（{grade_info['text']}）</span>**",
-            unsafe_allow_html=True,
-        )
+        st.markdown(f"**物件スコア（参考）: {detail_score:.1f}点**")
+        st.caption("※ 最終判定は借手財務スコアとの加重平均で決まります。物件スコアのみでは決定しません。")
 
         # ── ルールベース警告 ───────────────────────────────────────────────
         warnings = _get_adjustment_warnings(asset_category, new_scores, lease_term_here)
