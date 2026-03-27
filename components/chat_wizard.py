@@ -517,6 +517,13 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
             if vtype:
                 asset_name = f"{asset_name}（{vtype}）"
 
+        # 物件スコア詳細評価（カテゴリ対応物件のみ）
+        from category_config import ASSET_ID_TO_CATEGORY
+        from components.asset_score_detail import render_asset_score_detail
+        _wiz_category = ASSET_ID_TO_CATEGORY.get(asset_id)
+        if _wiz_category:
+            render_asset_score_detail(_wiz_category, asset_id, asset_name)
+
         _nav_buttons(step, question="リース物件を選んでください",
                      answer=asset_name,
                      updates={"asset_index": sel_idx, "selected_asset_id": asset_id,
