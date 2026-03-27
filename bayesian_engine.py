@@ -70,6 +70,7 @@ BN_EDGES = [
     ("Related_Bank_Status", "Financial_Creditworthiness"),
     ("Related_Assets",      "Financial_Creditworthiness"),
     ("High_Network_Risk",   "Financial_Creditworthiness"),
+    ("Parent_Guarantor",    "Financial_Creditworthiness"),
     # 審査ヘッジ手段 + 債務超過フラグ → ヘッジ条件
     ("Insolvent_Status",    "Hedge_Condition"),
     ("Co_Lease",            "Hedge_Condition"),
@@ -284,13 +285,14 @@ CONSTRAINT_CASE_EXAMPLES = [
 # ==============================================================
 # CPT（条件付き確率表）計算ロジック
 # ==============================================================
-def _prob_financial_creditworthiness(i: int, m: int, r: int, ra: int, nr: int) -> float:
+def _prob_financial_creditworthiness(i: int, m: int, r: int, ra: int, nr: int, pg: int = 0) -> float:
     """
-    信用力 P(True | Insolvent, MainBank, RelBank, RelAssets, NetworkRisk)
+    信用力 P(True | Insolvent, MainBank, RelBank, RelAssets, NetworkRisk, ParentGuarantor)
 
     ビジネスロジック：
     ・Main_Bank_Support=T → 最強の救済。債務超過でも信用力高（0.95）
     ・RelBank=T かつ RelAssets=T → 強い補完。債務超過でも高（0.88）
+    ・Parent_Guarantor=T → 親会社が子会社の信用を補完。債務超過でも信用力底上げ（0.55）
     ・High_Network_Risk=T → 全体的に信用確率を低減させる（既存値に 0.85 〜 0.90 を乗じるイメージ）
     ・サポートなし → 非債務超過でも中（0.75）、債務超過は極低（0.05）
     """
@@ -310,7 +312,17 @@ def _prob_financial_creditworthiness(i: int, m: int, r: int, ra: int, nr: int) -
     if nr == 1:
         # 高いリスクネットワークにいる場合、信用力を 12% 程度割り引く
         base *= 0.88
-        
+
+    # 親会社連帯保証による信用力補完
+    # 子会社単体の財務が弱くても、連結グループの信用力で補完される
+    if pg == 1:
+        if i == 1:
+            # 債務超過＋親会社保証: 連結与信力による信用底上げ
+            base = max(base, 0.55)
+        else:
+            # 非債務超過＋親会社保証: 追加的な信用補完
+            base = max(base, 0.85)
+
     return base
 
 
@@ -414,13 +426,14 @@ def build_bn_model(custom_priors: Dict[str, List[float]] | None = None):
 
     # ---- Financial_Creditworthiness ----
     parents_fc = ["Insolvent_Status", "Main_Bank_Support",
-                  "Related_Bank_Status", "Related_Assets", "High_Network_Risk"]
-    combos_fc = list(itertools.product(*[range(2)] * 5))
+                  "Related_Bank_Status", "Related_Assets", "High_Network_Risk",
+                  "Parent_Guarantor"]
+    combos_fc = list(itertools.product(*[range(2)] * 6))
     pt_fc = [_prob_financial_creditworthiness(*c) for c in combos_fc]
     model.add_cpds(TabularCPD(
         variable="Financial_Creditworthiness", variable_card=2,
         values=[[1 - p for p in pt_fc], pt_fc],
-        evidence=parents_fc, evidence_card=[2] * 5,
+        evidence=parents_fc, evidence_card=[2] * 6,
     ))
 
     # ---- Hedge_Condition ----
@@ -581,7 +594,7 @@ def _run_inference_fallback(evidence: Dict[str, int]) -> Dict:
     ot   = evidence.get("One_Time_Deal",       0)
     nr   = evidence.get("High_Network_Risk",   0)
 
-    p_fc = _prob_financial_creditworthiness(i, m, r, ra, nr)
+    p_fc = _prob_financial_creditworthiness(i, m, r, ra, nr, pg)
     p_hc = _prob_hedge_condition(i, co, pg)
     p_av = _prob_asset_value(core, liq)
 
