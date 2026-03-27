@@ -786,17 +786,10 @@ def render_analysis_results(
                                 from report_visual_agent import collect_report_data, generate_html_report, generate_pdf_report
                                 import datetime as _sv_dt
 
-                                # 企業名・担当者をセッションに一時反映（collect が参照するため）
-                                _sv_orig_company  = st.session_state.get("rep_company")
-                                _sv_orig_screener = st.session_state.get("rep_screener")
-                                st.session_state["rep_company"]  = _sv_company
-                                st.session_state["rep_screener"] = _sv_screener
-
-                                _sv_data = collect_report_data(st.session_state)
-
-                                # 元の値を復元
-                                st.session_state["rep_company"]  = _sv_orig_company
-                                st.session_state["rep_screener"] = _sv_orig_screener
+                                # 企業名・担当者をコピーに反映して渡す
+                                # （widget キーを直接書き換えると Streamlit エラーになるため）
+                                _sv_session_copy = {**dict(st.session_state), "rep_company": _sv_company, "rep_screener": _sv_screener}
+                                _sv_data = collect_report_data(_sv_session_copy)
 
                                 _sv_fname_base = f"審査レポート_{_sv_company or '案件'}_{_sv_dt.datetime.now().strftime('%Y%m%d_%H%M')}"
 

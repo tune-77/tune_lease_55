@@ -4,6 +4,8 @@ AIエージェントの処理モジュール（LangChain）
 ルール・過去案件などの検索ツール（Tools）と、
 それらを自律的に使いこなして回答を組み立てるAgent Executorを定義します。
 """
+import ast
+import operator
 import os
 import requests
 import streamlit as st
@@ -99,16 +101,36 @@ def search_web(query: str) -> str:
     except Exception as e:
         return f"Web検索に失敗しました: {e}"
 
+_SAFE_OPS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.Pow: operator.pow,
+    ast.USub: operator.neg,
+    ast.UAdd: operator.pos,
+}
+
+def _safe_eval(node: ast.AST) -> float:
+    """AST ノードを再帰的に評価する。数値リテラルと四則演算のみ許可。"""
+    if isinstance(node, ast.Expression):
+        return _safe_eval(node.body)
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+        return node.value
+    if isinstance(node, ast.BinOp) and type(node.op) in _SAFE_OPS:
+        return _SAFE_OPS[type(node.op)](_safe_eval(node.left), _safe_eval(node.right))
+    if isinstance(node, ast.UnaryOp) and type(node.op) in _SAFE_OPS:
+        return _SAFE_OPS[type(node.op)](_safe_eval(node.operand))
+    raise ValueError(f"許可されていない演算: {ast.dump(node)}")
+
 @tool
 def calculate_expression(expression: str) -> str:
     """数値の四則演算や複雑な計算を正確に行うツールです。
     ユーザーから「〇〇の〇〇%は？」「合計でいくら？」と聞かれたときに使います。
     引数 expression: 評価可能な算術式（例: "15000000 * 0.05", "(100 + 20) / 3"）"""
     try:
-        # LLMからの数式を計算して返す
-        # セキュリティ上、標準ビルトイン関数などは除外
-        allowed_names = {"__builtins__": None}
-        result = eval(expression, allowed_names, {})
+        tree = ast.parse(expression.strip(), mode="eval")
+        result = _safe_eval(tree)
         return f"計算結果: {result}"
     except Exception as e:
         return f"計算エラー: {expression} を計算できませんでした ({e})"

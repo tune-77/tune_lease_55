@@ -14,6 +14,7 @@ components/chat_wizard.py
 フォント: Zen Kaku Gothic New（Google Fonts）
 """
 from __future__ import annotations
+import html
 import json
 import os
 import random
@@ -223,14 +224,14 @@ def _bot(msg: str) -> None:
 
 
 def _user(msg: str) -> None:
-    st.markdown(f'<div class="wiz-bubble-user">{msg}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="wiz-bubble-user">{html.escape(msg)}</div>', unsafe_allow_html=True)
 
 
 def _humor(msg: str) -> None:
     st.markdown(
         f'<div class="wiz-bubble-humor">'
         f'<div class="wiz-bubble-humor-lbl">💬 リースくんの審査コメント</div>'
-        f'{msg}</div>',
+        f'{html.escape(msg)}</div>',
         unsafe_allow_html=True,
     )
 

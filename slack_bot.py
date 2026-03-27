@@ -56,6 +56,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# `claude:` コマンドを実行できる Slack User ID のホワイトリスト。
+# 環境変数 SLACK_ALLOWED_USERS にカンマ区切りで設定（例: "U012AB3CD,U056EF7GH"）。
+# 未設定の場合は全ユーザーを拒否（安全側に倒す）。
+_ALLOWED_CLAUDE_USERS: set[str] = {
+    u.strip() for u in os.environ.get("SLACK_ALLOWED_USERS", "").split(",") if u.strip()
+}
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # トークン取得
@@ -281,10 +288,22 @@ def handle_message(client: WebClient, channel: str, text: str, user: str) -> Non
         return
 
     if command == "claude":
+        if not _ALLOWED_CLAUDE_USERS:
+            client.chat_postMessage(channel=channel, text="⚠️ `claude:` コマンドは現在無効です（SLACK_ALLOWED_USERS 未設定）。")
+            return
+        if user not in _ALLOWED_CLAUDE_USERS:
+            client.chat_postMessage(channel=channel, text="⚠️ このコマンドの実行権限がありません。")
+            return
+        # `--` で始まるトークンはCLIフラグインジェクション防止のため除去
+        sanitized_tokens = [t for t in argument.split() if not t.startswith("--")]
+        sanitized_argument = " ".join(sanitized_tokens)
+        if not sanitized_argument.strip():
+            client.chat_postMessage(channel=channel, text="⚠️ 有効なプロンプトを入力してください。")
+            return
         client.chat_postMessage(channel=channel, text="🤖 Claude に問い合わせ中...")
         try:
             result = subprocess.run(
-                ["claude", "-p", argument, "--output-format", "text", "--dangerously-skip-permissions"],
+                ["claude", "-p", sanitized_argument, "--output-format", "text"],
                 capture_output=True,
                 text=True,
                 timeout=120,

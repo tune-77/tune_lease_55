@@ -293,9 +293,12 @@ def _prob_financial_creditworthiness(i: int, m: int, r: int, ra: int, nr: int, p
     ・Main_Bank_Support=T → 最強の救済。債務超過でも信用力高（0.95）
     ・RelBank=T かつ RelAssets=T → 強い補完。債務超過でも高（0.88）
     ・Parent_Guarantor=T → 親会社が子会社の信用を補完。債務超過でも信用力底上げ（0.55）
-    ・High_Network_Risk=T → 全体的に信用確率を低減させる（既存値に 0.85 〜 0.90 を乗じるイメージ）
+    ・High_Network_Risk=T → 全体的に信用確率を低減させる（既存値に 0.88 を乗じる。pg 底上げ後に適用）
     ・サポートなし → 非債務超過でも中（0.75）、債務超過は極低（0.05）
     """
+    # 入力値を 0/1 に正規化（範囲外の値をサイレントスキップさせない）
+    i, m, r, ra, nr, pg = (int(bool(v)) for v in (i, m, r, ra, nr, pg))
+
     # 基礎確率の計算
     if m == 1:
         base = 0.95 if i == 1 else 0.98
@@ -308,11 +311,6 @@ def _prob_financial_creditworthiness(i: int, m: int, r: int, ra: int, nr: int, p
     else:
         base = 0.05 if i == 1 else 0.75
     
-    # ネットワークリスクによる補正（負の外部性）
-    if nr == 1:
-        # 高いリスクネットワークにいる場合、信用力を 12% 程度割り引く
-        base *= 0.88
-
     # 親会社連帯保証による信用力補完
     # 子会社単体の財務が弱くても、連結グループの信用力で補完される
     if pg == 1:
@@ -322,6 +320,12 @@ def _prob_financial_creditworthiness(i: int, m: int, r: int, ra: int, nr: int, p
         else:
             # 非債務超過＋親会社保証: 追加的な信用補完
             base = max(base, 0.85)
+
+    # ネットワークリスクによる補正（負の外部性）
+    # pg の底上げ後に適用することで、親保証があっても産業ネットワークリスクは残る
+    if nr == 1:
+        # 高いリスクネットワークにいる場合、信用力を 12% 程度割り引く
+        base *= 0.88
 
     return base
 

@@ -3,6 +3,7 @@
 審査レポート — 審査・分析結果を見やすくレポート形式で表示するコンポーネント。
 """
 import datetime
+import html
 import streamlit as st
 
 _REPORT_CSS = """
@@ -346,13 +347,13 @@ def render_report() -> None:
             st.markdown(f"""
 <div class="rp-section">
   <p class="rp-section-title">📝 財務評価コメント</p>
-  <div style="font-size:.84rem;color:#334155;line-height:1.7;">{comparison[:600]}</div>
+  <div style="font-size:.84rem;color:#334155;line-height:1.7;">{html.escape(comparison[:600])}</div>
 </div>""", unsafe_allow_html=True)
 
         # ── ⑥ 強みタグ ──────────────────────────────────────────────────────
         if strength_tags or passion_text:
-            tags_html = "".join(f'<span class="rp-tag">✨ {t}</span>' for t in strength_tags)
-            passion_html = f'<div style="font-size:.82rem;color:#475569;margin-top:.6rem;line-height:1.65;">{passion_text[:200]}</div>' if passion_text else ""
+            tags_html = "".join(f'<span class="rp-tag">✨ {html.escape(t)}</span>' for t in strength_tags)
+            passion_html = f'<div style="font-size:.82rem;color:#475569;margin-top:.6rem;line-height:1.65;">{html.escape(passion_text[:200])}</div>' if passion_text else ""
             st.markdown(f"""
 <div class="rp-section">
   <p class="rp-section-title">💪 強み・定性評価</p>
@@ -364,7 +365,7 @@ def render_report() -> None:
         if hints:
             hint_items = ""
             for k, v in list(hints.items())[:5]:
-                hint_items += f'<li style="margin-bottom:.4rem;"><b>{k}</b>: {str(v)[:120]}</li>'
+                hint_items += f'<li style="margin-bottom:.4rem;"><b>{html.escape(k)}</b>: {html.escape(str(v)[:120])}</li>'
             st.markdown(f"""
 <div class="rp-section">
   <p class="rp-section-title">💡 審査ヒント</p>

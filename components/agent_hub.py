@@ -1461,16 +1461,10 @@ def _render_visual_report_panel() -> None:
                 from report_visual_agent import collect_report_data, generate_html_report, generate_pdf_report
                 import datetime as _vr_dt
 
-                # 企業名・担当者を一時的にセッションに設定して collect が取得できるようにする
-                _vr_orig_c = st.session_state.get("rep_company")
-                _vr_orig_s = st.session_state.get("rep_screener")
-                st.session_state["rep_company"]  = vr_company
-                st.session_state["rep_screener"] = vr_screener
-
-                vr_data = collect_report_data(st.session_state)
-
-                st.session_state["rep_company"]  = _vr_orig_c
-                st.session_state["rep_screener"] = _vr_orig_s
+                # 企業名・担当者をコピーに反映して渡す
+                # （widget キーを直接書き換えると Streamlit エラーになるため）
+                _vr_session_copy = {**dict(st.session_state), "rep_company": vr_company, "rep_screener": vr_screener}
+                vr_data = collect_report_data(_vr_session_copy)
 
                 fname_base = (
                     f"審査レポート_{vr_company or '案件'}"
