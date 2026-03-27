@@ -51,6 +51,12 @@ def _get_gemini_key() -> str:
         or os.environ.get("GEMINI_API_KEY", "").strip()
     )
 
+
+def _get_asset_market_ctx() -> str:
+    """物件市場データ（AI調査済み）のコンテキスト文字列を返す。未調査時は空文字。"""
+    from components.asset_score_detail import get_asset_context_for_ai
+    return get_asset_context_for_ai()
+
 # 後方互換用（古いコードが参照している場合のため）
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 _GEMINI_URL    = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
@@ -682,6 +688,7 @@ def build_gunshi_prompt(
     trend_info: str = "",       # ← 業界動向テキスト（jsic_data + ネット拡充）
     comparison_text: str = "",  # ← 財務比較テキスト（res["comparison"]）
     humor_style: str = "standard", # ← 八奈見モード拡張用
+    asset_market_context: str = "",  # ← get_asset_context_for_ai() の返値
 ) -> str:
     """軍師プロンプトを生成する。"""
     success_text = ""
@@ -722,6 +729,14 @@ def build_gunshi_prompt(
         comp_section = (
             "\n【業界平均との財務比較（実データ）— 数値を具体的に言及すること】\n"
             f"{comparison_text.strip()}\n"
+        )
+
+    # ── 物件市場データセクション（AI調査済みの場合のみ） ─────────────────────
+    market_section = ""
+    if asset_market_context and asset_market_context.strip():
+        market_section = (
+            "\n【物件市場データ（AI調査）— 「3. 物件保全性と出口戦略」セクションで必ず具体的数値を引用すること】\n"
+            f"{asset_market_context.strip()}\n"
         )
 
     # 役員車・高級外車の場合: LLMへの注意喚起コンテキスト
@@ -819,7 +834,7 @@ def build_gunshi_prompt(
 - 担当者直感スコア: {intuition} / 5
 - ベイズ推定 承認確率: {posterior*100:.1f}%
 - 対象物件: {asset_name or "不明"}{vehicle_context}
-{trend_section}{comp_section}
+{trend_section}{comp_section}{market_section}
 {success_text}
 {fail_text}
 
@@ -1259,6 +1274,7 @@ def render_gunshi() -> None:
                 posterior=posterior,
                 success_patterns=patterns,
                 top_phrases=top_phrases,
+                asset_market_context=_get_asset_market_ctx(),
             )
 
             llm_placeholder = st.empty()
@@ -1869,6 +1885,7 @@ def render_gunshi_in_results(
             top_phrases=g["top_phrases"],
             asset_name=g.get("asset_name", ""),
             vehicle_type=g.get("vehicle_type", ""),
+            asset_market_context=_get_asset_market_ctx(),
         )
         full_text = ""
         try:
@@ -2139,6 +2156,7 @@ def render_gunshi_ai_comment(
                 trend_info=_trend,      # ← 業界動向（実データ）
                 comparison_text=_comp,  # ← 財務比較（実データ）
                 humor_style=st.session_state.get("humor_style", "standard"),
+                asset_market_context=_get_asset_market_ctx(),
             )
             full_text = ""
             try:
