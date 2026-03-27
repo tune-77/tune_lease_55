@@ -27,9 +27,13 @@
 
 import itertools
 import json
+import logging
 import os
+import sqlite3
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 # ==============================================================
 # 判定・逆走提案用の閾値設定
@@ -368,8 +372,15 @@ def _prob_final_decision(fc: int, hc: int, av: int, st: int, ot: int) -> float:
 # ==============================================================
 # BNモデル構築
 # ==============================================================
-def build_bn_model():
-    """pgmpy BayesianNetwork を構築して (model, inference_engine) を返す"""
+def build_bn_model(custom_priors: Dict[str, List[float]] | None = None):
+    """
+    pgmpy BayesianNetwork を構築して (model, inference_engine) を返す。
+
+    Args:
+        custom_priors: ルートノードの事前確率を上書きする dict。
+                       estimate_empirical_priors() の返り値を渡すことで
+                       ジェフリーズ事前分布による経験的推定が適用される。
+    """
     if not PGMPY_AVAILABLE:
         raise ImportError(
             "pgmpy がインストールされていません。\n"
@@ -380,7 +391,8 @@ def build_bn_model():
     model = BayesianNetwork(BN_EDGES)
 
     # ---- ルートノード（先験確率） ----
-    root_priors = {
+    # custom_priors が渡された場合はそちらを優先（経験的ジェフリーズ事前分布）
+    default_root_priors = {
         "Insolvent_Status":    [0.80, 0.20],  # [P(False), P(True)]
         "Main_Bank_Support":   [0.60, 0.40],
         "Related_Bank_Status": [0.50, 0.50],
@@ -391,8 +403,9 @@ def build_bn_model():
         "Parent_Guarantor":    [0.80, 0.20],
         "Shorter_Lease_Term":  [0.60, 0.40],
         "One_Time_Deal":       [0.70, 0.30],
-        "High_Network_Risk":   [0.75, 0.25], # デフォルトではあまり起きない想定
+        "High_Network_Risk":   [0.75, 0.25],
     }
+    root_priors = {**default_root_priors, **(custom_priors or {})}
     for node, priors in root_priors.items():
         model.add_cpds(
             TabularCPD(variable=node, variable_card=2,
@@ -446,16 +459,104 @@ def build_bn_model():
     return model, infer
 
 
+# ==============================================================
+# ジェフリーズ事前分布による経験的事前確率の推定
+# ==============================================================
+
+def _jeffreys_posterior(successes: int, total: int) -> float:
+    """
+    ジェフリーズ事前分布 (alpha=0.5, beta=0.5) を使ったベータ分布の事後期待値。
+    小サンプルでも極端な 0 や 1 に収束しない。
+
+    P(True) = (successes + 0.5) / (total + 1.0)
+    """
+    return (successes + 0.5) / max(total + 1.0, 1.0)
+
+
+def estimate_empirical_priors(db_path: str | None = None) -> Dict[str, List[float]]:
+    """
+    過去案件データからジェフリーズ事前分布を使って BN ルートノードの事前確率を推定する。
+    データが不足している場合はハードコードのデフォルト値にフォールバックする。
+
+    Returns:
+        {ノード名: [P(False), P(True)]} 形式の dict
+    """
+    # デフォルト事前確率（ハードコード）
+    defaults: Dict[str, List[float]] = {
+        "Insolvent_Status":    [0.80, 0.20],
+        "Main_Bank_Support":   [0.60, 0.40],
+        "Related_Bank_Status": [0.50, 0.50],
+        "Related_Assets":      [0.60, 0.40],
+        "Asset_Liquidity":     [0.40, 0.60],
+        "Core_Business_Use":   [0.30, 0.70],
+        "Co_Lease":            [0.70, 0.30],
+        "Parent_Guarantor":    [0.80, 0.20],
+        "Shorter_Lease_Term":  [0.60, 0.40],
+        "One_Time_Deal":       [0.70, 0.30],
+        "High_Network_Risk":   [0.75, 0.25],
+    }
+
+    if db_path is None:
+        db_path = os.path.join(os.path.dirname(__file__), "data", "lease_data.db")
+
+    if not os.path.exists(db_path):
+        return defaults
+
+    try:
+        conn = sqlite3.connect(db_path)
+        rows = conn.execute(
+            "SELECT data FROM past_cases WHERE final_status IN ('成約', '失注') LIMIT 500"
+        ).fetchall()
+        conn.close()
+    except Exception as e:
+        logger.warning(f"経験的事前確率の推定に失敗（DBアクセスエラー）: {e}")
+        return defaults
+
+    if len(rows) < 5:
+        # データが少なすぎる場合はデフォルト
+        return defaults
+
+    # Insolvent_Status だけ case data から推定可能（net_assets < 0 で判定）
+    insolvent_count = 0
+    valid_count = 0
+    for (data_json,) in rows:
+        try:
+            data = json.loads(data_json)
+            inputs = data.get("inputs") or data.get("result") or {}
+            net_assets = inputs.get("net_assets")
+            if net_assets is not None:
+                valid_count += 1
+                if float(net_assets) < 0:
+                    insolvent_count += 1
+        except (json.JSONDecodeError, ValueError, TypeError):
+            continue
+
+    priors = dict(defaults)
+    if valid_count >= 5:
+        p_insolvent = _jeffreys_posterior(insolvent_count, valid_count)
+        priors["Insolvent_Status"] = [round(1.0 - p_insolvent, 4), round(p_insolvent, 4)]
+        logger.info(
+            f"Insolvent_Status の事前確率を経験的推定: "
+            f"P(True)={p_insolvent:.3f} (n={valid_count}, 債務超過={insolvent_count}件)"
+        )
+
+    return priors
+
+
 # キャッシュ（起動時に1回だけ構築）
 _bn_model_cache = None
 _bn_infer_cache = None
 
 
-def get_bn_engine():
-    """モデルと推論エンジンを返す（初回のみ構築）"""
+def get_bn_engine(use_empirical_priors: bool = True):
+    """
+    モデルと推論エンジンを返す（初回のみ構築）。
+    use_empirical_priors=True の場合、過去データからジェフリーズ事前分布で事前確率を推定する。
+    """
     global _bn_model_cache, _bn_infer_cache
     if _bn_model_cache is None:
-        _bn_model_cache, _bn_infer_cache = build_bn_model()
+        custom_priors = estimate_empirical_priors() if use_empirical_priors else None
+        _bn_model_cache, _bn_infer_cache = build_bn_model(custom_priors=custom_priors)
     return _bn_model_cache, _bn_infer_cache
 
 

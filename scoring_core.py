@@ -23,6 +23,36 @@ from app_logger import log_warning
 
 APPROVAL_LINE = 71  # 承認ライン（71点以上で承認圏内）
 
+# 担当者直感スコア（1-5）の最大補正幅（点）
+INTUITION_MAX_ADJ = 3.0
+
+# SHAP: 各係数キーの日本語ラベル
+_FEATURE_LABELS_JA = {
+    "intercept":          "基本スコア（切片）",
+    "ind_medical":        "業種（医療・福祉）",
+    "ind_transport":      "業種（運輸・運送）",
+    "ind_construction":   "業種（建設）",
+    "ind_manufacturing":  "業種（製造）",
+    "ind_service":        "業種（卸売・サービス）",
+    "sales_log":          "売上規模",
+    "bank_credit_log":    "銀行信用枠",
+    "lease_credit_log":   "リース信用枠",
+    "op_profit":          "営業利益",
+    "ord_profit":         "経常利益",
+    "net_income":         "純利益",
+    "gross_profit":       "粗利益",
+    "machines":           "機械装置",
+    "other_assets":       "その他資産",
+    "rent":               "家賃",
+    "depreciation":       "減価償却費",
+    "dep_expense":        "減価償却費（費用）",
+    "rent_expense":       "賃借料（費用）",
+    "grade_4_6":          "格付（4-6ランク）",
+    "grade_watch":        "格付（要注意）",
+    "grade_none":         "格付（無格付）",
+    "contracts":          "過去取引件数",
+}
+
 
 def _safe_float(val, default: float = 0.0) -> float:
     """安全なfloat変換。Noneや変換不能な値はdefaultを返す。"""
@@ -117,6 +147,108 @@ def _calculate_z(data, coeff_set):
     return z
 
 
+def compute_score_contributions(data: dict, coeff_set: dict) -> list[dict]:
+    """
+    線形モデルの各特徴量の寄与度（SHAP近似）を計算して返す。
+    ロジスティック回帰では β_i * x_i がそのままロジット空間での寄与に対応する。
+
+    Returns:
+        [{"feature": str, "label_ja": str, "contribution": float}, ...] を
+        |contribution| 降順でソートしたリスト。
+    """
+    import math
+
+    contributions = []
+
+    # 切片
+    intercept_val = coeff_set.get("intercept", 0)
+    contributions.append({
+        "feature": "intercept",
+        "label_ja": _FEATURE_LABELS_JA["intercept"],
+        "contribution": intercept_val,
+    })
+
+    major = data.get("industry_major") or ""
+    # 業種フラグ（いずれか1つが有効）
+    ind_flags = {
+        "ind_medical":       ("医療" in major or "福祉" in major or major.startswith("P")),
+        "ind_transport":     ("運輸" in major or major.startswith("H")),
+        "ind_construction":  ("建設" in major or major.startswith("D")),
+        "ind_manufacturing": ("製造" in major or major.startswith("E")),
+        "ind_service":       (any(x in major for x in ["卸売", "小売", "サービス"]) or
+                              (bool(major) and major[0] in ["I", "K", "M", "R"])),
+    }
+    for feat, active in ind_flags.items():
+        coeff_val = coeff_set.get(feat, 0)
+        if active and coeff_val != 0:
+            contributions.append({
+                "feature": feat,
+                "label_ja": _FEATURE_LABELS_JA.get(feat, feat),
+                "contribution": coeff_val,
+            })
+
+    # 連続値特徴量
+    def _log_contrib(key_data, key_coeff, log_func=np.log1p):
+        val = data.get(key_data) or 0
+        coeff_val = coeff_set.get(key_coeff, 0)
+        if val > 0 and coeff_val != 0:
+            return coeff_val * log_func(val)
+        return 0.0
+
+    for data_key, coeff_key in [("nenshu", "sales_log"),
+                                  ("bank_credit", "bank_credit_log"),
+                                  ("lease_credit", "lease_credit_log")]:
+        c = _log_contrib(data_key, coeff_key)
+        if c != 0:
+            contributions.append({
+                "feature": coeff_key,
+                "label_ja": _FEATURE_LABELS_JA.get(coeff_key, coeff_key),
+                "contribution": c,
+            })
+
+    for linear_key in ["op_profit", "ord_profit", "net_income", "machines",
+                        "other_assets", "rent", "gross_profit", "depreciation",
+                        "dep_expense", "rent_expense"]:
+        val = data.get(linear_key) or 0
+        coeff_val = coeff_set.get(linear_key, 0)
+        if val != 0 and coeff_val != 0:
+            contributions.append({
+                "feature": linear_key,
+                "label_ja": _FEATURE_LABELS_JA.get(linear_key, linear_key),
+                "contribution": coeff_val * val,
+            })
+
+    # 格付フラグ
+    grade = data.get("grade") or "1-3"
+    grade_flags = {
+        "grade_4_6":    "4-6" in grade,
+        "grade_watch":  "要注意" in grade,
+        "grade_none":   "無格付" in grade,
+    }
+    for feat, active in grade_flags.items():
+        coeff_val = coeff_set.get(feat, 0)
+        if active and coeff_val != 0:
+            contributions.append({
+                "feature": feat,
+                "label_ja": _FEATURE_LABELS_JA.get(feat, feat),
+                "contribution": coeff_val,
+            })
+
+    # 取引件数
+    contracts_val = data.get("contracts") or 0
+    contracts_coeff = coeff_set.get("contracts", 0)
+    if contracts_val != 0 and contracts_coeff != 0:
+        contributions.append({
+            "feature": "contracts",
+            "label_ja": _FEATURE_LABELS_JA["contracts"],
+            "contribution": contracts_coeff * contracts_val,
+        })
+
+    # |寄与度| 降順でソート
+    contributions.sort(key=lambda x: abs(x["contribution"]), reverse=True)
+    return contributions
+
+
 def run_quick_scoring(inputs: dict) -> dict:
     """
     入力辞書からスコア・判定・比較文を計算して返す。
@@ -193,9 +325,24 @@ def run_quick_scoring(inputs: dict) -> dict:
     score_borrower = score_prob * 100
 
     w_borrower, w_asset, _, _ = get_score_weights()
-    final_score = w_borrower * score_borrower + w_asset * asset_score
-    final_score = max(0, min(100, round(final_score, 1)))
+    base_score = w_borrower * score_borrower + w_asset * asset_score
+    base_score = max(0, min(100, round(base_score, 1)))
+
+    # ── 担当者直感スコア補正（1-5スケール、中立=3、±INTUITION_MAX_ADJ 点まで）──
+    intuition_score = _safe_float(inputs.get("intuition_score"), default=0)
+    intuition_adj = 0.0
+    if 1.0 <= intuition_score <= 5.0:
+        # 3を中立として ±INTUITION_MAX_ADJ 点に線形マッピング
+        intuition_adj = round((intuition_score - 3.0) / 2.0 * INTUITION_MAX_ADJ, 2)
+
+    final_score = max(0, min(100, round(base_score + intuition_adj, 1)))
     hantei = "承認圏内" if final_score >= APPROVAL_LINE else "要審議"
+
+    # 直感スコアが高いのに要審議 → 上長確認フラグ
+    manager_review_flag = (intuition_score >= 4.0) and (final_score < APPROVAL_LINE)
+
+    # ── SHAP近似: 各特徴量の寄与度を計算 ──
+    score_contributions = compute_score_contributions(data_scoring, coeffs)
 
     # 物件スコアのデフォルト使用フラグ
     asset_score_warnings = []
@@ -204,6 +351,7 @@ def run_quick_scoring(inputs: dict) -> dict:
 
     return {
         "score": final_score,
+        "score_base": base_score,
         "hantei": hantei,
         "comparison": comparison,
         "user_op_margin": user_op_margin,
@@ -216,4 +364,10 @@ def run_quick_scoring(inputs: dict) -> dict:
         "approval_line": APPROVAL_LINE,
         "used_default_asset_score": used_default_asset_score,
         "asset_score_warnings": asset_score_warnings,
+        # 直感スコア関連
+        "intuition_score": intuition_score,
+        "intuition_adj": intuition_adj,
+        "manager_review_flag": manager_review_flag,
+        # SHAP近似: 各特徴量の寄与度（上位5件はUI表示に活用）
+        "score_contributions": score_contributions,
     }

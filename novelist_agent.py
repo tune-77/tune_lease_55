@@ -134,7 +134,7 @@ def _backup_db_before_write() -> None:
             files = sorted([f for f in os.listdir(backup_dir) if f.startswith("novelist_agent_prewrite.db.")], reverse=True)
             for old in files[5:]:
                 try: os.remove(os.path.join(backup_dir, old))
-                except: pass
+                except OSError: pass
     except Exception:
         pass
 

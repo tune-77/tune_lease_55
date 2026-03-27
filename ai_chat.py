@@ -34,6 +34,26 @@ def _get_gemini_key_from_secrets() -> str:
     return ""
 
 
+def get_gemini_api_key() -> str:
+    """
+    Gemini APIキーを優先順位に従って取得する。
+    優先順位: 環境変数 > secrets.toml > session_state
+    環境変数を最優先にすることで、デプロイ環境のシークレット管理を安全に行える。
+    """
+    # 1. 環境変数を最優先（本番環境・CIでの安全な設定）
+    env_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if env_key:
+        return env_key
+    # 2. secrets.toml（ローカル開発・Streamlit Cloud）
+    secrets_key = _get_gemini_key_from_secrets()
+    if secrets_key:
+        return secrets_key
+    # 3. セッション状態（UIで手動入力された場合）
+    if hasattr(st, "session_state"):
+        return (st.session_state.get("gemini_api_key") or "").strip()
+    return ""
+
+
 def get_ollama_model() -> str:
     """
     実際に使用するモデル名を取得するヘルパー。
@@ -774,7 +794,7 @@ def _stream_ollama(prompt: str, model: str) -> Generator[str, None, None]:
 def _stream_gemini(prompt: str) -> Generator[str, None, None]:
     """Gemini API で生成し、全文を1回 yield する（REST API はストリームの実態は一括返却）。
     APIキー未設定またはエラー時は空文字を yield して終了する。"""
-    api_key = _get_gemini_key_from_secrets() or os.environ.get(GEMINI_API_KEY_ENV, "").strip()
+    api_key = get_gemini_api_key()
     if not api_key:
         return
     try:
@@ -814,7 +834,7 @@ def stream_llm(prompt: str, model: str | None = None) -> Generator[str, None, No
         except Exception:
             pass
         return
-    api_key = _get_gemini_key_from_secrets() or os.environ.get(GEMINI_API_KEY_ENV, "").strip()
+    api_key = get_gemini_api_key()
     if api_key and engine == "gemini":
         yield from _stream_gemini(prompt)
     else:

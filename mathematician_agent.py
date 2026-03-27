@@ -19,6 +19,7 @@ import os
 import sqlite3
 import datetime
 import statistics
+import threading
 import time
 from typing import Any
 
@@ -1156,3 +1157,87 @@ def run_weekly_cycle(progress_callback=None) -> str:
     if progress_callback:
         progress_callback("完了！", 1.0)
     return report
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# バックグラウンド実行（UIブロック防止）
+# ══════════════════════════════════════════════════════════════════════════════
+
+_bg_state: dict = {"running": False, "done": False, "result": None, "error": None}
+_bg_lock = threading.Lock()
+
+
+def run_weekly_cycle_async(progress_callback=None) -> bool:
+    """
+    run_weekly_cycle() をバックグラウンドスレッドで実行する。
+    arXivスクレイピング等の同期HTTP処理がStreamlit UIをブロックしないようにする。
+
+    Returns:
+        True: バックグラウンド実行を開始した
+        False: 既に実行中（重複起動を防止）
+    """
+    with _bg_lock:
+        if _bg_state["running"]:
+            return False
+        _bg_state.update({"running": True, "done": False, "result": None, "error": None})
+
+    def _worker():
+        try:
+            report = run_weekly_cycle(progress_callback=progress_callback)
+            with _bg_lock:
+                _bg_state["result"] = report
+        except Exception as e:
+            with _bg_lock:
+                _bg_state["error"] = str(e)
+        finally:
+            with _bg_lock:
+                _bg_state["running"] = False
+                _bg_state["done"] = True
+
+    thread = threading.Thread(target=_worker, daemon=True, name="mathematician-weekly-cycle")
+    thread.start()
+    return True
+
+
+def get_weekly_cycle_status() -> dict:
+    """
+    バックグラウンド実行の状態を返す。
+
+    Returns:
+        {
+            "running": bool,   # 実行中かどうか
+            "done": bool,      # 完了したかどうか
+            "result": str | None,   # 完了時のレポート文字列
+            "error": str | None,    # エラー時のメッセージ
+        }
+    """
+    with _bg_lock:
+        return dict(_bg_state)
+
+
+def collect_from_arxiv_async(progress_callback=None) -> bool:
+    """
+    collect_from_arxiv() のみをバックグラウンドで実行する軽量版。
+    UIから「今すぐ論文収集」ボタンを押した場合など単発実行に使う。
+    """
+    with _bg_lock:
+        if _bg_state["running"]:
+            return False
+        _bg_state.update({"running": True, "done": False, "result": None, "error": None})
+
+    def _worker():
+        try:
+            results = collect_from_arxiv(progress_callback=progress_callback)
+            with _bg_lock:
+                _bg_state["result"] = f"{len(results)}件の論文を収集しました"
+        except Exception as e:
+            with _bg_lock:
+                _bg_state["error"] = str(e)
+        finally:
+            with _bg_lock:
+                _bg_state["running"] = False
+                _bg_state["done"] = True
+
+    thread = threading.Thread(target=_worker, daemon=True, name="mathematician-arxiv-fetch")
+    thread.start()
+    return True

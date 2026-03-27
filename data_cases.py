@@ -135,7 +135,7 @@ def find_similar_past_cases(selected_sub: str, user_equity_ratio: float, max_cou
                 try:
                     case_data = json.loads(data_json)
                     candidates.append({"diff": diff, "case": case_data, "equity": eq_val, "status": status, "score": score})
-                except:
+                except (json.JSONDecodeError, ValueError):
                     pass
     except Exception:
         pass
@@ -424,12 +424,12 @@ def save_case_log(data):
         
     try:
         score_val = float(score) if score is not None else None
-    except:
+    except (TypeError, ValueError):
         score_val = None
 
     try:
         user_eq_val = float(user_eq) if user_eq is not None else None
-    except:
+    except (TypeError, ValueError):
         user_eq_val = None
         
     try:
@@ -486,7 +486,7 @@ def update_case_field(case_id: str, key: str, value: object) -> bool:
             data_json = row[0]
             try:
                 case_data = json.loads(data_json)
-            except:
+            except (json.JSONDecodeError, ValueError):
                 case_data = {}
 
             # JSON側の更新

@@ -12,7 +12,7 @@ def render_math_proposals():
     try:
         with open(prop_path, "r", encoding="utf-8") as f:
             props = json.load(f)
-    except: return
+    except (json.JSONDecodeError, OSError): return
     pending = [p for p in props if p.get("status") == "pending"]
     if not pending: return
     st.markdown("### 🔬 Dr.Algoからの最適化提案")
