@@ -260,11 +260,6 @@ def render_apply_form(
     asset_category = ASSET_ID_TO_CATEGORY.get(selected_asset_id)
     # ────────────────────────────────────────────────────────────────────────
 
-    # 物件スコア詳細評価（フォームの外側に配置: フォーム内ではボタンが制限されるため）
-    from components.asset_score_detail import render_asset_score_detail
-    if asset_category:
-        render_asset_score_detail(asset_category, selected_asset_id, asset_name)
-
     with st.form("shinsa_form"):
         st.warning(
             "📌 **必須** 売上高・総資産は **1以上** を入力してください（未入力だと判定がブロックされます）。\n\n"
@@ -404,8 +399,6 @@ def render_apply_form(
         "deal_occurrence": deal_occurrence,
         "asset_category": asset_category,           # "車両" / "医療機器" / "IT機器" / "産業機械" or None
         "intuition": intuition,                     # 担当者の直感スコア（1〜5、デフォルト3）
-        "asset_use_detail":   st.session_state.get("asd_use_detail", False),
-        "asset_score_detail": st.session_state.get("asd_detail_score"),
     }
 
 def render_quick_edit_panel(jsic_data, lease_assets_list):
