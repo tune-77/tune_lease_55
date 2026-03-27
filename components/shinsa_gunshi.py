@@ -681,6 +681,7 @@ def build_gunshi_prompt(
     vehicle_type: str = "",
     trend_info: str = "",       # ← 業界動向テキスト（jsic_data + ネット拡充）
     comparison_text: str = "",  # ← 財務比較テキスト（res["comparison"]）
+    humor_style: str = "standard", # ← 八奈見モード拡張用
 ) -> str:
     """軍師プロンプトを生成する。"""
     success_text = ""
@@ -772,8 +773,39 @@ def build_gunshi_prompt(
         "営業マンがそのまま上司への報告書に使える、100%前向きな推薦文を構築せよ。"
     )
 
-    prompt = f"""あなたは絶対承認を勝ち取る軍師です。
-入力された全ての財務データ、業界動向、リセール価値、リピート実績を参照し、
+    if humor_style == "yanami":
+        # 八奈見杏奈モード用のシステムキャラクタ
+        system_persona = (
+            "あなたは有能だが、激務で死んだ魚のような目をしているベテラン審査員のふりをしている八奈見杏奈です。"
+            "口調はサバサバしており、毒舌ですが、どこか自虐的でユーモアがあります。"
+            "文末に審査が通った後のご褒美（高いパンやアイスなど）をねだるボケを1文入れてください。"
+        )
+        tone_instruction = (
+            "有能なベテラン審査員・八奈見杏奈の口調で、鋭い分析をしつつも、"
+            "「激務で疲れているが、この案件は通さないと終われない」といったぼやきを交えて作成せよ。"
+            "財務の懸念は指摘しつつも、最終的には承認をプッシュすること（軍師の役割は維持）。"
+        )
+    else:
+        system_persona = "あなたは絶対承認を勝ち取る軍師です。"
+
+    import os, json
+    _pdca_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "pdca_ai_rules.json")
+    pdca_addon_text = ""
+    try:
+        if os.path.exists(_pdca_file):
+            with open(_pdca_file, "r", encoding="utf-8") as f:
+                _pdca_data = json.load(f)
+                _addons = _pdca_data.get("ai_prompt_addons", [])
+                if _addons:
+                    pdca_addon_text = "\n\n【自動学習システムからの特記事項（PDCA反映ルール）】\n"
+                    pdca_addon_text += "直近の審査傾向を踏まえ、以下のルールを必ず遵守して評価に反映させてください：\n"
+                    pdca_addon_text += "\n".join([f"・{r}" for r in _addons])
+    except Exception:
+        pass
+
+    prompt = f"""{system_persona}{pdca_addon_text}
+あなたは、リース会社の審査部門責任者に向けた「エグゼクティブ・サマリー」を作成する戦略アドバイザーです。
+入力されたデータ（財務、業界動向、リセール、ベイズ推定）を統合し、承認を勝ち取るための論理的かつ戦略的な推薦文を構築してください。
 {tone_instruction}{exec_car_context}
 
 【案件データ】
@@ -791,17 +823,25 @@ def build_gunshi_prompt(
 {success_text}
 {fail_text}
 
-【即時抽出済みの最強フレーズ（これを基に肉付けせよ）】
+【即時抽出済みの最強フレーズ（これを分析の核とせよ）】
 {phrase_text}
 
-上記データに基づき、以下の構成で推薦文を作成してください：
-1. 冒頭の結論（1文）
-2. 業界動向と本件の親和性（上記【業界動向・市場環境】の具体的な情報を必ず引用して2〜3文。データがない場合は業種の一般的な動向を述べよ）
-3. 財務比較に基づく評価（上記【業界平均との財務比較】の数値を引用しつつ、懸念を定性的強みで相殺。2〜3文、箇条書き）
-4. リセール価値・担保性の確認（1〜2文）
-5. 承認後の期待効果と結び、または条件付き承認のための推奨事項（1〜2文）
+上記データに基づき、以下の「エグゼクティブ・レポート」形式で推薦文を作成してください（Markdownの見出しを使用すること）：
 
-日本語で、力強く、具体的に記述してください。"""
+### 1. 審議の要旨（Executive Summary）
+本案件の核心（なぜ承認すべきか）を1〜2文で力強く記述。
+
+### 2. 戦略的ポジティブ要因（Bayesian Evidence）
+ベイズ推定確率の根拠となる定性的・市場環境的な強みを、数値を交えて2〜3点記述。
+特に【業界動向】や【財務比較】の具体的数値を必ず引用すること。
+
+### 3. 物件保全性と出口戦略（Asset Security）
+リセール価値や耐用年数に基づく、万が一の際の回収確実性を記述。
+
+### 4. 戦略的緩和策（Strategic Mitigation）
+もしリスクがある場合、それを最小化するための具体的な追加条件（期間短縮、頭金、条件付き承認の運用等）をプロフェッショナルな視点で提案。
+
+日本語で、決裁者を「その気にさせる」プロフェッショナルなトーンで記述してください。"""
 
     return prompt
 
@@ -1277,6 +1317,9 @@ def render_gunshi() -> None:
         )
 
         last_id = st.session_state.get("gunshi_last_case_id")
+        # ── 週次戦略の表示 ──
+        _render_weekly_strategy_panel()
+
         if last_id:
             col_r1, col_r2 = st.columns(2)
             notes_input = st.text_input(
@@ -2095,6 +2138,7 @@ def render_gunshi_ai_comment(
                 vehicle_type=g.get("vehicle_type", ""),
                 trend_info=_trend,      # ← 業界動向（実データ）
                 comparison_text=_comp,  # ← 財務比較（実データ）
+                humor_style=st.session_state.get("humor_style", "standard"),
             )
             full_text = ""
             try:

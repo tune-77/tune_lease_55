@@ -82,6 +82,14 @@ _HUMOR_COMMENTS = [
     "入力中は難しく感じても、後で振り返ると意外とシンプルな話だったりします。",
 ]
 
+_HUMOR_COMMENTS_YANAMI = [
+    "もう、数字見てるだけでお腹空いてきた……。あ、仕事中だったわね。",
+    "財務諸表って、たまにホラー映画より怖いことあるわよね。……今のがそうってわけじゃないけど。",
+    "私の失恋の回数よりは、この会社の利益の方がずっと多いわね。……当たり前か。",
+    "入力お疲れ様。終わったら一緒に美味しいパンでも食べに行かない？……自腹だけど。",
+    "審査って、結局は「信じるか信じないか」みたいなところあるわよね。私は信じて裏切られる専門だけど。",
+]
+
 # ── ステップ別リアクション ───────────────────────────────────────────────
 def _get_step_reaction(sid: str, wiz_data: dict) -> str:
     """ステップ完了時に入力値を見て返す一言コメント。空文字なら表示しない。"""
@@ -315,17 +323,29 @@ _INDUSTRY_HUMOR: dict[str, list[str]] = {
     ],
 }
 
+_INDUSTRY_HUMOR_YANAMI: dict[str, list[str]] = {
+    "D 建設業": ["建設業ね。土台作りは大事よ。私の人生、土台から設計ミスしてた気がするけど。", "あー、建設案件。最近多いわよね。みんな頑張ってるんだなあ。私以外。"],
+    "E 製造業": ["製造業！油の匂い、嫌いじゃないよ。……あ、でも高い服着てる時は別ね。", "機械リース？ どんどん新しいの入れて、生産性上げちゃって。私のやる気も上げてほしいわ。"],
+    "G 情報通信業": ["IT系ね。横文字が多くてたまに意識飛びそうになるわ。……お腹空いた。", "情報通信って、目に見えないものを売るのよね。私の元カレへの信頼も目に見えなかったわ。"],
+    "H 運輸業，郵便業": ["運送屋さんは日本の大動脈よ。止まったら困る。私の給料止まったらもっと困るけど。", "トラックね。私もたまに、どこか遠くに連れてってほしいって思うわ。……助手席専門で。"],
+    "M 宿泊業，飲食サービス業": ["飲食業！美味しいお店なら、審査に通る確率上がるかも。……冗談よ？", "宿泊系かー。たまには贅沢してホテルに泊まりたいわ。……一人で。"],
+    "P 医療，福祉": ["医療系。先生たちは数字に細かいから、こっちも緊張するわ。……背筋伸びる。", "福祉ね。誰かを支えるって、尊いことよ。私も誰かに支えられたい。……主に経済的に。"],
+}
+
 
 def _get_industry_humor(major: str) -> str:
-    comments = _INDUSTRY_HUMOR.get(major)
+    style = st.session_state.get("humor_style", "standard")
+    source = _INDUSTRY_HUMOR_YANAMI if style == "yanami" else _INDUSTRY_HUMOR
+    
+    comments = source.get(major)
     if not comments:
-        for key, vals in _INDUSTRY_HUMOR.items():
+        for key, vals in source.items():
             if any(c in major for c in key.split()) or any(c in key for c in major.split()):
                 comments = vals
                 break
     if comments:
         return random.choice(comments)
-    return f"「{major}」ですね。全力でサポートします！"
+    return f"「{major}」ね。しっかり見させてもらうわ。" if style == "yanami" else f"「{major}」ですね。全力でサポートします！"
 
 
 # ── ナビゲーションボタン ─────────────────────────────────────────────────────
@@ -360,7 +380,9 @@ def _advance(step: int, question: str, answer: str, updates: dict) -> None:
     # ランダムユーモア（既存の2ステップ）
     humor_comment = ""
     if step in st.session_state.get("wiz_humor_steps", []):
-        humor_comment = random.choice(_HUMOR_COMMENTS)
+        style = st.session_state.get("humor_style", "standard")
+        source = _HUMOR_COMMENTS_YANAMI if style == "yanami" else _HUMOR_COMMENTS
+        humor_comment = random.choice(source)
 
     # ステップ別リアクション（入力値に応じた一言）
     sid = _STEPS[step]["id"] if step < len(_STEPS) else ""

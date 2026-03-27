@@ -153,6 +153,16 @@ INDUSTRY_VOLATILITY = {
         "debt_vol": 0.09, "revenue_drift": 0.02,
         "description": "燃料費・人件費の影響を受ける"
     },
+    "医療・福祉": {
+        "revenue_vol": 0.08, "margin_vol": 0.03, "equity_vol": 0.015,
+        "debt_vol": 0.06, "revenue_drift": 0.01,
+        "description": "極めて安定しており、デフォルトリスクは低い傾向"
+    },
+    "商用車": {
+        "revenue_vol": 0.14, "margin_vol": 0.05, "equity_vol": 0.03,
+        "debt_vol": 0.10, "revenue_drift": 0.02,
+        "description": "物流需要に直結。リセール価値が審査の鍵"
+    },
 }
 
 DEFAULT_VOLATILITY = {
@@ -170,7 +180,7 @@ INDUSTRY_MAJOR_MAP: Dict[str, str] = {
     "E": "製造業",
     "F": "製造業",           # 電気・ガス
     "G": "運輸・物流",       # 情報通信
-    "H": "運輸・物流",
+    "H": "商用車",           # 運輸・郵便（商用車リース中心と想定）
     "I": "卸売業",
     "J": "小売業",
     "K": "飲食・サービス",   # 金融・保険
@@ -178,11 +188,11 @@ INDUSTRY_MAJOR_MAP: Dict[str, str] = {
     "M": "IT・情報通信",     # 学術・専門
     "N": "飲食・サービス",   # 宿泊・飲食
     "O": "飲食・サービス",   # 生活関連
-    "P": "飲食・サービス",   # 教育
-    "Q": "飲食・サービス",   # 医療・福祉
-    "R": "飲食・サービス",   # 複合サービス
-    "S": "飲食・サービス",   # その他サービス
-    "T": "飲食・サービス",   # 公務
+    "P": "医療・福祉",       # 医療
+    "Q": "医療・福祉",       # 福祉・複合
+    "R": "飲食・サービス",   # サービス（他）
+    "S": "飲食・サービス",
+    "T": "飲食・サービス",
 }
 
 def map_industry_from_major(industry_major: str) -> str:
@@ -241,7 +251,7 @@ class PortfolioResult:
 
 class AdvancedMonteCarloEngine:
 
-    def __init__(self, n_simulations: int = 10000, seed: int = 42):
+    def __init__(self, n_simulations: int = 1000, seed: int = 42):
         self.n_sim = n_simulations
         np.random.seed(seed)
 
@@ -500,7 +510,7 @@ def make_company_chart(result: SimResult) -> bytes:
                  ha='left' if val >= 0 else 'right', fontsize=10, fontweight='bold')
         kw = {'fontproperties': jp_fp} if jp_fp else {'fontsize': 10}
         ax4.text(-max_abs * 1.08, bar.get_y() + bar.get_height() / 2,
-                 lbl, va='center', ha='right', fontsize=10, **kw)
+                 lbl, va='center', ha='right', **kw)
     ax4.set_title('感度分析(スコアへの影響)', fontsize=12, fontweight='bold',
                   **({'fontproperties': jp_fp} if jp_fp else {}))
     ax4.set_xlabel('スコア変化量', fontsize=10,

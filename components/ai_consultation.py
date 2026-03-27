@@ -97,34 +97,40 @@ def _render_tab_chat(selected_sub: str, jsic_data: dict) -> None:
     )
     _gemini_model = st.session_state.get("gemini_model", GEMINI_MODEL_DEFAULT)
 
+    # ── B: 審査直後のAI所見（自動生成は廃止し、手動ボタンへ集約） ──────────────────────────
     if st.session_state.get("_need_auto_comment") and res:
+        # 自動フラグのみ消す。生成自体は下のボタンで行う
         st.session_state["_need_auto_comment"] = False
-        if _gemini_key:
-            # Geminiで高速生成（Ollama選択中でもGeminiキーがあれば使う）
-            with st.spinner("AIが所見を作成中..."):
-                _prompt = _build_quick_comment_prompt(res)
-                _ans = _chat_for_thread(
-                    "gemini", "", [{"role": "user", "content": _prompt}],
-                    timeout_seconds=30, api_key=_gemini_key, gemini_model=_gemini_model,
-                )
-                comment = (_ans.get("message") or {}).get("content", "") or ""
-            st.session_state["auto_ai_comment"] = comment
-        elif st.session_state.get("ai_engine") == "gemini":
-            pass  # Gemini選択だがキーなし → 何もしない
-        # else: Ollama + キーなし → 下の手動ボタンで対応
 
     if st.session_state.get("auto_ai_comment"):
-        st.info(f"💬 **AI所見（自動）**\n\n{st.session_state['auto_ai_comment']}")
+        st.info(f"💬 **AI所見**\n\n{st.session_state['auto_ai_comment']}")
         if st.button("所見を消す", key="clear_auto_comment", help="この所見を非表示にします"):
             st.session_state["auto_ai_comment"] = ""
             st.rerun()
-    elif res and not _gemini_key and is_ai_available():
-        # Geminiキーなし・Ollama のみ: 手動ボタン
-        if st.button("🤖 AIに所見を求める（Ollama）", key="manual_auto_comment", use_container_width=True):
-            with st.spinner("AIが所見を作成中（少し時間がかかります）..."):
-                comment = get_ai_quick_comment(res)
-            st.session_state["auto_ai_comment"] = comment or ""
-            st.rerun()
+    elif res:
+        # 常に手動ボタンを表示（自動によるフリーズを回避）
+        _btn_label = "🤖 AIに所見を生成させる"
+        if not _gemini_key:
+            _btn_label += "（Ollama）"
+        
+        if st.button(_btn_label, key="manual_auto_comment_v2", use_container_width=True, type="primary"):
+            with st.spinner("AIが所見を作成中..."):
+                _prompt = _build_quick_comment_prompt(res)
+                try:
+                    # ここのフェッチはボタン押下後なのでブロッキングでも許容される
+                    _ans = _chat_for_thread(
+                        st.session_state.get("ai_engine", "gemini") if _gemini_key else "ollama", 
+                        get_ollama_model(), 
+                        [{"role": "user", "content": _prompt}],
+                        timeout_seconds=30, 
+                        api_key=_gemini_key, 
+                        gemini_model=_gemini_model,
+                    )
+                    comment = (_ans.get("message") or {}).get("content", "") or ""
+                    st.session_state["auto_ai_comment"] = comment
+                    st.rerun()
+                except Exception as _e:
+                    st.error(f"所見生成中にエラーが発生しました: {_e}")
 
     # ── A: ワンタップ質問ボタン ────────────────────────────────────────────
     if res:

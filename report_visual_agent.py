@@ -41,22 +41,25 @@ def collect_report_data(session_state: Any) -> dict:
     qual_result = session_state.get("qualitative_analysis_result") or {}
     qual_score  = min(100.0, max(0.0, float((qual_result or {}).get("total_score", 0) or 0)))
 
-    # 財務指標
-    user_eq = float(res.get("user_eq", 0) or 0)
-    user_op = float(res.get("user_op", 0) or 0)
+    # 財務指標 (追加)
+    bench_eq = float(res.get("bench_eq", 0) or 0)
+    bench_op = float(res.get("bench_op", 0) or 0)
+    contract_p = float(res.get("contract_prob", 0) or 0)
+    roa = float(res.get("roa", 0) or 0)
 
     # モンテカルロ
     mc_data: dict = {}
     if mc_pf:
         mc_data = {
-            "default_prob":       float(getattr(mc_pf, "weighted_default_prob", 0) or 0),
-            "concentration_risk": float(getattr(mc_pf, "concentration_risk",    0) or 0),
-            "expected_loss":      float(getattr(mc_pf, "expected_loss",         0) or 0),
-            "portfolio_var_95":   float(getattr(mc_pf, "portfolio_var_95",      0) or 0),
+            "weighted_default_prob": float(getattr(mc_pf, "weighted_default_prob", 0) or 0),
+            "concentration_risk":    float(getattr(mc_pf, "concentration_risk",    0) or 0),
+            "expected_loss":         float(getattr(mc_pf, "expected_loss",         0) or 0),
+            "portfolio_var_95":      float(getattr(mc_pf, "portfolio_var_95",      0) or 0),
         }
 
     # ベイジアンネットワーク
     bn_result        = session_state.get("_bn_s_result") or {}
+    bn_evidence      = session_state.get("_bn_s_evidence") or {}
     bn_approval_prob = float((bn_result or {}).get("承認確率", 0) or 0)
 
     # AIコメント（軍師テキストのキャッシュがあれば）
@@ -106,8 +109,13 @@ def collect_report_data(session_state: Any) -> dict:
         "industry_sub":    industry_sub,
         "user_eq":         user_eq,
         "user_op":         user_op,
+        "bench_eq":        bench_eq,
+        "bench_op":        bench_op,
+        "contract_prob":   contract_p,
+        "roa":             roa,
         "mc_data":         mc_data,
         "bn_approval_prob": bn_approval_prob,
+        "bn_evidence":     bn_evidence,
         "ai_comment":      ai_comment,
         "news_items":      news_items,
         "subsidy_data":    subsidy_data,
@@ -280,10 +288,50 @@ def generate_html_report(data: dict) -> str:
 
     # レーダーチャート
     radar_svg = _radar_svg(
-        [score, asset_s, borrow_s, qual_s, min(100, bn_prob)],
-        ["総合", "物件", "財務", "定性", "BN"],
+        [score, asset_s, borrow_s, qual_s, min(100.0, bn_prob)],
+        ["総合", "物件", "財務", "定性", "BN推定"],
         260,
     )
+
+    # BN Evidence HTML
+    bn_ev_html_parts = []
+    _EV_LABELS = {
+        "Insolvent_Status": "債務超過回避",
+        "Main_Bank_Support": "メイン銀行支援",
+        "Related_Bank_Status": "関係者銀行取引",
+        "Related_Assets": "個人資産保有",
+        "Co_Lease": "協調リース",
+        "Parent_Guarantor": "親会社保証",
+        "Core_Business_Use": "本業不可欠物件",
+        "Asset_Liquidity": "物件流動性",
+        "Shorter_Lease_Term": "期間短縮",
+        "One_Time_Deal": "本件限り",
+    }
+    bn_evidence = data.get("bn_evidence", {}) or {}
+    for k, v in bn_evidence.items():
+        if v == 1:
+            lbl = _EV_LABELS.get(k, k)
+            bn_ev_html_parts.append(
+                f'<div class="metric-card"><div class="metric-label">{lbl}</div>'
+                f'<div class="metric-value good" style="font-size:14px;">証拠あり</div></div>'
+            )
+    bn_ev_html = "".join(bn_ev_html_parts) or '<p class="empty" style="grid-column: span 2;">※ 定性的なポジティブ・エビデンスの選択なし</p>'
+
+    # Industry Comparison
+    bench_eq = data.get("bench_eq", 0) or 0
+    bench_op = data.get("bench_op", 0) or 0
+    contract_p = data.get("contract_prob", 0) or 0
+    roa = data.get("roa", 0) or 0
+
+    def _cmp(val, bench):
+        val = float(val or 0)
+        bench = float(bench or 0)
+        if val > bench: return "良好", "#81c784"
+        if val < bench: return "要注目", "#ff6b6b"
+        return "同等", "#8899bb"
+
+    eq_label, eq_color = _cmp(user_eq, bench_eq)
+    op_label, op_color = _cmp(user_op, bench_op)
 
     # ニュース HTML
     news_html_parts = []
@@ -295,14 +343,14 @@ def generate_html_report(data: dict) -> str:
             f'<div class="news-body">{_esc(n["body"])}</div></div>'
             f'</div>'
         )
-    news_html = "".join(news_html_parts) or '<p class="empty">業界ニュースデータなし（審査後に再実行してください）</p>'
+    news_html = "".join(news_html_parts) or '<p class="empty" style="grid-column: span 2;">業界ニュースデータなし（審査後に再実行してください）</p>'
 
     # モンテカルロ
     if mc:
         mc_html = (
             '<div class="metric-grid">'
             f'<div class="metric-card"><div class="metric-label">加重平均デフォルト確率</div>'
-            f'<div class="metric-value risk">{mc.get("default_prob", 0)*100:.2f}%</div></div>'
+            f'<div class="metric-value risk">{mc.get("weighted_default_prob", 0)*100:.2f}%</div></div>'
             f'<div class="metric-card"><div class="metric-label">集中リスク</div>'
             f'<div class="metric-value">{mc.get("concentration_risk", 0)*100:.2f}%</div></div>'
             f'<div class="metric-card"><div class="metric-label">期待損失率</div>'
@@ -426,6 +474,41 @@ body{{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--tex
 
 <div class="wrap">
 
+<!-- ── Bayesian Approval Evidence ── -->
+<div class="sec-title">Bayesian Approval Evidence</div>
+<div class="metric-grid" style="margin-bottom: 20px;">
+  <div class="metric-card" style="grid-column: span 2;">
+    <div class="metric-label">ベイズ推定承認確率</div>
+    <div class="metric-value good">{bn_prob:.1f}%</div>
+    <div style="font-size:11px; color:var(--dim); margin-top:8px;">
+      財務スコアに定性的な証拠（エビデンス）を掛け合わせ、最終的な承認可能性を算出しています。
+    </div>
+  </div>
+  {bn_ev_html}
+</div>
+
+<!-- ── Financial Indicators & Industry Comparison ── -->
+<div class="sec-title">Financial Indicators & Industry Peer Comparison</div>
+<table class="fin-tbl">
+  <thead>
+    <tr><th>指標</th><th>実績値</th><th>業界平均</th><th>判定</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>自己資本比率</td><td>{user_eq:.1f}%</td><td>{bench_eq:.1f}%</td><td style="color:{eq_color}">{eq_label}</td>
+    </tr>
+    <tr>
+      <td>営業利益率</td><td>{user_op:.1f}%</td><td>{bench_op:.1f}%</td><td style="color:{op_color}">{op_label}</td>
+    </tr>
+    <tr>
+        <td>デフォルト確率 (PD)</td><td>{pd_pct:.2f}%</td><td>-</td><td>-</td>
+    </tr>
+    <tr>
+      <td>収益性指標 (ROA)</td><td>{roa:.1f}%</td><td>-</td><td>-</td>
+    </tr>
+  </tbody>
+</table>
+
 <!-- ── Executive Summary ── -->
 <div class="sec-title">Executive Summary</div>
 <div class="score-zone">
@@ -434,12 +517,8 @@ body{{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--tex
     <div class="score-big">{score:.1f}<span> / 100</span></div>
     <div class="kpi-row">
       <div class="kpi">
-        <span class="kpi-lbl">デフォルト確率</span>
-        <span class="kpi-val risk">{pd_pct:.2f}%</span>
-      </div>
-      <div class="kpi">
-        <span class="kpi-lbl">BN承認確率</span>
-        <span class="kpi-val good">{bn_prob:.1f}%</span>
+        <span class="kpi-lbl">成約確率</span>
+        <span class="kpi-val good">{contract_p:.1f}%</span>
       </div>
       <div class="kpi">
         <span class="kpi-lbl">年商</span>
@@ -453,44 +532,6 @@ body{{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--tex
   </div>
   {radar_svg}
 </div>
-
-<!-- ── Score Breakdown ── -->
-<div class="sec-title">Score Breakdown</div>
-<div class="sub-scores">
-  {gauge_asset}
-  {gauge_borrow}
-  {gauge_qual}
-</div>
-
-<!-- ── Risk Analysis ── -->
-<div class="sec-title">Risk Analysis — Monte Carlo Simulation</div>
-{mc_html}
-
-<!-- ── Financial Indicators ── -->
-<div class="sec-title">Financial Indicators</div>
-<table class="fin-tbl">
-  <thead>
-    <tr><th>指標</th><th>値</th><th>指標</th><th>値</th></tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>自己資本比率</td><td>{user_eq:.1f}%</td>
-      <td>営業利益率</td><td>{user_op:.1f}%</td>
-    </tr>
-    <tr>
-      <td>デフォルト確率（モデル）</td><td>{pd_pct:.2f}%</td>
-      <td>BNベイズ承認確率</td><td>{bn_prob:.1f}%</td>
-    </tr>
-    <tr>
-      <td>年商</td><td>{nenshu:,.0f}千円</td>
-      <td>純資産</td><td>{net_assets:,.0f}千円</td>
-    </tr>
-    <tr>
-      <td>取得費用</td><td>{acq_cost:,.0f}千円</td>
-      <td>リース期間</td><td>{lease_term}ヶ月</td>
-    </tr>
-  </tbody>
-</table>
 
 <!-- ── AI Executive Comment ── -->
 <div class="sec-title">AI Executive Comment</div>
@@ -673,13 +714,54 @@ def generate_pdf_report(data: dict) -> bytes:
     story.append(kpi_tbl)
     story.append(Spacer(1, 6 * mm))
 
+    # ─── Bayesian Approval Evidence ──────────────────────────────────────────
+    story.append(Paragraph("BAYESIAN APPROVAL EVIDENCE", h2_s))
+    story.append(hline())
+
+    bn_ev_data = [
+        [Paragraph(f"ベイズ推定承認確率：<font color='#81c784'>{bn_prob:.1f}%</font>", body_s), ""]
+    ]
+    
+    # 選択されたエビデンスをリスト化
+    _EV_LABELS = {
+        "Insolvent_Status": "債務超過回避",
+        "Main_Bank_Support": "メイン銀行支援",
+        "Related_Bank_Status": "関係者銀行取引",
+        "Related_Assets": "個人資産保有",
+        "Co_Lease": "協調リース",
+        "Parent_Guarantor": "親会社保証",
+        "Core_Business_Use": "本業不可欠物件",
+        "Asset_Liquidity": "物件流動性",
+        "Shorter_Lease_Term": "期間短縮",
+        "One_Time_Deal": "本件限り",
+    }
+    bn_evidence = data.get("bn_evidence", {}) or {}
+    active_ev = [f"・{_EV_LABELS.get(k, k)}：証拠あり" for k, v in bn_evidence.items() if v == 1]
+    
+    if active_ev:
+        for ev_str in active_ev:
+            bn_ev_data.append([Paragraph(ev_str, small_s), ""])
+    else:
+        bn_ev_data.append([Paragraph("※ 定性的なポジティブ・エビデンスの選択なし", body_d), ""])
+
+    bn_ev_tbl = Table(bn_ev_data, colWidths=["100%"])
+    bn_ev_tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, -1), CARD),
+        ("TOPPADDING",    (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 12),
+        ("GRID",          (0, 0), (-1, -1), 0.5, BG),
+    ]))
+    story.append(bn_ev_tbl)
+    story.append(Spacer(1, 6 * mm))
+
     # ─── Risk Analysis ──────────────────────────────────────────────────────
     story.append(Paragraph("RISK ANALYSIS — Monte Carlo Simulation", h2_s))
     story.append(hline())
     if mc:
         mc_rows = [
             ["指標", "値"],
-            ["加重平均デフォルト確率", f"{mc.get('default_prob', 0) * 100:.2f}%"],
+            ["加重平均デフォルト確率", f"{mc.get('weighted_default_prob', 0) * 100:.2f}%"],
             ["集中リスク",             f"{mc.get('concentration_risk', 0) * 100:.2f}%"],
             ["期待損失率",             f"{mc.get('expected_loss', 0) * 100:.2f}%"],
             ["VaR (95%)",              f"{mc.get('portfolio_var_95', 0) * 100:.2f}%"],

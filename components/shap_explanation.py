@@ -250,6 +250,17 @@ def render_shap_explanation(current_case: dict | None = None):
         "SHAPにより「何がどれだけ判定に影響したか」を可視化します。"
     )
 
+    # --- マニュアル実行ボタン ---
+    _case_id = current_case.get("id") if current_case else "null"
+    _trigger_key = f"shap_render_triggered_{_case_id}"
+    
+    if not st.session_state.get(_trigger_key):
+        if st.button("🚀 SHAP 判定根拠を解析する (学習に時間がかかります)", key=f"btn_shap_trigger_{_case_id}", width='stretch'):
+            st.session_state[_trigger_key] = True
+            st.rerun()
+        st.caption("※過去案件の学習とSHAP値の計算（約5〜10秒）を実行します。初回の計算後はキャッシュされます。")
+        return
+
     # モデル読み込み
     with st.spinner("SHAPモデルを準備中..."):
         model, explainer, encoders, shap_values_all, err = _load_model_and_explainer()

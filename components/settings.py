@@ -1,5 +1,41 @@
 import streamlit as st
 import pandas as pd
+import json
+import os
+from datetime import datetime
+
+def render_math_proposals():
+    """Dr.Algo Optimization Proposals UI"""
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    prop_path = os.path.join(base_dir, "data", "math_proposals.json")
+    if not os.path.exists(prop_path): return
+    try:
+        with open(prop_path, "r", encoding="utf-8") as f:
+            props = json.load(f)
+    except: return
+    pending = [p for p in props if p.get("status") == "pending"]
+    if not pending: return
+    st.markdown("### 🔬 Dr.Algoからの最適化提案")
+    for p in pending:
+        with st.expander(f"💡 {p['method_name']} ({p['ts'][:10]})", expanded=True):
+            st.write(f"**根拠:** {p['reason']}")
+            st.json(p["changes"])
+            c1, c2 = st.columns(2)
+            if c1.button("✅ 承認", key=f"app_{p['method_name']}", type="primary"):
+                from data_cases import load_coeff_overrides, save_coeff_overrides
+                ovr = load_coeff_overrides()
+                ovr.update(p["changes"])
+                save_coeff_overrides(ovr, comment=f"Dr.Algo({p['method_name']})承認")
+                p["status"] = "approved"
+                with open(prop_path, "w", encoding="utf-8") as f: json.dump(props, f, ensure_ascii=False, indent=2)
+                st.success("反映完了！")
+                st.rerun()
+            if c2.button("❌ 却下", key=f"rej_{p['method_name']}"):
+                p["status"] = "rejected"
+                with open(prop_path, "w", encoding="utf-8") as f: json.dump(props, f, ensure_ascii=False, indent=2)
+                st.rerun()
+    st.divider()
+
 from data_cases import load_all_cases
 from analysis_regression import (
     build_design_matrix_from_logs,
@@ -20,6 +56,9 @@ def render_coeff_analysis():
     """🔧 係数分析・更新 (β) タブのUI表示とロジック"""
     st.title("🔧 係数分析・更新（成約/失注で係数を更新）")
     st.info("結果登録した「成約・失注」を目的変数に、審査モデルと同一仕様のロジスティック回帰で係数を推定し、審査スコアに反映できます。")
+
+    # ── AI からの最適化提案 (Phase 3) ─────────────────────────────────────────
+    render_math_proposals()
 
     # ── 自動学習ステータスパネル ────────────────────────────────────────────
     try:
@@ -69,6 +108,44 @@ def render_coeff_analysis():
                     st.warning("最適化できませんでした。成約/失注データが不足している可能性があります。")
     except Exception as _ae:
         st.caption(f"⚠️ 自動学習ステータス取得エラー: {_ae}")
+
+    st.divider()
+
+    # --- 新規追加: LLMによる定性的PDCAリフレクション ---
+    st.markdown("#### 📝 月次AIリフレクション (定性PDCA)")
+    st.caption("直近の審査結果（成約・失注等）をAIに読み込ませ、現在の審査傾向を分析し、翌日からの審査アシスタント（軍師AI等）のプロンプトに注意事項として自動追加・フィードバックします。データが少なくても安全に審査目線を補正できます。")
+    try:
+        from llm_pdca_reflection import load_pdca_rules, run_monthly_pdca_reflection
+        
+        rules = load_pdca_rules()
+        if rules:
+            st.success(f"✅ 前回の分析日時: {rules.get('last_run', '—')} (分析件数: {rules.get('analyzed_count', 0)}件)")
+            with st.expander("現在のAI審査 反映ルール", expanded=True):
+                st.write("**【直近の傾向分析】**")
+                st.write(rules.get("reflection_summary", ""))
+                st.write("**【AIプロンプトへの追加指示】**")
+                for r in rules.get("ai_prompt_addons", []):
+                    st.markdown(f"- {r}")
+        else:
+            st.info("まだAIリフレクションは実行されていません。")
+
+        c1, c2 = st.columns([1, 2])
+        _force_pdca = c1.button("🧠 今すぐAIリフレクションを実行", type="primary", key="btn_run_pdca")
+        _pdca_num_cases = c2.number_input("分析対象の直近案件数", min_value=5, max_value=50, value=20, step=5, key="pdca_num_cases")
+        
+        if _force_pdca:
+            with st.spinner("過去の案件を読み込み、AIが定性的な傾向を分析中です...（最大1分ほどかかります）"):
+                res = run_monthly_pdca_reflection(force=True, max_cases=_pdca_num_cases)
+            if res and res.get("status") == "success":
+                st.success("✅ 分析が完了し、新しい審査ルールがAIへ設定されました！")
+                st.rerun()
+            elif res and res.get("status") == "skipped":
+                st.warning("分析対象となる成約/失注データが少なすぎます。（最低5件）")
+            else:
+                err_msg = res.get("reason", "不明なエラー") if res else "不明なエラー"
+                st.error(f"分析に失敗しました。詳細: {err_msg}")
+    except Exception as e:
+        st.error(f"AIリフレクション機能エラー: {e}")
 
     st.divider()
     

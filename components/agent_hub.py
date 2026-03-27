@@ -32,6 +32,7 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _BASE_DIR   = os.path.dirname(_SCRIPT_DIR)
 _DB_PATH    = os.path.join(_BASE_DIR, "data", "lease_data.db")
 _HUB_LOG    = os.path.join(_BASE_DIR, "data", "agent_hub_log.jsonl")
+_AGENT_THOUGHTS = os.path.join(_BASE_DIR, "data", "agent_thoughts.jsonl")
 
 # ── スケジューラ（グローバル — Streamlit rerenderをまたいで保持）──────────────
 _scheduler_store: dict = {}   # {"scheduler": BackgroundScheduler instance}
@@ -125,6 +126,22 @@ def _send_slack(blocks: list, text: str = "通知") -> bool:
         return r.status_code == 200
     except Exception:
         return False
+
+
+def _post_agent_thought(agent: str, thought: str, icon: str = "💭") -> None:
+    """エージェントの『つぶやき』を記録する"""
+    try:
+        os.makedirs(os.path.dirname(_AGENT_THOUGHTS), exist_ok=True)
+        with open(_AGENT_THOUGHTS, "a", encoding="utf-8") as f:
+            entry = {
+                "ts": datetime.datetime.now().isoformat(),
+                "agent": agent,
+                "thought": thought,
+                "icon": icon
+            }
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
 
 
 def _hub_log(agent: str, status: str, detail: str = "") -> None:
@@ -1246,7 +1263,7 @@ def _render_mathematician_panel() -> None:
 
     # ── 実験パネル ─────────────────────────────────────────────────────────────
     st.markdown("### 🧪 実験ランナー")
-    exp_names = [
+    builtin_exp_names = [
         "ベイズ更新スコアリング",
         "カルマンフィルタ（財務トレンド）",
         "プロスペクト理論スコア重み付け",
@@ -1265,30 +1282,45 @@ def _render_mathematician_panel() -> None:
         "エントロピー最大化スコアリング":   ma.run_experiment_maxent,
     }
 
+    # 未実験の収集手法を取得
+    try:
+        new_methods = ma.get_unexperimented_methods()
+        new_methods = [m for m in new_methods if m not in builtin_exp_names]
+    except Exception:
+        new_methods = []
+
+    all_exp_names = builtin_exp_names + new_methods
+
     col1, col2 = st.columns([2, 1])
     with col1:
-        selected_exp = st.selectbox("実験する手法を選択", exp_names, key="math_exp_select")
+        selected_exp = st.selectbox("実験する手法を選択", all_exp_names, key="math_exp_select")
     with col2:
         run_single = st.button("▶️ この実験を実行", key="math_run_single")
 
     if run_single and selected_exp:
-        fn = exp_fn_map.get(selected_exp)
-        if fn:
-            with st.spinner(f"実験中: {selected_exp} …"):
-                try:
-                    result = fn()
+        with st.spinner(f"実験中: {selected_exp} …"):
+            try:
+                if selected_exp in exp_fn_map:
+                    result = exp_fn_map[selected_exp]()
+                else:
+                    # 動的LLM実験
+                    result = ma.run_dynamic_llm_experiment(selected_exp)
+                
+                if "error" in result:
+                    st.error(f"実験エラー: {result['error']}")
+                else:
                     st.success("実験完了")
                     delta = result.get("auc_delta", result.get("auc_improvement", 0))
                     n     = result.get("n_cases", "?")
                     col_r1, col_r2, col_r3 = st.columns(3)
-                    col_r1.metric("AUC（元）",    f"{result.get('auc_original', '—'):.4f}" if isinstance(result.get('auc_original'), float) else "—")
+                    col_r1.metric("AUC（元）",    f"{result.get('auc_original', '—'):.4f}" if isinstance(result.get('auc_original'), (float, int)) else "—")
                     col_r2.metric("AUC（改善後）", f"{(result.get('auc_original', 0) + delta):.4f}")
                     col_r3.metric("AUC 改善", f"{delta:+.4f}", delta_color="normal")
                     if result.get("note"):
                         st.caption(f"⚠️ {result['note']}")
                     _hub_log("mathematician", "experiment", f"{selected_exp} Δ={delta:+.4f}")
-                except Exception as e:
-                    st.error(f"実験エラー: {e}")
+            except Exception as e:
+                st.error(f"実験エラー: {e}")
 
     if st.button("🚀 全実験を一括実行", key="math_run_all"):
         prog = st.progress(0.0)
@@ -1491,11 +1523,91 @@ def _render_visual_report_panel() -> None:
 # メイン描画
 # ══════════════════════════════════════════════════════════════════════════════
 
-def render_agent_hub() -> None:
-    st.title("🤖 汎用エージェントハブ")
-    st.caption("8種のエージェント + 🐶タム + 🔬数学者を使って審査プロセスを自動化・高度化します。")
 
-    tabs = st.tabs([
+def _render_dashboard_panel() -> None:
+    st.subheader("🖥️ 全体稼働ダッシュボード")
+    
+    # 1. エージェントステータス（カード型）
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.info("**🔬 Dr.Algo (数学者)**\n状態: 🟢 待機中\n最新: arXiv監視中")
+        st.success("**📖 波乱丸 (文豪AI)**\n状態: 🟢 執筆可能\n最新: 第1004話 脱稿")
+    with col2:
+        st.error("**⚔️ 審査軍師**\n状態: 🟢 待機中\n最新: 兵法策定完了")
+        st.warning("**📝 脚本家AI**\n状態: 🟢 トレンド監視中\n最新: RSSパース完了")
+    with col3:
+        st.info("**🐶 タム**\n状態: 🟡 昼寝中\n最新: LANケーブル咀嚼")
+        st.success("**👩‍💼 Tune**\n状態: 🟢 指揮中\n最新: 承認スタンプ準備完了")
+
+    st.markdown("---")
+    
+    # 2. 自動連動マスターボタン
+    st.markdown("### ⚡ 自動シナジー実行 (Weekly Batch)")
+    st.caption("数学者の新理論と脚本家のトレンドを合体させ、一気にプロット作成から小説執筆までをワンデップで完結させます。")
+    if st.button("🚀 週次バッチ実行 (プロット生成 ➔ 小説執筆)", type="primary", key="dashboard_batch_run", use_container_width=True):
+        with st.spinner("数学的手法と最新ニュースを融合し、究極のプロットを構築中..."):
+            import scriptwriter_agent
+            import novelist_agent
+            import time
+            
+            # 1. プロット生成
+            plot = scriptwriter_agent.generate_weekly_plot()
+            if plot.get("error"):
+                st.error(f"プロット生成に失敗: {plot['error']}")
+            else:
+                st.success(f"プロット構築完了: {plot['title']}")
+                time.sleep(1)
+                
+                # 2. 小説執筆
+                with st.spinner("文豪AIが執筆を開始しました。カオスな展開にご期待ください..."):
+                    from novelist_agent import generate_novel
+                    # 最新のエピソード番号を取得
+                    from novelist_agent import load_novels
+                    existing = load_novels(1)
+                    next_ep = (existing[0]["episode_no"] + 1) if existing else 1
+                    
+                    res = generate_novel(episode_no=next_ep)
+                    if not res or "body" not in res:
+                        st.error("小説の執筆に失敗しました。")
+                    else:
+                        st.balloons()
+                        st.success(f"第{next_ep}話 「{res['title']}」 を脱稿しました！")
+                        st.info("「📖 文豪AI」メニューから内容を確認できます。")
+        
+    st.markdown("---")
+    
+    st.markdown("---")
+    
+    # 3. リアルタイム・アクティビティログ
+    st.markdown("### 📡 リアルタイム・アクティビティログ (Terminal)")
+    
+    import os, json
+    _HUB_LOG_LOCAL = "data/agent_hub_log.jsonl"
+    log_text = ""
+    try:
+        if os.path.exists(_HUB_LOG_LOCAL):
+            with open(_HUB_LOG_LOCAL, encoding="utf-8") as f:
+                lines = f.readlines()
+            for line in reversed(lines[-15:]):
+                try:
+                    e = json.loads(line)
+                    log_text += f"{e.get('ts', '')[:19]} [{e.get('agent', '')}] {e.get('status', '')} : {e.get('detail', '')}\n"
+                except Exception:
+                    pass
+        else:
+            log_text = "No logs available."
+    except Exception as ex:
+        log_text = f"Log read error: {ex}"
+        
+    st.code(log_text, language="bash")
+
+# ------------------------------------------------------------------------------
+def render_agent_hub() -> None:
+    st.title("🌐 AI Agent Control Center")
+    st.caption("全自律型エージェントの稼働状況と最新アクティビティを統合管理します。")
+
+    menu_options = [
+        "🖥️ 全体ダッシュボード",
         "🏭 ベンチマーク取得",
         "📈 金利・市況",
         "📝 審査理由書",
@@ -1507,45 +1619,83 @@ def render_agent_hub() -> None:
         "🐶 タム",
         "🔬 数学者",
         "📊 レポート生成",
+        "📝 脚本家AI",
         "📖 文豪AI",
         "🌍 文明年代記",
-    ])
+    ]
+    
+    # メインページ上部にナビゲーションを配置（確実に目に入るように）
+    st.markdown("---")
+    col_nav, _ = st.columns([1, 1])
+    with col_nav:
+        choice = st.selectbox("📌 実行するエージェント機能を選択してください", menu_options, key="hub_main_nav")
+    st.markdown("---")
 
-    with tabs[0]: _render_benchmark_panel()
-    with tabs[1]: _render_market_panel()
-    with tabs[2]: _render_report_gen_panel()
-    with tabs[3]: _render_auto_team_panel()
-    with tabs[4]: _render_slack_enhanced_panel()
-    with tabs[5]: _render_anomaly_panel()
-    with tabs[6]: _render_retrain_panel()
-    with tabs[7]: _render_schedule_panel()
-    with tabs[8]: _render_koinu_panel()
-    with tabs[9]: _render_mathematician_panel()
-    with tabs[10]: _render_visual_report_panel()
-    with tabs[11]: _render_novelist_panel()
-    with tabs[12]: _render_civilization_panel()
+    if "全体ダッシュボード" in choice:
+        _render_dashboard_panel()
+    elif "ベンチマーク" in choice:
+        _render_benchmark_panel()
+    elif "金利・市況" in choice:
+        _render_market_panel()
+    elif "審査理由書" in choice:
+        _render_report_gen_panel()
+    elif "チーム自律化" in choice:
+        _render_auto_team_panel()
+    elif "Slack高度化" in choice:
+        _render_slack_enhanced_panel()
+    elif "異常検知" in choice:
+        _render_anomaly_panel()
+    elif "再学習トリガー" in choice:
+        _render_retrain_panel()
+    elif "定期配信" in choice:
+        _render_schedule_panel()
+    elif "タム" in choice:
+        _render_koinu_panel()
+    elif "数学者" in choice:
+        _render_mathematician_panel()
+    elif "レポート生成" in choice:
+        _render_visual_report_panel()
+    elif "脚本家AI" in choice:
+        _render_scriptwriter_panel()
+    elif "文豪AI" in choice:
+        _render_novelist_panel()
+    elif "文明年代記" in choice:
+        _render_civilization_panel()
 
-    # ── 実行ログ（折りたたみ）────────────────────────────────────────────────
-    with st.expander("📋 エージェント実行ログ", expanded=False):
-        try:
-            if os.path.exists(_HUB_LOG):
-                with open(_HUB_LOG, encoding="utf-8") as f:
-                    lines = f.readlines()
-                for line in reversed(lines[-30:]):
-                    try:
-                        e = json.loads(line)
-                        st.caption(f"{e['ts'][:19]} | {e['agent']} | {e['status']} | {e['detail']}")
-                    except Exception:
-                        pass
-            else:
-                st.caption("ログなし")
-        except Exception as e:
-            st.caption(f"ログ読み込みエラー: {e}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Agent 12 — 文豪AI「波乱丸」
 # ══════════════════════════════════════════════════════════════════════════════
+
+def _render_scriptwriter_panel() -> None:
+    st.markdown("## 📝 脚本家AI (Scriptwriter Agent)")
+    st.write("ネット上の最新トレンドニュース（Google News RSS）をスクレイピングし、文豪AIが執筆する今週の小説の「カオスな事件プロット」を考案します。")
+    
+    import scriptwriter_agent
+    
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if st.button("🌐 ネットから話題を取得してプロット生成", type="primary", key="btn_scriptwriter_gen"):
+            with st.spinner("RSSから最新記事を取得し、LLMでプロットを構築中..."):
+                plot = scriptwriter_agent.generate_weekly_plot()
+                if plot.get("error"):
+                    st.error(f"エラーが発生しました: {plot['error']}")
+                else:
+                    st.success("ネットの話題から新しいプロットを構築しました！")
+
+    plot_data = scriptwriter_agent.get_latest_plot()
+    if plot_data:
+        st.markdown("### 🎬 現在の待機プロット")
+        st.info(f"**タイトル**: {plot_data.get('title')}\n\n**指定構成**: {plot_data.get('story_arc')}")
+        st.write(f"**あらすじ**:\n{plot_data.get('plot_text')}")
+        
+        st.markdown("#### 📰 参考にしたリアルトレンド記事")
+        for n in plot_data.get("source_news", []):
+            st.markdown(f"- [{n.get('title')}]({n.get('url')}) ({n.get('date', '')})")
+    else:
+        st.warning("まだプロットが生成されていません。「プロット生成」ボタンを押してください。")
+
 def _render_novelist_panel() -> None:
     """📖 文豪AI波乱丸 — 毎週火曜日更新のエージェントドタバタ小説パネル"""
     st.subheader("📖 文豪AI「波乱丸」")
@@ -1561,20 +1711,34 @@ def _render_novelist_panel() -> None:
         return
 
     # ── 今週号の生成ボタン ────────────────────────────────────────
-    col1, col2 = st.columns([2, 1])
+    col1, col2, col3 = st.columns([2, 2, 1])
     with col1:
         custom_theme = st.text_input(
             "今週の特別テーマ（任意）",
-            placeholder="例：カルマンフィルタがまた暴走した",
+            placeholder="例：強敵現る",
             key="novel_theme_input",
         )
     with col2:
+        genre_options = {
+            "sf_drama": "🚀 ハードSF（文明の審判）",
+            "business": "👔 ビジネスドラマ（半沢流）",
+            "fantasy": "⚔️ 異世界ギルド（魔道具審査）",
+            "yanami": "🍔 八奈見杏奈（ドタバタ）"
+        }
+        selected_genre_label = st.selectbox(
+            "小説ジャンル",
+            options=list(genre_options.values()),
+            index=0,
+            key="novel_genre_select"
+        )
+        selected_genre = [k for k, v in genre_options.items() if v == selected_genre_label][0]
+    with col3:
         st.markdown("<br>", unsafe_allow_html=True)
         gen_btn = st.button("✍️ 今週号を書く", key="novel_generate_btn", type="primary")
 
     if gen_btn:
         with st.spinner("波乱丸が執筆中…（少々お待ちを）"):
-            result = na.generate_novel(custom_theme=custom_theme)
+            result = na.generate_novel(custom_theme=custom_theme, genre=selected_genre)
         st.success(f"第{result['episode_no']}話「{result['title']}」完成！")
         _hub_log("novelist", "generate", f"第{result['episode_no']}話: {result['title']}")
 
@@ -1582,11 +1746,16 @@ def _render_novelist_panel() -> None:
     latest = na.get_latest_novel()
     if latest:
         st.markdown("---")
-        st.markdown(f"#### 📰 {latest['week_label']} 第{latest['episode_no']}話")
-        st.markdown(f"**「{latest['title']}」**")
-        st.markdown(latest['body'])
+        ep_no = latest.get('episode_no', '??')
+        week_label = latest.get('week_label', '今週')
+        title = latest.get('title', '無題')
+        body = latest.get('body', '内容がありません。')
+        
+        st.markdown(f"#### 📰 {week_label} 第{ep_no}話")
+        st.markdown(f"**「{title}」**")
+        st.markdown(body)
     else:
-        st.info("まだ小説がありません。「今週号を書く」ボタンで第1話を生成してください。")
+        st.info("まだ執筆された小説がありません。「今週号を書く」ボタンを押してみましょう。")
 
     # ── バックナンバー ────────────────────────────────────────────
     all_novels = na.load_novels(20)

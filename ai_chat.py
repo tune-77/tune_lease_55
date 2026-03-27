@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 AI チャット・ディベート関連のバックエンド関数。
 Ollama / Gemini API の呼び出し・リトライ・接続テストをまとめたモジュール。

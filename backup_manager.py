@@ -3,6 +3,7 @@
 lease_data.db / coeff_overrides.json / coeff_auto.json を data/backups/ に日次保存。
 MAX_GENS 世代（デフォルト7日分）を保持し、それ以前は自動削除する。
 """
+from __future__ import annotations
 import os
 import shutil
 from datetime import datetime
@@ -15,6 +16,7 @@ MAX_GENS = 7  # 保持する世代数
 
 _TARGETS = [
     (os.path.join(_DATA_DIR, "lease_data.db"),         "lease_data.db"),
+    (os.path.join(_DATA_DIR, "novelist_agent.db"),      "novelist_agent.db"),
     (os.path.join(_DATA_DIR, "coeff_overrides.json"),   "coeff_overrides.json"),
     (os.path.join(_DATA_DIR, "coeff_auto.json"),        "coeff_auto.json"),
     (os.path.join(_DATA_DIR, "training_meta.json"),     "training_meta.json"),

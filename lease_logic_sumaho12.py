@@ -18,7 +18,7 @@ if _SCRIPT_DIR not in sys.path:
 
 import streamlit as st
 # set_page_config は必ず最初の st 呼び出しにする必要がある
-st.set_page_config(page_title="温水式リース審査AI", page_icon="🏢", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="温水式リース審査AI", page_icon="🏢", layout="wide", initial_sidebar_state="expanded")
 
 @st.cache_resource
 def _intro_video_b64() -> str:
@@ -1149,7 +1149,7 @@ elif mode == "🏭 物件ファイナンス審査":
                     help="自社管理により中古売却価値が5〜10%向上",
                 )
 
-        _af_submit = st.button("🔍 審査判定を実行", type="primary", use_container_width=True, key="af_submit")
+        _af_submit = st.button("🔍 審査判定を実行", type="primary", width='stretch', key="af_submit")
 
     with col_result:
         _af_run = _af_submit or ("af_last_result" in st.session_state and not _af_submit)
@@ -1241,7 +1241,7 @@ elif mode == "🏭 物件ファイナンス審査":
                 height=290,
                 margin=dict(l=0, r=0, t=20, b=0),
             )
-            st.plotly_chart(_af_fig, use_container_width=True)
+            st.plotly_chart(_af_fig, width='stretch')
 
             # --- 承認根拠・減点 ---
             _col_r, _col_d = st.columns(2)
@@ -1305,7 +1305,7 @@ elif mode == "⚙️ 審査ルール設定":
         with col4:
             pen_cap = st.number_input("📉 債務超過時のペナルティ（マイナス点）", value=float(score_mod.get("capital_deficiency_penalty", -5.0)), step=1.0)
             
-        submitted_basic_rules = st.form_submit_button("📝 基本設定を更新する (カスタムルールは下部で別途追加)", use_container_width=True)
+        submitted_basic_rules = st.form_submit_button("📝 基本設定を更新する (カスタムルールは下部で別途追加)", width='stretch')
         if submitted_basic_rules:
             if "thresholds" not in rules: rules["thresholds"] = {}
             if "score_modifiers" not in rules: rules["score_modifiers"] = {}
@@ -1369,7 +1369,7 @@ elif mode == "⚙️ 審査ルール設定":
                 import pandas as pd
                 cand_df = pd.DataFrame(_yr["threshold_candidates"])
                 cand_df.columns = ["閾値(点)", "Youden指数", "感度", "特異度"]
-                st.dataframe(cand_df, use_container_width=True, hide_index=True)
+                st.dataframe(cand_df, width='stretch', hide_index=True)
 
             # 適用ボタン
             st.divider()
@@ -1617,13 +1617,13 @@ elif mode == "⚙️ 審査ルール設定":
                     st.rerun()
 
     # ── 新規ルール追加ボタン ───────────────────────────────────────────────
-    if st.button("➕ 新しいルールを追加", key="add_new_rule", use_container_width=True):
+    if st.button("➕ 新しいルールを追加", key="add_new_rule", width='stretch'):
         add_new_rule()
         st.rerun()
 
     # ── 保存ボタン ─────────────────────────────────────────────────────────
     st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("💾 カスタムルールを保存して反映する", type="primary", use_container_width=True):
+    if st.button("💾 カスタムルールを保存して反映する", type="primary", width='stretch'):
         rules["custom_rules"] = st.session_state["custom_rules_ui_data"]
         if save_business_rules(rules):
             # 保存済みスナップショットを更新（インジケータをリセット）
@@ -1641,7 +1641,7 @@ elif mode == "⚙️ 審査ルール設定":
     st.divider()
     st.subheader("🧪 ルールの影響シミュレーション")
     st.caption("現在保存されている社内ルール（基本設定＋カスタムルール）を過去の全案件データに適用し、判定結果が当時からどう変化するかをテストします。")
-    if st.button("▶️ 過去の全データでシミュレーションを実行する", use_container_width=True):
+    if st.button("▶️ 過去の全データでシミュレーションを実行する", width='stretch'):
         with st.spinner("過去の案件データベース(SQLite)から読み込み、全件シミュレーションを実行中..."):
             from data_cases import load_all_cases
             from rule_manager import simulate_rules_on_past_cases
@@ -1662,7 +1662,7 @@ elif mode == "⚙️ 審査ルール設定":
                     {"過去の判定": "要審議", "➡️ 新: 承認圏内": matrix["要審議"]["承認圏内"], "➡️ 新: 要審議": matrix["要審議"]["要審議"], "➡️ 新: 否決": matrix["要審議"]["否決"]},
                     {"過去の判定": "否決", "➡️ 新: 承認圏内": matrix["否決"]["承認圏内"], "➡️ 新: 要審議": matrix["否決"]["要審議"], "➡️ 新: 否決": matrix["否決"]["否決"]},
                 ])
-                st.dataframe(df_matrix, use_container_width=True, hide_index=True)
+                st.dataframe(df_matrix, width='stretch', hide_index=True)
                 
                 # 変化があった案件のリストアップ
                 changes = sim_res.get("changed_cases", [])

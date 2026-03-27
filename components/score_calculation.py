@@ -810,31 +810,8 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         "rank_desc": qual_rank["desc"],
                     }
 
-                # 学習モデル（業種別ハイブリッド）の予測（総資産・純資産が入力されている場合のみ）
+                # 学習モデル（業種別ハイブリッド）の予測（遅延ロード化：分析結果ページで必要時に呼び出す）
                 scoring_result = None
-                if (total_assets or 0) > 0 and (net_assets is not None) and (net_assets >= 0):
-                    try:
-                        _scoring_dir = os.path.join(_SCRIPT_DIR, "scoring")
-                        if _scoring_dir not in sys.path:
-                            sys.path.insert(0, _SCRIPT_DIR)
-                        from scoring.predict_one import predict_one, map_industry_major_to_scoring
-                        _base = os.environ.get("LEASE_SCORING_MODELS_DIR", os.path.join(_SCRIPT_DIR, "scoring", "models", "industry_specific"))
-                        _industry = map_industry_major_to_scoring(selected_major)
-                        scoring_result = predict_one(
-                            revenue=(nenshu or 0) * 1000,
-                            total_assets=(total_assets or 0) * 1000,
-                            equity=(net_assets or 0) * 1000,
-                            operating_profit=(rieki or 0) * 1000,
-                            net_income=(item5_net_income or 0) * 1000,
-                            machinery_equipment=(item6_machine or 0) * 1000,
-                            other_fixed_assets=(item7_other or 0) * 1000,
-                            depreciation=((item10_dep or 0) + (item11_dep_exp or 0)) * 1000,
-                            rent_expense=(item12_rent_exp or 0) * 1000,
-                            industry=_industry,
-                            base_path=_base,
-                        )
-                    except Exception:
-                        scoring_result = None
 
                 # 学習モデル判定が「否決」のときはすべてのスコアを50%減
                 if scoring_result and (scoring_result.get("decision") or "").strip() == "否決":
@@ -917,21 +894,8 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 else:
                     forced_custom_status = None
 
-                # 将来予測シミュレーション（AI連携用の事前計算）
+                # 将来予測シミュレーション（遅延ロード化：分析結果ページで必要時に呼び出す）
                 future_sim_result = None
-                if (nenshu or 0) > 0:
-                    try:
-                        from future_simulation import run_business_simulation
-                        future_sim_result = run_business_simulation(
-                            current_sales=nenshu,
-                            current_op_profit=rieki,
-                            drift=0.01,
-                            volatility=0.15,
-                            years=5,
-                            n_simulations=5000
-                        )
-                    except Exception:
-                        pass
 
                 # ─────────────────────────────────────────────────────────────────
                 # 承認判定スコア:

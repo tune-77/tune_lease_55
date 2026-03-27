@@ -1,5 +1,5 @@
 #!/bin/bash
-# lease_logic_sumaho10 + Flask 起動スクリプト
+# lease_logic_sumaho12 + Flask 起動スクリプト
 # 毎回これを実行すれば確実に起動できます
 
 cd "$(dirname "$0")"
@@ -11,14 +11,14 @@ sleep 1
 
 echo ""
 echo "=== Flask 起動（ポート5050）==="
-python lease_logic_sumaho10/web/app.py &
+python web/app.py &
 FLASK_PID=$!
 echo "Flask PID: $FLASK_PID"
 sleep 2
 
 echo ""
 echo "=== Streamlit 起動（ポート8505）==="
-streamlit run lease_logic_sumaho10/lease_logic_sumaho10.py --server.port 8505 &
+streamlit run lease_logic_sumaho12.py --server.port 8505 &
 STREAMLIT_PID=$!
 echo "Streamlit PID: $STREAMLIT_PID"
 

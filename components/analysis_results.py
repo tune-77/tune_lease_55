@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 import random
 import time
 import datetime
+import json
 
 from data_cases import load_all_cases, load_case_news, update_case_field, get_model_blend_weights
 from ai_chat import (
@@ -48,6 +49,18 @@ from future_simulation import render_future_simulation_ui
 from bayesian_engine import THRESHOLD_APPROVAL
 from credit_limit import render_credit_limit_ui
 from components.form_apply import render_quick_edit_panel
+from components.graph_risk import GraphRiskEngine
+
+# ── 産業ネットワーク分析のためのキャッシュ関数（モジュールレベルで定義） ──
+@st.cache_data(show_spinner=False)
+def get_cached_centrality(_engine_json, _edges_json, _nodes_json):
+    _tmp_engine = GraphRiskEngine()
+    return _tmp_engine.calculate_centrality()
+
+@st.cache_data(show_spinner="シミュレーション実行中...")
+def get_cached_simulation(selected_sub, _engine_json, _edges_json, _nodes_json):
+    _tmp_engine = GraphRiskEngine()
+    return _tmp_engine.run_scenario_simulation(selected_sub)
 
 def render_analysis_results(
     nav_mode,
@@ -191,18 +204,19 @@ def render_analysis_results(
             except Exception:
                 pass  # DB が利用不可の環境でも続行
 
-            # ── モンテカルロ 自動実行（新規審査ごとに1回だけ実行） ──────────────
-            try:
-                from montecarlo import (
-                    AdvancedMonteCarloEngine, CompanyData,
-                    map_industry_from_major as _mc_map_ind,
-                )
-                _mc_auto_key = (
-                    f"{res.get('pd_percent', 0):.4f}"
-                    f"_{res.get('score', 0):.4f}"
-                    f"_{res.get('industry_major', '')}"
-                )
-                if st.session_state.get("mc_auto_run_done_for") != _mc_auto_key:
+            # ── モンテカルロ 手動実行（ユーザーがボタンを押した時のみ実行） ──────────
+            _mc_col_msg, _mc_col_btn = st.columns([3, 1])
+            with _mc_col_msg:
+                st.info("💡将来のリスク推移を予測するモンテカルロ・シミュレーションを実行できます。")
+            with _mc_col_btn:
+                _run_mc = st.button("🚀 実行する", width='stretch', help="1000回の試行を行い将来のデフォルト確率を予測します")
+
+            if _run_mc:
+                try:
+                    from montecarlo import (
+                        AdvancedMonteCarloEngine, CompanyData,
+                        map_industry_from_major as _mc_map_ind,
+                    )
                     _fin_ao   = res.get("financials") or {}
                     _inp_ao   = st.session_state.get("last_submitted_inputs") or {}
                     _ao_rev_m = max(1, int((_fin_ao.get("nenshu", 0) or 0) / 1000))
@@ -227,8 +241,8 @@ def render_analysis_results(
                         lease_amount=_ao_lease_m * 10_000,
                         lease_months=_ao_months,
                     )
-                    with st.spinner("モンテカルロ シミュレーション自動実行中…"):
-                        _ao_engine = AdvancedMonteCarloEngine(n_simulations=3000)
+                    with st.spinner("モンテカルロ・シミュレーション実行中…"):
+                        _ao_engine = AdvancedMonteCarloEngine(n_simulations=1000)
                         _ao_pf = _ao_engine.analyze_portfolio([_ao_co])
                     st.session_state["mc_portfolio_result"] = _ao_pf
                     st.session_state["mc_companies"] = [{
@@ -241,9 +255,11 @@ def render_analysis_results(
                         "lease_amt_man": _ao_lease_m,
                         "lease_months": _ao_months,
                     }]
-                    st.session_state["mc_auto_run_done_for"] = _mc_auto_key
-            except Exception:
-                pass  # montecarlo が利用不可の環境でも続行
+                    st.success("✅ シミュレーションが完了しました。")
+                except Exception as e:
+                    st.error(f"シミュレーション実行エラー: {e}")
+            # ─────────────────────────────────────────────────────────────
+            # ─────────────────────────────────────────────────────────────
 
             # ==================== ダッシュボードレイアウト（プロ仕様） ====================
             st.markdown("---")
@@ -254,7 +270,7 @@ def render_analysis_results(
                 st.markdown(f"### 📊 分析ダッシュボード — {selected_sub}")
             with col_img:
                 if img_path and os.path.isfile(img_path):
-                    st.image(img_path, caption=img_caption, use_container_width=True)
+                    st.image(img_path, caption=img_caption, width='stretch')
                 else:
                     st.caption("画像: dashboard_images に画像を配置するか、環境変数 DASHBOARD_IMAGES_ASSETS を指定してください。")
 
@@ -319,7 +335,7 @@ def render_analysis_results(
                 </div>
                 """, unsafe_allow_html=True)
             with _gauge_col:
-                st.plotly_chart(plot_gauge_plotly(res['score'], "成約可能性スコア"), use_container_width=True, key="gauge_score")
+                st.plotly_chart(plot_gauge_plotly(res['score'], "成約可能性スコア"), width='stretch', key="gauge_score")
 
             st.divider()
 
@@ -362,35 +378,82 @@ def render_analysis_results(
                 except Exception:
                     pass
 
+                # ── Premium CSS Injection ──
+                st.markdown("""
+                <style>
+                .premium-card {
+                    background: rgba(255, 255, 255, 0.8);
+                    backdrop-filter: blur(12px);
+                    -webkit-backdrop-filter: blur(12px);
+                    border: 1px solid rgba(226, 232, 240, 0.8);
+                    border-left: 5px solid #1e3a5f;
+                    border-radius: 16px;
+                    padding: 1.25rem 1.5rem;
+                    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+                    margin-bottom: 1.25rem;
+                    transition: all 0.3s ease;
+                }
+                .premium-card:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+                }
+                .risk-label {
+                    font-size: 0.85rem;
+                    font-weight: 600;
+                    padding: 0.2rem 0.6rem;
+                    border-radius: 20px;
+                    margin-left: 0.5rem;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+
+                # ── Updated Score Composition Card ──
                 st.markdown(f"""
-                <div style="
-                  background:#f8fafc;
-                  border:1px solid #e2e8f0;
-                  border-left:3px solid #1e3a5f;
-                  border-radius:8px;
-                  padding:0.875rem 1.125rem;
-                  margin-bottom:0.75rem;
-                ">
-                  <div style="font-size:0.78rem;color:#64748b;margin-bottom:0.5rem;">
-                    スコア構成【{_category}】— 物件 {_asset_w}% ／ 借手 {_ob_w}%
+                <div class="premium-card">
+                  <div style="font-size:0.8rem; font-weight:600; color:#64748b; margin-bottom:0.75rem; letter-spacing:0.025em; text-transform:uppercase;">
+                    Executive Scoring Summary <span style="margin-left:8px; color:#cbd5e1;">|</span> {_category}
                   </div>
-                  <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-end;">
-                    <div>
-                      <div style="font-size:0.72rem;color:#94a3b8;">物件スコア × {_asset_w}%</div>
-                      <div style="font-size:1.3rem;font-weight:700;color:#334155;">{_as_score:.1f}点</div>
+                  <div style="display:flex; gap:2rem; flex-wrap:wrap; align-items:center;">
+                    <div style="flex:1; min-width:200px;">
+                      <div style="display:flex; align-items:baseline; gap:0.5rem;">
+                        <span style="font-size:2.5rem; font-weight:800; color:{_ts_color}; letter-spacing:-0.02em;">{_ts_total:.1f}</span>
+                        <span style="font-size:1rem; font-weight:700; color:{_ts_color}; opacity:0.8;">点</span>
+                        <span class="risk-label" style="background:{_ts_color}20; color:{_ts_color}; border:1px solid {_ts_color}40;">{_ts_label}</span>
+                      </div>
+                      <div style="font-size:0.9rem; font-weight:500; color:#475569; margin-top:0.25rem;">{_ts_text}</div>
                     </div>
-                    <div style="color:#94a3b8;font-size:0.9rem;padding-bottom:0.15rem;">＋</div>
-                    <div>
-                      <div style="font-size:0.72rem;color:#94a3b8;">成約可能性 × {_ob_w}%</div>
-                      <div style="font-size:1.3rem;font-weight:700;color:#334155;">{_ob_score:.1f}点</div>
-                    </div>
-                    <div style="color:#94a3b8;font-size:0.9rem;padding-bottom:0.15rem;">＝</div>
-                    <div>
-                      <div style="font-size:0.72rem;color:#94a3b8;">総合スコア</div>
-                      <div style="font-size:1.6rem;font-weight:800;color:{_ts_color};">{_ts_total:.1f}点 <span style="font-size:0.95rem;font-weight:600;">[{_ts_label}]</span> <span style="font-size:0.85rem;font-weight:500;color:#475569;">{_ts_text}</span></div>
+                    <div style="display:flex; gap:1.5rem; padding-left:1.5rem; border-left:1px solid #e2e8f0;">
+                      <div>
+                        <div style="font-size:0.7rem; font-weight:600; color:#94a3b8; text-transform:uppercase;">Asset Value</div>
+                        <div style="font-size:1.1rem; font-weight:700; color:#334155;">{_as_score:.1f} <span style="font-size:0.7rem; font-weight:500;">({_asset_w}%)</span></div>
+                      </div>
+                      <div>
+                        <div style="font-size:0.7rem; font-weight:600; color:#94a3b8; text-transform:uppercase;">Counterparty</div>
+                        <div style="font-size:1.1rem; font-weight:700; color:#334155;">{_ob_score:.1f} <span style="font-size:0.7rem; font-weight:500;">({_ob_w}%)</span></div>
+                      </div>
                     </div>
                   </div>
-                  {_rationale_html}
+                  <div style="margin-top:1.25rem; padding-top:1rem; border-top:1px solid #f1f5f9;">
+                    {_rationale_html}
+                  </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # ── Risk Spectrum Visualization ──
+                _pointer_pos = max(0, min(100, _ts_total))
+                st.markdown(f"""
+                <div style="margin: 1.5rem 0 2rem 0; padding: 0 0.5rem;">
+                  <div style="display:flex; justify-content:space-between; font-size:0.7rem; font-weight:700; color:#94a3b8; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.05em;">
+                    <span>High Risk</span>
+                    <span>Industry Benchmark</span>
+                    <span>Secure</span>
+                  </div>
+                  <div class="risk-spectrum-container" style="height:8px; background:#f1f5f9; border-radius:10px; position:relative; overflow:visible; box-shadow:inset 0 1px 2px rgba(0,0,0,0.05);">
+                    <div class="risk-spectrum-bar" style="height:100%; width:100%; border-radius:10px; background:linear-gradient(90deg, #ef4444 0%, #f97316 35%, #eab308 60%, #22c55e 100%); opacity:0.8;"></div>
+                    <div class="risk-pointer" style="position:absolute; top:-6px; left:calc({_pointer_pos}% - 3px); width:6px; height:20px; background:#1e3a5f; border-radius:10px; border:2px solid white; box-shadow:0 2px 4px rgba(0,0,0,0.2); z-index:10;"></div>
+                    <!-- Benchmark Indicator -->
+                    <div style="position:absolute; top:-2px; left:50%; width:2px; height:12px; background:rgba(0,0,0,0.1); border-radius:1px;"></div>
+                  </div>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -456,7 +519,7 @@ def render_analysis_results(
                             height=310,
                             showlegend=False,
                         )
-                        st.plotly_chart(_fig_radar, use_container_width=True, key="asset_radar_chart")
+                        st.plotly_chart(_fig_radar, width='stretch', key="asset_radar_chart")
                         if not _score_items:
                             st.caption("📌 詳細スコア未入力のため、評価ウェイト構成を表示しています")
                 except Exception:
@@ -490,7 +553,7 @@ def render_analysis_results(
                                     "差分":        _diff_str if _w_adjusted else "—",
                                     "タグ":        _it.get("tag") or "—",
                                 })
-                            st.dataframe(_pd.DataFrame(_rows), hide_index=True, use_container_width=True)
+                            st.dataframe(_pd.DataFrame(_rows), hide_index=True, width='stretch')
                             if _w_adjusted:
                                 st.caption("契約条件（リース期間・買取オプション・大手メーカー）に応じてウェイトが動的調整されました")
                 except Exception:
@@ -529,19 +592,28 @@ def render_analysis_results(
 
                 st.divider()
 
-            # ── ⚔️ 軍師AIコメント（審査結果に直接表示）──────────────────────
-            try:
-                from components.shinsa_gunshi import render_gunshi_ai_comment
-                render_gunshi_ai_comment(
-                    res=res,
-                    submitted_inputs=st.session_state.get("last_submitted_inputs"),
-                    model_name=st.session_state.get("ollama_model", "llama3") or "llama3",
-                    trend_info=trend_info or "",
-                    bn_evidence=st.session_state.get("_bn_s_evidence"),
-                    bn_approval_prob=(st.session_state.get("_bn_s_result") or {}).get("approval_prob"),
-                )
-            except Exception as _gac_err:
-                st.caption(f"⚠️ 軍師AIコメント読み込みエラー: {_gac_err}")
+            # ── ⚔️ 軍師AIコメント（手動起動に変更）──────────────────────
+            _gunshi_trigger_key = "gunshi_ai_triggered"
+            if not st.session_state.get(_gunshi_trigger_key):
+                if st.button("⚔️ 軍師AIコメントを表示（ベイズ推定実行）", key="btn_gunshi_trigger", width='stretch'):
+                    st.session_state[_gunshi_trigger_key] = True
+                    st.rerun()
+            else:
+                try:
+                    from components.shinsa_gunshi import render_gunshi_ai_comment
+                    render_gunshi_ai_comment(
+                        res=res,
+                        submitted_inputs=st.session_state.get("last_submitted_inputs"),
+                        model_name=st.session_state.get("ollama_model", "llama3") or "llama3",
+                        trend_info=trend_info or "",
+                        bn_evidence=st.session_state.get("_bn_s_evidence"),
+                        bn_approval_prob=(st.session_state.get("_bn_s_result") or {}).get("approval_prob"),
+                    )
+                    if st.button("🔇 軍師AIを隠す", key="btn_gunshi_close", width='stretch'):
+                        st.session_state[_gunshi_trigger_key] = False
+                        st.rerun()
+                except Exception as _gac_err:
+                    st.caption(f"⚠️ 軍師AIコメント読み込みエラー: {_gac_err}")
 
             st.divider()
 
@@ -784,36 +856,58 @@ def render_analysis_results(
                                 compute_reversal_suggestions as _bn_reversal,
                             )
                             _bn_c1, _bn_c2, _bn_c3 = st.columns(3)
-                            with _bn_c1:
-                                st.markdown("**財務・信用**")
-                                _bn_insolvent  = st.checkbox("債務超過",              key="bn_s_insolvent",  value=False)
-                                _bn_main_bank  = st.checkbox("メイン銀行支援あり",    key="bn_s_main_bank",  value=False)
-                                _bn_rel_bank   = st.checkbox("関係者の銀行取引良好",  key="bn_s_rel_bank",   value=False)
-                                _bn_rel_assets = st.checkbox("関係者の個人資産あり",  key="bn_s_rel_assets", value=False)
-                            with _bn_c2:
-                                st.markdown("**ヘッジ手段**")
-                                _bn_co_lease = st.checkbox("銀行との協調リース",   key="bn_s_co_lease", value=False)
-                                _bn_parent   = st.checkbox("親会社連帯保証",       key="bn_s_parent",   value=False)
-                            with _bn_c3:
-                                st.markdown("**物件・取引条件**")
-                                _bn_core      = st.checkbox("本業に不可欠な物件",   key="bn_s_core",      value=False)
-                                _bn_liquidity = st.checkbox("物件の中古流動性あり",  key="bn_s_liquidity", value=False)
-                                _bn_shorter   = st.checkbox("リース期間を短縮",      key="bn_s_shorter",   value=False)
-                                _bn_one_time  = st.checkbox("業況改善まで本件限り",  key="bn_s_one_time",  value=False)
-                            _bn_ev = {
-                                "Insolvent_Status":    1 if _bn_insolvent  else 0,
-                                "Main_Bank_Support":   1 if _bn_main_bank  else 0,
-                                "Related_Bank_Status": 1 if _bn_rel_bank   else 0,
-                                "Related_Assets":      1 if _bn_rel_assets else 0,
-                                "Co_Lease":            1 if _bn_co_lease   else 0,
-                                "Parent_Guarantor":    1 if _bn_parent     else 0,
-                                "Core_Business_Use":   1 if _bn_core       else 0,
-                                "Asset_Liquidity":     1 if _bn_liquidity  else 0,
-                                "Shorter_Lease_Term":  1 if _bn_shorter    else 0,
-                                "One_Time_Deal":       1 if _bn_one_time   else 0,
-                            }
-                            st.session_state["_bn_s_result"]   = _bn_infer(_bn_ev)
-                            st.session_state["_bn_s_evidence"] = _bn_ev
+                            
+                            # ── 産業ネットワークリスク（グラフ理論） ──
+                            _gr_trigger_key = f"gr_trigger_{current_case_id}"
+                            if not st.session_state.get(_gr_trigger_key):
+                                if st.button("🕸 産業ネットワーク分析を実行", key=f"btn_gr_trigger_{current_case_id}", width='stretch'):
+                                    st.session_state[_gr_trigger_key] = True
+                                    st.rerun()
+                                st.caption("※グラフ理論に基づくサプライチェーン・リスク分析を実行します。")
+                            else:
+                                _gr_engine = GraphRiskEngine()
+                                _gr_res = _gr_engine.calculate_network_risk(selected_sub)
+                                _net_risk_val = _gr_res.get("network_risk_score", 0.1)
+                                _is_high_net_risk = _net_risk_val > 0.4 # 閾値
+                            
+                                with _bn_c1:
+                                    st.markdown("**財務・信用**")
+                                    _bn_insolvent  = st.checkbox("債務超過",              key="bn_s_insolvent",  value=False)
+                                    _bn_main_bank  = st.checkbox("メイン銀行支援あり",    key="bn_s_main_bank",  value=False)
+                                    _bn_rel_bank   = st.checkbox("関係者の銀行取引良好",  key="bn_s_rel_bank",   value=False)
+                                    _bn_rel_assets = st.checkbox("関係者の個人資産あり",  key="bn_s_rel_assets", value=False)
+                                with _bn_c2:
+                                    st.markdown("**ヘッジ手段**")
+                                    _bn_co_lease = st.checkbox("銀行との協調リース",   key="bn_s_co_lease", value=False)
+                                    _bn_parent   = st.checkbox("親会社連帯保証",       key="bn_s_parent",   value=False)
+                                with _bn_c3:
+                                    st.markdown("**物件・取引条件**")
+                                    _bn_core      = st.checkbox("本業に不可欠な物件",   key="bn_s_core",      value=False)
+                                    _bn_liquidity = st.checkbox("物件の中古流動性あり",  key="bn_s_liquidity", value=False)
+                                    _bn_shorter   = st.checkbox("リース期間を短縮",      key="bn_s_shorter",   value=False)
+                                    _bn_one_time  = st.checkbox("業況改善まで本件限り",  key="bn_s_one_time",  value=False)
+                                    # ネットワークリスク（自動計算結果を反映・手動修正可）
+                                    _bn_net_risk = st.checkbox(
+                                        f"産業NWリスク ({_net_risk_val:.2f})", 
+                                        key="bn_s_net_risk", 
+                                        value=_is_high_net_risk,
+                                        help=_gr_res.get("summary", "")
+                                    )
+                                _bn_ev = {
+                                    "Insolvent_Status":    1 if _bn_insolvent  else 0,
+                                    "Main_Bank_Support":   1 if _bn_main_bank  else 0,
+                                    "Related_Bank_Status": 1 if _bn_rel_bank   else 0,
+                                    "Related_Assets":      1 if _bn_rel_assets else 0,
+                                    "Co_Lease":            1 if _bn_co_lease   else 0,
+                                    "Parent_Guarantor":    1 if _bn_parent     else 0,
+                                    "Core_Business_Use":   1 if _bn_core       else 0,
+                                    "Asset_Liquidity":     1 if _bn_liquidity  else 0,
+                                    "Shorter_Lease_Term":  1 if _bn_shorter    else 0,
+                                    "One_Time_Deal":       1 if _bn_one_time   else 0,
+                                    "High_Network_Risk":   1 if _bn_net_risk   else 0,
+                                }
+                                st.session_state["_bn_s_result"]   = _bn_infer(_bn_ev)
+                                st.session_state["_bn_s_evidence"] = _bn_ev
                             _bnr = st.session_state.get("_bn_s_result")
                             _bne = st.session_state.get("_bn_s_evidence", {})
                             if _bnr:
@@ -851,6 +945,59 @@ def render_analysis_results(
                                             f"{_r['before_prob']:.0%} → **{_r['after_prob']:.0%}**"
                                             f"（+{_gain_pct}%pt）　{_r['after_decision']}"
                                         )
+                            
+                            # ── グラフ理論による波及経路の可視化 ──
+                            if _gr_res.get("impacted_by"):
+                                with st.expander("🕸 産業ネットワークの脆弱性分析（グラフ理論）", expanded=False):
+                                    st.write(f"**対象業種: {selected_sub}**")
+                                    st.write(_gr_res.get("summary", ""))
+                                    st.write("---")
+                                    st.write("▼ リスク波及元の隣接業種")
+                                    _gr_impact_df = pd.DataFrame(_gr_res["impacted_by"])
+                                    if not _gr_impact_df.empty:
+                                        _gr_impact_df.columns = ["波及元業種", "ソースリスク", "依存度（重み）", "影響度"]
+                                        st.dataframe(_gr_impact_df.style.highlight_max(axis=0, subset=["影響度"], color="#ffe4e6"), width='stretch')
+                                    
+                                    # ── アドバンスド分析（重要度 & シミュレーション） ──
+                                    st.write("---")
+                                    st.write("▼ アドバンスド・リスク分析")
+                                    _a_col1, _a_col2 = st.columns(2)
+                                    
+                                    # 1. 重要度（Centrality）
+                                    # エンジンのデータをシリアライズしてキャッシュキーにする
+                                    _gr_data_key = (json.dumps(_gr_engine.graph), json.dumps(_gr_engine.edges), json.dumps(_gr_engine.nodes))
+                                    _all_cent = get_cached_centrality(*_gr_data_key)
+                                    _my_cent = _all_cent.get(selected_sub, 0.0)
+                                    _max_cent = max(_all_cent.values()) if _all_cent else 1.0
+                                    _cent_ratio = _my_cent / _max_cent
+                                    
+                                    _a_col1.metric(
+                                        "システム的重要性", 
+                                        f"{_cent_ratio:.2f}",
+                                        help="この業種がネットワーク全体のリスク波及に与える影響度。高いほどハブ業種であることを示します。"
+                                    )
+                                    
+                                    # 2. モンテカルロ・ストレステスト
+                                    _sim = get_cached_simulation(selected_sub, *_gr_data_key)
+                                    _var_95 = _sim.get("max_risk_95", 0.0)
+                                    _a_col2.metric(
+                                        "ストレステスト（95% VaR）", 
+                                        f"{_var_95:.2f}",
+                                        delta=f"+{(_var_95 - _net_risk_val):.2f}" if _var_95 > _net_risk_val else None,
+                                        delta_color="inverse",
+                                        help="不確実性を考慮した500回のシミュレーションにおける、ワースト5%の想定リスク値です。"
+                                    )
+                                    
+                                    # 分布の簡易可視化
+                                    st.write(f"期待リスク分布 (Mean: {_sim.get('mean_risk', 0):.2f} / Max: {_sim.get('max_risk_95', 0):.2f})")
+                                    _dist = _sim.get("distribution", [])
+                                    if _dist:
+                                        _dist_str = " | ".join([f"{v:.2f}" for v in _dist])
+                                        st.caption(f"10分位数サンプル: [ {_dist_str} ]")
+                                        # シンプルなプログレスバーを分布に見立てて表示
+                                        st.progress(min(1.0, _var_95))
+                                        
+                                    st.caption("※グラフ理論の Risk Propagation モデルとモンテカルロ法により、サプライチェーン上の不調が本件に伝播する確率を算出しています。")
                             _checked_count = sum(1 for v in _bn_ev.values() if v == 1)
                             if _checked_count > 0:
                                 st.info(f"✅ {_checked_count}件の条件が選択されています。下の軍師フレーズに反映中...")
@@ -941,7 +1088,7 @@ def render_analysis_results(
                                 key="mc_auto_name_input",
                             )
                             if st.button("✅ この案件をリストに追加", type="primary",
-                                         use_container_width=True, key="mc_auto_add"):
+                                         width='stretch', key="mc_auto_add"):
                                 _subsidy_man = st.session_state.get("matched_subsidy_total_man", 0)
                                 st.session_state["mc_companies"].append({
                                     "name": _auto_name or "審査対象",
@@ -982,7 +1129,7 @@ def render_analysis_results(
                                     value=500, min_value=1, step=100, key="mc_lease_amt")
                                 _mc_lease_mo  = st.number_input("リース期間（月）",
                                     value=36, min_value=6, max_value=120, step=6, key="mc_lease_mo")
-                            _mc_submitted = st.form_submit_button("➕ リストに追加", use_container_width=True)
+                            _mc_submitted = st.form_submit_button("➕ リストに追加", width='stretch')
 
                         if _mc_submitted:
                             st.session_state["mc_companies"].append({
@@ -1022,9 +1169,9 @@ def render_analysis_results(
                         st.divider()
                         _mc_run_col, _mc_clear_col = st.columns([3, 1])
                         with _mc_run_col:
-                            _mc_run = st.button("▶ シミュレーション実行", type="primary", use_container_width=True, key="mc_run_btn")
+                            _mc_run = st.button("▶ シミュレーション実行", type="primary", width='stretch', key="mc_run_btn")
                         with _mc_clear_col:
-                            if st.button("🗑️ リストをクリア", use_container_width=True, key="mc_clear_btn"):
+                            if st.button("🗑️ リストをクリア", width='stretch', key="mc_clear_btn"):
                                 st.session_state["mc_companies"] = []
                                 st.session_state.pop("mc_portfolio_result", None)
                                 st.rerun()
@@ -1062,7 +1209,7 @@ def render_analysis_results(
                         _pf_c4.metric("ポートフォリオVaR(95%)", f"{_mc_pf.portfolio_var_95:.1f}pt")
 
                         _pf_chart = make_portfolio_chart(_mc_pf)
-                        st.image(_pf_chart, use_container_width=True)
+                        st.image(_pf_chart, width='stretch')
 
                         st.divider()
                         st.subheader("🏢 個社別 詳細結果")
@@ -1074,7 +1221,7 @@ def render_analysis_results(
                                 _dc2.metric("スコア中央値", f"{_r.score_median:.1f}")
                                 _dc3.metric("VaR (95%)", f"{_r.var_95:.1f}pt")
                                 _comp_chart = make_company_chart(_r)
-                                st.image(_comp_chart, use_container_width=True)
+                                st.image(_comp_chart, width='stretch')
 
                         st.divider()
                         with st.spinner("PDFレポート生成中…"):
@@ -1085,7 +1232,7 @@ def render_analysis_results(
                             data=_pdf_bytes,
                             file_name=_pdf_name,
                             mime="application/pdf",
-                            use_container_width=True,
+                            width='stretch',
                             key="mc_pdf_download",
                         )
                     else:
@@ -1144,7 +1291,7 @@ def render_analysis_results(
                             _ind_df.columns = ["業種", "件数", "平均スコア"]
                             st.dataframe(
                                 _ind_df,
-                                use_container_width=True,
+                                width='stretch',
                                 hide_index=True,
                             )
 
@@ -1197,7 +1344,7 @@ def render_analysis_results(
                             }
                             _rec_df = _rec_df[[c for c in _disp_cols if c in _rec_df.columns]]
                             _rec_df = _rec_df.rename(columns=_disp_cols)
-                            st.dataframe(_rec_df, use_container_width=True, hide_index=True)
+                            st.dataframe(_rec_df, width='stretch', hide_index=True)
                             st.caption(f"表示: {len(_recs)}件 / 全{_db_total}件")
 
                             # 削除
@@ -1218,31 +1365,48 @@ def render_analysis_results(
                 except Exception as _db_view_err:
                     st.error(f"DB表示エラー: {_db_view_err}")
 
-            # ----- 🤖 AIひとこと評価（自動生成・ストリーミング） -----
+            # ----- 🤖 AIひとこと評価（ボタン起動に変更） -----
             _quick_key = "ai_quick_comment_result"
+            _quick_trigger_key = "ai_quick_comment_triggered"
             _quick_result_id = f"ai_quick_{res.get('score', 0):.1f}_{res.get('industry_sub', '')}"
-            # スコア+業種が変わったときだけ再生成
+            
+            # スコア+業種が変わったときだけリセット
             if st.session_state.get("ai_quick_comment_id") != _quick_result_id:
                 st.session_state[_quick_key] = None
+                st.session_state[_quick_trigger_key] = False
                 st.session_state["ai_quick_comment_id"] = _quick_result_id
+            
             _qc_placeholder = st.empty()
+            
             if is_ai_available() and st.session_state.get(_quick_key) is None:
-                # 初回: ストリーミングで表示し、完了後キャッシュ
-                with _qc_placeholder.container():
-                    st.caption("🤖 AIコメント生成中…")
-                    try:
-                        _qc_streamed = st.write_stream(stream_quick_comment(res))
-                        st.session_state[_quick_key] = _qc_streamed or ""
-                    except Exception:
-                        _qc_fallback = get_ai_quick_comment(res)
-                        st.session_state[_quick_key] = _qc_fallback or ""
+                if not st.session_state.get(_quick_trigger_key):
+                    if st.button("🤖 AIひとこと評価を生成", key="btn_ai_quick_trigger", width='stretch'):
+                        st.session_state[_quick_trigger_key] = True
+                        st.rerun()
+                else:
+                    # ストリーミングで表示し、完了後キャッシュ
+                    with _qc_placeholder.container():
+                        st.caption("🤖 AIコメント生成中…")
+                        try:
+                            from ai_chat import stream_quick_comment, get_ai_quick_comment
+                            _qc_streamed = st.write_stream(stream_quick_comment(res))
+                            st.session_state[_quick_key] = _qc_streamed or ""
+                        except Exception:
+                            from ai_chat import get_ai_quick_comment
+                            _qc_fallback = get_ai_quick_comment(res)
+                            st.session_state[_quick_key] = _qc_fallback or ""
+            
             _qc_text = st.session_state.get(_quick_key) or ""
             if _qc_text and st.session_state.get(_quick_key) is not None:
                 with _qc_placeholder.container():
                     st.info(f"🤖 **AIコメント** — {_qc_text}")
+                    if st.button("🔄 AIコメントを消去", key="btn_ai_quick_clear", width='stretch'):
+                        st.session_state[_quick_key] = None
+                        st.session_state[_quick_trigger_key] = False
+                        st.rerun()
             elif not is_ai_available():
                 with _qc_placeholder.container():
-                    st.caption("💬 AIコメント: サイドバーでAIエンジンを設定すると自動評価が表示されます。")
+                    st.caption("💬 AIコメント: サイドバーでAIエンジンを設定すると表示ボタンが出現します。")
 
             # ----- 🤖 AI総合評価 -----
             with st.expander("🤖 AI総合評価（5項目）", expanded=False):
@@ -1348,8 +1512,39 @@ def render_analysis_results(
                     st.info("審査入力の「定性スコアリング」で項目を選択すると、ここに集計結果が表示されます。ランクは成約可能性スコア×重み＋定性×重みで算出。定性を1件も選んでいない場合は成約可能性スコアのみで判定します。")
 
             # ----- 学習モデル（業種別ハイブリッド）の予測結果（融合機能）・常に表示 -----
-            scoring_result = res.get("scoring_result")
+            _scoring_res_key = "scoring_result_manual"
+            scoring_result = res.get("scoring_result") or st.session_state.get(_scoring_res_key)
+            
             with st.expander("📈 学習モデル（業種別ハイブリッド）デフォルト確率", expanded=False):
+                if not scoring_result:
+                    st.info("💡 学習モデル（LightGBM + 業種別回帰）による詳細なデフォルト確率分析は未実行です。")
+                    if st.button("▶ ML詳細モデルによる分析を実行", key="btn_run_ml_scoring", width='stretch'):
+                        with st.spinner("学習モデルをロードし、予測を実行中..."):
+                            try:
+                                from scoring.predict_one import predict_one, map_industry_major_to_scoring
+                                _scoring_dir = os.path.dirname(os.path.abspath(__file__))
+                                _base = os.environ.get("LEASE_SCORING_MODELS_DIR", os.path.join(_scoring_dir, "scoring", "models", "industry_specific"))
+                                _industry = map_industry_major_to_scoring(res.get("industry_major", ""))
+                                _fin = res.get("financials", {})
+                                scoring_result = predict_one(
+                                    revenue=(_fin.get("nenshu") or 0) * 1000,
+                                    total_assets=(_fin.get("assets") or 0) * 1000,
+                                    equity=(_fin.get("net_assets") or 0) * 1000,
+                                    operating_profit=(_fin.get("op_profit") or 0) * 1000,
+                                    net_income=(_fin.get("net_income") or 0) * 1000,
+                                    machinery_equipment=(_fin.get("machines") or 0) * 1000,
+                                    other_fixed_assets=(_fin.get("other_assets") or 0) * 1000,
+                                    depreciation=(_fin.get("depreciation") or 0) * 1000,
+                                    rent_expense=(_fin.get("rent_expense") or 0) * 1000,
+                                    industry=_industry,
+                                    base_path=_base,
+                                )
+                                if scoring_result:
+                                    st.session_state[_scoring_res_key] = scoring_result
+                                    st.rerun()
+                            except Exception as e:
+                                st.error(f"分析エラー: {e}")
+                
                 if scoring_result:
                     st.caption("**いずれも「デフォルト確率」（高い＝リスク大）です。** 上記の本システム「契約期待度」（成約率）とは尺度が逆です。成約率に換算するなら 約 100% − デフォルト確率。ハイブリッドは「業種別回帰のデフォルト確率」と「AIのデフォルト確率」の加重平均なので、同じ尺度同士の組み合わせです。")
                     sr1, sr2, sr3, sr4 = st.columns(4)
@@ -1372,7 +1567,7 @@ def render_analysis_results(
                         st.caption("**判定に効いている指標 Top5**")
                         fig_top5 = plot_scoring_top5_factors_plotly(scoring_result)
                         if fig_top5:
-                            st.plotly_chart(fig_top5, use_container_width=True, key="plotly_scoring_top5")
+                            st.plotly_chart(fig_top5, width='stretch', key="plotly_scoring_top5")
                         # 自然言語説明（グラフの有無に関わらず常に表示）
                         try:
                             from scoring.explainer import explain_top_reasons
@@ -1584,24 +1779,24 @@ def render_analysis_results(
                 st.caption("スコア内訳・契約期待度の要因・過去分布・バランスシート内訳をインタラクティブに表示します。")
                 row1_a, row1_b = st.columns(2)
                 with row1_a:
-                    st.plotly_chart(plot_score_models_comparison_plotly(res), use_container_width=True, key="plotly_score_models")
+                    st.plotly_chart(plot_score_models_comparison_plotly(res), width='stretch', key="plotly_score_models")
                 with row1_b:
                     factors_fig = plot_contract_prob_factors_plotly(res.get("ai_completed_factors") or [])
                     if factors_fig:
-                        st.plotly_chart(factors_fig, use_container_width=True, key="plotly_contract_factors")
+                        st.plotly_chart(factors_fig, width='stretch', key="plotly_contract_factors")
                     else:
                         st.caption("契約期待度の要因は判定実行後に表示されます。")
                 row2_a, row2_b = st.columns(2)
                 with row2_a:
                     hist_fig = plot_past_scores_histogram_plotly(res.get("score"), load_all_cases())
                     if hist_fig:
-                        st.plotly_chart(hist_fig, use_container_width=True, key="plotly_past_hist")
+                        st.plotly_chart(hist_fig, width='stretch', key="plotly_past_hist")
                     else:
                         st.caption("過去案件データがあるとスコア分布を表示します。")
                 with row2_b:
                     bal_fig = plot_balance_sheet_plotly(res.get("financials"))
                     if bal_fig:
-                        st.plotly_chart(bal_fig, use_container_width=True, key="plotly_balance_sheet")
+                        st.plotly_chart(bal_fig, width='stretch', key="plotly_balance_sheet")
                     else:
                         st.caption("審査入力で資産・負債を入力すると内訳を表示します。")
                 # ----- 追加グラフ（4種）-----
@@ -1611,26 +1806,26 @@ def render_analysis_results(
                 with row3_a:
                     ebitda_fig = plot_ebitda_coverage_plotly(res.get("financials"))
                     if ebitda_fig:
-                        st.plotly_chart(ebitda_fig, use_container_width=True, key="plotly_ebitda_cov")
+                        st.plotly_chart(ebitda_fig, width='stretch', key="plotly_ebitda_cov")
                     else:
                         st.caption("財務データを入力するとEBITDAカバレッジを表示します。")
                 with row3_b:
                     bullet_fig = plot_financial_bullet_plotly(res, avg_data)
                     if bullet_fig:
-                        st.plotly_chart(bullet_fig, use_container_width=True, key="plotly_fin_bullet")
+                        st.plotly_chart(bullet_fig, width='stretch', key="plotly_fin_bullet")
                     else:
                         st.caption("業界データがあると財務指標比較を表示します。")
                 row4_a, row4_b = st.columns(2)
                 with row4_a:
                     box_fig = plot_score_boxplot_plotly(res.get("score"), selected_sub, load_all_cases())
                     if box_fig:
-                        st.plotly_chart(box_fig, use_container_width=True, key="plotly_score_box")
+                        st.plotly_chart(box_fig, width='stretch', key="plotly_score_box")
                     else:
                         st.caption("過去案件データが蓄積されるとスコアボックスプロットを表示します。")
                 with row4_b:
                     cf_fig = plot_cash_flow_bridge_plotly(res.get("financials"))
                     if cf_fig:
-                        st.plotly_chart(cf_fig, use_container_width=True, key="plotly_cf_bridge")
+                        st.plotly_chart(cf_fig, width='stretch', key="plotly_cf_bridge")
                     else:
                         st.caption("財務データを入力するとCFブリッジを表示します。")
 
@@ -1650,173 +1845,58 @@ def render_analysis_results(
                     "score": res.get("score", 0) or 0,
                 }
                 past_cases_log = load_all_cases()
-                _3d_col1, _3d_col2, _3d_col3 = st.columns(3)
-                with _3d_col1:
-                    fig_3d_1 = plot_3d_profit_position(current_case_data, past_cases_log)
-                    if fig_3d_1:
-                        st.plotly_chart(fig_3d_1, use_container_width=True, key="plotly_3d_v1")
-                        st.caption("① 売上 × 利益率 × 自己資本比率")
-                    else:
-                        st.caption("①過去データ不足")
-                with _3d_col2:
-                    fig_3d_2 = plot_3d_repayment(current_case_data, past_cases_log)
-                    if fig_3d_2:
-                        st.plotly_chart(fig_3d_2, use_container_width=True, key="plotly_3d_v2")
-                        st.caption("② 売上 × EBITDAカバレッジ × スコア")
-                    else:
-                        st.caption("②過去データ不足")
-                with _3d_col3:
-                    fig_3d_3 = plot_3d_safety_score(current_case_data, past_cases_log)
-                    if fig_3d_3:
-                        st.plotly_chart(fig_3d_3, use_container_width=True, key="plotly_3d_v3")
-                        st.caption("③ 自己資本比率 × 利益率 × スコア")
-                    else:
-                        st.caption("③過去データ不足")
+                _3d_render_key = f"3d_render_triggered_{current_case_id}"
+                if not st.session_state.get(_3d_render_key):
+                    if st.button("📍 3D多角分析チャートを表示 (高負荷注意)", key=f"btn_3d_render_{current_case_id}", width='stretch'):
+                        st.session_state[_3d_render_key] = True
+                        st.rerun()
+                    st.caption("※3Dチャートのレンダリングには数秒かかる場合があります。")
+                else:
+                    _3d_col1, _3d_col2, _3d_col3 = st.columns(3)
+                    with _3d_col1:
+                        fig_3d_1 = plot_3d_profit_position(current_case_data, past_cases_log)
+                        if fig_3d_1:
+                            st.plotly_chart(fig_3d_1, width='stretch', key="plotly_3d_v1")
+                            st.caption("① 売上 × 利益率 × 自己資本比率")
+                        else:
+                            st.caption("①過去データ不足")
+                    with _3d_col2:
+                        fig_3d_2 = plot_3d_repayment(current_case_data, past_cases_log)
+                        if fig_3d_2:
+                            st.plotly_chart(fig_3d_2, width='stretch', key="plotly_3d_v2")
+                            st.caption("② 売上 × EBITDAカバレッジ × スコア")
+                        else:
+                            st.caption("②過去データ不足")
+                    with _3d_col3:
+                        fig_3d_3 = plot_3d_safety_score(current_case_data, past_cases_log)
+                        if fig_3d_3:
+                            st.plotly_chart(fig_3d_3, width='stretch', key="plotly_3d_v3")
+                            st.caption("③ 自己資本比率 × 利益率 × スコア")
+                        else:
+                            st.caption("③過去データ不足")
+                    if st.button("🔌 3Dチャートを非表示にする", key=f"btn_3d_hide_{current_case_id}"):
+                        st.session_state[_3d_render_key] = False
+                        st.rerun()
 
-                # ----- 3D AIポジショニングコメント（チャート下・全幅） -----
+                # ----- 3D AIポジショニングコメント（チャート下・全幅・手動化） -----
                 _3d_comment_key = "ai_3d_comment_result"
                 _3d_comment_id = f"3d_{current_case_data.get('score', 0):.0f}_{current_case_data.get('op_margin', 0):.1f}"
                 if st.session_state.get("ai_3d_comment_id") != _3d_comment_id:
                     st.session_state[_3d_comment_key] = None
                     st.session_state["ai_3d_comment_id"] = _3d_comment_id
-                if is_ai_available() and st.session_state.get(_3d_comment_key) is None:
-                    with st.spinner("3D分析コメント生成中…"):
-                        _3d_c = get_ai_3d_comment(current_case_data, past_cases_log)
-                    st.session_state[_3d_comment_key] = _3d_c if _3d_c else ""
-                _3d_c_text = st.session_state.get(_3d_comment_key) or ""
+                
+                _3d_c_text = st.session_state.get(_3d_comment_key)
                 if _3d_c_text:
                     st.info(f"🤖 **ポジショニング分析** {_3d_c_text}")
-                elif not is_ai_available():
-                    st.caption("💬 ポジショニングコメント: サイドバーでAIを設定すると自動表示されます。")
+                elif is_ai_available():
+                    if st.button("🤖 AIにポジショニング分析をさせる", key="btn_ai_3d_comment", width='stretch'):
+                        with st.spinner("3D分析コメント生成中…"):
+                            _3d_c = get_ai_3d_comment(current_case_data, past_cases_log)
+                            st.session_state[_3d_comment_key] = _3d_c if _3d_c else ""
+                            st.rerun()
+                else:
+                    st.caption("💬 ポジショニングコメント: サイドバーでAIを設定すると表示ボタンが出現します。")
 
-            st.divider()
-            with st.container():
-                st.subheader("🔮 審査突破のためのAIアドバイス")
-                col_adv1, col_adv2 = st.columns(2)
-                with col_adv1:
-                    st.subheader("📋 類似案件の「勝ちパターン」")
-                    # -----------------------------------------------------
-                    # [SAFETY] Ensure variables are defined for list comprehension
-                    if "res" in locals():
-                        selected_major = res.get("industry_major", "D 建設業")
-                        score_percent = res.get("score", 0)
-                    else:
-                        if "last_result" in st.session_state:
-                            res_safety = st.session_state["last_result"]
-                            selected_major = res_safety.get("industry_major", "D 建設業")
-                            score_percent = res_safety.get("score", 0)
-                        else:
-                            selected_major = "D 建設業"
-                            score_percent = 0
-                    # -----------------------------------------------------
-                    similar_success_cases = []
-                    if load_all_cases():
-                        cases = load_all_cases()
-                        # -----------------------------------------------------
-                        # [SAFETY] Ensure variables are defined for list comprehension
-                        if "res" in locals():
-                            selected_major = res.get("industry_major", "D 建設業")
-                            score_percent = res.get("score", 0)
-                        else:
-                            if "last_result" in st.session_state:
-                                res_safety = st.session_state["last_result"]
-                                selected_major = res_safety.get("industry_major", "D 建設業")
-                                score_percent = res_safety.get("score", 0)
-                            else:
-                                selected_major = "D 建設業"
-                                score_percent = 0
-                        try:
-                            from bayesian_engine import THRESHOLD_APPROVAL
-                            approval_line = THRESHOLD_APPROVAL * 100
-                        except ImportError:
-                            approval_line = 70.0
-
-                        similar_success_cases = [
-                            c for c in cases 
-                            if c.get("industry_major") == selected_major
-                            and abs(c.get("result", {}).get("score", 0) - score_percent) < 15
-                            and c.get("result", {}).get("score", 0) >= approval_line
-                        ]
-
-                    if similar_success_cases:
-                        st.info(f"スコアや業種が似ている承認事例が {len(similar_success_cases)} 件見つかりました。")
-                        for i, c in enumerate(similar_success_cases[:3]): 
-                            with st.expander(f"事例{i+1}: {c.get('industry_sub')} (スコア {c['result']['score']:.0f})"):
-                                summary = c.get("chat_summary", "詳細なし")
-                                st.write(f"**承認の決め手**: {summary}")
-                    else:
-                        st.warning("条件の近い成功事例はまだありません。")
-                        # ノウハウデータからの代替提案
-                        if "qualitative_appeal" in knowhow_data:
-                            st.markdown("**💡 一般的な定性アピールのヒント:**")
-                            for k in knowhow_data["qualitative_appeal"]:
-                                st.caption(f"- **{k['title']}**: {k['content']}")
-
-                with col_adv2:
-                    st.subheader("🔧 決算書・スキーム調整のヒント")
-                    advice_list = []
-                    # ノウハウデータからの引用ロジック
-                    if knowhow_data:
-                        # 財務改善
-                        if user_equity_ratio < 20 and "financial_improvement" in knowhow_data:
-                            k = knowhow_data["financial_improvement"][0] # 役員借入金
-                            advice_list.append(f"💡 **{k['title']}**: {k['content']}")
-                        if user_op_margin < 0 and "financial_improvement" in knowhow_data:
-                            k = knowhow_data["financial_improvement"][1] # 赤字除外
-                            advice_list.append(f"💡 **{k['title']}**: {k['content']}")
-                        # スキーム
-                        if score_percent < 60 and "scheme_strategy" in knowhow_data:
-                            k = knowhow_data["scheme_strategy"][1] # 連帯保証
-                            advice_list.append(f"🛡️ **{k['title']}**: {k['content']}")
-                    # 業種別ノウハウ
-                    ind_key = res["industry_major"].split(" ")[1] if " " in res["industry_major"] else res["industry_major"]
-                    if "industry_specific" in knowhow_data and ind_key in knowhow_data["industry_specific"]:
-                        advice_list.append(f"🏭 **{ind_key}の鉄則**: {knowhow_data['industry_specific'][ind_key]}")
-                    if not advice_list:
-                        advice_list.append("特段の懸念点はありません。定性面（導入効果）の強化に集中してください。")
-                    for advice in advice_list:
-                        st.success(advice)
-                    # 該当業種の補助金（URLで公式サイトにすぐ飛べる）
-                    subs_adv = search_subsidies_by_industry(res.get("industry_sub", ""))
-                    if subs_adv:
-                        with st.expander("📎 該当業種の補助金（クリックで公式サイトへ）", expanded=False):
-                            for s in subs_adv:
-                                name = s.get("name") or ""
-                                url = (s.get("url") or "").strip()
-                                if url:
-                                    st.markdown(f"**{name}**")
-                                    try:
-                                        st.link_button("🔗 公式サイトを開く", url, type="secondary")
-                                    except Exception:
-                                        safe_url = url.replace('"', "%22").replace("'", "%27")
-                                        st.markdown(f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer">🔗 公式サイトを開く</a>', unsafe_allow_html=True)
-                                else:
-                                    st.markdown(f"**{name}**")
-                                st.caption((s.get("summary") or "")[:100] + "…")
-                                st.caption(f"申請目安: {s.get('application_period')}")
-
-                # ======================================================================
-                # 📚 この案件に紐づくニュース（詳細はエキスパンダー）
-                # ======================================================================
-                with st.expander("📚 この案件に紐づくニュース", expanded=False):
-                    if current_case_id:
-                        case_news_list = load_case_news(current_case_id)
-                        if case_news_list:
-                            for idx, news in enumerate(case_news_list):
-                                with st.expander(f"{idx+1}. {news.get('title', 'タイトル不明')}"):
-                                    st.caption(f"保存日時: {news.get('saved_at', 'N/A')}")
-                                    if news.get("url"):
-                                        st.markdown(f"[記事URLを開く]({news['url']})")
-                                    content_preview = (news.get("content") or "")[:300]
-                                    if content_preview:
-                                        st.write(content_preview + ("..." if len(news.get("content", "")) > 300 else ""))
-                                    if st.button("このニュースをAIに反映する", key=f"use_news_{idx}"):
-                                        st.session_state.selected_news_content = {"title": news.get("title", ""), "content": news.get("content", "")}
-                                        st.success("このニュースを、以降のAIアドバイス・ディベートで参照するように設定しました。")
-                        else:
-                            st.caption("この案件には、まだ紐づけられたニュースがありません。")
-                    else:
-                        st.caption("案件IDが未取得のため、紐づくニュースを特定できません。")
 
             st.divider()
             st.markdown("### 📊 財務ベンチマーク分析")
@@ -1844,7 +1924,7 @@ def render_analysis_results(
             with col_graphs:
                 g1, g2 = st.columns(2)
                 with g1:
-                    st.plotly_chart(plot_radar_chart_plotly(radar_metrics, radar_bench), use_container_width=True, key="radar_analysis")
+                    st.plotly_chart(plot_radar_chart_plotly(radar_metrics, radar_bench), width='stretch', key="radar_analysis")
                 with g2:
                     # 損益分岐点グラフ
                     sales_k = res["financials"]["nenshu"]
@@ -1854,25 +1934,42 @@ def render_analysis_results(
                     fc = gross_k - op_k
                     bep_fig = plot_break_even_point_plotly(sales_k, vc, fc)
                     if bep_fig:
-                        st.plotly_chart(bep_fig, use_container_width=True, key="bep_analysis")
+                        st.plotly_chart(bep_fig, width='stretch', key="bep_analysis")
                     else:
                         fallback = plot_break_even_point(sales_k, vc, fc)
                         if fallback:
                             st.pyplot(fallback)
 
-            # ========== 中分類ごとにネットで業界目安を取得して比較 ==========
+            # ========== 中分類ごとにネットで業界目安を取得して比較（遅延ロード化） ==========
             selected_sub = res.get("industry_sub", "")
             bench = dict(benchmarks_data.get(selected_sub, {}))
-            try:
-                web_bench = fetch_industry_benchmarks_from_web(selected_sub)
+            
+            # 初期描画を速めるため、同期的なフェッチは行わずキャッシュのみ読み込む
+            def _get_local_web_bench(sub):
+                try:
+                    from web_services import _load_web_benchmarks_cache
+                    cache = _load_web_benchmarks_cache()
+                    return cache.get(sub, {})
+                except Exception:
+                    return {}
+
+            web_bench = _get_local_web_bench(selected_sub)
+            if web_bench:
                 for k in _WEB_BENCH_KEYS:
                     if web_bench.get(k) is not None:
                         bench[k] = web_bench[k]
-            except Exception:
-                web_bench = {"snippets": [], "op_margin": None, "equity_ratio": None}
 
             with st.expander("🌐 中分類ごとにネットで調べた業界目安", expanded=False):
                 st.caption(f"業種「{selected_sub}」の業界目安です。結果は web_industry_benchmarks.json に保存され、毎年4月1日を境に1年ごとに再検索します。営業利益率・自己資本比率・売上高総利益率・ROA・流動比率など抽出できた指標は、下の「算出可能指標」の業界目安に反映します。")
+                if st.button("🌐 最新の業界目安をネットで取得・更新", key="btn_fetch_web_bench"):
+                    with st.spinner("DuckDuckGo で業界データを取得中..."):
+                        try:
+                            web_bench = fetch_industry_benchmarks_from_web(selected_sub, force_refresh=True)
+                            st.success("ネットから最新情報を取得しました。ページを再読み込みして反映します。")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"データ取得に失敗しました: {e}")
+
                 if web_bench.get("snippets"):
                     for i, s in enumerate(web_bench["snippets"]):
                         st.markdown(f"**[{s['title']}]({s['href']})**")
@@ -1882,9 +1979,9 @@ def render_analysis_results(
                     if extracted:
                         u = lambda k: "回" if k in ("asset_turnover", "fixed_asset_turnover") else "%"
                         parts = [f"{k}: {v:.1f}{u(k)}" for k, v in extracted]
-                        st.success("抽出した業界目安: " + ", ".join(parts[:8]) + (" …" if len(parts) > 8 else ""))
+                        st.success("抽出済み（キャッシュ）の業界目安: " + ", ".join(parts[:8]) + (" …" if len(parts) > 8 else ""))
                 else:
-                    st.caption("検索結果がありません。ネットワークまたは検索キーワードを確認してください。")
+                    st.caption("現在キャッシュされているデータはありません。上のボタンから取得してください。")
 
             with st.expander("📈 業界トレンド（拡充）", expanded=False):
                 st.markdown(trend_info or "業界トレンドのデータがありません。")
@@ -1971,7 +2068,7 @@ def render_analysis_results(
                 fig_gap = plot_indicators_gap_analysis_plotly(indicators)
                 with col_fig:
                     if fig_gap:
-                        st.plotly_chart(fig_gap, use_container_width=True, key="indicators_gap")
+                        st.plotly_chart(fig_gap, width='stretch', key="indicators_gap")
                 # 指標の分析（AI）：同一案件のキャッシュがあれば表示、なければボタンで生成
                 _case_id = st.session_state.get("current_case_id")
                 _cached = st.session_state.get("indicator_ai_analysis")
@@ -2031,7 +2128,7 @@ def render_analysis_results(
                         st.markdown("#### 利益構造")
                         col_wf, _ = st.columns([0.65, 0.35])
                         with col_wf:
-                            st.plotly_chart(plot_waterfall_plotly(nenshu_k, gross_k, op_k, ord_k, net_k), use_container_width=True, key="waterfall_result")
+                            st.plotly_chart(plot_waterfall_plotly(nenshu_k, gross_k, op_k, ord_k, net_k), width='stretch', key="waterfall_result")
             else:
                 st.caption("指標を算出するには、審査入力で売上高・損益・資産などを入力してください。")
 
@@ -2117,11 +2214,13 @@ def render_analysis_results(
                 if "battle_data" in st.session_state and res:
                     bd = st.session_state["battle_data"]
                     if bd.get("special_move_name") is None:
-                        strength_tags = res.get("strength_tags") or []
-                        passion_text = res.get("passion_text") or ""
-                        name, effect = generate_battle_special_move(strength_tags, passion_text)
-                        bd["special_move_name"] = name
-                        bd["special_effect"] = effect
+                        if st.button("⚔️ デッキを生成してバトル開始", key="btn_battle_start", width='stretch'):
+                            with st.spinner("必殺技を考案中..."):
+                                strength_tags = res.get("strength_tags") or []
+                                passion_text = res.get("passion_text") or ""
+                                name, effect = generate_battle_special_move(strength_tags, passion_text)
+                                bd["special_move_name"] = name
+                                bd["special_effect"] = effect
                         score = bd.get("score", 0)
                         log_lines = [
                             "【実況】審査委員会、開廷。",

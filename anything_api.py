@@ -49,6 +49,7 @@ def _get_anything_llm_key() -> str:
     return ""
 
 
+@st.cache_data(ttl=300, show_spinner=False)
 def is_anything_llm_available(timeout: int = 3) -> bool:
     """AnythingLLM サーバーが起動していて認証が通るかチェック。"""
     api_key = _get_anything_llm_key()

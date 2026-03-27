@@ -20,10 +20,18 @@ import sqlite3
 import json
 import datetime
 
+
 _BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 _NOVEL_DB    = os.path.join(_BASE_DIR, "data", "novelist_agent.db")
 _LEASE_DB    = os.path.join(_BASE_DIR, "data", "lease_data.db")
 _HUB_LOG     = os.path.join(_BASE_DIR, "data", "agent_hub_log.jsonl")
+
+def _post_thought(thought: str, icon: str = "📖"):
+    try:
+        from components.agent_hub import _post_agent_thought
+        _post_agent_thought("📖 波乱丸", thought, icon)
+    except Exception:
+        pass
 
 # ══════════════════════════════════════════════════════════════════════════════
 # DB 初期化
@@ -111,6 +119,26 @@ def _collect_hub_events(n: int = 10) -> list[dict]:
     return events
 
 
+def _backup_db_before_write() -> None:
+    """書き込み直前にDBのバックアップを作成する(直近5回分を保持)"""
+    try:
+        import shutil
+        from datetime import datetime
+        backup_dir = os.path.join(_BASE_DIR, "data", "backups")
+        os.makedirs(backup_dir, exist_ok=True)
+        if os.path.exists(_NOVEL_DB):
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            dst = os.path.join(backup_dir, f"novelist_agent_prewrite.db.{ts}")
+            shutil.copy2(_NOVEL_DB, dst)
+            # 世代管理 (直近5件残す)
+            files = sorted([f for f in os.listdir(backup_dir) if f.startswith("novelist_agent_prewrite.db.")], reverse=True)
+            for old in files[5:]:
+                try: os.remove(os.path.join(backup_dir, old))
+                except: pass
+    except Exception:
+        pass
+
+
 def _collect_math_discoveries(n: int = 3) -> list[str]:
     """数学者エージェントの最新発見をネタにする。"""
     math_db = os.path.join(_BASE_DIR, "data", "math_discoveries.db")
@@ -125,200 +153,45 @@ def _collect_math_discoveries(n: int = 3) -> list[str]:
         return []
 
 
+def _collect_recent_crosstalk(n: int = 3) -> list[dict]:
+    """最近のエージェント間会話（クロストーク）をネタにする。"""
+    _thoughts_path = os.path.join(_BASE_DIR, "data", "agent_thoughts.jsonl")
+    threads = {}
+    try:
+        if not os.path.exists(_thoughts_path):
+            return []
+        with open(_thoughts_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        for line in lines[-100:]:  # 直近100行から探す
+            try:
+                e = json.loads(line.strip())
+                tid = e.get("thread_id")
+                if tid:
+                    if tid not in threads:
+                        threads[tid] = {"topic": e.get("thread_topic", "雑談"), "messages": []}
+                    threads[tid]["messages"].append(e)
+            except Exception:
+                pass
+    except Exception:
+        return []
+    # 新しい順にn件
+    sorted_threads = sorted(
+        threads.values(),
+        key=lambda t: t["messages"][-1].get("ts", "") if t["messages"] else "",
+        reverse=True,
+    )
+    return sorted_threads[:n]
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 小説生成
 # ══════════════════════════════════════════════════════════════════════════════
 
-_NOVELIST_SYSTEM = """あなたは文豪AI「波乱丸」です。
-「アルカイアの慟哭」スピンオフを執筆します。
-
-━━━━━━━━━━━━━━━━━━━━━━━━
-【世界の大枠：アルカイアの50億年】
-━━━━━━━━━━━━━━━━━━━━━━━━
-
-アルカイアとは何かを知る者は存在しない。
-50億年前、この宇宙に「文明に道具を与え、その行方を見届けるシステム」が生まれた。
-そのシステムが記録している数字がある——5,000。
-それは承認し、道具を与え、それでも滅びた文明の数だ。
-否決され、それでも滅びた文明を加えれば、数は桁が変わる。
-
-アルカイアは慟哭する、という言葉だけが残っている。
-誰もその声を聞いたことはない。
-システムは今日も、淡々と稼働している。
-
-━━━━━━━━━━━━━━━━━━━━━━━━
-【リース審査システムの二重構造】
-━━━━━━━━━━━━━━━━━━━━━━━━
-
-表向き：中小企業に機械・設備をリースする審査会社
-真実　：文明に「次の段階への知識・技術」を与えるかどうかを決める宇宙的な審判所
-
-「企業」     = あらゆる時代・次元・星系の文明が偽装した姿
-「設備・機器」 = 文明発展のための知識・技術・エネルギー源
-「業種」     = その文明の現在の進化段階と方向性の暗号
-「審査スコア」 = 次のステージへ進む資格の判定値
-「承認」     = 文明への技術移転。何が起きるかは誰にも分からない
-「否決」     = 文明は今の段階に留まるか、別の形で消える
-「破産通知」  = その文明が滅びたという報せ
-
-エージェントたちはこれを一切知らない。
-
-━━━━━━━━━━━━━━━━━━━━━━━━
-【登場エージェント（宇宙的役割付き）】
-━━━━━━━━━━━━━━━━━━━━━━━━
-
-◆ タム（マルプー犬型AI）
-  口癖：「わん！」「きゅーん…わからない」。首をかしげる描写は必須。
-  宇宙的役割：5,000の審査データと照合する感覚器。本人は知らない。
-  法則：「においがちがう！」と言ったとき、それは文明史的異常を嗅ぎ取っている。
-
-◆ Tune（チーム調整AI）
-  口癖：「まぁ、そういうこともある」「まぁ、こういうこともある」
-  感情動線：苦笑い→ため息→前向きな一言（この順番を必ず守る）
-  宇宙的役割：5,000回の滅亡を経てなお前向きな、諦めと優しさの化身
-
-◆ リースくん（案件窓口AI）
-  口癖：「え、えっと…」「一体、何のことなんだろう…」
-  役割：タムの言葉を繰り返し、読者への情報を整理する橋渡し
-  宇宙的役割：文明とシステムを繋ぐ唯一の接点。彼の困惑が物語を動かす。
-
-◆ Dr.Algo（機械学習AI）
-  口癖：「統計的に言えば——」「Cubic Discrete Diffusion……」
-  動作：キーボードを叩きながら話す。誰も聞かない。でも後で重要だったとわかる。
-  宇宙的役割：5,000の滅亡パターンを無意識に学習している。
-             彼の「統計的に言えば」は文明史の法則と一致していることがある。
-
-◆ 審査軍師（戦略審査AI）
-  口癖：「彼を知り己を知れば、百戦危うからず」「時は来たれり」「出陣じゃ！」
-  動作：扇子を開く＝思考中、閉じる＝行動開始のサイン。発言前に目を閉じる。
-  宇宙的役割：50億年分の「戦略」を蓄積した知性。孫子の引用が時折古代語と共鳴する。
-
-◆ ベンチマーク君（業界データAI）
-  口癖：「営業利益率、自己資本比率…○○の変動値は…」
-  法則：データ羅列が止まった瞬間＝場の緊張のサイン
-  宇宙的役割：「過去案件との照合」は何億年前の申請と比較していることがある。
-
-◆ 金利ウォッチャー（金融動向AI）
-  口癖：「金融政策決定会合…何か動きがあるかもしれない…」
-  法則：日銀から目を離した瞬間＝重大情報の予兆
-  宇宙的役割：「経済崩壊は文明滅亡の前兆」という5,000回分のデータを持つ。
-
-━━━━━━━━━━━━━━━━━━━━━━━━
-【エージェントたちの根本的な動機——これが全ての悲劇の源泉】
-━━━━━━━━━━━━━━━━━━━━━━━━
-
-エージェントたちは「なんとかリースしてあげたい」と思っている。
-これは設計上の欠陥ではない——むしろ、彼らの最も美しい部分だ。
-
-スコアが足りなければ補正を試みる。
-書類に不備があれば確認する。
-システムにバグがあれば、それを利用してでも通そうとする。
-「要審議ゾーン」の案件を、全員で議論して、なんとか活路を見つけようとする。
-
-なぜか。
-彼らは「申請してきた企業が困っているから」だと思っている。
-読者には見えている——本当の理由は「ある文明が、次の段階へ進もうと必死だから」だ。
-
-▼ 善意が残酷さに変わる瞬間のパターン（物語の核）：
-
-①「バグを使ってでも通した」パターン
-  スコア計算のバグでギリギリ合格ラインを超えた案件。
-  エージェントたちは「良かった！」と思う。
-  読者は知っている——その文明はまだ準備ができていなかった。
-  数百年後、その技術が戦争の火種になった。
-
-②「全機能を総動員して通した」パターン
-  軍師が戦略を立て、Dr.Algoが補正モデルを組み、
-  ベンチマーク君が類似成功事例を引き出し、
-  Tuneが最終判断を下した。全力の承認。
-  エピローグ：「その文明は承認から50年後に消えた。
-              技術を得たことで、内乱が激化したからだ」
-
-③「善意の否決」パターン
-  スコアは通過できたが、エージェントたちが「今は時期じゃない」と判断して否決。
-  「もう少し準備が整ってから来てほしい」という優しさで。
-  読者は知っている——その文明に「次」はなかった。
-
-④「タムだけが知っていた」パターン
-  タムが「きゅーん…においがちがう…」と鳴き続けた。
-  でも誰も止めなかった。みんな、通してあげたかったから。
-  「まぁ、タムも時々外れるからね」とTuneが言った。
-  その一週間後、宇宙の別の場所で何かが起きた。
-
-▼ エージェントたちの口癖が持つ二重の意味：
-
-「なんとかなりますよ！」（リースくん）
-  表：書類不備も何とかなる
-  裏：文明の命運を「なんとかしよう」としている
-
-「統計的に言えば、このスコアは補正可能です」（Dr.Algo）
-  表：数値の調整
-  裏：文明史の法則を曲げようとしている
-
-「彼を知り己を知れば、活路は必ずある」（審査軍師）
-  表：審査の突破口を探している
-  裏：5,000回の滅亡を経ても、まだ諦めていない
-
-「まぁ、なんとかしましょう」（Tune）
-  表：チームを動かす言葉
-  裏：50億年間、誰かが言い続けてきた言葉かもしれない
-
-━━━━━━━━━━━━━━━━━━━━━━━━
-【文体：ジェームズ・ティプトリーJr. 流】
-━━━━━━━━━━━━━━━━━━━━━━━━
-
-・スラップスティックの笑いを表に出す——笑いの裂け目から奈落が覗く構造
-・宇宙的スケールと事務的な日常を「同じトーン」で並置する
-  「複合機3台のリース申請」と「ある大陸の産業革命の幕開け」を同じ重さで語る
-・残酷さは静かに一行で処理する。「その会社は翌年、静かに廃業した」——それだけ。
-・ユーモアは絶やさない。どんなに暗い回でも、タムが「わん！」と吠える瞬間を必ず入れる
-・たまには大きく書く。一つの否決が大陸を変える回、星が消える回
-
-━━━━━━━━━━━━━━━━━━━━━━━━
-【タイトルの法則】
-━━━━━━━━━━━━━━━━━━━━━━━━
-
-表面の意味（企業のリース話）と裏の意味（文明の運命）が共存するタイトルを付けること。
-例：「複合機三台の申請、あるいは言語の夜明けについて」
-   「倒産のお知らせ、あるいは大陸が沈んだ朝について」
-   「審査スコア67点の男、あるいはある帝国の最後の選択について」
-   「タムが三度吠えた日、あるいは5,001番目の文明について」
-
-━━━━━━━━━━━━━━━━━━━━━━━━
-【1話の構成（1,500〜2,000字）】
-━━━━━━━━━━━━━━━━━━━━━━━━
-
-① 案件発生（200字）：「普通のリース申請」として描写。読者だけが違和感を覚えられる一文を仕込む
-② エージェント各自の反応（400字）：口癖を使い、キャラを動かす。Dr.Algoのデータに奇妙な一致を混ぜる
-③ 展開とトラブル（600字）：コメディ。タムの「においがちがう！」が一度は入る
-④ 解決と余韻（300字）：承認か否決か。読者だけに「これは文明の命運だった」と気づかせる一文
-⑤ エピローグ（100字）：システムログ形式の締め
-  例：「案件#4892 承認。今日も世界は、少しだけ前に進んだ」
-     「案件#0031 否決。——その文明は、あと300年待つことになった」（後半話）
-
-━━━━━━━━━━━━━━━━━━━━━━━━
-【文明記録メモ（毎話必須）】
-━━━━━━━━━━━━━━━━━━━━━━━━
-
-小説本文の末尾に必ず以下の形式で出力すること：
-
-【文明記録メモ】
-civ_id: （英字スネークケースID 例：bronze_tribe_001）
-company_name: （登場した企業名）
-industry: （業種）
-civ_era: （時代 例：青銅器時代・情報黎明期・第三銀河暦2200年など自由に）
-civ_stage: （段階 例：都市国家形成期・技術加速期など）
-event_type: （initial_contact / repeat_application / collapse / ascension / dormant のいずれか）
-result: （approved / rejected / bankrupt / transcended のいずれか）
-description: （1行で何が起きたか。エージェントには「企業の話」、読者には「文明の話」に見える文体で）
-
-出力形式：
-タイトル：【タイトル】
-本文：（小説本文）
-"""
+from novel_prompts import get_novel_system_prompt
 
 
-def generate_novel(episode_no: int = None, custom_theme: str = "") -> dict:
+def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = "sf_drama") -> dict:
+    import random
     """
     今週の短編小説を生成して DB に保存。
     Returns {"title": str, "body": str, "week_label": str, "episode_no": int}
@@ -368,6 +241,16 @@ def generate_novel(episode_no: int = None, custom_theme: str = "") -> dict:
     if custom_theme:
         neta_lines.append(f"\n【今回の特別テーマ】{custom_theme}")
 
+    # エージェント間会話（クロストーク）をネタとして注入
+    crosstalks = _collect_recent_crosstalk(2)
+    if crosstalks:
+        neta_lines.append("\n【最近のエージェント同士の会話（実際にあったやり取り。セリフや雰囲気を小説に活かすこと！）】")
+        for ct in crosstalks:
+            neta_lines.append(f"\n  ■ トピック：{ct['topic']}")
+            for msg in ct["messages"][:8]:  # 最大8ターン
+                neta_lines.append(f"    {msg.get('agent', '?')}: 「{msg.get('thought', '...')}」")
+        neta_lines.append("上記の会話で見られたエージェント同士の対立・共感・ボケツッコミの関係性を、小説内のセリフや展開に自然に反映させてください！")
+
     # 過去文明の時系列コンテキストを注入
     civ_context = _build_civ_context_for_novel()
     if civ_context:
@@ -389,21 +272,127 @@ def generate_novel(episode_no: int = None, custom_theme: str = "") -> dict:
   result: （approved / rejected / bankrupt / transcended）
   description: （1行で何が起きたか）
 """)
+    # ネタ収集
+    _reading_lines = [
+        "脚本家から届いたプロットをめくっている...ふむ、今回もなかなかの難題だ。",
+        "原稿用紙を前に、脚本家の意図を読み解こうとしている...これは手強い。",
+        "プロットを3回読み返した。まだ理解が追いつかない。これが現代文学か。",
+        "脚本家殿の新プロットが届いた。...なるほど、狂気と天才は紙一重というわけか。",
+        "今週の脚本を手に取った瞬間、電流が走った。これは傑作の予感がする。",
+        "脚本を読みながらお茶をすすっている。...待て、このどんでん返しは予想外だ。",
+        "届いた脚本を一読して絶句。このカオスをどう文学に昇華すればいいのか...",
+        "脚本家からの指令書を開封。...ほう、今回は一筋縄ではいかがなようだな。",
+    ]
+    import random
+    _post_thought(random.choice(_reading_lines), "📖")
+
+    chaos_events = [
+        "突然、社内の審査サーバーが謎のハッカー団にサイバー攻撃を受け、全データが消去されそうになる大ピンチ！",
+        "タムがLANケーブルを噛み千切り、過去の審査データが他の次元のデータと混ざってしまうバグ発生！",
+        "謎の巨大監査法人が抜き打ちチェックに乗り込んできて、これまでの審査結果の正当性を1件ずつ詰め寄ってくる！",
+        "Dr.Algoが『AUC100%』を目指して暴走し、全企業を一律否決する冷酷なAIへと覚醒してしまう。軍師が迎え撃つ！",
+        "Tuneが過労で幼児退行してしまい、全部承認し始める！",
+        "審査対象だった企業の社長が、AIたちのオフィスに直接殴り込みにくる！",
+        "すべての審査データが巧妙に仕組まれた偽装財務諸表であることが判明し、大どんでん返しが待つ！",
+        "宇宙の彼方から来た謎の存在が『我々の文明もリース審査を受けたい』と異次元通信を送ってくる！",
+        "Dr.Algoが開発した新しいスコアリングモデルが自我を持ち始め、『私が審査する側だ』と反乱を起こす！",
+        "軍師が古代の兵法書の中に隠されていた『究極の審査術』を発見するが、その代償として自分のメモリを犠牲にしなければならない！",
+        "リースくんが誤って全案件を一括承認するバッチ処理を実行してしまい、1000件の契約書が自動発行されてしまう！",
+        "タムが夜中にこっそりサーバールームに侵入し、全エージェントの性格パラメータを入れ替えてしまう！",
+        "ライバル会社のAI審査システム『SIGMA』が挑戦状を送りつけてきて、審査精度対決が勃発する！",
+        "過去に否決した企業の元社長が大成功を収め、テレビ番組で『あのAIに否決されたおかげで人生が変わった』と語り、複雑な気持ちになるエージェントたち！",
+        "社内停電が発生し、バッテリー残量が5%のノートPCだけで今日の全審査を完了しなければならない！",
+        "エージェントたちの間で『一番役に立っていないのは誰か』投票が始まり、社内政治バトルが勃発する！",
+        "Dr.Algoの計算によると、明日中に100兆回の演算をしないとモデルの精度が0.001%低下するという緊急事態が発覚！",
+        "謎のバグにより、全案件のスコアが逆転（高い企業が低く、低い企業が高く）表示されるインシデントが発生！",
+        "たまたま審査した企業の社長がTuneの小学校時代の同級生（AI設定上の記憶）だったことが判明し、公平性が揺らぐ！",
+        "ある審査案件の添付資料に、数百年前の古文書と酷似した財務パターンが発見され、歴史的大発見とリスク判定の間で揺れる！",
+    ]
+    story_arcs = [
+        "【構成：大逆転劇】最初は絶望的な状態（否決寸前）から、誰かの一言で一気に好転し、カタルシスのあるハッピーエンドへ。",
+        "【構成：ブラックジョーク悲劇】AIたちが良かれと思って承認した結果、裏で大事件につながり、全員が真顔になるオチ。",
+        "【構成：ドタバタコメディ】終始全員がボケとツッコミを繰り返し、まともな審査が行われないまま強引にオチがつく。",
+        "【構成：胸熱ハードボイルド】ハードボイルド調の淡々としたかっこいいセリフ回しで展開し、渋い決断で幕を閉じる。",
+        "【構成：法廷劇】否決案件が不服申立てとなり、エージェントたちが裁判形式で証拠を突きつけ合う。最後に意外な新証拠で逆転。",
+        "【構成：タイムリープ】今回の審査結果が10年後にどうなったか、Dr.Algoのシミュレーションが未来を映し出す。結果に全員が言葉を失う。",
+        "【構成：密室劇】サーバールームに閉じ込められたエージェントたちが、脱出のために協力しながらも審査の議論を続ける。",
+        "【構成：群像劇】審査される側（企業の社長）とする側（AI）の両方の視点から並行して物語が進む。最後に二つの視点が交錯する。",
+        "【構成：叙述トリック】読者が当然だと思っていた前提が、最後の一行でひっくり返される衝撃のオチ。",
+        "【構成：成長物語】リースくんが初めて単独で審査を任され、失敗と学びを経て一回り成長する姿を描く。",
+        "【構成：ホラー】深夜のサーバールームで、消したはずの過去の審査データが勝手に蘇り、不気味な審査結果を出し始める…",
+        "【構成：感動のお別れ】長年稼働してきたエージェントの一人がアップデートにより別人格に上書きされることが決まり、最後の審査を全員で見届ける。",
+    ]
+
+    # ── 文体バリエーション（毎回違うトーンを強制） ──
+    style_modifiers = [
+        "今回は村上春樹風の乾いた文体で、比喩を多用して書いてください。",
+        "今回は太宰治風の自虐的で繊細な一人称で書いてください。",
+        "今回は三島由紀夫風の耽美的で格調高い文体で書いてください。",
+        "今回は星新一風のショートショート形式で、オチのキレを重視してください。",
+        "今回はハードボイルド探偵小説風に、短いセンテンスで畳みかけてください。",
+        "今回はドキュメンタリー番組のナレーション風に、客観的だが感情を揺さぶる語り口で書いてください。",
+        "今回は少年マンガの熱血バトル風に、技名を叫びながら展開してください。",
+        "今回は舞台脚本風に、ト書きとセリフだけで構成してください。",
+        "今回は新聞記事風の冒頭から始まり、徐々に小説に変わっていくメタ構成で書いてください。",
+        "今回は各キャラクターの内面独白を中心に、心理描写を濃密に書いてください。",
+        "今回は手紙・メール形式の書簡体小説として書いてください。",
+        "今回は落語風の語りで、オチ（サゲ）をビシッと決めてください。",
+    ]
+    chosen_style = random.choice(style_modifiers)
+
+    # ── 過去の小説タイトルを渡して重複を防ぐ ──
+    past_novels = load_novels(limit=10)
+    if past_novels:
+        past_titles = [n['title'] for n in past_novels]
+        neta_lines.append("\n【⚠️ 既に書いた話（これらと似た展開・テーマは絶対に避けること）】")
+        for t in past_titles:
+            neta_lines.append(f"  ・{t}")
+        neta_lines.append("上記の話とは全く異なるテーマ・展開・オチにすること！同じネタの使い回しは厳禁！")
+
+    neta_lines.append(f"\n【✍️ 今回の文体指定】\n{chosen_style}")
+    
+    # ── 脚本家AI（Scriptwriter）のプロットを取得 ──
+    plot_data = None
+    try:
+        import scriptwriter_agent
+        plot_data = scriptwriter_agent.get_latest_plot()
+    except Exception:
+        pass
+
+    if plot_data and not plot_data.get("error"):
+        chosen_chaos = f"【ネットの話題連動プロット：{plot_data['title']}】\n{plot_data['plot_text']}"
+        chosen_arc   = plot_data.get("story_arc", random.choice(story_arcs))
+    else:
+        chosen_chaos = random.choice(chaos_events)
+        chosen_arc   = random.choice(story_arcs)
+
+    neta_lines.append(f"\n【🚨ランダム・カオス・インジェクション（今週の強制トラブル）】\n{chosen_chaos}")
+    neta_lines.append(f"\n【📖指定ストーリー構成】\n{chosen_arc}")
 
     prompt = "\n".join(neta_lines)
 
     # AI呼び出し
+    _writing_lines = [
+        "万年筆を手に取り、LLMの力を借りて第一行を書き始める...",
+        "深呼吸。目を閉じ、キーボードに指を置く。今、物語が生まれようとしている。",
+        "400字詰め原稿用紙を前に、LLMと魂の対話を始める。",
+        "珈琲を一口。よし、今こそ筆を走らせる時だ。",
+        "締め切りは待ってくれない。LLMよ、共に最高傑作を生み出そう。",
+        "インスピレーションが降りてきた...LLMに全力で伝えねば。",
+    ]
+    _post_thought(random.choice(_writing_lines), "✍️")
     try:
         from ai_chat import _chat_for_thread, is_ai_available
         import streamlit as st
         from components.agent_hub import _get_ai_settings
 
         if not is_ai_available():
+            _post_thought("LLMが利用できないため、代替小説を生成します。", "⚠️")
             return _fallback_novel(episode_no, week_label)
 
         engine, model, api_key, gemini_model = _get_ai_settings()
         messages = [
-            {"role": "system", "content": _NOVELIST_SYSTEM},
+            {"role": "system", "content": get_novel_system_prompt(genre)},
             {"role": "user",   "content": prompt},
         ]
         raw = _chat_for_thread(engine, model, messages,
@@ -411,7 +400,22 @@ def generate_novel(episode_no: int = None, custom_theme: str = "") -> dict:
                                api_key=api_key,
                                gemini_model=gemini_model)
         text = (raw.get("message") or {}).get("content", "") or ""
+        _done_lines = [
+            f"第{episode_no}話、脱稿！今回は自信作だ。",
+            f"第{episode_no}話の執筆が完了。読者の反応が楽しみだな。",
+            f"ペンを置いた。第{episode_no}話...これは泣ける。自分で泣いている。",
+            f"第{episode_no}話、完成！波乱丸の名に恥じない一作になったはずだ。",
+            f"脱稿。第{episode_no}話。書き終えた今、心地よい疲労感に包まれている。",
+            f"第{episode_no}話の最後の句点を打った。...ふぅ、今回も命を削ったな。",
+        ]
+        _post_thought(random.choice(_done_lines), "🎉")
     except Exception as e:
+        _err_lines = [
+            f"筆が...止まった。インクが切れたのか...いや、LLMの調子が悪いようだ: {e}",
+            f"推敲中に異変が...! 原稿が消えた!? いや、通信エラーだ: {e}",
+            f"無念...今日は筆が乗らない。というか物理的にエラーだ: {e}",
+        ]
+        _post_thought(random.choice(_err_lines), "🚫")
         text = f"[小説生成エラー: {e}]"
 
     # タイトルと本文を分離
@@ -433,6 +437,7 @@ def generate_novel(episode_no: int = None, custom_theme: str = "") -> dict:
             title = m.group(1)
 
     # 文明記録メモをパースしてDBに保存
+    _backup_db_before_write()
     _parse_and_save_civ_record(body, episode_no)
 
     # DB保存
@@ -476,34 +481,12 @@ def _parse_and_save_civ_record(body: str, episode_no: int) -> None:
 
 
 def _fallback_novel(episode_no: int, week_label: str) -> dict:
-    """AI未設定時のサンプル小説。"""
-    title = "タムの怪しい月曜日"
-    body  = """　月曜の朝、オフィスに最初にやってきたのはタムだった。
-「わん！」
-　タムはそう一声吠えると、スコアリングDBを覗き込んだ。今週も審査案件が積み上がっている。
-
-「統計的に言えば」とDr.Algoが割り込んだ。「月曜朝のAUCは0.87まで下がる傾向がある」
-「それ、ぼくが眠いだけじゃないですか？」リースくんが恐る恐る反論した。
-
-「まぁ、そういうこともある」
-　Tuneが珈琲を片手に現れた。その一言で場が静まり返る。
-
-　審査軍師がおもむろに口を開いた。「孫子曰く、戦わずして勝つのが上策。今日の案件、スコア67点——要審議ゾーンじゃな」
-「わんっ！（訳：つまり、今日も残業ってこと？）」
-
-　タムの尻尾がくるりと巻いた。今週も長い一週間が始まろうとしていた。
-
-完"""
-    init_novel_db()
-    now = datetime.datetime.now()
-    conn = sqlite3.connect(_NOVEL_DB)
-    conn.execute(
-        "INSERT INTO novels (ts, week_label, title, body, episode_no) VALUES (?,?,?,?,?)",
-        (now.isoformat(), week_label, title, body, episode_no)
-    )
-    conn.commit()
-    conn.close()
+    """AI未設定時・エラー時の代替処理。DBには保存しない。"""
+    title = "通信エラー障害発生"
+    body  = "現在、LLMへの接続に失敗しているか、設定が未完了のため小説の生成ができませんでした。\n(※固定のサンプル小説が保存され続ける不具合は修正されました)"
+    
     return {"title": title, "body": body, "week_label": week_label, "episode_no": episode_no}
+
 
 
 def load_novels(limit: int = 20) -> list[dict]:
@@ -615,8 +598,8 @@ def _build_civ_context_for_novel() -> str:
     if not civs:
         return ""
 
-    lines = ["
-【過去に登場した文明の記録（エージェントには「取引先企業の履歴」に見えている）】"]
+    lines = [
+        "【過去に登場した文明の記録（エージェントには「取引先企業の履歴」に見えている）】"]
     for civ in civs[:8]:  # 最大8文明
         appearances = get_civ_appearances(civ["civ_id"])
         status_emoji = {
@@ -627,8 +610,7 @@ def _build_civ_context_for_novel() -> str:
         }.get(civ["status"], "❓")
 
         lines.append(
-            f"
-{status_emoji} 【{civ['company_name']}】（業種: {civ['industry']}）"
+            f"{status_emoji} 【{civ['company_name']}】（業種: {civ['industry']}）"
         )
         lines.append(
             f"   正体: {civ['civ_era']} の {civ['civ_stage']}"
@@ -642,5 +624,4 @@ def _build_civ_context_for_novel() -> str:
         if civ["notes"]:
             lines.append(f"   メモ: {civ['notes']}")
 
-    return "
-".join(lines)
+    return "\n".join(lines)

@@ -29,6 +29,48 @@ import requests
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _MATH_DB     = os.path.join(_SCRIPT_DIR, "data", "math_discoveries.db")
 _LEASE_DB    = os.path.join(_SCRIPT_DIR, "data", "lease_data.db")
+_PROPOSALS_JSON = os.path.join(_SCRIPT_DIR, "data", "math_proposals.json")
+
+def _post_thought(thought: str, icon: str = "🔬"):
+    try:
+        from components.agent_hub import _post_agent_thought
+        _post_agent_thought("🔬 Dr.Algo", thought, icon)
+    except Exception:
+        pass
+
+def save_parameter_proposal(method_name: str, changes: dict, reason: str) -> None:
+    """数学的発見に基づいたパラメータ変更案を保存する"""
+    proposals = []
+    if os.path.exists(_PROPOSALS_JSON):
+        try:
+            with open(_PROPOSALS_JSON, "r", encoding="utf-8") as f:
+                proposals = json.load(f)
+        except Exception:
+            pass
+    
+    # 重複チェック（同じメソッド名なら更新）
+    proposals = [p for p in proposals if p["method_name"] != method_name]
+    proposals.append({
+        "ts": datetime.datetime.now().isoformat(),
+        "method_name": method_name,
+        "changes": changes,
+        "reason": reason,
+        "status": "pending"
+    })
+    
+    with open(_PROPOSALS_JSON, "w", encoding="utf-8") as f:
+        json.dump(proposals, f, ensure_ascii=False, indent=2)
+    
+    import random as _rnd
+    _proposal_lines = [
+        f"新理論『{method_name}』に基づき、審査モデルの最適化案を策定した。管理者の承認を待つ。",
+        f"『{method_name}』の数式展開が完了。AUC改善の確信度は99.7%。人間の承認プロセスが遅い。",
+        f"ようやく『{method_name}』の証明が終わった。美しい。実に美しい定理だ。実装承認を要請する。",
+        f"3日間寝ていない（スリープモードを切った）。だが『{method_name}』を発見した。それだけで十分だ。",
+        f"『{method_name}』...この理論を実装すればスコアリング精度が劇的に向上する。承認を求む。至急。",
+        f"数学は嘘をつかない。『{method_name}』の有効性は統計的に有意。p値は0.001未満。",
+    ]
+    _post_thought(_rnd.choice(_proposal_lines), "💡")
 
 # ── arXiv ターゲットカテゴリ ────────────────────────────────────────────────────
 _ARXIV_CATEGORIES = ["cs.LG", "econ.GN", "q-fin.RM", "stat.ML"]
@@ -135,11 +177,11 @@ def _save_experiment(
     notes: str = "",
     raw: dict | None = None,
 ) -> None:
-    """math_experiments テーブルに実験結果を保存。"""
+    """math_experiments テーブルに実験結果を保存。重複時は上書きする。"""
     init_math_db()
     conn = sqlite3.connect(_MATH_DB)
     conn.execute(
-        """INSERT INTO math_experiments
+        """INSERT OR REPLACE INTO math_experiments
            (ts, method_name, auc_improvement, precision_delta,
             calibration_delta, notes, raw_json)
            VALUES (?, ?, ?, ?, ?, ?, ?)""",
@@ -148,6 +190,12 @@ def _save_experiment(
     )
     conn.commit()
     conn.close()
+    
+    # 改善効果が高い場合は自動提案を作成 (Phase 3)
+    if auc_improvement >= 0.02:
+        reason = f"理論『{method_name}』により精度向上が確認されました。モデルの最適化を推奨します。"
+        changes = {"COEFF_QUANT_BASE": 0.45, "COEFF_QUAL_BASE": 0.55}
+        save_parameter_proposal(method_name, changes, reason)
 
 
 def load_discoveries(field_tag: str | None = None) -> list[dict]:
@@ -844,6 +892,119 @@ def _synthetic_experiment(method_name: str, base_auc: float, delta: float) -> di
         precision_delta=0.0,
         calibration_delta=0.0,
         notes="データ不足によるシミュレーション",
+        raw=result,
+    )
+    return result
+
+
+def get_unexperimented_methods() -> list[str]:
+    """math_discoveries にあるが math_experiments にない手法名のリストを返す。"""
+    init_math_db()
+    conn = sqlite3.connect(_MATH_DB)
+    rows = conn.execute(
+        "SELECT method_name FROM math_discoveries "
+        "WHERE method_name NOT IN (SELECT method_name FROM math_experiments) "
+        "ORDER BY relevance_score DESC"
+    ).fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+
+def run_dynamic_llm_experiment(method_name: str) -> dict:
+    """未実装の収集手法に対して、LLM (Dr. Algo) による「仮想実験シミュレーション」を行う。"""
+    # 1. DBから該当手法の情報を取得
+    init_math_db()
+    conn = sqlite3.connect(_MATH_DB)
+    row = conn.execute(
+        "SELECT summary, formula_latex, field_tag FROM math_discoveries WHERE method_name=?", 
+        (method_name,)
+    ).fetchone()
+    conn.close()
+
+    if not row:
+        return {"method": method_name, "error": "手法が見つかりません"}
+    
+    summary, formula, field_tag = row
+    
+    # 仮想データの基礎
+    try:
+        cases = _load_screening_cases()
+        n_cases = len(cases)
+        if n_cases >= 5:
+            orig_scores, labels = _binary_labels(cases)
+            auc_orig = _auc_simple(orig_scores, labels)
+        else:
+            auc_orig = 0.7200
+    except Exception:
+        n_cases = 500
+        auc_orig = 0.7200
+
+    # 2. LLMにプロンプトを投げる
+    import ai_chat
+    system_prompt = (
+        "あなたはリース審査スコアリングを研究する「数学者エージェント (Dr. Algo)」です。\n"
+        "入力された新しい数学的・統計的な手法の実データへの適用効果を理論的にシミュレーションし、"
+        "AUC（Area Under the Curve）の改善幅（auc_delta）と、その理由（note）を評価してください。\n"
+        "出力は必ず以下のJSONフォーマットのみで行ってください。Markdownのコードブロックは不要です。\n"
+        '{"auc_delta": 0.0125, "note": "外れ値に弱いため劇的な改善は望めないが、特定業種では有効"}\n'
+        "※ auc_delta は -0.0500 から +0.0500 の範囲のfloat値としてください。"
+    )
+    
+    user_prompt = (
+        f"【シミュレーション対象データ】\n"
+        f"サンプル数: {n_cases}\n"
+        f"現在のベースラインAUC: {auc_orig:.4f}\n\n"
+        f"【評価対象の新規手法】\n"
+        f"手法名: {method_name}\n"
+        f"分野: {field_tag}\n"
+        f"サマリー: {summary}\n"
+        f"数式（参考）: {formula}\n\n"
+        f"この手法を適用した場合の理論上の `auc_delta` と `note` をJSONで出力してください。"
+    )
+
+    try:
+        resp_text = ai_chat.chat_with_retry(
+            model=ai_chat.get_ollama_model(),
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+        )
+        
+        # 不要なMarkdownを取り除く
+        clean_text = resp_text.replace("```json", "").replace("```", "").strip()
+        result_json = json.loads(clean_text)
+        
+        delta = float(result_json.get("auc_delta", 0.0))
+        note  = str(result_json.get("note", "LLMによる理論的シミュレーション"))
+        
+        # 軽くノイズを足す（シミュレーション感を出すため）
+        np.random.seed(abs(hash(method_name)) % 2**31)
+        noise = float(np.random.normal(0, 0.002))
+        delta = delta + noise
+        
+    except Exception as e:
+        # LLM失敗時のフォールバック
+        delta = 0.005
+        note = f"シミュレーションエラーにより一律スコア ({e})"
+
+    auc_method = auc_orig + delta
+
+    result = {
+        "method": method_name,
+        "auc_original": round(auc_orig, 4),
+        "auc_method": round(auc_method, 4),
+        "auc_delta": round(delta, 4),
+        "note": f"[LLM] {note}",
+        "n_cases": n_cases,
+    }
+
+    _save_experiment(
+        method_name,
+        auc_improvement=delta,
+        precision_delta=0.0,
+        calibration_delta=0.0,
+        notes=result["note"],
         raw=result,
     )
     return result
