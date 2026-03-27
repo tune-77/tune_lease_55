@@ -1110,7 +1110,7 @@ def render_gunshi() -> None:
         run_btn = st.button(
             "⚔️ 軍師に分析を依頼する",
             type="primary",
-            use_container_width=True,
+            width='stretch',
             key="gu_run",
         )
 
@@ -1331,7 +1331,7 @@ def render_gunshi() -> None:
                 if st.button(
                     "🎉 成約で登録",
                     type="primary",
-                    use_container_width=True,
+                    width='stretch',
                     key="gu_reg_win",
                 ):
                     update_result(last_id, "成約", notes_input)
@@ -1341,7 +1341,7 @@ def render_gunshi() -> None:
             with col_r2:
                 if st.button(
                     "💔 非成約で登録",
-                    use_container_width=True,
+                    width='stretch',
                     key="gu_reg_lose",
                 ):
                     update_result(last_id, "非成約", notes_input)
@@ -1386,7 +1386,7 @@ def render_gunshi() -> None:
                 .reset_index()
             )
             if not by_ind.empty:
-                st.dataframe(by_ind, use_container_width=True, hide_index=True)
+                st.dataframe(by_ind, width='stretch', hide_index=True)
 
             # 最新履歴テーブル
             st.markdown("**最新20件**")
@@ -1399,7 +1399,7 @@ def render_gunshi() -> None:
                     "score": "スコア", "pd_pct": "PD%", "resale": "リセール",
                     "repeat_cnt": "リピート", "posterior": "承認確率", "result": "結果",
                 }),
-                use_container_width=True,
+                width='stretch',
                 hide_index=True,  # noqa: keep trailing comma
             )
 
@@ -1852,7 +1852,7 @@ def render_gunshi_in_results(
     run_llm = st.button(
         "🤖 軍師に推薦文を生成させる（Gemini優先）",
         key="gunshi_run_llm_in_results",
-        use_container_width=True,
+        width='stretch',
     )
     if run_llm:
         prompt = build_gunshi_prompt(
@@ -1889,7 +1889,7 @@ def render_gunshi_in_results(
     st.caption("✅ 結果を登録すると、次回以降の推薦精度が向上します（逐次ベイズ学習）")
     last_id = st.session_state.get("gunshi_ar_case_id")
     if not last_id:
-        if st.button("📝 この案件を学習DBに保存", key="gunshi_ar_save", use_container_width=True):
+        if st.button("📝 この案件を学習DBに保存", key="gunshi_ar_save", width='stretch'):
             new_id = save_case({
                 "industry":   g["industry_cat"],
                 "score":      g["score"],
@@ -1914,13 +1914,13 @@ def render_gunshi_in_results(
         )
         col_w, col_l = st.columns(2)
         with col_w:
-            if st.button("🎉 成約", type="primary", key="gunshi_ar_win", use_container_width=True):
+            if st.button("🎉 成約", type="primary", key="gunshi_ar_win", width='stretch'):
                 update_result(last_id, "成約", notes_in)
                 st.success("成約を登録しました。")
                 st.session_state.pop("gunshi_ar_case_id", None)
                 st.rerun()
         with col_l:
-            if st.button("💔 非成約", key="gunshi_ar_lose", use_container_width=True):
+            if st.button("💔 非成約", key="gunshi_ar_lose", width='stretch'):
                 update_result(last_id, "非成約", notes_in)
                 st.warning("非成約を登録しました。")
                 st.session_state.pop("gunshi_ar_case_id", None)
@@ -2111,7 +2111,7 @@ def render_gunshi_ai_comment(
             run_llm = st.button(
                 "🤖 軍師AIに推薦文を生成させる",
                 key="gunshi_ai_comment_generate",
-                use_container_width=True,
+                width='stretch',
                 type="primary",
             )
         with col_info:

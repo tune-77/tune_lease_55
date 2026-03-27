@@ -1679,7 +1679,7 @@ elif mode == "⚙️ 審査ルール設定":
                             "(新)スコア": round(c["new_score"], 1),
                             "適用されたルール": " | ".join(c["reasons"]) if c["reasons"] else "基本閾値の影響"
                         })
-                    st.dataframe(pd.DataFrame(change_rows), use_container_width=True, hide_index=True)
+                    st.dataframe(pd.DataFrame(change_rows), width='stretch', hide_index=True)
 
 # ── フローティングBOT（八奈見さん）── 全ページ共通 ──────────────────────────
 try:

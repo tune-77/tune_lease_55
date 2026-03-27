@@ -186,7 +186,7 @@ def render_coeff_analysis():
                     res_rows.append({"変数": k, "算出係数": coeff_dict.get(k, 0)})
                 for k in COEFF_EXTRA_KEYS:
                     res_rows.append({"変数": k, "算出係数": coeff_dict.get(k, 0)})
-                st.dataframe(pd.DataFrame(res_rows).style.format({"算出係数": "{:.6f}"}), use_container_width=True)
+                st.dataframe(pd.DataFrame(res_rows).style.format({"算出係数": "{:.6f}"}), width='stretch')
                 st.metric("モデル予測精度 (Accuracy)", f"{acc:.1%}")
                 
                 if st.button("💾 係数を更新して保存", key="btn_save_coeffs"):
@@ -244,7 +244,7 @@ def render_coeff_analysis():
             if overrides and "全体_既存先" in overrides:
                 st.caption("※ 成約/失注で更新した係数（既存＋追加項目）が適用されています。")
             ref_rows = [{"変数": k, "現在の係数": current.get(k, 0)} for k in ["intercept"] + COEFF_MAIN_KEYS + COEFF_EXTRA_KEYS]
-            st.dataframe(pd.DataFrame(ref_rows).style.format({"現在の係数": "{:.6f}"}), use_container_width=True)
+            st.dataframe(pd.DataFrame(ref_rows).style.format({"現在の係数": "{:.6f}"}), width='stretch')
 
 def render_prior_coeff_input():
     """📐 係数入力（事前係数）タブのUI表示とロジック"""
@@ -317,7 +317,7 @@ def render_coeff_history():
                         {"変更前": lambda x: f"{x:.6f}" if isinstance(x, float) else ("—" if x is None else x),
                          "変更後": lambda x: f"{x:.6f}" if isinstance(x, float) else ("—" if x is None else x)}
                     ),
-                    use_container_width=True,
+                    width='stretch',
                 )
             else:
                 st.caption("変更キーの記録なし")
@@ -328,7 +328,7 @@ def render_coeff_history():
                         pd.DataFrame(snap_rows).style.format(
                             {"値": lambda x: f"{x:.6f}" if isinstance(x, float) else x}
                         ),
-                        use_container_width=True,
+                        width='stretch',
                     )
 
 

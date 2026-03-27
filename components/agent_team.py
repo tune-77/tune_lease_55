@@ -714,7 +714,7 @@ def _render_code_generation(round_data: dict) -> None:
                         f"🚀 一括適用する（{len(unapplied)} ファイル）",
                         key=f"btn_bulk_apply_{round_num}",
                         type="primary",
-                        use_container_width=True,
+                        width='stretch',
                     ):
                         mode_map = {"新規作成": "new", "末尾に追記": "append", "上書き": "overwrite"}
                         results = []
@@ -743,7 +743,7 @@ def _render_code_generation(round_data: dict) -> None:
                                     st.error(f"`{path}`: {msg}")
                         st.rerun()
                 with col_regen:
-                    if st.button("🔄 再生成", key=f"btn_regen_{round_num}", use_container_width=True):
+                    if st.button("🔄 再生成", key=f"btn_regen_{round_num}", width='stretch'):
                         del st.session_state[SK.AT_CODE_RESULTS][round_num]
                         st.rerun()
             else:
@@ -871,7 +871,7 @@ def _render_phase_a() -> None:
     preset_clicked_theme = None
     for i, preset in enumerate(_PRESET_THEMES):
         with preset_cols[i]:
-            if st.button(preset["label"], key=f"preset_{i}", use_container_width=True):
+            if st.button(preset["label"], key=f"preset_{i}", width='stretch'):
                 preset_clicked_theme = preset["theme"]
 
     if preset_clicked_theme:
@@ -892,10 +892,10 @@ def _render_phase_a() -> None:
         start_btn = st.button(
             label, type="primary",
             disabled=not (theme_input or "").strip(),
-            use_container_width=True,
+            width='stretch',
         )
     with col2:
-        clear_btn = st.button("🗑️ 履歴をリセット", use_container_width=True)
+        clear_btn = st.button("🗑️ 履歴をリセット", width='stretch')
     with col3:
         st.metric("完了ラウンド", len(st.session_state.get(SK.AT_HISTORY, [])))
 
@@ -949,7 +949,7 @@ def _render_phase_b(pending: dict) -> None:
             if st.button(
                 f"{agent['avatar']} {agent['name']}に発言させる",
                 key=f"btn_speak_{agent['id']}",
-                use_container_width=True,
+                width='stretch',
             ):
                 clicked_agent = agent
 
@@ -959,17 +959,17 @@ def _render_phase_b(pending: dict) -> None:
         tsune_opinion_btn = st.button(
             f"💬 Tuneに意見を言わせる",
             key="btn_tsune_opinion",
-            use_container_width=True,
+            width='stretch',
         )
     with col_verdict:
         tsune_verdict_btn = st.button(
             f"👔 Tuneに決裁させる",
             key="btn_tsune_verdict",
             type="primary",
-            use_container_width=True,
+            width='stretch',
         )
     with col_reset:
-        reset_btn = st.button("🗑️ リセット", key="btn_reset_b", use_container_width=True)
+        reset_btn = st.button("🗑️ リセット", key="btn_reset_b", width='stretch')
 
     st.divider()
 
@@ -1142,7 +1142,7 @@ def _render_slack_settings() -> None:
             "📨 テスト送信",
             key="btn_slack_test",
             type="primary",
-            use_container_width=True,
+            width='stretch',
             disabled=not _is_slack_enabled(),
         )
 

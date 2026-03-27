@@ -145,7 +145,7 @@ def render_sidebar_backup() -> None:
         backups = list_backups()
         st.caption(f"保存済み: {len(backups)} ファイル（最大 {MAX_GENS} 世代）")
 
-        if st.button("🔄 今すぐバックアップ", use_container_width=True):
+        if st.button("🔄 今すぐバックアップ", width='stretch'):
             with st.spinner("バックアップ中..."):
                 result = run_backup(force=True)
             n = len(result["backed_up"])

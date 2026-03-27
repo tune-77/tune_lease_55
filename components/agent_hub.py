@@ -712,7 +712,7 @@ def _render_anomaly_panel() -> None:
             import pandas as pd
             df = pd.DataFrame(result)
             df.columns = ["案件ID", "業種", "スコア", "異常フラグ", "日時"]
-            st.dataframe(df, use_container_width=True)
+            st.dataframe(df, width='stretch')
 
             if _get_slack_url() and st.button("📤 Slack に異常レポート送信", key="hub_anom_slack"):
                 rows = "\n".join(
@@ -1352,7 +1352,7 @@ def _render_mathematician_panel() -> None:
             }
             for e in experiments
         ])
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, width='stretch', hide_index=True)
 
         # 採用ボタン
         st.markdown("**スコアリングに組み込む**")
@@ -1453,7 +1453,7 @@ def _render_visual_report_panel() -> None:
 
     col_btn, _ = st.columns([1, 3])
     with col_btn:
-        vr_clicked = st.button("📊 レポートを生成", type="primary", key="hub_vr_gen", use_container_width=True)
+        vr_clicked = st.button("📊 レポートを生成", type="primary", key="hub_vr_gen", width='stretch')
 
     if vr_clicked:
         with st.spinner("レポート生成中…"):
@@ -1544,7 +1544,7 @@ def _render_dashboard_panel() -> None:
     # 2. 自動連動マスターボタン
     st.markdown("### ⚡ 自動シナジー実行 (Weekly Batch)")
     st.caption("数学者の新理論と脚本家のトレンドを合体させ、一気にプロット作成から小説執筆までをワンデップで完結させます。")
-    if st.button("🚀 週次バッチ実行 (プロット生成 ➔ 小説執筆)", type="primary", key="dashboard_batch_run", use_container_width=True):
+    if st.button("🚀 週次バッチ実行 (プロット生成 ➔ 小説執筆)", type="primary", key="dashboard_batch_run", width='stretch'):
         with st.spinner("数学的手法と最新ニュースを融合し、究極のプロットを構築中..."):
             import scriptwriter_agent
             import novelist_agent

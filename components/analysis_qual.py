@@ -55,7 +55,7 @@ def render_qualitative_analysis():
             if "lr_coef" in result:
                 lr_df = pd.DataFrame(result["lr_coef"], columns=["項目", "係数"])
                 lr_df = lr_df.sort_values("係数", key=abs, ascending=False)
-                st.dataframe(lr_df, use_container_width=True, hide_index=True)
+                st.dataframe(lr_df, width='stretch', hide_index=True)
                 if "lr_intercept" in result:
                     st.caption(f"切片: {result['lr_intercept']:.4f}")
             st.divider()
@@ -63,7 +63,7 @@ def render_qualitative_analysis():
             if "lgb_importance" in result:
                 imp_df = pd.DataFrame(result["lgb_importance"], columns=["項目", "重要度"])
                 imp_df = imp_df.sort_values("重要度", ascending=False)
-                st.dataframe(imp_df, use_container_width=True, hide_index=True)
+                st.dataframe(imp_df, width='stretch', hide_index=True)
             if "shap_importance" in result:
                 st.divider()
                 st.subheader("SHAP 特徴量重要度（成約への影響）")

@@ -213,7 +213,7 @@ def _render_ai_model_settings() -> None:
         else:
             st.session_state["ollama_model"] = selected_label
 
-        if st.sidebar.button("🔌 Ollama接続テスト", use_container_width=True, help="Ollama が起動しているか・選択中のモデルが応答するかを確認します"):
+        if st.sidebar.button("🔌 Ollama接続テスト", width='stretch', help="Ollama が起動しているか・選択中のモデルが応答するかを確認します"):
             with st.sidebar:
                 with st.spinner("接続確認中..."):
                     msg = run_ollama_connection_test(timeout_seconds=15)
@@ -261,7 +261,7 @@ def _render_session_cleanup() -> None:
             _ss["debate_history"] = _ss["debate_history"][-20:]
         _cache_keys = [k for k in _ss if k.startswith(("_bn_s_", "_gunshi_cache_", "_ai_comment_", "gunshi_"))]
         st.caption(f"キャッシュキー数: {len(_cache_keys)}")
-        if st.button("🗑️ キャッシュをクリア", use_container_width=True, key="_clear_session_cache"):
+        if st.button("🗑️ キャッシュをクリア", width='stretch', key="_clear_session_cache"):
             for _k in _cache_keys:
                 _ss.pop(_k, None)
             st.success("クリアしました")
@@ -269,7 +269,7 @@ def _render_session_cleanup() -> None:
 
 def _render_csv_download() -> None:
     """💾 蓄積データをダウンロード（CSV）"""
-    if st.sidebar.button("💾 蓄積データをダウンロード (CSV)", use_container_width=True):
+    if st.sidebar.button("💾 蓄積データをダウンロード (CSV)", width='stretch'):
         all_logs = load_all_cases()
         if all_logs:
             flat_logs = []
@@ -300,7 +300,7 @@ def _render_industry_cache(benchmarks_data: dict) -> None:
     """🌐 業界目安キャッシュ（検索・保存ボタン）"""
     st.sidebar.markdown("### 🌐 業界目安キャッシュ")
     st.sidebar.caption("下のボタンでネット検索し、営業利益率・自己資本比率に加え、売上高総利益率・ROA・流動比率など指標の業界目安を web_industry_benchmarks.json に保存します。")
-    if st.sidebar.button("🔍 今のデータを検索して保存（次回は4月1日更新）", use_container_width=True):
+    if st.sidebar.button("🔍 今のデータを検索して保存（次回は4月1日更新）", width='stretch'):
         subs = get_all_industry_sub_for_benchmarks()
         if not subs:
             st.sidebar.warning("業種データがありません（industry_benchmarks.json または過去案件を登録してください）")
@@ -317,7 +317,7 @@ def _render_industry_cache(benchmarks_data: dict) -> None:
             st.sidebar.success(f"{n} 業種を検索して保存しました。次回の自動更新は4月1日です。")
             st.rerun()
 
-    if st.sidebar.button("📡 業界トレンド拡充・資産目安・売上規模帯を検索して保存", use_container_width=True):
+    if st.sidebar.button("📡 業界トレンド拡充・資産目安・売上規模帯を検索して保存", width='stretch'):
         subs = get_all_industry_sub_for_benchmarks()
         progress = st.sidebar.progress(0, text="トレンド・資産目安…")
         n = max(1, len(subs) * 2 + 1)
@@ -414,14 +414,14 @@ def _render_reference_expanders(benchmarks_data: dict, useful_life_data: dict, l
 def _render_cache_and_ai_honne() -> None:
     """⚙️ キャッシュクリア + 🤖 AIの独り言"""
     st.sidebar.markdown("### ⚙️ キャッシュ")
-    if st.sidebar.button("🗑️ キャッシュをクリア", use_container_width=True, help="JSONや検索結果のキャッシュを消して再読み込みします。補助金・業界データを更新した後に押してください。"):
+    if st.sidebar.button("🗑️ キャッシュをクリア", width='stretch', help="JSONや検索結果のキャッシュを消して再読み込みします。補助金・業界データを更新した後に押してください。"):
         st.cache_data.clear()
         st.sidebar.success("キャッシュをクリアしました。再読み込みしています…")
         st.rerun()
 
     st.sidebar.divider()
     st.sidebar.markdown("### 🤖 AIの独り言")
-    if st.sidebar.button("本音を聞く", key="btn_ai_honne", use_container_width=True):
+    if st.sidebar.button("本音を聞く", key="btn_ai_honne", width='stretch'):
         with st.spinner("本音を絞り出しています…"):
             honne = get_ai_honne_complaint()
             st.session_state["ai_honne_text"] = honne

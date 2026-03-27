@@ -214,10 +214,10 @@ def render_future_simulation_ui(res: dict):
                 chart_col1, chart_col2 = st.columns(2)
                 with chart_col1:
                     if fig_sales:
-                        st.plotly_chart(fig_sales, use_container_width=True, key="fig_future_sales")
+                        st.plotly_chart(fig_sales, width='stretch', key="fig_future_sales")
                 with chart_col2:
                     if fig_op:
-                        st.plotly_chart(fig_op, use_container_width=True, key="fig_future_op")
+                        st.plotly_chart(fig_op, width='stretch', key="fig_future_op")
                         
                 st.info("💡 **見方**: 帯の幅が広いほど将来の予測が不確実であることを示します。特に「営業利益」において、赤い破線（0円）より下に帯が多くかかっている場合、将来的に返済原資が不足するリスク（デフォルトリスク）が高まることを意味します。限界利益率や固定費などは現在の業績をもとに簡易推定しています。")
             else:

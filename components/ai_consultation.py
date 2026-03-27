@@ -113,7 +113,7 @@ def _render_tab_chat(selected_sub: str, jsic_data: dict) -> None:
         if not _gemini_key:
             _btn_label += "（Ollama）"
         
-        if st.button(_btn_label, key="manual_auto_comment_v2", use_container_width=True, type="primary"):
+        if st.button(_btn_label, key="manual_auto_comment_v2", width='stretch', type="primary"):
             with st.spinner("AIが所見を作成中..."):
                 _prompt = _build_quick_comment_prompt(res)
                 try:
@@ -139,7 +139,7 @@ def _render_tab_chat(selected_sub: str, jsic_data: dict) -> None:
         cols = st.columns(2)
         for i, q in enumerate(qs):
             with cols[i % 2]:
-                if st.button(q, key=f"quick_q_{i}", use_container_width=True):
+                if st.button(q, key=f"quick_q_{i}", width='stretch'):
                     if "messages" not in st.session_state:
                         st.session_state.messages = []
                     st.session_state.messages.append({"role": "user", "content": q})
@@ -355,7 +355,7 @@ def _render_tab_debate(selected_sub: str, jsic_data: dict, bankruptcy_data: list
 
     col_btn1, col_btn2 = st.columns([1, 1])
     with col_btn1:
-        if st.button("⚔️ 議論を開始 / 進行 (1ターン進める)", use_container_width=True):
+        if st.button("⚔️ 議論を開始 / 進行 (1ターン進める)", width='stretch'):
             if "last_result" not in st.session_state:
                 st.error("先に審査を実行してください。")
             else:
@@ -509,7 +509,7 @@ def _render_tab_debate(selected_sub: str, jsic_data: dict, bankruptcy_data: list
         if len(st.session_state.debate_history) >= 4:
             res_judge = st.session_state.get("last_result") or {}
             selected_sub_judge = res_judge.get("industry_sub", "")
-            if st.button("🏁 議論終了・判定", type="primary", use_container_width=True):
+            if st.button("🏁 議論終了・判定", type="primary", width='stretch'):
                 with st.spinner("審判が決裁中..."):
                     history_text = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.debate_history])
                     pd_val = res_judge.get("pd_percent")

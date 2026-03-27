@@ -302,7 +302,7 @@ def render_subsidy_master_admin() -> None:
             "deadline": "期限", "active": "有効",
         })
         df["有効"] = df["有効"].map({1: "✅", 0: "❌"})
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, width='stretch', hide_index=True)
 
         # 削除
         del_id = st.number_input("無効化する ID", min_value=1, step=1, key="subsidy_del_id")

@@ -133,7 +133,7 @@ def _render_fab_chat() -> None:
 
     # FABボタン
     label = "💬 AI相談を閉じる" if st.session_state["home_fab_open"] else "💬 AI審査アシスタントに相談する"
-    if st.button(label, key="home_fab_toggle", use_container_width=False):
+    if st.button(label, key="home_fab_toggle", width='content'):
         st.session_state["home_fab_open"] = not st.session_state["home_fab_open"]
         st.rerun()
 
@@ -213,7 +213,7 @@ def _render_cards(cards: list, recent: list[str], offset: int = 0) -> None:
             badge = "⭐ よく使う\n\n" if is_recent else ""
             label = f"{badge}{card['icon']}\n\n**{card['title']}**\n\n{card['desc']}"
             if st.button(label, key=f"home_card_{offset + i}",
-                         use_container_width=True, help=card["desc"]):
+                         width='stretch', help=card["desc"]):
                 _save_recent(card["mode"])
                 st.session_state["_pending_mode"] = card["mode"]
                 st.rerun()

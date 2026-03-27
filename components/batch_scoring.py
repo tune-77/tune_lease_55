@@ -223,7 +223,7 @@ def render_batch_scoring():
         return
 
     st.success(f"{len(df_in)} 件を読み込みました。")
-    st.dataframe(df_in.head(5), use_container_width=True)
+    st.dataframe(df_in.head(5), width='stretch')
 
     if st.button("🚀 一括スコアリング実行", type="primary"):
         results = []
@@ -272,7 +272,7 @@ def render_batch_scoring():
             .applymap(_color_hantei, subset=["判定"])
             .applymap(_color_scoring, subset=["スコアリング"])
         )
-        st.dataframe(styled, use_container_width=True, hide_index=True)
+        st.dataframe(styled, width='stretch', hide_index=True)
 
         # ダウンロード
         csv_out = df_out.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")

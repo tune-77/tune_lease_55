@@ -77,7 +77,7 @@ def render_quantitative_analysis():
                 labels = [COEFF_LABELS.get(k, k) for k in result_q["feature_names"]]
                 lr_df_q = pd.DataFrame([(labels[i], c) for i, (_, c) in enumerate(result_q["lr_coef"])], columns=["項目", "係数"])
                 lr_df_q = lr_df_q.sort_values("係数", key=abs, ascending=False)
-                st.dataframe(lr_df_q, use_container_width=True, hide_index=True)
+                st.dataframe(lr_df_q, width='stretch', hide_index=True)
                 if "lr_intercept" in result_q:
                     st.caption(f"切片: {result_q['lr_intercept']:.4f}")
                     
@@ -87,7 +87,7 @@ def render_quantitative_analysis():
                 labels_q = [COEFF_LABELS.get(k, k) for k in result_q["feature_names"]]
                 imp_df_q = pd.DataFrame([(labels_q[i], imp) for i, (_, imp) in enumerate(result_q["lgb_importance"])], columns=["項目", "重要度"])
                 imp_df_q = imp_df_q.sort_values("重要度", ascending=False)
-                st.dataframe(imp_df_q, use_container_width=True, hide_index=True)
+                st.dataframe(imp_df_q, width='stretch', hide_index=True)
             if "shap_importance" in result_q:
                 st.divider()
                 st.subheader("SHAP 特徴量重要度（成約への影響）")
@@ -136,7 +136,7 @@ def render_quantitative_analysis():
                         if "lgb_importance" in res:
                             names = [COEFF_LABELS.get(k, k) for k in res["feature_names"]]
                             imp = pd.DataFrame([(names[i], v) for i, (_, v) in enumerate(res["lgb_importance"])], columns=["項目", "重要度"]).sort_values("重要度", ascending=False)
-                            st.dataframe(imp.head(10), use_container_width=True, hide_index=True)
+                            st.dataframe(imp.head(10), width='stretch', hide_index=True)
 
         st.divider()
         st.subheader("指標ごと定量分析")
@@ -172,7 +172,7 @@ def render_quantitative_analysis():
                         if "lgb_importance" in res:
                             fnames = res["feature_names"]
                             imp = pd.DataFrame([(fnames[i], v) for i, (_, v) in enumerate(res["lgb_importance"])], columns=["項目", "重要度"]).sort_values("重要度", ascending=False)
-                            st.dataframe(imp.head(10), use_container_width=True, hide_index=True)
+                            st.dataframe(imp.head(10), width='stretch', hide_index=True)
 
         st.divider()
         st.subheader("📌 スコアの位置づけについて")

@@ -278,7 +278,7 @@ def render_shap_explanation(current_case: dict | None = None):
     with tab1:
         st.markdown("**成約/失注の予測に最も影響する変数ランキング**")
         buf = _plot_summary_bar(shap_values_all)
-        st.image(buf, use_container_width=True)
+        st.image(buf, width='stretch')
         # テキストサマリ
         mean_abs = np.abs(shap_values_all.values).mean(axis=0)
         ranking  = np.argsort(mean_abs)[::-1]
@@ -289,13 +289,13 @@ def render_shap_explanation(current_case: dict | None = None):
                 "変数": FEATURE_NAMES_JA[i],
                 "影響度": round(float(mean_abs[i]), 4),
             })
-        st.dataframe(pd.DataFrame(rows_tbl), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(rows_tbl), width='stretch', hide_index=True)
 
     # --- Tab2: Beeswarm ---
     with tab2:
         st.markdown("**各変数の値（赤=高/青=低）と成約への影響方向**")
         buf = _plot_beeswarm(shap_values_all)
-        st.image(buf, use_container_width=True)
+        st.image(buf, width='stretch')
         st.caption("右向き（プラス）= 成約確率UP  /  左向き（マイナス）= 成約確率DOWN")
 
     # --- Tab3: 個別案件 Waterfall ---
@@ -320,7 +320,7 @@ def render_shap_explanation(current_case: dict | None = None):
                 explainer, x_vec, pred_prob,
                 label=f"| {current_case.get('industry_major','')}"
             )
-            st.image(buf, use_container_width=True)
+            st.image(buf, width='stretch')
             st.caption(
                 "縦軸左の数値=その案件の実際の値  "
                 "赤バー=成約確率を上げた要因  青バー=成約確率を下げた要因"

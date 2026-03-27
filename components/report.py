@@ -219,7 +219,7 @@ def render_report() -> None:
         with col_g:
             fig_gauge = plot_gauge_plotly(score)
             if fig_gauge is not None:
-                st.plotly_chart(fig_gauge, use_container_width=True)
+                st.plotly_chart(fig_gauge, width='stretch')
         with col_r:
             metrics = {
                 "営業利益率":    user_op or 0,
@@ -237,7 +237,7 @@ def render_report() -> None:
             }
             fig_radar = plot_radar_chart_plotly(metrics, benchmarks)
             if fig_radar is not None:
-                st.plotly_chart(fig_radar, use_container_width=True)
+                st.plotly_chart(fig_radar, width='stretch')
     except Exception as e:
         st.caption(f"⚠️ チャート描画エラー: {e}")
 
@@ -249,12 +249,12 @@ def render_report() -> None:
         col_t, col_b = st.columns([1, 1])
         with col_t:
             if fig_top5 is not None:
-                st.plotly_chart(fig_top5, use_container_width=True)
+                st.plotly_chart(fig_top5, width='stretch')
             else:
                 st.caption("Top5要因データなし")
         with col_b:
             if fig_bs is not None:
-                st.plotly_chart(fig_bs, use_container_width=True)
+                st.plotly_chart(fig_bs, width='stretch')
             else:
                 st.caption("財務データなし")
     except Exception as e:
@@ -274,7 +274,7 @@ def render_report() -> None:
         _gap_indicators = [i for i in _gap_indicators if i["bench"] is not None]
         fig_gap = plot_indicators_gap_analysis_plotly(_gap_indicators)
         if fig_gap is not None:
-            st.plotly_chart(fig_gap, use_container_width=True)
+            st.plotly_chart(fig_gap, width='stretch')
     except Exception as e:
         st.caption(f"⚠️ 差分チャート描画エラー: {e}")
 
@@ -384,8 +384,8 @@ def render_report() -> None:
             data=report_json,
             file_name=f"lease_report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.json",
             mime="application/json",
-            use_container_width=True,
+            width='stretch',
         )
     with col_dl2:
-        if st.button("🖨️ 印刷 / PDF 保存", use_container_width=True, help="ブラウザの印刷機能でPDF保存できます"):
+        if st.button("🖨️ 印刷 / PDF 保存", width='stretch', help="ブラウザの印刷機能でPDF保存できます"):
             st.markdown('<script>window.print();</script>', unsafe_allow_html=True)

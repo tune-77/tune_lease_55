@@ -196,7 +196,7 @@ def render_apply_form(
         )
     st.caption("💡 数字入力で画面がガタつく場合：スライダーで大まかに合わせてから直接入力で微調整してください。")
     st.caption("📌 数値とスライダーは連動します。Enter は「入力確定」にだけ効き、判定には行きません。")
-    if st.button("🆕 新しく入力する", help="全フィールドを初期値にリセットします", use_container_width=False):
+    if st.button("🆕 新しく入力する", help="全フィールドを初期値にリセットします", width='content'):
         _reset_shinsa_inputs()
         st.rerun()
 
@@ -265,7 +265,7 @@ def render_apply_form(
             "📌 **必須** 売上高・総資産は **1以上** を入力してください（未入力だと判定がブロックされます）。\n\n"
             "💡 **推奨** 営業利益・純資産も入力すると精度が向上します（未入力でも判定は続行しますが警告を表示します）。"
         )
-        submitted_judge_top = st.form_submit_button("判定開始", type="primary", use_container_width=True, key="judge_top")
+        submitted_judge_top = st.form_submit_button("判定開始", type="primary", width='stretch', key="judge_top")
         submitted_apply = st.form_submit_button("入力確定（Enterで反映）", type="secondary", help="数字入力でEnterを押したときはここが押された扱いになり、判定には行きません。")
         with st.expander("📊 1. 損益計算書 (P/L) ― 📌必須・💡推奨あり", expanded=True):
             # ①売上高（フラグメント化で入力時のガタつき軽減）
@@ -360,7 +360,7 @@ def render_apply_form(
         _intuition_labels = {1: "😟 かなり懸念", 2: "😐 やや懸念", 3: "😶 ニュートラル", 4: "🙂 やや確信", 5: "😄 強い確信"}
         st.caption(f"現在の評価：{_intuition_labels.get(intuition, '')}")
 
-        submitted_judge_bottom = st.form_submit_button("判定開始", type="primary", use_container_width=True, key="judge_bottom")
+        submitted_judge_bottom = st.form_submit_button("判定開始", type="primary", width='stretch', key="judge_bottom")
         submitted_judge = submitted_judge_top or submitted_judge_bottom
 
     return {
@@ -535,7 +535,7 @@ def render_quick_edit_panel(jsic_data, lease_assets_list):
     st.divider()
 
     # 再判定ボタンと更新状態を返す
-    rejudge_clicked = st.button("🔄 再判定", type="primary", use_container_width=True)
+    rejudge_clicked = st.button("🔄 再判定", type="primary", width='stretch')
     
     return {
         "rejudge_clicked": rejudge_clicked,

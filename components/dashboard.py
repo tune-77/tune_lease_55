@@ -41,7 +41,7 @@ def render_dashboard():
                     rows.append({"指標": k, "平均値": f"{v:,.0f}"})
                 else:
                     rows.append({"指標": k, "平均値": f"{v:.4f}"})
-            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True)
         else:
             st.caption("財務データが取得できませんでした。")
         st.divider()

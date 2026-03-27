@@ -120,20 +120,20 @@ def render_sidebar_draft() -> None:
             st.caption(f"保存済み: {saved_at or '（日時不明）'}")
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("📂 復元", use_container_width=True, key="_draft_restore"):
+                if st.button("📂 復元", width='stretch', key="_draft_restore"):
                     if restore_draft():
                         st.success("復元しました")
                         st.rerun()
                     else:
                         st.warning("復元失敗")
             with col2:
-                if st.button("🗑️ 削除", use_container_width=True, key="_draft_delete"):
+                if st.button("🗑️ 削除", width='stretch', key="_draft_delete"):
                     delete_draft()
                     st.rerun()
         else:
             st.caption("下書きなし")
 
-        if st.button("💾 今すぐ保存", use_container_width=True, key="_draft_save"):
+        if st.button("💾 今すぐ保存", width='stretch', key="_draft_save"):
             if save_draft():
                 st.success("下書きを保存しました")
             else:
