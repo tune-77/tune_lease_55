@@ -115,52 +115,62 @@ def _w(text: str) -> str:
 INDUSTRY_VOLATILITY = {
     "製造業": {
         "revenue_vol": 0.12, "margin_vol": 0.04, "equity_vol": 0.02,
-        "debt_vol": 0.08, "revenue_drift": 0.02,
+        "debt_vol": 0.08, "revenue_drift": 0.02, "equity_default_thresh": 0.08,
+        "debt_repayment_thresh": 12.0,
         "description": "景気変動の影響を受けやすいが比較的安定"
     },
     "小売業": {
         "revenue_vol": 0.18, "margin_vol": 0.06, "equity_vol": 0.03,
-        "debt_vol": 0.12, "revenue_drift": 0.01,
+        "debt_vol": 0.12, "revenue_drift": 0.01, "equity_default_thresh": 0.10,
+        "debt_repayment_thresh": 8.0,
         "description": "消費動向に敏感・季節性あり"
     },
     "建設業": {
         "revenue_vol": 0.20, "margin_vol": 0.07, "equity_vol": 0.03,
-        "debt_vol": 0.15, "revenue_drift": 0.01,
+        "debt_vol": 0.15, "revenue_drift": 0.01, "equity_default_thresh": 0.12,
+        "debt_repayment_thresh": 15.0,
         "description": "受注の波が大きく資金繰りリスクあり"
     },
     "IT・情報通信": {
         "revenue_vol": 0.15, "margin_vol": 0.05, "equity_vol": 0.025,
-        "debt_vol": 0.10, "revenue_drift": 0.04,
+        "debt_vol": 0.10, "revenue_drift": 0.04, "equity_default_thresh": 0.06,
+        "debt_repayment_thresh": 6.0,
         "description": "成長性高いが競争激しい"
     },
     "飲食・サービス": {
         "revenue_vol": 0.25, "margin_vol": 0.08, "equity_vol": 0.04,
-        "debt_vol": 0.18, "revenue_drift": 0.00,
+        "debt_vol": 0.18, "revenue_drift": 0.00, "equity_default_thresh": 0.15,
+        "debt_repayment_thresh": 5.0,
         "description": "外部環境(景気・疫病等)の影響が最大"
     },
     "卸売業": {
         "revenue_vol": 0.14, "margin_vol": 0.04, "equity_vol": 0.02,
-        "debt_vol": 0.10, "revenue_drift": 0.015,
+        "debt_vol": 0.10, "revenue_drift": 0.015, "equity_default_thresh": 0.08,
+        "debt_repayment_thresh": 10.0,
         "description": "薄利多売・在庫リスクあり"
     },
     "不動産": {
         "revenue_vol": 0.10, "margin_vol": 0.03, "equity_vol": 0.02,
-        "debt_vol": 0.07, "revenue_drift": 0.02,
+        "debt_vol": 0.07, "revenue_drift": 0.02, "equity_default_thresh": 0.05,
+        "debt_repayment_thresh": 25.0,
         "description": "安定収益だが金利感応度高い"
     },
     "運輸・物流": {
         "revenue_vol": 0.13, "margin_vol": 0.045, "equity_vol": 0.025,
-        "debt_vol": 0.09, "revenue_drift": 0.02,
+        "debt_vol": 0.09, "revenue_drift": 0.02, "equity_default_thresh": 0.10,
+        "debt_repayment_thresh": 12.0,
         "description": "燃料費・人件費の影響を受ける"
     },
     "医療・福祉": {
         "revenue_vol": 0.08, "margin_vol": 0.03, "equity_vol": 0.015,
-        "debt_vol": 0.06, "revenue_drift": 0.01,
+        "debt_vol": 0.06, "revenue_drift": 0.01, "equity_default_thresh": 0.03,
+        "debt_repayment_thresh": 15.0,
         "description": "極めて安定しており、デフォルトリスクは低い傾向"
     },
     "商用車": {
         "revenue_vol": 0.14, "margin_vol": 0.05, "equity_vol": 0.03,
-        "debt_vol": 0.10, "revenue_drift": 0.02,
+        "debt_vol": 0.10, "revenue_drift": 0.02, "equity_default_thresh": 0.10,
+        "debt_repayment_thresh": 10.0,
         "description": "物流需要に直結。リセール価値が審査の鍵"
     },
 }
@@ -168,6 +178,7 @@ INDUSTRY_VOLATILITY = {
 DEFAULT_VOLATILITY = {
     "revenue_vol": 0.15, "margin_vol": 0.05, "equity_vol": 0.03,
     "debt_vol": 0.10, "revenue_drift": 0.02,
+    "equity_default_thresh": 0.10, "debt_repayment_thresh": 12.0,
     "description": "標準的なボラティリティ設定"
 }
 
@@ -276,7 +287,13 @@ class AdvancedMonteCarloEngine:
         return rev_s + mar_s + eq_s + debt_s
 
     def _default_mask(self, equity, margin, debt, revenue,
-                      eq_thresh=0.10, mar_thresh=-0.05, cov_thresh=8.0):
+                      eq_thresh=0.10, mar_thresh=-0.10, cov_thresh=12.0):
+        """
+        デフォルト判定ロジック
+        - 自己資本比率が閾値(eq_thresh)未満
+        - 営業利益率が -10% 未満 (一律緩和)
+        - 債務償還年数(debt/op_profit)が 12年 超 (一律緩和)
+        """
         op_profit = revenue * margin
         coverage = np.where(op_profit > 0, debt / op_profit, np.inf)
         return (equity < eq_thresh) | (margin < mar_thresh) | (coverage > cov_thresh)
@@ -298,8 +315,13 @@ class AdvancedMonteCarloEngine:
 
         ts_default = np.zeros(T + 1)
         ever_defaulted = np.zeros(self.n_sim, dtype=bool)
+        eq_thresh = vol.get("equity_default_thresh", 0.10)
+        cov_thresh = vol.get("debt_repayment_thresh", 12.0)
         for t in range(T + 1):
-            mask = self._default_mask(eq_paths[:, t], mar_paths[:, t], debt_paths[:, t], rev_paths[:, t])
+            mask = self._default_mask(
+                eq_paths[:, t], mar_paths[:, t], debt_paths[:, t], rev_paths[:, t],
+                eq_thresh=eq_thresh, cov_thresh=cov_thresh
+            )
             ever_defaulted |= mask
             ts_default[t] = ever_defaulted.mean()
 
