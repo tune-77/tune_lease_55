@@ -324,6 +324,7 @@ def render_apply_form(
 
         with st.expander("📋 4. 契約条件・取得価格", expanded=False):
             customer_type = st.radio("顧客区分", ["既存先", "新規先"], horizontal=True, index=0 if st.session_state.get("customer_type", "既存先") == "既存先" else 1, key="customer_type")
+            customer_code = st.text_input("取引先コード（任意）", value=st.session_state.get("customer_code", ""), placeholder="例: T-00123", key="customer_code", help="社内の取引先管理番号。入力すると顧客別の長期分析が使えます")
             st.markdown("##### 📈 契約条件・属性 (利回り予測用)")
             with st.container():
                 c_y1, c_y2, c_y3 = st.columns(3)
@@ -392,6 +393,7 @@ def render_apply_form(
         "lease_credit": lease_credit,
         "contracts": contracts,
         "customer_type": customer_type,
+        "customer_code": customer_code,
         "contract_type": contract_type,
         "deal_source": deal_source,
         "lease_term": lease_term,

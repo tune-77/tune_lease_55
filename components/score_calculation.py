@@ -1015,6 +1015,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     "industry_major": selected_major,
                     "industry_sub": selected_sub,
                     "customer_type": customer_type,
+                    "customer_code": form_result.get("customer_code", ""),
                     "main_bank": main_bank,
                     "competitor": competitor,
                     "competitor_rate": st.session_state.get("competitor_rate"),
@@ -1085,7 +1086,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         "grade": grade, "main_bank": main_bank, "competitor": competitor,
                         "num_competitors": num_competitors, "deal_occurrence": deal_occurrence,
                         "customer_type": customer_type, "contract_type": contract_type,
-                        "deal_source": deal_source,
+                        "deal_source": deal_source, "customer_code": form_result.get("customer_code", ""),
                         "selected_asset_index": st.session_state.get("selected_asset_index", 0),
                         **submitted_qual_corr,
                     }
