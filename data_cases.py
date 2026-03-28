@@ -113,41 +113,145 @@ except Exception:
         return load_all_cases()
 
 
-def find_similar_past_cases(selected_sub: str, user_equity_ratio: float, max_count: int = 3):
-    """業界が同じで自己資本比率が近い過去案件を最大 max_count 件返す（SQLite版）。"""
-    import sqlite3
-    from contextlib import closing
-    if not os.path.exists(DB_PATH):
+def find_similar_past_cases(current_case_data: dict, max_count: int = 3):
+    """
+    現在の案件データに基づき、財務・属性の近い過去案件を高度な手法で検索する。
+    """
+    all_past = load_all_cases()
+    if not all_past:
         return []
 
-    candidates = []
-    try:
-        with closing(sqlite3.connect(DB_PATH)) as conn:
-            cursor = conn.cursor()
-            # まずは同じ業種のデータをすべて引っ張る
-            cursor.execute("SELECT data, user_eq, score, final_status FROM past_cases WHERE industry_sub = ?", (selected_sub,))
-            for row in cursor.fetchall():
-                data_json, eq_val, score, status = row
-                if eq_val is None:
-                    continue
+    from case_similarity import CaseSimilarityEngine
+    engine = CaseSimilarityEngine(all_past)
+    
+    similar_results = engine.find_similar(current_case_data, top_n=max_count)
+    
+    # UI表示用に必要な情報を抽出して返す
+    output = []
+    for item in similar_results:
+        case = item["case"]
+        output.append({
+            "id": case.get("id"),
+            "name": case.get("borrower_name", "匿名企業"),
+            "industry": case.get("industry_sub", ""),
+            "score": item["case"].get("result", {}).get("score", 0),
+            "status": case.get("final_status", "未登録"),
+            "similarity": round(item["similarity"] * 100, 1),
+            "equity": round(float(case.get("equity_ratio", 0) or case.get("user_eq", 0) or 0) * 100, 1),
+            "revenue": case.get("nenshu", 0),
+            "result": case.get("result", {}),
+            "data": case
+        })
+    return output
 
-                diff = abs(eq_val - user_equity_ratio)
-                try:
-                    case_data = json.loads(data_json)
-                    candidates.append({"diff": diff, "case": case_data, "equity": eq_val, "status": status, "score": score})
-                except (json.JSONDecodeError, ValueError):
-                    pass
-    except Exception:
-        pass
+
+def analyze_lost_cases(industry_sub=None):
+    """
+    失注案件の統計を分析する。
+    """
+    all_cases = load_all_cases()
+    # ケースの data プロパティまたはルートからステータスを確認
+    lost_cases = []
+    for c in all_cases:
+        status = c.get("final_status")
+        if status == "失注":
+            lost_cases.append(c)
+    
+    if industry_sub:
+        lost_cases = [c for c in lost_cases if c.get("industry_sub") == industry_sub]
         
-    candidates.sort(key=lambda x: x["diff"])
-    return [x["case"] for x in candidates[:max_count]]
+    reasons = {}
+    competitors = {}
+    comp_rates = []
+    
+    for c in lost_cases:
+        r = c.get("lost_reason", "不明")
+        if not r: r = "不明"
+        reasons[r] = reasons.get(r, 0) + 1
+        
+        comp = c.get("competitor_name", "不明")
+        if comp:
+            competitors[comp] = competitors.get(comp, 0) + 1
+        
+        rate = c.get("competitor_rate")
+        if rate and isinstance(rate, (int, float)):
+            comp_rates.append(rate)
+            
+    return {
+        "total": len(lost_cases),
+        "reasons": reasons,
+        "competitors": competitors,
+        "avg_competitor_rate": sum(comp_rates) / len(comp_rates) if comp_rates else None,
+        "cases": lost_cases
+    }
+
+def delete_case(case_id: str) -> bool:
+    """指定IDの案件を1件削除する。全件置き換えを使わない安全な単体削除。"""
+    if not os.path.exists(DB_PATH):
+        return False
+    try:
+        import sqlite3
+        from contextlib import closing
+        with closing(sqlite3.connect(DB_PATH)) as conn:
+            conn.execute("DELETE FROM past_cases WHERE id = ?", (case_id,))
+            conn.commit()
+        return True
+    except Exception:
+        return False
+
+
+def update_case(case_id: str, updates: dict) -> bool:
+    """指定IDの案件の data フィールドを更新する。全件置き換えを使わない安全な単体更新。"""
+    if not os.path.exists(DB_PATH):
+        return False
+    try:
+        import sqlite3
+        from contextlib import closing
+        with closing(sqlite3.connect(DB_PATH)) as conn:
+            row = conn.execute(
+                "SELECT data FROM past_cases WHERE id = ?", (case_id,)
+            ).fetchone()
+            if row is None:
+                return False
+            data = json.loads(row[0])
+            data.update(updates)
+            final_status = data.get("final_status", "")
+            json_str = json.dumps(data, ensure_ascii=False, cls=CustomJSONEncoder)
+            conn.execute(
+                "UPDATE past_cases SET data = ?, final_status = ? WHERE id = ?",
+                (json_str, final_status, case_id),
+            )
+            conn.commit()
+        return True
+    except Exception:
+        return False
 
 
 def save_all_cases(cases):
-    """案件一覧を上書き保存。(※SQLiteへの全移行では本来不要だがメソッドシグネチャ互換のため残す)"""
+    """案件一覧を上書き保存。(※SQLiteへの全移行では本来不要だがメソッドシグネチャ互換のため残す)
+
+    ⚠️ 危険: 全件 DELETE → INSERT のため、渡すリストが少ないと本番データが消える。
+    新規コードでは delete_case() / update_case() を使うこと。
+    """
     if not os.path.exists(DB_PATH):
         return False
+
+    # ── 安全ガード: 現在のDB件数と比較し、極端な減少を防ぐ ──────────────────
+    try:
+        import sqlite3 as _sq3
+        from contextlib import closing as _cl
+        with _cl(_sq3.connect(DB_PATH)) as _conn:
+            current_count = _conn.execute("SELECT COUNT(*) FROM past_cases").fetchone()[0]
+        new_count = len(cases)
+        if current_count >= 5 and new_count < current_count * 0.5:
+            raise ValueError(
+                f"save_all_cases: 件数が大幅に減少します（DB: {current_count}件 → 新規: {new_count}件）。"
+                "意図的な一括削除の場合は delete_case() を使ってください。"
+            )
+    except ValueError:
+        raise  # 件数ガードは呼び元に伝える
+    except Exception:
+        pass  # DB読み取り失敗は無視して続行
 
     try:
         import sqlite3

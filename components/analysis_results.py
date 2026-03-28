@@ -337,6 +337,127 @@ def render_analysis_results(
             with _gauge_col:
                 st.plotly_chart(plot_gauge_plotly(res['score'], "成約可能性スコア"), width='stretch', key="gauge_score")
 
+            # ── 📈 過去の類似案件エビデンス（ピア・分析） ──────────────────
+            from data_cases import find_similar_past_cases
+            similar_cases = find_similar_past_cases(res)
+            if similar_cases:
+                with st.expander("📈 過去の類似案件エビデンス (ピア・分析)", expanded=True):
+                    st.markdown("現在の案件と財務構成や業種が近い過去の事例です。判断の参考にしてください。")
+                    for sc in similar_cases:
+                        # 判定に応じたスタイル
+                        sc_status = sc["status"]
+                        sc_color = "#16a34a" if "成約" in sc_status or "承認" in sc_status else "#dc2626" if "否決" in sc_status else "#64748b"
+                        
+                        st.markdown(f"""
+                        <div style="border:1px solid #e2e8f0; border-radius:8px; padding:10px; margin-bottom:10px; background:#fff;">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <div>
+                                    <span style="font-size:0.7rem; color:#94a3b8;">類似度: {sc['similarity']}%</span>
+                                    <h4 style="margin:0; font-size:1.1rem;">{sc['name']} <span style="font-size:0.8rem; font-weight:normal; color:#64748b;">({sc['industry']})</span></h4>
+                                </div>
+                                <div style="text-align:right;">
+                                    <div style="font-size:0.8rem; color:#64748b;">判定結果</div>
+                                    <div style="font-size:1.2rem; font-weight:bold; color:{sc_color};">{sc_status}</div>
+                                </div>
+                            </div>
+                            <div style="margin-top:5px; font-size:0.9rem;">
+                                <span>スコア: <strong>{sc['score']:.1f}</strong></span> | 
+                                <span>自己資本比率: <strong>{sc['equity']}%</strong></span>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # 条件付き成約の分析結果を表示
+                        case_data = sc.get("data", {})
+                        from case_similarity import CaseSimilarityEngine
+                        _sim_engine = CaseSimilarityEngine([])
+                        conditions = _sim_engine._analyze_conditions(case_data)
+                        
+                        if conditions and ("成約" in sc_status or "承認" in sc_status):
+                            # 現在のスコアが低い場合に強調
+                            is_current_borderline = res.get("score", 0) < 70
+                            
+                            if is_current_borderline:
+                                cond_str = " / ".join([f"<span style='color:#dc2626; font-weight:bold; font-size:1.1rem;'>【{c}】</span>" for c in conditions])
+                                st.markdown(f"🚨 **今回の案件も、以下の項目を確認することで成約の可能性があります:**<br>{cond_str}", unsafe_allow_html=True)
+                                st.success("🎯 **アクション**: 下記の「二次審査（ベイジアンBN）」の該当項目をチェックし、リスクヘッジ状況を再評価してください。")
+                            else:
+                                st.info(f"💡 **成約の決め手となった条件**: {' / '.join(conditions)}")
+                            
+                            if sc['score'] < 70:
+                                st.caption(f"※ 過去事例 {sc['name']} はスコア {sc['score']:.1f} でしたが、上記条件を充足し成約に至りました。")
+
+            # ── 🛡️ 競合・失注分析（敗因分析） ──────────────────
+            from data_cases import analyze_lost_cases
+            lost_stats = analyze_lost_cases(res.get("industry_sub"))
+            if lost_stats["total"] > 0:
+                with st.expander("🛡️ 競合・失注分析（同業種の敗因傾向）", expanded=False):
+                    st.markdown("同業種の過去案件で「失注」となったケースの傾向です。競合対策の参考にしてください。")
+                    _l_col1, _l_col2 = st.columns([1, 1])
+                    with _l_col1:
+                        # 理由の円グラフ
+                        import plotly.express as px
+                        reasons = lost_stats["reasons"]
+                        fig_lost = px.pie(
+                            names=list(reasons.keys()),
+                            values=list(reasons.values()),
+                            title="主な失注理由の分布",
+                            hole=0.4,
+                            color_discrete_sequence=px.colors.qualitative.Safe
+                        )
+                        st.plotly_chart(fig_lost, use_container_width=True, key="lost_reason_pie")
+                    
+                    with _l_col2:
+                        st.markdown("#### 競合他社のトレンド")
+                        avg_rate = lost_stats.get("avg_competitor_rate")
+                        if avg_rate:
+                            st.metric("競合の平均獲得レート", f"{avg_rate:.2f}%")
+                            
+                            # 現在のレート想定（もしあれば）と比較
+                            # pricing データが取得できない場合はスキップ
+                            try:
+                                current_rate = res.get("pricing", {}).get("final_rate", 0)
+                                if current_rate > 0:
+                                    if current_rate > avg_rate:
+                                        st.warning(f"⚠️ **競合リスク**: 今回の想定レート ({current_rate:.2f}%) は、同業種の競合平均より高めです。")
+                                    else:
+                                        st.success(f"✅ **金利優位性**: 今回の想定レート ({current_rate:.2f}%) は、競合平均を下回っています。")
+                            except:
+                                pass
+                        
+                        major_competitors = list(lost_stats["competitors"].keys())[:3]
+                        if major_competitors:
+                            st.markdown(f"**主な競合相手:** {', '.join(major_competitors)}")
+                    
+                    if is_ai_available():
+                        c_ai1, c_ai2 = st.columns(2)
+                        with c_ai1:
+                            if st.button("🤖 AIに敗戦回避のアドバイスを求める", key="btn_lost_ai_advice", use_container_width=True):
+                                with st.spinner("過去の敗因を分析中..."):
+                                    prompt = f"""
+                                    以下の過去の失注データに基づき、今回の案件で「失注を回避し、成約率を高めるための対策」を3点、簡潔にアドバイスしてください。
+                                    
+                                    【過去の失注データ（同業種）】
+                                    ・主な失注理由: {lost_stats['reasons']}
+                                    ・競合平均レート: {f'{avg_rate:.2f}%' if avg_rate else '不明'}
+                                    ・主な競合: {lost_stats['competitors']}
+                                    """
+                                    ans = chat_with_retry(model=get_ollama_model(), messages=[{"role": "user", "content": prompt}])
+                                    content = (ans.get("message") or {}).get("content", "")
+                                    st.info(f"🤖 **AI戦略アドバイス**\n\n{content}")
+                        
+                        with c_ai2:
+                            if st.button("🤝 成約への交渉戦略を策定する", key="btn_nego_strategy", use_container_width=True, type="primary"):
+                                with st.spinner("成功事例と失敗事例を照合中..."):
+                                    from ai_chat import get_ai_negotiation_strategy
+                                    # render_analysis_results 内で計算済みの similar_cases を使用
+                                    strategy = get_ai_negotiation_strategy(res, similar_cases, lost_stats)
+                                    if strategy:
+                                        st.markdown("---")
+                                        st.markdown(strategy)
+                                    else:
+                                        st.error("戦略の生成に失敗しました。")
+
             st.divider()
 
             # ── 📊 スコア配分内訳（ASSET_WEIGHT） ────────────────────────────────
