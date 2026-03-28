@@ -1691,6 +1691,11 @@ elif mode == "🕸️ 競合関係グラフ":
     from components.graph_view import render_graph_view
     render_graph_view()
 
+# ── 🔗 案件類似ネットワーク ───────────────────────────────────────────────────
+elif mode == "🔗 案件類似ネットワーク":
+    from components.case_network import render_case_network
+    render_case_network()
+
 # ── フローティングBOT（八奈見さん）── 全ページ共通 ──────────────────────────
 try:
     from components.floating_bot import render_floating_bot
