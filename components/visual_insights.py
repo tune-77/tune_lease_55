@@ -171,10 +171,9 @@ def render_heatmap():
         hovertemplate="%{hovertext}<extra></extra>",
         showscale=True,
         colorbar=dict(
-            title="成約率",
+            title=dict(text="成約率", font=dict(color="#e2e8f0")),
             tickformat=".0%",
             tickfont=dict(color="#e2e8f0"),
-            titlefont=dict(color="#e2e8f0"),
         ),
     ))
 
