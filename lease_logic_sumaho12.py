@@ -1696,6 +1696,11 @@ elif mode == "🔗 案件類似ネットワーク":
     from components.case_network import render_case_network
     render_case_network()
 
+# ── 📊 ビジュアルインサイト ──────────────────────────────────────────────────
+elif mode == "📊 ビジュアルインサイト":
+    from components.visual_insights import render_visual_insights
+    render_visual_insights()
+
 # ── フローティングBOT（八奈見さん）── 全ページ共通 ──────────────────────────
 try:
     from components.floating_bot import render_floating_bot

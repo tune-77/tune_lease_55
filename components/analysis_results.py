@@ -335,7 +335,11 @@ def render_analysis_results(
                 </div>
                 """, unsafe_allow_html=True)
             with _gauge_col:
-                st.plotly_chart(plot_gauge_plotly(res['score'], "成約可能性スコア"), width='stretch', key="gauge_score")
+                try:
+                    from components.score_gauge import render_score_gauge
+                    render_score_gauge(res['score'], res.get('hantei', ''), width=300, height=200)
+                except Exception:
+                    st.plotly_chart(plot_gauge_plotly(res['score'], "成約可能性スコア"), width='stretch', key="gauge_score")
 
             # ── 📈 過去の類似案件エビデンス（ピア・分析） ──────────────────
             from data_cases import find_similar_past_cases
