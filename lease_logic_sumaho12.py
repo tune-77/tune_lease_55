@@ -1681,6 +1681,11 @@ elif mode == "⚙️ 審査ルール設定":
                         })
                     st.dataframe(pd.DataFrame(change_rows), width='stretch', hide_index=True)
 
+# ── 📅 基準金利マスタ ─────────────────────────────────────────────────────────
+elif mode == "📅 基準金利マスタ":
+    from base_rate_master import render_base_rate_manager
+    render_base_rate_manager()
+
 # ── フローティングBOT（八奈見さん）── 全ページ共通 ──────────────────────────
 try:
     from components.floating_bot import render_floating_bot
