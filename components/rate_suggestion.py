@@ -1,13 +1,15 @@
 """
-金利サジェスト - 需要曲線ベースの最適スプレッド提案
+金利サジェスト - ボルツマン温度付き3シナリオ提案
 
 【アルゴリズム】
-データが十分な場合（成約・失注が混在、5件以上）:
-  1. ロジスティック回帰で P(成約 | スプレッド, スコア) を推定（需要曲線）
-  2. 期待利益 = P(成約|スプレッド) × スプレッド を計算
-  3. 期待利益が最大になるスプレッドを推奨
-データが少ない場合:
-  - 成約実績の中央値スプレッド＋スコア補正（経験則フォールバック）
+1. ロジスティック回帰で P(成約 | スプレッド, スコア) を推定（需要曲線）
+2. 期待利益 = P(成約|スプレッド) × スプレッド を最大化 → 「推奨」スプレッドを算出
+3. ボルツマン温度 T = max(0.05, 0.3 / log(n+1)) で探索幅を決定
+   - データが少ない（T高）: シナリオ間の幅が広い → 多様な試行を促進
+   - データが多い（T低）: シナリオが推奨値に収束 → 実績に基づいた安定提案
+4. 守り・推奨・強気の3シナリオを提示。担当者が案件状況に応じて選択。
+
+データ不足時は経験則フォールバック（成約中央値＋スコア補正）。
 """
 import numpy as np
 import pandas as pd
@@ -115,17 +117,44 @@ def _fit_demand_curve(df: pd.DataFrame):
         return None, None
 
 
+def _boltzmann_temperature(n: int) -> float:
+    """
+    ボルツマン温度: データが少ないほど高く（探索）、多いほど低く（活用）。
+    T = max(0.05, 0.3 / log(n+1))
+      n=3  → T≈0.21  幅広い探索
+      n=10 → T≈0.13  中程度
+      n=50 → T≈0.077 収束傾向
+    """
+    return max(0.05, 0.3 / np.log(n + 1))
+
+
+def _win_prob_for_spread(spread: float, score: float, model, scaler, fallback: float) -> float:
+    """指定スプレッドの成約確率を返す（モデルなしの場合はfallbackを返す）"""
+    if model is None or scaler is None:
+        return fallback
+    try:
+        X = scaler.transform([[spread, score]])
+        return float(model.predict_proba(X)[0][1])
+    except Exception:
+        return fallback
+
+
 def suggest_rate(
     current_score: float,
     current_base_rate: float,
     competitor_rate: float,
 ) -> dict:
     """
-    現在の案件に対して最適スプレッドを推定する。
+    現在の案件に対してボルツマン温度付きの3シナリオを推定する。
 
     Returns dict with keys:
-        optimal_spread, optimal_rate, win_prob, chart, data_count,
-        pricing_optimization (bool), message
+        scenarios: [
+            {"label": "守り", "spread": float, "rate": float, "win_prob": float, "expected_profit": float},
+            {"label": "推奨", ...},
+            {"label": "強気", ...},
+        ]
+        temperature, optimal_spread, optimal_rate, win_prob,
+        chart, data_count, pricing_optimization (bool), message
     """
     df = _load_rate_dataframe()
     df = df[df["score"] > 0].copy()
@@ -143,6 +172,11 @@ def suggest_rate(
 
     won_df = df[df["won"] == 1]
     lost_df = df[df["won"] == 0]
+
+    # ── ボルツマン温度 ────────────────────────────────────────────────────
+    T = _boltzmann_temperature(n)
+    # シナリオ間のオフセット幅 = T × スプレッドレンジ × 0.4
+    offset = T * (spread_max - spread_min) * 0.4
 
     # ── 需要曲線アプローチ（データが十分な場合）──────────────────────────
     model, scaler = _fit_demand_curve(df)
@@ -201,10 +235,52 @@ def suggest_rate(
 
     optimal_rate = current_base_rate + optimal_spread
 
+    # ── 3シナリオ生成（ボルツマン温度で幅を決定）────────────────────────
+    conservative_spread = float(np.clip(optimal_spread - offset, spread_min, spread_max))
+    aggressive_spread   = float(np.clip(optimal_spread + offset, spread_min, spread_max))
+
+    def _ep(sp: float, wp: float) -> float:
+        return round(wp * sp, 4)
+
+    wp_cons = _win_prob_for_spread(conservative_spread, current_score, model, scaler,
+                                   min(best_win_prob + 0.10, 0.97))
+    wp_opt  = best_win_prob
+    wp_aggr = _win_prob_for_spread(aggressive_spread, current_score, model, scaler,
+                                   max(best_win_prob - 0.12, 0.10))
+
+    scenarios = [
+        {
+            "label": "守り",
+            "emoji": "🛡️",
+            "spread": conservative_spread,
+            "rate": current_base_rate + conservative_spread,
+            "win_prob": wp_cons,
+            "expected_profit": _ep(conservative_spread, wp_cons),
+            "description": "成約優先。確実に取りに行く場合。",
+        },
+        {
+            "label": "推奨",
+            "emoji": "⚖️",
+            "spread": optimal_spread,
+            "rate": optimal_rate,
+            "win_prob": wp_opt,
+            "expected_profit": _ep(optimal_spread, wp_opt),
+            "description": "期待利益が最大の均衡点。",
+        },
+        {
+            "label": "強気",
+            "emoji": "⚔️",
+            "spread": aggressive_spread,
+            "rate": current_base_rate + aggressive_spread,
+            "win_prob": wp_aggr,
+            "expected_profit": _ep(aggressive_spread, wp_aggr),
+            "description": "利幅優先。スコアが高く優位な場合。",
+        },
+    ]
+
     # ── チャート ─────────────────────────────────────────────────────────
     fig = go.Figure()
 
-    # 成約・失注の散布図
     if len(won_df) > 0:
         fig.add_trace(go.Scatter(
             x=won_df["spread"], y=won_df["score"],
@@ -220,56 +296,50 @@ def suggest_rate(
             yaxis="y1",
         ))
 
-    # 需要曲線・期待利益曲線（pricing optimization が有効な場合）
     if use_pricing_opt and win_prob_curve is not None:
         fig.add_trace(go.Scatter(
-            x=spreads,
-            y=win_prob_curve * 100,
-            mode="lines",
-            name="成約確率 (%)",
+            x=spreads, y=win_prob_curve * 100,
+            mode="lines", name="成約確率 (%)",
             line=dict(color="#8b5cf6", width=2),
             yaxis="y1",
         ))
-
-        # 期待利益を0-100にスケーリングして重ねる
         ep_max = float(expected_profit_curve.max())
         if ep_max > 0:
             ep_scaled = expected_profit_curve / ep_max * 100
             fig.add_trace(go.Scatter(
-                x=spreads,
-                y=ep_scaled,
-                mode="lines",
-                name="期待利益（正規化）",
+                x=spreads, y=ep_scaled,
+                mode="lines", name="期待利益（正規化）",
                 line=dict(color="#f59e0b", width=2, dash="dot"),
                 yaxis="y1",
             ))
 
-    # 推奨スプレッドライン
-    fig.add_vline(
-        x=optimal_spread,
-        line_dash="dash",
-        line_color="#f59e0b",
-        line_width=2,
-        annotation_text=f"推奨 +{optimal_spread:.2f}%",
-        annotation_position="top right",
-    )
+    # 3シナリオのライン
+    scenario_colors = {"守り": "#22c55e", "推奨": "#f59e0b", "強気": "#ef4444"}
+    for sc in scenarios:
+        fig.add_vline(
+            x=sc["spread"],
+            line_dash="dash",
+            line_color=scenario_colors[sc["label"]],
+            line_width=1.5,
+            annotation_text=f"{sc['emoji']}{sc['label']} {sc['rate']:.2f}%",
+            annotation_position="top right" if sc["label"] == "強気" else "top left",
+        )
 
-    # 競合金利ライン
     if competitor_rate > 0 and current_base_rate > 0:
         comp_spread = competitor_rate - current_base_rate
         if spread_min <= comp_spread <= spread_max * 1.2:
             fig.add_vline(
                 x=comp_spread,
                 line_dash="dot",
-                line_color="#ef4444",
-                line_width=2,
+                line_color="#94a3b8",
+                line_width=1.5,
                 annotation_text=f"競合 {competitor_rate:.2f}%",
                 annotation_position="top left",
             )
 
     method_label = "需要曲線最適化" if use_pricing_opt else "実績分布（フォールバック）"
     fig.update_layout(
-        title=f"スプレッド分析（{n}件） - {method_label}",
+        title=f"スプレッド分析（{n}件） - {method_label}　温度T={T:.2f}",
         xaxis_title="スプレッド (%)",
         yaxis=dict(title="スコア / 確率 (%)", side="left", range=[0, 110]),
         height=340,
@@ -280,11 +350,13 @@ def suggest_rate(
     )
 
     return {
+        "scenarios": scenarios,
         "optimal_spread": optimal_spread,
         "optimal_rate": optimal_rate,
         "win_prob": best_win_prob,
         "chart": fig,
         "data_count": n,
+        "temperature": T,
         "pricing_optimization": use_pricing_opt,
         "message": None,
     }
@@ -295,7 +367,7 @@ def render_rate_suggestion(res: dict):
     金利サジェストUIを表示する。
     analysis_results.py の render_analysis_results(res, ...) から呼ぶ。
     """
-    with st.expander("💴 金利サジェスト（需要曲線から最適スプレッドを推定）", expanded=False):
+    with st.expander("💴 金利サジェスト（3シナリオ提案）", expanded=False):
         score = float(res.get("score") or 0)
         pricing = res.get("pricing") or {}
         from base_rate_master import get_current_base_rate
@@ -311,36 +383,42 @@ def render_rate_suggestion(res: dict):
             return
 
         n = result["data_count"]
-        optimal_rate = result["optimal_rate"]
-        optimal_spread = result["optimal_spread"]
-        win_prob = result["win_prob"]
+        T = result.get("temperature", 0.1)
         is_pricing_opt = result.get("pricing_optimization", False)
+        scenarios = result.get("scenarios", [])
 
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.metric(
-                "推奨金利",
-                f"{optimal_rate:.2f}%",
-                f"スプレッド +{optimal_spread:.2f}%",
-            )
-        with c2:
-            st.metric("推定成約確率", f"{win_prob * 100:.0f}%")
-        with c3:
-            if competitor_rate > 0:
-                diff = optimal_rate - competitor_rate
-                st.metric("vs 競合", f"{diff:+.2f}%")
-            else:
-                st.metric("参考データ数", f"{n}件")
+        # ── 3シナリオ表示 ────────────────────────────────────────────────
+        cols = st.columns(3)
+        colors = {"守り": "🟢", "推奨": "🟡", "強気": "🔴"}
+        for col, sc in zip(cols, scenarios):
+            with col:
+                st.markdown(f"**{sc['emoji']} {sc['label']}**")
+                st.metric(
+                    "金利",
+                    f"{sc['rate']:.2f}%",
+                    f"spread +{sc['spread']:.2f}%",
+                )
+                st.caption(
+                    f"成約確率: {sc['win_prob']*100:.0f}%　"
+                    f"期待利益: {sc['expected_profit']:.3f}"
+                )
+                st.caption(sc["description"])
 
+        # 競合比較
+        if competitor_rate > 0:
+            opt_sc = scenarios[1]
+            diff = opt_sc["rate"] - competitor_rate
+            st.caption(f"推奨金利 vs 競合: **{diff:+.2f}%**")
+
+        # メソッド・温度の説明
         if is_pricing_opt:
             st.caption(
-                f"📈 需要曲線最適化（{n}件）: "
-                "P(成約|スプレッド) × スプレッド が最大になる金利を推奨しています。"
-                "スプレッドを上げると成約確率が下がり、下げすぎると利益が減る最適解です。"
+                f"📈 需要曲線最適化 | ボルツマン温度 T={T:.2f}（データ{n}件）　"
+                "データが増えると3シナリオが推奨値に収束します。"
             )
         else:
             st.caption(
-                f"📊 実績ベース推定（{n}件）: "
+                f"📊 実績ベース推定（{n}件）| T={T:.2f}　"
                 "成約・失注が混在するデータが増えると需要曲線モードに自動切替します。"
             )
 
