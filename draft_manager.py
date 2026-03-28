@@ -1,14 +1,14 @@
 """
-フォーム入力の途中保存モジュール。
-session_state の審査入力キーを data/draft_form.json に保存・復元する。
-アプリリロード後でも入力を引き継げる。
+フォーム入力の途中保存モジュール（多人数対応版）。
+session_state の審査入力キーを data/drafts/{username}_form.json に保存・復元する。
+ユーザー別にファイルを分離することで同時利用時の上書き競合を防ぐ。
 """
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 _SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
-_DRAFT_FILE  = os.path.join(_SCRIPT_DIR, "data", "draft_form.json")
+_DRAFTS_DIR  = os.path.join(_SCRIPT_DIR, "data", "drafts")
 
 # 保存対象の session_state キー（フォーム入力項目）
 _DRAFT_KEYS = [
@@ -34,6 +34,34 @@ _DRAFT_KEYS = [
 ]
 
 
+def _get_draft_file() -> str:
+    """現在のログインユーザー名に対応する下書きファイルパスを返す。"""
+    import streamlit as st
+    username = st.session_state.get("username") or "default"
+    # ファイル名に使えない文字を除去
+    safe_name = "".join(c for c in username if c.isalnum() or c in ("-", "_"))
+    safe_name = safe_name or "default"
+    os.makedirs(_DRAFTS_DIR, exist_ok=True)
+    return os.path.join(_DRAFTS_DIR, f"{safe_name}_form.json")
+
+
+def _cleanup_old_drafts(days: int = 7) -> None:
+    """7日以上更新のない下書きファイルを削除する。"""
+    if not os.path.isdir(_DRAFTS_DIR):
+        return
+    threshold = datetime.now() - timedelta(days=days)
+    for fname in os.listdir(_DRAFTS_DIR):
+        if not fname.endswith("_form.json"):
+            continue
+        fpath = os.path.join(_DRAFTS_DIR, fname)
+        try:
+            mtime = datetime.fromtimestamp(os.path.getmtime(fpath))
+            if mtime < threshold:
+                os.remove(fpath)
+        except OSError:
+            pass
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 保存・読み込み
 # ─────────────────────────────────────────────────────────────────────────────
@@ -42,18 +70,17 @@ def save_draft() -> bool:
     """現在の session_state から審査入力値を JSON ファイルに保存する。"""
     try:
         import streamlit as st
+        draft_file = _get_draft_file()
         data: dict = {"_saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
         for key in _DRAFT_KEYS:
             val = st.session_state.get(key)
             if val is not None:
                 try:
-                    # シリアライズ可能かチェック
                     json.dumps(val)
                     data[key] = val
                 except (TypeError, ValueError):
                     data[key] = str(val)
-        os.makedirs(os.path.dirname(_DRAFT_FILE), exist_ok=True)
-        with open(_DRAFT_FILE, "w", encoding="utf-8") as f:
+        with open(draft_file, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         return True
     except Exception:
@@ -62,10 +89,11 @@ def save_draft() -> bool:
 
 def load_draft() -> dict:
     """保存済み下書きを読み込んで返す（存在しなければ空 dict）。"""
-    if not os.path.exists(_DRAFT_FILE):
-        return {}
     try:
-        with open(_DRAFT_FILE, "r", encoding="utf-8") as f:
+        draft_file = _get_draft_file()
+        if not os.path.exists(draft_file):
+            return {}
+        with open(draft_file, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return {}
@@ -89,15 +117,19 @@ def restore_draft() -> bool:
 def delete_draft() -> None:
     """下書きファイルを削除する。"""
     try:
-        if os.path.exists(_DRAFT_FILE):
-            os.remove(_DRAFT_FILE)
+        draft_file = _get_draft_file()
+        if os.path.exists(draft_file):
+            os.remove(draft_file)
     except OSError:
         pass
 
 
 def has_draft() -> bool:
     """保存済み下書きが存在するかを返す。"""
-    return os.path.exists(_DRAFT_FILE)
+    try:
+        return os.path.exists(_get_draft_file())
+    except Exception:
+        return False
 
 
 def get_draft_saved_at() -> str | None:
