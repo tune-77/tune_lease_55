@@ -1,28 +1,38 @@
-# lease_logic_sumaho12
+# リース審査AI システム
 
-リース審査AI。回帰係数ベースの3モデル加重スコアリング・軍師コメント・自動最適化を統合した版。
+リース会社向けの社内審査支援ツール。財務データを入力するだけで審査スコアを算出し、金利サジェスト・軍師コメント・成約予測まで一気通貫で行うStreamlitアプリ。
+
+---
+
+## 主な機能
+
+| 機能 | 概要 |
+|------|------|
+| **審査スコアリング** | 財務指標を3モデル加重平均でスコア化（承認ライン: 71点以上） |
+| **軍師コメント** | ベイズ推論＋LLM（Gemini）による審査所見の自動生成 |
+| **金利サジェスト** | 過去の成約データから最適なリースレートを提案 |
+| **基準金利マスタ** | 月次の基準金利を管理・参照（社内決定金利を毎月登録） |
+| **競合関係グラフ** | 業種×競合他社の競合関係をD3.jsで可視化 |
+| **案件結果登録** | 審査後の成約/失注・獲得レート・競合情報を記録 |
+| **自動係数最適化** | 成約実績50件到達後、以降20件ごとに回帰係数を自動更新 |
+| **バッチ審査** | Excelアップロードで複数案件を一括スコアリング |
+| **PDF出力** | 審査結果レポートをPDFで出力 |
 
 ---
 
 ## 起動方法
 
 ```bash
-cd /Users/kobayashiisaoryou/clawd/lease_logic_sumaho12
+cd /path/to/lease_logic_sumaho12
 streamlit run lease_logic_sumaho12.py --server.port 8502
 ```
 
----
+APIキーの設定（初回のみ）:
 
-## データファイル
-
-| ファイル | 内容 |
-|---------|------|
-| `data/lease_data.db` | 案件データ（SQLite）。過去案件・スコア結果・成約/失注を記録 |
-| `data/screening_db.sqlite` | 軍師モード用DB（gunshi_cases テーブル） |
-| `data/coeff_overrides.json` | 係数の手動上書き・モデル混合重みの手動設定 |
-| `data/coeff_auto.json` | 自動最適化で算出した係数・混合重みの保存先 |
-| `data/business_rules.json` | 業種別ビジネスルール |
-| `data/industry_benchmarks.json` | 業種別財務指標ベンチマーク |
+```toml
+# .streamlit/secrets.toml
+GEMINI_API_KEY = "your-gemini-api-key"
+```
 
 ---
 
@@ -31,30 +41,35 @@ streamlit run lease_logic_sumaho12.py --server.port 8502
 ### 3モデル加重平均
 
 | モデル | 係数キー例 | デフォルト重み |
-|-------|-----------|--------------|
-| ①全体モデル | `全体_既存先` / `全体_新規先` | 50% |
-| ②指標モデル | `指標_既存先` / `指標_新規先` | 30% |
-| ③業種別モデル | `運送業_既存先` / `運送業_新規先` | 20% |
+|--------|-----------|--------------|
+| ① 全体モデル | `全体_既存先` / `全体_新規先` | 50% |
+| ② 指標モデル | `指標_既存先` / `指標_新規先` | 30% |
+| ③ 業種別モデル | `運送業_既存先` など | 20% |
 
-- 重みはデータが50件蓄積されると **クロスバリデーション（StratifiedKFold）で自動最適化**
-- 手動設定は `data/coeff_overrides.json` の `model_blend_weights` で上書き可能
+- 顧客区分（既存先/新規先）で係数セットを自動切り替え
+- 重みは50件蓄積後にクロスバリデーション（StratifiedKFold）で自動最適化
+- 手動上書きは `data/coeff_overrides.json` の `model_blend_weights` で可能
 
-### 既存先・新規先の切り替え
+### 金利サジェスト
 
-`customer_type`（既存先 / 新規先）に応じて係数セットを自動切り替え。
-新規先は `lease_credit_log=0`, `contracts=0` が設計上の初期値（取引実績なし）。
-
-### 承認ライン
-
-総合スコア **71以上** で「承認圏内」。
+- 過去の成約データ（スプレッド・スコア・競合情報）から推奨金利レンジを算出
+- 「競合なし失注」（現金購入・銀行融資への切り替え）はサンプルから除外し精度向上
+- スコアに応じた調整・競合他社情報がある場合は競合スプレッドも反映
 
 ---
 
-## 自動最適化（auto_optimizer.py）
+## データファイル
 
-- 成約/失注の登録済み案件が **50件到達**、以降 **20件ごと** に自動実行
-- 最適化内容：回帰係数の更新 ＋ 3モデル混合重みのクロスバリデーション
-- 結果は `data/coeff_auto.json` に保存
+| ファイル | 内容 |
+|---------|------|
+| `data/lease_data.db` | 全案件ログ（SQLite）。スコア・成約/失注・金利・競合情報を記録 |
+| `data/screening_db.sqlite` | 軍師モード用DB（ベイズ証拠重み） |
+| `data/coeff_overrides.json` | 係数の手動上書き・モデル混合重みの手動設定 |
+| `data/coeff_auto.json` | 自動最適化で算出した係数の保存先 |
+| `data/business_rules.json` | 業種別ビジネスルール |
+| `data/industry_benchmarks.json` | 業種別財務指標ベンチマーク |
+
+> `data/` 配下の `.db` / `.sqlite` はGitで管理しない（`.gitignore` 参照）。
 
 ---
 
@@ -62,36 +77,53 @@ streamlit run lease_logic_sumaho12.py --server.port 8502
 
 ```
 lease_logic_sumaho12/
-├── lease_logic_sumaho12.py      # メインアプリ（起動エントリーポイント）
-├── coeff_definitions.py         # 全業種×既存先/新規先の回帰係数定義
-├── scoring_core.py              # スコア計算コア
-├── data_cases.py                # 案件データの読み書き・混合重み取得
-├── auto_optimizer.py            # 自動最適化トリガー
-├── analysis_regression.py       # 回帰分析・混合重み最適化
+├── lease_logic_sumaho12.py       # メインアプリ（エントリーポイント）
+├── scoring_core.py               # スコア計算コア
+├── coeff_definitions.py          # 全業種×既存先/新規先の回帰係数定義
+├── data_cases.py                 # 案件データの読み書き
+├── auto_optimizer.py             # 自動最適化トリガー
+├── analysis_regression.py        # 回帰分析・混合重み最適化
+├── base_rate_master.py           # 基準金利マスタ（月次管理）
+├── customer_db.py                # 匿名化統計DB
+├── bayesian_engine.py            # ベイズ推論エンジン
 ├── components/
-│   ├── form_apply.py            # 審査入力フォーム（担当者直感スコア含む）
-│   ├── score_calculation.py     # 3モデル加重スコア計算
-│   ├── analysis_results.py      # 分析結果表示
-│   ├── shinsa_gunshi.py         # 軍師コメント生成（ベイズ推論＋LLM）
-│   ├── sidebar.py               # サイドバーUI（API設定等）
-│   ├── dashboard.py             # ダッシュボード
-│   └── settings.py              # 設定画面
-├── data/                        # データ・設定ファイル
-└── docs/                        # ドキュメント（スコア計算式まとめ等）
+│   ├── form_apply.py             # 審査入力フォーム
+│   ├── score_calculation.py      # スコア計算・ログ保存
+│   ├── analysis_results.py       # 分析結果表示
+│   ├── shinsa_gunshi.py          # 軍師コメント生成（ベイズ＋LLM）
+│   ├── rate_suggestion.py        # 金利サジェスト
+│   ├── graph_view.py             # 競合関係グラフ（D3.js）
+│   ├── form_status.py            # 案件結果登録
+│   ├── dashboard.py              # ダッシュボード
+│   ├── batch_scoring.py          # バッチ審査
+│   ├── report.py                 # レポート生成
+│   ├── sidebar.py                # サイドバーUI
+│   └── settings.py               # 設定画面
+└── data/                         # データ・設定ファイル
 ```
 
 ---
 
-## 軍師コメント（shinsa_gunshi.py）
+## 取引先コードについて
 
-- ベイズ推論で承認確率を算出し、LLM（Gemini / Ollama）で推薦コメントを生成
-- **担当者の直感スコア**（1〜5）を入力フォームで受け取り、ベイズ計算に反映
-  - 1=かなり懸念 / 3=ニュートラル（デフォルト）/ 5=強い確信
-- GeminiのAPIキーは `.streamlit/secrets.toml` に `GEMINI_API_KEY = "..."` で設定
+審査フォームの「顧客区分」欄に **取引先コード（任意）** を入力できる。
+社内の取引先管理番号（例: `T-00123`）を記録することで、将来的な顧客別の長期分析（LTV・ベルマン方程式による関係価値最大化）に対応予定。
+
+会社名は入力しない運用のため、取引先コードが顧客を一意に識別する唯一の手段となる。
 
 ---
 
-## 注意
+## 自動係数最適化
 
-- `coeff_definitions.py` はリポジトリルートに置いてください（直接参照）。
-- `data/` 配下の `.db` / `.sqlite` はGitで管理しないことを推奨（`.gitignore` 参照）。
+- 成約/失注の登録済み案件が **50件**を超えた時点で初回実行
+- 以降 **20件ごと**に自動実行
+- ロジスティック回帰で回帰係数を更新、AUCを評価指標として最良セットを採用
+- 結果は `data/coeff_auto.json` に保存、次回起動から自動反映
+
+---
+
+## 注意事項
+
+- `coeff_definitions.py` はリポジトリルートに配置（直接参照のため）
+- Gemini APIキーは `.streamlit/secrets.toml` で管理（Gitにコミットしない）
+- 基準金利は毎月末に翌月分を `📅 基準金利マスタ` 画面から登録する
