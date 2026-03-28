@@ -1098,7 +1098,15 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     st.session_state["gemini_qa_cache"] = {}  # 新案件なのでキャッシュリセット
                     st.rerun()  # 画面を読み込み直して、実際にタブを移動させる
         except Exception as e:
-            st.error("判定開始の処理中にエラーが発生しました。入力内容を確認するか、ページを再読み込みして再度お試しください。")
+            st.error(
+                "⚠️ **判定処理中にエラーが発生しました**\n\n"
+                "**よくある原因**:\n"
+                "- 数値項目に文字が混入している\n"
+                "- 必須項目（売上高・総資産）が0のまま\n"
+                "- AI接続エラー（Ollama/Gemini が応答しない）\n\n"
+                "**対処法**: 入力値を確認してから再度「判定開始」を押してください。"
+                "解決しない場合はページを再読み込み（F5）してください。"
+            )
             import traceback
             with st.expander("エラー詳細", expanded=False):
                 st.code(traceback.format_exc())

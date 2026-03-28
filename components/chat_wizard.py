@@ -434,7 +434,11 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
                     st.toast("✅ 前回案件を複写しました", icon="📋")
                     st.rerun()
                 except Exception:
-                    st.warning("前回案件の読み込みに失敗しました")
+                    st.warning(
+                        "⚠️ **前回案件の読み込みに失敗しました**\n\n"
+                        "**原因**: 保存ファイルの形式が壊れている可能性があります。\n\n"
+                        "**対処法**: そのまま新規入力を続けるか、「🔄 最初からやり直す」ボタンで初期化してください。"
+                    )
 
         _bot("はじめまして！リースくんです 🎩<br>"
              "まず、審査対象の<b>業種</b>を選んでください。<br>"
@@ -840,7 +844,17 @@ def render_chat_wizard() -> None:
 
     # 審査提出後・スコアリング実行前の rerun では再レンダリングを抑制（二重審査防止）
     if st.session_state.get("_wizard_submitted"):
-        st.info("審査を開始しています…しばらくお待ちください。")
+        st.markdown("""
+<div style="text-align:center;padding:2.5rem 1rem;">
+  <div style="font-size:2.8rem;margin-bottom:.8rem;">🎩</div>
+  <div style="font-size:1.15rem;font-weight:700;color:#1A1A2E;margin-bottom:.5rem;">審査を実行しています…</div>
+  <div style="color:#64748b;font-size:.9rem;line-height:1.8;">
+    入力データをもとにスコアリングを計算中です。<br>
+    財務指標・業種リスク・定性評価を総合的に分析しています。<br>
+    <span style="font-size:.8rem;color:#94a3b8;">通常10〜30秒ほどかかります。このまましばらくお待ちください。</span>
+  </div>
+</div>
+""", unsafe_allow_html=True)
         return
 
     jsic_data = _load_jsic()
@@ -861,11 +875,18 @@ def render_chat_wizard() -> None:
 </div>""", unsafe_allow_html=True)
 
     pct = int(step / _N_STEPS * 100)
+    remaining = _N_STEPS - step
     st.markdown(
         f'<div class="wiz-progress-bar"><div class="wiz-progress-fill" style="width:{pct}%;"></div></div>',
         unsafe_allow_html=True,
     )
-    st.caption(f"ステップ {step + 1} / {_N_STEPS}  ──  {_STEPS[step]['emoji']} {_STEPS[step]['label']}")
+    if step == 0:
+        progress_msg = f"ステップ {step + 1} / {_N_STEPS}  ──  {_STEPS[step]['emoji']} {_STEPS[step]['label']}  ✦ スタートです！"
+    elif remaining == 1:
+        progress_msg = f"ステップ {step + 1} / {_N_STEPS}  ──  {_STEPS[step]['emoji']} {_STEPS[step]['label']}  ✦ 最後のステップです！"
+    else:
+        progress_msg = f"ステップ {step + 1} / {_N_STEPS}  ──  {_STEPS[step]['emoji']} {_STEPS[step]['label']}  ✦ あと {remaining} 項目で完了です"
+    st.caption(progress_msg)
 
     _render_history()
 

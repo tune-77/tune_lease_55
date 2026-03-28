@@ -1160,3 +1160,65 @@ def get_ai_consultation_prompt(
             f"【質問】\n{q}",
         ]
     return "\n\n".join(p for p in parts if p)
+def get_ai_negotiation_strategy(res: dict, similar_cases: list, lost_stats: dict) -> Optional[str]:
+    """
+    現在の案件の弱点、類似成約事例、および失注理由を分析し、
+    成約に向けた具体的な「交渉シナリオ」を生成する。
+    """
+    if not is_ai_available():
+        return None
+
+    score = res.get("score", 0)
+    industry = res.get("industry_sub", "")
+    
+    # 類似案件から「成約の決め手」を抽出
+    success_factors = []
+    for sc in similar_cases:
+        if sc.get("final_status") == "成約" or sc.get("final_status") == "承認":
+            from case_similarity import CaseSimilarityEngine
+            engine = CaseSimilarityEngine()
+            conds = engine._analyze_conditions(sc.get("data", {}))
+            success_factors.extend(conds)
+    
+    success_factors = list(set(success_factors)) # 重複排除
+    
+    # 失注理由
+    lost_reasons = lost_stats.get("reasons", {})
+    avg_lost_rate = lost_stats.get("avg_competitor_rate")
+
+    prompt = f"""あなたは法人リースのシニア審査役兼、営業戦略アドバイザーです。
+以下のデータに基づき、この案件を「否決」から「条件付き承認（成約）」へ引き上げるための【具体的交渉シナリオ】を提案してください。
+
+【現状の案件】
+・業種: {industry}
+・総合スコア: {score:.1f}点（承認目安: 70点以上）
+・主な懸念: {"財務基盤の弱さ（自己資本不足）" if res.get("user_eq", 0) < 15 else "収益性の低さ（赤字・営業益不足）" if res.get("user_op", 0) < 2 else "総合的な信用力不足"}
+
+【過去の成功パターン（類似案件の成約条件）】
+{", ".join(success_factors) if success_factors else "特になし（新規パターン開拓が必要）"}
+
+【過去の失敗パターン（同業種の失注理由）】
+{", ".join([f"{k}({v}件)" for k, v in lost_reasons.items()]) or "データなし"}
+・過去の競合平均金利: {f'{avg_lost_rate:.2f}%' if avg_lost_rate else '不明'}
+
+---
+以下の構成で、審査担当者と営業担当者の両方に向けた実戦的なアドバイスを日本語で出力してください。
+
+### 🤝 成約への交渉ロードマップ
+1. **フェーズ1：リスク緩和（審査を通すための絶対条件）**
+   - 具体的な追加条件（例：実質経営者の個人保証、期間短縮、頭金投入など）とその理由。
+2. **フェーズ2：競合対策（失注を防ぐための落とし所）**
+   - 金利調整の余地や、回答スピードの重要性など、過去の失注データを踏まえた戦術。
+3. **フェーズ3：顧客への説得ロジック**
+   - 「なぜこの条件が必要か」「この条件を飲めばどのようなメリットがあるか」を伝えるための対話案。
+"""
+    try:
+        ans = chat_with_retry(
+            model=get_ollama_model(),
+            messages=[{"role": "user", "content": prompt}],
+            timeout_seconds=90
+        )
+        return (ans.get("message") or {}).get("content", "").strip()
+    except Exception as e:
+        log_warning(f"交渉戦略生成失敗: {e}", context="get_ai_negotiation_strategy")
+        return None
