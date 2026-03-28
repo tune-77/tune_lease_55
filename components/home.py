@@ -105,6 +105,28 @@ div[data-testid="stButton"] button p {
     overflow: hidden !important;
     word-break: break-word !important;
 }
+/* CTAバナー */
+.home-cta-banner {
+    background: linear-gradient(135deg, #1A1A2E 0%, #2d2d4e 100%);
+    border-radius: 16px;
+    padding: 1.4rem 2rem;
+    margin-bottom: 1.4rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+.home-cta-text h2 {
+    color: #E8A838;
+    font-size: 1.15rem;
+    font-weight: 800;
+    margin: 0 0 .25rem;
+}
+.home-cta-text p {
+    color: rgba(255,255,255,0.75);
+    font-size: .82rem;
+    margin: 0;
+}
 /* FABチャットパネル */
 .fab-chat-panel {
     background: #fff;
@@ -229,6 +251,22 @@ def render_home() -> None:
     )
 
     recent = _load_recent()
+
+    # ── CTAバナー ─────────────────────────────────────────────────────────────
+    st.markdown("""
+<div class="home-cta-banner">
+  <div class="home-cta-text">
+    <h2>🎩 はじめての方はリースくんから</h2>
+    <p>チャット形式で質問に答えるだけ。10ステップで審査データを入力できます。</p>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+    if st.button("🎩 リースくんで審査開始 →", key="home_cta_wizard", type="primary"):
+        _save_recent("💬 リースくん")
+        st.session_state["_pending_mode"] = "💬 リースくん"
+        st.rerun()
+
+    st.markdown("<br>", unsafe_allow_html=True)
 
     # ── メインカード 6枚 ─────────────────────────────────────────────────────
     _render_cards(_MAIN_CARDS, recent, offset=0)
