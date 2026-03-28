@@ -460,6 +460,13 @@ def render_analysis_results(
 
             st.divider()
 
+            # ── 💴 金利サジェスト ──────────────────────────────────────────────
+            try:
+                from components.rate_suggestion import render_rate_suggestion
+                render_rate_suggestion(res)
+            except Exception as _rse:
+                pass
+
             # ── 📊 スコア配分内訳（ASSET_WEIGHT） ────────────────────────────────
             _ts = res.get("total_scorer_result") or st.session_state.get("_ts_result")
             if _ts:

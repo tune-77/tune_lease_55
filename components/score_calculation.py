@@ -1053,7 +1053,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     },
                     "result": st.session_state['last_result'],
                     "pricing": {
-                        "base_rate": 1.2,
+                        "base_rate": __import__("base_rate_master").get_current_base_rate(fallback=2.1),
                         "pred_rate": y_pred_adjusted
                     },
                     "bn_engine": {

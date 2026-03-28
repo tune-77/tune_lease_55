@@ -41,7 +41,7 @@ def render_status_registration():
                     with st.form(f"status_form_{i}"):
                         res_status = st.radio("結果", ["成約", "失注"], horizontal=True)
                         final_rate = st.number_input("獲得レート (%)", value=0.0, step=0.01, format="%.2f", help="成約した場合の決定金利")
-                        past_base_rate = case.get("pricing", {}).get("base_rate", 1.2)
+                        past_base_rate = case.get("pricing", {}).get("base_rate", 2.1)
                         base_rate_input = st.number_input("当時の基準金利 (%)", value=past_base_rate, step=0.01, format="%.2f")
                         lost_reason = st.text_input("失注理由 (失注の場合のみ)", placeholder="例: 金利で他社に負けた")
                         loan_condition_options = ["本件限度", "次回決算まで本件限度", "金融機関と協調", "独立・新設向け条件", "親会社等保証", "担保・保全あり", "その他"]
