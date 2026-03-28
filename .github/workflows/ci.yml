@@ -7,8 +7,8 @@ on:
   push:
     branches: [ master, main ]
     paths:
-      - "lease_logic_sumaho12/**"
-      - "coeff_definitions.py"
+      - "**.py"
+      - "requirements*.txt"
       - ".github/workflows/ci.yml"
   pull_request:
     branches: [ master, main ]
@@ -39,21 +39,21 @@ jobs:
       - name: 依存ライブラリをインストール
         run: |
           pip install --upgrade pip
-          pip install -r lease_logic_sumaho12/requirements-dev.txt
+          pip install -r requirements-dev.txt
 
       # 4. 構文チェック（pyflakes）
       - name: 構文チェック
         run: |
           pip install pyflakes -q
-          python -m pyflakes lease_logic_sumaho12/scoring_core.py
-          python -m pyflakes lease_logic_sumaho12/rule_manager.py
-          python -m pyflakes lease_logic_sumaho12/indicators.py
-          python -m pyflakes lease_logic_sumaho12/credit_limit.py
+          python -m pyflakes scoring_core.py
+          python -m pyflakes rule_manager.py
+          python -m pyflakes indicators.py
+          python -m pyflakes credit_limit.py
 
       # 5. ユニットテスト実行
       - name: pytest 実行
         run: |
-          python -m pytest lease_logic_sumaho12/tests/ \
+          python -m pytest tests/ \
             -v \
             --tb=short \
             --color=yes
@@ -62,5 +62,5 @@ jobs:
       - name: テスト結果サマリ
         if: always()
         run: |
-          python -m pytest lease_logic_sumaho12/tests/ \
+          python -m pytest tests/ \
             --tb=no -q 2>&1 | tail -3
