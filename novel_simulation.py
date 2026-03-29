@@ -49,6 +49,43 @@ def _fix_json_str(raw: str) -> str:
     return "".join(result)
 
 
+def _repair_truncated_json(s: str) -> str:
+    """
+    途中で切れたJSONを修復する。
+    - 文字列が閉じていなければ閉じる
+    - 末尾のカンマを除去
+    - 不足している ] } を補完
+    """
+    s = _fix_json_str(s).rstrip()
+    # 末尾のカンマ除去
+    if s.endswith(","):
+        s = s[:-1]
+
+    depth_brace = 0
+    depth_bracket = 0
+    in_str = False
+    escape = False
+    for c in s:
+        if escape:
+            escape = False
+        elif c == "\\":
+            escape = True
+        elif c == '"':
+            in_str = not in_str
+        elif not in_str:
+            if c == "{":    depth_brace += 1
+            elif c == "}":  depth_brace -= 1
+            elif c == "[":  depth_bracket += 1
+            elif c == "]":  depth_bracket -= 1
+
+    if in_str:
+        s += '"'
+    s = s.rstrip().rstrip(",")
+    # 閉じ括弧を補完
+    s += "]" * max(0, depth_bracket) + "}" * max(0, depth_brace)
+    return s
+
+
 def _parse_simulation_json(text: str) -> dict:
     """
     AIレスポンスから events キーを持つ JSON を多段フォールバックで抽出する。
@@ -57,18 +94,13 @@ def _parse_simulation_json(text: str) -> dict:
     戦略3: 全文から最初の { を起点に括弧深度カウントで抽出→修正→parse
     """
     def _try_parse(s: str) -> dict | None:
-        try:
-            d = json.loads(s)
-            if "events" in d:
-                return d
-        except Exception:
-            pass
-        try:
-            d = json.loads(_fix_json_str(s))
-            if "events" in d:
-                return d
-        except Exception:
-            pass
+        for attempt in [s, _fix_json_str(s), _repair_truncated_json(s)]:
+            try:
+                d = json.loads(attempt)
+                if "events" in d:
+                    return d
+            except Exception:
+                pass
         return None
 
     # 戦略1・2: ```json...``` を探してその中を解析
@@ -275,31 +307,25 @@ def run_simulation_round() -> dict:
 【予測されていたリスク（今回発動の可能性あり）】
 {"（予測なし）" if not pred_lines else chr(10).join(pred_lines)}
 {prev_summary}
-【シミュレーションルール】
-・各文明は特性・目標に従って自律行動する（予測リスクは確率的に現実化）
-・ドラマチックな転換点を演出（戦争、裏切り、技術革命、神秘的接触など）
-・崩壊する文明は容赦なく描写すること
-・最低4〜8個のイベントを発生させる
-・関係の変化はdeltaで必ず反映（-5〜+5）
+【ルール】
+・各文明は特性・目標に従って自律行動する
+・予測リスクは確率的に現実化させる
+・イベントは3〜5個（多すぎない）
+・descriptionは1〜2文で簡潔に
+・関係変化はdeltaで反映（-5〜+5）
 
-【出力形式（JSONのみ、前後に説明不要）】
+【出力形式：JSONのみ・説明なし】
 ```json
 {{
   "round_no": {next_round},
   "year": {year},
   "events": [
-    {{
-      "civ": "主体となる文明名",
-      "event_type": "war|alliance|collapse|discovery|growth|betrayal|revolution|contact",
-      "title": "イベントタイトル（20字以内）",
-      "description": "詳細説明（2〜3文。具体的・ドラマチック・文学的に）",
-      "affected": ["影響を受ける文明名"]
-    }}
+    {{"civ": "文明名", "event_type": "war|alliance|collapse|discovery|growth|betrayal|revolution|contact", "title": "タイトル20字以内", "description": "1〜2文", "affected": ["関連文明名"]}}
   ],
   "relationship_updates": [
-    {{"source": "A", "target": "B", "rel_type": "rival", "delta": -2.5, "note": "具体的な変化の理由"}}
+    {{"source": "A", "target": "B", "rel_type": "rival", "delta": -2.0, "note": "変化理由"}}
   ],
-  "summary": "このラウンドの総括（3〜4文。文明の盛衰・時代の変化を文学的に描写）"
+  "summary": "ラウンド総括（2文）"
 }}
 ```"""
 
@@ -323,7 +349,15 @@ def run_simulation_round() -> dict:
     # JSONパース（多段フォールバック）
     result_data = _parse_simulation_json(text)
     if not result_data:
-        return {"error": f"AIの応答を解析できませんでした: {text[:300]}"}
+        # 詳細診断: 最初の{からjson.loadsのエラー内容を取得
+        _diag = ""
+        _brace = text.find("{")
+        if _brace != -1:
+            try:
+                json.loads(_fix_json_str(text[_brace:]))
+            except json.JSONDecodeError as _je:
+                _diag = f" | JSONエラー: {_je}"
+        return {"error": f"AIの応答を解析できませんでした: {text[:200]}{_diag}"}
 
     # ── DB保存 ────────────────────────────────────────────────────────
     init_simulation_db()
