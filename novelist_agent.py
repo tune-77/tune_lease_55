@@ -399,12 +399,14 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
             _post_thought("LLMが利用できないため、代替小説を生成します。", "⚠️")
             return _fallback_novel(episode_no, week_label)
 
-        engine, model, api_key, gemini_model = _get_ai_settings()
+        _engine, _model, api_key, gemini_model = _get_ai_settings()
+        # 小説生成は長文出力のため Gemini を優先使用
+        engine = "gemini"
         messages = [
             {"role": "system", "content": get_novel_system_prompt(genre)},
             {"role": "user",   "content": prompt},
         ]
-        raw = _chat_for_thread(engine, model, messages,
+        raw = _chat_for_thread(engine, _model, messages,
                                timeout_seconds=180,
                                api_key=api_key,
                                gemini_model=gemini_model)
