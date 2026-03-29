@@ -28,6 +28,44 @@ import sqlite3
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _NOVEL_DB  = os.path.join(_BASE_DIR, "data", "novelist_agent.db")
 
+
+def _extract_outermost_json(text: str) -> list[dict]:
+    """
+    テキスト中の最外殻 { ... } ブロックをすべて抽出してパースする。
+    非貪欲regexと異なり、ネストされたオブジェクトを正しく処理する。
+    """
+    results: list[dict] = []
+    i = 0
+    while i < len(text):
+        brace = text.find("{", i)
+        if brace == -1:
+            break
+        depth, j, in_str, escape = 0, brace, False, False
+        while j < len(text):
+            c = text[j]
+            if escape:
+                escape = False
+            elif c == "\\":
+                escape = True
+            elif c == '"' and not escape:
+                in_str = not in_str
+            elif not in_str:
+                if c == "{":
+                    depth += 1
+                elif c == "}":
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            results.append(json.loads(text[brace:j + 1]))
+                        except Exception:
+                            pass
+                        i = j + 1
+                        break
+            j += 1
+        else:
+            break
+    return results
+
 # ── 固定エージェントノード ──────────────────────────────────────────────────
 AGENT_NODES: list[dict] = [
     {"id": "Tune",     "label": "Tune",     "group": "agent", "color": "#3b82f6"},
@@ -290,17 +328,10 @@ def generate_civ_characteristics_ai() -> int:
     except Exception:
         return 0
 
-    # JSONパース
-    pattern = r"```json\s*(\{[\s\S]*?\})\s*```"
-    matches = re.findall(pattern, text)
     chars = []
-    for m in matches:
-        try:
-            data = json.loads(m)
-            if "civ_characteristics" in data:
-                chars.extend(data["civ_characteristics"])
-        except Exception:
-            pass
+    for data in _extract_outermost_json(text):
+        if "civ_characteristics" in data:
+            chars.extend(data["civ_characteristics"])
 
     if not chars:
         return 0
@@ -406,16 +437,10 @@ def generate_relationship_predictions_ai() -> int:
     except Exception:
         return 0
 
-    pattern = r"```json\s*(\{[\s\S]*?\})\s*```"
-    matches = re.findall(pattern, text)
     preds = []
-    for m in matches:
-        try:
-            data = json.loads(m)
-            if "relationship_predictions" in data:
-                preds.extend(data["relationship_predictions"])
-        except Exception:
-            pass
+    for data in _extract_outermost_json(text):
+        if "relationship_predictions" in data:
+            preds.extend(data["relationship_predictions"])
 
     if not preds:
         return 0
@@ -603,17 +628,12 @@ def build_graph_context_for_prompt(episode_no: int) -> str:
 def parse_relationship_updates_from_novel(novel_body: str) -> list[dict]:
     """
     小説本文末尾の ```json ... ``` ブロックから関係性更新を抽出する。
+    ネストされたJSONも正しく処理する。
     """
-    pattern = r"```json\s*(\{[\s\S]*?\})\s*```"
-    matches = re.findall(pattern, novel_body)
     updates = []
-    for m in matches:
-        try:
-            data = json.loads(m)
-            if "relationship_updates" in data:
-                updates.extend(data["relationship_updates"])
-        except Exception:
-            pass
+    for data in _extract_outermost_json(novel_body):
+        if "relationship_updates" in data:
+            updates.extend(data["relationship_updates"])
     return updates
 
 

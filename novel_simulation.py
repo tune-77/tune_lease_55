@@ -220,11 +220,47 @@ def run_simulation_round() -> dict:
     except Exception as e:
         return {"error": f"AI通信エラー: {e}"}
 
-    # JSONパース
-    pattern = r"```json\s*(\{[\s\S]*?\})\s*```"
-    matches = re.findall(pattern, text)
+    # JSONパース（```json...``` ブロックを正しく抽出）
     result_data: dict = {}
-    for m in matches:
+
+    def _extract_json_blocks(src: str) -> list[str]:
+        """```json ... ``` の中身を正しく抽出（ネスト対応）"""
+        blocks: list[str] = []
+        i = 0
+        while True:
+            start = src.find("```json", i)
+            if start == -1:
+                break
+            brace_start = src.find("{", start)
+            if brace_start == -1:
+                break
+            depth = 0
+            j = brace_start
+            in_str = False
+            escape = False
+            while j < len(src):
+                c = src[j]
+                if escape:
+                    escape = False
+                elif c == "\\":
+                    escape = True
+                elif c == '"' and not escape:
+                    in_str = not in_str
+                elif not in_str:
+                    if c == "{":
+                        depth += 1
+                    elif c == "}":
+                        depth -= 1
+                        if depth == 0:
+                            blocks.append(src[brace_start:j + 1])
+                            i = j + 1
+                            break
+                j += 1
+            else:
+                break
+        return blocks
+
+    for m in _extract_json_blocks(text):
         try:
             data = json.loads(m)
             if "events" in data:
@@ -234,11 +270,35 @@ def run_simulation_round() -> dict:
             pass
 
     if not result_data:
-        # フォールバック: ```json なしでも試みる
-        try:
-            result_data = json.loads(text.strip())
-        except Exception:
-            pass
+        # フォールバック: テキスト全体から { ... } を抽出
+        brace_start = text.find("{")
+        if brace_start != -1:
+            depth = 0
+            j = brace_start
+            in_str = False
+            escape = False
+            while j < len(text):
+                c = text[j]
+                if escape:
+                    escape = False
+                elif c == "\\":
+                    escape = True
+                elif c == '"' and not escape:
+                    in_str = not in_str
+                elif not in_str:
+                    if c == "{":
+                        depth += 1
+                    elif c == "}":
+                        depth -= 1
+                        if depth == 0:
+                            try:
+                                data = json.loads(text[brace_start:j + 1])
+                                if "events" in data:
+                                    result_data = data
+                            except Exception:
+                                pass
+                            break
+                j += 1
 
     if not result_data:
         return {"error": f"AIの応答を解析できませんでした: {text[:300]}"}
