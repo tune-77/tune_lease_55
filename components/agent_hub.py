@@ -1801,6 +1801,24 @@ def _render_civilization_panel() -> None:
     else:
         ep_arg = None
 
+    # 企業間関係の自動生成ボタン
+    try:
+        from novel_graph import get_current_graph, AGENT_IDS
+        _edges = get_current_graph()
+        _cc_edges = [k for k in _edges if k[0] not in AGENT_IDS and k[1] not in AGENT_IDS and _edges[k]["episode_no"] == -1]
+        if not _cc_edges:
+            if st.button("🤖 企業間の関係をAIに想像させる", key="btn_gen_company_rel"):
+                with st.spinner("Geminiが企業間の関係を想像中..."):
+                    from novel_graph import generate_and_seed_company_relations
+                    n = generate_and_seed_company_relations()
+                if n > 0:
+                    st.success(f"{n}件の企業間関係を生成しました！")
+                    st.rerun()
+                else:
+                    st.warning("関係の生成に失敗しました（Gemini APIキーを確認してください）")
+    except Exception:
+        pass
+
     try:
         from components.novel_graph_view import render_novel_graph
         render_novel_graph(episode_no=ep_arg, height=540)

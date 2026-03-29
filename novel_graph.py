@@ -160,6 +160,107 @@ def save_relationship_updates(episode_no: int, updates: list[dict]) -> None:
     conn.close()
 
 
+# ── 企業間関係の自動想像・シード ─────────────────────────────────────────────
+
+def generate_and_seed_company_relations() -> int:
+    """
+    文明レジストリの企業リストをGeminiに渡して企業間関係を想像させ、
+    novel_relationships DB にシード（episode_no=-1）する。
+    既に企業間エッジが存在する場合は追加しない。
+    Returns: 追加したエッジ数
+    """
+    import datetime
+
+    # 既存の企業間エッジ確認
+    existing = get_current_graph()
+    company_company = [(k, v) for k, v in existing.items()
+                       if k[0] not in AGENT_IDS and k[1] not in AGENT_IDS and not v.get("auto")]
+    if company_company:
+        return 0  # 既にある
+
+    # 文明レジストリから有効な企業名を取得（重複排除・不明除外）
+    try:
+        from novelist_agent import get_civilization_registry
+        civs = get_civilization_registry()
+    except Exception:
+        return 0
+
+    _skip = {"(企業名は不明)", "(不明)", "(システム上の記録なし)"}
+    seen: set[str] = set()
+    valid_civs = []
+    for c in civs:
+        name = c.get("company_name", "")
+        if name and name not in _skip and name not in seen:
+            seen.add(name)
+            valid_civs.append(c)
+
+    if len(valid_civs) < 2:
+        return 0
+
+    # Gemini に企業間関係を想像させる
+    civ_list = "\n".join(
+        f"・{c['company_name']}（{c['industry']} / {c.get('civ_era','?')}）"
+        for c in valid_civs
+    )
+    prompt = f"""以下の企業・文明リストを見て、それぞれの間にどんな関係があるか想像して物語的に設定してください。
+宇宙開発競争、資源争奪、同盟、情報戦、教育格差、技術提携など自由に創造してください。
+
+【企業・文明リスト】
+{civ_list}
+
+【出力形式（JSONのみ、説明不要）】
+```json
+{{"relationship_updates": [
+  {{"source": "企業名A", "target": "企業名B", "rel_type": "rival", "delta": -3, "note": "宇宙開発権をめぐり激しく対立"}},
+  {{"source": "企業名C", "target": "企業名D", "rel_type": "ally", "delta": 2, "note": "共同で銀河航路を開拓"}},
+  ...
+]}}
+```
+rel_type は ally / trust / rival / suspicion / dependence / neutral のいずれか。
+delta は -5〜+5。すべての企業ペアに関係を作る必要はないが、ドラマチックな関係を10〜15個程度作ること。"""
+
+    try:
+        from ai_chat import _chat_for_thread, _get_gemini_key_from_secrets, GEMINI_API_KEY_ENV, GEMINI_MODEL_DEFAULT
+        api_key = GEMINI_API_KEY_ENV or _get_gemini_key_from_secrets()
+        if not api_key:
+            return 0
+        raw = _chat_for_thread(
+            "gemini", "", [{"role": "user", "content": prompt}],
+            timeout_seconds=60, api_key=api_key, gemini_model=GEMINI_MODEL_DEFAULT
+        )
+        text = (raw.get("message") or {}).get("content", "") or ""
+    except Exception:
+        return 0
+
+    updates = parse_relationship_updates_from_novel(text)
+    if not updates:
+        return 0
+
+    # episode_no = -1 としてシード（初期世界設定）
+    init_graph_db()
+    conn = sqlite3.connect(_NOVEL_DB)
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    count = 0
+    for u in updates:
+        src = u.get("source", "").strip()
+        tgt = u.get("target", "").strip()
+        rt  = u.get("rel_type", "neutral")
+        delta = float(u.get("delta", 0))
+        note  = u.get("note", "")
+        if not src or not tgt or src in AGENT_IDS or tgt in AGENT_IDS:
+            continue
+        st = max(-5.0, min(5.0, delta))
+        conn.execute(
+            "INSERT INTO novel_relationships (episode_no, ts, source, target, rel_type, strength, delta, note) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (-1, ts, src, tgt, rt, st, delta, note)
+        )
+        count += 1
+    conn.commit()
+    conn.close()
+    return count
+
+
 # ── AIプロンプト用テキスト生成 ───────────────────────────────────────────────
 
 def build_graph_context_for_prompt(episode_no: int) -> str:
