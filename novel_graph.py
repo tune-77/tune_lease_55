@@ -65,6 +65,28 @@ def init_graph_db() -> None:
             note        TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_novel_rel_ep ON novel_relationships(episode_no);
+
+        CREATE TABLE IF NOT EXISTS civ_characteristics (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_name TEXT    NOT NULL UNIQUE,
+            traits       TEXT,
+            goals        TEXT,
+            ideology     TEXT,
+            strengths    TEXT,
+            weaknesses   TEXT,
+            personality  TEXT,
+            created_at   TEXT    NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS relationship_predictions (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            source       TEXT    NOT NULL,
+            target       TEXT    NOT NULL,
+            prediction   TEXT,
+            risk_level   REAL    DEFAULT 0.5,
+            created_at   TEXT    NOT NULL,
+            UNIQUE(source, target)
+        );
     """)
     # 初期関係を未登録なら seed する
     existing = conn.execute("SELECT COUNT(*) FROM novel_relationships").fetchone()[0]
@@ -158,6 +180,248 @@ def save_relationship_updates(episode_no: int, updates: list[dict]) -> None:
 
     conn.commit()
     conn.close()
+
+
+# ── 文明特性 ──────────────────────────────────────────────────────────────────
+
+def get_all_civ_characteristics() -> dict[str, dict]:
+    """全企業の特性を返す。{company_name: {traits, goals, ideology, strengths, weaknesses, personality}}"""
+    init_graph_db()
+    conn = sqlite3.connect(_NOVEL_DB)
+    rows = conn.execute(
+        "SELECT company_name, traits, goals, ideology, strengths, weaknesses, personality "
+        "FROM civ_characteristics"
+    ).fetchall()
+    conn.close()
+    result: dict[str, dict] = {}
+    for row in rows:
+        result[row[0]] = {
+            "traits": row[1] or "", "goals": row[2] or "",
+            "ideology": row[3] or "", "strengths": row[4] or "",
+            "weaknesses": row[5] or "", "personality": row[6] or "",
+        }
+    return result
+
+
+def save_civ_characteristics(chars: list[dict]) -> None:
+    """文明特性をDBに保存（UPSERT）"""
+    import datetime
+    init_graph_db()
+    conn = sqlite3.connect(_NOVEL_DB)
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for c in chars:
+        name = c.get("company_name", "").strip()
+        if not name:
+            continue
+        conn.execute(
+            """INSERT INTO civ_characteristics
+               (company_name, traits, goals, ideology, strengths, weaknesses, personality, created_at)
+               VALUES (?,?,?,?,?,?,?,?)
+               ON CONFLICT(company_name) DO UPDATE SET
+               traits=excluded.traits, goals=excluded.goals, ideology=excluded.ideology,
+               strengths=excluded.strengths, weaknesses=excluded.weaknesses,
+               personality=excluded.personality, created_at=excluded.created_at""",
+            (name, c.get("traits",""), c.get("goals",""), c.get("ideology",""),
+             c.get("strengths",""), c.get("weaknesses",""), c.get("personality",""), ts)
+        )
+    conn.commit()
+    conn.close()
+
+
+def generate_civ_characteristics_ai() -> int:
+    """
+    文明レジストリの企業リストをGeminiに渡して個性・目標・思想を生成し保存する。
+    Returns: 生成した企業数
+    """
+    try:
+        from novelist_agent import get_civilization_registry
+        civs = get_civilization_registry()
+    except Exception:
+        return 0
+
+    _skip = {"(企業名は不明)", "(不明)", "(システム上の記録なし)"}
+    valid_civs = [c for c in civs if c.get("company_name") and c["company_name"] not in _skip]
+    if not valid_civs:
+        return 0
+
+    # 既に特性がある企業は除外（スキップ）
+    existing = get_all_civ_characteristics()
+    new_civs = [c for c in valid_civs if c["company_name"] not in existing]
+    if not new_civs:
+        return 0
+
+    civ_list = "\n".join(
+        f"・{c['company_name']}（{c['industry']} / {c.get('civ_era','?')} / status:{c.get('status','active')}）"
+        for c in new_civs
+    )
+
+    prompt = f"""以下の企業・文明リストについて、それぞれの個性・目標・思想をSFドラマ世界観（宇宙時代のリース審査）で創造してください。
+各企業は自律的に動く存在として設計し、次のエピソードで文豪AIがストーリーを生成する際に参照します。
+
+【企業・文明リスト】
+{civ_list}
+
+【出力形式（JSONのみ、説明不要）】
+```json
+{{"civ_characteristics": [
+  {{
+    "company_name": "企業名（リストと完全一致）",
+    "traits": "個性・特徴（1〜2文）",
+    "goals": "目標・野望（1〜2文）",
+    "ideology": "思想・価値観（1〜2文）",
+    "strengths": "強み（キーワード3つ程度）",
+    "weaknesses": "弱み・脆弱性（キーワード3つ程度）",
+    "personality": "性格キーワード（例：好戦的・神秘的・合理主義）"
+  }}
+]}}
+```
+すべての企業について出力すること。"""
+
+    try:
+        from ai_chat import _chat_for_thread, _get_gemini_key_from_secrets, GEMINI_API_KEY_ENV, GEMINI_MODEL_DEFAULT
+        api_key = GEMINI_API_KEY_ENV or _get_gemini_key_from_secrets()
+        if not api_key:
+            return 0
+        raw = _chat_for_thread(
+            "gemini", "", [{"role": "user", "content": prompt}],
+            timeout_seconds=90, api_key=api_key, gemini_model=GEMINI_MODEL_DEFAULT
+        )
+        text = (raw.get("message") or {}).get("content", "") or ""
+    except Exception:
+        return 0
+
+    # JSONパース
+    pattern = r"```json\s*(\{[\s\S]*?\})\s*```"
+    matches = re.findall(pattern, text)
+    chars = []
+    for m in matches:
+        try:
+            data = json.loads(m)
+            if "civ_characteristics" in data:
+                chars.extend(data["civ_characteristics"])
+        except Exception:
+            pass
+
+    if not chars:
+        return 0
+
+    save_civ_characteristics(chars)
+    return len(chars)
+
+
+# ── 関係性未来予測 ──────────────────────────────────────────────────────────
+
+def get_all_relationship_predictions() -> dict[tuple, dict]:
+    """全関係の未来予測を返す。{(source, target): {prediction, risk_level}}"""
+    init_graph_db()
+    conn = sqlite3.connect(_NOVEL_DB)
+    rows = conn.execute(
+        "SELECT source, target, prediction, risk_level FROM relationship_predictions"
+    ).fetchall()
+    conn.close()
+    return {(r[0], r[1]): {"prediction": r[2] or "", "risk_level": r[3] or 0.5}
+            for r in rows}
+
+
+def save_relationship_predictions(preds: list[dict]) -> None:
+    """関係予測をDBに保存（UPSERT）"""
+    import datetime
+    init_graph_db()
+    conn = sqlite3.connect(_NOVEL_DB)
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for p in preds:
+        src = p.get("source", "").strip()
+        tgt = p.get("target", "").strip()
+        if not src or not tgt:
+            continue
+        conn.execute(
+            """INSERT INTO relationship_predictions (source, target, prediction, risk_level, created_at)
+               VALUES (?,?,?,?,?)
+               ON CONFLICT(source, target) DO UPDATE SET
+               prediction=excluded.prediction, risk_level=excluded.risk_level,
+               created_at=excluded.created_at""",
+            (src, tgt, p.get("prediction",""), float(p.get("risk_level", 0.5)), ts)
+        )
+    conn.commit()
+    conn.close()
+
+
+def generate_relationship_predictions_ai() -> int:
+    """
+    現在の関係グラフとキャラクター特性を元にGeminiが未来を予測する。
+    Returns: 予測したエッジ数
+    """
+    edges = get_current_graph()
+    chars = get_all_civ_characteristics()
+
+    if not edges:
+        return 0
+
+    # 関係テキスト構築
+    rel_lines = []
+    for (src, tgt), info in list(edges.items())[:30]:  # 多すぎるとトークン超過
+        st = info["strength"]
+        note = info["note"]
+        rel_lines.append(f"・{src} → {tgt}: {info['rel_type']} [{st:+.1f}]  {note}")
+    rel_text = "\n".join(rel_lines)
+
+    # 特性テキスト構築
+    char_lines = []
+    for name, c in list(chars.items())[:15]:
+        char_lines.append(f"・{name}: {c['traits']} | 目標:{c['goals']} | 性格:{c['personality']}")
+    char_text = "\n".join(char_lines) if char_lines else "（特性未生成）"
+
+    prompt = f"""以下の登場人物・企業間の現在の関係グラフを分析し、今後の展開を予測してください。
+各関係がどの方向に進化するか、どんな事件・衝突・同盟が起きそうかを具体的に予測します。
+
+【現在の関係グラフ】
+{rel_text}
+
+【各文明の特性】
+{char_text}
+
+【出力形式（JSONのみ、説明不要）】
+```json
+{{"relationship_predictions": [
+  {{
+    "source": "登場人物/企業名A",
+    "target": "登場人物/企業名B",
+    "prediction": "今後の予測（1〜2文。具体的なイベント・ターニングポイントを含む）",
+    "risk_level": 0.0〜1.0の数値（0=安定・1=壊滅的変動）
+  }}
+]}}
+```
+すべての関係について予測すること。risk_level は小数点1桁で。"""
+
+    try:
+        from ai_chat import _chat_for_thread, _get_gemini_key_from_secrets, GEMINI_API_KEY_ENV, GEMINI_MODEL_DEFAULT
+        api_key = GEMINI_API_KEY_ENV or _get_gemini_key_from_secrets()
+        if not api_key:
+            return 0
+        raw = _chat_for_thread(
+            "gemini", "", [{"role": "user", "content": prompt}],
+            timeout_seconds=90, api_key=api_key, gemini_model=GEMINI_MODEL_DEFAULT
+        )
+        text = (raw.get("message") or {}).get("content", "") or ""
+    except Exception:
+        return 0
+
+    pattern = r"```json\s*(\{[\s\S]*?\})\s*```"
+    matches = re.findall(pattern, text)
+    preds = []
+    for m in matches:
+        try:
+            data = json.loads(m)
+            if "relationship_predictions" in data:
+                preds.extend(data["relationship_predictions"])
+        except Exception:
+            pass
+
+    if not preds:
+        return 0
+
+    save_relationship_predictions(preds)
+    return len(preds)
 
 
 # ── 企業間関係の自動想像・シード ─────────────────────────────────────────────
@@ -265,42 +529,71 @@ delta は -5〜+5。すべての企業ペアに関係を作る必要はないが
 
 def build_graph_context_for_prompt(episode_no: int) -> str:
     """
-    直前エピソードまでの関係グラフ状態をテキスト化してプロンプトに注入する。
+    直前エピソードまでの関係グラフ状態、文明特性、未来予測をテキスト化してプロンプトに注入する。
     """
     edges = get_current_graph(up_to_episode=episode_no - 1)
-    if not edges:
+    characteristics = get_all_civ_characteristics()
+    predictions = get_all_relationship_predictions()
+
+    if not edges and not characteristics:
         return ""
 
     lines = [f"\n【登場人物・企業の関係グラフ（第{episode_no - 1}話終了時点）】",
-             f"以下の関係性を必ず第{episode_no}話の展開・セリフ・心理描写に反映すること。",
-             "strength は -5（最大対立）〜 +5（最大連帯）。",
+             f"以下の関係性・特性・予測を必ず第{episode_no}話の展開・セリフ・心理描写に反映すること。",
              ""]
 
-    # エージェント間
-    agent_edges = {k: v for k, v in edges.items() if k[0] in AGENT_IDS and k[1] in AGENT_IDS}
-    if agent_edges:
-        lines.append("▼ エージェント間（この関係を必ずセリフ・態度・心理に反映すること）")
-        for (src, tgt), info in sorted(agent_edges.items()):
-            rt_label = REL_TYPES.get(info["rel_type"], {}).get("label", info["rel_type"])
-            st = info["strength"]
-            bar = "█" * int(abs(st)) + "░" * (5 - int(abs(st)))
-            sign = "+" if st >= 0 else ""
-            lines.append(f"  {src} → {tgt}: {rt_label} [{sign}{st:.1f}] {bar}  ※{info['note']}")
-
-    # 企業・文明間の関係（エージェント以外を含む全エッジ）
-    company_edges = {k: v for k, v in edges.items() if k[0] not in AGENT_IDS or k[1] not in AGENT_IDS}
-    if company_edges:
+    # 文明特性（企業の自律的行動の根拠）
+    if characteristics:
+        lines.append("▼ 各文明・企業の特性（自律的行動の根拠として使用すること）")
+        for name, c in list(characteristics.items())[:12]:
+            traits = c.get("traits", "")
+            goals  = c.get("goals", "")
+            pers   = c.get("personality", "")
+            weak   = c.get("weaknesses", "")
+            info_parts = []
+            if traits: info_parts.append(f"特徴:{traits}")
+            if goals:  info_parts.append(f"目標:{goals}")
+            if pers:   info_parts.append(f"性格:{pers}")
+            if weak:   info_parts.append(f"弱点:{weak}")
+            if info_parts:
+                lines.append(f"  【{name}】" + " / ".join(info_parts))
         lines.append("")
-        lines.append("▼ 企業・文明との関係（これらの企業が今話に登場する場合は必ずこの関係性を物語に織り込むこと）")
-        for (src, tgt), info in sorted(company_edges.items()):
-            rt_label = REL_TYPES.get(info["rel_type"], {}).get("label", info["rel_type"])
-            st = info["strength"]
-            sign = "+" if st >= 0 else ""
-            note = f"  ※{info['note']}" if info["note"] else ""
-            lines.append(f"  {src} → {tgt}: {rt_label} [{sign}{st:.1f}]{note}")
+
+    if edges:
+        # エージェント間
+        agent_edges = {k: v for k, v in edges.items() if k[0] in AGENT_IDS and k[1] in AGENT_IDS}
+        if agent_edges:
+            lines.append("▼ エージェント間（この関係を必ずセリフ・態度・心理に反映すること）")
+            for (src, tgt), info in sorted(agent_edges.items()):
+                rt_label = REL_TYPES.get(info["rel_type"], {}).get("label", info["rel_type"])
+                st = info["strength"]
+                bar = "█" * int(abs(st)) + "░" * (5 - int(abs(st)))
+                sign = "+" if st >= 0 else ""
+                pred = predictions.get((src, tgt)) or predictions.get((tgt, src)) or {}
+                pred_text = f" → 予測: {pred['prediction']}" if pred.get("prediction") else ""
+                lines.append(f"  {src} → {tgt}: {rt_label} [{sign}{st:.1f}] {bar}  ※{info['note']}{pred_text}")
+
+        # 企業・文明間の関係
+        company_edges = {k: v for k, v in edges.items() if k[0] not in AGENT_IDS or k[1] not in AGENT_IDS}
+        if company_edges:
+            lines.append("")
+            lines.append("▼ 企業・文明との関係と未来予測（これらを物語に必ず織り込むこと）")
+            for (src, tgt), info in sorted(company_edges.items()):
+                rt_label = REL_TYPES.get(info["rel_type"], {}).get("label", info["rel_type"])
+                st = info["strength"]
+                sign = "+" if st >= 0 else ""
+                note = f"  ※{info['note']}" if info["note"] else ""
+                pred = predictions.get((src, tgt)) or predictions.get((tgt, src)) or {}
+                risk = pred.get("risk_level", 0)
+                risk_text = ""
+                if pred.get("prediction"):
+                    risk_emoji = "🔴" if risk >= 0.7 else "🟡" if risk >= 0.4 else "🟢"
+                    risk_text = f"  {risk_emoji}予測: {pred['prediction']}"
+                lines.append(f"  {src} → {tgt}: {rt_label} [{sign}{st:.1f}]{note}{risk_text}")
 
     lines.append("")
-    lines.append("【重要】企業同士の対立・同盟関係（例：A社とB社が戦争中、C社がD社を支援）は、エージェントたちの議論の背景として積極的に使用すること。")
+    lines.append("【重要】上記の特性・予測を踏まえ、各文明が自律的な意思と目標を持って行動する物語を描くこと。")
+    lines.append("予測されたリスクや衝突を第話の展開の核心として使用し、驚きのある展開を作ること。")
 
     return "\n".join(lines)
 
@@ -330,8 +623,11 @@ def build_d3_graph_data(episode_no: int | None = None) -> dict:
     """
     D3.js フォースグラフ用の nodes / links データを返す。
     novel_relationships エッジに加え、文明レジストリの企業も自動的にノードとして追加する。
+    文明特性・関係予測も含む。
     """
     edges = get_current_graph(up_to_episode=episode_no)
+    characteristics = get_all_civ_characteristics()
+    predictions = get_all_relationship_predictions()
 
     # ノード収集（エッジから）
     node_ids: set[str] = set(AGENT_IDS)
@@ -345,8 +641,13 @@ def build_d3_graph_data(episode_no: int | None = None) -> dict:
         if nid in agent_map:
             nodes.append({**agent_map[nid], "size": 20})
         else:
+            char = characteristics.get(nid, {})
             nodes.append({"id": nid, "label": nid[:12], "group": "company",
-                          "color": "#94a3b8", "size": 14})
+                          "color": "#94a3b8", "size": 14,
+                          "traits": char.get("traits", ""),
+                          "goals": char.get("goals", ""),
+                          "ideology": char.get("ideology", ""),
+                          "personality": char.get("personality", "")})
 
     # 文明レジストリから企業ノードを追加（エッジなしでも表示）
     # 審査結果に応じて色分け・Tuneへのエッジ自動生成
@@ -391,6 +692,7 @@ def build_d3_graph_data(episode_no: int | None = None) -> dict:
         label = cid[:12]
 
         if cid not in existing_ids:
+            char = characteristics.get(cid, {})
             nodes.append({
                 "id": cid,
                 "label": label,
@@ -399,6 +701,10 @@ def build_d3_graph_data(episode_no: int | None = None) -> dict:
                 "size": 14,
                 "industry": industry,
                 "status": status,
+                "traits": char.get("traits", ""),
+                "goals": char.get("goals", ""),
+                "ideology": char.get("ideology", ""),
+                "personality": char.get("personality", ""),
             })
             existing_ids.add(cid)
         else:
@@ -433,6 +739,7 @@ def build_d3_graph_data(episode_no: int | None = None) -> dict:
         st = info["strength"]
         rt = info["rel_type"]
         color = REL_TYPES.get(rt, {}).get("color", "#64748b")
+        pred = predictions.get((src, tgt)) or predictions.get((tgt, src)) or {}
         links.append({
             "source": src,
             "target": tgt,
@@ -445,6 +752,8 @@ def build_d3_graph_data(episode_no: int | None = None) -> dict:
             "note": info["note"],
             "episode_no": info["episode_no"],
             "auto": False,
+            "prediction": pred.get("prediction", ""),
+            "risk_level": pred.get("risk_level", 0.0),
         })
 
     links.extend(auto_links)

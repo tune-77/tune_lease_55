@@ -20,197 +20,362 @@ _D3_TEMPLATE = """
 <head>
 <meta charset="utf-8">
 <style>
-  body { margin: 0; background: #0f172a; font-family: sans-serif; overflow: hidden; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #00010d; font-family: 'Courier New', monospace; overflow: hidden; }
+
+  /* ネオン・グロートゥールチップ */
   .tooltip {
-    position: absolute; background: rgba(15,23,42,0.95); color: #e2e8f0;
-    border: 1px solid #334155; border-radius: 8px; padding: 10px 14px;
-    font-size: 12px; pointer-events: none; display: none;
-    line-height: 1.7; max-width: 220px; z-index: 10;
+    position: absolute;
+    background: rgba(0,1,20,0.92);
+    color: #a5f3fc;
+    border: 1px solid rgba(56,189,248,0.5);
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 11px;
+    pointer-events: none;
+    display: none;
+    line-height: 1.8;
+    max-width: 240px;
+    z-index: 10;
+    box-shadow: 0 0 12px rgba(56,189,248,0.3);
   }
+
+  /* 凡例 */
   .legend {
-    position: absolute; bottom: 12px; left: 12px; color: #94a3b8; font-size: 11px;
+    position: absolute; bottom: 14px; left: 14px;
+    color: #475569; font-size: 10px; font-family: 'Courier New', monospace;
   }
-  .legend-item { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
-  .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-  .legend-line { width: 20px; height: 3px; flex-shrink: 0; }
+  .legend-item { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+  .legend-line { width: 18px; height: 2px; flex-shrink: 0; }
+
+  /* 統計バッジ */
   .stats-badge {
-    position: absolute; top: 12px; right: 12px;
-    background: rgba(15,23,42,0.8); border: 1px solid #334155;
-    border-radius: 6px; padding: 6px 10px; color: #94a3b8; font-size: 11px;
+    position: absolute; top: 12px; right: 14px;
+    background: rgba(0,1,20,0.8);
+    border: 1px solid rgba(56,189,248,0.25);
+    border-radius: 4px; padding: 5px 10px;
+    color: #38bdf8; font-size: 10px;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.05em;
+  }
+
+  /* スキャンライン */
+  body::after {
+    content: '';
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 2px,
+      rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none; z-index: 5;
+  }
+
+  /* パルスアニメーション（エージェントノード） */
+  @keyframes pulse-ring {
+    0%   { transform: scale(1);   opacity: 0.8; }
+    50%  { transform: scale(1.18); opacity: 0.3; }
+    100% { transform: scale(1);   opacity: 0.8; }
+  }
+  .pulse { animation: pulse-ring 2.4s ease-in-out infinite; }
+
+  /* 危険エッジ フロー（ダッシュアニメーション） */
+  @keyframes flow-dash {
+    from { stroke-dashoffset: 20; }
+    to   { stroke-dashoffset: 0; }
+  }
+  .edge-danger  { animation: flow-dash 0.6s linear infinite; }
+  .edge-warning { animation: flow-dash 1.4s linear infinite; }
+
+  /* リスクバッジ */
+  .risk-badge {
+    position: absolute; top: 12px; left: 14px;
+    background: rgba(0,1,20,0.8);
+    border: 1px solid rgba(239,68,68,0.4);
+    border-radius: 4px; padding: 5px 10px;
+    color: #fca5a5; font-size: 10px;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.05em;
+    display: none;
   }
 </style>
 </head>
 <body>
 <div class="tooltip" id="tooltip"></div>
-<div class="stats-badge" id="stats">読み込み中...</div>
+<div class="stats-badge" id="stats">LOADING...</div>
+<div class="risk-badge" id="risk-badge"></div>
 <div class="legend" id="legend"></div>
+<canvas id="stars"></canvas>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script>
 const GRAPH = __GRAPH_DATA__;
 const REL_TYPES = __REL_TYPES__;
 const W = window.innerWidth, H = __HEIGHT__;
 
-// 凡例を生成
+// ── 星空背景 ──────────────────────────────────────────────
+const canvas = document.getElementById("stars");
+canvas.width = W; canvas.height = H;
+canvas.style.cssText = "position:absolute;top:0;left:0;pointer-events:none;";
+const ctx = canvas.getContext("2d");
+for (let i = 0; i < 180; i++) {
+  const x = Math.random() * W, y = Math.random() * H;
+  const r = Math.random() * 1.2;
+  const a = Math.random() * 0.6 + 0.1;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(200,220,255,${a})`;
+  ctx.fill();
+}
+
+// ── 凡例 ──────────────────────────────────────────────────
 const legend = document.getElementById("legend");
-const relEntries = Object.entries(REL_TYPES);
-const legendHtml = relEntries.map(([key, info]) =>
+legend.innerHTML = Object.entries(REL_TYPES).map(([k, v]) =>
   `<div class="legend-item">
-    <div class="legend-line" style="background:${info.color}"></div>
-    <span>${info.label}</span>
+    <div class="legend-line" style="background:${v.color};box-shadow:0 0 4px ${v.color}"></div>
+    <span style="color:${v.color}">${v.label}</span>
   </div>`
 ).join("") +
 `<div class="legend-item" style="margin-top:6px">
-  <div class="legend-dot" style="background:#3b82f6"></div><span>エージェント</span>
+  <div style="width:10px;height:10px;background:#38bdf8;clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);flex-shrink:0"></div>
+  <span style="color:#38bdf8">エージェント</span>
 </div>
 <div class="legend-item">
-  <div class="legend-dot" style="background:#94a3b8"></div><span>企業・文明</span>
-</div>
-<div style="margin-top:6px;color:#64748b">線の太さ = |strength|</div>`;
-legend.innerHTML = legendHtml;
+  <div style="width:10px;height:10px;border-radius:50%;background:#475569;flex-shrink:0"></div>
+  <span>企業・文明</span>
+</div>`;
 
-// 統計バッジ
-const agentCount = GRAPH.nodes.filter(n => n.group === "agent").length;
-const companyCount = GRAPH.nodes.filter(n => n.group === "company").length;
-const epInfo = GRAPH.episode_no != null ? `  ep.${GRAPH.episode_no}まで` : "  全エピソード";
+// ── 統計 ──────────────────────────────────────────────────
+const agentN = GRAPH.nodes.filter(n => n.group === "agent").length;
+const companyN = GRAPH.nodes.filter(n => n.group === "company").length;
+const epStr = GRAPH.episode_no != null ? ` EP.${GRAPH.episode_no}` : " ALL";
 document.getElementById("stats").textContent =
-  `エージェント: ${agentCount}  企業: ${companyCount}  エッジ: ${GRAPH.links.length}${epInfo}`;
+  `AGENTS:${agentN}  CIVS:${companyN}  EDGES:${GRAPH.links.length}${epStr}`;
 
+// リスクバッジ（高リスクエッジがある場合）
+const highRisk = GRAPH.links.filter(l => (l.risk_level || 0) >= 0.7);
+const riskBadge = document.getElementById("risk-badge");
+if (highRisk.length > 0) {
+  riskBadge.textContent = `⚠ HIGH RISK × ${highRisk.length}`;
+  riskBadge.style.display = "block";
+}
+
+// ── SVG ───────────────────────────────────────────────────
 const svg = d3.select("body").append("svg")
   .attr("width", W).attr("height", H)
-  .call(d3.zoom().scaleExtent([0.3, 4]).on("zoom", e => g.attr("transform", e.transform)));
+  .style("position", "absolute").style("top", 0).style("left", 0)
+  .call(d3.zoom().scaleExtent([0.2, 5]).on("zoom", e => g.attr("transform", e.transform)));
 
-const g = svg.append("g");
-
-// マーカー定義（矢印）
 const defs = svg.append("defs");
-const relKeys = Object.keys(REL_TYPES);
-relKeys.forEach(key => {
+
+// グローフィルター
+const glow = defs.append("filter").attr("id", "glow").attr("x", "-50%").attr("y", "-50%").attr("width", "200%").attr("height", "200%");
+glow.append("feGaussianBlur").attr("stdDeviation", "4").attr("result", "blur");
+const merge = glow.append("feMerge");
+merge.append("feMergeNode").attr("in", "blur");
+merge.append("feMergeNode").attr("in", "SourceGraphic");
+
+// 強グローフィルター（エージェント用）
+const glowStrong = defs.append("filter").attr("id", "glow-strong").attr("x", "-80%").attr("y", "-80%").attr("width", "260%").attr("height", "260%");
+glowStrong.append("feGaussianBlur").attr("stdDeviation", "8").attr("result", "blur");
+const merge2 = glowStrong.append("feMerge");
+merge2.append("feMergeNode").attr("in", "blur");
+merge2.append("feMergeNode").attr("in", "SourceGraphic");
+
+// 矢印マーカー
+Object.entries(REL_TYPES).forEach(([key, info]) => {
   defs.append("marker")
     .attr("id", `arrow-${key}`)
     .attr("viewBox", "0 -5 10 10")
-    .attr("refX", 22)
-    .attr("refY", 0)
-    .attr("markerWidth", 6)
-    .attr("markerHeight", 6)
+    .attr("refX", 24).attr("refY", 0)
+    .attr("markerWidth", 5).attr("markerHeight", 5)
     .attr("orient", "auto")
-    .append("path")
-    .attr("d", "M0,-5L10,0L0,5")
-    .attr("fill", REL_TYPES[key].color)
-    .attr("opacity", 0.7);
+    .append("path").attr("d", "M0,-5L10,0L0,5")
+    .attr("fill", info.color).attr("opacity", 0.9);
 });
 
-// シミュレーション
+const g = svg.append("g");
+
+// ── シミュレーション ───────────────────────────────────────
 const sim = d3.forceSimulation(GRAPH.nodes)
   .force("link", d3.forceLink(GRAPH.links).id(d => d.id).distance(__LINK_DISTANCE__).strength(0.2))
   .force("charge", d3.forceManyBody().strength(__CHARGE__))
   .force("center", d3.forceCenter(W / 2, H / 2))
   .force("collide", d3.forceCollide(d => d.size + __COLLIDE__));
 
-// エッジ
+// ── エッジ ─────────────────────────────────────────────────
 const link = g.append("g").selectAll("line")
   .data(GRAPH.links).enter().append("line")
-  .attr("stroke", d => d.color)
-  .attr("stroke-width", d => d.width)
+  .attr("stroke", d => {
+    const r = d.risk_level || 0;
+    if (!d.auto && r >= 0.7) return "#ef4444";   // 高リスク: 赤
+    if (!d.auto && r >= 0.4) return "#f97316";   // 中リスク: オレンジ
+    return d.color;
+  })
+  .attr("stroke-width", d => {
+    const r = d.risk_level || 0;
+    return d.auto ? d.width : d.width + (r >= 0.7 ? 1.5 : r >= 0.4 ? 0.7 : 0);
+  })
   .attr("stroke-opacity", d => d.opacity)
+  .attr("stroke-dasharray", d => {
+    if (d.auto) return null;
+    const r = d.risk_level || 0;
+    if (r >= 0.7) return "6,3";
+    if (r >= 0.4) return "4,4";
+    return null;
+  })
+  .attr("class", d => {
+    if (d.auto) return "";
+    const r = d.risk_level || 0;
+    if (r >= 0.7) return "edge-danger";
+    if (r >= 0.4) return "edge-warning";
+    return "";
+  })
+  .attr("filter", d => {
+    if (d.auto) return null;
+    const r = d.risk_level || 0;
+    return r >= 0.7 ? "url(#glow-strong)" : "url(#glow)";
+  })
   .attr("marker-end", d => `url(#arrow-${d.rel_type})`);
 
-// エッジラベル（常時表示）
+// ── エッジラベル ───────────────────────────────────────────
 const linkLabel = g.append("g").selectAll("text")
   .data(GRAPH.links).enter().append("text")
-  .attr("fill", d => d.color)
-  .attr("font-size", "10px")
+  .attr("fill", d => {
+    const r = d.risk_level || 0;
+    if (!d.auto && r >= 0.7) return "#ef4444";
+    if (!d.auto && r >= 0.4) return "#f97316";
+    return d.color;
+  })
+  .attr("font-size", "9px")
+  .attr("font-family", "'Courier New', monospace")
   .attr("text-anchor", "middle")
-  .attr("opacity", d => d.auto ? 0.35 : 0.85)
-  .style("text-shadow", "0 0 3px #0f172a, 0 0 3px #0f172a")
+  .attr("opacity", d => d.auto ? 0.4 : 0.9)
+  .style("filter", d => {
+    if (d.auto) return null;
+    const r = d.risk_level || 0;
+    const c = r >= 0.7 ? "#ef4444" : r >= 0.4 ? "#f97316" : d.color;
+    return `drop-shadow(0 0 4px ${c})`;
+  })
   .text(d => {
-    // note があればそれを優先、なければ関係タイプ名
     const raw = d.note ? d.note : d.rel_label;
     return raw.length > 16 ? raw.slice(0, 15) + "…" : raw;
   });
 
-// ノード
+// ── ノード ─────────────────────────────────────────────────
 const node = g.append("g").selectAll("g")
   .data(GRAPH.nodes).enter().append("g")
   .call(d3.drag()
     .on("start", (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
-    .on("drag", (e, d) => { d.fx = e.x; d.fy = e.y; })
-    .on("end", (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; })
+    .on("drag",  (e, d) => { d.fx = e.x; d.fy = e.y; })
+    .on("end",   (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; })
   );
 
-// ノード形状（エージェント=六角形風、企業=円）
 node.each(function(d) {
   const el = d3.select(this);
   if (d.group === "agent") {
-    // 六角形ポリゴン
+    // パルスリング
+    el.append("polygon")
+      .attr("points", hexPoints(0, 0, d.size * 1.6))
+      .attr("fill", "none")
+      .attr("stroke", d.color)
+      .attr("stroke-width", 1)
+      .attr("opacity", 0.3)
+      .attr("class", "pulse");
+    // 本体六角形
     el.append("polygon")
       .attr("points", hexPoints(0, 0, d.size))
       .attr("fill", d.color)
-      .attr("stroke", "#1e293b")
-      .attr("stroke-width", 2)
-      .attr("opacity", 0.92);
-  } else {
-    el.append("circle")
-      .attr("r", d.size)
-      .attr("fill", d.color)
-      .attr("stroke", "#1e293b")
+      .attr("stroke", "#fff")
       .attr("stroke-width", 1.5)
-      .attr("opacity", 0.85);
+      .attr("filter", "url(#glow-strong)")
+      .attr("opacity", 0.95);
+  } else {
+    // 企業: 外リング
+    el.append("circle").attr("r", d.size + 4)
+      .attr("fill", "none")
+      .attr("stroke", d.color)
+      .attr("stroke-width", 0.8)
+      .attr("opacity", 0.4);
+    // 本体
+    el.append("circle").attr("r", d.size)
+      .attr("fill", "#00010d")
+      .attr("stroke", d.color)
+      .attr("stroke-width", 2)
+      .attr("filter", "url(#glow)")
+      .attr("opacity", 0.92);
   }
 });
 
 // ノードラベル
 node.append("text")
   .attr("text-anchor", "middle")
-  .attr("dy", d => d.size + 13)
-  .attr("fill", "#e2e8f0")
+  .attr("dy", d => d.size + 14)
+  .attr("fill", d => d.group === "agent" ? d.color : "#94a3b8")
   .attr("font-size", d => d.group === "agent" ? "11px" : "9px")
-  .attr("font-weight", d => d.group === "agent" ? "bold" : "normal")
+  .attr("font-family", "'Courier New', monospace")
+  .attr("font-weight", "bold")
+  .style("filter", d => d.group === "agent" ? `drop-shadow(0 0 4px ${d.color})` : null)
   .text(d => d.label);
 
-// ツールチップ
+// ── ツールチップ ───────────────────────────────────────────
 const tooltip = document.getElementById("tooltip");
+
 node
   .on("mouseover", (e, d) => {
-    // そのノードに繋がるエッジを強調
     link.attr("stroke-opacity", l =>
-      l.source.id === d.id || l.target.id === d.id ? 0.95 : 0.06);
+      l.source.id === d.id || l.target.id === d.id ? 1.0 : 0.04);
     linkLabel.attr("opacity", l =>
-      l.source.id === d.id || l.target.id === d.id ? 1.0 : 0.15);
+      l.source.id === d.id || l.target.id === d.id ? 1.0 : 0.08);
     node.selectAll("circle, polygon").attr("opacity", n =>
       n.id === d.id || GRAPH.links.some(l =>
         (l.source.id === d.id && l.target.id === n.id) ||
-        (l.target.id === d.id && l.source.id === n.id)) ? 1.0 : 0.2);
+        (l.target.id === d.id && l.source.id === n.id)) ? 1.0 : 0.15);
+
+    let html = `<b style="color:#7dd3fc">${d.label}</b><br>`;
+    html += `<span style="color:#475569">${d.group === "agent" ? "◆ AGENT" : "○ CIVILIZATION"}</span>`;
+    if (d.personality) html += `<br><span style="color:#a78bfa">⬡ ${d.personality}</span>`;
+    if (d.traits)  html += `<br><span style="color:#86efac">▸ ${d.traits}</span>`;
+    if (d.goals)   html += `<br><span style="color:#fde68a">▸ ${d.goals}</span>`;
+    if (d.ideology) html += `<br><span style="color:#a5f3fc;font-size:10px">${d.ideology}</span>`;
+    tooltip.innerHTML = html;
     tooltip.style.display = "block";
-    tooltip.innerHTML = `<b>${d.label}</b><br>種別: ${d.group === "agent" ? "エージェント" : "企業・文明"}`;
   })
   .on("mousemove", e => {
     tooltip.style.left = (e.pageX + 14) + "px";
-    tooltip.style.top = (e.pageY - 30) + "px";
+    tooltip.style.top  = (e.pageY - 30) + "px";
   })
   .on("mouseout", () => {
     tooltip.style.display = "none";
     link.attr("stroke-opacity", d => d.opacity);
-    linkLabel.attr("opacity", d => d.auto ? 0.35 : 0.85);
-    node.selectAll("circle, polygon").attr("opacity", d => d.group === "agent" ? 0.92 : 0.85);
+    linkLabel.attr("opacity", d => d.auto ? 0.4 : 0.9);
+    node.selectAll("circle, polygon").attr("opacity", d => d.group === "agent" ? 0.95 : 0.92);
   });
 
-// エッジホバー
 link
   .on("mouseover", (e, d) => {
-    const epLabel = d.episode_no >= 0 ? `第${d.episode_no}話` : "初期設定";
-    tooltip.innerHTML =
-      `<b>${d.source.id} → ${d.target.id}</b><br>` +
-      `${d.note ? d.note + "<br>" : ""}` +
-      `<span style="color:#64748b">${d.rel_label} / ${epLabel}</span>`;
+    const epLabel = d.episode_no >= 0 ? `EP.${d.episode_no}` : "GENESIS";
+    const r = d.risk_level || 0;
+    const riskColor = r >= 0.7 ? "#ef4444" : r >= 0.4 ? "#f97316" : "#22c55e";
+    const riskLabel = r >= 0.7 ? "🔴 HIGH RISK" : r >= 0.4 ? "🟡 WARNING" : r > 0 ? "🟢 STABLE" : "";
+    let html =
+      `<b style="color:#7dd3fc">${d.source.id}</b>` +
+      ` <span style="color:#38bdf8">→</span> ` +
+      `<b style="color:#7dd3fc">${d.target.id}</b><br>` +
+      `${d.note ? `<span>${d.note}</span><br>` : ""}` +
+      `<span style="color:#475569">${d.rel_label} / ${epLabel}</span>`;
+    if (d.prediction) {
+      html += `<br><span style="color:${riskColor};font-size:10px">${riskLabel}</span>`;
+      html += `<br><span style="color:#fde68a;font-size:10px">🔮 ${d.prediction}</span>`;
+    }
+    tooltip.innerHTML = html;
     tooltip.style.display = "block";
   })
   .on("mousemove", e => {
     tooltip.style.left = (e.pageX + 14) + "px";
-    tooltip.style.top = (e.pageY - 30) + "px";
+    tooltip.style.top  = (e.pageY - 30) + "px";
   })
   .on("mouseout", () => { tooltip.style.display = "none"; });
 
-// Tick
+// ── Tick ──────────────────────────────────────────────────
 sim.on("tick", () => {
   link
     .attr("x1", d => d.source.x).attr("y1", d => d.source.y)
@@ -223,12 +388,10 @@ sim.on("tick", () => {
 
 // 六角形ポイント生成
 function hexPoints(cx, cy, r) {
-  let pts = [];
-  for (let i = 0; i < 6; i++) {
-    const angle = (Math.PI / 3) * i - Math.PI / 6;
-    pts.push(`${cx + r * Math.cos(angle)},${cy + r * Math.sin(angle)}`);
-  }
-  return pts.join(" ");
+  return Array.from({length: 6}, (_, i) => {
+    const a = (Math.PI / 3) * i - Math.PI / 6;
+    return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`;
+  }).join(" ");
 }
 </script>
 </body>

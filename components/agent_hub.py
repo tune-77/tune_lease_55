@@ -1801,13 +1801,22 @@ def _render_civilization_panel() -> None:
     else:
         ep_arg = None
 
-    # 企業間関係の自動生成ボタン
+    # 企業間関係 / 文明特性 / 未来予測 ボタン
     try:
-        from novel_graph import get_current_graph, AGENT_IDS
+        from novel_graph import (
+            get_current_graph, AGENT_IDS,
+            get_all_civ_characteristics, get_all_relationship_predictions
+        )
         _edges = get_current_graph()
         _cc_edges = [k for k in _edges if k[0] not in AGENT_IDS and k[1] not in AGENT_IDS and _edges[k]["episode_no"] == -1]
+        _chars = get_all_civ_characteristics()
+        _preds = get_all_relationship_predictions()
+
+        _btn_cols = st.columns(3)
+
+        # 企業間関係生成
         if not _cc_edges:
-            if st.button("🤖 企業間の関係をAIに想像させる", key="btn_gen_company_rel"):
+            if _btn_cols[0].button("🤖 企業間の関係をAIに想像させる", key="btn_gen_company_rel"):
                 with st.spinner("Geminiが企業間の関係を想像中..."):
                     from novel_graph import generate_and_seed_company_relations
                     n = generate_and_seed_company_relations()
@@ -1816,8 +1825,51 @@ def _render_civilization_panel() -> None:
                     st.rerun()
                 else:
                     st.warning("関係の生成に失敗しました（Gemini APIキーを確認してください）")
-    except Exception:
-        pass
+
+        # 文明特性生成
+        if _btn_cols[1].button("🧬 各文明の特性をAIが創造", key="btn_gen_civ_chars",
+                                help="各企業の個性・目標・思想をGeminiが創造します"):
+            with st.spinner("Geminiが各文明の特性を創造中..."):
+                from novel_graph import generate_civ_characteristics_ai
+                n = generate_civ_characteristics_ai()
+            if n > 0:
+                st.success(f"{n}件の文明特性を生成しました！")
+                st.rerun()
+            else:
+                st.info("新たに生成する文明がありません（既に生成済みか、文明がありません）")
+
+        # 未来予測生成
+        if _btn_cols[2].button("🔮 関係性の未来をAIが予測", key="btn_gen_predictions",
+                                help="各関係がどう変化するかGeminiが予測します"):
+            with st.spinner("Geminiが関係性の未来を予測中..."):
+                from novel_graph import generate_relationship_predictions_ai
+                n = generate_relationship_predictions_ai()
+            if n > 0:
+                st.success(f"{n}件の関係予測を生成しました！")
+                st.rerun()
+            else:
+                st.warning("予測の生成に失敗しました（関係データを先に作成してください）")
+
+        # 特性・予測サマリー表示
+        if _chars or _preds:
+            with st.expander(f"📊 文明特性 {len(_chars)}件 / 予測 {len(_preds)}件", expanded=False):
+                if _chars:
+                    st.markdown("**🧬 文明特性**")
+                    for name, c in list(_chars.items())[:8]:
+                        pers = c.get("personality", "")
+                        goals = c.get("goals", "")[:40] + "…" if len(c.get("goals","")) > 40 else c.get("goals","")
+                        st.markdown(f"- **{name}** _{pers}_ — {goals}")
+                if _preds:
+                    st.markdown("**🔮 未来予測（高リスク順）**")
+                    sorted_preds = sorted(_preds.items(), key=lambda x: x[1].get("risk_level", 0), reverse=True)
+                    for (src, tgt), p in sorted_preds[:8]:
+                        r = p.get("risk_level", 0)
+                        emoji = "🔴" if r >= 0.7 else "🟡" if r >= 0.4 else "🟢"
+                        pred_text = p.get("prediction","")[:60] + "…" if len(p.get("prediction","")) > 60 else p.get("prediction","")
+                        st.markdown(f"- {emoji} **{src}→{tgt}** （risk:{r:.1f}）{pred_text}")
+
+    except Exception as e:
+        st.caption(f"自律AI機能エラー: {e}")
 
     # グラフ表示パラメータ（折りたたみ）
     with st.expander("⚙️ グラフ表示設定", expanded=False):
