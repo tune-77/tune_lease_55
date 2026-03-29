@@ -1732,9 +1732,15 @@ def _render_novelist_panel() -> None:
 
     if gen_btn:
         with st.spinner("波乱丸が執筆中…（少々お待ちを）"):
-            result = na.generate_novel(custom_theme=custom_theme, genre=selected_genre)
-        st.success(f"第{result['episode_no']}話「{result['title']}」完成！")
-        _hub_log("novelist", "generate", f"第{result['episode_no']}話: {result['title']}")
+            try:
+                result = na.generate_novel(custom_theme=custom_theme, genre=selected_genre)
+                st.success(f"第{result['episode_no']}話「{result['title']}」完成！")
+                _hub_log("novelist", "generate", f"第{result['episode_no']}話: {result['title']}")
+            except Exception as e:
+                st.error(f"生成エラー: {e}")
+                import traceback
+                st.code(traceback.format_exc())
+        st.rerun()
 
     # ── 最新話の表示 ─────────────────────────────────────────────
     latest = na.get_latest_novel()
