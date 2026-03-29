@@ -855,6 +855,7 @@ def build_gunshi_prompt(
 
 ### 4. 戦略的緩和策（Strategic Mitigation）
 もしリスクがある場合、それを最小化するための具体的な追加条件（期間短縮、頭金、条件付き承認の運用等）をプロフェッショナルな視点で提案。
+条件付き承認を提案する場合、条件は必ず「次回決算まで本件限度とする」という表現を使用すること。「財務指標のモニタリング」「契約の見直し」等の曖昧な表現は使わないこと。
 
 ### 5. 審査部への先手（Devil's Advocate）
 審査部が必ず指摘するであろう懸念点を1〜2点、率直かつ具体的に記述すること。
@@ -1267,6 +1268,7 @@ def render_gunshi() -> None:
             st.markdown("#### 🧠 Step 3: 軍師からの推薦文（LLM生成）")
 
             model_to_use = st.session_state.get("gu_model", DEFAULT_MODEL) or DEFAULT_MODEL
+            _res_for_prompt = st.session_state.get("last_result") or {}
             prompt = build_gunshi_prompt(
                 industry=f"{industry_cat}（{industry_detail}）" if industry_detail else industry_cat,
                 score=score,
@@ -1279,6 +1281,9 @@ def render_gunshi() -> None:
                 posterior=posterior,
                 success_patterns=patterns,
                 top_phrases=top_phrases,
+                trend_info=st.session_state.get("_gunshi_trend_300", ""),
+                comparison_text=_res_for_prompt.get("comparison", ""),
+                humor_style=st.session_state.get("humor_style", "standard"),
                 asset_market_context=_get_asset_market_ctx(),
             )
 
@@ -1876,6 +1881,8 @@ def render_gunshi_in_results(
         width='stretch',
     )
     if run_llm:
+        _trend = st.session_state.get("_gunshi_trend_300", "")
+        _comp  = (res or {}).get("comparison", "")
         prompt = build_gunshi_prompt(
             industry=g["industry_cat"],
             score=g["score"],
@@ -1890,6 +1897,9 @@ def render_gunshi_in_results(
             top_phrases=g["top_phrases"],
             asset_name=g.get("asset_name", ""),
             vehicle_type=g.get("vehicle_type", ""),
+            trend_info=_trend,
+            comparison_text=_comp,
+            humor_style=st.session_state.get("humor_style", "standard"),
             asset_market_context=_get_asset_market_ctx(),
         )
         full_text = ""

@@ -59,8 +59,15 @@ def build_dag_data(res: dict) -> dict:
     # ── Col 2: スコア成分（借手・物件・定性） ────────────────────────────
     borrower_score = res.get("score_borrower", 0) or 0
     asset_score    = res.get("asset_score", 0) or 0
-    asset_weight   = res.get("asset_weight", 0.5) or 0.5
-    obligor_weight = res.get("obligor_weight", 0.5) or 0.5
+
+    # res に重みが入っていない場合は get_score_weights() のデフォルト(85/15)を使う
+    try:
+        from data_cases import get_score_weights
+        _w_b, _w_a, _, _ = get_score_weights()
+    except Exception:
+        _w_b, _w_a = 0.85, 0.15
+    asset_weight   = res.get("asset_weight") or _w_a
+    obligor_weight = res.get("obligor_weight") or _w_b
 
     add_node("borrower_score", f"借手スコア\n{borrower_score:.1f}%", col=2,
              color="#0ea5e9", size=34,

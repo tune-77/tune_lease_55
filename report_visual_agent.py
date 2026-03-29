@@ -41,11 +41,13 @@ def collect_report_data(session_state: Any) -> dict:
     qual_result = session_state.get("qualitative_analysis_result") or {}
     qual_score  = min(100.0, max(0.0, float((qual_result or {}).get("total_score", 0) or 0)))
 
-    # 財務指標 (追加)
-    bench_eq = float(res.get("bench_eq", 0) or 0)
-    bench_op = float(res.get("bench_op", 0) or 0)
+    # 財務指標
+    user_eq    = float(res.get("user_eq",    0) or 0)
+    user_op    = float(res.get("user_op",    0) or 0)
+    bench_eq   = float(res.get("bench_eq",   0) or 0)
+    bench_op   = float(res.get("bench_op",   0) or 0)
     contract_p = float(res.get("contract_prob", 0) or 0)
-    roa = float(res.get("roa", 0) or 0)
+    roa        = float(res.get("roa",        0) or 0)
 
     # モンテカルロ
     mc_data: dict = {}
