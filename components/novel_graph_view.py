@@ -101,10 +101,10 @@ relKeys.forEach(key => {
 
 // シミュレーション
 const sim = d3.forceSimulation(GRAPH.nodes)
-  .force("link", d3.forceLink(GRAPH.links).id(d => d.id).distance(120).strength(0.5))
-  .force("charge", d3.forceManyBody().strength(-200))
+  .force("link", d3.forceLink(GRAPH.links).id(d => d.id).distance(220).strength(0.3))
+  .force("charge", d3.forceManyBody().strength(-600))
   .force("center", d3.forceCenter(W / 2, H / 2))
-  .force("collide", d3.forceCollide(d => d.size + 10));
+  .force("collide", d3.forceCollide(d => d.size + 40));
 
 // エッジ
 const link = g.append("g").selectAll("line")

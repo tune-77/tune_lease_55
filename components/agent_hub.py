@@ -1821,7 +1821,7 @@ def _render_civilization_panel() -> None:
 
     try:
         from components.novel_graph_view import render_novel_graph
-        render_novel_graph(episode_no=ep_arg, height=540)
+        render_novel_graph(episode_no=ep_arg, height=680)
     except Exception as e:
         st.error(f"関係グラフの描画に失敗しました: {e}")
 
