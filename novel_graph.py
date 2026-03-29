@@ -322,7 +322,7 @@ def generate_civ_characteristics_ai() -> int:
             return 0
         raw = _chat_for_thread(
             "gemini", "", [{"role": "user", "content": prompt}],
-            timeout_seconds=90, api_key=api_key, gemini_model=GEMINI_MODEL_DEFAULT
+            timeout_seconds=90, api_key=api_key, gemini_model=GEMINI_MODEL_DEFAULT, max_output_tokens=4096
         )
         text = (raw.get("message") or {}).get("content", "") or ""
     except Exception:
@@ -431,7 +431,7 @@ def generate_relationship_predictions_ai() -> int:
             return 0
         raw = _chat_for_thread(
             "gemini", "", [{"role": "user", "content": prompt}],
-            timeout_seconds=90, api_key=api_key, gemini_model=GEMINI_MODEL_DEFAULT
+            timeout_seconds=90, api_key=api_key, gemini_model=GEMINI_MODEL_DEFAULT, max_output_tokens=4096
         )
         text = (raw.get("message") or {}).get("content", "") or ""
     except Exception:

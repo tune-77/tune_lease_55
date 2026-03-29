@@ -361,6 +361,7 @@ def run_simulation_round() -> dict:
             "gemini", "",
             [{"role": "user", "content": prompt}],
             timeout_seconds=120, api_key=api_key, gemini_model=GEMINI_MODEL_DEFAULT,
+            max_output_tokens=4096,
         )
         text = (raw.get("message") or {}).get("content", "") or ""
     except Exception as e:

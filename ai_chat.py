@@ -113,7 +113,7 @@ def _ollama_chat_http(model: str, messages: list, timeout_seconds: int):
     raise RuntimeError("Ollama の応答形式が不正です。")
 
 
-def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int):
+def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int, max_output_tokens: int = 2048):
     """
     Gemini API でチャット。messages は [{"role":"user","content":"..."}] 形式。
     最後の user メッセージをプロンプトとして送り、返答テキストを返す。
@@ -135,7 +135,7 @@ def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int)
         genai.configure(api_key=api_key.strip())
         gemini_model = genai.GenerativeModel(model)
         try:
-            config = genai.types.GenerationConfig(max_output_tokens=2048, temperature=0.7)
+            config = genai.types.GenerationConfig(max_output_tokens=max_output_tokens, temperature=0.7)
             response = gemini_model.generate_content(prompt, generation_config=config)
         except (AttributeError, TypeError):
             response = gemini_model.generate_content(prompt)
@@ -173,10 +173,11 @@ def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int)
         return {"message": {"content": f"Gemini API エラー: {str(e)}\n\nAPIキーとモデル名（{model}）を確認し、ネット接続を確認してください。"}}
 
 
-def _chat_for_thread(engine: str, model: str, messages: list, timeout_seconds: int, api_key: str = "", gemini_model: str = ""):
+def _chat_for_thread(engine: str, model: str, messages: list, timeout_seconds: int, api_key: str = "", gemini_model: str = "", max_output_tokens: int = 2048):
     """
     バックグラウンドスレッドから呼ぶ用。st.session_state を参照しない。
     engine が "gemini" のときは api_key と gemini_model を使用。
+    max_output_tokens: Gemini の最大出力トークン数（デフォルト2048）
     """
     if engine == "anythingllm":
         try:
@@ -190,7 +191,7 @@ def _chat_for_thread(engine: str, model: str, messages: list, timeout_seconds: i
             return {"message": {"content": "Gemini APIキーが設定されていません。環境変数 GEMINI_API_KEY またはサイドバーで入力してください。"}}
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                future = ex.submit(_gemini_chat, api_key, gemini_model or "gemini-2.0-flash", messages, timeout_seconds)
+                future = ex.submit(_gemini_chat, api_key, gemini_model or "gemini-2.0-flash", messages, timeout_seconds, max_output_tokens)
                 return future.result(timeout=min(timeout_seconds + 30, 90))
         except Exception as e:
             return {"message": {"content": f"Gemini が応答しませんでした。\n\n【詳細】{str(e)}"}}
