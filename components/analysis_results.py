@@ -1600,6 +1600,15 @@ def render_analysis_results(
                         sign = "+" if f.get("effect_percent", 0) >= 0 else ""
                         st.markdown(f"- **{f.get('factor', '')}** … {sign}{f.get('effect_percent', 0)}% （{f.get('detail', '')}）")
 
+            # ----- スコアリング因果グラフ（DAG） -----
+            with st.expander("🔗 スコアリング因果グラフ（グラフ理論 DAG）", expanded=False):
+                st.caption("補正因子 → 借手スコア/物件スコア → 総合スコア → 最終判定 の因果連鎖を有向グラフで表示します。")
+                try:
+                    from components.score_dag import render_score_dag
+                    render_score_dag(res)
+                except Exception as _dag_err:
+                    st.error(f"DAG描画エラー: {_dag_err}")
+
             # ── 将来事業計画シミュレーション（モンテカルロ法ベース） ─────────────────────
             with st.expander("🔮 将来事業計画（売上・利益）シミュレーション", expanded=False):
                 try:

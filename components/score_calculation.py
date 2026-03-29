@@ -743,7 +743,10 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 # ただし、裏でプロンプト生成だけはしておく必要があるため、セッションステートへの保存は残します。
     
                 # 過去の類似案件（同業界・自己資本比率が近い）を最大3件取得
-                similar_cases = find_similar_past_cases(selected_sub, user_equity_ratio, max_count=3)
+                case_search_data = data_scoring.copy()
+                case_search_data["industry_sub"] = selected_sub
+                case_search_data["equity_ratio"] = user_equity_ratio
+                similar_cases = find_similar_past_cases(case_search_data, max_count=3)
                 similar_cases_block = ""
                 if similar_cases:
                     similar_cases_block = "【参考：過去の類似案件の結末】\n"

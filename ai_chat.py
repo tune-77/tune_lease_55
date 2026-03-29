@@ -1176,7 +1176,7 @@ def get_ai_negotiation_strategy(res: dict, similar_cases: list, lost_stats: dict
     for sc in similar_cases:
         if sc.get("final_status") == "成約" or sc.get("final_status") == "承認":
             from case_similarity import CaseSimilarityEngine
-            engine = CaseSimilarityEngine()
+            engine = CaseSimilarityEngine([])
             conds = engine._analyze_conditions(sc.get("data", {}))
             success_factors.extend(conds)
     

@@ -48,7 +48,7 @@ def search_past_cases(industry: str, equity_ratio: float) -> str:
     """
     try:
         # 最大5件引いてサマリーを返す
-        cases = find_similar_past_cases(industry, equity_ratio, max_count=5)
+        cases = find_similar_past_cases({"industry_sub": industry, "equity_ratio": equity_ratio}, max_count=5)
         if not cases:
             return f"{industry}で自己資本比率が{equity_ratio}%に近い過去事例は見つかりませんでした。"
         
