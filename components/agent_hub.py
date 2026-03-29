@@ -1848,10 +1848,18 @@ def _render_civilization_panel() -> None:
                 if company_edges:
                     st.markdown("**▼ 企業・文明との関係**")
                     for (src, tgt), info in sorted(company_edges):
-                        emoji = _REL_EMOJI.get(info["rel_type"], "")
-                        desc  = info["note"] if info["note"] else REL_TYPES.get(info["rel_type"], {}).get("label", info["rel_type"])
+                        desc = info["note"]
+                        if not desc:
+                            continue  # 空note（dormant等）はスキップ
                         ep_tag = f" （第{info['episode_no']}話）" if info["episode_no"] >= 0 else ""
-                        st.markdown(f"- {emoji} **{src}** → **{tgt}**：{desc}{ep_tag}")
+                        # 承認=青、否決=赤、その他=デフォルト
+                        if desc == "審査通過":
+                            st.markdown(f"- 🔵 **{src}** → **{tgt}**：{desc}{ep_tag}")
+                        elif desc == "審査否決":
+                            st.markdown(f"- 🔴 **{src}** → **{tgt}**：{desc}{ep_tag}")
+                        else:
+                            emoji = _REL_EMOJI.get(info["rel_type"], "")
+                            st.markdown(f"- {emoji} **{src}** → **{tgt}**：{desc}{ep_tag}")
     except Exception as e:
         st.caption(f"関係テキスト取得エラー: {e}")
 

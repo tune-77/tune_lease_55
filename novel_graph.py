@@ -356,11 +356,18 @@ def build_d3_graph_data(episode_no: int | None = None) -> dict:
         "ascended":  "#f59e0b",   # 金 — 昇華
         "dormant":   "#64748b",   # グレー — 休眠
     }
+    # auto エッジの色（承認=青、否決/滅亡=赤、昇華=金、休眠=グレー）
+    _STATUS_AUTO_COLOR = {
+        "active":    "#3b82f6",   # 青 — 審査通過
+        "collapsed": "#ef4444",   # 赤 — 審査否決/滅亡
+        "ascended":  "#f59e0b",   # 金 — 昇華
+        "dormant":   "#64748b",   # グレー — 休眠
+    }
     _STATUS_TO_REL = {
-        "active":    ("trust",      +2.0, "審査通過・活動中"),
-        "collapsed": ("rival",      -3.0, "審査後に滅亡"),
-        "ascended":  ("ally",       +4.0, "昇華・繁栄"),
-        "dormant":   ("neutral",     0.0, "休眠中"),
+        "active":    ("trust",   +2.0, "審査通過"),
+        "collapsed": ("rival",   -3.0, "審査否決"),
+        "ascended":  ("ally",    +4.0, "審査通過"),
+        "dormant":   ("neutral",  0.0, ""),
     }
     try:
         from novelist_agent import get_civilization_registry as _get_civs
@@ -405,16 +412,16 @@ def build_d3_graph_data(episode_no: int | None = None) -> dict:
         if ("Tune", cid) not in edges and (cid, "Tune") not in edges:
             rt, st, note = _STATUS_TO_REL.get(status, ("neutral", 0.0, ""))
             ep = civ.get("first_episode", 0)
-            rel_color = REL_TYPES.get(rt, {}).get("color", "#64748b")
+            auto_color = _STATUS_AUTO_COLOR.get(status, "#64748b")
             auto_links.append({
                 "source": "Tune",
                 "target": cid,
                 "rel_type": rt,
-                "rel_label": REL_TYPES.get(rt, {}).get("label", rt),
+                "rel_label": note,   # "審査通過" / "審査否決" を表示
                 "strength": st,
-                "width": max(1.0, abs(st) * 0.6 + 0.5),
-                "color": rel_color,
-                "opacity": 0.25,
+                "width": 1.5,
+                "color": auto_color,
+                "opacity": 0.5,
                 "note": note,
                 "episode_no": ep,
                 "auto": True,
