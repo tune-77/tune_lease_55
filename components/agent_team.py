@@ -219,8 +219,14 @@ def _build_history_context() -> str:
         judgment = rd.get("tsune_verdict", {}).get("judgment", "?")
         lines.append(f"--- ラウンド{rd['round']}（Tune判定: {judgment}）---")
         msgs = rd.get("thread", rd.get("opinions", []))
-        for msg in msgs[:2]:  # コンテキスト節約のため先頭2件のみ
-            lines.append(f"  {msg['name']}: {msg['content'][:80]}…")
+        is_latest = (rd is history[-1])
+        max_msgs = 4 if is_latest else 2
+        char_limit = 150 if is_latest else 80
+        for msg in msgs[:max_msgs]:
+            lines.append(f"  {msg['name']}: {msg['content'][:char_limit]}…")
+        verdict_raw = rd.get("tsune_verdict", {}).get("raw", "")
+        if verdict_raw:
+            lines.append(f"  Tune決裁: {verdict_raw[:100]}…")
     return "\n".join(lines)
 
 
@@ -258,12 +264,19 @@ def _build_tsune_prompt(theme: str, thread: list[dict]) -> str:
 
 def _parse_tsune_judgment(text: str) -> str:
     """Tuneの応答テキストから判定文字列を抽出。"""
-    for keyword in ["承認", "却下", "修正"]:
-        if f"判定: {keyword}" in text or f"判定:{keyword}" in text:
-            return keyword
-    for keyword in ["承認", "却下", "修正"]:
-        if keyword in text[:100]:
-            return keyword
+    # 全角・半角コロン両対応、先頭200文字内を検索
+    m = re.search(r'判定[：:]\s*(承認|修正|却下)', text[:200])
+    if m:
+        return m.group(1)
+    # 類義語マッピング（フォールバック）
+    _VERDICT_MAP = {
+        "承認": "承認", "可決": "承認",
+        "却下": "却下", "否決": "却下", "見送り": "却下",
+        "修正": "修正", "差し戻し": "修正",
+    }
+    for word, verdict in _VERDICT_MAP.items():
+        if word in text[:80]:
+            return verdict
     return "修正"
 
 

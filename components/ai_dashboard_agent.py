@@ -1,8 +1,9 @@
 import json
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
+from config import GEMINI_MODEL_DEFAULT
 
-def generate_a4_summary_dashboard(result_data: dict, inputs: dict, ai_history: list, api_key: str, model_name: str = "gemini-2.5-flash") -> str:
+def generate_a4_summary_dashboard(result_data: dict, inputs: dict, ai_history: list, api_key: str, model_name: str = GEMINI_MODEL_DEFAULT) -> str:
     """
     1件の審査結果データ（スコア、財務データ、AIのチャット履歴や軍師コメント等）を受け取り、
     A4用紙1枚（または2枚）に収まるエグゼクティブ・サマリー（稟議書ベースのMarkdown）を生成するエージェント。

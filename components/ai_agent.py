@@ -18,6 +18,7 @@ from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import SystemMessage
 
 from rule_manager import load_business_rules
+from anything_api import _get_anything_llm_key, ANYTHING_LLM_BASE_URL, ANYTHING_LLM_WORKSPACE
 from data_cases import find_similar_past_cases
 from config import GEMINI_MODEL_DEFAULT
 
@@ -70,9 +71,12 @@ def search_custom_manuals(query: str) -> str:
     引数 query: 検索したい内容（例: "建設業の特例", "赤字の場合の対応" など）
     """
     try:
-        url = "http://localhost:3001/api/v1/workspace/71b18af2-ab59-4bcb-874c-4cb329bd1b41/chat"
+        api_key = _get_anything_llm_key()
+        if not api_key:
+            return "マニュアル検索: AnythingLLM APIキーが設定されていません。"
+        url = f"{ANYTHING_LLM_BASE_URL}/workspace/{ANYTHING_LLM_WORKSPACE}/chat"
         headers = {
-            "Authorization": "Bearer RGK6FNE-HHK4VTT-NJVQS1S-CK2847K",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
         data = {

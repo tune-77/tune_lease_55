@@ -117,6 +117,7 @@ def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int)
     """
     Gemini API でチャット。messages は [{"role":"user","content":"..."}] 形式。
     最後の user メッセージをプロンプトとして送り、返答テキストを返す。
+    REST API 直接呼び出し（_stream_gemini と同パターン）。
     """
     if not api_key or not api_key.strip():
         return {"message": {"content": "Gemini APIキーが設定されていません。環境変数 GEMINI_API_KEY またはサイドバーで入力してください。"}}
@@ -126,43 +127,29 @@ def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int)
             prompt = m["content"]
     if not prompt:
         return {"message": {"content": "送信する内容がありません。"}}
+
+    import requests as _requests
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    resp = None
     try:
-        import google.generativeai as genai
-    except ImportError:
-        return {"message": {"content": "Gemini を使うには pip install google-generativeai を実行してください。"}}
-
-    try:
-        genai.configure(api_key=api_key.strip())
-        gemini_model = genai.GenerativeModel(model)
-        try:
-            config = genai.types.GenerationConfig(max_output_tokens=2048, temperature=0.7)
-            response = gemini_model.generate_content(prompt, generation_config=config)
-        except (AttributeError, TypeError):
-            response = gemini_model.generate_content(prompt)
-
-        if not response:
-            return {"message": {"content": "Gemini から応答が返りませんでした。"}}
-
-        text = None
-        try:
-            if response.text:
-                text = response.text
-        except (ValueError, AttributeError):
-            pass
-        if not text and getattr(response, "candidates", None):
-            for c in response.candidates:
-                if getattr(c, "content", None) and getattr(c.content, "parts", None):
-                    for p in c.content.parts:
-                        if getattr(p, "text", None):
-                            text = (text or "") + p.text
-                    if text:
-                        break
+        resp = _requests.post(
+            f"{url}?key={api_key.strip()}",
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.7, "maxOutputTokens": 2048},
+            },
+            timeout=timeout_seconds,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
         if text and text.strip():
             return {"message": {"content": text.strip()}}
         return {"message": {"content": "Gemini から空の応答か、安全フィルターでブロックされた可能性があります。プロンプトを変えて再試行してください。"}}
     except Exception as e:
         err = str(e).strip().lower()
-        if "429" in err or "quota" in err or "resource_exhausted" in err or "rate limit" in err:
+        status = resp.status_code if resp is not None else 0
+        if status == 429 or "429" in err or "quota" in err or "resource_exhausted" in err or "rate limit" in err:
             return {"message": {"content": (
                 "**Gemini の利用枠（無料枠の1日制限）に達している可能性があります。**\n\n"
                 "・無料枠は1日あたりのリクエスト数に上限があります。\n"
