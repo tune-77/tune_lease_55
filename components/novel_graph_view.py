@@ -123,8 +123,9 @@ const linkLabel = g.append("g").selectAll("text")
   .attr("opacity", d => d.auto ? 0.35 : 0.85)
   .style("text-shadow", "0 0 3px #0f172a, 0 0 3px #0f172a")
   .text(d => {
-    const sign = d.strength >= 0 ? "+" : "";
-    return `${d.rel_label} ${sign}${d.strength.toFixed(1)}`;
+    // note があればそれを優先、なければ関係タイプ名
+    const raw = d.note ? d.note : d.rel_label;
+    return raw.length > 16 ? raw.slice(0, 15) + "…" : raw;
   });
 
 // ノード
@@ -196,13 +197,11 @@ node
 // エッジホバー
 link
   .on("mouseover", (e, d) => {
-    const sign = d.strength >= 0 ? "+" : "";
+    const epLabel = d.episode_no >= 0 ? `第${d.episode_no}話` : "初期設定";
     tooltip.innerHTML =
       `<b>${d.source.id} → ${d.target.id}</b><br>` +
-      `関係: ${d.rel_label}<br>` +
-      `強度: ${sign}${d.strength.toFixed(1)}<br>` +
-      `${d.note ? "備考: " + d.note : ""}` +
-      `<br><span style="color:#64748b">第${d.episode_no}話</span>`;
+      `${d.note ? d.note + "<br>" : ""}` +
+      `<span style="color:#64748b">${d.rel_label} / ${epLabel}</span>`;
     tooltip.style.display = "block";
   })
   .on("mousemove", e => {

@@ -1842,23 +1842,16 @@ def _render_civilization_panel() -> None:
                     st.markdown("**▼ エージェント間**")
                     for (src, tgt), info in sorted(agent_edges):
                         emoji = _REL_EMOJI.get(info["rel_type"], "")
-                        label = REL_TYPES.get(info["rel_type"], {}).get("label", info["rel_type"])
-                        sign  = "+" if info["strength"] >= 0 else ""
-                        note  = f"　※{info['note']}" if info["note"] else ""
-                        st.markdown(
-                            f"- **{src}** → **{tgt}**：{emoji}{label} `{sign}{info['strength']:.1f}` 第{info['episode_no']}話{note}"
-                        )
+                        desc  = info["note"] if info["note"] else REL_TYPES.get(info["rel_type"], {}).get("label", info["rel_type"])
+                        ep_tag = f" （第{info['episode_no']}話）" if info["episode_no"] >= 0 else ""
+                        st.markdown(f"- {emoji} **{src}** → **{tgt}**：{desc}{ep_tag}")
                 if company_edges:
                     st.markdown("**▼ 企業・文明との関係**")
                     for (src, tgt), info in sorted(company_edges):
                         emoji = _REL_EMOJI.get(info["rel_type"], "")
-                        label = REL_TYPES.get(info["rel_type"], {}).get("label", info["rel_type"])
-                        sign  = "+" if info["strength"] >= 0 else ""
-                        note  = f"　※{info['note']}" if info["note"] else ""
-                        auto_tag = " `自動`" if not info["note"] else ""
-                        st.markdown(
-                            f"- **{src}** → **{tgt}**：{emoji}{label} `{sign}{info['strength']:.1f}` 第{info['episode_no']}話{note}{auto_tag}"
-                        )
+                        desc  = info["note"] if info["note"] else REL_TYPES.get(info["rel_type"], {}).get("label", info["rel_type"])
+                        ep_tag = f" （第{info['episode_no']}話）" if info["episode_no"] >= 0 else ""
+                        st.markdown(f"- {emoji} **{src}** → **{tgt}**：{desc}{ep_tag}")
     except Exception as e:
         st.caption(f"関係テキスト取得エラー: {e}")
 
