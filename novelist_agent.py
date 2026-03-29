@@ -405,10 +405,23 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
             {"role": "user",   "content": prompt},
         ]
         raw = _chat_for_thread(engine, model, messages,
-                               timeout_seconds=120,
+                               timeout_seconds=180,
                                api_key=api_key,
                                gemini_model=gemini_model)
         text = (raw.get("message") or {}).get("content", "") or ""
+
+        # エラー応答を検知して保存を防ぐ
+        _error_prefixes = (
+            "AIサーバーが応答しませんでした",
+            "Ollama がタイムアウト",
+            "Gemini が応答しませんでした",
+            "Gemini API エラー",
+            "AnythingLLM が応答しませんでした",
+            "[小説生成エラー",
+        )
+        if not text or any(text.startswith(p) for p in _error_prefixes):
+            raise RuntimeError(text or "AIが空の応答を返しました")
+
         _done_lines = [
             f"第{episode_no}話、脱稿！今回は自信作だ。",
             f"第{episode_no}話の執筆が完了。読者の反応が楽しみだな。",
