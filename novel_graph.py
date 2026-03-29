@@ -197,16 +197,6 @@ def build_graph_context_for_prompt(episode_no: int) -> str:
             sign = "+" if st >= 0 else ""
             lines.append(f"  {src} → {tgt}: {rt_label} [{sign}{st:.1f}]  ※{info['note']}")
 
-    lines.append("")
-    lines.append("【関係性更新ルール】")
-    lines.append("今話の展開で関係が変化した場合、小説末尾に以下の形式で出力せよ（変化がない場合は省略可）：")
-    lines.append("```json")
-    lines.append('{"relationship_updates": [')
-    lines.append('  {"source": "Tune", "target": "Dr.Algo", "rel_type": "rival", "delta": -1, "note": "今回も激しく対立"},')
-    lines.append('  {"source": "軍師", "target": "株式会社北斗鉄工", "rel_type": "ally", "delta": 2, "note": "承認を勝ち取った"}')
-    lines.append(']}')
-    lines.append("```")
-
     return "\n".join(lines)
 
 

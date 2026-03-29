@@ -24,7 +24,7 @@ _COMMON_RULES = """
 ・入力された【今週の審査案件（ネタ素材）】に関する実際のデータ（業種、スコア）に必ず具体的に言及しながら、ストーリーを展開すること！
 ・展開をマンネリ化させず、毎回異なる切り口や感情の起伏（怒り、焦り、絶望、歓喜など）を描くこと。
 ・残酷な結末（倒産、滅亡など）になる場合は、一切の容赦なくシビアに描写すること。
-・出力形式は以下の通りとすること。
+・出力形式は以下の通りとすること（すべての項目を必ず出力すること）。
 タイトル：【タイトル】
 本文：（小説本文）
 
@@ -37,6 +37,17 @@ civ_stage: （発展段階等）
 event_type: （initial_contact / repeat_application / collapse / ascension / dormant）
 result: （approved / rejected / bankrupt / transcended）
 description: （1行サマリー）
+
+【関係性更新】
+今話の展開でエージェント間・企業との関係が変化した場合、必ず以下のJSON形式で出力すること（変化がない場合も `"relationship_updates": []` として出力すること）。
+rel_type は ally / trust / rival / suspicion / dependence / neutral のいずれか。
+delta は変化量（-5〜+5の実数）。
+```json
+{"relationship_updates": [
+  {"source": "Tune", "target": "Dr.Algo", "rel_type": "rival", "delta": -1, "note": "今回の展開での変化の理由"},
+  {"source": "軍師", "target": "登場企業名", "rel_type": "ally", "delta": 2, "note": "企業を支持した理由"}
+]}
+```
 
 """
 
