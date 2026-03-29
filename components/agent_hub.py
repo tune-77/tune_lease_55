@@ -1782,57 +1782,119 @@ def _render_civilization_panel() -> None:
         st.error("novelist_agent.py が見つかりません。")
         return
 
+    # ── 関係性グラフ（最上部）────────────────────────────────────────
+    st.subheader("🕸️ 人物・企業間 関係グラフ")
+    st.caption("六角形=エージェント、円=企業・文明。エッジ色と太さが関係タイプ・強度を表します。エッジにマウスオーバーで詳細表示。")
+
+    try:
+        max_ep = na.get_latest_episode_no() if hasattr(na, "get_latest_episode_no") else 0
+    except Exception:
+        max_ep = 0
+
+    if max_ep and max_ep > 0:
+        ep_filter = st.slider(
+            "表示エピソード（〜第N話まで）",
+            min_value=0, max_value=max_ep, value=max_ep,
+            key="novel_graph_ep_slider"
+        )
+        ep_arg = ep_filter if ep_filter < max_ep else None
+    else:
+        ep_arg = None
+
+    try:
+        from components.novel_graph_view import render_novel_graph
+        render_novel_graph(episode_no=ep_arg, height=540)
+    except Exception as e:
+        st.error(f"関係グラフの描画に失敗しました: {e}")
+
+    # ── 関係性テキスト一覧 ──────────────────────────────────────────
+    try:
+        from novel_graph import get_current_graph, REL_TYPES, AGENT_IDS
+        edges = get_current_graph(up_to_episode=ep_arg)
+        if edges:
+            _REL_EMOJI = {
+                "ally": "🤝", "trust": "💙", "rival": "⚔️",
+                "suspicion": "🔥", "dependence": "🔗", "neutral": "➖",
+            }
+            agent_edges   = [(k, v) for k, v in edges.items() if k[0] in AGENT_IDS and k[1] in AGENT_IDS]
+            company_edges = [(k, v) for k, v in edges.items() if k[0] not in AGENT_IDS or k[1] not in AGENT_IDS]
+
+            with st.expander("📋 関係性テキスト一覧", expanded=True):
+                if agent_edges:
+                    st.markdown("**▼ エージェント間**")
+                    for (src, tgt), info in sorted(agent_edges):
+                        emoji = _REL_EMOJI.get(info["rel_type"], "")
+                        label = REL_TYPES.get(info["rel_type"], {}).get("label", info["rel_type"])
+                        sign  = "+" if info["strength"] >= 0 else ""
+                        note  = f"　※{info['note']}" if info["note"] else ""
+                        st.markdown(
+                            f"- **{src}** → **{tgt}**：{emoji}{label} `{sign}{info['strength']:.1f}` 第{info['episode_no']}話{note}"
+                        )
+                if company_edges:
+                    st.markdown("**▼ 企業・文明との関係**")
+                    for (src, tgt), info in sorted(company_edges):
+                        emoji = _REL_EMOJI.get(info["rel_type"], "")
+                        label = REL_TYPES.get(info["rel_type"], {}).get("label", info["rel_type"])
+                        sign  = "+" if info["strength"] >= 0 else ""
+                        note  = f"　※{info['note']}" if info["note"] else ""
+                        auto_tag = " `自動`" if not info["note"] else ""
+                        st.markdown(
+                            f"- **{src}** → **{tgt}**：{emoji}{label} `{sign}{info['strength']:.1f}` 第{info['episode_no']}話{note}{auto_tag}"
+                        )
+    except Exception as e:
+        st.caption(f"関係テキスト取得エラー: {e}")
+
+    st.markdown("---")
+
     civs = na.get_civilization_registry()
 
     if not civs:
         st.info("まだ文明の記録がありません。文豪AIで小説を生成すると自動登録されます。")
-        return
+    else:
+        # ステータス集計
+        status_counts = {}
+        for c in civs:
+            s = c["status"]
+            status_counts[s] = status_counts.get(s, 0) + 1
 
-    # ステータス集計
-    status_counts = {}
-    for c in civs:
-        s = c["status"]
-        status_counts[s] = status_counts.get(s, 0) + 1
+        cols = st.columns(4)
+        cols[0].metric("活動中 🟢", status_counts.get("active", 0))
+        cols[1].metric("滅亡 💀", status_counts.get("collapsed", 0))
+        cols[2].metric("昇華 ✨", status_counts.get("ascended", 0))
+        cols[3].metric("休眠 😴", status_counts.get("dormant", 0))
 
-    cols = st.columns(4)
-    cols[0].metric("活動中 🟢", status_counts.get("active", 0))
-    cols[1].metric("滅亡 💀", status_counts.get("collapsed", 0))
-    cols[2].metric("昇華 ✨", status_counts.get("ascended", 0))
-    cols[3].metric("休眠 😴", status_counts.get("dormant", 0))
+        st.markdown("---")
 
-    st.markdown("---")
+        for civ in civs:
+            status_emoji = {"active": "🟢", "collapsed": "💀", "ascended": "✨", "dormant": "😴"}.get(civ["status"], "❓")
+            appearances = na.get_civ_appearances(civ["civ_id"])
 
-    for civ in civs:
-        status_emoji = {"active": "🟢", "collapsed": "💀", "ascended": "✨", "dormant": "😴"}.get(civ["status"], "❓")
-        appearances = na.get_civ_appearances(civ["civ_id"])
+            with st.expander(
+                f"{status_emoji} **{civ['company_name']}** ｜ {civ['industry']} ｜ {civ.get('civ_era','?')}",
+                expanded=(civ["status"] == "active")
+            ):
+                col1, col2 = st.columns(2)
+                col1.markdown(f"**正体:** {civ.get('civ_era','?')} の {civ.get('civ_stage','?')}")
+                col2.markdown(f"**登場:** 第{civ['first_episode']}話 〜 第{civ['last_episode']}話")
 
-        with st.expander(
-            f"{status_emoji} **{civ['company_name']}** ｜ {civ['industry']} ｜ {civ.get('civ_era','?')}",
-            expanded=(civ["status"] == "active")
-        ):
-            col1, col2 = st.columns(2)
-            col1.markdown(f"**正体:** {civ.get('civ_era','?')} の {civ.get('civ_stage','?')}")
-            col2.markdown(f"**登場:** 第{civ['first_episode']}話 〜 第{civ['last_episode']}話")
+                if civ["notes"]:
+                    st.caption(civ["notes"])
 
-            if civ["notes"]:
-                st.caption(civ["notes"])
-
-            if appearances:
-                st.markdown("**時系列記録：**")
-                for ap in appearances:
-                    result_badge = ""
-                    if ap["result"] == "approved":
-                        result_badge = " ✅承認"
-                    elif ap["result"] == "rejected":
-                        result_badge = " ❌否決"
-                    elif ap["result"] == "bankrupt":
-                        result_badge = " 💀破産"
-                    elif ap["result"] == "transcended":
-                        result_badge = " ✨昇華"
-
-                    st.markdown(
-                        f"- **第{ap['episode_no']}話** `{ap['event_type']}`{result_badge} — {ap['description']}"
-                    )
+                if appearances:
+                    st.markdown("**時系列記録：**")
+                    for ap in appearances:
+                        result_badge = ""
+                        if ap["result"] == "approved":
+                            result_badge = " ✅承認"
+                        elif ap["result"] == "rejected":
+                            result_badge = " ❌否決"
+                        elif ap["result"] == "bankrupt":
+                            result_badge = " 💀破産"
+                        elif ap["result"] == "transcended":
+                            result_badge = " ✨昇華"
+                        st.markdown(
+                            f"- **第{ap['episode_no']}話** `{ap['event_type']}`{result_badge} — {ap['description']}"
+                        )
 
     # 手動登録フォーム
     st.markdown("---")
@@ -1854,32 +1916,3 @@ def _render_civilization_panel() -> None:
                 )
                 st.success(f"「{company}」を登録しました")
                 st.rerun()
-
-    # ── 関係性グラフ ────────────────────────────────────────────────
-    st.markdown("---")
-    st.subheader("🕸️ 人物・企業間 関係グラフ")
-    st.caption("エージェント（六角形）と登場企業（円）の関係性をフォースグラフで可視化。エピソードが進むにつれて関係が変化します。エッジにマウスオーバーで関係詳細が表示されます。")
-
-    try:
-        import novelist_agent as _na2
-        max_ep = _na2.get_latest_episode_no() if hasattr(_na2, "get_latest_episode_no") else None
-    except Exception:
-        max_ep = None
-
-    # エピソードスライダー
-    if max_ep and max_ep > 0:
-        ep_filter = st.slider(
-            "表示エピソード（〜第N話まで）",
-            min_value=0, max_value=max_ep, value=max_ep,
-            key="novel_graph_ep_slider"
-        )
-        ep_arg = ep_filter if ep_filter < max_ep else None
-    else:
-        ep_arg = None
-        st.caption("まだ小説が生成されていません。初期関係性を表示します。")
-
-    try:
-        from components.novel_graph_view import render_novel_graph
-        render_novel_graph(episode_no=ep_arg, height=520)
-    except Exception as e:
-        st.error(f"関係グラフの描画に失敗しました: {e}")

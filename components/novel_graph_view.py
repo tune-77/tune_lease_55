@@ -114,14 +114,18 @@ const link = g.append("g").selectAll("line")
   .attr("stroke-opacity", d => d.opacity)
   .attr("marker-end", d => `url(#arrow-${d.rel_type})`);
 
-// エッジラベル
+// エッジラベル（常時表示）
 const linkLabel = g.append("g").selectAll("text")
   .data(GRAPH.links).enter().append("text")
   .attr("fill", d => d.color)
-  .attr("font-size", "9px")
+  .attr("font-size", "10px")
   .attr("text-anchor", "middle")
-  .attr("opacity", 0.7)
-  .text(d => d.rel_label);
+  .attr("opacity", d => d.auto ? 0.35 : 0.85)
+  .style("text-shadow", "0 0 3px #0f172a, 0 0 3px #0f172a")
+  .text(d => {
+    const sign = d.strength >= 0 ? "+" : "";
+    return `${d.rel_label} ${sign}${d.strength.toFixed(1)}`;
+  });
 
 // ノード
 const node = g.append("g").selectAll("g")
@@ -170,7 +174,7 @@ node
     link.attr("stroke-opacity", l =>
       l.source.id === d.id || l.target.id === d.id ? 0.95 : 0.06);
     linkLabel.attr("opacity", l =>
-      l.source.id === d.id || l.target.id === d.id ? 1.0 : 0);
+      l.source.id === d.id || l.target.id === d.id ? 1.0 : 0.15);
     node.selectAll("circle, polygon").attr("opacity", n =>
       n.id === d.id || GRAPH.links.some(l =>
         (l.source.id === d.id && l.target.id === n.id) ||
@@ -185,7 +189,7 @@ node
   .on("mouseout", () => {
     tooltip.style.display = "none";
     link.attr("stroke-opacity", d => d.opacity);
-    linkLabel.attr("opacity", 0.7);
+    linkLabel.attr("opacity", d => d.auto ? 0.35 : 0.85);
     node.selectAll("circle, polygon").attr("opacity", d => d.group === "agent" ? 0.92 : 0.85);
   });
 

@@ -178,7 +178,7 @@ def build_graph_context_for_prompt(episode_no: int) -> str:
     # エージェント間
     agent_edges = {k: v for k, v in edges.items() if k[0] in AGENT_IDS and k[1] in AGENT_IDS}
     if agent_edges:
-        lines.append("▼ エージェント間")
+        lines.append("▼ エージェント間（この関係を必ずセリフ・態度・心理に反映すること）")
         for (src, tgt), info in sorted(agent_edges.items()):
             rt_label = REL_TYPES.get(info["rel_type"], {}).get("label", info["rel_type"])
             st = info["strength"]
@@ -186,16 +186,20 @@ def build_graph_context_for_prompt(episode_no: int) -> str:
             sign = "+" if st >= 0 else ""
             lines.append(f"  {src} → {tgt}: {rt_label} [{sign}{st:.1f}] {bar}  ※{info['note']}")
 
-    # 企業との関係
+    # 企業・文明間の関係（エージェント以外を含む全エッジ）
     company_edges = {k: v for k, v in edges.items() if k[0] not in AGENT_IDS or k[1] not in AGENT_IDS}
     if company_edges:
         lines.append("")
-        lines.append("▼ 企業（文明）との関係")
+        lines.append("▼ 企業・文明との関係（これらの企業が今話に登場する場合は必ずこの関係性を物語に織り込むこと）")
         for (src, tgt), info in sorted(company_edges.items()):
             rt_label = REL_TYPES.get(info["rel_type"], {}).get("label", info["rel_type"])
             st = info["strength"]
             sign = "+" if st >= 0 else ""
-            lines.append(f"  {src} → {tgt}: {rt_label} [{sign}{st:.1f}]  ※{info['note']}")
+            note = f"  ※{info['note']}" if info["note"] else ""
+            lines.append(f"  {src} → {tgt}: {rt_label} [{sign}{st:.1f}]{note}")
+
+    lines.append("")
+    lines.append("【重要】企業同士の対立・同盟関係（例：A社とB社が戦争中、C社がD社を支援）は、エージェントたちの議論の背景として積極的に使用すること。")
 
     return "\n".join(lines)
 
