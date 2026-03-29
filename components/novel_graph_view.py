@@ -101,10 +101,10 @@ relKeys.forEach(key => {
 
 // シミュレーション
 const sim = d3.forceSimulation(GRAPH.nodes)
-  .force("link", d3.forceLink(GRAPH.links).id(d => d.id).distance(320).strength(0.2))
-  .force("charge", d3.forceManyBody().strength(-1200))
+  .force("link", d3.forceLink(GRAPH.links).id(d => d.id).distance(__LINK_DISTANCE__).strength(0.2))
+  .force("charge", d3.forceManyBody().strength(__CHARGE__))
   .force("center", d3.forceCenter(W / 2, H / 2))
-  .force("collide", d3.forceCollide(d => d.size + 70));
+  .force("collide", d3.forceCollide(d => d.size + __COLLIDE__));
 
 // エッジ
 const link = g.append("g").selectAll("line")
@@ -236,7 +236,13 @@ function hexPoints(cx, cy, r) {
 """
 
 
-def render_novel_graph(episode_no: int | None = None, height: int = 500) -> None:
+def render_novel_graph(
+    episode_no: int | None = None,
+    height: int = 820,
+    link_distance: int = 320,
+    charge: int = -1200,
+    collide: int = 70,
+) -> None:
     """
     小説AI関係性グラフを描画する。
     episode_no: Noneなら全エピソード累積、指定するとそのエピソードまでの状態を表示。
@@ -252,6 +258,9 @@ def render_novel_graph(episode_no: int | None = None, height: int = 500) -> None
     html = (
         _D3_TEMPLATE
         .replace("__GRAPH_DATA__", json.dumps(graph_data, ensure_ascii=False))
+        .replace("__LINK_DISTANCE__", str(link_distance))
+        .replace("__CHARGE__", str(-abs(charge)))
+        .replace("__COLLIDE__", str(collide))
         .replace("__REL_TYPES__", json.dumps(rel_types_for_js, ensure_ascii=False))
         .replace("__HEIGHT__", str(height))
     )

@@ -1819,9 +1819,23 @@ def _render_civilization_panel() -> None:
     except Exception:
         pass
 
+    # グラフ表示パラメータ（折りたたみ）
+    with st.expander("⚙️ グラフ表示設定", expanded=False):
+        gc1, gc2, gc3, gc4 = st.columns(4)
+        g_height   = gc1.slider("高さ (px)",       400, 1200, 820, step=40,  key="ng_height")
+        g_distance = gc2.slider("エッジ距離",        80, 600,  320, step=20,  key="ng_distance")
+        g_charge   = gc3.slider("反発力",           200, 3000, 1200, step=100, key="ng_charge")
+        g_collide  = gc4.slider("衝突半径",          10,  200,  70,  step=10,  key="ng_collide")
+
     try:
         from components.novel_graph_view import render_novel_graph
-        render_novel_graph(episode_no=ep_arg, height=820)
+        render_novel_graph(
+            episode_no=ep_arg,
+            height=g_height,
+            link_distance=g_distance,
+            charge=g_charge,
+            collide=g_collide,
+        )
     except Exception as e:
         st.error(f"関係グラフの描画に失敗しました: {e}")
 
