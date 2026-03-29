@@ -1891,6 +1891,95 @@ def _render_civilization_panel() -> None:
     except Exception as e:
         st.error(f"関係グラフの描画に失敗しました: {e}")
 
+    # ── シミュレーションパネル ────────────────────────────────────────
+    st.subheader("⏱ 文明シミュレーション（1ラウンド = 100年）")
+    try:
+        from novel_simulation import (
+            get_current_round, get_current_year, get_round_history,
+            run_simulation_round, EVENT_TYPES, YEARS_PER_ROUND,
+        )
+        cur_round = get_current_round()
+        cur_year  = get_current_year()
+
+        # ヘッダー: 現在年・ラウンド
+        sim_hdr_cols = st.columns([2, 1, 1])
+        sim_hdr_cols[0].metric(
+            "現在の西暦",
+            f"{cur_year} 年" if cur_year > 0 else "未開始",
+            f"第{cur_round}ラウンド" if cur_round > 0 else "ラウンド0",
+        )
+
+        # ラウンド進行ボタン
+        if sim_hdr_cols[1].button(
+            f"▶ ラウンド進行（+{YEARS_PER_ROUND}年）",
+            key="btn_sim_round",
+            type="primary",
+            use_container_width=True,
+        ):
+            with st.spinner(f"Geminiが第{cur_round + 1}ラウンド（西暦{cur_year + YEARS_PER_ROUND}年）をシミュレート中..."):
+                result = run_simulation_round()
+            if "error" in result:
+                st.error(f"シミュレーションエラー: {result['error']}")
+            else:
+                st.success(f"✅ 第{result.get('round_no','?')}ラウンド（{result.get('year','?')}年）完了！")
+                st.rerun()
+
+        # ラウンド履歴
+        history = get_round_history(limit=10)
+        if history:
+            # 最新ラウンドを展開表示
+            latest = history[0]
+            st.markdown(f"**📜 第{latest['round_no']}ラウンド / {latest['year']}年 — 最新ログ**")
+            if latest.get("summary"):
+                st.info(latest["summary"])
+
+            # イベントカード
+            events = latest.get("events", [])
+            if events:
+                _ev_cols = st.columns(min(len(events), 3))
+                for i, ev in enumerate(events[:9]):
+                    col_i = i % min(len(events), 3)
+                    ev_type = ev.get("event_type", "contact")
+                    ev_info = EVENT_TYPES.get(ev_type, {"emoji": "•", "color": "#94a3b8", "label": ev_type})
+                    with _ev_cols[col_i]:
+                        st.markdown(
+                            f"""<div style="background:rgba(0,1,20,0.7);border:1px solid {ev_info['color']}40;
+                            border-left:3px solid {ev_info['color']};border-radius:6px;
+                            padding:10px 12px;margin-bottom:8px;font-size:12px;">
+                            <div style="color:{ev_info['color']};font-weight:bold;margin-bottom:4px;">
+                              {ev_info['emoji']} {ev.get('title','')}
+                            </div>
+                            <div style="color:#94a3b8;font-size:11px;margin-bottom:4px;">
+                              【{ev.get('civ','')}】{ev_info['label']}
+                            </div>
+                            <div style="color:#cbd5e1;line-height:1.5;">
+                              {ev.get('description','')}
+                            </div>
+                            {"<div style='color:#475569;font-size:10px;margin-top:4px;'>影響: " + ", ".join(ev.get("affected",[])) + "</div>" if ev.get("affected") else ""}
+                            </div>""",
+                            unsafe_allow_html=True,
+                        )
+
+            # 過去ラウンドのログ（折りたたみ）
+            if len(history) > 1:
+                with st.expander(f"📚 過去のラウンドログ（{len(history)-1}件）", expanded=False):
+                    for h in history[1:]:
+                        st.markdown(f"**第{h['round_no']}ラウンド / {h['year']}年**")
+                        if h.get("summary"):
+                            st.caption(h["summary"])
+                        for ev in h.get("events", [])[:4]:
+                            ev_info = EVENT_TYPES.get(ev.get("event_type",""), {"emoji":"•","label":""})
+                            st.markdown(
+                                f"- {ev_info['emoji']} **{ev.get('title','')}** "
+                                f"（{ev.get('civ','')}）— {ev.get('description','')[:60]}…"
+                            )
+                        st.markdown("---")
+        else:
+            st.caption("▶ ラウンド進行ボタンを押してシミュレーションを開始してください。")
+
+    except Exception as e:
+        st.error(f"シミュレーションパネルエラー: {e}")
+
     # ── 関係性テキスト一覧 ──────────────────────────────────────────
     try:
         from novel_graph import get_current_graph, REL_TYPES, AGENT_IDS

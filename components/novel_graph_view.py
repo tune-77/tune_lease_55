@@ -147,8 +147,9 @@ legend.innerHTML = Object.entries(REL_TYPES).map(([k, v]) =>
 const agentN = GRAPH.nodes.filter(n => n.group === "agent").length;
 const companyN = GRAPH.nodes.filter(n => n.group === "company").length;
 const epStr = GRAPH.episode_no != null ? ` EP.${GRAPH.episode_no}` : " ALL";
+const yearStr = GRAPH.sim_year > 0 ? `  ◈ ${GRAPH.sim_year}年` : "";
 document.getElementById("stats").textContent =
-  `AGENTS:${agentN}  CIVS:${companyN}  EDGES:${GRAPH.links.length}${epStr}`;
+  `AGENTS:${agentN}  CIVS:${companyN}  EDGES:${GRAPH.links.length}${epStr}${yearStr}`;
 
 // リスクバッジ（高リスクエッジがある場合）
 const highRisk = GRAPH.links.filter(l => (l.risk_level || 0) >= 0.7);
@@ -410,8 +411,15 @@ def render_novel_graph(
     小説AI関係性グラフを描画する。
     episode_no: Noneなら全エピソード累積、指定するとそのエピソードまでの状態を表示。
     """
+    try:
+        from novel_simulation import get_current_year
+        sim_year = get_current_year()
+    except Exception:
+        sim_year = 0
+
     graph_data = build_d3_graph_data(episode_no=episode_no)
     graph_data["episode_no"] = episode_no  # D3側で使用
+    graph_data["sim_year"]   = sim_year    # シミュレーション年
 
     rel_types_for_js = {
         k: {"color": v["color"], "label": v["label"]}
