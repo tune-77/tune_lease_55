@@ -147,7 +147,7 @@ legend.innerHTML = Object.entries(REL_TYPES).map(([k, v]) =>
 const agentN = GRAPH.nodes.filter(n => n.group === "agent").length;
 const companyN = GRAPH.nodes.filter(n => n.group === "company").length;
 const epStr = GRAPH.episode_no != null ? ` EP.${GRAPH.episode_no}` : " ALL";
-const yearStr = GRAPH.sim_year > 0 ? `  ◈ ${GRAPH.sim_year}年` : "";
+const yearStr = GRAPH.sim_year > 0 ? `  ◈ A.${GRAPH.sim_year}` : "";
 document.getElementById("stats").textContent =
   `AGENTS:${agentN}  CIVS:${companyN}  EDGES:${GRAPH.links.length}${epStr}${yearStr}`;
 

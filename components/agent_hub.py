@@ -1904,8 +1904,8 @@ def _render_civilization_panel() -> None:
         # ヘッダー: 現在年・ラウンド
         sim_hdr_cols = st.columns([2, 1, 1])
         sim_hdr_cols[0].metric(
-            "現在の西暦",
-            f"{cur_year} 年" if cur_year > 0 else "未開始",
+            "アルカイア暦",
+            f"A.{cur_year}" if cur_year > 0 else "未開始",
             f"第{cur_round}ラウンド" if cur_round > 0 else "ラウンド0",
         )
 
@@ -1916,12 +1916,12 @@ def _render_civilization_panel() -> None:
             type="primary",
             use_container_width=True,
         ):
-            with st.spinner(f"Geminiが第{cur_round + 1}ラウンド（西暦{cur_year + YEARS_PER_ROUND}年）をシミュレート中..."):
+            with st.spinner(f"Geminiが第{cur_round + 1}ラウンド（アルカイア暦A.{cur_year + YEARS_PER_ROUND}）をシミュレート中..."):
                 result = run_simulation_round()
             if "error" in result:
                 st.error(f"シミュレーションエラー: {result['error']}")
             else:
-                st.success(f"✅ 第{result.get('round_no','?')}ラウンド（{result.get('year','?')}年）完了！")
+                st.success(f"✅ 第{result.get('round_no','?')}ラウンド（アルカイア暦 A.{result.get('year','?')}）完了！")
                 st.rerun()
 
         # ラウンド履歴
@@ -1929,7 +1929,7 @@ def _render_civilization_panel() -> None:
         if history:
             # 最新ラウンドを展開表示
             latest = history[0]
-            st.markdown(f"**📜 第{latest['round_no']}ラウンド / {latest['year']}年 — 最新ログ**")
+            st.markdown(f"**📜 第{latest['round_no']}ラウンド / アルカイア暦 A.{latest['year']} — 最新ログ**")
             if latest.get("summary"):
                 st.info(latest["summary"])
 
@@ -1964,7 +1964,7 @@ def _render_civilization_panel() -> None:
             if len(history) > 1:
                 with st.expander(f"📚 過去のラウンドログ（{len(history)-1}件）", expanded=False):
                     for h in history[1:]:
-                        st.markdown(f"**第{h['round_no']}ラウンド / {h['year']}年**")
+                        st.markdown(f"**第{h['round_no']}ラウンド / A.{h['year']}**")
                         if h.get("summary"):
                             st.caption(h["summary"])
                         for ev in h.get("events", [])[:4]:

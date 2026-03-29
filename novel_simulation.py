@@ -150,7 +150,7 @@ def run_simulation_round() -> dict:
     if len(history) >= 1:
         last = history[0]  # 最新（現在のラウンド）
         if last["round_no"] == current_round and last.get("summary"):
-            prev_summary = f"\n【前回（第{current_round}ラウンド / {current_round * YEARS_PER_ROUND}年）の出来事】\n{last['summary']}\n"
+            prev_summary = f"\n【前回（第{current_round}ラウンド / アルカイア暦A.{current_round * YEARS_PER_ROUND}）の出来事】\n{last['summary']}\n"
 
     civ_list_text = "\n".join(
         f"  ・{c['company_name']}（{c['industry']} / {c.get('status','active')} / "
@@ -159,7 +159,7 @@ def run_simulation_round() -> dict:
     )
 
     prompt = f"""あなたは宇宙文明シミュレーター「MiroFish」です。
-リース審査AIたちが監視する宇宙文明の100年間（第{next_round}ラウンド・西暦{year}年）をシミュレートしてください。
+リース審査AIたちが監視する宇宙文明の100年間（第{next_round}ラウンド・アルカイア暦{year}年）をシミュレートしてください。
 
 各文明は自律的に行動します。特性・目標・弱点に基づいて動き、予測リスクが現実となる場合があります。
 
