@@ -51,20 +51,16 @@ def _fix_json_str(raw: str) -> str:
 
 def _repair_truncated_json(s: str) -> str:
     """
-    途中で切れたJSONを修復する。
-    - 文字列が閉じていなければ閉じる
-    - 末尾のカンマを除去
-    - 不足している ] } を補完
+    途中で切れたJSONをスタック方式で修復する。
+    {"events":[{"affected":[ のような深いネストでも
+    正しい閉じ順（]}]}）で補完する。
     """
     s = _fix_json_str(s).rstrip()
-    # 末尾のカンマ除去
-    if s.endswith(","):
-        s = s[:-1]
 
-    depth_brace = 0
-    depth_bracket = 0
+    stack: list[str] = []
     in_str = False
     escape = False
+
     for c in s:
         if escape:
             escape = False
@@ -73,16 +69,26 @@ def _repair_truncated_json(s: str) -> str:
         elif c == '"':
             in_str = not in_str
         elif not in_str:
-            if c == "{":    depth_brace += 1
-            elif c == "}":  depth_brace -= 1
-            elif c == "[":  depth_bracket += 1
-            elif c == "]":  depth_bracket -= 1
+            if c in "{[":
+                stack.append(c)
+            elif c == "}" and stack and stack[-1] == "{":
+                stack.pop()
+            elif c == "]" and stack and stack[-1] == "[":
+                stack.pop()
 
+    # 未閉文字列を閉じる
     if in_str:
         s += '"'
-    s = s.rstrip().rstrip(",")
-    # 閉じ括弧を補完
-    s += "]" * max(0, depth_bracket) + "}" * max(0, depth_brace)
+
+    # 末尾のカンマを除去（閉じる前に）
+    s = s.rstrip()
+    while s.endswith(","):
+        s = s[:-1].rstrip()
+
+    # スタックの逆順に閉じる（正しいネスト順）
+    for open_char in reversed(stack):
+        s += "}" if open_char == "{" else "]"
+
     return s
 
 
