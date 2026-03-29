@@ -234,10 +234,11 @@ def parse_relationship_updates_from_novel(novel_body: str) -> list[dict]:
 def build_d3_graph_data(episode_no: int | None = None) -> dict:
     """
     D3.js フォースグラフ用の nodes / links データを返す。
+    novel_relationships エッジに加え、文明レジストリの企業も自動的にノードとして追加する。
     """
     edges = get_current_graph(up_to_episode=episode_no)
 
-    # ノード収集
+    # ノード収集（エッジから）
     node_ids: set[str] = set(AGENT_IDS)
     for (src, tgt) in edges.keys():
         node_ids.add(src)
@@ -249,10 +250,82 @@ def build_d3_graph_data(episode_no: int | None = None) -> dict:
         if nid in agent_map:
             nodes.append({**agent_map[nid], "size": 20})
         else:
-            nodes.append({"id": nid, "label": nid[:10], "group": "company",
+            nodes.append({"id": nid, "label": nid[:12], "group": "company",
                           "color": "#94a3b8", "size": 14})
 
-    # エッジ
+    # 文明レジストリから企業ノードを追加（エッジなしでも表示）
+    # 審査結果に応じて色分け・Tuneへのエッジ自動生成
+    _STATUS_COLOR = {
+        "active":    "#22c55e",   # 緑 — 活動中
+        "collapsed": "#ef4444",   # 赤 — 滅亡
+        "ascended":  "#f59e0b",   # 金 — 昇華
+        "dormant":   "#64748b",   # グレー — 休眠
+    }
+    _STATUS_TO_REL = {
+        "active":    ("trust",      +2.0, "審査通過・活動中"),
+        "collapsed": ("rival",      -3.0, "審査後に滅亡"),
+        "ascended":  ("ally",       +4.0, "昇華・繁栄"),
+        "dormant":   ("neutral",     0.0, "休眠中"),
+    }
+    try:
+        from novelist_agent import get_civilization_registry as _get_civs
+        civs = _get_civs()
+    except Exception:
+        civs = []
+
+    existing_ids = {n["id"] for n in nodes}
+    auto_links: list[dict] = []
+
+    for civ in civs:
+        cid = civ["company_name"]  # 企業名をノードIDとして使用
+        if not cid:
+            continue
+        # エピソードフィルタ
+        if episode_no is not None and civ.get("first_episode", 0) > episode_no:
+            continue
+        status = civ.get("status", "active")
+        color = _STATUS_COLOR.get(status, "#94a3b8")
+        industry = civ.get("industry", "")
+        label = cid[:12]
+
+        if cid not in existing_ids:
+            nodes.append({
+                "id": cid,
+                "label": label,
+                "group": "company",
+                "color": color,
+                "size": 14,
+                "industry": industry,
+                "status": status,
+            })
+            existing_ids.add(cid)
+        else:
+            # 既存ノードの色を審査結果に合わせて更新
+            for n in nodes:
+                if n["id"] == cid:
+                    n["color"] = color
+                    break
+
+        # Tune → 企業 の自動エッジ（novel_relationshipsに同ペアがなければ）
+        if ("Tune", cid) not in edges and (cid, "Tune") not in edges:
+            rt, st, note = _STATUS_TO_REL.get(status, ("neutral", 0.0, ""))
+            ep = civ.get("first_episode", 0)
+            rel_color = REL_TYPES.get(rt, {}).get("color", "#64748b")
+            auto_links.append({
+                "source": "Tune",
+                "target": cid,
+                "rel_type": rt,
+                "rel_label": REL_TYPES.get(rt, {}).get("label", rt),
+                "strength": st,
+                "width": max(1.0, abs(st) * 0.6 + 0.5),
+                "color": rel_color,
+                "opacity": 0.25,
+                "note": note,
+                "episode_no": ep,
+                "auto": True,
+            })
+
+    # エッジ（novel_relationships から）
     links = []
     for (src, tgt), info in edges.items():
         st = info["strength"]
@@ -269,7 +342,10 @@ def build_d3_graph_data(episode_no: int | None = None) -> dict:
             "opacity": 0.3 + min(0.6, abs(st) / 5 * 0.6),
             "note": info["note"],
             "episode_no": info["episode_no"],
+            "auto": False,
         })
+
+    links.extend(auto_links)
 
     return {"nodes": nodes, "links": links}
 
