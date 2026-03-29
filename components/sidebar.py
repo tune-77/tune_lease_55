@@ -415,7 +415,8 @@ def _render_cache_and_ai_honne() -> None:
     """⚙️ キャッシュクリア + 🤖 AIの独り言"""
     st.sidebar.markdown("### ⚙️ キャッシュ")
     if st.sidebar.button("🗑️ キャッシュをクリア", width='stretch', help="JSONや検索結果のキャッシュを消して再読み込みします。補助金・業界データを更新した後に押してください。"):
-        st.cache_data.clear()
+        load_byoki_list.clear()
+        load_all_cases.clear()
         st.sidebar.success("キャッシュをクリアしました。再読み込みしています…")
         st.rerun()
 

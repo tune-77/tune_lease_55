@@ -52,12 +52,12 @@ from components.form_apply import render_quick_edit_panel
 from components.graph_risk import GraphRiskEngine
 
 # ── 産業ネットワーク分析のためのキャッシュ関数（モジュールレベルで定義） ──
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=10)
 def get_cached_centrality(_engine_json, _edges_json, _nodes_json):
     _tmp_engine = GraphRiskEngine()
     return _tmp_engine.calculate_centrality()
 
-@st.cache_data(show_spinner="シミュレーション実行中...")
+@st.cache_data(show_spinner="シミュレーション実行中...", max_entries=10)
 def get_cached_simulation(selected_sub, _engine_json, _edges_json, _nodes_json):
     _tmp_engine = GraphRiskEngine()
     return _tmp_engine.run_scenario_simulation(selected_sub)
