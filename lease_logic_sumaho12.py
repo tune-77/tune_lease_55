@@ -568,7 +568,7 @@ else:
 # データのロード（キャッシュ化）
 _STATIC_DATA_DIR = os.path.join(BASE_DIR, "static_data")
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=86400, persist="disk", max_entries=30)
 def load_json_data(filename):
     # static_data/ を優先し、なければ BASE_DIR を確認（後方互換）
     for base in [_STATIC_DATA_DIR, BASE_DIR]:

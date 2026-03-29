@@ -22,11 +22,19 @@ import datetime
 import streamlit as st
 
 # ── ディレクトリ ────────────────────────────────────────────────────────────
-_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-_BASE_DIR   = os.path.dirname(_SCRIPT_DIR)
-_DATA_DIR   = os.path.join(_BASE_DIR, "data")
-_DRAFT_PATH = os.path.join(_DATA_DIR, "wizard_draft.json")
-_STATIC_DIR = os.path.join(_BASE_DIR, "static_data")
+_SCRIPT_DIR      = os.path.dirname(os.path.abspath(__file__))
+_BASE_DIR        = os.path.dirname(_SCRIPT_DIR)
+_DATA_DIR        = os.path.join(_BASE_DIR, "data")
+_WIZ_DRAFTS_DIR  = os.path.join(_DATA_DIR, "wizard_drafts")
+_STATIC_DIR      = os.path.join(_BASE_DIR, "static_data")
+
+
+def _get_draft_path() -> str:
+    """ログインユーザー名に対応するウィザード下書きパスを返す（多人数対応）。"""
+    username = st.session_state.get("username") or "default"
+    safe_name = "".join(c for c in username if c.isalnum() or c in ("-", "_")) or "default"
+    os.makedirs(_WIZ_DRAFTS_DIR, exist_ok=True)
+    return os.path.join(_WIZ_DRAFTS_DIR, f"{safe_name}_wizard.json")
 
 # ── CSS ────────────────────────────────────────────────────────────────────
 _WIZ_CSS = """
@@ -160,10 +168,10 @@ def _load_assets() -> list:
 # ── 下書き保存・読み込み ────────────────────────────────────────────────────
 def _save_draft(data: dict, step: int = 0, history: list | None = None) -> None:
     try:
-        os.makedirs(_DATA_DIR, exist_ok=True)
+        draft_path = _get_draft_path()
         # 内部フラグ（_で始まるキー）は保存対象から除外
         clean_data = {k: v for k, v in data.items() if not k.startswith("_")}
-        with open(_DRAFT_PATH, "w", encoding="utf-8") as f:
+        with open(draft_path, "w", encoding="utf-8") as f:
             json.dump({
                 "ts": datetime.datetime.now().isoformat(),
                 "step": step,
@@ -176,8 +184,9 @@ def _save_draft(data: dict, step: int = 0, history: list | None = None) -> None:
 
 def _load_draft() -> dict:
     try:
-        if os.path.exists(_DRAFT_PATH):
-            with open(_DRAFT_PATH, encoding="utf-8") as f:
+        draft_path = _get_draft_path()
+        if os.path.exists(draft_path):
+            with open(draft_path, encoding="utf-8") as f:
                 return json.load(f)
     except Exception:
         pass
@@ -186,8 +195,9 @@ def _load_draft() -> dict:
 
 def _clear_draft() -> None:
     try:
-        if os.path.exists(_DRAFT_PATH):
-            os.remove(_DRAFT_PATH)
+        draft_path = _get_draft_path()
+        if os.path.exists(draft_path):
+            os.remove(draft_path)
     except Exception:
         pass
 
@@ -898,8 +908,9 @@ def render_chat_wizard() -> None:
     st.divider()
     draft_ts = ""
     try:
-        if os.path.exists(_DRAFT_PATH):
-            with open(_DRAFT_PATH, encoding="utf-8") as f:
+        draft_path = _get_draft_path()
+        if os.path.exists(draft_path):
+            with open(draft_path, encoding="utf-8") as f:
                 draft_ts = json.load(f).get("ts", "")[:16].replace("T", " ")
     except Exception:
         pass
