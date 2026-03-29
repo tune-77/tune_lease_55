@@ -49,47 +49,61 @@ def _fix_json_str(raw: str) -> str:
     return "".join(result)
 
 
-def _repair_truncated_json(s: str) -> str:
-    """
-    途中で切れたJSONをスタック方式で修復する。
-    {"events":[{"affected":[ のような深いネストでも
-    正しい閉じ順（]}]}）で補完する。
-    """
-    s = _fix_json_str(s).rstrip()
-
+def _build_stack(s: str) -> tuple[list[str], bool]:
+    """文字列を走査してネストスタックと in_str フラグを返す"""
     stack: list[str] = []
     in_str = False
     escape = False
-
     for c in s:
-        if escape:
-            escape = False
-        elif c == "\\":
-            escape = True
-        elif c == '"':
-            in_str = not in_str
+        if escape:             escape = False
+        elif c == "\\":        escape = True
+        elif c == '"':         in_str = not in_str
         elif not in_str:
-            if c in "{[":
-                stack.append(c)
-            elif c == "}" and stack and stack[-1] == "{":
-                stack.pop()
-            elif c == "]" and stack and stack[-1] == "[":
-                stack.pop()
+            if c in "{[":      stack.append(c)
+            elif c == "}" and stack and stack[-1] == "{": stack.pop()
+            elif c == "]" and stack and stack[-1] == "[": stack.pop()
+    return stack, in_str
 
-    # 未閉文字列を閉じる
-    if in_str:
-        s += '"'
 
-    # 末尾のカンマを除去（閉じる前に）
+def _close_stack(s: str, stack: list[str]) -> str:
+    """末尾カンマ除去 → スタック逆順で閉じる"""
     s = s.rstrip()
-    while s.endswith(","):
+    while s and s[-1] in ",: \t":
         s = s[:-1].rstrip()
-
-    # スタックの逆順に閉じる（正しいネスト順）
     for open_char in reversed(stack):
         s += "}" if open_char == "{" else "]"
-
     return s
+
+
+def _repair_truncated_json(s: str) -> str:
+    """
+    途中で切れたJSONを修復する。
+    ① 文字列の途中で切断 → 開き引用符まで逆行して安全位置に切り詰め
+    ② 末尾のカンマ・コロン除去
+    ③ スタック逆順で正確な閉じ順（]}]}）補完
+    """
+    s = _fix_json_str(s).rstrip()
+    stack, in_str = _build_stack(s)
+
+    if in_str:
+        # 開き引用符まで逆行
+        j = len(s) - 1
+        while j >= 0:
+            if s[j] == '"':
+                # エスケープされていないか確認
+                num_bs = 0
+                k = j - 1
+                while k >= 0 and s[k] == '\\':
+                    num_bs += 1
+                    k -= 1
+                if num_bs % 2 == 0:   # 非エスケープ引用符 → 開き引用符
+                    break
+            j -= 1
+        # 開き引用符より前に切り詰め、スタック再計算
+        s = s[:j]
+        stack, _ = _build_stack(s)
+
+    return _close_stack(s, stack)
 
 
 def _parse_simulation_json(text: str) -> dict:
