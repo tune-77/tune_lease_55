@@ -40,6 +40,16 @@ description: （1行サマリー）
 
 """
 
+# 企業名候補リストを _COMMON_RULES に追記
+try:
+    from novel_company_names import get_company_names_text as _gcnt
+    _COMMON_RULES = (
+        "\n【登場企業名の候補（50社）— 案件の業種・ジャンルに合う名前を選ぶか、自由に命名してよい】\n"
+        + _gcnt() + "\n"
+    ) + _COMMON_RULES
+except Exception:
+    pass  # インポート失敗時は候補なしで動作継続
+
 GENRES = {
     "sf_drama": """あなたは文豪AIです。
 「リース審査＝宇宙の文明の運命を決める審判」というSFドラマを執筆してください。

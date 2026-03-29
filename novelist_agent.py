@@ -255,6 +255,15 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
     civ_context = _build_civ_context_for_novel()
     if civ_context:
         neta_lines.append(civ_context)
+
+    # 関係グラフコンテキストを注入（今話時点の人物・企業間関係）
+    try:
+        from novel_graph import build_graph_context_for_prompt as _build_graph_ctx
+        graph_context = _build_graph_ctx(episode_no)
+        if graph_context:
+            neta_lines.append(graph_context)
+    except Exception:
+        pass
         neta_lines.append("""
 【文明の時系列追跡ルール（重要）】
 ・今話に登場する企業が過去に登場した文明と同じなら、その後日談として書いてもよい
@@ -440,6 +449,16 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
     _backup_db_before_write()
     _parse_and_save_civ_record(body, episode_no)
 
+    # 関係性更新をパースしてDBに保存
+    try:
+        from novel_graph import parse_relationship_updates_from_novel as _parse_rel
+        from novel_graph import save_relationship_updates as _save_rel
+        rel_updates = _parse_rel(body)
+        if rel_updates:
+            _save_rel(episode_no, rel_updates)
+    except Exception:
+        pass
+
     # DB保存
     conn = sqlite3.connect(_NOVEL_DB)
     conn.execute(
@@ -514,6 +533,15 @@ def get_latest_novel() -> dict | None:
 # ══════════════════════════════════════════════════════════════════════════════
 # 文明レジストリ
 # ══════════════════════════════════════════════════════════════════════════════
+
+def get_latest_episode_no() -> int:
+    """DBに保存された最新のエピソード番号を返す（0件なら0）。"""
+    init_novel_db()
+    conn = sqlite3.connect(_NOVEL_DB)
+    row = conn.execute("SELECT MAX(episode_no) FROM novels").fetchone()
+    conn.close()
+    return int(row[0] or 0)
+
 
 def get_civilization_registry() -> list[dict]:
     """登録済み文明の一覧を返す。"""

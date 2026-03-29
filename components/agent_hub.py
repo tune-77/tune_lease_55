@@ -1849,3 +1849,32 @@ def _render_civilization_panel() -> None:
                 )
                 st.success(f"「{company}」を登録しました")
                 st.rerun()
+
+    # ── 関係性グラフ ────────────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("🕸️ 人物・企業間 関係グラフ")
+    st.caption("エージェント（六角形）と登場企業（円）の関係性をフォースグラフで可視化。エピソードが進むにつれて関係が変化します。エッジにマウスオーバーで関係詳細が表示されます。")
+
+    try:
+        import novelist_agent as _na2
+        max_ep = _na2.get_latest_episode_no() if hasattr(_na2, "get_latest_episode_no") else None
+    except Exception:
+        max_ep = None
+
+    # エピソードスライダー
+    if max_ep and max_ep > 0:
+        ep_filter = st.slider(
+            "表示エピソード（〜第N話まで）",
+            min_value=0, max_value=max_ep, value=max_ep,
+            key="novel_graph_ep_slider"
+        )
+        ep_arg = ep_filter if ep_filter < max_ep else None
+    else:
+        ep_arg = None
+        st.caption("まだ小説が生成されていません。初期関係性を表示します。")
+
+    try:
+        from components.novel_graph_view import render_novel_graph
+        render_novel_graph(episode_no=ep_arg, height=520)
+    except Exception as e:
+        st.error(f"関係グラフの描画に失敗しました: {e}")
