@@ -19,6 +19,106 @@ _NOVEL_DB  = os.path.join(_BASE_DIR, "data", "novelist_agent.db")
 
 YEARS_PER_ROUND = 100
 
+def _fix_json_str(raw: str) -> str:
+    """
+    Geminiが出力しがちな不正JSON文字列を修正する。
+    - 文字列値内の生改行 → \\n
+    - 文字列値内のタブ → \\t
+    """
+    result = []
+    in_str = False
+    escape = False
+    for c in raw:
+        if escape:
+            escape = False
+            result.append(c)
+        elif c == "\\":
+            escape = True
+            result.append(c)
+        elif c == '"':
+            in_str = not in_str
+            result.append(c)
+        elif in_str and c == "\n":
+            result.append("\\n")
+        elif in_str and c == "\r":
+            pass  # 除去
+        elif in_str and c == "\t":
+            result.append("\\t")
+        else:
+            result.append(c)
+    return "".join(result)
+
+
+def _parse_simulation_json(text: str) -> dict:
+    """
+    AIレスポンスから events キーを持つ JSON を多段フォールバックで抽出する。
+    戦略1: ```json...``` ブロック内テキストを直接 json.loads
+    戦略2: 上記テキストを _fix_json_str で修正後 json.loads
+    戦略3: 全文から最初の { を起点に括弧深度カウントで抽出→修正→parse
+    """
+    def _try_parse(s: str) -> dict | None:
+        try:
+            d = json.loads(s)
+            if "events" in d:
+                return d
+        except Exception:
+            pass
+        try:
+            d = json.loads(_fix_json_str(s))
+            if "events" in d:
+                return d
+        except Exception:
+            pass
+        return None
+
+    # 戦略1・2: ```json...``` を探してその中を解析
+    pos = 0
+    while True:
+        start = text.find("```json", pos)
+        if start == -1:
+            start = text.find("```", pos)
+            if start == -1:
+                break
+            json_text_start = start + 3
+        else:
+            json_text_start = start + 7
+        end = text.find("```", json_text_start)
+        block = text[json_text_start:end].strip() if end != -1 else text[json_text_start:].strip()
+        d = _try_parse(block)
+        if d:
+            return d
+        pos = json_text_start + 1
+        if end == -1:
+            break
+
+    # 戦略3: テキスト全体から括弧深度カウントで抽出
+    i = 0
+    while i < len(text):
+        brace = text.find("{", i)
+        if brace == -1:
+            break
+        depth, j, in_s, esc = 0, brace, False, False
+        while j < len(text):
+            c = text[j]
+            if esc:              esc = False
+            elif c == "\\":     esc = True
+            elif c == '"':      in_s = not in_s
+            elif not in_s:
+                if c == "{":    depth += 1
+                elif c == "}":
+                    depth -= 1
+                    if depth == 0:
+                        d = _try_parse(text[brace:j + 1])
+                        if d:
+                            return d
+                        i = j + 1
+                        break
+            j += 1
+        else:
+            break
+    return {}
+
+
 # イベントタイプ定義
 EVENT_TYPES = {
     "war":        {"emoji": "⚔️",  "color": "#ef4444", "label": "戦争"},
@@ -220,86 +320,8 @@ def run_simulation_round() -> dict:
     except Exception as e:
         return {"error": f"AI通信エラー: {e}"}
 
-    # JSONパース（```json...``` ブロックを正しく抽出）
-    result_data: dict = {}
-
-    def _extract_json_blocks(src: str) -> list[str]:
-        """```json ... ``` の中身を正しく抽出（ネスト対応）"""
-        blocks: list[str] = []
-        i = 0
-        while True:
-            start = src.find("```json", i)
-            if start == -1:
-                break
-            brace_start = src.find("{", start)
-            if brace_start == -1:
-                break
-            depth = 0
-            j = brace_start
-            in_str = False
-            escape = False
-            while j < len(src):
-                c = src[j]
-                if escape:
-                    escape = False
-                elif c == "\\":
-                    escape = True
-                elif c == '"' and not escape:
-                    in_str = not in_str
-                elif not in_str:
-                    if c == "{":
-                        depth += 1
-                    elif c == "}":
-                        depth -= 1
-                        if depth == 0:
-                            blocks.append(src[brace_start:j + 1])
-                            i = j + 1
-                            break
-                j += 1
-            else:
-                break
-        return blocks
-
-    for m in _extract_json_blocks(text):
-        try:
-            data = json.loads(m)
-            if "events" in data:
-                result_data = data
-                break
-        except Exception:
-            pass
-
-    if not result_data:
-        # フォールバック: テキスト全体から { ... } を抽出
-        brace_start = text.find("{")
-        if brace_start != -1:
-            depth = 0
-            j = brace_start
-            in_str = False
-            escape = False
-            while j < len(text):
-                c = text[j]
-                if escape:
-                    escape = False
-                elif c == "\\":
-                    escape = True
-                elif c == '"' and not escape:
-                    in_str = not in_str
-                elif not in_str:
-                    if c == "{":
-                        depth += 1
-                    elif c == "}":
-                        depth -= 1
-                        if depth == 0:
-                            try:
-                                data = json.loads(text[brace_start:j + 1])
-                                if "events" in data:
-                                    result_data = data
-                            except Exception:
-                                pass
-                            break
-                j += 1
-
+    # JSONパース（多段フォールバック）
+    result_data = _parse_simulation_json(text)
     if not result_data:
         return {"error": f"AIの応答を解析できませんでした: {text[:300]}"}
 
