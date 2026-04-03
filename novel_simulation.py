@@ -500,7 +500,19 @@ def run_simulation_round() -> dict:
     # JSONパース（多段フォールバック）
     result_data = _parse_simulation_json(text)
     if not result_data:
-        # 詳細診断: 最初の{からjson.loadsのエラー内容を取得
+        # 最終手段: テキスト全体から部分修復を試みる
+        _brace = text.find("{")
+        if _brace != -1:
+            try:
+                repaired = _repair_truncated_json(text[_brace:])
+                result_data = json.loads(repaired)
+                if not isinstance(result_data, dict):
+                    result_data = {}
+                elif "events" not in result_data:
+                    result_data["events"] = []
+            except Exception:
+                result_data = {}
+    if not result_data:
         _diag = ""
         _brace = text.find("{")
         if _brace != -1:
@@ -509,6 +521,9 @@ def run_simulation_round() -> dict:
             except json.JSONDecodeError as _je:
                 _diag = f" | JSONエラー: {_je}"
         return {"error": f"AIの応答を解析できませんでした: {text[:200]}{_diag}"}
+
+    # 空オブジェクトのイベントを除去
+    result_data["events"] = [e for e in result_data.get("events", []) if e and e.get("civ")]
 
     # ── 太陽状態計算 ─────────────────────────────────────────────────
     t_gyr = round_to_t_gyr(next_round)
