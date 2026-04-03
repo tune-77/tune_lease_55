@@ -398,7 +398,10 @@ def _civs_to_solar_data(civs: list[dict], round_no: int) -> list[dict]:
     n = len(civs)
     result = []
     for i, civ in enumerate(civs):
-        epoch = int(civ.get("civ_era", "1").split("-")[0]) if civ.get("civ_era") else 1
+        try:
+            epoch = int(str(civ.get("civ_era", "1")).split("-")[0])
+        except (ValueError, TypeError):
+            epoch = 1
         epoch = max(1, min(5, epoch))
         result.append({
             "id": civ.get("company_name", f"CIV-{i}"),
