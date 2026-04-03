@@ -34,6 +34,21 @@ def render_apply_form(
     selected_major = 'D 建設業'
     selected_sub = '06 総合工事業'
 
+    # 企業番号
+    _last_inp_top = st.session_state.get("last_submitted_inputs") or {}
+    _co_no_default = str(_last_inp_top.get("company_no", ""))
+    _co_no = st.text_input(
+        "企業番号（6桁）",
+        value=_co_no_default,
+        max_chars=6,
+        placeholder="例：123456",
+        key="company_no_input",
+        help="社内管理用の6桁企業番号を入力してください（任意）",
+    )
+    if _co_no and (not _co_no.isdigit() or len(_co_no) != 6):
+        st.warning("企業番号は半角数字6桁で入力してください。")
+    st.session_state["company_no"] = _co_no if (_co_no.isdigit() and len(_co_no) == 6) else ""
+
     # 業界・取引を expander で折りたたみ
     with st.expander("📌 業界選択・取引状況", expanded=True):
         if not jsic_data:
@@ -408,6 +423,7 @@ def render_apply_form(
         "intuition": intuition,                     # 担当者の直感スコア（1〜5、デフォルト3）
         "asset_use_detail":   st.session_state.get("asd_use_detail", False),
         "asset_score_detail": st.session_state.get("asd_detail_score"),
+        "company_no":         st.session_state.get("company_no", ""),
     }
 
 def render_quick_edit_panel(jsic_data, lease_assets_list):

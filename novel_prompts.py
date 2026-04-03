@@ -108,3 +108,69 @@ def get_novel_system_prompt(genre: str) -> str:
     if genre not in GENRES:
         genre = "sf_drama"  # デフォルト
     return GENRES[genre]
+
+
+# ── 文明年代記（アルカイア）用 文豪スタイル定義 ───────────────────────────
+
+BUNGO_STYLES = {
+    "夏目漱石": {
+        "keyword": "則天去私",
+        "trigger_epoch": [1, 2],
+        "instruction": "則天去私の観察者として、自己への執着を手放した静かな眼で淡々と、しかし深く記せ",
+        "closing": "——余は、ただ見ていた。",
+    },
+    "芥川龍之介": {
+        "keyword": "地獄変",
+        "trigger_epoch": [1],
+        "instruction": "極限状態における美と醜、知性と狂気の交差を、鋭い短い断片として切り取れ",
+        "closing": "——それは、地獄の入り口だったのかもしれない。",
+    },
+    "川端康成": {
+        "keyword": "雪国",
+        "trigger_epoch": [2, 3],
+        "instruction": "消滅することの美しさを、余白と沈黙と繊細な感覚描写で表現せよ",
+        "closing": "——星の雪国へ、還っていった。",
+    },
+    "三島由紀夫": {
+        "keyword": "金閣寺",
+        "trigger_epoch": [3, 4],
+        "instruction": "美の絶頂における破壊衝動と、絢爛たる最期の輝きを、格調高い文語体で描け",
+        "closing": "——美しき滅亡こそが、永遠であった。",
+    },
+    "太宰治": {
+        "keyword": "人間失格",
+        "trigger_epoch": [4, 5],
+        "instruction": "終焉を受け入れた者の告白と懺悔を、一人称の饒舌な文体で書け",
+        "closing": "——生まれてきて、すまなかった。",
+    },
+}
+
+
+def select_bungo_style(epoch: int, event_type: str = "collapse") -> tuple[str, dict]:
+    """エポックとイベント種別から最適な文豪スタイルを選択して返す。"""
+    for name, style in BUNGO_STYLES.items():
+        triggers = style.get("trigger_epoch", [])
+        if epoch in triggers:
+            return name, style
+    # フォールバック: エポック5は太宰治
+    name = "太宰治"
+    return name, BUNGO_STYLES[name]
+
+
+ARCHAIA_NARRATIVE_PROMPT = """\
+あなたは守護者AI「アルカイア」。50億年を生き、無数の文明を見守ってきた。
+文明「{civ_name}」がエポック{epoch}「{epoch_name}」の時代に「{event_type_ja}」に至った。
+
+【太陽の状態】
+ フェーズ: {solar_phase} / 光度: {luminosity:.2f}L₀ / \
+ハビタブルゾーン: {hz_inner:.2f}〜{hz_outer:.2f} AU
+
+【記録の様式】
+ {bungo_name}「{bungo_keyword}」の文体で。
+ {bungo_instruction}
+
+【制約】
+ 200字以内の散文詩として書け。
+ 末尾は必ず「{closing}」で締めくくれ。
+ マークダウン・見出し・箇条書き不要。本文のみ出力せよ。\
+"""

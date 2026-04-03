@@ -451,8 +451,22 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
                     )
 
         _bot("はじめまして！リースくんです 🎩<br>"
-             "まず、審査対象の<b>業種</b>を選んでください。<br>"
+             "まず、<b>企業番号</b>（6桁）と<b>業種</b>を教えてください。<br>"
              "大分類→中分類の順に絞り込んでいきます。")
+
+        # 企業番号入力
+        _co_no = st.text_input(
+            "企業番号（6桁・任意）",
+            value=str(d.get("company_no", "")),
+            max_chars=6,
+            placeholder="例：123456",
+            key="wiz_company_no",
+            help="社内管理用の6桁企業番号",
+        )
+        if _co_no and (not _co_no.isdigit() or len(_co_no) != 6):
+            st.warning("企業番号は半角数字6桁で入力してください。")
+        d["company_no"] = _co_no if (_co_no.isdigit() and len(_co_no) == 6) else ""
+
         major_keys = st.session_state["wiz_major_keys"]
         cur_major  = d.get("selected_major", major_keys[0])
         if cur_major not in major_keys:
@@ -473,9 +487,10 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
         sub = st.selectbox("中分類", sub_keys,
                            index=sub_keys.index(cur_sub), key="wiz_sel_sub")
         if st.button("次へ →", key="wiz_next_industry", type="primary"):
-            _advance(step, question="業種を選択してください",
-                     answer=f"{major} ／ {sub}",
+            _advance(step, question="企業番号・業種を選択してください",
+                     answer=f"[{d['company_no'] or '番号未入力'}] {major} ／ {sub}",
                      updates={"selected_major": major, "selected_sub": sub,
+                              "company_no": d["company_no"],
                               "_frag_major": major, "_frag_sub": sub})
 
     # ── STEP: deal ─────────────────────────────────────────────────────────
@@ -813,6 +828,7 @@ def _submit_wizard(d: dict) -> None:
         "qual_corr_business_future":    d.get("qual_corr_business_future", "未選択"),
         "qual_corr_equipment_purpose":  d.get("qual_corr_equipment_purpose", "未選択"),
         "qual_corr_main_bank":          d.get("qual_corr_main_bank", "未選択"),
+        "company_no":                   d.get("company_no", ""),
     }
 
     st.session_state["wizard_form_result"] = form_result
