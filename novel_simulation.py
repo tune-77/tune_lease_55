@@ -13,11 +13,90 @@ import json
 import re
 import sqlite3
 import datetime
+import math
+from dataclasses import dataclass, asdict
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _NOVEL_DB  = os.path.join(_BASE_DIR, "data", "novelist_agent.db")
 
 YEARS_PER_ROUND = 100
+
+# ── 太陽系物理モデル ─────────────────────────────────────────────────────────
+
+# 太陽進化チェックポイント: (t_gyr, phase, radius_rsun, luminosity_factor)
+_SOLAR_CHECKPOINTS = [
+    (0.0,  "主系列",   1.00, 0.70),
+    (5.0,  "主系列",   1.10, 1.00),   # 現在（太陽年齢≈4.6 Gyr）
+    (8.0,  "亜巨星",   1.50, 1.40),
+    (9.5,  "赤色巨星", 100.0, 2.50),  # 地球軌道を侵食
+    (10.0, "白色矮星", 0.01, 0.01),
+]
+
+NATURE_EPOCHS = {
+    1: {"name": "緑の自然",   "color": "#64748b", "t_range": (0.0, 2.0),  "definition": "森・生態系・水"},
+    2: {"name": "黄金の時代", "color": "#22c55e", "t_range": (2.0, 5.0),  "definition": "技術・資源・惑星間交易"},
+    3: {"name": "情報の秩序", "color": "#38bdf8", "t_range": (5.0, 8.0),  "definition": "データ保存・エントロピー制御"},
+    4: {"name": "知性の記憶", "color": "#a78bfa", "t_range": (8.0, 9.5),  "definition": "意識・文明の継承"},
+    5: {"name": "愛の記憶",   "color": "#fde68a", "t_range": (9.5, 10.0), "definition": "母への記憶＝宇宙最後のエネルギー"},
+}
+
+EPOCH_COLORS = {ep: info["color"] for ep, info in NATURE_EPOCHS.items()}
+
+
+@dataclass
+class SolarState:
+    t_gyr: float
+    luminosity: float       # L0の倍数（現在=1.0）
+    radius_rsun: float      # 太陽半径（太陽単位）
+    hz_inner_au: float      # ハビタブルゾーン内縁 (AU)
+    hz_outer_au: float      # ハビタブルゾーン外縁 (AU)
+    phase: str              # 主系列/亜巨星/赤色巨星/白色矮星
+    nature_epoch: int       # 1〜5
+
+
+def solar_state(t_gyr: float) -> SolarState:
+    """時刻 t_gyr (10億年) に対応する太陽状態を線形補間で返す。"""
+    cps = _SOLAR_CHECKPOINTS
+    if t_gyr <= cps[0][0]:
+        _, phase, r, lum = cps[0]
+    elif t_gyr >= cps[-1][0]:
+        _, phase, r, lum = cps[-1]
+    else:
+        for i in range(len(cps) - 1):
+            t0, ph0, r0, l0 = cps[i]
+            t1, ph1, r1, l1 = cps[i + 1]
+            if t0 <= t_gyr <= t1:
+                frac = (t_gyr - t0) / (t1 - t0)
+                lum   = l0 + frac * (l1 - l0)
+                r     = r0 + frac * (r1 - r0)
+                phase = ph0 if frac < 0.5 else ph1
+                break
+
+    hz_inner = 0.95 * math.sqrt(lum)
+    hz_outer = 1.37 * math.sqrt(lum)
+
+    epoch = 1
+    for ep, info in NATURE_EPOCHS.items():
+        if info["t_range"][0] <= t_gyr < info["t_range"][1]:
+            epoch = ep
+            break
+    else:
+        epoch = 5  # t_gyr >= 9.5
+
+    return SolarState(
+        t_gyr=round(t_gyr, 4),
+        luminosity=round(lum, 4),
+        radius_rsun=round(r, 4),
+        hz_inner_au=round(hz_inner, 4),
+        hz_outer_au=round(hz_outer, 4),
+        phase=phase,
+        nature_epoch=epoch,
+    )
+
+
+def round_to_t_gyr(round_no: int, total_rounds: int = 50_000) -> float:
+    """ラウンド番号を太陽年齢 (Gyr) に変換。50,000ラウンド = 50億年。"""
+    return (round_no / total_rounds) * 10.0
 
 def _fix_json_str(raw: str) -> str:
     """
@@ -188,14 +267,31 @@ def init_simulation_db() -> None:
     conn = sqlite3.connect(_NOVEL_DB)
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS simulation_rounds (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            round_no         INTEGER NOT NULL UNIQUE,
+            year             INTEGER NOT NULL,
+            events           TEXT,
+            summary          TEXT,
+            solar_state_json TEXT,
+            nature_epoch     INTEGER,
+            created_at       TEXT    NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS archaia_log (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            round_no    INTEGER NOT NULL UNIQUE,
-            year        INTEGER NOT NULL,
-            events      TEXT,
-            summary     TEXT,
-            created_at  TEXT    NOT NULL
+            round_no    INTEGER,
+            civ_name    TEXT,
+            event_type  TEXT,
+            bungo_style TEXT,
+            narrative   TEXT,
+            created_at  TEXT
         );
     """)
+    # 既存テーブルへのカラム追加（ALTER TABLE は列が存在しない場合のみ）
+    for col, typedef in [("solar_state_json", "TEXT"), ("nature_epoch", "INTEGER")]:
+        try:
+            conn.execute(f"ALTER TABLE simulation_rounds ADD COLUMN {col} {typedef}")
+        except Exception:
+            pass
     conn.commit()
     conn.close()
 
@@ -380,16 +476,24 @@ def run_simulation_round() -> dict:
                 _diag = f" | JSONエラー: {_je}"
         return {"error": f"AIの応答を解析できませんでした: {text[:200]}{_diag}"}
 
+    # ── 太陽状態計算 ─────────────────────────────────────────────────
+    t_gyr = round_to_t_gyr(next_round)
+    sol = solar_state(t_gyr)
+    sol_json = json.dumps(asdict(sol), ensure_ascii=False)
+
     # ── DB保存 ────────────────────────────────────────────────────────
     init_simulation_db()
     conn = sqlite3.connect(_NOVEL_DB)
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
-        "INSERT OR REPLACE INTO simulation_rounds (round_no, year, events, summary, created_at) "
-        "VALUES (?,?,?,?,?)",
+        "INSERT OR REPLACE INTO simulation_rounds "
+        "(round_no, year, events, summary, solar_state_json, nature_epoch, created_at) "
+        "VALUES (?,?,?,?,?,?,?)",
         (next_round, year,
          json.dumps(result_data.get("events", []), ensure_ascii=False),
          result_data.get("summary", ""),
+         sol_json,
+         sol.nature_epoch,
          ts)
     )
     conn.commit()
@@ -402,4 +506,54 @@ def run_simulation_round() -> dict:
         sim_episode = 10000 + next_round
         save_relationship_updates(sim_episode, rel_updates)
 
+    # ── 文豪ナラティブ生成（collapse / ascension イベントのみ） ─────
+    _trigger_archaia_narratives(result_data.get("events", []), sol, next_round)
+
+    result_data["solar_state"] = asdict(sol)
     return result_data
+
+
+def _trigger_archaia_narratives(events: list, sol: SolarState, round_no: int) -> None:
+    """collapse/ascension イベントに対して文豪ナラティブを非同期生成・保存。"""
+    trigger_types = {"collapse", "ascension"}
+    for ev in events:
+        if ev.get("event_type") not in trigger_types:
+            continue
+        civ_name   = ev.get("civ", "不明")
+        event_type = ev.get("event_type", "collapse")
+        try:
+            from novelist_agent import generate_archaia_narrative
+            narrative, bungo_style = generate_archaia_narrative(
+                civ_name=civ_name,
+                event_type=event_type,
+                solar_state_dict=asdict(sol),
+                epoch=sol.nature_epoch,
+            )
+            if narrative:
+                conn = sqlite3.connect(_NOVEL_DB)
+                conn.execute(
+                    "INSERT INTO archaia_log (round_no, civ_name, event_type, bungo_style, narrative, created_at) "
+                    "VALUES (?,?,?,?,?,?)",
+                    (round_no, civ_name, event_type, bungo_style, narrative,
+                     datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                )
+                conn.commit()
+                conn.close()
+        except Exception:
+            pass  # ナラティブ生成失敗はサイレントに続行
+
+
+def get_archaia_log(limit: int = 30) -> list[dict]:
+    """文豪ナラティブログを新しい順で返す。"""
+    init_simulation_db()
+    conn = sqlite3.connect(_NOVEL_DB)
+    rows = conn.execute(
+        "SELECT round_no, civ_name, event_type, bungo_style, narrative, created_at "
+        "FROM archaia_log ORDER BY id DESC LIMIT ?", (limit,)
+    ).fetchall()
+    conn.close()
+    return [
+        {"round_no": r[0], "civ_name": r[1], "event_type": r[2],
+         "bungo_style": r[3], "narrative": r[4], "created_at": r[5]}
+        for r in rows
+    ]

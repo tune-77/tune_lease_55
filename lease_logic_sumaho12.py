@@ -1701,6 +1701,16 @@ elif mode == "📊 ビジュアルインサイト":
     from components.visual_insights import render_visual_insights
     render_visual_insights()
 
+# ── 📈 TimesFM 時系列予測 ──────────────────────────────────────────────────────
+elif mode == "📈 TimesFM 時系列予測":
+    from components.timeseries_forecast_view import render_timeseries_forecast
+    render_timeseries_forecast()
+
+# ── 🌌 文明年代記 ─────────────────────────────────────────────────────────────
+elif mode == "🌌 文明年代記":
+    from components.novel_simulation_view import render_novel_simulation
+    render_novel_simulation()
+
 # ── フローティングBOT（八奈見さん）── 全ページ共通 ──────────────────────────
 try:
     from components.floating_bot import render_floating_bot
