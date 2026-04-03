@@ -203,3 +203,16 @@ SESSION_KEYS: dict[str, str] = {
 }
 
 __all__ = ["SK", "SESSION_KEYS"]
+
+
+# ── エージェントチーム承認コード ─────────────────────
+class session_keys:
+    CHAT_MESSAGES = "chat_messages"
+    MODEL_NAME = "model_name"
+    TEMPERATURE = "temperature"
+    PROMPT = "prompt"
+    SYSTEM_PROMPT = "system_prompt"
+    OLLAMA_MODEL = "ollama_model"
+    GEMINI_MODEL = "gemini_model"
+    THREAD_ID = "thread_id"
+    LIKED_ARTICLES = "liked_articles" # 追加
