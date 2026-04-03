@@ -247,6 +247,20 @@ def _parse_simulation_json(text: str) -> dict:
             j += 1
         else:
             break
+    # 最終手段: テキスト全体の最初の { から _repair_truncated_json で部分復元
+    brace = text.find("{")
+    if brace != -1:
+        try:
+            repaired = _repair_truncated_json(text[brace:])
+            d = json.loads(repaired)
+            if isinstance(d, dict):
+                # events がなければ空リストで補完して返す
+                if "events" not in d:
+                    d["events"] = []
+                d["_partial"] = True
+                return d
+        except Exception:
+            pass
     return {}
 
 
@@ -457,7 +471,7 @@ def run_simulation_round() -> dict:
             "gemini", "",
             [{"role": "user", "content": prompt}],
             timeout_seconds=120, api_key=api_key, gemini_model=GEMINI_MODEL_DEFAULT,
-            max_output_tokens=4096,
+            max_output_tokens=8192,
         )
         text = (raw.get("message") or {}).get("content", "") or ""
     except Exception as e:
