@@ -24,6 +24,13 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 
+# TimesFM（オプション）
+try:
+    from timesfm_engine import forecast_financial_paths as _tfm_forecast_paths, TIMESFM_AVAILABLE as _TIMESFM_AVAILABLE
+except ImportError:
+    _tfm_forecast_paths = None
+    _TIMESFM_AVAILABLE = False
+
 # PDF生成
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
@@ -298,12 +305,24 @@ class AdvancedMonteCarloEngine:
         coverage = np.where(op_profit > 0, debt / op_profit, np.inf)
         return (equity < eq_thresh) | (margin < mar_thresh) | (coverage > cov_thresh)
 
-    def simulate_company(self, company: CompanyData) -> SimResult:
+    def simulate_company(self, company: CompanyData, use_timesfm: bool = False) -> SimResult:
         vol = self._get_vol(company.industry)
         T = company.lease_months
         dt = 1 / 12
 
-        rev_paths = self._gbm_paths(company.revenue, vol["revenue_drift"], vol["revenue_vol"], T, dt)
+        # TimesFM で売上パスを生成（履歴データがある場合）
+        if use_timesfm and _TIMESFM_AVAILABLE and _tfm_forecast_paths is not None:
+            historical = getattr(company, "revenue_history", None) or [company.revenue]
+            rev_paths = _tfm_forecast_paths(
+                historical_values=historical,
+                n_periods=T,
+                n_paths=self.n_sim,
+                fallback_mu=vol["revenue_drift"],
+                fallback_sigma=vol["revenue_vol"],
+                dt=dt,
+            )
+        else:
+            rev_paths = self._gbm_paths(company.revenue, vol["revenue_drift"], vol["revenue_vol"], T, dt)
         mar_paths = self._gbm_paths(company.operating_margin, 0.0, vol["margin_vol"], T, dt)
         mar_paths = np.clip(mar_paths, -0.30, 0.50)
         eq_paths  = self._gbm_paths(company.equity_ratio, 0.005, vol["equity_vol"], T, dt)

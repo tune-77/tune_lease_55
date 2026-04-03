@@ -635,6 +635,65 @@ def update_civilization_status(civ_id: str, status: str, notes: str = "") -> Non
     conn.close()
 
 
+def generate_archaia_narrative(
+    civ_name: str,
+    event_type: str,
+    solar_state_dict: dict,
+    epoch: int,
+) -> tuple[str, str]:
+    """
+    collapse / ascension イベントに対して文豪スタイルの散文詩を生成する。
+    Returns: (narrative_text, bungo_style_name)
+    失敗時は ("", "") を返す。
+    """
+    from novel_prompts import (
+        ARCHAIA_NARRATIVE_PROMPT, NATURE_EPOCHS, select_bungo_style
+    )
+    from ai_chat import (
+        _chat_for_thread, _get_gemini_key_from_secrets,
+        GEMINI_API_KEY_ENV, GEMINI_MODEL_DEFAULT,
+    )
+
+    api_key = GEMINI_API_KEY_ENV or _get_gemini_key_from_secrets()
+    if not api_key:
+        return "", ""
+
+    bungo_name, bungo_style = select_bungo_style(epoch, event_type)
+    epoch_info = NATURE_EPOCHS.get(epoch, NATURE_EPOCHS[1])
+    event_type_ja = {
+        "collapse": "崩壊", "ascension": "超越", "war": "戦争",
+        "alliance": "同盟", "discovery": "発見",
+    }.get(event_type, event_type)
+
+    prompt = ARCHAIA_NARRATIVE_PROMPT.format(
+        civ_name=civ_name,
+        epoch=epoch,
+        epoch_name=epoch_info["name"],
+        event_type_ja=event_type_ja,
+        solar_phase=solar_state_dict.get("phase", "不明"),
+        luminosity=solar_state_dict.get("luminosity", 1.0),
+        hz_inner=solar_state_dict.get("hz_inner_au", 0.95),
+        hz_outer=solar_state_dict.get("hz_outer_au", 1.37),
+        bungo_name=bungo_name,
+        bungo_keyword=bungo_style["keyword"],
+        bungo_instruction=bungo_style["instruction"],
+        closing=bungo_style["closing"],
+    )
+
+    try:
+        raw = _chat_for_thread(
+            "gemini", "",
+            [{"role": "user", "content": prompt}],
+            timeout_seconds=60, api_key=api_key,
+            gemini_model=GEMINI_MODEL_DEFAULT,
+            max_output_tokens=512,
+        )
+        text = (raw.get("message") or {}).get("content", "").strip()
+        return text, bungo_name
+    except Exception:
+        return "", ""
+
+
 def _build_civ_context_for_novel() -> str:
     """小説生成時に使う文明の時系列コンテキストを組み立てる。"""
     civs = get_civilization_registry()

@@ -2,17 +2,26 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
+# TimesFM（オプション）
+try:
+    from timesfm_engine import forecast_financial_paths as _tfm_paths, TIMESFM_AVAILABLE as _TIMESFM_AVAILABLE
+except ImportError:
+    _tfm_paths = None
+    _TIMESFM_AVAILABLE = False
+
 def run_business_simulation(
     current_sales: float,
     current_op_profit: float,
     drift: float,
     volatility: float,
     years: int = 5,
-    n_simulations: int = 10000
+    n_simulations: int = 10000,
+    use_timesfm: bool = False,
+    sales_history: list | None = None,
 ):
     """
-    GBM(幾何ブラウン運動)を用いて将来の売上高と営業利益をシミュレーションする関数
-    
+    GBM（幾何ブラウン運動）または TimesFM を用いて将来の売上高と営業利益をシミュレーションする関数
+
     Args:
         current_sales (float): 現在の売上高
         current_op_profit (float): 現在の営業利益
@@ -20,52 +29,68 @@ def run_business_simulation(
         volatility (float): 年間ボラティリティ (例: 0.10)
         years (int): シミュレーション期間(年)
         n_simulations (int): シミュレーション回数
-        
+        use_timesfm (bool): True のとき TimesFM で売上パスを生成（未インストール時は GBM へフォールバック）
+        sales_history (list | None): TimesFM 用の過去売上時系列（月次または年次）
+
     Returns:
         dict: 売上高・営業利益のパーセンタイルデータや赤字確率などを含むメタデータ
     """
-    
+
     # 簡易的な固定費・変動費の算出 (限界利益率と固定費を推計)
     if current_sales <= 0:
         return None
-        
+
     # 仮置き: 限界利益率を 30% とみなす (業界平均から設定する等の拡張も可能)
     current_op_margin = current_op_profit / current_sales
     contribution_margin_ratio = max(0.30, current_op_margin + 0.10)
-    
+
     # 固定費 = 売上高 × 限界利益率 - 営業利益
     fixed_costs = current_sales * contribution_margin_ratio - current_op_profit
-    
-    dt = 1.0  # 年単位
-    
-    np.random.seed(42)  # 再現性確保のため固定シード
-    
-    Z = np.random.normal(0, 1, size=(n_simulations, years))
-    t_array = np.arange(1, years + 1)
-    
-    sales_paths = np.zeros((n_simulations, years + 1))
-    sales_paths[:, 0] = current_sales
-    
-    for t in range(1, years + 1):
-        sales_paths[:, t] = sales_paths[:, t-1] * np.exp((drift - 0.5 * volatility**2) * dt + volatility * np.sqrt(dt) * Z[:, t-1])
-        
+
+    n_periods = years  # 年単位
+
+    # ── 売上パス生成 ─────────────────────────────────────────────────────────────
+    if use_timesfm and _TIMESFM_AVAILABLE and _tfm_paths is not None:
+        historical = sales_history if sales_history else [current_sales]
+        sales_paths = _tfm_paths(
+            historical_values=historical,
+            n_periods=n_periods,
+            n_paths=n_simulations,
+            fallback_mu=drift,
+            fallback_sigma=volatility,
+            dt=1.0,
+        )
+        method = "timesfm"
+    else:
+        dt = 1.0  # 年単位
+        np.random.seed(42)
+        Z = np.random.normal(0, 1, size=(n_simulations, years))
+        sales_paths = np.zeros((n_simulations, years + 1))
+        sales_paths[:, 0] = current_sales
+        for t in range(1, years + 1):
+            sales_paths[:, t] = sales_paths[:, t - 1] * np.exp(
+                (drift - 0.5 * volatility ** 2) * dt + volatility * np.sqrt(dt) * Z[:, t - 1]
+            )
+        method = "gbm"
+
     op_profit_paths = sales_paths * contribution_margin_ratio - fixed_costs
-    
+
     percentiles = [10, 25, 50, 75, 90]
-    
+
     sales_percentiles = {p: np.percentile(sales_paths, p, axis=0) for p in percentiles}
     op_percentiles = {p: np.percentile(op_profit_paths, p, axis=0) for p in percentiles}
-    
+
     final_op_profits = op_profit_paths[:, -1]
     deficit_prob = float(np.mean(final_op_profits < 0))
-    
+
     return {
         "years": np.arange(0, years + 1),
         "sales_percentiles": sales_percentiles,
         "op_percentiles": op_percentiles,
         "deficit_prob": deficit_prob,
         "final_op_median": op_percentiles[50][-1],
-        "final_op_worst10": op_percentiles[10][-1]
+        "final_op_worst10": op_percentiles[10][-1],
+        "method": method,
     }
 
 def plot_future_simulation_plotly(sim_data: dict, var_type: str = "sales"):
