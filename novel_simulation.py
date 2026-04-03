@@ -169,17 +169,37 @@ def _repair_truncated_json(s: str) -> str:
         j = len(s) - 1
         while j >= 0:
             if s[j] == '"':
-                # エスケープされていないか確認
                 num_bs = 0
                 k = j - 1
                 while k >= 0 and s[k] == '\\':
                     num_bs += 1
                     k -= 1
-                if num_bs % 2 == 0:   # 非エスケープ引用符 → 開き引用符
+                if num_bs % 2 == 0:
                     break
             j -= 1
-        # 開き引用符より前に切り詰め、スタック再計算
+        # 開き引用符より前に切り詰め
         s = s[:j]
+        # コロン直後なら「"key": "切断値」パターン → キー部分("key":)ごと除去
+        stripped = s.rstrip()
+        if stripped.endswith(":"):
+            # コロンの前の "key" ごと除去: 直前の引用符付きキーまで遡る
+            p = len(stripped) - 2  # コロンの1つ前
+            while p >= 0 and stripped[p] in ' \t':
+                p -= 1
+            if p >= 0 and stripped[p] == '"':
+                # 閉じ引用符を見つけた → 対応する開き引用符を探す
+                p -= 1
+                while p >= 0:
+                    if stripped[p] == '"':
+                        num_bs = 0
+                        kk = p - 1
+                        while kk >= 0 and stripped[kk] == '\\':
+                            num_bs += 1
+                            kk -= 1
+                        if num_bs % 2 == 0:
+                            s = stripped[:p]
+                            break
+                    p -= 1
         stack, _ = _build_stack(s)
 
     return _close_stack(s, stack)
