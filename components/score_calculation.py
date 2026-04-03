@@ -717,7 +717,8 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         _ow = _wt.get("obligor_w", w_borrower)
                         _weight_source = "カテゴリ固定値"
 
-                    final_score = round(asset_score * _aw + contract_prob * _ow, 1)
+                    # 例: score_percent=80, asset_score=70, _aw=0.15, _ow=0.85 → total=80*0.85+70*0.15=78.5
+                    final_score = round(asset_score * _aw + score_percent * _ow, 1)
                     _grade_info = next((g for g in SCORE_GRADES if final_score >= g["min"]), SCORE_GRADES[-1])
                     _ts_result = {
                         "total_score":    final_score,
@@ -726,7 +727,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         "grade_color":    _grade_info["color"],
                         "asset_score":    asset_score,
                         "asset_weight":   _aw,
-                        "obligor_score":  contract_prob,
+                        "obligor_score":  score_percent,
                         "obligor_weight": _ow,
                         "category":       _asset_category,
                         "rationale":      _wt.get("rationale", ""),
