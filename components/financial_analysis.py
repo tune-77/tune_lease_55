@@ -9,7 +9,7 @@ components/financial_analysis.py
     2. YoY成長率・営業利益率・純資産比率の自動計算
     3. FastAPI バックエンド（backend.py）に予測リクエストを送信
     4. 実績（実線）＋予測（点線）の Plotly グラフを表示
-    5. Ollama ローカルLLMによる審査コメント生成（3行）
+    5. Gemini APIによる審査コメント生成（3行）
     6. 将来予測フェーズのプレースホルダ関数（TimesFM 拡張用）
 """
 from __future__ import annotations
@@ -271,7 +271,7 @@ def _build_gemini_prompt(
     industry: str,
 ) -> str:
     """
-    Ollama に渡すプロンプトを組み立てる。
+    Gemini に渡すプロンプトを組み立てる。
     TimesFM の12ヶ月後予測値を含めた審査コメントを依頼する。
 
     Args:
