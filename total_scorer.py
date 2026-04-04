@@ -7,16 +7,8 @@ total scorer with ratio.docx に基づく。
 資産特性に即した審査判定を実現する。
 """
 
-from category_config import ASSET_WEIGHT, SCORE_GRADES
+from category_config import ASSET_WEIGHT, SCORE_GRADES, get_grade as _get_grade
 from asset_scorer import calc_asset_score, get_recommendation
-
-
-def _get_grade(score: float) -> dict:
-    """スコアからグレード dict を返す。"""
-    for g in SCORE_GRADES:
-        if score >= g["min"]:
-            return g
-    return SCORE_GRADES[-1]
 
 
 def calc_total_score(
@@ -108,4 +100,5 @@ def calc_total_score(
         "recommendation": rec,
         "rationale": weight_cfg.get("rationale", ""),
         "used_default_weight": used_default_weight,
+        "completeness_ratio": asset_result.get("completeness_ratio", 1.0),
     }

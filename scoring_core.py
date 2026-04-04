@@ -296,22 +296,27 @@ def run_quick_scoring(inputs: dict) -> dict:
         f"- **業界**: {bench_comment or '—'}"
     )
 
-    # 百万円単位
+    # ── 単位変換メモ ───────────────────────────────────────────────────────────
+    # inputs の財務数値はすべて「千円」単位で入力される（UI・Slack Bot 共通）。
+    # COEFFS の係数は以下のスケールで推定されている:
+    #   nenshu / bank_credit / lease_credit : 千円のまま log1p に渡す（係数で吸収）
+    #   op_profit / ord_profit 等の P/L 項目 : 千円 → 百万円（÷1000）に変換して渡す
+    # 変換基準を変更した場合は coeff_definitions.py の係数を必ず再推定すること。
     data_scoring = {
-        "nenshu": nenshu,
-        "bank_credit": bank_credit,
-        "lease_credit": lease_credit,
-        "op_profit": op_profit / 1000,
-        "ord_profit": ord_profit / 1000,
-        "net_income": net_income / 1000,
-        "gross_profit": _safe_float(inputs.get("gross_profit")) / 1000,
-        "machines": _safe_float(inputs.get("machines")) / 1000,
-        "other_assets": _safe_float(inputs.get("other_assets")) / 1000,
-        "rent": _safe_float(inputs.get("rent")) / 1000,
-        "depreciation": _safe_float(inputs.get("depreciation")) / 1000,
-        "dep_expense": _safe_float(inputs.get("dep_expense")) / 1000,
-        "rent_expense": _safe_float(inputs.get("rent_expense")) / 1000,
-        "contracts": contracts,
+        "nenshu": nenshu,           # 千円単位のまま（log1p 変換して使用）
+        "bank_credit": bank_credit,  # 千円単位のまま（log1p 変換して使用）
+        "lease_credit": lease_credit,  # 千円単位のまま（log1p 変換して使用）
+        "op_profit": op_profit / 1000,     # 千円 → 百万円
+        "ord_profit": ord_profit / 1000,   # 千円 → 百万円
+        "net_income": net_income / 1000,   # 千円 → 百万円
+        "gross_profit": _safe_float(inputs.get("gross_profit")) / 1000,   # 千円 → 百万円
+        "machines": _safe_float(inputs.get("machines")) / 1000,           # 千円 → 百万円
+        "other_assets": _safe_float(inputs.get("other_assets")) / 1000,   # 千円 → 百万円
+        "rent": _safe_float(inputs.get("rent")) / 1000,                   # 千円 → 百万円
+        "depreciation": _safe_float(inputs.get("depreciation")) / 1000,   # 千円 → 百万円
+        "dep_expense": _safe_float(inputs.get("dep_expense")) / 1000,     # 千円 → 百万円
+        "rent_expense": _safe_float(inputs.get("rent_expense")) / 1000,   # 千円 → 百万円
+        "contracts": contracts,          # 件数（無次元）
         "grade": grade,
         "industry_major": industry_major,
     }
