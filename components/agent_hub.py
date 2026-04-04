@@ -2070,6 +2070,22 @@ def _render_civilization_panel() -> None:
                             f"- **第{ap['episode_no']}話** `{ap['event_type']}`{result_badge} — {ap['description']}"
                         )
 
+                st.markdown("---")
+                if st.button("🔄 年代期を初期化", key=f"reset_era_{civ['civ_id']}",
+                             help="この文明の civ_era をリセットします"):
+                    na.reset_civ_era(civ["civ_id"])
+                    st.success(f"「{civ['company_name']}」の年代期をリセットしました")
+                    st.rerun()
+
+    # 全文明リセットボタン
+    if civs:
+        st.markdown("---")
+        if st.button("⚠️ 全文明の年代期を一括初期化",
+                     help="登録されている全文明の civ_era を NULL にリセットします"):
+            n = na.reset_civ_era()
+            st.warning(f"{n} 件の文明年代期をリセットしました")
+            st.rerun()
+
     # 手動登録フォーム
     st.markdown("---")
     with st.expander("✏️ 文明を手動登録"):

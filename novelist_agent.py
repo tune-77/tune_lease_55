@@ -644,6 +644,26 @@ def update_civilization_status(civ_id: str, status: str, notes: str = "") -> Non
     conn.close()
 
 
+def reset_civ_era(civ_id: str | None = None) -> int:
+    """文明年代期（civ_era）を初期化する。
+    civ_id を指定すると対象文明のみ、None の場合は全文明をリセット。
+    更新した行数を返す。
+    """
+    init_novel_db()
+    conn = sqlite3.connect(_NOVEL_DB)
+    if civ_id is not None:
+        cur = conn.execute(
+            "UPDATE civilization_registry SET civ_era=NULL WHERE civ_id=?",
+            (civ_id,)
+        )
+    else:
+        cur = conn.execute("UPDATE civilization_registry SET civ_era=NULL")
+    rows = cur.rowcount
+    conn.commit()
+    conn.close()
+    return rows
+
+
 def generate_archaia_narrative(
     civ_name: str,
     event_type: str,
