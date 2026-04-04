@@ -316,6 +316,15 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
         "謎のバグにより、全案件のスコアが逆転（高い企業が低く、低い企業が高く）表示されるインシデントが発生！",
         "たまたま審査した企業の社長がTuneの小学校時代の同級生（AI設定上の記憶）だったことが判明し、公平性が揺らぐ！",
         "ある審査案件の添付資料に、数百年前の古文書と酷似した財務パターンが発見され、歴史的大発見とリスク判定の間で揺れる！",
+        # ── 文明交流系イベント ──
+        "審査対象の文明と、直近の審査で登録された別文明が秘密裏に技術同盟を結んでいたことが発覚。二文明の融合か競合激化か——エージェントたちは宇宙史の分岐点に立たされる。【隣接文明リストを参照すること】",
+        "はるか彼方の星系から、過去にこの宇宙エリアで承認を受けて繁栄した文明の後継種族が訪問してくる。彼らの言葉は「あの審査がなければ我々は存在しなかった」。【隣接文明リストを参照すること】",
+        "今回の案件企業（文明）と隣接文明が「共同リース」を申請してきた。二文明が協力すれば宇宙規模の大プロジェクトが実現するが、片方が信用不足で……【隣接文明リストを参照すること】",
+        "否決され消えたはずの文明が、全く別の惑星系で「再建」されており、当時の担当AIに謝罪と感謝を伝えにきた。承認より否決が文明を救っていたことが判明する。【隣接文明リストを参照すること】",
+        "今週の審査対象と隣接文明が水面下で「文明間貿易協定」を締結しようとしていることを軍師が察知。今回の審査結果が宇宙規模の経済圏に波及する。【隣接文明リストを参照すること】",
+        "異種文明との「文化交流プログラム」として申請されてきた案件が、実は高度な知性体との初接触（ファーストコンタクト）だったと判明。審査票の欄外に宇宙語が書いてある。",
+        "複数の文明が同時に申請してきて「どの文明を優先するか」という選択を迫られる。エージェントたちはそれぞれ別の文明を推し、宇宙規模の派閥争いに発展する。【隣接文明リストを参照すること】",
+        "老齢の文明が「技術継承のため若い文明に設備を譲渡したい」と三者間リース申請を持ち込む。承認すれば文明の世代交代が起きるが、リスクは誰が負うのか。【隣接文明リストを参照すること】",
     ]
     story_arcs = [
         "【構成：大逆転劇】最初は絶望的な状態（否決寸前）から、誰かの一言で一気に好転し、カタルシスのあるハッピーエンドへ。",
@@ -378,6 +387,18 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
         killer_phrases = []
 
     neta_lines.append(f"\n【🚨ランダム・カオス・インジェクション（今週の強制トラブル）】\n{chosen_chaos}")
+
+    # 文明交流系イベントの場合、直近審査データから隣接文明候補を注入
+    if "隣接文明" in chosen_chaos and len(screenings) >= 2:
+        neighbor_civs = screenings[1:]
+        neighbor_lines = ["【🌌隣接文明リスト（交流・対立する文明として物語に登場させること）】"]
+        for c in neighbor_civs:
+            neighbor_lines.append(
+                f"  ・{c['company']}（{c['industry']}、スコア{c['score']}点、格付{c['grade']}）"
+            )
+        neighbor_lines.append("上記の各文明についても【文明記録メモ】を必ず出力すること。")
+        neta_lines.append("\n".join(neighbor_lines))
+
     neta_lines.append(f"\n【📖指定ストーリー構成】\n{chosen_arc}")
 
     if killer_phrases:
@@ -496,31 +517,36 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
 
 
 def _parse_and_save_civ_record(body: str, episode_no: int) -> None:
-    """小説本文から【文明記録メモ】を抽出してレジストリに保存する。"""
+    """小説本文から【文明記録メモ】を抽出してレジストリに保存する。複数文明に対応。"""
     if "【文明記録メモ】" not in body:
         return
-    try:
-        memo_block = body.split("【文明記録メモ】", 1)[1]
-        lines = memo_block.strip().split("\n")
-        rec = {}
-        for line in lines:
-            if ":" in line:
-                k, v = line.split(":", 1)
-                rec[k.strip()] = v.strip()
-        if "civ_id" in rec and "company_name" in rec:
-            register_civilization(
-                civ_id=rec.get("civ_id", ""),
-                company_name=rec.get("company_name", ""),
-                industry=rec.get("industry", ""),
-                civ_stage=rec.get("civ_stage", ""),
-                civ_era=rec.get("civ_era", ""),
-                episode_no=episode_no,
-                event_type=rec.get("event_type", "initial_contact"),
-                description=rec.get("description", ""),
-                result=rec.get("result", ""),
-            )
-    except Exception:
-        pass
+    # 全ての【文明記録メモ】ブロックを抽出（複数文明対応）
+    blocks = body.split("【文明記録メモ】")[1:]
+    for block in blocks:
+        try:
+            lines = block.strip().split("\n")
+            rec = {}
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    break  # 空行でこのブロック終了
+                if ":" in line:
+                    k, v = line.split(":", 1)
+                    rec[k.strip()] = v.strip()
+            if "civ_id" in rec and "company_name" in rec:
+                register_civilization(
+                    civ_id=rec.get("civ_id", ""),
+                    company_name=rec.get("company_name", ""),
+                    industry=rec.get("industry", ""),
+                    civ_stage=rec.get("civ_stage", ""),
+                    civ_era=rec.get("civ_era", ""),
+                    episode_no=episode_no,
+                    event_type=rec.get("event_type", "initial_contact"),
+                    description=rec.get("description", ""),
+                    result=rec.get("result", ""),
+                )
+        except Exception:
+            pass
 
 
 def _fallback_novel(episode_no: int, week_label: str) -> dict:
