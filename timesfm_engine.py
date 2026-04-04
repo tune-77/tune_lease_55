@@ -2,8 +2,8 @@
 """
 timesfm_engine.py
 =================
-TimesFM（Google Research 時系列 Foundation Model）ラッパー。
-未インストール時は GBM（幾何ブラウン運動）にフォールバックして動作継続する。
+時系列予測エンジン。
+Gemini API で数値予測を行い、失敗時は GBM（幾何ブラウン運動）にフォールバック。
 
 ユースケース:
   1. forecast_financial_paths()  — モンテカルロパス生成（montecarlo.py の _gbm_paths 代替）
@@ -13,11 +13,14 @@ TimesFM（Google Research 時系列 Foundation Model）ラッパー。
 """
 from __future__ import annotations
 
+import json
 import math
+import os
+import re
 import numpy as np
 from typing import Optional
 
-# ── TimesFM インポート試行 ────────────────────────────────────────────────────
+# ── TimesFM インポート試行（互換性維持のため残す）────────────────────────────
 try:
     import timesfm
     _TFM = timesfm.TimesFm(
@@ -34,6 +37,25 @@ try:
 except Exception:
     _TFM = None
     TIMESFM_AVAILABLE = False
+
+
+def _get_gemini_api_key() -> str:
+    """Gemini APIキーを取得する（環境変数 → secrets.toml → session_state の順）。"""
+    key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if key:
+        return key
+    try:
+        import streamlit as st
+        key = (st.session_state.get("gemini_api_key") or "").strip()
+        if key:
+            return key
+        try:
+            key = (st.secrets.get("GEMINI_API_KEY") or "").strip()
+        except Exception:
+            pass
+    except Exception:
+        pass
+    return key
 
 
 # ── 内部 GBM ヘルパー ─────────────────────────────────────────────────────────
@@ -59,15 +81,77 @@ def _gbm_paths(
     return paths
 
 
+def _gemini_point_forecast(
+    context: list[float],
+    horizon: int,
+    model: str = "gemini-2.0-flash",
+) -> np.ndarray:
+    """
+    Gemini API で時系列の点予測を行う。
+    過去の数値列を渡し、次の horizon ステップの予測値を JSON 配列で受け取る。
+    返値: shape (horizon,) の予測値配列。失敗時は空配列。
+    """
+    api_key = _get_gemini_api_key()
+    if not api_key or not context:
+        return np.array([])
+    try:
+        import google.generativeai as genai
+    except ImportError:
+        return np.array([])
+
+    values_str = ", ".join(f"{v:.4g}" for v in context)
+    prompt = (
+        f"以下は時系列データの過去{len(context)}点の数値です（月次）:\n"
+        f"[{values_str}]\n\n"
+        f"この数値列のトレンド・パターンを分析し、次の{horizon}ステップの予測値を出力してください。\n"
+        f"出力は必ず以下のJSON形式のみとし、説明文・コードブロック・マークダウンは不要です:\n"
+        f'{{"forecast": [値1, 値2, ..., 値{horizon}]}}'
+    )
+    try:
+        genai.configure(api_key=api_key)
+        gm = genai.GenerativeModel(model)
+        config = genai.types.GenerationConfig(
+            temperature=0.1,  # 数値予測は低温で安定させる
+            max_output_tokens=512,
+        )
+        response = gm.generate_content(prompt, generation_config=config)
+        text = ""
+        try:
+            text = response.text or ""
+        except Exception:
+            if getattr(response, "candidates", None):
+                for c in response.candidates:
+                    if getattr(c, "content", None):
+                        for p in getattr(c.content, "parts", []):
+                            text += getattr(p, "text", "")
+
+        # JSON 抽出（コードブロックが含まれていても対応）
+        text = text.strip()
+        m = re.search(r'\{.*?"forecast"\s*:\s*\[([^\]]+)\]', text, re.DOTALL)
+        if not m:
+            return np.array([])
+        nums = [float(x.strip()) for x in m.group(1).split(",") if x.strip()]
+        if len(nums) < horizon:
+            return np.array([])
+        return np.array(nums[:horizon])
+    except Exception:
+        return np.array([])
+
+
 def _timesfm_point_forecast(
     context: list[float],
     horizon: int,
 ) -> np.ndarray:
     """
-    TimesFM で中央値予測を返す。
-    返値: shape (horizon,) の予測値配列
-    エラー時は空配列を返す。
+    予測エンジン。Gemini API を優先し、失敗時は TimesFM（インストール済みの場合）を試みる。
+    返値: shape (horizon,) の予測値配列。失敗時は空配列。
     """
+    # 1. Gemini API で予測
+    result = _gemini_point_forecast(context, horizon)
+    if len(result) == horizon:
+        return result
+
+    # 2. TimesFM フォールバック（インストール済みの場合のみ）
     if _TFM is None or not context:
         return np.array([])
     try:
@@ -81,7 +165,6 @@ def _timesfm_point_forecast(
             value_name="y",
             num_jobs=1,
         )
-        # 中央値列 (timesfm-1.0 では "timesfm" 列)
         col = [c for c in forecast_df.columns if "timesfm" in c.lower()]
         if col:
             return forecast_df[col[0]].values[:horizon]
