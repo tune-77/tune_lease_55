@@ -114,9 +114,14 @@ reads_from: [読んだ上流レポートのパス]
 
 `.claude/commands/` に以下のスラッシュコマンドが定義されている：
 
-| コマンド | 用途 | 所要時間 |
-|---------|-----|---------|
-| `/quick-score` | 物件IDと業種からクイックスコアを計算 | 10秒 |
-| `/check-health` | 全依存サービス（Gemini/Ollama/Slack/SQLite）の接続確認 | 30〜120秒 |
-| `/validate-rules` | ウェイト合計・グレード閾値の整合性チェック | 10〜数分 |
-| `/generate-report` | 審査レポートの生成・改善提案 | 数秒〜数分 |
+| コマンド | 用途 | 対応エージェント | 所要時間 |
+|---------|-----|----------------|---------|
+| `/quick-score` | 物件IDと業種からクイックスコアを計算 | — | 10秒 |
+| `/check-health` | 全依存サービス（Gemini/Ollama/Slack/SQLite）の接続確認 | `api-health-checker` | 30〜120秒 |
+| `/validate-rules` | ウェイト合計・グレード閾値の整合性チェック | `rule-validator` | 10〜数分 |
+| `/generate-report` | 審査レポートの生成・改善提案 | `report-stylist` | 数秒〜数分 |
+| `/audit-scores` | スコアリング異常・乖離の監査 | `scoring-auditor` | 30秒〜数分 |
+| `/check-data` | DBデータ品質チェック（件数・異常値） | `data-quality-checker` | 10秒〜数分 |
+| `/run-tests` | ユニットテスト実行 | `test-runner` | 30〜60秒 |
+| `/build-check` | 全モジュールのインポート・依存パッケージ確認 | `build-runner` | 15秒 |
+| `/analyze-logs` | ログファイルのエラー・警告抽出 | `log-file-analyzer` | 10〜30秒 |
