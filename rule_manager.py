@@ -13,7 +13,7 @@ def load_business_rules() -> dict:
         # デフォルトのルール構造
         return {
             "thresholds": {
-                "approval": 0.70,
+                "approval": 0.71,  # scoring_core.APPROVAL_LINE=71 と統一
                 "review": 0.40
             },
             "score_modifiers": {

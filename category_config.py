@@ -226,3 +226,11 @@ SCORE_GRADES = [
     {"min": 50, "label": "C", "text": "要慎重検討",  "color": "#f97316"},
     {"min":  0, "label": "D", "text": "原則否決",    "color": "#ef4444"},
 ]
+
+
+def get_grade(score: float) -> dict:
+    """スコアからグレード dict を返す（asset_scorer / total_scorer 共通）。"""
+    for g in SCORE_GRADES:
+        if score >= g["min"]:
+            return g
+    return SCORE_GRADES[-1]

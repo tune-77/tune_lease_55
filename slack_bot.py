@@ -62,6 +62,12 @@ logger = logging.getLogger(__name__)
 _ALLOWED_CLAUDE_USERS: set[str] = {
     u.strip() for u in os.environ.get("SLACK_ALLOWED_USERS", "").split(",") if u.strip()
 }
+if not _ALLOWED_CLAUDE_USERS:
+    logger.warning(
+        "⚠️ SLACK_ALLOWED_USERS が未設定です。"
+        " `claude:` コマンドは全ユーザーに対して無効になります。"
+        " 有効化するには環境変数 SLACK_ALLOWED_USERS にユーザーIDをカンマ区切りで設定してください。"
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -308,8 +314,8 @@ def handle_message(client: WebClient, channel: str, text: str, user: str) -> Non
         if user not in _ALLOWED_CLAUDE_USERS:
             client.chat_postMessage(channel=channel, text="⚠️ このコマンドの実行権限がありません。")
             return
-        # `--` で始まるトークンはCLIフラグインジェクション防止のため除去
-        sanitized_tokens = [t for t in argument.split() if not t.startswith("--")]
+        # CLIフラグインジェクション防止: `-` で始まるトークン（短・長フラグ両方）を除去
+        sanitized_tokens = [t for t in argument.split() if not t.startswith("-")]
         sanitized_argument = " ".join(sanitized_tokens)
         if not sanitized_argument.strip():
             client.chat_postMessage(channel=channel, text="⚠️ 有効なプロンプトを入力してください。")
@@ -431,9 +437,10 @@ def poll_loop(client: WebClient, bot_user_id: str) -> None:
                     try:
                         handle_message(client, ch_id, text, user)
                     except Exception as e:
-                        logger.error(f"メッセージ処理エラー: {e}")
+                        logger.error(f"メッセージ処理エラー: {e}", exc_info=True)
                         try:
-                            client.chat_postMessage(channel=ch_id, text=f"⚠️ エラー: {e}")
+                            # 詳細なエラー情報はログのみに残し、Slackには汎用メッセージを送信
+                            client.chat_postMessage(channel=ch_id, text="⚠️ 処理中にエラーが発生しました。管理者にお問い合わせください。")
                         except Exception:
                             pass
 
