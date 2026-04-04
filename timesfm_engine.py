@@ -143,34 +143,37 @@ def _timesfm_point_forecast(
     horizon: int,
 ) -> np.ndarray:
     """
-    予測エンジン。Gemini API を優先し、失敗時は TimesFM（インストール済みの場合）を試みる。
+    予測エンジン。優先順位:
+      1. TimesFM（インストール済みの場合）— 最高精度
+      2. Gemini API — ローカルで TimesFM が重い場合の代替
+      3. 空配列（呼び出し元が GBM にフォールバック）
     返値: shape (horizon,) の予測値配列。失敗時は空配列。
     """
-    # 1. Gemini API で予測
+    # 1. TimesFM（インストール済みの場合のみ）
+    if _TFM is not None and context:
+        try:
+            import pandas as pd
+            df = pd.DataFrame({"unique_id": ["x"] * len(context),
+                               "ds": range(len(context)),
+                               "y": context})
+            forecast_df, _ = _TFM.forecast_on_df(
+                inputs=df,
+                freq="M",
+                value_name="y",
+                num_jobs=1,
+            )
+            col = [c for c in forecast_df.columns if "timesfm" in c.lower()]
+            if col:
+                return forecast_df[col[0]].values[:horizon]
+        except Exception:
+            pass
+
+    # 2. Gemini API（TimesFM が使えない場合の代替）
     result = _gemini_point_forecast(context, horizon)
     if len(result) == horizon:
         return result
 
-    # 2. TimesFM フォールバック（インストール済みの場合のみ）
-    if _TFM is None or not context:
-        return np.array([])
-    try:
-        import pandas as pd
-        df = pd.DataFrame({"unique_id": ["x"] * len(context),
-                           "ds": range(len(context)),
-                           "y": context})
-        forecast_df, _ = _TFM.forecast_on_df(
-            inputs=df,
-            freq="M",
-            value_name="y",
-            num_jobs=1,
-        )
-        col = [c for c in forecast_df.columns if "timesfm" in c.lower()]
-        if col:
-            return forecast_df[col[0]].values[:horizon]
-        return np.array([])
-    except Exception:
-        return np.array([])
+    return np.array([])
 
 
 # ── ユースケース 1: モンテカルロパス生成 ──────────────────────────────────────
