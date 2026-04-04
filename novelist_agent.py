@@ -371,12 +371,21 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
     if plot_data and not plot_data.get("error"):
         chosen_chaos = f"【ネットの話題連動プロット：{plot_data['title']}】\n{plot_data['plot_text']}"
         chosen_arc   = plot_data.get("story_arc", random.choice(story_arcs))
+        killer_phrases = plot_data.get("killer_phrases", [])
     else:
         chosen_chaos = random.choice(chaos_events)
         chosen_arc   = random.choice(story_arcs)
+        killer_phrases = []
 
     neta_lines.append(f"\n【🚨ランダム・カオス・インジェクション（今週の強制トラブル）】\n{chosen_chaos}")
     neta_lines.append(f"\n【📖指定ストーリー構成】\n{chosen_arc}")
+
+    if killer_phrases:
+        phrases_text = "\n".join(
+            f"・「{p['text']}」（根拠：{p['reason']}）" if isinstance(p, dict) else f"・「{p}」"
+            for p in killer_phrases
+        )
+        neta_lines.append(f"\n【💬脚本家からの審査キラーフレーズ（物語の台詞や展開に活かせ）】\n{phrases_text}")
 
     prompt = "\n".join(neta_lines)
 
