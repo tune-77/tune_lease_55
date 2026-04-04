@@ -1701,6 +1701,11 @@ elif mode == "📊 ビジュアルインサイト":
     from components.visual_insights import render_visual_insights
     render_visual_insights()
 
+# ── 📊 3期財務分析 ────────────────────────────────────────────────────────────
+elif mode == "📊 3期財務分析":
+    from components.financial_analysis import render_financial_analysis
+    render_financial_analysis()
+
 # ── 📈 TimesFM 時系列予測 ──────────────────────────────────────────────────────
 elif mode == "📈 TimesFM 時系列予測":
     from components.timeseries_forecast_view import render_timeseries_forecast
