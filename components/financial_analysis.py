@@ -199,46 +199,73 @@ def _build_metrics_chart(df_metrics: pd.DataFrame) -> go.Figure:
     return fig
 
 
-# ── Ollama 審査コメント ────────────────────────────────────────────────────────
+# ── Gemini 審査コメント ────────────────────────────────────────────────────────
 
-def _call_ollama(prompt: str, timeout: int = 60) -> str:
+def _get_gemini_api_key() -> str:
     """
-    Ollama ローカルLLMにプロンプトを送信して審査コメントを取得する。
-    ai_chat.py の _ollama_chat_http と同じ HTTP 接続パターンを使用。
+    Gemini APIキーを優先順位に従って取得する。
+    ai_chat.py と同じ取得ロジック。
+
+    優先順位:
+        1. 環境変数 GEMINI_API_KEY
+        2. .streamlit/secrets.toml の GEMINI_API_KEY
+        3. st.session_state["fin_gemini_api_key"]（手動入力済み）
+
+    Returns:
+        APIキー文字列。未設定の場合は空文字列。
+    """
+    # 1. 環境変数
+    key = os.environ.get("GEMINI_API_KEY", "")
+    if key:
+        return key
+    # 2. secrets.toml
+    try:
+        key = st.secrets.get("GEMINI_API_KEY", "")
+        if key:
+            return key
+    except Exception:
+        pass
+    # 3. セッション（手動入力済み）
+    return st.session_state.get("fin_gemini_api_key", "")
+
+
+def _call_gemini(prompt: str, api_key: str, timeout: int = 90) -> str:
+    """
+    Gemini API にプロンプトを送信して審査コメントを取得する。
+    ai_chat.py の _gemini_chat と同じパターンを使用。
 
     Args:
         prompt:  送信するプロンプト文字列
+        api_key: Gemini APIキー
         timeout: タイムアウト秒数
 
     Returns:
-        LLM の回答テキスト。エラー時は空文字列。
+        LLM の回答テキスト。エラー時はエラーメッセージ文字列。
     """
-    import requests  # type: ignore
-
-    base  = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
-    model = os.environ.get("OLLAMA_MODEL", "lease-anna")
-    url   = f"{base}/api/chat"
-    payload = {
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "stream": False,
-    }
     try:
-        resp = requests.post(url, json=payload, timeout=timeout)
-        if resp.status_code == 404:
-            return f"[Ollama] モデル '{model}' が見つかりません。`ollama pull {model}` を実行してください。"
-        resp.raise_for_status()
-        data = resp.json()
-        return data.get("message", {}).get("content", "")
-    except requests.exceptions.ConnectionError:
-        return "[Ollama] 接続できませんでした。Ollama が起動しているか確認してください。"
-    except requests.exceptions.Timeout:
-        return "[Ollama] タイムアウトしました。"
+        import google.generativeai as genai  # type: ignore
+    except ImportError:
+        return "[Gemini] google-generativeai がインストールされていません。`pip install google-generativeai` を実行してください。"
+
+    if not api_key:
+        return "[Gemini] APIキーが設定されていません。"
+
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(
+            os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+        )
+        response = model.generate_content(
+            prompt,
+            generation_config={"max_output_tokens": 1024},
+            request_options={"timeout": timeout},
+        )
+        return response.text
     except Exception as e:
-        return f"[Ollama] エラー: {e}"
+        return f"[Gemini] エラー: {e}"
 
 
-def _build_ollama_prompt(
+def _build_gemini_prompt(
     df_input: pd.DataFrame,
     api_resp: dict,
     industry: str,
@@ -326,7 +353,7 @@ def render_financial_analysis() -> None:
     st.title("📊 3期財務分析 — TimesFM リース審査支援")
     st.caption(
         "3期分の財務データを入力し、業種別季節性を加味した月次補完と "
-        "TimesFM による12ヶ月予測・Ollama 審査コメントを生成します。"
+        "TimesFM による12ヶ月予測・Gemini 審査コメントを生成します。"
     )
 
     # ── ① データ入力フォーム ───────────────────────────────────────────────
@@ -461,24 +488,42 @@ def render_financial_analysis() -> None:
             fig = _build_forecast_chart(api_resp, hist_key, fore_key, label, color)
             st.plotly_chart(fig, use_container_width=True)
 
-        # ── ④ Ollama 審査コメント ──────────────────────────────────────────
+        # ── ④ Gemini 審査コメント ──────────────────────────────────────────
         st.divider()
-        st.subheader("④ Ollama 審査コメント（AI自動生成）")
+        st.subheader("④ Gemini 審査コメント（AI自動生成）")
         st.caption(
-            "Ollama ローカルLLMが予測値を踏まえた3行の審査コメントを生成します。"
-            f"　接続先: `{os.environ.get('OLLAMA_HOST', 'http://localhost:11434')}`"
-            f"　モデル: `{os.environ.get('OLLAMA_MODEL', 'lease-anna')}`"
+            "Gemini APIが予測値を踏まえた3行の審査コメントを生成します。"
+            f"　使用モデル: `{os.environ.get('GEMINI_MODEL', 'gemini-2.0-flash')}`"
         )
 
-        if st.button("🤖 審査コメントを生成", key="gen_comment_btn"):
-            prompt = _build_ollama_prompt(df_input, api_resp, industry)
-            with st.spinner("Ollama でコメント生成中..."):
-                comment = _call_ollama(prompt)
-            st.session_state["fin_ollama_comment"] = comment
+        # APIキー取得（環境変数 / secrets.toml → なければ手動入力）
+        api_key = _get_gemini_api_key()
+        if not api_key:
+            api_key_input = st.text_input(
+                "Gemini API Key",
+                type="password",
+                placeholder="AIzaSy...",
+                key="fin_gemini_api_key_input",
+                help="環境変数 GEMINI_API_KEY または .streamlit/secrets.toml でも設定できます",
+            )
+            if api_key_input:
+                st.session_state["fin_gemini_api_key"] = api_key_input
+                api_key = api_key_input
+        else:
+            st.caption("✅ Gemini APIキーを検出済み")
 
-        if "fin_ollama_comment" in st.session_state:
-            comment = st.session_state["fin_ollama_comment"]
-            if comment.startswith("[Ollama]"):
+        if st.button("🤖 審査コメントを生成", key="gen_comment_btn"):
+            if not api_key:
+                st.warning("Gemini APIキーを入力してください。")
+            else:
+                prompt = _build_gemini_prompt(df_input, api_resp, industry)
+                with st.spinner("Gemini で審査コメント生成中..."):
+                    comment = _call_gemini(prompt, api_key)
+                st.session_state["fin_gemini_comment"] = comment
+
+        if "fin_gemini_comment" in st.session_state:
+            comment = st.session_state["fin_gemini_comment"]
+            if comment.startswith("[Gemini]"):
                 # エラーメッセージ
                 st.warning(comment)
             else:
