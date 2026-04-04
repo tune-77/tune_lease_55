@@ -232,7 +232,7 @@ def _get_gemini_api_key() -> str:
 def _call_gemini(prompt: str, api_key: str, timeout: int = 90) -> str:
     """
     Gemini API にプロンプトを送信して審査コメントを取得する。
-    ai_chat.py の _gemini_chat と同じパターンを使用。
+    google.genai（新SDK）を使用。
 
     Args:
         prompt:  送信するプロンプト文字列
@@ -243,22 +243,21 @@ def _call_gemini(prompt: str, api_key: str, timeout: int = 90) -> str:
         LLM の回答テキスト。エラー時はエラーメッセージ文字列。
     """
     try:
-        import google.generativeai as genai  # type: ignore
-    except ImportError:
-        return "[Gemini] google-generativeai がインストールされていません。`pip install google-generativeai` を実行してください。"
+        import google.genai as genai  # type: ignore
+        from google.genai import types  # type: ignore
+    except Exception:
+        return "[Gemini] google-genai がインストールされていません。`pip install google-genai` を実行してください。"
 
     if not api_key:
         return "[Gemini] APIキーが設定されていません。"
 
     try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(
-            os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
-        )
-        response = model.generate_content(
-            prompt,
-            generation_config={"max_output_tokens": 1024},
-            request_options={"timeout": timeout},
+        client = genai.Client(api_key=api_key)
+        model_name = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config=types.GenerateContentConfig(max_output_tokens=1024),
         )
         return response.text
     except Exception as e:
