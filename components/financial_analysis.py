@@ -22,8 +22,17 @@ import plotly.graph_objects as go
 import streamlit as st
 
 # ── 定数 ─────────────────────────────────────────────────────────────────────
-# バックエンド API の接続先
-BACKEND_URL = os.environ.get("FINANCIAL_BACKEND_URL", "http://localhost:8000")
+# バックエンド API のデフォルト接続先（UI で上書き可能）
+_DEFAULT_BACKEND_URL = os.environ.get("FINANCIAL_BACKEND_URL", "http://localhost:8000")
+
+
+def _get_backend_url() -> str:
+    """
+    バックエンド URL をセッション state から取得する。
+    未設定の場合は環境変数またはデフォルト（localhost:8000）を返す。
+    UI の「⚙️ バックエンド設定」で Colab URL に上書きできる。
+    """
+    return st.session_state.get("fin_backend_url", _DEFAULT_BACKEND_URL)
 
 # 業種選択肢（backend.py の SEASONAL_INDICES と揃える）
 INDUSTRY_OPTIONS = [
@@ -355,6 +364,37 @@ def render_financial_analysis() -> None:
         "TimesFM による12ヶ月予測・Gemini 審査コメントを生成します。"
     )
 
+    # ── ⚙️ バックエンド設定（Colab / ローカル切り替え） ───────────────────
+    with st.expander("⚙️ バックエンド設定（Google Colab 連携はここで設定）", expanded=False):
+        st.markdown(
+            "**ローカル起動の場合** はデフォルト（`http://localhost:8000`）のまま使用。\n\n"
+            "**Google Colab で TimesFM を動かす場合** は `colab_timesfm_backend.ipynb` を実行し、"
+            "表示された ngrok URL を以下に入力してください。"
+        )
+        url_input = st.text_input(
+            "バックエンド URL",
+            value=st.session_state.get("fin_backend_url", _DEFAULT_BACKEND_URL),
+            placeholder="http://localhost:8000 または https://xxxx.ngrok.io",
+            key="fin_backend_url_input",
+        )
+        col_set, col_reset, col_status = st.columns([2, 1, 3])
+        if col_set.button("💾 URL を設定", key="set_backend_url"):
+            st.session_state["fin_backend_url"] = url_input.rstrip("/")
+            st.success(f"設定しました: {url_input.rstrip('/')}")
+        if col_reset.button("↩️ リセット", key="reset_backend_url"):
+            st.session_state.pop("fin_backend_url", None)
+            st.info(f"デフォルトに戻しました: {_DEFAULT_BACKEND_URL}")
+        # 現在のバックエンドに疎通確認
+        if st.button("🔍 接続確認", key="check_backend_health"):
+            try:
+                r = httpx.get(f"{_get_backend_url()}/health", timeout=10.0)
+                d = r.json()
+                tfm = "✅ TimesFM" if d.get("timesfm") else "⚠️ GBM（TimesFM なし）"
+                loc = "☁️ Colab" if d.get("backend") == "colab" else "💻 ローカル"
+                st.success(f"接続OK — {loc} / {tfm}")
+            except Exception as e:
+                st.error(f"接続失敗: {e}")
+
     # ── ① データ入力フォーム ───────────────────────────────────────────────
     st.subheader("① 財務データ入力")
     st.info(
@@ -453,7 +493,7 @@ def render_financial_analysis() -> None:
         try:
             with st.spinner("TimesFM で予測中...（初回はモデル読み込みに時間がかかります）"):
                 resp = httpx.post(
-                    f"{BACKEND_URL}/forecast",
+                    f"{_get_backend_url()}/forecast",
                     json=payload,
                     timeout=120.0,
                 )
