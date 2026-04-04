@@ -430,8 +430,11 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
             return _fallback_novel(episode_no, week_label)
 
         _engine, _model, api_key, gemini_model = _get_ai_settings()
-        # 小説生成は長文出力のため Gemini を優先使用
-        engine = "gemini"
+        # 小説生成は長文出力のため Gemini を優先使用。ただし API キー未設定時はユーザー設定エンジンにフォールバック
+        if api_key:
+            engine = "gemini"
+        else:
+            engine = _engine
         messages = [
             {"role": "system", "content": get_novel_system_prompt(genre)},
             {"role": "user",   "content": prompt},
@@ -439,7 +442,8 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
         raw = _chat_for_thread(engine, _model, messages,
                                timeout_seconds=180,
                                api_key=api_key,
-                               gemini_model=gemini_model)
+                               gemini_model=gemini_model,
+                               max_output_tokens=8192)
         text = (raw.get("message") or {}).get("content", "") or ""
 
         # エラー応答を検知して保存を防ぐ
@@ -448,6 +452,9 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
             "Ollama がタイムアウト",
             "Gemini が応答しませんでした",
             "Gemini API エラー",
+            "Gemini APIキーが設定されていません",
+            "Gemini から空の応答か",
+            "Gemini を使うには",
             "AnythingLLM が応答しませんでした",
             "[小説生成エラー",
         )
@@ -550,10 +557,19 @@ def _parse_and_save_civ_record(body: str, episode_no: int) -> None:
 
 
 def _fallback_novel(episode_no: int, week_label: str) -> dict:
-    """AI未設定時・エラー時の代替処理。DBには保存しない。"""
+    """AI未設定時・エラー時の代替処理。DBに保存してから返す。"""
+    import datetime as _dt
     title = "通信エラー障害発生"
-    body  = "現在、LLMへの接続に失敗しているか、設定が未完了のため小説の生成ができませんでした。\n(※固定のサンプル小説が保存され続ける不具合は修正されました)"
-    
+    body  = "現在、LLMへの接続に失敗しているか、設定が未完了のため小説の生成ができませんでした。\nサイドバーでAIエンジンの設定を確認してください。"
+    now = _dt.datetime.now()
+    init_novel_db()
+    conn = sqlite3.connect(_NOVEL_DB)
+    conn.execute(
+        "INSERT INTO novels (ts, week_label, title, body, episode_no) VALUES (?,?,?,?,?)",
+        (now.isoformat(), week_label, title, body, episode_no),
+    )
+    conn.commit()
+    conn.close()
     return {"title": title, "body": body, "week_label": week_label, "episode_no": episode_no}
 
 
