@@ -25,12 +25,85 @@ import streamlit as st
 # バックエンド API のデフォルト接続先（UI で上書き可能）
 _DEFAULT_BACKEND_URL = os.environ.get("FINANCIAL_BACKEND_URL", "http://localhost:8000")
 
+# Google Drive 上の URL 中継ファイル名（Colab が書き込み、Streamlit が読む）
+_DRIVE_FILE_NAME = "colab_backend_url.json"
+
+# Mac の Google Drive for Desktop がマウントされる可能性のあるパス一覧
+_DRIVE_SEARCH_PATHS = [
+    # 新 Drive for Desktop（macOS 12.3以降）
+    os.path.expanduser("~/Library/CloudStorage"),
+    # 旧 Drive File Stream / Drive for Desktop（古いパス）
+    os.path.expanduser("~/Google Drive/マイドライブ"),
+    os.path.expanduser("~/Google Drive/My Drive"),
+    "/Volumes/GoogleDrive/マイドライブ",
+    "/Volumes/GoogleDrive/My Drive",
+    # Linux（テスト環境）
+    os.path.expanduser("~/drive/MyDrive"),
+]
+
+
+def _find_drive_url_file() -> "str | None":
+    """
+    Google Drive の中継ファイル（colab_backend_url.json）を探してパスを返す。
+    見つからない場合は None。
+
+    新 Drive for Desktop は ~/Library/CloudStorage/GoogleDrive-{email}/My Drive/
+    という形式のパスにマウントされるため glob で検索する。
+    """
+    import glob
+
+    candidates: list[str] = []
+
+    # 新 Drive for Desktop: GoogleDrive-xxx@gmail.com ディレクトリを glob
+    for base in [
+        os.path.expanduser("~/Library/CloudStorage/GoogleDrive-*/My Drive"),
+        os.path.expanduser("~/Library/CloudStorage/GoogleDrive-*/マイドライブ"),
+    ]:
+        candidates.extend(glob.glob(base))
+
+    # 旧パス・Linux パスを追加
+    candidates.extend(_DRIVE_SEARCH_PATHS)
+
+    for directory in candidates:
+        path = os.path.join(str(directory), _DRIVE_FILE_NAME)
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+def _load_colab_url_from_drive() -> "str | None":
+    """
+    Google Drive の中継ファイルから Colab の ngrok URL を読み込む。
+    ファイルが存在しない・パースできない場合は None を返す。
+    """
+    import json
+
+    path = _find_drive_url_file()
+    if not path:
+        return None
+    try:
+        data = json.loads(open(path, encoding="utf-8").read())
+        url = data.get("url", "").strip()
+        return url if url.startswith("http") else None
+    except Exception:
+        return None
+
+
+def _auto_sync_colab_url() -> None:
+    """
+    ページ表示のたびに Drive ファイルを確認し、Colab URL が更新されていれば
+    session_state に自動反映する。手動操作は一切不要。
+    """
+    url = _load_colab_url_from_drive()
+    if url and url != st.session_state.get("fin_backend_url"):
+        st.session_state["fin_backend_url"] = url
+        st.session_state["fin_backend_url_source"] = "colab_drive"  # 自動取得フラグ
+
 
 def _get_backend_url() -> str:
     """
-    バックエンド URL をセッション state から取得する。
-    未設定の場合は環境変数またはデフォルト（localhost:8000）を返す。
-    UI の「⚙️ バックエンド設定」で Colab URL に上書きできる。
+    バックエンド URL を返す。
+    Drive ファイルからの自動同期が済んでいればそれを、なければデフォルトを返す。
     """
     return st.session_state.get("fin_backend_url", _DEFAULT_BACKEND_URL)
 
@@ -358,38 +431,60 @@ def render_financial_analysis() -> None:
     """
     import httpx  # type: ignore
 
+    # ── Drive ファイルから Colab URL を自動同期（毎回ページ表示時に実行）──
+    _auto_sync_colab_url()
+
     st.title("📊 3期財務分析 — TimesFM リース審査支援")
+
+    # バックエンド接続状態をタイトル直下に常時表示
+    current_url = _get_backend_url()
+    source = st.session_state.get("fin_backend_url_source", "")
+    if source == "colab_drive":
+        st.success(f"☁️ **Colab バックエンドに自動接続中** — `{current_url}`")
+    elif current_url != _DEFAULT_BACKEND_URL:
+        st.info(f"🔗 バックエンド: `{current_url}`（手動設定）")
+    else:
+        st.caption(f"💻 バックエンド: `{current_url}`（ローカル）")
+
     st.caption(
         "3期分の財務データを入力し、業種別季節性を加味した月次補完と "
         "TimesFM による12ヶ月予測・Gemini 審査コメントを生成します。"
     )
 
-    # ── ⚙️ バックエンド設定（Colab / ローカル切り替え） ───────────────────
-    with st.expander("⚙️ バックエンド設定（Google Colab 連携はここで設定）", expanded=False):
-        st.markdown(
-            "**ローカル起動の場合** はデフォルト（`http://localhost:8000`）のまま使用。\n\n"
-            "**Google Colab で TimesFM を動かす場合** は `colab_timesfm_backend.ipynb` を実行し、"
-            "表示された ngrok URL を以下に入力してください。"
-        )
+    # ── ⚙️ バックエンド設定（手動変更・確認用） ───────────────────────────
+    with st.expander("⚙️ バックエンド設定", expanded=False):
+        drive_file = _find_drive_url_file()
+        if drive_file:
+            st.success(f"✅ Google Drive 中継ファイルを検出 — 自動同期が有効です\n`{drive_file}`")
+            st.caption("Colab の `colab_timesfm_backend.ipynb` を実行すると URL が自動更新されます。")
+        else:
+            st.warning(
+                "Google Drive の中継ファイルが見つかりません。\n"
+                "Google Drive for Desktop がインストールされていない場合、または "
+                "まだ Colab を実行していない場合は手動で URL を入力してください。"
+            )
+
+        st.divider()
         url_input = st.text_input(
-            "バックエンド URL",
-            value=st.session_state.get("fin_backend_url", _DEFAULT_BACKEND_URL),
+            "バックエンド URL（手動上書き）",
+            value=current_url,
             placeholder="http://localhost:8000 または https://xxxx.ngrok.io",
             key="fin_backend_url_input",
         )
-        col_set, col_reset, col_status = st.columns([2, 1, 3])
-        if col_set.button("💾 URL を設定", key="set_backend_url"):
+        col_set, col_reset, col_check = st.columns(3)
+        if col_set.button("💾 この URL を使用", key="set_backend_url"):
             st.session_state["fin_backend_url"] = url_input.rstrip("/")
-            st.success(f"設定しました: {url_input.rstrip('/')}")
-        if col_reset.button("↩️ リセット", key="reset_backend_url"):
+            st.session_state["fin_backend_url_source"] = "manual"
+            st.rerun()
+        if col_reset.button("↩️ ローカルに戻す", key="reset_backend_url"):
             st.session_state.pop("fin_backend_url", None)
-            st.info(f"デフォルトに戻しました: {_DEFAULT_BACKEND_URL}")
-        # 現在のバックエンドに疎通確認
-        if st.button("🔍 接続確認", key="check_backend_health"):
+            st.session_state.pop("fin_backend_url_source", None)
+            st.rerun()
+        if col_check.button("🔍 接続確認", key="check_backend_health"):
             try:
                 r = httpx.get(f"{_get_backend_url()}/health", timeout=10.0)
                 d = r.json()
-                tfm = "✅ TimesFM" if d.get("timesfm") else "⚠️ GBM（TimesFM なし）"
+                tfm = "✅ TimesFM" if d.get("timesfm") else "⚠️ GBM（フォールバック）"
                 loc = "☁️ Colab" if d.get("backend") == "colab" else "💻 ローカル"
                 st.success(f"接続OK — {loc} / {tfm}")
             except Exception as e:
