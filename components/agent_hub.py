@@ -1615,7 +1615,6 @@ def render_agent_hub() -> None:
         "📊 レポート生成",
         "📝 脚本家AI",
         "📖 文豪AI",
-        "🌍 文明年代記",
     ]
     
     # メインページ上部にナビゲーションを配置（確実に目に入るように）
@@ -1653,8 +1652,6 @@ def render_agent_hub() -> None:
         _render_scriptwriter_panel()
     elif "文豪AI" in choice:
         _render_novelist_panel()
-    elif "文明年代記" in choice:
-        _render_civilization_panel()
 
 
 
@@ -1766,10 +1763,13 @@ def _render_novelist_panel() -> None:
                 st.markdown(nov['body'])
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Agent 13 — 文明年代記
-# ══════════════════════════════════════════════════════════════════════════════
+# （文明年代記パネルは components/novel_simulation_view.py に統合済み）
 def _render_civilization_panel() -> None:
+    """後方互換のため残置。サイドバー「🌌 文明年代記」を使用してください。"""
+    st.info("🌌 文明年代記はサイドバーの「🌌 文明年代記」に統合されました。")
+
+# ─── 旧実装（削除済み）───────────────────────────────────────────────────────
+def _render_civilization_panel_DELETED() -> None:
     """🌍 文明年代記 — 小説に登場した文明の時系列追跡パネル"""
     st.subheader("🌍 文明年代記")
     st.caption(

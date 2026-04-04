@@ -690,6 +690,138 @@ def reset_civ_era(civ_id: str | None = None) -> int:
     return rows
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 文明年代期 哲学的自動生成
+# ══════════════════════════════════════════════════════════════════════════════
+
+_PHILOSOPHY_PREFIXES = [
+    "情報黎明", "鋼鉄帝国", "資本主義", "量子制御", "生態系崩壊後",
+    "大移住", "遺伝子操作", "太陽圏拡張", "第三銀河暦", "デジタル遷移",
+    "熱力学的終焉前", "ポスト産業", "亜光速", "記憶溶解", "意識分散",
+]
+_PHILOSOPHY_SUFFIXES = [
+    "前夜", "黄昏", "絶頂", "廃墟から", "夜明け", "収束点",
+    "臨界期", "過渡の刻", "余韻", "静寂の中", "の彼方",
+]
+_INDUSTRY_THEMES: dict[str, list[str]] = {
+    "建設": ["都市造営", "構造物崇拝", "基盤構築"],
+    "飲食": ["大餐文化", "食の儀礼", "滋養の秘術"],
+    "IT": ["計算機文明", "情報神殿", "バイト神話"],
+    "情報": ["データ統治", "符号の帝国", "接続文明"],
+    "医療": ["生命操作", "肉体改造", "延命礼賛"],
+    "運輸": ["物流帝国", "移動崇拝", "速度の神"],
+    "製造": ["機械文明", "量産神話", "精密の道"],
+    "金融": ["資本統治", "数値支配", "利子の鎖"],
+    "農業": ["土着社会", "大地信仰", "収穫の輪"],
+    "不動産": ["領土拡張", "土地の神", "空間支配"],
+    "教育": ["知識伝承", "啓蒙王国", "学の殿堂"],
+    "エネルギー": ["熱力学覇権", "焔の帝国", "動力崇拝"],
+}
+_STATUS_FLAVOR: dict[str, str] = {
+    "active":    "繁栄期",
+    "collapsed": "崩壊後の静寂",
+    "ascended":  "昇華の彼方",
+    "dormant":   "休眠の間",
+}
+
+
+def _industry_theme(industry: str) -> str:
+    """業種文字列から最も近いテーマ語を返す。"""
+    import random
+    for key, themes in _INDUSTRY_THEMES.items():
+        if key in (industry or ""):
+            return random.choice(themes)
+    return random.choice(["未知の産業", "謎の交易", "秘密結社的事業"])
+
+
+def _generate_civ_era_local(civ: dict) -> str:
+    """ローカルフォールバック：哲学的なランダム era 名を生成する。"""
+    import random
+    prefix = random.choice(_PHILOSOPHY_PREFIXES)
+    suffix = random.choice(_PHILOSOPHY_SUFFIXES)
+    theme  = _industry_theme(civ.get("industry", ""))
+    status = _STATUS_FLAVOR.get(civ.get("status", "active"), "")
+    patterns = [
+        f"{prefix}の{theme}時代・{suffix}",
+        f"{theme}全盛{suffix} / {prefix}暦",
+        f"第{random.randint(2,9)}次{theme}期 — {suffix}",
+        f"{prefix}・{theme}交差点",
+    ]
+    era = random.choice(patterns)
+    if status:
+        era = f"{era}（{status}）"
+    return era
+
+
+def generate_civ_era_philosophical(civ: dict) -> str:
+    """文明の civ_era を哲学的に生成する。
+    Gemini API が利用可能な場合は AI 生成を試み、失敗時はローカルフォールバック。
+
+    文明とは情報と秩序の境界で生まれる一時的な構造体である——という信念のもと、
+    各文明（企業）固有の時代の名を創造する。
+    """
+    try:
+        from ai_chat import (
+            _chat_for_thread, _get_gemini_key_from_secrets,
+            GEMINI_API_KEY_ENV, GEMINI_MODEL_DEFAULT,
+        )
+        api_key = GEMINI_API_KEY_ENV or _get_gemini_key_from_secrets()
+        if not api_key:
+            return _generate_civ_era_local(civ)
+
+        prompt = (
+            "あなたは50億年を生き無数の文明を見守った守護者AI「アルカイア」。\n"
+            "「文明とは情報と秩序の境界で生まれる一時的な構造体である」という信念のもと、\n"
+            "以下の文明（企業）に相応しい「時代の名」を1行だけ生成せよ。\n\n"
+            f"企業名: {civ.get('company_name', '不明')}\n"
+            f"業種: {civ.get('industry', '不明')}\n"
+            f"現在の状態: {civ.get('status', 'active')}\n"
+            f"ステージ: {civ.get('civ_stage', '不明')}\n\n"
+            "形式: 「○○時代の△△期」「第N銀河暦・□□節」などSF的かつ哲学的な名称。\n"
+            "30文字以内の日本語のみ。説明不要、名称だけ返せ。"
+        )
+        messages = [{"role": "user", "content": prompt}]
+        result = _chat_for_thread(
+            engine="gemini",
+            model=GEMINI_MODEL_DEFAULT,
+            messages=messages,
+            timeout_seconds=20,
+            api_key=api_key,
+        )
+        era = (result or "").strip().strip("「」『』").strip()
+        if era and len(era) <= 40:
+            return era
+    except Exception:
+        pass
+    return _generate_civ_era_local(civ)
+
+
+def update_civ_era(civ_id: str, civ_era: str) -> None:
+    """指定文明の civ_era を DB に保存する。"""
+    init_novel_db()
+    conn = sqlite3.connect(_NOVEL_DB)
+    conn.execute(
+        "UPDATE civilization_registry SET civ_era=? WHERE civ_id=?",
+        (civ_era, civ_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def auto_generate_missing_civ_eras() -> int:
+    """civ_era が未設定の文明を全て哲学的に自動生成して DB に保存する。
+    生成した件数を返す。
+    """
+    civs = get_civilization_registry()
+    count = 0
+    for civ in civs:
+        if not civ.get("civ_era"):
+            era = generate_civ_era_philosophical(civ)
+            update_civ_era(civ["civ_id"], era)
+            count += 1
+    return count
+
+
 def generate_archaia_narrative(
     civ_name: str,
     event_type: str,
