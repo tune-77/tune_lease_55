@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git commit*)",
+            "command": "bash /home/user/tune_lease_55/.claude/hooks/post_commit_review.sh 2>/dev/null || true",
+            "async": true,
+            "statusMessage": "コードレビュー・セキュリティチェックをバックグラウンドで起動中..."
+          }
+        ]
+      }
+    ]
+  }
+}
