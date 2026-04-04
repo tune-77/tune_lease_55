@@ -452,6 +452,17 @@ def render_novel_simulation() -> None:
     """文明年代記ページのメインエントリポイント。"""
     st.title("🌌 文明年代記 — アルカイアの記録")
 
+    # ── 文明年代期 自動生成（MiroFish スタイル：セッション初回のみ） ────────
+    if "civ_era_auto_generated" not in st.session_state:
+        try:
+            import novelist_agent as _na
+            _n = _na.auto_generate_missing_civ_eras()
+            st.session_state.civ_era_auto_generated = True
+            if _n > 0:
+                st.toast(f"✨ {_n}件の文明年代期を哲学的に自動生成しました", icon="🌌")
+        except Exception:
+            st.session_state.civ_era_auto_generated = True
+
     # ── 自動実行フラグ初期化 ────────────────────────────────────────
     if "sim_running" not in st.session_state:
         st.session_state.sim_running = False
@@ -495,7 +506,10 @@ def render_novel_simulation() -> None:
     _render_solar_system(st.session_state.sim_round)
 
     # ── タブ ─────────────────────────────────────────────────────────
-    tab1, tab2, tab3 = st.tabs(["📜 イベントログ", "☀️ 太陽の状態", "🤖 文豪ナラティブ"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📜 イベントログ", "☀️ 太陽の状態", "🤖 文豪ナラティブ",
+        "🌍 文明台帳", "🕸️ 関係グラフ",
+    ])
 
     with tab1:
         _render_event_log()
@@ -505,6 +519,283 @@ def render_novel_simulation() -> None:
 
     with tab3:
         _render_archaia_log()
+
+    with tab4:
+        _render_civ_registry_tab()
+
+    with tab5:
+        _render_relation_graph_tab()
+
+
+def _render_civ_registry_tab() -> None:
+    """🌍 文明台帳タブ — 登録済み文明の一覧・年代期管理・手動登録フォーム。"""
+    import novelist_agent as na
+
+    st.subheader("🌍 文明台帳")
+    st.caption("エージェントには「取引先企業の履歴」に見えているが、読者には「文明の盛衰」が見える。")
+
+    # 哲学的年代期の自動生成ボタン
+    btn_col1, btn_col2 = st.columns(2)
+    if btn_col1.button("🎲 全文明の年代期を哲学的に再生成",
+                       help="文明とは情報と秩序の境界で生まれる一時的な構造体——その信念で年代期を創造します",
+                       key="nsv_regen_era_all"):
+        with st.spinner("アルカイアが各文明の時代を哲学的に思索中…"):
+            na.reset_civ_era()
+            n = na.auto_generate_missing_civ_eras()
+        st.session_state.civ_era_auto_generated = False  # 次回ロード時も再生成
+        st.success(f"✨ {n}件の文明年代期を再生成しました")
+        st.rerun()
+
+    if btn_col2.button("⚠️ 全文明の年代期を一括初期化",
+                       help="登録されている全文明の civ_era を NULL にリセットします",
+                       key="nsv_reset_era_all"):
+        n = na.reset_civ_era()
+        st.session_state.pop("civ_era_auto_generated", None)
+        st.warning(f"{n} 件の文明年代期をリセットしました")
+        st.rerun()
+
+    st.markdown("---")
+    civs = na.get_civilization_registry()
+
+    if not civs:
+        st.info("まだ文明の記録がありません。文豪AIで小説を生成すると自動登録されます。")
+    else:
+        status_counts: dict[str, int] = {}
+        for c in civs:
+            s = c["status"]
+            status_counts[s] = status_counts.get(s, 0) + 1
+
+        m_cols = st.columns(4)
+        m_cols[0].metric("活動中 🟢", status_counts.get("active", 0))
+        m_cols[1].metric("滅亡 💀", status_counts.get("collapsed", 0))
+        m_cols[2].metric("昇華 ✨", status_counts.get("ascended", 0))
+        m_cols[3].metric("休眠 😴", status_counts.get("dormant", 0))
+
+        st.markdown("---")
+
+        for civ in civs:
+            status_emoji = {"active": "🟢", "collapsed": "💀", "ascended": "✨", "dormant": "😴"}.get(
+                civ["status"], "❓"
+            )
+            era_label = civ.get("civ_era") or "（年代期未設定）"
+            appearances = na.get_civ_appearances(civ["civ_id"])
+
+            with st.expander(
+                f"{status_emoji} **{civ['company_name']}** ｜ {civ['industry']} ｜ {era_label}",
+                expanded=(civ["status"] == "active"),
+            ):
+                col1, col2 = st.columns(2)
+                stage_label = civ.get("civ_stage") or "段階不明"
+                col1.markdown(f"**時代:** {era_label}")
+                col1.markdown(f"**段階:** {stage_label}")
+                col2.markdown(f"**登場:** 第{civ['first_episode']}話 〜 第{civ['last_episode']}話")
+
+                if civ.get("notes"):
+                    st.caption(civ["notes"])
+
+                if appearances:
+                    st.markdown("**時系列記録：**")
+                    for ap in appearances:
+                        result_badge = {
+                            "approved": " ✅承認",
+                            "rejected": " ❌否決",
+                            "bankrupt": " 💀破産",
+                            "transcended": " ✨昇華",
+                        }.get(ap["result"], "")
+                        st.markdown(
+                            f"- **第{ap['episode_no']}話** `{ap['event_type']}`{result_badge}"
+                            f" — {ap['description']}"
+                        )
+
+                st.markdown("---")
+                btn_c1, btn_c2 = st.columns(2)
+                if btn_c1.button(
+                    "🎲 年代期を哲学的に再生成",
+                    key=f"nsv_regen_era_{civ['civ_id']}",
+                    help="この文明の年代期をアルカイアが哲学的に思索します",
+                ):
+                    with st.spinner("思索中…"):
+                        era = na.generate_civ_era_philosophical(civ)
+                        na.update_civ_era(civ["civ_id"], era)
+                    st.success(f"「{civ['company_name']}」の年代期: {era}")
+                    st.rerun()
+                if btn_c2.button(
+                    "🔄 年代期を初期化",
+                    key=f"nsv_reset_era_{civ['civ_id']}",
+                    help="この文明の civ_era をリセットします",
+                ):
+                    na.reset_civ_era(civ["civ_id"])
+                    st.success(f"「{civ['company_name']}」の年代期をリセットしました")
+                    st.rerun()
+
+    # 手動登録フォーム
+    st.markdown("---")
+    with st.expander("✏️ 文明を手動登録"):
+        with st.form("nsv_civ_manual_form"):
+            fc1, fc2 = st.columns(2)
+            civ_id_inp   = fc1.text_input("文明ID（英字）", placeholder="bronze_tribe_01")
+            company_inp  = fc2.text_input("企業名（偽装名）")
+            industry_inp = st.text_input("業種")
+            era_inp      = st.text_input("時代", placeholder="青銅器時代・第三銀河暦など")
+            stage_inp    = st.text_input("段階", placeholder="都市国家形成期など")
+            ep_no_inp    = st.number_input("初登場話数", min_value=1, value=1)
+            desc_inp     = st.text_area("記録メモ")
+            if st.form_submit_button("登録"):
+                na.register_civilization(
+                    civ_id=civ_id_inp, company_name=company_inp,
+                    industry=industry_inp, civ_stage=stage_inp,
+                    civ_era=era_inp, episode_no=int(ep_no_inp),
+                    description=desc_inp,
+                )
+                st.success(f"「{company_inp}」を登録しました")
+                st.rerun()
+
+
+def _render_relation_graph_tab() -> None:
+    """🕸️ 関係グラフタブ — 人物・企業間の関係グラフと文明シミュレーション。"""
+    st.subheader("🕸️ 人物・企業間 関係グラフ")
+    st.caption("六角形=エージェント、円=企業・文明。エッジ色と太さが関係タイプ・強度を表します。")
+
+    try:
+        import novelist_agent as na
+        max_ep = na.get_latest_episode_no() if hasattr(na, "get_latest_episode_no") else 0
+    except Exception:
+        max_ep = 0
+
+    ep_arg = None
+    if max_ep and max_ep > 0:
+        ep_filter = st.slider(
+            "表示エピソード（〜第N話まで）",
+            min_value=0, max_value=max_ep, value=max_ep,
+            key="nsv_graph_ep_slider",
+        )
+        ep_arg = ep_filter if ep_filter < max_ep else None
+
+    # AI生成ボタン群
+    try:
+        from novel_graph import (
+            get_current_graph, AGENT_IDS,
+            get_all_civ_characteristics, get_all_relationship_predictions,
+        )
+        _edges = get_current_graph()
+        _cc_edges = [
+            k for k in _edges
+            if k[0] not in AGENT_IDS and k[1] not in AGENT_IDS and _edges[k]["episode_no"] == -1
+        ]
+        _chars = get_all_civ_characteristics()
+        _preds = get_all_relationship_predictions()
+
+        _btn_cols = st.columns(3)
+
+        if not _cc_edges:
+            if _btn_cols[0].button("🤖 企業間の関係をAIに想像させる", key="nsv_btn_gen_company_rel"):
+                with st.spinner("Geminiが企業間の関係を想像中..."):
+                    from novel_graph import generate_and_seed_company_relations
+                    n = generate_and_seed_company_relations()
+                if n > 0:
+                    st.success(f"{n}件の企業間関係を生成しました！")
+                    st.rerun()
+                else:
+                    st.warning("関係の生成に失敗しました（Gemini APIキーを確認してください）")
+
+        if _btn_cols[1].button("🧬 各文明の特性をAIが創造", key="nsv_btn_gen_civ_chars"):
+            with st.spinner("Geminiが各文明の特性を創造中..."):
+                from novel_graph import generate_civ_characteristics_ai
+                n = generate_civ_characteristics_ai()
+            if n > 0:
+                st.success(f"{n}件の文明特性を生成しました！")
+                st.rerun()
+            else:
+                st.info("新たに生成する文明がありません")
+
+        if _btn_cols[2].button("🔮 関係性の未来をAIが予測", key="nsv_btn_gen_predictions"):
+            with st.spinner("Geminiが関係性の未来を予測中..."):
+                from novel_graph import generate_relationship_predictions_ai
+                n = generate_relationship_predictions_ai()
+            if n > 0:
+                st.success(f"{n}件の関係予測を生成しました！")
+                st.rerun()
+            else:
+                st.warning("予測の生成に失敗しました（関係データを先に作成してください）")
+
+        if _chars or _preds:
+            with st.expander(f"📊 文明特性 {len(_chars)}件 / 予測 {len(_preds)}件", expanded=False):
+                if _chars:
+                    st.markdown("**🧬 文明特性**")
+                    for name, c in list(_chars.items())[:8]:
+                        pers  = c.get("personality", "")
+                        goals = c.get("goals", "")
+                        goals = goals[:40] + "…" if len(goals) > 40 else goals
+                        st.markdown(f"- **{name}** _{pers}_ — {goals}")
+                if _preds:
+                    st.markdown("**🔮 未来予測（高リスク順）**")
+                    sorted_preds = sorted(_preds.items(), key=lambda x: x[1].get("risk_level", 0), reverse=True)
+                    for (src, tgt), p in sorted_preds[:8]:
+                        r = p.get("risk_level", 0)
+                        emoji = "🔴" if r >= 0.7 else "🟡" if r >= 0.4 else "🟢"
+                        pred_text = p.get("prediction", "")
+                        pred_text = pred_text[:60] + "…" if len(pred_text) > 60 else pred_text
+                        st.markdown(f"- {emoji} **{src}→{tgt}** （risk:{r:.1f}）{pred_text}")
+
+    except Exception as e:
+        st.caption(f"自律AI機能エラー: {e}")
+
+    # グラフ表示設定
+    with st.expander("⚙️ グラフ表示設定", expanded=False):
+        gc1, gc2, gc3, gc4 = st.columns(4)
+        g_height   = gc1.slider("高さ (px)",  400, 1200, 820, step=40,  key="nsv_ng_height")
+        g_distance = gc2.slider("エッジ距離",   80, 600,  320, step=20,  key="nsv_ng_distance")
+        g_charge   = gc3.slider("反発力",      200, 3000, 1200, step=100, key="nsv_ng_charge")
+        g_collide  = gc4.slider("衝突半径",     10, 200,   70,  step=10,  key="nsv_ng_collide")
+
+    try:
+        from components.novel_graph_view import render_novel_graph
+        render_novel_graph(
+            episode_no=ep_arg,
+            height=g_height,
+            link_distance=g_distance,
+            charge=g_charge,
+            collide=g_collide,
+        )
+    except Exception as e:
+        st.error(f"関係グラフの描画に失敗しました: {e}")
+
+    # 関係性テキスト一覧
+    try:
+        from novel_graph import get_current_graph, REL_TYPES, AGENT_IDS
+        edges = get_current_graph(up_to_episode=ep_arg)
+        if edges:
+            _REL_EMOJI = {
+                "ally": "🤝", "trust": "💙", "rival": "⚔️",
+                "suspicion": "🔥", "dependence": "🔗", "neutral": "➖",
+            }
+            agent_edges   = [(k, v) for k, v in edges.items() if k[0] in AGENT_IDS and k[1] in AGENT_IDS]
+            company_edges = [(k, v) for k, v in edges.items() if k[0] not in AGENT_IDS or k[1] not in AGENT_IDS]
+
+            with st.expander("📋 関係性テキスト一覧", expanded=True):
+                if agent_edges:
+                    st.markdown("**▼ エージェント間**")
+                    for (src, tgt), info in sorted(agent_edges):
+                        emoji = _REL_EMOJI.get(info["rel_type"], "")
+                        desc  = info["note"] if info["note"] else REL_TYPES.get(info["rel_type"], {}).get("label", info["rel_type"])
+                        ep_tag = f" （第{info['episode_no']}話）" if info["episode_no"] >= 0 else ""
+                        st.markdown(f"- {emoji} **{src}** → **{tgt}**：{desc}{ep_tag}")
+                if company_edges:
+                    st.markdown("**▼ 企業・文明との関係**")
+                    for (src, tgt), info in sorted(company_edges):
+                        desc = info["note"]
+                        if not desc:
+                            continue
+                        ep_tag = f" （第{info['episode_no']}話）" if info["episode_no"] >= 0 else ""
+                        if desc == "審査通過":
+                            st.markdown(f"- 🔵 **{src}** → **{tgt}**：{desc}{ep_tag}")
+                        elif desc == "審査否決":
+                            st.markdown(f"- 🔴 **{src}** → **{tgt}**：{desc}{ep_tag}")
+                        else:
+                            emoji = _REL_EMOJI.get(info["rel_type"], "")
+                            st.markdown(f"- {emoji} **{src}** → **{tgt}**：{desc}{ep_tag}")
+    except Exception as e:
+        st.caption(f"関係テキスト取得エラー: {e}")
 
 
 def _run_one_round() -> dict:
