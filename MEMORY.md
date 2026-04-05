@@ -4,7 +4,10 @@
 ### 温水式リース審査AI (Warm Water Style Lease Screening AI)
 - **Status**: Production Ready (Streamlit app)
 - **Current Version**: `lease_logic_sumaho3.py` (2026-02-10 Fix: Indentation & Variable Scope repaired)
-- **External Access**: `https://lora-gyrational-trebly.ngrok-free.dev` (via ngrok)
+- **External Access**: Cloudflare Tunnel を使用（`./run_with_cloudflare.sh`）
+  - 旧: `https://lora-gyrational-trebly.ngrok-free.dev` (ngrok-free → 頻繁に切れるため廃止)
+  - cloudflared インストール: `brew install cloudflare/cloudflare/cloudflared`
+  - 起動後に表示される `https://xxxx.trycloudflare.com` にアクセス（アカウント不要・無料・制限なし）
 - **Key Features**:
   - **Multi-Model Scoring**: Automatic model selection (Service, Manufacturing, Transport, Overall) with CSV-loaded coefficients.
   - **Visualization**: Radar Chart, Positioning Scatter, BEP Graph.

@@ -228,30 +228,13 @@ def update_case(case_id: str, updates: dict) -> bool:
 
 
 def save_all_cases(cases):
-    """案件一覧を上書き保存。(※SQLiteへの全移行では本来不要だがメソッドシグネチャ互換のため残す)
+    """案件一覧をUPSERT保存。既存データは上書き、新規データは追加。既存レコードは削除しない。
 
-    ⚠️ 危険: 全件 DELETE → INSERT のため、渡すリストが少ないと本番データが消える。
-    新規コードでは delete_case() / update_case() を使うこと。
+    ⚠️ 注意: 後方互換のため残しているが、新規コードでは
+    delete_case() / update_case() / save_case_log() を使うこと。
     """
     if not os.path.exists(DB_PATH):
         return False
-
-    # ── 安全ガード: 現在のDB件数と比較し、極端な減少を防ぐ ──────────────────
-    try:
-        import sqlite3 as _sq3
-        from contextlib import closing as _cl
-        with _cl(_sq3.connect(DB_PATH)) as _conn:
-            current_count = _conn.execute("SELECT COUNT(*) FROM past_cases").fetchone()[0]
-        new_count = len(cases)
-        if current_count >= 5 and new_count < current_count * 0.5:
-            raise ValueError(
-                f"save_all_cases: 件数が大幅に減少します（DB: {current_count}件 → 新規: {new_count}件）。"
-                "意図的な一括削除の場合は delete_case() を使ってください。"
-            )
-    except ValueError:
-        raise  # 件数ガードは呼び元に伝える
-    except Exception:
-        pass  # DB読み取り失敗は無視して続行
 
     try:
         import sqlite3
@@ -284,6 +267,7 @@ def save_all_cases(cases):
                         user_eq_val = None
 
                     json_str = json.dumps(data, ensure_ascii=False, cls=CustomJSONEncoder)
+                    # INSERT OR REPLACE: 同一IDが存在すれば上書き、なければ追加
                     cursor.execute("""
                         INSERT OR REPLACE INTO past_cases
                         (id, timestamp, industry_sub, score, user_eq, final_status, data)

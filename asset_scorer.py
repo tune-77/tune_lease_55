@@ -13,7 +13,7 @@ asset scoring design and code.docx に基づく。
 import json
 import os
 
-from category_config import CATEGORY_SCORE_ITEMS, SCORE_GRADES
+from category_config import CATEGORY_SCORE_ITEMS, SCORE_GRADES, get_grade as _get_grade
 
 # 法定耐用年数マスタ（カテゴリ別デフォルト寿命[年]）
 _USEFUL_LIFE_PATH = os.path.join(
@@ -36,13 +36,6 @@ def _load_useful_life_json() -> dict:
     except Exception:
         return {}
 
-
-def _get_grade(score: float) -> dict:
-    """スコアからグレード dict を返す。"""
-    for g in SCORE_GRADES:
-        if score >= g["min"]:
-            return g
-    return SCORE_GRADES[-1]
 
 
 def _adjust_weights(category: str, base_weights: dict, contract: dict) -> dict:

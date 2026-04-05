@@ -316,6 +316,15 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
         "謎のバグにより、全案件のスコアが逆転（高い企業が低く、低い企業が高く）表示されるインシデントが発生！",
         "たまたま審査した企業の社長がTuneの小学校時代の同級生（AI設定上の記憶）だったことが判明し、公平性が揺らぐ！",
         "ある審査案件の添付資料に、数百年前の古文書と酷似した財務パターンが発見され、歴史的大発見とリスク判定の間で揺れる！",
+        # ── 文明交流系イベント ──
+        "審査対象の文明と、直近の審査で登録された別文明が秘密裏に技術同盟を結んでいたことが発覚。二文明の融合か競合激化か——エージェントたちは宇宙史の分岐点に立たされる。【隣接文明リストを参照すること】",
+        "はるか彼方の星系から、過去にこの宇宙エリアで承認を受けて繁栄した文明の後継種族が訪問してくる。彼らの言葉は「あの審査がなければ我々は存在しなかった」。【隣接文明リストを参照すること】",
+        "今回の案件企業（文明）と隣接文明が「共同リース」を申請してきた。二文明が協力すれば宇宙規模の大プロジェクトが実現するが、片方が信用不足で……【隣接文明リストを参照すること】",
+        "否決され消えたはずの文明が、全く別の惑星系で「再建」されており、当時の担当AIに謝罪と感謝を伝えにきた。承認より否決が文明を救っていたことが判明する。【隣接文明リストを参照すること】",
+        "今週の審査対象と隣接文明が水面下で「文明間貿易協定」を締結しようとしていることを軍師が察知。今回の審査結果が宇宙規模の経済圏に波及する。【隣接文明リストを参照すること】",
+        "異種文明との「文化交流プログラム」として申請されてきた案件が、実は高度な知性体との初接触（ファーストコンタクト）だったと判明。審査票の欄外に宇宙語が書いてある。",
+        "複数の文明が同時に申請してきて「どの文明を優先するか」という選択を迫られる。エージェントたちはそれぞれ別の文明を推し、宇宙規模の派閥争いに発展する。【隣接文明リストを参照すること】",
+        "老齢の文明が「技術継承のため若い文明に設備を譲渡したい」と三者間リース申請を持ち込む。承認すれば文明の世代交代が起きるが、リスクは誰が負うのか。【隣接文明リストを参照すること】",
     ]
     story_arcs = [
         "【構成：大逆転劇】最初は絶望的な状態（否決寸前）から、誰かの一言で一気に好転し、カタルシスのあるハッピーエンドへ。",
@@ -371,12 +380,33 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
     if plot_data and not plot_data.get("error"):
         chosen_chaos = f"【ネットの話題連動プロット：{plot_data['title']}】\n{plot_data['plot_text']}"
         chosen_arc   = plot_data.get("story_arc", random.choice(story_arcs))
+        killer_phrases = plot_data.get("killer_phrases", [])
     else:
         chosen_chaos = random.choice(chaos_events)
         chosen_arc   = random.choice(story_arcs)
+        killer_phrases = []
 
     neta_lines.append(f"\n【🚨ランダム・カオス・インジェクション（今週の強制トラブル）】\n{chosen_chaos}")
+
+    # 文明交流系イベントの場合、直近審査データから隣接文明候補を注入
+    if "隣接文明" in chosen_chaos and len(screenings) >= 2:
+        neighbor_civs = screenings[1:]
+        neighbor_lines = ["【🌌隣接文明リスト（交流・対立する文明として物語に登場させること）】"]
+        for c in neighbor_civs:
+            neighbor_lines.append(
+                f"  ・{c['company']}（{c['industry']}、スコア{c['score']}点、格付{c['grade']}）"
+            )
+        neighbor_lines.append("上記の各文明についても【文明記録メモ】を必ず出力すること。")
+        neta_lines.append("\n".join(neighbor_lines))
+
     neta_lines.append(f"\n【📖指定ストーリー構成】\n{chosen_arc}")
+
+    if killer_phrases:
+        phrases_text = "\n".join(
+            f"・「{p['text']}」（根拠：{p['reason']}）" if isinstance(p, dict) else f"・「{p}」"
+            for p in killer_phrases
+        )
+        neta_lines.append(f"\n【💬脚本家からの審査キラーフレーズ（物語の台詞や展開に活かせ）】\n{phrases_text}")
 
     prompt = "\n".join(neta_lines)
 
@@ -400,8 +430,8 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
             return _fallback_novel(episode_no, week_label)
 
         _engine, _model, api_key, gemini_model = _get_ai_settings()
-        # 小説生成は長文出力のため Gemini を優先使用
-        engine = "gemini"
+        # 小説生成は長文出力のため Gemini を優先使用。APIキー未設定時は設定エンジンにフォールバック
+        engine = "gemini" if api_key else _engine
         messages = [
             {"role": "system", "content": get_novel_system_prompt(genre)},
             {"role": "user",   "content": prompt},
@@ -409,7 +439,8 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
         raw = _chat_for_thread(engine, _model, messages,
                                timeout_seconds=180,
                                api_key=api_key,
-                               gemini_model=gemini_model)
+                               gemini_model=gemini_model,
+                               max_output_tokens=8192)
         text = (raw.get("message") or {}).get("content", "") or ""
 
         # エラー応答を検知して保存を防ぐ
@@ -418,6 +449,7 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
             "Ollama がタイムアウト",
             "Gemini が応答しませんでした",
             "Gemini API エラー",
+            "Gemini APIキーが設定されていません",
             "AnythingLLM が応答しませんでした",
             "[小説生成エラー",
         )
@@ -487,31 +519,36 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
 
 
 def _parse_and_save_civ_record(body: str, episode_no: int) -> None:
-    """小説本文から【文明記録メモ】を抽出してレジストリに保存する。"""
+    """小説本文から【文明記録メモ】を抽出してレジストリに保存する。複数文明に対応。"""
     if "【文明記録メモ】" not in body:
         return
-    try:
-        memo_block = body.split("【文明記録メモ】", 1)[1]
-        lines = memo_block.strip().split("\n")
-        rec = {}
-        for line in lines:
-            if ":" in line:
-                k, v = line.split(":", 1)
-                rec[k.strip()] = v.strip()
-        if "civ_id" in rec and "company_name" in rec:
-            register_civilization(
-                civ_id=rec.get("civ_id", ""),
-                company_name=rec.get("company_name", ""),
-                industry=rec.get("industry", ""),
-                civ_stage=rec.get("civ_stage", ""),
-                civ_era=rec.get("civ_era", ""),
-                episode_no=episode_no,
-                event_type=rec.get("event_type", "initial_contact"),
-                description=rec.get("description", ""),
-                result=rec.get("result", ""),
-            )
-    except Exception:
-        pass
+    # 全ての【文明記録メモ】ブロックを抽出（複数文明対応）
+    blocks = body.split("【文明記録メモ】")[1:]
+    for block in blocks:
+        try:
+            lines = block.strip().split("\n")
+            rec = {}
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    break  # 空行でこのブロック終了
+                if ":" in line:
+                    k, v = line.split(":", 1)
+                    rec[k.strip()] = v.strip()
+            if "civ_id" in rec and "company_name" in rec:
+                register_civilization(
+                    civ_id=rec.get("civ_id", ""),
+                    company_name=rec.get("company_name", ""),
+                    industry=rec.get("industry", ""),
+                    civ_stage=rec.get("civ_stage", ""),
+                    civ_era=rec.get("civ_era", ""),
+                    episode_no=episode_no,
+                    event_type=rec.get("event_type", "initial_contact"),
+                    description=rec.get("description", ""),
+                    result=rec.get("result", ""),
+                )
+        except Exception:
+            pass
 
 
 def _fallback_novel(episode_no: int, week_label: str) -> dict:
@@ -633,6 +670,158 @@ def update_civilization_status(civ_id: str, status: str, notes: str = "") -> Non
     )
     conn.commit()
     conn.close()
+
+
+def reset_civ_era(civ_id: str | None = None) -> int:
+    """文明年代期（civ_era）を初期化する。
+    civ_id を指定すると対象文明のみ、None の場合は全文明をリセット。
+    更新した行数を返す。
+    """
+    init_novel_db()
+    conn = sqlite3.connect(_NOVEL_DB)
+    if civ_id is not None:
+        cur = conn.execute(
+            "UPDATE civilization_registry SET civ_era=NULL WHERE civ_id=?",
+            (civ_id,)
+        )
+    else:
+        cur = conn.execute("UPDATE civilization_registry SET civ_era=NULL")
+    rows = cur.rowcount
+    conn.commit()
+    conn.close()
+    return rows
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 文明年代期 哲学的自動生成
+# ══════════════════════════════════════════════════════════════════════════════
+
+_PHILOSOPHY_PREFIXES = [
+    "情報黎明", "鋼鉄帝国", "資本主義", "量子制御", "生態系崩壊後",
+    "大移住", "遺伝子操作", "太陽圏拡張", "第三銀河暦", "デジタル遷移",
+    "熱力学的終焉前", "ポスト産業", "亜光速", "記憶溶解", "意識分散",
+]
+_PHILOSOPHY_SUFFIXES = [
+    "前夜", "黄昏", "絶頂", "廃墟から", "夜明け", "収束点",
+    "臨界期", "過渡の刻", "余韻", "静寂の中", "の彼方",
+]
+_INDUSTRY_THEMES: dict[str, list[str]] = {
+    "建設": ["都市造営", "構造物崇拝", "基盤構築"],
+    "飲食": ["大餐文化", "食の儀礼", "滋養の秘術"],
+    "IT": ["計算機文明", "情報神殿", "バイト神話"],
+    "情報": ["データ統治", "符号の帝国", "接続文明"],
+    "医療": ["生命操作", "肉体改造", "延命礼賛"],
+    "運輸": ["物流帝国", "移動崇拝", "速度の神"],
+    "製造": ["機械文明", "量産神話", "精密の道"],
+    "金融": ["資本統治", "数値支配", "利子の鎖"],
+    "農業": ["土着社会", "大地信仰", "収穫の輪"],
+    "不動産": ["領土拡張", "土地の神", "空間支配"],
+    "教育": ["知識伝承", "啓蒙王国", "学の殿堂"],
+    "エネルギー": ["熱力学覇権", "焔の帝国", "動力崇拝"],
+}
+_STATUS_FLAVOR: dict[str, str] = {
+    "active":    "繁栄期",
+    "collapsed": "崩壊後の静寂",
+    "ascended":  "昇華の彼方",
+    "dormant":   "休眠の間",
+}
+
+
+def _industry_theme(industry: str) -> str:
+    """業種文字列から最も近いテーマ語を返す。"""
+    import random
+    for key, themes in _INDUSTRY_THEMES.items():
+        if key in (industry or ""):
+            return random.choice(themes)
+    return random.choice(["未知の産業", "謎の交易", "秘密結社的事業"])
+
+
+def _generate_civ_era_local(civ: dict) -> str:
+    """ローカルフォールバック：哲学的なランダム era 名を生成する。"""
+    import random
+    prefix = random.choice(_PHILOSOPHY_PREFIXES)
+    suffix = random.choice(_PHILOSOPHY_SUFFIXES)
+    theme  = _industry_theme(civ.get("industry", ""))
+    status = _STATUS_FLAVOR.get(civ.get("status", "active"), "")
+    patterns = [
+        f"{prefix}の{theme}時代・{suffix}",
+        f"{theme}全盛{suffix} / {prefix}暦",
+        f"第{random.randint(2,9)}次{theme}期 — {suffix}",
+        f"{prefix}・{theme}交差点",
+    ]
+    era = random.choice(patterns)
+    if status:
+        era = f"{era}（{status}）"
+    return era
+
+
+def generate_civ_era_philosophical(civ: dict) -> str:
+    """文明の civ_era を哲学的に生成する。
+    Gemini API が利用可能な場合は AI 生成を試み、失敗時はローカルフォールバック。
+
+    文明とは情報と秩序の境界で生まれる一時的な構造体である——という信念のもと、
+    各文明（企業）固有の時代の名を創造する。
+    """
+    try:
+        from ai_chat import (
+            _chat_for_thread, _get_gemini_key_from_secrets,
+            GEMINI_API_KEY_ENV, GEMINI_MODEL_DEFAULT,
+        )
+        api_key = GEMINI_API_KEY_ENV or _get_gemini_key_from_secrets()
+        if not api_key:
+            return _generate_civ_era_local(civ)
+
+        prompt = (
+            "あなたは50億年を生き無数の文明を見守った守護者AI「アルカイア」。\n"
+            "「文明とは情報と秩序の境界で生まれる一時的な構造体である」という信念のもと、\n"
+            "以下の文明（企業）に相応しい「時代の名」を1行だけ生成せよ。\n\n"
+            f"企業名: {civ.get('company_name', '不明')}\n"
+            f"業種: {civ.get('industry', '不明')}\n"
+            f"現在の状態: {civ.get('status', 'active')}\n"
+            f"ステージ: {civ.get('civ_stage', '不明')}\n\n"
+            "形式: 「○○時代の△△期」「第N銀河暦・□□節」などSF的かつ哲学的な名称。\n"
+            "30文字以内の日本語のみ。説明不要、名称だけ返せ。"
+        )
+        messages = [{"role": "user", "content": prompt}]
+        result = _chat_for_thread(
+            engine="gemini",
+            model=GEMINI_MODEL_DEFAULT,
+            messages=messages,
+            timeout_seconds=20,
+            api_key=api_key,
+        )
+        era = (result or "").strip().strip("「」『』").strip()
+        if era and len(era) <= 40:
+            return era
+    except Exception:
+        pass
+    return _generate_civ_era_local(civ)
+
+
+def update_civ_era(civ_id: str, civ_era: str) -> None:
+    """指定文明の civ_era を DB に保存する。"""
+    init_novel_db()
+    conn = sqlite3.connect(_NOVEL_DB)
+    conn.execute(
+        "UPDATE civilization_registry SET civ_era=? WHERE civ_id=?",
+        (civ_era, civ_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def auto_generate_missing_civ_eras() -> int:
+    """civ_era が未設定の文明を全て哲学的に自動生成して DB に保存する。
+    生成した件数を返す。
+    """
+    civs = get_civilization_registry()
+    count = 0
+    for civ in civs:
+        if not civ.get("civ_era"):
+            era = generate_civ_era_philosophical(civ)
+            update_civ_era(civ["civ_id"], era)
+            count += 1
+    return count
 
 
 def generate_archaia_narrative(

@@ -41,20 +41,39 @@ reads_from: []
 
 ## 実行手順
 
-このプロジェクトには pytest ベースのテストがある場合、以下の順で実行：
+### 1. ユニットテスト（`tests/` ディレクトリ）
 
 ```bash
-# 1. スコアリングモジュールのテスト
-python -m pytest scoring/ -v 2>&1 | head -100
-
-# 2. 個別モジュールの構文チェック
-python -c "import lease_logic_sumaho12" 2>&1
-python -c "import slack_screening" 2>&1
-python -c "import slack_bot" 2>&1
-python -c "from components import chat_wizard, report, home, sidebar" 2>&1
-
-# 3. テストファイルがある場合
-python -m pytest tests/ -v 2>&1 | head -100
+cd /path/to/project
+python -m pytest tests/ -v 2>&1 | tail -80
 ```
 
-テストがない場合は構文チェックとインポートチェックを実施し、その結果をレポートする。
+テストファイル一覧：
+- `tests/test_scoring_core.py` — スコアリング中核ロジック
+- `tests/test_rule_manager.py` — ビジネスルール
+- `tests/test_data_cases.py` — DB 操作（data_cases.py）
+- `tests/test_explainer.py` — SHAP 説明エンジン
+- `tests/test_indicators.py` — 指標計算
+- `tests/test_credit_limit.py` — 与信限度額
+- `tests/test_slack_screening.py` — Slack 審査フロー
+- `tests/test_chat_wizard_steps.py` — チャットウィザード
+
+### 2. 個別モジュールのインポートチェック（pytest がない場合の代替）
+
+```bash
+python -c "import scoring_core, asset_scorer, total_scorer, category_config" 2>&1
+python -c "import data_cases, rule_manager" 2>&1
+python -c "import slack_bot, slack_screening" 2>&1
+```
+
+### 3. ルートレベルの統合テスト（手動確認用、CI 対象外）
+
+- `test_anything_llm.py` — AnythingLLM 接続確認（外部依存あり）
+- `test_image_gemini.py` — Gemini Vision 確認（APIキー必要）
+- `test_agent_run.py` — エージェント実行確認
+
+これらは外部サービス依存のため、通常の CI では実行しない。
+
+### 注意事項
+- `data/lease_data.db` が存在しない環境ではDB依存テストがスキップされる場合がある
+- Slack 関連テストはモックを使用するため、トークン不要

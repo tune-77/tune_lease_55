@@ -22,6 +22,17 @@ data/*.jsonl
 data/backups/
 # ウィザード下書き（財務情報を含む一時ファイル）
 data/wizard_draft.json
+# 実行時状態ファイル（git pull で上書きされると困るファイル）
+data/last_case.json
+data/recent_modes.json
+data/remote_control.json
+data/slack_sessions.json
+data/slack_last_channel.json
+data/slack_notifications.json
+data/weekly_plot.json
+data/weekly_report_sent.json
+# ユーザーカスタマイズ（環境ごとに異なる設定）
+data/coeff_overrides.json
 
 # ログ・デバッグ出力
 logs/

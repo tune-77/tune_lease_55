@@ -120,10 +120,9 @@ def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int,
     """
     if not api_key or not api_key.strip():
         return {"message": {"content": "Gemini APIキーが設定されていません。環境変数 GEMINI_API_KEY またはサイドバーで入力してください。"}}
-    prompt = ""
-    for m in messages:
-        if m.get("role") == "user" and m.get("content"):
-            prompt = m["content"]
+    system_parts = [m["content"] for m in messages if m.get("role") == "system" and m.get("content")]
+    user_parts = [m["content"] for m in messages if m.get("role") == "user" and m.get("content")]
+    prompt = "\n\n".join(system_parts + user_parts)
     if not prompt:
         return {"message": {"content": "送信する内容がありません。"}}
     try:
@@ -192,7 +191,7 @@ def _chat_for_thread(engine: str, model: str, messages: list, timeout_seconds: i
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
                 future = ex.submit(_gemini_chat, api_key, gemini_model or "gemini-2.0-flash", messages, timeout_seconds, max_output_tokens)
-                return future.result(timeout=min(timeout_seconds + 30, 90))
+                return future.result(timeout=timeout_seconds + 30)
         except Exception as e:
             return {"message": {"content": f"Gemini が応答しませんでした。\n\n【詳細】{str(e)}"}}
     try:
