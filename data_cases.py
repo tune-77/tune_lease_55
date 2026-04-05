@@ -309,9 +309,45 @@ def save_coeff_overrides(overrides_dict, comment: str = ""):
             after=overrides_dict,
             comment=comment,
         )
+        _save_governance_snapshot(overrides=overrides_dict, comment=comment)
         return True
     except Exception:
         return False
+
+
+def _save_governance_snapshot(overrides: dict, comment: str = "") -> None:
+    """係数オーバーライドのスナップショットを governance_snapshots.json に追記する（最大50件）。"""
+    snap_path = os.path.join(_DATA_DIR, "governance_snapshots.json")
+    try:
+        if os.path.exists(snap_path):
+            with open(snap_path, "r", encoding="utf-8") as f:
+                snaps = json.load(f)
+        else:
+            snaps = []
+        snaps.append({
+            "id": f"snap_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            "ts": datetime.datetime.now().isoformat(timespec="seconds"),
+            "comment": comment,
+            "overrides": overrides,
+        })
+        snaps = snaps[-50:]
+        with open(snap_path, "w", encoding="utf-8") as f:
+            json.dump(snaps, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def load_governance_snapshots() -> list:
+    """ガバナンス・スナップショット一覧を返す（新しい順）。無ければ空リスト。"""
+    snap_path = os.path.join(_DATA_DIR, "governance_snapshots.json")
+    try:
+        if not os.path.exists(snap_path):
+            return []
+        with open(snap_path, "r", encoding="utf-8") as f:
+            snaps = json.load(f)
+        return list(reversed(snaps))
+    except Exception:
+        return []
 
 
 def load_auto_coeffs() -> dict:

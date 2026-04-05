@@ -1711,8 +1711,8 @@ elif mode == "📈 TimesFM 時系列予測":
 
 # ── 🌌 文明年代記 ─────────────────────────────────────────────────────────────
 elif mode == "🌌 文明年代記":
-    from components.novel_simulation_view import render_novel_simulation
-    render_novel_simulation()
+    from components.civilization_chronicle import render_civilization_chronicle
+    render_civilization_chronicle()
 
 # ── フローティングBOT（八奈見さん）── 全ページ共通 ──────────────────────────
 try:
