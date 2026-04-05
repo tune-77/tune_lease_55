@@ -116,7 +116,7 @@ def _ollama_chat_http(model: str, messages: list, timeout_seconds: int):
 def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int, max_output_tokens: int = 2048):
     """
     Gemini API でチャット。messages は [{"role":"user","content":"..."}] 形式。
-    最後の user メッセージをプロンプトとして送り、返答テキストを返す。
+    google.genai（新 SDK）を使用。
     """
     if not api_key or not api_key.strip():
         return {"message": {"content": "Gemini APIキーが設定されていません。環境変数 GEMINI_API_KEY またはサイドバーで入力してください。"}}
@@ -126,26 +126,30 @@ def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int,
     if not prompt:
         return {"message": {"content": "送信する内容がありません。"}}
     try:
-        import google.generativeai as genai
+        import google.genai as genai
+        from google.genai import types as genai_types
     except ImportError:
-        return {"message": {"content": "Gemini を使うには pip install google-generativeai を実行してください。"}}
+        return {"message": {"content": "Gemini を使うには pip install google-genai を実行してください。"}}
+
+    # gemini-1.5-* は廃止済み → 2.0-flash にフォールバック
+    _model = model or "gemini-2.0-flash"
+    if "1.5" in _model:
+        _model = "gemini-2.0-flash"
 
     try:
-        genai.configure(api_key=api_key.strip())
-        gemini_model = genai.GenerativeModel(model)
-        try:
-            config = genai.types.GenerationConfig(max_output_tokens=max_output_tokens, temperature=0.7)
-            response = gemini_model.generate_content(prompt, generation_config=config)
-        except (AttributeError, TypeError):
-            response = gemini_model.generate_content(prompt)
-
-        if not response:
-            return {"message": {"content": "Gemini から応答が返りませんでした。"}}
-
+        client = genai.Client(api_key=api_key.strip())
+        config = genai_types.GenerateContentConfig(
+            max_output_tokens=max_output_tokens,
+            temperature=0.7,
+        )
+        response = client.models.generate_content(
+            model=_model,
+            contents=prompt,
+            config=config,
+        )
         text = None
         try:
-            if response.text:
-                text = response.text
+            text = response.text
         except (ValueError, AttributeError):
             pass
         if not text and getattr(response, "candidates", None):
@@ -169,7 +173,7 @@ def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int,
                 "・有料プランにすると制限が緩和されます。\n\n"
                 f"【APIの詳細】{str(e)[:300]}"
             )}}
-        return {"message": {"content": f"Gemini API エラー: {str(e)}\n\nAPIキーとモデル名（{model}）を確認し、ネット接続を確認してください。"}}
+        return {"message": {"content": f"Gemini API エラー: {str(e)}\n\nAPIキーとモデル名（{_model}）を確認し、ネット接続を確認してください。"}}
 
 
 def _chat_for_thread(engine: str, model: str, messages: list, timeout_seconds: int, api_key: str = "", gemini_model: str = "", max_output_tokens: int = 2048):
