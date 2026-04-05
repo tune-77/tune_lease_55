@@ -14,7 +14,19 @@ import re
 import sqlite3
 import datetime
 import math
+import logging
 from dataclasses import dataclass, asdict
+
+# ── Logging 設定 ──────────────────────────────────────────────────────────
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter(
+        fmt="[%(levelname)s %(name)s:%(lineno)d] %(message)s"
+    )
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _NOVEL_DB  = os.path.join(_BASE_DIR, "data", "novelist_agent.db")
@@ -298,45 +310,51 @@ EVENT_TYPES = {
 
 
 def init_simulation_db() -> None:
-    conn = sqlite3.connect(_NOVEL_DB)
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS simulation_rounds (
-            id               INTEGER PRIMARY KEY AUTOINCREMENT,
-            round_no         INTEGER NOT NULL UNIQUE,
-            year             INTEGER NOT NULL,
-            events           TEXT,
-            summary          TEXT,
-            solar_state_json TEXT,
-            nature_epoch     INTEGER,
-            created_at       TEXT    NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS archaia_log (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            round_no    INTEGER,
-            civ_name    TEXT,
-            event_type  TEXT,
-            bungo_style TEXT,
-            narrative   TEXT,
-            created_at  TEXT
-        );
-    """)
-    # 既存テーブルへのカラム追加（ALTER TABLE は列が存在しない場合のみ）
-    for col, typedef in [("solar_state_json", "TEXT"), ("nature_epoch", "INTEGER")]:
-        try:
-            conn.execute(f"ALTER TABLE simulation_rounds ADD COLUMN {col} {typedef}")
-        except Exception:
-            pass
-    conn.commit()
-    conn.close()
+    try:
+        with sqlite3.connect(_NOVEL_DB) as conn:
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS simulation_rounds (
+                    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                    round_no         INTEGER NOT NULL UNIQUE,
+                    year             INTEGER NOT NULL,
+                    events           TEXT,
+                    summary          TEXT,
+                    solar_state_json TEXT,
+                    nature_epoch     INTEGER,
+                    created_at       TEXT    NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS archaia_log (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    round_no    INTEGER,
+                    civ_name    TEXT,
+                    event_type  TEXT,
+                    bungo_style TEXT,
+                    narrative   TEXT,
+                    created_at  TEXT
+                );
+            """)
+            # 既存テーブルへのカラム追加（ALTER TABLE は列が存在しない場合のみ）
+            for col, typedef in [("solar_state_json", "TEXT"), ("nature_epoch", "INTEGER")]:
+                try:
+                    conn.execute(f"ALTER TABLE simulation_rounds ADD COLUMN {col} {typedef}")
+                except Exception:
+                    pass
+            conn.commit()
+    except Exception as e:
+        logger.error(f"DB init error: {e}")
+        raise
 
 
 def get_current_round() -> int:
     """現在のラウンド数（0=未開始）を返す"""
-    init_simulation_db()
-    conn = sqlite3.connect(_NOVEL_DB)
-    row = conn.execute("SELECT MAX(round_no) FROM simulation_rounds").fetchone()
-    conn.close()
-    return row[0] if row[0] is not None else 0
+    try:
+        init_simulation_db()
+        with sqlite3.connect(_NOVEL_DB) as conn:
+            row = conn.execute("SELECT MAX(round_no) FROM simulation_rounds").fetchone()
+            return row[0] if row[0] is not None else 0
+    except Exception as e:
+        logger.error(f"get_current_round error: {e}")
+        return 0
 
 
 def get_current_year() -> int:
@@ -346,25 +364,28 @@ def get_current_year() -> int:
 
 def get_round_history(limit: int = 20) -> list[dict]:
     """ラウンド履歴を新しい順で返す"""
-    init_simulation_db()
-    conn = sqlite3.connect(_NOVEL_DB)
-    rows = conn.execute(
-        "SELECT round_no, year, events, summary, created_at FROM simulation_rounds "
-        "ORDER BY round_no DESC LIMIT ?", (limit,)
-    ).fetchall()
-    conn.close()
-    result = []
-    for r in rows:
-        events = []
-        try:
-            events = json.loads(r[2]) if r[2] else []
-        except Exception:
-            pass
-        result.append({
-            "round_no": r[0], "year": r[1], "events": events,
-            "summary": r[3] or "", "created_at": r[4]
-        })
-    return result
+    try:
+        init_simulation_db()
+        with sqlite3.connect(_NOVEL_DB) as conn:
+            rows = conn.execute(
+                "SELECT round_no, year, events, summary, created_at FROM simulation_rounds "
+                "ORDER BY round_no DESC LIMIT ?", (limit,)
+            ).fetchall()
+        result = []
+        for r in rows:
+            events = []
+            try:
+                events = json.loads(r[2]) if r[2] else []
+            except Exception as je:
+                logger.warning(f"Failed to parse events for round {r[0]}: {je}")
+            result.append({
+                "round_no": r[0], "year": r[1], "events": events,
+                "summary": r[3] or "", "created_at": r[4]
+            })
+        return result
+    except Exception as e:
+        logger.error(f"get_round_history error: {e}")
+        return []
 
 
 def run_simulation_round() -> dict:
@@ -531,29 +552,35 @@ def run_simulation_round() -> dict:
     sol_json = json.dumps(asdict(sol), ensure_ascii=False)
 
     # ── DB保存 ────────────────────────────────────────────────────────
-    init_simulation_db()
-    conn = sqlite3.connect(_NOVEL_DB)
-    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    conn.execute(
-        "INSERT OR REPLACE INTO simulation_rounds "
-        "(round_no, year, events, summary, solar_state_json, nature_epoch, created_at) "
-        "VALUES (?,?,?,?,?,?,?)",
-        (next_round, year,
-         json.dumps(result_data.get("events", []), ensure_ascii=False),
-         result_data.get("summary", ""),
-         sol_json,
-         sol.nature_epoch,
-         ts)
-    )
-    conn.commit()
-    conn.close()
+    try:
+        init_simulation_db()
+        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with sqlite3.connect(_NOVEL_DB) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO simulation_rounds "
+                "(round_no, year, events, summary, solar_state_json, nature_epoch, created_at) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (next_round, year,
+                 json.dumps(result_data.get("events", []), ensure_ascii=False),
+                 result_data.get("summary", ""),
+                 sol_json,
+                 sol.nature_epoch,
+                 ts)
+            )
+            conn.commit()
+    except Exception as e:
+        logger.error(f"Failed to save round {next_round} to DB: {e}")
+        return {"error": f"DB保存エラー: {e}"}
 
     # ── 関係性更新 ────────────────────────────────────────────────────
     rel_updates = result_data.get("relationship_updates", [])
     if rel_updates:
-        # シミュレーション専用エピソード番号: 10000 + round_no
-        sim_episode = 10000 + next_round
-        save_relationship_updates(sim_episode, rel_updates)
+        try:
+            # シミュレーション専用エピソード番号: 10000 + round_no
+            sim_episode = 10000 + next_round
+            save_relationship_updates(sim_episode, rel_updates)
+        except Exception as e:
+            logger.warning(f"Failed to save relationship updates for round {next_round}: {e}")
 
     # ── 文豪ナラティブ生成（collapse / ascension イベントのみ） ─────
     _trigger_archaia_narratives(result_data.get("events", []), sol, next_round)
@@ -579,30 +606,35 @@ def _trigger_archaia_narratives(events: list, sol: SolarState, round_no: int) ->
                 epoch=sol.nature_epoch,
             )
             if narrative:
-                conn = sqlite3.connect(_NOVEL_DB)
-                conn.execute(
-                    "INSERT INTO archaia_log (round_no, civ_name, event_type, bungo_style, narrative, created_at) "
-                    "VALUES (?,?,?,?,?,?)",
-                    (round_no, civ_name, event_type, bungo_style, narrative,
-                     datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-                )
-                conn.commit()
-                conn.close()
-        except Exception:
-            pass  # ナラティブ生成失敗はサイレントに続行
+                try:
+                    with sqlite3.connect(_NOVEL_DB) as conn:
+                        conn.execute(
+                            "INSERT INTO archaia_log (round_no, civ_name, event_type, bungo_style, narrative, created_at) "
+                            "VALUES (?,?,?,?,?,?)",
+                            (round_no, civ_name, event_type, bungo_style, narrative,
+                             datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                        )
+                        conn.commit()
+                except Exception as dbe:
+                    logger.warning(f"Failed to save archaia narrative for {civ_name}: {dbe}")
+        except Exception as e:
+            logger.info(f"Archaia narrative generation skipped for {civ_name}: {e}")
 
 
 def get_archaia_log(limit: int = 30) -> list[dict]:
     """文豪ナラティブログを新しい順で返す。"""
-    init_simulation_db()
-    conn = sqlite3.connect(_NOVEL_DB)
-    rows = conn.execute(
-        "SELECT round_no, civ_name, event_type, bungo_style, narrative, created_at "
-        "FROM archaia_log ORDER BY id DESC LIMIT ?", (limit,)
-    ).fetchall()
-    conn.close()
-    return [
-        {"round_no": r[0], "civ_name": r[1], "event_type": r[2],
-         "bungo_style": r[3], "narrative": r[4], "created_at": r[5]}
-        for r in rows
-    ]
+    try:
+        init_simulation_db()
+        with sqlite3.connect(_NOVEL_DB) as conn:
+            rows = conn.execute(
+                "SELECT round_no, civ_name, event_type, bungo_style, narrative, created_at "
+                "FROM archaia_log ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [
+            {"round_no": r[0], "civ_name": r[1], "event_type": r[2],
+             "bungo_style": r[3], "narrative": r[4], "created_at": r[5]}
+            for r in rows
+        ]
+    except Exception as e:
+        logger.error(f"get_archaia_log error: {e}")
+        return []
