@@ -259,9 +259,8 @@ def save_all_cases(cases):
         with closing(sqlite3.connect(DB_PATH)) as conn:
             cursor = conn.cursor()
             try:
-                # DELETE→INSERT をトランザクションで保護（INSERT失敗時はロールバック）
                 cursor.execute("BEGIN")
-                cursor.execute("DELETE FROM past_cases")
+                # DELETEはせず、UPSERT（INSERT OR REPLACE）で処理するよう修正
                 for data in cases:
                     case_id = data.get("id")
                     timestamp = data.get("timestamp", "")
@@ -286,7 +285,7 @@ def save_all_cases(cases):
 
                     json_str = json.dumps(data, ensure_ascii=False, cls=CustomJSONEncoder)
                     cursor.execute("""
-                        INSERT INTO past_cases
+                        INSERT OR REPLACE INTO past_cases
                         (id, timestamp, industry_sub, score, user_eq, final_status, data)
                         VALUES (?, ?, ?, ?, ?, ?, ?)
                     """, (case_id, timestamp, industry_sub, score_val, user_eq_val, final_status, json_str))
