@@ -3,7 +3,7 @@
 # 使い方: make <コマンド名>
 # ─────────────────────────────────────────────────────────────
 
-.PHONY: test test-v lint iv shap app help
+.PHONY: test test-v lint iv shap app backup help
 
 ## ──────────────────────────────────
 ## テスト関連
@@ -42,6 +42,14 @@ app:
 	streamlit run lease_logic_sumaho12.py
 
 ## ──────────────────────────────────
+## バックアップ
+## ──────────────────────────────────
+
+# データを今すぐバックアップ
+backup:
+	python3 -c "from backup_manager import run_backup; import json; print(json.dumps(run_backup(force=True), ensure_ascii=False, indent=2))"
+
+## ──────────────────────────────────
 ## ヘルプ
 ## ──────────────────────────────────
 
@@ -55,4 +63,5 @@ help:
 	@echo "  make iv       IV分析を実行"
 	@echo "  make shap     SHAP分析を実行（画像出力）"
 	@echo "  make app      Streamlitアプリを起動"
+	@echo "  make backup   データを今すぐバックアップ"
 	@echo ""

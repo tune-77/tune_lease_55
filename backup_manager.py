@@ -15,11 +15,16 @@ _BACKUP_DIR = os.path.join(_DATA_DIR, "backups")
 MAX_GENS = 7  # 保持する世代数
 
 _TARGETS = [
-    (os.path.join(_DATA_DIR, "lease_data.db"),         "lease_data.db"),
-    (os.path.join(_DATA_DIR, "novelist_agent.db"),      "novelist_agent.db"),
-    (os.path.join(_DATA_DIR, "coeff_overrides.json"),   "coeff_overrides.json"),
-    (os.path.join(_DATA_DIR, "coeff_auto.json"),        "coeff_auto.json"),
-    (os.path.join(_DATA_DIR, "training_meta.json"),     "training_meta.json"),
+    (os.path.join(_DATA_DIR, "lease_data.db"),              "lease_data.db"),
+    (os.path.join(_DATA_DIR, "novelist_agent.db"),          "novelist_agent.db"),
+    (os.path.join(_DATA_DIR, "coeff_overrides.json"),       "coeff_overrides.json"),
+    (os.path.join(_DATA_DIR, "coeff_auto.json"),            "coeff_auto.json"),
+    (os.path.join(_DATA_DIR, "training_meta.json"),         "training_meta.json"),
+    (os.path.join(_DATA_DIR, "last_case.json"),             "last_case.json"),
+    (os.path.join(_DATA_DIR, "business_rules.json"),        "business_rules.json"),
+    (os.path.join(_DATA_DIR, "ai_teach_rules.json"),        "ai_teach_rules.json"),
+    (os.path.join(_DATA_DIR, "coeff_history.jsonl"),        "coeff_history.jsonl"),
+    (os.path.join(_DATA_DIR, "secondary_review_items.json"), "secondary_review_items.json"),
 ]
 
 
@@ -113,6 +118,36 @@ def get_last_backup_time() -> str | None:
 # 自動バックアップ（起動時トリガー）
 # ─────────────────────────────────────────────────────────────────────────────
 
+def start_daily_scheduler(hour: int = 2, minute: int = 0) -> bool:
+    """
+    毎日定時バックアップを APScheduler で登録する。
+    既に起動済みなら何もしない。True=新規起動、False=既存利用。
+    """
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        import streamlit as st
+
+        key = "_backup_scheduler"
+        existing = st.session_state.get(key)
+        if existing and existing.running:
+            return False
+
+        scheduler = BackgroundScheduler(daemon=True)
+        scheduler.add_job(
+            lambda: run_backup(force=False),
+            trigger="cron",
+            hour=hour,
+            minute=minute,
+            id="daily_backup",
+            replace_existing=True,
+        )
+        scheduler.start()
+        st.session_state[key] = scheduler
+        return True
+    except Exception:
+        return False
+
+
 def auto_backup_on_startup() -> bool:
     """
     アプリ起動時に1日1回だけバックアップを実行する。
@@ -153,3 +188,19 @@ def render_sidebar_backup() -> None:
                 st.success(f"✅ {n} ファイルをバックアップしました")
             else:
                 st.info("スキップ（すべて最新）")
+
+        st.divider()
+        enabled = st.checkbox(
+            "⏰ 毎日自動バックアップ",
+            value=st.session_state.get("backup_scheduler_enabled", True),
+            key="backup_scheduler_enabled",
+        )
+        if enabled:
+            hour = st.number_input(
+                "実行時刻（時）",
+                min_value=0, max_value=23,
+                value=st.session_state.get("backup_schedule_hour", 2),
+                key="backup_schedule_hour",
+            )
+            start_daily_scheduler(int(hour), 0)
+            st.caption(f"毎日 {int(hour):02d}:00 に自動実行")

@@ -237,10 +237,13 @@ def _render_auto_optimizer_status() -> None:
 def _render_backup_and_draft() -> None:
     """バックアップ + フォーム下書き保存"""
     try:
-        from backup_manager import render_sidebar_backup, auto_backup_on_startup
+        from backup_manager import render_sidebar_backup, auto_backup_on_startup, start_daily_scheduler
         if not st.session_state.get("_startup_backup_done"):
             auto_backup_on_startup()
             st.session_state["_startup_backup_done"] = True
+        if st.session_state.get("backup_scheduler_enabled", True):
+            hour = st.session_state.get("backup_schedule_hour", 2)
+            start_daily_scheduler(int(hour), 0)
         render_sidebar_backup()
     except Exception:
         pass
