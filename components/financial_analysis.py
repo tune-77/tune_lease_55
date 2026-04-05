@@ -217,13 +217,23 @@ def _build_forecast_chart(
         marker=dict(size=4, symbol="diamond"),
     ))
 
-    # 実績と予測の境界を縦線で示す
-    fig.add_vline(
-        x=months_hist[-1],
-        line_dash="dash",
-        line_color="gray",
-        annotation_text="予測開始",
-        annotation_position="top right",
+    # 実績と予測の境界を縦線で示す（文字列軸対応）
+    boundary_x = months_hist[-1]
+    fig.add_shape(
+        type="line",
+        x0=boundary_x, x1=boundary_x,
+        y0=0, y1=1,
+        xref="x", yref="paper",
+        line=dict(dash="dash", color="gray", width=1),
+    )
+    fig.add_annotation(
+        x=boundary_x, y=1,
+        xref="x", yref="paper",
+        text="予測開始",
+        showarrow=False,
+        xanchor="left",
+        yanchor="bottom",
+        font=dict(color="gray", size=11),
     )
 
     fig.update_layout(
@@ -464,6 +474,16 @@ def render_financial_analysis() -> None:
                 "まだ Colab を実行していない場合は手動で URL を入力してください。"
             )
 
+        if st.button("🔄 Colab URL を自動取得", key="auto_fetch_colab_url"):
+            url = _load_colab_url_from_drive()
+            if url:
+                st.session_state["fin_backend_url"] = url
+                st.session_state["fin_backend_url_source"] = "colab_drive"
+                st.success(f"✅ Colab URL を取得しました: `{url}`")
+                st.rerun()
+            else:
+                st.error("Google Drive の中継ファイルが見つかりません。Colab を実行してください。")
+
         st.divider()
         url_input = st.text_input(
             "バックエンド URL（手動上書き）",
@@ -482,13 +502,27 @@ def render_financial_analysis() -> None:
             st.rerun()
         if col_check.button("🔍 接続確認", key="check_backend_health"):
             try:
-                r = httpx.get(f"{_get_backend_url()}/health", timeout=10.0)
-                d = r.json()
-                tfm = "✅ TimesFM" if d.get("timesfm") else "⚠️ GBM（フォールバック）"
-                loc = "☁️ Colab" if d.get("backend") == "colab" else "💻 ローカル"
-                st.success(f"接続OK — {loc} / {tfm}")
+                r = httpx.get(f"{_get_backend_url()}/health", timeout=10.0,
+                              headers={"ngrok-skip-browser-warning": "true"})
+                if r.status_code != 200:
+                    st.error(f"接続失敗: HTTP {r.status_code}\n{r.text[:200]}")
+                else:
+                    try:
+                        d = r.json()
+                    except Exception:
+                        st.warning(f"接続できましたが JSON が返りませんでした（HTTP {r.status_code}）:\n{r.text[:200]}")
+                        d = {}
+                    tfm = "✅ TimesFM" if d.get("timesfm") else "⚠️ GBM（フォールバック）"
+                    loc = "☁️ Colab" if d.get("backend") == "colab" else "💻 ローカル"
+                    st.success(f"接続OK — {loc} / {tfm}")
             except Exception as e:
-                st.error(f"接続失敗: {e}")
+                err = str(e)
+                if "Connection refused" in err or "Errno 61" in err:
+                    st.error("接続失敗: バックエンドサーバーが起動していません。Colab ノートブックを実行してください。")
+                elif "Expecting value" in err:
+                    st.error("接続失敗: サーバーが応答しましたが JSON を返しませんでした。URL が正しいか確認してください。")
+                else:
+                    st.error(f"接続失敗: {e}")
 
     # ── ① データ入力フォーム ───────────────────────────────────────────────
     st.subheader("① 財務データ入力")
@@ -591,6 +625,7 @@ def render_financial_analysis() -> None:
                     f"{_get_backend_url()}/forecast",
                     json=payload,
                     timeout=120.0,
+                    headers={"ngrok-skip-browser-warning": "true"},
                 )
             if resp.status_code != 200:
                 st.error(f"バックエンドエラー: {resp.status_code} — {resp.text}")
