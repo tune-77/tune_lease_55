@@ -430,8 +430,8 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
             return _fallback_novel(episode_no, week_label)
 
         _engine, _model, api_key, gemini_model = _get_ai_settings()
-        # 小説生成は長文出力のため Gemini を優先使用
-        engine = "gemini"
+        # 小説生成は長文出力のため Gemini を優先使用。APIキー未設定時は設定エンジンにフォールバック
+        engine = "gemini" if api_key else _engine
         messages = [
             {"role": "system", "content": get_novel_system_prompt(genre)},
             {"role": "user",   "content": prompt},
@@ -439,7 +439,8 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
         raw = _chat_for_thread(engine, _model, messages,
                                timeout_seconds=180,
                                api_key=api_key,
-                               gemini_model=gemini_model)
+                               gemini_model=gemini_model,
+                               max_output_tokens=8192)
         text = (raw.get("message") or {}).get("content", "") or ""
 
         # エラー応答を検知して保存を防ぐ
@@ -448,6 +449,7 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
             "Ollama がタイムアウト",
             "Gemini が応答しませんでした",
             "Gemini API エラー",
+            "Gemini APIキーが設定されていません",
             "AnythingLLM が応答しませんでした",
             "[小説生成エラー",
         )
