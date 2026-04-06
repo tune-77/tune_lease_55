@@ -12,7 +12,17 @@ _DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "lea
 
 
 def _get_conn():
-    return sqlite3.connect(_DB_PATH)
+    conn = sqlite3.connect(_DB_PATH)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS base_rate_master (
+            month TEXT PRIMARY KEY,
+            rate REAL NOT NULL,
+            note TEXT
+        )
+        """
+    )
+    return conn
 
 
 def get_base_rate(month: str | None = None) -> float | None:

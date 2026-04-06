@@ -1745,6 +1745,39 @@ def render_analysis_results(
                 current_approx = max(0, total_assets - machines - other_assets)
                 current_ratio = (current_approx / liability_total * 100) if liability_total > 0 else 100.0
                 pd_val = calculate_pd(user_eq, current_ratio, user_op)
+                
+            # ==== 連鎖倒産リスクのUI警告表示 ====
+            try:
+                import numpy as np
+                from risk_engine import calculate_modified_risk
+                from network_constants import IOT_TEMPLATES
+                
+                _base_pd = pd_val
+                _industry_name = res.get("industry_major", "")
+                _template_name = ""
+                if "建設" in _industry_name: _template_name = "建設業モデル"
+                elif "製造" in _industry_name: _template_name = "製造業モデル"
+                elif "情報" in _industry_name: _template_name = "情報通信業モデル"
+                
+                if _template_name in IOT_TEMPLATES:
+                    _template = IOT_TEMPLATES[_template_name]
+                    _r_vec = np.array([_base_pd] + [e.get("base_r", 1.0) for e in _template["entities"][1:]])
+                    _alpha_vec = np.array([0.5] + [e.get("alpha", 0.5) for e in _template["entities"][1:]])
+                    
+                    _n = len(_r_vec)
+                    _adj_w = np.zeros((_n, _n))
+                    for u, v, w in _template["dependencies"]:
+                        _adj_w[u][v] = w
+                        
+                    _m_vec = calculate_modified_risk(_r_vec, _alpha_vec, _adj_w)
+                    _m_pd = min(100.0, max(0.0, _m_vec[0]))
+                    
+                    if _m_pd > _base_pd * 1.2:
+                        st.error(f"⚠️ **【連鎖倒産リスク アラート】**\n\n単体の財務データに基づく倒産リスクは **{_base_pd:.1f} %** ですが、**{_industry_name}** 特有の依存ネットワークを加味した実質倒産確率は **{_m_pd:.1f} %** に増幅しています。")
+                    else:
+                        st.success(f"✅ ネットワーク連鎖リスクチェック完了: 単体リスク {_base_pd:.1f}% → 実質リスク {_m_pd:.1f}%")
+            except Exception as e:
+                st.caption(f"連鎖リスクチェック用モジュールの読み込みに失敗しました: {e}")
 
             with st.expander("📐 スコア内訳・利回り詳細", expanded=False):
                 k2, k3, k4 = st.columns(3)

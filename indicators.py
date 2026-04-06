@@ -247,4 +247,43 @@ def calculate_pd(equity: float, current: float, profit: float | None) -> float:
             risk += 10.0
         elif profit < 5:
             risk += 4.0
-    return min(100.0, max(0.0, risk))
+    base_pd = min(100.0, max(0.0, risk))
+    
+    # ==== ネットワーク連鎖リスクエンジンの適用 ====
+    try:
+        import streamlit as st
+        from risk_engine import calculate_modified_risk
+        from network_constants import IOT_TEMPLATES
+        import numpy as np
+
+        industry = st.session_state.get("industry_major", "")
+        template_name = ""
+        if "建設" in industry: template_name = "建設業モデル"
+        elif "製造" in industry: template_name = "製造業モデル"
+        elif "情報" in industry: template_name = "情報通信業モデル"
+        
+        if template_name in IOT_TEMPLATES:
+            template = IOT_TEMPLATES[template_name]
+            
+            # 先頭(0番目)を対象企業として配列を生成
+            r_vec = np.array([base_pd] + [e.get("base_r", 1.0) for e in template["entities"][1:]])
+            alpha_vec = np.array([0.5] + [e.get("alpha", 0.5) for e in template["entities"][1:]]) 
+            
+            n = len(r_vec)
+            adj_w = np.zeros((n, n))
+            for u, v, w in template["dependencies"]:
+                adj_w[u][v] = w
+                
+            m_vec = calculate_modified_risk(r_vec, alpha_vec, adj_w)
+            final_pd = min(100.0, max(0.0, m_vec[0]))
+            
+            # アラート表示用にセッションステートへ保存
+            st.session_state["_base_pd_for_alert"] = base_pd
+            st.session_state["_m_pd_for_alert"] = final_pd
+            
+            return final_pd
+    except Exception as e:
+        # エラー時は安全に本来の base_pd を返す
+        pass
+
+    return base_pd
