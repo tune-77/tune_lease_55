@@ -12,19 +12,55 @@ def render_status_registration():
         st.warning("登録された案件がありません。")
     else:
         st.subheader("未登録の案件")
-        pending_cases = [c for c in all_cases if c.get("final_status") == "未登録"]
-        
+        pending_cases = [c for c in all_cases if c.get("final_status") in ("未登録", "", None)]
+        pending_cases = list(reversed(pending_cases))  # 新しい順
+
         if not pending_cases:
             st.success("全ての案件が登録済みです！")
-        
-        for i, case in enumerate(reversed(pending_cases[-5:])): 
+        else:
+            st.caption(f"未登録: {len(pending_cases)}件")
+
+        # 検索フィルター
+        search_kw = st.text_input("🔍 絞り込み（会社名・業種・日付）", placeholder="例: 建設、テスト会社、2026-04")
+        if search_kw:
+            def _match(c):
+                kw = search_kw.lower()
+                return (kw in str(c.get("company_name","")).lower()
+                        or kw in str(c.get("industry_sub","")).lower()
+                        or kw in str(c.get("industry_major","")).lower()
+                        or kw in str(c.get("timestamp","")).lower()
+                        or kw in str(c.get("inputs",{}).get("company_name","")).lower())
+            pending_cases = [c for c in pending_cases if _match(c)]
+
+        # 表示件数（最大20件）
+        show_n = st.slider("表示件数", 5, min(50, max(5, len(pending_cases))), min(20, len(pending_cases))) if len(pending_cases) > 5 else len(pending_cases)
+        display_cases = pending_cases[:show_n]
+
+        for i, case in enumerate(display_cases):
             case_id = case.get("id", "")
-            res = case.get("result", {})
-            score = res.get("score", 0)
-            hantei = res.get("hantei", "不明")
-            company_no = case.get("company_no") or case.get("inputs", {}).get("company_no") or "NO DATA"
-            company_name = case.get("company_name") or case.get("inputs", {}).get("company_name") or ""
-            display_name = f"#{company_no} {company_name}".strip()
+            # screening_records 由来はmemoから詳細を取得
+            memo_data = {}
+            if case.get("_from_screening_records"):
+                try:
+                    import json as _json
+                    raw = case.get("_memo_raw", "")
+                    if raw:
+                        memo_data = _json.loads(raw)
+                except Exception:
+                    pass
+            res = case.get("result", memo_data.get("result", {}))
+            score = res.get("score", case.get("score", 0))
+            hantei = res.get("hantei", case.get("hantei", "不明"))
+            company_no = (case.get("company_no")
+                          or memo_data.get("company_no")
+                          or case.get("inputs", {}).get("company_no")
+                          or memo_data.get("inputs", {}).get("company_no", ""))
+            company_name = (case.get("company_name")
+                            or memo_data.get("company_name")
+                            or case.get("inputs", {}).get("company_name")
+                            or memo_data.get("inputs", {}).get("company_name", ""))
+            industry = case.get("industry_sub", "")
+            display_name = " ".join(filter(None, [f"#{company_no}" if company_no else None, company_name or industry or "—"]))
             
             with st.expander(f"🏢 {display_name} | {case.get('timestamp', '')[:16]} | スコア: {score:.1f}"):
                 c1, c2 = st.columns(2)

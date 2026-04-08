@@ -119,24 +119,31 @@ def load_all_cases():
                             result_json = json.loads(row["memo"])
                     except (json.JSONDecodeError, TypeError):
                         pass
+                    # memo JSON から会社名・詳細情報を取り出す
+                    company_name = result_json.get("company_name", "")
+                    company_no   = result_json.get("company_no", "")
                     entry = {
                         "id": row_id,
                         "timestamp": row["created_at"],
-                        "industry_sub": row["industry_sub"] or "",
-                        "industry_major": row["industry_major"] or "",
+                        "industry_sub": row["industry_sub"] or result_json.get("industry_sub", ""),
+                        "industry_major": row["industry_major"] or result_json.get("industry_major", ""),
                         "score": row["score"] or 0,
                         "hantei": row["judgment"] or "—",
                         "final_status": result_json.get("final_status", "未登録"),
-                        "inputs": {
+                        "company_name": company_name,
+                        "company_no": company_no,
+                        "inputs": result_json.get("inputs", {
                             "nenshu": row["revenue_m"] or 0,
                             "op_profit": row["op_profit_m"] or 0,
-                        },
-                        "result": {
+                        }),
+                        "result": result_json.get("result", {
                             "score": row["score"] or 0,
                             "hantei": row["judgment"] or "—",
                             "contract_prob": row["contract_prob"] or 0,
-                        },
+                        }),
+                        "pricing": result_json.get("pricing", {}),
                         "_from_screening_records": True,
+                        "_memo_raw": row["memo"] or "",
                     }
                     screening_extra.append(entry)
         except Exception as e:
