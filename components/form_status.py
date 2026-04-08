@@ -1,137 +1,219 @@
-import streamlit as st
+"""
+案件結果登録ページ（成約/失注）
+screening_db.sqlite の screening_records テーブルを直接読み書きする。
+"""
+import json
+import os
+import sqlite3
 import time
-from data_cases import load_all_cases, delete_case, update_case
+from contextlib import closing
+
+import streamlit as st
+
+# DB パス（customer_db.py と同じ解決方法）
+_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "screening_db.sqlite")
+
+
+def _get_conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _load_pending() -> list[dict]:
+    """final_status が NULL/空/"未登録" の全件を新しい順で返す"""
+    if not os.path.exists(_DB_PATH):
+        return []
+    with closing(_get_conn()) as conn:
+        rows = conn.execute(
+            """
+            SELECT id, created_at, industry_major, industry_sub,
+                   customer_type, score, judgment, contract_prob, memo
+            FROM screening_records
+            WHERE (
+                memo IS NULL
+                OR memo = ''
+                OR memo NOT LIKE '%final_status%'
+                OR memo LIKE '%"final_status": "未登録"%'
+                OR memo LIKE '%"final_status":"未登録"%'
+            )
+            ORDER BY id DESC
+            """
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def _parse_memo(raw: str) -> dict:
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except Exception:
+        return {}
+
+
+def _save_final_status(record_id: int, final_status: str, extra: dict) -> bool:
+    """memo JSON に final_status と追加情報をマージして保存する"""
+    if not os.path.exists(_DB_PATH):
+        return False
+    with closing(_get_conn()) as conn:
+        row = conn.execute("SELECT memo FROM screening_records WHERE id = ?", (record_id,)).fetchone()
+        if row is None:
+            return False
+        memo = _parse_memo(row["memo"])
+        memo["final_status"] = final_status
+        memo.update(extra)
+        conn.execute(
+            "UPDATE screening_records SET memo = ? WHERE id = ?",
+            (json.dumps(memo, ensure_ascii=False), record_id),
+        )
+        conn.commit()
+    return True
+
 
 def render_status_registration():
-    """案件結果登録 (成約/失注) タブのUIとロジックを描画する"""
+    """案件結果登録 (成約/失注) タブを描画する"""
     st.title("📝 案件結果登録")
-    st.info("過去の審査案件に対して、最終的な結果（成約・失注）を登録します。")
-    
-    all_cases = load_all_cases()
-    if not all_cases:
-        st.warning("登録された案件がありません。")
+    st.info("審査案件に対して、最終的な結果（成約・失注）を登録します。")
+
+    if not os.path.exists(_DB_PATH):
+        st.error(f"DBファイルが見つかりません: `{_DB_PATH}`")
+        return
+
+    # --- 全件ロード ---
+    all_pending = _load_pending()
+    total_count = all_pending.__len__()
+
+    st.caption(f"未登録件数: **{total_count}件** （`screening_records` より直接読込）")
+
+    if total_count == 0:
+        st.success("全ての案件が登録済みです！")
+        return
+
+    # --- 絞り込みフィルター ---
+    with st.expander("🔍 絞り込み検索", expanded=False):
+        search_kw = st.text_input("会社名・業種・日付で絞り込み", placeholder="例: 建設、株式会社テスト、2026-04")
+
+    if search_kw:
+        kw = search_kw.lower()
+        filtered = []
+        for r in all_pending:
+            memo = _parse_memo(r["memo"])
+            company = memo.get("company_name", "") or ""
+            if (
+                kw in company.lower()
+                or kw in (r["industry_sub"] or "").lower()
+                or kw in (r["industry_major"] or "").lower()
+                or kw in (r["created_at"] or "").lower()
+            ):
+                filtered.append(r)
     else:
-        st.subheader("未登録の案件")
-        pending_cases = [c for c in all_cases if c.get("final_status") in ("未登録", "", None)]
-        pending_cases = list(reversed(pending_cases))  # 新しい順
+        filtered = all_pending
 
-        if not pending_cases:
-            st.success("全ての案件が登録済みです！")
-        else:
-            st.caption(f"未登録: {len(pending_cases)}件")
+    st.caption(f"絞り込み後: {len(filtered)}件")
 
-        # 検索フィルター
-        search_kw = st.text_input("🔍 絞り込み（会社名・業種・日付）", placeholder="例: 建設、テスト会社、2026-04")
-        if search_kw:
-            def _match(c):
-                kw = search_kw.lower()
-                return (kw in str(c.get("company_name","")).lower()
-                        or kw in str(c.get("industry_sub","")).lower()
-                        or kw in str(c.get("industry_major","")).lower()
-                        or kw in str(c.get("timestamp","")).lower()
-                        or kw in str(c.get("inputs",{}).get("company_name","")).lower())
-            pending_cases = [c for c in pending_cases if _match(c)]
+    # --- 表示件数スライダー ---
+    max_show = max(5, len(filtered))
+    default_show = min(20, max_show)
+    if len(filtered) > 5:
+        show_n = st.slider("表示件数", 5, min(100, max_show), default_show)
+    else:
+        show_n = len(filtered)
 
-        # 表示件数（最大20件）
-        show_n = st.slider("表示件数", 5, min(50, max(5, len(pending_cases))), min(20, len(pending_cases))) if len(pending_cases) > 5 else len(pending_cases)
-        display_cases = pending_cases[:show_n]
+    display_list = filtered[:show_n]
 
-        for i, case in enumerate(display_cases):
-            case_id = case.get("id", "")
-            # screening_records 由来はmemoから詳細を取得
-            memo_data = {}
-            if case.get("_from_screening_records"):
-                try:
-                    import json as _json
-                    raw = case.get("_memo_raw", "")
-                    if raw:
-                        memo_data = _json.loads(raw)
-                except Exception:
-                    pass
-            res = case.get("result", memo_data.get("result", {}))
-            score = res.get("score", case.get("score", 0))
-            hantei = res.get("hantei", case.get("hantei", "不明"))
-            company_no = (case.get("company_no")
-                          or memo_data.get("company_no")
-                          or case.get("inputs", {}).get("company_no")
-                          or memo_data.get("inputs", {}).get("company_no", ""))
-            company_name = (case.get("company_name")
-                            or memo_data.get("company_name")
-                            or case.get("inputs", {}).get("company_name")
-                            or memo_data.get("inputs", {}).get("company_name", ""))
-            industry = case.get("industry_sub", "")
-            display_name = " ".join(filter(None, [f"#{company_no}" if company_no else None, company_name or industry or "—"]))
-            
-            with st.expander(f"🏢 {display_name} | {case.get('timestamp', '')[:16]} | スコア: {score:.1f}"):
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.write(f"**判定**: {hantei}")
-                    summary = case.get("chat_summary", "")
-                    st.caption((summary[:100] + "...") if summary else "サマリなし")
-                
-                with c2:
-                    if st.button("🗑️ この案件を削除", key=f"del_pending_{case_id}", type="secondary", help="未登録のままこの案件を一覧から削除します"):
-                        if delete_case(case_id):
-                            st.success("削除しました")
-                            time.sleep(0.5)
-                            st.rerun()
-                        else:
-                            st.error("削除に失敗しました。")
-                    with st.form(f"status_form_{i}"):
-                        res_status = st.radio("結果", ["成約", "失注"], horizontal=True)
-                        final_rate = st.number_input("獲得レート (%)", value=0.0, step=0.01, format="%.2f", help="成約した場合の決定金利")
-                        past_base_rate = case.get("pricing", {}).get("base_rate", 2.1)
-                        base_rate_input = st.number_input("当時の基準金利 (%)", value=past_base_rate, step=0.01, format="%.2f")
-                        lost_reason = st.text_input("失注理由 (失注の場合のみ)", placeholder="例: 金利で他社に負けた")
-                        loan_condition_options = ["本件限度", "次回決算まで本件限度", "金融機関と協調", "独立・新設向け条件", "親会社等保証", "担保・保全あり", "その他"]
-                        loan_conditions = st.multiselect("成約/承認の具体的条件", loan_condition_options, help="成約時に実際に付与された条件を選択してください。これが将来の類似案件の『決め手』として参照されます。")
-                        competitor_name = st.text_input("競合他社情報", placeholder="例: 〇〇銀行、〇〇リース")
-                        competitor_rate = st.number_input("他社提示金利 (%)", value=0.0, step=0.01, format="%.2f", help="競合の提示条件があれば入力")
-                        
-                        if st.form_submit_button("登録する"):
-                            if res_status == "成約" and final_rate == 0.0:
-                                st.warning("💡 獲得レートを入力すると成約分析の精度が向上します")
-                            if res_status == "失注" and lost_reason.strip() == "":
-                                st.warning("💡 失注理由を入力すると定性分析の精度が向上します")
-                            target_id = case.get("id")
-                            patches = {
-                                "final_status": res_status,
-                                "final_rate": final_rate,
-                                "base_rate_at_time": base_rate_input,
-                                "loan_conditions": loan_conditions,
-                                "competitor_name": competitor_name.strip() or "",
-                                "competitor_rate": competitor_rate if competitor_rate else None,
-                            }
-                            if res_status == "成約" and final_rate > 0:
-                                patches["winning_spread"] = final_rate - base_rate_input
-                            if res_status == "失注":
-                                patches["lost_reason"] = lost_reason
+    # --- 案件カード ---
+    for idx, record in enumerate(display_list):
+        rec_id = record["id"]
+        memo = _parse_memo(record["memo"])
 
-                            if update_case(target_id, patches):
-                                st.success("登録しました！")
-                                # BN 証拠重みを実績から再学習
-                                try:
-                                    from components.shinsa_gunshi import refresh_evidence_weights
-                                    refresh_evidence_weights()
-                                except Exception:
-                                    pass
-                                # 自動係数最適化チェック
-                                try:
-                                    from auto_optimizer import run_auto_optimization, get_training_status
-                                    _opt = run_auto_optimization()
-                                    if _opt:
-                                        _auc = _opt.get("auc_borrower_asset")
-                                        _auc_str = f"　AUC: {_auc:.3f}" if _auc else ""
-                                        st.success(f"🧠 係数を自動更新しました（{_opt['n_cases']}件{_auc_str}）")
-                                    else:
-                                        _s = get_training_status()
-                                        if _s["phase"] == "waiting":
-                                            st.caption(f"📊 初回学習まであと {_s['next_trigger']}件")
-                                        elif _s["phase"] == "active":
-                                            st.caption(f"📊 次回更新まであと {_s['next_trigger']}件")
-                                except Exception:
-                                    pass
-                                time.sleep(1)
-                                st.rerun()
-                            else:
-                                st.error("保存に失敗しました。")
+        company_name = memo.get("company_name", "").strip()
+        industry = record.get("industry_sub", "") or record.get("industry_major", "") or "業種不明"
+        display_name = company_name if company_name else industry
+
+        score = record.get("score") or 0.0
+        judgment = record.get("judgment", "—")
+        created = (record.get("created_at") or "")[:16]
+
+        with st.expander(f"🏢 {display_name}　｜　{created}　｜　スコア: {score:.1f}　｜　{judgment}", expanded=False):
+            col_info, col_form = st.columns([1, 2])
+
+            with col_info:
+                st.write(f"**業種**: {industry}")
+                st.write(f"**顧客区分**: {record.get('customer_type', '—')}")
+                if company_name:
+                    st.write(f"**会社名**: {company_name}")
+                st.write(f"**判定**: {judgment}")
+                st.write(f"**スコア**: {score:.1f}")
+                if record.get("contract_prob") is not None:
+                    st.write(f"**成約確率**: {record['contract_prob']:.1f}%")
+                # memo から追加情報
+                if memo.get("lease_amount"):
+                    st.write(f"**リース物件**: {memo.get('lease_amount')}")
+
+            with col_form:
+                with st.form(f"status_form_{rec_id}_{idx}"):
+                    res_status = st.radio("結果", ["成約", "失注"], horizontal=True, key=f"radio_{rec_id}")
+                    final_rate = st.number_input(
+                        "獲得レート (%)", value=0.0, step=0.01, format="%.2f",
+                        help="成約した場合の決定金利",
+                        key=f"rate_{rec_id}"
+                    )
+                    lost_reason = st.text_input(
+                        "失注理由（失注の場合）",
+                        placeholder="例: 金利で他社に負けた",
+                        key=f"lost_{rec_id}"
+                    )
+                    competitor_name = st.text_input(
+                        "競合他社",
+                        placeholder="例: ○○銀行",
+                        key=f"comp_{rec_id}"
+                    )
+                    loan_condition_options = [
+                        "本件限度", "次回決算まで本件限度", "金融機関と協調",
+                        "独立・新設向け条件", "親会社等保証", "担保・保全あり", "その他"
+                    ]
+                    loan_conditions = st.multiselect(
+                        "承認条件",
+                        loan_condition_options,
+                        key=f"cond_{rec_id}"
+                    )
+
+                    submitted = st.form_submit_button("✅ 登録する", type="primary")
+
+                if submitted:
+                    if res_status == "成約" and final_rate == 0.0:
+                        st.warning("💡 獲得レートを入力すると分析精度が向上します")
+                    if res_status == "失注" and not lost_reason.strip():
+                        st.warning("💡 失注理由を入力すると定性分析の精度が向上します")
+
+                    extra = {
+                        "final_rate": final_rate,
+                        "loan_conditions": loan_conditions,
+                        "competitor_name": competitor_name.strip(),
+                    }
+                    if res_status == "失注":
+                        extra["lost_reason"] = lost_reason.strip()
+
+                    if _save_final_status(rec_id, res_status, extra):
+                        st.success(f"✅ 登録完了: {display_name} → **{res_status}**")
+                        # BN 証拠重みを実績から再学習
+                        try:
+                            from components.shinsa_gunshi import refresh_evidence_weights
+                            refresh_evidence_weights()
+                        except Exception:
+                            pass
+                        # 自動係数最適化チェック
+                        try:
+                            from auto_optimizer import run_auto_optimization, get_training_status
+                            _opt = run_auto_optimization()
+                            if _opt:
+                                _auc = _opt.get("auc_borrower_asset")
+                                _auc_str = f" AUC: {_auc:.3f}" if _auc else ""
+                                st.success(f"🧠 係数を自動更新（{_opt['n_cases']}件{_auc_str}）")
+                        except Exception:
+                            pass
+                        time.sleep(0.8)
+                        st.rerun()
+                    else:
+                        st.error("保存に失敗しました。")
