@@ -1084,39 +1084,41 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 # 案件ログを保存し、案件IDをセッションに保持しておく
                 case_id = save_case_log(log_payload)
                 if case_id is None:
-                    st.error("ログ保存に失敗しました。")
+                    st.warning("⚠️ 案件ログ保存に失敗しましたが、審査結果は表示されます。")
                 else:
                     st.session_state["current_case_id"] = case_id
-                    # 戻ったときにクリアされないよう、今回の入力値をすべて保存（訂正で戻ったときに復元）
-                    submitted_qual_corr = {f"qual_corr_{item['id']}": st.session_state.get(f"qual_corr_{item['id']}", 0) for item in QUALITATIVE_SCORING_CORRECTION_ITEMS}
-                    st.session_state["last_submitted_inputs"] = {
-                        "company_name": form_result.get("company_name", ""),
-                        "company_no": form_result.get("company_no", ""),
-                        "nenshu": nenshu, "item9_gross": item9_gross, "rieki": rieki,
-                        "item4_ord_profit": item4_ord_profit, "item5_net_income": item5_net_income,
-                        "item10_dep": item10_dep, "item11_dep_exp": item11_dep_exp,
-                        "item8_rent": item8_rent, "item12_rent_exp": item12_rent_exp,
-                        "item6_machine": item6_machine, "item7_other": item7_other,
-                        "net_assets": net_assets, "total_assets": total_assets,
-                        "bank_credit": bank_credit, "lease_credit": lease_credit,
-                        "contracts": contracts, "lease_term": lease_term,
-                        "acquisition_cost": acquisition_cost, "acceptance_year": acceptance_year,
-                        "selected_major": selected_major, "selected_sub": selected_sub,
-                        "grade": grade, "main_bank": main_bank, "competitor": competitor,
-                        "num_competitors": num_competitors, "deal_occurrence": deal_occurrence,
-                        "customer_type": customer_type, "contract_type": contract_type,
-                        "deal_source": deal_source, "customer_code": form_result.get("customer_code", ""),
-                        "selected_asset_index": st.session_state.get("selected_asset_index", 0),
-                        **submitted_qual_corr,
-                    }
-                    st.session_state["form_restored_from_submit"] = False
-                    st.session_state.nav_index = 1  # 1番目（分析結果）に切り替える
-                    st.session_state["_jump_to_analysis"] = True  # 判定直後の1回だけ分析結果に飛ぶ
-                    # AI自動所見・ワンタップ質問を有効化（ai_consultation.pyで生成）
-                    st.session_state["_need_auto_comment"] = True
-                    st.session_state["auto_ai_comment"] = None
-                    st.session_state["gemini_qa_cache"] = {}  # 新案件なのでキャッシュリセット
-                    st.rerun()  # 画面を読み込み直して、実際にタブを移動させる
+                    # _db_auto_saved_for をリセット（新規案件なので必ず screening_records に保存する）
+                    st.session_state.pop("_db_auto_saved_for", None)
+                # ── 入力値・遷移設定はログ保存の成否に関わらず実行 ──────────────
+                submitted_qual_corr = {f"qual_corr_{item['id']}": st.session_state.get(f"qual_corr_{item['id']}", 0) for item in QUALITATIVE_SCORING_CORRECTION_ITEMS}
+                st.session_state["last_submitted_inputs"] = {
+                    "company_name": form_result.get("company_name", ""),
+                    "company_no": form_result.get("company_no", ""),
+                    "nenshu": nenshu, "item9_gross": item9_gross, "rieki": rieki,
+                    "item4_ord_profit": item4_ord_profit, "item5_net_income": item5_net_income,
+                    "item10_dep": item10_dep, "item11_dep_exp": item11_dep_exp,
+                    "item8_rent": item8_rent, "item12_rent_exp": item12_rent_exp,
+                    "item6_machine": item6_machine, "item7_other": item7_other,
+                    "net_assets": net_assets, "total_assets": total_assets,
+                    "bank_credit": bank_credit, "lease_credit": lease_credit,
+                    "contracts": contracts, "lease_term": lease_term,
+                    "acquisition_cost": acquisition_cost, "acceptance_year": acceptance_year,
+                    "selected_major": selected_major, "selected_sub": selected_sub,
+                    "grade": grade, "main_bank": main_bank, "competitor": competitor,
+                    "num_competitors": num_competitors, "deal_occurrence": deal_occurrence,
+                    "customer_type": customer_type, "contract_type": contract_type,
+                    "deal_source": deal_source, "customer_code": form_result.get("customer_code", ""),
+                    "selected_asset_index": st.session_state.get("selected_asset_index", 0),
+                    **submitted_qual_corr,
+                }
+                st.session_state["form_restored_from_submit"] = False
+                st.session_state.nav_index = 1  # 1番目（分析結果）に切り替える
+                st.session_state["_jump_to_analysis"] = True  # 判定直後の1回だけ分析結果に飛ぶ
+                # AI自動所見・ワンタップ質問を有効化（ai_consultation.pyで生成）
+                st.session_state["_need_auto_comment"] = True
+                st.session_state["auto_ai_comment"] = None
+                st.session_state["gemini_qa_cache"] = {}  # 新案件なのでキャッシュリセット
+                st.rerun()  # 画面を読み込み直して、実際にタブを移動させる
         except Exception as e:
             st.error(
                 "⚠️ **判定処理中にエラーが発生しました**\n\n"

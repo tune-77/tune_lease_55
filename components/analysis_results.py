@@ -198,11 +198,13 @@ def render_analysis_results(
                     _db_init_auto()
                     _db_inp_auto = st.session_state.get("last_submitted_inputs") or {}
                     _new_db_id = _db_save_auto(res, _db_inp_auto, "")
-                    st.session_state["_db_auto_saved_for"] = str(_db_auto_key)
+                    # 保存成功時のみ _db_auto_saved_for をセット（失敗時は次回リトライ可能にする）
                     if _new_db_id:
+                        st.session_state["_db_auto_saved_for"] = str(_db_auto_key)
                         st.session_state["db_last_saved_id"] = _new_db_id
-            except Exception:
-                pass  # DB が利用不可の環境でも続行
+            except Exception as _db_exc:
+                import traceback as _tb
+                print(f"[screening_records 保存エラー] {_db_exc}\n{_tb.format_exc()}", flush=True)
 
             # ── モンテカルロ 手動実行（ユーザーがボタンを押した時のみ実行） ──────────
             _mc_col_msg, _mc_col_btn = st.columns([3, 1])
