@@ -839,11 +839,17 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
 
                 # 学習モデル判定が「否決」のときはすべてのスコアを50%減
                 if scoring_result and (scoring_result.get("decision") or "").strip() == "否決":
+                    penalty_amount = final_score - (final_score * _eff_penalty)
                     final_score = final_score * _eff_penalty
                     contract_prob = contract_prob * _eff_penalty
                     score_percent = score_percent * _eff_penalty
                     score_percent_bench = (score_percent_bench or 0) * _eff_penalty
                     score_percent_ind = (score_percent_ind or 0) * _eff_penalty
+                    ai_completed_factors.append({
+                        "factor": "AI学習モデル「否決」ペナルティ",
+                        "effect_percent": int(round(-penalty_amount)) if penalty_amount > 0 else -10,
+                        "detail": "過去の学習データに基づくAI判定で「否決傾向」となったための減点"
+                    })
                     # 定性スコアリングの合計・ランクも否決後の総合で再計算
                     if qualitative_scoring_correction:
                         combined_score = round(final_score * w_quant + qual_weighted_score * w_qual)
@@ -857,6 +863,11 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 # デフォルト率50%以上の場合、成約可能性スコアから-50点
                 if pd_percent >= 50:
                     final_score = max(0, final_score - 50)
+                    ai_completed_factors.append({
+                        "factor": "倒産確率(PD)ペナルティ",
+                        "effect_percent": -50,
+                        "detail": f"デフォルト確率が {pd_percent:.1f}% と非常に高いため大幅減点フラグ発動"
+                    })
                     if qualitative_scoring_correction:
                         combined_score = round(final_score * w_quant + qual_weighted_score * w_qual)
                         combined_score = min(100, max(0, combined_score))
@@ -1015,16 +1026,19 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
 
                 # ログ保存 (自動)
                 log_payload = {
+                    "company_name":   form_result.get("company_name", ""),
+                    "company_no":     form_result.get("company_no", ""),
                     "industry_major": selected_major,
-                    "industry_sub": selected_sub,
-                    "customer_type": customer_type,
-                    "customer_code": form_result.get("customer_code", ""),
-                    "main_bank": main_bank,
-                    "competitor": competitor,
+                    "industry_sub":   selected_sub,
+                    "customer_type":  customer_type,
+                    "customer_code":  form_result.get("customer_code", ""),
+                    "main_bank":      main_bank,
+                    "competitor":     competitor,
                     "competitor_rate": st.session_state.get("competitor_rate"),
                     "num_competitors": num_competitors,
                     "deal_occurrence": deal_occurrence,
                     "inputs": {
+                        "company_name":   form_result.get("company_name", ""),
                         "nenshu": nenshu,
                         "gross_profit": item9_gross,
                         "op_profit": rieki,
@@ -1076,6 +1090,8 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     # 戻ったときにクリアされないよう、今回の入力値をすべて保存（訂正で戻ったときに復元）
                     submitted_qual_corr = {f"qual_corr_{item['id']}": st.session_state.get(f"qual_corr_{item['id']}", 0) for item in QUALITATIVE_SCORING_CORRECTION_ITEMS}
                     st.session_state["last_submitted_inputs"] = {
+                        "company_name": form_result.get("company_name", ""),
+                        "company_no": form_result.get("company_no", ""),
                         "nenshu": nenshu, "item9_gross": item9_gross, "rieki": rieki,
                         "item4_ord_profit": item4_ord_profit, "item5_net_income": item5_net_income,
                         "item10_dep": item10_dep, "item11_dep_exp": item11_dep_exp,

@@ -22,8 +22,11 @@ def render_status_registration():
             res = case.get("result", {})
             score = res.get("score", 0)
             hantei = res.get("hantei", "不明")
+            company_no = case.get("company_no") or case.get("inputs", {}).get("company_no") or "NO DATA"
+            company_name = case.get("company_name") or case.get("inputs", {}).get("company_name") or ""
+            display_name = f"#{company_no} {company_name}".strip()
             
-            with st.expander(f"{case.get('timestamp', '')[:16]} - {case.get('industry_sub', '')} (スコア: {score:.0f})"):
+            with st.expander(f"🏢 {display_name} | {case.get('timestamp', '')[:16]} | スコア: {score:.1f}"):
                 c1, c2 = st.columns(2)
                 with c1:
                     st.write(f"**判定**: {hantei}")

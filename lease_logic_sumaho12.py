@@ -1271,6 +1271,10 @@ elif mode == "🏭 物件ファイナンス審査":
         else:
             st.info("👈 左側で条件を入力し、「審査判定を実行」ボタンを押してください。")
 
+elif mode == "📝 結果登録 (成約/失注)":
+    from components.form_status import render_status_registration
+    render_status_registration()
+
 elif mode == "🤝 エージェントチーム議論":
     from components.agent_team import render_agent_team
     render_agent_team()

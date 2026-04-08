@@ -116,7 +116,7 @@ def _ollama_chat_http(model: str, messages: list, timeout_seconds: int):
 def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int, max_output_tokens: int = 2048):
     """
     Gemini API でチャット。messages は [{"role":"user","content":"..."}] 形式。
-    google.genai（新 SDK）を使用。
+    1) google.genai (新SDK)  2) google.generativeai (旧SDK)  3) HTTP REST 直接 の3段フォールバック。
     """
     if not api_key or not api_key.strip():
         return {"message": {"content": "Gemini APIキーが設定されていません。環境変数 GEMINI_API_KEY またはサイドバーで入力してください。"}}
@@ -125,27 +125,31 @@ def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int,
     prompt = "\n\n".join(system_parts + user_parts)
     if not prompt:
         return {"message": {"content": "送信する内容がありません。"}}
-    try:
-        import google.genai as genai
-        from google.genai import types as genai_types
-    except ImportError:
-        return {"message": {"content": "Gemini を使うには pip install google-genai を実行してください。"}}
 
     # gemini-1.5-* は廃止済み → 2.0-flash にフォールバック
     _model = model or "gemini-2.0-flash"
     if "1.5" in _model:
         _model = "gemini-2.0-flash"
 
+    def _handle_error(e):
+        err = str(e).strip().lower()
+        if "429" in err or "quota" in err or "resource_exhausted" in err or "rate limit" in err:
+            return {"message": {"content": (
+                "**Gemini の利用枠（無料枠の1日制限）に達している可能性があります。**\n"
+                f"【詳細】{str(e)[:300]}"
+            )}}
+        return {"message": {"content": f"Gemini API エラー: {str(e)}"}}
+
+    # ── 方法1: google.genai (新SDK) ────────────────────────────────
     try:
-        client = genai.Client(api_key=api_key.strip())
-        config = genai_types.GenerateContentConfig(
-            max_output_tokens=max_output_tokens,
-            temperature=0.7,
+        import google.genai as _genai
+        from google.genai import types as _genai_types
+        client = _genai.Client(api_key=api_key.strip())
+        config = _genai_types.GenerateContentConfig(
+            max_output_tokens=max_output_tokens, temperature=0.7,
         )
         response = client.models.generate_content(
-            model=_model,
-            contents=prompt,
-            config=config,
+            model=_model, contents=prompt, config=config,
         )
         text = None
         try:
@@ -162,18 +166,44 @@ def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int,
                         break
         if text and text.strip():
             return {"message": {"content": text.strip()}}
-        return {"message": {"content": "Gemini から空の応答か、安全フィルターでブロックされた可能性があります。プロンプトを変えて再試行してください。"}}
+    except Exception:
+        pass  # 旧SDKへフォールバック
+
+    # ── 方法2: google.generativeai (旧SDK) ─────────────────────────
+    try:
+        import google.generativeai as _old_genai
+        _old_genai.configure(api_key=api_key.strip())
+        _old_model_obj = _old_genai.GenerativeModel(
+            model_name=_model,
+            generation_config={"max_output_tokens": max_output_tokens, "temperature": 0.7}
+        )
+        response = _old_model_obj.generate_content(prompt)
+        text = getattr(response, "text", "") or ""
+        if text and text.strip():
+            return {"message": {"content": text.strip()}}
+    except Exception:
+        pass  # HTTP直接へフォールバック
+
+    # ── 方法3: Gemini REST API 直接呼び出し ──────────────────────────
+    try:
+        import urllib.request as _ureq
+        import json as _json
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{_model}:generateContent?key={api_key.strip()}"
+        body = _json.dumps({
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"maxOutputTokens": max_output_tokens, "temperature": 0.7}
+        }).encode("utf-8")
+        req = _ureq.Request(url, data=body, headers={"Content-Type": "application/json"})
+        with _ureq.urlopen(req, timeout=timeout_seconds) as resp_obj:
+            data = _json.loads(resp_obj.read().decode("utf-8"))
+        text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+        if text and text.strip():
+            return {"message": {"content": text.strip()}}
+        return {"message": {"content": "Gemini から空の応答が返されました。"}}
     except Exception as e:
-        err = str(e).strip().lower()
-        if "429" in err or "quota" in err or "resource_exhausted" in err or "rate limit" in err:
-            return {"message": {"content": (
-                "**Gemini の利用枠（無料枠の1日制限）に達している可能性があります。**\n\n"
-                "・無料枠は1日あたりのリクエスト数に上限があります。\n"
-                "・明日になるまでお待ちいただくか、[Google AI Studio](https://aistudio.google.com/) で利用状況を確認してください。\n"
-                "・有料プランにすると制限が緩和されます。\n\n"
-                f"【APIの詳細】{str(e)[:300]}"
-            )}}
-        return {"message": {"content": f"Gemini API エラー: {str(e)}\n\nAPIキーとモデル名（{_model}）を確認し、ネット接続を確認してください。"}}
+        return _handle_error(e)
+
+
 
 
 def _chat_for_thread(engine: str, model: str, messages: list, timeout_seconds: int, api_key: str = "", gemini_model: str = "", max_output_tokens: int = 2048):

@@ -34,20 +34,34 @@ def render_apply_form(
     selected_major = 'D 建設業'
     selected_sub = '06 総合工事業'
 
-    # 企業番号
+    # 企業番号と企業名
     _last_inp_top = st.session_state.get("last_submitted_inputs") or {}
     _co_no_default = str(_last_inp_top.get("company_no", ""))
-    _co_no = st.text_input(
-        "企業番号（6桁）",
-        value=_co_no_default,
-        max_chars=6,
-        placeholder="例：123456",
-        key="company_no_input",
-        help="社内管理用の6桁企業番号を入力してください（任意）",
-    )
+    _co_name_default = _last_inp_top.get("company_name", "")
+    
+    col_co1, col_co2 = st.columns([2, 3])
+    with col_co1:
+        _co_no = st.text_input(
+            "企業番号（必須：6桁）",
+            value=_co_no_default,
+            max_chars=6,
+            placeholder="例：123456",
+            key="company_no_input",
+            help="審査結果を登録する際の主要キーになります。半角数字6桁で入力してください。",
+        )
+    with col_co2:
+        company_name = st.text_input(
+            "企業名（任意）",
+            value=_co_name_default,
+            placeholder="例：株式会社〇〇商事",
+            key="company_name_input",
+        )
+    
     if _co_no and (not _co_no.isdigit() or len(_co_no) != 6):
-        st.warning("企業番号は半角数字6桁で入力してください。")
+        st.warning("⚠️ 案件特定のため、企業番号は半角数字6桁で入力してください。")
+    
     st.session_state["company_no"] = _co_no if (_co_no.isdigit() and len(_co_no) == 6) else ""
+    st.session_state["company_name"] = company_name
 
     # 業界・取引を expander で折りたたみ
     with st.expander("📌 業界選択・取引状況", expanded=True):
@@ -409,6 +423,7 @@ def render_apply_form(
         "contracts": contracts,
         "customer_type": customer_type,
         "customer_code": customer_code,
+        "company_name":  st.session_state.get("company_name", ""),
         "contract_type": contract_type,
         "deal_source": deal_source,
         "lease_term": lease_term,
