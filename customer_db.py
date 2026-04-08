@@ -18,6 +18,7 @@ customer_db.py
 import sqlite3
 import os
 import datetime
+import json
 from contextlib import closing
 from typing import Optional
 
@@ -118,6 +119,21 @@ def init_db():
 # 保存
 # ─────────────────────────────────────────────
 
+def _build_memo(memo: str, inputs: dict) -> str:
+    """company_name / company_no を memo JSON に含めて返す"""
+    try:
+        memo_dict = json.loads(memo) if memo else {}
+        if not isinstance(memo_dict, dict):
+            memo_dict = {"note": str(memo)[:100]}
+    except Exception:
+        memo_dict = {"note": str(memo)[:100]}
+    if inputs.get("company_name"):
+        memo_dict["company_name"] = str(inputs["company_name"])
+    if inputs.get("company_no"):
+        memo_dict["company_no"] = str(inputs["company_no"])
+    return json.dumps(memo_dict, ensure_ascii=False) if memo_dict else ""
+
+
 def save_record(result: dict, inputs: dict, memo: str = "") -> int:
     """
     審査結果を匿名化して保存。
@@ -162,7 +178,7 @@ def save_record(result: dict, inputs: dict, memo: str = "") -> int:
         "score":          round(float(result.get("score", 0)), 1),
         "judgment":       result.get("hantei", ""),
         "contract_prob":  round(float(result.get("contract_prob", 0) or 0), 1),
-        "memo":           str(memo)[:200],
+        "memo":           _build_memo(memo, inputs),
     }
 
     with closing(sqlite3.connect(_DB_PATH)) as conn:
