@@ -79,6 +79,7 @@ def _round_ratio(val, unit: int = 5) -> Optional[int]:
 
 def init_db():
     """テーブルが存在しなければ作成する"""
+    os.makedirs(os.path.dirname(_DB_PATH), exist_ok=True)
     with closing(sqlite3.connect(_DB_PATH)) as conn:
         c = conn.cursor()
         c.execute("""
