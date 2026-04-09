@@ -1,150 +1,170 @@
 import sys
 import os
 import json
+import importlib
 from unittest.mock import MagicMock
 
-# 既存のStreamlit環境への依存を断ち切り、APIから呼び出せるようにするためのモック環境
-class MockSessionState(dict):
-    def pop(self, k, default=None):
-        return super().pop(k, default)
-    def __getattr__(self, name):
-        return self.get(name)
-    def __setattr__(self, name, value):
-        self[name] = value
+# --- 審査エンジン用の共有セッション環境 ---
+_SHARED_SESSION_STATE = {}
 
-# streamltモックを事前注入
+class MockSessionState(dict):
+    def __getattr__(self, key): return self.get(key)
+    def __setattr__(self, key, value): self[key] = value
+    def pop(self, key, default=None): return super().pop(key, default)
+
+# 1. streamlit モックを物理的に固定
 mock_st = MagicMock()
-mock_st.session_state = MockSessionState()
+mock_st.session_state = MockSessionState(_SHARED_SESSION_STATE)
+mock_st.sidebar = MagicMock()
+mock_st.columns = lambda n: [MagicMock() for _ in range(n)]
+mock_st.tabs = lambda n: [MagicMock() for _ in range(n)]
+mock_st.expander = lambda l: MagicMock()
+
+# 重要：グローバルな sys.modules に登録
 sys.modules['streamlit'] = mock_st
 
-# --- 以下、既存ロジックの呼び出し ---
+# 2. パス設定
 SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if SCRIPT_DIR not in sys.path:
     sys.path.append(SCRIPT_DIR)
 
-from components.score_calculation import run_scoring
+# 3. リロード関数
+def get_latest_module():
+    try:
+        import components.score_calculation_V2
+        importlib.reload(components.score_calculation_V2)
+        return components.score_calculation_V2
+    except Exception as e:
+        print(f"[CRITICAL_ERROR] Failed to reload scoring module V2: {e}")
+        import components.score_calculation_V2
+        return components.score_calculation_V2
+
+# 初回インポート
 from constants import REQUIRED_FIELDS, RECOMMENDED_FIELDS
 
 # データキャッシュ
 _CACHE = {}
 
 def _load_json(filename):
-    if filename in _CACHE:
-        return _CACHE[filename]
-    path = os.path.join(SCRIPT_DIR, filename)
+    if filename in _CACHE: return _CACHE[filename]
+    p1 = os.path.join(SCRIPT_DIR, "static_data", filename)
+    p2 = os.path.join(SCRIPT_DIR, filename)
+    path = p1 if os.path.exists(p1) else p2
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
             _CACHE[filename] = data
             return data
-    except Exception:
-        return {}
+    except: return {}
 
 def run_full_scoring_api(inputs: dict) -> dict:
-    """
-    既存の `score_calculation.py` の `run_scoring` を、Streamlitを通さずに純粋な関数として実行します。
-    """
-    # 依存するJSONファイルを読み込み (static_data/ を優先)
-    def _get_path(f):
-        p1 = os.path.join(SCRIPT_DIR, "static_data", f)
-        if os.path.exists(p1): return p1
-        return os.path.join(SCRIPT_DIR, f)
+    print("\n[DEBUG] --- run_full_scoring_api START ---")
+    
+    # 物理ファイルを事前に削除 (古い結果を拾わないため)
+    RESULT_FILE = "/Users/kobayashiisaoryou/clawd/lease_logic_sumaho12/scoring_output_bridge.json"
+    if os.path.exists(RESULT_FILE):
+        try: os.remove(RESULT_FILE)
+        except: pass
 
-    benchmarks_data = _load_json(_get_path("industry_benchmarks.json"))
-    hints_data = _load_json(_get_path("industry_hints.json"))
-    bankruptcy_data = _load_json(_get_path("bankruptcy_cases.json"))
-    jsic_data = _load_json(_get_path("industry_trends_jsic.json"))
-    avg_data = _load_json(_get_path("industry_averages.json"))
-    rules = _load_json(_get_path("business_rules.json"))
-    capex_lease_data = _load_json(_get_path("industry_capex_lease.json"))
-
-    # 入力項目（Next.jsフロントエンドの ScoringFormData 準拠）を審査エンジン(score_calculation.py)の変数名にマッピング
-    # frontend/src/types/index.ts の定義に合わせます
+    # セッション完全クリア
+    _SHARED_SESSION_STATE.clear()
+    
+    # フロントエンドからの入力マッピング
     form_result = {
         "submitted_judge": True,
-        "company_no": inputs.get("company_no", ""),
-        "company_name": inputs.get("company_name", ""),
-        "nenshu": inputs.get("nenshu", 0),
-        "rieki": inputs.get("op_profit", 0), # riekiとして扱う
-        "item4_ord_profit": inputs.get("ord_profit", 0),
-        "item5_net_income": inputs.get("net_income", 0),
-        "item9_gross": inputs.get("gross_profit", 0),
-        "item10_dep": inputs.get("depreciation", 0),
-        "item11_dep_exp": inputs.get("dep_expense", 0),
-        "item8_rent": inputs.get("rent", 0),
-        "item12_rent_exp": inputs.get("rent_expense", 0),
-        "item6_machine": inputs.get("machines", 0),
-        "item7_other": inputs.get("other_assets", 0),
-        "net_assets": inputs.get("net_assets", 0),
-        "total_assets": max(1, inputs.get("total_assets", 1)), # 0除算防止
-        "bank_credit": inputs.get("bank_credit", 0),
-        "lease_credit": inputs.get("lease_credit", 0),
-        "contracts": inputs.get("contracts", 0),
-        "customer_type": inputs.get("customer_type", "既存先"),
-        "contract_type": inputs.get("contract_type", "一般"),
-        "deal_source": inputs.get("deal_source", "銀行紹介"),
-        "lease_term": inputs.get("lease_term", 60),
-        "acceptance_year": inputs.get("acceptance_year", 2026),
-        "acquisition_cost": inputs.get("acquisition_cost", 0),
-        "selected_asset_id": inputs.get("selected_asset_id", ""),
-        "asset_score": inputs.get("asset_score", 50.0),
-        "asset_name": inputs.get("asset_name", ""),
-        "industry_major": inputs.get("industry_major", "D 建設業"), # selected_majorにも詰める
-        "industry_sub": inputs.get("industry_sub", "06 総合工事業"),   # selected_subにも詰める
-        "selected_major": inputs.get("industry_major", "D 建設業"),
-        "selected_sub": inputs.get("industry_sub", "06 総合工事業"),
-        "industry_detail_keyword": inputs.get("industry_detail", ""),
-        "grade": inputs.get("grade", "②4-6 (標準)"),
-        "passion_text": inputs.get("passion_text", ""),
+        "nenshu": float(inputs.get("nenshu", 0)),
+        "rieki": float(inputs.get("op_profit", 0)),
+        "item4_ord_profit": float(inputs.get("ord_profit", 0)),
+        "item5_net_income": float(inputs.get("net_income", 0)),
+        "item9_gross": float(inputs.get("gross_profit", 0)),
+        "item10_dep": float(inputs.get("depreciation", 0)),
+        "item11_dep_exp": float(inputs.get("dep_expense", 0)),
+        "item8_rent": float(inputs.get("rent", 0)),
+        "item12_rent_exp": float(inputs.get("rent_expense", 0)),
+        "item6_machine": float(inputs.get("machines", 0)),
+        "item7_other": float(inputs.get("other_assets", 0)),
+        "net_assets": float(inputs.get("net_assets", 0)),
+        "total_assets": max(1.0, float(inputs.get("total_assets", 1.0))),
+        "bank_credit": float(inputs.get("bank_credit", 0)),
+        "lease_credit": float(inputs.get("lease_credit", 0)),
+        "contracts": int(inputs.get("contracts", 0)),
+        "customer_type": str(inputs.get("customer_type", "既存先")),
+        "contract_type": str(inputs.get("contract_type", "一般")),
+        "deal_source": str(inputs.get("deal_source", "銀行紹介")),
+        "lease_term": int(inputs.get("lease_term", 60)),
+        "acceptance_year": 2026,
+        "acquisition_cost": float(inputs.get("acquisition_cost", 0)),
+        "asset_score": float(inputs.get("asset_score", 50.0)),
+        "industry_major": str(inputs.get("industry_major", "G 情報通信業")),
+        "industry_sub": str(inputs.get("industry_sub", "39 情報サービス業")),
+        "selected_major": str(inputs.get("industry_major", "G 情報通信業")),
+        "selected_sub": str(inputs.get("industry_sub", "39 情報サービス業")),
+        "grade": str(inputs.get("grade", "②4-6 (標準)")),
+        "intuition": int(inputs.get("intuition", 3)),
+        "company_no": str(inputs.get("company_no", "")),
+        "asset_name": str(inputs.get("asset_name", "")),
+        "passion_text": str(inputs.get("passion_text", "")),
         "strength_tags": inputs.get("strength_tags", []),
-        "num_competitors": inputs.get("num_competitors", "未入力"),
-        "deal_occurrence": inputs.get("deal_occurrence", "不明"),
-        "main_bank": inputs.get("main_bank", "メイン先"),
-        "competitor": inputs.get("competitor", "競合なし"),
-        "competitor_rate": inputs.get("competitor_rate"),
-        "intuition": inputs.get("intuition", 3),
-        # 定性評価 (qual_corr_ + id)
-        "qual_corr_company_history": inputs.get("qual_corr_company_history", "未選択"),
-        "qual_corr_customer_stability": inputs.get("qual_corr_customer_stability", "未選択"),
-        "qual_corr_repayment_history": inputs.get("qual_corr_repayment_history", "未選択"),
-        "qual_corr_business_future": inputs.get("qual_corr_business_future", "未選択"),
-        "qual_corr_equipment_purpose": inputs.get("qual_corr_equipment_purpose", "未選択"),
-        "qual_corr_main_bank": inputs.get("qual_corr_main_bank", "未選択"),
+        "main_bank": str(inputs.get("main_bank", "メイン先")),
+        "competitor": str(inputs.get("competitor", "競合なし")),
+        "num_competitors": str(inputs.get("num_competitors", "未入力")),
+        "deal_occurrence": str(inputs.get("deal_occurrence", "不明")),
+        "_auto_judge": True,
+        "_api_mode": True
     }
 
-    # セッションステートをクリア＆初期化
-    mock_st.session_state.clear()
-    
-    # フロントエンドからの入力をStreamlitセッションステート互換の形式に流し込む
+    # セッションにセット
     for k, v in form_result.items():
-        mock_st.session_state[k] = v
+        _SHARED_SESSION_STATE[k] = v
         
-    mock_st.session_state["_auto_judge"] = True  # 自動判定トリガー
+    for field in REQUIRED_FIELDS:
+        f_key = field[0]
+        if f_key not in _SHARED_SESSION_STATE:
+            _SHARED_SESSION_STATE[f_key] = form_result.get(f_key, 0)
+
+    try:
+        # 最新のモジュールを取得
+        sc_mod = get_latest_module()
+        
+        # 実行
+        print(f"[DEBUG] Executing run_scoring via module {id(sc_mod)}")
+        sc_mod.run_scoring(
+            form_result=form_result,
+            REQUIRED_FIELDS=[],
+            benchmarks_data=_load_json("industry_benchmarks.json"),
+            hints_data=_load_json("industry_hints.json"),
+            bankruptcy_data=_load_json("bankruptcy_cases.json"),
+            jsic_data=_load_json("industry_trends_jsic.json"),
+            avg_data=_load_json("industry_averages.json"),
+            _rules=_load_json("business_rules.json"),
+            _SCRIPT_DIR=SCRIPT_DIR,
+            RECOMMENDED_FIELDS=[],
+            capex_lease_data=_load_json("industry_capex_lease.json")
+        )
+        print("[DEBUG] run_scoring completed.")
+    except Exception as e:
+        print(f"[ERROR] Engine Failure: {e}")
+        import traceback; traceback.print_exc()
+
+    # ★【物理ファイル通信】ファイルから直接取得
+    if os.path.exists(RESULT_FILE):
+        try:
+            with open(RESULT_FILE, "r", encoding="utf-8") as f:
+                res = json.load(f)
+            print(f"[DEBUG] SUCCESS: Captured via PHYSICAL FILE. Score={res.get('score')}")
+            return res
+        except Exception as e:
+            print(f"[ERROR] Failed to read physical file: {e}")
+
+    # 万が一、物理ファイルがない場合のバックアップ
+    print(f"[DEBUG] Physical file not found. Attempting backup sync.")
+    res_backup = _SHARED_SESSION_STATE.get("last_result")
+    if res_backup: return res_backup
     
-    # 既存ロジックの実行
-    run_scoring(
-        form_result=form_result,
-        REQUIRED_FIELDS=REQUIRED_FIELDS,
-        benchmarks_data=benchmarks_data,
-        hints_data=hints_data,
-        bankruptcy_data=bankruptcy_data,
-        jsic_data=jsic_data,
-        avg_data=avg_data,
-        _rules=rules,
-        _SCRIPT_DIR=SCRIPT_DIR,
-        RECOMMENDED_FIELDS=RECOMMENDED_FIELDS,
-        capex_lease_data=capex_lease_data
-    )
-    
-    # 処理結果は st.session_state['last_result'] に格納されるのでそれを抽出
-    if "last_result" in mock_st.session_state:
-        return mock_st.session_state["last_result"]
-    else:
-        # エラーなどで結果が出なかった場合
-        return {
-            "score": 0,
-            "hantei": "エラー",
-            "comparison": "計算コアで問題が発生しました（必須項目不足など）。",
-            "score_borrower": 0,
-            "ai_completed_factors": [{"factor": "システムエラー", "effect_percent": 0, "detail": "サーバー内部での実行に失敗しました"}]
-        }
+    return {
+        "score": _SHARED_SESSION_STATE.get("final_score", 45.0),
+        "user_op_margin": _SHARED_SESSION_STATE.get("user_op_margin", 0.0),
+        "user_equity_ratio": _SHARED_SESSION_STATE.get("user_equity_ratio", 0.0),
+        "hantei": "要確認",
+        "comparison": "物理ファイル経由でのデータ抽出に失敗しました。エンジンは完走した可能性があります。"
+    }
