@@ -1087,7 +1087,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     # ── 結果登録画面および統計用のDBにも保存 ──
                     try:
                         from customer_db import save_record
-                        save_record(st.session_state['last_result'], st.session_state['last_submitted_inputs'])
+                        save_record(st.session_state['last_result'], log_payload['inputs'])
                     except Exception as _e:
                         print(f"[WARNING] customer_db saving failed: {_e}")
 
@@ -1119,6 +1119,21 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     **submitted_qual_corr,
                 }
                 st.session_state["form_restored_from_submit"] = False
+                # ── screening_records に即時保存（rerun前に確実に保存） ─────────
+                try:
+                    from customer_db import save_record as _sc_save_record, init_db as _sc_init_db
+                    _sc_init_db()
+                    _sc_res = st.session_state.get("last_result", {})
+                    _sc_inp = st.session_state.get("last_submitted_inputs", {})
+                    _sc_id = _sc_save_record(_sc_res, _sc_inp, "")
+                    if _sc_id:
+                        st.session_state["db_last_saved_id"] = _sc_id
+                        st.session_state["_db_auto_saved_for"] = str(
+                            st.session_state.get("current_case_id") or _sc_id
+                        )
+                except Exception as _sc_exc:
+                    st.warning(f"⚠️ 審査データの保存に失敗しました: {_sc_exc}")
+                # ──────────────────────────────────────────────────────────────
                 st.session_state.nav_index = 1  # 1番目（分析結果）に切り替える
                 st.session_state["_jump_to_analysis"] = True  # 判定直後の1回だけ分析結果に飛ぶ
                 # AI自動所見・ワンタップ質問を有効化（ai_consultation.pyで生成）

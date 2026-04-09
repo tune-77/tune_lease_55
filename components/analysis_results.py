@@ -205,6 +205,7 @@ def render_analysis_results(
             except Exception as _db_exc:
                 import traceback as _tb
                 print(f"[screening_records 保存エラー] {_db_exc}\n{_tb.format_exc()}", flush=True)
+                st.warning(f"⚠️ 審査データの保存に失敗しました: {_db_exc}\n結果登録ページに表示されません。管理者に連絡してください。")
 
             # ── モンテカルロ 手動実行（ユーザーがボタンを押した時のみ実行） ──────────
             _mc_col_msg, _mc_col_btn = st.columns([3, 1])
