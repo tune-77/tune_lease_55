@@ -58,11 +58,14 @@ def run_full_scoring_api(inputs: dict) -> dict:
     rules = _load_json(_get_path("business_rules.json"))
     capex_lease_data = _load_json(_get_path("industry_capex_lease.json"))
 
-    # 入力項目（Pydanticモデル由来）を旧Streamlit由来の変数名にマッピング
+    # 入力項目（Next.jsフロントエンドの ScoringFormData 準拠）を審査エンジン(score_calculation.py)の変数名にマッピング
+    # frontend/src/types/index.ts の定義に合わせます
     form_result = {
         "submitted_judge": True,
+        "company_no": inputs.get("company_no", ""),
+        "company_name": inputs.get("company_name", ""),
         "nenshu": inputs.get("nenshu", 0),
-        "rieki": inputs.get("op_profit", 0),
+        "rieki": inputs.get("op_profit", 0), # riekiとして扱う
         "item4_ord_profit": inputs.get("ord_profit", 0),
         "item5_net_income": inputs.get("net_income", 0),
         "item9_gross": inputs.get("gross_profit", 0),
@@ -73,7 +76,7 @@ def run_full_scoring_api(inputs: dict) -> dict:
         "item6_machine": inputs.get("machines", 0),
         "item7_other": inputs.get("other_assets", 0),
         "net_assets": inputs.get("net_assets", 0),
-        "total_assets": inputs.get("total_assets", 1),
+        "total_assets": max(1, inputs.get("total_assets", 1)), # 0除算防止
         "bank_credit": inputs.get("bank_credit", 0),
         "lease_credit": inputs.get("lease_credit", 0),
         "contracts": inputs.get("contracts", 0),
@@ -86,6 +89,8 @@ def run_full_scoring_api(inputs: dict) -> dict:
         "selected_asset_id": inputs.get("selected_asset_id", ""),
         "asset_score": inputs.get("asset_score", 50.0),
         "asset_name": inputs.get("asset_name", ""),
+        "industry_major": inputs.get("industry_major", "D 建設業"), # selected_majorにも詰める
+        "industry_sub": inputs.get("industry_sub", "06 総合工事業"),   # selected_subにも詰める
         "selected_major": inputs.get("industry_major", "D 建設業"),
         "selected_sub": inputs.get("industry_sub", "06 総合工事業"),
         "industry_detail_keyword": inputs.get("industry_detail", ""),
@@ -98,7 +103,7 @@ def run_full_scoring_api(inputs: dict) -> dict:
         "competitor": inputs.get("competitor", "競合なし"),
         "competitor_rate": inputs.get("competitor_rate"),
         "intuition": inputs.get("intuition", 3),
-        # 定性評価
+        # 定性評価 (qual_corr_ + id)
         "qual_corr_company_history": inputs.get("qual_corr_company_history", "未選択"),
         "qual_corr_customer_stability": inputs.get("qual_corr_customer_stability", "未選択"),
         "qual_corr_repayment_history": inputs.get("qual_corr_repayment_history", "未選択"),

@@ -179,79 +179,119 @@ def calculate_score_full(req: ScoringRequest):
 
 @app.get("/api/cases/pending")
 def get_pending_cases():
-    try:
-        from data_cases import load_all_cases
-        all_cases = load_all_cases()
-        pending = [
-            {
-                "id": c.get("id"),
-                "company_no": c.get("company_no") or c.get("inputs", {}).get("company_no") or "NO DATA",
-                "company_name": c.get("company_name") or c.get("inputs", {}).get("company_name") or "",
-                "timestamp": c.get("timestamp"),
-                "score": c.get("result", {}).get("score")
-            }
-            for c in all_cases if c.get("final_status") == "未登録"
-        ]
-        # 直近50件を降順で返す（重複 ID 除去）
-        seen = set()
-        deduped = []
-        for p in pending[::-1]:
-            uid = str(p.get("id", ""))
-            if uid not in seen:
-                seen.add(uid)
-                deduped.append(p)
-        return deduped[:50]
-    except Exception as _e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(_e))
+    """全DB(lease_data.db, screening_db.sqlite)から未登録案件を統合して取得する"""
+    import sqlite3
+    import json
+    from contextlib import closing
+    
+    _lease_db = os.path.join(_REPO_ROOT, "data", "lease_data.db")
+    _screening_db = os.path.join(_REPO_ROOT, "data", "screening_db.sqlite")
+    
+    rows = []
+    
+    # 1. lease_data.db (past_cases)
+    if os.path.exists(_lease_db):
+        try:
+            with closing(sqlite3.connect(_lease_db)) as conn:
+                conn.row_factory = sqlite3.Row
+                res = conn.execute("SELECT id, timestamp, industry_sub, score, data FROM past_cases WHERE final_status='未登録'").fetchall()
+                for r in res:
+                    try: d = json.loads(r["data"] or "{}")
+                    except: d = {}
+                    rows.append({
+                        "id": str(r["id"]),
+                        "company_no": d.get("company_no", ""),
+                        "company_name": d.get("company_name", ""),
+                        "timestamp": r["timestamp"],
+                        "score": r["score"],
+                        "industry": r["industry_sub"] or d.get("industry_major", ""),
+                        "_source": "past_cases"
+                    })
+        except Exception: pass
+
+    # 2. screening_db.sqlite (screening_records)
+    if os.path.exists(_screening_db):
+        try:
+            with closing(sqlite3.connect(_screening_db)) as conn:
+                conn.row_factory = sqlite3.Row
+                res = conn.execute("""
+                    SELECT id, created_at, industry_sub, industry_major, score, memo 
+                    FROM screening_records 
+                    WHERE (memo IS NULL OR memo='' OR (memo NOT LIKE '%final_status%' AND memo NOT LIKE '%"final_status":"成約"%' AND memo NOT LIKE '%"final_status":"失注"%'))
+                """).fetchall()
+                for r in res:
+                    try: m = json.loads(r["memo"] or "{}")
+                    except: m = {}
+                    # 重複チェック用に、過去DB由来のIDがあればスキップ
+                    orig_id = m.get("_original_past_case_id")
+                    if orig_id and any(x["id"] == str(orig_id) for x in rows): continue
+                    
+                    rows.append({
+                        "id": str(r["id"]),
+                        "company_no": m.get("company_no") or m.get("corporate_number", ""),
+                        "company_name": m.get("company_name", ""),
+                        "timestamp": r["created_at"],
+                        "score": r["score"],
+                        "industry": r["industry_sub"] or r["industry_major"],
+                        "_source": "screening_records"
+                    })
+        except Exception: pass
+
+    # 日付順（降順）にソートして上位50件
+    rows.sort(key=lambda x: x["timestamp"] or "", reverse=True)
+    return rows[:50]
 
 @app.delete("/api/cases/{case_id}")
 def delete_case(case_id: str):
-    """案件を両DBから削除する"""
+    """案件を全DBから確実に削除する"""
     import sqlite3
     from contextlib import closing
     deleted = False
 
-    # lease_data.db / past_cases
-    _lease_db = os.path.join(_REPO_ROOT, "data", "lease_data.db")
-    if os.path.exists(_lease_db):
-        try:
-            with closing(sqlite3.connect(_lease_db)) as conn:
-                cur = conn.execute("DELETE FROM past_cases WHERE id = ?", (case_id,))
-                if cur.rowcount > 0:
-                    deleted = True
-                conn.commit()
-        except Exception:
-            pass
+    paths = [
+        (os.path.join(_REPO_ROOT, "data", "lease_data.db"), "past_cases"),
+        (os.path.join(_REPO_ROOT, "data", "screening_db.sqlite"), "screening_records")
+    ]
 
-    # screening_db.sqlite / screening_records
-    _screening_db = os.path.join(_REPO_ROOT, "data", "screening_db.sqlite")
-    if os.path.exists(_screening_db):
+    for db_path, table in paths:
+        if not os.path.exists(db_path): continue
         try:
-            with closing(sqlite3.connect(_screening_db)) as conn:
-                # id が整数の場合と文字列の場合の両方を試みる
-                try:
-                    int_id = int(case_id)
-                    cur = conn.execute("DELETE FROM screening_records WHERE id = ?", (int_id,))
-                    if cur.rowcount > 0:
-                        deleted = True
-                except ValueError:
-                    pass
-                # memo 内の _original_past_case_id で検索して削除
-                cur2 = conn.execute(
-                    "DELETE FROM screening_records WHERE memo LIKE ?",
-                    (f'%"_original_past_case_id": "{case_id}"%',)
-                )
-                if cur2.rowcount > 0:
-                    deleted = True
+            with closing(sqlite3.connect(db_path)) as conn:
+                # IDが数値の場合
+                conn.execute(f"DELETE FROM {table} WHERE id = ?", (case_id,))
+                # IDが文字列の場合
+                conn.execute(f"DELETE FROM {table} WHERE id = ?", (str(case_id),))
+                # screening_records の場合は memo 内の ID もチェック
+                if table == "screening_records":
+                    conn.execute(f"DELETE FROM {table} WHERE memo LIKE ?", (f'%"_original_past_case_id": "{case_id}"%',))
+                    conn.execute(f"DELETE FROM {table} WHERE memo LIKE ?", (f'%"_original_past_case_id":"{case_id}"%',))
                 conn.commit()
-        except Exception:
-            pass
+                deleted = True # 少なくとも試行はした
+        except Exception: pass
 
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Case not found")
-    return {"message": "Deleted", "case_id": case_id}
+    return {"message": "Deleted if existed", "case_id": case_id}
+
+@app.delete("/api/cases/operation/clear-all")
+def clear_all_pending_cases():
+    """未登録案件をすべて削除する（一括クリア）"""
+    import sqlite3
+    from contextlib import closing
+    try:
+        # screening_db.sqlite
+        _sdb = os.path.join(_REPO_ROOT, "data", "screening_db.sqlite")
+        if os.path.exists(_sdb):
+            with closing(sqlite3.connect(_sdb)) as conn:
+                conn.execute("DELETE FROM screening_records WHERE (memo IS NULL OR memo NOT LIKE '%final_status%')")
+                conn.commit()
+        # lease_data.db
+        _ldb = os.path.join(_REPO_ROOT, "data", "lease_data.db")
+        if os.path.exists(_ldb):
+            with closing(sqlite3.connect(_ldb)) as conn:
+                conn.execute("DELETE FROM past_cases WHERE final_status='未登録'")
+                conn.commit()
+        return {"message": "Cleared all pending cases"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/cases/register")

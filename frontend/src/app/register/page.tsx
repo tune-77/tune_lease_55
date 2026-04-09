@@ -46,6 +46,17 @@ export default function RegisterPage() {
     }
   };
 
+  const clearAllCases = async () => {
+    if (!confirm('全ての未登録データを削除してもよろしいですか？')) return;
+    try {
+      await axios.delete("http://localhost:8000/api/cases/operation/clear-all");
+      triggerMebuki('guide', '全ての未登録案件を削除しました。');
+      fetchPendingCases();
+    } catch (err) {
+      triggerMebuki('reject', '一括削除に失敗しました。');
+    }
+  };
+
   const selectCase = (c: any) => {
     setTargetId(c.id);
     triggerMebuki('approve', `企業番号 #${c.company_no} を選択しました！`);
@@ -81,6 +92,7 @@ export default function RegisterPage() {
       setLostReason('');
       setCompetitorName('');
       setSelectedConditions([]);
+      fetchPendingCases(); // リロード
     } catch (err) {
       console.error(err);
       triggerMebuki('reject', '登録に失敗しました。存在する案件か確認してください。');
@@ -103,10 +115,21 @@ export default function RegisterPage() {
         {/* 基本情報とステータス */}
         <div className="space-y-6">
            <div className="bg-white border border-slate-200 rounded-[2rem] shadow-xl p-8">
-              <h3 className="text-lg font-black text-slate-700 mb-6 flex items-center gap-2">
-                 <User className="w-5 h-5 text-indigo-500" />
-                 1. 対象案件の特定
-              </h3>
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-lg font-black text-slate-700 flex items-center gap-2">
+                   <User className="w-5 h-5 text-indigo-500" />
+                   1. 対象案件の特定
+                </h3>
+                {pendingCases.length > 0 && (
+                  <button 
+                    onClick={clearAllCases}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-[10px] font-black transition-all border border-rose-100"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    全件削除
+                  </button>
+                )}
+              </div>
               <div className="relative">
                   <Search className="absolute left-4 top-4 w-5 h-5 text-slate-400" />
                   <input 
