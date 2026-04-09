@@ -1083,12 +1083,19 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 }
                 # 案件ログを保存し、案件IDをセッションに保持しておく
                 case_id = save_case_log(log_payload)
-                if case_id is None:
-                    st.warning("⚠️ 案件ログ保存に失敗しましたが、審査結果は表示されます。")
-                else:
+                if case_id:
+                    # ── 結果登録画面および統計用のDBにも保存 ──
+                    try:
+                        from customer_db import save_record
+                        save_record(st.session_state['last_result'], st.session_state['last_submitted_inputs'])
+                    except Exception as _e:
+                        print(f"[WARNING] customer_db saving failed: {_e}")
+
                     st.session_state["current_case_id"] = case_id
                     # _db_auto_saved_for をリセット（新規案件なので必ず screening_records に保存する）
                     st.session_state.pop("_db_auto_saved_for", None)
+                else:
+                    st.warning("⚠️ 案件ログ保存に失敗しましたが、審査結果は表示されます。")
                 # ── 入力値・遷移設定はログ保存の成否に関わらず実行 ──────────────
                 submitted_qual_corr = {f"qual_corr_{item['id']}": st.session_state.get(f"qual_corr_{item['id']}", 0) for item in QUALITATIVE_SCORING_CORRECTION_ITEMS}
                 st.session_state["last_submitted_inputs"] = {

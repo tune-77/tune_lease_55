@@ -1,0 +1,128 @@
+[
+  {
+    "id": "sr001",
+    "category": "財務確認",
+    "text": "直近の試算表または決算書原本を確認した",
+    "required": true,
+    "note": ""
+  },
+  {
+    "id": "sr002",
+    "category": "財務確認",
+    "text": "売上高・利益の前期比較を確認し、減収減益の場合は理由を聴取した",
+    "required": true,
+    "note": ""
+  },
+  {
+    "id": "sr003",
+    "category": "財務確認",
+    "text": "資金繰り表または直近3ヶ月の預金残高推移を確認した",
+    "required": false,
+    "note": ""
+  },
+  {
+    "id": "sr004",
+    "category": "財務確認",
+    "text": "負債の内訳（銀行借入・リース・その他）を確認し、返済条件を確認した",
+    "required": true,
+    "note": ""
+  },
+  {
+    "id": "sr005",
+    "category": "信用調査",
+    "text": "信用情報機関による延滞・事故情報がないことを確認した",
+    "required": true,
+    "note": ""
+  },
+  {
+    "id": "sr006",
+    "category": "信用調査",
+    "text": "企業信用調査（帝国データバンク等）を実施または既存データを確認した",
+    "required": false,
+    "note": ""
+  },
+  {
+    "id": "sr007",
+    "category": "信用調査",
+    "text": "代表者の個人信用情報に問題がないことを確認した",
+    "required": true,
+    "note": ""
+  },
+  {
+    "id": "sr008",
+    "category": "担保・保証",
+    "text": "物件リース期間中の保険加入を確認した",
+    "required": true,
+    "note": ""
+  },
+  {
+    "id": "sr009",
+    "category": "担保・保証",
+    "text": "連帯保証人の設定を確認・交渉した（必要な場合）",
+    "required": false,
+    "note": "スコア70未満の場合は必須検討"
+  },
+  {
+    "id": "sr010",
+    "category": "担保・保証",
+    "text": "残価保証や買取保証の条件を確認した（該当物件の場合）",
+    "required": false,
+    "note": ""
+  },
+  {
+    "id": "sr011",
+    "category": "物件・契約",
+    "text": "リース物件の用途・設置場所・管理方法を確認した",
+    "required": true,
+    "note": ""
+  },
+  {
+    "id": "sr012",
+    "category": "物件・契約",
+    "text": "取得価格の妥当性（市場価格・見積もり）を確認した",
+    "required": true,
+    "note": ""
+  },
+  {
+    "id": "sr013",
+    "category": "物件・契約",
+    "text": "契約期間が耐用年数の70%以上であることを確認した",
+    "required": false,
+    "note": "リース要件の確認"
+  },
+  {
+    "id": "sr014",
+    "category": "事業性確認",
+    "text": "物件の事業への必要性・収益貢献の説明を受けた",
+    "required": true,
+    "note": ""
+  },
+  {
+    "id": "sr015",
+    "category": "事業性確認",
+    "text": "主要取引先（売上構成比上位）の状況を確認した",
+    "required": false,
+    "note": ""
+  },
+  {
+    "id": "sr016",
+    "category": "事業性確認",
+    "text": "業界の足元トレンドと企業の対応策を確認した",
+    "required": false,
+    "note": ""
+  },
+  {
+    "id": "sr017",
+    "category": "コンプライアンス",
+    "text": "本人確認書類（登記簿謄本・印鑑証明等）を取得した",
+    "required": true,
+    "note": ""
+  },
+  {
+    "id": "sr018",
+    "category": "コンプライアンス",
+    "text": "反社会的勢力チェックを実施した",
+    "required": true,
+    "note": ""
+  }
+]

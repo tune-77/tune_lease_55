@@ -1,6 +1,6 @@
 """
 案件結果登録ページ（成約/失注）
-screening_db.sqlite の screening_records テーブルを直接読み書きする。
+screening_db.sqlite の screening_records + lease_data.db の past_cases の両方を読み書きする。
 """
 import json
 import os
@@ -10,8 +10,9 @@ from contextlib import closing
 
 import streamlit as st
 
-# DB パス（customer_db.py と同じ解決方法）
+# DB パス
 _DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "screening_db.sqlite")
+_LEASE_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "lease_data.db")
 
 
 def _get_conn() -> sqlite3.Connection:
@@ -21,26 +22,91 @@ def _get_conn() -> sqlite3.Connection:
 
 
 def _load_pending() -> list[dict]:
-    """final_status が NULL/空/"未登録" の全件を新しい順で返す"""
-    if not os.path.exists(_DB_PATH):
-        return []
-    with closing(_get_conn()) as conn:
-        rows = conn.execute(
-            """
-            SELECT id, created_at, industry_major, industry_sub,
-                   customer_type, score, judgment, contract_prob, memo
-            FROM screening_records
-            WHERE (
-                memo IS NULL
-                OR memo = ''
-                OR memo NOT LIKE '%final_status%'
-                OR memo LIKE '%"final_status": "未登録"%'
-                OR memo LIKE '%"final_status":"未登録"%'
-            )
-            ORDER BY id DESC
-            """
-        ).fetchall()
-    return [dict(r) for r in rows]
+    """final_status が NULL/空/"未登録" の全件を新しい順で返す（両DBをマージ）"""
+    results = []
+    seen_past_case_ids: set = set()
+
+    # ── 1. screening_records から読み込み ──────────────────────────
+    if os.path.exists(_DB_PATH):
+        with closing(sqlite3.connect(_DB_PATH)) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT id, created_at, industry_major, industry_sub,
+                       customer_type, score, judgment, contract_prob, memo
+                FROM screening_records
+                WHERE (
+                    memo IS NULL
+                    OR memo = ''
+                    OR memo NOT LIKE '%final_status%'
+                    OR memo LIKE '%"final_status": "未登録"%'
+                    OR memo LIKE '%"final_status":"未登録"%'
+                )
+                ORDER BY id DESC
+                """
+            ).fetchall()
+        for r in rows:
+            d = dict(r)
+            d["_source"] = "screening_records"
+            # past_cases の重複チェック用に _original_past_case_id を抽出
+            try:
+                m = json.loads(d.get("memo") or "{}")
+                oc_id = m.get("_original_past_case_id")
+                if oc_id:
+                    seen_past_case_ids.add(str(oc_id))
+            except Exception:
+                pass
+            results.append(d)
+
+    # ── 2. past_cases から読み込み（screening_records 未登録分のみ） ──
+    if os.path.exists(_LEASE_DB_PATH):
+        try:
+            with closing(sqlite3.connect(_LEASE_DB_PATH)) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    "SELECT id, timestamp, industry_sub, score, final_status, data "
+                    "FROM past_cases WHERE final_status = '未登録' ORDER BY timestamp DESC"
+                ).fetchall()
+            for r in rows:
+                pc_id = str(r["id"])
+                if pc_id in seen_past_case_ids:
+                    continue  # screening_records に既に存在する
+                try:
+                    data = json.loads(r["data"] or "{}")
+                except Exception:
+                    data = {}
+                industry_major = data.get("industry_major", "")
+                industry_sub = r["industry_sub"] or data.get("industry_sub", "")
+                company_name = data.get("company_name", "")
+                result_dict = data.get("result", {}) or {}
+                judgment = result_dict.get("hantei", data.get("judgment", ""))
+                contract_prob = result_dict.get("contract_prob", data.get("contract_prob"))
+                memo_for_display = json.dumps({
+                    "company_name": company_name,
+                    "industry_major": industry_major,
+                    "industry_sub": industry_sub,
+                    "_past_case_id": pc_id,
+                    **{k: v for k, v in data.items() if k not in ("result", "data", "inputs")},
+                }, ensure_ascii=False)
+                results.append({
+                    "id": pc_id,
+                    "created_at": r["timestamp"],
+                    "industry_major": industry_major,
+                    "industry_sub": industry_sub,
+                    "customer_type": data.get("customer_type", ""),
+                    "score": r["score"] or 0.0,
+                    "judgment": judgment,
+                    "contract_prob": contract_prob,
+                    "memo": memo_for_display,
+                    "_source": "past_cases",
+                    "_past_case_id": pc_id,
+                })
+        except Exception:
+            pass
+
+    # 日時降順でソート
+    results.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+    return results
 
 
 def _parse_memo(raw: str) -> dict:
@@ -52,23 +118,45 @@ def _parse_memo(raw: str) -> dict:
         return {}
 
 
-def _save_final_status(record_id: int, final_status: str, extra: dict) -> bool:
-    """memo JSON に final_status と追加情報をマージして保存する"""
-    if not os.path.exists(_DB_PATH):
-        return False
-    with closing(_get_conn()) as conn:
-        row = conn.execute("SELECT memo FROM screening_records WHERE id = ?", (record_id,)).fetchone()
-        if row is None:
+def _save_final_status(record_id, final_status: str, extra: dict, source: str = "screening_records") -> bool:
+    """memo JSON に final_status と追加情報をマージして保存する（両DB対応）"""
+    if source == "past_cases":
+        # lease_data.db の past_cases を更新
+        if not os.path.exists(_LEASE_DB_PATH):
             return False
-        memo = _parse_memo(row["memo"])
-        memo["final_status"] = final_status
-        memo.update(extra)
-        conn.execute(
-            "UPDATE screening_records SET memo = ? WHERE id = ?",
-            (json.dumps(memo, ensure_ascii=False), record_id),
-        )
-        conn.commit()
-    return True
+        try:
+            with closing(sqlite3.connect(_LEASE_DB_PATH)) as conn:
+                row = conn.execute("SELECT data FROM past_cases WHERE id = ?", (str(record_id),)).fetchone()
+                if row is None:
+                    return False
+                data = _parse_memo(row["data"])
+                data["final_status"] = final_status
+                data.update(extra)
+                conn.execute(
+                    "UPDATE past_cases SET final_status = ?, data = ? WHERE id = ?",
+                    (final_status, json.dumps(data, ensure_ascii=False), str(record_id)),
+                )
+                conn.commit()
+            return True
+        except Exception:
+            return False
+    else:
+        # screening_db.sqlite の screening_records を更新
+        if not os.path.exists(_DB_PATH):
+            return False
+        with closing(_get_conn()) as conn:
+            row = conn.execute("SELECT memo FROM screening_records WHERE id = ?", (record_id,)).fetchone()
+            if row is None:
+                return False
+            memo = _parse_memo(row["memo"])
+            memo["final_status"] = final_status
+            memo.update(extra)
+            conn.execute(
+                "UPDATE screening_records SET memo = ? WHERE id = ?",
+                (json.dumps(memo, ensure_ascii=False), record_id),
+            )
+            conn.commit()
+        return True
 
 
 def render_status_registration():
@@ -82,8 +170,9 @@ def render_status_registration():
 
     # --- 全件ロード ---
     all_pending = _load_pending()
-    total_count = all_pending.__len__()
+    total_count = len(all_pending)
 
+    st.write(f"🔍 DEBUG: DB={_DB_PATH} / 取得件数={total_count}")
     st.caption(f"未登録件数: **{total_count}件** （`screening_records` より直接読込）")
 
     if total_count == 0:
@@ -195,7 +284,8 @@ def render_status_registration():
                     if res_status == "失注":
                         extra["lost_reason"] = lost_reason.strip()
 
-                    if _save_final_status(rec_id, res_status, extra):
+                    _source = record.get("_source", "screening_records")
+                    if _save_final_status(rec_id, res_status, extra, source=_source):
                         st.success(f"✅ 登録完了: {display_name} → **{res_status}**")
                         # BN 証拠重みを実績から再学習
                         try:
