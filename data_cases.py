@@ -589,7 +589,10 @@ class CustomJSONEncoder(json.JSONEncoder):
             return obj.tolist()
         elif pd.isna(obj):  # np.nan や pd.NA の対応
             return None
-        return super().default(obj)
+        try:
+            return super().default(obj)
+        except Exception:
+            return str(obj)
 
 def save_case_log(data):
     """審査1件分のログをSQLiteに追記し、生成した案件IDを返す。失敗時は None。"""
