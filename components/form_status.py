@@ -191,8 +191,24 @@ def render_status_registration():
         st.write(f"**DB1総件数**: {db1_total} 件 / **DB2総件数**: {db2_total} 件")
         st.write(f"**表示対象 (未登録)**: {total_count} 件")
         
-        if st.button("♻️ 画面を再読み込み"):
-            st.rerun()
+        col_dbg1, col_dbg2 = st.columns(2)
+        with col_dbg1:
+            if st.button("♻️ 画面を再読み込み", key="btn_reload_dbg"):
+                st.rerun()
+        with col_dbg2:
+            if st.button("🔥 未登録データを全削除", key="btn_clear_all_dbg", type="secondary"):
+                try:
+                    with closing(sqlite3.connect(_DB_PATH)) as conn:
+                        conn.execute("DELETE FROM screening_records WHERE (memo IS NULL OR memo='' OR memo NOT LIKE '%final_status%')")
+                        conn.commit()
+                    with closing(sqlite3.connect(_LEASE_DB_PATH)) as conn:
+                        conn.execute("DELETE FROM past_cases WHERE (final_status='未登録' OR final_status IS NULL)")
+                        conn.commit()
+                    st.success("✅ 未登録データを消去しました")
+                    time.sleep(0.5)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"消去失敗: {e}")
 
     if total_count == 0:
         st.success("全ての案件が登録済みです！")
@@ -249,6 +265,21 @@ def render_status_registration():
             col_info, col_form = st.columns([1, 2])
 
             with col_info:
+                # 削除ボタンを最上部へ移動
+                if st.button("🗑️ この案件を削除", key=f"del_{rec_id}_{idx}", type="secondary"):
+                    _source = record.get("_source", "screening_records")
+                    try:
+                        with closing(sqlite3.connect(_DB_PATH if _source == "screening_records" else _LEASE_DB_PATH)) as conn:
+                            _table = "screening_records" if _source == "screening_records" else "past_cases"
+                            conn.execute(f"DELETE FROM {_table} WHERE id=?", (rec_id,))
+                            conn.commit()
+                        st.success(f"🗑️ 削除完了")
+                        time.sleep(0.5)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"削除失敗: {e}")
+
+                st.divider()
                 st.write(f"**業種**: {industry}")
                 st.write(f"**顧客区分**: {record.get('customer_type', '—')}")
                 if company_name:
