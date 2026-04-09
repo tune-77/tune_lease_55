@@ -261,25 +261,37 @@ def render_status_registration():
         judgment = record.get("judgment", "—")
         created = (record.get("created_at") or "")[:16]
 
-        with st.expander(f"🏢 {display_name}　｜　{created}　｜　スコア: {score:.1f}　｜　{judgment}", expanded=False):
-            col_info, col_form = st.columns([1, 2])
+        # 確実にボタンが見えるように、カードの上に配置
+        col_card, col_del = st.columns([6, 1])
+        with col_del:
+            if st.button("🗑️ 消去", key=f"del_btn_{rec_id}_{idx}", type="secondary", help="この案件を即座に削除"):
+                _source = record.get("_source", "screening_records")
+                try:
+                    with closing(sqlite3.connect(_DB_PATH if _source == "screening_records" else _LEASE_DB_PATH)) as conn:
+                        _table = "screening_records" if _source == "screening_records" else "past_cases"
+                        conn.execute(f"DELETE FROM {_table} WHERE id=?", (rec_id,))
+                        conn.commit()
+                    st.toast(f"🗑️ 削除完了: {display_name}")
+                    time.sleep(0.3)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"削除失敗: {e}")
 
-            with col_info:
-                # 削除ボタンを最上部へ移動
-                if st.button("🗑️ この案件を削除", key=f"del_{rec_id}_{idx}", type="secondary"):
-                    _source = record.get("_source", "screening_records")
-                    try:
-                        with closing(sqlite3.connect(_DB_PATH if _source == "screening_records" else _LEASE_DB_PATH)) as conn:
-                            _table = "screening_records" if _source == "screening_records" else "past_cases"
-                            conn.execute(f"DELETE FROM {_table} WHERE id=?", (rec_id,))
-                            conn.commit()
-                        st.success(f"🗑️ 削除完了")
-                        time.sleep(0.5)
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"削除失敗: {e}")
-
-                st.divider()
+        with col_card:
+            with st.expander(f"🏢 {display_name}　｜　{created}　｜　スコア: {score:.1f}　｜　{judgment}", expanded=False):
+                col_info, col_form = st.columns([1, 2])
+                with col_info:
+                    st.write(f"**業種**: {industry}")
+                    st.write(f"**顧客区分**: {record.get('customer_type', '—')}")
+                    if company_name:
+                        st.write(f"**会社名**: {company_name}")
+                    st.write(f"**判定**: {judgment}")
+                    st.write(f"**スコア**: {score:.1f}")
+                    if record.get("contract_prob") is not None:
+                        st.write(f"**成約確率**: {record['contract_prob']:.1f}%")
+                    # memo から追加情報
+                    if memo.get("lease_amount"):
+                        st.write(f"**リース物件**: {memo.get('lease_amount')}")
                 st.write(f"**業種**: {industry}")
                 st.write(f"**顧客区分**: {record.get('customer_type', '—')}")
                 if company_name:
