@@ -172,11 +172,32 @@ def render_status_registration():
     all_pending = _load_pending()
     total_count = len(all_pending)
 
-    st.write(f"🔍 DEBUG: DB={_DB_PATH} / 取得件数={total_count}")
-    st.caption(f"未登録件数: **{total_count}件** （`screening_records` より直接読込）")
+    # デバッグ情報の強化
+    with st.expander("🛠️ システムデバッグ情報 (開発用)", expanded=False):
+        st.write(f"**DB1 (Screening)**: `{_DB_PATH}` (存在: {os.path.exists(_DB_PATH)})")
+        st.write(f"**DB2 (Lease)**: `{_LEASE_DB_PATH}` (存在: {os.path.exists(_LEASE_DB_PATH)})")
+        
+        # 実レコード数の確認
+        db1_total = 0
+        if os.path.exists(_DB_PATH):
+            with closing(sqlite3.connect(_DB_PATH)) as conn:
+                db1_total = conn.execute("SELECT COUNT(*) FROM screening_records").fetchone()[0]
+        
+        db2_total = 0
+        if os.path.exists(_LEASE_DB_PATH):
+            with closing(sqlite3.connect(_LEASE_DB_PATH)) as conn:
+                db2_total = conn.execute("SELECT COUNT(*) FROM past_cases").fetchone()[0]
+                
+        st.write(f"**DB1総件数**: {db1_total} 件 / **DB2総件数**: {db2_total} 件")
+        st.write(f"**表示対象 (未登録)**: {total_count} 件")
+        
+        if st.button("♻️ 画面を再読み込み"):
+            st.rerun()
 
     if total_count == 0:
         st.success("全ての案件が登録済みです！")
+        if db1_total > 0 or db2_total > 0:
+            st.info("💡 登録済みの案件はここには表示されません。「履歴分析」画面等で確認できます。")
         return
 
     # --- 絞り込みフィルター ---
