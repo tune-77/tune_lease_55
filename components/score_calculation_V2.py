@@ -1219,7 +1219,10 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     _sc_init_db()
                     _sc_res = st.session_state.get("last_result", {})
                     _sc_inp = st.session_state.get("last_submitted_inputs", {})
-                    _sc_id = _sc_save_record(_sc_res, _sc_inp, "")
+                    # case_id を memo に埋め込み、form_status の重複排除を機能させる
+                    import json as _json
+                    _sc_memo = _json.dumps({"_past_case_id": str(case_id)}) if case_id else ""
+                    _sc_id = _sc_save_record(_sc_res, _sc_inp, _sc_memo)
                     if _sc_id:
                         st.session_state["db_last_saved_id"] = _sc_id
                         st.session_state["_db_auto_saved_for"] = str(
