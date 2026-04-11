@@ -22,8 +22,9 @@ import json
 from contextlib import closing
 from typing import Optional
 
-# DB は lease_logic_sumaho12/ フォルダ内に保存
-_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "screening_db.sqlite")
+# DB は lease_logic_sumaho12/ フォルダ内に保存 (絶対パス固定)
+_DB_ROOT = "/Users/kobayashiisaoryou/clawd/lease_logic_sumaho12/data"
+_DB_PATH = os.path.join(_DB_ROOT, "screening_db.sqlite")
 
 
 # ─────────────────────────────────────────────

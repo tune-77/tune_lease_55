@@ -38,12 +38,6 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
     # [API強化] 引数ではなく、form_result 内のフラグを使用する (TypeError回避)
     _api_mode = form_result.get("_api_mode", False)
 
-    # [生存確認] 関数が呼ばれた瞬間に足跡を残す
-    try:
-        with open("/Users/kobayashiisaoryou/clawd/lease_logic_sumaho12/alive.txt", "w") as f:
-            f.write(f"Function called at {datetime.datetime.now()}\nArgs: {list(form_result.keys())}")
-    except: pass
-
     # [API強化] すべての戻り値変数を事前に初期化 (UnboundLocalErrorを物理的に防ぐ)
     final_score = 0.0
     combined_score = 0.0
@@ -1184,15 +1178,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 # 案件ログを保存し、案件IDをセッションに保持しておく
                 case_id = save_case_log(log_payload)
                 if case_id:
-                    # ── 結果登録画面および統計用のDBにも保存 ──
-                    try:
-                        from customer_db import save_record
-                        save_record(st.session_state['last_result'], log_payload['inputs'])
-                    except Exception as _e:
-                        print(f"[WARNING] customer_db saving failed: {_e}")
-
                     st.session_state["current_case_id"] = case_id
-                    # _db_auto_saved_for をリセット（新規案件なので必ず screening_records に保存する）
                     st.session_state.pop("_db_auto_saved_for", None)
                 else:
                     st.warning("⚠️ 案件ログ保存に失敗しましたが、審査結果は表示されます。")
@@ -1234,13 +1220,21 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 except Exception as _sc_exc:
                     st.warning(f"⚠️ 審査データの保存に失敗しました: {_sc_exc}")
                 # ──────────────────────────────────────────────────────────────
-                st.session_state.nav_index = 1  # 1番目（分析結果）に切り替える
-                st.session_state["_jump_to_analysis"] = True  # 判定直後の1回だけ分析結果に飛ぶ
-                # AI自動所見・ワンタップ質問を有効化（ai_consultation.pyで生成）
+                # ──────────────────────────────────────────────────────────────
+                # 保存の証拠を画面に表示
+                _saved_id = st.session_state.get("db_last_saved_id", "不明")
+                st.success(f"⚖️ 審査完了: ID 【{_saved_id}】 を記録しました。")
+                from customer_db import get_db_path as _get_db_path
+                st.info(f"📁 保存先: `{_get_db_path()}`  \n💡 「案件結果登録」画面のリスト1番目に追加されています。")
+                
+                # 自動ジャンプ(nav_index = 1)はユーザー要望により廃止。現在の画面に留まる。
+                # st.session_state.nav_index = 1
+                st.session_state["_jump_to_analysis"] = True 
                 st.session_state["_need_auto_comment"] = True
                 st.session_state["auto_ai_comment"] = None
-                st.session_state["gemini_qa_cache"] = {}  # 新案件なのでキャッシュリセット
-                st.rerun()  # 画面を読み込み直して、実際にタブを移動させる
+                st.session_state["gemini_qa_cache"] = {}
+                st.rerun()
+
         except Exception as e:
             st.error(
                 "⚠️ **判定処理中にエラーが発生しました**\n\n"

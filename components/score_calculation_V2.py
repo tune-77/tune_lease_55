@@ -38,12 +38,6 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
     # [API強化] 引数ではなく、form_result 内のフラグを使用する (TypeError回避)
     _api_mode = form_result.get("_api_mode", False)
 
-    # [生存確認] 関数が呼ばれた瞬間に足跡を残す
-    try:
-        with open("/Users/kobayashiisaoryou/clawd/lease_logic_sumaho12/alive.txt", "w") as f:
-            f.write(f"Function called at {datetime.datetime.now()}\nArgs: {list(form_result.keys())}")
-    except: pass
-
     # [API強化] すべての戻り値変数を事前に初期化 (UnboundLocalErrorを物理的に防ぐ)
     final_score = 0.0
     combined_score = 0.0
@@ -307,11 +301,12 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         _annual_rent = None
                         _dscr_source = None
 
-                    if _annual_rent and _annual_rent > 0:
-                        user_dscr = round(_ebitda_approx / _annual_rent, 2)
+                    if _annual_rent and float(_annual_rent) > 0:
+                        user_dscr = round(float(_ebitda_approx) / float(_annual_rent), 2)
                     else:
                         user_dscr = None
-                except Exception:
+                except Exception as e:
+                    if _api_mode: print(f"[CORE_WARN] DSCR Calc failed: {e}")
                     user_dscr = None
                     _dscr_source = None
 
@@ -373,14 +368,18 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 # 追加指標の比較テキスト生成
                 def _vs(user_val, bench_val, higher_is_good=True, fmt=".1f"):
                     """業種比較の短評を返す。"""
-                    if bench_val is None:
-                        return "業種データなし"
-                    diff = user_val - bench_val
-                    if higher_is_good:
-                        label = "高い✅" if diff >= 0 else "低い⚠️"
-                    else:
-                        label = "低い✅" if diff <= 0 else "高い⚠️"
-                    return f"{user_val:{fmt}} (業種: {bench_val:{fmt}}) → {label}"
+                    if user_val is None or bench_val is None:
+                        return f"(不明) (業種: {bench_val if bench_val is not None else 'なし'})"
+                    try:
+                        u_v, b_v = float(user_val), float(bench_val)
+                        diff = u_v - b_v
+                        if higher_is_good:
+                            label = "高い✅" if diff >= 0 else "低い⚠️"
+                        else:
+                            label = "低い✅" if diff <= 0 else "高い⚠️"
+                        return f"{u_v:{fmt}} (業種: {b_v:{fmt}}) → {label}"
+                    except:
+                        return f"{user_val} (業種: {bench_val}) → 比較不能"
 
                 _roa_line  = f"\n- **ROA**: {_vs(user_roa, bench_roa)}" if bench_roa is not None else ""
                 _curr_line = (f"\n- **流動比率**: {_vs(user_current_ratio, bench_current_r, fmt='.0f')}%"
@@ -739,9 +738,12 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 y_pred += val_cost_log * YIELD_COEFFS["cost_log"]
                 y_pred += acceptance_year * YIELD_COEFFS["year"]
     
-                # 金利環境補正
+                # 金利環境補正 (12で割る際の0ガード)
                 BASE_DATE = "2025-03"
-                term_years = lease_term / 12
+                _safe_term = float(lease_term or 12)
+                if _safe_term <= 0: _safe_term = 12
+                term_years = _safe_term / 12
+                
                 base_market_rate = get_market_rate(BASE_DATE, term_years)
                 today_str = datetime.date.today().strftime("%Y-%m")
                 current_market_rate = get_market_rate(today_str, term_years)
@@ -1184,15 +1186,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 # 案件ログを保存し、案件IDをセッションに保持しておく
                 case_id = save_case_log(log_payload)
                 if case_id:
-                    # ── 結果登録画面および統計用のDBにも保存 ──
-                    try:
-                        from customer_db import save_record
-                        save_record(st.session_state['last_result'], log_payload['inputs'])
-                    except Exception as _e:
-                        print(f"[WARNING] customer_db saving failed: {_e}")
-
                     st.session_state["current_case_id"] = case_id
-                    # _db_auto_saved_for をリセット（新規案件なので必ず screening_records に保存する）
                     st.session_state.pop("_db_auto_saved_for", None)
                 else:
                     st.warning("⚠️ 案件ログ保存に失敗しましたが、審査結果は表示されます。")

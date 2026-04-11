@@ -318,7 +318,7 @@ def register_case(req: CaseRegisterRequest):
         
         # 統計やAI学習のトリガー（Streamlit版と同等の処理）
         try:
-            from components.shinsa_gunshi import refresh_evidence_weights
+            from shinsa_gunshi import refresh_evidence_weights
             refresh_evidence_weights()
         except Exception:
             pass
@@ -343,7 +343,7 @@ class AdviseResponseItem(BaseModel):
 
 @app.post("/api/gunshi/advise", response_model=List[AdviseResponseItem])
 def get_gunshi_advise(req: AdviseRequest):
-    from components.shinsa_gunshi import PHRASES_100
+    from shinsa_gunshi import PHRASES_100
     try:
         advices = PHRASES_100.get("逆転アドバイス", [])
         
@@ -384,7 +384,7 @@ class GunshiChatRequest(BaseModel):
 
 @app.post("/api/gunshi/chat")
 def generate_gunshi_chat(req: GunshiChatRequest):
-    from components.shinsa_gunshi import PHRASES_100, build_gunshi_prompt
+    from shinsa_gunshi import PHRASES_100, build_gunshi_prompt
     try:
         advices = PHRASES_100.get("逆転アドバイス", [])
         import random
@@ -407,7 +407,7 @@ def generate_gunshi_chat(req: GunshiChatRequest):
 
         reply_text = ""
         try:
-            from components.shinsa_gunshi import _get_gemini_key
+            from shinsa_gunshi import _get_gemini_key
             api_key = _get_gemini_key()
             if not api_key:
                 import os
@@ -445,8 +445,14 @@ def generate_gunshi_chat(req: GunshiChatRequest):
 
 @app.get("/api/dashboard/stats")
 def get_dashboard_stats():
-    from components.analysis_regression import run_contract_driver_analysis
-    from components.data_cases import load_all_cases
+    try:
+        from analysis_regression import run_contract_driver_analysis
+    except ImportError:
+        import sys
+        if _REPO_ROOT not in sys.path:
+            sys.path.insert(0, _REPO_ROOT)
+        from analysis_regression import run_contract_driver_analysis
+    from data_cases import load_all_cases
     try:
         analysis = run_contract_driver_analysis()
         all_cases = load_all_cases()
@@ -462,7 +468,7 @@ def get_dashboard_stats():
 
 @app.get("/api/visual/data")
 def get_visual_data():
-    from components.visual_insights import _build_dataframe
+    from visual_insights import _build_dataframe
     import math
     try:
         df = _build_dataframe()
@@ -481,7 +487,7 @@ def get_visual_data():
 
 @app.get("/api/similar/data")
 def get_similar_cases_data():
-    from components.case_network import build_network_data
+    from case_network import build_network_data
     try:
         data = build_network_data(None)
         return data
@@ -730,7 +736,10 @@ def api_tfm_financial_paths(req: TfmFinancialPathsRequest):
 # ── 履歴分析・ダッシュボード
 @app.get("/api/analysis/contract_drivers")
 def api_contract_drivers():
-    from analysis_regression import run_contract_driver_analysis
+    try:
+        from analysis_regression import run_contract_driver_analysis
+    except ImportError:
+        from analysis_regression import run_contract_driver_analysis
     res = run_contract_driver_analysis()
     if res is None:
         raise HTTPException(status_code=400, detail="Not enough data (minimum 5 closed cases required).")
@@ -752,7 +761,10 @@ def api_contract_drivers():
 # ── 定量要因分析
 @app.get("/api/analysis/quantitative")
 def api_quantitative():
-    from analysis_regression import run_quantitative_contract_analysis
+    try:
+        from analysis_regression import run_quantitative_contract_analysis
+    except ImportError:
+        from analysis_regression import run_quantitative_contract_analysis
     res = run_quantitative_contract_analysis()
     if res is None:
         raise HTTPException(status_code=400, detail="Not enough data (minimum 50 cases required).")
@@ -761,7 +773,10 @@ def api_quantitative():
 # ── 定性要因分析
 @app.post("/api/analysis/qualitative")
 def api_qualitative():
-    from analysis_regression import run_qualitative_contract_analysis
+    try:
+        from analysis_regression import run_qualitative_contract_analysis
+    except ImportError:
+        from analysis_regression import run_qualitative_contract_analysis
     from category_config import QUALITATIVE_SCORING_CORRECTION_ITEMS
     res = run_qualitative_contract_analysis(QUALITATIVE_SCORING_CORRECTION_ITEMS)
     if res is None:
@@ -905,7 +920,7 @@ def get_app_logs():
 # ── 競合関係グラフ
 @app.get("/api/analysis/competitor_graph")
 def api_competitor_graph():
-    from components.graph_view import build_graph_data
+    from graph_view import build_graph_data
     try:
         data = build_graph_data()
         return data
@@ -1169,7 +1184,7 @@ class AgentRunRequest(BaseModel):
 
 @app.post("/api/agent_hub/run_agent")
 def run_agent_api(req: AgentRunRequest):
-    from components.agent_hub import (
+    from agent_hub import (
         _run_benchmark_agent, _run_market_agent, _run_retrain_trigger
     )
     
@@ -1187,7 +1202,7 @@ def run_agent_api(req: AgentRunRequest):
             return {"status": "success", "result": res}
             
         elif agent_id == "anomaly":
-            from components.agent_hub import _run_anomaly_agent
+            from agent_hub import _run_anomaly_agent
             from data_cases import load_all_cases
             cases = load_all_cases()
             res = _run_anomaly_agent(cases)

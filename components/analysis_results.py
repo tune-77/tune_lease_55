@@ -735,7 +735,7 @@ def render_analysis_results(
                     st.rerun()
             else:
                 try:
-                    from components.shinsa_gunshi import render_gunshi_ai_comment
+                    from shinsa_gunshi import render_gunshi_ai_comment
                     render_gunshi_ai_comment(
                         res=res,
                         submitted_inputs=st.session_state.get("last_submitted_inputs"),
@@ -839,11 +839,11 @@ def render_analysis_results(
                                 try:
                                     _g_raw = st.session_state.get("_gunshi_pdf_data")
                                     if _g_raw:
-                                        from components.shinsa_gunshi import build_gunshi_pdf_data
+                                        from shinsa_gunshi import build_gunshi_pdf_data
                                         _gunshi_pdf = build_gunshi_pdf_data(_g_raw)
                                     else:
                                         # まだ開いていない場合はその場で計算
-                                        from components.shinsa_gunshi import compute_gunshi_from_res, build_gunshi_pdf_data
+                                        from shinsa_gunshi import compute_gunshi_from_res, build_gunshi_pdf_data
                                         _g_raw = compute_gunshi_from_res(
                                             _rep_res,
                                             st.session_state.get("last_submitted_inputs"),
@@ -1136,7 +1136,7 @@ def render_analysis_results(
 
                     # ── STEP 2（良決は直接）: 軍師フレーズ・LLM ──────────────────
                     try:
-                        from components.shinsa_gunshi import render_gunshi_in_results
+                        from shinsa_gunshi import render_gunshi_in_results
                         _gu_model = st.session_state.get("ollama_model", "llama3") or "llama3"
                         _gunshi_g = render_gunshi_in_results(
                             res=_gu_res,

@@ -1276,7 +1276,7 @@ elif mode == "📝 結果登録 (成約/失注)":
     render_status_registration()
 
 elif mode == "🤝 エージェントチーム議論":
-    from components.agent_team import render_agent_team
+    from agent_team import render_agent_team
     render_agent_team()
 
 elif mode == "⚙️ 審査ルール設定":
@@ -1690,17 +1690,17 @@ elif mode == "📅 基準金利マスタ":
 
 # ── 🕸️ 競合関係グラフ ─────────────────────────────────────────────────────────
 elif mode == "🕸️ 競合関係グラフ":
-    from components.graph_view import render_graph_view
+    from graph_view import render_graph_view
     render_graph_view()
 
 # ── 🔗 案件類似ネットワーク ───────────────────────────────────────────────────
 elif mode == "🔗 案件類似ネットワーク":
-    from components.case_network import render_case_network
+    from case_network import render_case_network
     render_case_network()
 
 # ── 📊 ビジュアルインサイト ──────────────────────────────────────────────────
 elif mode == "📊 ビジュアルインサイト":
-    from components.visual_insights import render_visual_insights
+    from visual_insights import render_visual_insights
     render_visual_insights()
 
 # ── 📊 3期財務分析 ────────────────────────────────────────────────────────────
