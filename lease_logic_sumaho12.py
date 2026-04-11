@@ -1276,7 +1276,7 @@ elif mode == "📝 結果登録 (成約/失注)":
     render_status_registration()
 
 elif mode == "🤝 エージェントチーム議論":
-    from agent_team import render_agent_team
+    from components.agent_team import render_agent_team
     render_agent_team()
 
 elif mode == "⚙️ 審査ルール設定":

@@ -8,6 +8,7 @@ RAG（検索拡張生成）で参照し、AIチャットのコンテキストに
     from anything_api import get_anything_llm_context, is_anything_llm_available
 """
 import pathlib
+import time
 import requests
 import streamlit as st
 
@@ -82,7 +83,12 @@ def query_anything_llm(message: str, workspace_slug: str = ANYTHING_LLM_WORKSPAC
             "Content-Type": "application/json",
         }
         payload = {"message": message, "mode": "query"}
-        resp = requests.post(url, json=payload, headers=headers, timeout=60)
+        resp = None
+        for attempt in range(4):
+            resp = requests.post(url, json=payload, headers=headers, timeout=60)
+            if resp.status_code != 429:
+                break
+            time.sleep(2 ** attempt)
         if resp.status_code == 200:
             if not resp.text or not resp.text.strip():
                 return ""
@@ -128,7 +134,13 @@ def chat_anything_llm(messages: list, workspace_slug: str = ANYTHING_LLM_WORKSPA
             "Content-Type": "application/json",
         }
         payload = {"message": combined, "mode": "chat"}
-        resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
+        resp = None
+        for attempt in range(4):
+            resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
+            if resp.status_code != 429:
+                break
+            wait = 2 ** attempt  # 1s → 2s → 4s → 8s
+            time.sleep(wait)
         if resp.status_code == 200:
             if not resp.text or not resp.text.strip():
                 return {"message": {"content": "（AnythingLLM から空の応答が返りました。サーバーの状態を確認してください）"}}

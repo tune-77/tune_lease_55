@@ -683,10 +683,7 @@ def api_tfm_financial_paths(req: TfmFinancialPathsRequest):
 # ── 履歴分析・ダッシュボード
 @app.get("/api/analysis/contract_drivers")
 def api_contract_drivers():
-    try:
-        from analysis_regression import run_contract_driver_analysis
-    except ImportError:
-        from analysis_regression import run_contract_driver_analysis
+    from analysis_regression import run_contract_driver_analysis
     res = run_contract_driver_analysis()
     if res is None:
         raise HTTPException(status_code=400, detail="Not enough data (minimum 5 closed cases required).")
@@ -708,10 +705,7 @@ def api_contract_drivers():
 # ── 定量要因分析
 @app.get("/api/analysis/quantitative")
 def api_quantitative():
-    try:
-        from analysis_regression import run_quantitative_contract_analysis
-    except ImportError:
-        from analysis_regression import run_quantitative_contract_analysis
+    from analysis_regression import run_quantitative_contract_analysis
     res = run_quantitative_contract_analysis()
     if res is None:
         raise HTTPException(status_code=400, detail="Not enough data (minimum 50 cases required).")
@@ -720,10 +714,7 @@ def api_quantitative():
 # ── 定性要因分析
 @app.post("/api/analysis/qualitative")
 def api_qualitative():
-    try:
-        from analysis_regression import run_qualitative_contract_analysis
-    except ImportError:
-        from analysis_regression import run_qualitative_contract_analysis
+    from analysis_regression import run_qualitative_contract_analysis
     from category_config import QUALITATIVE_SCORING_CORRECTION_ITEMS
     res = run_qualitative_contract_analysis(QUALITATIVE_SCORING_CORRECTION_ITEMS)
     if res is None:
