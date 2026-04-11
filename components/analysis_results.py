@@ -186,27 +186,6 @@ def render_analysis_results(
             # 現在の案件IDを取得（審査直後ならセッションに入っている想定）
             current_case_id = st.session_state.get("current_case_id")
 
-            # ── 審査実績DB 自動保存（新規審査ごとに1回だけ） ──────────────────
-            try:
-                from customer_db import save_record as _db_save_auto, init_db as _db_init_auto
-                _db_auto_key = st.session_state.get("current_case_id") or (
-                    f"{res.get('pd_percent', 0):.4f}"
-                    f"_{res.get('score', 0):.4f}"
-                    f"_{res.get('industry_major', '')}"
-                )
-                if st.session_state.get("_db_auto_saved_for") != str(_db_auto_key):
-                    _db_init_auto()
-                    _db_inp_auto = st.session_state.get("last_submitted_inputs") or {}
-                    _new_db_id = _db_save_auto(res, _db_inp_auto, "")
-                    # 保存成功時のみ _db_auto_saved_for をセット（失敗時は次回リトライ可能にする）
-                    if _new_db_id:
-                        st.session_state["_db_auto_saved_for"] = str(_db_auto_key)
-                        st.session_state["db_last_saved_id"] = _new_db_id
-            except Exception as _db_exc:
-                import traceback as _tb
-                print(f"[screening_records 保存エラー] {_db_exc}\n{_tb.format_exc()}", flush=True)
-                st.warning(f"⚠️ 審査データの保存に失敗しました: {_db_exc}\n結果登録ページに表示されません。管理者に連絡してください。")
-
             # ── モンテカルロ 手動実行（ユーザーがボタンを押した時のみ実行） ──────────
             _mc_col_msg, _mc_col_btn = st.columns([3, 1])
             with _mc_col_msg:
@@ -1379,9 +1358,19 @@ def render_analysis_results(
                     )
                     import pandas as _pd_db
 
+                    # 統計再集計ボタン
+                    if st.button("🔄 統計を再集計（past_cases から再構築）", key="btn_reaggregate_stats"):
+                        try:
+                            from scripts.aggregate_stats_from_past_cases import aggregate
+                            _agg = aggregate(verbose=False)
+                            st.success(f"✅ 再集計完了: {_agg['processed']} 件処理 / {_agg['skipped']} 件スキップ ({_agg['elapsed_s']}s)")
+                            st.rerun()
+                        except Exception as _agg_e:
+                            st.error(f"再集計エラー: {_agg_e}")
+
                     _db_total = _db_count()
                     if _db_total == 0:
-                        st.info("まだデータがありません。審査を実行すると自動的に蓄積されます。")
+                        st.info("まだデータがありません。「🔄 統計を再集計」ボタンで past_cases から構築できます。")
                     else:
                         _dbst = _db_stats()
 

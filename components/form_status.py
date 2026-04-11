@@ -1,6 +1,7 @@
 """
 案件結果登録ページ（成約/失注）
-screening_db.sqlite の screening_records + lease_data.db の past_cases の両方を読み書きする。
+業務データは lease_data.db の past_cases のみを読み書きする。
+screening_records は統計バッチ用（読み取り専用）。
 """
 import json
 import os
@@ -12,103 +13,53 @@ import streamlit as st
 
 # DB パス (絶対パス固定)
 _DB_ROOT = os.path.join("/Users/kobayashiisaoryou/clawd/lease_logic_sumaho12", "data")
-_DB_PATH = os.path.join(_DB_ROOT, "screening_db.sqlite")
 _LEASE_DB_PATH = os.path.join(_DB_ROOT, "lease_data.db")
 
 
-def _get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
 def _load_pending() -> list[dict]:
-    """final_status が NULL/空/"未登録" の全件を新しい順で返す（両DBをマージ）"""
+    """final_status = '未登録' の全件を新しい順で返す（past_cases のみ）"""
     results = []
-    seen_screening_ids: set = set()
-
-    # ── 1. screening_records から読み込み ──────────────────────────
-    if os.path.exists(_DB_PATH):
-        try:
-            with closing(sqlite3.connect(_DB_PATH)) as conn:
-                conn.row_factory = sqlite3.Row
-                rows = conn.execute(
-                    """
-                    SELECT id, created_at, industry_major, industry_sub,
-                           customer_type, score, judgment, contract_prob, memo
-                    FROM screening_records
-                    WHERE (
-                        memo IS NULL
-                        OR memo = ''
-                        OR memo NOT LIKE '%final_status%'
-                    )
-                    ORDER BY id DESC
-                    """
-                ).fetchall()
-            for r in rows:
-                d = dict(r)
-                d["_source"] = "screening_records"
-                # memo から _past_case_id を抽出してデッドコードを修正
-                try:
-                    _m = json.loads(d.get("memo") or "{}")
-                    _linked = str(_m.get("_past_case_id", ""))
-                    if _linked:
-                        seen_screening_ids.add(_linked)
-                except Exception:
-                    pass
-                results.append(d)
-        except Exception as _e_load:
-            st.error(f"読み込みエラー(DB1): {_e_load}")
-
-
-    # ── 2. past_cases から読み込み（screening_records 未登録分のみ） ──
-    if os.path.exists(_LEASE_DB_PATH):
-        try:
-            with closing(sqlite3.connect(_LEASE_DB_PATH)) as conn:
-                conn.row_factory = sqlite3.Row
-                rows = conn.execute(
-                    "SELECT id, timestamp, industry_sub, score, final_status, data "
-                    "FROM past_cases WHERE final_status = '未登録' ORDER BY timestamp DESC"
-                ).fetchall()
-            for r in rows:
-                pc_id = str(r["id"])
-                if pc_id in seen_screening_ids:
-                    continue  # screening_records に既に存在する
-                try:
-                    data = json.loads(r["data"] or "{}")
-                except Exception:
-                    data = {}
-                industry_major = data.get("industry_major", "")
-                industry_sub = r["industry_sub"] or data.get("industry_sub", "")
-                company_name = data.get("company_name", "")
-                result_dict = data.get("result", {}) or {}
-                judgment = result_dict.get("hantei", data.get("judgment", ""))
-                contract_prob = result_dict.get("contract_prob", data.get("contract_prob"))
-                memo_for_display = json.dumps({
-                    "company_name": company_name,
-                    "industry_major": industry_major,
-                    "industry_sub": industry_sub,
-                    "_past_case_id": pc_id,
-                    **{k: v for k, v in data.items() if k not in ("result", "data", "inputs")},
-                }, ensure_ascii=False, default=str)
-                results.append({
-                    "id": pc_id,
-                    "created_at": r["timestamp"],
-                    "industry_major": industry_major,
-                    "industry_sub": industry_sub,
-                    "customer_type": data.get("customer_type", ""),
-                    "score": r["score"] or 0.0,
-                    "judgment": judgment,
-                    "contract_prob": contract_prob,
-                    "memo": memo_for_display,
-                    "_source": "past_cases",
-                    "_past_case_id": pc_id,
-                })
-        except Exception as _e_past:
-            st.error(f"⚠️ past_cases読み込みエラー: {_e_past}")
-
-    # 日時降順でソート
-    results.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+    if not os.path.exists(_LEASE_DB_PATH):
+        return results
+    try:
+        with closing(sqlite3.connect(_LEASE_DB_PATH)) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT id, timestamp, industry_sub, score, data "
+                "FROM past_cases WHERE final_status = '未登録' ORDER BY timestamp DESC"
+            ).fetchall()
+        for r in rows:
+            pc_id = str(r["id"])
+            try:
+                data = json.loads(r["data"] or "{}")
+            except Exception:
+                data = {}
+            industry_major = data.get("industry_major", "")
+            industry_sub = r["industry_sub"] or data.get("industry_sub", "")
+            company_name = data.get("company_name", "")
+            result_dict = data.get("result", {}) or {}
+            judgment = result_dict.get("hantei", data.get("judgment", ""))
+            contract_prob = result_dict.get("contract_prob", data.get("contract_prob"))
+            memo_for_display = json.dumps({
+                "company_name": company_name,
+                "industry_major": industry_major,
+                "industry_sub": industry_sub,
+                **{k: v for k, v in data.items() if k not in ("result", "data", "inputs")},
+            }, ensure_ascii=False, default=str)
+            results.append({
+                "id": pc_id,
+                "created_at": r["timestamp"],
+                "industry_major": industry_major,
+                "industry_sub": industry_sub,
+                "customer_type": data.get("customer_type", ""),
+                "score": r["score"] or 0.0,
+                "judgment": judgment,
+                "contract_prob": contract_prob,
+                "memo": memo_for_display,
+                "_source": "past_cases",
+            })
+    except Exception as _e:
+        st.error(f"⚠️ past_cases読み込みエラー: {_e}")
     return results
 
 
@@ -121,72 +72,48 @@ def _parse_memo(raw: str) -> dict:
         return {}
 
 
-def _save_final_status(record_id, final_status: str, extra: dict, source: str = "screening_records") -> bool:
-    """memo JSON に final_status と追加情報をマージして保存する（両DB対応）"""
-    if source == "past_cases":
-        # lease_data.db の past_cases を更新
-        if not os.path.exists(_LEASE_DB_PATH):
-            return False
-        try:
-            with closing(sqlite3.connect(_LEASE_DB_PATH)) as conn:
-                row = conn.execute("SELECT data FROM past_cases WHERE id = ?", (str(record_id),)).fetchone()
-                if row is None:
-                    return False
-                data = _parse_memo(row["data"])
-                data["final_status"] = final_status
-                data.update(extra)
-                conn.execute(
-                    "UPDATE past_cases SET final_status = ?, data = ? WHERE id = ?",
-                    (final_status, json.dumps(data, ensure_ascii=False), str(record_id)),
-                )
-                conn.commit()
-            return True
-        except Exception:
-            return False
-    else:
-        # screening_db.sqlite の screening_records を更新
-        if not os.path.exists(_DB_PATH):
-            return False
-        with closing(_get_conn()) as conn:
-            row = conn.execute("SELECT memo FROM screening_records WHERE id = ?", (record_id,)).fetchone()
+def _save_final_status(record_id, final_status: str, extra: dict) -> bool:
+    """past_cases の final_status と data JSON を更新する"""
+    if not os.path.exists(_LEASE_DB_PATH):
+        return False
+    try:
+        with closing(sqlite3.connect(_LEASE_DB_PATH)) as conn:
+            row = conn.execute("SELECT data FROM past_cases WHERE id = ?", (str(record_id),)).fetchone()
             if row is None:
                 return False
-            memo = _parse_memo(row["memo"])
-            memo["final_status"] = final_status
-            memo.update(extra)
+            data = _parse_memo(row["data"])
+            data["final_status"] = final_status
+            data.update(extra)
             conn.execute(
-                "UPDATE screening_records SET memo = ? WHERE id = ?",
-                (json.dumps(memo, ensure_ascii=False), record_id),
+                "UPDATE past_cases SET final_status = ?, data = ? WHERE id = ?",
+                (final_status, json.dumps(data, ensure_ascii=False, default=str), str(record_id)),
             )
             conn.commit()
         return True
+    except Exception:
+        return False
 
 
 def render_status_registration():
     """案件結果登録 (成約/失注) タブを描画する"""
-    st.title("📝 案件結果登録 ★最新版(V2.2)★")
+    st.title("📝 案件結果登録")
     st.info("審査案件に対して、最終的な結果（成約・失注）を登録します。")
 
-    if not os.path.exists(_DB_PATH):
-        st.error(f"DBファイルが見つかりません: `{_DB_PATH}`")
+    if not os.path.exists(_LEASE_DB_PATH):
+        st.error(f"DBファイルが見つかりません: `{_LEASE_DB_PATH}`")
         return
 
     # --- 全件ロード ---
     all_pending = _load_pending()
     total_count = len(all_pending)
 
-    db1_total = 0
-    db2_total = 0
-    if os.path.exists(_DB_PATH):
-        with closing(sqlite3.connect(_DB_PATH)) as conn:
-            db1_total = conn.execute("SELECT COUNT(*) FROM screening_records").fetchone()[0]
+    db_total = 0
     if os.path.exists(_LEASE_DB_PATH):
         with closing(sqlite3.connect(_LEASE_DB_PATH)) as conn:
-            db2_total = conn.execute("SELECT COUNT(*) FROM past_cases").fetchone()[0]
+            db_total = conn.execute("SELECT COUNT(*) FROM past_cases").fetchone()[0]
 
-    st.info(f"📊 **データ同期状況**  \n"
-            f"・screening_records: **{db1_total} 件**  \n"
-            f"・past_cases: **{db2_total} 件**  \n"
+    st.info(f"📊 **データ状況**  \n"
+            f"・past_cases: **{db_total} 件**  \n"
             f"・表示中（未登録）: **{total_count} 件**")
 
     if st.button("♻️ 画面を強制再読み込み", key="btn_reload_status"):
@@ -194,7 +121,7 @@ def render_status_registration():
 
     if total_count == 0:
         st.success("全ての案件が登録済みです！")
-        if db1_total > 0 or db2_total > 0:
+        if db_total > 0:
             st.info("💡 登録済みの案件はここには表示されません。「履歴分析」画面等で確認できます。")
         return
 
@@ -207,9 +134,6 @@ def render_status_registration():
         if st.button("🔥 全件削除", key="btn_bulk_clear", type="secondary", help="表示されている未登録案件をすべてクリアします"):
             if st.session_state.get("confirm_clear_all"):
                 try:
-                    with closing(sqlite3.connect(_DB_PATH)) as conn:
-                        conn.execute("DELETE FROM screening_records WHERE (memo IS NULL OR memo='' OR memo NOT LIKE '%final_status%')")
-                        conn.commit()
                     with closing(sqlite3.connect(_LEASE_DB_PATH)) as conn:
                         conn.execute("DELETE FROM past_cases WHERE (final_status='未登録' OR final_status IS NULL)")
                         conn.commit()
@@ -266,18 +190,10 @@ def render_status_registration():
 
         # 確実にボタンが見えるように、カードの上に配置
         # 案件カードと削除ボタン
-        # 型安全な削除ロジック (str, int両対応)
-        def _exec_delete(target_id, source):
-            _db = _DB_PATH if source == "screening_records" else _LEASE_DB_PATH
-            _table = "screening_records" if source == "screening_records" else "past_cases"
+        def _exec_delete(target_id):
             try:
-                with closing(sqlite3.connect(_db)) as conn:
-                    if source == "screening_records":
-                        # screening_records は INTEGER PK なので数値で削除
-                        conn.execute(f"DELETE FROM {_table} WHERE id=?", (int(target_id),))
-                    else:
-                        # past_cases は TEXT PK なので文字列で削除
-                        conn.execute(f"DELETE FROM {_table} WHERE id=?", (str(target_id),))
+                with closing(sqlite3.connect(_LEASE_DB_PATH)) as conn:
+                    conn.execute("DELETE FROM past_cases WHERE id=?", (str(target_id),))
                     conn.commit()
                 return True
             except Exception as e:
@@ -288,7 +204,7 @@ def render_status_registration():
         with col_del:
             st.write("") # 縦位置調整
             if st.button("🗑️ 案件削除", key=f"del_btn_{rec_id}_{idx}", type="secondary", use_container_width=True):
-                if _exec_delete(rec_id, record.get("_source", "screening_records")):
+                if _exec_delete(rec_id):
                     st.toast(f"🗑️ 削除完了: {display_name}")
                     time.sleep(0.3)
                     st.rerun()
@@ -364,8 +280,7 @@ def render_status_registration():
                     if res_status == "失注":
                         extra["lost_reason"] = lost_reason.strip()
 
-                    _source = record.get("_source", "screening_records")
-                    if _save_final_status(rec_id, res_status, extra, source=_source):
+                    if _save_final_status(rec_id, res_status, extra):
                         st.success(f"✅ 登録完了: {display_name} → **{res_status}**")
                         # BN 証拠重みを実績から再学習
                         try:

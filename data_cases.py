@@ -72,16 +72,13 @@ def append_consultation_memory(user_text: str, assistant_text: str):
 
 
 def load_all_cases():
-    """過去案件を全件読み込み（SQLiteから）。
-
-    past_cases（詳細JSON）と screening_records（サマリー）をマージして返す。
-    同一IDが両方にある場合は past_cases 側を優先（final_status等の更新情報があるため）。
+    """過去案件を全件読み込み（past_cases のみ）。
+    統計用の screening_records は集計バッチ（aggregate_stats_from_past_cases.py）で別途管理。
     """
     import sqlite3
     from contextlib import closing
 
-    # ── 1. past_cases から読み込み（詳細JSON） ──────────────────────
-    past_map = {}  # id -> data dict
+    cases = []
     if os.path.exists(DB_PATH):
         try:
             with closing(sqlite3.connect(DB_PATH)) as conn:
@@ -91,68 +88,12 @@ def load_all_cases():
                     try:
                         d = json.loads(row[0])
                         if d.get("id"):
-                            past_map[str(d["id"])] = d
+                            cases.append(d)
                     except json.JSONDecodeError:
                         continue
         except Exception as e:
-            print(f"[Error in load_all_cases/past_cases]: {e}", file=sys.stderr)
-
-    # ── 2. screening_records から読み込み（サマリー列） ────────────
-    _SCREENING_DB = os.path.join(_DATA_DIR, "screening_db.sqlite")
-    screening_extra = []
-    if os.path.exists(_SCREENING_DB):
-        try:
-            with closing(sqlite3.connect(_SCREENING_DB)) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT * FROM screening_records ORDER BY created_at ASC"
-                )
-                for row in cursor.fetchall():
-                    row_id = str(row["id"])
-                    if row_id in past_map:
-                        continue  # past_cases 側を優先
-                    # サマリー列から最低限のデータ構造を組み立てる
-                    result_json = {}
-                    try:
-                        if row["memo"]:
-                            result_json = json.loads(row["memo"])
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-                    # memo JSON から会社名・詳細情報を取り出す
-                    company_name = result_json.get("company_name", "")
-                    company_no   = result_json.get("company_no", "")
-                    entry = {
-                        "id": row_id,
-                        "timestamp": row["created_at"],
-                        "industry_sub": row["industry_sub"] or result_json.get("industry_sub", ""),
-                        "industry_major": row["industry_major"] or result_json.get("industry_major", ""),
-                        "score": row["score"] or 0,
-                        "hantei": row["judgment"] or "—",
-                        "final_status": result_json.get("final_status", "未登録"),
-                        "company_name": company_name,
-                        "company_no": company_no,
-                        "inputs": result_json.get("inputs", {
-                            "nenshu": row["revenue_m"] or 0,
-                            "op_profit": row["op_profit_m"] or 0,
-                        }),
-                        "result": result_json.get("result", {
-                            "score": row["score"] or 0,
-                            "hantei": row["judgment"] or "—",
-                            "contract_prob": row["contract_prob"] or 0,
-                        }),
-                        "pricing": result_json.get("pricing", {}),
-                        "_from_screening_records": True,
-                        "_memo_raw": row["memo"] or "",
-                    }
-                    screening_extra.append(entry)
-        except Exception as e:
-            print(f"[Error in load_all_cases/screening_records]: {e}", file=sys.stderr)
-
-    # ── 3. マージして timestamp 昇順でソート ───────────────────────
-    all_cases = list(past_map.values()) + screening_extra
-    all_cases.sort(key=lambda c: c.get("timestamp", ""), reverse=False)
-    return all_cases
+            print(f"[Error in load_all_cases]: {e}", file=sys.stderr)
+    return cases
 
 
 def load_past_cases():

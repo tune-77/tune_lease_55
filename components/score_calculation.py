@@ -1205,30 +1205,12 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     **submitted_qual_corr,
                 }
                 st.session_state["form_restored_from_submit"] = False
-                # ── screening_records に即時保存（rerun前に確実に保存） ─────────
-                try:
-                    from customer_db import save_record as _sc_save_record, init_db as _sc_init_db
-                    _sc_init_db()
-                    _sc_res = st.session_state.get("last_result", {})
-                    _sc_inp = st.session_state.get("last_submitted_inputs", {})
-                    # case_id を memo に埋め込み、form_status の重複排除を機能させる
-                    import json as _json
-                    _sc_memo = _json.dumps({"_past_case_id": str(case_id)}) if case_id else ""
-                    _sc_id = _sc_save_record(_sc_res, _sc_inp, _sc_memo)
-                    if _sc_id:
-                        st.session_state["db_last_saved_id"] = _sc_id
-                        st.session_state["_db_auto_saved_for"] = str(
-                            st.session_state.get("current_case_id") or _sc_id
-                        )
-                except Exception as _sc_exc:
-                    st.warning(f"⚠️ 審査データの保存に失敗しました: {_sc_exc}")
-                # ──────────────────────────────────────────────────────────────
-                # ──────────────────────────────────────────────────────────────
+                if case_id:
+                    st.session_state["db_last_saved_id"] = case_id
                 # 保存の証拠を画面に表示
                 _saved_id = st.session_state.get("db_last_saved_id", "不明")
                 st.success(f"⚖️ 審査完了: ID 【{_saved_id}】 を記録しました。")
-                from customer_db import get_db_path as _get_db_path
-                st.info(f"📁 保存先: `{_get_db_path()}`  \n💡 「案件結果登録」画面のリスト1番目に追加されています。")
+                st.info(f"📁 保存先: `data/lease_data.db`  \n💡 「案件結果登録」画面のリスト1番目に追加されています。")
                 
                 # 自動ジャンプ(nav_index = 1)はユーザー要望により廃止。現在の画面に留まる。
                 # st.session_state.nav_index = 1
