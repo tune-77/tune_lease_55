@@ -10,6 +10,8 @@ TimesFM（Google Research 時系列 Foundation Model）ラッパー。
   2. forecast_company_score()    — 同一企業の過去スコア時系列から将来スコアを予測
   3. forecast_industry_trend()   — 業種内スコア月次集計からトレンドを予測
   4. forecast_final_rate()       — 成約案件の金利時系列から将来金利帯を予測
+  5. forecast_base_rate()        — 基準金利マスタ（期間別9列）の時系列から将来金利を予測
+  6. forecast_base_rate_all()    — 全9期間列の一括予測
 """
 from __future__ import annotations
 
@@ -378,4 +380,123 @@ def forecast_final_rate(
         "band_high":     round(rate_forecast + sigma, 3),
         "method":        method,
         "horizon_forecast": [round(v, 3) for v in forecast_vals],
+    }
+
+
+# ── ユースケース 5: 基準金利マスタ時系列予測 ────────────────────────────────────
+
+TERM_COLS = ["r_2y", "r_3y", "r_4y", "r_5y", "r_6y", "r_7y", "r_8y", "r_9y", "r_over9y"]
+TERM_LABELS = {
+    "r_2y": "2年以内", "r_3y": "3年以内", "r_4y": "4年以内",
+    "r_5y": "5年以内", "r_6y": "6年以内", "r_7y": "7年以内",
+    "r_8y": "8年以内", "r_9y": "9年以内", "r_over9y": "9年超",
+}
+
+
+def forecast_base_rate(
+    term_col: str = "r_5y",
+    horizon_months: int = 6,
+) -> dict:
+    """
+    基準金利マスタ（base_rate_master）の指定期間列時系列から
+    将来の基準金利帯を予測する。
+
+    Args:
+        term_col:       列名 ("r_2y"〜"r_over9y")
+        horizon_months: 予測月数
+
+    Returns:
+        {
+            "term_col":        str,
+            "term_label":      str,
+            "months_history":  list[str],   # "YYYY-MM" 古い順
+            "rate_history":    list[float],
+            "months_forecast": list[str],
+            "rate_forecast":   float,       # 最終月の中央予測
+            "band_low":        float,
+            "band_high":       float,
+            "horizon_forecast": list[float],
+            "method":          str,
+        }
+    """
+    import datetime
+    from base_rate_master import list_base_rates
+
+    if term_col not in TERM_COLS:
+        return {"error": f"無効な期間列: {term_col}"}
+
+    records = list_base_rates(limit=60)
+    # 古い順にソート
+    records = sorted(records, key=lambda r: r["month"])
+
+    months_history: list[str] = []
+    rate_history: list[float] = []
+    for rec in records:
+        v = rec.get(term_col)
+        if v is not None:
+            months_history.append(rec["month"])
+            rate_history.append(float(v))
+
+    if len(rate_history) < 2:
+        return {"error": "基準金利データが不足しています（初期データ投入をお試しください）"}
+
+    # 予測月ラベル生成
+    last_month = months_history[-1]
+    y, m = int(last_month[:4]), int(last_month[5:7])
+    months_forecast: list[str] = []
+    for i in range(1, horizon_months + 1):
+        m2 = m + i
+        y2 = y + (m2 - 1) // 12
+        m2 = (m2 - 1) % 12 + 1
+        months_forecast.append(f"{y2:04d}-{m2:02d}")
+
+    # 予測実行
+    method = "linear_extrapolation"
+    forecast_vals: list[float] = []
+
+    if TIMESFM_AVAILABLE and len(rate_history) >= 4:
+        raw = _timesfm_point_forecast(rate_history, horizon_months)
+        if len(raw) == horizon_months:
+            forecast_vals = [max(0.0, float(v)) for v in raw]
+            method = "timesfm"
+
+    if not forecast_vals:
+        # 線形回帰フォールバック
+        n = len(rate_history)
+        x = np.arange(n, dtype=float)
+        coeffs = np.polyfit(x, rate_history, 1)
+        for i in range(1, horizon_months + 1):
+            val = float(np.polyval(coeffs, n - 1 + i))
+            forecast_vals.append(max(0.0, val))
+        method = "linear_extrapolation"
+
+    sigma = float(np.std(rate_history[-12:])) if len(rate_history) >= 3 else 0.1
+    rate_forecast = forecast_vals[-1]
+
+    return {
+        "term_col":         term_col,
+        "term_label":       TERM_LABELS.get(term_col, term_col),
+        "months_history":   months_history,
+        "rate_history":     [round(v, 3) for v in rate_history],
+        "months_forecast":  months_forecast,
+        "rate_forecast":    round(rate_forecast, 3),
+        "band_low":         round(max(0.0, rate_forecast - sigma), 3),
+        "band_high":        round(rate_forecast + sigma, 3),
+        "horizon_forecast": [round(v, 3) for v in forecast_vals],
+        "method":           method,
+    }
+
+
+def forecast_base_rate_all(horizon_months: int = 6) -> dict:
+    """全9期間列を一括予測して返す。"""
+    results = {}
+    for col in TERM_COLS:
+        res = forecast_base_rate(col, horizon_months)
+        if "error" not in res:
+            results[col] = res
+    return {
+        "term_cols":    TERM_COLS,
+        "term_labels":  TERM_LABELS,
+        "forecasts":    results,
+        "horizon_months": horizon_months,
     }

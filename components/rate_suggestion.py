@@ -370,8 +370,11 @@ def render_rate_suggestion(res: dict):
     with st.expander("💴 金利サジェスト（3シナリオ提案）", expanded=False):
         score = float(res.get("score") or 0)
         pricing = res.get("pricing") or {}
-        from base_rate_master import get_current_base_rate
-        base_rate = float(pricing.get("base_rate") or get_current_base_rate(fallback=2.1))
+        from base_rate_master import get_current_base_rate, get_base_rate_by_term
+        # リース期間が取得できる場合は期間別基準金利を使用
+        _lease_term = int(st.session_state.get("lease_term") or pricing.get("lease_term") or 60)
+        _rate_by_term = get_base_rate_by_term(lease_term_months=_lease_term)
+        base_rate = float(pricing.get("base_rate") or _rate_by_term or get_current_base_rate(fallback=2.1))
 
         raw_comp = st.session_state.get("competitor_rate", 0)
         competitor_rate = _normalize_rate(raw_comp)

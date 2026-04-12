@@ -21,6 +21,10 @@ from timesfm_engine import (
     forecast_industry_trend,
     forecast_final_rate,
     forecast_financial_paths,
+    forecast_base_rate,
+    forecast_base_rate_all,
+    TERM_COLS,
+    TERM_LABELS,
 )
 from data_cases import load_all_cases
 
@@ -368,6 +372,86 @@ def _tab_comparison(all_cases: list[dict]) -> None:
             st.info("TimesFM が未インストールのため比較できません。\n\n`pip install timesfm` を実行後に再起動してください。")
 
 
+# ── タブ5: 基準金利予測 ────────────────────────────────────────────────────────
+
+def _tab_base_rate_forecast() -> None:
+    st.subheader("📅 基準金利予測")
+    st.caption(
+        "基準金利マスタに登録された42ヶ月の実績データを入力として、"
+        "将来の基準金利帯を予測します。"
+        "（タブ3「成約金利予測」は成約案件の実績金利から予測するのに対し、"
+        "こちらは市場の基準金利そのものを予測します）"
+    )
+
+    col_opts = {TERM_LABELS[c]: c for c in TERM_COLS}
+    selected_label = st.selectbox("リース期間", list(col_opts.keys()), index=3, key="br_term")
+    selected_col = col_opts[selected_label]
+    horizon = st.slider("予測月数", 3, 12, 6, key="br_horizon")
+
+    result = forecast_base_rate(selected_col, horizon)
+
+    if "error" in result:
+        st.error(result["error"])
+        st.info("「基準金利マスタ」メニューから「初期データ一括投入」を実行してください。")
+        return
+
+    method_label = "TimesFM" if result["method"] == "timesfm" else "線形回帰（フォールバック）"
+    st.caption(f"予測手法: **{method_label}**　｜　実績: {len(result['rate_history'])}ヶ月")
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("現在の基準金利", f"{result['rate_history'][-1]:.2f}%", result['months_history'][-1])
+    c2.metric(f"{horizon}ヶ月後 予測中央値", f"{result['rate_forecast']:.2f}%")
+    c3.metric("予測変動幅", f"±{(result['band_high'] - result['rate_forecast']):.2f}%")
+
+    fig = _fan_chart(
+        x_labels=result["months_forecast"],
+        forecast=result["horizon_forecast"],
+        band_low=[result["band_low"]] * horizon,
+        band_high=[result["band_high"]] * horizon,
+        history=result["rate_history"],
+        history_labels=result["months_history"],
+        title=f"基準金利予測（{selected_label}）",
+        y_label="基準金利 (%)",
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.divider()
+    st.markdown("#### 全期間一括比較")
+    st.caption("9つのリース期間の基準金利実績を重ね描きします。")
+
+    all_result = forecast_base_rate_all(horizon)
+    if all_result.get("forecasts"):
+        fig2 = go.Figure()
+        colors = ["#6366f1","#8b5cf6","#ec4899","#f43f5e","#f97316","#eab308","#22c55e","#14b8a6","#3b82f6"]
+        for i, col in enumerate(TERM_COLS):
+            r = all_result["forecasts"].get(col)
+            if not r:
+                continue
+            color = colors[i % len(colors)]
+            # 実績ライン
+            fig2.add_trace(go.Scatter(
+                x=r["months_history"], y=r["rate_history"],
+                mode="lines", name=TERM_LABELS[col],
+                line=dict(color=color, width=2),
+            ))
+            # 予測ライン（破線）
+            connect_x = [r["months_history"][-1]] + r["months_forecast"]
+            connect_y = [r["rate_history"][-1]] + r["horizon_forecast"]
+            fig2.add_trace(go.Scatter(
+                x=connect_x, y=connect_y,
+                mode="lines", name=f"{TERM_LABELS[col]}（予測）",
+                line=dict(color=color, width=2, dash="dot"),
+                showlegend=False,
+            ))
+        fig2.update_layout(
+            title="全期間別 基準金利推移 + 予測",
+            xaxis_title="月", yaxis_title="基準金利 (%)",
+            height=500, template="plotly_white",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        )
+        st.plotly_chart(fig2, use_container_width=True)
+
+
 # ── メインエントリポイント ─────────────────────────────────────────────────────
 
 def render_timeseries_forecast() -> None:
@@ -380,11 +464,12 @@ def render_timeseries_forecast() -> None:
         st.warning("審査データが見つかりません。先に案件を登録してください。")
         return
 
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📊 個社スコア予測",
         "🏭 業種トレンド",
-        "💴 金利予測",
+        "💴 成約金利予測",
         "⚙️ GBM vs TimesFM 比較",
+        "📅 基準金利予測",
     ])
 
     with tab1:
@@ -395,3 +480,5 @@ def render_timeseries_forecast() -> None:
         _tab_rate_forecast(all_cases)
     with tab4:
         _tab_comparison(all_cases)
+    with tab5:
+        _tab_base_rate_forecast()

@@ -2,7 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
-import { Calendar, Percent, Activity, Save, Download, AlertTriangle, CheckCircle, ChevronRight, Database } from 'lucide-react';
+import { Calendar, Percent, Activity, Save, Download, AlertTriangle, CheckCircle, ChevronRight, Database, TrendingUp } from 'lucide-react';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+} from 'recharts';
 
 const TERM_COLS = ["r_2y","r_3y","r_4y","r_5y","r_6y","r_7y","r_8y","r_9y","r_over9y"] as const;
 const TERM_LABELS: Record<string, string> = {
@@ -36,7 +39,7 @@ export default function InterestPage() {
   const [submitting, setSubmitting] = useState(false);
   const [editRows, setEditRows] = useState<Record<string, Partial<RateRow>>>({});
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'list' | 'seed'>('list');
+  const [activeTab, setActiveTab] = useState<'list' | 'seed' | 'chart'>('list');
   const [seeding, setSeeding] = useState(false);
   const [seedResult, setSeedResult] = useState<string | null>(null);
   const [toast, setToast] = useState<{msg: string; type: 'ok'|'err'} | null>(null);
@@ -258,6 +261,7 @@ export default function InterestPage() {
         {[
           { id: 'list', label: '登録一覧・編集' },
           { id: 'seed', label: '初期データ一括投入' },
+          { id: 'chart', label: '📈 金利推移グラフ' },
         ].map(tab => (
           <button
             key={tab.id}
@@ -330,6 +334,73 @@ export default function InterestPage() {
           </div>
         </div>
       )}
+
+      {/* Tab: Chart */}
+      {activeTab === 'chart' && (() => {
+        const COLORS = ['#10b981','#3b82f6','#8b5cf6','#f59e0b','#ef4444','#ec4899','#06b6d4','#84cc16','#f97316'];
+        // oldest first
+        const chartData = [...rates].reverse().map(row => {
+          const entry: Record<string, string | number | null> = { month: row.month };
+          for (const col of TERM_COLS) entry[col] = row[col as keyof RateRow] as number | null;
+          return entry;
+        });
+        const allVals = chartData.flatMap(d => TERM_COLS.map(c => d[c] as number | null).filter(v => v !== null)) as number[];
+        const yMin = allVals.length ? Math.floor(Math.min(...allVals) * 10) / 10 : 0;
+        const yMax = allVals.length ? Math.ceil(Math.max(...allVals) * 10) / 10 : 5;
+        return (
+          <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-emerald-500" />
+              <span className="font-black text-slate-700 text-sm uppercase tracking-widest">期間別基準金利 推移グラフ（{rates.length}ヶ月）</span>
+            </div>
+            <div className="p-6">
+              {chartData.length === 0 ? (
+                <div className="text-center text-slate-400 font-bold py-16">データがありません。先に初期データを投入してください。</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={420}>
+                  <LineChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 60 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis
+                      dataKey="month"
+                      tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 700 }}
+                      angle={-45}
+                      textAnchor="end"
+                      interval={Math.floor(chartData.length / 10)}
+                    />
+                    <YAxis
+                      domain={[yMin, yMax]}
+                      tickFormatter={v => `${v.toFixed(2)}%`}
+                      tick={{ fontSize: 11, fill: '#64748b', fontWeight: 700 }}
+                      width={60}
+                    />
+                    <Tooltip
+                      formatter={(val: unknown, name: unknown) => [`${(val as number)?.toFixed(3)}%`, TERM_LABELS[name as string] ?? String(name)]}
+                      labelStyle={{ fontWeight: 700, color: '#1e293b' }}
+                      contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }}
+                    />
+                    <Legend
+                      formatter={(val: string) => TERM_LABELS[val] ?? val}
+                      wrapperStyle={{ fontSize: 11, fontWeight: 700, paddingTop: 8 }}
+                    />
+                    {TERM_COLS.map((col, i) => (
+                      <Line
+                        key={col}
+                        type="monotone"
+                        dataKey={col}
+                        stroke={COLORS[i]}
+                        strokeWidth={2}
+                        dot={false}
+                        activeDot={{ r: 4 }}
+                        connectNulls
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Tab: Seed */}
       {activeTab === 'seed' && (

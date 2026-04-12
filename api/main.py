@@ -24,6 +24,11 @@ _brm_mod = _ilu.module_from_spec(_brm_spec)
 sys.modules["base_rate_master"] = _brm_mod
 _brm_spec.loader.exec_module(_brm_mod)
 
+_tfm_spec = _ilu.spec_from_file_location("timesfm_engine", os.path.join(_REPO_ROOT, "timesfm_engine.py"))
+_tfm_mod = _ilu.module_from_spec(_tfm_spec)
+sys.modules["timesfm_engine"] = _tfm_mod
+_tfm_spec.loader.exec_module(_tfm_mod)
+
 # ── .streamlit/secrets.toml から APIキー等を環境変数に自動注入 ─────────────────
 def _load_secrets_to_env():
     """secrets.toml が存在すれば環境変数に一括インポート（既存の環境変数は上書きしない）。"""
@@ -679,6 +684,32 @@ def api_tfm_financial_paths(req: TfmFinancialPathsRequest):
         "revenues": revenues,
         "timesfm_available": TIMESFM_AVAILABLE
     }
+
+
+class TfmBaseRateRequest(BaseModel):
+    term_col: str = "r_5y"
+    horizon_months: int = 6
+
+class TfmBaseRateAllRequest(BaseModel):
+    horizon_months: int = 6
+
+@app.post("/api/timesfm/base_rate")
+def api_tfm_base_rate(req: TfmBaseRateRequest):
+    from timesfm_engine import forecast_base_rate
+    try:
+        result = forecast_base_rate(req.term_col, req.horizon_months)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/timesfm/base_rate_all")
+def api_tfm_base_rate_all(req: TfmBaseRateAllRequest):
+    from timesfm_engine import forecast_base_rate_all
+    try:
+        result = forecast_base_rate_all(req.horizon_months)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # =============================================================================
