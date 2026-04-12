@@ -76,6 +76,15 @@ _WIZ_CSS = """
     padding:1rem 1.2rem; margin:.8rem 0; font-size:.88rem; line-height:1.8;
 }
 .wiz-footer { text-align:center; color:#94a3b8; font-size:.72rem; margin-top:1.5rem; }
+@media screen and (max-width: 640px) {
+    .wiz-header { padding: .9rem 1rem; flex-wrap: wrap; gap: .6rem; }
+    .wiz-header-title { font-size: 1.2rem; }
+    .wiz-header-sub { font-size: .72rem; }
+    .wiz-bubble-bot { font-size: .85rem; padding: .7rem .9rem; max-width: 95%; }
+    .wiz-bubble-user { font-size: .82rem; padding: .6rem .85rem; max-width: 90%; }
+    .wiz-bubble-humor { font-size: .82rem; padding: .7rem .9rem; }
+    .wiz-summary-box { padding: .8rem .9rem; font-size: .82rem; line-height: 1.6; }
+}
 </style>
 """
 
