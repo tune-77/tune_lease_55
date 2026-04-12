@@ -817,8 +817,14 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 # スコアと財務指標だけは確実に届くよう、ここで一度仮の結果をセットします
                 # [物理ファイル通信] APIへの確実なデータ受け渡し用
                 res_dict = {
-                    "score": final_score, 
+                    "score": final_score,
+                    "score_base": final_score,
                     "hantei": "承認圏内" if final_score >= _eff_approval else "要審議",
+                    "score_borrower": score_percent,
+                    "bench_score": score_percent_bench,
+                    "ind_score": score_percent_ind,
+                    "ind_name": ind_key,
+                    "contract_prob": contract_prob,
                     "user_op_margin": user_op_margin,
                     "user_equity_ratio": user_equity_ratio,
                     "bench_op_margin": bench_op_margin,

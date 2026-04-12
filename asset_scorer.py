@@ -1,10 +1,11 @@
 """
-物件スコア計算エンジン (ver 1.2)
+物件スコア計算エンジン (ver 1.3)
 asset scoring design and code.docx に基づく。
 
 主な機能:
 - カテゴリ別スコアリング項目の加重平均によるスコア算出
 - 契約条件（リース期間/買取オプション/大手メーカー/EV燃料種別）による動的重み調整
+- **期待使用期間.json との統合** → リース期間の最適性を動的に評価
 - 産業機械: カスタマイズ度×再販市場の相互作用
 - グレード（S/A/B/C/D）と推奨リース条件の返却
 - 満了時推定スコア計算（useful_life_equipment.json 接続）
@@ -14,6 +15,11 @@ import json
 import os
 
 from category_config import CATEGORY_SCORE_ITEMS, SCORE_GRADES, get_grade as _get_grade
+
+try:
+    from expected_usage_period import calc_lease_period_fit_score
+except ImportError:
+    calc_lease_period_fit_score = None
 
 # 法定耐用年数マスタ（カテゴリ別デフォルト寿命[年]）
 _USEFUL_LIFE_PATH = os.path.join(
@@ -44,13 +50,57 @@ def _adjust_weights(category: str, base_weights: dict, contract: dict) -> dict:
     - リース期間が技術寿命の80%超 → 陳腐化系ウェイトを 1.3倍
     - 買取オプションあり     → 残価リスク系ウェイトを 0.7倍
     - 大手メーカー           → 流動性・サポート系ウェイトを 1.2倍
+    - **期待使用期間との乖離** → リース期間フィット性を評価・重み調整
     最後に合計が 100 になるよう正規化。
+    
+    Parameters
+    ----------
+    category : str
+        物件カテゴリ
+    base_weights : dict
+        基本重み
+    contract : dict
+        契約条件。キー:
+          lease_months (int): リース期間（月）
+          tech_life_months (int): 想定技術寿命（月）
+          has_buyout_option (bool): 買取オプション有無
+          is_major_maker (bool): 大手メーカー品か
+          vehicle_fuel_type (str): 燃料種（EV等）
+          asset_name (str): 物件・設備名（期待使用期間検索用）
+          item_name (str): 機種名（期待使用期間検索用）
     """
     weights = dict(base_weights)
     items_map = {item["id"]: item for item in CATEGORY_SCORE_ITEMS.get(category, [])}
 
-    # リース期間 vs 技術寿命
     lease_months = contract.get("lease_months", 0)
+    
+    # ────────────────────────────────────────────────────────────────────────────
+    # 期待使用期間との適合度評価（再リース機会ベース）
+    # ────────────────────────────────────────────────────────────────────────────
+    if calc_lease_period_fit_score and lease_months > 0:
+        asset_name = contract.get("asset_name") or contract.get("item_name")
+        if asset_name:
+            fit_result = calc_lease_period_fit_score(asset_name, lease_months)
+            remanufacture_score = fit_result.get("remanufacture_score", 50)
+            
+            # 再リース機会スコアに基づいた重み調整
+            # remanufacture_score が低いほど（残り期間が短い）、残価リスク系の重みを上げる
+            if remanufacture_score < 70:
+                # 再リース機会が限定的/困難な場合、残価リスクへの警戒を強化
+                for item_id, item in items_map.items():
+                    if item.get("tag") in ("residual_value", "obsolescence_risk"):
+                        # スコア 50以下で 1.4倍、70で 1.0倍の係数を適用
+                        coeff = 1.0 + (70 - remanufacture_score) / 70 * 0.4
+                        weights[item_id] = min(weights[item_id] * coeff, 50)
+            elif remanufacture_score >= 85:
+                # 再リース機会が豊富な場合、残가リスク系の警戒を緩和
+                for item_id, item in items_map.items():
+                    if item.get("tag") == "residual_value":
+                        weights[item_id] = weights[item_id] * 0.9
+
+    # ────────────────────────────────────────────────────────────────────────────
+    # 従来の調整ロジック（tech_life_months ベース）
+    # ────────────────────────────────────────────────────────────────────────────
     tech_life_months = contract.get("tech_life_months", 60)
     if tech_life_months > 0 and lease_months > 0 and (lease_months / tech_life_months) > 0.8:
         for item_id, item in items_map.items():
@@ -99,6 +149,9 @@ def calc_asset_score(category: str, scores: dict, contract: dict = None) -> dict
           tech_life_months (int): 想定技術寿命（月）
           has_buyout_option (bool): 買取オプション有無
           is_major_maker (bool)   : 大手メーカー品か
+          **asset_name (str)      : 物件・設備名（期待使用期間マスタ検索用）
+          **item_name (str)       : 機種名（期待使用期間マスタ検索用）
+          vehicle_fuel_type (str): 燃料種（EV等）
 
     Returns
     -------
@@ -110,6 +163,7 @@ def calc_asset_score(category: str, scores: dict, contract: dict = None) -> dict
         item_scores  (dict)    : 項目別 {id: {label, score, weight, contribution}}
         warnings     (list)    : C/D 項目の警告リスト
         weight_adjusted (bool) : 重み調整が行われたか
+        **usage_period_fit (dict) : 期待使用期間の適合度評価（asset_name/item_name が指定時）
     """
     if contract is None:
         contract = {}
@@ -198,7 +252,10 @@ def calc_asset_score(category: str, scores: dict, contract: dict = None) -> dict
     total_score = round(min(100.0, max(0.0, total_score)), 1)
     grade = _get_grade(total_score)
 
-    return {
+    # ────────────────────────────────────────────────────────────────────────────
+    # 期待使用期間の適合度情報を結果に追加（再リース機会评价）
+    # ────────────────────────────────────────────────────────────────────────────
+    result = {
         "total_score": total_score,
         "grade": grade["label"],
         "grade_text": grade["text"],
@@ -208,6 +265,18 @@ def calc_asset_score(category: str, scores: dict, contract: dict = None) -> dict
         "weight_adjusted": weight_adjusted,
         "completeness_ratio": round(completeness_ratio, 3),
     }
+    
+    # 再リース機会の評価を追加
+    if calc_lease_period_fit_score and lease_months > 0:
+        asset_name = contract.get("asset_name") or contract.get("item_name")
+        if asset_name:
+            fit_result = calc_lease_period_fit_score(asset_name, lease_months)
+            result["usage_period_fit"] = fit_result
+            # 外部参照用に短シリアライズ
+            result["remanufacture_score"] = fit_result.get("remanufacture_score")
+            result["assessment_label"] = fit_result.get("assessment_label")
+    
+    return result
 
 
 def get_recommendation(grade: str) -> dict:
