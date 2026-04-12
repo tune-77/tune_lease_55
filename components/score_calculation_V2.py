@@ -178,7 +178,8 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
             contracts = contracts if contracts is not None else 0
             lease_term = lease_term if lease_term is not None else 0
             acquisition_cost = acquisition_cost if acquisition_cost is not None else 0
-    
+            grade = grade if grade is not None else "1-3"
+
             # 必須項目チェック（未入力・不正時は判定をブロック）
             # [API/Next.js強化] APIモード時は問答無用で通過させます
             validation_ok = True
