@@ -858,7 +858,7 @@ def get_app_logs():
 # ── 競合関係グラフ
 @app.get("/api/analysis/competitor_graph")
 def api_competitor_graph():
-    from graph_view import build_graph_data
+    from components.graph_view import build_graph_data
     try:
         data = build_graph_data()
         return data
@@ -1122,10 +1122,6 @@ class AgentRunRequest(BaseModel):
 
 @app.post("/api/agent_hub/run_agent")
 def run_agent_api(req: AgentRunRequest):
-    from agent_hub import (
-        _run_benchmark_agent, _run_market_agent, _run_retrain_trigger
-    )
-    
     agent_id = req.agent_id
     params = req.params
 
@@ -1134,26 +1130,27 @@ def run_agent_api(req: AgentRunRequest):
             industry = params.get("industry", "製造業")
             res = _run_benchmark_agent_standalone(industry)
             return {"status": "success", "result": res}
-        
+
         elif agent_id == "market":
             res = _run_market_agent_standalone()
             return {"status": "success", "result": res}
-            
+
         elif agent_id == "anomaly":
-            from agent_hub import _run_anomaly_agent
+            from components.agent_hub import _run_anomaly_agent
             from data_cases import load_all_cases
             cases = load_all_cases()
             res = _run_anomaly_agent(cases)
             return {"status": "success", "result": res}
-            
+
         elif agent_id == "retrain":
             from auto_optimizer import get_training_status
+            from components.agent_hub import _run_retrain_trigger
             status = get_training_status()
             if status["count"] < 50:
                 return {"status": "skipped", "message": "案件数が50件未満のため再学習はスキップされました。"}
             res = _run_retrain_trigger(threshold=0.02)
             return {"status": "success", "result": res}
-            
+
         else:
             return {"status": "error", "message": f"Unknown agent: {agent_id}"}
             
@@ -1270,8 +1267,27 @@ def get_archaia_log_api(limit: int = 30):
 
 # ── スタンドアロン実行ヘルパー（Streamlit依存回避） ────────────────────────────────
 
+_BENCHMARK_FALLBACK: dict[str, dict] = {
+    "製造業":       {"op_margin": 3.5, "equity_ratio": 38.0, "roa": 3.2, "current_ratio": 140.0, "dscr": 1.4},
+    "建設業":       {"op_margin": 4.2, "equity_ratio": 32.0, "roa": 3.8, "current_ratio": 130.0, "dscr": 1.5},
+    "卸売業":       {"op_margin": 2.1, "equity_ratio": 30.0, "roa": 2.5, "current_ratio": 125.0, "dscr": 1.3},
+    "小売業":       {"op_margin": 2.8, "equity_ratio": 28.0, "roa": 3.0, "current_ratio": 115.0, "dscr": 1.2},
+    "運輸業":       {"op_margin": 3.0, "equity_ratio": 25.0, "roa": 2.8, "current_ratio": 110.0, "dscr": 1.3},
+    "情報通信業":   {"op_margin": 8.5, "equity_ratio": 52.0, "roa": 6.5, "current_ratio": 170.0, "dscr": 2.0},
+    "不動産業":     {"op_margin": 12.0,"equity_ratio": 35.0, "roa": 4.0, "current_ratio": 120.0, "dscr": 1.6},
+    "医療・福祉":   {"op_margin": 4.5, "equity_ratio": 42.0, "roa": 3.5, "current_ratio": 145.0, "dscr": 1.5},
+    "サービス業":   {"op_margin": 5.0, "equity_ratio": 38.0, "roa": 4.2, "current_ratio": 135.0, "dscr": 1.4},
+    "飲食業":       {"op_margin": 2.0, "equity_ratio": 18.0, "roa": 2.0, "current_ratio": 90.0,  "dscr": 1.1},
+    "農業・漁業":   {"op_margin": 2.5, "equity_ratio": 30.0, "roa": 2.2, "current_ratio": 120.0, "dscr": 1.2},
+    "金融・保険業": {"op_margin": 15.0,"equity_ratio": 55.0, "roa": 5.0, "current_ratio": 180.0, "dscr": 2.2},
+    "教育・学習支援業": {"op_margin": 5.5, "equity_ratio": 45.0, "roa": 4.0, "current_ratio": 150.0, "dscr": 1.6},
+    "宿泊業":       {"op_margin": 3.0, "equity_ratio": 22.0, "roa": 2.5, "current_ratio": 100.0, "dscr": 1.2},
+    "その他":       {"op_margin": 4.0, "equity_ratio": 33.0, "roa": 3.0, "current_ratio": 125.0, "dscr": 1.3},
+}
+
 def _run_benchmark_agent_standalone(industry: str):
     from ai_chat import _chat_for_thread
+    import re
     api_key = os.environ.get("GEMINI_API_KEY", "")
     system = (
         "あなたはリース審査の財務分析専門家です。"
@@ -1284,14 +1300,22 @@ def _run_benchmark_agent_standalone(industry: str):
         {"role": "system", "content": system},
         {"role": "user", "content": prompt}
     ]
-    res_raw = _chat_for_thread("gemini", "", messages, timeout_seconds=60, api_key=api_key)
-    content = (res_raw.get("message") or {}).get("content", "")
     try:
-        import re
+        res_raw = _chat_for_thread("gemini", "", messages, timeout_seconds=60, api_key=api_key)
+        content = (res_raw.get("message") or {}).get("content", "")
         match = re.search(r'\{.*\}', content, re.DOTALL)
-        if match: return json.loads(match.group())
-        return {"error": "JSON parse error", "raw": content}
-    except: return {"error": "Failed to parse AI response", "raw": content}
+        if match:
+            data = json.loads(match.group())
+            data["_source"] = "ai"
+            return data
+        # AIレスポンスのパース失敗 → フォールバック
+    except Exception:
+        pass
+
+    # Gemini 失敗時: 静的ベンチマークを返す
+    fallback = _BENCHMARK_FALLBACK.get(industry, _BENCHMARK_FALLBACK["その他"]).copy()
+    fallback["_source"] = "static"
+    return fallback
 
 def _run_market_agent_standalone():
     from ai_chat import _chat_for_thread

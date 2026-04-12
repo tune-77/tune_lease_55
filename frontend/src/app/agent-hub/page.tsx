@@ -53,6 +53,20 @@ const AGENTS: Agent[] = [
   { id: "novel", name: "文豪AI「波乱丸」", icon: <BookOpen className="w-5 h-5" />, description: "エージェントたちの日常を小説化", category: "Narrative", color: "pink" },
 ];
 
+const INDUSTRIES = [
+  "製造業", "建設業", "卸売業", "小売業", "運輸業", "情報通信業",
+  "不動産業", "医療・福祉", "サービス業", "飲食業", "農業・漁業",
+  "金融・保険業", "教育・学習支援業", "宿泊業", "その他"
+];
+
+const BENCHMARK_LABELS: Record<string, string> = {
+  op_margin: "営業利益率",
+  equity_ratio: "自己資本比率",
+  roa: "ROA",
+  current_ratio: "流動比率",
+  dscr: "DSCR（債務返済余裕率）",
+};
+
 export default function AgentHubPage() {
   const [thoughts, setThoughts] = useState<Thought[]>([]);
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
@@ -60,7 +74,8 @@ export default function AgentHubPage() {
   const [result, setResult] = useState<any>(null);
   const [latestNovel, setLatestNovel] = useState<any>(null);
   const [loadingThoughts, setLoadingThoughts] = useState(true);
-  
+  const [benchmarkIndustry, setBenchmarkIndustry] = useState("製造業");
+
   const thoughtsEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -104,7 +119,7 @@ export default function AgentHubPage() {
       } else {
         const res = await axios.post("http://localhost:8000/api/agent_hub/run_agent", {
           agent_id: agentId,
-          params: agentId === "benchmark" ? { industry: "製造業" } : {}
+          params: agentId === "benchmark" ? { industry: benchmarkIndustry } : {}
         });
         setResult(res.data.result);
         fetchThoughts();
@@ -197,6 +212,33 @@ export default function AgentHubPage() {
               ))}
             </div>
 
+            {/* Benchmark: Industry Selector */}
+            {activeAgent === "benchmark" && (
+              <div className="flex items-center gap-4 p-5 bg-slate-900/60 border border-blue-500/20 rounded-2xl">
+                <Search className="w-5 h-5 text-blue-400 shrink-0" />
+                <div className="flex-1">
+                  <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">対象業種を選択</div>
+                  <select
+                    value={benchmarkIndustry}
+                    onChange={e => setBenchmarkIndustry(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 text-white font-bold rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {INDUSTRIES.map(ind => (
+                      <option key={ind} value={ind}>{ind}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={() => runAgent("benchmark")}
+                  disabled={isRunning}
+                  className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-black px-6 py-2.5 rounded-xl flex items-center gap-2 transition-colors"
+                >
+                  {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                  取得
+                </button>
+              </div>
+            )}
+
             {/* Execution Result Panel */}
             <div className={`rounded-2xl border transition-all duration-500 overflow-hidden ${
               activeAgent ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-4 scale-95 pointer-events-none'
@@ -230,13 +272,35 @@ export default function AgentHubPage() {
                   <div className="space-y-6">
                     {/* Render different result types */}
                     {activeAgent === "benchmark" && (
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                        {Object.entries(result).map(([key, val]: [string, any]) => (
-                          <div key={key} className="p-4 bg-slate-800/40 border border-slate-700/50 rounded-xl">
-                            <div className="text-xs text-slate-500 uppercase font-bold mb-1">{key}</div>
-                            <div className="text-2xl font-bold text-white">{val}{key.includes('margin') || key.includes('ratio') ? '%' : ''}</div>
+                      <div>
+                        <div className="text-slate-400 text-sm font-bold mb-4 flex items-center gap-2">
+                          <Search className="w-4 h-4 text-blue-400" />
+                          {benchmarkIndustry} の業界平均財務指標（AI推定）
+                        </div>
+                        {result.error ? (
+                          <div className="text-rose-300 text-sm">{result.error}<br/><span className="text-slate-500 text-xs">{result.raw}</span></div>
+                        ) : (
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                            {Object.entries(result).filter(([key]) => key !== "_source").map(([key, val]: [string, any]) => {
+                              const label = BENCHMARK_LABELS[key] || key;
+                              const unit = key === "dscr" ? "倍" : "%";
+                              return (
+                                <div key={key} className="p-5 bg-slate-800/60 border border-slate-700/50 rounded-xl">
+                                  <div className="text-xs text-blue-300 font-bold mb-2">{label}</div>
+                                  <div className="text-3xl font-black text-white">
+                                    {typeof val === 'number' ? val.toFixed(1) : val}
+                                    <span className="text-sm text-slate-400 ml-1">{unit}</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
-                        ))}
+                        )}
+                        <p className="text-[10px] text-slate-600 mt-4">
+                          {result._source === "ai"
+                            ? "※ AI（Gemini）による推定値です。実際の業界統計とは異なる場合があります。"
+                            : "※ AIが一時利用不可のため、静的ベンチマークデータを表示しています。"}
+                        </p>
                       </div>
                     )}
                     {activeAgent === "market" && (
