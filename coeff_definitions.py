@@ -121,6 +121,7 @@ COEFFS = {
     # --------------------------------------------------------------------------
     "運送業_既存先": {
         "intercept": -0.31034,
+        "ind_transport": -0.310339053,
         "sales_log": -0.050714421,
         "op_profit": -0.0580448,
         "ord_profit": 0.0479385,
@@ -145,6 +146,7 @@ COEFFS = {
     # --------------------------------------------------------------------------
     "運送業_新規先": {
         "intercept": 0.004699,
+        "ind_transport": 0.004698957,
         "sales_log": -0.020375579,
         "op_profit": -0.0191223,
         "ord_profit": 0.0525122,
@@ -169,6 +171,7 @@ COEFFS = {
     # --------------------------------------------------------------------------
     "サービス業_既存先": {
         "intercept": 0.0000633,
+        "ind_service": 0.0000633,
         "sales_log": 0.002876787,
         "op_profit": -0.0737395,
         "ord_profit": -0.003886,
@@ -193,6 +196,7 @@ COEFFS = {
     # --------------------------------------------------------------------------
     "サービス業_新規先": {
         "intercept": -0.00038,
+        "ind_service": -0.00038,
         "sales_log": 0.033478,
         "op_profit": -0.095386,
         "ord_profit": 0.0249398,
@@ -217,43 +221,45 @@ COEFFS = {
     # --------------------------------------------------------------------------
     "製造業_既存先": {
         "intercept": 0.013,
-        "sales_log": 0.013, 
-        "op_profit": -0.064,
-        "ord_profit": -0.119,
-        "net_income": 0.032,
-        "machines": 0.050,
-        "other_assets": 0.022,
-        "rent": -0.005,
-        "gross_profit": -0.125,
-        "depreciation": 0.032,
-        "dep_expense": -0.007,
-        "rent_expense": 0.033,
-        "grade_4_6": 0.023,
-        "grade_watch": 0.006,
+        "ind_manufacturing": 0.013,
+        "sales_log": -0.064,
+        "op_profit": -0.119,
+        "ord_profit": 0.032,
+        "net_income": 0.050,
+        "machines": 0.022,
+        "other_assets": -0.005,
+        "rent": -0.125,
+        "gross_profit": 0.032,
+        "depreciation": -0.007,
+        "dep_expense": 0.033,
+        "rent_expense": 0.023,
+        "grade_4_6": 0.006,
+        "grade_watch": 0,
         "grade_none": 0,
         "bank_credit_log": 0.005,
         "lease_credit_log": 0.009,
         "contracts": 0.144
     },
-    
+
     # --------------------------------------------------------------------------
     # 8. 製造業モデル (新規) -> 適用対象: E
     # --------------------------------------------------------------------------
     "製造業_新規先": {
         "intercept": 0.013,
-        "sales_log": 0.013, 
-        "op_profit": -0.062,
-        "ord_profit": -0.117,
-        "net_income": 0.031,
-        "machines": 0.045,
-        "other_assets": 0.021,
-        "rent": -0.005,
-        "gross_profit": -0.124,
-        "depreciation": 0.035,
-        "dep_expense": -0.022,
-        "rent_expense": 0.034,
-        "grade_4_6": 0.023,
-        "grade_watch": 0.006,
+        "ind_manufacturing": 0.013,
+        "sales_log": -0.062,
+        "op_profit": -0.117,
+        "ord_profit": 0.031,
+        "net_income": 0.045,
+        "machines": 0.021,
+        "other_assets": -0.005,
+        "rent": -0.124,
+        "gross_profit": 0.035,
+        "depreciation": -0.022,
+        "dep_expense": 0.034,
+        "rent_expense": 0.023,
+        "grade_4_6": 0.006,
+        "grade_watch": 0,
         "grade_none": 0,
         "bank_credit_log": 0.005,
         "lease_credit_log": 0.009,
@@ -353,15 +359,16 @@ COEFFS = {
     # --------------------------------------------------------------------------
     "製造業_指標": {
         "intercept": -0.01,
-        "ratio_op_margin": -0.01,
-        "ratio_gross_margin": -0.960,
-        "ratio_ord_margin": 0.060,
-        "ratio_net_margin": 0.952,
-        "ratio_fixed_assets": 0.082,
-        "ratio_rent": -0.150,
-        "ratio_depreciation": -0.094,
-        "ratio_machines": -0.026,
-        "grade_4_6": 0.085,
+        "ind_manufacturing": -0.01,
+        "ratio_op_margin": -0.960,
+        "ratio_gross_margin": 0.060,
+        "ratio_ord_margin": 0.952,
+        "ratio_net_margin": 0.082,
+        "ratio_fixed_assets": -0.150,
+        "ratio_rent": -0.094,
+        "ratio_depreciation": -0.026,
+        "ratio_machines": 0.085,
+        "grade_4_6": 0,
         "grade_watch": 0,
         "grade_none": 0
     }
