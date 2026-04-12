@@ -52,17 +52,17 @@ export default function FloatingMebuki() {
   }, []);
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex items-end justify-end pointer-events-none">
+    <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+0.5rem)] right-4 sm:right-6 z-50 flex items-end justify-end pointer-events-none">
       {/* 吹き出し */}
-      <div 
-        className={`bg-white text-slate-800 p-4 rounded-2xl rounded-br-none shadow-2xl border-2 border-amber-200 text-sm font-bold leading-relaxed w-56 mb-6 mr-2 pointer-events-auto transition-all duration-300 transform origin-bottom-right whitespace-pre-wrap ${isVisible ? 'scale-100 opacity-100' : 'scale-75 opacity-0'}`}
+      <div
+        className={`bg-white text-slate-800 p-3 sm:p-4 rounded-2xl rounded-br-none shadow-2xl border-2 border-amber-200 text-xs sm:text-sm font-bold leading-relaxed w-40 sm:w-56 mb-4 mr-1 sm:mb-6 sm:mr-2 pointer-events-auto transition-all duration-300 transform origin-bottom-right whitespace-pre-wrap ${isVisible ? 'scale-100 opacity-100' : 'scale-75 opacity-0'}`}
       >
         {message}
       </div>
-      
+
       {/* めぶきちゃん画像 */}
-      <div 
-        className="relative w-32 h-32 pointer-events-auto cursor-pointer hover:scale-105 transition-transform drop-shadow-2xl"
+      <div
+        className="relative w-20 h-20 sm:w-32 sm:h-32 pointer-events-auto cursor-pointer hover:scale-105 transition-transform drop-shadow-2xl"
         onClick={() => setIsVisible(!isVisible)}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}

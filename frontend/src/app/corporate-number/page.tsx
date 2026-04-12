@@ -37,7 +37,7 @@ export default function CorporateNumberPage() {
       triggerMebuki('approve', '設定を保存しました！完璧です！\\nこれで審査の自動化がまた一歩進みましたね。');
     } catch (err) {
       console.error(err);
-      triggerMebuki('error', '保存に失敗しました。ネットワークを確認してください。');
+      triggerMebuki('reject', '保存に失敗しました。ネットワークを確認してください。');
     } finally {
       setSaving(false);
     }

@@ -99,7 +99,7 @@ export default function CompetitorPage() {
         .on('end', (event: any, d: any) => {
           if (!event.active) simulation.alphaTarget(0);
           d.fx = null; d.fy = null;
-        })
+        }) as any
       );
 
     // Node Shape

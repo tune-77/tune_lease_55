@@ -192,7 +192,7 @@ export default function RegisterPage() {
                  <Percent className="w-5 h-5 text-emerald-500" />
                  2. 金利・レート情報
               </h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                  <div>
                     <label className="block text-xs font-black text-slate-400 uppercase mb-2">最終獲得レート (%)</label>
                     <input 
@@ -221,7 +221,7 @@ export default function RegisterPage() {
                  3. 競合・失注分析
               </h3>
               <div className="space-y-4">
-                 <div className="grid grid-cols-2 gap-4">
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label className="block text-xs font-black text-slate-400 uppercase mb-2">競合他社名</label>
                         <input 

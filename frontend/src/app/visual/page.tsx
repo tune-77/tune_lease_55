@@ -94,9 +94,7 @@ export default function VisualPage() {
 
     const width = 900;
     const height = 500;
-    const svg = d3.select(sankeyRef.current)
-      .attr('width', width)
-      .attr('height', height);
+    const svg = d3.select(sankeyRef.current);
 
     svg.selectAll('*').remove();
 
@@ -307,7 +305,7 @@ export default function VisualPage() {
                 </div>
              </div>
              <div className="w-full flex justify-center bg-slate-50/50 p-6 rounded-3xl border border-slate-100 shadow-inner">
-               <svg ref={sankeyRef} className="max-w-full" viewBox="0 0 900 500" />
+               <svg ref={sankeyRef} className="w-full max-w-full" viewBox="0 0 900 500" preserveAspectRatio="xMidYMid meet" />
              </div>
            </div>
          )}

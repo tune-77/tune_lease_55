@@ -25,7 +25,8 @@ export default function ScoreDAG({ data }: ScoreDAGProps) {
         スコアリング因果グラフ (DAG)
       </h3>
       
-      <div className="overflow-x-auto pb-4">
+      <p className="sm:hidden text-xs text-slate-400 mb-2">← 横スワイプで全体表示</p>
+      <div className="overflow-x-auto pb-4 scrollbar-hide">
         <div className="min-w-[700px] flex justify-between items-center px-4 relative">
           
           {/* 背景の連結線 (簡易) */}

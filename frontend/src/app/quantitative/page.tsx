@@ -21,7 +21,7 @@ export default function QuantitativePage() {
       setData(res.data);
     } catch (err) {
       console.error(err);
-      triggerMebuki('error', '分析データの取得に失敗しました。');
+      triggerMebuki('reject', '分析データの取得に失敗しました。');
     } finally {
       setLoading(false);
     }

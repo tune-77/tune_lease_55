@@ -44,7 +44,7 @@ export default function RealGraphs() {
         <h3 className="text-sm font-black text-slate-800 mb-6 flex items-center gap-2">
           <span className="text-violet-500">🎯</span> 総合審査バランス (Radar)
         </h3>
-        <div className="h-[250px] w-full">
+        <div className="h-[200px] sm:h-[250px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
               <PolarGrid stroke="#e2e8f0" />
@@ -65,7 +65,7 @@ export default function RealGraphs() {
         <h3 className="text-sm font-black text-slate-800 mb-6 flex items-center gap-2">
           <span className="text-emerald-500">📈</span> スコア変動の要因 (SHAP)
         </h3>
-        <div className="h-[250px] w-full">
+        <div className="h-[200px] sm:h-[250px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={shapData} layout="vertical" margin={{ top: 0, right: 20, left: 20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />

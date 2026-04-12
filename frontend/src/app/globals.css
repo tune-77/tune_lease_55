@@ -14,6 +14,10 @@
   color utility to any element that depends on these defaults.
 */
 @layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
   *,
   ::after,
   ::before,
@@ -23,13 +27,28 @@
   }
 }
 
+@layer utilities {
+  .scrollbar-hide {
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 body {
   color: var(--color-foreground);
   background: var(--color-background);
-  background-image: 
-    radial-gradient(at 0% 0%, hsla(210, 100%, 97%, 1) 0, transparent 50%), 
-    radial-gradient(at 50% 0%, hsla(200, 100%, 95%, 1) 0, transparent 50%), 
+  background-image:
+    radial-gradient(at 0% 0%, hsla(210, 100%, 97%, 1) 0, transparent 50%),
+    radial-gradient(at 50% 0%, hsla(200, 100%, 95%, 1) 0, transparent 50%),
     radial-gradient(at 100% 0%, hsla(220, 100%, 97%, 1) 0, transparent 50%);
   background-attachment: fixed;
   font-family: "Inter", "Hiragino Kaku Gothic ProN", sans-serif;
+}
+
+@media (max-width: 767px) {
+  body {
+    background-attachment: scroll;
+  }
 }

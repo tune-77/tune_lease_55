@@ -21,7 +21,7 @@ export default function RulesPage() {
       setRules(res.data);
     } catch (err) {
       console.error(err);
-      triggerMebuki('error', 'ルールの取得に失敗しました。');
+      triggerMebuki('reject', 'ルールの取得に失敗しました。');
     } finally {
       setLoading(false);
     }
@@ -34,7 +34,7 @@ export default function RulesPage() {
       triggerMebuki('approve', '審査ルールを更新しました！\\nこれで次からの審査に新しい基準が適用されます。');
     } catch (err) {
       console.error(err);
-      triggerMebuki('error', '保存に失敗しました。');
+      triggerMebuki('reject', '保存に失敗しました。');
     } finally {
       setSaving(false);
     }

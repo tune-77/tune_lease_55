@@ -22,7 +22,7 @@ export default function InterestPage() {
       setRates(res.data);
     } catch (err) {
       console.error(err);
-      triggerMebuki('error', '金利データの取得に失敗しました。');
+      triggerMebuki('reject', '金利データの取得に失敗しました。');
     } finally {
       setLoading(false);
     }
@@ -36,7 +36,7 @@ export default function InterestPage() {
       fetchRates();
     } catch (err) {
       console.error(err);
-      triggerMebuki('error', '更新に失敗しました。');
+      triggerMebuki('reject', '更新に失敗しました。');
     } finally {
       setSubmitting(false);
     }
@@ -121,6 +121,7 @@ export default function InterestPage() {
                  </div>
                  <History className="w-4 h-4 text-slate-300" />
               </div>
+              <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
               <table className="w-full text-left border-collapse">
                  <thead>
                     <tr className="bg-slate-50/50 border-b border-slate-100">
@@ -139,6 +140,7 @@ export default function InterestPage() {
                     ))}
                  </tbody>
               </table>
+              </div>
            </div>
         </div>
       </div>

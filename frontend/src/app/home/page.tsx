@@ -40,6 +40,13 @@ export default function HomeDashboard() {
   const analysis = stats?.analysis;
   const recentCases = stats?.recent_cases || [];
 
+  const avgScoreBorrower = (() => {
+    const scores = (analysis?.closed_cases || [])
+      .map((c: any) => c?.result?.score_borrower)
+      .filter((v: any) => typeof v === 'number');
+    return scores.length > 0 ? scores.reduce((a: number, b: number) => a + b, 0) / scores.length : null;
+  })();
+
   return (
     <div className="p-8 min-h-[calc(100vh-2rem)] animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="mb-12 relative overflow-hidden bg-gradient-to-r from-blue-600 to-indigo-700 rounded-[2.5rem] p-10 text-white shadow-2xl shadow-blue-500/20 group">
@@ -127,9 +134,9 @@ export default function HomeDashboard() {
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
               <div className="flex justify-between items-start">
                  <div>
-                   <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">成約平均 デフォルト確率</p>
+                   <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">成約平均 信用スコア</p>
                    <h3 className="text-4xl font-black text-emerald-600 mt-2">
-                     {analysis.avg_financials?.score_borrower ? analysis.avg_financials.score_borrower.toFixed(1) : "-"} 
+                     {avgScoreBorrower !== null ? avgScoreBorrower.toFixed(1) : "-"}
                      <span className="text-lg font-bold text-slate-400"> %</span>
                    </h3>
                  </div>
@@ -186,17 +193,11 @@ export default function HomeDashboard() {
                   </thead>
                   <tbody>
                     {analysis.avg_financials && Object.entries(analysis.avg_financials)
-                      .filter(([k]) => ['user_equity_ratio', 'user_op_margin', 'user_years', 'score_base'].includes(k))
                       .map(([k, v]: [string, any], i) => (
                       <tr key={k} className="border-b last:border-b-0 hover:bg-white transition-colors bg-white">
-                        <td className="px-4 py-3 font-semibold text-slate-700">
-                          {k === 'user_equity_ratio' ? '自己資本比率 (%)' : 
-                           k === 'user_op_margin' ? '営業利益率 (%)' : 
-                           k === 'user_years' ? '設立年数 (年)' : 
-                           k === 'score_base' ? '最終スコア' : k}
-                        </td>
+                        <td className="px-4 py-3 font-semibold text-slate-700">{k}</td>
                         <td className="px-4 py-3 text-right font-black text-indigo-700">
-                          {typeof v === 'number' ? v.toFixed(1) : v}
+                          {typeof v === 'number' ? v.toLocaleString('ja-JP', { maximumFractionDigits: 1 }) : v}
                         </td>
                       </tr>
                     ))}
@@ -229,7 +230,7 @@ export default function HomeDashboard() {
                   </div>
                   <div className="text-xl font-black text-slate-800">
                     <span className="text-xs font-bold text-slate-400 mr-2">審査スコア</span>
-                    {(c.result?.score_base || 0).toFixed(0)} <span className="text-sm">点</span>
+                    {(c.result?.score ?? 0).toFixed(0)} <span className="text-sm">点</span>
                   </div>
                 </div>
                 

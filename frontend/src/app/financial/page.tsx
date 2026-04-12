@@ -43,7 +43,7 @@ export default function FinancialPage() {
       triggerMebuki('approve', `予測完了しました！\n今回は${res.data.timesfm_available ? 'TimesFM' : '推計モデル'}を使用しています！`);
     } catch (err) {
       console.error(err);
-      triggerMebuki('error', '予測エンジンの通信に失敗しました。');
+      triggerMebuki('reject', '予測エンジンの通信に失敗しました。');
     } finally {
       setLoading(false);
     }
@@ -112,23 +112,23 @@ export default function FinancialPage() {
       </div>
 
       <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 shadow-inner mb-8">
-          <div className="grid grid-cols-4 gap-4 mb-4 items-end font-bold text-slate-500 text-sm">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 items-end font-bold text-slate-500 text-sm">
              <div>科目</div>
              <div>3期前</div>
              <div>2期前</div>
              <div>直近期</div>
           </div>
-          
-          <div className="grid grid-cols-4 gap-4 mb-3 items-center">
-             <div className="font-bold text-slate-700">売上高</div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3 items-center">
+             <div className="font-bold text-slate-700 col-span-2 md:col-span-1">売上高</div>
              {[0, 1, 2].map(i => <input key={'s'+i} type="number" className="border border-slate-300 p-3 rounded-lg w-full font-mono font-bold" value={sales[i]} onChange={e => handleUpdate('sales', i, e.target.value)} />)}
           </div>
-          <div className="grid grid-cols-4 gap-4 mb-3 items-center">
-             <div className="font-bold text-slate-700">営業利益</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3 items-center">
+             <div className="font-bold text-slate-700 col-span-2 md:col-span-1">営業利益</div>
              {[0, 1, 2].map(i => <input key={'p'+i} type="number" className="border border-slate-300 p-3 rounded-lg w-full font-mono font-bold" value={profit[i]} onChange={e => handleUpdate('profit', i, e.target.value)} />)}
           </div>
-          <div className="grid grid-cols-4 gap-4 mb-6 items-center">
-             <div className="font-bold text-slate-700">純資産</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 items-center">
+             <div className="font-bold text-slate-700 col-span-2 md:col-span-1">純資産</div>
              {[0, 1, 2].map(i => <input key={'n'+i} type="number" className="border border-slate-300 p-3 rounded-lg w-full font-mono font-bold" value={netAssets[i]} onChange={e => handleUpdate('netAssets', i, e.target.value)} />)}
           </div>
 

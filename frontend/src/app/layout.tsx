@@ -1,5 +1,5 @@
 import './globals.css';
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import Sidebar from '@/components/layout/Sidebar';
 import FloatingMebuki from '@/components/layout/FloatingMebuki';
@@ -12,6 +12,14 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: '温水式 リース審査アシスタント',
   description: 'AI駆動のリース与信判定・分析システム',
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: 'cover',
+  themeColor: '#f8fafc',
 };
 
 export default function RootLayout({
