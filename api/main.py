@@ -12,12 +12,17 @@ while _REPO_ROOT in sys.path:
     sys.path.remove(_REPO_ROOT)
 sys.path.insert(0, _REPO_ROOT)
 
-# data_cases を正しいパスから強制ロード（clawd/data_cases.py が優先されないよう先読み）
+# data_cases / base_rate_master を正しいパスから強制ロード（clawd/ 直下の同名モジュールより優先）
 import importlib.util as _ilu
 _dc_spec = _ilu.spec_from_file_location("data_cases", os.path.join(_REPO_ROOT, "data_cases.py"))
 _dc_mod = _ilu.module_from_spec(_dc_spec)
 sys.modules["data_cases"] = _dc_mod
 _dc_spec.loader.exec_module(_dc_mod)
+
+_brm_spec = _ilu.spec_from_file_location("base_rate_master", os.path.join(_REPO_ROOT, "base_rate_master.py"))
+_brm_mod = _ilu.module_from_spec(_brm_spec)
+sys.modules["base_rate_master"] = _brm_mod
+_brm_spec.loader.exec_module(_brm_mod)
 
 # ── .streamlit/secrets.toml から APIキー等を環境変数に自動注入 ─────────────────
 def _load_secrets_to_env():
@@ -780,14 +785,51 @@ def get_interest_rates():
 
 class InterestRateUpdate(BaseModel):
     month: str
-    rate: float
+    rate: float = 0.0
     note: str = ""
+    r_2y: float | None = None
+    r_3y: float | None = None
+    r_4y: float | None = None
+    r_5y: float | None = None
+    r_6y: float | None = None
+    r_7y: float | None = None
+    r_8y: float | None = None
+    r_9y: float | None = None
+    r_over9y: float | None = None
 
 @app.post("/api/settings/interest")
 def update_interest_rate(req: InterestRateUpdate):
     from base_rate_master import upsert_base_rate
-    upsert_base_rate(req.month, req.rate, req.note)
+    upsert_base_rate(
+        req.month, req.rate, req.note,
+        r_2y=req.r_2y, r_3y=req.r_3y, r_4y=req.r_4y, r_5y=req.r_5y,
+        r_6y=req.r_6y, r_7y=req.r_7y, r_8y=req.r_8y, r_9y=req.r_9y,
+        r_over9y=req.r_over9y,
+    )
     return {"status": "success"}
+
+@app.post("/api/settings/interest/seed")
+def seed_interest_rates(overwrite: bool = False):
+    from base_rate_master import seed_initial_data
+    inserted, skipped = seed_initial_data(overwrite=overwrite)
+    return {"inserted": inserted, "skipped": skipped}
+
+@app.get("/api/settings/interest/current")
+def get_current_interest():
+    from base_rate_master import get_base_rate_by_term, list_base_rates
+    import datetime
+    today = datetime.date.today()
+    current_month = today.strftime("%Y-%m")
+    next_month = (today.replace(day=1) + datetime.timedelta(days=32)).strftime("%Y-%m")
+    recent = list_base_rates(limit=2)
+    return {
+        "current_month": current_month,
+        "next_month": next_month,
+        "current_rate_5y": get_base_rate_by_term(current_month, 60),
+        "next_rate_5y": get_base_rate_by_term(next_month, 60),
+        "latest": recent[0] if recent else None,
+        "prev": recent[1] if len(recent) > 1 else None,
+    }
 
 # ── 案件結果登録 (成約/失注)
 # ── 案件結果登録 (成約/失注) - 拡張版
