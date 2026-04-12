@@ -430,10 +430,10 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
         
                     # その他
                     "contracts": contracts,
-                    "grade": grade,
+                    "grade": grade or "1-3",
                     "industry_major": selected_major,
                 }
-    
+
                 # 安全なシグモイド関数 (オーバーフロー対策)
                 def safe_sigmoid(x):
                     try:
