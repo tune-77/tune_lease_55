@@ -81,7 +81,7 @@ def _save_final_status(record_id, final_status: str, extra: dict) -> bool:
             row = conn.execute("SELECT data FROM past_cases WHERE id = ?", (str(record_id),)).fetchone()
             if row is None:
                 return False
-            data = _parse_memo(row["data"])
+            data = _parse_memo(row[0])  # row_factory未設定のためインデックスでアクセス
             data["final_status"] = final_status
             data.update(extra)
             conn.execute(
@@ -90,7 +90,8 @@ def _save_final_status(record_id, final_status: str, extra: dict) -> bool:
             )
             conn.commit()
         return True
-    except Exception:
+    except Exception as e:
+        st.error(f"⚠️ 保存エラー: {e}")
         return False
 
 
