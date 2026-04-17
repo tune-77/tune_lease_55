@@ -418,7 +418,7 @@ def render_base_rate_manager() -> None:
 
     st.divider()
 
-    tab1, tab2 = st.tabs(["📊 登録一覧・グリッド編集", "📥 初期データ一括投入"])
+    tab1, tab2, tab3 = st.tabs(["📊 登録一覧・グリッド編集", "📥 初期データ一括投入", "📈 金利推移グラフ"])
 
     # ── タブ1: グリッド編集 ──────────────────────────────────────────────────
     with tab1:
@@ -496,3 +496,71 @@ def render_base_rate_manager() -> None:
                 ins, _ = seed_initial_data(overwrite=True)
                 st.success(f"✅ {ins}件を上書き更新しました")
                 st.rerun()
+
+    # ── タブ3: 金利推移グラフ ────────────────────────────────────────────────
+    with tab3:
+        import math
+        import plotly.graph_objects as go
+
+        records_for_chart = list_base_rates(limit=60)
+        if not records_for_chart:
+            st.info("データがありません。「初期データ一括投入」タブからデータを投入してください。")
+        else:
+            records_for_chart.sort(key=lambda r: r["month"])
+            months = [r["month"] for r in records_for_chart]
+
+            COLORS = [
+                "#10b981", "#3b82f6", "#8b5cf6", "#f59e0b", "#ef4444",
+                "#ec4899", "#06b6d4", "#84cc16", "#f97316",
+            ]
+
+            fig = go.Figure()
+            for i, col in enumerate(TERM_COLS):
+                y_vals = [r.get(col) for r in records_for_chart]
+                fig.add_trace(go.Scatter(
+                    x=months,
+                    y=y_vals,
+                    mode="lines",
+                    name=_COL_LABELS[col],
+                    line=dict(color=COLORS[i], width=2),
+                    connectgaps=True,
+                ))
+
+            all_vals = [
+                r.get(col)
+                for r in records_for_chart
+                for col in TERM_COLS
+                if r.get(col) is not None
+            ]
+            if all_vals:
+                y_min = math.floor(min(all_vals) * 10) / 10
+                y_max = math.ceil(max(all_vals) * 10) / 10
+            else:
+                y_min, y_max = 0, 5
+
+            fig.update_layout(
+                title=f"期間別基準金利 推移グラフ（{len(records_for_chart)}ヶ月）",
+                xaxis_title="適用月",
+                yaxis_title="金利 (%)",
+                xaxis=dict(
+                    tickangle=-45,
+                    dtick=max(1, len(months) // 10),
+                ),
+                yaxis=dict(
+                    range=[y_min, y_max],
+                    tickformat=".2f",
+                    ticksuffix="%",
+                ),
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1,
+                ),
+                height=480,
+                margin=dict(l=60, r=20, t=60, b=80),
+                hovermode="x unified",
+            )
+
+            st.plotly_chart(fig, use_container_width=True, key="rate_trend_chart")

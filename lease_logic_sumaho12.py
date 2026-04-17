@@ -1690,7 +1690,7 @@ elif mode == "📅 基準金利マスタ":
 
 # ── 🕸️ 競合関係グラフ ─────────────────────────────────────────────────────────
 elif mode == "🕸️ 競合関係グラフ":
-    from graph_view import render_graph_view
+    from components.graph_view import render_graph_view
     render_graph_view()
 
 # ── 🔗 案件類似ネットワーク ───────────────────────────────────────────────────

@@ -168,22 +168,26 @@ def calc_lease_period_fit_score(
     min_years = item.get("min_years", 3)
     max_years = item.get("max_years", 10)
     
-    # 法定耐用年数に基づくリース期間推奨範囲
+    # 法定耐用年数に基づくリース期間の法定下限
+    # リース期間の最小限度額：法定耐用年数 × 70% (10年未満) または × 60% (10年超)
+    # この値以上のリース期間を設定すればOK
     if legal_useful_life < 10:
-        max_lease_years = legal_useful_life * 0.7
+        min_lease_years = legal_useful_life * 0.7
+        rule = "70%"
     else:
-        max_lease_years = legal_useful_life * 0.6
+        min_lease_years = legal_useful_life * 0.6
+        rule = "60%"
     
-    # リース期間チェック
-    if lease_years > max_lease_years:
-        lease_status = "over_limit"
-        lease_message = f"リース期間が推奨上限({max_lease_years:.1f}年)を超えています。税務リスクの可能性あり。"
-    elif lease_years > max_lease_years * 0.9:
+    # リース期間チェック（この値以上ならOK）
+    if lease_years < min_lease_years:
+        lease_status = "under_limit"
+        lease_message = f"リース期間が法定下限({min_lease_years:.1f}年)未満です。短すぎるリース期間は、借手の実質的な購入と見なされ、適格リースと判定されない可能性があります。"
+    elif lease_years < min_lease_years * 1.1:
         lease_status = "near_limit"
-        lease_message = f"リース期間が推奨上限に近づいています。税務面での注意が必要です。"
+        lease_message = f"リース期間が法定下限に接近しています。より長いリース期間を検討してください。"
     else:
         lease_status = "within_limit"
-        lease_message = f"リース期間は推奨範囲内です。"
+        lease_message = f"リース期間は法定下限以上で、課税上安全です。"
     
     # 残り期間を計算（法定耐用年数ベース）
     remaining_max = legal_useful_life - lease_years
@@ -241,7 +245,8 @@ def calc_lease_period_fit_score(
         "lease_period_check": {
             "status": lease_status,
             "message": lease_message,
-            "recommended_max_years": max_lease_years,
+            "legal_min_years": min_lease_years,  # 法定下限（これ以上ならOK）
+            "note": f"法定耐用年数 {legal_useful_life}年 × {rule} = {min_lease_years:.1f}年が最小限度額です。これ以上のリース期間なら課税上問題ありません。",
         },
         "periods_reference": periods_data,  # 参考情報
     }
