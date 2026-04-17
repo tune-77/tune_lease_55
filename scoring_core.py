@@ -21,7 +21,7 @@ from data_cases import get_effective_coeffs, get_score_weights
 from coeff_definitions import COEFFS
 from app_logger import log_warning
 
-APPROVAL_LINE = 71  # 承認ライン（71点以上で承認圏内）
+APPROVAL_LINE = int(os.environ.get("APPROVAL_LINE", "71"))  # 承認ライン（デフォルト71点）
 
 # 担当者直感スコア（1-5）の最大補正幅（点）
 INTUITION_MAX_ADJ = 3.0
@@ -98,21 +98,27 @@ def _safe_sigmoid(x):
         return 0.0 if (x or 0) < 0 else 1.0
 
 
+def _get_industry_flags(industry_major: str) -> dict[str, bool]:
+    """industry_major 文字列から業種フラグ dict を返す。"""
+    m = industry_major or ""
+    return {
+        "ind_medical":       "医療" in m or "福祉" in m or m.startswith("P"),
+        "ind_transport":     "運輸" in m or m.startswith("H"),
+        "ind_construction":  "建設" in m or m.startswith("D"),
+        "ind_manufacturing": "製造" in m or m.startswith("E"),
+        "ind_service":       any(x in m for x in ["卸売", "小売", "サービス"])
+                             or (bool(m) and m[0] in ["I", "K", "M", "R"]),
+    }
+
+
 def _calculate_z(data, coeff_set):
     """係数セットとデータから z (ロジット) を計算。"""
     z = coeff_set.get("intercept", 0)
-    major = data.get("industry_major") or ""
-
-    if "医療" in major or "福祉" in major or major.startswith("P"):
-        z += coeff_set.get("ind_medical", 0)
-    elif "運輸" in major or major.startswith("H"):
-        z += coeff_set.get("ind_transport", 0)
-    elif "建設" in major or major.startswith("D"):
-        z += coeff_set.get("ind_construction", 0)
-    elif "製造" in major or major.startswith("E"):
-        z += coeff_set.get("ind_manufacturing", 0)
-    elif any(x in major for x in ["卸売", "小売", "サービス"]) or (major and major[0] in ["I", "K", "M", "R"]):
-        z += coeff_set.get("ind_service", 0)
+    flags = _get_industry_flags(data.get("industry_major"))
+    for feat, active in flags.items():
+        if active:
+            z += coeff_set.get(feat, 0)
+            break  # 業種は排他的に1つ選択
 
     nenshu = data.get("nenshu") or 0
     if nenshu > 0:
@@ -168,16 +174,7 @@ def compute_score_contributions(data: dict, coeff_set: dict) -> list[dict]:
         "contribution": intercept_val,
     })
 
-    major = data.get("industry_major") or ""
-    # 業種フラグ（いずれか1つが有効）
-    ind_flags = {
-        "ind_medical":       ("医療" in major or "福祉" in major or major.startswith("P")),
-        "ind_transport":     ("運輸" in major or major.startswith("H")),
-        "ind_construction":  ("建設" in major or major.startswith("D")),
-        "ind_manufacturing": ("製造" in major or major.startswith("E")),
-        "ind_service":       (any(x in major for x in ["卸売", "小売", "サービス"]) or
-                              (bool(major) and major[0] in ["I", "K", "M", "R"])),
-    }
+    ind_flags = _get_industry_flags(data.get("industry_major"))
     for feat, active in ind_flags.items():
         coeff_val = coeff_set.get(feat, 0)
         if active and coeff_val != 0:
