@@ -302,11 +302,12 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         _annual_rent = None
                         _dscr_source = None
 
-                    if _annual_rent and _annual_rent > 0:
-                        user_dscr = round(_ebitda_approx / _annual_rent, 2)
+                    if _annual_rent and float(_annual_rent) > 0:
+                        user_dscr = round(float(_ebitda_approx) / float(_annual_rent), 2)
                     else:
                         user_dscr = None
-                except Exception:
+                except Exception as e:
+                    if _api_mode: print(f"[CORE_WARN] DSCR Calc failed: {e}")
                     user_dscr = None
                     _dscr_source = None
 
@@ -368,14 +369,18 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 # 追加指標の比較テキスト生成
                 def _vs(user_val, bench_val, higher_is_good=True, fmt=".1f"):
                     """業種比較の短評を返す。"""
-                    if bench_val is None:
-                        return "業種データなし"
-                    diff = user_val - bench_val
-                    if higher_is_good:
-                        label = "高い✅" if diff >= 0 else "低い⚠️"
-                    else:
-                        label = "低い✅" if diff <= 0 else "高い⚠️"
-                    return f"{user_val:{fmt}} (業種: {bench_val:{fmt}}) → {label}"
+                    if user_val is None or bench_val is None:
+                        return f"(不明) (業種: {bench_val if bench_val is not None else 'なし'})"
+                    try:
+                        u_v, b_v = float(user_val), float(bench_val)
+                        diff = u_v - b_v
+                        if higher_is_good:
+                            label = "高い✅" if diff >= 0 else "低い⚠️"
+                        else:
+                            label = "低い✅" if diff <= 0 else "高い⚠️"
+                        return f"{u_v:{fmt}} (業種: {b_v:{fmt}}) → {label}"
+                    except:
+                        return f"{user_val} (業種: {bench_val}) → 比較不能"
 
                 _roa_line  = f"\n- **ROA**: {_vs(user_roa, bench_roa)}" if bench_roa is not None else ""
                 _curr_line = (f"\n- **流動比率**: {_vs(user_current_ratio, bench_current_r, fmt='.0f')}%"
@@ -736,7 +741,9 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
     
                 # 金利環境補正
                 BASE_DATE = "2025-03"
-                term_years = lease_term / 12
+                _safe_term = float(lease_term or 12)
+                if _safe_term <= 0: _safe_term = 12
+                term_years = _safe_term / 12
                 base_market_rate = get_market_rate(BASE_DATE, term_years)
                 today_str = datetime.date.today().strftime("%Y-%m")
                 current_market_rate = get_market_rate(today_str, term_years)
@@ -1218,10 +1225,8 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 _saved_id = st.session_state.get("db_last_saved_id", "不明")
                 st.success(f"⚖️ 審査完了: ID 【{_saved_id}】 を記録しました。")
                 st.info(f"📁 保存先: `data/lease_data.db`  \n💡 「案件結果登録」画面のリスト1番目に追加されています。")
-                
-                # 自動ジャンプ(nav_index = 1)はユーザー要望により廃止。現在の画面に留まる。
-                # st.session_state.nav_index = 1
-                st.session_state["_jump_to_analysis"] = True 
+                st.session_state.nav_index = 1
+                st.session_state["_jump_to_analysis"] = True
                 st.session_state["_need_auto_comment"] = True
                 st.session_state["auto_ai_comment"] = None
                 st.session_state["gemini_qa_cache"] = {}
