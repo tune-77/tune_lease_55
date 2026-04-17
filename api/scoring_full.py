@@ -31,13 +31,13 @@ if SCRIPT_DIR not in sys.path:
 # 3. リロード関数
 def get_latest_module():
     try:
-        import components.score_calculation_V2
-        importlib.reload(components.score_calculation_V2)
-        return components.score_calculation_V2
+        import components.score_calculation
+        importlib.reload(components.score_calculation)
+        return components.score_calculation
     except Exception as e:
-        print(f"[CRITICAL_ERROR] Failed to reload scoring module V2: {e}")
-        import components.score_calculation_V2
-        return components.score_calculation_V2
+        print(f"[CRITICAL_ERROR] Failed to reload scoring module: {e}")
+        import components.score_calculation
+        return components.score_calculation
 
 # 初回インポート
 from constants import REQUIRED_FIELDS, RECOMMENDED_FIELDS
