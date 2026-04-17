@@ -119,12 +119,18 @@ def _adjust_weights(category: str, base_weights: dict, contract: dict) -> dict:
             if item.get("tag") == "liquidity_support":
                 weights[item_id] = weights[item_id] * 1.2
 
-    # EV車両 × 期間48ヶ月超 → ev_tech_risk ウェイトを 1.5倍
+    # EV車両 × リース期間別 → ev_tech_risk ウェイトを段階的に強化
     # バッテリー技術の急速な進化により、長期リースほど残価リスクが増大する
-    if contract.get("vehicle_fuel_type") == "EV" and lease_months > 48:
+    if contract.get("vehicle_fuel_type") == "EV" and lease_months > 36:
+        if lease_months > 60:
+            ev_multiplier = 1.5
+        elif lease_months > 48:
+            ev_multiplier = 1.4
+        else:  # 37-48ヶ月
+            ev_multiplier = 1.2
         for item_id, item in items_map.items():
             if item.get("tag") == "ev_risk":
-                weights[item_id] = min(weights[item_id] * 1.5, 50)
+                weights[item_id] = min(weights[item_id] * ev_multiplier, 50)
 
     # 正規化（合計 100 に）
     total = sum(weights.values())
