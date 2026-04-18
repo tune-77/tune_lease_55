@@ -36,7 +36,7 @@ export default function FinancialPage() {
   const runForecast = async () => {
     setLoading(true);
     try {
-      const res = await axios.post("http://localhost:8000/api/forecast", {
+      const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/forecast`, {
         sales, profit, net_assets: netAssets, industry
       });
       setForecastData(res.data);

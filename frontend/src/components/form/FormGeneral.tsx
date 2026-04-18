@@ -32,7 +32,7 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
   useEffect(() => {
     const fetchIndustries = async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/master/industries`);
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/master/industries`);
         if (res.ok) {
           const jsicData = await res.json();
           setIndustryMaster(jsicData);

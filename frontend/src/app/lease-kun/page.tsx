@@ -188,7 +188,7 @@ export default function LeaseKunWizard() {
         intuition:                    Number(formData.intuition),
       };
 
-      const res = await axios.post(`${API_BASE}/api/score/full`, payload);
+      const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/score/full`, payload);
 
       setHistory(prev => [...prev, {
         role: 'humor',
