@@ -130,6 +130,20 @@ def _get_current_case_vec() -> np.ndarray | None:
     return None
 
 
+def _retrain() -> tuple[bool, str]:
+    """train_mahalanobis.py を実行してモデルを再学習する。(成否, ログ) を返す。"""
+    import subprocess
+    result = subprocess.run(
+        [sys.executable, "train_mahalanobis.py"],
+        capture_output=True, text=True,
+        cwd=_DIR,
+    )
+    _load_model.clear()
+    ok = result.returncode == 0
+    log = (result.stdout + result.stderr).strip()
+    return ok, log
+
+
 def render_mahalanobis_3d() -> None:
     st.title("📊 マハラノビス距離 3D 可視化")
     st.caption(
@@ -137,9 +151,35 @@ def render_mahalanobis_3d() -> None:
         "現在審査中の案件がある場合は★で強調表示される。"
     )
 
+    with st.sidebar:
+        st.divider()
+        st.markdown("### 🛡️ マハラノビス3D")
+        if st.button("🔄 モデル再学習", use_container_width=True, key="mah3d_retrain"):
+            with st.spinner("学習中…"):
+                ok, log = _retrain()
+            if ok:
+                st.success("学習完了")
+            else:
+                st.error(f"失敗: {log[-300:]}")
+            st.rerun()
+
     model = _load_model()
     if model is None:
-        st.error("モデル未生成です。マハラノビス審査画面でモデルを再学習してください。")
+        st.error("モデルが未生成です。下のボタンで学習してください。")
+        if st.button("🔄 モデルを今すぐ学習する", type="primary"):
+            import subprocess
+            with st.spinner("学習中… (数秒かかります)"):
+                result = subprocess.run(
+                    [sys.executable, "train_mahalanobis.py"],
+                    capture_output=True, text=True,
+                    cwd=_DIR,
+                )
+            _load_model.clear()
+            if result.returncode == 0:
+                st.success("学習完了！ページを再読み込みします。")
+                st.rerun()
+            else:
+                st.error(f"学習失敗:\n{result.stderr[-500:]}")
         return
 
     cases = _load_cases()
