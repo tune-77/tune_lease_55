@@ -18,7 +18,7 @@ export default function VisualPage() {
     
     const fetchData = async () => {
       try {
-        const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/visual/data`);
+        const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/visual/data`);
         setData(res.data.cases || []);
       } catch (err) {
         console.error("Failed to load visual data", err);

@@ -27,7 +27,7 @@ export default function RegisterPage() {
 
   const fetchPendingCases = async () => {
     try {
-      const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/cases/pending`);
+      const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/cases/pending`);
       setPendingCases(res.data);
     } catch (err) {
       console.error("Failed to fetch pending cases", err);
@@ -38,7 +38,7 @@ export default function RegisterPage() {
     e.stopPropagation();
     if (!confirm(`案件 ${caseId} を削除しますか？`)) return;
     try {
-      await axios.delete(`${process.env.NEXT_PUBLIC_API_URL}/api/cases/${caseId}`);
+      await axios.delete(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/cases/${caseId}`);
       triggerMebuki('guide', '案件を削除しました。');
       fetchPendingCases();
     } catch (err) {
@@ -49,7 +49,7 @@ export default function RegisterPage() {
   const clearAllCases = async () => {
     if (!confirm('全ての未登録データを削除してもよろしいですか？')) return;
     try {
-      await axios.delete(`${process.env.NEXT_PUBLIC_API_URL}/api/cases/operation/clear-all`);
+      await axios.delete(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/cases/operation/clear-all`);
       triggerMebuki('guide', '全ての未登録案件を削除しました。');
       fetchPendingCases();
     } catch (err) {
@@ -75,7 +75,7 @@ export default function RegisterPage() {
     }
     setSubmitting(true);
     try {
-      await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/cases/register`, {
+      await axios.post(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/cases/register`, {
         case_id: targetId,
         status: status,
         final_rate: finalRate,

@@ -87,7 +87,7 @@ export default function AgentHubPage() {
 
   const fetchThoughts = async () => {
     try {
-      const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/agent_hub/thoughts?limit=30`);
+      const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/agent_hub/thoughts?limit=30`);
       setThoughts(res.data.thoughts || []);
     } catch (err) {
       console.error("Failed to fetch thoughts", err);
@@ -98,7 +98,7 @@ export default function AgentHubPage() {
 
   const fetchLatestNovel = async () => {
     try {
-      const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/agent_hub/novel/latest`);
+      const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/agent_hub/novel/latest`);
       setLatestNovel(res.data.novel);
     } catch (err) {
       console.error("Failed to fetch novel", err);
@@ -112,12 +112,12 @@ export default function AgentHubPage() {
 
     try {
       if (agentId === "novel") {
-        const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/agent_hub/novel/generate`);
+        const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/agent_hub/novel/generate`);
         setResult(res.data);
         fetchLatestNovel();
         fetchThoughts();
       } else {
-        const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/agent_hub/run_agent`, {
+        const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/agent_hub/run_agent`, {
           agent_id: agentId,
           params: agentId === "benchmark" ? { industry: benchmarkIndustry } : {}
         });

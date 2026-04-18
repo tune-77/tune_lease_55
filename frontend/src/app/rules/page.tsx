@@ -17,7 +17,7 @@ export default function RulesPage() {
   const fetchRules = async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/settings/rules`);
+      const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/settings/rules`);
       setRules(res.data);
     } catch (err) {
       console.error(err);
@@ -30,7 +30,7 @@ export default function RulesPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/settings/rules`, rules);
+      await axios.post(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/settings/rules`, rules);
       triggerMebuki('approve', '審査ルールを更新しました！\\nこれで次からの審査に新しい基準が適用されます。');
     } catch (err) {
       console.error(err);

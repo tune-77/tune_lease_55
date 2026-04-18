@@ -58,8 +58,8 @@ export default function InterestPage() {
     setLoading(true);
     try {
       const [ratesRes, currentRes] = await Promise.all([
-        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/settings/interest`),
-        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/settings/interest/current`),
+        axios.get(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/settings/interest`),
+        axios.get(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/settings/interest/current`),
       ]);
       const rateData: RateRow[] = ratesRes.data;
       const cur = currentRes.data;
@@ -82,7 +82,7 @@ export default function InterestPage() {
       for (const col of TERM_COLS) {
         payload[col] = form[col] !== '' ? parseFloat(form[col]) : null;
       }
-      await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/settings/interest`, payload);
+      await axios.post(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/settings/interest`, payload);
       triggerMebuki('approve', `${form.month} の基準金利を登録しました！`);
       showToast(`${form.month} を登録しました`);
       fetchAll();
@@ -112,7 +112,7 @@ export default function InterestPage() {
         for (const col of TERM_COLS) {
           payload[col] = (patch as any)[col] !== undefined ? (patch as any)[col] : (original as any)?.[col] ?? null;
         }
-        await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/settings/interest`, payload);
+        await axios.post(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/settings/interest`, payload);
       }
       showToast(`${changed.length}件を保存しました`);
       setEditRows({});
@@ -128,7 +128,7 @@ export default function InterestPage() {
     setSeeding(true);
     setSeedResult(null);
     try {
-      const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/settings/interest/seed?overwrite=${overwrite}`);
+      const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/settings/interest/seed?overwrite=${overwrite}`);
       setSeedResult(`✅ ${res.data.inserted}件投入、${res.data.skipped}件スキップ`);
       fetchAll();
     } catch {
