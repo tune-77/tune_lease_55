@@ -12,6 +12,12 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: '温水式 リース審査アシスタント',
   description: 'AI駆動のリース与信判定・分析システム',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'リース審査AI',
+  },
 };
 
 export const viewport: Viewport = {
@@ -19,7 +25,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   viewportFit: 'cover',
-  themeColor: '#f8fafc',
+  themeColor: '#3b82f6',
 };
 
 export default function RootLayout({

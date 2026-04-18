@@ -21,7 +21,7 @@ export default function ReportGenerator({ apiResult, formData, gunshiText }: Rep
     
     setLoading(true);
     try {
-      const res = await axios.post("http://localhost:8000/api/report/generate", {
+      const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/report/generate`, {
         result_data: apiResult,
         inputs: formData
       });

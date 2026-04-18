@@ -18,7 +18,7 @@ export default function CompetitorPage() {
 
   const fetchData = async () => {
     try {
-      const res = await axios.get("http://localhost:8000/api/analysis/competitor_graph");
+      const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/analysis/competitor_graph`);
       setData(res.data);
     } catch (err) {
       console.error(err);

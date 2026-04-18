@@ -38,7 +38,7 @@ export default function Dashboard() {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await axios.post("http://localhost:8000/api/score/full", formData);
+      const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/score/full`, formData);
       setResult(res.data);
       // 審査完了後、自動的に分析タブへ遷移
       setActiveTab("analysis");

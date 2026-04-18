@@ -17,7 +17,7 @@ export default function QuantitativePage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await axios.get("http://localhost:8000/api/analysis/quantitative");
+      const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/analysis/quantitative`);
       setData(res.data);
     } catch (err) {
       console.error(err);
