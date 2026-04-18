@@ -211,7 +211,7 @@ def render_mahalanobis_3d() -> None:
     mu_pca = pca.transform(model.mu_.reshape(1, -1)).flatten()
 
     # PCA空間での共分散行列（マハラノビス距離の精度行列から逆算）
-    S_scaled = np.linalg.inv(model.precision_)            # 元空間の共分散
+    S_scaled = np.linalg.pinv(model.precision_)            # 元空間の共分散（特異行列対応）
     W = pca.components_                                     # (3, n_feat)
     cov_pca = W @ S_scaled @ W.T                           # (3, 3)
 
