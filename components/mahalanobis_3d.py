@@ -44,10 +44,14 @@ ELLIPSOID_LEVELS = [
 
 
 @st.cache_resource
+def _load_model_cached(mtime: float) -> MahalanobisScorer:
+    return MahalanobisScorer.load(MODEL_PATH)
+
+
 def _load_model() -> MahalanobisScorer | None:
-    if os.path.exists(MODEL_PATH):
-        return MahalanobisScorer.load(MODEL_PATH)
-    return None
+    if not os.path.exists(MODEL_PATH):
+        return None
+    return _load_model_cached(os.path.getmtime(MODEL_PATH))
 
 
 @st.cache_data(ttl=300)
@@ -138,7 +142,7 @@ def _retrain() -> tuple[bool, str]:
         capture_output=True, text=True,
         cwd=_DIR,
     )
-    _load_model.clear()
+    _load_model_cached.clear()
     ok = result.returncode == 0
     log = (result.stdout + result.stderr).strip()
     return ok, log
@@ -174,7 +178,7 @@ def render_mahalanobis_3d() -> None:
                     capture_output=True, text=True,
                     cwd=_DIR,
                 )
-            _load_model.clear()
+            _load_model_cached.clear()
             if result.returncode == 0:
                 st.success("学習完了！ページを再読み込みします。")
                 st.rerun()
