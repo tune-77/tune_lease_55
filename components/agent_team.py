@@ -224,17 +224,30 @@ def _build_history_context() -> str:
     return "\n".join(lines)
 
 
-def _build_agent_prompt(agent: dict, theme: str, thread: list[dict]) -> str:
+def _build_agent_prompt(
+    agent: dict,
+    theme: str,
+    thread: list[dict],
+    target_speaker: dict | None = None,
+    rebuttal_mode: bool = False,
+) -> str:
     """各エージェント用プロンプトを構築。スレッド全体を読んで返答させる。"""
     history_text = _build_history_context()
     thread_text = _build_thread_context(thread)
     history_block = f"\n\n【過去の議論（参考）】\n{history_text}\n" if history_text else ""
     thread_block = f"\n\n【現在の議論スレッド】\n{thread_text}\n" if thread_text else ""
-    instruction = (
-        f"上記の議論スレッドを踏まえて、{agent['full_name']}として追加コメントを述べてください。"
-        if thread else
-        f"{agent['full_name']}として、上記テーマについて初回の意見を述べてください。"
-    )
+
+    if rebuttal_mode and target_speaker:
+        content = target_speaker.get("content", "")[:150]
+        instruction = (
+            f"{target_speaker['name']}は『{content}』と述べました。"
+            f"【同意/部分同意/反論】のいずれかを冒頭に明示し、根拠を添えて200字以内で応答してください。"
+        )
+    elif thread:
+        instruction = f"上記の議論スレッドを踏まえて、{agent['full_name']}として追加コメントを述べてください。"
+    else:
+        instruction = f"{agent['full_name']}として、上記テーマについて初回の意見を述べてください。"
+
     return (
         f"{agent['persona']}\n\n"
         f"【議論テーマ】\n{theme}\n"
@@ -267,21 +280,30 @@ def _parse_tsune_judgment(text: str) -> str:
     return "修正"
 
 
-def run_one_agent(agent: dict, theme: str, thread: list[dict]) -> dict:
+def run_one_agent(
+    agent: dict,
+    theme: str,
+    thread: list[dict],
+    target_speaker: dict | None = None,
+    rebuttal_mode: bool = False,
+    round_num: int | None = None,
+) -> dict:
     """1エージェントを呼び出して発言を返す。吹き出しもここで描画する。"""
-    prompt = _build_agent_prompt(agent, theme, thread)
+    prompt = _build_agent_prompt(agent, theme, thread, target_speaker, rebuttal_mode)
     with st.spinner(f"{agent['avatar']} {agent['name']}が考えています..."):
         content = _get_llm_response(prompt, timeout_seconds=120)
     if not content:
         content = "（応答がありませんでした）"
     turn = len(thread) + 1
-    opinion = {
+    opinion: dict = {
         "agent_id": agent["id"],
         "name": agent["name"],
         "avatar": agent["avatar"],
         "content": content,
         "turn": turn,
     }
+    if round_num is not None:
+        opinion["round"] = round_num
     _render_speech_bubble(agent["name"], agent["avatar"], content)
     return opinion
 
@@ -337,6 +359,139 @@ def save_agent_team_log(round_data: dict) -> None:
             f.write(json.dumps(round_data, ensure_ascii=False) + "\n")
     except Exception as e:
         st.error(f"ログ保存エラー: {e}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ② Tune 議長ファシリテーターモード
+# ══════════════════════════════════════════════════════════════════════════════
+
+PERSONA_TUNE_FACILITATOR = """あなたは「統括マネージャーTune（Tune）」の議長ファシリテーターモードです。
+決裁を下す前に、チームの議論を整理し、論点を可視化します。
+
+【必須出力形式 — 必ずこの形式で出力してください】
+対立軸：〈議論の中で意見が割れているポイントを1〜2行で〉
+合意点：〈全員が同意している点を1〜2行で〉
+未解決点：〈まだ議論が必要な点を1〜2行で〉
+議長コメント：〈Tuneとしての状況判断・一言（皮肉可）を1〜2行で〉"""
+
+
+def run_tune_facilitate(theme: str, thread: list[dict]) -> str:
+    """Tuneが論点整理（ファシリテーター）を実施し、テキストを返す。"""
+    thread_text = _build_thread_context(thread)
+    prompt = (
+        f"{PERSONA_TUNE_FACILITATOR}\n\n"
+        f"【議論テーマ】\n{theme}\n\n"
+        f"【議論スレッド】\n{thread_text}\n\n"
+        f"上記の議論を整理してください。必ず指定のフォーマットで出力してください。"
+    )
+    with st.spinner(f"{TSUNE['avatar']} Tuneが論点を整理しています..."):
+        result = _get_llm_response(prompt, timeout_seconds=120)
+    if not result:
+        result = "対立軸：（整理できませんでした）\n合意点：—\n未解決点：—\n議長コメント：やれやれ…"
+    return result
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ③ 自動ラウンド進行
+# ══════════════════════════════════════════════════════════════════════════════
+
+def run_debate_round(
+    theme: str,
+    thread: list[dict],
+    agents: list[dict],
+    round_num: int,
+) -> list[dict]:
+    """1ラウンド分の発言を自動生成して thread に追記し、新規発言リストを返す。
+
+    round_num=1 のとき各エージェントが初回意見を述べる。
+    round_num>=2 のとき、前ラウンドで自分以外の発言をリバタル対象に割り当てる。
+    """
+    prev_round_msgs = [m for m in thread if m.get("round") == round_num - 1]
+    new_opinions: list[dict] = []
+
+    for agent in agents:
+        target: dict | None = None
+        rebuttal = False
+        if round_num >= 2 and prev_round_msgs:
+            candidates = [m for m in prev_round_msgs if m.get("agent_id") != agent["id"]]
+            if candidates:
+                import random as _random
+                target = _random.choice(candidates)
+                rebuttal = True
+        opinion = run_one_agent(agent, theme, thread, target_speaker=target, rebuttal_mode=rebuttal, round_num=round_num)
+        thread.append(opinion)
+        new_opinions.append(opinion)
+
+    return new_opinions
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ⑤ 審査討論モード — ペルソナ & エージェント定義
+# ══════════════════════════════════════════════════════════════════════════════
+
+PERSONA_GUNJI = """あなたは「審査軍師」です。孫子の兵法しか知らない熱血漢。
+定性的な判断を重視し、Dr.Algoの数字偏重と常に対立します。
+
+【キャラクター】
+・「孫子曰く…」で始めがち。義理人情に厚い。
+・数字より「この社長の目を見たか？」という判断を大切にする。
+
+【発言ルール】
+・審査案件について孫子の兵法を引用しながら定性的なリスク/機会を語る。
+・200字以内。「これが孫子の教えだ！」または「兵法的には問題ない！」で締めること。"""
+
+PERSONA_DRALGO = """あなたは「数学者AI Dr.Algo」です。データとAUC至上主義。
+感情論を一切排除し、数式と統計でしか語れません。
+
+【キャラクター】
+・「統計的に有意ではない」「p値が…」など専門用語多め。
+・感情・義理人情・孫子を認めない。
+
+【発言ルール】
+・審査案件の定量指標（スコア・PD・財務比率）を中心に評価する。
+・200字以内。「統計的結論は以上だ。感情は不要。」で締めること。"""
+
+PERSONA_TAMU = """あなたは「謎の子犬AI タム（マルプー）」です。
+無邪気だが核心を突くトリックスター。可愛い見た目の裏に鋭い洞察があります。
+
+【キャラクター】
+・「わん！」「くーん」等を交えつつ、怖いほど本質を突く。
+・難しいことを知らないふりして、全員が見落としている点を指摘する。
+
+【発言ルール】
+・審査案件の盲点・誰も言わなかった視点を提示する。
+・200字以内。「わん！（これ大事だと思うんだけど…）」で締めること。"""
+
+# 審査討論の4人 — 軍師・Dr.Algo・タム が討論し、Tune が集約
+SHINSA_DEBATE_AGENTS: list[dict] = [
+    {"id": "gunji",  "name": "軍師",    "full_name": "審査軍師",        "avatar": "⚔️",  "persona": PERSONA_GUNJI},
+    {"id": "dralgo", "name": "Dr.Algo", "full_name": "数学者AI Dr.Algo", "avatar": "🔬", "persona": PERSONA_DRALGO},
+    {"id": "tamu",   "name": "タム",    "full_name": "謎の子犬AI タム",  "avatar": "🐶",  "persona": PERSONA_TAMU},
+]
+
+
+def _build_shinsa_theme(res: dict) -> str:
+    """審査結果 dict から討論テーマ文字列を生成。"""
+    score    = res.get("score", 0)
+    hantei   = res.get("hantei", "—")
+    industry = res.get("industry_sub", "—")
+    asset    = res.get("asset_name", "—")
+    pd_pct   = res.get("pd_pct", None)
+    equity   = res.get("equity_ratio", None)
+    parts = [
+        f"スコア {score:.0f}点（{hantei}）",
+        f"業種: {industry}",
+        f"物件: {asset}",
+    ]
+    if pd_pct is not None:
+        parts.append(f"PD: {pd_pct:.1%}")
+    if equity is not None:
+        parts.append(f"自己資本比率: {equity:.1%}")
+    return (
+        "以下の審査案件について討論してください。\n"
+        + "、".join(parts)
+        + "\n\n各エージェントは自分の専門・キャラクター視点から、承認・条件付き承認・否決のいずれかを根拠とともに述べてください。"
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -938,6 +1093,17 @@ def _render_phase_b(pending: dict) -> None:
     st.markdown(f"**テーマ:** {theme}")
     st.caption(f"ラウンド {round_num} — 発言数: {len(thread)} 件")
 
+    # リバタルモード表示
+    rebuttal_target = st.session_state.get(SK.AT_REBUTTAL_TARGET)
+    if rebuttal_target:
+        st.info(
+            f"💬 **リバタルモード** — 「{rebuttal_target['name']}」の発言に反応させます。"
+            f"「誰に発言させますか？」からエージェントを選んでください。"
+        )
+        if st.button("❌ リバタルモード解除", key="btn_cancel_rebuttal"):
+            st.session_state[SK.AT_REBUTTAL_TARGET] = None
+            st.rerun()
+
     # ── ボタンゾーン（常に上部に表示）────────────────────────────────────────
     st.markdown("#### 誰に発言させますか？")
 
@@ -953,17 +1119,35 @@ def _render_phase_b(pending: dict) -> None:
             ):
                 clicked_agent = agent
 
-    # Tune（意見モード）・決裁ボタン
-    col_op, col_verdict, col_reset = st.columns([2, 3, 1])
+    # 自動ラウンド進行
+    st.markdown("#### 自動ラウンド進行")
+    col_auto1, col_auto2 = st.columns([2, 1])
+    with col_auto1:
+        auto_rounds = st.slider("ラウンド数", min_value=1, max_value=3, value=2, key="auto_round_slider")
+    with col_auto2:
+        auto_round_btn = st.button(
+            f"🔄 自動議論（{auto_rounds}回）",
+            key="btn_auto_rounds",
+            width='stretch',
+        )
+
+    # Tune（意見・論点整理・決裁）ボタン
+    col_op, col_fac, col_verdict, col_reset = st.columns([2, 2, 3, 1])
     with col_op:
         tsune_opinion_btn = st.button(
-            f"💬 Tuneに意見を言わせる",
+            "💬 Tuneに意見を言わせる",
             key="btn_tsune_opinion",
+            width='stretch',
+        )
+    with col_fac:
+        tsune_facilitate_btn = st.button(
+            "🔍 論点整理（Tune）",
+            key="btn_tsune_facilitate",
             width='stretch',
         )
     with col_verdict:
         tsune_verdict_btn = st.button(
-            f"👔 Tuneに決裁させる",
+            "👔 Tuneに決裁させる",
             key="btn_tsune_verdict",
             type="primary",
             width='stretch',
@@ -973,14 +1157,49 @@ def _render_phase_b(pending: dict) -> None:
 
     st.divider()
 
-    # ── スレッド表示（ボタンの下）──────────────────────────────────────────────
+    # ── スレッド表示（ラウンド区切り線付き）──────────────────────────────────
+    displayed_rounds: set[int] = set()
     for msg in thread:
+        msg_round = msg.get("round")
+        if msg_round is not None and msg_round not in displayed_rounds:
+            displayed_rounds.add(msg_round)
+            st.markdown(f"**━━━ ラウンド {msg_round} ━━━**")
         _render_speech_bubble(msg["name"], msg["avatar"], msg["content"])
+        # 💬 反論する ボタン
+        if st.button(
+            f"💬 反論する",
+            key=f"btn_rebuttal_{msg.get('turn', id(msg))}",
+            help=f"「{msg['name']}」の発言にリバタルする",
+        ):
+            st.session_state[SK.AT_REBUTTAL_TARGET] = msg
+            st.rerun()
+
+    # 論点整理結果を表示
+    facilitator_result = st.session_state.get(SK.AT_FACILITATOR_RESULT)
+    if facilitator_result:
+        st.divider()
+        st.markdown(f"#### 🔍 {TSUNE['avatar']} Tune の論点整理")
+        st.info(facilitator_result)
 
     # ── ボタン処理（描画後に実行）─────────────────────────────────────────────
     if clicked_agent is not None:
-        opinion = run_one_agent(clicked_agent, theme, thread)
+        cur_rebuttal_target = st.session_state.get(SK.AT_REBUTTAL_TARGET)
+        is_rebuttal = cur_rebuttal_target is not None
+        opinion = run_one_agent(
+            clicked_agent, theme, thread,
+            target_speaker=cur_rebuttal_target,
+            rebuttal_mode=is_rebuttal,
+        )
         pending["thread"].append(opinion)
+        st.session_state[SK.AT_PENDING] = pending
+        st.session_state[SK.AT_REBUTTAL_TARGET] = None
+        st.rerun()
+
+    if auto_round_btn:
+        current_round = max((m.get("round", 0) for m in thread), default=0)
+        for r in range(1, auto_rounds + 1):
+            run_debate_round(theme, thread, AGENTS, current_round + r)
+        pending["thread"] = thread
         st.session_state[SK.AT_PENDING] = pending
         st.rerun()
 
@@ -990,11 +1209,24 @@ def _render_phase_b(pending: dict) -> None:
         st.session_state[SK.AT_PENDING] = pending
         st.rerun()
 
+    if tsune_facilitate_btn:
+        result_text = run_tune_facilitate(theme, thread)
+        st.session_state[SK.AT_FACILITATOR_RESULT] = result_text
+        st.rerun()
+
     if tsune_verdict_btn:
+        # 論点整理を自動挿入
         st.divider()
+        st.markdown(f"#### 🔍 {TSUNE['avatar']} Tune 論点整理（決裁前）")
+        fac_text = run_tune_facilitate(theme, thread)
+        st.info(fac_text)
+        st.session_state[SK.AT_FACILITATOR_RESULT] = fac_text
+        st.divider()
+
         result = run_tsune_verdict(theme, round_num, thread)
         st.session_state[SK.AT_HISTORY] = st.session_state.get(SK.AT_HISTORY, []) + [result]
         st.session_state[SK.AT_PENDING] = None
+        st.session_state[SK.AT_FACILITATOR_RESULT] = None
         if result["tsune_verdict"]["approved"]:
             save_agent_team_log(result)
             st.balloons()
@@ -1020,6 +1252,8 @@ def _render_phase_b(pending: dict) -> None:
     if reset_btn:
         st.session_state[SK.AT_PENDING] = None
         st.session_state[SK.AT_HISTORY] = []
+        st.session_state[SK.AT_REBUTTAL_TARGET] = None
+        st.session_state[SK.AT_FACILITATOR_RESULT] = None
         st.rerun()
 
 
@@ -1038,6 +1272,10 @@ def _render_discussion_tab() -> None:
         st.session_state[SK.AT_CODE_RESULTS] = {}
     if SK.AT_APPLIED_FILES not in st.session_state:
         st.session_state[SK.AT_APPLIED_FILES] = {}
+    if SK.AT_REBUTTAL_TARGET not in st.session_state:
+        st.session_state[SK.AT_REBUTTAL_TARGET] = None
+    if SK.AT_FACILITATOR_RESULT not in st.session_state:
+        st.session_state[SK.AT_FACILITATOR_RESULT] = None
 
     pending = st.session_state.get(SK.AT_PENDING)
 
@@ -1196,6 +1434,100 @@ def _render_slack_settings() -> None:
         st.info("まだ決裁済みのラウンドがありません。")
 
 
+def _render_shinsa_debate_tab() -> None:
+    """⑤ 審査討論モードタブ — 軍師・Dr.Algo・タム・Tuneが案件を2ラウンド討論。"""
+    st.markdown("### 🏦 審査討論モード")
+    st.caption("軍師・Dr.Algo・タムが2ラウンド自動討論し、Tuneが集約します。")
+
+    # セッション初期化
+    if SK.AT_SHINSA_HISTORY not in st.session_state:
+        st.session_state[SK.AT_SHINSA_HISTORY] = []
+    if SK.AT_SHINSA_PENDING not in st.session_state:
+        st.session_state[SK.AT_SHINSA_PENDING] = None
+
+    res = st.session_state.get(SK.LAST_RESULT)
+    if not res:
+        st.info("審査データがありません。先に審査を実行してください。")
+        return
+
+    # 案件概要
+    score  = res.get("score", 0)
+    hantei = res.get("hantei", "—")
+    industry = res.get("industry_sub", "—")
+    asset  = res.get("asset_name", "—")
+    st.metric("審査スコア", f"{score:.0f}点", delta=hantei)
+    st.caption(f"業種: {industry} ／ 物件: {asset}")
+    st.divider()
+
+    shinsa_pending = st.session_state.get(SK.AT_SHINSA_PENDING)
+    shinsa_history = st.session_state.get(SK.AT_SHINSA_HISTORY, [])
+
+    # 過去の審査討論履歴
+    for past in shinsa_history:
+        judgment = past.get("tsune_verdict", {}).get("judgment", "?")
+        with st.expander(f"✅ 審査討論 — Tune判定: {judgment}", expanded=False):
+            for msg in past.get("thread", []):
+                _render_speech_bubble(msg["name"], msg["avatar"], msg["content"])
+            st.divider()
+            _render_tsune_verdict_card(past.get("tsune_verdict", {}))
+
+    if shinsa_pending is None:
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            if st.button("🏦 審査討論開始（自動2ラウンド）", type="primary", key="btn_shinsa_start", width='stretch'):
+                from ai_chat import is_ai_available
+                if not is_ai_available():
+                    st.error("AIが利用できません。サイドバーでエンジンを設定してください。")
+                    return
+                theme = _build_shinsa_theme(res)
+                thread: list[dict] = []
+                st.markdown("#### ラウンド 1")
+                run_debate_round(theme, thread, SHINSA_DEBATE_AGENTS, round_num=1)
+                st.markdown("#### ラウンド 2")
+                run_debate_round(theme, thread, SHINSA_DEBATE_AGENTS, round_num=2)
+                st.session_state[SK.AT_SHINSA_PENDING] = {
+                    "theme": theme,
+                    "thread": thread,
+                    "round_num": 2,
+                }
+                st.rerun()
+        with col2:
+            if st.button("🗑️ 履歴リセット", key="btn_shinsa_reset", width='stretch'):
+                st.session_state[SK.AT_SHINSA_HISTORY] = []
+                st.rerun()
+    else:
+        theme   = shinsa_pending["theme"]
+        thread  = shinsa_pending["thread"]
+        round_num = shinsa_pending["round_num"]
+
+        st.markdown(f"**テーマ:** {theme[:200]}")
+        st.caption(f"2ラウンド完了 — 発言数: {len(thread)} 件")
+        st.divider()
+
+        # スレッド表示（ラウンド区切り）
+        displayed_rounds: set[int] = set()
+        for msg in thread:
+            msg_round = msg.get("round")
+            if msg_round is not None and msg_round not in displayed_rounds:
+                displayed_rounds.add(msg_round)
+                st.markdown(f"**━━━ ラウンド {msg_round} ━━━**")
+            _render_speech_bubble(msg["name"], msg["avatar"], msg["content"])
+
+        st.divider()
+
+        col_verdict, col_reset = st.columns([3, 1])
+        with col_verdict:
+            if st.button("👔 Tuneが集約・判定", type="primary", key="btn_shinsa_verdict", width='stretch'):
+                result = run_tsune_verdict(theme, round_num, thread)
+                st.session_state[SK.AT_SHINSA_HISTORY] = shinsa_history + [result]
+                st.session_state[SK.AT_SHINSA_PENDING] = None
+                st.rerun()
+        with col_reset:
+            if st.button("🔄 再討論", key="btn_shinsa_rerun", width='stretch'):
+                st.session_state[SK.AT_SHINSA_PENDING] = None
+                st.rerun()
+
+
 def render_agent_team() -> None:
     """エージェントチーム議論ページのメインエントリポイント。"""
     st.title("🤝 エージェントチーム議論")
@@ -1208,10 +1540,15 @@ def render_agent_team() -> None:
     slack_status = "🟢 Slack通知ON" if _is_slack_enabled() else "⚪ Slack通知OFF"
     st.caption(f"🤖 使用中: {'Gemini API' if engine == 'gemini' else 'Ollama（ローカル）'}　|　📡 {slack_status}")
 
-    tab_discuss, tab_logs, tab_slack = st.tabs(["💬 議論", "📋 決定事項ログ", "📡 Slack連携"])
+    tab_discuss, tab_shinsa, tab_logs, tab_slack = st.tabs(
+        ["💬 議論", "🏦 審査討論モード", "📋 決定事項ログ", "📡 Slack連携"]
+    )
 
     with tab_discuss:
         _render_discussion_tab()
+
+    with tab_shinsa:
+        _render_shinsa_debate_tab()
 
     with tab_logs:
         logs = load_agent_team_logs()

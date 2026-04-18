@@ -164,6 +164,10 @@ class SK:
     AT_CODE_RESULTS       = "at_code_results"      # 生成済みコード（round_num → code str）
     AT_PENDING            = "at_pending"           # Tune決裁待ち（4人の意見を保持）
     AT_APPLIED_FILES      = "at_applied_files"     # 適用済みファイル履歴（round_num → list）
+    AT_REBUTTAL_TARGET    = "at_rebuttal_target"   # リバタル対象メッセージ dict
+    AT_FACILITATOR_RESULT = "at_facilitator_result" # Tune論点整理結果テキスト
+    AT_SHINSA_HISTORY     = "at_shinsa_history"    # 審査討論タブのラウンド履歴
+    AT_SHINSA_PENDING     = "at_shinsa_pending"    # 審査討論タブの進行中スレッド
 
     # ─────────────────────────────────────────────
     # Slack 連携

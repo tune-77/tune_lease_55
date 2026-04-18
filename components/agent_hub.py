@@ -416,13 +416,16 @@ def _render_report_gen_panel() -> None:
 # Agent 4 — エージェントチーム議論の自律化
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _run_auto_team_agent(res: dict, mode: str = "dev") -> str:
+def _run_auto_team_agent(res: dict, mode: str = "dev", round: int = 1, prev_summary: str = "") -> str:
     """
     要審議ゾーンの案件をエージェントチームに自動投稿し、議論結果を返す。
+    逐次実行で前の発言を system prompt に追加し、2ラウンド対応。
 
     Args:
-        res:  審査結果 dict（score, hantei, industry_sub, asset_name 等を含む）
-        mode: "dev"（開発会議）または "audit"（審査会議）
+        res:          審査結果 dict
+        mode:         "dev"（開発会議）または "audit"（審査会議）
+        round:        ラウンド番号（1 or 2）
+        prev_summary: 前ラウンドの発言要約（round=2 時に渡す）
     """
     score   = res.get("score", 0)
     hantei  = res.get("hantei", "—")
@@ -431,7 +434,6 @@ def _run_auto_team_agent(res: dict, mode: str = "dev") -> str:
     pd_pct  = res.get("pd_pct", None)
     equity  = res.get("equity_ratio", None)
 
-    # 審査コンテキストを共有
     ctx_parts = [
         f"スコア {score:.0f}点（{hantei}）",
         f"業種: {industry}",
@@ -441,6 +443,10 @@ def _run_auto_team_agent(res: dict, mode: str = "dev") -> str:
         ctx_parts.append(f"PD: {pd_pct:.1%}")
     if equity is not None:
         ctx_parts.append(f"自己資本比率: {equity:.1%}")
+
+    prev_block = (
+        f"\n\n【前ラウンドの発言（参考）】\n{prev_summary}\n" if prev_summary else ""
+    )
 
     if mode == "audit":
         theme = (
@@ -471,22 +477,37 @@ def _run_auto_team_agent(res: dict, mode: str = "dev") -> str:
 
     st.session_state[SK.AT_THEME] = theme
 
+    # 逐次実行 — 前の発言を蓄積しながら各エージェントに渡す
     opinions: dict[str, str] = {}
+    accumulated_opinions = ""
     for name, hint in active_personas.items():
         if mode == "audit":
-            system = hint  # AUDIT_AGENTS は既にフル system プロンプト
+            base_system = hint
         else:
-            system = f"あなたは「{name}」として、{hint}リース審査案件を評価する担当者です。100字以内で意見を述べてください。"
-        opinions[name] = _ai_call(f"テーマ: {theme}", system=system, timeout=60)
+            base_system = f"あなたは「{name}」として、{hint}リース審査案件を評価する担当者です。100字以内で意見を述べてください。"
+
+        prev_opinions_block = ""
+        if prev_block:
+            prev_opinions_block = prev_block
+        if accumulated_opinions:
+            prev_opinions_block += f"\n\n【前の発言者の意見】\n{accumulated_opinions}\n"
+
+        opinion_text = _ai_call(
+            f"テーマ: {theme}{prev_opinions_block}",
+            system=base_system,
+            timeout=60,
+        )
+        opinions[name] = opinion_text
+        accumulated_opinions += f"・{name}: {opinion_text}\n"
 
     chair_prompt = (
-        f"テーマ: {theme}\n\n各担当者の意見:\n"
+        f"テーマ: {theme}\n\n各担当者の意見（ラウンド{round}）:\n"
         + "\n".join(f"・{k}: {v}" for k, v in opinions.items())
         + f"\n\n以上を踏まえ、{chair_name}として最終判断と理由を200字以内で述べてください。"
     )
     chair = _ai_call(chair_prompt, system=chair_system, timeout=90)
 
-    summary = f"**テーマ:** {theme}\n\n"
+    summary = f"**テーマ:** {theme}\n\n**ラウンド {round}**\n\n"
     for k, v in opinions.items():
         summary += f"**{k}:** {v}\n\n"
     summary += f"**{chair_name}（最終判断）:** {chair}"
@@ -533,11 +554,14 @@ def _render_auto_team_panel() -> None:
 
     manual = st.button("▶️ 今すぐチーム議論を起動", key="hub_team_manual")
     if manual or (auto_mode and in_zone and not st.session_state.get("hub_team_done")):
-        with st.spinner("チームが議論中..."):
-            result = _run_auto_team_agent(res, mode=meeting_mode)
+        with st.spinner("チームが議論中（ラウンド1）..."):
+            result_r1 = _run_auto_team_agent(res, mode=meeting_mode, round=1)
+        with st.spinner("チームが議論中（ラウンド2）..."):
+            result_r2 = _run_auto_team_agent(res, mode=meeting_mode, round=2, prev_summary=result_r1)
+        result = result_r1 + "\n\n---\n\n" + result_r2
         st.session_state["hub_team_result"] = result
         st.session_state["hub_team_done"]   = True
-        _hub_log("auto_team", "success", f"score={score} mode={meeting_mode}")
+        _hub_log("auto_team", "success", f"score={score} mode={meeting_mode} rounds=2")
 
         if _get_slack_url():
             _send_slack([{
