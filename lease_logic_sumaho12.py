@@ -1721,6 +1721,11 @@ elif mode == "🌌 文明年代記":
     from components.civilization_chronicle import render_civilization_chronicle
     render_civilization_chronicle()
 
+# ── 📊 マハラノビス3D ──────────────────────────────────────────────────────────
+elif mode == "📊 マハラノビス3D":
+    from components.mahalanobis_3d import render_mahalanobis_3d
+    render_mahalanobis_3d()
+
 # ── フローティングBOT（八奈見さん）── 全ページ共通 ──────────────────────────
 try:
     from components.floating_bot import render_floating_bot
