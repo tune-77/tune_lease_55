@@ -81,7 +81,7 @@ def calc_total_score(
     grade = _get_grade(total)
     rec = get_recommendation(grade["label"])
 
-    return {
+    result = {
         "total_score": total,
         "grade": grade["label"],
         "grade_text": grade["text"],
@@ -102,3 +102,10 @@ def calc_total_score(
         "used_default_weight": used_default_weight,
         "completeness_ratio": asset_result.get("completeness_ratio", 1.0),
     }
+    if "usage_period_fit" in asset_result:
+        result["usage_period_fit"] = asset_result["usage_period_fit"]
+    if "remanufacture_score" in asset_result:
+        result["remanufacture_score"] = asset_result["remanufacture_score"]
+    if "assessment_label" in asset_result:
+        result["assessment_label"] = asset_result["assessment_label"]
+    return result
