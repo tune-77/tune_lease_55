@@ -15,8 +15,11 @@ if _SCRIPT_DIR not in sys.path:
     sys.path.insert(0, _SCRIPT_DIR)
 
 import streamlit as st
+from PIL import Image as _PILImage
 # set_page_config は必ず最初の st 呼び出しにする必要がある
-st.set_page_config(page_title="温水式リース審査AI", page_icon="🏢", layout="wide", initial_sidebar_state="auto")
+_icon_path = Path(_SCRIPT_DIR) / "assets" / "yanami_icon.png"
+_page_icon = _PILImage.open(_icon_path) if _icon_path.exists() else "🏢"
+st.set_page_config(page_title="温水式リース審査AI", page_icon=_page_icon, layout="wide", initial_sidebar_state="auto")
 
 @st.cache_resource
 def _intro_video_b64() -> str:
