@@ -22,7 +22,8 @@ export default function Dashboard() {
   const [result, setResult] = useState<any>(null);
   const [formData, setFormData] = useState<ScoringFormData>(defaultFormData);
   const [gunshiText, setGunshiText] = useState<string>("");
-  
+  const [apiError, setApiError] = useState<string | null>(null);
+
   // タブ管理
   const [activeTab, setActiveTab] = useState<"input" | "analysis">("input");
 
@@ -37,13 +38,12 @@ export default function Dashboard() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setApiError(null);
     try {
-      const res = await axios.post("http://localhost:8000/api/score/full", formData);
+      const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/score/full`, formData);
       setResult(res.data);
-      // 審査完了後、自動的に分析タブへ遷移
       setActiveTab("analysis");
-      
-      // めぶきちゃんの表情をスコアに応じて切り替え
+
       const score = res.data.score_base;
       if (score >= 80) {
         triggerMebuki('approve', `スコア ${score.toFixed(1)} 点！\n素晴らしい内容です。\nこのまま稟議に掛けましょう！`);
@@ -52,10 +52,9 @@ export default function Dashboard() {
       } else {
         triggerMebuki('reject', `スコア ${score.toFixed(1)} 点。\nかなり厳しい状況です。\n抜本的な条件見直しが必要です！`);
       }
-      
-    } catch (error) {
-      console.error("API Error", error);
-      alert("審査エンジンの呼び出しに失敗しました。FastAPIサーバーが起動しているか確認してください。");
+    } catch (error: any) {
+      const msg = error?.response?.data?.detail ?? error?.message ?? "不明なエラー";
+      setApiError(`審査エンジンの呼び出しに失敗しました: ${msg}`);
     } finally {
       setLoading(false);
     }
@@ -112,6 +111,13 @@ export default function Dashboard() {
                 <FormFinancial data={formData} onChange={handleFieldChange} />
                 <FormQualitative data={formData} onChange={handleFieldChange} />
                 
+                {apiError && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 text-sm font-bold px-4 py-3 rounded-xl flex items-start gap-2">
+                    <ShieldAlert className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    <span>{apiError}</span>
+                  </div>
+                )}
+
                 <div className="sticky bottom-6 z-40 bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-blue-100 flex items-center justify-between">
                   <div className="text-sm font-bold text-slate-500">
                     現在の入力状態で審査用API（フル機能版）を呼び出します

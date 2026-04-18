@@ -151,7 +151,7 @@ export default function SimilarPage() {
     
     const fetchData = async () => {
       try {
-        const res = await axios.get("http://localhost:8000/api/similar/data");
+        const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/similar/data`);
         setGraphData(res.data);
         setSummary(res.data.summary);
       } catch (err) {

@@ -368,21 +368,21 @@ export default function TimesFMPage() {
     const hz = h ?? horizon;
     try {
       if (tab === 'industry') {
-        const res = await axios.post("http://localhost:8000/api/timesfm/industry_trend", { industry: t, horizon_months: 24 });
+        const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/timesfm/industry_trend`, { industry: t, horizon_months: 24 });
         setData(res.data);
       } else if (tab === 'company') {
-        const res = await axios.post("http://localhost:8000/api/timesfm/company_score", { company_name: t, horizon_months: 12 });
+        const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/timesfm/company_score`, { company_name: t, horizon_months: 12 });
         setData(res.data);
       } else if (tab === 'rate') {
-        const res = await axios.post("http://localhost:8000/api/timesfm/final_rate", { industry: t, horizon_months: hz });
+        const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/timesfm/final_rate`, { industry: t, horizon_months: hz });
         setData(res.data);
       } else if (tab === 'compare') {
-        const res = await axios.post("http://localhost:8000/api/timesfm/financial_paths", { company_name: t, n_periods: 12 });
+        const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/timesfm/financial_paths`, { company_name: t, n_periods: 12 });
         setData(res.data);
       } else if (tab === 'baserate') {
         const [single, all] = await Promise.all([
-          axios.post("http://localhost:8000/api/timesfm/base_rate", { term_col: c, horizon_months: hz }),
-          axios.post("http://localhost:8000/api/timesfm/base_rate_all", { horizon_months: hz }),
+          axios.post(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/timesfm/base_rate`, { term_col: c, horizon_months: hz }),
+          axios.post(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/timesfm/base_rate_all`, { horizon_months: hz }),
         ]);
         setData(single.data);
         setAllData(all.data);

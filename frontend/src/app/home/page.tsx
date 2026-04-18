@@ -15,7 +15,7 @@ export default function HomeDashboard() {
 
     const fetchStats = async () => {
       try {
-        const res = await axios.get("http://localhost:8000/api/dashboard/stats");
+        const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/dashboard/stats`);
         setStats(res.data);
       } catch (err) {
         console.error("Failed to load dashboard stats", err);

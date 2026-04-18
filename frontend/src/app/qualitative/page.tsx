@@ -17,7 +17,7 @@ export default function QualitativePage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await axios.post("http://localhost:8000/api/analysis/qualitative");
+      const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/analysis/qualitative`);
       setData(res.data);
     } catch (err) {
       console.error(err);

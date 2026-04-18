@@ -88,11 +88,11 @@ export default function ChroniclePage() {
       };
 
       const [sum, hist, snaps, sim, log] = await Promise.all([
-        safe(axios.get("http://localhost:8000/api/chronicle/summary"), null),
-        safe(axios.get("http://localhost:8000/api/chronicle/history"), { history: [] }),
-        safe(axios.get("http://localhost:8000/api/chronicle/snapshots"), { snapshots: [] }),
-        safe(axios.get("http://localhost:8000/api/chronicle/simulation/history"), { history: [] }),
-        safe(axios.get("http://localhost:8000/api/chronicle/simulation/archaia_log"), { logs: [] }),
+        safe(axios.get(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/chronicle/summary`), null),
+        safe(axios.get(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/chronicle/history`), { history: [] }),
+        safe(axios.get(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/chronicle/snapshots`), { snapshots: [] }),
+        safe(axios.get(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/chronicle/simulation/history`), { history: [] }),
+        safe(axios.get(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/chronicle/simulation/archaia_log`), { logs: [] }),
       ]);
       if (sum.data) setSummary(sum.data);
       setHistory(hist.data?.history || []);
@@ -109,7 +109,7 @@ export default function ChroniclePage() {
   const runSimulation = async () => {
     setSimulating(true);
     try {
-      await axios.post("http://localhost:8000/api/chronicle/simulation/round");
+      await axios.post(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/chronicle/simulation/round`);
       await fetchAll();
     } catch (err: any) {
       alert("Simulation failed: " + (err.response?.data?.detail || err.message));
@@ -121,7 +121,7 @@ export default function ChroniclePage() {
   const handleRollback = async (snapId: string) => {
     if (!confirm(`Are you sure you want to rollback to ${snapId}?`)) return;
     try {
-      const res = await axios.post("http://localhost:8000/api/chronicle/rollback", { snapshot_id: snapId });
+      const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/chronicle/rollback`, { snapshot_id: snapId });
       if (res.data.status === "success") {
         alert("Rollback Successful");
         fetchAll();

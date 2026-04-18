@@ -21,7 +21,7 @@ export default function CorporateNumberPage() {
   const fetchSettings = async () => {
     setLoading(true);
     try {
-      const res = await axios.get("http://localhost:8000/api/settings/corporate_number");
+      const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/settings/corporate_number`);
       setSettings(res.data);
     } catch (err) {
       console.error(err);
@@ -33,7 +33,7 @@ export default function CorporateNumberPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await axios.post("http://localhost:8000/api/settings/corporate_number", settings);
+      await axios.post(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/settings/corporate_number`, settings);
       triggerMebuki('approve', '設定を保存しました！完璧です！\\nこれで審査の自動化がまた一歩進みましたね。');
     } catch (err) {
       console.error(err);
