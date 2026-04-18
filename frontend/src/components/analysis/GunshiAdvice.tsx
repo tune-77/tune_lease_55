@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { API_BASE } from '../../lib/api';
 import { Activity, ShieldCheck, MessageSquare } from 'lucide-react';
 
 interface GunshiAdviceProps {
@@ -32,7 +33,7 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
           intuition: formData.shinsa_intuition || 50,
           posterior: 0.5
         };
-        const res = await axios.post("http://localhost:8000/api/gunshi/chat", payload);
+        const res = await axios.post(`${API_BASE}/api/gunshi/chat`, payload);
         const fetchedText = res.data.chat_text;
         setChatText(fetchedText);
         if (onChatLoaded) {

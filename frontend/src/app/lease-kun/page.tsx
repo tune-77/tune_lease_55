@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, ArrowRight, ArrowLeft, Bot, Activity, CheckCircle, ChevronDown } from 'lucide-react';
 import axios from 'axios';
+import { API_BASE } from '../../lib/api';
 
 // --- 型定義 ---
 type Message = {
@@ -187,7 +188,7 @@ export default function LeaseKunWizard() {
         intuition:                    Number(formData.intuition),
       };
 
-      const res = await axios.post("http://localhost:8000/api/score/full", payload);
+      const res = await axios.post(`${API_BASE}/api/score/full`, payload);
 
       setHistory(prev => [...prev, {
         role: 'humor',

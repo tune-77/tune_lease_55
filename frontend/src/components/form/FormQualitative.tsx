@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ScoringFormData } from '../../types';
 import SliderInput from '../SliderInput';
+import { API_BASE } from '../../lib/api';
 
 interface FormQualitativeProps {
   data: ScoringFormData;
@@ -23,8 +24,8 @@ export default function FormQualitative({ data, onChange }: FormQualitativeProps
     const fetchMaster = async () => {
       try {
         const [qualRes, assetRes] = await Promise.all([
-          fetch('http://localhost:8000/api/master/qualitative'),
-          fetch('http://localhost:8000/api/master/assets')
+          fetch(`${API_BASE}/api/master/qualitative`),
+          fetch(`${API_BASE}/api/master/assets`)
         ]);
         
         if (qualRes.ok) {

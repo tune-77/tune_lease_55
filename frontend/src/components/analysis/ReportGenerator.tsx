@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import { API_BASE } from '../../lib/api';
 import { FileText, Download, Loader2, Printer, ShieldCheck } from 'lucide-react';
 import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, Radar, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
 
@@ -21,7 +22,7 @@ export default function ReportGenerator({ apiResult, formData, gunshiText }: Rep
     
     setLoading(true);
     try {
-      const res = await axios.post("http://localhost:8000/api/report/generate", {
+      const res = await axios.post(`${API_BASE}/api/report/generate`, {
         result_data: apiResult,
         inputs: formData
       });

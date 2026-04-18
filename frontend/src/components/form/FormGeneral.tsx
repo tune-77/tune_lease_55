@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ScoringFormData } from '../../types';
+import { API_BASE } from '../../lib/api';
 
 interface FormGeneralProps {
   data: ScoringFormData;
@@ -31,7 +32,7 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
   useEffect(() => {
     const fetchIndustries = async () => {
       try {
-        const res = await fetch('http://localhost:8000/api/master/industries');
+        const res = await fetch(`${API_BASE}/api/master/industries`);
         if (res.ok) {
           const jsicData = await res.json();
           setIndustryMaster(jsicData);
