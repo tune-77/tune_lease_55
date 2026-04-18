@@ -34,15 +34,14 @@ export default function Dashboard() {
     }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     setLoading(true);
     try {
       const res = await axios.post("http://localhost:8000/api/score/full", formData);
       setResult(res.data);
       // 審査完了後、自動的に分析タブへ遷移
       setActiveTab("analysis");
-      
+
       // めぶきちゃんの表情をスコアに応じて切り替え
       const score = res.data.score_base;
       if (score >= 80) {
@@ -52,7 +51,7 @@ export default function Dashboard() {
       } else {
         triggerMebuki('reject', `スコア ${score.toFixed(1)} 点。\nかなり厳しい状況です。\n抜本的な条件見直しが必要です！`);
       }
-      
+
     } catch (error) {
       console.error("API Error", error);
       alert("審査エンジンの呼び出しに失敗しました。FastAPIサーバーが起動しているか確認してください。");
@@ -107,17 +106,18 @@ export default function Dashboard() {
 
             {/* コンテンツエリア */}
             {activeTab === "input" && (
-              <form onSubmit={handleSubmit} className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 relative z-0">
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 relative z-0">
                 <FormGeneral data={formData} onChange={handleFieldChange} />
                 <FormFinancial data={formData} onChange={handleFieldChange} />
                 <FormQualitative data={formData} onChange={handleFieldChange} />
-                
+
                 <div className="sticky bottom-6 z-40 bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-blue-100 flex items-center justify-between">
                   <div className="text-sm font-bold text-slate-500">
                     現在の入力状態で審査用API（フル機能版）を呼び出します
                   </div>
                   <button
-                    type="submit"
+                    type="button"
+                    onClick={handleSubmit}
                     disabled={loading}
                     className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-3.5 rounded-xl font-bold shadow-lg shadow-blue-200 hover:shadow-xl hover:translate-y-[-2px] transition-all disabled:opacity-50 text-lg"
                   >
@@ -134,7 +134,7 @@ export default function Dashboard() {
                     )}
                   </button>
                 </div>
-              </form>
+              </div>
             )}
 
             {activeTab === "analysis" && (

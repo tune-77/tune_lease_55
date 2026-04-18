@@ -7,6 +7,14 @@
       "runtimeArgs": ["run", "lease_logic_sumaho12.py"],
       "port": 8503,
       "autoPort": false
+    },
+    {
+      "name": "frontend",
+      "runtimeExecutable": "/Users/kobayashiisaoryou/clawd/lease_logic_sumaho12/frontend/node_modules/.bin/next",
+      "runtimeArgs": ["dev", "--hostname", "0.0.0.0"],
+      "cwd": "frontend",
+      "port": 3000,
+      "autoPort": false
     }
   ]
 }
