@@ -213,6 +213,25 @@ def render_report() -> None:
 </div>
 """, unsafe_allow_html=True)
 
+    # ── 討論スコア調整値 ────────────────────────────────────────────────────
+    debate_adj = st.session_state.get("debate_score_adjustment")
+    if debate_adj is not None:
+        adj_str = f"+{debate_adj}" if debate_adj > 0 else str(debate_adj)
+        if debate_adj > 0:
+            adj_color, adj_icon = "#1e7e34", "⬆️"
+        elif debate_adj < 0:
+            adj_color, adj_icon = "#c62828", "⬇️"
+        else:
+            adj_color, adj_icon = "#555", "➡️"
+        st.markdown(
+            f'<div style="background:{adj_color}22;border-left:4px solid {adj_color};'
+            f'padding:.5rem 1rem;border-radius:4px;margin-bottom:.8rem;">'
+            f'<b>{adj_icon} 審査討論スコア調整値: {adj_str}点</b>'
+            f'&nbsp;（エージェントチーム討論結果による補正 — '
+            f'審査スコア調整後目安: <b>{score + debate_adj:.0f}点</b>）</div>',
+            unsafe_allow_html=True,
+        )
+
     # ── ① チャート行 1: ゲージ ＋ レーダー ─────────────────────────────────
     try:
         from charts import plot_gauge_plotly, plot_radar_chart_plotly

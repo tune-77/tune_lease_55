@@ -168,6 +168,7 @@ class SK:
     AT_FACILITATOR_RESULT = "at_facilitator_result" # Tune論点整理結果テキスト
     AT_SHINSA_HISTORY     = "at_shinsa_history"    # 審査討論タブのラウンド履歴
     AT_SHINSA_PENDING     = "at_shinsa_pending"    # 審査討論タブの進行中スレッド
+    DEBATE_SCORE_ADJUSTMENT = "debate_score_adjustment"  # 審査討論スコア調整値（-10〜+10）
 
     # ─────────────────────────────────────────────
     # Slack 連携
