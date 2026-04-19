@@ -229,24 +229,24 @@ def calculate_pd(equity: float, current: float, profit: float | None) -> float:
     """
     risk = 0.0
     if equity < 10:
-        risk += 25.0
+        risk += 15.0
     elif equity < 20:
-        risk += 12.0
-    elif equity < 30:
-        risk += 5.0
-    if current < 100:
-        risk += 20.0
-    elif current < 120:
         risk += 8.0
-    elif current < 150:
+    elif equity < 30:
         risk += 3.0
+    if current < 100:
+        risk += 12.0
+    elif current < 120:
+        risk += 5.0
+    elif current < 150:
+        risk += 2.0
     if profit is not None:
         if profit < 0:
-            risk += 30.0
+            risk += 15.0
         elif profit < 2:
-            risk += 10.0
+            risk += 6.0
         elif profit < 5:
-            risk += 4.0
+            risk += 2.0
     base_pd = min(100.0, max(0.0, risk))
     
     # ==== ネットワーク連鎖リスクエンジンの適用 ====

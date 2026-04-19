@@ -1648,7 +1648,7 @@ def render_analysis_results(
                         with st.spinner("学習モデルをロードし、予測を実行中..."):
                             try:
                                 from scoring.predict_one import predict_one, map_industry_major_to_scoring
-                                _scoring_dir = os.path.dirname(os.path.abspath(__file__))
+                                _scoring_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
                                 _base = os.environ.get("LEASE_SCORING_MODELS_DIR", os.path.join(_scoring_dir, "scoring", "models", "industry_specific"))
                                 _industry = map_industry_major_to_scoring(res.get("industry_major", ""))
                                 _fin = res.get("financials", {})
