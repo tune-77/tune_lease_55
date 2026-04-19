@@ -449,7 +449,7 @@ def render_analysis_results(
             # ── 💴 金利サジェスト ──────────────────────────────────────────────
             try:
                 from components.rate_suggestion import render_rate_suggestion
-                render_rate_suggestion(res)
+                render_rate_suggestion(res, similar_cases=similar_cases)
             except Exception as _rse:
                 pass
 

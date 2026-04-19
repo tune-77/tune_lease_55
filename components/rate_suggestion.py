@@ -18,6 +18,54 @@ import streamlit as st
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
+# ── 業種カラーマップ ──────────────────────────────────────────────────────────
+GYOSHU_COLORS = {
+    "製造業": "#3b82f6",
+    "卸売業": "#10b981",
+    "建設業": "#f59e0b",
+    "小売業": "#ef4444",
+    "サービス業": "#8b5cf6",
+    "運輸業": "#06b6d4",
+    "不動産業": "#84cc16",
+    "医療・福祉": "#ec4899",
+    "情報通信業": "#f97316",
+    "その他": "#6b7280",
+}
+
+# ── 期間別シナリオ定義 ────────────────────────────────────────────────────────
+_TERM_DEFS = [
+    {
+        "label": "短期",
+        "term_label": "1〜2年",
+        "term_months": 18,
+        "spread_adj": +0.10,
+        "icon": "⚡",
+        "risk_level": "低",
+        "risk_comment": "月額大・資金繰り負荷高・陳腐化リスク低",
+        "risk_color": "#22c55e",
+    },
+    {
+        "label": "中期",
+        "term_label": "3〜4年",
+        "term_months": 42,
+        "spread_adj": 0.0,
+        "icon": "⚖️",
+        "risk_level": "中",
+        "risk_comment": "バランス型（標準設計）・実績多数",
+        "risk_color": "#f59e0b",
+    },
+    {
+        "label": "長期",
+        "term_label": "5〜7年",
+        "term_months": 72,
+        "spread_adj": -0.10,
+        "icon": "🐢",
+        "risk_level": "高",
+        "risk_comment": "月額小・技術陳腐化・残価リスク注意",
+        "risk_color": "#ef4444",
+    },
+]
+
 
 def _normalize_rate(v) -> float:
     """金利を%単位に正規化する（0.00195 → 1.95% などの変換）"""
@@ -30,6 +78,23 @@ def _normalize_rate(v) -> float:
         return v
     except Exception:
         return 0.0
+
+
+def _gyoshu_color(industry: str) -> str:
+    """業種名からカラーコードを返す"""
+    for key, color in GYOSHU_COLORS.items():
+        if key in (industry or ""):
+            return color
+    return GYOSHU_COLORS["その他"]
+
+
+def _calc_monthly_payment(acquisition_cost_man: float, annual_rate_pct: float, term_months: int) -> float:
+    """月額リース料概算（元利均等払い方式）。acquisition_cost_man は万円単位、返値も万円/月。"""
+    if acquisition_cost_man <= 0 or annual_rate_pct <= 0 or term_months <= 0:
+        return 0.0
+    r = annual_rate_pct / 100 / 12
+    factor = r / (1 - (1 + r) ** (-term_months))
+    return acquisition_cost_man * factor
 
 
 def _load_rate_dataframe() -> pd.DataFrame:
@@ -62,7 +127,7 @@ def _load_rate_dataframe() -> pd.DataFrame:
             final_status = c.get("final_status", "")
             competitor = c.get("competitor", "")
 
-            # 「競合なし失注」は金利以外の要因（現金購入・銀行融資切替など）なので除外
+            # 「競合なし失注」は金利以外の要因なので除外
             if final_status == "失注" and competitor != "競合あり":
                 continue
 
@@ -70,6 +135,7 @@ def _load_rate_dataframe() -> pd.DataFrame:
 
             inputs = c.get("inputs") or {}
             acquisition_cost = float(inputs.get("acquisition_cost", 0) or 0)
+            industry_sub = c.get("industry_sub", "その他") or "その他"
 
             rows.append({
                 "final_rate": final_rate,
@@ -79,8 +145,10 @@ def _load_rate_dataframe() -> pd.DataFrame:
                 "score": score,
                 "won": won,
                 "customer_type": c.get("customer_type", ""),
-                "industry_sub": c.get("industry_sub", ""),
+                "industry_sub": industry_sub,
                 "acquisition_cost": acquisition_cost,
+                "final_status": final_status,
+                "borrower_name": c.get("borrower_name", "匿名"),
             })
         except Exception:
             continue
@@ -321,7 +389,7 @@ def suggest_rate(
             line_dash="dash",
             line_color=scenario_colors[sc["label"]],
             line_width=1.5,
-            annotation_text=f"{sc['emoji']}{sc['label']} {sc['rate']:.2f}%",
+            annotation_text=f"{sc['emoji']}{sc['label']} +{sc['spread']:.2f}%",
             annotation_position="top right" if sc["label"] == "強気" else "top left",
         )
 
@@ -358,23 +426,196 @@ def suggest_rate(
         "data_count": n,
         "temperature": T,
         "pricing_optimization": use_pricing_opt,
+        "df": df,
         "message": None,
     }
 
 
-def render_rate_suggestion(res: dict):
+def _render_spread_scenarios(scenarios: list, base_rate: float, competitor_rate: float):
+    """守り/推奨/強気の3シナリオをスプレッド形式で横並び表示"""
+    cols = st.columns(3)
+    for col, sc in zip(cols, scenarios):
+        with col:
+            st.markdown(f"**{sc['emoji']} {sc['label']}**")
+            # スプレッド形式: 基準金利 + スプレッド = 適用金利
+            st.markdown(
+                f"""<div style="background:#f8fafc; border-radius:8px; padding:8px; font-size:0.85rem; line-height:1.6;">
+                <span style="color:#64748b;">基準金利</span> <strong>{base_rate:.2f}%</strong><br>
+                <span style="color:#64748b;">＋ スプレッド</span> <strong style="color:#2563eb;">+{sc['spread']:.2f}%</strong><br>
+                <span style="color:#64748b;">＝ 適用金利</span> <strong style="font-size:1.1em; color:#1e3a5f;">{sc['rate']:.2f}%</strong>
+                </div>""",
+                unsafe_allow_html=True,
+            )
+            st.caption(
+                f"成約確率: {sc['win_prob']*100:.0f}%　"
+                f"期待利益: {sc['expected_profit']:.3f}"
+            )
+            st.caption(sc["description"])
+
+    if competitor_rate > 0:
+        opt_sc = scenarios[1]
+        diff = opt_sc["rate"] - competitor_rate
+        st.caption(f"推奨金利 vs 競合: **{diff:+.2f}%**")
+
+
+def _render_term_scenarios(get_base_for_term, optimal_spread: float, acquisition_cost_man: float):
+    """期間別3シナリオ（短期/中期/長期）を横並び表示。get_base_for_term: callable(term_months) -> float"""
+    st.markdown("#### 📅 期間別シナリオ比較")
+    cols = st.columns(3)
+    for col, tdef in zip(cols, _TERM_DEFS):
+        term_base = get_base_for_term(tdef["term_months"])
+        spread = max(0.0, optimal_spread + tdef["spread_adj"])
+        rate = term_base + spread
+        monthly = _calc_monthly_payment(acquisition_cost_man, rate, tdef["term_months"])
+        with col:
+            risk_badge = f'<span style="background:{tdef["risk_color"]}; color:#fff; border-radius:4px; padding:1px 6px; font-size:0.75rem;">リスク {tdef["risk_level"]}</span>'
+            st.markdown(
+                f"""<div style="border:1px solid #e2e8f0; border-radius:8px; padding:10px; background:#fff;">
+                <div style="font-size:1.1rem; font-weight:bold;">{tdef["icon"]} {tdef["label"]} <span style="font-size:0.85rem; color:#64748b;">{tdef["term_label"]}</span></div>
+                <div style="margin:6px 0; font-size:0.82rem; color:#64748b;">
+                  基準 {term_base:.2f}% ＋ <strong style="color:#2563eb;">+{spread:.2f}%</strong> ＝ <strong style="color:#1e3a5f;">{rate:.2f}%</strong>
+                </div>
+                {"<div style='font-size:0.85rem;'>月額概算: <strong>約{:.1f}万円</strong></div>".format(monthly) if monthly > 0 else ""}
+                <div style="margin-top:4px;">{risk_badge}</div>
+                <div style="font-size:0.78rem; color:#64748b; margin-top:4px;">{tdef["risk_comment"]}</div>
+                </div>""",
+                unsafe_allow_html=True,
+            )
+
+
+def _render_industry_colored_cases(similar_cases: list):
+    """類似案件を業種カラーバー付きで表示"""
+    if not similar_cases:
+        return
+    st.markdown("#### 🏭 類似案件（業種別カラー）")
+    for sc in similar_cases:
+        industry = sc.get("industry", "") or "その他"
+        color = _gyoshu_color(industry)
+        status = sc.get("status", "未登録")
+        status_color = "#16a34a" if "成約" in status or "承認" in status else "#dc2626" if "否決" in status else "#64748b"
+        st.markdown(
+            f"""<div style="display:flex; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden; margin-bottom:8px; background:#fff;">
+            <div style="width:6px; background:{color}; flex-shrink:0;"></div>
+            <div style="padding:8px 12px; flex:1;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <span style="font-size:0.75rem; color:#94a3b8;">類似度: {sc['similarity']}%</span>
+                        <div style="font-weight:bold;">{sc['name']} <span style="font-size:0.8rem; font-weight:normal; color:{color};">● {industry}</span></div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="font-size:0.8rem; color:#64748b;">判定</div>
+                        <div style="font-weight:bold; color:{status_color};">{status}</div>
+                    </div>
+                </div>
+                <div style="font-size:0.85rem; margin-top:4px;">
+                    スコア: <strong>{sc['score']:.1f}</strong> | 自己資本比率: <strong>{sc['equity']}%</strong>
+                </div>
+            </div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+
+
+def _render_comparison_scatter(df: pd.DataFrame, current_score: float, current_rate: float, current_industry: str):
+    """過去案件と現在案件の比較散布図（X:スコア, Y:金利, 色:業種, サイズ:リース額）"""
+    if df.empty:
+        return
+    st.markdown("#### 📊 他案件との比較")
+
+    fig = go.Figure()
+
+    # 業種ごとにプロット
+    industries = df["industry_sub"].unique()
+    for ind in industries:
+        sub = df[df["industry_sub"] == ind]
+        color = _gyoshu_color(ind)
+        sizes = np.clip(sub["acquisition_cost"].fillna(0).values, 0, None)
+        max_size = sizes.max() if sizes.max() > 0 else 1
+        marker_sizes = (sizes / max_size * 20 + 8).tolist()
+
+        status_labels = sub["final_status"].values
+        hover_texts = [
+            f"{row['borrower_name']}<br>業種: {row['industry_sub']}<br>スコア: {row['score']:.1f}<br>金利: {row['final_rate']:.2f}%<br>判定: {row['final_status']}"
+            for _, row in sub.iterrows()
+        ]
+
+        fig.add_trace(go.Scatter(
+            x=sub["score"].tolist(),
+            y=sub["final_rate"].tolist(),
+            mode="markers",
+            name=ind,
+            text=hover_texts,
+            hoverinfo="text",
+            marker=dict(
+                color=color,
+                size=marker_sizes,
+                opacity=0.7,
+                symbol=[
+                    "circle" if s == "成約" else "x" if s == "失注" else "diamond"
+                    for s in status_labels
+                ],
+                line=dict(width=1, color="white"),
+            ),
+        ))
+
+    # 現在案件を★で強調
+    cur_color = _gyoshu_color(current_industry)
+    fig.add_trace(go.Scatter(
+        x=[current_score],
+        y=[current_rate],
+        mode="markers+text",
+        name="現在案件",
+        text=["★ 現在"],
+        textposition="top center",
+        hovertext=f"現在の案件<br>スコア: {current_score:.1f}<br>推奨金利: {current_rate:.2f}%<br>業種: {current_industry}",
+        hoverinfo="text",
+        marker=dict(
+            color=cur_color,
+            size=22,
+            symbol="star",
+            line=dict(width=2, color="#1e3a5f"),
+        ),
+    ))
+
+    fig.update_layout(
+        xaxis_title="スコア",
+        yaxis_title="金利 (%)",
+        height=380,
+        margin=dict(l=40, r=40, t=30, b=40),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+    )
+    st.plotly_chart(fig, use_container_width=True, key="kinri_comparison_scatter")
+
+
+def render_rate_suggestion(res: dict, similar_cases: list | None = None):
     """
     金利サジェストUIを表示する。
     analysis_results.py の render_analysis_results(res, ...) から呼ぶ。
+    similar_cases: find_similar_past_cases() の結果。省略時は内部で取得。
     """
-    with st.expander("💴 金利サジェスト（3シナリオ提案）", expanded=False):
+    with st.expander("💴 金利サジェスト（スプレッド方式・3シナリオ提案）", expanded=False):
         score = float(res.get("score") or 0)
         pricing = res.get("pricing") or {}
         from base_rate_master import get_current_base_rate, get_base_rate_by_term
-        # リース期間が取得できる場合は期間別基準金利を使用
+        import datetime
+
         _lease_term = int(st.session_state.get("lease_term") or pricing.get("lease_term") or 60)
-        _rate_by_term = get_base_rate_by_term(lease_term_months=_lease_term)
-        base_rate = float(pricing.get("base_rate") or _rate_by_term or get_current_base_rate(fallback=2.1))
+        _current_month = datetime.date.today().strftime("%Y-%m")
+
+        def _get_base_for_term(term_months: int) -> float:
+            """DBから期間別基準金利を自動取得。未登録なら5年物にフォールバック。"""
+            r = get_base_rate_by_term(month=_current_month, lease_term_months=term_months)
+            return float(r) if r is not None else get_current_base_rate(fallback=2.1)
+
+        base_rate = _get_base_for_term(_lease_term)
+
+        # ── 基準金利情報表示（読み取り専用） ─────────────────────────────
+        st.info(
+            f"📌 **基準金利（{_current_month} / {_lease_term}ヶ月物）: {base_rate:.2f}%**　"
+            "※ 基準金利マスタから自動取得。変更は「⚙️ 基準金利マスタ」ページで行ってください。"
+        )
 
         raw_comp = st.session_state.get("competitor_rate", 0)
         competitor_rate = _normalize_rate(raw_comp)
@@ -389,31 +630,17 @@ def render_rate_suggestion(res: dict):
         T = result.get("temperature", 0.1)
         is_pricing_opt = result.get("pricing_optimization", False)
         scenarios = result.get("scenarios", [])
+        optimal_rate = result.get("optimal_rate", base_rate)
+        optimal_spread = result.get("optimal_spread", 0.0)
+        df_past = result.get("df", pd.DataFrame())
 
-        # ── 3シナリオ表示 ────────────────────────────────────────────────
-        cols = st.columns(3)
-        colors = {"守り": "🟢", "推奨": "🟡", "強気": "🔴"}
-        for col, sc in zip(cols, scenarios):
-            with col:
-                st.markdown(f"**{sc['emoji']} {sc['label']}**")
-                st.metric(
-                    "金利",
-                    f"{sc['rate']:.2f}%",
-                    f"spread +{sc['spread']:.2f}%",
-                )
-                st.caption(
-                    f"成約確率: {sc['win_prob']*100:.0f}%　"
-                    f"期待利益: {sc['expected_profit']:.3f}"
-                )
-                st.caption(sc["description"])
+        st.divider()
 
-        # 競合比較
-        if competitor_rate > 0:
-            opt_sc = scenarios[1]
-            diff = opt_sc["rate"] - competitor_rate
-            st.caption(f"推奨金利 vs 競合: **{diff:+.2f}%**")
+        # ── 守り/推奨/強気 3シナリオ（スプレッド形式） ────────────────────
+        st.markdown("#### 🎯 リスク別シナリオ（守り / 推奨 / 強気）")
+        _render_spread_scenarios(scenarios, base_rate, competitor_rate)
 
-        # メソッド・温度の説明
+        # メソッド説明
         if is_pricing_opt:
             st.caption(
                 f"📈 需要曲線最適化 | ボルツマン温度 T={T:.2f}（データ{n}件）　"
@@ -431,3 +658,28 @@ def render_rate_suggestion(res: dict):
                 use_container_width=True,
                 key="rate_suggestion_chart",
             )
+
+        st.divider()
+
+        # ── 期間別3シナリオ ────────────────────────────────────────────────
+        _inp = st.session_state.get("last_submitted_inputs") or {}
+        acquisition_cost_man = float(
+            _inp.get("acquisition_cost") or st.session_state.get("acquisition_cost") or 0
+        )
+        _render_term_scenarios(_get_base_for_term, optimal_spread, acquisition_cost_man)
+
+        st.divider()
+
+        # ── 業種別カラーコーディング（類似案件） ─────────────────────────
+        if similar_cases is None:
+            try:
+                from data_cases import find_similar_past_cases
+                similar_cases = find_similar_past_cases(res)
+            except Exception:
+                similar_cases = []
+
+        _render_industry_colored_cases(similar_cases or [])
+
+        # ── 他案件との比較散布図 ──────────────────────────────────────────
+        current_industry = res.get("industry_sub", "") or "その他"
+        _render_comparison_scatter(df_past, score, optimal_rate, current_industry)
