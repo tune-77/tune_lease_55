@@ -18,7 +18,7 @@ from contextlib import closing
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _REPO_ROOT)
 
-_LEASE_DB = os.path.join(_REPO_ROOT, "data", "lease_data.db")
+_LEASE_DB = os.path.join(_REPO_ROOT, "lease_logic_sumaho12", "data", "lease_data.db")
 _SCREENING_DB = os.path.join(_REPO_ROOT, "data", "screening_db.sqlite")
 
 

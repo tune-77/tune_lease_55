@@ -20,7 +20,7 @@ sys.path.insert(0, str(ROOT))
 
 from lease_yield_predictor import predict_yield
 
-DB_PATH = ROOT / "data" / "lease_data.db"
+DB_PATH = Path(__file__).parent.parent.parent / "lease_logic_sumaho12" / "data" / "lease_data.db"
 
 
 def _extract_inputs(data: dict, year_month: str) -> dict:

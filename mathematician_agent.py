@@ -29,7 +29,7 @@ import requests
 # ── パス ──────────────────────────────────────────────────────────────────────
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _MATH_DB     = os.path.join(_SCRIPT_DIR, "data", "math_discoveries.db")
-_LEASE_DB    = os.path.join(_SCRIPT_DIR, "data", "lease_data.db")
+_LEASE_DB    = os.path.join(os.path.dirname(_SCRIPT_DIR), "lease_logic_sumaho12", "data", "lease_data.db")
 _PROPOSALS_JSON = os.path.join(_SCRIPT_DIR, "data", "math_proposals.json")
 
 def _post_thought(thought: str, icon: str = "🔬"):

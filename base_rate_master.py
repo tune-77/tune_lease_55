@@ -8,7 +8,7 @@ import sqlite3
 import datetime
 import os
 
-_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "lease_data.db")
+_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lease_logic_sumaho12", "data", "lease_data.db")
 
 # リース期間列の定義（月数上限, 列名）
 _TERM_MAP = [

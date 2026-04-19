@@ -11,7 +11,7 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
-DB_PATH = Path(__file__).parent.parent / "data" / "lease_data.db"
+DB_PATH = Path(__file__).parent.parent.parent / "lease_logic_sumaho12" / "data" / "lease_data.db"
 
 DDL = """
 CREATE TABLE IF NOT EXISTS funding_rates (

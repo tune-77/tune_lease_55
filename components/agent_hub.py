@@ -30,7 +30,7 @@ from session_keys import SK
 # ── ディレクトリ設定 ────────────────────────────────────────────────────────
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _BASE_DIR   = os.path.dirname(_SCRIPT_DIR)
-_DB_PATH    = os.path.join(_BASE_DIR, "data", "lease_data.db")
+_DB_PATH    = os.path.join(os.path.dirname(_BASE_DIR), "lease_logic_sumaho12", "data", "lease_data.db")
 _HUB_LOG    = os.path.join(_BASE_DIR, "data", "agent_hub_log.jsonl")
 _AGENT_THOUGHTS = os.path.join(_BASE_DIR, "data", "agent_thoughts.jsonl")
 
