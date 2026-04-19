@@ -401,7 +401,8 @@ def poll_loop(client: WebClient, bot_user_id: str) -> None:
                 latest_ts[ch_id] = str(time.time())
         logger.info(f"📋 DM {len(latest_ts)} チャンネルを監視開始")
     except SlackApiError as e:
-        logger.error(f"初期化エラー: {e}")
+        logger.error(f"❌ 初期化エラー: {e.response['error']} — im:read / im:history スコープを確認してください。")
+        sys.exit(1)
 
     while True:
         try:
@@ -418,7 +419,8 @@ def poll_loop(client: WebClient, bot_user_id: str) -> None:
                         oldest=oldest,
                         limit=10,
                     )
-                except SlackApiError:
+                except SlackApiError as e:
+                    logger.warning(f"チャンネル {ch_id} の履歴取得失敗: {e.response['error']}")
                     continue
 
                 messages = hist.get("messages", [])
@@ -516,14 +518,21 @@ def main():
             _socket_mode_main(SLACK_BOT_TOKEN, SLACK_APP_TOKEN)
         except KeyboardInterrupt:
             logger.info("\n👋 ボットを停止しました。")
+        except Exception as e:
+            logger.error(f"❌ Socket Mode 起動失敗: {e}")
+            sys.exit(1)
         return
 
     # ── ポーリングモード（フォールバック） ───────────────────────────────────
     client = WebClient(token=SLACK_BOT_TOKEN)
 
-    auth = client.auth_test()
-    bot_user_id = auth["user_id"]
-    bot_name = auth["user"]
+    try:
+        auth = client.auth_test()
+        bot_user_id = auth["user_id"]
+        bot_name = auth["user"]
+    except SlackApiError as e:
+        logger.error(f"❌ Slack認証エラー: トークンを確認してください。詳細: {e.response['error']}")
+        sys.exit(1)
 
     logger.info("=" * 60)
     logger.info("🤖 リース審査AIボット — ポーリングモードで起動")
