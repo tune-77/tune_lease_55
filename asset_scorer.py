@@ -273,6 +273,7 @@ def calc_asset_score(category: str, scores: dict, contract: dict = None) -> dict
     }
     
     # 再リース機会の評価を追加
+    lease_months = contract.get("lease_months", 0)
     if calc_lease_period_fit_score and lease_months > 0:
         asset_name = contract.get("asset_name") or contract.get("item_name")
         if asset_name:
