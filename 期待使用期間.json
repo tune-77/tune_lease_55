@@ -1,0 +1,306 @@
+{
+  "document_info": {
+    "title": "機種分類・期待使用期間一覧",
+    "version": "2025.10",
+    "appendix_number": "別紙2"
+  },
+  "usage_period_data": [
+    {
+      "category": "情報関連機器",
+      "code": "0104",
+      "item_name": "電子計算機",
+      "examples": ["サーバ", "パソコン及び周辺機器", "その他端末", "メインフレーム", "ホストコンピュータ", "オフィスコンピュータ(オフコン)", "「システム」一式", "ディスプレイ", "サーバー関連機器(ストレージ、UPS等)", "パソコン(デスクトップ、ノート)", "ワークステーション", "タブレット端末", "周辺機器(キーボード、マウス等)", "ハンディターミナル"],
+      "calculation_method": "クリーニング",
+      "legal_useful_life": 4,
+      "min_years": 3,
+      "max_years": 4,
+      "periods": { "3y": 46, "4y": 66, "5y": 83, "6y": 95, "7y": 103, "8y": 110, "9y": 115, "10y_plus": 120 }
+    },
+    {
+      "category": "情報関連機器",
+      "code": "0105",
+      "item_name": "ソフトウェア",
+      "examples": ["ソフトウェア全般"],
+      "calculation_method": "クリーニング",
+      "legal_useful_life": 4,
+      "min_years": 3,
+      "max_years": 4,
+      "periods": { "3y": 48, "4y": 74, "5y": 88, "6y": 100, "7y": 109, "8y": 113, "9y": 117, "10y_plus": 120 }
+    },
+    {
+      "category": "通信機器",
+      "code": "0103",
+      "item_name": "通信機器",
+      "examples": ["電話機", "電話交換機", "FAX(専用)機", "無線通信機器", "携帯電話", "スマートフォン", "データ通信設備(ネットワーク機器、有線/無線LAN、ハブ、ルータ)", "放送設備", "ファイアウォール", "テレビ会議システム", "監視装置(警備用機器、遠隔監視装置)"],
+      "calculation_method": "クリーニング",
+      "legal_useful_life": 5,
+      "min_years": 4,
+      "max_years": 5,
+      "periods": { "3y": 60, "4y": 90, "5y": 106, "6y": 118, "7y": 125, "8y": 133, "9y": 140, "10y_plus": 145 }
+    },
+    {
+      "category": "事務用機器",
+      "code": "0201",
+      "item_name": "コピー機・複合機・事務用機器",
+      "examples": ["複合機(FAX、コピー、スキャナ等)", "コピー機", "スキャナ", "プリンタ", "製図機", "CAD用プロッタ", "タイムレコーダ", "プロジェクタ", "シュレッダー", "小型機器(カッター、断裁機、ラミネータ、ホワイトボード)"],
+      "calculation_method": "クリーニング",
+      "legal_useful_life": 5,
+      "min_years": 4,
+      "max_years": 5,
+      "periods": { "3y": 65, "4y": 83, "5y": 96, "6y": 102, "7y": 108, "8y": 112, "9y": 116, "10y_plus": 120 }
+    },
+    {
+      "category": "事務用機器",
+      "code": "0202",
+      "item_name": "金融機関用機器",
+      "examples": ["郵便料金計器", "手形発行機", "宝くじ番号照合機", "ATM", "CD", "両替機", "入金機", "出納機", "通帳繰越機", "紙幣鑑別機"],
+      "calculation_method": "クリーニング",
+      "legal_useful_life": 5,
+      "min_years": 4,
+      "max_years": 5,
+      "periods": { "3y": 92, "4y": 112, "5y": 125, "6y": 131, "7y": 135, "8y": 138, "9y": 140, "10y_plus": 142 }
+    },
+    {
+      "category": "産業機械",
+      "code": "0301",
+      "item_name": "食品加工機械",
+      "examples": ["食品・飲料・農産物の加工機械", "洗浄・衛生管理機器", "検査、計量、包装、印字等"],
+      "calculation_method": "クリーニング",
+      "legal_useful_life": 6,
+      "min_years": 5,
+      "max_years": 6,
+      "periods": { "3y": 40, "4y": 63, "5y": 83, "6y": 101, "7y": 120, "8y": 133, "9y": 137, "10y_plus": 140 }
+    },
+    {
+      "category": "産業機械",
+      "code": "0302",
+      "item_name": "成形機・プラスチック加工機械",
+      "examples": ["射出成形機", "押出成形機", "中空成形機", "真空成形機", "プラスチック溶接機", "プラスチックカッター"],
+      "calculation_method": "クリーニング",
+      "legal_useful_life": 6,
+      "min_years": 5,
+      "max_years": 6,
+      "periods": { "3y": 48, "4y": 122, "5y": 150, "6y": 155, "7y": 158, "8y": 160, "9y": 161, "10y_plus": 162 }
+    },
+    {
+      "category": "産業機械",
+      "code": "0303",
+      "item_name": "木工機械",
+      "examples": ["製材機", "鋸盤", "かんな盤", "NCルーター", "木工用マシニングセンター", "破砕機", "乾燥機", "集塵機"],
+      "calculation_method": "クリーニング",
+      "legal_useful_life": 6,
+      "min_years": 5,
+      "max_years": 6,
+      "periods": { "3y": 48, "4y": 90, "5y": 120, "6y": 139, "7y": 150, "8y": 160, "9y": 170, "10y_plus": 178 }
+    },
+    {
+      "category": "産業機械",
+      "code": "0304",
+      "item_name": "印刷機",
+      "examples": ["輪転機", "オフセット印刷機", "写真現像機", "業務用デジタル印刷機", "製本機", "製版機(CTP、DTP)"],
+      "calculation_method": "クリーニング",
+      "legal_useful_life": 6,
+      "min_years": 5,
+      "max_years": 6,
+      "periods": { "3y": 48, "4y": 140, "5y": 164, "6y": 170, "7y": 173, "8y": 176, "9y": 178, "10y_plus": 180 }
+    },
+    {
+      "category": "産業機械",
+      "code": "0305",
+      "item_name": "その他の産業機械",
+      "examples": ["各種製造設備", "繊維機械", "半導体製造装置", "包装機械", "産業用ロボット", "金型", "環境関連装置"],
+      "calculation_method": "クリーニング",
+      "legal_useful_life": 6,
+      "min_years": 5,
+      "max_years": 6,
+      "periods": { "3y": 50, "4y": 86, "5y": 103, "6y": 112, "7y": 118, "8y": 125, "9y": 132, "10y_plus": 137 }
+    },
+    {
+      "category": "工作機械",
+      "code": "0401",
+      "item_name": "切削機械",
+      "examples": ["フライス盤", "研削盤", "ボール盤", "ホブ盤", "旋盤", "マシニングセンター", "材料供給装置", "バーフィーダー"],
+      "calculation_method": "クリーニング",
+      "legal_useful_life": 6,
+      "min_years": 5,
+      "max_years": 6,
+      "periods": { "3y": 48, "4y": 90, "5y": 140, "6y": 180, "7y": 195, "8y": 200, "9y": 205, "10y_plus": 210 }
+    },
+    {
+      "category": "工作機械",
+      "code": "0402",
+      "item_name": "プレス機・鍛圧機械",
+      "examples": ["油圧プレス", "機械プレス", "ベンディングマシン", "コイリングマシン", "鍛造機", "ワイヤーフォーミングマシン"],
+      "calculation_method": "クリーニング",
+      "legal_useful_life": 6,
+      "min_years": 5,
+      "max_years": 6,
+      "periods": { "3y": 48, "4y": 90, "5y": 120, "6y": 140, "7y": 159, "8y": 175, "9y": 185, "10y_plus": 192 }
+    },
+    {
+      "category": "工作機械",
+      "code": "0403",
+      "item_name": "その他の工作機械",
+      "examples": ["放電加工機", "レーザー加工機", "プラズマ加工機", "レーザー・マーカー", "溶接機", "鋳造機械"],
+      "calculation_method": "クリーニング",
+      "legal_useful_life": 6,
+      "min_years": 5,
+      "max_years": 6,
+      "periods": { "3y": 48, "4y": 86, "5y": 127, "6y": 163, "7y": 184, "8y": 187, "9y": 190, "10y_plus": 192 }
+    },
+    {
+      "category": "土木建設機械",
+      "code": "0500",
+      "item_name": "土木建設機械",
+      "examples": ["油圧ショベル", "クレーン", "ホイールローダー", "杭打機", "アスファルトフィニッシャー", "建設資材", "アタッチメント"],
+      "calculation_method": "簡便法",
+      "legal_useful_life": 4,
+      "min_years": 3,
+      "max_years": 4,
+      "periods": { "3y": 48, "4y": 82, "5y": 109, "6y": 122, "7y": 130, "8y": 135, "9y": 140, "10y_plus": 142 }
+    },
+    {
+      "category": "輸送用機器",
+      "code": "0600",
+      "item_name": "輸送用機器",
+      "examples": ["フォークリフト", "台車", "カート", "タンクローリー", "車いす", "船舶", "航空機", "電車", "ハンドリフト", "デジタルタコグラフ", "カーナビ"],
+      "calculation_method": "簡便法",
+      "legal_useful_life": 4,
+      "min_years": 3,
+      "max_years": 4,
+      "periods": { "3y": 90, "4y": 100, "5y": 105, "6y": 109, "7y": 112, "8y": 115, "9y": 117, "10y_plus": 120 }
+    },
+    {
+      "category": "医療機器",
+      "code": "0701",
+      "item_name": "診断装置",
+      "examples": ["CT", "CR", "PET", "MRI", "MRA", "超音波診断装置(エコー)", "マンモグラフィ", "X線撮影装置", "アンギオグラフィ"],
+      "calculation_method": "クリーニング",
+      "legal_useful_life": 5,
+      "min_years": 4,
+      "max_years": 5,
+      "periods": { "3y": 74, "4y": 120, "5y": 148, "6y": 157, "7y": 163, "8y": 165, "9y": 168, "10y_plus": 170 }
+    },
+    {
+      "category": "医療機器",
+      "code": "0702",
+      "item_name": "什器・備品(医療・介護施設用)",
+      "examples": ["介護浴槽", "リハビリ機器", "マッサージ機器", "ベッド", "車イス", "監視機器", "調剤台"],
+      "calculation_method": "クリーニング",
+      "legal_useful_life": 6,
+      "min_years": 5,
+      "max_years": 6,
+      "periods": { "3y": 48, "4y": 102, "5y": 135, "6y": 145, "7y": 148, "8y": 150, "9y": 152, "10y_plus": 153 }
+    },
+    {
+      "category": "医療機器",
+      "code": "0703",
+      "item_name": "その他医療機器",
+      "examples": ["手術器具", "治療器", "内視鏡", "手術台", "血圧計", "歯科用機器", "透析装置", "人工呼吸器", "AED"],
+      "calculation_method": "クリーニング",
+      "legal_useful_life": 5,
+      "min_years": 4,
+      "max_years": 5,
+      "periods": { "3y": 66, "4y": 107, "5y": 121, "6y": 135, "7y": 150, "8y": 155, "9y": 160, "10y_plus": 162 }
+    },
+    {
+      "category": "商業用設備",
+      "code": "0802",
+      "item_name": "POS機器",
+      "examples": ["オーダーエントリーシステム", "呼出機", "キッチンプリンター", "店舗用ラベラー", "バーコードリーダー", "POSレジスター", "釣銭機", "対面計量プリンター"],
+      "calculation_method": "クリーニング",
+      "legal_useful_life": 5,
+      "min_years": 4,
+      "max_years": 5,
+      "periods": { "3y": 50, "4y": 77, "5y": 99, "6y": 112, "7y": 118, "8y": 123, "9y": 125, "10y_plus": 128 }
+    },
+    {
+      "category": "商業用設備",
+      "code": "0803",
+      "item_name": "冷暖房設備",
+      "examples": ["エアコン", "クーラー", "ストーブ", "ヒーター"],
+      "calculation_method": "クリーニング",
+      "legal_useful_life": 6,
+      "min_years": 5,
+      "max_years": 6,
+      "periods": { "3y": 48, "4y": 92, "5y": 135, "6y": 148, "7y": 157, "8y": 163, "9y": 170, "10y_plus": 178 }
+    },
+    {
+      "category": "商業用設備",
+      "code": "0804",
+      "item_name": "厨房設備",
+      "examples": ["製氷機", "食器洗浄機", "オーブン", "炊飯器", "電子レンジ", "冷蔵庫", "冷凍庫", "コーヒーメーカー"],
+      "calculation_method": "クリーニング",
+      "legal_useful_life": 6,
+      "min_years": 5,
+      "max_years": 6,
+      "periods": { "3y": 40, "4y": 70, "5y": 93, "6y": 118, "7y": 133, "8y": 144, "9y": 150, "10y_plus": 153 }
+    },
+    {
+      "category": "商業用設備",
+      "code": "0805",
+      "item_name": "店舗用什器・備品",
+      "examples": ["ショーケース", "陳列棚", "買い物カゴ"],
+      "calculation_method": "クリーニング",
+      "legal_useful_life": 6,
+      "min_years": 5,
+      "max_years": 6,
+      "periods": { "3y": 48, "4y": 90, "5y": 109, "6y": 120, "7y": 126, "8y": 128, "9y": 130, "10y_plus": 134 }
+    },
+    {
+      "category": "商業用設備",
+      "code": "0806",
+      "item_name": "娯楽機械設備",
+      "examples": ["ゲーム機", "カラオケ機器", "トレーニング設備", "パチンコ機器", "ボーリング場設備"],
+      "calculation_method": "クリーニング",
+      "legal_useful_life": 5,
+      "min_years": 4,
+      "max_years": 5,
+      "periods": { "3y": 48, "4y": 83, "5y": 105, "6y": 124, "7y": 130, "8y": 136, "9y": 139, "10y_plus": 142 }
+    },
+    {
+      "category": "商業用設備",
+      "code": "0807",
+      "item_name": "その他商業用設備",
+      "examples": ["家具(椅子、机、間仕切り)", "自動販売機", "ガスメーター", "ガソリンスタンド設備", "駐車場設備", "理容・美容設備"],
+      "calculation_method": "クリーニング",
+      "legal_useful_life": 6,
+      "min_years": 5,
+      "max_years": 6,
+      "periods": { "3y": 48, "4y": 85, "5y": 114, "6y": 126, "7y": 138, "8y": 142, "9y": 144, "10y_plus": 144 }
+    },
+    {
+      "category": "その他",
+      "code": "0900",
+      "item_name": "その他",
+      "examples": ["発電機", "電力設備(受変電設備)", "器具・備品(テレビ、ビデオ)", "建物附属設備"],
+      "calculation_method": "簡便法",
+      "legal_useful_life": 6,
+      "min_years": 5,
+      "max_years": 6,
+      "periods": { "3y": 48, "4y": 76, "5y": 98, "6y": 116, "7y": 130, "8y": 140, "9y": 150, "10y_plus": 155 }
+    },
+    {
+      "category": "その他",
+      "code": "0901",
+      "item_name": "理化学機",
+      "examples": ["オシロスコープ", "クロマトグラフ", "電子顕微鏡", "三次元測定機"],
+      "calculation_method": "簡便法",
+      "legal_useful_life": 5,
+      "min_years": 4,
+      "max_years": 5,
+      "periods": { "3y": 51, "4y": 80, "5y": 103, "6y": 120, "7y": 130, "8y": 135, "9y": 140, "10y_plus": 144 }
+    },
+    {
+      "category": "輸送用機器",
+      "code": "0909",
+      "item_name": "自動車(メ)",
+      "examples": ["自動車リース"],
+      "calculation_method": "簡便法",
+      "legal_useful_life": 4,
+      "min_years": 3,
+      "max_years": 4,
+      "periods": { "3y": 48, "4y": 80, "5y": 102, "6y": 108, "7y": 112, "8y": 115, "9y": 118, "10y_plus": 120 }
+    }
+  ]
+}
