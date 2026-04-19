@@ -9,6 +9,7 @@
 """
 
 import json
+import math
 import os
 from typing import Dict, List, Optional, Tuple
 
@@ -93,6 +94,14 @@ def find_item_by_code(code: str) -> Optional[dict]:
     return None
 
 
+def _lease_months_to_period_key(lease_months: int) -> str:
+    """リース期間（月）を periods dict のキーに変換。"""
+    lease_years = math.ceil(lease_months / 12)
+    if lease_years >= 10:
+        return "10y_plus"
+    return f"{lease_years}y"
+
+
 def get_expected_years(item_name: str) -> Dict[str, int]:
     """
     機種名から期待使用期間スコアの辞書を取得。
@@ -159,6 +168,7 @@ def calc_lease_period_fit_score(
             "lease_years": lease_months / 12.0,
             "remaining_years_min": 0,
             "remaining_years_max": 0,
+            "re_lease_count": 0,
             "recommendation": "期待使用期間データが見つかりません",
             "lease_period_check": {"status": "unknown", "message": "データなし"},
         }
@@ -227,7 +237,13 @@ def calc_lease_period_fit_score(
         recommendation = f"残り期間が負（{remaining_avg:.1f}年）。法定耐用年数を超過するため、再リースは実質不可能。買取終了が前提となる"
     
     periods_data = item.get("periods", {})
-    
+    period_key = _lease_months_to_period_key(lease_months)
+    expected_usage_months = periods_data.get(period_key)
+    if expected_usage_months:
+        re_lease_count = max(0, math.ceil((expected_usage_months - lease_months) / 12))
+    else:
+        re_lease_count = 0
+
     return {
         "remanufacture_score": remanufacture_score,
         "assessment_label": assessment_label,
@@ -241,6 +257,7 @@ def calc_lease_period_fit_score(
         "remaining_years_min": remaining_min,
         "remaining_years_max": remaining_max,
         "remaining_years_avg": remaining_avg,
+        "re_lease_count": re_lease_count,
         "recommendation": recommendation,
         "lease_period_check": {
             "status": lease_status,

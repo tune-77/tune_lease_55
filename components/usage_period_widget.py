@@ -121,6 +121,7 @@ def render_usage_period_widget(key_prefix: str = "upw"):
         legal_useful_life = expected_years.get("legal_useful_life", 0)
         remaining_years_avg = fit_result.get("remaining_years_avg", 0)
         lease_check = fit_result.get("lease_period_check", {})
+        re_lease_count = fit_result.get("re_lease_count", 0)
         
         # ── スコア表示（大きく目立つように） ──────────────────────────────────
         if remanufacture_score >= 85:
@@ -300,11 +301,20 @@ def render_usage_period_widget(key_prefix: str = "upw"):
         
         # ── 推奨メッセージ ────────────────────────────────────────────────────
         st.markdown("#### 💡 リース会社向け推奨事項")
-        
+
         recommendation = fit_result.get("recommendation", "")
         if recommendation:
             st.info(f"{recommendation}")
-        
+
+        # ── 再リース回数・期間収益見込み ──────────────────────────────────────
+        if re_lease_count > 0:
+            st.success(
+                f"**再リース {re_lease_count} 回見込み** — "
+                f"リース満了後も {re_lease_count} 年分の期間収益が見込めます。"
+            )
+        else:
+            st.caption("再リース見込みなし（リース期間が期待使用期間に達しています）")
+
         # ── 重大リスク警告 ────────────────────────────────────────────────────
         if remanufacture_score < 60:
             st.error(
