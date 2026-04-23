@@ -684,6 +684,14 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
         grade  = st.radio("格付", grade_opts,
                           index=grade_opts.index(d.get("grade","②4-6 (標準)")),
                           horizontal=True, key="wiz_grade")
+        
+        st.markdown("##### 📈 3期分トレンド格付")
+        _trend_opts = ["2", "3", "4", "5", "6", "8-1", "8-2", "無格付"]
+        c1, c2, c3 = st.columns(3)
+        with c1: t2 = st.selectbox("前々期", _trend_opts, index=_trend_opts.index(d.get("trend_grade_t2", "無格付")) if d.get("trend_grade_t2", "無格付") in _trend_opts else 7, key="wiz_t2")
+        with c2: t1 = st.selectbox("前期", _trend_opts, index=_trend_opts.index(d.get("trend_grade_t1", "無格付")) if d.get("trend_grade_t1", "無格付") in _trend_opts else 7, key="wiz_t1")
+        with c3: t0 = st.selectbox("今期", _trend_opts, index=_trend_opts.index(d.get("trend_grade_t0", "無格付")) if d.get("trend_grade_t0", "無格付") in _trend_opts else 7, key="wiz_t0")
+
         bank_c = st.number_input("うちの銀行与信（千円）", 0, 90_000_000,
                                   value=int(d["bank_credit"]) if "bank_credit" in d else None,
                                   step=100, key="wiz_bankc", placeholder="なければ空欄→0")
@@ -698,7 +706,8 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
         cont_v    = cont    or 0
         _nav_buttons(step, question="信用情報を入力してください",
                      answer=f"格付: {grade} / 銀行与信: {bank_c_v:,}千円 / リース与信: {lease_c_v:,}千円",
-                     updates={"grade": grade, "bank_credit": bank_c_v, "num_bank_credit": bank_c_v,
+                     updates={"grade": grade, "trend_grade_t2": t2, "trend_grade_t1": t1, "trend_grade_t0": t0, 
+                              "bank_credit": bank_c_v, "num_bank_credit": bank_c_v,
                               "lease_credit": lease_c_v, "num_lease_credit": lease_c_v,
                               "contracts": cont_v, "num_contracts": cont_v})
 
@@ -817,6 +826,9 @@ def _submit_wizard(d: dict) -> None:
         "net_assets":      int(d.get("net_assets", 0)),
         "total_assets":    int(d.get("total_assets", 0)),
         "grade":           d.get("grade", "②4-6 (標準)"),
+        "trend_grade_t0":  d.get("trend_grade_t0", "無格付"),
+        "trend_grade_t1":  d.get("trend_grade_t1", "無格付"),
+        "trend_grade_t2":  d.get("trend_grade_t2", "無格付"),
         "bank_credit":     int(d.get("bank_credit", 0)),
         "lease_credit":    int(d.get("lease_credit", 0)),
         "contracts":       int(d.get("contracts", 1)),

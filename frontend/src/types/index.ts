@@ -6,6 +6,9 @@ export interface ScoringFormData {
   industry_sub: string;
   industry_detail: string; // 詳細キーワード
   grade: string;
+  trend_grade_t0?: string; // 今期格付 (AI分析用)
+  trend_grade_t1?: string; // 前期格付 (AI分析用)
+  trend_grade_t2?: string; // 前々期格付 (AI分析用)
   customer_type: string;
   main_bank: string;
   competitor: string;
@@ -68,6 +71,9 @@ export const defaultFormData: ScoringFormData = {
   industry_sub: "06 総合工事業",
   industry_detail: "",
   grade: "②4-6 (標準)",
+  trend_grade_t0: "無格付",
+  trend_grade_t1: "無格付",
+  trend_grade_t2: "無格付",
   customer_type: "既存先",
   main_bank: "メイン先",
   competitor: "競合なし",

@@ -2,15 +2,15 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "lease_logic_sumaho12",
+      "name": "tune_lease_55",
       "runtimeExecutable": "streamlit",
-      "runtimeArgs": ["run", "lease_logic_sumaho12.py"],
+      "runtimeArgs": ["run", "tune_lease_55.py"],
       "port": 8503,
       "autoPort": false
     },
     {
       "name": "frontend",
-      "runtimeExecutable": "/Users/kobayashiisaoryou/clawd/lease_logic_sumaho12/frontend/node_modules/.bin/next",
+      "runtimeExecutable": "/Users/kobayashiisaoryou/clawd/tune_lease_55/frontend/node_modules/.bin/next",
       "runtimeArgs": ["dev", "--hostname", "0.0.0.0"],
       "cwd": "frontend",
       "port": 3000,

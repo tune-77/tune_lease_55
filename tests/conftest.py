@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock
 
-# lease_logic_sumaho12/ をパスに追加
+# tune_lease_55/ をパスに追加
 PKG_DIR = Path(__file__).parent.parent
 REPO_DIR = PKG_DIR.parent
 sys.path.insert(0, str(PKG_DIR))

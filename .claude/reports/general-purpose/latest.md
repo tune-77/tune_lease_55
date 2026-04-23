@@ -56,7 +56,7 @@ reads_from: [.claude/reports/file-searcher/latest.md]
 
 ### 生成ファイル
 
-- `/Users/kobayashiisaoryou/clawd/lease_logic_sumaho12/data/improvement_report_data.py`
+- `/Users/kobayashiisaoryou/clawd/tune_lease_55/data/improvement_report_data.py`
   - `REPORT_DATA` dict を定義
   - stats / industry_ranking / score_distribution / recent_cases / improvement_proposals の5セクション
 

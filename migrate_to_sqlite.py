@@ -4,7 +4,7 @@ import json
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
-DATA_DIR = os.path.join(_REPO_ROOT, "lease_logic_sumaho12", "data")
+DATA_DIR = os.path.join(_REPO_ROOT, "tune_lease_55", "data")
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 

@@ -15,7 +15,7 @@
    results = {}
 
    modules = [
-       ('コア', ['lease_logic_sumaho12', 'data_cases', 'rule_manager']),
+       ('コア', ['tune_lease_55', 'data_cases', 'rule_manager']),
        ('スコアリング', ['scoring_core', 'asset_scorer', 'total_scorer', 'category_config']),
        ('Slack/AI', ['slack_screening', 'slack_bot', 'ai_chat', 'anything_api']),
    ]

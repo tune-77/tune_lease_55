@@ -272,7 +272,7 @@ def run_agent_query(user_input: str, system_context: str, api_key: str, model_na
             ]
             
             # 念のため、ちゃんと画像部分ができているかファイルに書き出して確認
-            with open("/Users/kobayashiisaoryou/clawd/lease_logic_sumaho12/debug_agent_payload.txt", "w") as f:
+            with open("/Users/kobayashiisaoryou/clawd/tune_lease_55/debug_agent_payload.txt", "w") as f:
                 f.write(f"IMAGE WAS PASSED TO RUN_AGENT_QUERY!\n{str(message_content)}")
                 
             # 実データは省略なし
@@ -282,7 +282,7 @@ def run_agent_query(user_input: str, system_context: str, api_key: str, model_na
             ]
             langchain_messages.append(HumanMessage(content=real_message_content))
         else:
-            with open("/Users/kobayashiisaoryou/clawd/lease_logic_sumaho12/debug_agent_payload.txt", "w") as f:
+            with open("/Users/kobayashiisaoryou/clawd/tune_lease_55/debug_agent_payload.txt", "w") as f:
                 f.write(f"IMAGE WAS NOT PASSED TO RUN_AGENT_QUERY. BASE64 WAS NONE.\nUser Input: {user_input}")
                 
             langchain_messages.append(HumanMessage(content=user_input))

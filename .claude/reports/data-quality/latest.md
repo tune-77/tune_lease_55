@@ -98,7 +98,7 @@ conn.commit()
 - **[深刻度: MED]** `past_cases` の `nenshu` フィールドに 1兆円超の異常値が混入（1000000000, 500000000）。千円単位系でこの値は存在し得ない
 - **[深刻度: MED]** `subsidies` と `subsidy_master` が重複テーブルとして存在。`ものづくり補助金` の max_amount が前者 1250万円、後者 1250万円（一致）だが `事業再構築補助金` は前者 1500万円、後者 7000万円と不一致
 - **[深刻度: LOW]** `goofy-heyrovsky` ワークツリーの `data/` ディレクトリに `lease_data.db` が存在しない（ワークツリー間でデータが共有されていない）
-- **[深刻度: LOW]** `lease_logic_sumaho12/.claude/worktrees/lease_logic_sumaho12/data/lease_data.db` が 12KB・`past_cases` 0件で空になっている
+- **[深刻度: LOW]** `tune_lease_55/.claude/worktrees/tune_lease_55/data/lease_data.db` が 12KB・`past_cases` 0件で空になっている
 
 ---
 

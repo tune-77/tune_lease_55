@@ -437,7 +437,7 @@ def forecast_placeholder(df: pd.DataFrame) -> None:
 def render_financial_analysis() -> None:
     """
     「📊 3期財務分析」ページ全体を描画する。
-    lease_logic_sumaho12.py からルーティングされて呼ばれる。
+    tune_lease_55.py からルーティングされて呼ばれる。
     """
     import httpx  # type: ignore
 

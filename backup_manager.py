@@ -11,8 +11,8 @@ from datetime import datetime
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _DATA_DIR   = os.path.join(_SCRIPT_DIR, "data")
 _BACKUP_DIR = os.path.join(_DATA_DIR, "backups")
-# lease_data.db の実体は lease_logic_sumaho12/data/ にある
-_LEASE_DB   = os.path.join(os.path.dirname(_SCRIPT_DIR), "lease_logic_sumaho12", "data", "lease_data.db")
+# lease_data.db の実体は tune_lease_55/data/ にある
+_LEASE_DB   = os.path.join(os.path.dirname(_SCRIPT_DIR), "tune_lease_55", "data", "lease_data.db")
 
 MAX_GENS = 7  # 保持する世代数
 

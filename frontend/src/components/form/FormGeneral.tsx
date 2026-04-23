@@ -213,6 +213,32 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
           </div>
         </div>
 
+        <div className="mt-6 bg-slate-50 border border-slate-200 p-4 rounded-xl">
+          <label className="text-sm font-bold text-slate-700 block mb-3 flex items-center gap-2">
+            <span className="text-indigo-500">📈</span> 3期分トレンド格付 <span className="text-xs font-normal text-slate-500">（将来のAI分析・モメンタム予測用）</span>
+          </label>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-500 block">前々期</label>
+              <select name="trend_grade_t2" value={data.trend_grade_t2 || "無格付"} onChange={handleChange} className="w-full bg-white border border-slate-300 rounded-lg p-2 outline-none focus:ring-2 focus:ring-indigo-500">
+                <option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>8-1</option><option>8-2</option><option>無格付</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-500 block">前期</label>
+              <select name="trend_grade_t1" value={data.trend_grade_t1 || "無格付"} onChange={handleChange} className="w-full bg-white border border-slate-300 rounded-lg p-2 outline-none focus:ring-2 focus:ring-indigo-500">
+                <option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>8-1</option><option>8-2</option><option>無格付</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-500 block">今期</label>
+              <select name="trend_grade_t0" value={data.trend_grade_t0 || "無格付"} onChange={handleChange} className="w-full bg-white border border-slate-300 rounded-lg p-2 outline-none focus:ring-2 focus:ring-indigo-500">
+                <option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>8-1</option><option>8-2</option><option>無格付</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">既存の契約数 (件)</label>

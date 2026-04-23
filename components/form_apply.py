@@ -9,7 +9,7 @@ from category_config import ASSET_ID_TO_CATEGORY
 
 @st.fragment
 def _fragment_nenshu():
-    # 本来は lease_logic_sumaho12.py の _fragment_nenshu() で定義されているものと同じですが、
+    # 本来は tune_lease_55.py の _fragment_nenshu() で定義されているものと同じですが、
     # 依存関係を減らすため、呼び出し元から関数を渡すか、ここで再定義します。
     pass # 呼び出し側から描画関数を受け取る形で実装します。
 
@@ -341,6 +341,16 @@ def render_apply_form(
 
             # default値をリスト内の文字列と完全に一致させる必要があります
             grade = st.segmented_control("格付", ["①1-3 (優良)", "②4-6 (標準)", "③要注意以下", "④無格付"], default=st.session_state.get("grade", "②4-6 (標準)"), key="grade")
+            
+            st.markdown("#### 📈 3期分トレンド格付（将来のAI分析・モメンタム予測用）")
+            _trend_opts = ["2", "3", "4", "5", "6", "8-1", "8-2", "無格付"]
+            t_col1, t_col2, t_col3 = st.columns(3)
+            with t_col1:
+                trend_grade_t2 = st.selectbox("前々期", _trend_opts, index=_trend_opts.index(st.session_state.get("trend_grade_t2", "無格付")) if st.session_state.get("trend_grade_t2", "無格付") in _trend_opts else 7, key="trend_grade_t2")
+            with t_col2:
+                trend_grade_t1 = st.selectbox("前期", _trend_opts, index=_trend_opts.index(st.session_state.get("trend_grade_t1", "無格付")) if st.session_state.get("trend_grade_t1", "無格付") in _trend_opts else 7, key="trend_grade_t1")
+            with t_col3:
+                trend_grade_t0 = st.selectbox("今期", _trend_opts, index=_trend_opts.index(st.session_state.get("trend_grade_t0", "無格付")) if st.session_state.get("trend_grade_t0", "無格付") in _trend_opts else 7, key="trend_grade_t0")
             st.markdown("### うちの銀行与信")
             st.caption("当社の与信です（総銀行与信ではありません）")
             bank_credit = _slider_and_number("bank_credit", "bank_credit", 10000, 0, 3000000, 100, 1, max_val_number=90_000_000)
@@ -418,6 +428,9 @@ def render_apply_form(
         "net_assets": net_assets,
         "total_assets": total_assets,
         "grade": grade,
+        "trend_grade_t0": trend_grade_t0,
+        "trend_grade_t1": trend_grade_t1,
+        "trend_grade_t2": trend_grade_t2,
         "bank_credit": bank_credit,
         "lease_credit": lease_credit,
         "contracts": contracts,

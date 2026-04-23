@@ -32,7 +32,7 @@ import streamlit as st
 # パス設定
 # ==============================================================================
 _DIR = os.path.dirname(os.path.abspath(__file__))
-_BASE = os.path.dirname(_DIR)  # lease_logic_sumaho12/
+_BASE = os.path.dirname(_DIR)  # tune_lease_55/
 GUNSHI_DB_PATH = os.path.join(_BASE, "data", "lease_data.db")
 
 # Ollama ホスト（環境変数で上書き可）

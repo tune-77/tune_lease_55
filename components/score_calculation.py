@@ -836,7 +836,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 # [物理ファイル通信] APIへの確実なデータ受け渡し用 (絶対パス固定)
                 import json
                 try:
-                    _bridge_file = "/Users/kobayashiisaoryou/clawd/lease_logic_sumaho12/scoring_output_bridge.json"
+                    _bridge_file = "/Users/kobayashiisaoryou/clawd/tune_lease_55/scoring_output_bridge.json"
                     with open(_bridge_file, "w", encoding="utf-8") as f:
                         json.dump(res_dict, f, ensure_ascii=False)
                     print(f"[CORE_DEBUG] SUCCESS: Result written to {_bridge_file}. Score={final_score}")
@@ -1162,6 +1162,9 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         "lease_credit": lease_credit,
                         "contracts": contracts,
                         "grade": grade,
+                        "trend_grade_t0": form_result.get("trend_grade_t0", "無格付"),
+                        "trend_grade_t1": form_result.get("trend_grade_t1", "無格付"),
+                        "trend_grade_t2": form_result.get("trend_grade_t2", "無格付"),
                         "contract_type": contract_type,
                         "deal_source": deal_source,
                         "lease_term": lease_term,
@@ -1211,7 +1214,11 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     "contracts": contracts, "lease_term": lease_term,
                     "acquisition_cost": acquisition_cost, "acceptance_year": acceptance_year,
                     "selected_major": selected_major, "selected_sub": selected_sub,
-                    "grade": grade, "main_bank": main_bank, "competitor": competitor,
+                    "grade": grade, 
+                    "trend_grade_t0": form_result.get("trend_grade_t0", "無格付"),
+                    "trend_grade_t1": form_result.get("trend_grade_t1", "無格付"),
+                    "trend_grade_t2": form_result.get("trend_grade_t2", "無格付"),
+                    "main_bank": main_bank, "competitor": competitor,
                     "num_competitors": num_competitors, "deal_occurrence": deal_occurrence,
                     "customer_type": customer_type, "contract_type": contract_type,
                     "deal_source": deal_source, "customer_code": form_result.get("customer_code", ""),

@@ -22,7 +22,7 @@ from coeff_definitions import COEFFS
 from charts import _equity_ratio_display
 
 # ファイルパス（絶対パス固定）
-_DATA_DIR = "/Users/kobayashiisaoryou/clawd/lease_logic_sumaho12/data"
+_DATA_DIR = "/Users/kobayashiisaoryou/clawd/tune_lease_55/data"
 CASES_FILE = os.path.join(os.path.dirname(_DATA_DIR), "past_cases.jsonl") # obsolete
 DB_PATH = os.path.join(_DATA_DIR, "lease_data.db")
 COEFF_OVERRIDES_FILE = os.path.join(_DATA_DIR, "coeff_overrides.json")

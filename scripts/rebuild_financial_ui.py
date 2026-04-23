@@ -307,10 +307,10 @@ export default function TimesFMPage() {
 }
 """
 
-with open('/Users/kobayashiisaoryou/clawd/lease_logic_sumaho12/frontend/src/app/financial/page.tsx', 'w') as f:
+with open('/Users/kobayashiisaoryou/clawd/tune_lease_55/frontend/src/app/financial/page.tsx', 'w') as f:
     f.write(FINANCIAL_CODE)
 
-with open('/Users/kobayashiisaoryou/clawd/lease_logic_sumaho12/frontend/src/app/timesfm/page.tsx', 'w') as f:
+with open('/Users/kobayashiisaoryou/clawd/tune_lease_55/frontend/src/app/timesfm/page.tsx', 'w') as f:
     f.write(TIMESFM_CODE)
 
 print("Rebuilt UI for financial and timesfm!")

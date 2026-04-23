@@ -28,7 +28,7 @@ reads_from: []
 | `backup_manager.py` | バックアップUI（サイドバー） | 1箇所 |
 | `draft_manager.py` | 下書き保存・復元UI（サイドバー） | 3箇所 |
 | `future_simulation.py` | 将来シミュレーションのPlotlyチャート表示 | 2箇所 |
-| `lease_logic_sumaho12.py` | エントリポイント・審査ルール設定ページのDataFrame | 1箇所 |
+| `tune_lease_55.py` | エントリポイント・審査ルール設定ページのDataFrame | 1箇所 |
 | `components/agent_hub.py` | エージェントHub（異常検知・数学者・ビジュアルレポート・週次バッチ） | 4箇所 |
 | `components/agent_team.py` | エージェントチーム会議UI（コード生成・プリセット・議論ボタン） | 6箇所 |
 | `components/ai_consultation.py` | AI相談・議論タブのボタン群 | 4箇所 |

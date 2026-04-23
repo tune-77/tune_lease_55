@@ -79,7 +79,7 @@ def run_pdca_api(max_cases: int = 20):
 
 """
 
-with open('/Users/kobayashiisaoryou/clawd/lease_logic_sumaho12/api/main.py', 'a') as f:
+with open('/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py', 'a') as f:
     f.write(code_to_add)
 
 print("Appended new Analysis/Log APIs to main.py")

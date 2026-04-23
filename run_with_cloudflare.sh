@@ -15,7 +15,7 @@ cd "$(dirname "$0")"
 echo "Streamlit を起動しています..."
 python3 -m streamlit run lease_logic_sumaho12.py \
   --server.address 0.0.0.0 \
-  --server.port 8501 &
+  --server.port 8506 &
 STREAMLIT_PID=$!
 
 # 終了時に Streamlit を止める
@@ -34,12 +34,12 @@ if ! kill -0 $STREAMLIT_PID 2>/dev/null; then
   exit 1
 fi
 
-echo "Streamlit 起動済み (port 8501)。Cloudflare Tunnel で公開します..."
+echo "Streamlit 起動済み (port 8506)。Cloudflare Tunnel で公開します..."
 echo "表示された https://xxxx.trycloudflare.com にアクセスしてください。"
 echo ""
 
 # cloudflared でトンネル開始（アカウント不要・無料）
-cloudflared tunnel --url http://localhost:8501
+cloudflared tunnel --url http://localhost:8506
 
 # cloudflared が終了したら Streamlit も止める
 kill $STREAMLIT_PID 2>/dev/null

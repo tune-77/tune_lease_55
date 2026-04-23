@@ -5,7 +5,7 @@
 審査スコアリング・レポート・エージェント議論・リースくんウィザードを提供する。
 
 ## 主要ファイル構成
-- `lease_logic_sumaho12.py` — Streamlit エントリポイント・ページルーティング
+- `tune_lease_55.py` — Streamlit エントリポイント・ページルーティング
 - `components/` — 各画面コンポーネント（chat_wizard, report, home, sidebar 等）
 - `scoring/` — AIスコアリングロジック（industry_hybrid_model.py 等）
 - `asset_scorer.py`, `total_scorer.py`, `category_config.py`, `scoring_core.py` — スコアリング中核（ルート直下）

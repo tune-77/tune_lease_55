@@ -61,7 +61,7 @@ def run_full_scoring_api(inputs: dict) -> dict:
     print("\n[DEBUG] --- run_full_scoring_api START ---")
     
     # 物理ファイルを事前に削除 (古い結果を拾わないため)
-    RESULT_FILE = "/Users/kobayashiisaoryou/clawd/lease_logic_sumaho12/scoring_output_bridge.json"
+    RESULT_FILE = "/Users/kobayashiisaoryou/clawd/tune_lease_55/scoring_output_bridge.json"
     if os.path.exists(RESULT_FILE):
         try: os.remove(RESULT_FILE)
         except: pass

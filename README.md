@@ -23,8 +23,8 @@
 ## 起動方法
 
 ```bash
-cd /path/to/lease_logic_sumaho12
-streamlit run lease_logic_sumaho12.py --server.port 8502
+cd /path/to/tune_lease_55
+streamlit run tune_lease_55.py --server.port 8502
 ```
 
 APIキーの設定（初回のみ）:
@@ -76,8 +76,8 @@ GEMINI_API_KEY = "your-gemini-api-key"
 ## フォルダ構成
 
 ```
-lease_logic_sumaho12/
-├── lease_logic_sumaho12.py       # メインアプリ（エントリーポイント）
+tune_lease_55/
+├── tune_lease_55.py       # メインアプリ（エントリーポイント）
 ├── scoring_core.py               # スコア計算コア
 ├── coeff_definitions.py          # 全業種×既存先/新規先の回帰係数定義
 ├── data_cases.py                 # 案件データの読み書き

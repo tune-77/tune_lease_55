@@ -78,4 +78,4 @@ st.markdown("""
 - ✅ リース期間 ≥ 法定下限：安全圏（OK）→ 適格リース判定の可能性高い
 """)
 
-st.caption("テスト用アプリ | lease_logic_sumaho12")
+st.caption("テスト用アプリ | tune_lease_55")

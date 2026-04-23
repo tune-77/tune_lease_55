@@ -1,7 +1,7 @@
 #!/bin/bash
 # Next.js版 審査アプリ(nl) 一括起動スクリプト
 
-PROJECT_ROOT="/Users/kobayashiisaoryou/clawd/lease_logic_sumaho12"
+PROJECT_ROOT="/Users/kobayashiisaoryou/clawd/tune_lease_55"
 cd "$PROJECT_ROOT"
 
 echo "=========================================="

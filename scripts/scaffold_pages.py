@@ -22,7 +22,7 @@ routes = {
     'corporate-number': '企業番号設定'
 }
 
-base_path = '/Users/kobayashiisaoryou/clawd/lease_logic_sumaho12/frontend/src/app'
+base_path = '/Users/kobayashiisaoryou/clawd/tune_lease_55/frontend/src/app'
 
 template = """
 "use client";

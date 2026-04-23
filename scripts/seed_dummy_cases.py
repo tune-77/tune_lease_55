@@ -3,7 +3,7 @@ import json
 import datetime
 import os
 
-db_path = "/Users/kobayashiisaoryou/clawd/lease_logic_sumaho12/data/lease_data.db"
+db_path = "/Users/kobayashiisaoryou/clawd/tune_lease_55/data/lease_data.db"
 os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
 conn = sqlite3.connect(db_path)

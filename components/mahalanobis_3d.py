@@ -117,7 +117,7 @@ def _get_current_case_vec() -> np.ndarray | None:
     """セッション状態から現在審査中の案件特徴量ベクトルを取得する。"""
     ss = st.session_state
 
-    # 審査フォームの直近入力値（lease_logic_sumaho12.py の session_state キー）
+    # 審査フォームの直近入力値（tune_lease_55.py の session_state キー）
     inputs = ss.get("form_inputs") or ss.get("_last_inputs") or {}
     if inputs:
         row = [float(inputs.get(f, 0) or 0) for f in FEATURES]

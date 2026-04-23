@@ -45,7 +45,7 @@ reads_from: []
 ```bash
 python -c "
 import sys; sys.path.insert(0, '.')
-import lease_logic_sumaho12
+import tune_lease_55
 import data_cases
 import rule_manager
 import scoring_core

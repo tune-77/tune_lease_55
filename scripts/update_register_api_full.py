@@ -53,7 +53,7 @@ def register_case_result(req: CaseRegistration):
 
 # main.py の当該箇所を置換するか、追記する。
 # 今回は簡単のため、前回追記した部分を特定して置換するために、一時的なスクリプトを作成
-with open('/Users/kobayashiisaoryou/clawd/lease_logic_sumaho12/api/main.py', 'r') as f:
+with open('/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py', 'r') as f:
     content = f.read()
 
 import re
@@ -61,6 +61,6 @@ import re
 pattern = r'class CaseRegistration\(BaseModel\):.*?return \{"status": "success", "message": f"Status updated to \{req.status\}"\}'
 new_content = re.sub(pattern, code_to_update.strip(), content, flags=re.DOTALL)
 
-with open('/Users/kobayashiisaoryou/clawd/lease_logic_sumaho12/api/main.py', 'w') as f:
+with open('/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py', 'w') as f:
     f.write(new_content)
 print("Updated register_case_result API with full fields")

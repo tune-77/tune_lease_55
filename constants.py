@@ -2,7 +2,7 @@ import os
 import json
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-BASE_DIR = os.path.dirname(_SCRIPT_DIR) if os.path.basename(_SCRIPT_DIR) == "lease_logic_sumaho12" else _SCRIPT_DIR
+BASE_DIR = os.path.dirname(_SCRIPT_DIR) if os.path.basename(_SCRIPT_DIR) == "tune_lease_55" else _SCRIPT_DIR
 
 # ==============================================================================
 # UI スタイル定義

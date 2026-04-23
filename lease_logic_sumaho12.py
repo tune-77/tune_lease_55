@@ -1,7 +1,7 @@
 """
-温水式リース審査AI - lease_logic_sumaho12
+温水式リース審査AI - tune_lease_55
 sumaho10(X) からモジュール分割（ai_chat / web_services）を完了した版。
-起動: streamlit run lease_logic_sumaho12/lease_logic_sumaho12.py （リポジトリルートで実行）
+起動: streamlit run tune_lease_55/tune_lease_55.py （リポジトリルートで実行）
 """
 import sys
 import os
@@ -908,6 +908,19 @@ elif mode == "📋 審査・分析":
 
     with menu_tabs[0]:  # 新規審査
         st.title("🏢 温水式 リース審査アシスタント")
+        
+        # --- マクロ環境アラート (コンセプトドリフト検知) ---
+        try:
+            from macro_drift_monitor import check_concept_drift
+            drift_res = check_concept_drift(recent_days=14, threshold_points=3.0, min_recent_cases=3)
+            if drift_res.get("is_drift"):
+                st.error(f"⚠️ **【マクロ環境アラート】** {drift_res['message']}", icon="🚨")
+                st.caption("※過去の学習済み審査係数が現状に対して楽観的すぎる可能性があります。「係数分析・更新」画面で係数のチューニングを検討してください。")
+            elif "異常なし" in drift_res.get("message", ""):
+                st.info(f"📊 **マクロ環境監視**: {drift_res['message']}")
+        except Exception:
+            pass
+        # ---------------------------------------------------
         if (Path(__file__).parent / "static" / "intro_video.mp4").exists():
             st.markdown("""
 <video width="10%" autoplay muted loop playsinline style="display:block; border-radius:6px;">
@@ -976,6 +989,9 @@ elif mode == "📋 審査・分析":
                 net_assets = form_result["net_assets"]
                 total_assets = form_result["total_assets"]
                 grade = form_result["grade"]
+                trend_grade_t0 = form_result["trend_grade_t0"]
+                trend_grade_t1 = form_result["trend_grade_t1"]
+                trend_grade_t2 = form_result["trend_grade_t2"]
                 bank_credit = form_result["bank_credit"]
                 lease_credit = form_result["lease_credit"]
                 contracts = form_result["contracts"]
@@ -1003,6 +1019,10 @@ elif mode == "📋 審査・分析":
                 st.session_state.item7_other = item7_other
                 st.session_state.net_assets = net_assets
                 st.session_state.total_assets = total_assets
+                st.session_state.grade = grade
+                st.session_state.trend_grade_t0 = trend_grade_t0
+                st.session_state.trend_grade_t1 = trend_grade_t1
+                st.session_state.trend_grade_t2 = trend_grade_t2
                 st.session_state.bank_credit = bank_credit
                 st.session_state.lease_credit = lease_credit
                 st.session_state.contracts = contracts

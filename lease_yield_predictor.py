@@ -182,6 +182,11 @@ def predict_yield(conn: sqlite3.Connection, inputs: dict) -> dict:
     grade           = inputs.get("grade", "")
     borrower_score  = float(inputs.get("borrower_score", 70.0))
 
+    # 将来分析用の3期分格付トレンド（安全網つきで取得）
+    trend_grade_t0 = inputs.get("trend_grade_t0", grade)
+    trend_grade_t1 = inputs.get("trend_grade_t1", trend_grade_t0)
+    trend_grade_t2 = inputs.get("trend_grade_t2", trend_grade_t1)
+
     term_years_raw  = lease_term_months / 12
     term_years      = _nearest_term(term_years_raw)
 

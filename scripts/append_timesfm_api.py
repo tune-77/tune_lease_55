@@ -211,6 +211,6 @@ def api_tfm_financial_paths(req: TfmFinancialPathsRequest):
     }
 """
 
-with open('/Users/kobayashiisaoryou/clawd/lease_logic_sumaho12/api/main.py', 'a') as f:
+with open('/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py', 'a') as f:
     f.write(code_to_append)
 print("Appended API endpoints to main.py")

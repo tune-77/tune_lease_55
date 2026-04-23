@@ -8,9 +8,9 @@ import os
 
 # このパッケージのディレクトリ
 _PKG_DIR = os.path.dirname(os.path.abspath(__file__))
-# サブパッケージ (lease_logic_sumaho12/) として動かす場合は親を BASE_DIR とし、
+# サブパッケージ (tune_lease_55/) として動かす場合は親を BASE_DIR とし、
 # フラット展開（worktree 等）では _PKG_DIR 自身を使う
-BASE_DIR = os.path.dirname(_PKG_DIR) if os.path.basename(_PKG_DIR) == "lease_logic_sumaho12" else _PKG_DIR
+BASE_DIR = os.path.dirname(_PKG_DIR) if os.path.basename(_PKG_DIR) == "tune_lease_55" else _PKG_DIR
 _DATA_DIR = os.path.join(BASE_DIR, "data")
 
 # 学習モデル（スコアリング）のパス。未設定なら scoring/models/industry_specific を参照

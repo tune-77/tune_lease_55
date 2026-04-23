@@ -12,7 +12,7 @@ from contextlib import closing
 import streamlit as st
 
 # DB パス (絶対パス固定)
-_DB_ROOT = os.path.join("/Users/kobayashiisaoryou/clawd/lease_logic_sumaho12", "data")
+_DB_ROOT = os.path.join("/Users/kobayashiisaoryou/clawd/tune_lease_55", "data")
 _LEASE_DB_PATH = os.path.join(_DB_ROOT, "lease_data.db")
 
 
@@ -37,11 +37,13 @@ def _load_pending() -> list[dict]:
             industry_major = data.get("industry_major", "")
             industry_sub = r["industry_sub"] or data.get("industry_sub", "")
             company_name = data.get("company_name", "")
+            company_no = data.get("company_no", "")
             result_dict = data.get("result", {}) or {}
             judgment = result_dict.get("hantei", data.get("judgment", ""))
             contract_prob = result_dict.get("contract_prob", data.get("contract_prob"))
             memo_for_display = json.dumps({
                 "company_name": company_name,
+                "company_no": company_no,
                 "industry_major": industry_major,
                 "industry_sub": industry_sub,
                 **{k: v for k, v in data.items() if k not in ("result", "data", "inputs")},
@@ -182,8 +184,12 @@ def render_status_registration():
         memo = _parse_memo(record["memo"])
 
         company_name = memo.get("company_name", "").strip()
+        company_no = memo.get("company_no", "").strip()
         industry = record.get("industry_sub", "") or record.get("industry_major", "") or "業種不明"
+        
         display_name = company_name if company_name else industry
+        if company_no:
+            display_name = f"[{company_no}] {display_name}"
 
         score = record.get("score") or 0.0
         judgment = record.get("judgment", "—")
@@ -218,6 +224,8 @@ def render_status_registration():
                     st.write(f"**顧客区分**: {record.get('customer_type', '—')}")
                     if company_name:
                         st.write(f"**会社名**: {company_name}")
+                    if company_no:
+                        st.write(f"**企業番号**: {company_no}")
                     st.write(f"**判定**: {judgment}")
                     st.write(f"**スコア**: {score:.1f}")
                     if record.get("contract_prob") is not None:
@@ -225,17 +233,6 @@ def render_status_registration():
                     # memo から追加情報
                     if memo.get("lease_amount"):
                         st.write(f"**リース物件**: {memo.get('lease_amount')}")
-                st.write(f"**業種**: {industry}")
-                st.write(f"**顧客区分**: {record.get('customer_type', '—')}")
-                if company_name:
-                    st.write(f"**会社名**: {company_name}")
-                st.write(f"**判定**: {judgment}")
-                st.write(f"**スコア**: {score:.1f}")
-                if record.get("contract_prob") is not None:
-                    st.write(f"**成約確率**: {record['contract_prob']:.1f}%")
-                # memo から追加情報
-                if memo.get("lease_amount"):
-                    st.write(f"**リース物件**: {memo.get('lease_amount')}")
 
             with col_form:
                 with st.form(f"status_form_{rec_id}_{idx}"):

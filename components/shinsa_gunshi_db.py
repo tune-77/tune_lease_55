@@ -14,8 +14,8 @@ from datetime import datetime
 # パス設定
 # ==============================================================================
 _DIR = os.path.dirname(os.path.abspath(__file__))
-_BASE = os.path.dirname(_DIR)  # lease_logic_sumaho12/
-GUNSHI_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(_BASE)), "lease_logic_sumaho12", "data", "lease_data.db")
+_BASE = os.path.dirname(_DIR)  # tune_lease_55/
+GUNSHI_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(_BASE)), "tune_lease_55", "data", "lease_data.db")
 
 
 # ==============================================================================

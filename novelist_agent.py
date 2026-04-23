@@ -85,19 +85,43 @@ def _collect_recent_screenings(n: int = 5) -> list[dict]:
     """最近の審査案件を取得してネタにする。"""
     try:
         conn = sqlite3.connect(_LEASE_DB)
+        conn.row_factory = sqlite3.Row
         rows = conn.execute("""
-            SELECT company_name, industry, total_score, grade, created_at
-            FROM screening_results
-            ORDER BY created_at DESC
+            SELECT id, timestamp as created_at, score, industry_sub, data
+            FROM past_cases
+            ORDER BY timestamp DESC
             LIMIT ?
         """, (n,)).fetchall()
         conn.close()
-        return [
-            {"company": r[0] or "某社", "industry": r[1] or "不明業種",
-             "score": r[2], "grade": r[3], "date": r[4]}
-            for r in rows
-        ]
-    except Exception:
+        
+        results = []
+        for r in rows:
+            case_id = r["id"]
+            score = r["score"] or 0.0
+            industry = r["industry_sub"] or "不明業種"
+            created_at = r["created_at"]
+            
+            try:
+                data = json.loads(r["data"] or "{}")
+            except Exception:
+                data = {}
+            
+            company = data.get("company_name") or "某社"
+            company_no = data.get("company_no") or ""
+            res_dict = data.get("result", {})
+            grade = res_dict.get("hantei", "—")
+            
+            results.append({
+                "case_id": case_id,
+                "company_no": company_no,
+                "company": company,
+                "industry": industry,
+                "score": score,
+                "grade": grade,
+                "date": created_at
+            })
+        return results
+    except Exception as e:
         return []
 
 
@@ -220,7 +244,7 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
         neta_lines.append("\n【今週の審査案件（ネタ素材）】")
         for s in screenings:
             neta_lines.append(
-                f"  ・{s['company']}（{s['industry']}）スコア{s['score']}点 {s['grade']}"
+                f"  ・[case_id: {s['case_id']}] {s['company']}（{s['industry']}）スコア{s['score']}点 {s['grade']}"
             )
     else:
         neta_lines.append("\n【今週の審査】案件データなし（エージェント達の日常でOK）")
@@ -269,10 +293,8 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
 ・今話に登場する企業が過去に登場した文明と同じなら、その後日談として書いてもよい
 ・「あの時リースした設備のおかげで○○が起きた（数千年後）」という因果を描く
 ・逆に過去に承認した文明が「破産」として登場したら、その文明の滅亡を静かに描く
-・エージェントたちは「あの会社また来た」「あの会社潰れたのか」程度にしか思わない
-・読者だけが「あれは○○の文明が滅びたということだ」と気づく
 ・末尾の小説内に【文明記録メモ】として出力する形式でお願いします：
-  civ_id: （英字ID）
+  civ_id: （必ず今週の審査案件に付与されている case_id の数字をそのまま使用すること。例：45）
   company_name: （登場企業名）
   industry: （業種）
   civ_era: （時代 例：青銅器時代・情報黎明期・第三銀河暦など自由に）
@@ -394,7 +416,7 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
         neighbor_lines = ["【🌌隣接文明リスト（交流・対立する文明として物語に登場させること）】"]
         for c in neighbor_civs:
             neighbor_lines.append(
-                f"  ・{c['company']}（{c['industry']}、スコア{c['score']}点、格付{c['grade']}）"
+                f"  ・[case_id: {c['case_id']}] {c['company']}（{c['industry']}、スコア{c['score']}点、格付{c['grade']}）"
             )
         neighbor_lines.append("上記の各文明についても【文明記録メモ】を必ず出力すること。")
         neta_lines.append("\n".join(neighbor_lines))
