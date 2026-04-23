@@ -1774,6 +1774,15 @@ def _render_novelist_panel() -> None:
         st.markdown(f"#### 📰 {week_label} 第{ep_no}話")
         st.markdown(f"**「{title}」**")
         st.markdown(body)
+        
+        if str(ep_no).isdigit():
+            cases = na.get_original_cases_for_episode(int(ep_no))
+            if cases:
+                with st.expander("💡 このエピソードの元ネタとなった審査案件（実データ）", expanded=True):
+                    for c in cases:
+                        badge = "✅" if "承認" in c.get('grade', '') else "❌" if "否決" in c.get('grade', '') else "📊"
+                        comp_no_str = f" (企業番号: {c['company_no']})" if c.get('company_no') else ""
+                        st.markdown(f"- {badge} **{c['company_name']}**{comp_no_str} / スコア: {c['score']}点 / 判定: {c['grade']}")
     else:
         st.info("まだ執筆された小説がありません。「今週号を書く」ボタンを押してみましょう。")
 
@@ -1785,6 +1794,15 @@ def _render_novelist_panel() -> None:
         for nov in all_novels[1:]:  # 最新を除く
             with st.expander(f"第{nov['episode_no']}話「{nov['title']}」— {nov['week_label']}"):
                 st.markdown(nov['body'])
+                if str(nov['episode_no']).isdigit():
+                    cases = na.get_original_cases_for_episode(int(nov['episode_no']))
+                    if cases:
+                        st.markdown("---")
+                        st.caption("💡 このエピソードの元ネタ案件")
+                        for c in cases:
+                            badge = "✅" if "承認" in c.get('grade', '') else "❌" if "否決" in c.get('grade', '') else "📊"
+                            comp_no_str = f" (企業番号: {c['company_no']})" if c.get('company_no') else ""
+                            st.markdown(f"- {badge} **{c['company_name']}**{comp_no_str} / スコア: {c['score']}点 / 判定: {c['grade']}")
 
 
 # （文明年代記パネルは components/novel_simulation_view.py に統合済み）

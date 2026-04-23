@@ -938,3 +938,39 @@ def _build_civ_context_for_novel() -> str:
             lines.append(f"   メモ: {civ['notes']}")
 
     return "\n".join(lines)
+
+
+def get_original_cases_for_episode(episode_no: int) -> list[dict]:
+    """小説エピソードに紐づく元ネタ案件（past_cases）の情報を返す。"""
+    init_novel_db()
+    conn = sqlite3.connect(_NOVEL_DB)
+    civ_ids = [r[0] for r in conn.execute(
+        "SELECT DISTINCT civ_id FROM civ_appearances WHERE episode_no=?", (episode_no,)
+    ).fetchall()]
+    conn.close()
+    
+    if not civ_ids:
+        return []
+    
+    results = []
+    try:
+        c2 = sqlite3.connect(_LEASE_DB)
+        c2.row_factory = sqlite3.Row
+        placeholders = ",".join("?" for _ in civ_ids)
+        rows = c2.execute(f"SELECT id, score, data FROM past_cases WHERE id IN ({placeholders})", tuple(civ_ids)).fetchall()
+        c2.close()
+        
+        for r in rows:
+            data = json.loads(r["data"] or "{}")
+            results.append({
+                "case_id": r["id"],
+                "company_name": data.get("company_name", "不明"),
+                "company_no": data.get("company_no", ""),
+                "score": r["score"],
+                "grade": data.get("result", {}).get("hantei", "—"),
+            })
+    except Exception:
+        pass
+        
+    return results
+

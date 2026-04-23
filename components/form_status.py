@@ -195,6 +195,17 @@ def render_status_registration():
         judgment = record.get("judgment", "—")
         created = (record.get("created_at") or "")[:16]
 
+        try:
+            import novelist_agent as na
+            appearances = na.get_civ_appearances(str(rec_id))
+            if appearances:
+                eps = sorted(list(set([str(a["episode_no"]) for a in appearances])))
+                novel_badge = f"　｜　🎖️ 文豪AI小説（第{', '.join(eps)}話）"
+            else:
+                novel_badge = ""
+        except Exception:
+            novel_badge = ""
+
         # 確実にボタンが見えるように、カードの上に配置
         # 案件カードと削除ボタン
         def _exec_delete(target_id):
@@ -217,7 +228,7 @@ def render_status_registration():
                     st.rerun()
 
         with col_card:
-            with st.expander(f"🏢 {display_name}　｜　{created}　｜　スコア: {score:.1f}　｜　{judgment}", expanded=False):
+            with st.expander(f"🏢 {display_name}　｜　{created}　｜　スコア: {score:.1f}　｜　{judgment}{novel_badge}", expanded=False):
                 col_info, col_form = st.columns([1, 2])
                 with col_info:
                     st.write(f"**業種**: {industry}")
