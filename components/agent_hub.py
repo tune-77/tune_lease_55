@@ -65,19 +65,41 @@ AUDIT_AGENTS: dict[str, str] = {
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _get_ai_settings() -> tuple[str, str, str, str]:
-    """現在のAI設定を返す (engine, ollama_model, api_key, gemini_model)。"""
+    """現在のAI設定を返す (engine, ollama_model, api_key, gemini_model)。
+    Streamlit セッション外（API・cron など）からの呼び出しは secrets.toml / 環境変数にフォールバック。
+    """
     from ai_chat import (
         get_ollama_model, GEMINI_API_KEY_ENV,
         GEMINI_MODEL_DEFAULT, _get_gemini_key_from_secrets,
     )
-    engine       = st.session_state.get(SK.AI_ENGINE, "ollama")
-    ollama_model = get_ollama_model()
-    api_key      = (
-        (st.session_state.get(SK.GEMINI_API_KEY) or "").strip()
-        or GEMINI_API_KEY_ENV
-        or _get_gemini_key_from_secrets()
-    )
-    gemini_model = st.session_state.get(SK.GEMINI_MODEL, GEMINI_MODEL_DEFAULT)
+    try:
+        engine       = st.session_state.get(SK.AI_ENGINE, "ollama")
+        ollama_model = get_ollama_model()
+        api_key      = (
+            (st.session_state.get(SK.GEMINI_API_KEY) or "").strip()
+            or GEMINI_API_KEY_ENV
+            or _get_gemini_key_from_secrets()
+        )
+        gemini_model = st.session_state.get(SK.GEMINI_MODEL, GEMINI_MODEL_DEFAULT)
+    except Exception:
+        # Streamlit セッション外からの呼び出し
+        import toml
+        try:
+            _secrets = toml.load(os.path.expanduser("~/.streamlit/secrets.toml"))
+            engine   = _secrets.get("AI_ENGINE", "gemini")
+            api_key  = (
+                _secrets.get("GEMINI_API_KEY") or _secrets.get("OPENAI_API_KEY", "")
+                or GEMINI_API_KEY_ENV or _get_gemini_key_from_secrets()
+            )
+        except Exception:
+            engine  = os.environ.get("AI_ENGINE", "gemini")
+            api_key = (
+                GEMINI_API_KEY_ENV
+                or _get_gemini_key_from_secrets()
+                or os.environ.get("GEMINI_API_KEY", "")
+            )
+        ollama_model = get_ollama_model()
+        gemini_model = GEMINI_MODEL_DEFAULT
     return engine, ollama_model, api_key, gemini_model
 
 
@@ -1485,9 +1507,21 @@ def _render_visual_report_panel() -> None:
                 from report_visual_agent import collect_report_data, generate_html_report, generate_pdf_report
                 import datetime as _vr_dt
 
-                # 企業名・担当者をコピーに反映して渡す
-                # （widget キーを直接書き換えると Streamlit エラーになるため）
-                _vr_session_copy = {**dict(st.session_state), "rep_company": vr_company, "rep_screener": vr_screener}
+                # シリアライズ安全なキーのみ明示的に抽出して渡す
+                # （widget キーを直接書き換えると Streamlit エラー、st.session_state を丸ごとコピーすると
+                #   Streamlit 内部オブジェクト等がシリアライズ不可でクラッシュするため）
+                _SAFE_SESSION_KEYS = [
+                    "last_result", "last_submitted_inputs", "mc_portfolio_result",
+                    "qualitative_analysis_result", "_bn_s_result", "_bn_s_evidence",
+                    "_ai_quick_comment_text", "news_results", "_subsidy_results",
+                    "_shap_top5_items",
+                ]
+                _vr_session_copy = {
+                    k: st.session_state.get(k)
+                    for k in _SAFE_SESSION_KEYS
+                    if st.session_state.get(k) is not None
+                }
+                _vr_session_copy.update({"rep_company": vr_company, "rep_screener": vr_screener})
                 vr_data = collect_report_data(_vr_session_copy)
 
                 fname_base = (

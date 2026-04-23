@@ -214,10 +214,18 @@ def _collect_recent_crosstalk(n: int = 3) -> list[dict]:
 from novel_prompts import get_novel_system_prompt
 
 
-def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = "sf_drama") -> dict:
+def generate_novel(
+    episode_no: int = None,
+    custom_theme: str = "",
+    genre: str = "sf_drama",
+    api_key: str = None,
+    engine: str = None,
+    model: str = None,
+) -> dict:
     import random
     """
     今週の短編小説を生成して DB に保存。
+    api_key / engine / model は省略可。省略時は secrets.toml / 環境変数にフォールバック。
     Returns {"title": str, "body": str, "week_label": str, "episode_no": int}
     """
     init_novel_db()
@@ -443,22 +451,41 @@ def generate_novel(episode_no: int = None, custom_theme: str = "", genre: str = 
     ]
     _post_thought(random.choice(_writing_lines), "✍️")
     try:
-        from ai_chat import _chat_for_thread, is_ai_available
-        import streamlit as st
-        from components.agent_hub import _get_ai_settings
+        from ai_chat import (
+            _chat_for_thread, is_ai_available,
+            GEMINI_MODEL_DEFAULT, _get_gemini_key_from_secrets,
+        )
 
         if not is_ai_available():
             _post_thought("LLMが利用できないため、代替小説を生成します。", "⚠️")
             return _fallback_novel(episode_no, week_label)
 
-        _engine, _model, api_key, gemini_model = _get_ai_settings()
-        # 小説生成は長文出力のため Gemini を優先使用。APIキー未設定時は設定エンジンにフォールバック
-        engine = "gemini" if api_key else _engine
+        # api_key が引数で渡されていない場合は secrets.toml / 環境変数にフォールバック
+        if api_key is None:
+            try:
+                import toml
+                _secrets = toml.load(os.path.expanduser("~/.streamlit/secrets.toml"))
+                api_key = _secrets.get("GEMINI_API_KEY") or _secrets.get("OPENAI_API_KEY")
+                if engine is None:
+                    engine = _secrets.get("AI_ENGINE", "gemini")
+            except Exception:
+                pass
+            if not api_key:
+                api_key = (
+                    _get_gemini_key_from_secrets()
+                    or os.environ.get("GEMINI_API_KEY")
+                    or os.environ.get("OPENAI_API_KEY", "")
+                )
+        if engine is None:
+            engine = "gemini" if api_key else "ollama"
+
+        gemini_model = GEMINI_MODEL_DEFAULT
+        _use_engine = "gemini" if api_key else engine
         messages = [
             {"role": "system", "content": get_novel_system_prompt(genre)},
             {"role": "user",   "content": prompt},
         ]
-        raw = _chat_for_thread(engine, _model, messages,
+        raw = _chat_for_thread(_use_engine, model or "", messages,
                                timeout_seconds=180,
                                api_key=api_key,
                                gemini_model=gemini_model,

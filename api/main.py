@@ -1077,117 +1077,15 @@ def get_latest_novel_api():
 
 @app.post("/api/agent_hub/novel/generate")
 def generate_novel_api():
-    """
-    文豪AI「波乱丸」の小説生成エンドポイント。
-    novelist_agent.py の streamlit依存部分を回避し、Gemini API を直接呼び出す。
-    """
-    from novelist_agent import (
-        init_novel_db, get_latest_episode_no, _collect_recent_screenings,
-        _collect_hub_events, _collect_math_discoveries, _collect_recent_crosstalk,
-        _parse_and_save_civ_record, get_novel_system_prompt, _fallback_novel
-    )
-    import sqlite3 as _sqlite3
-    import datetime as _dt
-    import re as _re
-
-    init_novel_db()
-
-    # エピソード番号の決定
-    _NOVEL_DB = os.path.join(_REPO_ROOT, "data", "novelist_agent.db")
-    conn = _sqlite3.connect(_NOVEL_DB)
-    last = conn.execute("SELECT MAX(episode_no) FROM novels").fetchone()[0]
-    conn.close()
-    episode_no = (last or 0) + 1
-    now = _dt.datetime.now()
-    week_label = now.strftime("第%Y年%m月%d日号")
-
-    # ネタ収集
-    screenings = _collect_recent_screenings(5)
-    hub_events = _collect_hub_events(10)
-    math_hits = _collect_math_discoveries(3)
-    crosstalk = _collect_recent_crosstalk(3)
-
-    # プロンプト構築
-    neta_lines = [f"第{episode_no}話の執筆をお願いします。今週のネタ："]
-    if screenings:
-        neta_lines.append("\n【今週の審査案件（ネタ素材）】")
-        for s in screenings:
-            neta_lines.append(f"  - {s.get('company','?')} ({s.get('industry','?')}) スコア={s.get('score','?')}")
-    if hub_events:
-        neta_lines.append("\n【エージェントたちの出来事】")
-        for e in hub_events[:5]:
-            neta_lines.append(f"  - [{e.get('ts','')[:10]}] {e.get('agent','?')}: {e.get('detail','?')[:80]}")
-    if math_hits:
-        neta_lines.append("\n【Dr.Algoの発見】")
-        for m in math_hits:
-            neta_lines.append(f"  - {m[:100]}")
-    if crosstalk:
-        neta_lines.append("\n【最近のエージェント間の発言】")
-        for c in crosstalk:
-            neta_lines.append(f"  - {c.get('agent','?')}: {c.get('thought','?')[:80]}")
-
-    prompt = "\n".join(neta_lines)
-
-    # Gemini API 直接呼び出し
-    api_key = os.environ.get("GEMINI_API_KEY", "")
-    if not api_key:
-        raise HTTPException(status_code=503, detail="GEMINI_API_KEYが設定されていません。.streamlit/secrets.tomlを確認してください。")
-
+    """文豪AI「波乱丸」の小説生成エンドポイント。novelist_agent.generate_novel() に委譲。"""
+    from novelist_agent import generate_novel
     try:
-        from ai_chat import _chat_for_thread
-        system_prompt = get_novel_system_prompt("sf_drama")
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt},
-        ]
-        raw = _chat_for_thread(
-            "gemini", "", messages,
-            timeout_seconds=180,
-            api_key=api_key,
-            gemini_model="gemini-2.0-flash",
-            max_output_tokens=8192
-        )
-        text = (raw.get("message") or {}).get("content", "") or ""
-        
-        if not text or "APIキーが設定されていません" in text or "Gemini API エラー" in text[:50]:
-            raise RuntimeError(f"Gemini 応答エラー: {text[:200]}")
-
-        # タイトル抽出（「題名：〇〇」または「タイトル：〇〇」パターン）
-        title = f"第{episode_no}話"
-        for pattern in [r'(?:題名|タイトル|題)[：:]\s*(.+)', r'^#+\s+(.+)', r'^「(.+)」']:
-            m = _re.search(pattern, text, _re.MULTILINE)
-            if m:
-                title = m.group(1).strip()[:60]
-                break
-
-        # DB保存
-        conn = _sqlite3.connect(_NOVEL_DB)
-        conn.execute(
-            "INSERT INTO novels (ts, week_label, title, body, episode_no) VALUES (?,?,?,?,?)",
-            (now.isoformat(), week_label, title, text, episode_no)
-        )
-        conn.commit()
-        conn.close()
-
-        # 文明記録の解析（バックグラウンドで）
-        try:
-            _parse_and_save_civ_record(text, episode_no)
-        except Exception:
-            pass
-
-        return {
-            "title": title,
-            "body": text,
-            "week_label": week_label,
-            "episode_no": episode_no
-        }
-
+        result = generate_novel()
+        return result
     except Exception as e:
         import traceback
         traceback.print_exc()
-        # フォールバック小説を返す
-        fallback = _fallback_novel(episode_no, week_label)
-        return {**fallback, "error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
 class AgentRunRequest(BaseModel):
     agent_id: str  # benchmark, market, gunshi, team, slack, anomaly, retrain
