@@ -25,19 +25,19 @@ class TestCalculatePd:
 
     # ── 自己資本比率のリスク加算 ─────────────────────────────
     def test_very_low_equity_adds_25(self):
-        """自己資本 < 10% → +25"""
+        """自己資本 < 10% → +15"""
         val = calculate_pd(equity=5.0, current=200.0, profit=10.0)
-        assert val == pytest.approx(25.0)
+        assert val == pytest.approx(15.0)
 
     def test_low_equity_adds_12(self):
-        """自己資本 10〜20% → +12"""
+        """自己資本 10〜20% → +8"""
         val = calculate_pd(equity=15.0, current=200.0, profit=10.0)
-        assert val == pytest.approx(12.0)
+        assert val == pytest.approx(8.0)
 
     def test_moderate_equity_adds_5(self):
-        """自己資本 20〜30% → +5"""
+        """自己資本 20〜30% → +3"""
         val = calculate_pd(equity=25.0, current=200.0, profit=10.0)
-        assert val == pytest.approx(5.0)
+        assert val == pytest.approx(3.0)
 
     def test_good_equity_adds_0(self):
         """自己資本 >= 30% → +0"""
@@ -46,19 +46,19 @@ class TestCalculatePd:
 
     # ── 流動比率のリスク加算 ──────────────────────────────────
     def test_very_low_current_adds_20(self):
-        """流動比率 < 100% → +20"""
+        """流動比率 < 100% → +12"""
         val = calculate_pd(equity=50.0, current=90.0, profit=10.0)
-        assert val == pytest.approx(20.0)
+        assert val == pytest.approx(12.0)
 
     def test_low_current_adds_8(self):
-        """流動比率 100〜120% → +8"""
+        """流動比率 100〜120% → +5"""
         val = calculate_pd(equity=50.0, current=110.0, profit=10.0)
-        assert val == pytest.approx(8.0)
+        assert val == pytest.approx(5.0)
 
     def test_moderate_current_adds_3(self):
-        """流動比率 120〜150% → +3"""
+        """流動比率 120〜150% → +2"""
         val = calculate_pd(equity=50.0, current=130.0, profit=10.0)
-        assert val == pytest.approx(3.0)
+        assert val == pytest.approx(2.0)
 
     def test_good_current_adds_0(self):
         """流動比率 >= 150% → +0"""
@@ -67,19 +67,19 @@ class TestCalculatePd:
 
     # ── 営業利益率のリスク加算 ────────────────────────────────
     def test_negative_profit_adds_30(self):
-        """営業利益率 < 0 → +30"""
+        """営業利益率 < 0 → +15"""
         val = calculate_pd(equity=50.0, current=200.0, profit=-1.0)
-        assert val == pytest.approx(30.0)
+        assert val == pytest.approx(15.0)
 
     def test_very_low_profit_adds_10(self):
-        """営業利益率 0〜2% → +10"""
+        """営業利益率 0〜2% → +6"""
         val = calculate_pd(equity=50.0, current=200.0, profit=1.0)
-        assert val == pytest.approx(10.0)
+        assert val == pytest.approx(6.0)
 
     def test_low_profit_adds_4(self):
-        """営業利益率 2〜5% → +4"""
+        """営業利益率 2〜5% → +2"""
         val = calculate_pd(equity=50.0, current=200.0, profit=3.0)
-        assert val == pytest.approx(4.0)
+        assert val == pytest.approx(2.0)
 
     def test_good_profit_adds_0(self):
         """営業利益率 >= 5% → +0"""
@@ -94,11 +94,11 @@ class TestCalculatePd:
 
     # ── 最悪ケース・上限キャップ ──────────────────────────────
     def test_worst_case_capped_at_100(self):
-        """全指標が最悪 → 合計75だが100を超えない"""
+        """全指標が最悪 → 合計42"""
         val = calculate_pd(equity=1.0, current=50.0, profit=-10.0)
-        assert val == pytest.approx(75.0)
+        assert val == pytest.approx(42.0)
 
     def test_combined_medium_risk(self):
-        """中程度リスクの複合ケース: 自己資本15% + 流動比率110% = 20"""
+        """中程度リスクの複合ケース: 自己資本15% + 流動比率110% = 13"""
         val = calculate_pd(equity=15.0, current=110.0, profit=None)
-        assert val == pytest.approx(20.0)
+        assert val == pytest.approx(13.0)

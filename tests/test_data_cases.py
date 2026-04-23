@@ -48,15 +48,17 @@ def test_load_all_cases_empty(tmp_db):
     assert result == []
 
 
-def test_save_and_load_case(tmp_db):
+def test_save_and_load_case(tmp_db, monkeypatch):
     import data_cases
     import sqlite3
+    import json
     from contextlib import closing
 
-    case = {"company_name": "テスト株式会社", "score": 75.0, "industry": "製造業"}
+    monkeypatch.setattr(data_cases, "DB_PATH", tmp_db)
+
+    case = {"id": "test_id_1", "company_name": "テスト株式会社", "score": 85.5}
 
     # load_all_cases は past_cases.data (JSON) を読む。直接 INSERT してテスト。
-    import json
     with closing(sqlite3.connect(tmp_db)) as conn:
         conn.execute(
             "INSERT INTO past_cases (timestamp, data) VALUES (?, ?)",
@@ -67,17 +69,19 @@ def test_save_and_load_case(tmp_db):
     loaded = data_cases.load_all_cases()
     assert len(loaded) == 1
     assert loaded[0]["company_name"] == "テスト株式会社"
-    assert loaded[0]["score"] == 75.0
+    assert loaded[0]["score"] == 85.5
 
 
-def test_load_all_cases_multiple(tmp_db):
+def test_load_all_cases_multiple(tmp_db, monkeypatch):
     import data_cases
     import sqlite3
     import json
     from contextlib import closing
 
+    monkeypatch.setattr(data_cases, "DB_PATH", tmp_db)
+
     cases = [
-        {"company_name": f"会社{i}", "score": float(i * 10)}
+        {"id": f"test_id_{i}", "company_name": f"会社{i}", "score": float(i * 10)}
         for i in range(5)
     ]
     with closing(sqlite3.connect(tmp_db)) as conn:
