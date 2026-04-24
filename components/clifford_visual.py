@@ -25,6 +25,7 @@ except ImportError:
 
 _BASE = Path(__file__).parent.parent
 _DB_PATH = _BASE / "data" / "screening_db.sqlite"
+_LEASE_DB_PATH = _BASE / "data" / "lease_data.db"
 
 # 6 indicators available from both DB and last_result
 _IND_LABELS = [
@@ -71,18 +72,60 @@ class CliffordVisualizer:
 
 # ── データ取得・加工 ────────────────────────────────────────────────────────────
 
+def _load_past_cases() -> pd.DataFrame:
+    """lease_data.db の past_cases から screening_records 互換 DataFrame を構築"""
+    import json as _json
+    if not _LEASE_DB_PATH.exists():
+        return pd.DataFrame()
+    try:
+        conn = sqlite3.connect(str(_LEASE_DB_PATH))
+        df_raw = pd.read_sql_query(
+            "SELECT id, timestamp, score, user_eq, final_status, data FROM past_cases ORDER BY timestamp DESC LIMIT 500",
+            conn,
+        )
+        conn.close()
+        if len(df_raw) == 0:
+            return pd.DataFrame()
+        rows = []
+        for _, row in df_raw.iterrows():
+            try:
+                d = _json.loads(row["data"]) if isinstance(row["data"], str) else {}
+                result = d.get("result", {})
+                fin = result.get("financials", {})
+                rows.append({
+                    "created_at": row["timestamp"],
+                    "revenue_m": fin.get("nenshu", 0),
+                    "op_profit_m": fin.get("op_profit", 0),
+                    "total_assets_m": fin.get("assets", 0),
+                    "net_assets_m": fin.get("net_assets", 0),
+                    "equity_ratio": result.get("user_eq", row.get("user_eq", 0)),
+                    "score": result.get("score", row["score"]),
+                    "contract_prob": result.get("contract_prob", 0) / 100.0,
+                    "judgment": result.get("hantei", ""),
+                    "industry_major": result.get("industry_major", d.get("industry_major", "")),
+                    "industry_sub": row.get("industry_sub") or result.get("industry_sub", ""),
+                })
+            except Exception:
+                continue
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+
 def _load_db() -> pd.DataFrame:
     if not _DB_PATH.exists():
-        return pd.DataFrame()
+        return _load_past_cases()
     try:
         conn = sqlite3.connect(str(_DB_PATH))
         df = pd.read_sql_query(
             "SELECT * FROM screening_records ORDER BY created_at DESC LIMIT 500", conn
         )
         conn.close()
+        if len(df) == 0:
+            return _load_past_cases()
         return df
     except Exception:
-        return pd.DataFrame()
+        return _load_past_cases()
 
 
 def _db_to_indicators(df: pd.DataFrame) -> np.ndarray:
