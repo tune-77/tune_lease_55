@@ -1746,6 +1746,11 @@ elif mode == "📊 マハラノビス3D":
     from components.mahalanobis_3d import render_mahalanobis_3d
     render_mahalanobis_3d()
 
+# ── 🔷 幾何学分析（CliffordNet） ───────────────────────────────────────────────
+elif mode == "🔷 幾何学分析":
+    from components.clifford_visual import render_clifford_visual
+    render_clifford_visual()
+
 # ── フローティングBOT（八奈見さん）── 全ページ共通 ──────────────────────────
 try:
     from components.floating_bot import render_floating_bot
