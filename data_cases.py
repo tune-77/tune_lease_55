@@ -576,15 +576,22 @@ def save_case_log(data):
                     score REAL,
                     user_eq REAL,
                     final_status TEXT,
-                    data TEXT
+                    data TEXT,
+                    sales_dept TEXT DEFAULT '未設定'
                 )
             """)
+            # sales_dept カラムが存在しない古いDBへの対応
+            try:
+                conn.execute("ALTER TABLE past_cases ADD COLUMN sales_dept TEXT DEFAULT '未設定'")
+            except Exception:
+                pass
+            sales_dept_val = data.get("sales_dept", "未設定") or "未設定"
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO past_cases
-                (id, timestamp, industry_sub, score, user_eq, final_status, data)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (case_id, data["timestamp"], industry_sub, score_val, user_eq_val, data["final_status"], json_str))
+                (id, timestamp, industry_sub, score, user_eq, final_status, data, sales_dept)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (case_id, data["timestamp"], industry_sub, score_val, user_eq_val, data["final_status"], json_str, sales_dept_val))
             conn.commit()
         return case_id
     except Exception as e:

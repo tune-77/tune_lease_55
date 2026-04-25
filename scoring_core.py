@@ -26,6 +26,9 @@ APPROVAL_LINE = int(os.environ.get("APPROVAL_LINE", "71"))  # 承認ライン（
 # 担当者直感スコア（1-5）の最大補正幅（点）
 INTUITION_MAX_ADJ = 3.0
 
+# 営業部 one-hot: ベース=未設定（全0）
+SALES_DEPT_OPTIONS = ["宇都宮営業部", "小山営業部", "足利営業部", "埼玉営業部"]
+
 # SHAP: 各係数キーの日本語ラベル
 _FEATURE_LABELS_JA = {
     "intercept":          "基本スコア（切片）",
@@ -51,6 +54,10 @@ _FEATURE_LABELS_JA = {
     "grade_watch":        "格付（要注意）",
     "grade_none":         "格付（無格付）",
     "contracts":          "過去取引件数",
+    "dept_utsunomiya":    "営業部（宇都宮）",
+    "dept_oyama":         "営業部（小山）",
+    "dept_ashikaga":      "営業部（足利）",
+    "dept_saitama":       "営業部（埼玉）",
 }
 
 
@@ -150,6 +157,16 @@ def _calculate_z(data, coeff_set):
         z += coeff_set.get("grade_none", 0)
 
     z += (data.get("contracts") or 0) * coeff_set.get("contracts", 0)
+
+    sales_dept = data.get("sales_dept", "未設定")
+    dept_utsunomiya = 1 if sales_dept == "宇都宮営業部" else 0
+    dept_oyama      = 1 if sales_dept == "小山営業部" else 0
+    dept_ashikaga   = 1 if sales_dept == "足利営業部" else 0
+    dept_saitama    = 1 if sales_dept == "埼玉営業部" else 0
+    z += dept_utsunomiya * coeff_set.get("dept_utsunomiya", 0.0)
+    z += dept_oyama      * coeff_set.get("dept_oyama", 0.0)
+    z += dept_ashikaga   * coeff_set.get("dept_ashikaga", 0.0)
+    z += dept_saitama    * coeff_set.get("dept_saitama", 0.0)
     return z
 
 
@@ -268,6 +285,7 @@ def run_quick_scoring(inputs: dict) -> dict:
     bank_credit = _safe_float(inputs.get("bank_credit"))
     lease_credit = _safe_float(inputs.get("lease_credit"))
     contracts = _safe_int(inputs.get("contracts"))
+    sales_dept = (inputs.get("sales_dept") or "未設定").strip()
     _raw_asset_score = inputs.get("asset_score")
     used_default_asset_score = _raw_asset_score is None or str(_raw_asset_score).strip() == ""
     asset_score = _safe_float(_raw_asset_score, default=50.0)
@@ -316,6 +334,7 @@ def run_quick_scoring(inputs: dict) -> dict:
         "contracts": contracts,          # 件数（無次元）
         "grade": grade,
         "industry_major": industry_major,
+        "sales_dept": sales_dept,
     }
 
     coeff_key = "全体_既存先"

@@ -120,6 +120,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
     # passion_text, strength_tagsなどは前述の初期化でも担保済みだが念のため再読込
     num_competitors = form_result.get("num_competitors", "未入力")
     deal_occurrence = form_result.get("deal_occurrence", "不明")
+    sales_dept = form_result.get("sales_dept", "未設定") or "未設定"
 
     if submitted_judge or st.session_state.pop("_auto_judge", False):
         try:
@@ -1145,6 +1146,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     "competitor_rate": st.session_state.get("competitor_rate"),
                     "num_competitors": num_competitors,
                     "deal_occurrence": deal_occurrence,
+                    "sales_dept":      sales_dept,
                     "inputs": {
                         "company_name":   form_result.get("company_name", ""),
                         "nenshu": nenshu,
@@ -1221,6 +1223,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     "main_bank": main_bank, "competitor": competitor,
                     "num_competitors": num_competitors, "deal_occurrence": deal_occurrence,
                     "customer_type": customer_type, "contract_type": contract_type,
+                    "sales_dept": sales_dept,
                     "deal_source": deal_source, "customer_code": form_result.get("customer_code", ""),
                     "selected_asset_index": st.session_state.get("selected_asset_index", 0),
                     **submitted_qual_corr,

@@ -16,6 +16,7 @@ def calc_total_score(
     asset_item_scores: dict,
     obligor_score: float,
     contract: dict = None,
+    sales_dept: str = "未設定",
 ) -> dict:
     """
     総合スコアを算出する。
@@ -83,6 +84,7 @@ def calc_total_score(
 
     result = {
         "total_score": total,
+        "sales_dept": sales_dept,
         "grade": grade["label"],
         "grade_text": grade["text"],
         "grade_color": grade["color"],

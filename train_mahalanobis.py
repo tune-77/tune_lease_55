@@ -14,19 +14,36 @@ except ImportError as e:
     print(f"Error: {e}")
     sys.exit(1)
 
-FEATURES = ["nenshu", "op_profit", "ord_profit", "net_income", "net_assets", "total_assets", "contracts"]
+FEATURES = [
+    "nenshu", "op_profit", "ord_profit", "net_income", "net_assets", "total_assets", "contracts",
+    "dept_utsunomiya", "dept_oyama", "dept_ashikaga", "dept_saitama",
+]
 
 SYNTH_MEANS = {
     "nenshu": 500_000, "op_profit": 20_000, "ord_profit": 18_000,
     "net_income": 10_000, "net_assets": 150_000, "total_assets": 600_000, "contracts": 3,
+    "dept_utsunomiya": 0.25, "dept_oyama": 0.25, "dept_ashikaga": 0.25, "dept_saitama": 0.25,
 }
 SYNTH_STDS = {
     "nenshu": 300_000, "op_profit": 15_000, "ord_profit": 13_000,
     "net_income": 8_000, "net_assets": 100_000, "total_assets": 400_000, "contracts": 2,
+    "dept_utsunomiya": 0.43, "dept_oyama": 0.43, "dept_ashikaga": 0.43, "dept_saitama": 0.43,
+}
+
+
+_DEPT_MAP = {
+    "dept_utsunomiya": "宇都宮営業部",
+    "dept_oyama":      "小山営業部",
+    "dept_ashikaga":   "足利営業部",
+    "dept_saitama":    "埼玉営業部",
 }
 
 
 def _extract_val(c: dict, key: str) -> float:
+    if key in _DEPT_MAP:
+        sd = c.get("sales_dept") or (c.get("inputs") or {}).get("sales_dept", "未設定")
+        return 1.0 if str(sd) == _DEPT_MAP[key] else 0.0
+
     fin = c.get("result", {}).get("financials", {})
     val = (
         c.get(key)

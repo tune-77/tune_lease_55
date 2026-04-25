@@ -7,6 +7,8 @@ from constants import (
 from utils import _slider_and_number, _reset_shinsa_inputs
 from category_config import ASSET_ID_TO_CATEGORY
 
+SALES_DEPT_OPTIONS = ["未設定", "宇都宮営業部", "小山営業部", "足利営業部", "埼玉営業部"]
+
 @st.fragment
 def _fragment_nenshu():
     # 本来は tune_lease_55.py の _fragment_nenshu() で定義されているものと同じですが、
@@ -59,9 +61,14 @@ def render_apply_form(
     
     if _co_no and (not _co_no.isdigit() or len(_co_no) != 6):
         st.warning("⚠️ 案件特定のため、企業番号は半角数字6桁で入力してください。")
-    
+
     st.session_state["company_no"] = _co_no if (_co_no.isdigit() and len(_co_no) == 6) else ""
     st.session_state["company_name"] = company_name
+
+    _last_sales_dept = _last_inp_top.get("sales_dept", "未設定")
+    _sales_dept_idx = SALES_DEPT_OPTIONS.index(_last_sales_dept) if _last_sales_dept in SALES_DEPT_OPTIONS else 0
+    sales_dept = st.selectbox("営業部", SALES_DEPT_OPTIONS, index=_sales_dept_idx, key="sales_dept_select")
+    st.session_state["sales_dept"] = sales_dept
 
     # 業界・取引を expander で折りたたみ
     with st.expander("📌 業界選択・取引状況", expanded=True):
@@ -452,6 +459,7 @@ def render_apply_form(
         "asset_use_detail":   st.session_state.get("asd_use_detail", False),
         "asset_score_detail": st.session_state.get("asd_detail_score"),
         "company_no":         st.session_state.get("company_no", ""),
+        "sales_dept":         sales_dept,
     }
 
 def render_quick_edit_panel(jsic_data, lease_assets_list):
