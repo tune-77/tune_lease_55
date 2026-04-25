@@ -87,7 +87,7 @@ def train() -> None:
     else:
         df = df_real
 
-    print(f"学習開始: {len(df)} 件 / 7次元")
+    print(f"学習開始: {len(df)} 件 / {len(FEATURES)}次元")
     scorer = MahalanobisScorer(FEATURES)
     scorer.fit(df)
 
