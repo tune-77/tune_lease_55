@@ -451,35 +451,53 @@ def _render_cache_and_ai_honne() -> None:
 
 # ── メインエントリ ────────────────────────────────────────────────────────────
 
-SIDEBAR_MODES = [
-    "🏠 ホーム",
-    "💬 リースくん",
-    "📋 審査・分析",
-    "📄 審査レポート",
-    "🤖 汎用エージェントハブ",
-    "⚡ バッチ審査",
-    "🏭 物件ファイナンス審査",
-    "📝 結果登録 (成約/失注)",
-    "📝 案件修正",
-    "🤝 エージェントチーム議論",
-    "🔧 係数分析・更新 (β)",
-    "📐 係数入力（事前係数）",
-    "📋 係数変更履歴",
-    "🪵 アプリログ",
-    "📊 履歴分析・実績ダッシュボード",
-    "📉 定性要因分析 (50件〜)",
-    "📈 定量要因分析 (50件〜)",
-    "⚙️ 審査ルール設定",
-    "📅 基準金利マスタ",
-    "🕸️ 競合関係グラフ",
-    "🔗 案件類似ネットワーク",
-    "📊 ビジュアルインサイト",
-    "📊 3期財務分析",
-    "📈 TimesFM 時系列予測",
-    "🌌 文明年代記",
-    "📊 マハラノビス3D",
-    "🔷 幾何学分析",
-]
+SIDEBAR_GROUPS = {
+    "📋 日常業務": [
+        "🏠 ホーム",
+        "💬 リースくん",
+        "📋 審査・分析",
+        "📄 審査レポート",
+        "⚡ バッチ審査",
+        "🏭 物件ファイナンス審査",
+        "📝 結果登録 (成約/失注)",
+        "📝 案件修正",
+    ],
+    "📊 分析・レポート": [
+        "📊 履歴分析・実績ダッシュボード",
+        "📉 定性要因分析 (50件〜)",
+        "📈 定量要因分析 (50件〜)",
+        "📊 3期財務分析",
+        "🕸️ 競合関係グラフ",
+        "🔗 案件類似ネットワーク",
+        "📊 ビジュアルインサイト",
+    ],
+    "⚙️ 管理・設定": [
+        "🔧 係数分析・更新 (β)",
+        "📐 係数入力（事前係数）",
+        "📋 係数変更履歴",
+        "⚙️ 審査ルール設定",
+        "📅 基準金利マスタ",
+        "🪵 アプリログ",
+        "🤖 汎用エージェントハブ",
+        "🤝 エージェントチーム議論",
+    ],
+    "🔬 実験的機能 (β)": [
+        "📈 TimesFM 時系列予測",
+        "🌌 文明年代記",
+        "📊 マハラノビス3D",
+        "🔷 幾何学分析",
+    ],
+}
+
+# 後方互換（_pending_mode の in チェック等で使用）
+SIDEBAR_MODES = [m for modes in SIDEBAR_GROUPS.values() for m in modes]
+
+
+def _find_group(mode: str) -> str | None:
+    for grp, modes in SIDEBAR_GROUPS.items():
+        if mode in modes:
+            return grp
+    return None
 
 
 def render_sidebar(benchmarks_data: dict, useful_life_data: dict, lease_assets_list: list) -> str:
@@ -487,25 +505,44 @@ def render_sidebar(benchmarks_data: dict, useful_life_data: dict, lease_assets_l
     サイドバー全体を描画し、選択されたモード文字列を返す。
     メインファイルで: mode = render_sidebar(benchmarks_data, useful_life_data, LEASE_ASSETS_LIST)
     """
-    # ホーム画面のカードから遷移先が指定された場合に反映
+    group_names = list(SIDEBAR_GROUPS.keys())
+
+    # ホーム画面のカードやウィザード完了など、外部から遷移先が指定された場合に反映
     pending = st.session_state.pop("_pending_mode", None)
     if pending and pending in SIDEBAR_MODES:
-        st.session_state["main_mode"] = pending  # session_state を直接上書き（index 依存を排除）
+        grp = _find_group(pending)
+        if grp:
+            st.session_state["sidebar_group"] = grp
+            st.session_state["main_mode"] = pending
 
-    st.sidebar.markdown(
-        "<small>"
-        "**審査**: ホーム / 審査・分析 / バッチ / 物件ファイナンス　"
-        "**管理**: 結果登録 / エージェント　"
-        "**係数**: 係数分析 / 係数入力 / 係数履歴 / ログ　"
-        "**分析**: 履歴ダッシュボード / 定性 / 定量　"
-        "**設定**: 審査ルール"
-        "</small>",
-        unsafe_allow_html=True,
+    # ── グループ選択 ─────────────────────────────────────────────────────────
+    cur_group = st.session_state.get("sidebar_group", group_names[0])
+    if cur_group not in group_names:
+        cur_group = group_names[0]
+
+    group = st.sidebar.radio(
+        "カテゴリ",
+        group_names,
+        index=group_names.index(cur_group),
+        key="sidebar_group",
     )
-    mode = st.sidebar.radio("モード切替", SIDEBAR_MODES, key="main_mode")
+
+    # ── グループ内メニュー ───────────────────────────────────────────────────
+    modes_in_group = SIDEBAR_GROUPS[group]
+    cur_mode = st.session_state.get("main_mode", modes_in_group[0])
+    if cur_mode not in modes_in_group:
+        cur_mode = modes_in_group[0]
+
+    st.sidebar.markdown("---")
+    mode = st.sidebar.radio(
+        "メニュー",
+        modes_in_group,
+        index=modes_in_group.index(cur_mode),
+        key="main_mode",
+    )
 
     with st.sidebar.expander("⚠️ 途中で落ちる場合", expanded=False):
-        st.caption("主な原因: (1) AI相談・Gemini/Ollama のタイムアウト (2) ブラウザのメモリ不足 (3) 分析結果タブでデータ不整合。ターミナルで `streamlit run lease_logic_sumaho8.py` を実行するとエラー内容が表示されます。F5で再読み込みも試してください。")
+        st.caption("主な原因: (1) AI相談・Gemini/Ollama のタイムアウト (2) ブラウザのメモリ不足 (3) 分析結果タブでデータ不整合。F5で再読み込みも試してください。")
 
     _render_humor_style()
     _render_ai_model_settings()
