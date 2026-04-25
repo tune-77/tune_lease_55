@@ -22,7 +22,18 @@ logger = logging.getLogger(__name__)
 
 DB_PATH = PROJECT_ROOT / "data" / "lease_data.db"
 MODEL_PATH = str(PROJECT_ROOT / "data" / "quantum_model.joblib")
-MIN_CASES = 5  # 学習に必要な最小件数
+
+def _load_training_config() -> dict:
+    p = PROJECT_ROOT / "data" / "quantum_config.json"
+    try:
+        import json as _j
+        return _j.loads(p.read_text(encoding="utf-8")).get("training", {})
+    except Exception:
+        return {}
+
+_TRAIN_CFG = _load_training_config()
+MIN_CASES: int = int(_TRAIN_CFG.get("min_cases", 5))
+_SYNTH_N: int  = int(_TRAIN_CFG.get("synth_fallback_n", 30))
 
 
 def _load_cases(status: str) -> list[dict]:
@@ -51,7 +62,7 @@ def train(backtest: bool = False) -> None:
 
     if len(seiyaku) < MIN_CASES:
         logger.warning("成約件数が少ない(%d件)。合成データで補完", len(seiyaku))
-        seiyaku = _synth_cases(MAX_N=30)
+        seiyaku = _synth_cases(MAX_N=_SYNTH_N)
 
     from quantum_analysis_module import QuantumGate
     gate = QuantumGate()
@@ -63,22 +74,92 @@ def train(backtest: bool = False) -> None:
         _run_backtest(gate, lost)
 
 
-def _synth_cases(MAX_N: int = 30) -> list[dict]:
-    """成約案件が少ない場合の合成データ（正常ケース = 均衡した財務）"""
+def _synth_cases(industry: str | None = None, MAX_N: int = 30) -> list[dict]:
+    """
+    成約案件が少ない場合の合成データ（正常ケース = 財務的に均衡した健全企業）。
+
+    industry=None の場合、主要業種をラウンドロビンで生成する。
+    各テンプレートは業種固有の財務比率（設備/利益/減価償却）を反映する。
+    """
     import random
+
+    # ── 業種別財務テンプレート ───────────────────────────────────────────────
+    # 各エントリ: (profit_range, machines_ratio, depr_ratio, net_ratio, ord_ratio, grade, tags)
+    # profit は百万円。千円に変換してから格納。
+    _TEMPLATES: dict[str, dict] = {
+        "D 建設業": {
+            "profit_range": (5.0, 40.0),
+            "machines_ratio": (0.5, 1.5),   # 設備は利益の 0.5〜1.5倍（適正範囲）
+            "depr_ratio":     (0.08, 0.20),
+            "net_ratio":      (0.75, 0.90),
+            "ord_ratio":      (0.85, 0.95),
+            "grades": ["②B格", "③C格"],
+            "tags": ["技術力"],
+        },
+        "E 製造業": {
+            "profit_range": (10.0, 80.0),
+            "machines_ratio": (2.0, 5.0),   # 製造業は設備が利益の数倍
+            "depr_ratio":     (0.15, 0.30),
+            "net_ratio":      (0.70, 0.88),
+            "ord_ratio":      (0.80, 0.95),
+            "grades": ["①A格", "②B格"],
+            "tags": ["技術力", "設備充実"],
+        },
+        "H 運輸業": {
+            "profit_range": (3.0, 25.0),
+            "machines_ratio": (3.0, 7.0),   # トラック等で高設備
+            "depr_ratio":     (0.20, 0.35),
+            "net_ratio":      (0.65, 0.85),
+            "ord_ratio":      (0.75, 0.92),
+            "grades": ["②B格", "③C格"],
+            "tags": ["安定顧客"],
+        },
+        "P 医療・福祉": {
+            "profit_range": (5.0, 50.0),
+            "machines_ratio": (0.3, 1.0),   # 設備は比較的低い
+            "depr_ratio":     (0.05, 0.15),
+            "net_ratio":      (0.80, 0.95),  # 純利益と営業利益が近い
+            "ord_ratio":      (0.90, 0.98),
+            "grades": ["①A格", "②B格"],
+            "tags": ["安定顧客"],
+        },
+        "K 不動産業": {
+            "profit_range": (8.0, 60.0),
+            "machines_ratio": (0.1, 0.5),   # 機械装置は少ない
+            "depr_ratio":     (0.03, 0.10),
+            "net_ratio":      (0.72, 0.90),
+            "ord_ratio":      (0.82, 0.95),
+            "grades": ["②B格", "③C格"],
+            "tags": [],
+        },
+    }
+    _INDUSTRY_ORDER = list(_TEMPLATES.keys())
+
+    def _make_case(ind: str) -> dict:
+        t = _TEMPLATES[ind]
+        profit = random.uniform(*t["profit_range"])
+        return {"inputs": {
+            "op_profit":    profit * 1000,
+            "depreciation": profit * random.uniform(*t["depr_ratio"]) * 1000,
+            "machines":     profit * random.uniform(*t["machines_ratio"]) * 1000,
+            "net_income":   profit * random.uniform(*t["net_ratio"]) * 1000,
+            "ord_profit":   profit * random.uniform(*t["ord_ratio"]) * 1000,
+            "grade":        random.choice(t["grades"]),
+            "industry_major": ind,
+            "qualitative":  {"strength_tags": list(t["tags"]), "onehot": {k: 1 for k in t["tags"]}},
+        }}
+
+    if industry is not None:
+        if industry not in _TEMPLATES:
+            logger.warning("業種テンプレートなし: %s → デフォルト(D 建設業)を使用", industry)
+            industry = "D 建設業"
+        return [_make_case(industry) for _ in range(MAX_N)]
+
+    # industry=None: ラウンドロビンで全業種を均等に生成
     cases = []
-    for _ in range(MAX_N):
-        profit = random.uniform(5, 50)
-        cases.append({"inputs": {
-            "op_profit": profit * 1000,
-            "depreciation": profit * 0.3 * 1000,
-            "machines": profit * 0.8 * 1000,
-            "net_income": profit * 0.8 * 1000,
-            "ord_profit": profit * 0.9 * 1000,
-            "grade": "②B格",
-            "industry_major": "D 建設業",
-            "qualitative": {"strength_tags": [], "onehot": {}},
-        }})
+    for i in range(MAX_N):
+        ind = _INDUSTRY_ORDER[i % len(_INDUSTRY_ORDER)]
+        cases.append(_make_case(ind))
     return cases
 
 
