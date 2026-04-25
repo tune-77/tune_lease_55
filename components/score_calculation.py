@@ -1107,8 +1107,20 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     },
                 }
 
-                # ── 量子解析ゲートウェイ (高スコア案件のみ) ──────────────────
-                if _hantei_score >= 80:
+                # ── 量子解析ゲートウェイ (スコア≥70 案件) ───────────────────
+                # score 70-79: 閾値 THRESHOLD_SECONDARY_REVIEW_MID(45)
+                # score ≥ 80 : 閾値 THRESHOLD_SECONDARY_REVIEW(35)
+                try:
+                    from quantum_analysis_module import (
+                        SCORE_TRIGGER as _QS_TRIGGER,
+                        SCORE_HIGH_THRESHOLD as _QS_HIGH,
+                        THRESHOLD_SECONDARY_REVIEW as _QT,
+                        THRESHOLD_SECONDARY_REVIEW_MID as _QT_MID,
+                    )
+                except ImportError:
+                    _QS_TRIGGER, _QS_HIGH, _QT, _QT_MID = 70, 80, 35.0, 45.0
+
+                if _hantei_score >= _QS_TRIGGER:
                     try:
                         import os as _os
                         _qmodel = "data/quantum_model.joblib"
@@ -1132,8 +1144,8 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                             st.session_state["last_result"]["quantum_risk"] = _qr["quantum_risk"]
                             st.session_state["last_result"]["quantum_anomalies"] = _qr["pair_anomalies"]
                             st.session_state["last_result"]["quantum_verdict"] = _qr["verdict"]
-                            from quantum_analysis_module import THRESHOLD_SECONDARY_REVIEW as _QT
-                            if _qr["quantum_risk"] >= _QT:
+                            _qt_eff = _QT if _hantei_score >= _QS_HIGH else _QT_MID
+                            if _qr["quantum_risk"] >= _qt_eff:
                                 st.session_state["last_result"]["needs_secondary_review"] = True
                     except Exception as _qe:
                         import logging as _log

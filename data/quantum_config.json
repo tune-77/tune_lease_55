@@ -1,0 +1,24 @@
+{
+  "_comment": "QuantumGate の閾値・ハイパーパラメータ設定。変更後は train_quantum.py を再実行すること。",
+  "thresholds": {
+    "secondary_review": 35.0,
+    "secondary_review_mid": 45.0,
+    "high_risk": 60.0,
+    "weight_boost_interference": 0.6,
+    "weight_boost_factor": 1.3,
+    "weight_boost_max": 3.0,
+    "active_pair_min_interference": 0.05
+  },
+  "scoring": {
+    "trigger_score": 70,
+    "high_score_threshold": 80
+  },
+  "model": {
+    "entangle_alpha": 50.0,
+    "entangle_risk_factor": 0.2
+  },
+  "training": {
+    "min_cases": 5,
+    "synth_fallback_n": 30
+  }
+}
