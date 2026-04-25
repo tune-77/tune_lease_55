@@ -1751,6 +1751,11 @@ elif mode == "🔷 幾何学分析":
     from components.clifford_visual import render_clifford_visual
     render_clifford_visual()
 
+# ── ⚛️ 業種別量子解析 ──────────────────────────────────────────────────────────
+elif mode == "⚛️ 業種別量子解析":
+    from components.industry_quantum_view import render_industry_quantum_view
+    render_industry_quantum_view()
+
 elif mode == "📝 案件修正":
     from components.case_editor import render_case_editor
     render_case_editor()

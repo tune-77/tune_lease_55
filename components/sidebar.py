@@ -288,6 +288,9 @@ def _render_csv_download() -> None:
                     "sales_dept": log.get("sales_dept", ""),
                     "result_status": log.get("final_status"),
                     "score": log.get("result", {}).get("score"),
+                    "quantum_risk": log.get("result", {}).get("quantum_risk"),
+                    "quantum_verdict": log.get("result", {}).get("quantum_verdict"),
+                    "needs_secondary_review": log.get("result", {}).get("needs_secondary_review", False),
                 }
                 if "inputs" in log:
                     row.update(log["inputs"])
@@ -492,6 +495,7 @@ SIDEBAR_GROUPS = {
         "🌌 文明年代記",
         "📊 マハラノビス3D",
         "🔷 幾何学分析",
+        "⚛️ 業種別量子解析",
     ],
 }
 

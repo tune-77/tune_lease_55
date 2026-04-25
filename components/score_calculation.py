@@ -1107,6 +1107,72 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     },
                 }
 
+                # ── 量子解析ゲートウェイ (スコア≥70 案件) ───────────────────
+                # score 70-79: 閾値 THRESHOLD_SECONDARY_REVIEW_MID(45)
+                # score ≥ 80 : 閾値 THRESHOLD_SECONDARY_REVIEW(35)
+                try:
+                    from quantum_analysis_module import (
+                        SCORE_TRIGGER as _QS_TRIGGER,
+                        SCORE_HIGH_THRESHOLD as _QS_HIGH,
+                        THRESHOLD_SECONDARY_REVIEW as _QT,
+                        THRESHOLD_SECONDARY_REVIEW_MID as _QT_MID,
+                    )
+                except ImportError:
+                    _QS_TRIGGER, _QS_HIGH, _QT, _QT_MID = 70, 80, 35.0, 45.0
+
+                if _hantei_score >= _QS_TRIGGER:
+                    try:
+                        import os as _os
+                        _qmodel = "data/quantum_model.joblib"
+                        if _os.path.exists(_qmodel):
+                            from quantum_analysis_module import QuantumGate as _QG
+                            _qgate = _QG.load_cached(_qmodel)
+                            _qinputs = {
+                                "op_profit":    rieki,
+                                "ord_profit":   item4_ord_profit,
+                                "net_income":   item5_net_income,
+                                "depreciation": item10_dep,
+                                "machines":     item6_machine,
+                                "grade":        grade or "無格付",
+                                "industry_major": selected_major or "",
+                                "qualitative": {
+                                    "strength_tags": strength_tags or [],
+                                    "onehot": {},
+                                },
+                            }
+                            _qr = _qgate.predict({"inputs": _qinputs})
+                            st.session_state["last_result"]["quantum_risk"] = _qr["quantum_risk"]
+                            st.session_state["last_result"]["quantum_anomalies"] = _qr["pair_anomalies"]
+                            st.session_state["last_result"]["quantum_verdict"] = _qr["verdict"]
+                            _qt_eff = _QT if _hantei_score >= _QS_HIGH else _QT_MID
+                            if _qr["quantum_risk"] >= _qt_eff:
+                                st.session_state["last_result"]["needs_secondary_review"] = True
+
+                            # Q.6: quantum_risk → 穏やかなスコア減点
+                            try:
+                                import json as _qjson
+                                _qcfg_s = _qjson.loads(
+                                    open("data/quantum_config.json", encoding="utf-8").read()
+                                ).get("scoring", {})
+                            except Exception:
+                                _qcfg_s = {}
+                            _fdec_factor = float(_qcfg_s.get("feedback_deduction_factor", 0.12))
+                            _fdec_max    = float(_qcfg_s.get("feedback_max_deduction", 8.0))
+                            _qdeduction  = min(_fdec_max, max(0.0,
+                                (_qr["quantum_risk"] - _qt_eff) * _fdec_factor))
+                            if _qdeduction > 0.0:
+                                _hantei_score = max(0.0, _hantei_score - _qdeduction)
+                                st.session_state["last_result"]["hantei_score"] = round(_hantei_score, 1)
+                                st.session_state["last_result"]["quantum_deduction"] = round(_qdeduction, 1)
+                                if not forced_custom_status:
+                                    st.session_state["last_result"]["hantei"] = (
+                                        "承認圏内" if _hantei_score >= _eff_approval else "要審議"
+                                    )
+                    except Exception as _qe:
+                        import logging as _log
+                        _log.getLogger(__name__).warning("quantum module skipped: %s", _qe)
+                # ──────────────────────────────────────────────────────────────
+
                 # カスタムルールの影響や強制ステータスの上書き
                 if forced_custom_status:
                     st.session_state['last_result']["hantei"] = forced_custom_status

@@ -391,6 +391,34 @@ def render_report() -> None:
   <ul style="padding-left:1.2rem;font-size:.82rem;color:#334155;line-height:1.7;margin:0;">{hint_items}</ul>
 </div>""", unsafe_allow_html=True)
 
+        # ── ⚛️ 量子整合性チェック ────────────────────────────────────────────
+        q_risk = res.get("quantum_risk")
+        q_verdict = res.get("quantum_verdict")
+        q_anomalies = res.get("quantum_anomalies") or []
+        needs_2nd = res.get("needs_secondary_review", False)
+        if q_risk is not None:
+            try:
+                from quantum_analysis_module import THRESHOLD_SECONDARY_REVIEW as _QT_SR
+            except Exception:
+                _QT_SR = 35.0
+            q_color = "#dc2626" if q_risk >= _QT_SR else "#d97706" if q_risk >= 20 else "#16a34a"
+            q_label = "⚠️ 要注意" if q_risk >= _QT_SR else "△ 軽微" if q_risk >= 20 else "✅ 正常"
+            anomaly_items = "".join(
+                f'<li style="margin-bottom:.3rem;">{html.escape(str(a))}</li>'
+                for a in q_anomalies[:3]
+            )
+            anomaly_html = f'<ul style="padding-left:1.2rem;font-size:.8rem;color:#475569;margin:.4rem 0 0;">{anomaly_items}</ul>' if anomaly_items else ""
+            badge_html = '<span style="display:inline-block;margin-left:.8rem;padding:.15rem .55rem;border-radius:9999px;background:#fef3c7;border:1px solid #f59e0b;color:#92400e;font-size:.78rem;font-weight:700;">🔁 二次審査推奨</span>' if needs_2nd else ""
+            st.markdown(f"""
+<div class="rp-section">
+  <p class="rp-section-title">⚛️ 量子整合性チェック</p>
+  <span style="font-size:1rem;font-weight:700;color:{q_color};">{q_label}</span>
+  <span style="font-size:.85rem;color:#64748b;margin-left:.8rem;">リスクスコア: <b>{q_risk:.1f}</b></span>
+  {badge_html}
+  {'<div style="font-size:.82rem;color:#334155;margin-top:.4rem;">' + html.escape(q_verdict) + '</div>' if q_verdict else ""}
+  {anomaly_html}
+</div>""", unsafe_allow_html=True)
+
     # ── ⑧ 印刷・PDF ─────────────────────────────────────────────────────────
     st.markdown('<div class="rp-footer">温水式 リース審査AI — 審査レポート</div>', unsafe_allow_html=True)
     st.divider()

@@ -9,6 +9,8 @@
 - `components/` — 各画面コンポーネント（chat_wizard, report, home, sidebar 等）
 - `scoring/` — AIスコアリングロジック（industry_hybrid_model.py 等）
 - `asset_scorer.py`, `total_scorer.py`, `category_config.py`, `scoring_core.py` — スコアリング中核（ルート直下）
+- `quantum_analysis_module.py` — 量子干渉スコアによる財務矛盾検出（score_calculation で呼ばれ quantum_risk≥35 で要注意フラグ）
+- `train_quantum.py` — quantum_model.joblib の学習スクリプト
 - `slack_bot.py` / `slack_screening.py` — Slack ボット・審査フロー
 - `data/` — SQLite DB・セッションファイル（機密情報含む、コミット禁止）
 - `.claude/reports/` — エージェント間共有レポート
