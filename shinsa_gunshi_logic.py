@@ -44,6 +44,74 @@ DEFAULT_MODEL = "llama3"
 # Gemini API（環境変数 or サイドバー入力を実行時に参照）
 _GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
+# 車種別ベイズ追加ブースト（_ASSET_RESALE_MAP のリセール評価に加えて上乗せ）
+_VEHICLE_EXTRA_BOOST: list[tuple[list[str], float, str]] = [
+    (["ハイエース", "キャラバン"],
+     0.20, "普通商用バン（ハイエースクラス）― 5年落ち60%超/LGDほぼゼロ"),
+    (["エブリイ", "エブリィ", "ハイゼット", "NV100", "バネット", "アトレー"],
+     0.15, "軽商用バン ― 3年落ち65-75%/動けば即買い手"),
+    (["ヤリス", "ノート", "フィット", "アクア", "カローラ", "ヴィッツ", "マーチ", "スイフト"],
+     0.05, "一般営業用コンパクトカー ― 流動性高・早期回収容易"),
+    (["営業用トラック"],
+     0.10, "営業用トラック ― 業務直結・稼働率高・物件スコア安定"),
+    (["自家用トラック"],
+     0.04, "自家用トラック ― 業務使用目的を確認・流動性は営業用より低"),
+    (["役員車", "レクサス", "外車", "LEXUS"],
+     0.00, "役員車・高級輸入車 ― 事業収益への直接貢献なし（要注意）"),
+]
+
+_EXEC_CAR_KEYWORDS: list[str] = [
+    "役員車", "レクサス", "LEXUS", "外車", "輸入車",
+    "ベンツ", "BMW", "アウディ", "AUDI", "メルセデス", "MERCEDES", "BENZ",
+    "ポルシェ", "PORSCHE", "フェラーリ",
+]
+
+_EXEC_CAR_WARNING_PHRASES: list[dict] = [
+    {
+        "id": "EX01",
+        "text": (
+            "⚠️【要注意】役員車（レクサス・外車等）は事業収益を直接生み出しません。"
+            "「なぜ会社にとって必要な資産か」を稟議書に明記し、審査部の疑念を事前に封じてください。"
+            "お金を産まない投資である点を十分に考慮した上で、使用目的の明確化が必須です。"
+        ),
+        "tags": ["役員車", "警告", "稟議", "使用目的"],
+        "prob_boost": 0.0,
+        "category": "役員車警告",
+    },
+    {
+        "id": "EX02",
+        "text": (
+            "高級輸入車・役員車リースは審査部から『お金を生まない投資』と見られます。"
+            "期間短縮（法定耐用年数の60%以下）＋前受金3ヶ月分のセット提案で印象を改善し、"
+            "リスクを最小化してください。"
+        ),
+        "tags": ["役員車", "期間短縮", "前受"],
+        "prob_boost": 0.0,
+        "category": "役員車警告",
+    },
+    {
+        "id": "EX03",
+        "text": (
+            "役員車は中古市場での流動性が商用車より低く担保価値も不安定です。"
+            "万一の場合に備え、保証金の積み増しまたは前受金を設定した上で"
+            "承認稟議書に使用目的を詳細に記載することを強く推奨します。"
+        ),
+        "tags": ["役員車", "担保", "前受"],
+        "prob_boost": 0.0,
+        "category": "役員車警告",
+    },
+]
+
+
+def _vehicle_boost_from_asset_name(asset_name: str) -> tuple[float, str]:
+    """物件名から車種別ベイズ追加ブースト値と説明ラベルを返す。"""
+    name = (asset_name or "").upper()
+    for keywords, boost, description in _VEHICLE_EXTRA_BOOST:
+        if any(k.upper() in name for k in keywords):
+            return boost, description
+    return 0.0, ""
+
+
 def _get_gemini_key() -> str:
     """実行時にサイドバー入力値 → 環境変数の順でAPIキーを返す。"""
     return (

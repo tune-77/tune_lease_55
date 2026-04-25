@@ -18,7 +18,7 @@ sleep 2
 
 echo ""
 echo "=== Streamlit 起動（ポート8505）==="
-streamlit run tune_lease_55.py --server.port 8505 &
+streamlit run lease_logic_sumaho12.py --server.port 8505 &
 STREAMLIT_PID=$!
 echo "Streamlit PID: $STREAMLIT_PID"
 

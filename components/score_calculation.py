@@ -1107,6 +1107,38 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     },
                 }
 
+                # ── 量子解析ゲートウェイ (高スコア案件のみ) ──────────────────
+                if _hantei_score >= 80:
+                    try:
+                        import os as _os
+                        _qmodel = "data/quantum_model.joblib"
+                        if _os.path.exists(_qmodel):
+                            from quantum_analysis_module import QuantumGate as _QG
+                            _qgate = _QG.load_cached(_qmodel)
+                            _qinputs = {
+                                "op_profit":    rieki,
+                                "ord_profit":   item4_ord_profit,
+                                "net_income":   item5_net_income,
+                                "depreciation": item10_dep,
+                                "machines":     item6_machine,
+                                "grade":        grade or "無格付",
+                                "industry_major": selected_major or "",
+                                "qualitative": {
+                                    "strength_tags": strength_tags or [],
+                                    "onehot": {},
+                                },
+                            }
+                            _qr = _qgate.predict({"inputs": _qinputs})
+                            st.session_state["last_result"]["quantum_risk"] = _qr["quantum_risk"]
+                            st.session_state["last_result"]["quantum_anomalies"] = _qr["pair_anomalies"]
+                            st.session_state["last_result"]["quantum_verdict"] = _qr["verdict"]
+                            if _qr["quantum_risk"] >= 35:
+                                st.session_state["last_result"]["needs_secondary_review"] = True
+                    except Exception as _qe:
+                        import logging as _log
+                        _log.getLogger(__name__).warning("quantum module skipped: %s", _qe)
+                # ──────────────────────────────────────────────────────────────
+
                 # カスタムルールの影響や強制ステータスの上書き
                 if forced_custom_status:
                     st.session_state['last_result']["hantei"] = forced_custom_status
