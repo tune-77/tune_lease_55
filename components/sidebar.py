@@ -276,6 +276,8 @@ def _render_csv_download() -> None:
             for log in all_logs:
                 row = {
                     "timestamp": log.get("timestamp"),
+                    "company_no": log.get("company_no", ""),
+                    "company_name": log.get("company_name", ""),
                     "industry_major": log.get("industry_major"),
                     "industry_sub": log.get("industry_sub"),
                     "result_status": log.get("final_status"),
