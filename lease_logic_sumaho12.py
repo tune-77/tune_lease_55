@@ -1751,6 +1751,10 @@ elif mode == "🔷 幾何学分析":
     from components.clifford_visual import render_clifford_visual
     render_clifford_visual()
 
+elif mode == "📝 案件修正":
+    from components.case_editor import render_case_editor
+    render_case_editor()
+
 # ── フローティングBOT（八奈見さん）── 全ページ共通 ──────────────────────────
 try:
     from components.floating_bot import render_floating_bot
