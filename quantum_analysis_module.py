@@ -16,6 +16,32 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 MODEL_PATH = "data/quantum_model.joblib"
+_CONFIG_PATH = "data/quantum_config.json"
+
+
+def _load_config() -> dict:
+    import json, os
+    if os.path.exists(_CONFIG_PATH):
+        try:
+            with open(_CONFIG_PATH, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning("quantum_config.json 読み込み失敗、デフォルト値を使用: %s", e)
+    return {}
+
+
+_CFG = _load_config()
+_T = _CFG.get("thresholds", {})
+_M = _CFG.get("model", {})
+
+THRESHOLD_SECONDARY_REVIEW: float = float(_T.get("secondary_review", 35.0))
+THRESHOLD_HIGH_RISK: float        = float(_T.get("high_risk", 60.0))
+_WEIGHT_BOOST_INTERFERENCE: float = float(_T.get("weight_boost_interference", 0.6))
+_WEIGHT_BOOST_FACTOR: float       = float(_T.get("weight_boost_factor", 1.3))
+_WEIGHT_BOOST_MAX: float          = float(_T.get("weight_boost_max", 3.0))
+_ACTIVE_PAIR_MIN: float           = float(_T.get("active_pair_min_interference", 0.05))
+_ENTANGLE_ALPHA: float            = float(_M.get("entangle_alpha", 50.0))
+_ENTANGLE_RISK_FACTOR: float      = float(_M.get("entangle_risk_factor", 0.2))
 
 _GRADE_MAP: dict[str, float] = {
     "①A格": 9.0, "①a": 9.0, "A": 9.0,
@@ -230,12 +256,12 @@ class QuantumGate:
     def __init__(
         self,
         industry_pair_weights: dict[str, float] | None = None,
-        entangle_alpha: float = 50.0,
+        entangle_alpha: float | None = None,
     ):
         self.feature_map = QuantumFeatureMap()
         self.analyzer = QuantumInterferenceAnalyzer()
         self.industry_pair_weights: dict[str, float] = industry_pair_weights or {}
-        self.entangle_alpha = entangle_alpha  # S ∈ [0,1] × alpha = entangle bonus
+        self.entangle_alpha = entangle_alpha if entangle_alpha is not None else _ENTANGLE_ALPHA
         self._fitted = False
 
     # ── 学習 ─────────────────────────────────────────────────────────────────
@@ -271,12 +297,11 @@ class QuantumGate:
             for name, psi_a, psi_b, _ in self._iter_pairs(rec, fs):
                 d = self.analyzer.interference(psi_a, psi_b)
                 pair_scores.setdefault(name, []).append(d)
-        # 平均乖離度が 0.6 超のペアを 1.3 倍まで増幅
         for name, vals in pair_scores.items():
             mean_d = float(np.mean(vals))
-            if mean_d >= 0.6:
+            if mean_d >= _WEIGHT_BOOST_INTERFERENCE:
                 base = self.industry_pair_weights.get(name, 1.0)
-                self.industry_pair_weights[name] = min(base * 1.3, 3.0)
+                self.industry_pair_weights[name] = min(base * _WEIGHT_BOOST_FACTOR, _WEIGHT_BOOST_MAX)
 
     # ── 予測 ─────────────────────────────────────────────────────────────────
 
@@ -286,6 +311,10 @@ class QuantumGate:
         戻り値: quantum_risk, pair_anomalies, entangle_entropy,
                 geo_distance_max, verdict, explanation
         """
+        if not self._fitted:
+            raise RuntimeError(
+                "QuantumGate is not fitted. Run fit() or load a trained model first."
+            )
         inputs: dict[str, Any] = dict(case.get("inputs", case))
         # トップレベルの業種キーを inputs に補完（past_cases 形式）
         for _k in ("industry_major", "industry_sub"):
@@ -306,14 +335,13 @@ class QuantumGate:
             geo_distances[name] = round(self.analyzer.fubini_study(psi_a, psi_b), 4)
             _ = (w, boost)  # pair contribution computed in Q_risk below
 
-        # Q_risk 集約 — 有意な乖離(>0.05)のペアのみで正規化
-        # ペア追加で total_w が膨らみスコアが希釈されるのを防ぐ
+        # Q_risk 集約 — 有意な乖離のペアのみで正規化（ペア追加によるスコア希釈防止）
         active_risk = 0.0
         active_w = 0.0
         for name, psi_a, psi_b, w in self._iter_pairs(rec, fs):
             boost = self.industry_pair_weights.get(name, 1.0)
             d = pair_anomalies.get(name, 0.0)
-            if d > 0.05:
+            if d > _ACTIVE_PAIR_MIN:
                 active_risk += w * boost * d
                 active_w += w * boost
 
@@ -326,7 +354,7 @@ class QuantumGate:
         if fin_state is not None:
             ent_entropy = self.analyzer.entanglement_entropy(qualit_flag, fin_state)
 
-        q_risk = float(np.clip(q_risk_normalized + self.entangle_alpha * ent_entropy * 0.2, 0.0, 100.0))
+        q_risk = float(np.clip(q_risk_normalized + self.entangle_alpha * ent_entropy * _ENTANGLE_RISK_FACTOR, 0.0, 100.0))
         geo_max = max(geo_distances.values()) if geo_distances else 0.0
 
         verdict = _verdict(q_risk)
@@ -390,7 +418,10 @@ class QuantumGate:
     @staticmethod
     @lru_cache(maxsize=1)
     def load_cached(path: str = MODEL_PATH) -> "QuantumGate":
-        return QuantumGate.load(path)
+        model = QuantumGate.load(path)
+        if not model._fitted:
+            raise RuntimeError(f"Loaded model at {path} has _fitted=False. Re-run train_quantum.py.")
+        return model
 
 
 # ── ユーティリティ ────────────────────────────────────────────────────────────
@@ -507,9 +538,9 @@ def _extract_features(inputs: dict[str, Any]) -> dict[str, float] | None:
 
 
 def _verdict(q_risk: float) -> str:
-    if q_risk >= 60:
+    if q_risk >= THRESHOLD_HIGH_RISK:
         return "高リスク"
-    if q_risk >= 35:
+    if q_risk >= THRESHOLD_SECONDARY_REVIEW:
         return "要再審"
     return "正常"
 

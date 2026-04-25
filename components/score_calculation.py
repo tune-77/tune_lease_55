@@ -1132,7 +1132,8 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                             st.session_state["last_result"]["quantum_risk"] = _qr["quantum_risk"]
                             st.session_state["last_result"]["quantum_anomalies"] = _qr["pair_anomalies"]
                             st.session_state["last_result"]["quantum_verdict"] = _qr["verdict"]
-                            if _qr["quantum_risk"] >= 35:
+                            from quantum_analysis_module import THRESHOLD_SECONDARY_REVIEW as _QT
+                            if _qr["quantum_risk"] >= _QT:
                                 st.session_state["last_result"]["needs_secondary_review"] = True
                     except Exception as _qe:
                         import logging as _log

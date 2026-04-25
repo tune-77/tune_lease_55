@@ -74,7 +74,7 @@ def _make_construction_case(high_profit: bool = True, high_equip: bool = False) 
 def test_construction_no_equip_high_profit():
     """建設業: 高利益×低設備 → 高利益×高設備 より Q_risk が高い"""
     gate = QuantumGate()
-    gate._fitted = True  # fit スキップ（正規化なし = デフォルト μ=0, σ=1）
+    gate.fit([])  # μ=0/σ=1 デフォルト — 相対比較テストには正規化不要
 
     case_risky = _make_construction_case(high_profit=True, high_equip=False)
     case_normal = _make_construction_case(high_profit=True, high_equip=True)
@@ -91,7 +91,7 @@ def test_construction_no_equip_high_profit():
 def test_verdict_mapping():
     """Q_risk 閾値に応じた verdict 分類"""
     gate = QuantumGate()
-    gate._fitted = True
+    gate.fit([])
     # qualit なし・低利益・設備あり → 低リスク case
     low_case = {"inputs": {
         "op_profit": 5000, "depreciation": 4000, "machines": 8000,
@@ -136,7 +136,7 @@ def test_backtest_lost_recall():
             pass
 
     gate = QuantumGate()
-    gate._fitted = True
+    gate.fit(cases)
 
     results = [gate.predict(c) for c in cases]
     q_risks = [r["quantum_risk"] for r in results]
@@ -174,8 +174,10 @@ def test_independence_from_mahalanobis():
     conn.close()
 
     maha = MahalanobisScorer.load(str(MAHA_PATH))
+    import json as _json
+    all_cases = [_json.loads(r[0]) for r in rows if r[0]]
     gate = QuantumGate()
-    gate._fitted = True
+    gate.fit(all_cases)
 
     q_risks, m_scores = [], []
     for (raw,) in rows:

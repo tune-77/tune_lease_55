@@ -97,8 +97,7 @@ def _run_backtest(gate, lost: list[dict]) -> None:
     results = [gate.predict(c) for c in high_score_lost]
     q_risks = [r["quantum_risk"] for r in results]
 
-    threshold_flag = 35.0   # "要再審" 以上 → secondary review 誘導
-    threshold_high = 60.0   # "高リスク"
+    from quantum_analysis_module import THRESHOLD_SECONDARY_REVIEW as threshold_flag, THRESHOLD_HIGH_RISK as threshold_high
     tp_flag = sum(1 for q in q_risks if q >= threshold_flag)
     tp_high = sum(1 for q in q_risks if q >= threshold_high)
     total = len(q_risks)
@@ -107,8 +106,8 @@ def _run_backtest(gate, lost: list[dict]) -> None:
 
     logger.info("=== バックテスト結果 ===")
     logger.info("対象: 高スコア失注 %d件", total)
-    logger.info("Q_risk>=35 (要再審+) recall: %.2f (目標 ≥ 0.40)", recall_flag)
-    logger.info("Q_risk>=60 (高リスク) recall: %.2f", recall_high)
+    logger.info("Q_risk>=%.0f (要再審+) recall: %.2f (目標 ≥ 0.40)", threshold_flag, recall_flag)
+    logger.info("Q_risk>=%.0f (高リスク) recall: %.2f", threshold_high, recall_high)
     logger.info("Q_risk 分布: min=%.1f mean=%.1f max=%.1f",
                 min(q_risks), float(np.mean(q_risks)), max(q_risks))
 

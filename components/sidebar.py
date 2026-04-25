@@ -290,6 +290,7 @@ def _render_csv_download() -> None:
                     "score": log.get("result", {}).get("score"),
                     "quantum_risk": log.get("result", {}).get("quantum_risk"),
                     "quantum_verdict": log.get("result", {}).get("quantum_verdict"),
+                    "needs_secondary_review": log.get("result", {}).get("needs_secondary_review", False),
                 }
                 if "inputs" in log:
                     row.update(log["inputs"])
