@@ -193,16 +193,39 @@ def render_case_editor() -> None:
             key=f"edit_status_{case_id}",
         )
 
-    # 財務数値（参照のみ）
-    with st.expander("📊 財務数値（参照のみ・編集不可）", expanded=False):
+    # 財務数値（編集可能）
+    with st.expander("📊 財務数値（編集可能）", expanded=True):
         fin = result.get("financials", {})
-        nenshu = inp.get("nenshu") or fin.get("nenshu")
-        op = inp.get("op_profit") or fin.get("op_profit")
-        eq = result.get("user_eq")
-        c1, c2, c3 = st.columns(3)
-        c1.metric("売上高（千円）", f"{int(nenshu):,}" if isinstance(nenshu, (int, float)) else "—")
-        c2.metric("営業利益（千円）", f"{int(op):,}" if isinstance(op, (int, float)) else "—")
-        c3.metric("自己資本比率", f"{eq:.1%}" if isinstance(eq, float) else "—")
+
+        def _v(key: str, fallback_key: str | None = None) -> float:
+            v = inp.get(key)
+            if v is None and fallback_key:
+                v = fin.get(fallback_key)
+            return float(v) if isinstance(v, (int, float)) else 0.0
+
+        fc1, fc2, fc3 = st.columns(3)
+        new_nenshu = fc1.number_input(
+            "売上高（千円）", value=_v("nenshu"), step=100.0, key=f"edit_nenshu_{case_id}"
+        )
+        new_op_profit = fc2.number_input(
+            "営業利益（千円）", value=_v("op_profit"), step=100.0, key=f"edit_op_profit_{case_id}"
+        )
+        new_net_income = fc3.number_input(
+            "当期純利益（千円）", value=_v("net_income"), step=100.0, key=f"edit_net_income_{case_id}"
+        )
+        fc4, fc5, fc6 = st.columns(3)
+        new_bank_credit = fc4.number_input(
+            "借入金残高（千円）", value=_v("bank_credit"), min_value=0.0, step=100.0,
+            key=f"edit_bank_credit_{case_id}",
+        )
+        new_acquisition_cost = fc5.number_input(
+            "契約金額（千円）", value=_v("acquisition_cost"), min_value=0.0, step=10.0,
+            key=f"edit_acquisition_cost_{case_id}",
+        )
+        new_lease_term = fc6.number_input(
+            "契約期間（ヶ月）", value=int(_v("lease_term")), min_value=0, step=1,
+            key=f"edit_lease_term_{case_id}",
+        )
 
     st.subheader("📋 定性スコアリング")
 
@@ -246,8 +269,14 @@ def render_case_editor() -> None:
 
         new_case = copy.deepcopy(case)
 
-        # inputs 更新
+        # inputs 更新（財務数値 + 定性）
         new_case.setdefault("inputs", {}).setdefault("qualitative", {})
+        new_case["inputs"]["nenshu"] = new_nenshu
+        new_case["inputs"]["op_profit"] = new_op_profit
+        new_case["inputs"]["net_income"] = new_net_income
+        new_case["inputs"]["bank_credit"] = new_bank_credit
+        new_case["inputs"]["acquisition_cost"] = new_acquisition_cost
+        new_case["inputs"]["lease_term"] = int(new_lease_term)
         new_case["inputs"]["qualitative"]["passion_text"] = new_passion
         new_case["inputs"]["qualitative_scoring"] = new_qual_correction
 
