@@ -11,7 +11,9 @@
   },
   "scoring": {
     "trigger_score": 70,
-    "high_score_threshold": 80
+    "high_score_threshold": 80,
+    "feedback_deduction_factor": 0.12,
+    "feedback_max_deduction": 8.0
   },
   "model": {
     "entangle_alpha": 50.0,

@@ -55,10 +55,87 @@ def _load_cases(status: str) -> list[dict]:
     return result
 
 
+def _save_versioned(gate, seiyaku_n: int, lost_n: int, keep: int = 3) -> str:
+    """
+    data/models/quantum/ にバージョン付きモデルを保存し直近 keep 世代を保持。
+    メインパス (MODEL_PATH) にも上書きコピーする。
+    """
+    import datetime, shutil
+    model_dir = PROJECT_ROOT / "data" / "models" / "quantum"
+    model_dir.mkdir(parents=True, exist_ok=True)
+
+    date_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    ver_path = str(model_dir / f"quantum_model_v{date_str}.joblib")
+    meta_path = str(model_dir / f"quantum_model_v{date_str}.json")
+
+    gate.save(ver_path)
+
+    # メタデータ JSON
+    meta = {
+        "version": date_str,
+        "seiyaku_cases": seiyaku_n,
+        "lost_cases": lost_n,
+        "industry_weights_keys": list(getattr(gate, "industry_weights", {}).keys()),
+        "model_path": ver_path,
+    }
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
+
+    # メインパスに上書き
+    shutil.copy2(ver_path, MODEL_PATH)
+    logger.info("バージョン保存: %s", ver_path)
+    logger.info("メインパス更新: %s", MODEL_PATH)
+
+    # 直近 keep 世代のみ保持（古い joblib を削除）
+    versioned = sorted(model_dir.glob("quantum_model_v*.joblib"))
+    for old in versioned[:-keep]:
+        old.unlink(missing_ok=True)
+        old.with_suffix(".json").unlink(missing_ok=True)
+        logger.info("旧バージョン削除: %s", old.name)
+
+    return ver_path
+
+
+FEEDBACK_PATH = PROJECT_ROOT / "data" / "quantum_feedback.jsonl"
+
+
+def _load_feedback() -> tuple[list[dict], list[dict]]:
+    """
+    quantum_feedback.jsonl から「妥当」→ 正常サンプル補完、
+    「要確認」→ 失注相当の重み学習に使うケースリストを返す。
+    """
+    if not FEEDBACK_PATH.exists():
+        return [], []
+    ok_cases, ng_cases = [], []
+    for line in FEEDBACK_PATH.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+            case = {"inputs": entry.get("inputs", {})}
+            if entry.get("label") == "妥当":
+                ok_cases.append(case)
+            elif entry.get("label") == "要確認":
+                ng_cases.append(case)
+        except Exception:
+            pass
+    return ok_cases, ng_cases
+
+
 def train(backtest: bool = False) -> None:
     seiyaku = _load_cases("成約")
     lost = _load_cases("失注")
     logger.info("成約: %d件, 失注: %d件", len(seiyaku), len(lost))
+
+    # フィードバック取り込み
+    fbk_ok, fbk_ng = _load_feedback()
+    if fbk_ok:
+        logger.info("フィードバック(妥当): %d件 → 成約サンプルに追加", len(fbk_ok))
+        seiyaku = seiyaku + fbk_ok
+    if fbk_ng:
+        logger.info("フィードバック(要確認): %d件 → 失注サンプルに追加", len(fbk_ng))
+        lost = lost + fbk_ng
 
     if len(seiyaku) < MIN_CASES:
         logger.warning("成約件数が少ない(%d件)。合成データで補完", len(seiyaku))
@@ -67,8 +144,7 @@ def train(backtest: bool = False) -> None:
     from quantum_analysis_module import QuantumGate
     gate = QuantumGate()
     gate.fit(seiyaku, lost if lost else None)
-    gate.save(MODEL_PATH)
-    logger.info("モデル保存: %s", MODEL_PATH)
+    _save_versioned(gate, len(seiyaku), len(lost))
 
     if backtest:
         _run_backtest(gate, lost)

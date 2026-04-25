@@ -14,6 +14,7 @@ import streamlit as st
 PROJECT_ROOT = Path(__file__).parent.parent
 DB_PATH = PROJECT_ROOT / "data" / "lease_data.db"
 QMODEL_PATH = str(PROJECT_ROOT / "data" / "quantum_model.joblib")
+FEEDBACK_PATH = PROJECT_ROOT / "data" / "quantum_feedback.jsonl"
 
 # 業種小分類コード → 大分類コードの表示名マップ
 _MAJOR_LABELS: dict[str, str] = {
@@ -122,6 +123,22 @@ def _render_radar(pair_anomalies: dict[str, float], industry_name: str) -> None:
     st.plotly_chart(fig, use_container_width=True)
 
 
+def _write_feedback(case: dict, label: str) -> None:
+    """フィードバックを quantum_feedback.jsonl に追記する"""
+    import datetime
+    entry = {
+        "ts": datetime.datetime.now().isoformat(),
+        "label": label,       # "妥当" | "要確認"
+        "inputs": case.get("inputs", {}),
+        "q_risk": case.get("_q_risk", 0),
+        "q_verdict": case.get("_q_verdict", ""),
+        "status": case.get("_status", ""),
+        "score": case.get("_score", 0),
+    }
+    with open(FEEDBACK_PATH, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
 def _render_case_table(records: list[dict]) -> None:
     import pandas as pd
     rows = []
@@ -149,6 +166,23 @@ def _render_case_table(records: list[dict]) -> None:
 
     styled = df.style.applymap(_color, subset=["Q_risk"])
     st.dataframe(styled, use_container_width=True, hide_index=True)
+
+    # フィードバックボタン（上位 Q_risk 案件を対象）
+    top_cases = sorted(records, key=lambda c: c.get("_q_risk", 0), reverse=True)[:5]
+    if top_cases:
+        st.markdown("##### Q_risk 上位案件へのフィードバック")
+        st.caption("判定の妥当性をフィードバックすると、次回学習で重みに反映されます。")
+        for i, c in enumerate(top_cases):
+            inp = c.get("inputs", {})
+            label = f"Q_risk={c.get('_q_risk', 0):.0f}  {inp.get('industry_sub', '?')}  {c.get('_status', '')}"
+            col_lbl, col_ok, col_ng = st.columns([4, 1, 1])
+            col_lbl.markdown(f"<small>{label}</small>", unsafe_allow_html=True)
+            if col_ok.button("✅ 妥当", key=f"fbk_ok_{i}", use_container_width=True):
+                _write_feedback(c, "妥当")
+                st.toast("フィードバックを記録しました（妥当）")
+            if col_ng.button("⚠️ 要確認", key=f"fbk_ng_{i}", use_container_width=True):
+                _write_feedback(c, "要確認")
+                st.toast("フィードバックを記録しました（要確認）")
 
 
 def _render_explanation() -> None:

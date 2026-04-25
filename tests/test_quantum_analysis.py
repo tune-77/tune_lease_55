@@ -199,3 +199,76 @@ def test_independence_from_mahalanobis():
     assert abs(corr) < 0.90, (
         f"マハラノビスとの相関 r={corr:.3f} が高すぎる（独立シグナルになっていない）"
     )
+
+
+# ── 5. エッジケーステスト ─────────────────────────────────────────────────────
+
+def _base_case(**overrides) -> dict:
+    base = {"inputs": {
+        "op_profit": 50000, "depreciation": 15000, "machines": 40000,
+        "net_income": 40000, "ord_profit": 45000,
+        "grade": "②B格", "industry_major": "D 建設業",
+        "qualitative": {"strength_tags": [], "onehot": {}},
+    }}
+    base["inputs"].update(overrides)
+    return base
+
+
+def test_all_zero_financials():
+    """全ゼロ財務はクラッシュせず有効な値域 [0, 100] で返る"""
+    gate = QuantumGate()
+    gate.fit([])
+    r = gate.predict({"inputs": {
+        "op_profit": 0, "depreciation": 0, "machines": 0,
+        "net_income": 0, "ord_profit": 0,
+        "grade": "②B格", "industry_major": "D 建設業",
+        "qualitative": {"strength_tags": [], "onehot": {}},
+    }})
+    assert 0.0 <= r["quantum_risk"] <= 100.0, f"全ゼロで範囲外: {r['quantum_risk']}"
+    assert r["verdict"] in ("正常", "要再審", "高リスク")
+    assert isinstance(r["pair_anomalies"], dict)
+
+
+def test_no_industry_specified():
+    """業種未指定は基本ペアのみで計算し正常に完了する"""
+    gate = QuantumGate()
+    gate.fit([])
+    r = gate.predict({"inputs": {
+        "op_profit": 50000, "depreciation": 15000, "machines": 40000,
+        "net_income": 40000, "ord_profit": 45000,
+        "grade": "②B格", "industry_major": "",
+        "qualitative": {"strength_tags": [], "onehot": {}},
+    }})
+    assert 0.0 <= r["quantum_risk"] <= 100.0
+    assert r["verdict"] in ("正常", "要再審", "高リスク")
+    # 業種ペアがないので anomalies は BASE_PAIRS の 3 ペアのみ
+    assert len(r["pair_anomalies"]) <= 3
+
+
+def test_invalid_grade():
+    """未知の grade 文字列はデフォルト値にフォールバックし計算を完了する"""
+    gate = QuantumGate()
+    gate.fit([])
+    for bad_grade in ("不明", "", "ZZZ格", None):
+        case = _base_case(grade=bad_grade)
+        r = gate.predict(case)
+        assert 0.0 <= r["quantum_risk"] <= 100.0, f"grade={bad_grade!r} で範囲外: {r['quantum_risk']}"
+
+
+def test_reproducibility():
+    """同一入力を2回 predict すると同じ quantum_risk を返す"""
+    gate = QuantumGate()
+    gate.fit([])
+    case = _base_case()
+    r1 = gate.predict(case)
+    r2 = gate.predict(case)
+    assert r1["quantum_risk"] == r2["quantum_risk"], (
+        f"再現性なし: {r1['quantum_risk']} vs {r2['quantum_risk']}"
+    )
+
+
+def test_unfitted_raises_runtime_error():
+    """fit() 未実行の predict は RuntimeError を送出する"""
+    gate = QuantumGate()
+    with pytest.raises(RuntimeError, match="not fitted"):
+        gate.predict(_base_case())

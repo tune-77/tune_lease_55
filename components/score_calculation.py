@@ -1147,6 +1147,27 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                             _qt_eff = _QT if _hantei_score >= _QS_HIGH else _QT_MID
                             if _qr["quantum_risk"] >= _qt_eff:
                                 st.session_state["last_result"]["needs_secondary_review"] = True
+
+                            # Q.6: quantum_risk → 穏やかなスコア減点
+                            try:
+                                import json as _qjson
+                                _qcfg_s = _qjson.loads(
+                                    open("data/quantum_config.json", encoding="utf-8").read()
+                                ).get("scoring", {})
+                            except Exception:
+                                _qcfg_s = {}
+                            _fdec_factor = float(_qcfg_s.get("feedback_deduction_factor", 0.12))
+                            _fdec_max    = float(_qcfg_s.get("feedback_max_deduction", 8.0))
+                            _qdeduction  = min(_fdec_max, max(0.0,
+                                (_qr["quantum_risk"] - _qt_eff) * _fdec_factor))
+                            if _qdeduction > 0.0:
+                                _hantei_score = max(0.0, _hantei_score - _qdeduction)
+                                st.session_state["last_result"]["hantei_score"] = round(_hantei_score, 1)
+                                st.session_state["last_result"]["quantum_deduction"] = round(_qdeduction, 1)
+                                if not forced_custom_status:
+                                    st.session_state["last_result"]["hantei"] = (
+                                        "承認圏内" if _hantei_score >= _eff_approval else "要審議"
+                                    )
                     except Exception as _qe:
                         import logging as _log
                         _log.getLogger(__name__).warning("quantum module skipped: %s", _qe)
