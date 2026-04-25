@@ -28,6 +28,17 @@ _DATA_DIR        = os.path.join(_BASE_DIR, "data")
 _WIZ_DRAFTS_DIR  = os.path.join(_DATA_DIR, "wizard_drafts")
 _STATIC_DIR      = os.path.join(_BASE_DIR, "static_data")
 
+# 定性スコアリング選択肢（ラベル→数値インデックス変換に使用）
+# インデックスは score_calculation.py の opts[idx-1] に対応する 1-based 値
+_QUAL_CORRECTION_OPTS: dict[str, tuple[str, list[str]]] = {
+    "qual_corr_company_history":    ("設立・経営年数（重み10%）",    ["未選択","20年以上","10年〜20年","5年〜10年","3年〜5年","3年未満"]),
+    "qual_corr_customer_stability": ("顧客安定性（重み20%）",        ["未選択","非常に安定（大口・長期）","安定（分散良好）","普通","やや不安定（集中あり）","不安定・依存大"]),
+    "qual_corr_repayment_history":  ("返済履歴（重み25%）",          ["未選択","5年以上問題なし","3年以上問題なし","遅延少ない","遅延・リスケあり","問題あり・要確認"]),
+    "qual_corr_business_future":    ("事業将来性（重み15%）",        ["未選択","有望（成長・ニーズ確実）","やや有望","普通","やや懸念","懸念（縮小・競争激化）"]),
+    "qual_corr_equipment_purpose":  ("設備目的（重み15%）",          ["未選択","収益直結・受注必須","生産性向上・省力化","更新・維持・法定対応","やや不明確","不明確・要説明"]),
+    "qual_corr_main_bank":          ("メイン取引銀行（重み15%）",    ["未選択","メイン先で取引良好・支援表明","メイン先","サブ扱い・取引あり","取引浅い・他社メイン","取引なし・不安"]),
+}
+
 
 def _get_draft_path() -> str:
     """ログインユーザー名に対応するウィザード下書きパスを返す（多人数対応）。"""
@@ -753,16 +764,8 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
         _bot("定性評価を教えてください 🎯<br>"
              "数字には表れない、担当者としての目線です。<br>"
              "「わからない」「未選択」のままでも審査は実行できます。")
-        _q_opts = {
-            "qual_corr_company_history":      ("設立・経営年数（重み10%）", ["未選択","20年以上","10年〜20年","5年〜10年","3年〜5年","3年未満"]),
-            "qual_corr_customer_stability":   ("顧客安定性（重み20%）",     ["未選択","非常に安定（大口・長期）","安定（分散良好）","普通","やや不安定（集中あり）","不安定・依存大"]),
-            "qual_corr_repayment_history":    ("返済履歴（重み25%）",        ["未選択","5年以上問題なし","3年以上問題なし","遅延少ない","遅延・リスケあり","問題あり・要確認"]),
-            "qual_corr_business_future":      ("事業将来性（重み15%）",      ["未選択","有望（成長・ニーズ確実）","やや有望","普通","やや懸念","懸念（縮小・競争激化）"]),
-            "qual_corr_equipment_purpose":    ("設備目的（重み15%）",        ["未選択","収益直結・受注必須","生産性向上・省力化","更新・維持・法定対応","やや不明確","不明確・要説明"]),
-            "qual_corr_main_bank":            ("メイン取引銀行（重み15%）",  ["未選択","メイン先で取引良好・支援表明","メイン先","サブ扱い・取引あり","取引浅い・他社メイン","取引なし・不安"]),
-        }
         qual_updates = {}
-        for key, (label, opts) in _q_opts.items():
+        for key, (label, opts) in _QUAL_CORRECTION_OPTS.items():
             cur = d.get(key, "未選択")
             if cur not in opts:
                 cur = "未選択"
@@ -883,6 +886,13 @@ def _submit_wizard(d: dict) -> None:
               "acquisition_cost", "acceptance_year"]:
         if k in form_result:
             st.session_state[k] = form_result[k]
+
+    # 定性スコアリング: 文字列ラベル → 1-based 数値インデックスに変換して session_state へ書き込む
+    # score_calculation.py が `opts[idx-1][0]` で値を参照するため整数が必要
+    for key, (_lbl, opts) in _QUAL_CORRECTION_OPTS.items():
+        label_val = form_result.get(key, "未選択")
+        idx = opts.index(label_val) if label_val in opts else 0
+        st.session_state[key] = idx
 
     st.session_state["_wizard_submitted"]  = True
     _clear_draft()
