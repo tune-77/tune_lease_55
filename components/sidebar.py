@@ -280,6 +280,11 @@ def _render_csv_download() -> None:
                     "company_name": log.get("company_name", ""),
                     "industry_major": log.get("industry_major"),
                     "industry_sub": log.get("industry_sub"),
+                    "customer_type": log.get("customer_type", ""),
+                    "competitor": log.get("competitor", ""),
+                    "num_competitors": log.get("num_competitors", ""),
+                    "deal_occurrence": log.get("deal_occurrence", ""),
+                    "sales_dept": log.get("sales_dept", ""),
                     "result_status": log.get("final_status"),
                     "score": log.get("result", {}).get("score"),
                 }
