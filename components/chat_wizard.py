@@ -523,11 +523,19 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
         occ = st.selectbox("発生経緯", ["不明","指名","相見積もり"],
                            index=["不明","指名","相見積もり"].index(d.get("deal_occurrence","不明")),
                            key="wiz_deal_occ")
+        _SALES_DEPT_OPTS = ["未設定", "宇都宮営業部", "小山営業部", "足利営業部", "埼玉営業部"]
+        cur_dept = d.get("sales_dept", "未設定")
+        if cur_dept not in _SALES_DEPT_OPTS:
+            cur_dept = "未設定"
+        sales_dept = st.selectbox("営業部", _SALES_DEPT_OPTS,
+                                  index=_SALES_DEPT_OPTS.index(cur_dept),
+                                  key="wiz_sales_dept")
         ans = f"{main_bank} / {competitor}" + (f" / 競合金利{comp_rate}%" if competitor=="競合あり" else "")
         _nav_buttons(step, question="取引区分・競合状況を教えてください", answer=ans,
                      updates={"main_bank": main_bank, "competitor": competitor,
                               "competitor_rate_input": comp_rate,
-                              "num_competitors": num_comp, "deal_occurrence": occ})
+                              "num_competitors": num_comp, "deal_occurrence": occ,
+                              "sales_dept": sales_dept})
 
     # ── STEP: asset ─────────────────────────────────────────────────────────
     elif sid == "asset":
@@ -789,7 +797,7 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
 <b>物件</b>　{d.get("asset_name","—")}<br>
 <b>売上高</b>　{nenshu_v:,}千円　／　<b>営業利益</b>　{rieki_v:,}千円　（営業利益率 {op_rate}%）<br>
 <b>総資産</b>　{total_v:,}千円　／　<b>純資産</b>　{net_v:,}千円　（自己資本比率 {eq_rate}%）<br>
-<b>格付</b>　{d.get("grade","—")}　／　<b>取引区分</b>　{d.get("main_bank","—")}　／　<b>競合</b>　{d.get("competitor","—")}<br>
+<b>格付</b>　{d.get("grade","—")}　／　<b>取引区分</b>　{d.get("main_bank","—")}　／　<b>競合</b>　{d.get("competitor","—")}　／　<b>営業部</b>　{d.get("sales_dept","未設定")}<br>
 <b>取得価格</b>　{int(d.get("acquisition_cost",0)):,}千円　／　<b>期間</b>　{d.get("lease_term","—")}ヶ月<br>
 <b>直感スコア</b>　{score}点　{labels.get(score,"")}
 </div>
@@ -850,6 +858,7 @@ def _submit_wizard(d: dict) -> None:
         "qual_corr_equipment_purpose":  d.get("qual_corr_equipment_purpose", "未選択"),
         "qual_corr_main_bank":          d.get("qual_corr_main_bank", "未選択"),
         "company_no":                   d.get("company_no", ""),
+        "sales_dept":                   d.get("sales_dept", "未設定"),
     }
 
     st.session_state["wizard_form_result"] = form_result

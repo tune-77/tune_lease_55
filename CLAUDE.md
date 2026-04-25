@@ -17,6 +17,9 @@
 
 ---
 
+## Serena MCP 使用方針
+コード調査・編集は Serena の `get_symbols_overview` / `find_symbol` / `replace_symbol_body` を優先して使うこと。ファイル全体の `Read` より先にシンボル単位での取得を試みる。
+
 ## コーディング規約
 - Python 3.10+、型アノテーション推奨
 - Streamlit の `st.session_state` 操作は副作用に注意
