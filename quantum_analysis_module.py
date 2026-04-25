@@ -46,6 +46,7 @@ _WEIGHT_BOOST_MAX: float          = float(_T.get("weight_boost_max", 3.0))
 _ACTIVE_PAIR_MIN: float           = float(_T.get("active_pair_min_interference", 0.05))
 _ENTANGLE_ALPHA: float            = float(_M.get("entangle_alpha", 50.0))
 _ENTANGLE_RISK_FACTOR: float      = float(_M.get("entangle_risk_factor", 0.2))
+_MIN_INDUSTRY_CASES: int          = int(_CFG.get("training", {}).get("min_industry_cases", 2))
 
 _GRADE_MAP: dict[str, float] = {
     "①A格": 9.0, "①a": 9.0, "A": 9.0,
@@ -265,10 +266,21 @@ class QuantumGate:
         self.feature_map = QuantumFeatureMap()
         self.analyzer = QuantumInterferenceAnalyzer()
         self.industry_pair_weights: dict[str, float] = industry_pair_weights or {}
+        self.industry_weights: dict[str, dict[str, float]] = {}  # 業種別ペア重み (Q.5)
         self.entangle_alpha = entangle_alpha if entangle_alpha is not None else _ENTANGLE_ALPHA
         self._fitted = False
 
     # ── 学習 ─────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _unwrap_inputs(case: dict[str, Any]) -> dict[str, Any]:
+        """{"inputs": {...}} と flat dict の両形式を統一して inputs dict を返す"""
+        inp = dict(case.get("inputs", case))
+        # トップレベルの業種キーを inputs に補完（past_cases 形式）
+        for k in ("industry_major", "industry_sub"):
+            if k not in inp and k in case:
+                inp[k] = case[k]
+        return inp
 
     def fit(
         self,
@@ -279,12 +291,12 @@ class QuantumGate:
         成約案件の特徴量分布から正規化統計量を学習。
         失注案件がある場合は業種別ペア重みを微調整。
         """
-        records = [_extract_features(c) for c in df_seiyaku]
+        records = [_extract_features(self._unwrap_inputs(c)) for c in df_seiyaku]
         records = [r for r in records if r is not None]
         self.feature_map.fit(records)  # type: ignore[arg-type]
 
         if df_lost:
-            lost_records = [_extract_features(c) for c in df_lost]
+            lost_records = [_extract_features(self._unwrap_inputs(c)) for c in df_lost]
             lost_records = [r for r in lost_records if r is not None]
             self._tune_weights(lost_records)
 
@@ -292,9 +304,14 @@ class QuantumGate:
         logger.info("QuantumGate fitted: seiyaku=%d lost=%d", len(records), len(df_lost or []))
 
     def _tune_weights(self, lost_records: list[dict[str, float]]) -> None:
-        """失注案件で乖離度が高いペアの重みを増幅する（簡易 weight boosting）"""
+        """グローバル + 業種別の両方で重みを調整する"""
         if not lost_records:
             return
+        self._tune_weights_global(lost_records)
+        self._tune_weights_by_industry(lost_records)
+
+    def _tune_weights_global(self, lost_records: list[dict[str, float]]) -> None:
+        """全業種合算でペア重みを調整（industry_pair_weights に反映）"""
         pair_scores: dict[str, list[float]] = {}
         for rec in lost_records:
             fs = self._feature_states(rec)
@@ -306,6 +323,41 @@ class QuantumGate:
             if mean_d >= _WEIGHT_BOOST_INTERFERENCE:
                 base = self.industry_pair_weights.get(name, 1.0)
                 self.industry_pair_weights[name] = min(base * _WEIGHT_BOOST_FACTOR, _WEIGHT_BOOST_MAX)
+
+    def _tune_weights_by_industry(self, lost_records: list[dict[str, float]]) -> None:
+        """業種別に分離してペア重みを調整（industry_weights に反映）"""
+        by_industry: dict[str, list[dict]] = {}
+        for rec in lost_records:
+            major = rec.get("_major_str", "") or "__unknown__"
+            by_industry.setdefault(major, []).append(rec)
+
+        for major, records in by_industry.items():
+            if len(records) < _MIN_INDUSTRY_CASES:
+                logger.debug(
+                    "業種 %s: サンプル %d件 < 最小 %d件、業種別重み学習スキップ",
+                    major, len(records), _MIN_INDUSTRY_CASES,
+                )
+                continue
+            pair_scores: dict[str, list[float]] = {}
+            for rec in records:
+                fs = self._feature_states(rec)
+                for name, psi_a, psi_b, _ in self._iter_pairs(rec, fs):
+                    d = self.analyzer.interference(psi_a, psi_b)
+                    pair_scores.setdefault(name, []).append(d)
+            ind_weights = dict(self.industry_weights.get(major, {}))
+            boosted = 0
+            for name, vals in pair_scores.items():
+                mean_d = float(np.mean(vals))
+                if mean_d >= _WEIGHT_BOOST_INTERFERENCE:
+                    base = ind_weights.get(name, 1.0)
+                    ind_weights[name] = min(base * _WEIGHT_BOOST_FACTOR, _WEIGHT_BOOST_MAX)
+                    boosted += 1
+            if ind_weights:
+                self.industry_weights[major] = ind_weights
+                logger.info(
+                    "業種 %s: ペア重み学習完了 (%d件) → %d ペア調整",
+                    major, len(records), boosted,
+                )
 
     # ── 予測 ─────────────────────────────────────────────────────────────────
 
@@ -332,18 +384,24 @@ class QuantumGate:
         pair_anomalies: dict[str, float] = {}
         geo_distances: dict[str, float] = {}
 
-        for name, psi_a, psi_b, w in self._iter_pairs(rec, fs):
-            boost = self.industry_pair_weights.get(name, 1.0)
+        # 業種別重みを優先、なければグローバル重みにフォールバック（旧モデル互換）
+        major = rec.get("_major_str", "")
+        _ind_w: dict[str, float] = getattr(self, "industry_weights", {}).get(major, {})
+        _glob_w: dict[str, float] = self.industry_pair_weights
+
+        def _boost(name: str) -> float:
+            return _ind_w.get(name) or _glob_w.get(name, 1.0)
+
+        for name, psi_a, psi_b, _ in self._iter_pairs(rec, fs):
             d = self.analyzer.interference(psi_a, psi_b)
             pair_anomalies[name] = round(d, 4)
             geo_distances[name] = round(self.analyzer.fubini_study(psi_a, psi_b), 4)
-            _ = (w, boost)  # pair contribution computed in Q_risk below
 
         # Q_risk 集約 — 有意な乖離のペアのみで正規化（ペア追加によるスコア希釈防止）
         active_risk = 0.0
         active_w = 0.0
         for name, psi_a, psi_b, w in self._iter_pairs(rec, fs):
-            boost = self.industry_pair_weights.get(name, 1.0)
+            boost = _boost(name)
             d = pair_anomalies.get(name, 0.0)
             if d > _ACTIVE_PAIR_MIN:
                 active_risk += w * boost * d

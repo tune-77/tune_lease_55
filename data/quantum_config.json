@@ -19,6 +19,7 @@
   },
   "training": {
     "min_cases": 5,
-    "synth_fallback_n": 30
+    "synth_fallback_n": 30,
+    "min_industry_cases": 2
   }
 }
