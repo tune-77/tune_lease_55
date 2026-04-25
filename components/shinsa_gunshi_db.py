@@ -15,7 +15,7 @@ from datetime import datetime
 # ==============================================================================
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _BASE = os.path.dirname(_DIR)  # tune_lease_55/
-GUNSHI_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(_BASE)), "tune_lease_55", "data", "lease_data.db")
+GUNSHI_DB_PATH = os.path.join(_BASE, "data", "lease_data.db")
 
 
 # ==============================================================================
