@@ -488,7 +488,24 @@ def render_report() -> None:
                 except Exception:
                     pass
 
-    # ── ⑧ 印刷・PDF ─────────────────────────────────────────────────────────
+    # ── ⑧ 量子波形タブ（AV.9）────────────────────────────────────────────────
+    if q_risk is not None:
+        st.divider()
+        _wave_tab, _report_tab = st.tabs(["⚛️ 量子波形", "📋 レポート詳細"])
+        with _wave_tab:
+            try:
+                from components.aurion_wave_view import render_aurion_wave_view
+                render_aurion_wave_view(
+                    quantum_inputs=res.get("quantum_inputs"),
+                    quantum_risk=q_risk,
+                    pair_anomalies=res.get("quantum_anomalies"),
+                )
+            except Exception as _e:
+                st.caption(f"波形表示エラー: {_e}")
+        with _report_tab:
+            st.caption("このタブはレポート詳細用スペースです。")
+
+    # ── ⑨ 印刷・PDF ─────────────────────────────────────────────────────────
     st.markdown('<div class="rp-footer">温水式 リース審査AI — 審査レポート</div>', unsafe_allow_html=True)
     st.divider()
 

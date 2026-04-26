@@ -1650,6 +1650,11 @@ elif mode == "⚛️ 業種別量子解析":
     from components.industry_quantum_view import render_industry_quantum_view
     render_industry_quantum_view()
 
+# ── ⚛️ 量子波形ビジュアル ──────────────────────────────────────────────────────
+elif mode == "⚛️ 量子波形ビジュアル":
+    from components.aurion_wave_view import render_aurion_wave_view
+    render_aurion_wave_view()
+
 # ── 🔬 未使用変数スクリーニング ─────────────────────────────────────────────────
 elif mode == "🔬 未使用変数スクリーニング":
     from components.variable_screener_view import render_variable_screener_view

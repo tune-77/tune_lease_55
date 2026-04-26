@@ -30,8 +30,8 @@
 | Task | 内容 | DoD | Depends | Status | 推定 |
 |------|------|-----|---------|--------|------|
 | AV.1 | `aurion_wave_engine.py` 作成 — NumPy で2変数の位相差からサイン波合成・振幅スコア (0〜1) を返す `compute_wave(v1, v2, freq, t)` | `pytest tests/test_aurion_wave.py` 全 pass・位相差 π で振幅 ≈ 0 になる | - | cc:完了 | small(2h) |
-| AV.2 | `aurion_phase_mapper.py` 作成 — 業種コード→干渉ペア自動選択（既存 `PAIR_WEIGHTS` を流用） | `PhaseMapper.get_pair("C")` → `("op_profit","depreciation")` が返る pytest pass | AV.1 | cc:TODO | small(1h) |
-| AV.3 | `tests/test_aurion_wave.py` 作成 — エンジン・マッパーの単体テスト | 共鳴・デコヒーレンス境界値・業種マッパー全ケース pass | AV.1, AV.2 | cc:TODO | small(2h) |
+| AV.2 | `aurion_phase_mapper.py` 作成 — 業種コード→干渉ペア自動選択（既存 `PAIR_WEIGHTS` を流用） | `PhaseMapper.get_pair("C")` → `("op_profit","depreciation")` が返る pytest pass | AV.1 | cc:完了 | small(1h) |
+| AV.3 | `tests/test_aurion_wave.py` 作成 — エンジン・マッパーの単体テスト | 共鳴・デコヒーレンス境界値・業種マッパー全ケース pass | AV.1, AV.2 | cc:完了 | small(2h) |
 
 ---
 
@@ -39,9 +39,9 @@
 
 | Task | 内容 | DoD | Depends | Status | 推定 |
 |------|------|-----|---------|--------|------|
-| AV.4 | `flet_aurion_wave.py` 作成 — Flet Canvas でサイン波・合成波をリアルタイム描画（x軸方向に波が流れる） | `python3 flet_aurion_wave.py` でウィンドウ起動・波形アニメーション確認 | AV.1, AV.2 | cc:TODO | medium(4h) |
-| AV.5 | スライダー・デバッグ・パネル — 各変数値をスライダーで変更 → 波形リアルタイム更新 | スライダー操作で振幅変化が即時反映される（1フレーム以内） | AV.4 | cc:TODO | medium(3h) |
-| AV.6 | デコヒーレンス警告演出 — 位相差 > 閾値（π*0.7）で波が消えて赤い警告テキスト「⚠ データの歪みを検出」を表示 | 閾値超えで視覚的に波形消失・警告表示；閾値以内で波形復活 | AV.4, AV.5 | cc:TODO | small(2h) |
+| AV.4 | `flet_aurion_wave.py` 作成 — Flet Canvas でサイン波・合成波をリアルタイム描画（x軸方向に波が流れる） | `python3 flet_aurion_wave.py` でウィンドウ起動・波形アニメーション確認 | AV.1, AV.2 | cc:完了 | medium(4h) |
+| AV.5 | スライダー・デバッグ・パネル — 各変数値をスライダーで変更 → 波形リアルタイム更新 | スライダー操作で振幅変化が即時反映される（1フレーム以内） | AV.4 | cc:完了 | medium(3h) |
+| AV.6 | デコヒーレンス警告演出 — 位相差 > 閾値（π*0.7）で波が消えて赤い警告テキスト「⚠ データの歪みを検出」を表示 | 閾値超えで視覚的に波形消失・警告表示；閾値以内で波形復活 | AV.4, AV.5 | cc:完了 | small(2h) |
 
 ---
 
@@ -49,9 +49,9 @@
 
 | Task | 内容 | DoD | Depends | Status | 推定 |
 |------|------|-----|---------|--------|------|
-| AV.7 | `components/aurion_wave_view.py` 作成 — Plotly で静的波形（1スナップショット）と干渉スコアを表示 | `render_aurion_wave_view()` が現在案件の Q_risk・振幅グラフを描画する | AV.1, AV.2 | cc:TODO | medium(3h) |
-| AV.8 | サイドバー登録 — `sidebar.py` の「🔬 実験的機能」に `"⚛️ 量子波形ビジュアル"` を追加し、`lease_logic_sumaho12.py` にルーティング追加 | メニューから遷移して AV.7 画面が表示される | AV.7 | cc:TODO | small(1h) |
-| AV.9 | 現在審査案件との連動 — `score_calculation.py` の結果から `aurion_wave_view` へ自動でデータを渡し、Q_risk と波形を並列表示 | 審査後レポート画面でも「量子波形」タブが追加される | AV.7, AV.8 | cc:TODO | medium(3h) |
+| AV.7 | `components/aurion_wave_view.py` 作成 — Plotly で静的波形（1スナップショット）と干渉スコアを表示 | `render_aurion_wave_view()` が現在案件の Q_risk・振幅グラフを描画する | AV.1, AV.2 | cc:完了 | medium(3h) |
+| AV.8 | サイドバー登録 — `sidebar.py` の「🔬 実験的機能」に `"⚛️ 量子波形ビジュアル"` を追加し、`lease_logic_sumaho12.py` にルーティング追加 | メニューから遷移して AV.7 画面が表示される | AV.7 | cc:完了 | small(1h) |
+| AV.9 | 現在審査案件との連動 — `score_calculation.py` の結果から `aurion_wave_view` へ自動でデータを渡し、Q_risk と波形を並列表示 | 審査後レポート画面でも「量子波形」タブが追加される | AV.7, AV.8 | cc:完了 | medium(3h) |
 
 ---
 
