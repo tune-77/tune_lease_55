@@ -20,6 +20,7 @@ from typing import Optional
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from secret_manager import get_gemini_api_key
 
 # ── 定数 ─────────────────────────────────────────────────────────────────────
 # バックエンド API のデフォルト接続先（UI で上書き可能）
@@ -292,33 +293,6 @@ def _build_metrics_chart(df_metrics: pd.DataFrame) -> go.Figure:
 
 
 # ── Gemini 審査コメント ────────────────────────────────────────────────────────
-
-def _get_gemini_api_key() -> str:
-    """
-    Gemini APIキーを優先順位に従って取得する。
-    ai_chat.py と同じ取得ロジック。
-
-    優先順位:
-        1. 環境変数 GEMINI_API_KEY
-        2. .streamlit/secrets.toml の GEMINI_API_KEY
-        3. st.session_state["fin_gemini_api_key"]（手動入力済み）
-
-    Returns:
-        APIキー文字列。未設定の場合は空文字列。
-    """
-    # 1. 環境変数
-    key = os.environ.get("GEMINI_API_KEY", "")
-    if key:
-        return key
-    # 2. secrets.toml
-    try:
-        key = st.secrets.get("GEMINI_API_KEY", "")
-        if key:
-            return key
-    except Exception:
-        pass
-    # 3. セッション（手動入力済み）
-    return st.session_state.get("fin_gemini_api_key", "")
 
 
 def _call_gemini(prompt: str, api_key: str, timeout: int = 90) -> str:
@@ -666,7 +640,7 @@ def render_financial_analysis() -> None:
         )
 
         # APIキー取得（環境変数 / secrets.toml → なければ手動入力）
-        api_key = _get_gemini_api_key()
+        api_key = get_gemini_api_key()
         if not api_key:
             api_key_input = st.text_input(
                 "Gemini API Key",

@@ -11,43 +11,10 @@ import pathlib
 import time
 import requests
 import streamlit as st
+from secret_manager import get_anything_llm_key
 
 ANYTHING_LLM_BASE_URL = "http://127.0.0.1:3001/api/v1"
 ANYTHING_LLM_WORKSPACE = "lease"
-
-
-def _get_anything_llm_key() -> str:
-    """
-    APIキーを取得する。優先順:
-      1. st.secrets（Streamlit が正しく読めた場合）
-      2. このファイルの親ディレクトリを遡って .streamlit/secrets.toml を検索
-         （worktree など secrets.toml が手元にない場合のフォールバック）
-    """
-    # 1. st.secrets から試みる
-    try:
-        if hasattr(st, "secrets"):
-            key = st.secrets.get("ANYTHING_LLM_API_KEY", "") or ""
-            if key:
-                return key
-    except Exception:
-        pass
-
-    # 2. ファイルシステムを遡って secrets.toml を探す（最大 6 階層）
-    search = pathlib.Path(__file__).resolve().parent
-    for _ in range(6):
-        candidate = search / ".streamlit" / "secrets.toml"
-        if candidate.exists():
-            try:
-                import toml
-                data = toml.load(str(candidate))
-                key = data.get("ANYTHING_LLM_API_KEY", "") or ""
-                if key:
-                    return key
-            except Exception:
-                pass
-        search = search.parent
-
-    return ""
 
 
 @st.cache_data(ttl=300, show_spinner=False)

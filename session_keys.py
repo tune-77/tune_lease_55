@@ -75,6 +75,28 @@ class _SK:
     SELECTED_MAJOR: str        = "select_major"
     SELECTED_SUB: str          = "select_sub"
 
+    # ── Slack 通知設定 ───────────────────────────────────────────────────────
+    SLACK_ENABLED: str         = "slack_enabled"
+    SLACK_WEBHOOK_URL: str     = "slack_webhook_url"
+    SLACK_CHANNEL_NAME: str    = "slack_channel_name"
+    SLACK_NOTIFY_THREAD: str   = "slack_notify_thread"
+    SLACK_NOTIFY_VERDICT: str  = "slack_notify_verdict"
+
+    # ── エージェントチーム (AT) ──────────────────────────────────────────────
+    AT_THEME: str              = "at_theme"
+    AT_HISTORY: str            = "at_history"
+    AT_PENDING: str            = "at_pending"
+    AT_REBUTTAL_TARGET: str    = "at_rebuttal_target"
+    AT_FACILITATOR_RESULT: str = "at_facilitator_result"
+    AT_CODE_RESULTS: str       = "at_code_results"
+    AT_APPLIED_FILES: str      = "at_applied_files"
+    AT_SHINSA_HISTORY: str     = "at_shinsa_history"
+    AT_SHINSA_PENDING: str     = "at_shinsa_pending"
+
+    # ── こいぬエージェント ───────────────────────────────────────────────────
+    KOINU_CHAT_HISTORY: str    = "koinu_chat_history"
+    KOINU_MEMO_LOG: str        = "koinu_memo_log"
+
 
 # シングルトンインスタンス（from session_keys import SK で使う）
 SK = _SK()

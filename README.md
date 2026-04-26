@@ -24,7 +24,13 @@
 
 ```bash
 cd /path/to/tune_lease_55
-streamlit run tune_lease_55.py --server.port 8502
+./run_lease_app.sh
+```
+
+または:
+
+```bash
+streamlit run tune_lease_55.py
 ```
 
 APIキーの設定（初回のみ）:
@@ -32,7 +38,41 @@ APIキーの設定（初回のみ）:
 ```toml
 # .streamlit/secrets.toml
 GEMINI_API_KEY = "your-gemini-api-key"
+SLACK_BOT_TOKEN = "your-slack-bot-token"
+ANYTHING_LLM_API_KEY = "your-anything-llm-key"
 ```
+
+環境変数でも設定可能（優先順位: 環境変数 > secrets.toml > session_state）。
+
+---
+
+## プロジェクト構造
+
+```
+tune_lease_55/
+├── tune_lease_55.py              # エントリポイント
+├── lease_logic_sumaho12.py       # メインUIロジック
+├── components/                   # UIコンポーネント
+│   ├── financial_analysis.py
+│   ├── industry_search_agent.py
+│   └── ...
+├── scoring/                      # スコアリングロジック
+├── ai_chat.py                    # AIチャットバックエンド
+├── slack_bot.py                  # Slackボット
+├── anything_api.py               # AnythingLLM連携
+├── secret_manager.py             # 秘密情報管理（共通化）
+├── data/                         # SQLite DB・セッションファイル
+├── .streamlit/secrets.toml       # 秘密情報（コミット禁止）
+└── run_lease_app.sh              # 起動スクリプト
+```
+
+---
+
+## 最近の改善
+
+- **秘密情報管理の共通化**: `secret_manager.py` を導入し、APIキー取得を統一（環境変数 > secrets.toml > fallback）
+- **エントリポイントの明確化**: `tune_lease_55.py` をメインエントリポイントとして作成
+- **モジュール化**: UIコンポーネントを `components/` に分割
 
 ---
 

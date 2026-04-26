@@ -396,6 +396,8 @@ def render_report() -> None:
         q_verdict = res.get("quantum_verdict")
         q_anomalies = res.get("quantum_anomalies") or []
         needs_2nd = res.get("needs_secondary_review", False)
+        q_ood_flags: dict = res.get("quantum_ood_flags") or {}
+        ood_vars = [k for k, v in q_ood_flags.items() if v]
         if q_risk is not None:
             try:
                 from quantum_analysis_module import THRESHOLD_SECONDARY_REVIEW as _QT_SR
@@ -409,15 +411,82 @@ def render_report() -> None:
             )
             anomaly_html = f'<ul style="padding-left:1.2rem;font-size:.8rem;color:#475569;margin:.4rem 0 0;">{anomaly_items}</ul>' if anomaly_items else ""
             badge_html = '<span style="display:inline-block;margin-left:.8rem;padding:.15rem .55rem;border-radius:9999px;background:#fef3c7;border:1px solid #f59e0b;color:#92400e;font-size:.78rem;font-weight:700;">🔁 二次審査推奨</span>' if needs_2nd else ""
+            _ood_var_str = html.escape(", ".join(ood_vars))
+            ood_badge_html = (
+                '<span style="display:inline-block;margin-left:.6rem;padding:.15rem .55rem;'
+                'border-radius:9999px;background:#fce7f3;border:1px solid #db2777;'
+                'color:#9d174d;font-size:.78rem;font-weight:700;" '
+                f'title="外挿域変数: {_ood_var_str}">⚠️ 外挿域</span>'
+            ) if ood_vars else ""
             st.markdown(f"""
 <div class="rp-section">
   <p class="rp-section-title">⚛️ 量子整合性チェック</p>
   <span style="font-size:1rem;font-weight:700;color:{q_color};">{q_label}</span>
   <span style="font-size:.85rem;color:#64748b;margin-left:.8rem;">リスクスコア: <b>{q_risk:.1f}</b></span>
-  {badge_html}
+  {badge_html}{ood_badge_html}
   {'<div style="font-size:.82rem;color:#334155;margin-top:.4rem;">' + html.escape(q_verdict) + '</div>' if q_verdict else ""}
   {anomaly_html}
 </div>""", unsafe_allow_html=True)
+
+            # UI.4: 量子解析コメント（自然言語レポート）
+            _q_pair_contribs_for_narrative = res.get("quantum_pair_contributions") or {}
+            _q_inputs_for_narrative = res.get("quantum_inputs") or {}
+            if _q_pair_contribs_for_narrative:
+                try:
+                    from quantum_explainer import QuantumExplainer as _QExp
+                    _qexp = _QExp()
+                    _narrative_pred = {
+                        "pair_contributions": _q_pair_contribs_for_narrative,
+                        "explained_risk": res.get("quantum_explained_risk", 0.0),
+                        "quantum_risk": q_risk,
+                    }
+                    _narrative_case = {"inputs": dict(_q_inputs_for_narrative)}
+                    _narrative_text = _qexp.build_narrative(_narrative_pred, case=_narrative_case)
+                    if _narrative_text:
+                        st.markdown("**📝 量子解析コメント**")
+                        st.text_area(
+                            label="量子解析コメント",
+                            value=_narrative_text,
+                            height=100,
+                            disabled=True,
+                            label_visibility="collapsed",
+                        )
+                except Exception:
+                    pass
+
+            # UI.1: 貢献度横棒グラフ（Plotly）
+            _pair_contribs = res.get("quantum_pair_contributions") or {}
+            if _pair_contribs:
+                try:
+                    import plotly.graph_objects as go
+                    _active = {k: v for k, v in _pair_contribs.items() if v > 0}
+                    if _active:
+                        _sorted = sorted(_active.items(), key=lambda x: x[1], reverse=True)
+                        _labels = [k.replace("_x_", " × ") for k, _ in _sorted]
+                        _values = [v for _, v in _sorted]
+                        _colors = [
+                            "#dc2626" if v >= 10 else "#f97316" if v >= 5 else "#3b82f6"
+                            for v in _values
+                        ]
+                        fig = go.Figure(go.Bar(
+                            x=_values, y=_labels, orientation="h",
+                            marker_color=_colors,
+                            text=[f"+{v:.1f}点" for v in _values],
+                            textposition="outside",
+                        ))
+                        fig.update_layout(
+                            title="ペア寄与点数（加法的分解）",
+                            xaxis_title="寄与点数",
+                            yaxis=dict(autorange="reversed"),
+                            height=max(150, 50 + 40 * len(_sorted)),
+                            margin=dict(l=10, r=60, t=40, b=30),
+                            plot_bgcolor="#f8fafc",
+                            paper_bgcolor="#ffffff",
+                            font=dict(size=11),
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                except Exception:
+                    pass
 
     # ── ⑧ 印刷・PDF ─────────────────────────────────────────────────────────
     st.markdown('<div class="rp-footer">温水式 リース審査AI — 審査レポート</div>', unsafe_allow_html=True)

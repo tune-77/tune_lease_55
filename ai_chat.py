@@ -19,39 +19,10 @@ from config import (
     DEBATE_FILE,
 )
 from app_logger import log_warning, log_error
+from secret_manager import get_gemini_api_key
 
 # スレッド → メインで結果を渡す用（session_state はスレッドから更新不可）
 _chat_result_holder: dict = {"result": None, "done": False}
-
-
-def _get_gemini_key_from_secrets() -> str:
-    """secrets.toml が無くても例外にしない。キーがあれば返す。"""
-    try:
-        if hasattr(st, "secrets") and st.secrets.get("GEMINI_API_KEY"):
-            return st.secrets.get("GEMINI_API_KEY", "") or ""
-    except Exception as e:
-        log_warning(f"secrets.toml からのAPIキー取得失敗: {e}", context="_get_gemini_key_from_secrets")
-    return ""
-
-
-def get_gemini_api_key() -> str:
-    """
-    Gemini APIキーを優先順位に従って取得する。
-    優先順位: 環境変数 > secrets.toml > session_state
-    環境変数を最優先にすることで、デプロイ環境のシークレット管理を安全に行える。
-    """
-    # 1. 環境変数を最優先（本番環境・CIでの安全な設定）
-    env_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if env_key:
-        return env_key
-    # 2. secrets.toml（ローカル開発・Streamlit Cloud）
-    secrets_key = _get_gemini_key_from_secrets()
-    if secrets_key:
-        return secrets_key
-    # 3. セッション状態（UIで手動入力された場合）
-    if hasattr(st, "session_state"):
-        return (st.session_state.get("gemini_api_key") or "").strip()
-    return ""
 
 
 def get_ollama_model() -> str:

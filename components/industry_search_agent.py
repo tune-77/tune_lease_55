@@ -67,17 +67,14 @@ def _ai_summarize(raw: str, industry: str, detail: str) -> str:
     try:
         from ai_chat import (
             _chat_for_thread, is_ai_available, get_ollama_model,
-            GEMINI_API_KEY_ENV, GEMINI_MODEL_DEFAULT, _get_gemini_key_from_secrets,
+            GEMINI_API_KEY_ENV, GEMINI_MODEL_DEFAULT,
         )
+        from secret_manager import get_gemini_api_key
         if not is_ai_available():
             return raw[:1000]
 
         engine       = st.session_state.get("ai_engine", "ollama")
-        api_key      = (
-            (st.session_state.get("gemini_api_key") or "").strip()
-            or GEMINI_API_KEY_ENV
-            or _get_gemini_key_from_secrets()
-        )
+        api_key      = get_gemini_api_key()
         gemini_model = st.session_state.get("gemini_model", GEMINI_MODEL_DEFAULT)
 
         messages = [

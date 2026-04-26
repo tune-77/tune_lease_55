@@ -37,7 +37,6 @@ from slack_sdk.errors import SlackApiError
 # ── AI バックエンド ─────────────────────────────────────────────────────────
 from ai_chat import (
     _chat_for_thread,
-    _get_gemini_key_from_secrets,
     get_ollama_model,
     GEMINI_API_KEY_ENV,
     GEMINI_MODEL_DEFAULT,
@@ -48,6 +47,7 @@ from slack_screening import (
     handle_screening_message,
     start_screening,
 )
+from secret_manager import get_slack_bot_token, get_slack_app_token, get_slack_webhook_url
 
 # ── ログ設定 ────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -74,28 +74,9 @@ if not _ALLOWED_CLAUDE_USERS:
 # トークン取得
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _load_secrets() -> dict:
-    """secrets.toml からトークンを読み込む。"""
-    secrets_path = _SCRIPT_DIR / ".streamlit" / "secrets.toml"
-    secrets: dict = {}
-    if secrets_path.exists():
-        try:
-            for line in secrets_path.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if line.startswith("#") or "=" not in line:
-                    continue
-                key, _, val = line.partition("=")
-                secrets[key.strip()] = val.strip().strip('"').strip("'")
-        except Exception as e:
-            logger.warning(f"secrets.toml 読み込みエラー: {e}")
-    return secrets
-
-
-_secrets = _load_secrets()
-
-SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", _secrets.get("SLACK_BOT_TOKEN", ""))
-SLACK_APP_TOKEN = os.environ.get("SLACK_APP_TOKEN", _secrets.get("SLACK_APP_TOKEN", ""))
-SLACK_WEBHOOK_URL = os.environ.get("SLACK_WEBHOOK_URL", _secrets.get("SLACK_WEBHOOK_URL", ""))
+SLACK_BOT_TOKEN = get_slack_bot_token()
+SLACK_APP_TOKEN = get_slack_app_token()
+SLACK_WEBHOOK_URL = get_slack_webhook_url()
 
 POLL_INTERVAL = 3  # 秒
 
