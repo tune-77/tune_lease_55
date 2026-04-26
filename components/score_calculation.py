@@ -1144,6 +1144,10 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                             st.session_state["last_result"]["quantum_risk"] = _qr["quantum_risk"]
                             st.session_state["last_result"]["quantum_anomalies"] = _qr["pair_anomalies"]
                             st.session_state["last_result"]["quantum_verdict"] = _qr["verdict"]
+                            st.session_state["last_result"]["quantum_pair_contributions"] = _qr.get("pair_contributions", {})
+                            st.session_state["last_result"]["quantum_explained_risk"] = _qr.get("explained_risk", 0.0)
+                            st.session_state["last_result"]["quantum_ood_flags"] = _qr.get("ood_flags", {})
+                            st.session_state["last_result"]["quantum_inputs"] = _qinputs
                             _qt_eff = _QT if _hantei_score >= _QS_HIGH else _QT_MID
                             if _qr["quantum_risk"] >= _qt_eff:
                                 st.session_state["last_result"]["needs_secondary_review"] = True

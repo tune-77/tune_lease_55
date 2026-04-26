@@ -47,6 +47,7 @@ _ACTIVE_PAIR_MIN: float           = float(_T.get("active_pair_min_interference",
 _ENTANGLE_ALPHA: float            = float(_M.get("entangle_alpha", 50.0))
 _ENTANGLE_RISK_FACTOR: float      = float(_M.get("entangle_risk_factor", 0.2))
 _MIN_INDUSTRY_CASES: int          = int(_CFG.get("training", {}).get("min_industry_cases", 2))
+_OOD_Z_THRESHOLD: float           = float(_T.get("ood_z_threshold", 2.0))
 
 _GRADE_MAP: dict[str, float] = {
     "①A格": 9.0, "①a": 9.0, "A": 9.0,
@@ -422,9 +423,37 @@ class QuantumGate:
         verdict = _verdict(q_risk)
         explanation = _explain(pair_anomalies, rec)
 
+        pair_contributions: dict[str, float] = {}
+        for name, psi_a, psi_b, w in self._iter_pairs(rec, fs):
+            boost = _boost(name)
+            d = pair_anomalies.get(name, 0.0)
+            if d > _ACTIVE_PAIR_MIN and active_w > 0:
+                pair_contributions[name] = round((w * boost * d / active_w) * 100.0, 4)
+            else:
+                pair_contributions[name] = 0.0
+        explained_risk = round(sum(pair_contributions.values()), 4)
+
+        entropy_risk = round(float(self.entangle_alpha * ent_entropy * _ENTANGLE_RISK_FACTOR), 4)
+        residual_signal = entropy_risk  # エントロピー由来の未説明リスク成分（SC.4 閾値比較用）
+
+        ood_flags: dict[str, bool] = {}
+        for key, val in rec.items():
+            if key.startswith("_") or key not in self.feature_map.mu:
+                continue
+            try:
+                z = self.feature_map._zscore(float(val), key)
+                ood_flags[key] = abs(z) > _OOD_Z_THRESHOLD
+            except (TypeError, ValueError):
+                pass
+
         return {
             "quantum_risk": round(q_risk, 2),
             "pair_anomalies": pair_anomalies,
+            "pair_contributions": pair_contributions,
+            "explained_risk": explained_risk,
+            "entropy_risk": entropy_risk,
+            "residual_signal": residual_signal,
+            "ood_flags": ood_flags,
             "entangle_entropy": round(ent_entropy, 4),
             "geo_distance_max": round(geo_max, 4),
             "verdict": verdict,
@@ -628,6 +657,11 @@ def _null_result() -> dict[str, Any]:
     return {
         "quantum_risk": 0.0,
         "pair_anomalies": {},
+        "pair_contributions": {},
+        "explained_risk": 0.0,
+        "entropy_risk": 0.0,
+        "residual_signal": 0.0,
+        "ood_flags": {},
         "entangle_entropy": 0.0,
         "geo_distance_max": 0.0,
         "verdict": "正常",

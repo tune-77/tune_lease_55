@@ -272,3 +272,132 @@ def test_unfitted_raises_runtime_error():
     gate = QuantumGate()
     with pytest.raises(RuntimeError, match="not fitted"):
         gate.predict(_base_case())
+
+
+# ── 6. EX.1: pair_contributions 加法的寄与点数 ───────────────────────────────
+
+def test_pair_contributions_sum_to_explained_risk():
+    """EX.1 DoD: sum(pair_contributions.values()) == explained_risk"""
+    gate = QuantumGate()
+    gate.fit([])
+    r = gate.predict(_base_case())
+
+    assert "pair_contributions" in r, "pair_contributions フィールドが存在すること"
+    assert "explained_risk" in r, "explained_risk フィールドが存在すること"
+    assert isinstance(r["pair_contributions"], dict)
+
+    total = sum(r["pair_contributions"].values())
+    assert total == pytest.approx(r["explained_risk"], abs=1e-4), (
+        f"sum(pair_contributions)={total:.6f} が "
+        f"explained_risk={r['explained_risk']:.6f} と一致しない"
+    )
+
+
+def test_pair_contributions_non_negative():
+    """各ペアの寄与点数は 0 以上"""
+    gate = QuantumGate()
+    gate.fit([])
+    r = gate.predict(_base_case())
+    for name, val in r["pair_contributions"].items():
+        assert val >= 0.0, f"{name} の寄与点数 {val} が負"
+
+
+def test_pair_contributions_keys_match_anomalies():
+    """pair_contributions のキーセットは pair_anomalies と一致する"""
+    gate = QuantumGate()
+    gate.fit([])
+    r = gate.predict(_base_case())
+    assert set(r["pair_contributions"].keys()) == set(r["pair_anomalies"].keys())
+
+
+# ── 7. EX.4: ood_flags / entropy_risk フィールド ────────────────────────────
+
+def test_predict_has_ood_flags():
+    """EX.4: predict 戻り値に ood_flags フィールドが存在する"""
+    gate = QuantumGate()
+    gate.fit([])
+    r = gate.predict(_base_case())
+    assert "ood_flags" in r, "ood_flags フィールドが存在すること"
+    assert isinstance(r["ood_flags"], dict)
+
+
+def test_predict_has_entropy_risk():
+    """EX.4: predict 戻り値に entropy_risk フィールドが存在する"""
+    gate = QuantumGate()
+    gate.fit([])
+    r = gate.predict(_base_case())
+    assert "entropy_risk" in r, "entropy_risk フィールドが存在すること"
+    assert isinstance(r["entropy_risk"], float)
+    assert r["entropy_risk"] >= 0.0
+
+
+def test_ood_flags_empty_when_unfitted():
+    """fit([]) 時は mu 未設定 → ood_flags が空 dict"""
+    gate = QuantumGate()
+    gate.fit([])
+    r = gate.predict(_base_case())
+    assert r["ood_flags"] == {}, f"未学習時は空 dict のはず: {r['ood_flags']}"
+
+
+def test_ood_flags_populated_when_fitted():
+    """fit 済みモデルでは ood_flags に変数名キーが入る"""
+    training = [_base_case(**{"op_profit": 50000 + i * 1000}) for i in range(-3, 4)]
+    gate = QuantumGate()
+    gate.fit(training)
+    r = gate.predict(_base_case())
+    assert len(r["ood_flags"]) > 0, "fit 済みなら ood_flags にキーが入ること"
+    for val in r["ood_flags"].values():
+        assert isinstance(val, bool)
+
+
+def test_entropy_risk_and_explained_risk_sum_near_quantum_risk():
+    """explained_risk + entropy_risk は quantum_risk と概ね一致する（clipping 前合計）"""
+    gate = QuantumGate()
+    gate.fit([])
+    r = gate.predict(_base_case())
+    raw_sum = r["explained_risk"] + r["entropy_risk"]
+    # clipping により quantum_risk <= raw_sum の場合もあるが、差は小さいはず
+    assert abs(raw_sum - r["quantum_risk"]) < 10.0, (
+        f"explained_risk({r['explained_risk']}) + entropy_risk({r['entropy_risk']}) "
+        f"= {raw_sum:.4f} と quantum_risk({r['quantum_risk']}) の差が大きすぎる"
+    )
+
+
+# ── 8. SC.2: residual_signal 2 軸分離 ───────────────────────────────────────
+
+def test_predict_has_residual_signal():
+    """SC.2: predict 戻り値に residual_signal フィールドが存在する"""
+    gate = QuantumGate()
+    gate.fit([])
+    r = gate.predict(_base_case())
+    assert "residual_signal" in r, "residual_signal フィールドが存在すること"
+    assert isinstance(r["residual_signal"], float)
+    assert r["residual_signal"] >= 0.0
+
+
+def test_sc2_two_axis_sum_near_quantum_risk():
+    """SC.2 DoD: explained_risk + entropy_risk の合計が quantum_risk と 0.01 以内"""
+    gate = QuantumGate()
+    gate.fit([])
+    # entropy non-zero: qualitative tags あり
+    case = {"inputs": {
+        "op_profit": 80000, "depreciation": 5000, "machines": 10000,
+        "net_income": 64000, "ord_profit": 72000,
+        "grade": "②B格", "industry_major": "D 建設業",
+        "qualitative": {"strength_tags": ["技術力"], "onehot": {"技術力": 1}},
+    }}
+    r = gate.predict(case)
+    diff = abs(r["explained_risk"] + r["entropy_risk"] - r["quantum_risk"])
+    assert diff < 0.01, (
+        f"explained_risk({r['explained_risk']}) + entropy_risk({r['entropy_risk']}) "
+        f"= {r['explained_risk'] + r['entropy_risk']:.4f}, "
+        f"quantum_risk={r['quantum_risk']}, diff={diff:.6f}"
+    )
+
+
+def test_residual_signal_equals_entropy_risk():
+    """residual_signal は entropy_risk と等しい（エントロピー由来の未説明成分）"""
+    gate = QuantumGate()
+    gate.fit([])
+    r = gate.predict(_base_case())
+    assert r["residual_signal"] == r["entropy_risk"]

@@ -1,0 +1,42 @@
+{
+  "changes_this_session": [],
+  "cwd": "/Users/kobayashiisaoryou/clawd/tune_lease_55",
+  "duration_minutes": 0,
+  "ended_at": "2026-04-25T22:11:07Z",
+  "event_seq": 0,
+  "fork_count": 0,
+  "git": {
+    "branch": "feature/quantum-analysis-improvements",
+    "last_commit": "fcc813f",
+    "uncommitted_changes": 0
+  },
+  "harness_mem": {
+    "healthy": true,
+    "last_checked": "2026-04-25T22:11:03Z",
+    "last_error": ""
+  },
+  "intent": "literal",
+  "last_event_id": "",
+  "memory_logged": true,
+  "orchestration": {
+    "max_state_retries": 3,
+    "retry_backoff_seconds": 10
+  },
+  "parent_session_id": null,
+  "plans": {
+    "completed_tasks": 11,
+    "exists": true,
+    "last_modified": 1777154841,
+    "pending_tasks": 0,
+    "todo_tasks": 16,
+    "wip_tasks": 0
+  },
+  "project_name": "tune_lease_55",
+  "prompt_seq": 4,
+  "resume_token": "resume-1777155063524628000",
+  "session_id": "session-1777155063524607000",
+  "started_at": "2026-04-25T22:11:03Z",
+  "state": "stopped",
+  "state_version": 1,
+  "updated_at": "2026-04-25T22:11:03Z"
+}

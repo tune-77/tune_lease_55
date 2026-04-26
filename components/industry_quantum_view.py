@@ -44,6 +44,17 @@ _PAIR_LABELS: dict[str, str] = {
 }
 
 
+def _unwrap_inputs(case: dict) -> dict:
+    """{"inputs": {...}} と flat dict の両形式を統一して inputs dict を返す。
+    QuantumGate._unwrap_inputs の joblib 復元後アクセス問題を回避するためのモジュール直属版。
+    """
+    inp = dict(case.get("inputs", case))
+    for k in ("industry_major", "industry_sub"):
+        if k not in inp and k in case:
+            inp[k] = case[k]
+    return inp
+
+
 @st.cache_resource
 def _load_qgate():
     import os
@@ -139,11 +150,16 @@ def _write_feedback(case: dict, label: str) -> None:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
+_UNKNOWN_RISK_THRESHOLD = 10.0
+
+
 def _render_case_table(records: list[dict]) -> None:
     import pandas as pd
     rows = []
     for r in records:
         inp = r.get("inputs", {})
+        residual = r.get("_residual_signal", 0.0)
+        is_unknown_risk = (residual > _UNKNOWN_RISK_THRESHOLD) and (r.get("_status", "") == "失注")
         rows.append({
             "業種": inp.get("industry_sub", "不明"),
             "スコア": r.get("_score", 0),
@@ -151,6 +167,8 @@ def _render_case_table(records: list[dict]) -> None:
             "Q_risk": r.get("_q_risk", 0),
             "判定": r.get("_q_verdict", ""),
             "主因": r.get("_q_top_pair", ""),
+            "外挿域": "⚠️" if r.get("_q_ood", False) else "",
+            "未知リスク候補": "🔴" if is_unknown_risk else "",
         })
     if not rows:
         st.info("案件データなし")
@@ -275,12 +293,16 @@ def render_industry_quantum_view() -> None:
             c["_q_risk"] = r["quantum_risk"]
             c["_q_verdict"] = r["verdict"]
             c["_q_pairs"] = r["pair_anomalies"]
+            c["_q_ood"] = any(r.get("ood_flags", {}).values())
+            c["_residual_signal"] = r.get("residual_signal", 0.0)
             top = max(r["pair_anomalies"].items(), key=lambda x: x[1], default=("", 0))
             c["_q_top_pair"] = _PAIR_LABELS.get(top[0], top[0])
         except Exception:
             c["_q_risk"] = 0.0
             c["_q_verdict"] = "エラー"
             c["_q_pairs"] = {}
+            c["_q_ood"] = False
+            c["_residual_signal"] = 0.0
             c["_q_top_pair"] = ""
 
     # ── サイドバー: 業種選択 ────────────────────────────────────────────────
@@ -314,15 +336,17 @@ def render_industry_quantum_view() -> None:
     st.divider()
 
     # ── KPI ─────────────────────────────────────────────────────────────────
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     total = len(industry_cases)
     high_risk = sum(1 for c in industry_cases if c.get("_q_risk", 0) >= 60)
     review = sum(1 for c in industry_cases if 35 <= c.get("_q_risk", 0) < 60)
     lost = sum(1 for c in industry_cases if c.get("_status") == "失注")
+    ood_count = sum(1 for c in industry_cases if c.get("_q_ood", False))
     col1.metric("案件数", total)
     col2.metric("高リスク (≥60)", high_risk, delta=f"{high_risk/total*100:.0f}%" if total else "0%")
     col3.metric("要再審 (35-59)", review)
     col4.metric("失注件数", lost)
+    col5.metric("⚠️ 外挿域", ood_count, help="学習分布外の変数を含む案件数")
 
     st.divider()
 
@@ -345,6 +369,79 @@ def render_industry_quantum_view() -> None:
     with col_table:
         st.markdown("#### 案件一覧 (Q_risk 降順)")
         _render_case_table(industry_cases)
+
+    st.divider()
+
+    # ── UI.2: 反事実シナリオパネル ────────────────────────────────────────────
+    with st.expander("🔬 反事実シナリオ分析（仮説的シナリオ）", expanded=False):
+        st.caption(
+            "⚠️ 数値操作推奨ではない: この機能は仮説的な財務シナリオを探索するためのものです。"
+            "実際の財務操作を推奨するものではありません。"
+        )
+        if not industry_cases:
+            st.info("対象業種の案件がありません。")
+        else:
+            case_labels = [
+                f"案件 {i + 1}（Q_risk: {c.get('_q_risk', 0):.1f}）"
+                for i, c in enumerate(industry_cases)
+            ]
+            sel_idx = st.selectbox(
+                "分析対象案件", range(len(case_labels)),
+                format_func=lambda i: case_labels[i],
+                key="cf_case_select",
+            )
+            base_case = industry_cases[sel_idx]
+            base_inputs = _unwrap_inputs(base_case)
+            base_q_risk = base_case.get("_q_risk", 0.0)
+
+            def _ind_max(var: str, fallback: float) -> float:
+                vals = [
+                    float(_unwrap_inputs(c)[var])
+                    for c in industry_cases
+                    if _unwrap_inputs(c).get(var) is not None
+                ]
+                return max(vals) * 1.5 if vals else fallback
+
+            st.markdown("**変数を変更してシナリオを探索:**")
+            col_s1, col_s2, col_s3 = st.columns(3)
+            with col_s1:
+                new_op = st.slider(
+                    "営業利益 (千円)", 0, int(_ind_max("op_profit", 200000)),
+                    int(float(base_inputs.get("op_profit", 50000))),
+                    step=1000, key="cf_op_profit",
+                )
+            with col_s2:
+                new_dep = st.slider(
+                    "減価償却費 (千円)", 0, int(_ind_max("depreciation", 100000)),
+                    int(float(base_inputs.get("depreciation", 10000))),
+                    step=500, key="cf_depreciation",
+                )
+            with col_s3:
+                new_mach = st.slider(
+                    "機械設備 (千円)", 0, int(_ind_max("machines", 200000)),
+                    int(float(base_inputs.get("machines", 40000))),
+                    step=1000, key="cf_machines",
+                )
+
+            try:
+                cf_inputs = dict(base_inputs)
+                cf_inputs["op_profit"] = float(new_op)
+                cf_inputs["depreciation"] = float(new_dep)
+                cf_inputs["machines"] = float(new_mach)
+                cf_result = gate.predict({"inputs": cf_inputs})
+                cf_q_risk = cf_result["quantum_risk"]
+                delta = round(cf_q_risk - base_q_risk, 2)
+
+                col_orig, col_cf, col_delta = st.columns(3)
+                col_orig.metric("元の Q_risk", f"{base_q_risk:.1f}")
+                col_cf.metric("シナリオ Q_risk", f"{cf_q_risk:.1f}")
+                col_delta.metric(
+                    "差分",
+                    f"{delta:+.1f}",
+                    "↓ 改善" if delta < 0 else "↑ 悪化" if delta > 0 else "変化なし",
+                )
+            except Exception as _cf_err:
+                st.error(f"計算エラー: {_cf_err}")
 
     st.divider()
 
