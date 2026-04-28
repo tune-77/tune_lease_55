@@ -24,3 +24,14 @@
 {"file":"session_keys.py","action":"Edit","timestamp":"2026-04-26T03:21:23Z","important":false}
 {"file":"aurion_wave_engine.py","action":"Write","timestamp":"2026-04-26T04:12:36Z","important":false}
 {"file":"tests/test_aurion_wave.py","action":"Write","timestamp":"2026-04-26T04:12:56Z","important":false}
+{"file":"Plans.md","action":"Edit","timestamp":"2026-04-26T07:50:41Z","important":true}
+{"file":"aurion_phase_mapper.py","action":"Write","timestamp":"2026-04-26T07:51:38Z","important":false}
+{"file":"tests/test_aurion_wave.py","action":"Edit","timestamp":"2026-04-26T07:51:48Z","important":false}
+{"file":"flet_aurion_wave.py","action":"Write","timestamp":"2026-04-26T07:53:04Z","important":false}
+{"file":"components/aurion_wave_view.py","action":"Write","timestamp":"2026-04-26T07:53:48Z","important":false}
+{"file":"components/sidebar.py","action":"Edit","timestamp":"2026-04-26T07:53:57Z","important":false}
+{"file":"lease_logic_sumaho12.py","action":"Edit","timestamp":"2026-04-26T07:54:05Z","important":false}
+{"file":"components/report.py","action":"Edit","timestamp":"2026-04-26T07:54:19Z","important":false}
+{"file":"ai_chat.py","action":"Edit","timestamp":"2026-04-26T07:59:25Z","important":false}
+{"file":"components/score_calculation.py","action":"Edit","timestamp":"2026-04-26T08:07:54Z","important":false}
+{"file":"/Users/kobayashiisaoryou/.claude/plans/spicy-sniffing-popcorn.md","action":"Write","timestamp":"2026-04-26T08:10:06Z","important":false}

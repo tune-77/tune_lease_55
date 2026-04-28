@@ -21,6 +21,9 @@ from config import (
 from app_logger import log_warning, log_error
 from secret_manager import get_gemini_api_key
 
+# 旧名称の後方互換エイリアス
+_get_gemini_key_from_secrets = get_gemini_api_key
+
 # スレッド → メインで結果を渡す用（session_state はスレッドから更新不可）
 _chat_result_holder: dict = {"result": None, "done": False}
 
@@ -218,7 +221,7 @@ def chat_with_retry(model, messages, retries=2, timeout_seconds=120):
             return {"message": {"content": f"AnythingLLM が応答しませんでした: {e}"}}
     if engine == "gemini":
         api_key = (st.session_state.get("gemini_api_key") or "").strip() or GEMINI_API_KEY_ENV
-        api_key = api_key or _get_gemini_key_from_secrets()
+        api_key = api_key or get_gemini_api_key()
         gemini_model = st.session_state.get("gemini_model", GEMINI_MODEL_DEFAULT)
         if "last_gemini_debug" not in st.session_state:
             st.session_state["last_gemini_debug"] = ""
@@ -353,7 +356,7 @@ def is_ai_available(timeout_seconds: int = 3) -> bool:
             return False
     if engine == "gemini":
         key = st.session_state.get("gemini_api_key", "").strip() or GEMINI_API_KEY_ENV
-        key = key or _get_gemini_key_from_secrets()
+        key = key or get_gemini_api_key()
         return bool(key)
     return is_ollama_available(timeout_seconds)
 

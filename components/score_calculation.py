@@ -1120,6 +1120,23 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 except ImportError:
                     _QS_TRIGGER, _QS_HIGH, _QT, _QT_MID = 70, 80, 35.0, 45.0
 
+                # 波形ビジュアル用インプットは常に保存（スコア閾値に関係なく）
+                _qinputs = {
+                    "op_profit":      rieki,
+                    "ord_profit":     item4_ord_profit,
+                    "net_income":     item5_net_income,
+                    "depreciation":   item10_dep,
+                    "machines":       item6_machine,
+                    "grade":          grade or "無格付",
+                    "industry_major": selected_major or "",
+                    "industry_sub":   selected_sub or "",
+                    "qualitative": {
+                        "strength_tags": strength_tags or [],
+                        "onehot": {},
+                    },
+                }
+                st.session_state["last_result"]["quantum_inputs"] = _qinputs
+
                 if _hantei_score >= _QS_TRIGGER:
                     try:
                         import os as _os
@@ -1127,19 +1144,6 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         if _os.path.exists(_qmodel):
                             from quantum_analysis_module import QuantumGate as _QG
                             _qgate = _QG.load_cached(_qmodel)
-                            _qinputs = {
-                                "op_profit":    rieki,
-                                "ord_profit":   item4_ord_profit,
-                                "net_income":   item5_net_income,
-                                "depreciation": item10_dep,
-                                "machines":     item6_machine,
-                                "grade":        grade or "無格付",
-                                "industry_major": selected_major or "",
-                                "qualitative": {
-                                    "strength_tags": strength_tags or [],
-                                    "onehot": {},
-                                },
-                            }
                             _qr = _qgate.predict({"inputs": _qinputs})
                             st.session_state["last_result"]["quantum_risk"] = _qr["quantum_risk"]
                             st.session_state["last_result"]["quantum_anomalies"] = _qr["pair_anomalies"]
@@ -1147,7 +1151,6 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                             st.session_state["last_result"]["quantum_pair_contributions"] = _qr.get("pair_contributions", {})
                             st.session_state["last_result"]["quantum_explained_risk"] = _qr.get("explained_risk", 0.0)
                             st.session_state["last_result"]["quantum_ood_flags"] = _qr.get("ood_flags", {})
-                            st.session_state["last_result"]["quantum_inputs"] = _qinputs
                             _qt_eff = _QT if _hantei_score >= _QS_HIGH else _QT_MID
                             if _qr["quantum_risk"] >= _qt_eff:
                                 st.session_state["last_result"]["needs_secondary_review"] = True

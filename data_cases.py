@@ -538,10 +538,16 @@ class CustomJSONEncoder(json.JSONEncoder):
 def save_case_log(data):
     """審査1件分のログをSQLiteに追記し、生成した案件IDを返す。失敗時は None。"""
     import sqlite3
-    case_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
+    import uuid
+    # マイクロ秒 + UUID4の先頭8桁でバッチ一括保存時のPRIMARY KEY衝突を防止
+    case_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S%f") + "_" + uuid.uuid4().hex[:8]
     data["id"] = case_id
-    data["timestamp"] = datetime.datetime.now().isoformat()
-    data["final_status"] = "未登録"
+    # timestamp が呼び出し元で既にセットされている場合（バッチ履歴データ）は上書きしない
+    if not data.get("timestamp"):
+        data["timestamp"] = datetime.datetime.now().isoformat()
+    # final_status が呼び出し元で既にセットされている場合（バッチ成約/失注）は上書きしない
+    if "final_status" not in data or not data["final_status"]:
+        data["final_status"] = "未登録"
     
     industry_sub = data.get("industry_sub", "")
     score, user_eq = None, None

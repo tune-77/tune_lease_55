@@ -1660,6 +1660,11 @@ elif mode == "🔬 未使用変数スクリーニング":
     from components.variable_screener_view import render_variable_screener_view
     render_variable_screener_view()
 
+# ── 🧪 Q_risk分析 (β) ── 量子干渉・物理動態・ベンフォード則 ─────────────────────
+elif mode == "🧪 Q_risk分析 (β)":
+    from components.quantum_risk_view import render_quantum_risk_view
+    render_quantum_risk_view()
+
 elif mode == "📝 案件修正":
     from components.case_editor import render_case_editor
     render_case_editor()

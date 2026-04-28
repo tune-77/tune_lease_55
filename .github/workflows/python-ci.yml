@@ -28,6 +28,10 @@ jobs:
       run: |
         python -m pytest tests/ -v
 
+    - name: Type check
+      run: |
+        mypy secret_manager.py --ignore-missing-imports
+
     - name: Check syntax
       run: |
         python -m py_compile tune_lease_55.py
