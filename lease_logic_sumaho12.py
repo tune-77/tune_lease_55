@@ -786,6 +786,10 @@ elif mode == "📝 結果登録 (成約/失注)":
     from components.form_status import render_status_registration
     render_status_registration()
 
+elif mode == "🔍 AI 物件資産価値シミュレーター":
+    from components.asset_valuer import render_asset_valuer
+    render_asset_valuer()
+
 elif mode == "📋 審査・分析":
     # ========== トップメニュー（新規審査） ==========
     menu_tabs = st.tabs(["🆕 審査"])
@@ -1191,6 +1195,10 @@ elif mode == "🏭 物件ファイナンス審査":
 elif mode == "📝 結果登録 (成約/失注)":
     from components.form_status import render_status_registration
     render_status_registration()
+
+elif mode == "🔍 AI 物件資産価値シミュレーター":
+    from components.asset_valuer import render_asset_valuer
+    render_asset_valuer()
 
 elif mode == "🤝 エージェントチーム議論":
     from components.agent_team import render_agent_team
