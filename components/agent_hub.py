@@ -379,7 +379,46 @@ def _run_report_gen_agent(res: dict) -> str:
     qs_rank  = (res.get("qualitative_scoring_correction") or {}).get("rank_text", "—")
     strength = ", ".join(res.get("strength_tags") or [])
 
-    prompt = f"""以下の審査結果データをもとに稟議書を作成してください。
+    # ── PCAによる主成分得点（規模・収益性・歪み）の抽出 ──
+    try:
+        from sklearn.decomposition import PCA
+        from mahalanobis_engine import MahalanobisScorer
+        from train_mahalanobis import FEATURES, _extract_val
+        from data_cases import load_all_cases
+        import numpy as np
+
+        # モデルと過去データを元にPCA空間を再現
+        model = MahalanobisScorer.load("data/mahalanobis_model.joblib")
+        cases = load_all_cases()
+        X_raw = []
+        for c in cases:
+            X_raw.append([_extract_val(c, f) for f in FEATURES])
+        if not X_raw:
+            from train_mahalanobis import _synth_df
+            X_raw = _synth_df(80)[FEATURES].values
+        else:
+            X_raw = np.array(X_raw, dtype=float)
+
+        X_scaled = model.scaler.transform(model._preprocess(X_raw))
+        pca = PCA(n_components=3, random_state=42)
+        pca.fit(X_scaled)
+
+        # 現在案件の座標計算
+        cur_vec = np.array([_extract_val(res, f) for f in FEATURES], dtype=float).reshape(1, -1)
+        cur_scaled = model.scaler.transform(model._preprocess(cur_vec))
+        cur_pca = pca.transform(cur_scaled).flatten()
+        pc1, pc2, pc3 = cur_pca[0], cur_pca[1], cur_pca[2]
+    except Exception:
+        pc1, pc2, pc3 = 0.0, 0.0, 0.0
+
+    pca_comment = (
+        f"- PC1（企業規模）得点: {pc1:+.2f}\n"
+        f"- PC2（稼ぐ力/フロー収益）得点: {pc2:+.2f}\n"
+        f"- PC3（歪み/薄利多売リスク）得点: {pc3:+.2f}\n"
+    )
+
+    prompt = f"""以下の審査結果データおよびPCA主成分分析結果をもとに、
+データサイエンティストの視点を織り交ぜて稟議書を作成してください。
 
 【審査データ】
 - 業種: {industry}
@@ -391,6 +430,9 @@ def _run_report_gen_agent(res: dict) -> str:
 - DSCR: {user_dscr}倍
 - 定性ランク: {qs_rank}
 - 強みタグ: {strength}
+
+【PCA（主成分分析）データ】
+{pca_comment}
 """
     return _ai_call(prompt, system=_GUNSHI_SYSTEM, timeout=120)
 
