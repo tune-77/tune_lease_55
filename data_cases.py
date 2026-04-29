@@ -88,6 +88,9 @@ def load_all_cases():
                     try:
                         d = json.loads(row[0])
                         if d.get("id"):
+                            # ── 「検収」または「検収完了」は分析上「成約」として集計する ──
+                            if d.get("final_status") in ("検収", "検収完了"):
+                                d["final_status"] = "成約"
                             cases.append(d)
                     except json.JSONDecodeError:
                         continue
