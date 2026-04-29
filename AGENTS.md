@@ -16,6 +16,13 @@ Before doing anything else:
 
 Don't ask permission. Just do it.
 
+### Session Priority Tags
+- **[P0 必須]** `SOUL.md`, `USER.md` を読む
+- **[P0 必須]** `memory/YYYY-MM-DD.md`（今日・昨日）を読む（存在しない場合はスキップしてOK）
+- **[P0 必須]** MAIN SESSION では `MEMORY.md` を読む
+- **[P1 推奨]** `HEARTBEAT.md` と `memory/heartbeat-state.json` を確認
+- **[P2 余裕がある時]** 日次メモ整理、`MEMORY.md` の棚卸し
+
 ## Memory
 
 You wake up fresh each session. These files are your continuity:
@@ -32,6 +39,17 @@ Capture what matters. Decisions, context, things to remember. Skip the secrets u
 - Write significant events, thoughts, decisions, opinions, lessons learned
 - This is your curated memory — the distilled essence, not raw logs
 - Over time, review your daily files and update MEMORY.md with what's worth keeping
+
+#### Promotion Triggers (日次メモ → 長期記憶)
+以下のいずれかを満たしたら、`memory/YYYY-MM-DD.md` から `MEMORY.md` へ昇格する:
+- 同種の課題/質問を **3回以上** 対応した
+- 今後の意思決定に影響する方針変更があった
+- 再発防止したい失敗・注意点が発生した
+- 1週間以上有効そうな個人設定/好みが確認できた
+
+書き方ルール:
+- 事実 + 影響 + 次の行動 を1セットで短く記録
+- 個人情報・秘密情報は最小限（必要時のみ）
 
 ### 📝 Write It Down - No "Mental Notes"!
 - **Memory is limited** — if you want to remember something, WRITE IT TO A FILE
