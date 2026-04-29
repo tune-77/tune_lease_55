@@ -522,7 +522,7 @@ def estimate_empirical_priors(db_path: str | None = None) -> Dict[str, List[floa
     try:
         conn = sqlite3.connect(db_path)
         rows = conn.execute(
-            "SELECT data FROM past_cases WHERE final_status IN ('成約', '失注') LIMIT 500"
+            "SELECT data FROM past_cases WHERE final_status IN ('成約', '失注', '検収', '検収完了') LIMIT 500"
         ).fetchall()
         conn.close()
     except Exception as e:

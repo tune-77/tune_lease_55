@@ -443,12 +443,13 @@ def _learn_evidence_weights_from_db() -> dict:
             
             if table_exists:
                 past_rows = cur.execute(
-                    "SELECT final_status, data FROM past_cases WHERE final_status IN ('成約', '失注')"
+                    "SELECT final_status, data FROM past_cases WHERE final_status IN ('成約', '失注', '検収', '検収完了')"
                 ).fetchall()
                 
                 if len(past_rows) >= 10:
                     total_past = len(past_rows)
-                    base_past_win = sum(1 for r in past_rows if r[0] == "成約") / total_past
+                    # '検収' または '検収完了' も成約としてカウントする
+                    base_past_win = sum(1 for r in past_rows if r[0] in ("成約", "検収", "検収完了")) / total_past
                     
                     # 条件ごとの集計用バッファ
                     # マッピング: 画面の選択肢 -> 重みキー
