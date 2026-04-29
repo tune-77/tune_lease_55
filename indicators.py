@@ -249,6 +249,9 @@ def calculate_pd(equity: float, current: float, profit: float | None) -> float:
             risk += 2.0
     base_pd = min(100.0, max(0.0, risk))
     
+    # 【実務適合】日本の法人倒産確率の実態（年間1〜5%程度）にスケーリング（1/10補正）
+    base_pd = base_pd * 0.1
+    
     # ==== ネットワーク連鎖リスクエンジンの適用 ====
     try:
         import streamlit as st

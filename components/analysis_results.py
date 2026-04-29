@@ -276,8 +276,13 @@ def render_analysis_results(
                 _hantei_color = "#64748b"   # 不明: グレー
                 _hantei_bg    = "#f8fafc"
             _yield_str = f"{res['yield_pred']:.2f}%" if "yield_pred" in res else "—"
-            _pd_val    = res.get("pd_percent", 0) or 0
-            _pd_color  = "#dc2626" if _pd_val > 5 else "#1e3a5f"  # PD高い場合のみ注意色
+            _scoring_res = res.get("scoring_result") or st.session_state.get("scoring_result")
+            if _scoring_res and isinstance(_scoring_res, dict) and "ai_prob" in _scoring_res:
+                _pd_val = float(_scoring_res["ai_prob"]) * 100.0
+            else:
+                _pd_val = res.get("pd_percent", 0) or 0
+            
+            _pd_color  = "#dc2626" if _pd_val > 5.0 else "#1e3a5f"  # PD高い場合のみ注意色
             _sum_col, _gauge_col = st.columns([3, 2])
             with _sum_col:
                 st.markdown(f"""
@@ -1724,7 +1729,12 @@ def render_analysis_results(
 
             st.divider()
             # ----- カード: 本件スコア内訳・利回り -----
-            pd_val = res.get("pd_percent")
+            _scoring_res = res.get("scoring_result") or st.session_state.get("scoring_result")
+            if _scoring_res and isinstance(_scoring_res, dict) and "ai_prob" in _scoring_res:
+                pd_val = float(_scoring_res["ai_prob"]) * 100.0
+            else:
+                pd_val = res.get("pd_percent")
+                
             if pd_val is None:
                 fin = res.get("financials", {})
                 total_assets = fin.get("assets") or 0
@@ -1771,6 +1781,9 @@ def render_analysis_results(
             except Exception as e:
                 st.caption(f"連鎖リスクチェック用モジュールの読み込みに失敗しました: {e}")
 
+
+
+            st.divider()
             with st.expander("📐 スコア内訳・利回り詳細", expanded=False):
                 k2, k3, k4 = st.columns(3)
                 with k2:
