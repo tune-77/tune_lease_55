@@ -530,49 +530,16 @@ def render_sidebar(benchmarks_data: dict, useful_life_data: dict, lease_assets_l
             st.session_state["sidebar_group"] = grp
             st.session_state["main_mode"] = pending
 
-    # ── グループ選択 ─────────────────────────────────────────────────────────
+    # ── グループ選択の初期化 ───────────────────────────────────────────
     cur_group = st.session_state.get("sidebar_group", group_names[0])
     if cur_group not in group_names:
         cur_group = group_names[0]
 
-    group = st.sidebar.radio(
-        "カテゴリ",
-        group_names,
-        index=group_names.index(cur_group),
-        key="sidebar_group",
-    )
-
-    # ── グループ内メニュー ───────────────────────────────────────────────────
-    modes_in_group = SIDEBAR_GROUPS[group]
-    cur_mode = st.session_state.get("main_mode", modes_in_group[0])
-    if cur_mode not in modes_in_group:
-        cur_mode = modes_in_group[0]
-
-    st.sidebar.markdown("---")
-    mode = st.sidebar.radio(
-        "メニュー",
-        modes_in_group,
-        index=modes_in_group.index(cur_mode),
-        key="main_mode",
-    )
-
-    with st.sidebar.expander("⚠️ 途中で落ちる場合", expanded=False):
-        st.caption("主な原因: (1) AI相談・Gemini/Ollama のタイムアウト (2) ブラウザのメモリ不足 (3) 分析結果タブでデータ不整合。F5で再読み込みも試してください。")
-
-    _render_humor_style()
-    _render_ai_model_settings()
-    _render_auto_optimizer_status()
-    _render_backup_and_draft()
-    _render_session_cleanup()
-    _render_csv_download()
-    _render_industry_cache(benchmarks_data)
-    _render_reference_expanders(benchmarks_data, useful_life_data, lease_assets_list)
     # ── 審査システムの流れ（グラフィック解説） ───────────────────────────────
-    st.sidebar.markdown("---")
     st.sidebar.markdown("### 🧬 複合審査AIの構造フロー")
     
     flow_html = """
-    <div style="background: linear-gradient(135deg, #1e3a5f, #2563eb); padding: 1.2rem 1rem; border-radius: 12px; color: white; font-family: sans-serif; box-shadow: 0 6px 12px rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.1);">
+    <div style="background: linear-gradient(135deg, #1e3a5f, #2563eb); padding: 1.2rem 1rem; border-radius: 12px; color: white; font-family: sans-serif; box-shadow: 0 6px 12px rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.1); margin-bottom: 1.5rem;">
         <div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1.5px; opacity: 0.8; margin-bottom: 0.8rem; font-weight: bold; text-align: center;">AUTOMATED SCORING PIPELINE</div>
         
         <!-- Step 1 -->
@@ -622,7 +589,42 @@ def render_sidebar(benchmarks_data: dict, useful_life_data: dict, lease_assets_l
     </div>
     """
     st.sidebar.markdown(flow_html, unsafe_allow_html=True)
+    st.sidebar.markdown("---")
 
+    group = st.sidebar.radio(
+        "カテゴリ",
+        group_names,
+        index=group_names.index(cur_group),
+        key="sidebar_group",
+    )
+
+    # ── グループ内メニュー ───────────────────────────────────────────────────
+    modes_in_group = SIDEBAR_GROUPS[group]
+    cur_mode = st.session_state.get("main_mode", modes_in_group[0])
+    if cur_mode not in modes_in_group:
+        cur_mode = modes_in_group[0]
+
+    st.sidebar.markdown("---")
+    mode = st.sidebar.radio(
+        "メニュー",
+        modes_in_group,
+        index=modes_in_group.index(cur_mode),
+        key="main_mode",
+    )
+
+    with st.sidebar.expander("⚠️ 途中で落ちる場合", expanded=False):
+        st.caption("主な原因: (1) AI相談・Gemini/Ollama のタイムアウト (2) ブラウザのメモリ不足 (3) 分析結果タブでデータ不整合。F5で再読み込みも試してください。")
+
+    _render_humor_style()
+    _render_ai_model_settings()
+    _render_auto_optimizer_status()
+    _render_backup_and_draft()
+    _render_session_cleanup()
+    _render_csv_download()
+    _render_industry_cache(benchmarks_data)
+    _render_reference_expanders(benchmarks_data, useful_life_data, lease_assets_list)
     _render_cache_and_ai_honne()
+
+    return mode
 
     return mode
