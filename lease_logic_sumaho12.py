@@ -721,6 +721,9 @@ def get_image(status):
 # ==============================================================================
 # 画面構成
 # ==============================================================================
+import importlib
+import components.sidebar
+importlib.reload(components.sidebar)
 from components.sidebar import render_sidebar, load_byoki_list
 mode = render_sidebar(benchmarks_data, useful_life_data, LEASE_ASSETS_LIST)
 
