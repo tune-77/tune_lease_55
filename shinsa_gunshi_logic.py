@@ -377,6 +377,12 @@ _DEFAULT_EVIDENCE_WEIGHTS = {
     "subsidy":       0.12,  # 補助金採択
     "bank":          0.10,  # メイン銀行支援
     "intuition":     0.03,  # 直感スライダー1ポイントあたり（基準=3）
+    
+    # 成約条件のフィードバック学習用初期値
+    "cond_親会社保証": 0.13,
+    "cond_担保保全":  0.11,
+    "cond_金融協調":  0.14,
+    "cond_限度額設定": 0.06,
 }
 EVIDENCE_WEIGHTS = dict(_DEFAULT_EVIDENCE_WEIGHTS)  # 実績データで上書き可能
 
@@ -388,10 +394,12 @@ _CPD_MIN_CASES = 20
 
 def _learn_evidence_weights_from_db() -> dict:
     """
-    gunshi_cases テーブルの成約/非成約実績から EVIDENCE_WEIGHTS を統計的に推定する。
-    各証拠の「全体成約率との差分」を重みとして使う（最低 _CPD_MIN_CASES 件必要）。
-    件数不足時は空 dict を返す（デフォルト値を維持）。
+    gunshi_cases テーブルおよび past_cases (成約条件) から
+    EVIDENCE_WEIGHTS を統計的に逆算・学習する。
     """
+    learned = {}
+    
+    # 1. gunshi_cases からの基礎項目学習
     try:
         init_db()
         with closing(sqlite3.connect(GUNSHI_DB_PATH)) as conn:
@@ -401,31 +409,81 @@ def _learn_evidence_weights_from_db() -> dict:
                 "WHERE result IN ('成約','非成約')"
             ).fetchall()
     except Exception:
-        return {}
+        rows = []
 
-    if len(rows) < _CPD_MIN_CASES:
-        return {}
+    if len(rows) >= _CPD_MIN_CASES:
+        total    = len(rows)
+        base_win = sum(1 for r in rows if r[4] == "成約") / total
 
-    total    = len(rows)
-    base_win = sum(1 for r in rows if r[4] == "成約") / total
+        def _diff(filtered):
+            if len(filtered) < 5:
+                return None
+            win = sum(1 for r in filtered if r[4] == "成約") / len(filtered)
+            return max(-0.20, min(0.30, win - base_win))
 
-    def _diff(filtered):
-        if len(filtered) < 5:
-            return None
-        win = sum(1 for r in filtered if r[4] == "成約") / len(filtered)
-        return max(-0.20, min(0.30, win - base_win))
-
-    learned = {}
-    d = _diff([r for r in rows if r[0] == 1])
-    if d is not None:
-        learned["bank"] = d
-    d = _diff([r for r in rows if r[1] == 1])
-    if d is not None:
-        learned["subsidy"] = d
-    for val, key in [("高", "resale_high"), ("中", "resale_mid"), ("低", "resale_low")]:
-        d = _diff([r for r in rows if r[3] == val])
+        d = _diff([r for r in rows if r[0] == 1])
         if d is not None:
-            learned[key] = d
+            learned["bank"] = d
+        d = _diff([r for r in rows if r[1] == 1])
+        if d is not None:
+            learned["subsidy"] = d
+        for val, key in [("高", "resale_high"), ("中", "resale_mid"), ("低", "resale_low")]:
+            d = _diff([r for r in rows if r[3] == val])
+            if d is not None:
+                learned[key] = d
+
+    # 2. past_cases (成約条件 loan_conditions) からの逆転条件効果の学習
+    try:
+        with closing(sqlite3.connect(GUNSHI_DB_PATH)) as conn:
+            cur = conn.cursor()
+            # past_cases が存在するか確認
+            table_exists = cur.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='past_cases'"
+            ).fetchone()
+            
+            if table_exists:
+                past_rows = cur.execute(
+                    "SELECT final_status, data FROM past_cases WHERE final_status IN ('成約', '失注')"
+                ).fetchall()
+                
+                if len(past_rows) >= 10:
+                    total_past = len(past_rows)
+                    base_past_win = sum(1 for r in past_rows if r[0] == "成約") / total_past
+                    
+                    # 条件ごとの集計用バッファ
+                    # マッピング: 画面の選択肢 -> 重みキー
+                    cond_map = {
+                        "親会社等保証": "cond_親会社保証",
+                        "担保・保全あり": "cond_担保保全",
+                        "金融機関と協調": "cond_金融協調",
+                        "本件限度": "cond_限度額設定",
+                        "次回決算まで本件限度": "cond_限度額設定",
+                    }
+                    
+                    cond_stats = {k: {"total": 0, "win": 0} for k in cond_map.keys()}
+                    
+                    import json
+                    for status, data_str in past_rows:
+                        is_win = 1 if status == "成約" else 0
+                        try:
+                            data_json = json.loads(data_str) if isinstance(data_str, str) else data_str
+                            actual_conds = data_json.get("loan_conditions") or []
+                            if isinstance(actual_conds, list):
+                                for c in actual_conds:
+                                    if c in cond_stats:
+                                        cond_stats[c]["total"] += 1
+                                        cond_stats[c]["win"] += is_win
+                        except:
+                            continue
+                    
+                    # 貢献度の算出 (成約率の差分)
+                    for c_name, stat in cond_stats.items():
+                        if stat["total"] >= 3:  # 信頼性のための最低適用回数
+                            win_rate = stat["win"] / stat["total"]
+                            weight_key = cond_map[c_name]
+                            learned[weight_key] = max(-0.25, min(0.35, win_rate - base_past_win))
+    except Exception:
+        pass
 
     return learned
 
