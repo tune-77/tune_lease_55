@@ -536,58 +536,80 @@ def render_sidebar(benchmarks_data: dict, useful_life_data: dict, lease_assets_l
         cur_group = group_names[0]
 
     # ── 審査システムの流れ（グラフィック解説） ───────────────────────────────
-    with st.sidebar.expander("💡 複合審査AIの仕組みについて", expanded=False):
-        st.markdown("### 🧬 構造フロー")
+    with st.sidebar.expander("💡 複合審査AIの仕組みについて", expanded=True):
+        st.markdown("### 🧬 具体的なスコアリング手法")
         
         flow_html = """<div style="background: linear-gradient(135deg, #1e3a5f, #2563eb); padding: 1.2rem 1rem; border-radius: 12px; color: white; font-family: sans-serif; box-shadow: 0 6px 12px rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.1); margin-bottom: 1.5rem;">
-<div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1.5px; opacity: 0.8; margin-bottom: 0.8rem; font-weight: bold; text-align: center;">AUTOMATED SCORING PIPELINE</div>
+<div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1.5px; opacity: 0.8; margin-bottom: 0.8rem; font-weight: bold; text-align: center;">AUTOMATED SCORING ENGINE</div>
 
 <!-- Step 1 -->
-<div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
-<div style="background: rgba(255,255,255,0.25); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.8rem; margin-right: 0.75rem;">1</div>
+<div style="display: flex; align-items: center; margin-bottom: 0.8rem;">
+<div style="background: rgba(255,255,255,0.25); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.8rem; margin-right: 0.75rem; flex-shrink: 0;">1</div>
 <div>
-<div style="font-weight: bold; font-size: 0.85rem;">定性・定量データ分析</div>
-<div style="font-size: 0.72rem; opacity: 0.85;">財務3期分析 ＋ 顧客安定性</div>
+<div style="font-weight: bold; font-size: 0.85rem;">定性データ判定（区分補正）</div>
+<div style="font-size: 0.72rem; opacity: 0.85; margin-top: 0.2rem; line-height: 1.3;">
+・<b>新規・既存判定</b>：係数モデルを切替え<br>
+・<b>営業部・格付</b>：過去実績から補正
+</div>
 </div>
 </div>
 
 <!-- Arrow -->
-<div style="text-align: center; margin-top: -0.25rem; margin-bottom: -0.25rem; font-size: 0.8rem; opacity: 0.4; color: #60a5fa;">▼</div>
+<div style="text-align: center; margin-top: -0.4rem; margin-bottom: -0.2rem; font-size: 0.8rem; opacity: 0.4; color: #60a5fa;">▼</div>
 
 <!-- Step 2 -->
-<div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
-<div style="background: rgba(255,255,255,0.25); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.8rem; margin-right: 0.75rem;">2</div>
+<div style="display: flex; align-items: center; margin-bottom: 0.8rem;">
+<div style="background: rgba(255,255,255,0.25); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.8rem; margin-right: 0.75rem; flex-shrink: 0;">2</div>
 <div>
-<div style="font-weight: bold; font-size: 0.85rem;">リアルタイムデータ拡充</div>
-<div style="font-size: 0.72rem; opacity: 0.85;">e-Stat統計 ＋ Gemini相場調査</div>
+<div style="font-weight: bold; font-size: 0.85rem;">定量データ分析（業種・指標）</div>
+<div style="font-size: 0.72rem; opacity: 0.85; margin-top: 0.2rem; line-height: 1.3;">
+・<b>業種別ウエイト</b>：医療/建設/製造等<br>
+・<b>財務・取引指標</b>：売上、営業利益、銀行枠、過去取引数から多次元算出
+</div>
 </div>
 </div>
 
 <!-- Arrow -->
-<div style="text-align: center; margin-top: -0.25rem; margin-bottom: -0.25rem; font-size: 0.8rem; opacity: 0.4; color: #60a5fa;">▼</div>
+<div style="text-align: center; margin-top: -0.4rem; margin-bottom: -0.2rem; font-size: 0.8rem; opacity: 0.4; color: #60a5fa;">▼</div>
 
 <!-- Step 3 -->
-<div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
-<div style="background: rgba(255,255,255,0.25); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.8rem; margin-right: 0.75rem;">3</div>
+<div style="display: flex; align-items: center; margin-bottom: 0.8rem;">
+<div style="background: rgba(255,255,255,0.25); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.8rem; margin-right: 0.75rem; flex-shrink: 0;">3</div>
 <div>
-<div style="font-weight: bold; font-size: 0.85rem;">多角的リスクシミュレート</div>
-<div style="font-size: 0.72rem; opacity: 0.85;">ベイズ成約率 ＋ 連鎖倒産予測</div>
+<div style="font-weight: bold; font-size: 0.85rem;">市場価値＆倒産シミュレーション</div>
+<div style="font-size: 0.72rem; opacity: 0.85; margin-top: 0.2rem; line-height: 1.3;">
+・<b>e-Stat・Gemini</b>：最新相場追跡<br>
+・<b>ベイズ成約・連鎖倒産</b>：多角リスク
+</div>
 </div>
 </div>
 
 <!-- Arrow -->
-<div style="text-align: center; margin-top: -0.25rem; margin-bottom: -0.25rem; font-size: 0.8rem; opacity: 0.4; color: #60a5fa;">▼</div>
+<div style="text-align: center; margin-top: -0.4rem; margin-bottom: -0.2rem; font-size: 0.8rem; opacity: 0.4; color: #60a5fa;">▼</div>
 
 <!-- Step 4 -->
 <div style="display: flex; align-items: center;">
-<div style="background: #16a34a; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.8rem; margin-right: 0.75rem; box-shadow: 0 0 6px rgba(22,163,74,0.6);">4</div>
+<div style="background: #16a34a; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.8rem; margin-right: 0.75rem; flex-shrink: 0; box-shadow: 0 0 6px rgba(22,163,74,0.6);">4</div>
 <div>
-<div style="font-weight: bold; font-size: 0.85rem;">軍師AI 最終意思決定提言</div>
-<div style="font-size: 0.72rem; opacity: 0.85;">最適レート ＋ 承認獲得レポート</div>
+<div style="font-weight: bold; font-size: 0.85rem;">軍師AIの最終意思決定提言</div>
+<div style="font-size: 0.72rem; opacity: 0.85; margin-top: 0.2rem; line-height: 1.3;">
+・<b>総合スコア算出</b>：合格ライン判定
+</div>
 </div>
 </div>
 </div>"""
         st.markdown(flow_html, unsafe_allow_html=True)
+        
+        st.markdown("""
+        **【スコアリングのロジック概要】**
+        
+        - **全体（新規・既存）**: 
+          - 新規先、既存先それぞれの過去統計データに基づき異なる係数モデルを使用。
+        - **業種別判定**:
+          - 医療・福祉、運輸・運送、建設、製造、卸売・サービス業ごとに特有のスコア重み付けを実施。
+        - **指標による分析（定量・取引）**:
+          - 売上規模、銀行・リース信用枠（対数変換）、営業利益や経常利益、純利益等の収益性指標、取引件数などを多次元ロジスティック回帰により総合評価。
+        """)
     
     st.sidebar.markdown("---")
 
