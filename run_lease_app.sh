@@ -1,36 +1,67 @@
 #!/bin/bash
 # tune_lease_55 + Flask 起動スクリプト
-# 毎回これを実行すれば確実に起動できます
+
+set -euo pipefail
 
 cd "$(dirname "$0")"
 
-echo "=== 古いプロセスを停止 ==="
-lsof -ti:8505 | xargs kill -9 2>/dev/null && echo "Streamlit (8505) 停止" || true
-lsof -ti:5050 | xargs kill -9 2>/dev/null && echo "Flask (5050) 停止" || true
-sleep 1
+STREAMLIT_PORT="${STREAMLIT_PORT:-8505}"
+FLASK_PORT="${FLASK_PORT:-5050}"
+
+stop_port_process() {
+  local port="$1"
+  local label="$2"
+  local pids
+  pids="$(lsof -ti :"$port" 2>/dev/null || true)"
+
+  if [ -z "$pids" ]; then
+    echo "$label ($port) は稼働していません"
+    return
+  fi
+
+  echo "$label ($port) を停止中: $pids"
+  kill $pids 2>/dev/null || true
+  sleep 1
+
+  local alive
+  alive="$(lsof -ti :"$port" 2>/dev/null || true)"
+  if [ -n "$alive" ]; then
+    echo "$label ($port) が残っているため強制停止します: $alive"
+    kill -9 $alive 2>/dev/null || true
+  fi
+}
+
+echo "=== 既存プロセスの停止 ==="
+stop_port_process "$STREAMLIT_PORT" "Streamlit"
+stop_port_process "$FLASK_PORT" "Flask"
 
 echo ""
-echo "=== Flask 起動（ポート5050）==="
+echo "=== Flask 起動（ポート${FLASK_PORT}）==="
 python web/app.py &
 FLASK_PID=$!
 echo "Flask PID: $FLASK_PID"
 sleep 2
 
 echo ""
-echo "=== Streamlit 起動（ポート8505）==="
-streamlit run lease_logic_sumaho12.py --server.port 8505 &
+echo "=== Streamlit 起動（ポート${STREAMLIT_PORT}）==="
+streamlit run tune_lease_55.py --server.port "$STREAMLIT_PORT" &
 STREAMLIT_PID=$!
 echo "Streamlit PID: $STREAMLIT_PID"
 
 echo ""
 echo "==================================="
 echo "✅ 起動完了"
-echo "  審査アプリ  : http://localhost:8505"
-echo "  簡易審査    : http://localhost:5050"
+echo "  審査アプリ  : http://localhost:${STREAMLIT_PORT}"
+echo "  簡易審査    : http://localhost:${FLASK_PORT}"
 echo "==================================="
 echo ""
 echo "終了するには Ctrl+C を押してください"
 
-# 両プロセスを待機（Ctrl+C で両方終了）
-trap "kill $FLASK_PID $STREAMLIT_PID 2>/dev/null; echo '停止しました'; exit" INT TERM
+cleanup() {
+  kill "$FLASK_PID" "$STREAMLIT_PID" 2>/dev/null || true
+  echo "停止しました"
+  exit
+}
+
+trap cleanup INT TERM
 wait
