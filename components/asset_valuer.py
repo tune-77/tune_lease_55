@@ -1,5 +1,6 @@
 import json
 import os
+from typing import Optional
 import streamlit as st
 from components.agent_hub import _ai_call
 from expected_usage_period import find_item_by_name
