@@ -567,6 +567,62 @@ def render_sidebar(benchmarks_data: dict, useful_life_data: dict, lease_assets_l
     _render_csv_download()
     _render_industry_cache(benchmarks_data)
     _render_reference_expanders(benchmarks_data, useful_life_data, lease_assets_list)
+    # ── 審査システムの流れ（グラフィック解説） ───────────────────────────────
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🧬 複合審査AIの構造フロー")
+    
+    flow_html = """
+    <div style="background: linear-gradient(135deg, #1e3a5f, #2563eb); padding: 1.2rem 1rem; border-radius: 12px; color: white; font-family: sans-serif; box-shadow: 0 6px 12px rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.1);">
+        <div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1.5px; opacity: 0.8; margin-bottom: 0.8rem; font-weight: bold; text-align: center;">AUTOMATED SCORING PIPELINE</div>
+        
+        <!-- Step 1 -->
+        <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+            <div style="background: rgba(255,255,255,0.25); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.8rem; margin-right: 0.75rem;">1</div>
+            <div>
+                <div style="font-weight: bold; font-size: 0.85rem;">定性・定量データ分析</div>
+                <div style="font-size: 0.72rem; opacity: 0.85;">財務3期分析 ＋ 顧客安定性</div>
+            </div>
+        </div>
+        
+        <!-- Arrow -->
+        <div style="text-align: center; margin-top: -0.25rem; margin-bottom: -0.25rem; font-size: 0.8rem; opacity: 0.4; color: #60a5fa;">▼</div>
+
+        <!-- Step 2 -->
+        <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+            <div style="background: rgba(255,255,255,0.25); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.8rem; margin-right: 0.75rem;">2</div>
+            <div>
+                <div style="font-weight: bold; font-size: 0.85rem;">リアルタイムデータ拡充</div>
+                <div style="font-size: 0.72rem; opacity: 0.85;">e-Stat統計 ＋ Gemini相場調査</div>
+            </div>
+        </div>
+        
+        <!-- Arrow -->
+        <div style="text-align: center; margin-top: -0.25rem; margin-bottom: -0.25rem; font-size: 0.8rem; opacity: 0.4; color: #60a5fa;">▼</div>
+
+        <!-- Step 3 -->
+        <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+            <div style="background: rgba(255,255,255,0.25); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.8rem; margin-right: 0.75rem;">3</div>
+            <div>
+                <div style="font-weight: bold; font-size: 0.85rem;">多角的リスクシミュレート</div>
+                <div style="font-size: 0.72rem; opacity: 0.85;">ベイズ成約率 ＋ 連鎖倒産予測</div>
+            </div>
+        </div>
+        
+        <!-- Arrow -->
+        <div style="text-align: center; margin-top: -0.25rem; margin-bottom: -0.25rem; font-size: 0.8rem; opacity: 0.4; color: #60a5fa;">▼</div>
+
+        <!-- Step 4 -->
+        <div style="display: flex; align-items: center;">
+            <div style="background: #16a34a; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.8rem; margin-right: 0.75rem; box-shadow: 0 0 6px rgba(22,163,74,0.6);">4</div>
+            <div>
+                <div style="font-weight: bold; font-size: 0.85rem;">軍師AI 最終意思決定提言</div>
+                <div style="font-size: 0.72rem; opacity: 0.85;">最適レート ＋ 承認獲得レポート</div>
+            </div>
+        </div>
+    </div>
+    """
+    st.sidebar.markdown(flow_html, unsafe_allow_html=True)
+
     _render_cache_and_ai_honne()
 
     return mode
