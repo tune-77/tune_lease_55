@@ -20,8 +20,21 @@ class AssetFinanceEngine:
         '車両':    {'r': 0.25, 'priority': '中高', 'priority_score': 3, 'info': '高換金性と確立された中古市場'},
     }
 
-    def get_effective_depreciation_rate(self, asset_type, annual_km=0, has_maintenance_lease=False):
-        """実効減価率（走行距離補正・メンテリース補正を加えた実効値）"""
+    def get_effective_depreciation_rate(self, asset_type, annual_km=0, has_maintenance_lease=False, ai_residual_pct=None, term_months=60):
+        """実効減価率（AI予測値がある場合はそれを逆算、ない場合は走行距離・メンテ補正）"""
+        if ai_residual_pct is not None and ai_residual_pct > 0:
+            # AIが提示した満了時残価率から年間減価率 r を逆算
+            # (1 - r)^(term/12) = ai_residual_pct / 100
+            # 1 - r = (ai_residual_pct / 100) ^ (12 / term)
+            try:
+                ratio = ai_residual_pct / 100.0
+                if ratio <= 0.01:
+                    return 0.90 # ほぼ無価値
+                r = 1.0 - (ratio ** (12.0 / term_months))
+                return max(0.0, min(0.95, r))
+            except:
+                pass
+                
         r = self.ASSET_PARAMS[asset_type]['r']
         if asset_type == '車両':
             if annual_km >= 20000:
@@ -37,14 +50,17 @@ class AssetFinanceEngine:
         return 0.0
 
     def calculate_bep(self, asset_type, term_months, down_payment_rate,
-                      annual_km=0, has_maintenance_lease=False):
+                      annual_km=0, has_maintenance_lease=False, ai_residual_pct=None):
         """
         損益分岐点（BEP）算出。
         V(t) = (1 + maint_bonus) × (1 - r)^(t/12)
         L(t) = (1 - down_payment) × (1 - t/term)
         V(t) > L(t) となる最初の月をBEPとする。
         """
-        r = self.get_effective_depreciation_rate(asset_type, annual_km, has_maintenance_lease)
+        r = self.get_effective_depreciation_rate(
+            asset_type, annual_km, has_maintenance_lease, 
+            ai_residual_pct=ai_residual_pct, term_months=term_months
+        )
         maint_bonus = self.get_maintenance_lgd_bonus(asset_type, has_maintenance_lease)
 
         bep_month = term_months
@@ -72,9 +88,11 @@ class AssetFinanceEngine:
         financial_score = data['financial_score']
         annual_km = data.get('annual_km', 0)
         has_maintenance_lease = data.get('has_maintenance_lease', False)
+        ai_residual_pct = data.get('ai_residual_pct')
 
         bep_month, v_curve, l_curve = self.calculate_bep(
-            asset_type, term, down_payment, annual_km, has_maintenance_lease
+            asset_type, term, down_payment, annual_km, has_maintenance_lease,
+            ai_residual_pct=ai_residual_pct
         )
         bep_ratio = bep_month / term if term > 0 else 1.0
         priority_score = self.ASSET_PARAMS[asset_type]['priority_score']

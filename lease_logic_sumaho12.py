@@ -1012,14 +1012,32 @@ elif mode == "🏭 物件ファイナンス審査":
     with col_input:
         st.subheader("📋 審査条件の入力")
 
-        _af_asset = st.selectbox(
+        # すでに実装済みの「物件スコア詳細評価（Gemini）」を物件ファイナンス審査画面にも統合
+        from components.asset_score_detail import render_asset_score_detail
+        _af_asset_preset = st.selectbox(
             "物件種別",
             list(AssetFinanceEngine.ASSET_PARAMS.keys()),
             key="af_asset_type",
         )
+        
+        _asd_category_map = {
+            "建機": "産業機械",
+            "工作機械": "産業機械",
+            "PC/IT": "IT機器",
+            "医療機器": "医療機器",
+            "ドローン": "産業機械",
+            "車両": "車両",
+        }
+        _asd_cat = _asd_category_map.get(_af_asset_preset, "産業機械")
+        _asd_model_name = st.text_input("具体的な型番・商品名 (任意)", placeholder="例: コマツ PC200-10", key="af_model_name")
+        
+        # Gemini Search Grounding による詳細調査の呼び出し
+        render_asset_score_detail(_asd_cat, f"af_{_af_asset_preset}", _asd_model_name or _af_asset_preset)
+        
+        _af_asset = _af_asset_preset
         _af_params = AssetFinanceEngine.ASSET_PARAMS[_af_asset]
         st.caption(
-            f"年間減価率 **{_af_params['r']*100:.0f}%** ／ 支払優先度 **{_af_params['priority']}** ／ {_af_params['info']}"
+            f"標準年間減価率 **{_af_params['r']*100:.0f}%** ／ 支払優先度 **{_af_params['priority']}** ／ {_af_params['info']}"
         )
 
         _af_term = st.slider("リース期間（月）", min_value=12, max_value=84, value=60, step=6, key="af_term")
@@ -1085,6 +1103,7 @@ elif mode == "🏭 物件ファイナンス審査":
                 'related_assets':      _af_related_ast,
                 'annual_km':           _af_annual_km,
                 'has_maintenance_lease': _af_maint,
+                'ai_residual_pct':     st.session_state.get('asd_residual') if st.session_state.get('asd_use_detail') else None
             }
             _af_result = _af_engine.run_inference(_af_data)
             st.session_state["af_last_result"] = _af_result
