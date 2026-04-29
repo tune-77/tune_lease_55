@@ -1,11 +1,26 @@
 import json
+import os
 import streamlit as st
 from components.agent_hub import _ai_call
+from expected_usage_period import find_item_by_name
 
 def evaluate_asset_value(asset_name: str, model_no: str, acquisition_cost: float, term_months: int) -> dict:
     """
     Gemini API を使用して物件の資産価値（残価率・中古相場・流動性）を推定する。
+    法定耐用年数はマスターデータ（期待使用期間.json）から参照する。
     """
+    # ── マスターデータ（期待使用期間.json）から耐用年数を特定 ──
+    useful_life = 8  # デフォルト
+    matched_item = find_item_by_name(asset_name)
+    if not matched_item and model_no:
+        matched_item = find_item_by_name(model_no)
+        
+    if matched_item:
+        useful_life = matched_item.get("legal_useful_life", 8)
+        master_item_name = matched_item.get("item_name", "")
+    else:
+        master_item_name = "不明（汎用判定）"
+
     system_prompt = """
     あなたはリース物件の資産価値・二次流通相場を評価する「プロの担保評価士」です。
     入力された物件について、市場価値を客観的に査定してください。
@@ -13,16 +28,17 @@ def evaluate_asset_value(asset_name: str, model_no: str, acquisition_cost: float
     
     prompt = f"""
     以下の物件について、リース満了時（{term_months}ヶ月後）の資産性を分析してください。
+    法定耐用年数は {useful_life} 年として判定してください。
 
     【物件情報】
     - 物件名: {asset_name}
     - メーカー・型番: {model_no}
     - 取得価格: {acquisition_cost:,.0f}円
+    - マスターデータによる耐用年数: {useful_life}年（カテゴリ: {master_item_name}）
     
     以下のJSON形式のみで出力してください。マークダウンのコードブロック（```json ... ```）を含めず、純粋なJSON文字列としてください。
 
     {{
-        "useful_life_years": "法定耐用年数（数値。例: 工作機械なら10、トラックなら5、PCなら4）",
         "liquidity_rank": "流動性ランク（A/B/C/D）",
         "liquidity_factor": "換価性補正係数（0.5〜1.0の範囲で、中古での売りやすさに応じて設定。Aランクなら0.95、Dランクなら0.5 など。例: 0.85）",
         "market_demand": "中古市場での需要の強さについての解説（100文字以内）",
@@ -40,18 +56,11 @@ def evaluate_asset_value(asset_name: str, model_no: str, acquisition_cost: float
     except Exception:
         # パース失敗時のフォールバック
         eval_data = {
-            "useful_life_years": 8,
             "liquidity_rank": "B",
             "liquidity_factor": 0.8,
             "market_demand": "分析エラー。通常の汎用物件としての需要が見込まれます。",
             "risks": "特記事項なし。"
         }
-        
-    # ── 耐用年数を加味した将来残価率（定率法）の算出 ──
-    try:
-        useful_life = max(1, int(eval_data.get("useful_life_years", 8)))
-    except (TypeError, ValueError):
-        useful_life = 8
         
     try:
         liquidity_factor = max(0.1, min(1.0, float(eval_data.get("liquidity_factor", 0.8))))
@@ -70,6 +79,7 @@ def evaluate_asset_value(asset_name: str, model_no: str, acquisition_cost: float
     eval_data["residual_value_pct"] = int(residual_pct)
     eval_data["suggested_depreciation_rate"] = round(depreciation_rate * 100.0, 1)
     eval_data["useful_life_years"] = useful_life
+    eval_data["master_item_name"] = master_item_name
     
     return eval_data
 
@@ -97,13 +107,13 @@ def render_asset_valuer():
         with st.spinner("Gemini が中古市場・残存価値を調査中..."):
             res = evaluate_asset_value(asset_name, model_no, acquisition_cost, term_months)
             
-        st.success("評価が完了しました！")
+        st.success(f"評価が完了しました！ (判定カテゴリ: {res.get('master_item_name', '不明')})")
         
         col_a, col_b, col_c, col_d = st.columns(4)
         with col_a:
             st.metric("満了時 想定残価率", f"{res['residual_value_pct']}%")
         with col_b:
-            st.metric("推定耐用年数", f"{res.get('useful_life_years', '—')}年")
+            st.metric("法定耐用年数 (DATA)", f"{res.get('useful_life_years', '—')}年")
         with col_c:
             st.metric("流動性ランク", f"Rank {res['liquidity_rank']}")
         with col_d:
