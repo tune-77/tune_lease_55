@@ -266,6 +266,22 @@ def render_industry_quantum_view() -> None:
     st.title("⚛️ 業種別量子解析")
     st.caption("各業種の財務矛盾パターンを量子干渉スコアで可視化します")
 
+    st.markdown("""
+    ```
+    [ Quantum Finance Core v4.0 — GHZ Entanglement Protocol ]
+    
+    q[0] (売上)   : ──H──●───────────────────── 🎛️ 状態ベクトル: |ψ_sales⟩
+                        │
+    q[1] (純資産) : ──────X──●───────────────── 🎛️ 状態ベクトル: |ψ_equity⟩
+                            │
+    q[2] (利益)   : ──────────X──●───────────── 🎛️ 状態ベクトル: |ψ_profit⟩
+                                │
+    q[3] (負債)   : ──────────────X──[観測]─── 🎛️ 状態ベクトル: |ψ_debt⟩
+    
+    ※ 4つの財務指標がGHZ状態（|0000⟩ + |1111⟩）で量子もつれを起こしています。
+    ```
+    """, unsafe_allow_html=True)
+
     _render_explanation()
 
     gate = _load_qgate()

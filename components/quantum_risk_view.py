@@ -22,6 +22,22 @@ def render_quantum_risk_view() -> None:
     st.title("⚛️ Q_risk 分析")
     st.caption("🔬 実験的機能 (β) — 参考表示のみ。実際のスコアリングには影響しません。")
 
+    st.markdown("""
+    ```
+    [ Quantum Finance Core v4.0 — GHZ Entanglement Protocol ]
+    
+    q[0] (売上)   : ──H──●───────────────────── 🎛️ 状態ベクトル: |ψ_sales⟩
+                        │
+    q[1] (純資産) : ──────X──●───────────────── 🎛️ 状態ベクトル: |ψ_equity⟩
+                            │
+    q[2] (利益)   : ──────────X──●───────────── 🎛️ 状態ベクトル: |ψ_profit⟩
+                                │
+    q[3] (負債)   : ──────────────X──[観測]─── 🎛️ 状態ベクトル: |ψ_debt⟩
+    
+    ※ 4つの財務指標がGHZ状態（|0000⟩ + |1111⟩）で量子もつれを起こしています。
+    ```
+    """, unsafe_allow_html=True)
+
     # β免責事項バナー
     st.warning(
         "⚠️ **β版 免責事項**\n\n"
