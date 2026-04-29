@@ -858,6 +858,53 @@ def render_gunshi_in_results(
     if run_llm:
         _trend = st.session_state.get("_gunshi_trend_300", "")
         _comp  = (res or {}).get("comparison", "")
+        
+        # --- アセットファイナンスの補足情報構築 ---
+        _af_ctx = ""
+        try:
+            from components.asset_finance import AssetFinanceEngine
+            _afe = AssetFinanceEngine()
+            
+            # 物件名からマッピング
+            _afe_key = "車両"
+            _a_name_up = (g.get("asset_name") or "").upper()
+            if "車両" in _a_name_up or "ハイエース" in _a_name_up or "トラック" in _a_name_up:
+                _afe_key = "車両"
+            elif "医療" in _a_name_up:
+                _afe_key = "医療機器"
+            elif "工作" in _a_name_up or "旋盤" in _a_name_up:
+                _afe_key = "工作機械"
+            elif "建機" in _a_name_up or "ショベル" in _a_name_up:
+                _afe_key = "建機"
+            elif "PC" in _a_name_up or "IT" in _a_name_up:
+                _afe_key = "PC/IT"
+            elif "ドローン" in _a_name_up:
+                _afe_key = "ドローン"
+            else:
+                _afe_key = "車両"
+                
+            _af_data_eval = {
+                'asset_type':          _afe_key,
+                'term':                int(st.session_state.get("lease_term", 60) or 60),
+                'down_payment':        0.10,
+                'financial_score':     "Medium",
+                'main_bank_support':   g["bank"],
+                'bank_coordination':   False,
+                'core_business':       True,
+                'related_assets':      False,
+                'annual_km':           15000,
+                'has_maintenance_lease': False,
+                'ai_residual_pct':     st.session_state.get('asd_residual')
+            }
+            _afe_res = _afe.run_inference(_af_data_eval)
+            _af_ctx = (
+                f"判定: {_afe_res['decision']} "
+                f"(スコア: {_afe_res['score']}点 / BEP: {_afe_res['bep_month']}ヶ月目) \n"
+                f"理由: {' | '.join(_afe_res.get('reasons', []))}"
+            )
+        except Exception:
+            pass
+
         prompt = build_gunshi_prompt(
             industry=g["industry_cat"],
             score=g["score"],
@@ -876,6 +923,7 @@ def render_gunshi_in_results(
             comparison_text=_comp,
             humor_style=st.session_state.get("humor_style", "standard"),
             asset_market_context=_get_asset_market_ctx(),
+            asset_finance_context=_af_ctx,
         )
         full_text = ""
         try:

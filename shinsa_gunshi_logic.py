@@ -813,6 +813,7 @@ def build_gunshi_prompt(
     comparison_text: str = "",  # ← 財務比較テキスト（res["comparison"]）
     humor_style: str = "standard", # ← 八奈見モード拡張用
     asset_market_context: str = "",  # ← get_asset_context_for_ai() の返値
+    asset_finance_context: str = "", # ← アセットファイナンス評価データの返値
 ) -> str:
     """軍師プロンプトを生成する。"""
     success_text = ""
@@ -861,6 +862,14 @@ def build_gunshi_prompt(
         market_section = (
             "\n【物件市場データ（AI調査）— 「3. 物件保全性と出口戦略」セクションで必ず具体的数値を引用すること】\n"
             f"{asset_market_context.strip()}\n"
+        )
+
+    # ── アセット・ファイナンス審査データ（動的担保価値算出結果） ───────────────
+    af_section = ""
+    if asset_finance_context and asset_finance_context.strip():
+        af_section = (
+            "\n【アセット・ファイナンス審査データ（BEP/担保評価）— 必ず論拠の補強として引用すること】\n"
+            f"{asset_finance_context.strip()}\n"
         )
 
     # 役員車・高級外車の場合: LLMへの注意喚起コンテキスト
@@ -960,7 +969,7 @@ def build_gunshi_prompt(
 - 担当者直感スコア: {intuition} / 5
 - ベイズ推定 承認確率: {posterior*100:.1f}%
 - 対象物件: {asset_name or "不明"}{vehicle_context}
-{trend_section}{comp_section}{market_section}
+{trend_section}{comp_section}{market_section}{af_section}
 {success_text}
 {fail_text}
 
