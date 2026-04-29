@@ -4,22 +4,62 @@ import streamlit as st
 from components.agent_hub import _ai_call
 from expected_usage_period import find_item_by_name
 
+def _load_nta_useful_life() -> dict:
+    """static_data/useful_life_equipment.json を読み込む"""
+    path = "/Users/kobayashiisaoryou/clawd/tune_lease_55/static_data/useful_life_equipment.json"
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def find_useful_life_by_name(asset_name: str) -> tuple[Optional[int], str]:
+    """static_data/useful_life_equipment.json から耐用年数を検索"""
+    data = _load_nta_useful_life()
+    if not data:
+        return None, ""
+    
+    asset_name_lower = asset_name.lower()
+    for cat in data.get("categories", []):
+        for item in cat.get("items", []):
+            item_name = item.get("name", "")
+            
+            # 完全一致または包含チェック
+            if item_name.lower() in asset_name_lower or asset_name_lower in item_name.lower():
+                return item.get("years"), item_name
+            
+            # 「ショベル・油圧ショベル」のようなスラッシュ（・）区切りも考慮
+            if "・" in item_name:
+                for sub in item_name.split("・"):
+                    if sub.strip() and sub.strip().lower() in asset_name_lower:
+                        return item.get("years"), item_name
+    return None, ""
+
 def evaluate_asset_value(asset_name: str, model_no: str, acquisition_cost: float, term_months: int) -> dict:
     """
     Gemini API を使用して物件の資産価値（残価率・中古相場・流動性）を推定する。
-    法定耐用年数はマスターデータ（期待使用期間.json）から参照する。
+    法定耐用年数は static_data/useful_life_equipment.json 等のマスターデータから参照する。
     """
-    # ── マスターデータ（期待使用期間.json）から耐用年数を特定 ──
-    useful_life = 8  # デフォルト
-    matched_item = find_item_by_name(asset_name)
-    if not matched_item and model_no:
-        matched_item = find_item_by_name(model_no)
+    # ── 1. 法定耐用年数データのマッチング ──
+    useful_life, master_item_name = find_useful_life_by_name(asset_name)
+    if not useful_life and model_no:
+        useful_life, master_item_name = find_useful_life_by_name(model_no)
         
-    if matched_item:
-        useful_life = matched_item.get("legal_useful_life", 8)
-        master_item_name = matched_item.get("item_name", "")
-    else:
-        master_item_name = "不明（汎用判定）"
+    # 2. 見つからなければ期待使用期間.jsonから補完
+    if not useful_life:
+        matched_item = find_item_by_name(asset_name)
+        if not matched_item and model_no:
+            matched_item = find_item_by_name(model_no)
+        if matched_item:
+            useful_life = matched_item.get("legal_useful_life", 8)
+            master_item_name = matched_item.get("item_name", "")
+            
+    # 3. 最終フォールバック
+    if not useful_life:
+        useful_life = 8
+        master_item_name = "不明（デフォルト判定）"
 
     system_prompt = """
     あなたはリース物件の資産価値・二次流通相場を評価する「プロの担保評価士」です。
