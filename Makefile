@@ -19,7 +19,7 @@ test-v:
 
 # 構文チェック
 lint:
-	python3 -m pyflakes scoring_core.py rule_manager.py indicators.py credit_limit.py
+	python3 -m pyflakes tune_lease_55.py lease_logic_sumaho12.py scoring_core.py rule_manager.py indicators.py credit_limit.py ai_chat.py
 
 ## ──────────────────────────────────
 ## 分析スクリプト
@@ -39,7 +39,7 @@ shap:
 
 # Streamlit アプリを起動
 app:
-	streamlit run lease_logic_sumaho12.py
+	streamlit run tune_lease_55.py
 
 ## ──────────────────────────────────
 ## ヘルプ
