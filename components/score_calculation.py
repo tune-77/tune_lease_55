@@ -1139,34 +1139,37 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
 
                 if _hantei_score >= _QS_TRIGGER:
                     try:
-                        import os as _os
-                        _qmodel = "data/quantum_model.joblib"
-                        if _os.path.exists(_qmodel):
-                            from quantum_analysis_module import QuantumGate as _QG
-                            _qgate = _QG.load_cached(_qmodel)
-                            _qr = _qgate.predict({"inputs": _qinputs})
-                            st.session_state["last_result"]["quantum_risk"] = _qr["quantum_risk"]
-                            st.session_state["last_result"]["quantum_anomalies"] = _qr["pair_anomalies"]
-                            st.session_state["last_result"]["quantum_verdict"] = _qr["verdict"]
-                            st.session_state["last_result"]["quantum_pair_contributions"] = _qr.get("pair_contributions", {})
-                            st.session_state["last_result"]["quantum_explained_risk"] = _qr.get("explained_risk", 0.0)
-                            st.session_state["last_result"]["quantum_ood_flags"] = _qr.get("ood_flags", {})
+                        import json as _qjson
+                        from evaluators import EvaluatorParams, EpsilonGreedySelector
+                        _cfg = _qjson.loads(open("data/quantum_config.json", encoding="utf-8").read())
+                        _sel = _cfg.get("selection", {})
+                        _params = EvaluatorParams(
+                            epsilon=float(_sel.get("epsilon", 0.0)),
+                            score_min=float(_sel.get("score_min", _QS_TRIGGER)),
+                            exploit_engine=str(_sel.get("exploit_engine", "quantum")),
+                            exploration_pool=list(_sel.get("exploration_pool", ["mahalanobis", "quantum_sim"])),
+                            fallback_engine=str(_sel.get("fallback_engine", "mahalanobis")),
+                        )
+                        _selector = EpsilonGreedySelector(_params)
+                        _used, _res = _selector.evaluate({"inputs": _qinputs}, _hantei_score)
+                        if _res is not None:
+                            st.session_state["last_result"]["quantum_risk"] = _res.risk
+                            st.session_state["last_result"]["quantum_anomalies"] = _res.anomalies
+                            st.session_state["last_result"]["quantum_verdict"] = _res.verdict
+                            st.session_state["last_result"]["quantum_pair_contributions"] = _res.contributions
+                            st.session_state["last_result"]["quantum_explained_risk"] = _res.risk
+                            st.session_state["last_result"]["quantum_ood_flags"] = {}
+                            st.session_state["last_result"]["evaluator_used"] = _used
+                            st.session_state["last_result"]["evaluator_version"] = f"{_res.name}:{_res.version}"
+
                             _qt_eff = _QT if _hantei_score >= _QS_HIGH else _QT_MID
-                            if _qr["quantum_risk"] >= _qt_eff:
+                            if _res.risk >= _qt_eff:
                                 st.session_state["last_result"]["needs_secondary_review"] = True
 
-                            # Q.6: quantum_risk → 穏やかなスコア減点
-                            try:
-                                import json as _qjson
-                                _qcfg_s = _qjson.loads(
-                                    open("data/quantum_config.json", encoding="utf-8").read()
-                                ).get("scoring", {})
-                            except Exception:
-                                _qcfg_s = {}
+                            _qcfg_s = _cfg.get("scoring", {})
                             _fdec_factor = float(_qcfg_s.get("feedback_deduction_factor", 0.12))
-                            _fdec_max    = float(_qcfg_s.get("feedback_max_deduction", 8.0))
-                            _qdeduction  = min(_fdec_max, max(0.0,
-                                (_qr["quantum_risk"] - _qt_eff) * _fdec_factor))
+                            _fdec_max = float(_qcfg_s.get("feedback_max_deduction", 8.0))
+                            _qdeduction = min(_fdec_max, max(0.0, (_res.risk - _qt_eff) * _fdec_factor))
                             if _qdeduction > 0.0:
                                 _hantei_score = max(0.0, _hantei_score - _qdeduction)
                                 st.session_state["last_result"]["hantei_score"] = round(_hantei_score, 1)
@@ -1177,7 +1180,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                                     )
                     except Exception as _qe:
                         import logging as _log
-                        _log.getLogger(__name__).warning("quantum module skipped: %s", _qe)
+                        _log.getLogger(__name__).warning("quantum selector skipped: %s", _qe)
                 # ──────────────────────────────────────────────────────────────
 
                 # カスタムルールの影響や強制ステータスの上書き

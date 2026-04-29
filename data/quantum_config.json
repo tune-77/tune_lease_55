@@ -24,5 +24,15 @@
     "synth_fallback_n": 30,
     "min_industry_cases": 2
   },
-  "candidate_pairs": []
+  "candidate_pairs": [],
+  "selection": {
+    "epsilon": 0.0,
+    "score_min": 70,
+    "exploit_engine": "quantum",
+    "exploration_pool": [
+      "mahalanobis",
+      "quantum_sim"
+    ],
+    "fallback_engine": "mahalanobis"
+  }
 }
