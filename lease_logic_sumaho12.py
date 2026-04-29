@@ -1665,6 +1665,10 @@ elif mode == "🧪 Q_risk分析 (β)":
     from components.quantum_risk_view import render_quantum_risk_view
     render_quantum_risk_view()
 
+elif mode == "📈 マクロ経済・S&P500予測":
+    from components.macro_prediction_view import render_macro_prediction_view
+    render_macro_prediction_view()
+
 elif mode == "📝 案件修正":
     from components.case_editor import render_case_editor
     render_case_editor()
