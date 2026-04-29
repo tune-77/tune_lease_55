@@ -22,11 +22,11 @@ def evaluate_asset_value(asset_name: str, model_no: str, acquisition_cost: float
     以下のJSON形式のみで出力してください。マークダウンのコードブロック（```json ... ```）を含めず、純粋なJSON文字列としてください。
 
     {{
-        "residual_value_pct": "数値（リース満了時の想定残価率。0〜100の整数。例: 35）",
+        "useful_life_years": "法定耐用年数（数値。例: 工作機械なら10、トラックなら5、PCなら4）",
         "liquidity_rank": "流動性ランク（A/B/C/D）",
+        "liquidity_factor": "換価性補正係数（0.5〜1.0の範囲で、中古での売りやすさに応じて設定。Aランクなら0.95、Dランクなら0.5 など。例: 0.85）",
         "market_demand": "中古市場での需要の強さについての解説（100文字以内）",
-        "risks": "想定される陳腐化や売却時の懸念点（100文字以内）",
-        "suggested_depreciation_rate": "実務に即した推奨年間減価率（%表示の数値。例: 15.5）"
+        "risks": "想定される陳腐化や売却時の懸念点（100文字以内）"
     }}
     """
     
@@ -40,13 +40,37 @@ def evaluate_asset_value(asset_name: str, model_no: str, acquisition_cost: float
     except Exception:
         # パース失敗時のフォールバック
         eval_data = {
-            "residual_value_pct": 20,
+            "useful_life_years": 8,
             "liquidity_rank": "B",
+            "liquidity_factor": 0.8,
             "market_demand": "分析エラー。通常の汎用物件としての需要が見込まれます。",
-            "risks": "特記事項なし。",
-            "suggested_depreciation_rate": 20.0
+            "risks": "特記事項なし。"
         }
         
+    # ── 耐用年数を加味した将来残価率（定率法）の算出 ──
+    try:
+        useful_life = max(1, int(eval_data.get("useful_life_years", 8)))
+    except (TypeError, ValueError):
+        useful_life = 8
+        
+    try:
+        liquidity_factor = max(0.1, min(1.0, float(eval_data.get("liquidity_factor", 0.8))))
+    except (TypeError, ValueError):
+        liquidity_factor = 0.8
+
+    # 定率法 (200%償却ベース)
+    depreciation_rate = 2.0 / useful_life
+    years = term_months / 12.0
+    
+    # 残価率 = (1 - 償却率)^年数 × 流動性補正
+    residual_pct = 100.0 * ((1.0 - depreciation_rate) ** years) * liquidity_factor
+    # 5%〜95%の範囲に丸める
+    residual_pct = max(5.0, min(95.0, round(residual_pct, 1)))
+    
+    eval_data["residual_value_pct"] = int(residual_pct)
+    eval_data["suggested_depreciation_rate"] = round(depreciation_rate * 100.0, 1)
+    eval_data["useful_life_years"] = useful_life
+    
     return eval_data
 
 def render_asset_valuer():
@@ -75,13 +99,15 @@ def render_asset_valuer():
             
         st.success("評価が完了しました！")
         
-        col_a, col_b, col_c = st.columns(3)
+        col_a, col_b, col_c, col_d = st.columns(4)
         with col_a:
             st.metric("満了時 想定残価率", f"{res['residual_value_pct']}%")
         with col_b:
-            st.metric("流動性ランク", f"Rank {res['liquidity_rank']}")
+            st.metric("推定耐用年数", f"{res.get('useful_life_years', '—')}年")
         with col_c:
-            st.metric("推奨年間減価率", f"{res['suggested_depreciation_rate']}%")
+            st.metric("流動性ランク", f"Rank {res['liquidity_rank']}")
+        with col_d:
+            st.metric("推奨年間減価率 (定率)", f"{res['suggested_depreciation_rate']}%")
             
         st.markdown("### 📊 中古市場・リスク分析")
         st.info(f"**【市場需要】**  \n{res['market_demand']}")
