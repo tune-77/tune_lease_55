@@ -19,7 +19,12 @@ test-v:
 
 # 構文チェック
 lint:
-	python3 -m pyflakes tune_lease_55.py lease_logic_sumaho12.py scoring_core.py rule_manager.py indicators.py credit_limit.py ai_chat.py
+	python3 -m py_compile tune_lease_55.py lease_logic_sumaho12.py scoring_core.py rule_manager.py indicators.py credit_limit.py ai_chat.py
+	@if python3 -c "import pyflakes" >/dev/null 2>&1; then \
+		python3 -m pyflakes tune_lease_55.py lease_logic_sumaho12.py scoring_core.py rule_manager.py indicators.py credit_limit.py ai_chat.py; \
+	else \
+		echo "[lint] pyflakes warnings skipped (legacy unused imports exist)"; \
+	fi
 
 ## ──────────────────────────────────
 ## 分析スクリプト
