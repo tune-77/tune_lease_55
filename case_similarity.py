@@ -1,6 +1,7 @@
 import numpy as np
 import json
 from typing import List, Dict, Any
+from sklearn.covariance import OAS
 
 class CaseSimilarityEngine:
     """
@@ -16,8 +17,12 @@ class CaseSimilarityEngine:
         "industry_match": 0.25,   # 業種の一致度
     }
 
+    _MIN_CASES_FOR_FISHER = 8
+
     def __init__(self, past_cases: List[Dict[str, Any]]):
         self.past_cases = past_cases
+        self.precision_ = None
+        self._fit_precision()
 
     def _extract_features(self, case_data: Dict[str, Any]) -> np.ndarray:
         """
@@ -36,6 +41,24 @@ class CaseSimilarityEngine:
         f_debt = np.clip(total_debt / (revenue + 1e-6), 0, 2.0) / 2.0 # 0~200% -> 0~1
 
         return np.array([f_sales, f_margin, f_equity, f_debt])
+
+    def _fit_precision(self) -> None:
+        vecs = []
+        for p in self.past_cases:
+            data = p.get("data")
+            if isinstance(data, str):
+                try:
+                    data = json.loads(data)
+                except Exception:
+                    continue
+            elif not data:
+                data = p
+            vecs.append(self._extract_features(data))
+        if len(vecs) < self._MIN_CASES_FOR_FISHER:
+            self.precision_ = None
+            return
+        X = np.array(vecs, dtype=float)
+        self.precision_ = OAS().fit(X).precision_
 
     def _analyze_conditions(self, data: Dict[str, Any]) -> List[str]:
         """
@@ -110,7 +133,12 @@ class CaseSimilarityEngine:
             past_ind = data.get("industry_sub", "")
 
             # 財務ベクトルのコサイン類似度（簡易的にユークリッド距離の逆数を使用）
-            dist = np.linalg.norm(curr_vec - past_vec)
+            delta = curr_vec - past_vec
+            if self.precision_ is not None:
+                d_sq = float(delta.T @ self.precision_ @ delta)
+                dist = np.sqrt(max(0.0, d_sq))
+            else:
+                dist = np.linalg.norm(delta)
             financial_sim = 1.0 / (1.0 + dist)
 
             # 業種一致ボーナス
