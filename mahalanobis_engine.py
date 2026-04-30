@@ -1,6 +1,6 @@
 import numpy as np
 import joblib
-from sklearn.covariance import MinCovDet, EmpiricalCovariance
+from sklearn.covariance import MinCovDet, OAS
 from sklearn.preprocessing import StandardScaler
 from datetime import datetime
 
@@ -40,8 +40,11 @@ class MahalanobisScorer:
         if self.train_size >= 30:
             est = MinCovDet(support_fraction=0.9, random_state=42).fit(X_scaled)
         else:
-            est = EmpiricalCovariance().fit(X_scaled)
+            est = OAS().fit(X_scaled)
         self.precision_ = est.get_precision()
+        eigvals = np.linalg.eigvalsh(self.precision_)
+        if np.any(eigvals <= 0):
+            raise ValueError("precision_ must be positive definite")
         self.last_updated = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     def get_analysis(self, x_raw: list | np.ndarray) -> tuple:
@@ -105,3 +108,28 @@ class MahalanobisScorer:
     @staticmethod
     def load(path: str) -> "MahalanobisScorer":
         return joblib.load(path)
+
+
+def compute_kl_drift(scorer: "MahalanobisScorer", recent_X: np.ndarray) -> float:
+    """最近データ分布と学習分布の KL ダイバージェンス D_KL(recent || train) を返す。"""
+    if scorer.precision_ is None or scorer.mu_ is None:
+        raise ValueError("Scorer is not fitted")
+    X_proc = scorer._preprocess(recent_X)
+    X_scaled = scorer.scaler.transform(X_proc)
+    mu_r = np.mean(X_scaled, axis=0)
+    cov_r = np.cov(X_scaled, rowvar=False)
+    if cov_r.ndim == 0:
+        cov_r = np.array([[float(cov_r)]])
+    p = cov_r.shape[0]
+    cov_r += np.eye(p) * 1e-8
+
+    prec_t = scorer.precision_
+    cov_t = np.linalg.pinv(prec_t)
+    delta = scorer.mu_ - mu_r
+    term1 = float(np.trace(prec_t @ cov_r))
+    term2 = float(delta.T @ prec_t @ delta)
+    sign_t, logdet_t = np.linalg.slogdet(cov_t)
+    sign_r, logdet_r = np.linalg.slogdet(cov_r)
+    if sign_t <= 0 or sign_r <= 0:
+        raise ValueError("Covariance determinant sign invalid")
+    return 0.5 * (term1 + term2 - p + (logdet_t - logdet_r))

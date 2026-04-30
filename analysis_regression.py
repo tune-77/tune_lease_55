@@ -353,7 +353,29 @@ def _run_single_quant_analysis(X, y, feature_names, min_cases=50):
     return out
 
 
-def run_regression_and_get_coeffs(X, y):
+
+
+def _compute_fisher_and_shrink(X, theta):
+    """
+    ロジスティック回帰パラメータに対する Fisher 情報行列を計算し、
+    標準誤差に基づく soft-shrink 係数を返す。
+    Returns: (fisher_inv, shrink_factors, ci_cross_zero)
+    """
+    X = np.asarray(X, dtype=float)
+    theta = np.asarray(theta, dtype=float)
+    z = X @ theta
+    p = 1.0 / (1.0 + np.exp(-np.clip(z, -50, 50)))
+    w = np.clip(p * (1.0 - p), 1e-8, None)
+    Xw = X * w[:, None]
+    fisher = X.T @ Xw
+    fisher_inv = np.linalg.pinv(fisher)
+    se = np.sqrt(np.clip(np.diag(fisher_inv), 0.0, None))
+    abs_beta = np.abs(theta)
+    shrink_factors = abs_beta / (abs_beta + se + 1e-12)
+    ci_cross_zero = (theta - 1.96 * se) * (theta + 1.96 * se) <= 0
+    return fisher_inv, shrink_factors, ci_cross_zero
+
+def run_regression_and_get_coeffs(X, y, model_key: str | None = None):
     """
     X, y に対してロジスティック回帰を実行し、既存項目＋追加項目の係数辞書を返す。
     X の列順: COEFF_MAIN_KEYS (22) + COEFF_EXTRA_KEYS (9)。
@@ -362,7 +384,21 @@ def run_regression_and_get_coeffs(X, y):
     model = LogisticRegression(C=1.0, solver="lbfgs", max_iter=2000, random_state=42)
     model.fit(X, y)
     intercept = float(model.intercept_[0])
-    coefs = model.coef_[0].tolist()
+    coefs = model.coef_[0].astype(float)
+
+    fisher_inv, shrink_factors, ci_cross_zero = _compute_fisher_and_shrink(X, coefs)
+    coefs_shrunk = coefs.copy()
+    coefs_shrunk[ci_cross_zero] = coefs_shrunk[ci_cross_zero] * shrink_factors[ci_cross_zero]
+    coefs = coefs_shrunk.tolist()
+
+    if model_key:
+        try:
+            from data_cases import load_auto_coeffs, save_auto_coeffs
+            auto = load_auto_coeffs()
+            auto[f"fisher_inv_{model_key}"] = np.asarray(fisher_inv, dtype=float).tolist()
+            save_auto_coeffs(auto)
+        except Exception:
+            pass
     coeff_dict = {"intercept": intercept}
     for i, key in enumerate(COEFF_MAIN_KEYS):
         if i < len(coefs):
@@ -466,7 +502,21 @@ def run_regression_indicator_and_get_coeffs(X, y):
     model = LogisticRegression(C=1.0, solver="lbfgs", max_iter=2000, random_state=42)
     model.fit(X, y)
     intercept = float(model.intercept_[0])
-    coefs = model.coef_[0].tolist()
+    coefs = model.coef_[0].astype(float)
+
+    fisher_inv, shrink_factors, ci_cross_zero = _compute_fisher_and_shrink(X, coefs)
+    coefs_shrunk = coefs.copy()
+    coefs_shrunk[ci_cross_zero] = coefs_shrunk[ci_cross_zero] * shrink_factors[ci_cross_zero]
+    coefs = coefs_shrunk.tolist()
+
+    if model_key:
+        try:
+            from data_cases import load_auto_coeffs, save_auto_coeffs
+            auto = load_auto_coeffs()
+            auto[f"fisher_inv_{model_key}"] = np.asarray(fisher_inv, dtype=float).tolist()
+            save_auto_coeffs(auto)
+        except Exception:
+            pass
     coeff_dict = {"intercept": intercept}
     for i, key in enumerate(INDICATOR_MAIN_KEYS):
         if i < len(coefs):

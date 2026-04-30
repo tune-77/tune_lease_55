@@ -111,9 +111,10 @@ def get_training_status() -> dict:
 # 自動最適化実行
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _compute_current_auc() -> float | None:
+def _compute_current_auc(leave_one_out: bool = False) -> float | None:
     """
     現在の有効係数（get_effective_coeffs）でスコアを計算し、AUCを返す。
+    leave_one_out=True の場合は簡易LOO-CVで評価する。
     成約=1, 失注=0 としてROC-AUCを計算。データが不足している場合は None を返す。
     """
     try:
@@ -132,6 +133,36 @@ def _compute_current_auc() -> float | None:
         w_borrower, w_asset, _, _ = get_score_weights()
 
         y_true, y_score = [], []
+
+        if leave_one_out:
+            for i, c in enumerate(cases):
+                train = cases[:i] + cases[i+1:]
+                if len(train) < 5:
+                    continue
+                test = c
+                inputs = test.get("inputs", {}) or test.get("result", {}) or {}
+                if not inputs:
+                    continue
+                data = {
+                    "nenshu": float(inputs.get("nenshu") or 0),
+                    "bank_credit": float(inputs.get("bank_credit") or 0),
+                    "lease_credit": float(inputs.get("lease_credit") or 0),
+                    "op_profit": float(inputs.get("op_profit") or 0) / 1000,
+                    "ord_profit": float(inputs.get("ord_profit") or 0) / 1000,
+                    "net_income": float(inputs.get("net_income") or 0) / 1000,
+                    "contracts": int(inputs.get("contracts") or 0),
+                    "grade": inputs.get("grade") or "1-3",
+                    "industry_major": inputs.get("industry_major") or "",
+                }
+                z = _calculate_z(data, coeffs)
+                prob = _safe_sigmoid(z)
+                asset_score = float(test.get("result", {}).get("asset_score") or 50)
+                final = w_borrower * prob * 100 + w_asset * asset_score
+                y_true.append(1 if test["final_status"] == "成約" else 0)
+                y_score.append(final)
+            if len(set(y_true)) < 2:
+                return None
+            return float(roc_auc_score(y_true, y_score))
         for c in cases:
             inputs = c.get("inputs", {}) or c.get("result", {}) or {}
             if not inputs:
