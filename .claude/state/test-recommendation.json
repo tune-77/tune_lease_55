@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-05-01T10:06:29Z",
-  "changed_file": "lease_logic_sumaho12.py",
+  "timestamp": "2026-04-30T12:45:13Z",
+  "changed_file": "scripts/asset_tracker.py",
   "test_command": "pytest -v",
   "related_test": "",
   "recommendation": "テストの実行を推奨します"

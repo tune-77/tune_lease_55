@@ -18,8 +18,7 @@ def run_tracking():
     # APIキーの取得 (環境変数)
     gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not gemini_key:
-        print("⚠️ GEMINI_API_KEY が設定されていません。ネット調査をスキップします。")
-        return
+        print("⚠️ GEMINI_API_KEY が設定されていません。統計モデルで実行します。")
 
     # 相場取得エンジンのインポート
     import sys
