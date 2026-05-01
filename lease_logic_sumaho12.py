@@ -1703,6 +1703,16 @@ elif mode == "📈 マクロ経済・S&P500予測":
     from components.macro_prediction_view import render_macro_prediction_view
     render_macro_prediction_view()
 
+# ── 🔭 モデル診断 (Phase 0) ──────────────────────────────────────────────────
+elif mode == "🔭 モデル診断":
+    from components.model_diagnostics_view import render_model_diagnostics
+    render_model_diagnostics()
+
+# ── 📐 自然勾配A/B比較 (Phase 2) ─────────────────────────────────────────────
+elif mode == "📐 自然勾配A/B比較":
+    from components.ngd_comparison_view import render_ngd_comparison
+    render_ngd_comparison()
+
 elif mode == "📝 案件修正":
     from components.case_editor import render_case_editor
     render_case_editor()
