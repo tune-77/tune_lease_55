@@ -99,7 +99,7 @@
 
 | Task | 内容 | DoD | Depends | Status |
 |------|------|-----|---------|--------|
-| 4.3  | `scripts/asset_tracker.py` 完成・スケジューラ統合 | `/schedule` コマンドで定期実行登録・Gemini API から物件相場取得ログ出力 | 4.1, 4.2 | cc:TODO |
+| 4.3  | `scripts/asset_tracker.py` 完成・スケジューラ統合 | `/schedule` コマンドで定期実行登録・Gemini API から物件相場取得ログ出力 | 4.1, 4.2 | cc:完了 |
 
 ---
 
