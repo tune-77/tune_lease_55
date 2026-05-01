@@ -1218,6 +1218,10 @@ elif mode == "📝 結果登録 (成約/失注)":
     from components.form_status import render_status_registration
     render_status_registration()
 
+elif mode == "💳 支払い実績管理":
+    from components.payment_history_view import render_payment_history
+    render_payment_history()
+
 elif mode == "🔍 AI 物件資産価値シミュレーター":
     from components.asset_valuer import render_asset_valuer
     render_asset_valuer()
