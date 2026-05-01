@@ -2,4 +2,6 @@
 {"type":"skill","name":"harness-plan","digest":"{\"skill\":\"claude-code-harness:harness-plan\",\"args\":\"PDF /Users/kobayashiisaoryou/Downloads/AURION_CO","timestamp":"2026-04-26T03:12:56Z"}
 {"type":"skill","name":"harness-work","digest":"{\"skill\":\"claude-code-harness:harness-work\",\"args\":\"AV.1〜AV.9実装\"}","timestamp":"2026-04-26T07:47:22Z"}
 {"type":"skill","name":"session-init","digest":"{\"skill\":\"claude-code-harness:session-init\"}","timestamp":"2026-04-26T07:58:23Z"}
-{"type":"skill","name":"git-ship","digest":"{\"skill\":\"git-ship\"}","timestamp":"2026-05-01T10:08:17Z"}
+{"type":"skill","name":"schedule","digest":"{\"skill\":\"schedule\",\"args\":\"物件相場月次バッチ --cron \\\"0 2 1 * *\\\" --cmd \\\"python3 scripts","timestamp":"2026-04-30T12:46:50Z"}
+{"type":"skill","name":"schedule","digest":"{\"skill\":\"schedule\",\"args\":\"weekly asset tracker: every Monday 6am, run `python3 /Users/kobayashiisa","timestamp":"2026-05-01T10:20:39Z"}
+{"type":"skill","name":"git-ship","digest":"{\"skill\":\"git-ship\"}","timestamp":"2026-05-01T10:35:39Z"}

@@ -4,8 +4,10 @@
     "claude-code-harness:harness-plan",
     "claude-code-harness:harness-work",
     "claude-code-harness:session-init",
+    "schedule",
+    "schedule",
     "git-ship"
   ],
   "session_start": "2026-04-25T21:59:45Z",
-  "last_used": "2026-05-01T10:08:17Z"
+  "last_used": "2026-05-01T10:35:39Z"
 }

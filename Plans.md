@@ -68,7 +68,40 @@
 
 ---
 
+## Phase 4: 物件価格追跡・バックテスト基盤
 
+作成日: 2026-04-30
+
+### 背景・目的
+
+リース審査の精度向上に向けて、物件の市場価格推移を追跡し、過去案件のバックテスト可能な基盤を整備する。
+既存の スコアリングロジックを履歴データに対して再実行し、モデル改善の検証に活用。
+
+---
+
+### Phase 4-A: DB スキーマ・マイグレーション
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 4.1  | `asset_price_history` テーブル実装（contract_id / inspected_at / current_market_price / condition_grade）| `python3 migrate_asset_price.py` 実行後 `asset_price_history` テーブルが SQLite に作成される | - | cc:完了 |
+
+---
+
+### Phase 4-B: バックテスター実装
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 4.2  | `components/asset_finance_backtester.py` 作成 — 過去案件に対してスコアリングロジックを再実行・ROC-AUC 計測 | `pytest components/asset_finance_backtester.py::AssetFinanceBacktester` pass・ROC-AUC >= 0.72 | 4.1 | cc:完了 |
+
+---
+
+### Phase 4-C: 相場データ収集・スケジューリング
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 4.3  | `scripts/asset_tracker.py` 完成・スケジューラ統合 | `/schedule` コマンドで定期実行登録・Gemini API から物件相場取得ログ出力 | 4.1, 4.2 | cc:完了 |
+
+---
 
 ## Phase 2: 量子解析 説明可能性・未知変数探索
 

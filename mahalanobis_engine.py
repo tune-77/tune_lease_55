@@ -110,6 +110,27 @@ class MahalanobisScorer:
         return joblib.load(path)
 
 
+
+
+def _gaussian_kl(mu_p: np.ndarray, cov_p: np.ndarray, mu_q: np.ndarray, cov_q: np.ndarray) -> float:
+    p = cov_p.shape[0]
+    cov_q_inv = np.linalg.pinv(cov_q)
+    delta = mu_q - mu_p
+    term1 = float(np.trace(cov_q_inv @ cov_p))
+    term2 = float(delta.T @ cov_q_inv @ delta)
+    sign_p, logdet_p = np.linalg.slogdet(cov_p)
+    sign_q, logdet_q = np.linalg.slogdet(cov_q)
+    if sign_p <= 0 or sign_q <= 0:
+        raise ValueError("Covariance determinant sign invalid")
+    return 0.5 * (term1 + term2 - p + (logdet_q - logdet_p))
+
+
+def _matrix_sqrt_psd(mat: np.ndarray) -> np.ndarray:
+    eigvals, eigvecs = np.linalg.eigh(mat)
+    eigvals = np.clip(eigvals, 0.0, None)
+    return eigvecs @ np.diag(np.sqrt(eigvals)) @ eigvecs.T
+
+
 def compute_kl_drift(scorer: "MahalanobisScorer", recent_X: np.ndarray) -> float:
     """最近データ分布と学習分布の KL ダイバージェンス D_KL(recent || train) を返す。"""
     if scorer.precision_ is None or scorer.mu_ is None:
@@ -133,3 +154,106 @@ def compute_kl_drift(scorer: "MahalanobisScorer", recent_X: np.ndarray) -> float
     if sign_t <= 0 or sign_r <= 0:
         raise ValueError("Covariance determinant sign invalid")
     return 0.5 * (term1 + term2 - p + (logdet_t - logdet_r))
+
+
+
+def compute_js_drift(scorer: "MahalanobisScorer", recent_X: np.ndarray) -> float:
+    """ガウス近似で JS ダイバージェンスを返す。"""
+    if scorer.precision_ is None or scorer.mu_ is None:
+        raise ValueError("Scorer is not fitted")
+    X_proc = scorer._preprocess(recent_X)
+    X_scaled = scorer.scaler.transform(X_proc)
+    mu_r = np.mean(X_scaled, axis=0)
+    cov_r = np.cov(X_scaled, rowvar=False)
+    if cov_r.ndim == 0:
+        cov_r = np.array([[float(cov_r)]])
+    p = cov_r.shape[0]
+    cov_r += np.eye(p) * 1e-8
+
+    cov_t = np.linalg.pinv(scorer.precision_)
+    mu_t = scorer.mu_
+    m_mu = 0.5 * (mu_r + mu_t)
+    m_cov = 0.5 * (cov_r + cov_t) + np.eye(p) * 1e-8
+
+    kl_r_m = _gaussian_kl(mu_r, cov_r, m_mu, m_cov)
+    kl_t_m = _gaussian_kl(mu_t, cov_t, m_mu, m_cov)
+    return 0.5 * (kl_r_m + kl_t_m)
+
+
+def compute_wasserstein2_drift(scorer: "MahalanobisScorer", recent_X: np.ndarray) -> float:
+    """ガウス近似Wasserstein-2距離を返す。"""
+    if scorer.precision_ is None or scorer.mu_ is None:
+        raise ValueError("Scorer is not fitted")
+    X_proc = scorer._preprocess(recent_X)
+    X_scaled = scorer.scaler.transform(X_proc)
+    mu_r = np.mean(X_scaled, axis=0)
+    cov_r = np.cov(X_scaled, rowvar=False)
+    if cov_r.ndim == 0:
+        cov_r = np.array([[float(cov_r)]])
+    p = cov_r.shape[0]
+    cov_r += np.eye(p) * 1e-8
+
+    cov_t = np.linalg.pinv(scorer.precision_)
+    mu_t = scorer.mu_
+
+    mean_term = float(np.sum((mu_r - mu_t) ** 2))
+    sqrt_cov_t = _matrix_sqrt_psd(cov_t)
+    inner = sqrt_cov_t @ cov_r @ sqrt_cov_t
+    cov_term = float(np.trace(cov_r + cov_t - 2.0 * _matrix_sqrt_psd(inner)))
+    return max(0.0, mean_term + cov_term)
+
+
+def compute_fisher_rao_proxy(scorer: "MahalanobisScorer", recent_X: np.ndarray) -> float:
+    """Fisher-Rao の実装コストを抑えるための proxy (Bhattacharyya distance)。"""
+    if scorer.precision_ is None or scorer.mu_ is None:
+        raise ValueError("Scorer is not fitted")
+    X_proc = scorer._preprocess(recent_X)
+    X_scaled = scorer.scaler.transform(X_proc)
+    mu_r = np.mean(X_scaled, axis=0)
+    cov_r = np.cov(X_scaled, rowvar=False)
+    if cov_r.ndim == 0:
+        cov_r = np.array([[float(cov_r)]])
+    p = cov_r.shape[0]
+    cov_r += np.eye(p) * 1e-8
+
+    cov_t = np.linalg.pinv(scorer.precision_)
+    delta = (mu_r - scorer.mu_).reshape(-1, 1)
+    sigma = 0.5 * (cov_r + cov_t) + np.eye(p) * 1e-8
+    sigma_inv = np.linalg.pinv(sigma)
+
+    term1 = float(0.125 * (delta.T @ sigma_inv @ delta).item())
+    sign_s, logdet_s = np.linalg.slogdet(sigma)
+    sign_r, logdet_r = np.linalg.slogdet(cov_r)
+    sign_t, logdet_t = np.linalg.slogdet(cov_t)
+    if sign_s <= 0 or sign_r <= 0 or sign_t <= 0:
+        raise ValueError("Covariance determinant sign invalid")
+    term2 = float(0.5 * (logdet_s - 0.5 * (logdet_r + logdet_t)))
+    return term1 + term2
+
+
+def summarize_distribution_drift(scorer: "MahalanobisScorer", recent_X: np.ndarray, thresholds: dict | None = None) -> dict:
+    """複数指標でドリフト判定を返す。"""
+    thresholds = thresholds or {
+        "kl": 0.35,
+        "js": 0.08,
+        "wasserstein2": 1.2,
+        "fisher_rao_proxy": 0.12,
+    }
+    kl = compute_kl_drift(scorer, recent_X)
+    js = compute_js_drift(scorer, recent_X)
+    w2 = compute_wasserstein2_drift(scorer, recent_X)
+    fr = compute_fisher_rao_proxy(scorer, recent_X)
+    flags = {
+        "kl": kl >= thresholds["kl"],
+        "js": js >= thresholds["js"],
+        "wasserstein2": w2 >= thresholds["wasserstein2"],
+        "fisher_rao_proxy": fr >= thresholds["fisher_rao_proxy"],
+    }
+    triggered = [k for k, v in flags.items() if v]
+    return {
+        "metrics": {"kl": kl, "js": js, "wasserstein2": w2, "fisher_rao_proxy": fr},
+        "thresholds": thresholds,
+        "flags": flags,
+        "is_drift": len(triggered) >= 2,
+        "triggered_metrics": triggered,
+    }
