@@ -18,6 +18,8 @@ def _build_dataframe() -> pd.DataFrame:
     rows = []
     for c in cases:
         status = c.get("final_status", "未登録")
+        if status in ("検収完了", "検収"):
+            status = "成約"
         if status not in ("成約", "失注"):
             continue
         score = float(c.get("score") or (c.get("result") or {}).get("score") or 0)

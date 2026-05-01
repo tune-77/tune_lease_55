@@ -504,8 +504,10 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
         cur_sub  = d.get("selected_sub", sub_keys[0])
         if cur_sub not in sub_keys:
             cur_sub = sub_keys[0]
-        sub = st.selectbox("中分類", sub_keys,
-                           index=sub_keys.index(cur_sub), key="wiz_sel_sub")
+        # 中分類は一時非表示（先頭値を自動使用）
+        sub = cur_sub
+        # sub = st.selectbox("中分類", sub_keys,
+        #                    index=sub_keys.index(cur_sub), key="wiz_sel_sub")
         if st.button("次へ →", key="wiz_next_industry", type="primary"):
             _advance(step, question="企業番号・業種を選択してください",
                      answer=f"[{d['company_no'] or '番号未入力'}] {major} ／ {sub}",
@@ -517,8 +519,10 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
     elif sid == "deal":
         _bot("この案件、<b>うちがメイン取引先</b>ですか？<br>"
              "それと、競合他社は入っていますか？正直に教えてください 😅")
-        main_bank  = st.radio("取引区分", ["メイン先", "非メイン先"],
-                              index=["メイン先","非メイン先"].index(d.get("main_bank","メイン先")),
+        _mb_opts = ["メイン先", "非メイン先", "不明"]
+        _mb_cur  = d.get("main_bank", "不明")
+        main_bank  = st.radio("取引区分", _mb_opts,
+                              index=_mb_opts.index(_mb_cur) if _mb_cur in _mb_opts else 2,
                               horizontal=True, key="wiz_main_bank")
         competitor = st.radio("競合状況", ["競合なし", "競合あり"],
                               index=["競合なし","競合あり"].index(d.get("competitor","競合なし")),
@@ -628,11 +632,36 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
     # ── STEP: assets_main ───────────────────────────────────────────────────
     elif sid == "assets_main":
         _bot("次は貸借対照表です 🏦<br>"
-             "<b>総資産は必須です</b>（自己資本比率の計算に使います）。<br>"
-             "決算書の「資産の部 合計」をそのまま入力してください。")
-        total  = st.number_input("総資産（千円）📌必須", 0, 90_000_000,
-                                 value=int(d["total_assets"]) if "total_assets" in d else None,
-                                 step=100, key="wiz_total", placeholder="例: 80000")
+             "決算書がない場合は <b>「BSデータなし」</b> にチェックすると業種平均で総資産を自動推定します。<br>"
+             "ある場合は「資産の部 合計」を入力してください。")
+        _ASSET_TURNOVER_BY_CODE = {
+            "A": 0.8, "B": 0.9, "C": 0.7, "D": 1.3, "E": 1.0,
+            "F": 0.3, "G": 0.9, "H": 0.7, "I": 1.7, "J": 1.5,
+            "K": 0.1, "L": 0.2, "M": 0.8, "N": 1.2, "O": 1.0,
+            "P": 0.8, "Q": 0.9, "R": 0.9, "S": 1.0,
+        }
+        _no_bs = st.checkbox(
+            "BSデータなし（業種平均の資産回転率で自動推定）",
+            value=d.get("total_assets_estimated", False),
+            key="wiz_no_bs",
+            help="決算書が入手できない場合にチェック。売上高÷業種平均資産回転率で総資産を推定します。精度はやや低下します。",
+        )
+        if _no_bs:
+            _nenshu_val = int(d.get("nenshu", 0) or 0)
+            _major_code = (d.get("selected_major", "") or " ")[0].upper()
+            _turnover = _ASSET_TURNOVER_BY_CODE.get(_major_code, 1.0)
+            total_v = max(1, int(_nenshu_val / _turnover)) if _nenshu_val > 0 else 1
+            st.info(
+                f"推定総資産: **{total_v:,}千円**"
+                f"（売上高 {_nenshu_val:,}千円 ÷ 業種平均回転率 {_turnover}）　※参考値・精度低下あり"
+            )
+            total_assets_estimated = True
+        else:
+            total  = st.number_input("総資産（千円）📌必須", 0, 90_000_000,
+                                     value=int(d["total_assets"]) if "total_assets" in d and not d.get("total_assets_estimated") else None,
+                                     step=100, key="wiz_total", placeholder="例: 80000")
+            total_v = total or 0
+            total_assets_estimated = False
         net_a  = st.number_input("純資産（千円）💡推奨", -30_000, 90_000_000,
                                  value=int(d["net_assets"]) if "net_assets" in d else None,
                                  step=100, key="wiz_neta", placeholder="例: 25000")
@@ -642,20 +671,21 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
         other  = st.number_input("その他資産（千円）", 0, 90_000_000,
                                  value=int(d["item7_other"]) if "item7_other" in d else None,
                                  step=100, key="wiz_otha", placeholder="空欄→0")
-        total_v = total or 0
         net_a_v = net_a or 0
         mach_v  = mach  or 0
         other_v = other or 0
         ok = total_v > 0
+        _answer = f"総資産: {total_v:,}（推定）/ 純資産: {net_a_v:,}（千円）" if total_assets_estimated else f"総資産: {total_v:,} / 純資産: {net_a_v:,}（千円）"
         _nav_buttons(step,
                      question="資産情報を入力してください",
-                     answer=f"総資産: {total_v:,} / 純資産: {net_a_v:,}（千円）",
+                     answer=_answer,
                      updates={"total_assets": total_v, "num_total_assets": total_v,
                               "net_assets": net_a_v, "num_net_assets": net_a_v,
                               "item6_machine": mach_v, "num_item6_machine": mach_v,
-                              "item7_other": other_v, "num_item7_other": other_v},
+                              "item7_other": other_v, "num_item7_other": other_v,
+                              "total_assets_estimated": total_assets_estimated},
                      can_proceed=ok,
-                     warn_msg="⚠️ 総資産は1以上の値を入力してください。自己資本比率の計算に必要です。")
+                     warn_msg="⚠️ 総資産は1以上の値を入力してください（またはBSデータなしにチェックしてください）。")
 
     # ── STEP: expenses ──────────────────────────────────────────────────────
     elif sid == "expenses":
@@ -748,15 +778,28 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
         year      = st.number_input("検収年（西暦）", 1900, 9999,
                                     int(d.get("acceptance_year", datetime.date.today().year)),
                                     1, key="wiz_year")
+        # 発生年月（基準金利との整合確認用）
+        st.markdown("**発生年月**")
+        st.caption("案件が発生した年月（例: 202601）。後で基準金利との整合性確認に使用します。")
+        _oym_raw = d.get("occurrence_ym", "")
+        _oym_y_def = int(_oym_raw[:4]) if len(str(_oym_raw)) >= 6 else datetime.date.today().year
+        _oym_m_def = int(str(_oym_raw)[4:6]) if len(str(_oym_raw)) >= 6 else datetime.date.today().month
+        _wc1, _wc2 = st.columns(2)
+        with _wc1:
+            _oym_year = st.number_input("年（西暦）", min_value=2000, max_value=2100, value=_oym_y_def, step=1, key="wiz_oym_year")
+        with _wc2:
+            _oym_month = st.selectbox("月", range(1, 13), index=_oym_m_def - 1, format_func=lambda m: f"{m}月", key="wiz_oym_month")
+        occurrence_ym = f"{int(_oym_year):04d}{int(_oym_month):02d}"
         acq       = st.number_input("取得価格（千円）", 0, 90_000_000,
                                     value=int(d["acquisition_cost"]) if "acquisition_cost" in d else None,
                                     step=100, key="wiz_acq", placeholder="例: 3000（＝300万円）")
         acq_v = acq or 0
         _nav_buttons(step, question="契約条件を入力してください",
-                     answer=f"{cust_type} / {cont_type} / {term}ヶ月 / {acq_v:,}千円",
+                     answer=f"{cust_type} / {cont_type} / {term}ヶ月 / {acq_v:,}千円 / {occurrence_ym}",
                      updates={"customer_type": cust_type, "contract_type": cont_type,
                               "deal_source": deal_src, "lease_term": term,
                               "acceptance_year": year,
+                              "occurrence_ym": occurrence_ym,
                               "acquisition_cost": acq_v, "num_acquisition_cost": acq_v})
 
     # ── STEP: qualitative ───────────────────────────────────────────────────
@@ -818,7 +861,7 @@ def _submit_wizard(d: dict) -> None:
         "submitted_judge": True,
         "selected_major":  d.get("selected_major", "D 建設業"),
         "selected_sub":    d.get("selected_sub", "06 総合工事業"),
-        "main_bank":       d.get("main_bank", "メイン先"),
+        "main_bank":       d.get("main_bank", "不明"),
         "competitor":      d.get("competitor", "競合なし"),
         "competitor_rate_input": float(d.get("competitor_rate_input", 0.0)),
         "num_competitors": d.get("num_competitors", "未入力"),
@@ -836,6 +879,8 @@ def _submit_wizard(d: dict) -> None:
         "item7_other":     int(d.get("item7_other", 0)),
         "net_assets":      int(d.get("net_assets", 0)),
         "total_assets":    int(d.get("total_assets", 0)),
+        "total_assets_estimated": d.get("total_assets_estimated", False),
+        "occurrence_ym": d.get("occurrence_ym", ""),
         "grade":           d.get("grade", "②4-6 (標準)"),
         "trend_grade_t0":  d.get("trend_grade_t0", "無格付"),
         "trend_grade_t1":  d.get("trend_grade_t1", "無格付"),

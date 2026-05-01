@@ -6,8 +6,10 @@
     "claude-code-harness:session-init",
     "schedule",
     "schedule",
+    "git-ship",
+    "update-config",
     "git-ship"
   ],
   "session_start": "2026-04-25T21:59:45Z",
-  "last_used": "2026-05-01T10:35:39Z"
+  "last_used": "2026-05-01T18:51:29Z"
 }

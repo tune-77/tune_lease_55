@@ -5,3 +5,5 @@
 {"type":"skill","name":"schedule","digest":"{\"skill\":\"schedule\",\"args\":\"物件相場月次バッチ --cron \\\"0 2 1 * *\\\" --cmd \\\"python3 scripts","timestamp":"2026-04-30T12:46:50Z"}
 {"type":"skill","name":"schedule","digest":"{\"skill\":\"schedule\",\"args\":\"weekly asset tracker: every Monday 6am, run `python3 /Users/kobayashiisa","timestamp":"2026-05-01T10:20:39Z"}
 {"type":"skill","name":"git-ship","digest":"{\"skill\":\"git-ship\"}","timestamp":"2026-05-01T10:35:39Z"}
+{"type":"skill","name":"update-config","digest":"{\"skill\":\"update-config\",\"args\":\"add MCP server for Excel: @negokaz/excel-mcp-server to user setting","timestamp":"2026-05-01T12:49:16Z"}
+{"type":"skill","name":"git-ship","digest":"{\"skill\":\"git-ship\"}","timestamp":"2026-05-01T18:51:29Z"}

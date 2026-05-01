@@ -21,6 +21,23 @@ _icon_path = Path(_SCRIPT_DIR) / "assets" / "yanami_icon.png"
 _page_icon = _PILImage.open(_icon_path) if _icon_path.exists() else "🏢"
 st.set_page_config(page_title="温水式リース審査AI", page_icon=_page_icon, layout="wide", initial_sidebar_state="auto")
 
+# Google パスワードマネージャーの提案を抑制
+st.markdown("""
+<script>
+(function() {
+  function disableAutocomplete() {
+    document.querySelectorAll('input, textarea').forEach(function(el) {
+      el.setAttribute('autocomplete', 'off');
+      el.setAttribute('data-lpignore', 'true');
+      el.setAttribute('data-form-type', 'other');
+    });
+  }
+  disableAutocomplete();
+  new MutationObserver(disableAutocomplete).observe(document.body, {childList: true, subtree: true});
+})();
+</script>
+""", unsafe_allow_html=True)
+
 @st.cache_resource
 def _intro_video_b64() -> str:
     """動画を base64 に変換してキャッシュ（起動時1回のみ・以降はメモリから）"""
@@ -795,7 +812,7 @@ elif mode == "🔍 AI 物件資産価値シミュレーター":
 
 elif mode == "📋 審査・分析":
     # ========== トップメニュー（新規審査） ==========
-    menu_tabs = st.tabs(["🆕 審査"])
+    menu_tabs = st.tabs(["🆕 審査", "📝 結果登録"])
     # 電光掲示板：定例の愚痴をメニュー直下でスクロール表示
     byoki_list = load_byoki_list()
     byoki_escaped = [str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;") for s in byoki_list]
@@ -997,6 +1014,10 @@ elif mode == "📋 審査・分析":
         with col_right:
             from components.ai_consultation import render_ai_consultation
             render_ai_consultation(selected_sub, jsic_data, bankruptcy_data)
+
+    with menu_tabs[1]:  # 結果登録
+        from components.form_status import render_status_registration
+        render_status_registration()
 
 # ==============================================================================
 # 物件ファイナンス審査モード

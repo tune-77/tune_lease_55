@@ -273,3 +273,93 @@ def render_status_registration():
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"削除失敗: {e}")
+
+
+def render_quick_status_widget(context_key: str = "main") -> None:
+    """
+    サイドバーや任意の場所に埋め込める簡易結果登録ウィジェット。
+    どのステータスの案件でも直接 成約/失注 を登録できる。
+    st.tabs() を使わないため sidebar でも動作する。
+    context_key: 同一画面に複数配置する場合の重複キー防止用。
+    """
+    if not os.path.exists(_LEASE_DB_PATH):
+        st.caption("DBが見つかりません")
+        return
+
+    workflow_data = _load_workflow_cases()
+
+    # 検収完了以外の全案件を対象（成約・失注も再登録可）
+    all_cases = []
+    for status in ["審査中", "見積もり提示", "稟議中", "成約", "失注"]:
+        for r in workflow_data[status]:
+            all_cases.append((status, r))
+
+    if not all_cases:
+        st.caption("案件がありません。")
+        return
+
+    # 案件選択
+    labels = []
+    for status, r in all_cases:
+        memo = _parse_memo(r["memo"])
+        name = memo.get("company_name", "") or r.get("industry_sub", "") or "案件"
+        no = memo.get("company_no", "")
+        prefix = f"[{no}] " if no else ""
+        labels.append(f"{prefix}{name}（{status}）")
+
+    selected_idx = st.selectbox(
+        "案件を選択",
+        range(len(labels)),
+        format_func=lambda i: labels[i],
+        key=f"quick_case_sel_{context_key}",
+    )
+
+    cur_status, record = all_cases[selected_idx]
+    rec_id = record["id"]
+    st.caption(f"現在: **{cur_status}**　スコア: {record.get('score', 0):.1f}")
+
+    # ── 成約/失注 は常に直接登録可能 ──────────────────────────────────────
+    with st.form(f"quick_finalize_{rec_id}_{context_key}"):
+        res_radio = st.radio(
+            "結果", ["成約", "失注"],
+            horizontal=True,
+            key=f"qr_radio_{rec_id}_{context_key}",
+        )
+        final_rate = st.number_input(
+            "獲得レート (%)", value=0.0, step=0.01, format="%.2f",
+            key=f"qr_rate_{rec_id}_{context_key}",
+        )
+        lost_reason = st.text_input(
+            "失注理由", placeholder="例: 金利負け",
+            key=f"qr_lost_{rec_id}_{context_key}",
+        )
+        submitted = st.form_submit_button("✅ 成約/失注を登録", type="primary")
+        if submitted:
+            extra = {"final_rate": final_rate}
+            if res_radio == "失注":
+                extra["lost_reason"] = lost_reason.strip()
+            if _save_workflow_status(rec_id, res_radio, extra):
+                st.toast(f"{res_radio} を登録しました")
+                try:
+                    from shinsa_gunshi import refresh_evidence_weights
+                    refresh_evidence_weights()
+                    from auto_optimizer import run_auto_optimization
+                    run_auto_optimization()
+                except Exception:
+                    pass
+                time.sleep(0.4)
+                st.rerun()
+
+    # ── ワークフロー進行ボタン（任意） ────────────────────────────────────
+    if cur_status == "審査中":
+        if st.button("📄 見積もり提示へ", key=f"quick_mitsumori_{rec_id}_{context_key}", use_container_width=True):
+            if _save_workflow_status(rec_id, "見積もり提示"):
+                st.toast("見積もり提示へ更新")
+                time.sleep(0.4)
+                st.rerun()
+    elif cur_status == "見積もり提示":
+        if st.button("⚖️ 稟議中へ", key=f"quick_ringi_{rec_id}_{context_key}", use_container_width=True):
+            if _save_workflow_status(rec_id, "稟議中"):
+                st.toast("稟議中へ更新")
+                time.sleep(0.4)
+                st.rerun()

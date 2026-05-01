@@ -602,19 +602,31 @@ def render_rate_suggestion(res: dict, similar_cases: list | None = None):
         import datetime
 
         _lease_term = int(st.session_state.get("lease_term") or pricing.get("lease_term") or 60)
-        _current_month = datetime.date.today().strftime("%Y-%m")
+
+        # 発生年月を優先、未設定なら当月
+        _oym_raw = (
+            st.session_state.get("occurrence_ym")
+            or res.get("occurrence_ym")
+            or ""
+        )
+        if len(str(_oym_raw)) == 6 and str(_oym_raw).isdigit():
+            _ref_month = f"{str(_oym_raw)[:4]}-{str(_oym_raw)[4:6]}"
+            _month_src = f"発生年月 {_oym_raw}"
+        else:
+            _ref_month = datetime.date.today().strftime("%Y-%m")
+            _month_src = "当月（発生年月未入力）"
 
         def _get_base_for_term(term_months: int) -> float:
             """DBから期間別基準金利を自動取得。未登録なら5年物にフォールバック。"""
-            r = get_base_rate_by_term(month=_current_month, lease_term_months=term_months)
+            r = get_base_rate_by_term(month=_ref_month, lease_term_months=term_months)
             return float(r) if r is not None else get_current_base_rate(fallback=2.1)
 
         base_rate = _get_base_for_term(_lease_term)
 
         # ── 基準金利情報表示（読み取り専用） ─────────────────────────────
         st.info(
-            f"📌 **基準金利（{_current_month} / {_lease_term}ヶ月物）: {base_rate:.2f}%**　"
-            "※ 基準金利マスタから自動取得。変更は「⚙️ 基準金利マスタ」ページで行ってください。"
+            f"📌 **基準金利（{_ref_month} / {_lease_term}ヶ月物）: {base_rate:.2f}%**　"
+            f"参照: {_month_src}　※ 変更は「⚙️ 基準金利マスタ」ページで。"
         )
 
         raw_comp = st.session_state.get("competitor_rate", 0)

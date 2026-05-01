@@ -8,4 +8,3 @@
 {"type":"todo.sync","ts":"2026-05-01T10:06:34Z","data":{"pending":0,"in_progress":0,"completed":4}}
 {"id":"event-000005","type":"session.stop","ts":"2026-05-01T10:20:59Z","state":"stopped"}
 {"id":"event-000001","type":"session.stop","ts":"2026-05-01T12:50:41Z","state":"stopped"}
-{"id":"event-000003","type":"session.stop","ts":"2026-05-01T17:30:11Z","state":"stopped"}
