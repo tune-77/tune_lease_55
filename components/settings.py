@@ -232,8 +232,8 @@ def render_coeff_analysis():
             
             if st.button("🚀 回帰分析を実行して係数を算出", key="btn_run_regression"):
                 try:
-                    coeff_dict, model = run_regression_and_get_coeffs(X_reg, y_reg)
-                    acc = model.score(X_reg, y_reg)
+                    coeff_dict, model = run_regression_and_get_coeffs(X_reg, y_reg, model_key="全体_既存先")
+                    acc = coeff_dict.get("_accuracy") or (model.score(X_reg, y_reg) if model else 0.0)
                     st.session_state["regression_coeffs"] = coeff_dict
                     st.session_state["regression_accuracy"] = acc
                     st.success("回帰完了。下記の係数を「係数を更新して保存」で審査スコアに反映できます。")
@@ -276,10 +276,11 @@ def render_coeff_analysis():
                     n_k = len(y_k) if y_k is not None else 0
                     if n_k >= min_n:
                         try:
-                            coeff_k, mod_k = run_regression_and_get_coeffs(X_k, y_k)
+                            coeff_k, mod_k = run_regression_and_get_coeffs(X_k, y_k, model_key=model_key)
                             overrides[model_key] = coeff_k
-                            acc_k = mod_k.score(X_k, y_k)
-                            results.append(f"{model_key}: {n_k}件, Accuracy={acc_k:.1%}")
+                            acc_k = coeff_k.get("_accuracy") or (mod_k.score(X_k, y_k) if mod_k else 0.0)
+                            bayes_tag = " [ベイズ更新]" if coeff_k.get("_used_bayesian_update") else ""
+                            results.append(f"{model_key}: {n_k}件, Accuracy={acc_k:.1%}{bayes_tag}")
                         except Exception as e:
                             results.append(f"{model_key}: エラー {e}")
                     else:
@@ -289,10 +290,11 @@ def render_coeff_analysis():
                     n_i = len(y_i) if y_i is not None else 0
                     if n_i >= min_n:
                         try:
-                            coeff_i, mod_i = run_regression_indicator_and_get_coeffs(X_i, y_i)
+                            coeff_i, mod_i = run_regression_indicator_and_get_coeffs(X_i, y_i, model_key=ind_key)
                             overrides[ind_key] = coeff_i
-                            acc_i = mod_i.score(X_i, y_i)
-                            results.append(f"{ind_key}: {n_i}件, Accuracy={acc_i:.1%}")
+                            acc_i = coeff_i.get("_accuracy") or (mod_i.score(X_i, y_i) if mod_i else 0.0)
+                            bayes_tag = " [ベイズ更新]" if coeff_i.get("_used_bayesian_update") else ""
+                            results.append(f"{ind_key}: {n_i}件, Accuracy={acc_i:.1%}{bayes_tag}")
                         except Exception as e:
                             results.append(f"{ind_key}: エラー {e}")
                     else:

@@ -375,31 +375,151 @@ def _compute_fisher_and_shrink(X, theta):
     ci_cross_zero = (theta - 1.96 * se) * (theta + 1.96 * se) <= 0
     return fisher_inv, shrink_factors, ci_cross_zero
 
+
+def _bayesian_map_estimate(X, y, prior_mu, prior_precision):
+    """
+    正規事前分布 N(μ₀, Λ₀⁻¹) を使ったロジスティック回帰の MAP 推定。
+
+    X: (n, p) 特徴行列（intercept なし）
+    y: (n,) バイナリラベル (0/1)
+    prior_mu: (p,) 前回の係数ベクトル（intercept なし）
+    prior_precision: (p, p) 前回の Fisher 情報行列（精度行列 Λ₀）
+
+    Returns:
+        coef_map: (p,) MAP 係数
+        intercept_map: float
+        posterior_precision: (p, p) 事後精度行列（次回の事前分布として使用）
+        posterior_cov: (p, p) 事後共分散行列（fisher_inv 相当）
+    """
+    from scipy.optimize import minimize
+    from scipy.special import expit
+
+    n, p = X.shape
+    Xb = np.hstack([X, np.ones((n, 1))])  # intercept を最後の列に追加
+
+    mu0 = np.asarray(prior_mu, dtype=float)
+    Lambda0 = np.asarray(prior_precision, dtype=float)
+
+    theta0 = np.append(mu0, 0.0)
+
+    def _neg_log_posterior(theta):
+        logits = Xb @ theta
+        log_lik = np.sum(
+            y * np.log(expit(logits) + 1e-15) +
+            (1 - y) * np.log(1 - expit(logits) + 1e-15)
+        )
+        diff = theta[:p] - mu0
+        log_prior = -0.5 * (diff @ Lambda0 @ diff)
+        return -(log_lik + log_prior)
+
+    def _grad(theta):
+        p_hat = expit(Xb @ theta)
+        grad_lik = Xb.T @ (p_hat - y)
+        diff = theta[:p] - mu0
+        grad_prior = np.append(Lambda0 @ diff, 0.0)  # intercept は正則化しない
+        return grad_lik + grad_prior
+
+    result = minimize(_neg_log_posterior, theta0, jac=_grad,
+                      method="L-BFGS-B", options={"maxiter": 2000, "ftol": 1e-12})
+
+    theta_map = result.x
+    coef_map = theta_map[:p]
+    intercept_map = float(theta_map[p])
+
+    # 事後精度行列 = 事前精度 + 新データの Fisher 情報行列
+    p_hat = expit(Xb @ theta_map)
+    w = np.clip(p_hat * (1 - p_hat), 1e-8, None)
+    Xw = X * w[:, None]
+    fisher_new = X.T @ Xw
+    posterior_precision = Lambda0 + fisher_new
+    posterior_cov = np.linalg.pinv(posterior_precision)
+
+    return coef_map, intercept_map, posterior_precision, posterior_cov
+
+
+def _load_prior_for_model(model_key: str):
+    """
+    coeff_auto.json から model_key の事前係数と精度行列を読み込む。
+    存在しない場合は (None, None) を返す。
+    """
+    try:
+        from data_cases import load_auto_coeffs
+        auto = load_auto_coeffs()
+        prior_mu_raw = auto.get(f"lr_coef_{model_key}")
+        prior_prec_raw = auto.get(f"fisher_prec_{model_key}")
+        if prior_mu_raw is None or prior_prec_raw is None:
+            return None, None
+        prior_mu = np.asarray(prior_mu_raw, dtype=float)
+        prior_prec = np.asarray(prior_prec_raw, dtype=float)
+        return prior_mu, prior_prec
+    except Exception:
+        return None, None
+
+
+def _save_posterior_for_model(model_key: str, coef_arr, intercept_val, posterior_precision):
+    """MAP 推定後の係数と事後精度行列を coeff_auto.json に保存する。"""
+    try:
+        from data_cases import load_auto_coeffs, save_auto_coeffs
+        auto = load_auto_coeffs()
+        auto[f"lr_coef_{model_key}"] = np.asarray(coef_arr, dtype=float).tolist()
+        auto[f"lr_intercept_{model_key}"] = float(intercept_val)
+        auto[f"fisher_prec_{model_key}"] = np.asarray(posterior_precision, dtype=float).tolist()
+        save_auto_coeffs(auto)
+    except Exception:
+        pass
+
+
 def run_regression_and_get_coeffs(X, y, model_key: str | None = None):
     """
     X, y に対してロジスティック回帰を実行し、既存項目＋追加項目の係数辞書を返す。
     X の列順: COEFF_MAIN_KEYS (22) + COEFF_EXTRA_KEYS (9)。
+
+    model_key が指定されると前回の係数を事前分布として MAP 推定を行い、
+    推定後の係数と事後精度行列を coeff_auto.json に保存する（ベイズ更新）。
     """
-    from sklearn.linear_model import LogisticRegression
-    model = LogisticRegression(C=1.0, solver="lbfgs", max_iter=2000, random_state=42)
-    model.fit(X, y)
-    intercept = float(model.intercept_[0])
-    coefs = model.coef_[0].astype(float)
+    X = np.asarray(X, dtype=float)
+    y = np.asarray(y, dtype=int)
+    p = X.shape[1]
 
-    fisher_inv, shrink_factors, ci_cross_zero = _compute_fisher_and_shrink(X, coefs)
-    coefs_shrunk = coefs.copy()
-    coefs_shrunk[ci_cross_zero] = coefs_shrunk[ci_cross_zero] * shrink_factors[ci_cross_zero]
-    coefs = coefs_shrunk.tolist()
-
+    used_bayes = False
     if model_key:
-        try:
-            from data_cases import load_auto_coeffs, save_auto_coeffs
-            auto = load_auto_coeffs()
-            auto[f"fisher_inv_{model_key}"] = np.asarray(fisher_inv, dtype=float).tolist()
-            save_auto_coeffs(auto)
-        except Exception:
-            pass
-    coeff_dict = {"intercept": intercept}
+        prior_mu, prior_prec = _load_prior_for_model(model_key)
+        if prior_mu is not None and prior_prec is not None and len(prior_mu) == p:
+            try:
+                coef_map, intercept_map, post_prec, post_cov = _bayesian_map_estimate(
+                    X, y, prior_mu, prior_prec
+                )
+                coefs = coef_map.tolist()
+                intercept = intercept_map
+                _save_posterior_for_model(model_key, coef_map, intercept_map, post_prec)
+                used_bayes = True
+                fisher_inv = post_cov
+            except Exception:
+                used_bayes = False
+
+    sklearn_model = None
+    if not used_bayes:
+        from sklearn.linear_model import LogisticRegression
+        sklearn_model = LogisticRegression(C=1.0, solver="lbfgs", max_iter=2000, random_state=42)
+        sklearn_model.fit(X, y)
+        intercept = float(sklearn_model.intercept_[0])
+        raw_coefs = sklearn_model.coef_[0].astype(float)
+        fisher_inv, shrink_factors, ci_cross_zero = _compute_fisher_and_shrink(X, raw_coefs)
+        coefs_shrunk = raw_coefs.copy()
+        coefs_shrunk[ci_cross_zero] = coefs_shrunk[ci_cross_zero] * shrink_factors[ci_cross_zero]
+        coefs = coefs_shrunk.tolist()
+        if model_key:
+            # 初回: Fisher 情報行列を精度行列として保存（次回の事前分布になる）
+            fisher_prec = np.linalg.pinv(fisher_inv)
+            _save_posterior_for_model(model_key, np.array(coefs), intercept, fisher_prec)
+
+    # 精度計算（MAP/MLE 共通）
+    from scipy.special import expit as _expit
+    logits = X @ np.array(coefs) + intercept
+    y_pred_bin = (logits >= 0.0).astype(int)
+    accuracy = float((y_pred_bin == y).mean())
+
+    coeff_dict = {"intercept": intercept, "_used_bayesian_update": used_bayes, "_accuracy": accuracy}
     for i, key in enumerate(COEFF_MAIN_KEYS):
         if i < len(coefs):
             coeff_dict[key] = float(coefs[i])
@@ -407,7 +527,7 @@ def run_regression_and_get_coeffs(X, y, model_key: str | None = None):
         idx = len(COEFF_MAIN_KEYS) + j
         if idx < len(coefs):
             coeff_dict[key] = float(coefs[idx])
-    return coeff_dict, model
+    return coeff_dict, sklearn_model
 
 
 def _build_one_row_indicator(log, data):
@@ -496,28 +616,52 @@ def build_design_matrix_indicator_from_logs(all_logs, indicator_model_key):
     return np.array(rows, dtype=float), np.array(y_list, dtype=int)
 
 
-def run_regression_indicator_and_get_coeffs(X, y):
-    """指標モデル用の回帰。列順: INDICATOR_MAIN_KEYS (16) + COEFF_EXTRA_KEYS (8)。"""
-    from sklearn.linear_model import LogisticRegression
-    model = LogisticRegression(C=1.0, solver="lbfgs", max_iter=2000, random_state=42)
-    model.fit(X, y)
-    intercept = float(model.intercept_[0])
-    coefs = model.coef_[0].astype(float)
+def run_regression_indicator_and_get_coeffs(X, y, model_key: str | None = None):
+    """
+    指標モデル用の回帰。列順: INDICATOR_MAIN_KEYS (16) + COEFF_EXTRA_KEYS (8)。
 
-    fisher_inv, shrink_factors, ci_cross_zero = _compute_fisher_and_shrink(X, coefs)
-    coefs_shrunk = coefs.copy()
-    coefs_shrunk[ci_cross_zero] = coefs_shrunk[ci_cross_zero] * shrink_factors[ci_cross_zero]
-    coefs = coefs_shrunk.tolist()
+    model_key が指定されると前回の係数を事前分布として MAP 推定を行う（ベイズ更新）。
+    """
+    X = np.asarray(X, dtype=float)
+    y = np.asarray(y, dtype=int)
+    p = X.shape[1]
 
+    used_bayes = False
     if model_key:
-        try:
-            from data_cases import load_auto_coeffs, save_auto_coeffs
-            auto = load_auto_coeffs()
-            auto[f"fisher_inv_{model_key}"] = np.asarray(fisher_inv, dtype=float).tolist()
-            save_auto_coeffs(auto)
-        except Exception:
-            pass
-    coeff_dict = {"intercept": intercept}
+        prior_mu, prior_prec = _load_prior_for_model(model_key)
+        if prior_mu is not None and prior_prec is not None and len(prior_mu) == p:
+            try:
+                coef_map, intercept_map, post_prec, post_cov = _bayesian_map_estimate(
+                    X, y, prior_mu, prior_prec
+                )
+                coefs = coef_map.tolist()
+                intercept = intercept_map
+                _save_posterior_for_model(model_key, coef_map, intercept_map, post_prec)
+                used_bayes = True
+                fisher_inv = post_cov
+            except Exception:
+                used_bayes = False
+
+    sklearn_model = None
+    if not used_bayes:
+        from sklearn.linear_model import LogisticRegression
+        sklearn_model = LogisticRegression(C=1.0, solver="lbfgs", max_iter=2000, random_state=42)
+        sklearn_model.fit(X, y)
+        intercept = float(sklearn_model.intercept_[0])
+        raw_coefs = sklearn_model.coef_[0].astype(float)
+        fisher_inv, shrink_factors, ci_cross_zero = _compute_fisher_and_shrink(X, raw_coefs)
+        coefs_shrunk = raw_coefs.copy()
+        coefs_shrunk[ci_cross_zero] = coefs_shrunk[ci_cross_zero] * shrink_factors[ci_cross_zero]
+        coefs = coefs_shrunk.tolist()
+        if model_key:
+            fisher_prec = np.linalg.pinv(fisher_inv)
+            _save_posterior_for_model(model_key, np.array(coefs), intercept, fisher_prec)
+
+    logits = X @ np.array(coefs) + intercept
+    y_pred_bin = (logits >= 0.0).astype(int)
+    accuracy = float((y_pred_bin == y).mean())
+
+    coeff_dict = {"intercept": intercept, "_used_bayesian_update": used_bayes, "_accuracy": accuracy}
     for i, key in enumerate(INDICATOR_MAIN_KEYS):
         if i < len(coefs):
             coeff_dict[key] = float(coefs[i])
@@ -525,7 +669,7 @@ def run_regression_indicator_and_get_coeffs(X, y):
         idx = len(INDICATOR_MAIN_KEYS) + j
         if idx < len(coefs):
             coeff_dict[key] = float(coefs[idx])
-    return coeff_dict, model
+    return coeff_dict, sklearn_model
 
 
 # 成約に寄与する上位3ドライバーは回帰係数（全体_既存先）の絶対値で算出。
@@ -974,20 +1118,13 @@ def run_qualitative_contract_analysis(qual_correction_items):
         else:
             out["auc_lgb"] = None
         out["lgb_importance"] = list(zip(feature_names, lgb_model.feature_importances_.tolist()))
-        # SHAP 特徴量重要度（スキップ）
         out["shap_importance"] = []
-        '''
         try:
-            import shap as _shap
-            _exp  = _shap.TreeExplainer(lgb_model)
-            _sv   = _exp.shap_values(X_te)
-            if isinstance(_sv, list):
-                _sv = _sv[1]   # 成約クラス
-            _mean = np.abs(_sv).mean(axis=0)
-            out["shap_importance"] = list(zip(feature_names, _mean.tolist()))
+            import joblib as _jbl, os as _os2
+            _mp = _os2.path.join(_os2.path.dirname(_os2.path.abspath(__file__)), "data", "lgb_qual_model.joblib")
+            _jbl.dump({"model": lgb_model, "feature_names": feature_names, "asset_to_idx": asset_to_idx}, _mp)
         except Exception:
             pass
-        '''
     except Exception as e:
         out["lgb_error"] = str(e)
     if prob_lr_te is not None and prob_lgb_te is not None and len(np.unique(y_te)) >= 2:
@@ -995,6 +1132,13 @@ def run_qualitative_contract_analysis(qual_correction_items):
         out["ensemble_alpha"] = best_alpha
         out["auc_ensemble"] = best_auc
         out["accuracy_ensemble"] = best_acc
+        try:
+            import json as _json2, os as _os3
+            _cp = _os3.path.join(_os3.path.dirname(_os3.path.abspath(__file__)), "data", "ensemble_config_qual.json")
+            with open(_cp, "w", encoding="utf-8") as _f2:
+                _json2.dump({"ensemble_alpha": best_alpha, "auc_ensemble": best_auc}, _f2)
+        except Exception:
+            pass
     return out
 
 
@@ -1041,17 +1185,40 @@ def run_quantitative_contract_analysis():
     prob_lr_te = None
     prob_lgb_te = None
     try:
-        from sklearn.linear_model import LogisticRegression
-        lr = LogisticRegression(C=1.0, max_iter=2000, random_state=42)
-        lr.fit(X_tr, y_tr)
-        out["lr_coef"] = list(zip(feature_names, lr.coef_[0].tolist()))
-        out["lr_intercept"] = float(lr.intercept_[0])
-        out["accuracy_lr"] = float(accuracy_score(y_te, lr.predict(X_te)))
-        if len(np.unique(y_te)) >= 2:
-            out["auc_lr"] = float(roc_auc_score(y_te, lr.predict_proba(X_te)[:, 1]))
-            prob_lr_te = lr.predict_proba(X_te)[:, 1]
-        else:
-            out["auc_lr"] = None
+        from scipy.special import expit as _expit_quant
+        # ベイズ更新可能なら MAP 推定、なければ MLE にフォールバック
+        _prior_mu, _prior_prec = _load_prior_for_model("全体_既存先")
+        _p = X_tr.shape[1]
+        _used_bayes_lr = False
+        if _prior_mu is not None and _prior_prec is not None and len(_prior_mu) == _p:
+            try:
+                _coef_map, _int_map, _post_prec, _ = _bayesian_map_estimate(
+                    X_tr, y_tr, _prior_mu, _prior_prec
+                )
+                prob_lr_te = _expit_quant(X_te @ _coef_map + _int_map)
+                _lr_pred = (prob_lr_te >= 0.5).astype(int)
+                out["lr_coef"] = list(zip(feature_names, _coef_map.tolist()))
+                out["lr_intercept"] = float(_int_map)
+                out["accuracy_lr"] = float(accuracy_score(y_te, _lr_pred))
+                if len(np.unique(y_te)) >= 2:
+                    out["auc_lr"] = float(roc_auc_score(y_te, prob_lr_te))
+                out["lr_used_bayesian"] = True
+                _used_bayes_lr = True
+            except Exception:
+                _used_bayes_lr = False
+        if not _used_bayes_lr:
+            from sklearn.linear_model import LogisticRegression
+            lr = LogisticRegression(C=1.0, max_iter=2000, random_state=42)
+            lr.fit(X_tr, y_tr)
+            out["lr_coef"] = list(zip(feature_names, lr.coef_[0].tolist()))
+            out["lr_intercept"] = float(lr.intercept_[0])
+            out["accuracy_lr"] = float(accuracy_score(y_te, lr.predict(X_te)))
+            if len(np.unique(y_te)) >= 2:
+                out["auc_lr"] = float(roc_auc_score(y_te, lr.predict_proba(X_te)[:, 1]))
+                prob_lr_te = lr.predict_proba(X_te)[:, 1]
+            else:
+                out["auc_lr"] = None
+            out["lr_used_bayesian"] = False
     except Exception as e:
         out["lr_error"] = str(e)
     try:
@@ -1065,6 +1232,13 @@ def run_quantitative_contract_analysis():
         else:
             out["auc_lgb"] = None
         out["lgb_importance"] = list(zip(feature_names, lgb_model.feature_importances_.tolist()))
+        # LGB モデルを保存（スコア計算時のアンサンブル用）
+        try:
+            import joblib as _jbl, os as _os2
+            _mp = _os2.path.join(_os2.path.dirname(_os2.path.abspath(__file__)), "data", "lgb_main_model.joblib")
+            _jbl.dump({"model": lgb_model, "feature_names": feature_names}, _mp)
+        except Exception:
+            pass
     except Exception as e:
         out["lgb_error"] = str(e)
     if prob_lr_te is not None and prob_lgb_te is not None and len(np.unique(y_te)) >= 2:
@@ -1072,6 +1246,13 @@ def run_quantitative_contract_analysis():
         out["ensemble_alpha"] = best_alpha
         out["auc_ensemble"] = best_auc
         out["accuracy_ensemble"] = best_acc
+        try:
+            import json as _json2, os as _os3
+            _cp = _os3.path.join(_os3.path.dirname(_os3.path.abspath(__file__)), "data", "ensemble_config.json")
+            with open(_cp, "w", encoding="utf-8") as _f2:
+                _json2.dump({"ensemble_alpha": best_alpha, "auc_ensemble": best_auc}, _f2)
+        except Exception:
+            pass
     return out
 
 
@@ -1225,20 +1406,46 @@ def calc_optimal_approval_line() -> dict | None:
 def run_bayesian_warm_start_all_keys(all_logs, min_n: int = 5):
     """
     全モデルキー（INDUSTRY_MODEL_KEYS + INDICATOR_MODEL_KEYS）について、
-    現在保存済みの係数を事前分布（warm start 初期値）として使い、
-    ベイズ的なロジスティック回帰を実行して係数を更新する。
+    前回の係数と Fisher 精度行列を事前分布として MAP 推定を実行し係数を更新する。
+
+    事前分布の優先順位:
+      1. coeff_auto.json の fisher_prec_{key}（精度行列あり → 真のMAP推定）
+      2. coeff_overrides.json の係数のみ（精度行列なし → Fisher精度を単位行列で代替）
+
+    係数は coeff_overrides.json に保存（スコアリングで使用）。
+    Fisher 精度行列は coeff_auto.json に保存（次回の事前分布として使用）。
 
     Returns:
         (overrides_dict, results_list)
     """
     from data_cases import load_coeff_overrides, get_effective_coeffs
-    from sklearn.linear_model import LogisticRegression
+    from scipy.special import expit as _expit_ws
+    from sklearn.metrics import accuracy_score as _acc_ws
 
     overrides = load_coeff_overrides() or {}
     results = []
 
     industry_feature_keys = COEFF_MAIN_KEYS + COEFF_EXTRA_KEYS
     indicator_feature_keys = INDICATOR_MAIN_KEYS + COEFF_EXTRA_KEYS
+
+    def _run_one(model_key, X, y, feature_keys):
+        p = X.shape[1]
+        # 事前分布: coeff_auto.json の精度行列 → なければ coeff_overrides.json の係数 + 単位行列
+        prior_mu, prior_prec = _load_prior_for_model(model_key)
+        if prior_mu is None or len(prior_mu) != p:
+            eff = get_effective_coeffs(model_key)
+            prior_mu = np.array([eff.get(k, 0.0) for k in feature_keys[:p]], dtype=float)
+            prior_prec = np.eye(p)  # 無情報事前分布相当
+
+        coef_map, int_map, post_prec, _ = _bayesian_map_estimate(X, y, prior_mu, prior_prec)
+        _save_posterior_for_model(model_key, coef_map, int_map, post_prec)
+
+        coeff_dict = {"intercept": float(int_map), "_used_bayesian_update": True}
+        coeff_dict.update(dict(zip(feature_keys[:p], coef_map.tolist())))
+
+        logits = X @ coef_map + int_map
+        acc = float(_acc_ws(y, (logits >= 0).astype(int)))
+        return coeff_dict, acc
 
     for model_key in INDUSTRY_MODEL_KEYS:
         X_k, y_k = build_design_matrix_from_logs(all_logs, model_key=model_key)
@@ -1247,28 +1454,9 @@ def run_bayesian_warm_start_all_keys(all_logs, min_n: int = 5):
             results.append(f"{model_key}: データ不足 ({n_k}件) — 前回係数を保持")
             continue
         try:
-            prior = get_effective_coeffs(model_key)
-            prior_coef = np.array([prior.get(k, 0.0) for k in industry_feature_keys], dtype=float)
-            prior_intercept = float(prior.get("intercept", 0.0))
-
-            lr = LogisticRegression(C=1.0, solver="lbfgs", max_iter=2000,
-                                    warm_start=True, random_state=42)
-            # 1回目で内部状態を初期化してから prior を上書きし再 fit
-            lr.fit(X_k, y_k)
-            lr.coef_ = prior_coef.reshape(1, -1)
-            lr.intercept_ = np.array([prior_intercept])
-            lr.fit(X_k, y_k)
-
-            coefs = lr.coef_[0].astype(float)
-            _, shrink_factors, ci_cross_zero = _compute_fisher_and_shrink(X_k, coefs)
-            coefs[ci_cross_zero] = coefs[ci_cross_zero] * shrink_factors[ci_cross_zero]
-
-            coeff_dict = {"intercept": float(lr.intercept_[0])}
-            coeff_dict.update(dict(zip(industry_feature_keys, coefs.tolist())))
+            coeff_dict, acc = _run_one(model_key, X_k, y_k, industry_feature_keys)
             overrides[model_key] = coeff_dict
-
-            acc = lr.score(X_k, y_k)
-            results.append(f"{model_key}: {n_k}件, Accuracy={acc:.1%} (prior warm-start)")
+            results.append(f"{model_key}: {n_k}件, Accuracy={acc:.1%} [MAP推定]")
         except Exception as e:
             results.append(f"{model_key}: エラー {e}")
 
@@ -1279,32 +1467,9 @@ def run_bayesian_warm_start_all_keys(all_logs, min_n: int = 5):
             results.append(f"{ind_key}: データ不足 ({n_i}件) — 前回係数を保持")
             continue
         try:
-            prior = get_effective_coeffs(ind_key)
-            prior_coef = np.array([prior.get(k, 0.0) for k in indicator_feature_keys], dtype=float)
-            prior_intercept = float(prior.get("intercept", 0.0))
-
-            lr = LogisticRegression(C=1.0, solver="lbfgs", max_iter=2000,
-                                    warm_start=True, random_state=42)
-            lr.fit(X_i, y_i)
-            # prior のサイズがデータ列数と一致しない場合は切り捨てまたはゼロ埋め
-            n_feat = X_i.shape[1]
-            p = prior_coef[:n_feat] if len(prior_coef) >= n_feat else np.pad(
-                prior_coef, (0, n_feat - len(prior_coef)))
-            lr.coef_ = p.reshape(1, -1)
-            lr.intercept_ = np.array([prior_intercept])
-            lr.fit(X_i, y_i)
-
-            coefs = lr.coef_[0].astype(float)
-            _, shrink_factors, ci_cross_zero = _compute_fisher_and_shrink(X_i, coefs)
-            coefs[ci_cross_zero] = coefs[ci_cross_zero] * shrink_factors[ci_cross_zero]
-
-            feat_keys = indicator_feature_keys[:n_feat]
-            coeff_dict = {"intercept": float(lr.intercept_[0])}
-            coeff_dict.update(dict(zip(feat_keys, coefs.tolist())))
+            coeff_dict, acc = _run_one(ind_key, X_i, y_i, indicator_feature_keys)
             overrides[ind_key] = coeff_dict
-
-            acc = lr.score(X_i, y_i)
-            results.append(f"{ind_key}: {n_i}件, Accuracy={acc:.1%} (prior warm-start)")
+            results.append(f"{ind_key}: {n_i}件, Accuracy={acc:.1%} [MAP推定]")
         except Exception as e:
             results.append(f"{ind_key}: エラー {e}")
 
