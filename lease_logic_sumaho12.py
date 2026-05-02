@@ -876,6 +876,20 @@ elif mode == "📋 審査・分析":
             # ユーザーがラジオで切り替えたとき nav_index を同期
             st.session_state.nav_index = 1 if nav_mode == "📊 分析結果" else 0
             if nav_mode == "📝 審査入力":
+                # --- AIのリアルタイムツッコミ ---
+                try:
+                    from ai_chat import trigger_realtime_interjection
+                    _s_nenshu = st.session_state.get("nenshu", 0)
+                    _s_profit = st.session_state.get("rieki", 0)
+                    _s_ind = st.session_state.get("select_major", "不明")
+                    _s_net_assets = st.session_state.get("net_assets", 0)
+                    _s_rent = st.session_state.get("item8_rent", 0) + st.session_state.get("item12_rent_exp", 0)
+                    comment = trigger_realtime_interjection(_s_nenshu, _s_profit, _s_ind, _s_net_assets, _s_rent)
+                    if comment:
+                        st.toast(f"🤖 AI: {comment}", icon="🚨")
+                except Exception:
+                    pass
+
                 from components.form_apply import render_apply_form
                 form_result = render_apply_form(
                     jsic_data, 

@@ -182,8 +182,8 @@ def render_aurion_wave_view(
     # ── 変数値サマリ ────────────────────────────────────────────────────────
     with st.expander("🔍 使用変数の詳細", expanded=False):
         st.caption(
-            f"**{var_a}** = {val_a:,.0f} 千円 → v1 = {v1:.3f}  |  "
-            f"**{var_b}** = {val_b:,.0f} 千円 → v2 = {v2:.3f}"
+            f"**{var_a}** = {val_a/1000:,.1f} 百万円 → v1 = {v1:.3f}  |  "
+            f"**{var_b}** = {val_b/1000:,.1f} 百万円 → v2 = {v2:.3f}"
         )
         st.caption(
             f"業種コード: **{industry_code or '不明'}**  |  "

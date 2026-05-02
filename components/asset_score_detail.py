@@ -280,13 +280,14 @@ def render_asset_score_detail(
             )
         with col_ac:
             _ac_init = int(st.session_state.get("acquisition_cost", 0) or 0)
-            acost_here = st.number_input(
-                "取得価格（千円）",
-                min_value=0, max_value=90_000_000,
-                value=_ac_init,
-                step=100,
+            _acost_man = st.number_input(
+                "取得価格（百万円）",
+                min_value=0, max_value=90_000,
+                value=_ac_init // 1000,
+                step=1,
                 key="asd_acost",
             )
+            acost_here = _acost_man * 1000  # 内部は千円単位
 
         # ── AI調査ボタン ───────────────────────────────────────────────────
         if gemini_key:

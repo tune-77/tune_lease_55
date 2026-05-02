@@ -25,18 +25,18 @@ _QUAL_FIELDS = [
 ]
 
 _QUANT_FIELDS = [
-    ("score",           "審査スコア"),
-    ("sales",           "売上高(千円)"),
-    ("op_profit",       "営業利益(千円)"),
-    ("net_income",      "当期純利益(千円)"),
-    ("total_assets",    "総資産(千円)"),
-    ("net_assets",      "純資産(千円)"),
-    ("bank_credit",     "銀行与信(千円)"),
-    ("lease_credit",    "リース与信(千円)"),
-    ("acquisition_cost","取得価格(千円)"),
-    ("grade",           "格付"),
-    ("final_rate",      "獲得レート(%)"),
-    ("industry_major",  "業種"),
+    ("score",           "審査スコア",        False),
+    ("sales",           "売上高(百万円)",     True),
+    ("op_profit",       "営業利益(百万円)",   True),
+    ("net_income",      "当期純利益(百万円)", True),
+    ("total_assets",    "総資産(百万円)",     True),
+    ("net_assets",      "純資産(百万円)",     True),
+    ("bank_credit",     "銀行与信(百万円)",   True),
+    ("lease_credit",    "リース与信(百万円)", True),
+    ("acquisition_cost","取得価格(百万円)",   True),
+    ("grade",           "格付",              False),
+    ("final_rate",      "獲得レート(%)",      False),
+    ("industry_major",  "業種",              False),
 ]
 
 
@@ -77,17 +77,22 @@ def _build_qual_prompt(cases: list[dict]) -> str:
 
 def _build_quant_prompt(cases: list[dict]) -> str:
     lines = ["# 定量要因分析データ（成約/失注案件）\n"]
-    header = ["結果"] + [label for _, label in _QUANT_FIELDS]
+    header = ["結果"] + [label for _, label, _ in _QUANT_FIELDS]
     lines.append(",".join(header))
     for c in cases:
         inputs = c.get("inputs") or {}
         result = c.get("result") or {}
         row = [c.get("final_status", "")]
-        for key, _ in _QUANT_FIELDS:
+        for key, _, to_man in _QUANT_FIELDS:
             val = (c.get(key)
                    or inputs.get(key)
                    or result.get(key)
                    or "")
+            if to_man and val != "":
+                try:
+                    val = round(float(val) / 1000, 1)
+                except (TypeError, ValueError):
+                    pass
             row.append(str(val).replace(",", ""))
         lines.append(",".join(row))
 

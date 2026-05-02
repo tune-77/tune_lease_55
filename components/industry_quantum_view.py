@@ -422,28 +422,28 @@ def render_industry_quantum_view() -> None:
             col_s1, col_s2, col_s3 = st.columns(3)
             with col_s1:
                 new_op = st.slider(
-                    "営業利益 (千円)", 0, int(_ind_max("op_profit", 200000)),
-                    int(float(base_inputs.get("op_profit", 50000))),
-                    step=1000, key="cf_op_profit",
+                    "営業利益 (百万円)", 0, int(_ind_max("op_profit", 200000)) // 1000,
+                    int(float(base_inputs.get("op_profit", 50000))) // 1000,
+                    step=1, key="cf_op_profit",
                 )
             with col_s2:
                 new_dep = st.slider(
-                    "減価償却費 (千円)", 0, int(_ind_max("depreciation", 100000)),
-                    int(float(base_inputs.get("depreciation", 10000))),
-                    step=500, key="cf_depreciation",
+                    "減価償却費 (百万円)", 0, int(_ind_max("depreciation", 100000)) // 1000,
+                    int(float(base_inputs.get("depreciation", 10000))) // 1000,
+                    step=1, key="cf_depreciation",
                 )
             with col_s3:
                 new_mach = st.slider(
-                    "機械設備 (千円)", 0, int(_ind_max("machines", 200000)),
-                    int(float(base_inputs.get("machines", 40000))),
-                    step=1000, key="cf_machines",
+                    "機械設備 (百万円)", 0, int(_ind_max("machines", 200000)) // 1000,
+                    int(float(base_inputs.get("machines", 40000))) // 1000,
+                    step=1, key="cf_machines",
                 )
 
             try:
                 cf_inputs = dict(base_inputs)
-                cf_inputs["op_profit"] = float(new_op)
-                cf_inputs["depreciation"] = float(new_dep)
-                cf_inputs["machines"] = float(new_mach)
+                cf_inputs["op_profit"] = float(new_op) * 1000
+                cf_inputs["depreciation"] = float(new_dep) * 1000
+                cf_inputs["machines"] = float(new_mach) * 1000
                 cf_result = gate.predict({"inputs": cf_inputs})
                 cf_q_risk = cf_result["quantum_risk"]
                 delta = round(cf_q_risk - base_q_risk, 2)

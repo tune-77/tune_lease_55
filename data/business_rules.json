@@ -1,6 +1,6 @@
 {
     "thresholds": {
-        "approval": 0.7,
+        "approval": 0.77,
         "review": 0.4
     },
     "score_modifiers": {
