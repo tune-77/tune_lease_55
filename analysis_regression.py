@@ -41,6 +41,7 @@ COEFF_EXTRA_KEYS = [
     "qual_weighted",         # 定性スコアリング weighted_score を 0-1 正規化
     "qual_rank_good",        # 定性ランク A/B = 1, それ以外 = 0（優良フラグ）
     "qual_repayment",        # 返済履歴スコア（items.repayment_history.value / 4.0）
+    "quantum_risk",          # 量子インスパイア矛盾スコア
 ]
 
 # 業種ごと・既存先/新規先のモデルキー（ベイズ回帰で更新対象）
@@ -207,10 +208,21 @@ def _build_one_row_industry(log, data):
     qual_rank_good  = 1.0 if qual_rank in ("A", "B") else 0.0
     repayment_val   = (qsc_items.get("repayment_history") or {}).get("value") or 0
     qual_repayment  = float(repayment_val) / 4.0  # 最大4段階 → 0-1 正規化
+    
+    # 量子矛盾スコア (Q_risk) のオンザフライ計算
+    quantum_risk = 0.0
+    try:
+        from evaluators.quantum_adapter import QuantumAdapter
+        _qa = QuantumAdapter()
+        if _qa.is_ready():
+            quantum_risk = _qa.predict(log).risk
+    except Exception:
+        pass
+
     row.extend([main_bank, competitor_present, competitor_none, rate_diff_z, industry_sentiment_z,
                 qualitative_tag_score, qualitative_passion, equity_ratio, qualitative_combined,
                 bn_approval_prob, bn_fc, bn_hc, bn_av,
-                qual_weighted, qual_rank_good, qual_repayment])
+                qual_weighted, qual_rank_good, qual_repayment, quantum_risk])
     return row
 
 
@@ -227,8 +239,15 @@ def build_design_matrix_from_logs(all_logs, model_key=None):
             continue
         if "inputs" not in log:
             continue
-        if model_key is not None and _get_ind_key_from_log(log) != model_key:
-            continue
+        if model_key is not None:
+            # 「全体_*」は業種問わず既存先/新規先のみで絞る（全業種を集約）
+            if model_key.startswith("全体_"):
+                suffix = model_key[len("全体_"):]  # "既存先" or "新規先"
+                ct = log.get("customer_type") or "既存先"
+                if ct != suffix:
+                    continue
+            elif _get_ind_key_from_log(log) != model_key:
+                continue
         data = _log_to_data_scoring(log)
         row = _build_one_row_industry(log, data)
         rows.append(row)
@@ -579,17 +598,39 @@ def _build_one_row_indicator(log, data):
     qualitative_tag_score = min(sum(STRENGTH_TAG_WEIGHTS.get(t, DEFAULT_STRENGTH_WEIGHT) for t in tags), 10.0)
     qualitative_passion = 1.0 if qual.get("passion_text") else 0.0
     equity_ratio = float(res.get("user_eq") or 0)
+    qsc_i = (res.get("qualitative_scoring_correction") or inp.get("qualitative_scoring")) or {}
+    combined_i = qsc_i.get("combined_score") or qsc_i.get("weighted_score")
+    qualitative_combined = (float(combined_i) / 100.0) if combined_i is not None else 0.0
+    
+    bn      = log.get("bn_engine") or {}
+    bn_im   = bn.get("intermediate") or {}
+    bn_approval_prob = float(bn.get("approval_prob") or 0)
+    bn_fc   = float(bn_im.get("Financial_Creditworthiness") or 0)
+    bn_hc   = float(bn_im.get("Hedge_Condition") or 0)
+    bn_av   = float(bn_im.get("Asset_Value") or 0)
+
     # 定性スコアリング項目（sumaho13追加）
-    qsc_i       = (res.get("qualitative_scoring_correction") or inp.get("qualitative_scoring")) or {}
     qsc_items_i = qsc_i.get("items") or {}
     qual_weighted_i  = float(qsc_i.get("weighted_score") or 0) / 100.0
     qual_rank_i      = qsc_i.get("rank") or ""
     qual_rank_good_i = 1.0 if qual_rank_i in ("A", "B") else 0.0
     repayment_val_i  = (qsc_items_i.get("repayment_history") or {}).get("value") or 0
     qual_repayment_i = float(repayment_val_i) / 4.0
+    
+    # 量子矛盾スコア (Q_risk) のオンザフライ計算
+    quantum_risk_i = 0.0
+    try:
+        from evaluators.quantum_adapter import QuantumAdapter
+        _qa = QuantumAdapter()
+        if _qa.is_ready():
+            quantum_risk_i = _qa.predict(log).risk
+    except Exception:
+        pass
+
     row.extend([main_bank, competitor_present, competitor_none, rate_diff_z, industry_sentiment_z,
-                qualitative_tag_score, qualitative_passion, equity_ratio,
-                qual_weighted_i, qual_rank_good_i, qual_repayment_i])
+                qualitative_tag_score, qualitative_passion, equity_ratio, qualitative_combined,
+                bn_approval_prob, bn_fc, bn_hc, bn_av,
+                qual_weighted_i, qual_rank_good_i, qual_repayment_i, quantum_risk_i])
     return row
 
 
@@ -605,7 +646,13 @@ def build_design_matrix_indicator_from_logs(all_logs, indicator_model_key):
             continue
         if "inputs" not in log:
             continue
-        if _get_indicator_model_key_from_log(log) != indicator_model_key:
+        # 「全体_指標_*」は業種問わず既存先/新規先のみで絞る（全業種を集約）
+        if indicator_model_key.startswith("全体_指標_"):
+            suffix = indicator_model_key[len("全体_指標_"):]  # "既存先" or "新規先"
+            ct = log.get("customer_type") or "既存先"
+            if ct != suffix:
+                continue
+        elif _get_indicator_model_key_from_log(log) != indicator_model_key:
             continue
         data = _log_to_data_scoring(log)
         row = _build_one_row_indicator(log, data)
@@ -715,6 +762,7 @@ COEFF_LABELS = {
     "qual_weighted":    "定性加重スコア(0-1)",
     "qual_rank_good":   "定性優良ランク(A/B)",
     "qual_repayment":   "返済履歴スコア(0-1)",
+    "quantum_risk":     "量子矛盾リスク",
 }
 
 
