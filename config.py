@@ -70,6 +70,9 @@ STRENGTH_TAG_OPTIONS = [
 LGBM_PARAMS = {
     "n_estimators": 100,
     "max_depth": 5,
+    "num_leaves": 4,
+    "min_child_samples": 10,
+    "reg_lambda": 5.0,
     "random_state": 42,
     "verbosity": -1,
 }

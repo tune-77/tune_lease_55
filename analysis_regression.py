@@ -1216,3 +1216,148 @@ def calc_optimal_approval_line() -> dict | None:
         "threshold_candidates": candidates,
         "current_line": current_line,
     }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 統合再学習: ベイズ warm-start LR（全モデルキー）+ LightGBM
+# ──────────────────────────────────────────────────────────────────────────────
+
+def run_bayesian_warm_start_all_keys(all_logs, min_n: int = 5):
+    """
+    全モデルキー（INDUSTRY_MODEL_KEYS + INDICATOR_MODEL_KEYS）について、
+    現在保存済みの係数を事前分布（warm start 初期値）として使い、
+    ベイズ的なロジスティック回帰を実行して係数を更新する。
+
+    Returns:
+        (overrides_dict, results_list)
+    """
+    from data_cases import load_coeff_overrides, get_effective_coeffs
+    from sklearn.linear_model import LogisticRegression
+
+    overrides = load_coeff_overrides() or {}
+    results = []
+
+    industry_feature_keys = COEFF_MAIN_KEYS + COEFF_EXTRA_KEYS
+    indicator_feature_keys = INDICATOR_MAIN_KEYS + COEFF_EXTRA_KEYS
+
+    for model_key in INDUSTRY_MODEL_KEYS:
+        X_k, y_k = build_design_matrix_from_logs(all_logs, model_key=model_key)
+        n_k = len(y_k) if y_k is not None else 0
+        if n_k < min_n:
+            results.append(f"{model_key}: データ不足 ({n_k}件) — 前回係数を保持")
+            continue
+        try:
+            prior = get_effective_coeffs(model_key)
+            prior_coef = np.array([prior.get(k, 0.0) for k in industry_feature_keys], dtype=float)
+            prior_intercept = float(prior.get("intercept", 0.0))
+
+            lr = LogisticRegression(C=1.0, solver="lbfgs", max_iter=2000,
+                                    warm_start=True, random_state=42)
+            # 1回目で内部状態を初期化してから prior を上書きし再 fit
+            lr.fit(X_k, y_k)
+            lr.coef_ = prior_coef.reshape(1, -1)
+            lr.intercept_ = np.array([prior_intercept])
+            lr.fit(X_k, y_k)
+
+            coefs = lr.coef_[0].astype(float)
+            _, shrink_factors, ci_cross_zero = _compute_fisher_and_shrink(X_k, coefs)
+            coefs[ci_cross_zero] = coefs[ci_cross_zero] * shrink_factors[ci_cross_zero]
+
+            coeff_dict = {"intercept": float(lr.intercept_[0])}
+            coeff_dict.update(dict(zip(industry_feature_keys, coefs.tolist())))
+            overrides[model_key] = coeff_dict
+
+            acc = lr.score(X_k, y_k)
+            results.append(f"{model_key}: {n_k}件, Accuracy={acc:.1%} (prior warm-start)")
+        except Exception as e:
+            results.append(f"{model_key}: エラー {e}")
+
+    for ind_key in INDICATOR_MODEL_KEYS:
+        X_i, y_i = build_design_matrix_indicator_from_logs(all_logs, ind_key)
+        n_i = len(y_i) if y_i is not None else 0
+        if n_i < min_n:
+            results.append(f"{ind_key}: データ不足 ({n_i}件) — 前回係数を保持")
+            continue
+        try:
+            prior = get_effective_coeffs(ind_key)
+            prior_coef = np.array([prior.get(k, 0.0) for k in indicator_feature_keys], dtype=float)
+            prior_intercept = float(prior.get("intercept", 0.0))
+
+            lr = LogisticRegression(C=1.0, solver="lbfgs", max_iter=2000,
+                                    warm_start=True, random_state=42)
+            lr.fit(X_i, y_i)
+            # prior のサイズがデータ列数と一致しない場合は切り捨てまたはゼロ埋め
+            n_feat = X_i.shape[1]
+            p = prior_coef[:n_feat] if len(prior_coef) >= n_feat else np.pad(
+                prior_coef, (0, n_feat - len(prior_coef)))
+            lr.coef_ = p.reshape(1, -1)
+            lr.intercept_ = np.array([prior_intercept])
+            lr.fit(X_i, y_i)
+
+            coefs = lr.coef_[0].astype(float)
+            _, shrink_factors, ci_cross_zero = _compute_fisher_and_shrink(X_i, coefs)
+            coefs[ci_cross_zero] = coefs[ci_cross_zero] * shrink_factors[ci_cross_zero]
+
+            feat_keys = indicator_feature_keys[:n_feat]
+            coeff_dict = {"intercept": float(lr.intercept_[0])}
+            coeff_dict.update(dict(zip(feat_keys, coefs.tolist())))
+            overrides[ind_key] = coeff_dict
+
+            acc = lr.score(X_i, y_i)
+            results.append(f"{ind_key}: {n_i}件, Accuracy={acc:.1%} (prior warm-start)")
+        except Exception as e:
+            results.append(f"{ind_key}: エラー {e}")
+
+    return overrides, results
+
+
+def train_lgbm_from_cases(all_logs, save_path: str | None = None):
+    """
+    成約/失注データで LightGBM を再学習し pkl に保存する。
+
+    Returns:
+        (accuracy, auc_or_None, save_path, n_positive, n_negative)
+    """
+    import joblib
+    import lightgbm as lgb
+    from sklearn.metrics import accuracy_score, roc_auc_score
+    from config import LGBM_PARAMS
+
+    X, y = build_design_matrix_from_logs(all_logs)
+    if X is None or y is None or len(y) < 5:
+        raise ValueError(f"学習データ不足: {len(y) if y is not None else 0}件（5件以上必要）")
+
+    if save_path is None:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        save_path = os.path.join(base_dir, "data", "lgbm_contract_model.pkl")
+
+    n_pos = int(y.sum())
+    n_neg = len(y) - n_pos
+
+    # データが少ない場合はブートストラップで補完
+    X_tr, y_tr, _ = _bootstrap_to_min_size(X, y, min_size=50)
+
+    model = lgb.LGBMClassifier(**LGBM_PARAMS)
+    model.fit(X_tr, y_tr)
+
+    acc = float(accuracy_score(y, model.predict(X)))
+    auc = None
+    if len(set(y.tolist())) >= 2:
+        auc = float(roc_auc_score(y, model.predict_proba(X)[:, 1]))
+
+    feature_names = COEFF_MAIN_KEYS + COEFF_EXTRA_KEYS
+    importance = list(zip(feature_names, model.feature_importances_.tolist()))
+
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    joblib.dump({
+        "model": model,
+        "feature_names": feature_names,
+        "n_cases": len(y),
+        "n_positive": n_pos,
+        "n_negative": n_neg,
+        "accuracy": acc,
+        "auc": auc,
+        "importance": importance,
+    }, save_path)
+
+    return acc, auc, save_path, n_pos, n_neg
