@@ -18,13 +18,10 @@ from analysis_regression_gemini import (
     run_quantitative_by_industry_gemini,
     run_quantitative_by_indicator_gemini,
 )
-from analysis_regression import INDUSTRY_MODEL_KEYS, INDICATOR_MODEL_KEYS
 from data_cases import (
     DEFAULT_WEIGHT_QUANT,
     DEFAULT_WEIGHT_QUAL,
     get_score_weights,
-    load_coeff_overrides,
-    save_coeff_overrides,
 )
 
 # 業種ベース → 対応モデルキーのマッピング
@@ -43,16 +40,6 @@ _BENCH_TO_MODEL_KEYS = {
     "製造業_指標":     ["製造業_指標_既存先",     "製造業_指標_新規先"],
 }
 
-
-def _save_lr_coef_to_overrides(lr_coef: list, lr_intercept: float, model_keys: list) -> int:
-    """lr_coef [(feature, coeff)...] を coeff_overrides.json の model_keys に書き込む。更新件数を返す。"""
-    coef_dict = {feat: float(coeff) for feat, coeff in lr_coef}
-    coef_dict["intercept"] = float(lr_intercept) if lr_intercept is not None else 0.0
-    overrides = load_coeff_overrides() or {}
-    for key in model_keys:
-        overrides[key] = coef_dict.copy()
-    save_coeff_overrides(overrides, comment="analysis_quant LR実行による自動更新")
-    return len(model_keys)
 
 
 def render_quantitative_analysis():
@@ -89,13 +76,6 @@ def render_quantitative_analysis():
                 st.error("件数不足またはデータ不備で分析できませんでした。")
             else:
                 st.session_state["quantitative_analysis_result"] = result_q
-                if result_q.get("lr_coef"):
-                    n = _save_lr_coef_to_overrides(
-                        result_q["lr_coef"],
-                        result_q.get("lr_intercept", 0.0),
-                        INDUSTRY_MODEL_KEYS,
-                    )
-                    st.toast(f"✅ 回帰係数を {n} モデルキーに反映しました")
             st.rerun()
 
         result_q = st.session_state.get("quantitative_analysis_result")
@@ -168,16 +148,6 @@ def render_quantitative_analysis():
                 )
             if by_ind is not None:
                 st.session_state["quant_by_industry"] = by_ind
-                updated = 0
-                for base, res in by_ind.items():
-                    if not res.get("skip") and res.get("lr_coef"):
-                        keys = _BASE_TO_MODEL_KEYS.get(base, [])
-                        if keys:
-                            updated += _save_lr_coef_to_overrides(
-                                res["lr_coef"], res.get("lr_intercept", 0.0), keys
-                            )
-                if updated:
-                    st.toast(f"✅ 業種別係数を {updated} モデルキーに反映しました")
             st.rerun()
 
         by_industry = st.session_state.get("quant_by_industry")
@@ -218,16 +188,6 @@ def render_quantitative_analysis():
                 )
             if by_ind is not None:
                 st.session_state["quant_by_indicator"] = by_ind
-                updated = 0
-                for bench, res in by_ind.items():
-                    if not res.get("skip") and res.get("lr_coef"):
-                        keys = _BENCH_TO_MODEL_KEYS.get(bench, [])
-                        if keys:
-                            updated += _save_lr_coef_to_overrides(
-                                res["lr_coef"], res.get("lr_intercept", 0.0), keys
-                            )
-                if updated:
-                    st.toast(f"✅ 指標別係数を {updated} モデルキーに反映しました")
             st.rerun()
 
         by_indicator = st.session_state.get("quant_by_indicator")

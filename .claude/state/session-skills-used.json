@@ -8,8 +8,11 @@
     "schedule",
     "git-ship",
     "update-config",
+    "git-ship",
+    "git-ship",
+    "build-check",
     "git-ship"
   ],
   "session_start": "2026-04-25T21:59:45Z",
-  "last_used": "2026-05-01T18:51:29Z"
+  "last_used": "2026-05-02T09:19:42Z"
 }

@@ -13,9 +13,10 @@
       }
     },
     "recommended": true,
-    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8",
+    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 939 session age (minutes) exceed threshold 120",
     "reasons": [
-      "20 recent edit count exceed threshold 8"
+      "20 recent edit count exceed threshold 8",
+      "939 session age (minutes) exceed threshold 120"
     ],
     "candidates": [
       {
@@ -49,9 +50,9 @@
       {
         "key": "session_age_minutes",
         "label": "session age (minutes)",
-        "actual": 78,
+        "actual": 939,
         "threshold": 120,
-        "triggered": false
+        "triggered": true
       }
     ],
     "counters": {
@@ -59,7 +60,7 @@
       "blockedTasks": 0,
       "recentEdits": 20,
       "failedChecks": 0,
-      "sessionAgeMinutes": 78
+      "sessionAgeMinutes": 939
     }
   },
   "continuity": {
@@ -71,29 +72,29 @@
   "legacy_version": "1.0.0",
   "metrics": null,
   "recentEdits": [
-    ".claude/memory/session-log.md",
+    ".claude/reports/build/latest.md",
     ".claude/sessions/.last_inbox_check",
     ".claude/state/changed-files.jsonl",
+    ".claude/state/handoff-artifact.json",
     ".claude/state/instructions-loaded.jsonl",
+    ".claude/state/precompact-snapshot.json",
     ".claude/state/session-events.jsonl",
     ".claude/state/session-skills-used.json",
-    ".claude/state/session.events.jsonl",
     ".claude/state/session.json",
     ".claude/state/test-recommendation.json",
     ".claude/state/usage-stats.jsonl",
-    "components/chat_wizard.py",
-    "components/form_apply.py",
-    "components/form_status.py",
-    "components/graph_view.py",
-    "components/rate_suggestion.py",
-    "components/score_calculation.py",
-    "components/sidebar.py",
+    "components/analysis_quant.py",
+    "components/analysis_results.py",
+    "components/settings.py",
+    "data/agent_team_logs.jsonl",
+    "data/business_rules.json",
     "data/last_case.json",
-    "data/recent_modes.json",
-    "data/weekly_plot.json"
+    "data/pdca_ai_rules.json",
+    "data/quantum_config.json",
+    "data/recent_modes.json"
   ],
   "sessionId": "",
-  "timestamp": "2026-05-01T18:47:58Z",
+  "timestamp": "2026-05-02T09:09:26Z",
   "version": "1.0.0",
   "wipTasks": null
 }

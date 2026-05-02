@@ -31,6 +31,7 @@ Google Colab 用 LightGBM 学習スクリプト
 
 import json
 import math
+import os
 import numpy as np
 import joblib
 from sklearn.linear_model import LogisticRegression
@@ -38,8 +39,12 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score, accuracy_score
 import lightgbm as lgb_lib
 
+_DIR = os.path.dirname(os.path.abspath(__file__))
+_DATA = os.path.join(_DIR, "data")
+
 # ---------- データ読み込み ----------
-with open("cases_for_colab.json", encoding="utf-8") as f:
+_cases_path = os.path.join(_DATA, "cases_for_colab.json")
+with open(_cases_path, encoding="utf-8") as f:
     cases = json.load(f)
 
 print(f"読み込み件数: {len(cases)} 件")
@@ -58,6 +63,8 @@ COEFF_EXTRA_KEYS = [
     "equity_ratio", "qualitative_combined",
     "bn_approval_prob", "bn_fc", "bn_hc", "bn_av",
     "qual_weighted", "qual_rank_good", "qual_repayment",
+    # CF 系指標（次世代モデル用: DSCR・インタレスト・カバレッジ）
+    "dscr_approx", "interest_coverage",
 ]
 QUAL_SCORING_IDS = [
     "company_history", "customer_stability", "repayment_history",
@@ -146,6 +153,15 @@ def build_quant_row(c):
         1.0 if rank in ("A", "B") else 0.0,
         float(rh) / 4.0,
     ]
+    # CF 系指標
+    dep_e = safe_float(inp.get("dep_expense") or inp.get("depreciation"))
+    rent_e = safe_float(inp.get("rent_expense") or inp.get("rent"))
+    op_p = safe_float(inp.get("op_profit"))
+    denom = dep_e + rent_e
+    dscr = round(op_p / denom, 3) if denom > 0 else 1.0
+    interest_e = safe_float(c.get("interest_expense") or inp.get("interest_expense"))
+    icr = round(op_p / interest_e, 3) if interest_e > 0 else 10.0
+    row += [dscr, icr]
     return row
 
 # ---------- 定性モデル用行構築 ----------
@@ -215,10 +231,11 @@ best_alpha_q, best_auc_q = optimize_alpha(p_lr, p_lgb, y_te)
 print(f"  AUC_LGB={roc_auc_score(y_te, p_lgb):.3f}  AUC_LR={roc_auc_score(y_te, p_lr):.3f}")
 print(f"  最適 alpha={best_alpha_q:.2f}  アンサンブル AUC={best_auc_q:.3f}")
 
-joblib.dump({"model": lgb_main, "feature_names": quant_feature_names}, "lgb_main_model.joblib")
-with open("ensemble_config.json", "w", encoding="utf-8") as f:
+joblib.dump({"model": lgb_main, "feature_names": quant_feature_names},
+            os.path.join(_DATA, "lgb_main_model.joblib"))
+with open(os.path.join(_DATA, "ensemble_config.json"), "w", encoding="utf-8") as f:
     json.dump({"ensemble_alpha": best_alpha_q, "auc_ensemble": best_auc_q}, f)
-print("  → lgb_main_model.joblib / ensemble_config.json 保存済み")
+print("  → data/lgb_main_model.joblib / data/ensemble_config.json 保存済み")
 
 # ============================================================
 # 定性モデル学習
@@ -261,17 +278,13 @@ print(f"  AUC_LGB={roc_auc_score(y_te2, p_lgb2):.3f}  AUC_LR={roc_auc_score(y_te
 print(f"  最適 alpha={best_alpha_qal:.2f}  アンサンブル AUC={best_auc_qal:.3f}")
 
 joblib.dump({"model": lgb_qual, "feature_names": qual_feature_names, "asset_to_idx": asset_to_idx},
-            "lgb_qual_model.joblib")
-with open("ensemble_config_qual.json", "w", encoding="utf-8") as f:
+            os.path.join(_DATA, "lgb_qual_model.joblib"))
+with open(os.path.join(_DATA, "ensemble_config_qual.json"), "w", encoding="utf-8") as f:
     json.dump({"ensemble_alpha": best_alpha_qal, "auc_ensemble": best_auc_qal}, f)
-print("  → lgb_qual_model.joblib / ensemble_config_qual.json 保存済み")
+print("  → data/lgb_qual_model.joblib / data/ensemble_config_qual.json 保存済み")
 
-print("\n✅ 完了！次のセルでファイルをダウンロードしてください。")
-
-# ============================================================
-# セル 4: ファイルダウンロード（Colab で実行）
-# ============================================================
-# from google.colab import files
-# for fname in ["lgb_main_model.joblib", "lgb_qual_model.joblib",
-#               "ensemble_config.json", "ensemble_config_qual.json"]:
-#     files.download(fname)
+print(f"\n✅ 完了！ファイルは {_DATA}/ に保存されました。")
+print("   - data/lgb_main_model.joblib")
+print("   - data/lgb_qual_model.joblib")
+print("   - data/ensemble_config.json")
+print("   - data/ensemble_config_qual.json")
