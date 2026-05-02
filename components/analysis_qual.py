@@ -2,26 +2,42 @@ import streamlit as st
 import pandas as pd
 from data_cases import load_all_cases
 from analysis_regression import run_qualitative_contract_analysis
+from analysis_regression_gemini import run_qualitative_contract_analysis_gemini
 from constants import QUALITATIVE_SCORING_CORRECTION_ITEMS
 
 QUALITATIVE_ANALYSIS_MIN_CASES = 50
 
 def render_qualitative_analysis():
-    """📉 定性要因分析 (50件〜) タブのUIとロジックを描画する"""
+    """📉 定性要因分析タブのUIとロジックを描画する"""
     st.title("📉 定性要因で成約予測")
     st.caption("取引区分・競合状況・顧客区分・商談ソース・リース物件・定性スコアリング6項目（設立・経営年数、顧客安定性、返済履歴、事業将来性、設置目的、メイン取引銀行）のみを使って、ロジスティック回帰とLightGBMで成約/不成約を分析します。")
+
+    # ── エンジン選択 ──────────────────────────────────────────────────────────
+    engine = st.radio(
+        "分析エンジン",
+        ["🤖 Gemini（推奨）", "💻 ローカル (LR/LGB)"],
+        horizontal=True,
+        key="qual_engine",
+    )
+    use_gemini = engine.startswith("🤖")
+
     cases = load_all_cases()
     registered = [c for c in cases if c.get("final_status") in ["成約", "失注"]]
     n_reg = len(registered)
-    if n_reg < QUALITATIVE_ANALYSIS_MIN_CASES:
-        st.warning(f"成約・失注の登録が **{QUALITATIVE_ANALYSIS_MIN_CASES}件** 以上で利用できます。（現在: **{n_reg}件**）")
+
+    min_cases = 3 if use_gemini else QUALITATIVE_ANALYSIS_MIN_CASES
+    if n_reg < min_cases:
+        st.warning(f"成約・失注の登録が **{min_cases}件** 以上で利用できます。（現在: **{n_reg}件**）")
     else:
         st.success(f"登録件数: **{n_reg}件**（成約+失注）。分析を実行できます。")
         if st.button("🚀 ロジスティック回帰とLightGBMを実行", key="run_qual_analysis"):
-            with st.spinner("分析中..."):
-                result = run_qualitative_contract_analysis(QUALITATIVE_SCORING_CORRECTION_ITEMS)
+            with st.spinner("分析中..." if not use_gemini else "Gemini に分析を依頼中…"):
+                if use_gemini:
+                    result = run_qualitative_contract_analysis_gemini(QUALITATIVE_SCORING_CORRECTION_ITEMS)
+                else:
+                    result = run_qualitative_contract_analysis(QUALITATIVE_SCORING_CORRECTION_ITEMS)
             if result is None:
-                st.error("件数不足で分析できませんでした。")
+                st.error("分析できませんでした。")
             else:
                 st.session_state["qualitative_analysis_result"] = result
             st.rerun()
@@ -73,5 +89,5 @@ def render_qualitative_analysis():
                 st.caption("各項目の平均|SHAP値|。値が大きいほど成約判定への影響が大きい。")
         else:
             result = None
-        if result is None and n_reg >= QUALITATIVE_ANALYSIS_MIN_CASES:
+        if result is None and n_reg >= min_cases:
             st.info("上の「ロジスティック回帰とLightGBMを実行」ボタンで分析を開始してください。")

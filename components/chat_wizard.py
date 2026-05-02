@@ -389,9 +389,12 @@ def _nav_buttons(step: int, question: str, answer: str, updates: dict,
     col_back, col_next = st.columns([1, 3])
     with col_back:
         if step > 0 and st.button("← 前へ", key=f"wiz_back_{step}"):
+            # 現在の入力値を保存してから戻る（データが消えないように）
+            st.session_state["wiz_data"].update(updates)
             hist = st.session_state["wiz_history"]
-            if hist:
-                st.session_state["wiz_history"] = hist[:-1]
+            prev_hist = hist[:-1] if hist else hist
+            _save_draft(st.session_state["wiz_data"], step=step - 1, history=prev_hist)
+            st.session_state["wiz_history"] = prev_hist
             st.session_state["wiz_step"] = step - 1
             st.rerun()
     with col_next:

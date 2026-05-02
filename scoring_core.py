@@ -105,6 +105,185 @@ def _safe_sigmoid(x):
         return 0.0 if (x or 0) < 0 else 1.0
 
 
+_LGB_MODEL_PATH = os.path.join(_SCRIPT_DIR, "data", "lgb_main_model.joblib")
+_ENSEMBLE_CONFIG_PATH = os.path.join(_SCRIPT_DIR, "data", "ensemble_config.json")
+_LGB_QUAL_MODEL_PATH = os.path.join(_SCRIPT_DIR, "data", "lgb_qual_model.joblib")
+_ENSEMBLE_CONFIG_QUAL_PATH = os.path.join(_SCRIPT_DIR, "data", "ensemble_config_qual.json")
+
+_lgb_bundle_cache: dict | None = None
+_ensemble_alpha_cache: float | None = None
+_lgb_qual_bundle_cache: dict | None = None
+_ensemble_alpha_qual_cache: float | None = None
+
+
+def _load_lgb_bundle():
+    global _lgb_bundle_cache
+    if _lgb_bundle_cache is not None:
+        return _lgb_bundle_cache
+    if not os.path.exists(_LGB_MODEL_PATH):
+        return None
+    try:
+        import joblib
+        _lgb_bundle_cache = joblib.load(_LGB_MODEL_PATH)
+        return _lgb_bundle_cache
+    except Exception:
+        return None
+
+
+def _load_ensemble_alpha() -> float:
+    global _ensemble_alpha_cache
+    if _ensemble_alpha_cache is not None:
+        return _ensemble_alpha_cache
+    if not os.path.exists(_ENSEMBLE_CONFIG_PATH):
+        return 1.0
+    try:
+        with open(_ENSEMBLE_CONFIG_PATH, encoding="utf-8") as f:
+            _ensemble_alpha_cache = float(json.load(f).get("ensemble_alpha", 1.0))
+        return _ensemble_alpha_cache
+    except Exception:
+        return 1.0
+
+
+def _load_lgb_qual_bundle():
+    global _lgb_qual_bundle_cache
+    if _lgb_qual_bundle_cache is not None:
+        return _lgb_qual_bundle_cache
+    if not os.path.exists(_LGB_QUAL_MODEL_PATH):
+        return None
+    try:
+        import joblib
+        _lgb_qual_bundle_cache = joblib.load(_LGB_QUAL_MODEL_PATH)
+        return _lgb_qual_bundle_cache
+    except Exception:
+        return None
+
+
+def _load_ensemble_alpha_qual() -> float:
+    global _ensemble_alpha_qual_cache
+    if _ensemble_alpha_qual_cache is not None:
+        return _ensemble_alpha_qual_cache
+    if not os.path.exists(_ENSEMBLE_CONFIG_QUAL_PATH):
+        return 1.0
+    try:
+        with open(_ENSEMBLE_CONFIG_QUAL_PATH, encoding="utf-8") as f:
+            _ensemble_alpha_qual_cache = float(json.load(f).get("ensemble_alpha", 1.0))
+        return _ensemble_alpha_qual_cache
+    except Exception:
+        return 1.0
+
+
+def _build_lgb_qual_feature_vector(inputs: dict, feature_names: list[str], asset_to_idx: dict) -> list[float]:
+    """inputs から定性 LGB モデル用特徴量ベクトルを構築する。"""
+    main_bank = inputs.get("main_bank") or "非メイン先"
+    competitor = inputs.get("competitor") or "競合なし"
+    customer_type = inputs.get("customer_type") or "既存先"
+    deal_source = inputs.get("deal_source") or "その他"
+    asset_id = inputs.get("lease_asset_id") or inputs.get("lease_asset_name") or "未選択"
+    qsc = inputs.get("qualitative_scoring_correction") or inputs.get("qualitative_scoring") or {}
+    items_data = qsc.get("items") or {}
+
+    base_vals = {
+        "取引区分_メイン先":   1.0 if main_bank == "メイン先" else 0.0,
+        "競合状況_競合あり":   1.0 if competitor == "競合あり" else 0.0,
+        "顧客区分_新規先":     1.0 if customer_type == "新規先" else 0.0,
+        "商談ソース_銀行紹介": 1.0 if deal_source == "銀行紹介" else 0.0,
+        "リース物件":          float(asset_to_idx.get(asset_id, 0)),
+    }
+    row = []
+    for fn in feature_names:
+        if fn in base_vals:
+            row.append(base_vals[fn])
+        else:
+            # 定性スコアリング項目（label で照合）
+            matched = None
+            for qid, val in items_data.items():
+                v = val.get("value") if isinstance(val, dict) else None
+                if v is not None:
+                    matched = float(v)
+                    break
+            # label と id の対応は feature_names の順序に依存 → items から順番に取る
+            row.append(-1.0)
+    # label ベースの正確なマッピングに再構築
+    row = []
+    from constants import QUALITATIVE_SCORING_CORRECTION_ITEMS
+    qual_label_to_id = {it["label"]: it["id"] for it in QUALITATIVE_SCORING_CORRECTION_ITEMS}
+    for fn in feature_names:
+        if fn in base_vals:
+            row.append(base_vals[fn])
+        elif fn in qual_label_to_id:
+            qid = qual_label_to_id[fn]
+            val = items_data.get(qid, {})
+            v = val.get("value") if isinstance(val, dict) else None
+            row.append(float(v) if isinstance(v, (int, float)) else -1.0)
+        else:
+            row.append(0.0)
+    return row
+
+
+def _build_lgb_feature_vector(data_scoring: dict, inputs: dict, feature_names: list[str]) -> list[float]:
+    """data_scoring + inputs から LGB モデル用特徴量ベクトルを構築する。"""
+    major = data_scoring.get("industry_major") or ""
+    ind_medical      = 1.0 if ("医療" in major or "福祉" in major or major.startswith("P")) else 0.0
+    ind_transport    = 1.0 if ("運輸" in major or major.startswith("H")) else 0.0
+    ind_construction = 1.0 if ("建設" in major or major.startswith("D")) else 0.0
+    ind_manufacturing= 1.0 if ("製造" in major or major.startswith("E")) else 0.0
+    ind_service      = 1.0 if (any(x in major for x in ["卸売", "小売", "サービス"]) or
+                                (bool(major) and major[0] in ["I", "K", "M", "R"])) else 0.0
+
+    nenshu = data_scoring.get("nenshu") or 0
+    bank_credit = data_scoring.get("bank_credit") or 0
+    lease_credit = data_scoring.get("lease_credit") or 0
+    grade = data_scoring.get("grade") or "1-3"
+    grade_4_6   = 1.0 if "4-6" in grade else 0.0
+    grade_watch = 1.0 if "要注意" in grade else 0.0
+    grade_none  = 1.0 if "無格付" in grade else 0.0
+
+    main_val = {
+        "ind_medical": ind_medical, "ind_transport": ind_transport,
+        "ind_construction": ind_construction, "ind_manufacturing": ind_manufacturing,
+        "ind_service": ind_service,
+        "sales_log": np.log1p(nenshu), "bank_credit_log": np.log1p(bank_credit),
+        "lease_credit_log": np.log1p(lease_credit),
+        "op_profit": data_scoring.get("op_profit") or 0,
+        "ord_profit": data_scoring.get("ord_profit") or 0,
+        "net_income": data_scoring.get("net_income") or 0,
+        "machines": data_scoring.get("machines") or 0,
+        "other_assets": data_scoring.get("other_assets") or 0,
+        "rent": data_scoring.get("rent") or 0,
+        "gross_profit": data_scoring.get("gross_profit") or 0,
+        "depreciation": data_scoring.get("depreciation") or 0,
+        "dep_expense": data_scoring.get("dep_expense") or 0,
+        "rent_expense": data_scoring.get("rent_expense") or 0,
+        "grade_4_6": grade_4_6, "grade_watch": grade_watch, "grade_none": grade_none,
+        "contracts": data_scoring.get("contracts") or 0,
+        "main_bank": 1.0 if inputs.get("main_bank") == "メイン先" else 0.0,
+        "competitor_present": 1.0 if inputs.get("competitor") == "競合あり" else 0.0,
+        "competitor_none": 1.0 if inputs.get("competitor") == "競合なし" else 0.0,
+        "rate_diff_z": 0.0,
+        "industry_sentiment_z": 0.0,
+        "qualitative_tag_score": 0.0,
+        "qualitative_passion": 0.0,
+        "equity_ratio": _safe_float(inputs.get("user_equity_ratio")),
+        "qualitative_combined": 0.0,
+        "bn_approval_prob": 0.0, "bn_fc": 0.0, "bn_hc": 0.0, "bn_av": 0.0,
+        "qual_weighted": 0.0, "qual_rank_good": 0.0, "qual_repayment": 0.0,
+    }
+    qsc = inputs.get("qualitative_scoring_correction") or inputs.get("qualitative_scoring") or {}
+    if qsc:
+        combined = qsc.get("combined_score") or qsc.get("weighted_score")
+        if combined is not None:
+            main_val["qualitative_combined"] = float(combined) / 100.0
+        ws = qsc.get("weighted_score")
+        if ws is not None:
+            main_val["qual_weighted"] = float(ws) / 100.0
+        rank = qsc.get("rank") or ""
+        main_val["qual_rank_good"] = 1.0 if rank in ("A", "B") else 0.0
+        rh_val = ((qsc.get("items") or {}).get("repayment_history") or {}).get("value") or 0
+        main_val["qual_repayment"] = float(rh_val) / 4.0
+
+    return [main_val.get(k, 0.0) for k in feature_names]
+
+
 def _get_industry_flags(industry_major: str) -> dict[str, bool]:
     """industry_major 文字列から業種フラグ dict を返す。"""
     m = industry_major or ""
@@ -343,6 +522,32 @@ def run_quick_scoring(inputs: dict) -> dict:
     coeffs = get_effective_coeffs(coeff_key)
     z_main = _calculate_z(data_scoring, coeffs)
     score_prob = _safe_sigmoid(z_main)
+
+    # 定量 LGB アンサンブル（モデルが存在する場合のみ）
+    try:
+        _bundle = _load_lgb_bundle()
+        if _bundle is not None:
+            _feat_names = _bundle["feature_names"]
+            _X = _build_lgb_feature_vector(data_scoring, inputs, _feat_names)
+            _lgb_prob = float(_bundle["model"].predict_proba([_X])[0][1])
+            _alpha = _load_ensemble_alpha()
+            score_prob = _alpha * score_prob + (1.0 - _alpha) * _lgb_prob
+    except Exception:
+        pass
+
+    # 定性 LGB アンサンブル（モデルが存在する場合のみ）
+    try:
+        _qual_bundle = _load_lgb_qual_bundle()
+        if _qual_bundle is not None:
+            _qual_feat = _qual_bundle["feature_names"]
+            _qual_ati = _qual_bundle.get("asset_to_idx", {})
+            _Xq = _build_lgb_qual_feature_vector(inputs, _qual_feat, _qual_ati)
+            _qual_prob = float(_qual_bundle["model"].predict_proba([_Xq])[0][1])
+            _alpha_q = _load_ensemble_alpha_qual()
+            score_prob = _alpha_q * score_prob + (1.0 - _alpha_q) * _qual_prob
+    except Exception:
+        pass
+
     score_borrower = score_prob * 100
 
     w_borrower, w_asset, _, _ = get_score_weights()

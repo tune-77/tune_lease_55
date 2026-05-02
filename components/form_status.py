@@ -208,57 +208,56 @@ def render_status_registration():
 
                     with col_actions:
                         st.write("**ステータス更新**")
-                        
+
+                        # ── ワークフロー進行ボタン ──
                         if status_key == "審査中":
                             if st.button("📄 見積もり提示へ進める", key=f"to_mitsumori_{rec_id}"):
                                 if _save_workflow_status(rec_id, "見積もり提示"):
                                     st.toast("見積もり提示へ更新しました")
                                     time.sleep(0.5)
                                     st.rerun()
-                                    
                         elif status_key == "見積もり提示":
                             if st.button("⚖️ 稟議中へ進める", key=f"to_ringi_{rec_id}"):
                                 if _save_workflow_status(rec_id, "稟議中"):
                                     st.toast("稟議中へ更新しました")
                                     time.sleep(0.5)
                                     st.rerun()
-                                    
-                        elif status_key == "稟議中":
-                            with st.form(f"finalize_form_{rec_id}"):
-                                res_status = st.radio("最終結果", ["成約", "失注"], horizontal=True, key=f"radio_{rec_id}")
-                                final_rate = st.number_input("獲得レート (%)", value=0.0, step=0.01, format="%.2f", key=f"rate_{rec_id}")
-                                lost_reason = st.text_input("失注理由（失注の場合）", placeholder="例: 金利負け", key=f"lost_{rec_id}")
-                                competitor_name = st.text_input("競合他社", placeholder="例: ○○リース", key=f"comp_{rec_id}")
-                                loan_condition_options = ["本件限度", "親会社保証", "担保あり", "金融機関協調", "その他"]
-                                loan_conditions = st.multiselect("承認条件", loan_condition_options, key=f"cond_{rec_id}")
-                                
-                                submitted = st.form_submit_button("✅ 結果を確定する")
-                                
-                                if submitted:
-                                    extra = {
-                                        "final_rate": final_rate,
-                                        "loan_conditions": loan_conditions,
-                                        "competitor_name": competitor_name.strip(),
-                                    }
-                                    if res_status == "失注":
-                                        extra["lost_reason"] = lost_reason.strip()
-                                        
-                                    if _save_workflow_status(rec_id, res_status, extra):
-                                        st.toast(f"{res_status} を登録しました")
-                                        try:
-                                            from shinsa_gunshi import refresh_evidence_weights
-                                            refresh_evidence_weights()
-                                            from auto_optimizer import run_auto_optimization
-                                            run_auto_optimization()
-                                        except Exception:
-                                            pass
-                                        time.sleep(0.5)
-                                        st.rerun()
-                                        
                         elif status_key == "成約":
                             if st.button("✅ 検収完了へ進める", key=f"to_kenshu_{rec_id}", type="primary"):
                                 if _save_workflow_status(rec_id, "検収完了"):
                                     st.toast("検収完了に更新しました")
+                                    time.sleep(0.5)
+                                    st.rerun()
+
+                        # ── 成約/失注は全タブで常時登録可能 ──
+                        with st.form(f"finalize_form_{rec_id}"):
+                            res_status = st.radio("最終結果", ["成約", "失注"], horizontal=True, key=f"radio_{rec_id}")
+                            final_rate = st.number_input("獲得レート (%)", value=0.0, step=0.01, format="%.2f", key=f"rate_{rec_id}")
+                            _lost_opts = ["—（選択）", "設備見合わせ", "他社競合", "調達方法変更", "その他"]
+                            lost_reason = st.selectbox("失注理由（失注の場合）", _lost_opts, key=f"lost_{rec_id}")
+                            competitor_name = st.text_input("競合他社", placeholder="例: ○○リース", key=f"comp_{rec_id}")
+                            loan_condition_options = ["本件限度", "親会社保証", "担保あり", "金融機関協調", "その他"]
+                            loan_conditions = st.multiselect("承認条件", loan_condition_options, key=f"cond_{rec_id}")
+
+                            submitted = st.form_submit_button("✅ 結果を確定する", type="primary")
+
+                            if submitted:
+                                extra = {
+                                    "final_rate": final_rate,
+                                    "loan_conditions": loan_conditions,
+                                    "competitor_name": competitor_name.strip(),
+                                }
+                                if res_status == "失注":
+                                    extra["lost_reason"] = lost_reason if lost_reason != "—（選択）" else ""
+                                if _save_workflow_status(rec_id, res_status, extra):
+                                    st.toast(f"{res_status} を登録しました")
+                                    try:
+                                        from shinsa_gunshi import refresh_evidence_weights
+                                        refresh_evidence_weights()
+                                        from auto_optimizer import run_auto_optimization
+                                        run_auto_optimization()
+                                    except Exception:
+                                        pass
                                     time.sleep(0.5)
                                     st.rerun()
 
@@ -329,15 +328,17 @@ def render_quick_status_widget(context_key: str = "main") -> None:
             "獲得レート (%)", value=0.0, step=0.01, format="%.2f",
             key=f"qr_rate_{rec_id}_{context_key}",
         )
-        lost_reason = st.text_input(
-            "失注理由", placeholder="例: 金利負け",
+        _ql_opts = ["—（選択）", "設備見合わせ", "他社競合", "調達方法変更", "その他"]
+        lost_reason = st.selectbox(
+            "失注理由",
+            _ql_opts,
             key=f"qr_lost_{rec_id}_{context_key}",
         )
         submitted = st.form_submit_button("✅ 成約/失注を登録", type="primary")
         if submitted:
             extra = {"final_rate": final_rate}
             if res_radio == "失注":
-                extra["lost_reason"] = lost_reason.strip()
+                extra["lost_reason"] = lost_reason if lost_reason != "—（選択）" else ""
             if _save_workflow_status(rec_id, res_radio, extra):
                 st.toast(f"{res_radio} を登録しました")
                 try:

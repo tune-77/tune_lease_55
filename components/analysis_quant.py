@@ -13,6 +13,12 @@ from analysis_regression import (
     INDUSTRY_BASES,
     BENCH_BASES,
 )
+from analysis_regression_gemini import (
+    run_quantitative_contract_analysis_gemini,
+    run_quantitative_by_industry_gemini,
+    run_quantitative_by_indicator_gemini,
+)
+from analysis_regression import INDUSTRY_MODEL_KEYS, INDICATOR_MODEL_KEYS
 from data_cases import (
     DEFAULT_WEIGHT_QUANT,
     DEFAULT_WEIGHT_QUAL,
@@ -21,31 +27,79 @@ from data_cases import (
     save_coeff_overrides,
 )
 
+# 業種ベース → 対応モデルキーのマッピング
+_BASE_TO_MODEL_KEYS = {
+    "全体":       ["全体_既存先",       "全体_新規先"],
+    "医療":       ["医療_既存先",       "医療_新規先"],
+    "運送業":     ["運送業_既存先",     "運送業_新規先"],
+    "サービス業": ["サービス業_既存先", "サービス業_新規先"],
+    "製造業":     ["製造業_既存先",     "製造業_新規先"],
+}
+_BENCH_TO_MODEL_KEYS = {
+    "全体_指標":       ["全体_指標_既存先",       "全体_指標_新規先"],
+    "医療_指標":       ["医療_指標_既存先",       "医療_指標_新規先"],
+    "運送業_指標":     ["運送業_指標_既存先",     "運送業_指標_新規先"],
+    "サービス業_指標": ["サービス業_指標_既存先", "サービス業_指標_新規先"],
+    "製造業_指標":     ["製造業_指標_既存先",     "製造業_指標_新規先"],
+}
+
+
+def _save_lr_coef_to_overrides(lr_coef: list, lr_intercept: float, model_keys: list) -> int:
+    """lr_coef [(feature, coeff)...] を coeff_overrides.json の model_keys に書き込む。更新件数を返す。"""
+    coef_dict = {feat: float(coeff) for feat, coeff in lr_coef}
+    coef_dict["intercept"] = float(lr_intercept) if lr_intercept is not None else 0.0
+    overrides = load_coeff_overrides() or {}
+    for key in model_keys:
+        overrides[key] = coef_dict.copy()
+    save_coeff_overrides(overrides, comment="analysis_quant LR実行による自動更新")
+    return len(model_keys)
+
 
 def render_quantitative_analysis():
-    """📈 定量要因分析 (50件〜) タブのUIとロジックを描画する"""
+    """📈 定量要因分析タブのUIとロジックを描画する"""
     st.title("📈 定量要因で成約予測")
     st.caption("業種モデルと同様の定量項目（売上・与信・利益・資産・格付・取引・競合・金利差・業界景気・定性タグ・自己資本比率・定性スコア合計など）のみで、ロジスティック回帰とLightGBMにより成約/不成約を分析します。アンサンブル割合はテストデータでAUC最大化により最適化します。")
-    
+
+    # ── エンジン選択 ──────────────────────────────────────────────────────────
+    engine = st.radio(
+        "分析エンジン",
+        ["🤖 Gemini（推奨）", "💻 ローカル (LR/LGB)"],
+        horizontal=True,
+        key="quant_engine",
+    )
+    use_gemini = engine.startswith("🤖")
+
     all_logs = load_all_cases()
     registered_quant = [c for c in all_logs if c.get("final_status") in ["成約", "失注"]]
     n_reg_q = len(registered_quant)
-    
-    if n_reg_q < QUALITATIVE_ANALYSIS_MIN_CASES:
-        st.warning(f"成約・失注の登録が **{QUALITATIVE_ANALYSIS_MIN_CASES}件** 以上で利用できます。（現在: **{n_reg_q}件**）")
+
+    min_cases = 3 if use_gemini else QUALITATIVE_ANALYSIS_MIN_CASES
+    if n_reg_q < min_cases:
+        st.warning(f"成約・失注の登録が **{min_cases}件** 以上で利用できます。（現在: **{n_reg_q}件**）")
     else:
         st.success(f"登録件数: **{n_reg_q}件**（成約+失注）。分析を実行できます。")
         if st.button("🚀 ロジスティック回帰とLightGBMを実行", key="run_quant_analysis"):
-            with st.spinner("分析中..."):
-                result_q = run_quantitative_contract_analysis()
+            with st.spinner("分析中..." if not use_gemini else "Gemini に分析を依頼中…"):
+                result_q = (
+                    run_quantitative_contract_analysis_gemini()
+                    if use_gemini else
+                    run_quantitative_contract_analysis()
+                )
             if result_q is None:
                 st.error("件数不足またはデータ不備で分析できませんでした。")
             else:
                 st.session_state["quantitative_analysis_result"] = result_q
+                if result_q.get("lr_coef"):
+                    n = _save_lr_coef_to_overrides(
+                        result_q["lr_coef"],
+                        result_q.get("lr_intercept", 0.0),
+                        INDUSTRY_MODEL_KEYS,
+                    )
+                    st.toast(f"✅ 回帰係数を {n} モデルキーに反映しました")
             st.rerun()
-            
+
         result_q = st.session_state.get("quantitative_analysis_result")
-        
+
         if result_q and result_q.get("n_cases") == n_reg_q:
             st.subheader("結果サマリ")
             st.metric("分析件数", f"{result_q['n_cases']}件（成約{result_q['n_positive']} / 失注{result_q['n_negative']}）")
@@ -70,7 +124,7 @@ def render_quantitative_analysis():
                     st.metric("アンサンブル AUC", f"{result_q['auc_ensemble']:.3f}")
                     alpha_q = result_q.get("ensemble_alpha", 0.5)
                     st.caption(f"最適割合: LR {alpha_q:.0%} + LGB {1-alpha_q:.0%}")
-                    
+
             st.divider()
             st.subheader("ロジスティック回帰 係数（成約に効く方向: 正で成約にプラス）")
             if "lr_coef" in result_q:
@@ -80,7 +134,7 @@ def render_quantitative_analysis():
                 st.dataframe(lr_df_q, width='stretch', hide_index=True)
                 if "lr_intercept" in result_q:
                     st.caption(f"切片: {result_q['lr_intercept']:.4f}")
-                    
+
             st.divider()
             st.subheader("LightGBM 特徴量重要度")
             if "lgb_importance" in result_q:
@@ -98,20 +152,34 @@ def render_quantitative_analysis():
                 st.caption("各項目の平均|SHAP値|。値が大きいほど成約判定への影響が大きい。")
         else:
             result_q = None
-            
-        if result_q is None and n_reg_q >= QUALITATIVE_ANALYSIS_MIN_CASES:
+
+        if result_q is None and n_reg_q >= min_cases:
             st.info("上の「ロジスティック回帰とLightGBMを実行」ボタンで分析を開始してください。")
 
         st.divider()
         st.subheader("業種ごと定量分析")
         st.caption("業種（全体・医療・運送業・サービス業・製造業）ごとにLR+LGB+アンサンブルを実行。データが50件未満の業種は50件にブートストラップして学習します。")
         if st.button("🚀 業種ごと分析を実行", key="run_quant_by_industry"):
-            with st.spinner("業種ごとに分析中..."):
-                by_ind = run_quantitative_by_industry()
+            with st.spinner("業種ごとに分析中..." if not use_gemini else "Gemini で業種ごとに分析中…"):
+                by_ind = (
+                    run_quantitative_by_industry_gemini()
+                    if use_gemini else
+                    run_quantitative_by_industry()
+                )
             if by_ind is not None:
                 st.session_state["quant_by_industry"] = by_ind
+                updated = 0
+                for base, res in by_ind.items():
+                    if not res.get("skip") and res.get("lr_coef"):
+                        keys = _BASE_TO_MODEL_KEYS.get(base, [])
+                        if keys:
+                            updated += _save_lr_coef_to_overrides(
+                                res["lr_coef"], res.get("lr_intercept", 0.0), keys
+                            )
+                if updated:
+                    st.toast(f"✅ 業種別係数を {updated} モデルキーに反映しました")
             st.rerun()
-            
+
         by_industry = st.session_state.get("quant_by_industry")
         if by_industry:
             for base in INDUSTRY_BASES:
@@ -142,12 +210,26 @@ def render_quantitative_analysis():
         st.subheader("指標ごと定量分析")
         st.caption("指標モデル（全体_指標・医療_指標・運送業_指標・サービス業_指標・製造業_指標）ごとにLR+LGB+アンサンブルを実行。データ不足時は50件にブートストラップ。")
         if st.button("🚀 指標ごと分析を実行", key="run_quant_by_indicator"):
-            with st.spinner("指標ごとに分析中..."):
-                by_ind = run_quantitative_by_indicator()
+            with st.spinner("指標ごとに分析中..." if not use_gemini else "Gemini で指標ごとに分析中…"):
+                by_ind = (
+                    run_quantitative_by_indicator_gemini()
+                    if use_gemini else
+                    run_quantitative_by_indicator()
+                )
             if by_ind is not None:
                 st.session_state["quant_by_indicator"] = by_ind
+                updated = 0
+                for bench, res in by_ind.items():
+                    if not res.get("skip") and res.get("lr_coef"):
+                        keys = _BENCH_TO_MODEL_KEYS.get(bench, [])
+                        if keys:
+                            updated += _save_lr_coef_to_overrides(
+                                res["lr_coef"], res.get("lr_intercept", 0.0), keys
+                            )
+                if updated:
+                    st.toast(f"✅ 指標別係数を {updated} モデルキーに反映しました")
             st.rerun()
-            
+
         by_indicator = st.session_state.get("quant_by_indicator")
         if by_indicator:
             for bench in BENCH_BASES:
