@@ -1,6 +1,6 @@
 # リース審査AI システム
 
-リース会社向けの社内審査支援ツール。財務データを入力するだけで審査スコアを算出し、金利サジェスト・軍師コメント・成約予測まで一気通貫で行うStreamlitアプリ。
+リース会社向けの社内審査支援ツール。財務データを入力するだけで審査スコアを算出し、金利サジェスト・軍師コメント・成約予測・改善提案まで一気通貫で行う Streamlit アプリ。
 
 ---
 
@@ -8,15 +8,16 @@
 
 | 機能 | 概要 |
 |------|------|
-| **審査スコアリング** | 財務指標を3モデル加重平均でスコア化（承認ライン: 71点以上） |
+| **審査スコアリング** | LR＋LightGBM アンサンブル＋ベイズ推論で審査スコアを算出（承認ライン: 71点） |
+| **限界改善シミュレーター** | ボーダーライン案件に「どの指標をいくら改善すれば承認圏内か」を提示 |
 | **軍師コメント** | ベイズ推論＋LLM（Gemini）による審査所見の自動生成 |
 | **金利サジェスト** | 過去の成約データから最適なリースレートを提案 |
 | **基準金利マスタ** | 月次の基準金利を管理・参照（社内決定金利を毎月登録） |
-| **競合関係グラフ** | 業種×競合他社の競合関係をD3.jsで可視化 |
+| **競合関係グラフ** | 業種×競合他社の競合関係を D3.js で可視化 |
 | **案件結果登録** | 審査後の成約/失注・獲得レート・競合情報を記録 |
 | **自動係数最適化** | 成約実績50件到達後、以降20件ごとに回帰係数を自動更新 |
-| **バッチ審査** | Excelアップロードで複数案件を一括スコアリング |
-| **PDF出力** | 審査結果レポートをPDFで出力 |
+| **バッチ審査** | Excel アップロードで複数案件を一括スコアリング |
+| **PDF出力** | 審査結果レポートを PDF で出力 |
 
 ---
 
@@ -46,39 +47,113 @@ ANYTHING_LLM_API_KEY = "your-anything-llm-key"
 
 ---
 
+## ML モデルの仕組み
+
+### スコアリングパイプライン
+
+```
+財務入力
+  ↓
+① ロジスティック回帰（LR）        ← 係数は coeff_definitions.py で定義
+② LightGBM 分類器（LGB）          ← data/lgb_main_model.joblib
+  ↓ アンサンブル alpha（data/ensemble_config.json で管理）
+定量スコア
+  ↓ + ベイズ推論 + 定性評価 + 物件スコア + 直感補正
+最終スコア（0〜100点）
+```
+
+### DSCR 特徴量（キャッシュフロー系）
+
+| 特徴量 | 定義 | 意味 |
+|--------|------|------|
+| `dscr_approx` | 営業利益 ÷ (減価償却費 + 賃借料) | 固定費に対する利益カバー力 |
+| `interest_coverage` | 営業利益 ÷ 支払利息 | 利息支払い余力 |
+
+### モデル再学習（ローカルで実行可能）
+
+```bash
+# 1. DB からトレーニングデータを抽出
+python export_cases_for_colab.py   # → data/cases_for_colab.json
+
+# 2. 学習（data/ 直下にモデルファイルを自動保存）
+python train_lgb_colab.py
+```
+
+生成されるファイル:
+- `data/lgb_main_model.joblib` — 定量モデル
+- `data/lgb_qual_model.joblib` — 定性モデル
+- `data/ensemble_config.json` — アンサンブル alpha（定量）
+- `data/ensemble_config_qual.json` — アンサンブル alpha（定性）
+
+> **目安**: LightGBM が LR を超えるのは学習データ 150〜200件から。現状は LR 主体のアンサンブルで動作。
+
+---
+
+## 限界改善シミュレーター
+
+スコアが承認ライン付近（71点 − 2以内）の案件に対し、改善提案パネルを自動表示する。
+
+```
+現在スコア: 67.4 → 要審議
+
+✅ 単独改善で承認ラインに到達できる案
+┌────────────┬──────────────────┬────────┬────────────┐
+│ 指標       │ 改善量           │ 推定   │ 効果       │
+├────────────┼──────────────────┼────────┼────────────┤
+│ 売上高     │ +15%（約360万増）│ 72.1   │ 承認圏内   │
+│ 信用格付   │ 要注意 → 4-6    │ 74.5   │ 承認圏内   │
+└────────────┴──────────────────┴────────┴────────────┘
+```
+
+実装: `components/marginal_improvement.py`
+
+---
+
 ## プロジェクト構造
 
 ```
 tune_lease_55/
-├── tune_lease_55.py              # エントリポイント
-├── lease_logic_sumaho12.py       # メインUIロジック（内部実装）
-├── components/                   # UIコンポーネント
-│   ├── financial_analysis.py
-│   ├── industry_search_agent.py
-│   └── ...
-├── scoring/                      # スコアリングロジック
-├── ai_chat.py                    # AIチャットバックエンド
-├── slack_bot.py                  # Slackボット
-├── anything_api.py               # AnythingLLM連携
-├── secret_manager.py             # 秘密情報管理（共通化）
-├── data/                         # SQLite DB・セッションファイル
-├── .streamlit/secrets.toml       # 秘密情報（コミット禁止）
-└── run_lease_app.sh              # 起動スクリプト
+├── tune_lease_55.py              # エントリポイント・ページルーティング
+├── scoring_core.py               # スコア計算コア（LR・LGB・DSCR・最適閾値）
+├── coeff_definitions.py          # 全業種×既存先/新規先の回帰係数定義
+├── asset_scorer.py               # 物件スコアリング
+├── total_scorer.py               # 合計スコア集約
+├── category_config.py            # 業種カテゴリ設定
+├── bayesian_engine.py            # ベイズ推論エンジン
+├── quantum_analysis_module.py    # 量子干渉スコア（財務矛盾検出）
+├── data_cases.py                 # 案件データの読み書き
+├── auto_optimizer.py             # 自動最適化トリガー
+├── analysis_regression.py        # 回帰分析・混合重み最適化
+├── export_cases_for_colab.py     # 学習データ抽出スクリプト
+├── train_lgb_colab.py            # LightGBM 再学習スクリプト（ローカル実行可）
+├── components/
+│   ├── chat_wizard.py            # リースくんウィザード（対話型入力）
+│   ├── form_apply.py             # 審査入力フォーム
+│   ├── score_calculation.py      # スコア計算・ログ保存
+│   ├── analysis_results.py       # 分析結果表示
+│   ├── marginal_improvement.py   # 限界改善シミュレーター
+│   ├── shinsa_gunshi.py          # 軍師コメント生成
+│   ├── rate_suggestion.py        # 金利サジェスト
+│   ├── graph_view.py             # 競合関係グラフ（D3.js）
+│   ├── form_status.py            # 案件結果登録
+│   ├── dashboard.py              # ダッシュボード
+│   ├── batch_scoring.py          # バッチ審査
+│   ├── report.py                 # レポート生成
+│   ├── sidebar.py                # サイドバー UI
+│   └── settings.py               # 設定画面
+├── scoring/                      # スコアリングサブモジュール
+│   └── feature_engineering_custom.py
+├── slack_bot.py                  # Slack ボット
+├── slack_screening.py            # Slack 審査フロー
+├── data/                         # SQLite DB・モデルファイル（コミット禁止）
+└── .streamlit/secrets.toml       # 秘密情報（コミット禁止）
 ```
 
 ---
 
-## 最近の改善
+## スコアリングの仕組み（詳細）
 
-- **秘密情報管理の共通化**: `secret_manager.py` を導入し、APIキー取得を統一（環境変数 > secrets.toml > fallback）
-- **エントリポイントの明確化**: `tune_lease_55.py` をメインエントリポイントとして作成
-- **モジュール化**: UIコンポーネントを `components/` に分割
-
----
-
-## スコアリングの仕組み
-
-### 3モデル加重平均
+### 3モデル加重平均（LR ベース）
 
 | モデル | 係数キー例 | デフォルト重み |
 |--------|-----------|--------------|
@@ -88,35 +163,34 @@ tune_lease_55/
 
 - 顧客区分（既存先/新規先）で係数セットを自動切り替え
 - 重みは50件蓄積後にクロスバリデーション（StratifiedKFold）で自動最適化
-- 手動上書きは `data/coeff_overrides.json` の `model_blend_weights` で可能
 
 ### 金利サジェスト
 
 - 過去の成約データ（スプレッド・スコア・競合情報）から推奨金利レンジを算出
-- 「競合なし失注」（現金購入・銀行融資への切り替え）はサンプルから除外し精度向上
+- 「競合なし失注」（現金購入・銀行融資への切り替え）はサンプルから除外
 - スコアに応じた調整・競合他社情報がある場合は競合スプレッドも反映
 
 ---
 
+## 運用ガードレール
 
-## 運用ガードレール（推奨設定）
+### 自動係数更新の安全条件
 
-### 1) 自動係数更新の安全条件
+- 成約/失注の登録済み案件が **50件** を超えた時点で初回実行
+- 以降 **20件ごと** に自動実行
+- AUC・判定乖離率・業種別精度を同時監視
+- 結果は `data/coeff_auto.json` に保存、次回起動から自動反映
 
-- AUCだけでなく、直近案件での判定乖離率・業種別精度を同時監視
-- しきい値（71点）周辺の判定が不安定化した場合は自動反映を停止
-- 反映時は `data/coeff_auto.json` のバックアップを保持
-
-### 2) 監査ログの最小セット
+### 監査ログの最小セット
 
 案件ごとに以下を保存する運用を推奨:
 
 - 入力値（匿名ID・業種・主要財務指標）
-- 使用係数バージョン（manual/autoと更新日時）
+- 使用係数バージョン（manual/auto と更新日時）
 - 判定スコアと承認可否
 - 金利提案の根拠（スプレッド/競合情報の有無）
 
-### 3) 運用KPI（週次・月次）
+### 運用 KPI（週次・月次）
 
 - 承認率・成約率
 - スコア帯別成約率
@@ -130,67 +204,23 @@ tune_lease_55/
 | ファイル | 内容 |
 |---------|------|
 | `data/lease_data.db` | 全案件ログ（SQLite）。スコア・成約/失注・金利・競合情報を記録 |
-| `data/screening_db.sqlite` | 軍師モード用DB（ベイズ証拠重み） |
+| `data/screening_db.sqlite` | 軍師モード用 DB（ベイズ証拠重み） |
 | `data/coeff_overrides.json` | 係数の手動上書き・モデル混合重みの手動設定 |
 | `data/coeff_auto.json` | 自動最適化で算出した係数の保存先 |
+| `data/lgb_main_model.joblib` | LightGBM 定量モデル |
+| `data/lgb_qual_model.joblib` | LightGBM 定性モデル |
+| `data/ensemble_config.json` | LR+LGB アンサンブル alpha（定量） |
+| `data/ensemble_config_qual.json` | LR+LGB アンサンブル alpha（定性） |
 | `data/business_rules.json` | 業種別ビジネスルール |
 | `data/industry_benchmarks.json` | 業種別財務指標ベンチマーク |
 
-> `data/` 配下の `.db` / `.sqlite` はGitで管理しない（`.gitignore` 参照）。
-
----
-
-## フォルダ構成
-
-```
-tune_lease_55/
-├── tune_lease_55.py       # メインアプリ（エントリーポイント）
-├── scoring_core.py               # スコア計算コア
-├── coeff_definitions.py          # 全業種×既存先/新規先の回帰係数定義
-├── data_cases.py                 # 案件データの読み書き
-├── auto_optimizer.py             # 自動最適化トリガー
-├── analysis_regression.py        # 回帰分析・混合重み最適化
-├── base_rate_master.py           # 基準金利マスタ（月次管理）
-├── customer_db.py                # 匿名化統計DB
-├── bayesian_engine.py            # ベイズ推論エンジン
-├── components/
-│   ├── form_apply.py             # 審査入力フォーム
-│   ├── score_calculation.py      # スコア計算・ログ保存
-│   ├── analysis_results.py       # 分析結果表示
-│   ├── shinsa_gunshi.py          # 軍師コメント生成（ベイズ＋LLM）
-│   ├── rate_suggestion.py        # 金利サジェスト
-│   ├── graph_view.py             # 競合関係グラフ（D3.js）
-│   ├── form_status.py            # 案件結果登録
-│   ├── dashboard.py              # ダッシュボード
-│   ├── batch_scoring.py          # バッチ審査
-│   ├── report.py                 # レポート生成
-│   ├── sidebar.py                # サイドバーUI
-│   └── settings.py               # 設定画面
-└── data/                         # データ・設定ファイル
-```
-
----
-
-## 取引先コードについて
-
-審査フォームの「顧客区分」欄に **取引先コード（任意）** を入力できる。
-社内の取引先管理番号（例: `T-00123`）を記録することで、将来的な顧客別の長期分析（LTV・ベルマン方程式による関係価値最大化）に対応予定。
-
-会社名は入力しない運用のため、取引先コードが顧客を一意に識別する唯一の手段となる。
-
----
-
-## 自動係数最適化
-
-- 成約/失注の登録済み案件が **50件**を超えた時点で初回実行
-- 以降 **20件ごと**に自動実行
-- ロジスティック回帰で回帰係数を更新、AUCを評価指標として最良セットを採用
-- 結果は `data/coeff_auto.json` に保存、次回起動から自動反映
+> `data/` 配下の `.db` / `.sqlite` / `.joblib` / `.jsonl` は Git で管理しない（`.gitignore` 参照）。
 
 ---
 
 ## 注意事項
 
 - `coeff_definitions.py` はリポジトリルートに配置（直接参照のため）
-- Gemini APIキーは `.streamlit/secrets.toml` で管理（Gitにコミットしない）
+- Gemini API キーは `.streamlit/secrets.toml` で管理（Git にコミットしない）
 - 基準金利は毎月末に翌月分を `📅 基準金利マスタ` 画面から登録する
+- 数値の単位は **千円**（スコアリングモジュール内は円単位に変換して計算）
