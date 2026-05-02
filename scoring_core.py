@@ -116,6 +116,18 @@ _lgb_qual_bundle_cache: dict | None = None
 _ensemble_alpha_qual_cache: float | None = None
 
 
+def clear_scoring_cache() -> None:
+    """LGBMモデル・アンサンブルalphaのインメモリキャッシュをクリアする。
+    統合再学習後に呼ぶことで、再起動なしに新モデルが反映される。
+    """
+    global _lgb_bundle_cache, _ensemble_alpha_cache
+    global _lgb_qual_bundle_cache, _ensemble_alpha_qual_cache
+    _lgb_bundle_cache = None
+    _ensemble_alpha_cache = None
+    _lgb_qual_bundle_cache = None
+    _ensemble_alpha_qual_cache = None
+
+
 def _load_lgb_bundle():
     global _lgb_bundle_cache
     if _lgb_bundle_cache is not None:
@@ -267,6 +279,8 @@ def _build_lgb_feature_vector(data_scoring: dict, inputs: dict, feature_names: l
         "qualitative_combined": 0.0,
         "bn_approval_prob": 0.0, "bn_fc": 0.0, "bn_hc": 0.0, "bn_av": 0.0,
         "qual_weighted": 0.0, "qual_rank_good": 0.0, "qual_repayment": 0.0,
+        "dscr_approx": compute_dscr_approx(inputs),
+        "interest_coverage": compute_interest_coverage(inputs),
     }
     qsc = inputs.get("qualitative_scoring_correction") or inputs.get("qualitative_scoring") or {}
     if qsc:
@@ -442,6 +456,35 @@ def compute_score_contributions(data: dict, coeff_set: dict) -> list[dict]:
     return contributions
 
 
+def compute_dscr_approx(inputs: dict) -> float:
+    """
+    DSCR（債務返済カバレッジ比率）の近似値を計算する。
+    既存データから: DSCR ≈ 営業利益 ÷ (減価償却費 + 賃借料費用)
+    返値: DSCR 近似値。分母が0の場合は中立値 1.0 を返す。
+    値の解釈: 1.0 以上 = 返済能力あり、1.5 以上 = 安全圏
+    """
+    op_profit = _safe_float(inputs.get("op_profit") or inputs.get("rieki"))
+    dep_expense = _safe_float(inputs.get("dep_expense") or inputs.get("depreciation"))
+    rent_expense = _safe_float(inputs.get("rent_expense") or inputs.get("rent"))
+    denominator = dep_expense + rent_expense
+    if denominator <= 0:
+        return 1.0
+    return round(op_profit / denominator, 3)
+
+
+def compute_interest_coverage(inputs: dict) -> float:
+    """
+    インタレスト・カバレッジ・レシオを計算する。
+    ICR = 営業利益 ÷ 支払利息
+    支払利息データがない場合は 10.0（高安全）を返す。
+    """
+    op_profit = _safe_float(inputs.get("op_profit") or inputs.get("rieki"))
+    interest = _safe_float(inputs.get("interest_expense"))
+    if interest <= 0:
+        return 10.0  # 無借金とみなす
+    return round(op_profit / interest, 3)
+
+
 def run_quick_scoring(inputs: dict) -> dict:
     """
     入力辞書からスコア・判定・比較文を計算して返す。
@@ -575,6 +618,10 @@ def run_quick_scoring(inputs: dict) -> dict:
     if used_default_asset_score:
         asset_score_warnings.append("物件スコア未入力のためデフォルト値(50)を使用")
 
+    # ── DSCR / インタレスト・カバレッジ（次回再学習の特徴量候補）──
+    dscr_approx = compute_dscr_approx(inputs)
+    interest_coverage = compute_interest_coverage(inputs)
+
     return {
         "score": final_score,
         "score_base": base_score,
@@ -596,4 +643,78 @@ def run_quick_scoring(inputs: dict) -> dict:
         "manager_review_flag": manager_review_flag,
         # SHAP近似: 各特徴量の寄与度（上位5件はUI表示に活用）
         "score_contributions": score_contributions,
+        # CF系指標（表示・次回ML再学習用）
+        "dscr_approx": dscr_approx,
+        "interest_coverage": interest_coverage,
+    }
+
+
+def compute_optimal_approval_line(past_cases: list) -> dict:
+    """
+    過去の成約/失注データから ROC 最適閾値を算出する。
+    APPROVAL_LINE = 71 の根拠を過去データから正当化するために使用。
+
+    Args:
+        past_cases: [{"final_score": float, "final_status": str}, ...] のリスト
+
+    Returns:
+        {
+            "optimal_threshold": float,   # Youden's J で最適化した閾値
+            "current_threshold": int,     # 現在の APPROVAL_LINE
+            "auc": float,                 # ROC-AUC
+            "n_cases": int,               # 使用ケース数
+            "n_contracts": int,           # 成約件数
+            "note": str,                  # 説明
+        }
+    """
+    CONTRACT_STATUSES = {"成約", "検収", "検収完了"}
+
+    valid = [
+        c for c in past_cases
+        if c.get("final_score") is not None and c.get("final_status") is not None
+    ]
+    if len(valid) < 10:
+        return {
+            "optimal_threshold": APPROVAL_LINE,
+            "current_threshold": APPROVAL_LINE,
+            "auc": None,
+            "n_cases": len(valid),
+            "n_contracts": 0,
+            "note": f"データ不足（{len(valid)}件）。10件以上の成約/失注データが必要です。",
+        }
+
+    scores = [float(c["final_score"]) for c in valid]
+    labels = [1 if c["final_status"] in CONTRACT_STATUSES else 0 for c in valid]
+    n_contracts = sum(labels)
+
+    if n_contracts == 0 or n_contracts == len(valid):
+        return {
+            "optimal_threshold": APPROVAL_LINE,
+            "current_threshold": APPROVAL_LINE,
+            "auc": None,
+            "n_cases": len(valid),
+            "n_contracts": n_contracts,
+            "note": "成約または失注のどちらかのみのデータです。両方が必要です。",
+        }
+
+    try:
+        from sklearn.metrics import roc_curve, roc_auc_score
+        fpr, tpr, thresholds = roc_curve(labels, scores)
+        auc = float(roc_auc_score(labels, scores))
+        youden_idx = int(np.argmax(tpr - fpr))
+        optimal = float(thresholds[youden_idx])
+    except ImportError:
+        # sklearn がない場合は単純な中央値フォールバック
+        contract_scores = [scores[i] for i, l in enumerate(labels) if l == 1]
+        non_scores = [scores[i] for i, l in enumerate(labels) if l == 0]
+        optimal = (np.mean(contract_scores) + np.mean(non_scores)) / 2
+        auc = None
+
+    return {
+        "optimal_threshold": round(optimal, 1),
+        "current_threshold": APPROVAL_LINE,
+        "auc": round(auc, 3) if auc is not None else None,
+        "n_cases": len(valid),
+        "n_contracts": n_contracts,
+        "note": f"Youden's J 統計量による最適閾値（成約={n_contracts}件 / 全{len(valid)}件）",
     }

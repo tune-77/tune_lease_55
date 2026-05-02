@@ -7,3 +7,6 @@
 {"type":"skill","name":"git-ship","digest":"{\"skill\":\"git-ship\"}","timestamp":"2026-05-01T10:35:39Z"}
 {"type":"skill","name":"update-config","digest":"{\"skill\":\"update-config\",\"args\":\"add MCP server for Excel: @negokaz/excel-mcp-server to user setting","timestamp":"2026-05-01T12:49:16Z"}
 {"type":"skill","name":"git-ship","digest":"{\"skill\":\"git-ship\"}","timestamp":"2026-05-01T18:51:29Z"}
+{"type":"skill","name":"git-ship","digest":"{\"skill\":\"git-ship\"}","timestamp":"2026-05-02T04:38:37Z"}
+{"type":"skill","name":"build-check","digest":"{\"skill\":\"build-check\"}","timestamp":"2026-05-02T04:42:11Z"}
+{"type":"skill","name":"git-ship","digest":"{\"skill\":\"git-ship\"}","timestamp":"2026-05-02T09:19:42Z"}

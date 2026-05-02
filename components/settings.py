@@ -37,18 +37,10 @@ def render_math_proposals():
     st.divider()
 
 from data_cases import load_all_cases
-from analysis_regression import (
-    build_design_matrix_from_logs,
-    run_regression_and_get_coeffs,
-    build_design_matrix_indicator_from_logs,
-    run_regression_indicator_and_get_coeffs
-)
 from data_cases import get_effective_coeffs, load_coeff_overrides, save_coeff_overrides
 from analysis_regression import (
     COEFF_MAIN_KEYS,
     COEFF_EXTRA_KEYS,
-    INDUSTRY_MODEL_KEYS,
-    INDICATOR_MODEL_KEYS,
     PRIOR_COEFF_MODEL_KEYS,
 )
 
@@ -128,6 +120,7 @@ def render_coeff_analysis():
                 train_lgbm_from_cases,
             )
             from data_cases import save_coeff_overrides
+            from scoring_core import clear_scoring_cache
 
             _all_logs = load_all_cases()
             _n_labeled = sum(1 for c in _all_logs if c.get("final_status") in ["成約", "失注"])
@@ -164,6 +157,9 @@ def render_coeff_analysis():
                 except Exception as _e:
                     _lgbm_prog.progress(100, text=f"❌ LightGBM エラー: {_e}")
                     _lgbm_ok = False
+
+                # キャッシュクリア（新モデルを即時反映）
+                clear_scoring_cache()
 
                 # 結果サマリー
                 if _lr_ok and _lgbm_ok:
@@ -214,105 +210,14 @@ def render_coeff_analysis():
         st.error(f"AIリフレクション機能エラー: {e}")
 
     st.divider()
-    
-    all_logs = load_all_cases()
-    if not all_logs:
-        st.warning("分析するためのデータがまだありません。審査を実行し、結果登録で成約/失注を登録してください。")
-    else:
-        X_reg, y_reg = build_design_matrix_from_logs(all_logs)
-        n_ok = int((y_reg == 1).sum()) if y_reg is not None else 0
-        n_ng = int((y_reg == 0).sum()) if y_reg is not None else 0
-        n_total = n_ok + n_ng
-        
-        if X_reg is None or n_total < 5:
-            st.error(f"回帰分析には成約/失注が登録されたデータが少なくとも5件必要です。（現在: 成約 {n_ok} 件・失注 {n_ng} 件）")
-        else:
-            st.write(f"**目的変数**: 成約=1, 失注=0")
-            st.write(f"分析対象: **{n_total}件**（成約: {n_ok}件, 失注: {n_ng}件）")
-            
-            if st.button("🚀 回帰分析を実行して係数を算出", key="btn_run_regression"):
-                try:
-                    coeff_dict, model = run_regression_and_get_coeffs(X_reg, y_reg, model_key="全体_既存先")
-                    acc = coeff_dict.get("_accuracy") or (model.score(X_reg, y_reg) if model else 0.0)
-                    st.session_state["regression_coeffs"] = coeff_dict
-                    st.session_state["regression_accuracy"] = acc
-                    st.success("回帰完了。下記の係数を「係数を更新して保存」で審査スコアに反映できます。")
-                except Exception as e:
-                    st.error(f"回帰エラー: {e}")
-                    import traceback
-                    with st.expander("詳細", expanded=False):
-                        st.code(traceback.format_exc())
-            
-            if "regression_coeffs" in st.session_state:
-                coeff_dict = st.session_state["regression_coeffs"]
-                acc = st.session_state.get("regression_accuracy", 0)
-                st.subheader("算出された係数（既存項目＋追加項目）")
-                res_rows = [{"変数": "intercept", "算出係数": coeff_dict.get("intercept", 0)}]
-                for k in COEFF_MAIN_KEYS:
-                    res_rows.append({"変数": k, "算出係数": coeff_dict.get(k, 0)})
-                for k in COEFF_EXTRA_KEYS:
-                    res_rows.append({"変数": k, "算出係数": coeff_dict.get(k, 0)})
-                st.dataframe(pd.DataFrame(res_rows).style.format({"算出係数": "{:.6f}"}), width='stretch')
-                st.metric("モデル予測精度 (Accuracy)", f"{acc:.1%}")
-                
-                if st.button("💾 係数を更新して保存", key="btn_save_coeffs"):
-                    overrides = load_coeff_overrides() or {}
-                    overrides["全体_既存先"] = coeff_dict
-                    if save_coeff_overrides(overrides):
-                        st.success("係数を保存しました。以降の審査スコアはこの係数で計算されます。")
-                    else:
-                        st.error("保存に失敗しました。")
-            
-            st.divider()
-            st.divider()
-            st.subheader("業種・指標ごとのベイズ回帰（既存項目＋追加項目）")
-            st.caption("業種モデル（全体/運送業/サービス業/製造業×既存先/新規先）と指標モデル（全体/運送業/サービス業/製造業 指標×既存先/新規先）を、それぞれデータが5件以上ある組だけ回帰し、係数を更新して保存します。")
-            if st.button("🔄 業種・指標ごとにベイズ回帰を実行して保存", key="btn_bayesian_all"):
-                overrides = load_coeff_overrides() or {}
-                min_n = 5
-                results = []
-                for model_key in INDUSTRY_MODEL_KEYS:
-                    X_k, y_k = build_design_matrix_from_logs(all_logs, model_key=model_key)
-                    n_k = len(y_k) if y_k is not None else 0
-                    if n_k >= min_n:
-                        try:
-                            coeff_k, mod_k = run_regression_and_get_coeffs(X_k, y_k, model_key=model_key)
-                            overrides[model_key] = coeff_k
-                            acc_k = coeff_k.get("_accuracy") or (mod_k.score(X_k, y_k) if mod_k else 0.0)
-                            bayes_tag = " [ベイズ更新]" if coeff_k.get("_used_bayesian_update") else ""
-                            results.append(f"{model_key}: {n_k}件, Accuracy={acc_k:.1%}{bayes_tag}")
-                        except Exception as e:
-                            results.append(f"{model_key}: エラー {e}")
-                    else:
-                        results.append(f"{model_key}: データ不足 ({n_k}件)")
-                for ind_key in INDICATOR_MODEL_KEYS:
-                    X_i, y_i = build_design_matrix_indicator_from_logs(all_logs, ind_key)
-                    n_i = len(y_i) if y_i is not None else 0
-                    if n_i >= min_n:
-                        try:
-                            coeff_i, mod_i = run_regression_indicator_and_get_coeffs(X_i, y_i, model_key=ind_key)
-                            overrides[ind_key] = coeff_i
-                            acc_i = coeff_i.get("_accuracy") or (mod_i.score(X_i, y_i) if mod_i else 0.0)
-                            bayes_tag = " [ベイズ更新]" if coeff_i.get("_used_bayesian_update") else ""
-                            results.append(f"{ind_key}: {n_i}件, Accuracy={acc_i:.1%}{bayes_tag}")
-                        except Exception as e:
-                            results.append(f"{ind_key}: エラー {e}")
-                    else:
-                        results.append(f"{ind_key}: データ不足 ({n_i}件)")
-                if save_coeff_overrides(overrides):
-                    st.success("業種・指標ごとの係数を保存しました。")
-                else:
-                    st.error("保存に失敗しました。")
-                for r in results:
-                    st.caption(r)
 
-            st.subheader("参考: 現在の審査で使っている係数（全体_既存先）")
-            current = get_effective_coeffs("全体_既存先")
-            overrides = load_coeff_overrides()
-            if overrides and "全体_既存先" in overrides:
-                st.caption("※ 成約/失注で更新した係数（既存＋追加項目）が適用されています。")
-            ref_rows = [{"変数": k, "現在の係数": current.get(k, 0)} for k in ["intercept"] + COEFF_MAIN_KEYS + COEFF_EXTRA_KEYS]
-            st.dataframe(pd.DataFrame(ref_rows).style.format({"現在の係数": "{:.6f}"}), width='stretch')
+    st.subheader("参考: 現在の審査で使っている係数（全体_既存先）")
+    current = get_effective_coeffs("全体_既存先")
+    overrides = load_coeff_overrides()
+    if overrides and "全体_既存先" in overrides:
+        st.caption("※ 成約/失注で更新した係数（既存＋追加項目）が適用されています。")
+    ref_rows = [{"変数": k, "現在の係数": current.get(k, 0)} for k in ["intercept"] + COEFF_MAIN_KEYS + COEFF_EXTRA_KEYS]
+    st.dataframe(pd.DataFrame(ref_rows).style.format({"現在の係数": "{:.6f}"}), width='stretch')
 
 def render_prior_coeff_input():
     """📐 係数入力（事前係数）タブのUI表示とロジック"""
@@ -375,29 +280,22 @@ def render_coeff_history():
         header = f"{ts}　[{type_label}]　{comment or '（コメントなし）'}"
         with st.expander(header, expanded=(i == 0)):
             if changed_keys:
+                def _safe_val(val):
+                    if val is None: return "—"
+                    if isinstance(val, (int, float)): return f"{val:.6f}"
+                    return str(val)
                 rows = [
-                    {"変数": k, "変更前": v.get("before"), "変更後": v.get("after")}
+                    {"変数": str(k), "変更前": _safe_val(v.get("before")), "変更後": _safe_val(v.get("after"))}
                     for k, v in changed_keys.items()
                 ]
                 import pandas as pd
-                st.dataframe(
-                    pd.DataFrame(rows).style.format(
-                        {"変更前": lambda x: f"{x:.6f}" if isinstance(x, float) else ("—" if x is None else x),
-                         "変更後": lambda x: f"{x:.6f}" if isinstance(x, float) else ("—" if x is None else x)}
-                    ),
-                    width='stretch',
-                )
+                st.dataframe(pd.DataFrame(rows), width='stretch')
             else:
                 st.caption("変更キーの記録なし")
             if snapshot:
                 with st.expander("全係数スナップショット（保存後）", expanded=False):
-                    snap_rows = [{"変数": k, "値": v} for k, v in snapshot.items()]
-                    st.dataframe(
-                        pd.DataFrame(snap_rows).style.format(
-                            {"値": lambda x: f"{x:.6f}" if isinstance(x, float) else x}
-                        ),
-                        width='stretch',
-                    )
+                    snap_rows = [{"変数": str(k), "値": _safe_val(v)} for k, v in snapshot.items()]
+                    st.dataframe(pd.DataFrame(snap_rows), width='stretch')
 
 
 def render_app_logs():

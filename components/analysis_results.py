@@ -458,6 +458,13 @@ def render_analysis_results(
             except Exception as _rse:
                 pass
 
+            # ── 📈 限界改善シミュレーター ─────────────────────────────────────────
+            try:
+                from components.marginal_improvement import render_improvement_advisor
+                render_improvement_advisor(res)
+            except Exception:
+                pass
+
             # ── 📊 スコア配分内訳（ASSET_WEIGHT） ────────────────────────────────
             _ts = res.get("total_scorer_result") or st.session_state.get("_ts_result")
             if _ts:
@@ -1862,8 +1869,11 @@ def render_analysis_results(
                     )
 
             # ----- DSCR ＋ 追加財務指標 vs 業種平均 -----
-            _u_dscr      = res.get("user_dscr")
-            _dscr_source = res.get("dscr_source")
+            _u_dscr = res.get("user_dscr")
+            # run_quick_scoring() 経由の場合は dscr_approx にフォールバック
+            if _u_dscr is None and res.get("dscr_approx") is not None:
+                _u_dscr = res.get("dscr_approx")
+            _dscr_source = res.get("dscr_source") or "近似値（営業利益÷(減価償却費＋賃借料費用)）"
             _u_roa    = res.get("user_roa")
             _u_curr   = res.get("user_current_ratio")
             _u_debt   = res.get("user_debt_ratio")
