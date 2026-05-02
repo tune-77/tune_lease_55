@@ -501,7 +501,7 @@ def render_financial_analysis() -> None:
     # ── ① データ入力フォーム ───────────────────────────────────────────────
     st.subheader("① 財務データ入力")
     st.info(
-        "数値はすべて **千円単位** で入力してください。"
+        "数値はすべて **百万円単位**（小数点1桁まで）で入力してください。"
         "　営業利益が赤字の場合はマイナス値を入力してください。"
     )
 
@@ -512,26 +512,26 @@ def render_financial_analysis() -> None:
     col_y2.markdown(f"**{PERIOD_LABELS[1]}**")
     col_y1.markdown(f"**{PERIOD_LABELS[2]}**")
 
-    # 売上高入力
+    # 売上高入力（百万円）
     c0, c1, c2, c3 = st.columns([2, 2, 2, 2])
-    c0.markdown("売上高（千円）")
-    sales_y3 = c1.number_input("売上_3期前", value=500_000, step=1_000, label_visibility="collapsed", key="sales_y3")
-    sales_y2 = c2.number_input("売上_2期前", value=520_000, step=1_000, label_visibility="collapsed", key="sales_y2")
-    sales_y1 = c3.number_input("売上_直近",  value=550_000, step=1_000, label_visibility="collapsed", key="sales_y1")
+    c0.markdown("売上高（百万円）")
+    sales_y3 = c1.number_input("売上_3期前", value=500.0, step=0.1, label_visibility="collapsed", key="sales_y3")
+    sales_y2 = c2.number_input("売上_2期前", value=520.0, step=0.1, label_visibility="collapsed", key="sales_y2")
+    sales_y1 = c3.number_input("売上_直近",  value=550.0, step=0.1, label_visibility="collapsed", key="sales_y1")
 
-    # 営業利益入力
+    # 営業利益入力（百万円）
     d0, d1, d2, d3 = st.columns([2, 2, 2, 2])
-    d0.markdown("営業利益（千円）")
-    profit_y3 = d1.number_input("利益_3期前", value=30_000, step=1_000, label_visibility="collapsed", key="profit_y3")
-    profit_y2 = d2.number_input("利益_2期前", value=35_000, step=1_000, label_visibility="collapsed", key="profit_y2")
-    profit_y1 = d3.number_input("利益_直近",  value=38_000, step=1_000, label_visibility="collapsed", key="profit_y1")
+    d0.markdown("営業利益（百万円）")
+    profit_y3 = d1.number_input("利益_3期前", value=30.0, step=0.1, label_visibility="collapsed", key="profit_y3")
+    profit_y2 = d2.number_input("利益_2期前", value=35.0, step=0.1, label_visibility="collapsed", key="profit_y2")
+    profit_y1 = d3.number_input("利益_直近",  value=38.0, step=0.1, label_visibility="collapsed", key="profit_y1")
 
-    # 純資産入力
+    # 純資産入力（百万円）
     e0, e1, e2, e3 = st.columns([2, 2, 2, 2])
-    e0.markdown("純資産（千円）")
-    net_y3 = e1.number_input("純資産_3期前", value=120_000, step=1_000, label_visibility="collapsed", key="net_y3")
-    net_y2 = e2.number_input("純資産_2期前", value=145_000, step=1_000, label_visibility="collapsed", key="net_y2")
-    net_y1 = e3.number_input("純資産_直近",  value=170_000, step=1_000, label_visibility="collapsed", key="net_y1")
+    e0.markdown("純資産（百万円）")
+    net_y3 = e1.number_input("純資産_3期前", value=120.0, step=0.1, label_visibility="collapsed", key="net_y3")
+    net_y2 = e2.number_input("純資産_2期前", value=145.0, step=0.1, label_visibility="collapsed", key="net_y2")
+    net_y1 = e3.number_input("純資産_直近",  value=170.0, step=0.1, label_visibility="collapsed", key="net_y1")
 
     # 業種選択
     industry = st.selectbox("業種", INDUSTRY_OPTIONS, index=0, key="fin_industry")
@@ -540,12 +540,13 @@ def render_financial_analysis() -> None:
     st.divider()
     st.subheader("② 財務指標（自動計算）")
 
-    # データフレーム構築
+    # 百万円→千円変換（内部処理・AI プロンプトは千円単位）
+    def _m2k(v): return round(v * 1000)
     df_input = pd.DataFrame({
         "期":    PERIOD_LABELS,
-        "売上高": [sales_y3, sales_y2, sales_y1],
-        "営業利益": [profit_y3, profit_y2, profit_y1],
-        "純資産": [net_y3, net_y2, net_y1],
+        "売上高": [_m2k(sales_y3), _m2k(sales_y2), _m2k(sales_y1)],
+        "営業利益": [_m2k(profit_y3), _m2k(profit_y2), _m2k(profit_y1)],
+        "純資産": [_m2k(net_y3), _m2k(net_y2), _m2k(net_y1)],
     })
 
     df_metrics = calc_metrics(df_input)
@@ -588,9 +589,9 @@ def render_financial_analysis() -> None:
 
     if run_btn:
         payload = {
-            "sales":      [float(sales_y3), float(sales_y2), float(sales_y1)],
-            "profit":     [float(profit_y3), float(profit_y2), float(profit_y1)],
-            "net_assets": [float(net_y3), float(net_y2), float(net_y1)],
+            "sales":      [float(_m2k(sales_y3)), float(_m2k(sales_y2)), float(_m2k(sales_y1))],
+            "profit":     [float(_m2k(profit_y3)), float(_m2k(profit_y2)), float(_m2k(profit_y1))],
+            "net_assets": [float(_m2k(net_y3)), float(_m2k(net_y2)), float(_m2k(net_y1))],
             "industry":   industry,
         }
         try:

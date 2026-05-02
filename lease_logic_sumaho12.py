@@ -705,14 +705,15 @@ def get_dashboard_image_path(hantei: str, industry_major: str, industry_sub: str
 
 
 def _fragment_nenshu():
-    """売上高入力。スライダーは100万千円まで、手入力は900億千円まで。後から動かした方を採用。
+    """売上高入力。スライダーは1000百万円まで、手入力は90000百万円まで。後から動かした方を採用。
     on_change を使わないため st.form 内でも動作する。"""
-    st.markdown("### 売上高 📌 必須（1以上）")
+    st.markdown("### 売上高 📌 必須（0.1百万円以上）")
     _slider_and_number(
         "nenshu", "nenshuu", 10000, 0, 1_000_000,
         step_slider=100, step_num=10000,
-        unit="千円", label_slider="売上高調整",
+        unit="百万円", label_slider="売上高調整",
         max_val_number=90_000_000,
+        unit_factor=1000,
     )
     st.caption("※スライダー・直接入力のどちらかで変更後、**入力確定**または**判定開始**で反映されます。")
     st.divider()
