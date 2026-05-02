@@ -205,21 +205,21 @@ def render_case_editor() -> None:
 
         fc1, fc2, fc3 = st.columns(3)
         new_nenshu = fc1.number_input(
-            "売上高（千円）", value=_v("nenshu"), step=100.0, key=f"edit_nenshu_{case_id}"
+            "売上高（百万円）", value=round(_v("nenshu") / 1000, 1), step=0.1, key=f"edit_nenshu_{case_id}"
         )
         new_op_profit = fc2.number_input(
-            "営業利益（千円）", value=_v("op_profit"), step=100.0, key=f"edit_op_profit_{case_id}"
+            "営業利益（百万円）", value=round(_v("op_profit") / 1000, 1), step=0.1, key=f"edit_op_profit_{case_id}"
         )
         new_net_income = fc3.number_input(
-            "当期純利益（千円）", value=_v("net_income"), step=100.0, key=f"edit_net_income_{case_id}"
+            "当期純利益（百万円）", value=round(_v("net_income") / 1000, 1), step=0.1, key=f"edit_net_income_{case_id}"
         )
         fc4, fc5, fc6 = st.columns(3)
         new_bank_credit = fc4.number_input(
-            "借入金残高（千円）", value=_v("bank_credit"), min_value=0.0, step=100.0,
+            "借入金残高（百万円）", value=round(_v("bank_credit") / 1000, 1), min_value=0.0, step=0.1,
             key=f"edit_bank_credit_{case_id}",
         )
         new_acquisition_cost = fc5.number_input(
-            "契約金額（千円）", value=_v("acquisition_cost"), min_value=0.0, step=10.0,
+            "契約金額（百万円）", value=round(_v("acquisition_cost") / 1000, 1), min_value=0.0, step=0.1,
             key=f"edit_acquisition_cost_{case_id}",
         )
         new_lease_term = fc6.number_input(
@@ -271,11 +271,12 @@ def render_case_editor() -> None:
 
         # inputs 更新（財務数値 + 定性）
         new_case.setdefault("inputs", {}).setdefault("qualitative", {})
-        new_case["inputs"]["nenshu"] = new_nenshu
-        new_case["inputs"]["op_profit"] = new_op_profit
-        new_case["inputs"]["net_income"] = new_net_income
-        new_case["inputs"]["bank_credit"] = new_bank_credit
-        new_case["inputs"]["acquisition_cost"] = new_acquisition_cost
+        # 百万円→千円変換して保存（DB・内部処理は千円単位）
+        new_case["inputs"]["nenshu"] = round(new_nenshu * 1000)
+        new_case["inputs"]["op_profit"] = round(new_op_profit * 1000)
+        new_case["inputs"]["net_income"] = round(new_net_income * 1000)
+        new_case["inputs"]["bank_credit"] = round(new_bank_credit * 1000)
+        new_case["inputs"]["acquisition_cost"] = round(new_acquisition_cost * 1000)
         new_case["inputs"]["lease_term"] = int(new_lease_term)
         new_case["inputs"]["qualitative"]["passion_text"] = new_passion
         new_case["inputs"]["qualitative_scoring"] = new_qual_correction
