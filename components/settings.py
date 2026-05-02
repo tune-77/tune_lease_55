@@ -118,6 +118,8 @@ def render_coeff_analysis():
             from analysis_regression import (
                 run_bayesian_warm_start_all_keys,
                 train_lgbm_from_cases,
+                backup_coeff_overrides,
+                backup_lgbm_model,
             )
             from data_cases import save_coeff_overrides
             from scoring_core import clear_scoring_cache
@@ -127,6 +129,26 @@ def render_coeff_analysis():
             if _n_labeled < 5:
                 st.warning(f"成約/失注データが不足しています（現在 {_n_labeled} 件、最低 5 件必要）。")
             else:
+                _backup_msgs = []
+
+                # バックアップ: LR 係数
+                try:
+                    _coeff_bak = backup_coeff_overrides()
+                    if _coeff_bak:
+                        _backup_msgs.append(f"LR 係数: `{os.path.basename(_coeff_bak)}`")
+                except Exception as _be:
+                    _backup_msgs.append(f"LR 係数バックアップ失敗: {_be}")
+
+                # バックアップ: LightGBM pkl
+                try:
+                    _lgbm_bak = backup_lgbm_model()
+                    if _lgbm_bak:
+                        _backup_msgs.append(f"LightGBM: `{os.path.basename(_lgbm_bak)}`")
+                    else:
+                        _backup_msgs.append("LightGBM: 既存モデルなし（初回学習）")
+                except Exception as _be:
+                    _backup_msgs.append(f"LightGBM バックアップ失敗: {_be}")
+
                 # Step 1: ロジスティック回帰（ベイズ warm-start）
                 _lr_prog = st.progress(0, text="ロジスティック回帰 学習中...")
                 try:
@@ -167,7 +189,12 @@ def render_coeff_analysis():
                 else:
                     st.warning("一部の学習でエラーが発生しました。詳細を確認してください。")
 
-                with st.expander("LR 各モデルキーの結果", expanded=False):
+                with st.expander("バックアップ / LR 各モデルキーの結果", expanded=False):
+                    if _backup_msgs:
+                        st.caption("**保存済みバックアップ (data/backups/)**")
+                        for _m in _backup_msgs:
+                            st.caption(f"  • {_m}")
+                        st.divider()
                     for _r in _lr_results:
                         st.caption(_r)
 
