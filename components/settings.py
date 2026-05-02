@@ -111,6 +111,72 @@ def render_coeff_analysis():
 
     st.divider()
 
+    # ── 統合再学習ボタン（LR + LightGBM） ─────────────────────────────────────
+    with st.container(border=True):
+        st.markdown("#### 🚀 ロジスティック回帰 + LightGBM 統合再学習")
+        st.caption(
+            "前回保存済みの係数を事前分布（warm-start 初期値）として使い、"
+            "ロジスティック回帰（全モデルキー）と LightGBM を同時に再学習・保存します。"
+        )
+        if st.button(
+            "🚀 ロジスティック回帰 + LightGBM 統合再学習",
+            key="btn_unified_retrain",
+            type="primary",
+        ):
+            from analysis_regression import (
+                run_bayesian_warm_start_all_keys,
+                train_lgbm_from_cases,
+            )
+            from data_cases import save_coeff_overrides
+
+            _all_logs = load_all_cases()
+            _n_labeled = sum(1 for c in _all_logs if c.get("final_status") in ["成約", "失注"])
+            if _n_labeled < 5:
+                st.warning(f"成約/失注データが不足しています（現在 {_n_labeled} 件、最低 5 件必要）。")
+            else:
+                # Step 1: ロジスティック回帰（ベイズ warm-start）
+                _lr_prog = st.progress(0, text="ロジスティック回帰 学習中...")
+                try:
+                    _overrides, _lr_results = run_bayesian_warm_start_all_keys(_all_logs)
+                    _lr_prog.progress(50, text="ロジスティック回帰 完了 → 係数保存中...")
+                    if save_coeff_overrides(_overrides, comment="統合再学習(LR warm-start)"):
+                        _lr_prog.progress(100, text="ロジスティック回帰 保存完了 ✅")
+                        _lr_ok = True
+                    else:
+                        _lr_prog.progress(100, text="⚠️ 係数保存に失敗しました")
+                        _lr_ok = False
+                except Exception as _e:
+                    _lr_prog.progress(100, text=f"❌ LR エラー: {_e}")
+                    _lr_results = [f"エラー: {_e}"]
+                    _lr_ok = False
+
+                # Step 2: LightGBM
+                _lgbm_prog = st.progress(0, text="LightGBM 学習中...")
+                try:
+                    _acc, _auc, _path, _n_pos, _n_neg = train_lgbm_from_cases(_all_logs)
+                    _auc_str = f"  AUC: {_auc:.3f}" if _auc else ""
+                    _lgbm_prog.progress(
+                        100,
+                        text=f"LightGBM 完了 ✅  Accuracy: {_acc:.1%}{_auc_str}  "
+                             f"(成約{_n_pos}件 / 失注{_n_neg}件)",
+                    )
+                    _lgbm_ok = True
+                except Exception as _e:
+                    _lgbm_prog.progress(100, text=f"❌ LightGBM エラー: {_e}")
+                    _lgbm_ok = False
+
+                # 結果サマリー
+                if _lr_ok and _lgbm_ok:
+                    st.success("✅ ロジスティック回帰 + LightGBM の統合再学習が完了しました。")
+                else:
+                    st.warning("一部の学習でエラーが発生しました。詳細を確認してください。")
+
+                with st.expander("LR 各モデルキーの結果", expanded=False):
+                    for _r in _lr_results:
+                        st.caption(_r)
+
+    st.divider()
+
     # --- 新規追加: LLMによる定性的PDCAリフレクション ---
     st.markdown("#### 📝 月次AIリフレクション (定性PDCA)")
     st.caption("直近の審査結果（成約・失注等）をAIに読み込ませ、現在の審査傾向を分析し、翌日からの審査アシスタント（軍師AI等）のプロンプトに注意事項として自動追加・フィードバックします。データが少なくても安全に審査目線を補正できます。")
