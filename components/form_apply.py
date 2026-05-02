@@ -65,11 +65,6 @@ def render_apply_form(
     st.session_state["company_no"] = _co_no if (_co_no.isdigit() and len(_co_no) == 6) else ""
     st.session_state["company_name"] = company_name
 
-    _last_sales_dept = _last_inp_top.get("sales_dept", "未設定")
-    _sales_dept_idx = SALES_DEPT_OPTIONS.index(_last_sales_dept) if _last_sales_dept in SALES_DEPT_OPTIONS else 0
-    sales_dept = st.selectbox("営業部", SALES_DEPT_OPTIONS, index=_sales_dept_idx, key="sales_dept_select")
-    st.session_state["sales_dept"] = sales_dept
-
     # 業界・取引を expander で折りたたみ
     with st.expander("📌 業界選択・取引状況", expanded=True):
         if not jsic_data:
@@ -99,7 +94,9 @@ def render_apply_form(
             st.session_state["select_sub"] = _default_sub if _default_sub in sub_keys else sub_keys[0]
         if st.session_state.get("select_sub") not in sub_keys:
             st.session_state["select_sub"] = sub_keys[0]
-        selected_sub = st.selectbox("中分類", sub_keys, key="select_sub")
+        # 中分類は一時非表示（大分類の先頭値を自動使用）
+        selected_sub = st.session_state.get("select_sub") or sub_keys[0]
+        # selected_sub = st.selectbox("中分類", sub_keys, key="select_sub")
 
         # ── 詳細業種キーワード（任意入力）──────────────────────────────────
         detail_keyword = st.text_input(
@@ -190,7 +187,10 @@ def render_apply_form(
                     st.rerun()
         st.markdown("##### 🤝 取引・競合状況")
         col_q1, col_q2 = st.columns(2)
-        with col_q1: main_bank = st.selectbox("取引区分", ["メイン先", "非メイン先"], key="main_bank", index=0 if (last_inp.get("main_bank") or "メイン先") == "メイン先" else 1)
+        with col_q1:
+            _mb_opts = ["メイン先", "非メイン先", "不明"]
+            _mb_val  = last_inp.get("main_bank") or "不明"
+            main_bank = st.selectbox("取引区分", _mb_opts, key="main_bank", index=_mb_opts.index(_mb_val) if _mb_val in _mb_opts else 2)
         with col_q2: competitor = st.selectbox("競合状況", ["競合なし", "競合あり"], key="competitor", index=0 if (last_inp.get("competitor") or "競合なし") == "競合なし" else 1)
         # 競合ありの場合のみ「競合提示金利」を入力（金利差で成約率補正に利用）
         if competitor == "競合あり":
@@ -343,7 +343,34 @@ def render_apply_form(
             st.markdown("### 純資産 💡 推奨（未入力だと自己資本比率・学習モデル精度が低下します）")
             net_assets = _slider_and_number("net_assets", "net_assets", 10000, -30000, 500000, 100, 1, max_val_number=90_000_000)
             st.markdown("### 総資産 📌 必須（1以上）")
-            total_assets = _slider_and_number("total_assets", "total_assets", 10000, 0, 1000000, 100, 1, max_val_number=90_000_000)
+            _no_bs = st.checkbox(
+                "BSデータなし（業種平均の資産回転率で自動推定）",
+                value=st.session_state.get("no_balance_sheet", False),
+                key="no_balance_sheet",
+                help="決算書（BS）が入手できない場合にチェック。売上高÷業種平均資産回転率で総資産を推定します。精度はやや低下します。",
+            )
+            # 業種コード（大分類先頭1文字）→ 業種平均資産回転率（日本中小企業統計ベース）
+            _ASSET_TURNOVER_BY_CODE = {
+                "A": 0.8, "B": 0.9, "C": 0.7, "D": 1.3, "E": 1.0,
+                "F": 0.3, "G": 0.9, "H": 0.7, "I": 1.7, "J": 1.5,
+                "K": 0.1, "L": 0.2, "M": 0.8, "N": 1.2, "O": 1.0,
+                "P": 0.8, "Q": 0.9, "R": 0.9, "S": 1.0,
+            }
+            if _no_bs:
+                _nenshu_val = st.session_state.get("nenshu", 0) or 0
+                _major_code = (selected_major or " ")[0].upper()
+                _turnover = _ASSET_TURNOVER_BY_CODE.get(_major_code, 1.0)
+                _estimated = max(1, int(_nenshu_val / _turnover)) if _nenshu_val > 0 else 1
+                total_assets = _estimated
+                st.session_state["total_assets"] = _estimated
+                st.info(
+                    f"推定総資産: **{_estimated:,}千円**"
+                    f"（売上高 {_nenshu_val:,}千円 ÷ 業種平均回転率 {_turnover}）　※参考値・精度低下あり"
+                )
+                total_assets_estimated = True
+            else:
+                total_assets = _slider_and_number("total_assets", "total_assets", 10000, 0, 1000000, 100, 1, max_val_number=90_000_000)
+                total_assets_estimated = False
         with st.expander("💳 3. 信用情報", expanded=False):
 
             # default値をリスト内の文字列と完全に一致させる必要があります
@@ -369,6 +396,10 @@ def render_apply_form(
             contracts = _slider_and_number("contracts", "contracts", 1, 0, 30, 1, 1, unit="件")
 
         with st.expander("📋 4. 契約条件・取得価格", expanded=False):
+            _last_sales_dept = (st.session_state.get("last_submitted_inputs") or {}).get("sales_dept", "未設定")
+            _sales_dept_idx = SALES_DEPT_OPTIONS.index(_last_sales_dept) if _last_sales_dept in SALES_DEPT_OPTIONS else 0
+            sales_dept = st.selectbox("営業部", SALES_DEPT_OPTIONS, index=_sales_dept_idx, key="sales_dept_select")
+            st.session_state["sales_dept"] = sales_dept
             customer_type = st.radio("顧客区分", ["既存先", "新規先"], horizontal=True, index=0 if st.session_state.get("customer_type", "既存先") == "既存先" else 1, key="customer_type")
             customer_code = st.text_input("取引先コード（任意）", value=st.session_state.get("customer_code", ""), placeholder="例: T-00123", key="customer_code", help="社内の取引先管理番号。入力すると顧客別の長期分析が使えます")
             st.markdown("##### 📈 契約条件・属性 (利回り予測用)")
@@ -382,6 +413,21 @@ def render_apply_form(
                     acceptance_year = st.number_input("検収年 (西暦)", value=2026, step=1)
                 st.session_state.lease_term = lease_term
                 st.session_state.acceptance_year = acceptance_year
+            # 発生年月（基準金利との整合確認用）
+            st.markdown("### 発生年月")
+            st.caption("案件が発生した年月。後で基準金利との整合性確認に使用します（例: 202601）")
+            _import_dt = __import__("datetime")
+            _oym_raw = st.session_state.get("occurrence_ym", "")
+            _oym_y_def = int(_oym_raw[:4]) if len(_oym_raw) >= 6 else _import_dt.date.today().year
+            _oym_m_def = int(_oym_raw[4:6]) if len(_oym_raw) >= 6 else _import_dt.date.today().month
+            _cy1, _cy2 = st.columns(2)
+            with _cy1:
+                _oym_year = st.number_input("年（西暦）", min_value=2000, max_value=2100, value=_oym_y_def, step=1, key="occ_year")
+            with _cy2:
+                _oym_month = st.selectbox("月", range(1, 13), index=_oym_m_def - 1, format_func=lambda m: f"{m}月", key="occ_month")
+            occurrence_ym = f"{int(_oym_year):04d}{int(_oym_month):02d}"
+            st.session_state["occurrence_ym"] = occurrence_ym
+            st.caption(f"登録値: **{occurrence_ym}**")
             st.markdown("### 取得価格")
             acquisition_cost = _slider_and_number("acquisition_cost", "acquisition_cost", 1000, 0, 500000, 100, 100, label_slider="取得価格調整", max_val_number=90_000_000)
             # ---------- 5. 定性スコアリング（総合×重み＋定性×重みでランクA〜E。定性未選択時は総合スコアのみ） ----------
@@ -434,6 +480,8 @@ def render_apply_form(
         "item7_other": item7_other,
         "net_assets": net_assets,
         "total_assets": total_assets,
+        "total_assets_estimated": total_assets_estimated,
+        "occurrence_ym": occurrence_ym,
         "grade": grade,
         "trend_grade_t0": trend_grade_t0,
         "trend_grade_t1": trend_grade_t1,
@@ -474,8 +522,9 @@ def render_quick_edit_panel(jsic_data, lease_assets_list):
     _q_major = st.selectbox("大分類", _q_major_keys, index=_q_major_idx, key="_quick_major")
     _q_sub_keys = list(jsic_data[_q_major]["sub"].keys()) if jsic_data and _q_major in jsic_data else ["06 総合工事業"]
     _q_cur_sub = st.session_state.get("select_sub") or st.session_state.get("last_submitted_inputs", {}).get("selected_sub", _q_sub_keys[0])
-    _q_sub_idx = _q_sub_keys.index(_q_cur_sub) if _q_cur_sub in _q_sub_keys else 0
-    _q_sub = st.selectbox("中分類", _q_sub_keys, index=_q_sub_idx, key="_quick_sub")
+    # 中分類は一時非表示
+    _q_sub = _q_cur_sub if _q_cur_sub in _q_sub_keys else _q_sub_keys[0]
+    # _q_sub = st.selectbox("中分類", _q_sub_keys, index=_q_sub_idx, key="_quick_sub")
 
     st.divider()
 

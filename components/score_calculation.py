@@ -103,6 +103,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
     item7_other = form_result.get("item7_other")
     net_assets = form_result.get("net_assets")
     total_assets = form_result.get("total_assets")
+    total_assets_estimated = form_result.get("total_assets_estimated", False)
     grade = form_result.get("grade")
     bank_credit = form_result.get("bank_credit")
     lease_credit = form_result.get("lease_credit")
@@ -219,6 +220,14 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         + "\n".join(f"- {w}" for w in rec_warnings)
                         + "\n\n※ このまま判定を続行します。"
                     )
+
+            # 総資産が業種平均推定値の場合に注意喚起
+            if validation_ok and total_assets_estimated:
+                st.warning(
+                    "⚠️ **総資産は業種平均の資産回転率から推定した参考値です。**"
+                    " 自己資本比率・ROA・負債比率の精度が低下します。"
+                    " 決算書（BS）が入手できた場合は再入力してください。"
+                )
 
             # ── 入力値の整合性チェック（論理的矛盾を検出して警告）─────────────────
             if validation_ok:

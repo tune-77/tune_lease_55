@@ -41,6 +41,8 @@ def build_graph_data() -> dict:
     for c in cases:
         industry = c.get("industry_major") or "不明"
         status = c.get("final_status", "")
+        if status in ("検収完了", "検収"):
+            status = "成約"
         competitor = c.get("competitor_name", "") or ""
         has_competitor = c.get("competitor", "") == "競合あり"
         score = float(c.get("score") or (c.get("result") or {}).get("score") or 0)

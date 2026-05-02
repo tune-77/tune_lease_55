@@ -650,6 +650,12 @@ def render_sidebar(benchmarks_data: dict, useful_life_data: dict, lease_assets_l
     _render_reference_expanders(benchmarks_data, useful_life_data, lease_assets_list)
     _render_cache_and_ai_honne()
 
-    return mode
+    # ── クイック結果登録（どのページからでもアクセス可） ─────────────────────
+    with st.sidebar.expander("📝 成約・失注を登録", expanded=False):
+        try:
+            from components.form_status import render_quick_status_widget
+            render_quick_status_widget(context_key="sidebar")
+        except Exception as _e:
+            st.sidebar.caption(f"読み込みエラー: {_e}")
 
     return mode
