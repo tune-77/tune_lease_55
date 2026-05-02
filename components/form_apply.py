@@ -313,64 +313,87 @@ def render_apply_form(
             # fragment_nenshu_func の内部で "### 売上高 📌 必須（1以上）" と表示するため、呼び出し前に注記なし
             fragment_nenshu_func()
 
-            #  ②売上高総利益（スライダー1000百万円まで、手入力90000百万円まで）
+            #  ②売上高総利益（スライダーは従来どおり、手入力のみ900億千円まで）
             st.markdown("### 売上高総利益")
-            item9_gross = _slider_and_number("item9_gross", "sourieki", 10000, -500000, 1000000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
+            item9_gross = _slider_and_number("item9_gross", "sourieki", 10000, -500000, 1000000, 100, 1, max_val_number=90_000_000)
             # #③営業利益
             st.markdown("### 営業利益 💡 推奨（未入力だと営業利益率が 0% で計算されます）")
-            rieki = _slider_and_number("rieki", "rieki", 10000, -100000, 200000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
+            rieki = _slider_and_number("rieki", "rieki", 10000, -100000, 200000, 100, 1, max_val_number=90_000_000)
             st.markdown("### 経常利益")
-            item4_ord_profit = _slider_and_number("item4_ord_profit", "item4_ord_profit", 10000, -100000, 200000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
+            item4_ord_profit = _slider_and_number("item4_ord_profit", "item4_ord_profit", 10000, -100000, 200000, 100, 1, max_val_number=90_000_000)
             st.markdown("### 当期利益")
-            item5_net_income = _slider_and_number("item5_net_income", "item5_net_income", 10000, -100000, 200000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
+            item5_net_income = _slider_and_number("item5_net_income", "item5_net_income", 10000, -100000, 200000, 100, 1, max_val_number=90_000_000)
 
         with st.expander("🏢 2. 資産・経費・その他", expanded=False):
         
             st.markdown("### 減価償却費")
-            item10_dep = _slider_and_number("item10_dep", "item10_dep", 10000, 0, 200000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
+            item10_dep = _slider_and_number("item10_dep", "item10_dep", 10000, 0, 200000, 100, 1, max_val_number=90_000_000)
             st.markdown("### 減価償却費(経費)")
-            item11_dep_exp = _slider_and_number("item11_dep_exp", "item11_dep_exp", 10000, 0, 200000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
+            item11_dep_exp = _slider_and_number("item11_dep_exp", "item11_dep_exp", 10000, 0, 200000, 100, 1, max_val_number=90_000_000)
             # #⑧賃借料
             st.markdown("### 賃借料")
-            item8_rent = _slider_and_number("item8_rent", "item8_rent", 10000, 0, 100000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
+            item8_rent = _slider_and_number("item8_rent", "item8_rent", 10000, 0, 100000, 100, 1, max_val_number=90_000_000)
             st.markdown("### 賃借料（経費）")
-            item12_rent_exp = _slider_and_number("item12_rent_exp", "item12_rent_exp", 10000, 0, 100000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
+            item12_rent_exp = _slider_and_number("item12_rent_exp", "item12_rent_exp", 10000, 0, 100000, 100, 1, max_val_number=90_000_000)
             #⑩機械装置
             st.markdown("### 機械装置")
-            item6_machine = _slider_and_number("item6_machine", "item6_machine", 10000, 0, 200000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
+            item6_machine = _slider_and_number("item6_machine", "item6_machine", 10000, 0, 200000, 100, 1, max_val_number=90_000_000)
             st.markdown("### その他資産")
-            item7_other = _slider_and_number("item7_other", "item7_other", 10000, 0, 200000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
-            st.markdown("### 純資産 💡 推奨（未入力だと自己資本比率・学習モデル精度が低下します）")
-            net_assets = _slider_and_number("net_assets", "net_assets", 10000, -30000, 500000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
-            st.markdown("### 総資産 📌 必須（0.1百万円以上）")
+            item7_other = _slider_and_number("item7_other", "item7_other", 10000, 0, 200000, 100, 1, max_val_number=90_000_000)
+            st.markdown("### 総資産 📌 必須（1以上）")
             _no_bs = st.checkbox(
                 "BSデータなし（業種平均の資産回転率で自動推定）",
-                value=st.session_state.get("no_balance_sheet", False),
+                value=st.session_state.get("no_balance_sheet", int(st.session_state.get("total_assets", 0)) == 0),
                 key="no_balance_sheet",
                 help="決算書（BS）が入手できない場合にチェック。売上高÷業種平均資産回転率で総資産を推定します。精度はやや低下します。",
             )
-            # 業種コード（大分類先頭1文字）→ 業種平均資産回転率（日本中小企業統計ベース）
+            # 業種コード（大分類先頭1文字）→ 各種業種平均指標（中小企業庁統計ベース）
+            _major_code = (selected_major or " ")[0].upper()
             _ASSET_TURNOVER_BY_CODE = {
                 "A": 0.8, "B": 0.9, "C": 0.7, "D": 1.3, "E": 1.0,
                 "F": 0.3, "G": 0.9, "H": 0.7, "I": 1.7, "J": 1.5,
                 "K": 0.1, "L": 0.2, "M": 0.8, "N": 1.2, "O": 1.0,
                 "P": 0.8, "Q": 0.9, "R": 0.9, "S": 1.0,
             }
+            _EQUITY_RATIO_BY_CODE = {
+                "A": 0.40, "B": 0.35, "C": 0.40, "D": 0.28,
+                "E": 0.35, "F": 0.30, "G": 0.45, "H": 0.22,
+                "I": 0.22, "J": 0.18, "K": 0.12, "L": 0.25,
+                "M": 0.45, "N": 0.15, "O": 0.28, "P": 0.35,
+                "Q": 0.28, "R": 0.25, "S": 0.23,
+            }
             if _no_bs:
                 _nenshu_val = st.session_state.get("nenshu", 0) or 0
-                _major_code = (selected_major or " ")[0].upper()
                 _turnover = _ASSET_TURNOVER_BY_CODE.get(_major_code, 1.0)
                 _estimated = max(1, int(_nenshu_val / _turnover)) if _nenshu_val > 0 else 1
                 total_assets = _estimated
                 st.session_state["total_assets"] = _estimated
                 st.info(
-                    f"推定総資産: **{_estimated / 1000:.1f}百万円**"
-                    f"（売上高 {_nenshu_val / 1000:.1f}百万円 ÷ 業種平均回転率 {_turnover}）　※参考値・精度低下あり"
+                    f"推定総資産: **{_estimated/1000:,.1f}百万円**"
+                    f"（売上高 {_nenshu_val/1000:,.1f}百万円 ÷ 業種平均回転率 {_turnover}）　※参考値・精度低下あり"
                 )
                 total_assets_estimated = True
             else:
-                total_assets = _slider_and_number("total_assets", "total_assets", 10000, 0, 1000000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
+                total_assets = _slider_and_number("total_assets", "total_assets", 10000, 0, 1000000, 100, 1, max_val_number=90_000_000)
                 total_assets_estimated = False
+            st.markdown("### 純資産 💡 推奨（未入力だと自己資本比率・学習モデル精度が低下します）")
+            _no_net = st.checkbox(
+                "純資産未入力（業種平均の自己資本比率で自動推定）",
+                value=st.session_state.get("no_net_assets", int(st.session_state.get("net_assets", 0)) == 0),
+                key="no_net_assets",
+                help="決算書の純資産が不明な場合にチェック。総資産×業種平均自己資本比率で推定します。精度はやや低下します。",
+            )
+            if _no_net:
+                _eq_ratio = _EQUITY_RATIO_BY_CODE.get(_major_code, 0.25)
+                _est_net = max(0, int(total_assets * _eq_ratio))
+                net_assets = _est_net
+                st.session_state["net_assets"] = _est_net
+                st.info(
+                    f"推定純資産: **{_est_net/1000:,.1f}百万円**"
+                    f"（総資産 {total_assets/1000:,.1f}百万円 × 業種平均自己資本比率 {_eq_ratio*100:.0f}%）　※参考値・精度低下あり"
+                )
+            else:
+                net_assets = _slider_and_number("net_assets", "net_assets", 10000, -30000, 500000, 100, 1, max_val_number=90_000_000)
         with st.expander("💳 3. 信用情報", expanded=False):
 
             # default値をリスト内の文字列と完全に一致させる必要があります
@@ -387,10 +410,10 @@ def render_apply_form(
                 trend_grade_t0 = st.selectbox("今期", _trend_opts, index=_trend_opts.index(st.session_state.get("trend_grade_t0", "無格付")) if st.session_state.get("trend_grade_t0", "無格付") in _trend_opts else 7, key="trend_grade_t0")
             st.markdown("### うちの銀行与信")
             st.caption("当社の与信です（総銀行与信ではありません）")
-            bank_credit = _slider_and_number("bank_credit", "bank_credit", 10000, 0, 3000000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
+            bank_credit = _slider_and_number("bank_credit", "bank_credit", 10000, 0, 3000000, 100, 1, max_val_number=90_000_000)
             st.markdown("### うちのリース与信")
             st.caption("当社の与信です（総リース与信ではありません）")
-            lease_credit = _slider_and_number("lease_credit", "lease_credit", 10000, 0, 300000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
+            lease_credit = _slider_and_number("lease_credit", "lease_credit", 10000, 0, 300000, 100, 1, max_val_number=90_000_000)
             # #16契約数
             st.markdown("### 契約数")
             contracts = _slider_and_number("contracts", "contracts", 1, 0, 30, 1, 1, unit="件")
@@ -429,7 +452,7 @@ def render_apply_form(
             st.session_state["occurrence_ym"] = occurrence_ym
             st.caption(f"登録値: **{occurrence_ym}**")
             st.markdown("### 取得価格")
-            acquisition_cost = _slider_and_number("acquisition_cost", "acquisition_cost", 1000, 0, 500000, 100, 100, label_slider="取得価格調整", max_val_number=90_000_000, unit_factor=1000)
+            acquisition_cost = _slider_and_number("acquisition_cost", "acquisition_cost", 1000, 0, 500000, 100, 100, label_slider="取得価格調整", max_val_number=90_000_000)
             # ---------- 5. 定性スコアリング（総合×重み＋定性×重みでランクA〜E。定性未選択時は総合スコアのみ） ----------
             with st.expander("📋 定性スコアリング", expanded=False):
                 st.caption("審査員が定性面を項目別に評価します。ランク（A〜E）は **総合スコア×重み＋定性×重み**（デフォルト60%/40%）で算出。定性を1件も選んでいない場合はランクは出さず、総合スコアのみで判定します。（未選択の項目は定性スコアに含めません）")
@@ -532,16 +555,16 @@ def render_quick_edit_panel(jsic_data, lease_assets_list):
     st.markdown("#### 📊 損益計算書 P/L（百万円）")
     _q1, _q2, _q3 = st.columns(3)
     with _q1:
-        _q_nenshu = st.number_input("売上高（百万円）", min_value=0.0, max_value=90_000.0, value=round(st.session_state.get("nenshu", 0) / 1000, 1), step=0.1, key="_quick_nenshu")
+        _q_nenshu = st.number_input("売上高", min_value=0, max_value=90_000, value=int(st.session_state.get("nenshu", 0)) // 1000, step=1, key="_quick_nenshu")
     with _q2:
-        _q_gross = st.number_input("売上総利益（百万円）", min_value=-90_000.0, max_value=90_000.0, value=round(st.session_state.get("item9_gross", 0) / 1000, 1), step=0.1, key="_quick_gross")
+        _q_gross = st.number_input("売上総利益（粗利）", min_value=-90_000, max_value=90_000, value=int(st.session_state.get("item9_gross", 0)) // 1000, step=1, key="_quick_gross")
     with _q3:
-        _q_rieki = st.number_input("営業利益（百万円）", min_value=-90_000.0, max_value=90_000.0, value=round(st.session_state.get("rieki", 0) / 1000, 1), step=0.1, key="_quick_rieki")
+        _q_rieki = st.number_input("営業利益", min_value=-90_000, max_value=90_000, value=int(st.session_state.get("rieki", 0)) // 1000, step=1, key="_quick_rieki")
     _q4, _q5 = st.columns(2)
     with _q4:
-        _q_ord = st.number_input("経常利益（百万円）", min_value=-90_000.0, max_value=90_000.0, value=round(st.session_state.get("item4_ord_profit", 0) / 1000, 1), step=0.1, key="_quick_ord")
+        _q_ord = st.number_input("経常利益", min_value=-90_000, max_value=90_000, value=int(st.session_state.get("item4_ord_profit", 0)) // 1000, step=1, key="_quick_ord")
     with _q5:
-        _q_net_income = st.number_input("当期利益（百万円）", min_value=-90_000.0, max_value=90_000.0, value=round(st.session_state.get("item5_net_income", 0) / 1000, 1), step=0.1, key="_quick_net_income")
+        _q_net_income = st.number_input("当期利益", min_value=-90_000, max_value=90_000, value=int(st.session_state.get("item5_net_income", 0)) // 1000, step=1, key="_quick_net_income")
 
     st.divider()
 
@@ -549,19 +572,19 @@ def render_quick_edit_panel(jsic_data, lease_assets_list):
     st.markdown("#### 🏢 資産・経費（百万円）")
     _qA1, _qA2, _qA3 = st.columns(3)
     with _qA1:
-        _q_dep = st.number_input("減価償却費（資産）百万円", min_value=0.0, max_value=90_000.0, value=round(st.session_state.get("item10_dep", 0) / 1000, 1), step=0.1, key="_quick_dep")
-        _q_dep_exp = st.number_input("減価償却費（経費）百万円", min_value=0.0, max_value=90_000.0, value=round(st.session_state.get("item11_dep_exp", 0) / 1000, 1), step=0.1, key="_quick_dep_exp")
+        _q_dep = st.number_input("減価償却費（資産）", min_value=0, max_value=90_000, value=int(st.session_state.get("item10_dep", 0)) // 1000, step=1, key="_quick_dep")
+        _q_dep_exp = st.number_input("減価償却費（経費）", min_value=0, max_value=90_000, value=int(st.session_state.get("item11_dep_exp", 0)) // 1000, step=1, key="_quick_dep_exp")
     with _qA2:
-        _q_rent = st.number_input("賃借料（資産）百万円", min_value=0.0, max_value=90_000.0, value=round(st.session_state.get("item8_rent", 0) / 1000, 1), step=0.1, key="_quick_rent")
-        _q_rent_exp = st.number_input("賃借料（経費）百万円", min_value=0.0, max_value=90_000.0, value=round(st.session_state.get("item12_rent_exp", 0) / 1000, 1), step=0.1, key="_quick_rent_exp")
+        _q_rent = st.number_input("賃借料（資産）", min_value=0, max_value=90_000, value=int(st.session_state.get("item8_rent", 0)) // 1000, step=1, key="_quick_rent")
+        _q_rent_exp = st.number_input("賃借料（経費）", min_value=0, max_value=90_000, value=int(st.session_state.get("item12_rent_exp", 0)) // 1000, step=1, key="_quick_rent_exp")
     with _qA3:
-        _q_machine = st.number_input("機械装置（百万円）", min_value=0.0, max_value=90_000.0, value=round(st.session_state.get("item6_machine", 0) / 1000, 1), step=0.1, key="_quick_machine")
-        _q_other = st.number_input("その他資産（百万円）", min_value=0.0, max_value=90_000.0, value=round(st.session_state.get("item7_other", 0) / 1000, 1), step=0.1, key="_quick_other")
+        _q_machine = st.number_input("機械装置", min_value=0, max_value=90_000, value=int(st.session_state.get("item6_machine", 0)) // 1000, step=1, key="_quick_machine")
+        _q_other = st.number_input("その他資産", min_value=0, max_value=90_000, value=int(st.session_state.get("item7_other", 0)) // 1000, step=1, key="_quick_other")
     _qB1, _qB2 = st.columns(2)
     with _qB1:
-        _q_net = st.number_input("純資産（百万円）", min_value=-90_000.0, max_value=90_000.0, value=round(st.session_state.get("net_assets", 0) / 1000, 1), step=0.1, key="_quick_net")
+        _q_net = st.number_input("純資産", min_value=-90_000, max_value=90_000, value=int(st.session_state.get("net_assets", 0)) // 1000, step=1, key="_quick_net")
     with _qB2:
-        _q_total = st.number_input("総資産（百万円）", min_value=0.0, max_value=90_000.0, value=round(st.session_state.get("total_assets", 0) / 1000, 1), step=0.1, key="_quick_total")
+        _q_total = st.number_input("総資産", min_value=0, max_value=90_000, value=int(st.session_state.get("total_assets", 0)) // 1000, step=1, key="_quick_total")
 
     st.divider()
 
@@ -573,9 +596,9 @@ def render_quick_edit_panel(jsic_data, lease_assets_list):
         _q_cur_grade = st.session_state.get("grade", "②4-6 (標準)")
         _q_grade_idx = _grade_opts.index(_q_cur_grade) if _q_cur_grade in _grade_opts else 1
         _q_grade = st.selectbox("格付", _grade_opts, index=_q_grade_idx, key="_quick_grade")
-        _q_bank = st.number_input("銀行与信（百万円）", min_value=0.0, max_value=90_000.0, value=round(st.session_state.get("bank_credit", 0) / 1000, 1), step=0.1, key="_quick_bank")
+        _q_bank = st.number_input("銀行与信（百万円）", min_value=0, max_value=90_000, value=int(st.session_state.get("bank_credit", 0)) // 1000, step=1, key="_quick_bank")
     with _qC2:
-        _q_lease = st.number_input("リース与信（百万円）", min_value=0.0, max_value=90_000.0, value=round(st.session_state.get("lease_credit", 0) / 1000, 1), step=0.1, key="_quick_lease")
+        _q_lease = st.number_input("リース与信（百万円）", min_value=0, max_value=90_000, value=int(st.session_state.get("lease_credit", 0)) // 1000, step=1, key="_quick_lease")
         _q_contracts = st.number_input("契約数（件）", min_value=0, max_value=200, value=int(st.session_state.get("contracts", 0)), step=1, key="_quick_contracts")
 
     st.divider()
@@ -591,7 +614,7 @@ def render_quick_edit_panel(jsic_data, lease_assets_list):
         _q_lease_term = st.number_input("契約期間（月）", min_value=0, max_value=120, value=int(st.session_state.get("lease_term", 0)), step=1, key="_quick_lease_term")
     with _qD3:
         _q_acceptance_year = st.number_input("検収年（西暦）", min_value=2000, max_value=2100, value=int(st.session_state.get("acceptance_year", 2026)), step=1, key="_quick_acceptance_year")
-        _q_acq = st.number_input("取得価格（百万円）", min_value=0.0, max_value=90_000.0, value=round(st.session_state.get("acquisition_cost", 0) / 1000, 1), step=0.1, key="_quick_acq")
+        _q_acq = st.number_input("取得価格（百万円）", min_value=0, max_value=90_000, value=int(st.session_state.get("acquisition_cost", 0)) // 1000, step=1, key="_quick_acq")
     _q_asset_detail = ""
     if lease_assets_list:
         _q_asset_opts = [f"{it.get('name', '')}（{it.get('score', 0)}点）" for it in lease_assets_list]
@@ -647,20 +670,18 @@ def render_quick_edit_panel(jsic_data, lease_assets_list):
     # 再判定ボタンと更新状態を返す
     rejudge_clicked = st.button("🔄 再判定", type="primary", width='stretch')
     
-    # 百万円→千円変換（内部処理は千円単位）
-    def _mansen(v): return round(v * 1000)
     return {
         "rejudge_clicked": rejudge_clicked,
         "q_major": _q_major, "q_sub": _q_sub,
-        "q_nenshu": _mansen(_q_nenshu), "q_gross": _mansen(_q_gross), "q_rieki": _mansen(_q_rieki),
-        "q_ord": _mansen(_q_ord), "q_net_income": _mansen(_q_net_income),
-        "q_dep": _mansen(_q_dep), "q_dep_exp": _mansen(_q_dep_exp),
-        "q_rent": _mansen(_q_rent), "q_rent_exp": _mansen(_q_rent_exp),
-        "q_machine": _mansen(_q_machine), "q_other": _mansen(_q_other),
-        "q_net": _mansen(_q_net), "q_total": _mansen(_q_total),
-        "q_grade": _q_grade, "q_bank": _mansen(_q_bank), "q_lease": _mansen(_q_lease), "q_contracts": _q_contracts,
+        "q_nenshu": _q_nenshu, "q_gross": _q_gross, "q_rieki": _q_rieki,
+        "q_ord": _q_ord, "q_net_income": _q_net_income,
+        "q_dep": _q_dep, "q_dep_exp": _q_dep_exp,
+        "q_rent": _q_rent, "q_rent_exp": _q_rent_exp,
+        "q_machine": _q_machine, "q_other": _q_other,
+        "q_net": _q_net, "q_total": _q_total,
+        "q_grade": _q_grade, "q_bank": _q_bank, "q_lease": _q_lease, "q_contracts": _q_contracts,
         "q_ctype": _q_ctype, "q_contract_type": _q_contract_type, "q_deal_source": _q_deal_source,
-        "q_lease_term": _q_lease_term, "q_acceptance_year": _q_acceptance_year, "q_acq": _mansen(_q_acq),
+        "q_lease_term": _q_lease_term, "q_acceptance_year": _q_acceptance_year, "q_acq": _q_acq,
         "q_asset_sel": _q_asset_sel,
         "q_asset_detail": _q_asset_detail,
         "q_qual": _q_qual

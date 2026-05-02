@@ -193,8 +193,8 @@ def _build_forecast_chart(
     """
     months_hist = api_resp["months_history"]
     months_fore = api_resp["months_forecast"]
-    hist_vals   = api_resp[metric_key_hist]
-    fore_vals   = api_resp[metric_key_fore]
+    hist_vals   = [v / 1000 for v in api_resp[metric_key_hist]]
+    fore_vals   = [v / 1000 for v in api_resp[metric_key_fore]]
 
     fig = go.Figure()
 
@@ -240,7 +240,7 @@ def _build_forecast_chart(
     fig.update_layout(
         title=f"{label} 推移（実績 + 12ヶ月予測）",
         xaxis_title="月",
-        yaxis_title="千円",
+        yaxis_title="百万円",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         height=340,
         margin=dict(l=40, r=20, t=60, b=40),
@@ -372,13 +372,13 @@ def _build_gemini_prompt(
 
 【業種】{industry}
 
-【3期財務実績（千円）】
-{df_input[['期','売上高','営業利益','純資産']].to_string(index=False)}
+【3期財務実績（百万円）】
+{df_input[['期','売上高','営業利益','純資産']].assign(**{c: df_input[c]/1000 for c in ['売上高','営業利益','純資産']}).to_string(index=False)}
 
-【TimesFMによる12ヶ月後の予測着地見込み（千円）】
-- 売上高:  {latest_sales:,.0f} → {sales_fore_12m:,.0f}（増減率: {sales_growth:+.1f}%）
-- 営業利益: {latest_profit:,.0f} → {profit_fore_12m:,.0f}
-- 純資産:  {latest_net_assets:,.0f} → {net_assets_fore_12m:,.0f}
+【TimesFMによる12ヶ月後の予測着地見込み（百万円）】
+- 売上高:  {latest_sales/1000:,.1f} → {sales_fore_12m/1000:,.1f}（増減率: {sales_growth:+.1f}%）
+- 営業利益: {latest_profit/1000:,.1f} → {profit_fore_12m/1000:,.1f}
+- 純資産:  {latest_net_assets/1000:,.1f} → {net_assets_fore_12m/1000:,.1f}
 - 予測営業利益率: {profit_margin_fore:.1f}%
 
 【出力形式（必ず以下の3行で回答すること）】
@@ -564,9 +564,9 @@ def render_financial_analysis() -> None:
 
     display_df = pd.DataFrame({
         "期":           df_metrics["期"],
-        "売上高(千円)":   df_metrics["売上高"].map(fmt_num),
-        "営業利益(千円)": df_metrics["営業利益"].map(fmt_num),
-        "純資産(千円)":   df_metrics["純資産"].map(fmt_num),
+        "売上高(百万円)":   (df_metrics["売上高"] / 1000).map(fmt_num),
+        "営業利益(百万円)": (df_metrics["営業利益"] / 1000).map(fmt_num),
+        "純資産(百万円)":   (df_metrics["純資産"] / 1000).map(fmt_num),
         "売上成長率":     df_metrics["売上成長率(%)"].map(fmt_pct),
         "営業利益率":     df_metrics["営業利益率(%)"].map(fmt_pct),
         "純資産比率":     df_metrics["純資産比率(%)"].map(fmt_pct),

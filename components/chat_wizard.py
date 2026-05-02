@@ -638,21 +638,28 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
         _bot("次は貸借対照表です 🏦<br>"
              "決算書がない場合は <b>「BSデータなし」</b> にチェックすると業種平均で総資産を自動推定します。<br>"
              "ある場合は「資産の部 合計」を入力してください。")
+        _major_code = (d.get("selected_major", "") or " ")[0].upper()
         _ASSET_TURNOVER_BY_CODE = {
             "A": 0.8, "B": 0.9, "C": 0.7, "D": 1.3, "E": 1.0,
             "F": 0.3, "G": 0.9, "H": 0.7, "I": 1.7, "J": 1.5,
             "K": 0.1, "L": 0.2, "M": 0.8, "N": 1.2, "O": 1.0,
             "P": 0.8, "Q": 0.9, "R": 0.9, "S": 1.0,
         }
+        _EQUITY_RATIO_BY_CODE = {
+            "A": 0.40, "B": 0.35, "C": 0.40, "D": 0.28,
+            "E": 0.35, "F": 0.30, "G": 0.45, "H": 0.22,
+            "I": 0.22, "J": 0.18, "K": 0.12, "L": 0.25,
+            "M": 0.45, "N": 0.15, "O": 0.28, "P": 0.35,
+            "Q": 0.28, "R": 0.25, "S": 0.23,
+        }
         _no_bs = st.checkbox(
             "BSデータなし（業種平均の資産回転率で自動推定）",
-            value=d.get("total_assets_estimated", False),
+            value=d.get("total_assets_estimated", int(d.get("total_assets", 0)) == 0),
             key="wiz_no_bs",
             help="決算書が入手できない場合にチェック。売上高÷業種平均資産回転率で総資産を推定します。精度はやや低下します。",
         )
         if _no_bs:
             _nenshu_val = int(d.get("nenshu", 0) or 0)
-            _major_code = (d.get("selected_major", "") or " ")[0].upper()
             _turnover = _ASSET_TURNOVER_BY_CODE.get(_major_code, 1.0)
             total_v = max(1, int(_nenshu_val / _turnover)) if _nenshu_val > 0 else 1
             st.info(
@@ -666,20 +673,38 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
                                      step=0.1, key="wiz_total", placeholder="例: 80.0")
             total_v = round((total or 0.0) * 1000)
             total_assets_estimated = False
-        net_a  = st.number_input("純資産（百万円）💡推奨", -30.0, 90_000.0,
-                                 value=round(d["net_assets"] / 1000, 1) if "net_assets" in d else None,
-                                 step=0.1, key="wiz_neta", placeholder="例: 25.0")
+        _no_net = st.checkbox(
+            "純資産未入力（業種平均の自己資本比率で自動推定）",
+            value=d.get("net_assets_estimated", int(d.get("net_assets", 0)) == 0),
+            key="wiz_no_net",
+            help="決算書の純資産が不明な場合にチェック。総資産×業種平均自己資本比率で推定します。精度はやや低下します。",
+        )
+        if _no_net:
+            _eq_ratio = _EQUITY_RATIO_BY_CODE.get(_major_code, 0.25)
+            net_a_v = max(0, int(total_v * _eq_ratio))
+            st.info(
+                f"推定純資産: **{net_a_v / 1000:.1f}百万円**"
+                f"（総資産 {total_v / 1000:.1f}百万円 × 業種平均自己資本比率 {_eq_ratio*100:.0f}%）　※参考値・精度低下あり"
+            )
+            net_assets_estimated = True
+        else:
+            net_a  = st.number_input("純資産（百万円）💡推奨", -30.0, 90_000.0,
+                                     value=round(d["net_assets"] / 1000, 1) if "net_assets" in d and not d.get("net_assets_estimated") else None,
+                                     step=0.1, key="wiz_neta", placeholder="例: 25.0")
+            net_a_v = round((net_a or 0.0) * 1000)
+            net_assets_estimated = False
         mach   = st.number_input("機械装置（百万円）", 0.0, 90_000.0,
                                  value=round(d["item6_machine"] / 1000, 1) if "item6_machine" in d else None,
                                  step=0.1, key="wiz_mach", placeholder="空欄→0")
         other  = st.number_input("その他資産（百万円）", 0.0, 90_000.0,
                                  value=round(d["item7_other"] / 1000, 1) if "item7_other" in d else None,
                                  step=0.1, key="wiz_otha", placeholder="空欄→0")
-        net_a_v = round((net_a or 0.0) * 1000)
         mach_v  = round((mach  or 0.0) * 1000)
         other_v = round((other or 0.0) * 1000)
         ok = total_v > 0
-        _answer = f"総資産: {total_v / 1000:.1f}（推定）/ 純資産: {net_a_v / 1000:.1f}（百万円）" if total_assets_estimated else f"総資産: {total_v / 1000:.1f} / 純資産: {net_a_v / 1000:.1f}（百万円）"
+        _ta_label = f"総資産: {total_v / 1000:.1f}（推定）" if total_assets_estimated else f"総資産: {total_v / 1000:.1f}"
+        _na_label = f"純資産: {net_a_v / 1000:.1f}（推定）" if net_assets_estimated else f"純資産: {net_a_v / 1000:.1f}"
+        _answer = f"{_ta_label} / {_na_label}（百万円）"
         _nav_buttons(step,
                      question="資産情報を入力してください",
                      answer=_answer,
@@ -687,7 +712,8 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
                               "net_assets": net_a_v, "num_net_assets": net_a_v,
                               "item6_machine": mach_v, "num_item6_machine": mach_v,
                               "item7_other": other_v, "num_item7_other": other_v,
-                              "total_assets_estimated": total_assets_estimated},
+                              "total_assets_estimated": total_assets_estimated,
+                              "net_assets_estimated": net_assets_estimated},
                      can_proceed=ok,
                      warn_msg="⚠️ 総資産は1以上の値を入力してください（またはBSデータなしにチェックしてください）。")
 

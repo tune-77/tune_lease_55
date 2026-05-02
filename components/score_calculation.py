@@ -235,14 +235,14 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 # 純資産 > 総資産 は会計上あり得ない
                 if total_assets > 0 and net_assets > total_assets:
                     _cons_warns.append(
-                        f"**純資産（{net_assets:,}千円）> 総資産（{total_assets:,}千円）**"
+                        f"**純資産（{net_assets/1000:,.1f}百万円）> 総資産（{total_assets/1000:,.1f}百万円）**"
                         " — 入力値を確認してください。"
                     )
                 # 固定資産合計 > 総資産
                 _fixed_total = item6_machine + item7_other
                 if total_assets > 0 and _fixed_total > total_assets:
                     _cons_warns.append(
-                        f"**機械装置＋その他固定資産（{_fixed_total:,}千円）> 総資産（{total_assets:,}千円）**"
+                        f"**機械装置＋その他固定資産（{_fixed_total/1000:,.1f}百万円）> 総資産（{total_assets/1000:,.1f}百万円）**"
                         " — 固定資産の入力値を確認してください。"
                     )
                 # 営業利益率が100%超（売上より利益が大きい）
@@ -254,20 +254,20 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 # 売上総利益 > 売上高
                 if nenshu > 0 and item9_gross > nenshu:
                     _cons_warns.append(
-                        f"**売上総利益（{item9_gross:,}千円）> 売上高（{nenshu:,}千円）**"
+                        f"**売上総利益（{item9_gross/1000:,.1f}百万円）> 売上高（{nenshu/1000:,.1f}百万円）**"
                         " — 入力値を確認してください。"
                     )
                 # 経常利益 > 売上高
                 if nenshu > 0 and item4_ord_profit > nenshu:
                     _cons_warns.append(
-                        f"**経常利益（{item4_ord_profit:,}千円）> 売上高（{nenshu:,}千円）**"
+                        f"**経常利益（{item4_ord_profit/1000:,.1f}百万円）> 売上高（{nenshu/1000:,.1f}百万円）**"
                         " — 入力値を確認してください。"
                     )
                 # 売上高が異常に小さい（100万円未満）→ 単位誤り疑い
                 if 0 < nenshu < 1_000:
                     _cons_warns.append(
-                        f"**売上高が{nenshu:,}千円（= {nenshu/1000:.1f}百万円）**"
-                        " — 入力単位は「千円」です。百万円・億円で入力した可能性があります。"
+                        f"**売上高が{nenshu/1000:.2f}百万円**"
+                        " — 入力単位は「百万円」です。億円単位で入力した可能性があります。"
                     )
                 if _cons_warns:
                     st.warning(

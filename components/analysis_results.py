@@ -95,25 +95,25 @@ def render_analysis_results(
                 # 業種
                 st.session_state["select_major"] = quick_res["q_major"]
                 st.session_state["select_sub"] = quick_res["q_sub"]
-                # P/L
-                st.session_state["nenshu"] = quick_res["q_nenshu"]
-                st.session_state["item9_gross"] = quick_res["q_gross"]
-                st.session_state["rieki"] = quick_res["q_rieki"]
-                st.session_state["item4_ord_profit"] = quick_res["q_ord"]
-                st.session_state["item5_net_income"] = quick_res["q_net_income"]
-                # 資産・経費
-                st.session_state["item10_dep"] = quick_res["q_dep"]
-                st.session_state["item11_dep_exp"] = quick_res["q_dep_exp"]
-                st.session_state["item8_rent"] = quick_res["q_rent"]
-                st.session_state["item12_rent_exp"] = quick_res["q_rent_exp"]
-                st.session_state["item6_machine"] = quick_res["q_machine"]
-                st.session_state["item7_other"] = quick_res["q_other"]
-                st.session_state["net_assets"] = quick_res["q_net"]
-                st.session_state["total_assets"] = quick_res["q_total"]
+                # P/L（クイックパネルは百万円入力 → 内部は千円に変換）
+                st.session_state["nenshu"] = quick_res["q_nenshu"] * 1000
+                st.session_state["item9_gross"] = quick_res["q_gross"] * 1000
+                st.session_state["rieki"] = quick_res["q_rieki"] * 1000
+                st.session_state["item4_ord_profit"] = quick_res["q_ord"] * 1000
+                st.session_state["item5_net_income"] = quick_res["q_net_income"] * 1000
+                # 資産・経費（百万円 → 千円）
+                st.session_state["item10_dep"] = quick_res["q_dep"] * 1000
+                st.session_state["item11_dep_exp"] = quick_res["q_dep_exp"] * 1000
+                st.session_state["item8_rent"] = quick_res["q_rent"] * 1000
+                st.session_state["item12_rent_exp"] = quick_res["q_rent_exp"] * 1000
+                st.session_state["item6_machine"] = quick_res["q_machine"] * 1000
+                st.session_state["item7_other"] = quick_res["q_other"] * 1000
+                st.session_state["net_assets"] = quick_res["q_net"] * 1000
+                st.session_state["total_assets"] = quick_res["q_total"] * 1000
                 # 信用情報
                 st.session_state["grade"] = quick_res["q_grade"]
-                st.session_state["bank_credit"] = quick_res["q_bank"]
-                st.session_state["lease_credit"] = quick_res["q_lease"]
+                st.session_state["bank_credit"] = quick_res["q_bank"] * 1000
+                st.session_state["lease_credit"] = quick_res["q_lease"] * 1000
                 st.session_state["contracts"] = quick_res["q_contracts"]
                 # 契約条件
                 st.session_state["customer_type"] = quick_res["q_ctype"]
@@ -121,7 +121,7 @@ def render_analysis_results(
                 st.session_state["deal_source"] = quick_res["q_deal_source"]
                 st.session_state["lease_term"] = quick_res["q_lease_term"]
                 st.session_state["acceptance_year"] = quick_res["q_acceptance_year"]
-                st.session_state["acquisition_cost"] = quick_res["q_acq"]
+                st.session_state["acquisition_cost"] = quick_res["q_acq"] * 1000
                 if quick_res["q_asset_sel"] is not None:
                     st.session_state["selected_asset_index"] = quick_res["q_asset_sel"]
                 # 車両タイプをメインフォームへ同期（_quick_asset_detail → asset_vtype_select）

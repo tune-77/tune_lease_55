@@ -1230,3 +1230,72 @@ def get_ai_negotiation_strategy(res: dict, similar_cases: list, lost_stats: dict
     except Exception as e:
         log_warning(f"交渉戦略生成失敗: {e}", context="get_ai_negotiation_strategy")
         return None
+
+# =====================================================================
+# メタ的なリアルタイムツッコミ（フェーズ3）
+# =====================================================================
+import streamlit as st
+
+def trigger_realtime_interjection(sales: float, profit: float, industry: str, net_assets: float = 0.0, rent: float = 0.0):
+    """
+    売上と営業利益、純資産、賃借料のバランスを見て、異常があればGeminiにツッコミを入れさせる。
+    st.cache_dataを使うことで、同じ数字の組み合わせならAPIを呼ばない（節約＆高速化）。
+    """
+    if not is_ai_available():
+        return None
+        
+    try:
+        sales_val = float(sales)
+        profit_val = float(profit)
+        net_assets_val = float(net_assets)
+        rent_val = float(rent)
+    except Exception:
+        return None
+
+    if sales_val <= 0 and net_assets_val >= 0 and rent_val <= 0:
+        return None
+    
+    # トリガー条件の設定
+    anomaly = ""
+    if net_assets_val < 0:
+        anomaly = "純資産がマイナス（債務超過で倒産リスク激高）"
+    elif sales_val > 0 and rent_val > (sales_val * 0.1):
+        anomaly = f"売上に対して賃借料・リース料（{rent_val:,.0f}千円）が異常に多い。すでに他社でリースを使いまくっている可能性大"
+    elif sales_val > 50000 and profit_val < 0:
+        anomaly = "売上がそこそこあるのに赤字"
+    elif sales_val > 100000 and profit_val < (sales_val * 0.01) and profit_val > 0:
+        anomaly = "売上が巨大なのに利益率が1%未満で超薄利"
+    elif profit_val > (sales_val * 0.5):
+        anomaly = "売上の半分以上が営業利益という異常な超高収益（入力ミスの可能性あり）"
+    else:
+        return None # 正常なら何も言わない
+
+    return _generate_cached_interjection(sales_val, profit_val, net_assets_val, rent_val, industry, anomaly)
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def _generate_cached_interjection(sales, profit, net_assets, rent, industry, anomaly):
+    from app_logger import log_error
+    try:
+        prompt = f"""
+        あなたは、有能だが激務で死んだ魚の目をしたベテラン審査員「八奈見杏奈」として振る舞ってください。
+        今、ユーザーが以下の数値を入力（またはEnter確定）しました。
+        ・業種: {industry}
+        ・売上: {sales:,.0f} 千円
+        ・営業利益: {profit:,.0f} 千円
+        ・純資産: {net_assets:,.0f} 千円
+        ・賃借料(リース料込): {rent:,.0f} 千円
+        
+        【異常点検知】: {anomaly}
+        
+        これに対して、八奈見らしい「ちょっとちょっと…」と呆れたような、あるいは毒舌でユーモアのあるツッコミを入れてください。
+        「また私の仕事増やす気？」「これじゃQ_riskが爆発するんだけど」などのメタ的なボヤキや、食い意地の張った発言（おごり要求など）を1〜2行で。
+        絵文字も使って軽快に。絶対に長文にならないこと（最大60文字程度）。
+        """
+        res = chat_with_retry([
+            {"role": "system", "content": AI_HONNE_SYSTEM},
+            {"role": "user", "content": prompt}
+        ])
+        return res
+    except Exception as e:
+        log_error(f"リアルタイムツッコミ生成エラー: {e}")
+        return None

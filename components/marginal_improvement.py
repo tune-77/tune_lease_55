@@ -90,7 +90,7 @@ def _fmt_delta(scenario: dict, step: float, base_val: float) -> str:
         added = base_val * step
         return f"+{step*100:.0f}% (約{added/1000:,.0f}百万円増)"
     elif key in ("additive", "additive_int"):
-        return f"+{int(step):,}千円" if key == "additive" else f"+{int(step)}件"
+        return f"+{step/1000:,.1f}百万円" if key == "additive" else f"+{int(step)}件"
     return str(step)
 
 

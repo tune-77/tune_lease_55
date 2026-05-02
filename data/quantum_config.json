@@ -24,7 +24,20 @@
     "synth_fallback_n": 30,
     "min_industry_cases": 2
   },
-  "candidate_pairs": [],
+  "candidate_pairs": [
+    {
+      "var_a": "op_profit",
+      "var_b": "contracts",
+      "weight": 1.0,
+      "source": "quantum_screener"
+    },
+    {
+      "var_a": "depreciation",
+      "var_b": "contracts",
+      "weight": 1.0,
+      "source": "quantum_screener"
+    }
+  ],
   "selection": {
     "epsilon": 0.0,
     "score_min": 70,
