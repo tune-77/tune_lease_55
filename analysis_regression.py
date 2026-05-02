@@ -1361,3 +1361,61 @@ def train_lgbm_from_cases(all_logs, save_path: str | None = None):
     }, save_path)
 
     return acc, auc, save_path, n_pos, n_neg
+
+
+def backup_coeff_overrides(backup_dir: str | None = None) -> str | None:
+    """
+    現在の coeff_overrides（全モデルキーの係数）をタイムスタンプ付き JSON に保存する。
+
+    Returns:
+        保存先パス（str）、または保存すべきデータがない場合は None
+    """
+    from datetime import datetime
+    from data_cases import load_coeff_overrides
+
+    current = load_coeff_overrides()
+    if not current:
+        return None
+
+    if backup_dir is None:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        backup_dir = os.path.join(base_dir, "data", "backups")
+
+    os.makedirs(backup_dir, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = os.path.join(backup_dir, f"coeff_backup_{ts}.json")
+
+    import json
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(current, f, ensure_ascii=False, indent=2)
+
+    return path
+
+
+def backup_lgbm_model(lgbm_path: str | None = None, backup_dir: str | None = None) -> str | None:
+    """
+    既存の lgbm_contract_model.pkl をタイムスタンプ付きでコピー保存する。
+
+    Returns:
+        コピー先パス（str）、または元ファイルが存在しない場合は None
+    """
+    import shutil
+    from datetime import datetime
+
+    if lgbm_path is None:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        lgbm_path = os.path.join(base_dir, "data", "lgbm_contract_model.pkl")
+
+    if not os.path.exists(lgbm_path):
+        return None
+
+    if backup_dir is None:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        backup_dir = os.path.join(base_dir, "data", "backups")
+
+    os.makedirs(backup_dir, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dest = os.path.join(backup_dir, f"lgbm_backup_{ts}.pkl")
+    shutil.copy2(lgbm_path, dest)
+
+    return dest
