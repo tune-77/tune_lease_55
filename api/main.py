@@ -55,9 +55,16 @@ _load_secrets_to_env()
 
 from scoring_core import run_quick_scoring
 from api.scoring_full import run_full_scoring_api
-from api.schemas import ScoringRequest, ScoringResponse, CaseRegisterRequest
+from api.schemas import (
+    ScoringRequest,
+    ScoringResponse,
+    CaseRegisterRequest,
+    DealClosureRequest,
+    DealClosureResponse,
+)
 from pydantic import BaseModel
 from typing import List, Any, Dict
+from scoring.deal_closure_engine import build_features, build_features_from_deltas, compute_closure_likelihood
 
 app = FastAPI(
     title="Lease Scoring API",
@@ -187,6 +194,34 @@ def calculate_score_full(req: ScoringRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+
+
+@app.post("/api/deal/closure-probability", response_model=DealClosureResponse)
+def calc_deal_closure_probability(req: DealClosureRequest):
+    try:
+        if req.delta_send is not None and req.delta_response is not None:
+            features = build_features_from_deltas(req.delta_send, req.delta_response)
+        elif req.registration_date and req.estimate_sent_date and req.customer_response_date:
+            features = build_features(
+                registration_date=req.registration_date,
+                estimate_sent_date=req.estimate_sent_date,
+                customer_response_date=req.customer_response_date,
+            )
+        else:
+            raise ValueError("Either (delta_send & delta_response) or all 3 dates are required")
+        prob = compute_closure_likelihood(features, has_cash_data=req.has_cash_data)
+        return DealClosureResponse(
+            closure_probability=prob,
+            closure_probability_percent=round(prob * 100.0, 2),
+            delta_send=features.delta_send,
+            delta_response=features.delta_response,
+            model_note="Trajectory-likelihood prototype (residue-inspired), preserving existing score pipeline.",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/cases/pending")
 def get_pending_cases():
     """全DB(lease_data.db, screening_db.sqlite)から未登録案件を統合して取得する"""
@@ -215,6 +250,9 @@ def get_pending_cases():
                         "timestamp": r["timestamp"],
                         "score": r["score"],
                         "industry": r["industry_sub"] or d.get("industry_major", ""),
+                        "registration_date": d.get("registration_date") or (r["timestamp"] or "")[:10],
+                        "estimate_sent_date": d.get("estimate_sent_date") or (r["timestamp"] or "")[:10],
+                        "final_result_date": d.get("final_result_date"),
                         "_source": "past_cases"
                     })
         except Exception: pass
@@ -875,6 +913,69 @@ class CaseRegistration(BaseModel):
     competitor_rate: float = 0.0
     note: str = ""
 
+
+class CaseProgressStampRequest(BaseModel):
+    case_id: str
+    event_type: str  # estimate_sent | customer_response
+    occurred_at: str | None = None  # YYYY-MM-DD
+
+
+def _compute_case_closure_probability(case_data: dict) -> float | None:
+    from scoring.deal_closure_engine import build_features, compute_closure_likelihood
+    reg = case_data.get("registration_date")
+    est = case_data.get("estimate_sent_date")
+    resp = case_data.get("customer_response_date")
+    if not (reg and est and resp):
+        return None
+    features = build_features(registration_date=reg, estimate_sent_date=est, customer_response_date=resp)
+    prob = compute_closure_likelihood(features, has_cash_data=bool(case_data.get("has_cash_data", True)))
+    return float(prob)
+
+@app.post("/api/cases/progress-stamp")
+def stamp_case_progress(req: CaseProgressStampRequest):
+    from data_cases import load_all_cases, update_case
+    import datetime
+
+    cases = load_all_cases()
+    target = None
+    for c in cases:
+        if c.get("id") == req.case_id or c.get("company_no") == req.case_id or c.get("company_name") == req.case_id:
+            target = c
+            break
+    if not target:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    stamp_date = req.occurred_at or datetime.datetime.now().strftime("%Y-%m-%d")
+    if req.event_type == "estimate_sent":
+        key = "estimate_sent_date"
+    elif req.event_type == "customer_response":
+        key = "customer_response_date"
+    else:
+        raise HTTPException(status_code=422, detail="event_type must be estimate_sent or customer_response")
+
+    if not update_case(target.get("id"), {key: stamp_date}):
+        raise HTTPException(status_code=500, detail="Failed to update timestamp")
+
+    target[key] = stamp_date
+    if not target.get("registration_date"):
+        target["registration_date"] = str(target.get("timestamp", ""))[:10] or stamp_date
+
+    prob = _compute_case_closure_probability(target)
+    if prob is not None:
+        update_case(target.get("id"), {
+            "predicted_closure_probability": prob,
+            "predicted_closure_probability_percent": round(prob * 100.0, 2),
+        })
+
+    return {
+        "status": "success",
+        "case_id": target.get("id"),
+        "event_type": req.event_type,
+        "stamped_at": stamp_date,
+        "closure_probability": prob,
+        "closure_probability_percent": round(prob * 100.0, 2) if prob is not None else None,
+    }
+
 @app.post("/api/cases/register")
 def register_case_result(req: CaseRegistration):
     from data_cases import load_all_cases, update_case
@@ -895,6 +996,12 @@ def register_case_result(req: CaseRegistration):
     if not target_case_id:
         raise HTTPException(status_code=404, detail="Case not found")
         
+    import datetime
+    now_iso = datetime.datetime.now().isoformat()
+    now_date = now_iso[:10]
+    registration_date = c.get("registration_date") or c.get("timestamp", "")[:10] or now_date
+    estimate_sent_date = c.get("estimate_sent_date") or registration_date
+
     patches = {
         "final_status": req.status,
         "final_rate": req.final_rate,
@@ -903,6 +1010,10 @@ def register_case_result(req: CaseRegistration):
         "competitor_name": req.competitor_name,
         "competitor_rate": req.competitor_rate if req.competitor_rate > 0 else None,
         "final_note": req.note,
+        "registration_date": registration_date,
+        "estimate_sent_date": estimate_sent_date,
+        "final_result_date": now_date,
+        "final_result_timestamp": now_iso,
     }
     if req.status == "成約" and req.final_rate > 0:
         patches["winning_spread"] = req.final_rate - req.base_rate_at_time

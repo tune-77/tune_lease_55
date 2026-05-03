@@ -551,6 +551,8 @@ def save_case_log(data):
     # final_status が呼び出し元で既にセットされている場合（バッチ成約/失注）は上書きしない
     if "final_status" not in data or not data["final_status"]:
         data["final_status"] = "未登録"
+    if not data.get("registration_date"):
+        data["registration_date"] = str(data.get("timestamp", ""))[:10] or datetime.datetime.now().strftime("%Y-%m-%d")
     
     industry_sub = data.get("industry_sub", "")
     score, user_eq = None, None
@@ -586,7 +588,11 @@ def save_case_log(data):
                     user_eq REAL,
                     final_status TEXT,
                     data TEXT,
-                    sales_dept TEXT DEFAULT '未設定'
+                    sales_dept TEXT DEFAULT '未設定',
+                    registration_date TEXT,
+                    estimate_sent_date TEXT,
+                    customer_response_date TEXT,
+                    final_result_date TEXT
                 )
             """)
             # sales_dept カラムが存在しない古いDBへの対応
@@ -594,13 +600,36 @@ def save_case_log(data):
                 conn.execute("ALTER TABLE past_cases ADD COLUMN sales_dept TEXT DEFAULT '未設定'")
             except Exception:
                 pass
+            for col in ("registration_date", "estimate_sent_date", "customer_response_date", "final_result_date"):
+                try:
+                    conn.execute(f"ALTER TABLE past_cases ADD COLUMN {col} TEXT")
+                except Exception:
+                    pass
             sales_dept_val = data.get("sales_dept", "未設定") or "未設定"
+            registration_date = data.get("registration_date")
+            estimate_sent_date = data.get("estimate_sent_date")
+            customer_response_date = data.get("customer_response_date")
+            final_result_date = data.get("final_result_date")
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO past_cases
-                (id, timestamp, industry_sub, score, user_eq, final_status, data, sales_dept)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (case_id, data["timestamp"], industry_sub, score_val, user_eq_val, data["final_status"], json_str, sales_dept_val))
+                (id, timestamp, industry_sub, score, user_eq, final_status, data, sales_dept,
+                 registration_date, estimate_sent_date, customer_response_date, final_result_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                case_id,
+                data["timestamp"],
+                industry_sub,
+                score_val,
+                user_eq_val,
+                data["final_status"],
+                json_str,
+                sales_dept_val,
+                registration_date,
+                estimate_sent_date,
+                customer_response_date,
+                final_result_date,
+            ))
             conn.commit()
         return case_id
     except Exception as e:
