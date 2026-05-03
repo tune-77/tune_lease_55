@@ -315,31 +315,31 @@ def render_apply_form(
 
             #  ②売上高総利益（スライダーは従来どおり、手入力のみ900億千円まで）
             st.markdown("### 売上高総利益")
-            item9_gross = _slider_and_number("item9_gross", "sourieki", 10000, -500000, 1000000, 100, 1, max_val_number=90_000_000)
+            item9_gross = _slider_and_number("item9_gross", "sourieki", 10000, -500000, 1000000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
             # #③営業利益
             st.markdown("### 営業利益 💡 推奨（未入力だと営業利益率が 0% で計算されます）")
-            rieki = _slider_and_number("rieki", "rieki", 10000, -100000, 200000, 100, 1, max_val_number=90_000_000)
+            rieki = _slider_and_number("rieki", "rieki", 10000, -100000, 200000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
             st.markdown("### 経常利益")
-            item4_ord_profit = _slider_and_number("item4_ord_profit", "item4_ord_profit", 10000, -100000, 200000, 100, 1, max_val_number=90_000_000)
+            item4_ord_profit = _slider_and_number("item4_ord_profit", "item4_ord_profit", 10000, -100000, 200000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
             st.markdown("### 当期利益")
-            item5_net_income = _slider_and_number("item5_net_income", "item5_net_income", 10000, -100000, 200000, 100, 1, max_val_number=90_000_000)
+            item5_net_income = _slider_and_number("item5_net_income", "item5_net_income", 10000, -100000, 200000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
 
         with st.expander("🏢 2. 資産・経費・その他", expanded=False):
         
             st.markdown("### 減価償却費")
-            item10_dep = _slider_and_number("item10_dep", "item10_dep", 10000, 0, 200000, 100, 1, max_val_number=90_000_000)
+            item10_dep = _slider_and_number("item10_dep", "item10_dep", 10000, 0, 200000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
             st.markdown("### 減価償却費(経費)")
-            item11_dep_exp = _slider_and_number("item11_dep_exp", "item11_dep_exp", 10000, 0, 200000, 100, 1, max_val_number=90_000_000)
+            item11_dep_exp = _slider_and_number("item11_dep_exp", "item11_dep_exp", 10000, 0, 200000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
             # #⑧賃借料
             st.markdown("### 賃借料")
-            item8_rent = _slider_and_number("item8_rent", "item8_rent", 10000, 0, 100000, 100, 1, max_val_number=90_000_000)
+            item8_rent = _slider_and_number("item8_rent", "item8_rent", 10000, 0, 100000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
             st.markdown("### 賃借料（経費）")
-            item12_rent_exp = _slider_and_number("item12_rent_exp", "item12_rent_exp", 10000, 0, 100000, 100, 1, max_val_number=90_000_000)
+            item12_rent_exp = _slider_and_number("item12_rent_exp", "item12_rent_exp", 10000, 0, 100000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
             #⑩機械装置
             st.markdown("### 機械装置")
-            item6_machine = _slider_and_number("item6_machine", "item6_machine", 10000, 0, 200000, 100, 1, max_val_number=90_000_000)
+            item6_machine = _slider_and_number("item6_machine", "item6_machine", 10000, 0, 200000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
             st.markdown("### その他資産")
-            item7_other = _slider_and_number("item7_other", "item7_other", 10000, 0, 200000, 100, 1, max_val_number=90_000_000)
+            item7_other = _slider_and_number("item7_other", "item7_other", 10000, 0, 200000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
             st.markdown("### 総資産 📌 必須（1以上）")
             _no_bs = st.checkbox(
                 "BSデータなし（業種平均の資産回転率で自動推定）",
@@ -374,7 +374,7 @@ def render_apply_form(
                 )
                 total_assets_estimated = True
             else:
-                total_assets = _slider_and_number("total_assets", "total_assets", 10000, 0, 1000000, 100, 1, max_val_number=90_000_000)
+                total_assets = _slider_and_number("total_assets", "total_assets", 10000, 0, 1000000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
                 total_assets_estimated = False
             st.markdown("### 純資産 💡 推奨（未入力だと自己資本比率・学習モデル精度が低下します）")
             _no_net = st.checkbox(
@@ -393,7 +393,7 @@ def render_apply_form(
                     f"（総資産 {total_assets/1000:,.1f}百万円 × 業種平均自己資本比率 {_eq_ratio*100:.0f}%）　※参考値・精度低下あり"
                 )
             else:
-                net_assets = _slider_and_number("net_assets", "net_assets", 10000, -30000, 500000, 100, 1, max_val_number=90_000_000)
+                net_assets = _slider_and_number("net_assets", "net_assets", 10000, -30000, 500000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
         with st.expander("💳 3. 信用情報", expanded=False):
 
             # default値をリスト内の文字列と完全に一致させる必要があります
@@ -410,10 +410,10 @@ def render_apply_form(
                 trend_grade_t0 = st.selectbox("今期", _trend_opts, index=_trend_opts.index(st.session_state.get("trend_grade_t0", "無格付")) if st.session_state.get("trend_grade_t0", "無格付") in _trend_opts else 7, key="trend_grade_t0")
             st.markdown("### うちの銀行与信")
             st.caption("当社の与信です（総銀行与信ではありません）")
-            bank_credit = _slider_and_number("bank_credit", "bank_credit", 10000, 0, 3000000, 100, 1, max_val_number=90_000_000)
+            bank_credit = _slider_and_number("bank_credit", "bank_credit", 10000, 0, 3000000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
             st.markdown("### うちのリース与信")
             st.caption("当社の与信です（総リース与信ではありません）")
-            lease_credit = _slider_and_number("lease_credit", "lease_credit", 10000, 0, 300000, 100, 1, max_val_number=90_000_000)
+            lease_credit = _slider_and_number("lease_credit", "lease_credit", 10000, 0, 300000, 100, 1, max_val_number=90_000_000, unit_factor=1000)
             # #16契約数
             st.markdown("### 契約数")
             contracts = _slider_and_number("contracts", "contracts", 1, 0, 30, 1, 1, unit="件")
@@ -452,7 +452,7 @@ def render_apply_form(
             st.session_state["occurrence_ym"] = occurrence_ym
             st.caption(f"登録値: **{occurrence_ym}**")
             st.markdown("### 取得価格")
-            acquisition_cost = _slider_and_number("acquisition_cost", "acquisition_cost", 1000, 0, 500000, 100, 100, label_slider="取得価格調整", max_val_number=90_000_000)
+            acquisition_cost = _slider_and_number("acquisition_cost", "acquisition_cost", 1000, 0, 500000, 100, 100, label_slider="取得価格調整", max_val_number=90_000_000, unit_factor=1000)
             # ---------- 5. 定性スコアリング（総合×重み＋定性×重みでランクA〜E。定性未選択時は総合スコアのみ） ----------
             with st.expander("📋 定性スコアリング", expanded=False):
                 st.caption("審査員が定性面を項目別に評価します。ランク（A〜E）は **総合スコア×重み＋定性×重み**（デフォルト60%/40%）で算出。定性を1件も選んでいない場合はランクは出さず、総合スコアのみで判定します。（未選択の項目は定性スコアに含めません）")
