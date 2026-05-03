@@ -20,6 +20,7 @@ export default function RegisterPage() {
   const [pendingCases, setPendingCases] = useState<any[]>([]);
   const [selectedCase, setSelectedCase] = useState<any | null>(null);
   const [liveClosureProb, setLiveClosureProb] = useState<number | null>(null);
+  const [progressStampingCaseId, setProgressStampingCaseId] = useState<string | null>(null);
 
   useEffect(() => {
     // Escaped string check: some environments use double backslash for display
@@ -67,14 +68,16 @@ export default function RegisterPage() {
 
 
 
-  const stampProgress = async (eventType: 'estimate_sent' | 'customer_response') => {
-    if (!targetId) {
+  const stampProgress = async (eventType: 'estimate_sent' | 'customer_response', caseId?: string) => {
+    const activeCaseId = caseId ?? targetId;
+    if (!activeCaseId) {
       triggerMebuki('challenge', '先に案件を選択してください。');
       return;
     }
+    setProgressStampingCaseId(activeCaseId);
     try {
       const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/cases/progress-stamp`, {
-        case_id: targetId,
+        case_id: activeCaseId,
         event_type: eventType,
       });
       const p = res?.data?.closure_probability_percent;
@@ -83,6 +86,8 @@ export default function RegisterPage() {
       fetchPendingCases();
     } catch (err) {
       triggerMebuki('reject', 'タイムスタンプ記録に失敗しました。');
+    } finally {
+      setProgressStampingCaseId(null);
     }
   };
 
@@ -166,36 +171,39 @@ export default function RegisterPage() {
               </div>
 
               {pendingCases.length > 0 && (
-                <div className="mt-6">
-                  <p className="text-xs font-bold text-slate-400 mb-2 uppercase tracking-widest">最近の審査済み案件（クリックで選択）</p>
-                  <div className="flex flex-wrap gap-2">
-                    {pendingCases.map((c) => (
-                      <div key={c.id} className="flex items-center gap-1">
-                        <button
-                          onClick={() => selectCase(c)}
-                          className="px-4 py-2 bg-slate-50 border border-slate-100 hover:border-indigo-300 hover:bg-indigo-50 rounded-xl text-xs font-bold text-slate-600 transition-all flex items-center gap-2 group"
-                        >
-                          <span className="w-2 h-2 rounded-full bg-indigo-400 group-hover:animate-ping" />
-                          <span className="font-black">#{c.company_no}</span>
-                          <span className="opacity-60">{c.company_name}</span>
-                          <span className="ml-2 px-1.5 py-0.5 bg-slate-200 rounded text-[10px]">{c.score?.toFixed(0)}点</span>
-                        </button>
-                        <button
-                          onClick={(e) => deleteCase(c.id, e)}
-                          className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
-                          title="削除"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
+                <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200">
+                  <div className="bg-slate-100 px-4 py-3 text-xs font-black text-slate-500">一覧で進捗更新（ボタンで即時記録）</div>
+                  <div className="max-h-72 overflow-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-white sticky top-0">
+                        <tr className="text-slate-400">
+                          <th className="text-left px-3 py-2">企業</th>
+                          <th className="text-left px-3 py-2">案件ID</th>
+                          <th className="text-left px-3 py-2">進捗操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pendingCases.map((c) => (
+                          <tr key={`row-${c.id}`} className={`border-t border-slate-100 hover:bg-slate-50 ${selectedCase?.id === c.id ? 'bg-indigo-50/50' : ''}`}>
+                            <td className="px-3 py-2 font-bold text-slate-700">#{c.company_no} {c.company_name}</td>
+                            <td className="px-3 py-2 font-mono text-slate-500">{c.id}</td>
+                            <td className="px-3 py-2">
+                              <div className="flex flex-wrap gap-2">
+                                <button onClick={() => { selectCase(c); stampProgress('estimate_sent', c.id); }} disabled={progressStampingCaseId === c.id} className="px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 font-bold border border-blue-100 disabled:opacity-50">見積提示</button>
+                                <button onClick={() => { selectCase(c); stampProgress('customer_response', c.id); }} disabled={progressStampingCaseId === c.id} className="px-2.5 py-1 rounded-md bg-violet-50 text-violet-700 font-bold border border-violet-100 disabled:opacity-50">顧客反応</button>
+                                <button onClick={() => selectCase(c)} className="px-2.5 py-1 rounded-md bg-slate-50 text-slate-700 font-bold border border-slate-200">選択</button>
+                                <button onClick={(e) => deleteCase(c.id, e)} className="px-2.5 py-1 rounded-md bg-rose-50 text-rose-700 font-bold border border-rose-100">削除</button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               )}
 
-
-
-              {selectedCase && (
+                            {selectedCase && (
                 <div className="mt-4 p-4 rounded-xl bg-indigo-50 border border-indigo-100 text-xs">
                   <p className="font-black text-indigo-700 mb-2">自動タイムスタンプ（編集不要）</p>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-slate-700">
