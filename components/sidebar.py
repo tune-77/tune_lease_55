@@ -539,7 +539,7 @@ def render_sidebar(benchmarks_data: dict, useful_life_data: dict, lease_assets_l
         cur_group = group_names[0]
 
     # ── 審査システムの流れ（グラフィック解説） ───────────────────────────────
-    with st.sidebar.expander("💡 複合審査AIの仕組みについて", expanded=True):
+    with st.sidebar.expander("💡 複合審査AIの仕組みについて", expanded=False):
         st.markdown("### 🧬 具体的なスコアリング手法")
         
         flow_html = """<div style="background: linear-gradient(135deg, #1e3a5f, #2563eb); padding: 1.2rem 1rem; border-radius: 12px; color: white; font-family: sans-serif; box-shadow: 0 6px 12px rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.1); margin-bottom: 1.5rem;">
