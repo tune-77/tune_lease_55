@@ -169,7 +169,7 @@ tune_lease_55/
 - 実装関数: `analysis_regression.py::optimize_model_blend_weights()`
 - 入力: `score_borrower`（全体）, `bench_score`（指標）, `ind_score`（業種別）と成約/失注ラベル
 - 手順: 各foldで `StandardScaler + LogisticRegression` を学習 → 係数平均 → 非負化 → 合計1へ正規化
-- 出力: `w_main`, `w_bench`, `w_ind`, `auc_cv`, `n_cases`
+- 出力: `w_main`, `w_bench`, `w_ind`, `auc_cv`, `n_cases`, `n_scored_oof`
 - 保存先: `auto_optimizer.py` 経由で `data/coeff_auto.json` の `_auto_blend_w_*` に保存
 
 #### 実務での回し方（推奨）

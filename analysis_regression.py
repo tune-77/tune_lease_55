@@ -1028,7 +1028,8 @@ def optimize_model_blend_weights():
 
         # --- KFold クロスバリデーション ---
         kf = StratifiedKFold(n_splits=min(5, len(set(y_list)) * 5), shuffle=True, random_state=42)
-        oof_probs = np.zeros(len(y))
+        oof_probs = np.zeros(len(y), dtype=float)
+        oof_valid = np.zeros(len(y), dtype=bool)
         coef_list = []
 
         for train_idx, val_idx in kf.split(X, y):
@@ -1042,6 +1043,7 @@ def optimize_model_blend_weights():
                 continue
             lr.fit(X_tr_s, y_tr)
             oof_probs[val_idx] = lr.predict_proba(X_val_s)[:, 1]
+            oof_valid[val_idx] = True
             coef_list.append(lr.coef_[0])
 
         if not coef_list:
@@ -1053,9 +1055,11 @@ def optimize_model_blend_weights():
         total = pos_coef.sum()
         w_main, w_bench, w_ind = (pos_coef / total).tolist()
 
-        # --- OOF AUC（oof_probs が計算された行のみ） ---
-        mask = oof_probs > 0
-        auc_cv = float(roc_auc_score(y[mask], oof_probs[mask])) if mask.sum() >= 10 else None
+        # --- OOF AUC（予測が計算された行のみ） ---
+        if oof_valid.sum() >= 10 and len(set(y[oof_valid])) >= 2:
+            auc_cv = float(roc_auc_score(y[oof_valid], oof_probs[oof_valid]))
+        else:
+            auc_cv = None
 
         return {
             "w_main":  round(w_main, 4),
@@ -1063,6 +1067,7 @@ def optimize_model_blend_weights():
             "w_ind":   round(w_ind, 4),
             "auc_cv":  round(auc_cv, 4) if auc_cv else None,
             "n_cases": len(y_list),
+            "n_scored_oof": int(oof_valid.sum()),
         }
     except Exception:
         return None
