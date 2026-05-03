@@ -18,6 +18,8 @@ export default function RegisterPage() {
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [pendingCases, setPendingCases] = useState<any[]>([]);
+  const [selectedCase, setSelectedCase] = useState<any | null>(null);
+  const [liveClosureProb, setLiveClosureProb] = useState<number | null>(null);
 
   useEffect(() => {
     // Escaped string check: some environments use double backslash for display
@@ -59,7 +61,29 @@ export default function RegisterPage() {
 
   const selectCase = (c: any) => {
     setTargetId(c.id);
+    setSelectedCase(c);
     triggerMebuki('approve', `企業番号 #${c.company_no} を選択しました！`);
+  };
+
+
+
+  const stampProgress = async (eventType: 'estimate_sent' | 'customer_response') => {
+    if (!targetId) {
+      triggerMebuki('challenge', '先に案件を選択してください。');
+      return;
+    }
+    try {
+      const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/cases/progress-stamp`, {
+        case_id: targetId,
+        event_type: eventType,
+      });
+      const p = res?.data?.closure_probability_percent;
+      if (typeof p === 'number') setLiveClosureProb(p);
+      triggerMebuki('approve', `${eventType === 'estimate_sent' ? '見積提示' : '顧客反応'}を記録しました。`);
+      fetchPendingCases();
+    } catch (err) {
+      triggerMebuki('reject', 'タイムスタンプ記録に失敗しました。');
+    }
   };
 
   const toggleCondition = (opt: string) => {
@@ -165,6 +189,26 @@ export default function RegisterPage() {
                         </button>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+
+
+              {selectedCase && (
+                <div className="mt-4 p-4 rounded-xl bg-indigo-50 border border-indigo-100 text-xs">
+                  <p className="font-black text-indigo-700 mb-2">自動タイムスタンプ（編集不要）</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-slate-700">
+                    <div>審査登録: <span className="font-bold">{selectedCase.registration_date || selectedCase.timestamp?.slice(0, 10) || '-'}</span></div>
+                    <div>見積提示: <span className="font-bold">{selectedCase.estimate_sent_date || selectedCase.registration_date || selectedCase.timestamp?.slice(0, 10) || '-'}</span></div>
+                    <div>確定時: <span className="font-bold">登録ボタン押下時に自動記録</span></div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button onClick={() => stampProgress('estimate_sent')} className="px-3 py-1.5 rounded-lg bg-blue-600 text-white font-bold">見積提示を今で記録</button>
+                    <button onClick={() => stampProgress('customer_response')} className="px-3 py-1.5 rounded-lg bg-violet-600 text-white font-bold">顧客反応を今で記録</button>
+                    {liveClosureProb !== null && (
+                      <span className="px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-700 font-black">成約確率: {liveClosureProb.toFixed(1)}%</span>
+                    )}
                   </div>
                 </div>
               )}

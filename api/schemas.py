@@ -74,3 +74,21 @@ class CaseRegisterRequest(BaseModel):
     competitor_name: Optional[str] = ""
     competitor_rate: Optional[float] = None
     note: Optional[str] = ""
+
+
+class DealClosureRequest(BaseModel):
+    registration_date: Optional[str] = Field(default=None, description="データ登録日(YYYY-MM-DD)")
+    estimate_sent_date: Optional[str] = Field(default=None, description="見積送付日(YYYY-MM-DD)")
+    customer_response_date: Optional[str] = Field(default=None, description="顧客反応日(YYYY-MM-DD)")
+    final_result_date: Optional[str] = Field(default=None, description="結果日(YYYY-MM-DD)")
+    delta_send: Optional[int] = Field(default=None, description="登録→見積の日数差")
+    delta_response: Optional[int] = Field(default=None, description="見積→顧客反応の日数差")
+    has_cash_data: bool = Field(default=True, description="現預金データ有無")
+
+
+class DealClosureResponse(BaseModel):
+    closure_probability: float
+    closure_probability_percent: float
+    delta_send: int
+    delta_response: int
+    model_note: str
