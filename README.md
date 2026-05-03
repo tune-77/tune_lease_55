@@ -164,6 +164,24 @@ tune_lease_55/
 - 顧客区分（既存先/新規先）で係数セットを自動切り替え
 - 重みは50件蓄積後にクロスバリデーション（StratifiedKFold）で自動最適化
 
+#### 最適化ロジック（3モデル）
+
+- 実装関数: `analysis_regression.py::optimize_model_blend_weights()`
+- 入力: `score_borrower`（全体）, `bench_score`（指標）, `ind_score`（業種別）と成約/失注ラベル
+- 手順: 各foldで `StandardScaler + LogisticRegression` を学習 → 係数平均 → 非負化 → 合計1へ正規化
+- 出力: `w_main`, `w_bench`, `w_ind`, `auc_cv`, `n_cases`
+- 保存先: `auto_optimizer.py` 経由で `data/coeff_auto.json` の `_auto_blend_w_*` に保存
+
+#### 実務での回し方（推奨）
+
+1. 成約/失注の確定データを最低50件以上ためる（両クラス必須）
+2. `auto_optimizer.run_auto_optimization(force=False)` を実行
+3. `blend_weights.auc_cv` が直近運用より改善しているか確認
+4. 月次で再学習し、重み推移（`w_main/w_bench/w_ind`）を監視
+
+> 補足: 行数不足（<20件）・片側クラスのみの場合は `None` を返して更新をスキップします。
+
+
 ### 金利サジェスト
 
 - 過去の成約データ（スプレッド・スコア・競合情報）から推奨金利レンジを算出
