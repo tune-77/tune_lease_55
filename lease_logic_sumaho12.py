@@ -709,7 +709,7 @@ def _fragment_nenshu():
     on_change を使わないため st.form 内でも動作する。"""
     st.markdown("### 売上高 📌 必須（0.1百万円以上）")
     _slider_and_number(
-        "nenshu", "nenshuu", 10000, 0, 1_000_000,
+        "nenshu", "nenshuu", 0, 0, 1_000_000,
         step_slider=100, step_num=10000,
         unit="百万円", label_slider="売上高調整",
         max_val_number=90_000_000,
@@ -827,6 +827,40 @@ elif mode == "📋 審査・分析":
 
     with menu_tabs[0]:  # 新規審査
         st.title("🏢 温水式 リース審査アシスタント")
+        # 審査入力/分析結果の両画面で Enter キーによる次項目フォーカス移動を有効化
+        st.markdown(
+            """
+            <script>
+            (function() {
+              const root = window.parent?.document || document;
+              if (root.__lease_focus_next_installed) return;
+              root.__lease_focus_next_installed = true;
+
+              root.addEventListener('keydown', function(e) {
+                if (e.key !== 'Enter') return;
+                const t = e.target;
+                if (!t) return;
+                const isTextual = t.matches('input[type="number"], input[type="text"], textarea');
+                if (!isTextual) return;
+                if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+                if (t.closest('[data-testid="stChatInput"]')) return;
+
+                const scope = t.closest('[data-testid="stAppViewContainer"]') || root;
+                const nodes = Array.from(scope.querySelectorAll('input[type="number"], input[type="text"], textarea, select'))
+                  .filter(el => !el.disabled && el.offsetParent !== null);
+                const idx = nodes.indexOf(t);
+                if (idx < 0 || idx + 1 >= nodes.length) return;
+
+                e.preventDefault();
+                const next = nodes[idx + 1];
+                next.focus();
+                if (next.select) next.select();
+              }, true);
+            })();
+            </script>
+            """,
+            unsafe_allow_html=True,
+        )
         
         # --- マクロ環境アラート (コンセプトドリフト検知) ---
         try:

@@ -51,6 +51,11 @@ from credit_limit import render_credit_limit_ui
 from components.form_apply import render_quick_edit_panel
 from components.graph_risk import GraphRiskEngine
 
+
+def million_to_thousand_int(v):
+    """百万円入力を内部保持の千円整数へ変換する。"""
+    return int(round(float(v or 0) * 1000))
+
 # ── 産業ネットワーク分析のためのキャッシュ関数（モジュールレベルで定義） ──
 @st.cache_data(show_spinner=False, max_entries=10)
 def get_cached_centrality(_engine_json, _edges_json, _nodes_json):
@@ -96,24 +101,24 @@ def render_analysis_results(
                 st.session_state["select_major"] = quick_res["q_major"]
                 st.session_state["select_sub"] = quick_res["q_sub"]
                 # P/L（クイックパネルは百万円入力 → 内部は千円に変換）
-                st.session_state["nenshu"] = quick_res["q_nenshu"] * 1000
-                st.session_state["item9_gross"] = quick_res["q_gross"] * 1000
-                st.session_state["rieki"] = quick_res["q_rieki"] * 1000
-                st.session_state["item4_ord_profit"] = quick_res["q_ord"] * 1000
-                st.session_state["item5_net_income"] = quick_res["q_net_income"] * 1000
+                st.session_state["nenshu"] = million_to_thousand_int(quick_res["q_nenshu"] )
+                st.session_state["item9_gross"] = million_to_thousand_int(quick_res["q_gross"] )
+                st.session_state["rieki"] = million_to_thousand_int(quick_res["q_rieki"] )
+                st.session_state["item4_ord_profit"] = million_to_thousand_int(quick_res["q_ord"] )
+                st.session_state["item5_net_income"] = million_to_thousand_int(quick_res["q_net_income"] )
                 # 資産・経費（百万円 → 千円）
-                st.session_state["item10_dep"] = quick_res["q_dep"] * 1000
-                st.session_state["item11_dep_exp"] = quick_res["q_dep_exp"] * 1000
-                st.session_state["item8_rent"] = quick_res["q_rent"] * 1000
-                st.session_state["item12_rent_exp"] = quick_res["q_rent_exp"] * 1000
-                st.session_state["item6_machine"] = quick_res["q_machine"] * 1000
-                st.session_state["item7_other"] = quick_res["q_other"] * 1000
-                st.session_state["net_assets"] = quick_res["q_net"] * 1000
-                st.session_state["total_assets"] = quick_res["q_total"] * 1000
+                st.session_state["item10_dep"] = million_to_thousand_int(quick_res["q_dep"] )
+                st.session_state["item11_dep_exp"] = million_to_thousand_int(quick_res["q_dep_exp"] )
+                st.session_state["item8_rent"] = million_to_thousand_int(quick_res["q_rent"] )
+                st.session_state["item12_rent_exp"] = million_to_thousand_int(quick_res["q_rent_exp"] )
+                st.session_state["item6_machine"] = million_to_thousand_int(quick_res["q_machine"] )
+                st.session_state["item7_other"] = million_to_thousand_int(quick_res["q_other"] )
+                st.session_state["net_assets"] = million_to_thousand_int(quick_res["q_net"] )
+                st.session_state["total_assets"] = million_to_thousand_int(quick_res["q_total"] )
                 # 信用情報
                 st.session_state["grade"] = quick_res["q_grade"]
-                st.session_state["bank_credit"] = quick_res["q_bank"] * 1000
-                st.session_state["lease_credit"] = quick_res["q_lease"] * 1000
+                st.session_state["bank_credit"] = million_to_thousand_int(quick_res["q_bank"] )
+                st.session_state["lease_credit"] = million_to_thousand_int(quick_res["q_lease"] )
                 st.session_state["contracts"] = quick_res["q_contracts"]
                 # 契約条件
                 st.session_state["customer_type"] = quick_res["q_ctype"]
@@ -121,7 +126,7 @@ def render_analysis_results(
                 st.session_state["deal_source"] = quick_res["q_deal_source"]
                 st.session_state["lease_term"] = quick_res["q_lease_term"]
                 st.session_state["acceptance_year"] = quick_res["q_acceptance_year"]
-                st.session_state["acquisition_cost"] = quick_res["q_acq"] * 1000
+                st.session_state["acquisition_cost"] = million_to_thousand_int(quick_res["q_acq"] )
                 if quick_res["q_asset_sel"] is not None:
                     st.session_state["selected_asset_index"] = quick_res["q_asset_sel"]
                 # 車両タイプをメインフォームへ同期（_quick_asset_detail → asset_vtype_select）
@@ -750,7 +755,7 @@ def render_analysis_results(
                 else:
                     from screening_report import build_screening_report_pdf
                     _rep_res = st.session_state["last_result"]
-                    st.caption(f"業種：{_rep_res.get('industry_sub','')}　スコア：{_rep_res.get('score',0):.1f}")
+                    st.caption(f"業種：{_rep_res.get('industry_major', _rep_res.get('industry_sub',''))}　スコア：{_rep_res.get('score',0):.1f}")
 
                     st.divider()
                     col_r1, col_r2 = st.columns(2)
@@ -1463,9 +1468,11 @@ def render_analysis_results(
                         )
                         if _recs:
                             _rec_df = _pd_db.DataFrame(_recs)
+                            if "industry_major" not in _rec_df.columns and "industry_sub" in _rec_df.columns:
+                                _rec_df["industry_major"] = _rec_df["industry_sub"]
                             _disp_cols = {
                                 "id": "ID", "created_at": "審査日時",
-                                "industry_sub": "業種（中）", "customer_type": "区分",
+                                "industry_major": "業種（大）", "customer_type": "区分",
                                 "revenue_m": "年商(百万)", "equity_ratio": "自己資本比率%",
                                 "lease_amount_m": "リース額(百万)", "lease_term": "期間(月)",
                                 "score": "スコア", "judgment": "判定",
