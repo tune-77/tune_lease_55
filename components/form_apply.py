@@ -60,9 +60,16 @@ def render_apply_form(
         )
     
     if _co_no and (not _co_no.isdigit() or len(_co_no) != 6):
-        st.warning("⚠️ 案件特定のため、企業番号は半角数字6桁で入力してください。")
+        if len(_co_no) == 6 and _co_no.isalnum() and not _co_no.isdigit():
+            pass # すでにハッシュ化済みの場合は警告しない
+        else:
+            st.warning("⚠️ 案件特定のため、企業番号は半角数字6桁で入力してください。")
 
-    st.session_state["company_no"] = _co_no if (_co_no.isdigit() and len(_co_no) == 6) else ""
+    if _co_no and len(_co_no) == 6:
+        from data_cases import hash_company_no
+        st.session_state["company_no"] = hash_company_no(_co_no)
+    else:
+        st.session_state["company_no"] = ""
     st.session_state["company_name"] = company_name
 
     # 業界・取引を expander で折りたたみ

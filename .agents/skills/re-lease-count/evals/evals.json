@@ -1,0 +1,23 @@
+{
+  "skill_name": "re-lease-count",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "初回リース期間が5年、期待使用期間が8年のとき再リース回数はいくつになりますか？端数は切り上げで計算してください。",
+      "expected_output": "再リース回数は3回。計算式: max(0, ceil(8-5)) = 3",
+      "files": []
+    },
+    {
+      "id": 1,
+      "prompt": "リース期間4年、期待使用期間6.5年の場合の再リース回数を計算し、Pythonコードも示してください。",
+      "expected_output": "再リース回数は3回（6.5-4=2.5→切上3）。Pythonコードでmath.ceil使用。",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "expected_usage_period.pyのcalc_lease_period_fit_score関数の返り値のdictに、再リース回数（re_lease_count）フィールドを追加してください。計算式はmax(0, ceil(期待使用期間年数 - リース期間年数))です。",
+      "expected_output": "calc_re_lease_count関数の追加とcalc_lease_period_fit_scoreの返り値へのre_lease_count追加",
+      "files": []
+    }
+  ]
+}
