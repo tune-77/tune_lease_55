@@ -1724,6 +1724,11 @@ elif mode == "📊 ビジュアルインサイト":
     from visual_insights import render_visual_insights
     render_visual_insights()
 
+# ── 🗺️ UMAP誤判定マップ ───────────────────────────────────────────────────
+elif mode == "🗺️ UMAP誤判定マップ":
+    from components.umap_error_dashboard import render_umap_error_view
+    render_umap_error_view()
+
 # ── 📊 3期財務分析 ────────────────────────────────────────────────────────────
 elif mode == "📊 3期財務分析":
     from components.financial_analysis import render_financial_analysis
