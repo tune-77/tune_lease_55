@@ -106,6 +106,36 @@ def render_dashboard():
                 width='stretch',
                 hide_index=True,
             )
+
+            st.markdown("#### 📊 営業部ごとの差の検証（業種・成約分布）")
+            dept_options = sorted(df_dept["営業部"].dropna().unique().tolist())
+            selected_dept = st.selectbox("比較する営業部", dept_options, key="dash_selected_dept")
+
+            df_selected = [
+                {
+                    "業種": c.get("industry_sub") or "不明",
+                    "結果": c.get("final_status") or "未登録",
+                }
+                for c in all_cases
+                if (c.get("sales_dept") or c.get("inputs", {}).get("sales_dept") or "未設定") == selected_dept
+            ]
+            df_selected = pd.DataFrame(df_selected)
+
+            if not df_selected.empty:
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.caption(f"{selected_dept}の業種分布")
+                    industry_dist = (
+                        df_selected.groupby("業種").size().reset_index(name="件数").sort_values("件数", ascending=False)
+                    )
+                    st.bar_chart(industry_dist.set_index("業種")["件数"], height=280)
+                with c2:
+                    st.caption(f"{selected_dept}の結果分布")
+                    result_order = ["成約", "失注", "保留", "未登録"]
+                    result_dist = df_selected.groupby("結果").size().reindex(result_order, fill_value=0)
+                    st.bar_chart(result_dist, height=280)
+            else:
+                st.caption("選択した営業部の案件データがありません。")
         else:
             st.caption("営業部集計に使えるデータがありません。")
     else:
