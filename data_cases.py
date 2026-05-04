@@ -31,6 +31,21 @@ COEFF_HISTORY_FILE   = os.path.join(_DATA_DIR, "coeff_history.jsonl")
 CONSULTATION_MEMORY_FILE = os.path.join(_DATA_DIR, "consultation_memory.jsonl")
 CASE_NEWS_FILE = os.path.join(_DATA_DIR, "case_news.jsonl")
 
+import hashlib
+import base64
+
+def hash_company_no(co_no: str) -> str:
+    """企業番号（6桁数字など）を6文字の不可逆な英数字ハッシュに変換する"""
+    if not co_no:
+        return ""
+    # すでにハッシュ化済み（6文字の英数字だが、数字だけではない）の場合はそのまま返す
+    if len(co_no) == 6 and co_no.isalnum() and not co_no.isdigit():
+        return co_no
+    salted = f"{co_no}_tune_lease_secure_salt"
+    digest = hashlib.sha256(salted.encode()).digest()
+    b64 = base64.urlsafe_b64encode(digest).decode().replace("_", "").replace("-", "")
+    return b64[:6].upper()
+
 # スコア重みのデフォルト（借手/物件、総合/定性）。回帰最適化で上書き可能。
 DEFAULT_WEIGHT_BORROWER = 0.85
 DEFAULT_WEIGHT_ASSET = 0.15

@@ -487,8 +487,16 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
             help="社内管理用の6桁企業番号",
         )
         if _co_no and (not _co_no.isdigit() or len(_co_no) != 6):
-            st.warning("企業番号は半角数字6桁で入力してください。")
-        d["company_no"] = _co_no if (_co_no.isdigit() and len(_co_no) == 6) else ""
+            if len(_co_no) == 6 and _co_no.isalnum() and not _co_no.isdigit():
+                pass
+            else:
+                st.warning("企業番号は半角数字6桁で入力してください。")
+        
+        if _co_no and len(_co_no) == 6:
+            from data_cases import hash_company_no
+            d["company_no"] = hash_company_no(_co_no)
+        else:
+            d["company_no"] = ""
 
         major_keys = st.session_state["wiz_major_keys"]
         cur_major  = d.get("selected_major", major_keys[0])
