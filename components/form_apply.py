@@ -575,6 +575,10 @@ def render_apply_form(
         "sales_dept":         sales_dept,
     }
 
+def _to_million_for_input(value):
+    """セッション値（千円想定）を百万円入力用のfloatへ変換。"""
+    return float(value or 0) / 1000.0
+
 def render_quick_edit_panel(jsic_data, lease_assets_list):
     """✏️ クイック再入力パネルのUIとフォームデータの収集を行います。"""
     st.caption("すべての入力項目をここから変更できます。「🔄 再判定」で即座に再計算します。")
@@ -597,16 +601,16 @@ def render_quick_edit_panel(jsic_data, lease_assets_list):
     st.markdown("#### 📊 損益計算書 P/L（百万円）")
     _q1, _q2, _q3 = st.columns(3)
     with _q1:
-        _q_nenshu = st.number_input("売上高", min_value=0, max_value=90_000, value=int(st.session_state.get("nenshu", 0)) // 1000, step=0.1, key="_quick_nenshu")
+        _q_nenshu = st.number_input("売上高", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("nenshu", 0)), step=0.1, format="%.1f", key="_quick_nenshu")
     with _q2:
-        _q_gross = st.number_input("売上総利益（粗利）", min_value=-90_000, max_value=90_000, value=int(st.session_state.get("item9_gross", 0)) // 1000, step=0.1, key="_quick_gross")
+        _q_gross = st.number_input("売上総利益（粗利）", min_value=-90_000.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("item9_gross", 0)), step=0.1, format="%.1f", key="_quick_gross")
     with _q3:
-        _q_rieki = st.number_input("営業利益", min_value=-90_000, max_value=90_000, value=int(st.session_state.get("rieki", 0)) // 1000, step=0.1, key="_quick_rieki")
+        _q_rieki = st.number_input("営業利益", min_value=-90_000.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("rieki", 0)), step=0.1, format="%.1f", key="_quick_rieki")
     _q4, _q5 = st.columns(2)
     with _q4:
-        _q_ord = st.number_input("経常利益", min_value=-90_000, max_value=90_000, value=int(st.session_state.get("item4_ord_profit", 0)) // 1000, step=0.1, key="_quick_ord")
+        _q_ord = st.number_input("経常利益", min_value=-90_000.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("item4_ord_profit", 0)), step=0.1, format="%.1f", key="_quick_ord")
     with _q5:
-        _q_net_income = st.number_input("当期利益", min_value=-90_000, max_value=90_000, value=int(st.session_state.get("item5_net_income", 0)) // 1000, step=0.1, key="_quick_net_income")
+        _q_net_income = st.number_input("当期利益", min_value=-90_000.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("item5_net_income", 0)), step=0.1, format="%.1f", key="_quick_net_income")
 
     st.divider()
 
@@ -614,19 +618,19 @@ def render_quick_edit_panel(jsic_data, lease_assets_list):
     st.markdown("#### 🏢 資産・経費（百万円）")
     _qA1, _qA2, _qA3 = st.columns(3)
     with _qA1:
-        _q_dep = st.number_input("減価償却費（資産）", min_value=0, max_value=90_000, value=int(st.session_state.get("item10_dep", 0)) // 1000, step=0.1, key="_quick_dep")
-        _q_dep_exp = st.number_input("減価償却費（経費）", min_value=0, max_value=90_000, value=int(st.session_state.get("item11_dep_exp", 0)) // 1000, step=0.1, key="_quick_dep_exp")
+        _q_dep = st.number_input("減価償却費（資産）", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("item10_dep", 0)), step=0.1, format="%.1f", key="_quick_dep")
+        _q_dep_exp = st.number_input("減価償却費（経費）", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("item11_dep_exp", 0)), step=0.1, format="%.1f", key="_quick_dep_exp")
     with _qA2:
-        _q_rent = st.number_input("賃借料（資産）", min_value=0, max_value=90_000, value=int(st.session_state.get("item8_rent", 0)) // 1000, step=0.1, key="_quick_rent")
-        _q_rent_exp = st.number_input("賃借料（経費）", min_value=0, max_value=90_000, value=int(st.session_state.get("item12_rent_exp", 0)) // 1000, step=0.1, key="_quick_rent_exp")
+        _q_rent = st.number_input("賃借料（資産）", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("item8_rent", 0)), step=0.1, format="%.1f", key="_quick_rent")
+        _q_rent_exp = st.number_input("賃借料（経費）", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("item12_rent_exp", 0)), step=0.1, format="%.1f", key="_quick_rent_exp")
     with _qA3:
-        _q_machine = st.number_input("機械装置", min_value=0, max_value=90_000, value=int(st.session_state.get("item6_machine", 0)) // 1000, step=0.1, key="_quick_machine")
-        _q_other = st.number_input("その他資産", min_value=0, max_value=90_000, value=int(st.session_state.get("item7_other", 0)) // 1000, step=0.1, key="_quick_other")
+        _q_machine = st.number_input("機械装置", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("item6_machine", 0)), step=0.1, format="%.1f", key="_quick_machine")
+        _q_other = st.number_input("その他資産", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("item7_other", 0)), step=0.1, format="%.1f", key="_quick_other")
     _qB1, _qB2 = st.columns(2)
     with _qB1:
-        _q_net = st.number_input("純資産", min_value=-90_000, max_value=90_000, value=int(st.session_state.get("net_assets", 0)) // 1000, step=0.1, key="_quick_net")
+        _q_net = st.number_input("純資産", min_value=-90_000.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("net_assets", 0)), step=0.1, format="%.1f", key="_quick_net")
     with _qB2:
-        _q_total = st.number_input("総資産", min_value=0, max_value=90_000, value=int(st.session_state.get("total_assets", 0)) // 1000, step=0.1, key="_quick_total")
+        _q_total = st.number_input("総資産", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("total_assets", 0)), step=0.1, format="%.1f", key="_quick_total")
 
     st.divider()
 
@@ -638,9 +642,9 @@ def render_quick_edit_panel(jsic_data, lease_assets_list):
         _q_cur_grade = st.session_state.get("grade", "②4-6 (標準)")
         _q_grade_idx = _grade_opts.index(_q_cur_grade) if _q_cur_grade in _grade_opts else 1
         _q_grade = st.selectbox("格付", _grade_opts, index=_q_grade_idx, key="_quick_grade")
-        _q_bank = st.number_input("銀行与信（百万円）", min_value=0, max_value=90_000, value=int(st.session_state.get("bank_credit", 0)) // 1000, step=0.1, key="_quick_bank")
+        _q_bank = st.number_input("銀行与信（百万円）", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("bank_credit", 0)), step=0.1, format="%.1f", key="_quick_bank")
     with _qC2:
-        _q_lease = st.number_input("リース与信（百万円）", min_value=0, max_value=90_000, value=int(st.session_state.get("lease_credit", 0)) // 1000, step=0.1, key="_quick_lease")
+        _q_lease = st.number_input("リース与信（百万円）", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("lease_credit", 0)), step=0.1, format="%.1f", key="_quick_lease")
         _q_contracts = st.number_input("契約数（件）", min_value=0, max_value=200, value=int(st.session_state.get("contracts", 0)), step=1, key="_quick_contracts")
 
     st.divider()
@@ -656,7 +660,7 @@ def render_quick_edit_panel(jsic_data, lease_assets_list):
         _q_lease_term = st.number_input("契約期間（月）", min_value=0, max_value=120, value=int(st.session_state.get("lease_term", 0)), step=1, key="_quick_lease_term")
     with _qD3:
         _q_acceptance_year = st.number_input("検収年（西暦）", min_value=2000, max_value=2100, value=int(st.session_state.get("acceptance_year", 2026)), step=1, key="_quick_acceptance_year")
-        _q_acq = st.number_input("取得価格（百万円）", min_value=0, max_value=90_000, value=int(st.session_state.get("acquisition_cost", 0)) // 1000, step=0.1, key="_quick_acq")
+        _q_acq = st.number_input("取得価格（百万円）", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("acquisition_cost", 0)), step=0.1, format="%.1f", key="_quick_acq")
     _q_asset_detail = ""
     if lease_assets_list:
         _q_asset_opts = [f"{it.get('name', '')}（{it.get('score', 0)}点）" for it in lease_assets_list]
