@@ -1,0 +1,23 @@
+{
+  "skill_name": "pdf-table-csv",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Downloadsにあるscan-002.pdfの1ページ目を読み取って、batch_shinsa_template_current.csvに入れて。金額は百万単位、格付も正規化、入らないところは0でいい",
+      "expected_output": "pipelineコマンドでOCR済みCSVとバッチ審査テンプレートCSVが作成される。テンプレートは55列を維持し、金額系カラムは百万単位、格付は無格付/要注意先を含めて正規化され、対応元がない列は0で埋まる。",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "このリース審査CSVの数字を1000で割って百万単位にして。格付の空欄と0は無格付、8_2は要注意先にして",
+      "expected_output": "既存CSVがバックアップされ、金額系カラムのみ百万単位に変換され、期間・利回り・コード類は維持される。格付列は指定ルールで正規化される。",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "batch_shinsa_template_current.csvにscan-002-page-001.csvの項目を入力して。入力できないところは0でいい",
+      "expected_output": "テンプレートCSVの55列ヘッダーを維持し、OCR済みCSVの52件を転記する。対応元がないテンプレート列は0で埋め、審査日はYYYY-MM-DD、最終結果は成約/失注、獲得レートは%なしに変換される。",
+      "files": []
+    }
+  ]
+}

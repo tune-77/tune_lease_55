@@ -9,6 +9,7 @@ import numpy as np
 
 from data_cases import get_effective_coeffs, get_score_weights
 from constants import APPROVAL_LINE, REVIEW_LINE
+from industry_normalizer import normalize_industry_major
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -28,7 +29,7 @@ _CSV_COLUMNS = [
     "検収時期(年)",
     # ── 物件情報 ─────────────────────────────────────────────
     "リース期間(月)",
-    "取得価格(千円)",
+    "取得価格(百万円)",
     "物件ID（任意）",     # vehicle / it_equipment / medical / manufacturing 等。空欄可
     "物件名（任意）",
     "物件スコア（任意）",
@@ -37,24 +38,24 @@ _CSV_COLUMNS = [
     "競合提示金利(%)",
     "競合他社名",
     "契約種別",           # "一般", "メンテ付" 等
-    # ── 財務数値（千円単位）──────────────────────────────────
-    "売上高(千円)",
-    "売上総利益(千円)",
-    "営業利益(千円)",
-    "経常利益(千円)",
-    "当期純利益(千円)",
-    "純資産(千円)",
-    "総資産(千円)",
-    "機械装置(千円)",
-    "その他資産(千円)",
-    "減価償却費(千円)",
-    "減価償却累計(千円)",
-    "支払リース料(千円)",
-    "地代家賃(千円)",
-    "銀行借入(千円)",
-    "リース残高(千円)",
+    # ── 財務数値（百万円単位）──────────────────────────────────
+    "売上高(百万円)",
+    "売上総利益(百万円)",
+    "営業利益(百万円)",
+    "経常利益(百万円)",
+    "当期純利益(百万円)",
+    "純資産(百万円)",
+    "総資産(百万円)",
+    "機械装置(百万円)",
+    "その他資産(百万円)",
+    "減価償却費(百万円)",
+    "減価償却累計(百万円)",
+    "支払リース料(百万円)",
+    "地代家賃(百万円)",
+    "銀行借入(百万円)",
+    "リース残高(百万円)",
     "契約件数",
-    "格付",               # "1-3", "4-6", "7-8", "9(要注意)", "10(破綻懸念)", "無格付"
+    "格付",               # "1-3", "4-6", "③要注意以下", "9(要注意)", "10(破綻懸念)", "無格付"
     # ── 定性スコアリング（constants.py の QUALITATIVE_SCORING_CORRECTION_ITEMS と完全一致）
     # ※ 0〜4 の整数で入力。空欄可（未入力扱い）
     "定性_設立経営年数",   # 0:3年未満 / 1:3〜5年 / 2:5〜10年 / 3:10〜20年 / 4:20年以上         [重み10%]
@@ -69,34 +70,87 @@ _CSV_COLUMNS = [
     "特記事項",            # 自由記述（熱意・補足説明など）
     # ── 結果（★モデル学習に最重要）──────────────────────────
     "最終結果",            # "成約" or "失注" ← これがあると係数が自動再学習される
+    "データ登録日",        # YYYY-MM-DD。空欄なら審査日/登録日時で代替
+    "見積提示日",          # YYYY-MM-DD
+    "顧客反応日",          # YYYY-MM-DD
+    "結果日",              # YYYY-MM-DD。空欄なら登録時の日付
+    "獲得レート(%)",
+    "基準金利(%)",
+    "失注理由",
+    "競合他社",
+    "承認条件",
+    "結果登録メモ",
 ]
 
 # サンプルデータ（各行の値数は _CSV_COLUMNS の列数と一致させること）
 _CSV_SAMPLE = pd.DataFrame([
     # 列順: 取引先ID, 審査日, 企業名, 業種大, 業種小, 取引区分, 部署, 紹介元, 検収年, 物件5, 競合4, 財務17, 定性6, タグ+直感+特記+結果4
     ["10001", "2024-06-10", "A建設株式会社", "D 建設業", "06 総合工事業", "既存先", "宇都宮営業部", "銀行紹介", 2026,
-     60, 30000, "construction_machine", "油圧ショベル", 80,
+     60, 30, "construction_machine", "油圧ショベル", 80,
      "競合なし", 0, "", "一般",
-     500000, 100000, 20000, 15000, 10000, 80000, 300000, 10000, 5000, 5000, 20000, 3000, 2000, 50000, 10000, 3, "4-6",
+     500, 100, 20, 15, 10, 80, 300, 10, 5, 5, 20, 3, 2, 50, 10, 3, "4-6",
      3, 3, 4, 3, 3, 3,
-     "取引行と付き合い長い", 3, "順調な推移", "成約"],
+     "取引行と付き合い長い", 3, "順調な推移", "成約",
+     "2024-06-10", "2024-06-12", "2024-06-18", "2024-06-25", 2.8, 2.1, "", "", "本件限度", "順調に成約"],
     ["10002", "2024-09-22", "B工業株式会社", "E 製造業", "13 輸送用機械器具製造業", "新規先", "小山営業部", "メーカー紹介", 2026,
-     48, 80000, "vehicle", "大型トラック", 70,
+     48, 80, "vehicle", "大型トラック", 70,
      "競合あり", 1.5, "XX運輸機器", "一般",
-     1200000, 300000, 50000, 30000, 20000, 200000, 800000, 50000, 10000, 20000, 100000, 5000, 8000, 100000, 20000, 1, "1-3",
+     1200, 300, 50, 30, 20, 200, 800, 50, 10, 20, 100, 5, 8, 100, 20, 1, "1-3",
      2, 3, 3, 3, 3, 1,
-     "", 4, "新規大口受注あり", "失注"],
+     "", 4, "新規大口受注あり", "失注",
+     "2024-09-22", "2024-09-25", "2024-10-03", "2024-10-10", 0, 2.1, "他社競合", "XX運輸機器", "", "レート負け"],
     ["10003", "2025-01-15", "Cシステムズ", "G 情報通信業", "75 情報サービス業", "既存先", "足利営業部", "ディーラー紹介", 2026,
-     36, 20000, "it_equipment", "サーバー", 60,
+     36, 20, "it_equipment", "サーバー", 60,
      "競合なし", 0, "", "一般",
-     800000, 400000, 30000, 20000, 15000, 150000, 400000, 5000, 2000, 2000, 5000, 1000, 10000, 50000, 0, 5, "1-3",
+     800, 400, 30, 20, 15, 150, 400, 5, 2, 2, 5, 1, 10, 50, 0, 5, "1-3",
      4, 4, 4, 3, 3, 4,
-     "技術力,業界人脈", 5, "社長の技術力が高い", "成約"],
+     "技術力,業界人脈", 5, "社長の技術力が高い", "成約",
+     "2025-01-15", "2025-01-17", "2025-01-20", "2025-01-31", 3.1, 2.1, "", "", "親会社保証", "条件付き成約"],
 ], columns=_CSV_COLUMNS)
 
 def _get_csv_template() -> bytes:
     """テンプレートCSVをバイト列で返す。"""
     return _CSV_SAMPLE.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+
+
+def _num(row: dict, base_name: str, default: float = 0.0) -> float:
+    """Read a numeric CSV value, accepting current 百万円 and legacy 千円 headers."""
+    for suffix in ("百万円", "千円"):
+        raw = row.get(f"{base_name}({suffix})")
+        if raw not in (None, ""):
+            try:
+                return float(str(raw).replace(",", ""))
+            except (TypeError, ValueError):
+                return default
+    return default
+
+
+def _plain_num(row: dict, key: str, default: float = 0.0) -> float:
+    raw = row.get(key)
+    if raw in (None, ""):
+        return default
+    try:
+        return float(str(raw).replace(",", "").replace("%", ""))
+    except (TypeError, ValueError):
+        return default
+
+
+def _text(row: dict, key: str) -> str:
+    return str(row.get(key) or "").strip()
+
+
+def _date_text(row: dict, key: str) -> str:
+    raw = _text(row, key)
+    if not raw:
+        return ""
+    import re as _re
+    from datetime import datetime as _dt
+
+    cleaned = _re.sub(r"[/．。]", "-", raw).replace("年", "-").replace("月", "-").replace("日", "")
+    try:
+        return _dt.strptime(cleaned.strip()[:10], "%Y-%m-%d").date().isoformat()
+    except ValueError:
+        return raw
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -113,25 +167,25 @@ def _score_one(row: dict) -> dict:
         from scoring_core import run_quick_scoring
         
         inputs = {
-            "nenshu": float(row.get("売上高(千円)") or 0),
-            "gross_profit": float(row.get("売上総利益(千円)") or 0),
-            "op_profit": float(row.get("営業利益(千円)") or 0),
-            "ord_profit": float(row.get("経常利益(千円)") or 0),
-            "net_income": float(row.get("当期純利益(千円)") or 0),
-            "net_assets": float(row.get("純資産(千円)") or 0),
-            "total_assets": float(row.get("総資産(千円)") or 0),
-            "machines": float(row.get("機械装置(千円)") or 0),
-            "other_assets": float(row.get("その他資産(千円)") or 0),
-            "dep_expense": float(row.get("減価償却費(千円)") or 0),
-            "depreciation": float(row.get("減価償却累計(千円)") or 0),
-            "rent_expense": float(row.get("支払リース料(千円)") or 0),
-            "rent": float(row.get("地代家賃(千円)") or 0),
-            "bank_credit": float(row.get("銀行借入(千円)") or 0),
-            "lease_credit": float(row.get("リース残高(千円)") or 0),
+            "nenshu": _num(row, "売上高"),
+            "gross_profit": _num(row, "売上総利益"),
+            "op_profit": _num(row, "営業利益"),
+            "ord_profit": _num(row, "経常利益"),
+            "net_income": _num(row, "当期純利益"),
+            "net_assets": _num(row, "純資産"),
+            "total_assets": _num(row, "総資産"),
+            "machines": _num(row, "機械装置"),
+            "other_assets": _num(row, "その他資産"),
+            "dep_expense": _num(row, "減価償却費"),
+            "depreciation": _num(row, "減価償却累計"),
+            "rent_expense": _num(row, "支払リース料"),
+            "rent": _num(row, "地代家賃"),
+            "bank_credit": _num(row, "銀行借入"),
+            "lease_credit": _num(row, "リース残高"),
             "contracts": int(row.get("契約件数") or 0),
             "grade": str(row.get("格付") or "1-3"),
             "customer_type": str(row.get("取引区分") or "既存先"),
-            "industry_major": str(row.get("業種大分類") or "D 建設業"),
+            "industry_major": normalize_industry_major(row.get("業種大分類")) or "D 建設業",
             "industry_sub": str(row.get("業種小分類") or "06 総合工事業"),
             "sales_dept": str(row.get("営業担当部署") or "未設定"),
             "main_bank": str(row.get("メイン取引銀行") or "なし"),
@@ -141,7 +195,7 @@ def _score_one(row: dict) -> dict:
             "deal_source": str(row.get("紹介元") or "その他"),
             "lease_term": int(row.get("リース期間(月)") or 60),
             "acceptance_year": int(row.get("検収時期(年)") or 2026),
-            "acquisition_cost": float(row.get("取得価格(千円)") or 0),
+            "acquisition_cost": _num(row, "取得価格"),
             "lease_asset_id": str(row.get("物件ID（任意）") or "").strip(),
             "lease_asset_name": str(row.get("物件名（任意）") or "").strip(),
             "intuition_score": float(row.get("担当者直感スコア(1-5)") or 0),
@@ -183,7 +237,7 @@ def _score_one(row: dict) -> dict:
 
         if not asset_category and asset_score == 50.0:
             term_ok     = 1.0 if 36 <= lease_term <= 72 else 0.6
-            cost_ok     = 1.0 if 500 < acq_cost < 50000 else 0.7
+            cost_ok     = 1.0 if 0.5 < acq_cost < 50 else 0.7
             asset_score = (term_ok + cost_ok) / 2.0 * 100
 
         inputs["asset_score"] = asset_score
@@ -194,7 +248,13 @@ def _score_one(row: dict) -> dict:
 
         # PD概算 (格付からマッピング)
         grade_to_pd = {
-            "1-3": 0.5, "4-6": 2.0, "7-8": 6.0, "9(要注意)": 15.0, "10(破綻懸念)": 40.0, "無格付": 5.0
+            "1-3": 0.5,
+            "4-6": 2.0,
+            "7-8": 15.0,
+            "③要注意以下": 15.0,
+            "9(要注意)": 15.0,
+            "10(破綻懸念)": 40.0,
+            "無格付": 5.0,
         }
         pd_pct = grade_to_pd.get(inputs["grade"], 5.0)
         
@@ -202,19 +262,16 @@ def _score_one(row: dict) -> dict:
         final_status_raw = str(row.get("最終結果") or "").strip()
         final_status = final_status_raw if final_status_raw in ("成約", "失注") else "未登録"
 
-        # 審査日 → ISO形式に変換（空欄は save_case_log が登録日時で補完）
-        _shinsa_date_raw = str(row.get("審査日") or "").strip()
-        _shinsa_timestamp = None
-        if _shinsa_date_raw:
-            import re as _re
-            # YYYY-MM-DD / YYYY/MM/DD / YYYYMMDD など柔軟に対応
-            _d = _re.sub(r"[/．。]", "-", _shinsa_date_raw).replace("年", "-").replace("月", "-").replace("日", "")
-            try:
-                from datetime import datetime as _dt
-                _parsed = _dt.strptime(_d.strip()[:10], "%Y-%m-%d")
-                _shinsa_timestamp = _parsed.isoformat()
-            except ValueError:
-                _shinsa_timestamp = None  # パース失敗時は登録日時で代替
+        # 日付欄 → ISO形式に変換（空欄は save_case_log が登録日時で補完）
+        _shinsa_date = _date_text(row, "審査日")
+        _registration_date = _date_text(row, "データ登録日") or _shinsa_date
+        _estimate_sent_date = _date_text(row, "見積提示日")
+        _customer_response_date = _date_text(row, "顧客反応日")
+        _final_result_date = _date_text(row, "結果日")
+        if final_status in ("成約", "失注") and not _final_result_date:
+            from datetime import date as _date
+            _final_result_date = _date.today().isoformat()
+        _shinsa_timestamp = f"{_shinsa_date}T00:00:00" if _shinsa_date else None
 
         db_data = {
             # ── 個別審査の log_payload キーと合わせること（save_case_log が依存）──
@@ -230,6 +287,10 @@ def _score_one(row: dict) -> dict:
             "sales_dept":     inputs["sales_dept"],
             "final_status":   final_status,  # 成約/失注は上書きされずにDBへ
             "timestamp":      _shinsa_timestamp,  # 審査日があればISO形式で事前セット
+            "registration_date": _registration_date or None,
+            "estimate_sent_date": _estimate_sent_date or None,
+            "customer_response_date": _customer_response_date or None,
+            "final_result_date": _final_result_date or None,
             "inputs": inputs,
             "result": {
                 **res,
@@ -251,6 +312,24 @@ def _score_one(row: dict) -> dict:
                 "depreciation": inputs["depreciation"],
             }
         }
+
+        final_rate = _plain_num(row, "獲得レート(%)")
+        base_rate_at_time = _plain_num(row, "基準金利(%)", 2.1)
+        loan_conditions_raw = _text(row, "承認条件")
+        loan_conditions = [x.strip() for x in loan_conditions_raw.replace("、", ",").split(",") if x.strip()]
+        if final_rate > 0:
+            db_data["final_rate"] = final_rate
+            db_data["base_rate_at_time"] = base_rate_at_time
+            if final_status == "成約":
+                db_data["winning_spread"] = final_rate - base_rate_at_time
+        if _text(row, "失注理由"):
+            db_data["lost_reason"] = _text(row, "失注理由")
+        if _text(row, "競合他社"):
+            db_data["competitor_name"] = _text(row, "競合他社")
+        if loan_conditions:
+            db_data["loan_conditions"] = loan_conditions
+        if _text(row, "結果登録メモ"):
+            db_data["final_note"] = _text(row, "結果登録メモ")
 
         # ── 定性スコアリング構造を生成して db_data に追加 ──────────────
         # constants.py の QUALITATIVE_SCORING_CORRECTION_ITEMS と完全に一致した形式で格納
@@ -383,9 +462,15 @@ def render_batch_scoring():
             
     # OCR等の空欄（NaN）を空文字に変換（falsy判定でデフォルト値へ安全にフォールバックさせるため）
     df_in = df_in.fillna("")
+    if "業種大分類" in df_in.columns:
+        df_in["業種大分類"] = df_in["業種大分類"].map(normalize_industry_major)
 
-    # 必須列チェック
-    missing_cols = [c for c in ["売上高(千円)", "総資産(千円)"] if c not in df_in.columns]
+    # 必須列チェック（現行は百万円。旧テンプレートの千円表記も互換で許容）
+    required_money = ["売上高", "総資産"]
+    missing_cols = [
+        name for name in required_money
+        if f"{name}(百万円)" not in df_in.columns and f"{name}(千円)" not in df_in.columns
+    ]
     if missing_cols:
         st.error(f"必須列が不足しています: {missing_cols}")
         return
@@ -418,7 +503,11 @@ def render_batch_scoring():
             prog.progress((i + 1) / len(df_in), text=f"{i+1}/{len(df_in)} 件処理中...")
         prog.empty()
 
-        df_out = pd.concat([df_in.reset_index(drop=True), pd.DataFrame(ui_results)], axis=1)
+        ui_df = pd.DataFrame(ui_results)
+        duplicate_ui_cols = [c for c in ui_df.columns if c in df_in.columns]
+        if duplicate_ui_cols:
+            ui_df = ui_df.drop(columns=duplicate_ui_cols)
+        df_out = pd.concat([df_in.reset_index(drop=True), ui_df], axis=1)
 
         # データベース保存処理
         if save_to_db and db_results:
