@@ -71,10 +71,49 @@ def render_dashboard():
         else:
             st.caption("定性スコアリングを入力した成約案件がまだありません。審査入力で「定性スコアリング」を選択し、結果登録で成約にするとここに集計が表示されます。")
 
+
+    all_cases = load_all_cases()
+
+    # ---------------- 営業部ごとの結果集計 ----------------
+    st.divider()
+    st.subheader("🏢 営業部ごとの結果")
+    if all_cases:
+        dept_rows = []
+        for case in all_cases:
+            dept = case.get("sales_dept") or case.get("inputs", {}).get("sales_dept") or "未設定"
+            status = case.get("final_status") or "未登録"
+            dept_rows.append({"営業部": dept, "結果": status})
+
+        df_dept = pd.DataFrame(dept_rows)
+        if not df_dept.empty:
+            dept_summary = (
+                df_dept
+                .pivot_table(index="営業部", columns="結果", aggfunc="size", fill_value=0)
+                .reset_index()
+            )
+            for col in ["成約", "失注", "保留", "未登録"]:
+                if col not in dept_summary.columns:
+                    dept_summary[col] = 0
+            dept_summary["合計"] = dept_summary[["成約", "失注", "保留", "未登録"]].sum(axis=1)
+            dept_summary["成約率(%)"] = dept_summary.apply(
+                lambda r: (r["成約"] / r["合計"] * 100) if r["合計"] else 0.0,
+                axis=1,
+            )
+            dept_summary = dept_summary[["営業部", "成約", "失注", "保留", "未登録", "合計", "成約率(%)"]]
+            dept_summary = dept_summary.sort_values(by=["成約率(%)", "成約"], ascending=[False, False])
+            st.dataframe(
+                dept_summary.style.format({"成約率(%)": "{:.1f}"}),
+                width='stretch',
+                hide_index=True,
+            )
+        else:
+            st.caption("営業部集計に使えるデータがありません。")
+    else:
+        st.caption("まだ案件履歴がありません。")
+
     # ---------------- 案件履歴一覧 ----------------
     st.divider()
     st.subheader("📋 最新の案件履歴")
-    all_cases = load_all_cases()
     if all_cases:
         for case in reversed(all_cases[-15:]):  # 最新15件を表示
             c_date = case.get('timestamp', '')[:16]
