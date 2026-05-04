@@ -750,7 +750,7 @@ def render_analysis_results(
                 else:
                     from screening_report import build_screening_report_pdf
                     _rep_res = st.session_state["last_result"]
-                    st.caption(f"業種：{_rep_res.get('industry_sub','')}　スコア：{_rep_res.get('score',0):.1f}")
+                    st.caption(f"業種：{_rep_res.get('industry_major', _rep_res.get('industry_sub',''))}　スコア：{_rep_res.get('score',0):.1f}")
 
                     st.divider()
                     col_r1, col_r2 = st.columns(2)
@@ -1463,9 +1463,11 @@ def render_analysis_results(
                         )
                         if _recs:
                             _rec_df = _pd_db.DataFrame(_recs)
+                            if "industry_major" not in _rec_df.columns and "industry_sub" in _rec_df.columns:
+                                _rec_df["industry_major"] = _rec_df["industry_sub"]
                             _disp_cols = {
                                 "id": "ID", "created_at": "審査日時",
-                                "industry_sub": "業種（中）", "customer_type": "区分",
+                                "industry_major": "業種（大）", "customer_type": "区分",
                                 "revenue_m": "年商(百万)", "equity_ratio": "自己資本比率%",
                                 "lease_amount_m": "リース額(百万)", "lease_term": "期間(月)",
                                 "score": "スコア", "judgment": "判定",
