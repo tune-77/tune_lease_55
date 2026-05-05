@@ -32,6 +32,42 @@ from constants import (
     STRENGTH_TAG_OPTIONS
 )
 
+QUALITATIVE_DELTA_FACTOR = 0.3
+
+
+def _qual_rank(score: float) -> dict:
+    return next((r for r in QUALITATIVE_SCORE_RANKS if score >= r["min"]), QUALITATIVE_SCORE_RANKS[-1])
+
+
+def _manual_qualitative_score(final_score: float, qual_weighted_score: float) -> tuple[float, float]:
+    """定性は別スコアとして混ぜず、50点を中立とした差分補正として扱う。"""
+    delta = round((qual_weighted_score - 50.0) * QUALITATIVE_DELTA_FACTOR, 1)
+    score = round(min(100.0, max(0.0, final_score + delta)), 1)
+    return score, delta
+
+
+def _refresh_qualitative_correction(
+    correction: dict | None,
+    final_score: float,
+    qual_weighted_score: float,
+) -> None:
+    """スコア変動後に、手入力定性の差分補正スコアだけを再計算する。"""
+    if not correction:
+        return
+    source = correction.get("source") or "manual"
+    if source == "manual":
+        combined_score, qualitative_delta = _manual_qualitative_score(final_score, qual_weighted_score)
+        qual_rank = _qual_rank(combined_score)
+        correction["combined_score"] = combined_score
+        correction["qualitative_delta"] = qualitative_delta
+        correction["rank"] = qual_rank["label"]
+        correction["rank_text"] = qual_rank["text"]
+        correction["rank_desc"] = qual_rank["desc"]
+    elif source in ("proxy", "tunnel"):
+        correction["combined_score"] = round(final_score, 1)
+        correction["reference_only"] = True
+
+
 def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankruptcy_data, jsic_data, avg_data, _rules, _SCRIPT_DIR, RECOMMENDED_FIELDS=None, capex_lease_data=None):
     # Unpack form_result
     submitted_apply = form_result.get("submitted_apply")
@@ -919,7 +955,9 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 qualitative_onehot = {tag: 1 for tag in STRENGTH_TAG_OPTIONS if tag in strength_tags}
                 qualitative_onehot.update({tag: 0 for tag in STRENGTH_TAG_OPTIONS if tag not in strength_tags})
 
-                # 定性スコアリングの集計（総合×60%＋定性×40%でランクA〜E）
+                # 定性スコアリングの集計。
+                # 手入力定性は (定性スコア - 50) × 0.3 の差分補正として判定へ反映する。
+                # 代理定性は説明用の参考補完に留め、本判定スコアには混ぜない。
                 qual_correction_items = {}
                 qual_weight_sum = 0
                 qual_weighted_total = 0.0
@@ -940,16 +978,14 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 qual_weighted_score = round((qual_weighted_total / qual_weight_sum * 100) if qual_weight_sum > 0 else 0)
                 qual_weighted_score = min(100, max(0, qual_weighted_score))
                 qualitative_scoring_correction = None
-                qual_proxy_used = False
                 if qual_weight_sum > 0:
-                    # ランクA〜Eは総合×重み＋定性×重みに基づく（重みは回帰最適化で変更可能）
-                    combined_score = round(final_score * w_quant + qual_weighted_score * w_qual)
-                    combined_score = min(100, max(0, combined_score))
-                    qual_rank = next((r for r in QUALITATIVE_SCORE_RANKS if combined_score >= r["min"]), QUALITATIVE_SCORE_RANKS[-1])
+                    combined_score, qualitative_delta = _manual_qualitative_score(final_score, qual_weighted_score)
+                    qual_rank = _qual_rank(combined_score)
                     qualitative_scoring_correction = {
                         "source": "manual",
                         "items": qual_correction_items,
                         "weighted_score": qual_weighted_score,
+                        "qualitative_delta": qualitative_delta,
                         "combined_score": combined_score,
                         "rank": qual_rank["label"],
                         "rank_text": qual_rank["text"],
@@ -961,22 +997,16 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     except Exception:
                         proxy_corr = None
                     if proxy_corr:
-                        qual_proxy_used = True
                         qual_weighted_score = float(proxy_corr.get("weighted_score") or 0)
-                        combined_score = round(final_score * w_quant + qual_weighted_score * w_qual)
-                        combined_score = min(100, max(0, combined_score))
-                        qual_rank = next((r for r in QUALITATIVE_SCORE_RANKS if combined_score >= r["min"]), QUALITATIVE_SCORE_RANKS[-1])
-                        proxy_corr["combined_score"] = combined_score
-                        proxy_corr["rank"] = qual_rank["label"]
-                        proxy_corr["rank_text"] = qual_rank["text"]
-                        proxy_corr["rank_desc"] = qual_rank["desc"]
-                        proxy_corr["source"] = "proxy"
+                        proxy_corr["combined_score"] = round(final_score, 1)
+                        proxy_corr["reference_only"] = True
+                        proxy_corr["source"] = "tunnel"
                         qualitative_scoring_correction = proxy_corr
                         ai_completed_factors.append({
-                            "factor": "代理定性因子",
-                            "effect_percent": int(round(qual_weighted_score - 50)),
+                            "factor": "代理定性因子（参考）",
+                            "effect_percent": 0,
                             "detail": (
-                                f"到達確率 {proxy_corr['proxy']['tunnel_probability']:.1f}% "
+                                f"判定には未反映。到達確率 {proxy_corr['proxy']['tunnel_probability']:.1f}% "
                                 f"/ 障壁 {proxy_corr['proxy']['barrier_count_30']}項目"
                             ),
                         })
@@ -998,14 +1028,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         "detail": "過去の学習データに基づくAI判定で「否決傾向」となったための減点"
                     })
                     # 定性スコアリングの合計・ランクも否決後の総合で再計算
-                    if qualitative_scoring_correction:
-                        combined_score = round(final_score * w_quant + qual_weighted_score * w_qual)
-                        combined_score = min(100, max(0, combined_score))
-                        qual_rank = next((r for r in QUALITATIVE_SCORE_RANKS if combined_score >= r["min"]), QUALITATIVE_SCORE_RANKS[-1])
-                        qualitative_scoring_correction["combined_score"] = combined_score
-                        qualitative_scoring_correction["rank"] = qual_rank["label"]
-                        qualitative_scoring_correction["rank_text"] = qual_rank["text"]
-                        qualitative_scoring_correction["rank_desc"] = qual_rank["desc"]
+                    _refresh_qualitative_correction(qualitative_scoring_correction, final_score, qual_weighted_score)
 
                 # デフォルト率50%以上の場合、成約可能性スコアから-50点
                 if pd_percent >= 50:
@@ -1015,14 +1038,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         "effect_percent": -50,
                         "detail": f"デフォルト確率が {pd_percent:.1f}% と非常に高いため大幅減点フラグ発動"
                     })
-                    if qualitative_scoring_correction:
-                        combined_score = round(final_score * w_quant + qual_weighted_score * w_qual)
-                        combined_score = min(100, max(0, combined_score))
-                        qual_rank = next((r for r in QUALITATIVE_SCORE_RANKS if combined_score >= r["min"]), QUALITATIVE_SCORE_RANKS[-1])
-                        qualitative_scoring_correction["combined_score"] = combined_score
-                        qualitative_scoring_correction["rank"] = qual_rank["label"]
-                        qualitative_scoring_correction["rank_text"] = qual_rank["text"]
-                        qualitative_scoring_correction["rank_desc"] = qual_rank["desc"]
+                    _refresh_qualitative_correction(qualitative_scoring_correction, final_score, qual_weighted_score)
 
                 # 新しい審査を実行したのでチャット履歴をリセット
                 st.session_state["messages"] = []
@@ -1064,12 +1080,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                             
                     # 定性スコアリングの合計等も再計算
                     if qualitative_scoring_correction:
-                        combined_score = round(final_score * w_quant + qual_weighted_score * w_qual)
-                        combined_score = min(100, max(0, combined_score))
-                        qual_rank = next((r for r in QUALITATIVE_SCORE_RANKS if combined_score >= r["min"]), QUALITATIVE_SCORE_RANKS[-1])
-                        qualitative_scoring_correction["combined_score"] = combined_score
-                        qualitative_scoring_correction["rank"] = qual_rank["label"]
-                        qualitative_scoring_correction["rank_text"] = qual_rank["text"]
+                        _refresh_qualitative_correction(qualitative_scoring_correction, final_score, qual_weighted_score)
                     
                     # 強制ステータスの保持（後段の `hantei` トグル等で利用）
                     forced_custom_status = cr_result.get("forced_status")
@@ -1092,25 +1103,20 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                                 f"{reverse_bayes_bonus['rule'].get('activation_description', '')}"
                             ),
                         })
-                        if qualitative_scoring_correction:
-                            combined_score = round(final_score * w_quant + qual_weighted_score * w_qual)
-                            combined_score = min(100, max(0, combined_score))
-                            qual_rank = next((r for r in QUALITATIVE_SCORE_RANKS if combined_score >= r["min"]), QUALITATIVE_SCORE_RANKS[-1])
-                            qualitative_scoring_correction["combined_score"] = combined_score
-                            qualitative_scoring_correction["rank"] = qual_rank["label"]
-                            qualitative_scoring_correction["rank_text"] = qual_rank["text"]
-                            qualitative_scoring_correction["rank_desc"] = qual_rank["desc"]
+                        _refresh_qualitative_correction(qualitative_scoring_correction, final_score, qual_weighted_score)
 
                 # 将来予測シミュレーション（遅延ロード化：分析結果ページで必要時に呼び出す）
                 future_sim_result = None
 
                 # ─────────────────────────────────────────────────────────────────
                 # 承認判定スコア:
-                #   定性項目が1件以上入力済 → combined_score（定量＋定性の総合）で判定
-                #   定性項目が未入力        → final_score（定量のみ）で判定（公平性確保）
+                #   定性項目が1件以上入力済 → 差分補正後スコアで判定
+                #   定性項目が未入力        → final_score（定量のみ）で判定（代理定性は参考表示）
                 # ─────────────────────────────────────────────────────────────────
-                _hantei_score = combined_score if (qual_weight_sum > 0 or qual_proxy_used) else final_score
-                _hantei_score_label = "定量＋定性スコア" if qual_weight_sum > 0 else ("代理定性補完スコア" if qual_proxy_used else "定量スコア（定性未入力）")
+                if qual_weight_sum > 0 and qualitative_scoring_correction:
+                    combined_score = float(qualitative_scoring_correction.get("combined_score", combined_score))
+                _hantei_score = combined_score if qual_weight_sum > 0 else final_score
+                _hantei_score_label = "定性差分補正スコア" if qual_weight_sum > 0 else "定量スコア（定性未入力）"
                 st.session_state['current_image'] = "approve" if _hantei_score >= _eff_approval else "challenge"
 
                 st.session_state['last_result'] = {

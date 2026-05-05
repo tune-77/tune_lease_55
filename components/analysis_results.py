@@ -1628,16 +1628,16 @@ def render_analysis_results(
                 except ImportError as e:
                     st.error(f"シミュレーション機能の読み込みに失敗しました: {e}")
                     
-            # ----- 定性スコアリング（総合×60%＋定性×40%でランクA〜E） -----
+            # ----- 定性スコアリング（50点を中立とした差分補正） -----
             qcorr = res.get("qualitative_scoring_correction")
             with st.expander("📋 定性スコアリング", expanded=bool(qcorr)):
                 if qcorr:
                     r = qcorr
                     total_score = res.get("score", 0)  # 成約可能性スコア（物件+借手）
                     source = r.get("source") or "manual"
-                    if source == "tunnel":
+                    if source in ("tunnel", "proxy"):
                         proxy = r.get("proxy") or {}
-                        st.caption("定性入力が未入力のため、30項目の欠損障壁と総当たり最適化から補完しています。")
+                        st.caption("定性入力が未入力のため、30項目の欠損障壁と総当たり最適化から参考補完しています。この代理定性は本判定スコアには混ぜません。")
                         c1, c2, c3, c4 = st.columns(4)
                         with c1:
                             st.metric("成約可能性スコア", f"{total_score:.1f}", help="借手スコアと物件スコアの複合値です。")
@@ -1646,7 +1646,7 @@ def render_analysis_results(
                         with c3:
                             st.metric("到達確率", f"{proxy.get('tunnel_probability', 0):.1f}%", help="障壁を抜けて成約へ到達する確率です。")
                         with c4:
-                            st.metric("補完後合計", f"{r.get('combined_score', 0):.1f}", help="定量×重み＋代理定性×重み")
+                            st.metric("判定スコア", f"{r.get('combined_score', total_score):.1f}", help="代理定性は参考表示のみで、本判定には反映しません。")
                         c5, c6 = st.columns(2)
                         with c5:
                             st.metric("ポテンシャル障壁", f"{proxy.get('barrier_count_30', 0):.0f} / 30", help="欠損30項目のうち障壁として数えた件数")
@@ -1665,8 +1665,9 @@ def render_analysis_results(
                                 )
                         st.caption(r.get("rank_desc", ""))
                     else:
-                        st.caption("**ランク（A〜E）は 総合×重み＋定性×重み（デフォルト60%/40%）に基づきます。**")
+                        st.caption("**ランク（A〜E）は 総合スコア + (定性スコア - 50) × 0.3 に基づきます。**")
                         qual_score = r.get("weighted_score", 0)
+                        qual_delta = r.get("qualitative_delta", 0)
                         combined = r.get("combined_score", 0)
                         c1, c2, c3, c4 = st.columns(4)
                         with c1:
@@ -1674,9 +1675,9 @@ def render_analysis_results(
                         with c2:
                             st.metric("定性スコア", f"{qual_score} / 100", help="項目別5段階の加重平均")
                         with c3:
-                            st.metric("合計（総合×重み＋定性×重み）", f"{combined}", help="ランク算出の元")
+                            st.metric("定性補正", f"{qual_delta:+.1f}", help="(定性スコア - 50) × 0.3")
                         with c4:
-                            st.metric("ランク", f"{r.get('rank', '—')} {r.get('rank_text', '')}", help=r.get("rank_desc", ""))
+                            st.metric("補正後ランク", f"{r.get('rank', '—')} {r.get('rank_text', '')}", help=f"補正後スコア {combined}")
                         st.caption(r.get("rank_desc", ""))
                         st.markdown("**項目別**")
                         for item_id, data in (r.get("items") or {}).items():
@@ -1685,7 +1686,7 @@ def render_analysis_results(
                                 label_short = data.get("level_label") or QUALITATIVE_SCORING_LEVEL_LABELS.get(val, f"{int((val or 0)/4*100)}点")
                                 st.markdown(f"- **{data.get('label', item_id)}**（重み{data.get('weight', 0)}%）: {label_short}")
                 else:
-                    st.info("審査入力の「定性スコアリング」で項目を選択すると、ここに集計結果が表示されます。ランクは成約可能性スコア×重み＋定性×重みで算出。定性を1件も選んでいない場合は成約可能性スコアのみで判定します。")
+                    st.info("審査入力の「定性スコアリング」で項目を選択すると、ここに集計結果が表示されます。定性は (定性スコア - 50) × 0.3 の差分補正として反映します。定性を1件も選んでいない場合は成約可能性スコアのみで判定します。")
 
             # ----- 学習モデル（業種別ハイブリッド）の予測結果（融合機能）・常に表示 -----
             _scoring_res_key = "scoring_result_manual"

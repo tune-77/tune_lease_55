@@ -9,15 +9,14 @@ import pandas as pd
 import streamlit as st
 
 from constants import QUALITATIVE_SCORE_RANKS, QUALITATIVE_SCORING_CORRECTION_ITEMS
-from data_cases import DB_PATH, get_score_weights, load_all_cases
+from data_cases import DB_PATH, load_all_cases
 from components.form_apply import SALES_DEPT_OPTIONS
 
 _FINAL_STATUS_OPTIONS = ["未登録", "成約", "失注", "承認待ち", "否決", "審議中"]
+QUALITATIVE_DELTA_FACTOR = 0.3
 
 
-def _calc_qual_correction(
-    item_values: dict, final_score: float, w_quant: float, w_qual: float
-) -> dict | None:
+def _calc_qual_correction(item_values: dict, final_score: float) -> dict | None:
     qual_weight_sum = 0
     qual_weighted_total = 0.0
     qual_correction_items: dict = {}
@@ -41,15 +40,17 @@ def _calc_qual_correction(
 
     qual_weighted_score = round(qual_weighted_total / qual_weight_sum * 100)
     qual_weighted_score = min(100, max(0, qual_weighted_score))
-    combined_score = round(final_score * w_quant + qual_weighted_score * w_qual)
-    combined_score = min(100, max(0, combined_score))
+    qualitative_delta = round((qual_weighted_score - 50.0) * QUALITATIVE_DELTA_FACTOR, 1)
+    combined_score = round(min(100.0, max(0.0, final_score + qualitative_delta)), 1)
     qual_rank = next(
         (r for r in QUALITATIVE_SCORE_RANKS if combined_score >= r["min"]),
         QUALITATIVE_SCORE_RANKS[-1],
     )
     return {
+        "source": "manual",
         "items": qual_correction_items,
         "weighted_score": qual_weighted_score,
+        "qualitative_delta": qualitative_delta,
         "combined_score": combined_score,
         "rank": qual_rank["label"],
         "rank_text": qual_rank["text"],
@@ -262,10 +263,9 @@ def render_case_editor() -> None:
     # ③ 保存処理
     # ──────────────────────────────────────────
     if st.button("💾 保存する", type="primary", key=f"save_case_{case_id}"):
-        _, _, w_quant, w_qual = get_score_weights()
         final_score = float(result.get("score") or 50)
 
-        new_qual_correction = _calc_qual_correction(qual_vals, final_score, w_quant, w_qual)
+        new_qual_correction = _calc_qual_correction(qual_vals, final_score)
 
         new_case = copy.deepcopy(case)
 

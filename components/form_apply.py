@@ -495,9 +495,9 @@ def render_apply_form(
             st.caption(f"登録値: **{occurrence_ym}**")
             st.markdown("### 取得価格")
             acquisition_cost = _slider_and_number("acquisition_cost", "acquisition_cost", 1000, 0, 500000, 100, 100, label_slider="取得価格調整", max_val_number=90_000_000, unit_factor=1000)
-            # ---------- 5. 定性スコアリング（総合×重み＋定性×重みでランクA〜E。定性未選択時は総合スコアのみ） ----------
+            # ---------- 5. 定性スコアリング（50点を中立とする差分補正。定性未選択時は総合スコアのみ） ----------
             with st.expander("📋 定性スコアリング", expanded=False):
-                st.caption("審査員が定性面を項目別に評価します。ランク（A〜E）は **総合スコア×重み＋定性×重み**（デフォルト60%/40%）で算出。定性を1件も選んでいない場合はランクは出さず、総合スコアのみで判定します。（未選択の項目は定性スコアに含めません）")
+                st.caption("審査員が定性面を項目別に評価します。判定は **総合スコア + (定性スコア - 50) × 0.3** で補正します。定性を1件も選んでいない場合はランクは出さず、総合スコアのみで判定します。（未選択の項目は定性スコアに含めません）")
                 for item in QUALITATIVE_SCORING_CORRECTION_ITEMS:
                     opts = item.get("options") or QUALITATIVE_SCORING_LEVELS
                     opts_display = ["未選択"] + [o[1] for o in opts]
