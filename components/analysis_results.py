@@ -1633,26 +1633,57 @@ def render_analysis_results(
             with st.expander("📋 定性スコアリング", expanded=bool(qcorr)):
                 if qcorr:
                     r = qcorr
-                    st.caption("**ランク（A〜E）は 総合×重み＋定性×重み（デフォルト60%/40%）に基づきます。**")
                     total_score = res.get("score", 0)  # 成約可能性スコア（物件+借手）
-                    qual_score = r.get("weighted_score", 0)
-                    combined = r.get("combined_score", 0)
-                    c1, c2, c3, c4 = st.columns(4)
-                    with c1:
-                        st.metric("成約可能性スコア", f"{total_score:.1f}", help="成約可能性（借手）× 物件ウェイト ＋ 物件スコア × 物件ウェイト。審査通過×成約の複合指標です。")
-                    with c2:
-                        st.metric("定性スコア", f"{qual_score} / 100", help="項目別5段階の加重平均")
-                    with c3:
-                        st.metric("合計（総合×重み＋定性×重み）", f"{combined}", help="ランク算出の元")
-                    with c4:
-                        st.metric("ランク", f"{r.get('rank', '—')} {r.get('rank_text', '')}", help=r.get("rank_desc", ""))
-                    st.caption(r.get("rank_desc", ""))
-                    st.markdown("**項目別**")
-                    for item_id, data in (r.get("items") or {}).items():
-                        val = data.get("value")
-                        if val is not None:
-                            label_short = data.get("level_label") or QUALITATIVE_SCORING_LEVEL_LABELS.get(val, f"{int((val or 0)/4*100)}点")
-                            st.markdown(f"- **{data.get('label', item_id)}**（重み{data.get('weight', 0)}%）: {label_short}")
+                    source = r.get("source") or "manual"
+                    if source == "tunnel":
+                        proxy = r.get("proxy") or {}
+                        st.caption("定性入力が未入力のため、30項目の欠損障壁と総当たり最適化から補完しています。")
+                        c1, c2, c3, c4 = st.columns(4)
+                        with c1:
+                            st.metric("成約可能性スコア", f"{total_score:.1f}", help="借手スコアと物件スコアの複合値です。")
+                        with c2:
+                            st.metric("代理定性スコア", f"{r.get('weighted_score', 0):.1f} / 100", help="総当たりで選ばれた補助因子の到達確率です。")
+                        with c3:
+                            st.metric("到達確率", f"{proxy.get('tunnel_probability', 0):.1f}%", help="障壁を抜けて成約へ到達する確率です。")
+                        with c4:
+                            st.metric("補完後合計", f"{r.get('combined_score', 0):.1f}", help="定量×重み＋代理定性×重み")
+                        c5, c6 = st.columns(2)
+                        with c5:
+                            st.metric("ポテンシャル障壁", f"{proxy.get('barrier_count_30', 0):.0f} / 30", help="欠損30項目のうち障壁として数えた件数")
+                        with c6:
+                            st.metric("トンネル係数", f"{proxy.get('gamma', 0):.2f}", help="障壁の減衰強度です。")
+                        st.caption(
+                            f"学習AUC {proxy.get('metrics', {}).get('auc', 0):.3f} / "
+                            f"ベースラインAUC {proxy.get('baseline_metrics', {}).get('auc', 0):.3f} / "
+                            f"学習 {proxy.get('n_cases', 0)}件"
+                        )
+                        if proxy.get("top_contributions"):
+                            st.markdown("**代理因子の寄与**")
+                            for item in proxy["top_contributions"][:5]:
+                                st.markdown(
+                                    f"- **{item['feature']}**: 係数{item['coef']:+.3f} / 寄与{item['impact']:+.3f}"
+                                )
+                        st.caption(r.get("rank_desc", ""))
+                    else:
+                        st.caption("**ランク（A〜E）は 総合×重み＋定性×重み（デフォルト60%/40%）に基づきます。**")
+                        qual_score = r.get("weighted_score", 0)
+                        combined = r.get("combined_score", 0)
+                        c1, c2, c3, c4 = st.columns(4)
+                        with c1:
+                            st.metric("成約可能性スコア", f"{total_score:.1f}", help="成約可能性（借手）× 物件ウェイト ＋ 物件スコア × 物件ウェイト。審査通過×成約の複合指標です。")
+                        with c2:
+                            st.metric("定性スコア", f"{qual_score} / 100", help="項目別5段階の加重平均")
+                        with c3:
+                            st.metric("合計（総合×重み＋定性×重み）", f"{combined}", help="ランク算出の元")
+                        with c4:
+                            st.metric("ランク", f"{r.get('rank', '—')} {r.get('rank_text', '')}", help=r.get("rank_desc", ""))
+                        st.caption(r.get("rank_desc", ""))
+                        st.markdown("**項目別**")
+                        for item_id, data in (r.get("items") or {}).items():
+                            val = data.get("value")
+                            if val is not None:
+                                label_short = data.get("level_label") or QUALITATIVE_SCORING_LEVEL_LABELS.get(val, f"{int((val or 0)/4*100)}点")
+                                st.markdown(f"- **{data.get('label', item_id)}**（重み{data.get('weight', 0)}%）: {label_short}")
                 else:
                     st.info("審査入力の「定性スコアリング」で項目を選択すると、ここに集計結果が表示されます。ランクは成約可能性スコア×重み＋定性×重みで算出。定性を1件も選んでいない場合は成約可能性スコアのみで判定します。")
 

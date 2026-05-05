@@ -24,6 +24,8 @@ from data_cases import (
     get_effective_coeffs, get_score_weights, get_model_blend_weights, save_case_log,
     find_similar_past_cases
 )
+from tunnel_optimizer import build_tunnel_correction
+from soul_factor_miner import build_reverse_bayes_bonus
 from constants import (
     APPROVAL_LINE, REVIEW_LINE, SCORE_PENALTY_IF_LEARNING_REJECT,
     QUALITATIVE_SCORING_CORRECTION_ITEMS, QUALITATIVE_SCORING_LEVELS, QUALITATIVE_SCORE_RANKS,
@@ -937,13 +939,15 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         qual_weighted_total += (val / 4.0) * 100 * (item["weight"] / 100.0)
                 qual_weighted_score = round((qual_weighted_total / qual_weight_sum * 100) if qual_weight_sum > 0 else 0)
                 qual_weighted_score = min(100, max(0, qual_weighted_score))
-                # ランクA〜Eは総合×重み＋定性×重みに基づく（重みは回帰最適化で変更可能）
-                combined_score = round(final_score * w_quant + qual_weighted_score * w_qual)
-                combined_score = min(100, max(0, combined_score))
-                qual_rank = next((r for r in QUALITATIVE_SCORE_RANKS if combined_score >= r["min"]), QUALITATIVE_SCORE_RANKS[-1])
                 qualitative_scoring_correction = None
+                qual_proxy_used = False
                 if qual_weight_sum > 0:
+                    # ランクA〜Eは総合×重み＋定性×重みに基づく（重みは回帰最適化で変更可能）
+                    combined_score = round(final_score * w_quant + qual_weighted_score * w_qual)
+                    combined_score = min(100, max(0, combined_score))
+                    qual_rank = next((r for r in QUALITATIVE_SCORE_RANKS if combined_score >= r["min"]), QUALITATIVE_SCORE_RANKS[-1])
                     qualitative_scoring_correction = {
+                        "source": "manual",
                         "items": qual_correction_items,
                         "weighted_score": qual_weighted_score,
                         "combined_score": combined_score,
@@ -951,6 +955,31 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         "rank_text": qual_rank["text"],
                         "rank_desc": qual_rank["desc"],
                     }
+                else:
+                    try:
+                        proxy_corr = build_tunnel_correction(form_result)
+                    except Exception:
+                        proxy_corr = None
+                    if proxy_corr:
+                        qual_proxy_used = True
+                        qual_weighted_score = float(proxy_corr.get("weighted_score") or 0)
+                        combined_score = round(final_score * w_quant + qual_weighted_score * w_qual)
+                        combined_score = min(100, max(0, combined_score))
+                        qual_rank = next((r for r in QUALITATIVE_SCORE_RANKS if combined_score >= r["min"]), QUALITATIVE_SCORE_RANKS[-1])
+                        proxy_corr["combined_score"] = combined_score
+                        proxy_corr["rank"] = qual_rank["label"]
+                        proxy_corr["rank_text"] = qual_rank["text"]
+                        proxy_corr["rank_desc"] = qual_rank["desc"]
+                        proxy_corr["source"] = "proxy"
+                        qualitative_scoring_correction = proxy_corr
+                        ai_completed_factors.append({
+                            "factor": "代理定性因子",
+                            "effect_percent": int(round(qual_weighted_score - 50)),
+                            "detail": (
+                                f"到達確率 {proxy_corr['proxy']['tunnel_probability']:.1f}% "
+                                f"/ 障壁 {proxy_corr['proxy']['barrier_count_30']}項目"
+                            ),
+                        })
 
                 # 学習モデル（業種別ハイブリッド）の予測（遅延ロード化：分析結果ページで必要時に呼び出す）
                 scoring_result = None
@@ -1047,6 +1076,31 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 else:
                     forced_custom_status = None
 
+                reverse_bayes_bonus = None
+                try:
+                    reverse_bayes_bonus = build_reverse_bayes_bonus(form_result)
+                except Exception:
+                    reverse_bayes_bonus = None
+                if reverse_bayes_bonus:
+                    bonus_points = float(reverse_bayes_bonus.get("bonus_points") or 0.0)
+                    if bonus_points > 0:
+                        final_score = min(100.0, final_score + bonus_points)
+                        ai_completed_factors.append({
+                            "factor": "逆転のベイズ加点",
+                            "effect_percent": int(round(bonus_points)),
+                            "detail": (
+                                f"{reverse_bayes_bonus['rule'].get('activation_description', '')}"
+                            ),
+                        })
+                        if qualitative_scoring_correction:
+                            combined_score = round(final_score * w_quant + qual_weighted_score * w_qual)
+                            combined_score = min(100, max(0, combined_score))
+                            qual_rank = next((r for r in QUALITATIVE_SCORE_RANKS if combined_score >= r["min"]), QUALITATIVE_SCORE_RANKS[-1])
+                            qualitative_scoring_correction["combined_score"] = combined_score
+                            qualitative_scoring_correction["rank"] = qual_rank["label"]
+                            qualitative_scoring_correction["rank_text"] = qual_rank["text"]
+                            qualitative_scoring_correction["rank_desc"] = qual_rank["desc"]
+
                 # 将来予測シミュレーション（遅延ロード化：分析結果ページで必要時に呼び出す）
                 future_sim_result = None
 
@@ -1055,8 +1109,8 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 #   定性項目が1件以上入力済 → combined_score（定量＋定性の総合）で判定
                 #   定性項目が未入力        → final_score（定量のみ）で判定（公平性確保）
                 # ─────────────────────────────────────────────────────────────────
-                _hantei_score = combined_score if qual_weight_sum > 0 else final_score
-                _hantei_score_label = "定量＋定性スコア" if qual_weight_sum > 0 else "定量スコア（定性未入力）"
+                _hantei_score = combined_score if (qual_weight_sum > 0 or qual_proxy_used) else final_score
+                _hantei_score_label = "定量＋定性スコア" if qual_weight_sum > 0 else ("代理定性補完スコア" if qual_proxy_used else "定量スコア（定性未入力）")
                 st.session_state['current_image'] = "approve" if _hantei_score >= _eff_approval else "challenge"
 
                 st.session_state['last_result'] = {
@@ -1085,6 +1139,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     "scoring_result": scoring_result,
                     "future_sim_result": future_sim_result,
                     "qualitative_scoring_correction": qualitative_scoring_correction,
+                    "reverse_bayes_bonus": reverse_bayes_bonus,
                     "financials": {
                         "nenshu": nenshu,
                         "rieki": rieki,

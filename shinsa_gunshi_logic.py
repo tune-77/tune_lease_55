@@ -812,6 +812,8 @@ def build_gunshi_prompt(
     vehicle_type: str = "",
     trend_info: str = "",       # ← 業界動向テキスト（jsic_data + ネット拡充）
     comparison_text: str = "",  # ← 財務比較テキスト（res["comparison"]）
+    reverse_bayes_text: str = "",  # ← 逆転のベイズ加点要約
+    fp0_patch_text: str = "",  # ← FP=0 魂のパッチ要約
     humor_style: str = "standard", # ← 八奈見モード拡張用
     asset_market_context: str = "",  # ← get_asset_context_for_ai() の返値
     asset_finance_context: str = "", # ← アセットファイナンス評価データの返値
@@ -871,6 +873,21 @@ def build_gunshi_prompt(
         af_section = (
             "\n【アセット・ファイナンス審査データ（BEP/担保評価）— 必ず論拠の補強として引用すること】\n"
             f"{asset_finance_context.strip()}\n"
+        )
+
+    # ── 逆転のベイズ加点セクション ───────────────────────────────────────
+    rb_section = ""
+    if reverse_bayes_text and reverse_bayes_text.strip():
+        rb_section = (
+            "\n【逆転のベイズ加点候補 — 定性補填がある場合にのみ使うこと】\n"
+            f"{reverse_bayes_text.strip()}\n"
+        )
+
+    fp0_section = ""
+    if fp0_patch_text and fp0_patch_text.strip():
+        fp0_section = (
+            "\n【営業部別・特異成約パターン検知 — FP=0 の魂のパッチ】\n"
+            f"{fp0_patch_text.strip()}\n"
         )
 
     # 役員車・高級外車の場合: LLMへの注意喚起コンテキスト
@@ -971,6 +988,8 @@ def build_gunshi_prompt(
 - ベイズ推定 承認確率: {posterior*100:.1f}%
 - 対象物件: {asset_name or "不明"}{vehicle_context}
 {trend_section}{comp_section}{market_section}{af_section}
+{rb_section}
+{fp0_section}
 {success_text}
 {fail_text}
 
@@ -1126,4 +1145,3 @@ def generate_counter_offers(
 # ==============================================================================
 # メインUI
 # ==============================================================================
-

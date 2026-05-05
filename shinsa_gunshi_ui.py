@@ -41,6 +41,76 @@ from components.shinsa_gunshi_db import (
     load_history,
     get_success_patterns,
 )
+from soul_factor_miner import build_fp0_patch_note
+
+
+def _format_reverse_bayes_text(reverse_bayes_bonus: dict | None) -> str:
+    """逆転のベイズ加点候補を軍師AI向けの日本語説明に整形する。"""
+    if not reverse_bayes_bonus:
+        return ""
+
+    rule = reverse_bayes_bonus.get("rule") or {}
+    activation_description = (
+        rule.get("activation_description")
+        or reverse_bayes_bonus.get("activation_description")
+        or ""
+    ).strip()
+    activation_text = (
+        rule.get("activation_conditions_text")
+        or reverse_bayes_bonus.get("activation_conditions_text")
+        or ""
+    ).strip()
+    bonus_points = int(float(reverse_bayes_bonus.get("bonus_points") or rule.get("bonus_points") or 0))
+    posterior = float(rule.get("posterior") or reverse_bayes_bonus.get("posterior") or 0.0)
+    fn_count = int(rule.get("fn_count") or reverse_bayes_bonus.get("fn_count") or 0)
+    other_count = int(rule.get("other_count") or reverse_bayes_bonus.get("other_count") or 0)
+
+    lines = [
+        "逆転のベイズ加点候補",
+        f"- 加点: +{bonus_points}点",
+        f"- 成約側ヒット: {fn_count}件",
+        f"- 失注側ヒット: {other_count}件",
+        f"- 事後確率: {posterior:.3f}",
+    ]
+    if activation_text:
+        lines.append(f"- 発動条件: {activation_text}")
+    if activation_description:
+        lines.append(f"- 説明: {activation_description}")
+
+    return "\n".join(lines)
+
+
+def _format_fp0_patch_text(fp0_patch_note: dict | None) -> str:
+    """FP=0 の魂のパッチを軍師AI向けの日本語説明に整形する。"""
+    if not fp0_patch_note:
+        return ""
+
+    title = (fp0_patch_note.get("title") or "営業部別・特異成約パターン検知").strip()
+    explanation = (fp0_patch_note.get("explanation") or "").strip()
+    action = (fp0_patch_note.get("action") or "").strip()
+    pattern = (fp0_patch_note.get("pattern") or "").strip()
+    category = (fp0_patch_note.get("category") or "").strip()
+    success_count = fp0_patch_note.get("success_count")
+    precision = fp0_patch_note.get("precision")
+    desc = fp0_patch_note.get("description") or ""
+
+    lines = [title]
+    if category:
+        lines.append(f"- 区分: {category}")
+    if pattern:
+        lines.append(f"- パターン: {pattern}")
+    if success_count is not None:
+        lines.append(f"- 成約件数: {int(success_count)}件")
+    if precision is not None:
+        lines.append(f"- 純度: {float(precision) * 100:.1f}%")
+    if explanation:
+        lines.append(f"- 解説: {explanation}")
+    if desc:
+        lines.append(f"- 補足: {desc}")
+    if action:
+        lines.append(f"- アクション: {action}")
+
+    return "\n".join(lines)
 
 def render_gunshi() -> None:
     """軍師モード メイン UI"""
@@ -314,6 +384,7 @@ def render_gunshi() -> None:
 
             model_to_use = st.session_state.get("gu_model", DEFAULT_MODEL) or DEFAULT_MODEL
             _res_for_prompt = st.session_state.get("last_result") or {}
+            _reverse_bayes_text = _format_reverse_bayes_text(_res_for_prompt.get("reverse_bayes_bonus"))
             prompt = build_gunshi_prompt(
                 industry=f"{industry_cat}（{industry_detail}）" if industry_detail else industry_cat,
                 score=score,
@@ -328,6 +399,8 @@ def render_gunshi() -> None:
                 top_phrases=top_phrases,
                 trend_info=st.session_state.get("_gunshi_trend_300", ""),
                 comparison_text=_res_for_prompt.get("comparison", ""),
+                reverse_bayes_text=_reverse_bayes_text,
+                fp0_patch_text=_format_fp0_patch_text(build_fp0_patch_note(_res_for_prompt)),
                 humor_style=st.session_state.get("humor_style", "standard"),
                 asset_market_context=_get_asset_market_ctx(),
             )
@@ -652,6 +725,12 @@ def compute_gunshi_from_res(
     # 車種別追加ブーストを事後確率に上乗せ
     posterior = min(0.99, posterior + vehicle_boost)
 
+    reverse_bayes_bonus = res.get("reverse_bayes_bonus") or {}
+    try:
+        fp0_patch_note = build_fp0_patch_note(res)
+    except Exception:
+        fp0_patch_note = None
+
     # フレーズ選択（asset_name を渡して商用車フレーズを優先、BN条件があれば連携）
     top_phrases = select_top_phrases(
         industry_cat=industry_cat,
@@ -709,6 +788,8 @@ def compute_gunshi_from_res(
         "vehicle_type":  vehicle_type,
         "vehicle_boost": vehicle_boost,
         "exec_car":      exec_car,
+        "reverse_bayes_bonus": reverse_bayes_bonus,
+        "fp0_patch_note": fp0_patch_note,
     }
 
 
@@ -780,6 +861,9 @@ def render_gunshi_in_results(
     g = st.session_state[cache_key]
     pct       = int(g["display_prob"] * 100)
     posterior = g["posterior"]
+    reverse_bayes_text = _format_reverse_bayes_text(g.get("reverse_bayes_bonus"))
+    fp0_patch_text = _format_fp0_patch_text(g.get("fp0_patch_note"))
+    unified_ai_note = "\n\n".join([text for text in (reverse_bayes_text, fp0_patch_text) if text])
     bar_color = "#2d8a4e" if pct >= 70 else ("#f97316" if pct >= 50 else "#ef4444")
     bar_label = "✅ 承認圏内" if pct >= 70 else ("⚠️ 要審議" if pct >= 50 else "❌ 再考必要")
 
@@ -823,6 +907,15 @@ def render_gunshi_in_results(
         f"（物件: {g['asset_name'] or '不明'} / リセール: {g['resale']} / "
         f"リピート: {g['repeat_cnt']}回{vehicle_label}）"
     )
+    if unified_ai_note:
+        st.markdown(
+            f'<div style="background:#ecfeff;border-left:4px solid #0ea5e9;'
+            f'border-radius:8px;padding:.7rem 1rem;margin:.35rem 0 .55rem 0;color:#0f172a;'
+            f'font-size:.88rem;line-height:1.55;white-space:pre-wrap;">'
+            f'{unified_ai_note}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
     # ── カウンターオファー ────────────────────────────────────────
     if g["offers"]:
@@ -858,6 +951,7 @@ def render_gunshi_in_results(
     if run_llm:
         _trend = st.session_state.get("_gunshi_trend_300", "")
         _comp  = (res or {}).get("comparison", "")
+        _fp0_patch_text = _format_fp0_patch_text(g.get("fp0_patch_note"))
         
         # --- アセットファイナンスの補足情報構築 ---
         _af_ctx = ""
@@ -905,6 +999,8 @@ def render_gunshi_in_results(
         except Exception:
             pass
 
+        reverse_bayes_text = _format_reverse_bayes_text(g.get("reverse_bayes_bonus"))
+        fp0_patch_text = _format_fp0_patch_text(g.get("fp0_patch_note"))
         prompt = build_gunshi_prompt(
             industry=g["industry_cat"],
             score=g["score"],
@@ -921,6 +1017,8 @@ def render_gunshi_in_results(
             vehicle_type=g.get("vehicle_type", ""),
             trend_info=_trend,
             comparison_text=_comp,
+            reverse_bayes_text=reverse_bayes_text,
+            fp0_patch_text=fp0_patch_text,
             humor_style=st.session_state.get("humor_style", "standard"),
             asset_market_context=_get_asset_market_ctx(),
             asset_finance_context=_af_ctx,
@@ -1086,6 +1184,15 @@ def render_gunshi_ai_comment(
         f"事前確率 {g['prior']*100:.1f}% → 証拠統合後 {posterior*100:.1f}% → フレーズ込み {pct}%　"
         f"（物件: {g['asset_name'] or '不明'} / リセール: {g['resale']} / リピート: {g['repeat_cnt']}回{vehicle_label}）"
     )
+    if reverse_bayes_text:
+        st.markdown(
+            f'<div style="background:#ecfeff;border-left:4px solid #0ea5e9;'
+            f'border-radius:8px;padding:.7rem 1rem;margin:.35rem 0 .55rem 0;color:#0f172a;'
+            f'font-size:.88rem;line-height:1.55;white-space:pre-wrap;">'
+            f'{reverse_bayes_text}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
     # ── 役員車警告バナー（役員車が検出された場合のみ表示） ─────────────────
     if g.get("exec_car"):
@@ -1193,6 +1300,8 @@ def render_gunshi_ai_comment(
                 vehicle_type=g.get("vehicle_type", ""),
                 trend_info=_trend,      # ← 業界動向（実データ）
                 comparison_text=_comp,  # ← 財務比較（実データ）
+                reverse_bayes_text=reverse_bayes_text,
+                fp0_patch_text=_fp0_patch_text,
                 humor_style=st.session_state.get("humor_style", "standard"),
                 asset_market_context=_get_asset_market_ctx(),
             )
