@@ -155,6 +155,7 @@ def _build_dept_industry_frame(all_cases: list[dict]) -> pd.DataFrame:
         if not dept:
             continue
         status = case.get("final_status") or "未登録"
+        score = case.get("score") or case.get("result", {}).get("score")
         rows.append(
             {
                 "営業部": dept,
@@ -162,11 +163,134 @@ def _build_dept_industry_frame(all_cases: list[dict]) -> pd.DataFrame:
                 "業種小分類": _case_sub(case),
                 "結果": status,
                 "成約フラグ": 1 if status == "成約" else 0,
+                "スコア": _safe_float(score),
                 "金利": _case_final_rate(case),
+                "売上高": _case_revenue(case),
                 "月": _case_month(case),
             }
         )
     return pd.DataFrame(rows)
+
+
+def _build_dept_score_summary(df_dept: pd.DataFrame, threshold: float = 71.0) -> pd.DataFrame:
+    if df_dept.empty or "スコア" not in df_dept.columns:
+        return pd.DataFrame()
+    valid = df_dept[df_dept["結果"].isin(["成約", "失注"])].copy()
+    valid = valid.dropna(subset=["スコア"])
+    if valid.empty:
+        return pd.DataFrame()
+
+    valid["予測"] = np.where(valid["スコア"] >= threshold, "成約", "失注")
+    grp = (
+        valid.groupby("営業部")
+        .apply(
+            lambda g: pd.Series(
+                {
+                    "件数": int(len(g)),
+                    "成約件数": int((g["結果"] == "成約").sum()),
+                    "失注件数": int((g["結果"] == "失注").sum()),
+                    "成約率(%)": float((g["結果"] == "成約").mean() * 100) if len(g) else 0.0,
+                    "平均スコア": float(g["スコア"].mean()) if len(g) else 0.0,
+                    "閾値差": float(g["スコア"].mean() - threshold) if len(g) else 0.0,
+                    "FP件数": int(((g["結果"] == "失注") & (g["予測"] == "成約")).sum()),
+                    "FN件数": int(((g["結果"] == "成約") & (g["予測"] == "失注")).sum()),
+                }
+            )
+        )
+        .reset_index()
+    )
+    grp["FP率(%)"] = grp.apply(lambda r: (r["FP件数"] / r["失注件数"] * 100) if r["失注件数"] else 0.0, axis=1)
+    grp["FN率(%)"] = grp.apply(lambda r: (r["FN件数"] / r["成約件数"] * 100) if r["成約件数"] else 0.0, axis=1)
+    existing_depts = set(grp["営業部"].astype(str))
+    missing_rows = [
+        {
+            "営業部": dept,
+            "件数": 0,
+            "成約件数": 0,
+            "失注件数": 0,
+            "成約率(%)": 0.0,
+            "平均スコア": 0.0,
+            "閾値差": 0.0,
+            "FP件数": 0,
+            "FN件数": 0,
+            "FP率(%)": 0.0,
+            "FN率(%)": 0.0,
+        }
+        for dept in SALES_DEPT_OPTIONS
+        if dept not in existing_depts
+    ]
+    if missing_rows:
+        grp = pd.concat([grp, pd.DataFrame(missing_rows)], ignore_index=True)
+    grp = grp.sort_values(["成約率(%)", "平均スコア"], ascending=[False, False])
+    return grp
+
+
+def _build_threshold_recommendation(df_dept: pd.DataFrame) -> pd.DataFrame:
+    if df_dept.empty or "スコア" not in df_dept.columns:
+        return pd.DataFrame()
+    valid = df_dept[df_dept["結果"].isin(["成約", "失注"])].copy()
+    valid = valid.dropna(subset=["スコア"])
+    if valid.empty:
+        return pd.DataFrame()
+
+    def _score_at_threshold(g: pd.DataFrame, threshold: float) -> dict:
+        pred = np.where(g["スコア"] >= threshold, 1, 0)
+        actual = np.where(g["結果"] == "成約", 1, 0)
+        tp = int(((pred == 1) & (actual == 1)).sum())
+        tn = int(((pred == 0) & (actual == 0)).sum())
+        fp = int(((pred == 1) & (actual == 0)).sum())
+        fn = int(((pred == 0) & (actual == 1)).sum())
+        total = len(g)
+        acc = (tp + tn) / total if total else 0.0
+        pos = int((actual == 1).sum())
+        neg = int((actual == 0).sum())
+        tpr = tp / pos if pos else 0.0
+        tnr = tn / neg if neg else 0.0
+        fnr = fn / pos * 100 if pos else 0.0
+        fpr = fp / neg * 100 if neg else 0.0
+        youden = tpr + tnr - 1.0
+        fn_cost = (2 * fn + fp) / total if total else 1.0
+        fp_cost = (fn + 2 * fp) / total if total else 1.0
+        return {
+            "閾値": float(threshold),
+            "正解率": float(acc),
+            "FN率": float(fnr),
+            "FP率": float(fpr),
+            "Youden": float(youden),
+            "FNコスト": float(fn_cost),
+            "FPコスト": float(fp_cost),
+        }
+
+    thresholds = list(range(50, 91, 1))
+    rows = []
+    targets = [("全体", valid)] + [(dept, g) for dept, g in valid.groupby("営業部")]
+    for target_name, group in targets:
+        if group.empty:
+            continue
+        for method in ("Youden指数", "FN重視", "FP重視"):
+            best = None
+            for th in thresholds:
+                res = _score_at_threshold(group, float(th))
+                res["対象"] = target_name
+                res["判断基準"] = method
+                res["判断区分"] = "フル判断" if target_name == "足利営業部" else ("全体判断" if target_name == "全体" else "参考")
+                if method == "Youden指数":
+                    key = (res["Youden"], res["正解率"], -abs(th - 71))
+                elif method == "FN重視":
+                    key = (-res["FNコスト"], res["正解率"], -abs(th - 71))
+                else:
+                    key = (-res["FPコスト"], res["正解率"], -abs(th - 71))
+                if best is None or key > best["_key"]:
+                    best = {**res, "_key": key}
+            if best:
+                rows.append(best)
+
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    out = out.rename(columns={"閾値": "推奨閾値", "正解率": "正解率(参考)", "FN率": "FN率(%)", "FP率": "FP率(%)"})
+    out = out.drop(columns=["_key"], errors="ignore")
+    return out[["対象", "判断基準", "判断区分", "推奨閾値", "正解率(参考)", "FN率(%)", "FP率(%)", "Youden", "FNコスト", "FPコスト"]]
 
 
 def _build_monthly_frame(all_cases: list[dict]) -> pd.DataFrame:
@@ -314,15 +438,87 @@ def _run_stat_significance_analysis(df_stat: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _summarize_rate_significance(df_rate: pd.DataFrame, title: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    if df_rate.empty:
+        return pd.DataFrame(), pd.DataFrame()
+
+    groups = [g["金利"].dropna().to_numpy(dtype=float) for _, g in df_rate.groupby("営業部")]
+    groups = [g for g in groups if len(g) >= STAT_TEST_MIN_CASES]
+    detail = (
+        df_rate.groupby("営業部")["金利"]
+        .agg(["count", "mean", "median", "std"])
+        .rename(columns={"count": "件数", "mean": "平均", "median": "中央値", "std": "標準偏差"})
+        .reset_index()
+    )
+    if len(groups) < 2:
+        return pd.DataFrame(), detail
+
+    try:
+        anova_f, anova_p = stats.f_oneway(*groups)
+    except Exception:
+        anova_f, anova_p = None, None
+    try:
+        kruskal_h, kruskal_p = stats.kruskal(*groups)
+    except Exception:
+        kruskal_h, kruskal_p = None, None
+
+    all_vals = np.concatenate(groups)
+    grand = float(np.mean(all_vals))
+    ss_between = sum(len(g) * (float(np.mean(g)) - grand) ** 2 for g in groups)
+    ss_total = float(np.sum((all_vals - grand) ** 2))
+    eta2 = ss_between / ss_total if ss_total > 0 else None
+    eps2 = ((kruskal_h - len(groups) + 1) / (len(all_vals) - len(groups))) if (kruskal_h is not None and len(all_vals) > len(groups)) else None
+
+    summary = pd.DataFrame(
+        [
+            {
+                "検定": f"{title} / Kruskal-Wallis",
+                "統計量": float(kruskal_h) if kruskal_h is not None else None,
+                "p値": float(kruskal_p) if kruskal_p is not None else None,
+                "効果量": float(eps2) if eps2 is not None else None,
+                "補足": "営業部間の金利差を非正規前提で確認",
+            },
+            {
+                "検定": f"{title} / ANOVA",
+                "統計量": float(anova_f) if anova_f is not None else None,
+                "p値": float(anova_p) if anova_p is not None else None,
+                "効果量": float(eta2) if eta2 is not None else None,
+                "補足": "営業部間の平均金利差を確認",
+            },
+        ]
+    )
+    return summary, detail
+
+
 @st.cache_data(ttl=600, show_spinner=False)
 def _compute_department_stat_analysis(all_cases: list[dict]) -> dict:
     rows = []
+    rate_rows_all = []
+    rate_rows_recent = []
     for case in all_cases:
         dept = _normalize_sales_dept(case.get("sales_dept") or case.get("inputs", {}).get("sales_dept") or "")
         if not dept:
             continue
         major = _case_major(case)
         revenue = _case_revenue(case)
+        rate = _case_final_rate(case)
+        month = _case_month(case)
+        if rate is not None:
+            rate_rows_all.append(
+                {
+                    "営業部": dept,
+                    "金利": rate,
+                    "月": month,
+                }
+            )
+            if month and month >= MONTH_FILTER_START:
+                rate_rows_recent.append(
+                    {
+                        "営業部": dept,
+                        "金利": rate,
+                        "月": month,
+                    }
+                )
         if revenue is None:
             continue
         rows.append(
@@ -337,6 +533,8 @@ def _compute_department_stat_analysis(all_cases: list[dict]) -> dict:
     df = pd.DataFrame(rows)
     if df.empty:
         empty = pd.DataFrame()
+        rate_all_empty, rate_all_detail_empty = pd.DataFrame(), pd.DataFrame()
+        rate_recent_empty, rate_recent_detail_empty = pd.DataFrame(), pd.DataFrame()
         return {
             "computed_at": datetime.datetime.now().isoformat(timespec="seconds"),
             "analysis_df": empty,
@@ -345,6 +543,10 @@ def _compute_department_stat_analysis(all_cases: list[dict]) -> dict:
             "industry_top": empty,
             "revenue_summary": empty,
             "revenue_detail": empty,
+            "rate_summary_all": rate_all_empty,
+            "rate_detail_all": rate_all_detail_empty,
+            "rate_summary_recent": rate_recent_empty,
+            "rate_detail_recent": rate_recent_detail_empty,
             "stat_df": empty,
             "sig_summary": empty,
         }
@@ -455,6 +657,11 @@ def _compute_department_stat_analysis(all_cases: list[dict]) -> dict:
             )
     sig_summary = pd.DataFrame(sig_rows)
 
+    rate_df_all = pd.DataFrame(rate_rows_all)
+    rate_df_recent = pd.DataFrame(rate_rows_recent)
+    rate_summary_all, rate_detail_all = _summarize_rate_significance(rate_df_all, "金利(全期間)")
+    rate_summary_recent, rate_detail_recent = _summarize_rate_significance(rate_df_recent, "金利(2025-04以降)")
+
     stat_rows = []
     for case in all_cases:
         month = _case_month(case)
@@ -493,6 +700,10 @@ def _compute_department_stat_analysis(all_cases: list[dict]) -> dict:
         "industry_top": industry_top,
         "revenue_summary": revenue_summary,
         "revenue_detail": revenue_detail,
+        "rate_summary_all": rate_summary_all,
+        "rate_detail_all": rate_detail_all,
+        "rate_summary_recent": rate_summary_recent,
+        "rate_detail_recent": rate_detail_recent,
         "stat_df": stat_df,
         "sig_summary": sig_summary,
     }
@@ -500,12 +711,16 @@ def _compute_department_stat_analysis(all_cases: list[dict]) -> dict:
 
 def _build_gemini_prompt(
     dept_summary: pd.DataFrame,
+    dept_score_summary: pd.DataFrame,
+    threshold_reco: pd.DataFrame,
     industry_summary: pd.DataFrame,
     monthly_summary: pd.DataFrame,
     monthly_dept_summary: pd.DataFrame,
     significance_summary: pd.DataFrame,
 ) -> str:
     dept_text = dept_summary.head(12).to_string(index=False) if not dept_summary.empty else "データなし"
+    dept_score_text = dept_score_summary.head(12).to_string(index=False) if not dept_score_summary.empty else "データなし"
+    threshold_text = threshold_reco.head(12).to_string(index=False) if not threshold_reco.empty else "データなし"
     industry_text = industry_summary.head(15).to_string(index=False) if not industry_summary.empty else "データなし"
     monthly_text = monthly_summary.head(18).to_string(index=False) if not monthly_summary.empty else "データなし"
     monthly_dept_text = monthly_dept_summary.head(20).to_string(index=False) if not monthly_dept_summary.empty else "データなし"
@@ -514,6 +729,12 @@ def _build_gemini_prompt(
 
 ## 営業部別サマリ
 {dept_text}
+
+## 営業部別のスコア・誤判定サマリ
+{dept_score_text}
+
+## 閾値見直し候補
+{threshold_text}
 
 ## 営業部×業種の上位分布
 {industry_text}
@@ -530,11 +751,14 @@ def _build_gemini_prompt(
 ## 出力要件
 1. 3〜6個の箇条書きで、重要な示唆を先に述べること
 2. 営業部ごとの業種偏り、成約件数の強弱、月次の金利変動を必ず触れること
-3. 営業部ごとの平均金利の変動差にも触れること
-4. 各項目について、営業部間に有意差があるかを必ず触れること
-5. 金利が上がっている月と下がっている月の要因仮説を1つずつ述べること
-6. 最後に、次月に優先すべき営業アクションを1〜2行で書くこと
-7. 断定しすぎず、データからの示唆として表現すること
+3. 営業部ごとの平均スコア、FN率、FP率、閾値71との差を必ず触れること
+4. 71点を何点に見直すべきか、全体と営業部別の両方について必ず提案すること。Youden指数 / FN重視 / FP重視 の3基準を使って、具体的な点数で述べること
+5. 足利営業部はフル判断、それ以外は参考判断であることを明示すること
+6. 営業部ごとの平均金利の変動差にも触れること
+7. 各項目について、営業部間に有意差があるかを必ず触れること
+8. 金利が上がっている月と下がっている月の要因仮説を1つずつ述べること
+9. 最後に、次月に優先すべき営業アクションを1〜2行で書くこと
+10. 断定しすぎず、データからの示唆として表現すること
 """
 
 
@@ -555,7 +779,7 @@ def _call_dashboard_gemini(prompt: str) -> str:
     return (resp.get("message", {}) or {}).get("content", "") or "Gemini から空の応答が返されました。"
 
 
-def _render_dept_analysis(df_dept: pd.DataFrame) -> None:
+def _render_dept_analysis(df_dept: pd.DataFrame, threshold_reco: pd.DataFrame | None = None) -> None:
     st.subheader("🏢 営業部ごとの結果")
     if df_dept.empty:
         st.caption("営業部集計に使えるデータがありません。")
@@ -590,6 +814,64 @@ def _render_dept_analysis(df_dept: pd.DataFrame) -> None:
         width="stretch",
         hide_index=True,
     )
+
+    score_summary = _build_dept_score_summary(df_dept)
+    if not score_summary.empty:
+        st.markdown("#### 🔎 営業部別のスコア・誤判定率")
+        st.caption("FN率 = 成約案件のうち失注判定になった割合、FP率 = 失注案件のうち成約判定になった割合。閾値71との差は平均スコア-71。")
+        st.dataframe(
+            score_summary[["営業部", "件数", "成約率(%)", "平均スコア", "閾値差", "FN率(%)", "FP率(%)", "FP件数", "FN件数"]]
+            .style.format({
+                "成約率(%)": "{:.1f}",
+                "平均スコア": "{:.1f}",
+                "閾値差": "{:+.1f}",
+                "FN率(%)": "{:.1f}",
+                "FP率(%)": "{:.1f}",
+            }),
+            width="stretch",
+            hide_index=True,
+        )
+
+        fig_score = go.Figure()
+        fig_score.add_trace(go.Bar(
+            x=score_summary["営業部"],
+            y=score_summary["平均スコア"],
+            name="平均スコア",
+            marker_color="#2563eb",
+        ))
+        fig_score.add_trace(go.Scatter(
+            x=score_summary["営業部"],
+            y=[71.0] * len(score_summary),
+            name="閾値71",
+            mode="lines",
+            line=dict(color="#111827", dash="dash", width=2),
+        ))
+        fig_score.update_layout(
+            title="営業部別の平均スコアと閾値71",
+            yaxis_title="スコア",
+            height=320,
+            margin=dict(l=20, r=20, t=50, b=20),
+            legend=dict(orientation="h"),
+        )
+        st.plotly_chart(fig_score, width="stretch")
+
+        if threshold_reco is not None and not threshold_reco.empty:
+            st.markdown("#### 🎯 閾値見直し候補")
+            st.caption("全体 / 営業部別 × Youden指数 / FN重視 / FP重視 の3基準です。足利営業部はフル判断、それ以外は参考判断として扱います。")
+            display_cols = ["対象", "判断基準", "判断区分", "推奨閾値", "正解率(参考)", "FN率(%)", "FP率(%)", "Youden", "FNコスト", "FPコスト"]
+            st.dataframe(
+                threshold_reco[display_cols].style.format({
+                    "推奨閾値": "{:.0f}",
+                    "正解率(参考)": "{:.1f}",
+                    "FN率(%)": "{:.1f}",
+                    "FP率(%)": "{:.1f}",
+                    "Youden": "{:.3f}",
+                    "FNコスト": "{:.3f}",
+                    "FPコスト": "{:.3f}",
+                }),
+                width="stretch",
+                hide_index=True,
+            )
 
     st.markdown("#### 📊 営業部ごとの差の検証（業種・成約分布）")
     dept_options = sorted(df_dept["営業部"].dropna().astype(str).unique().tolist())
@@ -633,6 +915,42 @@ def _render_dept_analysis(df_dept: pd.DataFrame) -> None:
         width="stretch",
         hide_index=True,
     )
+
+    st.markdown("#### 💴 営業部×業種の金額合計")
+    amount_table = (
+        df_dept.dropna(subset=["売上高"])
+        .groupby(["営業部", "業種大分類"], as_index=False)
+        .agg(
+            件数=("売上高", "size"),
+            売上高合計=("売上高", "sum"),
+            平均売上高=("売上高", "mean"),
+        )
+        .sort_values(["売上高合計", "件数"], ascending=[False, False])
+    )
+    if amount_table.empty:
+        st.caption("売上高データがありません。")
+    else:
+        st.dataframe(
+            amount_table.head(20).style.format({"売上高合計": "{:.1f}", "平均売上高": "{:.1f}"}),
+            width="stretch",
+            hide_index=True,
+        )
+
+        dept_amount = (
+            df_dept.dropna(subset=["売上高"])
+            .groupby("営業部", as_index=False)
+            .agg(
+                売上高合計=("売上高", "sum"),
+                平均売上高=("売上高", "mean"),
+                件数=("売上高", "size"),
+            )
+            .sort_values("売上高合計", ascending=False)
+        )
+        st.dataframe(
+            dept_amount.style.format({"売上高合計": "{:.1f}", "平均売上高": "{:.1f}"}),
+            width="stretch",
+            hide_index=True,
+        )
 
 
 def _render_monthly_analysis(df_monthly: pd.DataFrame) -> None:
@@ -771,7 +1089,13 @@ def _render_monthly_analysis(df_monthly: pd.DataFrame) -> None:
         st.plotly_chart(fig_cmp, width="stretch")
 
 
-def _render_gemini_comment(df_dept: pd.DataFrame, df_monthly: pd.DataFrame, significance_summary: pd.DataFrame) -> None:
+def _render_gemini_comment(
+    df_dept: pd.DataFrame,
+    df_monthly: pd.DataFrame,
+    significance_summary: pd.DataFrame,
+    dept_score_summary: pd.DataFrame,
+    threshold_reco: pd.DataFrame,
+) -> None:
     st.subheader("🤖 Gemini コメント")
     if df_dept.empty or df_monthly.empty:
         st.caption("コメント生成に十分なデータがありません。")
@@ -834,7 +1158,7 @@ def _render_gemini_comment(df_dept: pd.DataFrame, df_monthly: pd.DataFrame, sign
         axis=1,
     )
 
-    prompt = _build_gemini_prompt(dept_summary, industry_summary, monthly_summary, monthly_dept_summary, significance_summary)
+    prompt = _build_gemini_prompt(dept_summary, dept_score_summary, threshold_reco, industry_summary, monthly_summary, monthly_dept_summary, significance_summary)
     sig = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:16]
 
     col1, col2 = st.columns([1, 3])
@@ -872,6 +1196,10 @@ def _render_stat_significance_section(stat_result: dict | None) -> None:
     revenue_summary = stat_result.get("revenue_summary", pd.DataFrame())
     industry_top = stat_result.get("industry_top", pd.DataFrame())
     revenue_detail = stat_result.get("revenue_detail", pd.DataFrame())
+    rate_summary_all = stat_result.get("rate_summary_all", pd.DataFrame())
+    rate_detail_all = stat_result.get("rate_detail_all", pd.DataFrame())
+    rate_summary_recent = stat_result.get("rate_summary_recent", pd.DataFrame())
+    rate_detail_recent = stat_result.get("rate_detail_recent", pd.DataFrame())
     sig_summary = stat_result.get("sig_summary", pd.DataFrame())
 
     if not sig_summary.empty:
@@ -912,6 +1240,36 @@ def _render_stat_significance_section(stat_result: dict | None) -> None:
         st.dataframe(show_rev, width="stretch", hide_index=True)
         if not revenue_detail.empty:
             st.dataframe(revenue_detail.style.format({"平均": "{:.3f}", "中央値": "{:.3f}", "標準偏差": "{:.3f}"}), width="stretch", hide_index=True)
+
+    if not rate_summary_all.empty or not rate_summary_recent.empty:
+        st.markdown("#### 金利")
+        st.caption("営業部ごとの金利差を、全期間と2025-04以降で分けて表示しています。")
+        if not rate_summary_all.empty:
+            st.write("全期間")
+            show_rate_all = rate_summary_all.copy()
+            for col in ["統計量", "p値", "効果量"]:
+                if col in show_rate_all.columns:
+                    show_rate_all[col] = show_rate_all[col].map(lambda v: f"{v:.4f}" if pd.notna(v) else "")
+            st.dataframe(show_rate_all, width="stretch", hide_index=True)
+            if not rate_detail_all.empty:
+                st.dataframe(
+                    rate_detail_all.style.format({"平均": "{:.3f}", "中央値": "{:.3f}", "標準偏差": "{:.3f}"}),
+                    width="stretch",
+                    hide_index=True,
+                )
+        if not rate_summary_recent.empty:
+            st.write("2025-04以降")
+            show_rate_recent = rate_summary_recent.copy()
+            for col in ["統計量", "p値", "効果量"]:
+                if col in show_rate_recent.columns:
+                    show_rate_recent[col] = show_rate_recent[col].map(lambda v: f"{v:.4f}" if pd.notna(v) else "")
+            st.dataframe(show_rate_recent, width="stretch", hide_index=True)
+            if not rate_detail_recent.empty:
+                st.dataframe(
+                    rate_detail_recent.style.format({"平均": "{:.3f}", "中央値": "{:.3f}", "標準偏差": "{:.3f}"}),
+                    width="stretch",
+                    hide_index=True,
+                )
 
 
 def _render_stat_visualizations(stat_result: dict | None) -> None:
@@ -1211,18 +1569,49 @@ def render_dashboard():
         df_dept = _build_dept_industry_frame(all_cases)
         df_monthly = _build_monthly_frame(all_cases)
         dept_summary = _build_dept_summary(df_dept)
+        dept_score_summary = _build_dept_score_summary(df_dept)
+        threshold_reco = _build_threshold_recommendation(df_dept)
         monthly_summary = _build_monthly_summary(df_monthly)
         monthly_dept_summary = _build_monthly_dept_summary(df_monthly)
         st.divider()
         _render_stat_significance_section(stat_result)
         _render_stat_visualizations(stat_result)
+        if not threshold_reco.empty:
+            st.markdown("#### 🎯 71点の見直し候補")
+            st.caption("全体 / 営業部別 × Youden指数 / FN重視 / FP重視 の3基準です。足利営業部はフル判断、それ以外は参考判断として扱います。")
+            display_cols = ["対象", "判断基準", "判断区分", "推奨閾値", "正解率(参考)", "FN率(%)", "FP率(%)", "Youden", "FNコスト", "FPコスト"]
+            st.dataframe(
+                threshold_reco[display_cols].style.format({
+                    "推奨閾値": "{:.0f}",
+                    "正解率(参考)": "{:.1f}",
+                    "FN率(%)": "{:.1f}",
+                    "FP率(%)": "{:.1f}",
+                    "Youden": "{:.3f}",
+                    "FNコスト": "{:.3f}",
+                    "FPコスト": "{:.3f}",
+                }),
+                width="stretch",
+                hide_index=True,
+            )
+            best_overall = threshold_reco[(threshold_reco["対象"] == "全体") & (threshold_reco["判断基準"] == "Youden指数")].head(1)
+            best_overall_text = f"{best_overall.iloc[0]['推奨閾値']:.0f}点" if not best_overall.empty else "算出なし"
+            st.info(
+                f"Gemini には『71点をどの程度動かすべきか』をこの表も含めて説明させます。"
+                f" 現時点の全体候補（Youden指数）は {best_overall_text} です。"
+            )
         tabs = st.tabs(["🏢 営業部別", "📅 月次推移", "🤖 Gemini コメント"])
         with tabs[0]:
-            _render_dept_analysis(df_dept)
+            _render_dept_analysis(df_dept, threshold_reco)
         with tabs[1]:
             _render_monthly_analysis(df_monthly)
         with tabs[2]:
-            _render_gemini_comment(df_dept, df_monthly, stat_result.get("sig_summary", pd.DataFrame()) if stat_result else pd.DataFrame())
+            _render_gemini_comment(
+                df_dept,
+                df_monthly,
+                stat_result.get("sig_summary", pd.DataFrame()) if stat_result else pd.DataFrame(),
+                dept_score_summary,
+                threshold_reco,
+            )
     else:
         st.caption("まだ案件履歴がありません。")
 

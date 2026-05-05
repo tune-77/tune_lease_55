@@ -4,6 +4,7 @@ Phase 0: モデル診断 — 棚卸し・可視化
 - データ分布タブ: 業種別件数・成約率・主要変数分布
 - 予測誤差タブ: 業種/規模/月別の誤差偏り
 - 損失地形タブ: 2係数を変動させたAUCコンター
+- UMAP誤判定マップ: 誤判定案件を2次元配置して偏りを確認
 """
 
 from __future__ import annotations
@@ -19,6 +20,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
+
+from ai_chat import _gemini_chat
+from config import GEMINI_MODEL_DEFAULT
+from secret_manager import get_gemini_api_key
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DB_PATH = os.path.join(_REPO_ROOT, "data", "lease_data.db")
@@ -43,6 +48,17 @@ def _acost_tier(v: float) -> str:
     return "3000万~"
 
 
+def _review_date_text(case_json: dict, timestamp: str | None) -> str:
+    for key in ("審査日", "shinsa_date", "review_date", "registration_date", "final_result_date"):
+        raw = case_json.get(key)
+        if raw:
+            text = str(raw).strip()
+            if text:
+                return text[:10]
+    raw_ts = str(timestamp or "").strip()
+    return raw_ts[:10]
+
+
 def _load_df() -> pd.DataFrame:
     if not os.path.exists(_DB_PATH):
         return pd.DataFrame()
@@ -57,29 +73,37 @@ def _load_df() -> pd.DataFrame:
         d = json.loads(data_json or "{}")
         inp = d.get("inputs", {})
         res = d.get("result", {})
+        review_date = _review_date_text(d, ts)
         try:
-            month = int(str(ts or "")[:7].split("-")[1])
+            month = int(review_date[:7].split("-")[1])
         except (IndexError, ValueError):
             month = 0
         acost = float(inp.get("acquisition_cost") or 0)
         records.append({
             "id": case_id,
             "timestamp": ts,
+            "review_date": review_date,
             "month": month,
             "final_status": status,
             "score": float(score or 0),
             "industry": d.get("industry_major", "不明"),
+            "sales_dept": d.get("sales_dept", "未設定"),
             "nenshu": float(inp.get("nenshu") or 0),
             "acquisition_cost": acost,
             "acost_tier": _acost_tier(acost),
+            "gross_profit": float(inp.get("gross_profit") or 0),
             "op_profit": float(inp.get("op_profit") or 0),
+            "ord_profit": float(inp.get("ord_profit") or 0),
             "bank_credit": float(inp.get("bank_credit") or 0),
             "lease_credit": float(inp.get("lease_credit") or 0),
+            "final_rate": float(d.get("final_rate") or 0),
             "score_borrower": float(res.get("score_borrower") or 0),
             "asset_score": float(res.get("asset_score") or 50),
             "label": 1 if status in _WIN_STATUSES else 0,
         })
     df = pd.DataFrame(records)
+    if not df.empty:
+        df["month_key"] = pd.to_datetime(df["review_date"], errors="coerce").dt.strftime("%Y-%m")
     df["error"] = df["score"] - df["label"] * 100
     return df
 
@@ -175,6 +199,470 @@ def _render_bias(df: pd.DataFrame) -> None:
         st.caption(f"各月のエラーバー = 1σ (n={len(valid)})")
     else:
         st.info("月別に分けるにはデータが不足しています。")
+
+
+def _get_misjudge_features(work: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
+    feature_cols = ["score", "nenshu", "acquisition_cost", "op_profit", "bank_credit", "lease_credit", "asset_score"]
+    feat_df = work[feature_cols].copy().fillna(0.0)
+    for col in ["nenshu", "acquisition_cost", "op_profit", "bank_credit", "lease_credit"]:
+        feat_df[col] = np.log1p(np.clip(feat_df[col].astype(float), a_min=0, a_max=None))
+    return feat_df, feature_cols
+
+
+def _make_quantile_band(series: pd.Series, prefix: str, q: int = 4) -> pd.Series:
+    values = pd.to_numeric(series, errors="coerce")
+    if values.notna().sum() == 0:
+        return pd.Series(["未読取"] * len(series), index=series.index)
+    try:
+        band = pd.qcut(values, q=min(q, int(values.nunique())), duplicates="drop")
+        return band.astype(str).fillna("未読取")
+    except Exception:
+        return pd.Series(["未読取"] * len(series), index=series.index)
+
+
+def _attach_segment_bands(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    out["売上高帯"] = _make_quantile_band(out["nenshu"], "売上高")
+    out["売上総利益帯"] = _make_quantile_band(out["gross_profit"], "売上総利益")
+    out["営業利益帯"] = _make_quantile_band(out["op_profit"], "営業利益")
+    out["金利帯"] = _make_quantile_band(out["final_rate"], "金利")
+    return out
+
+
+def _misjudge_breakdown_table(df: pd.DataFrame, column: str, top_n: int = 8) -> pd.DataFrame:
+    if df.empty or column not in df.columns:
+        return pd.DataFrame()
+    tmp = df[df["kind"].isin(["FP", "FN"])].copy()
+    if tmp.empty:
+        return pd.DataFrame()
+    grp = (
+        tmp.groupby(column)
+        .agg(誤判定件数=("id", "count"), FP=("kind", lambda s: int((s == "FP").sum())), FN=("kind", lambda s: int((s == "FN").sum())))
+        .reset_index()
+        .sort_values(["誤判定件数", "FP", "FN"], ascending=False)
+        .head(top_n)
+    )
+    grp = grp.rename(columns={column: "区分"})
+    return grp
+
+
+def _table_to_text(table: pd.DataFrame) -> str:
+    if table.empty:
+        return "データなし"
+    return table.to_string(index=False)
+
+
+def _call_misjudge_gemini(prompt: str) -> str:
+    api_key = (st.session_state.get("gemini_api_key", "").strip() or get_gemini_api_key() or "").strip()
+    if not api_key:
+        return "Gemini APIキーが設定されていません。サイドバーの AIモデル設定で入力してください。"
+    model = st.session_state.get("gemini_model", GEMINI_MODEL_DEFAULT) or GEMINI_MODEL_DEFAULT
+    if "1.5" in model:
+        model = GEMINI_MODEL_DEFAULT
+    resp = _gemini_chat(
+        api_key=api_key,
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        timeout_seconds=120,
+        max_output_tokens=1400,
+    )
+    return (resp.get("message", {}) or {}).get("content", "") or "Gemini から空の応答が返されました。"
+
+
+def _import_umap_safely():
+    try:
+        import numba  # type: ignore
+    except Exception:
+        return None
+
+    orig_jit = getattr(numba, "jit", None)
+    orig_njit = getattr(numba, "njit", None)
+    if orig_jit is None or orig_njit is None:
+        return None
+
+    def _disable_cache(decorator):
+        def wrapper(*args, **kwargs):
+            patched_kwargs = dict(kwargs)
+            patched_kwargs["cache"] = False
+            try:
+                return decorator(*args, **patched_kwargs)
+            except RuntimeError as exc:
+                if "no locator available" in str(exc):
+                    patched_kwargs["cache"] = False
+                    return decorator(*args, **patched_kwargs)
+                raise
+
+        return wrapper
+
+    patched_jit = _disable_cache(orig_jit)
+    patched_njit = _disable_cache(orig_njit)
+    numba.jit = patched_jit
+    numba.njit = patched_njit
+    nb_core_decorators = nb_ufuncbuilder = nb_dufunc = None
+    try:
+        import numba.core.decorators as nb_core_decorators  # type: ignore
+        import numba.np.ufunc.ufuncbuilder as nb_ufuncbuilder  # type: ignore
+        import numba.np.ufunc.dufunc as nb_dufunc  # type: ignore
+        nb_core_decorators.jit = patched_jit
+        nb_ufuncbuilder.jit = patched_jit
+        nb_dufunc.jit = patched_jit
+        import contextlib
+        import io
+        import os
+        with open(os.devnull, "w") as devnull, contextlib.redirect_stdout(devnull), contextlib.redirect_stderr(devnull):
+            import umap  # type: ignore
+        return umap
+    except Exception:
+        return None
+    finally:
+        numba.jit = orig_jit
+        numba.njit = orig_njit
+        if nb_core_decorators is not None and orig_jit is not None:
+            nb_core_decorators.jit = orig_jit
+        if nb_ufuncbuilder is not None and orig_jit is not None:
+            nb_ufuncbuilder.jit = orig_jit
+        if nb_dufunc is not None and orig_jit is not None:
+            nb_dufunc.jit = orig_jit
+
+
+def _run_misjudge_embedding(work: pd.DataFrame, method: str) -> tuple[np.ndarray, str]:
+    feat_df, _ = _get_misjudge_features(work)
+    from sklearn.preprocessing import StandardScaler
+    X = StandardScaler().fit_transform(feat_df.to_numpy(dtype=float))
+
+    if method == "UMAP":
+        try:
+            umap = _import_umap_safely()
+            if umap is None:
+                raise ImportError("umap unavailable")
+            reducer = umap.UMAP(
+                n_components=2,
+                n_neighbors=min(15, max(5, len(work) // 4)),
+                min_dist=0.15,
+                metric="euclidean",
+                random_state=42,
+            )
+            return reducer.fit_transform(X), "UMAP"
+        except Exception:
+            pass
+    from sklearn.decomposition import PCA
+    return PCA(n_components=2, random_state=42).fit_transform(X), "PCA"
+
+
+def _build_misjudge_frame(df: pd.DataFrame, threshold: float = 71.0, method: str = "UMAP", only_misjudge: bool = False, month_key: str | None = None) -> pd.DataFrame:
+    work = df[df["final_status"].isin(_VALID_STATUSES)].copy()
+    if month_key:
+        work = work[work["month_key"] == month_key].copy()
+    if len(work) < 10:
+        return pd.DataFrame()
+
+    embedding, reducer_name = _run_misjudge_embedding(work, method)
+    actual = work["label"].astype(int).to_numpy()
+    pred = (work["score"].astype(float).to_numpy() >= threshold).astype(int)
+    kind = np.where((pred == 1) & (actual == 1), "TP",
+             np.where((pred == 0) & (actual == 0), "TN",
+             np.where((pred == 1) & (actual == 0), "FP", "FN")))
+
+    out = work[[
+        "id", "timestamp", "review_date", "month_key", "final_status", "score",
+        "industry", "sales_dept", "nenshu", "gross_profit", "op_profit", "final_rate",
+        "acquisition_cost",
+        "売上高帯", "売上総利益帯", "営業利益帯", "金利帯",
+    ]].copy()
+    out["x"] = embedding[:, 0]
+    out["y"] = embedding[:, 1]
+    out["actual"] = actual
+    out["pred"] = pred
+    out["kind"] = kind
+    out["reducer"] = reducer_name
+    out["threshold"] = threshold
+    if only_misjudge:
+        out = out[out["kind"].isin(["FP", "FN"])].copy()
+    return out
+
+
+# ── Tab 3: UMAP 誤判定マップ ───────────────────────────────────────────────────
+
+@st.cache_data(show_spinner=False, ttl=300)
+def _compute_misjudge_map(df: pd.DataFrame, method: str = "UMAP", only_misjudge: bool = False, month_key: str | None = None):
+    if df.empty:
+        return None
+    out = _build_misjudge_frame(df, method=method, only_misjudge=only_misjudge, month_key=month_key)
+    if out.empty:
+        return None
+    return out
+
+
+def _render_misjudge_map(df: pd.DataFrame) -> None:
+    st.subheader("🧭 UMAP誤判定マップ")
+    st.caption("成約/失注案件を2次元に配置し、誤判定の偏りを可視化します。赤=偽陽性、橙=偽陰性。")
+
+    work_df = df[df["final_status"].isin(_VALID_STATUSES)].copy()
+    work_df = _attach_segment_bands(work_df) if not work_df.empty else work_df
+    segment_options = {
+        "なし": None,
+        "営業部": "sales_dept",
+        "業種": "industry",
+        "売上高帯": "売上高帯",
+        "売上総利益帯": "売上総利益帯",
+        "営業利益帯": "営業利益帯",
+        "金利帯": "金利帯",
+    }
+
+    control1, control2, control3 = st.columns([1, 1, 2])
+    with control1:
+        method = st.selectbox("次元圧縮", ["UMAP", "PCA"], index=0, key="misjudge_method")
+    with control2:
+        mode = st.selectbox("表示範囲", ["全件", "誤判定のみ"], index=0, key="misjudge_only")
+    with control3:
+        month_keys = ["（全期間）"]
+        if "month_key" in work_df.columns:
+            month_keys.extend(sorted([m for m in work_df["month_key"].dropna().astype(str).unique().tolist() if m]))
+        selected_month = st.selectbox("年月比較", month_keys, index=0, key="misjudge_month")
+
+    seg1, seg2, seg3 = st.columns([1, 1, 1])
+    with seg1:
+        segment_key = st.selectbox("分割キー", list(segment_options.keys()), index=1, key="misjudge_segment_key")
+    with seg2:
+        segment_value = "全件"
+        segment_col = segment_options.get(segment_key)
+        if segment_col and segment_col in work_df.columns:
+            seg_values = ["全件"] + sorted([v for v in work_df[segment_col].dropna().astype(str).unique().tolist() if v])
+            segment_value = st.selectbox("分割値", seg_values, index=0, key="misjudge_segment_value")
+    with seg3:
+        st.caption("色は選択した分割キーで付けます。売上高= `nenshu`、利益は `売上総利益 / 営業利益`、金利は `final_rate` を帯分け")
+
+    only_misjudge = mode == "誤判定のみ"
+    month_key = None if selected_month == "（全期間）" else selected_month
+
+    filtered_df = work_df
+    segment_col = segment_options.get(segment_key)
+    if segment_col and segment_col in filtered_df.columns and segment_value != "全件":
+        filtered_df = filtered_df[filtered_df[segment_col].astype(str) == str(segment_value)].copy()
+
+    map_df = _compute_misjudge_map(filtered_df, method=method, only_misjudge=only_misjudge, month_key=month_key)
+    if map_df is None or map_df.empty:
+        st.info("誤判定マップを作るには、成約/失注データが10件以上必要です。")
+        return
+
+    reducer_name = str(map_df["reducer"].iloc[0])
+    threshold = float(map_df["threshold"].iloc[0])
+    counts = map_df["kind"].value_counts().to_dict()
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("TP", int(counts.get("TP", 0)))
+    c2.metric("TN", int(counts.get("TN", 0)))
+    c3.metric("FP", int(counts.get("FP", 0)))
+    c4.metric("FN", int(counts.get("FN", 0)))
+
+    color_map = {
+        "TP": "#2563eb",
+        "TN": "#16a34a",
+        "FP": "#ef4444",
+        "FN": "#f59e0b",
+    }
+    label_map = {
+        "TP": "正解:成約",
+        "TN": "正解:失注",
+        "FP": "誤判定:過大評価",
+        "FN": "誤判定:過小評価",
+    }
+    if segment_col:
+        color_field = segment_col if segment_col in map_df.columns else "kind"
+        color_discrete_map = None
+        if color_field == "sales_dept":
+            color_discrete_map = {
+                "宇都宮営業部": "#2563eb",
+                "小山営業部": "#f97316",
+                "足利営業部": "#16a34a",
+                "埼玉営業部": "#7c3aed",
+                "未設定": "#64748b",
+                "未読取": "#64748b",
+                "0": "#64748b",
+            }
+        elif color_field == "industry":
+            color_discrete_map = {
+                "D 建設業": "#2563eb",
+                "E 製造業": "#f97316",
+                "H 運輸業・郵便業": "#16a34a",
+                "I 卸売業・小売業": "#7c3aed",
+                "J 金融業・保険業": "#db2777",
+                "K 不動産業・物品賃貸業": "#0891b2",
+                "M 宿泊業・飲食サービス業": "#e11d48",
+                "N 生活関連サービス業・娯楽業": "#0f766e",
+                "O 教育・学習支援業": "#ca8a04",
+                "P 医療・福祉": "#dc2626",
+                "R サービス業": "#334155",
+            }
+        fig = px.scatter(
+            map_df,
+            x="x",
+            y="y",
+            color=color_field,
+            symbol="kind",
+            color_discrete_map=color_discrete_map,
+            color_discrete_sequence=px.colors.qualitative.Dark24 + px.colors.qualitative.Light24,
+            hover_data={
+                "id": True,
+                "sales_dept": True,
+                "industry": True,
+                "売上高帯": True,
+                "売上総利益帯": True,
+                "営業利益帯": True,
+                "金利帯": True,
+                "score": ":.1f",
+                "final_status": True,
+                "nenshu": ":,.1f",
+                "op_profit": ":,.1f",
+                "final_rate": ":.2f",
+                "x": False,
+                "y": False,
+                "kind": False,
+                "month_key": False,
+                "review_date": False,
+            },
+            title=f"{reducer_name} 誤判定マップ（閾値 {threshold:.0f}）",
+        )
+        fig.update_traces(marker=dict(size=10, opacity=0.9, line=dict(width=1.5, color="#111827")))
+    else:
+        fig = go.Figure()
+        for kind in ["TP", "TN", "FP", "FN"]:
+            sub = map_df[map_df["kind"] == kind]
+            if sub.empty:
+                continue
+            fig.add_trace(go.Scatter(
+                x=sub["x"],
+                y=sub["y"],
+                mode="markers",
+                name=label_map[kind],
+                marker=dict(size=10 if kind in ("FP", "FN") else 8, color=color_map[kind], opacity=0.8, line=dict(width=1, color="#0f172a")),
+                text=[
+                    f"ID:{r.id}<br>営業部:{r.sales_dept}<br>業種:{r.industry}<br>スコア:{r.score:.1f}<br>判定:{r.final_status}<br>売上高:{r.nenshu:,.1f}<br>利益:{r.op_profit:,.1f}<br>金利:{r.final_rate:.2f}%"
+                    for r in sub.itertuples(index=False)
+                ],
+                hovertemplate="%{text}<extra></extra>",
+            ))
+    fig.update_layout(
+        title=f"{reducer_name} 誤判定マップ（閾値 {threshold:.0f}）",
+        xaxis_title=f"{reducer_name} 1",
+        yaxis_title=f"{reducer_name} 2",
+        height=560,
+        margin=dict(l=20, r=20, t=50, b=20),
+        legend=dict(orientation="h"),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    fp_fn = map_df[map_df["kind"].isin(["FP", "FN"])].copy()
+    if not fp_fn.empty:
+        st.markdown("#### 誤判定案件一覧")
+        show = fp_fn.sort_values(["kind", "score"], ascending=[True, False]).head(20).copy()
+        show["kind"] = show["kind"].map(label_map)
+        show = show.rename(columns={
+            "kind": "判定",
+            "final_status": "実績",
+            "score": "スコア",
+            "sales_dept": "営業部",
+            "industry": "業種",
+            "nenshu": "売上高",
+            "op_profit": "利益",
+            "final_rate": "金利",
+        })
+        st.dataframe(
+            show[["判定", "id", "営業部", "業種", "実績", "スコア", "売上高", "利益", "金利", "timestamp"]],
+            width="stretch",
+            hide_index=True,
+        )
+
+    if month_key is None and "month_key" in filtered_df.columns:
+        st.markdown("#### 年月比較")
+        months = sorted([m for m in filtered_df["month_key"].dropna().astype(str).unique().tolist() if m])
+        compare_months = months[-3:] if len(months) >= 3 else months
+        if len(compare_months) >= 2:
+            compare_fig = go.Figure()
+            for month in compare_months:
+                sub = _compute_misjudge_map(filtered_df, method=method, only_misjudge=True, month_key=month)
+                if sub is None or sub.empty:
+                    continue
+                compare_fig.add_trace(go.Scatter(
+                    x=sub["x"],
+                    y=sub["y"],
+                    mode="markers",
+                    name=month,
+                    text=[f"{r.id}<br>{r.industry}<br>{r.final_status}<br>スコア:{r.score:.1f}" for r in sub.itertuples(index=False)],
+                    hovertemplate="%{text}<extra></extra>",
+                    marker=dict(size=9, opacity=0.75),
+                ))
+            compare_fig.update_layout(
+                title=f"誤判定のみの年月比較（{method}）",
+                xaxis_title=f"{method} 1",
+                yaxis_title=f"{method} 2",
+                height=420,
+                margin=dict(l=20, r=20, t=50, b=20),
+                legend=dict(orientation="h"),
+            )
+            st.plotly_chart(compare_fig, use_container_width=True)
+
+    if segment_col == "sales_dept" and segment_value != "全件":
+        st.markdown(f"#### {segment_value} の誤判定内訳")
+        st.caption("FP = 実際は失注なのに成約と予測した件。FN = 実際は成約なのに失注と予測した件。")
+        breakdown_cols = [
+            ("業種", "industry"),
+            ("売上高帯", "売上高帯"),
+            ("売上総利益帯", "売上総利益帯"),
+            ("営業利益帯", "営業利益帯"),
+            ("金利帯", "金利帯"),
+        ]
+        for title, col in breakdown_cols:
+            table = _misjudge_breakdown_table(map_df, col)
+            if table.empty:
+                continue
+            st.markdown(f"##### {title}")
+            st.dataframe(table, width="stretch", hide_index=True)
+
+        gem_key = f"misjudge_gemini::{segment_value}::{method}::{month_key or 'all'}::{only_misjudge}"
+        if st.button("🤖 Geminiで分析", key=f"misjudge_gemini_btn::{segment_value}::{method}::{month_key or 'all'}"):
+            dept_table = _misjudge_breakdown_table(map_df, "industry")
+            rate_table = _misjudge_breakdown_table(map_df, "金利帯")
+            sales_table = _misjudge_breakdown_table(map_df, "売上高帯")
+            profit_table = _misjudge_breakdown_table(map_df, "営業利益帯")
+            gross_table = _misjudge_breakdown_table(map_df, "売上総利益帯")
+            prompt = f"""あなたはリース審査の実績分析担当です。以下は {segment_value} の誤判定分析です。
+
+## 条件
+- 次元圧縮: {method}
+- 表示範囲: {"誤判定のみ" if only_misjudge else "全件"}
+- 対象月: {month_key or "全期間"}
+- 閾値: {threshold:.0f}
+- TP: {int(counts.get("TP", 0))}, TN: {int(counts.get("TN", 0))}, FP: {int(counts.get("FP", 0))}, FN: {int(counts.get("FN", 0))}
+
+## 業種別誤判定上位
+{_table_to_text(dept_table)}
+
+## 売上高帯別誤判定上位
+{_table_to_text(sales_table)}
+
+## 売上総利益帯別誤判定上位
+{_table_to_text(gross_table)}
+
+## 営業利益帯別誤判定上位
+{_table_to_text(profit_table)}
+
+## 金利帯別誤判定上位
+{_table_to_text(rate_table)}
+
+## 依頼
+1. この営業部で誤判定が固まる理由を、業種・規模・利益・金利の観点で要約してください。
+2. FP と FN のどちらが多いかを踏まえて、モデルが過大評価しやすいか過小評価しやすいか述べてください。
+3. 現場が次に確認すべき項目を3つに絞ってください。
+4. 断定しすぎず、データから言える範囲で簡潔にまとめてください。
+"""
+            with st.spinner("Gemini に分析を依頼中…"):
+                result = _call_misjudge_gemini(prompt)
+            st.session_state[gem_key] = result
+            st.rerun()
+        result = st.session_state.get(gem_key)
+        if result:
+            st.markdown("##### Geminiコメント")
+            st.markdown(result)
 
 
 # ── Tab 3: 損失地形 ──────────────────────────────────────────────────────────
@@ -323,11 +811,13 @@ def render_model_diagnostics() -> None:
         st.error("DBが見つかりません。")
         return
 
-    tab1, tab2, tab3 = st.tabs(["📊 データ分布", "⚖️ 予測誤差の偏り", "🗺️ 損失地形"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 データ分布", "⚖️ 予測誤差の偏り", "🧭 UMAP誤判定", "🗺️ 損失地形"])
 
     with tab1:
         _render_distribution(df)
     with tab2:
         _render_bias(df)
     with tab3:
+        _render_misjudge_map(df)
+    with tab4:
         _render_landscape()
