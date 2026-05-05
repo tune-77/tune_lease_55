@@ -148,6 +148,279 @@ STAT_TEST_METRICS = [
 ]
 
 
+GRADE_ORDER = ["①1-3 (優良)", "②4-6 (標準)", "③要注意以下", "④無格付", "不明"]
+GRADE_COLORS = {
+    "①1-3 (優良)": "#16a34a",
+    "②4-6 (標準)": "#2563eb",
+    "③要注意以下": "#dc2626",
+    "④無格付": "#f59e0b",
+    "不明": "#64748b",
+}
+GRADE_DIMENSION_OPTIONS = {
+    "営業部": "営業部",
+    "業種大分類": "業種大分類",
+    "業種小分類": "業種小分類",
+    "売上規模帯": "売上規模帯",
+    "結果": "結果",
+    "取引区分": "取引区分",
+    "紹介元": "紹介元",
+}
+
+
+def _case_grade(case: dict) -> str:
+    inputs = case.get("inputs", {}) or {}
+    raw = str(case.get("grade") or inputs.get("grade") or case.get("result", {}).get("grade") or "").strip()
+    if not raw:
+        return "不明"
+    if raw.isdigit():
+        rank = int(raw)
+        if 1 <= rank <= 3:
+            return "①1-3 (優良)"
+        if 4 <= rank <= 6:
+            return "②4-6 (標準)"
+        return "③要注意以下"
+    if "1-3" in raw or "①" in raw:
+        return "①1-3 (優良)"
+    if "4-6" in raw or "②" in raw:
+        return "②4-6 (標準)"
+    if "要注意" in raw or "③" in raw:
+        return "③要注意以下"
+    if "無格付" in raw or "④" in raw:
+        return "④無格付"
+    return raw
+
+
+def _case_amount_million(case: dict, key: str) -> float | None:
+    inputs = case.get("inputs", {}) or {}
+    financials = case.get("financials", {}) or {}
+    result = case.get("result", {}) or {}
+    raw = financials.get(key) or inputs.get(key) or result.get(key) or case.get(key)
+    try:
+        if raw in ("", None):
+            return None
+        value = float(raw)
+        if value <= 0:
+            return None
+        # 入力UI由来の財務値は千円単位、CSV由来は百万円単位が混在するため、
+        # 10万超は千円単位と見なして百万円へ寄せる。
+        if value >= 100000:
+            value = value / 1000.0
+        return value
+    except (TypeError, ValueError):
+        return None
+
+
+def _sales_band(value: float | None) -> str:
+    if value is None or pd.isna(value):
+        return "不明"
+    if value < 300:
+        return "〜3億円未満"
+    if value < 1000:
+        return "3〜10億円"
+    if value < 3000:
+        return "10〜30億円"
+    if value < 10000:
+        return "30〜100億円"
+    return "100億円以上"
+
+
+def _build_grade_analysis_frame(all_cases: list[dict]) -> pd.DataFrame:
+    rows = []
+    for case in all_cases:
+        inputs = case.get("inputs", {}) or {}
+        result = case.get("result", {}) or {}
+        sales = _case_amount_million(case, "nenshu")
+        status = case.get("final_status") or "未登録"
+        score = case.get("score") or result.get("score")
+        rows.append(
+            {
+                "格付": _case_grade(case),
+                "営業部": _display_sales_dept(case.get("sales_dept") or inputs.get("sales_dept") or ""),
+                "業種大分類": _case_major(case),
+                "業種小分類": _case_sub(case),
+                "売上高(百万円)": sales,
+                "売上規模帯": _sales_band(sales),
+                "結果": status,
+                "成約フラグ": 1 if status == "成約" else 0,
+                "スコア": _safe_float(score),
+                "取引区分": str(case.get("customer_type") or inputs.get("customer_type") or "不明"),
+                "紹介元": str(case.get("deal_source") or inputs.get("deal_source") or "不明"),
+                "月": _case_month(case),
+            }
+        )
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    df["格付"] = pd.Categorical(df["格付"], categories=GRADE_ORDER, ordered=True)
+    return df
+
+
+def _render_grade_analysis(df_grade: pd.DataFrame) -> None:
+    st.subheader("🏷️ 格付別グラフ")
+    if df_grade.empty:
+        st.caption("格付別集計に使える案件データがありません。")
+        return
+
+    col_filter1, col_filter2, col_filter3 = st.columns(3)
+    with col_filter1:
+        dept_options = ["すべて"] + sorted(df_grade["営業部"].dropna().astype(str).unique().tolist())
+        selected_dept = st.selectbox("営業部フィルタ", dept_options, key="dash_grade_dept")
+    with col_filter2:
+        major_options = ["すべて"] + sorted(df_grade["業種大分類"].dropna().astype(str).unique().tolist())
+        selected_major = st.selectbox("業種大分類フィルタ", major_options, key="dash_grade_major")
+    with col_filter3:
+        metric_label = st.selectbox(
+            "グラフの数値",
+            ["件数", "成約率(%)", "平均売上高(百万円)", "平均スコア"],
+            key="dash_grade_metric",
+        )
+
+    dimension_label = st.selectbox(
+        "見る項目",
+        list(GRADE_DIMENSION_OPTIONS.keys()),
+        key="dash_grade_dimension",
+        help="営業部・業種・売上規模帯など、格付と掛け合わせる項目を切り替えます。",
+    )
+    dimension = GRADE_DIMENSION_OPTIONS[dimension_label]
+
+    filtered = df_grade.copy()
+    if selected_dept != "すべて":
+        filtered = filtered[filtered["営業部"] == selected_dept]
+    if selected_major != "すべて":
+        filtered = filtered[filtered["業種大分類"] == selected_major]
+    if filtered.empty:
+        st.caption("フィルタ条件に合うデータがありません。")
+        return
+
+    total_cases = len(filtered)
+    won_cases = int(filtered["成約フラグ"].sum())
+    avg_sales = filtered["売上高(百万円)"].dropna().mean()
+    avg_score = filtered["スコア"].dropna().mean()
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("対象件数", f"{total_cases}件")
+    m2.metric("成約率", f"{won_cases / total_cases * 100:.1f}%" if total_cases else "0.0%")
+    m3.metric("平均売上高", f"{avg_sales:,.1f}百万円" if pd.notna(avg_sales) else "-")
+    m4.metric("平均スコア", f"{avg_score:.1f}" if pd.notna(avg_score) else "-")
+
+    grouped = (
+        filtered.groupby(["格付", dimension], observed=False)
+        .agg(
+            件数=("格付", "size"),
+            成約件数=("成約フラグ", "sum"),
+            平均売上高=("売上高(百万円)", "mean"),
+            平均スコア=("スコア", "mean"),
+        )
+        .reset_index()
+    )
+    grouped["成約率(%)"] = grouped.apply(lambda r: (r["成約件数"] / r["件数"] * 100) if r["件数"] else 0.0, axis=1)
+    grouped = grouped[grouped["件数"] > 0]
+    if grouped.empty:
+        st.caption("表示できる集計がありません。")
+        return
+
+    top_dims = (
+        grouped.groupby(dimension)["件数"]
+        .sum()
+        .sort_values(ascending=False)
+        .head(14)
+        .index
+        .tolist()
+    )
+    chart_df = grouped[grouped[dimension].isin(top_dims)].copy()
+    value_col = {
+        "件数": "件数",
+        "成約率(%)": "成約率(%)",
+        "平均売上高(百万円)": "平均売上高",
+        "平均スコア": "平均スコア",
+    }[metric_label]
+
+    fig = go.Figure()
+    for grade in GRADE_ORDER:
+        sub = chart_df[chart_df["格付"].astype(str) == grade]
+        if sub.empty:
+            continue
+        fig.add_trace(
+            go.Bar(
+                x=sub[dimension],
+                y=sub[value_col],
+                name=grade,
+                marker_color=GRADE_COLORS.get(grade, "#64748b"),
+                customdata=np.stack([sub["件数"], sub["成約率(%)"], sub["平均売上高"].fillna(0)], axis=-1),
+                hovertemplate=(
+                    f"{dimension}=%{{x}}<br>格付={grade}<br>{metric_label}=%{{y:.1f}}"
+                    "<br>件数=%{customdata[0]:.0f}"
+                    "<br>成約率=%{customdata[1]:.1f}%"
+                    "<br>平均売上高=%{customdata[2]:,.1f}百万円<extra></extra>"
+                ),
+            )
+        )
+    fig.update_layout(
+        title=f"格付別 × {dimension_label}（{metric_label}）",
+        xaxis_title=dimension_label,
+        yaxis_title=metric_label,
+        barmode="group" if metric_label != "件数" else "stack",
+        height=430,
+        margin=dict(l=20, r=20, t=55, b=80),
+        legend=dict(orientation="h"),
+    )
+    st.plotly_chart(fig, width="stretch")
+
+    heat = chart_df.pivot_table(index="格付", columns=dimension, values=value_col, aggfunc="mean", fill_value=0)
+    heat = heat.reindex([g for g in GRADE_ORDER if g in heat.index])
+    if not heat.empty:
+        fig_heat = go.Figure(
+            data=go.Heatmap(
+                z=heat.to_numpy(),
+                x=list(heat.columns),
+                y=[str(x) for x in heat.index],
+                colorscale="Blues",
+                colorbar=dict(title=metric_label),
+                hovertemplate=f"格付=%{{y}}<br>{dimension_label}=%{{x}}<br>{metric_label}=%{{z:.1f}}<extra></extra>",
+            )
+        )
+        fig_heat.update_layout(
+            title=f"格付 × {dimension_label} ヒートマップ",
+            height=360,
+            margin=dict(l=20, r=20, t=55, b=70),
+        )
+        st.plotly_chart(fig_heat, width="stretch")
+
+    summary = (
+        filtered.groupby("格付", observed=False)
+        .agg(
+            件数=("格付", "size"),
+            成約件数=("成約フラグ", "sum"),
+            平均売上高=("売上高(百万円)", "mean"),
+            中央売上高=("売上高(百万円)", "median"),
+            平均スコア=("スコア", "mean"),
+        )
+        .reset_index()
+    )
+    summary["成約率(%)"] = summary.apply(lambda r: (r["成約件数"] / r["件数"] * 100) if r["件数"] else 0.0, axis=1)
+    summary = summary[summary["件数"] > 0]
+    st.markdown("#### 格付別サマリ")
+    st.dataframe(
+        summary[["格付", "件数", "成約件数", "成約率(%)", "平均売上高", "中央売上高", "平均スコア"]]
+        .style.format({
+            "成約率(%)": "{:.1f}",
+            "平均売上高": "{:,.1f}",
+            "中央売上高": "{:,.1f}",
+            "平均スコア": "{:.1f}",
+        }),
+        width="stretch",
+        hide_index=True,
+    )
+
+    st.markdown("#### 明細集計")
+    detail = chart_df.sort_values(["格付", "件数"], ascending=[True, False])
+    st.dataframe(
+        detail[["格付", dimension, "件数", "成約件数", "成約率(%)", "平均売上高", "平均スコア"]]
+        .style.format({"成約率(%)": "{:.1f}", "平均売上高": "{:,.1f}", "平均スコア": "{:.1f}"}),
+        width="stretch",
+        hide_index=True,
+    )
+
+
 def _build_dept_industry_frame(all_cases: list[dict]) -> pd.DataFrame:
     rows = []
     for case in all_cases:
@@ -1567,6 +1840,7 @@ def render_dashboard():
                 st.caption(f"キャッシュ済み結果を表示中 / 計算キー: {stat_key[:12]}")
 
         df_dept = _build_dept_industry_frame(all_cases)
+        df_grade = _build_grade_analysis_frame(all_cases)
         df_monthly = _build_monthly_frame(all_cases)
         dept_summary = _build_dept_summary(df_dept)
         dept_score_summary = _build_dept_score_summary(df_dept)
@@ -1599,12 +1873,14 @@ def render_dashboard():
                 f"Gemini には『71点をどの程度動かすべきか』をこの表も含めて説明させます。"
                 f" 現時点の全体候補（Youden指数）は {best_overall_text} です。"
             )
-        tabs = st.tabs(["🏢 営業部別", "📅 月次推移", "🤖 Gemini コメント"])
+        tabs = st.tabs(["🏢 営業部別", "🏷️ 格付別", "📅 月次推移", "🤖 Gemini コメント"])
         with tabs[0]:
             _render_dept_analysis(df_dept, threshold_reco)
         with tabs[1]:
-            _render_monthly_analysis(df_monthly)
+            _render_grade_analysis(df_grade)
         with tabs[2]:
+            _render_monthly_analysis(df_monthly)
+        with tabs[3]:
             _render_gemini_comment(
                 df_dept,
                 df_monthly,
