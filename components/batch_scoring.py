@@ -9,7 +9,7 @@ import numpy as np
 
 from data_cases import get_effective_coeffs, get_score_weights
 from constants import APPROVAL_LINE, REVIEW_LINE
-from industry_normalizer import normalize_industry_major
+from industry_normalizer import normalize_industry_major, normalize_industry_sub
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -186,7 +186,10 @@ def _score_one(row: dict) -> dict:
             "grade": str(row.get("格付") or "1-3"),
             "customer_type": str(row.get("取引区分") or "既存先"),
             "industry_major": normalize_industry_major(row.get("業種大分類")) or "D 建設業",
-            "industry_sub": str(row.get("業種小分類") or "06 総合工事業"),
+            "industry_sub": (
+                normalize_industry_sub(row.get("業種小分類"), row.get("業種大分類"))
+                or "06 総合工事業"
+            ),
             "sales_dept": str(row.get("営業担当部署") or "未設定"),
             "main_bank": str(row.get("メイン取引銀行") or "なし"),
             "competitor": str(row.get("競合状況") or "競合なし"),

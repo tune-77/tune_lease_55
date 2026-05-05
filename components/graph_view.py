@@ -18,6 +18,20 @@ import streamlit.components.v1 as components
 from data_cases import load_past_cases
 
 
+def _normalize_rate(value: object) -> float:
+    try:
+        rate = float(value or 0)
+        if rate <= 0:
+            return 0.0
+        if rate > 1000:
+            return rate / 1000.0
+        if rate > 100:
+            return rate / 100.0
+        return rate
+    except Exception:
+        return 0.0
+
+
 # 業種カラーパレット（成約率に応じてグラデーション）
 def _win_rate_color(win_rate: float) -> str:
     """成約率0〜1 → 色コード（赤→黄→緑）"""
@@ -46,7 +60,7 @@ def build_graph_data() -> dict:
         competitor = c.get("competitor_name", "") or ""
         has_competitor = c.get("competitor", "") == "競合あり"
         score = float(c.get("score") or (c.get("result") or {}).get("score") or 0)
-        final_rate = float(c.get("final_rate") or 0)
+        final_rate = _normalize_rate(c.get("final_rate"))
         case_id = c.get("id", "")
 
         # 業種集計

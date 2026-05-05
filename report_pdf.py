@@ -1,12 +1,11 @@
 """
-report_pdf.py — 成約の正体レポートPDF生成モジュール。
+report_pdf.py — PDFレポート生成モジュール。
 
 含む機能:
-- build_contract_report_pdf : 分析結果を A4 1枚の PDF バイト列として返す
+- build_contract_report_pdf : 成約分析の A4 1枚PDF
 """
 
 import os
-from config import BASE_DIR
 
 
 def build_contract_report_pdf(analysis: dict) -> bytes:

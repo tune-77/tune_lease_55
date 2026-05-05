@@ -73,6 +73,10 @@ def _normalize_rate(v) -> float:
         v = float(v)
         if v <= 0:
             return 0.0
+        if v > 1000:
+            return v / 1000
+        if v > 100:
+            return v / 100
         if v < 0.1:
             return v * 100
         return v
