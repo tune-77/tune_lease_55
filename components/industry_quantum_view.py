@@ -152,6 +152,38 @@ def _write_feedback(case: dict, label: str) -> None:
 
 _UNKNOWN_RISK_THRESHOLD = 10.0
 
+_OOD_LABELS: dict[str, str] = {
+    "op_profit": "営業利益",
+    "depreciation": "減価償却費",
+    "machines": "機械設備",
+    "equip_total": "設備合計",
+    "net_income": "純利益",
+    "ord_profit": "経常利益",
+    "trend_val": "格付",
+    "qualit_score": "定性スコア",
+}
+
+
+def _format_ood_flags(flags: dict[str, bool] | None) -> str:
+    if not flags:
+        return ""
+    labels = [_OOD_LABELS.get(k, k) for k, v in flags.items() if v]
+    return " / ".join(labels)
+
+
+def _summarize_ood_flags(records: list[dict]) -> pd.DataFrame:
+    counts: dict[str, int] = {}
+    for r in records:
+        flags = r.get("_q_ood_flags", {}) or {}
+        for key, val in flags.items():
+            if val:
+                counts[key] = counts.get(key, 0) + 1
+    rows = [
+        {"変数": _OOD_LABELS.get(k, k), "外挿件数": v}
+        for k, v in sorted(counts.items(), key=lambda x: x[1], reverse=True)
+    ]
+    return pd.DataFrame(rows)
+
 
 def _render_case_table(records: list[dict]) -> None:
     import pandas as pd
@@ -168,6 +200,7 @@ def _render_case_table(records: list[dict]) -> None:
             "判定": r.get("_q_verdict", ""),
             "主因": r.get("_q_top_pair", ""),
             "外挿域": "⚠️" if r.get("_q_ood", False) else "",
+            "外挿域変数": _format_ood_flags(r.get("_q_ood_flags", {})),
             "未知リスク候補": "🔴" if is_unknown_risk else "",
         })
     if not rows:
@@ -310,6 +343,7 @@ def render_industry_quantum_view() -> None:
             c["_q_verdict"] = r["verdict"]
             c["_q_pairs"] = r["pair_anomalies"]
             c["_q_ood"] = any(r.get("ood_flags", {}).values())
+            c["_q_ood_flags"] = r.get("ood_flags", {})
             c["_residual_signal"] = r.get("residual_signal", 0.0)
             top = max(r["pair_anomalies"].items(), key=lambda x: x[1], default=("", 0))
             c["_q_top_pair"] = _PAIR_LABELS.get(top[0], top[0])
@@ -318,6 +352,7 @@ def render_industry_quantum_view() -> None:
             c["_q_verdict"] = "エラー"
             c["_q_pairs"] = {}
             c["_q_ood"] = False
+            c["_q_ood_flags"] = {}
             c["_residual_signal"] = 0.0
             c["_q_top_pair"] = ""
 
@@ -363,6 +398,12 @@ def render_industry_quantum_view() -> None:
     col3.metric("要再審 (35-59)", review)
     col4.metric("失注件数", lost)
     col5.metric("⚠️ 外挿域", ood_count, help="学習分布外の変数を含む案件数")
+
+    ood_summary = _summarize_ood_flags(industry_cases)
+    if not ood_summary.empty:
+        st.markdown("#### 外挿域になっている変数一覧")
+        st.caption("学習分布から |z| > 2.0 外れている変数を、日本語で件数順に並べています。")
+        st.dataframe(ood_summary, use_container_width=True, hide_index=True)
 
     st.divider()
 
@@ -418,24 +459,45 @@ def render_industry_quantum_view() -> None:
                 ]
                 return max(vals) * 1.5 if vals else fallback
 
+            def _slider_bounds(var: str, fallback: float, base_value: float) -> tuple[int, int, int]:
+                upper = int(max(1, _ind_max(var, fallback) // 1000))
+                lower = 0
+                default = int(max(lower, min(upper, base_value // 1000)))
+                return lower, upper, default
+
             st.markdown("**変数を変更してシナリオを探索:**")
             col_s1, col_s2, col_s3 = st.columns(3)
             with col_s1:
+                op_min, op_max, op_default = _slider_bounds(
+                    "op_profit",
+                    200000,
+                    float(base_inputs.get("op_profit", 50000)),
+                )
                 new_op = st.slider(
-                    "営業利益 (百万円)", 0, int(_ind_max("op_profit", 200000)) // 1000,
-                    int(float(base_inputs.get("op_profit", 50000))) // 1000,
+                    "営業利益 (百万円)", op_min, op_max,
+                    op_default,
                     step=1, key="cf_op_profit",
                 )
             with col_s2:
+                dep_min, dep_max, dep_default = _slider_bounds(
+                    "depreciation",
+                    100000,
+                    float(base_inputs.get("depreciation", 10000)),
+                )
                 new_dep = st.slider(
-                    "減価償却費 (百万円)", 0, int(_ind_max("depreciation", 100000)) // 1000,
-                    int(float(base_inputs.get("depreciation", 10000))) // 1000,
+                    "減価償却費 (百万円)", dep_min, dep_max,
+                    dep_default,
                     step=1, key="cf_depreciation",
                 )
             with col_s3:
+                mach_min, mach_max, mach_default = _slider_bounds(
+                    "machines",
+                    200000,
+                    float(base_inputs.get("machines", 40000)),
+                )
                 new_mach = st.slider(
-                    "機械設備 (百万円)", 0, int(_ind_max("machines", 200000)) // 1000,
-                    int(float(base_inputs.get("machines", 40000))) // 1000,
+                    "機械設備 (百万円)", mach_min, mach_max,
+                    mach_default,
                     step=1, key="cf_machines",
                 )
 

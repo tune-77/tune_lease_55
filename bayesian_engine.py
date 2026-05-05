@@ -765,7 +765,7 @@ _BN_CASES_FILE: Optional[str] = None
 
 
 def set_data_dir(base_dir: str) -> None:
-    """保存先ディレクトリを設定（lease_logic_sumaho11.py から呼ぶ）"""
+    """保存先ディレクトリを設定（現行アプリから呼ぶ）"""
     global _BN_CASES_FILE
     _BN_CASES_FILE = os.path.join(base_dir, "bn_cases.jsonl")
 

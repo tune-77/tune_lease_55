@@ -26,6 +26,7 @@ except ImportError:
 _BASE = Path(__file__).parent.parent
 _DB_PATH = _BASE / "data" / "screening_db.sqlite"
 _LEASE_DB_PATH = _BASE / "data" / "lease_data.db"
+_VIS_LIMIT = 500
 
 # 6 indicators available from both DB and last_result
 _IND_LABELS = [
@@ -72,17 +73,30 @@ class CliffordVisualizer:
 
 # ── データ取得・加工 ────────────────────────────────────────────────────────────
 
-def _load_past_cases() -> pd.DataFrame:
+def _count_rows(db_path: Path, table: str) -> int:
+    if not db_path.exists():
+        return 0
+    try:
+        conn = sqlite3.connect(str(db_path))
+        cur = conn.execute(f"SELECT COUNT(*) FROM {table}")
+        n = int(cur.fetchone()[0] or 0)
+        conn.close()
+        return n
+    except Exception:
+        return 0
+
+
+def _load_past_cases(limit: int = _VIS_LIMIT) -> pd.DataFrame:
     """lease_data.db の past_cases から screening_records 互換 DataFrame を構築"""
     import json as _json
     if not _LEASE_DB_PATH.exists():
         return pd.DataFrame()
     try:
         conn = sqlite3.connect(str(_LEASE_DB_PATH))
-        df_raw = pd.read_sql_query(
-            "SELECT id, timestamp, score, user_eq, final_status, data FROM past_cases ORDER BY timestamp DESC LIMIT 500",
-            conn,
-        )
+        query = "SELECT id, timestamp, score, user_eq, final_status, data FROM past_cases ORDER BY timestamp DESC"
+        if limit and limit > 0:
+            query += f" LIMIT {int(limit)}"
+        df_raw = pd.read_sql_query(query, conn)
         conn.close()
         if len(df_raw) == 0:
             return pd.DataFrame()
@@ -117,9 +131,9 @@ def _load_db() -> pd.DataFrame:
         return _load_past_cases()
     try:
         conn = sqlite3.connect(str(_DB_PATH))
-        df = pd.read_sql_query(
-            "SELECT * FROM screening_records ORDER BY created_at DESC LIMIT 500", conn
-        )
+        query = "SELECT * FROM screening_records ORDER BY created_at DESC"
+        query += f" LIMIT {_VIS_LIMIT}"
+        df = pd.read_sql_query(query, conn)
         conn.close()
         if len(df) == 0:
             return _load_past_cases()
@@ -591,15 +605,20 @@ def render_clifford_visual() -> None:
     with st.spinner("データを読み込んでいます…"):
         df = _load_db()
 
-    if len(df) > 0:
+    total_rows = _count_rows(_DB_PATH, "screening_records")
+    if total_rows == 0:
+        total_rows = _count_rows(_LEASE_DB_PATH, "past_cases")
+    shown_rows = len(df)
+
+    if shown_rows > 0:
         ind = _db_to_indicators(df)
         labels = _classify(df)
         n_approved = int(labels.sum())
-        n_total = len(df)
         col1, col2, col3 = st.columns(3)
-        col1.metric("総案件数", f"{n_total} 件")
-        col2.metric("成約圏", f"{n_approved} 件")
-        col3.metric("成約率", f"{n_approved / n_total * 100:.1f}%")
+        col1.metric("総案件数", f"{total_rows} 件" if total_rows else f"{shown_rows} 件")
+        col2.metric("表示件数", f"{shown_rows} 件")
+        col3.metric("成約圏", f"{n_approved} 件")
+        st.caption(f"図に使っているのは直近 {shown_rows} 件です。総案件数はDB全件数を表示しています。")
     else:
         ind = np.zeros((0, len(_IND_LABELS)))
         labels = np.zeros(0, dtype=int)

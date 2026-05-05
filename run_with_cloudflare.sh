@@ -13,7 +13,7 @@
 cd "$(dirname "$0")"
 
 echo "Streamlit を起動しています..."
-python3 -m streamlit run lease_logic_sumaho12.py \
+python3 -m streamlit run tune_lease_55.py \
   --server.address 0.0.0.0 \
   --server.port 8506 &
 STREAMLIT_PID=$!

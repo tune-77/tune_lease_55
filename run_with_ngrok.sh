@@ -6,7 +6,7 @@
 cd "$(dirname "$0")"
 
 echo "🚀 Streamlit を起動しています..."
-python3 -m streamlit run lease_logic_sumaho8.py --server.address 0.0.0.0 --server.port 8501 &
+python3 -m streamlit run tune_lease_55.py --server.address 0.0.0.0 --server.port 8501 &
 STREAMLIT_PID=$!
 
 # 終了時に Streamlit を止める

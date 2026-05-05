@@ -904,7 +904,7 @@ def res_to_company_data(res: dict, company_name: str = "審査対象",
                         lease_amount_man: float = 0,
                         lease_months: int = 36) -> CompanyData:
     """
-    lease_logic_sumaho11 の審査結果 dict から CompanyData を生成する。
+    現行の審査結果 dict から CompanyData を生成する。
 
     Args:
         res:              審査結果dict(score, user_op, user_eq, financials 等)

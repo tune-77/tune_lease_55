@@ -74,6 +74,7 @@ def _load_df() -> pd.DataFrame:
         inp = d.get("inputs", {})
         res = d.get("result", {})
         review_date = _review_date_text(d, ts)
+        display_status = "成約" if status in _WIN_STATUSES else status
         try:
             month = int(review_date[:7].split("-")[1])
         except (IndexError, ValueError):
@@ -84,7 +85,7 @@ def _load_df() -> pd.DataFrame:
             "timestamp": ts,
             "review_date": review_date,
             "month": month,
-            "final_status": status,
+            "final_status": display_status,
             "score": float(score or 0),
             "industry": d.get("industry_major", "不明"),
             "sales_dept": d.get("sales_dept", "未設定"),
@@ -325,10 +326,11 @@ def _import_umap_safely():
             nb_dufunc.jit = orig_jit
 
 
-def _run_misjudge_embedding(work: pd.DataFrame, method: str) -> tuple[np.ndarray, str]:
-    feat_df, _ = _get_misjudge_features(work)
+def _run_misjudge_embedding(work: pd.DataFrame, method: str) -> tuple[np.ndarray, str, dict[str, object]]:
+    feat_df, feature_cols = _get_misjudge_features(work)
     from sklearn.preprocessing import StandardScaler
     X = StandardScaler().fit_transform(feat_df.to_numpy(dtype=float))
+    meta: dict[str, object] = {"feature_cols": feature_cols}
 
     if method == "UMAP":
         try:
@@ -342,11 +344,16 @@ def _run_misjudge_embedding(work: pd.DataFrame, method: str) -> tuple[np.ndarray
                 metric="euclidean",
                 random_state=42,
             )
-            return reducer.fit_transform(X), "UMAP"
+            meta["reducer"] = reducer
+            return reducer.fit_transform(X), "UMAP", meta
         except Exception:
             pass
     from sklearn.decomposition import PCA
-    return PCA(n_components=2, random_state=42).fit_transform(X), "PCA"
+    reducer = PCA(n_components=2, random_state=42).fit(X)
+    meta["reducer"] = reducer
+    meta["explained_variance_ratio"] = getattr(reducer, "explained_variance_ratio_", None)
+    meta["components"] = getattr(reducer, "components_", None)
+    return reducer.transform(X), "PCA", meta
 
 
 def _build_misjudge_frame(df: pd.DataFrame, threshold: float = 71.0, method: str = "UMAP", only_misjudge: bool = False, month_key: str | None = None) -> pd.DataFrame:
@@ -356,7 +363,7 @@ def _build_misjudge_frame(df: pd.DataFrame, threshold: float = 71.0, method: str
     if len(work) < 10:
         return pd.DataFrame()
 
-    embedding, reducer_name = _run_misjudge_embedding(work, method)
+    embedding, reducer_name, reducer_meta = _run_misjudge_embedding(work, method)
     actual = work["label"].astype(int).to_numpy()
     pred = (work["score"].astype(float).to_numpy() >= threshold).astype(int)
     kind = np.where((pred == 1) & (actual == 1), "TP",
@@ -378,6 +385,7 @@ def _build_misjudge_frame(df: pd.DataFrame, threshold: float = 71.0, method: str
     out["threshold"] = threshold
     if only_misjudge:
         out = out[out["kind"].isin(["FP", "FN"])].copy()
+    out.attrs["reducer_meta"] = reducer_meta
     return out
 
 
@@ -445,8 +453,52 @@ def _render_misjudge_map(df: pd.DataFrame) -> None:
         st.info("誤判定マップを作るには、成約/失注データが10件以上必要です。")
         return
 
+    selected_method = method
     reducer_name = str(map_df["reducer"].iloc[0])
     threshold = float(map_df["threshold"].iloc[0])
+    if selected_method == "UMAP" and reducer_name == "PCA":
+        st.warning("UMAPを選択しましたが、環境上の都合でPCAにフォールバックしています。")
+    if reducer_name == "PCA":
+        st.caption(
+            "PCA1 は元の案件データのばらつきを最も強く表す第1主成分、PCA2 はその次に強い独立したばらつきを表す第2主成分です。"
+            " 2軸は元の項目を要約した見取り図なので、近い点ほど特徴が似た案件として見ます。"
+        )
+        reducer_meta = map_df.attrs.get("reducer_meta") or {}
+        feature_cols = list(reducer_meta.get("feature_cols") or [])
+        components = reducer_meta.get("components")
+        explained = reducer_meta.get("explained_variance_ratio")
+        if isinstance(components, np.ndarray) and len(feature_cols) == components.shape[1]:
+            st.markdown("#### PCAの中身")
+            if isinstance(explained, np.ndarray) and len(explained) >= 2:
+                st.caption(
+                    f"PCA1の寄与率: {float(explained[0]) * 100:.1f}% / "
+                    f"PCA2の寄与率: {float(explained[1]) * 100:.1f}%"
+                )
+            rows = []
+            for pc_idx, pc_name in enumerate(["PCA1", "PCA2"]):
+                coefs = components[pc_idx]
+                top_idx = np.argsort(np.abs(coefs))[::-1][:5]
+                for rank, feat_idx in enumerate(top_idx, start=1):
+                    coef = float(coefs[feat_idx])
+                    feat = feature_cols[feat_idx]
+                    rows.append({
+                        "主成分": pc_name,
+                        "順位": rank,
+                        "項目": feat,
+                        "係数": coef,
+                        "影響": "正方向" if coef >= 0 else "負方向",
+                    })
+            if rows:
+                coef_df = pd.DataFrame(rows)
+                st.dataframe(
+                    coef_df,
+                    width="stretch",
+                    hide_index=True,
+                    column_config={
+                        "係数": st.column_config.NumberColumn(format="%.3f"),
+                    },
+                )
+    st.caption(f"選択: {selected_method} / 実行: {reducer_name}")
     counts = map_df["kind"].value_counts().to_dict()
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("TP", int(counts.get("TP", 0)))
@@ -551,6 +603,83 @@ def _render_misjudge_map(df: pd.DataFrame) -> None:
     )
     st.plotly_chart(fig, use_container_width=True)
 
+    st.markdown("#### Gemini説明")
+    st.caption("今見ている条件の誤判定の塊を、業種・規模・利益・金利の観点で要約します。")
+    gem_key = f"misjudge_gemini::{segment_key}::{segment_value}::{method}::{month_key or 'all'}::{only_misjudge}"
+    if st.button("🤖 Geminiで説明", key=f"misjudge_gemini_btn::{segment_key}::{segment_value}::{method}::{month_key or 'all'}"):
+        industry_table = _misjudge_breakdown_table(map_df, "industry")
+        rate_table = _misjudge_breakdown_table(map_df, "金利帯")
+        sales_table = _misjudge_breakdown_table(map_df, "売上高帯")
+        profit_table = _misjudge_breakdown_table(map_df, "営業利益帯")
+        gross_table = _misjudge_breakdown_table(map_df, "売上総利益帯")
+        pca_summary = ""
+        reducer_meta = map_df.attrs.get("reducer_meta") or {}
+        if reducer_name == "PCA":
+            feature_cols = list(reducer_meta.get("feature_cols") or [])
+            components = reducer_meta.get("components")
+            explained = reducer_meta.get("explained_variance_ratio")
+            if isinstance(components, np.ndarray) and len(feature_cols) == components.shape[1]:
+                parts = []
+                if isinstance(explained, np.ndarray) and len(explained) >= 2:
+                    parts.append(
+                        f"PCA1寄与率={float(explained[0]) * 100:.1f}%、PCA2寄与率={float(explained[1]) * 100:.1f}%"
+                    )
+                for pc_idx, pc_name in enumerate(["PCA1", "PCA2"]):
+                    coefs = components[pc_idx]
+                    top_idx = np.argsort(np.abs(coefs))[::-1][:3]
+                    top_terms = []
+                    for feat_idx in top_idx:
+                        coef = float(coefs[feat_idx])
+                        feat = feature_cols[feat_idx]
+                        top_terms.append(f"{feat}({coef:+.3f})")
+                    if top_terms:
+                        parts.append(f"{pc_name}: " + " / ".join(top_terms))
+                pca_summary = "\n".join(parts)
+        segment_desc = segment_key if segment_value == "全件" else f"{segment_key}={segment_value}"
+        prompt = f"""あなたはリース審査の実績分析担当です。以下は誤判定マップの分析です。
+
+## 条件
+- 対象: {segment_desc}
+- 次元圧縮: {selected_method}
+- 実行結果: {reducer_name}
+- 表示範囲: {"誤判定のみ" if only_misjudge else "全件"}
+- 対象月: {month_key or "全期間"}
+- 閾値: {threshold:.0f}
+- TP: {int(counts.get("TP", 0))}, TN: {int(counts.get("TN", 0))}, FP: {int(counts.get("FP", 0))}, FN: {int(counts.get("FN", 0))}
+
+## 業種別誤判定上位
+{_table_to_text(industry_table)}
+
+## 売上高帯別誤判定上位
+{_table_to_text(sales_table)}
+
+## 売上総利益帯別誤判定上位
+{_table_to_text(gross_table)}
+
+## 営業利益帯別誤判定上位
+{_table_to_text(profit_table)}
+
+## 金利帯別誤判定上位
+{_table_to_text(rate_table)}
+
+## PCAの中身（PCAのときのみ参考）
+{pca_summary or "PCAではない、または係数情報がありません。"}
+
+## 依頼
+1. この条件で誤判定が固まる理由を、業種・規模・利益・金利の観点で要約してください。
+2. FP と FN のどちらが多いかを踏まえて、モデルが過大評価しやすいか過小評価しやすいか述べてください。
+3. 現場が次に確認すべき項目を3つに絞ってください。
+4. 断定しすぎず、データから言える範囲で簡潔にまとめてください。
+"""
+        with st.spinner("Gemini に分析を依頼中…"):
+            result = _call_misjudge_gemini(prompt)
+        st.session_state[gem_key] = result
+        st.rerun()
+    result = st.session_state.get(gem_key)
+    if result:
+        st.markdown("##### Geminiコメント")
+        st.markdown(result)
+
     fp_fn = map_df[map_df["kind"].isin(["FP", "FN"])].copy()
     if not fp_fn.empty:
         st.markdown("#### 誤判定案件一覧")
@@ -617,52 +746,6 @@ def _render_misjudge_map(df: pd.DataFrame) -> None:
                 continue
             st.markdown(f"##### {title}")
             st.dataframe(table, width="stretch", hide_index=True)
-
-        gem_key = f"misjudge_gemini::{segment_value}::{method}::{month_key or 'all'}::{only_misjudge}"
-        if st.button("🤖 Geminiで分析", key=f"misjudge_gemini_btn::{segment_value}::{method}::{month_key or 'all'}"):
-            dept_table = _misjudge_breakdown_table(map_df, "industry")
-            rate_table = _misjudge_breakdown_table(map_df, "金利帯")
-            sales_table = _misjudge_breakdown_table(map_df, "売上高帯")
-            profit_table = _misjudge_breakdown_table(map_df, "営業利益帯")
-            gross_table = _misjudge_breakdown_table(map_df, "売上総利益帯")
-            prompt = f"""あなたはリース審査の実績分析担当です。以下は {segment_value} の誤判定分析です。
-
-## 条件
-- 次元圧縮: {method}
-- 表示範囲: {"誤判定のみ" if only_misjudge else "全件"}
-- 対象月: {month_key or "全期間"}
-- 閾値: {threshold:.0f}
-- TP: {int(counts.get("TP", 0))}, TN: {int(counts.get("TN", 0))}, FP: {int(counts.get("FP", 0))}, FN: {int(counts.get("FN", 0))}
-
-## 業種別誤判定上位
-{_table_to_text(dept_table)}
-
-## 売上高帯別誤判定上位
-{_table_to_text(sales_table)}
-
-## 売上総利益帯別誤判定上位
-{_table_to_text(gross_table)}
-
-## 営業利益帯別誤判定上位
-{_table_to_text(profit_table)}
-
-## 金利帯別誤判定上位
-{_table_to_text(rate_table)}
-
-## 依頼
-1. この営業部で誤判定が固まる理由を、業種・規模・利益・金利の観点で要約してください。
-2. FP と FN のどちらが多いかを踏まえて、モデルが過大評価しやすいか過小評価しやすいか述べてください。
-3. 現場が次に確認すべき項目を3つに絞ってください。
-4. 断定しすぎず、データから言える範囲で簡潔にまとめてください。
-"""
-            with st.spinner("Gemini に分析を依頼中…"):
-                result = _call_misjudge_gemini(prompt)
-            st.session_state[gem_key] = result
-            st.rerun()
-        result = st.session_state.get(gem_key)
-        if result:
-            st.markdown("##### Geminiコメント")
-            st.markdown(result)
 
 
 # ── Tab 3: 損失地形 ──────────────────────────────────────────────────────────
