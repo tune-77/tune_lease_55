@@ -10,6 +10,8 @@ import tempfile
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+from industry_normalizer import normalize_industry_major, normalize_industry_sub
+
 
 HEADERS = [
     "ユーザーコード",
@@ -388,6 +390,40 @@ def convert_rating(value: str) -> str:
     return value
 
 
+def normalize_department(value: str) -> str:
+    """Normalize OCR text to one of the supported sales departments.
+
+    Unknown OCR noise is returned as blank so the template-fill step writes 0.
+    """
+    s = (value or "").strip()
+    if not s:
+        return ""
+    compact = re.sub(r"\s+", "", s)
+    compact = compact.translate(
+        str.maketrans(
+            {
+                "營": "営",
+                "業": "業",
+                "部": "部",
+                "官": "宮",
+                "宮": "宮",
+                "玉": "玉",
+                "王": "玉",
+            }
+        )
+    )
+    known = {
+        "宇都宮営業部": ("宇都宮", "宇都官", "都宮"),
+        "小山営業部": ("小山",),
+        "足利営業部": ("足利",),
+        "埼玉営業部": ("埼玉", "埼王"),
+    }
+    for dept, aliases in known.items():
+        if dept in compact or any(alias in compact for alias in aliases):
+            return dept
+    return ""
+
+
 def normalize_rating(path: Path) -> None:
     backup_csv(path, "rating_normalize")
     headers, rows = read_csv(path)
@@ -399,8 +435,7 @@ def normalize_rating(path: Path) -> None:
 def normalize_common_ocr(path: Path) -> None:
     headers, rows = read_csv(path)
     for row in rows:
-        if row.get("部署"):
-            row["部署"] = "宇都宮営業部"
+        row["部署"] = normalize_department(row.get("部署", ""))
         deal = (row.get("商談区分") or "") + " " + (row.get("契約種類") or "")
         if "自動車" in deal:
             row["商談区分"] = "自動車"
@@ -511,6 +546,10 @@ def fill_batch_template(template_csv: Path, source_csv: Path, out_csv: Path | No
         for template_col, source_col in BATCH_TEMPLATE_MAP.items():
             if template_col in row:
                 row[template_col] = nonblank_or_zero(src, source_col)
+        if "業種大分類" in row:
+            row["業種大分類"] = normalize_industry_major(src.get("業種大分類")) or nonblank_or_zero(src, "業種大分類")
+        if "業種小分類" in row:
+            row["業種小分類"] = normalize_industry_sub(src.get("業種小分類"), src.get("業種大分類")) or "0"
         if "審査日" in row:
             row["審査日"] = normalize_date(src.get("発生年月日", ""))
         if "検収時期(年)" in row:

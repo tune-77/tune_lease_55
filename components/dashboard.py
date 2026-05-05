@@ -5,6 +5,16 @@ from data_cases import load_all_cases
 from analysis_regression import run_contract_driver_analysis
 from report_pdf import build_contract_report_pdf
 
+SALES_DEPT_OPTIONS = ["宇都宮営業部", "小山営業部", "足利営業部", "埼玉営業部", "未設定", "未読取"]
+
+
+def _display_sales_dept(value: object) -> str:
+    dept = str(value or "").strip()
+    if dept in ("", "0"):
+        return "未読取"
+    return dept
+
+
 def render_dashboard():
     """📊 履歴分析・実績ダッシュボード タブのUIとロジックを描画する"""
     st.title("📊 履歴分析・実績ダッシュボード")
@@ -80,7 +90,7 @@ def render_dashboard():
     if all_cases:
         dept_rows = []
         for case in all_cases:
-            dept = case.get("sales_dept") or case.get("inputs", {}).get("sales_dept") or "未設定"
+            dept = _display_sales_dept(case.get("sales_dept") or case.get("inputs", {}).get("sales_dept") or "未設定")
             status = case.get("final_status") or "未登録"
             dept_rows.append({"営業部": dept, "結果": status})
 
@@ -100,6 +110,14 @@ def render_dashboard():
                 axis=1,
             )
             dept_summary = dept_summary[["営業部", "成約", "失注", "保留", "未登録", "合計", "成約率(%)"]]
+            existing_depts = set(dept_summary["営業部"].astype(str))
+            missing_rows = [
+                {"営業部": dept, "成約": 0, "失注": 0, "保留": 0, "未登録": 0, "合計": 0, "成約率(%)": 0.0}
+                for dept in SALES_DEPT_OPTIONS
+                if dept not in existing_depts
+            ]
+            if missing_rows:
+                dept_summary = pd.concat([dept_summary, pd.DataFrame(missing_rows)], ignore_index=True)
             dept_summary = dept_summary.sort_values(by=["成約率(%)", "成約"], ascending=[False, False])
             st.dataframe(
                 dept_summary.style.format({"成約率(%)": "{:.1f}"}),
@@ -117,7 +135,7 @@ def render_dashboard():
                     "結果": c.get("final_status") or "未登録",
                 }
                 for c in all_cases
-                if (c.get("sales_dept") or c.get("inputs", {}).get("sales_dept") or "未設定") == selected_dept
+                if _display_sales_dept(c.get("sales_dept") or c.get("inputs", {}).get("sales_dept") or "未設定") == selected_dept
             ]
             df_selected = pd.DataFrame(df_selected)
 
