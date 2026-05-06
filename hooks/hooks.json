@@ -33,6 +33,15 @@
       "message": "業種別AUCとベンチ/業種の乖離を同じフレームで確認する"
     },
     {
+      "id": "sales_dept_significance",
+      "enabled": true,
+      "kind": "department_significance",
+      "min_cases_per_dept": 8,
+      "alpha": 0.05,
+      "min_effect": 0.05,
+      "message": "営業部間の統計的有意差をまとめて確認する"
+    },
+    {
       "id": "new_customer_feature_gain",
       "enabled": true,
       "kind": "feature_ab_test",

@@ -44,6 +44,8 @@
   - モデル見直し用のフック基盤を追加した。`hooks/hooks.json` に `recent_auc_drop` / `segment_auc_gap` / `feature_ab_test` を定義し、`model_review_hooks.py` から実行・記録できるようにした。再学習後に自動実行し、Settings 画面と API からも起動できる。
   - モデル見直しフックに `industry_monitor` を追加した。業種別AUCと `bench_score / ind_score` の乖離を同じフレームで表示し、`industry_auc_bench_gap` で `全体 / 医療 / 運送業 / サービス業 / 製造業` を一括監視できるようにした。
   - モデル見直しフックの実行時に説明文も出すようにした。数値だけでなく「何が悪いか」「何を見直すか」がその場で読めるので、業種別AUCや bench/ind 乖離の判断コストを下げられる。
+  - モデル見直しフックに `department_significance` を追加した。営業部ごとの業種分布・スコア・金利・売上をカイ二乗検定 / Kruskal-Wallis / ANOVA でまとめて判定し、`sales_dept_significance` で自動実行するようにした。
+  - Streamlit の起動は `run_streamlit_stable.sh` 経由に切り替えた。`run_lease_app.sh` からの直起動をやめ、再起動ループと `server.fileWatcherType none` で落ちにくくした。
 
 ## Preferences
 - **User**: Kobayashi

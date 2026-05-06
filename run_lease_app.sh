@@ -43,10 +43,10 @@ echo "Flask PID: $FLASK_PID"
 sleep 2
 
 echo ""
-echo "=== Streamlit 起動（ポート${STREAMLIT_PORT}）==="
-streamlit run tune_lease_55.py --server.port "$STREAMLIT_PORT" &
+echo "=== Streamlit 安定起動（ポート${STREAMLIT_PORT}）==="
+STREAMLIT_PORT="$STREAMLIT_PORT" bash run_streamlit_stable.sh &
 STREAMLIT_PID=$!
-echo "Streamlit PID: $STREAMLIT_PID"
+echo "Streamlit supervisor PID: $STREAMLIT_PID"
 
 echo ""
 echo "==================================="
