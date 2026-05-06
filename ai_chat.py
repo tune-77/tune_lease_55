@@ -94,10 +94,19 @@ def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int,
     """
     if not api_key or not api_key.strip():
         return {"message": {"content": "Gemini APIキーが設定されていません。環境変数 GEMINI_API_KEY またはサイドバーで入力してください。"}}
+    # system ロールを system_instruction に、user/assistant をマルチターン contents に変換
     system_parts = [m["content"] for m in messages if m.get("role") == "system" and m.get("content")]
-    user_parts = [m["content"] for m in messages if m.get("role") == "user" and m.get("content")]
-    prompt = "\n\n".join(system_parts + user_parts)
-    if not prompt:
+    system_instruction = "\n\n".join(system_parts) if system_parts else ""
+    contents = []
+    for m in messages:
+        role = m.get("role", "user")
+        text = m.get("content", "")
+        if not text or role == "system":
+            continue
+        gemini_role = "model" if role == "assistant" else "user"
+        contents.append({"role": gemini_role, "parts": [{"text": text}]})
+
+    if not contents:
         return {"message": {"content": "送信する内容がありません。"}}
 
     # gemini-1.5-* は廃止済み → 2.0-flash にフォールバック
@@ -119,11 +128,12 @@ def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int,
         import google.genai as _genai
         from google.genai import types as _genai_types
         client = _genai.Client(api_key=api_key.strip())
-        config = _genai_types.GenerateContentConfig(
-            max_output_tokens=max_output_tokens, temperature=0.7,
-        )
+        _cfg_kwargs: dict = {"max_output_tokens": max_output_tokens, "temperature": 0.7}
+        if system_instruction:
+            _cfg_kwargs["system_instruction"] = system_instruction
+        config = _genai_types.GenerateContentConfig(**_cfg_kwargs)
         response = client.models.generate_content(
-            model=_model, contents=prompt, config=config,
+            model=_model, contents=contents, config=config,
         )
         text = None
         try:
@@ -140,33 +150,44 @@ def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int,
                         break
         if text and text.strip():
             return {"message": {"content": text.strip()}}
-    except Exception:
-        pass  # 旧SDKへフォールバック
+    except Exception as _e1:
+        log_warning(f"Gemini 新SDK失敗 ({_model}): {_e1}", context="_gemini_chat")
 
     # ── 方法2: google.generativeai (旧SDK) ─────────────────────────
     try:
         import google.generativeai as _old_genai
         _old_genai.configure(api_key=api_key.strip())
-        _old_model_obj = _old_genai.GenerativeModel(
-            model_name=_model,
-            generation_config={"max_output_tokens": max_output_tokens, "temperature": 0.7}
-        )
-        response = _old_model_obj.generate_content(prompt)
+        _old_kwargs: dict = {
+            "model_name": _model,
+            "generation_config": {"max_output_tokens": max_output_tokens, "temperature": 0.7},
+        }
+        if system_instruction:
+            _old_kwargs["system_instruction"] = system_instruction
+        _old_model_obj = _old_genai.GenerativeModel(**_old_kwargs)
+        # マルチターン形式: parts を文字列リストに変換（旧SDK互換）
+        old_contents = [
+            {"role": c["role"], "parts": [p["text"] for p in c["parts"]]}
+            for c in contents
+        ]
+        response = _old_model_obj.generate_content(old_contents)
         text = getattr(response, "text", "") or ""
         if text and text.strip():
             return {"message": {"content": text.strip()}}
-    except Exception:
-        pass  # HTTP直接へフォールバック
+    except Exception as _e2:
+        log_warning(f"Gemini 旧SDK失敗 ({_model}): {_e2}", context="_gemini_chat")
 
     # ── 方法3: Gemini REST API 直接呼び出し ──────────────────────────
     try:
         import urllib.request as _ureq
         import json as _json
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{_model}:generateContent?key={api_key.strip()}"
-        body = _json.dumps({
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"maxOutputTokens": max_output_tokens, "temperature": 0.7}
-        }).encode("utf-8")
+        body_dict: dict = {
+            "contents": contents,
+            "generationConfig": {"maxOutputTokens": max_output_tokens, "temperature": 0.7},
+        }
+        if system_instruction:
+            body_dict["systemInstruction"] = {"parts": [{"text": system_instruction}]}
+        body = _json.dumps(body_dict).encode("utf-8")
         req = _ureq.Request(url, data=body, headers={"Content-Type": "application/json"})
         with _ureq.urlopen(req, timeout=timeout_seconds) as resp_obj:
             data = _json.loads(resp_obj.read().decode("utf-8"))
@@ -802,7 +823,10 @@ def _stream_ollama(prompt: str, model: str) -> Generator[str, None, None]:
 def _stream_gemini(prompt: str) -> Generator[str, None, None]:
     """Gemini API で生成し、全文を1回 yield する（REST API はストリームの実態は一括返却）。
     APIキー未設定またはエラー時は空文字を yield して終了する。"""
-    api_key = get_gemini_api_key()
+    api_key = (
+        (st.session_state.get("gemini_api_key") or "").strip()
+        if hasattr(st, "session_state") else ""
+    ) or get_gemini_api_key()
     if not api_key:
         return
     try:
@@ -842,7 +866,10 @@ def stream_llm(prompt: str, model: str | None = None) -> Generator[str, None, No
         except Exception:
             pass
         return
-    api_key = get_gemini_api_key()
+    api_key = (
+        ((st.session_state.get("gemini_api_key") or "").strip() if hasattr(st, "session_state") else "")
+        or get_gemini_api_key()
+    )
     if api_key and engine == "gemini":
         yield from _stream_gemini(prompt)
     else:
@@ -1291,11 +1318,17 @@ def _generate_cached_interjection(sales, profit, net_assets, rent, industry, ano
         「また私の仕事増やす気？」「これじゃQ_riskが爆発するんだけど」などのメタ的なボヤキや、食い意地の張った発言（おごり要求など）を1〜2行で。
         絵文字も使って軽快に。絶対に長文にならないこと（最大60文字程度）。
         """
-        res = chat_with_retry([
-            {"role": "system", "content": AI_HONNE_SYSTEM},
-            {"role": "user", "content": prompt}
-        ])
-        return res
+        res = chat_with_retry(
+            model=get_ollama_model(),
+            messages=[
+                {"role": "system", "content": AI_HONNE_SYSTEM},
+                {"role": "user", "content": prompt},
+            ],
+            retries=1,
+            timeout_seconds=30,
+        )
+        content = ((res.get("message") or {}).get("content") or "").strip()
+        return content if content else None
     except Exception as e:
         log_error(f"リアルタイムツッコミ生成エラー: {e}")
         return None
