@@ -65,8 +65,8 @@ STRENGTH_TAG_OPTIONS = [
     "関係者資産あり", "取引行と付き合い長い", "既存返済懸念ない",
 ]
 
-# LightGBM ハイパーパラメータ（analysis_regression.py 全箇所で共通使用）
-# チューニング時はここだけ変更すれば全モデルに反映される
+# LightGBM ハイパーパラメータ（analysis_regression.py の比較実験で使用）
+# チューニング時はここだけ変更すれば比較用LGBMに反映される
 LGBM_PARAMS = {
     "n_estimators": 100,
     "max_depth": 5,
@@ -75,4 +75,15 @@ LGBM_PARAMS = {
     "reg_lambda": 5.0,
     "random_state": 42,
     "verbosity": -1,
+}
+
+# 本体モデルとして使う RandomForest の既定パラメータ
+RF_PARAMS = {
+    "n_estimators": 500,
+    "max_depth": None,
+    "min_samples_leaf": 2,
+    "min_samples_split": 4,
+    "class_weight": "balanced_subsample",
+    "random_state": 42,
+    "n_jobs": -1,
 }

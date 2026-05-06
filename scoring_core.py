@@ -105,39 +105,39 @@ def _safe_sigmoid(x):
         return 0.0 if (x or 0) < 0 else 1.0
 
 
-_LGB_MODEL_PATH_EXISTING = os.path.join(_SCRIPT_DIR, "data", "lgb_main_model.joblib")
-_LGB_MODEL_PATH_NEW = os.path.join(_SCRIPT_DIR, "data", "lgb_main_model_new.joblib")
+_MAIN_MODEL_PATH_EXISTING = os.path.join(_SCRIPT_DIR, "data", "lgb_main_model.joblib")
+_MAIN_MODEL_PATH_NEW = os.path.join(_SCRIPT_DIR, "data", "lgb_main_model_new.joblib")
 _LGB_QUAL_MODEL_PATH = os.path.join(_SCRIPT_DIR, "data", "lgb_qual_model.joblib")
 
-_lgb_bundle_cache: dict[str, dict | None] = {}
+_main_bundle_cache: dict[str, dict | None] = {}
 _lgb_qual_bundle_cache: dict | None = None
 
 
 def clear_scoring_cache() -> None:
-    """LGBMモデルのインメモリキャッシュをクリアする。
+    """主モデルのインメモリキャッシュをクリアする。
     統合再学習後に呼ぶことで、再起動なしに新モデルが反映される。
     """
-    global _lgb_bundle_cache
+    global _main_bundle_cache
     global _lgb_qual_bundle_cache
-    _lgb_bundle_cache = {}
+    _main_bundle_cache = {}
     _lgb_qual_bundle_cache = None
 
 
-def _load_lgb_bundle(customer_type: str | None = None):
-    """新規/既存で別保存した LGB モデルを読む。"""
-    global _lgb_bundle_cache
-    path = _LGB_MODEL_PATH_NEW if (customer_type or "既存先") == "新規先" else _LGB_MODEL_PATH_EXISTING
-    if path in _lgb_bundle_cache:
-        return _lgb_bundle_cache[path]
+def _load_main_bundle(customer_type: str | None = None):
+    """新規/既存で別保存した主モデルを読む。"""
+    global _main_bundle_cache
+    path = _MAIN_MODEL_PATH_NEW if (customer_type or "既存先") == "新規先" else _MAIN_MODEL_PATH_EXISTING
+    if path in _main_bundle_cache:
+        return _main_bundle_cache[path]
     if not os.path.exists(path):
-        _lgb_bundle_cache[path] = None
+        _main_bundle_cache[path] = None
         return None
     try:
         import joblib
-        _lgb_bundle_cache[path] = joblib.load(path)
-        return _lgb_bundle_cache[path]
+        _main_bundle_cache[path] = joblib.load(path)
+        return _main_bundle_cache[path]
     except Exception:
-        _lgb_bundle_cache[path] = None
+        _main_bundle_cache[path] = None
         return None
 
 
@@ -539,9 +539,9 @@ def run_quick_scoring(inputs: dict) -> dict:
     z_main = _calculate_z(data_scoring, coeffs)
     score_prob = _safe_sigmoid(z_main)
 
-    # 定量 LGB（新規/既存で分岐。モデルが存在する場合のみ）
+    # 定量主モデル（新規/既存で分岐。モデルが存在する場合のみ）
     try:
-        _bundle = _load_lgb_bundle(customer_type)
+        _bundle = _load_main_bundle(customer_type)
         if _bundle is not None:
             _feat_names = _bundle["feature_names"]
             _X = _build_lgb_feature_vector(data_scoring, inputs, _feat_names)

@@ -1731,7 +1731,7 @@ def render_analysis_results(
             
             with st.expander("📈 学習モデル（業種別ハイブリッド）デフォルト確率", expanded=False):
                 if not scoring_result:
-                    st.info("💡 学習モデル（LightGBM + 業種別回帰）による詳細なデフォルト確率分析は未実行です。")
+                    st.info("💡 学習モデル（RandomForest + 業種別回帰）による詳細なデフォルト確率分析は未実行です。")
                     if st.button("▶ ML詳細モデルによる分析を実行", key="btn_run_ml_scoring", width='stretch'):
                         with st.spinner("学習モデルをロードし、予測を実行中..."):
                             try:
@@ -1765,7 +1765,7 @@ def render_analysis_results(
                     with sr1:
                         st.metric("既存（業種別回帰）デフォルト確率", f"{scoring_result.get('legacy_prob', 0)*100:.2f}%", help="学習モデル側の業種別回帰")
                     with sr2:
-                        st.metric("AI（LightGBM）デフォルト確率", f"{scoring_result.get('ai_prob', 0)*100:.2f}%", help="LightGBM統合")
+                        st.metric("AI（RandomForest）デフォルト確率", f"{scoring_result.get('ai_prob', 0)*100:.2f}%", help="RandomForest統合")
                     with sr3:
                         st.metric("ハイブリッド デフォルト確率", f"{scoring_result.get('hybrid_prob', 0)*100:.2f}%", help="0.3×既存+0.7×AI（同尺度）")
                     with sr4:

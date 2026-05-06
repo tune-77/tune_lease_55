@@ -8,7 +8,7 @@
 
 | 機能 | 概要 |
 |------|------|
-| **審査スコアリング** | 単体LightGBM＋ベイズ推論で審査スコアを算出（承認ライン: 71点） |
+| **審査スコアリング** | 単体RandomForest＋ベイズ推論で審査スコアを算出（承認ライン: 71点） |
 | **限界改善シミュレーター** | ボーダーライン案件に「どの指標をいくら改善すれば承認圏内か」を提示 |
 | **軍師コメント** | ベイズ推論＋LLM（Gemini）による審査所見の自動生成 |
 | **金利サジェスト** | 過去の成約データから最適なリースレートを提案 |
@@ -55,8 +55,8 @@ ANYTHING_LLM_API_KEY = "your-anything-llm-key"
 財務入力
   ↓
 ① ロジスティック回帰（LR）        ← 係数更新用
-② LightGBM 分類器（LGB）          ← data/lgb_main_model.joblib / data/lgb_main_model_new.joblib
-定量スコア（現在は LGB 単体を採用）
+② RandomForest 分類器          ← data/lgb_main_model.joblib / data/lgb_main_model_new.joblib
+定量スコア（現在は RF 単体を採用）
   ↓ + ベイズ推論 + 定性評価 + 物件スコア + 直感補正
 最終スコア（0〜100点）
 ```
@@ -79,8 +79,8 @@ python train_lgb_colab.py
 ```
 
 生成されるファイル:
-- `data/lgb_main_model.joblib` — 既存先向け定量モデル
-- `data/lgb_main_model_new.joblib` — 新規先向け定量モデル
+- `data/lgb_main_model.joblib` — 既存先向け定量モデル（RandomForest）
+- `data/lgb_main_model_new.joblib` — 新規先向け定量モデル（RandomForest）
 - `data/lgb_qual_model.joblib` — 定性モデル
 
 ---
@@ -121,7 +121,7 @@ tune_lease_55/
 ├── auto_optimizer.py             # 自動最適化トリガー
 ├── analysis_regression.py        # 回帰分析・混合重み最適化
 ├── export_cases_for_colab.py     # 学習データ抽出スクリプト
-├── train_lgb_colab.py            # LightGBM 再学習スクリプト（ローカル実行可）
+├── train_lgb_colab.py            # RandomForest 再学習スクリプト（ローカル実行可）
 ├── components/
 │   ├── chat_wizard.py            # リースくんウィザード（対話型入力）
 │   ├── form_apply.py             # 審査入力フォーム
@@ -149,33 +149,19 @@ tune_lease_55/
 
 ## スコアリングの仕組み（詳細）
 
-### 3モデル加重平均（LR ベース）
+### 現在のスコア構成
 
-| モデル | 係数キー例 | デフォルト重み |
-|--------|-----------|--------------|
-| ① 全体モデル | `全体_既存先` / `全体_新規先` | 50% |
-| ② 指標モデル | `指標_既存先` / `指標_新規先` | 30% |
-| ③ 業種別モデル | `運送業_既存先` など | 20% |
+- `score_borrower` は **RandomForest 単体** の借手スコア
+- `bench_score` と `ind_score` は **参考指標** として保持し、差分アラートや診断に使う
+- 最終 `score` は借手スコアに物件スコアや各種補正を加えた総合点
+- 顧客区分（既存先/新規先）で借手モデルを切り替える
 
-- 顧客区分（既存先/新規先）で係数セットを自動切り替え
-- 重みは50件蓄積後にクロスバリデーション（StratifiedKFold）で自動最適化
+#### 使い分け
 
-#### 最適化ロジック（3モデル）
-
-- 実装関数: `analysis_regression.py::optimize_model_blend_weights()`
-- 入力: `score_borrower`（全体）, `bench_score`（指標）, `ind_score`（業種別）と成約/失注ラベル
-- 手順: 各foldで `StandardScaler + LogisticRegression` を学習 → 係数平均 → 非負化 → 合計1へ正規化
-- 出力: `w_main`, `w_bench`, `w_ind`, `auc_cv`, `n_cases`, `n_scored_oof`
-- 保存先: `auto_optimizer.py` 経由で `data/coeff_auto.json` の `_auto_blend_w_*` に保存
-
-#### 実務での回し方（推奨）
-
-1. 成約/失注の確定データを最低50件以上ためる（両クラス必須）
-2. `auto_optimizer.run_auto_optimization(force=False)` を実行
-3. `blend_weights.auc_cv` が直近運用より改善しているか確認
-4. 月次で再学習し、重み推移（`w_main/w_bench/w_ind`）を監視
-
-> 補足: 行数不足（<20件）・片側クラスのみの場合は `None` を返して更新をスキップします。
+1. `score_borrower` で借手の基礎体力を見る
+2. `bench_score` / `ind_score` で業界・業種平均との差を確認する
+3. 差分が大きい案件だけ要確認に回す
+4. 重みの再推定は、参考指標が安定してから別途行う
 
 
 ### 金利サジェスト
@@ -221,8 +207,8 @@ tune_lease_55/
 | `data/screening_db.sqlite` | 軍師モード用 DB（ベイズ証拠重み） |
 | `data/coeff_overrides.json` | 係数の手動上書き・モデル混合重みの手動設定 |
 | `data/coeff_auto.json` | 自動最適化で算出した係数の保存先 |
-| `data/lgb_main_model.joblib` | LightGBM 定量モデル |
-| `data/lgb_main_model_new.joblib` | LightGBM 定量モデル（新規先） |
+| `data/lgb_main_model.joblib` | RandomForest 定量モデル |
+| `data/lgb_main_model_new.joblib` | RandomForest 定量モデル（新規先） |
 | `data/lgb_qual_model.joblib` | LightGBM 定性モデル |
 | `data/business_rules.json` | 業種別ビジネスルール |
 | `data/industry_benchmarks.json` | 業種別財務指標ベンチマーク |

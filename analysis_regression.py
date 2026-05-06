@@ -1232,10 +1232,10 @@ def _optimize_ensemble_ratio(prob_lr, prob_lgb, y_true):
 
 def run_quantitative_contract_analysis():
     """
-    定量項目（業種モデルと同様の説明変数）のみで成約/不成約をロジスティック回帰とLightGBMで分析する。
+    定量項目（業種モデルと同様の説明変数）のみで成約/不成約をロジスティック回帰とRandomForestで分析する。
     build_design_matrix_from_logs と同じ X（COEFF_MAIN_KEYS + COEFF_EXTRA_KEYS）を使用。
     成約+失注が QUALITATIVE_ANALYSIS_MIN_CASES 件以上あるときのみ実行可能。
-    LR と LGBM を比較し、LGBM を本体モデルとして保存する。
+    LR と RandomForest を比較し、RandomForest を本体モデルとして保存する。
     """
     all_logs = load_all_cases()
     X, y = build_design_matrix_from_logs(all_logs, model_key=None)
@@ -1308,6 +1308,219 @@ def run_quantitative_contract_analysis():
     except Exception as e:
         out["lgb_error"] = str(e)
     return out
+
+
+def compare_non_lr_models_and_stack(min_cases: int = 50, random_state: int = 42):
+    """
+    LGBM を基準に、非LRモデルの単体性能と stacking を比較する。
+
+    返り値:
+      {
+        "n_cases": int,
+        "n_positive": int,
+        "n_negative": int,
+        "base_models": {name: {...}},
+        "stacking": {name: {...}},
+        "selected_stackings": [...],
+      }
+    """
+    all_logs = load_all_cases()
+    X, y = build_design_matrix_from_logs(all_logs, model_key=None)
+    if X is None or y is None or len(y) < min_cases:
+        return None
+
+    # customer_type を追跡して、既存先/新規先のAUCも見る
+    segments = []
+    rows = []
+    y_list = []
+    for log in all_logs:
+        if log.get("final_status") not in ["成約", "失注"]:
+            continue
+        if "inputs" not in log:
+            continue
+        data = _log_to_data_scoring(log)
+        row = _build_one_row_industry(log, data)
+        rows.append(row)
+        y_list.append(1 if log.get("final_status") == "成約" else 0)
+        segments.append(log.get("customer_type") or "既存先")
+
+    X = np.asarray(rows, dtype=float)
+    y = np.asarray(y_list, dtype=int)
+    if len(y) < min_cases or len(np.unique(y)) < 2:
+        return None
+
+    from sklearn.base import clone
+    from sklearn.ensemble import ExtraTreesClassifier, RandomForestClassifier, StackingClassifier
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.metrics import accuracy_score, roc_auc_score
+    from sklearn.model_selection import StratifiedKFold, cross_val_predict
+    from sklearn.neural_network import MLPClassifier
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    try:
+        import lightgbm as lgb
+    except Exception as e:
+        return {"error": f"lightgbm import failed: {e}"}
+
+    try:
+        from xgboost import XGBClassifier
+        xgb_available = True
+    except Exception:
+        XGBClassifier = None
+        xgb_available = False
+
+    cv = StratifiedKFold(n_splits=min(5, max(2, len(np.unique(y)) * 2)), shuffle=True, random_state=random_state)
+
+    def _segment_auc(y_true, proba):
+        out = {}
+        for seg in sorted(set(segments)):
+            idx = np.array([s == seg for s in segments], dtype=bool)
+            if idx.sum() < 10 or len(np.unique(y_true[idx])) < 2:
+                continue
+            out[seg] = float(roc_auc_score(y_true[idx], proba[idx]))
+        return out
+
+    models = {}
+    base_estimators = {
+        "LGBM": lgb.LGBMClassifier(**LGBM_PARAMS),
+        "RandomForest": RandomForestClassifier(
+            n_estimators=350,
+            max_depth=None,
+            min_samples_leaf=2,
+            class_weight="balanced_subsample",
+            random_state=random_state,
+            n_jobs=-1,
+        ),
+        "ExtraTrees": ExtraTreesClassifier(
+            n_estimators=400,
+            max_depth=None,
+            min_samples_leaf=2,
+            class_weight="balanced",
+            random_state=random_state,
+            n_jobs=-1,
+        ),
+        "MLP": make_pipeline(
+            StandardScaler(),
+            MLPClassifier(
+                hidden_layer_sizes=(128, 64),
+                activation="relu",
+                alpha=1e-4,
+                learning_rate_init=1e-3,
+                max_iter=500,
+                early_stopping=True,
+                random_state=random_state,
+            ),
+        ),
+    }
+    if xgb_available:
+        base_estimators["XGBoost"] = XGBClassifier(
+            n_estimators=250,
+            max_depth=4,
+            learning_rate=0.05,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            reg_alpha=0.0,
+            reg_lambda=1.0,
+            objective="binary:logistic",
+            eval_metric="logloss",
+            random_state=random_state,
+            n_jobs=1,
+        )
+
+    report = {
+        "n_cases": int(len(y)),
+        "n_positive": int(y.sum()),
+        "n_negative": int(len(y) - int(y.sum())),
+        "base_models": {},
+        "stacking": {},
+    }
+
+    # 単体モデルの OOF
+    oof_pred_map = {}
+    for name, estimator in base_estimators.items():
+        try:
+            probs = cross_val_predict(
+                estimator,
+                X,
+                y,
+                cv=cv,
+                method="predict_proba",
+                n_jobs=1,
+            )[:, 1]
+            auc = float(roc_auc_score(y, probs))
+            acc = float(accuracy_score(y, (probs >= 0.5).astype(int)))
+            seg_auc = _segment_auc(y, probs)
+            oof_pred_map[name] = probs
+            report["base_models"][name] = {
+                "auc": auc,
+                "accuracy": acc,
+                "segment_auc": seg_auc,
+            }
+        except Exception as e:
+            report["base_models"][name] = {"error": str(e)}
+
+    # stacking 候補: 単体AUCの上位モデルを組み合わせる
+    base_rank = sorted(
+        (
+            (name, data.get("auc", -1.0))
+            for name, data in report["base_models"].items()
+            if "auc" in data
+        ),
+        key=lambda x: x[1],
+        reverse=True,
+    )
+    if not base_rank:
+        return report
+
+    best_single_auc = base_rank[0][1]
+    candidate_names = [name for name, _ in base_rank[:3]]
+
+    # 2〜3モデルの stacking を評価（上位3モデルの全組み合わせ）
+    from itertools import combinations
+    stack_sets = []
+    for r in (2, 3):
+        for combo in combinations(candidate_names, r):
+            stack_sets.append(("+".join(combo), list(combo)))
+
+    selected_stackings = []
+    for stack_name, names in stack_sets:
+        estimators = [(nm, clone(base_estimators[nm])) for nm in names]
+        try:
+            stack = StackingClassifier(
+                estimators=estimators,
+                final_estimator=LogisticRegression(max_iter=1000, random_state=random_state),
+                cv=cv,
+                stack_method="predict_proba",
+                n_jobs=1,
+                passthrough=False,
+            )
+            probs = cross_val_predict(
+                stack,
+                X,
+                y,
+                cv=cv,
+                method="predict_proba",
+                n_jobs=1,
+            )[:, 1]
+            auc = float(roc_auc_score(y, probs))
+            acc = float(accuracy_score(y, (probs >= 0.5).astype(int)))
+            seg_auc = _segment_auc(y, probs)
+            report["stacking"][stack_name] = {
+                "models": names,
+                "auc": auc,
+                "accuracy": acc,
+                "segment_auc": seg_auc,
+            }
+            if auc >= best_single_auc + 0.002:
+                selected_stackings.append(stack_name)
+        except Exception as e:
+            report["stacking"][stack_name] = {"models": names, "error": str(e)}
+
+    report["selected_stackings"] = selected_stackings
+    report["best_single_model"] = base_rank[0][0]
+    report["best_single_auc"] = best_single_auc
+    return report
 
 
 def run_quantitative_by_industry():
@@ -1454,7 +1667,7 @@ def calc_optimal_approval_line() -> dict | None:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 統合再学習: ベイズ warm-start LR（全モデルキー）+ LightGBM
+# 統合再学習: ベイズ warm-start LR（全モデルキー）+ RandomForest
 # ──────────────────────────────────────────────────────────────────────────────
 
 def run_bayesian_warm_start_all_keys(all_logs, min_n: int = 5):
@@ -1530,12 +1743,12 @@ def run_bayesian_warm_start_all_keys(all_logs, min_n: int = 5):
     return overrides, results
 
 
-def _train_lgbm_bundle_from_cases(all_logs, model_key: str | None = None, save_path: str | None = None):
-    """指定セグメントの LightGBM を学習し、保存用メタデータを返す。"""
+def _train_rf_bundle_from_cases(all_logs, model_key: str | None = None, save_path: str | None = None):
+    """指定セグメントの RandomForest を学習し、保存用メタデータを返す。"""
     import joblib
-    import lightgbm as lgb
+    from sklearn.ensemble import RandomForestClassifier
     from sklearn.metrics import accuracy_score, roc_auc_score
-    from config import LGBM_PARAMS
+    from config import RF_PARAMS
 
     X, y = build_design_matrix_from_logs(all_logs, model_key=model_key)
     if X is None or y is None or len(y) < 5:
@@ -1556,7 +1769,7 @@ def _train_lgbm_bundle_from_cases(all_logs, model_key: str | None = None, save_p
     # データが少ない場合はブートストラップで補完
     X_tr, y_tr, _ = _bootstrap_to_min_size(X, y, min_size=50)
 
-    model = lgb.LGBMClassifier(**LGBM_PARAMS)
+    model = RandomForestClassifier(**RF_PARAMS)
     model.fit(X_tr, y_tr)
 
     acc = float(accuracy_score(y, model.predict(X)))
@@ -1584,24 +1797,29 @@ def _train_lgbm_bundle_from_cases(all_logs, model_key: str | None = None, save_p
 
 def train_lgbm_from_cases(all_logs, save_path: str | None = None, model_key: str | None = None):
     """
-    成約/失注データで LightGBM を再学習し pkl に保存する。
+    成約/失注データで RandomForest を再学習し pkl に保存する。
 
     Returns:
         (accuracy, auc_or_None, save_path, n_positive, n_negative)
     """
-    acc, auc, save_path, n_pos, n_neg = _train_lgbm_bundle_from_cases(all_logs, model_key=model_key, save_path=save_path)
+    acc, auc, save_path, n_pos, n_neg = _train_rf_bundle_from_cases(all_logs, model_key=model_key, save_path=save_path)
 
     if model_key is None:
         try:
-            _train_lgbm_bundle_from_cases(all_logs, model_key="全体_既存先")
+            _train_rf_bundle_from_cases(all_logs, model_key="全体_既存先")
         except Exception:
             pass
         try:
-            _train_lgbm_bundle_from_cases(all_logs, model_key="全体_新規先")
+            _train_rf_bundle_from_cases(all_logs, model_key="全体_新規先")
         except Exception:
             pass
 
     return acc, auc, save_path, n_pos, n_neg
+
+
+def train_random_forest_from_cases(all_logs, save_path: str | None = None, model_key: str | None = None):
+    """RandomForest 再学習の明示名。互換のため train_lgbm_from_cases と同じ動作。"""
+    return train_lgbm_from_cases(all_logs, save_path=save_path, model_key=model_key)
 
 
 def backup_coeff_overrides(backup_dir: str | None = None) -> str | None:
