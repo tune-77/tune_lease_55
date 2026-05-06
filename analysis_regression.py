@@ -45,6 +45,15 @@ COEFF_EXTRA_KEYS = [
     "qual_rank_good",        # 定性ランク A/B = 1, それ以外 = 0（優良フラグ）
     "qual_repayment",        # 返済履歴スコア（items.repayment_history.value / 4.0）
     "quantum_risk",          # 量子インスパイア矛盾スコア
+    # 新規先専用の商流・競争圧力特徴
+    "new_customer_main_bank",
+    "new_customer_competitor_present",
+    "new_customer_competitor_count",
+    "new_customer_competitor_rate",
+    "new_customer_deal_source_bank",
+    "new_customer_deal_occurrence_nomination",
+    "new_customer_deal_occurrence_comp",
+    "new_customer_contract_auto",
 ]
 
 # 業種ごと・既存先/新規先のモデルキー（ベイズ回帰で更新対象）
@@ -77,6 +86,81 @@ INDICATOR_MAIN_KEYS = [
     "ratio_fixed_assets", "ratio_rent", "ratio_depreciation", "ratio_machines",
     "grade_4_6", "grade_watch", "grade_none",
 ]
+
+
+def _normalize_competitor_count(value) -> float:
+    """競合社数の入力を 0〜3 の連続値に正規化する。"""
+    if value is None:
+        return 0.0
+    if isinstance(value, (int, float)):
+        try:
+            v = float(value)
+            if v <= 0:
+                return 0.0
+            return min(3.0, v)
+        except (TypeError, ValueError):
+            return 0.0
+    s = str(value)
+    if "3" in s:
+        return 3.0
+    if "2" in s:
+        return 2.0
+    if "1" in s:
+        return 1.0
+    if "0" in s or "指名" in s:
+        return 0.0
+    return 0.0
+
+
+def _normalize_deal_occurrence(value) -> float:
+    """発生経緯を 0=不明, 1=指名, 2=相見積もり に正規化する。"""
+    if value is None:
+        return 0.0
+    s = str(value)
+    if "相見積" in s or "競争" in s:
+        return 2.0
+    if "指名" in s:
+        return 1.0
+    return 0.0
+
+
+def _normalize_competitor_rate_value(value) -> float:
+    """競合提示金利を 0〜1 の圧力指標に正規化する。"""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if v <= 0:
+        return 0.0
+    if v <= 1.0:
+        v *= 100.0
+    elif v > 1000:
+        v /= 1000.0
+    return max(0.0, min(1.0, v / 30.0))
+
+
+def _build_new_customer_context_features(source: dict, customer_type: str | None = None) -> dict[str, float]:
+    """新規先に効く商流・競争圧力の交互作用特徴をまとめて返す。"""
+    ct = customer_type or source.get("customer_type") or "既存先"
+    is_new = 1.0 if ct == "新規先" else 0.0
+    main_bank = source.get("main_bank") or "非メイン先"
+    competitor = source.get("competitor") or "競合なし"
+    deal_source = source.get("deal_source") or "その他"
+    contract_type = source.get("contract_type") or "一般"
+    num_competitors = source.get("num_competitors")
+    deal_occurrence = source.get("deal_occurrence")
+    competitor_rate = source.get("competitor_rate")
+
+    return {
+        "new_customer_main_bank": is_new if main_bank == "メイン先" else 0.0,
+        "new_customer_competitor_present": is_new if competitor == "競合あり" else 0.0,
+        "new_customer_competitor_count": is_new * _normalize_competitor_count(num_competitors),
+        "new_customer_competitor_rate": is_new * _normalize_competitor_rate_value(competitor_rate),
+        "new_customer_deal_source_bank": is_new if deal_source == "銀行紹介" else 0.0,
+        "new_customer_deal_occurrence_nomination": is_new if _normalize_deal_occurrence(deal_occurrence) == 1.0 else 0.0,
+        "new_customer_deal_occurrence_comp": is_new if _normalize_deal_occurrence(deal_occurrence) == 2.0 else 0.0,
+        "new_customer_contract_auto": is_new if contract_type == "自動車" else 0.0,
+    }
 
 
 def _get_ind_key_from_log(log):
@@ -147,12 +231,24 @@ def _log_to_data_scoring(log):
     contracts = float(inp.get("contracts") or 0)
     grade = (inp.get("grade") or res.get("grade") or "")
     industry_major = res.get("industry_major") or (log.get("industry_major") or "D 建設業")
+    customer_type = log.get("customer_type") or inp.get("customer_type") or "既存先"
+    new_ctx = _build_new_customer_context_features({
+        "main_bank": log.get("main_bank") or inp.get("main_bank") or "非メイン先",
+        "competitor": log.get("competitor") or inp.get("competitor") or "競合なし",
+        "deal_source": log.get("deal_source") or inp.get("deal_source") or "その他",
+        "contract_type": inp.get("contract_type") or log.get("contract_type") or "一般",
+        "num_competitors": inp.get("num_competitors") or log.get("num_competitors") or "未入力",
+        "deal_occurrence": inp.get("deal_occurrence") or log.get("deal_occurrence") or "不明",
+        "competitor_rate": log.get("competitor_rate") or inp.get("competitor_rate"),
+        "customer_type": customer_type,
+    }, customer_type=customer_type)
     return {
         "nenshu": nenshu, "bank_credit": bank_credit, "lease_credit": lease_credit,
         "op_profit": op_profit, "ord_profit": ord_profit, "net_income": net_income,
         "gross_profit": gross_profit, "machines": machines, "other_assets": other_assets,
         "rent": rent, "depreciation": depreciation, "dep_expense": dep_expense, "rent_expense": rent_expense,
         "contracts": contracts, "grade": grade, "industry_major": industry_major,
+        **new_ctx,
     }
 
 
@@ -246,10 +342,29 @@ def _build_one_row_industry(log, data):
     except Exception:
         pass
 
+    new_ctx = _build_new_customer_context_features({
+        "main_bank": log.get("main_bank") or inp.get("main_bank") or "非メイン先",
+        "competitor": log.get("competitor") or inp.get("competitor") or "競合なし",
+        "deal_source": log.get("deal_source") or inp.get("deal_source") or "その他",
+        "contract_type": inp.get("contract_type") or log.get("contract_type") or "一般",
+        "num_competitors": inp.get("num_competitors") or log.get("num_competitors") or "未入力",
+        "deal_occurrence": inp.get("deal_occurrence") or log.get("deal_occurrence") or "不明",
+        "competitor_rate": log.get("competitor_rate") or inp.get("competitor_rate"),
+        "customer_type": inp.get("customer_type") or log.get("customer_type") or "既存先",
+    })
+
     row.extend([main_bank, competitor_present, competitor_none, customer_new, deal_source_bank, rate_diff_z, industry_sentiment_z,
                 qualitative_tag_score, qualitative_passion, equity_ratio, dscr_approx, interest_coverage, qualitative_combined,
                 bn_approval_prob, bn_fc, bn_hc, bn_av,
-                qual_weighted, qual_rank_good, qual_repayment, quantum_risk])
+                qual_weighted, qual_rank_good, qual_repayment, quantum_risk,
+                new_ctx["new_customer_main_bank"],
+                new_ctx["new_customer_competitor_present"],
+                new_ctx["new_customer_competitor_count"],
+                new_ctx["new_customer_competitor_rate"],
+                new_ctx["new_customer_deal_source_bank"],
+                new_ctx["new_customer_deal_occurrence_nomination"],
+                new_ctx["new_customer_deal_occurrence_comp"],
+                new_ctx["new_customer_contract_auto"]])
     return row
 
 
@@ -523,7 +638,7 @@ def _save_posterior_for_model(model_key: str, coef_arr, intercept_val, posterior
 def run_regression_and_get_coeffs(X, y, model_key: str | None = None):
     """
     X, y に対してロジスティック回帰を実行し、既存項目＋追加項目の係数辞書を返す。
-    X の列順: COEFF_MAIN_KEYS (22) + COEFF_EXTRA_KEYS (9)。
+    X の列順: COEFF_MAIN_KEYS + COEFF_EXTRA_KEYS。
 
     model_key が指定されると前回の係数を事前分布として MAP 推定を行い、
     推定後の係数と事後精度行列を coeff_auto.json に保存する（ベイズ更新）。
@@ -582,7 +697,7 @@ def run_regression_and_get_coeffs(X, y, model_key: str | None = None):
 
 
 def _build_one_row_indicator(log, data):
-    """1ログから指標モデル用の1行（ind+ratio+grade 16 + 追加8）を構築。"""
+    """1ログから指標モデル用の1行（ind+ratio+grade + 追加特徴）を構築。"""
     major = data["industry_major"]
     ind_medical = 1.0 if ("医療" in major or "福祉" in major or (isinstance(major, str) and major.startswith("P"))) else 0.0
     ind_transport = 1.0 if ("運輸" in major or (isinstance(major, str) and major.startswith("H"))) else 0.0
@@ -648,6 +763,16 @@ def _build_one_row_indicator(log, data):
     qual_rank_good_i = 1.0 if qual_rank_i in ("A", "B") else 0.0
     repayment_val_i  = (qsc_items_i.get("repayment_history") or {}).get("value") or 0
     qual_repayment_i = float(repayment_val_i) / 4.0
+    new_ctx_i = _build_new_customer_context_features({
+        "main_bank": log.get("main_bank") or inp.get("main_bank") or "非メイン先",
+        "competitor": log.get("competitor") or inp.get("competitor") or "競合なし",
+        "deal_source": log.get("deal_source") or inp.get("deal_source") or "その他",
+        "contract_type": inp.get("contract_type") or log.get("contract_type") or "一般",
+        "num_competitors": inp.get("num_competitors") or log.get("num_competitors") or "未入力",
+        "deal_occurrence": inp.get("deal_occurrence") or log.get("deal_occurrence") or "不明",
+        "competitor_rate": log.get("competitor_rate") or inp.get("competitor_rate"),
+        "customer_type": inp.get("customer_type") or log.get("customer_type") or "既存先",
+    })
     
     # 量子矛盾スコア (Q_risk) のオンザフライ計算
     quantum_risk_i = 0.0
@@ -662,7 +787,15 @@ def _build_one_row_indicator(log, data):
     row.extend([main_bank, competitor_present, competitor_none, rate_diff_z, industry_sentiment_z,
                 qualitative_tag_score, qualitative_passion, equity_ratio, qualitative_combined,
                 bn_approval_prob, bn_fc, bn_hc, bn_av,
-                qual_weighted_i, qual_rank_good_i, qual_repayment_i, quantum_risk_i])
+                qual_weighted_i, qual_rank_good_i, qual_repayment_i, quantum_risk_i,
+                new_ctx_i["new_customer_main_bank"],
+                new_ctx_i["new_customer_competitor_present"],
+                new_ctx_i["new_customer_competitor_count"],
+                new_ctx_i["new_customer_competitor_rate"],
+                new_ctx_i["new_customer_deal_source_bank"],
+                new_ctx_i["new_customer_deal_occurrence_nomination"],
+                new_ctx_i["new_customer_deal_occurrence_comp"],
+                new_ctx_i["new_customer_contract_auto"]])
     return row
 
 
@@ -697,7 +830,7 @@ def build_design_matrix_indicator_from_logs(all_logs, indicator_model_key):
 
 def run_regression_indicator_and_get_coeffs(X, y, model_key: str | None = None):
     """
-    指標モデル用の回帰。列順: INDICATOR_MAIN_KEYS (16) + COEFF_EXTRA_KEYS (8)。
+    指標モデル用の回帰。列順: INDICATOR_MAIN_KEYS + COEFF_EXTRA_KEYS。
 
     model_key が指定されると前回の係数を事前分布として MAP 推定を行う（ベイズ更新）。
     """
@@ -795,6 +928,14 @@ COEFF_LABELS = {
     "qual_rank_good":   "定性優良ランク(A/B)",
     "qual_repayment":   "返済履歴スコア(0-1)",
     "quantum_risk":     "量子矛盾リスク",
+    "new_customer_main_bank": "新規先×メイン先",
+    "new_customer_competitor_present": "新規先×競合あり",
+    "new_customer_competitor_count": "新規先×競合社数",
+    "new_customer_competitor_rate": "新規先×競合提示金利",
+    "new_customer_deal_source_bank": "新規先×銀行紹介",
+    "new_customer_deal_occurrence_nomination": "新規先×指名案件",
+    "new_customer_deal_occurrence_comp": "新規先×相見積もり",
+    "new_customer_contract_auto": "新規先×自動車契約",
 }
 
 
@@ -1743,10 +1884,11 @@ def run_bayesian_warm_start_all_keys(all_logs, min_n: int = 5):
     return overrides, results
 
 
-def _train_rf_bundle_from_cases(all_logs, model_key: str | None = None, save_path: str | None = None):
-    """指定セグメントの RandomForest を学習し、保存用メタデータを返す。"""
+def _train_main_bundle_from_cases(all_logs, model_key: str | None = None, save_path: str | None = None):
+    """指定セグメントの主モデルを学習し、保存用メタデータを返す。"""
     import joblib
     from sklearn.ensemble import RandomForestClassifier
+    from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import accuracy_score, roc_auc_score
     from config import RF_PARAMS
 
@@ -1766,10 +1908,21 @@ def _train_rf_bundle_from_cases(all_logs, model_key: str | None = None, save_pat
     n_pos = int(y.sum())
     n_neg = len(y) - n_pos
 
-    # データが少ない場合はブートストラップで補完
-    X_tr, y_tr, _ = _bootstrap_to_min_size(X, y, min_size=50)
+    # 新規先は件数が少なく、木モデルが過学習しやすいので線形モデルに寄せる。
+    if model_key == "全体_新規先":
+        X_tr, y_tr = X, y
+        model = LogisticRegression(
+            C=1.0,
+            class_weight="balanced",
+            solver="liblinear",
+            max_iter=5000,
+            random_state=42,
+        )
+    else:
+        # 既存先や共通モデルは木モデルを使う
+        X_tr, y_tr, _ = _bootstrap_to_min_size(X, y, min_size=50)
+        model = RandomForestClassifier(**RF_PARAMS)
 
-    model = RandomForestClassifier(**RF_PARAMS)
     model.fit(X_tr, y_tr)
 
     acc = float(accuracy_score(y, model.predict(X)))
@@ -1778,7 +1931,13 @@ def _train_rf_bundle_from_cases(all_logs, model_key: str | None = None, save_pat
         auc = float(roc_auc_score(y, model.predict_proba(X)[:, 1]))
 
     feature_names = COEFF_MAIN_KEYS + COEFF_EXTRA_KEYS
-    importance = list(zip(feature_names, model.feature_importances_.tolist()))
+    if hasattr(model, "feature_importances_"):
+        raw_importance = model.feature_importances_.tolist()
+    elif hasattr(model, "coef_"):
+        raw_importance = np.abs(model.coef_[0]).tolist()
+    else:
+        raw_importance = [0.0 for _ in feature_names]
+    importance = list(zip(feature_names, raw_importance))
 
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     joblib.dump({
@@ -1789,6 +1948,7 @@ def _train_rf_bundle_from_cases(all_logs, model_key: str | None = None, save_pat
         "n_negative": n_neg,
         "accuracy": acc,
         "auc": auc,
+        "model_type": type(model).__name__,
         "importance": importance,
     }, save_path)
 
@@ -1802,15 +1962,15 @@ def train_lgbm_from_cases(all_logs, save_path: str | None = None, model_key: str
     Returns:
         (accuracy, auc_or_None, save_path, n_positive, n_negative)
     """
-    acc, auc, save_path, n_pos, n_neg = _train_rf_bundle_from_cases(all_logs, model_key=model_key, save_path=save_path)
+    acc, auc, save_path, n_pos, n_neg = _train_main_bundle_from_cases(all_logs, model_key=model_key, save_path=save_path)
 
     if model_key is None:
         try:
-            _train_rf_bundle_from_cases(all_logs, model_key="全体_既存先")
+            _train_main_bundle_from_cases(all_logs, model_key="全体_既存先")
         except Exception:
             pass
         try:
-            _train_rf_bundle_from_cases(all_logs, model_key="全体_新規先")
+            _train_main_bundle_from_cases(all_logs, model_key="全体_新規先")
         except Exception:
             pass
 
@@ -1818,7 +1978,7 @@ def train_lgbm_from_cases(all_logs, save_path: str | None = None, model_key: str
 
 
 def train_random_forest_from_cases(all_logs, save_path: str | None = None, model_key: str | None = None):
-    """RandomForest 再学習の明示名。互換のため train_lgbm_from_cases と同じ動作。"""
+    """主モデル再学習の明示名。互換のため train_lgbm_from_cases と同じ動作。"""
     return train_lgbm_from_cases(all_logs, save_path=save_path, model_key=model_key)
 
 

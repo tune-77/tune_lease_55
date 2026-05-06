@@ -277,6 +277,13 @@ def run_auto_optimization(force: bool = False) -> dict | None:
     meta["total_runs"]         = meta.get("total_runs", 0) + 1
     save_training_meta(meta)
 
+    # モデル見直しフックを実行し、再学習直後の状態を記録する
+    try:
+        from model_review_hooks import run_model_review_hooks
+        result["model_review_hooks"] = run_model_review_hooks(force=False)
+    except Exception as e:
+        logger.warning(f"モデル見直しフック実行失敗: {e}")
+
     return result
 
 

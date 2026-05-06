@@ -1060,6 +1060,25 @@ def get_auto_optimizer_status():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@app.get("/api/model_review/status")
+def get_model_review_status_api():
+    from model_review_hooks import get_model_review_hook_status
+    try:
+        return get_model_review_hook_status()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/model_review/run")
+def run_model_review_hooks_api():
+    from model_review_hooks import run_model_review_hooks
+    try:
+        res = run_model_review_hooks(force=True)
+        return {"status": "success", "result": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/analysis/pdca_reflection")
 def get_pdca_reflection():
     from llm_pdca_reflection import load_pdca_rules
@@ -1410,5 +1429,4 @@ def _run_market_agent_standalone():
     ]
     res_raw = _chat_for_thread("gemini", "", messages, timeout_seconds=60, api_key=api_key)
     return {"content": (res_raw.get("message") or {}).get("content", "")}
-
 

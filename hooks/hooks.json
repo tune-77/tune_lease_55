@@ -1,3 +1,47 @@
 {
-  "hooks": []
+  "hooks": [
+    {
+      "id": "score_drift_recent",
+      "enabled": true,
+      "kind": "recent_auc_drop",
+      "target": "score_borrower",
+      "recent_window": 60,
+      "min_cases": 40,
+      "min_auc": 0.64,
+      "max_drop": 0.02,
+      "message": "直近AUCが全体AUCより落ちていないか確認する"
+    },
+    {
+      "id": "segment_gap_customer_type",
+      "enabled": true,
+      "kind": "segment_auc_gap",
+      "segment_field": "customer_type",
+      "segments": ["既存先", "新規先"],
+      "min_cases_per_segment": 40,
+      "max_gap": 0.05,
+      "message": "既存先と新規先のAUC差が広がっていないか確認する"
+    },
+    {
+      "id": "industry_auc_bench_gap",
+      "enabled": true,
+      "kind": "industry_monitor",
+      "industry_bases": ["全体", "医療", "運送業", "サービス業", "製造業"],
+      "min_cases_per_industry": 40,
+      "min_auc": 0.64,
+      "max_mean_gap_pt": 12.0,
+      "max_p90_gap_pt": 20.0,
+      "message": "業種別AUCとベンチ/業種の乖離を同じフレームで確認する"
+    },
+    {
+      "id": "new_customer_feature_gain",
+      "enabled": true,
+      "kind": "feature_ab_test",
+      "segment_model_key": "全体_新規先",
+      "baseline_prefixes": ["new_customer_"],
+      "min_cases": 40,
+      "cv_folds": 5,
+      "min_gain": 0.01,
+      "message": "新規先専用特徴の追加効果を確認する"
+    }
+  ]
 }
