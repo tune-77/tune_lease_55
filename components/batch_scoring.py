@@ -153,6 +153,117 @@ def _date_text(row: dict, key: str) -> str:
         return raw
 
 
+def _safe_sigmoid(x: float) -> float:
+    try:
+        if x > 700:
+            return 1.0
+        if x < -700:
+            return 0.0
+        return 1.0 / (1.0 + np.exp(-x))
+    except Exception:
+        return 0.0 if x < 0 else 1.0
+
+
+def _calculate_score_from_coeffs(data: dict, coeff_set: dict) -> float:
+    major = data.get("industry_major") or ""
+    z = float(coeff_set.get("intercept", 0))
+    if "医療" in major or "福祉" in major or major.startswith("P"):
+        z += coeff_set.get("ind_medical", 0)
+    elif "運輸" in major or major.startswith("H"):
+        z += coeff_set.get("ind_transport", 0)
+    elif "建設" in major or major.startswith("D"):
+        z += coeff_set.get("ind_construction", 0)
+    elif "製造" in major or major.startswith("E"):
+        z += coeff_set.get("ind_manufacturing", 0)
+    elif "卸売" in major or "小売" in major or "サービス" in major or (major and major[0] in ["I", "K", "M", "R"]):
+        z += coeff_set.get("ind_service", 0)
+
+    if data.get("nenshu", 0) > 0:
+        z += np.log1p(data["nenshu"]) * coeff_set.get("sales_log", 0)
+    if data.get("bank_credit", 0) > 0:
+        z += np.log1p(data["bank_credit"]) * coeff_set.get("bank_credit_log", 0)
+    if data.get("lease_credit", 0) > 0:
+        z += np.log1p(data["lease_credit"]) * coeff_set.get("lease_credit_log", 0)
+
+    for key in ("op_profit", "ord_profit", "net_income", "machines", "other_assets", "rent", "gross_profit", "depreciation", "dep_expense", "rent_expense"):
+        z += float(data.get(key, 0) or 0) * coeff_set.get(key, 0)
+
+    grade = data.get("grade") or ""
+    if "4-6" in grade:
+        z += coeff_set.get("grade_4_6", 0)
+    elif "要注意" in grade:
+        z += coeff_set.get("grade_watch", 0)
+    elif "無格付" in grade:
+        z += coeff_set.get("grade_none", 0)
+
+    z += float(data.get("contracts", 0) or 0) * coeff_set.get("contracts", 0)
+
+    for key in ("ratio_op_margin", "ratio_gross_margin", "ratio_ord_margin", "ratio_net_margin", "ratio_fixed_assets", "ratio_rent", "ratio_depreciation", "ratio_machines"):
+        z += float(data.get(key, 0) or 0) * coeff_set.get(key, 0)
+
+    return z
+
+
+def _compute_auto_bench_ind_scores(inputs: dict) -> tuple[float, float, str]:
+    major = inputs.get("industry_major") or ""
+    customer_type = inputs.get("customer_type") or "既存先"
+    major_code = major.split(" ")[0] if major else ""
+
+    bench_key = "全体_指標"
+    if major_code == "P":
+        bench_key = "医療_指標"
+    elif major_code == "H":
+        bench_key = "運送業_指標"
+    elif major_code in ["I", "K", "M", "R"]:
+        bench_key = "サービス業_指標"
+    elif major_code == "E":
+        bench_key = "製造業_指標"
+
+    ratio_data = dict(inputs)
+    raw_nenshu = float(inputs.get("nenshu") or 0) or 1.0
+    raw_op = float(inputs.get("op_profit") or 0)
+    raw_gross = float(inputs.get("gross_profit") or 0)
+    raw_ord = float(inputs.get("ord_profit") or 0)
+    raw_net = float(inputs.get("net_income") or 0)
+    raw_fixed = float(inputs.get("machines") or 0) + float(inputs.get("other_assets") or 0)
+    raw_rent = float(inputs.get("rent_expense") or 0)
+    raw_dep = float(inputs.get("depreciation") or 0) + float(inputs.get("dep_expense") or 0)
+    raw_machines = float(inputs.get("machines") or 0)
+
+    ratio_data["ratio_op_margin"] = raw_op / raw_nenshu
+    ratio_data["ratio_gross_margin"] = raw_gross / raw_nenshu
+    ratio_data["ratio_ord_margin"] = raw_ord / raw_nenshu
+    ratio_data["ratio_net_margin"] = raw_net / raw_nenshu
+    ratio_data["ratio_fixed_assets"] = raw_fixed / raw_nenshu
+    ratio_data["ratio_rent"] = raw_rent / raw_nenshu
+    ratio_data["ratio_depreciation"] = raw_dep / raw_nenshu
+    ratio_data["ratio_machines"] = raw_machines / raw_nenshu
+
+    bench_coeffs = get_effective_coeffs(f"{bench_key}_{customer_type}")
+    bench_score = _safe_sigmoid(_calculate_score_from_coeffs(ratio_data, bench_coeffs)) * 100.0
+
+    ind_key = "全体_既存先"
+    if major_code == "H":
+        ind_key = "運送業_既存先"
+    elif major_code == "P":
+        ind_key = "医療_既存先"
+    elif major_code in ["I", "K", "M", "R"]:
+        ind_key = "サービス業_既存先"
+    elif major_code == "E":
+        ind_key = "製造業_既存先"
+    elif major_code == "D":
+        ind_key = "全体_既存先"
+
+    if customer_type == "新規先":
+        ind_key = ind_key.replace("既存先", "新規先")
+        if ind_key not in {"全体_既存先", "全体_新規先", "全体_指標", "医療_既存先", "医療_新規先", "医療_指標", "運送業_既存先", "運送業_新規先", "運送業_指標", "サービス業_既存先", "サービス業_新規先", "サービス業_指標", "製造業_既存先", "製造業_新規先", "製造業_指標"}:
+            ind_key = "全体_新規先"
+
+    ind_coeffs = get_effective_coeffs(ind_key)
+    ind_score = _safe_sigmoid(_calculate_score_from_coeffs(inputs, ind_coeffs)) * 100.0
+    return round(bench_score, 1), round(ind_score, 1), ind_key
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 1件分のバッチスコア計算
 # ─────────────────────────────────────────────────────────────────────────────
@@ -320,6 +431,7 @@ def _score_one(row: dict) -> dict:
         base_rate_at_time = _plain_num(row, "基準金利(%)", 2.1)
         loan_conditions_raw = _text(row, "承認条件")
         loan_conditions = [x.strip() for x in loan_conditions_raw.replace("、", ",").split(",") if x.strip()]
+        bench_score_input, ind_score_input, ind_name = _compute_auto_bench_ind_scores(inputs)
         if final_rate > 0:
             db_data["final_rate"] = final_rate
             db_data["base_rate_at_time"] = base_rate_at_time
@@ -333,6 +445,9 @@ def _score_one(row: dict) -> dict:
             db_data["loan_conditions"] = loan_conditions
         if _text(row, "結果登録メモ"):
             db_data["final_note"] = _text(row, "結果登録メモ")
+        db_data["result"]["bench_score"] = bench_score_input
+        db_data["result"]["ind_score"] = ind_score_input
+        db_data["result"]["ind_name"] = ind_name
 
         # ── 定性スコアリング構造を生成して db_data に追加 ──────────────
         # constants.py の QUALITATIVE_SCORING_CORRECTION_ITEMS と完全に一致した形式で格納
@@ -402,6 +517,9 @@ def _score_one(row: dict) -> dict:
                 "物件カテゴリ":   asset_category or "—",
                 "スコアリング":   scoring_method,
                 "総合スコア":     res["score"],
+                "bench_score":   bench_score_input,
+                "ind_score":     ind_score_input,
+                "ind_name":      ind_name,
                 "PD概算(%)":      pd_pct,
                 "自己資本比率(%)": round(res["user_equity_ratio"], 1),
                 "営業利益率(%)":   round(res["user_op_margin"], 1),
@@ -418,6 +536,7 @@ def _score_one(row: dict) -> dict:
                 "借手スコア": None, "物件スコア": None, "物件グレード": None,
                 "物件カテゴリ": None, "スコアリング": None,
                 "総合スコア": None, "PD概算(%)": None,
+                "bench_score": None, "ind_score": None, "ind_name": None,
                 "自己資本比率(%)": None, "営業利益率(%)": None,
                 "判定": "エラー", "エラー": f"{e}",
             },

@@ -1,7 +1,7 @@
 """
 スコアリング結果 DAG（有向非巡回グラフ）ビジュアライザ
 =========================================================
-3モデルブレンド → 借手/物件スコア → 総合スコア → 最終判定
+借手/物件スコア → 総合スコア → 最終判定
 という因果連鎖を D3.js 固定5列レイアウトで可視化する。
 
 列構成:
@@ -14,7 +14,7 @@
 グラフ理論的根拠:
   - ノード = スコアリング変数（入力・中間・出力）
   - 有向エッジ = 因果的寄与（スコアへの加算/減算）
-  - エッジ幅  = |effect_percent| または ブレンド重み
+  - エッジ幅  = |effect_percent|
   - ノード次数 = 何個の因子が集約されるかを示すハブ度
 """
 
@@ -139,14 +139,6 @@ def build_dag_data(res: dict) -> dict:
                      width=max(1.0, weight / 10), color=icolor,
                      label=f"×{weight}%")
 
-    # ── Col 0: 回帰モデル（全体・指標別・業種別） ─────────────────────────
-    # ブレンド重みは res に保存されていないため get_model_blend_weights() から取得
-    try:
-        from data_cases import get_model_blend_weights
-        w_main, w_bench, w_ind = get_model_blend_weights()
-    except Exception:
-        w_main, w_bench, w_ind = 0.5, 0.3, 0.2
-
     main_score  = res.get("score_borrower", 0) or 0   # 全体モデルの生スコア
     bench_score = res.get("bench_score", 0) or 0
     ind_score   = res.get("ind_score", 0) or 0
@@ -156,26 +148,58 @@ def build_dag_data(res: dict) -> dict:
 
     add_node("model_main", f"全体モデル\n{main_score:.1f}%", col=0,
              color="#38bdf8", size=28,
-             tooltip=f"全体（新規先/既存先）ロジスティック回帰\nスコア: {main_score:.1f}%\nブレンド重み: {w_main:.0%}")
+             tooltip=f"全体（新規先/既存先）単体モデル\nスコア: {main_score:.1f}%")
     add_edge("model_main", "borrower_score",
-             width=max(1.5, w_main * 6), color="#38bdf8",
-             label=f"×{w_main:.0%}")
+             width=2.5, color="#38bdf8")
 
     if bench_score > 0:
         add_node("model_bench", f"指標別モデル\n{bench_score:.1f}%", col=0,
                  color="#67e8f9", size=26,
-                 tooltip=f"指標ベンチマークモデル（全体_指標）\nスコア: {bench_score:.1f}%\nブレンド重み: {w_bench:.0%}")
+                 tooltip=f"指標ベンチマークモデル（全体_指標）\nスコア: {bench_score:.1f}%")
         add_edge("model_bench", "borrower_score",
-                 width=max(1.0, w_bench * 6), color="#67e8f9",
-                 label=f"×{w_bench:.0%}")
+                 width=1.8, color="#67e8f9")
 
     if ind_score > 0:
         add_node("model_ind", f"{ind_label}モデル\n{ind_score:.1f}%", col=0,
                  color="#a5f3fc", size=26,
-                 tooltip=f"業種別モデル（{ind_name}）\nスコア: {ind_score:.1f}%\nブレンド重み: {w_ind:.0%}")
+                 tooltip=f"業種別モデル（{ind_name}）\nスコア: {ind_score:.1f}%")
         add_edge("model_ind", "borrower_score",
-                 width=max(1.0, w_ind * 6), color="#a5f3fc",
-                 label=f"×{w_ind:.0%}")
+                 width=1.8, color="#a5f3fc")
+
+    # 差分アラート: 参考スコアと借手モデルの乖離が大きい場合のみ表示
+    gap_msgs = []
+    gap_vals = []
+    if bench_score > 0:
+        gap = borrower_score - bench_score
+        gap_vals.append(abs(gap))
+        gap_msgs.append(f"借手-ベンチ {gap:+.1f}pt")
+    if ind_score > 0:
+        gap = borrower_score - ind_score
+        gap_vals.append(abs(gap))
+        gap_msgs.append(f"借手-業種 {gap:+.1f}pt")
+    if gap_vals:
+        worst = max(gap_vals)
+        if worst >= 20:
+            color = "#ef4444"
+            size = 30
+            label = "差分\n要確認"
+        elif worst >= 10:
+            color = "#f59e0b"
+            size = 28
+            label = "差分\n注意"
+        else:
+            color = "#22c55e"
+            size = 24
+            label = "差分\n小"
+        add_node(
+            "gap_alert",
+            label,
+            col=1,
+            color=color,
+            size=size,
+            tooltip="\\n".join(["参考スコア差分"] + gap_msgs + ["20pt以上は要確認、10pt以上は注意"]),
+        )
+        add_edge("gap_alert", "borrower_score", width=max(1.0, worst / 6), color=color, label=f"{worst:.0f}pt")
 
     return {"nodes": nodes, "edges": edges}
 
@@ -233,7 +257,7 @@ _DAG_HTML = """
 <div class="legend">
   ● 水色: 回帰モデル　● 緑: プラス補正　● 赤: マイナス補正<br>
   ● 青: 借手スコア　● オレンジ: 物件スコア　● 紫: 定性<br>
-  線の太さ = ブレンド重み / 貢献度
+  線の太さ = 貢献度
 </div>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script>
@@ -411,8 +435,8 @@ def render_score_dag(res: dict, height: int = 480):
     n_neg  = sum(1 for f in ai_factors if f.get("effect_percent", 0) < 0)
     st.caption(
         f"**左→右へ因果が流れます。** "
-        f"回帰モデル3種（全体/指標別/業種別）ブレンド → 補正因子 {len(ai_factors)}件"
+        f"回帰モデル3種（全体/指標別/業種別）→ 補正因子 {len(ai_factors)}件"
         f"（+{n_pos} / -{n_neg}）＋定性項目 {n_qual_items}件 → "
         f"スコア成分 → 総合スコア {score:.1f} → {hantei}。"
-        f" ノードにホバーで詳細、エッジの太さはブレンド重み/貢献度。"
+        f" ノードにホバーで詳細、エッジの太さは貢献度。"
     )

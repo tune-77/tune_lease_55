@@ -29,8 +29,11 @@ COEFF_MAIN_KEYS = [
 # 追加項目（ベイズ補完）: 回帰・スコア両方で使用
 COEFF_EXTRA_KEYS = [
     "main_bank", "competitor_present", "competitor_none",
+    "customer_new", "deal_source_bank",
     "rate_diff_z", "industry_sentiment_z", "qualitative_tag_score", "qualitative_passion",
     "equity_ratio",          # 自己資本比率（%）
+    "dscr_approx",           # 返済余力の近似
+    "interest_coverage",     # 支払利息カバー近似
     "qualitative_combined",  # 定性スコアリング合計（総合×60%＋定性×40%）を0-1で正規化
     # BNエンジン出力（スコア≤70の案件でBN推論を実行した場合のみ値あり、未実行時は0）
     "bn_approval_prob",      # BN最終承認確率（0-1）
@@ -153,6 +156,26 @@ def _log_to_data_scoring(log):
     }
 
 
+def _compute_dscr_approx_from_log(log) -> float:
+    inp = log.get("inputs") or {}
+    op_profit = float(inp.get("op_profit") or inp.get("rieki") or 0)
+    dep_expense = float(inp.get("dep_expense") or inp.get("depreciation") or 0)
+    rent_expense = float(inp.get("rent_expense") or inp.get("rent") or 0)
+    denominator = dep_expense + rent_expense
+    if denominator <= 0:
+        return 1.0
+    return round(op_profit / denominator, 3)
+
+
+def _compute_interest_coverage_from_log(log) -> float:
+    inp = log.get("inputs") or {}
+    op_profit = float(inp.get("op_profit") or inp.get("rieki") or 0)
+    interest = float(inp.get("interest_expense") or 0)
+    if interest <= 0:
+        return 10.0
+    return round(op_profit / interest, 3)
+
+
 def _build_one_row_industry(log, data):
     """1ログから業種モデル用の1行（既存22+追加9）を構築。"""
     major = data["industry_major"]
@@ -179,6 +202,8 @@ def _build_one_row_industry(log, data):
     main_bank = 1.0 if log.get("main_bank") == "メイン先" else 0.0
     competitor_present = 1.0 if log.get("competitor") == "競合あり" else 0.0
     competitor_none = 1.0 if log.get("competitor") == "競合なし" else 0.0
+    customer_new = 1.0 if (log.get("customer_type") or inp.get("customer_type") or "既存先") == "新規先" else 0.0
+    deal_source_bank = 1.0 if (log.get("deal_source") or inp.get("deal_source") or "") == "銀行紹介" else 0.0
     y_pred, comp_rate = res.get("yield_pred"), log.get("competitor_rate")
     if y_pred is not None and comp_rate is not None and isinstance(comp_rate, (int, float)):
         rate_diff_pt = float(y_pred) - float(comp_rate)
@@ -208,6 +233,8 @@ def _build_one_row_industry(log, data):
     qual_rank_good  = 1.0 if qual_rank in ("A", "B") else 0.0
     repayment_val   = (qsc_items.get("repayment_history") or {}).get("value") or 0
     qual_repayment  = float(repayment_val) / 4.0  # 最大4段階 → 0-1 正規化
+    dscr_approx     = _compute_dscr_approx_from_log(log)
+    interest_coverage = _compute_interest_coverage_from_log(log)
     
     # 量子矛盾スコア (Q_risk) のオンザフライ計算
     quantum_risk = 0.0
@@ -219,8 +246,8 @@ def _build_one_row_industry(log, data):
     except Exception:
         pass
 
-    row.extend([main_bank, competitor_present, competitor_none, rate_diff_z, industry_sentiment_z,
-                qualitative_tag_score, qualitative_passion, equity_ratio, qualitative_combined,
+    row.extend([main_bank, competitor_present, competitor_none, customer_new, deal_source_bank, rate_diff_z, industry_sentiment_z,
+                qualitative_tag_score, qualitative_passion, equity_ratio, dscr_approx, interest_coverage, qualitative_combined,
                 bn_approval_prob, bn_fc, bn_hc, bn_av,
                 qual_weighted, qual_rank_good, qual_repayment, quantum_risk])
     return row
@@ -1149,8 +1176,6 @@ def run_qualitative_contract_analysis(qual_correction_items):
         "n_negative": n_neg,
         "feature_names": feature_names,
     }
-    prob_lr_te = None
-    prob_lgb_te = None
     try:
         from sklearn.linear_model import LogisticRegression
         lr = LogisticRegression(C=1.0, max_iter=1000, random_state=42)
@@ -1160,7 +1185,6 @@ def run_qualitative_contract_analysis(qual_correction_items):
         out["accuracy_lr"] = float(accuracy_score(y_te, lr.predict(X_te)))
         if len(np.unique(y_te)) >= 2:
             out["auc_lr"] = float(roc_auc_score(y_te, lr.predict_proba(X_te)[:, 1]))
-            prob_lr_te = lr.predict_proba(X_te)[:, 1]
         else:
             out["auc_lr"] = None
     except Exception as e:
@@ -1185,18 +1209,6 @@ def run_qualitative_contract_analysis(qual_correction_items):
             pass
     except Exception as e:
         out["lgb_error"] = str(e)
-    if prob_lr_te is not None and prob_lgb_te is not None and len(np.unique(y_te)) >= 2:
-        best_alpha, best_auc, best_acc = _optimize_ensemble_ratio(prob_lr_te, prob_lgb_te, y_te)
-        out["ensemble_alpha"] = best_alpha
-        out["auc_ensemble"] = best_auc
-        out["accuracy_ensemble"] = best_acc
-        try:
-            import json as _json2, os as _os3
-            _cp = _os3.path.join(_os3.path.dirname(_os3.path.abspath(__file__)), "data", "ensemble_config_qual.json")
-            with open(_cp, "w", encoding="utf-8") as _f2:
-                _json2.dump({"ensemble_alpha": best_alpha, "auc_ensemble": best_auc}, _f2)
-        except Exception:
-            pass
     return out
 
 
@@ -1223,7 +1235,7 @@ def run_quantitative_contract_analysis():
     定量項目（業種モデルと同様の説明変数）のみで成約/不成約をロジスティック回帰とLightGBMで分析する。
     build_design_matrix_from_logs と同じ X（COEFF_MAIN_KEYS + COEFF_EXTRA_KEYS）を使用。
     成約+失注が QUALITATIVE_ANALYSIS_MIN_CASES 件以上あるときのみ実行可能。
-    アンサンブル割合を最適化して返す。
+    LR と LGBM を比較し、LGBM を本体モデルとして保存する。
     """
     all_logs = load_all_cases()
     X, y = build_design_matrix_from_logs(all_logs, model_key=None)
@@ -1240,8 +1252,6 @@ def run_quantitative_contract_analysis():
         "n_negative": n_neg,
         "feature_names": feature_names,
     }
-    prob_lr_te = None
-    prob_lgb_te = None
     try:
         from scipy.special import expit as _expit_quant
         # ベイズ更新可能なら MAP 推定、なければ MLE にフォールバック
@@ -1273,7 +1283,6 @@ def run_quantitative_contract_analysis():
             out["accuracy_lr"] = float(accuracy_score(y_te, lr.predict(X_te)))
             if len(np.unique(y_te)) >= 2:
                 out["auc_lr"] = float(roc_auc_score(y_te, lr.predict_proba(X_te)[:, 1]))
-                prob_lr_te = lr.predict_proba(X_te)[:, 1]
             else:
                 out["auc_lr"] = None
             out["lr_used_bayesian"] = False
@@ -1286,11 +1295,10 @@ def run_quantitative_contract_analysis():
         out["accuracy_lgb"] = float(accuracy_score(y_te, lgb_model.predict(X_te)))
         if len(np.unique(y_te)) >= 2:
             out["auc_lgb"] = float(roc_auc_score(y_te, lgb_model.predict_proba(X_te)[:, 1]))
-            prob_lgb_te = lgb_model.predict_proba(X_te)[:, 1]
         else:
             out["auc_lgb"] = None
         out["lgb_importance"] = list(zip(feature_names, lgb_model.feature_importances_.tolist()))
-        # LGB モデルを保存（スコア計算時のアンサンブル用）
+        # LGB モデルを保存（スコア計算時の本体モデル）
         try:
             import joblib as _jbl, os as _os2
             _mp = _os2.path.join(_os2.path.dirname(_os2.path.abspath(__file__)), "data", "lgb_main_model.joblib")
@@ -1299,18 +1307,6 @@ def run_quantitative_contract_analysis():
             pass
     except Exception as e:
         out["lgb_error"] = str(e)
-    if prob_lr_te is not None and prob_lgb_te is not None and len(np.unique(y_te)) >= 2:
-        best_alpha, best_auc, best_acc = _optimize_ensemble_ratio(prob_lr_te, prob_lgb_te, y_te)
-        out["ensemble_alpha"] = best_alpha
-        out["auc_ensemble"] = best_auc
-        out["accuracy_ensemble"] = best_acc
-        try:
-            import json as _json2, os as _os3
-            _cp = _os3.path.join(_os3.path.dirname(_os3.path.abspath(__file__)), "data", "ensemble_config.json")
-            with open(_cp, "w", encoding="utf-8") as _f2:
-                _json2.dump({"ensemble_alpha": best_alpha, "auc_ensemble": best_auc}, _f2)
-        except Exception:
-            pass
     return out
 
 
@@ -1534,25 +1530,25 @@ def run_bayesian_warm_start_all_keys(all_logs, min_n: int = 5):
     return overrides, results
 
 
-def train_lgbm_from_cases(all_logs, save_path: str | None = None):
-    """
-    成約/失注データで LightGBM を再学習し pkl に保存する。
-
-    Returns:
-        (accuracy, auc_or_None, save_path, n_positive, n_negative)
-    """
+def _train_lgbm_bundle_from_cases(all_logs, model_key: str | None = None, save_path: str | None = None):
+    """指定セグメントの LightGBM を学習し、保存用メタデータを返す。"""
     import joblib
     import lightgbm as lgb
     from sklearn.metrics import accuracy_score, roc_auc_score
     from config import LGBM_PARAMS
 
-    X, y = build_design_matrix_from_logs(all_logs)
+    X, y = build_design_matrix_from_logs(all_logs, model_key=model_key)
     if X is None or y is None or len(y) < 5:
         raise ValueError(f"学習データ不足: {len(y) if y is not None else 0}件（5件以上必要）")
 
     if save_path is None:
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        save_path = os.path.join(base_dir, "data", "lgbm_contract_model.pkl")
+        if model_key == "全体_新規先":
+            save_path = os.path.join(base_dir, "data", "lgb_main_model_new.joblib")
+        elif model_key == "全体_既存先":
+            save_path = os.path.join(base_dir, "data", "lgb_main_model.joblib")
+        else:
+            save_path = os.path.join(base_dir, "data", "lgbm_contract_model.pkl")
 
     n_pos = int(y.sum())
     n_neg = len(y) - n_pos
@@ -1582,6 +1578,28 @@ def train_lgbm_from_cases(all_logs, save_path: str | None = None):
         "auc": auc,
         "importance": importance,
     }, save_path)
+
+    return acc, auc, save_path, n_pos, n_neg
+
+
+def train_lgbm_from_cases(all_logs, save_path: str | None = None, model_key: str | None = None):
+    """
+    成約/失注データで LightGBM を再学習し pkl に保存する。
+
+    Returns:
+        (accuracy, auc_or_None, save_path, n_positive, n_negative)
+    """
+    acc, auc, save_path, n_pos, n_neg = _train_lgbm_bundle_from_cases(all_logs, model_key=model_key, save_path=save_path)
+
+    if model_key is None:
+        try:
+            _train_lgbm_bundle_from_cases(all_logs, model_key="全体_既存先")
+        except Exception:
+            pass
+        try:
+            _train_lgbm_bundle_from_cases(all_logs, model_key="全体_新規先")
+        except Exception:
+            pass
 
     return acc, auc, save_path, n_pos, n_neg
 

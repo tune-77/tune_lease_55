@@ -103,15 +103,15 @@ def render_coeff_analysis():
 
     st.divider()
 
-    # ── 統合再学習ボタン（LR + LightGBM） ─────────────────────────────────────
+    # ── 再学習ボタン（単体LGBM + 係数更新） ────────────────────────────────────
     with st.container(border=True):
-        st.markdown("#### 🚀 ロジスティック回帰 + LightGBM 統合再学習")
+        st.markdown("#### 🚀 ロジスティック回帰 + LightGBM 再学習")
         st.caption(
             "前回保存済みの係数を事前分布（warm-start 初期値）として使い、"
-            "ロジスティック回帰（全モデルキー）と LightGBM を同時に再学習・保存します。"
+            "ロジスティック回帰（全モデルキー）と、既存先/新規先で分けた LightGBM を同時に再学習・保存します。"
         )
         if st.button(
-            "🚀 ロジスティック回帰 + LightGBM 統合再学習",
+            "🚀 LGBM 再学習（既存/新規分割）",
             key="btn_unified_retrain",
             type="primary",
         ):
@@ -185,7 +185,7 @@ def render_coeff_analysis():
 
                 # 結果サマリー
                 if _lr_ok and _lgbm_ok:
-                    st.success("✅ ロジスティック回帰 + LightGBM の統合再学習が完了しました。")
+                    st.success("✅ LightGBM（既存先/新規先分割）の再学習が完了しました。")
                 else:
                     st.warning("一部の学習でエラーが発生しました。詳細を確認してください。")
 

@@ -277,16 +277,7 @@ def run_qualitative_contract_analysis_gemini(qual_correction_items) -> dict | No
     if not raw:
         return None
 
-    result = _parse_result(raw, feature_names, n, n_pos, n_neg)
-    if result and "ensemble_alpha" in result:
-        try:
-            import os as _os, json as _json
-            _cp = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "ensemble_config_qual.json")
-            with open(_cp, "w", encoding="utf-8") as _f:
-                _json.dump({"ensemble_alpha": result["ensemble_alpha"]}, _f)
-        except Exception:
-            pass
-    return result
+    return _parse_result(raw, feature_names, n, n_pos, n_neg)
 
 
 # ── 定量要因分析 ────────────────────────────────────────────────────────────
@@ -323,21 +314,7 @@ def run_quantitative_contract_analysis_gemini() -> dict | None:
     if not raw:
         return None
 
-    result = _parse_result(raw, feature_names, n, n_pos, n_neg)
-    if result and "ensemble_alpha" in result:
-        try:
-            import os as _os, json as _json
-            _cp = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "ensemble_config.json")
-            _existing = {}
-            if _os.path.exists(_cp):
-                with open(_cp, encoding="utf-8") as _f:
-                    _existing = _json.load(_f)
-            _existing["ensemble_alpha"] = result["ensemble_alpha"]
-            with open(_cp, "w", encoding="utf-8") as _f:
-                _json.dump(_existing, _f)
-        except Exception:
-            pass
-    return result
+    return _parse_result(raw, feature_names, n, n_pos, n_neg)
 
 
 # ── 業種ごと定量分析 ─────────────────────────────────────────────────────────

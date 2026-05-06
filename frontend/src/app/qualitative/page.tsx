@@ -113,9 +113,9 @@ export default function QualitativePage() {
               <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-30 transition-opacity">
                  <Activity className="w-24 h-24 text-white" />
               </div>
-              <h4 className="text-white font-black mb-2">アンサンブル最適化</h4>
-              <p className="text-slate-400 text-sm mb-4">LRとLGBMを {data?.ensemble_alpha} : { (1-data?.ensemble_alpha).toFixed(1) } の比率で混合した際の精度</p>
-              <div className="text-2xl font-black text-emerald-400">{(data?.accuracy_ensemble * 100).toFixed(1)}%</div>
+              <h4 className="text-white font-black mb-2">LightGBM 単体</h4>
+              <p className="text-slate-400 text-sm mb-4">定性ページでは LR と LightGBM を個別に見ます。</p>
+              <div className="text-2xl font-black text-emerald-400">{(data?.auc_lgb * 100).toFixed(1)} AUC</div>
            </div>
         </div>
       </div>

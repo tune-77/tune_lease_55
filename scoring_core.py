@@ -105,55 +105,40 @@ def _safe_sigmoid(x):
         return 0.0 if (x or 0) < 0 else 1.0
 
 
-_LGB_MODEL_PATH = os.path.join(_SCRIPT_DIR, "data", "lgb_main_model.joblib")
-_ENSEMBLE_CONFIG_PATH = os.path.join(_SCRIPT_DIR, "data", "ensemble_config.json")
+_LGB_MODEL_PATH_EXISTING = os.path.join(_SCRIPT_DIR, "data", "lgb_main_model.joblib")
+_LGB_MODEL_PATH_NEW = os.path.join(_SCRIPT_DIR, "data", "lgb_main_model_new.joblib")
 _LGB_QUAL_MODEL_PATH = os.path.join(_SCRIPT_DIR, "data", "lgb_qual_model.joblib")
-_ENSEMBLE_CONFIG_QUAL_PATH = os.path.join(_SCRIPT_DIR, "data", "ensemble_config_qual.json")
 
-_lgb_bundle_cache: dict | None = None
-_ensemble_alpha_cache: float | None = None
+_lgb_bundle_cache: dict[str, dict | None] = {}
 _lgb_qual_bundle_cache: dict | None = None
-_ensemble_alpha_qual_cache: float | None = None
 
 
 def clear_scoring_cache() -> None:
-    """LGBMモデル・アンサンブルalphaのインメモリキャッシュをクリアする。
+    """LGBMモデルのインメモリキャッシュをクリアする。
     統合再学習後に呼ぶことで、再起動なしに新モデルが反映される。
     """
-    global _lgb_bundle_cache, _ensemble_alpha_cache
-    global _lgb_qual_bundle_cache, _ensemble_alpha_qual_cache
-    _lgb_bundle_cache = None
-    _ensemble_alpha_cache = None
-    _lgb_qual_bundle_cache = None
-    _ensemble_alpha_qual_cache = None
-
-
-def _load_lgb_bundle():
     global _lgb_bundle_cache
-    if _lgb_bundle_cache is not None:
-        return _lgb_bundle_cache
-    if not os.path.exists(_LGB_MODEL_PATH):
+    global _lgb_qual_bundle_cache
+    _lgb_bundle_cache = {}
+    _lgb_qual_bundle_cache = None
+
+
+def _load_lgb_bundle(customer_type: str | None = None):
+    """新規/既存で別保存した LGB モデルを読む。"""
+    global _lgb_bundle_cache
+    path = _LGB_MODEL_PATH_NEW if (customer_type or "既存先") == "新規先" else _LGB_MODEL_PATH_EXISTING
+    if path in _lgb_bundle_cache:
+        return _lgb_bundle_cache[path]
+    if not os.path.exists(path):
+        _lgb_bundle_cache[path] = None
         return None
     try:
         import joblib
-        _lgb_bundle_cache = joblib.load(_LGB_MODEL_PATH)
-        return _lgb_bundle_cache
+        _lgb_bundle_cache[path] = joblib.load(path)
+        return _lgb_bundle_cache[path]
     except Exception:
+        _lgb_bundle_cache[path] = None
         return None
-
-
-def _load_ensemble_alpha() -> float:
-    global _ensemble_alpha_cache
-    if _ensemble_alpha_cache is not None:
-        return _ensemble_alpha_cache
-    if not os.path.exists(_ENSEMBLE_CONFIG_PATH):
-        return 1.0
-    try:
-        with open(_ENSEMBLE_CONFIG_PATH, encoding="utf-8") as f:
-            _ensemble_alpha_cache = float(json.load(f).get("ensemble_alpha", 1.0))
-        return _ensemble_alpha_cache
-    except Exception:
-        return 1.0
 
 
 def _load_lgb_qual_bundle():
@@ -168,20 +153,6 @@ def _load_lgb_qual_bundle():
         return _lgb_qual_bundle_cache
     except Exception:
         return None
-
-
-def _load_ensemble_alpha_qual() -> float:
-    global _ensemble_alpha_qual_cache
-    if _ensemble_alpha_qual_cache is not None:
-        return _ensemble_alpha_qual_cache
-    if not os.path.exists(_ENSEMBLE_CONFIG_QUAL_PATH):
-        return 1.0
-    try:
-        with open(_ENSEMBLE_CONFIG_QUAL_PATH, encoding="utf-8") as f:
-            _ensemble_alpha_qual_cache = float(json.load(f).get("ensemble_alpha", 1.0))
-        return _ensemble_alpha_qual_cache
-    except Exception:
-        return 1.0
 
 
 def _build_lgb_qual_feature_vector(inputs: dict, feature_names: list[str], asset_to_idx: dict) -> list[float]:
@@ -271,16 +242,18 @@ def _build_lgb_feature_vector(data_scoring: dict, inputs: dict, feature_names: l
         "main_bank": 1.0 if inputs.get("main_bank") == "メイン先" else 0.0,
         "competitor_present": 1.0 if inputs.get("competitor") == "競合あり" else 0.0,
         "competitor_none": 1.0 if inputs.get("competitor") == "競合なし" else 0.0,
+        "customer_new": 1.0 if (inputs.get("customer_type") or "既存先") == "新規先" else 0.0,
+        "deal_source_bank": 1.0 if (inputs.get("deal_source") or "") == "銀行紹介" else 0.0,
         "rate_diff_z": 0.0,
         "industry_sentiment_z": 0.0,
         "qualitative_tag_score": 0.0,
         "qualitative_passion": 0.0,
         "equity_ratio": _safe_float(inputs.get("user_equity_ratio")),
+        "dscr_approx": compute_dscr_approx(inputs),
+        "interest_coverage": compute_interest_coverage(inputs),
         "qualitative_combined": 0.0,
         "bn_approval_prob": 0.0, "bn_fc": 0.0, "bn_hc": 0.0, "bn_av": 0.0,
         "qual_weighted": 0.0, "qual_rank_good": 0.0, "qual_repayment": 0.0,
-        "dscr_approx": compute_dscr_approx(inputs),
-        "interest_coverage": compute_interest_coverage(inputs),
     }
     qsc = inputs.get("qualitative_scoring_correction") or inputs.get("qualitative_scoring") or {}
     if qsc:
@@ -566,28 +539,24 @@ def run_quick_scoring(inputs: dict) -> dict:
     z_main = _calculate_z(data_scoring, coeffs)
     score_prob = _safe_sigmoid(z_main)
 
-    # 定量 LGB アンサンブル（モデルが存在する場合のみ）
+    # 定量 LGB（新規/既存で分岐。モデルが存在する場合のみ）
     try:
-        _bundle = _load_lgb_bundle()
+        _bundle = _load_lgb_bundle(customer_type)
         if _bundle is not None:
             _feat_names = _bundle["feature_names"]
             _X = _build_lgb_feature_vector(data_scoring, inputs, _feat_names)
-            _lgb_prob = float(_bundle["model"].predict_proba([_X])[0][1])
-            _alpha = _load_ensemble_alpha()
-            score_prob = _alpha * score_prob + (1.0 - _alpha) * _lgb_prob
+            score_prob = float(_bundle["model"].predict_proba([_X])[0][1])
     except Exception:
         pass
 
-    # 定性 LGB アンサンブル（モデルが存在する場合のみ）
+    # 定性 LGB は単体の補助確率として参照する。ブレンドはしない。
     try:
         _qual_bundle = _load_lgb_qual_bundle()
         if _qual_bundle is not None:
             _qual_feat = _qual_bundle["feature_names"]
             _qual_ati = _qual_bundle.get("asset_to_idx", {})
             _Xq = _build_lgb_qual_feature_vector(inputs, _qual_feat, _qual_ati)
-            _qual_prob = float(_qual_bundle["model"].predict_proba([_Xq])[0][1])
-            _alpha_q = _load_ensemble_alpha_qual()
-            score_prob = _alpha_q * score_prob + (1.0 - _alpha_q) * _qual_prob
+            _ = float(_qual_bundle["model"].predict_proba([_Xq])[0][1])
     except Exception:
         pass
 

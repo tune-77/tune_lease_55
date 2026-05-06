@@ -8,7 +8,7 @@ import time
 import datetime
 import json
 
-from data_cases import load_all_cases, load_case_news, update_case_field, get_model_blend_weights
+from data_cases import load_all_cases, load_case_news, update_case_field
 from ai_chat import (
     is_ai_available, get_ollama_model, chat_with_retry, 
     get_ai_3d_comment, get_ai_industry_advice,
@@ -50,11 +50,37 @@ from bayesian_engine import THRESHOLD_APPROVAL
 from credit_limit import render_credit_limit_ui
 from components.form_apply import render_quick_edit_panel
 from components.graph_risk import GraphRiskEngine
+from scoring_core import compute_optimal_approval_line
 
 
 def million_to_thousand_int(v):
     """百万円入力を内部保持の千円整数へ変換する。"""
     return int(round(float(v or 0) * 1000))
+
+
+def _build_review_auc_result(past_cases_log: list[dict]) -> dict | None:
+    """審査画面用に、過去案件のスコアから参考AUCを計算する。"""
+    if not past_cases_log:
+        return None
+
+    cases_for_auc: list[dict] = []
+    for c in past_cases_log:
+        status = c.get("final_status")
+        if status not in ("成約", "失注", "検収", "検収完了"):
+            continue
+        score = c.get("score")
+        if score is None:
+            score = (c.get("result") or {}).get("score")
+        if score is None:
+            continue
+        cases_for_auc.append({
+            "final_score": float(score),
+            "final_status": "成約" if status in ("成約", "検収", "検収完了") else "失注",
+        })
+
+    if not cases_for_auc:
+        return None
+    return compute_optimal_approval_line(cases_for_auc)
 
 # ── 産業ネットワーク分析のためのキャッシュ関数（モジュールレベルで定義） ──
 @st.cache_data(show_spinner=False, max_entries=10)
@@ -1597,6 +1623,17 @@ def render_analysis_results(
                     avg_r = past_stats.get("avg_winning_rate")
                     st.metric("業界 平均金利", f"{avg_r:.2f}%" if avg_r is not None and avg_r > 0 else "—", help="同業種の平均成約金利")
 
+            review_auc = _build_review_auc_result(past_cases_log)
+            if review_auc and review_auc.get("auc") is not None:
+                st.caption("参考: 過去の成約/失注データで見た判別性能")
+                auc1, auc2, auc3 = st.columns(3)
+                with auc1:
+                    st.metric("参考AUC", f"{review_auc['auc']:.3f}", help="1.0 = 完全分類 / 0.5 = ランダム")
+                with auc2:
+                    st.metric("対象件数", f"{review_auc['n_cases']}件", help="AUC算出に使った過去案件数")
+                with auc3:
+                    st.metric("成約件数", f"{review_auc['n_contracts']}件", help="AUC算出に使った成約件数")
+
             # ----- 要確認アラート（承認ライン直下・本社と学習モデルの判定差） -----
             review_need, review_reasons = get_review_alert(res)
             if review_need and review_reasons:
@@ -1841,26 +1878,62 @@ def render_analysis_results(
                         st.metric("予測利回り", f"{res['yield_pred']:.2f}%", delta=f"{res.get('rate_diff', 0):+.2f}%", help="AI予測利回り")
                     else:
                         st.metric("予測利回り", "—", help="利回りモデル未適用")
-                # ----- スコア内訳（借手・物件説明 + 3モデル） -----
+                # ----- スコア内訳（借手・物件説明 + 参考スコア） -----
                 if "score_borrower" in res and "asset_score" in res:
                     _sb = res['score_borrower']
                     _ib = res.get('ind_score', _sb)
                     _bb = res.get('bench_score', _sb)
-                    _wm, _wb2, _wi = get_model_blend_weights()
-                    _wb = round(_sb * _wm + _bb * _wb2 + _ib * _wi, 1)
                     st.caption(
-                        f"📌 成約可能性（借手）= ①{_sb:.1f}%×{_wm:.0%} ＋ ②{_bb:.1f}%×{_wb2:.0%} ＋ ③{_ib:.1f}%×{_wi:.0%} ＝ {_wb:.1f}%"
-                        f"　→ 成約可能性スコア {res['score']:.1f}%（物件スコア加味）"
+                        f"📌 ①借手モデル {_sb:.1f}% / ②指標ベンチマーク {_bb:.1f}% / ③業種モデル {_ib:.1f}%"
+                        f"　→ 総合スコア {res['score']:.1f}%（物件スコア加味）"
                     )
                 cols = st.columns(3)
                 with cols[0]:
-                    st.metric("① 全体モデル", f"{res.get('score_borrower', res.get('score', 0)):.1f}%", help="全業種共通・成約/失注データで学習した回帰係数")
+                    st.metric("① 借手モデル", f"{res.get('score_borrower', res.get('score', 0)):.1f}%", help="全業種共通・成約/失注データで学習した単体モデル")
                 with cols[1]:
                     ind_label = res.get("ind_name", "全体_既存先")
                     second_label = "② 業種モデル" if (ind_label.split("_")[0] != "全体") else "② 業種(全体)"
                     st.metric(second_label, f"{res['ind_score']:.1f}%", delta=f"{res['ind_score']-res['score']:+.1f}%")
                 with cols[2]:
                     st.metric("③ 指標ベンチマーク", f"{res['bench_score']:.1f}%", delta=f"{res['bench_score']-res['score']:+.1f}%", delta_color="inverse")
+
+                _gap_items = []
+                _gap_main = float(res.get("score_borrower") or 0)
+                _gap_bench = float(res.get("bench_score") or 0)
+                _gap_ind = float(res.get("ind_score") or 0)
+                _gap_ind_name = str(res.get("ind_name") or "全体_既存先")
+                if _gap_main > 0 and _gap_bench > 0:
+                    _gap_items.append(("借手-ベンチ", _gap_main - _gap_bench, abs(_gap_main - _gap_bench)))
+                if _gap_main > 0 and _gap_ind > 0:
+                    _gap_items.append(("借手-業種", _gap_main - _gap_ind, abs(_gap_main - _gap_ind)))
+
+                if _gap_items:
+                    _worst = max(_gap_items, key=lambda x: x[2])
+                    _worst_label, _worst_delta, _worst_abs = _worst
+                    with st.expander("📎 参考比較・差分アラート", expanded=False):
+                        c1, c2, c3 = st.columns(3)
+                        c1.metric("借手モデル", f"{_gap_main:.1f}%")
+                        c2.metric("指標ベンチマーク", f"{_gap_bench:.1f}%", delta=f"{_gap_main - _gap_bench:+.1f}%")
+                        c3.metric("業種モデル", f"{_gap_ind:.1f}%", delta=f"{_gap_main - _gap_ind:+.1f}%")
+
+                        st.caption(f"対象セグメント: 取引区分={res.get('customer_type', '—')} / 業種={_gap_ind_name}")
+                        if _worst_abs >= 20:
+                            st.warning(
+                                f"乖離大: {_worst_label} が {_worst_delta:+.1f}pt です。"
+                                " 主スコアは高いが、参考スコアが低い案件として再確認候補にできます。"
+                            )
+                        elif _worst_abs >= 10:
+                            st.info(
+                                f"参考差分あり: {_worst_label} が {_worst_delta:+.1f}pt です。"
+                                " すぐに否決材料ではなく、補助確認の目安です。"
+                            )
+                        else:
+                            st.success("参考スコアとの乖離は小さめです。")
+
+                        st.caption(
+                            "使い方: 借手モデルが高いのに業種ベンチマークや業種モデルが低い案件は、"
+                            "業種特性・例外案件・入力漏れの確認に回す。"
+                        )
 
             # ----- 業界比較テキスト（サマリー直下に表示） -----
             industry_key = res["industry_major"]
