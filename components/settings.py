@@ -103,15 +103,15 @@ def render_coeff_analysis():
 
     st.divider()
 
-    # ── 再学習ボタン（単体RF + 係数更新） ─────────────────────────────────────
+    # ── 再学習ボタン（主モデル + 係数更新） ─────────────────────────────────
     with st.container(border=True):
-        st.markdown("#### 🚀 ロジスティック回帰 + RandomForest 再学習")
+        st.markdown("#### 🚀 ロジスティック回帰 + 主モデル 再学習")
         st.caption(
             "前回保存済みの係数を事前分布（warm-start 初期値）として使い、"
-            "ロジスティック回帰（全モデルキー）と、既存先/新規先で分けた RandomForest を同時に再学習・保存します。"
+            "ロジスティック回帰（全モデルキー）と、既存先/新規先で分けた主モデルを同時に再学習・保存します。"
         )
         if st.button(
-            "🚀 RandomForest 再学習（既存/新規分割）",
+            "🚀 主モデル再学習（既存/新規分割）",
             key="btn_unified_retrain",
             type="primary",
         ):
@@ -165,19 +165,19 @@ def render_coeff_analysis():
                     _lr_results = [f"エラー: {_e}"]
                     _lr_ok = False
 
-                # Step 2: RandomForest
-                _lgbm_prog = st.progress(0, text="RandomForest 学習中...")
+                # Step 2: 主モデル
+                _lgbm_prog = st.progress(0, text="主モデル 学習中...")
                 try:
                     _acc, _auc, _path, _n_pos, _n_neg = train_lgbm_from_cases(_all_logs)
                     _auc_str = f"  AUC: {_auc:.3f}" if _auc else ""
                     _lgbm_prog.progress(
                         100,
-                        text=f"RandomForest 完了 ✅  Accuracy: {_acc:.1%}{_auc_str}  "
+                        text=f"主モデル 完了 ✅  Accuracy: {_acc:.1%}{_auc_str}  "
                              f"(成約{_n_pos}件 / 失注{_n_neg}件)",
                     )
                     _lgbm_ok = True
                 except Exception as _e:
-                    _lgbm_prog.progress(100, text=f"❌ RandomForest エラー: {_e}")
+                    _lgbm_prog.progress(100, text=f"❌ 主モデル エラー: {_e}")
                     _lgbm_ok = False
 
                 # キャッシュクリア（新モデルを即時反映）
@@ -185,7 +185,7 @@ def render_coeff_analysis():
 
                 # 結果サマリー
                 if _lr_ok and _lgbm_ok:
-                    st.success("✅ RandomForest（既存先/新規先分割）の再学習が完了しました。")
+                    st.success("✅ 主モデル（既存先/新規先分割）の再学習が完了しました。")
                 else:
                     st.warning("一部の学習でエラーが発生しました。詳細を確認してください。")
 
@@ -235,6 +235,15 @@ def render_coeff_analysis():
                 st.error(f"分析に失敗しました。詳細: {err_msg}")
     except Exception as e:
         st.error(f"AIリフレクション機能エラー: {e}")
+
+    st.divider()
+
+    # ── モデル見直しフック ─────────────────────────────────────────────────
+    try:
+        from model_review_hooks import render_model_review_hook_panel
+        render_model_review_hook_panel()
+    except Exception as e:
+        st.caption(f"⚠️ モデル見直しフック読み込みエラー: {e}")
 
     st.divider()
 

@@ -39,6 +39,11 @@
   - 審査結果画面に参考AUCと差分アラートを追加した。過去案件の `score` から参考AUCを出し、`score_borrower / bench_score / ind_score` の乖離が大きい案件は「参考比較・差分アラート」を出す。DAG にも差分警告ノードを追加した。
   - 非LRモデル比較を実施し、OOF AUC は `RandomForest 0.8036`、`XGBoost 0.7940`、`ExtraTrees 0.7800`、`LGBM 0.7596`、`MLP 0.7239`。上位3モデルの stacking も試したが、`RandomForest` 単体を超えなかったので現時点では stacking 採用なし。
   - `score_borrower` の本体モデルを RandomForest に切り替えた。`data/lgb_main_model.joblib` と `data/lgb_main_model_new.joblib` を RF で再学習し、`scoring_core.py` は既存/新規の RF バンドルを読むようにした。README と画面文言も RF 前提に更新済み。
+  - その後、新規先は RF より線形モデルの方が CV で良かったため、`data/lgb_main_model_new.joblib` を LogisticRegression に切り替えた。5-fold CV では新規先 AUC が `0.6501` 前後から `0.6525` までわずかに改善。既存先は RandomForest のまま維持。
+  - 新規先専用の交互作用特徴を追加した。`new_customer_main_bank`、`new_customer_competitor_present`、`new_customer_competitor_count`、`new_customer_competitor_rate`、`new_customer_deal_source_bank`、`new_customer_deal_occurrence_nomination`、`new_customer_deal_occurrence_comp`、`new_customer_contract_auto` を学習・推論の両方に追加し、新規先 OOF AUC は `0.6501` → `0.6674` に改善した。
+  - モデル見直し用のフック基盤を追加した。`hooks/hooks.json` に `recent_auc_drop` / `segment_auc_gap` / `feature_ab_test` を定義し、`model_review_hooks.py` から実行・記録できるようにした。再学習後に自動実行し、Settings 画面と API からも起動できる。
+  - モデル見直しフックに `industry_monitor` を追加した。業種別AUCと `bench_score / ind_score` の乖離を同じフレームで表示し、`industry_auc_bench_gap` で `全体 / 医療 / 運送業 / サービス業 / 製造業` を一括監視できるようにした。
+  - モデル見直しフックの実行時に説明文も出すようにした。数値だけでなく「何が悪いか」「何を見直すか」がその場で読めるので、業種別AUCや bench/ind 乖離の判断コストを下げられる。
 
 ## Preferences
 - **User**: Kobayashi

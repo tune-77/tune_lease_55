@@ -58,6 +58,14 @@ _FEATURE_LABELS_JA = {
     "dept_oyama":         "営業部（小山）",
     "dept_ashikaga":      "営業部（足利）",
     "dept_saitama":       "営業部（埼玉）",
+    "new_customer_main_bank":         "新規先×メイン先",
+    "new_customer_competitor_present": "新規先×競合あり",
+    "new_customer_competitor_count":   "新規先×競合社数",
+    "new_customer_competitor_rate":    "新規先×競合提示金利",
+    "new_customer_deal_source_bank":   "新規先×銀行紹介",
+    "new_customer_deal_occurrence_nomination": "新規先×指名案件",
+    "new_customer_deal_occurrence_comp": "新規先×相見積もり",
+    "new_customer_contract_auto":      "新規先×自動車契約",
 }
 
 
@@ -103,6 +111,57 @@ def _safe_sigmoid(x):
         return 1.0 / (1.0 + math.exp(-x))
     except (OverflowError, TypeError):
         return 0.0 if (x or 0) < 0 else 1.0
+
+
+def _normalize_competitor_count_value(value) -> float:
+    """競合社数を 0〜3 の連続値に正規化する。"""
+    if value is None:
+        return 0.0
+    if isinstance(value, (int, float)):
+        try:
+            v = float(value)
+            if v <= 0:
+                return 0.0
+            return min(3.0, v)
+        except (TypeError, ValueError):
+            return 0.0
+    s = str(value)
+    if "3" in s:
+        return 3.0
+    if "2" in s:
+        return 2.0
+    if "1" in s:
+        return 1.0
+    if "0" in s or "指名" in s:
+        return 0.0
+    return 0.0
+
+
+def _normalize_deal_occurrence_value(value) -> float:
+    """発生経緯を 0=不明, 1=指名, 2=相見積もり に正規化する。"""
+    if value is None:
+        return 0.0
+    s = str(value)
+    if "相見積" in s or "競争" in s:
+        return 2.0
+    if "指名" in s:
+        return 1.0
+    return 0.0
+
+
+def _normalize_competitor_rate_value(value) -> float:
+    """競合提示金利を 0〜1 の圧力指標に正規化する。"""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if v <= 0:
+        return 0.0
+    if v <= 1.0:
+        v *= 100.0
+    elif v > 1000:
+        v /= 1000.0
+    return max(0.0, min(1.0, v / 30.0))
 
 
 _MAIN_MODEL_PATH_EXISTING = os.path.join(_SCRIPT_DIR, "data", "lgb_main_model.joblib")
@@ -255,6 +314,21 @@ def _build_lgb_feature_vector(data_scoring: dict, inputs: dict, feature_names: l
         "bn_approval_prob": 0.0, "bn_fc": 0.0, "bn_hc": 0.0, "bn_av": 0.0,
         "qual_weighted": 0.0, "qual_rank_good": 0.0, "qual_repayment": 0.0,
     }
+    customer_new = 1.0 if (inputs.get("customer_type") or "既存先") == "新規先" else 0.0
+    competitor_count = _normalize_competitor_count_value(inputs.get("num_competitors"))
+    deal_occurrence = _normalize_deal_occurrence_value(inputs.get("deal_occurrence"))
+    competitor_rate_norm = _normalize_competitor_rate_value(inputs.get("competitor_rate"))
+    contract_type = inputs.get("contract_type") or "一般"
+    main_val.update({
+        "new_customer_main_bank": customer_new if inputs.get("main_bank") == "メイン先" else 0.0,
+        "new_customer_competitor_present": customer_new if inputs.get("competitor") == "競合あり" else 0.0,
+        "new_customer_competitor_count": customer_new * competitor_count,
+        "new_customer_competitor_rate": customer_new * competitor_rate_norm,
+        "new_customer_deal_source_bank": customer_new if (inputs.get("deal_source") or "") == "銀行紹介" else 0.0,
+        "new_customer_deal_occurrence_nomination": customer_new if deal_occurrence == 1.0 else 0.0,
+        "new_customer_deal_occurrence_comp": customer_new if deal_occurrence == 2.0 else 0.0,
+        "new_customer_contract_auto": customer_new if contract_type == "自動車" else 0.0,
+    })
     qsc = inputs.get("qualitative_scoring_correction") or inputs.get("qualitative_scoring") or {}
     if qsc:
         combined = qsc.get("combined_score") or qsc.get("weighted_score")
