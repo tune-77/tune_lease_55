@@ -735,7 +735,7 @@ def render_rate_suggestion(res: dict, similar_cases: list | None = None):
         acquisition_cost_thousand = float(
             _inp.get("acquisition_cost") or st.session_state.get("acquisition_cost") or 0
         )
-        acquisition_cost_man = acquisition_cost_thousand / 1000.0
+        acquisition_cost_man = acquisition_cost_thousand / 10.0
         _render_term_scenarios(_get_base_for_term, optimal_spread, acquisition_cost_man)
 
         st.divider()
