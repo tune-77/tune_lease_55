@@ -70,10 +70,13 @@ def search_custom_manuals(query: str) -> str:
     引数 query: 検索したい内容（例: "建設業の特例", "赤字の場合の対応" など）
     """
     try:
-        url = "http://localhost:3001/api/v1/workspace/71b18af2-ab59-4bcb-874c-4cb329bd1b41/chat"
+        from anything_api import ANYTHING_LLM_BASE_URL, ANYTHING_LLM_WORKSPACE
+        from secret_manager import get_anything_llm_key as _get_anyllm_key
+        _ws_slug = os.environ.get("ANYTHING_LLM_WORKSPACE", ANYTHING_LLM_WORKSPACE)
+        url = f"{ANYTHING_LLM_BASE_URL}/workspace/{_ws_slug}/chat"
         headers = {
-            "Authorization": "Bearer RGK6FNE-HHK4VTT-NJVQS1S-CK2847K",
-            "Content-Type": "application/json"
+            "Authorization": f"Bearer {_get_anyllm_key() or ''}",
+            "Content-Type": "application/json",
         }
         data = {
             "message": query,
@@ -266,25 +269,12 @@ def run_agent_query(user_input: str, system_context: str, api_key: str, model_na
                     
         # 最新のメッセージの構築
         if image_base64:
-            message_content = [
-                {"type": "text", "text": user_input},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64[:50]}..."}} # Debug log doesn't need full base64
-            ]
-            
-            # 念のため、ちゃんと画像部分ができているかファイルに書き出して確認
-            with open("/Users/kobayashiisaoryou/clawd/tune_lease_55/debug_agent_payload.txt", "w") as f:
-                f.write(f"IMAGE WAS PASSED TO RUN_AGENT_QUERY!\n{str(message_content)}")
-                
-            # 実データは省略なし
             real_message_content = [
                 {"type": "text", "text": user_input},
                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
             ]
             langchain_messages.append(HumanMessage(content=real_message_content))
         else:
-            with open("/Users/kobayashiisaoryou/clawd/tune_lease_55/debug_agent_payload.txt", "w") as f:
-                f.write(f"IMAGE WAS NOT PASSED TO RUN_AGENT_QUERY. BASE64 WAS NONE.\nUser Input: {user_input}")
-                
             langchain_messages.append(HumanMessage(content=user_input))
 
         inputs = {"messages": langchain_messages}
