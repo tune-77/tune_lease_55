@@ -63,11 +63,7 @@ def render_qualitative_analysis():
                 if "lgb_error" in result:
                     st.error(result["lgb_error"])
             with c3:
-                if "auc_ensemble" in result:
-                    st.metric("アンサンブル 正解率", f"{result['accuracy_ensemble']*100:.1f}%")
-                    st.metric("アンサンブル AUC", f"{result['auc_ensemble']:.3f}")
-                    alpha = result.get("ensemble_alpha", 0.5)
-                    st.caption(f"最適割合: LR {alpha:.0%} + LGB {1-alpha:.0%}")
+                st.caption("アンサンブルは採用していません。LR と LightGBM を個別に比較します。")
             st.divider()
             st.subheader("ロジスティック回帰 係数（成約に効く方向: 正で成約にプラス）")
             if "lr_coef" in result:
