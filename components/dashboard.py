@@ -1108,6 +1108,8 @@ def _render_dept_analysis(df_dept: pd.DataFrame, threshold_reco: pd.DataFrame | 
                 "閾値差": "{:+.1f}",
                 "FN率(%)": "{:.1f}",
                 "FP率(%)": "{:.1f}",
+                "FP件数": "{:.0f}",
+                "FN件数": "{:.0f}",
             }),
             width="stretch",
             hide_index=True,
