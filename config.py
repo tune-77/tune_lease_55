@@ -80,7 +80,7 @@ LGBM_PARAMS = {
 # 本体モデルとして使う RandomForest の既定パラメータ
 RF_PARAMS = {
     "n_estimators": 500,
-    "max_depth": None,
+    "max_depth": 12,
     "min_samples_leaf": 2,
     "min_samples_split": 4,
     "class_weight": "balanced_subsample",
