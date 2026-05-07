@@ -65,7 +65,15 @@ def _case_month(case: dict) -> str:
     if len(raw) >= 7 and raw[4] == "/":
         parts = raw.split("/")
         if len(parts) >= 2:
-            return f"{parts[0]}-{int(parts[1]):02d}"
+            try:
+                month_str = parts[1].split("T")[0]  # "3725T00:00:00" → "3725"
+                month_int = int(month_str)
+                if month_int > 12:
+                    # OCRが "03/25" を "3725" と読んだケース: 先頭1-2桁が月
+                    month_int = month_int // 100 if month_int >= 100 else month_int // 10
+                return f"{parts[0]}-{month_int:02d}"
+            except (ValueError, IndexError):
+                pass
     return raw[:7]
 
 
