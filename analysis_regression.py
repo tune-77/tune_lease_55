@@ -1887,9 +1887,11 @@ def run_bayesian_warm_start_all_keys(all_logs, min_n: int = 5):
 def _train_main_bundle_from_cases(all_logs, model_key: str | None = None, save_path: str | None = None):
     """指定セグメントの主モデルを学習し、保存用メタデータを返す。"""
     import joblib
+    from sklearn.base import clone
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import accuracy_score, roc_auc_score
+    from sklearn.model_selection import train_test_split
     from config import RF_PARAMS
 
     X, y = build_design_matrix_from_logs(all_logs, model_key=model_key)
@@ -1910,7 +1912,6 @@ def _train_main_bundle_from_cases(all_logs, model_key: str | None = None, save_p
 
     # 新規先は件数が少なく、木モデルが過学習しやすいので線形モデルに寄せる。
     if model_key == "全体_新規先":
-        X_tr, y_tr = X, y
         model = LogisticRegression(
             C=1.0,
             class_weight="balanced",
@@ -1919,16 +1920,33 @@ def _train_main_bundle_from_cases(all_logs, model_key: str | None = None, save_p
             random_state=42,
         )
     else:
-        # 既存先や共通モデルは木モデルを使う
-        X_tr, y_tr, _ = _bootstrap_to_min_size(X, y, min_size=50)
         model = RandomForestClassifier(**RF_PARAMS)
 
-    model.fit(X_tr, y_tr)
-
-    acc = float(accuracy_score(y, model.predict(X)))
     auc = None
-    if len(set(y.tolist())) >= 2:
-        auc = float(roc_auc_score(y, model.predict_proba(X)[:, 1]))
+    has_two_classes = len(set(y.tolist())) >= 2
+
+    if len(y) >= 50 and has_two_classes:
+        # ホールドアウトでAUCを計算（訓練データ込み評価による過楽観を防ぐ）
+        X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+        _tmp_model = clone(model)
+        _tmp_model.fit(X_tr, y_tr)
+        acc = float(accuracy_score(y_te, _tmp_model.predict(X_te)))
+        if len(set(y_te.tolist())) >= 2:
+            auc = float(roc_auc_score(y_te, _tmp_model.predict_proba(X_te)[:, 1]))
+        # 本番モデルは全件で再学習してファイル保存
+        model.fit(X, y)
+        eval_method = "holdout_0.2"
+    else:
+        # 50件未満は全件評価（現行維持）
+        if model_key != "全体_新規先":
+            X_fit, y_fit, _ = _bootstrap_to_min_size(X, y, min_size=50)
+        else:
+            X_fit, y_fit = X, y
+        model.fit(X_fit, y_fit)
+        acc = float(accuracy_score(y, model.predict(X)))
+        if has_two_classes:
+            auc = float(roc_auc_score(y, model.predict_proba(X)[:, 1]))
+        eval_method = "train_only"
 
     feature_names = COEFF_MAIN_KEYS + COEFF_EXTRA_KEYS
     if hasattr(model, "feature_importances_"):
@@ -1950,6 +1968,7 @@ def _train_main_bundle_from_cases(all_logs, model_key: str | None = None, save_p
         "auc": auc,
         "model_type": type(model).__name__,
         "importance": importance,
+        "eval_method": eval_method,
     }, save_path)
 
     return acc, auc, save_path, n_pos, n_neg
