@@ -114,14 +114,19 @@ def _get_csv_template() -> bytes:
 
 
 def _num(row: dict, base_name: str, default: float = 0.0) -> float:
-    """Read a numeric CSV value, accepting current 百万円 and legacy 千円 headers."""
-    for suffix in ("百万円", "千円"):
-        raw = row.get(f"{base_name}({suffix})")
-        if raw not in (None, ""):
-            try:
-                return float(str(raw).replace(",", ""))
-            except (TypeError, ValueError):
-                return default
+    """Read a numeric CSV value. 百万円 columns are ×1000 converted to 千円."""
+    raw = row.get(f"{base_name}(百万円)")
+    if raw not in (None, ""):
+        try:
+            return float(str(raw).replace(",", "")) * 1000  # 百万円 → 千円
+        except (TypeError, ValueError):
+            return default
+    raw = row.get(f"{base_name}(千円)")
+    if raw not in (None, ""):
+        try:
+            return float(str(raw).replace(",", ""))
+        except (TypeError, ValueError):
+            return default
     return default
 
 
