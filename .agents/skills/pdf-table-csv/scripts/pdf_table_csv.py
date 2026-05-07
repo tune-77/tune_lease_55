@@ -233,6 +233,18 @@ def detect_grid(image_path: Path) -> tuple[list[int], list[int]]:
 
     ys = clusters(h.sum(axis=1), 255 * 120)
     xs = clusters(v.sum(axis=0), 255 * 20)
+
+    # Merge spurious sub-dividers: remove xs that create a column narrower than
+    # min_col_px. Keep the first boundary of the narrow pair, drop the second.
+    min_col_px = 35
+    filtered = [xs[0]] if xs else []
+    for i in range(1, len(xs)):
+        if xs[i] - filtered[-1] < min_col_px:
+            pass  # skip — merges into previous cell
+        else:
+            filtered.append(xs[i])
+    xs = filtered
+
     return ys, xs
 
 
@@ -371,7 +383,7 @@ def convert_rating(value: str) -> str:
     )
     compact = re.sub(r"\s+", "", s)
     if compact == "" or compact in {"0", "D", "O", "U"}:
-        return "無格付"
+        return "④無格付"
     if compact in {"l", "I", "|"}:
         return "2"
     if compact == "7":
@@ -547,9 +559,11 @@ def fill_batch_template(template_csv: Path, source_csv: Path, out_csv: Path | No
             if template_col in row:
                 row[template_col] = nonblank_or_zero(src, source_col)
         if "業種大分類" in row:
-            row["業種大分類"] = normalize_industry_major(src.get("業種大分類")) or nonblank_or_zero(src, "業種大分類")
+            industry_src = src.get("業種大分類") or src.get("業種") or ""
+            row["業種大分類"] = normalize_industry_major(industry_src) or nonblank_or_zero(src, "業種") or "0"
         if "業種小分類" in row:
-            row["業種小分類"] = normalize_industry_sub(src.get("業種小分類"), src.get("業種大分類")) or "0"
+            major_src = src.get("業種大分類") or src.get("業種") or ""
+            row["業種小分類"] = normalize_industry_sub(src.get("業種小分類"), major_src) or "0"
         if "審査日" in row:
             row["審査日"] = normalize_date(src.get("発生年月日", ""))
         if "検収時期(年)" in row:
