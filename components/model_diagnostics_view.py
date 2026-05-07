@@ -21,6 +21,8 @@ import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
 
+import joblib
+
 from ai_chat import _gemini_chat
 from config import GEMINI_MODEL_DEFAULT
 from secret_manager import get_gemini_api_key
@@ -883,6 +885,171 @@ def _render_landscape() -> None:
     )
 
 
+# ── Tab 5: 特徴量重要度 ───────────────────────────────────────────────────────
+
+_LGBM_PKL_PATH = os.path.join(_REPO_ROOT, "data", "lgbm_contract_model.pkl")
+
+
+@st.cache_data(show_spinner=False, ttl=600)
+def _load_lgbm_bundle() -> dict | None:
+    """lgbm_contract_model.pkl を読み込んで辞書を返す。失敗時は None。"""
+    if not os.path.exists(_LGBM_PKL_PATH):
+        return None
+    try:
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            bundle = joblib.load(_LGBM_PKL_PATH)
+        return bundle if isinstance(bundle, dict) else {"model": bundle, "feature_names": [], "n_cases": 0, "auc": 0, "accuracy": 0, "importance": []}
+    except Exception:
+        return None
+
+
+def _render_feature_importance() -> None:
+    bundle = _load_lgbm_bundle()
+    if bundle is None:
+        st.warning(f"モデルファイルが見つかりません: {_LGBM_PKL_PATH}")
+        return
+
+    model_obj = bundle.get("model")
+    if model_obj is None or not hasattr(model_obj, "feature_importances_"):
+        st.warning("feature_importances_ を持つモデルが見つかりません。")
+        return
+
+    feature_names: list[str] = bundle.get("feature_names") or []
+    importances = model_obj.feature_importances_
+
+    # feature_names が空または長さ不一致のときはダミー名を使う
+    if len(feature_names) != len(importances):
+        feature_names = [f"feature_{i}" for i in range(len(importances))]
+
+    n_cases: int = bundle.get("n_cases", 0)
+    auc: float = bundle.get("auc", 0.0)
+    accuracy: float = bundle.get("accuracy", 0.0)
+    model_class: str = model_obj.__class__.__name__
+    n_estimators = getattr(model_obj, "n_estimators", "?")
+    max_depth = getattr(model_obj, "max_depth", "?")
+
+    # ── モデル情報メトリクス ──────────────────────────────────────────────────
+    st.subheader("本体モデル情報")
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("モデル種別", model_class)
+    c2.metric("学習件数", f"{n_cases:,} 件")
+    c3.metric("AUC", f"{auc:.4f}")
+    c4.metric("Accuracy", f"{accuracy:.3f}")
+    c5.metric("n_estimators / max_depth", f"{n_estimators} / {max_depth if max_depth else 'None'}")
+
+    st.divider()
+
+    # 上位 N 件のスライダー
+    top_n = st.slider("表示する特徴量の数", min_value=5, max_value=min(39, len(importances)), value=20, step=1, key="feat_imp_top_n")
+
+    # 降順ソートして上位 top_n を取得
+    sorted_pairs = sorted(zip(feature_names, importances), key=lambda x: x[1], reverse=True)
+    top_pairs = sorted_pairs[:top_n]
+    names_all = [p[0] for p in sorted_pairs]
+    vals_all = [float(p[1]) for p in sorted_pairs]
+    names_top = [p[0] for p in top_pairs]
+    vals_top = [float(p[1]) for p in top_pairs]
+
+    # ── 2カラム表示: RF重要度 | LR係数 ───────────────────────────────────────
+    col_rf, col_lr = st.columns([3, 2])
+
+    with col_rf:
+        st.markdown(f"#### {model_class} 特徴量重要度（上位 {top_n} 件）")
+        # 横棒グラフ: 上位が上に来るよう逆順にする
+        fig_rf = go.Figure(go.Bar(
+            x=vals_top[::-1],
+            y=names_top[::-1],
+            orientation="h",
+            marker=dict(
+                color=vals_top[::-1],
+                colorscale="Blues",
+                showscale=False,
+            ),
+            text=[f"{v:.1f}" for v in vals_top[::-1]],
+            textposition="outside",
+        ))
+        fig_rf.update_layout(
+            height=max(350, top_n * 22),
+            margin=dict(l=10, r=60, t=10, b=20),
+            xaxis_title="重要度スコア",
+            yaxis_title="",
+        )
+        st.plotly_chart(fig_rf, use_container_width=True)
+
+    with col_lr:
+        st.markdown("#### ロジスティック回帰 係数（参照用）")
+        st.caption("scoring_core のロジスティック回帰係数（全体_既存先）。RFと比べて重視する特徴量の差異を確認できます。")
+        try:
+            from data_cases import get_effective_coeffs
+            lr_coeffs: dict = get_effective_coeffs("全体_既存先") or {}
+            if lr_coeffs:
+                # RF の特徴量名と重なる係数のみ抽出し、絶対値で降順
+                lr_rows = []
+                for feat in names_all:
+                    # 係数キーは feature_names と同名のものを探す
+                    coef_val = lr_coeffs.get(feat)
+                    if coef_val is not None:
+                        lr_rows.append({"特徴量": feat, "係数": float(coef_val)})
+                # RF になくても lr_coeffs に存在するキーも追加
+                for k, v in lr_coeffs.items():
+                    if k not in names_all and k != "intercept":
+                        lr_rows.append({"特徴量": k, "係数": float(v)})
+
+                if lr_rows:
+                    lr_df = pd.DataFrame(lr_rows).sort_values("係数", key=abs, ascending=False)
+                    # 横棒グラフ（正負で色分け）
+                    fig_lr = go.Figure(go.Bar(
+                        x=lr_df["係数"].tolist()[::-1],
+                        y=lr_df["特徴量"].tolist()[::-1],
+                        orientation="h",
+                        marker_color=[
+                            "#2563eb" if v >= 0 else "#ef4444"
+                            for v in lr_df["係数"].tolist()[::-1]
+                        ],
+                        text=[f"{v:+.3f}" for v in lr_df["係数"].tolist()[::-1]],
+                        textposition="outside",
+                    ))
+                    fig_lr.update_layout(
+                        height=max(350, len(lr_df) * 22),
+                        margin=dict(l=10, r=60, t=10, b=20),
+                        xaxis_title="係数値",
+                        yaxis_title="",
+                    )
+                    st.plotly_chart(fig_lr, use_container_width=True)
+                else:
+                    st.info("RF の特徴量名と一致するLR係数が見つかりませんでした。")
+                    # 全 LR 係数をテーブルで表示
+                    raw_df = pd.DataFrame([{"係数キー": k, "値": v} for k, v in lr_coeffs.items() if k != "intercept"])
+                    raw_df = raw_df.sort_values("値", key=abs, ascending=False)
+                    st.dataframe(raw_df, hide_index=True, use_container_width=True)
+            else:
+                st.info("ロジスティック回帰係数が見つかりませんでした（DB 未設定の可能性）。")
+        except Exception as exc:
+            st.warning(f"LR係数の読み込みに失敗しました: {exc}")
+
+    st.divider()
+
+    # ── 全特徴量の重要度テーブル ──────────────────────────────────────────────
+    with st.expander("全特徴量の重要度一覧", expanded=False):
+        all_df = pd.DataFrame({
+            "順位": range(1, len(names_all) + 1),
+            "特徴量": names_all,
+            "重要度": [round(v, 2) for v in vals_all],
+            "累積寄与率(%)": [round(sum(vals_all[:i+1]) / sum(vals_all) * 100, 1) for i in range(len(vals_all))],
+        })
+        st.dataframe(
+            all_df,
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "重要度": st.column_config.NumberColumn(format="%.2f"),
+                "累積寄与率(%)": st.column_config.ProgressColumn(min_value=0, max_value=100, format="%.1f%%"),
+            },
+        )
+
+
 # ── メインエントリ ────────────────────────────────────────────────────────────
 
 def render_model_diagnostics() -> None:
@@ -894,7 +1061,7 @@ def render_model_diagnostics() -> None:
         st.error("DBが見つかりません。")
         return
 
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 データ分布", "⚖️ 予測誤差の偏り", "🧭 UMAP誤判定", "🗺️ 損失地形"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 データ分布", "⚖️ 予測誤差の偏り", "🧭 UMAP誤判定", "🗺️ 損失地形", "🎯 特徴量重要度"])
 
     with tab1:
         _render_distribution(df)
@@ -904,3 +1071,5 @@ def render_model_diagnostics() -> None:
         _render_misjudge_map(df)
     with tab4:
         _render_landscape()
+    with tab5:
+        _render_feature_importance()

@@ -74,7 +74,7 @@ def render_bubble_chart(current_case: dict | None = None):
             ),
             text=[
                 f"{r['industry_sub']}<br>スコア:{r['score']:.0f}<br>"
-                f"スプレッド:{r['spread']:.2f}%<br>取得価格:{r['acquisition_cost']:,.0f}千円"
+                f"スプレッド:{r['spread']:.2f}%<br>取得価格:{r['acquisition_cost']/1000:,.2f}百万円"
                 for _, r in sub.iterrows()
             ],
             hovertemplate="%{text}<extra></extra>",
