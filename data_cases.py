@@ -646,12 +646,26 @@ def save_case_log(data):
                 final_result_date,
             ))
             conn.commit()
+        _trigger_ml_features_update(case_id)
         return case_id
     except Exception as e:
         import traceback
         print(f"[Error in save_case_log (SQLite)]: {e}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
         return None
+
+
+def _trigger_ml_features_update(case_id: str) -> None:
+    """新規登録・更新後に ml_features を非同期で更新する。エラーは握りつぶす。"""
+    try:
+        import importlib.util, os
+        script = os.path.join(_SCRIPT_DIR, "scripts", "update_ml_features.py")
+        spec   = importlib.util.spec_from_file_location("update_ml_features", script)
+        mod    = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        mod.update_ml_features(case_ids=[case_id])
+    except Exception:
+        pass  # メインアプリの動作を妨げない
 
 
 def update_case_field(case_id: str, key: str, value: object) -> bool:
@@ -695,6 +709,7 @@ def update_case_field(case_id: str, key: str, value: object) -> bool:
 
             cursor.execute(f"UPDATE past_cases SET {update_cols} WHERE id = ?", tuple(update_args))
             conn.commit()
+        _trigger_ml_features_update(case_id)
         return True
     except Exception as e:
         import traceback
