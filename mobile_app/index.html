@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>めぶきちゃん簡易審査</title>
+  <style>
+    :root {
+      --navy:  #1e3a5f;
+      --blue:  #2563eb;
+      --green: #16a34a;
+      --red:   #dc2626;
+      --amber: #d97706;
+      --bg:    #f0f4f8;
+      --card:  #ffffff;
+      --text:  #1e293b;
+      --muted: #64748b;
+      --border:#cbd5e1;
+      --radius:14px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .wrapper {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 0 0 40px;
+    }
+
+    /* ─── ヘッダー ─── */
+    .header {
+      background: var(--navy);
+      color: #fff;
+      padding: 28px 20px 22px;
+      text-align: center;
+    }
+    .header-icon {
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+    .header-icon img {
+      width: 80px;
+      height: 80px;
+      object-fit: cover;
+      border-radius: 50%;
+      border: 3px solid rgba(255,255,255,0.4);
+    }
+    .header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .header p {
+      font-size: 13px;
+      opacity: 0.75;
+      margin-top: 6px;
+    }
+
+    /* ─── カード ─── */
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      margin: 16px 12px 0;
+      padding: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.07);
+    }
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 16px;
+    }
+
+    /* ─── フォーム ─── */
+    .field { margin-bottom: 16px; }
+    .field:last-child { margin-bottom: 0; }
+
+    .field label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .field label .icon { font-size: 18px; }
+
+    .field input,
+    .field select {
+      width: 100%;
+      height: 52px;
+      padding: 0 14px;
+      font-size: 16px;
+      font-weight: 500;
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      background: #f8fafc;
+      transition: border-color .2s, box-shadow .2s;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    .field select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2364748b' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+      padding-right: 40px;
+      cursor: pointer;
+    }
+    .field input:focus,
+    .field select:focus {
+      outline: none;
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(37,99,235,.15);
+      background: #fff;
+    }
+    .field .unit {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 4px;
+      text-align: right;
+    }
+
+    /* ─── ボタン行 ─── */
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      margin: 16px 12px 0;
+    }
+    .btn-row .btn { flex: 1; width: auto; margin: 0; }
+    .btn-clear {
+      flex: 0 0 auto !important;
+      width: auto !important;
+      padding: 0 18px;
+      font-size: 15px;
+      background: #64748b;
+    }
+    .btn-clear:hover  { background: #475569 !important; }
+    .btn-clear:active { transform: scale(0.98); }
+
+    /* ─── 免責文 ─── */
+    .disclaimer {
+      margin-top: 14px;
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.6;
+      border-top: 1px solid var(--border);
+      padding-top: 10px;
+    }
+
+    /* ─── ボタン ─── */
+    .btn {
+      width: calc(100% - 24px);
+      margin: 16px 12px 0;
+      height: 58px;
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      background: var(--blue);
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      transition: background .2s, transform .1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn:hover  { background: #1d4ed8; }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { background: #93c5fd; cursor: not-allowed; }
+
+    /* ─── ローディング ─── */
+    .spinner {
+      width: 20px; height: 20px;
+      border: 3px solid rgba(255,255,255,.4);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      display: none;
+    }
+    .btn.loading .spinner { display: block; }
+    .btn.loading .btn-text { display: none; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── 結果カード ─── */
+    #result { display: none; }
+    #result.visible { display: block; }
+
+    .result-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .score-block {
+      text-align: center;
+      flex: 1;
+    }
+    .score-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 4px;
+    }
+    .score-value {
+      font-size: 72px;
+      font-weight: 800;
+      line-height: 1;
+      color: var(--navy);
+    }
+    .score-unit {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 6px 18px;
+      border-radius: 999px;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+    .badge-green  { background: #dcfce7; color: var(--green); }
+    .badge-amber  { background: #fef3c7; color: var(--amber); }
+    .badge-red    { background: #fee2e2; color: var(--red); }
+
+    .prob-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #f8fafc;
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-top: 16px;
+    }
+    .prob-row .label {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .prob-row .value {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--navy);
+    }
+
+    /* ─── プログレスバー ─── */
+    .progress-wrap {
+      margin-top: 16px;
+    }
+    .progress-bg {
+      height: 12px;
+      background: #e2e8f0;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%;
+      border-radius: 999px;
+      transition: width 1s cubic-bezier(.4,0,.2,1);
+      width: 0%;
+    }
+    .progress-bar.green { background: var(--green); }
+    .progress-bar.amber { background: var(--amber); }
+    .progress-bar.red   { background: var(--red); }
+    .progress-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    /* ─── 推奨金利セクション ─── */
+    .rate-section {
+      margin-top: 20px;
+      padding: 18px;
+      background: #fffbeb;
+      border: 2px solid #fde68a;
+      border-radius: 12px;
+    }
+    .rate-section-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--amber);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 10px;
+    }
+    .rate-main {
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+      margin-bottom: 6px;
+    }
+    .rate-main-value {
+      font-size: 52px;
+      font-weight: 800;
+      color: var(--amber);
+      line-height: 1;
+    }
+    .rate-main-unit {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--amber);
+    }
+    .rate-range-text {
+      font-size: 15px;
+      font-weight: 600;
+      color: #92400e;
+      margin-bottom: 10px;
+    }
+    .rate-detail {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .rate-chip {
+      background: #fef3c7;
+      border-radius: 999px;
+      padding: 4px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #78350f;
+    }
+
+    /* ─── エラー ─── */
+    .error-msg {
+      display: none;
+      margin: 16px 12px 0;
+      background: #fee2e2;
+      color: var(--red);
+      border-radius: 10px;
+      padding: 14px 16px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .error-msg.visible { display: block; }
+
+    /* ─── フッター ─── */
+    .footer {
+      text-align: center;
+      margin-top: 28px;
+      font-size: 12px;
+      color: var(--muted);
+      padding: 0 20px;
+    }
+  </style>
+</head>
+<body>
+<div class="wrapper">
+
+  <!-- ヘッダー -->
+  <div class="header">
+    <div class="header-icon"><img src="mebuki.png" alt="めぶきちゃん"></div>
+    <h1>めぶきちゃん簡易審査</h1>
+    <p>業種・財務・取引情報でリース成約スコアを診断</p>
+  </div>
+
+  <!-- 入力フォーム -->
+  <div class="card">
+    <div class="card-title">財務情報を入力</div>
+
+    <div class="field">
+      <label><span class="icon">🏢</span>業種</label>
+      <select id="industry">
+        <option value="R サービス業(他に分類されないもの)">R サービス業（他に分類されないもの）</option>
+        <option value="D 建設業">D 建設業</option>
+        <option value="E 製造業">E 製造業</option>
+        <option value="H 運輸業・郵便業">H 運輸業・郵便業</option>
+        <option value="I 卸売業・小売業">I 卸売業・小売業</option>
+        <option value="M 宿泊業・飲食サービス業">M 宿泊業・飲食サービス業</option>
+        <option value="P 医療・福祉">P 医療・福祉</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">🤝</span>顧客区分</label>
+      <select id="customer_type">
+        <option value="既存先">既存先</option>
+        <option value="新規先">新規先</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">📅</span>リース期間</label>
+      <select id="lease_term">
+        <option value="24">24ヶ月（2年）</option>
+        <option value="36">36ヶ月（3年）</option>
+        <option value="48">48ヶ月（4年）</option>
+        <option value="60" selected>60ヶ月（5年）</option>
+        <option value="72">72ヶ月（6年）</option>
+        <option value="84">84ヶ月（7年）</option>
+        <option value="120">120ヶ月（10年）</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">💴</span>年商</label>
+      <input type="number" id="nenshu" placeholder="例: 500" inputmode="decimal">
+      <div class="unit">百万円</div>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">💰</span>売上総利益</label>
+      <input type="number" id="gross_profit" placeholder="例: 50" inputmode="decimal">
+      <div class="unit">百万円</div>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">📊</span>経常利益</label>
+      <input type="number" id="ord_profit" placeholder="例: 20（赤字: -5）">
+      <div class="unit">百万円</div>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">📈</span>当期純利益</label>
+      <input type="number" id="net_income" placeholder="例: 15（赤字: -3）">
+      <div class="unit">百万円</div>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">🔧</span>減価償却費</label>
+      <input type="number" id="dep_expense" placeholder="例: 5" inputmode="decimal">
+      <div class="unit">百万円</div>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">🚜</span>リース取得価額</label>
+      <input type="number" id="acquisition_cost" placeholder="例: 10" inputmode="decimal">
+      <div class="unit">百万円</div>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">📋</span>リース与信残高</label>
+      <input type="number" id="lease_credit" placeholder="例: 30" inputmode="decimal">
+      <div class="unit">百万円</div>
+    </div>
+  </div>
+
+  <!-- ボタン行 -->
+  <div class="btn-row">
+    <button class="btn" id="submit-btn" onclick="runPredict()">
+      <span class="btn-text">🔍 審査実行</span>
+      <div class="spinner"></div>
+    </button>
+    <button class="btn btn-clear" onclick="clearAll()">🗑 データ抹消</button>
+  </div>
+
+  <!-- エラー表示 -->
+  <div class="error-msg" id="error-msg"></div>
+
+  <!-- 結果カード -->
+  <div class="card" id="result">
+    <div class="card-title">審査結果</div>
+
+    <div class="result-header">
+      <div class="score-block">
+        <div class="score-label">スコア</div>
+        <div>
+          <span class="score-value" id="score-val">—</span>
+          <span class="score-unit"> / 100</span>
+        </div>
+      </div>
+      <div style="flex:0 0 auto; padding-left:16px;">
+        <span class="badge" id="judgment-badge">—</span>
+      </div>
+    </div>
+
+    <div class="prob-row">
+      <span class="label">成約確率</span>
+      <span class="value" id="prob-val">—</span>
+    </div>
+
+    <div class="progress-wrap">
+      <div class="progress-bg">
+        <div class="progress-bar" id="progress-bar"></div>
+      </div>
+      <div class="progress-labels">
+        <span>0</span><span>40</span><span>60</span><span>100</span>
+      </div>
+    </div>
+
+    <p class="disclaimer">あくまでも成約となる可能性です。業績良好なユーザーでも、成約できなければ低い点数となります。</p>
+
+    <!-- 推奨金利セクション -->
+    <div class="rate-section" id="rate-section" style="display:none;">
+      <div class="rate-section-title">💰 推奨提示金利</div>
+      <div class="rate-main">
+        <span class="rate-main-value" id="rate-main-val">—</span>
+        <span class="rate-main-unit">%</span>
+      </div>
+      <div class="rate-range-text" id="rate-range-text">レンジ：— 〜 —</div>
+      <div class="rate-detail">
+        <span class="rate-chip" id="rate-base-chip">基準金利：—%</span>
+        <span class="rate-chip" id="rate-spread-chip">スプレッド：—%</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    ※ この診断は参考値です。正式審査は別途行います。
+  </div>
+
+</div>
+
+<script>
+  const API_URL = "/predict";
+
+  async function runPredict() {
+    const btn = document.getElementById("submit-btn");
+    const errEl = document.getElementById("error-msg");
+    const resultEl = document.getElementById("result");
+
+    // 入力値取得
+    const vals = {
+      industry:         document.getElementById("industry").value,
+      customer_type:    document.getElementById("customer_type").value,
+      lease_term:       parseFloat(document.getElementById("lease_term").value)       || 60,
+      nenshu:           parseFloat(document.getElementById("nenshu").value)           || 0,
+      gross_profit:     parseFloat(document.getElementById("gross_profit").value)     || 0,
+      ord_profit:       parseFloat(document.getElementById("ord_profit").value)       || 0,
+      net_income:       parseFloat(document.getElementById("net_income").value)       || 0,
+      dep_expense:      parseFloat(document.getElementById("dep_expense").value)      || 0,
+      acquisition_cost: parseFloat(document.getElementById("acquisition_cost").value) || 0,
+      lease_credit:     parseFloat(document.getElementById("lease_credit").value)     || 0,
+    };
+
+    // UI: ローディング開始
+    btn.disabled = true;
+    btn.classList.add("loading");
+    errEl.classList.remove("visible");
+    resultEl.classList.remove("visible");
+
+    try {
+      const resp = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(vals),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+        throw new Error(err.error || `HTTP ${resp.status}`);
+      }
+
+      const data = await resp.json();
+      showResult(data);
+
+    } catch (e) {
+      errEl.textContent = "⚠️ " + (e.message || "通信エラーが発生しました");
+      errEl.classList.add("visible");
+    } finally {
+      btn.disabled = false;
+      btn.classList.remove("loading");
+    }
+  }
+
+  function showResult({ score, probability, judgment, recommended_rate, base_rate, spread_pred, rate_range }) {
+    document.getElementById("score-val").textContent = score;
+    document.getElementById("prob-val").textContent = (probability * 100).toFixed(1) + "%";
+
+    const badge = document.getElementById("judgment-badge");
+    const bar   = document.getElementById("progress-bar");
+
+    badge.textContent = judgment;
+    badge.className = "badge";
+    bar.className = "progress-bar";
+
+    if (judgment === "承認") {
+      badge.classList.add("badge-green");
+      bar.classList.add("green");
+    } else if (judgment === "条件付") {
+      badge.classList.add("badge-amber");
+      bar.classList.add("amber");
+    } else {
+      badge.classList.add("badge-red");
+      bar.classList.add("red");
+    }
+
+    // アニメーション用に少し遅延
+    setTimeout(() => { bar.style.width = score + "%"; }, 50);
+
+    // 推奨金利セクション
+    const rateSection = document.getElementById("rate-section");
+    if (recommended_rate != null) {
+      document.getElementById("rate-main-val").textContent  = recommended_rate.toFixed(2);
+      document.getElementById("rate-range-text").textContent =
+        `レンジ：${rate_range.low.toFixed(2)}% 〜 ${rate_range.high.toFixed(2)}%`;
+      document.getElementById("rate-base-chip").textContent   = `基準金利：${base_rate.toFixed(2)}%`;
+      document.getElementById("rate-spread-chip").textContent = `スプレッド：${spread_pred.toFixed(2)}%`;
+      rateSection.style.display = "block";
+    } else {
+      rateSection.style.display = "none";
+    }
+
+    document.getElementById("result").classList.add("visible");
+    document.getElementById("result").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function clearAll() {
+    ["nenshu", "gross_profit", "ord_profit", "net_income",
+     "dep_expense", "acquisition_cost", "lease_credit"].forEach(id => {
+      document.getElementById(id).value = "";
+    });
+    document.getElementById("industry").selectedIndex = 0;
+    document.getElementById("customer_type").selectedIndex = 0;
+    document.getElementById("lease_term").value = "60";
+    document.getElementById("result").classList.remove("visible");
+    document.getElementById("rate-section").style.display = "none";
+    document.getElementById("error-msg").classList.remove("visible");
+    document.getElementById("nenshu").focus();
+  }
+
+  // Enter キーで送信
+  document.addEventListener("keydown", e => {
+    if (e.key === "Enter") runPredict();
+  });
+</script>
+</body>
+</html>
