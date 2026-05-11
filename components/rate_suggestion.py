@@ -84,6 +84,30 @@ def _normalize_rate(v) -> float:
         return 0.0
 
 
+def _case_month(case: dict) -> str | None:
+    for key in ("final_result_date", "registration_date", "timestamp"):
+        raw = str(case.get(key) or "")
+        if len(raw) >= 7 and raw[:4].isdigit() and raw[4] in ("-", "/"):
+            return raw[:7].replace("/", "-")
+    return None
+
+
+def _infer_base_rate(case: dict, fallback: float = 0.0) -> float:
+    """base_rate_at_time 欠損時に、案件月とリース期間から基準金利を補完する。"""
+    base_rate = _normalize_rate(case.get("base_rate_at_time", 0))
+    if base_rate > 0:
+        return base_rate
+    try:
+        from base_rate_master import get_base_rate_by_term
+
+        inputs = case.get("inputs") or {}
+        lease_term = int(inputs.get("lease_term") or 60)
+        inferred = get_base_rate_by_term(month=_case_month(case), lease_term_months=lease_term)
+        return float(inferred) if inferred is not None else fallback
+    except Exception:
+        return fallback
+
+
 def _gyoshu_color(industry: str) -> str:
     """業種名からカラーコードを返す"""
     for key, color in GYOSHU_COLORS.items():
@@ -113,7 +137,7 @@ def _load_rate_dataframe() -> pd.DataFrame:
             if final_rate <= 0:
                 continue
 
-            base_rate = _normalize_rate(c.get("base_rate_at_time", 0))
+            base_rate = _infer_base_rate(c)
             if base_rate > 0:
                 spread = final_rate - base_rate
             else:

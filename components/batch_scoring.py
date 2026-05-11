@@ -9,6 +9,7 @@ import numpy as np
 
 from data_cases import get_effective_coeffs, get_score_weights
 from constants import APPROVAL_LINE, REVIEW_LINE
+from grade_normalizer import is_excluded_grade, normalize_grade
 from industry_normalizer import normalize_industry_major, normalize_industry_sub
 
 
@@ -55,7 +56,7 @@ _CSV_COLUMNS = [
     "銀行借入(百万円)",
     "リース残高(百万円)",
     "契約件数",
-    "格付",               # "1-3", "4-6", "③要注意以下", "9(要注意)", "10(破綻懸念)", "無格付"
+    "格付",               # 入力時に "1-3", "4-6", "要注意先", "無格付" へ自動正規化
     # ── 定性スコアリング（constants.py の QUALITATIVE_SCORING_CORRECTION_ITEMS と完全一致）
     # ※ 0〜4 の整数で入力。空欄可（未入力扱い）
     "定性_設立経営年数",   # 0:3年未満 / 1:3〜5年 / 2:5〜10年 / 3:10〜20年 / 4:20年以上         [重み10%]
@@ -273,6 +274,96 @@ def _compute_auto_bench_ind_scores(inputs: dict) -> tuple[float, float, str]:
 # 1件分のバッチスコア計算
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _excluded_grade_payload(row: dict, raw_grade: str) -> dict:
+    industry_major = normalize_industry_major(row.get("業種大分類")) or "D 建設業"
+    industry_sub = normalize_industry_sub(row.get("業種小分類"), row.get("業種大分類")) or "06 総合工事業"
+    final_status_raw = str(row.get("最終結果") or "").strip()
+    final_status = final_status_raw if final_status_raw in ("成約", "失注") else "未登録"
+    _shinsa_date = _date_text(row, "審査日")
+    _registration_date = _date_text(row, "データ登録日") or _shinsa_date
+    _estimate_sent_date = _date_text(row, "見積提示日")
+    _customer_response_date = _date_text(row, "顧客反応日")
+    _final_result_date = _date_text(row, "結果日")
+    _shinsa_timestamp = f"{_shinsa_date}T00:00:00" if _shinsa_date else None
+    inputs = {
+        "nenshu": _num(row, "売上高"),
+        "gross_profit": _num(row, "売上総利益"),
+        "op_profit": _num(row, "営業利益"),
+        "ord_profit": _num(row, "経常利益"),
+        "net_income": _num(row, "当期純利益"),
+        "net_assets": _num(row, "純資産"),
+        "total_assets": _num(row, "総資産"),
+        "machines": _num(row, "機械装置"),
+        "other_assets": _num(row, "その他資産"),
+        "dep_expense": _num(row, "減価償却費"),
+        "depreciation": _num(row, "減価償却累計"),
+        "rent_expense": _num(row, "支払リース料"),
+        "rent": _num(row, "地代家賃"),
+        "bank_credit": _num(row, "銀行借入"),
+        "lease_credit": _num(row, "リース残高"),
+        "contracts": int(row.get("契約件数") or 0),
+        "grade": raw_grade,
+        "customer_type": str(row.get("取引区分") or "既存先"),
+        "industry_major": industry_major,
+        "industry_sub": industry_sub,
+        "sales_dept": str(row.get("営業担当部署") or "未設定"),
+        "main_bank": str(row.get("メイン取引銀行") or "なし"),
+        "competitor": str(row.get("競合状況") or "競合なし"),
+        "competitor_rate": float(row.get("競合提示金利(%)") or 0) / 100.0,
+        "contract_type": str(row.get("契約種別") or "一般"),
+        "deal_source": str(row.get("紹介元") or "その他"),
+        "lease_term": int(row.get("リース期間(月)") or 60),
+        "acceptance_year": int(row.get("検収時期(年)") or 2026),
+        "acquisition_cost": _num(row, "取得価格"),
+        "lease_asset_id": str(row.get("物件ID（任意）") or "").strip(),
+        "lease_asset_name": str(row.get("物件名（任意）") or "").strip(),
+    }
+    return {
+        "company_name": str(row.get("企業名") or ""),
+        "company_no": str(row.get("取引先ID") or ""),
+        "borrower_name": str(row.get("企業名") or ""),
+        "industry_major": industry_major,
+        "industry_sub": industry_sub,
+        "customer_type": inputs["customer_type"],
+        "main_bank": inputs["main_bank"],
+        "competitor": inputs["competitor"],
+        "competitor_rate": inputs["competitor_rate"],
+        "sales_dept": inputs["sales_dept"],
+        "final_status": final_status,
+        "timestamp": _shinsa_timestamp,
+        "registration_date": _registration_date or None,
+        "estimate_sent_date": _estimate_sent_date or None,
+        "customer_response_date": _customer_response_date or None,
+        "final_result_date": _final_result_date or None,
+        "inputs": inputs,
+        "result": {
+            "score": None,
+            "user_eq": None,
+            "hantei": "信用リスク群分離",
+            "credit_risk_group_score": 100.0,
+            "credit_risk_group_level": "excluded_grade",
+            "credit_risk_group_flag": True,
+            "credit_risk_warnings": ["格付が 8-3 / 9 / 10 に該当するため信用リスク群DATAへ分離保存"],
+        },
+        "financials": {
+            "nenshu": inputs["nenshu"],
+            "gross_profit": inputs["gross_profit"],
+            "op_profit": inputs["op_profit"],
+            "ord_profit": inputs["ord_profit"],
+            "net_income": inputs["net_income"],
+            "net_assets": inputs["net_assets"],
+            "assets": inputs["total_assets"],
+            "machines": inputs["machines"],
+            "other_assets": inputs["other_assets"],
+            "bank_credit": inputs["bank_credit"],
+            "lease_credit": inputs["lease_credit"],
+            "depreciation": inputs["depreciation"],
+        },
+        "original_grade": raw_grade,
+        "excluded_reason": "grade_8-3_9_10",
+    }
+
+
 def _score_one(row: dict) -> dict:
     """
     1案件分のスコアを計算して返す。
@@ -281,6 +372,36 @@ def _score_one(row: dict) -> dict:
     """
     try:
         from scoring_core import run_quick_scoring
+        raw_grade = row.get("格付") or "1-3"
+        if is_excluded_grade(raw_grade):
+            excluded_payload = _excluded_grade_payload(row, str(raw_grade))
+            return {
+                "UI表示用": {
+                    "取引先ID": str(row.get("取引先ID") or ""),
+                    "企業名": str(row.get("企業名") or ""),
+                    "借手スコア": None,
+                    "物件スコア": None,
+                    "物件グレード": None,
+                    "物件カテゴリ": None,
+                    "スコアリング": "信用リスク群分離",
+                    "総合スコア": None,
+                    "bench_score": None,
+                    "ind_score": None,
+                    "ind_name": None,
+                    "信用リスク群スコア": 100.0,
+                    "信用リスク群判定": "excluded_grade",
+                    "Q_risk": None,
+                    "強警戒シグナル": "該当",
+                    "信用リスク警告": "格付が 8-3 / 9 / 10 に該当するため信用リスク群DATAへ分離保存",
+                    "PD概算(%)": None,
+                    "自己資本比率(%)": None,
+                    "営業利益率(%)": None,
+                    "判定": "信用リスク群分離",
+                    "エラー": "",
+                },
+                "DB保存用": None,
+                "信用リスク群保存用": excluded_payload,
+            }
         
         inputs = {
             "nenshu": _num(row, "売上高"),
@@ -299,7 +420,7 @@ def _score_one(row: dict) -> dict:
             "bank_credit": _num(row, "銀行借入"),
             "lease_credit": _num(row, "リース残高"),
             "contracts": int(row.get("契約件数") or 0),
-            "grade": str(row.get("格付") or "1-3"),
+            "grade": normalize_grade(raw_grade),
             "customer_type": str(row.get("取引区分") or "既存先"),
             "industry_major": normalize_industry_major(row.get("業種大分類")) or "D 建設業",
             "industry_sub": (
@@ -367,20 +488,10 @@ def _score_one(row: dict) -> dict:
 
         # PD概算 (格付からマッピング)
         grade_to_pd = {
-            # グループ表記
-            "1-3": 0.5, "4-6": 2.0, "7-8": 15.0,
-            # 個別数字格付
-            "1": 0.5, "2": 0.5, "3": 0.5,
-            "4": 2.0, "5": 2.0, "6": 2.0,
-            # 要注意先系
-            "8_1要注意先": 15.0, "8-1要注意先": 15.0,
-            "8_2要注意先": 15.0, "8-2要注意先": 15.0,
+            "1-3": 0.5,
+            "4-6": 2.0,
             "要注意先": 15.0,
-            "③要注意以下": 15.0, "9(要注意)": 15.0,
-            # 破綻懸念
-            "10(破綻懸念)": 40.0,
-            # 無格付
-            "無格付": 5.0, "④無格付": 5.0,
+            "無格付": 5.0,
         }
         pd_pct = grade_to_pd.get(inputs["grade"], 5.0)
         
@@ -440,14 +551,15 @@ def _score_one(row: dict) -> dict:
         }
 
         final_rate = _plain_num(row, "獲得レート(%)")
-        base_rate_at_time = _plain_num(row, "基準金利(%)", 2.1)
+        base_rate_at_time = _plain_num(row, "基準金利(%)", 0.0)
         loan_conditions_raw = _text(row, "承認条件")
         loan_conditions = [x.strip() for x in loan_conditions_raw.replace("、", ",").split(",") if x.strip()]
         bench_score_input, ind_score_input, ind_name = _compute_auto_bench_ind_scores(inputs)
         if final_rate > 0:
             db_data["final_rate"] = final_rate
-            db_data["base_rate_at_time"] = base_rate_at_time
-            if final_status == "成約":
+            if base_rate_at_time > 0:
+                db_data["base_rate_at_time"] = base_rate_at_time
+            if final_status == "成約" and base_rate_at_time > 0:
                 db_data["winning_spread"] = final_rate - base_rate_at_time
         if _text(row, "失注理由"):
             db_data["lost_reason"] = _text(row, "失注理由")
@@ -532,6 +644,11 @@ def _score_one(row: dict) -> dict:
                 "bench_score":   bench_score_input,
                 "ind_score":     ind_score_input,
                 "ind_name":      ind_name,
+                "信用リスク群スコア": res.get("credit_risk_group_score"),
+                "信用リスク群判定": res.get("credit_risk_group_level"),
+                "Q_risk": res.get("quantum_risk"),
+                "強警戒シグナル": "該当" if res.get("credit_quantum_strong_warning") else "",
+                "信用リスク警告": " / ".join(res.get("credit_risk_warnings") or []),
                 "PD概算(%)":      pd_pct,
                 "自己資本比率(%)": round(res["user_equity_ratio"], 1),
                 "営業利益率(%)":   round(res["user_op_margin"], 1),
@@ -548,6 +665,8 @@ def _score_one(row: dict) -> dict:
                 "借手スコア": None, "物件スコア": None, "物件グレード": None,
                 "物件カテゴリ": None, "スコアリング": None,
                 "総合スコア": None, "PD概算(%)": None,
+                "信用リスク群スコア": None, "信用リスク群判定": None, "信用リスク警告": None,
+                "Q_risk": None, "強警戒シグナル": None,
                 "bench_score": None, "ind_score": None, "ind_name": None,
                 "自己資本比率(%)": None, "営業利益率(%)": None,
                 "判定": "エラー", "エラー": f"{e}",
@@ -628,12 +747,15 @@ def render_batch_scoring():
     if st.button("🚀 一括スコアリング実行", type="primary"):
         ui_results = []
         db_results = []
+        excluded_grade_results = []
         prog = st.progress(0, text="スコアリング中...")
         for i, (_, row) in enumerate(df_in.iterrows()):
             out = _score_one(row.to_dict())
             ui_results.append(out["UI表示用"])
             if out.get("DB保存用"):
                 db_results.append(out["DB保存用"])
+            if out.get("信用リスク群保存用"):
+                excluded_grade_results.append(out["信用リスク群保存用"])
             prog.progress((i + 1) / len(df_in), text=f"{i+1}/{len(df_in)} 件処理中...")
         prog.empty()
 
@@ -644,7 +766,7 @@ def render_batch_scoring():
         df_out = pd.concat([df_in.reset_index(drop=True), ui_df], axis=1)
 
         # データベース保存処理
-        if save_to_db and db_results:
+        if save_to_db and (db_results or excluded_grade_results):
             # ── DB保存前に必ずバックアップを取得 ──────────────────────────
             try:
                 from backup_manager import run_backup
@@ -658,7 +780,7 @@ def render_batch_scoring():
                 st.warning(f"⚠️ バックアップに失敗しました（保存は続行）: {bk_err}")
             # ─────────────────────────────────────────────────────────────
 
-            from data_cases import save_case_log
+            from data_cases import save_case_log, save_excluded_grade_case
             saved_count = 0
             with_result = 0
             for db_data in db_results:
@@ -666,8 +788,14 @@ def render_batch_scoring():
                     saved_count += 1
                     if db_data.get("final_status") in ("成約", "失注"):
                         with_result += 1
+            excluded_saved_count = 0
+            for excluded_data in excluded_grade_results:
+                if save_excluded_grade_case(excluded_data):
+                    excluded_saved_count += 1
             if saved_count > 0:
                 st.success(f"✅ {saved_count} 件をデータベースに保存しました（うち成約/失注あり: {with_result} 件）")
+            if excluded_saved_count > 0:
+                st.warning(f"⚠️ {excluded_saved_count} 件を信用リスク群DATAへ分離保存しました")
             
             # 成約/失注データが十分あれば係数自動再学習を実行
             if with_result > 0:

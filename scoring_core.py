@@ -661,6 +661,47 @@ def run_quick_scoring(inputs: dict) -> dict:
     if used_default_asset_score:
         asset_score_warnings.append("物件スコア未入力のためデフォルト値(50)を使用")
 
+    credit_risk_group = {
+        "score": 0.0,
+        "level": "unavailable",
+        "flag": False,
+        "reasons": [],
+        "available": False,
+    }
+    try:
+        from credit_risk_detector import detect_credit_risk_group
+
+        credit_risk_group = detect_credit_risk_group(inputs)
+    except Exception as exc:
+        credit_risk_group = {
+            "score": 0.0,
+            "level": "unavailable",
+            "flag": False,
+            "reasons": [f"信用リスク群検知を利用できません: {exc}"],
+            "available": False,
+        }
+    credit_risk_warnings = credit_risk_group.get("reasons", []) if credit_risk_group.get("flag") else []
+    quantum_risk_score = None
+    try:
+        from quantum_analysis_module import QuantumGate
+
+        _q_model_path = os.path.join(_SCRIPT_DIR, "data", "quantum_model.joblib")
+        if os.path.exists(_q_model_path):
+            _q_gate = QuantumGate.load_cached(_q_model_path)
+            quantum_risk_score = float(_q_gate.predict({"inputs": inputs}).get("quantum_risk", 0.0))
+    except Exception:
+        quantum_risk_score = None
+
+    credit_quantum_strong_warning = (
+        credit_risk_group.get("score", 0.0) >= 70.0
+        and quantum_risk_score is not None
+        and quantum_risk_score >= 60.0
+    )
+    if credit_quantum_strong_warning:
+        credit_risk_warnings.append(
+            f"強警戒: 信用リスク群スコア {credit_risk_group.get('score', 0.0):.1f} かつ Q_risk {quantum_risk_score:.1f}"
+        )
+
     # ── DSCR / インタレスト・カバレッジ（次回再学習の特徴量候補）──
     dscr_approx = compute_dscr_approx(inputs)
     interest_coverage = compute_interest_coverage(inputs)
@@ -680,6 +721,13 @@ def run_quick_scoring(inputs: dict) -> dict:
         "approval_line": APPROVAL_LINE,
         "used_default_asset_score": used_default_asset_score,
         "asset_score_warnings": asset_score_warnings,
+        "credit_risk_group_score": credit_risk_group.get("score", 0.0),
+        "credit_risk_group_level": credit_risk_group.get("level", "unavailable"),
+        "credit_risk_group_flag": bool(credit_risk_group.get("flag")),
+        "credit_risk_group_reasons": credit_risk_group.get("reasons", []),
+        "credit_risk_warnings": credit_risk_warnings,
+        "quantum_risk": quantum_risk_score,
+        "credit_quantum_strong_warning": credit_quantum_strong_warning,
         # 直感スコア関連
         "intuition_score": intuition_score,
         "intuition_adj": intuition_adj,

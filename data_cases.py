@@ -53,6 +53,57 @@ DEFAULT_WEIGHT_QUANT = 0.6
 DEFAULT_WEIGHT_QUAL = 0.4
 
 
+def _normalize_rate_value(value) -> float:
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if v <= 0:
+        return 0.0
+    if v > 1000:
+        return v / 1000.0
+    if v > 100:
+        return v / 100.0
+    if v < 0.1:
+        return v * 100.0
+    return v
+
+
+def _case_month_for_base_rate(data: dict) -> str | None:
+    for key in ("final_result_date", "registration_date", "timestamp"):
+        raw = str(data.get(key) or "")
+        if len(raw) >= 7 and raw[:4].isdigit() and raw[4] in ("-", "/"):
+            return raw[:7].replace("/", "-")
+    return None
+
+
+def _infer_base_rate_at_time(data: dict) -> float:
+    current = _normalize_rate_value(data.get("base_rate_at_time"))
+    if current > 0:
+        return current
+    try:
+        from base_rate_master import get_base_rate_by_term
+
+        inputs = data.get("inputs") or {}
+        lease_term = int(inputs.get("lease_term") or data.get("lease_term") or 60)
+        inferred = get_base_rate_by_term(month=_case_month_for_base_rate(data), lease_term_months=lease_term)
+        return float(inferred) if inferred is not None else 0.0
+    except Exception:
+        return 0.0
+
+
+def _enrich_rate_fields(data: dict) -> None:
+    """保存時に基準金利を補完し、獲得スプレッドを再計算する。"""
+    base_rate = _infer_base_rate_at_time(data)
+    if base_rate > 0:
+        data["base_rate_at_time"] = base_rate
+
+    final_rate = _normalize_rate_value(data.get("final_rate"))
+    if final_rate > 0 and base_rate > 0:
+        data["final_rate"] = final_rate
+        data["winning_spread"] = round(final_rate - base_rate, 6)
+
+
 def load_consultation_memory(max_entries=20):
     """AI審査オフィサー相談のメモを読み込む。直近 max_entries 件を返す。"""
     if not os.path.exists(CONSULTATION_MEMORY_FILE):
@@ -568,6 +619,7 @@ def save_case_log(data):
         data["final_status"] = "未登録"
     if not data.get("registration_date"):
         data["registration_date"] = str(data.get("timestamp", ""))[:10] or datetime.datetime.now().strftime("%Y-%m-%d")
+    _enrich_rate_fields(data)
     
     industry_sub = data.get("industry_sub", "")
     score, user_eq = None, None
@@ -651,6 +703,88 @@ def save_case_log(data):
     except Exception as e:
         import traceback
         print(f"[Error in save_case_log (SQLite)]: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        return None
+
+
+def save_excluded_grade_case(data):
+    """信用リスク群（格付8-3/9/10）を専用テーブルに保存する。失敗時は None。"""
+    import sqlite3
+    import uuid
+
+    case_id = data.get("id") or datetime.datetime.now().strftime("%Y%m%d%H%M%S%f") + "_" + uuid.uuid4().hex[:8]
+    data["id"] = case_id
+    if not data.get("timestamp"):
+        data["timestamp"] = datetime.datetime.now().isoformat()
+    if "final_status" not in data or not data["final_status"]:
+        data["final_status"] = "未登録"
+    if not data.get("registration_date"):
+        data["registration_date"] = str(data.get("timestamp", ""))[:10] or datetime.datetime.now().strftime("%Y-%m-%d")
+    _enrich_rate_fields(data)
+
+    res = data.get("result", {})
+    score = res.get("score") if isinstance(res, dict) else None
+    user_eq = res.get("user_eq") if isinstance(res, dict) else None
+    try:
+        score_val = float(score) if score is not None else None
+    except (TypeError, ValueError):
+        score_val = None
+    try:
+        user_eq_val = float(user_eq) if user_eq is not None else None
+    except (TypeError, ValueError):
+        user_eq_val = None
+
+    try:
+        json_str = json.dumps(data, ensure_ascii=False, cls=CustomJSONEncoder)
+        from contextlib import closing
+        with closing(sqlite3.connect(DB_PATH)) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS excluded_grade_cases (
+                    id TEXT PRIMARY KEY,
+                    timestamp TEXT,
+                    industry_sub TEXT,
+                    score REAL,
+                    user_eq REAL,
+                    final_status TEXT,
+                    data TEXT,
+                    sales_dept TEXT,
+                    registration_date TEXT,
+                    estimate_sent_date TEXT,
+                    customer_response_date TEXT,
+                    final_result_date TEXT,
+                    original_grade TEXT,
+                    excluded_reason TEXT,
+                    extracted_at TEXT
+                )
+            """)
+            conn.execute("""
+                INSERT OR REPLACE INTO excluded_grade_cases
+                (id, timestamp, industry_sub, score, user_eq, final_status, data, sales_dept,
+                 registration_date, estimate_sent_date, customer_response_date, final_result_date,
+                 original_grade, excluded_reason, extracted_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                case_id,
+                data["timestamp"],
+                data.get("industry_sub", ""),
+                score_val,
+                user_eq_val,
+                data["final_status"],
+                json_str,
+                data.get("sales_dept", "未設定") or "未設定",
+                data.get("registration_date"),
+                data.get("estimate_sent_date"),
+                data.get("customer_response_date"),
+                data.get("final_result_date"),
+                data.get("original_grade"),
+                data.get("excluded_reason", "grade_8-3_9_10"),
+                data.get("extracted_at") or datetime.datetime.now().isoformat(timespec="seconds"),
+            ))
+            conn.commit()
+        return case_id
+    except Exception as e:
+        import traceback
+        print(f"[Error in save_excluded_grade_case (SQLite)]: {e}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
         return None
 

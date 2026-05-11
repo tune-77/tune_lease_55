@@ -100,3 +100,26 @@ def test_load_all_cases_cached_exists():
     """load_all_cases_cached が callable として存在することを確認。"""
     import data_cases
     assert callable(data_cases.load_all_cases_cached)
+
+
+def test_enrich_rate_fields_infers_base_rate(monkeypatch):
+    import data_cases
+
+    def fake_get_base_rate_by_term(month=None, lease_term_months=60):
+        assert month == "2025-10"
+        assert lease_term_months == 60
+        return 1.93
+
+    import base_rate_master
+    monkeypatch.setattr(base_rate_master, "get_base_rate_by_term", fake_get_base_rate_by_term)
+
+    case = {
+        "timestamp": "2025-10-01T00:00:00",
+        "base_rate_at_time": 0,
+        "final_rate": 2.50,
+        "inputs": {"lease_term": 60},
+    }
+    data_cases._enrich_rate_fields(case)
+
+    assert case["base_rate_at_time"] == pytest.approx(1.93)
+    assert case["winning_spread"] == pytest.approx(0.57)
