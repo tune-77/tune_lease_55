@@ -28,7 +28,8 @@ def _load_training_config() -> dict:
     try:
         import json as _j
         return _j.loads(p.read_text(encoding="utf-8")).get("training", {})
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Failed to load quantum training config from {p}: {e}. Using defaults.")
         return {}
 
 _TRAIN_CFG = _load_training_config()
@@ -50,7 +51,8 @@ def _load_cases(status: str) -> list[dict]:
             d = json.loads(raw)
             d["_score"] = float(score or 0)
             result.append(d)
-        except Exception:
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
+            logger.warning(f"Skipping malformed case record: {e}")
             pass
     return result
 

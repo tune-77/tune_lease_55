@@ -12,13 +12,17 @@ import time
 import requests
 import streamlit as st
 from secret_manager import get_anything_llm_key
+from constants import API_TIMEOUT_SHORT, API_TIMEOUT_MED, API_TIMEOUT_LONG, API_MAX_RETRIES, API_RETRY_BACKOFF_BASE
+import logging
+
+logger = logging.getLogger(__name__)
 
 ANYTHING_LLM_BASE_URL = "http://127.0.0.1:3001/api/v1"
 ANYTHING_LLM_WORKSPACE = "lease"
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def is_anything_llm_available(timeout: int = 3) -> bool:
+def is_anything_llm_available(timeout: int = API_TIMEOUT_SHORT) -> bool:
     """AnythingLLM サーバーが起動していて認証が通るかチェック。"""
     api_key = _get_anything_llm_key()
     if not api_key:
@@ -30,7 +34,8 @@ def is_anything_llm_available(timeout: int = 3) -> bool:
             timeout=timeout,
         )
         return resp.status_code == 200
-    except Exception:
+    except requests.exceptions.RequestException as e:
+        logger.debug("AnythingLLM auth check failed: %s", e)
         return False
 
 
@@ -51,11 +56,21 @@ def query_anything_llm(message: str, workspace_slug: str = ANYTHING_LLM_WORKSPAC
         }
         payload = {"message": message, "mode": "query"}
         resp = None
-        for attempt in range(4):
-            resp = requests.post(url, json=payload, headers=headers, timeout=60)
-            if resp.status_code != 429:
-                break
-            time.sleep(2 ** attempt)
+        for attempt in range(API_MAX_RETRIES):
+            try:
+                resp = requests.post(url, json=payload, headers=headers, timeout=API_TIMEOUT_MED)
+            except requests.exceptions.RequestException as e:
+                logger.debug("AnythingLLM query attempt %d failed: %s", attempt + 1, e)
+                if attempt + 1 >= API_MAX_RETRIES:
+                    return ""
+                time.sleep(API_RETRY_BACKOFF_BASE ** attempt)
+                continue
+            if resp.status_code == 429 and attempt + 1 < API_MAX_RETRIES:
+                time.sleep(API_RETRY_BACKOFF_BASE ** attempt)
+                continue
+            break
+        if resp is None:
+            return ""
         if resp.status_code == 200:
             if not resp.text or not resp.text.strip():
                 return ""
@@ -64,7 +79,8 @@ def query_anything_llm(message: str, workspace_slug: str = ANYTHING_LLM_WORKSPAC
             except ValueError:
                 return ""
         return ""
-    except Exception:
+    except Exception as e:
+        logger.debug("AnythingLLM unexpected error: %s", e)
         return ""
 
 
@@ -102,12 +118,21 @@ def chat_anything_llm(messages: list, workspace_slug: str = ANYTHING_LLM_WORKSPA
         }
         payload = {"message": combined, "mode": "chat"}
         resp = None
-        for attempt in range(4):
-            resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
-            if resp.status_code != 429:
-                break
-            wait = 2 ** attempt  # 1s → 2s → 4s → 8s
-            time.sleep(wait)
+        for attempt in range(API_MAX_RETRIES):
+            try:
+                resp = requests.post(url, json=payload, headers=headers, timeout=API_TIMEOUT_LONG)
+            except requests.exceptions.RequestException as e:
+                logger.debug("AnythingLLM chat attempt %d failed: %s", attempt + 1, e)
+                if attempt + 1 >= API_MAX_RETRIES:
+                    return {"message": {"content": "AnythingLLM 呼び出し中にネットワークエラーが発生しました。"}}
+                time.sleep(API_RETRY_BACKOFF_BASE ** attempt)
+                continue
+            if resp.status_code == 429 and attempt + 1 < API_MAX_RETRIES:
+                time.sleep(API_RETRY_BACKOFF_BASE ** attempt)
+                continue
+            break
+        if resp is None:
+            return {"message": {"content": "AnythingLLM 呼び出しに失敗しました。"}}
         if resp.status_code == 200:
             if not resp.text or not resp.text.strip():
                 return {"message": {"content": "（AnythingLLM から空の応答が返りました。サーバーの状態を確認してください）"}}

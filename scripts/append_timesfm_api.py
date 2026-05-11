@@ -1,4 +1,7 @@
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 # The code to append
 code_to_append = """
@@ -182,11 +185,15 @@ def api_tfm_financial_paths(req: TfmFinancialPathsRequest):
         if isinstance(inp, str):
             import json
             try: inp = json.loads(inp)
-            except: inp = {}
+            except Exception as e:
+                logger.warning(f"Failed to parse inputs JSON: {e}. Using empty dict.")
+                inp = {}
         v = inp.get("nenshu", inp.get("revenue"))
         if v:
             try: revenues.append(float(v))
-            except: pass
+            except (ValueError, TypeError) as e:
+                logger.debug(f"Failed to convert revenue value '{v}' to float: {e}")
+                pass
             
     if not revenues: revenues = [10_000_000.0]
     

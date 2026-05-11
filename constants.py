@@ -5,6 +5,20 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(_SCRIPT_DIR) if os.path.basename(_SCRIPT_DIR) == "tune_lease_55" else _SCRIPT_DIR
 
 # ==============================================================================
+# API / 外部呼び出しのタイムアウト設定（秒）
+# ==============================================================================
+# 短時間のヘルスチェック等
+API_TIMEOUT_SHORT = int(os.environ.get("API_TIMEOUT_SHORT", "3"))
+# 通常のAPI呼び出し（デフォルト）
+API_TIMEOUT_MED = int(os.environ.get("API_TIMEOUT_MED", "15"))
+# 大きな処理や画像/ファイル送信等
+API_TIMEOUT_LONG = int(os.environ.get("API_TIMEOUT_LONG", "120"))
+# リトライ基数
+API_RETRY_BACKOFF_BASE = int(os.environ.get("API_RETRY_BACKOFF_BASE", "2"))
+# 最大リトライ回数
+API_MAX_RETRIES = int(os.environ.get("API_MAX_RETRIES", "3"))
+
+# ==============================================================================
 # UI スタイル定義
 # ==============================================================================
 MAIN_CSS = """

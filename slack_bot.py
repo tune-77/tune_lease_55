@@ -422,8 +422,8 @@ def poll_loop(client: WebClient, bot_user_id: str) -> None:
                         try:
                             # 詳細なエラー情報はログのみに残し、Slackには汎用メッセージを送信
                             client.chat_postMessage(channel=ch_id, text="⚠️ 処理中にエラーが発生しました。管理者にお問い合わせください。")
-                        except Exception:
-                            pass
+                        except Exception as slack_err:
+                            logger.error(f"Failed to post error notification to Slack: {slack_err}")
 
                     # タイムスタンプ更新
                     latest_ts[ch_id] = msg["ts"]

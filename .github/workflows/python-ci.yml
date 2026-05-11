@@ -23,10 +23,18 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
+        pip install coverage pytest-cov
 
-    - name: Run tests
+    - name: Run tests with coverage
       run: |
-        python -m pytest tests/ -v
+        python -m pytest tests/ -v --cov=scoring --cov=components --cov=. --cov-report=term-missing --cov-report=html:htmlcov --cov-report=json:coverage.json
+
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./coverage.json
+        fail_ci_if_error: false
+        verbose: true
 
     - name: Type check
       run: |

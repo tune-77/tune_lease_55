@@ -10,6 +10,7 @@ import logging
 import warnings
 from pathlib import Path
 from typing import Dict, Any, Optional, List
+from utils.monitoring import timeit, log_dataframe_info
 
 warnings.filterwarnings("ignore")
 
@@ -19,6 +20,7 @@ _logger = logging.getLogger(__name__)
 _MODEL_CACHE: "dict[str, dict]" = {}
 
 
+@timeit
 def _load_models(base_path: str) -> dict:
     """モデルファイルを初回のみロードしてキャッシュする。毎回のjoblib.loadを回避。"""
     if base_path in _MODEL_CACHE:
@@ -46,6 +48,12 @@ def _load_models(base_path: str) -> dict:
         "scaler": scaler,
         "label_encoder": label_encoder,
     }
+    # ロード後のメモリ/サイズ情報をログ
+    try:
+        import pandas as _pd
+        log_dataframe_info(_pd.DataFrame(columns=["dummy"]), name="model_load_placeholder")
+    except Exception:
+        pass
     return _MODEL_CACHE[base_path]
 
 
