@@ -7,6 +7,7 @@ import random
 import time
 import math
 import datetime
+import os
 
 # [API物理直結] 外部APIが直接結果を取得するためのグローバル変数
 _API_LAST_RESULT = None
@@ -33,6 +34,11 @@ from constants import (
 )
 
 QUALITATIVE_DELTA_FACTOR = 0.3
+
+
+def _scoring_only_mode() -> bool:
+    """審査入力直後は重い分析を避け、スコアリング本体に集中する。"""
+    return os.getenv("TUNE_LEASE_FULL_ANALYSIS_ON_SCORING", "").lower() not in {"1", "true", "yes", "on"}
 
 
 def _qual_rank(score: float) -> dict:
@@ -75,6 +81,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
     
     # [API強化] 引数ではなく、form_result 内のフラグを使用する (TypeError回避)
     _api_mode = form_result.get("_api_mode", False)
+    _fast_scoring = _scoring_only_mode()
 
     # [API強化] すべての戻り値変数を事前に初期化 (UnboundLocalErrorを物理的に防ぐ)
     final_score = 0.0
@@ -898,37 +905,40 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 # 分析結果タブでのみ参照するようにします。
                 # ただし、裏でプロンプト生成だけはしておく必要があるため、セッションステートへの保存は残します。
     
-                # 過去の類似案件（同業界・自己資本比率が近い）を最大3件取得
-                case_search_data = data_scoring.copy()
-                case_search_data["industry_sub"] = selected_sub
-                case_search_data["equity_ratio"] = user_equity_ratio
-                similar_cases = find_similar_past_cases(case_search_data, max_count=3)
                 similar_cases_block = ""
-                if similar_cases:
-                    similar_cases_block = "【参考：過去の類似案件の結末】\n"
-                    for i, sc in enumerate(similar_cases, 1):
-                        res = sc.get("result") or {}
-                        eq = res.get("user_eq")
-                        sc_score = res.get("score")
-                        status = sc.get("final_status", "未登録")
-                        eq_str = f"{_equity_ratio_display(eq) or 0:.1f}%" if eq is not None else "—"
-                        score_str = f"{sc_score:.1f}%" if sc_score is not None else "—"
-                        similar_cases_block += f"{i}. 業界: {sc.get('industry_sub', '—')}、自己資本比率: {eq_str}、スコア: {score_str}、結末: {status}\n"
-                    similar_cases_block += "\n"
+                if not _fast_scoring:
+                    # 過去の類似案件（同業界・自己資本比率が近い）を最大3件取得。
+                    # 通常の審査ボタン直後は体感速度を優先してスキップする。
+                    case_search_data = data_scoring.copy()
+                    case_search_data["industry_sub"] = selected_sub
+                    case_search_data["equity_ratio"] = user_equity_ratio
+                    similar_cases = find_similar_past_cases(case_search_data, max_count=3)
+                    if similar_cases:
+                        similar_cases_block = "【参考：過去の類似案件の結末】\n"
+                        for i, sc in enumerate(similar_cases, 1):
+                            res = sc.get("result") or {}
+                            eq = res.get("user_eq")
+                            sc_score = res.get("score")
+                            status = sc.get("final_status", "未登録")
+                            eq_str = f"{_equity_ratio_display(eq) or 0:.1f}%" if eq is not None else "—"
+                            score_str = f"{sc_score:.1f}%" if sc_score is not None else "—"
+                            similar_cases_block += f"{i}. 業界: {sc.get('industry_sub', '—')}、自己資本比率: {eq_str}、スコア: {score_str}、結末: {status}\n"
+                        similar_cases_block += "\n"
                 instruction_past = "過去に似た数値で承認された（または否決された）事例を参考にし、今回の案件との共通点や相違点を踏まえて、より精度の高い最終判定を出してください。\n\n"
     
                 ai_question_text = ""
                 if similar_cases_block:
                     ai_question_text += similar_cases_block + instruction_past
                 # 過去の競合・成約金利をコンテキストとして追加（競合に勝つ対策をAIに促す）
-                past_stats = get_stats(selected_sub)
-                if past_stats.get("top_competitors_lost") or (past_stats.get("avg_winning_rate") is not None and past_stats["avg_winning_rate"] > 0):
-                    ai_question_text += "【過去の競合・成約金利】\n"
-                    if past_stats.get("top_competitors_lost"):
-                        ai_question_text += "よく負ける競合: " + "、".join(past_stats["top_competitors_lost"][:5]) + "。\n"
-                    if past_stats.get("avg_winning_rate") and past_stats["avg_winning_rate"] > 0:
-                        ai_question_text += f"同業種の平均成約金利: {past_stats['avg_winning_rate']:.2f}%。\n"
-                    ai_question_text += "上記を踏まえ、競合に勝つための対策も考慮してアドバイスしてください。\n\n"
+                if not _fast_scoring:
+                    past_stats = get_stats(selected_sub)
+                    if past_stats.get("top_competitors_lost") or (past_stats.get("avg_winning_rate") is not None and past_stats["avg_winning_rate"] > 0):
+                        ai_question_text += "【過去の競合・成約金利】\n"
+                        if past_stats.get("top_competitors_lost"):
+                            ai_question_text += "よく負ける競合: " + "、".join(past_stats["top_competitors_lost"][:5]) + "。\n"
+                        if past_stats.get("avg_winning_rate") and past_stats["avg_winning_rate"] > 0:
+                            ai_question_text += f"同業種の平均成約金利: {past_stats['avg_winning_rate']:.2f}%。\n"
+                        ai_question_text += "上記を踏まえ、競合に勝つための対策も考慮してアドバイスしてください。\n\n"
                 ai_question_text += "審査お疲れ様です。手元の決算書から、以下の**3点だけ**確認させてください。\n\n"
                 from bayesian_engine import THRESHOLD_APPROVAL
                 approval_line = THRESHOLD_APPROVAL * 100
@@ -991,7 +1001,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         "rank_text": qual_rank["text"],
                         "rank_desc": qual_rank["desc"],
                     }
-                else:
+                elif not _fast_scoring:
                     try:
                         proxy_corr = build_tunnel_correction(form_result)
                     except Exception:
@@ -1088,10 +1098,11 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     forced_custom_status = None
 
                 reverse_bayes_bonus = None
-                try:
-                    reverse_bayes_bonus = build_reverse_bayes_bonus(form_result)
-                except Exception:
-                    reverse_bayes_bonus = None
+                if not _fast_scoring:
+                    try:
+                        reverse_bayes_bonus = build_reverse_bayes_bonus(form_result)
+                    except Exception:
+                        reverse_bayes_bonus = None
                 if reverse_bayes_bonus:
                     bonus_points = float(reverse_bayes_bonus.get("bonus_points") or 0.0)
                     if bonus_points > 0:
@@ -1207,7 +1218,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 }
                 st.session_state["last_result"]["quantum_inputs"] = _qinputs
 
-                if _hantei_score >= _QS_TRIGGER:
+                if (not _fast_scoring) and _hantei_score >= _QS_TRIGGER:
                     try:
                         import json as _qjson
                         from evaluators import EvaluatorParams, EpsilonGreedySelector
