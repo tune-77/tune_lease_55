@@ -4,6 +4,12 @@
 
 ---
 
+## 構想ドキュメント
+
+- [Claude × Codex × Gemini API による自律高度化システム構想](docs/autonomous_ai_lease_system_plan.html)
+
+---
+
 ## 主な機能
 
 | 機能 | 概要 |
