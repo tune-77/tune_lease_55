@@ -971,7 +971,24 @@ def build_gunshi_prompt(
     except Exception:
         pass
 
-    prompt = f"""{system_persona}{pdca_addon_text}
+    obsidian_humor_text = ""
+    try:
+        from obsidian_humor import build_humor_prompt_addon
+        obsidian_humor_text = build_humor_prompt_addon(
+            {
+                "score": score,
+                "industry_sub": industry,
+                "asset_name": asset_name,
+            },
+            style=humor_style,
+            max_chars=1600,
+        )
+        if obsidian_humor_text:
+            obsidian_humor_text = "\n\n" + obsidian_humor_text
+    except Exception:
+        obsidian_humor_text = ""
+
+    prompt = f"""{system_persona}{pdca_addon_text}{obsidian_humor_text}
 あなたは、リース会社の審査部門責任者に向けた「エグゼクティブ・サマリー」を作成する戦略アドバイザーです。
 入力されたデータ（財務、業界動向、リセール、ベイズ推定）を統合し、承認を勝ち取るための論理的かつ戦略的な推薦文を構築してください。
 {tone_instruction}{exec_car_context}

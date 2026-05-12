@@ -736,7 +736,15 @@ def _build_quick_comment_prompt(res: dict) -> str:
         log_warning(f"equity_ratio_display インポート失敗: {e}", context="_build_quick_comment_prompt")
         user_eq_disp = user_eq
         bench_eq_disp = bench_eq
-    return (
+    humor_addon = ""
+    try:
+        from obsidian_humor import build_humor_prompt_addon
+        _style = st.session_state.get("humor_style", "standard") if hasattr(st, "session_state") else "standard"
+        humor_addon = build_humor_prompt_addon(res, style=_style)
+    except Exception as e:
+        log_warning(f"Obsidianユーモア文脈の読み込み失敗: {e}", context="_build_quick_comment_prompt")
+
+    prompt = (
         f"リース審査専門家として、以下の案件を2〜3文で簡潔に評価してください。"
         f"判定:{hantei} スコア:{score:.1f}% 業種:{industry_sub} "
         f"営業利益率:{user_op:.1f}%（業界平均{bench_op:.1f}%）"
@@ -744,6 +752,9 @@ def _build_quick_comment_prompt(res: dict) -> str:
         f" 契約期待度:{contract_prob:.1f}%。"
         f"強みと懸念点を含め、審査担当者への一言を日本語で。余計な前置きは不要。"
     )
+    if humor_addon:
+        prompt += "\n\n" + humor_addon
+    return prompt
 
 
 def get_ai_quick_comment(res: dict) -> Optional[str]:

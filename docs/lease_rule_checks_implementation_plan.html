@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>リース審査AI 期間・保険チェック実装計画</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --ink: #182230;
+      --muted: #667085;
+      --line: #d9e1ec;
+      --panel: #ffffff;
+      --navy: #17324d;
+      --blue: #2563eb;
+      --green: #16855f;
+      --amber: #b7791f;
+      --red: #c2413b;
+      --soft-blue: #eaf1ff;
+      --soft-green: #eaf7f1;
+      --soft-amber: #fff7e6;
+      --soft-red: #fff0ee;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
+      line-height: 1.75;
+    }
+
+    .page {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 36px 0 64px;
+    }
+
+    header {
+      background: var(--navy);
+      color: #fff;
+      border-radius: 8px;
+      padding: 34px 38px;
+      margin-bottom: 22px;
+    }
+
+    .eyebrow {
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #9cc3ff;
+      margin-bottom: 8px;
+    }
+
+    h1, h2, h3 {
+      margin: 0;
+      line-height: 1.3;
+    }
+
+    h1 {
+      font-size: clamp(28px, 4vw, 42px);
+      letter-spacing: 0;
+    }
+
+    h2 {
+      font-size: 24px;
+      margin-bottom: 12px;
+      color: var(--navy);
+    }
+
+    h3 {
+      font-size: 18px;
+      margin: 18px 0 8px;
+      color: #243b53;
+    }
+
+    p { margin: 0 0 12px; }
+
+    .lead {
+      max-width: 880px;
+      color: #d7e6ff;
+      font-size: 17px;
+      margin-top: 14px;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 6px 12px;
+      background: rgba(255, 255, 255, 0.12);
+      color: #f8fbff;
+      font-size: 13px;
+    }
+
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 26px;
+      margin: 18px 0;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      background: #fff;
+    }
+
+    .card strong {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--navy);
+    }
+
+    .note {
+      border-left: 4px solid var(--blue);
+      background: var(--soft-blue);
+      padding: 14px 16px;
+      border-radius: 6px;
+      margin: 14px 0;
+    }
+
+    .warn {
+      border-left-color: var(--amber);
+      background: var(--soft-amber);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 14px;
+    }
+
+    th, td {
+      border: 1px solid var(--line);
+      padding: 10px 12px;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th {
+      background: #eef3f9;
+      color: #243b53;
+      font-weight: 700;
+    }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: #eef2f7;
+      padding: 2px 5px;
+      border-radius: 5px;
+      color: #243b53;
+    }
+
+    pre {
+      overflow-x: auto;
+      background: #101828;
+      color: #f8fafc;
+      border-radius: 8px;
+      padding: 16px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    ul, ol { padding-left: 1.25rem; }
+    li { margin: 5px 0; }
+
+    .status-ok { color: var(--green); font-weight: 700; }
+    .status-warn { color: var(--amber); font-weight: 700; }
+    .status-risk { color: var(--red); font-weight: 700; }
+
+    @media (max-width: 780px) {
+      header { padding: 26px 22px; }
+      section { padding: 20px; }
+      .grid { grid-template-columns: 1fr; }
+      table { font-size: 13px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <div class="eyebrow">Implementation Plan</div>
+      <h1>リース審査AI 期間・保険チェック実装計画</h1>
+      <p class="lead">
+        法定耐用年数、期待使用期間、リース期間の3点チェックと、動産保険/再リース保険対象外警告を、
+        既存スコアリングに安全に追加するための設計計画。初期段階ではスコアを直接変更せず、審査結果の警告・根拠表示・ログ保存に限定する。
+      </p>
+      <div class="meta">
+        <span class="pill">対象: tune_lease_55</span>
+        <span class="pill">作成日: 2026-05-13</span>
+        <span class="pill">状態: 計画のみ・未実装</span>
+      </div>
+    </header>
+
+    <section>
+      <h2>1. 方針</h2>
+      <div class="grid">
+        <div class="card">
+          <strong>最初は減点しない</strong>
+          <p>既存の借手スコア、物件スコア、成約確率ロジックと衝突させない。まずは警告表示とログ保存に限定する。</p>
+        </div>
+        <div class="card">
+          <strong>既存資産を使う</strong>
+          <p><code>expected_usage_period.py</code> にある期待使用期間・法定耐用年数ロジックを中核にする。</p>
+        </div>
+        <div class="card">
+          <strong>あとでスコア反映</strong>
+          <p>運用実績を見てから、物件スコア減点、残価評価補正、審査ステータス強制変更へ段階的に進める。</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>2. 対象機能</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>機能</th>
+            <th>見る項目</th>
+            <th>初期動作</th>
+            <th>将来拡張</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>3点チェック</td>
+            <td><code>legal_useful_life</code>, <code>expected_use_period</code>, <code>lease_term</code></td>
+            <td>OK/注意/要確認/高リスクを表示</td>
+            <td>物件スコア補正、残価評価補正</td>
+          </tr>
+          <tr>
+            <td>動産保険警告</td>
+            <td>保険対象可否、対象外理由、物件カテゴリ</td>
+            <td>対象外・不明時に警告</td>
+            <td>契約条件の必須確認、保険入力の必須化</td>
+          </tr>
+          <tr>
+            <td>再リース保険警告</td>
+            <td>再リース予定、満了後継続使用、再リース回数</td>
+            <td>再リース時に保険対象外可能性を表示</td>
+            <td>再リース料・残価・回収可能性評価へ接続</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="note warn">
+        初期実装では、審査結果の説明品質と事故防止を優先する。スコアに反映すると否決・承認境界が変わるため、後続フェーズで校正する。
+      </div>
+    </section>
+
+    <section>
+      <h2>3. 既存コードへの接続点</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>ファイル</th>
+            <th>役割</th>
+            <th>変更方針</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>expected_usage_period.py</code></td>
+            <td>期待使用期間、法定耐用年数、リース期間適合度の計算</td>
+            <td>既存関数を利用。必要なら結果形式だけ拡張。</td>
+          </tr>
+          <tr>
+            <td><code>components/form_apply.py</code></td>
+            <td>物件、契約期間、契約条件の入力</td>
+            <td>保険対象、再リース予定、対象外理由の入力欄を追加。</td>
+          </tr>
+          <tr>
+            <td><code>components/score_calculation.py</code></td>
+            <td>審査実行、結果辞書生成、ログ保存</td>
+            <td><code>lease_rule_checks</code> を結果に追加。スコアは変更しない。</td>
+          </tr>
+          <tr>
+            <td><code>components/analysis_results.py</code> または結果表示部</td>
+            <td>審査結果画面の表示</td>
+            <td>警告カードとして表示。出典と確認事項を明示。</td>
+          </tr>
+          <tr>
+            <td><code>data_cases.py</code></td>
+            <td>案件ログ保存</td>
+            <td>既存の <code>inputs</code> / <code>result</code> に格納できるならDB変更なしで開始。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>4. 入力項目案</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>項目</th>
+            <th>型</th>
+            <th>初期値</th>
+            <th>用途</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>is_re_lease</code></td>
+            <td>boolean</td>
+            <td>false</td>
+            <td>再リース保険対象外警告、再リース余地評価</td>
+          </tr>
+          <tr>
+            <td><code>insurance_applicable</code></td>
+            <td>category</td>
+            <td>unknown</td>
+            <td>動産保険対象/対象外/不明の判定</td>
+          </tr>
+          <tr>
+            <td><code>insurance_exclusion_reason</code></td>
+            <td>category</td>
+            <td>none</td>
+            <td>車両、再リース、特殊物件、屋外設置、その他を記録</td>
+          </tr>
+          <tr>
+            <td><code>usage_period_item_name</code></td>
+            <td>string</td>
+            <td>asset_nameから推定</td>
+            <td>期待使用期間マスタとの照合</td>
+          </tr>
+          <tr>
+            <td><code>lease_term</code></td>
+            <td>number</td>
+            <td>既存入力</td>
+            <td>3点チェックの中心項目</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>5. 出力データ構造</h2>
+      <p>審査結果には <code>lease_rule_checks</code> を追加する。個別チェックは <code>status</code> と <code>severity</code> を必ず持たせる。</p>
+      <pre><code>{
+  "lease_rule_checks": {
+    "term_check": {
+      "status": "warning",
+      "severity": "high",
+      "asset_name": "電子計算機",
+      "lease_term_months": 60,
+      "legal_useful_life_years": 5,
+      "expected_use_period_months": 72,
+      "term_to_legal_life_ratio": 1.0,
+      "message": "リース期間が法定耐用年数に近く、再リース余地は限定的です。",
+      "source": "国税庁 No.5704 / 期待使用期間DATA"
+    },
+    "insurance_check": {
+      "status": "warning",
+      "severity": "medium",
+      "flags": ["re_lease_insurance_excluded"],
+      "message": "再リース物件は動産総合保険の対象外となる可能性があります。"
+    }
+  }
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>6. 判定ルール案</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>判定</th>
+            <th>条件</th>
+            <th>表示文言</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="status-risk">高リスク</span></td>
+            <td>リース期間が法定下限未満</td>
+            <td>税務・会計上の取扱確認が必要です。</td>
+          </tr>
+          <tr>
+            <td><span class="status-warn">注意</span></td>
+            <td>リース期間が法定下限に近い</td>
+            <td>期間設定の妥当性を確認してください。</td>
+          </tr>
+          <tr>
+            <td><span class="status-warn">注意</span></td>
+            <td>リース期間が期待使用期間を超える</td>
+            <td>故障、陳腐化、残価低下の可能性があります。</td>
+          </tr>
+          <tr>
+            <td><span class="status-warn">要確認</span></td>
+            <td>再リース予定かつ保険対象不明</td>
+            <td>再リース中の動産保険対象可否を確認してください。</td>
+          </tr>
+          <tr>
+            <td><span class="status-ok">OK</span></td>
+            <td>法定下限以上、期待使用期間内、保険対象確認済</td>
+            <td>期間・保険面の重大な警告はありません。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>7. 画面表示案</h2>
+      <ol>
+        <li>審査結果画面のスコア下に「期間・保険チェック」セクションを追加する。</li>
+        <li>重大度順に、赤、黄、緑のカードで表示する。</li>
+        <li>各カードには、判定、理由、確認すべきこと、根拠を表示する。</li>
+        <li>警告はAIコメント生成にも渡し、審査所見へ自然文で反映する。</li>
+      </ol>
+      <div class="note">
+        表示例: 「本件はリース期間60ヶ月に対し法定耐用年数5年で、期間後半の残価・再リース余地は限定的です。再リースを前提にする場合は保険対象可否を確認してください。」
+      </div>
+    </section>
+
+    <section>
+      <h2>8. 実装フェーズ</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Phase</th>
+            <th>内容</th>
+            <th>完了条件</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Phase 1</td>
+            <td>チェック関数と結果データ構造を追加。スコア変更なし。</td>
+            <td>審査結果に <code>lease_rule_checks</code> が出る。</td>
+          </tr>
+          <tr>
+            <td>Phase 2</td>
+            <td>入力画面に保険/再リース項目を追加。</td>
+            <td>保険警告が入力値に応じて変わる。</td>
+          </tr>
+          <tr>
+            <td>Phase 3</td>
+            <td>結果画面に警告カードを追加。</td>
+            <td>審査官が確認事項を一目で把握できる。</td>
+          </tr>
+          <tr>
+            <td>Phase 4</td>
+            <td>AIコメント生成へ連携。</td>
+            <td>所見に期間・保険リスクが反映される。</td>
+          </tr>
+          <tr>
+            <td>Phase 5</td>
+            <td>実績を見てスコア補正を検討。</td>
+            <td>誤警告率、審査判断への影響を確認済み。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>9. テスト観点</h2>
+      <ul>
+        <li>期待使用期間マスタに存在する物件で、期間チェックが出る。</li>
+        <li>期待使用期間マスタに存在しない物件で、エラーではなく「未判定」になる。</li>
+        <li>リース期間0、未入力、120ヶ月などの境界値で落ちない。</li>
+        <li>再リース予定かつ保険対象不明の場合に警告が出る。</li>
+        <li>保険対象外理由が車両、屋外、特殊物件、再リースで表示文言が変わる。</li>
+        <li>スコア値はPhase 1では変わらない。</li>
+        <li>案件ログに <code>lease_rule_checks</code> が保存される。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>10. 次の判断</h2>
+      <p>
+        実装に進む場合は、最初に <code>lease_rule_checks.py</code> のような小さな独立モジュールを作り、
+        <code>expected_usage_period.py</code> を呼び出してチェック結果を返す構成がよい。
+        UI、スコア計算、ログ保存を直接絡める前に、純粋関数としてテストできる形にする。
+      </p>
+    </section>
+  </main>
+</body>
+</html>
