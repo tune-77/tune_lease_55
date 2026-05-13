@@ -108,6 +108,8 @@ function showResult({ score, probability, judgment,
 ### renderWarnings 関数（新規）
 
 ```js
+const _VALID_SEVERITIES = ["high", "medium", "low"];
+
 function renderWarnings(warnings, rule_check_status) {
   const section = document.getElementById("warnings-section");
   if (!warnings || warnings.length === 0) {
@@ -116,15 +118,17 @@ function renderWarnings(warnings, rule_check_status) {
   }
   section.style.display = "block";
   const list = document.getElementById("warnings-list");
-  list.innerHTML = warnings.map(w => `
-    <div class="warning-item warning-${w.severity}">
-      <span class="warning-icon">${w.severity === "low" ? "ℹ️" : "⚠️"}</span>
+  list.innerHTML = warnings.map(w => {
+    const sev = _VALID_SEVERITIES.includes(w.severity) ? w.severity : "low";
+    return `
+    <div class="warning-item warning-${sev}">
+      <span class="warning-icon">${sev === "low" ? "ℹ️" : "⚠️"}</span>
       <div class="warning-body">
         <div class="warning-message">${escapeHtml(w.message)}</div>
         <div class="warning-source">${escapeHtml(w.source)}</div>
       </div>
-    </div>
-  `).join("");
+    </div>`;
+  }).join("");
 }
 
 function escapeHtml(str) {
@@ -155,10 +159,10 @@ function escapeHtml(str) {
 - 処理：`#score-val`, `#judgment-badge`, `#progress-bar` の値を warnings で変更しない
 - 根拠：P1-002 BR-111「warnings はスコアに影響しない」をUIでも一貫させる
 
-**BR-124**: XSS 対策：message と source フィールドをエスケープする
-- 条件：warning.message / warning.source を innerHTML に挿入する前
-- 処理：`escapeHtml()` を通して `<`, `>`, `&`, `"` をエンティティ変換する
-- 根拠：APIレスポンスの文字列を直接 innerHTML に入れることによる XSS を防止する
+**BR-124**: XSS 対策：message / source / severity フィールドをサニタイズする
+- 条件：warning.message / warning.source を innerHTML に挿入する前、および warning.severity をクラス名に埋め込む前
+- 処理：`message` / `source` は `escapeHtml()` でエンティティ変換する。`severity` は `["high","medium","low"]` のホワイトリストに対して検証し、一致しない場合は `"low"` にフォールバックしてクラス名に埋め込む
+- 根拠：APIレスポンスの文字列を直接 innerHTML に入れることによる XSS を防止する。severity のホワイトリスト検証はクラス名インジェクション防止のため
 
 **BR-125**: is_re_lease チェックオフ時は re_lease_insurance select を disabled にする
 - 条件：`#is_re_lease` チェックボックスが未チェックの場合
@@ -406,6 +410,18 @@ function escapeHtml(str) {
   is_re_lease:          document.getElementById("is_re_lease").checked,
   insurance_applicable: document.getElementById("insurance_applicable").value,
   re_lease_insurance:   document.getElementById("re_lease_insurance").value,
+  ```
+- **clearAll() への追記**: 既存の clearAll() 関数末尾に以下を追記
+  ```js
+  // 新規フィールドリセット
+  document.getElementById("asset_type").value = "";
+  document.getElementById("is_re_lease").checked = false;
+  document.getElementById("insurance_applicable").value = "不明";
+  document.getElementById("re_lease_insurance").value = "不明";
+  document.getElementById("re_lease_insurance").disabled = true;
+  // 警告バナー消去
+  document.getElementById("warnings-section").style.display = "none";
+  document.getElementById("warnings-list").innerHTML = "";
   ```
 - **テストファイル**: `tests/spec_phase1/test_P1-003.html`（Playwright または手動確認）
 

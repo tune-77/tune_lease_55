@@ -247,8 +247,8 @@ def check_lease_rules(
 - Then: `warnings` に `code=="TERM_NEAR_LEGAL_LIFE"`, `severity=="medium"` が1件含まれ、`TERM_EXCEEDS_LEGAL_LIFE` は含まれない
 
 **AC-104**: 期待使用期間超過で medium 警告が返る
-- Given: `asset_type` が `期待使用期間.json` に存在し、その期待使用期間が 48ヶ月
-- When: `check_lease_rules(lease_term_months=60, asset_type=<該当種別>)` を呼ぶ
+- Given: `asset_type="電子計算機"`（`期待使用期間.json` の `max_years=4` = 48ヶ月）
+- When: `check_lease_rules(lease_term_months=60, asset_type="電子計算機")` を呼ぶ
 - Then: `warnings` に `code=="TERM_EXCEEDS_EXPECTED_USAGE"`, `severity=="medium"` が含まれる
 
 **AC-105**: 動産保険未付保で low 警告が返る
@@ -328,7 +328,7 @@ def check_lease_rules(
   sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
   from expected_usage_period import find_item_by_name
   ```
-  `find_item_by_name()` は `Optional[dict]` を返す。`item["expected_period_months"]` または `item["min_months"]` / `item["max_months"]` のキー名は実ファイルを確認すること
+  `find_item_by_name()` は `Optional[dict]` を返す。期待使用期間の上限は `item["max_years"] * 12`（月換算）。実際のキー名は `min_years`（最短期待年数）/ `max_years`（最長期待年数）であり、`expected_period_months` / `min_months` / `max_months` キーは存在しない。BR-103 の `expected_period_months` は `int(item["max_years"]) * 12` で算出する
 - **法定耐用年数マスタ**: `mobile_app/lease_rule_checks.py` 冒頭の定数 `LEGAL_USEFUL_LIFE_YEARS` として定義。DBには格納しない
 - **テストファイル**: `tests/spec_phase1/test_P1-001.py` に作成
 - **インポートパス**: `mobile_app/` 内からのインポートは `from lease_rule_checks import check_lease_rules`

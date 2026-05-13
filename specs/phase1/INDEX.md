@@ -28,7 +28,7 @@ P1-001 (モジュール)
 2. P1-002 承認 → Codex が `mobile_app/api.py` を修正
 3. P1-003 承認 → Codex が `mobile_app/index.html` を修正
 
-P1-002 と P1-003 は P1-001 実装完了後に並行着手可能。
+**並行作業ルール**: P1-003 の HTML/JS 実装（フォーム追加・renderWarnings 関数）は P1-001 完了後に着手可能。ただし E2E 動作確認（API から warnings を実際に受け取るテスト）は P1-002 完了後まで待つこと。
 
 ---
 
