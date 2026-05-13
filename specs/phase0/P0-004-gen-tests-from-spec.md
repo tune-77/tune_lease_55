@@ -3,7 +3,7 @@ spec_id: P0-004
 phase: 0
 title: SPECからテストスケルトン生成スクリプト
 status: approved
-author: Claude Opus
+author: Claude Sonnet
 reviewer: human
 version: 1.0.0
 depends_on: []

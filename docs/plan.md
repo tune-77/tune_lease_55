@@ -1,14 +1,14 @@
 # tune_lease_55 開発計画（Spec-Driven Development）
 
 > 方針：「安全性 → 説明性 → 自律性」の順で段階導入。既存モデルには触れない。
-> 体制：Claude Opus（SPEC執筆・レビュー）× Codex（SPEC準拠実装）× 人間（2段承認ゲート）
+> 体制：Claude Sonnet（SPEC執筆・レビュー）× Codex（SPEC準拠実装）× 人間（2段承認ゲート）
 
 ---
 
 ## SDDワークフロー（全Phase共通）
 
 ```
-Step 1: SPEC Drafting    → Claude Opus が specs/phaseN/ に draft 作成
+Step 1: SPEC Drafting    → Claude Sonnet が specs/phaseN/ に draft 作成
 Step 2: SPEC Review Gate → Human 承認 → status: approved に変更（★承認ゲート①）
 Step 3: Implementation   → Codex が SPEC のみを読んで実装・テスト・PR作成
 Step 4: Implementation Review → Claude が SPEC準拠性・AC網羅性をレビュー
