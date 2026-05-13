@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AURION CORE 効果可能性検討・実装計画</title>
+  <style>
+    :root {
+      --bg: #f0f4f8;
+      --surface: #ffffff;
+      --surface-soft: #f8fafc;
+      --primary: #2c3e50;
+      --accent: #e67e22;
+      --accent-soft: #fff3e0;
+      --text: #34495e;
+      --muted: #7f8c8d;
+      --border: #dfe7ef;
+      --ok: #16a085;
+      --warn: #f39c12;
+      --risk: #c0392b;
+      --shadow: 0 12px 34px rgba(44, 62, 80, 0.12);
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      padding: 40px 20px;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 10% 0%, rgba(230, 126, 34, 0.12), transparent 28rem),
+        radial-gradient(circle at 90% 8%, rgba(44, 62, 80, 0.10), transparent 32rem),
+        var(--bg);
+      font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+      line-height: 1.8;
+    }
+
+    .container {
+      max-width: 1080px;
+      margin: 0 auto;
+      background: var(--surface);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      border-top: 10px solid var(--primary);
+      overflow: hidden;
+    }
+
+    header {
+      padding: 46px 52px 34px;
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    h1, h2, h3 { line-height: 1.35; }
+
+    h1 {
+      color: var(--primary);
+      font-size: clamp(30px, 4vw, 48px);
+      letter-spacing: 0.08em;
+      margin: 0;
+    }
+
+    .subtitle {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .meta {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(12px);
+    }
+
+    nav a {
+      color: var(--primary);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 800;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--surface-soft);
+      border: 1px solid transparent;
+    }
+
+    nav a:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    main { padding: 42px 52px 56px; }
+
+    section { margin: 0 0 46px; }
+
+    h2 {
+      margin: 0 0 18px;
+      color: var(--accent);
+      font-size: 24px;
+      border-left: 7px solid var(--accent);
+      padding-left: 16px;
+    }
+
+    h3 {
+      margin: 24px 0 10px;
+      color: var(--primary);
+      font-size: 18px;
+    }
+
+    p { margin: 0 0 14px; }
+
+    ul, ol { padding-left: 22px; }
+    li { margin-bottom: 8px; }
+
+    .lead-box {
+      background: var(--accent-soft);
+      border: 1px solid #ffe0b2;
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 34px;
+    }
+
+    .lead-box strong {
+      display: block;
+      color: #d35400;
+      font-size: 18px;
+      margin-bottom: 8px;
+    }
+
+    .grid-2, .grid-3 {
+      display: grid;
+      gap: 16px;
+    }
+
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+    .card {
+      background: var(--surface-soft);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+    }
+
+    .card h3 { margin-top: 0; }
+
+    .tag-ok, .tag-warn, .tag-risk {
+      display: inline-block;
+      padding: 3px 9px;
+      border-radius: 999px;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+
+    .tag-ok { background: var(--ok); }
+    .tag-warn { background: var(--warn); }
+    .tag-risk { background: var(--risk); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 18px 0;
+      overflow: hidden;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+
+    th, td {
+      text-align: left;
+      vertical-align: top;
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      color: var(--primary);
+      background: #eef2f7;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    code, pre {
+      font-family: Consolas, Monaco, "Courier New", monospace;
+    }
+
+    code {
+      color: #c0392b;
+      background: #eef2f7;
+      border-radius: 5px;
+      padding: 2px 6px;
+    }
+
+    pre {
+      margin: 16px 0;
+      padding: 18px;
+      overflow-x: auto;
+      border-radius: 14px;
+      border: 1px solid #d8dee8;
+      background: #111827;
+      color: #e5e7eb;
+      line-height: 1.6;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 14px;
+      counter-reset: step;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 56px 1fr;
+      gap: 16px;
+      align-items: start;
+      padding: 18px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: #fff;
+    }
+
+    .step::before {
+      counter-increment: step;
+      content: counter(step);
+      display: grid;
+      place-items: center;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      color: #fff;
+      background: var(--primary);
+      font-weight: 900;
+      font-size: 18px;
+    }
+
+    .step h3 { margin: 0 0 6px; }
+
+    .footer-note {
+      margin-top: 50px;
+      padding-top: 22px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      text-align: center;
+      font-size: 13px;
+    }
+
+    @media (max-width: 760px) {
+      body { padding: 18px 10px; }
+      header { padding: 34px 24px 26px; }
+      main { padding: 30px 22px 38px; }
+      nav { position: static; }
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      table { display: block; overflow-x: auto; }
+      .step { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="eyebrow">Planning Document</div>
+      <h1>AURION CORE</h1>
+      <p class="subtitle">効果可能性検討・段階導入計画 / AI Collaborative Evolution Protocol v2.1</p>
+      <div class="meta">
+        <span class="pill">対象: リース審査AI</span>
+        <span class="pill">方針: 実装前計画</span>
+        <span class="pill">作成日: 2026-05-13</span>
+      </div>
+    </header>
+
+    <nav aria-label="目次">
+      <a href="#conclusion">結論</a>
+      <a href="#decomposition">機能分解</a>
+      <a href="#effects">効果可能性</a>
+      <a href="#roadmap">ロードマップ</a>
+      <a href="#priority">優先順位</a>
+      <a href="#architecture">推奨構成</a>
+    </nav>
+
+    <main>
+      <div class="lead-box" id="conclusion">
+        <strong>結論: AURION CORE は審査AIの「心臓」ではなく、まず「感覚器官」として導入する。</strong>
+        既存の RF/LR 主モデル、ベイズ推論、定性評価、物件スコアを置き換えるのではなく、Q_risk・競合圧力・ステルス競合・市場の歪みを観測し、人間が判断できる言葉へ翻訳する上位レイヤーとして計画する。
+      </div>
+
+      <section id="decomposition">
+        <h2>1. 機能分解</h2>
+        <div class="grid-2">
+          <article class="card">
+            <span class="tag-ok">実装可能性: 高</span>
+            <h3>Q_risk: 財務矛盾の位相検知</h3>
+            <p>既存の量子インスパイア解析を活かし、財務ペア間の干渉乖離、外挿フラグ、残差シグナルを「高スコア案件の違和感」として提示する。</p>
+            <ul>
+              <li>主判定モデルではなく二次審査・説明レイヤーに限定する。</li>
+              <li>特異点は「高寄与ペア」「外挿変数」「残差ピーク」と実務定義する。</li>
+              <li>高スコアかつ高 Q_risk の案件を優先表示する。</li>
+            </ul>
+          </article>
+
+          <article class="card">
+            <span class="tag-warn">実装可能性: 中〜高</span>
+            <h3>LV_Environment: 競合環境モデル</h3>
+            <p>ロトカ・ヴォルテラ方程式をいきなり本番予測に使わず、まずは業種別・営業部別の競合圧力指数として導入する。</p>
+            <ul>
+              <li>競合あり案件比率、失注率、競合金利差、競合集中度を集計する。</li>
+              <li>時系列データが蓄積した段階で LV 係数推定を検討する。</li>
+              <li>目的は信用リスクではなく、営業・金利・市場圧力の観測とする。</li>
+            </ul>
+          </article>
+
+          <article class="card">
+            <span class="tag-ok">実装可能性: 高</span>
+            <h3>ステルス競合の逆算</h3>
+            <p>競合名が未入力でも、高スコア失注・失注理由未入力・同業種失注率上昇・金利乖離などから暗黙の競合圧力を推定する。</p>
+            <ul>
+              <li>明示競合と未入力競合を分けてラベル設計する。</li>
+              <li>新規先、相見積もり、銀行紹介、競合社数を重要特徴として扱う。</li>
+              <li>効果は本体 AUC よりも、失注予兆と金利提案に出やすい。</li>
+            </ul>
+          </article>
+
+          <article class="card">
+            <span class="tag-ok">実装可能性: 高</span>
+            <h3>メブキちゃん: 現場語への翻訳 UI</h3>
+            <p>AI が発見した市場の歪みを、審査担当者が次に確認できる行動へ翻訳する。判定の断定ではなく、参考所見と確認観点を提示する。</p>
+            <ul>
+              <li>「信用リスク」「競合リスク」「金利リスク」「商流リスク」を切り分ける。</li>
+              <li>数学用語をそのまま出さず、担当者の確認行動に落とす。</li>
+              <li>承認・否決の最終判断は人間に残す。</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section id="effects">
+        <h2>2. 効果可能性</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>領域</th>
+              <th>効果可能性</th>
+              <th>理由</th>
+              <th>主な評価指標</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Q_risk 説明強化</td>
+              <td>高</td>
+              <td>既存の量子風解析部品があり、高スコア案件の違和感検知に直結する。</td>
+              <td>高スコア失注の検出率、二次審査フラグ精度、担当者納得度</td>
+            </tr>
+            <tr>
+              <td>ステルス競合推定</td>
+              <td>高</td>
+              <td>競合有無、競合金利、競合社数、失注理由、成約/失注の入力導線がある。</td>
+              <td>後追い確認精度、競合情報入力率、失注理由入力率</td>
+            </tr>
+            <tr>
+              <td>新規先の成約予測</td>
+              <td>中〜高</td>
+              <td>新規先は商流・競争圧力の影響が大きく、既存特徴量との相性がよい。</td>
+              <td>新規先 AUC、成約率、金利提案採用率</td>
+            </tr>
+            <tr>
+              <td>本体信用スコア AUC</td>
+              <td>中〜低</td>
+              <td>過去の QCL 検証では本体モデルへの上乗せ効果が薄かったため、直接混入は慎重にする。</td>
+              <td>OOF AUC、セグメント別 AUC、キャリブレーション</td>
+            </tr>
+            <tr>
+              <td>LV 市場予測</td>
+              <td>中</td>
+              <td>概念は有効だが、競合名・失注理由・時系列件数の品質に依存する。</td>
+              <td>業種別失注率の先行検知、競合集中度、金利乖離</td>
+            </tr>
+            <tr>
+              <td>メブキちゃん UI</td>
+              <td>高</td>
+              <td>数理モデルを現場語へ翻訳でき、担当者の確認行動を促せる。</td>
+              <td>確認項目クリック率、担当者フィードバック、説明品質</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="roadmap">
+        <h2>3. 段階導入ロードマップ</h2>
+        <div class="timeline">
+          <div class="step">
+            <div>
+              <h3>Phase 0: 用語と実務指標の対応付け</h3>
+              <p>AURION の言葉を、審査・営業・モデル評価で扱える指標に翻訳する。</p>
+              <table>
+                <thead><tr><th>AURION 用語</th><th>実務上の定義</th></tr></thead>
+                <tbody>
+                  <tr><td>位相のズレ</td><td>財務ペア間の干渉乖離、期待レンジからの外れ</td></tr>
+                  <tr><td>特異点</td><td>高寄与ペア、外挿フラグ、残差シグナルのピーク</td></tr>
+                  <tr><td>市場の歪み</td><td>業種別失注率、競合集中、金利乖離、スコア乖離</td></tr>
+                  <tr><td>捕食者</td><td>競合他社、銀行融資、現金購入、設備見合わせ</td></tr>
+                  <tr><td>AI の好奇心</td><td>モデル監視フックが検出した改善候補</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="step">
+            <div>
+              <h3>Phase 1: Q_risk の再位置づけ</h3>
+              <p>Q_risk を本体スコアに混ぜるのではなく、二次審査・説明・高スコア違和感検知へ固定する。</p>
+              <ul>
+                <li><code>pair_contributions</code> から上位矛盾ペアを抽出する。</li>
+                <li><code>ood_flags</code> で過去成約分布から外れた変数を表示する。</li>
+                <li><code>residual_signal</code> を「説明しきれない違和感」として扱う。</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="step">
+            <div>
+              <h3>Phase 2: ステルス競合推定</h3>
+              <p>競合名が未入力の高スコア失注や、同業種の失注率上昇を、暗黙の競合圧力として抽出する。</p>
+              <ul>
+                <li>明示競合あり、明示競合なし、競合未入力、ステルス競合候補を分ける。</li>
+                <li>高スコア失注、失注理由未入力、金利乖離、相見積もりを候補条件にする。</li>
+                <li>業種・営業部・新規/既存で集計し、週次レビューに載せる。</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="step">
+            <div>
+              <h3>Phase 3: LV_Environment Lite</h3>
+              <p>厳密な微分方程式より先に、競合圧力指数を時系列で追跡する。</p>
+              <pre>x(t): 自社の成約機会指数
+y(t): 競合圧力指数
+z(t): 金利防衛余力
+
+x(t+1) = x(t) + 成約増加要因 - 競合圧力影響
+y(t+1) = y(t) + 失注集中 + 競合金利差 - 自社防衛成功
+z(t+1) = 自社提示余力 - 基準金利 - 競合提示圧力</pre>
+            </div>
+          </div>
+
+          <div class="step">
+            <div>
+              <h3>Phase 4: メブキちゃん UI</h3>
+              <p>数学モデルの出力を、現場担当者が確認できる行動へ変換する。</p>
+              <pre>🌱 メブキちゃんの観測
+
+この案件は信用力そのものより、
+「競合圧力」と「設備投資に対する利益の出方」に歪みがあります。
+
+見るべき点:
+1. 同業種で直近失注が増えています
+2. 競合提示金利との差が大きい可能性があります
+3. 営業利益と設備規模の整合に注意してください
+
+次の一手:
+- 競合名と提示条件を確認
+- 金利ではなく保守・納期・支払条件で差別化
+- 高スコアでも二次確認を推奨</pre>
+            </div>
+          </div>
+
+          <div class="step">
+            <div>
+              <h3>Phase 5: Human-approved 自律改善</h3>
+              <p>AI が勝手に本番係数や承認ラインを変えるのではなく、検出、仮説、差分、評価、人間承認の順で進める。</p>
+              <ul>
+                <li>週次レビューで改善候補を提示する。</li>
+                <li>過去データで AUC、承認率、誤承認、説明品質、セグメント別劣化を確認する。</li>
+                <li>採否理由と評価結果を保存し、次回改善の学習材料にする。</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="priority">
+        <h2>4. 優先順位</h2>
+        <div class="grid-3">
+          <article class="card">
+            <span class="tag-ok">最優先</span>
+            <h3>Q_risk 説明レイヤー化</h3>
+            <p>既存部品があり、実装リスクが低い。高スコア案件の見落とし防止に効く。</p>
+          </article>
+          <article class="card">
+            <span class="tag-ok">最優先</span>
+            <h3>ステルス競合推定</h3>
+            <p>失注・競合・金利情報を活用し、営業打ち手と金利提案に効果が出やすい。</p>
+          </article>
+          <article class="card">
+            <span class="tag-ok">最優先</span>
+            <h3>競合圧力指数</h3>
+            <p>LV 方程式の前段として、業種別・営業部別の歪みを観測する。</p>
+          </article>
+          <article class="card">
+            <span class="tag-warn">中優先</span>
+            <h3>メブキちゃん UI</h3>
+            <p>出力指標が固まった後に、現場語へ翻訳する UI として導入する。</p>
+          </article>
+          <article class="card">
+            <span class="tag-warn">中優先</span>
+            <h3>スマホ向けスライダー</h3>
+            <p>競合圧力、金利弾力性、財務矛盾度など 3〜5 項目に限定する。</p>
+          </article>
+          <article class="card">
+            <span class="tag-risk">後回し</span>
+            <h3>厳密 LV / 本体混入</h3>
+            <p>データ蓄積と検証前に行うと、過学習・説明困難・疑似科学感が強くなる。</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="architecture">
+        <h2>5. 推奨アーキテクチャ</h2>
+        <p>AURION CORE は、既存スコアリングを置き換えず、観測・説明・改善提案のレイヤーとして横に置く。</p>
+        <pre>既存スコアリング本体
+  ├─ RF/LR 主モデル
+  ├─ ベイズ推論
+  ├─ 定性評価
+  └─ 物件スコア
+
+AURION 観測レイヤー
+  ├─ Q_risk: 財務矛盾・位相ズレ検知
+  ├─ Stealth Competitor: 暗黙の競合圧力推定
+  ├─ LV_Environment Lite: 業種別・営業部別の競合圧力推移
+  └─ メブキちゃん: 現場語への翻訳
+
+Human Approval
+  ├─ 週次レビュー
+  ├─ 過去データ検証
+  ├─ 採否理由保存
+  └─ 必要なものだけ本番反映</pre>
+        <div class="lead-box">
+          <strong>最終判断</strong>
+          AURION CORE は「承認する AI」ではなく、「市場の歪みを見つけ、人間に分かる言葉で知らせる AI」として導入する。これにより、効果・説明責任・運用安全性を両立できる。
+        </div>
+      </section>
+
+      <div class="footer-note">
+        Project AURION CORE — Planning artifact for tune_lease_55 / No runtime implementation included.
+      </div>
+    </main>
+  </div>
+</body>
+</html>
