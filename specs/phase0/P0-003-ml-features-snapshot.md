@@ -2,7 +2,7 @@
 spec_id: P0-003
 phase: 0
 title: ml_features 週次スナップショット
-status: draft
+status: approved
 author: Claude Opus
 reviewer: human
 version: 1.0.0

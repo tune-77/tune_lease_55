@@ -2,7 +2,7 @@
 spec_id: P0-001
 phase: 0
 title: GitHub PRテンプレート整備
-status: draft
+status: approved
 author: Claude Opus
 reviewer: human
 version: 1.0.0

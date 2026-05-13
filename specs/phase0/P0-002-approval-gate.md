@@ -2,7 +2,7 @@
 spec_id: P0-002
 phase: 0
 title: Human Approval Gate ワークフロー定義
-status: draft
+status: approved
 author: Claude Opus
 reviewer: human
 version: 1.0.0

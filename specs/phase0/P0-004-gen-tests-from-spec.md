@@ -2,7 +2,7 @@
 spec_id: P0-004
 phase: 0
 title: SPECからテストスケルトン生成スクリプト
-status: draft
+status: approved
 author: Claude Opus
 reviewer: human
 version: 1.0.0
