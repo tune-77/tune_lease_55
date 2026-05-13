@@ -2,7 +2,7 @@
 spec_id: P0-002
 phase: 0
 title: Human Approval Gate ワークフロー定義
-status: approved
+status: implemented
 author: Claude Sonnet
 reviewer: human
 version: 1.0.0
