@@ -93,6 +93,15 @@ try:
 except Exception as e:
     print(f"[api] aurion.q_risk: 未ロード → フォールバック ({e})")
 
+# ── aurion: ステルス競合推定モジュール (P3-002) ──────────────────────────
+_stealth_loaded = False
+try:
+    from aurion.stealth_competitor import detect_stealth_competitor
+    _stealth_loaded = True
+    print("[api] aurion.stealth_competitor: 読み込み完了")
+except ImportError as e:
+    print(f"[api.aurion.stealth] import failed ({e})")
+
 _DEFAULT_IND        = "R サービス業(他に分類されないもの)"
 _DEFAULT_CONTRACT_T = "一般"
 _DEFAULT_DEAL_SRC   = "銀行紹介"
@@ -521,6 +530,24 @@ def predict():
     if q_risk_result["level"] in ("caution", "high_risk"):
         print(f"[api.aurion] level={q_risk_result['level']} score={q_risk_result['score']} patterns={q_risk_result['patterns']}")
 
+    # P3-002: aurion stealth_competitor 検知（参考値、スコアに影響しない）
+    _STEALTH_FALLBACK = {"score": 0, "level": "ok", "patterns": [], "pattern_details": []}
+    try:
+        stealth_result = detect_stealth_competitor(
+            spread_pred=spread_pred,
+            base_rate=base_rate_val,
+            competitor=competitor,
+            competitor_rate=comp_rate,
+            grade=grade,
+            acquisition_cost=acq,
+            nenshu=ns,
+        ) if _stealth_loaded else _STEALTH_FALLBACK
+    except Exception:
+        stealth_result = _STEALTH_FALLBACK
+
+    if stealth_result["level"] in ("caution", "high_risk"):
+        print(f"[api.aurion.stealth] level={stealth_result['level']} score={stealth_result['score']} patterns={stealth_result['patterns']}")
+
     return jsonify({
         "score":             score,
         "probability":       round(proba, 4),
@@ -538,6 +565,7 @@ def predict():
         "rule_check_status": rule_check_status,
         "aurion": {
             "q_risk": q_risk_result,
+            "competitor_pressure": stealth_result,
         },
     })
 
@@ -560,6 +588,7 @@ def health():
         "spread_model_rmse":   _spread_bundle.get("rmse") if _spread_bundle else None,
         "spread_base_rate_ym": _latest_ym,
         "aurion_module_loaded": _aurion_loaded,
+        "stealth_competitor_module_loaded": _stealth_loaded,
     })
 
 
