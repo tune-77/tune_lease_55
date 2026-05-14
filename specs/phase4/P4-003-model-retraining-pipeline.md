@@ -177,19 +177,21 @@ if st.button("モデル再学習を実行"):
 - 根拠：少数データでの再学習はモデル性能を悪化させるリスクがある
 
 **BR-422**: 再学習前バックアップ
-- 条件：再学習開始時（レコード数チェック通過後）
+- 条件：再学習開始時（レコード数チェック通過後）。ただし `dry_run=True` の場合はバックアップ作成を**スキップする**（ファイル変更なし）
 - 処理：`spread_predictor_v2.pkl` → `spread_predictor_v2.bak.pkl`、`lgbm_model.pkl` → `lgbm_model.bak.pkl` にコピーする
-- 根拠：ロールバック時の復元元を確保する
+- 根拠：ロールバック時の復元元を確保する。`dry_run=True` は評価目的のため副作用を生じさせない
 
 **BR-423**: AUC 閾値によるロールバック
 - 条件：新モデルの AUC（テストセットで評価）が `auc_threshold`（デフォルト 0.75）未満
 - 処理：`.bak.pkl` から元のモデルを復元し `status="rolled_back"` を返す。`retraining_log` にロールバック理由を記録する
 - 根拠：性能劣化したモデルを本番投入しないためのフェイルセーフ
+- **`prev_auc` の取得方法**: `retraining_log` テーブルを `id DESC` で検索し、直前の `status="success"` または `status="rolled_back"` レコードの `new_auc` 値を参照する。該当レコードが存在しない場合は `prev_auc=None` とする。旧モデルを新テストセットで再評価する方式は採用しない（テストセット分割の再現性が保証できないため）。
 
 **BR-424**: 学習データの outcome フィルタリング
 - 条件：教師データの作成時
 - 処理：`outcome` が `"contracted"` または `"delinquent"` または `"completed"` のレコードのみを使用。`"lost"` と `NULL` は除外する。目的変数は `"delinquent"` → 1、それ以外 → 0 とする
 - 根拠：失注案件は審査スコアとアウトカムの因果関係が不明確（選択バイアス）
+- **【設計上の注意】本パイプラインは `total_score` / `asset_score` 等の既存スコアリング出力を特徴量として学習するスコア集約メタモデルである。既存スコア体系（`scoring_core.py` 等）が変更された場合は再学習だけでなくモデル設計自体の見直しが必要となる。将来的に審査原入力値を特徴量にする設計変更を行う場合は本 SPEC を改版すること。**
 
 **BR-425**: 再学習結果の全件ロギング
 - 条件：`run_retraining()` 完了時（成功・失敗・スキップ・ロールバック問わず）
@@ -256,8 +258,8 @@ Streamlit 管理画面（`pages/admin.py`）に再学習セクションを追加
 - Then: `status` が `"success"` または `"rolled_back"` であり `records_used >= 50`
 
 **AC-1203**: 再学習前にバックアップが作成される
-- Given: `models/spread_predictor_v2.pkl` が存在する
-- When: `run_retraining(...)` を呼ぶ（レコード数十分）
+- Given: `models/spread_predictor_v2.pkl` が存在する、`dry_run=False`
+- When: `run_retraining(dry_run=False, ...)` を呼ぶ（レコード数十分）
 - Then: `models/spread_predictor_v2.bak.pkl` が存在する
 
 **AC-1204**: AUC が閾値未満でロールバックされる
@@ -332,7 +334,7 @@ Streamlit 管理画面（`pages/admin.py`）に再学習セクションを追加
       └── test_P4-003.py     （新規作成）
   ```
 - **学習ライブラリ**: `scikit-learn` の `RandomForestClassifier` と `lightgbm.LGBMClassifier` を使用。`requirements.txt` にすでに含まれているか確認すること
-- **AUC 評価**: `sklearn.metrics.roc_auc_score` でテストセットを評価。クラス不均衡がある場合は `average="weighted"` を使用
+- **AUC 評価**: `sklearn.metrics.roc_auc_score(y_true, y_score)` でテストセットを評価（2値分類のため `average` パラメータは省略）。クラス不均衡がある場合は学習器に `class_weight="balanced"` を設定すること
 - **ファイルロック**: `filelock` ライブラリ（`pip install filelock`）を推奨。ロックファイルは `models/.retraining.lock`
 - **目的変数**: BR-424 に従い `"delinquent"` → 1、`"contracted"` / `"completed"` → 0
 - **特徴量**: `total_score`, `asset_score`, `tenant_score`, `q_risk_score`, `competitor_pressure_score` を特徴量として使用（NULL は中央値で補完）
@@ -358,6 +360,7 @@ Streamlit 管理画面（`pages/admin.py`）に再学習セクションを追加
 | test_1209 | AC-1209 | 49件 → check_retraining_needed=False |
 | test_1210 | AC-1210 | 並行実行 → 2回目は status="skipped" |
 | test_1211 | AC-1211 | 学習例外モック → 例外非伝播, バックアップ復元 |
+| test_1212 | AC-1212 | Streamlit 管理画面で「モデル再学習を実行」ボタンと再学習履歴テーブルが描画される（`st.button` / `st.dataframe` の存在を smoke test で確認） |
 
 ### 回帰テスト
 - 再学習後に `total_scorer.py` が正常にスコアを返すこと（インターフェース変更なし）
