@@ -2,7 +2,7 @@
 spec_id: P2-001
 phase: 2
 title: aurion/q_risk.py — 財務矛盾検知モジュール
-status: draft
+status: approved
 author: Claude Sonnet
 reviewer: ""
 version: "1.0"
