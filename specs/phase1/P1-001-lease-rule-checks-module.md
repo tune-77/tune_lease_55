@@ -2,7 +2,7 @@
 spec_id: P1-001
 phase: 1
 title: lease_rule_checks.py — リースルールチェックモジュール
-status: draft
+status: approved
 author: Claude Sonnet
 reviewer: ""
 version: "1.0"

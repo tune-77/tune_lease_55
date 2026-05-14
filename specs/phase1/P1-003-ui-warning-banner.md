@@ -2,7 +2,7 @@
 spec_id: P1-003
 phase: 1
 title: index.html — リースルール警告バナーUI
-status: draft
+status: approved
 author: Claude Sonnet
 reviewer: ""
 version: "1.0"
