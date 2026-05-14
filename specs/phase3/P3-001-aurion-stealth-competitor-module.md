@@ -2,7 +2,7 @@
 spec_id: P3-001
 phase: 3
 title: aurion/stealth_competitor.py — ステルス競合推定モジュール
-status: draft
+status: approved
 author: Claude Sonnet
 reviewer: ""
 version: "1.0"

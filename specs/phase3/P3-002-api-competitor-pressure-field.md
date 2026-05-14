@@ -2,7 +2,7 @@
 spec_id: P3-002
 phase: 3
 title: POST /predict — aurion.competitor_pressure フィールド追加
-status: draft
+status: approved
 author: Claude Sonnet
 reviewer: ""
 version: "1.0"
