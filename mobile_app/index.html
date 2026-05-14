@@ -362,6 +362,81 @@
       color: var(--muted);
       padding: 0 20px;
     }
+
+    /* ─── 物件・保険情報カード ─── */
+    .card-optional .card-title {
+      color: var(--muted);
+    }
+    .card-optional .card-title::after {
+      content: " （任意）";
+      font-weight: 400;
+    }
+
+    /* チェックボックス行 */
+    .field-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .field-checkbox input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+      cursor: pointer;
+    }
+
+    /* disabled select のグレーアウト */
+    .field select:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    /* ─── 警告バナー全体 ─── */
+    #warnings-section {
+      display: none;
+      margin-top: 16px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid #f59e0b;
+    }
+    .warnings-header {
+      background: #fef3c7;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #78350f;
+      border-bottom: 1px solid #f59e0b;
+    }
+
+    /* 警告アイテム */
+    .warning-item {
+      display: flex;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid #fde68a;
+    }
+    .warning-item:last-child { border-bottom: none; }
+
+    .warning-high, .warning-medium {
+      background: #fef9c3;
+    }
+    .warning-low {
+      background: #eff6ff;
+      border-bottom-color: #bfdbfe;
+    }
+    .warning-icon { font-size: 18px; flex-shrink: 0; }
+    .warning-body { flex: 1; }
+    .warning-message {
+      font-size: 13px;
+      font-weight: 600;
+      color: #78350f;
+      line-height: 1.5;
+    }
+    .warning-low .warning-message { color: #1e40af; }
+    .warning-source {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 3px;
+    }
   </style>
 </head>
 <body>
@@ -455,6 +530,66 @@
     </div>
   </div>
 
+  <!-- 物件・保険情報カード -->
+  <div class="card card-optional">
+    <div class="card-title">🏗 物件・保険情報</div>
+
+    <div class="field">
+      <label><span class="icon">🏗</span>物件種別</label>
+      <select id="asset_type">
+        <option value="">その他・不明</option>
+        <option value="電子計算機">電子計算機（PC・サーバ）</option>
+        <option value="複写機">複写機</option>
+        <option value="ファクシミリ">ファクシミリ</option>
+        <option value="複合機">複合機</option>
+        <option value="通信機器">通信機器</option>
+        <option value="工作機械">工作機械</option>
+        <option value="印刷機械">印刷機械</option>
+        <option value="農業機械">農業機械</option>
+        <option value="建設機械">建設機械</option>
+        <option value="フォークリフト">フォークリフト</option>
+        <option value="自動車（普通）">自動車（普通）</option>
+        <option value="自動車（小型）">自動車（小型）</option>
+        <option value="トラック">トラック</option>
+        <option value="バス">バス</option>
+        <option value="医療機器">医療機器</option>
+        <option value="歯科用機器">歯科用機器</option>
+        <option value="エアコン">エアコン</option>
+        <option value="冷凍・冷蔵機器">冷凍・冷蔵機器</option>
+        <option value="厨房機器">厨房機器</option>
+        <option value="運搬機具">運搬機具</option>
+        <option value="自動販売機">自動販売機</option>
+        <option value="カメラ">カメラ</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">🔄</span>再リース予定</label>
+      <div class="field-checkbox">
+        <input type="checkbox" id="is_re_lease">
+        <span style="font-size:14px; color:var(--muted);">チェックで有効</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">🛡</span>動産保険</label>
+      <select id="insurance_applicable">
+        <option value="不明">不明</option>
+        <option value="付保済">付保済</option>
+        <option value="未付保">未付保</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">🔄</span>再リース保険（再リース予定時のみ）</label>
+      <select id="re_lease_insurance" disabled>
+        <option value="不明">不明</option>
+        <option value="付保済">付保済</option>
+        <option value="未付保">未付保</option>
+      </select>
+    </div>
+  </div>
+
   <!-- ボタン行 -->
   <div class="btn-row">
     <button class="btn" id="submit-btn" onclick="runPredict()">
@@ -513,6 +648,12 @@
         <span class="rate-chip" id="rate-spread-chip">スプレッド：—%</span>
       </div>
     </div>
+
+    <!-- リースルール警告バナー -->
+    <div id="warnings-section" role="alert" style="display:none;">
+      <div class="warnings-header">⚠️ リースルール警告</div>
+      <div id="warnings-list"></div>
+    </div>
   </div>
 
   <div class="footer">
@@ -541,6 +682,10 @@
       dep_expense:      parseFloat(document.getElementById("dep_expense").value)      || 0,
       acquisition_cost: parseFloat(document.getElementById("acquisition_cost").value) || 0,
       lease_credit:     parseFloat(document.getElementById("lease_credit").value)     || 0,
+      asset_type:           document.getElementById("asset_type").value,
+      is_re_lease:          document.getElementById("is_re_lease").checked,
+      insurance_applicable: document.getElementById("insurance_applicable").value,
+      re_lease_insurance:   document.getElementById("re_lease_insurance").value,
     };
 
     // UI: ローディング開始
@@ -573,7 +718,9 @@
     }
   }
 
-  function showResult({ score, probability, judgment, recommended_rate, base_rate, spread_pred, rate_range }) {
+  function showResult({ score, probability, judgment,
+                        recommended_rate, base_rate, spread_pred, rate_range,
+                        warnings, rule_check_status }) {
     document.getElementById("score-val").textContent = score;
     document.getElementById("prob-val").textContent = (probability * 100).toFixed(1) + "%";
 
@@ -611,8 +758,41 @@
       rateSection.style.display = "none";
     }
 
+    renderWarnings(warnings || [], rule_check_status || "ok");
+
     document.getElementById("result").classList.add("visible");
     document.getElementById("result").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  const _VALID_SEVERITIES = ["high", "medium", "low"];
+
+  function renderWarnings(warnings, rule_check_status) {
+    const section = document.getElementById("warnings-section");
+    if (!warnings || warnings.length === 0) {
+      section.style.display = "none";
+      return;
+    }
+    section.style.display = "block";
+    const list = document.getElementById("warnings-list");
+    list.innerHTML = warnings.map(w => {
+      const sev = _VALID_SEVERITIES.includes(w.severity) ? w.severity : "low";
+      return `
+      <div class="warning-item warning-${sev}">
+        <span class="warning-icon">${sev === "low" ? "ℹ️" : "⚠️"}</span>
+        <div class="warning-body">
+          <div class="warning-message">${escapeHtml(w.message)}</div>
+          <div class="warning-source">${escapeHtml(w.source)}</div>
+        </div>
+      </div>`;
+    }).join("");
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
   }
 
   function clearAll() {
@@ -626,8 +806,22 @@
     document.getElementById("result").classList.remove("visible");
     document.getElementById("rate-section").style.display = "none";
     document.getElementById("error-msg").classList.remove("visible");
+    // 新規フィールドリセット
+    document.getElementById("asset_type").value = "";
+    document.getElementById("is_re_lease").checked = false;
+    document.getElementById("insurance_applicable").value = "不明";
+    document.getElementById("re_lease_insurance").value = "不明";
+    document.getElementById("re_lease_insurance").disabled = true;
+    // 警告バナー消去
+    document.getElementById("warnings-section").style.display = "none";
+    document.getElementById("warnings-list").innerHTML = "";
     document.getElementById("nenshu").focus();
   }
+
+  // is_re_lease チェックで re_lease_insurance を有効/無効切り替え
+  document.getElementById("is_re_lease").addEventListener("change", function() {
+    document.getElementById("re_lease_insurance").disabled = !this.checked;
+  });
 
   // Enter キーで送信
   document.addEventListener("keydown", e => {
