@@ -83,6 +83,16 @@ try:
 except Exception as e:
     print(f"[api] spread_predictor v2: 未ロード → 推奨金利は算出不可 ({e})")
 
+# ── aurion: 財務矛盾検知モジュール (P2-002) ─────────────────────────────
+_aurion_loaded = False
+_detect_q_risk = None
+try:
+    from aurion.q_risk import detect_q_risk as _detect_q_risk
+    _aurion_loaded = True
+    print("[api] aurion.q_risk: 読み込み完了")
+except Exception as e:
+    print(f"[api] aurion.q_risk: 未ロード → フォールバック ({e})")
+
 _DEFAULT_IND        = "R サービス業(他に分類されないもの)"
 _DEFAULT_CONTRACT_T = "一般"
 _DEFAULT_DEAL_SRC   = "銀行紹介"
@@ -490,6 +500,27 @@ def predict():
         codes = [w["code"] for w in warnings]
         print(f"[api] rule_check_status={rule_check_status} warnings={codes}")
 
+    # P2-002: aurion q_risk 検知（参考値、スコアに影響しない）
+    _Q_RISK_FALLBACK = {"score": 0, "level": "ok", "patterns": [], "pattern_details": []}
+    try:
+        q_risk_result = _detect_q_risk(
+            gross_profit=gp,
+            op_profit=op,
+            net_income=ni,
+            nenshu=ns,
+            dep_expense=dep,
+            depreciation=depr,
+            machines=mach,
+            bank_credit=bk,
+            lease_credit=lc,
+            acquisition_cost=acq,
+        )
+    except Exception:
+        q_risk_result = _Q_RISK_FALLBACK
+
+    if q_risk_result["level"] in ("caution", "high_risk"):
+        print(f"[api.aurion] level={q_risk_result['level']} score={q_risk_result['score']} patterns={q_risk_result['patterns']}")
+
     return jsonify({
         "score":             score,
         "probability":       round(proba, 4),
@@ -505,6 +536,9 @@ def predict():
         },
         "warnings":          warnings,
         "rule_check_status": rule_check_status,
+        "aurion": {
+            "q_risk": q_risk_result,
+        },
     })
 
 
@@ -525,6 +559,7 @@ def health():
         "spread_model_loaded": _spread_model is not None,
         "spread_model_rmse":   _spread_bundle.get("rmse") if _spread_bundle else None,
         "spread_base_rate_ym": _latest_ym,
+        "aurion_module_loaded": _aurion_loaded,
     })
 
 

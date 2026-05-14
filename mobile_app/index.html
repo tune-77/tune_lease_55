@@ -437,6 +437,58 @@
       color: var(--muted);
       margin-top: 3px;
     }
+
+    /* ─── Q-Risk パネル ─── */
+    #q-risk-panel {
+      display: none;
+      margin-top: 16px;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .qrisk-ok    { border: 2px solid #28a745; background: #f0fff4; }
+    .qrisk-caution   { border: 2px solid #ffc107; background: #fffdf0; }
+    .qrisk-high-risk { border: 2px solid #dc3545; background: #fff5f5; }
+    .qrisk-ok .qrisk-header    { background: #d4edda; color: #155724; }
+    .qrisk-caution .qrisk-header   { background: #fff3cd; color: #856404; }
+    .qrisk-high-risk .qrisk-header { background: #f8d7da; color: #721c24; }
+    .qrisk-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .qrisk-body { padding: 12px 14px; }
+    .qrisk-score { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+    .qrisk-section-title { font-size: 12px; font-weight: 600; color: #555; margin-bottom: 6px; }
+    .qrisk-pattern-item {
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(0,0,0,0.08);
+    }
+    .qrisk-pattern-item:last-child { border-bottom: none; }
+    .qrisk-sev-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      margin-right: 6px;
+    }
+    .qrisk-sev-high   { background: #dc3545; color: #fff; }
+    .qrisk-sev-medium { background: #fd7e14; color: #fff; }
+    .qrisk-sev-low    { background: #6c757d; color: #fff; }
+    .qrisk-pattern-code { font-size: 13px; font-weight: 600; }
+    .qrisk-pattern-msg  { font-size: 12px; color: #555; margin-top: 4px; }
+    .qrisk-pattern-vals { font-size: 11px; color: #888; margin-top: 2px; }
+    .qrisk-disclaimer {
+      margin-top: 10px;
+      font-size: 11px;
+      padding: 8px 12px;
+      background: rgba(0,0,0,0.04);
+      border-radius: 6px;
+    }
+    .qrisk-no-pattern { font-size: 13px; color: #555; }
   </style>
 </head>
 <body>
@@ -514,6 +566,31 @@
     <div class="field">
       <label><span class="icon">🔧</span>減価償却費</label>
       <input type="number" id="dep_expense" placeholder="例: 5" inputmode="decimal">
+      <div class="unit">百万円</div>
+    </div>
+
+    <!-- P2-003: 財務詳細フィールド（AURION Q_risk 用） -->
+    <div class="field">
+      <label><span class="icon">📉</span>営業利益</label>
+      <input type="number" id="op_profit" placeholder="例: 25" inputmode="decimal">
+      <div class="unit">百万円</div>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">🏦</span>銀行借入残高</label>
+      <input type="number" id="bank_credit" placeholder="例: 100" inputmode="decimal">
+      <div class="unit">百万円</div>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">⚙️</span>機械設備残高</label>
+      <input type="number" id="machines" placeholder="例: 50" inputmode="decimal">
+      <div class="unit">百万円</div>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">🔁</span>減価償却費（AURION）</label>
+      <input type="number" id="depreciation" placeholder="例: 5" inputmode="decimal">
       <div class="unit">百万円</div>
     </div>
 
@@ -654,6 +731,9 @@
       <div class="warnings-header">⚠️ リースルール警告</div>
       <div id="warnings-list"></div>
     </div>
+
+    <!-- P2-003: Q-Risk パネル -->
+    <div id="q-risk-panel" style="display:none;"></div>
   </div>
 
   <div class="footer">
@@ -686,7 +766,26 @@
       is_re_lease:          document.getElementById("is_re_lease").checked,
       insurance_applicable: document.getElementById("insurance_applicable").value,
       re_lease_insurance:   document.getElementById("re_lease_insurance").value,
+      // P2-003: 財務詳細フィールド
+      op_profit:    parseFloat(document.getElementById("op_profit").value)    || 0,
+      bank_credit:  parseFloat(document.getElementById("bank_credit").value)  || 0,
+      machines:     parseFloat(document.getElementById("machines").value)     || 0,
+      depreciation: parseFloat(document.getElementById("depreciation").value) || 0,
     };
+
+    // BR-229: 財務詳細フィールドのマイナス値チェック
+    const _negChecks = [
+      { key: "op_profit",    label: "営業利益" },
+      { key: "bank_credit",  label: "銀行借入残高" },
+      { key: "machines",     label: "機械設備残高" },
+      { key: "depreciation", label: "減価償却費（AURION）" },
+    ];
+    const _negErrors = _negChecks.filter(f => vals[f.key] < 0).map(f => f.label);
+    if (_negErrors.length > 0) {
+      errEl.textContent = "⚠️ マイナス不可: " + _negErrors.join("、");
+      errEl.classList.add("visible");
+      return;
+    }
 
     // UI: ローディング開始
     btn.disabled = true;
@@ -720,7 +819,7 @@
 
   function showResult({ score, probability, judgment,
                         recommended_rate, base_rate, spread_pred, rate_range,
-                        warnings, rule_check_status }) {
+                        warnings, rule_check_status, aurion }) {
     document.getElementById("score-val").textContent = score;
     document.getElementById("prob-val").textContent = (probability * 100).toFixed(1) + "%";
 
@@ -759,6 +858,7 @@
     }
 
     renderWarnings(warnings || [], rule_check_status || "ok");
+    renderQRisk(aurion?.q_risk);
 
     document.getElementById("result").classList.add("visible");
     document.getElementById("result").scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -795,9 +895,62 @@
       .replace(/"/g, "&quot;");
   }
 
+  function renderQRisk(qRisk) {
+    try {
+      const panel = document.getElementById("q-risk-panel");
+      if (!qRisk || qRisk.level === "unknown") {
+        panel.style.display = "none";
+        return;
+      }
+      const _levelMap = {
+        ok:        { label: "✅ 異常なし（ok）",      cls: "qrisk-ok" },
+        caution:   { label: "⚠️ 要注意（caution）",   cls: "qrisk-caution" },
+        high_risk: { label: "🔴 高リスク（high_risk）", cls: "qrisk-high-risk" },
+      };
+      const cfg = _levelMap[qRisk.level] || _levelMap.caution;
+      const score = (typeof qRisk.score === "number") ? qRisk.score : 0;
+      const details = qRisk.pattern_details || [];
+      const _sevCls = { high: "qrisk-sev-high", medium: "qrisk-sev-medium", low: "qrisk-sev-low" };
+
+      let patternsHtml;
+      if (details.length === 0) {
+        patternsHtml = '<p class="qrisk-no-pattern">財務矛盾は検知されませんでした</p>';
+      } else {
+        patternsHtml = details.map(p => {
+          const sev = p.severity || "low";
+          const sevCls = _sevCls[sev] || "qrisk-sev-low";
+          const valText = p.values
+            ? Object.entries(p.values).map(([k, v]) => `${escapeHtml(k)}=${Number(v).toFixed(2)}`).join(" / ")
+            : "";
+          return `<div class="qrisk-pattern-item">
+            <span class="qrisk-sev-badge ${sevCls}">${escapeHtml(sev.toUpperCase())}</span>
+            <span class="qrisk-pattern-code">${escapeHtml(p.code || "")}</span>
+            <div class="qrisk-pattern-msg">${escapeHtml(p.message || "")}</div>
+            ${valText ? `<div class="qrisk-pattern-vals">${valText}</div>` : ""}
+          </div>`;
+        }).join("");
+      }
+
+      panel.className = cfg.cls;
+      panel.innerHTML = `
+        <div class="qrisk-header">
+          <span>AURION Q_risk（財務矛盾スコア）</span>
+          <span>${cfg.label}&ensp;<small style="font-weight:400;opacity:0.7;">※ 参考値</small></span>
+        </div>
+        <div class="qrisk-body">
+          <div class="qrisk-score">スコア: ${score} / 100</div>
+          <div class="qrisk-section-title">検知された矛盾パターン（${details.length}件）:</div>
+          ${patternsHtml}
+          <div class="qrisk-disclaimer">ℹ️ このスコアは参考値です。審査スコア・判定には影響しません。</div>
+        </div>`;
+      panel.style.display = "block";
+    } catch (e) { /* エラーを隠蔽し他の表示処理を止めない */ }
+  }
+
   function clearAll() {
     ["nenshu", "gross_profit", "ord_profit", "net_income",
-     "dep_expense", "acquisition_cost", "lease_credit"].forEach(id => {
+     "dep_expense", "acquisition_cost", "lease_credit",
+     "op_profit", "bank_credit", "machines", "depreciation"].forEach(id => {
       document.getElementById(id).value = "";
     });
     document.getElementById("industry").selectedIndex = 0;
@@ -815,6 +968,11 @@
     // 警告バナー消去
     document.getElementById("warnings-section").style.display = "none";
     document.getElementById("warnings-list").innerHTML = "";
+    // Q-Risk パネル消去
+    const _qPanel = document.getElementById("q-risk-panel");
+    _qPanel.style.display = "none";
+    _qPanel.innerHTML = "";
+    _qPanel.className = "";
     document.getElementById("nenshu").focus();
   }
 
