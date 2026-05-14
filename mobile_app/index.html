@@ -734,6 +734,9 @@
 
     <!-- P2-003: Q-Risk パネル -->
     <div id="q-risk-panel" style="display:none;"></div>
+
+    <!-- P3-003: ステルス競合推定パネル -->
+    <div id="competitor-pressure-panel" style="display:none;"></div>
   </div>
 
   <div class="footer">
@@ -859,6 +862,7 @@
 
     renderWarnings(warnings || [], rule_check_status || "ok");
     renderQRisk(aurion?.q_risk);
+    renderCompetitorPressure(aurion?.competitor_pressure);
 
     document.getElementById("result").classList.add("visible");
     document.getElementById("result").scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -947,6 +951,49 @@
     } catch (e) { /* エラーを隠蔽し他の表示処理を止めない */ }
   }
 
+  function renderCompetitorPressure(cp) {
+    try {
+      const panel = document.getElementById("competitor-pressure-panel");
+      if (!cp || !cp.patterns || cp.patterns.length === 0) {
+        panel.style.display = "none";
+        return;
+      }
+      const _colorMap = {
+        ok:        { bg: "#f0fdf4", text: "#166534", border: "#22c55e", label: "ok - 問題なし" },
+        caution:   { bg: "#fffbeb", text: "#92400e", border: "#f59e0b", label: "caution - 要確認" },
+        high_risk: { bg: "#fef2f2", text: "#991b1b", border: "#ef4444", label: "high_risk - 高リスク" },
+      };
+      const _sevIcon = { high: "⚠️", medium: "🔶", low: "ℹ️" };
+      const level = cp.level || "caution";
+      const cfg = _colorMap[level] || _colorMap.caution;
+      const score = (typeof cp.score === "number") ? cp.score : 0;
+      const details = cp.pattern_details || [];
+
+      const patternsHtml = details.map(p => {
+        const icon = _sevIcon[p.severity] || "ℹ️";
+        const valEntries = p.values ? Object.entries(p.values) : [];
+        const valText = valEntries.length > 0
+          ? `<div style="font-size:0.8em; color:#888; margin-top:2px;">${valEntries.map(([k, v]) => `${escapeHtml(String(k))}: ${escapeHtml(String(v))}`).join(" / ")}</div>`
+          : "";
+        return `<li style="margin-bottom:6px;">${icon} <strong>${escapeHtml(p.code || "")}</strong> (${escapeHtml(p.severity || "")})<div style="font-size:0.9em; margin-top:2px;">${escapeHtml(p.message || "")}</div>${valText}</li>`;
+      }).join("");
+
+      panel.style.cssText = `display:block; margin-top:12px; padding:14px; border-left:4px solid ${cfg.border}; background:${cfg.bg}; border-radius:6px;`;
+      panel.innerHTML = `
+        <div style="font-weight:bold; color:${cfg.text}; margin-bottom:6px;">
+          🔍 AURION ステルス競合推定
+          <span style="font-size:0.75em; font-weight:normal; margin-left:8px;">※ 参考値</span>
+        </div>
+        <div>競合圧力スコア: <strong id="competitor-pressure-score">${score}</strong>
+          &nbsp;<span id="competitor-pressure-level" style="font-size:0.85em;">[${escapeHtml(level)}]</span>
+        </div>
+        <ul id="competitor-pressure-patterns" style="margin-top:8px; padding-left:18px;">${patternsHtml}</ul>
+        <div style="font-size:0.75em; color:#6b7280; margin-top:8px;">
+          ※ このスコアは審査スコアには影響しません
+        </div>`;
+    } catch (e) { /* エラーを隠蔽し他の表示処理を止めない */ }
+  }
+
   function clearAll() {
     ["nenshu", "gross_profit", "ord_profit", "net_income",
      "dep_expense", "acquisition_cost", "lease_credit",
@@ -973,6 +1020,10 @@
     _qPanel.style.display = "none";
     _qPanel.innerHTML = "";
     _qPanel.className = "";
+    // ステルス競合推定パネル消去
+    const _cpPanel = document.getElementById("competitor-pressure-panel");
+    _cpPanel.style.cssText = "display:none;";
+    _cpPanel.innerHTML = "";
     document.getElementById("nenshu").focus();
   }
 
