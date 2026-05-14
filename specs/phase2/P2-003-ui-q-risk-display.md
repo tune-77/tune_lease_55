@@ -2,7 +2,7 @@
 spec_id: P2-003
 phase: 2
 title: index.html — Q_risk 財務矛盾スコア参考表示
-status: approved
+status: implemented
 author: Claude Sonnet
 reviewer: ""
 version: "1.1"

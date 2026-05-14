@@ -2,7 +2,7 @@
 spec_id: P2-002
 phase: 2
 title: POST /predict — aurion.q_risk フィールド追加
-status: approved
+status: implemented
 author: Claude Sonnet
 reviewer: ""
 version: "1.0"
