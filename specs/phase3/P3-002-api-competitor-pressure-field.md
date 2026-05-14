@@ -117,11 +117,18 @@ superseded_by: ""
 P2-002 の `detect_q_risk()` 呼び出しパターンに倣い、以下のパターンで追加する。
 
 ```python
-# P3-002: aurion stealth_competitor 検知（参考値、スコアに影響しない）
+# モジュールレベル（api.py 冒頭）
+_stealth_loaded = False
+try:
+    from aurion.stealth_competitor import detect_stealth_competitor
+    _stealth_loaded = True
+except ImportError:
+    pass
+
+# エンドポイント内（P3-002: aurion stealth_competitor 検知（参考値、スコアに影響しない））
 _STEALTH_FALLBACK = {"score": 0, "level": "ok", "patterns": [], "pattern_details": []}
 try:
-    from aurion.stealth_competitor import detect_stealth_competitor as _detect_stealth
-    stealth_result = _detect_stealth(
+    stealth_result = detect_stealth_competitor(
         spread_pred=spread_pred,
         base_rate=base_rate_val,
         competitor=competitor,
@@ -129,7 +136,7 @@ try:
         grade=grade,
         acquisition_cost=acq,
         nenshu=ns,
-    )
+    ) if _stealth_loaded else _STEALTH_FALLBACK
 except Exception:
     stealth_result = _STEALTH_FALLBACK
 
@@ -260,7 +267,7 @@ return jsonify({
 
 - **変更対象ファイル**: `mobile_app/api.py` のみ（stealth_competitor.py は P3-001 で作成済み前提）
 - **追加位置**: P2-002 の q_risk 呼び出しブロック（コメント `# P2-002:` の直後）の後に追記する
-- **インポート方式**: 遅延インポート（try/except の中で import）を使い、モジュール未存在時にサーバーが起動できるようにする
+- **インポート方式**: モジュールレベルで `_stealth_loaded = False` + `try: from aurion.stealth_competitor import detect_stealth_competitor; _stealth_loaded = True` の形でインポートする（P2-002 の `_aurion_loaded` パターンと同様）。これにより GET /health の `stealth_competitor_module_loaded` フラグが起動時から正確に設定される。
 - **テストファイル**: `tests/spec_phase3/test_P3-002.py` に作成
 - **触れてはいけないファイル**: `scoring_core.py`, `total_scorer.py`, `asset_scorer.py`, `quantum_analysis_module.py`, `aurion/q_risk.py`, `mobile_app/index.html`（本SPEC では）
 

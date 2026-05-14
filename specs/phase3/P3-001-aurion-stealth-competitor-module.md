@@ -103,7 +103,7 @@ class StealthCompetitorResult(TypedDict):
 ### スコア計算式
 
 ```
-score = min(100, high_count × 40 + medium_count × 15 + low_count × 5)
+score = min(100, high_count × 35 + medium_count × 12 + low_count × 4)
 ```
 
 - `high_count`: severity=="high" のパターン数
@@ -189,7 +189,7 @@ def detect_stealth_competitor(
 **AC-701**: 競合未申告・低スプレッドで COMP-STEALTH-001 が検知される
 - Given: `competitor=0, spread_pred=1.2, base_rate=1.0, grade=5`
 - When: `detect_stealth_competitor(spread_pred=1.2, base_rate=1.0, competitor=0, grade=5)` を呼ぶ
-- Then: `patterns` に `"COMP-STEALTH-001"` が含まれ、`level == "high_risk"`
+- Then: `patterns` に `"COMP-STEALTH-001"` が含まれ、`level == "caution"`
 
 **AC-702**: 競合未申告だが spread が 1.5% 以上なら COMP-STEALTH-001 が出ない
 - Given: `competitor=0, spread_pred=1.5, base_rate=1.0, grade=5`
@@ -250,12 +250,12 @@ def detect_stealth_competitor(
 **AC-713**: スコア計算の検証（high × 1 件）
 - Given: COMP-STEALTH-001 のみ発生（high × 1）
 - When: `detect_stealth_competitor(spread_pred=1.2, base_rate=1.0, competitor=0, grade=5)` を呼ぶ（COMP-STEALTH-001 のみ、grade=5 で COMP-STEALTH-003 非該当）
-- Then: `score == 40` かつ `level == "caution"`
+- Then: `score == 35` かつ `level == "caution"`
 
 **AC-714**: スコア計算の検証（high × 2 件で high_risk）
 - Given: COMP-STEALTH-001 と COMP-STEALTH-002 が同時発生（high × 2）
 - When: `detect_stealth_competitor(spread_pred=1.2, base_rate=1.0, competitor=1, competitor_rate=1.1, grade=5)` を呼ぶ
-- Then: `score == 80` かつ `level == "high_risk"`
+- Then: `score == 70` かつ `level == "high_risk"`
 
 **AC-715**: grade 範囲外は 5 にクリップして計算を継続する
 - Given: `grade=15, spread_pred=2.5, base_rate=1.0, competitor=0`
@@ -309,7 +309,7 @@ def detect_stealth_competitor(
 
 | テストID | 対応AC | テスト内容 |
 |---------|--------|-----------|
-| test_701 | AC-701 | competitor=0, spread=1.2 → COMP-STEALTH-001, high_risk |
+| test_701 | AC-701 | competitor=0, spread=1.2 → COMP-STEALTH-001, caution |
 | test_702 | AC-702 | competitor=0, spread=1.5 → COMP-STEALTH-001 なし |
 | test_703 | AC-703 | comp_rate=1.1, base=1.0 → COMP-STEALTH-002 |
 | test_704 | AC-704 | comp_rate=1.3, base=1.0 → COMP-STEALTH-002 なし（境界値） |
@@ -321,8 +321,8 @@ def detect_stealth_competitor(
 | test_710 | AC-710 | 乖離0.5% → COMP-STEALTH-004 なし |
 | test_711 | AC-711 | competitor=0 では BR-302/304 非発動 |
 | test_712 | AC-712 | 全パターン未検知 → score=0, ok |
-| test_713 | AC-713 | high×1 → score=40, caution |
-| test_714 | AC-714 | high×2 → score=80, high_risk |
+| test_713 | AC-713 | high×1 → score=35, caution |
+| test_714 | AC-714 | high×2 → score=70, high_risk |
 | test_715 | AC-715 | grade=15 → 例外なし |
 | test_716 | AC-716 | competitor_rate < 0 → 例外なし |
 | test_717 | AC-717 | 100回連続 → 5000ms以内 |

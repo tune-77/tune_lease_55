@@ -105,7 +105,7 @@ HTML/JavaScript の観点でのデータ構造は P3-002 で定義した `Stealt
  * @param {Object} cp - aurion.competitor_pressure（score, level, patterns, pattern_details）
  */
 function renderCompetitorPressure(cp) {
-    // cp が null / undefined / level=="ok" かつ patterns が空の場合は非表示
+    // cp が null / undefined / cp.patterns.length == 0 の場合は非表示
     // P2-003 の renderQRisk() と同パターン
 }
 ```
@@ -232,7 +232,7 @@ renderCompetitorPressure(data.aurion?.competitor_pressure);
 **AC-905**: パターンの message が `#competitor-pressure-patterns` にリスト表示される
 - Given: `pattern_details[0].message = "競合未申告ですが推奨スプレッドが1.5%未満です。..."`, `severity = "high"`
 - When: `renderCompetitorPressure()` を呼ぶ
-- Then: `#competitor-pressure-patterns` の `<ul>` に `⚠️` アイコンとメッセージが含まれる
+- Then: `#competitor-pressure-patterns` の `<ul>` に `⚠️` アイコンとメッセージが含まれる、かつ `message` および `code` は `escapeHtml()` でサニタイズされた上で innerHTML に挿入される
 
 **AC-906**: medium severity のパターンには `🔶` アイコンが表示される
 - Given: `pattern_details[0].severity = "medium"`
