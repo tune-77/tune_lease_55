@@ -225,6 +225,20 @@ from web_services import (
     get_stats,
 )
 from components.asset_finance import AssetFinanceEngine
+
+# Aurion modules (optional, graceful degradation)
+_aurion_q_risk_loaded = False
+_aurion_stealth_loaded = False
+try:
+    from mobile_app.aurion.q_risk import detect_q_risk
+    _aurion_q_risk_loaded = True
+except Exception:
+    pass
+try:
+    from mobile_app.aurion.stealth_competitor import detect_stealth_competitor
+    _aurion_stealth_loaded = True
+except Exception:
+    pass
 def red_label(placeholder, text):
     # display: block にして、一つ一つのスライダーセットの範囲を明確にします
     placeholder.markdown(f'''
@@ -1035,6 +1049,79 @@ elif mode == "📋 審査・分析":
                 )
                 # ウィザード経由の場合、審査完了後に古いデータが混入しないようクリア
                 st.session_state.pop("wizard_form_result", None)
+
+                # --- Aurion Section ---
+                if _aurion_q_risk_loaded or _aurion_stealth_loaded:
+                    with st.expander("Aurion参考情報", expanded=False):
+                        _a_nenshu = st.session_state.get("nenshu", 0) or 0
+                        _a_gross_profit = item9_gross if "item9_gross" in dir() else 0
+                        _a_op_profit = rieki if "rieki" in dir() else 0
+                        _a_spread_pred = float(st.session_state.get("spread_pred") or 1.0)
+                        _a_competitor = competitor if "competitor" in dir() else 0
+                        _a_competitor_rate = float(st.session_state.get("competitor_rate") or 0.0)
+                        _a_base_rate = float(st.session_state.get("base_rate") or 3.0)
+                        _a_grade = grade if "grade" in dir() else 5
+                        _a_bank_credit = bank_credit if "bank_credit" in dir() else 0
+                        _a_lease_credit = lease_credit if "lease_credit" in dir() else 0
+                        _a_item5 = item5_net_income if "item5_net_income" in dir() else 0
+                        _a_item10 = item10_dep if "item10_dep" in dir() else 0
+                        _a_item6 = item6_machine if "item6_machine" in dir() else 0
+                        _a_item11 = item11_dep_exp if "item11_dep_exp" in dir() else 0
+                        _a_acq = acquisition_cost if "acquisition_cost" in dir() else 0
+                        if _aurion_q_risk_loaded:
+                            try:
+                                q_result = detect_q_risk(
+                                    gross_profit=float(_a_gross_profit or 0),
+                                    op_profit=float(_a_op_profit or 0),
+                                    net_income=float(_a_item5 or 0),
+                                    nenshu=float(_a_nenshu or 0),
+                                    dep_expense=float(_a_item11 or 0),
+                                    depreciation=float(_a_item10 or 0),
+                                    machines=float(_a_item6 or 0),
+                                    bank_credit=float(_a_bank_credit or 0),
+                                    lease_credit=float(_a_lease_credit or 0),
+                                    acquisition_cost=float(_a_acq or 0),
+                                )
+                                st.markdown("**【流動性リスク (Q-Risk)】**")
+                                level = q_result.get("level", "ok")
+                                score = q_result.get("score", 0)
+                                patterns = q_result.get("patterns", [])
+                                if level == "ok":
+                                    st.success(f"レベル: {level}")
+                                elif level == "caution":
+                                    st.warning(f"レベル: {level}")
+                                else:
+                                    st.error(f"レベル: {level}")
+                                st.write(f"スコア: {score}")
+                                st.write(f"検出パターン数: {len(patterns)}件")
+                            except Exception:
+                                pass
+                        if _aurion_stealth_loaded:
+                            try:
+                                s_result = detect_stealth_competitor(
+                                    spread_pred=float(_a_spread_pred or 1.0),
+                                    base_rate=float(_a_base_rate or 3.0),
+                                    competitor=int(_a_competitor or 0),
+                                    competitor_rate=float(_a_competitor_rate or 0.0),
+                                    grade=int(_a_grade or 5),
+                                    acquisition_cost=float(_a_acq or 0),
+                                    nenshu=float(_a_nenshu or 0),
+                                )
+                                st.markdown("**【競合圧力 (Competitor Pressure)】**")
+                                level = s_result.get("level", "ok")
+                                score = s_result.get("score", 0)
+                                patterns = s_result.get("patterns", [])
+                                if level == "ok":
+                                    st.success(f"レベル: {level}")
+                                elif level == "caution":
+                                    st.warning(f"レベル: {level}")
+                                else:
+                                    st.error(f"レベル: {level}")
+                                st.write(f"スコア: {score}")
+                                st.write(f"検出パターン数: {len(patterns)}件")
+                            except Exception:
+                                pass
+                        st.caption("⚠️ 参考値（審査スコアに影響しません）")
 
         if nav_mode == "📊 分析結果":
             from components.analysis_results import render_analysis_results
