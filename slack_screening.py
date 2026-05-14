@@ -992,6 +992,22 @@ class ScreeningSession:
 
         text_result = "\n".join(lines)
 
+        # screening_records フィードバックループ記録（サイドカー、失敗しても審査継続）
+        try:
+            import datetime as _dt_sr
+            import uuid as _uuid_sr
+            from screening_recorder import record_screening_result as _rec_sr
+            _slack_score = score if result else float(d.get("asset_score") or 0)
+            _rec_sr(
+                case_id=f"slack-{self.channel_id}-{_uuid_sr.uuid4().hex[:8]}",
+                screened_at=_dt_sr.datetime.utcnow().isoformat() + "Z",
+                total_score=min(max(_slack_score, 0.0), 100.0),
+                asset_score=min(max(float(d.get("asset_score") or 0), 0.0), 100.0),
+                source="slack",
+            )
+        except Exception:
+            pass
+
         # Block Kit ブロック生成（スコアリング成功時のみ）
         if result:
             blocks = _build_result_blocks(

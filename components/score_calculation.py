@@ -1358,6 +1358,22 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     st.session_state.pop("_db_auto_saved_for", None)
                 else:
                     st.warning("⚠️ 案件ログ保存に失敗しましたが、審査結果は表示されます。")
+
+                # screening_records フィードバックループ記録（サイドカー、失敗しても審査継続）
+                try:
+                    from screening_recorder import record_screening_result as _rec_sr
+                    import datetime as _dt_sr
+                    _ts_res_sr = st.session_state.get("_ts_result") or {}
+                    _rec_sr(
+                        case_id=str(case_id) if case_id else str(_dt_sr.datetime.utcnow().timestamp()),
+                        screened_at=_dt_sr.datetime.utcnow().isoformat() + "Z",
+                        total_score=float(_ts_res_sr.get("total_score", final_score)),
+                        asset_score=float(_ts_res_sr.get("asset_score", asset_score)),
+                        tenant_score=float(_ts_res_sr.get("obligor_score", 0)) if _ts_res_sr.get("obligor_score") is not None else None,
+                        source="streamlit",
+                    )
+                except Exception:
+                    pass
                 # ── 入力値・遷移設定はログ保存の成否に関わらず実行 ──────────────
                 submitted_qual_corr = {f"qual_corr_{item['id']}": st.session_state.get(f"qual_corr_{item['id']}", 0) for item in QUALITATIVE_SCORING_CORRECTION_ITEMS}
                 st.session_state["last_submitted_inputs"] = {
