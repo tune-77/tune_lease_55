@@ -343,6 +343,91 @@ def render_apply_form(
     if asset_category:
         render_asset_score_detail(asset_category, selected_asset_id, asset_name)
 
+    # ── EDINET 自動取得（フォームの外側に配置: ボタン+API呼び出しのため）─────────
+    with st.expander("🏛 EDINET 財務データ自動取得（任意）", expanded=False):
+        col_corp1, col_corp2 = st.columns([3, 1])
+        with col_corp1:
+            _corp_no_val = st.text_input(
+                "法人番号（13桁）",
+                value=st.session_state.get("edinet_corporate_number", ""),
+                max_chars=13,
+                placeholder="例: 1234567890123",
+                key="edinet_corporate_number_input",
+                help="金融庁 EDINET から有価証券報告書の財務データを自動取得します。",
+            )
+            st.session_state["edinet_corporate_number"] = _corp_no_val
+        with col_corp2:
+            st.markdown("<br>", unsafe_allow_html=True)
+            _edinet_btn = st.button("EDINET 取得", key="edinet_fetch_btn", use_container_width=True)
+
+        if _edinet_btn:
+            _corp_no = st.session_state.get("edinet_corporate_number", "").strip()
+            if not _corp_no or not _corp_no.isdigit() or len(_corp_no) != 13:
+                st.error("法人番号は13桁の数字で入力してください。")
+            else:
+                with st.spinner("EDINET から財務データを取得中..."):
+                    try:
+                        from edinet_collector import fetch_edinet_financials
+                        _edinet_result = fetch_edinet_financials(_corp_no)
+                        st.session_state["edinet_last_result"] = _edinet_result
+                    except Exception as _e:
+                        st.session_state["edinet_last_result"] = {
+                            "success": False, "source": "fallback",
+                            "error": str(_e),
+                            "nenshu": None, "operating_profit": None,
+                            "net_income": None, "total_assets": None,
+                            "equity_ratio": None, "fiscal_year_retrieved": None,
+                            "edinet_code": None,
+                        }
+
+        _last_edinet = st.session_state.get("edinet_last_result")
+        if _last_edinet:
+            if _last_edinet.get("source") == "cache":
+                _fetched_at = _last_edinet.get("fetched_at", "")
+                st.info(f"キャッシュから取得しました（{_fetched_at}）")
+            if _last_edinet.get("success"):
+                _fy = _last_edinet.get("fiscal_year_retrieved")
+                st.success(f"✅ EDINET 取得成功（{_fy}年度）")
+                _fields = [
+                    ("売上高", "nenshu", "百万円"),
+                    ("営業利益", "operating_profit", "百万円"),
+                    ("当期純利益", "net_income", "百万円"),
+                    ("総資産", "total_assets", "百万円"),
+                    ("自己資本比率", "equity_ratio", "%"),
+                ]
+                for _label, _key, _unit in _fields:
+                    _val = _last_edinet.get(_key)
+                    if _val is not None:
+                        st.caption(f"✓ 自動入力: **{_label}** = {_val:,.1f} {_unit}")
+                # session_state にセット（千円単位 = 百万円 × 1000）
+                if _last_edinet.get("nenshu") is not None:
+                    st.session_state["nenshu"] = int(_last_edinet["nenshu"] * 1000)
+                if _last_edinet.get("operating_profit") is not None:
+                    st.session_state["rieki"] = int(_last_edinet["operating_profit"] * 1000)
+                if _last_edinet.get("net_income") is not None:
+                    st.session_state["item5_net_income"] = int(_last_edinet["net_income"] * 1000)
+                if _last_edinet.get("total_assets") is not None:
+                    st.session_state["total_assets"] = int(_last_edinet["total_assets"] * 1000)
+                if _last_edinet.get("equity_ratio") is not None:
+                    # 自己資本比率から純資産を逆算してセット
+                    _ta = st.session_state.get("total_assets", 0)
+                    if _ta and _ta > 0:
+                        st.session_state["net_assets"] = int(
+                            _ta * _last_edinet["equity_ratio"] / 100
+                        )
+                st.info("⚠ 取得できない項目は手入力してください。")
+            else:
+                _err = _last_edinet.get("error") or "不明なエラー"
+                if "edinetCode" in _err:
+                    st.warning("EDINET に登録されていない法人番号です。手入力してください。")
+                elif "timeout" in _err.lower() or "connect" in _err.lower():
+                    st.warning("EDINET に接続できませんでした。手入力してください。")
+                elif "XBRL" in _err or "parse" in _err.lower():
+                    st.warning("財務データの解析に失敗しました。手入力してください。")
+                else:
+                    st.warning("EDINET からデータを取得できませんでした。手入力してください。")
+    # ────────────────────────────────────────────────────────────────────────
+
     with st.form("shinsa_form"):
         st.warning(
             "📌 **必須** 売上高・総資産は **1以上** を入力してください（未入力だと判定がブロックされます）。\n\n"
