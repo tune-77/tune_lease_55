@@ -2,7 +2,7 @@
 spec_id: P1-002
 phase: 1
 title: POST /predict APIレスポンスへの warnings[] フィールド追加
-status: approved
+status: implemented
 author: Claude Sonnet
 reviewer: ""
 version: "1.0"
