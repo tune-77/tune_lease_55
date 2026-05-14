@@ -7,6 +7,8 @@ import json
 import os
 import sqlite3
 import time
+import re
+from datetime import datetime
 from contextlib import closing
 
 import streamlit as st
@@ -14,6 +16,44 @@ import streamlit as st
 # DB パス (絶対パス固定)
 _DB_ROOT = os.path.join("/Users/kobayashiisaoryou/clawd/tune_lease_55", "data")
 _LEASE_DB_PATH = os.path.join(_DB_ROOT, "lease_data.db")
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _date_str(value) -> str:
+    """Return YYYY-MM-DD-ish text for UI fields, or empty string."""
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text or text in {"0", "None", "null"}:
+        return ""
+    return text[:10]
+
+
+def _validate_optional_date(label: str, value: str) -> str | None:
+    """Validate optional YYYY-MM-DD text. Returns normalized text or None on error."""
+    text = (value or "").strip()
+    if not text:
+        return ""
+    if not _DATE_RE.match(text):
+        st.error(f"{label} は YYYY-MM-DD 形式で入力してください。例: 2026-05-13")
+        return None
+    try:
+        datetime.strptime(text, "%Y-%m-%d")
+    except ValueError:
+        st.error(f"{label} に存在する日付を入力してください。")
+        return None
+    return text
+
+
+_DATE_COLS = ("registration_date", "estimate_sent_date", "customer_response_date", "final_result_date")
+
+
+def _ensure_date_columns(conn: sqlite3.Connection) -> None:
+    for col in _DATE_COLS:
+        try:
+            conn.execute(f"ALTER TABLE past_cases ADD COLUMN {col} TEXT")
+        except Exception:
+            pass
 
 
 def _load_workflow_cases() -> dict[str, list[dict]]:
@@ -30,9 +70,12 @@ def _load_workflow_cases() -> dict[str, list[dict]]:
         return categories
     try:
         with closing(sqlite3.connect(_LEASE_DB_PATH)) as conn:
+            _ensure_date_columns(conn)
+            conn.commit()
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
-                "SELECT id, timestamp, industry_sub, score, final_status, data "
+                "SELECT id, timestamp, industry_sub, score, final_status, data, "
+                "registration_date, estimate_sent_date, customer_response_date, final_result_date "
                 "FROM past_cases ORDER BY timestamp DESC"
             ).fetchall()
         for r in rows:
@@ -41,6 +84,14 @@ def _load_workflow_cases() -> dict[str, list[dict]]:
                 data = json.loads(r["data"] or "{}")
             except Exception:
                 data = {}
+            for date_col in (
+                "registration_date",
+                "estimate_sent_date",
+                "customer_response_date",
+                "final_result_date",
+            ):
+                if not data.get(date_col) and r[date_col]:
+                    data[date_col] = r[date_col]
             
             status = r["final_status"] or data.get("final_status", "審査中")
             if status in ("未登録", "未設定", "", None):
@@ -108,9 +159,31 @@ def _save_workflow_status(record_id, new_status: str, extra: dict = None) -> boo
             data["final_status"] = new_status
             if extra:
                 data.update(extra)
+            registration_date = data.get("registration_date")
+            estimate_sent_date = data.get("estimate_sent_date")
+            customer_response_date = data.get("customer_response_date")
+            final_result_date = data.get("final_result_date")
+            _ensure_date_columns(conn)
             conn.execute(
-                "UPDATE past_cases SET final_status = ?, data = ? WHERE id = ?",
-                (new_status, json.dumps(data, ensure_ascii=False, default=str), str(record_id)),
+                """
+                UPDATE past_cases
+                SET final_status = ?,
+                    data = ?,
+                    registration_date = ?,
+                    estimate_sent_date = ?,
+                    customer_response_date = ?,
+                    final_result_date = ?
+                WHERE id = ?
+                """,
+                (
+                    new_status,
+                    json.dumps(data, ensure_ascii=False, default=str),
+                    registration_date,
+                    estimate_sent_date,
+                    customer_response_date,
+                    final_result_date,
+                    str(record_id),
+                ),
             )
             conn.commit()
         return True
@@ -238,14 +311,45 @@ def render_status_registration():
                             competitor_name = st.text_input("競合他社", placeholder="例: ○○リース", key=f"comp_{rec_id}")
                             loan_condition_options = ["本件限度", "親会社保証", "担保あり", "金融機関協調", "その他"]
                             loan_conditions = st.multiselect("承認条件", loan_condition_options, key=f"cond_{rec_id}")
+                            st.markdown("##### 日付管理")
+                            date_col1, date_col2, date_col3 = st.columns(3)
+                            with date_col1:
+                                estimate_sent_date_raw = st.text_input(
+                                    "見積提示日",
+                                    value=_date_str(record["data"].get("estimate_sent_date")),
+                                    placeholder="YYYY-MM-DD",
+                                    key=f"estimate_date_{rec_id}",
+                                )
+                            with date_col2:
+                                customer_response_date_raw = st.text_input(
+                                    "顧客反応日",
+                                    value=_date_str(record["data"].get("customer_response_date")),
+                                    placeholder="YYYY-MM-DD",
+                                    key=f"response_date_{rec_id}",
+                                )
+                            with date_col3:
+                                final_result_date_raw = st.text_input(
+                                    "結果日",
+                                    value=_date_str(record["data"].get("final_result_date")),
+                                    placeholder="YYYY-MM-DD",
+                                    key=f"result_date_{rec_id}",
+                                )
 
                             submitted = st.form_submit_button("✅ 結果を確定する", type="primary")
 
                             if submitted:
+                                estimate_sent_date = _validate_optional_date("見積提示日", estimate_sent_date_raw)
+                                customer_response_date = _validate_optional_date("顧客反応日", customer_response_date_raw)
+                                final_result_date = _validate_optional_date("結果日", final_result_date_raw)
+                                if None in (estimate_sent_date, customer_response_date, final_result_date):
+                                    st.stop()
                                 extra = {
                                     "final_rate": final_rate,
                                     "loan_conditions": loan_conditions,
                                     "competitor_name": competitor_name.strip(),
+                                    "estimate_sent_date": estimate_sent_date,
+                                    "customer_response_date": customer_response_date,
+                                    "final_result_date": final_result_date,
                                 }
                                 if res_status == "失注":
                                     extra["lost_reason"] = lost_reason if lost_reason != "—（選択）" else ""
@@ -334,9 +438,37 @@ def render_quick_status_widget(context_key: str = "main") -> None:
             _ql_opts,
             key=f"qr_lost_{rec_id}_{context_key}",
         )
+        estimate_sent_date_raw = st.text_input(
+            "見積提示日",
+            value=_date_str(record["data"].get("estimate_sent_date")),
+            placeholder="YYYY-MM-DD",
+            key=f"qr_estimate_date_{rec_id}_{context_key}",
+        )
+        customer_response_date_raw = st.text_input(
+            "顧客反応日",
+            value=_date_str(record["data"].get("customer_response_date")),
+            placeholder="YYYY-MM-DD",
+            key=f"qr_response_date_{rec_id}_{context_key}",
+        )
+        final_result_date_raw = st.text_input(
+            "結果日",
+            value=_date_str(record["data"].get("final_result_date")),
+            placeholder="YYYY-MM-DD",
+            key=f"qr_result_date_{rec_id}_{context_key}",
+        )
         submitted = st.form_submit_button("✅ 成約/失注を登録", type="primary")
         if submitted:
-            extra = {"final_rate": final_rate}
+            estimate_sent_date = _validate_optional_date("見積提示日", estimate_sent_date_raw)
+            customer_response_date = _validate_optional_date("顧客反応日", customer_response_date_raw)
+            final_result_date = _validate_optional_date("結果日", final_result_date_raw)
+            if None in (estimate_sent_date, customer_response_date, final_result_date):
+                st.stop()
+            extra = {
+                "final_rate": final_rate,
+                "estimate_sent_date": estimate_sent_date,
+                "customer_response_date": customer_response_date,
+                "final_result_date": final_result_date,
+            }
             if res_radio == "失注":
                 extra["lost_reason"] = lost_reason if lost_reason != "—（選択）" else ""
             if _save_workflow_status(rec_id, res_radio, extra):
