@@ -2,7 +2,7 @@
 spec_id: P3-003
 phase: 3
 title: index.html — ステルス競合圧力スコア参考表示
-status: approved
+status: implemented
 author: Claude Sonnet
 reviewer: ""
 version: "1.0"
