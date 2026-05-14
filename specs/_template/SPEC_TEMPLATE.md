@@ -3,7 +3,7 @@ spec_id: PX-NNN
 phase: X
 title: （機能名・モジュール名）
 status: draft
-author: Claude Opus
+author: Claude Sonnet
 reviewer: ""
 version: "1.0"
 created: YYYY-MM-DD

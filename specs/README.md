@@ -24,7 +24,7 @@ spec_id: P1-001
 phase: 1
 title: リース期間3点チェック
 status: draft          # draft | review | approved | implemented
-author: Claude Opus
+author: Claude Sonnet
 reviewer: ""           # 承認者名を記入
 version: "1.0"
 depends_on: []         # 依存するspec_id のリスト

@@ -323,6 +323,12 @@ def predict():
     except (TypeError, ValueError) as e:
         return jsonify({"error": f"数値変換エラー: {e}"}), 400
 
+    # P1-002: リースルールチェック用フィールド（全てオプション）
+    asset_type_str = str(data.get("asset_type", ""))
+    is_re_lease    = bool(data.get("is_re_lease", False))
+    insurance_app  = str(data.get("insurance_applicable", "不明"))
+    re_lease_ins   = str(data.get("re_lease_insurance", "不明"))
+
     # ── 派生比率 ──────────────────────────────────────────────────
     depr = float(data.get("depreciation", 0))
     oa   = float(data.get("other_assets", 0))
@@ -464,6 +470,26 @@ def predict():
     else:
         judgment = "否認"
 
+    # P1-002: リースルールチェック（BR-111〜BR-115）
+    try:
+        from lease_rule_checks import check_lease_rules
+        rule_result       = check_lease_rules(
+            lease_term_months=int(lt),
+            asset_type=asset_type_str,
+            is_re_lease=is_re_lease,
+            insurance_applicable=insurance_app,
+            re_lease_insurance=re_lease_ins,
+        )
+        warnings          = rule_result["warnings"]
+        rule_check_status = rule_result["status"]
+    except Exception:
+        warnings          = []
+        rule_check_status = "skipped"
+
+    if rule_check_status not in ("ok", "unknown"):
+        codes = [w["code"] for w in warnings]
+        print(f"[api] rule_check_status={rule_check_status} warnings={codes}")
+
     return jsonify({
         "score":             score,
         "probability":       round(proba, 4),
@@ -477,6 +503,8 @@ def predict():
             "low":  round(recommended_rate - 0.3, 2),
             "high": round(recommended_rate + 0.3, 2),
         },
+        "warnings":          warnings,
+        "rule_check_status": rule_check_status,
     })
 
 

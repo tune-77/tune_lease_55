@@ -2,15 +2,15 @@
 spec_id: P0-002
 phase: 0
 title: Human Approval Gate ワークフロー定義
-status: draft
-author: Claude Opus
+status: implemented
+author: Claude Sonnet
 reviewer: human
 version: 1.0.0
 depends_on: [P0-001]
 ---
 
 ## 1. Goal
-tune_lease_55の開発体制（Claude Opus × Codex × 人間）における二段承認ゲートの手順・禁止事項・GitHubラベル運用を `docs/approval_gate.md` として明文化する。
+tune_lease_55の開発体制（Claude Sonnet × Codex × 人間）における二段承認ゲートの手順・禁止事項・GitHubラベル運用を `docs/approval_gate.md` として明文化する。
 
 ## 2. Scope
 ### In Scope
@@ -46,7 +46,7 @@ GitHub Labels定義：
 
 ## 6. Business Rules
 - **BR-001**: SPECは `status: draft` で作成され、ゲート①通過時に `status: approved` へ更新。`draft`のまま実装着手は禁止
-- **BR-002**: ゲート①はClaude Opus SPEC完成→人間承認→frontmatter更新の3ステップで完了
+- **BR-002**: ゲート①はClaude Sonnet SPEC完成→人間承認→frontmatter更新の3ステップで完了
 - **BR-003**: ゲート②はCodex PR提出→CI pass→人間がSPEC準拠確認→`impl-approved`ラベルで完了
 - **BR-004**: `impl-approved`ラベル無しのPRはmasterへマージ禁止
 - **BR-005**: 禁止リスト記載の操作はSPECで明示的に許可されていない限りCodexは実行禁止
@@ -81,7 +81,7 @@ docs/approval_gate.md の章構成：
 ## 11. Implementation Notes（Codex向け）
 `docs/approval_gate.md` に以下を記載：
 - mermaid flowchart（spec-draft→approved→impl→needs-human-review→impl-approved→merge）
-- ゲート①手順: 1.Claude Opus起票(draft) 2.人間レビュー 3.status: approvedに変更+spec-approvedラベル
+- ゲート①手順: 1.Claude Sonnet起票(draft) 2.人間レビュー 3.status: approvedに変更+spec-approvedラベル
 - ゲート②手順: 1.Codex実装 2.テスト作成・pass 3.PR起票 4.needs-human-reviewラベル 5.人間がチェックリスト確認 6.impl-approvedラベル→squash merge
 - 禁止リスト（最低6件）: 既存RF/LGBMモデル置換、lease_data.dbへの直接INSERT/UPDATE/DELETE、masterへの直接push、SPEC未記載の依存パッケージ追加、APIキー・DB接続情報のコミット、port 5001以外のデフォルト起動変更
 - 許可リスト（最低5件）: SPEC記載のカラム追加/新規テーブル作成、scripts/配下の新規スクリプト追加、tests/spec_phaseN/配下のテスト追加・更新、mobile_app/配下のHTML/JS/CSS更新、.github/workflows/追加
