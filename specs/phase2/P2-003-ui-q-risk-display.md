@@ -5,7 +5,7 @@ title: index.html — Q_risk 財務矛盾スコア参考表示
 status: draft
 author: Claude Sonnet
 reviewer: ""
-version: "1.0"
+version: "1.1"
 created: 2026-05-14
 updated: 2026-05-14
 depends_on: [P2-001, P2-002]
@@ -20,6 +20,8 @@ superseded_by: ""
 
 `mobile_app/index.html` に **Q_risk 財務矛盾スコア参考パネル** を追加し、`POST /predict` レスポンスの `aurion.q_risk` を審査官に視覚的に提示する。「参考値であり審査スコアには影響しない」旨を明示し、誤解を防ぐ。
 
+また、P2-001 の8種財務矛盾パターンのうち4種（FIN-CONTRADICT-003/005/007/008）が参照する **財務詳細フィールド4件**（`op_profit`・`bank_credit`・`machines`・`depreciation`）を財務情報カードに追加し、フロントエンドから API へ送信できるようにする。
+
 ---
 
 ## 2. Scope
@@ -30,6 +32,13 @@ superseded_by: ""
 - `aurion.q_risk.pattern_details` の矛盾リスト表示
 - JavaScript: `renderQRisk()` 関数の追加（`renderWarnings()` と独立）
 - 参考値免責表示（「スコアには影響しません」）
+- 財務詳細フィールド4件の HTML 入力要素追加:
+  - `op_profit`（営業利益・百万円）
+  - `bank_credit`（銀行借入残高・百万円）
+  - `machines`（機械設備残高・百万円）
+  - `depreciation`（減価償却費・百万円）
+- 4フィールドの `POST /predict` リクエストへの組み込み（`collectFormData()` 相当箇所）
+- 4フィールドの `clearAll()` でのリセット
 
 ### Out of scope
 - `aurion/q_risk.py` の変更（P2-001 で対応済み）
@@ -147,6 +156,26 @@ function renderQRisk(qRisk) {
 - 処理：`id="q-risk-panel"` を非表示のまま保持する。エラー表示しない
 - 根拠：P2-001/P2-002 未デプロイ環境でも既存UIが壊れないようにする
 
+**BR-227**: `op_profit`・`bank_credit`・`machines`・`depreciation` は数値のみ受け付ける
+- 条件：4フィールドへの入力
+- 処理：HTML `type="number"` かつ `inputmode="decimal"` を指定する
+- 根拠：API は float を期待するため、非数値文字列を入力段階で排除する
+
+**BR-228**: 4フィールド空白時は 0 として API へ送信する
+- 条件：フォーム送信時にフィールドが空白（未入力）
+- 処理：`parseFloat(...) || 0` により 0 に変換して `POST /predict` ペイロードに含める
+- 根拠：P2-001 `detect_q_risk()` は各フィールドのデフォルト値を 0.0 と定義しており、省略時と同一の挙動を保証する
+
+**BR-229**: 4フィールドに負の値が入力された場合はエラー表示する
+- 条件：送信時に `op_profit < 0` または `bank_credit < 0` または `machines < 0` または `depreciation < 0`
+- 処理：該当フィールド名と「マイナス不可」メッセージをエラー表示し、フォーム送信を中断する
+- 根拠：財務矛盾パターンの計算上、これらフィールドは非負を前提としている（赤字は `net_income` / `ord_profit` で表現）
+
+**BR-230**: 4フィールドは `clearAll()` でリセットされる
+- 条件：「クリア」操作実行時
+- 処理：既存フィールドと同様に 4フィールドを空文字列にリセットする
+- 根拠：全フィールドを一括クリアする既存 UX を維持する
+
 ---
 
 ## 7. UI / UX
@@ -256,6 +285,26 @@ function renderQRisk(qRisk) {
 - When: フォームを送信する
 - Then: 警告バナー（P1-003）と Q_risk パネル（P2-003）が両方表示される
 
+**AC-611**: 4フィールドに有効な数値を入力すると API リクエストに含まれる
+- Given: `op_profit=30`, `bank_credit=50`, `machines=20`, `depreciation=5` を入力
+- When: フォームを送信する
+- Then: `POST /predict` のリクエストボディに `op_profit: 30`, `bank_credit: 50`, `machines: 20`, `depreciation: 5` が含まれる
+
+**AC-612**: 4フィールドが空白の場合は 0 として送信される
+- Given: `op_profit`・`bank_credit`・`machines`・`depreciation` を未入力のまま
+- When: フォームを送信する
+- Then: `POST /predict` のリクエストボディに `op_profit: 0`, `bank_credit: 0`, `machines: 0`, `depreciation: 0` が含まれる
+
+**AC-613**: 4フィールドにマイナス値を入力するとエラー表示されフォームが送信されない
+- Given: `bank_credit` に `-10` を入力
+- When: フォームを送信しようとする
+- Then: 「マイナス不可」エラーが表示され、`POST /predict` は送信されない
+
+**AC-614**: `clearAll()` 実行後に4フィールドが空になる
+- Given: `op_profit=30`, `bank_credit=50`, `machines=20`, `depreciation=5` を入力済み
+- When: クリアボタンを押す
+- Then: 4フィールドの値がすべて空文字列になる
+
 ---
 
 ## 10. Non-Functional Requirements
@@ -278,6 +327,9 @@ function renderQRisk(qRisk) {
 - **HTML 挿入位置**: P1-003 の警告バナー要素（`id="warnings-section"`）の直下
 - **スタイル**: 既存 `<style>` タグ内に追記。新規 `<style>` タグを追加しない
 - **テストファイル**: `tests/spec_phase2/test_P2-003.py`（JavaScript DOM テストが困難な場合は手動確認項目として記録）
+- **4フィールドの配置**: 財務情報カード内、既存の `net_income`（当期純利益）と `dep_expense`（支払リース料）フィールドの間またはその後ろに配置する。既存フィールドとの重複なし（`dep_expense` は支払リース料であり `depreciation`（減価償却費）とは別フィールド）
+- **4フィールドの API 送信**: `parseFloat(document.getElementById("op_profit").value) || 0` パターンで既存フィールドと同様に `collectFormData()` 相当箇所に追加する
+- **4フィールドの clearAll() リセット**: 既存の `["nenshu", "gross_profit", ...]` 配列に `"op_profit"`, `"bank_credit"`, `"machines"`, `"depreciation"` を追加する
 
 ---
 
@@ -297,6 +349,10 @@ function renderQRisk(qRisk) {
 | test_608 | AC-608 | 参考値免責文が常に表示される |
 | test_609 | AC-609 | aurion なしレスポンス → 既存 UI に影響なし |
 | test_610 | AC-610 | 警告バナーと Q_risk パネルが共存する |
+| test_611 | AC-611 | 4フィールドに数値入力 → APIリクエストに含まれる |
+| test_612 | AC-612 | 4フィールド空白 → 0 として送信される |
+| test_613 | AC-613 | マイナス値入力 → エラー表示・送信中断 |
+| test_614 | AC-614 | clearAll() → 4フィールドが空になる |
 
 ### 手動確認（実装後）
 
@@ -307,3 +363,8 @@ function renderQRisk(qRisk) {
 - [ ] 参考値免責文が全レベルで表示される
 - [ ] P1-003 の警告バナーと同時表示しても崩れない
 - [ ] `aurion` フィールドなしのレスポンス（旧API）でページが壊れない
+- [ ] `op_profit`・`bank_credit`・`machines`・`depreciation` の入力欄が財務情報カード内に表示される
+- [ ] 4フィールドを入力して送信すると APIリクエストに値が含まれる
+- [ ] 4フィールドを空白で送信すると API に 0 が送られる
+- [ ] 4フィールドにマイナス値を入力するとエラーが表示され送信が止まる
+- [ ] クリアボタンで4フィールドがリセットされる
