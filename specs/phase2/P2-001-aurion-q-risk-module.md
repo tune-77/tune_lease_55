@@ -90,7 +90,7 @@ class QRiskResult(TypedDict):
 
 | code | severity | 発生条件 |
 |------|----------|---------|
-| `FIN-CONTRADICT-001` | high | `gross_profit / nenshu` が -0.5 未満 または 1.0 超（粗利率異常） |
+| `FIN-CONTRADICT-001` | high | `nenshu > 0` かつ `gross_profit / nenshu` が -0.5 未満 または 1.0 超（粗利率異常） |
 | `FIN-CONTRADICT-002` | high | `nenshu == 0` かつ `dep_expense > 0`（売上ゼロ・費用正） |
 | `FIN-CONTRADICT-003` | high | `op_profit > gross_profit + 1`（営業利益が粗利を超過、数学的不整合） |
 | `FIN-CONTRADICT-004` | medium | `lease_credit / nenshu > 0.5`（リース残高/年商 超過） |

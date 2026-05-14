@@ -240,7 +240,7 @@ except Exception:
 
 - **変更対象ファイル**: `mobile_app/api.py` のみ
 - **触れてはいけないファイル**: `scoring_core.py`, `total_scorer.py`, `asset_scorer.py`, `quantum_analysis_module.py`, `mobile_app/lease_rule_checks.py`
-- **import 位置**: `try/except` ブロック内（モジュール未ロード時のフォールバックのため）。ファイルトップレベルの import にしてはならない
+- **import 位置**: ファイルトップレベルの `try/except` ブロック内でモジュールレベルの `_aurion_loaded` フラグを設定する（既存 `_rf_new_model` 等のパターンと同じ）。`predict()` 内にも `try/except` を設け、`detect_q_risk()` 呼び出し失敗時のフォールバックを別途担保する
 - **呼び出し位置**: `return jsonify({...})` の直前。スコア計算ブロックの後
 - **値の渡し方**: `gp`, `op`, `ni`, `ns`, `dep`, `depr`, `mach`, `bk`, `lc`, `acq` はすでに `predict()` 関数内で `float` に変換済みなので、そのまま渡す
 - **テストファイル**: `tests/spec_phase2/test_P2-002.py` に作成。Flask テストクライアント（`app.test_client()`）を使用

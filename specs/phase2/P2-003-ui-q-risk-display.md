@@ -275,7 +275,7 @@ function renderQRisk(qRisk) {
   - `renderWarnings()` と同じパターンで `renderQRisk()` を実装する
   - `POST /predict` 成功時の `.then()` 内で `renderWarnings(data.warnings)` の後に `renderQRisk(data.aurion?.q_risk)` を呼ぶ
   - オプショナルチェーン `?.` を使用して `aurion` が undefined でも安全に参照する
-- **HTML 挿入位置**: P1-003 の警告バナー要素（`id="warning-panel"` 相当）の直下
+- **HTML 挿入位置**: P1-003 の警告バナー要素（`id="warnings-section"`）の直下
 - **スタイル**: 既存 `<style>` タグ内に追記。新規 `<style>` タグを追加しない
 - **テストファイル**: `tests/spec_phase2/test_P2-003.py`（JavaScript DOM テストが困難な場合は手動確認項目として記録）
 
