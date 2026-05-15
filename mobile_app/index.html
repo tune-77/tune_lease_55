@@ -985,7 +985,7 @@
       competitor_rate: parseFloat(document.getElementById("competitor_rate").value) || 0,
       // 定性評価スコア（0-4スケール、未選択は送信しない）
       ...(_qVals()),
-      lease_asset_score: parseFloat(document.getElementById("lease_asset_score").value) ?? 78,
+      lease_asset_score: parseFloat(document.getElementById("lease_asset_score").value) ?? 100,
     };
     // 提案金利は入力があれば送信（API 側でベースレートを差し引いてスプレッドに変換）
     const _pr = parseFloat(document.getElementById("proposed_rate").value);
