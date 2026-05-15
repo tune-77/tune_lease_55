@@ -780,69 +780,80 @@
     <div class="card-title">定性評価スコア</div>
 
     <div class="field">
-      <label><span class="icon">📚</span>取引履歴スコア</label>
-      <select id="q_history">
-        <option value="1">1 — 極めて不良</option>
-        <option value="2">2 — 不良</option>
-        <option value="3" selected>3 — 普通</option>
-        <option value="4">4 — 良好</option>
-        <option value="5">5 — 優良</option>
+      <label><span class="icon">📚</span>設立・経営年数 <small>重み10%</small></label>
+      <select id="q_history" onchange="_updateQWeighted()">
+        <option value="">未選択</option>
+        <option value="4">20年以上</option>
+        <option value="3">10〜20年</option>
+        <option value="2">5〜10年</option>
+        <option value="1">3〜5年</option>
+        <option value="0">3年未満</option>
       </select>
     </div>
 
     <div class="field">
-      <label><span class="icon">📊</span>安定性スコア</label>
-      <select id="q_stability">
-        <option value="1">1 — 極めて不安定</option>
-        <option value="2">2 — 不安定</option>
-        <option value="3" selected>3 — 普通</option>
-        <option value="4">4 — 安定</option>
-        <option value="5">5 — 非常に安定</option>
+      <label><span class="icon">📊</span>顧客安定性 <small>重み20%</small></label>
+      <select id="q_stability" onchange="_updateQWeighted()">
+        <option value="">未選択</option>
+        <option value="4">非常に安定（大口・長期）</option>
+        <option value="3">安定（分散良好）</option>
+        <option value="2">普通</option>
+        <option value="1">やや不安定（集中あり）</option>
+        <option value="0">不安定・依存大</option>
       </select>
     </div>
 
     <div class="field">
-      <label><span class="icon">💳</span>返済能力スコア</label>
-      <select id="q_repayment">
-        <option value="1">1 — 返済困難</option>
-        <option value="2">2 — 要注意</option>
-        <option value="3">3 — 普通</option>
-        <option value="4" selected>4 — 良好</option>
-        <option value="5">5 — 優良</option>
+      <label><span class="icon">💳</span>返済履歴 <small>重み25%</small></label>
+      <select id="q_repayment" onchange="_updateQWeighted()">
+        <option value="">未選択</option>
+        <option value="4">5年以上問題なし</option>
+        <option value="3">3年以上問題なし</option>
+        <option value="2">遅延少ない</option>
+        <option value="1">遅延・リスケあり</option>
+        <option value="0">問題あり・要確認</option>
       </select>
     </div>
 
     <div class="field">
-      <label><span class="icon">🔮</span>将来性スコア</label>
-      <select id="q_future">
-        <option value="1">1 — 衰退</option>
-        <option value="2" selected>2 — やや不透明</option>
-        <option value="3">3 — 普通</option>
-        <option value="4">4 — 成長</option>
-        <option value="5">5 — 高成長</option>
+      <label><span class="icon">🔮</span>事業将来性 <small>重み15%</small></label>
+      <select id="q_future" onchange="_updateQWeighted()">
+        <option value="">未選択</option>
+        <option value="4">有望（成長・ニーズ確実）</option>
+        <option value="3">やや有望</option>
+        <option value="2">普通</option>
+        <option value="1">やや懸念</option>
+        <option value="0">懸念（縮小・競争激化）</option>
       </select>
     </div>
 
     <div class="field">
-      <label><span class="icon">⚙️</span>設備適合性スコア</label>
-      <select id="q_equip">
-        <option value="1">1 — 不適合</option>
-        <option value="2">2 — やや不適合</option>
-        <option value="3" selected>3 — 普通</option>
-        <option value="4">4 — 適合</option>
-        <option value="5">5 — 最適</option>
+      <label><span class="icon">⚙️</span>設備目的 <small>重み15%</small></label>
+      <select id="q_equip" onchange="_updateQWeighted()">
+        <option value="">未選択</option>
+        <option value="4">収益直結・受注必須</option>
+        <option value="3">生産性向上・省力化</option>
+        <option value="2">更新・維持・法定対応</option>
+        <option value="1">やや不明確</option>
+        <option value="0">不明確・要説明</option>
       </select>
     </div>
 
     <div class="field">
-      <label><span class="icon">🏦</span>メインバンク評価スコア</label>
-      <select id="q_mainbk">
-        <option value="1" selected>1 — メインバンクなし</option>
-        <option value="2">2 — 準メイン</option>
-        <option value="3">3 — 普通</option>
-        <option value="4">4 — 良好</option>
-        <option value="5">5 — 強固</option>
+      <label><span class="icon">🏦</span>メイン取引銀行 <small>重み15%</small></label>
+      <select id="q_mainbk" onchange="_updateQWeighted()">
+        <option value="">未選択</option>
+        <option value="4">メイン先で取引良好・支援表明</option>
+        <option value="3">メイン先</option>
+        <option value="2">サブ扱い・取引あり</option>
+        <option value="1">取引浅い・他社メイン</option>
+        <option value="0">取引なし・不安</option>
       </select>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">📐</span>定性加重平均スコア（自動計算）</label>
+      <input type="text" id="q_weighted_display" readonly placeholder="選択肢を入力すると自動計算" style="background:#f5f5f5;color:#555;">
     </div>
 
     <div class="field">
@@ -972,13 +983,8 @@
       grade:           parseInt(document.getElementById("grade").value)            || 2,
       competitor:      document.getElementById("competitor").value,
       competitor_rate: parseFloat(document.getElementById("competitor_rate").value) || 0,
-      // 定性評価スコア
-      q_history:        parseInt(document.getElementById("q_history").value)        || 3,
-      q_stability:      parseInt(document.getElementById("q_stability").value)      || 3,
-      q_repayment:      parseInt(document.getElementById("q_repayment").value)      || 4,
-      q_future:         parseInt(document.getElementById("q_future").value)         || 2,
-      q_equip:          parseInt(document.getElementById("q_equip").value)          || 3,
-      q_mainbk:         parseInt(document.getElementById("q_mainbk").value)         || 1,
+      // 定性評価スコア（0-4スケール、未選択は送信しない）
+      ...(_qVals()),
       lease_asset_score: parseFloat(document.getElementById("lease_asset_score").value) ?? 78,
     };
     // 提案金利は入力があれば送信（API 側でベースレートを差し引いてスプレッドに変換）
@@ -1203,6 +1209,36 @@
     } catch (e) { /* エラーを隠蔽し他の表示処理を止めない */ }
   }
 
+  // 定性評価スコア: 選択済み項目のみ返す + q_weighted を計算して含める
+  const _Q_WEIGHTS = { q_history: 10, q_stability: 20, q_repayment: 25, q_future: 15, q_equip: 15, q_mainbk: 15 };
+  function _qVals() {
+    const result = {};
+    let weightedSum = 0, weightTotal = 0;
+    for (const [id, w] of Object.entries(_Q_WEIGHTS)) {
+      const raw = document.getElementById(id).value;
+      if (raw === "") continue;
+      const score = parseInt(raw, 10);
+      result[id] = score;
+      weightedSum += (score / 4) * w;
+      weightTotal += w;
+    }
+    if (weightTotal > 0) {
+      result.q_weighted = Math.round((weightedSum / weightTotal) * 100);
+    }
+    return result;
+  }
+
+  function _updateQWeighted() {
+    const vals = _qVals();
+    const el = document.getElementById("q_weighted_display");
+    if ("q_weighted" in vals) {
+      el.value = `${vals.q_weighted} / 100`;
+    } else {
+      el.value = "";
+      el.placeholder = "選択肢を入力すると自動計算";
+    }
+  }
+
   function clearAll() {
     ["nenshu", "gross_profit", "ord_profit", "net_income",
      "dep_expense", "acquisition_cost", "lease_credit",
@@ -1244,13 +1280,15 @@
     document.getElementById("competitor_rate").value = "";
     document.getElementById("competitor_rate").disabled = true;
     document.getElementById("proposed_rate").value = "";
-    // 定性評価リセット（デフォルト値へ）
-    document.getElementById("q_history").value   = "3";
-    document.getElementById("q_stability").value = "3";
-    document.getElementById("q_repayment").value = "4";
-    document.getElementById("q_future").value    = "2";
-    document.getElementById("q_equip").value     = "3";
-    document.getElementById("q_mainbk").value    = "1";
+    // 定性評価リセット（未選択へ）
+    document.getElementById("q_history").value   = "";
+    document.getElementById("q_stability").value = "";
+    document.getElementById("q_repayment").value = "";
+    document.getElementById("q_future").value    = "";
+    document.getElementById("q_equip").value     = "";
+    document.getElementById("q_mainbk").value    = "";
+    _updateQWeighted();
+    document.getElementById("lease_asset_score").value = "78";
     document.getElementById("nenshu").focus();
   }
 
