@@ -19,8 +19,7 @@ app = Flask(__name__)
 CORS(app)
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-# mobile_app → vigilant-brown-10f2b2 → worktrees → .claude → tune_lease_55
-_PROJECT_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", "..", ".."))
+_PROJECT_ROOT = os.path.abspath(os.path.join(_HERE, ".."))
 
 # ── 既存先 Step2 / 共通: RF 52特徴量メインモデル ─────────────────────────
 _bundle   = joblib.load(os.path.join(_HERE, "simple_model.pkl"))
@@ -306,9 +305,20 @@ def _build_feat_vector(
     return np.array([[feat_map[f] for f in _features]])
 
 
+_STATIC_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp"}
+
+
 @app.get("/")
 def index():
     return send_from_directory(_HERE, "index.html")
+
+
+@app.get("/<path:filename>")
+def static_files(filename):
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in _STATIC_EXTS:
+        return "", 404
+    return send_from_directory(_HERE, filename)
 
 
 @app.post("/predict")
