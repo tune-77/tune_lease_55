@@ -857,9 +857,9 @@
     </div>
 
     <div class="field">
-      <label><span class="icon">🏗</span>物件スコア</label>
+      <label><span class="icon">🏗</span>物件スコア <span style="font-size:11px; font-weight:400; color:var(--green); margin-left:4px;">物件種別から自動設定</span></label>
       <input type="number" id="lease_asset_score" value="78" min="0" max="100" inputmode="numeric">
-      <div class="unit">0〜100（デフォルト: 78）</div>
+      <div class="unit">0〜100 ／ 物件種別を選ぶと自動更新（上書き可）</div>
     </div>
   </div>
 
@@ -1254,6 +1254,7 @@
     document.getElementById("error-msg").classList.remove("visible");
     // 新規フィールドリセット
     document.getElementById("asset_type").value = "";
+    _applyAssetScore();
     document.getElementById("is_re_lease").checked = false;
     document.getElementById("insurance_applicable").value = "不明";
     // 警告バナー消去
@@ -1290,6 +1291,42 @@
     document.getElementById("lease_asset_score").value = "78";
     document.getElementById("nenshu").focus();
   }
+
+  // 物件種別 → 物件スコア 自動設定マップ（lease_assets.json の公式スコアに準拠）
+  const _ASSET_SCORE_MAP = {
+    "電子計算機":     88,  // IT・OA機器
+    "複写機":         85,
+    "ファクシミリ":   80,
+    "複合機":         85,
+    "通信機器":       83,
+    "建設機械":       82,  // 建設機械
+    "フォークリフト": 80,
+    "自動車（普通）": 78,  // 車両・運搬車
+    "自動車（小型）": 78,
+    "トラック":       76,
+    "バス":           72,
+    "医療機器":       75,  // 医療機器
+    "歯科用機器":     72,
+    "製造設備":       70,  // 製造設備・工作機械
+    "工作機械":       70,
+    "印刷機械":       68,
+    "農業機械":       65,
+    "運搬機具":       65,  // オフィス家具・内装相当
+    "エアコン":       62,
+    "冷凍・冷蔵機器": 62,  // 飲食店設備
+    "厨房機器":       62,
+    "自動販売機":     60,
+    "カメラ":         58,
+    "":               50,  // その他・不明
+  };
+
+  function _applyAssetScore() {
+    const assetType = document.getElementById("asset_type").value;
+    const score = _ASSET_SCORE_MAP[assetType] ?? 50;
+    document.getElementById("lease_asset_score").value = score;
+  }
+
+  document.getElementById("asset_type").addEventListener("change", _applyAssetScore);
 
   // 競合選択で competitor_rate を有効/無効切り替え
   document.getElementById("competitor").addEventListener("change", function() {
