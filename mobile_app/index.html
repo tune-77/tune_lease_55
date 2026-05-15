@@ -605,6 +605,72 @@
       <input type="number" id="lease_credit" placeholder="例: 30" inputmode="decimal">
       <div class="unit">百万円</div>
     </div>
+
+    <div class="field">
+      <label><span class="icon">🏠</span>その他資産</label>
+      <input type="number" id="other_assets" placeholder="例: 20" inputmode="decimal">
+      <div class="unit">百万円</div>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">💵</span>受取家賃</label>
+      <input type="number" id="rent" placeholder="例: 5" inputmode="decimal">
+      <div class="unit">百万円</div>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">🏘</span>支払家賃</label>
+      <input type="number" id="rent_expense" placeholder="例: 3" inputmode="decimal">
+      <div class="unit">百万円（DSCRの分母に使用）</div>
+    </div>
+  </div>
+
+  <!-- 取引情報カード -->
+  <div class="card">
+    <div class="card-title">取引情報</div>
+
+    <div class="field">
+      <label><span class="icon">🏦</span>メインバンク取引</label>
+      <div class="field-checkbox">
+        <input type="checkbox" id="main_bank">
+        <span style="font-size:14px; color:var(--muted);">チェック = メイン先</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">📑</span>現在のリース件数</label>
+      <input type="number" id="contracts" placeholder="例: 3" inputmode="numeric" min="0" step="1">
+      <div class="unit">件</div>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">🔗</span>取引経緯</label>
+      <select id="deal_source">
+        <option value="銀行紹介">銀行紹介</option>
+        <option value="自社開拓">自社開拓</option>
+        <option value="顧客紹介">顧客紹介</option>
+        <option value="その他">その他</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">📝</span>契約タイプ</label>
+      <select id="contract_type">
+        <option value="一般">一般</option>
+        <option value="自動車">自動車</option>
+        <option value="その他">その他</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">🏢</span>営業部門</label>
+      <select id="sales_dept">
+        <option value="足利営業部">足利営業部</option>
+        <option value="宇都宮営業部">宇都宮営業部</option>
+        <option value="小山営業部">小山営業部</option>
+        <option value="埼玉営業部">埼玉営業部</option>
+      </select>
+    </div>
   </div>
 
   <!-- 競合・格付け情報カード -->
@@ -699,6 +765,83 @@
         <option value="付保済">付保済</option>
         <option value="未付保">未付保</option>
       </select>
+    </div>
+  </div>
+
+  <!-- 定性評価カード -->
+  <div class="card card-optional">
+    <div class="card-title">定性評価スコア</div>
+
+    <div class="field">
+      <label><span class="icon">📚</span>取引履歴スコア</label>
+      <select id="q_history">
+        <option value="1">1 — 極めて不良</option>
+        <option value="2">2 — 不良</option>
+        <option value="3" selected>3 — 普通</option>
+        <option value="4">4 — 良好</option>
+        <option value="5">5 — 優良</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">📊</span>安定性スコア</label>
+      <select id="q_stability">
+        <option value="1">1 — 極めて不安定</option>
+        <option value="2">2 — 不安定</option>
+        <option value="3" selected>3 — 普通</option>
+        <option value="4">4 — 安定</option>
+        <option value="5">5 — 非常に安定</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">💳</span>返済能力スコア</label>
+      <select id="q_repayment">
+        <option value="1">1 — 返済困難</option>
+        <option value="2">2 — 要注意</option>
+        <option value="3">3 — 普通</option>
+        <option value="4" selected>4 — 良好</option>
+        <option value="5">5 — 優良</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">🔮</span>将来性スコア</label>
+      <select id="q_future">
+        <option value="1">1 — 衰退</option>
+        <option value="2" selected>2 — やや不透明</option>
+        <option value="3">3 — 普通</option>
+        <option value="4">4 — 成長</option>
+        <option value="5">5 — 高成長</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">⚙️</span>設備適合性スコア</label>
+      <select id="q_equip">
+        <option value="1">1 — 不適合</option>
+        <option value="2">2 — やや不適合</option>
+        <option value="3" selected>3 — 普通</option>
+        <option value="4">4 — 適合</option>
+        <option value="5">5 — 最適</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">🏦</span>メインバンク評価スコア</label>
+      <select id="q_mainbk">
+        <option value="1" selected>1 — メインバンクなし</option>
+        <option value="2">2 — 準メイン</option>
+        <option value="3">3 — 普通</option>
+        <option value="4">4 — 良好</option>
+        <option value="5">5 — 強固</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">🏗</span>物件スコア</label>
+      <input type="number" id="lease_asset_score" value="78" min="0" max="100" inputmode="numeric">
+      <div class="unit">0〜100（デフォルト: 78）</div>
     </div>
   </div>
 
@@ -809,10 +952,28 @@
       bank_credit:  parseFloat(document.getElementById("bank_credit").value)  || 0,
       machines:     parseFloat(document.getElementById("machines").value)     || 0,
       depreciation: parseFloat(document.getElementById("depreciation").value) || 0,
+      // 財務追加フィールド
+      other_assets: parseFloat(document.getElementById("other_assets").value) || 0,
+      rent:         parseFloat(document.getElementById("rent").value)         || 0,
+      rent_expense: parseFloat(document.getElementById("rent_expense").value) || 0,
+      // 取引情報
+      main_bank:     document.getElementById("main_bank").checked ? "メイン先" : "その他",
+      contracts:     parseFloat(document.getElementById("contracts").value)   || 0,
+      deal_source:   document.getElementById("deal_source").value,
+      contract_type: document.getElementById("contract_type").value,
+      sales_dept:    document.getElementById("sales_dept").value,
       // P3-003: 競合・格付けフィールド
       grade:           parseInt(document.getElementById("grade").value)            || 2,
       competitor:      document.getElementById("competitor").value,
       competitor_rate: parseFloat(document.getElementById("competitor_rate").value) || 0,
+      // 定性評価スコア
+      q_history:        parseInt(document.getElementById("q_history").value)        || 3,
+      q_stability:      parseInt(document.getElementById("q_stability").value)      || 3,
+      q_repayment:      parseInt(document.getElementById("q_repayment").value)      || 4,
+      q_future:         parseInt(document.getElementById("q_future").value)         || 2,
+      q_equip:          parseInt(document.getElementById("q_equip").value)          || 3,
+      q_mainbk:         parseInt(document.getElementById("q_mainbk").value)         || 1,
+      lease_asset_score: parseFloat(document.getElementById("lease_asset_score").value) ?? 78,
     };
     // 提案金利は入力があれば送信（API 側でベースレートを差し引いてスプレッドに変換）
     const _pr = parseFloat(document.getElementById("proposed_rate").value);
@@ -1039,7 +1200,8 @@
   function clearAll() {
     ["nenshu", "gross_profit", "ord_profit", "net_income",
      "dep_expense", "acquisition_cost", "lease_credit",
-     "op_profit", "bank_credit", "machines", "depreciation"].forEach(id => {
+     "op_profit", "bank_credit", "machines", "depreciation",
+     "other_assets", "rent", "rent_expense", "contracts"].forEach(id => {
       document.getElementById(id).value = "";
     });
     document.getElementById("industry").selectedIndex = 0;
@@ -1066,12 +1228,25 @@
     const _cpPanel = document.getElementById("competitor-pressure-panel");
     _cpPanel.style.cssText = "display:none;";
     _cpPanel.innerHTML = "";
+    // 取引情報リセット
+    document.getElementById("main_bank").checked = false;
+    document.getElementById("deal_source").value = "銀行紹介";
+    document.getElementById("contract_type").value = "一般";
+    document.getElementById("sales_dept").value = "足利営業部";
     // 競合・格付けフィールドリセット
     document.getElementById("grade").value = "2";
     document.getElementById("competitor").value = "競合なし";
     document.getElementById("competitor_rate").value = "";
     document.getElementById("competitor_rate").disabled = true;
     document.getElementById("proposed_rate").value = "";
+    // 定性評価リセット（デフォルト値へ）
+    document.getElementById("q_history").value   = "3";
+    document.getElementById("q_stability").value = "3";
+    document.getElementById("q_repayment").value = "4";
+    document.getElementById("q_future").value    = "2";
+    document.getElementById("q_equip").value     = "3";
+    document.getElementById("q_mainbk").value    = "1";
+    document.getElementById("lease_asset_score").value = "78";
     document.getElementById("nenshu").focus();
   }
 
