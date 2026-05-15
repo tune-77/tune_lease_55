@@ -2,7 +2,7 @@
 spec_id: P4-001
 phase: 4
 title: 支払い実績テーブル連携 — screening_records フィードバックループ
-status: draft
+status: implemented
 author: Claude Sonnet
 reviewer: ""
 version: "1.0"
