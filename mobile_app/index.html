@@ -636,9 +636,9 @@
     </div>
 
     <div class="field">
-      <label><span class="icon">📝</span>提案スプレッド（%）</label>
-      <input type="number" id="proposed_spread" placeholder="例: 1.2（任意）" inputmode="decimal" step="0.01">
-      <div class="unit">% 入力時にステルス競合チェックへ反映</div>
+      <label><span class="icon">📝</span>提案金利（%）</label>
+      <input type="number" id="proposed_rate" placeholder="例: 3.5（任意）" inputmode="decimal" step="0.01">
+      <div class="unit">% 出来上がり金利を入力（基準金利を差し引いてスプレッドに変換）</div>
     </div>
   </div>
 
@@ -814,9 +814,9 @@
       competitor:      document.getElementById("competitor").value,
       competitor_rate: parseFloat(document.getElementById("competitor_rate").value) || 0,
     };
-    // 提案スプレッドは入力があれば送信
-    const _ps = parseFloat(document.getElementById("proposed_spread").value);
-    if (!isNaN(_ps)) vals.proposed_spread = _ps;
+    // 提案金利は入力があれば送信（API 側でベースレートを差し引いてスプレッドに変換）
+    const _pr = parseFloat(document.getElementById("proposed_rate").value);
+    if (!isNaN(_pr)) vals.proposed_rate = _pr;
 
     // BR-229: 財務詳細フィールドのマイナス値チェック
     const _negChecks = [
@@ -1071,7 +1071,7 @@
     document.getElementById("competitor").value = "競合なし";
     document.getElementById("competitor_rate").value = "";
     document.getElementById("competitor_rate").disabled = true;
-    document.getElementById("proposed_spread").value = "";
+    document.getElementById("proposed_rate").value = "";
     document.getElementById("nenshu").focus();
   }
 
