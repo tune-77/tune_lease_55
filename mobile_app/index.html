@@ -390,6 +390,21 @@
       cursor: not-allowed;
     }
 
+    /* チェックボックス ON 時のフィールドハイライト */
+    .field:has(.field-checkbox input[type="checkbox"]:checked) {
+      background: #f0fdf4;
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 6px;
+    }
+    .field:has(.field-checkbox input[type="checkbox"]:checked) > label {
+      color: var(--green);
+    }
+    .field:has(.field-checkbox input[type="checkbox"]:checked) .field-checkbox span {
+      color: var(--green);
+      font-weight: 600;
+    }
+
     /* ─── 警告バナー全体 ─── */
     #warnings-section {
       display: none;
@@ -613,15 +628,15 @@
     </div>
 
     <div class="field">
-      <label><span class="icon">💵</span>受取家賃</label>
+      <label><span class="icon">💵</span>賃借料（資産）</label>
       <input type="number" id="rent" placeholder="例: 5" inputmode="decimal">
-      <div class="unit">百万円</div>
+      <div class="unit">百万円（B/S 科目 / item8）</div>
     </div>
 
     <div class="field">
-      <label><span class="icon">🏘</span>支払家賃</label>
+      <label><span class="icon">🏘</span>賃借料（経費）</label>
       <input type="number" id="rent_expense" placeholder="例: 3" inputmode="decimal">
-      <div class="unit">百万円（DSCRの分母に使用）</div>
+      <div class="unit">百万円（P/L 科目 / DSCRの分母）</div>
     </div>
   </div>
 
@@ -758,14 +773,6 @@
       </select>
     </div>
 
-    <div class="field">
-      <label><span class="icon">🔄</span>再リース保険（再リース予定時のみ）</label>
-      <select id="re_lease_insurance" disabled>
-        <option value="不明">不明</option>
-        <option value="付保済">付保済</option>
-        <option value="未付保">未付保</option>
-      </select>
-    </div>
   </div>
 
   <!-- 定性評価カード -->
@@ -946,7 +953,6 @@
       asset_type:           document.getElementById("asset_type").value,
       is_re_lease:          document.getElementById("is_re_lease").checked,
       insurance_applicable: document.getElementById("insurance_applicable").value,
-      re_lease_insurance:   document.getElementById("re_lease_insurance").value,
       // P2-003: 財務詳細フィールド
       op_profit:    parseFloat(document.getElementById("op_profit").value)    || 0,
       bank_credit:  parseFloat(document.getElementById("bank_credit").value)  || 0,
@@ -1214,8 +1220,6 @@
     document.getElementById("asset_type").value = "";
     document.getElementById("is_re_lease").checked = false;
     document.getElementById("insurance_applicable").value = "不明";
-    document.getElementById("re_lease_insurance").value = "不明";
-    document.getElementById("re_lease_insurance").disabled = true;
     // 警告バナー消去
     document.getElementById("warnings-section").style.display = "none";
     document.getElementById("warnings-list").innerHTML = "";
@@ -1249,11 +1253,6 @@
     document.getElementById("lease_asset_score").value = "78";
     document.getElementById("nenshu").focus();
   }
-
-  // is_re_lease チェックで re_lease_insurance を有効/無効切り替え
-  document.getElementById("is_re_lease").addEventListener("change", function() {
-    document.getElementById("re_lease_insurance").disabled = !this.checked;
-  });
 
   // 競合選択で competitor_rate を有効/無効切り替え
   document.getElementById("competitor").addEventListener("change", function() {
