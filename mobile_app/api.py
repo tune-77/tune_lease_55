@@ -541,10 +541,17 @@ def predict():
         print(f"[api.aurion] level={q_risk_result['level']} score={q_risk_result['score']} patterns={q_risk_result['patterns']}")
 
     # P3-002: aurion stealth_competitor 検知（参考値、スコアに影響しない）
+    # 提案スプレッドが入力されていればそちらを優先、なければ AI 推奨スプレッドを使用
+    _proposed_spread_raw = data.get("proposed_spread")
+    try:
+        stealth_spread = float(_proposed_spread_raw) if _proposed_spread_raw is not None else spread_pred
+    except (TypeError, ValueError):
+        stealth_spread = spread_pred
+
     _STEALTH_FALLBACK = {"score": 0, "level": "ok", "patterns": [], "pattern_details": []}
     try:
         stealth_result = detect_stealth_competitor(
-            spread_pred=spread_pred,
+            spread_pred=stealth_spread,
             base_rate=base_rate_val,
             competitor=competitor,
             competitor_rate=comp_rate,
@@ -565,6 +572,7 @@ def predict():
         "sys_score_b":       round(sys_score_b, 1),
         "model_pipeline":    model_pipeline,
         "spread_pred":       round(spread_pred, 2),
+        "spread_proposed":   round(stealth_spread, 2) if stealth_spread != spread_pred else None,
         "base_rate":         round(base_rate_val, 2),
         "recommended_rate":  round(recommended_rate, 2),
         "rate_range": {
