@@ -2,7 +2,7 @@
 spec_id: P4-003
 phase: 4
 title: モデル再学習パイプライン — screening_records 蓄積データによる自動・手動再学習
-status: draft
+status: implemented
 author: Claude Sonnet
 reviewer: ""
 version: "1.0"

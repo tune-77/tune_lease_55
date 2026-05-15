@@ -2,7 +2,7 @@
 spec_id: P4-002
 phase: 4
 title: EDINET データ自動収集 — 法人財務データ取得モジュール
-status: draft
+status: implemented
 author: Claude Sonnet
 reviewer: ""
 version: "1.0"
