@@ -535,11 +535,16 @@ def predict():
         # 既存先（53特徴量: winning_spread含む）
         X = _build_feat_vector(**common, sys_score_b=sys_score_b, winning_spread=spread_pred)
     proba = float(use_model.predict_proba(X)[0, 1])
+    rf_score = int(round(proba * 100))
 
-    score = int(round(proba * 100))
-    if score >= 65:
+    # 最終スコアは scoring_core (Streamlit と同一ルート) を使用
+    if _sc_result is not None:
+        score = int(round(float(_sc_result["score"])))
+    else:
+        score = rf_score  # フォールバック: scoring_core 未ロード時
+    if score >= 71:
         judgment = "承認"
-    elif score >= 45:
+    elif score >= 50:
         judgment = "条件付"
     else:
         judgment = "否認"
@@ -616,6 +621,7 @@ def predict():
     return jsonify({
         "score":             score,
         "probability":       round(proba, 4),
+        "rf_score":          rf_score,
         "judgment":          judgment,
         "sys_score_b":       round(sys_score_b, 1),
         "model_pipeline":    model_pipeline,
