@@ -20,6 +20,9 @@ CORS(app)
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.abspath(os.path.join(_HERE, ".."))
+import sys as _sys_mod
+if _PROJECT_ROOT not in _sys_mod.path:
+    _sys_mod.path.insert(0, _PROJECT_ROOT)
 
 # ── 既存先 Step2 / 共通: RF 52特徴量メインモデル ─────────────────────────
 _bundle   = joblib.load(os.path.join(_HERE, "simple_model.pkl"))
@@ -100,6 +103,16 @@ try:
     print("[api] aurion.stealth_competitor: 読み込み完了")
 except ImportError as e:
     print(f"[api.aurion.stealth] import failed ({e})")
+
+# ── scoring_core: sys_score を Streamlit と同じロジックで計算 ──────────────
+_scoring_core_loaded = False
+_run_quick_scoring = None
+try:
+    from scoring_core import run_quick_scoring as _run_quick_scoring
+    _scoring_core_loaded = True
+    print("[api] scoring_core: 読み込み完了")
+except Exception as _sc_import_err:
+    print(f"[api] scoring_core: 未ロード → sys_scoreは中央値フォールバック ({_sc_import_err})")
 
 _DEFAULT_IND        = "R サービス業(他に分類されないもの)"
 _DEFAULT_CONTRACT_T = "一般"
@@ -381,23 +394,56 @@ def predict():
     ds_code  = _enc("deal_source",   deal_source,   _DEFAULT_DEAL_SRC)
     sd_code  = _enc("sales_dept",    sales_dept,    _DEFAULT_SALES_DEPT)
 
-    # ── 定性・補助スコア（中央値フォールバック）────────────────────
-    base_rate   = float(data.get("base_rate",    _medians.get("base_rate",   1.5)))
-    q_history   = float(data.get("q_history",    _medians.get("q_history",   3.0)))
-    q_stability = float(data.get("q_stability",  _medians.get("q_stability", 3.0)))
-    q_repayment = float(data.get("q_repayment",  _medians.get("q_repayment", 4.0)))
-    q_future    = float(data.get("q_future",     _medians.get("q_future",    2.0)))
-    q_equip     = float(data.get("q_equip",      _medians.get("q_equip",     3.0)))
-    q_mainbk    = float(data.get("q_mainbk",     _medians.get("q_mainbk",    1.0)))
-    q_weighted  = float(data.get("q_weighted",   _medians.get("q_weighted",  70.0)))
-    sys_score   = _medians.get("sys_score",      50.0)
-    sys_dscr    = _medians.get("sys_dscr",        0.5)
-    sys_op_m    = _medians.get("sys_op_margin",   5.0)
-    sys_icr     = _medians.get("sys_icr",        10.0)
-    sys_appr    = _medians.get("sys_approval",   71.0)
-    sys_ind     = _medians.get("sys_ind_score",  50.0)
-    sys_bench   = _medians.get("sys_bench",      50.0)
-    las         = float(data.get("lease_asset_score", 78))
+    # ── リース期間別基準金利（feature vector にも使用）───────────────
+    base_rate_val, _brt_col = _get_period_rate(lt)
+
+    # ── 定性スコア（0-4 スケール、未入力はモデル中央値）──────────────
+    q_history   = float(data.get("q_history",   _medians.get("q_history",   0.0)))
+    q_stability = float(data.get("q_stability", _medians.get("q_stability", 0.0)))
+    q_repayment = float(data.get("q_repayment", _medians.get("q_repayment", 0.0)))
+    q_future    = float(data.get("q_future",    _medians.get("q_future",    0.0)))
+    q_equip     = float(data.get("q_equip",     _medians.get("q_equip",     0.0)))
+    q_mainbk    = float(data.get("q_mainbk",    _medians.get("q_mainbk",    0.0)))
+    q_weighted  = float(data.get("q_weighted",  _medians.get("q_weighted",  0.0)))
+    las         = float(data.get("lease_asset_score", 100))
+
+    # ── sys_ 特徴量を scoring_core で計算（Streamlit と同等ロジック）──
+    _grade_str = {1: "1-3", 2: "4-6", 3: "要注意先", 4: "無格付"}.get(grade, "1-3")
+    _ct_str = "既存先" if customer_type == 1 else "新規先"
+    _sc_result = None
+    if _scoring_core_loaded and _run_quick_scoring is not None:
+        try:
+            _sc_result = _run_quick_scoring({
+                "nenshu":          ns   * 1000,
+                "op_profit":       op   * 1000,
+                "ord_profit":      ep   * 1000,
+                "net_income":      ni   * 1000,
+                "dep_expense":     dep  * 1000,
+                "gross_profit":    gp   * 1000,
+                "bank_credit":     bk   * 1000,
+                "lease_credit":    lc   * 1000,
+                "machines":        mach * 1000,
+                "other_assets":    oa   * 1000,
+                "rent":            rent * 1000,
+                "depreciation":    depr * 1000,
+                "rent_expense":    rexp * 1000,
+                "acquisition_cost": acq * 1000,
+                "contracts":       contracts,
+                "grade":           _grade_str,
+                "customer_type":   _ct_str,
+                "industry_major":  industry,
+                "asset_score":     las,
+            })
+        except Exception as _sc_e:
+            print(f"[api] scoring_core計算エラー: {_sc_e}")
+
+    sys_score = float(_sc_result["score_borrower"] if _sc_result else _medians.get("sys_score", 57.4))
+    sys_dscr  = float(_sc_result["dscr_approx"]    if _sc_result else _medians.get("sys_dscr",   0.63))
+    sys_op_m  = float(_sc_result["user_op_margin"] if _sc_result else _medians.get("sys_op_margin", 1.83))
+    sys_icr   = float(_sc_result["interest_coverage"] if _sc_result else _medians.get("sys_icr", 10.0))
+    sys_appr  = float(_medians.get("sys_approval",  71.0))
+    sys_ind   = float(_medians.get("sys_ind_score", 95.9))
+    sys_bench = float(_medians.get("sys_bench",     45.5))
 
     common = dict(
         gp=gp, op=op, ep=ep, ni=ni, dep=dep, depr=depr, ns=ns,
@@ -407,7 +453,7 @@ def predict():
         mach_to_ns=mach_to_ns, acq_to_ns=acq_to_ns, op_margin=op_margin,
         dep_to_loan=dep_to_loan, ind_code=ind_code, customer_type=customer_type,
         main_bank=main_bank, competitor=competitor, comp_rate=comp_rate, grade=grade,
-        ct_code=ct_code, ds_code=ds_code, sd_code=sd_code, base_rate=base_rate,
+        ct_code=ct_code, ds_code=ds_code, sd_code=sd_code, base_rate=base_rate_val,
         q_history=q_history, q_stability=q_stability, q_repayment=q_repayment,
         q_future=q_future, q_equip=q_equip, q_mainbk=q_mainbk, q_weighted=q_weighted,
         sys_score=sys_score, sys_dscr=sys_dscr, sys_op_m=sys_op_m, sys_icr=sys_icr,
@@ -435,7 +481,6 @@ def predict():
         use_model      = _model
 
     # ── 推奨金利計算（分類モデルへの winning_spread 入力として使用）──
-    base_rate_val, _col = _get_period_rate(lt)
     spread_pred = _predict_spread(
         gp=gp, op=op, ep=ep, ni=ni, dep=dep, depr=depr, ns=ns,
         mach=mach, oa=oa, rent=rent, rexp=rexp, bk=bk, lc=lc, acq=acq, lt=lt,
