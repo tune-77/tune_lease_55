@@ -1,5 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import StreamingResponse
+import json
 import sys
 import os
 
@@ -55,6 +57,7 @@ _load_secrets_to_env()
 
 from scoring_core import run_quick_scoring
 from api.scoring_full import run_full_scoring_api
+from api.gunshi_gemini import stream_gunshi_gemini
 from api.schemas import (
     ScoringRequest,
     ScoringResponse,
@@ -363,6 +366,32 @@ def get_gunshi_advise(req: AdviseRequest):
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class GunshiStreamRequest(BaseModel):
+    industry_cat: str
+    score: float
+    pd_pct: float
+    resale_eval: str = "B"
+    repeat_count: int = 0
+    subsidy_flag: bool = False
+    bank_support: bool = False
+    intuition_score: float = 50.0
+    company_name: str = ""
+    asset_name: str = ""
+
+
+@app.post("/api/gunshi/stream")
+async def gunshi_stream(req: GunshiStreamRequest):
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="GEMINI_API_KEY not set")
+
+    async def event_generator():
+        async for chunk in stream_gunshi_gemini(req.model_dump(), api_key):
+            yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 class GunshiChatRequest(BaseModel):
