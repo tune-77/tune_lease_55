@@ -607,6 +607,41 @@
     </div>
   </div>
 
+  <!-- 競合・格付け情報カード -->
+  <div class="card">
+    <div class="card-title">競合・格付け情報</div>
+
+    <div class="field">
+      <label><span class="icon">⭐</span>格付</label>
+      <select id="grade">
+        <option value="1">格付 1-3</option>
+        <option value="2" selected>格付 4-6</option>
+        <option value="3">要注意先</option>
+        <option value="4">無格付</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">🏁</span>競合の有無</label>
+      <select id="competitor">
+        <option value="競合なし">競合なし</option>
+        <option value="競合あり">競合あり</option>
+      </select>
+    </div>
+
+    <div class="field" id="competitor-rate-field">
+      <label><span class="icon">💹</span>競合他社金利（%）</label>
+      <input type="number" id="competitor_rate" placeholder="例: 2.8" inputmode="decimal" step="0.01" disabled>
+      <div class="unit">% （競合あり選択時に入力）</div>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">📝</span>提案金利（%）</label>
+      <input type="number" id="proposed_rate" placeholder="例: 3.5（任意）" inputmode="decimal" step="0.01">
+      <div class="unit">% 出来上がり金利を入力（基準金利を差し引いてスプレッドに変換）</div>
+    </div>
+  </div>
+
   <!-- 物件・保険情報カード -->
   <div class="card card-optional">
     <div class="card-title">🏗 物件・保険情報</div>
@@ -774,7 +809,14 @@
       bank_credit:  parseFloat(document.getElementById("bank_credit").value)  || 0,
       machines:     parseFloat(document.getElementById("machines").value)     || 0,
       depreciation: parseFloat(document.getElementById("depreciation").value) || 0,
+      // P3-003: 競合・格付けフィールド
+      grade:           parseInt(document.getElementById("grade").value)            || 2,
+      competitor:      document.getElementById("competitor").value,
+      competitor_rate: parseFloat(document.getElementById("competitor_rate").value) || 0,
     };
+    // 提案金利は入力があれば送信（API 側でベースレートを差し引いてスプレッドに変換）
+    const _pr = parseFloat(document.getElementById("proposed_rate").value);
+    if (!isNaN(_pr)) vals.proposed_rate = _pr;
 
     // BR-229: 財務詳細フィールドのマイナス値チェック
     const _negChecks = [
@@ -1024,12 +1066,24 @@
     const _cpPanel = document.getElementById("competitor-pressure-panel");
     _cpPanel.style.cssText = "display:none;";
     _cpPanel.innerHTML = "";
+    // 競合・格付けフィールドリセット
+    document.getElementById("grade").value = "2";
+    document.getElementById("competitor").value = "競合なし";
+    document.getElementById("competitor_rate").value = "";
+    document.getElementById("competitor_rate").disabled = true;
+    document.getElementById("proposed_rate").value = "";
     document.getElementById("nenshu").focus();
   }
 
   // is_re_lease チェックで re_lease_insurance を有効/無効切り替え
   document.getElementById("is_re_lease").addEventListener("change", function() {
     document.getElementById("re_lease_insurance").disabled = !this.checked;
+  });
+
+  // 競合選択で competitor_rate を有効/無効切り替え
+  document.getElementById("competitor").addEventListener("change", function() {
+    document.getElementById("competitor_rate").disabled = this.value !== "競合あり";
+    if (this.value !== "競合あり") document.getElementById("competitor_rate").value = "";
   });
 
   // Enter キーで送信
