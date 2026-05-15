@@ -552,6 +552,7 @@
         <option value="84">84ヶ月（7年）</option>
         <option value="120">120ヶ月（10年）</option>
       </select>
+      <div id="lease-term-warning" style="display:none; margin-top:6px; padding:6px 10px; border-radius:6px; font-size:13px;"></div>
     </div>
 
     <div class="field">
@@ -1292,6 +1293,35 @@
     document.getElementById("nenshu").focus();
   }
 
+  // 物件種別 → 法定耐用年数（年）マップ（期待使用期間.json 準拠）
+  const _USEFUL_LIFE_YEARS = {
+    "電子計算機":     4,
+    "複写機":         5,
+    "ファクシミリ":   5,
+    "複合機":         5,
+    "通信機器":       5,
+    "工作機械":       6,
+    "印刷機械":       6,
+    "農業機械":       6,
+    "建設機械":       4,
+    "フォークリフト": 4,
+    "自動車（普通）": 4,
+    "自動車（小型）": 4,
+    "トラック":       4,
+    "バス":           4,
+    "医療機器":       5,
+    "歯科用機器":     5,
+    "エアコン":       6,
+    "冷凍・冷蔵機器": 6,
+    "厨房機器":       6,
+    "運搬機具":       4,
+    "自動販売機":     6,
+    "カメラ":         6,
+  };
+
+  // 車両系物件（動産保険入力不可）
+  const _VEHICLE_TYPES = new Set(["自動車（普通）", "自動車（小型）", "トラック", "バス"]);
+
   // 物件種別 → 物件スコア 自動設定マップ（lease_assets.json の公式スコアに準拠）
   const _ASSET_SCORE_MAP = {
     "電子計算機":     88,  // IT・OA機器
@@ -1324,9 +1354,46 @@
     const assetType = document.getElementById("asset_type").value;
     const score = _ASSET_SCORE_MAP[assetType] ?? 50;
     document.getElementById("lease_asset_score").value = score;
+
+    // 車両系物件のとき動産保険を入力不可にする
+    const insuranceSel = document.getElementById("insurance_applicable");
+    if (_VEHICLE_TYPES.has(assetType)) {
+      insuranceSel.disabled = true;
+      insuranceSel.value = "不明";
+      insuranceSel.style.opacity = "0.45";
+      insuranceSel.style.cursor = "not-allowed";
+    } else {
+      insuranceSel.disabled = false;
+      insuranceSel.style.opacity = "";
+      insuranceSel.style.cursor = "";
+    }
+
+    _checkLeaseTerm();
+  }
+
+  function _checkLeaseTerm() {
+    const assetType = document.getElementById("asset_type").value;
+    const leaseTerm = parseFloat(document.getElementById("lease_term").value) || 0;
+    const warnEl = document.getElementById("lease-term-warning");
+    const usefulLifeYears = _USEFUL_LIFE_YEARS[assetType];
+    if (!usefulLifeYears || !leaseTerm) { warnEl.style.display = "none"; return; }
+    const ulMonths = usefulLifeYears * 12;
+    const upper = Math.floor(ulMonths * 1.2);
+    const lowerRatio = usefulLifeYears <= 10 ? 0.7 : 0.6;
+    const lower = Math.floor(ulMonths * lowerRatio);
+    if (leaseTerm > upper) {
+      warnEl.textContent = "⚠️ 法定耐用年数の120%を超えています";
+      warnEl.style.cssText = "display:block; margin-top:6px; padding:6px 10px; border-radius:6px; font-size:13px; background:#fff0f0; color:#c0392b; border:1px solid #e74c3c;";
+    } else if (leaseTerm < lower) {
+      warnEl.textContent = "⚠️ 最短リース期間を下回っています";
+      warnEl.style.cssText = "display:block; margin-top:6px; padding:6px 10px; border-radius:6px; font-size:13px; background:#fffbe6; color:#856404; border:1px solid #ffc107;";
+    } else {
+      warnEl.style.display = "none";
+    }
   }
 
   document.getElementById("asset_type").addEventListener("change", _applyAssetScore);
+  document.getElementById("lease_term").addEventListener("change", _checkLeaseTerm);
 
   // 競合選択で competitor_rate を有効/無効切り替え
   document.getElementById("competitor").addEventListener("change", function() {
