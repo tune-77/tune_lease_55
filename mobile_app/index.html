@@ -1300,6 +1300,23 @@
     <!-- P3-003: ステルス競合推定パネル -->
     <div id="competitor-pressure-panel" style="display:none;"></div>
 
+    <!-- 軍師AI ストリーミング起動カード -->
+    <div id="gunshi-stream-card" style="display:none; margin-top:12px;">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+        <button id="gunshi-stream-btn" onclick="startGunshiStream()"
+          style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:0.9em;cursor:pointer;font-weight:600;">
+          ⚔️ 軍師AIに戦略を聞く
+        </button>
+        <span id="gunshi-stream-status" style="font-size:0.8em;color:#6b7280;"></span>
+      </div>
+      <div id="gunshi-stream-panel" style="display:none;
+        background:#1e1b4b;color:#e0e7ff;border-radius:10px;padding:14px;font-size:0.9em;line-height:1.7;">
+        <div id="gunshi-bayes" style="margin-bottom:8px;font-size:0.85em;color:#a5b4fc;"></div>
+        <div id="gunshi-phrases" style="margin-bottom:10px;"></div>
+        <div id="gunshi-text" style="white-space:pre-wrap;"></div>
+      </div>
+    </div>
+
     <!-- 軍師AI パネル -->
     <div id="advisor-panel" style="display:none;"></div>
 
@@ -1781,6 +1798,7 @@
     renderQRisk(aurion?.q_risk);
     renderCompetitorPressure(aurion?.competitor_pressure);
     renderAdvisor(advisor);
+    document.getElementById("gunshi-stream-card").style.display = "block";
     renderAnalysisGraphs(charts || {});
     renderResultAnalysisGraphs(indicator_analysis || {});
     document.getElementById("ai-chat-card").style.display = "block";
@@ -2049,6 +2067,86 @@
     } catch (e) { /* エラーを隠蔽し他の表示処理を止めない */ }
   }
 
+  async function startGunshiStream() {
+    if (!lastScoreResult) return;
+    const panel = document.getElementById("gunshi-stream-panel");
+    const status = document.getElementById("gunshi-stream-status");
+    const bayesEl = document.getElementById("gunshi-bayes");
+    const phrasesEl = document.getElementById("gunshi-phrases");
+    const textEl = document.getElementById("gunshi-text");
+    const btn = document.getElementById("gunshi-stream-btn");
+
+    panel.style.display = "block";
+    bayesEl.textContent = "";
+    phrasesEl.innerHTML = "";
+    textEl.textContent = "";
+    status.textContent = "⚔️ 軍師思案中…";
+    btn.disabled = true;
+
+    const score = lastScoreResult?.score ?? lastScoreResult?.streamlit?.score ?? 0;
+    const pd_pct = lastScoreResult?.pd_pct ?? lastScoreResult?.probability ?? 0;
+    const industry_cat = lastInputValues?.industry || document.getElementById("industry")?.value || "";
+    const intuition_score = parseFloat(document.getElementById("q_weighted_display")?.value) || 50;
+
+    const body = {
+      industry_cat,
+      score: parseFloat(score) || 0,
+      pd_pct: parseFloat(pd_pct) || 0,
+      resale_eval: lastInputValues?.asset_type || "B",
+      repeat_count: parseInt(lastInputValues?.contracts) || 0,
+      subsidy_flag: false,
+      bank_support: document.getElementById("main_bank")?.checked || false,
+      intuition_score,
+      company_name: lastInputValues?.company_name || "",
+      asset_name: lastInputValues?.asset_name || "",
+    };
+
+    try {
+      const resp = await fetch("/api/gunshi/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const raw = line.slice(6).trim();
+          if (raw === "[DONE]") break;
+          try {
+            const chunk = JSON.parse(raw);
+            if (chunk.type === "bayes") {
+              bayesEl.textContent = `ベイズ推定: ${(chunk.prior * 100).toFixed(1)}% → ${(chunk.posterior * 100).toFixed(1)}%`;
+            } else if (chunk.type === "phrases") {
+              phrasesEl.innerHTML = chunk.items
+                .map(p => `<span style="background:#3730a3;border-radius:6px;padding:2px 8px;margin:2px;display:inline-block;">${escapeHtml(p)}</span>`)
+                .join("");
+            } else if (chunk.type === "stream") {
+              textEl.textContent += chunk.delta;
+            } else if (chunk.type === "done") {
+              status.textContent = "✅ 完了";
+            }
+          } catch (_) {}
+        }
+      }
+    } catch (err) {
+      status.textContent = `エラー: ${err.message}`;
+    } finally {
+      btn.disabled = false;
+      if (!status.textContent.startsWith("✅")) status.textContent = "";
+    }
+  }
+
   // 定性評価スコア: 選択済み項目のみ返す + q_weighted を計算して含める
   const _Q_WEIGHTS = { q_history: 10, q_stability: 20, q_repayment: 25, q_future: 15, q_equip: 15, q_mainbk: 15 };
   function _qVals() {
@@ -2122,6 +2220,13 @@
     const _advisorPanel = document.getElementById("advisor-panel");
     _advisorPanel.style.display = "none";
     _advisorPanel.innerHTML = "";
+    document.getElementById("gunshi-stream-card").style.display = "none";
+    document.getElementById("gunshi-stream-panel").style.display = "none";
+    document.getElementById("gunshi-bayes").textContent = "";
+    document.getElementById("gunshi-phrases").innerHTML = "";
+    document.getElementById("gunshi-text").textContent = "";
+    document.getElementById("gunshi-stream-status").textContent = "";
+    document.getElementById("gunshi-stream-btn").disabled = false;
     const _graphPanel = document.getElementById("analysis-graphs");
     _graphPanel.style.display = "none";
     document.getElementById("radar-graph").innerHTML = "";
