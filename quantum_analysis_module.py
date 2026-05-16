@@ -69,6 +69,19 @@ _BASE_PAIRS: list[tuple[str, str, float]] = [
     ("op_profit",    "depreciation",  1.0),
     ("op_profit",    "trend_val",     1.0),
     ("net_income",   "ord_profit",    0.15),  # 全件ほぼ整合→小重み
+    # SC.5 quantum_screener 候補ペア (2026-05-16, n=1943, 相関係数順)
+    ("op_profit",    "nenshu",        0.8),   # r=-0.161 p<0.001
+    ("depreciation", "nenshu",        0.8),   # r=-0.161 p<0.001
+    ("op_profit",    "lease_credit",  0.8),   # r=-0.152 p<0.001
+    ("depreciation", "lease_credit",  0.8),   # r=-0.152 p<0.001
+    ("op_profit",    "gross_profit",  0.8),   # r=-0.149 p<0.001
+    ("depreciation", "gross_profit",  0.8),   # r=-0.149 p<0.001
+    ("op_profit",    "rent",          0.8),   # r=-0.133 p<0.001
+    ("depreciation", "rent",          0.8),   # r=-0.133 p<0.001
+    ("op_profit",    "other_assets",  0.5),   # r=-0.085 p<0.001
+    ("depreciation", "other_assets",  0.5),   # r=-0.085 p<0.001
+    ("op_profit",    "contracts",     0.3),   # r=-0.040 p=0.076 (参考値)
+    ("depreciation", "contracts",     0.3),   # r=-0.040 p=0.076 (参考値)
 ]
 
 # 業種別追加ペア: (変数A, 変数B, 重み)
