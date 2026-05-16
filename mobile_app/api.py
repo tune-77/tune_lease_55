@@ -15,7 +15,7 @@ from functools import lru_cache
 import joblib
 import numpy as np
 import pandas as pd
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -1240,6 +1240,31 @@ def chat():
         return jsonify(payload)
     except Exception as e:
         return jsonify({"error": f"AIチャット生成エラー: {e}"}), 400
+
+
+@app.post("/api/gunshi/stream")
+def gunshi_stream_proxy():
+    """FastAPI (port 8000) の SSEエンドポイントにプロキシする。"""
+    import requests as _req
+    fastapi_url = "http://localhost:8000/api/gunshi/stream"
+    try:
+        upstream = _req.post(
+            fastapi_url,
+            json=request.get_json(force=True),
+            stream=True,
+            timeout=90,
+        )
+        def generate():
+            for chunk in upstream.iter_content(chunk_size=None):
+                if chunk:
+                    yield chunk
+        return Response(
+            stream_with_context(generate()),
+            content_type="text/event-stream",
+            headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 503
 
 
 @app.get("/health")
