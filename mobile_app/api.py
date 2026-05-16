@@ -10,6 +10,7 @@ POST /predict: リース成約スコア + 推奨金利を返す
 """
 import os
 import json
+import threading
 import unicodedata
 from functools import lru_cache
 import joblib
@@ -164,6 +165,13 @@ try:
 except Exception as _chat_import_err:
     build_chat_reply = None
     print(f"[api] chat_assistant: 未ロード ({_chat_import_err})")
+
+try:
+    from obsidian_bridge import append_case_log as _append_case_log
+    print("[api] obsidian_bridge: 読み込み完了")
+except Exception as _obs_import_err:
+    _append_case_log = None
+    print(f"[api] obsidian_bridge: 未ロード ({_obs_import_err})")
 
 _DEFAULT_IND        = "R サービス業(他に分類されないもの)"
 _DEFAULT_CONTRACT_T = "一般"
@@ -1176,6 +1184,15 @@ def predict():
                 "metrics": {},
                 "disclaimer": "軍師AIは判定を上書きしません。",
             }
+    if _append_case_log is not None:
+        _snap = dict(response_payload)
+        _case_snap = dict(data)
+        threading.Thread(
+            target=_append_case_log,
+            args=(_snap, _case_snap),
+            daemon=True,
+        ).start()
+
     return jsonify(response_payload)
 
 
