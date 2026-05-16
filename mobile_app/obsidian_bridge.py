@@ -70,16 +70,14 @@ def _to_wikilink(rel_path: str, alias: str | None = None) -> str:
     return f"[[{stem}]]"
 
 
-def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[str, str]]:
-    vault = find_vault()
-    if not vault:
-        return []
-    terms = _expand_query_terms(query)[:8]
-    if not terms:
-        return []
-
+def _search_in_paths(paths: list[Path], vault: Path, terms: list[str], limit: int, max_chars: int, seen: set[str]) -> list[dict[str, str]]:
     hits: list[dict[str, str]] = []
-    for path in vault.rglob("*.md"):
+    for path in paths:
+        if not path.is_file():
+            continue
+        rel = str(path.relative_to(vault))
+        if rel in seen:
+            continue
         try:
             text = path.read_text(encoding="utf-8", errors="ignore")
         except OSError:
@@ -91,12 +89,36 @@ def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[
         first = min((low.find(t) for t in terms if t in low), default=0)
         start = max(0, first - 160)
         snippet = text[start:start + max_chars].strip()
-        hits.append({
-            "path": str(path.relative_to(vault)),
-            "snippet": snippet,
-        })
+        seen.add(rel)
+        hits.append({"path": rel, "snippet": snippet})
         if len(hits) >= limit:
             break
+    return hits
+
+
+def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[str, str]]:
+    vault = find_vault()
+    if not vault:
+        return []
+    terms = _expand_query_terms(query)[:8]
+    if not terms:
+        return []
+
+    seen: set[str] = set()
+    hits: list[dict[str, str]] = []
+
+    # Cases/ を優先: 業種・スコア・金利・判定ワードがクエリに含まれるとき
+    if any("cases/" in t or t in ("スコア", "判定", "推奨金利", "q-risk", "quantum_risk") for t in terms):
+        cases_dir = vault / "Projects" / "tune_lease_55" / "Cases"
+        if cases_dir.exists():
+            cases_paths = sorted(cases_dir.rglob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+            hits += _search_in_paths(cases_paths, vault, terms, limit, max_chars, seen)
+
+    if len(hits) < limit:
+        remaining = limit - len(hits)
+        general_paths = list(vault.rglob("*.md"))
+        hits += _search_in_paths(general_paths, vault, terms, remaining, max_chars, seen)
+
     return hits
 
 
@@ -122,6 +144,28 @@ def _expand_query_terms(query: str) -> list[str]:
         ])
     if any(k in joined for k in ("obsidian", "保存", "メモ", "案件")):
         expanded.extend(["Projects/tune_lease_55/AI Chat", "Daily"])
+
+    # Cases/ 専用: 業種・スコア・判定キーワードで過去案件ログを引く
+    _INDUSTRY_MAP = {
+        "製造": "c 製造業", "建設": "d 建設業", "卸売": "i 卸売業",
+        "小売": "j 小売業", "運輸": "h 運輸業", "情報": "g 情報通信業",
+        "医療": "p 医療", "福祉": "p 福祉", "飲食": "m 宿泊業",
+        "不動産": "l 不動産業", "サービス": "r サービス業",
+    }
+    for jp, cat in _INDUSTRY_MAP.items():
+        if jp in joined:
+            expanded.extend([cat, "cases/", f"cases/{dt.date.today().strftime('%Y-%m')}"])
+            break
+    if any(k in joined for k in ("スコア", "score", "高い", "低い", "承認", "否認", "否決", "要注意", "過去", "前回", "類似")):
+        expanded.extend([
+            "cases/",
+            f"cases/{dt.date.today().strftime('%Y-%m')}",
+            "スコア", "判定", "推奨金利", "q-risk",
+        ])
+    if any(k in joined for k in ("金利", "推奨", "レート", "spread", "rate")):
+        expanded.extend(["推奨金利", "cases/", "recommended_rate"])
+    if any(k in joined for k in ("q_risk", "q-risk", "qリスク", "財務矛盾", "量子")):
+        expanded.extend(["q-risk", "cases/", "quantum_risk"])
     seen: set[str] = set()
     result: list[str] = []
     for term in expanded:
@@ -137,7 +181,12 @@ def recent_notes(limit: int = 3, folders: Iterable[str] | None = None, max_chars
     vault = find_vault()
     if not vault:
         return []
-    folders = list(folders or ("Projects/tune_lease_55/AI Chat", "Daily"))
+    ym = dt.date.today().strftime("%Y-%m")
+    folders = list(folders or (
+        f"Projects/tune_lease_55/Cases/{ym}",
+        "Projects/tune_lease_55/AI Chat",
+        "Daily",
+    ))
     candidates: list[Path] = []
     for folder in folders:
         base = vault / folder
