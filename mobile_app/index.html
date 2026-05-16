@@ -1221,6 +1221,25 @@
     </div>
   </div>
 
+  <!-- 定性補足フィールド -->
+  <div class="field">
+    <label><span class="icon">🏷</span>物件名（任意）</label>
+    <input type="text" id="asset_name" placeholder="例: 工作機械 MA-200"
+      style="width:100%;padding:6px;box-sizing:border-box;">
+  </div>
+  <div class="field">
+    <label><span class="icon">💪</span>強みタグ（カンマ区切り、任意）</label>
+    <input type="text" id="strength_tags"
+      placeholder="例: メイン取引先,設備投資意欲あり"
+      style="width:100%;padding:6px;box-sizing:border-box;" maxlength="200">
+  </div>
+  <div class="field">
+    <label><span class="icon">📝</span>セールス意見・特記事項（任意）</label>
+    <textarea id="passion_text" placeholder="案件に関する補足・意見など"
+      style="width:100%;padding:6px;box-sizing:border-box;height:60px;resize:vertical;"
+      maxlength="500"></textarea>
+  </div>
+
   <!-- ボタン行 -->
   <div class="btn-row">
     <button class="btn" id="submit-btn" onclick="runPredict()">
@@ -1228,10 +1247,62 @@
       <div class="spinner"></div>
     </button>
     <button class="btn btn-clear" onclick="clearAll()">🗑 データ抹消</button>
+    <button class="btn" id="tab-cases-btn"
+      style="background:#374151;color:#d1d5db;"
+      onclick="showCasesTab()">📋 過去案件</button>
   </div>
 
   <!-- エラー表示 -->
   <div class="error-msg" id="error-msg"></div>
+
+  <!-- 過去案件タブ -->
+  <div id="section-cases" style="display:none;margin-top:12px;">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div style="font-weight:bold;font-size:15px;">過去案件（直近30件）</div>
+        <div>
+          <button onclick="loadCases()"
+            style="background:#374151;color:#d1d5db;border:none;border-radius:6px;
+                   padding:6px 12px;cursor:pointer;font-size:13px;margin-right:6px;">🔄 更新</button>
+          <button onclick="hideCasesTab()"
+            style="background:#6b7280;color:#fff;border:none;border-radius:6px;
+                   padding:6px 12px;cursor:pointer;font-size:13px;">✕ 閉じる</button>
+        </div>
+      </div>
+      <div id="cases-list" style="max-height:400px;overflow-y:auto;"></div>
+
+      <!-- 結果登録フォーム -->
+      <div id="result-form" style="display:none;margin-top:12px;background:#1f2937;
+           border-radius:10px;padding:14px;">
+        <div style="font-weight:bold;margin-bottom:8px;color:#f3f4f6;">
+          結果登録
+          <span id="result-case-label" style="font-size:0.8em;color:#9ca3af;margin-left:6px;"></span>
+        </div>
+        <select id="result-status"
+          style="width:100%;margin-bottom:8px;padding:6px;background:#374151;color:#f3f4f6;border:1px solid #4b5563;border-radius:6px;">
+          <option value="">判定を選択</option>
+          <option value="成約">成約</option>
+          <option value="失注">失注</option>
+          <option value="未登録">未登録</option>
+        </select>
+        <input id="result-competitor-rate" type="number" step="0.01"
+          placeholder="他行競合レート (%)"
+          style="width:100%;margin-bottom:8px;padding:6px;box-sizing:border-box;
+                 background:#374151;color:#f3f4f6;border:1px solid #4b5563;border-radius:6px;">
+        <input id="result-loss-reason" type="text" placeholder="失注理由"
+          style="width:100%;margin-bottom:8px;padding:6px;box-sizing:border-box;
+                 background:#374151;color:#f3f4f6;border:1px solid #4b5563;border-radius:6px;"
+          maxlength="200">
+        <input id="result-final-date" type="date"
+          style="width:100%;margin-bottom:10px;padding:6px;box-sizing:border-box;
+                 background:#374151;color:#f3f4f6;border:1px solid #4b5563;border-radius:6px;">
+        <button onclick="submitResult()"
+          style="background:#2563eb;color:#fff;border:none;border-radius:8px;
+                 padding:8px 20px;cursor:pointer;font-size:14px;">登録</button>
+        <span id="result-msg" style="margin-left:10px;font-size:0.85em;"></span>
+      </div>
+    </div>
+  </div>
 
   <!-- 結果カード -->
   <div class="card" id="result">
@@ -1699,6 +1770,10 @@
       ...(_qVals()),
       lease_asset_score: numValue("lease_asset_score", 100),
       humor_style: humourMode,
+      // Streamlit同等フィールド
+      asset_name:    document.getElementById("asset_name")?.value   || "",
+      strength_tags: document.getElementById("strength_tags")?.value || "",
+      passion_text:  document.getElementById("passion_text")?.value  || "",
     };
     lastInputValues = vals;
     // 提案金利は入力があれば送信（API 側でベースレートを差し引いてスプレッドに変換）
@@ -2378,6 +2453,131 @@
     if (e.target && e.target.tagName === "TEXTAREA") return;
     runPredict();
   });
+
+  // ── 過去案件タブ ──────────────────────────────────────
+  let _selectedCaseId = null;
+
+  function showCasesTab() {
+    document.getElementById("section-cases").style.display = "block";
+    loadCases();
+  }
+
+  function hideCasesTab() {
+    document.getElementById("section-cases").style.display = "none";
+    _selectedCaseId = null;
+    document.getElementById("result-form").style.display = "none";
+  }
+
+  async function loadCases() {
+    const listEl = document.getElementById("cases-list");
+    listEl.textContent = "読込中…";
+    try {
+      const res = await fetch("/cases?limit=30");
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const cases = await res.json();
+      const sc = {
+        "成約": "#22c55e",
+        "失注": "#ef4444",
+        "スコアリングのみ": "#6b7280",
+        "未登録": "#6b7280",
+        "検収": "#3b82f6",
+        "検収完了": "#8b5cf6",
+      };
+
+      listEl.textContent = "";
+      if (!cases.length) {
+        const empty = document.createElement("div");
+        empty.style.cssText = "color:#6b7280;padding:12px;text-align:center;";
+        empty.textContent = "案件なし";
+        listEl.appendChild(empty);
+        return;
+      }
+
+      cases.forEach(c => {
+        const row = document.createElement("div");
+        row.style.cssText =
+          "cursor:pointer;padding:10px 6px;border-bottom:1px solid #374151;" +
+          "display:flex;justify-content:space-between;align-items:center;";
+
+        const left = document.createElement("div");
+        const dateEl = document.createElement("div");
+        dateEl.style.cssText = "font-size:0.78em;color:#9ca3af;";
+        dateEl.textContent = (c.timestamp || "").slice(0, 10);
+        const nameEl = document.createElement("div");
+        nameEl.style.cssText = "font-size:0.9em;margin-top:2px;";
+        nameEl.textContent =
+          (c.industry_sub || "—") + (c.asset_name ? " / " + c.asset_name : "");
+        left.appendChild(dateEl);
+        left.appendChild(nameEl);
+
+        const right = document.createElement("div");
+        right.style.cssText = "text-align:right;flex-shrink:0;margin-left:8px;";
+        const scoreEl = document.createElement("div");
+        scoreEl.style.cssText = "font-size:0.85em;";
+        scoreEl.textContent = "スコア " + (c.score ?? "—");
+        const statusEl = document.createElement("div");
+        statusEl.style.cssText =
+          "font-size:0.8em;color:" + (sc[c.final_status] || "#6b7280") + ";margin-top:2px;";
+        statusEl.textContent = c.final_status || "未登録";
+        right.appendChild(scoreEl);
+        right.appendChild(statusEl);
+
+        row.appendChild(left);
+        row.appendChild(right);
+
+        const caseId = c.id;
+        row.addEventListener("click", () => selectCase(caseId));
+        listEl.appendChild(row);
+      });
+    } catch (e) {
+      listEl.textContent = "読込失敗: " + e.message;
+    }
+  }
+
+  function selectCase(caseId) {
+    _selectedCaseId = caseId;
+    document.getElementById("result-case-label").textContent =
+      caseId.slice(0, 16) + "…";
+    document.getElementById("result-form").style.display = "block";
+    document.getElementById("result-msg").textContent = "";
+    document.getElementById("result-status").value = "";
+    document.getElementById("result-competitor-rate").value = "";
+    document.getElementById("result-loss-reason").value = "";
+    document.getElementById("result-final-date").value = "";
+  }
+
+  async function submitResult() {
+    if (!_selectedCaseId) return;
+    const body = {};
+    const s = document.getElementById("result-status").value;
+    const r = document.getElementById("result-competitor-rate").value;
+    const l = document.getElementById("result-loss-reason").value;
+    const d = document.getElementById("result-final-date").value;
+    if (s) body.final_status      = s;
+    if (r) body.competitor_rate   = parseFloat(r);
+    if (l) body.loss_reason       = l;
+    if (d) body.final_result_date = d;
+    const msg = document.getElementById("result-msg");
+    try {
+      const res = await fetch("/cases/" + encodeURIComponent(_selectedCaseId) + "/result", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        msg.textContent = "✅ 登録完了";
+        msg.style.color = "#22c55e";
+        loadCases();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        msg.textContent = "❌ " + (err.error || "登録失敗");
+        msg.style.color = "#ef4444";
+      }
+    } catch (e) {
+      msg.textContent = "❌ " + e.message;
+      msg.style.color = "#ef4444";
+    }
+  }
 </script>
 </body>
 </html>
