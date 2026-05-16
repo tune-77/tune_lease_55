@@ -203,25 +203,27 @@ class TestAC611FourFieldsInRequest:
         assert el is not None, f"#{field_id} input が存在しない"
 
     @pytest.mark.parametrize("field_id", ["op_profit", "bank_credit", "machines", "depreciation"])
-    def test_field_type_is_number(self, soup, field_id):
+    def test_field_accepts_mobile_decimal_input(self, soup, field_id):
         el = soup.find("input", id=field_id)
-        assert el.get("type") == "number", f"#{field_id} の type が number でない"
+        assert el.get("type") == "text", f"#{field_id} は全角数字入力対応のため type=text にする"
+        assert el.get("inputmode") in ("decimal", "numeric"), f"#{field_id} の inputmode が数値入力向けでない"
 
     @pytest.mark.parametrize("field_id", ["op_profit", "bank_credit", "machines", "depreciation"])
     def test_field_in_request_body(self, src, field_id):
-        assert f'getElementById("{field_id}")' in src, \
+        assert f'numValue("{field_id}")' in src, \
             f"{field_id} が POST /predict リクエストボディに含まれていない"
 
 
 # ─── AC-612: 空白フィールド → 0 として送信 ──────────────────────────────────
 
 class TestAC612EmptyFieldsSendZero:
-    def test_parseFloat_or_zero_pattern_used(self, src):
-        assert "|| 0" in src, "parseFloat(...) || 0 パターンが使われていない"
+    def test_fullwidth_number_normalizer_used(self, src):
+        assert "normalizeNumberText" in src, "全角数字正規化関数が使われていない"
+        assert '.normalize("NFKC")' in src, "NFKC正規化が使われていない"
 
     @pytest.mark.parametrize("field_id", ["op_profit", "bank_credit", "machines", "depreciation"])
     def test_field_has_or_zero(self, src, field_id):
-        pattern = rf'getElementById\("{field_id}"\).*?\|\|\s*0'
+        pattern = rf'{field_id}:\s*numValue\("{field_id}"\)\s*\|\|\s*0'
         assert re.search(pattern, src), \
             f"{field_id} に || 0 パターンが適用されていない"
 
@@ -235,9 +237,13 @@ class TestAC613NegativeValueError:
     def test_negative_check_logic_exists(self, src):
         assert "< 0" in src, "マイナス値チェックロジック (< 0) が存在しない"
 
-    def test_all_four_fields_checked(self, src):
-        for field in ["op_profit", "bank_credit", "machines", "depreciation"]:
+    def test_non_profit_balance_fields_checked(self, src):
+        for field in ["bank_credit", "machines", "depreciation"]:
             assert field in src, f"{field} がマイナスチェック対象に含まれていない"
+
+    def test_op_profit_negative_allowed(self, src):
+        neg_block = src[src.find("const _negChecks"):src.find("const _negErrors")]
+        assert "op_profit" not in neg_block, "営業利益は赤字案件のためマイナスチェック対象に含めない"
 
     def test_error_prevents_submit(self, src):
         assert "return" in src, "マイナスエラー時の return による送信中断が存在しない"

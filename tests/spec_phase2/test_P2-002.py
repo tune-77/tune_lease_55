@@ -104,6 +104,20 @@ def test_502_contradicted_finance_score_positive(client):
     assert "FIN-CONTRADICT-001" in q["patterns"], f"FIN-CONTRADICT-001 が検知されなかった: {q['patterns']}"
 
 
+def test_502b_fullwidth_numbers_are_normalized_for_q_risk(client):
+    body = {
+        **_CONTRADICTED_REQUEST,
+        "gross_profit": "１２０",
+        "nenshu": "１００",
+        "op_profit": "１０",
+    }
+    rv = _post(client, body)
+    assert rv.status_code == 200
+    q = rv.get_json()["aurion"]["q_risk"]
+    assert q["score"] > 0
+    assert "FIN-CONTRADICT-001" in q["patterns"]
+
+
 # ── AC-503: 正常財務データ → level == "ok", patterns == [] ───────────────
 def test_503_normal_finance_level_ok(client):
     rv = _post(client, _NORMAL_REQUEST)

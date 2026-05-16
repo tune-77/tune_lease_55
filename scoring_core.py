@@ -18,7 +18,6 @@ if _SCRIPT_DIR not in sys.path:
     sys.path.insert(0, _SCRIPT_DIR)
 
 from data_cases import get_effective_coeffs, get_score_weights
-from coeff_definitions import COEFFS
 from app_logger import log_warning
 
 APPROVAL_LINE = int(os.environ.get("APPROVAL_LINE", "71"))  # 承認ライン（デフォルト71点）
@@ -184,7 +183,6 @@ def clear_scoring_cache() -> None:
 
 def _load_main_bundle(customer_type: str | None = None):
     """新規/既存で別保存した主モデルを読む。"""
-    global _main_bundle_cache
     path = _MAIN_MODEL_PATH_NEW if (customer_type or "既存先") == "新規先" else _MAIN_MODEL_PATH_EXISTING
     if path in _main_bundle_cache:
         return _main_bundle_cache[path]
@@ -231,21 +229,6 @@ def _build_lgb_qual_feature_vector(inputs: dict, feature_names: list[str], asset
         "商談ソース_銀行紹介": 1.0 if deal_source == "銀行紹介" else 0.0,
         "リース物件":          float(asset_to_idx.get(asset_id, 0)),
     }
-    row = []
-    for fn in feature_names:
-        if fn in base_vals:
-            row.append(base_vals[fn])
-        else:
-            # 定性スコアリング項目（label で照合）
-            matched = None
-            for qid, val in items_data.items():
-                v = val.get("value") if isinstance(val, dict) else None
-                if v is not None:
-                    matched = float(v)
-                    break
-            # label と id の対応は feature_names の順序に依存 → items から順番に取る
-            row.append(-1.0)
-    # label ベースの正確なマッピングに再構築
     row = []
     from constants import QUALITATIVE_SCORING_CORRECTION_ITEMS
     qual_label_to_id = {it["label"]: it["id"] for it in QUALITATIVE_SCORING_CORRECTION_ITEMS}
@@ -419,8 +402,6 @@ def compute_score_contributions(data: dict, coeff_set: dict) -> list[dict]:
         [{"feature": str, "label_ja": str, "contribution": float}, ...] を
         |contribution| 降順でソートしたリスト。
     """
-    import math
-
     contributions = []
 
     # 切片
