@@ -136,3 +136,47 @@ def test_append_web_note_writes_daily_log(tmp_path, monkeypatch):
     assert "Web Research" in result["path"]
     saved = (vault / result["path"]).read_text(encoding="utf-8")
     assert "Gemini 2.5 Flash" in saved
+
+
+def test_build_obsidian_digest_combines_multiple_notes(tmp_path, monkeypatch):
+    vault = _make_vault(tmp_path)
+    for idx, text in enumerate([
+        "## memo\n\n条件付き承認は追加資料と期間短縮が基本。",
+        "## memo\n\n条件付き承認は前受金も候補。",
+    ], start=1):
+        note = vault / "Projects" / "tune_lease_55" / "AI Chat" / f"2026-05-16-{idx}.md"
+        note.parent.mkdir(parents=True, exist_ok=True)
+        note.write_text(text, encoding="utf-8")
+    monkeypatch.setenv("OBSIDIAN_VAULT", str(vault))
+
+    from mobile_app import obsidian_bridge
+    importlib.reload(obsidian_bridge)
+
+    hits = obsidian_bridge.collect_obsidian_context("条件付き承認", limit=4)
+    digest = obsidian_bridge.build_obsidian_digest("条件付き承認", hits)
+    assert "Obsidian統合要約" in digest["digest"]
+    assert "関連ノート数" in digest["digest"]
+    assert "追加資料" in digest["digest"] or "前受金" in digest["digest"]
+    assert "[[" in digest["digest"]
+
+
+def test_append_wiki_note_writes_hub(tmp_path, monkeypatch):
+    vault = _make_vault(tmp_path)
+    monkeypatch.setenv("OBSIDIAN_VAULT", str(vault))
+
+    from mobile_app import obsidian_bridge
+    importlib.reload(obsidian_bridge)
+
+    result = obsidian_bridge.append_wiki_note(
+        "条件付き承認",
+        "## 要点\n\n- 追加資料\n- 期間短縮\n- 前受金",
+        related_paths=[
+            "Projects/tune_lease_55/AI Chat/2026-05-16.md",
+            "Projects/tune_lease_55/2026-05-12_ファイナンスリース_autoresearch.md",
+        ],
+    )
+    assert result["status"] == "saved"
+    saved = (vault / result["path"]).read_text(encoding="utf-8")
+    assert "関連ノート" in saved
+    assert "[[Projects/tune_lease_55/AI Chat/2026-05-16|2026-05-16]]" in saved
+    assert "条件付き承認" in saved

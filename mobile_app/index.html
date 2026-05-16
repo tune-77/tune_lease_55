@@ -1328,6 +1328,7 @@
           .join(" / ");
         metaParts.push(`Web参照: ${data.web_hits.length}件${sources ? ` (${sources})` : ""}`);
       }
+      if (data.wiki_saved) metaParts.push("Wikiへ自動保存しました");
       const meta = metaParts.join(" | ");
       renderChatMessage("assistant", reply, meta);
       chatHistory.push({ role: "assistant", content: reply });

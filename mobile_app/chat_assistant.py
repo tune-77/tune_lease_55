@@ -7,9 +7,23 @@ import os
 from typing import Any
 
 try:
-    from obsidian_bridge import append_chat_note, append_improvement_note, append_web_note, collect_obsidian_context
+    from obsidian_bridge import (
+        append_chat_note,
+        append_improvement_note,
+        append_web_note,
+        build_obsidian_digest,
+        append_wiki_note,
+        collect_obsidian_context,
+    )
 except ImportError:  # pragma: no cover - package import fallback
-    from .obsidian_bridge import append_chat_note, append_improvement_note, append_web_note, collect_obsidian_context
+    from .obsidian_bridge import (
+        append_chat_note,
+        append_improvement_note,
+        append_web_note,
+        build_obsidian_digest,
+        append_wiki_note,
+        collect_obsidian_context,
+    )
 
 try:
     from web_bridge import collect_web_context
@@ -117,6 +131,7 @@ def _build_prompt(
 - 具体策は 1. 追加資料 2. 期間短縮 3. 前受/頭金 4. 保証・担保 5. 再提出 の順で示す。
 - 営業向けには、否決回避ではなく「審査部の不安を先回りして解く」話法でまとめる。
 - Obsidianの過去メモに同種案件があれば、その条件や言い回しを優先して使う。
+- 複数ノートに同じ論点があれば、共通点を1本にまとめて答える。
 """
 
     improvement_prompt = """
@@ -126,6 +141,14 @@ def _build_prompt(
 - その場の回答ではなく、今後の機能改善や文言改善、デフォルト動作変更に繋がる内容だけを書く。
 - 例: 入力欄の順序、説明文、条件付き承認の出し方、Obsidian参照の優先順位、保存の自動化など。
 - 保存用の文章は短く、観察された要望と改善案が分かるようにする。
+"""
+
+    wiki_prompt = """
+WIKI連携の判断:
+- 複数ノートにまたがる共通ルール、定義、手順、比較、判断基準は WIKI にまとめる。
+- 1回限りの案件メモではなく、今後も参照したい知識だけを WIKI 化する。
+- 保存するときは、関連ノートを wikilink で列挙し、共通点を短くまとめる。
+- 例: 条件付き承認の実務、Q_risk の意味、補助金の使い分け、期待使用期間とリース期間の関係。
 """
 
     web_prompt = """
@@ -145,6 +168,8 @@ Webメモ保存の判断:
 - 保存するときは、どの情報が有益だったかを短く箇条書きにする。
 """
 
+    obsidian_digest = build_obsidian_digest(message, obsidian_hits) if obsidian_hits else {"digest": "", "title": "", "source_count": "0"}
+
     return f"""{_persona}
 
 Obsidian自動保存の判断:
@@ -153,6 +178,7 @@ Obsidian自動保存の判断:
 - 保存する場合も会話全文ではなく、要約・決定・TODOだけにする。
 {condition_playbook}
 {improvement_prompt}
+{wiki_prompt}
 {web_prompt}
 {web_save_prompt}
 
@@ -177,7 +203,11 @@ Obsidian自動保存の判断:
   "web_should_save": true/false,
   "web_save_title": "保存する場合の短いタイトル",
   "web_save_body": "保存する場合のMarkdown要約。保存不要なら空文字",
-  "web_save_reason": "保存判断の理由。保存不要でも短く"
+  "web_save_reason": "保存判断の理由。保存不要でも短く",
+  "wiki_should_save": true/false,
+  "wiki_save_title": "保存する場合の短いタイトル",
+  "wiki_save_body": "保存する場合のMarkdown要約。保存不要なら空文字",
+  "wiki_save_reason": "保存判断の理由。保存不要でも短く"
 }}
 
 現在の審査結果:
@@ -185,6 +215,9 @@ Obsidian自動保存の判断:
 
 Obsidian検索結果:
 {json.dumps(obsidian_hits, ensure_ascii=False, default=str)[:4000]}
+
+Obsidian統合要約:
+{obsidian_digest.get("digest", "")}
 
 Web検索結果:
 {json.dumps(web_hits, ensure_ascii=False, default=str)[:4000]}
@@ -218,6 +251,7 @@ def build_chat_reply(
         }
 
     obsidian_hits = collect_obsidian_context(message) if use_obsidian else []
+    obsidian_digest = build_obsidian_digest(message, obsidian_hits) if obsidian_hits else {"digest": "", "title": "", "source_count": "0"}
     web_hits = collect_web_context(message) if use_web and _should_search_web(message) else []
 
     try:
@@ -268,8 +302,12 @@ def build_chat_reply(
                         "web_save_title": {"type": "string"},
                         "web_save_body": {"type": "string"},
                         "web_save_reason": {"type": "string"},
+                        "wiki_should_save": {"type": "boolean"},
+                        "wiki_save_title": {"type": "string"},
+                        "wiki_save_body": {"type": "string"},
+                        "wiki_save_reason": {"type": "string"},
                     },
-                    "required": ["reply", "should_save", "save_title", "save_body", "save_reason", "improvement_items", "web_used", "web_reason", "web_should_save", "web_save_title", "web_save_body", "web_save_reason"],
+                    "required": ["reply", "should_save", "save_title", "save_body", "save_reason", "improvement_items", "web_used", "web_reason", "web_should_save", "web_save_title", "web_save_body", "web_save_reason", "wiki_should_save", "wiki_save_title", "wiki_save_body", "wiki_save_reason"],
                 },
                 http_options=types.HttpOptions(timeout=max(10000, int(timeout_seconds * 1000))),
             ),
@@ -316,6 +354,14 @@ def build_chat_reply(
                 str(parsed.get("web_save_title") or "Web参照メモ"),
                 str(parsed.get("web_save_body") or ""),
             )
+        wiki_save_result = {"status": "skipped", "reason": "wiki note not needed"}
+        wiki_body = str(parsed.get("wiki_save_body") or "").strip()
+        if obsidian_hits and parsed.get("wiki_should_save") and wiki_body:
+            wiki_save_result = append_wiki_note(
+                str(parsed.get("wiki_save_title") or "AI Wiki連携"),
+                wiki_body,
+                related_paths=[item.get("path", "") for item in obsidian_hits],
+            )
         return {
             "reply": str(parsed.get("reply") or ""),
             "saved": save_result.get("status") == "saved",
@@ -327,6 +373,9 @@ def build_chat_reply(
             "web_reason": str(parsed.get("web_reason") or ""),
             "web_saved": web_save_result.get("status") == "saved",
             "web_save_result": web_save_result,
+            "wiki_saved": wiki_save_result.get("status") == "saved",
+            "wiki_save_result": wiki_save_result,
+            "obsidian_digest": obsidian_digest,
             "web_hits": web_hits,
             "obsidian_hits": obsidian_hits,
             "llm_model": model,
@@ -338,6 +387,9 @@ def build_chat_reply(
             "save_result": {"status": "error", "reason": str(exc)},
             "web_saved": False,
             "web_save_result": {"status": "error", "reason": str(exc)},
+            "wiki_saved": False,
+            "wiki_save_result": {"status": "error", "reason": str(exc)},
+            "obsidian_digest": obsidian_digest,
             "web_hits": web_hits,
             "obsidian_hits": obsidian_hits,
         }
