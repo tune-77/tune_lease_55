@@ -1354,7 +1354,7 @@
         📊 標準
       </button>
       <button id="humor-yanami-btn" onclick="setHumourMode('yanami')"
-        style="font-size:0.8em;padding:4px 10px;border-radius:20px;border:1px solid #cbd5e1;background:#f1f5f9;cursor:pointer;">
+        style="font-size:0.8em;padding:4px 10px;border-radius:20px;border:1px solid #cbd5e1;background:#f97316;color:#fff;cursor:pointer;">
         🎤 八奈見
       </button>
     </div>
@@ -1382,7 +1382,7 @@
   let lastScoreResult = null;
   let lastInputValues = null;
   let chatHistory = [];
-  let humourMode = "standard";
+  let humourMode = "yanami";
 
   function setHumourMode(mode) {
     humourMode = mode;
@@ -1391,8 +1391,8 @@
     document.getElementById("humor-yanami-btn").style.background = mode === "yanami" ? "#f97316" : "#f1f5f9";
     document.getElementById("humor-yanami-btn").style.color = mode === "yanami" ? "#fff" : "";
   }
-  // 初期状態
-  document.addEventListener("DOMContentLoaded", function() { setHumourMode("standard"); });
+  // 初期状態: 八奈見モードをデフォルトに
+  document.addEventListener("DOMContentLoaded", function() { setHumourMode("yanami"); });
 
   function normalizeNumberText(value) {
     return String(value ?? "")
