@@ -6,7 +6,15 @@ import json
 import os
 from typing import Any
 
-from obsidian_bridge import append_chat_note, append_improvement_note, collect_obsidian_context
+try:
+    from obsidian_bridge import append_chat_note, append_improvement_note, append_web_note, collect_obsidian_context
+except ImportError:  # pragma: no cover - package import fallback
+    from .obsidian_bridge import append_chat_note, append_improvement_note, append_web_note, collect_obsidian_context
+
+try:
+    from web_bridge import collect_web_context
+except ImportError:  # pragma: no cover - package import fallback
+    from .web_bridge import collect_web_context
 
 
 def _get_gemini_key() -> str:
@@ -56,11 +64,29 @@ def _extract_response_json(response: Any) -> dict[str, Any] | None:
     return _extract_json("\n".join(chunks))
 
 
+def _should_search_web(message: str) -> bool:
+    text = (message or "").lower()
+    positive = [
+        "最新", "今", "今日", "現在", "最近", "公式", "一次情報", "ニュース", "相場",
+        "価格", "料金", "モデル", "api", "仕様", "release", "アップデート", "変更点",
+        "法律", "制度", "ルール", "統計", "比較", "評判", "障害", "status", "github",
+        "claude", "gemini", "openai", "streamlit", "cloudflare",
+    ]
+    negative = [
+        "obsidian", "q_risk", "審査", "案件", "社内", "顧客", "db", "dbの", "スコア",
+        "この案件", "この審査", "保守", "入力欄", "改善", "内部", "秘密",
+    ]
+    if any(k.lower() in text for k in negative):
+        return False
+    return any(k.lower() in text for k in positive)
+
+
 def _build_prompt(
     message: str,
     history: list[dict[str, str]],
     score_result: dict[str, Any] | None,
     obsidian_hits: list[dict[str, str]],
+    web_hits: list[dict[str, str]],
     humor_style: str = "standard",
 ) -> str:
     if humor_style == "yanami":
@@ -102,6 +128,23 @@ def _build_prompt(
 - 保存用の文章は短く、観察された要望と改善案が分かるようにする。
 """
 
+    web_prompt = """
+Web参照の方針:
+- 外部情報がある場合は、Obsidianより下位の補助情報として使う。
+- 公式サイト、一次情報、最新情報を優先する。
+- Webの情報を使った場合は、回答の最後に参照元のタイトルやURLを短く添える。
+- 断定が危ういときは「要確認」と書く。
+- 社内情報や顧客情報を外部検索にそのまま出さない。
+"""
+
+    web_save_prompt = """
+Webメモ保存の判断:
+- 外部情報が今後も役立つときだけ保存する。
+- 保存対象は、モデル更新、公式仕様、料金、公開ルール、障害情報、一次情報の要点。
+- 単なる雑談、広告、比較の一時メモ、社内案件に関係しない薄い情報は保存しない。
+- 保存するときは、どの情報が有益だったかを短く箇条書きにする。
+"""
+
     return f"""{_persona}
 
 Obsidian自動保存の判断:
@@ -110,6 +153,8 @@ Obsidian自動保存の判断:
 - 保存する場合も会話全文ではなく、要約・決定・TODOだけにする。
 {condition_playbook}
 {improvement_prompt}
+{web_prompt}
+{web_save_prompt}
 
 次のJSONだけ返してください:
 {{
@@ -126,14 +171,23 @@ Obsidian自動保存の判断:
       "priority": "high/medium/low",
       "evidence": "そう判断した根拠"
     }}
-  ]
+  ],
+  "web_used": true/false,
+  "web_reason": "Web参照した場合は理由、していない場合は空文字",
+  "web_should_save": true/false,
+  "web_save_title": "保存する場合の短いタイトル",
+  "web_save_body": "保存する場合のMarkdown要約。保存不要なら空文字",
+  "web_save_reason": "保存判断の理由。保存不要でも短く"
 }}
 
 現在の審査結果:
-{json.dumps(score_result or {{}}, ensure_ascii=False, default=str)[:5000]}
+    {json.dumps(score_result or {}, ensure_ascii=False, default=str)[:5000]}
 
 Obsidian検索結果:
 {json.dumps(obsidian_hits, ensure_ascii=False, default=str)[:4000]}
+
+Web検索結果:
+{json.dumps(web_hits, ensure_ascii=False, default=str)[:4000]}
 
 直近会話:
 {json.dumps(history[-8:], ensure_ascii=False, default=str)[:4000]}
@@ -148,6 +202,7 @@ def build_chat_reply(
     history: list[dict[str, str]] | None = None,
     score_result: dict[str, Any] | None = None,
     use_obsidian: bool = True,
+    use_web: bool = True,
     timeout_seconds: float = 30.0,
     humor_style: str = "standard",
 ) -> dict[str, Any]:
@@ -163,6 +218,7 @@ def build_chat_reply(
         }
 
     obsidian_hits = collect_obsidian_context(message) if use_obsidian else []
+    web_hits = collect_web_context(message) if use_web and _should_search_web(message) else []
 
     try:
         from google import genai
@@ -172,7 +228,14 @@ def build_chat_reply(
         model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
         response = client.models.generate_content(
             model=model,
-            contents=_build_prompt(message, history or [], score_result, obsidian_hits, humor_style),
+            contents=_build_prompt(
+                message,
+                history or [],
+                score_result,
+                obsidian_hits,
+                web_hits,
+                humor_style,
+            ),
             config=types.GenerateContentConfig(
                 max_output_tokens=2500,
                 temperature=0.35,
@@ -199,8 +262,14 @@ def build_chat_reply(
                                 "required": ["title", "user_need", "suggestion", "priority", "evidence"],
                             },
                         },
+                        "web_used": {"type": "boolean"},
+                        "web_reason": {"type": "string"},
+                        "web_should_save": {"type": "boolean"},
+                        "web_save_title": {"type": "string"},
+                        "web_save_body": {"type": "string"},
+                        "web_save_reason": {"type": "string"},
                     },
-                    "required": ["reply", "should_save", "save_title", "save_body", "save_reason", "improvement_items"],
+                    "required": ["reply", "should_save", "save_title", "save_body", "save_reason", "improvement_items", "web_used", "web_reason", "web_should_save", "web_save_title", "web_save_body", "web_save_reason"],
                 },
                 http_options=types.HttpOptions(timeout=max(10000, int(timeout_seconds * 1000))),
             ),
@@ -241,6 +310,12 @@ def build_chat_reply(
                     str(parsed.get("save_title") or "AI改善候補"),
                     improvement_body,
                 )
+        web_save_result = {"status": "skipped", "reason": "web note not needed"}
+        if web_hits and parsed.get("web_should_save") and parsed.get("web_save_body"):
+            web_save_result = append_web_note(
+                str(parsed.get("web_save_title") or "Web参照メモ"),
+                str(parsed.get("web_save_body") or ""),
+            )
         return {
             "reply": str(parsed.get("reply") or ""),
             "saved": save_result.get("status") == "saved",
@@ -248,6 +323,11 @@ def build_chat_reply(
             "save_reason": str(parsed.get("save_reason") or ""),
             "improvement_result": improvement_result,
             "improvement_items": improvement_items,
+            "web_used": bool(web_hits),
+            "web_reason": str(parsed.get("web_reason") or ""),
+            "web_saved": web_save_result.get("status") == "saved",
+            "web_save_result": web_save_result,
+            "web_hits": web_hits,
             "obsidian_hits": obsidian_hits,
             "llm_model": model,
         }
@@ -256,5 +336,8 @@ def build_chat_reply(
             "reply": f"AIチャットでエラーが発生しました: {exc}",
             "saved": False,
             "save_result": {"status": "error", "reason": str(exc)},
+            "web_saved": False,
+            "web_save_result": {"status": "error", "reason": str(exc)},
+            "web_hits": web_hits,
             "obsidian_hits": obsidian_hits,
         }

@@ -47,11 +47,61 @@ def test_build_prompt_mentions_condition_playbook(tmp_path, monkeypatch):
         [{"role": "user", "content": "前の相談"}],
         {"score": 66, "judgment": "条件付"},
         obsidian_bridge.collect_obsidian_context("条件付き承認", limit=2),
+        [],
         humor_style="standard",
     )
     assert "条件付き承認の説明方針" in prompt
     assert "Obsidianの過去メモ" in prompt
     assert "1. 追加資料 2. 期間短縮" in prompt
+
+
+def test_web_context_parses_search_results(monkeypatch):
+    html = """
+    <html><body>
+      <a class="result__a" href="https://example.com/alpha">Alpha Result</a>
+      <a class="result__snippet">Alpha snippet text.</a>
+      <a class="result__a" href="https://example.com/bravo">Bravo Result</a>
+      <a class="result__snippet">Bravo snippet text.</a>
+    </body></html>
+    """
+
+    class Resp:
+        status_code = 200
+        text = html
+        def raise_for_status(self):
+            return None
+
+    def fake_get(*args, **kwargs):
+        return Resp()
+
+    from mobile_app import web_bridge
+    monkeypatch.setattr(web_bridge.requests, "get", fake_get)
+
+    hits = web_bridge.collect_web_context("最新情報", limit=2)
+    assert len(hits) == 2
+    assert hits[0]["title"] == "Alpha Result"
+    assert hits[0]["url"] == "https://example.com/alpha"
+    assert "snippet" in hits[0]
+
+
+def test_build_prompt_mentions_web_section(tmp_path, monkeypatch):
+    vault = _make_vault(tmp_path)
+    monkeypatch.setenv("OBSIDIAN_VAULT", str(vault))
+
+    from mobile_app import obsidian_bridge, chat_assistant
+    importlib.reload(obsidian_bridge)
+    importlib.reload(chat_assistant)
+
+    prompt = chat_assistant._build_prompt(
+        "Gemini の最新モデルを教えて",
+        [],
+        None,
+        [],
+        [{"title": "Gemini", "url": "https://example.com", "snippet": "info", "domain": "example.com"}],
+        humor_style="standard",
+    )
+    assert "Web参照の方針" in prompt
+    assert "Web検索結果" in prompt
 
 
 def test_append_improvement_note_writes_daily_log(tmp_path, monkeypatch):
@@ -69,3 +119,20 @@ def test_append_improvement_note_writes_daily_log(tmp_path, monkeypatch):
     assert "Improvement Log" in result["path"]
     saved = (vault / result["path"]).read_text(encoding="utf-8")
     assert "入力導線" in saved
+
+
+def test_append_web_note_writes_daily_log(tmp_path, monkeypatch):
+    vault = _make_vault(tmp_path)
+    monkeypatch.setenv("OBSIDIAN_VAULT", str(vault))
+
+    from mobile_app import obsidian_bridge
+    importlib.reload(obsidian_bridge)
+
+    result = obsidian_bridge.append_web_note(
+        "Web参照メモ",
+        "## Web要点\n\n- Gemini 2.5 Flash は公式ブログで更新\n- 公式情報を優先する",
+    )
+    assert result["status"] == "saved"
+    assert "Web Research" in result["path"]
+    saved = (vault / result["path"]).read_text(encoding="utf-8")
+    assert "Gemini 2.5 Flash" in saved

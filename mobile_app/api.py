@@ -849,6 +849,7 @@ def chat():
         history = []
     score_result = data.get("score_result") or data.get("result") or {}
     use_obsidian = bool(data.get("use_obsidian", True))
+    use_web = bool(data.get("use_web", True))
     humor_style = str(data.get("humor_style") or "standard")
     try:
         timeout_seconds = _normalize_numeric(data.get("timeout_seconds", 30), 30)
@@ -857,6 +858,7 @@ def chat():
             history=history,
             score_result=score_result,
             use_obsidian=use_obsidian,
+            use_web=use_web,
             timeout_seconds=timeout_seconds,
             humor_style=humor_style,
         ))

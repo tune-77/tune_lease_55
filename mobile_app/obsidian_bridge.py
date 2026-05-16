@@ -203,3 +203,22 @@ def append_improvement_note(title: str, body: str) -> dict[str, str]:
     with path.open("a", encoding="utf-8") as f:
         f.write(prefix + section)
     return {"status": "saved", "path": str(path)}
+
+
+def append_web_note(title: str, body: str) -> dict[str, str]:
+    vault = find_vault()
+    if not vault:
+        return {"status": "skipped", "reason": "Obsidian vault not found"}
+    day = dt.date.today().isoformat()
+    rel = f"Projects/tune_lease_55/AI Chat/Web Research/{day}.md"
+    path = _safe_note_path(vault, rel)
+    now = dt.datetime.now().strftime("%H:%M")
+    clean_title = (title or "Web参照メモ").strip()[:80]
+    clean_body = (body or "").strip()
+    if not clean_body:
+        return {"status": "skipped", "reason": "empty note body"}
+    section = f"## {now} {clean_title}\n\n{clean_body}\n"
+    prefix = "\n" if path.exists() and path.read_text(encoding="utf-8", errors="ignore").strip() else ""
+    with path.open("a", encoding="utf-8") as f:
+        f.write(prefix + section)
+    return {"status": "saved", "path": str(path)}

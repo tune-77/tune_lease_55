@@ -1070,6 +1070,10 @@
         🎤 八奈見
       </button>
     </div>
+    <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:0.85em;color:#64748b;">
+      <input type="checkbox" id="web-toggle" checked>
+      ネット参照
+    </label>
     <div class="chat-input-row">
       <textarea id="chat-input" placeholder="例: この案件、営業にはどう説明すればいい？"></textarea>
       <button id="chat-send-btn" onclick="sendChat()">送信</button>
@@ -1303,6 +1307,7 @@
           history: chatHistory.slice(-10),
           score_result: lastScoreResult || {},
           use_obsidian: true,
+          use_web: document.getElementById("web-toggle").checked,
           humor_style: humourMode,
         }),
       });
@@ -1312,12 +1317,21 @@
       }
       const data = await resp.json();
       const reply = data.reply || "応答が空でした。";
-      const meta = data.saved
-        ? "Obsidianへ自動保存しました"
-        : (data.save_reason ? `保存なし: ${data.save_reason}` : "");
+      const metaParts = [];
+      if (data.saved) metaParts.push("Obsidianへ自動保存しました");
+      else if (data.save_reason) metaParts.push(`保存なし: ${data.save_reason}`);
+      if (Array.isArray(data.web_hits) && data.web_hits.length > 0) {
+        const sources = data.web_hits
+          .slice(0, 2)
+          .map(h => h.domain || h.title || "web")
+          .filter(Boolean)
+          .join(" / ");
+        metaParts.push(`Web参照: ${data.web_hits.length}件${sources ? ` (${sources})` : ""}`);
+      }
+      const meta = metaParts.join(" | ");
       renderChatMessage("assistant", reply, meta);
       chatHistory.push({ role: "assistant", content: reply });
-      status.textContent = data.saved ? "必要なメモだけObsidianへ保存しました。" : "回答しました。";
+      status.textContent = data.web_hits?.length ? "回答しました。Web参照あり。" : (data.saved ? "必要なメモだけObsidianへ保存しました。" : "回答しました.");
     } catch (e) {
       renderChatMessage("assistant", "AIチャットでエラーが出ました: " + (e.message || e));
       status.textContent = "エラー";
