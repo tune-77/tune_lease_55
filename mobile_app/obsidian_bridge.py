@@ -339,6 +339,62 @@ def append_wiki_note(title: str, body: str, related_paths: Iterable[str] | None 
     return {"status": "saved", "path": str(path)}
 
 
+def append_case_log(score_result: dict, case: dict) -> dict[str, str]:
+    """スコアリング結果を Cases/ 以下の日次ログに追記する。"""
+    vault = find_vault()
+    if not vault:
+        return {"status": "skipped", "reason": "Obsidian vault not found"}
+
+    today = dt.date.today()
+    ym = today.strftime("%Y-%m")
+    ymd = today.isoformat()
+    rel = f"Projects/tune_lease_55/Cases/{ym}/{ymd}.md"
+    path = _safe_note_path(vault, rel)
+
+    now = dt.datetime.now().strftime("%H:%M")
+
+    industry = str(case.get("industry") or case.get("industry_major") or "不明")[:30]
+    company = str(case.get("company_name") or "").strip()[:30]
+    asset = str(case.get("asset_name") or "").strip()[:30]
+
+    score = score_result.get("score") or (score_result.get("streamlit") or {}).get("score") or 0
+    judgment = (
+        score_result.get("judgment")
+        or (score_result.get("streamlit") or {}).get("hantei")
+        or "—"
+    )
+    recommended_rate = score_result.get("recommended_rate") or 0
+    quantum_risk = (
+        score_result.get("quantum_risk")
+        or (score_result.get("aurion") or {}).get("quantum_risk")
+        or 0
+    )
+
+    advisor = score_result.get("advisor") or {}
+    advisor_summary = str(advisor.get("summary") or "").strip()[:120]
+    risk_points = advisor.get("risk_points") or []
+    main_risk = str(risk_points[0]).strip()[:80] if risk_points else "—"
+
+    heading = f"## {now} | {industry} | スコア{score} | {judgment}"
+
+    lines = [heading, ""]
+    if company:
+        lines.append(f"- **会社名**: {company}")
+    if asset:
+        lines.append(f"- **物件**: {asset}")
+    lines.append(f"- **推奨金利**: {recommended_rate:.2f}%")
+    lines.append(f"- **Q-Risk**: {quantum_risk}")
+    lines.append(f"- **主リスク**: {main_risk}")
+    if advisor_summary:
+        lines.append(f"- **軍師サマリー**: {advisor_summary}")
+
+    section = "\n".join(lines).rstrip() + "\n"
+    prefix = "\n" if path.exists() and path.read_text(encoding="utf-8", errors="ignore").strip() else ""
+    with path.open("a", encoding="utf-8") as f:
+        f.write(prefix + section)
+    return {"status": "saved", "path": str(path)}
+
+
 def append_weekly_review_note(title: str, body: str) -> dict[str, str]:
     vault = find_vault()
     if not vault:
