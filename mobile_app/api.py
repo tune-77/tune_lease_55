@@ -973,6 +973,10 @@ def predict():
     spread_pred       = max(-0.5, min(6.0, spread_pred))
     recommended_rate  = spread_pred + base_rate_val
 
+    # 格付けによる金利上乗せ: 1-3先±0 / 4-6先+0.2% / 要注意先+0.5% / 無格付+0.3%
+    _grade_premium = {1: 0.0, 2: 0.2, 3: 0.5, 4: 0.3}.get(grade, 0.0)
+    recommended_rate += _grade_premium
+
     # ── 分類モデルで成約スコア予測 ──────────────────────────────────
     if customer_type == 0 and _rf_new_model is not None:
         # 新規先専用モデルは52特徴量（winning_spread未学習）→ そのまま渡す
