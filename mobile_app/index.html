@@ -511,6 +511,104 @@
       border-radius: 6px;
     }
     .qrisk-no-pattern { font-size: 13px; color: #555; }
+
+    /* ─── 軍師AI パネル ─── */
+    #advisor-panel {
+      display: none;
+      margin-top: 14px;
+      padding: 14px;
+      border-left: 4px solid #2563eb;
+      background: #eff6ff;
+      border-radius: 8px;
+    }
+    .advisor-title {
+      font-size: 14px;
+      font-weight: 800;
+      color: #1e3a8a;
+      margin-bottom: 8px;
+    }
+    .advisor-summary {
+      font-size: 13px;
+      font-weight: 650;
+      color: #172554;
+      line-height: 1.6;
+      margin-bottom: 10px;
+    }
+    .advisor-section {
+      margin-top: 10px;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+    .advisor-section strong { color: #1d4ed8; }
+    .advisor-section ul {
+      margin: 5px 0 0 18px;
+      padding: 0;
+    }
+    .advisor-section li { margin-bottom: 4px; }
+
+    /* ─── AIチャット ─── */
+    #ai-chat-card {
+      display: none;
+    }
+    .chat-log {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 360px;
+      overflow-y: auto;
+      padding: 8px 2px;
+    }
+    .chat-bubble {
+      border-radius: 8px;
+      padding: 9px 11px;
+      font-size: 13px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+    }
+    .chat-user {
+      align-self: flex-end;
+      background: #dcfce7;
+      color: #14532d;
+      max-width: 86%;
+    }
+    .chat-ai {
+      align-self: flex-start;
+      background: #eff6ff;
+      color: #172554;
+      max-width: 92%;
+    }
+    .chat-note {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 4px;
+    }
+    .chat-input-row {
+      display: flex;
+      gap: 8px;
+      align-items: stretch;
+      margin-top: 10px;
+    }
+    #chat-input {
+      flex: 1;
+      min-height: 58px;
+      resize: vertical;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 9px 10px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    #chat-send-btn {
+      width: 88px;
+      border: 0;
+      border-radius: 8px;
+      background: #2563eb;
+      color: #fff;
+      font-weight: 700;
+    }
+    #chat-send-btn:disabled {
+      opacity: .55;
+    }
   </style>
 </head>
 <body>
@@ -564,86 +662,86 @@
 
     <div class="field">
       <label><span class="icon">💴</span>年商</label>
-      <input type="number" id="nenshu" placeholder="例: 500" inputmode="decimal">
+      <input type="text" id="nenshu" placeholder="例: 500" inputmode="decimal">
       <div class="unit">百万円</div>
     </div>
 
     <div class="field">
       <label><span class="icon">💰</span>売上総利益</label>
-      <input type="number" id="gross_profit" placeholder="例: 50" inputmode="decimal">
+      <input type="text" id="gross_profit" placeholder="例: 50" inputmode="decimal">
+      <div class="unit">百万円</div>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">📉</span>営業利益</label>
+      <input type="text" id="op_profit" placeholder="例: 25（赤字: -5）" inputmode="decimal">
       <div class="unit">百万円</div>
     </div>
 
     <div class="field">
       <label><span class="icon">📊</span>経常利益</label>
-      <input type="number" id="ord_profit" placeholder="例: 20（赤字: -5）" step="any">
+      <input type="text" id="ord_profit" placeholder="例: 20（赤字: -5）" inputmode="decimal">
       <div class="unit">百万円</div>
     </div>
 
     <div class="field">
       <label><span class="icon">📈</span>当期純利益</label>
-      <input type="number" id="net_income" placeholder="例: 15（赤字: -3）" step="any">
+      <input type="text" id="net_income" placeholder="例: 15（赤字: -3）" inputmode="decimal">
       <div class="unit">百万円</div>
     </div>
 
     <div class="field">
-      <label><span class="icon">🔧</span>減価償却費</label>
-      <input type="number" id="dep_expense" placeholder="例: 5" inputmode="decimal">
+      <label><span class="icon">🔧</span>減価償却（経費）</label>
+      <input type="text" id="dep_expense" placeholder="例: 5" inputmode="decimal">
       <div class="unit">百万円</div>
     </div>
 
     <!-- P2-003: 財務詳細フィールド（AURION Q_risk 用） -->
     <div class="field">
-      <label><span class="icon">📉</span>営業利益</label>
-      <input type="number" id="op_profit" placeholder="例: 25（赤字: -5）" step="any">
-      <div class="unit">百万円</div>
-    </div>
-
-    <div class="field">
       <label><span class="icon">🏦</span>銀行借入残高</label>
-      <input type="number" id="bank_credit" placeholder="例: 100" inputmode="decimal">
+      <input type="text" id="bank_credit" placeholder="例: 100" inputmode="decimal">
       <div class="unit">百万円</div>
     </div>
 
     <div class="field">
       <label><span class="icon">⚙️</span>機械設備残高</label>
-      <input type="number" id="machines" placeholder="例: 50" inputmode="decimal">
+      <input type="text" id="machines" placeholder="例: 50" inputmode="decimal">
       <div class="unit">百万円</div>
     </div>
 
     <div class="field">
-      <label><span class="icon">🔁</span>減価償却費（AURION）</label>
-      <input type="number" id="depreciation" placeholder="例: 5" inputmode="decimal">
+      <label><span class="icon">🔁</span>減価償却（資産）</label>
+      <input type="text" id="depreciation" placeholder="例: 5" inputmode="decimal">
       <div class="unit">百万円</div>
     </div>
 
     <div class="field">
       <label><span class="icon">🚜</span>リース取得価額</label>
-      <input type="number" id="acquisition_cost" placeholder="例: 10" inputmode="decimal">
+      <input type="text" id="acquisition_cost" placeholder="例: 10" inputmode="decimal">
       <div class="unit">百万円</div>
     </div>
 
     <div class="field">
       <label><span class="icon">📋</span>リース与信残高</label>
-      <input type="number" id="lease_credit" placeholder="例: 30" inputmode="decimal">
+      <input type="text" id="lease_credit" placeholder="例: 30" inputmode="decimal">
       <div class="unit">百万円</div>
     </div>
 
     <div class="field">
       <label><span class="icon">🏠</span>その他資産</label>
-      <input type="number" id="other_assets" placeholder="例: 20" inputmode="decimal">
+      <input type="text" id="other_assets" placeholder="例: 20" inputmode="decimal">
       <div class="unit">百万円</div>
     </div>
 
     <div class="field">
       <label><span class="icon">💵</span>賃借料（資産）</label>
-      <input type="number" id="rent" placeholder="例: 5" inputmode="decimal">
+      <input type="text" id="rent" placeholder="例: 5" inputmode="decimal">
       <div class="unit">百万円（B/S 科目 / item8）</div>
     </div>
 
     <div class="field">
       <label><span class="icon">🏘</span>賃借料（経費）</label>
-      <input type="number" id="rent_expense" placeholder="例: 3" inputmode="decimal">
+      <input type="text" id="rent_expense" placeholder="例: 3" inputmode="decimal">
       <div class="unit">百万円（P/L 科目 / DSCRの分母）</div>
     </div>
   </div>
@@ -662,7 +760,7 @@
 
     <div class="field">
       <label><span class="icon">📑</span>現在のリース件数</label>
-      <input type="number" id="contracts" placeholder="例: 3" inputmode="numeric" min="0" step="1">
+      <input type="text" id="contracts" placeholder="例: 3" inputmode="numeric">
       <div class="unit">件</div>
     </div>
 
@@ -720,13 +818,13 @@
 
     <div class="field" id="competitor-rate-field">
       <label><span class="icon">💹</span>競合他社金利（%）</label>
-      <input type="number" id="competitor_rate" placeholder="例: 2.8" inputmode="decimal" step="0.01" disabled>
+      <input type="text" id="competitor_rate" placeholder="例: 2.8" inputmode="decimal" disabled>
       <div class="unit">% （競合あり選択時に入力）</div>
     </div>
 
     <div class="field">
       <label><span class="icon">📝</span>提案金利（%）</label>
-      <input type="number" id="proposed_rate" placeholder="例: 3.5（任意）" inputmode="decimal" step="0.01">
+      <input type="text" id="proposed_rate" placeholder="例: 3.5（任意）" inputmode="decimal">
       <div class="unit">% 出来上がり金利を入力（基準金利を差し引いてスプレッドに変換）</div>
     </div>
   </div>
@@ -866,7 +964,7 @@
 
     <div class="field">
       <label><span class="icon">🏗</span>物件スコア <span style="font-size:11px; font-weight:400; color:var(--green); margin-left:4px;">物件種別から自動設定</span></label>
-      <input type="number" id="lease_asset_score" value="100" min="0" max="100" inputmode="numeric">
+      <input type="text" id="lease_asset_score" value="100" inputmode="numeric">
       <div class="unit">0〜100 ／ 物件種別を選ぶと自動更新（上書き可）</div>
     </div>
   </div>
@@ -903,6 +1001,14 @@
     <div class="prob-row">
       <span class="label">成約確率</span>
       <span class="value" id="prob-val">—</span>
+    </div>
+    <div class="prob-row">
+      <span class="label">Streamlit判定</span>
+      <span class="value" id="streamlit-hantei-val">—</span>
+    </div>
+    <div class="prob-row">
+      <span class="label">Q_risk</span>
+      <span class="value" id="quantum-risk-val">—</span>
     </div>
 
     <div class="progress-wrap">
@@ -941,6 +1047,34 @@
 
     <!-- P3-003: ステルス競合推定パネル -->
     <div id="competitor-pressure-panel" style="display:none;"></div>
+
+    <!-- 軍師AI パネル -->
+    <div id="advisor-panel" style="display:none;"></div>
+  </div>
+
+  <!-- AIチャットカード -->
+  <div class="card" id="ai-chat-card">
+    <div class="card-title">AIチャット</div>
+    <div class="unit">
+      審査結果について質問できます。AIが必要と判断したメモだけObsidianへ自動保存します。
+    </div>
+    <div class="chat-log" id="chat-log"></div>
+    <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
+      <span style="font-size:0.85em;color:#64748b;">口調:</span>
+      <button id="humor-std-btn" onclick="setHumourMode('standard')"
+        style="font-size:0.8em;padding:4px 10px;border-radius:20px;border:1px solid #cbd5e1;background:#f1f5f9;cursor:pointer;">
+        📊 標準
+      </button>
+      <button id="humor-yanami-btn" onclick="setHumourMode('yanami')"
+        style="font-size:0.8em;padding:4px 10px;border-radius:20px;border:1px solid #cbd5e1;background:#f1f5f9;cursor:pointer;">
+        🎤 八奈見
+      </button>
+    </div>
+    <div class="chat-input-row">
+      <textarea id="chat-input" placeholder="例: この案件、営業にはどう説明すればいい？"></textarea>
+      <button id="chat-send-btn" onclick="sendChat()">送信</button>
+    </div>
+    <div class="chat-note" id="chat-status"></div>
   </div>
 
   <div class="footer">
@@ -951,6 +1085,41 @@
 
 <script>
   const API_URL = "/predict";
+  const CHAT_URL = "/chat";
+  let lastScoreResult = null;
+  let chatHistory = [];
+  let humourMode = "standard";
+
+  function setHumourMode(mode) {
+    humourMode = mode;
+    document.getElementById("humor-std-btn").style.background = mode === "standard" ? "#3b82f6" : "#f1f5f9";
+    document.getElementById("humor-std-btn").style.color = mode === "standard" ? "#fff" : "";
+    document.getElementById("humor-yanami-btn").style.background = mode === "yanami" ? "#f97316" : "#f1f5f9";
+    document.getElementById("humor-yanami-btn").style.color = mode === "yanami" ? "#fff" : "";
+  }
+  // 初期状態
+  document.addEventListener("DOMContentLoaded", function() { setHumourMode("standard"); });
+
+  function normalizeNumberText(value) {
+    return String(value ?? "")
+      .normalize("NFKC")
+      .replace(/,/g, "")
+      .trim();
+  }
+
+  function numValue(id, fallback = 0) {
+    const raw = normalizeNumberText(document.getElementById(id).value);
+    if (raw === "") return fallback;
+    const value = parseFloat(raw);
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  function intValue(id, fallback = 0) {
+    const raw = normalizeNumberText(document.getElementById(id).value);
+    if (raw === "") return fallback;
+    const value = parseInt(raw, 10);
+    return Number.isFinite(value) ? value : fallback;
+  }
 
   async function runPredict() {
     const btn = document.getElementById("submit-btn");
@@ -961,50 +1130,51 @@
     const vals = {
       industry:         document.getElementById("industry").value,
       customer_type:    document.getElementById("customer_type").value,
-      lease_term:       parseFloat(document.getElementById("lease_term").value)       || 60,
-      nenshu:           parseFloat(document.getElementById("nenshu").value)           || 0,
-      gross_profit:     parseFloat(document.getElementById("gross_profit").value)     || 0,
-      ord_profit:       parseFloat(document.getElementById("ord_profit").value)       || 0,
-      net_income:       parseFloat(document.getElementById("net_income").value)       || 0,
-      dep_expense:      parseFloat(document.getElementById("dep_expense").value)      || 0,
-      acquisition_cost: parseFloat(document.getElementById("acquisition_cost").value) || 0,
-      lease_credit:     parseFloat(document.getElementById("lease_credit").value)     || 0,
+      lease_term:       numValue("lease_term", 60),
+      nenshu:           numValue("nenshu") || 0,
+      gross_profit:     numValue("gross_profit") || 0,
+      ord_profit:       numValue("ord_profit") || 0,
+      net_income:       numValue("net_income") || 0,
+      dep_expense:      numValue("dep_expense") || 0,
+      acquisition_cost: numValue("acquisition_cost") || 0,
+      lease_credit:     numValue("lease_credit") || 0,
       asset_type:           document.getElementById("asset_type").value,
       is_re_lease:          document.getElementById("is_re_lease").checked,
       insurance_applicable: document.getElementById("insurance_applicable").value,
       // P2-003: 財務詳細フィールド
-      op_profit:    parseFloat(document.getElementById("op_profit").value)    || 0,
-      bank_credit:  parseFloat(document.getElementById("bank_credit").value)  || 0,
-      machines:     parseFloat(document.getElementById("machines").value)     || 0,
-      depreciation: parseFloat(document.getElementById("depreciation").value) || 0,
+      op_profit:    numValue("op_profit") || 0,
+      bank_credit:  numValue("bank_credit") || 0,
+      machines:     numValue("machines") || 0,
+      depreciation: numValue("depreciation") || 0,
       // 財務追加フィールド
-      other_assets: parseFloat(document.getElementById("other_assets").value) || 0,
-      rent:         parseFloat(document.getElementById("rent").value)         || 0,
-      rent_expense: parseFloat(document.getElementById("rent_expense").value) || 0,
+      other_assets: numValue("other_assets") || 0,
+      rent:         numValue("rent") || 0,
+      rent_expense: numValue("rent_expense") || 0,
       // 取引情報
       main_bank:     document.getElementById("main_bank").checked ? "メイン先" : "その他",
-      contracts:     parseFloat(document.getElementById("contracts").value)   || 0,
+      contracts:     numValue("contracts") || 0,
       deal_source:   document.getElementById("deal_source").value,
       contract_type: document.getElementById("contract_type").value,
       sales_dept:    document.getElementById("sales_dept").value,
       // P3-003: 競合・格付けフィールド
-      grade:           parseInt(document.getElementById("grade").value)            || 2,
+      grade:           intValue("grade", 2) || 2,
       competitor:      document.getElementById("competitor").value,
-      competitor_rate: parseFloat(document.getElementById("competitor_rate").value) || 0,
+      competitor_rate: numValue("competitor_rate") || 0,
       // 定性評価スコア（0-4スケール、未選択は送信しない）
       ...(_qVals()),
-      lease_asset_score: parseFloat(document.getElementById("lease_asset_score").value) ?? 100,
+      lease_asset_score: numValue("lease_asset_score", 100),
+      humor_style: humourMode,
     };
     // 提案金利は入力があれば送信（API 側でベースレートを差し引いてスプレッドに変換）
-    const _pr = parseFloat(document.getElementById("proposed_rate").value);
+    const _pr = numValue("proposed_rate", NaN);
     if (!isNaN(_pr)) vals.proposed_rate = _pr;
 
     // BR-229: 財務詳細フィールドのマイナス値チェック
+    // 営業利益は赤字案件を扱うためマイナス入力を許可する。
     const _negChecks = [
-      { key: "op_profit",    label: "営業利益" },
       { key: "bank_credit",  label: "銀行借入残高" },
       { key: "machines",     label: "機械設備残高" },
-      { key: "depreciation", label: "減価償却費（AURION）" },
+      { key: "depreciation", label: "減価償却（資産）" },
     ];
     const _negErrors = _negChecks.filter(f => vals[f.key] < 0).map(f => f.label);
     if (_negErrors.length > 0) {
@@ -1045,9 +1215,14 @@
 
   function showResult({ score, probability, judgment,
                         recommended_rate, base_rate, spread_pred, rate_range,
-                        warnings, rule_check_status, aurion }) {
+                        warnings, rule_check_status, aurion, quantum_risk, streamlit, advisor }) {
+    lastScoreResult = arguments[0];
     document.getElementById("score-val").textContent = score;
     document.getElementById("prob-val").textContent = (probability * 100).toFixed(1) + "%";
+    document.getElementById("streamlit-hantei-val").textContent = streamlit?.hantei || "—";
+    const qRiskVal = quantum_risk ?? streamlit?.quantum_risk ?? aurion?.quantum_risk;
+    document.getElementById("quantum-risk-val").textContent =
+      (typeof qRiskVal === "number") ? qRiskVal.toFixed(1) : "—";
 
     const badge = document.getElementById("judgment-badge");
     const bar   = document.getElementById("progress-bar");
@@ -1086,9 +1261,70 @@
     renderWarnings(warnings || [], rule_check_status || "ok");
     renderQRisk(aurion?.q_risk);
     renderCompetitorPressure(aurion?.competitor_pressure);
+    renderAdvisor(advisor);
+    document.getElementById("ai-chat-card").style.display = "block";
 
     document.getElementById("result").classList.add("visible");
     document.getElementById("result").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function renderChatMessage(role, text, metaText = "") {
+    const log = document.getElementById("chat-log");
+    const div = document.createElement("div");
+    div.className = "chat-bubble " + (role === "user" ? "chat-user" : "chat-ai");
+    div.textContent = text;
+    if (metaText) {
+      const meta = document.createElement("div");
+      meta.className = "chat-note";
+      meta.textContent = metaText;
+      div.appendChild(meta);
+    }
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  async function sendChat() {
+    const input = document.getElementById("chat-input");
+    const btn = document.getElementById("chat-send-btn");
+    const status = document.getElementById("chat-status");
+    const message = input.value.trim();
+    if (!message) return;
+    input.value = "";
+    renderChatMessage("user", message);
+    chatHistory.push({ role: "user", content: message });
+    btn.disabled = true;
+    status.textContent = "AIが考えています...";
+    try {
+      const resp = await fetch(CHAT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message,
+          history: chatHistory.slice(-10),
+          score_result: lastScoreResult || {},
+          use_obsidian: true,
+          humor_style: humourMode,
+        }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+        throw new Error(err.error || `HTTP ${resp.status}`);
+      }
+      const data = await resp.json();
+      const reply = data.reply || "応答が空でした。";
+      const meta = data.saved
+        ? "Obsidianへ自動保存しました"
+        : (data.save_reason ? `保存なし: ${data.save_reason}` : "");
+      renderChatMessage("assistant", reply, meta);
+      chatHistory.push({ role: "assistant", content: reply });
+      status.textContent = data.saved ? "必要なメモだけObsidianへ保存しました。" : "回答しました。";
+    } catch (e) {
+      renderChatMessage("assistant", "AIチャットでエラーが出ました: " + (e.message || e));
+      status.textContent = "エラー";
+    } finally {
+      btn.disabled = false;
+      input.focus();
+    }
   }
 
   const _VALID_SEVERITIES = ["high", "medium", "low"];
@@ -1166,8 +1402,13 @@
         </div>
         <div class="qrisk-body">
           <div class="qrisk-score">スコア: ${score} / 100</div>
+          <div class="qrisk-disclaimer" style="margin-bottom:8px;">
+            Q_riskは「財務の強弱」ではなく、入力された財務項目同士が会計上・規模感上つじつまが合うかを見る整合性チェックです。
+            0は優良という意味ではなく、粗利率異常、営業利益&gt;売上総利益、年商に対する残高過大、機械設備ありで減価償却（資産）ゼロ等の矛盾を検知しなかった状態です。
+          </div>
           <div class="qrisk-section-title">検知された矛盾パターン（${details.length}件）:</div>
           ${patternsHtml}
+          <div class="qrisk-disclaimer">ℹ️ high=35点、medium=12点、low=4点で加算します。審査スコア・判定には直接影響しません。</div>
           <div class="qrisk-disclaimer">ℹ️ このスコアは参考値です。審査スコア・判定には影響しません。</div>
         </div>`;
       panel.style.display = "block";
@@ -1217,6 +1458,47 @@
     } catch (e) { /* エラーを隠蔽し他の表示処理を止めない */ }
   }
 
+  function renderAdvisor(advisor) {
+    try {
+      const panel = document.getElementById("advisor-panel");
+      if (!advisor || !advisor.summary) {
+        panel.style.display = "none";
+        return;
+      }
+      const decision = advisor.decision || {};
+      const metrics = advisor.metrics || {};
+      const risks = advisor.risk_points || [];
+      const conditions = advisor.recommended_conditions || [];
+      const salesTalk = advisor.sales_talk || [];
+      const approvalConditions = advisor.approval_conditions || conditions;
+      const positives = advisor.positive_factors || advisor.evidence || [];
+      const concerns = advisor.concerns_and_responses || risks;
+      const counterOffer = advisor.counter_offer || [];
+      const listHtml = (items) => items.length
+        ? `<ul>${items.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul>`
+        : "<div>—</div>";
+
+      panel.innerHTML = `
+        <div class="advisor-title">⚔️ 軍師AIの次の一手
+          <span style="font-size:0.8em;font-weight:600;color:#64748b;">${escapeHtml(decision.stance || "")}</span>
+        </div>
+        <div class="advisor-summary">${escapeHtml(advisor.summary)}</div>
+        <div class="advisor-section"><strong>審議の要旨:</strong> ${escapeHtml(advisor.executive_summary || advisor.strategy || "")}</div>
+        <div class="advisor-section"><strong>まず取る作戦:</strong> ${escapeHtml(advisor.strategy || "")}</div>
+        <div class="advisor-section"><strong>承認条件</strong>${listHtml(approvalConditions)}</div>
+        <div class="advisor-section"><strong>押し材料</strong>${listHtml(positives)}</div>
+        <div class="advisor-section"><strong>懸念点と返し</strong>${listHtml(concerns)}</div>
+        ${counterOffer.length ? `<div class="advisor-section"><strong>逆転の条件</strong>${listHtml(counterOffer)}</div>` : ""}
+        <div class="advisor-section"><strong>営業への言い方</strong>${listHtml(salesTalk)}</div>
+        ${advisor.humor_note ? `<div class="advisor-section" style="background:#fff7ed;border-left:4px solid #f97316;border-radius:8px;padding:8px 10px;">${escapeHtml(advisor.humor_note)}</div>` : ""}
+        <div class="advisor-section" style="color:#64748b;">
+          Q_risk ${escapeHtml(metrics.q_risk ?? "—")} / 信用リスク ${escapeHtml(metrics.credit_risk_group_score ?? "—")} /
+          確信度 ${escapeHtml(decision.confidence ?? "—")}
+        </div>`;
+      panel.style.display = "block";
+    } catch (e) { /* エラーを隠蔽し他の表示処理を止めない */ }
+  }
+
   // 定性評価スコア: 選択済み項目のみ返す + q_weighted を計算して含める
   const _Q_WEIGHTS = { q_history: 10, q_stability: 20, q_repayment: 25, q_future: 15, q_equip: 15, q_mainbk: 15 };
   function _qVals() {
@@ -1258,6 +1540,12 @@
     document.getElementById("customer_type").selectedIndex = 0;
     document.getElementById("lease_term").value = "60";
     document.getElementById("result").classList.remove("visible");
+    document.getElementById("ai-chat-card").style.display = "none";
+    document.getElementById("chat-log").innerHTML = "";
+    document.getElementById("chat-status").textContent = "";
+    document.getElementById("chat-input").value = "";
+    chatHistory = [];
+    lastScoreResult = null;
     document.getElementById("rate-section").style.display = "none";
     document.getElementById("error-msg").classList.remove("visible");
     // 新規フィールドリセット
@@ -1277,6 +1565,9 @@
     const _cpPanel = document.getElementById("competitor-pressure-panel");
     _cpPanel.style.cssText = "display:none;";
     _cpPanel.innerHTML = "";
+    const _advisorPanel = document.getElementById("advisor-panel");
+    _advisorPanel.style.display = "none";
+    _advisorPanel.innerHTML = "";
     // 取引情報リセット
     document.getElementById("main_bank").checked = false;
     document.getElementById("deal_source").value = "銀行紹介";
@@ -1380,7 +1671,7 @@
 
   function _checkLeaseTerm() {
     const assetType = document.getElementById("asset_type").value;
-    const leaseTerm = parseFloat(document.getElementById("lease_term").value) || 0;
+    const leaseTerm = numValue("lease_term") || 0;
     const warnEl = document.getElementById("lease-term-warning");
     const usefulLifeYears = _USEFUL_LIFE_YEARS[assetType];
     if (!usefulLifeYears || !leaseTerm) { warnEl.style.display = "none"; return; }
@@ -1408,9 +1699,19 @@
     if (this.value !== "競合あり") document.getElementById("competitor_rate").value = "";
   });
 
-  // Enter キーで送信
+  document.getElementById("chat-input").addEventListener("keydown", e => {
+    if (e.key !== "Enter" || e.shiftKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    sendChat();
+  });
+
+  // Enter キーで審査実行。ただしAIチャット入力中は除外。
   document.addEventListener("keydown", e => {
-    if (e.key === "Enter") runPredict();
+    if (e.key !== "Enter") return;
+    if (e.target && e.target.id === "chat-input") return;
+    if (e.target && e.target.tagName === "TEXTAREA") return;
+    runPredict();
   });
 </script>
 </body>

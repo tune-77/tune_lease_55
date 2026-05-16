@@ -9,6 +9,7 @@ POST /predict: リース成約スコア + 推奨金利を返す
           + base_rate_master（最新月×リース期間別基準金利）
 """
 import os
+import unicodedata
 import joblib
 import numpy as np
 import pandas as pd
@@ -17,6 +18,22 @@ from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
+
+
+def _normalize_numeric(value, default=0.0):
+    """全角数字・全角記号を半角化して float にする。"""
+    if value in (None, ""):
+        return default
+    if isinstance(value, str):
+        value = unicodedata.normalize("NFKC", value).strip()
+        value = value.replace(",", "")
+        if value == "":
+            return default
+    return float(value)
+
+
+def _normalize_int(value, default=0):
+    return int(_normalize_numeric(value, default))
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.abspath(os.path.join(_HERE, ".."))
@@ -113,6 +130,26 @@ try:
     print("[api] scoring_core: 読み込み完了")
 except Exception as _sc_import_err:
     print(f"[api] scoring_core: 未ロード → sys_scoreは中央値フォールバック ({_sc_import_err})")
+
+# ── advisor: 軍師AI（ルールベース参謀）───────────────────────────────
+_advisor_loaded = False
+try:
+    from advisor_strategy import build_gemini_strategy_advice, build_strategy_advice
+    _advisor_loaded = True
+    print("[api] advisor_strategy: 読み込み完了")
+except Exception as _advisor_import_err:
+    build_gemini_strategy_advice = None
+    build_strategy_advice = None
+    print(f"[api] advisor_strategy: 未ロード ({_advisor_import_err})")
+
+_chat_loaded = False
+try:
+    from chat_assistant import build_chat_reply
+    _chat_loaded = True
+    print("[api] chat_assistant: 読み込み完了")
+except Exception as _chat_import_err:
+    build_chat_reply = None
+    print(f"[api] chat_assistant: 未ロード ({_chat_import_err})")
 
 _DEFAULT_IND        = "R サービス業(他に分類されないもの)"
 _DEFAULT_CONTRACT_T = "一般"
@@ -321,6 +358,96 @@ def _build_feat_vector(
 _STATIC_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp"}
 
 
+def _grade_label(raw_grade) -> str:
+    if isinstance(raw_grade, str):
+        if "4-6" in raw_grade:
+            return "4-6"
+        if "要注意" in raw_grade:
+            return "要注意先"
+        if "無格付" in raw_grade:
+            return "無格付"
+        if "1-3" in raw_grade:
+            return "1-3"
+    try:
+        grade_int = int(raw_grade)
+    except (TypeError, ValueError):
+        grade_int = 1
+    return {1: "1-3", 2: "4-6", 3: "要注意先", 4: "無格付"}.get(grade_int, "1-3")
+
+
+def _customer_type_label(customer_type_flag: int) -> str:
+    return "既存先" if customer_type_flag == 1 else "新規先"
+
+
+def _build_streamlit_scoring_inputs(
+    data: dict,
+    *,
+    ns: float,
+    op: float,
+    ep: float,
+    ni: float,
+    dep: float,
+    gp: float,
+    bk: float,
+    lc: float,
+    mach: float,
+    oa: float,
+    rent: float,
+    depr: float,
+    rexp: float,
+    acq: float,
+    contracts: float,
+    grade: int,
+    customer_type: int,
+    industry: str,
+    main_bank_text: str,
+    competitor_text: str,
+    comp_rate: float,
+    contract_type: str,
+    deal_source: str,
+    sales_dept: str,
+    lease_asset_score: float,
+) -> dict:
+    """mobile API の百万円入力を Streamlit/scoring_core の千円入力へ揃える。"""
+    industry_major = str(data.get("industry_major") or industry or _DEFAULT_IND)
+    industry_sub = str(data.get("industry_sub") or data.get("industry_detail") or "06 総合工事業")
+    return {
+        "nenshu": ns * 1000,
+        "op_profit": op * 1000,
+        "ord_profit": ep * 1000,
+        "net_income": ni * 1000,
+        "dep_expense": dep * 1000,
+        "gross_profit": gp * 1000,
+        "bank_credit": bk * 1000,
+        "lease_credit": lc * 1000,
+        "machines": mach * 1000,
+        "other_assets": oa * 1000,
+        "rent": rent * 1000,
+        "depreciation": depr * 1000,
+        "rent_expense": rexp * 1000,
+        "acquisition_cost": acq * 1000,
+        "net_assets": _normalize_numeric(data.get("net_assets", 0)) * 1000,
+        "total_assets": _normalize_numeric(data.get("total_assets", 0)) * 1000,
+        "contracts": contracts,
+        "grade": _grade_label(data.get("grade", grade)),
+        "customer_type": _customer_type_label(customer_type),
+        "industry_major": industry_major,
+        "industry_sub": industry_sub,
+        "main_bank": main_bank_text,
+        "competitor": competitor_text,
+        "competitor_rate": comp_rate,
+        "contract_type": contract_type,
+        "deal_source": deal_source,
+        "sales_dept": sales_dept,
+        "asset_score": lease_asset_score,
+        "lease_asset_score": lease_asset_score,
+        "intuition_score": data.get("intuition_score", data.get("q_intuition_score", 0)),
+        "deal_occurrence": data.get("deal_occurrence", ""),
+        "num_competitors": data.get("num_competitors", 1 if competitor_text == "競合あり" else 0),
+        "asset_type": data.get("asset_type", ""),
+    }
+
+
 @app.get("/")
 def index():
     return send_from_directory(_HERE, "index.html")
@@ -339,28 +466,30 @@ def predict():
     data = request.get_json(force=True, silent=True) or {}
     try:
         # ── UI から受け取る主要フィールド（百万円単位）──────────────
-        gp   = float(data.get("gross_profit",    0))
-        op   = float(data.get("op_profit",       0))
-        ep   = float(data.get("ord_profit",      0))
-        ni   = float(data.get("net_income",      0))
-        dep  = float(data.get("dep_expense",     0))
-        ns   = float(data.get("nenshu",          0))
-        acq  = float(data.get("acquisition_cost",0))
-        lc   = float(data.get("lease_credit",    0))
-        bk   = float(data.get("bank_credit",     0))
-        mach = float(data.get("machines",        0))
-        lt   = float(data.get("lease_term",      60))
-        contracts = float(data.get("contracts",  0))
+        gp   = _normalize_numeric(data.get("gross_profit",    0))
+        op   = _normalize_numeric(data.get("op_profit",       0))
+        ep   = _normalize_numeric(data.get("ord_profit",      0))
+        ni   = _normalize_numeric(data.get("net_income",      0))
+        dep  = _normalize_numeric(data.get("dep_expense",     0))
+        ns   = _normalize_numeric(data.get("nenshu",          0))
+        acq  = _normalize_numeric(data.get("acquisition_cost",0))
+        lc   = _normalize_numeric(data.get("lease_credit",    0))
+        bk   = _normalize_numeric(data.get("bank_credit",     0))
+        mach = _normalize_numeric(data.get("machines",        0))
+        lt   = _normalize_numeric(data.get("lease_term",      60), 60)
+        contracts = _normalize_numeric(data.get("contracts",  0))
 
-        industry      = str(data.get("industry",      _DEFAULT_IND))
+        industry      = str(data.get("industry") or data.get("industry_major") or _DEFAULT_IND)
         customer_type = 1 if data.get("customer_type") == "既存先" else 0
-        main_bank     = 1 if data.get("main_bank")    == "メイン先" else 0
-        competitor    = 1 if data.get("competitor")   == "競合あり" else 0
-        comp_rate     = float(data.get("competitor_rate", 0))
+        main_bank_text = "メイン先" if data.get("main_bank") == "メイン先" else "非メイン先"
+        competitor_text = "競合あり" if data.get("competitor") == "競合あり" else "競合なし"
+        main_bank     = 1 if main_bank_text == "メイン先" else 0
+        competitor    = 1 if competitor_text == "競合あり" else 0
+        comp_rate     = _normalize_numeric(data.get("competitor_rate", 0))
         contract_type = str(data.get("contract_type", _DEFAULT_CONTRACT_T))
         deal_source   = str(data.get("deal_source",   _DEFAULT_DEAL_SRC))
         sales_dept    = str(data.get("sales_dept",    _DEFAULT_SALES_DEPT))
-        grade         = int(data.get("grade", 4))
+        grade         = _normalize_int(data.get("grade", 4), 4)
 
     except (TypeError, ValueError) as e:
         return jsonify({"error": f"数値変換エラー: {e}"}), 400
@@ -372,10 +501,10 @@ def predict():
     re_lease_ins   = str(data.get("re_lease_insurance", "不明"))
 
     # ── 派生比率 ──────────────────────────────────────────────────
-    depr = float(data.get("depreciation", 0))
-    oa   = float(data.get("other_assets", 0))
-    rent = float(data.get("rent", 0))
-    rexp = float(data.get("rent_expense", 0))
+    depr = _normalize_numeric(data.get("depreciation", 0))
+    oa   = _normalize_numeric(data.get("other_assets", 0))
+    rent = _normalize_numeric(data.get("rent", 0))
+    rexp = _normalize_numeric(data.get("rent_expense", 0))
 
     gpm         = safe_div(gp, ns)
     ord_margin  = safe_div(ep, gp)
@@ -398,42 +527,30 @@ def predict():
     base_rate_val, _brt_col = _get_period_rate(lt)
 
     # ── 定性スコア（0-4 スケール、未入力はモデル中央値）──────────────
-    q_history   = float(data.get("q_history",   _medians.get("q_history",   0.0)))
-    q_stability = float(data.get("q_stability", _medians.get("q_stability", 0.0)))
-    q_repayment = float(data.get("q_repayment", _medians.get("q_repayment", 0.0)))
-    q_future    = float(data.get("q_future",    _medians.get("q_future",    0.0)))
-    q_equip     = float(data.get("q_equip",     _medians.get("q_equip",     0.0)))
-    q_mainbk    = float(data.get("q_mainbk",    _medians.get("q_mainbk",    0.0)))
-    q_weighted  = float(data.get("q_weighted",  _medians.get("q_weighted",  0.0)))
-    las         = float(data.get("lease_asset_score", 100))
+    q_history   = _normalize_numeric(data.get("q_history",   _medians.get("q_history",   0.0)))
+    q_stability = _normalize_numeric(data.get("q_stability", _medians.get("q_stability", 0.0)))
+    q_repayment = _normalize_numeric(data.get("q_repayment", _medians.get("q_repayment", 0.0)))
+    q_future    = _normalize_numeric(data.get("q_future",    _medians.get("q_future",    0.0)))
+    q_equip     = _normalize_numeric(data.get("q_equip",     _medians.get("q_equip",     0.0)))
+    q_mainbk    = _normalize_numeric(data.get("q_mainbk",    _medians.get("q_mainbk",    0.0)))
+    q_weighted  = _normalize_numeric(data.get("q_weighted",  _medians.get("q_weighted",  0.0)))
+    las         = _normalize_numeric(data.get("lease_asset_score", 100), 100)
 
     # ── sys_ 特徴量を scoring_core で計算（Streamlit と同等ロジック）──
-    _grade_str = {1: "1-3", 2: "4-6", 3: "要注意先", 4: "無格付"}.get(grade, "1-3")
-    _ct_str = "既存先" if customer_type == 1 else "新規先"
     _sc_result = None
     if _scoring_core_loaded and _run_quick_scoring is not None:
         try:
-            _sc_result = _run_quick_scoring({
-                "nenshu":          ns   * 1000,
-                "op_profit":       op   * 1000,
-                "ord_profit":      ep   * 1000,
-                "net_income":      ni   * 1000,
-                "dep_expense":     dep  * 1000,
-                "gross_profit":    gp   * 1000,
-                "bank_credit":     bk   * 1000,
-                "lease_credit":    lc   * 1000,
-                "machines":        mach * 1000,
-                "other_assets":    oa   * 1000,
-                "rent":            rent * 1000,
-                "depreciation":    depr * 1000,
-                "rent_expense":    rexp * 1000,
-                "acquisition_cost": acq * 1000,
-                "contracts":       contracts,
-                "grade":           _grade_str,
-                "customer_type":   _ct_str,
-                "industry_major":  industry,
-                "asset_score":     las,
-            })
+            _sc_inputs = _build_streamlit_scoring_inputs(
+                data,
+                ns=ns, op=op, ep=ep, ni=ni, dep=dep, gp=gp, bk=bk, lc=lc,
+                mach=mach, oa=oa, rent=rent, depr=depr, rexp=rexp, acq=acq,
+                contracts=contracts, grade=grade, customer_type=customer_type,
+                industry=industry, main_bank_text=main_bank_text,
+                competitor_text=competitor_text, comp_rate=comp_rate,
+                contract_type=contract_type, deal_source=deal_source,
+                sales_dept=sales_dept, lease_asset_score=las,
+            )
+            _sc_result = _run_quick_scoring(_sc_inputs)
         except Exception as _sc_e:
             print(f"[api] scoring_core計算エラー: {_sc_e}")
 
@@ -520,7 +637,7 @@ def predict():
             "main_bank": main_bank, "competitor": competitor,
             "competitor_rate": comp_rate, "grade": grade,
             "contract_type": ct_code, "deal_source": ds_code, "sales_dept": sd_code,
-            "base_rate": base_rate,
+            "base_rate": base_rate_val,
             "q_history": q_history, "q_stability": q_stability,
             "q_repayment": q_repayment, "q_future": q_future,
             "q_equip": q_equip, "q_mainbk": q_mainbk, "q_weighted": q_weighted,
@@ -572,6 +689,8 @@ def predict():
     # P2-002: aurion q_risk 検知（参考値、スコアに影響しない）
     _Q_RISK_FALLBACK = {"score": 0, "level": "ok", "patterns": [], "pattern_details": []}
     try:
+        if _detect_q_risk is None:
+            raise RuntimeError("aurion.q_risk is not loaded")
         q_risk_result = _detect_q_risk(
             gross_profit=gp,
             op_profit=op,
@@ -618,7 +737,7 @@ def predict():
     if stealth_result["level"] in ("caution", "high_risk"):
         print(f"[api.aurion.stealth] level={stealth_result['level']} score={stealth_result['score']} patterns={stealth_result['patterns']}")
 
-    return jsonify({
+    response_payload = {
         "score":             score,
         "probability":       round(proba, 4),
         "rf_score":          rf_score,
@@ -629,17 +748,120 @@ def predict():
         "spread_proposed":   round(stealth_spread, 2) if _proposed_rate_raw is not None else None,
         "base_rate":         round(base_rate_val, 2),
         "recommended_rate":  round(recommended_rate, 2),
+        "quantum_risk":      _sc_result.get("quantum_risk") if _sc_result else None,
+        "score_source":      "scoring_core" if _sc_result else "rf_fallback",
         "rate_range": {
             "low":  round(recommended_rate - 0.3, 2),
             "high": round(recommended_rate + 0.3, 2),
         },
         "warnings":          warnings,
         "rule_check_status": rule_check_status,
+        "streamlit": {
+            "score": _sc_result.get("score") if _sc_result else None,
+            "score_borrower": _sc_result.get("score_borrower") if _sc_result else None,
+            "score_base": _sc_result.get("score_base") if _sc_result else None,
+            "hantei": _sc_result.get("hantei") if _sc_result else None,
+            "approval_line": _sc_result.get("approval_line") if _sc_result else None,
+            "quantum_risk": _sc_result.get("quantum_risk") if _sc_result else None,
+            "credit_risk_group_score": _sc_result.get("credit_risk_group_score") if _sc_result else None,
+            "credit_risk_group_level": _sc_result.get("credit_risk_group_level") if _sc_result else None,
+            "score_source": "scoring_core" if _sc_result else "rf_fallback",
+        },
         "aurion": {
             "q_risk": q_risk_result,
+            "quantum_risk": _sc_result.get("quantum_risk") if _sc_result else None,
             "competitor_pressure": stealth_result,
         },
-    })
+    }
+    if build_strategy_advice is not None:
+        try:
+            _advisor_engine = str(data.get("advisor_engine") or os.environ.get("ADVISOR_ENGINE", "gemini")).lower()
+            _advisor_builder = (
+                build_gemini_strategy_advice
+                if _advisor_engine == "gemini" and build_gemini_strategy_advice is not None
+                else build_strategy_advice
+            )
+            _advisor_mode = str(data.get("advisor_mode") or "審査軍師")
+            _humor_style = str(data.get("humor_style") or "standard")
+            if _advisor_builder is build_gemini_strategy_advice:
+                response_payload["advisor"] = _advisor_builder(
+                    score_result=response_payload,
+                    case=data,
+                    mode=_advisor_mode,
+                    timeout_seconds=_normalize_numeric(data.get("advisor_timeout", 20), 20),
+                    humor_style=_humor_style,
+                )
+            else:
+                response_payload["advisor"] = _advisor_builder(
+                    score_result=response_payload,
+                    case=data,
+                    mode=_advisor_mode,
+                    humor_style=_humor_style,
+                )
+        except Exception as _advisor_e:
+            response_payload["advisor"] = {
+                "mode": "審査軍師",
+                "summary": "軍師AIコメントを生成できませんでした。",
+                "strategy": "スコア結果と警戒信号を個別に確認してください。",
+                "risk_points": [str(_advisor_e)],
+                "recommended_conditions": [],
+                "sales_talk": [],
+                "decision": {"stance": "unavailable", "confidence": 0.0},
+                "metrics": {},
+                "disclaimer": "軍師AIは判定を上書きしません。",
+            }
+    return jsonify(response_payload)
+
+
+@app.post("/advisor/strategy")
+def advisor_strategy():
+    if build_strategy_advice is None:
+        return jsonify({"error": "advisor_strategy is not loaded"}), 503
+    data = request.get_json(force=True, silent=True) or {}
+    score_result = data.get("score_result") or data.get("result") or data
+    case = data.get("case") or data.get("inputs") or {}
+    mode = str(data.get("mode") or "審査軍師")
+    engine = str(data.get("engine") or os.environ.get("ADVISOR_ENGINE", "gemini")).lower()
+    humor_style = str(data.get("humor_style") or "standard")
+    try:
+        if engine == "gemini" and build_gemini_strategy_advice is not None:
+            timeout_seconds = _normalize_numeric(data.get("timeout_seconds", 20), 20)
+            return jsonify(build_gemini_strategy_advice(
+                score_result=score_result,
+                case=case,
+                mode=mode,
+                timeout_seconds=timeout_seconds,
+                humor_style=humor_style,
+            ))
+        return jsonify(build_strategy_advice(score_result=score_result, case=case, mode=mode, humor_style=humor_style))
+    except Exception as e:
+        return jsonify({"error": f"軍師AI生成エラー: {e}"}), 400
+
+
+@app.post("/chat")
+def chat():
+    if build_chat_reply is None:
+        return jsonify({"error": "chat_assistant is not loaded"}), 503
+    data = request.get_json(force=True, silent=True) or {}
+    message = str(data.get("message") or "")
+    history = data.get("history") or []
+    if not isinstance(history, list):
+        history = []
+    score_result = data.get("score_result") or data.get("result") or {}
+    use_obsidian = bool(data.get("use_obsidian", True))
+    humor_style = str(data.get("humor_style") or "standard")
+    try:
+        timeout_seconds = _normalize_numeric(data.get("timeout_seconds", 30), 30)
+        return jsonify(build_chat_reply(
+            message=message,
+            history=history,
+            score_result=score_result,
+            use_obsidian=use_obsidian,
+            timeout_seconds=timeout_seconds,
+            humor_style=humor_style,
+        ))
+    except Exception as e:
+        return jsonify({"error": f"AIチャット生成エラー: {e}"}), 400
 
 
 @app.get("/health")
@@ -661,6 +883,13 @@ def health():
         "spread_base_rate_ym": _latest_ym,
         "aurion_module_loaded": _aurion_loaded,
         "stealth_competitor_module_loaded": _stealth_loaded,
+        "scoring_core_loaded": _scoring_core_loaded,
+        "advisor_strategy_loaded": _advisor_loaded,
+        "chat_assistant_loaded": _chat_loaded,
+        "advisor_engine_default": os.environ.get("ADVISOR_ENGINE", "gemini"),
+        "quantum_model_exists": os.path.exists(
+            os.path.join(_PROJECT_ROOT, "data", "quantum_model.joblib")
+        ),
     })
 
 

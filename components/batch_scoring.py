@@ -2,15 +2,14 @@
 バッチ審査コンポーネント。
 CSV アップロード → 一括スコアリング → 結果テーブル表示・ダウンロード。
 """
-import io
 import streamlit as st
 import pandas as pd
 import numpy as np
 
-from data_cases import get_effective_coeffs, get_score_weights
-from constants import APPROVAL_LINE, REVIEW_LINE
+from data_cases import get_effective_coeffs
 from grade_normalizer import is_excluded_grade, normalize_grade
 from industry_normalizer import normalize_industry_major, normalize_industry_sub
+from lost_reason_normalizer import normalize_competitor_fields, normalize_lost_reason
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -159,6 +158,23 @@ def _date_text(row: dict, key: str) -> str:
         return raw
 
 
+def _normalized_result_fields(row: dict, final_status: str = "") -> dict:
+    raw_lost_reason = _text(row, "失注理由")
+    lost_reason = normalize_lost_reason(raw_lost_reason, final_status)
+    competitor_name = _text(row, "競合他社") or _text(row, "競合他社名")
+    competitor, competitor_name = normalize_competitor_fields(
+        _text(row, "競合状況"),
+        competitor_name,
+        lost_reason,
+    )
+    return {
+        "lost_reason": lost_reason,
+        "lost_reason_raw": raw_lost_reason if raw_lost_reason and raw_lost_reason != lost_reason else "",
+        "competitor": competitor,
+        "competitor_name": competitor_name,
+    }
+
+
 def _safe_sigmoid(x: float) -> float:
     try:
         if x > 700:
@@ -279,6 +295,7 @@ def _excluded_grade_payload(row: dict, raw_grade: str) -> dict:
     industry_sub = normalize_industry_sub(row.get("業種小分類"), row.get("業種大分類")) or "06 総合工事業"
     final_status_raw = str(row.get("最終結果") or "").strip()
     final_status = final_status_raw if final_status_raw in ("成約", "失注") else "未登録"
+    normalized_result = _normalized_result_fields(row, final_status)
     _shinsa_date = _date_text(row, "審査日")
     _registration_date = _date_text(row, "データ登録日") or _shinsa_date
     _estimate_sent_date = _date_text(row, "見積提示日")
@@ -308,7 +325,7 @@ def _excluded_grade_payload(row: dict, raw_grade: str) -> dict:
         "industry_sub": industry_sub,
         "sales_dept": str(row.get("営業担当部署") or "未設定"),
         "main_bank": str(row.get("メイン取引銀行") or "なし"),
-        "competitor": str(row.get("競合状況") or "競合なし"),
+        "competitor": normalized_result["competitor"],
         "competitor_rate": float(row.get("競合提示金利(%)") or 0) / 100.0,
         "contract_type": str(row.get("契約種別") or "一般"),
         "deal_source": str(row.get("紹介元") or "その他"),
@@ -318,7 +335,7 @@ def _excluded_grade_payload(row: dict, raw_grade: str) -> dict:
         "lease_asset_id": str(row.get("物件ID（任意）") or "").strip(),
         "lease_asset_name": str(row.get("物件名（任意）") or "").strip(),
     }
-    return {
+    payload = {
         "company_name": str(row.get("企業名") or ""),
         "company_no": str(row.get("取引先ID") or ""),
         "borrower_name": str(row.get("企業名") or ""),
@@ -327,6 +344,7 @@ def _excluded_grade_payload(row: dict, raw_grade: str) -> dict:
         "customer_type": inputs["customer_type"],
         "main_bank": inputs["main_bank"],
         "competitor": inputs["competitor"],
+        "competitor_name": normalized_result["competitor_name"],
         "competitor_rate": inputs["competitor_rate"],
         "sales_dept": inputs["sales_dept"],
         "final_status": final_status,
@@ -362,6 +380,11 @@ def _excluded_grade_payload(row: dict, raw_grade: str) -> dict:
         "original_grade": raw_grade,
         "excluded_reason": "grade_8-3_9_10",
     }
+    if normalized_result["lost_reason"]:
+        payload["lost_reason"] = normalized_result["lost_reason"]
+    if normalized_result["lost_reason_raw"]:
+        payload["lost_reason_raw"] = normalized_result["lost_reason_raw"]
+    return payload
 
 
 def _score_one(row: dict) -> dict:
@@ -373,6 +396,9 @@ def _score_one(row: dict) -> dict:
     try:
         from scoring_core import run_quick_scoring
         raw_grade = row.get("格付") or "1-3"
+        final_status_raw = str(row.get("最終結果") or "").strip()
+        final_status = final_status_raw if final_status_raw in ("成約", "失注") else "未登録"
+        normalized_result = _normalized_result_fields(row, final_status)
         if is_excluded_grade(raw_grade):
             excluded_payload = _excluded_grade_payload(row, str(raw_grade))
             return {
@@ -429,7 +455,7 @@ def _score_one(row: dict) -> dict:
             ),
             "sales_dept": str(row.get("営業担当部署") or "未設定"),
             "main_bank": str(row.get("メイン取引銀行") or "なし"),
-            "competitor": str(row.get("競合状況") or "競合なし"),
+            "competitor": normalized_result["competitor"],
             "competitor_rate": float(row.get("競合提示金利(%)") or 0) / 100.0,
             "contract_type": str(row.get("契約種別") or "一般"),
             "deal_source": str(row.get("紹介元") or "その他"),
@@ -496,9 +522,6 @@ def _score_one(row: dict) -> dict:
         pd_pct = grade_to_pd.get(inputs["grade"], 5.0)
         
         # DB保存用のJSON構成
-        final_status_raw = str(row.get("最終結果") or "").strip()
-        final_status = final_status_raw if final_status_raw in ("成約", "失注") else "未登録"
-
         # 日付欄 → ISO形式に変換（空欄は save_case_log が登録日時で補完）
         _shinsa_date = _date_text(row, "審査日")
         _registration_date = _date_text(row, "データ登録日") or _shinsa_date
@@ -520,6 +543,7 @@ def _score_one(row: dict) -> dict:
             "customer_type":  inputs["customer_type"],
             "main_bank":      inputs["main_bank"],
             "competitor":     inputs["competitor"],
+            "competitor_name": normalized_result["competitor_name"],
             "competitor_rate": inputs["competitor_rate"],
             "sales_dept":     inputs["sales_dept"],
             "final_status":   final_status,  # 成約/失注は上書きされずにDBへ
@@ -561,10 +585,12 @@ def _score_one(row: dict) -> dict:
                 db_data["base_rate_at_time"] = base_rate_at_time
             if final_status == "成約" and base_rate_at_time > 0:
                 db_data["winning_spread"] = final_rate - base_rate_at_time
-        if _text(row, "失注理由"):
-            db_data["lost_reason"] = _text(row, "失注理由")
-        if _text(row, "競合他社"):
-            db_data["competitor_name"] = _text(row, "競合他社")
+        if normalized_result["lost_reason"]:
+            db_data["lost_reason"] = normalized_result["lost_reason"]
+        if normalized_result["lost_reason_raw"]:
+            db_data["lost_reason_raw"] = normalized_result["lost_reason_raw"]
+        if normalized_result["competitor_name"]:
+            db_data["competitor_name"] = normalized_result["competitor_name"]
         if loan_conditions:
             db_data["loan_conditions"] = loan_conditions
         if _text(row, "結果登録メモ"):
@@ -658,7 +684,6 @@ def _score_one(row: dict) -> dict:
             "DB保存用": db_data
         }
     except Exception as e:
-        import traceback
         return {
             "UI表示用": {
                 "取引先ID": row.get("取引先ID", ""), "企業名": row.get("企業名", ""),

@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "legacy_version": "1.0.0",
   "artifactType": "structured-handoff",
-  "timestamp": "2026-05-02T09:09:26Z",
+  "timestamp": "2026-05-16T00:59:23Z",
   "sessionId": "",
   "previous_state": {
     "summary": "Before compaction: 20 recent edit(s)",
@@ -26,19 +26,19 @@
       "severity": "medium",
       "kind": "verification",
       "summary": "20 recent edit(s) should be re-validated after resume",
-      "detail": ".claude/reports/build/latest.md, .claude/sessions/.last_inbox_check, .claude/state/changed-files.jsonl, .claude/state/handoff-artifact.json, .claude/state/instructions-loaded.jsonl"
+      "detail": ".claude/sessions/.last_inbox_check, .claude/state/changed-files.jsonl, .claude/state/session-events.jsonl, .claude/state/session-skills-used.json, .claude/state/session.json"
     }
   ],
   "failed_checks": null,
   "decision_log": [
     {
-      "timestamp": "2026-05-02T09:09:26Z",
+      "timestamp": "2026-05-16T00:59:23Z",
       "actor": "pre-compact-save",
       "decision": "canonical_handoff_artifact_written",
       "rationale": "Persist a stable JSON artifact in .claude/state for long-running session handoff."
     },
     {
-      "timestamp": "2026-05-02T09:09:26Z",
+      "timestamp": "2026-05-16T00:59:23Z",
       "actor": "pre-compact-save",
       "decision": "legacy_snapshot_mirrored",
       "rationale": "Keep precompact-snapshot.json for backward compatibility with older hooks."
@@ -57,10 +57,10 @@
       }
     },
     "recommended": true,
-    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 939 session age (minutes) exceed threshold 120",
+    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 2244 session age (minutes) exceed threshold 120",
     "reasons": [
       "20 recent edit count exceed threshold 8",
-      "939 session age (minutes) exceed threshold 120"
+      "2244 session age (minutes) exceed threshold 120"
     ],
     "candidates": [
       {
@@ -94,7 +94,7 @@
       {
         "key": "session_age_minutes",
         "label": "session age (minutes)",
-        "actual": 939,
+        "actual": 2244,
         "threshold": 120,
         "triggered": true
       }
@@ -104,7 +104,7 @@
       "blockedTasks": 0,
       "recentEdits": 20,
       "failedChecks": 0,
-      "sessionAgeMinutes": 939
+      "sessionAgeMinutes": 2244
     }
   },
   "continuity": {
@@ -116,25 +116,25 @@
   "planItems": null,
   "wipTasks": null,
   "recentEdits": [
-    ".claude/reports/build/latest.md",
     ".claude/sessions/.last_inbox_check",
     ".claude/state/changed-files.jsonl",
-    ".claude/state/handoff-artifact.json",
-    ".claude/state/instructions-loaded.jsonl",
-    ".claude/state/precompact-snapshot.json",
     ".claude/state/session-events.jsonl",
     ".claude/state/session-skills-used.json",
     ".claude/state/session.json",
     ".claude/state/test-recommendation.json",
     ".claude/state/usage-stats.jsonl",
-    "components/analysis_quant.py",
-    "components/analysis_results.py",
-    "components/settings.py",
-    "data/agent_team_logs.jsonl",
-    "data/business_rules.json",
+    "components/batch_scoring.py",
+    "credit_limit.py",
     "data/last_case.json",
-    "data/pdca_ai_rules.json",
-    "data/quantum_config.json",
-    "data/recent_modes.json"
+    "data/recent_modes.json",
+    "data/wizard_drafts/admin_wizard.json",
+    "indicators.py",
+    "mobile_app/api.py",
+    "mobile_app/index.html",
+    "requirements.txt",
+    "scoring_core.py",
+    "secret_manager.py",
+    "tests/spec_phase2/test_P2-002.py",
+    "tests/spec_phase2/test_P2-003.py"
   ]
 }

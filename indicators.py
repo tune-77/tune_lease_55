@@ -285,7 +285,7 @@ def calculate_pd(equity: float, current: float, profit: float | None) -> float:
             st.session_state["_m_pd_for_alert"] = final_pd
             
             return final_pd
-    except Exception as e:
+    except Exception:
         # エラー時は安全に本来の base_pd を返す
         pass
 
