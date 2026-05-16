@@ -1294,8 +1294,10 @@ def list_cases():
             conn.execute("PRAGMA busy_timeout=5000")
             rows = conn.execute(
                 """SELECT id, timestamp, industry_sub, score, final_status, sales_dept,
-                          json_extract(data, '$.judgment')   AS judgment,
-                          json_extract(data, '$.asset_name') AS asset_name
+                          json_extract(data, '$.judgment')      AS judgment,
+                          json_extract(data, '$.asset_name')    AS asset_name,
+                          json_extract(data, '$.company_name')  AS company_name,
+                          json_extract(data, '$.company_no')    AS company_no
                    FROM past_cases
                    ORDER BY timestamp DESC
                    LIMIT ? OFFSET ?""",

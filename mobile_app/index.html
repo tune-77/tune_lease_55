@@ -865,6 +865,19 @@
   <div class="card">
     <div class="card-title">財務情報を入力</div>
 
+    <div class="field" style="display:flex;gap:8px;">
+      <div style="flex:0 0 100px;">
+        <label style="font-size:12px;"><span class="icon">🔢</span>会社番号</label>
+        <input type="text" id="company_no" inputmode="numeric" maxlength="6"
+          placeholder="6桁" style="width:100%;padding:6px;box-sizing:border-box;">
+      </div>
+      <div style="flex:1;">
+        <label style="font-size:12px;"><span class="icon">🏢</span>企業名（任意）</label>
+        <input type="text" id="company_name" placeholder="例：株式会社〇〇商事"
+          style="width:100%;padding:6px;box-sizing:border-box;">
+      </div>
+    </div>
+
     <div class="field">
       <label><span class="icon">🏢</span>業種</label>
       <select id="industry">
@@ -1770,6 +1783,9 @@
       ...(_qVals()),
       lease_asset_score: numValue("lease_asset_score", 100),
       humor_style: humourMode,
+      // 会社情報
+      company_no:    (document.getElementById("company_no")?.value   || "").trim(),
+      company_name:  (document.getElementById("company_name")?.value || "").trim(),
       // Streamlit同等フィールド
       asset_name:    document.getElementById("asset_name")?.value   || "",
       strength_tags: document.getElementById("strength_tags")?.value || "",
@@ -2504,11 +2520,14 @@
         dateEl.style.cssText = "font-size:0.78em;color:#9ca3af;";
         dateEl.textContent = (c.timestamp || "").slice(0, 10);
         const nameEl = document.createElement("div");
-        nameEl.style.cssText = "font-size:0.9em;margin-top:2px;";
-        nameEl.textContent =
-          (c.industry_sub || "—") + (c.asset_name ? " / " + c.asset_name : "");
+        nameEl.style.cssText = "font-size:0.9em;margin-top:2px;font-weight:500;";
+        nameEl.textContent = c.company_name || (c.industry_sub || "—");
+        const subEl = document.createElement("div");
+        subEl.style.cssText = "font-size:0.78em;color:#9ca3af;margin-top:1px;";
+        subEl.textContent = (c.industry_sub || "") + (c.asset_name ? " / " + c.asset_name : "");
         left.appendChild(dateEl);
         left.appendChild(nameEl);
+        left.appendChild(subEl);
 
         const right = document.createElement("div");
         right.style.cssText = "text-align:right;flex-shrink:0;margin-left:8px;";
