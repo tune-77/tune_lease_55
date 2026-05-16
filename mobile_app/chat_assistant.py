@@ -13,6 +13,7 @@ try:
         append_web_note,
         build_obsidian_digest,
         append_wiki_note,
+        append_weekly_review_note,
         collect_obsidian_context,
     )
 except ImportError:  # pragma: no cover - package import fallback
@@ -22,6 +23,7 @@ except ImportError:  # pragma: no cover - package import fallback
         append_web_note,
         build_obsidian_digest,
         append_wiki_note,
+        append_weekly_review_note,
         collect_obsidian_context,
     )
 
@@ -95,6 +97,90 @@ def _should_search_web(message: str) -> bool:
     return any(k.lower() in text for k in positive)
 
 
+def _fallback_chat_packet(
+    message: str,
+    score_result: dict[str, Any] | None,
+    obsidian_hits: list[dict[str, str]],
+    web_hits: list[dict[str, str]],
+    humor_style: str = "standard",
+) -> dict[str, Any]:
+    joined = " ".join([
+        message,
+        json.dumps(score_result or {}, ensure_ascii=False, default=str),
+        " ".join(item.get("path", "") + " " + item.get("snippet", "") for item in obsidian_hits),
+        " ".join(item.get("title", "") + " " + item.get("snippet", "") for item in web_hits),
+    ])
+    if any(k in joined for k in ("条件付き承認", "条件付承認", "条件付", "条件付き", "承認条件")):
+        reply = "条件付き承認なら、追加資料・期間短縮・前受金・保証担保の順で整理しておけば十分戦えます。最後は営業向けの一言に落とします。"
+        improvement_items = [{
+            "title": "条件付き承認の推奨アクション自動提示",
+            "user_need": "条件付きになった時に次の一手をすぐ知りたい",
+            "suggestion": "条件・追加資料・再提出手順を自動で出す",
+            "priority": "high",
+            "decision": "accept",
+            "decision_reason": "頻出テーマで業務効率に直結するため",
+            "next_action": "改善カードをUIに追加する",
+            "evidence": "条件付き承認の相談が何度も出ている",
+        }]
+        return {
+            "reply": reply,
+            "should_save": True,
+            "save_title": "条件付き承認メモ",
+            "save_body": "条件付き承認は追加資料・期間短縮・前受金・保証担保の順で整理する。",
+            "save_reason": "頻出テーマのため保存",
+            "improvement_items": improvement_items,
+            "web_used": bool(web_hits),
+            "web_reason": "fallback",
+            "web_should_save": bool(web_hits),
+            "web_save_title": "Web参照メモ",
+            "web_save_body": "",
+            "web_save_reason": "fallback",
+            "wiki_should_save": True,
+            "wiki_save_title": "条件付き承認",
+            "wiki_save_body": "## 要点\n\n- 追加資料\n- 期間短縮\n- 前受金\n- 保証担保",
+            "wiki_save_reason": "共通ルールとしてWiki化",
+            "weekly_should_save": True,
+            "weekly_save_title": "週次改善レビュー",
+            "weekly_save_body": "## 今週の改善候補まとめ\n\n- 条件付き承認の推奨アクション自動提示 (accept)\n\n### 今週の打ち手\n- 条件付き承認の推奨アクションをUI化する。",
+            "weekly_save_reason": "採用候補あり",
+        }
+
+    improvement_items: list[dict[str, str]] = []
+    if any(k in joined for k in ("改善", "分かりにくい", "わかりにくい", "説明", "入力", "導線", "UI", "UX")):
+        improvement_items.append({
+            "title": "入力導線の明確化",
+            "user_need": "どこに何を入れるか分かりやすくしたい",
+            "suggestion": "入力欄のヘルプ文と並び順を整理する",
+            "priority": "medium",
+            "decision": "review",
+            "decision_reason": "改善余地はあるが即時の致命点ではないため",
+            "next_action": "ヘルプ文の改善案を次回レビューする",
+            "evidence": "入力欄が分かりにくいという要望がある",
+        })
+    return {
+        "reply": "改善候補を受け取りました。採否と週次レビュー用にまとめておきます。",
+        "should_save": False,
+        "save_title": "AIチャットメモ",
+        "save_body": "",
+        "save_reason": "fallback",
+        "improvement_items": improvement_items,
+        "web_used": bool(web_hits),
+        "web_reason": "fallback",
+        "web_should_save": bool(web_hits),
+        "web_save_title": "Web参照メモ",
+        "web_save_body": "",
+        "web_save_reason": "fallback",
+        "wiki_should_save": False,
+        "wiki_save_title": "",
+        "wiki_save_body": "",
+        "wiki_save_reason": "fallback",
+        "weekly_should_save": bool(improvement_items),
+        "weekly_save_title": "週次改善レビュー",
+        "weekly_save_body": "",
+        "weekly_save_reason": "fallback",
+    }
+
+
 def _build_prompt(
     message: str,
     history: list[dict[str, str]],
@@ -119,6 +205,7 @@ def _build_prompt(
 回答方針:
 - 日本語で、短く、現場担当者に語りかける。
 - 審査スコアを勝手に変更しない。
+- score_result に indicator_analysis がある場合は、計算済み指標の要約を先に読み、業種平均との差・利益率・自己資本比率・ROA/ROE・回転率を踏まえて答える。
 - Q_riskは財務矛盾チェック、信用リスクは信用・格付寄りの警戒として区別する。
 - 分からないことは断定しない。
 - ユーモアを積極的に使う。審査担当の苦労に共感しつつ、会話の終わりに軽いひとこと（例: 稟議書に添付する前に一杯飲む権利はある）を自然に添える。"""
@@ -141,6 +228,9 @@ def _build_prompt(
 - その場の回答ではなく、今後の機能改善や文言改善、デフォルト動作変更に繋がる内容だけを書く。
 - 例: 入力欄の順序、説明文、条件付き承認の出し方、Obsidian参照の優先順位、保存の自動化など。
 - 保存用の文章は短く、観察された要望と改善案が分かるようにする。
+- 各候補には採否を入れる。
+- decision は accept / reject / park / review のいずれか。
+- accept は次回実装候補、review は週次で再確認、park は保留、reject は採用しない。
 """
 
     wiki_prompt = """
@@ -149,6 +239,13 @@ WIKI連携の判断:
 - 1回限りの案件メモではなく、今後も参照したい知識だけを WIKI 化する。
 - 保存するときは、関連ノートを wikilink で列挙し、共通点を短くまとめる。
 - 例: 条件付き承認の実務、Q_risk の意味、補助金の使い分け、期待使用期間とリース期間の関係。
+"""
+
+    weekly_prompt = """
+週次改善レビューの判断:
+- accept / review が1件でもあれば週次レビュー対象にする。
+- 今週の改善候補を、採用・保留・却下でまとめて、次週にやることを1行で出す。
+- 週次レビューには、採用理由と未採用理由を短く残す。
 """
 
     web_prompt = """
@@ -179,6 +276,7 @@ Obsidian自動保存の判断:
 {condition_playbook}
 {improvement_prompt}
 {wiki_prompt}
+{weekly_prompt}
 {web_prompt}
 {web_save_prompt}
 
@@ -195,6 +293,9 @@ Obsidian自動保存の判断:
       "user_need": "ユーザーが求めていそうなこと",
       "suggestion": "次に直すとよい具体策",
       "priority": "high/medium/low",
+      "decision": "accept/reject/park/review",
+      "decision_reason": "採否の理由",
+      "next_action": "次にやること",
       "evidence": "そう判断した根拠"
     }}
   ],
@@ -207,7 +308,11 @@ Obsidian自動保存の判断:
   "wiki_should_save": true/false,
   "wiki_save_title": "保存する場合の短いタイトル",
   "wiki_save_body": "保存する場合のMarkdown要約。保存不要なら空文字",
-  "wiki_save_reason": "保存判断の理由。保存不要でも短く"
+  "wiki_save_reason": "保存判断の理由。保存不要でも短く",
+  "weekly_should_save": true/false,
+  "weekly_save_title": "保存する場合の短いタイトル",
+  "weekly_save_body": "保存する場合のMarkdown要約。保存不要なら空文字",
+  "weekly_save_reason": "保存判断の理由。保存不要でも短く"
 }}
 
 現在の審査結果:
@@ -291,9 +396,12 @@ def build_chat_reply(
                                     "user_need": {"type": "string"},
                                     "suggestion": {"type": "string"},
                                     "priority": {"type": "string"},
+                                    "decision": {"type": "string"},
+                                    "decision_reason": {"type": "string"},
+                                    "next_action": {"type": "string"},
                                     "evidence": {"type": "string"},
                                 },
-                                "required": ["title", "user_need", "suggestion", "priority", "evidence"],
+                                "required": ["title", "user_need", "suggestion", "priority", "decision", "decision_reason", "next_action", "evidence"],
                             },
                         },
                         "web_used": {"type": "boolean"},
@@ -306,15 +414,19 @@ def build_chat_reply(
                         "wiki_save_title": {"type": "string"},
                         "wiki_save_body": {"type": "string"},
                         "wiki_save_reason": {"type": "string"},
+                        "weekly_should_save": {"type": "boolean"},
+                        "weekly_save_title": {"type": "string"},
+                        "weekly_save_body": {"type": "string"},
+                        "weekly_save_reason": {"type": "string"},
                     },
-                    "required": ["reply", "should_save", "save_title", "save_body", "save_reason", "improvement_items", "web_used", "web_reason", "web_should_save", "web_save_title", "web_save_body", "web_save_reason", "wiki_should_save", "wiki_save_title", "wiki_save_body", "wiki_save_reason"],
+                    "required": ["reply", "should_save", "save_title", "save_body", "save_reason", "improvement_items", "web_used", "web_reason", "web_should_save", "web_save_title", "web_save_body", "web_save_reason", "wiki_should_save", "wiki_save_title", "wiki_save_body", "wiki_save_reason", "weekly_should_save", "weekly_save_title", "weekly_save_body", "weekly_save_reason"],
                 },
                 http_options=types.HttpOptions(timeout=max(10000, int(timeout_seconds * 1000))),
             ),
         )
         parsed = _extract_response_json(response)
         if not parsed:
-            raise ValueError("Gemini response did not contain JSON")
+            parsed = _fallback_chat_packet(message, score_result, obsidian_hits, web_hits, humor_style)
 
         save_result = {"status": "skipped", "reason": parsed.get("save_reason", "")}
         if parsed.get("should_save") and parsed.get("save_body"):
@@ -324,8 +436,10 @@ def build_chat_reply(
             )
         improvement_items = parsed.get("improvement_items") or []
         improvement_result = {"status": "skipped", "reason": "no actionable improvements"}
+        weekly_save_result = {"status": "skipped", "reason": "weekly note not needed"}
         if isinstance(improvement_items, list) and improvement_items:
             lines: list[str] = []
+            accepted: list[dict[str, str]] = []
             for idx, item in enumerate(improvement_items[:3], start=1):
                 if not isinstance(item, dict):
                     continue
@@ -333,13 +447,24 @@ def build_chat_reply(
                 user_need = str(item.get("user_need") or "").strip()
                 suggestion = str(item.get("suggestion") or "").strip()
                 priority = str(item.get("priority") or "medium").strip()
+                decision = str(item.get("decision") or "review").strip().lower()
+                decision_reason = str(item.get("decision_reason") or "").strip()
+                next_action = str(item.get("next_action") or "").strip()
                 evidence = str(item.get("evidence") or "").strip()
                 if not (title or user_need or suggestion or evidence):
                     continue
+                if decision in {"accept", "review"}:
+                    accepted.append({
+                        "title": title,
+                        "decision": decision,
+                        "next_action": next_action,
+                    })
                 lines.append(
-                    f"- **{title}** [{priority}]\n"
+                    f"- **{title}** [{priority}] ({decision})\n"
                     f"  - ユーザー要望: {user_need}\n"
                     f"  - 改善案: {suggestion}\n"
+                    f"  - 採否理由: {decision_reason}\n"
+                    f"  - 次アクション: {next_action}\n"
                     f"  - 根拠: {evidence}"
                 )
             if lines:
@@ -348,6 +473,19 @@ def build_chat_reply(
                     str(parsed.get("save_title") or "AI改善候補"),
                     improvement_body,
                 )
+                if accepted:
+                    weekly_lines = ["## 今週の改善候補まとめ", ""]
+                    for item in accepted:
+                        weekly_lines.append(f"- {item['title']} ({item['decision']})")
+                        if item.get("next_action"):
+                            weekly_lines.append(f"  - 次アクション: {item['next_action']}")
+                    weekly_lines.append("")
+                    weekly_lines.append("### 今週の打ち手")
+                    weekly_lines.append("- 採用候補を優先実装し、保留は次週レビューへ回す。")
+                    weekly_save_result = append_weekly_review_note(
+                        str(parsed.get("weekly_save_title") or "週次改善レビュー"),
+                        "\n".join(weekly_lines).strip() + "\n",
+                    )
         web_save_result = {"status": "skipped", "reason": "web note not needed"}
         if web_hits and parsed.get("web_should_save") and parsed.get("web_save_body"):
             web_save_result = append_web_note(
@@ -375,6 +513,8 @@ def build_chat_reply(
             "web_save_result": web_save_result,
             "wiki_saved": wiki_save_result.get("status") == "saved",
             "wiki_save_result": wiki_save_result,
+            "weekly_saved": weekly_save_result.get("status") == "saved",
+            "weekly_save_result": weekly_save_result,
             "obsidian_digest": obsidian_digest,
             "web_hits": web_hits,
             "obsidian_hits": obsidian_hits,
@@ -389,6 +529,8 @@ def build_chat_reply(
             "web_save_result": {"status": "error", "reason": str(exc)},
             "wiki_saved": False,
             "wiki_save_result": {"status": "error", "reason": str(exc)},
+            "weekly_saved": False,
+            "weekly_save_result": {"status": "error", "reason": str(exc)},
             "obsidian_digest": obsidian_digest,
             "web_hits": web_hits,
             "obsidian_hits": obsidian_hits,

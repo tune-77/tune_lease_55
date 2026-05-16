@@ -54,3 +54,4 @@
   - **Adversarial Evaluation**: Use debate to uncover hidden risks.
   - **Visual Evidence**: Use charts (Radar, Scatter) to persuade.
   - **Mobile First**: Optimize for smartphone usage via Streamlit adjustments (Flet was discarded).
+- **AI Chat / Knowledge Loop**: Obsidian 連携を使って、会話メモ・改善ログ・Webメモ・Wiki を相互参照させる方針を好む。最終目的は、リースシステム自体が保存知識を再利用しながら自律的に改善していくこと。

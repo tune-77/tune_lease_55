@@ -337,3 +337,22 @@ def append_wiki_note(title: str, body: str, related_paths: Iterable[str] | None 
     with path.open("a", encoding="utf-8") as f:
         f.write(prefix + section)
     return {"status": "saved", "path": str(path)}
+
+
+def append_weekly_review_note(title: str, body: str) -> dict[str, str]:
+    vault = find_vault()
+    if not vault:
+        return {"status": "skipped", "reason": "Obsidian vault not found"}
+    iso_year, iso_week, _ = dt.date.today().isocalendar()
+    rel = f"Projects/tune_lease_55/AI Chat/Weekly Review/{iso_year}-W{iso_week:02d}.md"
+    path = _safe_note_path(vault, rel)
+    now = dt.datetime.now().strftime("%H:%M")
+    clean_title = (title or "週次改善レビュー").strip()[:80]
+    clean_body = (body or "").strip()
+    if not clean_body:
+        return {"status": "skipped", "reason": "empty note body"}
+    section = f"## {now} {clean_title}\n\n{clean_body}\n"
+    prefix = "\n" if path.exists() and path.read_text(encoding="utf-8", errors="ignore").strip() else ""
+    with path.open("a", encoding="utf-8") as f:
+        f.write(prefix + section)
+    return {"status": "saved", "path": str(path)}
