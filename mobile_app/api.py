@@ -10,6 +10,11 @@ POST /predict: リース成約スコア + 推奨金利を返す
 """
 import os
 import json
+import time
+import uuid
+import sqlite3 as _sqlite3
+import pathlib
+import datetime as _datetime
 import threading
 import unicodedata
 from functools import lru_cache
@@ -172,6 +177,77 @@ try:
 except Exception as _obs_import_err:
     _append_case_log = None
     print(f"[api] obsidian_bridge: 未ロード ({_obs_import_err})")
+
+try:
+    import sys as _sys
+    _sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
+    from data_cases import CustomJSONEncoder as _CJE, update_case as _update_case
+    print("[api] data_cases: 読み込み完了")
+except Exception as _dc_err:
+    _CJE = None
+    _update_case = None
+    print(f"[api] data_cases: 未ロード ({_dc_err})")
+
+_DB_PATH = str(pathlib.Path(__file__).parent.parent / "data" / "lease_data.db")
+
+
+def _init_wal() -> None:
+    with _sqlite3.connect(_DB_PATH, timeout=10) as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+
+
+try:
+    _init_wal()
+    print("[api] lease_data.db WAL初期化完了")
+except Exception as _wal_err:
+    print(f"[api] WAL初期化失敗（無視）: {_wal_err}")
+
+
+def _insert_flask_case(response_payload: dict, input_data: dict, latency_ms: int) -> None:
+    try:
+        now = _datetime.datetime.utcnow()
+        case_id = now.strftime("%Y%m%d%H%M%S%f") + "_" + uuid.uuid4().hex[:8]
+        data_json = {
+            **input_data,
+            "score":            response_payload.get("score"),
+            "probability":      response_payload.get("probability"),
+            "judgment":         response_payload.get("judgment"),
+            "recommended_rate": response_payload.get("recommended_rate"),
+            "spread_pred":      response_payload.get("spread_pred"),
+            "quantum_risk":     response_payload.get("quantum_risk"),
+            "source":           "flask_api",
+            "latency_ms":       latency_ms,
+        }
+        user_eq = None
+        try:
+            na = float(input_data.get("net_assets") or 0)
+            ta = float(input_data.get("total_assets") or 1)
+            if ta > 0:
+                user_eq = round(na / ta, 4)
+        except Exception:
+            pass
+        json_str = json.dumps(data_json, ensure_ascii=False, cls=_CJE)
+        with _sqlite3.connect(_DB_PATH, timeout=10) as conn:
+            conn.execute("PRAGMA busy_timeout=5000")
+            conn.execute(
+                """INSERT OR IGNORE INTO past_cases
+                   (id, timestamp, industry_sub, score, user_eq,
+                    final_status, data, sales_dept)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (
+                    case_id, now.isoformat(),
+                    str(input_data.get("industry") or ""),
+                    response_payload.get("score"),
+                    user_eq,
+                    "スコアリングのみ",
+                    json_str,
+                    str(input_data.get("sales_dept") or "未設定"),
+                )
+            )
+    except Exception as _e:
+        print(f"[api] past_cases INSERT失敗（無視）: {_e}")
+
 
 _DEFAULT_IND        = "R サービス業(他に分類されないもの)"
 _DEFAULT_CONTRACT_T = "一般"
@@ -819,6 +895,7 @@ def static_files(filename):
 
 @app.post("/predict")
 def predict():
+    _t_start = time.time()
     data = request.get_json(force=True, silent=True) or {}
     try:
         # ── UI から受け取る主要フィールド（百万円単位）──────────────
@@ -1197,7 +1274,50 @@ def predict():
             daemon=True,
         ).start()
 
+    _latency = int((time.time() - _t_start) * 1000)
+    threading.Thread(
+        target=_insert_flask_case,
+        args=(dict(response_payload), dict(data), _latency),
+        daemon=True,
+    ).start()
+
     return jsonify(response_payload)
+
+
+@app.get("/cases")
+def list_cases():
+    limit = min(int(request.args.get("limit", 30)), 200)
+    offset = int(request.args.get("offset", 0))
+    try:
+        with _sqlite3.connect(_DB_PATH, timeout=10) as conn:
+            conn.row_factory = _sqlite3.Row
+            conn.execute("PRAGMA busy_timeout=5000")
+            rows = conn.execute(
+                """SELECT id, timestamp, industry_sub, score, final_status, sales_dept,
+                          json_extract(data, '$.judgment')   AS judgment,
+                          json_extract(data, '$.asset_name') AS asset_name
+                   FROM past_cases
+                   ORDER BY timestamp DESC
+                   LIMIT ? OFFSET ?""",
+                (limit, offset),
+            ).fetchall()
+        return jsonify([dict(r) for r in rows])
+    except Exception as _e:
+        return jsonify({"error": str(_e)}), 500
+
+
+@app.patch("/cases/<case_id>/result")
+def update_case_result(case_id: str):
+    if _update_case is None:
+        return jsonify({"error": "data_cases not loaded"}), 503
+    updates = request.get_json(force=True, silent=True) or {}
+    _VALID = {"成約", "失注", "未登録", "スコアリングのみ", "検収", "検収完了"}
+    if "final_status" in updates and updates["final_status"] not in _VALID:
+        return jsonify({"error": "不正なfinal_status"}), 400
+    ok = _update_case(case_id, updates)
+    if not ok:
+        return jsonify({"error": "案件が見つからないか更新失敗"}), 404
+    return jsonify({"status": "updated", "case_id": case_id})
 
 
 @app.post("/advisor/strategy")
