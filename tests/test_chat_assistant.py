@@ -180,3 +180,76 @@ def test_append_wiki_note_writes_hub(tmp_path, monkeypatch):
     assert "関連ノート" in saved
     assert "[[Projects/tune_lease_55/AI Chat/2026-05-16|2026-05-16]]" in saved
     assert "条件付き承認" in saved
+
+
+def test_append_weekly_review_note_writes_weekly_file(tmp_path, monkeypatch):
+    vault = _make_vault(tmp_path)
+    monkeypatch.setenv("OBSIDIAN_VAULT", str(vault))
+
+    from mobile_app import obsidian_bridge
+    importlib.reload(obsidian_bridge)
+
+    result = obsidian_bridge.append_weekly_review_note(
+        "週次改善レビュー",
+        "## 今週の改善候補まとめ\n\n- 条件付き承認の推奨アクション自動表示 (accept)\n- 入力導線の明確化 (review)",
+    )
+    assert result["status"] == "saved"
+    assert "Weekly Review" in result["path"]
+    saved = (vault / result["path"]).read_text(encoding="utf-8")
+    assert "今週の改善候補まとめ" in saved
+    assert "条件付き承認" in saved
+
+
+def test_fallback_chat_packet_builds_review_and_wiki():
+    from mobile_app import chat_assistant
+
+    packet = chat_assistant._fallback_chat_packet(
+        "条件付き承認の具体的な方法を教えて",
+        {"score": 66, "judgment": "条件付"},
+        [{"path": "Projects/tune_lease_55/AI Chat/2026-05-16.md", "snippet": "条件付き承認は追加資料と期間短縮"}],
+        [],
+        humor_style="standard",
+    )
+    assert packet["wiki_should_save"] is True
+    assert packet["weekly_should_save"] is True
+    assert packet["improvement_items"][0]["decision"] == "accept"
+
+
+def test_build_strategy_advice_includes_indicator_takeaways():
+    from mobile_app import advisor_strategy
+
+    score_result = {
+        "score": 58,
+        "judgment": "条件付",
+        "base_rate": 2.15,
+        "recommended_rate": 2.45,
+        "spread_pred": 0.31,
+        "indicator_analysis": {
+            "summary": "業界平均より営業利益率は上、自己資本比率は下回る。",
+            "detail": "detail",
+            "indicators": [
+                {"name": "営業利益率", "value": 5.0, "bench": 4.5, "unit": "%"},
+                {"name": "自己資本比率", "value": 33.3, "bench": 35.0, "unit": "%"},
+            ],
+        },
+        "aurion": {"q_risk": {"score": 12}, "competitor_pressure": {"score": 7}},
+        "streamlit": {"credit_risk_group_score": 22, "credit_risk_group_level": "ok"},
+    }
+    case = {
+        "industry_sub": "06 総合工事業",
+        "customer_type": "既存先",
+        "op_profit": 5,
+        "nenshu": 100,
+        "acquisition_cost": 10,
+    }
+
+    advice = advisor_strategy.build_strategy_advice(score_result=score_result, case=case)
+
+    assert advice["indicator_summary"] == "業界平均より営業利益率は上、自己資本比率は下回る。"
+    assert advice["indicator_takeaways"]
+    assert any("営業利益率" in x for x in advice["indicator_takeaways"])
+    assert any("自己資本比率" in x for x in advice["indicator_takeaways"])
+    assert advice["additional_guidance"]
+    assert any("追加資料" in x or "期間調整" in x for x in advice["additional_guidance"])
+    assert advice["probability_uplifts"]
+    assert any(item["gain_pct"] > 0 for item in advice["probability_uplifts"])

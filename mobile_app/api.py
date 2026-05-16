@@ -9,7 +9,9 @@ POST /predict: リース成約スコア + 推奨金利を返す
           + base_rate_master（最新月×リース期間別基準金利）
 """
 import os
+import json
 import unicodedata
+from functools import lru_cache
 import joblib
 import numpy as np
 import pandas as pd
@@ -40,6 +42,9 @@ _PROJECT_ROOT = os.path.abspath(os.path.join(_HERE, ".."))
 import sys as _sys_mod
 if _PROJECT_ROOT not in _sys_mod.path:
     _sys_mod.path.insert(0, _PROJECT_ROOT)
+
+from data_cases import load_past_cases
+from industry_normalizer import normalize_industry_major, normalize_industry_sub
 
 # ── 既存先 Step2 / 共通: RF 52特徴量メインモデル ─────────────────────────
 _bundle   = joblib.load(os.path.join(_HERE, "simple_model.pkl"))
@@ -131,6 +136,15 @@ try:
 except Exception as _sc_import_err:
     print(f"[api] scoring_core: 未ロード → sys_scoreは中央値フォールバック ({_sc_import_err})")
 
+_indicator_analysis_loaded = False
+_get_indicator_analysis_for_advice = None
+try:
+    from indicators import get_indicator_analysis_for_advice as _get_indicator_analysis_for_advice
+    _indicator_analysis_loaded = True
+    print("[api] indicators: 読み込み完了")
+except Exception as _indicator_import_err:
+    print(f"[api] indicators: 未ロード ({_indicator_import_err})")
+
 # ── advisor: 軍師AI（ルールベース参謀）───────────────────────────────
 _advisor_loaded = False
 try:
@@ -155,6 +169,28 @@ _DEFAULT_IND        = "R サービス業(他に分類されないもの)"
 _DEFAULT_CONTRACT_T = "一般"
 _DEFAULT_DEAL_SRC   = "銀行紹介"
 _DEFAULT_SALES_DEPT = "足利営業部"
+
+
+@lru_cache(maxsize=1)
+def _load_web_industry_benchmarks() -> dict:
+    path = os.path.join(_PROJECT_ROOT, "web_industry_benchmarks.json")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+@lru_cache(maxsize=1)
+def _load_local_industry_benchmarks() -> dict:
+    path = os.path.join(_PROJECT_ROOT, "data", "industry_benchmarks.json")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
 
 
 def _get_period_rate(lease_term_months: float) -> tuple:
@@ -228,6 +264,318 @@ def _enc(enc_key: str, val: str, default: str) -> int:
 
 def safe_div(a, b, fill=0.0):
     return a / b if b and b != 0 else fill
+
+
+def _clamp_float(value, low=0.0, high=100.0):
+    try:
+        return max(low, min(high, float(value)))
+    except Exception:
+        return low
+
+
+def _build_mobile_chart_payload(response_payload: dict, sc_result: dict | None, q_risk_result: dict, stealth_result: dict) -> dict:
+    """mobile_app/index.html 用の軽量チャートデータを組み立てる。"""
+    streamlit = response_payload.get("streamlit") or {}
+    score = _clamp_float(response_payload.get("score") or streamlit.get("score") or 0)
+    probability = _clamp_float((response_payload.get("probability") or 0) * 100)
+    score_borrower = _clamp_float(streamlit.get("score_borrower") or 0)
+    q_risk_score = _clamp_float((q_risk_result or {}).get("score") or 0)
+    q_risk_readiness = _clamp_float(100.0 - q_risk_score * 2.0)
+    competitor_score = _clamp_float((stealth_result or {}).get("score") or 0)
+    competitor_readiness = _clamp_float(100.0 - competitor_score * 2.0)
+    base_rate = float(response_payload.get("base_rate") or 0)
+    recommended_rate = float(response_payload.get("recommended_rate") or base_rate or 0)
+    rate_alignment = _clamp_float(100.0 - abs(recommended_rate - base_rate) * 20.0)
+    approval_margin = _clamp_float(50.0 + (score - 71.0) * 2.0)
+
+    radar = [
+        {"label": "総合スコア", "value": score, "max": 100, "note": "最終判定"},
+        {"label": "成約確率", "value": probability, "max": 100, "note": "予測確率"},
+        {"label": "借手スコア", "value": score_borrower, "max": 100, "note": "Streamlit値"},
+        {"label": "金利妥当性", "value": rate_alignment, "max": 100, "note": "ベースレートとの差"},
+        {"label": "Q_risk健全度", "value": q_risk_readiness, "max": 100, "note": "矛盾が少ないほど高い"},
+        {"label": "競合耐性", "value": competitor_readiness, "max": 100, "note": "圧力が低いほど高い"},
+    ]
+
+    factors = []
+    if sc_result:
+        for row in (sc_result.get("score_contributions") or []):
+            feature = str(row.get("feature") or "")
+            if feature == "intercept":
+                continue
+            value = row.get("contribution")
+            try:
+                value = float(value)
+            except Exception:
+                continue
+            factors.append({
+                "label": row.get("label_ja") or feature,
+                "value": round(value, 2),
+            })
+    factors = factors[:6]
+
+    return {
+        "radar": radar,
+        "factors": factors,
+        "summary": {
+            "approval_margin": approval_margin,
+            "q_risk": q_risk_score,
+            "competitor_pressure": competitor_score,
+        },
+    }
+
+
+def _build_chat_analysis_graphs(message: str, input_data: dict | None, score_result: dict | None) -> dict:
+    """AIチャット用の計算結果・業種平均との差分を組み立てる。"""
+    data = input_data if isinstance(input_data, dict) else {}
+    score_result = score_result if isinstance(score_result, dict) else {}
+
+    def _num(key: str, default: float = 0.0) -> float:
+      try:
+        return _normalize_numeric(data.get(key, default), default)
+      except Exception:
+        return default
+
+    industry_major = normalize_industry_major(
+        str(data.get("industry_major") or data.get("industry") or data.get("industry_detail") or _DEFAULT_IND)
+    )
+    industry_sub = normalize_industry_sub(
+        str(data.get("industry_sub") or data.get("industry_detail") or ""),
+        industry_major,
+    )
+    benchmark = {}
+    if industry_sub:
+        local_benchmarks = _load_local_industry_benchmarks()
+        web_benchmarks = _load_web_industry_benchmarks()
+        benchmark.update(local_benchmarks.get(industry_sub, {}) or {})
+        benchmark.update(web_benchmarks.get(industry_sub, {}) or {})
+
+    gp = _num("gross_profit")
+    op = _num("op_profit")
+    ep = _num("ord_profit")
+    ni = _num("net_income")
+    dep = _num("dep_expense")
+    depr = _num("depreciation")
+    ns = _num("nenshu")
+    bk = _num("bank_credit")
+    lc = _num("lease_credit")
+    mach = _num("machines")
+    oa = _num("other_assets")
+    net_assets = _num("net_assets")
+    total_assets = _num("total_assets")
+    rent = _num("rent")
+    rent_expense = _num("rent_expense")
+    acquisition_cost = _num("acquisition_cost")
+    contracts = _num("contracts")
+    lease_term = _num("lease_term")
+    proposed_rate = _num("proposed_rate")
+    competitor_rate = _num("competitor_rate")
+    lease_asset_score = _num("lease_asset_score")
+    q_weighted = _num("q_weighted")
+
+    fixed_assets = mach + oa
+    debt_total = bk + lc
+
+    computed = []
+    if ns > 0:
+        computed.extend([
+            {"label": "売上高総利益率", "value": round(gp / ns * 100, 2), "unit": "%", "formula": "粗利÷売上高", "category": "収益性"},
+            {"label": "営業利益率", "value": round(op / ns * 100, 2), "unit": "%", "formula": "営業利益÷売上高", "category": "収益性"},
+            {"label": "経常利益率", "value": round(ep / ns * 100, 2), "unit": "%", "formula": "経常利益÷売上高", "category": "収益性"},
+            {"label": "当期純利益率", "value": round(ni / ns * 100, 2), "unit": "%", "formula": "当期純利益÷売上高", "category": "収益性"},
+            {"label": "減価償却費率", "value": round(dep / ns * 100, 2), "unit": "%", "formula": "減価償却（経費）÷売上高", "category": "収益性"},
+            {"label": "賃借料率", "value": round(rent_expense / ns * 100, 2), "unit": "%", "formula": "賃借料（経費）÷売上高", "category": "収益性"},
+            {"label": "銀行借入率", "value": round(bk / ns * 100, 2), "unit": "%", "formula": "銀行借入残高÷売上高", "category": "負債"},
+            {"label": "リース与信率", "value": round(lc / ns * 100, 2), "unit": "%", "formula": "リース与信残高÷売上高", "category": "負債"},
+            {"label": "機械設備率", "value": round(mach / ns * 100, 2), "unit": "%", "formula": "機械設備残高÷売上高", "category": "資産"},
+            {"label": "その他資産率", "value": round(oa / ns * 100, 2), "unit": "%", "formula": "その他資産÷売上高", "category": "資産"},
+            {"label": "取得価額率", "value": round(acquisition_cost / ns * 100, 2), "unit": "%", "formula": "リース取得価額÷売上高", "category": "資産"},
+            {"label": "現在リース件数", "value": round(contracts, 0), "unit": "件", "formula": "入力値", "category": "取引"},
+        ])
+    if total_assets > 0:
+        computed.extend([
+            {"label": "自己資本比率", "value": round(net_assets / total_assets * 100, 2), "unit": "%", "formula": "自己資本÷総資本", "category": "資本"},
+            {"label": "ROA", "value": round(ni / total_assets * 100, 2), "unit": "%", "formula": "当期純利益÷総資本", "category": "資本"},
+            {"label": "総資産回転率", "value": round(ns / total_assets, 2), "unit": "回", "formula": "売上高÷総資本", "category": "効率"},
+            {"label": "固定資産比率", "value": round(fixed_assets / total_assets * 100, 2), "unit": "%", "formula": "固定資産÷総資本", "category": "資産"},
+            {"label": "流動資産比率", "value": round((total_assets - fixed_assets) / total_assets * 100, 2), "unit": "%", "formula": "流動資産÷総資本", "category": "資産"},
+            {"label": "借入依存度", "value": round(debt_total / total_assets * 100, 2), "unit": "%", "formula": "借入金等÷総資本", "category": "負債"},
+        ])
+    if net_assets > 0:
+        computed.extend([
+            {"label": "ROE", "value": round(ni / net_assets * 100, 2), "unit": "%", "formula": "当期純利益÷自己資本", "category": "資本"},
+            {"label": "負債比率", "value": round((total_assets - net_assets) / net_assets * 100, 2), "unit": "%", "formula": "負債÷自己資本", "category": "負債"},
+        ])
+
+    ratio_specs = [
+        ("売上高総利益率", gp / ns * 100 if ns > 0 else None, "gross_margin", "%", True, "収益性"),
+        ("営業利益率", op / ns * 100 if ns > 0 else None, "op_margin", "%", True, "収益性"),
+        ("経常利益率", ep / ns * 100 if ns > 0 else None, "ord_margin", "%", True, "収益性"),
+        ("当期純利益率", ni / ns * 100 if ns > 0 else None, "net_margin", "%", True, "収益性"),
+        ("減価償却費率", dep / ns * 100 if ns > 0 else None, "dep_ratio", "%", False, "収益性"),
+        ("自己資本比率", net_assets / total_assets * 100 if total_assets > 0 else None, "equity_ratio", "%", True, "資本"),
+        ("ROA", ni / total_assets * 100 if total_assets > 0 else None, "roa", "%", True, "資本"),
+        ("ROE", ni / net_assets * 100 if net_assets > 0 else None, "roe", "%", True, "資本"),
+        ("総資産回転率", ns / total_assets if total_assets > 0 else None, "asset_turnover", "回", True, "効率"),
+    ]
+
+    ratios = []
+    for label, value, bench_key, unit, higher_better, category in ratio_specs:
+        if value is None:
+            continue
+        bench_value = benchmark.get(bench_key)
+        if bench_value is None:
+            continue
+        diff = float(value) - float(bench_value)
+        favorable = diff if higher_better else -diff
+        ratios.append({
+            "label": label,
+            "value": round(float(value), 2),
+            "benchmark": round(float(bench_value), 2),
+            "diff": round(diff, 2),
+            "favorable": round(favorable, 2),
+            "unit": unit,
+            "category": category,
+            "higher_better": higher_better,
+        })
+
+    computed.extend([
+        {"label": "リース期間", "value": round(lease_term, 0), "unit": "ヶ月", "formula": "入力値", "category": "取引"},
+        {"label": "提案金利", "value": round(proposed_rate, 2), "unit": "%", "formula": "入力値", "category": "金利"},
+        {"label": "競合金利", "value": round(competitor_rate, 2), "unit": "%", "formula": "入力値", "category": "競合"},
+        {"label": "物件スコア", "value": round(lease_asset_score, 0), "unit": "点", "formula": "入力値", "category": "資産"},
+        {"label": "定性加重平均", "value": round(q_weighted, 0), "unit": "点", "formula": "入力値", "category": "定性"},
+        {"label": "基準金利", "value": round(float(score_result.get("base_rate") or 0), 2), "unit": "%", "formula": "API算出", "category": "金利"},
+        {"label": "推奨金利", "value": round(float(score_result.get("recommended_rate") or 0), 2), "unit": "%", "formula": "API算出", "category": "金利"},
+        {"label": "スプレッド予測", "value": round(float(score_result.get("spread_pred") or 0), 2), "unit": "%", "formula": "推奨金利-基準金利", "category": "金利"},
+        {"label": "AURION Q_risk", "value": round(float(((score_result.get("aurion") or {}).get("q_risk") or {}).get("score", score_result.get("quantum_risk") or 0)), 2), "unit": "点", "formula": "整合性チェック", "category": "警戒"},
+        {"label": "競合圧力", "value": round(float(((score_result.get("aurion") or {}).get("competitor_pressure") or {}).get("score", 0)), 2), "unit": "点", "formula": "競合推定", "category": "警戒"},
+        {"label": "成約確率", "value": round(float(score_result.get("probability") or 0) * 100, 2), "unit": "%", "formula": "モデル出力", "category": "予測"},
+        {"label": "総合スコア", "value": round(float(score_result.get("score") or 0), 2), "unit": "点", "formula": "モデル出力", "category": "予測"},
+    ])
+
+    message_flags = []
+    msg = (message or "").strip()
+    if msg:
+        message_flags.append({"label": "チャット入力あり", "value": 1, "unit": "", "formula": "入力検知", "category": "会話"})
+        if any(token in msg for token in ("グラフ", "図", "比較", "差", "業種")):
+            message_flags.append({"label": "グラフ要望", "value": 1, "unit": "", "formula": "文面解析", "category": "会話"})
+
+    computed.extend(message_flags)
+
+    return {
+        "industry": {
+            "major": industry_major,
+            "sub": industry_sub,
+            "benchmark_found": bool(ratios),
+        },
+        "ratios": ratios,
+        "computed": computed,
+        "summary": {
+            "ratio_count": len(ratios),
+            "computed_count": len(computed),
+        },
+    }
+
+
+def _normalize_case_status(status: str) -> str:
+    if status in ("検収完了", "検収"):
+        return "成約"
+    if status in ("成約", "失注"):
+        return status
+    return "その他"
+
+
+def _build_visual_insights_payload(current_case: dict | None = None, limit_cases: int = 300) -> dict:
+    """visual_insights.py 相当の集計を mobile 用に軽量化して返す。"""
+    cases = load_past_cases()[-limit_cases:]
+    rows = []
+    for c in cases:
+        status = _normalize_case_status(str(c.get("final_status", "未登録")))
+        if status not in ("成約", "失注"):
+            continue
+        score = float(c.get("score") or (c.get("result") or {}).get("score") or 0)
+        if score <= 0:
+            continue
+        final_rate = float(c.get("final_rate") or 0)
+        base_rate = float(c.get("base_rate_at_time") or 0)
+        spread = (final_rate - base_rate) if base_rate > 0 else float(c.get("winning_spread") or 0)
+        inputs = c.get("inputs") or {}
+        rows.append({
+            "score": score,
+            "spread": spread,
+            "acquisition_cost": float(inputs.get("acquisition_cost") or 0),
+            "status": status,
+            "industry_major": c.get("industry_major") or "不明",
+            "industry_sub": c.get("industry_sub") or "不明",
+            "sales_dept": c.get("sales_dept") or "未設定",
+            "competitor": c.get("competitor_name") or "",
+        })
+
+    bubble = {
+        "points": rows[-80:],
+        "current": {
+            "score": float((current_case or {}).get("score") or 0),
+            "spread": float((current_case or {}).get("spread_pred") or 0),
+        },
+    }
+
+    return {
+        "bubble": bubble,
+        "meta": {
+            "case_count": len(rows),
+            "current_case_score": float((current_case or {}).get("score") or 0),
+        },
+    }
+
+
+def _build_indicator_analysis_payload(data: dict, industry_major: str, industry_sub: str) -> dict:
+    if _get_indicator_analysis_for_advice is None:
+        return {"summary": "", "detail": "", "indicators": [], "text": ""}
+    try:
+        last_result = {
+            "industry_major": industry_major,
+            "industry_sub": industry_sub,
+            "financials": {
+                "nenshu": _normalize_numeric(data.get("nenshu", 0)),
+                "gross_profit": _normalize_numeric(data.get("gross_profit", 0)),
+                "op_profit": _normalize_numeric(data.get("op_profit", 0)),
+                "ord_profit": _normalize_numeric(data.get("ord_profit", 0)),
+                "net_income": _normalize_numeric(data.get("net_income", 0)),
+                "dep_expense": _normalize_numeric(data.get("dep_expense", 0)),
+                "depreciation": _normalize_numeric(data.get("depreciation", 0)),
+                "machines": _normalize_numeric(data.get("machines", 0)),
+                "other_assets": _normalize_numeric(data.get("other_assets", 0)),
+                "bank_credit": _normalize_numeric(data.get("bank_credit", 0)),
+                "lease_credit": _normalize_numeric(data.get("lease_credit", 0)),
+                "net_assets": _normalize_numeric(data.get("net_assets", 0)),
+                "assets": _normalize_numeric(data.get("total_assets", 0)),
+            },
+        }
+        summary, detail, text = _get_indicator_analysis_for_advice(last_result)
+        indicators = []
+        if text:
+            for line in text.splitlines():
+                if ":" not in line:
+                    continue
+                name, rest = line.split(":", 1)
+                indicators.append({"name": name.strip("- "), "text": rest.strip()})
+        return {
+            "summary": summary,
+            "detail": detail,
+            "indicators": indicators,
+            "text": text,
+        }
+    except Exception as exc:
+        return {"summary": "", "detail": "", "indicators": [], "text": "", "error": str(exc)}
+
+    return {
+        "bubble": bubble,
+        "meta": {
+            "case_count": len(rows),
+            "current_case_score": float((current_case or {}).get("score") or 0),
+        },
+    }
 
 
 def _compute_sys_score_b_existing(
@@ -766,6 +1114,7 @@ def predict():
             "credit_risk_group_score": _sc_result.get("credit_risk_group_score") if _sc_result else None,
             "credit_risk_group_level": _sc_result.get("credit_risk_group_level") if _sc_result else None,
             "score_source": "scoring_core" if _sc_result else "rf_fallback",
+            "score_contributions": ((_sc_result.get("score_contributions") or [])[:8] if _sc_result else []),
         },
         "aurion": {
             "q_risk": q_risk_result,
@@ -773,6 +1122,23 @@ def predict():
             "competitor_pressure": stealth_result,
         },
     }
+    response_payload["charts"] = _build_mobile_chart_payload(
+        response_payload=response_payload,
+        sc_result=_sc_result,
+        q_risk_result=q_risk_result,
+        stealth_result=stealth_result,
+    )
+    response_payload["insights"] = _build_visual_insights_payload(
+        current_case={
+            "score": response_payload.get("score"),
+            "spread_pred": response_payload.get("spread_pred"),
+        }
+    )
+    response_payload["indicator_analysis"] = _build_indicator_analysis_payload(
+        data=data,
+        industry_major=str(data.get("industry_major") or industry or _DEFAULT_IND),
+        industry_sub=str(data.get("industry_sub") or data.get("industry_detail") or "06 総合工事業"),
+    )
     if build_strategy_advice is not None:
         try:
             _advisor_engine = str(data.get("advisor_engine") or os.environ.get("ADVISOR_ENGINE", "gemini")).lower()
@@ -824,6 +1190,13 @@ def advisor_strategy():
     engine = str(data.get("engine") or os.environ.get("ADVISOR_ENGINE", "gemini")).lower()
     humor_style = str(data.get("humor_style") or "standard")
     try:
+        if isinstance(score_result, dict) and "indicator_analysis" not in score_result:
+            score_result = dict(score_result)
+            score_result["indicator_analysis"] = _build_indicator_analysis_payload(
+                data=case if isinstance(case, dict) else {},
+                industry_major=str(case.get("industry_major") or case.get("industry") or _DEFAULT_IND),
+                industry_sub=str(case.get("industry_sub") or case.get("industry_detail") or "06 総合工事業"),
+            )
         if engine == "gemini" and build_gemini_strategy_advice is not None:
             timeout_seconds = _normalize_numeric(data.get("timeout_seconds", 20), 20)
             return jsonify(build_gemini_strategy_advice(
@@ -848,12 +1221,13 @@ def chat():
     if not isinstance(history, list):
         history = []
     score_result = data.get("score_result") or data.get("result") or {}
+    input_data = data.get("input_data") or {}
     use_obsidian = bool(data.get("use_obsidian", True))
     use_web = bool(data.get("use_web", True))
     humor_style = str(data.get("humor_style") or "standard")
     try:
         timeout_seconds = _normalize_numeric(data.get("timeout_seconds", 30), 30)
-        return jsonify(build_chat_reply(
+        payload = build_chat_reply(
             message=message,
             history=history,
             score_result=score_result,
@@ -861,7 +1235,9 @@ def chat():
             use_web=use_web,
             timeout_seconds=timeout_seconds,
             humor_style=humor_style,
-        ))
+        )
+        payload["analysis_graphs"] = _build_chat_analysis_graphs(message, input_data, score_result)
+        return jsonify(payload)
     except Exception as e:
         return jsonify({"error": f"AIチャット生成エラー: {e}"}), 400
 

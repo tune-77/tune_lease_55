@@ -546,6 +546,246 @@
     }
     .advisor-section li { margin-bottom: 4px; }
 
+    /* ─── 分析グラフ ─── */
+    #analysis-graphs {
+      display: none;
+      margin-top: 14px;
+      padding: 14px;
+      border: 1px solid #dbe4f0;
+      border-radius: 12px;
+      background: #f8fbff;
+    }
+    .graph-title {
+      font-size: 14px;
+      font-weight: 800;
+      color: #1e3a8a;
+      margin-bottom: 10px;
+    }
+    .graph-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+    @media (min-width: 760px) {
+      .graph-grid {
+        grid-template-columns: 1.1fr 0.9fr;
+      }
+    }
+    .graph-panel {
+      background: #fff;
+      border: 1px solid #dbe4f0;
+      border-radius: 12px;
+      padding: 12px;
+      min-width: 0;
+    }
+    .graph-panel-note {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 8px;
+      line-height: 1.5;
+    }
+    .graph-svg-wrap {
+      width: 100%;
+      overflow: hidden;
+    }
+    .dept-graph-wrap {
+      width: 100%;
+      overflow: hidden;
+    }
+    .dept-bars {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .dept-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1.3fr) minmax(0, 2fr) auto;
+      gap: 8px;
+      align-items: center;
+      font-size: 11px;
+    }
+    .dept-name {
+      font-weight: 700;
+      color: #1e3a8a;
+      overflow-wrap: anywhere;
+    }
+    .dept-bar-track {
+      position: relative;
+      height: 16px;
+      background: #e2e8f0;
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid #cbd5e1;
+    }
+    .dept-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #2563eb, #8b5cf6);
+    }
+    .dept-metrics {
+      color: #334155;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    #result-analysis-graphs,
+    #chat-analysis-graphs {
+      display: none;
+      margin-top: 12px;
+      padding: 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 12px;
+      background: #f8fafc;
+    }
+    .chat-graph-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+    @media (min-width: 760px) {
+      .chat-graph-grid {
+        grid-template-columns: 1.15fr 0.85fr;
+      }
+    }
+    .ratio-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .ratio-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(0, 2.1fr);
+      gap: 8px;
+      align-items: center;
+      font-size: 11px;
+    }
+    .ratio-label {
+      font-weight: 700;
+      color: #1e3a8a;
+      overflow-wrap: anywhere;
+    }
+    .ratio-track {
+      position: relative;
+      height: 18px;
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid #cbd5e1;
+      background: linear-gradient(to right, #fee2e2 0%, #f8fafc 48%, #f8fafc 52%, #dcfce7 100%);
+    }
+    .ratio-midline {
+      position: absolute;
+      left: 50%;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: #94a3b8;
+      z-index: 1;
+    }
+    .ratio-fill {
+      position: absolute;
+      top: 1px;
+      bottom: 1px;
+      border-radius: 999px;
+      z-index: 0;
+    }
+    .ratio-fill.positive {
+      left: 50%;
+      background: linear-gradient(90deg, #2563eb, #22c55e);
+    }
+    .ratio-fill.negative {
+      right: 50%;
+      background: linear-gradient(90deg, #ef4444, #f97316);
+    }
+    .ratio-values {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 10px;
+      color: #64748b;
+      margin-top: 3px;
+    }
+    .computed-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 8px;
+    }
+    .computed-card {
+      border: 1px solid #dbe4f0;
+      border-radius: 10px;
+      background: #fff;
+      padding: 8px 9px;
+      min-width: 0;
+    }
+    .computed-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #1e3a8a;
+      overflow-wrap: anywhere;
+    }
+    .computed-value {
+      margin-top: 3px;
+      font-size: 15px;
+      font-weight: 800;
+      color: #0f172a;
+    }
+    .computed-formula {
+      margin-top: 2px;
+      font-size: 10px;
+      color: #64748b;
+      overflow-wrap: anywhere;
+    }
+    .factor-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .factor-row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 4px;
+    }
+    .factor-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: baseline;
+      font-size: 12px;
+      color: #334155;
+    }
+    .factor-label {
+      font-weight: 600;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .factor-value {
+      font-weight: 800;
+      flex-shrink: 0;
+    }
+    .factor-track {
+      position: relative;
+      height: 12px;
+      background: linear-gradient(to right, #fee2e2 0%, #f8fafc 45%, #f8fafc 55%, #dcfce7 100%);
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+    }
+    .factor-midline {
+      position: absolute;
+      left: 50%;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: #cbd5e1;
+      z-index: 1;
+    }
+    .factor-fill {
+      position: absolute;
+      top: 1px;
+      bottom: 1px;
+      border-radius: 999px;
+      z-index: 0;
+    }
+    .factor-fill.positive { left: 50%; background: linear-gradient(90deg, #22c55e, #16a34a); }
+    .factor-fill.negative { right: 50%; background: linear-gradient(90deg, #ef4444, #dc2626); }
+
     /* ─── AIチャット ─── */
     #ai-chat-card {
       display: none;
@@ -730,6 +970,18 @@
     <div class="field">
       <label><span class="icon">🏠</span>その他資産</label>
       <input type="text" id="other_assets" placeholder="例: 20" inputmode="decimal">
+      <div class="unit">百万円</div>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">📘</span>自己資本</label>
+      <input type="text" id="net_assets" placeholder="例: 120" inputmode="decimal">
+      <div class="unit">百万円</div>
+    </div>
+
+    <div class="field">
+      <label><span class="icon">🏦</span>総資本</label>
+      <input type="text" id="total_assets" placeholder="例: 500" inputmode="decimal">
       <div class="unit">百万円</div>
     </div>
 
@@ -1050,13 +1302,32 @@
 
     <!-- 軍師AI パネル -->
     <div id="advisor-panel" style="display:none;"></div>
+
+    <!-- 分析グラフ -->
+    <div id="analysis-graphs">
+      <div class="graph-title">📈 分析グラフ</div>
+      <div class="graph-grid">
+        <div class="graph-panel">
+          <div class="graph-title" style="font-size:13px;margin-bottom:8px;">総合バランス</div>
+          <div class="graph-svg-wrap" id="radar-graph"></div>
+          <div class="graph-panel-note">スコア・確率・Q_risk・競合圧力を 0〜100 に揃えて見せています。</div>
+        </div>
+        <div class="graph-panel">
+          <div class="graph-title" style="font-size:13px;margin-bottom:8px;">主要要因</div>
+          <div class="factor-list" id="factor-graph"></div>
+          <div class="graph-panel-note">ロジット寄与度の上位を表示します。＋は押し上げ、−は押し下げです。</div>
+        </div>
+      </div>
+    </div>
   </div>
+
+  <div id="result-analysis-graphs"></div>
 
   <!-- AIチャットカード -->
   <div class="card" id="ai-chat-card">
     <div class="card-title">AIチャット</div>
     <div class="unit">
-      審査結果について質問できます。AIが必要と判断したメモだけObsidianへ自動保存します。
+      審査結果について質問できます。AIが必要と判断したメモだけObsidianへ自動保存し、計算できる値はその場でグラフ化します。
     </div>
     <div class="chat-log" id="chat-log"></div>
     <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
@@ -1079,6 +1350,7 @@
       <button id="chat-send-btn" onclick="sendChat()">送信</button>
     </div>
     <div class="chat-note" id="chat-status"></div>
+    <div id="chat-analysis-graphs"></div>
   </div>
 
   <div class="footer">
@@ -1091,6 +1363,7 @@
   const API_URL = "/predict";
   const CHAT_URL = "/chat";
   let lastScoreResult = null;
+  let lastInputValues = null;
   let chatHistory = [];
   let humourMode = "standard";
 
@@ -1125,6 +1398,245 @@
     return Number.isFinite(value) ? value : fallback;
   }
 
+  function clamp(value, min = 0, max = 100) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return min;
+    return Math.min(max, Math.max(min, n));
+  }
+
+  function renderAnalysisGraphs(charts) {
+    const root = document.getElementById("analysis-graphs");
+    const radarHost = document.getElementById("radar-graph");
+    const factorHost = document.getElementById("factor-graph");
+    const radarData = Array.isArray(charts?.radar) ? charts.radar : [];
+    const factorData = Array.isArray(charts?.factors) ? charts.factors : [];
+
+    if (radarData.length === 0 && factorData.length === 0) {
+      root.style.display = "none";
+      radarHost.innerHTML = "";
+      factorHost.innerHTML = "";
+      return;
+    }
+
+    root.style.display = "block";
+    renderRadarChart(radarHost, radarData);
+    renderFactorBars(factorHost, factorData);
+  }
+
+  function renderRadarChart(container, items) {
+    if (!container) return;
+    if (!items || items.length < 3) {
+      container.innerHTML = '<div style="font-size:12px;color:#64748b;">グラフデータがありません。</div>';
+      return;
+    }
+
+    const width = Math.max(280, container.clientWidth || 320);
+    const height = 320;
+    const cx = width / 2;
+    const cy = 150;
+    const radius = Math.min(width, 300) * 0.28;
+    const levels = [25, 50, 75, 100];
+    const step = (Math.PI * 2) / items.length;
+
+    const pointFor = (value, idx) => {
+      const angle = -Math.PI / 2 + idx * step;
+      const r = radius * clamp(value, 0, 100) / 100;
+      return {
+        x: cx + Math.cos(angle) * r,
+        y: cy + Math.sin(angle) * r,
+        angle,
+      };
+    };
+
+    const areaPoints = items.map((item, idx) => {
+      const p = pointFor(item.value, idx);
+      return `${p.x},${p.y}`;
+    }).join(" ");
+
+    const axisLines = items.map((item, idx) => {
+      const p = pointFor(100, idx);
+      const lx = cx + Math.cos(p.angle) * (radius + 18);
+      const ly = cy + Math.sin(p.angle) * (radius + 18);
+      const textAnchor = Math.abs(Math.cos(p.angle)) < 0.25 ? "middle" : (Math.cos(p.angle) > 0 ? "start" : "end");
+      const dy = Math.sin(p.angle) < -0.5 ? -6 : Math.sin(p.angle) > 0.5 ? 14 : 4;
+      return `
+        <line x1="${cx}" y1="${cy}" x2="${p.x}" y2="${p.y}" stroke="#dbe4f0" stroke-width="1" />
+        <text x="${lx}" y="${ly + dy}" text-anchor="${textAnchor}" fill="#334155" font-size="11" font-weight="700">${escapeHtml(item.label || "")}</text>
+      `;
+    }).join("");
+
+    const ringMarks = levels.map(level => {
+      const r = radius * level / 100;
+      return `
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#e2e8f0" stroke-width="1" />
+        <text x="${cx + 4}" y="${cy - r - 2}" fill="#94a3b8" font-size="10">${level}</text>
+      `;
+    }).join("");
+
+    const dots = items.map((item, idx) => {
+      const p = pointFor(item.value, idx);
+      return `
+        <circle cx="${p.x}" cy="${p.y}" r="3.5" fill="#2563eb" stroke="#fff" stroke-width="1.5">
+          <title>${escapeHtml(item.label || "")}: ${Number(item.value || 0).toFixed(1)}</title>
+        </circle>
+      `;
+    }).join("");
+
+    container.innerHTML = `
+      <svg viewBox="0 0 ${width} 320" width="100%" height="320" preserveAspectRatio="xMidYMid meet">
+        ${ringMarks}
+        ${axisLines}
+        <polygon points="${areaPoints}" fill="rgba(37,99,235,0.18)" stroke="#2563eb" stroke-width="2" />
+        ${dots}
+        <circle cx="${cx}" cy="${cy}" r="3" fill="#2563eb" />
+      </svg>
+    `;
+  }
+
+  function renderFactorBars(container, items) {
+    if (!container) return;
+    if (!items || items.length === 0) {
+      container.innerHTML = '<div style="font-size:12px;color:#64748b;">要因データがありません。</div>';
+      return;
+    }
+    const maxAbs = Math.max(...items.map(x => Math.abs(Number(x.value || 0))), 1);
+    container.innerHTML = items.map(item => {
+      const value = Number(item.value || 0);
+      const widthPct = Math.min(100, Math.abs(value) / maxAbs * 100);
+      const halfWidthPct = widthPct / 2;
+      const positive = value >= 0;
+      const fillStyle = positive
+        ? `left:50%; width:${halfWidthPct}%;`
+        : `right:50%; width:${halfWidthPct}%;`;
+      return `
+        <div class="factor-row">
+          <div class="factor-head">
+            <span class="factor-label">${escapeHtml(item.label || "")}</span>
+            <span class="factor-value" style="color:${positive ? '#16a34a' : '#dc2626'};">${positive ? '+' : ''}${value.toFixed(1)}</span>
+          </div>
+          <div class="factor-track">
+            <div class="factor-midline"></div>
+            <div class="factor-fill ${positive ? 'positive' : 'negative'}" style="${fillStyle}"></div>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function renderAnalysisGraphsBlock(rootId, graphs) {
+    const root = document.getElementById(rootId);
+    if (!root) return;
+    const ratios = Array.isArray(graphs?.ratios) ? graphs.ratios : [];
+    const computed = Array.isArray(graphs?.computed) ? graphs.computed : [];
+    if (ratios.length === 0 && computed.length === 0) {
+      root.style.display = "none";
+      root.innerHTML = "";
+      return;
+    }
+
+    const maxAbs = Math.max(
+      1,
+      ...ratios.map(x => Math.abs(Number(x.favorable ?? x.diff ?? 0))),
+    );
+    const ratioRows = ratios.map(item => {
+      const favorable = Number(item.favorable ?? item.diff ?? 0);
+      const positive = favorable >= 0;
+      const widthPct = Math.max(8, Math.min(100, Math.abs(favorable) / maxAbs * 100));
+      const fillStyle = positive
+        ? `left:50%; width:${widthPct / 2}%;`
+        : `right:50%; width:${widthPct / 2}%;`;
+      return `
+        <div class="ratio-row">
+          <div class="ratio-label">${escapeHtml(item.label || "")}</div>
+          <div>
+            <div class="ratio-track">
+              <div class="ratio-midline"></div>
+              <div class="ratio-fill ${positive ? 'positive' : 'negative'}" style="${fillStyle}"></div>
+            </div>
+            <div class="ratio-values">
+              <span>貴社 ${Number(item.value || 0).toFixed(2)}${escapeHtml(item.unit || "")}</span>
+              <span>業界 ${Number(item.benchmark || 0).toFixed(2)}${escapeHtml(item.unit || "")}</span>
+              <span>差 ${Number(item.diff || 0).toFixed(2)}${escapeHtml(item.unit || "")}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    const computedCards = computed.map(item => {
+      const value = Number(item.value);
+      const valueText = Number.isFinite(value)
+        ? (item.unit === "%" ? value.toFixed(2) : value.toFixed(0))
+        : "—";
+      return `
+        <div class="computed-card">
+          <div class="computed-label">${escapeHtml(item.label || "")}</div>
+          <div class="computed-value">${valueText}${escapeHtml(item.unit || "")}</div>
+          <div class="computed-formula">${escapeHtml(item.formula || "")}</div>
+        </div>
+      `;
+    }).join("");
+
+    root.innerHTML = `
+      <div class="graph-title" style="margin-bottom:8px;">AI計算グラフ</div>
+      <div class="chat-graph-grid">
+        <div class="graph-panel">
+          <div class="graph-title" style="font-size:13px;margin-bottom:8px;">業種平均との差</div>
+          <div class="ratio-list">${ratioRows || '<div style="font-size:12px;color:#64748b;">業種ベンチマークが見つかりませんでした。</div>'}</div>
+          <div class="graph-panel-note">差は「貴社 - 業界目安」。緑は有利方向、赤は不利方向です。</div>
+        </div>
+        <div class="graph-panel">
+          <div class="graph-title" style="font-size:13px;margin-bottom:8px;">計算できた値</div>
+          <div class="computed-grid">${computedCards || '<div style="font-size:12px;color:#64748b;">計算できる値がありません。</div>'}</div>
+          <div class="graph-panel-note">入力値から機械的に算出できた項目を並べています。</div>
+        </div>
+      </div>
+    `;
+    root.style.display = "block";
+  }
+
+  function renderChatAnalysisGraphs(graphs) {
+    renderAnalysisGraphsBlock("chat-analysis-graphs", graphs);
+  }
+
+  function renderResultAnalysisGraphs(graphs) {
+    renderAnalysisGraphsBlock("result-analysis-graphs", graphs);
+  }
+
+  function renderHeatmapInsights(container, rows) {
+    if (!container) return;
+    if (!rows || rows.length === 0) {
+      container.innerHTML = '<div style="font-size:12px;color:#64748b;">集計データがありません。</div>';
+      return;
+    }
+    const bands = ["～50", "50〜65", "65〜80", "80〜"];
+    const colorFor = (rate) => {
+      if (rate == null || !Number.isFinite(rate)) return "#e2e8f0";
+      const pct = clamp(rate * 100, 0, 100);
+      const red = Math.round(239 - pct * 1.8);
+      const green = Math.round(68 + pct * 1.4);
+      return `rgb(${red},${green},90)`;
+    };
+    const html = [
+      `<div class="heatmap-grid">`,
+      `<div class="heatmap-row"><div class="heatmap-head">業種</div>${bands.map(b => `<div class="heatmap-head">${b}</div>`).join("")}</div>`,
+      ...rows.map(row => {
+        const cells = row.cells || [];
+        return `<div class="heatmap-row">
+          <div class="heatmap-label">${escapeHtml(row.industry || "")}</div>
+          ${bands.map(b => {
+            const cell = cells.find(x => x.band === b) || {};
+            const rate = cell.rate;
+            const txt = rate == null ? "—" : `${Math.round(rate * 100)}%`;
+            return `<div class="heatmap-cell" style="background:${colorFor(rate)};">${txt}</div>`;
+          }).join("")}
+        </div>`;
+      }),
+      `</div>`
+    ].join("");
+    container.innerHTML = html;
+  }
+
   async function runPredict() {
     const btn = document.getElementById("submit-btn");
     const errEl = document.getElementById("error-msg");
@@ -1152,6 +1664,8 @@
       depreciation: numValue("depreciation") || 0,
       // 財務追加フィールド
       other_assets: numValue("other_assets") || 0,
+      net_assets:   numValue("net_assets") || 0,
+      total_assets:  numValue("total_assets") || 0,
       rent:         numValue("rent") || 0,
       rent_expense: numValue("rent_expense") || 0,
       // 取引情報
@@ -1169,12 +1683,13 @@
       lease_asset_score: numValue("lease_asset_score", 100),
       humor_style: humourMode,
     };
+    lastInputValues = vals;
     // 提案金利は入力があれば送信（API 側でベースレートを差し引いてスプレッドに変換）
     const _pr = numValue("proposed_rate", NaN);
     if (!isNaN(_pr)) vals.proposed_rate = _pr;
 
     // BR-229: 財務詳細フィールドのマイナス値チェック
-    // 営業利益は赤字案件を扱うためマイナス入力を許可する。
+    // 営業利益・経常利益・当期純利益は赤字案件を扱うためマイナス入力を許可する。
     const _negChecks = [
       { key: "bank_credit",  label: "銀行借入残高" },
       { key: "machines",     label: "機械設備残高" },
@@ -1219,7 +1734,7 @@
 
   function showResult({ score, probability, judgment,
                         recommended_rate, base_rate, spread_pred, rate_range,
-                        warnings, rule_check_status, aurion, quantum_risk, streamlit, advisor }) {
+                        warnings, rule_check_status, aurion, quantum_risk, streamlit, advisor, charts, insights, indicator_analysis }) {
     lastScoreResult = arguments[0];
     document.getElementById("score-val").textContent = score;
     document.getElementById("prob-val").textContent = (probability * 100).toFixed(1) + "%";
@@ -1266,6 +1781,8 @@
     renderQRisk(aurion?.q_risk);
     renderCompetitorPressure(aurion?.competitor_pressure);
     renderAdvisor(advisor);
+    renderAnalysisGraphs(charts || {});
+    renderResultAnalysisGraphs(indicator_analysis || {});
     document.getElementById("ai-chat-card").style.display = "block";
 
     document.getElementById("result").classList.add("visible");
@@ -1306,6 +1823,7 @@
           message,
           history: chatHistory.slice(-10),
           score_result: lastScoreResult || {},
+          input_data: lastInputValues || {},
           use_obsidian: true,
           use_web: document.getElementById("web-toggle").checked,
           humor_style: humourMode,
@@ -1329,9 +1847,11 @@
         metaParts.push(`Web参照: ${data.web_hits.length}件${sources ? ` (${sources})` : ""}`);
       }
       if (data.wiki_saved) metaParts.push("Wikiへ自動保存しました");
+      if (data.weekly_saved) metaParts.push("週次レビューへ保存しました");
       const meta = metaParts.join(" | ");
       renderChatMessage("assistant", reply, meta);
       chatHistory.push({ role: "assistant", content: reply });
+      renderChatAnalysisGraphs(data.analysis_graphs || {});
       status.textContent = data.web_hits?.length ? "回答しました。Web参照あり。" : (data.saved ? "必要なメモだけObsidianへ保存しました。" : "回答しました.");
     } catch (e) {
       renderChatMessage("assistant", "AIチャットでエラーが出ました: " + (e.message || e));
@@ -1489,8 +2009,19 @@
       const positives = advisor.positive_factors || advisor.evidence || [];
       const concerns = advisor.concerns_and_responses || risks;
       const counterOffer = advisor.counter_offer || [];
+      const additionalGuidance = advisor.additional_guidance || [];
+      const probabilityUplifts = advisor.probability_uplifts || [];
+      const indicatorTakeaways = advisor.indicator_takeaways || [];
       const listHtml = (items) => items.length
         ? `<ul>${items.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul>`
+        : "<div>—</div>";
+      const upliftHtml = (items) => items.length
+        ? `<ul>${items.map(x => {
+            const from = Number(x.from ?? 0).toFixed(1);
+            const to = Number(x.to ?? 0).toFixed(1);
+            const gain = Number(x.gain_pct ?? 0).toFixed(1);
+            return `<li><strong>${escapeHtml(x.title || "")}</strong>：${gain}pt目安（${from}% → ${to}%）<div style="font-size:11px;color:#64748b;">${escapeHtml(x.condition || "")} / ${escapeHtml(x.reason || "")}</div></li>`;
+          }).join("")}</ul>`
         : "<div>—</div>";
 
       panel.innerHTML = `
@@ -1498,12 +2029,16 @@
           <span style="font-size:0.8em;font-weight:600;color:#64748b;">${escapeHtml(decision.stance || "")}</span>
         </div>
         <div class="advisor-summary">${escapeHtml(advisor.summary)}</div>
+        ${advisor.indicator_summary ? `<div class="advisor-section"><strong>計算指標の見立て:</strong> ${escapeHtml(advisor.indicator_summary)}</div>` : ""}
+        ${indicatorTakeaways.length ? `<div class="advisor-section"><strong>計算指標ベースの次の一手</strong>${listHtml(indicatorTakeaways)}</div>` : ""}
         <div class="advisor-section"><strong>審議の要旨:</strong> ${escapeHtml(advisor.executive_summary || advisor.strategy || "")}</div>
         <div class="advisor-section"><strong>まず取る作戦:</strong> ${escapeHtml(advisor.strategy || "")}</div>
         <div class="advisor-section"><strong>承認条件</strong>${listHtml(approvalConditions)}</div>
         <div class="advisor-section"><strong>押し材料</strong>${listHtml(positives)}</div>
         <div class="advisor-section"><strong>懸念点と返し</strong>${listHtml(concerns)}</div>
         ${counterOffer.length ? `<div class="advisor-section"><strong>逆転の条件</strong>${listHtml(counterOffer)}</div>` : ""}
+        ${additionalGuidance.length ? `<div class="advisor-section"><strong>追加の指南</strong>${listHtml(additionalGuidance)}</div>` : ""}
+        ${probabilityUplifts.length ? `<div class="advisor-section"><strong>ベイズ上振れ見込み</strong>${upliftHtml(probabilityUplifts)}</div>` : ""}
         <div class="advisor-section"><strong>営業への言い方</strong>${listHtml(salesTalk)}</div>
         ${advisor.humor_note ? `<div class="advisor-section" style="background:#fff7ed;border-left:4px solid #f97316;border-radius:8px;padding:8px 10px;">${escapeHtml(advisor.humor_note)}</div>` : ""}
         <div class="advisor-section" style="color:#64748b;">
@@ -1548,7 +2083,8 @@
     ["nenshu", "gross_profit", "ord_profit", "net_income",
      "dep_expense", "acquisition_cost", "lease_credit",
      "op_profit", "bank_credit", "machines", "depreciation",
-     "other_assets", "rent", "rent_expense", "contracts"].forEach(id => {
+     "other_assets", "net_assets", "total_assets",
+     "rent", "rent_expense", "contracts"].forEach(id => {
       document.getElementById(id).value = "";
     });
     document.getElementById("industry").selectedIndex = 0;
@@ -1559,8 +2095,11 @@
     document.getElementById("chat-log").innerHTML = "";
     document.getElementById("chat-status").textContent = "";
     document.getElementById("chat-input").value = "";
+    document.getElementById("chat-analysis-graphs").innerHTML = "";
+    document.getElementById("chat-analysis-graphs").style.display = "none";
     chatHistory = [];
     lastScoreResult = null;
+    lastInputValues = null;
     document.getElementById("rate-section").style.display = "none";
     document.getElementById("error-msg").classList.remove("visible");
     // 新規フィールドリセット
@@ -1583,6 +2122,12 @@
     const _advisorPanel = document.getElementById("advisor-panel");
     _advisorPanel.style.display = "none";
     _advisorPanel.innerHTML = "";
+    const _graphPanel = document.getElementById("analysis-graphs");
+    _graphPanel.style.display = "none";
+    document.getElementById("radar-graph").innerHTML = "";
+    document.getElementById("factor-graph").innerHTML = "";
+    document.getElementById("result-analysis-graphs").innerHTML = "";
+    document.getElementById("result-analysis-graphs").style.display = "none";
     // 取引情報リセット
     document.getElementById("main_bank").checked = false;
     document.getElementById("deal_source").value = "銀行紹介";
