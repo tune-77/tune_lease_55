@@ -30,6 +30,7 @@ COEFF_AUTO_FILE      = os.path.join(_DATA_DIR, "coeff_auto.json")
 COEFF_HISTORY_FILE   = os.path.join(_DATA_DIR, "coeff_history.jsonl")
 CONSULTATION_MEMORY_FILE = os.path.join(_DATA_DIR, "consultation_memory.jsonl")
 CASE_NEWS_FILE = os.path.join(_DATA_DIR, "case_news.jsonl")
+DASHBOARD_STATS_CACHE_FILE = os.path.join(_DATA_DIR, "dashboard_stats_cache.json")
 
 import hashlib
 import base64
@@ -177,6 +178,78 @@ def load_all_cases():
     return cases
 
 
+def _compact_recent_case(case: dict) -> dict:
+    result = case.get("result") or {}
+    return {
+        "timestamp": case.get("timestamp"),
+        "final_status": case.get("final_status"),
+        "industry_major": case.get("industry_major") or "",
+        "industry_sub": case.get("industry_sub") or "",
+        "result": {
+            "score": result.get("score"),
+            "hantei": result.get("hantei"),
+        },
+    }
+
+
+def build_dashboard_stats_cache(limit_recent_cases: int = 15) -> dict:
+    """ホーム画面用の軽量集計を作る。"""
+    try:
+        from analysis_regression import run_contract_driver_analysis
+        analysis = run_contract_driver_analysis() or {}
+    except Exception:
+        analysis = {}
+
+    all_cases = load_all_cases()
+    recent_cases = [_compact_recent_case(c) for c in reversed(all_cases[-limit_recent_cases:])] if all_cases else []
+
+    closed_cases = analysis.get("closed_cases") or []
+    scores = []
+    for c in closed_cases:
+        res = c.get("result") or {}
+        score_borrower = res.get("score_borrower")
+        if isinstance(score_borrower, (int, float)):
+            scores.append(float(score_borrower))
+
+    avg_score_borrower = sum(scores) / len(scores) if scores else None
+
+    return {
+        "generated_at": datetime.datetime.now().isoformat(),
+        "analysis": {
+            "closed_count": analysis.get("closed_count"),
+            "avg_financials": analysis.get("avg_financials"),
+            "tag_ranking": analysis.get("tag_ranking"),
+            "top3_drivers": analysis.get("top3_drivers"),
+            "qualitative_summary": analysis.get("qualitative_summary"),
+            "avg_score_borrower": avg_score_borrower,
+        },
+        "recent_cases": recent_cases,
+    }
+
+
+def load_dashboard_stats_cache() -> dict | None:
+    if not os.path.exists(DASHBOARD_STATS_CACHE_FILE):
+        return None
+    try:
+        with open(DASHBOARD_STATS_CACHE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def refresh_dashboard_stats_cache() -> dict | None:
+    payload = build_dashboard_stats_cache()
+    try:
+        os.makedirs(os.path.dirname(DASHBOARD_STATS_CACHE_FILE), exist_ok=True)
+        tmp_path = DASHBOARD_STATS_CACHE_FILE + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, cls=CustomJSONEncoder)
+        os.replace(tmp_path, DASHBOARD_STATS_CACHE_FILE)
+    except Exception as e:
+        print(f"[Error in refresh_dashboard_stats_cache]: {e}", file=sys.stderr)
+    return payload
+
+
 def load_past_cases():
     """save_case_log で保存された過去の審査ログをすべて読み込む。"""
     return load_all_cases()
@@ -275,6 +348,7 @@ def delete_case(case_id: str) -> bool:
         with closing(_open_db()) as conn:
             conn.execute("DELETE FROM past_cases WHERE id = ?", (case_id,))
             conn.commit()
+        refresh_dashboard_stats_cache()
         return True
     except Exception:
         return False
@@ -300,6 +374,7 @@ def update_case(case_id: str, updates: dict) -> bool:
                 (json_str, final_status, case_id),
             )
             conn.commit()
+        refresh_dashboard_stats_cache()
         return True
     except Exception:
         return False
@@ -704,6 +779,7 @@ def save_case_log(data):
             ))
             conn.commit()
         _trigger_ml_features_update(case_id)
+        refresh_dashboard_stats_cache()
         return case_id
     except Exception as e:
         import traceback
@@ -848,6 +924,22 @@ def update_case_field(case_id: str, key: str, value: object) -> bool:
             cursor.execute(f"UPDATE past_cases SET {update_cols} WHERE id = ?", tuple(update_args))
             conn.commit()
         _trigger_ml_features_update(case_id)
+        if key in {
+            "final_status",
+            "industry_sub",
+            "industry_major",
+            "score",
+            "result",
+            "final_rate",
+            "base_rate_at_time",
+            "final_result_date",
+            "registration_date",
+            "estimate_sent_date",
+            "customer_response_date",
+            "qualitative_scoring",
+            "qualitative_scoring_correction",
+        }:
+            refresh_dashboard_stats_cache()
         return True
     except Exception as e:
         import traceback

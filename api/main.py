@@ -84,6 +84,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.on_event("startup")
+def _warm_dashboard_cache():
+    try:
+        from data_cases import load_dashboard_stats_cache, refresh_dashboard_stats_cache
+        if load_dashboard_stats_cache() is None:
+            refresh_dashboard_stats_cache()
+    except Exception:
+        pass
+
 @app.get("/")
 def read_root():
     return {"message": "Lease Scoring API is running."}
@@ -544,21 +554,13 @@ def generate_gunshi_chat(req: GunshiChatRequest):
 @app.get("/api/dashboard/stats")
 def get_dashboard_stats():
     try:
-        from analysis_regression import run_contract_driver_analysis
-    except ImportError:
-        import sys
-        if _REPO_ROOT not in sys.path:
-            sys.path.insert(0, _REPO_ROOT)
-        from analysis_regression import run_contract_driver_analysis
-    from data_cases import load_all_cases
-    try:
-        analysis = run_contract_driver_analysis()
-        all_cases = load_all_cases()
-        recent_cases = list(reversed(all_cases[-15:])) if all_cases else []
-        return {
-            "analysis": analysis,
-            "recent_cases": recent_cases
-        }
+        from data_cases import load_dashboard_stats_cache, refresh_dashboard_stats_cache
+        payload = load_dashboard_stats_cache()
+        if payload is None:
+            payload = refresh_dashboard_stats_cache()
+        if payload is None:
+            raise HTTPException(status_code=503, detail="dashboard stats cache unavailable")
+        return payload
     except Exception as e:
         import traceback
         traceback.print_exc()

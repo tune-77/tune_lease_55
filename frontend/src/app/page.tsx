@@ -1,9 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import axios from "axios";
-import { API_BASE } from "../lib/api";
-import { Activity, ArrowRight, Building, Calculator, CheckCircle, PieChart, ShieldAlert, AlignLeft, Send } from "lucide-react";
+import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2 } from "lucide-react";
 import ScoreDAG from "../components/ScoreDAG";
 import { ScoringFormData, defaultFormData } from "../types";
 import FormGeneral from "../components/form/FormGeneral";
@@ -20,10 +20,10 @@ import { triggerMebuki } from "../components/layout/FloatingMebuki";
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [result, setResult] = useState<any>(null);
   const [formData, setFormData] = useState<ScoringFormData>(defaultFormData);
   const [gunshiText, setGunshiText] = useState<string>("");
-  const [apiError, setApiError] = useState<string | null>(null);
 
   // タブ管理
   const [activeTab, setActiveTab] = useState<"input" | "analysis">("input");
@@ -38,7 +38,6 @@ export default function Dashboard() {
 
   const handleSubmit = async () => {
     setLoading(true);
-    setApiError(null);
     try {
       const res = await axios.post(`/api/score/full`, formData);
       setResult(res.data);
@@ -79,6 +78,48 @@ export default function Dashboard() {
       </div>
 
       <div className="px-4 md:px-6 lg:px-8 max-w-[1600px] mx-auto pb-20">
+        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          <Link href="/lease-kun" className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Primary</div>
+              <div className="font-black text-slate-800 mt-1 flex items-center gap-2"><MessageSquare className="w-4 h-4 text-amber-500" />スマホUIで入力</div>
+              <div className="text-xs text-slate-500 mt-1">入力が少ない運用はこちら。</div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-400" />
+          </Link>
+          <Link href="/" className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Core</div>
+              <div className="font-black text-slate-800 mt-1 flex items-center gap-2"><Calculator className="w-4 h-4 text-blue-500" />審査・分析</div>
+              <div className="text-xs text-slate-500 mt-1">入力と分析をまとめて見る入口。</div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-400" />
+          </Link>
+          <Link href="/competitor" className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Insight</div>
+              <div className="font-black text-slate-800 mt-1 flex items-center gap-2"><Share2 className="w-4 h-4 text-orange-500" />競合関係グラフ</div>
+              <div className="text-xs text-slate-500 mt-1">競合の勢力図を確認。</div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-400" />
+          </Link>
+          <Link href="/similar" className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Insight</div>
+              <div className="font-black text-slate-800 mt-1 flex items-center gap-2"><Network className="w-4 h-4 text-teal-500" />案件類似ネットワーク</div>
+              <div className="text-xs text-slate-500 mt-1">似た案件の関係を追う。</div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-400" />
+          </Link>
+        </div>
+
+        <div className="mb-6">
+          <Link href="/visual" className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-white font-bold shadow-sm hover:bg-slate-800 transition-colors">
+            <Eye className="w-4 h-4" />
+            ビジュアルインサイト
+          </Link>
+        </div>
+
         <div className="flex flex-col xl:flex-row gap-6">
           
           {/* 左カラム: メイン操作エリア (入力・分析) */}

@@ -3,10 +3,42 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import { PieChart, BarChart3, TrendingUp, Users, Target, Activity, CheckCircle, XCircle } from 'lucide-react';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+
+type TopDriver = {
+  label?: string;
+  coef?: number;
+  direction?: string;
+};
+
+type DashboardAnalysis = {
+  closed_count?: number;
+  avg_financials?: Record<string, number | string | null>;
+  tag_ranking?: Array<[string, number]>;
+  top3_drivers?: TopDriver[];
+  qualitative_summary?: {
+    avg_weighted?: number | null;
+  } | null;
+  avg_score_borrower?: number | null;
+};
+
+type RecentCase = {
+  timestamp?: string;
+  final_status?: string;
+  industry_major?: string;
+  industry_sub?: string;
+  result?: {
+    score?: number | null;
+    hantei?: string;
+  };
+};
+
+type DashboardStats = {
+  analysis?: DashboardAnalysis;
+  recent_cases?: RecentCase[];
+};
 
 export default function HomeDashboard() {
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -40,12 +72,7 @@ export default function HomeDashboard() {
   const analysis = stats?.analysis;
   const recentCases = stats?.recent_cases || [];
 
-  const avgScoreBorrower = (() => {
-    const scores = (analysis?.closed_cases || [])
-      .map((c: any) => c?.result?.score_borrower)
-      .filter((v: any) => typeof v === 'number');
-    return scores.length > 0 ? scores.reduce((a: number, b: number) => a + b, 0) / scores.length : null;
-  })();
+  const avgScoreBorrower = analysis?.avg_score_borrower ?? null;
 
   return (
     <div className="p-8 min-h-[calc(100vh-2rem)] animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -157,7 +184,7 @@ export default function HomeDashboard() {
               <p className="text-xs text-slate-500 font-bold mb-6">成約に最も寄与している因子（回帰分析結果）</p>
               
               <div className="space-y-4">
-                {analysis.top3_drivers?.map((d: any, index: number) => (
+                {analysis.top3_drivers?.map((d: TopDriver, index: number) => (
                   <div key={index} className="flex items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
                     <div className="w-8 h-8 shrink-0 bg-slate-800 text-white rounded-full flex items-center justify-center font-black">
                       {index + 1}
@@ -193,7 +220,7 @@ export default function HomeDashboard() {
                   </thead>
                   <tbody>
                     {analysis.avg_financials && Object.entries(analysis.avg_financials)
-                      .map(([k, v]: [string, any], i) => (
+                      .map(([k, v]: [string, number | string | null]) => (
                       <tr key={k} className="border-b last:border-b-0 hover:bg-white transition-colors bg-white">
                         <td className="px-4 py-3 font-semibold text-slate-700">{k}</td>
                         <td className="px-4 py-3 text-right font-black text-indigo-700">
@@ -216,7 +243,7 @@ export default function HomeDashboard() {
         <p className="text-slate-500 font-bold">まだ案件履歴がありません。審査画面からデータを入力・実行してください。</p>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {recentCases.slice(0, 10).map((c: any, i: number) => {
+          {recentCases.slice(0, 10).map((c: RecentCase, i: number) => {
             const isClosed = c.final_status === "成約";
             const isLost = c.final_status === "失注";
             return (
