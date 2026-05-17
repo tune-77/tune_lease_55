@@ -1109,11 +1109,18 @@ def get_ai_consultation_prompt(
     from web_services import get_advice_context_extras
     from knowledge import build_knowledge_context
     from data_cases import load_consultation_memory
+    from obsidian_ai_context import build_obsidian_ai_context_block
 
     res = res or {}
     score = res.get("score")
     comparison = res.get("comparison", "")
     selected_major = res.get("industry_major", "")
+    obsidian_query = " ".join(
+        str(item or "")
+        for item in (q, selected_sub, selected_major, res.get("judgment") or res.get("hantei") or "")
+        if item
+    )
+    obsidian_block = build_obsidian_ai_context_block(obsidian_query, heading="Obsidian知識ノート・過去メモ")
 
     # 業界情報（Web検索キャッシュ）
     advice_extras = get_advice_context_extras(selected_sub, selected_major) or ""
@@ -1181,11 +1188,12 @@ def get_ai_consultation_prompt(
             "あなたはリース審査のAI審査オフィサーです。\n"
             "【重要】以下の【社内知識ベース（AnythingLLM）】に記載された内容を最優先で参照し、"
             "その内容を根拠に回答してください。\n"
-            "社内知識ベースに記載がない部分は、補足情報（業界情報・審査スコア等）を参考にしてください。"
+            "社内知識ベースに記載がない部分は、Obsidian知識ノートや補足情報（業界情報・審査スコア等）を参考にしてください。"
         )
         parts = [
             system_instruction,
             anything_block,          # ← 最優先・先頭配置
+            obsidian_block,
             result_block,
             trend_block,
             advice_block,
@@ -1196,7 +1204,8 @@ def get_ai_consultation_prompt(
         ]
     else:
         parts = [
-            "あなたはリース審査のAI審査オフィサーです。以下の情報を参照して、審査担当者の質問に答えてください。",
+            "あなたはリース審査のAI審査オフィサーです。以下の情報を参照して、審査担当者の質問に答えてください。Obsidian知識ノートがある場合は、そこを優先して根拠にしてください。",
+            obsidian_block,
             result_block,
             trend_block,
             advice_block,

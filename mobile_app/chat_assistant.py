@@ -110,7 +110,9 @@ def _fallback_chat_packet(
         " ".join(item.get("path", "") + " " + item.get("snippet", "") for item in obsidian_hits),
         " ".join(item.get("title", "") + " " + item.get("snippet", "") for item in web_hits),
     ])
-    if any(k in joined for k in ("条件付き承認", "条件付承認", "条件付", "条件付き", "承認条件")):
+    # ユーザーメッセージのみで判定（Obsidianスニペットの内容で誤トリガーしないよう）
+    msg_lower = message.lower()
+    if any(k in msg_lower for k in ("条件付き承認", "条件付承認", "条件付", "条件付き", "承認条件")):
         reply = "条件付き承認なら、追加資料・期間短縮・前受金・保証担保の順で整理しておけば十分戦えます。最後は営業向けの一言に落とします。"
         improvement_items = [{
             "title": "条件付き承認の推奨アクション自動提示",

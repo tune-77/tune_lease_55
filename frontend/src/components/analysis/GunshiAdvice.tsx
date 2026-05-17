@@ -21,6 +21,11 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
     const fetchChat = async () => {
       setLoading(true);
       try {
+        const subsidyText = [
+          formData.industry_detail,
+          formData.passion_text,
+          formData.asset_name,
+        ].join(" ");
         const payload = {
           score,
           pd_percent,
@@ -28,12 +33,12 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
           asset_name: formData.asset_name || "",
           resale: "標準",
           repeat_cnt: 1,
-          subsidy: false,
-          bank: false,
-          intuition: formData.shinsa_intuition || 50,
+          subsidy: /補助金|助成金|ものづくり|省力化/.test(subsidyText),
+          bank: formData.deal_source === "銀行紹介" || formData.main_bank === "メイン先",
+          intuition: formData.intuition || 50,
           posterior: 0.5
         };
-        const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/gunshi/chat`, payload);
+        const res = await axios.post(`/api/gunshi/chat`, payload);
         const fetchedText = res.data.chat_text;
         setChatText(fetchedText);
         if (onChatLoaded) {

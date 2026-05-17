@@ -11,6 +11,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from obsidian_query import split_query_terms
+
 
 DEFAULT_VAULT = Path("/Users/kobayashiisaoryou/Documents/Obsidian Vault")
 HUMOR_NOTES = {
@@ -70,6 +72,7 @@ def _keywords_from_res(res: dict[str, Any]) -> set[str]:
         for k in ("industry_sub", "industry_major", "asset_name", "lease_asset_name")
     )
     keywords = {w for w in re.split(r"[\s　/・,、()（）]+", raw) if len(w) >= 2}
+    keywords.update(split_query_terms(raw))
     for fixed in ("建設", "製造", "医療", "福祉", "運輸", "物流", "小売", "サービス", "IT", "OA", "車両"):
         if fixed in raw:
             keywords.add(fixed)

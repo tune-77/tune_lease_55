@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 
+from obsidian_query import split_query_terms
+
 
 def _make_vault(tmp_path: Path) -> Path:
     vault = tmp_path / "vault"
@@ -158,6 +160,84 @@ def test_build_obsidian_digest_combines_multiple_notes(tmp_path, monkeypatch):
     assert "関連ノート数" in digest["digest"]
     assert "追加資料" in digest["digest"] or "前受金" in digest["digest"]
     assert "[[" in digest["digest"]
+
+
+def test_split_query_terms_handles_chatty_japanese_questions():
+    assert split_query_terms("補助金について教えて") == ["補助金"]
+    assert split_query_terms("期待使用期間とリース期間の関係を教えて") == ["期待使用期間", "リース期間", "関係"]
+    assert split_query_terms("格付の見方を教えて") == ["格付", "見方"]
+
+
+def test_search_notes_prioritizes_subsidy_knowledge_over_chat_logs(tmp_path, monkeypatch):
+    vault = _make_vault(tmp_path)
+    knowledge = vault / "Projects" / "tune_lease_55" / "2026-05-13_補助金まとめ.md"
+    knowledge.parent.mkdir(parents=True, exist_ok=True)
+    knowledge.write_text(
+        "# 補助金まとめ\n\n- 中小企業省力化投資補助金\n- ものづくり補助金\n",
+        encoding="utf-8",
+    )
+    for rel in [
+        "Projects/tune_lease_55/AI Chat/2026-05-17.md",
+        "Projects/tune_lease_55/AI Chat/Weekly Review/2026-W20.md",
+        "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-17.md",
+        "Daily/2026-05-17.md",
+    ]:
+        note = vault / rel
+        note.parent.mkdir(parents=True, exist_ok=True)
+        note.write_text("補助金について教えて、というチャットログ。", encoding="utf-8")
+    monkeypatch.setenv("OBSIDIAN_VAULT", str(vault))
+
+    from mobile_app import obsidian_bridge
+    importlib.reload(obsidian_bridge)
+
+    hits = obsidian_bridge.collect_obsidian_context("補助金について教えて", limit=4)
+    assert hits[0]["path"] == "Projects/tune_lease_55/2026-05-13_補助金まとめ.md"
+    assert any("AI Chat" in hit["path"] for hit in hits[1:])
+
+
+def test_search_notes_splits_japanese_chat_query_for_obsidian_search(tmp_path, monkeypatch):
+    vault = _make_vault(tmp_path)
+    knowledge = vault / "Projects" / "tune_lease_55" / "期待使用期間まとめ.md"
+    knowledge.parent.mkdir(parents=True, exist_ok=True)
+    knowledge.write_text(
+        "# 期待使用期間まとめ\n\n- 期待使用期間とリース期間の関係を整理する。\n",
+        encoding="utf-8",
+    )
+    chat_log = vault / "Projects" / "tune_lease_55" / "AI Chat" / "2026-05-17.md"
+    chat_log.parent.mkdir(parents=True, exist_ok=True)
+    chat_log.write_text("期待使用期間とリース期間の関係を教えて、というチャットログ。", encoding="utf-8")
+    monkeypatch.setenv("OBSIDIAN_VAULT", str(vault))
+
+    from mobile_app import obsidian_bridge
+    importlib.reload(obsidian_bridge)
+
+    terms = obsidian_bridge._expand_query_terms("期待使用期間とリース期間の関係を教えて")
+    assert "期待使用期間" in terms
+    assert "リース期間" in terms
+    hits = obsidian_bridge.collect_obsidian_context("期待使用期間とリース期間の関係を教えて", limit=3)
+    assert hits[0]["path"] == "Projects/tune_lease_55/期待使用期間まとめ.md"
+
+
+def test_obsidian_ai_context_block_uses_split_search_terms(tmp_path, monkeypatch):
+    vault = _make_vault(tmp_path)
+    knowledge = vault / "Projects" / "tune_lease_55" / "2026-05-13_補助金まとめ.md"
+    knowledge.parent.mkdir(parents=True, exist_ok=True)
+    knowledge.write_text(
+        "# 補助金まとめ\n\n- 中小企業省力化投資補助金\n- ものづくり補助金\n",
+        encoding="utf-8",
+    )
+    chat_log = vault / "Projects" / "tune_lease_55" / "AI Chat" / "2026-05-17.md"
+    chat_log.parent.mkdir(parents=True, exist_ok=True)
+    chat_log.write_text("補助金について教えて、というチャットログ。", encoding="utf-8")
+    monkeypatch.setenv("OBSIDIAN_VAULT", str(vault))
+
+    from mobile_app import obsidian_bridge
+    from obsidian_ai_context import build_obsidian_ai_context_block
+    importlib.reload(obsidian_bridge)
+
+    block = build_obsidian_ai_context_block("補助金について教えて")
+    assert "Projects/tune_lease_55/2026-05-13_補助金まとめ.md" in block
+    assert "中小企業省力化投資補助金" in block
 
 
 def test_append_wiki_note_writes_hub(tmp_path, monkeypatch):

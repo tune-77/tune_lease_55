@@ -476,6 +476,32 @@ def generate_gunshi_chat(req: GunshiChatRequest):
             top_phrases=sampled,
             asset_name=req.asset_name
         )
+        try:
+            from obsidian_ai_context import build_obsidian_ai_context_block
+
+            obsidian_query_parts = [
+                req.industry_major,
+                req.asset_name,
+                req.resale,
+                "リース審査",
+                "逆転アドバイス",
+            ]
+            if req.subsidy:
+                obsidian_query_parts.append("補助金")
+            if req.bank:
+                obsidian_query_parts.append("銀行紹介")
+            obsidian_block = build_obsidian_ai_context_block(
+                " ".join(str(part or "") for part in obsidian_query_parts),
+                heading="Obsidian知識ノート・過去メモ",
+            )
+            if obsidian_block:
+                prompt += (
+                    "\n\n【追加参照: Obsidian】\n"
+                    "次のObsidian知識ノートを優先的に踏まえて、回答の具体性を上げてください。\n"
+                    f"{obsidian_block}"
+                )
+        except Exception:
+            pass
 
         reply_text = ""
         try:
@@ -1511,4 +1537,3 @@ def _run_market_agent_standalone():
     ]
     res_raw = _chat_for_thread("gemini", "", messages, timeout_seconds=60, api_key=api_key)
     return {"content": (res_raw.get("message") or {}).get("content", "")}
-
