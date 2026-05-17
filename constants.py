@@ -328,6 +328,10 @@ QUALITATIVE_SCORING_LEVELS = [
 ]
 
 QUALITATIVE_SCORING_LEVEL_LABELS = {v[0]: v[1] for v in QUALITATIVE_SCORING_LEVELS}
+
+# 案件 final_status の有効値（Flask / FastAPI 共通）
+FINAL_STATUS_VALID = frozenset({"成約", "失注", "未登録", "スコアリングのみ", "検収", "検収完了"})
+
 QUALITATIVE_SCORE_RANKS = [
     {"min": 80, "label": "A", "text": "優良", "desc": "定性面で問題なし"},
     {"min": 60, "label": "B", "text": "良好", "desc": "概ね良好"},

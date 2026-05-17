@@ -788,7 +788,7 @@ def _build_feat_vector(
     return np.array([[feat_map[f] for f in _features]])
 
 
-_STATIC_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp"}
+_STATIC_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".json", ".js", ".webmanifest"}
 
 
 def _grade_label(raw_grade) -> str:
@@ -1285,52 +1285,56 @@ def predict():
     return jsonify(response_payload)
 
 
+_FASTAPI_BASE = os.environ.get("FASTAPI_URL", "http://localhost:8000")
+
+
+def _proxy(method: str, path: str, *, params=None, body=None):
+    """FastAPI への軽量プロキシヘルパー (urllib 標準ライブラリのみ使用)"""
+    import urllib.request
+    import urllib.parse
+    url = f"{_FASTAPI_BASE}{path}"
+    if params:
+        url += "?" + urllib.parse.urlencode(params)
+    data = json.dumps(body).encode() if body is not None else None
+    headers = {"Content-Type": "application/json"} if data else {}
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read()), resp.status
+    except urllib.error.HTTPError as e:
+        return json.loads(e.read() or b"{}"), e.code
+
+
 @app.get("/cases")
 def list_cases():
     limit = min(int(request.args.get("limit", 30)), 200)
     offset = int(request.args.get("offset", 0))
-    try:
-        with _sqlite3.connect(_DB_PATH, timeout=10) as conn:
-            conn.row_factory = _sqlite3.Row
-            conn.execute("PRAGMA busy_timeout=5000")
-            rows = conn.execute(
-                """SELECT id, timestamp, industry_sub, score, final_status, sales_dept,
-                          json_extract(data, '$.judgment')      AS judgment,
-                          json_extract(data, '$.asset_name')    AS asset_name,
-                          json_extract(data, '$.company_name')  AS company_name,
-                          json_extract(data, '$.company_no')    AS company_no
-                   FROM past_cases
-                   ORDER BY timestamp DESC
-                   LIMIT ? OFFSET ?""",
-                (limit, offset),
-            ).fetchall()
-        return jsonify([dict(r) for r in rows])
-    except Exception as _e:
-        return jsonify({"error": str(_e)}), 500
+    sort = request.args.get("sort", "desc")
+    body, status = _proxy("GET", "/api/cases", params={"limit": limit, "offset": offset, "sort": sort})
+    return jsonify(body), status
 
 
 @app.patch("/cases/<case_id>/result")
 def update_case_result(case_id: str):
-    if _update_case is None:
-        return jsonify({"error": "data_cases not loaded"}), 503
     updates = request.get_json(force=True, silent=True) or {}
-    _VALID = {"成約", "失注", "未登録", "スコアリングのみ", "検収", "検収完了"}
-    if "final_status" in updates and updates["final_status"] not in _VALID:
-        return jsonify({"error": "不正なfinal_status"}), 400
-    ok = _update_case(case_id, updates)
-    if not ok:
-        return jsonify({"error": "案件が見つからないか更新失敗"}), 404
-    return jsonify({"status": "updated", "case_id": case_id})
+    # final_status → FastAPI の CaseResultPatch フィールドに変換
+    payload = {}
+    if "final_status" in updates:
+        payload["final_status"] = updates["final_status"]
+    if "competitor_rate" in updates:
+        payload["competitor_rate"] = updates["competitor_rate"]
+    if "loss_reason" in updates:
+        payload["loss_reason"] = updates["loss_reason"]
+    if "final_result_date" in updates:
+        payload["final_result_date"] = updates["final_result_date"]
+    body, status = _proxy("PATCH", f"/api/cases/{case_id}/result", body=payload)
+    return jsonify(body), status
 
 
 @app.delete("/cases/<case_id>")
 def delete_case_record(case_id: str):
-    if _delete_case is None:
-        return jsonify({"error": "data_cases not loaded"}), 503
-    ok = _delete_case(case_id)
-    if not ok:
-        return jsonify({"error": "案件が見つからないか削除失敗"}), 404
-    return jsonify({"status": "deleted", "case_id": case_id})
+    body, status = _proxy("DELETE", f"/api/cases/{case_id}")
+    return jsonify(body), status
 
 
 @app.post("/advisor/strategy")

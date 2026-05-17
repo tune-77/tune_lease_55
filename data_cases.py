@@ -33,6 +33,18 @@ CASE_NEWS_FILE = os.path.join(_DATA_DIR, "case_news.jsonl")
 
 import hashlib
 import base64
+import sqlite3
+from contextlib import closing
+
+
+def _open_db(path: str = DB_PATH):
+    """WAL + busy_timeout を設定した SQLite 接続を返す共通ヘルパ。"""
+    conn = sqlite3.connect(path, timeout=10)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    return conn
+
 
 def hash_company_no(co_no: str) -> str:
     """企業番号（6桁数字など）を6文字の不可逆な英数字ハッシュに変換する"""
@@ -147,7 +159,7 @@ def load_all_cases():
     cases = []
     if os.path.exists(DB_PATH):
         try:
-            with closing(sqlite3.connect(DB_PATH)) as conn:
+            with closing(_open_db()) as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT data FROM past_cases ORDER BY timestamp ASC")
                 for row in cursor.fetchall():
@@ -260,9 +272,7 @@ def delete_case(case_id: str) -> bool:
     if not os.path.exists(DB_PATH):
         return False
     try:
-        import sqlite3
-        from contextlib import closing
-        with closing(sqlite3.connect(DB_PATH)) as conn:
+        with closing(_open_db()) as conn:
             conn.execute("DELETE FROM past_cases WHERE id = ?", (case_id,))
             conn.commit()
         return True
@@ -275,9 +285,7 @@ def update_case(case_id: str, updates: dict) -> bool:
     if not os.path.exists(DB_PATH):
         return False
     try:
-        import sqlite3
-        from contextlib import closing
-        with closing(sqlite3.connect(DB_PATH)) as conn:
+        with closing(_open_db()) as conn:
             row = conn.execute(
                 "SELECT data FROM past_cases WHERE id = ?", (case_id,)
             ).fetchone()
@@ -307,9 +315,7 @@ def save_all_cases(cases):
         return False
 
     try:
-        import sqlite3
-        from contextlib import closing
-        with closing(sqlite3.connect(DB_PATH)) as conn:
+        with closing(_open_db()) as conn:
             cursor = conn.cursor()
             try:
                 cursor.execute("BEGIN")
@@ -643,8 +649,7 @@ def save_case_log(data):
             init_db()
             
         json_str = json.dumps(data, ensure_ascii=False, cls=CustomJSONEncoder)
-        from contextlib import closing
-        with closing(sqlite3.connect(DB_PATH)) as conn:
+        with closing(_open_db()) as conn:
             # テーブルが存在しない場合は作成（DBファイルが存在してもテーブルが欠けているケースに対応）
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS past_cases (
@@ -736,8 +741,7 @@ def save_excluded_grade_case(data):
 
     try:
         json_str = json.dumps(data, ensure_ascii=False, cls=CustomJSONEncoder)
-        from contextlib import closing
-        with closing(sqlite3.connect(DB_PATH)) as conn:
+        with closing(_open_db()) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS excluded_grade_cases (
                     id TEXT PRIMARY KEY,
@@ -806,13 +810,11 @@ def _trigger_ml_features_update(case_id: str) -> None:
 
 def update_case_field(case_id: str, key: str, value: object) -> bool:
     """指定された case_id のレコードに対して、[key] = value を追加・更新する（SQLite版）。"""
-    import sqlite3
     if not case_id or not os.path.exists(DB_PATH):
         return False
-        
+
     try:
-        from contextlib import closing
-        with closing(sqlite3.connect(DB_PATH)) as conn:
+        with closing(_open_db()) as conn:
             cursor = conn.cursor()
             # 該当レコードのdata(JSON文字列)を取得
             cursor.execute("SELECT data FROM past_cases WHERE id = ?", (case_id,))

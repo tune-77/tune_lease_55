@@ -66,7 +66,7 @@ from api.schemas import (
     DealClosureResponse,
 )
 from pydantic import BaseModel
-from typing import List, Any, Dict
+from typing import List, Any, Dict, Optional
 from scoring.deal_closure_engine import build_features, build_features_from_deltas, compute_closure_likelihood
 
 app = FastAPI(
@@ -225,109 +225,157 @@ def calc_deal_closure_probability(req: DealClosureRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/cases")
+def list_cases(limit: int = 30, offset: int = 0, sort: str = "desc"):
+    """過去案件一覧 (limit/offset/sort 対応)"""
+    import json
+    from contextlib import closing
+    from data_cases import _open_db
+
+    limit = min(max(limit, 1), 200)
+    offset = max(offset, 0)
+    order = "DESC" if sort.lower() != "asc" else "ASC"
+    rows = []
+    try:
+        with closing(_open_db()) as conn:
+            import sqlite3
+            conn.row_factory = sqlite3.Row
+            res = conn.execute(
+                f"SELECT id, timestamp, industry_sub, score, final_status, "
+                f"json_extract(data,'$.company_name') AS company_name, "
+                f"json_extract(data,'$.company_no')   AS company_no, "
+                f"json_extract(data,'$.judgment')     AS judgment "
+                f"FROM past_cases ORDER BY timestamp {order} LIMIT ? OFFSET ?",
+                (limit, offset),
+            ).fetchall()
+            for r in res:
+                rows.append(dict(r))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return rows
+
+
+class CaseResultPatch(BaseModel):
+    final_status: Optional[str] = None
+    competitor_rate: Optional[float] = None
+    loss_reason: Optional[str] = None
+    final_result_date: Optional[str] = None
+
+
+@app.patch("/api/cases/{case_id}/result")
+def patch_case_result(case_id: str, req: CaseResultPatch):
+    """案件結果を部分更新 (final_status / competitor_rate / loss_reason / final_result_date)"""
+    from constants import FINAL_STATUS_VALID
+    from data_cases import update_case
+
+    if req.final_status is not None and req.final_status not in FINAL_STATUS_VALID:
+        raise HTTPException(status_code=422, detail=f"不正な final_status: {req.final_status}")
+
+    patches: dict = {}
+    if req.final_status is not None:
+        patches["final_status"] = req.final_status
+    if req.competitor_rate is not None:
+        patches["competitor_rate"] = req.competitor_rate
+    if req.loss_reason is not None:
+        patches["lost_reason"] = req.loss_reason
+    if req.final_result_date is not None:
+        patches["final_result_date"] = req.final_result_date
+
+    if not patches:
+        raise HTTPException(status_code=422, detail="更新フィールドが空です")
+
+    if not update_case(case_id, patches):
+        raise HTTPException(status_code=404, detail="案件が見つからないか更新失敗")
+
+    return {"status": "updated", "case_id": case_id}
+
+
 @app.get("/api/cases/pending")
 def get_pending_cases():
     """全DB(lease_data.db, screening_db.sqlite)から未登録案件を統合して取得する"""
-    import sqlite3
     import json
     from contextlib import closing
+    from data_cases import _open_db
 
-    _lease_db = os.path.join(_REPO_ROOT, "data", "lease_data.db")
     rows = []
 
-    if os.path.exists(_lease_db):
-        try:
-            with closing(sqlite3.connect(_lease_db)) as conn:
-                conn.row_factory = sqlite3.Row
-                res = conn.execute(
-                    "SELECT id, timestamp, industry_sub, score, data "
-                    "FROM past_cases WHERE final_status='未登録' ORDER BY timestamp DESC LIMIT 50"
-                ).fetchall()
-                for r in res:
-                    try: d = json.loads(r["data"] or "{}")
-                    except: d = {}
-                    rows.append({
-                        "id": str(r["id"]),
-                        "company_no": d.get("company_no", ""),
-                        "company_name": d.get("company_name", ""),
-                        "timestamp": r["timestamp"],
-                        "score": r["score"],
-                        "industry": r["industry_sub"] or d.get("industry_major", ""),
-                        "registration_date": d.get("registration_date") or (r["timestamp"] or "")[:10],
-                        "estimate_sent_date": d.get("estimate_sent_date") or (r["timestamp"] or "")[:10],
-                        "final_result_date": d.get("final_result_date"),
-                        "_source": "past_cases"
-                    })
-        except Exception: pass
+    try:
+        with closing(_open_db()) as conn:
+            import sqlite3
+            conn.row_factory = sqlite3.Row
+            res = conn.execute(
+                "SELECT id, timestamp, industry_sub, score, data "
+                "FROM past_cases WHERE final_status='未登録' ORDER BY timestamp DESC LIMIT 50"
+            ).fetchall()
+            for r in res:
+                try:
+                    d = json.loads(r["data"] or "{}")
+                except Exception:
+                    d = {}
+                rows.append({
+                    "id": str(r["id"]),
+                    "company_no": d.get("company_no", ""),
+                    "company_name": d.get("company_name", ""),
+                    "timestamp": r["timestamp"],
+                    "score": r["score"],
+                    "industry": r["industry_sub"] or d.get("industry_major", ""),
+                    "registration_date": d.get("registration_date") or (r["timestamp"] or "")[:10],
+                    "estimate_sent_date": d.get("estimate_sent_date") or (r["timestamp"] or "")[:10],
+                    "final_result_date": d.get("final_result_date"),
+                    "_source": "past_cases"
+                })
+    except Exception:
+        pass
 
     return rows
 
-@app.delete("/api/cases/{case_id}")
-def delete_case(case_id: str):
-    """案件を past_cases から削除する"""
-    import sqlite3
+@app.get("/api/cases/{case_id}")
+def get_case_detail(case_id: str):
+    """案件の全データを返す（result + inputs を含む）"""
+    import json
     from contextlib import closing
-    _lease_db = os.path.join(_REPO_ROOT, "data", "lease_data.db")
-    if os.path.exists(_lease_db):
-        try:
-            with closing(sqlite3.connect(_lease_db)) as conn:
-                conn.execute("DELETE FROM past_cases WHERE id = ?", (str(case_id),))
-                conn.commit()
-        except Exception: pass
-    return {"message": "Deleted if existed", "case_id": case_id}
+    from data_cases import _open_db
+
+    try:
+        with closing(_open_db()) as conn:
+            import sqlite3
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT data FROM past_cases WHERE id = ?", (case_id,)
+            ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Case not found")
+        return json.loads(row["data"] or "{}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.delete("/api/cases/operation/clear-all")
 def clear_all_pending_cases():
     """未登録案件をすべて削除する（一括クリア）"""
-    import sqlite3
-    from contextlib import closing
+    from data_cases import _open_db
     try:
-        _ldb = os.path.join(_REPO_ROOT, "data", "lease_data.db")
-        if os.path.exists(_ldb):
-            with closing(sqlite3.connect(_ldb)) as conn:
-                conn.execute("DELETE FROM past_cases WHERE final_status='未登録'")
-                conn.commit()
+        with _open_db() as conn:
+            conn.execute("DELETE FROM past_cases WHERE final_status='未登録'")
+            conn.commit()
         return {"message": "Cleared all pending cases"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-@app.post("/api/cases/register")
-def register_case(req: CaseRegisterRequest):
+@app.delete("/api/cases/{case_id}")
+def delete_case(case_id: str):
+    """案件を past_cases から削除する"""
+    from data_cases import _open_db
     try:
-        from data_cases import update_case
-        patches = {
-            "final_status": req.status,
-            "final_rate": req.final_rate,
-            "base_rate_at_time": req.base_rate_at_time,
-            "loan_conditions": req.loan_conditions,
-            "competitor_name": req.competitor_name,
-            "competitor_rate": req.competitor_rate,
-            "note": req.note
-        }
-        if req.status == "成約" and req.final_rate > 0:
-            patches["winning_spread"] = req.final_rate - req.base_rate_at_time
-        if req.status == "失注":
-            patches["lost_reason"] = req.lost_reason
+        with _open_db() as conn:
+            conn.execute("DELETE FROM past_cases WHERE id = ?", (str(case_id),))
+            conn.commit()
+    except Exception:
+        pass
+    return {"message": "Deleted if existed", "case_id": case_id}
 
-        success = update_case(req.case_id, patches)
-        if not success:
-            raise HTTPException(status_code=404, detail="Case not found or update failed")
-        
-        # 統計やAI学習のトリガー（Streamlit版と同等の処理）
-        try:
-            from shinsa_gunshi import refresh_evidence_weights
-            refresh_evidence_weights()
-        except Exception:
-            pass
-            
-        return {"message": "Successfully registered", "case_id": req.case_id}
-    except HTTPException:
-        raise
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
 
 class AdviseRequest(BaseModel):
     score: float
@@ -1049,11 +1097,16 @@ def register_case_result(req: CaseRegistration):
     if req.status == "失注":
         patches["lost_reason"] = req.lost_reason
 
-    if update_case(target_case_id, patches):
-        # 自動最適化ロジックなどのトリガー（もしあれば）
-        return {"status": "success", "message": f"Results updated for {target_case_id}"}
-    else:
+    if not update_case(target_case_id, patches):
         raise HTTPException(status_code=500, detail="Failed to update DB")
+
+    try:
+        from shinsa_gunshi import refresh_evidence_weights
+        refresh_evidence_weights()
+    except Exception:
+        pass
+
+    return {"status": "success", "message": f"Results updated for {target_case_id}"}
 
 # ── アプリログ
 @app.get("/api/logs/app")

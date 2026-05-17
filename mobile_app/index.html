@@ -2,8 +2,14 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>めぶきちゃん簡易審査</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/mebuki.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="簡易審査">
+  <meta name="theme-color" content="#1e3a5f">
   <style>
     :root {
       --navy:  #1e3a5f;
@@ -29,9 +35,38 @@
     }
 
     .wrapper {
-      max-width: 480px;
+      max-width: 1400px;
       margin: 0 auto;
       padding: 0 0 40px;
+    }
+
+    /* ─── レスポンシブ 2カラム ─── */
+    .main-grid {
+      display: flex;
+      flex-direction: column;
+    }
+    .left-col, .right-col { min-width: 0; }
+
+    /* タブレット: 1カラム幅広 */
+    @media (min-width: 768px) and (max-width: 1023px) {
+      .wrapper { max-width: 800px; }
+    }
+
+    /* PC: 2カラム Grid */
+    @media (min-width: 1024px) {
+      .main-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        align-items: start;
+      }
+      .right-col {
+        position: sticky;
+        top: 16px;
+      }
+      .btn-row {
+        margin-left: 12px;
+        margin-right: 12px;
+      }
     }
 
     /* ─── ヘッダー ─── */
@@ -861,6 +896,9 @@
     <p>業種・財務・取引情報でリース成約スコアを診断</p>
   </div>
 
+  <div class="main-grid">
+  <div class="left-col">
+
   <!-- 入力フォーム -->
   <div class="card">
     <div class="card-title">財務情報を入力</div>
@@ -1326,6 +1364,9 @@
     </div>
   </div>
 
+  </div><!-- /left-col -->
+  <div class="right-col">
+
   <!-- 結果カード -->
   <div class="card" id="result">
     <div class="card-title">審査結果</div>
@@ -1465,6 +1506,16 @@
 
   <div class="footer">
     ※ この診断は参考値です。正式審査は別途行います。
+  </div>
+
+  </div><!-- /right-col -->
+  </div><!-- /main-grid -->
+
+  <!-- iOS PWAインストールガイド -->
+  <div id="ios-install-banner" style="display:none;margin:12px;padding:14px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;font-size:13px;color:#1e40af;">
+    📲 <strong>ホーム画面に追加する:</strong> Safari の「共有」ボタン → 「ホーム画面に追加」をタップ
+    <button onclick="document.getElementById('ios-install-banner').style.display='none'"
+      style="float:right;border:none;background:none;font-size:16px;cursor:pointer;color:#64748b;">✕</button>
   </div>
 
 </div>
@@ -2628,6 +2679,23 @@
       msg.textContent = "❌ " + e.message;
       msg.style.color = "#ef4444";
     }
+  }
+</script>
+
+<script>
+  // iOS PWA バナー表示
+  const isIos = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  if (isIos && !isStandalone) {
+    document.getElementById('ios-install-banner').style.display = 'block';
+  }
+
+  // Service Worker 登録
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .catch(err => console.warn('SW registration failed:', err));
+    });
   }
 </script>
 </body>

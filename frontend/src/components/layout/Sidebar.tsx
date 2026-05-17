@@ -3,12 +3,12 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { 
-  Home, MessageSquare, ClipboardCheck, FileText, Bot, Zap, Factory, 
-  PenTool, Users, Wrench, PencilRuler, History, ScrollText, 
-  PieChart, LineChart, Target, Settings, Calendar, Share2, Network, 
+import {
+  Home, MessageSquare, ClipboardCheck, FileText, Bot, Zap, Factory,
+  PenTool, Users, Wrench, PencilRuler, History, ScrollText,
+  PieChart, LineChart, Target, Settings, Calendar, Share2, Network,
   Eye, BarChart3, TrendingUp, Globe, ChevronDown, ChevronRight, Building,
-  PanelLeftClose, PanelLeftOpen, X
+  PanelLeftClose, PanelLeftOpen, X, Table2
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
 
@@ -33,6 +33,7 @@ export default function Sidebar() {
       items: [
         { name: '汎用エージェントハブ', href: '/agent-hub', icon: Bot, color: 'text-violet-400' },
         { name: '結果登録 (成約/失注)', href: '/register', icon: PenTool, color: 'text-rose-400' },
+        { name: '過去案件一覧', href: '/cases', icon: Table2, color: 'text-cyan-400' },
       ]
     },
     {
