@@ -1,10 +1,5 @@
 """
 tests/spec_phase3/test_P3-001.py — P3-001 Acceptance Criteria テスト (AC-701〜AC-717)
-
-NOTE(AC-714 spec inconsistency):
-  COMP-STEALTH-001 は competitor==0 が必須、COMP-STEALTH-002 は competitor==1 が必須のため
-  両パターンの同時発火は設計上不可能。AC-714 の "Given: high×2" 記述はSPECミス。
-  AC-714 テストは指定入力での実際の動作（high×1, score=35, caution）を検証する。
 """
 import time
 import sys
@@ -112,21 +107,21 @@ def test_713_score_high_x1():
     assert result["level"] == "caution"
 
 
-# AC-714: スコア計算の検証（AC-714指定入力での実際動作を確認）
-# SPECの "Given: high×2" 記述はSPECミス（001と002は相互排他）。
-# 指定入力 competitor=1 では COMP-STEALTH-002(high×1) のみ発火 → score=35, caution。
-def test_714_score_with_specified_inputs():
-    # competitor=1, competitor_rate=1.1, spread_pred=1.2, base_rate=1.0, grade=5
-    # 002: 1.1 > 0 かつ 1.1 < 1.0+0.3=1.3 → high
-    # 001: competitor==0 → 非該当
-    # 003: grade=5, spread=1.2 >= 0.8 → 非該当
-    # 004: |1.2 - (1.1-1.0)| = 1.1 ≤ 1.5 → 非該当
+# AC-714: スコア計算の検証（high×1 + medium×2 で high_risk）
+def test_714_score_high1_medium2():
+    # competitor=1, base_rate=3.0, competitor_rate=0.1, spread_pred=0.5, grade=5
+    # 002: 0.1 > 0 かつ 0.1 < 3.0+0.3=3.3 → high(35)
+    # 003: 4<=grade<=6 かつ 0.5 < 0.8 → medium(12)
+    # 004: comp_spread=0.1-3.0=-2.9, |0.5-(-2.9)|=3.4 > 1.5 → medium(12)
+    # score = 35+12+12 = 59 → high_risk
     result = detect_stealth_competitor(
-        spread_pred=1.2, base_rate=1.0, competitor=1, competitor_rate=1.1, grade=5
+        spread_pred=0.5, base_rate=3.0, competitor=1, competitor_rate=0.1, grade=5
     )
     assert "COMP-STEALTH-002" in result["patterns"]
-    assert result["score"] == 35
-    assert result["level"] == "caution"
+    assert "COMP-STEALTH-003" in result["patterns"]
+    assert "COMP-STEALTH-004" in result["patterns"]
+    assert result["score"] == 59
+    assert result["level"] == "high_risk"
 
 
 # AC-715: grade 範囲外は 5 にクリップして計算を継続する（例外なし）

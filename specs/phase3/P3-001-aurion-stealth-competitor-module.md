@@ -252,10 +252,14 @@ def detect_stealth_competitor(
 - When: `detect_stealth_competitor(spread_pred=1.2, base_rate=1.0, competitor=0, grade=5)` を呼ぶ（COMP-STEALTH-001 のみ、grade=5 で COMP-STEALTH-003 非該当）
 - Then: `score == 35` かつ `level == "caution"`
 
-**AC-714**: スコア計算の検証（high × 2 件で high_risk）
-- Given: COMP-STEALTH-001 と COMP-STEALTH-002 が同時発生（high × 2）
-- When: `detect_stealth_competitor(spread_pred=1.2, base_rate=1.0, competitor=1, competitor_rate=1.1, grade=5)` を呼ぶ
-- Then: `score == 70` かつ `level == "high_risk"`
+**AC-714**: スコア計算の検証（high × 1 + medium × 2 で high_risk）
+- Given: COMP-STEALTH-002（high）・COMP-STEALTH-003（medium）・COMP-STEALTH-004（medium）が同時発生
+  - `competitor=1, base_rate=3.0, competitor_rate=0.1, spread_pred=0.5, grade=5`
+  - 002: `0.1 > 0` かつ `0.1 < 3.0+0.3=3.3` → high
+  - 003: `4<=grade<=6` かつ `0.5 < 0.8` → medium
+  - 004: `comp_spread=0.1-3.0=-2.9`, `|0.5-(-2.9)|=3.4 > 1.5` → medium
+- When: `detect_stealth_competitor(spread_pred=0.5, base_rate=3.0, competitor=1, competitor_rate=0.1, grade=5)` を呼ぶ
+- Then: `score == 59` かつ `level == "high_risk"`
 
 **AC-715**: grade 範囲外は 5 にクリップして計算を継続する
 - Given: `grade=15, spread_pred=2.5, base_rate=1.0, competitor=0`
@@ -322,7 +326,7 @@ def detect_stealth_competitor(
 | test_711 | AC-711 | competitor=0 では BR-302/304 非発動 |
 | test_712 | AC-712 | 全パターン未検知 → score=0, ok |
 | test_713 | AC-713 | high×1 → score=35, caution |
-| test_714 | AC-714 | high×2 → score=70, high_risk |
+| test_714 | AC-714 | high×1+medium×2 → score=59, high_risk |
 | test_715 | AC-715 | grade=15 → 例外なし |
 | test_716 | AC-716 | competitor_rate < 0 → 例外なし |
 | test_717 | AC-717 | 100回連続 → 5000ms以内 |
