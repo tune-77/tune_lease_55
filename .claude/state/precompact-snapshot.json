@@ -13,10 +13,10 @@
       }
     },
     "recommended": true,
-    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 2244 session age (minutes) exceed threshold 120",
+    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 3769 session age (minutes) exceed threshold 120",
     "reasons": [
       "20 recent edit count exceed threshold 8",
-      "2244 session age (minutes) exceed threshold 120"
+      "3769 session age (minutes) exceed threshold 120"
     ],
     "candidates": [
       {
@@ -50,7 +50,7 @@
       {
         "key": "session_age_minutes",
         "label": "session age (minutes)",
-        "actual": 2244,
+        "actual": 3769,
         "threshold": 120,
         "triggered": true
       }
@@ -60,7 +60,7 @@
       "blockedTasks": 0,
       "recentEdits": 20,
       "failedChecks": 0,
-      "sessionAgeMinutes": 2244
+      "sessionAgeMinutes": 3769
     }
   },
   "continuity": {
@@ -73,28 +73,28 @@
   "metrics": null,
   "recentEdits": [
     ".claude/sessions/.last_inbox_check",
+    ".claude/sessions/broadcast.md",
     ".claude/state/changed-files.jsonl",
+    ".claude/state/handoff-artifact.json",
+    ".claude/state/instructions-loaded.jsonl",
+    ".claude/state/precompact-snapshot.json",
     ".claude/state/session-events.jsonl",
+    ".claude/state/session-events.jsonl.1",
+    ".claude/state/session-events.jsonl.2",
     ".claude/state/session-skills-used.json",
     ".claude/state/session.json",
     ".claude/state/test-recommendation.json",
     ".claude/state/usage-stats.jsonl",
-    "components/batch_scoring.py",
-    "credit_limit.py",
-    "data/last_case.json",
-    "data/recent_modes.json",
-    "data/wizard_drafts/admin_wizard.json",
-    "indicators.py",
-    "mobile_app/api.py",
-    "mobile_app/index.html",
-    "requirements.txt",
-    "scoring_core.py",
-    "secret_manager.py",
-    "tests/spec_phase2/test_P2-002.py",
-    "tests/spec_phase2/test_P2-003.py"
+    "api/main.py",
+    "constants.py",
+    "data_cases.py",
+    "frontend/src/app/register/page.tsx",
+    "frontend/src/app/report/page.tsx",
+    "frontend/src/components/layout/Sidebar.tsx",
+    "mobile_app/api.py"
   ],
   "sessionId": "",
-  "timestamp": "2026-05-16T00:59:23Z",
+  "timestamp": "2026-05-17T02:25:00Z",
   "version": "1.0.0",
   "wipTasks": null
 }
