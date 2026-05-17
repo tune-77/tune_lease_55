@@ -1,5 +1,6 @@
 import axios from "axios";
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// Next.js rewrites が /api/* → FastAPI へプロキシするため、同一オリジンへ向ける
+export const API_BASE = "";
 
 export const apiClient = axios.create({ baseURL: API_BASE });

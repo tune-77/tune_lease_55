@@ -40,7 +40,7 @@ export default function Dashboard() {
     setLoading(true);
     setApiError(null);
     try {
-      const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/score/full`, formData);
+      const res = await axios.post(`/api/score/full`, formData);
       setResult(res.data);
       setActiveTab("analysis");
 

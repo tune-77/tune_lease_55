@@ -24,8 +24,8 @@ export default function FormQualitative({ data, onChange }: FormQualitativeProps
     const fetchMaster = async () => {
       try {
         const [qualRes, assetRes] = await Promise.all([
-          fetch(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/master/qualitative`),
-          fetch(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/api/master/assets`)
+          fetch(`/api/master/qualitative`),
+          fetch(`/api/master/assets`)
         ]);
         
         if (qualRes.ok) {
