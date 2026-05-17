@@ -131,6 +131,22 @@ Skills provide your tools. When you need one, check its `SKILL.md`. Keep local n
 - **Discord links:** Wrap multiple links in `<>` to suppress embeds: `<https://example.com>`
 - **WhatsApp:** No headers — use **bold** or CAPS for emphasis
 
+## AI Chat / Obsidian Search Rule
+
+AIチャットでObsidianを参照する処理は、必ず共通経路を使う。
+
+- 検索語分解: `obsidian_query.py`
+- AIプロンプト用文脈: `obsidian_ai_context.py`
+- Vault検索本体: `mobile_app/obsidian_bridge.py`
+
+禁止:
+- 各チャット実装で `vault.rglob("*.md")` を直接呼ぶ
+- 「補助金について教えて」のような質問文を丸ごと検索語にする
+- `AI Chat` / `Weekly Review` / `Improvement Log` を知識ノートより優先する
+- `/tmp` へのprint/debug書き込みで検索挙動を安定化させる
+
+このルールは Flask/mobile版、Streamlit版、Next版、軍師AI、ホームFABチャットのすべてに適用する。
+
 ## 💓 Heartbeats - Be Proactive!
 
 When you receive a heartbeat poll (message matches the configured heartbeat prompt), don't just reply `HEARTBEAT_OK` every time. Use heartbeats productively!
