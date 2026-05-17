@@ -1302,17 +1302,26 @@
           placeholder="他行競合レート (%)"
           style="width:100%;margin-bottom:8px;padding:6px;box-sizing:border-box;
                  background:#374151;color:#f3f4f6;border:1px solid #4b5563;border-radius:6px;">
-        <input id="result-loss-reason" type="text" placeholder="失注理由"
-          style="width:100%;margin-bottom:8px;padding:6px;box-sizing:border-box;
-                 background:#374151;color:#f3f4f6;border:1px solid #4b5563;border-radius:6px;"
-          maxlength="200">
+        <select id="result-loss-reason"
+          style="width:100%;margin-bottom:8px;padding:6px;background:#374151;color:#f3f4f6;border:1px solid #4b5563;border-radius:6px;">
+          <option value="">—（選択）</option>
+          <option value="設備見合わせ">設備見合わせ</option>
+          <option value="他社競合">他社競合</option>
+          <option value="調達方法変更">調達方法変更</option>
+          <option value="その他">その他</option>
+        </select>
         <input id="result-final-date" type="date"
           style="width:100%;margin-bottom:10px;padding:6px;box-sizing:border-box;
                  background:#374151;color:#f3f4f6;border:1px solid #4b5563;border-radius:6px;">
-        <button onclick="submitResult()"
-          style="background:#2563eb;color:#fff;border:none;border-radius:8px;
-                 padding:8px 20px;cursor:pointer;font-size:14px;">登録</button>
-        <span id="result-msg" style="margin-left:10px;font-size:0.85em;"></span>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <button onclick="submitResult()"
+            style="background:#2563eb;color:#fff;border:none;border-radius:8px;
+                   padding:8px 20px;cursor:pointer;font-size:14px;">登録</button>
+          <button onclick="deleteCase()"
+            style="background:#7f1d1d;color:#fca5a5;border:1px solid #991b1b;border-radius:8px;
+                   padding:8px 16px;cursor:pointer;font-size:13px;">🗑 この案件を削除</button>
+          <span id="result-msg" style="font-size:0.85em;"></span>
+        </div>
       </div>
     </div>
   </div>
@@ -2563,6 +2572,29 @@
     document.getElementById("result-competitor-rate").value = "";
     document.getElementById("result-loss-reason").value = "";
     document.getElementById("result-final-date").value = "";
+  }
+
+  async function deleteCase() {
+    if (!_selectedCaseId) return;
+    if (!confirm("この案件を完全に削除しますか？元に戻せません。")) return;
+    const msg = document.getElementById("result-msg");
+    try {
+      const res = await fetch("/cases/" + encodeURIComponent(_selectedCaseId), {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        document.getElementById("result-form").style.display = "none";
+        _selectedCaseId = null;
+        loadCases();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        msg.textContent = "❌ " + (err.error || "削除失敗");
+        msg.style.color = "#ef4444";
+      }
+    } catch (e) {
+      msg.textContent = "❌ " + e.message;
+      msg.style.color = "#ef4444";
+    }
   }
 
   async function submitResult() {

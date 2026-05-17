@@ -181,11 +181,12 @@ except Exception as _obs_import_err:
 try:
     import sys as _sys
     _sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
-    from data_cases import CustomJSONEncoder as _CJE, update_case as _update_case
+    from data_cases import CustomJSONEncoder as _CJE, update_case as _update_case, delete_case as _delete_case
     print("[api] data_cases: 読み込み完了")
 except Exception as _dc_err:
     _CJE = None
     _update_case = None
+    _delete_case = None
     print(f"[api] data_cases: 未ロード ({_dc_err})")
 
 _DB_PATH = str(pathlib.Path(__file__).parent.parent / "data" / "lease_data.db")
@@ -1320,6 +1321,16 @@ def update_case_result(case_id: str):
     if not ok:
         return jsonify({"error": "案件が見つからないか更新失敗"}), 404
     return jsonify({"status": "updated", "case_id": case_id})
+
+
+@app.delete("/cases/<case_id>")
+def delete_case_record(case_id: str):
+    if _delete_case is None:
+        return jsonify({"error": "data_cases not loaded"}), 503
+    ok = _delete_case(case_id)
+    if not ok:
+        return jsonify({"error": "案件が見つからないか削除失敗"}), 404
+    return jsonify({"status": "deleted", "case_id": case_id})
 
 
 @app.post("/advisor/strategy")
