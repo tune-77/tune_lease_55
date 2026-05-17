@@ -99,17 +99,21 @@ CREATE INDEX IF NOT EXISTS idx_screening_records_outcome ON screening_records(ou
 ```python
 from typing import TypedDict, Optional
 
-class ScreeningRecordInput(TypedDict, total=False):
-    case_id: str                        # 必須
-    screened_at: str                    # 必須 ISO 8601
-    total_score: float                  # 必須
-    asset_score: float                  # 必須
+class ScreeningRecordInputRequired(TypedDict):
+    """必須フィールド（これらが欠けると BR-402 でバリデーションエラー）"""
+    case_id: str
+    screened_at: str      # ISO 8601 UTC
+    total_score: float
+    asset_score: float
+    source: str           # "streamlit" | "slack" | "api"
+
+class ScreeningRecordInput(ScreeningRecordInputRequired, total=False):
+    """任意フィールドを追加した完全な入力型"""
     tenant_score: Optional[float]
     q_risk_score: Optional[float]
     competitor_pressure_score: Optional[float]
     outcome: Optional[str]
     input_snapshot: Optional[dict]
-    source: str                         # 必須
 
 class ScreeningRecordResult(TypedDict):
     record_id: int
@@ -154,7 +158,8 @@ def update_screening_outcome(
     db_path: str = "data/lease_data.db",
 ) -> ScreeningRecordResult:
     """
-    case_id に紐づく最新レコードの outcome を更新する。
+    case_id に紐づくレコードのうち id が最大（最後に INSERT された）レコードの outcome を更新する。
+    同一 case_id に複数レコードが存在する場合（再審査ユースケース）は最大 id のレコードのみが対象。
     """
 ```
 
@@ -168,7 +173,7 @@ def update_screening_outcome(
 - 根拠：初回実行時の手動マイグレーション不要化
 
 **BR-402**: 必須フィールドのバリデーション
-- 条件：`case_id`、`screened_at`、`total_score`、`asset_score`、`source` のいずれかが欠損
+- 条件：`case_id`、`screened_at`、`total_score`、`asset_score`、`source` のいずれかが欠損（`None` または空文字列 `""` を欠損と見なす）
 - 処理：INSERT を行わず `success=False, error="missing required field: {field}"` を返す
 - 根拠：欠損データが教師データに混入するのを防ぐ
 
@@ -183,9 +188,10 @@ def update_screening_outcome(
 - 根拠：集計クエリの安全性確保
 
 **BR-405**: input_snapshot の PII 除去チェック
-- 条件：`input_snapshot` dict のキーに `"name"`, `"address"`, `"phone"`, `"email"` が含まれる
-- 処理：該当キーの値を `"[REDACTED]"` に置換してから JSON 文字列化する
-- 根拠：個人情報保護。審査入力値には氏名・住所が含まれる可能性がある
+- 条件：`input_snapshot` dict のキー（トップレベルおよびネストされた辞書のキーを再帰的にチェック）に以下の PII キーが含まれる場合
+  - 対象キー: `"name"`, `"address"`, `"phone"`, `"email"`, `"company_name"`, `"representative"`, `"hojin_name"`
+- 処理：該当キーの値を `"[REDACTED]"` に置換してから JSON 文字列化する。ネストされた辞書（例: `{"applicant": {"name": "山田"}}`）に対しても再帰的に適用する
+- 根拠：個人情報保護。審査入力値には氏名・住所・法人名・代表者名が含まれる可能性がある
 
 **BR-406**: 例外非伝播
 - 条件：DB 接続失敗・SQLite エラー等の予期しない例外が発生した場合
@@ -225,10 +231,15 @@ def update_screening_outcome(
 - When: 両方の呼び出しが完了する
 - Then: `screening_records` に2件のレコードが存在する
 
-**AC-1003**: 必須フィールド（case_id）欠損で失敗する
+**AC-1003**: 必須フィールド（case_id）欠損で失敗する — 空文字列
 - Given: `case_id=""` を渡す
 - When: `record_screening_result(case_id="", screened_at="2026-05-15T00:00:00Z", total_score=80.0, asset_score=60.0, source="streamlit")`
 - Then: `success=False` かつ `error` に `"missing required field"` が含まれる
+
+**AC-1003b**: 必須フィールド（case_id）欠損で失敗する — None
+- Given: `case_id=None` を渡す（動的型付けの呼び出し元からの防衛）
+- When: `record_screening_result(case_id=None, screened_at="2026-05-15T00:00:00Z", total_score=80.0, asset_score=60.0, source="streamlit")`
+- Then: `success=False` かつ `error` に `"missing required field"` が含まれる（例外は発生しない）
 
 **AC-1004**: スコア範囲外（total_score=101.0）で失敗する
 - Given: `total_score=101.0`
