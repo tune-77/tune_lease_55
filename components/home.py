@@ -184,6 +184,7 @@ def _render_fab_chat() -> None:
                         GEMINI_API_KEY_ENV, GEMINI_MODEL_DEFAULT,
                         _get_gemini_key_from_secrets, get_ollama_model,
                     )
+                    from obsidian_ai_context import build_obsidian_ai_context_block
                     _engine = st.session_state.get("ai_engine", "ollama")
                     _api_key = (
                         (st.session_state.get("gemini_api_key") or "").strip()
@@ -194,7 +195,17 @@ def _render_fab_chat() -> None:
                     if not is_ai_available():
                         content = "⚠️ AIサーバーに接続できません。サイドバーでエンジンを確認してください。"
                     else:
-                        history = [{"role": "system", "content": _HOME_CHAT_SYSTEM}]
+                        obsidian_block = build_obsidian_ai_context_block(
+                            pending,
+                            heading="Obsidian知識ノート・過去メモ",
+                        )
+                        system_prompt = _HOME_CHAT_SYSTEM
+                        if obsidian_block:
+                            system_prompt += (
+                                "\n\n以下のObsidian知識ノートを優先して回答してください。\n"
+                                + obsidian_block
+                            )
+                        history = [{"role": "system", "content": system_prompt}]
                         for m in st.session_state["home_messages"]:
                             history.append({"role": m["role"], "content": m["content"]})
                         history.append({"role": "user", "content": pending})

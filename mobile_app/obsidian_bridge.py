@@ -9,8 +9,11 @@ from __future__ import annotations
 import datetime as dt
 import os
 import re
+import time
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
+
+from obsidian_query import split_query_terms
 
 
 def _home_candidates() -> list[Path]:
@@ -96,8 +99,65 @@ def _search_in_paths(paths: list[Path], vault: Path, terms: list[str], limit: in
     return hits
 
 
-def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[str, str]]:
+_CHAT_LOG_DIRS = ("AI Chat", "Improvement Log", "Weekly Review", "Daily")
+
+
+def _is_chat_log(path: Path) -> bool:
+    parts = path.parts
+    return any(d in parts for d in _CHAT_LOG_DIRS)
+
+
+# モジュール起動時に1回だけ vault を走査し、Flask の request thread での rglob 不安定挙動を回避する。
+_VAULT_INDEX: dict[str, Any] = {
+    "vault": None,
+    "knowledge_paths": [],  # チャットログ以外の .md
+    "chat_log_paths": [],
+    "built_at": 0.0,
+}
+_VAULT_INDEX_TTL_SEC = 300  # 5分
+
+
+def _build_vault_index() -> None:
+    """Vault配下の .md を走査し、知識ノートとチャットログに振り分けてキャッシュ。"""
     vault = find_vault()
+    if not vault:
+        _VAULT_INDEX.update(vault=None, knowledge_paths=[], chat_log_paths=[], built_at=time.time())
+        return
+    knowledge: list[Path] = []
+    chat_logs: list[Path] = []
+    try:
+        for p in vault.rglob("*.md"):
+            if _is_chat_log(p):
+                chat_logs.append(p)
+            else:
+                knowledge.append(p)
+    except OSError:
+        pass
+    _VAULT_INDEX.update(
+        vault=vault,
+        knowledge_paths=knowledge,
+        chat_log_paths=chat_logs,
+        built_at=time.time(),
+    )
+
+
+def _get_indexed_paths() -> tuple[Path | None, list[Path], list[Path]]:
+    """TTL切れなら再構築してキャッシュを返す。"""
+    if time.time() - _VAULT_INDEX["built_at"] > _VAULT_INDEX_TTL_SEC:
+        _build_vault_index()
+    return (
+        _VAULT_INDEX["vault"],
+        list(_VAULT_INDEX["knowledge_paths"]),
+        list(_VAULT_INDEX["chat_log_paths"]),
+    )
+
+
+# モジュール import 時にインデックスを初期化
+_build_vault_index()
+
+
+def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[str, str]]:
+    vault, knowledge, chat_logs = _get_indexed_paths()
     if not vault:
         return []
     terms = _expand_query_terms(query)[:8]
@@ -110,20 +170,32 @@ def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[
     # Cases/ を優先: 業種・スコア・金利・判定ワードがクエリに含まれるとき
     if any("cases/" in t or t in ("スコア", "判定", "推奨金利", "q-risk", "quantum_risk") for t in terms):
         cases_dir = vault / "Projects" / "tune_lease_55" / "Cases"
-        if cases_dir.exists():
-            cases_paths = sorted(cases_dir.rglob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
-            hits += _search_in_paths(cases_paths, vault, terms, limit, max_chars, seen)
+        cases_paths = [p for p in (knowledge + chat_logs) if cases_dir in p.parents]
+        cases_paths.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
+        hits += _search_in_paths(cases_paths, vault, terms, limit, max_chars, seen)
 
     if len(hits) < limit:
         remaining = limit - len(hits)
-        general_paths = list(vault.rglob("*.md"))
-        hits += _search_in_paths(general_paths, vault, terms, remaining, max_chars, seen)
+        # ① ファイル名にクエリ語を含む知識ノート → ② その他の知識ノート → ③ チャットログ
+        name_match: list[Path] = []
+        other_knowledge: list[Path] = []
+        for p in knowledge:
+            if any(t in p.stem.lower() for t in terms):
+                name_match.append(p)
+            else:
+                other_knowledge.append(p)
+        ordered = name_match + other_knowledge + chat_logs
+        hits += _search_in_paths(ordered, vault, terms, remaining, max_chars, seen)
 
     return hits
 
 
+def _split_query_terms(query: str) -> list[str]:
+    return split_query_terms(query)
+
+
 def _expand_query_terms(query: str) -> list[str]:
-    raw_terms = [t.lower() for t in query.replace("　", " ").split() if len(t.strip()) >= 2]
+    raw_terms = _split_query_terms(query)
     if not raw_terms:
         raw_terms = [query.lower().strip()]
     expanded = list(raw_terms)
@@ -144,6 +216,14 @@ def _expand_query_terms(query: str) -> list[str]:
         ])
     if any(k in joined for k in ("obsidian", "保存", "メモ", "案件")):
         expanded.extend(["Projects/tune_lease_55/AI Chat", "Daily"])
+    if any(k in joined for k in ("補助金", "助成金", "ものづくり", "省力化")):
+        expanded.extend([
+            "補助金",
+            "助成金",
+            "ものづくり補助金",
+            "省力化投資補助金",
+            "中小企業省力化投資補助金",
+        ])
 
     # Cases/ 専用: 業種・スコア・判定キーワードで過去案件ログを引く
     _INDUSTRY_MAP = {
@@ -178,7 +258,7 @@ def _expand_query_terms(query: str) -> list[str]:
 
 
 def recent_notes(limit: int = 3, folders: Iterable[str] | None = None, max_chars: int = 700) -> list[dict[str, str]]:
-    vault = find_vault()
+    vault, knowledge, chat_logs = _get_indexed_paths()
     if not vault:
         return []
     ym = dt.date.today().strftime("%Y-%m")
@@ -187,19 +267,13 @@ def recent_notes(limit: int = 3, folders: Iterable[str] | None = None, max_chars
         "Projects/tune_lease_55/AI Chat",
         "Daily",
     ))
+    indexed_paths = knowledge + chat_logs
     candidates: list[Path] = []
     for folder in folders:
         base = vault / folder
-        if base.exists():
-            try:
-                candidates.extend(base.rglob("*.md"))
-            except OSError:
-                continue
+        candidates.extend(p for p in indexed_paths if base == p or base in p.parents)
     if not candidates:
-        try:
-            candidates = sorted(vault.rglob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
-        except OSError:
-            candidates = []
+        candidates = sorted(indexed_paths, key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
     seen: set[str] = set()
     hits: list[dict[str, str]] = []
     for path in sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True):
