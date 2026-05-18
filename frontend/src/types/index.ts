@@ -17,7 +17,7 @@ export interface ScoringFormData {
   deal_occurrence: string; // 発生経緯
   deal_source: string;
   
-  // P/L (損益計算書)
+  // P/L (損益計算書) - UI入力値は百万円、API送信時に千円へ換算
   nenshu: number;
   gross_profit: number; // item9_gross
   op_profit: number;    // rieki
@@ -28,7 +28,7 @@ export interface ScoringFormData {
   rent: number;         // item8_rent
   rent_expense: number; // item12_rent_exp
 
-  // B/S (貸借対照表)
+  // B/S (貸借対照表) - UI入力値は百万円、API送信時に千円へ換算
   machines: number;     // item6_machine
   other_assets: number; // item7_other
   net_assets: number;
@@ -81,26 +81,26 @@ export const defaultFormData: ScoringFormData = {
   num_competitors: "未入力",
   deal_occurrence: "不明",
   deal_source: "銀行紹介",
-  nenshu: 200000,
-  gross_profit: 50000,
-  op_profit: 15000,
-  ord_profit: 14000,
-  net_income: 10000,
-  depreciation: 10000,
-  dep_expense: 10000,
+  nenshu: 200,
+  gross_profit: 50,
+  op_profit: 15,
+  ord_profit: 14,
+  net_income: 10,
+  depreciation: 10,
+  dep_expense: 10,
   rent: 0,
   rent_expense: 0,
-  machines: 5000,
-  other_assets: 2000,
-  net_assets: 50000,
-  total_assets: 150000,
-  bank_credit: 10000,
-  lease_credit: 5000,
+  machines: 5,
+  other_assets: 2,
+  net_assets: 50,
+  total_assets: 150,
+  bank_credit: 10,
+  lease_credit: 5,
   contracts: 2,
   contract_type: "一般",
   lease_term: 60,
   acceptance_year: new Date().getFullYear(),
-  acquisition_cost: 3000,
+  acquisition_cost: 3,
   selected_asset_id: "",
   asset_name: "",
   asset_score: 50.0,

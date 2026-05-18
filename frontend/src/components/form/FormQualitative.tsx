@@ -51,7 +51,7 @@ export default function FormQualitative({ data, onChange }: FormQualitativeProps
   };
   
   const handleNumber = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onChange(e.target.name, parseInt(e.target.value, 10) || 0);
+    onChange(e.target.name, parseFloat(e.target.value) || 0);
   };
   
   const handleSlider = (name: string, value: number) => {
@@ -85,8 +85,8 @@ export default function FormQualitative({ data, onChange }: FormQualitativeProps
             </select>
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-bold text-slate-600 block">物件取得価額 (千円)</label>
-            <input type="number" name="acquisition_cost" value={data.acquisition_cost} onChange={handleNumber} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
+            <label className="text-sm font-bold text-slate-600 block">物件取得価額 (百万円)</label>
+            <input type="number" name="acquisition_cost" value={data.acquisition_cost} step="0.1" onChange={handleNumber} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
           </div>
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">リース期間 (月)</label>
@@ -130,7 +130,7 @@ export default function FormQualitative({ data, onChange }: FormQualitativeProps
 
         <div className="mt-8 border-t border-slate-100 pt-6">
           <label className="text-sm font-bold text-slate-600 block mb-2">🎈 直感スコア (1:懸念あり 〜 5:確信あり)</label>
-          <SliderInput label="" name="intuition" value={data.intuition} min={1} max={5} step={1} onChange={handleSlider} />
+          <SliderInput label="" name="intuition" value={data.intuition} min={1} max={5} step={1} unit="点" onChange={handleSlider} />
         </div>
       </div>
 

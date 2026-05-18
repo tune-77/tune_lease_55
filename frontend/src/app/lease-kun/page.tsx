@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Send, ArrowRight, ArrowLeft, Bot, Activity, CheckCircle, ChevronDown } from 'lucide-react';
 import axios from 'axios';
 import { API_BASE } from '../../lib/api';
+import { toThousandYenPayload } from '../../lib/scoringUnits';
 
 // --- 型定義 ---
 type Message = {
@@ -95,25 +96,25 @@ export default function LeaseKunWizard() {
         break;
       case 3:
         if (!formData.nenshu || Number(formData.nenshu) <= 0) return alert("売上高は必須です！");
-        answerText = `売上: ${formData.nenshu}千円 / 営業利益: ${formData.op_profit || 0}千円`;
+        answerText = `売上: ${formData.nenshu}百万円 / 営業利益: ${formData.op_profit || 0}百万円`;
         nextBotText = `貸借対照表(B/S)！総資産は必須。機械やその他の内訳もあれば。`;
         break;
       case 4:
         if (!formData.total_assets || Number(formData.total_assets) <= 0) return alert("総資産は必須です！");
-        answerText = `総資産: ${formData.total_assets}千円 / 純資産: ${formData.net_assets || 0}千円`;
+        answerText = `総資産: ${formData.total_assets}百万円 / 純資産: ${formData.net_assets || 0}百万円`;
         nextBotText = `減価償却や地代家賃などの経費項目はある？（なければ空欄かスキップでOK！）`;
         break;
       case 5:
-        answerText = `償却: ${formData.depreciation || 0}千円 / 家賃: ${formData.rent || 0}千円`;
+        answerText = `償却: ${formData.depreciation || 0}百万円 / 家賃: ${formData.rent || 0}百万円`;
         nextBotText = `対象の格付や与信残高を教えてね。`;
         break;
       case 6:
-        answerText = `格付: ${formData.grade} / 銀行与信: ${formData.bank_credit || 0}千円`;
+        answerText = `格付: ${formData.grade} / 銀行与信: ${formData.bank_credit || 0}百万円`;
         nextBotText = `今回の契約期間や取得価格はどうなってる？`;
         break;
       case 7:
-        if (!formData.acquisition_cost || Number(formData.acquisition_cost) <= 0) return alert("取得価格(千円)は必須です！");
-        answerText = `${formData.customer_type} / ${formData.lease_term}ヶ月 / ${formData.acquisition_cost}千円`;
+        if (!formData.acquisition_cost || Number(formData.acquisition_cost) <= 0) return alert("取得価格(百万円)は必須です！");
+        answerText = `${formData.customer_type} / ${formData.lease_term}ヶ月 / ${formData.acquisition_cost}百万円`;
         nextBotText = `定性的な評価項目（6点）を教えて。難しければ「未選択」でも審査はできるよ。`;
         break;
       case 8:
@@ -146,7 +147,7 @@ export default function LeaseKunWizard() {
     ]);
 
     try {
-      const payload = {
+      const payload = toThousandYenPayload({
         company_no:                   formData.company_no,
         company_name:                 formData.company_name,
         industry_major:               formData.industry_major,
@@ -186,7 +187,7 @@ export default function LeaseKunWizard() {
         qual_corr_main_bank:          formData.qual_corr_main_bank,
         passion_text:                 formData.passion_text,
         intuition:                    Number(formData.intuition),
-      };
+      });
 
       const res = await axios.post(`/api/score/full`, payload);
 
@@ -418,12 +419,12 @@ export default function LeaseKunWizard() {
             {step === 3 && (
               <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2">
-                  <input type="number" name="nenshu" value={formData.nenshu} onChange={handleChange} placeholder="売上高 (千円) ※必須" className={inpReq} required />
+                  <input type="number" name="nenshu" value={formData.nenshu} step="0.1" onChange={handleChange} placeholder="売上高 (百万円) ※必須" className={inpReq} required />
                 </div>
-                <input type="number" name="gross_profit" value={formData.gross_profit} onChange={handleChange} placeholder="売上総利益 (千)" className={inp} />
-                <input type="number" name="op_profit" value={formData.op_profit} onChange={handleChange} placeholder="営業利益 (千)" className={inp} />
-                <input type="number" name="ord_profit" value={formData.ord_profit} onChange={handleChange} placeholder="経常利益 (千)" className={inp} />
-                <input type="number" name="net_income" value={formData.net_income} onChange={handleChange} placeholder="当期純利益 (千)" className={inp} />
+                <input type="number" name="gross_profit" value={formData.gross_profit} step="0.1" onChange={handleChange} placeholder="売上総利益 (百万円)" className={inp} />
+                <input type="number" name="op_profit" value={formData.op_profit} step="0.1" onChange={handleChange} placeholder="営業利益 (百万円)" className={inp} />
+                <input type="number" name="ord_profit" value={formData.ord_profit} step="0.1" onChange={handleChange} placeholder="経常利益 (百万円)" className={inp} />
+                <input type="number" name="net_income" value={formData.net_income} step="0.1" onChange={handleChange} placeholder="当期純利益 (百万円)" className={inp} />
               </div>
             )}
 
@@ -431,23 +432,23 @@ export default function LeaseKunWizard() {
             {step === 4 && (
               <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2">
-                  <input type="number" name="total_assets" value={formData.total_assets} onChange={handleChange} placeholder="総資産 (千円) ※必須" className={inpReq} required />
+                  <input type="number" name="total_assets" value={formData.total_assets} step="0.1" onChange={handleChange} placeholder="総資産 (百万円) ※必須" className={inpReq} required />
                 </div>
                 <div className="col-span-2">
-                  <input type="number" name="net_assets" value={formData.net_assets} onChange={handleChange} placeholder="純資産 (千円)" className={inp} />
+                  <input type="number" name="net_assets" value={formData.net_assets} step="0.1" onChange={handleChange} placeholder="純資産 (百万円)" className={inp} />
                 </div>
-                <input type="number" name="machines" value={formData.machines} onChange={handleChange} placeholder="機械装置 (千)" className={inp} />
-                <input type="number" name="other_assets" value={formData.other_assets} onChange={handleChange} placeholder="その他資産 (千)" className={inp} />
+                <input type="number" name="machines" value={formData.machines} step="0.1" onChange={handleChange} placeholder="機械装置 (百万円)" className={inp} />
+                <input type="number" name="other_assets" value={formData.other_assets} step="0.1" onChange={handleChange} placeholder="その他資産 (百万円)" className={inp} />
               </div>
             )}
 
             {/* Step 5: 経費 */}
             {step === 5 && (
               <div className="grid grid-cols-2 gap-2">
-                <input type="number" name="depreciation" value={formData.depreciation} onChange={handleChange} placeholder="減価償却(資産)" className={inp} />
-                <input type="number" name="dep_expense" value={formData.dep_expense} onChange={handleChange} placeholder="減価償却(経費)" className={inp} />
-                <input type="number" name="rent" value={formData.rent} onChange={handleChange} placeholder="賃借料(資産)" className={inp} />
-                <input type="number" name="rent_expense" value={formData.rent_expense} onChange={handleChange} placeholder="賃借料(経費)" className={inp} />
+                <input type="number" name="depreciation" value={formData.depreciation} step="0.1" onChange={handleChange} placeholder="減価償却(資産・百万円)" className={inp} />
+                <input type="number" name="dep_expense" value={formData.dep_expense} step="0.1" onChange={handleChange} placeholder="減価償却(経費・百万円)" className={inp} />
+                <input type="number" name="rent" value={formData.rent} step="0.1" onChange={handleChange} placeholder="賃借料(資産・百万円)" className={inp} />
+                <input type="number" name="rent_expense" value={formData.rent_expense} step="0.1" onChange={handleChange} placeholder="賃借料(経費・百万円)" className={inp} />
               </div>
             )}
 
@@ -462,8 +463,8 @@ export default function LeaseKunWizard() {
                 </select>
                 <div className="grid grid-cols-3 gap-2">
                   <input type="number" name="contracts" value={formData.contracts} onChange={handleChange} placeholder="契約件数" className={inp} />
-                  <input type="number" name="bank_credit" value={formData.bank_credit} onChange={handleChange} placeholder="銀行与信残" className={inp} />
-                  <input type="number" name="lease_credit" value={formData.lease_credit} onChange={handleChange} placeholder="リース与信残" className={inp} />
+                  <input type="number" name="bank_credit" value={formData.bank_credit} step="0.1" onChange={handleChange} placeholder="銀行与信残(百万円)" className={inp} />
+                  <input type="number" name="lease_credit" value={formData.lease_credit} step="0.1" onChange={handleChange} placeholder="リース与信残(百万円)" className={inp} />
                 </div>
               </div>
             )}
@@ -472,7 +473,7 @@ export default function LeaseKunWizard() {
             {step === 7 && (
               <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2">
-                  <input type="number" name="acquisition_cost" value={formData.acquisition_cost} onChange={handleChange} placeholder="取得価格 (千円) ※必須" className={inpReq} required />
+                  <input type="number" name="acquisition_cost" value={formData.acquisition_cost} step="0.1" onChange={handleChange} placeholder="取得価格 (百万円) ※必須" className={inpReq} required />
                 </div>
                 <div>
                   <label className={lbl}>契約種類</label>

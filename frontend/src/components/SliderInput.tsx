@@ -18,7 +18,7 @@ export default function SliderInput({
   min,
   max,
   step,
-  unit = "千円",
+  unit = "百万円",
   onChange
 }: SliderInputProps) {
   
@@ -29,7 +29,7 @@ export default function SliderInput({
   const handleNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     // 空白やパース不能な値は0にフォールバック、または一旦そのままにする制御が必要ですが
     // 今回は安全のため常にNumber変換します
-    let val = parseInt(e.target.value, 10);
+    let val = parseFloat(e.target.value);
     if (isNaN(val)) val = 0;
     // max制限は直接入力ではあえて緩めることもありますが、安全性のため設定
     onChange(name, val);
@@ -70,6 +70,7 @@ export default function SliderInput({
             type="number"
             name={`${name}_number`}
             value={value.toString()} // 先頭の0などを避ける
+            step={step}
             onChange={handleNumberChange}
             className="w-full text-right pr-12 pl-3 py-2 bg-white border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm font-semibold text-slate-800"
           />

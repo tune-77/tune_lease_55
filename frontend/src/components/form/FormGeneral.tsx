@@ -246,13 +246,13 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
           </div>
 
           <div className="space-y-1">
-            <label className="text-sm font-bold text-slate-600 block">銀行与信残高 (千円)</label>
-            <input type="number" name="bank_credit" value={data.bank_credit} onChange={handleChange} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
+            <label className="text-sm font-bold text-slate-600 block">銀行与信残高 (百万円)</label>
+            <input type="number" name="bank_credit" value={data.bank_credit} step="0.1" onChange={handleChange} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
           </div>
           
           <div className="space-y-1">
-            <label className="text-sm font-bold text-slate-600 block">リース与信残高 (千円)</label>
-            <input type="number" name="lease_credit" value={data.lease_credit} onChange={handleChange} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
+            <label className="text-sm font-bold text-slate-600 block">リース与信残高 (百万円)</label>
+            <input type="number" name="lease_credit" value={data.lease_credit} step="0.1" onChange={handleChange} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
           </div>
         </div>
 

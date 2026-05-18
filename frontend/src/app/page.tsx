@@ -9,6 +9,7 @@ import { ScoringFormData, defaultFormData } from "../types";
 import FormGeneral from "../components/form/FormGeneral";
 import FormFinancial from "../components/form/FormFinancial";
 import FormQualitative from "../components/form/FormQualitative";
+import { toThousandYenPayload } from "../lib/scoringUnits";
 
 import IndicatorCards from "../components/analysis/IndicatorCards";
 import RealGraphs from "../components/analysis/RealGraphs";
@@ -39,7 +40,7 @@ export default function Dashboard() {
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      const res = await axios.post(`/api/score/full`, formData);
+      const res = await axios.post(`/api/score/full`, toThousandYenPayload(formData));
       setResult(res.data);
       setActiveTab("analysis");
 

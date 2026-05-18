@@ -3,6 +3,7 @@ import axios from 'axios';
 import { API_BASE } from '../../lib/api';
 import { FileText, Download, Loader2, Printer, ShieldCheck } from 'lucide-react';
 import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, Radar, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
+import { toThousandYenPayload } from '../../lib/scoringUnits';
 
 interface ReportProps {
   apiResult: any;
@@ -24,7 +25,7 @@ export default function ReportGenerator({ apiResult, formData, gunshiText }: Rep
     try {
       const res = await axios.post(`/api/report/generate`, {
         result_data: apiResult,
-        inputs: formData
+        inputs: toThousandYenPayload(formData)
       });
       setReport(res.data.report_markdown);
     } catch (err) {
