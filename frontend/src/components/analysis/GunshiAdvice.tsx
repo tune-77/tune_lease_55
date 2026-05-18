@@ -22,6 +22,7 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
   const [question, setQuestion] = useState("");
   const [humorMode, setHumorMode] = useState<'yanami' | 'standard'>('yanami');
   const [useWeb, setUseWeb] = useState(true);
+  const [advisorMode, setAdvisorMode] = useState<'gunshi' | 'chat'>('gunshi');
   const [statusText, setStatusText] = useState('');
   const initialFetchKeyRef = useRef<string>("");
 
@@ -47,6 +48,7 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
       humor_style: humorMode === 'yanami' ? 'yanami' : 'standard',
       use_web: useWeb,
       use_obsidian: true,
+      mode: advisorMode,
     };
   };
 
@@ -151,6 +153,33 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
       </div>
 
       <div className="bg-white border-b border-slate-100 px-4 py-3 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <span className="text-[11px] font-bold text-slate-500 mr-1">モード</span>
+          <button
+            type="button"
+            onClick={() => setAdvisorMode('gunshi')}
+            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
+              advisorMode === 'gunshi'
+                ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+            }`}
+            title="案件向け戦略アドバイス（軍師ロジック）"
+          >
+            🏯 戦略
+          </button>
+          <button
+            type="button"
+            onClick={() => setAdvisorMode('chat')}
+            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
+              advisorMode === 'chat'
+                ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+            }`}
+            title="Flask版AIチャット相当の自由相談（Web/Obsidian連動）"
+          >
+            💬 相談
+          </button>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[11px] font-bold text-slate-500 mr-1">口調</span>
           <button
@@ -258,7 +287,7 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
                 }
               }
             }}
-            placeholder="案件の戦略でも、業界動向・他社事例・一般相談でもOK。気軽に問え"
+            placeholder={advisorMode === 'gunshi' ? '軍師にこの案件の戦略・条件・落としどころを問う' : '業界動向・他社事例・自由な相談もOK（Flask AIチャット相当）'}
             rows={3}
             className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-4 text-sm outline-none resize-none text-slate-700 placeholder:text-slate-400"
           />
