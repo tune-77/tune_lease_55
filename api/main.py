@@ -65,7 +65,7 @@ from api.schemas import (
     DealClosureRequest,
     DealClosureResponse,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Any, Dict, Optional
 from scoring.deal_closure_engine import build_features, build_features_from_deltas, compute_closure_likelihood
 
@@ -463,6 +463,20 @@ class GunshiChatRequest(BaseModel):
     bank: bool
     intuition: int
     posterior: float
+    message: str = ""
+    history: List[Dict[str, str]] = Field(default_factory=list)
+
+
+def _format_gunshi_history(history: List[Dict[str, str]]) -> str:
+    lines = []
+    for item in history:
+        role = str(item.get("role", "")).strip()
+        text = str(item.get("text", "")).strip()
+        if not text:
+            continue
+        label = "ユーザー" if role == "user" else "軍師" if role == "assistant" else role or "不明"
+        lines.append(f"{label}: {text}")
+    return "\n".join(lines)
 
 @app.post("/api/gunshi/chat")
 def generate_gunshi_chat(req: GunshiChatRequest):
@@ -471,21 +485,35 @@ def generate_gunshi_chat(req: GunshiChatRequest):
         advices = PHRASES_100.get("逆転アドバイス", [])
         import random
         sampled = random.sample(advices, min(3, len(advices)))
-        
-        prompt = build_gunshi_prompt(
-            industry=req.industry_major,
-            score=req.score,
-            pd_pct=req.pd_percent,
-            resale=req.resale,
-            repeat_cnt=req.repeat_cnt,
-            subsidy=req.subsidy,
-            bank=req.bank,
-            intuition=req.intuition,
-            posterior=req.posterior,
-            success_patterns={"success_samples": [], "fail_samples": []},
-            top_phrases=sampled,
-            asset_name=req.asset_name
-        )
+
+        has_case_context = req.score != 0 or bool((req.industry_major or "").strip())
+        if has_case_context:
+            prompt = build_gunshi_prompt(
+                industry=req.industry_major,
+                score=req.score,
+                pd_pct=req.pd_percent,
+                resale=req.resale,
+                repeat_cnt=req.repeat_cnt,
+                subsidy=req.subsidy,
+                bank=req.bank,
+                intuition=req.intuition,
+                posterior=req.posterior,
+                success_patterns={"success_samples": [], "fail_samples": []},
+                top_phrases=sampled,
+                asset_name=req.asset_name
+            )
+            prompt += (
+                "\n\n【追加方針】\n"
+                "ユーザーの質問がこの案件の逆転戦略から外れ、業界動向・他社事例・一般的な与信相談であっても構いません。"
+                "案件文脈を必要に応じて参照しつつ、質問そのものに丁寧かつ実務的に答えてください。"
+            )
+        else:
+            prompt = (
+                "あなたは温水式リース審査AIの軍師です。"
+                "リース業界・取引先・与信判断・営業戦略・他社事例・一般論に関する自由な相談に応じてください。\n"
+                "戦国軍師の口調を保ちつつ、現実的・実務的に答えてください。"
+                "不確かな事実は断定せず、確認すべき観点を示してください。"
+            )
         try:
             from obsidian_ai_context import build_obsidian_ai_context_block
 
@@ -512,6 +540,14 @@ def generate_gunshi_chat(req: GunshiChatRequest):
                 )
         except Exception:
             pass
+
+        history_text = _format_gunshi_history(req.history)
+        if history_text:
+            prompt += f"\n\n【過去の対話】\n{history_text}"
+        if (req.message or "").strip():
+            prompt += f"\n\n【今回のユーザー質問】\n{req.message.strip()}"
+        elif has_case_context:
+            prompt += "\n\n【今回のユーザー質問】\nこの案件の稟議を通すための逆転戦略を教えてください。"
 
         reply_text = ""
         try:
