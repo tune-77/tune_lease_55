@@ -88,9 +88,16 @@ app.add_middleware(
 @app.on_event("startup")
 def _warm_dashboard_cache():
     try:
-        from data_cases import load_dashboard_stats_cache, refresh_dashboard_stats_cache
+        from data_cases import (
+            load_dashboard_stats_cache,
+            load_department_stats_cache,
+            refresh_dashboard_stats_cache,
+            refresh_department_stats_cache,
+        )
         if load_dashboard_stats_cache() is None:
             refresh_dashboard_stats_cache()
+        if load_department_stats_cache() is None:
+            refresh_department_stats_cache()
     except Exception:
         pass
 
@@ -365,11 +372,12 @@ def get_case_detail(case_id: str):
 @app.delete("/api/cases/operation/clear-all")
 def clear_all_pending_cases():
     """未登録案件をすべて削除する（一括クリア）"""
-    from data_cases import _open_db
+    from data_cases import _open_db, refresh_stats_caches
     try:
         with _open_db() as conn:
             conn.execute("DELETE FROM past_cases WHERE final_status='未登録'")
             conn.commit()
+        refresh_stats_caches()
         return {"message": "Cleared all pending cases"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -377,11 +385,9 @@ def clear_all_pending_cases():
 @app.delete("/api/cases/{case_id}")
 def delete_case(case_id: str):
     """案件を past_cases から削除する"""
-    from data_cases import _open_db
+    from data_cases import delete_case as delete_case_from_db
     try:
-        with _open_db() as conn:
-            conn.execute("DELETE FROM past_cases WHERE id = ?", (str(case_id),))
-            conn.commit()
+        delete_case_from_db(str(case_id))
     except Exception:
         pass
     return {"message": "Deleted if existed", "case_id": case_id}
@@ -463,6 +469,7 @@ class GunshiChatRequest(BaseModel):
     bank: bool
     intuition: int
     posterior: float
+    message: str = ""
 
 @app.post("/api/gunshi/chat")
 def generate_gunshi_chat(req: GunshiChatRequest):
@@ -486,6 +493,13 @@ def generate_gunshi_chat(req: GunshiChatRequest):
             top_phrases=sampled,
             asset_name=req.asset_name
         )
+        if req.message and req.message.strip():
+            prompt += (
+                "\n\n【ユーザーの追加質問】\n"
+                f"{req.message.strip()}\n"
+                "この質問に対して、上の軍師ロジックと審査条件を踏まえて、"
+                "具体的に答えてください。"
+            )
         try:
             from obsidian_ai_context import build_obsidian_ai_context_block
 
@@ -515,8 +529,16 @@ def generate_gunshi_chat(req: GunshiChatRequest):
 
         reply_text = ""
         try:
-            from shinsa_gunshi import _get_gemini_key
-            api_key = _get_gemini_key()
+            api_key = ""
+            try:
+                from secret_manager import get_gemini_api_key
+
+                value = get_gemini_api_key()
+                api_key = value.strip() if isinstance(value, str) else ""
+            except Exception:
+                import os
+                value = os.environ.get("GEMINI_API_KEY")
+                api_key = value.strip() if isinstance(value, str) else ""
             if not api_key:
                 import os
                 # 直接 secrets.toml をパースするフェイルセーフ
@@ -560,6 +582,21 @@ def get_dashboard_stats():
             payload = refresh_dashboard_stats_cache()
         if payload is None:
             raise HTTPException(status_code=503, detail="dashboard stats cache unavailable")
+        return payload
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/department/stats")
+def get_department_stats():
+    try:
+        from data_cases import load_department_stats_cache, refresh_department_stats_cache
+        payload = load_department_stats_cache()
+        if payload is None:
+            payload = refresh_department_stats_cache()
+        if payload is None:
+            raise HTTPException(status_code=503, detail="department stats cache unavailable")
         return payload
     except Exception as e:
         import traceback

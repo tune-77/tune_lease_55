@@ -40,6 +40,7 @@ export default function Sidebar() {
       title: '高度分析・グラフ',
       items: [
         { name: '履歴分析・ダッシュボード', href: '/history-dash', icon: PieChart, color: 'text-sky-400' },
+        { name: '営業部ダッシュボード', href: '/department', icon: Users, color: 'text-emerald-400' },
         { name: '3期財務分析', href: '/financial', icon: BarChart3, color: 'text-rose-500' },
         { name: 'TimesFM 時系列予測', href: '/timesfm', icon: TrendingUp, color: 'text-emerald-500' },
         { name: '競合関係グラフ', href: '/competitor', icon: Share2, color: 'text-orange-400' },

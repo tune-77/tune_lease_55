@@ -14,46 +14,47 @@ interface GunshiAdviceProps {
 export default function GunshiAdvice({ score, pd_percent, industry_major, formData, onChatLoaded }: GunshiAdviceProps) {
   const [chatText, setChatText] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [question, setQuestion] = useState("");
+
+  const fetchChat = async (message = "") => {
+    setLoading(true);
+    try {
+      const subsidyText = [
+        formData.industry_detail,
+        formData.passion_text,
+        formData.asset_name,
+      ].join(" ");
+      const payload = {
+        score,
+        pd_percent,
+        industry_major,
+        asset_name: formData.asset_name || "",
+        resale: "標準",
+        repeat_cnt: 1,
+        subsidy: /補助金|助成金|ものづくり|省力化/.test(subsidyText),
+        bank: formData.deal_source === "銀行紹介" || formData.main_bank === "メイン先",
+        intuition: formData.intuition || 50,
+        posterior: 0.5,
+        message,
+      };
+      const res = await axios.post(`/api/gunshi/chat`, payload);
+      const fetchedText = res.data.chat_text;
+      setChatText(fetchedText);
+      if (onChatLoaded) {
+        onChatLoaded(fetchedText);
+      }
+    } catch (err) {
+      console.error("Failed to fetch gunshi chat", err);
+      const errText = "【通信エラー】軍師からの戦略を受信できませんでした。";
+      setChatText(errText);
+      if (onChatLoaded) onChatLoaded(errText);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (score === 0) return;
-    
-    const fetchChat = async () => {
-      setLoading(true);
-      try {
-        const subsidyText = [
-          formData.industry_detail,
-          formData.passion_text,
-          formData.asset_name,
-        ].join(" ");
-        const payload = {
-          score,
-          pd_percent,
-          industry_major,
-          asset_name: formData.asset_name || "",
-          resale: "標準",
-          repeat_cnt: 1,
-          subsidy: /補助金|助成金|ものづくり|省力化/.test(subsidyText),
-          bank: formData.deal_source === "銀行紹介" || formData.main_bank === "メイン先",
-          intuition: formData.intuition || 50,
-          posterior: 0.5
-        };
-        const res = await axios.post(`/api/gunshi/chat`, payload);
-        const fetchedText = res.data.chat_text;
-        setChatText(fetchedText);
-        if (onChatLoaded) {
-          onChatLoaded(fetchedText);
-        }
-      } catch (err) {
-        console.error("Failed to fetch gunshi chat", err);
-        const errText = "【通信エラー】軍師からの戦略を受信できませんでした。";
-        setChatText(errText);
-        if (onChatLoaded) onChatLoaded(errText);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
     fetchChat();
   }, [score, pd_percent, industry_major, formData]);
 
@@ -131,16 +132,36 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
       </div>
 
       <div className="p-4 bg-white border-t border-slate-100 shrink-0">
-        <div className="relative">
-          <input 
-            type="text" 
-            placeholder="※自動生成モード（個別質問は未実装です）" 
-            disabled
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pl-4 pr-12 text-sm outline-none cursor-not-allowed text-slate-400"
+        <div className="space-y-2">
+          <textarea
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                if (!loading && score > 0 && question.trim()) {
+                  fetchChat(question.trim());
+                }
+              }
+            }}
+            placeholder="この案件の条件付き承認の方法、業界平均との差、次の一手を聞く"
+            rows={3}
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-4 text-sm outline-none resize-none text-slate-700 placeholder:text-slate-400"
           />
-          <button disabled className="absolute flex items-center justify-center right-2 top-2 w-8 h-8 bg-blue-600 text-white rounded-xl disabled:bg-slate-300">
-            <MessageSquare className="w-4 h-4 ml-0.5" />
-          </button>
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-[11px] text-slate-500">
+              Enter で送信、Shift+Enter で改行
+            </div>
+            <button
+              type="button"
+              onClick={() => fetchChat(question.trim())}
+              disabled={loading || !question.trim()}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl font-bold disabled:bg-slate-300 disabled:cursor-not-allowed"
+            >
+              <MessageSquare className="w-4 h-4" />
+              問う
+            </button>
+          </div>
         </div>
       </div>
     </div>

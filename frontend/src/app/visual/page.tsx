@@ -92,15 +92,15 @@ export default function VisualPage() {
   useEffect(() => {
     if (!sankeyData || !sankeyRef.current || activeTab !== 'sankey') return;
 
-    const width = 900;
-    const height = 500;
+    const width = 640;
+    const height = 300;
     const svg = d3.select(sankeyRef.current);
 
     svg.selectAll('*').remove();
 
     const generator = d3Sankey()
-      .nodeWidth(20)
-      .nodePadding(20)
+      .nodeWidth(14)
+      .nodePadding(10)
       .extent([[1, 1], [width - 1, height - 5]]);
 
     const { nodes, links } = generator({
@@ -141,7 +141,7 @@ export default function VisualPage() {
       .attr('y', (d: any) => (d.y1 + d.y0) / 2)
       .attr('dy', '0.35em')
       .attr('text-anchor', (d: any) => d.x0 < width / 2 ? 'start' : 'end')
-      .attr('font-size', '11px')
+      .attr('font-size', '9px')
       .attr('font-weight', 'bold')
       .attr('fill', '#475569')
       .text((d: any) => d.name);
@@ -258,31 +258,55 @@ export default function VisualPage() {
 
          {activeTab === 'heatmap' && (
            <div className="animate-in fade-in duration-500 overflow-x-auto">
-             <div className="mb-6">
-                <h3 className="text-2xl font-black text-slate-800">🌡️ 業種 × スコア 成約確率分布</h3>
-                <p className="text-slate-400 text-sm font-bold">どの業種のどのスコア帯が「勝ち筋」かを色付けして特定します。</p>
-             </div>
-              <table className="w-full text-left border-collapse rounded-2xl overflow-hidden shadow-inner">
+             <div className="mb-5 max-w-5xl">
+                <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                  <span className="inline-flex w-7 h-7 items-center justify-center rounded-lg bg-gradient-to-br from-fuchsia-500 to-amber-400 text-white shadow-sm">🌡️</span>
+                  業種 × スコア 成約確率分布
+                </h3>
+                <p className="text-slate-500 text-xs font-semibold mt-1">勝ち筋の濃い帯だけを、見やすく濃い色で出しています。</p>
+                <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold text-slate-500">
+                  <span className="px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">高成約率</span>
+                  <span className="px-2 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100">中間帯</span>
+                  <span className="px-2 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-100">低成約率</span>
+                </div>
+              </div>
+              <div className="max-w-5xl">
+              <table className="w-full text-left border-collapse rounded-2xl overflow-hidden shadow-inner border border-slate-200">
                 <thead>
-                  <tr className="bg-slate-50 text-slate-500 font-black text-xs uppercase tracking-widest">
-                    <th className="p-5 border-b border-slate-100">業種区分</th>
-                    {heatmapData.bands.map(b => <th key={b} className="p-5 text-center border-b border-slate-100">{b}</th>)}
+                  <tr className="bg-slate-900 text-slate-200 font-black text-[10px] uppercase tracking-[0.25em]">
+                    <th className="p-3 border-b border-slate-800">業種区分</th>
+                    {heatmapData.bands.map(b => <th key={b} className="p-3 text-center border-b border-slate-800">{b}</th>)}
                   </tr>
                 </thead>
                 <tbody>
                   {heatmapData.matrix.map((row) => (
-                    <tr key={row.industry} className="border-b border-slate-50 last:border-0 group">
-                      <td className="p-5 font-black text-slate-700 bg-slate-50/30 group-hover:bg-slate-50 transition-colors">{row.industry}</td>
+                    <tr key={row.industry} className="border-b border-slate-100 last:border-0 group">
+                      <td className="p-3 font-black text-slate-700 bg-slate-50/70 group-hover:bg-slate-50 transition-colors text-sm whitespace-nowrap">
+                        {row.industry}
+                      </td>
                       {row.cells.map((cell, i) => {
                         const h = (cell.rate ?? 0) * 120;
+                        const bg = cell.rate !== null
+                          ? `linear-gradient(180deg, hsla(${h}, 85%, 58%, 0.95) 0%, hsla(${h}, 85%, 48%, 0.75) 100%)`
+                          : 'linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%)';
                         return (
-                          <td key={i} className="p-5 text-center transition-all" style={cell.rate !== null ? {backgroundColor: `hsla(${h}, 70%, 60%, 0.1)`, border: `2px solid hsla(${h}, 70%, 60%, 0.2)`} : {}}>
+                          <td key={i} className="p-2 md:p-3 text-center transition-all" style={{ background: bg }}>
                             {cell.rate !== null ? (
-                              <div>
-                                <div className="text-lg font-black" style={{color: `hsla(${h}, 70%, 40%, 1)`}}>{(cell.rate * 100).toFixed(0)}%</div>
-                                <div className="text-[10px] font-bold text-slate-400">{cell.won}/{cell.total} <span className="opacity-50">cases</span></div>
+                              <div className="flex flex-col items-center justify-center gap-1 min-h-[58px]">
+                                <div className="text-lg md:text-xl font-black text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.35)]">
+                                  {(cell.rate * 100).toFixed(0)}%
+                                </div>
+                                <div className="w-full max-w-[84px] h-1.5 rounded-full bg-white/25 overflow-hidden">
+                                  <div
+                                    className="h-full rounded-full bg-white/90"
+                                    style={{ width: `${Math.max(12, Math.min(100, (cell.rate || 0) * 100))}%` }}
+                                  />
+                                </div>
+                                <div className="text-[10px] font-bold text-white/85">
+                                  {cell.won}/{cell.total} cases
+                                </div>
                               </div>
-                            ) : <span className="text-slate-300 italic text-xs">NO DATA</span>}
+                            ) : <span className="text-slate-400 italic text-[10px] font-bold">NO DATA</span>}
                           </td>
                         );
                       })}
@@ -290,22 +314,23 @@ export default function VisualPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
            </div>
          )}
 
          {activeTab === 'sankey' && (
            <div className="animate-in fade-in duration-500">
-             <div className="mb-6 flex justify-between items-end">
+             <div className="mb-4 flex justify-between items-end">
                 <div>
-                  <h3 className="text-2xl font-black text-slate-800">🌊 審査案件フロー・サンキー図</h3>
-                  <p className="text-slate-400 text-sm font-bold">業種からスコア帯を経て最終結果へ。案件の流動性を可視化します。</p>
+                  <h3 className="text-lg font-black text-slate-800">🌊 審査案件フロー・サンキー図</h3>
+                  <p className="text-slate-400 text-[11px] font-bold">業種からスコア帯を経て最終結果へ。</p>
                 </div>
-                <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 p-2 px-4 rounded-xl text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 p-2 px-3 rounded-xl text-[9px] font-black text-slate-400 uppercase tracking-widest">
                    <MousePointer2 className="w-3 h-3 text-emerald-400" /> Hover to Highlight
                 </div>
              </div>
-             <div className="w-full flex justify-center bg-slate-50/50 p-6 rounded-3xl border border-slate-100 shadow-inner">
-               <svg ref={sankeyRef} className="w-full max-w-full" viewBox="0 0 900 500" preserveAspectRatio="xMidYMid meet" />
+             <div className="w-full flex justify-center bg-slate-50/50 p-3 rounded-3xl border border-slate-100 shadow-inner">
+               <svg ref={sankeyRef} className="w-full max-w-full" viewBox="0 0 640 300" preserveAspectRatio="xMidYMid meet" />
              </div>
            </div>
          )}

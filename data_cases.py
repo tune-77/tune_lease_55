@@ -31,6 +31,7 @@ COEFF_HISTORY_FILE   = os.path.join(_DATA_DIR, "coeff_history.jsonl")
 CONSULTATION_MEMORY_FILE = os.path.join(_DATA_DIR, "consultation_memory.jsonl")
 CASE_NEWS_FILE = os.path.join(_DATA_DIR, "case_news.jsonl")
 DASHBOARD_STATS_CACHE_FILE = os.path.join(_DATA_DIR, "dashboard_stats_cache.json")
+DEPARTMENT_STATS_CACHE_FILE = os.path.join(_DATA_DIR, "department_stats_cache.json")
 
 import hashlib
 import base64
@@ -192,6 +193,387 @@ def _compact_recent_case(case: dict) -> dict:
     }
 
 
+def _to_float(value) -> float | None:
+    try:
+        if value in ("", None):
+            return None
+        v = float(value)
+        if not np.isfinite(v):
+            return None
+        return v
+    except (TypeError, ValueError):
+        return None
+
+
+def _case_result(case: dict) -> dict:
+    result = case.get("result")
+    return result if isinstance(result, dict) else {}
+
+
+def _case_inputs(case: dict) -> dict:
+    inputs = case.get("inputs")
+    return inputs if isinstance(inputs, dict) else {}
+
+
+def _case_sales_dept(case: dict) -> str:
+    inputs = _case_inputs(case)
+    dept = case.get("sales_dept") or inputs.get("sales_dept") or "未設定"
+    return str(dept).strip() or "未設定"
+
+
+def _is_valid_department(dept: str) -> bool:
+    normalized = str(dept or "").strip()
+    return normalized not in {"", "未設定", "0", "０", "-", "不明"}
+
+
+def _case_industry_major(case: dict) -> str:
+    inputs = _case_inputs(case)
+    major = case.get("industry_major") or inputs.get("industry_major") or "不明"
+    return str(major).strip() or "不明"
+
+
+def _case_score_for_department(case: dict) -> float | None:
+    result = _case_result(case)
+    for value in (
+        result.get("score_borrower"),
+        case.get("score_borrower"),
+        result.get("score"),
+        case.get("score"),
+    ):
+        parsed = _to_float(value)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _case_rate_for_department(case: dict) -> float | None:
+    for key in ("final_rate", "contract_rate", "rate"):
+        parsed = _to_float(case.get(key))
+        if parsed is not None and parsed > 0:
+            return _normalize_rate_value(parsed)
+    return None
+
+
+def _case_spread_for_department(case: dict) -> float | None:
+    parsed = _to_float(case.get("winning_spread"))
+    if parsed is not None:
+        return parsed
+    final_rate = _case_rate_for_department(case)
+    base_rate = _to_float(case.get("base_rate_at_time"))
+    if final_rate is None or base_rate is None or base_rate <= 0:
+        return None
+    return final_rate - _normalize_rate_value(base_rate)
+
+
+def _case_contract_amount_for_department(case: dict) -> float | None:
+    inputs = _case_inputs(case)
+    for value in (
+        case.get("contract_amount"),
+        case.get("final_amount"),
+        case.get("acquisition_cost"),
+        inputs.get("acquisition_cost"),
+    ):
+        parsed = _to_float(value)
+        if parsed is not None and parsed > 0:
+            return parsed
+    return None
+
+
+def _case_month_for_department(case: dict) -> str | None:
+    for key in ("final_result_date", "registration_date", "timestamp"):
+        raw = str(case.get(key) or "")
+        if len(raw) >= 7 and raw[:4].isdigit() and raw[4] in ("-", "/"):
+            return raw[:7].replace("/", "-")
+    return None
+
+
+def _mean(values: list[float]) -> float | None:
+    cleaned = [v for v in values if v is not None and np.isfinite(v)]
+    return float(sum(cleaned) / len(cleaned)) if cleaned else None
+
+
+def _round_or_none(value: float | None, digits: int = 2) -> float | None:
+    return round(float(value), digits) if value is not None and np.isfinite(value) else None
+
+
+def _amount_to_display_million(value: float | None) -> float | None:
+    """ケース単位で M(百万円) へ正規化済みのため、ここでは恒等関数として返す。"""
+    if value is None or not np.isfinite(value):
+        return None
+    return float(value)
+
+
+def build_department_stats_cache() -> dict:
+    """営業部ダッシュボード用の軽量集計を作る。"""
+    all_cases = load_all_cases()
+    dept_buckets: dict[str, dict] = {}
+    industry_set: set[str] = set()
+
+    for case in all_cases:
+        dept = _case_sales_dept(case)
+        if not _is_valid_department(dept):
+            continue
+        industry = _case_industry_major(case)
+        status = str(case.get("final_status") or "未登録")
+        score = _case_score_for_department(case)
+        final_rate = _case_rate_for_department(case)
+        spread = _case_spread_for_department(case)
+        contract_amount = _case_contract_amount_for_department(case)
+        month = _case_month_for_department(case)
+
+        bucket = dept_buckets.setdefault(
+            dept,
+            {
+                "department": dept,
+                "total_count": 0,
+                "won_count": 0,
+                "lost_count": 0,
+                "pending_count": 0,
+                "scores": [],
+                "rates": [],
+                "spreads": [],
+                "contract_amounts": [],
+                "industries": {},
+            },
+        )
+        bucket["total_count"] += 1
+        if status == "成約":
+            bucket["won_count"] += 1
+        elif status == "失注":
+            bucket["lost_count"] += 1
+        else:
+            bucket["pending_count"] += 1
+        if score is not None:
+            bucket["scores"].append(score)
+        if final_rate is not None:
+            bucket["rates"].append(final_rate)
+        if spread is not None:
+            bucket["spreads"].append(spread)
+        if status == "成約" and contract_amount is not None:
+            bucket["contract_amounts"].append(contract_amount)
+        bucket["industries"][industry] = bucket["industries"].get(industry, 0) + 1
+        industry_set.add(industry)
+
+    departments = []
+    for bucket in dept_buckets.values():
+        decided = bucket["won_count"] + bucket["lost_count"]
+        avg_score = _mean(bucket["scores"])
+        avg_rate = _mean(bucket["rates"])
+        avg_spread = _mean(bucket["spreads"])
+        top_industry = None
+        if bucket["industries"]:
+            top_industry = max(bucket["industries"].items(), key=lambda item: item[1])[0]
+        departments.append(
+            {
+                "department": bucket["department"],
+                "total_count": bucket["total_count"],
+                "won_count": bucket["won_count"],
+                "lost_count": bucket["lost_count"],
+                "pending_count": bucket["pending_count"],
+                "decided_count": decided,
+                "contract_rate": _round_or_none((bucket["won_count"] / decided) * 100.0 if decided else None, 1),
+                "avg_score": _round_or_none(avg_score, 1),
+                "avg_rate": _round_or_none(avg_rate, 2),
+                "avg_spread": _round_or_none(avg_spread, 2),
+                "top_industry": top_industry,
+                "industries": bucket["industries"],
+            }
+        )
+
+    overall_decided = sum(d["decided_count"] for d in departments)
+    overall_won = sum(d["won_count"] for d in departments)
+    all_scores = [score for b in dept_buckets.values() for score in b["scores"]]
+    all_rates = [rate for b in dept_buckets.values() for rate in b["rates"]]
+    all_spreads = [spread for b in dept_buckets.values() for spread in b["spreads"]]
+    all_amounts = [amount for b in dept_buckets.values() for amount in b["contract_amounts"]]
+
+    overall = {
+        "total_count": sum(d["total_count"] for d in departments),
+        "won_count": overall_won,
+        "lost_count": sum(d["lost_count"] for d in departments),
+        "pending_count": sum(d["pending_count"] for d in departments),
+        "decided_count": overall_decided,
+        "contract_rate": _round_or_none((overall_won / overall_decided) * 100.0 if overall_decided else None, 1),
+        "avg_score": _round_or_none(_mean(all_scores), 1),
+        "avg_rate": _round_or_none(_mean(all_rates), 2),
+        "avg_spread": _round_or_none(_mean(all_spreads), 2),
+        "avg_contract_amount": _round_or_none(_mean(all_amounts), 0),
+        "avg_contract_amount_million": _round_or_none(_amount_to_display_million(_mean(all_amounts)), 2) if all_amounts else None,
+        "total_contract_amount": _round_or_none(sum(all_amounts), 0) if all_amounts else None,
+        "total_contract_amount_million": _round_or_none(_amount_to_display_million(sum(all_amounts)), 2) if all_amounts else None,
+    }
+
+    contract_rank = sorted(
+        departments,
+        key=lambda d: (d["contract_rate"] is not None, d["contract_rate"] or -1, d["decided_count"]),
+        reverse=True,
+    )
+    score_rank = sorted(
+        departments,
+        key=lambda d: (d["avg_score"] is not None, d["avg_score"] or -1, d["total_count"]),
+        reverse=True,
+    )
+    rate_rank = sorted(
+        departments,
+        key=lambda d: (d["avg_rate"] is not None, -(d["avg_rate"] or 0), d["total_count"]),
+        reverse=True,
+    )
+
+    contract_rank_map = {d["department"]: i + 1 for i, d in enumerate(contract_rank)}
+    score_rank_map = {d["department"]: i + 1 for i, d in enumerate(score_rank)}
+    rate_rank_map = {d["department"]: i + 1 for i, d in enumerate(rate_rank)}
+
+    for d in departments:
+        d["contract_rate_diff"] = _round_or_none(
+            d["contract_rate"] - overall["contract_rate"]
+            if d["contract_rate"] is not None and overall["contract_rate"] is not None
+            else None,
+            1,
+        )
+        d["avg_score_diff"] = _round_or_none(
+            d["avg_score"] - overall["avg_score"]
+            if d["avg_score"] is not None and overall["avg_score"] is not None
+            else None,
+            1,
+        )
+        d["avg_rate_diff"] = _round_or_none(
+            d["avg_rate"] - overall["avg_rate"]
+            if d["avg_rate"] is not None and overall["avg_rate"] is not None
+            else None,
+            2,
+        )
+        d["contract_rate_rank"] = contract_rank_map.get(d["department"])
+        d["avg_score_rank"] = score_rank_map.get(d["department"])
+        d["avg_rate_rank"] = rate_rank_map.get(d["department"])
+
+    departments.sort(key=lambda d: (d["total_count"], d["department"]), reverse=True)
+
+    top_industries = sorted(
+        industry_set,
+        key=lambda ind: sum((d.get("industries") or {}).get(ind, 0) for d in departments),
+        reverse=True,
+    )[:8]
+    industry_composition = []
+    for d in departments:
+        row = {"department": d["department"]}
+        row.update({industry: (d.get("industries") or {}).get(industry, 0) for industry in top_industries})
+        industry_composition.append(row)
+
+    industry_metric_buckets: dict[tuple[str, str], dict] = {}
+    monthly_metric_buckets: dict[tuple[str, str], dict] = {}
+    for case in all_cases:
+        dept = _case_sales_dept(case)
+        if not _is_valid_department(dept):
+            continue
+        industry = _case_industry_major(case)
+        final_rate = _case_rate_for_department(case)
+        amount = _case_contract_amount_for_department(case)
+        month = _case_month_for_department(case)
+        is_won = str(case.get("final_status") or "") == "成約"
+
+        industry_bucket = industry_metric_buckets.setdefault(
+            (dept, industry),
+            {"department": dept, "industry": industry, "rates": [], "amounts": [], "count": 0, "won_count": 0},
+        )
+        industry_bucket["count"] += 1
+        if final_rate is not None:
+            industry_bucket["rates"].append(final_rate)
+        if is_won and amount is not None:
+            industry_bucket["amounts"].append(amount)
+            industry_bucket["won_count"] += 1
+
+        if month:
+            monthly_bucket = monthly_metric_buckets.setdefault(
+                (dept, month),
+                {"department": dept, "month": month, "rates": [], "amounts": [], "count": 0, "won_count": 0},
+            )
+            monthly_bucket["count"] += 1
+            if final_rate is not None:
+                monthly_bucket["rates"].append(final_rate)
+            if is_won and amount is not None:
+                monthly_bucket["amounts"].append(amount)
+                monthly_bucket["won_count"] += 1
+
+    industry_metrics = []
+    for bucket in industry_metric_buckets.values():
+        avg_amount = _mean(bucket["amounts"])
+        if not bucket["rates"] and not bucket["amounts"]:
+            continue
+        industry_metrics.append(
+            {
+                "department": bucket["department"],
+                "industry": bucket["industry"],
+                "count": bucket["count"],
+                "won_count": bucket["won_count"],
+                "avg_rate": _round_or_none(_mean(bucket["rates"]), 2),
+                "avg_contract_amount": _round_or_none(avg_amount, 0),
+                "avg_contract_amount_million": _round_or_none(_amount_to_display_million(avg_amount), 2),
+                "total_contract_amount": _round_or_none(sum(bucket["amounts"]), 0) if bucket["amounts"] else None,
+                "total_contract_amount_million": _round_or_none(_amount_to_display_million(sum(bucket["amounts"])), 2) if bucket["amounts"] else None,
+            }
+        )
+    industry_metrics.sort(key=lambda row: (row["department"], -(row["won_count"] or 0), row["industry"]))
+
+    monthly_metrics = []
+    for bucket in monthly_metric_buckets.values():
+        avg_amount = _mean(bucket["amounts"])
+        if not bucket["rates"] and not bucket["amounts"]:
+            continue
+        monthly_metrics.append(
+            {
+                "department": bucket["department"],
+                "month": bucket["month"],
+                "count": bucket["count"],
+                "won_count": bucket["won_count"],
+                "avg_rate": _round_or_none(_mean(bucket["rates"]), 2),
+                "avg_contract_amount": _round_or_none(avg_amount, 0),
+                "avg_contract_amount_million": _round_or_none(_amount_to_display_million(avg_amount), 2),
+                "total_contract_amount": _round_or_none(sum(bucket["amounts"]), 0) if bucket["amounts"] else None,
+                "total_contract_amount_million": _round_or_none(_amount_to_display_million(sum(bucket["amounts"])), 2) if bucket["amounts"] else None,
+            }
+        )
+    monthly_metrics.sort(key=lambda row: (row["department"], row["month"]))
+
+    significance_summary = []
+    try:
+        from model_review_hooks import _evaluate_department_significance
+
+        sig = _evaluate_department_significance(
+            {
+                "id": "sales_dept_significance",
+                "kind": "department_significance",
+                "target": "score_borrower",
+                "min_cases_per_dept": 8,
+                "alpha": 0.05,
+                "min_effect": 0.05,
+            }
+        )
+        for row in sig.get("results") or []:
+            significance_summary.append(
+                {
+                    "item": row.get("項目"),
+                    "test": row.get("検定"),
+                    "p_value": _round_or_none(row.get("p値"), 4),
+                    "effect_size": _round_or_none(row.get("効果量"), 3),
+                    "significance": row.get("有意"),
+                    "note": row.get("補足"),
+                }
+            )
+    except Exception:
+        significance_summary = []
+
+    return {
+        "generated_at": datetime.datetime.now().isoformat(),
+        "overall": overall,
+        "departments": departments,
+        "industry_keys": top_industries,
+        "industry_composition": industry_composition,
+        "industry_metrics": industry_metrics,
+        "monthly_metrics": monthly_metrics,
+        "significance_summary": significance_summary[:8],
+    }
+
+
 def build_dashboard_stats_cache(limit_recent_cases: int = 15) -> dict:
     """ホーム画面用の軽量集計を作る。"""
     try:
@@ -248,6 +630,34 @@ def refresh_dashboard_stats_cache() -> dict | None:
     except Exception as e:
         print(f"[Error in refresh_dashboard_stats_cache]: {e}", file=sys.stderr)
     return payload
+
+
+def load_department_stats_cache() -> dict | None:
+    if not os.path.exists(DEPARTMENT_STATS_CACHE_FILE):
+        return None
+    try:
+        with open(DEPARTMENT_STATS_CACHE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def refresh_department_stats_cache() -> dict | None:
+    payload = build_department_stats_cache()
+    try:
+        os.makedirs(os.path.dirname(DEPARTMENT_STATS_CACHE_FILE), exist_ok=True)
+        tmp_path = DEPARTMENT_STATS_CACHE_FILE + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, cls=CustomJSONEncoder)
+        os.replace(tmp_path, DEPARTMENT_STATS_CACHE_FILE)
+    except Exception as e:
+        print(f"[Error in refresh_department_stats_cache]: {e}", file=sys.stderr)
+    return payload
+
+
+def refresh_stats_caches() -> None:
+    refresh_dashboard_stats_cache()
+    refresh_department_stats_cache()
 
 
 def load_past_cases():
@@ -348,7 +758,7 @@ def delete_case(case_id: str) -> bool:
         with closing(_open_db()) as conn:
             conn.execute("DELETE FROM past_cases WHERE id = ?", (case_id,))
             conn.commit()
-        refresh_dashboard_stats_cache()
+        refresh_stats_caches()
         return True
     except Exception:
         return False
@@ -374,7 +784,7 @@ def update_case(case_id: str, updates: dict) -> bool:
                 (json_str, final_status, case_id),
             )
             conn.commit()
-        refresh_dashboard_stats_cache()
+        refresh_stats_caches()
         return True
     except Exception:
         return False
@@ -779,7 +1189,7 @@ def save_case_log(data):
             ))
             conn.commit()
         _trigger_ml_features_update(case_id)
-        refresh_dashboard_stats_cache()
+        refresh_stats_caches()
         return case_id
     except Exception as e:
         import traceback
@@ -939,7 +1349,7 @@ def update_case_field(case_id: str, key: str, value: object) -> bool:
             "qualitative_scoring",
             "qualitative_scoring_correction",
         }:
-            refresh_dashboard_stats_cache()
+            refresh_stats_caches()
         return True
     except Exception as e:
         import traceback

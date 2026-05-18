@@ -31,7 +31,7 @@
 
 ```bash
 cd /path/to/tune_lease_55
-./run_lease_app.sh
+./run_next_stable.sh
 ```
 
 または:
@@ -39,6 +39,15 @@ cd /path/to/tune_lease_55
 ```bash
 streamlit run tune_lease_55.py
 ```
+
+公開URLが必要なら:
+
+```bash
+PUBLIC_TUNNEL=1 ./run_next_stable.sh
+```
+
+このルートは `FastAPI + Next.js production + Cloudflare Tunnel` をまとめて安定起動します。
+`next dev` は使わず、`next build` → `next start` に固定しています。
 
 APIキーの設定（初回のみ）:
 
