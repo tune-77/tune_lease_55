@@ -694,6 +694,52 @@ def get_similar_cases_data():
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+
+class SimilarInlineRequest(BaseModel):
+    nenshu: float = 0
+    op_profit: float = 0
+    equity_ratio: float = 0
+    bank_credit: float = 0
+    lease_credit: float = 0
+    industry_sub: str = ""
+    industry_major: str = ""
+    max_count: int = 3
+
+
+@app.post("/api/similar/inline")
+def get_similar_cases_inline(req: SimilarInlineRequest):
+    """軍師パネル等にインライン表示するための類似案件抽出。"""
+    from data_cases import find_similar_past_cases
+    try:
+        current = {
+            "nenshu": req.nenshu,
+            "op_profit": req.op_profit,
+            "equity_ratio": req.equity_ratio,
+            "bank_credit": req.bank_credit,
+            "lease_credit": req.lease_credit,
+            "industry_sub": req.industry_sub or req.industry_major,
+        }
+        results = find_similar_past_cases(current, max_count=max(1, min(int(req.max_count or 3), 5)))
+        # フロントで参照する最小フィールドに整形
+        compact = []
+        for r in results:
+            compact.append({
+                "id": r.get("id"),
+                "name": r.get("name") or "匿名企業",
+                "industry": r.get("industry") or "",
+                "score": r.get("score") or 0,
+                "status": r.get("status") or "未登録",
+                "similarity": r.get("similarity") or 0,
+                "equity": r.get("equity") or 0,
+                "revenue": r.get("revenue") or 0,
+                "conditions": (r.get("data") or {}).get("loan_conditions") or [],
+            })
+        return {"similar_cases": compact}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 class ReportRequest(BaseModel):
     result_data: Dict[str, Any]
     inputs: Dict[str, Any]

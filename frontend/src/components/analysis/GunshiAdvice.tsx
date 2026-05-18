@@ -16,6 +16,18 @@ type ChatMessage = {
   meta?: string;
 };
 
+type SimilarCase = {
+  id?: number | string;
+  name: string;
+  industry: string;
+  score: number;
+  status: string;
+  similarity: number;
+  equity: number;
+  revenue: number;
+  conditions: string[];
+};
+
 export default function GunshiAdvice({ score, pd_percent, industry_major, formData, onChatLoaded }: GunshiAdviceProps) {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
@@ -24,7 +36,10 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
   const [useWeb, setUseWeb] = useState(true);
   const [advisorMode, setAdvisorMode] = useState<'gunshi' | 'chat'>('gunshi');
   const [statusText, setStatusText] = useState('');
+  const [similarCases, setSimilarCases] = useState<SimilarCase[]>([]);
+  const [similarOpen, setSimilarOpen] = useState(true);
   const initialFetchKeyRef = useRef<string>("");
+  const similarFetchKeyRef = useRef<string>("");
 
   const buildPayload = (message = "", history: ChatMessage[] = chatHistory) => {
     const subsidyText = [
@@ -115,6 +130,40 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
     setChatHistory(nextHistory);
     fetchChat("", nextHistory, []);
   }, [score, pd_percent, industry_major, formData]);
+
+  useEffect(() => {
+    if (score === 0) return;
+    const sigKey = [
+      formData.nenshu,
+      formData.op_profit,
+      formData.equity_ratio,
+      formData.bank_credit,
+      formData.lease_credit,
+      formData.industry_sub,
+      industry_major,
+    ].join(":");
+    if (similarFetchKeyRef.current === sigKey) return;
+    similarFetchKeyRef.current = sigKey;
+
+    (async () => {
+      try {
+        const res = await axios.post(`/api/similar/inline`, {
+          nenshu: Number(formData.nenshu) || 0,
+          op_profit: Number(formData.op_profit) || 0,
+          equity_ratio: Number(formData.equity_ratio) || 0,
+          bank_credit: Number(formData.bank_credit) || 0,
+          lease_credit: Number(formData.lease_credit) || 0,
+          industry_sub: formData.industry_sub || "",
+          industry_major: industry_major || "",
+          max_count: 3,
+        });
+        setSimilarCases(res.data?.similar_cases || []);
+      } catch (err) {
+        console.error("Failed to fetch similar cases", err);
+        setSimilarCases([]);
+      }
+    })();
+  }, [score, industry_major, formData]);
 
   const handleSubmit = async () => {
     const trimmedQuestion = question.trim();
@@ -221,6 +270,57 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
         <div className="text-center my-2 mb-6">
           <span className="text-[10px] font-bold text-slate-400 bg-slate-200 px-3 py-1 rounded-full">ダッシュボード連携セッション開始</span>
         </div>
+
+        {score > 0 && similarCases.length > 0 && (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setSimilarOpen(v => !v)}
+              className="w-full flex items-center justify-between px-4 py-2.5 text-left"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-base">📚</span>
+                <span className="text-xs font-bold text-slate-700">類似過去案件 ({similarCases.length}件)</span>
+                <span className="text-[10px] text-slate-400 font-medium">成約・承認済みのみ</span>
+              </div>
+              <span className="text-xs text-slate-400">{similarOpen ? '▲' : '▼'}</span>
+            </button>
+            {similarOpen && (
+              <div className="px-3 pb-3 space-y-2">
+                {similarCases.map((c, i) => {
+                  const isSuccess = c.status.includes('成約') || c.status.includes('承認');
+                  return (
+                    <div key={c.id ?? i} className="border border-slate-100 rounded-lg p-2.5 bg-slate-50/50">
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <div className="text-xs font-bold text-slate-800 truncate">{c.name}</div>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                          isSuccess ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
+                        }`}>
+                          {c.status}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 text-[10px] text-slate-600 mb-1">
+                        <span className="font-medium">{c.industry || '業種未設定'}</span>
+                        <span>スコア <span className="font-bold text-slate-800">{Number(c.score).toFixed(1)}</span></span>
+                        <span>自己資本 <span className="font-bold text-slate-800">{c.equity}%</span></span>
+                        <span className="ml-auto text-amber-600 font-bold">類似度 {c.similarity}%</span>
+                      </div>
+                      {c.conditions && c.conditions.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {c.conditions.slice(0, 4).map((cond, j) => (
+                            <span key={j} className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700">
+                              {cond}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {chatHistory.map((chat, index) => (
           chat.role === 'user' ? (
