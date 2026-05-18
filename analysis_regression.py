@@ -499,6 +499,26 @@ def _run_single_quant_analysis(X, y, feature_names, min_cases=50):
     except Exception as e:
         out["lr_error"] = str(e)
     try:
+        from sklearn.ensemble import RandomForestClassifier
+
+        rf = RandomForestClassifier(
+            n_estimators=350,
+            min_samples_leaf=2,
+            class_weight="balanced_subsample",
+            random_state=42,
+            n_jobs=-1,
+        )
+        rf.fit(X_tr, y_tr)
+        rf_pred = rf.predict(X_te)
+        out["accuracy_rf"] = float(accuracy_score(y_te, rf_pred))
+        if len(np.unique(y_te)) >= 2:
+            out["auc_rf"] = float(roc_auc_score(y_te, rf.predict_proba(X_te)[:, 1]))
+        else:
+            out["auc_rf"] = None
+        out["rf_importance"] = list(zip(feature_names, rf.feature_importances_.tolist()))
+    except Exception as e:
+        out["rf_error"] = str(e)
+    try:
         import lightgbm as lgb
         lgb_model = lgb.LGBMClassifier(**LGBM_PARAMS)
         lgb_model.fit(X_tr, y_tr)
@@ -1331,6 +1351,26 @@ def run_qualitative_contract_analysis(qual_correction_items):
     except Exception as e:
         out["lr_error"] = str(e)
     try:
+        from sklearn.ensemble import RandomForestClassifier
+
+        rf = RandomForestClassifier(
+            n_estimators=350,
+            min_samples_leaf=2,
+            class_weight="balanced_subsample",
+            random_state=42,
+            n_jobs=-1,
+        )
+        rf.fit(X_tr, y_tr)
+        rf_pred = rf.predict(X_te)
+        out["accuracy_rf"] = float(accuracy_score(y_te, rf_pred))
+        if len(np.unique(y_te)) >= 2:
+            out["auc_rf"] = float(roc_auc_score(y_te, rf.predict_proba(X_te)[:, 1]))
+        else:
+            out["auc_rf"] = None
+        out["rf_importance"] = list(zip(feature_names, rf.feature_importances_.tolist()))
+    except Exception as e:
+        out["rf_error"] = str(e)
+    try:
         import lightgbm as lgb
         lgb_model = lgb.LGBMClassifier(**LGBM_PARAMS)
         lgb_model.fit(X_tr, y_tr)
@@ -1429,6 +1469,26 @@ def run_quantitative_contract_analysis():
             out["lr_used_bayesian"] = False
     except Exception as e:
         out["lr_error"] = str(e)
+    try:
+        from sklearn.ensemble import RandomForestClassifier
+
+        rf = RandomForestClassifier(
+            n_estimators=350,
+            min_samples_leaf=2,
+            class_weight="balanced_subsample",
+            random_state=42,
+            n_jobs=-1,
+        )
+        rf.fit(X_tr, y_tr)
+        rf_pred = rf.predict(X_te)
+        out["accuracy_rf"] = float(accuracy_score(y_te, rf_pred))
+        if len(np.unique(y_te)) >= 2:
+            out["auc_rf"] = float(roc_auc_score(y_te, rf.predict_proba(X_te)[:, 1]))
+        else:
+            out["auc_rf"] = None
+        out["rf_importance"] = list(zip(feature_names, rf.feature_importances_.tolist()))
+    except Exception as e:
+        out["rf_error"] = str(e)
     try:
         import lightgbm as lgb
         lgb_model = lgb.LGBMClassifier(**LGBM_PARAMS)

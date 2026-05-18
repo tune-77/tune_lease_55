@@ -597,11 +597,9 @@ def generate_gunshi_chat(req: GunshiChatRequest):
                 value = get_gemini_api_key()
                 api_key = value.strip() if isinstance(value, str) else ""
             except Exception:
-                import os
                 value = os.environ.get("GEMINI_API_KEY")
                 api_key = value.strip() if isinstance(value, str) else ""
             if not api_key:
-                import os
                 # 直接 secrets.toml をパースするフェイルセーフ
                 sec_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".streamlit", "secrets.toml")
                 if os.path.exists(sec_path):
@@ -980,12 +978,90 @@ def api_contract_drivers():
     }
 
 # ── 定量要因分析
+def _get_gemini_api_key() -> str:
+    try:
+        from secret_manager import get_gemini_api_key
+
+        value = get_gemini_api_key()
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    except Exception:
+        pass
+    value = os.environ.get("GEMINI_API_KEY")
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _metric_line(name: str, result: Dict[str, Any]) -> str:
+    acc = result.get(f"accuracy_{name}")
+    auc = result.get(f"auc_{name}")
+    acc_text = f"{acc:.3f}" if isinstance(acc, (int, float)) else "N/A"
+    auc_text = f"{auc:.3f}" if isinstance(auc, (int, float)) else "N/A"
+    return f"{name.upper()}: accuracy={acc_text}, auc={auc_text}"
+
+
+def _top_factor_text(items: Any, limit: int = 5, absolute: bool = False) -> str:
+    if not isinstance(items, list):
+        return "N/A"
+    cleaned = []
+    for item in items:
+        if not isinstance(item, (list, tuple)) or len(item) < 2:
+            continue
+        try:
+            cleaned.append((str(item[0]), float(item[1])))
+        except Exception:
+            continue
+    if absolute:
+        cleaned.sort(key=lambda x: abs(x[1]), reverse=True)
+    else:
+        cleaned.sort(key=lambda x: x[1], reverse=True)
+    return ", ".join(f"{name}={value:.3f}" for name, value in cleaned[:limit]) or "N/A"
+
+
+def _generate_quantitative_gemini_comment(result: Dict[str, Any]) -> Dict[str, str]:
+    api_key = _get_gemini_api_key()
+    if not api_key:
+        return {
+            "text": "Gemini APIキーが未設定のため、AI所見を生成できませんでした。",
+            "source": "unavailable",
+        }
+
+    prompt = f"""
+あなたはリース審査の分析担当です。次の定量要因・ML分析結果を読み、営業担当向けに2〜3行の日本語で要点を書いてください。
+断定しすぎず、ロジスティック回帰・ランダムフォレスト・LGBMの複合的な見方にしてください。箇条書きは禁止です。
+
+件数: {result.get("n_cases")}、成約: {result.get("n_positive")}、失注: {result.get("n_negative")}
+モデル指標: {_metric_line("lr", result)} / {_metric_line("rf", result)} / {_metric_line("lgb", result)}
+ロジスティック回帰の主な係数: {_top_factor_text(result.get("lr_coef"), absolute=True)}
+RandomForestの主な重要度: {_top_factor_text(result.get("rf_importance"))}
+LGBMの主な重要度: {_top_factor_text(result.get("lgb_importance"))}
+""".strip()
+
+    try:
+        import requests
+
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+        response = requests.post(
+            f"{url}?key={api_key}",
+            json={"contents": [{"parts": [{"text": prompt}]}]},
+            timeout=25,
+        )
+        response.raise_for_status()
+        text = response.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+        return {"text": text, "source": "gemini"}
+    except Exception as e:
+        return {
+            "text": f"Gemini APIへの接続に失敗したため、AI所見を生成できませんでした: {e}",
+            "source": "error",
+        }
+
+
 @app.get("/api/analysis/quantitative")
 def api_quantitative():
     from analysis_regression import run_quantitative_contract_analysis
     res = run_quantitative_contract_analysis()
     if res is None:
         raise HTTPException(status_code=400, detail="Not enough data (minimum 50 cases required).")
+    res["gemini_comment"] = _generate_quantitative_gemini_comment(res)
     return res
 
 # ── 定性要因分析
