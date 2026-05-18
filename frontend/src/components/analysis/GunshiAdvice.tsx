@@ -13,12 +13,16 @@ interface GunshiAdviceProps {
 type ChatMessage = {
   role: 'user' | 'assistant';
   text: string;
+  meta?: string;
 };
 
 export default function GunshiAdvice({ score, pd_percent, industry_major, formData, onChatLoaded }: GunshiAdviceProps) {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [question, setQuestion] = useState("");
+  const [humorMode, setHumorMode] = useState<'yanami' | 'standard'>('yanami');
+  const [useWeb, setUseWeb] = useState(true);
+  const [statusText, setStatusText] = useState('');
   const initialFetchKeyRef = useRef<string>("");
 
   const buildPayload = (message = "", history: ChatMessage[] = chatHistory) => {
@@ -40,7 +44,33 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
       posterior: 0.5,
       message,
       history,
+      humor_style: humorMode === 'yanami' ? 'yanami' : 'standard',
+      use_web: useWeb,
+      use_obsidian: true,
     };
+  };
+
+  const buildResponseMeta = (data: any) => {
+    const metaParts: string[] = [];
+    if (data.saved) metaParts.push('Obsidianへ自動保存しました');
+    else if (data.save_reason) metaParts.push(`保存なし: ${data.save_reason}`);
+    if (Array.isArray(data.web_hits) && data.web_hits.length > 0) {
+      const sources = data.web_hits
+        .slice(0, 2)
+        .map((h: any) => h.domain || h.title || 'web')
+        .filter(Boolean)
+        .join(' / ');
+      metaParts.push(`Web参照: ${data.web_hits.length}件${sources ? ' (' + sources + ')' : ''}`);
+    }
+    if (data.wiki_saved) metaParts.push('Wikiへ自動保存しました');
+    if (data.weekly_saved) metaParts.push('週次レビューへ保存しました');
+    return metaParts.join(' | ');
+  };
+
+  const updateStatus = (data: any) => {
+    if (data.web_hits?.length) setStatusText('回答しました。Web参照あり。');
+    else if (data.saved) setStatusText('必要なメモだけObsidianへ保存しました。');
+    else setStatusText('回答しました。');
   };
 
   const fetchChat = async (
@@ -49,11 +79,15 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
     requestHistory: ChatMessage[] = displayHistory
   ) => {
     setLoading(true);
+    setStatusText('AIが考えています...');
     try {
       const payload = buildPayload(message, requestHistory);
       const res = await axios.post(`/api/gunshi/chat`, payload);
-      const fetchedText = res.data.chat_text;
-      setChatHistory([...displayHistory, { role: 'assistant', text: fetchedText }]);
+      const data = res.data;
+      const fetchedText = data.reply || data.chat_text || '';
+      const meta = buildResponseMeta(data);
+      setChatHistory([...displayHistory, { role: 'assistant', text: fetchedText, meta }]);
+      updateStatus(data);
       if (onChatLoaded) {
         onChatLoaded(fetchedText);
       }
@@ -61,6 +95,7 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
       console.error("Failed to fetch gunshi chat", err);
       const errText = "【通信エラー】軍師からの戦略を受信できませんでした。";
       setChatHistory([...displayHistory, { role: 'assistant', text: errText }]);
+      setStatusText('通信エラーが発生しました。');
       if (onChatLoaded) onChatLoaded(errText);
     } finally {
       setLoading(false);
@@ -114,6 +149,43 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
           </div>
         </div>
       </div>
+
+      <div className="bg-white border-b border-slate-100 px-4 py-3 shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-bold text-slate-500 mr-1">口調</span>
+          <button
+            type="button"
+            onClick={() => setHumorMode('standard')}
+            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
+              humorMode === 'standard'
+                ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            📊 標準
+          </button>
+          <button
+            type="button"
+            onClick={() => setHumorMode('yanami')}
+            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
+              humorMode === 'yanami'
+                ? 'bg-orange-500 text-white border-orange-500 shadow-sm'
+                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            🎤 八奈見
+          </button>
+          <label className="ml-auto inline-flex items-center gap-2 text-[12px] font-bold text-slate-600 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={useWeb}
+              onChange={(e) => setUseWeb(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            />
+            ネット参照
+          </label>
+        </div>
+      </div>
       
       {/* チャットエリア */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
@@ -136,10 +208,17 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
               <div className="w-8 h-8 rounded-full bg-amber-500 border-2 border-white text-white flex justify-center items-center font-black text-sm shadow-md shrink-0">
                 🏯
               </div>
-              <div
-                className="bg-white p-4 rounded-2xl rounded-tl-none shadow border border-amber-200 text-slate-700 leading-7 font-medium whitespace-pre-wrap text-[13px] sm:text-sm w-full prose prose-slate"
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(chat.text) }}
-              />
+              <div className="w-full">
+                <div
+                  className="bg-white p-4 rounded-2xl rounded-tl-none shadow border border-amber-200 text-slate-700 leading-7 font-medium whitespace-pre-wrap text-[13px] sm:text-sm w-full prose prose-slate"
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(chat.text) }}
+                />
+                {chat.meta && (
+                  <div className="mt-1.5 text-[11px] text-slate-500 leading-4 px-1">
+                    {chat.meta}
+                  </div>
+                )}
+              </div>
             </div>
           )
         ))}
@@ -157,19 +236,24 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
         )}
         
         {score === 0 && chatHistory.length === 0 && (
-           <div className="text-center text-sm text-slate-400 mt-10">数値を入力し「審査エンジンを実行」してください</div>
+           <div className="text-center text-sm text-slate-400 mt-10">案件戦略・業界動向・一般相談を自由に入力できます</div>
         )}
       </div>
 
       <div className="p-4 bg-white border-t border-slate-100 shrink-0">
         <div className="space-y-2">
+          {statusText && (
+            <div className="text-[11px] text-slate-500">
+              {statusText}
+            </div>
+          )}
           <textarea
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                if (!loading && score > 0 && question.trim()) {
+                if (!loading && question.trim()) {
                   handleSubmit();
                 }
               }

@@ -471,6 +471,9 @@ class GunshiChatRequest(BaseModel):
     posterior: float
     message: str = ""
     history: List[Dict[str, str]] = Field(default_factory=list)
+    humor_style: str = "standard"
+    use_web: bool = True
+    use_obsidian: bool = True
 
 
 def _format_gunshi_history(history: List[Dict[str, str]]) -> str:
@@ -488,6 +491,36 @@ def _format_gunshi_history(history: List[Dict[str, str]]) -> str:
 def generate_gunshi_chat(req: GunshiChatRequest):
     from shinsa_gunshi import PHRASES_100, build_gunshi_prompt
     try:
+        if (req.message or "").strip():
+            try:
+                _here = os.path.dirname(os.path.abspath(__file__))
+                _root = os.path.dirname(_here)
+                if _root not in sys.path:
+                    sys.path.insert(0, _root)
+                from mobile_app.chat_assistant import build_chat_reply
+
+                payload = build_chat_reply(
+                    message=req.message,
+                    history=[
+                        {"role": h.get("role", ""), "content": h.get("text", "")}
+                        for h in req.history
+                    ],
+                    score_result={
+                        "score": req.score,
+                        "pd_percent": req.pd_percent,
+                        "industry_major": req.industry_major,
+                        "asset_name": req.asset_name,
+                    },
+                    use_obsidian=req.use_obsidian,
+                    use_web=req.use_web,
+                    humor_style=req.humor_style,
+                    timeout_seconds=45,
+                )
+                payload.setdefault("chat_text", payload.get("reply", ""))
+                return payload
+            except Exception:
+                pass
+
         advices = PHRASES_100.get("逆転アドバイス", [])
         import random
         sampled = random.sample(advices, min(3, len(advices)))
@@ -593,7 +626,7 @@ def generate_gunshi_chat(req: GunshiChatRequest):
         except Exception as e:
             reply_text = f"【LLM接続エラー】\nGemini APIへの接続に失敗しました: {e}"
 
-        return {"chat_text": reply_text}
+        return {"chat_text": reply_text, "reply": reply_text}
         
     except Exception as e:
         import traceback
