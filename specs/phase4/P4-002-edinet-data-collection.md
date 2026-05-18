@@ -298,6 +298,25 @@ Streamlit 審査フォームに「EDINET から取得」ボタンを追加する
       └── test_P4-002.py    （新規作成）
   ```
 - **EDINET API キー**: `os.getenv("EDINET_API_KEY")` → 引数 `api_key` の優先順位で取得。キーなしでも多くのエンドポイントは利用可能だがレート制限が厳しい
+- **法人番号チェックデジット検証（BR-411）**: 法人番号は13桁の数字で構成され、先頭1桁がチェックデジット。検証アルゴリズムは国税庁の mod-9 方式に従う。
+  ```python
+  def validate_corporate_number(cn: str) -> bool:
+      if not cn.isdigit() or len(cn) != 13:
+          return False
+      # チェックデジット計算（国税庁方式）
+      p_sum = sum(int(cn[i]) * (i % 2 + 1 if i < 12 else 0) for i in range(1, 12))
+      # 正確には: Σ(奇数位置 × 1 + 偶数位置 × 2) を9で割った余りを9から引く
+      total = sum(int(cn[i]) * (1 if (12 - i) % 2 == 0 else 2) for i in range(1, 13))
+      check = (9 - (total % 9)) % 9
+      return int(cn[0]) == check
+  ```
+  詳細は国税庁「法人番号の指定と公表」のチェックデジット説明を参照すること。
+- **`resolve_edinet_code()` の企業情報一覧キャッシュ（BR-411補足）**: `GET /api/v2/companies.json?type=2` は全社データを一括返却するため大容量（数万社）。毎回取得すると実用上タイムアウトするリスクがある。以下の戦略でキャッシュすること:
+  - `edinet_cache` DB に `edinet_company_list` テーブルを追加し企業情報（edinetCode, corporateNumber, filerName）を保存する
+  - TTL: **7日**（EDINET の企業情報は日次更新だが変更頻度は低い）
+  - `fetched_at` が7日以内のレコードがある場合は DB ルックアップのみで解決し API を呼ばない
+  - キャッシュが存在しない場合のみ `companies.json` エンドポイントを叩き、全件を DB に INSERT OR REPLACE する
+  - テストでは `companies.json` のモックレスポンスを使用し実際の API は叩かない
 - **XBRL 財務項目の XPath**:
   - 売上高: `jppfs_cor:NetSales`（連結）/ `jpigp_cor:Revenue`（IFRS）
   - 営業利益: `jppfs_cor:OperatingIncome`
@@ -305,6 +324,11 @@ Streamlit 審査フォームに「EDINET から取得」ボタンを追加する
   - 総資産: `jppfs_cor:Assets`
   - 自己資本比率: `jppfs_cor:EquityToAssetRatio`（なければ 自己資本/総資産 で計算）
 - **金額単位**: XBRL 内は「円」単位のため、取得後に「百万円」に変換（÷1,000,000、小数点第1位まで）
+- **equity_ratio の単位変換**: `jppfs_cor:EquityToAssetRatio` は XBRL の `decimals` 属性によって表現形式が異なる。取得時に以下のルールで % 値（例: 38.5）に統一すること:
+  - `decimals="-4"` 以下（大きな絶対値）→ 円単位の金額フィールドと同じため無関係（本項目には非該当）
+  - 値が 0.0〜1.0 の範囲内（小数表現）→ `× 100` して % に変換
+  - 値が 1.0 超（百分率表現）→ そのまま使用
+  - 自前計算（自己資本/総資産）の場合は結果を `× 100` すること
 - **Streamlit 連携**: `components/` 内の審査フォームコンポーネントに「EDINET取得」ボタンを追加し、`st.session_state` 経由でフォーム値を更新する
 - **テストでの HTTP モック**: `unittest.mock.patch("requests.get")` でモックする。実際の EDINET API は叩かない
 - **触れてはいけないファイル**: `scoring_core.py`, `total_scorer.py`, `asset_scorer.py`, `quantum_analysis_module.py`, `aurion/`
