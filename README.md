@@ -1,6 +1,6 @@
 # リース審査AI システム
 
-リース会社向けの社内審査支援ツール。財務データを入力するだけで審査スコアを算出し、金利サジェスト・軍師コメント・成約予測・改善提案まで一気通貫で行う Streamlit アプリ。
+リース会社向けの社内審査支援ツール。財務データを入力するだけで審査スコアを算出し、金利サジェスト・軍師コメント・成約予測・改善提案まで一気通貫で行う Streamlit / Next.js アプリ。
 
 ---
 
@@ -18,6 +18,7 @@
 | **限界改善シミュレーター** | ボーダーライン案件に「どの指標をいくら改善すれば承認圏内か」を提示 |
 | **軍師コメント** | ベイズ推論＋LLM（Gemini）による審査所見の自動生成 |
 | **金利サジェスト** | 過去の成約データから最適なリースレートを提案 |
+| **定量要因・ML分析** | ロジスティック回帰・RandomForest・LGBMで成約要因を複合分析し、Gemini が2〜3行で要点を要約 |
 | **基準金利マスタ** | 月次の基準金利を管理・参照（社内決定金利を毎月登録） |
 | **競合関係グラフ** | 業種×競合他社の競合関係を D3.js で可視化 |
 | **案件結果登録** | 審査後の成約/失注・獲得レート・競合情報を記録 |
@@ -34,10 +35,10 @@ cd /path/to/tune_lease_55
 ./run_next_stable.sh
 ```
 
-または:
+Streamlit 単体で起動する場合:
 
 ```bash
-streamlit run tune_lease_55.py
+./run_streamlit_stable.sh
 ```
 
 公開URLが必要なら:
@@ -46,7 +47,7 @@ streamlit run tune_lease_55.py
 PUBLIC_TUNNEL=1 ./run_next_stable.sh
 ```
 
-このルートは `FastAPI + Next.js production + Cloudflare Tunnel` をまとめて安定起動します。
+`run_next_stable.sh` は `FastAPI + Next.js production + Cloudflare Tunnel` をまとめて安定起動します。
 `next dev` は使わず、`next build` → `next start` に固定しています。
 
 APIキーの設定（初回のみ）:
@@ -75,6 +76,13 @@ ANYTHING_LLM_API_KEY = "your-anything-llm-key"
   ↓ + ベイズ推論 + 定性評価 + 物件スコア + 直感補正
 最終スコア（0〜100点）
 ```
+
+### 定量要因・ML分析
+
+- ロジスティック回帰で符号と係数の向きを確認する
+- RandomForest で非線形な重要度を確認する
+- LGBM で主モデルの重要度を確認する
+- `/quantitative` では3モデルの指標と重要度を並べ、Gemini が2〜3行で要点をまとめる
 
 ### DSCR 特徴量（キャッシュフロー系）
 
@@ -237,4 +245,4 @@ tune_lease_55/
 - `coeff_definitions.py` はリポジトリルートに配置（直接参照のため）
 - Gemini API キーは `.streamlit/secrets.toml` で管理（Git にコミットしない）
 - 基準金利は毎月末に翌月分を `📅 基準金利マスタ` 画面から登録する
-- 数値の単位は **千円**（スコアリングモジュール内は円単位に変換して計算）
+- 数値の単位は画面により異なる。Streamlit / Flask 系は **千円**、NEXT 版の入力は **百万円** 単位。
