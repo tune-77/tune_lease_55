@@ -130,3 +130,12 @@
 {"file":"frontend/src/components/layout/Sidebar.tsx","action":"Edit","timestamp":"2026-05-17T02:20:32Z","important":false}
 {"file":"frontend/src/app/cases/page.tsx","action":"Write","timestamp":"2026-05-17T02:21:34Z","important":false}
 {"file":"frontend/src/app/report/page.tsx","action":"Write","timestamp":"2026-05-17T02:23:01Z","important":false}
+{"file":"frontend/next.config.ts","action":"Edit","timestamp":"2026-05-17T02:40:19Z","important":false}
+{"file":"frontend/src/lib/api.ts","action":"Edit","timestamp":"2026-05-17T02:40:28Z","important":false}
+{"file":"mobile_app/chat_assistant.py","action":"Edit","timestamp":"2026-05-17T04:56:19Z","important":false}
+{"file":"mobile_app/obsidian_bridge.py","action":"Edit","timestamp":"2026-05-17T04:57:54Z","important":false}
+{"file":"/Users/kobayashiisaoryou/.claude/plans/phase-0-melodic-candle.md","action":"Write","timestamp":"2026-05-17T05:14:25Z","important":false}
+{"file":"frontend/src/app/department/page.tsx","action":"Edit","timestamp":"2026-05-17T12:03:14Z","important":false}
+{"file":"data_cases.py","action":"Edit","timestamp":"2026-05-17T12:08:31Z","important":false}
+{"file":"api/main.py","action":"Edit","timestamp":"2026-05-18T11:40:31Z","important":false}
+{"file":"frontend/src/components/analysis/GunshiAdvice.tsx","action":"Edit","timestamp":"2026-05-18T11:49:08Z","important":false}

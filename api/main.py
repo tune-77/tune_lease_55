@@ -474,6 +474,7 @@ class GunshiChatRequest(BaseModel):
     humor_style: str = "standard"
     use_web: bool = True
     use_obsidian: bool = True
+    mode: str = "gunshi"  # 'gunshi'（戦略アドバイス）/ 'chat'（自由相談=Flask AIチャット）
 
 
 def _format_gunshi_history(history: List[Dict[str, str]]) -> str:
@@ -491,7 +492,8 @@ def _format_gunshi_history(history: List[Dict[str, str]]) -> str:
 def generate_gunshi_chat(req: GunshiChatRequest):
     from shinsa_gunshi import PHRASES_100, build_gunshi_prompt
     try:
-        if (req.message or "").strip():
+        _mode = (req.mode or "gunshi").lower()
+        if _mode == "chat" and (req.message or "").strip():
             try:
                 _here = os.path.dirname(os.path.abspath(__file__))
                 _root = os.path.dirname(_here)
