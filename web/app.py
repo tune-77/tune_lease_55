@@ -110,33 +110,37 @@ def result():
         except (TypeError, ValueError):
             return int(default)
 
-    # フォームは千円単位・1千円刻みで送られる（そのままスコア計算に渡す）
+    # フォームは百万円単位・0.1百万円刻みで送られる。
+    # scoring_core は千円入力を前提にしているため、金額系は千円へ戻して渡す。
+    def _m_to_k(v):
+        return _float(v) * 1000.0
+
     inputs = {
-        "nenshu": _float("nenshu"),
-        "op_profit": _float("op_profit"),
-        "rieki": _float("op_profit"),
-        "ord_profit": _float("ord_profit"),
-        "net_income": _float("net_income"),
-        "net_assets": _float("net_assets"),
-        "total_assets": _float("total_assets"),
+        "nenshu": _m_to_k("nenshu"),
+        "op_profit": _m_to_k("op_profit"),
+        "rieki": _m_to_k("op_profit"),
+        "ord_profit": _m_to_k("ord_profit"),
+        "net_income": _m_to_k("net_income"),
+        "net_assets": _m_to_k("net_assets"),
+        "total_assets": _m_to_k("total_assets"),
         "industry_major": industry_major,
         "industry_sub": industry_sub,
         "grade": request.form.get("grade", "1-3"),
         "customer_type": request.form.get("customer_type", "既存先"),
-        "bank_credit": _float("bank_credit"),
-        "lease_credit": _float("lease_credit"),
+        "bank_credit": _m_to_k("bank_credit"),
+        "lease_credit": _m_to_k("lease_credit"),
         "contracts": _int("contracts"),
-        "gross_profit": _float("gross_profit"),
-        "machines": _float("machines"),
-        "other_assets": _float("other_assets"),
-        "rent": _float("rent"),
-        "depreciation": _float("depreciation"),
-        "dep_expense": _float("dep_expense"),
-        "rent_expense": _float("rent_expense"),
+        "gross_profit": _m_to_k("gross_profit"),
+        "machines": _m_to_k("machines"),
+        "other_assets": _m_to_k("other_assets"),
+        "rent": _m_to_k("rent"),
+        "depreciation": _m_to_k("depreciation"),
+        "dep_expense": _m_to_k("dep_expense"),
+        "rent_expense": _m_to_k("rent_expense"),
     }
 
     if inputs["total_assets"] <= 0 or inputs["nenshu"] <= 0:
-        flash("売上高と総資産は 1 千円以上を入力してください。", "error")
+        flash("売上高と総資産は 0.1 百万円以上を入力してください。", "error")
         return redirect(url_for("index"))
 
     res = run_quick_scoring(inputs)

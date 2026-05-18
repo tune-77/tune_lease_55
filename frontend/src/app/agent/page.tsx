@@ -26,11 +26,6 @@ export default function AgentPage() {{
         <p className="text-slate-500 max-w-md">
           汎用エージェントハブ のバックエンド・ロジック（FastAPI経由）とフロントエンドUIの接続を進めています。近日中に稼働開始します。
         </p>
-        <div className="mt-8">
-          <button className="px-6 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-lg transition-colors cursor-not-allowed">
-            初期化処理を実行する
-          </button>
-        </div>
       </div>
     </div>
   );
