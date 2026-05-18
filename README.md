@@ -245,4 +245,4 @@ tune_lease_55/
 - `coeff_definitions.py` はリポジトリルートに配置（直接参照のため）
 - Gemini API キーは `.streamlit/secrets.toml` で管理（Git にコミットしない）
 - 基準金利は毎月末に翌月分を `📅 基準金利マスタ` 画面から登録する
-- 数値の単位は画面により異なる。Streamlit / Flask 系は **千円**、NEXT 版の入力は **百万円** 単位。
+- 数値の単位は画面により異なる。Streamlit / Flask / NEXT 版の入力は **百万円** 単位。
