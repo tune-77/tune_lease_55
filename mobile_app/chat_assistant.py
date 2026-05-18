@@ -77,7 +77,26 @@ def _extract_response_json(response: Any) -> dict[str, Any] | None:
             part_text = getattr(part, "text", None)
             if isinstance(part_text, str) and part_text.strip():
                 chunks.append(part_text)
-    return _extract_json("\n".join(chunks))
+    raw = "\n".join(chunks).strip()
+    if not raw:
+        return None
+    parsed_dict = _extract_json(raw)
+    if parsed_dict:
+        return parsed_dict
+    # JSON抽出失敗時: JSON風テキストなら "reply" フィールドのみ正規表現で救出、
+    # 純粋なプレーンテキストならそのまま reply に詰める。
+    reply_text = raw
+    if raw.lstrip().startswith("{"):
+        import re
+        m = re.search(r'"reply"\s*:\s*"((?:[^"\\]|\\.)*)"', raw, re.DOTALL)
+        if m:
+            try:
+                reply_text = json.loads(f'"{m.group(1)}"')
+            except Exception:
+                reply_text = m.group(1)
+        else:
+            reply_text = "AIの応答を解釈できませんでした。もう一度質問を送ってください。"
+    return {"reply": reply_text, "should_save": False, "improvement_items": []}
 
 
 def _should_search_web(message: str) -> bool:
@@ -112,6 +131,35 @@ def _fallback_chat_packet(
     ])
     # ユーザーメッセージのみで判定（Obsidianスニペットの内容で誤トリガーしないよう）
     msg_lower = message.lower()
+    if any(k in msg_lower for k in ("補助金", "助成金", "ものづくり補助", "省力化投資", "事業再構築")):
+        reply = (
+            "代表的な選択肢としては『ものづくり補助金』（革新的なサービス・製品開発／生産プロセス改善向け）と"
+            "『中小企業省力化投資補助金（カタログ型）』（人手不足解消のための機械導入向け）が有力です。"
+            "いずれもリース契約が対象になる場合がありますが、公募時期・補助率・対象要件は年度ごとに変わるため、"
+            "公式の公募要領を必ず最新版で確認してください。"
+        )
+        return {
+            "reply": reply,
+            "should_save": False,
+            "save_title": "補助金メモ",
+            "save_body": "",
+            "save_reason": "fallback",
+            "improvement_items": [],
+            "web_used": bool(web_hits),
+            "web_reason": "fallback",
+            "web_should_save": False,
+            "web_save_title": "",
+            "web_save_body": "",
+            "web_save_reason": "fallback",
+            "wiki_should_save": False,
+            "wiki_save_title": "",
+            "wiki_save_body": "",
+            "wiki_save_reason": "fallback",
+            "weekly_should_save": False,
+            "weekly_save_title": "",
+            "weekly_save_body": "",
+            "weekly_save_reason": "fallback",
+        }
     if any(k in msg_lower for k in ("条件付き承認", "条件付承認", "条件付", "条件付き", "承認条件")):
         reply = "条件付き承認なら、追加資料・期間短縮・前受金・保証担保の順で整理しておけば十分戦えます。最後は営業向けの一言に落とします。"
         improvement_items = [{
