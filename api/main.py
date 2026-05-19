@@ -1763,3 +1763,38 @@ def _run_market_agent_standalone():
     ]
     res_raw = _chat_for_thread("gemini", "", messages, timeout_seconds=60, api_key=api_key)
     return {"content": (res_raw.get("message") or {}).get("content", "")}
+
+
+# =============================================================================
+# マルチエージェント審査 API (石橋 vs 風林火山 + 軍師調停)
+# =============================================================================
+
+class MultiAgentRequest(BaseModel):
+    score: float
+    company_name: str = ""
+    industry_major: str = ""
+    industry_sub: str = ""
+    nenshu: float = 0
+    op_margin_pct: float = 0
+    equity_ratio: float = 0
+    bank_credit: float = 0
+    lease_credit: float = 0
+    asset_name: str = ""
+    lease_amount: float = 0
+
+
+@app.post("/api/multi-agent-screening")
+def multi_agent_screening(req: MultiAgentRequest):
+    """
+    マルチエージェント討論審査。
+
+    スコア60超/40未満は軍師単独高速処理、40〜60は石橋・風林火山が2ラウンド討論後に軍師裁定。
+    """
+    from api.multi_agent_screening import run_debate_screening
+    try:
+        result = run_debate_screening(req.model_dump())
+        return result
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
