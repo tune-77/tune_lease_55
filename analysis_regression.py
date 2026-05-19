@@ -536,6 +536,22 @@ def _run_single_quant_analysis(X, y, feature_names, min_cases=50):
         out["ensemble_alpha"] = best_alpha
         out["auc_ensemble"] = best_auc
         out["accuracy_ensemble"] = best_acc
+
+    auc_candidates = {
+        "LR": out.get("auc_lr"),
+        "RandomForest": out.get("auc_rf"),
+        "LGBM": out.get("auc_lgb"),
+        "Ensemble": out.get("auc_ensemble"),
+    }
+    valid_candidates = {
+        name: float(value)
+        for name, value in auc_candidates.items()
+        if isinstance(value, (int, float))
+    }
+    if valid_candidates:
+        best_model_name = max(valid_candidates, key=valid_candidates.get)
+        out["best_auc_model"] = best_model_name
+        out["best_auc_value"] = valid_candidates[best_model_name]
     return out
 
 
@@ -1433,6 +1449,8 @@ def run_quantitative_contract_analysis():
         "n_negative": n_neg,
         "feature_names": feature_names,
     }
+    prob_lr_te = None
+    prob_lgb_te = None
     try:
         from scipy.special import expit as _expit_quant
         # ベイズ更新可能なら MAP 推定、なければ MLE にフォールバック
@@ -1463,7 +1481,8 @@ def run_quantitative_contract_analysis():
             out["lr_intercept"] = float(lr.intercept_[0])
             out["accuracy_lr"] = float(accuracy_score(y_te, lr.predict(X_te)))
             if len(np.unique(y_te)) >= 2:
-                out["auc_lr"] = float(roc_auc_score(y_te, lr.predict_proba(X_te)[:, 1]))
+                prob_lr_te = lr.predict_proba(X_te)[:, 1]
+                out["auc_lr"] = float(roc_auc_score(y_te, prob_lr_te))
             else:
                 out["auc_lr"] = None
             out["lr_used_bayesian"] = False
@@ -1495,7 +1514,8 @@ def run_quantitative_contract_analysis():
         lgb_model.fit(X_tr, y_tr)
         out["accuracy_lgb"] = float(accuracy_score(y_te, lgb_model.predict(X_te)))
         if len(np.unique(y_te)) >= 2:
-            out["auc_lgb"] = float(roc_auc_score(y_te, lgb_model.predict_proba(X_te)[:, 1]))
+            prob_lgb_te = lgb_model.predict_proba(X_te)[:, 1]
+            out["auc_lgb"] = float(roc_auc_score(y_te, prob_lgb_te))
         else:
             out["auc_lgb"] = None
         out["lgb_importance"] = list(zip(feature_names, lgb_model.feature_importances_.tolist()))
@@ -1508,6 +1528,11 @@ def run_quantitative_contract_analysis():
             pass
     except Exception as e:
         out["lgb_error"] = str(e)
+    if prob_lr_te is not None and prob_lgb_te is not None and len(np.unique(y_te)) >= 2:
+        best_alpha, best_auc, best_acc = _optimize_ensemble_ratio(prob_lr_te, prob_lgb_te, y_te)
+        out["ensemble_alpha"] = best_alpha
+        out["auc_ensemble"] = best_auc
+        out["accuracy_ensemble"] = best_acc
     return out
 
 

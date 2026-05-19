@@ -47,6 +47,7 @@ export default function QuantitativePage() {
     { label: 'Logistic Regression', key: 'lr', color: 'text-emerald-600' },
     { label: 'RandomForest', key: 'rf', color: 'text-amber-600' },
     { label: 'LGBM', key: 'lgb', color: 'text-rose-600' },
+    { label: 'Ensemble', key: 'ensemble', color: 'text-indigo-600' },
   ];
 
   if (loading) return (
@@ -87,7 +88,7 @@ export default function QuantitativePage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {modelCards.map((model) => (
             <div key={model.key} className="bg-white border border-slate-200 px-6 py-4 rounded-2xl shadow-sm">
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{model.label}</div>
@@ -104,6 +105,13 @@ export default function QuantitativePage() {
             </div>
           ))}
         </div>
+
+        {data?.best_auc_model && (
+          <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl text-sm font-bold text-emerald-800">
+            現在のベストAUCは {data.best_auc_model} です。AUC {typeof data?.best_auc_value === 'number' ? data.best_auc_value.toFixed(3) : '-'}。
+            {data.best_auc_model === 'Ensemble' && typeof data?.ensemble_alpha === 'number' ? ` LR と LGB の比率は ${(data.ensemble_alpha * 100).toFixed(0)}% / ${(100 - data.ensemble_alpha * 100).toFixed(0)}% です。` : ''}
+          </div>
+        )}
 
         <div className="bg-white border border-slate-200 p-8 rounded-2xl shadow-sm">
           <div className="flex items-center justify-between mb-8">

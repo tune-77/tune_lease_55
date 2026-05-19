@@ -1075,10 +1075,12 @@ def _generate_quantitative_gemini_comment(result: Dict[str, Any]) -> Dict[str, s
 
     prompt = f"""
 あなたはリース審査の分析担当です。次の定量要因・ML分析結果を読み、営業担当向けに2〜3行の日本語で要点を書いてください。
-断定しすぎず、ロジスティック回帰・ランダムフォレスト・LGBMの複合的な見方にしてください。箇条書きは禁止です。
+断定しすぎず、ロジスティック回帰・ランダムフォレスト・LGBM・アンサンブルの複合的な見方にしてください。箇条書きは禁止です。
 
 件数: {result.get("n_cases")}、成約: {result.get("n_positive")}、失注: {result.get("n_negative")}
 モデル指標: {_metric_line("lr", result)} / {_metric_line("rf", result)} / {_metric_line("lgb", result)}
+アンサンブル: accuracy={result.get("accuracy_ensemble") if isinstance(result.get("accuracy_ensemble"), (int, float)) else "N/A"}, auc={result.get("auc_ensemble") if isinstance(result.get("auc_ensemble"), (int, float)) else "N/A"}, LR比率={result.get("ensemble_alpha") if isinstance(result.get("ensemble_alpha"), (int, float)) else "N/A"}
+現時点の最良モデル: {result.get("best_auc_model") or "N/A"} / AUC={result.get("best_auc_value") if isinstance(result.get("best_auc_value"), (int, float)) else "N/A"}
 ロジスティック回帰の主な係数: {_top_factor_text(result.get("lr_coef"), absolute=True)}
 RandomForestの主な重要度: {_top_factor_text(result.get("rf_importance"))}
 LGBMの主な重要度: {_top_factor_text(result.get("lgb_importance"))}
