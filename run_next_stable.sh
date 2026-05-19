@@ -62,8 +62,14 @@ echo "Build log: $BUILD_LOG"
 echo ""
 
 echo "Starting FastAPI on http://${API_HOST}:${API_PORT}"
+# uv 管理の .venv があれば uv run、無ければ素の python にフォールバック
+if command -v uv >/dev/null 2>&1 && [ -f "pyproject.toml" ]; then
+  API_RUNNER=(uv run --no-sync python)
+else
+  API_RUNNER=(python)
+fi
 while true; do
-  python -m uvicorn api.main:app --host "$API_HOST" --port "$API_PORT" >>"$API_LOG" 2>&1 &
+  "${API_RUNNER[@]}" -m uvicorn api.main:app --host "$API_HOST" --port "$API_PORT" >>"$API_LOG" 2>&1 &
   api_pid=$!
   echo "$api_pid" > "$API_PID_FILE"
   wait "$api_pid" || true
