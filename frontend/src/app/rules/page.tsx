@@ -66,7 +66,7 @@ export default function RulesPage() {
                <div>
                   <label className="block text-sm font-black text-slate-700 mb-2">自動承認しきい値 (%)</label>
                   <input 
-                     type="number" step="1"
+                     type="text" inputMode="decimal" step="1"
                      className="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl font-bold text-lg text-emerald-600 outline-none"
                      value={Math.round(rules.thresholds.approval * 100)}
                      onChange={(e) => setRules({...rules, thresholds: {...rules.thresholds, approval: parseInt(e.target.value)/100}})}
@@ -76,7 +76,7 @@ export default function RulesPage() {
                <div>
                   <label className="block text-sm font-black text-slate-700 mb-2">要審議しきい値 (%)</label>
                   <input 
-                     type="number" step="1"
+                     type="text" inputMode="decimal" step="1"
                      className="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl font-bold text-lg text-amber-600 outline-none"
                      value={Math.round(rules.thresholds.consultation * 100)}
                      onChange={(e) => setRules({...rules, thresholds: {...rules.thresholds, consultation: parseInt(e.target.value)/100}})}
@@ -94,7 +94,7 @@ export default function RulesPage() {
                <div>
                   <label className="block text-sm font-black text-slate-700 mb-2">目標利益スプレッド (%)</label>
                   <input 
-                     type="number" step="0.1"
+                     type="text" inputMode="decimal" step="0.1"
                      className="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl font-bold text-lg text-indigo-600 outline-none"
                      value={rules.pricing.target_spread}
                      onChange={(e) => setRules({...rules, pricing: {...rules.pricing, target_spread: parseFloat(e.target.value)}})}
@@ -103,7 +103,7 @@ export default function RulesPage() {
                <div>
                   <label className="block text-sm font-black text-slate-700 mb-2">デフォルト成約率想定 (%)</label>
                   <input 
-                     type="number" step="1"
+                     type="text" inputMode="decimal" step="1"
                      className="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl font-bold text-lg text-slate-600 outline-none"
                      value={Math.round(rules.pricing.expected_win_rate * 100)}
                      onChange={(e) => setRules({...rules, pricing: {...rules.pricing, expected_win_rate: parseInt(e.target.value)/100}})}

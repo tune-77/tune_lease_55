@@ -10,9 +10,9 @@ const INDUSTRY_OPTIONS = [
 ];
 
 export default function FinancialPage() {
-  const [sales, setSales] = useState([500000, 520000, 550000]);
-  const [profit, setProfit] = useState([30000, 35000, 38000]);
-  const [netAssets, setNetAssets] = useState([120000, 145000, 170000]);
+  const [sales, setSales] = useState(['500000', '520000', '550000']);
+  const [profit, setProfit] = useState(['30000', '35000', '38000']);
+  const [netAssets, setNetAssets] = useState(['120000', '145000', '170000']);
   const [industry, setIndustry] = useState("サービス業");
   
   const [loading, setLoading] = useState(false);
@@ -23,13 +23,12 @@ export default function FinancialPage() {
   }, []);
 
   const handleUpdate = (type: 'sales' | 'profit' | 'netAssets', index: number, val: string) => {
-    const num = parseInt(val) || 0;
     if (type === 'sales') {
-        const newSales = [...sales]; newSales[index] = num; setSales(newSales);
+        const next = [...sales]; next[index] = val; setSales(next);
     } else if (type === 'profit') {
-        const newProfit = [...profit]; newProfit[index] = num; setProfit(newProfit);
+        const next = [...profit]; next[index] = val; setProfit(next);
     } else {
-        const newNet = [...netAssets]; newNet[index] = num; setNetAssets(newNet);
+        const next = [...netAssets]; next[index] = val; setNetAssets(next);
     }
   };
 
@@ -37,7 +36,10 @@ export default function FinancialPage() {
     setLoading(true);
     try {
       const res = await axios.post(`/api/forecast`, {
-        sales, profit, net_assets: netAssets, industry
+        sales: sales.map(v => parseFloat(v) || 0),
+        profit: profit.map(v => parseFloat(v) || 0),
+        net_assets: netAssets.map(v => parseFloat(v) || 0),
+        industry
       });
       setForecastData(res.data);
       triggerMebuki('approve', `予測完了しました！\n今回は${res.data.timesfm_available ? 'TimesFM' : '推計モデル'}を使用しています！`);
@@ -121,15 +123,15 @@ export default function FinancialPage() {
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3 items-center">
              <div className="font-bold text-slate-700 col-span-2 md:col-span-1">売上高</div>
-             {[0, 1, 2].map(i => <input key={'s'+i} type="number" className="border border-slate-300 p-3 rounded-lg w-full font-mono font-bold" value={sales[i]} onChange={e => handleUpdate('sales', i, e.target.value)} />)}
+             {[0, 1, 2].map(i => <input key={'s'+i} type="text" inputMode="decimal" className="border border-slate-300 p-3 rounded-lg w-full font-mono font-bold" value={sales[i]} onChange={e => handleUpdate('sales', i, e.target.value)} />)}
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3 items-center">
              <div className="font-bold text-slate-700 col-span-2 md:col-span-1">営業利益</div>
-             {[0, 1, 2].map(i => <input key={'p'+i} type="number" className="border border-slate-300 p-3 rounded-lg w-full font-mono font-bold" value={profit[i]} onChange={e => handleUpdate('profit', i, e.target.value)} />)}
+             {[0, 1, 2].map(i => <input key={'p'+i} type="text" inputMode="decimal" className="border border-slate-300 p-3 rounded-lg w-full font-mono font-bold" value={profit[i]} onChange={e => handleUpdate('profit', i, e.target.value)} />)}
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 items-center">
              <div className="font-bold text-slate-700 col-span-2 md:col-span-1">純資産</div>
-             {[0, 1, 2].map(i => <input key={'n'+i} type="number" className="border border-slate-300 p-3 rounded-lg w-full font-mono font-bold" value={netAssets[i]} onChange={e => handleUpdate('netAssets', i, e.target.value)} />)}
+             {[0, 1, 2].map(i => <input key={'n'+i} type="text" inputMode="decimal" className="border border-slate-300 p-3 rounded-lg w-full font-mono font-bold" value={netAssets[i]} onChange={e => handleUpdate('netAssets', i, e.target.value)} />)}
           </div>
 
           <div className="flex gap-4 items-end">
