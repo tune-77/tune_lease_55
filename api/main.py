@@ -1798,3 +1798,91 @@ def multi_agent_screening(req: MultiAgentRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/latest-screening")
+def get_latest_screening():
+    """
+    直近の審査データを返す。
+    screening_records の最新スコア + past_cases の最新フォーム入力値を合成して、
+    debate ページの初期値として使用する。
+    """
+    import json as _json
+    import os as _os
+    from contextlib import closing as _closing
+
+    defaults = {
+        "score": 52,
+        "company_name": "",
+        "industry_major": "製造業",
+        "nenshu": 0,
+        "op_margin_pct": 0,
+        "equity_ratio": 0,
+        "bank_credit": 0,
+        "lease_credit": 0,
+        "asset_name": "",
+        "lease_amount": 0,
+    }
+
+    try:
+        from data_cases import _open_db
+        with _closing(_open_db()) as conn:
+            import sqlite3 as _sqlite3
+            conn.row_factory = _sqlite3.Row
+
+            # screening_records から最新スコアを取得
+            try:
+                sr = conn.execute(
+                    "SELECT total_score, input_snapshot FROM screening_records ORDER BY id DESC LIMIT 1"
+                ).fetchone()
+                if sr:
+                    defaults["score"] = round(float(sr["total_score"]), 1)
+                    if sr["input_snapshot"]:
+                        snap = _json.loads(sr["input_snapshot"])
+                        for key in ("company_name", "industry_major", "asset_name"):
+                            if snap.get(key):
+                                defaults[key] = snap[key]
+            except Exception:
+                pass
+
+            # past_cases から最新のフォーム入力値を取得（千円→百万円 変換）
+            try:
+                pc = conn.execute(
+                    "SELECT data FROM past_cases ORDER BY timestamp DESC LIMIT 1"
+                ).fetchone()
+                if pc and pc["data"]:
+                    d = _json.loads(pc["data"])
+
+                    def _to_m(v):
+                        try:
+                            return round(float(v) / 1000, 2)
+                        except Exception:
+                            return 0
+
+                    if d.get("company_name"):
+                        defaults["company_name"] = d["company_name"]
+                    if d.get("selected_major"):
+                        defaults["industry_major"] = d["selected_major"]
+                    if d.get("nenshu"):
+                        defaults["nenshu"] = _to_m(d["nenshu"])
+                    nenshu_raw = float(d.get("nenshu") or 0)
+                    rieki_raw = float(d.get("rieki") or 0)
+                    if nenshu_raw > 0:
+                        defaults["op_margin_pct"] = round(rieki_raw / nenshu_raw * 100, 1)
+                    net_assets = float(d.get("net_assets") or 0)
+                    total_assets = float(d.get("total_assets") or 0)
+                    if total_assets > 0:
+                        defaults["equity_ratio"] = round(net_assets / total_assets * 100, 1)
+                    if d.get("bank_credit"):
+                        defaults["bank_credit"] = _to_m(d["bank_credit"])
+                    if d.get("lease_credit"):
+                        defaults["lease_credit"] = _to_m(d["lease_credit"])
+                    if d.get("acquisition_cost"):
+                        defaults["lease_amount"] = _to_m(d["acquisition_cost"])
+            except Exception:
+                pass
+
+    except Exception:
+        pass
+
+    return defaults
