@@ -96,7 +96,7 @@ export default function SliderInput({
         </div>
 
         {/* 数値入力領域: type="text" + inputMode="decimal" でスマホ数字キーボード表示 */}
-        <div className="w-full sm:w-1/3 relative">
+        <div className="w-full sm:w-1/3 flex items-center gap-2">
           <input
             type="text"
             inputMode="decimal"
@@ -105,11 +105,9 @@ export default function SliderInput({
             onChange={handleNumberChange}
             onFocus={handleFocus}
             onBlur={handleBlur}
-            className="w-full text-right pr-12 pl-3 py-2 bg-white border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm font-semibold text-slate-800"
+            className="flex-1 min-w-0 text-right px-3 py-2 bg-white border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm font-semibold text-slate-800"
           />
-          <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-            <span className="text-slate-400 sm:text-sm font-medium">{unit}</span>
-          </div>
+          <span className="text-slate-500 sm:text-sm font-medium whitespace-nowrap">{unit}</span>
         </div>
       </div>
     </div>
