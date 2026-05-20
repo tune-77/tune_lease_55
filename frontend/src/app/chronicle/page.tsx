@@ -147,7 +147,7 @@ export default function ChroniclePage() {
       <div className="fixed inset-0 pointer-events-none opacity-40">
         <div className="absolute top-[10%] left-[20%] w-[30%] h-[30%] bg-violet-900/10 blur-[150px] rounded-full animate-pulse" />
         <div className="absolute bottom-[20%] right-[10%] w-[40%] h-[40%] bg-blue-900/10 blur-[180px] rounded-full" />
-        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-30" />
+        <div className="absolute inset-0 opacity-30" />
       </div>
 
       <div className="max-w-7xl mx-auto relative z-10">
@@ -329,7 +329,7 @@ export default function ChroniclePage() {
               <div className="lg:col-span-8 space-y-8">
                 <div className="p-1 rounded-[40px] bg-gradient-to-br from-indigo-500/30 via-violet-500/30 to-transparent">
                   <div className="bg-[#0c0d12] p-10 rounded-[39px] text-center relative overflow-hidden">
-                    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/dust.png')] opacity-10 pointer-events-none" />
+                    <div className="absolute inset-0 opacity-10 pointer-events-none" />
                     <div className="relative z-10">
                       <div className="w-20 h-20 bg-white/5 rounded-full mx-auto flex items-center justify-center mb-6">
                         <Waves className="w-10 h-10 text-indigo-400 animate-pulse" />

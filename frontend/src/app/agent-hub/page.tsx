@@ -25,12 +25,29 @@ import {
   MessageSquare
 } from "lucide-react";
 import { triggerMebuki } from "../../components/layout/FloatingMebuki";
+import { INDUSTRIES } from "@/constants/industries";
 
 interface Thought {
   ts: string;
   agent: string;
   thought: string;
   icon: string;
+}
+
+interface AgentResult {
+  error?: string;
+  raw?: string;
+  _source?: string;
+  content?: string;
+  title?: string;
+  body?: string;
+}
+
+interface NovelEntry {
+  episode_no: number;
+  week_label: string;
+  title: string;
+  body?: string;
 }
 
 interface Agent {
@@ -53,11 +70,6 @@ const AGENTS: Agent[] = [
   { id: "novel", name: "文豪AI「波乱丸」", icon: <BookOpen className="w-5 h-5" />, description: "エージェントたちの日常を小説化", category: "Narrative", color: "pink" },
 ];
 
-const INDUSTRIES = [
-  "製造業", "建設業", "卸売業", "小売業", "運輸業", "情報通信業",
-  "不動産業", "医療・福祉", "サービス業", "飲食業", "農業・漁業",
-  "金融・保険業", "教育・学習支援業", "宿泊業", "その他"
-];
 
 const BENCHMARK_LABELS: Record<string, string> = {
   op_margin: "営業利益率",
@@ -71,8 +83,8 @@ export default function AgentHubPage() {
   const [thoughts, setThoughts] = useState<Thought[]>([]);
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
-  const [result, setResult] = useState<any>(null);
-  const [latestNovel, setLatestNovel] = useState<any>(null);
+  const [result, setResult] = useState<AgentResult | null>(null);
+  const [latestNovel, setLatestNovel] = useState<NovelEntry | null>(null);
   const [loadingThoughts, setLoadingThoughts] = useState(true);
   const [benchmarkIndustry, setBenchmarkIndustry] = useState("製造業");
 
@@ -137,7 +149,7 @@ export default function AgentHubPage() {
       <div className="fixed inset-0 overflow-hidden pointer-events-none opacity-20">
         <div className="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] bg-violet-600/20 blur-[120px] rounded-full" />
         <div className="absolute top-[20%] -right-[10%] w-[35%] h-[35%] bg-blue-600/20 blur-[100px] rounded-full" />
-        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10" />
+        <div className="absolute inset-0 opacity-10" />
       </div>
 
       <div className="max-w-7xl mx-auto relative z-10">
@@ -339,7 +351,7 @@ export default function AgentHubPage() {
               <div className="mt-12 group cursor-pointer overflow-hidden p-1 rounded-3xl bg-gradient-to-br from-pink-500/20 via-violet-500/20 to-transparent hover:from-pink-500/30 hover:via-violet-500/30 transition-all duration-700 hover:shadow-2xl hover:shadow-violet-500/10">
                 <div className="bg-[#0f0f13] p-8 rounded-[22px] flex flex-col md:flex-row gap-8 items-center border border-white/5">
                   <div className="w-full md:w-32 h-44 bg-gradient-to-b from-slate-800 to-slate-950 rounded-xl shadow-2xl flex-shrink-0 flex flex-col items-center justify-center border border-white/10 relative overflow-hidden group-hover:scale-105 transition-transform duration-500">
-                    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/old-map.png')] opacity-10" />
+                    <div className="absolute inset-0 opacity-10" />
                     <div className="w-10 h-0.5 bg-pink-500/50 mb-6" />
                     <BookOpen className="w-10 h-10 text-pink-400/80 mb-2" />
                     <div className="text-[10px] font-bold text-slate-500 tracking-[0.2em] uppercase">VOL.{latestNovel.episode_no}</div>

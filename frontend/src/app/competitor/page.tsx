@@ -238,7 +238,7 @@ export default function CompetitorPage() {
             </div>
             <div className="text-right">
                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Overall Win Rate</div>
-               <div className="text-3xl font-black text-emerald-600">{Math.round((data?.summary?.total_won / data?.summary?.total_cases) * 100)}%</div>
+               <div className="text-3xl font-black text-emerald-600">{data?.summary?.total_cases ? Math.round((data.summary.total_won / data.summary.total_cases) * 100) : 0}%</div>
             </div>
          </div>
       </div>

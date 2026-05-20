@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import DOMPurify from 'dompurify';
 import { API_BASE } from '../../lib/api';
 import { FileText, Download, Loader2, Printer, ShieldCheck } from 'lucide-react';
 import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, Radar, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
@@ -149,9 +150,8 @@ export default function ReportGenerator({ apiResult, formData, gunshiText }: Rep
                   <div className="text-slate-800 font-medium leading-relaxed whitespace-pre-wrap">
                     {gunshiText.split('\n').map((line, i) => {
                       line = line.replace(/### (.*?)/g, '<h4 class="font-bold text-indigo-700 mt-4 mb-1 text-base">■ $1</h4>');
-                      line = line.replace(/\*\*(.*?)\*\*/g, '<strong class="$1"></strong>'); // fix this to proper string if needed, better yet:
                       line = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-                      return <span key={i} dangerouslySetInnerHTML={{ __html: line + '<br/>' }} />;
+                      return <span key={i} dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(line + '<br/>') }} />;
                     })}
                   </div>
                 </div>
@@ -164,7 +164,7 @@ export default function ReportGenerator({ apiResult, formData, gunshiText }: Rep
                   if (line.includes('審査結果レポート')) return null;
                   line = line.replace(/【(.*?)】/g, '<br/><b class="text-indigo-800 text-base border-b border-indigo-100 block mb-2 pb-1 mt-4">■ $1</b>');
                   return (
-                    <span key={i} dangerouslySetInnerHTML={{ __html: line + '<br/>' }} />
+                    <span key={i} dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(line + '<br/>') }} />
                   );
                 })}
               </div>
