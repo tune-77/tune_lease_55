@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { apiClient } from "@/lib/api";
 import {
@@ -192,6 +192,16 @@ export default function DebatePage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DebateResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [autoFilled, setAutoFilled] = useState(false);
+
+  useEffect(() => {
+    apiClient.get("/api/latest-screening")
+      .then(({ data }) => {
+        setForm(prev => ({ ...prev, ...data }));
+        setAutoFilled(true);
+      })
+      .catch(() => {});
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -228,6 +238,14 @@ export default function DebatePage() {
           石橋（慎重派）vs 風林火山（積極派）の討論を軍師が裁定。スコア40〜60の境界案件で自動起動。
         </p>
       </div>
+
+      {/* 自動入力バナー */}
+      {autoFilled && (
+        <div className="mb-4 flex items-center gap-2 bg-violet-50 border border-violet-200 rounded-xl px-4 py-2 text-sm text-violet-700 font-medium">
+          <Info className="w-4 h-4 flex-shrink-0" />
+          直近のスクリーニングデータを自動入力しました。内容を確認・修正してから審査を開始してください。
+        </div>
+      )}
 
       {/* 入力フォーム */}
       <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-8">
