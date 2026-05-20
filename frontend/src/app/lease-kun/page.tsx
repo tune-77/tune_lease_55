@@ -1,9 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, ArrowRight, ArrowLeft, Bot, Activity, CheckCircle, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Activity, ChevronDown } from 'lucide-react';
 import axios from 'axios';
-import { API_BASE } from '../../lib/api';
 import { toThousandYenPayload } from '../../lib/scoringUnits';
 
 // --- 型定義 ---
@@ -25,6 +24,8 @@ export default function LeaseKunWizard() {
     { role: 'bot', text: 'はじめまして！リースくんです 🎩 まず企業名と業種から教えてね！' }
   ]);
   const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // --- フォームステート ---
@@ -35,6 +36,7 @@ export default function LeaseKunWizard() {
     // Step 1
     main_bank: 'メイン先', competitor: '競合なし',
     num_competitors: '未入力', deal_source: 'その他', deal_occurrence: '不明',
+    customer_type: '新規先',
     // Step 2
     asset_name: 'IT・OA機器',
     // Step 3 (PL)
@@ -46,7 +48,7 @@ export default function LeaseKunWizard() {
     // Step 6 (信用)
     grade: '②4-6 (標準)', contracts: '', bank_credit: '', lease_credit: '',
     // Step 7 (契約)
-    customer_type: '新規先', contract_type: '一般', deal_source2: 'その他',
+    contract_type: '一般',
     lease_term: 60, acceptance_year: new Date().getFullYear(), acquisition_cost: '',
     // Step 8 (定性)
     qual_corr_company_history: '未選択',
@@ -68,7 +70,9 @@ export default function LeaseKunWizard() {
   }, [history, step]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData({ ...formData, [name]: value });
+    if (errors[name]) setErrors(prev => { const next = { ...prev }; delete next[name]; return next; });
   };
 
   const handleNext = (e: React.FormEvent) => {
@@ -78,10 +82,11 @@ export default function LeaseKunWizard() {
       return;
     }
 
+    const newErrors: Record<string, string> = {};
     let answerText = '';
     let nextBotText = '';
 
-    switch(step) {
+    switch (step) {
       case 0:
         answerText = `${formData.company_name || '（企業名未入力）'} / ${formData.industry_major} / ${formData.industry_sub}`;
         nextBotText = `次は取引状況について。当行メイン先？競合はいる？`;
@@ -95,12 +100,18 @@ export default function LeaseKunWizard() {
         nextBotText = `損益計算書(P/L)の数値を入力してね！売上高は必須だよ。`;
         break;
       case 3:
-        if (!formData.nenshu || Number(formData.nenshu) <= 0) return alert("売上高は必須です！");
+        if (!formData.nenshu || Number(formData.nenshu) <= 0) {
+          newErrors.nenshu = '売上高は必須です';
+        }
+        if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return; }
         answerText = `売上: ${formData.nenshu}百万円 / 営業利益: ${formData.op_profit || 0}百万円`;
         nextBotText = `貸借対照表(B/S)！総資産は必須。機械やその他の内訳もあれば。`;
         break;
       case 4:
-        if (!formData.total_assets || Number(formData.total_assets) <= 0) return alert("総資産は必須です！");
+        if (!formData.total_assets || Number(formData.total_assets) <= 0) {
+          newErrors.total_assets = '総資産は必須です';
+        }
+        if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return; }
         answerText = `総資産: ${formData.total_assets}百万円 / 純資産: ${formData.net_assets || 0}百万円`;
         nextBotText = `減価償却や地代家賃などの経費項目はある？（なければ空欄かスキップでOK！）`;
         break;
@@ -113,7 +124,10 @@ export default function LeaseKunWizard() {
         nextBotText = `今回の契約期間や取得価格はどうなってる？`;
         break;
       case 7:
-        if (!formData.acquisition_cost || Number(formData.acquisition_cost) <= 0) return alert("取得価格(百万円)は必須です！");
+        if (!formData.acquisition_cost || Number(formData.acquisition_cost) <= 0) {
+          newErrors.acquisition_cost = '取得価格（百万円）は必須です';
+        }
+        if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return; }
         answerText = `${formData.customer_type} / ${formData.lease_term}ヶ月 / ${formData.acquisition_cost}百万円`;
         nextBotText = `定性的な評価項目（6点）を教えて。難しければ「未選択」でも審査はできるよ。`;
         break;
@@ -122,6 +136,8 @@ export default function LeaseKunWizard() {
         nextBotText = `最後！！直感スコア（1〜5）を教えて。これで審査を実行するよ。`;
         break;
     }
+
+    setErrors({});
 
     const addedMessages: Message[] = [{ role: 'user', text: answerText }];
 
@@ -150,6 +166,7 @@ export default function LeaseKunWizard() {
       const payload = toThousandYenPayload({
         company_no:                   formData.company_no,
         company_name:                 formData.company_name,
+        asset_name:                   formData.asset_name,
         industry_major:               formData.industry_major,
         industry_sub:                 formData.industry_sub,
         main_bank:                    formData.main_bank,
@@ -165,7 +182,7 @@ export default function LeaseKunWizard() {
         op_profit:                    Number(formData.op_profit || 0),
         ord_profit:                   Number(formData.ord_profit || 0),
         net_income:                   Number(formData.net_income || 0),
-        total_assets:                 Number(formData.total_assets || 1),
+        total_assets:                 Number(formData.total_assets || 0),
         net_assets:                   Number(formData.net_assets || 0),
         machines:                     Number(formData.machines || 0),
         other_assets:                 Number(formData.other_assets || 0),
@@ -190,6 +207,7 @@ export default function LeaseKunWizard() {
       });
 
       const res = await axios.post(`/api/score/full`, payload);
+      setSubmitted(true);
 
       setHistory(prev => [...prev, {
         role: 'humor',
@@ -204,7 +222,11 @@ export default function LeaseKunWizard() {
         )
       }]);
     } catch (e) {
-      setHistory(prev => [...prev, { role: 'humor', text: 'エラー発生！APIサーバーが立ち上がっているか確認してね。' }]);
+      const err = e as { response?: { status?: number; data?: { detail?: string } }; message?: string };
+      const status = err.response?.status;
+      const detail = err.response?.data?.detail || err.message || '不明なエラー';
+      const errorMsg = status ? `エラー ${status}: ${detail}` : `エラー: ${detail}`;
+      setHistory(prev => [...prev, { role: 'humor', text: `送信失敗！${errorMsg}` }]);
     } finally {
       setLoading(false);
     }
@@ -213,9 +235,12 @@ export default function LeaseKunWizard() {
   const goBack = () => {
     if (step === 0) return;
     setStep(s => s - 1);
+    setErrors({});
     setHistory(prev => {
       const nw = [...prev];
-      nw.pop(); nw.pop();
+      nw.pop(); // bot message
+      if (nw.length > 0 && nw[nw.length - 1].role === 'humor') nw.pop(); // humor message (if present)
+      nw.pop(); // user message
       return nw;
     });
   };
@@ -233,7 +258,9 @@ export default function LeaseKunWizard() {
   const sel = "w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm font-bold text-[#1A1A2E] appearance-none outline-none focus:border-[#E8A838]";
   const inp = "w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm outline-none focus:border-[#E8A838]";
   const inpReq = "w-full bg-amber-50 border-2 border-[#E8A838] rounded-xl p-3 text-sm outline-none font-bold";
+  const inpErr = "w-full bg-red-50 border-2 border-red-400 rounded-xl p-3 text-sm outline-none font-bold";
   const lbl = "text-[11px] font-black text-slate-500 mb-1 block";
+  const errMsg = "text-red-500 text-xs mt-1";
 
   return (
     <div className="md:min-h-[calc(100vh-2rem)] flex items-center justify-center bg-slate-900 md:py-8 w-full">
@@ -263,7 +290,7 @@ export default function LeaseKunWizard() {
         <div className="h-1 bg-slate-200 shrink-0">
           <div
             className="h-full bg-gradient-to-r from-orange-400 to-[#E8A838] transition-all duration-300"
-            style={{ width: `${((step) / STEPS.length) * 100}%` }}
+            style={{ width: `${((step + 1) / STEPS.length) * 100}%` }}
           />
         </div>
 
@@ -419,7 +446,8 @@ export default function LeaseKunWizard() {
             {step === 3 && (
               <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2">
-                  <input type="text" inputMode="decimal" name="nenshu" value={formData.nenshu} step="0.1" onChange={handleChange} placeholder="売上高 (百万円) ※必須" className={inpReq} required />
+                  <input type="text" inputMode="decimal" name="nenshu" value={formData.nenshu} step="0.1" onChange={handleChange} placeholder="売上高 (百万円) ※必須" className={errors.nenshu ? inpErr : inpReq} />
+                  {errors.nenshu && <p className={errMsg}>{errors.nenshu}</p>}
                 </div>
                 <input type="text" inputMode="decimal" name="gross_profit" value={formData.gross_profit} step="0.1" onChange={handleChange} placeholder="売上総利益 (百万円)" className={inp} />
                 <input type="text" inputMode="decimal" name="op_profit" value={formData.op_profit} step="0.1" onChange={handleChange} placeholder="営業利益 (百万円)" className={inp} />
@@ -432,7 +460,8 @@ export default function LeaseKunWizard() {
             {step === 4 && (
               <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2">
-                  <input type="text" inputMode="decimal" name="total_assets" value={formData.total_assets} step="0.1" onChange={handleChange} placeholder="総資産 (百万円) ※必須" className={inpReq} required />
+                  <input type="text" inputMode="decimal" name="total_assets" value={formData.total_assets} step="0.1" onChange={handleChange} placeholder="総資産 (百万円) ※必須" className={errors.total_assets ? inpErr : inpReq} />
+                  {errors.total_assets && <p className={errMsg}>{errors.total_assets}</p>}
                 </div>
                 <div className="col-span-2">
                   <input type="text" inputMode="decimal" name="net_assets" value={formData.net_assets} step="0.1" onChange={handleChange} placeholder="純資産 (百万円)" className={inp} />
@@ -473,7 +502,8 @@ export default function LeaseKunWizard() {
             {step === 7 && (
               <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2">
-                  <input type="text" inputMode="decimal" name="acquisition_cost" value={formData.acquisition_cost} step="0.1" onChange={handleChange} placeholder="取得価格 (百万円) ※必須" className={inpReq} required />
+                  <input type="text" inputMode="decimal" name="acquisition_cost" value={formData.acquisition_cost} step="0.1" onChange={handleChange} placeholder="取得価格 (百万円) ※必須" className={errors.acquisition_cost ? inpErr : inpReq} />
+                  {errors.acquisition_cost && <p className={errMsg}>{errors.acquisition_cost}</p>}
                 </div>
                 <div>
                   <label className={lbl}>契約種類</label>
@@ -535,8 +565,9 @@ export default function LeaseKunWizard() {
             </button>
             <button
               type="submit"
-              className="flex-1 h-12 flex items-center justify-center rounded-xl bg-[#1A1A2E] text-white font-bold tracking-wide shadow-[0_4px_0_#0f0f1c] active:shadow-none active:translate-y-1 transition-all">
-              {step >= STEPS.length - 1 ? '審査実行 🚀' : '次へ進む'}
+              disabled={submitted}
+              className={`flex-1 h-12 flex items-center justify-center rounded-xl font-bold tracking-wide shadow-[0_4px_0_#0f0f1c] active:shadow-none active:translate-y-1 transition-all ${submitted ? 'bg-slate-400 text-white cursor-not-allowed shadow-none' : 'bg-[#1A1A2E] text-white'}`}>
+              {submitted ? '送信済み ✓' : step >= STEPS.length - 1 ? '審査実行 🚀' : '次へ進む'}
             </button>
           </div>
         </form>
