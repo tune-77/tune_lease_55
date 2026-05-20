@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface SliderInputProps {
   label: string;
@@ -21,21 +21,52 @@ export default function SliderInput({
   unit = "百万円",
   onChange
 }: SliderInputProps) {
-  
+  // ローカル文字列state: 入力中の中間状態（"-", "1.", "-0." など）を保持
+  const [inputStr, setInputStr] = useState(value.toString());
+  const [isFocused, setIsFocused] = useState(false);
+
+  // スライダー操作など外部からvalueが変わったとき、フォーカス中でなければ同期する
+  useEffect(() => {
+    if (!isFocused) {
+      setInputStr(value.toString());
+    }
+  }, [value, isFocused]);
+
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     onChange(name, Number(e.target.value));
   };
 
   const handleNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // 空白やパース不能な値は0にフォールバック、または一旦そのままにする制御が必要ですが
-    // 今回は安全のため常にNumber変換します
-    let val = parseFloat(e.target.value);
-    if (isNaN(val)) val = 0;
-    // max制限は直接入力ではあえて緩めることもありますが、安全性のため設定
-    onChange(name, val);
+    const str = e.target.value;
+    setInputStr(str);
+
+    // "-" や "." や "-." など入力途中の状態は親に伝えない
+    if (str === '' || str === '-' || str === '.' || str === '-.') return;
+
+    const parsed = parseFloat(str);
+    if (!isNaN(parsed)) {
+      onChange(name, parsed);
+    }
   };
 
-  // 3桁区切りのフォーマット
+  const handleFocus = () => {
+    setIsFocused(true);
+  };
+
+  const handleBlur = () => {
+    setIsFocused(false);
+    const parsed = parseFloat(inputStr);
+    if (isNaN(parsed)) {
+      // 不完全な入力はリセット
+      setInputStr(value.toString());
+    } else {
+      // blur時にmin/maxでクランプして確定
+      const clamped = Math.min(Math.max(parsed, min), max);
+      onChange(name, clamped);
+      setInputStr(clamped.toString());
+    }
+  };
+
   const formattedValue = new Intl.NumberFormat('ja-JP').format(value);
 
   return (
@@ -48,30 +79,32 @@ export default function SliderInput({
           採用値: <span className="text-blue-600 text-sm">{formattedValue}</span> {unit}
         </span>
       </div>
-      
+
       <div className="flex flex-col sm:flex-row gap-4 items-center">
         {/* Slider 領域 */}
         <div className="w-full sm:w-2/3">
-          <input 
+          <input
             type="range"
             name={`${name}_slider`}
             min={min}
             max={max}
             step={step}
-            value={Math.min(value, max)} // スライダーは最大値でおさめる
+            value={Math.min(Math.max(value, min), max)}
             onChange={handleSliderChange}
             className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
           />
         </div>
 
-        {/* 数値入力領域 */}
+        {/* 数値入力領域: type="text" + inputMode="decimal" でスマホ数字キーボード表示 */}
         <div className="w-full sm:w-1/3 relative">
           <input
-            type="number"
+            type="text"
+            inputMode="decimal"
             name={`${name}_number`}
-            value={value.toString()} // 先頭の0などを避ける
-            step={step}
+            value={inputStr}
             onChange={handleNumberChange}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
             className="w-full text-right pr-12 pl-3 py-2 bg-white border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm font-semibold text-slate-800"
           />
           <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">

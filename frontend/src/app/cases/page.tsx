@@ -242,7 +242,7 @@ export default function CasesPage() {
                   <div>
                     <label className="block text-xs font-black text-slate-500 uppercase mb-1.5">競合レート (%)</label>
                     <input
-                      type="number" step="0.01"
+                      type="text" inputMode="decimal" step="0.01"
                       value={form.competitor_rate}
                       onChange={e => setForm(f => ({ ...f, competitor_rate: e.target.value }))}
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-cyan-500/20"

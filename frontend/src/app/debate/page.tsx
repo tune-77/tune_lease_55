@@ -237,7 +237,7 @@ export default function DebatePage() {
           <div>
             <label className="block text-xs font-bold text-slate-500 mb-1">審査スコア *</label>
             <input
-              name="score" type="number" min={0} max={100} required
+              name="score" type="text" inputMode="decimal" min={0} max={100} required
               value={form.score} onChange={handleChange}
               className={`w-full border rounded-xl px-3 py-2 text-lg font-black ${scoreColor(form.score)} focus:outline-none focus:ring-2 focus:ring-violet-400`}
             />
@@ -276,7 +276,7 @@ export default function DebatePage() {
             <div key={f.name}>
               <label className="block text-xs font-bold text-slate-500 mb-1">{f.label}</label>
               <input
-                name={f.name} type="number" min={0}
+                name={f.name} type="text" inputMode="decimal" min={0}
                 value={(form as any)[f.name]} onChange={handleChange}
                 className="w-full border rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-400"
               />

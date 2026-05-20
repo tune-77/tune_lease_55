@@ -248,7 +248,7 @@ export default function RegisterPage() {
                  <div>
                     <label className="block text-xs font-black text-slate-400 uppercase mb-2">最終獲得レート (%)</label>
                     <input 
-                       type="number" step="0.01" value={finalRate}
+                       type="text" inputMode="decimal" step="0.01" value={finalRate}
                        onChange={(e) => setFinalRate(parseFloat(e.target.value))}
                        className="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl font-bold text-emerald-600 outline-none"
                     />
@@ -256,7 +256,7 @@ export default function RegisterPage() {
                  <div>
                     <label className="block text-xs font-black text-slate-400 uppercase mb-2">当時の基準金利 (%)</label>
                     <input 
-                       type="number" step="0.01" value={baseRate}
+                       type="text" inputMode="decimal" step="0.01" value={baseRate}
                        onChange={(e) => setBaseRate(parseFloat(e.target.value))}
                        className="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl font-bold text-slate-600 outline-none"
                     />
@@ -286,7 +286,7 @@ export default function RegisterPage() {
                     <div>
                         <label className="block text-xs font-black text-slate-400 uppercase mb-2">他社提示レート (%)</label>
                         <input 
-                           type="number" step="0.01" value={competitorRate}
+                           type="text" inputMode="decimal" step="0.01" value={competitorRate}
                            onChange={(e) => setCompetitorRate(parseFloat(e.target.value))}
                            className="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl font-bold text-orange-600 outline-none"
                         />

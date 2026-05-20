@@ -231,7 +231,7 @@ export default function InterestPage() {
                 <div key={col}>
                   <label className="block text-[10px] font-black text-slate-500 mb-1 text-center">{TERM_LABELS[col]}</label>
                   <input
-                    type="number" step="0.01"
+                    type="text" inputMode="decimal" step="0.01"
                     className="w-full bg-slate-50 border border-slate-200 p-2 rounded-lg font-mono text-sm text-center text-emerald-700 outline-none focus:ring-2 focus:ring-emerald-400"
                     value={form[col]}
                     onChange={e => setForm({ ...form, [col]: e.target.value })}
@@ -317,7 +317,7 @@ export default function InterestPage() {
                         return (
                           <td key={col} className="px-1 py-1 text-center">
                             <input
-                              type="number" step="0.01"
+                              type="text" inputMode="decimal" step="0.01"
                               className={`w-16 text-center font-mono rounded-lg border px-1 py-1 text-xs outline-none focus:ring-1 focus:ring-emerald-400 ${isEdited && edits[col as keyof typeof edits] !== undefined ? 'border-emerald-400 bg-emerald-50 text-emerald-700 font-black' : 'border-transparent bg-transparent text-slate-600 hover:border-slate-300'}`}
                               value={val !== null && val !== undefined ? Number(val).toFixed(2) : ''}
                               onChange={e => handleCellEdit(row.month, col, e.target.value)}

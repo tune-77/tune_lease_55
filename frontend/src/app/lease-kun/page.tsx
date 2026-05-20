@@ -419,12 +419,12 @@ export default function LeaseKunWizard() {
             {step === 3 && (
               <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2">
-                  <input type="number" name="nenshu" value={formData.nenshu} step="0.1" onChange={handleChange} placeholder="売上高 (百万円) ※必須" className={inpReq} required />
+                  <input type="text" inputMode="decimal" name="nenshu" value={formData.nenshu} step="0.1" onChange={handleChange} placeholder="売上高 (百万円) ※必須" className={inpReq} required />
                 </div>
-                <input type="number" name="gross_profit" value={formData.gross_profit} step="0.1" onChange={handleChange} placeholder="売上総利益 (百万円)" className={inp} />
-                <input type="number" name="op_profit" value={formData.op_profit} step="0.1" onChange={handleChange} placeholder="営業利益 (百万円)" className={inp} />
-                <input type="number" name="ord_profit" value={formData.ord_profit} step="0.1" onChange={handleChange} placeholder="経常利益 (百万円)" className={inp} />
-                <input type="number" name="net_income" value={formData.net_income} step="0.1" onChange={handleChange} placeholder="当期純利益 (百万円)" className={inp} />
+                <input type="text" inputMode="decimal" name="gross_profit" value={formData.gross_profit} step="0.1" onChange={handleChange} placeholder="売上総利益 (百万円)" className={inp} />
+                <input type="text" inputMode="decimal" name="op_profit" value={formData.op_profit} step="0.1" onChange={handleChange} placeholder="営業利益 (百万円)" className={inp} />
+                <input type="text" inputMode="decimal" name="ord_profit" value={formData.ord_profit} step="0.1" onChange={handleChange} placeholder="経常利益 (百万円)" className={inp} />
+                <input type="text" inputMode="decimal" name="net_income" value={formData.net_income} step="0.1" onChange={handleChange} placeholder="当期純利益 (百万円)" className={inp} />
               </div>
             )}
 
@@ -432,23 +432,23 @@ export default function LeaseKunWizard() {
             {step === 4 && (
               <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2">
-                  <input type="number" name="total_assets" value={formData.total_assets} step="0.1" onChange={handleChange} placeholder="総資産 (百万円) ※必須" className={inpReq} required />
+                  <input type="text" inputMode="decimal" name="total_assets" value={formData.total_assets} step="0.1" onChange={handleChange} placeholder="総資産 (百万円) ※必須" className={inpReq} required />
                 </div>
                 <div className="col-span-2">
-                  <input type="number" name="net_assets" value={formData.net_assets} step="0.1" onChange={handleChange} placeholder="純資産 (百万円)" className={inp} />
+                  <input type="text" inputMode="decimal" name="net_assets" value={formData.net_assets} step="0.1" onChange={handleChange} placeholder="純資産 (百万円)" className={inp} />
                 </div>
-                <input type="number" name="machines" value={formData.machines} step="0.1" onChange={handleChange} placeholder="機械装置 (百万円)" className={inp} />
-                <input type="number" name="other_assets" value={formData.other_assets} step="0.1" onChange={handleChange} placeholder="その他資産 (百万円)" className={inp} />
+                <input type="text" inputMode="decimal" name="machines" value={formData.machines} step="0.1" onChange={handleChange} placeholder="機械装置 (百万円)" className={inp} />
+                <input type="text" inputMode="decimal" name="other_assets" value={formData.other_assets} step="0.1" onChange={handleChange} placeholder="その他資産 (百万円)" className={inp} />
               </div>
             )}
 
             {/* Step 5: 経費 */}
             {step === 5 && (
               <div className="grid grid-cols-2 gap-2">
-                <input type="number" name="depreciation" value={formData.depreciation} step="0.1" onChange={handleChange} placeholder="減価償却(資産・百万円)" className={inp} />
-                <input type="number" name="dep_expense" value={formData.dep_expense} step="0.1" onChange={handleChange} placeholder="減価償却(経費・百万円)" className={inp} />
-                <input type="number" name="rent" value={formData.rent} step="0.1" onChange={handleChange} placeholder="賃借料(資産・百万円)" className={inp} />
-                <input type="number" name="rent_expense" value={formData.rent_expense} step="0.1" onChange={handleChange} placeholder="賃借料(経費・百万円)" className={inp} />
+                <input type="text" inputMode="decimal" name="depreciation" value={formData.depreciation} step="0.1" onChange={handleChange} placeholder="減価償却(資産・百万円)" className={inp} />
+                <input type="text" inputMode="decimal" name="dep_expense" value={formData.dep_expense} step="0.1" onChange={handleChange} placeholder="減価償却(経費・百万円)" className={inp} />
+                <input type="text" inputMode="decimal" name="rent" value={formData.rent} step="0.1" onChange={handleChange} placeholder="賃借料(資産・百万円)" className={inp} />
+                <input type="text" inputMode="decimal" name="rent_expense" value={formData.rent_expense} step="0.1" onChange={handleChange} placeholder="賃借料(経費・百万円)" className={inp} />
               </div>
             )}
 
@@ -462,9 +462,9 @@ export default function LeaseKunWizard() {
                   <option>④無格付</option>
                 </select>
                 <div className="grid grid-cols-3 gap-2">
-                  <input type="number" name="contracts" value={formData.contracts} onChange={handleChange} placeholder="契約件数" className={inp} />
-                  <input type="number" name="bank_credit" value={formData.bank_credit} step="0.1" onChange={handleChange} placeholder="銀行与信残(百万円)" className={inp} />
-                  <input type="number" name="lease_credit" value={formData.lease_credit} step="0.1" onChange={handleChange} placeholder="リース与信残(百万円)" className={inp} />
+                  <input type="text" inputMode="decimal" name="contracts" value={formData.contracts} onChange={handleChange} placeholder="契約件数" className={inp} />
+                  <input type="text" inputMode="decimal" name="bank_credit" value={formData.bank_credit} step="0.1" onChange={handleChange} placeholder="銀行与信残(百万円)" className={inp} />
+                  <input type="text" inputMode="decimal" name="lease_credit" value={formData.lease_credit} step="0.1" onChange={handleChange} placeholder="リース与信残(百万円)" className={inp} />
                 </div>
               </div>
             )}
@@ -473,7 +473,7 @@ export default function LeaseKunWizard() {
             {step === 7 && (
               <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2">
-                  <input type="number" name="acquisition_cost" value={formData.acquisition_cost} step="0.1" onChange={handleChange} placeholder="取得価格 (百万円) ※必須" className={inpReq} required />
+                  <input type="text" inputMode="decimal" name="acquisition_cost" value={formData.acquisition_cost} step="0.1" onChange={handleChange} placeholder="取得価格 (百万円) ※必須" className={inpReq} required />
                 </div>
                 <div>
                   <label className={lbl}>契約種類</label>
@@ -483,11 +483,11 @@ export default function LeaseKunWizard() {
                 </div>
                 <div>
                   <label className={lbl}>期間(月)</label>
-                  <input type="number" name="lease_term" value={formData.lease_term} onChange={handleChange} className={inp} />
+                  <input type="text" inputMode="decimal" name="lease_term" value={formData.lease_term} onChange={handleChange} className={inp} />
                 </div>
                 <div className="col-span-2">
                   <label className={lbl}>検収年(西暦)</label>
-                  <input type="number" name="acceptance_year" value={formData.acceptance_year} onChange={handleChange} className={inp} />
+                  <input type="text" inputMode="decimal" name="acceptance_year" value={formData.acceptance_year} onChange={handleChange} className={inp} />
                 </div>
               </div>
             )}
