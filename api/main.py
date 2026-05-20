@@ -1853,18 +1853,12 @@ def get_latest_screening():
                 if pc and pc["data"]:
                     d = _json.loads(pc["data"])
 
-                    def _to_m(v):
-                        try:
-                            return round(float(v) / 1000, 2)
-                        except Exception:
-                            return 0
-
                     if d.get("company_name"):
                         defaults["company_name"] = d["company_name"]
                     if d.get("selected_major"):
                         defaults["industry_major"] = d["selected_major"]
                     if d.get("nenshu"):
-                        defaults["nenshu"] = _to_m(d["nenshu"])
+                        defaults["nenshu"] = round(float(d["nenshu"]), 2)
                     nenshu_raw = float(d.get("nenshu") or 0)
                     rieki_raw = float(d.get("rieki") or 0)
                     if nenshu_raw > 0:
@@ -1874,11 +1868,11 @@ def get_latest_screening():
                     if total_assets > 0:
                         defaults["equity_ratio"] = round(net_assets / total_assets * 100, 1)
                     if d.get("bank_credit"):
-                        defaults["bank_credit"] = _to_m(d["bank_credit"])
+                        defaults["bank_credit"] = round(float(d["bank_credit"]), 2)
                     if d.get("lease_credit"):
-                        defaults["lease_credit"] = _to_m(d["lease_credit"])
+                        defaults["lease_credit"] = round(float(d["lease_credit"]), 2)
                     if d.get("acquisition_cost"):
-                        defaults["lease_amount"] = _to_m(d["acquisition_cost"])
+                        defaults["lease_amount"] = round(float(d["acquisition_cost"]), 2)
             except Exception:
                 pass
 
