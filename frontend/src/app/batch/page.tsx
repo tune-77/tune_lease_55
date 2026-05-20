@@ -3,10 +3,10 @@ import React, { useEffect } from 'react';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import { Activity, Layout } from 'lucide-react';
 
-export default function BatchPage() {{
-  useEffect(() => {{
+export default function BatchPage() {
+  useEffect(() => {
     triggerMebuki('guide', 'バッチ審査の画面ですね！\n現在AIモジュールへ接続準備中です。');
-  }}, []);
+  }, []);
 
   return (
     <div className="p-8 min-h-[calc(100vh-2rem)] animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -29,4 +29,4 @@ export default function BatchPage() {{
       </div>
     </div>
   );
-}}
+}

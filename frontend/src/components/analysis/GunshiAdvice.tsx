@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import DOMPurify from 'dompurify';
 import { Activity, MessageSquare } from 'lucide-react';
 
 interface GunshiAdviceProps {
@@ -340,7 +341,7 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
               <div className="w-full">
                 <div
                   className="bg-white p-4 rounded-2xl rounded-tl-none shadow border border-amber-200 text-slate-700 leading-7 font-medium whitespace-pre-wrap text-[13px] sm:text-sm w-full prose prose-slate"
-                  dangerouslySetInnerHTML={{ __html: renderMarkdown(chat.text) }}
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderMarkdown(chat.text)) }}
                 />
                 {chat.meta && (
                   <div className="mt-1.5 text-[11px] text-slate-500 leading-4 px-1">

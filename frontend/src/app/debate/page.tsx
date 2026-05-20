@@ -7,6 +7,7 @@ import {
   Swords, Shield, Zap, Crown, ChevronDown, ChevronUp,
   Loader2, CheckCircle2, XCircle, AlertTriangle, Info,
 } from "lucide-react";
+import { INDUSTRIES } from "@/constants/industries";
 
 // ── 型定義 ─────────────────────────────────────────────────────────────────────
 interface CautiousResult {
@@ -34,11 +35,6 @@ interface DebateResult {
   same_opinion_r1?: boolean;
 }
 
-const INDUSTRIES = [
-  "製造業", "建設業", "卸売業", "小売業", "運輸業", "情報通信業",
-  "不動産業", "医療・福祉", "サービス業", "飲食業", "農業・漁業",
-  "金融・保険業", "教育・学習支援業", "宿泊業", "その他",
-];
 
 // ── スタイルヘルパー ─────────────────────────────────────────────────────────
 function opinionBadge(opinion: string) {
