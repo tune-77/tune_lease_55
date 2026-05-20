@@ -565,9 +565,9 @@ export default function LeaseKunWizard() {
             </button>
             <button
               type="submit"
-              disabled={submitted}
-              className={`flex-1 h-12 flex items-center justify-center rounded-xl font-bold tracking-wide shadow-[0_4px_0_#0f0f1c] active:shadow-none active:translate-y-1 transition-all ${submitted ? 'bg-slate-400 text-white cursor-not-allowed shadow-none' : 'bg-[#1A1A2E] text-white'}`}>
-              {submitted ? '送信済み ✓' : step >= STEPS.length - 1 ? '審査実行 🚀' : '次へ進む'}
+              disabled={submitted && step >= STEPS.length - 1}
+              className={`flex-1 h-12 flex items-center justify-center rounded-xl font-bold tracking-wide shadow-[0_4px_0_#0f0f1c] active:shadow-none active:translate-y-1 transition-all ${submitted && step >= STEPS.length - 1 ? 'bg-slate-400 text-white cursor-not-allowed shadow-none' : 'bg-[#1A1A2E] text-white'}`}>
+              {submitted && step >= STEPS.length - 1 ? '送信済み ✓' : step >= STEPS.length - 1 ? '審査実行 🚀' : '次へ進む'}
             </button>
           </div>
         </form>
