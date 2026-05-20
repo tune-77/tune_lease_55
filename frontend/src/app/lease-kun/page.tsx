@@ -12,6 +12,20 @@ type Message = {
   text: React.ReactNode;
 };
 
+type IndustryMasterEntry = {
+  mapping?: string;
+  sub?: { [sub: string]: string };
+  [key: string]: unknown;
+};
+type IndustryMaster = { [major: string]: IndustryMasterEntry | string[] };
+
+function extractSubs(entry: IndustryMasterEntry | string[] | undefined): string[] {
+  if (!entry) return [];
+  if (Array.isArray(entry)) return entry.filter(Boolean);
+  if (entry.sub && typeof entry.sub === 'object') return Object.keys(entry.sub);
+  return Object.keys(entry).filter(k => k !== 'mapping');
+}
+
 // --- 初期データ ---
 const STEPS = [
   "企業・業種", "取引と競合", "リース物件", "損益計算", "資産情報",
@@ -26,6 +40,10 @@ export default function LeaseKunWizard() {
   ]);
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const [industryMaster, setIndustryMaster] = useState<IndustryMaster>({});
+  const [majors, setMajors] = useState<string[]>([]);
+  const [subs, setSubs] = useState<string[]>([]);
 
   // --- フォームステート ---
   const [formData, setFormData] = useState({
@@ -59,6 +77,31 @@ export default function LeaseKunWizard() {
     // Step 9
     intuition: 3
   });
+
+  // 業種マスター取得
+  useEffect(() => {
+    fetch('/api/master/industries')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return;
+        setIndustryMaster(data);
+        setMajors(Object.keys(data));
+        if (formData.industry_major && data[formData.industry_major]) {
+          setSubs(extractSubs(data[formData.industry_major]));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // 大分類変更時に中分類を連動
+  useEffect(() => {
+    if (!formData.industry_major || !industryMaster[formData.industry_major]) return;
+    const newSubs = extractSubs(industryMaster[formData.industry_major]);
+    setSubs(newSubs);
+    if (newSubs.length > 0 && !newSubs.includes(formData.industry_sub)) {
+      setFormData(prev => ({ ...prev, industry_sub: newSubs[0] }));
+    }
+  }, [formData.industry_major, industryMaster]);
 
   // 自動スクロール
   useEffect(() => {
@@ -321,30 +364,43 @@ export default function LeaseKunWizard() {
                 <div className="relative">
                   <label className={lbl}>業種（大分類）</label>
                   <select name="industry_major" value={formData.industry_major} onChange={handleChange} className={sel}>
-                    <option>A 農業，林業</option>
-                    <option>B 漁業</option>
-                    <option>C 鉱業，採石業，砂利採取業</option>
-                    <option>D 建設業</option>
-                    <option>E 製造業</option>
-                    <option>F 電気・ガス・熱供給・水道業</option>
-                    <option>G 情報通信業</option>
-                    <option>H 運輸業，郵便業</option>
-                    <option>I 卸売業，小売業</option>
-                    <option>J 金融業，保険業</option>
-                    <option>K 不動産業，物品賃貸業</option>
-                    <option>L 学術研究，専門・技術サービス業</option>
-                    <option>M 宿泊業，飲食サービス業</option>
-                    <option>N 生活関連サービス業，娯楽業</option>
-                    <option>O 教育，学習支援業</option>
-                    <option>P 医療，福祉</option>
-                    <option>Q 複合サービス事業</option>
-                    <option>R サービス業（他に分類されないもの）</option>
+                    {majors.length > 0
+                      ? majors.map(m => <option key={m} value={m}>{m}</option>)
+                      : (
+                        <>
+                          <option>A 農業，林業</option>
+                          <option>B 漁業</option>
+                          <option>C 鉱業，採石業，砂利採取業</option>
+                          <option>D 建設業</option>
+                          <option>E 製造業</option>
+                          <option>F 電気・ガス・熱供給・水道業</option>
+                          <option>G 情報通信業</option>
+                          <option>H 運輸業，郵便業</option>
+                          <option>I 卸売業，小売業</option>
+                          <option>J 金融業，保険業</option>
+                          <option>K 不動産業，物品賃貸業</option>
+                          <option>L 学術研究，専門・技術サービス業</option>
+                          <option>M 宿泊業，飲食サービス業</option>
+                          <option>N 生活関連サービス業，娯楽業</option>
+                          <option>O 教育，学習支援業</option>
+                          <option>P 医療，福祉</option>
+                          <option>Q 複合サービス事業</option>
+                          <option>R サービス業（他に分類されないもの）</option>
+                        </>
+                      )
+                    }
                   </select>
                   <ChevronDown className="absolute right-3 top-8 w-4 h-4 text-slate-400 pointer-events-none" />
                 </div>
                 <div className="relative">
                   <label className={lbl}>業種（中分類）</label>
-                  <input type="text" name="industry_sub" value={formData.industry_sub} onChange={handleChange} placeholder="例: 06 総合工事業" className={inp} />
+                  <select name="industry_sub" value={formData.industry_sub} onChange={handleChange} className={sel}>
+                    {subs.length > 0
+                      ? subs.map(s => <option key={s} value={s}>{s}</option>)
+                      : <option value={formData.industry_sub}>{formData.industry_sub}</option>
+                    }
+                  </select>
+                  <ChevronDown className="absolute right-3 top-8 w-4 h-4 text-slate-400 pointer-events-none" />
                 </div>
               </>
             )}
