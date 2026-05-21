@@ -1851,6 +1851,32 @@ def multi_agent_screening(req: MultiAgentRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/analysis/network_risk")
+def api_network_risk(industry: str = ""):
+    """業種コードまたは業種名からサプライチェーン波及リスクを計算する"""
+    import sys as _sys
+    _root = os.path.dirname(os.path.dirname(__file__))
+    if _root not in _sys.path:
+        _sys.path.insert(0, _root)
+    try:
+        from components.graph_risk import GraphRiskEngine
+        engine = GraphRiskEngine()
+        result = engine.calculate_network_risk(industry)
+        sim = engine.run_scenario_simulation(industry, n_simulations=300)
+        return {
+            "network_risk_pct": round(result.get("network_risk_score", 0.05) * 100, 1),
+            "base_risk_pct": round(result.get("base_risk", 0.05) * 100, 1),
+            "impacted_by": result.get("impacted_by", [])[:5],
+            "sim_mean_pct": round(sim.get("mean_risk", 0.05) * 100, 1),
+            "sim_var95_pct": round(sim.get("max_risk_95", 0.05) * 100, 1),
+            "target_industry": result.get("target_industry", industry),
+        }
+    except Exception as e:
+        return {"network_risk_pct": 5.0, "base_risk_pct": 5.0, "impacted_by": [],
+                "sim_mean_pct": 5.0, "sim_var95_pct": 10.0, "target_industry": industry,
+                "error": str(e)}
+
+
 @app.get("/api/latest-screening")
 def get_latest_screening():
     """
