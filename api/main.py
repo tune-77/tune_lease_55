@@ -1901,6 +1901,24 @@ def get_latest_screening():
         "lease_amount": 0,
     }
 
+    def _first_non_empty(*values):
+        for value in values:
+            if value not in (None, "", [], {}):
+                return value
+        return None
+
+    def _to_million(value):
+        try:
+            return round(float(value) / 1000, 2)
+        except Exception:
+            return 0
+
+    def _safe_float(value):
+        try:
+            return float(value)
+        except Exception:
+            return 0.0
+
     try:
         from data_cases import _open_db
         with _closing(_open_db()) as conn:
@@ -1930,32 +1948,56 @@ def get_latest_screening():
                 if pc and pc["data"]:
                     d = _json.loads(pc["data"])
 
-                    def _to_m(v):
-                        try:
-                            return round(float(v) / 1000, 2)
-                        except Exception:
-                            return 0
+                    inputs = d.get("inputs") if isinstance(d.get("inputs"), dict) else {}
+                    result = d.get("result") if isinstance(d.get("result"), dict) else {}
 
-                    if d.get("company_name"):
-                        defaults["company_name"] = d["company_name"]
-                    if d.get("selected_major"):
-                        defaults["industry_major"] = d["selected_major"]
-                    if d.get("nenshu"):
-                        defaults["nenshu"] = _to_m(d["nenshu"])
-                    nenshu_raw = float(d.get("nenshu") or 0)
-                    rieki_raw = float(d.get("rieki") or 0)
+                    company_name = _first_non_empty(d.get("company_name"), inputs.get("company_name"))
+                    if company_name:
+                        defaults["company_name"] = company_name
+
+                    industry_major = _first_non_empty(
+                        d.get("selected_major"),
+                        d.get("industry_major"),
+                        inputs.get("industry_major"),
+                    )
+                    if industry_major:
+                        defaults["industry_major"] = industry_major
+
+                    nenshu_raw = _safe_float(_first_non_empty(inputs.get("nenshu"), d.get("nenshu")))
+                    op_profit_raw = _safe_float(_first_non_empty(inputs.get("op_profit"), inputs.get("rieki"), d.get("rieki")))
+                    net_assets_raw = _safe_float(_first_non_empty(inputs.get("net_assets"), d.get("net_assets")))
+                    total_assets_raw = _safe_float(_first_non_empty(inputs.get("total_assets"), d.get("total_assets")))
+
                     if nenshu_raw > 0:
-                        defaults["op_margin_pct"] = round(rieki_raw / nenshu_raw * 100, 1)
-                    net_assets = float(d.get("net_assets") or 0)
-                    total_assets = float(d.get("total_assets") or 0)
-                    if total_assets > 0:
-                        defaults["equity_ratio"] = round(net_assets / total_assets * 100, 1)
-                    if d.get("bank_credit"):
-                        defaults["bank_credit"] = _to_m(d["bank_credit"])
-                    if d.get("lease_credit"):
-                        defaults["lease_credit"] = _to_m(d["lease_credit"])
-                    if d.get("acquisition_cost"):
-                        defaults["lease_amount"] = _to_m(d["acquisition_cost"])
+                        defaults["nenshu"] = _to_million(nenshu_raw)
+                    if nenshu_raw > 0:
+                        defaults["op_margin_pct"] = round(op_profit_raw / nenshu_raw * 100, 1)
+                    if total_assets_raw > 0:
+                        defaults["equity_ratio"] = round(net_assets_raw / total_assets_raw * 100, 1)
+
+                    bank_credit_raw = _safe_float(_first_non_empty(inputs.get("bank_credit"), d.get("bank_credit")))
+                    lease_credit_raw = _safe_float(_first_non_empty(inputs.get("lease_credit"), d.get("lease_credit")))
+                    acquisition_cost_raw = _safe_float(_first_non_empty(inputs.get("acquisition_cost"), d.get("acquisition_cost")))
+                    if bank_credit_raw:
+                        defaults["bank_credit"] = _to_million(bank_credit_raw)
+                    if lease_credit_raw:
+                        defaults["lease_credit"] = _to_million(lease_credit_raw)
+                    if acquisition_cost_raw:
+                        defaults["lease_amount"] = _to_million(acquisition_cost_raw)
+
+                    asset_name = _first_non_empty(
+                        inputs.get("asset_name"),
+                        inputs.get("selected_asset_id"),
+                        d.get("asset_name"),
+                    )
+                    if asset_name:
+                        defaults["asset_name"] = asset_name
+
+                    if result.get("score") is not None:
+                        try:
+                            defaults["score"] = round(float(result["score"]), 1)
+                        except Exception:
+                            pass
             except Exception:
                 pass
 
