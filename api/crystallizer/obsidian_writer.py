@@ -4,14 +4,16 @@
 from __future__ import annotations
 
 import datetime
+import json
 import os
 import re
 
 from api.crystallizer.anomaly_extractor import AnomalyCase
 
-_VAULT_ROOT = (
+_DEFAULT_VAULT_ROOT = (
     "/Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/"
 )
+_VAULT_ROOT = os.environ.get("OBSIDIAN_VAULT_PATH", _DEFAULT_VAULT_ROOT)
 _GENERATED_DIR = "Generated"
 
 
@@ -68,12 +70,13 @@ def write_pattern_to_obsidian(
     fname = f"{date_str}_{_safe_filename(pattern_name)}.md"
     fpath = os.path.join(out_dir, fname)
 
-    # frontmatter + 本文
+    # frontmatter + 本文（evidence_records はYAML準拠のリスト形式）
+    evidence_yaml = "[" + ", ".join(json.dumps(str(eid)) for eid in evidence_ids) + "]"
     content = f"""---
 status: draft
 generated_by: crystallizer
 generated_at: {date_str}
-evidence_records: {evidence_ids}
+evidence_records: {evidence_yaml}
 industry: {industry_str}
 ---
 

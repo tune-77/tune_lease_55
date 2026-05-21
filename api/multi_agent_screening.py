@@ -225,26 +225,27 @@ def _llm_call_with_knowledge(
             hits = []
 
         # ── Turn 2: Function Result を送って最終 JSON を取得 ──────────────
+        # functionResponse と最終指示を同一 user ターンにまとめ、
+        # 連続 user ロールを避ける（Gemini API 仕様準拠）
         fn_result_content = {"results": knowledge_refs}
         conversation = [
             {"role": "user", "parts": [{"text": prompt}]},
             candidate1,
             {
                 "role": "user",
-                "parts": [{
-                    "functionResponse": {
-                        "name": "search_knowledge",
-                        "response": fn_result_content,
-                    }
-                }],
-            },
-            {
-                "role": "user",
-                "parts": [{"text": (
-                    "上記の検索結果を参考に、指示された JSON 形式のみで回答せよ。"
-                    "引用がある場合は reasons/opportunities/key_risks/reasoning のいずれかに"
-                    " [[ファイル名#セクション]] 形式で含めよ。"
-                )}],
+                "parts": [
+                    {
+                        "functionResponse": {
+                            "name": "search_knowledge",
+                            "response": fn_result_content,
+                        }
+                    },
+                    {"text": (
+                        "上記の検索結果を参考に、指示された JSON 形式のみで回答せよ。"
+                        "引用がある場合は reasons/opportunities/key_risks/reasoning のいずれかに"
+                        " [[ファイル名#セクション]] 形式で含めよ。"
+                    )},
+                ],
             },
         ]
         payload_t2 = {
