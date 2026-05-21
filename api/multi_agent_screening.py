@@ -17,6 +17,8 @@ import re
 import requests
 from concurrent.futures import ThreadPoolExecutor
 
+from api.context.context_bundle import build_context_bundle
+
 # ── モデル・エンドポイント定数 ───────────────────────────────────────────────────
 # 石橋・風林火山: Gemini Flash（軽量・高速、temperature差で個性を分離）
 # 軍師: Gemini Flash（同モデルでも上位プロンプト + temperature=0.3 で裁定役）
@@ -260,30 +262,52 @@ def run_debate_screening(params: dict) -> dict:
             "aggressive"?: {...},  # debate モードのみ
             "arbiter": {...},
             "debate_log"?: str,    # debate モードのみ
+            "context_bundle"?: {...},
         }
     """
     score = float(params.get("score", 0))
     ctx = _build_case_ctx(params)
 
+    # ── コンテキスト注入: 地域/季節/業況を全エージェントへ配布 ─────────────────
+    try:
+        bundle = build_context_bundle(
+            prefecture=params.get("prefecture", ""),
+            industry=(
+                params.get("industry_major") or
+                params.get("industry_sub") or ""
+            ),
+        )
+        ctx_block = bundle.to_system_prompt_block()
+    except Exception:
+        ctx_block = ""
+        bundle = None
+
+    cautious_sys = _CAUTIOUS_SYS + ("\n\n" + ctx_block if ctx_block else "")
+    aggressive_sys = _AGGRESSIVE_SYS + ("\n\n" + ctx_block if ctx_block else "")
+    arbiter_sys = _ARBITER_SYS + ("\n\n" + ctx_block if ctx_block else "")
+
     # ── ファストパス（境界外スコア） ──────────────────────────────────────────
     if score >= _DEBATE_HIGH or score <= _DEBATE_LOW:
         direction = "承認" if score >= _DEBATE_HIGH else "否決"
         arbiter_raw = _llm_call(
-            _ARBITER_SYS,
+            arbiter_sys,
             _arbiter_solo_prompt(ctx, direction),
             temperature=0.3, max_tokens=512,
         )
-        return {
+        result = {
             "score": score,
             "mode": "solo",
             "arbiter": _norm_arbiter(arbiter_raw),
         }
+        if bundle is not None:
+            result["context_bundle"] = bundle.model_dump()
+        return result
 
     # ── 討論モード（40 < score < 60） ────────────────────────────────────────
     # Round 1: 並列実行（石橋 temperature=0.3、風林火山 temperature=0.9）
     with ThreadPoolExecutor(max_workers=2) as pool:
-        fc = pool.submit(_llm_call, _CAUTIOUS_SYS, _cautious_prompt(ctx), 0.3)
-        fa = pool.submit(_llm_call, _AGGRESSIVE_SYS, _aggressive_prompt(ctx), 0.9)
+        fc = pool.submit(_llm_call, cautious_sys, _cautious_prompt(ctx), 0.3)
+        fa = pool.submit(_llm_call, aggressive_sys, _aggressive_prompt(ctx), 0.9)
         r1c = _safe_future(fc, {"opinion": "否決", "reasons": [], "key_risks": []})
         r1a = _safe_future(fa, {"opinion": "条件付承認", "reasons": [], "opportunities": []})
 
@@ -298,11 +322,11 @@ def run_debate_screening(params: dict) -> dict:
     # Round 2: 強制反論ラウンド（相手の意見を受けて必ず反論）
     with ThreadPoolExecutor(max_workers=2) as pool:
         fc2 = pool.submit(
-            _llm_call, _CAUTIOUS_SYS,
+            _llm_call, cautious_sys,
             _cautious_prompt(ctx, r1a_json, extra_c), 0.3
         )
         fa2 = pool.submit(
-            _llm_call, _AGGRESSIVE_SYS,
+            _llm_call, aggressive_sys,
             _aggressive_prompt(ctx, r1c_json, extra_a), 0.9
         )
         r2c = _safe_future(fc2, r1c)
@@ -322,12 +346,12 @@ def run_debate_screening(params: dict) -> dict:
 
     # 軍師裁定（temperature=0.3 で中立・冷静）
     arbiter_raw = _llm_call(
-        _ARBITER_SYS,
+        arbiter_sys,
         _arbiter_debate_prompt(ctx, debate_log),
         temperature=0.3, max_tokens=1024,
     )
 
-    return {
+    result = {
         "score": score,
         "mode": "debate",
         "cautious": _norm_cautious(r2c),
@@ -336,3 +360,6 @@ def run_debate_screening(params: dict) -> dict:
         "debate_log": debate_log,
         "same_opinion_r1": same_opinion,
     }
+    if bundle is not None:
+        result["context_bundle"] = bundle.model_dump()
+    return result
