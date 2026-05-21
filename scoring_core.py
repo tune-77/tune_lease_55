@@ -621,6 +621,14 @@ def run_quick_scoring(inputs: dict) -> dict:
     base_score = w_borrower * score_borrower + w_asset * asset_score
     base_score = max(0, min(100, round(base_score, 1)))
 
+    # ── 自己資本マイナスペナルティ ────────────────────────────────────────────
+    # LGBMモデルはnet_assetsを特徴量に含まないため後処理で補正する
+    equity_penalty = 0.0
+    if user_equity_ratio < 0:
+        # -1%ごとに約0.5点減点、最大-30点
+        equity_penalty = max(-30.0, user_equity_ratio * 0.5)
+    base_score = max(0, min(100, round(base_score + equity_penalty, 1)))
+
     # ── 担当者直感スコア補正（1-5スケール、中立=3、±INTUITION_MAX_ADJ 点まで）──
     intuition_score = _safe_float(inputs.get("intuition_score"), default=0)
     intuition_adj = 0.0
