@@ -31,7 +31,8 @@
   - QCL は本番導線から外した。`train_quantum.py` の QCL CLI/ helper を削除し、`quantum_qcl.py` と生成レポートも除去した。
   - `analysis_regression.py` に `customer_new` / `deal_source_bank` / `dscr_approx` / `interest_coverage` を追加して `lgb_main_model.joblib` を再学習した。`run_quantitative_contract_analysis()` の train/test で `auc_lgb 0.7834`、`ensemble_alpha 0.0`、5-fold OOF で `LGBM 0.7804` まで上がった。
   - セグメント別 OOF AUC を確認した。`全体_既存先` は `LR 0.6909 / LGBM 0.7721`、`全体_新規先` は `0.6391 / 0.6439`。業種別では `サービス業_既存先` の `LGBM 0.8065` が最も強く、`医療_新規先` は `0.4192` と弱かった。小件数セグメントは不安定。
-  - `score` の本体 LGBM を新規/既存で分割し、アンサンブルを廃止した。`lgb_main_model.joblib` は既存先、`lgb_main_model_new.joblib` は新規先として保存し、`score_borrower` は `customer_type` で切り替える。
+  - `score` の本体モデルは RandomForest に戻した。`data/ml_rf_v4.pkl` を主モデルとして使い、Streamlit / Flask の本流は RF 前提へ揃えた。
+  - PD 表示は学習モデル由来の `ai_prob`（RandomForest）へ統一した。`calculate_pd()` はモデル失敗時のみのフォールバックに回し、表示文言も RF 前提へ揃える。
   - 定性側も整理し、`score` への定性LGBM混入と `ensemble_config_qual.json` を削除。定性画面は LR と LightGBM の個別比較だけ残した。
   - `bench_score` / `ind_score` は `past_cases` へ全件バックフィル済み。`labeled=1507` で `score_borrower / bench / ind / all_three` がすべて 1507 件になり、3本ブレンド重みの再最適化は `w_main 0.3149 / w_bench 0.0 / w_ind 0.6851`、`auc_cv 0.7029` だった。
   - バッチ審査は `bench_score` / `ind_score` を自動計算へ切り替えた。CSV テンプレートや OCR 変換列からは外し、保存 JSON に `bench_score` / `ind_score` / `ind_name` を毎回埋める方式にした。手入力は不要。

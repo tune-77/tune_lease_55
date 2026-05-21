@@ -154,7 +154,8 @@ def render_report() -> None:
     score        = res.get("score") or 0
     hantei       = res.get("hantei") or "—"
     contract_prob= res.get("contract_prob") or 0
-    pd_pct       = res.get("pd_percent")
+    _scoring_res = res.get("scoring_result") or {}
+    pd_pct       = (_scoring_res.get("ai_prob") * 100.0) if isinstance(_scoring_res, dict) and _scoring_res.get("ai_prob") is not None else res.get("pd_percent")
     industry_sub = res.get("industry_sub") or "—"
     industry_major=res.get("industry_major") or ""
     asset_name   = res.get("asset_name") or "—"

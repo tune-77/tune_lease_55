@@ -25,6 +25,7 @@ from data_cases import (
     get_effective_coeffs, get_score_weights, get_model_blend_weights, save_case_log,
     find_similar_past_cases
 )
+from scoring.predict_one import predict_one, map_industry_major_to_scoring
 from tunnel_optimizer import build_tunnel_correction
 from soul_factor_miner import build_reverse_bayes_bonus
 from constants import (
@@ -72,6 +73,47 @@ def _refresh_qualitative_correction(
     elif source in ("proxy", "tunnel"):
         correction["combined_score"] = round(final_score, 1)
         correction["reference_only"] = True
+
+
+def _build_learning_pd_result(
+    nenshu,
+    rieki,
+    item5_net_income,
+    item6_machine,
+    item7_other,
+    item10_dep,
+    item12_rent_exp,
+    total_assets,
+    net_assets,
+    selected_major,
+):
+    """学習モデル（RandomForest）由来の PD を構築する。失敗時は None を返す。"""
+    try:
+        revenue_yen = max(0.0, float(nenshu or 0)) * 1000.0
+        total_assets_yen = max(1.0, float(total_assets or 0)) * 1000.0
+        net_assets_yen = float(net_assets or 0) * 1000.0
+        operating_profit_yen = float(rieki or 0) * 1000.0
+        net_income_yen = float(item5_net_income or 0) * 1000.0
+        machinery_equipment_yen = float(item6_machine or 0) * 1000.0
+        other_fixed_assets_yen = float(item7_other or 0) * 1000.0
+        depreciation_yen = float(item10_dep or 0) * 1000.0
+        rent_expense_yen = float(item12_rent_exp or 0) * 1000.0
+        industry_label = map_industry_major_to_scoring(selected_major or "")
+    except Exception:
+        return None
+
+    return predict_one(
+        revenue=revenue_yen,
+        total_assets=total_assets_yen,
+        equity=net_assets_yen,
+        operating_profit=operating_profit_yen,
+        net_income=net_income_yen,
+        machinery_equipment=machinery_equipment_yen,
+        other_fixed_assets=other_fixed_assets_yen,
+        depreciation=depreciation_yen,
+        rent_expense=rent_expense_yen,
+        industry=industry_label,
+    )
 
 
 def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankruptcy_data, jsic_data, avg_data, _rules, _SCRIPT_DIR, RECOMMENDED_FIELDS=None, capex_lease_data=None):
@@ -457,8 +499,9 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
     
                 my_hints = hints_data.get(selected_sub, {"subsidies": [], "risks": [], "mandatory": ""})
     
-                # 財務ベース倒産確率
-                pd_percent = calculate_pd(user_equity_ratio, user_current_ratio, user_op_margin)
+                # PD は後段で RF モデルから計算する。ここでは初期値のみ保持する。
+                scoring_result = None
+                pd_percent = 0.0
                 network_risk_summary = ""
     
                 # ==========================================================================
@@ -1021,9 +1064,6 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                             ),
                         })
 
-                # 学習モデル（業種別ハイブリッド）の予測（遅延ロード化：分析結果ページで必要時に呼び出す）
-                scoring_result = None
-
                 # 学習モデル判定が「否決」のときはすべてのスコアを50%減
                 if scoring_result and (scoring_result.get("decision") or "").strip() == "否決":
                     penalty_amount = final_score - (final_score * _eff_penalty)
@@ -1116,6 +1156,77 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         })
                         _refresh_qualitative_correction(qualitative_scoring_correction, final_score, qual_weighted_score)
 
+                # RF メインモデルで PD を算出する。使える文脈はできるだけ渡し、欠ける特徴は imputer に任せる。
+                scoring_context = {
+                    "gross_profit": item9_gross,
+                    "op_profit": rieki,
+                    "ord_profit": item4_ord_profit,
+                    "net_income": item5_net_income,
+                    "dep_expense": item11_dep_exp,
+                    "depreciation": item10_dep,
+                    "nenshu": nenshu,
+                    "machines": item6_machine,
+                    "other_assets": item7_other,
+                    "rent": item8_rent,
+                    "rent_expense": item12_rent_exp,
+                    "bank_credit": bank_credit,
+                    "lease_credit": lease_credit,
+                    "gpm": None,
+                    "ord_margin": None,
+                    "net_margin": None,
+                    "dep_ratio": None,
+                    "bank_to_ns": None,
+                    "lease_to_ns": None,
+                    "mach_to_ns": None,
+                    "acq_to_ns": None,
+                    "op_margin": user_op_margin,
+                    "dep_to_loan": None,
+                    "acquisition_cost": acquisition_cost,
+                    "lease_term": lease_term,
+                    "contracts": contracts,
+                    "lease_asset_score": asset_score,
+                    "industry": selected_major,
+                    "customer_type": customer_type,
+                    "main_bank": main_bank,
+                    "competitor": competitor,
+                    "competitor_rate": st.session_state.get("competitor_rate"),
+                    "grade": grade,
+                    "contract_type": contract_type,
+                    "deal_source": deal_source,
+                    "sales_dept": sales_dept,
+                    "base_rate": st.session_state.get("base_rate"),
+                    "winning_spread": rate_diff,
+                    "q_weighted": qual_weighted_score if qual_weight_sum > 0 else None,
+                    "sys_score": final_score,
+                    "sys_score_b": score_percent,
+                    "sys_dscr": user_dscr,
+                    "sys_op_margin": user_op_margin,
+                    "sys_icr": None,
+                    "sys_approval": approval_line,
+                    "sys_ind_score": score_percent_ind,
+                    "sys_bench": score_percent_bench,
+                }
+                scoring_result = _build_learning_pd_result(
+                    nenshu=nenshu,
+                    rieki=rieki,
+                    item5_net_income=item5_net_income,
+                    item6_machine=item6_machine,
+                    item7_other=item7_other,
+                    item10_dep=item10_dep,
+                    item12_rent_exp=item12_rent_exp,
+                    total_assets=total_assets,
+                    net_assets=net_assets,
+                    selected_major=selected_major,
+                    context=scoring_context,
+                )
+                if scoring_result and scoring_result.get("ai_prob") is not None:
+                    pd_percent = float(scoring_result["ai_prob"]) * 100.0
+                else:
+                    pd_percent = calculate_pd(user_equity_ratio, user_current_ratio, user_op_margin)
+                    scoring_result = scoring_result or {}
+                    scoring_result["fallback_pd_percent"] = pd_percent
+                    scoring_result["fallback_pd_source"] = "simple_financial"
+
                 # 将来予測シミュレーション（遅延ロード化：分析結果ページで必要時に呼び出す）
                 future_sim_result = None
 
@@ -1148,6 +1259,8 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     "user_dscr": user_dscr, "dscr_source": _dscr_source,
                     "hints": my_hints,
                     "pd_percent": pd_percent,
+                    "pd_percent_source": "ai_prob" if scoring_result and scoring_result.get("ai_prob") is not None else "simple_financial",
+                    "pd_model": "random_forest" if scoring_result and scoring_result.get("ai_prob") is not None else "heuristic",
                     "network_risk_summary": network_risk_summary,
                     "similar_past_cases_prompt": similar_past_for_prompt,
                     "strength_tags": strength_tags,

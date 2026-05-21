@@ -1725,12 +1725,13 @@ def render_analysis_results(
                 else:
                     st.info("審査入力の「定性スコアリング」で項目を選択すると、ここに集計結果が表示されます。定性は (定性スコア - 50) × 0.3 の差分補正として反映します。定性を1件も選んでいない場合は成約可能性スコアのみで判定します。")
 
-            # ----- 学習モデル（業種別ハイブリッド）の予測結果（融合機能）・常に表示 -----
+            # ----- 学習モデル（RandomForest）の予測結果（融合機能）・常に表示 -----
             _scoring_res_key = "scoring_result_manual"
             scoring_result = res.get("scoring_result") or st.session_state.get(_scoring_res_key)
+            _model_ready = isinstance(scoring_result, dict) and "ai_prob" in scoring_result
             
-            with st.expander("📈 学習モデル（業種別ハイブリッド）デフォルト確率", expanded=False):
-                if not scoring_result:
+            with st.expander("📈 学習モデル（RandomForest）デフォルト確率", expanded=False):
+                if not _model_ready:
                     st.info("💡 学習モデル（RandomForest + 業種別回帰）による詳細なデフォルト確率分析は未実行です。")
                     if st.button("▶ ML詳細モデルによる分析を実行", key="btn_run_ml_scoring", width='stretch'):
                         with st.spinner("学習モデルをロードし、予測を実行中..."):
@@ -1752,6 +1753,45 @@ def render_analysis_results(
                                     rent_expense=(_fin.get("rent_expense") or 0) * 1000,
                                     industry=_industry,
                                     base_path=_base,
+                                    context={
+                                        "gross_profit": _fin.get("gross_profit"),
+                                        "op_profit": _fin.get("op_profit"),
+                                        "ord_profit": _fin.get("ord_profit"),
+                                        "net_income": _fin.get("net_income"),
+                                        "dep_expense": _fin.get("dep_expense"),
+                                        "depreciation": _fin.get("depreciation"),
+                                        "nenshu": _fin.get("nenshu"),
+                                        "machines": _fin.get("machines"),
+                                        "other_assets": _fin.get("other_assets"),
+                                        "rent": _fin.get("rent"),
+                                        "rent_expense": _fin.get("rent_expense"),
+                                        "bank_credit": _fin.get("bank_credit"),
+                                        "lease_credit": _fin.get("lease_credit"),
+                                        "acquisition_cost": res.get("acquisition_cost"),
+                                        "lease_term": res.get("lease_term"),
+                                        "contracts": res.get("contracts"),
+                                        "lease_asset_score": res.get("asset_score"),
+                                        "industry": res.get("industry_major"),
+                                        "customer_type": res.get("customer_type"),
+                                        "main_bank": res.get("main_bank"),
+                                        "competitor": res.get("competitor"),
+                                        "competitor_rate": st.session_state.get("competitor_rate"),
+                                        "grade": res.get("grade"),
+                                        "contract_type": res.get("contract_type"),
+                                        "deal_source": res.get("deal_source"),
+                                        "sales_dept": res.get("sales_dept"),
+                                        "base_rate": st.session_state.get("base_rate"),
+                                        "winning_spread": res.get("rate_diff"),
+                                        "q_weighted": (res.get("qualitative_scoring_correction") or {}).get("weighted_score"),
+                                        "sys_score": res.get("score"),
+                                        "sys_score_b": res.get("score_borrower"),
+                                        "sys_dscr": res.get("user_dscr"),
+                                        "sys_op_margin": res.get("user_op"),
+                                        "sys_icr": res.get("interest_coverage"),
+                                        "sys_approval": res.get("approval_line"),
+                                        "sys_ind_score": res.get("ind_score"),
+                                        "sys_bench": res.get("bench_score"),
+                                    },
                                 )
                                 if scoring_result:
                                     st.session_state[_scoring_res_key] = scoring_result
@@ -1759,8 +1799,8 @@ def render_analysis_results(
                             except Exception as e:
                                 st.error(f"分析エラー: {e}")
                 
-                if scoring_result:
-                    st.caption("**いずれも「デフォルト確率」（高い＝リスク大）です。** 上記の本システム「契約期待度」（成約率）とは尺度が逆です。成約率に換算するなら 約 100% − デフォルト確率。ハイブリッドは「業種別回帰のデフォルト確率」と「AIのデフォルト確率」の加重平均なので、同じ尺度同士の組み合わせです。")
+                if _model_ready:
+                    st.caption("**いずれも「デフォルト確率」（高い＝リスク大）です。** 上記の本システム「契約期待度」（成約率）とは尺度が逆です。成約率に換算するなら 約 100% − デフォルト確率。ハイブリッドは「業種別回帰のデフォルト確率」と「AI（RandomForest）のデフォルト確率」の加重平均なので、同じ尺度同士の組み合わせです。")
                     sr1, sr2, sr3, sr4 = st.columns(4)
                     with sr1:
                         st.metric("既存（業種別回帰）デフォルト確率", f"{scoring_result.get('legacy_prob', 0)*100:.2f}%", help="学習モデル側の業種別回帰")
@@ -1796,7 +1836,7 @@ def render_analysis_results(
                         "**デフォルト確率を出すには、次の2つが必要です。**\n\n"
                         "1. **総資産**と**純資産**を入力してから「判定開始」を押す\n\n"
                         "2. **学習済みモデル（5個のpklファイル）**を用意する：\n"
-                        "   - 別ツール（リース与信スコアリング）で「業種別ハイブリッド」を学習すると、`models/industry_specific/` フォルダに pkl ができます\n"
+                        "   - 別ツール（リース与信スコアリング）で RandomForest を学習すると、`models/industry_specific/` フォルダに pkl ができます\n"
                         "   - その中身（industry_coefficients.pkl など5ファイル）を、このアプリのフォルダ内にある\n"
                         "     `lease_logic_sumaho10/scoring/models/industry_specific/` にコピーしてください\n\n"
                         "※ モデルがなくても、本システムのスコア（成約率）だけで審査はできます。"

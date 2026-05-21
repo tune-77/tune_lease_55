@@ -90,8 +90,14 @@ def _safe_int(val, default: int = 0) -> int:
 
 def _load_benchmarks():
     """industry_benchmarks.json を読み込む。"""
-    path = os.path.join(_SCRIPT_DIR, "industry_benchmarks.json")
-    if not os.path.exists(path):
+    candidates = [
+        os.path.join(_SCRIPT_DIR, "industry_benchmarks.json"),
+        os.path.join(_SCRIPT_DIR, "static_data", "industry_benchmarks.json"),
+        os.path.join(_SCRIPT_DIR, "data", "industry_benchmarks.json"),
+        os.path.join(_REPO_ROOT, "static_data", "industry_benchmarks.json"),
+    ]
+    path = next((p for p in candidates if os.path.exists(p)), None)
+    if not path:
         return {}
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -163,8 +169,6 @@ def _normalize_competitor_rate_value(value) -> float:
     return max(0.0, min(1.0, v / 30.0))
 
 
-_MAIN_MODEL_PATH_EXISTING = os.path.join(_SCRIPT_DIR, "data", "lgb_main_model.joblib")
-_MAIN_MODEL_PATH_NEW = os.path.join(_SCRIPT_DIR, "data", "lgb_main_model_new.joblib")
 _LGB_QUAL_MODEL_PATH = os.path.join(_SCRIPT_DIR, "data", "lgb_qual_model.joblib")
 
 _main_bundle_cache: dict[str, dict | None] = {}
@@ -179,23 +183,6 @@ def clear_scoring_cache() -> None:
     global _lgb_qual_bundle_cache
     _main_bundle_cache = {}
     _lgb_qual_bundle_cache = None
-
-
-def _load_main_bundle(customer_type: str | None = None):
-    """新規/既存で別保存した主モデルを読む。"""
-    path = _MAIN_MODEL_PATH_NEW if (customer_type or "既存先") == "新規先" else _MAIN_MODEL_PATH_EXISTING
-    if path in _main_bundle_cache:
-        return _main_bundle_cache[path]
-    if not os.path.exists(path):
-        _main_bundle_cache[path] = None
-        return None
-    try:
-        import joblib
-        _main_bundle_cache[path] = joblib.load(path)
-        return _main_bundle_cache[path]
-    except Exception:
-        _main_bundle_cache[path] = None
-        return None
 
 
 def _load_lgb_qual_bundle():
@@ -594,13 +581,70 @@ def run_quick_scoring(inputs: dict) -> dict:
     z_main = _calculate_z(data_scoring, coeffs)
     score_prob = _safe_sigmoid(z_main)
 
-    # 定量主モデル（新規/既存で分岐。モデルが存在する場合のみ）
+    # 定量主モデル（RF優先）。失敗時のみ従来式を使う。
     try:
-        _bundle = _load_main_bundle(customer_type)
-        if _bundle is not None:
-            _feat_names = _bundle["feature_names"]
-            _X = _build_lgb_feature_vector(data_scoring, inputs, _feat_names)
-            score_prob = float(_bundle["model"].predict_proba([_X])[0][1])
+        from scoring.predict_one import predict_one, map_industry_major_to_scoring
+
+        rf_context = {
+            "gross_profit": _safe_float(inputs.get("gross_profit")) * 1000.0,
+            "op_profit": op_profit * 1000.0,
+            "ord_profit": ord_profit * 1000.0,
+            "net_income": net_income * 1000.0,
+            "dep_expense": _safe_float(inputs.get("dep_expense")) * 1000.0,
+            "depreciation": _safe_float(inputs.get("depreciation")) * 1000.0,
+            "nenshu": nenshu * 1000.0,
+            "machines": _safe_float(inputs.get("machines")) * 1000.0,
+            "other_assets": _safe_float(inputs.get("other_assets")) * 1000.0,
+            "rent": _safe_float(inputs.get("rent")) * 1000.0,
+            "rent_expense": _safe_float(inputs.get("rent_expense")) * 1000.0,
+            "bank_credit": bank_credit * 1000.0,
+            "lease_credit": lease_credit * 1000.0,
+            "acquisition_cost": _safe_float(inputs.get("acquisition_cost")) * 1000.0,
+            "lease_term": _safe_float(inputs.get("lease_term")),
+            "contracts": contracts,
+            "lease_asset_score": asset_score,
+            "industry": map_industry_major_to_scoring(industry_major),
+            "customer_type": customer_type,
+            "main_bank": inputs.get("main_bank") or "非メイン先",
+            "competitor": inputs.get("competitor") or "競合なし",
+            "competitor_rate": _safe_float(inputs.get("competitor_rate")),
+            "grade": grade,
+            "contract_type": inputs.get("contract_type") or "一般",
+            "deal_source": inputs.get("deal_source") or "銀行紹介",
+            "sales_dept": sales_dept,
+            "base_rate": _safe_float(inputs.get("base_rate")),
+            "q_history": _safe_float(inputs.get("q_history")),
+            "q_stability": _safe_float(inputs.get("q_stability")),
+            "q_repayment": _safe_float(inputs.get("q_repayment")),
+            "q_future": _safe_float(inputs.get("q_future")),
+            "q_equip": _safe_float(inputs.get("q_equip")),
+            "q_mainbk": _safe_float(inputs.get("q_mainbk")),
+            "q_weighted": _safe_float(inputs.get("q_weighted")),
+            "sys_score": _safe_float(inputs.get("sys_score")),
+            "sys_score_b": _safe_float(inputs.get("sys_score_b")),
+            "sys_dscr": _safe_float(inputs.get("sys_dscr")),
+            "sys_op_margin": _safe_float(inputs.get("sys_op_margin")),
+            "sys_icr": _safe_float(inputs.get("sys_icr")),
+            "sys_approval": _safe_float(inputs.get("sys_approval")),
+            "sys_ind_score": _safe_float(inputs.get("sys_ind_score")),
+            "sys_bench": _safe_float(inputs.get("sys_bench")),
+            "winning_spread": _safe_float(inputs.get("winning_spread")),
+        }
+        rf_result = predict_one(
+            revenue=nenshu * 1000.0,
+            total_assets=max(total_assets, 1.0) * 1000.0,
+            equity=net_assets * 1000.0,
+            operating_profit=op_profit * 1000.0,
+            net_income=net_income * 1000.0,
+            machinery_equipment=_safe_float(inputs.get("machines")) * 1000.0,
+            other_fixed_assets=_safe_float(inputs.get("other_assets")) * 1000.0,
+            depreciation=_safe_float(inputs.get("depreciation")) * 1000.0,
+            rent_expense=_safe_float(inputs.get("rent_expense")) * 1000.0,
+            industry=rf_context["industry"],
+            context=rf_context,
+        )
+        if rf_result and rf_result.get("ai_prob") is not None:
+            score_prob = max(0.0, min(1.0, 1.0 - float(rf_result["ai_prob"])))
     except Exception:
         pass
 
@@ -622,7 +666,7 @@ def run_quick_scoring(inputs: dict) -> dict:
     base_score = max(0, min(100, round(base_score, 1)))
 
     # ── 自己資本マイナスペナルティ ────────────────────────────────────────────
-    # LGBMモデルはnet_assetsを特徴量に含まないため後処理で補正する
+    # RandomForestモデルはnet_assetsを特徴量に含まないため後処理で補正する
     equity_penalty = 0.0
     if user_equity_ratio < 0:
         # -1%ごとに約0.5点減点、最大-30点
@@ -630,7 +674,10 @@ def run_quick_scoring(inputs: dict) -> dict:
     base_score = max(0, min(100, round(base_score + equity_penalty, 1)))
 
     # ── 担当者直感スコア補正（1-5スケール、中立=3、±INTUITION_MAX_ADJ 点まで）──
-    intuition_score = _safe_float(inputs.get("intuition_score"), default=0)
+    # 画面や経路によって直感スコアのキーが `intuition_score` / `intuition` に分かれていたため、
+    # どちらでも拾えるようにする。優先は `intuition_score`。
+    intuition_raw = inputs.get("intuition_score", inputs.get("intuition"))
+    intuition_score = _safe_float(intuition_raw, default=0)
     intuition_adj = 0.0
     if 1.0 <= intuition_score <= 5.0:
         # 3を中立として ±INTUITION_MAX_ADJ 点に線形マッピング
