@@ -152,6 +152,18 @@ def run_full_scoring_api(inputs: dict) -> dict:
             with open(RESULT_FILE, "r", encoding="utf-8") as f:
                 res = json.load(f)
             print(f"[DEBUG] SUCCESS: Captured via PHYSICAL FILE. Score={res.get('score')}")
+
+            # 自己資本マイナスペナルティ（LGBMはnet_assetsを特徴量に含まないため後処理で補正）
+            _net = float(inputs.get("net_assets", 0))
+            _total = max(1.0, float(inputs.get("total_assets", 1.0)))
+            _eq = _net / _total * 100
+            if _eq < 0:
+                _pen = max(-30.0, _eq * 0.5)
+                for _key in ("score", "hantei_score", "score_borrower"):
+                    if _key in res and isinstance(res[_key], (int, float)):
+                        res[_key] = max(0.0, min(100.0, round(res[_key] + _pen, 1)))
+                print(f"[DEBUG] equity_penalty={_pen:.1f} applied (equity_ratio={_eq:.1f}%)")
+
             return res
         except Exception as e:
             print(f"[ERROR] Failed to read physical file: {e}")
