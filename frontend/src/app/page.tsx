@@ -206,13 +206,24 @@ export default function Dashboard() {
                     <IndicatorCards data={result} />
 
                     {/* 📊 新設: Recharts による本物のインタラクティブグラフ群 */}
-                    <RealGraphs />
+                    <RealGraphs
+                      companyName={formData.company_name || ""}
+                      nenshu={formData.nenshu || 0}
+                      opMarginPct={result?.user_op_margin || 0}
+                      equityRatio={result?.user_equity_ratio || 0}
+                      scoreBorrower={result?.score_borrower || 50}
+                      scoreBase={result?.score_base || 50}
+                    />
 
                     {/* AI分析テキスト (チャット風) */}
                     <AIAnalysis comparisonText={result.comparison} />
                     
                     {/* 今回追加した高度シミュレーションUI */}
-                    <AdvancedAnalysis />
+                    <AdvancedAnalysis
+                      industrySub={result?.industry_sub || ""}
+                      companyName={formData.company_name || ""}
+                      score={result?.score_base || 50}
+                    />
 
                     {/* 最終審査レポート */}
                     <ReportGenerator apiResult={result} formData={formData} gunshiText={gunshiText} />
