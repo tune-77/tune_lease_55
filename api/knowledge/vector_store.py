@@ -29,12 +29,12 @@ class KnowledgeVectorStore:
 
     def _ensure_initialized(self) -> None:
         """初回アクセス時に ChromaDB と encoder を初期化する。スレッドセーフ。"""
-        if self._collection is not None:
+        if self._encoder is not None:
             return
 
         with self._init_lock:
             # ロック取得後に再チェック（二重初期化防止）
-            if self._collection is not None:
+            if self._encoder is not None:
                 return
 
             import chromadb
