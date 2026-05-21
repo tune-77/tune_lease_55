@@ -50,6 +50,7 @@ def run_indexing(
     indexed_mtimes = _get_indexed_mtimes()
 
     pending: list = []
+    seen_ids: set[str] = set()
     added = 0
     skipped = 0
 
@@ -58,6 +59,11 @@ def run_indexing(
         if chunk.mtime <= cached_mtime:
             skipped += 1
             continue
+        if chunk.doc_id in seen_ids:
+            logger.debug(f"[Indexer] duplicate doc_id skipped: {chunk.doc_id} ({chunk.file_name}#{chunk.section})")
+            skipped += 1
+            continue
+        seen_ids.add(chunk.doc_id)
 
         pending.append(chunk)
         if len(pending) >= _BATCH_SIZE:

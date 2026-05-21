@@ -36,9 +36,9 @@ class Chunk:
 
     @property
     def doc_id(self) -> str:
-        """ChromaDB document ID（ファイル名 + セクションのハッシュ）。"""
+        """ChromaDB document ID（フルパス + セクションのハッシュ）。"""
         import hashlib
-        raw = f"{self.file_name}#{self.section}"
+        raw = f"{self.file_path}#{self.section}"
         return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
     @property
