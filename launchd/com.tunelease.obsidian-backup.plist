@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.tunelease.obsidian-backup</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/scripts/run_obsidian_backup.sh</string>
+    <string>--keep</string>
+    <string>14</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>OBSIDIAN_VAULT</key>
+    <string>/Users/kobayashiisaoryou/Documents/Obsidian Vault</string>
+    <key>OBSIDIAN_BACKUP_ROOT</key>
+    <string>/Users/kobayashiisaoryou/Library/Mobile Documents/com~apple~CloudDocs/tune_lease_55_backups/obsidian</string>
+    <key>PYTHON_BIN</key>
+    <string>/Users/kobayashiisaoryou/anaconda3/bin/python</string>
+    <key>PATH</key>
+    <string>/Users/kobayashiisaoryou/anaconda3/bin:/Users/kobayashiisaoryou/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>86400</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_obsidian_backup.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_obsidian_backup.err.log</string>
+</dict>
+</plist>
