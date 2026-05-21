@@ -387,6 +387,56 @@ def _excerpt(d: dict, key: str, max_items: int = 2) -> str:
     return "; ".join(str(i) for i in items[:max_items]) if items else "（なし）"
 
 
+# ── 過去履歴サマリーブロック構築 ─────────────────────────────────────────────────
+
+def _build_history_block(company_name: str) -> str:
+    """同一企業の過去討論サマリーをシステムプロンプト用テキストで返す。"""
+    if not company_name or company_name.strip() == "（未設定）":
+        return ""
+    try:
+        from api.database import get_past_arbiter_summaries
+        summaries = get_past_arbiter_summaries(company_name, limit=3)
+        if not summaries:
+            return ""
+        lines = [f"【この企業の過去審査履歴】（直近{len(summaries)}件）"]
+        for i, s in enumerate(summaries, 1):
+            date_str = (s.get("created_at") or "")[:10]
+            lines.append(f"  {i}. [{date_str}] 軍師判断: {s['content'][:200]}")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
+def _build_past_scores_block(company_name: str) -> str:
+    """screening_records / past_cases から過去スコアを取得してテキスト化する。"""
+    if not company_name or company_name.strip() == "（未設定）":
+        return ""
+    try:
+        import sqlite3
+        from contextlib import closing
+        _DATA_DIR = "/Users/kobayashiisaoryou/clawd/tune_lease_55/data"
+        _DB_PATH = os.path.join(_DATA_DIR, "lease_data.db")
+        if not os.path.exists(_DB_PATH):
+            return ""
+        with closing(sqlite3.connect(_DB_PATH, timeout=5)) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT score, timestamp
+                FROM past_cases
+                WHERE json_extract(data, '$.company_name') = ?
+                ORDER BY timestamp DESC LIMIT 5
+                """,
+                (company_name,),
+            ).fetchall()
+        if not rows:
+            return ""
+        parts = [f"{r['timestamp'][:10]}:{r['score']}点" for r in rows]
+        return f"【過去スコア推移】{', '.join(parts)}"
+    except Exception:
+        return ""
+
+
 # ── メインエントリポイント ───────────────────────────────────────────────────────
 
 def run_debate_screening(params: dict) -> dict:
@@ -395,6 +445,8 @@ def run_debate_screening(params: dict) -> dict:
 
     Args:
         params: スコアリングAPIと同形式のdict。"score" キー必須。
+        params["session_id"]: セッションID（会話履歴保存用、任意）
+        params["company_name"]: 企業名（過去履歴注入・保存用、任意）
 
     Returns:
         {
@@ -408,6 +460,8 @@ def run_debate_screening(params: dict) -> dict:
         }
     """
     score = float(params.get("score", 0))
+    company_name = params.get("company_name", "") or ""
+    session_id = params.get("session_id", "") or ""
     ctx = _build_case_ctx(params)
 
     # ── コンテキスト注入: 地域/季節/業況を全エージェントへ配布 ─────────────────
@@ -424,9 +478,18 @@ def run_debate_screening(params: dict) -> dict:
         ctx_block = ""
         bundle = None
 
-    cautious_sys = _CAUTIOUS_SYS + ("\n\n" + ctx_block if ctx_block else "")
-    aggressive_sys = _AGGRESSIVE_SYS + ("\n\n" + ctx_block if ctx_block else "")
-    arbiter_sys = _ARBITER_SYS + ("\n\n" + ctx_block if ctx_block else "")
+    # ── 過去審査履歴の注入 ────────────────────────────────────────────────────────
+    history_block = _build_history_block(company_name)
+    scores_block = _build_past_scores_block(company_name)
+    past_ctx = ""
+    if history_block:
+        past_ctx += "\n\n" + history_block
+    if scores_block:
+        past_ctx += "\n" + scores_block
+
+    cautious_sys = _CAUTIOUS_SYS + ("\n\n" + ctx_block if ctx_block else "") + past_ctx
+    aggressive_sys = _AGGRESSIVE_SYS + ("\n\n" + ctx_block if ctx_block else "") + past_ctx
+    arbiter_sys = _ARBITER_SYS + ("\n\n" + ctx_block if ctx_block else "") + past_ctx
 
     # ── ファストパス（境界外スコア） ──────────────────────────────────────────
     if score >= _DEBATE_HIGH or score <= _DEBATE_LOW:
@@ -436,13 +499,19 @@ def run_debate_screening(params: dict) -> dict:
             _arbiter_solo_prompt(ctx, direction),
             temperature=0.3, max_tokens=512,
         )
+        arbiter_normed = _norm_arbiter(arbiter_raw)
         result = {
             "score": score,
             "mode": "solo",
-            "arbiter": _norm_arbiter(arbiter_raw),
+            "arbiter": arbiter_normed,
         }
         if bundle is not None:
             result["context_bundle"] = bundle.model_dump()
+
+        # 会話履歴を保存（session_id がある場合）
+        if session_id and company_name:
+            _save_screening_history(session_id, company_name, arbiter_normed, mode="solo")
+
         return result
 
     # ── 討論モード（40 < score < 60） ────────────────────────────────────────
@@ -502,15 +571,75 @@ def run_debate_screening(params: dict) -> dict:
         temperature=0.3, search_mode="both", max_tokens=1024,
     )
 
+    arbiter_normed = _norm_arbiter(arbiter_raw)
     result = {
         "score": score,
         "mode": "debate",
         "cautious": _norm_cautious(r2c),
         "aggressive": _norm_aggressive(r2a),
-        "arbiter": _norm_arbiter(arbiter_raw),
+        "arbiter": arbiter_normed,
         "debate_log": debate_log,
         "same_opinion_r1": same_opinion,
     }
     if bundle is not None:
         result["context_bundle"] = bundle.model_dump()
+
+    # 会話履歴を保存
+    if session_id and company_name:
+        _save_screening_history(
+            session_id, company_name, arbiter_normed, mode="debate",
+            cautious=_norm_cautious(r2c), aggressive=_norm_aggressive(r2a),
+            debate_log=debate_log,
+        )
+
     return result
+
+
+# ── 会話履歴保存ヘルパー ────────────────────────────────────────────────────────
+
+def _save_screening_history(
+    session_id: str,
+    company_name: str,
+    arbiter: dict,
+    mode: str = "debate",
+    cautious: dict | None = None,
+    aggressive: dict | None = None,
+    debate_log: str = "",
+) -> None:
+    """討論結果を conversation_history テーブルに保存する。"""
+    try:
+        from api.database import save_conversation_messages
+        messages: list[dict] = []
+
+        if mode == "debate" and cautious and aggressive:
+            messages.append({
+                "role": "agent_ishibashi",
+                "content": (
+                    f"判断: {cautious.get('opinion', '')} | "
+                    f"理由: {'; '.join(cautious.get('reasons', []))} | "
+                    f"リスク: {'; '.join(cautious.get('key_risks', []))}"
+                ),
+            })
+            messages.append({
+                "role": "agent_furinka",
+                "content": (
+                    f"判断: {aggressive.get('opinion', '')} | "
+                    f"理由: {'; '.join(aggressive.get('reasons', []))} | "
+                    f"機会: {'; '.join(aggressive.get('opportunities', []))}"
+                ),
+            })
+            if debate_log:
+                messages.append({"role": "user", "content": f"討論ログ:\n{debate_log}"})
+
+        messages.append({
+            "role": "agent_gunshi",
+            "content": (
+                f"最終判断: {arbiter.get('final', '')} | "
+                f"根拠: {arbiter.get('reasoning', '')} | "
+                f"条件: {'; '.join(arbiter.get('conditions', []))}"
+            ),
+        })
+
+        save_conversation_messages(session_id, company_name, messages)
+    except Exception:
+        pass

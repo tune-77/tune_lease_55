@@ -1,13 +1,32 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { apiClient } from "@/lib/api";
 import {
   Swords, Shield, Zap, Crown, ChevronDown, ChevronUp,
-  Loader2, CheckCircle2, XCircle, AlertTriangle, Info,
+  Loader2, CheckCircle2, XCircle, AlertTriangle, Info, Clock,
 } from "lucide-react";
 import { INDUSTRIES } from "@/constants/industries";
+
+// ── 過去履歴の型 ──────────────────────────────────────────────────────────────
+interface HistoryMessage {
+  id: number;
+  role: string;
+  content: string;
+  created_at: string;
+}
+interface HistorySession {
+  session_id: string;
+  company_name: string;
+  created_at: string;
+  messages: HistoryMessage[];
+}
+interface ConversationHistory {
+  company_name: string;
+  count: number;
+  sessions: HistorySession[];
+}
 
 // ── 型定義 ─────────────────────────────────────────────────────────────────────
 interface CautiousResult {
@@ -171,6 +190,61 @@ function DebateLog({ log, sameR1 }: { log: string; sameR1?: boolean }) {
   );
 }
 
+// ── 過去履歴バナーコンポーネント ─────────────────────────────────────────────
+
+function HistoryBanner({ history }: { history: ConversationHistory }) {
+  const [open, setOpen] = useState(false);
+
+  const roleLabel: Record<string, string> = {
+    agent_ishibashi: "石橋（慎重）",
+    agent_furinka: "風林火山（積極）",
+    agent_gunshi: "軍師",
+    user: "ユーザー",
+  };
+
+  return (
+    <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-4 py-3 text-sm font-bold text-blue-700 hover:bg-blue-100 transition-colors"
+      >
+        <span className="flex items-center gap-2">
+          <Clock className="w-4 h-4" />
+          この企業の過去審査: {history.count}件
+        </span>
+        {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-4">
+          {history.sessions.map((session) => {
+            const gunshi = session.messages.find(m => m.role === "agent_gunshi");
+            return (
+              <div key={session.session_id} className="bg-white rounded-lg border border-blue-100 p-3">
+                <p className="text-xs text-slate-400 mb-2">{(session.created_at || "").slice(0, 16).replace("T", " ")}</p>
+                {gunshi && (
+                  <p className="text-sm text-slate-700">
+                    <span className="font-bold text-violet-700">軍師:</span> {gunshi.content}
+                  </p>
+                )}
+                <details className="mt-2">
+                  <summary className="text-xs text-slate-400 cursor-pointer">詳細を展開</summary>
+                  <ul className="mt-2 space-y-1">
+                    {session.messages.map(m => (
+                      <li key={m.id} className="text-xs text-slate-600">
+                        <span className="font-bold">{roleLabel[m.role] ?? m.role}:</span> {m.content}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── メインページ ─────────────────────────────────────────────────────────────
 export default function DebatePage() {
   const [form, setForm] = useState({
@@ -189,6 +263,11 @@ export default function DebatePage() {
   const [result, setResult] = useState<DebateResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [autoFilled, setAutoFilled] = useState(false);
+  const [history, setHistory] = useState<ConversationHistory | null>(null);
+  const sessionIdRef = useRef<string>(
+    typeof crypto !== "undefined" ? crypto.randomUUID() : Math.random().toString(36).slice(2)
+  );
+  const historyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     apiClient.get("/api/latest-screening")
@@ -198,6 +277,27 @@ export default function DebatePage() {
       })
       .catch(() => {});
   }, []);
+
+  // 企業名が変わったら過去履歴を取得（500ms デバウンス）
+  useEffect(() => {
+    const name = form.company_name?.trim();
+    if (!name) {
+      setHistory(null);
+      return;
+    }
+    if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
+    historyTimerRef.current = setTimeout(() => {
+      apiClient.get(`/api/conversation-history?company_name=${encodeURIComponent(name)}&limit=5`)
+        .then(({ data }) => {
+          if (data.count > 0) setHistory(data);
+          else setHistory(null);
+        })
+        .catch(() => setHistory(null));
+    }, 500);
+    return () => {
+      if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
+    };
+  }, [form.company_name]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -209,9 +309,20 @@ export default function DebatePage() {
     setLoading(true);
     setError(null);
     setResult(null);
+    // 毎回新しい session_id を発行
+    sessionIdRef.current = typeof crypto !== "undefined"
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2);
     try {
-      const { data } = await apiClient.post("/api/multi-agent-screening", form);
+      const payload = { ...form, session_id: sessionIdRef.current };
+      const { data } = await apiClient.post("/api/multi-agent-screening", payload);
       setResult(data);
+      // 討論完了後に履歴を再取得
+      if (form.company_name?.trim()) {
+        apiClient.get(`/api/conversation-history?company_name=${encodeURIComponent(form.company_name.trim())}&limit=5`)
+          .then(({ data: h }) => { if (h.count > 0) setHistory(h); })
+          .catch(() => {});
+      }
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || "エラーが発生しました");
     } finally {
@@ -242,6 +353,9 @@ export default function DebatePage() {
           直近のスクリーニングデータを自動入力しました。内容を確認・修正してから審査を開始してください。
         </div>
       )}
+
+      {/* 過去審査履歴バナー */}
+      {history && <HistoryBanner history={history} />}
 
       {/* 入力フォーム */}
       <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-8">

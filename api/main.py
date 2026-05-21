@@ -93,6 +93,12 @@ async def lifespan(app: FastAPI):
         start_background_indexing()
     except Exception as e:
         print(f"[API] knowledge indexing start failed (non-fatal): {e}")
+    # startup: 会話履歴テーブルの初期化
+    try:
+        from api.database import init_conversation_history_table
+        init_conversation_history_table()
+    except Exception as e:
+        print(f"[API] conversation_history table init failed (non-fatal): {e}")
     # startup: 結晶化スケジューラー起動（毎日02:00）
     try:
         from api.scheduler import start_scheduler
@@ -1805,6 +1811,7 @@ class MultiAgentRequest(BaseModel):
     lease_credit: float = 0
     asset_name: str = ""
     lease_amount: float = 0
+    session_id: str = ""
 
 
 @app.post("/api/crystallize-now")
@@ -1848,6 +1855,30 @@ def multi_agent_screening(req: MultiAgentRequest):
     except Exception as e:
         import traceback
         traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/conversation-history")
+def get_conversation_history(company_name: str, limit: int = 5):
+    """企業名で過去の討論履歴を取得する。"""
+    if not company_name:
+        raise HTTPException(status_code=422, detail="company_name は必須です")
+    try:
+        from api.database import get_conversation_history
+        history = get_conversation_history(company_name, limit=min(limit, 20))
+        return {"company_name": company_name, "count": len(history), "sessions": history}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/conversation-history/{session_id}")
+def delete_conversation_history(session_id: str):
+    """session_id に紐づく会話履歴を削除する。"""
+    try:
+        from api.database import delete_conversation_session
+        deleted = delete_conversation_session(session_id)
+        return {"deleted": deleted, "session_id": session_id}
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
