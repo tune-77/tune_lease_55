@@ -73,7 +73,6 @@ def write_pattern_to_obsidian(
     # frontmatter + 本文（evidence_records はYAML準拠のリスト形式）
     evidence_yaml = "[" + ", ".join(json.dumps(str(eid)) for eid in evidence_ids) + "]"
     content = f"""---
-status: draft
 generated_by: crystallizer
 generated_at: {date_str}
 evidence_records: {evidence_yaml}
