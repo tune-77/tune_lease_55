@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import StreamingResponse
@@ -69,24 +71,9 @@ from pydantic import BaseModel, Field
 from typing import List, Any, Dict, Optional
 from scoring.deal_closure_engine import build_features, build_features_from_deltas, compute_closure_likelihood
 
-app = FastAPI(
-    title="Lease Scoring API",
-    description="リース審査ロジックのバックエンドAPI",
-    version="1.0.0"
-)
-
-# モダンフロントエンド(Next.js)のReactローカルサーバー(例: 3000番ポート)からのアクセスを許可
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.on_event("startup")
-def _warm_dashboard_cache():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # startup: ダッシュボードキャッシュのウォームアップ
     try:
         from data_cases import (
             load_dashboard_stats_cache,
@@ -100,36 +87,42 @@ def _warm_dashboard_cache():
             refresh_department_stats_cache()
     except Exception:
         pass
-
-
-@app.on_event("startup")
-def _start_knowledge_indexing():
-    """起動時に Obsidian ナレッジをバックグラウンドでインデックス化する。"""
+    # startup: Obsidian ナレッジのバックグラウンドインデックス化
     try:
         from api.knowledge.indexer import start_background_indexing
         start_background_indexing()
     except Exception as e:
         print(f"[API] knowledge indexing start failed (non-fatal): {e}")
-
-
-@app.on_event("startup")
-def _start_crystallization_scheduler():
-    """起動時に APScheduler を起動して毎日02:00に結晶化バッチを登録する。"""
+    # startup: 結晶化スケジューラー起動（毎日02:00）
     try:
         from api.scheduler import start_scheduler
         start_scheduler()
     except Exception as e:
         print(f"[API] crystallization scheduler start failed (non-fatal): {e}")
-
-
-@app.on_event("shutdown")
-def _stop_crystallization_scheduler():
-    """シャットダウン時に APScheduler を停止する。"""
+    yield
+    # shutdown: 結晶化スケジューラー停止
     try:
         from api.scheduler import stop_scheduler
         stop_scheduler()
     except Exception:
         pass
+
+
+app = FastAPI(
+    title="Lease Scoring API",
+    description="リース審査ロジックのバックエンドAPI",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+# モダンフロントエンド(Next.js)のReactローカルサーバー(例: 3000番ポート)からのアクセスを許可
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 def read_root():
@@ -1804,6 +1797,7 @@ class MultiAgentRequest(BaseModel):
     company_name: str = ""
     industry_major: str = ""
     industry_sub: str = ""
+    prefecture: str = ""
     nenshu: float = 0
     op_margin_pct: float = 0
     equity_ratio: float = 0

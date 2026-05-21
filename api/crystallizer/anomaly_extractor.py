@@ -16,7 +16,7 @@ _DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path
 _DB_PATH = os.path.join(_DATA_DIR, "lease_data.db")
 
 _LOOKBACK_COUNT = 30    # 直近 N 件を対象
-_ANOMALY_SIGMA = 15.0   # 平均±N点を外れ値とする
+_ANOMALY_THRESHOLD = 15.0   # 平均±N点を外れ値とする
 
 
 @dataclass
@@ -86,7 +86,7 @@ def extract_anomalies(db_path: str = _DB_PATH) -> list[AnomalyCase]:
         reason = ""
 
         # 外れ値チェック
-        if abs(score - avg) >= _ANOMALY_SIGMA:
+        if abs(score - avg) >= _ANOMALY_THRESHOLD:
             direction = "高スコア" if score > avg else "低スコア"
             reason = f"平均({avg:.1f}点)から{abs(score - avg):.1f}点乖離の{direction}案件"
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 import logging
+import threading
 from typing import Literal
 
 logger = logging.getLogger(__name__)
@@ -24,23 +25,29 @@ class KnowledgeVectorStore:
         self._client = None
         self._collection = None
         self._encoder = None
+        self._init_lock = threading.Lock()
 
     def _ensure_initialized(self) -> None:
-        """初回アクセス時に ChromaDB と encoder を初期化する。"""
+        """初回アクセス時に ChromaDB と encoder を初期化する。スレッドセーフ。"""
         if self._collection is not None:
             return
 
-        import chromadb
-        from sentence_transformers import SentenceTransformer
+        with self._init_lock:
+            # ロック取得後に再チェック（二重初期化防止）
+            if self._collection is not None:
+                return
 
-        os.makedirs(self._chroma_dir, exist_ok=True)
-        self._client = chromadb.PersistentClient(path=self._chroma_dir)
-        self._collection = self._client.get_or_create_collection(
-            name=_COLLECTION_NAME,
-            metadata={"hnsw:space": "cosine"},
-        )
-        self._encoder = SentenceTransformer(self._model_name)
-        logger.info(f"[KnowledgeVectorStore] initialized: {self._chroma_dir}")
+            import chromadb
+            from sentence_transformers import SentenceTransformer
+
+            os.makedirs(self._chroma_dir, exist_ok=True)
+            self._client = chromadb.PersistentClient(path=self._chroma_dir)
+            self._collection = self._client.get_or_create_collection(
+                name=_COLLECTION_NAME,
+                metadata={"hnsw:space": "cosine"},
+            )
+            self._encoder = SentenceTransformer(self._model_name)
+            logger.info(f"[KnowledgeVectorStore] initialized: {self._chroma_dir}")
 
     def _embed(self, texts: list[str]) -> list[list[float]]:
         self._ensure_initialized()

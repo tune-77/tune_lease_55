@@ -82,6 +82,9 @@ def get_season_context(month: int | None = None, industry: str = "") -> str:
     if month is None:
         month = datetime.date.today().month
 
+    if not (1 <= month <= 12):
+        raise ValueError(f"month must be 1-12, got {month}")
+
     season_label = _MONTH_TO_SEASON.get(month, f"{month}月")
     lines: list[str] = [f"【現在の季節: {season_label}（{month}月）】"]
 

@@ -4,14 +4,18 @@ H2見出し単位でチャンキングして返す。
 """
 from __future__ import annotations
 
+import logging
 import os
 import re
 from dataclasses import dataclass, field
 from typing import Iterator
 
-_VAULT_PATH = (
+logger = logging.getLogger(__name__)
+
+_DEFAULT_VAULT_PATH = (
     "/Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/"
 )
+_VAULT_PATH = os.environ.get("OBSIDIAN_VAULT_PATH", _DEFAULT_VAULT_PATH)
 
 # YAML frontmatter パターン
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
@@ -45,15 +49,17 @@ class Chunk:
 
 
 def _parse_frontmatter(text: str) -> tuple[dict, str]:
-    """frontmatter を解析して (metadict, 本文) を返す。"""
+    """frontmatter を解析して (metadict, 本文) を返す。yaml.safe_load でパース。"""
     m = _FRONTMATTER_RE.match(text)
     if not m:
         return {}, text
-    meta: dict = {}
-    for line in m.group(1).splitlines():
-        if ":" in line:
-            k, _, v = line.partition(":")
-            meta[k.strip()] = v.strip().strip('"').strip("'")
+    try:
+        import yaml
+        meta = yaml.safe_load(m.group(1)) or {}
+        if not isinstance(meta, dict):
+            meta = {}
+    except Exception:
+        meta = {}
     body = text[m.end():]
     return meta, body
 
@@ -114,5 +120,6 @@ def scan_vault(vault_path: str = _VAULT_PATH) -> Iterator[Chunk]:
                 meta, body = _parse_frontmatter(raw)
                 for chunk in _chunk_by_h2(body, fpath, fname, meta, mtime):
                     yield chunk
-            except Exception:
+            except Exception as e:
+                logger.debug("obsidian_loader: skip %s (%s)", fpath, e)
                 continue
