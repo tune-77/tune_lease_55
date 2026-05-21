@@ -18,6 +18,7 @@ import requests
 from concurrent.futures import ThreadPoolExecutor
 
 from api.context.context_bundle import build_context_bundle
+from api.knowledge.vector_store import get_store as _get_knowledge_store
 
 # ── モデル・エンドポイント定数 ───────────────────────────────────────────────────
 # 石橋・風林火山: Gemini Flash（軽量・高速、temperature差で個性を分離）
@@ -140,6 +141,146 @@ def _llm_call(system: str, prompt: str, temperature: float, max_tokens: int = 10
         if m:
             raw = m.group()
     return json.loads(raw)
+
+
+# ── Gemini Function Calling: search_knowledge ────────────────────────────────
+
+_SEARCH_TOOL_DECL = [{
+    "name": "search_knowledge",
+    "description": (
+        "Obsidianナレッジベースから関連する審査事例・業界知識・リスク情報を検索する。"
+        "審査の根拠とする引用を探すときに使え。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "検索クエリ（業種・リスク要因・審査ポイントなど自然言語で）",
+            },
+        },
+        "required": ["query"],
+    },
+}]
+
+
+def _llm_call_with_knowledge(
+    system: str,
+    prompt: str,
+    temperature: float,
+    search_mode: str = "both",
+    max_tokens: int = 1024,
+) -> dict:
+    """
+    Gemini Function Calling で search_knowledge ツールを使い、
+    ナレッジ引用付きの審査 JSON を返す。
+
+    ChromaDB が空の場合は通常の _llm_call にフォールバック。
+    """
+    try:
+        store = _get_knowledge_store()
+        if store.count() == 0:
+            return _llm_call(system, prompt, temperature, max_tokens)
+    except Exception:
+        return _llm_call(system, prompt, temperature, max_tokens)
+
+    api_key = _get_gemini_api_key()
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY が設定されていません")
+
+    # ── Turn 1: Function Calling 有効リクエスト ───────────────────────────
+    payload_t1 = {
+        "system_instruction": {"parts": [{"text": system}]},
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "tools": [{"function_declarations": _SEARCH_TOOL_DECL}],
+        "generationConfig": {
+            "temperature": temperature,
+            "maxOutputTokens": max_tokens,
+        },
+    }
+    resp1 = requests.post(
+        f"{_GEMINI_URL}?key={api_key}", json=payload_t1, timeout=60
+    )
+    resp1.raise_for_status()
+    candidate1 = resp1.json()["candidates"][0]["content"]
+
+    # Function Call が含まれるかチェック
+    fc_part = next(
+        (p for p in candidate1.get("parts", []) if "functionCall" in p), None
+    )
+
+    knowledge_refs: list[dict] = []
+    knowledge_block = ""
+
+    if fc_part:
+        fc = fc_part["functionCall"]
+        query = fc.get("args", {}).get("query", "")
+        try:
+            hits = store.search(query, mode=search_mode, top_k=3)
+            knowledge_refs = hits
+            if hits:
+                lines = [f"  - {h['ref']}: {h['text'][:120]}…" for h in hits]
+                knowledge_block = "【ナレッジ検索結果】\n" + "\n".join(lines)
+        except Exception:
+            hits = []
+
+        # ── Turn 2: Function Result を送って最終 JSON を取得 ──────────────
+        fn_result_content = {"results": knowledge_refs}
+        conversation = [
+            {"role": "user", "parts": [{"text": prompt}]},
+            candidate1,
+            {
+                "role": "user",
+                "parts": [{
+                    "functionResponse": {
+                        "name": "search_knowledge",
+                        "response": fn_result_content,
+                    }
+                }],
+            },
+            {
+                "role": "user",
+                "parts": [{"text": (
+                    "上記の検索結果を参考に、指示された JSON 形式のみで回答せよ。"
+                    "引用がある場合は reasons/opportunities/key_risks/reasoning のいずれかに"
+                    " [[ファイル名#セクション]] 形式で含めよ。"
+                )}],
+            },
+        ]
+        payload_t2 = {
+            "system_instruction": {"parts": [{"text": system}]},
+            "contents": conversation,
+            "generationConfig": {
+                "temperature": temperature,
+                "maxOutputTokens": max_tokens,
+                "responseMimeType": "application/json",
+            },
+        }
+        resp2 = requests.post(
+            f"{_GEMINI_URL}?key={api_key}", json=payload_t2, timeout=60
+        )
+        resp2.raise_for_status()
+        raw2 = resp2.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+    else:
+        # Function Call なし → Turn 1 のテキスト応答をそのまま使う
+        raw2 = (candidate1.get("parts") or [{}])[0].get("text", "{}").strip()
+
+    # JSON 抽出
+    if "```" in raw2:
+        for part in raw2.split("```")[1::2]:
+            cleaned = part.lstrip("json\n").strip()
+            if cleaned.startswith("{"):
+                raw2 = cleaned
+                break
+    if not raw2.startswith("{"):
+        m = re.search(r"\{.*\}", raw2, re.DOTALL)
+        if m:
+            raw2 = m.group()
+
+    result = json.loads(raw2)
+    if knowledge_refs:
+        result["_knowledge_refs"] = [r["ref"] for r in knowledge_refs if r.get("ref")]
+    return result
 
 
 # ── エージェント別プロンプトビルダー ────────────────────────────────────────────
@@ -305,9 +446,14 @@ def run_debate_screening(params: dict) -> dict:
 
     # ── 討論モード（40 < score < 60） ────────────────────────────────────────
     # Round 1: 並列実行（石橋 temperature=0.3、風林火山 temperature=0.9）
+    # 石橋はナレッジの否定的証拠を、風林火山は肯定的証拠を検索する
     with ThreadPoolExecutor(max_workers=2) as pool:
-        fc = pool.submit(_llm_call, cautious_sys, _cautious_prompt(ctx), 0.3)
-        fa = pool.submit(_llm_call, aggressive_sys, _aggressive_prompt(ctx), 0.9)
+        fc = pool.submit(
+            _llm_call_with_knowledge, cautious_sys, _cautious_prompt(ctx), 0.3, "refute"
+        )
+        fa = pool.submit(
+            _llm_call_with_knowledge, aggressive_sys, _aggressive_prompt(ctx), 0.9, "support"
+        )
         r1c = _safe_future(fc, {"opinion": "否決", "reasons": [], "key_risks": []})
         r1a = _safe_future(fa, {"opinion": "条件付承認", "reasons": [], "opportunities": []})
 
@@ -322,33 +468,37 @@ def run_debate_screening(params: dict) -> dict:
     # Round 2: 強制反論ラウンド（相手の意見を受けて必ず反論）
     with ThreadPoolExecutor(max_workers=2) as pool:
         fc2 = pool.submit(
-            _llm_call, cautious_sys,
-            _cautious_prompt(ctx, r1a_json, extra_c), 0.3
+            _llm_call_with_knowledge, cautious_sys,
+            _cautious_prompt(ctx, r1a_json, extra_c), 0.3, "refute"
         )
         fa2 = pool.submit(
-            _llm_call, aggressive_sys,
-            _aggressive_prompt(ctx, r1c_json, extra_a), 0.9
+            _llm_call_with_knowledge, aggressive_sys,
+            _aggressive_prompt(ctx, r1c_json, extra_a), 0.9, "support"
         )
         r2c = _safe_future(fc2, r1c)
         r2a = _safe_future(fa2, r1a)
 
-    # 討論ログ構築
+    # 討論ログ構築（ナレッジ引用があれば記録）
+    def _fmt_refs(d: dict) -> str:
+        refs = d.get("_knowledge_refs", [])
+        return f" 引用: {', '.join(refs)}" if refs else ""
+
     debate_log = (
         "【第1ラウンド：初期見解】\n"
-        f"石橋（慎重）: {r1c.get('opinion', '？')} — {_excerpt(r1c, 'reasons')}\n"
-        f"風林火山（積極）: {r1a.get('opinion', '？')} — {_excerpt(r1a, 'reasons')}\n"
+        f"石橋（慎重）: {r1c.get('opinion', '？')} — {_excerpt(r1c, 'reasons')}{_fmt_refs(r1c)}\n"
+        f"風林火山（積極）: {r1a.get('opinion', '？')} — {_excerpt(r1a, 'reasons')}{_fmt_refs(r1a)}\n"
         "\n【第2ラウンド：強制反論】\n"
-        f"石橋（慎重）: {r2c.get('opinion', '？')} — {_excerpt(r2c, 'reasons')}\n"
-        f"風林火山（積極）: {r2a.get('opinion', '？')} — {_excerpt(r2a, 'reasons')}"
+        f"石橋（慎重）: {r2c.get('opinion', '？')} — {_excerpt(r2c, 'reasons')}{_fmt_refs(r2c)}\n"
+        f"風林火山（積極）: {r2a.get('opinion', '？')} — {_excerpt(r2a, 'reasons')}{_fmt_refs(r2a)}"
     )
     if same_opinion:
         debate_log = "[注: 第1ラウンドで両者の意見が一致したため、逆張り再討論を実施]\n\n" + debate_log
 
-    # 軍師裁定（temperature=0.3 で中立・冷静）
-    arbiter_raw = _llm_call(
+    # 軍師裁定（temperature=0.3 で中立・冷静、両方向のナレッジを参照）
+    arbiter_raw = _llm_call_with_knowledge(
         arbiter_sys,
         _arbiter_debate_prompt(ctx, debate_log),
-        temperature=0.3, max_tokens=1024,
+        temperature=0.3, search_mode="both", max_tokens=1024,
     )
 
     result = {

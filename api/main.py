@@ -101,6 +101,16 @@ def _warm_dashboard_cache():
     except Exception:
         pass
 
+
+@app.on_event("startup")
+def _start_knowledge_indexing():
+    """起動時に Obsidian ナレッジをバックグラウンドでインデックス化する。"""
+    try:
+        from api.knowledge.indexer import start_background_indexing
+        start_background_indexing()
+    except Exception as e:
+        print(f"[API] knowledge indexing start failed (non-fatal): {e}")
+
 @app.get("/")
 def read_root():
     return {"message": "Lease Scoring API is running."}
@@ -1781,6 +1791,17 @@ class MultiAgentRequest(BaseModel):
     lease_credit: float = 0
     asset_name: str = ""
     lease_amount: float = 0
+
+
+@app.post("/api/reindex-knowledge")
+def reindex_knowledge():
+    """
+    Obsidian ナレッジを手動で再インデックス化する。
+    Vault 更新後に呼び出す。バックグラウンドで実行し即座に 202 を返す。
+    """
+    from api.knowledge.indexer import start_background_indexing
+    start_background_indexing()
+    return {"status": "indexing_started", "message": "バックグラウンドでインデックス化を開始しました"}
 
 
 @app.post("/api/multi-agent-screening")
