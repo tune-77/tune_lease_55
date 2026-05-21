@@ -19,6 +19,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 from api.context.context_bundle import build_context_bundle
 from api.knowledge.vector_store import get_store as _get_knowledge_store
+from api.knowledge.policy_loader import load_policy
+from api.knowledge.feedback_watcher import search_feedback, feedback_count
 
 # ── モデル・エンドポイント定数 ───────────────────────────────────────────────────
 # 石橋・風林火山: Gemini Flash（軽量・高速、temperature差で個性を分離）
@@ -176,13 +178,30 @@ def _llm_call_with_knowledge(
     ナレッジ引用付きの審査 JSON を返す。
 
     ChromaDB が空の場合は通常の _llm_call にフォールバック。
+    フィードバックコレクションも検索し、過去の訂正事例をシステムプロンプトに追加する。
     """
+    # フィードバック検索: 過去の訂正事例をシステムプロンプトに注入
+    system_with_feedback = system
+    try:
+        if feedback_count() > 0:
+            fb_hits = search_feedback(prompt, top_k=3)
+            if fb_hits:
+                lines = []
+                for h in fb_hits:
+                    agent_tag = f"[{h['agent']}] " if h.get("agent") else ""
+                    case_tag = f"({h['case_id']}) " if h.get("case_id") else ""
+                    lines.append(f"  - {agent_tag}{case_tag}{h['correction'] or h['text'][:100]}")
+                fb_block = "【過去の訂正事例】\n" + "\n".join(lines)
+                system_with_feedback = system + "\n\n" + fb_block
+    except Exception:
+        pass
+
     try:
         store = _get_knowledge_store()
         if store.count() == 0:
-            return _llm_call(system, prompt, temperature, max_tokens)
+            return _llm_call(system_with_feedback, prompt, temperature, max_tokens)
     except Exception:
-        return _llm_call(system, prompt, temperature, max_tokens)
+        return _llm_call(system_with_feedback, prompt, temperature, max_tokens)
 
     api_key = _get_gemini_api_key()
     if not api_key:
@@ -190,7 +209,7 @@ def _llm_call_with_knowledge(
 
     # ── Turn 1: Function Calling 有効リクエスト ───────────────────────────
     payload_t1 = {
-        "system_instruction": {"parts": [{"text": system}]},
+        "system_instruction": {"parts": [{"text": system_with_feedback}]},
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "tools": [{"function_declarations": _SEARCH_TOOL_DECL}],
         "generationConfig": {
@@ -249,7 +268,7 @@ def _llm_call_with_knowledge(
             },
         ]
         payload_t2 = {
-            "system_instruction": {"parts": [{"text": system}]},
+            "system_instruction": {"parts": [{"text": system_with_feedback}]},
             "contents": conversation,
             "generationConfig": {
                 "temperature": temperature,
@@ -410,6 +429,14 @@ def run_debate_screening(params: dict) -> dict:
     score = float(params.get("score", 0))
     ctx = _build_case_ctx(params)
 
+    # ── 審査方針ノート注入: Obsidian の 審査方針.md を全エージェントへ配布 ────────
+    policy_text = ""
+    try:
+        policy_text = load_policy()
+    except Exception:
+        pass
+    policy_block = f"【今月の審査方針】\n{policy_text}" if policy_text else ""
+
     # ── コンテキスト注入: 地域/季節/業況を全エージェントへ配布 ─────────────────
     try:
         bundle = build_context_bundle(
@@ -424,9 +451,17 @@ def run_debate_screening(params: dict) -> dict:
         ctx_block = ""
         bundle = None
 
-    cautious_sys = _CAUTIOUS_SYS + ("\n\n" + ctx_block if ctx_block else "")
-    aggressive_sys = _AGGRESSIVE_SYS + ("\n\n" + ctx_block if ctx_block else "")
-    arbiter_sys = _ARBITER_SYS + ("\n\n" + ctx_block if ctx_block else "")
+    def _build_sys(base: str) -> str:
+        parts = [base]
+        if policy_block:
+            parts.insert(0, policy_block)
+        if ctx_block:
+            parts.append(ctx_block)
+        return "\n\n".join(parts)
+
+    cautious_sys = _build_sys(_CAUTIOUS_SYS)
+    aggressive_sys = _build_sys(_AGGRESSIVE_SYS)
+    arbiter_sys = _build_sys(_ARBITER_SYS)
 
     # ── ファストパス（境界外スコア） ──────────────────────────────────────────
     if score >= _DEBATE_HIGH or score <= _DEBATE_LOW:

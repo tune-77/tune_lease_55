@@ -93,6 +93,12 @@ async def lifespan(app: FastAPI):
         start_background_indexing()
     except Exception as e:
         print(f"[API] knowledge indexing start failed (non-fatal): {e}")
+    # startup: Obsidian フィードバックのバックグラウンド読み込み
+    try:
+        from api.knowledge.feedback_watcher import start_background_feedback_loading
+        start_background_feedback_loading()
+    except Exception as e:
+        print(f"[API] feedback loading start failed (non-fatal): {e}")
     # startup: 結晶化スケジューラー起動（毎日02:00）
     try:
         from api.scheduler import start_scheduler
@@ -1832,6 +1838,17 @@ def reindex_knowledge():
     from api.knowledge.indexer import start_background_indexing
     start_background_indexing()
     return {"status": "indexing_started", "message": "バックグラウンドでインデックス化を開始しました"}
+
+
+@app.post("/api/reload-feedback")
+def reload_feedback():
+    """
+    Obsidian Feedback/ フォルダを再読み込みして ChromaDB を更新する。
+    フィードバックファイルを追加・編集した後に呼び出す。バックグラウンドで実行し即座に返す。
+    """
+    from api.knowledge.feedback_watcher import start_background_feedback_loading
+    start_background_feedback_loading()
+    return {"status": "reload_started", "message": "フィードバックの再読み込みを開始しました"}
 
 
 @app.post("/api/multi-agent-screening")
