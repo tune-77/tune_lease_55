@@ -2226,8 +2226,10 @@ def post_chat(req: ChatRequest):
                         link_docs = link_results.get("documents", [])
                         if link_docs:
                             extra_docs.append(link_docs[0][:400])
-                    except Exception:
-                        pass
+                        else:
+                            print(f"[RAG] wikilink fetch: no docs found for '{linked_name}.md'")
+                    except Exception as e:
+                        print(f"[RAG] wikilink fetch failed for {linked_name}: {e}")
 
                 all_docs = [d[:500] for d in docs if d.strip()]
                 all_docs += extra_docs[:3]
