@@ -60,6 +60,11 @@ _load_secrets_to_env()
 from scoring_core import run_quick_scoring
 from api.scoring_full import run_full_scoring_api
 from api.gunshi_gemini import stream_gunshi_gemini
+from lease_news_digest import (
+    get_latest_lease_news_focus,
+    record_lease_news_judgment_change,
+    record_lease_news_view,
+)
 from api.schemas import (
     ScoringRequest,
     ScoringResponse,
@@ -2449,6 +2454,11 @@ def get_latest_screening():
         "lease_credit": 0,
         "asset_name": "",
         "lease_amount": 0,
+        "news_focus": [],
+        "news_focus_summary": "",
+        "news_focus_tag_summary": "",
+        "news_focus_note_path": "",
+        "news_focus_note_date": "",
     }
 
     def _first_non_empty(*values):
@@ -2554,4 +2564,54 @@ def get_latest_screening():
     except Exception:
         pass
 
+    try:
+        focus = get_latest_lease_news_focus()
+        if focus.available:
+            defaults["news_focus"] = list(focus.focus_lines)
+            defaults["news_focus_summary"] = focus.headline
+            defaults["news_focus_tag_summary"] = focus.tag_summary
+            defaults["news_focus_note_path"] = focus.note_path
+            defaults["news_focus_note_date"] = focus.note_date
+            try:
+                record_lease_news_view(focus.note_date or "", focus.note_path, focus.tag_summary)
+            except Exception as _view_err:
+                print(f"[API] lease news view metric failed: {_view_err}")
+    except Exception as e:
+        print(f"[API] latest lease news focus load failed: {e}")
+
     return defaults
+
+
+class LeaseNewsJudgmentChangeRequest(BaseModel):
+    company_name: str = ""
+    score: Optional[float] = None
+    final_decision: str = ""
+    news_focus: List[str] = []
+    news_focus_summary: str = ""
+    news_focus_tag_summary: str = ""
+    news_focus_note_path: str = ""
+    news_focus_note_date: str = ""
+    reason: str = ""
+
+
+@app.post("/api/lease-news/judgment-change")
+def record_lease_news_judgment_change_api(req: LeaseNewsJudgmentChangeRequest):
+    """ニュース参照後の判断変更を記録する。"""
+    import datetime as _dt
+
+    try:
+        bucket = record_lease_news_judgment_change(
+            date_str=_dt.date.today().isoformat(),
+            note_path=req.news_focus_note_path or "",
+            source_note_date=req.news_focus_note_date or "",
+            company_name=req.company_name or "",
+            score=req.score,
+            final_decision=req.final_decision or "",
+            reason=req.reason or "",
+            focus_lines=tuple(req.news_focus or []),
+            theme_summary=req.news_focus_summary or "",
+            tag_summary=req.news_focus_tag_summary or "",
+        )
+        return {"status": "recorded", "metrics": bucket}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

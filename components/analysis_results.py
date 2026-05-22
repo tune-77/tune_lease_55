@@ -23,6 +23,7 @@ from web_services import (
     get_trend_extended, get_advice_context_extras, search_subsidies_by_industry,
     get_stats, _WEB_BENCH_KEYS
 )
+from lease_news_digest import get_latest_lease_news_focus, record_lease_news_judgment_change
 from charts import LOWER_IS_BETTER_NAMES
 from ai_chat import _get_gemini_key_from_secrets
 from constants import QUALITATIVE_SCORING_CORRECTION_ITEMS
@@ -213,9 +214,41 @@ def render_analysis_results(
             trend_extended = get_trend_extended(selected_sub)
             if trend_extended:
                 trend_info = (trend_info or "") + "\n\n【ネットで補足】\n" + trend_extended[:1500]
-            # --------------------------------------
-            # 現在の案件IDを取得（審査直後ならセッションに入っている想定）
             current_case_id = st.session_state.get("current_case_id")
+            latest_news_focus = get_latest_lease_news_focus()
+            if latest_news_focus.available and latest_news_focus.focus_lines:
+                with st.container(border=True):
+                    st.markdown("#### 📰 最新ニュースの注目論点")
+                    if latest_news_focus.headline:
+                        st.caption(latest_news_focus.headline)
+                    if latest_news_focus.tag_summary:
+                        st.caption(f"重点タグ: {latest_news_focus.tag_summary}")
+                    for line in latest_news_focus.focus_lines:
+                        st.markdown(f"- {line}")
+                    if st.button("📝 このニュースで判断変更を記録", key=f"btn_news_judgment_change_{current_case_id}", width='stretch'):
+                        try:
+                            _case_name = (
+                                st.session_state.get("rep_company")
+                                or (current_case_data or {}).get("company_name")
+                                or (current_case_data or {}).get("name")
+                                or "審査案件"
+                            )
+                            _score = float(res.get("score", 0) or 0)
+                            _final = str(res.get("hantei", "") or res.get("final_decision", "") or "")
+                            record_lease_news_judgment_change(
+                                date_str=datetime.date.today().isoformat(),
+                                note_path=latest_news_focus.note_path,
+                                source_note_date=latest_news_focus.note_date,
+                                company_name=_case_name,
+                                score=_score,
+                                final_decision=_final,
+                                focus_lines=latest_news_focus.focus_lines,
+                                theme_summary=latest_news_focus.theme_summary,
+                                tag_summary=latest_news_focus.tag_summary,
+                            )
+                            st.success("判断変更を記録しました。")
+                        except Exception as e:
+                            st.error(f"記録に失敗しました: {e}")
 
             # ── モンテカルロ 手動実行（ユーザーがボタンを押した時のみ実行） ──────────
             _mc_col_msg, _mc_col_btn = st.columns([3, 1])

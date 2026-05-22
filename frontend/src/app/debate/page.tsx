@@ -5,7 +5,7 @@ import axios from "axios";
 import { apiClient } from "@/lib/api";
 import {
   Swords, Shield, Zap, Crown, ChevronDown, ChevronUp,
-  Loader2, CheckCircle2, XCircle, AlertTriangle, Info, Clock, BookMarked,
+  Loader2, CheckCircle2, XCircle, AlertTriangle, Info, Clock, BookMarked, PenLine,
 } from "lucide-react";
 import { INDUSTRIES } from "@/constants/industries";
 
@@ -258,12 +258,19 @@ export default function DebatePage() {
     lease_credit: 0,
     asset_name: "",
     lease_amount: 0,
+    news_focus: [] as string[],
+    news_focus_summary: "",
+    news_focus_tag_summary: "",
+    news_focus_note_path: "",
+    news_focus_note_date: "",
   });
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DebateResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [obsidianSaving, setObsidianSaving] = useState(false);
   const [obsidianToast, setObsidianToast] = useState<"success" | "error" | null>(null);
+  const [newsJudgmentSaving, setNewsJudgmentSaving] = useState(false);
+  const [newsJudgmentToast, setNewsJudgmentToast] = useState<"success" | "error" | null>(null);
   const [autoFilled, setAutoFilled] = useState(false);
   const [history, setHistory] = useState<ConversationHistory | null>(null);
   const sessionIdRef = useRef<string>(
@@ -366,6 +373,30 @@ export default function DebatePage() {
     }
   };
 
+  const handleRecordNewsJudgmentChange = async () => {
+    if (!result || !form.news_focus?.length) return;
+    setNewsJudgmentSaving(true);
+    setNewsJudgmentToast(null);
+    try {
+      await apiClient.post("/api/lease-news/judgment-change", {
+        company_name: form.company_name,
+        score: result.score,
+        final_decision: result.arbiter.final,
+        news_focus: form.news_focus,
+        news_focus_summary: form.news_focus_summary,
+        news_focus_tag_summary: form.news_focus_tag_summary,
+        news_focus_note_path: form.news_focus_note_path,
+        news_focus_note_date: form.news_focus_note_date,
+      });
+      setNewsJudgmentToast("success");
+    } catch {
+      setNewsJudgmentToast("error");
+    } finally {
+      setNewsJudgmentSaving(false);
+      setTimeout(() => setNewsJudgmentToast(null), 2000);
+    }
+  };
+
   const scoreColor = (s: number) =>
     s >= 60 ? "text-emerald-600" : s <= 40 ? "text-rose-600" : "text-amber-600";
 
@@ -387,6 +418,41 @@ export default function DebatePage() {
         <div className="mb-4 flex items-center gap-2 bg-violet-50 border border-violet-200 rounded-xl px-4 py-2 text-sm text-violet-700 font-medium">
           <Info className="w-4 h-4 flex-shrink-0" />
           直近のスクリーニングデータを自動入力しました。内容を確認・修正してから審査を開始してください。
+        </div>
+      )}
+
+      {/* 最新ニュースの注目論点 */}
+      {form.news_focus?.length > 0 && (
+        <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50/80 p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-sm font-black text-amber-900">注目論点</h2>
+                {form.news_focus_note_date && (
+                  <span className="text-xs font-semibold text-amber-700 bg-white/70 px-2 py-0.5 rounded-full">
+                    {form.news_focus_note_date}
+                  </span>
+                )}
+              </div>
+              {form.news_focus_summary && (
+                <p className="mt-1 text-sm text-amber-900">{form.news_focus_summary}</p>
+              )}
+              {form.news_focus_tag_summary && (
+                <p className="mt-1 text-xs font-semibold text-amber-700">
+                  重点タグ: {form.news_focus_tag_summary}
+                </p>
+              )}
+              <ul className="mt-2 space-y-1">
+                {form.news_focus.map((item, idx) => (
+                  <li key={idx} className="flex items-start gap-2 text-sm text-amber-900">
+                    <span className="mt-1 h-1.5 w-1.5 rounded-full bg-amber-600 shrink-0" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
         </div>
       )}
 
@@ -545,6 +611,38 @@ export default function DebatePage() {
           {/* 討論ログ */}
           {result.debate_log && (
             <DebateLog log={result.debate_log} sameR1={result.same_opinion_r1} />
+          )}
+
+          {form.news_focus?.length > 0 && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-black text-amber-900">ニュースで判断変更を記録</p>
+                  <p className="text-xs text-amber-800 mt-1">
+                    押すと今日の Obsidian 日次ノートと効果測定に残ります。
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRecordNewsJudgmentChange}
+                  disabled={newsJudgmentSaving || !result}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-black text-amber-800 hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                >
+                  {newsJudgmentSaving ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <PenLine className="w-4 h-4" />
+                  )}
+                  {newsJudgmentSaving ? "記録中..." : "このニュースで判断変更を記録"}
+                </button>
+              </div>
+              {newsJudgmentToast === "success" && (
+                <p className="mt-3 text-sm font-bold text-emerald-700">判断変更を記録しました。</p>
+              )}
+              {newsJudgmentToast === "error" && (
+                <p className="mt-3 text-sm font-bold text-rose-700">記録に失敗しました。</p>
+              )}
+            </div>
           )}
 
           {/* Obsidian 保存ボタン */}
