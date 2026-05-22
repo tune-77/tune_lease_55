@@ -1550,6 +1550,96 @@ def get_analysis_status_summary():
 
 
 # =============================================================================
+# Obsidian Vault 連携 API
+# =============================================================================
+
+class ObsidianReadRequest(BaseModel):
+    paths: List[str]
+
+
+def _get_vault_path() -> str:
+    """OBSIDIAN_VAULT_PATH 環境変数からvaultパスを取得する。"""
+    return os.environ.get("OBSIDIAN_VAULT_PATH", "")
+
+
+@app.get("/api/obsidian/notes")
+def list_obsidian_notes():
+    """Obsidian vault 配下の .md ファイルを再帰的に列挙する。
+    最大100件・各ファイル10KB以内の情報を返す。
+    vaultが設定されていない／存在しない場合は空リストを返す。
+    """
+    import datetime as _dt
+
+    vault_path = _get_vault_path()
+    if not vault_path or not os.path.isdir(vault_path):
+        return []
+
+    results = []
+    try:
+        for dirpath, _dirnames, filenames in os.walk(vault_path):
+            for fname in filenames:
+                if not fname.endswith(".md"):
+                    continue
+                full = os.path.join(dirpath, fname)
+                rel = os.path.relpath(full, vault_path)
+                try:
+                    st = os.stat(full)
+                    size = st.st_size
+                    modified = _dt.datetime.fromtimestamp(st.st_mtime).strftime(
+                        "%Y-%m-%dT%H:%M:%S"
+                    )
+                except Exception:
+                    size = 0
+                    modified = ""
+                title = os.path.splitext(fname)[0]
+                results.append(
+                    {"path": rel, "title": title, "modified": modified, "size": size}
+                )
+                if len(results) >= 100:
+                    break
+            if len(results) >= 100:
+                break
+    except Exception as e:
+        print(f"[API] obsidian/notes walk error: {e}")
+        return []
+
+    # 更新日時の降順でソート
+    results.sort(key=lambda x: x["modified"], reverse=True)
+    return results
+
+
+@app.post("/api/obsidian/notes/read")
+def read_obsidian_notes(req: ObsidianReadRequest):
+    """指定された相対パスの .md ファイルを読み込んで結合テキストを返す。
+    各ファイル最大10KBを読み込む。
+    """
+    vault_path = _get_vault_path()
+    if not vault_path or not os.path.isdir(vault_path):
+        return {"content": "", "files_read": []}
+
+    MAX_FILE_BYTES = 10_240  # 10KB per file
+    parts: List[str] = []
+    files_read: List[str] = []
+
+    for rel_path in req.paths:
+        # パストラバーサル防止：vault外へのアクセスを禁止
+        full = os.path.normpath(os.path.join(vault_path, rel_path))
+        if not full.startswith(os.path.normpath(vault_path)):
+            continue
+        if not full.endswith(".md") or not os.path.isfile(full):
+            continue
+        try:
+            with open(full, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read(MAX_FILE_BYTES)
+            parts.append(f"=== {rel_path} ===\n{content}")
+            files_read.append(rel_path)
+        except Exception as e:
+            print(f"[API] obsidian/notes/read error for {rel_path}: {e}")
+
+    return {"content": "\n\n".join(parts), "files_read": files_read}
+
+
+# =============================================================================
 # 汎用エージェントハブ & 文明年代記 API (Phase 15.5)
 # =============================================================================
 
@@ -1610,14 +1700,22 @@ def get_latest_script_api():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class NovelGenerateRequest(BaseModel):
+    obsidian_paths: List[str] = Field(default_factory=list)
+
+
 @app.post("/api/agent_hub/novel/generate")
-def generate_novel_api():
-    """文豪AI「波乱丸」の小説生成エンドポイント（連作対応版）。
+def generate_novel_api(req: NovelGenerateRequest = None):
+    """文豪AI「波乱丸」の小説生成エンドポイント（連作対応版・Obsidian素材対応）。
     1. 最新プロットの鮮度確認 → 1時間超なら再取得
     2. 直近3話サマリーを custom_theme に注入
-    3. novelist_agent.generate_novel() に委譲
+    3. obsidian_paths が指定されていれば素材を custom_theme に追記
+    4. novelist_agent.generate_novel() に委譲
     """
     import datetime as _dt
+    if req is None:
+        req = NovelGenerateRequest()
+
     try:
         # ── 1. ネット情報取得（1時間キャッシュ）─────────────────────────────
         try:
@@ -1643,7 +1741,7 @@ def generate_novel_api():
         recent = load_novels(limit=3)
         recent_sorted = list(reversed(recent))  # 新→古 → 古→新 に並べ直す
 
-        prev_summary = ""
+        serial_context = ""
         if recent_sorted:
             lines = [
                 "【連作継続】これまでのあらすじ（必ずストーリーを発展させること）:"
@@ -1653,10 +1751,42 @@ def generate_novel_api():
                 lines.append(
                     f"第{ep['episode_no']}話「{ep['title']}」: {body_preview}..."
                 )
-            prev_summary = "\n".join(lines)
+            serial_context = "\n".join(lines)
 
-        # ── 3. 小説生成 ────────────────────────────────────────────────────────
-        result = generate_novel(custom_theme=prev_summary)
+        # ── 3. Obsidian素材の注入 ─────────────────────────────────────────────
+        custom_theme = serial_context
+        if req.obsidian_paths:
+            vault_path = _get_vault_path()
+            if vault_path and os.path.isdir(vault_path):
+                MAX_FILE_BYTES = 10_240
+                obsidian_parts: List[str] = []
+                files_read: List[str] = []
+                for rel_path in req.obsidian_paths:
+                    full = os.path.normpath(os.path.join(vault_path, rel_path))
+                    if not full.startswith(os.path.normpath(vault_path)):
+                        continue
+                    if not full.endswith(".md") or not os.path.isfile(full):
+                        continue
+                    try:
+                        with open(full, "r", encoding="utf-8", errors="ignore") as f:
+                            content = f.read(MAX_FILE_BYTES)
+                        obsidian_parts.append(f"=== {rel_path} ===\n{content}")
+                        files_read.append(rel_path)
+                    except Exception as e:
+                        print(f"[API] novel/generate obsidian read error {rel_path}: {e}")
+
+                if obsidian_parts:
+                    obsidian_block = "【Obsidian素材】\n" + "\n\n".join(obsidian_parts)
+                    if serial_context:
+                        custom_theme = obsidian_block + "\n\n" + serial_context
+                    else:
+                        custom_theme = obsidian_block
+
+        # ── 4. 小説生成 ────────────────────────────────────────────────────────
+        result = generate_novel(custom_theme=custom_theme)
+        # 使用したObsidianファイル名をレスポンスに付加
+        if req.obsidian_paths:
+            result["obsidian_files_used"] = req.obsidian_paths
         return result
     except Exception as e:
         import traceback
