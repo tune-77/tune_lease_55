@@ -5,7 +5,7 @@ import axios from "axios";
 import { apiClient } from "@/lib/api";
 import {
   Swords, Shield, Zap, Crown, ChevronDown, ChevronUp,
-  Loader2, CheckCircle2, XCircle, AlertTriangle, Info, Clock,
+  Loader2, CheckCircle2, XCircle, AlertTriangle, Info, Clock, BookMarked,
 } from "lucide-react";
 import { INDUSTRIES } from "@/constants/industries";
 
@@ -262,6 +262,8 @@ export default function DebatePage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DebateResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [obsidianSaving, setObsidianSaving] = useState(false);
+  const [obsidianToast, setObsidianToast] = useState<"success" | "error" | null>(null);
   const [autoFilled, setAutoFilled] = useState(false);
   const [history, setHistory] = useState<ConversationHistory | null>(null);
   const sessionIdRef = useRef<string>(
@@ -327,6 +329,40 @@ export default function DebatePage() {
       setError(err.response?.data?.detail || err.message || "エラーが発生しました");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const computeGrade = (s: number): string => {
+    if (s >= 80) return "A";
+    if (s >= 60) return "B";
+    if (s >= 40) return "C";
+    if (s >= 20) return "D";
+    return "E";
+  };
+
+  const handleSaveToObsidian = async () => {
+    if (!result) return;
+    setObsidianSaving(true);
+    setObsidianToast(null);
+    try {
+      await apiClient.post("/api/debate/save-to-obsidian", {
+        company_name: form.company_name,
+        score: result.score,
+        grade: computeGrade(result.score),
+        cautious: result.cautious ?? null,
+        aggressive: result.aggressive ?? null,
+        arbiter_summary: result.arbiter.reasoning,
+        final_decision: result.arbiter.final,
+        conditions: result.arbiter.conditions,
+        debate_log: result.debate_log ?? null,
+        screened_at: new Date().toISOString(),
+      });
+      setObsidianToast("success");
+    } catch {
+      setObsidianToast("error");
+    } finally {
+      setObsidianSaving(false);
+      setTimeout(() => setObsidianToast(null), 2000);
     }
   };
 
@@ -510,6 +546,35 @@ export default function DebatePage() {
           {result.debate_log && (
             <DebateLog log={result.debate_log} sameR1={result.same_opinion_r1} />
           )}
+
+          {/* Obsidian 保存ボタン */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleSaveToObsidian}
+              disabled={obsidianSaving}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-violet-300 bg-violet-50 hover:bg-violet-100 disabled:opacity-50 text-violet-700 font-bold text-sm transition-colors"
+            >
+              {obsidianSaving ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <BookMarked className="w-4 h-4" />
+              )}
+              {obsidianSaving ? "保存中..." : "📝 Obsidianに保存"}
+            </button>
+
+            {obsidianToast === "success" && (
+              <span className="flex items-center gap-1.5 text-sm font-bold text-emerald-600 animate-in fade-in duration-200">
+                <CheckCircle2 className="w-4 h-4" />
+                Obsidianに保存しました ✅
+              </span>
+            )}
+            {obsidianToast === "error" && (
+              <span className="flex items-center gap-1.5 text-sm font-bold text-rose-600 animate-in fade-in duration-200">
+                <XCircle className="w-4 h-4" />
+                保存に失敗しました
+              </span>
+            )}
+          </div>
         </div>
       )}
     </div>
