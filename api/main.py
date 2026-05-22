@@ -1562,6 +1562,27 @@ def _get_vault_path() -> str:
     return os.environ.get("OBSIDIAN_VAULT_PATH", "")
 
 
+def _read_obsidian_files(vault_path: str, rel_paths: list[str], max_bytes: int = 10_240) -> tuple[str, list[str]]:
+    """指定されたObsidianノートを読み込み、結合テキストとファイル名リストを返す。"""
+    parts = []
+    files_read = []
+    vault_norm = os.path.normpath(vault_path)
+    for rel_path in rel_paths:
+        full = os.path.normpath(os.path.join(vault_path, rel_path))
+        if not full.startswith(vault_norm):
+            continue
+        if not full.endswith(".md") or not os.path.isfile(full):
+            continue
+        try:
+            with open(full, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read(max_bytes)
+            parts.append(f"=== {rel_path} ===\n{content}")
+            files_read.append(rel_path)
+        except Exception as e:
+            print(f"[API] obsidian read error {rel_path}: {e}")
+    return "\n\n".join(parts), files_read
+
+
 @app.get("/api/obsidian/notes")
 def list_obsidian_notes():
     """Obsidian vault 配下の .md ファイルを再帰的に列挙する。
@@ -1592,11 +1613,10 @@ def list_obsidian_notes():
                     size = 0
                     modified = ""
                 title = os.path.splitext(fname)[0]
-                results.append(
-                    {"path": rel, "title": title, "modified": modified, "size": size}
-                )
-                if len(results) >= 100:
-                    break
+                if len(results) < 100:
+                    results.append(
+                        {"path": rel, "title": title, "modified": modified, "size": size}
+                    )
             if len(results) >= 100:
                 break
     except Exception as e:
@@ -1617,26 +1637,13 @@ def read_obsidian_notes(req: ObsidianReadRequest):
     if not vault_path or not os.path.isdir(vault_path):
         return {"content": "", "files_read": []}
 
-    MAX_FILE_BYTES = 10_240  # 10KB per file
-    parts: List[str] = []
-    files_read: List[str] = []
-
-    for rel_path in req.paths:
-        # パストラバーサル防止：vault外へのアクセスを禁止
-        full = os.path.normpath(os.path.join(vault_path, rel_path))
-        if not full.startswith(os.path.normpath(vault_path)):
-            continue
-        if not full.endswith(".md") or not os.path.isfile(full):
-            continue
-        try:
-            with open(full, "r", encoding="utf-8", errors="ignore") as f:
-                content = f.read(MAX_FILE_BYTES)
-            parts.append(f"=== {rel_path} ===\n{content}")
-            files_read.append(rel_path)
-        except Exception as e:
-            print(f"[API] obsidian/notes/read error for {rel_path}: {e}")
-
-    return {"content": "\n\n".join(parts), "files_read": files_read}
+    try:
+        content, files_read = _read_obsidian_files(vault_path, req.paths)
+        return {"content": content, "files_read": files_read}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="内部エラーが発生しました")
 
 
 # =============================================================================
@@ -1668,7 +1675,9 @@ def get_latest_novel_api():
         novel = get_latest_novel()
         return {"novel": novel}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="内部エラーが発生しました")
 
 @app.post("/api/agent_hub/script/generate")
 def generate_script_api():
@@ -1686,7 +1695,7 @@ def generate_script_api():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="内部エラーが発生しました")
 
 
 @app.get("/api/agent_hub/script/latest")
@@ -1697,7 +1706,9 @@ def get_latest_script_api():
         plot = scriptwriter_agent.get_latest_plot()
         return {"plot": plot}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="内部エラーが発生しました")
 
 
 class NovelGenerateRequest(BaseModel):
@@ -1705,7 +1716,7 @@ class NovelGenerateRequest(BaseModel):
 
 
 @app.post("/api/agent_hub/novel/generate")
-def generate_novel_api(req: NovelGenerateRequest = None):
+def generate_novel_api(req: Optional[NovelGenerateRequest] = None):
     """文豪AI「波乱丸」の小説生成エンドポイント（連作対応版・Obsidian素材対応）。
     1. 最新プロットの鮮度確認 → 1時間超なら再取得
     2. 直近3話サマリーを custom_theme に注入
@@ -1747,7 +1758,7 @@ def generate_novel_api(req: NovelGenerateRequest = None):
                 "【連作継続】これまでのあらすじ（必ずストーリーを発展させること）:"
             ]
             for ep in recent_sorted:
-                body_preview = (ep.get("body") or "")[:200]
+                body_preview = (ep.get("body") or "")[:300]
                 lines.append(
                     f"第{ep['episode_no']}話「{ep['title']}」: {body_preview}..."
                 )
@@ -1755,28 +1766,13 @@ def generate_novel_api(req: NovelGenerateRequest = None):
 
         # ── 3. Obsidian素材の注入 ─────────────────────────────────────────────
         custom_theme = serial_context
+        files_read: List[str] = []
         if req.obsidian_paths:
             vault_path = _get_vault_path()
             if vault_path and os.path.isdir(vault_path):
-                MAX_FILE_BYTES = 10_240
-                obsidian_parts: List[str] = []
-                files_read: List[str] = []
-                for rel_path in req.obsidian_paths:
-                    full = os.path.normpath(os.path.join(vault_path, rel_path))
-                    if not full.startswith(os.path.normpath(vault_path)):
-                        continue
-                    if not full.endswith(".md") or not os.path.isfile(full):
-                        continue
-                    try:
-                        with open(full, "r", encoding="utf-8", errors="ignore") as f:
-                            content = f.read(MAX_FILE_BYTES)
-                        obsidian_parts.append(f"=== {rel_path} ===\n{content}")
-                        files_read.append(rel_path)
-                    except Exception as e:
-                        print(f"[API] novel/generate obsidian read error {rel_path}: {e}")
-
-                if obsidian_parts:
-                    obsidian_block = "【Obsidian素材】\n" + "\n\n".join(obsidian_parts)
+                obsidian_text, files_read = _read_obsidian_files(vault_path, req.obsidian_paths)
+                if obsidian_text:
+                    obsidian_block = "【Obsidian素材】\n" + obsidian_text
                     if serial_context:
                         custom_theme = obsidian_block + "\n\n" + serial_context
                     else:
@@ -1785,13 +1781,13 @@ def generate_novel_api(req: NovelGenerateRequest = None):
         # ── 4. 小説生成 ────────────────────────────────────────────────────────
         result = generate_novel(custom_theme=custom_theme)
         # 使用したObsidianファイル名をレスポンスに付加
-        if req.obsidian_paths:
-            result["obsidian_files_used"] = req.obsidian_paths
+        if files_read:
+            result["obsidian_files_used"] = files_read
         return result
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="内部エラーが発生しました")
 
 
 @app.get("/api/agent_hub/novel/episodes")
