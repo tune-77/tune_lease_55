@@ -8,7 +8,7 @@ import {
   PenTool, Users, Wrench, PencilRuler, History, ScrollText,
   PieChart, LineChart, Target, Settings, Calendar, Share2, Network,
   Eye, BarChart3, TrendingUp, Globe, ChevronDown, ChevronRight, Building,
-  PanelLeftClose, PanelLeftOpen, X, Table2, Swords
+  PanelLeftClose, PanelLeftOpen, X, Table2, Swords, MessageCircle
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
 
@@ -21,6 +21,7 @@ export default function Sidebar() {
       title: '審査メイン',
       items: [
         { name: 'ホーム', href: '/home', icon: Home, color: 'text-blue-400' },
+        { name: '💬 AIチャット', href: '/chat', icon: MessageCircle, color: 'text-cyan-400' },
         { name: 'リースくん (スマホUI)', href: '/lease-kun', icon: MessageSquare, color: 'text-amber-400' },
         { name: '審査・分析', href: '/', icon: ClipboardCheck, color: 'text-emerald-400' },
         { name: '審査レポート', href: '/report', icon: FileText, color: 'text-indigo-400' },
