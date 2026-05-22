@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { apiClient } from "@/lib/api";
-import { Send, Trash2, Loader2, MessageCircle, Bot, User } from "lucide-react";
+import { Send, Trash2, Loader2, MessageCircle, Bot, User, NotebookPen } from "lucide-react";
 
 interface ChatMessage {
   id: number;
@@ -17,6 +17,8 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(true);
+  const [savingObsidian, setSavingObsidian] = useState(false);
+  const [saveToast, setSaveToast] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -99,6 +101,21 @@ export default function ChatPage() {
     }
   };
 
+  const saveToObsidian = async () => {
+    if (savingObsidian) return;
+    setSavingObsidian(true);
+    try {
+      await apiClient.post("/api/chat/save-to-obsidian", { user_id: userId });
+      setSaveToast("Obsidianに保存しました ✅");
+      setTimeout(() => setSaveToast(null), 2000);
+    } catch {
+      setSaveToast("保存に失敗しました ❌");
+      setTimeout(() => setSaveToast(null), 2000);
+    } finally {
+      setSavingObsidian(false);
+    }
+  };
+
   const clearHistory = async () => {
     if (!confirm("会話履歴を全て削除しますか？")) return;
     try {
@@ -133,13 +150,32 @@ export default function ChatPage() {
             <p className="text-xs text-slate-500">リース審査の相棒・毎日相談できます</p>
           </div>
         </div>
-        <button
-          onClick={clearHistory}
-          className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-red-500 transition-colors px-3 py-1.5 rounded-lg hover:bg-red-50"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-          <span>履歴削除</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {saveToast && (
+            <span className="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1 whitespace-nowrap">
+              {saveToast}
+            </span>
+          )}
+          <button
+            onClick={saveToObsidian}
+            disabled={savingObsidian}
+            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-emerald-600 transition-colors px-3 py-1.5 rounded-lg hover:bg-emerald-50 disabled:opacity-50"
+          >
+            {savingObsidian ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <NotebookPen className="w-3.5 h-3.5" />
+            )}
+            <span>Obsidianに保存</span>
+          </button>
+          <button
+            onClick={clearHistory}
+            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-red-500 transition-colors px-3 py-1.5 rounded-lg hover:bg-red-50"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>履歴削除</span>
+          </button>
+        </div>
       </div>
 
       {/* メッセージエリア */}
