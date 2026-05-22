@@ -24,6 +24,7 @@ from ai_chat import (
 from data_cases import append_consultation_memory
 from web_services import get_advice_context_extras, get_stats, get_trend_extended
 from knowledge import build_knowledge_context
+from lease_news_digest import lease_news_focus_as_text
 
 # ── 討論モード ペルソナ定義 ──────────────────────────────────────────────────
 PERSONA_CON = """あなたは「慎重派（守り）」のベテラン審査部長です。
@@ -410,6 +411,9 @@ def _render_tab_debate(selected_sub: str, jsic_data: dict, bankruptcy_data: list
                 if "selected_news_content" in st.session_state:
                     news = st.session_state.selected_news_content
                     news_context = f"\n\n【参考ニュース記事: {news['title']}】\n{news['content']}"
+                news_focus_context = lease_news_focus_as_text()
+                if news_focus_context:
+                    news_focus_context = f"\n\n【最新ニュースの注目論点】\n{news_focus_context}"
 
                 advice_extras_debate = get_advice_context_extras(selected_sub_local, selected_major)
                 advice_debate_block = ("補助金・リース・業界拡充: " + advice_extras_debate[:800]) if advice_extras_debate else ""
@@ -440,6 +444,7 @@ def _render_tab_debate(selected_sub: str, jsic_data: dict, bankruptcy_data: list
 【ネット検索結果・業界材料】
 {advice_debate_block}
 {news_context if news_context else "（ニュース未読み込み）"}
+{news_focus_context if news_focus_context else ""}
 {_debate_kb_block}
 
 【指示】
@@ -471,6 +476,7 @@ def _render_tab_debate(selected_sub: str, jsic_data: dict, bankruptcy_data: list
 
 【ネット検索結果・業界リスク】
 {news_context if news_context else "（なし）"}
+{news_focus_context if news_focus_context else ""}
 {advice_con_block}
 
 【これまでの議論】
@@ -491,6 +497,7 @@ def _render_tab_debate(selected_sub: str, jsic_data: dict, bankruptcy_data: list
 
 【ネット検索結果・好材料】
 {news_context if news_context else "業界の成長性、社長の覚悟"}
+{news_focus_context if news_focus_context else ""}
 {advice_pro_block}
 
 【これまでの議論】

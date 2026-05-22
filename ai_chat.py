@@ -1110,6 +1110,7 @@ def get_ai_consultation_prompt(
     from knowledge import build_knowledge_context
     from data_cases import load_consultation_memory
     from obsidian_ai_context import build_obsidian_ai_context_block
+    from lease_news_digest import lease_news_focus_as_text
 
     res = res or {}
     score = res.get("score")
@@ -1139,6 +1140,14 @@ def get_ai_consultation_prompt(
         title = news_content.get("title", "")
         body = news_content.get("content", "")[:600]
         news_block = f"【参考ニュース: {title}】\n{body}"
+
+    news_focus_block = ""
+    try:
+        news_focus_text = lease_news_focus_as_text()
+        if news_focus_text:
+            news_focus_block = f"【最新ニュースの注目論点】\n{news_focus_text}"
+    except Exception as e:
+        log_warning(f"lease news focus load failed: {e}", context="build_ai_prompt")
 
     # ナレッジベース（マニュアル・FAQ・事例集）
     kb_block = ""
@@ -1198,6 +1207,7 @@ def get_ai_consultation_prompt(
             trend_block,
             advice_block,
             news_block,
+            news_focus_block,
             kb_block,
             memory_block,
             f"【質問】\n{q}",
@@ -1210,6 +1220,7 @@ def get_ai_consultation_prompt(
             trend_block,
             advice_block,
             news_block,
+            news_focus_block,
             kb_block,
             memory_block,
             f"【質問】\n{q}",

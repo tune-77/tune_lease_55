@@ -6,6 +6,7 @@ from constants import (
 )
 from utils import _slider_and_number, _reset_shinsa_inputs
 from category_config import ASSET_ID_TO_CATEGORY
+from lease_news_digest import get_latest_lease_news_focus
 
 SALES_DEPT_OPTIONS = ["未設定", "宇都宮営業部", "小山営業部", "足利営業部", "埼玉営業部"]
 
@@ -177,6 +178,17 @@ def render_apply_form(
         st.info(f"**{selected_sub}** の動向:\n{trend_info}\n\n**当社の実績**: {past_info_text}")
         if alert_msg:
             st.warning(alert_msg)
+
+        latest_news_focus = get_latest_lease_news_focus()
+        if latest_news_focus.available and latest_news_focus.focus_lines:
+            with st.container(border=True):
+                st.markdown("##### 📰 最新ニュースの注目論点")
+                if latest_news_focus.headline:
+                    st.caption(latest_news_focus.headline)
+                if latest_news_focus.tag_summary:
+                    st.caption(f"重点タグ: {latest_news_focus.tag_summary}")
+                for line in latest_news_focus.focus_lines:
+                    st.markdown(f"- {line}")
 
         # 関連ニュース（表示とAI読み込みボタン）
         if 'news_results' in st.session_state and st.session_state.news_results:

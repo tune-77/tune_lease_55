@@ -21,6 +21,7 @@ from api.context.context_bundle import build_context_bundle
 from api.knowledge.vector_store import get_store as _get_knowledge_store
 from api.knowledge.policy_loader import load_policy
 from api.knowledge.feedback_watcher import search_feedback, feedback_count
+from lease_news_digest import lease_news_focus_as_text
 
 # ── モデル・エンドポイント定数 ───────────────────────────────────────────────────
 # 石橋・風林火山: Gemini Flash（軽量・高速、temperature差で個性を分離）
@@ -61,7 +62,7 @@ _ARBITER_SYS = """あなたは「軍師」— リース審査の最終裁定者�
 
 
 def _build_case_ctx(params: dict) -> str:
-    return _CASE_CTX_TMPL.format(
+    base = _CASE_CTX_TMPL.format(
         company_name=params.get("company_name", "（未設定）"),
         industry=params.get("industry_major") or params.get("industry_sub") or "未設定",
         score=params.get("score", 0),
@@ -73,6 +74,30 @@ def _build_case_ctx(params: dict) -> str:
         asset_name=params.get("asset_name", ""),
         lease_amount=params.get("lease_amount") or params.get("lease_total") or 0,
     )
+    news_lines = params.get("news_focus") or []
+    news_summary = params.get("news_focus_summary") or ""
+    news_tag_summary = params.get("news_focus_tag_summary") or ""
+    if not news_lines:
+        try:
+            news_focus_text = lease_news_focus_as_text()
+        except Exception:
+            news_focus_text = ""
+        if news_focus_text:
+            news_lines = [line.strip("- ").strip() for line in news_focus_text.splitlines() if line.strip()]
+            news_summary = news_summary or "最新ニュースの注目論点を反映"
+    focus_block = ""
+    if news_summary or news_tag_summary or news_lines:
+        parts = ["【最新ニュースの注目論点】"]
+        if news_summary:
+            parts.append(f"- 要約: {news_summary}")
+        if news_tag_summary:
+            parts.append(f"- 重点タグ: {news_tag_summary}")
+        for line in news_lines[:4]:
+            parts.append(f"- {line}")
+        focus_block = "\n".join(parts)
+    if focus_block:
+        return base + "\n\n" + focus_block
+    return base
 
 
 def _get_gemini_api_key() -> str:
