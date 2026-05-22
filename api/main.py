@@ -76,6 +76,25 @@ from pydantic import BaseModel, Field
 from typing import List, Any, Dict, Optional
 from scoring.deal_closure_engine import build_features, build_features_from_deltas, compute_closure_likelihood
 
+# ChromaDB singleton — initialize once, not per-request
+_chroma_client = None
+_chroma_collection = None
+
+def _get_obsidian_collection():
+    global _chroma_client, _chroma_collection
+    if _chroma_collection is None:
+        try:
+            import chromadb
+            _db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chroma_db")
+            _chroma_client = chromadb.PersistentClient(path=_db_path)
+            _chroma_collection = _chroma_client.get_collection("obsidian_knowledge")
+            print(f"[RAG] ChromaDB initialized: {_db_path}")
+        except Exception as e:
+            print(f"[RAG] ChromaDB init failed: {e}")
+            _chroma_collection = None
+    return _chroma_collection
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # startup: ダッシュボードキャッシュのウォームアップ
@@ -2172,24 +2191,17 @@ def post_chat(req: ChatRequest):
             get_message_count,
         )
 
-        # RAG: obsidian_knowledge から関連ナレッジを取得
+        # RAG: obsidian_knowledge から関連ナレッジを取得（シングルトン使用）
         rag_context = ""
         try:
-            import chromadb
-            chroma_client = chromadb.PersistentClient(path="api/chroma_db")
-            collection = chroma_client.get_collection("obsidian_knowledge")
-            results = collection.query(
-                query_texts=[req.message],
-                n_results=5,
-                include=["documents"]
-            )
-            docs = results.get("documents", [[]])[0]
-            if docs:
-                rag_context = "\n\n【参照ナレッジ】\n" + "\n---\n".join(
-                    d[:500] for d in docs if d.strip()
-                )
+            collection = _get_obsidian_collection()
+            if collection is not None:
+                results = collection.query(query_texts=[req.message], n_results=5, include=["documents"])
+                docs = results.get("documents", [[]])[0]
+                if docs:
+                    rag_context = "\n\n【参照ナレッジ】\n" + "\n---\n".join(d[:500] for d in docs if d.strip())
         except Exception as e:
-            print(f"[RAG] ChromaDB検索エラー: {e}")
+            print(f"[RAG] 検索エラー: {e}")
 
         # システムプロンプトにRAGコンテキストを追記
         effective_prompt = _CHAT_SYSTEM_PROMPT + rag_context
