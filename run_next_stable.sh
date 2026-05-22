@@ -63,7 +63,10 @@ echo ""
 
 echo "Starting FastAPI on http://${API_HOST}:${API_PORT}"
 # uv 管理の .venv があれば uv run、無ければ素の python にフォールバック
-if command -v uv >/dev/null 2>&1 && [ -f "pyproject.toml" ]; then
+# .venv が存在すればそちらを優先（uv run はキャッシュ権限エラーを起こす場合があるため）
+if [ -f ".venv/bin/python" ]; then
+  API_RUNNER=(".venv/bin/python")
+elif command -v uv >/dev/null 2>&1 && [ -f "pyproject.toml" ]; then
   API_RUNNER=(uv run --no-sync python)
 else
   API_RUNNER=(python)
