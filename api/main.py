@@ -2028,6 +2028,159 @@ def save_chat_to_obsidian(req: SaveToObsidianRequest):
     return {"path": relative_path, "message_count": len(messages)}
 
 
+class DebateCautiousData(BaseModel):
+    opinion: str = ""
+    reasons: List[str] = []
+    key_risks: List[str] = []
+
+
+class DebateAggressiveData(BaseModel):
+    opinion: str = ""
+    reasons: List[str] = []
+    opportunities: List[str] = []
+
+
+class SaveDebateToObsidianRequest(BaseModel):
+    company_name: str = ""
+    score: int = 0
+    grade: str = ""
+    cautious: Optional[DebateCautiousData] = None
+    aggressive: Optional[DebateAggressiveData] = None
+    arbiter_summary: str = ""
+    final_decision: str = ""
+    conditions: List[str] = []
+    debate_log: Optional[str] = None
+    screened_at: Optional[str] = None
+
+
+@app.post("/api/debate/save-to-obsidian")
+def save_debate_to_obsidian(req: SaveDebateToObsidianRequest):
+    """討論審査結果を Obsidian Vault の Debates/ フォルダに保存する。"""
+    import datetime
+    import re as _re
+
+    _DEFAULT_VAULT = "/Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/"
+    vault_root = os.environ.get("OBSIDIAN_VAULT_PATH", _DEFAULT_VAULT)
+
+    if not vault_root or not os.path.isdir(vault_root):
+        raise HTTPException(status_code=503, detail=f"Obsidian Vault が見つかりません: {vault_root}")
+
+    debates_dir = os.path.join(vault_root, "Debates")
+    os.makedirs(debates_dir, exist_ok=True)
+
+    today = datetime.date.today().strftime("%Y-%m-%d")
+    company = req.company_name.strip() or "不明"
+    safe_company = _re.sub(r'[\\/:*?"<>|\n\r\t]', "_", company)[:40].strip("_").strip() or "不明"
+    filename = f"{today}_{safe_company}.md"
+    filepath = os.path.join(debates_dir, filename)
+
+    # グレード計算（フロントから来なければスコアで自動算出）
+    grade = req.grade
+    if not grade:
+        s = req.score
+        if s >= 80:
+            grade = "A"
+        elif s >= 60:
+            grade = "B"
+        elif s >= 40:
+            grade = "C"
+        elif s >= 20:
+            grade = "D"
+        else:
+            grade = "E"
+
+    # frontmatter
+    lines = [
+        "---",
+        f"date: {today}",
+        "type: debate_result",
+        f"company: {company}",
+        f"score: {req.score}",
+        f"grade: {grade}",
+        f"decision: {req.final_decision}",
+        "---",
+        "",
+        f"# 討論審査: {company}",
+        "",
+        f"**スコア**: {req.score}点 / グレード: {grade} / **判定**: {req.final_decision}",
+        "",
+    ]
+
+    # 討論エージェントセクション
+    if req.cautious or req.aggressive:
+        lines += ["## 討論結果（第2ラウンド最終立場）", ""]
+
+        if req.cautious:
+            lines += [
+                "### 石橋（慎重派）",
+                "",
+                f"**意見**: {req.cautious.opinion}",
+                "",
+                "**判断理由**",
+                "",
+            ]
+            for r in req.cautious.reasons:
+                lines.append(f"- {r}")
+            if req.cautious.key_risks:
+                lines += ["", "**重大リスク**", ""]
+                for r in req.cautious.key_risks:
+                    lines.append(f"- {r}")
+            lines.append("")
+
+        if req.aggressive:
+            lines += [
+                "### 風林火山（積極派）",
+                "",
+                f"**意見**: {req.aggressive.opinion}",
+                "",
+                "**判断理由**",
+                "",
+            ]
+            for r in req.aggressive.reasons:
+                lines.append(f"- {r}")
+            if req.aggressive.opportunities:
+                lines += ["", "**見逃せない機会**", ""]
+                for r in req.aggressive.opportunities:
+                    lines.append(f"- {r}")
+            lines.append("")
+
+    # 軍師セクション
+    lines += [
+        "## 軍師の最終判断",
+        "",
+        req.arbiter_summary,
+        "",
+    ]
+
+    if req.conditions:
+        lines += ["### 承認条件", ""]
+        for i, c in enumerate(req.conditions, 1):
+            lines.append(f"{i}. {c}")
+        lines.append("")
+
+    # 討論ログ
+    if req.debate_log:
+        lines += [
+            "## 討論ログ",
+            "",
+            "```",
+            req.debate_log,
+            "```",
+            "",
+        ]
+
+    content = "\n".join(lines)
+
+    try:
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(content)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ファイル書き込みエラー: {e}")
+
+    relative_path = f"Debates/{filename}"
+    return {"path": relative_path}
+
+
 @app.get("/api/analysis/network_risk")
 def api_network_risk(industry: str = ""):
     """業種コードまたは業種名からサプライチェーン波及リスクを計算する"""
