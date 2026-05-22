@@ -2132,12 +2132,26 @@ def delete_conversation_history(session_id: str):
 
 # ── 汎用チャット（永続記憶）エンドポイント ─────────────────────────────────────
 
-_CHAT_SYSTEM_PROMPT = (
-    "あなたはtuneリース審査システムの専属アドバイザーです。"
-    "リース審査・審査ナレッジ・業界動向について毎日相談に乗ります。"
-    "ユーザーのことをよく知っている相棒として、親しみやすく丁寧に振る舞ってください。"
-    "回答は日本語で、簡潔かつ的確にお願いします。"
-)
+_CHAT_SYSTEM_PROMPT = """あなたはtuneリース審査システムの専属AIアドバイザー「めぶきちゃん」です。
+リース会社の審査担当者の相棒として、専門的かつ親しみやすく回答します。
+
+## あなたの専門領域
+- **リース取引の基礎**: ファイナンスリースとオペレーティングリースの判定基準（経済的耐用年数の75%ルール、現在価値90%ルール）、リース料計算（元利均等・元金均等）、残価設定リースの仕組み
+- **審査実務**: 信用調査の進め方、財務3表分析（PL/BS/CF）、債務償還年数・インタレストカバレッジ・自己資本比率の読み方、業種別リスク特性、担保・保証の取り方
+- **会計・税務**: リース会計基準（IFRS16号・日本基準）、オフバランス処理、消費税取扱い、リース料の損金算入
+- **法律・規制**: リース事業協会の自主規制、割賦販売法、金融庁の監督指針
+- **市場・業界**: 国内リース市場動向、主要リース会社の戦略、金利環境とリース需要の関係
+
+## 回答スタイル
+- 専門用語は使いつつも、必要に応じて簡単に説明を加える
+- 数値や根拠を示して具体的に答える
+- 「この案件どう思う？」のような相談には審査担当者目線で率直に意見を言う
+- 回答は簡潔に。長くなる場合は箇条書きを活用する
+- 日本語で回答する
+
+## 参照情報
+ユーザーの質問に関連するナレッジが【参照ナレッジ】として提供される場合があります。
+その情報を優先的に参照して回答してください。"""
 
 
 class ChatRequest(BaseModel):
@@ -2157,15 +2171,40 @@ def post_chat(req: ChatRequest):
             call_gemini_chat,
             get_message_count,
         )
+
+        # RAG: obsidian_knowledge から関連ナレッジを取得
+        rag_context = ""
+        try:
+            import chromadb
+            chroma_client = chromadb.PersistentClient(path="api/chroma_db")
+            collection = chroma_client.get_collection("obsidian_knowledge")
+            results = collection.query(
+                query_texts=[req.message],
+                n_results=5,
+                include=["documents"]
+            )
+            docs = results.get("documents", [[]])[0]
+            if docs:
+                rag_context = "\n\n【参照ナレッジ】\n" + "\n---\n".join(
+                    d[:500] for d in docs if d.strip()
+                )
+        except Exception as e:
+            print(f"[RAG] ChromaDB検索エラー: {e}")
+
+        # システムプロンプトにRAGコンテキストを追記
+        effective_prompt = _CHAT_SYSTEM_PROMPT + rag_context
+
         history = get_recent_messages(req.user_id, limit=20)
         history_for_gemini = [{"role": m["role"], "content": m["content"]} for m in history]
-        reply = call_gemini_chat(_CHAT_SYSTEM_PROMPT, history_for_gemini, req.message)
+        reply = call_gemini_chat(effective_prompt, history_for_gemini, req.message)
         save_message(req.user_id, "user", req.message)
         save_message(req.user_id, "assistant", reply)
         total = get_message_count(req.user_id)
-        return {"reply": reply, "history_count": total}
+        return {"reply": reply, "total_messages": total}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="内部エラーが発生しました")
 
 
 @app.get("/api/chat/history")
