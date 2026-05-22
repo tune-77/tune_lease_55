@@ -5,6 +5,24 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+# ── ロックファイル: 二重起動を防ぐ ──────────────────────────────
+LOCK_FILE="/tmp/tune_lease_launcher.lock"
+if [ -f "$LOCK_FILE" ]; then
+  existing_pid="$(cat "$LOCK_FILE" 2>/dev/null || true)"
+  if [ -n "$existing_pid" ] && kill -0 "$existing_pid" 2>/dev/null; then
+    echo "ERROR: launcher is already running (PID $existing_pid)."
+    echo "       To stop it: kill $existing_pid"
+    echo "       Or remove the lock: rm $LOCK_FILE"
+    exit 1
+  else
+    echo "Stale lock file found. Removing..."
+    rm -f "$LOCK_FILE"
+  fi
+fi
+echo $$ > "$LOCK_FILE"
+trap 'rm -f "$LOCK_FILE"' EXIT
+# ───────────────────────────────────────────────────────────────────
+
 API_PORT="${API_PORT:-8000}"
 NEXT_PORT="${NEXT_PORT:-3000}"
 API_HOST="${API_HOST:-127.0.0.1}"
@@ -62,7 +80,6 @@ echo "Build log: $BUILD_LOG"
 echo ""
 
 echo "Starting FastAPI on http://${API_HOST}:${API_PORT}"
-# uv 管理の .venv があれば uv run、無ければ素の python にフォールバック
 # .venv が存在すればそちらを優先（uv run はキャッシュ権限エラーを起こす場合があるため）
 if [ -f ".venv/bin/python" ]; then
   API_RUNNER=(".venv/bin/python")
