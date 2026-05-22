@@ -592,7 +592,10 @@ export default function AgentHubPage() {
                   </div>
                   {novelResult.obsidian_files_used && novelResult.obsidian_files_used.length > 0 && (
                     <div className="text-[10px] text-emerald-400/60 font-mono">
-                      素材: {novelResult.obsidian_files_used.map((p) => p.split(/[\\/]/).pop()).join(", ")}
+                      素材: {novelResult.obsidian_files_used.map((p) => {
+                      const segs = p.replace(/\\/g, "/").split("/");
+                      return segs.length >= 2 ? segs.slice(-2).join("/") : segs[0];
+                    }).join(", ")}
                     </div>
                   )}
                   <div className="text-white font-bold text-lg font-serif">{novelResult.title}</div>
