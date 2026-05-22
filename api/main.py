@@ -1580,16 +1580,110 @@ def get_latest_novel_api():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/agent_hub/script/generate")
+def generate_script_api():
+    """脚本家AIが最新ニュースからプロットを生成・保存する。"""
+    try:
+        import scriptwriter_agent
+        plot_data = scriptwriter_agent.generate_weekly_plot()
+        return {
+            "title": plot_data.get("title"),
+            "plot_text": plot_data.get("plot_text"),
+            "story_arc": plot_data.get("story_arc"),
+            "source_news": plot_data.get("source_news", []),
+            "generated_at": plot_data.get("generated_at"),
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/agent_hub/script/latest")
+def get_latest_script_api():
+    """保存済みの最新プロットを返す。"""
+    try:
+        import scriptwriter_agent
+        plot = scriptwriter_agent.get_latest_plot()
+        return {"plot": plot}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/agent_hub/novel/generate")
 def generate_novel_api():
-    """文豪AI「波乱丸」の小説生成エンドポイント。novelist_agent.generate_novel() に委譲。"""
-    from novelist_agent import generate_novel
+    """文豪AI「波乱丸」の小説生成エンドポイント（連作対応版）。
+    1. 最新プロットの鮮度確認 → 1時間超なら再取得
+    2. 直近3話サマリーを custom_theme に注入
+    3. novelist_agent.generate_novel() に委譲
+    """
+    import datetime as _dt
     try:
-        result = generate_novel()
+        # ── 1. ネット情報取得（1時間キャッシュ）─────────────────────────────
+        try:
+            import scriptwriter_agent as _sa
+            _existing = _sa.get_latest_plot()
+            _plot_fresh = False
+            if _existing and _existing.get("generated_at"):
+                try:
+                    _gen_at = _dt.datetime.strptime(
+                        _existing["generated_at"], "%Y-%m-%d %H:%M:%S"
+                    )
+                    if (_dt.datetime.now() - _gen_at).total_seconds() < 3600:
+                        _plot_fresh = True
+                except Exception:
+                    pass
+            if not _plot_fresh:
+                _sa.generate_weekly_plot()
+        except Exception:
+            pass  # ネット取得失敗でも小説生成は続行する
+
+        # ── 2. 前話サマリー構築（直近3話、古い順）────────────────────────────
+        from novelist_agent import generate_novel, load_novels
+        recent = load_novels(limit=3)
+        recent_sorted = list(reversed(recent))  # 新→古 → 古→新 に並べ直す
+
+        prev_summary = ""
+        if recent_sorted:
+            lines = [
+                "【連作継続】これまでのあらすじ（必ずストーリーを発展させること）:"
+            ]
+            for ep in recent_sorted:
+                body_preview = (ep.get("body") or "")[:200]
+                lines.append(
+                    f"第{ep['episode_no']}話「{ep['title']}」: {body_preview}..."
+                )
+            prev_summary = "\n".join(lines)
+
+        # ── 3. 小説生成 ────────────────────────────────────────────────────────
+        result = generate_novel(custom_theme=prev_summary)
         return result
     except Exception as e:
         import traceback
         traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/agent_hub/novel/episodes")
+def get_novel_episodes_api():
+    """小説エピソード一覧（バックナンバー）を返す。最大20件。"""
+    from novelist_agent import load_novels
+    try:
+        novels = load_novels(limit=20)
+        episodes = [
+            {
+                "id": n["id"],
+                "episode_no": n["episode_no"],
+                "title": n["title"],
+                "week_label": n["week_label"],
+                "ts": n["ts"],
+                "body_preview": (n.get("body") or "")[:150],
+                "body": n.get("body") or "",
+            }
+            for n in novels
+        ]
+        return {"episodes": episodes}
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 class AgentRunRequest(BaseModel):

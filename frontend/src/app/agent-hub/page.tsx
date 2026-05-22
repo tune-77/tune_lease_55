@@ -22,7 +22,11 @@ import {
   AlertCircle,
   Loader2,
   ChevronRight,
-  MessageSquare
+  ChevronDown,
+  MessageSquare,
+  Radio,
+  PenLine,
+  Library
 } from "lucide-react";
 import { triggerMebuki } from "../../components/layout/FloatingMebuki";
 import { INDUSTRIES } from "@/constants/industries";
@@ -48,6 +52,24 @@ interface NovelEntry {
   week_label: string;
   title: string;
   body?: string;
+}
+
+interface PlotData {
+  title: string;
+  plot_text: string;
+  story_arc: string;
+  source_news: { title: string; url: string; date: string }[];
+  generated_at: string;
+}
+
+interface EpisodeEntry {
+  id: number;
+  episode_no: number;
+  title: string;
+  week_label: string;
+  ts: string;
+  body_preview: string;
+  body: string;
 }
 
 interface Agent {
@@ -87,12 +109,19 @@ export default function AgentHubPage() {
   const [latestNovel, setLatestNovel] = useState<NovelEntry | null>(null);
   const [loadingThoughts, setLoadingThoughts] = useState(true);
   const [benchmarkIndustry, setBenchmarkIndustry] = useState("製造業");
+  const [latestPlot, setLatestPlot] = useState<PlotData | null>(null);
+  const [isGeneratingPlot, setIsGeneratingPlot] = useState(false);
+  const [isWritingNovel, setIsWritingNovel] = useState(false);
+  const [episodes, setEpisodes] = useState<EpisodeEntry[]>([]);
+  const [openEpisodeId, setOpenEpisodeId] = useState<number | null>(null);
+  const [novelResult, setNovelResult] = useState<NovelEntry | null>(null);
 
   const thoughtsEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchThoughts();
     fetchLatestNovel();
+    fetchEpisodes();
     const interval = setInterval(fetchThoughts, 15000); // 15秒おきに更新
     return () => clearInterval(interval);
   }, []);
@@ -114,6 +143,44 @@ export default function AgentHubPage() {
       setLatestNovel(res.data.novel);
     } catch (err) {
       console.error("Failed to fetch novel", err);
+    }
+  };
+
+  const fetchEpisodes = async () => {
+    try {
+      const res = await axios.get(`/api/agent_hub/novel/episodes`);
+      setEpisodes(res.data.episodes || []);
+    } catch (err) {
+      console.error("Failed to fetch episodes", err);
+    }
+  };
+
+  const generatePlot = async () => {
+    setIsGeneratingPlot(true);
+    try {
+      const res = await axios.post(`/api/agent_hub/script/generate`);
+      setLatestPlot(res.data);
+      fetchThoughts();
+    } catch (err: any) {
+      console.error("Failed to generate plot", err);
+    } finally {
+      setIsGeneratingPlot(false);
+    }
+  };
+
+  const writeSerialNovel = async () => {
+    setIsWritingNovel(true);
+    setNovelResult(null);
+    try {
+      const res = await axios.post(`/api/agent_hub/novel/generate`);
+      setNovelResult(res.data);
+      fetchLatestNovel();
+      fetchEpisodes();
+      fetchThoughts();
+    } catch (err: any) {
+      console.error("Failed to write novel", err);
+    } finally {
+      setIsWritingNovel(false);
     }
   };
 
@@ -375,6 +442,91 @@ export default function AgentHubPage() {
                 </div>
               </div>
             )}
+
+            {/* 連作・ネット連動 コントロールパネル */}
+            <div className="mt-8 space-y-4">
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={generatePlot}
+                  disabled={isGeneratingPlot || isWritingNovel}
+                  className="flex items-center gap-2 px-4 py-2 bg-sky-600/20 hover:bg-sky-600/30 border border-sky-500/30 text-sky-300 text-sm font-bold rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isGeneratingPlot ? <Loader2 className="w-4 h-4 animate-spin" /> : <Radio className="w-4 h-4" />}
+                  {isGeneratingPlot ? "ニュースを取得中..." : "📡 ネット情報を取得してプロット生成"}
+                </button>
+                <button
+                  onClick={writeSerialNovel}
+                  disabled={isWritingNovel || isGeneratingPlot}
+                  className="flex items-center gap-2 px-4 py-2 bg-pink-600/20 hover:bg-pink-600/30 border border-pink-500/30 text-pink-300 text-sm font-bold rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isWritingNovel ? <Loader2 className="w-4 h-4 animate-spin" /> : <PenLine className="w-4 h-4" />}
+                  {isWritingNovel ? "執筆中...（前話のあらすじを読んで...）" : "✍️ 連作として次話を執筆"}
+                </button>
+              </div>
+
+              {/* プロット表示 */}
+              {latestPlot && (
+                <div className="p-4 rounded-xl border border-sky-500/20 bg-sky-900/10 space-y-2">
+                  <div className="flex items-center gap-2 text-sky-400 text-xs font-bold uppercase tracking-widest">
+                    <Radio className="w-3 h-3" /> 今週のプロット
+                  </div>
+                  <div className="text-white font-bold">{latestPlot.title}</div>
+                  <div className="text-slate-400 text-sm leading-relaxed line-clamp-4">{latestPlot.plot_text}</div>
+                  {latestPlot.source_news?.length > 0 && (
+                    <div className="text-xs text-slate-500 mt-2">
+                      <span className="font-bold text-slate-400">出典ニュース: </span>
+                      {latestPlot.source_news.slice(0, 3).map((n, i) => (
+                        <span key={i}>{i > 0 ? " / " : ""}{n.title}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 新着エピソード表示 */}
+              {novelResult && (
+                <div className="p-4 rounded-xl border border-pink-500/20 bg-pink-900/10 space-y-2">
+                  <div className="flex items-center gap-2 text-pink-400 text-xs font-bold uppercase tracking-widest">
+                    <PenLine className="w-3 h-3" /> 新着エピソード
+                  </div>
+                  <div className="text-white font-bold text-lg font-serif">{novelResult.title}</div>
+                  <div className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap max-h-64 overflow-y-auto">
+                    {novelResult.body}
+                  </div>
+                </div>
+              )}
+
+              {/* バックナンバー */}
+              {episodes.length > 0 && (
+                <div className="rounded-xl border border-slate-700/50 bg-slate-900/30 overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-700/50 text-slate-300 text-sm font-bold">
+                    <Library className="w-4 h-4 text-pink-400" />
+                    バックナンバー ({episodes.length}話)
+                  </div>
+                  <div className="divide-y divide-slate-800/50 max-h-96 overflow-y-auto">
+                    {episodes.map((ep) => (
+                      <div key={ep.id} className="group">
+                        <button
+                          onClick={() => setOpenEpisodeId(openEpisodeId === ep.id ? null : ep.id)}
+                          className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors text-left"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="text-[10px] font-bold text-pink-500/70 tracking-widest font-mono">VOL.{ep.episode_no}</span>
+                            <span className="text-sm font-serif text-slate-200">{ep.title}</span>
+                          </div>
+                          <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${openEpisodeId === ep.id ? "rotate-180" : ""}`} />
+                        </button>
+                        {openEpisodeId === ep.id && (
+                          <div className="px-4 pb-4 text-sm text-slate-400 leading-relaxed whitespace-pre-wrap font-serif max-h-80 overflow-y-auto border-t border-slate-800/50 pt-3">
+                            {ep.body}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Right Column: Thoughts Feed */}
