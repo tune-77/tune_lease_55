@@ -105,6 +105,12 @@ async def lifespan(app: FastAPI):
         init_conversation_history_table()
     except Exception as e:
         print(f"[API] conversation_history table init failed (non-fatal): {e}")
+    # startup: 汎用チャットメッセージテーブルの初期化
+    try:
+        from api.chat_memory import init_chat_messages_table
+        init_chat_messages_table()
+    except Exception as e:
+        print(f"[API] chat_messages table init failed (non-fatal): {e}")
     # startup: 結晶化スケジューラー起動（毎日02:00）
     try:
         from api.scheduler import start_scheduler
@@ -1895,6 +1901,66 @@ def delete_conversation_history(session_id: str):
         from api.database import delete_conversation_session
         deleted = delete_conversation_session(session_id)
         return {"deleted": deleted, "session_id": session_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── 汎用チャット（永続記憶）エンドポイント ─────────────────────────────────────
+
+_CHAT_SYSTEM_PROMPT = (
+    "あなたはtuneリース審査システムの専属アドバイザーです。"
+    "リース審査・審査ナレッジ・業界動向について毎日相談に乗ります。"
+    "ユーザーのことをよく知っている相棒として、親しみやすく丁寧に振る舞ってください。"
+    "回答は日本語で、簡潔かつ的確にお願いします。"
+)
+
+
+class ChatRequest(BaseModel):
+    message: str
+    user_id: str = "default"
+
+
+@app.post("/api/chat")
+def post_chat(req: ChatRequest):
+    """汎用チャット：メッセージを受け取り、会話履歴付きでGeminiへ送信して返答する。"""
+    if not req.message.strip():
+        raise HTTPException(status_code=422, detail="message は空にできません")
+    try:
+        from api.chat_memory import (
+            get_recent_messages,
+            save_message,
+            call_gemini_chat,
+            get_message_count,
+        )
+        history = get_recent_messages(req.user_id, limit=20)
+        history_for_gemini = [{"role": m["role"], "content": m["content"]} for m in history]
+        reply = call_gemini_chat(_CHAT_SYSTEM_PROMPT, history_for_gemini, req.message)
+        save_message(req.user_id, "user", req.message)
+        save_message(req.user_id, "assistant", reply)
+        total = get_message_count(req.user_id)
+        return {"reply": reply, "history_count": total}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/chat/history")
+def get_chat_history(user_id: str = "default", limit: int = 50):
+    """汎用チャット履歴を取得する。"""
+    try:
+        from api.chat_memory import get_recent_messages
+        messages = get_recent_messages(user_id, limit=min(limit, 200))
+        return {"user_id": user_id, "count": len(messages), "messages": messages}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/chat/history")
+def delete_chat_history(user_id: str = "default"):
+    """汎用チャット履歴を全削除する。"""
+    try:
+        from api.chat_memory import delete_history
+        deleted = delete_history(user_id)
+        return {"deleted": deleted, "user_id": user_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
