@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
 import { apiClient } from "@/lib/api";
-import { Send, X, Loader2 } from "lucide-react";
+import { Send, X, Loader2, NotebookPen } from "lucide-react";
 
 const YANAMI_BOT_MESSAGES = [
   "システム稼働中。いつでもサポートします！",
@@ -36,6 +36,8 @@ export default function FloatingMebuki() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [savingObsidian, setSavingObsidian] = useState(false);
+  const [saveToast, setSaveToast] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -143,6 +145,21 @@ export default function FloatingMebuki() {
     }
   };
 
+  const saveToObsidian = async () => {
+    if (savingObsidian) return;
+    setSavingObsidian(true);
+    try {
+      await apiClient.post("/api/chat/save-to-obsidian", { user_id: USER_ID });
+      setSaveToast("Obsidianに保存しました ✅");
+      setTimeout(() => setSaveToast(null), 2000);
+    } catch {
+      setSaveToast("保存に失敗しました ❌");
+      setTimeout(() => setSaveToast(null), 2000);
+    } finally {
+      setSavingObsidian(false);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -184,13 +201,34 @@ export default function FloatingMebuki() {
               />
               <span className="text-white font-black text-sm">💬 めぶきちゃん</span>
             </div>
-            <button
-              onClick={closeChat}
-              className="text-white/80 hover:text-white transition-colors"
-              aria-label="閉じる"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Obsidian保存トースト */}
+              {saveToast && (
+                <span className="text-white text-[10px] font-bold bg-white/20 rounded-lg px-2 py-0.5 whitespace-nowrap">
+                  {saveToast}
+                </span>
+              )}
+              <button
+                onClick={saveToObsidian}
+                disabled={savingObsidian}
+                className="text-white/80 hover:text-white transition-colors disabled:opacity-50"
+                aria-label="Obsidianに保存"
+                title="Obsidianに保存"
+              >
+                {savingObsidian ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <NotebookPen className="w-4 h-4" />
+                )}
+              </button>
+              <button
+                onClick={closeChat}
+                className="text-white/80 hover:text-white transition-colors"
+                aria-label="閉じる"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
           {/* メッセージエリア */}

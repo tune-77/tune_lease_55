@@ -1965,6 +1965,69 @@ def delete_chat_history(user_id: str = "default"):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class SaveToObsidianRequest(BaseModel):
+    user_id: str = "default"
+    title: Optional[str] = None
+
+
+@app.post("/api/chat/save-to-obsidian")
+def save_chat_to_obsidian(req: SaveToObsidianRequest):
+    """チャット履歴を Obsidian Vault の Chat/ フォルダに保存する。"""
+    import datetime
+    import re as _re
+
+    try:
+        from api.chat_memory import get_recent_messages
+        messages = get_recent_messages(req.user_id, limit=100)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"履歴取得エラー: {e}")
+
+    _DEFAULT_VAULT = "/Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/"
+    vault_root = os.environ.get("OBSIDIAN_VAULT_PATH", _DEFAULT_VAULT)
+
+    if not vault_root or not os.path.isdir(vault_root):
+        raise HTTPException(status_code=503, detail=f"Obsidian Vault が見つかりません: {vault_root}")
+
+    chat_dir = os.path.join(vault_root, "Chat")
+    os.makedirs(chat_dir, exist_ok=True)
+
+    title = (req.title or "AI相談メモ").strip() or "AI相談メモ"
+    today = datetime.date.today().strftime("%Y-%m-%d")
+
+    # ファイル名に使えない文字を除去
+    safe_title = _re.sub(r'[\\/:*?"<>|\n\r\t]', "_", title)[:40].strip("_").strip() or "AI相談メモ"
+    filename = f"{today}_{safe_title}.md"
+    filepath = os.path.join(chat_dir, filename)
+
+    # Markdown 本文を組み立て
+    lines = [
+        "---",
+        f"date: {today}",
+        "type: chat_log",
+        "---",
+        "",
+        f"# {title}",
+        "",
+    ]
+    for msg in messages:
+        role_label = "User" if msg["role"] == "user" else "めぶき"
+        lines.append(f"**{role_label}**: {msg['content']}")
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+    content = "\n".join(lines)
+
+    try:
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(content)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ファイル書き込みエラー: {e}")
+
+    relative_path = f"Chat/{filename}"
+    return {"path": relative_path, "message_count": len(messages)}
+
+
 @app.get("/api/analysis/network_risk")
 def api_network_risk(industry: str = ""):
     """業種コードまたは業種名からサプライチェーン波及リスクを計算する"""
