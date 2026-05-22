@@ -1,6 +1,7 @@
 """
 Obsidian Vault の .md ファイルを再帰スキャンし、
 H2見出し単位でチャンキングして返す。
+wikiリンク（[[ノート名]]）をメタデータに含めてRAGのグラフ拡張に使う。
 """
 from __future__ import annotations
 
@@ -21,6 +22,20 @@ _VAULT_PATH = os.environ.get("OBSIDIAN_VAULT_PATH", _DEFAULT_VAULT_PATH)
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 # H2 見出し（## ）
 _H2_RE = re.compile(r"^##\s+(.+)$", re.MULTILINE)
+# wikiリンク [[ノート名]] または [[ノート名|表示名]]
+_WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]")
+
+
+def extract_wikilinks(text: str) -> list[str]:
+    """[[リンク先]] を抽出してユニークなリストで返す。"""
+    seen = set()
+    result = []
+    for m in _WIKILINK_RE.finditer(text):
+        name = m.group(1).strip()
+        if name and name not in seen:
+            seen.add(name)
+            result.append(name)
+    return result
 
 
 @dataclass
@@ -68,6 +83,10 @@ def _chunk_by_h2(body: str, file_path: str, file_name: str, meta: dict, mtime: f
     """H2見出し単位でチャンキングする。H2がない場合はファイル全体を1チャンク。"""
     positions = [(m.start(), m.group(1)) for m in _H2_RE.finditer(body)]
 
+    # ファイル全体のwikilinksを抽出（ファイル単位で共有）
+    file_wikilinks = extract_wikilinks(body)
+    wikilinks_str = ",".join(file_wikilinks[:20])  # 最大20件
+
     if not positions:
         text = body.strip()
         if not text:
@@ -77,7 +96,7 @@ def _chunk_by_h2(body: str, file_path: str, file_name: str, meta: dict, mtime: f
             file_name=file_name,
             section="概要",
             text=text,
-            metadata=meta,
+            metadata={**meta, "wikilinks": wikilinks_str},
             mtime=mtime,
         )]
 
@@ -94,7 +113,7 @@ def _chunk_by_h2(body: str, file_path: str, file_name: str, meta: dict, mtime: f
             file_name=file_name,
             section=heading.strip(),
             text=text_without_heading,
-            metadata={**meta, "section": heading.strip()},
+            metadata={**meta, "section": heading.strip(), "wikilinks": wikilinks_str},
             mtime=mtime,
         ))
     return chunks

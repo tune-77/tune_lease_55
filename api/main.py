@@ -2191,15 +2191,49 @@ def post_chat(req: ChatRequest):
             get_message_count,
         )
 
-        # RAG: obsidian_knowledge から関連ナレッジを取得（シングルトン使用）
+        # RAG: obsidian_knowledge から関連ナレッジを取得（wikiリンクグラフ拡張付き）
         rag_context = ""
         try:
             collection = _get_obsidian_collection()
             if collection is not None:
-                results = collection.query(query_texts=[req.message], n_results=5, include=["documents"])
+                # Step A: ベクター検索（上位5件）+ メタデータ取得
+                results = collection.query(
+                    query_texts=[req.message],
+                    n_results=5,
+                    include=["documents", "metadatas"]
+                )
                 docs = results.get("documents", [[]])[0]
-                if docs:
-                    rag_context = "\n\n【参照ナレッジ】\n" + "\n---\n".join(d[:500] for d in docs if d.strip())
+                metas = results.get("metadatas", [[]])[0]
+
+                # Step B: wikiリンク先のノートも追加取得
+                linked_names = set()
+                for meta in metas:
+                    wikilinks = (meta or {}).get("wikilinks", "")
+                    if wikilinks:
+                        for link in wikilinks.split(","):
+                            link = link.strip()
+                            if link:
+                                linked_names.add(link)
+
+                extra_docs = []
+                for linked_name in list(linked_names)[:6]:
+                    try:
+                        link_results = collection.get(
+                            where={"file_name": {"$eq": linked_name + ".md"}},
+                            limit=1,
+                            include=["documents"]
+                        )
+                        link_docs = link_results.get("documents", [])
+                        if link_docs:
+                            extra_docs.append(link_docs[0][:400])
+                    except Exception:
+                        pass
+
+                all_docs = [d[:500] for d in docs if d.strip()]
+                all_docs += extra_docs[:3]
+
+                if all_docs:
+                    rag_context = "\n\n【参照ナレッジ】\n" + "\n---\n".join(all_docs)
         except Exception as e:
             print(f"[RAG] 検索エラー: {e}")
 
