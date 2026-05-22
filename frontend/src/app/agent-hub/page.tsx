@@ -72,6 +72,13 @@ interface EpisodeEntry {
   body: string;
 }
 
+interface ObsidianNote {
+  path: string;
+  title: string;
+  modified: string;
+  size: number;
+}
+
 interface Agent {
   id: string;
   name: string;
@@ -114,7 +121,11 @@ export default function AgentHubPage() {
   const [isWritingNovel, setIsWritingNovel] = useState(false);
   const [episodes, setEpisodes] = useState<EpisodeEntry[]>([]);
   const [openEpisodeId, setOpenEpisodeId] = useState<number | null>(null);
-  const [novelResult, setNovelResult] = useState<NovelEntry | null>(null);
+  const [novelResult, setNovelResult] = useState<NovelEntry & { obsidian_files_used?: string[] } | null>(null);
+  const [obsidianNotes, setObsidianNotes] = useState<ObsidianNote[]>([]);
+  const [selectedObsidianPaths, setSelectedObsidianPaths] = useState<string[]>([]);
+  const [isLoadingObsidian, setIsLoadingObsidian] = useState(false);
+  const [showObsidianPanel, setShowObsidianPanel] = useState(false);
 
   const thoughtsEndRef = useRef<HTMLDivElement>(null);
 
@@ -168,11 +179,34 @@ export default function AgentHubPage() {
     }
   };
 
+  const fetchObsidianNotes = async () => {
+    setIsLoadingObsidian(true);
+    try {
+      const res = await axios.get(`/api/obsidian/notes`);
+      setObsidianNotes((res.data || []).slice(0, 20));
+      setShowObsidianPanel(true);
+    } catch (err: any) {
+      console.error("Failed to fetch obsidian notes", err);
+      setObsidianNotes([]);
+      setShowObsidianPanel(true);
+    } finally {
+      setIsLoadingObsidian(false);
+    }
+  };
+
+  const toggleObsidianPath = (path: string) => {
+    setSelectedObsidianPaths((prev) =>
+      prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path]
+    );
+  };
+
   const writeSerialNovel = async () => {
     setIsWritingNovel(true);
     setNovelResult(null);
     try {
-      const res = await axios.post(`/api/agent_hub/novel/generate`);
+      const res = await axios.post(`/api/agent_hub/novel/generate`, {
+        obsidian_paths: selectedObsidianPaths,
+      });
       setNovelResult(res.data);
       fetchLatestNovel();
       fetchEpisodes();
@@ -191,7 +225,9 @@ export default function AgentHubPage() {
 
     try {
       if (agentId === "novel") {
-        const res = await axios.post(`/api/agent_hub/novel/generate`);
+        const res = await axios.post(`/api/agent_hub/novel/generate`, {
+          obsidian_paths: selectedObsidianPaths,
+        });
         setResult(res.data);
         fetchLatestNovel();
         fetchThoughts();
@@ -445,6 +481,71 @@ export default function AgentHubPage() {
 
             {/* 連作・ネット連動 コントロールパネル */}
             <div className="mt-8 space-y-4">
+              {/* Obsidianノート選択パネル */}
+              <div className="space-y-2">
+                <button
+                  onClick={fetchObsidianNotes}
+                  disabled={isLoadingObsidian || isWritingNovel}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 text-sm font-bold rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isLoadingObsidian ? <Loader2 className="w-4 h-4 animate-spin" /> : <Library className="w-4 h-4" />}
+                  {selectedObsidianPaths.length > 0
+                    ? `📂 ${selectedObsidianPaths.length}ファイル選択中`
+                    : "📂 Obsidianから素材を選択"}
+                </button>
+
+                {showObsidianPanel && (
+                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-900/10 overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-2 border-b border-emerald-800/30">
+                      <span className="text-emerald-400 text-xs font-bold uppercase tracking-widest flex items-center gap-1">
+                        <Library className="w-3 h-3" /> Obsidian Vault
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {selectedObsidianPaths.length > 0 && (
+                          <button
+                            onClick={() => setSelectedObsidianPaths([])}
+                            className="text-[10px] text-emerald-400/60 hover:text-emerald-300 transition-colors"
+                          >
+                            選択解除
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setShowObsidianPanel(false)}
+                          className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors"
+                        >
+                          閉じる
+                        </button>
+                      </div>
+                    </div>
+                    {obsidianNotes.length === 0 ? (
+                      <div className="px-4 py-3 text-slate-500 text-sm">
+                        ノートが見つかりません（OBSIDIAN_VAULT_PATH を確認してください）
+                      </div>
+                    ) : (
+                      <div className="max-h-48 overflow-y-auto divide-y divide-emerald-900/20">
+                        {obsidianNotes.map((note) => (
+                          <label
+                            key={note.path}
+                            className="flex items-center gap-3 px-4 py-2 hover:bg-emerald-900/20 cursor-pointer transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedObsidianPaths.includes(note.path)}
+                              onChange={() => toggleObsidianPath(note.path)}
+                              className="accent-emerald-500 w-3.5 h-3.5 shrink-0"
+                            />
+                            <span className="text-slate-200 text-sm truncate">{note.title}</span>
+                            <span className="ml-auto text-[10px] text-slate-600 shrink-0 font-mono">
+                              {(note.size / 1024).toFixed(1)}KB
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <div className="flex flex-wrap gap-3">
                 <button
                   onClick={generatePlot}
@@ -489,6 +590,11 @@ export default function AgentHubPage() {
                   <div className="flex items-center gap-2 text-pink-400 text-xs font-bold uppercase tracking-widest">
                     <PenLine className="w-3 h-3" /> 新着エピソード
                   </div>
+                  {novelResult.obsidian_files_used && novelResult.obsidian_files_used.length > 0 && (
+                    <div className="text-[10px] text-emerald-400/60 font-mono">
+                      素材: {novelResult.obsidian_files_used.map((p) => p.split(/[\\/]/).pop()).join(", ")}
+                    </div>
+                  )}
                   <div className="text-white font-bold text-lg font-serif">{novelResult.title}</div>
                   <div className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap max-h-64 overflow-y-auto">
                     {novelResult.body}
