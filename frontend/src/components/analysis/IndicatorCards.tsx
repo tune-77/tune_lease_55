@@ -1,22 +1,45 @@
 import React from 'react';
-import { Target, TrendingUp, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Target, TrendingUp, ShieldCheck } from 'lucide-react';
+
+type IndicatorData = {
+  score_base?: number;
+  user_op_margin?: number;
+  bench_op_margin?: number;
+  user_equity_ratio?: number;
+  bench_equity_ratio?: number;
+};
 
 interface IndicatorCardsProps {
-  data: any;
+  data: IndicatorData | null;
 }
 
 export default function IndicatorCards({ data }: IndicatorCardsProps) {
   if (!data) return null;
 
-  const isApproved = data.score_base >= 71;
+  const opMargin = data.user_op_margin ?? 0;
+  const benchOpMargin = data.bench_op_margin ?? 0;
+  const equityRatio = data.user_equity_ratio ?? 0;
+  const benchEquityRatio = data.bench_equity_ratio ?? 0;
+  const isApproved = (data.score_base ?? 0) >= 71;
 
   // 判定用のバッジカラー関数
-  const getBadgeColor = (userVal: number, benchVal: number, isInverted = false) => {
+  const isNegativeRisk = (label: string, userVal: number) => {
+    return ['営業利益率', '自己資本比率', 'ROA', 'ROE', '経常利益率', '当期純利益率', '売上高総利益率'].includes(label) && userVal < 0;
+  };
+
+  const isFavorable = (label: string, userVal: number, benchVal: number, isInverted = false) => {
+    if (isNegativeRisk(label, userVal)) return false;
+    const diff = userVal - benchVal;
+    return isInverted ? diff < 0 : diff > 0;
+  };
+
+  const getBadgeColor = (label: string, userVal: number, benchVal: number, isInverted = false) => {
+    if (isNegativeRisk(label, userVal)) return 'bg-rose-50 text-rose-700 border-rose-200';
     const diff = userVal - benchVal;
     if (diff === 0) return 'bg-slate-100 text-slate-600 border-slate-200';
     
     // 良い場合 (isInverted = true のときはマイナスが良い)
-    const isGood = isInverted ? diff < 0 : diff > 0;
+    const isGood = isFavorable(label, userVal, benchVal, isInverted);
     return isGood ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200';
   };
 
@@ -32,14 +55,14 @@ export default function IndicatorCards({ data }: IndicatorCardsProps) {
             </div>
             <span className="font-bold text-slate-700">営業利益率</span>
           </div>
-          <span className={`text-[10px] font-bold px-2 py-1 rounded-md border ${getBadgeColor(data.user_op_margin, data.bench_op_margin)}`}>
-            {data.user_op_margin >= data.bench_op_margin ? '優良' : '注意'}
+          <span className={`text-[10px] font-bold px-2 py-1 rounded-md border ${getBadgeColor('営業利益率', opMargin, benchOpMargin)}`}>
+            {isFavorable('営業利益率', opMargin, benchOpMargin) ? '優良' : '注意'}
           </span>
         </div>
         
         <div className="flex items-end gap-2 mb-2">
           <span className="text-4xl font-black text-slate-800">
-            {(data.user_op_margin ?? 0).toFixed(1)}
+            {opMargin.toFixed(1)}
           </span>
           <span className="text-lg font-bold text-slate-400 mb-1">%</span>
         </div>
@@ -47,17 +70,17 @@ export default function IndicatorCards({ data }: IndicatorCardsProps) {
         <div className="relative w-full h-2 bg-slate-200 rounded-full mt-4 overflow-hidden">
           <div 
             className="absolute top-0 left-0 h-full bg-blue-500 rounded-full"
-            style={{ width: `${Math.min(100, Math.max(0, (data.user_op_margin + 20) * 2.5))}%` }} 
+            style={{ width: `${Math.min(100, Math.max(0, (opMargin + 20) * 2.5))}%` }} 
           />
           {/* ベンチマークライン */}
           <div 
             className="absolute top-0 w-1 h-full bg-slate-800"
-            style={{ left: `${Math.min(100, Math.max(0, (data.bench_op_margin + 20) * 2.5))}%` }}
+            style={{ left: `${Math.min(100, Math.max(0, (benchOpMargin + 20) * 2.5))}%` }}
           />
         </div>
         <div className="flex justify-between mt-2 text-xs font-semibold text-slate-500">
           <span>当社</span>
-          <span>業界: {(data.bench_op_margin ?? 0).toFixed(1)}%</span>
+          <span>業界: {benchOpMargin.toFixed(1)}%</span>
         </div>
       </div>
 
@@ -70,14 +93,14 @@ export default function IndicatorCards({ data }: IndicatorCardsProps) {
             </div>
             <span className="font-bold text-slate-700">自己資本比率</span>
           </div>
-          <span className={`text-[10px] font-bold px-2 py-1 rounded-md border ${getBadgeColor(data.user_equity_ratio, data.bench_equity_ratio)}`}>
-            {data.user_equity_ratio >= data.bench_equity_ratio ? '安定' : '過少資本'}
+          <span className={`text-[10px] font-bold px-2 py-1 rounded-md border ${getBadgeColor('自己資本比率', equityRatio, benchEquityRatio)}`}>
+            {isFavorable('自己資本比率', equityRatio, benchEquityRatio) ? '安定' : '過少資本'}
           </span>
         </div>
         
         <div className="flex items-end gap-2 mb-2">
           <span className="text-4xl font-black text-slate-800">
-            {(data.user_equity_ratio ?? 0).toFixed(1)}
+            {equityRatio.toFixed(1)}
           </span>
           <span className="text-lg font-bold text-slate-400 mb-1">%</span>
         </div>
@@ -85,17 +108,17 @@ export default function IndicatorCards({ data }: IndicatorCardsProps) {
         <div className="relative w-full h-2 bg-slate-200 rounded-full mt-4 overflow-hidden">
           <div 
             className="absolute top-0 left-0 h-full bg-indigo-500 rounded-full"
-            style={{ width: `${Math.min(100, Math.max(0, data.user_equity_ratio))}%` }} 
+            style={{ width: `${Math.min(100, Math.max(0, equityRatio))}%` }} 
           />
           {/* ベンチマークライン */}
           <div 
             className="absolute top-0 w-1 h-full bg-slate-800"
-            style={{ left: `${Math.min(100, Math.max(0, data.bench_equity_ratio))}%` }}
+            style={{ left: `${Math.min(100, Math.max(0, benchEquityRatio))}%` }}
           />
         </div>
         <div className="flex justify-between mt-2 text-xs font-semibold text-slate-500">
           <span>当社</span>
-          <span>業界: {(data.bench_equity_ratio ?? 0).toFixed(1)}%</span>
+          <span>業界: {benchEquityRatio.toFixed(1)}%</span>
         </div>
       </div>
 

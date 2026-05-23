@@ -43,6 +43,33 @@ def _normalize_numeric(value, default=0.0):
 def _normalize_int(value, default=0):
     return int(_normalize_numeric(value, default))
 
+
+_NEGATIVE_RISK_INDICATOR_KEYWORDS = (
+    "売上高総利益率",
+    "営業利益率",
+    "経常利益率",
+    "当期純利益率",
+    "自己資本比率",
+    "ROA",
+    "ROE",
+)
+
+
+def _is_negative_risk_indicator(label: str) -> bool:
+    return any(keyword in str(label or "") for keyword in _NEGATIVE_RISK_INDICATOR_KEYWORDS)
+
+
+def _is_indicator_favorable(label: str, value, benchmark, higher_better: bool) -> bool:
+    try:
+        user_val = float(value)
+        bench_val = float(benchmark)
+    except (TypeError, ValueError):
+        return False
+    if _is_negative_risk_indicator(label) and user_val < 0:
+        return False
+    diff = user_val - bench_val
+    return diff >= 0 if higher_better else diff <= 0
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.abspath(os.path.join(_HERE, ".."))
 import sys as _sys_mod
@@ -512,7 +539,7 @@ def _build_chat_analysis_graphs(message: str, input_data: dict | None, score_res
         if bench_value is None:
             continue
         diff = float(value) - float(bench_value)
-        favorable = diff if higher_better else -diff
+        favorable = abs(diff) if _is_indicator_favorable(label, value, bench_value, higher_better) else -abs(diff)
         ratios.append({
             "label": label,
             "value": round(float(value), 2),

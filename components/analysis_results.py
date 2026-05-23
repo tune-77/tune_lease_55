@@ -17,14 +17,13 @@ from ai_chat import (
 )
 from knowledge import build_knowledge_context
 from data_cases import append_consultation_memory
-from indicators import compute_financial_indicators, analyze_indicators_vs_bench
+from indicators import compute_financial_indicators, analyze_indicators_vs_bench, is_indicator_favorable
 from web_services import (
     fetch_industry_benchmarks_from_web, fetch_industry_trend_extended,
     get_trend_extended, get_advice_context_extras, search_subsidies_by_industry,
     get_stats, _WEB_BENCH_KEYS
 )
 from lease_news_digest import get_latest_lease_news_focus, record_lease_news_judgment_change
-from charts import LOWER_IS_BETTER_NAMES
 from ai_chat import _get_gemini_key_from_secrets
 from constants import QUALITATIVE_SCORING_CORRECTION_ITEMS
 from config import GEMINI_API_KEY_ENV, GEMINI_MODEL_DEFAULT
@@ -2127,10 +2126,7 @@ def render_analysis_results(
                         if bench_v is not None:
                             diff = user_v - bench_v
                             delta_str = f"業種比 {diff:+.1f}{unit}"
-                            if higher_good:
-                                delta_col = "normal" if diff >= 0 else "inverse"
-                            else:
-                                delta_col = "normal" if diff <= 0 else "inverse"
+                            delta_col = "normal" if is_indicator_favorable(label, user_v, bench_v, higher_good) else "inverse"
                         col.metric(label, f"{user_v:{fmt}}{unit}",
                                    delta=delta_str, delta_color=delta_col,
                                    help=f"業種平均: {bench_v:{fmt}}{unit}" if bench_v is not None else "業種データなし")
@@ -2409,7 +2405,7 @@ def render_analysis_results(
                         bench_ext["debt_ratio"] = ((avg.get("bank_credit") or 0) + (avg.get("lease_credit") or 0)) / total_avg * 100
             indicators = compute_financial_indicators(fin, bench_ext)
             if indicators:
-                # 業界目安より良い＝緑、悪い＝赤（LOWER_IS_BETTER_NAMES は低い方が良い）
+                # 業界目安より良い＝緑、悪い＝赤（マイナス化し得る収益・資本指標は赤を優先）
                 cell_style = "text-align:center; vertical-align:middle; padding:4px 6px;"
                 rows_html = []
                 for ind in indicators:
@@ -2420,7 +2416,7 @@ def render_analysis_results(
                     bench_ok = bench is not None and (not isinstance(bench, float) or bench == bench)
                     if bench_ok:
                         diff = value - bench
-                        is_good = (diff > 0 and name not in LOWER_IS_BETTER_NAMES) or (diff < 0 and name in LOWER_IS_BETTER_NAMES)
+                        is_good = is_indicator_favorable(name, value, bench)
                         color = "#22c55e" if is_good else "#ef4444"
                         row_bg = "background-color:rgba(34,197,94,0.18);" if is_good else "background-color:rgba(239,68,68,0.12);"
                         name_cell = f'<span style="color:{color}; font-weight:600;">{name.replace("&", "&amp;").replace("<", "&lt;")}</span>'

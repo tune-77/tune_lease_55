@@ -5,6 +5,7 @@
 import datetime
 import html
 import streamlit as st
+from indicators import is_negative_risk_indicator
 
 _REPORT_CSS = """
 <style>
@@ -104,9 +105,11 @@ _REPORT_CSS = """
 """
 
 
-def _badge(val, bench, higher_is_better=True) -> str:
+def _badge(val, bench, higher_is_better=True, name="") -> str:
     if val is None or bench is None:
         return ""
+    if is_negative_risk_indicator(name) and val < 0:
+        return '<span class="rp-badge-bad">▼ 要注意</span>'
     diff = val - bench
     if higher_is_better:
         if diff >= 2:   return '<span class="rp-badge-good">▲ 業界超</span>'
@@ -119,9 +122,11 @@ def _badge(val, bench, higher_is_better=True) -> str:
     return '<span style="color:#64748b;font-size:.72rem;">― 標準</span>'
 
 
-def _kpi_color(val, bench, higher_is_better=True) -> str:
+def _kpi_color(val, bench, higher_is_better=True, name="") -> str:
     if val is None or bench is None:
         return ""
+    if is_negative_risk_indicator(name) and val < 0:
+        return "bad"
     diff = val - bench
     if higher_is_better:
         if diff >= 2:   return "good"
@@ -330,9 +335,9 @@ def render_report() -> None:
 
         rows = [
             ("売上高",      f"{nenshu:,.0f} 万円",         "—",                           ""),
-            ("営業利益率",  f"{_fmt(user_op,'.1f','%')}",  f"{_fmt(bench_op,'.1f','%')}", _badge(user_op, bench_op)),
-            ("自己資本比率",f"{_fmt(user_eq_d,'.1f','%')}", f"{_fmt(bench_eq_d,'.1f','%')}", _badge(user_eq_d, bench_eq_d)),
-            ("ROA",         f"{_fmt(user_roa,'.1f','%')}",  f"{_fmt(bench_roa,'.1f','%')}", _badge(user_roa, bench_roa)),
+            ("営業利益率",  f"{_fmt(user_op,'.1f','%')}",  f"{_fmt(bench_op,'.1f','%')}", _badge(user_op, bench_op, name="営業利益率")),
+            ("自己資本比率",f"{_fmt(user_eq_d,'.1f','%')}", f"{_fmt(bench_eq_d,'.1f','%')}", _badge(user_eq_d, bench_eq_d, name="自己資本比率")),
+            ("ROA",         f"{_fmt(user_roa,'.1f','%')}",  f"{_fmt(bench_roa,'.1f','%')}", _badge(user_roa, bench_roa, name="ROA")),
             ("流動比率",    f"{_fmt(user_cr,'.0f','%')}",   f"{_fmt(bench_cr,'.0f','%')}", _badge(user_cr, bench_cr)),
             ("純資産",      f"{net_assets:,.0f} 万円",      "—",                           ""),
             ("総資産",      f"{assets:,.0f} 万円",          "—",                           ""),

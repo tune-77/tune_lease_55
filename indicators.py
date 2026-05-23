@@ -18,6 +18,64 @@ from web_services import _WEB_BENCH_KEYS, _load_web_benchmarks_cache
 from config import BASE_DIR
 
 
+NEGATIVE_RISK_INDICATOR_KEYWORDS = (
+    "売上高総利益率",
+    "営業利益率",
+    "経常利益率",
+    "当期純利益率",
+    "自己資本比率",
+    "ROA",
+    "ROE",
+)
+
+
+def is_negative_risk_indicator(name: str) -> bool:
+    """マイナス値を強み扱いしてはいけない指標か判定する。"""
+    return any(keyword in str(name or "") for keyword in NEGATIVE_RISK_INDICATOR_KEYWORDS)
+
+
+def is_indicator_favorable(name: str, value, bench, higher_is_better: bool | None = None) -> bool:
+    """業界比較の有利/不利を返す。マイナス値の収益・資本指標は要注意を優先する。"""
+    try:
+        user_val = float(value)
+        bench_val = float(bench)
+    except (TypeError, ValueError):
+        return False
+
+    if is_negative_risk_indicator(name) and user_val < 0:
+        return False
+
+    if higher_is_better is None:
+        higher_is_better = name not in LOWER_IS_BETTER_NAMES
+    diff = user_val - bench_val
+    return diff >= 0 if higher_is_better else diff <= 0
+
+
+def format_indicator_comparison(name: str, value, bench, higher_is_better: bool | None = None) -> str:
+    """AI・画面用の短評。マイナスの収益/資本指標を単純な「高い」扱いにしない。"""
+    try:
+        user_val = float(value)
+        bench_val = float(bench)
+    except (TypeError, ValueError):
+        return "比較不能"
+
+    if is_negative_risk_indicator(name) and user_val < 0:
+        if bench_val < 0 and user_val >= bench_val:
+            if "自己資本比率" in str(name):
+                return "債務超過（業界平均よりマイナス幅は小さいが、財務安定性は要注意）"
+            return "マイナス（業界平均よりマイナス幅は小さいが、強み扱いせず要注意）"
+        if "自己資本比率" in str(name):
+            return "債務超過（財務安定性は要注意）"
+        return "マイナス（業界平均を下回り要注意）"
+
+    if higher_is_better is None:
+        higher_is_better = name not in LOWER_IS_BETTER_NAMES
+    favorable = is_indicator_favorable(name, user_val, bench_val, higher_is_better)
+    if higher_is_better:
+        return "業界平均以上" if favorable else "業界平均未満"
+    return "業界平均以下で良好" if favorable else "業界平均を上回り要注意"
+
+
 # ─── ローカルデータの遅延ロード ───────────────────────────────────────────────
 
 _benchmarks_data: dict | None = None
@@ -88,8 +146,9 @@ def compute_financial_indicators(fin: dict, bench: dict | None = None) -> list:
 
     # ── 総資産・純資産ベース（total > 0 で算出可能） ──
     if total > 0:
-        if net_a is not None and net_a > 0:
+        if net_a is not None:
             indicators.append({"name": "自己資本比率",         "value": net_a / total * 100,         "bench": _equity_ratio_display(bench.get("equity_ratio")) if bench else None, "unit": "%"})
+        if net_a is not None and net_a > 0:
             indicators.append({"name": "ROE(自己資本利益率)",  "value": net   / net_a * 100,         "bench": bench.get("roe")               if bench else None, "unit": "%"})
             indicators.append({"name": "固定比率",             "value": fixed_a / net_a * 100,       "bench": bench.get("fixed_to_equity")   if bench else None, "unit": "%"})
             indicators.append({"name": "負債比率",             "value": (total - net_a) / net_a * 100, "bench": bench.get("debt_to_equity")  if bench else None, "unit": "%"})
@@ -124,16 +183,10 @@ def analyze_indicators_vs_bench(indicators: list) -> tuple:
         value = ind["value"]
         unit  = ind.get("unit", "%")
         diff  = value - bench
-        if name in LOWER_IS_BETTER_NAMES:
-            if value < bench:
-                above.append((name, value, bench, diff, unit))
-            else:
-                below.append((name, value, bench, diff, unit))
+        if is_indicator_favorable(name, value, bench):
+            above.append((name, value, bench, diff, unit))
         else:
-            if diff > 0:
-                above.append((name, value, bench, diff, unit))
-            elif diff < 0:
-                below.append((name, value, bench, diff, unit))
+            below.append((name, value, bench, diff, unit))
 
     lines = []
     if above:
@@ -141,7 +194,7 @@ def analyze_indicators_vs_bench(indicators: list) -> tuple:
         lines.append("**業界目安を上回っている指標**\n- " + "\n- ".join(parts))
     if below:
         parts = [f"**{n}**（貴社 {v:.1f}{u} / 業界目安 {b:.1f}{u}、差 {d:+.1f}{u}）" for n, v, b, d, u in below]
-        lines.append("**業界目安を下回っている指標**\n- " + "\n- ".join(parts))
+        lines.append("**要確認の指標**\n- " + "\n- ".join(parts))
     if not lines:
         return ("業界目安と比較できる指標がありません。",
                 "業界目安が登録されている指標がひとつもないため、差の分析は行えません。")
@@ -156,7 +209,7 @@ def analyze_indicators_vs_bench(indicators: list) -> tuple:
     if n_below == 0:
         summary = "算出指標はおおむね業界目安を上回っており、財務面は良好です。"
     elif n_above == 0:
-        summary = "算出指標の多くが業界目安を下回っています。利益率・効率性・負債水準の改善余地を検討してください。"
+        summary = "算出指標の多くが要確認です。利益率・効率性・負債水準の改善余地を検討してください。"
     else:
         summary = (f"業界目安を上回っている指標が{n_above}件、下回っている指標が{n_below}件あります。"
                    "強みを維持しつつ、下回っている項目の要因確認をおすすめします。")

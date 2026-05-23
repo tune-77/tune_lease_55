@@ -34,6 +34,7 @@ from constants import (
     QUALITATIVE_SCORING_CORRECTION_ITEMS, QUALITATIVE_SCORING_LEVELS, QUALITATIVE_SCORE_RANKS,
     STRENGTH_TAG_OPTIONS
 )
+from indicators import format_indicator_comparison
 
 QUALITATIVE_DELTA_FACTOR = 0.3
 
@@ -74,6 +75,17 @@ def _refresh_qualitative_correction(
     elif source in ("proxy", "tunnel"):
         correction["combined_score"] = round(final_score, 1)
         correction["reference_only"] = True
+
+
+def _format_op_margin_comparison(user_op_margin, bench_op_margin) -> str:
+    """営業赤字を優先して、業界比較の短評を返す。"""
+    judgement = format_indicator_comparison("営業利益率", user_op_margin, bench_op_margin)
+    return (
+        judgement
+        .replace("マイナス", "赤字")
+        .replace("業界平均以上", "平均より高い")
+        .replace("業界平均未満", "平均より低い")
+    )
 
 
 def _build_learning_pd_result(
@@ -462,29 +474,29 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         f"{_compare_val:.2f}% (業種平均: {bench_lease_burden:.2f}%) → {_lb_status}"
                     )
 
-                comp_margin = "高い" if user_op_margin >= bench_op_margin else "低い"
-                comp_equity = "高い" if user_equity_ratio >= bench_equity_ratio else "低い"
+                comp_margin = _format_op_margin_comparison(user_op_margin, bench_op_margin)
+                comp_equity = format_indicator_comparison("自己資本比率", user_equity_ratio, bench_equity_ratio)
 
                 # 追加指標の比較テキスト生成
-                def _vs(user_val, bench_val, higher_is_good=True, fmt=".1f"):
+                def _vs(name, user_val, bench_val, higher_is_good=True, fmt=".1f"):
                     """業種比較の短評を返す。"""
                     if user_val is None or bench_val is None:
                         return f"(不明) (業種: {bench_val if bench_val is not None else 'なし'})"
                     try:
                         u_v, b_v = float(user_val), float(bench_val)
-                        diff = u_v - b_v
-                        if higher_is_good:
-                            label = "高い✅" if diff >= 0 else "低い⚠️"
+                        judgement = format_indicator_comparison(name, u_v, b_v, higher_is_good)
+                        if "要注意" in judgement or "未満" in judgement or "債務超過" in judgement:
+                            label = f"{judgement}⚠️"
                         else:
-                            label = "低い✅" if diff <= 0 else "高い⚠️"
+                            label = f"{judgement}✅"
                         return f"{u_v:{fmt}} (業種: {b_v:{fmt}}) → {label}"
                     except:
                         return f"{user_val} (業種: {bench_val}) → 比較不能"
 
-                _roa_line  = f"\n- **ROA**: {_vs(user_roa, bench_roa)}" if bench_roa is not None else ""
-                _curr_line = (f"\n- **流動比率**: {_vs(user_current_ratio, bench_current_r, fmt='.0f')}%"
+                _roa_line  = f"\n- **ROA**: {_vs('ROA', user_roa, bench_roa)}" if bench_roa is not None else ""
+                _curr_line = (f"\n- **流動比率**: {_vs('流動比率', user_current_ratio, bench_current_r, fmt='.0f')}%"
                               if bench_current_r is not None else "")
-                _debt_line = (f"\n- **負債比率**: {_vs(user_debt_ratio, bench_debt_r, higher_is_good=False, fmt='.1f')}%"
+                _debt_line = (f"\n- **負債比率**: {_vs('負債比率', user_debt_ratio, bench_debt_r, higher_is_good=False, fmt='.1f')}%"
                               if bench_debt_r is not None else "")
                 _dscr_line = ""
                 if user_dscr is not None:
@@ -493,8 +505,8 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     _dscr_line = f"\n- **DSCR（債務返済余力）**: {user_dscr:.2f}倍 → {_dscr_lv}（目安: 1.5倍以上）{_src_note}"
 
                 comparison_text = f"""
-                - **営業利益率**: {user_op_margin:.1f}% (業界目安: {bench_op_margin}%) → 平均より{comp_margin}
-                - **自己資本比率**: {user_equity_ratio:.1f}% (業界目安: {bench_equity_ratio}%) → 平均より{comp_equity}{_roa_line}{_curr_line}{_debt_line}{_dscr_line}{_lease_compare_line}
+                - **営業利益率**: {user_op_margin:.1f}% (業界目安: {bench_op_margin}%) → {comp_margin}
+                - **自己資本比率**: {user_equity_ratio:.1f}% (業界目安: {bench_equity_ratio}%) → {comp_equity}{_roa_line}{_curr_line}{_debt_line}{_dscr_line}{_lease_compare_line}
                 - **業界特性**: {bench_comment}
                 ※ **銀行与信・リース与信**は総銀行与信・総リース与信ではなく、**当社（弊社）の与信**である。判定・アドバイスではこの点を踏まえること。
                 """

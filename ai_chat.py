@@ -20,12 +20,27 @@ from config import (
 )
 from app_logger import log_warning, log_error
 from secret_manager import get_gemini_api_key
+from indicators import format_indicator_comparison
 
 # 旧名称の後方互換エイリアス
 _get_gemini_key_from_secrets = get_gemini_api_key
 
 # スレッド → メインで結果を渡す用（session_state はスレッドから更新不可）
 _chat_result_holder: dict = {"result": None, "done": False}
+
+
+def _op_margin_judgement(user_op, bench_op) -> str:
+    """営業赤字を強み扱いしないためのAIプロンプト用短評。"""
+    judgement = format_indicator_comparison("営業利益率", user_op, bench_op)
+    return judgement.replace("マイナス", "赤字") + ("。強み扱いは禁止" if "赤字" in judgement.replace("マイナス", "赤字") else "")
+
+
+def _signed_metric_judgement(name: str, value, bench) -> str:
+    """営業利益率以外のマイナス化し得る指標も強み扱いしないための短評。"""
+    judgement = format_indicator_comparison(name, value, bench)
+    if "マイナス" in judgement or "債務超過" in judgement:
+        return judgement + "。強み扱いは禁止"
+    return judgement
 
 
 def get_ollama_model() -> str:
@@ -662,6 +677,8 @@ def get_ai_comprehensive_evaluation(res: dict, avg_data: dict = None) -> Optiona
 
     op_diff = user_op - bench_op
     eq_diff = user_eq_disp - bench_eq_disp
+    op_judgement = _op_margin_judgement(user_op, bench_op)
+    eq_judgement = _signed_metric_judgement("自己資本比率", user_eq_disp, bench_eq_disp)
 
     # カバレッジ行（データがある場合のみ）
     coverage_lines = ""
@@ -685,8 +702,8 @@ def get_ai_comprehensive_evaluation(res: dict, avg_data: dict = None) -> Optiona
 - 銀行与信（当社＋関連会社）: {bank_credit:.0f}百万円
 
 【指標比較】
-- 営業利益率: {user_op:.1f}%（業界平均 {bench_op:.1f}%、差 {op_diff:+.1f}%）
-- 自己資本比率: {user_eq_disp:.1f}%（業界平均 {bench_eq_disp:.1f}%、差 {eq_diff:+.1f}%）
+- 営業利益率: {user_op:.1f}%（業界平均 {bench_op:.1f}%、差 {op_diff:+.1f}%、評価: {op_judgement}）
+- 自己資本比率: {user_eq_disp:.1f}%（業界平均 {bench_eq_disp:.1f}%、差 {eq_diff:+.1f}%、評価: {eq_judgement}）
 {coverage_lines}
 【スコアリング】
 - 総合スコア: {score:.1f}% / 業種別スコア: {ind_score:.1f}% / ベンチマークスコア: {bench_score:.1f}%
@@ -695,8 +712,8 @@ def get_ai_comprehensive_evaluation(res: dict, avg_data: dict = None) -> Optiona
 ---
 必ず以下の形式のみで回答してください。①〜⑤以外は一切出力しないこと。
 
-①収益性：（業界比較を含む1文で評価）
-②財務安定性：（純資産・自己資本比率の評価1文）
+①収益性：（業界比較を含む1文で評価。営業利益率がマイナスなら、業界平均との差にかかわらず赤字・要注意として扱う）
+②財務安定性：（純資産・自己資本比率の評価1文。自己資本比率がマイナスなら、業界平均との差にかかわらず債務超過・要注意として扱う）
 ③返済余力：（EBITDAとリース・銀行債務のカバレッジ評価1文）
 ④成約見込み：（スコアと業種を踏まえた成約可能性1文）
 ⑤総合評価：（審査担当者への推奨アクション。2文以内）
@@ -744,12 +761,17 @@ def _build_quick_comment_prompt(res: dict) -> str:
     except Exception as e:
         log_warning(f"Obsidianユーモア文脈の読み込み失敗: {e}", context="_build_quick_comment_prompt")
 
+    op_judgement = _op_margin_judgement(user_op, bench_op)
+    eq_judgement = _signed_metric_judgement("自己資本比率", user_eq_disp, bench_eq_disp)
     prompt = (
         f"リース審査専門家として、以下の案件を2〜3文で簡潔に評価してください。"
         f"判定:{hantei} スコア:{score:.1f}% 業種:{industry_sub} "
         f"営業利益率:{user_op:.1f}%（業界平均{bench_op:.1f}%）"
+        f" 営業利益率評価:{op_judgement}。"
         f" 自己資本比率:{user_eq_disp:.1f}%（業界平均{bench_eq_disp:.1f}%）"
+        f" 自己資本比率評価:{eq_judgement}。"
         f" 契約期待度:{contract_prob:.1f}%。"
+        f"営業利益率や自己資本比率がマイナスの場合は、業界平均との差にかかわらず懸念点として扱い、強み扱いしないこと。"
         f"強みと懸念点を含め、審査担当者への一言を日本語で。余計な前置きは不要。"
     )
     if humor_addon:
@@ -935,6 +957,8 @@ def stream_comprehensive_evaluation(res: dict, avg_data: dict | None = None) -> 
         user_eq_disp, bench_eq_disp = user_eq, bench_eq
     op_diff = user_op - bench_op
     eq_diff = user_eq_disp - bench_eq_disp
+    op_judgement = _op_margin_judgement(user_op, bench_op)
+    eq_judgement = _signed_metric_judgement("自己資本比率", user_eq_disp, bench_eq_disp)
     coverage_lines = ""
     if coverage_lease is not None:
         coverage_lines += f"- EBITDAカバレッジ（対リース債務・保守値）: {coverage_lease:.2f}倍\n"
@@ -954,8 +978,8 @@ def stream_comprehensive_evaluation(res: dict, avg_data: dict | None = None) -> 
 - 銀行与信（当社＋関連会社）: {bank_credit:.0f}百万円
 
 【指標比較】
-- 営業利益率: {user_op:.1f}%（業界平均 {bench_op:.1f}%、差 {op_diff:+.1f}%）
-- 自己資本比率: {user_eq_disp:.1f}%（業界平均 {bench_eq_disp:.1f}%、差 {eq_diff:+.1f}%）
+- 営業利益率: {user_op:.1f}%（業界平均 {bench_op:.1f}%、差 {op_diff:+.1f}%、評価: {op_judgement}）
+- 自己資本比率: {user_eq_disp:.1f}%（業界平均 {bench_eq_disp:.1f}%、差 {eq_diff:+.1f}%、評価: {eq_judgement}）
 {coverage_lines}
 【スコアリング】
 - 総合スコア: {score:.1f}% / 業種別スコア: {ind_score:.1f}% / ベンチマークスコア: {bench_score:.1f}%
@@ -964,8 +988,8 @@ def stream_comprehensive_evaluation(res: dict, avg_data: dict | None = None) -> 
 ---
 必ず以下の形式のみで回答してください。①〜⑤以外は一切出力しないこと。
 
-①収益性：（業界比較を含む1文で評価）
-②財務安定性：（純資産・自己資本比率の評価1文）
+①収益性：（業界比較を含む1文で評価。営業利益率がマイナスなら、業界平均との差にかかわらず赤字・要注意として扱う）
+②財務安定性：（純資産・自己資本比率の評価1文。自己資本比率がマイナスなら、業界平均との差にかかわらず債務超過・要注意として扱う）
 ③返済余力：（EBITDAとリース・銀行債務のカバレッジ評価1文）
 ④成約見込み：（スコアと業種を踏まえた成約可能性1文）
 ⑤総合評価：（審査担当者への推奨アクション。2文以内）

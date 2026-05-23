@@ -2,13 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import DOMPurify from 'dompurify';
 import { Activity, AlertTriangle, CheckCircle2, FileText, HelpCircle, MessageSquare, Target, Users } from 'lucide-react';
+import type { ScoringFormData } from '@/types';
 
 interface GunshiAdviceProps {
   score: number;
   industry_major: string;
-  formData: any;
+  formData: GunshiFormData;
   onChatLoaded?: (text: string) => void;
 }
+
+type GunshiFormData = ScoringFormData;
 
 type ChatMessage = {
   role: 'user' | 'assistant';
@@ -40,6 +43,29 @@ type StrategyCards = {
   ringi_lines?: string[];
   badges?: string[];
   disclaimer?: string;
+};
+
+type WebHit = {
+  domain?: string;
+  title?: string;
+};
+
+type GunshiChatResponse = {
+  reply?: string;
+  chat_text?: string;
+  saved?: boolean;
+  save_reason?: string;
+  web_hits?: WebHit[];
+  wiki_saved?: boolean;
+  weekly_saved?: boolean;
+};
+
+type GunshiStreamChunk = {
+  type?: 'bayes' | 'phrases' | 'strategy_cards' | 'stream' | 'done';
+  prior?: number;
+  posterior?: number;
+  cards?: StrategyCards;
+  delta?: string;
 };
 
 export default function GunshiAdvice({ score, industry_major, formData, onChatLoaded }: GunshiAdviceProps) {
@@ -79,7 +105,7 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
       industry_sub: formData.industry_sub || "",
       score,
       resale_eval: "B",
-      repeat_count: Number(formData.repeat_cnt) || 0,
+      repeat_count: Number(formData.contracts) || 0,
       subsidy_flag: /補助金|助成金|ものづくり|省力化/.test(subsidyText),
       bank_support: formData.deal_source === "銀行紹介" || formData.main_bank === "メイン先",
       intuition_score: Number(formData.intuition) || 50,
@@ -126,14 +152,14 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
     };
   };
 
-  const buildResponseMeta = (data: any) => {
+  const buildResponseMeta = (data: GunshiChatResponse) => {
     const metaParts: string[] = [];
     if (data.saved) metaParts.push('Obsidianへ自動保存しました');
     else if (data.save_reason) metaParts.push(`保存なし: ${data.save_reason}`);
     if (Array.isArray(data.web_hits) && data.web_hits.length > 0) {
       const sources = data.web_hits
         .slice(0, 2)
-        .map((h: any) => h.domain || h.title || 'web')
+        .map((h) => h.domain || h.title || 'web')
         .filter(Boolean)
         .join(' / ');
       metaParts.push(`Web参照: ${data.web_hits.length}件${sources ? ' (' + sources + ')' : ''}`);
@@ -143,7 +169,7 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
     return metaParts.join(' | ');
   };
 
-  const updateStatus = (data: any) => {
+  const updateStatus = (data: GunshiChatResponse) => {
     if (data.web_hits?.length) setStatusText('回答しました。Web参照あり。');
     else if (data.saved) setStatusText('必要なメモだけObsidianへ保存しました。');
     else setStatusText('回答しました。');
@@ -188,13 +214,13 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
           const rawData = line.slice(6).trim();
           if (!rawData) continue;
           try {
-            const chunk = JSON.parse(rawData);
+            const chunk = JSON.parse(rawData) as GunshiStreamChunk;
             if (chunk.type === 'bayes') {
-              setPrior(chunk.prior);
-              setPosterior(chunk.posterior);
+              setPrior(chunk.prior ?? null);
+              setPosterior(chunk.posterior ?? null);
             } else if (chunk.type === 'strategy_cards') {
               setStrategyCards(chunk.cards || null);
-            } else if (chunk.type === 'stream') {
+            } else if (chunk.type === 'stream' && chunk.delta) {
               fullText += chunk.delta;
               setStreamingText(fullText);
             } else if (chunk.type === 'done') {
@@ -204,7 +230,9 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
               setStatusText('回答しました。');
               if (onChatLoaded) onChatLoaded(fullText);
             }
-          } catch (_) {}
+          } catch {
+            // Ignore malformed SSE keepalive fragments.
+          }
         }
       }
 
@@ -293,7 +321,8 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
     const sigKey = [
       formData.nenshu,
       formData.op_profit,
-      formData.equity_ratio,
+      formData.net_assets,
+      formData.total_assets,
       formData.bank_credit,
       formData.lease_credit,
       formData.industry_sub,
@@ -307,7 +336,9 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
         const res = await axios.post(`/api/similar/inline`, {
           nenshu: Number(formData.nenshu) || 0,
           op_profit: Number(formData.op_profit) || 0,
-          equity_ratio: Number(formData.equity_ratio) || 0,
+          equity_ratio: Number(formData.total_assets) > 0
+            ? (Number(formData.net_assets) / Number(formData.total_assets)) * 100
+            : 0,
           bank_credit: Number(formData.bank_credit) || 0,
           lease_credit: Number(formData.lease_credit) || 0,
           industry_sub: formData.industry_sub || "",

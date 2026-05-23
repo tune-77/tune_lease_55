@@ -522,6 +522,7 @@ def get_gunshi_advise(req: AdviseRequest):
 
 class GunshiStreamRequest(BaseModel):
     industry_cat: str
+    industry_sub: str = ""
     score: float
     pd_pct: float = 0.0
     resale_eval: str = "B"
@@ -531,6 +532,19 @@ class GunshiStreamRequest(BaseModel):
     intuition_score: float = 50.0
     company_name: str = ""
     asset_name: str = ""
+    acquisition_cost: float = 0.0
+    lease_term: int = 0
+    contract_type: str = ""
+    main_bank: str = ""
+    competitor: str = ""
+    competitor_rate: float | None = None
+    deal_source: str = ""
+    customer_type: str = ""
+    nenshu: float = 0.0
+    op_profit: float = 0.0
+    equity_ratio: float = 0.0
+    bank_credit: float = 0.0
+    lease_credit: float = 0.0
 
 
 @app.post("/api/gunshi/stream")
