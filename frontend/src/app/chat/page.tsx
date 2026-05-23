@@ -19,6 +19,7 @@ export default function ChatPage() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [savingObsidian, setSavingObsidian] = useState(false);
   const [saveToast, setSaveToast] = useState<string | null>(null);
+  const [showSubtitle, setShowSubtitle] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -30,6 +31,8 @@ export default function ChatPage() {
 
   useEffect(() => {
     loadHistory();
+    const timer = setTimeout(() => setShowSubtitle(false), 5000);
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -147,7 +150,13 @@ export default function ChatPage() {
           </div>
           <div>
             <h1 className="text-lg font-black text-slate-800">AIアドバイザー</h1>
-            <p className="text-xs text-slate-500">リース審査の相棒・毎日相談できます</p>
+            <p
+              className={`text-xs text-slate-500 transition-all duration-700 overflow-hidden ${
+                showSubtitle ? "opacity-100 max-h-10" : "opacity-0 max-h-0"
+              }`}
+            >
+              リース審査の相棒・毎日相談できます
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
