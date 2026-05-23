@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.tunelease.lease-news-collector</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/scripts/run_lease_news_collection.sh</string>
+    <string>--limit</string>
+    <string>18</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>OBSIDIAN_VAULT</key>
+    <string>/Users/kobayashiisaoryou/Documents/Obsidian Vault</string>
+    <key>LEASE_NEWS_PROFILE</key>
+    <string>industry-watch</string>
+    <key>PYTHON_BIN</key>
+    <string>/Users/kobayashiisaoryou/anaconda3/bin/python</string>
+    <key>PATH</key>
+    <string>/Users/kobayashiisaoryou/anaconda3/bin:/Users/kobayashiisaoryou/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+  </dict>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>7</integer>
+    <key>Minute</key>
+    <integer>20</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_lease_news.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_lease_news.err.log</string>
+</dict>
+</plist>

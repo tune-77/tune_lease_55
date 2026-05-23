@@ -58,10 +58,65 @@ def build_user_prompt(params: dict) -> str:
     return (
         f"案件: 業種={industry_cat} "
         f"スコア={score} "
-        f"PD={pd_pct}%\n"
         f"ベイズ推定: {prior:.1%} → {posterior:.1%}\n"
         f"推奨フレーズ(top3): {phrases}\n"
         "この案件の承認奪取戦略を述べよ。"
+    )
+
+
+def build_fallback_strategy_text(params: dict, phrases: list[str], reason: str = "") -> str:
+    """Build a deterministic strategy when Gemini streaming is unavailable."""
+    score = float(params.get("score", 0) or 0)
+    pd_pct = float(params.get("pd_pct", 0) or 0)
+    industry_cat = str(params.get("industry_cat") or "指定なし")
+    asset_name = str(params.get("asset_name") or "対象物件")
+    company_name = str(params.get("company_name") or "本件")
+
+    prior = compute_prior(score, pd_pct)
+    posterior = compute_posterior(
+        prior=prior,
+        resale=params.get("resale_eval", "B"),
+        repeat_cnt=params.get("repeat_count", 0),
+        subsidy=params.get("subsidy_flag", False),
+        bank=params.get("bank_support", False),
+        intuition=int(params.get("intuition_score", 50) // 20),
+    )
+
+    if score >= 70:
+        stance = "承認方針を前提に、条件を絞って稟議を短く通す局面です。"
+        first_move = "過度な追加条件を増やさず、返済原資・物件換価・取引継続性の3点を押さえてください。"
+    elif score >= 50:
+        stance = "境界案件です。否決懸念を先回りして、条件付き承認へ寄せる局面です。"
+        first_move = "保証・頭金・期間短縮・中途解約時の残債管理など、審査部が飲みやすい条件を先に提示してください。"
+    else:
+        stance = "低スコア案件です。無理押しではなく、損失限定策を明確にして再審議の土台を作る局面です。"
+        first_move = "金額圧縮、保証追加、対象物件の換価根拠、既存取引実績の補強をセットで出してください。"
+
+    evidence = []
+    if params.get("bank_support"):
+        evidence.append("銀行紹介・銀行支援があるため、回収導線とモニタリング体制を稟議の押し材料にできます。")
+    if params.get("subsidy_flag"):
+        evidence.append("補助金・助成金文脈があるため、投資目的と資金繰り改善効果を明文化してください。")
+    if int(params.get("repeat_count", 0) or 0) > 0:
+        evidence.append(f"再リース・反復実績が {int(params.get('repeat_count', 0) or 0)} 回あるため、利用継続性を強調できます。")
+    if not evidence:
+        evidence.append("財務数値だけで押し切らず、物件の必要性・換価性・返済原資の順に補強してください。")
+
+    phrase_lines = [f"- {p}" for p in phrases[:3] if p]
+    phrase_block = "\n".join(phrase_lines) if phrase_lines else "- 物件の必要性、換価性、返済原資を一体で説明する。"
+    note = f"\n\n※ Gemini接続の代替応答です（{reason}）。" if reason else ""
+
+    return (
+        f"【軍師AI 代替戦略】\n"
+        f"{company_name}（{industry_cat} / {asset_name}）は、スコア {score:.1f} 点、"
+        f"ベイズ推定 {prior:.1%} → {posterior:.1%} です。\n\n"
+        f"一、局面判断\n{stance}\n\n"
+        f"二、まず取る作戦\n{first_move}\n\n"
+        f"三、稟議で押す材料\n"
+        + "\n".join(f"- {item}" for item in evidence)
+        + "\n\n"
+        f"四、使うべき軍師フレーズ\n{phrase_block}"
+        f"{note}"
     )
 
 
@@ -105,6 +160,14 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
     yield {"type": "bayes", "prior": round(prior, 4), "posterior": round(posterior, 4)}
     yield {"type": "phrases", "items": phrases}
 
+    if not api_key:
+        yield {
+            "type": "stream",
+            "delta": build_fallback_strategy_text(params, phrases, "GEMINI_API_KEY未設定"),
+        }
+        yield {"type": "done"}
+        return
+
     payload = {
         "system_instruction": {"parts": [{"text": build_system_instruction()}]},
         "contents": [
@@ -142,7 +205,7 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
     except Exception as exc:
         yield {
             "type": "stream",
-            "delta": f"【Gemini API接続エラー】{type(exc).__name__}: 接続に失敗しました。しばらく待ってから再試行してください。",
+            "delta": build_fallback_strategy_text(params, phrases, type(exc).__name__),
         }
 
     yield {"type": "done"}

@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-05-18T11:49:35Z",
-  "changed_file": "frontend/src/components/analysis/GunshiAdvice.tsx",
+  "timestamp": "2026-05-23T06:47:45Z",
+  "changed_file": "shinsa_gunshi_logic.py",
   "test_command": "pytest -v",
   "related_test": "",
   "recommendation": "テストの実行を推奨します"

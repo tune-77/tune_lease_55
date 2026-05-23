@@ -5,7 +5,6 @@ import { Activity, MessageSquare } from 'lucide-react';
 
 interface GunshiAdviceProps {
   score: number;
-  pd_percent: number;
   industry_major: string;
   formData: any;
   onChatLoaded?: (text: string) => void;
@@ -29,7 +28,7 @@ type SimilarCase = {
   conditions: string[];
 };
 
-export default function GunshiAdvice({ score, pd_percent, industry_major, formData, onChatLoaded }: GunshiAdviceProps) {
+export default function GunshiAdvice({ score, industry_major, formData, onChatLoaded }: GunshiAdviceProps) {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [question, setQuestion] = useState("");
@@ -59,7 +58,6 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
     return {
       industry_cat: industry_major || "",
       score,
-      pd_pct: pd_percent,
       resale_eval: "B",
       repeat_count: Number(formData.repeat_cnt) || 0,
       subsidy_flag: /補助金|助成金|ものづくり|省力化/.test(subsidyText),
@@ -78,7 +76,6 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
     ].join(" ");
     return {
       score,
-      pd_percent,
       industry_major,
       asset_name: formData.asset_name || "",
       resale: "標準",
@@ -226,7 +223,7 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
 
   useEffect(() => {
     if (score === 0) return;
-    const fetchKey = `${score}:${pd_percent}:${industry_major}:${formData.asset_name || ""}`;
+    const fetchKey = `${score}:${industry_major}:${formData.asset_name || ""}`;
     if (initialFetchKeyRef.current === fetchKey) return;
     initialFetchKeyRef.current = fetchKey;
 
@@ -234,7 +231,7 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
     const nextHistory: ChatMessage[] = [{ role: 'user', text: initialQuestion }];
     setChatHistory(nextHistory);
     fetchStreamChat(nextHistory);
-  }, [score, pd_percent, industry_major, formData]);
+  }, [score, industry_major, formData]);
 
   useEffect(() => {
     if (score === 0) return;

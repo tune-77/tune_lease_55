@@ -547,13 +547,7 @@ def _render_tab_debate(selected_sub: str, jsic_data: dict, bankruptcy_data: list
             if st.button("🏁 議論終了・判定", type="primary", width='stretch'):
                 with st.spinner("審判が決裁中..."):
                     history_text = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.debate_history])
-                    _scoring_res = res_judge.get("scoring_result") or st.session_state.get("scoring_result")
-                    if _scoring_res and isinstance(_scoring_res, dict) and "ai_prob" in _scoring_res:
-                        pd_val = float(_scoring_res["ai_prob"]) * 100.0
-                    else:
-                        pd_val = res_judge.get("pd_percent")
                     net_risk = res_judge.get("network_risk_summary", "")
-                    pd_str = f"{pd_val:.1f}%" if pd_val is not None else "（未算出）"
                     comparison_judge = res_judge.get("comparison", "")
                     similar_block = res_judge.get("similar_past_cases_prompt", "") or ""
                     judge_prompt = ""

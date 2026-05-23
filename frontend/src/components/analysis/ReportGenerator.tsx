@@ -127,10 +127,6 @@ export default function ReportGenerator({ apiResult, formData, gunshiText }: Rep
                      <span className="text-xl font-black text-indigo-700">{apiResult?.score_base?.toFixed(1) || 0} 点</span>
                    </div>
                    <div className="flex justify-between items-center bg-white p-3 border rounded-lg shadow-sm">
-                     <span className="text-xs font-bold text-slate-500">顧客PD（デフォルト）</span>
-                     <span className="text-xl font-black text-rose-600">{apiResult?.score_borrower?.toFixed(2) || 0} %</span>
-                   </div>
-                   <div className="flex justify-between items-center bg-white p-3 border rounded-lg shadow-sm">
                      <span className="text-xs font-bold text-slate-500">審査申請物件</span>
                      <span className="text-sm font-black text-slate-800">{formData.asset_name || "未設定"}</span>
                    </div>

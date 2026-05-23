@@ -463,7 +463,6 @@ def delete_case(case_id: str):
 
 class AdviseRequest(BaseModel):
     score: float
-    pd_percent: float
     industry_major: str
 
 class AdviseResponseItem(BaseModel):
@@ -503,7 +502,7 @@ def get_gunshi_advise(req: AdviseRequest):
 class GunshiStreamRequest(BaseModel):
     industry_cat: str
     score: float
-    pd_pct: float
+    pd_pct: float = 0.0
     resale_eval: str = "B"
     repeat_count: int = 0
     subsidy_flag: bool = False
@@ -516,8 +515,6 @@ class GunshiStreamRequest(BaseModel):
 @app.post("/api/gunshi/stream")
 async def gunshi_stream(req: GunshiStreamRequest):
     api_key = os.environ.get("GEMINI_API_KEY", "")
-    if not api_key:
-        raise HTTPException(status_code=503, detail="GEMINI_API_KEY not set")
 
     async def event_generator():
         async for chunk in stream_gunshi_gemini(req.model_dump(), api_key):
@@ -528,7 +525,6 @@ async def gunshi_stream(req: GunshiStreamRequest):
 
 class GunshiChatRequest(BaseModel):
     score: float
-    pd_percent: float
     industry_major: str
     asset_name: str
     resale: str
@@ -577,7 +573,6 @@ def generate_gunshi_chat(req: GunshiChatRequest):
                     ],
                     score_result={
                         "score": req.score,
-                        "pd_percent": req.pd_percent,
                         "industry_major": req.industry_major,
                         "asset_name": req.asset_name,
                     },
@@ -600,7 +595,6 @@ def generate_gunshi_chat(req: GunshiChatRequest):
             prompt = build_gunshi_prompt(
                 industry=req.industry_major,
                 score=req.score,
-                pd_pct=req.pd_percent,
                 resale=req.resale,
                 repeat_cnt=req.repeat_cnt,
                 subsidy=req.subsidy,

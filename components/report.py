@@ -155,7 +155,6 @@ def render_report() -> None:
     hantei       = res.get("hantei") or "—"
     contract_prob= res.get("contract_prob") or 0
     _scoring_res = res.get("scoring_result") or {}
-    pd_pct       = (_scoring_res.get("ai_prob") * 100.0) if isinstance(_scoring_res, dict) and _scoring_res.get("ai_prob") is not None else res.get("pd_percent")
     industry_sub = res.get("industry_sub") or "—"
     industry_major=res.get("industry_major") or ""
     asset_name   = res.get("asset_name") or "—"
@@ -306,7 +305,6 @@ def render_report() -> None:
         kpi_items = [
             ("契約期待度",    f"{contract_prob:.1f}%", "", _kpi_color(contract_prob, 50)),
             ("予測利回り",    _fmt(yield_pred, ".2f", "%"), "", ""),
-            ("デフォルト率",  _fmt(pd_pct, ".1f", "%"), "", "bad" if (pd_pct or 0) > 10 else "good" if (pd_pct or 0) < 5 else ""),
             ("営業利益率",    _fmt(user_op, ".1f", "%"), f"業界 {_fmt(bench_op,'.1f','%')}", _kpi_color(user_op, bench_op)),
             ("自己資本比率",  _fmt(user_eq_d, ".1f", "%"), f"業界 {_fmt(bench_eq_d,'.1f','%')}", _kpi_color(user_eq_d, bench_eq_d)),
             ("流動比率",      _fmt(user_cr, ".0f", "%"), f"業界 {_fmt(bench_cr,'.0f','%')}", _kpi_color(user_cr, bench_cr)),

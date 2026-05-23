@@ -18,7 +18,7 @@ mock_st.session_state = MockSessionState(_SHARED_SESSION_STATE)
 mock_st.sidebar = MagicMock()
 mock_st.columns = lambda n: [MagicMock() for _ in range(n)]
 mock_st.tabs = lambda n: [MagicMock() for _ in range(n)]
-mock_st.expander = lambda l: MagicMock()
+mock_st.expander = lambda *args, **kwargs: MagicMock()
 
 # 重要：グローバルな sys.modules に登録
 sys.modules['streamlit'] = mock_st

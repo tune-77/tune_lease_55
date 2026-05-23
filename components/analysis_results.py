@@ -340,13 +340,6 @@ def render_analysis_results(
                 _hantei_color = "#64748b"   # 不明: グレー
                 _hantei_bg    = "#f8fafc"
             _yield_str = f"{res['yield_pred']:.2f}%" if "yield_pred" in res else "—"
-            _scoring_res = res.get("scoring_result") or st.session_state.get("scoring_result")
-            if _scoring_res and isinstance(_scoring_res, dict) and "ai_prob" in _scoring_res:
-                _pd_val = float(_scoring_res["ai_prob"]) * 100.0
-            else:
-                _pd_val = res.get("pd_percent", 0) or 0
-            
-            _pd_color  = "#dc2626" if _pd_val > 5.0 else "#1e3a5f"  # PD高い場合のみ注意色
             _sum_col, _gauge_col = st.columns([3, 2])
             with _sum_col:
                 st.markdown(f"""
@@ -377,10 +370,6 @@ def render_analysis_results(
                     <div>
                       <div style="font-size:0.7rem;color:#94a3b8;margin-bottom:0.1rem;">予測利回り</div>
                       <div style="font-size:1.4rem;font-weight:700;color:#1e3a5f;">{_yield_str}</div>
-                    </div>
-                    <div>
-                      <div style="font-size:0.7rem;color:#94a3b8;margin-bottom:0.1rem;">デフォルト率</div>
-                      <div style="font-size:1.4rem;font-weight:700;color:{_pd_color};">{_pd_val:.1f}%</div>
                     </div>
                   </div>
                 </div>
@@ -514,6 +503,83 @@ def render_analysis_results(
                                         st.error("戦略の生成に失敗しました。")
 
             st.divider()
+
+            # ── 🏭 業種マクロリスクベンチマーク（TDB 2025年度） ─────────────────
+            try:
+                import sys as _sys
+                import os as _os
+                _repo_root = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), ".."))
+                if _repo_root not in _sys.path:
+                    _sys.path.insert(0, _repo_root)
+                from data.industry_bankruptcy_bench import get_bankruptcy_bench, get_relative_risk, OVERALL_AVG_RATE
+
+                _bmaj = selected_major or res.get("industry_major", "")
+                _bbench = get_bankruptcy_bench(_bmaj)
+                if _bbench:
+                    _brate   = _bbench["rate"]
+                    _bper10k = _bbench["per_10k"]
+                    _blevel  = _bbench["risk_level"]
+                    _bstars  = _bbench["risk_stars"]
+                    _bnote   = _bbench.get("note", "")
+                    _bcat    = _bbench["matched_category"]
+                    _brel    = get_relative_risk(_brate)
+
+                    _star_filled = "●" * _bstars
+                    _star_empty  = "○" * (4 - _bstars)
+                    _star_str    = _star_filled + _star_empty
+
+                    _level_color = {
+                        "高":   "#dc2626",
+                        "中高": "#ea580c",
+                        "中":   "#ca8a04",
+                        "低":   "#16a34a",
+                    }.get(_blevel, "#64748b")
+
+                    _rel_color = "#dc2626" if "高め" in _brel else "#16a34a" if "低め" in _brel else "#64748b"
+
+                    _note_html = f'<div style="font-size:0.68rem;color:#f97316;margin-top:0.4rem;">⚠️ {_bnote}</div>' if _bnote else ""
+
+                    st.markdown(f"""
+                    <div style="
+                      background:#f8fafc;
+                      border:1px solid #e2e8f0;
+                      border-left:4px solid {_level_color};
+                      border-radius:6px;
+                      padding:0.9rem 1.2rem;
+                      margin-bottom:0.5rem;
+                    ">
+                      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:0.5rem;">
+                        <div>
+                          <div style="font-size:0.68rem;color:#94a3b8;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:0.25rem;">
+                            業種マクロリスク — TDB 2025年度 / 中小企業庁
+                          </div>
+                          <div style="font-size:0.92rem;font-weight:700;color:#1e3a5f;">{_bcat}</div>
+                        </div>
+                        <div style="text-align:right;">
+                          <span style="font-size:0.68rem;color:#94a3b8;">年間倒産率（概算）</span><br>
+                          <span style="font-size:1.5rem;font-weight:800;color:{_level_color};">{_brate:.2f}%</span>
+                          <span style="font-size:0.72rem;color:#64748b;margin-left:0.4rem;">1万者あたり {_bper10k:.0f}件</span>
+                        </div>
+                      </div>
+                      <div style="display:flex;gap:1.5rem;margin-top:0.6rem;flex-wrap:wrap;">
+                        <div>
+                          <span style="font-size:0.68rem;color:#94a3b8;">リスクレベル</span><br>
+                          <span style="font-size:0.85rem;font-weight:700;color:{_level_color};">{_blevel}</span>
+                          <span style="font-size:0.78rem;color:#94a3b8;margin-left:0.25rem;">{_star_str}</span>
+                        </div>
+                        <div>
+                          <span style="font-size:0.68rem;color:#94a3b8;">全業種平均比（約{OVERALL_AVG_RATE:.2f}%）</span><br>
+                          <span style="font-size:0.85rem;font-weight:600;color:{_rel_color};">{_brel}</span>
+                        </div>
+                      </div>
+                      {_note_html}
+                      <div style="font-size:0.62rem;color:#cbd5e1;margin-top:0.5rem;">
+                        ※ 業種全体の母集団倒産率。個社の倒産確率ではありません。負債1,000万円以上の法的整理ベース。
+                      </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            except Exception:
+                pass
 
             # ── 💴 金利サジェスト ──────────────────────────────────────────────
             try:
@@ -1885,57 +1951,7 @@ def render_analysis_results(
 
             st.divider()
             # ----- カード: 本件スコア内訳・利回り -----
-            _scoring_res = res.get("scoring_result") or st.session_state.get("scoring_result")
-            if _scoring_res and isinstance(_scoring_res, dict) and "ai_prob" in _scoring_res:
-                pd_val = float(_scoring_res["ai_prob"]) * 100.0
-            else:
-                pd_val = res.get("pd_percent")
-                
-            if pd_val is None:
-                fin = res.get("financials", {})
-                total_assets = fin.get("assets") or 0
-                net_assets = fin.get("net_assets") or 0
-                machines = fin.get("machines") or 0
-                other_assets = fin.get("other_assets") or 0
-                user_eq = res.get("user_eq", 0)
-                user_op = res.get("user_op", 0)
-                liability_total = total_assets - net_assets if total_assets and net_assets is not None else 0
-                current_approx = max(0, total_assets - machines - other_assets)
-                current_ratio = (current_approx / liability_total * 100) if liability_total > 0 else 100.0
-                pd_val = calculate_pd(user_eq, current_ratio, user_op)
-                
-            # ==== 連鎖倒産リスクのUI警告表示 ====
-            try:
-                import numpy as np
-                from risk_engine import calculate_modified_risk
-                from network_constants import IOT_TEMPLATES
-                
-                _base_pd = pd_val
-                _industry_name = res.get("industry_major", "")
-                _template_name = ""
-                if "建設" in _industry_name: _template_name = "建設業モデル"
-                elif "製造" in _industry_name: _template_name = "製造業モデル"
-                elif "情報" in _industry_name: _template_name = "情報通信業モデル"
-                
-                if _template_name in IOT_TEMPLATES:
-                    _template = IOT_TEMPLATES[_template_name]
-                    _r_vec = np.array([_base_pd] + [e.get("base_r", 1.0) for e in _template["entities"][1:]])
-                    _alpha_vec = np.array([0.5] + [e.get("alpha", 0.5) for e in _template["entities"][1:]])
-                    
-                    _n = len(_r_vec)
-                    _adj_w = np.zeros((_n, _n))
-                    for u, v, w in _template["dependencies"]:
-                        _adj_w[u][v] = w
-                        
-                    _m_vec = calculate_modified_risk(_r_vec, _alpha_vec, _adj_w)
-                    _m_pd = min(100.0, max(0.0, _m_vec[0]))
-                    
-                    if _m_pd > _base_pd * 1.2:
-                        st.error(f"⚠️ **【連鎖倒産リスク アラート】**\n\n単体の財務データに基づく倒産リスクは **{_base_pd:.1f} %** ですが、**{_industry_name}** 特有の依存ネットワークを加味した実質倒産確率は **{_m_pd:.1f} %** に増幅しています。")
-                    else:
-                        st.success(f"✅ ネットワーク連鎖リスクチェック完了: 単体リスク {_base_pd:.1f}% → 実質リスク {_m_pd:.1f}%")
-            except Exception as e:
-                st.caption(f"連鎖リスクチェック用モジュールの読み込みに失敗しました: {e}")
+            pd_val = 0.0
 
 
 
