@@ -54,7 +54,7 @@ def _auto_comment(
     user_eq: float, bench_eq: float,
     gross_m: float, net_m: float,
     roa: float, debt_r: float,
-    pd_pct: float, yield_pred: float,
+    yield_pred: float,
     ind_score: float, bench_score: float,
 ) -> list[str]:
     """
@@ -167,24 +167,6 @@ def _auto_comment(
     else:
         lines.append(
             f"■ 資産効率：ROAがマイナスです。資産運用の改善が急務です。"
-        )
-
-    # ── 信用リスクコメント ─────────────────────────────────────
-    if pd_pct < 2:
-        lines.append(
-            f"■ 信用リスク：PD（デフォルト確率）{pd_pct:.1f}%は低水準で、"
-            "短期的な債務不履行リスクは限定的と評価されます。"
-        )
-    elif pd_pct < 5:
-        lines.append(
-            f"■ 信用リスク：PD（デフォルト確率）{pd_pct:.1f}%は中程度です。"
-            "与信モニタリングを強化し、延滞兆候の早期検知に努めてください。"
-        )
-    else:
-        lines.append(
-            f"■ 信用リスク：PD（デフォルト確率）{pd_pct:.1f}%は高水準です。"
-            "担保・連帯保証の充実、契約期間短縮またはリース料前払い等の"
-            "リスク軽減措置を強く推奨します。"
         )
 
     # ── 金利・採算コメント ─────────────────────────────────────
@@ -459,7 +441,6 @@ def build_screening_report_pdf(
     bench_op     = float(res.get("bench_op",     0))
     user_eq      = float(res.get("user_eq",      0))
     bench_eq     = float(res.get("bench_eq",     0))
-    pd_pct       = float(res.get("pd_percent",   0))
     yield_pred   = float(res.get("yield_pred",   0))
     contract_p   = float(res.get("contract_prob",0))
     industry_sub = res.get("industry_sub", "")
@@ -555,15 +536,13 @@ def build_screening_report_pdf(
         ps("jl", 10, sc_rgb, "CENTER"),
     )
 
-    # 右列上: KPIバッジ（PD / 予測金利 / 成約確率）
+    # 右列上: KPIバッジ（予測金利 / 成約確率）
     badge_tbl = Table(
-        [[Paragraph("PD（デフォルト率）", S_SMALL),
-          Paragraph("予測金利",           S_SMALL),
+        [[Paragraph("予測金利",           S_SMALL),
           Paragraph("成約確率",           S_SMALL)],
-         [Paragraph(f"{pd_pct:.1f}%",     ps("b1", 12, _BLACK, "CENTER")),
-          Paragraph(f"{yield_pred:.2f}%", ps("b2", 12, _BLACK, "CENTER")),
+         [Paragraph(f"{yield_pred:.2f}%", ps("b2", 12, _BLACK, "CENTER")),
           Paragraph(f"{contract_p:.0f}%", ps("b3", 12, _BLACK, "CENTER"))]],
-        colWidths=[37*mm, 37*mm, 36*mm],
+        colWidths=[55*mm, 55*mm],
     )
     badge_tbl.setStyle(TableStyle([
         ("FONTNAME",     (0, 0), (-1, -1), _JP),
@@ -917,7 +896,7 @@ def build_screening_report_pdf(
         user_eq=user_eq, bench_eq=bench_eq,
         gross_m=gross_m, net_m=net_m,
         roa=roa, debt_r=debt_r,
-        pd_pct=pd_pct, yield_pred=yield_pred,
+        yield_pred=yield_pred,
         ind_score=ind_score, bench_score=bench_score,
     )
 
@@ -930,9 +909,7 @@ def build_screening_report_pdf(
             tag_text  = parts[0].lstrip("■ ").strip()  # タイトル部
             body_text = parts[1].strip() if len(parts) > 1 else ""
             # タイトルの色はスコアに応じたものか STEEL
-            if "信用リスク" in tag_text and pd_pct >= 5:
-                tag_color = _DANGER
-            elif "収益性" in tag_text and user_op < 0:
+            if "収益性" in tag_text and user_op < 0:
                 tag_color = _DANGER
             elif "総合評価" in tag_text:
                 tag_color = sc_rgb

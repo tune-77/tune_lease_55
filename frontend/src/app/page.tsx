@@ -235,9 +235,8 @@ export default function Dashboard() {
 
           {/* 右カラム: 審査軍師 (逆転プラン自動提案) */}
           <div className="w-full xl:w-1/3 mt-8 xl:mt-0 relative z-10">
-            <GunshiAdvice 
-              score={result?.score_base || 0} 
-              pd_percent={result?.score_borrower || 0} 
+            <GunshiAdvice
+              score={result?.score_base || 0}
               industry_major={result?.industry_major || formData.industry_major || ""}
               formData={formData}
               onChatLoaded={setGunshiText}

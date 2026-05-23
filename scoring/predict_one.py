@@ -19,6 +19,7 @@ _logger = logging.getLogger(__name__)
 # ── モデルキャッシュ（Streamlit内外どちらでも動作）──────────────────────────
 _LEGACY_MODEL_CACHE: "dict[str, dict]" = {}
 _RF_BUNDLE_CACHE: "dict[str, dict]" = {}
+_LGBM_CONTRACT_CACHE: "dict | None" = None
 
 
 def _load_legacy_models(base_path: str) -> dict | None:
@@ -26,15 +27,14 @@ def _load_legacy_models(base_path: str) -> dict | None:
     if base_path in _LEGACY_MODEL_CACHE:
         return _LEGACY_MODEL_CACHE[base_path]
 
-    import joblib
-    from .feature_engineering_custom import CustomFinancialFeatures
-    from .industry_hybrid_model import IndustrySpecificHybridModel
-    from .model import CreditScoringModel
-
     base = Path(base_path)
     if not base.exists():
         return None
     try:
+        import joblib
+        from .feature_engineering_custom import CustomFinancialFeatures
+        from .industry_hybrid_model import IndustrySpecificHybridModel
+        from .model import CreditScoringModel
         engine = CustomFinancialFeatures()
         industry_model = IndustrySpecificHybridModel()
         industry_model.industry_coefficients = joblib.load(base / "industry_coefficients.pkl")
@@ -55,6 +55,126 @@ def _load_legacy_models(base_path: str) -> dict | None:
         "label_encoder": label_encoder,
     }
     return _LEGACY_MODEL_CACHE[base_path]
+
+
+def _load_lgbm_contract_bundle() -> dict | None:
+    """lgbm_contract_model.pkl (LGBMClassifier, 成約予測) を初回のみロードしてキャッシュする。"""
+    global _LGBM_CONTRACT_CACHE
+    if _LGBM_CONTRACT_CACHE is not None:
+        return _LGBM_CONTRACT_CACHE
+    env_path = os.environ.get("LEASE_SCORING_LGBM_BUNDLE", "").strip()
+    candidates = [Path(env_path)] if env_path else []
+    candidates.append(Path(__file__).resolve().parent.parent / "data" / "lgbm_contract_model.pkl")
+    for path in candidates:
+        if not path.exists():
+            continue
+        try:
+            import joblib
+            bundle = joblib.load(path)
+            if isinstance(bundle, dict) and "model" in bundle and "feature_names" in bundle:
+                _LGBM_CONTRACT_CACHE = bundle
+                _logger.info("LGBM contract bundle loaded: %s (AUC=%.3f)", path, bundle.get("auc", 0))
+                return bundle
+        except Exception as e:
+            _logger.error("LGBM contract bundle load failed (%s): %s", path, e)
+    return None
+
+
+def _build_lgbm_contract_row(
+    revenue: float,
+    total_assets: float,
+    equity: float,
+    operating_profit: float,
+    net_income: float,
+    machinery_equipment: float,
+    other_fixed_assets: float,
+    depreciation: float,
+    rent_expense: float,
+    industry: str,
+    ctx: dict,
+    feature_names: list,
+) -> list:
+    """lgbm_contract_model の学習時と同じ特徴量ベクトルを構築する。欠損は NaN（LGBMが内部処理）。"""
+    import numpy as np
+
+    nan = float("nan")
+    industry_major = _safe_get_str(ctx, "industry_major", industry)
+    ind_medical      = 1.0 if ("医療" in industry_major or "福祉" in industry_major) else 0.0
+    ind_transport    = 1.0 if "運輸" in industry_major else 0.0
+    ind_construction = 1.0 if "建設" in industry_major else 0.0
+    ind_manufacturing = 1.0 if "製造" in industry_major else 0.0
+    ind_service      = 1.0 if ("卸売" in industry_major or "小売" in industry_major or "サービス" in industry_major) else 0.0
+
+    # predict_one の財務引数は円単位、学習データは千円単位なので /1000 して揃える。
+    # ctx（scoring_context）の財務値はすでに千円単位なのでそのまま使う。
+    revenue_k = revenue / 1000.0
+    bank_credit  = _safe_get_float(ctx, "bank_credit") or 0.0   # 千円
+    lease_credit = _safe_get_float(ctx, "lease_credit") or 0.0  # 千円
+    sales_log        = np.log1p(max(revenue_k, 0.0))
+    bank_credit_log  = np.log1p(max(bank_credit, 0.0))
+    lease_credit_log = np.log1p(max(lease_credit, 0.0))
+
+    op_profit    = _safe_get_float(ctx, "op_profit")    if _safe_get_float(ctx, "op_profit") is not None else operating_profit / 1000.0
+    ord_profit   = _safe_get_float(ctx, "ord_profit")   if _safe_get_float(ctx, "ord_profit") is not None else net_income / 1000.0
+    net_income_k = net_income / 1000.0
+    machines_k   = machinery_equipment / 1000.0
+    other_k      = other_fixed_assets / 1000.0
+    dep_k        = depreciation / 1000.0
+    rent_exp_k   = rent_expense / 1000.0
+    gross_profit = _safe_get_float(ctx, "gross_profit") if _safe_get_float(ctx, "gross_profit") is not None else nan
+    dep_expense  = _safe_get_float(ctx, "dep_expense")  if _safe_get_float(ctx, "dep_expense")  is not None else nan
+    rent         = _safe_get_float(ctx, "rent")          or 0.0
+    contracts    = _safe_get_float(ctx, "contracts")     or 0.0
+
+    grade     = _safe_get_str(ctx, "grade", "")
+    grade_4_6   = 1.0 if "4-6" in grade else 0.0
+    grade_watch = 1.0 if "要注意" in grade else 0.0
+    grade_none  = 1.0 if "無格付" in grade else 0.0
+
+    main_bank_str = _safe_get_str(ctx, "main_bank", "")
+    main_bank       = 1.0 if main_bank_str.startswith("メイン先") else 0.0
+    competitor_str  = _safe_get_str(ctx, "competitor", "")
+    competitor_present = 1.0 if competitor_str == "競合あり" else 0.0
+    competitor_none    = 1.0 if competitor_str == "競合なし" else 0.0
+
+    rate_diff_z        = _safe_get_float(ctx, "rate_diff_z")        or 0.0
+    industry_sentiment_z = _safe_get_float(ctx, "industry_sentiment_z") or 0.0
+
+    qualitative_tag_score = _safe_get_float(ctx, "qualitative_tag_score") or 0.0
+    qualitative_passion   = _safe_get_float(ctx, "qualitative_passion")   or 0.0
+    equity_ratio          = (equity / total_assets) if total_assets > 0 else 0.0
+    qualitative_combined  = _safe_get_float(ctx, "qualitative_combined")  or 0.0
+
+    bn_approval_prob = _safe_get_float(ctx, "bn_approval_prob") or 0.0
+    bn_fc = _safe_get_float(ctx, "bn_fc") or 0.0
+    bn_hc = _safe_get_float(ctx, "bn_hc") or 0.0
+    bn_av = _safe_get_float(ctx, "bn_av") or 0.0
+
+    qual_weighted  = _safe_get_float(ctx, "qual_weighted")  or 0.0
+    qual_rank_good = _safe_get_float(ctx, "qual_rank_good") or 0.0
+    qual_repayment = _safe_get_float(ctx, "qual_repayment") or 0.0
+    quantum_risk   = _safe_get_float(ctx, "quantum_risk")   or 0.0
+
+    fmap = {
+        "ind_medical": ind_medical, "ind_transport": ind_transport,
+        "ind_construction": ind_construction, "ind_manufacturing": ind_manufacturing,
+        "ind_service": ind_service,
+        "sales_log": sales_log, "bank_credit_log": bank_credit_log, "lease_credit_log": lease_credit_log,
+        "op_profit": op_profit, "ord_profit": ord_profit, "net_income": net_income_k,
+        "machines": machines_k, "other_assets": other_k,
+        "rent": rent, "gross_profit": gross_profit, "depreciation": dep_k,
+        "dep_expense": dep_expense, "rent_expense": rent_exp_k,
+        "grade_4_6": grade_4_6, "grade_watch": grade_watch, "grade_none": grade_none,
+        "contracts": contracts, "main_bank": main_bank,
+        "competitor_present": competitor_present, "competitor_none": competitor_none,
+        "rate_diff_z": rate_diff_z, "industry_sentiment_z": industry_sentiment_z,
+        "qualitative_tag_score": qualitative_tag_score, "qualitative_passion": qualitative_passion,
+        "equity_ratio": equity_ratio, "qualitative_combined": qualitative_combined,
+        "bn_approval_prob": bn_approval_prob, "bn_fc": bn_fc, "bn_hc": bn_hc, "bn_av": bn_av,
+        "qual_weighted": qual_weighted, "qual_rank_good": qual_rank_good,
+        "qual_repayment": qual_repayment, "quantum_risk": quantum_risk,
+    }
+    return [fmap.get(f, nan) for f in feature_names]
 
 
 def _load_rf_bundle(base_path: str | None = None) -> dict | None:
@@ -212,15 +332,51 @@ def predict_one(
     other_fixed_assets = _ensure_float(other_fixed_assets)
     depreciation = _ensure_float(depreciation)
     rent_expense = _ensure_float(rent_expense)
-    rf_bundle = _load_rf_bundle(base_path)
-    legacy_models = _load_legacy_models(base_path or str(Path(__file__).resolve().parent / "models" / "industry_specific"))
+    lgbm_bundle = _load_lgbm_contract_bundle()
+    rf_bundle = None if lgbm_bundle is not None else _load_rf_bundle(base_path)
+    legacy_models = None if (lgbm_bundle is not None or rf_bundle is not None) else _load_legacy_models(
+        base_path or str(Path(__file__).resolve().parent / "models" / "industry_specific")
+    )
 
-    if rf_bundle is None and legacy_models is None:
-        _logger.info("predict_one: RF/LGBM モデルがどちらもロードできません")
+    if lgbm_bundle is None and rf_bundle is None and legacy_models is None:
+        _logger.info("predict_one: 利用可能なモデルがありません")
         return None
 
-    # RF bundle 用の特徴量を組み立てる。training 時と同じ列を優先し、足りない値は imputer で補完する。
+    # ── LGBM contract model（最優先）──────────────────────────────────────────
     ctx = context or {}
+    if lgbm_bundle is not None:
+        try:
+            import numpy as np
+            feat_names = lgbm_bundle["feature_names"]
+            row = _build_lgbm_contract_row(
+                revenue, total_assets, equity, operating_profit, net_income,
+                machinery_equipment, other_fixed_assets, depreciation, rent_expense,
+                industry, ctx, feat_names,
+            )
+            X = np.array([row], dtype=float)
+            lgbm_approval_prob = float(lgbm_bundle["model"].predict_proba(X)[0, 1])
+            ai_prob = round(1.0 - lgbm_approval_prob, 4)
+            top5_reasons: List[str] = []
+            imp = lgbm_bundle.get("importance") or []
+            if imp:
+                for entry in sorted(imp, key=lambda x: x[1] if isinstance(x, (list, tuple)) else x.get("importance", 0), reverse=True)[:5]:
+                    fname = entry[0] if isinstance(entry, (list, tuple)) else entry.get("feature", "")
+                    idx = feat_names.index(fname) if fname in feat_names else -1
+                    if idx >= 0 and not (isinstance(row[idx], float) and row[idx] != row[idx]):
+                        top5_reasons.append(f"{fname}: {row[idx]:.4f}")
+            decision = "承認" if lgbm_approval_prob >= 0.5 else "否決"
+            return {
+                "legacy_prob": round(ai_prob, 4),
+                "ai_prob": ai_prob,
+                "hybrid_prob": ai_prob,
+                "decision": decision,
+                "top5_reasons": top5_reasons,
+                "model_used": "lgbm_contract",
+            }
+        except Exception as e:
+            _logger.warning("predict_one: LGBM inference failed, fallback to RF: %s", e)
+
+    # RF bundle 用の特徴量を組み立てる。training 時と同じ列を優先し、足りない値は imputer で補完する。
     features_map: dict[str, Any] = {}
 
     # 財務・比率

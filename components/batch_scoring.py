@@ -419,7 +419,6 @@ def _score_one(row: dict) -> dict:
                     "Q_risk": None,
                     "強警戒シグナル": "該当",
                     "信用リスク警告": "格付が 8-3 / 9 / 10 に該当するため信用リスク群DATAへ分離保存",
-                    "PD概算(%)": None,
                     "自己資本比率(%)": None,
                     "営業利益率(%)": None,
                     "判定": "信用リスク群分離",
@@ -512,15 +511,6 @@ def _score_one(row: dict) -> dict:
         # run_quick_scoring 呼び出し
         res = run_quick_scoring(inputs)
 
-        # PD概算 (格付からマッピング)
-        grade_to_pd = {
-            "1-3": 0.5,
-            "4-6": 2.0,
-            "要注意先": 15.0,
-            "無格付": 5.0,
-        }
-        pd_pct = grade_to_pd.get(inputs["grade"], 5.0)
-        
         # DB保存用のJSON構成
         # 日付欄 → ISO形式に変換（空欄は save_case_log が登録日時で補完）
         _shinsa_date = _date_text(row, "審査日")
@@ -675,7 +665,6 @@ def _score_one(row: dict) -> dict:
                 "Q_risk": res.get("quantum_risk"),
                 "強警戒シグナル": "該当" if res.get("credit_quantum_strong_warning") else "",
                 "信用リスク警告": " / ".join(res.get("credit_risk_warnings") or []),
-                "PD概算(%)":      pd_pct,
                 "自己資本比率(%)": round(res["user_equity_ratio"], 1),
                 "営業利益率(%)":   round(res["user_op_margin"], 1),
                 "判定":           res["hantei"],
@@ -689,7 +678,7 @@ def _score_one(row: dict) -> dict:
                 "取引先ID": row.get("取引先ID", ""), "企業名": row.get("企業名", ""),
                 "借手スコア": None, "物件スコア": None, "物件グレード": None,
                 "物件カテゴリ": None, "スコアリング": None,
-                "総合スコア": None, "PD概算(%)": None,
+                "総合スコア": None,
                 "信用リスク群スコア": None, "信用リスク群判定": None, "信用リスク警告": None,
                 "Q_risk": None, "強警戒シグナル": None,
                 "bench_score": None, "ind_score": None, "ind_name": None,

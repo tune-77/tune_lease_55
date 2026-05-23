@@ -139,3 +139,23 @@
 {"file":"data_cases.py","action":"Edit","timestamp":"2026-05-17T12:08:31Z","important":false}
 {"file":"api/main.py","action":"Edit","timestamp":"2026-05-18T11:40:31Z","important":false}
 {"file":"frontend/src/components/analysis/GunshiAdvice.tsx","action":"Edit","timestamp":"2026-05-18T11:49:08Z","important":false}
+{"file":"/Users/kobayashiisaoryou/Documents/Obsidian Vault/Daily/2026-05-22.md","action":"Edit","timestamp":"2026-05-22T11:11:09Z","important":false}
+{"file":"/Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/tune_lease_55 Wiki.md","action":"Edit","timestamp":"2026-05-22T11:12:50Z","important":false}
+{"file":".claude/skills/restart-api/skill.md","action":"Edit","timestamp":"2026-05-23T02:00:38Z","important":false}
+{"file":"scoring/predict_one.py","action":"Edit","timestamp":"2026-05-23T05:45:00Z","important":false}
+{"file":"components/score_calculation.py","action":"Edit","timestamp":"2026-05-23T05:46:17Z","important":false}
+{"file":"api/schemas.py","action":"Edit","timestamp":"2026-05-23T06:25:02Z","important":false}
+{"file":"api/main.py","action":"Edit","timestamp":"2026-05-23T06:27:19Z","important":false}
+{"file":"shinsa_gunshi_logic.py","action":"Edit","timestamp":"2026-05-23T06:28:27Z","important":false}
+{"file":"frontend/src/components/analysis/GunshiAdvice.tsx","action":"Edit","timestamp":"2026-05-23T06:29:34Z","important":false}
+{"file":"frontend/src/app/page.tsx","action":"Edit","timestamp":"2026-05-23T06:30:19Z","important":false}
+{"file":"api/gunshi_gemini.py","action":"Edit","timestamp":"2026-05-23T06:30:50Z","important":false}
+{"file":"components/rate_suggestion.py","action":"Edit","timestamp":"2026-05-23T06:31:56Z","important":false}
+{"file":"components/analysis_results.py","action":"Edit","timestamp":"2026-05-23T06:32:17Z","important":false}
+{"file":"components/ai_consultation.py","action":"Edit","timestamp":"2026-05-23T06:34:01Z","important":false}
+{"file":"components/report.py","action":"Edit","timestamp":"2026-05-23T06:34:07Z","important":false}
+{"file":"frontend/src/components/analysis/ReportGenerator.tsx","action":"Edit","timestamp":"2026-05-23T06:34:25Z","important":false}
+{"file":"components/shap_explanation.py","action":"Edit","timestamp":"2026-05-23T06:34:40Z","important":false}
+{"file":"report_visual_agent.py","action":"Edit","timestamp":"2026-05-23T06:37:00Z","important":false}
+{"file":"screening_report.py","action":"Edit","timestamp":"2026-05-23T06:38:32Z","important":false}
+{"file":"data/industry_bankruptcy_bench.py","action":"Write","timestamp":"2026-05-23T06:46:15Z","important":false}

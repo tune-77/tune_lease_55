@@ -682,24 +682,7 @@ def render_rate_suggestion(res: dict, similar_cases: list | None = None):
             
             # AI（LightGBM）倒産確率が利用可能な場合は優先して適用
             _scoring_res = res.get("scoring_result") or st.session_state.get("scoring_result")
-            if _scoring_res and "ai_prob" in _scoring_res:
-                pd_val = float(_scoring_res["ai_prob"]) * 100.0
-            else:
-                pd_val = res.get("pd_percent")
-                
-            if pd_val is None:
-                from indicators import calculate_pd
-                fin = res.get("financials", {})
-                _total = fin.get("assets") or 0
-                _net = fin.get("net_assets") or 0
-                _machines = fin.get("machines") or 0
-                _other = fin.get("other_assets") or 0
-                _eq = res.get("user_eq", 0)
-                _op = res.get("user_op", 0)
-                _debt = _total - _net if _total and _net is not None else 0
-                _curr_approx = max(0, _total - _machines - _other)
-                _curr_ratio = (_curr_approx / _debt * 100) if _debt > 0 else 100.0
-                pd_val = calculate_pd(_eq, _curr_ratio, _op)
+            pd_val = 0.0
                 
             _avg_w_rate = None
             if "industry_sub" in res:

@@ -30,8 +30,6 @@ def collect_report_data(session_state: Any) -> dict:
     hantei         = str(res.get("hantei",           "—"))
     industry_major = str(res.get("industry_major",   ""))
     industry_sub   = str(res.get("industry_sub",     ""))
-    pd_percent     = float(res.get("pd_percent",     0) or 0)
-
     # 物件・借手スコア（total_scorer_result から）
     tsr            = res.get("total_scorer_result") or {}
     asset_score    = min(100.0, max(0.0, float(tsr.get("asset_score",    0) or 0)))
@@ -106,7 +104,6 @@ def collect_report_data(session_state: Any) -> dict:
         "asset_score":     asset_score,
         "borrower_score":  borrower_score,
         "qual_score":      qual_score,
-        "pd_percent":      pd_percent,
         "industry_major":  industry_major,
         "industry_sub":    industry_sub,
         "user_eq":         user_eq,
@@ -266,7 +263,6 @@ def generate_html_report(data: dict) -> str:
     asset_s   = data["asset_score"]
     borrow_s  = data["borrower_score"]
     qual_s    = data["qual_score"]
-    pd_pct    = data["pd_percent"]
     ind_major = _esc(data["industry_major"])
     ind_sub   = _esc(data["industry_sub"])
     user_eq   = data["user_eq"]
@@ -503,9 +499,6 @@ body{{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--tex
       <td>営業利益率</td><td>{user_op:.1f}%</td><td>{bench_op:.1f}%</td><td style="color:{op_color}">{op_label}</td>
     </tr>
     <tr>
-        <td>デフォルト確率 (PD)</td><td>{pd_pct:.2f}%</td><td>-</td><td>-</td>
-    </tr>
-    <tr>
       <td>収益性指標 (ROA)</td><td>{roa:.1f}%</td><td>-</td><td>-</td>
     </tr>
   </tbody>
@@ -633,7 +626,6 @@ def generate_pdf_report(data: dict) -> bytes:
     asset_v    = data["asset_score"]
     borrow_v   = data["borrower_score"]
     qual_v     = data["qual_score"]
-    pd_pct     = data["pd_percent"]
     user_eq    = data["user_eq"]
     user_op    = data["user_op"]
     mc         = data["mc_data"]
@@ -695,10 +687,10 @@ def generate_pdf_report(data: dict) -> bytes:
 
     # KPI ライン
     kpi_data = [
-        ["デフォルト確率", f"{pd_pct:.2f}%",  "BN承認確率",  f"{bn_prob:.1f}%"],
-        ["自己資本比率",   f"{user_eq:.1f}%", "営業利益率",  f"{user_op:.1f}%"],
-        ["年商",           f"{nenshu:,.0f}千円", "取得費用",  f"{acq_cost:,.0f}千円"],
-        ["純資産",         f"{net_assets:,.0f}千円", "リース期間", f"{lease_term}ヶ月"],
+        ["自己資本比率",   f"{user_eq:.1f}%", "BN承認確率",  f"{bn_prob:.1f}%"],
+        ["営業利益率",     f"{user_op:.1f}%", "年商",        f"{nenshu:,.0f}千円"],
+        ["取得費用",       f"{acq_cost:,.0f}千円", "リース期間", f"{lease_term}ヶ月"],
+        ["純資産",         f"{net_assets:,.0f}千円", "", ""],
     ]
     kpi_tbl = Table(kpi_data, colWidths=["28%", "22%", "28%", "22%"])
     kpi_tbl.setStyle(TableStyle([

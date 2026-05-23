@@ -8,6 +8,7 @@ import time
 import math
 import datetime
 import os
+from pathlib import Path
 
 # [API物理直結] 外部APIが直接結果を取得するためのグローバル変数
 _API_LAST_RESULT = None
@@ -18,7 +19,7 @@ from coeff_definitions import (
 )
 
 from charts import _equity_ratio_display
-from indicators import calculate_pd
+
 from web_services import get_market_rate, get_stats
 from rule_manager import evaluate_custom_rules
 from data_cases import (
@@ -86,6 +87,7 @@ def _build_learning_pd_result(
     total_assets,
     net_assets,
     selected_major,
+    context=None,
 ):
     """学習モデル（RandomForest）由来の PD を構築する。失敗時は None を返す。"""
     try:
@@ -113,6 +115,7 @@ def _build_learning_pd_result(
         depreciation=depreciation_yen,
         rent_expense=rent_expense_yen,
         industry=industry_label,
+        context=context,
     )
 
 
@@ -150,7 +153,6 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
     bench_asset_turn = 1.0
     user_dscr = None
     _dscr_source = None
-    pd_percent = 0.0
     network_risk_summary = ""
     similar_past_for_prompt = ""
     strength_tags = form_result.get("strength_tags", [])
@@ -499,9 +501,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
     
                 my_hints = hints_data.get(selected_sub, {"subsidies": [], "risks": [], "mandatory": ""})
     
-                # PD は後段で RF モデルから計算する。ここでは初期値のみ保持する。
                 scoring_result = None
-                pd_percent = 0.0
                 network_risk_summary = ""
     
                 # ==========================================================================
@@ -934,7 +934,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 # [物理ファイル通信] APIへの確実なデータ受け渡し用 (絶対パス固定)
                 import json
                 try:
-                    _bridge_file = "/Users/kobayashiisaoryou/clawd/tune_lease_55/scoring_output_bridge.json"
+                    _bridge_file = str(Path(__file__).resolve().parent.parent / "scoring_output_bridge.json")
                     with open(_bridge_file, "w", encoding="utf-8") as f:
                         json.dump(res_dict, f, ensure_ascii=False)
                     print(f"[CORE_DEBUG] SUCCESS: Result written to {_bridge_file}. Score={final_score}")
@@ -1080,16 +1080,6 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     # 定性スコアリングの合計・ランクも否決後の総合で再計算
                     _refresh_qualitative_correction(qualitative_scoring_correction, final_score, qual_weighted_score)
 
-                # デフォルト率50%以上の場合、成約可能性スコアから-50点
-                if pd_percent >= 50:
-                    final_score = max(0, final_score - 50)
-                    ai_completed_factors.append({
-                        "factor": "倒産確率(PD)ペナルティ",
-                        "effect_percent": -50,
-                        "detail": f"デフォルト確率が {pd_percent:.1f}% と非常に高いため大幅減点フラグ発動"
-                    })
-                    _refresh_qualitative_correction(qualitative_scoring_correction, final_score, qual_weighted_score)
-
                 # 新しい審査を実行したのでチャット履歴をリセット
                 st.session_state["messages"] = []
                 st.session_state["debate_history"] = []
@@ -1206,27 +1196,6 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     "sys_ind_score": score_percent_ind,
                     "sys_bench": score_percent_bench,
                 }
-                scoring_result = _build_learning_pd_result(
-                    nenshu=nenshu,
-                    rieki=rieki,
-                    item5_net_income=item5_net_income,
-                    item6_machine=item6_machine,
-                    item7_other=item7_other,
-                    item10_dep=item10_dep,
-                    item12_rent_exp=item12_rent_exp,
-                    total_assets=total_assets,
-                    net_assets=net_assets,
-                    selected_major=selected_major,
-                    context=scoring_context,
-                )
-                if scoring_result and scoring_result.get("ai_prob") is not None:
-                    pd_percent = float(scoring_result["ai_prob"]) * 100.0
-                else:
-                    pd_percent = calculate_pd(user_equity_ratio, user_current_ratio, user_op_margin)
-                    scoring_result = scoring_result or {}
-                    scoring_result["fallback_pd_percent"] = pd_percent
-                    scoring_result["fallback_pd_source"] = "simple_financial"
-
                 # 将来予測シミュレーション（遅延ロード化：分析結果ページで必要時に呼び出す）
                 future_sim_result = None
 
@@ -1258,9 +1227,6 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     "user_asset_turnover": user_asset_turnover, "bench_asset_turnover": bench_asset_turn,
                     "user_dscr": user_dscr, "dscr_source": _dscr_source,
                     "hints": my_hints,
-                    "pd_percent": pd_percent,
-                    "pd_percent_source": "ai_prob" if scoring_result and scoring_result.get("ai_prob") is not None else "simple_financial",
-                    "pd_model": "random_forest" if scoring_result and scoring_result.get("ai_prob") is not None else "heuristic",
                     "network_risk_summary": network_risk_summary,
                     "similar_past_cases_prompt": similar_past_for_prompt,
                     "strength_tags": strength_tags,
@@ -1300,6 +1266,13 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         "bench_lease_to_capex":   bench_lease_to_capex,
                     },
                 }
+
+                try:
+                    _bridge_file = str(Path(__file__).resolve().parent.parent / "scoring_output_bridge.json")
+                    with open(_bridge_file, "w", encoding="utf-8") as f:
+                        json.dump(st.session_state["last_result"], f, ensure_ascii=False)
+                except Exception as e:
+                    print(f"[CORE_ERROR] Failed to update result file with PD: {e}")
 
                 # ── 量子解析ゲートウェイ (スコア≥70 案件) ───────────────────
                 # score 70-79: 閾値 THRESHOLD_SECONDARY_REVIEW_MID(45)

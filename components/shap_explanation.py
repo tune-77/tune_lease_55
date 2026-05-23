@@ -48,7 +48,7 @@ CAT_COLS = ["industry_major", "customer_type", "main_bank",
             "competitor", "grade", "deal_source", "lease_asset"]
 NUM_COLS = ["nenshu", "op_profit", "ord_profit", "bank_credit", "lease_credit",
             "acquisition_cost", "contracts", "lease_asset_score",
-            "score", "score_borrower", "pd_percent", "qual_score"]
+            "score", "score_borrower", "qual_score"]
 FEATURE_COLS = CAT_COLS + NUM_COLS
 
 LABEL_JA = {
@@ -69,7 +69,6 @@ LABEL_JA = {
     "lease_asset_score":"物件スコア",
     "score":            "総合スコア",
     "score_borrower":   "借手スコア",
-    "pd_percent":       "デフォルト確率(%)",
     "qual_score":       "定性スコア",
 }
 FEATURE_NAMES_JA = [LABEL_JA.get(c, c) for c in FEATURE_COLS]
@@ -100,7 +99,6 @@ def _case_to_row(c, target=None):
         "lease_asset_score":float(inp.get("lease_asset_score", 0)),
         "score":            float(res.get("score", 0)),
         "score_borrower":   float(res.get("score_borrower", 0)),
-        "pd_percent":       float(res.get("pd_percent", 0)),
         "qual_score":       float(qs.get("weighted_score", 0)),
     }
     if target is not None:

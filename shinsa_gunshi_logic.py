@@ -799,8 +799,8 @@ def _ollama_stream(prompt: str, model: str) -> Generator[str, None, None]:
 def build_gunshi_prompt(
     industry: str,
     score: float,
-    pd_pct: float,
-    resale: str,
+    pd_pct: float = 0.0,
+    resale: str = "",
     repeat_cnt: int,
     subsidy: bool,
     bank: bool,
@@ -819,12 +819,31 @@ def build_gunshi_prompt(
     asset_finance_context: str = "", # ← アセットファイナンス評価データの返値
 ) -> str:
     """軍師プロンプトを生成する。"""
+    try:
+        import sys as _sys, os as _os
+        _repo = _os.path.abspath(_os.path.dirname(__file__))
+        if _repo not in _sys.path:
+            _sys.path.insert(0, _repo)
+        from data.industry_bankruptcy_bench import get_bankruptcy_bench, get_relative_risk
+        _bb = get_bankruptcy_bench(industry)
+        if _bb:
+            _macro_risk_line = (
+                f"{_bb['matched_category']} 年間倒産率 {_bb['rate']:.2f}%"
+                f"（1万者あたり{_bb['per_10k']:.0f}件, リスク:{_bb['risk_level']}, {get_relative_risk(_bb['rate'])}）"
+            )
+            if _bb.get("note"):
+                _macro_risk_line += f" ／ {_bb['note']}"
+        else:
+            _macro_risk_line = "データなし"
+    except Exception:
+        _macro_risk_line = "データなし"
+
     success_text = ""
     if success_patterns["success_samples"]:
         examples = []
         for s in success_patterns["success_samples"]:
             examples.append(
-                f"  - Score {s['score']:.0f} / PD {s['pd_pct']:.1f}% / "
+                f"  - Score {s['score']:.0f} / "
                 f"リセール{s['resale']} / リピート{s['repeat_cnt']}回 → 成約"
             )
         success_text = "【過去の成約成功事例】\n" + "\n".join(examples)
@@ -834,7 +853,7 @@ def build_gunshi_prompt(
         fails = []
         for f in success_patterns["fail_samples"]:
             fails.append(
-                f"  - Score {f['score']:.0f} / PD {f['pd_pct']:.1f}% / "
+                f"  - Score {f['score']:.0f} / "
                 f"リセール{f['resale']} → 非成約 (備考: {f.get('notes','なし')})"
             )
         fail_text = "【過去の非成約事例（教訓）】\n" + "\n".join(fails)
@@ -996,7 +1015,7 @@ def build_gunshi_prompt(
 【案件データ】
 - 業種: {industry}
 - スコア: {score:.0f} / 100
-- PD（デフォルト確率）: {pd_pct:.1f}%
+- 業種マクロリスク（TDB2025・中小企業倒産率）: {_macro_risk_line}
 - 中古市場リセール評価: {resale}
 - リピート実績回数: {repeat_cnt} 回
 - 補助金採択: {"あり" if subsidy else "なし"}
