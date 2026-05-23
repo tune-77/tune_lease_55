@@ -42,7 +42,15 @@ type StrategyCards = {
   customer_one_liners?: string[];
   ringi_lines?: string[];
   badges?: string[];
+  bayes_factors?: BayesFactor[];
   disclaimer?: string;
+};
+
+type BayesFactor = {
+  label?: string;
+  detail?: string;
+  delta_pct?: number;
+  direction?: 'base' | 'up' | 'down' | 'flat';
 };
 
 type WebHit = {
@@ -64,6 +72,7 @@ type GunshiStreamChunk = {
   type?: 'bayes' | 'phrases' | 'strategy_cards' | 'stream' | 'done';
   prior?: number;
   posterior?: number;
+  factors?: BayesFactor[];
   cards?: StrategyCards;
   delta?: string;
 };
@@ -80,6 +89,7 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
   const [similarOpen, setSimilarOpen] = useState(true);
   const [prior, setPrior] = useState<number | null>(null);
   const [posterior, setPosterior] = useState<number | null>(null);
+  const [bayesFactors, setBayesFactors] = useState<BayesFactor[]>([]);
   const [streamingText, setStreamingText] = useState('');
   const [strategyCards, setStrategyCards] = useState<StrategyCards | null>(null);
   const [strategyOpen, setStrategyOpen] = useState(true);
@@ -182,6 +192,7 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
     setStrategyCards(null);
     setPrior(null);
     setPosterior(null);
+    setBayesFactors([]);
     setStatusText('AIが考えています...');
 
     try {
@@ -218,8 +229,12 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
             if (chunk.type === 'bayes') {
               setPrior(chunk.prior ?? null);
               setPosterior(chunk.posterior ?? null);
+              setBayesFactors(chunk.factors || []);
             } else if (chunk.type === 'strategy_cards') {
               setStrategyCards(chunk.cards || null);
+              if (chunk.cards?.bayes_factors?.length) {
+                setBayesFactors(chunk.cards.bayes_factors);
+              }
             } else if (chunk.type === 'stream' && chunk.delta) {
               fullText += chunk.delta;
               setStreamingText(fullText);
@@ -389,6 +404,41 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
     );
   };
 
+  const renderBayesFactors = () => {
+    if (!bayesFactors.length) return null;
+    const factorClass = (direction?: BayesFactor['direction']) => {
+      if (direction === 'up') return 'border-emerald-200 bg-emerald-50 text-emerald-800';
+      if (direction === 'down') return 'border-red-200 bg-red-50 text-red-800';
+      if (direction === 'base') return 'border-blue-200 bg-blue-50 text-blue-800';
+      return 'border-slate-200 bg-slate-50 text-slate-700';
+    };
+    const deltaLabel = (factor: BayesFactor) => {
+      if (factor.direction === 'base') return '基準';
+      const value = Number(factor.delta_pct || 0);
+      if (value > 0) return `+${value.toFixed(1)}pt`;
+      if (value < 0) return `${value.toFixed(1)}pt`;
+      return '±0pt';
+    };
+
+    return (
+      <div className="mt-3 grid grid-cols-1 gap-1.5">
+        {bayesFactors.slice(0, 7).map((factor, i) => (
+          <div key={`${factor.label || 'factor'}-${i}`} className={`rounded-lg border px-2.5 py-2 ${factorClass(factor.direction)}`}>
+            <div className="flex items-start justify-between gap-2">
+              <span className="text-[11px] font-black leading-4">{factor.label || '要因'}</span>
+              <span className="shrink-0 text-[10px] font-black">{deltaLabel(factor)}</span>
+            </div>
+            {factor.detail && (
+              <div className="mt-0.5 text-[10px] leading-4 font-medium opacity-80">
+                {factor.detail}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const priorPct = prior !== null ? Math.round(prior * 100) : null;
   const posteriorPct = posterior !== null ? Math.round(posterior * 100) : null;
 
@@ -513,6 +563,7 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
               <span className="text-[9px] text-slate-400">50%</span>
               <span className="text-[9px] text-slate-400">100%</span>
             </div>
+            {renderBayesFactors()}
           </div>
         )}
       </div>

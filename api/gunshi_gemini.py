@@ -2,6 +2,7 @@
 import json
 import httpx
 from shinsa_gunshi_logic import (
+    EVIDENCE_WEIGHTS,
     compute_prior,
     compute_posterior,
     select_top_phrases,
@@ -12,6 +13,99 @@ GEMINI_STREAM_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
     "gemini-2.0-flash:streamGenerateContent"
 )
+
+
+def _normalize_resale_eval(value: object) -> str:
+    """Normalize frontend asset grades to the labels expected by the Bayes engine."""
+    text = str(value or "").strip()
+    mapping = {
+        "A": "高",
+        "B": "中",
+        "C": "低",
+        "S": "高",
+        "高": "高",
+        "中": "中",
+        "標準": "中",
+        "低": "低",
+    }
+    return mapping.get(text.upper(), mapping.get(text, "中"))
+
+
+def _bayes_inputs(params: dict) -> dict:
+    return {
+        "resale": _normalize_resale_eval(params.get("resale_eval", "中")),
+        "repeat_cnt": int(params.get("repeat_count", 0) or 0),
+        "subsidy": bool(params.get("subsidy_flag", False)),
+        "bank": bool(params.get("bank_support", False)),
+        "intuition": int(float(params.get("intuition_score", 50) or 50) // 20),
+    }
+
+
+def build_bayes_factors(params: dict, prior: float, posterior: float) -> list[dict]:
+    """Return human-readable factors behind the posterior probability."""
+    inputs = _bayes_inputs(params)
+    score = float(params.get("score", 0) or 0)
+    pd_pct = float(params.get("pd_pct", 0) or 0)
+
+    factors = [
+        {
+            "label": "事前確率",
+            "detail": f"スコア {score:.1f} 点 × (1 - PD {pd_pct:.1f}%) を初期値に使用",
+            "delta_pct": 0.0,
+            "direction": "base",
+        }
+    ]
+
+    resale = inputs["resale"]
+    resale_key = "resale_high" if resale == "高" else "resale_mid" if resale == "中" else "resale_low"
+    resale_delta = float(EVIDENCE_WEIGHTS.get(resale_key, 0.0))
+    factors.append({
+        "label": f"物件リセール: {resale}",
+        "detail": "換価性が高いほど回収余力を上げ、低い場合は保全懸念として減点",
+        "delta_pct": round(resale_delta * 100, 1),
+        "direction": "up" if resale_delta > 0 else "down" if resale_delta < 0 else "flat",
+    })
+
+    repeat_delta = min(float(EVIDENCE_WEIGHTS.get("repeat", 0.0)) * inputs["repeat_cnt"], 0.20)
+    factors.append({
+        "label": "既存・再リース実績",
+        "detail": f"{inputs['repeat_cnt']} 件を反映。実績が多いほど支払継続性を評価",
+        "delta_pct": round(repeat_delta * 100, 1),
+        "direction": "up" if repeat_delta > 0 else "flat",
+    })
+
+    subsidy_delta = float(EVIDENCE_WEIGHTS.get("subsidy", 0.0)) if inputs["subsidy"] else 0.0
+    factors.append({
+        "label": "補助金・助成金文脈",
+        "detail": "投資目的や資金繰り補完材料として確認済み" if inputs["subsidy"] else "未確認。採択・対象要件が取れれば押し材料",
+        "delta_pct": round(subsidy_delta * 100, 1),
+        "direction": "up" if subsidy_delta > 0 else "flat",
+    })
+
+    bank_delta = float(EVIDENCE_WEIGHTS.get("bank", 0.0)) if inputs["bank"] else 0.0
+    factors.append({
+        "label": "銀行支援・銀行紹介",
+        "detail": "主取引銀行の導線を回収・モニタリング材料として評価" if inputs["bank"] else "未確認。銀行温度感が取れないため上振れなし",
+        "delta_pct": round(bank_delta * 100, 1),
+        "direction": "up" if bank_delta > 0 else "flat",
+    })
+
+    intuition_delta = float(EVIDENCE_WEIGHTS.get("intuition", 0.0)) * (inputs["intuition"] - 3)
+    factors.append({
+        "label": "担当者直感",
+        "detail": f"入力値を5段階換算して {inputs['intuition']}。基準3との差を反映",
+        "delta_pct": round(intuition_delta * 100, 1),
+        "direction": "up" if intuition_delta > 0 else "down" if intuition_delta < 0 else "flat",
+    })
+
+    raw_delta = posterior - prior
+    factors.append({
+        "label": "更新後の差分",
+        "detail": f"事前 {prior:.1%} から事後 {posterior:.1%} へ更新",
+        "delta_pct": round(raw_delta * 100, 1),
+        "direction": "up" if raw_delta > 0 else "down" if raw_delta < 0 else "flat",
+    })
+    return factors
 
 
 def build_system_instruction() -> str:
@@ -35,22 +129,19 @@ def build_user_prompt(params: dict) -> str:
     pd_pct = params.get("pd_pct", 0)
     industry_cat = params.get("industry_cat", "")
     prior = compute_prior(score, pd_pct)
+    bayes_inputs = _bayes_inputs(params)
     posterior = compute_posterior(
         prior=prior,
-        resale=params.get("resale_eval", "B"),
-        repeat_cnt=params.get("repeat_count", 0),
-        subsidy=params.get("subsidy_flag", False),
-        bank=params.get("bank_support", False),
-        intuition=int(params.get("intuition_score", 50) // 20),  # 0-100 → 0-5 相当に変換
+        **bayes_inputs,
     )
     phrases = select_top_phrases(
         industry_cat=industry_cat,
         score=score,
         pd_pct=pd_pct,
-        resale=params.get("resale_eval", "B"),
-        repeat_cnt=params.get("repeat_count", 0),
-        subsidy=params.get("subsidy_flag", False),
-        bank=params.get("bank_support", False),
+        resale=bayes_inputs["resale"],
+        repeat_cnt=bayes_inputs["repeat_cnt"],
+        subsidy=bayes_inputs["subsidy"],
+        bank=bayes_inputs["bank"],
         posterior=posterior,
         asset_name=params.get("asset_name", ""),
         n=3,
@@ -73,13 +164,10 @@ def build_fallback_strategy_text(params: dict, phrases: list[str], reason: str =
     company_name = str(params.get("company_name") or "本件")
 
     prior = compute_prior(score, pd_pct)
+    bayes_inputs = _bayes_inputs(params)
     posterior = compute_posterior(
         prior=prior,
-        resale=params.get("resale_eval", "B"),
-        repeat_cnt=params.get("repeat_count", 0),
-        subsidy=params.get("subsidy_flag", False),
-        bank=params.get("bank_support", False),
-        intuition=int(params.get("intuition_score", 50) // 20),
+        **bayes_inputs,
     )
 
     if score >= 70:
@@ -134,7 +222,8 @@ def build_strategy_cards(params: dict, phrases: list[str], prior: float, posteri
     competitor_rate = params.get("competitor_rate")
     bank_support = bool(params.get("bank_support"))
     subsidy_flag = bool(params.get("subsidy_flag"))
-    repeat_count = int(params.get("repeat_count", 0) or 0)
+    bayes_inputs = _bayes_inputs(params)
+    repeat_count = bayes_inputs["repeat_cnt"]
     equity_ratio = float(params.get("equity_ratio", 0) or 0)
     op_profit = float(params.get("op_profit", 0) or 0)
     nenshu = float(params.get("nenshu", 0) or 0)
@@ -234,6 +323,7 @@ def build_strategy_cards(params: dict, phrases: list[str], prior: float, posteri
         "customer_one_liners": customer_lines,
         "ringi_lines": phrase_lines + ringi_lines,
         "badges": badges,
+        "bayes_factors": build_bayes_factors(params, prior, posterior),
         "disclaimer": "軍師AIは判定を上書きしません。最終判断は審査ルール、スコア、担当者確認に従ってください。",
     }
 
@@ -252,22 +342,19 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
     industry_cat = params.get("industry_cat", "")
 
     prior = compute_prior(score, pd_pct)
+    bayes_inputs = _bayes_inputs(params)
     posterior = compute_posterior(
         prior=prior,
-        resale=params.get("resale_eval", "B"),
-        repeat_cnt=params.get("repeat_count", 0),
-        subsidy=params.get("subsidy_flag", False),
-        bank=params.get("bank_support", False),
-        intuition=int(params.get("intuition_score", 50) // 20),
+        **bayes_inputs,
     )
     phrase_dicts = select_top_phrases(
         industry_cat=industry_cat,
         score=score,
         pd_pct=pd_pct,
-        resale=params.get("resale_eval", "B"),
-        repeat_cnt=params.get("repeat_count", 0),
-        subsidy=params.get("subsidy_flag", False),
-        bank=params.get("bank_support", False),
+        resale=bayes_inputs["resale"],
+        repeat_cnt=bayes_inputs["repeat_cnt"],
+        subsidy=bayes_inputs["subsidy"],
+        bank=bayes_inputs["bank"],
         posterior=posterior,
         asset_name=params.get("asset_name", ""),
         n=3,
@@ -275,7 +362,12 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
     # phrase_dicts は list[dict] — text フィールドを抽出
     phrases = [p.get("text", str(p)) if isinstance(p, dict) else str(p) for p in phrase_dicts]
 
-    yield {"type": "bayes", "prior": round(prior, 4), "posterior": round(posterior, 4)}
+    yield {
+        "type": "bayes",
+        "prior": round(prior, 4),
+        "posterior": round(posterior, 4),
+        "factors": build_bayes_factors(params, prior, posterior),
+    }
     yield {"type": "phrases", "items": phrases}
     yield {
         "type": "strategy_cards",
