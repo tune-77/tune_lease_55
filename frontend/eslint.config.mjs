@@ -18,8 +18,36 @@ const eslintConfig = defineConfig([
   ]),
   {
     rules: {
+      // ── 破壊的自動修正を防ぐためすべて warn に統一 ──────────────────────────
+      // error にすると AI エージェントが eslint --fix でコードを削除する連鎖が発生する。
+      // lint は「報告のみ」とし、修正は人間が判断する。
+
+      // any 型の使用: 既存コードに多数存在するため warn に留める
       "@typescript-eslint/no-explicit-any": "warn",
+
+      // 未使用変数: _ プレフィックスで意図的な未使用を明示できるようにする
+      // fixable=false のため --fix で削除はされないが、念のため warn に設定
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          // _で始まる変数・引数は意図的な未使用として無視
+          varsIgnorePattern: "^_",
+          argsIgnorePattern: "^_",
+          // 分割代入の残余要素（{ used, ...rest }のrest等）は無視
+          ignoreRestSiblings: true,
+          // import文の型のみ使用も許可
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
+
+      // hooks の set-state in effect: 誤検知が多いため warn
       "react-hooks/set-state-in-effect": "warn",
+
+      // react/display-name: forwardRef 等で誤検知しやすいため off
+      "react/display-name": "off",
+
+      // next/no-html-link-for-pages: pages/ ではなく app/ を使うプロジェクトでは不要
+      "@next/next/no-html-link-for-pages": "off",
     },
   },
 ]);

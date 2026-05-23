@@ -32,3 +32,29 @@
 - `.streamlit/secrets.toml` は絶対にコミットしない
 - `data/*.db`, `data/*.sqlite`, `data/*.jsonl` はコミットしない
 - Slack トークンは環境変数か secrets.toml から取得
+
+## ⚠️ フロントエンド lint ルール（必読）
+
+**`eslint --fix` は絶対に実行してはならない。**
+
+過去に `eslint --fix` がUIコンポーネントやAPIエンドポイントを削除する事故が発生している。
+
+### 正しい lint の使い方
+```bash
+# ✅ チェックのみ（これだけ使う）
+cd frontend && npm run lint
+
+# ❌ 絶対禁止（コードが削除される）
+cd frontend && npm run lint:fix   # → わざとエラーになるよう設定済み
+cd frontend && npx eslint --fix   # → 実行禁止
+```
+
+### lint エラーが出たとき
+1. エラーメッセージを読んで **手動で修正** する
+2. `no-unused-vars` 警告が出ても、そのコードが実際に使われているなら削除しない
+3. 意図的に未使用の変数は `_` プレフィックスを付ける（例: `_unused`）
+4. どうしても抑制が必要な場合は `// eslint-disable-next-line rule-name` コメントを使う
+
+### next build と lint は分離済み
+`next build` は lint を実行しない（`ignoreDuringBuilds: true`）。
+lint は CI の `frontend-lint` ジョブが **報告のみ** で実行する（ブロックしない）。

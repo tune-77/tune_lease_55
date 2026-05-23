@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint src/",
+    "lint:fix": "echo 'ERROR: lint:fix は禁止されています。手動で修正してください。' && exit 1",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@types/d3-sankey": "^0.12.5",

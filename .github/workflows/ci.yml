@@ -8,12 +8,16 @@ on:
     branches: [ master, main ]
     paths:
       - "**.py"
+      - "**.ts"
+      - "**.tsx"
+      - "**.mjs"
       - "requirements*.txt"
       - ".github/workflows/ci.yml"
   pull_request:
     branches: [ master, main ]
 
 jobs:
+  # ── Python テスト ────────────────────────────────────────────────────────────
   test:
     name: pytest on Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
@@ -64,3 +68,35 @@ jobs:
         run: |
           python -m pytest tests/ \
             --tb=no -q 2>&1 | tail -3
+
+  # ── フロントエンド lint（報告のみ・自動修正禁止） ──────────────────────────
+  frontend-lint:
+    name: Frontend ESLint（警告のみ、ブロックしない）
+    runs-on: ubuntu-latest
+    # lint の警告で PR をブロックしない。あくまで情報提供として実行する。
+    # ブロックしたい場合は continue-on-error: false に変更すること。
+    continue-on-error: true
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Node.js をセットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: npm install
+        working-directory: frontend
+        run: npm ci --prefer-offline
+
+      # --fix は絶対に実行しない。コードの自動削除・変更を防ぐ。
+      # lint 結果は GitHub Actions のログとして記録されるが、CI を失敗させない。
+      - name: ESLint（チェックのみ・--fix 禁止）
+        working-directory: frontend
+        run: |
+          echo "ℹ️  ESLint を --fix なしで実行します（自動修正禁止）"
+          npm run lint -- --max-warnings=9999 || true
+          echo "✅  lint チェック完了（警告は上記ログを参照）"

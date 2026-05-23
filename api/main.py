@@ -91,6 +91,10 @@ from pydantic import BaseModel, Field
 from typing import List, Any, Dict, Optional
 from scoring.deal_closure_engine import build_features, build_features_from_deltas, compute_closure_likelihood
 
+# Obsidian Vault パス（環境変数優先、未設定時は OBSIDIAN_VAULT_PATH 環境変数の有無でエラーを出す）
+# ハードコードされた個人パスを排除し、ポータブルな設定に統一
+_OBSIDIAN_VAULT_PATH: str = os.environ.get("OBSIDIAN_VAULT_PATH", "")
+
 # ChromaDB singleton — initialize once, not per-request
 _chroma_client = None
 _chroma_collection = None
@@ -1024,12 +1028,27 @@ def api_tfm_final_rate(req: TfmFinalRateRequest):
 class TfmFinancialPathsRequest(BaseModel):
     company_name: str
     n_periods: int = 12
+    current_revenue: Optional[float] = None
+    current_revenue_unit: str = "thousand_yen"
 
 @app.post("/api/timesfm/financial_paths")
 def api_tfm_financial_paths(req: TfmFinancialPathsRequest):
     from data_cases import load_all_cases
     from timesfm_engine import forecast_financial_paths, TIMESFM_AVAILABLE
     import numpy as np
+
+    def _to_thousand_yen(value, unit: str = "thousand_yen") -> Optional[float]:
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            return None
+        if not np.isfinite(v) or v <= 0:
+            return None
+        normalized_unit = (unit or "thousand_yen").lower()
+        if normalized_unit in {"million_yen", "million", "m_yen"}:
+            return v * 1000.0
+        return v
+
     cases = load_all_cases()
     company_cases = sorted(
         [c for c in cases if (c.get("company_name") or c.get("inputs", {}).get("company_name", "")) == req.company_name],
@@ -1044,14 +1063,22 @@ def api_tfm_financial_paths(req: TfmFinancialPathsRequest):
             except: inp = {}
         v = inp.get("nenshu", inp.get("revenue"))
         if v:
-            try: revenues.append(float(v))
-            except: pass
-            
-    if not revenues: revenues = [10_000_000.0]
+            parsed = _to_thousand_yen(v)
+            if parsed is not None:
+                revenues.append(parsed)
+
+    current_revenue = _to_thousand_yen(req.current_revenue, req.current_revenue_unit)
+    if current_revenue is not None:
+        if not revenues or abs(revenues[-1] - current_revenue) > max(1.0, current_revenue * 0.001):
+            revenues.append(current_revenue)
+
+    if not revenues:
+        revenues = [200_000.0]
     
     # 200 paths, downsampled to 50 for frontend drawing to save bandwidth
-    gbm_paths = forecast_financial_paths(revenues, req.n_periods, n_paths=200)[:50].tolist()
-    gbm_median = np.median(forecast_financial_paths(revenues, req.n_periods, n_paths=200), axis=0).tolist()
+    raw_gbm = forecast_financial_paths(revenues, req.n_periods, n_paths=200)
+    gbm_paths = raw_gbm[:50].tolist()
+    gbm_median = np.median(raw_gbm, axis=0).tolist()
     
     tfm_paths = []
     tfm_median = []
@@ -2326,11 +2353,13 @@ def save_chat_to_obsidian(req: SaveToObsidianRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"履歴取得エラー: {e}")
 
-    _DEFAULT_VAULT = "/Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/"
-    vault_root = os.environ.get("OBSIDIAN_VAULT_PATH", _DEFAULT_VAULT)
+    vault_root = _OBSIDIAN_VAULT_PATH
 
     if not vault_root or not os.path.isdir(vault_root):
-        raise HTTPException(status_code=503, detail=f"Obsidian Vault が見つかりません: {vault_root}")
+        raise HTTPException(
+            status_code=503,
+            detail="Obsidian Vault が見つかりません。環境変数 OBSIDIAN_VAULT_PATH を設定してください。",
+        )
 
     chat_dir = os.path.join(vault_root, "Chat")
     os.makedirs(chat_dir, exist_ok=True)
@@ -2338,9 +2367,10 @@ def save_chat_to_obsidian(req: SaveToObsidianRequest):
     title = (req.title or "AI相談メモ").strip() or "AI相談メモ"
     today = datetime.date.today().strftime("%Y-%m-%d")
 
-    # ファイル名に使えない文字を除去
+    # ファイル名に使えない文字を除去・同日上書きを防ぐためタイムスタンプを付与
     safe_title = _re.sub(r'[\\/:*?"<>|\n\r\t]', "_", title)[:40].strip("_").strip() or "AI相談メモ"
-    filename = f"{today}_{safe_title}.md"
+    timestamp = datetime.datetime.now().strftime("%H%M%S")
+    filename = f"{today}_{safe_title}_{timestamp}.md"
     filepath = os.path.join(chat_dir, filename)
 
     # Markdown 本文を組み立て
@@ -2403,11 +2433,13 @@ def save_debate_to_obsidian(req: SaveDebateToObsidianRequest):
     import datetime
     import re as _re
 
-    _DEFAULT_VAULT = "/Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/"
-    vault_root = os.environ.get("OBSIDIAN_VAULT_PATH", _DEFAULT_VAULT)
+    vault_root = _OBSIDIAN_VAULT_PATH
 
     if not vault_root or not os.path.isdir(vault_root):
-        raise HTTPException(status_code=503, detail=f"Obsidian Vault が見つかりません: {vault_root}")
+        raise HTTPException(
+            status_code=503,
+            detail="Obsidian Vault が見つかりません。環境変数 OBSIDIAN_VAULT_PATH を設定してください。",
+        )
 
     debates_dir = os.path.join(vault_root, "Debates")
     os.makedirs(debates_dir, exist_ok=True)
@@ -2415,7 +2447,9 @@ def save_debate_to_obsidian(req: SaveDebateToObsidianRequest):
     today = datetime.date.today().strftime("%Y-%m-%d")
     company = req.company_name.strip() or "不明"
     safe_company = _re.sub(r'[\\/:*?"<>|\n\r\t]', "_", company)[:40].strip("_").strip() or "不明"
-    filename = f"{today}_{safe_company}.md"
+    # 同日・同企業の複数審査で上書きされないよう時刻サフィックスを付与
+    timestamp = datetime.datetime.now().strftime("%H%M%S")
+    filename = f"{today}_{safe_company}_{timestamp}.md"
     filepath = os.path.join(debates_dir, filename)
 
     # グレード計算（フロントから来なければスコアで自動算出）

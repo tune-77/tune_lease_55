@@ -458,11 +458,11 @@ def _build_past_scores_block(company_name: str) -> str:
     try:
         import sqlite3
         from contextlib import closing
-        _DATA_DIR = "/Users/kobayashiisaoryou/clawd/tune_lease_55/data"
-        _DB_PATH = os.path.join(_DATA_DIR, "lease_data.db")
-        if not os.path.exists(_DB_PATH):
+        # api/database.py の DB_PATH を再利用（重複接続ロジック・ハードコードパスを排除）
+        from api.database import DB_PATH
+        if not os.path.exists(DB_PATH):
             return ""
-        with closing(sqlite3.connect(_DB_PATH, timeout=5)) as conn:
+        with closing(sqlite3.connect(DB_PATH, timeout=5)) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 """
@@ -703,5 +703,5 @@ def _save_screening_history(
         })
 
         save_conversation_messages(session_id, company_name, messages)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[WARN] 会話履歴保存に失敗しました (session={session_id}, company={company_name}): {e}")
