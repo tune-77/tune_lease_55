@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import DOMPurify from 'dompurify';
-import { Activity, MessageSquare } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, FileText, HelpCircle, MessageSquare, Target, Users } from 'lucide-react';
 
 interface GunshiAdviceProps {
   score: number;
@@ -28,6 +28,20 @@ type SimilarCase = {
   conditions: string[];
 };
 
+type StrategyCards = {
+  headline?: string;
+  stance?: string;
+  case_facts?: string[];
+  risk_cards?: string[];
+  today_moves?: string[];
+  competitor_moves?: string[];
+  questions_to_ask?: string[];
+  customer_one_liners?: string[];
+  ringi_lines?: string[];
+  badges?: string[];
+  disclaimer?: string;
+};
+
 export default function GunshiAdvice({ score, industry_major, formData, onChatLoaded }: GunshiAdviceProps) {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
@@ -41,6 +55,8 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
   const [prior, setPrior] = useState<number | null>(null);
   const [posterior, setPosterior] = useState<number | null>(null);
   const [streamingText, setStreamingText] = useState('');
+  const [strategyCards, setStrategyCards] = useState<StrategyCards | null>(null);
+  const [strategyOpen, setStrategyOpen] = useState(true);
   const initialFetchKeyRef = useRef<string>("");
   const similarFetchKeyRef = useRef<string>("");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -55,8 +71,12 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
       formData.passion_text,
       formData.asset_name,
     ].join(" ");
+    const equityRatio = Number(formData.total_assets) > 0
+      ? (Number(formData.net_assets) / Number(formData.total_assets)) * 100
+      : 0;
     return {
       industry_cat: industry_major || "",
+      industry_sub: formData.industry_sub || "",
       score,
       resale_eval: "B",
       repeat_count: Number(formData.repeat_cnt) || 0,
@@ -65,6 +85,19 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
       intuition_score: Number(formData.intuition) || 50,
       company_name: formData.company_name || "",
       asset_name: formData.asset_name || "",
+      acquisition_cost: Number(formData.acquisition_cost) || 0,
+      lease_term: Number(formData.lease_term) || 0,
+      contract_type: formData.contract_type || "",
+      main_bank: formData.main_bank || "",
+      competitor: formData.competitor || "",
+      competitor_rate: Number(formData.competitor_rate) || null,
+      deal_source: formData.deal_source || "",
+      customer_type: formData.customer_type || "",
+      nenshu: Number(formData.nenshu) || 0,
+      op_profit: Number(formData.op_profit) || 0,
+      equity_ratio: equityRatio,
+      bank_credit: Number(formData.bank_credit) || 0,
+      lease_credit: Number(formData.lease_credit) || 0,
     };
   };
 
@@ -120,6 +153,7 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
   const fetchStreamChat = async (displayHistory: ChatMessage[]) => {
     setLoading(true);
     setStreamingText('');
+    setStrategyCards(null);
     setPrior(null);
     setPosterior(null);
     setStatusText('AIが考えています...');
@@ -158,6 +192,8 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
             if (chunk.type === 'bayes') {
               setPrior(chunk.prior);
               setPosterior(chunk.posterior);
+            } else if (chunk.type === 'strategy_cards') {
+              setStrategyCards(chunk.cards || null);
             } else if (chunk.type === 'stream') {
               fullText += chunk.delta;
               setStreamingText(fullText);
@@ -223,7 +259,26 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
 
   useEffect(() => {
     if (score === 0) return;
-    const fetchKey = `${score}:${industry_major}:${formData.asset_name || ""}`;
+    const fetchKey = [
+      score,
+      industry_major,
+      formData.industry_sub || "",
+      formData.asset_name || "",
+      formData.acquisition_cost || 0,
+      formData.lease_term || 0,
+      formData.contract_type || "",
+      formData.main_bank || "",
+      formData.competitor || "",
+      formData.competitor_rate || "",
+      formData.deal_source || "",
+      formData.customer_type || "",
+      formData.nenshu || 0,
+      formData.op_profit || 0,
+      formData.net_assets || 0,
+      formData.total_assets || 0,
+      formData.bank_credit || 0,
+      formData.lease_credit || 0,
+    ].join(":");
     if (initialFetchKeyRef.current === fetchKey) return;
     initialFetchKeyRef.current = fetchKey;
 
@@ -282,6 +337,25 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
     parsedText = parsedText.replace(/### (.*?)(\n|$)/g, '<h4 class="font-bold text-base text-amber-700 mt-5 border-b border-amber-200 pb-1 mb-2">$1</h4>\n');
     parsedText = parsedText.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-slate-800">$1</strong>');
     return parsedText;
+  };
+
+  const renderActionList = (items: string[] | undefined, tone: 'amber' | 'red' | 'blue' | 'emerald' | 'slate' = 'slate') => {
+    const toneClass = {
+      amber: 'border-amber-200 bg-amber-50 text-amber-900',
+      red: 'border-red-200 bg-red-50 text-red-900',
+      blue: 'border-blue-200 bg-blue-50 text-blue-900',
+      emerald: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+      slate: 'border-slate-200 bg-slate-50 text-slate-700',
+    }[tone];
+    return (
+      <div className="space-y-1.5">
+        {(items || []).slice(0, 4).map((item, i) => (
+          <div key={`${tone}-${i}`} className={`rounded-lg border px-2.5 py-2 text-[11px] leading-4 font-bold ${toneClass}`}>
+            {item}
+          </div>
+        ))}
+      </div>
+    );
   };
 
   const priorPct = prior !== null ? Math.round(prior * 100) : null;
@@ -464,6 +538,105 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {strategyCards && (
+          <div className="bg-white rounded-xl border border-amber-200 shadow-sm overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setStrategyOpen(v => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 text-left bg-gradient-to-r from-amber-50 to-white"
+            >
+              <div>
+                <div className="flex items-center gap-2">
+                  <Target className="w-4 h-4 text-amber-600" />
+                  <span className="text-xs font-black text-slate-800">案件作戦盤</span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white">
+                    {strategyCards.stance || '作戦整理'}
+                  </span>
+                </div>
+                <div className="mt-1 text-[11px] text-slate-500 font-bold line-clamp-1">
+                  {strategyCards.headline || 'この案件の今日やること'}
+                </div>
+              </div>
+              <span className="text-xs text-slate-400">{strategyOpen ? '▲' : '▼'}</span>
+            </button>
+
+            {strategyOpen && (
+              <div className="p-3 space-y-3">
+                {strategyCards.badges && strategyCards.badges.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {strategyCards.badges.map((badge, i) => (
+                      <span key={i} className="text-[10px] font-bold px-2 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                        {badge}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {strategyCards.case_facts && strategyCards.case_facts.length > 0 && (
+                  <div className="grid grid-cols-1 gap-1.5">
+                    {strategyCards.case_facts.slice(0, 6).map((fact, i) => (
+                      <div key={i} className="rounded-md bg-slate-50 border border-slate-100 px-2.5 py-1.5 text-[10px] font-bold text-slate-500">
+                        {fact}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 gap-3">
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <h4 className="text-xs font-black text-emerald-900">今日やる3手</h4>
+                    </div>
+                    {renderActionList(strategyCards.today_moves, 'emerald')}
+                  </div>
+
+                  <div className="rounded-xl border border-red-200 bg-red-50/60 p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <AlertTriangle className="w-4 h-4 text-red-600" />
+                      <h4 className="text-xs font-black text-red-900">審査部のツッコミ予測</h4>
+                    </div>
+                    {renderActionList(strategyCards.risk_cards, 'red')}
+                  </div>
+
+                  <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Users className="w-4 h-4 text-blue-600" />
+                      <h4 className="text-xs font-black text-blue-900">競合に負けない動き</h4>
+                    </div>
+                    {renderActionList(strategyCards.competitor_moves, 'blue')}
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <HelpCircle className="w-4 h-4 text-slate-600" />
+                      <h4 className="text-xs font-black text-slate-800">顧客に聞くこと</h4>
+                    </div>
+                    {renderActionList(strategyCards.questions_to_ask, 'slate')}
+                  </div>
+
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <FileText className="w-4 h-4 text-amber-600" />
+                      <h4 className="text-xs font-black text-amber-900">顧客向け一言・稟議メモ</h4>
+                    </div>
+                    {renderActionList([
+                      ...(strategyCards.customer_one_liners || []).slice(0, 2),
+                      ...(strategyCards.ringi_lines || []).slice(0, 2),
+                    ], 'amber')}
+                  </div>
+                </div>
+
+                {strategyCards.disclaimer && (
+                  <div className="text-[10px] text-slate-400 leading-4 px-1">
+                    {strategyCards.disclaimer}
+                  </div>
+                )}
               </div>
             )}
           </div>
