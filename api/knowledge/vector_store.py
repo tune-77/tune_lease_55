@@ -46,7 +46,7 @@ class KnowledgeVectorStore:
                 name=_COLLECTION_NAME,
                 metadata={"hnsw:space": "cosine"},
             )
-            self._encoder = SentenceTransformer(self._model_name)
+            self._encoder = SentenceTransformer(self._model_name, device="cpu")
             logger.info(f"[KnowledgeVectorStore] initialized: {self._chroma_dir}")
 
     def _embed(self, texts: list[str]) -> list[list[float]]:

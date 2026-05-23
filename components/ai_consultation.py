@@ -4,6 +4,7 @@ render_ai_consultation() を呼び出して col_right に描画する。
 """
 import time
 import json
+import re
 from pathlib import Path
 import streamlit as st
 
@@ -25,6 +26,8 @@ from data_cases import append_consultation_memory
 from web_services import get_advice_context_extras, get_stats, get_trend_extended
 from knowledge import build_knowledge_context
 from lease_news_digest import lease_news_focus_as_text
+from lease_advisor_logic import FOCUS_LABELS, build_lease_advisor_prompt
+from obsidian_ai_context import build_obsidian_ai_context_block
 
 # ── 討論モード ペルソナ定義 ──────────────────────────────────────────────────
 PERSONA_CON = """あなたは「慎重派（守り）」のベテラン審査部長です。
@@ -52,6 +55,108 @@ _ERROR_KEYWORDS = (
 )
 
 DEBATE_LESSON_PATH = Path("data/debate_explain_memory.json")
+LEASE_ADVISOR_OBSIDIAN_QUERY = " ".join([
+    "リースBOT 追加知識候補",
+    "審査実務チェックポイント",
+    "補助金・税制優遇とリース",
+    "関東圏 競合リース会社",
+    "業種別リースリスク",
+    "物件残存価値",
+])
+
+
+def _short_value(value, default: str = "不明") -> str:
+    if value is None or value == "":
+        return default
+    if isinstance(value, float):
+        return f"{value:.1f}"
+    return str(value)
+
+
+def _extract_industry_code(*texts: str | None) -> str | None:
+    for text in texts:
+        m = re.search(r"\b(\d{2})\b", str(text or ""))
+        if m:
+            return m.group(1)
+    return None
+
+
+def _build_lease_advisor_case_context(selected_sub: str) -> dict:
+    res = st.session_state.get("last_result") or {}
+    submitted = st.session_state.get("last_submitted_inputs") or {}
+    financials = res.get("financials") or {}
+    return {
+        "業種": res.get("industry_sub") or submitted.get("selected_sub") or selected_sub,
+        "大分類": res.get("industry_major") or submitted.get("selected_major"),
+        "判定": res.get("hantei"),
+        "判定スコア": res.get("hantei_score"),
+        "総合スコア": res.get("score"),
+        "借手スコア": res.get("score_borrower"),
+        "物件スコア": res.get("asset_score"),
+        "物件": res.get("asset_name") or submitted.get("asset_name"),
+        "契約種類": res.get("contract_type") or submitted.get("contract_type"),
+        "リース期間": submitted.get("lease_term"),
+        "取得価額": submitted.get("acquisition_cost"),
+        "既存契約数": submitted.get("contracts"),
+        "主取引銀行": submitted.get("main_bank"),
+        "競合": submitted.get("competitor"),
+        "競合数": submitted.get("num_competitors"),
+        "競合見積金利": st.session_state.get("competitor_rate"),
+        "予測利回り": res.get("yield_pred"),
+        "成約期待度": res.get("contract_prob"),
+        "売上高": financials.get("nenshu"),
+        "営業利益": financials.get("op_profit"),
+        "自己資本比率": res.get("user_eq"),
+        "DSCR": res.get("user_dscr"),
+        "比較コメント": res.get("comparison"),
+        "スコア差分": res.get("gap_text"),
+    }
+
+
+def _build_subsidy_context_block(selected_sub: str) -> str:
+    res = st.session_state.get("last_result") or {}
+    submitted = st.session_state.get("last_submitted_inputs") or {}
+    industry_code = _extract_industry_code(
+        res.get("industry_sub"),
+        submitted.get("selected_sub"),
+        selected_sub,
+    )
+    asset_name = res.get("asset_name") or submitted.get("asset_name")
+    try:
+        from components.subsidy_master import match_subsidies
+
+        matches = match_subsidies(industry_code, asset_name, max_results=3)
+    except Exception:
+        matches = st.session_state.get("matched_subsidies") or []
+
+    lines = ["【補助金候補】"]
+    if not matches:
+        lines.append("- 現時点のマスタでは明確な候補なし。自治体・業界団体・設備メーカー経由で最新確認。")
+    else:
+        for sub in matches[:3]:
+            lines.append(
+                "- {name} / 上限: {amount}万円 / 期限: {deadline} / 備考: {notes}".format(
+                    name=_short_value(sub.get("name"), "名称不明"),
+                    amount=_short_value(sub.get("max_amount"), "-"),
+                    deadline=_short_value(sub.get("deadline"), "要確認"),
+                    notes=_short_value(sub.get("notes"), ""),
+                )
+            )
+    lines.append("※期限・公募要領は最新確認。採択・対象可否は断定しない。")
+    return "\n".join(lines)
+
+
+def _build_competitor_context_block(selected_sub: str) -> str:
+    res = st.session_state.get("last_result") or {}
+    stats = get_stats(res.get("industry_sub") or selected_sub)
+    lines = ["【競合・成約実績の参考】"]
+    if stats.get("top_competitors_lost"):
+        lines.append("よく負ける競合: " + "、".join(stats["top_competitors_lost"][:5]))
+    if stats.get("avg_winning_rate") and stats["avg_winning_rate"] > 0:
+        lines.append(f"同業種の平均成約金利: {stats['avg_winning_rate']:.2f}%")
+    if not lines[1:]:
+        lines.append("過去実績からの競合参考値は不足。地域、主取引銀行、競合見積、保守・満了条件をヒアリング。")
+    return "\n".join(lines)
 
 
 def _show_ai_error(content: str) -> None:
@@ -361,6 +466,105 @@ def _render_tab_chat(selected_sub: str, jsic_data: dict) -> None:
                             st.session_state["last_gemini_debug"] = (
                                 (content[:200] + "...") if len(content or "") > 200 else (content or "（空）")
                             )
+
+
+def _render_tab_lease_advisor(selected_sub: str, jsic_data: dict) -> None:
+    """営業マン向けのリース参謀タブを描画する。"""
+    res = st.session_state.get("last_result") or {}
+    current_industry = res.get("industry_sub") or selected_sub
+
+    st.caption("案件文脈を自動で読み込み、審査・営業・競合・補助金・満了実務の次の打ち手を作ります。")
+    if not res:
+        st.info("審査実行前でも使えますが、審査後はスコア・物件・補助金候補を自動反映します。")
+
+    if st.session_state.get("_lease_advisor_quick_text"):
+        st.session_state["lease_advisor_question"] = st.session_state.pop("_lease_advisor_quick_text")
+
+    focus_options = list(FOCUS_LABELS.keys())
+    focus = st.selectbox(
+        "重点テーマ",
+        focus_options,
+        format_func=lambda key: FOCUS_LABELS.get(key, key),
+        key="lease_advisor_focus",
+    )
+    st.text_area(
+        "相談内容",
+        key="lease_advisor_question",
+        height=110,
+        placeholder="例: この工作機械案件を通すための追加資料と営業トークを教えて",
+    )
+
+    quick_cols = st.columns(2)
+    quick_questions = [
+        ("低スコア案件の通し方", "この案件を承認に近づける追加資料と条件変更案を教えて"),
+        ("競合に勝つ提案", "競合見積がある前提で、金利以外も含めた勝ち筋を教えて"),
+        ("補助金提案", "この設備で使えそうな補助金・税制優遇と顧客への確認事項を教えて"),
+        ("満了対応", "満了時の再リース・返却・入替の比較と営業提案を教えて"),
+    ]
+    for i, (label, text) in enumerate(quick_questions):
+        with quick_cols[i % 2]:
+            if st.button(label, key=f"lease_advisor_quick_{i}", width="stretch"):
+                st.session_state["_lease_advisor_quick_text"] = text
+                st.rerun()
+
+    if st.button("🤖 リース参謀に相談", key="lease_advisor_send", type="primary", width="stretch"):
+        q = (st.session_state.get("lease_advisor_question") or "").strip()
+        if not q:
+            st.warning("相談内容を入力してください。")
+            return
+        if not is_ai_available():
+            st.error(_ai_unavailable_message())
+            return
+
+        with st.spinner("社内知識・補助金候補・競合参考値を整理中..."):
+            case_context = _build_lease_advisor_case_context(current_industry)
+            obsidian_block = build_obsidian_ai_context_block(
+                LEASE_ADVISOR_OBSIDIAN_QUERY,
+                limit=6,
+                max_chars=3200,
+                heading="リース参謀向けObsidian知識",
+            )
+            subsidy_block = _build_subsidy_context_block(current_industry)
+            competitor_block = _build_competitor_context_block(current_industry)
+            prompt = build_lease_advisor_prompt(
+                question=q,
+                case_context=case_context,
+                focus=focus,
+                obsidian_block=obsidian_block,
+                subsidy_block=subsidy_block,
+                competitor_block=competitor_block,
+            )
+
+        _engine = st.session_state.get("ai_engine", "ollama")
+        _api_key = (
+            (st.session_state.get("gemini_api_key") or "").strip()
+            or GEMINI_API_KEY_ENV
+            or _get_gemini_key_from_secrets()
+        )
+        with st.spinner("リース参謀が回答を作成中..."):
+            ans = _chat_for_thread(
+                _engine,
+                get_ollama_model(),
+                [{"role": "user", "content": prompt}],
+                timeout_seconds=120,
+                api_key=_api_key,
+                gemini_model=st.session_state.get("gemini_model", GEMINI_MODEL_DEFAULT),
+            )
+        content = (ans.get("message") or {}).get("content", "") or "（応答がありませんでした）"
+        _show_ai_error(content)
+        st.session_state["lease_advisor_answer"] = content
+        append_consultation_memory(f"[リース参謀/{FOCUS_LABELS.get(focus, focus)}] {q}", content)
+        if _engine == "gemini":
+            st.session_state["last_gemini_debug"] = (
+                "OK" if content and "APIキーが" not in content and "Gemini API エラー:" not in content
+                else ((content[:200] + "...") if len(content or "") > 200 else (content or "（空）"))
+            )
+
+    answer = st.session_state.get("lease_advisor_answer")
+    if answer:
+        st.markdown("### 回答")
+        if not any(kw in answer for kw in _ERROR_KEYWORDS):
+            st.markdown(answer)
 
 
 def _render_tab_debate(selected_sub: str, jsic_data: dict, bankruptcy_data: list) -> None:
@@ -696,7 +900,7 @@ def render_ai_consultation(selected_sub: str, jsic_data: dict, bankruptcy_data: 
     st.header("💬 AI審査オフィサーに相談")
     st.caption(f"選択中の業種: {selected_sub}")
 
-    tab_chat, tab_debate = st.tabs(["相談モード", "⚔️ 討論モード"])
+    tab_chat, tab_advisor, tab_debate = st.tabs(["相談モード", "🤖 リース参謀", "⚔️ 討論モード"])
 
     # AIエンジン・APIキー状態の表示
     _engine = st.session_state.get("ai_engine", "ollama")
@@ -716,6 +920,9 @@ def render_ai_consultation(selected_sub: str, jsic_data: dict, bankruptcy_data: 
 
     with tab_chat:
         _render_tab_chat(selected_sub, jsic_data)
+
+    with tab_advisor:
+        _render_tab_lease_advisor(selected_sub, jsic_data)
 
     with tab_debate:
         _render_tab_debate(selected_sub, jsic_data, bankruptcy_data)

@@ -801,13 +801,13 @@ def build_gunshi_prompt(
     score: float,
     pd_pct: float = 0.0,
     resale: str = "",
-    repeat_cnt: int,
-    subsidy: bool,
-    bank: bool,
-    intuition: int,
-    posterior: float,
-    success_patterns: dict,
-    top_phrases: list[dict],
+    repeat_cnt: int = 0,
+    subsidy: bool = False,
+    bank: bool = False,
+    intuition: int = 3,
+    posterior: float = 0.5,
+    success_patterns: dict | None = None,
+    top_phrases: list[dict] | None = None,
     asset_name: str = "",
     vehicle_type: str = "",
     trend_info: str = "",       # ← 業界動向テキスト（jsic_data + ネット拡充）
@@ -819,6 +819,8 @@ def build_gunshi_prompt(
     asset_finance_context: str = "", # ← アセットファイナンス評価データの返値
 ) -> str:
     """軍師プロンプトを生成する。"""
+    success_patterns = success_patterns or {"success_samples": [], "fail_samples": []}
+    top_phrases = top_phrases or []
     try:
         import sys as _sys, os as _os
         _repo = _os.path.abspath(_os.path.dirname(__file__))

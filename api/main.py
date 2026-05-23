@@ -1,3 +1,14 @@
+import os as _os_early
+# macOSでのOpenMPスレッド上限エラー・MPS GPU競合によるSIGSEGV防止
+_os_early.environ.setdefault("OMP_NUM_THREADS", "1")
+_os_early.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+_os_early.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+_os_early.environ.setdefault("MKL_NUM_THREADS", "1")
+_os_early.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+_os_early.environ.setdefault("PYTORCH_MPS_HIGH_WATERMARK_RATIO", "0.0")
+del _os_early
+
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -28,10 +39,14 @@ _brm_mod = _ilu.module_from_spec(_brm_spec)
 sys.modules["base_rate_master"] = _brm_mod
 _brm_spec.loader.exec_module(_brm_mod)
 
-_tfm_spec = _ilu.spec_from_file_location("timesfm_engine", os.path.join(_REPO_ROOT, "timesfm_engine.py"))
-_tfm_mod = _ilu.module_from_spec(_tfm_spec)
-sys.modules["timesfm_engine"] = _tfm_mod
-_tfm_spec.loader.exec_module(_tfm_mod)
+def _load_timesfm_engine():
+    """timesfm_engine を遅延ロード（初回呼び出し時のみ）。PyTorchのMPS初期化をstartupから除外する。"""
+    if "timesfm_engine" not in sys.modules:
+        _tfm_spec = _ilu.spec_from_file_location("timesfm_engine", os.path.join(_REPO_ROOT, "timesfm_engine.py"))
+        _tfm_mod = _ilu.module_from_spec(_tfm_spec)
+        sys.modules["timesfm_engine"] = _tfm_mod
+        _tfm_spec.loader.exec_module(_tfm_mod)
+    return sys.modules["timesfm_engine"]
 
 # ── .streamlit/secrets.toml から APIキー等を環境変数に自動注入 ─────────────────
 def _load_secrets_to_env():
@@ -114,18 +129,24 @@ async def lifespan(app: FastAPI):
             refresh_department_stats_cache()
     except Exception:
         pass
-    # startup: Obsidian ナレッジのバックグラウンドインデックス化
-    try:
-        from api.knowledge.indexer import start_background_indexing
-        start_background_indexing()
-    except Exception as e:
-        print(f"[API] knowledge indexing start failed (non-fatal): {e}")
-    # startup: Obsidian フィードバックのバックグラウンド読み込み
-    try:
-        from api.knowledge.feedback_watcher import start_background_feedback_loading
-        start_background_feedback_loading()
-    except Exception as e:
-        print(f"[API] feedback loading start failed (non-fatal): {e}")
+    # startup: Obsidian ナレッジのバックグラウンドインデックス化（30秒遅延 — OMP競合回避）
+    def _delayed_indexing():
+        import time as _t; _t.sleep(30)
+        try:
+            from api.knowledge.indexer import start_background_indexing
+            start_background_indexing()
+        except Exception as e:
+            print(f"[API] knowledge indexing start failed (non-fatal): {e}")
+    import threading as _th; _th.Thread(target=_delayed_indexing, daemon=True, name="delayed-indexer").start()
+    # startup: Obsidian フィードバックのバックグラウンド読み込み（30秒遅延）
+    def _delayed_feedback():
+        import time as _t; _t.sleep(30)
+        try:
+            from api.knowledge.feedback_watcher import start_background_feedback_loading
+            start_background_feedback_loading()
+        except Exception as e:
+            print(f"[API] feedback loading start failed (non-fatal): {e}")
+    _th.Thread(target=_delayed_feedback, daemon=True, name="delayed-feedback").start()
     # startup: 会話履歴テーブルの初期化
     try:
         from api.database import init_conversation_history_table

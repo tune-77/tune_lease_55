@@ -63,7 +63,7 @@ class FeedbackVectorStore:
                 name=_FEEDBACK_COLLECTION,
                 metadata={"hnsw:space": "cosine"},
             )
-            self._encoder = SentenceTransformer(self._model_name)
+            self._encoder = SentenceTransformer(self._model_name, device="cpu")
             logger.info(f"[FeedbackStore] initialized: {self._chroma_dir}")
 
     def _embed(self, texts: list[str]) -> list[list[float]]:
