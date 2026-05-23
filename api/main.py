@@ -79,19 +79,22 @@ from scoring.deal_closure_engine import build_features, build_features_from_delt
 # ChromaDB singleton — initialize once, not per-request
 _chroma_client = None
 _chroma_collection = None
+_chroma_init_attempted = False
 
 def _get_obsidian_collection():
-    global _chroma_client, _chroma_collection
-    if _chroma_collection is None:
-        try:
-            import chromadb
-            _db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chroma_db")
-            _chroma_client = chromadb.PersistentClient(path=_db_path)
-            _chroma_collection = _chroma_client.get_collection("obsidian_knowledge")
-            print(f"[RAG] ChromaDB initialized: {_db_path}")
-        except Exception as e:
-            print(f"[RAG] ChromaDB init failed: {e}")
-            _chroma_collection = None
+    global _chroma_client, _chroma_collection, _chroma_init_attempted
+    if _chroma_init_attempted:
+        return _chroma_collection
+    _chroma_init_attempted = True
+    try:
+        import chromadb
+        _db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chroma_db")
+        _chroma_client = chromadb.PersistentClient(path=_db_path)
+        _chroma_collection = _chroma_client.get_collection("obsidian_knowledge")
+        print(f"[RAG] ChromaDB initialized: {_db_path}")
+    except Exception as e:
+        print(f"[RAG] ChromaDB init failed: {e}")
+        _chroma_collection = None
     return _chroma_collection
 
 
