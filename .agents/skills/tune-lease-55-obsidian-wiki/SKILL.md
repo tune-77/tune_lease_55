@@ -53,6 +53,17 @@ Use this skill to turn project work into searchable Obsidian notes.
 - When the topic is about operations, add tool names like `uv`, `py_compile`, or `tsc`.
 - When the user says "もっと繋げて", expand the hub and the `Related` sections first.
 
+## Link curation rules
+
+Avoid turning the wiki into an all-purpose link dump. Prefer links that help the next real reading or decision step.
+
+- Put only curated, high-signal links in hub notes.
+- Aggregate detailed date logs in `Projects/tune_lease_55/日付別DATA連携インデックス.md` instead of adding every date note to every hub.
+- Keep each note's `## Related` section to roughly 5-8 links unless the user explicitly asks for a wider index.
+- Promote `AI Chat` / `Improvement Log` notes into project hubs only when they are accepted, planned for implementation, or clearly reusable.
+- Leave ordinary conversation notes in `Daily/` or `Projects/tune_lease_55/AI Chat/` without broad wiki promotion.
+- Link by purpose, not by keyword alone: connect notes that answer the same decision, share a data lineage, or map directly to an implementation file, API, UI, or source dataset.
+
 ## Use the helper
 
 Use `python3 .agents/skills/obsidian/scripts/obsidian_note.py` for daily notes, project notes, and search.
