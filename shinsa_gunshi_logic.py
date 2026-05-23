@@ -843,7 +843,7 @@ def build_gunshi_prompt(
         examples = []
         for s in success_patterns["success_samples"]:
             examples.append(
-                f"  - Score {s['score']:.0f} / PD {s['pd_pct']:.1f}% / "
+                f"  - Score {s['score']:.0f} / "
                 f"リセール{s['resale']} / リピート{s['repeat_cnt']}回 → 成約"
             )
         success_text = "【過去の成約成功事例】\n" + "\n".join(examples)
@@ -853,7 +853,7 @@ def build_gunshi_prompt(
         fails = []
         for f in success_patterns["fail_samples"]:
             fails.append(
-                f"  - Score {f['score']:.0f} / PD {f['pd_pct']:.1f}% / "
+                f"  - Score {f['score']:.0f} / "
                 f"リセール{f['resale']} → 非成約 (備考: {f.get('notes','なし')})"
             )
         fail_text = "【過去の非成約事例（教訓）】\n" + "\n".join(fails)

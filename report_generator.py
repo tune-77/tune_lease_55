@@ -328,18 +328,17 @@ def generate_full_report_from_res(res: dict, session_state) -> str:
     equity_ratio = float(res.get("user_eq", 0) or 0) / 100
     total_debt   = float(inputs.get("bank_credit", 0) or 0) * 10_000
 
-    # デフォルト確率・リスクレベル（montecarlo._risk_level と同基準）
-    default_prob = float(res.get("pd_percent", 0) or 0) / 100
-    if default_prob < 0.05:
-        risk_level = "低リスク"
-    elif default_prob < 0.15:
-        risk_level = "中リスク"
-    elif default_prob < 0.30:
-        risk_level = "高リスク"
-    else:
-        risk_level = "極高リスク"
-
     score_median = float(res.get("score", 0) or 0)
+
+    # リスクレベルをスコアから導出（PD廃止のため）
+    if score_median >= 70:
+        risk_level, default_prob = "低リスク",  0.02
+    elif score_median >= 50:
+        risk_level, default_prob = "中リスク",  0.08
+    elif score_median >= 30:
+        risk_level, default_prob = "高リスク",  0.20
+    else:
+        risk_level, default_prob = "極高リスク", 0.40
 
     company = SimpleNamespace(
         name=company_name,
