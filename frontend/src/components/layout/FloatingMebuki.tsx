@@ -41,6 +41,13 @@ export default function FloatingMebuki() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // 吹き出しが表示されたら5秒後に自動非表示
+  useEffect(() => {
+    if (!isBubbleVisible) return;
+    const timer = setTimeout(() => setIsBubbleVisible(false), 5000);
+    return () => clearTimeout(timer);
+  }, [isBubbleVisible]);
+
   // カスタムイベントでめぶきの状態を制御する
   useEffect(() => {
     const handleMebukiEvent = (e: any) => {
