@@ -8,6 +8,7 @@ import time
 import math
 import datetime
 import os
+from pathlib import Path
 
 # [API物理直結] 外部APIが直接結果を取得するためのグローバル変数
 _API_LAST_RESULT = None
@@ -933,7 +934,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 # [物理ファイル通信] APIへの確実なデータ受け渡し用 (絶対パス固定)
                 import json
                 try:
-                    _bridge_file = "/Users/kobayashiisaoryou/clawd/tune_lease_55/scoring_output_bridge.json"
+                    _bridge_file = str(Path(__file__).resolve().parent.parent / "scoring_output_bridge.json")
                     with open(_bridge_file, "w", encoding="utf-8") as f:
                         json.dump(res_dict, f, ensure_ascii=False)
                     print(f"[CORE_DEBUG] SUCCESS: Result written to {_bridge_file}. Score={final_score}")
@@ -1267,7 +1268,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 }
 
                 try:
-                    _bridge_file = "/Users/kobayashiisaoryou/clawd/tune_lease_55/scoring_output_bridge.json"
+                    _bridge_file = str(Path(__file__).resolve().parent.parent / "scoring_output_bridge.json")
                     with open(_bridge_file, "w", encoding="utf-8") as f:
                         json.dump(st.session_state["last_result"], f, ensure_ascii=False)
                 except Exception as e:
