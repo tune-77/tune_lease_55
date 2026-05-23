@@ -39,8 +39,36 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
   const [statusText, setStatusText] = useState('');
   const [similarCases, setSimilarCases] = useState<SimilarCase[]>([]);
   const [similarOpen, setSimilarOpen] = useState(true);
+  const [prior, setPrior] = useState<number | null>(null);
+  const [posterior, setPosterior] = useState<number | null>(null);
+  const [streamingText, setStreamingText] = useState('');
   const initialFetchKeyRef = useRef<string>("");
   const similarFetchKeyRef = useRef<string>("");
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatHistory, streamingText]);
+
+  const buildStreamPayload = () => {
+    const subsidyText = [
+      formData.industry_detail,
+      formData.passion_text,
+      formData.asset_name,
+    ].join(" ");
+    return {
+      industry_cat: industry_major || "",
+      score,
+      pd_pct: pd_percent,
+      resale_eval: "B",
+      repeat_count: Number(formData.repeat_cnt) || 0,
+      subsidy_flag: /補助金|助成金|ものづくり|省力化/.test(subsidyText),
+      bank_support: formData.deal_source === "銀行紹介" || formData.main_bank === "メイン先",
+      intuition_score: Number(formData.intuition) || 50,
+      company_name: formData.company_name || "",
+      asset_name: formData.asset_name || "",
+    };
+  };
 
   const buildPayload = (message = "", history: ChatMessage[] = chatHistory) => {
     const subsidyText = [
@@ -58,7 +86,7 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
       subsidy: /補助金|助成金|ものづくり|省力化/.test(subsidyText),
       bank: formData.deal_source === "銀行紹介" || formData.main_bank === "メイン先",
       intuition: formData.intuition || 50,
-      posterior: 0.5,
+      posterior: score > 0 ? score / 100 : 0.5,
       message,
       history,
       humor_style: humorMode === 'yanami' ? 'yanami' : 'standard',
@@ -91,6 +119,81 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
     else setStatusText('回答しました。');
   };
 
+  // 初期フェッチ専用: SSEストリーミング (/api/gunshi/stream)
+  const fetchStreamChat = async (displayHistory: ChatMessage[]) => {
+    setLoading(true);
+    setStreamingText('');
+    setPrior(null);
+    setPosterior(null);
+    setStatusText('AIが考えています...');
+
+    try {
+      const payload = buildStreamPayload();
+      const response = await fetch('/api/gunshi/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.body) throw new Error('No response body');
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let fullText = '';
+      let finished = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const rawData = line.slice(6).trim();
+          if (!rawData) continue;
+          try {
+            const chunk = JSON.parse(rawData);
+            if (chunk.type === 'bayes') {
+              setPrior(chunk.prior);
+              setPosterior(chunk.posterior);
+            } else if (chunk.type === 'stream') {
+              fullText += chunk.delta;
+              setStreamingText(fullText);
+            } else if (chunk.type === 'done') {
+              finished = true;
+              setChatHistory([...displayHistory, { role: 'assistant', text: fullText }]);
+              setStreamingText('');
+              setStatusText('回答しました。');
+              if (onChatLoaded) onChatLoaded(fullText);
+            }
+          } catch (_) {}
+        }
+      }
+
+      // done イベントなしで終了した場合もhistoryに追加
+      if (!finished && fullText) {
+        setChatHistory([...displayHistory, { role: 'assistant', text: fullText }]);
+        setStreamingText('');
+        setStatusText('回答しました。');
+        if (onChatLoaded) onChatLoaded(fullText);
+      }
+    } catch (err) {
+      console.error("Failed to stream gunshi", err);
+      const errText = "【通信エラー】軍師からの戦略を受信できませんでした。";
+      setChatHistory([...displayHistory, { role: 'assistant', text: errText }]);
+      setStreamingText('');
+      setStatusText('通信エラーが発生しました。');
+      if (onChatLoaded) onChatLoaded(errText);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 追加質問: ノンストリーミング（history/message/mode対応）
   const fetchChat = async (
     message = "",
     displayHistory: ChatMessage[] = chatHistory,
@@ -129,7 +232,7 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
     const initialQuestion = `この案件（スコア ${score.toFixed(1)}点、${industry_major || "指定なし"}）の稟議を通すための「逆転戦略」を教えてくれ！`;
     const nextHistory: ChatMessage[] = [{ role: 'user', text: initialQuestion }];
     setChatHistory(nextHistory);
-    fetchChat("", nextHistory, []);
+    fetchStreamChat(nextHistory);
   }, [score, pd_percent, industry_major, formData]);
 
   useEffect(() => {
@@ -176,19 +279,19 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
     await fetchChat(trimmedQuestion, nextHistory, chatHistory);
   };
 
-  // マークダウンの簡易パース (### 見出し、**太字** をリッチに変換)
   const renderMarkdown = (text: string) => {
     let parsedText = text;
-    // ### Heading 3
     parsedText = parsedText.replace(/### (.*?)(\n|$)/g, '<h4 class="font-bold text-base text-amber-700 mt-5 border-b border-amber-200 pb-1 mb-2">$1</h4>\n');
-    // **bold**
     parsedText = parsedText.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-slate-800">$1</strong>');
     return parsedText;
   };
 
+  const priorPct = prior !== null ? Math.round(prior * 100) : null;
+  const posteriorPct = posterior !== null ? Math.round(posterior * 100) : null;
+
   return (
     <div className="sticky top-24 h-[calc(100vh-8rem)] bg-[#f8fafc] rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-200 flex flex-col overflow-hidden">
-      
+
       {/* ヘッダー */}
       <div className="bg-gradient-to-r from-[#172554] to-[#1e3a8a] text-white p-4 shrink-0 shadow-md z-10 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -264,8 +367,53 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
             ネット参照
           </label>
         </div>
+
+        {/* ベイズ推定ゲージ */}
+        {priorPct !== null && posteriorPct !== null && (
+          <div className="mt-3 pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-bold text-slate-500">📊 ベイズ更新</span>
+              <span className="text-[11px] font-bold text-slate-700">
+                事前 {priorPct}%
+                <span className="text-slate-400 mx-1">→</span>
+                <span className={
+                  posteriorPct >= 60
+                    ? 'text-emerald-600'
+                    : posteriorPct >= 40
+                    ? 'text-amber-600'
+                    : 'text-red-600'
+                }>
+                  事後 {posteriorPct}%
+                </span>
+              </span>
+            </div>
+            <div className="relative h-3 bg-slate-100 rounded-full overflow-hidden">
+              {/* 事前確率マーカー */}
+              <div
+                className="absolute top-0 h-full w-0.5 bg-slate-400 z-10"
+                style={{ left: `${priorPct}%` }}
+              />
+              {/* 事後確率バー (アニメーション付き) */}
+              <div
+                className={`h-full rounded-full transition-all duration-1000 ease-out ${
+                  posteriorPct >= 60
+                    ? 'bg-gradient-to-r from-emerald-400 to-emerald-500'
+                    : posteriorPct >= 40
+                    ? 'bg-gradient-to-r from-amber-400 to-amber-500'
+                    : 'bg-gradient-to-r from-red-400 to-red-500'
+                }`}
+                style={{ width: `${posteriorPct}%` }}
+              />
+            </div>
+            <div className="flex justify-between mt-0.5">
+              <span className="text-[9px] text-slate-400">0%</span>
+              <span className="text-[9px] text-slate-400">50%</span>
+              <span className="text-[9px] text-slate-400">100%</span>
+            </div>
+          </div>
+        )}
       </div>
-      
+
       {/* チャットエリア */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
         <div className="text-center my-2 mb-6">
@@ -353,7 +501,24 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
           )
         ))}
 
-        {loading && (
+        {/* ストリーミング中のリアルタイムテキスト表示 */}
+        {streamingText && (
+          <div className="flex gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="w-8 h-8 rounded-full bg-amber-500 border-2 border-white text-white flex justify-center items-center font-black text-sm shadow-md shrink-0">
+              🏯
+            </div>
+            <div className="w-full">
+              <div
+                className="bg-white p-4 rounded-2xl rounded-tl-none shadow border border-amber-200 text-slate-700 leading-7 font-medium whitespace-pre-wrap text-[13px] sm:text-sm w-full prose prose-slate"
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderMarkdown(streamingText)) }}
+              />
+              <span className="inline-block w-0.5 h-4 bg-amber-500 ml-1 animate-pulse" />
+            </div>
+          </div>
+        )}
+
+        {/* 最初のチャンク待ちスピナー */}
+        {loading && !streamingText && (
           <div className="flex gap-3">
              <div className="w-8 h-8 rounded-full bg-amber-500 text-white flex justify-center items-center font-bold text-xs shadow-sm shrink-0">
                🏯
@@ -364,10 +529,12 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
              </div>
           </div>
         )}
-        
+
         {score === 0 && chatHistory.length === 0 && (
            <div className="text-center text-sm text-slate-400 mt-10">案件戦略・業界動向・一般相談を自由に入力できます</div>
         )}
+
+        <div ref={bottomRef} />
       </div>
 
       <div className="p-4 bg-white border-t border-slate-100 shrink-0">
