@@ -135,6 +135,7 @@ export default function GunshiAdvice({ score, pd_percent, industry_major, formDa
         body: JSON.stringify(payload),
       });
 
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       if (!response.body) throw new Error('No response body');
 
       const reader = response.body.getReader();

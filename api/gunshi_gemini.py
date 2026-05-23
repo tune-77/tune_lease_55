@@ -114,22 +114,35 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
     }
     url = f"{GEMINI_STREAM_URL}?key={api_key}&alt=sse"
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        async with client.stream("POST", url, json=payload) as resp:
-            async for line in resp.aiter_lines():
-                if not line.startswith("data: "):
-                    continue
-                raw = line[6:]
-                if raw.strip() == "[DONE]":
-                    break
-                try:
-                    chunk = json.loads(raw)
-                    delta = (
-                        chunk["candidates"][0]["content"]["parts"][0].get("text", "")
-                    )
-                    if delta:
-                        yield {"type": "stream", "delta": delta}
-                except Exception:
-                    pass
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            async with client.stream("POST", url, json=payload) as resp:
+                if resp.status_code != 200:
+                    yield {
+                        "type": "stream",
+                        "delta": f"【Gemini APIエラー (HTTP {resp.status_code})】しばらく待ってから再試行してください。",
+                    }
+                    yield {"type": "done"}
+                    return
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    raw = line[6:]
+                    if raw.strip() == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(raw)
+                        delta = (
+                            chunk["candidates"][0]["content"]["parts"][0].get("text", "")
+                        )
+                        if delta:
+                            yield {"type": "stream", "delta": delta}
+                    except Exception:
+                        pass
+    except Exception as exc:
+        yield {
+            "type": "stream",
+            "delta": f"【Gemini API接続エラー】{type(exc).__name__}: 接続に失敗しました。しばらく待ってから再試行してください。",
+        }
 
     yield {"type": "done"}
