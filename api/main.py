@@ -2768,3 +2768,67 @@ def record_lease_news_judgment_change_api(req: LeaseNewsJudgmentChangeRequest):
         return {"status": "recorded", "metrics": bucket}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── screening_outcomes エンドポイント（追加のみ、既存ルート不変）──────────────────
+
+class OutcomeCreateRequest(BaseModel):
+    screening_id: int = Field(..., description="screening_records.id への参照")
+    company_name: Optional[str] = Field(default=None, description="企業名")
+    outcome: Optional[str] = Field(default=None, description="contracted / rejected / pending")
+    delinquent: int = Field(default=0, description="0=正常, 1=延滞・デフォルト")
+    months_since_contract: Optional[int] = Field(default=None, description="契約後経過月数")
+    notes: Optional[str] = Field(default=None, description="備考")
+
+
+class OutcomeResponse(BaseModel):
+    id: int
+    screening_id: int
+    company_name: Optional[str]
+    outcome: Optional[str]
+    delinquent: int
+    months_since_contract: Optional[int]
+    notes: Optional[str]
+    recorded_at: str
+
+
+@app.post("/api/outcomes", response_model=OutcomeResponse)
+def create_outcome(req: OutcomeCreateRequest):
+    """審査後の追跡結果（支払状況等）を登録する。"""
+    try:
+        from api.add_outcomes_table import insert_outcome, get_outcome
+        new_id = insert_outcome(
+            screening_id=req.screening_id,
+            company_name=req.company_name,
+            outcome=req.outcome,
+            delinquent=req.delinquent,
+            months_since_contract=req.months_since_contract,
+            notes=req.notes,
+        )
+        row = get_outcome(new_id)
+        if row is None:
+            raise HTTPException(status_code=500, detail="insert succeeded but row not found")
+        return OutcomeResponse(**row)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/outcomes", response_model=List[OutcomeResponse])
+def get_outcomes(
+    screening_id: Optional[int] = None,
+    company_name: Optional[str] = None,
+    limit: int = 100,
+):
+    """審査後追跡結果の一覧を取得する。screening_id / company_name で絞り込み可能。"""
+    try:
+        from api.add_outcomes_table import list_outcomes
+        rows = list_outcomes(
+            screening_id=screening_id,
+            company_name=company_name,
+            limit=limit,
+        )
+        return [OutcomeResponse(**r) for r in rows]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
