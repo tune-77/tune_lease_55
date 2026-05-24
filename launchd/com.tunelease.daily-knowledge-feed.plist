@@ -21,9 +21,11 @@
     <string>/Users/kobayashiisaoryou/anaconda3/bin:/Users/kobayashiisaoryou/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
 
-  <!-- 毎朝 6:00 に実行 -->
+  <!-- 毎月1日 6:00 に実行 -->
   <key>StartCalendarInterval</key>
   <dict>
+    <key>Day</key>
+    <integer>1</integer>
     <key>Hour</key>
     <integer>6</integer>
     <key>Minute</key>

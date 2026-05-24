@@ -3,7 +3,7 @@
 # 使い方: make <コマンド名>
 # ─────────────────────────────────────────────────────────────
 
-.PHONY: test test-v lint iv shap app help migrate-fluid feed feed-dry launchd-install launchd-uninstall pipeline-status
+.PHONY: test test-v lint iv shap app help migrate-fluid migrate-grade9 feed feed-dry launchd-install launchd-uninstall pipeline-status retrain
 
 ## ──────────────────────────────────
 ## テスト関連
@@ -54,6 +54,14 @@ app:
 migrate-fluid:
 	python3 migrate_outcomes.py
 
+# 格付9ケースを delinquent=1 として screening_outcomes へ移行（初回のみ）
+migrate-grade9:
+	python3 migrate_grade9_to_outcomes.py
+
+# メタモデル手動再学習
+retrain:
+	python3 -c "from retraining_pipeline import run_retraining; import json; print(json.dumps(run_retraining('manual'), ensure_ascii=False, indent=2, default=str))"
+
 # 知識フィード: 今すぐ全タスク実行
 feed:
 	python3 daily_knowledge_feed.py
@@ -66,11 +74,11 @@ feed-dry:
 pipeline-status:
 	python3 -c "from fluid_pipeline import FluidPipeline; import json; print(json.dumps(FluidPipeline().status(), ensure_ascii=False, indent=2, default=str))"
 
-# launchd 登録（毎朝6時の自動実行を有効化）
+# launchd 登録（毎月1日6時の自動実行を有効化）
 launchd-install:
 	cp launchd/com.tunelease.daily-knowledge-feed.plist ~/Library/LaunchAgents/
 	launchctl load ~/Library/LaunchAgents/com.tunelease.daily-knowledge-feed.plist
-	@echo "✅ 毎朝6時に daily_knowledge_feed.py が自動実行されます"
+	@echo "✅ 毎月1日 6時に daily_knowledge_feed.py が自動実行されます"
 
 # launchd 登録解除
 launchd-uninstall:
@@ -95,9 +103,11 @@ help:
 	@echo ""
 	@echo "  [流体化パイプライン]"
 	@echo "  make migrate-fluid  DBマイグレーション実行（初回のみ）"
+	@echo "  make migrate-grade9 格付9ケースを delinquent=1 として移行（初回のみ）"
+	@echo "  make retrain        メタモデルを手動で再学習"
 	@echo "  make feed           知識フィードを今すぐ全実行"
 	@echo "  make feed-dry       知識フィードの確認のみ（DRY RUN）"
 	@echo "  make pipeline-status FluidPipelineの現在状態を表示"
-	@echo "  make launchd-install  毎朝6時の自動実行を有効化"
+	@echo "  make launchd-install  毎月1日6時の自動実行を有効化"
 	@echo "  make launchd-uninstall 自動実行を無効化"
 	@echo ""

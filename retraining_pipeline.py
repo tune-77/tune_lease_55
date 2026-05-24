@@ -361,13 +361,13 @@ def check_retraining_needed(
 
 
 def run_retraining(
+    triggered_by: str = "auto",
     min_records: int = 50,
     auc_threshold: float = 0.75,
     test_ratio: float = 0.2,
     model_dir: str = "models/",
     db_path: str = "data/lease_data.db",
     dry_run: bool = False,
-    triggered_by: str = "auto",
 ) -> RetrainingResult:
     """
     screening_records テーブルのデータで RF/LGBM スコア集約メタモデルを再学習する。
