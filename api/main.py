@@ -397,6 +397,7 @@ class AssetFinanceRequest(BaseModel):
     annual_km: int = Field(0, ge=0, le=100000)
     has_maintenance_lease: bool = False
     ai_residual_pct: Optional[float] = Field(None, ge=0.0, le=100.0)
+    useful_life: Optional[int] = Field(None, ge=1, le=50, description="耐用年数（年）。指定時は r = 2.0 / useful_life で計算。")
 
 
 class AssetFinanceObsidianContextRequest(BaseModel):
@@ -744,6 +745,8 @@ def evaluate_asset_finance(req: AssetFinanceRequest):
         data = req.model_dump() if hasattr(req, "model_dump") else req.dict()
         result = engine.run_inference(data)
         params = engine.ASSET_PARAMS[req.asset_type]
+        eff_life = req.useful_life if req.useful_life else params["useful_life"]
+        eff_r = 2.0 / eff_life
         curve = [
             {"month": i, "asset_value": v, "lease_balance": result["l_curve"][i]}
             for i, v in enumerate(result["v_curve"])
@@ -752,7 +755,8 @@ def evaluate_asset_finance(req: AssetFinanceRequest):
             **result,
             "curve": curve,
             "asset_params": {
-                "depreciation_rate": params["r"],
+                "depreciation_rate": eff_r,
+                "useful_life": eff_life,
                 "priority": params["priority"],
                 "priority_score": params["priority_score"],
                 "info": params["info"],
@@ -854,6 +858,33 @@ def save_asset_finance_to_obsidian(req: AssetFinanceSaveToObsidianRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Obsidian保存エラー: {e}")
+
+
+_USEFUL_LIFE_TABLE: list[dict] | None = None
+
+def _load_useful_life_table() -> list[dict]:
+    global _USEFUL_LIFE_TABLE
+    if _USEFUL_LIFE_TABLE is None:
+        table_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "useful_life_table.json")
+        with open(table_path, "r", encoding="utf-8") as f:
+            _USEFUL_LIFE_TABLE = json.load(f)
+    return _USEFUL_LIFE_TABLE
+
+
+@app.get("/api/asset/useful-life-search")
+def search_useful_life(q: str = ""):
+    """国税庁の法定耐用年数表からキーワード検索（name/category/subcategory）。最大20件返す。"""
+    table = _load_useful_life_table()
+    if not q.strip():
+        return table[:20]
+    q_lower = q.lower()
+    results = [
+        item for item in table
+        if q_lower in item.get("name", "").lower()
+        or q_lower in item.get("category", "").lower()
+        or q_lower in item.get("subcategory", "").lower()
+    ]
+    return results[:20]
 
 
 def _sanitize_batch_value(value):

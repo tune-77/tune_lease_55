@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import {
   AlertCircle,
@@ -32,6 +32,15 @@ import {
 import ObsidianReviewGraph from "@/components/analysis/ObsidianReviewGraph";
 
 type AssetType = "建機" | "工作機械" | "PC/IT" | "医療機器" | "ドローン" | "車両";
+
+type UsefulLifeItem = {
+  id: string;
+  name: string;
+  category: string;
+  subcategory: string;
+  useful_life: number;
+  mapped_type: AssetType;
+};
 type FinancialScore = "High" | "Medium" | "Low";
 
 type FinanceInput = {
@@ -47,6 +56,7 @@ type FinanceInput = {
   annual_km: number;
   has_maintenance_lease: boolean;
   ai_residual_pct: string;
+  useful_life: number;
 };
 
 type CurvePoint = {
@@ -69,6 +79,7 @@ type FinanceResult = {
   curve: CurvePoint[];
   asset_params: {
     depreciation_rate: number;
+    useful_life: number;
     priority: string;
     priority_score: number;
     info: string;
@@ -137,6 +148,15 @@ type EvidenceBucket = "used_market" | "residual_risk" | "approval_basis" | "caut
 
 const ASSET_TYPES: AssetType[] = ["建機", "工作機械", "PC/IT", "医療機器", "ドローン", "車両"];
 
+const ASSET_DEFAULT_USEFUL_LIFE: Record<AssetType, number> = {
+  "建機": 6,
+  "工作機械": 10,
+  "PC/IT": 4,
+  "医療機器": 8,
+  "ドローン": 5,
+  "車両": 4,
+};
+
 const FIN_LABELS: Record<FinancialScore, string> = {
   High: "優良",
   Medium: "標準",
@@ -163,6 +183,7 @@ const initialInput: FinanceInput = {
   annual_km: 15000,
   has_maintenance_lease: false,
   ai_residual_pct: "",
+  useful_life: ASSET_DEFAULT_USEFUL_LIFE["車両"],
 };
 
 function stripBold(text: string) {
@@ -322,6 +343,54 @@ export default function FinancePage() {
   const [similarLoading, setSimilarLoading] = useState(false);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const [selectedEvidence, setSelectedEvidence] = useState<Record<string, boolean>>({});
+  const [assetSearch, setAssetSearch] = useState("");
+  const [assetResults, setAssetResults] = useState<UsefulLifeItem[]>([]);
+  const [assetDropdownOpen, setAssetDropdownOpen] = useState(false);
+  const [assetSearchLoading, setAssetSearchLoading] = useState(false);
+  const [selectedAssetItem, setSelectedAssetItem] = useState<UsefulLifeItem | null>(null);
+  const assetSearchRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!assetDropdownOpen) return;
+    const timer = setTimeout(async () => {
+      setAssetSearchLoading(true);
+      try {
+        const res = await axios.get<UsefulLifeItem[]>(
+          `/api/asset/useful-life-search?q=${encodeURIComponent(assetSearch)}`
+        );
+        setAssetResults(res.data);
+      } catch {
+        setAssetResults([]);
+      } finally {
+        setAssetSearchLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [assetSearch, assetDropdownOpen]);
+
+  useEffect(() => {
+    function handleOutsideClick(e: MouseEvent) {
+      if (assetSearchRef.current && !assetSearchRef.current.contains(e.target as Node)) {
+        setAssetDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, []);
+
+  const selectAssetItem = (item: UsefulLifeItem) => {
+    setSelectedAssetItem(item);
+    setAssetSearch(item.name);
+    setAssetDropdownOpen(false);
+    setForm((prev) => ({ ...prev, asset_type: item.mapped_type, useful_life: item.useful_life }));
+    setResult(null);
+    setError(null);
+    setObsidianContext(null);
+    setObsidianMessage(null);
+    setSimilarNotes([]);
+    setCopyMessage(null);
+    setSelectedEvidence({});
+  };
 
   const decisionClass = useMemo(() => {
     if (!result) return "border-slate-300 bg-slate-50 text-slate-600";
@@ -344,7 +413,13 @@ export default function FinancePage() {
   );
 
   const update = <K extends keyof FinanceInput>(key: K, value: FinanceInput[K]) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      if (key === "asset_type") {
+        next.useful_life = ASSET_DEFAULT_USEFUL_LIFE[value as AssetType];
+      }
+      return next;
+    });
     setResult(null);
     setError(null);
     setObsidianContext(null);
@@ -511,16 +586,76 @@ export default function FinancePage() {
             </div>
 
             <div>
-              <label className="block text-xs font-black text-slate-500 mb-2">物件種別</label>
-              <select
-                value={form.asset_type}
-                onChange={(e) => update("asset_type", e.target.value as AssetType)}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-cyan-500/20"
-              >
-                {ASSET_TYPES.map((asset) => (
-                  <option key={asset} value={asset}>{asset}</option>
-                ))}
-              </select>
+              <label className="block text-xs font-black text-slate-500 mb-2">
+                物件種別 <span className="font-normal text-slate-400">（国税庁 法定耐用年数表）</span>
+              </label>
+              <div className="relative" ref={assetSearchRef}>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                  <input
+                    value={assetSearch}
+                    onChange={(e) => {
+                      setAssetSearch(e.target.value);
+                      setAssetDropdownOpen(true);
+                      if (selectedAssetItem && e.target.value !== selectedAssetItem.name) {
+                        setSelectedAssetItem(null);
+                      }
+                    }}
+                    onFocus={() => setAssetDropdownOpen(true)}
+                    placeholder="例: クローラークレーン、旋盤、CT装置"
+                    className="w-full rounded-lg border border-slate-300 pl-8 pr-3 py-2 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-cyan-500/20"
+                  />
+                  {assetSearchLoading && (
+                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 animate-spin" />
+                  )}
+                </div>
+                {assetDropdownOpen && assetResults.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+                    {assetResults.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onMouseDown={(e) => { e.preventDefault(); selectAssetItem(item); }}
+                        className="w-full text-left px-3 py-2.5 hover:bg-cyan-50 border-b border-slate-100 last:border-b-0"
+                      >
+                        <div className="text-sm font-black text-slate-700">{item.name}</div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs text-slate-400">{item.category} / {item.subcategory}</span>
+                          <span className="text-xs font-black text-cyan-600">耐用年数 {item.useful_life}年</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {selectedAssetItem && (
+                  <div className="mt-1.5 flex items-center gap-1.5">
+                    <span className="rounded border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[11px] font-black text-cyan-700">
+                      {selectedAssetItem.mapped_type}
+                    </span>
+                    <span className="text-[11px] text-slate-400">
+                      {selectedAssetItem.category} / {selectedAssetItem.subcategory}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-black text-slate-500 mb-2">
+                耐用年数 <span className="font-normal text-slate-400">（年・200%定率法の基準）</span>
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={50}
+                step={1}
+                value={form.useful_life}
+                onChange={(e) => update("useful_life", Number(e.target.value))}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-cyan-500/20"
+              />
+              <p className="mt-1 text-xs text-slate-400">
+                法定耐用年数をデフォルト設定。実態に合わせて変更可。
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -752,7 +887,7 @@ export default function FinancePage() {
                     物件時価 vs リース残債
                   </h2>
                   <div className="text-xs font-bold text-slate-500">
-                    減価率 {Math.round(result.asset_params.depreciation_rate * 100)}% / 支払優先度 {result.asset_params.priority}
+                    耐用年数 {result.asset_params.useful_life}年（減価率 {Math.round(result.asset_params.depreciation_rate * 100)}%） / 支払優先度 {result.asset_params.priority}
                   </div>
                 </div>
                 <div className="h-80">
