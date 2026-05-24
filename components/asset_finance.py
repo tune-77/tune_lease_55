@@ -12,16 +12,16 @@ class AssetFinanceEngine:
     """
 
     ASSET_PARAMS = {
-        '建機':    {'r': 0.15, 'priority': '中',   'priority_score': 2, 'info': '海外需要による底値の硬さ'},
-        '工作機械': {'r': 0.20, 'priority': '高',   'priority_score': 3, 'info': '精度維持による長寿命価値'},
-        'PC/IT':   {'r': 0.40, 'priority': '低',   'priority_score': 1, 'info': '高速な陳腐化・資産価値なし'},
-        '医療機器': {'r': 0.10, 'priority': '極高', 'priority_score': 5, 'info': '診療報酬直結（最優先支払）'},
-        'ドローン': {'r': 0.50, 'priority': '中',   'priority_score': 2, 'info': '物理破損と超高速陳腐化'},
-        '車両':    {'r': 0.25, 'priority': '中高', 'priority_score': 3, 'info': '高換金性と確立された中古市場'},
+        '建機':    {'useful_life': 6,  'priority': '中',   'priority_score': 2, 'info': '海外需要による底値の硬さ'},
+        '工作機械': {'useful_life': 10, 'priority': '高',   'priority_score': 3, 'info': '精度維持による長寿命価値'},
+        'PC/IT':   {'useful_life': 4,  'priority': '低',   'priority_score': 1, 'info': '高速な陳腐化・資産価値なし'},
+        '医療機器': {'useful_life': 8,  'priority': '極高', 'priority_score': 5, 'info': '診療報酬直結（最優先支払）'},
+        'ドローン': {'useful_life': 5,  'priority': '中',   'priority_score': 2, 'info': '物理破損と超高速陳腐化'},
+        '車両':    {'useful_life': 4,  'priority': '中高', 'priority_score': 3, 'info': '高換金性と確立された中古市場'},
     }
 
-    def get_effective_depreciation_rate(self, asset_type, annual_km=0, has_maintenance_lease=False, ai_residual_pct=None, term_months=60):
-        """実効減価率（AI予測値がある場合はそれを逆算、ない場合は走行距離・メンテ補正）"""
+    def get_effective_depreciation_rate(self, asset_type, annual_km=0, has_maintenance_lease=False, ai_residual_pct=None, term_months=60, useful_life=None):
+        """実効減価率（AI予測値がある場合はそれを逆算、ない場合は耐用年数200%定率法＋補正）"""
         if ai_residual_pct is not None and ai_residual_pct > 0:
             # AIが提示した満了時残価率から年間減価率 r を逆算
             # (1 - r)^(term/12) = ai_residual_pct / 100
@@ -34,8 +34,9 @@ class AssetFinanceEngine:
                 return max(0.0, min(0.95, r))
             except:
                 pass
-                
-        r = self.ASSET_PARAMS[asset_type]['r']
+
+        eff_life = useful_life if useful_life else self.ASSET_PARAMS[asset_type]['useful_life']
+        r = 2.0 / eff_life  # 200%定率法
         if asset_type == '車両':
             if annual_km >= 20000:
                 r += 0.10  # 過走行補正（年2万km以上）
@@ -50,7 +51,7 @@ class AssetFinanceEngine:
         return 0.0
 
     def calculate_bep(self, asset_type, term_months, down_payment_rate,
-                      annual_km=0, has_maintenance_lease=False, ai_residual_pct=None):
+                      annual_km=0, has_maintenance_lease=False, ai_residual_pct=None, useful_life=None):
         """
         損益分岐点（BEP）算出。
         V(t) = (1 + maint_bonus) × (1 - r)^(t/12)
@@ -58,8 +59,8 @@ class AssetFinanceEngine:
         V(t) > L(t) となる最初の月をBEPとする。
         """
         r = self.get_effective_depreciation_rate(
-            asset_type, annual_km, has_maintenance_lease, 
-            ai_residual_pct=ai_residual_pct, term_months=term_months
+            asset_type, annual_km, has_maintenance_lease,
+            ai_residual_pct=ai_residual_pct, term_months=term_months, useful_life=useful_life
         )
         maint_bonus = self.get_maintenance_lgd_bonus(asset_type, has_maintenance_lease)
 
@@ -89,10 +90,11 @@ class AssetFinanceEngine:
         annual_km = data.get('annual_km', 0)
         has_maintenance_lease = data.get('has_maintenance_lease', False)
         ai_residual_pct = data.get('ai_residual_pct')
+        useful_life = data.get('useful_life')
 
         bep_month, v_curve, l_curve = self.calculate_bep(
             asset_type, term, down_payment, annual_km, has_maintenance_lease,
-            ai_residual_pct=ai_residual_pct
+            ai_residual_pct=ai_residual_pct, useful_life=useful_life
         )
         bep_ratio = bep_month / term if term > 0 else 1.0
         priority_score = self.ASSET_PARAMS[asset_type]['priority_score']

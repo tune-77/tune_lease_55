@@ -47,6 +47,7 @@ type FinanceInput = {
   annual_km: number;
   has_maintenance_lease: boolean;
   ai_residual_pct: string;
+  useful_life: number;
 };
 
 type CurvePoint = {
@@ -69,6 +70,7 @@ type FinanceResult = {
   curve: CurvePoint[];
   asset_params: {
     depreciation_rate: number;
+    useful_life: number;
     priority: string;
     priority_score: number;
     info: string;
@@ -137,6 +139,15 @@ type EvidenceBucket = "used_market" | "residual_risk" | "approval_basis" | "caut
 
 const ASSET_TYPES: AssetType[] = ["建機", "工作機械", "PC/IT", "医療機器", "ドローン", "車両"];
 
+const ASSET_DEFAULT_USEFUL_LIFE: Record<AssetType, number> = {
+  "建機": 6,
+  "工作機械": 10,
+  "PC/IT": 4,
+  "医療機器": 8,
+  "ドローン": 5,
+  "車両": 4,
+};
+
 const FIN_LABELS: Record<FinancialScore, string> = {
   High: "優良",
   Medium: "標準",
@@ -163,6 +174,7 @@ const initialInput: FinanceInput = {
   annual_km: 15000,
   has_maintenance_lease: false,
   ai_residual_pct: "",
+  useful_life: ASSET_DEFAULT_USEFUL_LIFE["車両"],
 };
 
 function stripBold(text: string) {
@@ -344,7 +356,13 @@ export default function FinancePage() {
   );
 
   const update = <K extends keyof FinanceInput>(key: K, value: FinanceInput[K]) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      if (key === "asset_type") {
+        next.useful_life = ASSET_DEFAULT_USEFUL_LIFE[value as AssetType];
+      }
+      return next;
+    });
     setResult(null);
     setError(null);
     setObsidianContext(null);
@@ -521,6 +539,24 @@ export default function FinancePage() {
                   <option key={asset} value={asset}>{asset}</option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-black text-slate-500 mb-2">
+                耐用年数 <span className="font-normal text-slate-400">（年・200%定率法の基準）</span>
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={50}
+                step={1}
+                value={form.useful_life}
+                onChange={(e) => update("useful_life", Number(e.target.value))}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-cyan-500/20"
+              />
+              <p className="mt-1 text-xs text-slate-400">
+                法定耐用年数をデフォルト設定。実態に合わせて変更可。
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -752,7 +788,7 @@ export default function FinancePage() {
                     物件時価 vs リース残債
                   </h2>
                   <div className="text-xs font-bold text-slate-500">
-                    減価率 {Math.round(result.asset_params.depreciation_rate * 100)}% / 支払優先度 {result.asset_params.priority}
+                    耐用年数 {result.asset_params.useful_life}年（減価率 {Math.round(result.asset_params.depreciation_rate * 100)}%） / 支払優先度 {result.asset_params.priority}
                   </div>
                 </div>
                 <div className="h-80">

@@ -397,6 +397,7 @@ class AssetFinanceRequest(BaseModel):
     annual_km: int = Field(0, ge=0, le=100000)
     has_maintenance_lease: bool = False
     ai_residual_pct: Optional[float] = Field(None, ge=0.0, le=100.0)
+    useful_life: Optional[int] = Field(None, ge=1, le=50, description="耐用年数（年）。指定時は r = 2.0 / useful_life で計算。")
 
 
 class AssetFinanceObsidianContextRequest(BaseModel):
@@ -744,6 +745,8 @@ def evaluate_asset_finance(req: AssetFinanceRequest):
         data = req.model_dump() if hasattr(req, "model_dump") else req.dict()
         result = engine.run_inference(data)
         params = engine.ASSET_PARAMS[req.asset_type]
+        eff_life = req.useful_life if req.useful_life else params["useful_life"]
+        eff_r = 2.0 / eff_life
         curve = [
             {"month": i, "asset_value": v, "lease_balance": result["l_curve"][i]}
             for i, v in enumerate(result["v_curve"])
@@ -752,7 +755,8 @@ def evaluate_asset_finance(req: AssetFinanceRequest):
             **result,
             "curve": curve,
             "asset_params": {
-                "depreciation_rate": params["r"],
+                "depreciation_rate": eff_r,
+                "useful_life": eff_life,
                 "priority": params["priority"],
                 "priority_score": params["priority_score"],
                 "info": params["info"],
