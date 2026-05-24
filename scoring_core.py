@@ -17,7 +17,7 @@ if _REPO_ROOT not in sys.path:
 if _SCRIPT_DIR not in sys.path:
     sys.path.insert(0, _SCRIPT_DIR)
 
-from data_cases import get_effective_coeffs, get_score_weights
+from data_cases import get_effective_coeffs
 from app_logger import log_warning
 
 APPROVAL_LINE = int(os.environ.get("APPROVAL_LINE", "71"))  # 承認ライン（デフォルト71点）
@@ -500,6 +500,65 @@ def compute_interest_coverage(inputs: dict) -> float:
     return round(op_profit / interest, 3)
 
 
+def generate_asset_warnings(asset_name: str, term_months: int) -> list[str]:
+    """物件名とリース期間から換金性・BEP・残存価値に基づく警告フラグを返す。"""
+    name = (asset_name or "").lower()
+
+    # キーワードマッピング: (useful_life年, 換金性ラベル)
+    MAPPING = [
+        (["トラック", "スーパーグレード", "プロフィア", "キャリイ", "elf", "エルフ",
+          "キャンター", "デュトロ", "ダイナ", "レンジャー"],      4, "高"),
+        (["フォークリフト"],                                       5, "高"),
+        (["クレーン", "ショベル", "ブルドーザー", "バックホウ", "ユンボ"], 6, "中"),
+        (["医療", "介護", "mri", "ct", "レントゲン", "透析"],    8, "中"),
+        (["複合機", "コピー機", "oa", "プリンタ"],               5, "中"),
+        (["防犯カメラ", "監視カメラ", "セキュリティカメラ"],      6, "低"),
+        (["pc", "パソコン", "ソフト", "サーバ", "ネットワーク",
+          "タブレット", "スイッチ", "ルータ"],                    4, "極低"),
+        (["工作機械", "旋盤", "マシニング", "プレス", "射出成形",
+          "製造機", "溶接機"],                                    10, "低"),
+    ]
+
+    useful_life_yr = 7
+    liquidity = "中"
+    for keywords, life, liq in MAPPING:
+        if any(kw in name for kw in keywords):
+            useful_life_yr = life
+            liquidity = liq
+            break
+
+    term = max(1, term_months)
+    r_annual = 2.0 / useful_life_yr
+    r_monthly = r_annual / 12.0
+
+    # BEP月: 残存価値率 V(t) = (1-r_monthly)^t が残債比率 (term-t)/term を下回る最初の月
+    bep_month = term  # デフォルト：期間内にBEPなし
+    for t in range(1, term + 1):
+        v = (1.0 - r_monthly) ** t
+        balance_ratio = (term - t) / term
+        if v <= balance_ratio:
+            bep_month = t
+            break
+
+    residual_at_end = (1.0 - r_monthly) ** term
+    bep_ratio = bep_month / term
+
+    warnings: list[str] = []
+
+    if bep_month < term * 0.9 and liquidity in ("低", "極低"):
+        warnings.append(
+            f"⚠️ BEP割れリスク: リース期間の{bep_ratio:.0%}時点で担保価値が残債を下回ります"
+        )
+
+    if residual_at_end < 0.05:
+        warnings.append("⚠️ 満了時残存価値ほぼゼロ: 出口価値がありません")
+
+    if liquidity == "極低":
+        warnings.append("⚠️ 換金性低: 特注・専用物件のため回収時の売却が困難です")
+
+    return warnings
+
+
 def run_quick_scoring(inputs: dict) -> dict:
     """
     入力辞書からスコア・判定・比較文を計算して返す。
@@ -661,9 +720,8 @@ def run_quick_scoring(inputs: dict) -> dict:
 
     score_borrower = score_prob * 100
 
-    w_borrower, w_asset, _, _ = get_score_weights()
-    base_score = w_borrower * score_borrower + w_asset * asset_score
-    base_score = max(0, min(100, round(base_score, 1)))
+    # 物件スコアは警告フラグのみ（final_score への寄与ゼロ）
+    base_score = max(0, min(100, round(score_borrower, 1)))
 
     # ── 自己資本マイナスペナルティ ────────────────────────────────────────────
     # RandomForestモデルはnet_assetsを特徴量に含まないため後処理で補正する
@@ -696,6 +754,16 @@ def run_quick_scoring(inputs: dict) -> dict:
     asset_score_warnings = []
     if used_default_asset_score:
         asset_score_warnings.append("物件スコア未入力のためデフォルト値(50)を使用")
+
+    # 物件リスク警告フラグ（BEP・換金性・残存価値）
+    _asset_name = (
+        inputs.get("asset_name")
+        or inputs.get("lease_asset_name")
+        or inputs.get("selected_asset_id")
+        or ""
+    )
+    _term_months = _safe_int(inputs.get("lease_term"), default=60)
+    asset_warnings = generate_asset_warnings(_asset_name, _term_months)
 
     credit_risk_group = {
         "score": 0.0,
@@ -773,6 +841,10 @@ def run_quick_scoring(inputs: dict) -> dict:
         # CF系指標（表示・次回ML再学習用）
         "dscr_approx": dscr_approx,
         "interest_coverage": interest_coverage,
+        # 物件リスク警告フラグ（BEP・換金性・残存価値）— スコアには影響しない
+        "asset_warnings": asset_warnings,
+        # 物件スコア（表示用のみ）
+        "asset_score": asset_score,
     }
 
 
