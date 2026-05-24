@@ -15,6 +15,8 @@ from typing import Any, Iterable
 
 from obsidian_query import split_query_terms
 
+_WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]")
+
 
 def _home_candidates() -> list[Path]:
     home = Path.home()
@@ -92,8 +94,19 @@ def _search_in_paths(paths: list[Path], vault: Path, terms: list[str], limit: in
         first = min((low.find(t) for t in terms if t in low), default=0)
         start = max(0, first - 160)
         snippet = text[start:start + max_chars].strip()
+        wikilinks_seen: set[str] = set()
+        wikilinks: list[str] = []
+        for match in _WIKILINK_RE.finditer(text):
+            link = match.group(1).strip()
+            if link and link not in wikilinks_seen:
+                wikilinks_seen.add(link)
+                wikilinks.append(link)
         seen.add(rel)
-        hits.append({"path": rel, "snippet": snippet})
+        hits.append({
+            "path": rel,
+            "snippet": snippet,
+            "wikilinks": wikilinks,
+        })
         if len(hits) >= limit:
             break
     return hits

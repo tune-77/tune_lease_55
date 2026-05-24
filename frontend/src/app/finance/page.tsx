@@ -7,7 +7,9 @@ import {
   Banknote,
   BookOpen,
   CheckCircle2,
+  Copy,
   Factory,
+  FileText,
   Loader2,
   Route,
   Save,
@@ -26,6 +28,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+
+import ObsidianReviewGraph from "@/components/analysis/ObsidianReviewGraph";
 
 type AssetType = "建機" | "工作機械" | "PC/IT" | "医療機器" | "ドローン" | "車両";
 type FinancialScore = "High" | "Medium" | "Low";
@@ -75,12 +79,43 @@ type FinanceResult = {
 type ObsidianHit = {
   path: string;
   snippet: string;
+  wikilinks?: string[];
+};
+
+type ObsidianGraph = {
+  nodes: Array<{
+    id: string;
+    label: string;
+    type: string;
+    color: string;
+    radius: number;
+    used?: boolean;
+    path?: string;
+    snippet?: string;
+    term?: string;
+    pinned?: boolean;
+  }>;
+  edges: Array<{
+    source: string;
+    target: string;
+    type: string;
+    width?: number;
+    color?: string;
+  }>;
+  summary?: {
+    total_hits?: number;
+    used_hits?: number;
+    linked_nodes?: number;
+    generated_terms?: number;
+  };
+  legend?: Array<{ label: string; color: string }>;
 };
 
 type ObsidianContext = {
   query?: string;
   generated_terms?: string[];
   hits: ObsidianHit[];
+  graph?: ObsidianGraph;
   evidence?: {
     used_market?: string[];
     residual_risk?: string[];
@@ -97,6 +132,8 @@ type ObsidianContext = {
 type SimilarNotesResult = {
   similar_notes: ObsidianHit[];
 };
+
+type EvidenceBucket = "used_market" | "residual_risk" | "approval_basis" | "cautions";
 
 const ASSET_TYPES: AssetType[] = ["建機", "工作機械", "PC/IT", "医療機器", "ドローン", "車両"];
 
@@ -134,6 +171,114 @@ function stripBold(text: string) {
 
 function percent(value: number) {
   return `${Math.round(value * 100)}%`;
+}
+
+function pickEvidence(items?: string[], limit = 2) {
+  return (items || [])
+    .map((item) => item.replace(/^・/, "").trim())
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function evidenceKey(bucket: EvidenceBucket, index: number) {
+  return `${bucket}:${index}`;
+}
+
+function buildDefaultEvidenceSelection(evidence?: ObsidianContext["evidence"]) {
+  const defaults: Record<string, boolean> = {};
+  const limits: Record<EvidenceBucket, number> = {
+    used_market: 1,
+    residual_risk: 1,
+    approval_basis: 2,
+    cautions: 1,
+  };
+
+  (Object.keys(limits) as EvidenceBucket[]).forEach((bucket) => {
+    (evidence?.[bucket] || []).forEach((_, index) => {
+      defaults[evidenceKey(bucket, index)] = index < limits[bucket];
+    });
+  });
+
+  return defaults;
+}
+
+function filterEvidenceForComment(
+  evidence: ObsidianContext["evidence"] | undefined,
+  selectedEvidence: Record<string, boolean>,
+) {
+  if (!evidence) return undefined;
+  const buckets: EvidenceBucket[] = ["used_market", "residual_risk", "approval_basis", "cautions"];
+  return buckets.reduce<NonNullable<ObsidianContext["evidence"]>>((acc, bucket) => {
+    const selected = (evidence[bucket] || []).filter((_, index) => selectedEvidence[evidenceKey(bucket, index)]);
+    if (selected.length) acc[bucket] = selected;
+    return acc;
+  }, {});
+}
+
+function buildRingiComment(
+  result: FinanceResult | null,
+  activeInput: Record<string, unknown>,
+  evidence?: ObsidianContext["evidence"],
+) {
+  if (!result) return "";
+
+  const assetName = String(activeInput.asset_name || "").trim();
+  const assetType = String(activeInput.asset_type || "");
+  const assetLabel = assetName ? `${assetType}（${assetName}）` : assetType;
+  const approvalBasis = pickEvidence(evidence?.approval_basis, 2);
+  const usedMarket = pickEvidence(evidence?.used_market, 1);
+  const residualRisk = pickEvidence(evidence?.residual_risk, 1);
+  const cautions = pickEvidence(evidence?.cautions, 1);
+  const keyReasons = result.reasons.map(stripBold).slice(0, 2);
+  const keyActions = result.action_plan.map(stripBold).slice(0, 2);
+
+  const lines = [
+    `対象物件は${assetLabel}。物件ファイナンス審査の総合スコアは${result.score}点、判定は「${result.decision}」。`,
+    `BEPは${result.bep_month}ヶ月目（期間比${Math.round(result.bep_ratio * 100)}%）で、リース残債に対する物件時価の回復余地を確認した。`,
+  ];
+
+  if (keyReasons.length) {
+    lines.push(`承認根拠は、${keyReasons.join("、")}。`);
+  }
+  if (approvalBasis.length || usedMarket.length) {
+    lines.push(`外部・過去調査メモ上の根拠として、${[...approvalBasis, ...usedMarket].join("、")}。`);
+  }
+  if (residualRisk.length || cautions.length) {
+    lines.push(`留意点は、${[...residualRisk, ...cautions].join("、")}。契約前に現物確認、保守履歴、再販可能性を確認する。`);
+  }
+  if (keyActions.length) {
+    lines.push(`対応方針は、${keyActions.join("、")}。`);
+  }
+
+  return lines.join("\n");
+}
+
+function buildApprovalConditions(result: FinanceResult | null, evidence?: ObsidianContext["evidence"]) {
+  if (!result) return "";
+
+  const conditions = [
+    "現物確認: 型式、製造年、稼働時間・走行距離、付属品、整備履歴を確認する。",
+    "保全確認: 中古相場、再販先、残価前提、売却制約の有無を確認する。",
+  ];
+
+  pickEvidence(evidence?.residual_risk, 2).forEach((item) => {
+    conditions.push(`残価リスク確認: ${item}`);
+  });
+  pickEvidence(evidence?.cautions, 2).forEach((item) => {
+    conditions.push(`物件特性確認: ${item}`);
+  });
+  result.deductions.map(stripBold).slice(0, 2).forEach((item) => {
+    conditions.push(`減点要因の補強: ${item}`);
+  });
+  result.action_plan.map(stripBold).slice(0, 3).forEach((item) => {
+    conditions.push(`対応: ${item}`);
+  });
+
+  if (result.decision !== "承認") {
+    conditions.push("承認条件: 自己資金、メイン銀行協調、保守契約、追加保全のいずれかで補強する。");
+  }
+
+  return conditions.map((item) => `・${item}`).join("\n");
 }
 
 function ToggleRow({
@@ -175,6 +320,8 @@ export default function FinancePage() {
   const [obsidianMessage, setObsidianMessage] = useState<string | null>(null);
   const [similarNotes, setSimilarNotes] = useState<ObsidianHit[]>([]);
   const [similarLoading, setSimilarLoading] = useState(false);
+  const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const [selectedEvidence, setSelectedEvidence] = useState<Record<string, boolean>>({});
 
   const decisionClass = useMemo(() => {
     if (!result) return "border-slate-300 bg-slate-50 text-slate-600";
@@ -183,6 +330,18 @@ export default function FinancePage() {
 
   const activeInput = result?.input || form;
   const activeTerm = Number(activeInput.term || form.term);
+  const selectedEvidenceForComment = useMemo(
+    () => filterEvidenceForComment(obsidianContext?.evidence, selectedEvidence),
+    [obsidianContext?.evidence, selectedEvidence],
+  );
+  const ringiComment = useMemo(
+    () => buildRingiComment(result, activeInput, selectedEvidenceForComment),
+    [result, activeInput, selectedEvidenceForComment],
+  );
+  const approvalConditions = useMemo(
+    () => buildApprovalConditions(result, selectedEvidenceForComment),
+    [result, selectedEvidenceForComment],
+  );
 
   const update = <K extends keyof FinanceInput>(key: K, value: FinanceInput[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -191,6 +350,18 @@ export default function FinancePage() {
     setObsidianContext(null);
     setObsidianMessage(null);
     setSimilarNotes([]);
+    setCopyMessage(null);
+    setSelectedEvidence({});
+  };
+
+  const copyText = async (text: string, successMessage: string) => {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyMessage(successMessage);
+    } catch {
+      setCopyMessage("コピーできませんでした。本文を選択してコピーしてください。");
+    }
   };
 
   const fetchSimilarNotes = async (sourceInput: Record<string, unknown>, decision = "") => {
@@ -223,6 +394,7 @@ export default function FinancePage() {
       setResult(res.data);
       setObsidianMessage(null);
       fetchSimilarNotes(res.data.input || payload, res.data.decision);
+      await searchObsidianContext(res.data.input || payload, res.data.decision);
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setError(detail || "物件ファイナンス審査に失敗しました");
@@ -231,18 +403,19 @@ export default function FinancePage() {
     }
   };
 
-  const searchObsidian = async () => {
+  const searchObsidianContext = async (sourceInput?: Record<string, unknown>, decision = "") => {
     setObsidianLoading(true);
     setObsidianMessage(null);
     try {
       const res = await axios.post<ObsidianContext>("/api/asset-finance/obsidian-context", {
-        asset_type: activeInput.asset_type || form.asset_type,
-        asset_name: activeInput.asset_name || form.asset_name,
-        financial_score: activeInput.financial_score || form.financial_score,
-        decision: result?.decision || "",
+        asset_type: sourceInput?.asset_type || activeInput.asset_type || form.asset_type,
+        asset_name: sourceInput?.asset_name || activeInput.asset_name || form.asset_name,
+        financial_score: sourceInput?.financial_score || activeInput.financial_score || form.financial_score,
+        decision,
         memo_query: memoQuery,
       });
       setObsidianContext(res.data);
+      setSelectedEvidence(buildDefaultEvidenceSelection(res.data.evidence));
       setObsidianMessage(res.data.hits.length ? null : "関連メモは見つかりませんでした。");
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
@@ -276,10 +449,12 @@ export default function FinancePage() {
     title,
     items,
     tone,
+    bucket,
   }: {
     title: string;
     items?: string[];
     tone: "blue" | "amber" | "emerald" | "rose";
+    bucket: EvidenceBucket;
   }) => {
     if (!items?.length) return null;
     const tones = {
@@ -293,7 +468,17 @@ export default function FinancePage() {
         <div className="text-xs font-black mb-2">{title}</div>
         <div className="space-y-1">
           {items.slice(0, 4).map((item, i) => (
-            <div key={`${title}-${i}`} className="text-xs font-bold leading-relaxed">・{item}</div>
+            <label key={`${title}-${i}`} className="flex cursor-pointer items-start gap-2 rounded-md px-1 py-1 hover:bg-white/60">
+              <input
+                type="checkbox"
+                checked={Boolean(selectedEvidence[evidenceKey(bucket, i)])}
+                onChange={(e) =>
+                  setSelectedEvidence((prev) => ({ ...prev, [evidenceKey(bucket, i)]: e.target.checked }))
+                }
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-cyan-600"
+              />
+              <span className="text-xs font-bold leading-relaxed">{item}</span>
+            </label>
           ))}
         </div>
       </div>
@@ -482,7 +667,7 @@ export default function FinancePage() {
             />
             <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={searchObsidian}
+                onClick={() => searchObsidianContext()}
                 disabled={obsidianLoading}
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-black text-cyan-700 hover:bg-cyan-100 disabled:opacity-50"
               >
@@ -514,12 +699,18 @@ export default function FinancePage() {
             ) : null}
             {obsidianContext?.evidence && (
               <div className="space-y-2">
-                <EvidenceList title="中古相場・再販観点" items={obsidianContext.evidence.used_market} tone="blue" />
-                <EvidenceList title="残価・再販リスク" items={obsidianContext.evidence.residual_risk} tone="amber" />
-                <EvidenceList title="稟議で使える根拠" items={obsidianContext.evidence.approval_basis} tone="emerald" />
-                <EvidenceList title="注意すべき物件特性" items={obsidianContext.evidence.cautions} tone="rose" />
+                <div className="text-[11px] font-bold text-slate-500">
+                  チェックした根拠だけ稟議コメント案へ反映します。
+                </div>
+                <EvidenceList title="中古相場・再販観点" items={obsidianContext.evidence.used_market} tone="blue" bucket="used_market" />
+                <EvidenceList title="残価・再販リスク" items={obsidianContext.evidence.residual_risk} tone="amber" bucket="residual_risk" />
+                <EvidenceList title="稟議で使える根拠" items={obsidianContext.evidence.approval_basis} tone="emerald" bucket="approval_basis" />
+                <EvidenceList title="注意すべき物件特性" items={obsidianContext.evidence.cautions} tone="rose" bucket="cautions" />
               </div>
             )}
+            {obsidianContext?.graph?.nodes?.length ? (
+              <ObsidianReviewGraph graph={obsidianContext.graph} title="Obsidian知識グラフ" />
+            ) : null}
             {obsidianContext?.hits.length ? (
               <div className="space-y-2">
                 {obsidianContext.hits.slice(0, 5).map((hit) => (
@@ -645,6 +836,45 @@ export default function FinancePage() {
                       <div className="text-sm font-bold leading-relaxed text-slate-700">{stripBold(plan)}</div>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-5">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <h2 className="text-sm font-black text-slate-700 flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-cyan-600" />
+                    稟議コメント案
+                  </h2>
+                  <button
+                    onClick={() => copyText(ringiComment, "稟議コメント案をコピーしました。")}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-slate-600 hover:bg-slate-50"
+                  >
+                    <Copy className="w-4 h-4" />
+                    コピー
+                  </button>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm font-medium leading-relaxed text-slate-700 whitespace-pre-line">
+                  {ringiComment}
+                </div>
+                {copyMessage && (
+                  <div className="mt-3 rounded-lg border border-cyan-100 bg-cyan-50 px-3 py-2 text-xs font-bold text-cyan-700">
+                    {copyMessage}
+                  </div>
+                )}
+                <div className="mt-4 rounded-lg border border-amber-100 bg-amber-50 p-4">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="text-xs font-black text-amber-800">承認条件・事前確認TODO</div>
+                    <button
+                      onClick={() => copyText(approvalConditions, "承認条件・事前確認TODOをコピーしました。")}
+                      className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-xs font-black text-amber-700 hover:bg-amber-100"
+                    >
+                      <Copy className="w-4 h-4" />
+                      コピー
+                    </button>
+                  </div>
+                  <div className="text-xs font-bold leading-relaxed text-amber-900 whitespace-pre-line">
+                    {approvalConditions}
+                  </div>
                 </div>
               </div>
 

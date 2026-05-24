@@ -168,10 +168,12 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
   const [strategyOpen, setStrategyOpen] = useState(false);
   const initialFetchKeyRef = useRef<string>("");
   const similarFetchKeyRef = useRef<string>("");
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = chatScrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
   }, [chatHistory, streamingText]);
 
   const handleHumorModeChange = (mode: HumorMode) => {
@@ -791,7 +793,7 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
       </div>
 
       {/* チャットエリア */}
-      <div className={chatAreaClass}>
+      <div ref={chatScrollRef} className={chatAreaClass}>
         <div className="text-center my-2 mb-6">
           <span className={`text-[10px] font-bold px-3 py-1 rounded-full ${isYukikaze ? 'text-red-300 bg-black border border-red-950 font-mono tracking-widest' : 'text-slate-400 bg-slate-200'}`}>
             {isYukikaze ? 'TACTICAL SESSION LINKED' : 'ダッシュボード連携セッション開始'}
@@ -1010,8 +1012,6 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
         {score === 0 && chatHistory.length === 0 && (
            <div className={`text-center text-sm mt-10 ${isYukikaze ? 'text-red-300 font-mono' : 'text-slate-400'}`}>{isYukikaze ? 'Awaiting pilot query. Engagement protocol is armed.' : '案件戦略・業界動向・一般相談を自由に入力できます'}</div>
         )}
-
-        <div ref={bottomRef} />
       </div>
 
       <div className={footerClass}>
