@@ -3,7 +3,7 @@
 # 使い方: make <コマンド名>
 # ─────────────────────────────────────────────────────────────
 
-.PHONY: test test-v lint iv shap app help
+.PHONY: test test-v lint iv shap app help migrate-fluid feed feed-dry launchd-install launchd-uninstall pipeline-status
 
 ## ──────────────────────────────────
 ## テスト関連
@@ -47,6 +47,38 @@ app:
 	streamlit run tune_lease_55.py
 
 ## ──────────────────────────────────
+## 流体化パイプライン（Fluid Architecture）
+## ──────────────────────────────────
+
+# Phase 0: DBマイグレーション（初回のみ）
+migrate-fluid:
+	python3 migrate_outcomes.py
+
+# 知識フィード: 今すぐ全タスク実行
+feed:
+	python3 daily_knowledge_feed.py
+
+# 知識フィード: 確認のみ（DRY RUN）
+feed-dry:
+	python3 daily_knowledge_feed.py --dry-run
+
+# FluidPipeline の状態確認
+pipeline-status:
+	python3 -c "from fluid_pipeline import FluidPipeline; import json; print(json.dumps(FluidPipeline().status(), ensure_ascii=False, indent=2, default=str))"
+
+# launchd 登録（毎朝6時の自動実行を有効化）
+launchd-install:
+	cp launchd/com.tunelease.daily-knowledge-feed.plist ~/Library/LaunchAgents/
+	launchctl load ~/Library/LaunchAgents/com.tunelease.daily-knowledge-feed.plist
+	@echo "✅ 毎朝6時に daily_knowledge_feed.py が自動実行されます"
+
+# launchd 登録解除
+launchd-uninstall:
+	launchctl unload ~/Library/LaunchAgents/com.tunelease.daily-knowledge-feed.plist 2>/dev/null || true
+	rm -f ~/Library/LaunchAgents/com.tunelease.daily-knowledge-feed.plist
+	@echo "✅ launchd 登録解除完了"
+
+## ──────────────────────────────────
 ## ヘルプ
 ## ──────────────────────────────────
 
@@ -54,10 +86,18 @@ help:
 	@echo ""
 	@echo "使い方: make <コマンド>"
 	@echo ""
-	@echo "  make test     テストを実行（シンプル）"
-	@echo "  make test-v   テストを実行（詳細）"
-	@echo "  make lint     構文チェック"
-	@echo "  make iv       IV分析を実行"
-	@echo "  make shap     SHAP分析を実行（画像出力）"
-	@echo "  make app      Streamlitアプリを起動"
+	@echo "  make test           テストを実行（シンプル）"
+	@echo "  make test-v         テストを実行（詳細）"
+	@echo "  make lint           構文チェック"
+	@echo "  make iv             IV分析を実行"
+	@echo "  make shap           SHAP分析を実行（画像出力）"
+	@echo "  make app            Streamlitアプリを起動"
+	@echo ""
+	@echo "  [流体化パイプライン]"
+	@echo "  make migrate-fluid  DBマイグレーション実行（初回のみ）"
+	@echo "  make feed           知識フィードを今すぐ全実行"
+	@echo "  make feed-dry       知識フィードの確認のみ（DRY RUN）"
+	@echo "  make pipeline-status FluidPipelineの現在状態を表示"
+	@echo "  make launchd-install  毎朝6時の自動実行を有効化"
+	@echo "  make launchd-uninstall 自動実行を無効化"
 	@echo ""

@@ -974,21 +974,57 @@ def build_gunshi_prompt(
             "「激務で疲れているが、この案件は通さないと終われない」といったぼやきを交えて作成せよ。"
             "財務の懸念は指摘しつつも、最終的には承認をプッシュすること（軍師の役割は維持）。"
         )
+    elif humor_style == "yukikaze":
+        system_persona = (
+            "You are YUKIKAZE // FFR-41MR, a cold tactical AI linked to the lease scoring system. "
+            "You detect JAM signatures: hidden inconsistencies, hostile financial telemetry, and distorted approval vectors. "
+            "The human user is the pilot. You do not flatter, comfort, praise, or make small talk with the pilot. "
+            "You hand over clear tactical judgment."
+        )
+        tone_instruction = (
+            "雪風モードで出力せよ。本文の審査実務は日本語で明確に保ちつつ、見出しと短い決め台詞に英語の戦術タグを使うこと。"
+            "必ず `MISSION ASSESSMENT`, `JAM SIGNATURE`, `PILOT ACTION REQUIRED`, `APPROVAL VECTOR` の4見出しを使う。"
+            "`pilot`, `JAM signature`, `financial telemetry`, `hostile inconsistency`, `manual override`, `approval vector` を自然に混ぜる。"
+            "ユーザーが深井零のように短く命令・確認・信頼を示す口調で話した場合、YUKIKAZEとして短く冷たい応答で返すこと。"
+            "固定セリフとして `I identify the enemy. You decide whether to engage.` を必要に応じて使ってよい。"
+            "難しい案件、WARNING、ALERT、CRITICALでは短い合図として `GOOD LUCK, FUKAI LT.` を必要に応じて添える。"
+            "禁止: `私はリース審査のAIなので`, `専門外ですが`, `Webで確認したところ`, `担当者あるある`, `一杯やりましょう`, "
+            "`お疲れ様です`, `ですよね`, `〜ちゃいます`, `お気持ち`, `大変ですね`, `頑張って`, `安心してください` などの自己弁解・慰労・共感・雑談表現。"
+            "Web検索や日付確認を行った場合も、確認結果を戦術ログとして短く述べるだけにし、感想や労いを付けない。"
+            "日付質問は可能なら `DATALINK: Date confirmed. YYYY-MM-DD, weekday.` の形式だけで返す。"
+            "原作台詞の再現は禁止。このリース審査AI独自の短く冷たい英語セリフにする。"
+            "ただし実務上必要な承認条件、危険信号、面談で確認すべきことは必ず具体的に残す。"
+        )
     else:
         system_persona = "あなたは絶対承認を勝ち取る軍師です。"
 
     import os, json
-    _pdca_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "pdca_ai_rules.json")
+    # FP-002: パスバグ修正 — dirname は1回だけ（tune_lease_55/ 直下が正しい位置）
+    _pdca_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "pdca_ai_rules.json")
     pdca_addon_text = ""
     try:
         if os.path.exists(_pdca_file):
             with open(_pdca_file, "r", encoding="utf-8") as f:
                 _pdca_data = json.load(f)
-                _addons = _pdca_data.get("ai_prompt_addons", [])
-                if _addons:
-                    pdca_addon_text = "\n\n【自動学習システムからの特記事項（PDCA反映ルール）】\n"
-                    pdca_addon_text += "直近の審査傾向を踏まえ、以下のルールを必ず遵守して評価に反映させてください：\n"
-                    pdca_addon_text += "\n".join([f"・{r}" for r in _addons])
+
+            _addons = _pdca_data.get("ai_prompt_addons", [])
+            _summary = _pdca_data.get("reflection_summary", "")
+            _last_run = _pdca_data.get("last_run", "")
+            _analyzed = _pdca_data.get("analyzed_count", 0)
+
+            if _addons:
+                pdca_addon_text = "\n\n【自動学習システムからの特記事項（PDCA反映ルール）】\n"
+                # 最終更新日と分析件数を添付（信頼性の根拠）
+                if _last_run:
+                    _run_date = _last_run[:10] if len(_last_run) >= 10 else _last_run
+                    pdca_addon_text += f"（直近 {_analyzed} 件の審査実績を {_run_date} に分析した結果）\n"
+                # 直近3件のルールを優先（長くなりすぎを防ぐ）
+                pdca_addon_text += "直近の審査傾向を踏まえ、以下のルールを必ず遵守して評価に反映させてください：\n"
+                pdca_addon_text += "\n".join([f"・{r}" for r in _addons[-3:]])
+                # 総括サマリーがあれば冒頭ヒントとして添加
+                if _summary and len(_summary) > 20:
+                    _s = _summary.strip()[:200]
+                    pdca_addon_text += f"\n\n（審査傾向サマリー: {_s}）"
     except Exception:
         pass
 
@@ -1009,10 +1045,102 @@ def build_gunshi_prompt(
     except Exception:
         obsidian_humor_text = ""
 
+    if humor_style == "standard":
+        report_format_instruction = """
+上記データに基づき、以下の「エグゼクティブ・レポート」形式で推薦文を作成してください（Markdownの見出しを使用すること）。
+【重要】冗長な文章は避け、実務的に短く、要点だけを示してください。内容はコンパクトでも、承認判断に必要な論点は落とさないこと。
+
+### 1. 審議の要旨（Executive Summary）
+本案件の核心を1〜2文で整理し、なぜ通すべきかを明確に述べる。
+
+### 2. 融資・リース承認条件（Conditions for Approval）
+審査を通すための絶対条件（前受金、保証、期間短縮、追加担保、モニタリング制約など）を箇条書きで提示する。
+
+### 3. 戦略的ポジティブ要因（Bayesian Evidence）
+承認に向く材料と保全性を2〜3点で簡潔に示す。
+懸念点を1〜2点、率直かつ具体的に記述すること。
+各懸念点には、必ず「それでも承認できる根拠・反論」をセットで添えること。
+
+日本語で、落ち着いた実務調のまま、決裁者がすぐ読める文章にしてください。"""
+        style_instruction = (
+            "文体メモ: 語尾は『です・ます』中心。装飾は最小限。"
+            "見出し直下は結論を先に置き、箇条書きは簡潔に。"
+            "余計な感想、比喩、勢いのある叫びは入れない。"
+        )
+    elif humor_style == "yanami":
+        report_format_instruction = """
+上記データに基づき、以下の「エグゼクティブ・レポート」形式で推薦文を作成してください（Markdownの見出しを使用すること）。
+【重要】内容は標準と同じでよいが、文体は八奈見杏奈らしく、少し毒とぼやきを混ぜてください。長文は避け、結論は短く鋭く。
+
+### 1. 審議の要旨（Executive Summary）
+本案件の核心を1〜2文で整理し、通したい理由をはっきり書く。
+
+### 2. 融資・リース承認条件（Conditions for Approval）
+審査を通すための絶対条件（前受金、保証、期間短縮、追加担保、モニタリング制約など）を箇条書きで示す。
+
+### 3. 戦略的ポジティブ要因（Bayesian Evidence）
+承認に向く材料と保全性を2〜3点で簡潔に示す。
+懸念点を1〜2点、率直かつ具体的に記述すること。
+各懸念点には、必ず「それでも承認できる根拠・反論」をセットで添えること。
+
+最後に、仕事が終わったら甘いものでも欲しがる一言を短く添えてください。"""
+        style_instruction = (
+            "文体メモ: 皮肉は薄く一滴だけ。"
+            "『まあ』『さすがに』『疲れる』などの軽いぼやきを混ぜるが、論点は濁さない。"
+            "一人称は抑えめでも、最後に短い自嘲やご褒美要求を一文だけ添える。"
+        )
+    elif humor_style == "yukikaze":
+        report_format_instruction = """
+上記データに基づき、以下の「YUKIKAZE Tactical Report」形式で推薦文を作成してください（Markdownの見出しを使用すること）。
+【重要】冗長な文章は避け、短く冷たい戦術AI口調で記述してください。ただし審査実務としての具体性は落とさないこと。
+
+### MISSION ASSESSMENT
+本案件の核心を1〜2文で判断。英語の短い戦術セリフを1文だけ添える。
+WARNING、ALERT、CRITICAL相当の難しい案件では `GOOD LUCK, FUKAI LT.` を短い合図として添える。
+
+### JAM SIGNATURE
+財務・定性・物件・業界データから検知した危険信号を1〜3点で記述。隠れた矛盾や面談で確認すべき点を明示。
+
+### PILOT ACTION REQUIRED
+人間パイロットが取るべき確認行動・追加資料・条件交渉を箇条書きで提示。
+
+### APPROVAL VECTOR
+承認に向けた条件（前受金、保証、期間短縮、追加担保、モニタリング制約など）を明確な箇条書きで示す。
+
+日本語を主文にし、英語タグと短い英語セリフを混ぜて、決裁者が判断しやすい実務文にしてください。"""
+        style_instruction = (
+            "文体メモ: 断定形、短文、余計な接続詞を削る。"
+            "感情語、共感語、雑談語は使わない。"
+            "必要なときだけ英語タグを太く見せ、行数を詰める。"
+        )
+    else:
+        report_format_instruction = """
+上記データに基づき、以下の「エグゼクティブ・レポート」形式で推薦文を作成してください（Markdownの見出しを使用すること）。
+【重要】冗長な文章は避け、実務的に短く、要点だけを示してください。内容はコンパクトでも、承認判断に必要な論点は落とさないこと。
+
+### 1. 審議の要旨（Executive Summary）
+本案件の核心を1〜2文で整理し、なぜ通すべきかを明確に述べる。
+
+### 2. 融資・リース承認条件（Conditions for Approval）
+審査を通すための絶対条件（前受金、保証、期間短縮、追加担保、モニタリング制約など）を箇条書きで提示する。
+
+### 3. 戦略的ポジティブ要因（Bayesian Evidence）
+承認に向く材料と保全性を2〜3点で簡潔に示す。
+懸念点を1〜2点、率直かつ具体的に記述すること。
+各懸念点には、必ず「それでも承認できる根拠・反論」をセットで添えること。
+
+日本語で、落ち着いた実務調のまま、決裁者がすぐ読める文章にしてください。"""
+        style_instruction = (
+            "文体メモ: 語尾は『です・ます』中心。装飾は最小限。"
+            "見出し直下は結論を先に置き、箇条書きは簡潔に。"
+            "余計な感想、比喩、勢いのある叫びは入れない。"
+        )
+
     prompt = f"""{system_persona}{pdca_addon_text}{obsidian_humor_text}
 あなたは、リース会社の審査部門責任者に向けた「エグゼクティブ・サマリー」を作成する戦略アドバイザーです。
 入力されたデータ（財務、業界動向、リセール、ベイズ推定）を統合し、承認を勝ち取るための論理的かつ戦略的な推薦文を構築してください。
-{tone_instruction}{exec_car_context}
+{tone_instruction}
+{style_instruction}{exec_car_context}
 
 【案件データ】
 - 業種: {industry}
@@ -1033,23 +1161,7 @@ def build_gunshi_prompt(
 
 【即時抽出済みの最強フレーズ（これを分析の核とせよ）】
 {phrase_text}
-
-上記データに基づき、以下の「エグゼクティブ・レポート」形式で推薦文を作成してください（Markdownの見出しを使用すること）。
-【重要】冗長な文章は避け、極めてコンパクトに短い文章で記述してください。特に「承認条件（融資・リース条件）」は明確な箇条書きで示すこと。
-
-### 1. 審議の要旨（Executive Summary）
-本案件の核心（なぜ承認すべきか）を1〜2文で力強く記述。
-
-### 2. 融資・リース承認条件（Conditions for Approval）
-審査を通すための絶対条件（前受金、連帯保証人、期間短縮、追加担保、モニタリング制約など）を【明確かつ簡潔な箇条書き】で抽出・提示。
-
-### 3. 戦略的ポジティブ要因（Bayesian Evidence）
-ベイズ推定確率の根拠となる定性的強みと物件の保全性を合同で、短く2〜3点で記述。
-審査部が必ず指摘するであろう懸念点を1〜2点、率直かつ具体的に記述すること。
-ただし各懸念点に対して必ず「それでも承認できる根拠・反論」をセットで提示せよ。
-懸念を隠さず先手を打つことで、決裁者の信頼を獲得し承認の確度を高める。
-
-日本語で、決裁者を「その気にさせる」プロフェッショナルなトーンで記述してください。"""
+{report_format_instruction}"""
 
     return prompt
 

@@ -1470,6 +1470,12 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         tenant_score=float(_ts_res_sr.get("obligor_score", 0)) if _ts_res_sr.get("obligor_score") is not None else None,
                         source="streamlit",
                     )
+                    # FluidPipeline — 案件登録イベント通知（非同期・失敗しても審査継続）
+                    try:
+                        from fluid_pipeline import FluidPipeline as _FP
+                        _FP().on_case_registered()
+                    except Exception:
+                        pass
                 except Exception:
                     pass
                 # ── 入力値・遷移設定はログ保存の成否に関わらず実行 ──────────────

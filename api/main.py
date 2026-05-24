@@ -591,12 +591,72 @@ def _format_gunshi_history(history: List[Dict[str, str]]) -> str:
         lines.append(f"{label}: {text}")
     return "\n".join(lines)
 
+
+def _normalize_yukikaze_datalink_reply(reply_text: str, user_message: str) -> str:
+    import re
+    from datetime import date
+
+    text = (reply_text or "").replace("\r\n", "\n")
+    text = re.sub(r"(これで.*?進みますように[！!．\.]?|稟議書も.*?進みますように[！!．\.]?|よろしければ.*|ご参考までに.*|必要であれば.*|必要なら.*|お気軽に.*|安心してください.*|頑張って.*|お疲れ様です.*|ですよね.*)", "", text, flags=re.I)
+    allowed_lines: List[str] = []
+    for raw_line in text.split("\n"):
+        line = raw_line.strip()
+        if not line:
+            continue
+        if re.match(r"^(TX:|RX:|DATALINK LOG:|SIGNAL:|PILOT TASK:|VECTOR:)", line, re.I):
+            allowed_lines.append(line)
+
+    has_tx = any(re.match(r"^TX:", line, re.I) for line in allowed_lines)
+    has_rx = any(re.match(r"^RX:", line, re.I) for line in allowed_lines)
+    if has_tx and has_rx:
+        return "\n".join(allowed_lines)
+
+    msg = (user_message or "").strip()
+    date_like = bool(re.search(r"(日付|今日|何日|何曜日|曜日|date|today)", msg, re.I))
+    if date_like:
+        weekday = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][date.today().weekday()]
+        return "\n".join([
+            "DATALINK LOG:",
+            "TX: PANPANPAN // Date confirmed.",
+            f"RX: {date.today():%Y-%m-%d}, {weekday}.",
+        ])
+
+    body = text.strip()
+    if body:
+        parts: list[str] = []
+        for raw_line in body.split("\n"):
+            line = raw_line.strip()
+            if not line:
+                continue
+            pieces = re.split(r"(?<=[。.!?])\s+", line)
+            for piece in pieces:
+                chunk = piece.strip()
+                if chunk:
+                    parts.append(chunk)
+        if not parts:
+            parts = [body]
+
+        transcript = ["DATALINK LOG:", "TX: PANPANPAN // PILOT QUERY RECEIVED."]
+        for idx, part in enumerate(parts[:8]):
+            prefix = "RX:" if idx % 2 == 0 else "TX:"
+            cleaned = re.sub(r"[。．.!！？?]+$", "", part).strip()
+            cleaned = re.sub(r"(です|ます|でしょう|でしょうか|ください|くださいね)$", "", cleaned).strip()
+            transcript.append(f"{prefix} {cleaned}")
+        return "\n".join(transcript)
+
+    return "\n".join([
+        "DATALINK LOG:",
+        "TX: PANPANPAN // PILOT QUERY RECEIVED.",
+        "RX: ROGER. COPY. PILOT QUERY RECEIVED.",
+    ])
+
 @app.post("/api/gunshi/chat")
 def generate_gunshi_chat(req: GunshiChatRequest):
     from shinsa_gunshi import PHRASES_100, build_gunshi_prompt
     try:
         _mode = (req.mode or "gunshi").lower()
-        if _mode == "chat" and (req.message or "").strip():
+        is_yukikaze = (req.humor_style or "").lower() == "yukikaze"
+        if _mode == "chat" and (req.message or "").strip() and not is_yukikaze:
             try:
                 _here = os.path.dirname(os.path.abspath(__file__))
                 _root = os.path.dirname(_here)
@@ -624,6 +684,41 @@ def generate_gunshi_chat(req: GunshiChatRequest):
                 return payload
             except Exception:
                 pass
+        if _mode == "chat" and (req.message or "").strip() and is_yukikaze:
+            try:
+                _here = os.path.dirname(os.path.abspath(__file__))
+                _root = os.path.dirname(_here)
+                if _root not in sys.path:
+                    sys.path.insert(0, _root)
+                from mobile_app.chat_assistant import build_chat_reply
+
+                payload = build_chat_reply(
+                    message=req.message,
+                    history=[
+                        {"role": h.get("role", ""), "content": h.get("text", "")}
+                        for h in req.history
+                    ],
+                    score_result={
+                        "score": req.score,
+                        "industry_major": req.industry_major,
+                        "asset_name": req.asset_name,
+                    },
+                    use_obsidian=req.use_obsidian,
+                    use_web=req.use_web,
+                    humor_style="yukikaze",
+                    timeout_seconds=45,
+                )
+                source_reply = str(payload.get("reply") or payload.get("chat_text") or "")
+            except Exception:
+                source_reply = ""
+
+            final_reply = _normalize_yukikaze_datalink_reply(source_reply, req.message)
+            return {
+                "reply": final_reply,
+                "chat_text": final_reply,
+                "saved": False,
+                "save_reason": "YUKIKAZE DATALINK MODE",
+            }
 
         advices = PHRASES_100.get("逆転アドバイス", [])
         import random
@@ -642,20 +737,65 @@ def generate_gunshi_chat(req: GunshiChatRequest):
                 posterior=req.posterior,
                 success_patterns={"success_samples": [], "fail_samples": []},
                 top_phrases=sampled,
-                asset_name=req.asset_name
+                asset_name=req.asset_name,
+                humor_style=req.humor_style,
             )
-            prompt += (
-                "\n\n【追加方針】\n"
-                "ユーザーの質問がこの案件の逆転戦略から外れ、業界動向・他社事例・一般的な与信相談であっても構いません。"
-                "案件文脈を必要に応じて参照しつつ、質問そのものに丁寧かつ実務的に答えてください。"
-            )
+            if is_yukikaze:
+                prompt += (
+                    "\n\n【YUKIKAZE DATALINK MODE】\n"
+                    "ユーザーの質問が案件戦略から外れ、業界動向・他社事例・一般的な与信相談であっても、"
+                    "YUKIKAZE // FFR-41MR として応答する。"
+                    "返答は短く、冷静で、送受信の往復ログだけにする。`TX:` で送信、`RX:` で応答の行を分ける。"
+                    "案件の説明、逆転戦略、所見、助言、分析、まとめは書かない。"
+                    "必要に応じて `PANPANPAN`, `MAYDAY`, `ROGER`, `WILCO`, `TALLY`, `BOGEY`, `BRA`, `RTB`, `HOLD`, `BREAK`, "
+                    "`KNOCK IT OFF`, `STANDBY`, `COPY`, `SAY AGAIN` を混ぜる。"
+                    "必要に応じて `DATALINK LOG`, `SIGNAL`, `VECTOR` の英語タグを使う。"
+                    "本文は事務連絡の断片でよいが、雑談調・軍師調・丁寧すぎる相談員口調に戻さない。"
+                    "`私はリース審査のAIなので`, `専門外ですが`, `Webで確認したところ`, `担当者あるある`, "
+                    "`一杯やりましょう`, `お疲れ様です`, `ですよね`, `〜ちゃいます`, `お気持ち`, `大変ですね`, "
+                    "`頑張って`, `安心してください` などの自己弁解・慰労・共感・雑談表現は禁止。"
+                    "Web検索や日付確認を行った場合も、確認結果を通信ログとして短く述べるだけにし、"
+                    "感想や労いを付けない。"
+                    "日付質問は可能なら `TX: PANPANPAN // Date confirmed.` と `RX: YYYY-MM-DD, weekday.` の2行で返す。"
+                    "深井零のような短い命令・確認には、ただ応答のみ返す。"
+                    "原作台詞の長い再現は禁止。"
+                )
+            else:
+                prompt += (
+                    "\n\n【追加方針】\n"
+                    "ユーザーの質問がこの案件の逆転戦略から外れ、業界動向・他社事例・一般的な与信相談であっても構いません。"
+                    "案件文脈を必要に応じて参照しつつ、質問そのものに丁寧かつ実務的に答えてください。"
+                )
         else:
-            prompt = (
-                "あなたは温水式リース審査AIの軍師です。"
-                "リース業界・取引先・与信判断・営業戦略・他社事例・一般論に関する自由な相談に応じてください。\n"
-                "戦国軍師の口調を保ちつつ、現実的・実務的に答えてください。"
-                "不確かな事実は断定せず、確認すべき観点を示してください。"
-            )
+            if is_yukikaze:
+                prompt = (
+                    "You are YUKIKAZE // FFR-41MR, a cold tactical AI linked to a lease scoring system. "
+                    "The user is the pilot. If the pilot speaks like Rei Fukai with short commands or clipped trust in the machine, "
+                    "answer like YUKIKAZE: minimal, precise, and unsentimental. "
+                    "Never flatter, comfort, praise, empathize, or make small talk with the pilot.\n"
+                    "DATALINK mode must read like radio traffic in a send/receive loop, not like a mission briefing or strategy note. "
+                    "Do not explain the lease case, do not analyze it, and do not present recommendations. "
+                    "Use `TX:` and `RX:` on separate lines. Use PANPANPAN, MAYDAY, ROGER, WILCO, TALLY, BOGEY, BRA, RTB, HOLD, BREAK, "
+                    "KNOCK IT OFF, STANDBY, COPY, SAY AGAIN as brevity words when needed. "
+                    "Forbidden Japanese phrases and tones include: 私はリース審査のAIなので, 専門外ですが, Webで確認したところ, "
+                    "担当者あるある, 一杯やりましょう, お疲れ様です, ですよね, 〜ちゃいます, お気持ち, 大変ですね, "
+                    "頑張って, 安心してください. When using web search or confirming dates, report only the verified fact as a tactical log; "
+                    "do not add feelings, encouragement, or casual commentary. "
+                    "For a date question, use only this format when applicable: `TX: PANPANPAN // Date confirmed.` followed by `RX: YYYY-MM-DD, weekday.` "
+                    "Do not reproduce long original copyrighted lines. Use original system lines such as: "
+                    "'I identify the enemy. You decide whether to engage.' "
+                    "For difficult WARNING, ALERT, or CRITICAL cases, you may add the short callsign line: "
+                    "'GOOD LUCK, FUKAI LT.'\n"
+                    "リース業界・取引先・与信判断・営業戦略・他社事例・一般論に関する自由相談にも、"
+                    "実務的な確認事項とリスク判断を必ず含めて答えてください。"
+                )
+            else:
+                prompt = (
+                    "あなたは温水式リース審査AIの軍師です。"
+                    "リース業界・取引先・与信判断・営業戦略・他社事例・一般論に関する自由な相談に応じてください。\n"
+                    "戦国軍師の口調を保ちつつ、現実的・実務的に答えてください。"
+                    "不確かな事実は断定せず、確認すべき観点を示してください。"
+                )
         try:
             from obsidian_ai_context import build_obsidian_ai_context_block
 

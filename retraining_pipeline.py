@@ -136,33 +136,44 @@ def _log_to_db(
 
 def _fetch_training_data(db_path: str) -> tuple[np.ndarray, np.ndarray, int]:
     """
-    BR-424 + SO-001: screening_records と screening_outcomes を LEFT JOIN して
-    特徴量行列と目的変数を返す。
+    BR-424 + SO-001 + FP-001: screening_records / screening_outcomes / past_cases を
+    統合して特徴量行列と目的変数を返す。
 
     目的変数の優先順位:
-      1. screening_outcomes.delinquent（実績追跡値: 1=延滞/デフォルト）
+      1. screening_outcomes.delinquent（実績追跡値: 1=延滞/デフォルト）— 最高信頼度
       2. screening_records.outcome == 'delinquent' → 1（フォールバック）
+      3. screening_outcomes.actual_status が late_30/late_90/default → delinquent=1
 
-    screening_outcomes テーブルが存在しない場合は既存動作にフォールバックする。
+    クラス均衡チェック:
+      - delinquent=1 が 5件未満の場合は (empty, empty, 0) を返す
+      - この場合 run_retraining() は "skipped" として処理する
+
     NULL 特徴量は列ごとの中央値で補完する。
     """
     conn = sqlite3.connect(db_path)
 
+    rows: list = []
     _uses_outcomes_join = False
+
     try:
         _sr_cols = ", ".join(f"sr.{c}" for c in FEATURE_COLS)
         rows = conn.execute(
             f"SELECT {_sr_cols}, "
-            "COALESCE(so.delinquent, CASE WHEN sr.outcome = 'delinquent' THEN 1 ELSE 0 END) "
-            "AS delinquent_label "
+            "COALESCE("
+            "  so.delinquent, "
+            "  CASE WHEN so.actual_status IN ('late_30','late_90','default') THEN 1 ELSE NULL END, "
+            "  CASE WHEN sr.outcome = 'delinquent' THEN 1 ELSE 0 END"
+            ") AS delinquent_label "
             "FROM screening_records sr "
-            "LEFT JOIN screening_outcomes so ON so.screening_id = sr.id "
+            "LEFT JOIN screening_outcomes so ON so.case_id = sr.case_id "
             "WHERE sr.outcome IN ('contracted', 'delinquent', 'completed')"
         ).fetchall()
         _uses_outcomes_join = True
-        logger.info("[retraining_pipeline] _fetch_training_data: using screening_outcomes JOIN")
+        logger.info(
+            "[retraining_pipeline] _fetch_training_data: using screening_outcomes JOIN, rows=%d",
+            len(rows),
+        )
     except sqlite3.OperationalError:
-        # screening_outcomes が未作成の場合は既存クエリにフォールバック
         logger.info(
             "[retraining_pipeline] _fetch_training_data: screening_outcomes not found, "
             "falling back to legacy query"
@@ -199,7 +210,24 @@ def _fetch_training_data(db_path: str) -> tuple[np.ndarray, np.ndarray, int]:
         X_list.append(features)
         y_list.append(label)
 
-    return np.array(X_list, dtype=float), np.array(y_list, dtype=int), n
+    X = np.array(X_list, dtype=float)
+    y = np.array(y_list, dtype=int)
+
+    # FP-001: クラス均衡チェック — delinquent=1 が 5件未満は学習意味なし
+    n_delinquent = int(np.sum(y == 1))
+    if n_delinquent < 5:
+        logger.warning(
+            "[retraining_pipeline] _fetch_training_data: delinquent cases=%d < 5, "
+            "skip training. Enter payment outcomes via outcome_recorder.py.",
+            n_delinquent,
+        )
+        return np.empty((0, len(FEATURE_COLS))), np.empty(0), 0
+
+    logger.info(
+        "[retraining_pipeline] _fetch_training_data: total=%d, delinquent=%d, normal=%d",
+        n, n_delinquent, n - n_delinquent,
+    )
+    return X, y, n
 
 
 def _backup_models(model_dir: Path) -> bool:
@@ -271,22 +299,65 @@ def _eval_prev_model(model_dir: Path, X_test: np.ndarray, y_test: np.ndarray) ->
 
 def check_retraining_needed(
     min_records: int = 50,
+    min_delinquent: int = 5,
     db_path: str = "data/lease_data.db",
-) -> bool:
+) -> dict:
     """
-    再学習が必要かどうかを判定する。
-    outcome が NULL でない screening_records のレコード数が min_records 以上か確認。
+    再学習が必要かどうかを判定する。FP-001 クラス均衡チェック込み。
+
+    Returns:
+        dict with keys:
+          - needed (bool): True なら再学習を実行してよい
+          - reason (str): スキップ/実行の理由
+          - record_count (int): 学習対象レコード数
+          - delinquent_count (int): デフォルト確認済み件数
     """
     try:
         conn = sqlite3.connect(db_path)
         (count,) = conn.execute(
             "SELECT COUNT(*) FROM screening_records WHERE outcome IS NOT NULL"
         ).fetchone()
+
+        # delinquent 件数（screening_outcomes 優先）
+        delinquent_count = 0
+        try:
+            (delinquent_count,) = conn.execute(
+                "SELECT COUNT(*) FROM screening_outcomes "
+                "WHERE delinquent = 1 OR actual_status IN ('late_30','late_90','default')"
+            ).fetchone()
+        except sqlite3.OperationalError:
+            (delinquent_count,) = conn.execute(
+                "SELECT COUNT(*) FROM screening_records WHERE outcome = 'delinquent'"
+            ).fetchone()
+
         conn.close()
-        return int(count) >= min_records
+
+        if int(count) < min_records:
+            return {
+                "needed": False,
+                "reason": f"レコード不足: {count}件 < 必要{min_records}件",
+                "record_count": int(count),
+                "delinquent_count": int(delinquent_count),
+            }
+        if int(delinquent_count) < min_delinquent:
+            return {
+                "needed": False,
+                "reason": (
+                    f"延滞/デフォルト実績不足: {delinquent_count}件 < 必要{min_delinquent}件。"
+                    f" 支払状況を outcome_recorder で入力してください。"
+                ),
+                "record_count": int(count),
+                "delinquent_count": int(delinquent_count),
+            }
+        return {
+            "needed": True,
+            "reason": f"再学習条件OK: {count}件 / delinquent={delinquent_count}件",
+            "record_count": int(count),
+            "delinquent_count": int(delinquent_count),
+        }
     except Exception as exc:  # noqa: BLE001
         logger.error("[retraining_pipeline] check_retraining_needed error: %s", exc)
-        return False
+        return {"needed": False, "reason": str(exc), "record_count": 0, "delinquent_count": 0}
 
 
 def run_retraining(

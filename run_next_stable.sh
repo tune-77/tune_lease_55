@@ -5,15 +5,41 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+# Non-login shells launched by Codex/launchd may not inherit the user's PATH.
+export PATH="/usr/local/bin:/opt/homebrew/bin:/Applications/Codex.app/Contents/Resources:$PATH"
+
+FORCE_RESTART="${FORCE_RESTART:-0}"
+FORCE_BUILD="${FORCE_BUILD:-0}"
+SKIP_BUILD="${SKIP_BUILD:-0}"
+REUSE_RUNNING="${REUSE_RUNNING:-1}"
+RESTART_SCOPE="${RESTART_SCOPE:-all}"  # all | api
+RESTART_DELAY_SECONDS="${RESTART_DELAY_SECONDS:-1}"
+
+if [ "$RESTART_SCOPE" = "api" ]; then
+  api_pids="$(lsof -ti :8000 2>/dev/null || true)"
+  if [ -n "$api_pids" ]; then
+    echo "API-only restart requested; nudging FastAPI on port 8000: ${api_pids}"
+    kill $api_pids 2>/dev/null || true
+    exit 0
+  fi
+  echo "API-only restart requested, but FastAPI is not listening; continuing with full launch."
+fi
+
 # ── ロックファイル: 二重起動を防ぐ ──────────────────────────────
 LOCK_FILE="/tmp/tune_lease_launcher.lock"
 if [ -f "$LOCK_FILE" ]; then
   existing_pid="$(cat "$LOCK_FILE" 2>/dev/null || true)"
   if [ -n "$existing_pid" ] && kill -0 "$existing_pid" 2>/dev/null; then
-    echo "ERROR: launcher is already running (PID $existing_pid)."
-    echo "       To stop it: kill $existing_pid"
-    echo "       Or remove the lock: rm $LOCK_FILE"
-    exit 1
+    if [ "$FORCE_RESTART" = "1" ]; then
+      echo "Stopping existing launcher (PID $existing_pid) for forced restart..."
+      kill "$existing_pid" 2>/dev/null || true
+      sleep 2
+      rm -f "$LOCK_FILE"
+    else
+      echo "Launcher is already running (PID $existing_pid). Reusing existing services."
+      echo "To force a restart: FORCE_RESTART=1 bash run_next_stable.sh"
+      exit 0
+    fi
   else
     echo "Stale lock file found. Removing..."
     rm -f "$LOCK_FILE"
@@ -39,6 +65,7 @@ API_PID_FILE="$LOG_DIR/api_${API_PORT}.pid"
 NEXT_PID_FILE="$LOG_DIR/next_${NEXT_PORT}.pid"
 TUNNEL_PID_FILE="$LOG_DIR/tunnel_${NEXT_PORT}.pid"
 TUNNEL_LOG="$LOG_DIR/tunnel_${TS}.log"
+BUILD_STAMP="$LOG_DIR/frontend_build.stamp"
 
 stop_port_process() {
   local port="$1"
@@ -50,6 +77,53 @@ stop_port_process() {
     kill $pids 2>/dev/null || true
     sleep 1
   fi
+}
+
+stop_existing_launchers() {
+  local pids
+  pids="$(ps -eo pid=,command= | awk -v self="$$" '$2 == "bash" && $0 ~ /run_next_stable\.sh/ && $1 != self {print $1}')"
+  if [ -n "$pids" ]; then
+    echo "Stopping stale launcher processes: ${pids}"
+    kill $pids 2>/dev/null || true
+    sleep 2
+  fi
+}
+
+port_is_listening() {
+  local port="$1"
+  lsof -ti :"$port" >/dev/null 2>&1
+}
+
+http_ok() {
+  local url="$1"
+  curl -fsS --max-time 2 "$url" >/dev/null 2>&1
+}
+
+frontend_build_needed() {
+  if [ "$SKIP_BUILD" = "1" ]; then
+    return 1
+  fi
+  if [ "$FORCE_BUILD" = "1" ]; then
+    return 0
+  fi
+  if [ ! -f "frontend/.next/BUILD_ID" ]; then
+    return 0
+  fi
+  if [ ! -f "$BUILD_STAMP" ]; then
+    touch -r "frontend/.next/BUILD_ID" "$BUILD_STAMP" 2>/dev/null || touch "$BUILD_STAMP"
+  fi
+  if find \
+      frontend/src \
+      frontend/package.json \
+      frontend/package-lock.json \
+      frontend/next.config.ts \
+      frontend/tsconfig.json \
+      frontend/postcss.config.mjs \
+      frontend/eslint.config.mjs \
+      -newer "$BUILD_STAMP" -print -quit 2>/dev/null | grep -q .; then
+    return 0
+  fi
+  return 1
 }
 
 cleanup() {
@@ -71,12 +145,41 @@ cleanup() {
 }
 trap cleanup INT TERM
 
-stop_port_process "$API_PORT" "FastAPI"
-stop_port_process "$NEXT_PORT" "Next.js"
+if [ "$FORCE_RESTART" != "1" ] && [ "$REUSE_RUNNING" = "1" ]; then
+  if port_is_listening "$API_PORT" && port_is_listening "$NEXT_PORT" \
+      && http_ok "http://${API_HOST}:${API_PORT}/docs" \
+      && http_ok "http://${NEXT_HOST}:${NEXT_PORT}/"; then
+    echo "FastAPI and Next.js are already running. No restart/build needed."
+    echo "  API  : http://${API_HOST}:${API_PORT}"
+    echo "  Next : http://${NEXT_HOST}:${NEXT_PORT}"
+    echo "To force a restart: FORCE_RESTART=1 bash run_next_stable.sh"
+    exit 0
+  fi
+fi
 
-echo "Building frontend..."
-(cd frontend && npm run build) >>"$BUILD_LOG" 2>&1
-echo "Build log: $BUILD_LOG"
+if [ "$FORCE_RESTART" = "1" ]; then
+  stop_existing_launchers
+  stop_port_process "$API_PORT" "FastAPI"
+  stop_port_process "$NEXT_PORT" "Next.js"
+else
+  if port_is_listening "$API_PORT" || port_is_listening "$NEXT_PORT"; then
+    echo "Target ports are already occupied. Reusing existing processes; no restart/build performed."
+    echo "  API port ${API_PORT}:  $(lsof -ti :"$API_PORT" 2>/dev/null || echo free)"
+    echo "  Next port ${NEXT_PORT}: $(lsof -ti :"$NEXT_PORT" 2>/dev/null || echo free)"
+    echo "To replace them: FORCE_RESTART=1 bash run_next_stable.sh"
+    exit 0
+  fi
+fi
+
+if frontend_build_needed; then
+  echo "Building frontend..."
+  (cd frontend && npm run build) >>"$BUILD_LOG" 2>&1
+  touch "$BUILD_STAMP"
+  echo "Build log: $BUILD_LOG"
+else
+  echo "Skipping frontend build; no frontend source changes since last successful build."
+  echo "Build log: not created"
+fi
 echo ""
 
 echo "Starting FastAPI on http://${API_HOST}:${API_PORT}"
@@ -94,8 +197,8 @@ while true; do
   echo "$api_pid" > "$API_PID_FILE"
   wait "$api_pid" || true
   rm -f "$API_PID_FILE"
-  echo "$(date '+%F %T') FastAPI exited; restarting in 3 seconds" | tee -a "$API_LOG"
-  sleep 3
+  echo "$(date '+%F %T') FastAPI exited; restarting in ${RESTART_DELAY_SECONDS} seconds" | tee -a "$API_LOG"
+  sleep "$RESTART_DELAY_SECONDS"
 done &
 API_SUPERVISOR_PID=$!
 
@@ -106,8 +209,8 @@ while true; do
   echo "$next_pid" > "$NEXT_PID_FILE"
   wait "$next_pid" || true
   rm -f "$NEXT_PID_FILE"
-  echo "$(date '+%F %T') Next.js exited; restarting in 3 seconds" | tee -a "$NEXT_LOG"
-  sleep 3
+  echo "$(date '+%F %T') Next.js exited; restarting in ${RESTART_DELAY_SECONDS} seconds" | tee -a "$NEXT_LOG"
+  sleep "$RESTART_DELAY_SECONDS"
 done &
 NEXT_SUPERVISOR_PID=$!
 
