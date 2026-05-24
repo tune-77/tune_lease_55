@@ -801,6 +801,10 @@ elif mode == "🪵 アプリログ":
     from components.settings import render_app_logs
     render_app_logs()
 
+elif mode == "💳 支払状況登録":
+    from components.outcome_recorder import render_outcome_recorder
+    render_outcome_recorder()
+
 elif mode == "📊 履歴分析・実績ダッシュボード":
     from components.dashboard import render_dashboard
     render_dashboard()

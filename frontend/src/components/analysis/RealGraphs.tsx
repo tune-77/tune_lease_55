@@ -50,29 +50,40 @@ export default function RealGraphs({
 
   // 5年後売上予測: GBMパスを年次に集約
   useEffect(() => {
-    if (!nenshu && !companyName) return;
-    setForecastLoading(true);
+    if (!nenshu && !companyName) {
+      Promise.resolve().then(() => setFutureData([]));
+      return;
+    }
+    Promise.resolve().then(() => setForecastLoading(true));
     fetch('/api/timesfm/financial_paths', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         company_name: companyName || '（未入力）',
         n_periods: 60,
+        current_revenue: Math.max(0, Number(nenshu || 0) * 1000),
+        current_revenue_unit: 'thousand_yen',
       }),
     })
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`forecast api failed: ${r.status}`);
+        return r.json();
+      })
       .then(d => {
         const median: number[] = d.gbm_median || [];
-        if (!median.length) return;
+        if (!median.length) {
+          setFutureData([]);
+          return;
+        }
 
-        // GBMは千円単位で返ってくるが、revenues が nenshu ベース
+        // APIは千円単位で返す。チャートは入力フォームと同じ百万円で表示する。
         // median[0] が現在値、以降60期(月次)
         // 年次（12ヶ月ごと）に集約
         const currentYear = new Date().getFullYear();
         const yearly: ForecastYear[] = [];
 
         // 実績(現在)
-        const base = median[0] || nenshu * 1000 || 10_000_000;
+        const base = median[0] || nenshu * 1000 || 200_000;
         yearly.push({ year: `${currentYear}(実)`, revenue: Math.round(base / 1000) });
 
         for (let y = 1; y <= 5; y++) {
@@ -84,7 +95,9 @@ export default function RealGraphs({
         }
         setFutureData(yearly);
       })
-      .catch(() => {})
+      .catch(() => {
+        setFutureData([]);
+      })
       .finally(() => setForecastLoading(false));
   }, [companyName, nenshu]);
 
@@ -171,7 +184,7 @@ export default function RealGraphs({
                 <YAxis tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
                 <Tooltip
                   contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}
-                  formatter={(val: unknown) => [`${Number(val).toLocaleString()} 千円`, '予測売上']}
+                  formatter={(val: unknown) => [`${Number(val).toLocaleString()} 百万円`, '予測売上']}
                 />
                 <Area type="monotone" dataKey="revenue" name="予測値" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorRev)" />
               </AreaChart>
@@ -179,7 +192,7 @@ export default function RealGraphs({
           )}
         </div>
         <p className="text-[11px] text-slate-500 mt-2 text-center">
-          ※ GBM (幾何ブラウン運動) による売上期待値推移（千円）
+          ※ GBM (幾何ブラウン運動) による売上期待値推移（百万円）
         </p>
       </div>
 

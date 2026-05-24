@@ -121,10 +121,10 @@ export default function Dashboard() {
           </Link>
         </div>
 
-        <div className="flex flex-col xl:flex-row gap-6">
-          
+        <div className="flex flex-col 2xl:flex-row gap-6">
+
           {/* 左カラム: メイン操作エリア (入力・分析) */}
-          <div className="w-full xl:w-2/3 flex flex-col">
+          <div className="w-full 2xl:w-[58%] flex flex-col">
             
             {/* タブナビゲーション */}
             <div className="flex bg-slate-200/50 p-1 rounded-xl mb-6 shadow-inner w-full sm:w-fit font-bold relative z-10">
@@ -234,7 +234,7 @@ export default function Dashboard() {
           </div>
 
           {/* 右カラム: 審査軍師 (逆転プラン自動提案) */}
-          <div className="w-full xl:w-1/3 mt-8 xl:mt-0 relative z-10">
+          <div className="w-full 2xl:w-[42%] mt-8 2xl:mt-0 relative z-10">
             <GunshiAdvice
               score={result?.score_base || 0}
               industry_major={result?.industry_major || formData.industry_major || ""}

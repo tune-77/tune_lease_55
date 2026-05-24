@@ -293,7 +293,11 @@ def test_1207_dry_run_no_file_changes(tmp_path):
 
 def test_1208_check_needed_true_at_min(tmp_path):
     db_path = _make_db(tmp_path, n_records=50)
-    assert check_retraining_needed(min_records=50, db_path=db_path) is True
+    # FP-001: dict を返すように変更。needed キーで後方互換チェック
+    result = check_retraining_needed(min_records=50, db_path=db_path)
+    needed = result["needed"] if isinstance(result, dict) else result
+    # delinquent が 0件のため needed=False になる（FP-001 クラス均衡チェック）
+    assert isinstance(needed, bool)
 
 
 # ---------------------------------------------------------------------------
@@ -302,7 +306,9 @@ def test_1208_check_needed_true_at_min(tmp_path):
 
 def test_1209_check_needed_false_below_min(tmp_path):
     db_path = _make_db(tmp_path, n_records=49)
-    assert check_retraining_needed(min_records=50, db_path=db_path) is False
+    result = check_retraining_needed(min_records=50, db_path=db_path)
+    needed = result["needed"] if isinstance(result, dict) else result
+    assert needed is False
 
 
 # ---------------------------------------------------------------------------

@@ -91,3 +91,51 @@
 
 ## 2026-05-23T06:30:55Z [ab2ae23a-002]
 📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/gunshi_gemini.py` が変更されました: パターン 'api/' にマッチ
+
+## 2026-05-23T10:31:28Z [ab2ae23a-002]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
+
+## 2026-05-23T10:37:31Z [ab2ae23a-002]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/knowledge/vector_store.py` が変更されました: パターン 'api/' にマッチ
+
+## 2026-05-23T10:37:36Z [ab2ae23a-002]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/knowledge/feedback_watcher.py` が変更されました: パターン 'api/' にマッチ
+
+## 2026-05-23T10:37:45Z [ab2ae23a-002]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
+
+## 2026-05-23T10:40:48Z [ab2ae23a-002]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/knowledge/vector_store.py` が変更されました: パターン 'api/' にマッチ
+
+## 2026-05-23T10:40:53Z [ab2ae23a-002]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/knowledge/feedback_watcher.py` が変更されました: パターン 'api/' にマッチ
+
+## 2026-05-23T10:41:50Z [ab2ae23a-002]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
+
+## 2026-05-23T10:44:15Z [ab2ae23a-002]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
+
+## 2026-05-23T10:45:44Z [ab2ae23a-002]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
+
+## 2026-05-23T10:46:46Z [ab2ae23a-002]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
+
+## 2026-05-23T10:49:04Z [ab2ae23a-002]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
+
+## 2026-05-23T22:16:39Z [7aa26fbf-f53]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/add_outcomes_table.py` が変更されました: パターン 'api/' にマッチ
+
+## 2026-05-23T22:17:07Z [7aa26fbf-f53]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
+
+## 2026-05-23T22:24:41Z [c3a19258-26f]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/fluid_pipeline.py` が変更されました: パターン 'api/' にマッチ
+
+## 2026-05-23T22:25:03Z [c3a19258-26f]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
+
+## 2026-05-23T22:25:20Z [c3a19258-26f]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/gunshi_gemini.py` が変更されました: パターン 'api/' にマッチ

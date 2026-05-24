@@ -77,22 +77,95 @@ type GunshiStreamChunk = {
   delta?: string;
 };
 
+type HumorMode = 'yanami' | 'standard' | 'yukikaze';
+
+type YukikazeStatus = {
+  level: 'STANDBY' | 'CLEAR' | 'WARNING' | 'ALERT' | 'CRITICAL';
+  tag: string;
+  line: string;
+  levelClass: string;
+  frameClass: string;
+  blinkClass: string;
+};
+
+const HUMOR_MODE_STORAGE_KEY = 'lease-gunshi-humor-mode';
+const YUKIKAZE_DIFFICULT_CASE_LINE = 'GOOD LUCK, FUKAI LT.';
+
+const getInitialHumorMode = (): HumorMode => {
+  if (typeof window === 'undefined') return 'yanami';
+  const stored = window.localStorage.getItem(HUMOR_MODE_STORAGE_KEY);
+  if (stored === 'standard' || stored === 'yanami' || stored === 'yukikaze') return stored;
+  return 'yanami';
+};
+
+const getYukikazeStatus = (score: number): YukikazeStatus => {
+  if (score <= 0) {
+    return {
+      level: 'STANDBY',
+      tag: '[DATA LINK: STANDBY]',
+      line: 'AURION CORE ONLINE. FFR-41MR awaiting pilot vector input.',
+      levelClass: 'text-slate-300 border-slate-600 bg-slate-900',
+      frameClass: 'border-slate-700',
+      blinkClass: '',
+    };
+  }
+  if (score >= 80) {
+    return {
+      level: 'CLEAR',
+      tag: '[TACTICAL STATUS: CLEAR]',
+      line: 'No JAM signature detected. Financial waveform is stable. Maintain current approval vector.',
+      levelClass: 'text-emerald-300 border-emerald-500/60 bg-emerald-950/50',
+      frameClass: 'border-emerald-500/40',
+      blinkClass: '',
+    };
+  }
+  if (score >= 60) {
+    return {
+      level: 'WARNING',
+      tag: '[TACTICAL WARNING: SIGNAL DEFLECTION]',
+      line: `Minor distortion detected. Approval route remains open. Pilot visual confirmation is recommended. ${YUKIKAZE_DIFFICULT_CASE_LINE}`,
+      levelClass: 'text-amber-200 border-amber-400 bg-amber-950/60',
+      frameClass: 'border-amber-400/70',
+      blinkClass: 'animate-[pulse_1.8s_ease-in-out_infinite]',
+    };
+  }
+  if (score >= 40) {
+    return {
+      level: 'ALERT',
+      tag: '[ALERT: JAM CONTACT]',
+      line: `Hostile inconsistency detected in financial telemetry. Autopilot judgment restricted. Handing control to pilot. ${YUKIKAZE_DIFFICULT_CASE_LINE}`,
+      levelClass: 'text-red-200 border-red-500 bg-red-950/70',
+      frameClass: 'border-red-500/80',
+      blinkClass: 'animate-[pulse_1.1s_ease-in-out_infinite]',
+    };
+  }
+  return {
+    level: 'CRITICAL',
+    tag: '[CRITICAL: MANUAL OVERRIDE REQUIRED]',
+    line: `I identify the enemy. You decide whether to engage. Rejection logic dominates. Manual override required. ${YUKIKAZE_DIFFICULT_CASE_LINE}`,
+    levelClass: 'text-red-100 border-red-400 bg-red-900/80',
+    frameClass: 'border-red-400',
+    blinkClass: 'animate-[pulse_0.65s_ease-in-out_infinite]',
+  };
+};
+
 export default function GunshiAdvice({ score, industry_major, formData, onChatLoaded }: GunshiAdviceProps) {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [question, setQuestion] = useState("");
-  const [humorMode, setHumorMode] = useState<'yanami' | 'standard'>('yanami');
+  const [humorMode, setHumorMode] = useState<HumorMode>(getInitialHumorMode);
+  const [yukikazeBooting, setYukikazeBooting] = useState(false);
   const [useWeb, setUseWeb] = useState(true);
   const [advisorMode, setAdvisorMode] = useState<'gunshi' | 'chat'>('gunshi');
   const [statusText, setStatusText] = useState('');
   const [similarCases, setSimilarCases] = useState<SimilarCase[]>([]);
-  const [similarOpen, setSimilarOpen] = useState(true);
+  const [similarOpen, setSimilarOpen] = useState(false);
   const [prior, setPrior] = useState<number | null>(null);
   const [posterior, setPosterior] = useState<number | null>(null);
   const [bayesFactors, setBayesFactors] = useState<BayesFactor[]>([]);
   const [streamingText, setStreamingText] = useState('');
   const [strategyCards, setStrategyCards] = useState<StrategyCards | null>(null);
-  const [strategyOpen, setStrategyOpen] = useState(true);
+  const [strategyOpen, setStrategyOpen] = useState(false);
   const initialFetchKeyRef = useRef<string>("");
   const similarFetchKeyRef = useRef<string>("");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -100,6 +173,19 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatHistory, streamingText]);
+
+  const handleHumorModeChange = (mode: HumorMode) => {
+    setHumorMode(mode);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(HUMOR_MODE_STORAGE_KEY, mode);
+    }
+    if (mode === 'yukikaze') {
+      setYukikazeBooting(true);
+      window.setTimeout(() => setYukikazeBooting(false), 2200);
+    } else {
+      setYukikazeBooting(false);
+    }
+  };
 
   const buildStreamPayload = () => {
     const subsidyText = [
@@ -155,7 +241,7 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
       posterior: score > 0 ? score / 100 : 0.5,
       message,
       history,
-      humor_style: humorMode === 'yanami' ? 'yanami' : 'standard',
+      humor_style: humorMode,
       use_web: useWeb,
       use_obsidian: true,
       mode: advisorMode,
@@ -378,11 +464,92 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
     await fetchChat(trimmedQuestion, nextHistory, chatHistory);
   };
 
-  const renderMarkdown = (text: string) => {
+  const renderMarkdown = (text: string, yukikaze = false) => {
     let parsedText = text;
-    parsedText = parsedText.replace(/### (.*?)(\n|$)/g, '<h4 class="font-bold text-base text-amber-700 mt-5 border-b border-amber-200 pb-1 mb-2">$1</h4>\n');
-    parsedText = parsedText.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-slate-800">$1</strong>');
+    const headingClass = yukikaze
+      ? 'font-bold text-base text-yellow-300 mt-5 border-b border-yellow-500/50 pb-1 mb-2'
+      : 'font-bold text-base text-amber-700 mt-5 border-b border-amber-200 pb-1 mb-2';
+    const strongClass = yukikaze
+      ? 'font-black text-yellow-300'
+      : 'font-bold text-slate-800';
+    parsedText = parsedText.replace(/### (.*?)(\n|$)/g, `<h4 class="${headingClass}">$1</h4>\n`);
+    parsedText = parsedText.replace(/\*\*(.*?)\*\*/g, `<strong class="${strongClass}">$1</strong>`);
     return parsedText;
+  };
+
+  const renderDatalinkTranscript = (text: string) => {
+    const lines = text.replace(/\r\n/g, '\n').split('\n');
+    const html: string[] = [];
+
+    lines.forEach((rawLine) => {
+      const line = rawLine.trim();
+      if (!line) {
+        html.push('<div class="h-1"></div>');
+        return;
+      }
+
+      const txMatch = line.match(/^TX:\s*(.*)$/i);
+      const rxMatch = line.match(/^RX:\s*(.*)$/i);
+      const signalMatch = line.match(/^SIGNAL:\s*(.*)$/i);
+      const pilotTaskMatch = line.match(/^PILOT TASK:\s*(.*)$/i);
+      const vectorMatch = line.match(/^VECTOR:\s*(.*)$/i);
+      const datalinkMatch = line.match(/^DATALINK LOG:\s*(.*)$/i);
+
+      if (txMatch) {
+        html.push(
+          `<div class="text-[10px] uppercase tracking-[0.28em] text-red-300">TX</div>` +
+          `<div class="mt-0.5 rounded-lg border border-red-900 bg-black/90 px-3 py-2 text-[12px] leading-5 text-amber-100 whitespace-pre-wrap">${DOMPurify.sanitize(txMatch[1])}</div>`
+        );
+        html.push(
+          '<div class="my-2 flex items-center gap-2 text-[10px] uppercase tracking-[0.32em] text-red-400/80">' +
+          '<span class="inline-flex items-center gap-1"><span class="animate-pulse">...</span><span>LINK DELAY</span></span>' +
+          '</div>'
+        );
+        return;
+      }
+
+      if (rxMatch) {
+        html.push(
+          `<div class="text-[10px] uppercase tracking-[0.28em] text-amber-300">RX</div>` +
+          `<div class="mt-0.5 rounded-lg border border-amber-700 bg-amber-950/80 px-3 py-2 text-[12px] leading-5 text-amber-50 whitespace-pre-wrap">${DOMPurify.sanitize(rxMatch[1])}</div>`
+        );
+        return;
+      }
+
+      if (datalinkMatch) {
+        html.push(
+          `<div class="text-[10px] uppercase tracking-[0.28em] text-red-300">${DOMPurify.sanitize(line)}</div>`
+        );
+        return;
+      }
+
+      if (signalMatch) {
+        html.push(`<div class="rounded-md border border-red-950 bg-black/70 px-3 py-2 text-[11px] font-bold text-red-200">${DOMPurify.sanitize(`SIGNAL: ${signalMatch[1]}`)}</div>`);
+        return;
+      }
+
+      if (pilotTaskMatch) {
+        html.push(`<div class="rounded-md border border-amber-900 bg-black/60 px-3 py-2 text-[11px] font-bold text-amber-100">${DOMPurify.sanitize(`PILOT TASK: ${pilotTaskMatch[1]}`)}</div>`);
+        return;
+      }
+
+      if (vectorMatch) {
+        html.push(`<div class="rounded-md border border-emerald-900 bg-black/60 px-3 py-2 text-[11px] font-bold text-emerald-100">${DOMPurify.sanitize(`VECTOR: ${vectorMatch[1]}`)}</div>`);
+        return;
+      }
+
+      html.push(`<div class="whitespace-pre-wrap">${DOMPurify.sanitize(line)}</div>`);
+    });
+
+    return html.join('');
+  };
+
+  const renderAssistantText = (text: string, yukikaze = false) => {
+    const looksLikeDatalink = yukikaze && /^(TX:|RX:|DATALINK LOG:|SIGNAL:|PILOT TASK:|VECTOR:)/im.test(text);
+    if (looksLikeDatalink) {
+      return renderDatalinkTranscript(text);
+    }
+    return renderMarkdown(text, yukikaze);
   };
 
   const renderActionList = (items: string[] | undefined, tone: 'amber' | 'red' | 'blue' | 'emerald' | 'slate' = 'slate') => {
@@ -441,81 +608,134 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
 
   const priorPct = prior !== null ? Math.round(prior * 100) : null;
   const posteriorPct = posterior !== null ? Math.round(posterior * 100) : null;
+  const isYukikaze = humorMode === 'yukikaze';
+  const yukikazeStatus = getYukikazeStatus(score);
+  const isDifficultYukikazeCase = isYukikaze && ['WARNING', 'ALERT', 'CRITICAL'].includes(yukikazeStatus.level);
+  const panelClass = isYukikaze
+    ? `2xl:sticky 2xl:top-16 h-[calc(100vh-3rem)] min-h-[900px] bg-[#050505] rounded-2xl shadow-2xl shadow-red-950/40 border ${yukikazeStatus.frameClass} flex flex-col overflow-hidden text-amber-50`
+    : '2xl:sticky 2xl:top-16 h-[calc(100vh-3rem)] min-h-[900px] bg-[#f8fafc] rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-200 flex flex-col overflow-hidden';
+  const headerClass = isYukikaze
+    ? `bg-black text-amber-100 px-4 py-3 shrink-0 shadow-md z-10 flex items-center justify-between border-b ${yukikazeStatus.frameClass}`
+    : 'bg-gradient-to-r from-[#172554] to-[#1e3a8a] text-white p-4 shrink-0 shadow-md z-10 flex items-center justify-between';
+  const controlClass = isYukikaze
+    ? 'bg-[#080808] border-b border-red-900/50 px-4 py-2 shrink-0 font-mono'
+    : 'bg-white border-b border-slate-100 px-4 py-3 shrink-0';
+  const chatAreaClass = isYukikaze
+    ? 'flex-1 min-h-[520px] overflow-y-auto p-5 space-y-6 bg-[radial-gradient(circle_at_top,rgba(127,29,29,0.18),transparent_32%),#050505]'
+    : 'flex-1 min-h-[520px] overflow-y-auto p-5 space-y-6';
+  const footerClass = isYukikaze
+    ? 'p-3 bg-black border-t border-red-900/60 shrink-0 font-mono'
+    : 'p-3 bg-white border-t border-slate-100 shrink-0';
 
   return (
-    <div className="sticky top-24 h-[calc(100vh-8rem)] bg-[#f8fafc] rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-200 flex flex-col overflow-hidden">
+    <div className={panelClass}>
 
       {/* ヘッダー */}
-      <div className="bg-gradient-to-r from-[#172554] to-[#1e3a8a] text-white p-4 shrink-0 shadow-md z-10 flex items-center justify-between">
+      <div className={headerClass}>
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-amber-500 border-2 border-white flex justify-center items-center font-black text-xl shadow-inner overflow-hidden">
-            <span className="text-2xl mt-1">🏯</span>
+          <div className={`w-10 h-10 rounded-full border-2 flex justify-center items-center font-black text-xl shadow-inner overflow-hidden ${
+            isYukikaze ? `bg-red-950 border-red-500 text-red-200 ${yukikazeStatus.blinkClass}` : 'bg-amber-500 border-white'
+          }`}>
+            <span className="text-2xl mt-1">{isYukikaze ? 'YK' : '🏯'}</span>
           </div>
           <div>
-            <h3 className="font-bold text-sm tracking-wide">審査軍師 (Gemini 連動型)</h3>
-            <p className="text-[10px] text-blue-200 font-medium">BNベースの戦略提案AI</p>
+            <h3 className={`font-bold text-sm tracking-wide ${isYukikaze ? 'font-mono text-amber-100' : ''}`}>
+              {isYukikaze ? 'YUKIKAZE // FFR-41MR' : '審査軍師 (Gemini 連動型)'}
+            </h3>
+            <p className={`text-[10px] font-medium ${isYukikaze ? 'text-red-300 font-mono tracking-widest' : 'text-blue-200'}`}>
+              {isYukikaze ? 'TACTICAL LEASE SCORING AI' : 'BNベースの戦略提案AI'}
+            </p>
           </div>
         </div>
       </div>
 
-      <div className="bg-white border-b border-slate-100 px-4 py-3 shrink-0">
+      <div className={controlClass}>
+        {isYukikaze && (
+          <div className={`mb-2 rounded-lg border bg-black/80 px-3 py-2 shadow-lg shadow-red-950/30 ${yukikazeStatus.frameClass}`}>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[9px] font-black tracking-[0.24em] text-red-400">SYSTEM MODE</div>
+                <div className="mt-0.5 text-[11px] font-black tracking-[0.18em] text-amber-100">YUKIKAZE // FFR-41MR</div>
+              </div>
+              <div className={`rounded-md border px-2 py-1 text-[10px] font-black tracking-widest ${yukikazeStatus.levelClass} ${yukikazeStatus.blinkClass}`}>
+                {yukikazeStatus.level}
+              </div>
+            </div>
+            <div className={`mt-2 rounded-md border px-2.5 py-1.5 ${yukikazeStatus.levelClass} ${yukikazeStatus.blinkClass}`}>
+              <div className="text-[9px] font-black tracking-widest">{yukikazeStatus.tag}</div>
+              <div className="mt-0.5 line-clamp-2 text-[11px] leading-4 font-bold">{yukikazeBooting ? 'LINKING AURION CORE... PILOT AUTHENTICATION: CONFIRMED. JAM DETECTION PROTOCOL: ACTIVE.' : yukikazeStatus.line}</div>
+            </div>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-2 mb-2">
-          <span className="text-[11px] font-bold text-slate-500 mr-1">モード</span>
+          <span className={`text-[11px] font-bold mr-1 ${isYukikaze ? 'text-red-300 tracking-widest' : 'text-slate-500'}`}>モード</span>
           <button
             type="button"
             onClick={() => setAdvisorMode('gunshi')}
             className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
               advisorMode === 'gunshi'
-                ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
-                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                ? isYukikaze ? 'bg-red-900 text-amber-100 border-red-500 shadow-sm' : 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                : isYukikaze ? 'bg-black text-slate-400 border-red-950 hover:border-red-700' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
             }`}
-            title="案件向け戦略アドバイス（軍師ロジック）"
+            title={isYukikaze ? 'Mission assessment from YUKIKAZE' : '案件向け戦略アドバイス（軍師ロジック）'}
           >
-            🏯 戦略
+            {isYukikaze ? 'MISSION' : '🏯 戦略'}
           </button>
           <button
             type="button"
             onClick={() => setAdvisorMode('chat')}
             className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
               advisorMode === 'chat'
-                ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                ? isYukikaze ? 'bg-red-900 text-amber-100 border-red-500 shadow-sm' : 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                : isYukikaze ? 'bg-black text-slate-400 border-red-950 hover:border-red-700' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
             }`}
-            title="Flask版AIチャット相当の自由相談（Web/Obsidian連動）"
+            title={isYukikaze ? 'Tactical datalink with YUKIKAZE' : 'Flask版AIチャット相当の自由相談（Web/Obsidian連動）'}
           >
-            💬 相談
+            {isYukikaze ? 'DATALINK' : '💬 相談'}
           </button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-bold text-slate-500 mr-1">口調</span>
+          <span className={`text-[11px] font-bold mr-1 ${isYukikaze ? 'text-red-300 tracking-widest' : 'text-slate-500'}`}>口調</span>
           <button
             type="button"
-            onClick={() => setHumorMode('standard')}
+            onClick={() => handleHumorModeChange('standard')}
             className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
               humorMode === 'standard'
                 ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                : isYukikaze ? 'bg-black text-slate-400 border-red-950 hover:border-red-700' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
             }`}
           >
             📊 標準
           </button>
           <button
             type="button"
-            onClick={() => setHumorMode('yanami')}
+            onClick={() => handleHumorModeChange('yanami')}
             className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
               humorMode === 'yanami'
                 ? 'bg-orange-500 text-white border-orange-500 shadow-sm'
-                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                : isYukikaze ? 'bg-black text-slate-400 border-red-950 hover:border-red-700' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
             }`}
           >
             🎤 八奈見
           </button>
-          <label className="ml-auto inline-flex items-center gap-2 text-[12px] font-bold text-slate-600 cursor-pointer">
+          <button
+            type="button"
+            onClick={() => handleHumorModeChange('yukikaze')}
+            className={`px-3 py-1.5 rounded-full text-xs font-black border transition ${
+              isYukikaze
+                ? 'bg-red-700 text-amber-100 border-red-400 shadow-lg shadow-red-900/40'
+                : 'bg-slate-950 text-red-300 border-red-800 hover:border-red-500 hover:text-amber-100'
+            }`}
+            title="FFR-41MR tactical console"
+          >
+            ⚡ ENGAGE YUKIKAZE
+          </button>
+          <label className={`ml-auto inline-flex items-center gap-2 text-[12px] font-bold cursor-pointer ${isYukikaze ? 'text-amber-200' : 'text-slate-600'}`}>
             <input
               type="checkbox"
               checked={useWeb}
               onChange={(e) => setUseWeb(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              className={`h-4 w-4 rounded ${isYukikaze ? 'border-red-700 bg-black text-red-600 focus:ring-red-500' : 'border-slate-300 text-blue-600 focus:ring-blue-500'}`}
             />
             ネット参照
           </label>
@@ -523,10 +743,10 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
 
         {/* ベイズ推定ゲージ */}
         {priorPct !== null && posteriorPct !== null && (
-          <div className="mt-3 pt-3 border-t border-slate-100">
+          <div className={`mt-3 pt-3 ${isYukikaze ? 'border-t border-red-950/70' : 'border-t border-slate-100'}`}>
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[10px] font-bold text-slate-500">📊 ベイズ更新</span>
-              <span className="text-[11px] font-bold text-slate-700">
+              <span className={`text-[10px] font-bold ${isYukikaze ? 'text-red-300 tracking-widest' : 'text-slate-500'}`}>{isYukikaze ? 'JAM PROBABILITY UPDATE' : '📊 ベイズ更新'}</span>
+              <span className={`text-[11px] font-bold ${isYukikaze ? 'text-amber-100' : 'text-slate-700'}`}>
                 事前 {priorPct}%
                 <span className="text-slate-400 mx-1">→</span>
                 <span className={
@@ -540,7 +760,7 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
                 </span>
               </span>
             </div>
-            <div className="relative h-3 bg-slate-100 rounded-full overflow-hidden">
+            <div className={`relative h-3 rounded-full overflow-hidden ${isYukikaze ? 'bg-red-950/70 border border-red-900' : 'bg-slate-100'}`}>
               {/* 事前確率マーカー */}
               <div
                 className="absolute top-0 h-full w-0.5 bg-slate-400 z-10"
@@ -549,7 +769,9 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
               {/* 事後確率バー (アニメーション付き) */}
               <div
                 className={`h-full rounded-full transition-all duration-1000 ease-out ${
-                  posteriorPct >= 60
+                  isYukikaze
+                    ? 'bg-gradient-to-r from-red-700 via-amber-500 to-amber-200'
+                    : posteriorPct >= 60
                     ? 'bg-gradient-to-r from-emerald-400 to-emerald-500'
                     : posteriorPct >= 40
                     ? 'bg-gradient-to-r from-amber-400 to-amber-500'
@@ -563,19 +785,21 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
               <span className="text-[9px] text-slate-400">50%</span>
               <span className="text-[9px] text-slate-400">100%</span>
             </div>
-            {renderBayesFactors()}
+            {!isYukikaze && renderBayesFactors()}
           </div>
         )}
       </div>
 
       {/* チャットエリア */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+      <div className={chatAreaClass}>
         <div className="text-center my-2 mb-6">
-          <span className="text-[10px] font-bold text-slate-400 bg-slate-200 px-3 py-1 rounded-full">ダッシュボード連携セッション開始</span>
+          <span className={`text-[10px] font-bold px-3 py-1 rounded-full ${isYukikaze ? 'text-red-300 bg-black border border-red-950 font-mono tracking-widest' : 'text-slate-400 bg-slate-200'}`}>
+            {isYukikaze ? 'TACTICAL SESSION LINKED' : 'ダッシュボード連携セッション開始'}
+          </span>
         </div>
 
         {score > 0 && similarCases.length > 0 && (
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
+          <div className={`rounded-xl border shadow-sm ${isYukikaze ? 'bg-black/80 border-red-950 text-amber-50 font-mono' : 'bg-white border-slate-200'}`}>
             <button
               type="button"
               onClick={() => setSimilarOpen(v => !v)}
@@ -583,19 +807,19 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
             >
               <div className="flex items-center gap-2">
                 <span className="text-base">📚</span>
-                <span className="text-xs font-bold text-slate-700">類似過去案件 ({similarCases.length}件)</span>
-                <span className="text-[10px] text-slate-400 font-medium">成約・承認済みのみ</span>
+                <span className={`text-xs font-bold ${isYukikaze ? 'text-amber-100' : 'text-slate-700'}`}>{isYukikaze ? 'ARCHIVED ENGAGEMENTS' : '類似過去案件'} ({similarCases.length}件)</span>
+                <span className={`text-[10px] font-medium ${isYukikaze ? 'text-red-300' : 'text-slate-400'}`}>成約・承認済みのみ</span>
               </div>
-              <span className="text-xs text-slate-400">{similarOpen ? '▲' : '▼'}</span>
+              <span className={`text-xs ${isYukikaze ? 'text-red-300' : 'text-slate-400'}`}>{similarOpen ? '▲' : '▼'}</span>
             </button>
             {similarOpen && (
               <div className="px-3 pb-3 space-y-2">
                 {similarCases.map((c, i) => {
                   const isSuccess = c.status.includes('成約') || c.status.includes('承認');
                   return (
-                    <div key={c.id ?? i} className="border border-slate-100 rounded-lg p-2.5 bg-slate-50/50">
+                    <div key={c.id ?? i} className={`border rounded-lg p-2.5 ${isYukikaze ? 'border-red-950 bg-red-950/20' : 'border-slate-100 bg-slate-50/50'}`}>
                       <div className="flex items-center justify-between gap-2 mb-1.5">
-                        <div className="text-xs font-bold text-slate-800 truncate">{c.name}</div>
+                        <div className={`text-xs font-bold truncate ${isYukikaze ? 'text-amber-100' : 'text-slate-800'}`}>{c.name}</div>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
                           isSuccess ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
                         }`}>
@@ -626,25 +850,25 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
         )}
 
         {strategyCards && (
-          <div className="bg-white rounded-xl border border-amber-200 shadow-sm overflow-hidden">
+          <div className={`rounded-xl border shadow-sm overflow-hidden ${isYukikaze ? `bg-black/85 ${yukikazeStatus.frameClass} text-amber-50 font-mono` : 'bg-white border-amber-200'}`}>
             <button
               type="button"
               onClick={() => setStrategyOpen(v => !v)}
-              className="w-full flex items-center justify-between px-4 py-3 text-left bg-gradient-to-r from-amber-50 to-white"
+              className={`w-full flex items-center justify-between px-4 py-3 text-left ${isYukikaze ? 'bg-gradient-to-r from-red-950/70 to-black' : 'bg-gradient-to-r from-amber-50 to-white'}`}
             >
               <div>
                 <div className="flex items-center gap-2">
-                  <Target className="w-4 h-4 text-amber-600" />
-                  <span className="text-xs font-black text-slate-800">案件作戦盤</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white">
+                  <Target className={`w-4 h-4 ${isYukikaze ? 'text-red-300' : 'text-amber-600'}`} />
+                  <span className={`text-xs font-black ${isYukikaze ? 'text-amber-100 tracking-widest' : 'text-slate-800'}`}>{isYukikaze ? 'MISSION BOARD' : '案件作戦盤'}</span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isYukikaze ? `border ${yukikazeStatus.levelClass} ${yukikazeStatus.blinkClass}` : 'bg-amber-500 text-white'}`}>
                     {strategyCards.stance || '作戦整理'}
                   </span>
                 </div>
-                <div className="mt-1 text-[11px] text-slate-500 font-bold line-clamp-1">
+                <div className={`mt-1 text-[11px] font-bold line-clamp-1 ${isYukikaze ? 'text-red-300' : 'text-slate-500'}`}>
                   {strategyCards.headline || 'この案件の今日やること'}
                 </div>
               </div>
-              <span className="text-xs text-slate-400">{strategyOpen ? '▲' : '▼'}</span>
+              <span className={`text-xs ${isYukikaze ? 'text-red-300' : 'text-slate-400'}`}>{strategyOpen ? '▲' : '▼'}</span>
             </button>
 
             {strategyOpen && (
@@ -727,25 +951,25 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
         {chatHistory.map((chat, index) => (
           chat.role === 'user' ? (
             <div key={`${chat.role}-${index}`} className="flex gap-3 flex-row-reverse animate-in fade-in slide-in-from-right-4 duration-300">
-              <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex justify-center items-center font-bold text-xs shadow-sm shrink-0">
+              <div className={`w-8 h-8 rounded-full flex justify-center items-center font-bold text-xs shadow-sm shrink-0 ${isYukikaze ? 'bg-amber-900 text-amber-100 border border-amber-500 font-mono' : 'bg-blue-600 text-white'}`}>
                 You
               </div>
-              <div className="bg-blue-600 text-white p-3 rounded-2xl rounded-tr-none shadow-sm max-w-[85%] text-sm whitespace-pre-wrap">
+              <div className={`p-3 rounded-2xl rounded-tr-none shadow-sm max-w-[85%] text-sm whitespace-pre-wrap ${isYukikaze ? 'bg-amber-950/70 border border-amber-700 text-amber-50 font-mono' : 'bg-blue-600 text-white'}`}>
                 {chat.text}
               </div>
             </div>
           ) : (
             <div key={`${chat.role}-${index}`} className="flex gap-3 animate-in fade-in slide-in-from-bottom-2 duration-500">
-              <div className="w-8 h-8 rounded-full bg-amber-500 border-2 border-white text-white flex justify-center items-center font-black text-sm shadow-md shrink-0">
-                🏯
+              <div className={`w-8 h-8 rounded-full border-2 flex justify-center items-center font-black text-sm shadow-md shrink-0 ${isYukikaze ? `bg-red-950 border-red-500 text-red-200 font-mono ${yukikazeStatus.blinkClass}` : 'bg-amber-500 border-white text-white'}`}>
+                {isYukikaze ? 'YK' : '🏯'}
               </div>
               <div className="w-full">
                 <div
-                  className="bg-white p-4 rounded-2xl rounded-tl-none shadow border border-amber-200 text-slate-700 leading-7 font-medium whitespace-pre-wrap text-[13px] sm:text-sm w-full prose prose-slate"
-                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderMarkdown(chat.text)) }}
+                  className={`max-w-none min-h-[360px] p-6 rounded-2xl rounded-tl-none shadow border leading-8 font-medium whitespace-pre-wrap text-sm sm:text-[15px] w-full prose ${isYukikaze ? 'bg-black/90 border-red-900 text-amber-50 prose-invert font-mono' : 'bg-white border-amber-200 text-slate-700 prose-slate'}`}
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderAssistantText(chat.text, isYukikaze)) }}
                 />
                 {chat.meta && (
-                  <div className="mt-1.5 text-[11px] text-slate-500 leading-4 px-1">
+                  <div className={`mt-1.5 text-[11px] leading-4 px-1 ${isYukikaze ? 'text-red-300 font-mono' : 'text-slate-500'}`}>
                     {chat.meta}
                   </div>
                 )}
@@ -757,15 +981,15 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
         {/* ストリーミング中のリアルタイムテキスト表示 */}
         {streamingText && (
           <div className="flex gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="w-8 h-8 rounded-full bg-amber-500 border-2 border-white text-white flex justify-center items-center font-black text-sm shadow-md shrink-0">
-              🏯
+            <div className={`w-8 h-8 rounded-full border-2 flex justify-center items-center font-black text-sm shadow-md shrink-0 ${isYukikaze ? `bg-red-950 border-red-500 text-red-200 font-mono ${yukikazeStatus.blinkClass}` : 'bg-amber-500 border-white text-white'}`}>
+              {isYukikaze ? 'YK' : '🏯'}
             </div>
             <div className="w-full">
               <div
-                className="bg-white p-4 rounded-2xl rounded-tl-none shadow border border-amber-200 text-slate-700 leading-7 font-medium whitespace-pre-wrap text-[13px] sm:text-sm w-full prose prose-slate"
-                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderMarkdown(streamingText)) }}
+                className={`max-w-none min-h-[360px] p-6 rounded-2xl rounded-tl-none shadow border leading-8 font-medium whitespace-pre-wrap text-sm sm:text-[15px] w-full prose ${isYukikaze ? 'bg-black/90 border-red-900 text-amber-50 prose-invert font-mono' : 'bg-white border-amber-200 text-slate-700 prose-slate'}`}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderAssistantText(streamingText, isYukikaze)) }}
               />
-              <span className="inline-block w-0.5 h-4 bg-amber-500 ml-1 animate-pulse" />
+              <span className={`inline-block w-0.5 h-4 ml-1 animate-pulse ${isYukikaze ? 'bg-red-500' : 'bg-amber-500'}`} />
             </div>
           </div>
         )}
@@ -773,28 +997,28 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
         {/* 最初のチャンク待ちスピナー */}
         {loading && !streamingText && (
           <div className="flex gap-3">
-             <div className="w-8 h-8 rounded-full bg-amber-500 text-white flex justify-center items-center font-bold text-xs shadow-sm shrink-0">
-               🏯
+             <div className={`w-8 h-8 rounded-full flex justify-center items-center font-bold text-xs shadow-sm shrink-0 ${isYukikaze ? `bg-red-950 border border-red-500 text-red-200 font-mono ${yukikazeStatus.blinkClass}` : 'bg-amber-500 text-white'}`}>
+               {isYukikaze ? 'YK' : '🏯'}
              </div>
-             <div className="bg-white p-4 rounded-2xl rounded-tl-none shadow border border-slate-200 flex flex-col gap-3 min-w-[200px]">
-               <Activity className="w-5 h-5 animate-spin text-amber-500" />
-               <span className="text-xs font-bold text-slate-400">軍師が直近のデータを分析し、<br/>戦略を練り上げています...<br/>（Gemini API 通信中）</span>
+             <div className={`p-4 rounded-2xl rounded-tl-none shadow border flex flex-col gap-3 min-w-[200px] ${isYukikaze ? 'bg-black border-red-900 font-mono' : 'bg-white border-slate-200'}`}>
+               <Activity className={`w-5 h-5 animate-spin ${isYukikaze ? 'text-red-400' : 'text-amber-500'}`} />
+               <span className={`text-xs font-bold ${isYukikaze ? 'text-red-300' : 'text-slate-400'}`}>{isYukikaze ? <>YUKIKAZE is reading telemetry...<br/>JAM signature analysis running...</> : <>軍師が直近のデータを分析し、<br/>戦略を練り上げています...<br/>（Gemini API 通信中）</>}</span>
              </div>
           </div>
         )}
 
         {score === 0 && chatHistory.length === 0 && (
-           <div className="text-center text-sm text-slate-400 mt-10">案件戦略・業界動向・一般相談を自由に入力できます</div>
+           <div className={`text-center text-sm mt-10 ${isYukikaze ? 'text-red-300 font-mono' : 'text-slate-400'}`}>{isYukikaze ? 'Awaiting pilot query. Engagement protocol is armed.' : '案件戦略・業界動向・一般相談を自由に入力できます'}</div>
         )}
 
         <div ref={bottomRef} />
       </div>
 
-      <div className="p-4 bg-white border-t border-slate-100 shrink-0">
+      <div className={footerClass}>
         <div className="space-y-2">
           {statusText && (
-            <div className="text-[11px] text-slate-500">
-              {statusText}
+            <div className={`text-[11px] ${isYukikaze ? 'text-red-300' : 'text-slate-500'}`}>
+              {isYukikaze ? `SYSTEM: ${statusText}` : statusText}
             </div>
           )}
           <textarea
@@ -808,22 +1032,30 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
                 }
               }
             }}
-            placeholder={advisorMode === 'gunshi' ? '軍師にこの案件の戦略・条件・落としどころを問う' : '業界動向・他社事例・自由な相談もOK（Flask AIチャット相当）'}
-            rows={3}
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-4 text-sm outline-none resize-none text-slate-700 placeholder:text-slate-400"
+            placeholder={isYukikaze ? (advisorMode === 'chat' ? 'Pilot datalink: send short command, risk query, or field report...' : 'Pilot input: request mission assessment, JAM signature, or approval vector...') : advisorMode === 'gunshi' ? '軍師にこの案件の戦略・条件・落としどころを問う' : '業界動向・他社事例・自由な相談もOK（Flask AIチャット相当）'}
+            rows={2}
+            className={`w-full border rounded-xl py-3 px-4 text-sm outline-none resize-none ${isYukikaze ? 'bg-[#050505] border-red-900 text-amber-100 placeholder:text-red-900 focus:border-red-500 font-mono' : 'bg-slate-50 border-slate-200 text-slate-700 placeholder:text-slate-400'}`}
           />
           <div className="flex items-center justify-between gap-3">
-            <div className="text-[11px] text-slate-500">
-              Enter で送信、Shift+Enter で改行
+            <div className={`text-[11px] ${isYukikaze ? 'text-red-300' : 'text-slate-500'}`}>
+              {isYukikaze ? (
+                <span className={yukikazeStatus.level === 'CRITICAL' ? yukikazeStatus.blinkClass : ''}>
+                  {isDifficultYukikazeCase
+                    ? `${YUKIKAZE_DIFFICULT_CASE_LINE} I identify the enemy. You decide whether to engage.`
+                    : 'I identify the enemy. You decide whether to engage.'}
+                </span>
+              ) : (
+                'Enter で送信、Shift+Enter で改行'
+              )}
             </div>
             <button
               type="button"
               onClick={handleSubmit}
               disabled={loading || !question.trim()}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl font-bold disabled:bg-slate-300 disabled:cursor-not-allowed"
+              className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold disabled:cursor-not-allowed ${isYukikaze ? 'bg-red-800 text-amber-100 border border-red-500 hover:bg-red-700 disabled:bg-red-950 disabled:text-red-900' : 'bg-blue-600 text-white disabled:bg-slate-300'}`}
             >
               <MessageSquare className="w-4 h-4" />
-              問う
+              {isYukikaze ? 'TRANSMIT' : '問う'}
             </button>
           </div>
         </div>

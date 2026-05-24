@@ -84,8 +84,14 @@ else:
     col2.metric("最終再学習", "なし")
 
 # ── 自動チェック通知 ──
-if check_retraining_needed(db_path=DB_PATH):
+_retrain_check = check_retraining_needed(db_path=DB_PATH)
+_retrain_needed = _retrain_check["needed"] if isinstance(_retrain_check, dict) else bool(_retrain_check)
+_retrain_reason = _retrain_check.get("reason", "") if isinstance(_retrain_check, dict) else ""
+_delinquent_cnt = _retrain_check.get("delinquent_count", 0) if isinstance(_retrain_check, dict) else 0
+if _retrain_needed:
     st.toast("再学習データが蓄積されました", icon="ℹ️")
+elif _delinquent_cnt < 5:
+    st.info(f"💡 {_retrain_reason}")
 
 st.divider()
 
