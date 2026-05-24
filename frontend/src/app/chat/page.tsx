@@ -20,13 +20,15 @@ export default function ChatPage() {
   const [savingObsidian, setSavingObsidian] = useState(false);
   const [saveToast, setSaveToast] = useState<string | null>(null);
   const [showSubtitle, setShowSubtitle] = useState(true);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const messageListRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const userId = "default";
 
   const scrollToBottom = () => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = messageListRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   };
 
   useEffect(() => {
@@ -141,7 +143,7 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] max-w-3xl mx-auto px-4 py-6">
+    <div className="flex flex-col h-[calc(100vh-4rem)] max-w-3xl mx-auto px-4 py-6 overflow-hidden">
       {/* ヘッダー */}
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
         <div className="flex items-center gap-3">
@@ -188,7 +190,7 @@ export default function ChatPage() {
       </div>
 
       {/* メッセージエリア */}
-      <div className="flex-1 overflow-y-auto space-y-4 pr-1 pb-4">
+      <div ref={messageListRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-4 pr-1 pb-4">
         {historyLoading ? (
           <div className="flex justify-center items-center h-32">
             <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
@@ -251,7 +253,6 @@ export default function ChatPage() {
             </div>
           </div>
         )}
-        <div ref={bottomRef} />
       </div>
 
       {/* 入力エリア */}

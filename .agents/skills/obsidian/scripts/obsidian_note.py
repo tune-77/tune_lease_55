@@ -95,7 +95,10 @@ def cmd_write_note(args: argparse.Namespace) -> None:
     title = args.title.strip() if args.title else path.stem
     if path.exists() and not args.append:
         raise SystemExit(f"Note already exists. Use --append: {path}")
-    body = args.text.strip()
+    if args.text_file:
+        body = Path(args.text_file).read_text(encoding="utf-8").strip()
+    else:
+        body = args.text.strip()
     if args.append:
         append_text(path, body)
     else:
@@ -139,7 +142,8 @@ def main() -> None:
     p.add_argument("--vault")
     p.add_argument("--path", required=True)
     p.add_argument("--title")
-    p.add_argument("--text", required=True)
+    p.add_argument("--text", default="")
+    p.add_argument("--text-file")
     p.add_argument("--append", action="store_true")
     p.set_defaults(func=cmd_write_note)
 

@@ -1,7 +1,7 @@
 interface:
   display_name: "Tune Lease 55 Obsidian Wiki"
-  short_description: "Obsidian wiki/linking workflow for tune_lease_55"
-  default_prompt: "Use $tune-lease-55-obsidian-wiki to organize tune_lease_55 Obsidian notes, add a wiki hub, build a search-term index, and connect Related links across daily and project notes."
+  short_description: "Obsidian wiki/linking and maintenance workflow for tune_lease_55"
+  default_prompt: "Use $tune-lease-55-obsidian-wiki to organize tune_lease_55 Obsidian notes, add a wiki hub, build a search-term index, connect Related links across daily and project notes, and normalize the wiki shape over time."
 
 policy:
   allow_implicit_invocation: true

@@ -160,7 +160,7 @@ def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[
     vault, knowledge, chat_logs = _get_indexed_paths()
     if not vault:
         return []
-    terms = _expand_query_terms(query)[:8]
+    terms = _expand_query_terms(query)[:24]
     if not terms:
         return []
 
@@ -173,6 +173,40 @@ def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[
         cases_paths = [p for p in (knowledge + chat_logs) if cases_dir in p.parents]
         cases_paths.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
         hits += _search_in_paths(cases_paths, vault, terms, limit, max_chars, seen)
+
+    asset_knowledge_terms = (
+        "物件ファイナンス", "残価", "再販リスク", "中古相場", "稟議根拠",
+        "建機", "車両", "工作機械", "医療機器", "フォークリフト", "高所作業車",
+        "発電機", "コンプレッサー", "射出成形機", "測定器", "検査装置",
+        "pc200", "冷凍車", "メンテリース", "校正証明", "保守期限",
+    )
+    if len(hits) < limit and any(t in asset_knowledge_terms for t in terms):
+        remaining = limit - len(hits)
+        asset_dir = vault / "Projects" / "tune_lease_55" / "Asset Knowledge"
+        asset_paths = [p for p in knowledge if asset_dir in p.parents]
+        generic_asset_terms = {
+            "物件ファイナンス", "リース", "bep", "残価", "再販リスク", "稟議根拠",
+            "中古相場", "保守期限", "再校正", "建機", "車両", "工作機械", "医療機器",
+            "アワーメーター", "走行距離", "メンテナンス", "制御装置", "薬機法",
+            "設置撤去費", "陳腐化", "保守", "バッテリー", "飛行時間", "法規制",
+        }
+        specific_terms = [t for t in terms if t not in generic_asset_terms]
+
+        def _asset_specific_score(path: Path) -> int:
+            hay = f"{path.stem.lower()} {str(path.parent.relative_to(vault)).lower()}"
+            return sum(1 for t in specific_terms if t and t in hay)
+
+        def _asset_match_score(path: Path) -> int:
+            hay = f"{path.stem.lower()} {str(path.parent.relative_to(vault)).lower()}"
+            return _asset_specific_score(path) * 3 + sum(1 for t in terms if t and t in hay)
+
+        if specific_terms:
+            asset_paths = [p for p in asset_paths if _asset_specific_score(p) > 0]
+        asset_paths.sort(key=lambda p: (
+            -_asset_match_score(p),
+            -(p.stat().st_mtime if p.exists() else 0),
+        ))
+        hits += _search_in_paths(asset_paths, vault, terms, remaining, max_chars, seen)
 
     if len(hits) < limit:
         remaining = limit - len(hits)
@@ -516,6 +550,126 @@ def append_case_log(score_result: dict, case: dict) -> dict[str, str]:
     with path.open("a", encoding="utf-8") as f:
         f.write(prefix + section)
     return {"status": "saved", "path": str(path)}
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def append_asset_finance_note(asset_case: dict, result: dict, related_paths: Iterable[str] | None = None) -> dict[str, str]:
+    """物件ファイナンス審査結果を Asset Finance/ 以下の日次ログに追記する。"""
+    vault = find_vault()
+    if not vault:
+        return {"status": "skipped", "reason": "Obsidian vault not found"}
+
+    today = dt.date.today()
+    ym = today.strftime("%Y-%m")
+    ymd = today.isoformat()
+    rel = f"Projects/tune_lease_55/Asset Finance/{ym}/{ymd}.md"
+    path = _safe_note_path(vault, rel)
+
+    now = dt.datetime.now().strftime("%H:%M")
+    asset_type = str(asset_case.get("asset_type") or "不明")[:30]
+    asset_name = str(asset_case.get("asset_name") or "").strip()[:60]
+    term = asset_case.get("term") or 0
+    down_payment = asset_case.get("down_payment") or 0
+    financial_score = str(asset_case.get("financial_score") or "不明")
+
+    score = result.get("score", 0)
+    decision = str(result.get("decision") or "—")
+    bep_month = result.get("bep_month", "—")
+    bep_ratio = result.get("bep_ratio", 0)
+    reasons = [str(x).strip() for x in result.get("reasons") or [] if str(x).strip()]
+    deductions = [str(x).strip() for x in result.get("deductions") or [] if str(x).strip()]
+    action_plan = [str(x).strip() for x in result.get("action_plan") or [] if str(x).strip()]
+
+    title_asset = asset_name or asset_type
+    heading = f"## {now} | {title_asset} | {decision} | スコア{score}"
+    lines = [heading, ""]
+    lines.append(f"- **物件種別**: {asset_type}")
+    if asset_name:
+        lines.append(f"- **物件名**: {asset_name}")
+    lines.append(f"- **期間**: {term}ヶ月")
+    lines.append(f"- **自己資金率**: {_safe_float(down_payment) * 100:.0f}%")
+    lines.append(f"- **財務評価**: {financial_score}")
+    lines.append(f"- **BEP**: {bep_month}ヶ月目（期間比 {_safe_float(bep_ratio) * 100:.0f}%）")
+
+    if related_paths:
+        related_links = []
+        for item in related_paths:
+            item = str(item or "").strip()
+            if item:
+                related_links.append(_to_wikilink(item, Path(item).stem))
+        if related_links:
+            lines.append("")
+            lines.append("### 関連メモ")
+            lines.extend(f"- {link}" for link in related_links[:8])
+
+    if reasons:
+        lines.append("")
+        lines.append("### 承認根拠")
+        lines.extend(f"- {item}" for item in reasons[:8])
+    if deductions:
+        lines.append("")
+        lines.append("### 減点・リスク")
+        lines.extend(f"- {item}" for item in deductions[:8])
+    if action_plan:
+        lines.append("")
+        lines.append("### 営業アクション")
+        lines.extend(f"- {item}" for item in action_plan[:5])
+
+    section = "\n".join(lines).rstrip() + "\n"
+    prefix = "\n" if path.exists() and path.read_text(encoding="utf-8", errors="ignore").strip() else ""
+    with path.open("a", encoding="utf-8") as f:
+        f.write(prefix + section)
+    return {"status": "saved", "path": str(path), "rel_path": rel}
+
+
+def append_asset_knowledge_backlinks(
+    asset_case: dict,
+    result: dict,
+    related_paths: Iterable[str] | None = None,
+    finance_note_rel: str | None = None,
+) -> dict[str, Any]:
+    """Asset Knowledgeノート側へ、この知識を使った審査結果リンクを追記する。"""
+    vault = find_vault()
+    if not vault:
+        return {"status": "skipped", "reason": "Obsidian vault not found", "updated": []}
+
+    updated: list[str] = []
+    now = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+    asset_type = str(asset_case.get("asset_type") or "不明")[:30]
+    asset_name = str(asset_case.get("asset_name") or asset_type).strip()[:60]
+    score = result.get("score", 0)
+    decision = str(result.get("decision") or "—")
+    finance_link = _to_wikilink(finance_note_rel or "", "審査結果") if finance_note_rel else ""
+
+    for item in related_paths or []:
+        rel = str(item or "").strip().replace("\\", "/")
+        if not rel.startswith("Projects/tune_lease_55/Asset Knowledge/"):
+            continue
+        path = _safe_note_path(vault, rel)
+        if not path.exists():
+            continue
+        lines = [
+            f"## {now} 使用案件",
+            "",
+            f"- **物件**: {asset_name}",
+            f"- **物件種別**: {asset_type}",
+            f"- **判定**: {decision}",
+            f"- **スコア**: {score}",
+        ]
+        if finance_link:
+            lines.append(f"- **審査ログ**: {finance_link}")
+        section = "\n".join(lines).rstrip() + "\n"
+        with path.open("a", encoding="utf-8") as f:
+            f.write("\n" + section)
+        updated.append(rel)
+
+    return {"status": "saved", "updated": updated}
 
 
 def append_weekly_review_note(title: str, body: str) -> dict[str, str]:
