@@ -63,9 +63,18 @@ NEXT_LOG="$LOG_DIR/next_${TS}.log"
 BUILD_LOG="$LOG_DIR/build_${TS}.log"
 API_PID_FILE="$LOG_DIR/api_${API_PORT}.pid"
 NEXT_PID_FILE="$LOG_DIR/next_${NEXT_PORT}.pid"
+API_SUPERVISOR_PID_FILE="$LOG_DIR/api_${API_PORT}.supervisor.pid"
+NEXT_SUPERVISOR_PID_FILE="$LOG_DIR/next_${NEXT_PORT}.supervisor.pid"
 TUNNEL_PID_FILE="$LOG_DIR/tunnel_${NEXT_PORT}.pid"
 TUNNEL_LOG="$LOG_DIR/tunnel_${TS}.log"
 BUILD_STAMP="$LOG_DIR/frontend_build.stamp"
+
+kill_pids() {
+  local pids="$1"
+  if [ -n "$pids" ]; then
+    kill $pids 2>/dev/null || true
+  fi
+}
 
 stop_port_process() {
   local port="$1"
@@ -74,17 +83,57 @@ stop_port_process() {
   pids="$(lsof -ti :"$port" 2>/dev/null || true)"
   if [ -n "$pids" ]; then
     echo "Stopping existing ${label} on port ${port}: ${pids}"
-    kill $pids 2>/dev/null || true
+    kill_pids "$pids"
+    sleep 1
+  fi
+  pids="$(lsof -ti :"$port" 2>/dev/null || true)"
+  if [ -n "$pids" ]; then
+    echo "Force stopping remaining ${label} on port ${port}: ${pids}"
+    kill -9 $pids 2>/dev/null || true
     sleep 1
   fi
 }
 
-stop_existing_launchers() {
-  local pids
-  pids="$(ps -eo pid=,command= | awk -v self="$$" '$2 == "bash" && $0 ~ /run_next_stable\.sh/ && $1 != self {print $1}')"
+stop_cloudflare_tunnels() {
+  local pids=""
+  local pid
+  while read -r pid; do
+    if [ -n "$pid" ]; then
+      pids="${pids} ${pid}"
+    fi
+  done < <(ps -eo pid=,command= 2>/dev/null | awk -v url="http://${NEXT_HOST}:${NEXT_PORT}" '$0 ~ /[c]loudflared tunnel --url/ && index($0, url) {print $1}')
+
   if [ -n "$pids" ]; then
-    echo "Stopping stale launcher processes: ${pids}"
-    kill $pids 2>/dev/null || true
+    echo "Stopping stale Cloudflare Tunnel processes:${pids}"
+    kill_pids "$pids"
+    sleep 1
+  fi
+}
+
+is_current_launcher_family() {
+  local candidate="$1"
+  local pid="$$"
+  while [ -n "$pid" ] && [ "$pid" != "0" ] && [ "$pid" != "1" ]; do
+    if [ "$candidate" = "$pid" ]; then
+      return 0
+    fi
+    pid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ' || true)"
+  done
+  return 1
+}
+
+stop_existing_launchers() {
+  local stale_pids=""
+  local pid
+  while read -r pid; do
+    if [ -n "$pid" ] && ! is_current_launcher_family "$pid"; then
+      stale_pids="${stale_pids} ${pid}"
+    fi
+  done < <(ps -eo pid=,command= 2>/dev/null | awk '$0 ~ /[r]un_next_stable\.sh/ {print $1}')
+
+  if [ -n "$stale_pids" ]; then
+    echo "Stopping stale launcher processes:${stale_pids}"
+    kill_pids "$stale_pids"
     sleep 2
   fi
 }
@@ -129,6 +178,14 @@ frontend_build_needed() {
 cleanup() {
   echo ""
   echo "Stopping services..."
+  if [ -f "$API_SUPERVISOR_PID_FILE" ]; then
+    kill "$(cat "$API_SUPERVISOR_PID_FILE")" 2>/dev/null || true
+    rm -f "$API_SUPERVISOR_PID_FILE"
+  fi
+  if [ -f "$NEXT_SUPERVISOR_PID_FILE" ]; then
+    kill "$(cat "$NEXT_SUPERVISOR_PID_FILE")" 2>/dev/null || true
+    rm -f "$NEXT_SUPERVISOR_PID_FILE"
+  fi
   if [ -f "$API_PID_FILE" ]; then
     kill "$(cat "$API_PID_FILE")" 2>/dev/null || true
     rm -f "$API_PID_FILE"
@@ -141,6 +198,10 @@ cleanup() {
     kill "$(cat "$TUNNEL_PID_FILE")" 2>/dev/null || true
     rm -f "$TUNNEL_PID_FILE"
   fi
+  stop_cloudflare_tunnels
+  stop_port_process "$API_PORT" "FastAPI"
+  stop_port_process "$NEXT_PORT" "Next.js"
+  rm -f "$LOCK_FILE"
   exit 0
 }
 trap cleanup INT TERM
@@ -159,6 +220,7 @@ fi
 
 if [ "$FORCE_RESTART" = "1" ]; then
   stop_existing_launchers
+  stop_cloudflare_tunnels
   stop_port_process "$API_PORT" "FastAPI"
   stop_port_process "$NEXT_PORT" "Next.js"
 else
@@ -201,6 +263,7 @@ while true; do
   sleep "$RESTART_DELAY_SECONDS"
 done &
 API_SUPERVISOR_PID=$!
+echo "$API_SUPERVISOR_PID" > "$API_SUPERVISOR_PID_FILE"
 
 echo "Starting Next.js on http://${NEXT_HOST}:${NEXT_PORT}"
 while true; do
@@ -213,10 +276,11 @@ while true; do
   sleep "$RESTART_DELAY_SECONDS"
 done &
 NEXT_SUPERVISOR_PID=$!
+echo "$NEXT_SUPERVISOR_PID" > "$NEXT_SUPERVISOR_PID_FILE"
 
 if [ "$PUBLIC_TUNNEL" = "1" ]; then
   echo "Starting Cloudflare Tunnel for http://${NEXT_HOST}:${NEXT_PORT}"
-  (cloudflared tunnel --url "http://${NEXT_HOST}:${NEXT_PORT}" | tee "$TUNNEL_LOG") &
+  cloudflared tunnel --url "http://${NEXT_HOST}:${NEXT_PORT}" >"$TUNNEL_LOG" 2>&1 &
   tunnel_pid=$!
   echo "$tunnel_pid" > "$TUNNEL_PID_FILE"
 fi
