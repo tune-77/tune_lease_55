@@ -136,17 +136,43 @@ def _log_to_db(
 
 def _fetch_training_data(db_path: str) -> tuple[np.ndarray, np.ndarray, int]:
     """
-    BR-424: contracted / delinquent / completed のレコードを取得して特徴量行列と目的変数を返す。
+    BR-424 + SO-001: screening_records と screening_outcomes を LEFT JOIN して
+    特徴量行列と目的変数を返す。
 
-    目的変数: delinquent → 1、contracted / completed → 0。
+    目的変数の優先順位:
+      1. screening_outcomes.delinquent（実績追跡値: 1=延滞/デフォルト）
+      2. screening_records.outcome == 'delinquent' → 1（フォールバック）
+
+    screening_outcomes テーブルが存在しない場合は既存動作にフォールバックする。
     NULL 特徴量は列ごとの中央値で補完する。
     """
     conn = sqlite3.connect(db_path)
-    rows = conn.execute(
-        f"SELECT {', '.join(FEATURE_COLS)}, outcome "
-        "FROM screening_records "
-        "WHERE outcome IN ('contracted', 'delinquent', 'completed')"
-    ).fetchall()
+
+    _uses_outcomes_join = False
+    try:
+        _sr_cols = ", ".join(f"sr.{c}" for c in FEATURE_COLS)
+        rows = conn.execute(
+            f"SELECT {_sr_cols}, "
+            "COALESCE(so.delinquent, CASE WHEN sr.outcome = 'delinquent' THEN 1 ELSE 0 END) "
+            "AS delinquent_label "
+            "FROM screening_records sr "
+            "LEFT JOIN screening_outcomes so ON so.screening_id = sr.id "
+            "WHERE sr.outcome IN ('contracted', 'delinquent', 'completed')"
+        ).fetchall()
+        _uses_outcomes_join = True
+        logger.info("[retraining_pipeline] _fetch_training_data: using screening_outcomes JOIN")
+    except sqlite3.OperationalError:
+        # screening_outcomes が未作成の場合は既存クエリにフォールバック
+        logger.info(
+            "[retraining_pipeline] _fetch_training_data: screening_outcomes not found, "
+            "falling back to legacy query"
+        )
+        rows = conn.execute(
+            f"SELECT {', '.join(FEATURE_COLS)}, outcome "
+            "FROM screening_records "
+            "WHERE outcome IN ('contracted', 'delinquent', 'completed')"
+        ).fetchall()
+
     conn.close()
 
     n = len(rows)
@@ -166,7 +192,10 @@ def _fetch_training_data(db_path: str) -> tuple[np.ndarray, np.ndarray, int]:
             r[i] if r[i] is not None else medians[i]
             for i in range(len(FEATURE_COLS))
         ]
-        label = 1 if r[-1] == "delinquent" else 0
+        if _uses_outcomes_join:
+            label = int(r[-1]) if r[-1] is not None else 0
+        else:
+            label = 1 if r[-1] == "delinquent" else 0
         X_list.append(features)
         y_list.append(label)
 

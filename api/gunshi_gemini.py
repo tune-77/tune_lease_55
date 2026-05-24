@@ -108,6 +108,30 @@ def build_bayes_factors(params: dict, prior: float, posterior: float) -> list[di
     return factors
 
 
+def _load_pdca_feedback() -> str:
+    """pdca_ai_rules.json が存在すれば審査フィードバック文字列を返す。なければ空文字。"""
+    import json
+    try:
+        _dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        path = os.path.join(_dir, "data", "pdca_ai_rules.json")
+        if not os.path.exists(path):
+            return ""
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not data:
+            return ""
+        lines: list[str] = []
+        summary = data.get("reflection_summary", "")
+        if summary:
+            lines.append(f"【傾向サマリー】{summary}")
+        for addon in data.get("ai_prompt_addons", []):
+            if isinstance(addon, str) and addon.strip():
+                lines.append(f"- {addon.strip()}")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 def build_system_instruction() -> str:
     # PHRASES_100 は dict[str, list[dict]] なので全カテゴリのtextを列挙
     all_phrases = []
@@ -117,11 +141,15 @@ def build_system_instruction() -> str:
             if text:
                 all_phrases.append(text)
     phrases_text = "\n".join(f"- {p}" for p in all_phrases)
-    return (
+    base = (
         "あなたは「軍師AI」です。リース審査担当者に対し、"
         "承認奪取のための戦略・フレーズを武将スタイルで提案してください。\n"
         f"利用可能なフレーズ辞書（{len(all_phrases)}件）:\n{phrases_text}\n"
     )
+    pdca_block = _load_pdca_feedback()
+    if pdca_block:
+        base += f"\n【過去の審査フィードバック】\n{pdca_block}\n"
+    return base
 
 
 def build_user_prompt(params: dict) -> str:

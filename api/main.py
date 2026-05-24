@@ -2832,3 +2832,26 @@ def get_outcomes(
         return [OutcomeResponse(**r) for r in rows]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Fluid Pipeline エンドポイント（追記のみ、既存ルート不変）────────────────────
+
+@app.post("/api/fluid/trigger")
+def fluid_trigger(triggered_by: str = "manual"):
+    """ドリフト検知→再学習→PDCA反省パイプラインを手動でバックグラウンド起動する。"""
+    try:
+        from api.fluid_pipeline import trigger_fluid_pipeline
+        result = trigger_fluid_pipeline(triggered_by=triggered_by)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/fluid/status")
+def fluid_status():
+    """Fluid Pipeline の現在状態を返す。"""
+    try:
+        from api.fluid_pipeline import get_fluid_status
+        return get_fluid_status()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

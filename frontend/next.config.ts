@@ -5,11 +5,6 @@ import withPWAInit from "next-pwa";
 const API_URL = process.env.FASTAPI_URL || "http://localhost:8000";
 
 const nextConfig: NextConfig = {
-  // ESLint は next build から分離し、専用の lint スクリプトで管理する。
-  // これにより「build 失敗 → AI が eslint --fix → コード削除」の連鎖を防ぐ。
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   async rewrites() {
     return [
       {
