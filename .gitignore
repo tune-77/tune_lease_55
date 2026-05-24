@@ -23,6 +23,14 @@ data/*.db
 data/*.sqlite
 data/*.jsonl
 data/backups/
+data/.fuse_hidden*
+data/dashboard_stats_cache.json
+data/department_stats_cache.json
+data/lease_news_metrics.json
+data/model_review_state.json
+data/tunnel_optimizer.joblib
+data/*.backup_*
+data/excluded_grade_cases_*.csv
 # ウィザード下書き（財務情報を含む一時ファイル）
 data/wizard_draft.json
 # 実行時状態ファイル（git pull で上書きされると困るファイル）
@@ -45,6 +53,9 @@ debug_agent_payload.txt
 
 # ダッシュボード画像（生成物）
 dashboard_images/
+
+# ChromaDB 永続キャッシュ
+api/chroma_db/
 
 # Claude内部ワークツリー
 .claude/worktrees/
