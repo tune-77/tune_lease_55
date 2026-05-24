@@ -19,6 +19,12 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
+# リポジトリルートを sys.path に追加（retraining_pipeline 等のインポート用）
+_API_DIR = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT = os.path.dirname(_API_DIR)
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 # ---------------------------------------------------------------------------
 # 状態管理（モジュールレベルで保持）
 # ---------------------------------------------------------------------------
@@ -48,12 +54,6 @@ def _update_status(**kwargs: Any) -> None:
 def _run_pipeline_sync(triggered_by: str) -> None:
     """ドリフト検知→再学習→PDCA反省を順番に実行する。例外を外部に伝播させない。"""
     _update_status(state="running", error=None)
-
-    # リポジトリルートを sys.path に追加（retraining_pipeline 等のインポート用）
-    _api_dir = os.path.dirname(os.path.abspath(__file__))
-    _repo_root = os.path.dirname(_api_dir)
-    if _repo_root not in sys.path:
-        sys.path.insert(0, _repo_root)
 
     try:
         # ── Step 1: ドリフト検知 ─────────────────────────────────────────────
@@ -146,7 +146,14 @@ def trigger_fluid_pipeline(triggered_by: str = "manual") -> dict:
         daemon=True,
         name="fluid-pipeline",
     )
-    thread.start()
+    try:
+        thread.start()
+    except Exception as exc:
+        with _status_lock:
+            _status["state"] = "error"
+            _status["error"] = str(exc)
+        logger.error("[fluid_pipeline] failed to start thread: %s", exc)
+        return {"status": "error", "reason": str(exc)}
     logger.info("[fluid_pipeline] triggered by=%s thread=%s", triggered_by, thread.name)
     return {
         "status": "triggered",

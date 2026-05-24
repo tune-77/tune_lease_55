@@ -4,6 +4,8 @@ screening_outcomes テーブルの追加マイグレーション。
 既存の lease_data.db に対して IF NOT EXISTS で安全に実行できる。
 既存テーブル・カラムには一切変更を加えない。
 
+スキーマは migrate_outcomes.py の DDL_SCREENING_OUTCOMES に準拠。
+
 使い方:
     python api/add_outcomes_table.py
 """
@@ -30,28 +32,33 @@ def _open_db(path: str = DB_PATH) -> sqlite3.Connection:
 
 
 def init_screening_outcomes_table(path: str = DB_PATH) -> None:
-    """screening_outcomes テーブルとインデックスを冪等に作成する。"""
+    """screening_outcomes テーブルとインデックスを冪等に作成する。
+
+    スキーマは migrate_outcomes.py の DDL_SCREENING_OUTCOMES と同一。
+    """
     with closing(_open_db(path)) as conn:
-        conn.execute("""
+        conn.executescript("""
             CREATE TABLE IF NOT EXISTS screening_outcomes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                screening_id INTEGER NOT NULL,
-                company_name TEXT,
-                outcome TEXT,
-                delinquent INTEGER DEFAULT 0,
-                months_since_contract INTEGER,
-                notes TEXT,
-                recorded_at TEXT DEFAULT (datetime('now'))
-            )
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                case_id             TEXT    NOT NULL,
+                screening_id        INTEGER,
+                contract_date       TEXT,
+                scheduled_end_date  TEXT,
+                actual_status       TEXT    NOT NULL DEFAULT 'unknown',
+                delinquent          INTEGER NOT NULL DEFAULT 0,
+                loss_given_default  REAL,
+                checked_at          TEXT    NOT NULL DEFAULT (datetime('now')),
+                notes               TEXT,
+                created_at          TEXT    NOT NULL DEFAULT (datetime('now')),
+                updated_at          TEXT    NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_so_case_id
+                ON screening_outcomes(case_id);
+            CREATE INDEX IF NOT EXISTS idx_so_status
+                ON screening_outcomes(actual_status);
+            CREATE INDEX IF NOT EXISTS idx_so_screening
+                ON screening_outcomes(screening_id);
         """)
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_outcomes_screening_id"
-            " ON screening_outcomes(screening_id)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_outcomes_company"
-            " ON screening_outcomes(company_name)"
-        )
         conn.commit()
     print(f"[outcomes] screening_outcomes table ready: {path}")
 
@@ -59,11 +66,13 @@ def init_screening_outcomes_table(path: str = DB_PATH) -> None:
 # ── CRUD ──────────────────────────────────────────────────────────────────────
 
 def insert_outcome(
-    screening_id: int,
-    company_name: str | None,
-    outcome: str | None,
+    case_id: str,
+    actual_status: str = "unknown",
+    screening_id: int | None = None,
+    contract_date: str | None = None,
+    scheduled_end_date: str | None = None,
     delinquent: int = 0,
-    months_since_contract: int | None = None,
+    loss_given_default: float | None = None,
     notes: str | None = None,
     path: str = DB_PATH,
 ) -> int:
@@ -73,10 +82,12 @@ def insert_outcome(
         cur = conn.execute(
             """
             INSERT INTO screening_outcomes
-                (screening_id, company_name, outcome, delinquent, months_since_contract, notes)
-            VALUES (?, ?, ?, ?, ?, ?)
+                (case_id, actual_status, screening_id, contract_date,
+                 scheduled_end_date, delinquent, loss_given_default, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (screening_id, company_name, outcome, delinquent, months_since_contract, notes),
+            (case_id, actual_status, screening_id, contract_date,
+             scheduled_end_date, delinquent, loss_given_default, notes),
         )
         conn.commit()
         return cur.lastrowid  # type: ignore[return-value]
@@ -84,31 +95,36 @@ def insert_outcome(
 
 def list_outcomes(
     screening_id: int | None = None,
-    company_name: str | None = None,
+    case_id: str | None = None,
+    actual_status: str | None = None,
     limit: int = 100,
     path: str = DB_PATH,
 ) -> list[dict]:
-    """一覧取得。screening_id / company_name で絞り込み可能。"""
+    """一覧取得。screening_id / case_id / actual_status で絞り込み可能。"""
     init_screening_outcomes_table(path)
     clauses: list[str] = []
     params: list = []
     if screening_id is not None:
         clauses.append("screening_id = ?")
         params.append(screening_id)
-    if company_name:
-        clauses.append("company_name = ?")
-        params.append(company_name)
+    if case_id:
+        clauses.append("case_id = ?")
+        params.append(case_id)
+    if actual_status:
+        clauses.append("actual_status = ?")
+        params.append(actual_status)
     where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
     params.append(limit)
     with closing(_open_db(path)) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             f"""
-            SELECT id, screening_id, company_name, outcome, delinquent,
-                   months_since_contract, notes, recorded_at
+            SELECT id, case_id, screening_id, contract_date, scheduled_end_date,
+                   actual_status, delinquent, loss_given_default, checked_at,
+                   notes, created_at, updated_at
             FROM screening_outcomes
             {where}
-            ORDER BY recorded_at DESC
+            ORDER BY checked_at DESC
             LIMIT ?
             """,
             params,

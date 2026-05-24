@@ -382,6 +382,20 @@ class BatchSaveRequest(BatchScoreRequest):
     batch_token: Optional[str] = None
 
 
+class AssetFinanceRequest(BaseModel):
+    asset_type: str = Field(..., description="建機 / 工作機械 / PC/IT / 医療機器 / ドローン / 車両")
+    term: int = Field(60, ge=12, le=84)
+    down_payment: float = Field(0.2, ge=0.0, le=0.5)
+    financial_score: str = Field("Medium", description="High / Medium / Low")
+    main_bank_support: bool = False
+    bank_coordination: bool = False
+    core_business: bool = False
+    related_assets: bool = False
+    annual_km: int = Field(0, ge=0, le=100000)
+    has_maintenance_lease: bool = False
+    ai_residual_pct: Optional[float] = Field(None, ge=0.0, le=100.0)
+
+
 BATCH_MAX_CSV_BYTES = 5 * 1024 * 1024
 BATCH_MAX_ROWS = 1000
 BATCH_TOKEN_TTL_SECONDS = 30 * 60
@@ -398,6 +412,41 @@ def get_batch_template():
             media_type="text/csv; charset=utf-8",
             headers={"Content-Disposition": 'attachment; filename="batch_shinsa_template.csv"'},
         )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/asset-finance/evaluate")
+def evaluate_asset_finance(req: AssetFinanceRequest):
+    """物件保全性・BEP・定性緩和因子を統合した物件ファイナンス審査。"""
+    try:
+        from components.asset_finance import AssetFinanceEngine
+        engine = AssetFinanceEngine()
+        if req.asset_type not in engine.ASSET_PARAMS:
+            raise HTTPException(status_code=422, detail=f"未対応の物件種別です: {req.asset_type}")
+        if req.financial_score not in {"High", "Medium", "Low"}:
+            raise HTTPException(status_code=422, detail="financial_score は High / Medium / Low のいずれかです")
+
+        data = req.model_dump() if hasattr(req, "model_dump") else req.dict()
+        result = engine.run_inference(data)
+        params = engine.ASSET_PARAMS[req.asset_type]
+        curve = [
+            {"month": i, "asset_value": v, "lease_balance": result["l_curve"][i]}
+            for i, v in enumerate(result["v_curve"])
+        ]
+        return {
+            **result,
+            "curve": curve,
+            "asset_params": {
+                "depreciation_rate": params["r"],
+                "priority": params["priority"],
+                "priority_score": params["priority_score"],
+                "info": params["info"],
+            },
+            "input": data,
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -3234,23 +3283,32 @@ def record_lease_news_judgment_change_api(req: LeaseNewsJudgmentChangeRequest):
 # ── screening_outcomes エンドポイント（追加のみ、既存ルート不変）──────────────────
 
 class OutcomeCreateRequest(BaseModel):
-    screening_id: int = Field(..., description="screening_records.id への参照")
-    company_name: Optional[str] = Field(default=None, description="企業名")
-    outcome: Optional[str] = Field(default=None, description="contracted / rejected / pending")
+    case_id: str = Field(..., description="案件 ID（past_cases.id 等）")
+    actual_status: str = Field(
+        default="unknown",
+        description="unknown / normal / late_30 / late_90 / default / completed",
+    )
+    screening_id: Optional[int] = Field(default=None, description="screening_records.id への参照")
+    contract_date: Optional[str] = Field(default=None, description="成約日（YYYY-MM-DD）")
+    scheduled_end_date: Optional[str] = Field(default=None, description="リース満了予定日")
     delinquent: int = Field(default=0, description="0=正常, 1=延滞・デフォルト")
-    months_since_contract: Optional[int] = Field(default=None, description="契約後経過月数")
+    loss_given_default: Optional[float] = Field(default=None, description="実損額（円）")
     notes: Optional[str] = Field(default=None, description="備考")
 
 
 class OutcomeResponse(BaseModel):
     id: int
-    screening_id: int
-    company_name: Optional[str]
-    outcome: Optional[str]
+    case_id: str
+    screening_id: Optional[int]
+    contract_date: Optional[str]
+    scheduled_end_date: Optional[str]
+    actual_status: str
     delinquent: int
-    months_since_contract: Optional[int]
+    loss_given_default: Optional[float]
+    checked_at: str
     notes: Optional[str]
-    recorded_at: str
+    created_at: str
+    updated_at: str
 
 
 @app.post("/api/outcomes", response_model=OutcomeResponse)
@@ -3259,11 +3317,13 @@ def create_outcome(req: OutcomeCreateRequest):
     try:
         from api.add_outcomes_table import insert_outcome, get_outcome
         new_id = insert_outcome(
+            case_id=req.case_id,
+            actual_status=req.actual_status,
             screening_id=req.screening_id,
-            company_name=req.company_name,
-            outcome=req.outcome,
+            contract_date=req.contract_date,
+            scheduled_end_date=req.scheduled_end_date,
             delinquent=req.delinquent,
-            months_since_contract=req.months_since_contract,
+            loss_given_default=req.loss_given_default,
             notes=req.notes,
         )
         row = get_outcome(new_id)
@@ -3279,15 +3339,17 @@ def create_outcome(req: OutcomeCreateRequest):
 @app.get("/api/outcomes", response_model=List[OutcomeResponse])
 def get_outcomes(
     screening_id: Optional[int] = None,
-    company_name: Optional[str] = None,
+    case_id: Optional[str] = None,
+    actual_status: Optional[str] = None,
     limit: int = 100,
 ):
-    """審査後追跡結果の一覧を取得する。screening_id / company_name で絞り込み可能。"""
+    """審査後追跡結果の一覧を取得する。screening_id / case_id / actual_status で絞り込み可能。"""
     try:
         from api.add_outcomes_table import list_outcomes
         rows = list_outcomes(
             screening_id=screening_id,
-            company_name=company_name,
+            case_id=case_id,
+            actual_status=actual_status,
             limit=limit,
         )
         return [OutcomeResponse(**r) for r in rows]

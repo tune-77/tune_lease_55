@@ -325,8 +325,9 @@ def check_retraining_needed(
                 "WHERE delinquent = 1 OR actual_status IN ('late_30','late_90','default')"
             ).fetchone()
         except sqlite3.OperationalError:
+            # actual_status カラムが存在しない旧スキーマへのフォールバック
             (delinquent_count,) = conn.execute(
-                "SELECT COUNT(*) FROM screening_records WHERE outcome = 'delinquent'"
+                "SELECT COUNT(*) FROM screening_outcomes WHERE delinquent = 1"
             ).fetchone()
 
         conn.close()

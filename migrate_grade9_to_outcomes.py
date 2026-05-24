@@ -12,10 +12,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 _DIR = Path(__file__).resolve().parent
 DB_PATH = _DIR / "data" / "lease_data.db"
@@ -65,7 +68,9 @@ def migrate(dry_run: bool = False) -> dict:
             result = data.get("result", {})
             inputs = data.get("inputs", {})
             asset_score = _safe_float(result.get("asset_score") or inputs.get("asset_score"))
-            # tenant_score, q_risk_score は result に含まれる場合
+            tenant_score = _safe_float(
+                result.get("tenant_score") or inputs.get("tenant_score", 0.0)
+            )
             q_risk_score = _safe_float(result.get("q_risk_score", 0.0))
             competitor_pressure_score = _safe_float(result.get("competitor_pressure_score", 0.0))
         except Exception:
@@ -100,22 +105,28 @@ def migrate(dry_run: bool = False) -> dict:
             sr_skipped += 1
 
         # ─── screening_outcomes への挿入 ───────────────────────────
-        cur.execute("SELECT id FROM screening_outcomes WHERE case_id = ?", (case_id,))
-        existing_so = cur.fetchone()
+        try:
+            cur.execute("SELECT id FROM screening_outcomes WHERE case_id = ?", (case_id,))
+            existing_so = cur.fetchone()
 
-        if existing_so is None:
-            if not dry_run:
-                cur.execute("""
-                    INSERT INTO screening_outcomes
-                        (case_id, actual_status, delinquent,
-                         notes, created_at, updated_at)
-                    VALUES (?, 'high_risk_grade', 1,
-                            '格付9: 信用リスク最高区分（excluded_grade_cases より移行）',
-                            ?, ?)
-                """, (case_id, now, now))
-            so_inserted += 1
-        else:
-            so_skipped += 1
+            if existing_so is None:
+                if not dry_run:
+                    cur.execute("""
+                        INSERT INTO screening_outcomes
+                            (case_id, actual_status, delinquent,
+                             notes, created_at, updated_at)
+                        VALUES (?, 'high_risk_grade', 1,
+                                '格付9: 信用リスク最高区分（excluded_grade_cases より移行）',
+                                ?, ?)
+                    """, (case_id, now, now))
+                so_inserted += 1
+            else:
+                so_skipped += 1
+        except sqlite3.OperationalError as exc:
+            logger.warning(
+                "[migrate_grade9] screening_outcomes 操作失敗 case_id=%s: %s", case_id, exc
+            )
+            continue
 
     if not dry_run:
         conn.commit()
