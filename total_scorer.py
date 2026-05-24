@@ -68,16 +68,16 @@ def calc_total_score(
             "rationale": "（標準配分 — カテゴリ未定義のためデフォルト値を使用）",
         }
 
-    asset_w = weight_cfg["asset_w"]
-    obligor_w = weight_cfg["obligor_w"]
+    # 物件スコアは警告フラグ用に計算するが final_score への寄与はゼロ
+    asset_w = 0.0
+    obligor_w = 1.0
 
-    # 物件スコア計算
+    # 物件スコア計算（表示・警告フラグ用）
     asset_result = calc_asset_score(category, asset_item_scores, contract)
     asset_score = asset_result["total_score"]
 
-    # 総合スコア
-    total = asset_score * asset_w + obligor_score * obligor_w
-    total = round(min(100.0, max(0.0, total)), 1)
+    # 総合スコア = 借手スコアのみ
+    total = round(min(100.0, max(0.0, obligor_score)), 1)
 
     grade = _get_grade(total)
     rec = get_recommendation(grade["label"])
