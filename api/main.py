@@ -860,6 +860,33 @@ def save_asset_finance_to_obsidian(req: AssetFinanceSaveToObsidianRequest):
         raise HTTPException(status_code=500, detail=f"Obsidian保存エラー: {e}")
 
 
+_USEFUL_LIFE_TABLE: list[dict] | None = None
+
+def _load_useful_life_table() -> list[dict]:
+    global _USEFUL_LIFE_TABLE
+    if _USEFUL_LIFE_TABLE is None:
+        table_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "useful_life_table.json")
+        with open(table_path, "r", encoding="utf-8") as f:
+            _USEFUL_LIFE_TABLE = json.load(f)
+    return _USEFUL_LIFE_TABLE
+
+
+@app.get("/api/asset/useful-life-search")
+def search_useful_life(q: str = ""):
+    """国税庁の法定耐用年数表からキーワード検索（name/category/subcategory）。最大20件返す。"""
+    table = _load_useful_life_table()
+    if not q.strip():
+        return table[:20]
+    q_lower = q.lower()
+    results = [
+        item for item in table
+        if q_lower in item.get("name", "").lower()
+        or q_lower in item.get("category", "").lower()
+        or q_lower in item.get("subcategory", "").lower()
+    ]
+    return results[:20]
+
+
 def _sanitize_batch_value(value):
     try:
         import math
