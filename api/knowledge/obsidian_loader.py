@@ -13,9 +13,7 @@ from typing import Iterator
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_VAULT_PATH = (
-    "/Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/"
-)
+_DEFAULT_VAULT_PATH = "/Users/kobayashiisaoryou/Documents/Obsidian Vault"
 _VAULT_PATH = os.environ.get("OBSIDIAN_VAULT_PATH", _DEFAULT_VAULT_PATH)
 
 # YAML frontmatter パターン

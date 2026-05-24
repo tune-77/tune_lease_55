@@ -1,5 +1,6 @@
 """軍師AI — Gemini streamGenerateContent SSE版"""
 import json
+import os
 import httpx
 from shinsa_gunshi_logic import (
     EVIDENCE_WEIGHTS,
@@ -132,9 +133,36 @@ def _load_pdca_feedback() -> str:
         return ""
 
 
+def _fetch_rag_context(asset_name: str, industry_cat: str) -> str:
+    """ChromaDB から案件特性（物件名・業種）に応じた知見ノートを取得する。失敗時は空文字。"""
+    if not (asset_name or industry_cat):
+        return ""
+    try:
+        from api.knowledge.vector_store import get_store
+        store = get_store()
+        if store.count() == 0:
+            return ""
+        query = f"{asset_name} {industry_cat} 換金性 リスク 知見 審査"
+        hits = store.search(query, mode="both", top_k=3)
+        if not hits:
+            return ""
+        lines = ["【Obsidian知見ノート（案件類似情報）】"]
+        for hit in hits:
+            ref = hit.get("ref", "")
+            text = hit.get("text", "").strip().replace("\n", " ")
+            if text:
+                label = f"{ref}: " if ref else ""
+                lines.append(f"- {label}{text[:350]}")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 def build_system_instruction(
     asset_warnings: list[str] | None = None,
     asset_bonuses: list[str] | None = None,
+    asset_name: str = "",
+    industry_cat: str = "",
 ) -> str:
     # PHRASES_100 は dict[str, list[dict]] なので全カテゴリのtextを列挙
     all_phrases = []
@@ -152,6 +180,9 @@ def build_system_instruction(
     pdca_block = _load_pdca_feedback()
     if pdca_block:
         base += f"\n【過去の審査フィードバック】\n{pdca_block}\n"
+    rag_block = _fetch_rag_context(asset_name, industry_cat)
+    if rag_block:
+        base += f"\n{rag_block}\n"
     if asset_warnings:
         warnings_text = "\n".join(asset_warnings)
         base += (
@@ -432,6 +463,8 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
         "system_instruction": {"parts": [{"text": build_system_instruction(
             params.get("asset_warnings"),
             params.get("asset_bonuses"),
+            str(params.get("asset_name") or ""),
+            str(params.get("industry_cat") or ""),
         )}]},
         "contents": [
             {"role": "user", "parts": [{"text": build_user_prompt(params)}]}
