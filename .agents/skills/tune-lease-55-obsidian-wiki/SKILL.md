@@ -1,17 +1,19 @@
 ---
 name: tune-lease-55-obsidian-wiki
-description: Obsidian wiki/linking workflow for tune_lease_55. Use when the user asks to "obdisian wiki", "Obsidian wiki", "wiki", "Obsidian", "connect notes", "search terms", "Related links", or to make the project easier to search across daily notes and project notes.
+description: Obsidian wiki/linking and maintenance workflow for tune_lease_55. Use when the user asks to "obdisian wiki", "Obsidian wiki", "wiki", "Obsidian", "connect notes", "search terms", "Related links", "related sections", or to make the project easier to search across daily notes and project notes.
 ---
 
 # tune-lease-55 Obsidian Wiki
 
-Use this skill to turn project work into searchable Obsidian notes.
+Use this skill to turn project work into searchable Obsidian notes and keep the wiki structure tidy over time.
 
 ## When to use
 
 - The user asks to "wikiして", "Obsidianにまとめて", "検索しやすくして", or "関連ノートを繋げて".
 - The work spans multiple project notes and should be navigable later.
 - The user wants searchability, bidirectional links, or a reusable note structure.
+- The user wants to normalize note entrances, Related sections, or search-term indexes.
+- The user wants periodic wiki maintenance, not just a one-off note update.
 
 ## Core workflow
 
@@ -39,6 +41,11 @@ Use this skill to turn project work into searchable Obsidian notes.
    - Omit secrets, raw DB rows, tokens, and private data.
    - If the task is large, also append a daily log entry.
 
+6. Maintain the wiki shape.
+   - Keep `Wiki -> 検索語インデックス -> 元ノート` as the default reading path.
+   - Normalize `## Related` blocks so the first links are the hub, the search index, then the source note.
+   - Keep only high-signal links in each note; do not widen the graph unless the user asks.
+
 ## Preferred note targets
 
 - `Projects/tune_lease_55/tune_lease_55 Wiki.md`
@@ -52,6 +59,7 @@ Use this skill to turn project work into searchable Obsidian notes.
 - When the topic is about AI agents, add synonyms for each agent name and endpoint.
 - When the topic is about operations, add tool names like `uv`, `py_compile`, or `tsc`.
 - When the user says "もっと繋げて", expand the hub and the `Related` sections first.
+- When the user asks to "整える", "見直す", "揃える", or "粒度を揃える", normalize the note graph and trim duplicates before adding new links.
 
 ## Link curation rules
 

@@ -15,8 +15,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import Response, StreamingResponse
 import json
+import re
 import sys
 import os
+from pathlib import Path
 
 # プロジェクトルートをPYTHONPATHに追加して、既存モジュール(scoring_core)をインポート可能にする
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -569,6 +571,145 @@ def _extract_asset_obsidian_evidence(hits: List[Dict[str, Any]]) -> Dict[str, Li
     return buckets
 
 
+def _classify_asset_obsidian_hit(hit: Dict[str, Any]) -> str:
+    """検索ヒットを審査用途の色分けカテゴリへ寄せる。"""
+    path = str(hit.get("path") or "")
+    text = f"{path}\n{hit.get('snippet') or ''}".lower()
+    if "中古相場" in text:
+        return "used_market"
+    if "残価" in text or "再販" in text:
+        return "residual_risk"
+    if "稟議" in text or "根拠" in text or "承認" in text:
+        return "approval_basis"
+    if "注意" in text or "保守" in text or "校正" in text or "期限" in text:
+        return "cautions"
+    if "asset knowledge" in path.lower():
+        return "support"
+    if "daily" in path.lower():
+        return "context"
+    if "generated" in path.lower():
+        return "generated"
+    return "support"
+
+
+def _normalize_obsidian_node_label(path_or_label: str, limit: int = 28) -> str:
+    text = str(path_or_label or "").strip()
+    if not text:
+        return "無題"
+    if "/" in text:
+        text = Path(text).stem
+    if len(text) > limit:
+        return text[:limit - 1] + "…"
+    return text
+
+
+def _build_asset_finance_obsidian_graph(
+    query: str,
+    hits: List[Dict[str, Any]],
+    generated_terms: List[str],
+    evidence: Dict[str, List[str]],
+) -> Dict[str, Any]:
+    """Obsidianメモの簡易グラフを NEXT 用に返す。"""
+    color_map = {
+        "used_market": "#2563eb",
+        "residual_risk": "#d97706",
+        "approval_basis": "#059669",
+        "cautions": "#e11d48",
+        "support": "#94a3b8",
+        "context": "#7c3aed",
+        "generated": "#0f766e",
+        "query": "#0f172a",
+        "focus": "#0f172a",
+        "linked": "#cbd5e1",
+    }
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    seen_nodes: set[str] = set()
+    evidence_text = " ".join(" ".join(v) for v in evidence.values()).lower()
+
+    def add_node(node_id: str, label: str, node_type: str, color: str, radius: int, **extra: Any) -> None:
+        if node_id in seen_nodes:
+            return
+        seen_nodes.add(node_id)
+        nodes.append({
+            "id": node_id,
+            "label": label,
+            "type": node_type,
+            "color": color,
+            "radius": radius,
+            **extra,
+        })
+
+    add_node("focus", "今回の審査", "focus", color_map["focus"], 24, pinned=True, used=True)
+    if query.strip():
+        add_node("query", "検索語", "query", color_map["query"], 18, used=True)
+        edges.append({"source": "focus", "target": "query", "type": "query", "width": 2, "color": "#0ea5e9"})
+
+    for idx, term in enumerate(generated_terms[:10]):
+        term_id = f"term_{idx}"
+        add_node(term_id, _normalize_obsidian_node_label(term, 24), "generated", color_map["generated"], 14, used=True, term=term)
+        edges.append({"source": "query" if query.strip() else "focus", "target": term_id, "type": "term", "width": 1.3, "color": "#14b8a6"})
+
+    for idx, hit in enumerate(hits[:6]):
+        path = str(hit.get("path") or "")
+        label = _normalize_obsidian_node_label(hit.get("title") or path, 28)
+        category = _classify_asset_obsidian_hit(hit)
+        used = category in {"used_market", "residual_risk", "approval_basis", "cautions"} or path.lower() in evidence_text
+        node_id = f"hit_{idx}"
+        color = color_map.get(category, color_map["support"])
+        snippet = str(hit.get("snippet") or "").strip().replace("\r\n", "\n")
+        add_node(
+            node_id,
+            label,
+            category,
+            color,
+            19 if used else 14,
+            path=path,
+            used=used,
+            category=category,
+            snippet=snippet[:220],
+            wikilinks=hit.get("wikilinks") or [],
+        )
+        edges.append({
+            "source": "focus",
+            "target": node_id,
+            "type": "used" if used else "support",
+            "width": 2.5 if used else 1.2,
+            "color": color if used else "#cbd5e1",
+        })
+
+        linked = hit.get("wikilinks") or []
+        if isinstance(linked, str):
+            linked = [item.strip() for item in linked.split(",") if item.strip()]
+        for link_idx, link in enumerate(list(linked)[:3]):
+            link_id = f"{node_id}_link_{link_idx}"
+            link_label = _normalize_obsidian_node_label(link, 26)
+            add_node(link_id, link_label, "linked", color_map["linked"], 11, used=False, linked_from=path)
+            edges.append({
+                "source": node_id,
+                "target": link_id,
+                "type": "wikilink",
+                "width": 1,
+                "color": "#cbd5e1",
+            })
+
+    summary = {
+        "total_hits": len(hits),
+        "used_hits": sum(1 for hit in hits if _classify_asset_obsidian_hit(hit) != "support"),
+        "linked_nodes": sum(1 for node in nodes if node.get("type") == "linked"),
+        "generated_terms": len(generated_terms),
+    }
+    legend = [
+        {"label": "今回の審査", "color": color_map["focus"]},
+        {"label": "今回使った根拠", "color": color_map["approval_basis"]},
+        {"label": "中古相場", "color": color_map["used_market"]},
+        {"label": "残価・再販", "color": color_map["residual_risk"]},
+        {"label": "注意点", "color": color_map["cautions"]},
+        {"label": "関連ノート", "color": color_map["linked"]},
+    ]
+    return {"nodes": nodes, "edges": edges, "summary": summary, "legend": legend}
+
+
 BATCH_MAX_CSV_BYTES = 5 * 1024 * 1024
 BATCH_MAX_ROWS = 1000
 BATCH_TOKEN_TTL_SECONDS = 30 * 60
@@ -641,12 +782,20 @@ def get_asset_finance_obsidian_context(req: AssetFinanceObsidianContextRequest):
                     hits.append(hit)
                     seen_paths.add(path)
         digest = build_obsidian_digest(query, hits) if hits else {"digest": "", "source_count": "0", "links": ""}
+        evidence = _extract_asset_obsidian_evidence(hits)
+        graph = _build_asset_finance_obsidian_graph(
+            query=query,
+            hits=hits,
+            generated_terms=generated_terms,
+            evidence=evidence,
+        )
         return {
             "query": query,
             "generated_terms": generated_terms,
             "hits": hits,
             "digest": digest,
-            "evidence": _extract_asset_obsidian_evidence(hits),
+            "evidence": evidence,
+            "graph": graph,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Obsidian検索エラー: {e}")
