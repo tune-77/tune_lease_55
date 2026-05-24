@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.responses import StreamingResponse
+from starlette.responses import Response, StreamingResponse
 import json
 import sys
 import os
@@ -370,6 +370,327 @@ class CaseResultPatch(BaseModel):
     competitor_rate: Optional[float] = None
     loss_reason: Optional[str] = None
     final_result_date: Optional[str] = None
+
+
+class BatchScoreRequest(BaseModel):
+    csv_text: Optional[str] = None
+    csv_base64: Optional[str] = None
+
+
+class BatchSaveRequest(BatchScoreRequest):
+    confirmed: bool = False
+    batch_token: Optional[str] = None
+
+
+BATCH_MAX_CSV_BYTES = 5 * 1024 * 1024
+BATCH_MAX_ROWS = 1000
+BATCH_TOKEN_TTL_SECONDS = 30 * 60
+_batch_result_cache: dict[str, dict] = {}
+
+
+@app.get("/api/batch/template")
+def get_batch_template():
+    """バッチ審査CSVテンプレートを返す。"""
+    try:
+        from components.batch_scoring import _get_csv_template
+        return Response(
+            content=_get_csv_template(),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="batch_shinsa_template.csv"'},
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _sanitize_batch_value(value):
+    try:
+        import math
+        import numpy as np
+        import pandas as pd
+        if value is None:
+            return None
+        if isinstance(value, float) and math.isnan(value):
+            return None
+        if isinstance(value, (np.integer,)):
+            return int(value)
+        if isinstance(value, (np.floating,)):
+            if math.isnan(float(value)):
+                return None
+            return float(value)
+        if pd.isna(value):
+            return None
+    except Exception:
+        pass
+    return value
+
+
+def _sanitize_batch_records(records: list[dict]) -> list[dict]:
+    return [
+        {str(k): _sanitize_batch_value(v) for k, v in row.items()}
+        for row in records
+    ]
+
+
+@app.post("/api/batch/score")
+def score_batch(req: BatchScoreRequest):
+    """CSVを一括スコアリングする。DB保存は /api/batch/save で明示的に行う。"""
+    return _run_batch_scoring(req, save_to_db=False)
+
+
+@app.post("/api/batch/save")
+def save_batch(req: BatchSaveRequest):
+    """確認済みCSVを一括スコアリングし、過去案件DBへ保存する。"""
+    if not req.confirmed:
+        raise HTTPException(status_code=422, detail="confirmed=true が必要です")
+    if req.batch_token:
+        return _save_cached_batch(req.batch_token)
+    return _run_batch_scoring(req, save_to_db=True)
+
+
+def _cleanup_batch_cache(now: float | None = None) -> None:
+    import time
+    now = time.time() if now is None else now
+    expired = [
+        token for token, item in _batch_result_cache.items()
+        if now - float(item.get("created_at", 0)) > BATCH_TOKEN_TTL_SECONDS
+    ]
+    for token in expired:
+        _batch_result_cache.pop(token, None)
+
+
+def _build_batch_response(df_in, df_out, summary: dict, batch_token: str | None = None) -> dict:
+    csv_out = df_out.to_csv(index=False, encoding="utf-8-sig")
+    records = _sanitize_batch_records(df_out.to_dict(orient="records"))
+    preview = _sanitize_batch_records(df_in.head(5).to_dict(orient="records"))
+    response = {
+        "summary": summary,
+        "preview": preview,
+        "rows": records,
+        "csv": csv_out,
+    }
+    if batch_token:
+        response["batch_token"] = batch_token
+    return response
+
+
+def _save_batch_payloads(db_results: list[dict], excluded_grade_results: list[dict]) -> tuple[int, int, int]:
+    from data_cases import save_case_log, save_excluded_grade_case
+
+    saved_count = 0
+    with_result = 0
+    excluded_saved_count = 0
+    for db_data in db_results:
+        if save_case_log(db_data):
+            saved_count += 1
+            if db_data.get("final_status") in ("成約", "失注"):
+                with_result += 1
+    for excluded_data in excluded_grade_results:
+        if save_excluded_grade_case(excluded_data):
+            excluded_saved_count += 1
+    return saved_count, with_result, excluded_saved_count
+
+
+def _run_batch_training_check(with_result: int) -> str:
+    if with_result <= 0:
+        return ""
+    try:
+        from auto_optimizer import get_training_status, run_auto_optimization
+        status = get_training_status()
+        if status.get("should_retrain"):
+            opt_result = run_auto_optimization(force=False)
+            ab = (opt_result or {}).get("ab_test_result", {})
+            if ab.get("passed"):
+                return f"係数自動更新完了: {ab.get('reason', '')}"
+            return f"係数更新見送り: {ab.get('reason', '')}"
+        return f"成約/失注データ蓄積中。次回学習まであと {status.get('next_trigger')} 件"
+    except Exception as e:
+        return f"自動学習スキップ: {e}"
+
+
+def _save_cached_batch(batch_token: str):
+    import time
+
+    _cleanup_batch_cache()
+    cached = _batch_result_cache.get(batch_token)
+    if not cached:
+        raise HTTPException(status_code=404, detail="保存対象のバッチ結果が見つからないか期限切れです。再スコアリングしてください。")
+    if cached.get("saved"):
+        raise HTTPException(status_code=409, detail="このバッチ結果は既に保存済みです。")
+
+    backup_message = ""
+    try:
+        from backup_manager import run_backup
+        bk = run_backup(force=True)
+        bk_files = [b.get("file", "") for b in bk.get("backed_up", []) if b.get("file")]
+        backup_message = (
+            f"バックアップ完了: {', '.join(bk_files)}"
+            if bk_files else
+            "バックアップ: 最新版が既に存在するためスキップ"
+        )
+    except Exception as e:
+        backup_message = f"バックアップに失敗しました（保存は続行）: {e}"
+
+    try:
+        saved_count, with_result, excluded_saved_count = _save_batch_payloads(
+            cached["db_results"],
+            cached["excluded_grade_results"],
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB保存に失敗しました: {e}")
+
+    cached["saved"] = True
+    cached["saved_at"] = time.time()
+    summary = dict(cached["summary"])
+    summary.update({
+        "saved_count": saved_count,
+        "with_result": with_result,
+        "excluded_saved_count": excluded_saved_count,
+        "backup_message": backup_message,
+        "training_message": _run_batch_training_check(with_result),
+        "failed_count": max(0, len(cached["db_results"]) + len(cached["excluded_grade_results"]) - saved_count - excluded_saved_count),
+    })
+    cached["summary"] = summary
+    return _build_batch_response(cached["df_in"], cached["df_out"], summary, batch_token=batch_token)
+
+
+def _run_batch_scoring(req: BatchScoreRequest, save_to_db: bool = False):
+    import base64
+    import io
+    import pandas as pd
+
+    try:
+        from components.batch_scoring import _score_one
+        from industry_normalizer import normalize_industry_major
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"バッチ審査ロジックの読み込みに失敗しました: {e}")
+
+    if req.csv_base64:
+        try:
+            csv_bytes = base64.b64decode(req.csv_base64)
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"CSV base64 の復号に失敗しました: {e}")
+        if len(csv_bytes) > BATCH_MAX_CSV_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"CSVファイルが大きすぎます。上限は {BATCH_MAX_CSV_BYTES // 1024 // 1024}MB です。",
+            )
+        last_error = None
+        for enc in ("utf-8-sig", "cp932", "shift_jis"):
+            try:
+                df_in = pd.read_csv(io.BytesIO(csv_bytes), encoding=enc)
+                break
+            except Exception as e:
+                last_error = e
+        else:
+            raise HTTPException(status_code=422, detail=f"CSV 読み込みエラー: {last_error}")
+    elif req.csv_text:
+        if len(req.csv_text.encode("utf-8")) > BATCH_MAX_CSV_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"CSVテキストが大きすぎます。上限は {BATCH_MAX_CSV_BYTES // 1024 // 1024}MB です。",
+            )
+        try:
+            df_in = pd.read_csv(io.StringIO(req.csv_text))
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"CSV 読み込みエラー: {e}")
+    else:
+        raise HTTPException(status_code=422, detail="csv_text または csv_base64 が必要です")
+
+    df_in = df_in.fillna("")
+    if len(df_in) > BATCH_MAX_ROWS:
+        raise HTTPException(
+            status_code=413,
+            detail=f"CSV行数が多すぎます。上限は {BATCH_MAX_ROWS}件です。",
+        )
+    if "業種大分類" in df_in.columns:
+        df_in["業種大分類"] = df_in["業種大分類"].map(normalize_industry_major)
+
+    missing_cols = [
+        name for name in ["売上高", "総資産"]
+        if f"{name}(百万円)" not in df_in.columns and f"{name}(千円)" not in df_in.columns
+    ]
+    if missing_cols:
+        raise HTTPException(status_code=422, detail=f"必須列が不足しています: {missing_cols}")
+
+    ui_results = []
+    db_results = []
+    excluded_grade_results = []
+    for _, row in df_in.iterrows():
+        out = _score_one(row.to_dict())
+        ui_results.append(out["UI表示用"])
+        if out.get("DB保存用"):
+            db_results.append(out["DB保存用"])
+        if out.get("信用リスク群保存用"):
+            excluded_grade_results.append(out["信用リスク群保存用"])
+
+    ui_df = pd.DataFrame(ui_results)
+    duplicate_ui_cols = [c for c in ui_df.columns if c in df_in.columns]
+    if duplicate_ui_cols:
+        ui_df = ui_df.drop(columns=duplicate_ui_cols)
+    df_out = pd.concat([df_in.reset_index(drop=True), ui_df], axis=1)
+
+    saved_count = 0
+    with_result = 0
+    excluded_saved_count = 0
+    backup_message = ""
+    training_message = ""
+    failed_count = 0
+
+    if save_to_db and (db_results or excluded_grade_results):
+        try:
+            from backup_manager import run_backup
+            bk = run_backup(force=True)
+            bk_files = [b.get("file", "") for b in bk.get("backed_up", []) if b.get("file")]
+            backup_message = (
+                f"バックアップ完了: {', '.join(bk_files)}"
+                if bk_files else
+                "バックアップ: 最新版が既に存在するためスキップ"
+            )
+        except Exception as e:
+            backup_message = f"バックアップに失敗しました（保存は続行）: {e}"
+
+        try:
+            saved_count, with_result, excluded_saved_count = _save_batch_payloads(db_results, excluded_grade_results)
+            failed_count = max(0, len(db_results) + len(excluded_grade_results) - saved_count - excluded_saved_count)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"DB保存に失敗しました: {e}")
+
+        training_message = _run_batch_training_check(with_result)
+
+    total = len(df_out)
+    judgments = df_out["判定"] if "判定" in df_out.columns else pd.Series([], dtype=object)
+    summary = {
+        "total": total,
+        "good": int(((judgments == "良決") | (judgments == "承認圏内")).sum()) if total else 0,
+        "border": int(((judgments == "ボーダー") | (judgments == "要審議")).sum()) if total else 0,
+        "rejected": int((judgments == "否決").sum()) if total else 0,
+        "errors": int((judgments == "エラー").sum()) if total else 0,
+        "standard_scoring": int((df_out.get("スコアリング") == "標準").sum()) if "スコアリング" in df_out else 0,
+        "saved_count": saved_count,
+        "with_result": with_result,
+        "excluded_saved_count": excluded_saved_count,
+        "backup_message": backup_message,
+        "training_message": training_message,
+        "failed_count": failed_count,
+    }
+
+    batch_token = None
+    if not save_to_db:
+        import time
+        import uuid
+        _cleanup_batch_cache()
+        batch_token = uuid.uuid4().hex
+        _batch_result_cache[batch_token] = {
+            "created_at": time.time(),
+            "saved": False,
+            "df_in": df_in,
+            "df_out": df_out,
+            "db_results": db_results,
+            "excluded_grade_results": excluded_grade_results,
+            "summary": summary,
+        }
+
+    return _build_batch_response(df_in, df_out, summary, batch_token=batch_token)
 
 
 @app.patch("/api/cases/{case_id}/result")
