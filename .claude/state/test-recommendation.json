@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-05-23T22:25:20Z",
-  "changed_file": "api/gunshi_gemini.py",
+  "timestamp": "2026-05-24T11:19:10Z",
+  "changed_file": "frontend/src/app/finance/page.tsx",
   "test_command": "pytest -v",
   "related_test": "",
   "recommendation": "テストの実行を推奨します"
