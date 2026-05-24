@@ -65,6 +65,7 @@ class ScoringResponse(BaseModel):
     company_name: Optional[str] = None
     asset_score: Optional[float] = None        # 物件スコア（表示用。final_scoreには影響しない）
     asset_warnings: Optional[list] = None      # 物件リスク警告フラグ（BEP・換金性・残存価値）
+    asset_bonuses: Optional[list] = None       # 物件プラス評価（換金性・残存価値優位）
 
 class CaseRegisterRequest(BaseModel):
     case_id: str

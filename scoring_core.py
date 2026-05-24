@@ -500,8 +500,10 @@ def compute_interest_coverage(inputs: dict) -> float:
     return round(op_profit / interest, 3)
 
 
-def generate_asset_warnings(asset_name: str, term_months: int) -> list[str]:
-    """物件名とリース期間から換金性・BEP・残存価値に基づく警告フラグを返す。"""
+def generate_asset_warnings(
+    asset_name: str, term_months: int
+) -> tuple[list[str], list[str]]:
+    """物件名とリース期間から換金性・BEP・残存価値を評価し (warnings, bonuses) を返す。"""
     name = (asset_name or "").lower()
 
     # キーワードマッピング: (useful_life年, 換金性ラベル)
@@ -556,7 +558,18 @@ def generate_asset_warnings(asset_name: str, term_months: int) -> list[str]:
     if liquidity == "極低":
         warnings.append("⚠️ 換金性低: 特注・専用物件のため回収時の売却が困難です")
 
-    return warnings
+    bonuses: list[str] = []
+
+    if liquidity == "高" and residual_at_end > 0.20:
+        bonuses.append("換金性高・資産価値良好")
+
+    if liquidity == "高" and bep_month < term * 0.5:
+        bonuses.append("早期回収可能な高流動性物件")
+
+    if liquidity == "中" and residual_at_end > 0.30:
+        bonuses.append("残存価値が高く担保力あり")
+
+    return warnings, bonuses
 
 
 def run_quick_scoring(inputs: dict) -> dict:
@@ -763,7 +776,7 @@ def run_quick_scoring(inputs: dict) -> dict:
         or ""
     )
     _term_months = _safe_int(inputs.get("lease_term"), default=60)
-    asset_warnings = generate_asset_warnings(_asset_name, _term_months)
+    asset_warnings, asset_bonuses = generate_asset_warnings(_asset_name, _term_months)
 
     credit_risk_group = {
         "score": 0.0,
@@ -843,6 +856,8 @@ def run_quick_scoring(inputs: dict) -> dict:
         "interest_coverage": interest_coverage,
         # 物件リスク警告フラグ（BEP・換金性・残存価値）— スコアには影響しない
         "asset_warnings": asset_warnings,
+        # 物件プラス評価（換金性・残存価値優位）— 軍師AIのコメント生成に使用
+        "asset_bonuses": asset_bonuses,
         # 物件スコア（表示用のみ）
         "asset_score": asset_score,
     }

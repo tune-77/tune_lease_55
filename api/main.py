@@ -258,6 +258,7 @@ def calculate_score(req: ScoringRequest):
             ai_completed_factors=[],
             asset_score=result.get("asset_score"),
             asset_warnings=result.get("asset_warnings", []),
+            asset_bonuses=result.get("asset_bonuses", []),
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -307,6 +308,7 @@ def calculate_score_full(req: ScoringRequest):
             company_name=inputs.get("company_name", ""),
             asset_score=result.get("asset_score"),
             asset_warnings=result.get("asset_warnings", []),
+            asset_bonuses=result.get("asset_bonuses", []),
         )
     except Exception as e:
         import traceback
@@ -1360,6 +1362,7 @@ class GunshiStreamRequest(BaseModel):
     bank_credit: float = 0.0
     lease_credit: float = 0.0
     asset_warnings: list = []
+    asset_bonuses: list = []
 
 
 @app.post("/api/gunshi/stream")

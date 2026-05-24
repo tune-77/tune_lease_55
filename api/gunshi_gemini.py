@@ -132,7 +132,10 @@ def _load_pdca_feedback() -> str:
         return ""
 
 
-def build_system_instruction(asset_warnings: list[str] | None = None) -> str:
+def build_system_instruction(
+    asset_warnings: list[str] | None = None,
+    asset_bonuses: list[str] | None = None,
+) -> str:
     # PHRASES_100 は dict[str, list[dict]] なので全カテゴリのtextを列挙
     all_phrases = []
     for phrases in PHRASES_100.values():
@@ -155,6 +158,14 @@ def build_system_instruction(asset_warnings: list[str] | None = None) -> str:
             "\n【物件リスク警告】\n"
             f"{warnings_text}\n"
             "→ 企業信用力が高い場合でも、物件の早期価値喪失に注意してコメントしてください。\n"
+        )
+    if asset_bonuses:
+        bonuses_text = "\n".join(f"- {b}" for b in asset_bonuses)
+        base += (
+            "\n【物件プラス評価】\n"
+            "以下の物件有利ポイントが確認されています。"
+            "借主の信用力に問題がなければ、これらをプラス材料として評価に反映してください：\n"
+            f"{bonuses_text}\n"
         )
     return base
 
@@ -418,7 +429,10 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
         return
 
     payload = {
-        "system_instruction": {"parts": [{"text": build_system_instruction(params.get("asset_warnings"))}]},
+        "system_instruction": {"parts": [{"text": build_system_instruction(
+            params.get("asset_warnings"),
+            params.get("asset_bonuses"),
+        )}]},
         "contents": [
             {"role": "user", "parts": [{"text": build_user_prompt(params)}]}
         ],
