@@ -170,9 +170,12 @@ def _normalize_competitor_rate_value(value) -> float:
 
 
 _LGB_QUAL_MODEL_PATH = os.path.join(_SCRIPT_DIR, "data", "lgb_qual_model.joblib")
+_LGBM_DEFAULT_MODEL_PATH = os.path.join(_SCRIPT_DIR, "models", "lgbm_model.pkl")
 
 _main_bundle_cache: dict[str, dict | None] = {}
 _lgb_qual_bundle_cache: dict | None = None
+_lgbm_default_model_cache = None
+_lgbm_default_model_loaded: bool = False
 
 
 def clear_scoring_cache() -> None:
@@ -181,8 +184,11 @@ def clear_scoring_cache() -> None:
     """
     global _main_bundle_cache
     global _lgb_qual_bundle_cache
+    global _lgbm_default_model_cache, _lgbm_default_model_loaded
     _main_bundle_cache = {}
     _lgb_qual_bundle_cache = None
+    _lgbm_default_model_cache = None
+    _lgbm_default_model_loaded = False
 
 
 def _load_lgb_qual_bundle():
@@ -197,6 +203,87 @@ def _load_lgb_qual_bundle():
         return _lgb_qual_bundle_cache
     except Exception:
         return None
+
+
+def _load_lgbm_default_model():
+    global _lgbm_default_model_cache, _lgbm_default_model_loaded
+    if _lgbm_default_model_loaded:
+        return _lgbm_default_model_cache
+    _lgbm_default_model_loaded = True
+    if not os.path.exists(_LGBM_DEFAULT_MODEL_PATH):
+        return None
+    try:
+        import joblib
+        _lgbm_default_model_cache = joblib.load(_LGBM_DEFAULT_MODEL_PATH)
+        return _lgbm_default_model_cache
+    except Exception:
+        return None
+
+
+def _build_default_model_feature_row(inputs: dict) -> list[float]:
+    """inputs から lgbm_model.pkl 用の特徴量ベクトルを構築する。
+    retraining_pipeline.py の _inputs_to_feature_row と同一変換。
+    """
+    major = str(inputs.get("industry_major") or "").strip()
+    grade = str(inputs.get("grade") or "").strip()
+
+    ind_medical       = 1.0 if ("医療" in major or "福祉" in major) else 0.0
+    ind_transport     = 1.0 if "運輸" in major else 0.0
+    ind_construction  = 1.0 if "建設" in major else 0.0
+    ind_manufacturing = 1.0 if "製造" in major else 0.0
+    ind_service       = 1.0 if any(x in major for x in ["卸売", "小売", "サービス"]) else 0.0
+
+    nenshu       = max(_safe_float(inputs.get("nenshu")), 0.0)
+    bank_credit  = max(_safe_float(inputs.get("bank_credit")), 0.0)
+    lease_credit = max(_safe_float(inputs.get("lease_credit")), 0.0)
+
+    grade_4_6   = 1.0 if "4-6" in grade else 0.0
+    grade_watch = 1.0 if "要注意" in grade else 0.0
+    grade_none  = 1.0 if ("無格付" in grade or grade in ("0", "④無格付")) else 0.0
+
+    return [
+        ind_medical, ind_transport, ind_construction, ind_manufacturing, ind_service,
+        np.log1p(nenshu), np.log1p(bank_credit), np.log1p(lease_credit),
+        _safe_float(inputs.get("op_profit"))    / 1000.0,
+        _safe_float(inputs.get("ord_profit"))   / 1000.0,
+        _safe_float(inputs.get("net_income"))   / 1000.0,
+        _safe_float(inputs.get("machines"))     / 1000.0,
+        _safe_float(inputs.get("other_assets")) / 1000.0,
+        _safe_float(inputs.get("rent"))         / 1000.0,
+        _safe_float(inputs.get("gross_profit")) / 1000.0,
+        _safe_float(inputs.get("depreciation")) / 1000.0,
+        _safe_float(inputs.get("dep_expense"))  / 1000.0,
+        _safe_float(inputs.get("rent_expense")) / 1000.0,
+        grade_4_6, grade_watch, grade_none,
+        _safe_float(inputs.get("contracts")),
+    ]
+
+
+DEFAULT_PROB_THRESHOLD = 0.3
+
+
+def generate_default_warnings(financial_inputs: dict) -> list[str]:
+    """デフォルト率モデルで高リスク判定した場合に警告フラグを返す。
+    閾値: default_prob >= 0.3 → 警告あり
+    モデルが存在しない・特徴量不足・予測失敗の場合は [] を返す。
+    """
+    model = _load_lgbm_default_model()
+    if model is None:
+        return []
+    try:
+        row = _build_default_model_feature_row(financial_inputs)
+        n_expected = getattr(model, "n_features_in_", len(row))
+        if len(row) != n_expected:
+            return []
+        X = np.array([row], dtype=float)
+        prob = float(model.predict_proba(X)[0][1])
+        if prob >= DEFAULT_PROB_THRESHOLD:
+            return [
+                f"財務パターンが高リスク格付先（格付9相当）と類似（確率{prob:.0%}）"
+            ]
+        return []
+    except Exception:
+        return []
 
 
 def _build_lgb_qual_feature_vector(inputs: dict, feature_names: list[str], asset_to_idx: dict) -> list[float]:
@@ -778,6 +865,9 @@ def run_quick_scoring(inputs: dict) -> dict:
     _term_months = _safe_int(inputs.get("lease_term"), default=60)
     asset_warnings, asset_bonuses = generate_asset_warnings(_asset_name, _term_months)
 
+    # デフォルト率モデルによる高リスク警告フラグ（スコアには影響しない）
+    default_warnings = generate_default_warnings(inputs)
+
     credit_risk_group = {
         "score": 0.0,
         "level": "unavailable",
@@ -860,6 +950,8 @@ def run_quick_scoring(inputs: dict) -> dict:
         "asset_bonuses": asset_bonuses,
         # 物件スコア（表示用のみ）
         "asset_score": asset_score,
+        # デフォルト率モデルによる高リスク警告フラグ— スコアには影響しない
+        "default_warnings": default_warnings,
     }
 
 
