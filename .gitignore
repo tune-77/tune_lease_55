@@ -57,5 +57,8 @@ dashboard_images/
 # ChromaDB 永続キャッシュ
 api/chroma_db/
 
+# ローカルRAG埋め込みモデル（再取得可能な大容量ファイル）
+models/sentence-transformers/
+
 # Claude内部ワークツリー
 .claude/worktrees/

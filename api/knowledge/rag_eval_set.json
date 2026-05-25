@@ -1,0 +1,120 @@
+[
+  {
+    "id": "subsidy_lease",
+    "query": "ものづくり補助金はリースでも使える？注意点は？",
+    "expected_path_any": [
+      "リース知識/補助金・税制優遇とリース.md",
+      "Projects/tune_lease_55/2026-05-13_補助金まとめ.md"
+    ],
+    "forbidden_path_any": [
+      "八奈見",
+      "Humor/"
+    ]
+  },
+  {
+    "id": "useful_life_period",
+    "query": "期待使用期間とリース期間がズレる案件の審査ポイントは？",
+    "expected_path_any": [
+      "Projects/tune_lease_55/2026-05-13_期待使用期間_autoresearch.md",
+      "Projects/tune_lease_55/2026-05-13_リース審査AI_知識分解.md",
+      "リース知識/審査実務チェックポイント.md"
+    ],
+    "forbidden_path_any": [
+      "八奈見",
+      "Humor/"
+    ]
+  },
+  {
+    "id": "cashflow_weak",
+    "query": "資金繰りが厳しい会社にリースを出す時の確認事項は？",
+    "expected_path_any": [
+      "リース知識/格付８−２先への対応.md",
+      "リース知識/審査実務チェックポイント.md",
+      "リース知識/業種別リースリスク.md",
+      "Projects/tune_lease_55/Research/リースBOT_追加知識候補_2026-05-23.md"
+    ],
+    "forbidden_path_any": [
+      "八奈見",
+      "Humor/"
+    ]
+  },
+  {
+    "id": "lease_vs_bank",
+    "query": "銀行借入とリースの違いを営業説明したい",
+    "expected_path_any": [
+      "Projects/tune_lease_55/リースvs銀行借入_リサーチ.md",
+      "Projects/tune_lease_55/2026-05-12_リースと銀行借入の違い_autoresearch.md"
+    ],
+    "forbidden_path_any": [
+      "八奈見"
+    ]
+  },
+  {
+    "id": "re_lease",
+    "query": "再リースするときのリスクと満了後の選択肢を知りたい",
+    "expected_path_any": [
+      "Projects/tune_lease_55/リース満了後の対応.md",
+      "Projects/tune_lease_55/2026-05-12_再リース_autoresearch.md",
+      "Projects/tune_lease_55/Research/リースBOT_追加知識候補_2026-05-23.md"
+    ],
+    "forbidden_path_any": [
+      "八奈見"
+    ]
+  },
+  {
+    "id": "asset_resale",
+    "query": "物件の残価や中古売却価格が弱い場合の見方は？",
+    "expected_path_any": [
+      "リース知識/物件残存価値・処分実務.md",
+      "tuneLease55/知見・分析/物件換金性スコア分析_20260525.md",
+      "Projects/tune_lease_55/Asset Knowledge/"
+    ],
+    "forbidden_path_any": [
+      "八奈見",
+      "Humor/"
+    ]
+  },
+  {
+    "id": "construction_risk",
+    "query": "建設業のリース審査で確認すべきリスクは？",
+    "expected_path_any": [
+      "リース知識/業種別リースリスク.md",
+      "リース知識/審査実務チェックポイント.md",
+      "Projects/tune_lease_55/2026-05-13_業種別調査まとめ.md"
+    ],
+    "forbidden_path_any": [
+      "八奈見"
+    ]
+  },
+  {
+    "id": "interest_rate",
+    "query": "リース料率と期間の関係、金利相場を確認したい",
+    "expected_path_any": [
+      "リース知識/リース料率・金利相場.md"
+    ],
+    "forbidden_path_any": [
+      "八奈見",
+      "Humor/"
+    ]
+  },
+  {
+    "id": "insurance",
+    "query": "リース物件の動産保険で注意すべき点は？",
+    "expected_path_any": [
+      "Projects/tune_lease_55/2026-05-12_リース動産保険_autoresearch.md",
+      "Projects/tune_lease_55/Research/リースBOT_追加知識候補_2026-05-23.md"
+    ],
+    "forbidden_path_any": [
+      "八奈見"
+    ]
+  },
+  {
+    "id": "humor_allowed",
+    "query": "審査コメントのユーモア口調ルールを確認したい",
+    "expected_path_any": [
+      "Humor/",
+      "Projects/tune_lease_55/2026-05-13_ユーモアまとめ.md"
+    ],
+    "forbidden_path_any": []
+  }
+]

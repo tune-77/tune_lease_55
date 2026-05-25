@@ -171,14 +171,52 @@ _build_vault_index()
 
 def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[str, str]]:
     vault, knowledge, chat_logs = _get_indexed_paths()
-    if not vault:
-        return []
     terms = _expand_query_terms(query)[:24]
     if not terms:
         return []
 
     seen: set[str] = set()
     hits: list[dict[str, str]] = []
+
+    # Primary RAG path: ChromaDB-backed Obsidian index. If the local embedding
+    # model is unavailable, KnowledgeVectorStore falls back to keyword search
+    # over indexed Chroma documents without network access.
+    try:
+        from api.knowledge.vector_store import get_store
+
+        store = get_store()
+        for item in store.search(" ".join(terms), top_k=limit):
+            raw_path = str(item.get("file_path") or "").strip()
+            path = ""
+            if raw_path:
+                try:
+                    raw = Path(raw_path)
+                    path = str(raw.relative_to(vault)) if vault and raw.is_absolute() else raw_path
+                except Exception:
+                    path = raw_path
+            if not path:
+                path = str(item.get("file_name") or item.get("ref") or "").strip()
+            if not path or path in seen:
+                continue
+            seen.add(path)
+            text = str(item.get("text") or "").strip()
+            hits.append({
+                "path": path,
+                "snippet": text[:max_chars],
+                "wikilinks": [
+                    link.strip()
+                    for link in str(item.get("wikilinks") or "").split(",")
+                    if link.strip()
+                ],
+                "source": str(item.get("source") or "rag"),
+            })
+            if len(hits) >= limit:
+                return hits
+    except Exception:
+        pass
+
+    if not vault:
+        return hits
 
     # Cases/ を優先: 業種・スコア・金利・判定ワードがクエリに含まれるとき
     if any("cases/" in t or t in ("スコア", "判定", "推奨金利", "q-risk", "quantum_risk") for t in terms):

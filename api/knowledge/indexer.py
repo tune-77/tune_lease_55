@@ -22,7 +22,7 @@ def _get_indexed_mtimes() -> dict[str, float]:
     """ChromaDB に保存済みの doc_id → mtime マップを取得する。"""
     store = get_store()
     try:
-        store._ensure_initialized()
+        store._ensure_collection()
         result = store._collection.get(include=["metadatas"])
         return {
             doc_id: float(meta.get("mtime", 0))
