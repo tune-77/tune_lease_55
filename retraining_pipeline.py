@@ -1,14 +1,17 @@
-"""retraining_pipeline.py — screening_records 蓄積データによる自動・手動再学習パイプライン。
+"""retraining_pipeline.py — デフォルト予測モデルの自動・手動再学習パイプライン。
 
-再学習対象はスコア集約メタモデルである。total_score / asset_score / tenant_score /
-q_risk_score / competitor_pressure_score を特徴量として delinquent 判定を学習する
+再学習対象はデフォルト判定モデルである。
+  正常先（delinquent=0）: past_cases テーブル（成約/失注/検収完了）の財務特徴量
+  高リスク先（delinquent=1）: excluded_grade_cases テーブル（格付9）の財務特徴量
 RandomForest + LightGBM アンサンブルモデルであり、scoring_core.py / total_scorer.py 等の
 既存スコアリングロジックには一切影響しない。
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import math
 import shutil
 import sqlite3
 import time
@@ -43,11 +46,11 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 FEATURE_COLS = [
-    "total_score",
-    "asset_score",
-    "tenant_score",
-    "q_risk_score",
-    "competitor_pressure_score",
+    "ind_medical", "ind_transport", "ind_construction", "ind_manufacturing", "ind_service",
+    "sales_log", "bank_credit_log", "lease_credit_log",
+    "op_profit", "ord_profit", "net_income", "machines", "other_assets", "rent",
+    "gross_profit", "depreciation", "dep_expense", "rent_expense",
+    "grade_4_6", "grade_watch", "grade_none", "contracts",
 ]
 
 RF_MODEL_FILE = "spread_predictor_v2.pkl"
@@ -134,90 +137,136 @@ def _log_to_db(
         logger.error("[retraining_pipeline] log_to_db failed: %s", exc)
 
 
+def _safe_float(v: object, default: float = 0.0) -> float:
+    try:
+        return float(v) if v is not None else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _inputs_to_feature_row(inputs: dict) -> list[float]:
+    """inputs dict から FEATURE_COLS 順の特徴量リストを返す。analysis_regression.py と同じ変換。"""
+    major = str(inputs.get("industry_major") or "").strip()
+    grade = str(inputs.get("grade") or "").strip()
+
+    ind_medical       = 1.0 if ("医療" in major or "福祉" in major) else 0.0
+    ind_transport     = 1.0 if "運輸" in major else 0.0
+    ind_construction  = 1.0 if "建設" in major else 0.0
+    ind_manufacturing = 1.0 if "製造" in major else 0.0
+    ind_service       = 1.0 if any(x in major for x in ["卸売", "小売", "サービス"]) else 0.0
+
+    nenshu      = max(_safe_float(inputs.get("nenshu")), 0.0)
+    bank_credit = max(_safe_float(inputs.get("bank_credit")), 0.0)
+    lease_credit = max(_safe_float(inputs.get("lease_credit")), 0.0)
+
+    grade_4_6   = 1.0 if "4-6" in grade else 0.0
+    grade_watch = 1.0 if "要注意" in grade else 0.0
+    grade_none  = 1.0 if ("無格付" in grade or grade in ("0", "④無格付")) else 0.0
+
+    return [
+        ind_medical, ind_transport, ind_construction, ind_manufacturing, ind_service,
+        math.log1p(nenshu), math.log1p(bank_credit), math.log1p(lease_credit),
+        _safe_float(inputs.get("op_profit"))    / 1000.0,
+        _safe_float(inputs.get("ord_profit"))   / 1000.0,
+        _safe_float(inputs.get("net_income"))   / 1000.0,
+        _safe_float(inputs.get("machines"))     / 1000.0,
+        _safe_float(inputs.get("other_assets")) / 1000.0,
+        _safe_float(inputs.get("rent"))         / 1000.0,
+        _safe_float(inputs.get("gross_profit")) / 1000.0,
+        _safe_float(inputs.get("depreciation")) / 1000.0,
+        _safe_float(inputs.get("dep_expense"))  / 1000.0,
+        _safe_float(inputs.get("rent_expense")) / 1000.0,
+        grade_4_6, grade_watch, grade_none,
+        _safe_float(inputs.get("contracts")),
+    ]
+
+
 def _fetch_training_data(db_path: str) -> tuple[np.ndarray, np.ndarray, int]:
     """
-    BR-424 + SO-001 + FP-001: screening_records / screening_outcomes / past_cases を
-    統合して特徴量行列と目的変数を返す。
+    デフォルト判定モデル用の学習データを構築する。
 
-    目的変数の優先順位:
-      1. past_cases.data.inputs.grade が '8-3'/'9'/'10' → delinquent=1、それ以外 → 0（基本ラベル）
-      2. screening_outcomes.delinquent がある場合はそちらで上書き（手動補正用）
+    データソース:
+      正常先（delinquent=0）: past_cases（成約/失注/検収完了）の inputs 財務特徴量
+      高リスク先（delinquent=1）: excluded_grade_cases（original_grade='9'）の inputs 財務特徴量
 
-    クラス均衡チェック:
-      - delinquent=1 が 5件未満の場合は (empty, empty, 0) を返す
-      - この場合 run_retraining() は "skipped" として処理する
-
-    NULL 特徴量は列ごとの中央値で補完する。
+    特徴量は analysis_regression.py の COEFF_MAIN_KEYS と同一変換（対数・千円換算・フラグ）。
+    NULL は列ごとの中央値で補完する。
+    delinquent=1 が 5件未満の場合は (empty, empty, 0) を返してスキップを促す。
     """
     conn = sqlite3.connect(db_path)
+    X_list: list[list[float]] = []
+    y_list: list[int] = []
 
-    rows: list = []
-    _uses_outcomes_join = False
-
+    # ── 正常先: past_cases ──
     try:
-        _sr_cols = ", ".join(f"sr.{c}" for c in FEATURE_COLS)
-        rows = conn.execute(
-            f"SELECT {_sr_cols}, "
-            "COALESCE("
-            "  so.delinquent, "
-            "  CASE WHEN json_extract(pc.data, '$.inputs.grade') IN ('8-3','9','10') THEN 1 ELSE 0 END"
-            ") AS delinquent_label "
-            "FROM screening_records sr "
-            "LEFT JOIN screening_outcomes so ON so.case_id = sr.case_id "
-            "LEFT JOIN past_cases pc ON pc.id = sr.case_id "
-            "WHERE sr.outcome IN ('contracted', 'delinquent', 'completed')"
+        normal_rows = conn.execute(
+            "SELECT data FROM past_cases "
+            "WHERE json_extract(data, '$.final_status') IN ('成約', '失注', '検収完了')"
         ).fetchall()
-        _uses_outcomes_join = True
+        for row in normal_rows:
+            try:
+                d = json.loads(row[0])
+                inputs = d.get("inputs") or {}
+                if not inputs:
+                    continue
+                X_list.append(_inputs_to_feature_row(inputs))
+                y_list.append(0)
+            except Exception:  # noqa: BLE001
+                continue
         logger.info(
-            "[retraining_pipeline] _fetch_training_data: using grade-based label + outcomes override, rows=%d",
-            len(rows),
+            "[retraining_pipeline] _fetch_training_data: normal(past_cases)=%d", len(X_list)
         )
-    except sqlite3.OperationalError:
-        logger.info(
-            "[retraining_pipeline] _fetch_training_data: grade join failed, "
-            "falling back to legacy query"
-        )
-        rows = conn.execute(
-            f"SELECT {', '.join(FEATURE_COLS)}, outcome "
-            "FROM screening_records "
-            "WHERE outcome IN ('contracted', 'delinquent', 'completed')"
+    except sqlite3.OperationalError as exc:
+        logger.error("[retraining_pipeline] _fetch_training_data: past_cases read failed: %s", exc)
+
+    # ── 高リスク先: excluded_grade_cases（格付9） ──
+    n_before_delinquent = len(X_list)
+    try:
+        delinquent_rows = conn.execute(
+            "SELECT data FROM excluded_grade_cases WHERE original_grade = '9'"
         ).fetchall()
+        for row in delinquent_rows:
+            try:
+                d = json.loads(row[0])
+                inputs = d.get("inputs") or {}
+                if not inputs:
+                    continue
+                X_list.append(_inputs_to_feature_row(inputs))
+                y_list.append(1)
+            except Exception:  # noqa: BLE001
+                continue
+        n_delinquent_loaded = len(X_list) - n_before_delinquent
+        logger.info(
+            "[retraining_pipeline] _fetch_training_data: delinquent(excluded_grade)=%d",
+            n_delinquent_loaded,
+        )
+    except sqlite3.OperationalError as exc:
+        logger.error(
+            "[retraining_pipeline] _fetch_training_data: excluded_grade_cases read failed: %s", exc
+        )
 
     conn.close()
 
-    n = len(rows)
+    n = len(X_list)
     if n == 0:
         return np.empty((0, len(FEATURE_COLS))), np.empty(0), 0
-
-    raw = [list(r) for r in rows]
-
-    medians: dict[int, float] = {}
-    for col_idx in range(len(FEATURE_COLS)):
-        vals = [r[col_idx] for r in raw if r[col_idx] is not None]
-        medians[col_idx] = float(np.median(vals)) if vals else 0.0
-
-    X_list, y_list = [], []
-    for r in raw:
-        features = [
-            r[i] if r[i] is not None else medians[i]
-            for i in range(len(FEATURE_COLS))
-        ]
-        if _uses_outcomes_join:
-            label = int(r[-1]) if r[-1] is not None else 0
-        else:
-            label = 1 if r[-1] == "delinquent" else 0
-        X_list.append(features)
-        y_list.append(label)
 
     X = np.array(X_list, dtype=float)
     y = np.array(y_list, dtype=int)
 
-    # FP-001: クラス均衡チェック — delinquent=1 が 5件未満は学習意味なし
+    # 非有限値を列ごとの中央値で補完
+    for col_idx in range(X.shape[1]):
+        mask = ~np.isfinite(X[:, col_idx])
+        if mask.any():
+            finite_vals = X[~mask, col_idx]
+            median_val = float(np.median(finite_vals)) if len(finite_vals) > 0 else 0.0
+            X[mask, col_idx] = median_val
+
+    # FP-001: クラス均衡チェック
     n_delinquent = int(np.sum(y == 1))
     if n_delinquent < 5:
         logger.warning(
-            "[retraining_pipeline] _fetch_training_data: delinquent cases=%d < 5, "
-            "skip training. Ensure past_cases have grade '8-3'/'9'/'10' or set screening_outcomes.delinquent.",
+            "[retraining_pipeline] _fetch_training_data: delinquent cases=%d < 5, skip.",
             n_delinquent,
         )
         return np.empty((0, len(FEATURE_COLS))), np.empty(0), 0
@@ -481,7 +530,9 @@ def run_retraining(
         lgbm = None
 
         try:
-            rf = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
+            rf = RandomForestClassifier(
+                n_estimators=100, random_state=42, n_jobs=-1, class_weight="balanced"
+            )
             rf.fit(X_train, y_train)
 
             ensemble_proba = rf.predict_proba(X_test)[:, 1]
@@ -489,7 +540,10 @@ def run_retraining(
             # LGBM はインストール済みの場合にアンサンブル（モック等で失敗時は RF のみ）
             if _LGBM_AVAILABLE:
                 try:
-                    lgbm = LGBMClassifier(n_estimators=100, random_state=42, verbose=-1)
+                    lgbm = LGBMClassifier(
+                        n_estimators=100, random_state=42, verbose=-1,
+                        class_weight="balanced",
+                    )
                     lgbm.fit(X_train, y_train)
                     lgbm_proba = np.array(
                         lgbm.predict_proba(X_test)[:, 1], dtype=float

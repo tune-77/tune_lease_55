@@ -471,9 +471,13 @@ def _run_single_quant_analysis(X, y, feature_names, min_cases=50):
     from sklearn.model_selection import train_test_split
     from sklearn.metrics import roc_auc_score, accuracy_score
     n_orig = len(y)
-    X, y, bootstrapped = _bootstrap_to_min_size(X, y, min_size=min_cases)
-    n_pos, n_neg = int(y.sum()), len(y) - int(y.sum())
-    X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.25, random_state=42, stratify=y)
+    # ブートストラップはtrain splitの後にtrain側のみ適用する。
+    # 先にブートストラップしてからsplitすると、テストデータが訓練データと
+    # 完全に重複してAUC=1.00になるデータ汚染が発生するため。
+    stratify_split = y if len(np.unique(y)) > 1 and len(y) >= 4 and min(np.bincount(y)) >= 2 else None
+    X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.25, random_state=42, stratify=stratify_split)
+    X_tr, y_tr, bootstrapped = _bootstrap_to_min_size(X_tr, y_tr, min_size=min_cases)
+    n_pos, n_neg = int(y_tr.sum()) + int(y_te.sum()), (len(y_tr) - int(y_tr.sum())) + (len(y_te) - int(y_te.sum()))
     out = {
         "n_cases": len(y),
         "n_cases_orig": n_orig,
