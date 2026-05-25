@@ -259,6 +259,7 @@ def calculate_score(req: ScoringRequest):
             asset_score=result.get("asset_score"),
             asset_warnings=result.get("asset_warnings", []),
             asset_bonuses=result.get("asset_bonuses", []),
+            default_warnings=result.get("default_warnings", []),
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -309,6 +310,7 @@ def calculate_score_full(req: ScoringRequest):
             asset_score=result.get("asset_score"),
             asset_warnings=result.get("asset_warnings", []),
             asset_bonuses=result.get("asset_bonuses", []),
+            default_warnings=result.get("default_warnings", []),
         )
     except Exception as e:
         import traceback
@@ -1363,6 +1365,7 @@ class GunshiStreamRequest(BaseModel):
     lease_credit: float = 0.0
     asset_warnings: list = []
     asset_bonuses: list = []
+    default_warnings: list = []
 
 
 @app.post("/api/gunshi/stream")

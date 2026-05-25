@@ -163,6 +163,7 @@ def build_system_instruction(
     asset_bonuses: list[str] | None = None,
     asset_name: str = "",
     industry_cat: str = "",
+    default_warnings: list[str] | None = None,
 ) -> str:
     # PHRASES_100 は dict[str, list[dict]] なので全カテゴリのtextを列挙
     all_phrases = []
@@ -197,6 +198,13 @@ def build_system_instruction(
             "以下の物件有利ポイントが確認されています。"
             "借主の信用力に問題がなければ、これらをプラス材料として評価に反映してください：\n"
             f"{bonuses_text}\n"
+        )
+    if default_warnings:
+        warnings_text = "\n".join(f"- {w}" for w in default_warnings)
+        base += (
+            "\n【高リスク先警告】\n"
+            "財務分析モデルが以下のリスクを検出しています。審査の最終判断に反映してください：\n"
+            f"{warnings_text}\n"
         )
     return base
 
@@ -465,6 +473,7 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
             params.get("asset_bonuses"),
             str(params.get("asset_name") or ""),
             str(params.get("industry_cat") or ""),
+            params.get("default_warnings"),
         )}]},
         "contents": [
             {"role": "user", "parts": [{"text": build_user_prompt(params)}]}
