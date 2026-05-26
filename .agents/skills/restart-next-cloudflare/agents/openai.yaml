@@ -1,0 +1,4 @@
+interface:
+  display_name: "Next Cloudflare Restart"
+  short_description: "Restart Tune Lease Next/FastAPI with Cloudflare Tunnel."
+  default_prompt: "Next/FastAPIをCloudflare Tunnel付きで再起動して状態を確認してください。"

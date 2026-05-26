@@ -47,6 +47,7 @@ export default function Sidebar() {
         { name: 'TimesFM 時系列予測', href: '/timesfm', icon: TrendingUp, color: 'text-emerald-500' },
         { name: '競合関係グラフ', href: '/competitor', icon: Share2, color: 'text-orange-400' },
         { name: '案件類似ネットワーク', href: '/similar', icon: Network, color: 'text-teal-400' },
+        { name: '知識宇宙マップ', href: '/knowledge-space', icon: Network, color: 'text-cyan-300' },
         { name: 'ビジュアルインサイト', href: '/visual', icon: Eye, color: 'text-blue-300' },
         { name: '文明年代記', href: '/chronicle', icon: Globe, color: 'text-purple-500' },
       ]

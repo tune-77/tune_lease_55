@@ -16,7 +16,7 @@
   <key>EnvironmentVariables</key>
   <dict>
     <key>OBSIDIAN_VAULT</key>
-    <string>/Users/kobayashiisaoryou/Documents/Obsidian Vault</string>
+    <string>/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault</string>
     <key>LEASE_NEWS_PROFILE</key>
     <string>industry-watch</string>
     <key>PYTHON_BIN</key>

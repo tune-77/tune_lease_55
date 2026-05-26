@@ -181,3 +181,26 @@
 {"file":"frontend/src/app/finance/page.tsx","action":"Edit","timestamp":"2026-05-24T11:00:43Z","important":false}
 {"file":"api/useful_life_table.json","action":"Write","timestamp":"2026-05-24T11:17:24Z","important":false}
 {"file":"api/main.py","action":"Edit","timestamp":"2026-05-24T11:17:39Z","important":false}
+{"file":"total_scorer.py","action":"Edit","timestamp":"2026-05-24T17:28:34Z","important":false}
+{"file":"scoring_core.py","action":"Edit","timestamp":"2026-05-24T17:29:20Z","important":false}
+{"file":"api/schemas.py","action":"Edit","timestamp":"2026-05-24T17:29:53Z","important":false}
+{"file":"api/main.py","action":"Edit","timestamp":"2026-05-24T17:30:04Z","important":false}
+{"file":"api/gunshi_gemini.py","action":"Edit","timestamp":"2026-05-24T17:30:38Z","important":false}
+{"file":"/Users/kobayashiisaoryou/Documents/Obsidian Vault/tuneLease55/知見・分析/物件換金性スコア分析_20260525.md","action":"Write","timestamp":"2026-05-24T18:05:49Z","important":false}
+{"file":"/Users/kobayashiisaoryou/Documents/Obsidian Vault/tuneLease55/知見・分析/物件換金性スコア分析_20260525.md","action":"Edit","timestamp":"2026-05-24T22:01:14Z","important":false}
+{"file":"/Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/Asset Finance/2026-05/2026-05-25_減価率設定まとめ.md","action":"Edit","timestamp":"2026-05-24T22:01:24Z","important":false}
+{"file":"/Users/kobayashiisaoryou/Documents/Obsidian Vault/tuneLease55/改善策インデックス_2026.md","action":"Write","timestamp":"2026-05-24T22:09:19Z","important":false}
+{"file":"/Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/今後の改善点.md","action":"Edit","timestamp":"2026-05-24T22:09:29Z","important":false}
+{"file":"/Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/2026-05-20_単位統一と定量分析改善.md","action":"Edit","timestamp":"2026-05-24T22:09:35Z","important":false}
+{"file":"/Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/2026-05-12_信用リスク群とスコアリング高速化.md","action":"Edit","timestamp":"2026-05-24T22:09:44Z","important":false}
+{"file":"/Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/軍師AIマルチエージェント_実装結果.md","action":"Edit","timestamp":"2026-05-24T22:09:50Z","important":false}
+{"file":"/Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/2026-05-17_AIChat_Obsidian検索修正.md","action":"Edit","timestamp":"2026-05-24T22:10:07Z","important":false}
+{"file":"/Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/2026-05-23_ニュース判断変更記録.md","action":"Edit","timestamp":"2026-05-24T22:10:10Z","important":false}
+{"file":"api/knowledge/obsidian_loader.py","action":"Edit","timestamp":"2026-05-24T22:31:42Z","important":false}
+{"file":"api/gunshi_gemini.py","action":"Edit","timestamp":"2026-05-24T22:31:54Z","important":false}
+{"file":"analysis_regression.py","action":"Edit","timestamp":"2026-05-25T09:10:55Z","important":false}
+{"file":"retraining_pipeline.py","action":"Edit","timestamp":"2026-05-25T09:35:21Z","important":false}
+{"file":"scoring_core.py","action":"Edit","timestamp":"2026-05-25T09:48:42Z","important":false}
+{"file":"api/schemas.py","action":"Edit","timestamp":"2026-05-25T09:49:41Z","important":false}
+{"file":"api/gunshi_gemini.py","action":"Edit","timestamp":"2026-05-25T09:49:49Z","important":false}
+{"file":"api/main.py","action":"Edit","timestamp":"2026-05-25T09:50:22Z","important":false}

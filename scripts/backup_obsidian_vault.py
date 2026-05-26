@@ -32,6 +32,7 @@ from typing import Iterable
 
 DEFAULT_VAULT_CANDIDATES = [
     Path(os.environ.get("OBSIDIAN_VAULT", "")).expanduser() if os.environ.get("OBSIDIAN_VAULT") else None,
+    Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / "Obsidian Vault",
     Path.home() / "Documents" / "Obsidian Vault",
     Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents",
     Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "Obsidian Vault",

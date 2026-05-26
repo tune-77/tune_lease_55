@@ -884,6 +884,25 @@
     #chat-send-btn:disabled {
       opacity: .55;
     }
+    #chat-voice-btn {
+      width: 44px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #475569;
+      font-weight: 800;
+      cursor: pointer;
+      font-size: 18px;
+    }
+    #chat-voice-btn.listening {
+      background: #e11d48;
+      border-color: #e11d48;
+      color: #fff;
+    }
+    #chat-voice-btn:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body>
@@ -1498,6 +1517,7 @@
     </label>
     <div class="chat-input-row">
       <textarea id="chat-input" placeholder="例: この案件、営業にはどう説明すればいい？"></textarea>
+      <button id="chat-voice-btn" type="button" onclick="toggleVoiceInput()" title="音声入力">🎙</button>
       <button id="chat-send-btn" onclick="sendChat()">送信</button>
     </div>
     <div class="chat-note" id="chat-status"></div>
@@ -1527,6 +1547,8 @@
   let lastInputValues = null;
   let chatHistory = [];
   let humourMode = "yanami";
+  let chatRecognition = null;
+  let chatListening = false;
 
   function setHumourMode(mode) {
     humourMode = mode;
@@ -1973,6 +1995,63 @@
     log.scrollTop = log.scrollHeight;
   }
 
+  function getSpeechRecognition() {
+    return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+  }
+
+  function updateVoiceButton() {
+    const btn = document.getElementById("chat-voice-btn");
+    if (!btn) return;
+    const supported = Boolean(getSpeechRecognition());
+    btn.disabled = !supported;
+    btn.classList.toggle("listening", chatListening);
+    btn.title = supported ? (chatListening ? "音声入力を停止" : "音声入力") : "このブラウザは音声入力に未対応です";
+  }
+
+  function toggleVoiceInput() {
+    const SpeechRecognition = getSpeechRecognition();
+    const input = document.getElementById("chat-input");
+    const status = document.getElementById("chat-status");
+    if (!SpeechRecognition || !input) {
+      if (status) status.textContent = "このブラウザは音声入力に未対応です。";
+      updateVoiceButton();
+      return;
+    }
+    if (chatListening && chatRecognition) {
+      chatRecognition.stop();
+      chatListening = false;
+      updateVoiceButton();
+      return;
+    }
+
+    chatRecognition = new SpeechRecognition();
+    chatRecognition.lang = "ja-JP";
+    chatRecognition.interimResults = false;
+    chatRecognition.continuous = false;
+    chatRecognition.onresult = event => {
+      const transcript = Array.from(event.results || [])
+        .map(result => result?.[0]?.transcript || "")
+        .join("")
+        .trim();
+      if (!transcript) return;
+      input.value = `${input.value}${input.value.trim() ? "\n" : ""}${transcript}`;
+      input.focus();
+    };
+    chatRecognition.onerror = () => {
+      chatListening = false;
+      updateVoiceButton();
+      if (status) status.textContent = "音声入力を中断しました。";
+    };
+    chatRecognition.onend = () => {
+      chatListening = false;
+      updateVoiceButton();
+    };
+    chatListening = true;
+    updateVoiceButton();
+    if (status) status.textContent = "音声入力中...";
+    chatRecognition.start();
+  }
+
   async function sendChat() {
     const input = document.getElementById("chat-input");
     const btn = document.getElementById("chat-send-btn");
@@ -2344,6 +2423,9 @@
     document.getElementById("chat-log").innerHTML = "";
     document.getElementById("chat-status").textContent = "";
     document.getElementById("chat-input").value = "";
+    chatListening = false;
+    if (chatRecognition) chatRecognition.stop();
+    updateVoiceButton();
     document.getElementById("chat-analysis-graphs").innerHTML = "";
     document.getElementById("chat-analysis-graphs").style.display = "none";
     chatHistory = [];
@@ -2521,6 +2603,7 @@
     e.stopPropagation();
     sendChat();
   });
+  updateVoiceButton();
 
   // Enter キーで審査実行。ただしAIチャット入力中は除外。
   document.addEventListener("keydown", e => {

@@ -24,6 +24,15 @@ interface ChatMessage {
 
 const USER_ID = "default";
 
+const cleanMebukiText = (text: string) => (
+  String(text || "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*\n]+)\*/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/`([^`]+)`/g, "$1")
+    .trim()
+);
+
 export default function FloatingMebuki() {
   const [mebukiState, setMebukiState] = useState<'guide' | 'approve' | 'challenge' | 'reject'>('guide');
   const [bubbleMessage, setBubbleMessage] = useState("システム稼働中。いつでもサポートします！");
@@ -44,16 +53,18 @@ export default function FloatingMebuki() {
   // 吹き出しが表示されたら5秒後に自動非表示
   useEffect(() => {
     if (!isBubbleVisible) return;
-    const timer = setTimeout(() => setIsBubbleVisible(false), 5000);
+    const messageLength = cleanMebukiText(bubbleMessage).length;
+    const visibleMs = Math.min(22000, Math.max(8000, messageLength * 120));
+    const timer = setTimeout(() => setIsBubbleVisible(false), visibleMs);
     return () => clearTimeout(timer);
-  }, [isBubbleVisible]);
+  }, [isBubbleVisible, bubbleMessage]);
 
   // カスタムイベントでめぶきの状態を制御する
   useEffect(() => {
     const handleMebukiEvent = (e: any) => {
       const { type, text } = e.detail;
       setMebukiState(type);
-      setBubbleMessage(text);
+      setBubbleMessage(cleanMebukiText(text));
       setIsBubbleVisible(true);
       eventOverrideRef.current = true;
 
@@ -68,7 +79,7 @@ export default function FloatingMebuki() {
     const boyakiInterval = setInterval(() => {
       if (!eventOverrideRef.current && !isChatOpen) {
         const randomIndex = Math.floor(Math.random() * YANAMI_BOT_MESSAGES.length);
-        setBubbleMessage(YANAMI_BOT_MESSAGES[randomIndex]);
+        setBubbleMessage(cleanMebukiText(YANAMI_BOT_MESSAGES[randomIndex]));
         setMebukiState('guide');
         setIsBubbleVisible(true);
       }
@@ -197,7 +208,7 @@ export default function FloatingMebuki() {
 
       {/* ── チャットパネル ── */}
       {isChatOpen && (
-        <div className="pointer-events-auto mb-3 w-80 h-96 bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden">
+        <div className="pointer-events-auto mb-3 h-[min(78dvh,38rem)] w-[min(24rem,calc(100vw-1rem))] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden">
           {/* ヘッダー */}
           <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 flex-shrink-0">
             <div className="flex items-center gap-2">
@@ -239,7 +250,7 @@ export default function FloatingMebuki() {
           </div>
 
           {/* メッセージエリア */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-slate-50">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 space-y-3 bg-slate-50">
             {historyLoading ? (
               <div className="flex justify-center items-center h-full">
                 <Loader2 className="w-5 h-5 text-emerald-500 animate-spin" />
@@ -268,13 +279,13 @@ export default function FloatingMebuki() {
                     />
                   )}
                   <div
-                    className={`max-w-[80%] rounded-2xl px-3 py-2 shadow-sm text-xs leading-relaxed ${
+                    className={`max-w-[88%] rounded-2xl px-3 py-2 shadow-sm text-xs leading-relaxed ${
                       msg.role === "user"
                         ? "bg-blue-600 text-white rounded-tr-sm"
                         : "bg-white text-slate-800 border border-slate-200 rounded-tl-sm"
                     }`}
                   >
-                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                    <p className="whitespace-pre-wrap break-words">{cleanMebukiText(msg.content)}</p>
                     <p className={`text-[9px] mt-1 ${msg.role === "user" ? "text-blue-200 text-right" : "text-slate-400"}`}>
                       {formatTime(msg.created_at)}
                     </p>
@@ -340,9 +351,9 @@ export default function FloatingMebuki() {
       <div className="flex items-end justify-end pointer-events-none">
         {!isChatOpen && (
           <div
-            className={`bg-white text-slate-800 p-3 sm:p-4 rounded-2xl rounded-br-none shadow-2xl border-2 border-amber-200 text-xs sm:text-sm font-bold leading-relaxed w-40 sm:w-56 mb-4 mr-1 sm:mb-6 sm:mr-2 pointer-events-auto transition-all duration-300 transform origin-bottom-right whitespace-pre-wrap ${isBubbleVisible ? 'scale-100 opacity-100' : 'scale-75 opacity-0'}`}
+            className={`max-h-[42dvh] w-[min(18rem,calc(100vw-6rem))] overflow-y-auto bg-white text-slate-800 p-3 sm:p-4 rounded-2xl rounded-br-none shadow-2xl border-2 border-amber-200 text-xs sm:text-sm font-bold leading-relaxed mb-4 mr-1 sm:mb-6 sm:mr-2 pointer-events-auto transition-all duration-300 transform origin-bottom-right whitespace-pre-wrap break-words ${isBubbleVisible ? 'scale-100 opacity-100' : 'scale-75 opacity-0'}`}
           >
-            {bubbleMessage}
+            {cleanMebukiText(bubbleMessage)}
           </div>
         )}
 
@@ -371,6 +382,6 @@ export default function FloatingMebuki() {
 // ユーティリティ関数（どこからでも呼べる）
 export const triggerMebuki = (type: 'guide' | 'approve' | 'challenge' | 'reject', text: string) => {
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('mebuki-action', { detail: { type, text } }));
+    window.dispatchEvent(new CustomEvent('mebuki-action', { detail: { type, text: cleanMebukiText(text) } }));
   }
 };

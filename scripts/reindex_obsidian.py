@@ -37,7 +37,7 @@ logging.basicConfig(
 logger = logging.getLogger("reindex_obsidian")
 
 # デフォルト Vault: env で上書き可
-_DEFAULT_VAULT = "/Users/kobayashiisaoryou/Documents/Obsidian Vault"
+_DEFAULT_VAULT = "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
 VAULT_PATH = os.environ.get("OBSIDIAN_VAULT_PATH", _DEFAULT_VAULT)
 
 

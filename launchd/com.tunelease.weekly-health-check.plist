@@ -3,15 +3,16 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.tunelease.obsidian-backup</string>
+  <string>com.tunelease.weekly-health-check</string>
 
   <key>ProgramArguments</key>
   <array>
-    <string>/bin/zsh</string>
-    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/scripts/run_obsidian_backup.sh</string>
-    <string>--keep</string>
-    <string>14</string>
+    <string>/Users/kobayashiisaoryou/anaconda3/bin/python3</string>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/scripts/check_system_health.py</string>
   </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/kobayashiisaoryou/clawd/tune_lease_55</string>
 
   <key>EnvironmentVariables</key>
   <dict>
@@ -19,21 +20,21 @@
     <string>/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault</string>
     <key>OBSIDIAN_BACKUP_ROOT</key>
     <string>/Users/kobayashiisaoryou/Library/Mobile Documents/com~apple~CloudDocs/tune_lease_55_backups/obsidian</string>
-    <key>PYTHON_BIN</key>
-    <string>/Users/kobayashiisaoryou/anaconda3/bin/python</string>
-    <key>PATH</key>
-    <string>/Users/kobayashiisaoryou/anaconda3/bin:/Users/kobayashiisaoryou/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>CASE_DATA_BACKUP_ROOT</key>
+    <string>/Users/kobayashiisaoryou/Library/Mobile Documents/com~apple~CloudDocs/tune_lease_55_backups/case_data</string>
     <key>PYTHONUNBUFFERED</key>
     <string>1</string>
+    <key>PATH</key>
+    <string>/Users/kobayashiisaoryou/anaconda3/bin:/Users/kobayashiisaoryou/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
 
-  <!-- 毎週日曜 04:00 に実行 -->
+  <!-- 毎週日曜 05:00 に実行（04:00 の Obsidian バックアップ後） -->
   <key>StartCalendarInterval</key>
   <dict>
     <key>Weekday</key>
     <integer>0</integer>
     <key>Hour</key>
-    <integer>4</integer>
+    <integer>5</integer>
     <key>Minute</key>
     <integer>0</integer>
   </dict>
@@ -42,9 +43,9 @@
   <false/>
 
   <key>StandardOutPath</key>
-  <string>/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_obsidian_backup.out.log</string>
+  <string>/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_weekly_health.out.log</string>
 
   <key>StandardErrorPath</key>
-  <string>/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_obsidian_backup.err.log</string>
+  <string>/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_weekly_health.err.log</string>
 </dict>
 </plist>

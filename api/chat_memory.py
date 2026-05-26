@@ -71,6 +71,32 @@ def save_message(user_id: str, role: str, content: str) -> None:
         conn.commit()
 
 
+def normalize_chat_text(content: str) -> str:
+    """Normalize AI chat text for display/storage without changing substance."""
+    text = str(content or "").strip()
+    if not text:
+        return ""
+    text = (
+        text.replace("\\r\\n", "\n")
+        .replace("\\n", "\n")
+        .replace("\\t", "  ")
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+    )
+    text = re.sub(r"(?m)^\s*[\*\u2022]\s+", "- ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def _chat_max_tokens() -> int:
+    raw = os.environ.get("MEBUKI_CHAT_MAX_TOKENS", "420")
+    try:
+        value = int(raw)
+    except ValueError:
+        value = 420
+    return max(160, min(800, value))
+
+
 def get_message_count(user_id: str = "default") -> int:
     init_chat_messages_table()
     with closing(_open_db()) as conn:
@@ -167,8 +193,8 @@ def call_gemini_chat(
         "system_instruction": {"parts": [{"text": system_prompt}]},
         "contents": contents,
         "generationConfig": {
-            "temperature": 0.7,
-            "maxOutputTokens": 1024,
+            "temperature": 0.45,
+            "maxOutputTokens": _chat_max_tokens(),
         },
     }
     resp = requests.post(
@@ -177,4 +203,4 @@ def call_gemini_chat(
         timeout=60,
     )
     resp.raise_for_status()
-    return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+    return normalize_chat_text(resp.json()["candidates"][0]["content"]["parts"][0]["text"])
