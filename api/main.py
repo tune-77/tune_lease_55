@@ -3460,8 +3460,16 @@ def post_chat(req: ChatRequest):
         except Exception as e:
             print(f"[RAG] 検索エラー: {e}")
 
-        # システムプロンプトにRAGコンテキストを追記
-        effective_prompt = _CHAT_SYSTEM_PROMPT + rag_context
+        # DB直接参照: ユーザーが実データ分析を求めている場合にSQLite統計を注入
+        db_context = ""
+        try:
+            from api.db_query import build_db_context
+            db_context = build_db_context(req.message)
+        except Exception as e:
+            print(f"[DB Query] 統計取得エラー: {e}")
+
+        # システムプロンプトにRAGコンテキストとDB統計を追記
+        effective_prompt = _CHAT_SYSTEM_PROMPT + rag_context + db_context
 
         history = get_recent_messages(req.user_id, limit=20)
         history_for_gemini = [{"role": m["role"], "content": m["content"]} for m in history]
