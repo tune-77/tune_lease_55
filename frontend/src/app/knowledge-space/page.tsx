@@ -45,6 +45,7 @@ type KnowledgeGraph = {
 };
 
 type SceneMode = "all" | "recent" | "search" | "evidence";
+type VisualMode = "practical" | "galaxy";
 
 const hashValue = (text: string) => {
   let hash = 2166136261;
@@ -179,6 +180,7 @@ function KnowledgeSpaceScene({
   searchTerm,
   timePercent,
   mode,
+  visualMode,
 }: {
   graph: KnowledgeGraph;
   onSelect: (node: GraphNode | null) => void;
@@ -186,6 +188,7 @@ function KnowledgeSpaceScene({
   searchTerm: string;
   timePercent: number;
   mode: SceneMode;
+  visualMode: VisualMode;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
 
@@ -194,8 +197,9 @@ function KnowledgeSpaceScene({
     if (!mount || !graph.nodes.length) return;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color("#05070d");
-    scene.fog = new THREE.FogExp2("#05070d", 0.00145);
+    const isGalaxy = visualMode === "galaxy";
+    scene.background = new THREE.Color(isGalaxy ? "#05070d" : "#070b12");
+    scene.fog = new THREE.FogExp2(isGalaxy ? "#05070d" : "#070b12", isGalaxy ? 0.00145 : 0.0022);
 
     const isCompact = mount.clientWidth < 640;
     const camera = new THREE.PerspectiveCamera(58, mount.clientWidth / Math.max(1, mount.clientHeight), 0.1, 1400);
@@ -215,14 +219,14 @@ function KnowledgeSpaceScene({
     controls.maxDistance = 520;
     controls.target.set(0, 0, 0);
 
-    scene.add(new THREE.AmbientLight("#dbeafe", 0.42));
-    const keyLight = new THREE.DirectionalLight("#ffffff", 1.15);
+    scene.add(new THREE.AmbientLight("#dbeafe", isGalaxy ? 0.42 : 0.55));
+    const keyLight = new THREE.DirectionalLight("#ffffff", isGalaxy ? 1.15 : 0.85);
     keyLight.position.set(80, 120, 80);
     scene.add(keyLight);
-    const coreLight = new THREE.PointLight("#fef3c7", 4.5, 300);
+    const coreLight = new THREE.PointLight("#fef3c7", isGalaxy ? 4.5 : 1.2, 300);
     coreLight.position.set(0, 0, 0);
     scene.add(coreLight);
-    const rimLight = new THREE.PointLight("#38bdf8", 1.9, 420);
+    const rimLight = new THREE.PointLight("#38bdf8", isGalaxy ? 1.9 : 0.8, 420);
     rimLight.position.set(-180, 30, 150);
     scene.add(rimLight);
 
@@ -262,7 +266,7 @@ function KnowledgeSpaceScene({
       }
     });
 
-    const dust = buildGalaxyDust(graph.nodes);
+    const dust = isGalaxy ? buildGalaxyDust(graph.nodes) : { positions: [], colors: [] };
     const dustGeometry = new THREE.BufferGeometry();
     dustGeometry.setAttribute("position", new THREE.Float32BufferAttribute(dust.positions, 3));
     dustGeometry.setAttribute("color", new THREE.Float32BufferAttribute(dust.colors, 3));
@@ -271,7 +275,7 @@ function KnowledgeSpaceScene({
       sizeAttenuation: true,
       vertexColors: true,
       transparent: true,
-      opacity: 0.46,
+      opacity: isGalaxy ? 0.46 : 0,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
@@ -281,7 +285,7 @@ function KnowledgeSpaceScene({
     const coreMaterial = new THREE.MeshBasicMaterial({
       color: "#f8fafc",
       transparent: true,
-      opacity: 0.72,
+      opacity: isGalaxy ? 0.72 : 0,
       blending: THREE.AdditiveBlending,
     });
     const core = new THREE.Mesh(coreGeometry, coreMaterial);
@@ -304,8 +308,8 @@ function KnowledgeSpaceScene({
     const lineMaterial = new THREE.LineBasicMaterial({
       vertexColors: true,
       transparent: true,
-      opacity: 0.1,
-      blending: THREE.AdditiveBlending,
+      opacity: isGalaxy ? 0.1 : 0.24,
+      blending: isGalaxy ? THREE.AdditiveBlending : THREE.NormalBlending,
       depthWrite: false,
     });
     root.add(new THREE.LineSegments(lineGeometry, lineMaterial));
@@ -314,7 +318,7 @@ function KnowledgeSpaceScene({
       ? graph.edges
         .filter((edge) => edge.source === selectedId || edge.target === selectedId)
         .filter((edge) => positions.has(edge.source) && positions.has(edge.target))
-        .slice(0, 14)
+        .slice(0, isGalaxy ? 14 : 8)
         .map((edge, index) => ({
           source: positions.get(edge.source)!,
           target: positions.get(edge.target)!,
@@ -327,7 +331,7 @@ function KnowledgeSpaceScene({
       .slice()
       .sort((a, b) => (a.recent_rank || 9999) - (b.recent_rank || 9999))
       .filter((edge) => positions.has(edge.source) && positions.has(edge.target))
-      .slice(0, 5)
+      .slice(0, isGalaxy ? 5 : 0)
       .map((edge, index) => ({
         source: positions.get(edge.source)!.clone(),
         target: positions.get(edge.target)!.clone(),
@@ -348,25 +352,25 @@ function KnowledgeSpaceScene({
     const routeGlowMaterial = new THREE.LineBasicMaterial({
       vertexColors: true,
       transparent: true,
-      opacity: 0.24,
-      blending: THREE.AdditiveBlending,
+      opacity: isGalaxy ? 0.24 : 0.16,
+      blending: isGalaxy ? THREE.AdditiveBlending : THREE.NormalBlending,
       depthWrite: false,
     });
     root.add(new THREE.LineSegments(routeGlowGeometry, routeGlowMaterial));
 
     const animatedRoutes = [...recentRoutes, ...selectedRoutes];
     const flowLights = animatedRoutes.flatMap((route, routeIndex) => {
-      return [0, 1, 2].map((trailIndex) => {
+      return (isGalaxy ? [0, 1, 2] : [0]).map((trailIndex) => {
         const material = new THREE.SpriteMaterial({
           map: starTexture || undefined,
           color: trailIndex === 0 ? "#ffffff" : trailIndex === 1 ? "#bff4ff" : "#7dd3fc",
           transparent: true,
-          opacity: trailIndex === 0 ? 0.98 : trailIndex === 1 ? 0.48 : 0.2,
+          opacity: isGalaxy ? (trailIndex === 0 ? 0.98 : trailIndex === 1 ? 0.48 : 0.2) : 0.72,
           depthWrite: false,
-          blending: THREE.AdditiveBlending,
+          blending: isGalaxy ? THREE.AdditiveBlending : THREE.NormalBlending,
         });
         const sprite = new THREE.Sprite(material);
-        sprite.scale.setScalar(trailIndex === 0 ? 14 : trailIndex === 1 ? 9 : 5.5);
+        sprite.scale.setScalar(isGalaxy ? (trailIndex === 0 ? 14 : trailIndex === 1 ? 9 : 5.5) : 8);
         sprite.userData.routeIndex = routeIndex;
         sprite.userData.trailIndex = trailIndex;
         root.add(sprite);
@@ -384,16 +388,18 @@ function KnowledgeSpaceScene({
       const matched = matchesSearch(node);
       const emphasis = (mode === "search" || mode === "evidence") && matched ? 1.35 : selectedId === node.id ? 1.45 : 1;
       const dim = (mode === "recent" && !inTime) || ((mode === "search" || mode === "evidence") && terms.length > 0 && !matched) ? 0.22 : active ? 1 : 0.55;
-      const baseSize = node.type === "cluster" ? 16 : node.type === "external" ? 6.5 : 8.5;
-      const starSize = (baseSize + power * (node.type === "cluster" ? 28 : 21)) * emphasis;
-      const color = new THREE.Color(node.color || "#e2e8f0").lerp(new THREE.Color("#fff7d6"), 0.25 + power * 0.38);
+      const baseSize = isGalaxy
+        ? (node.type === "cluster" ? 16 : node.type === "external" ? 6.5 : 8.5)
+        : (node.type === "cluster" ? 11 : node.type === "external" ? 4 : 5.5);
+      const starSize = (baseSize + power * (node.type === "cluster" ? (isGalaxy ? 28 : 12) : (isGalaxy ? 21 : 9))) * emphasis;
+      const color = new THREE.Color(node.color || "#e2e8f0").lerp(new THREE.Color("#fff7d6"), isGalaxy ? 0.25 + power * 0.38 : 0.08 + power * 0.12);
       const material = new THREE.SpriteMaterial({
         map: starTexture || undefined,
         color,
         transparent: true,
-        opacity: (0.48 + power * 0.48) * dim,
+        opacity: (isGalaxy ? 0.48 + power * 0.48 : 0.62 + power * 0.22) * dim,
         depthWrite: false,
-        blending: THREE.AdditiveBlending,
+        blending: isGalaxy ? THREE.AdditiveBlending : THREE.NormalBlending,
       });
       const star = new THREE.Sprite(material);
       star.position.copy(position);
@@ -405,18 +411,18 @@ function KnowledgeSpaceScene({
       starMaterials.push(material);
       rayTargets.push(star);
 
-      if (power > 0.42 || emphasis > 1) {
+      if (isGalaxy ? (power > 0.42 || emphasis > 1) : emphasis > 1) {
         const flareMaterial = new THREE.SpriteMaterial({
           map: starTexture || undefined,
           color: color.clone().lerp(new THREE.Color("#ffffff"), 0.38),
           transparent: true,
-          opacity: (0.12 + power * 0.18 + (emphasis > 1 ? 0.18 : 0)) * dim,
+          opacity: (isGalaxy ? 0.12 + power * 0.18 + (emphasis > 1 ? 0.18 : 0) : 0.22) * dim,
           depthWrite: false,
-          blending: THREE.AdditiveBlending,
+          blending: isGalaxy ? THREE.AdditiveBlending : THREE.NormalBlending,
         });
         const flare = new THREE.Sprite(flareMaterial);
         flare.position.copy(position);
-        flare.scale.setScalar(starSize * (1.9 + power * 1.1 + (emphasis > 1 ? 0.7 : 0)));
+        flare.scale.setScalar(starSize * (isGalaxy ? 1.9 + power * 1.1 + (emphasis > 1 ? 0.7 : 0) : 1.45));
         root.add(flare);
         starMaterials.push(flareMaterial);
       }
@@ -473,7 +479,7 @@ function KnowledgeSpaceScene({
     let frame = 0;
     const animate = () => {
       frame = requestAnimationFrame(animate);
-      root.rotation.y += 0.0012;
+      root.rotation.y += isGalaxy ? 0.0012 : 0.00025;
       root.rotation.x = (isCompact ? -0.64 : -0.62) + Math.sin(Date.now() * 0.00016) * 0.02;
       const elapsed = performance.now() * 0.001;
       flowLights.forEach((sprite) => {
@@ -483,7 +489,7 @@ function KnowledgeSpaceScene({
         const progress = (elapsed * route.speed + route.offset - trailIndex * 0.035) % 1;
         sprite.position.lerpVectors(route.source, route.target, progress < 0 ? progress + 1 : progress);
         const pulse = 0.68 + Math.sin((elapsed * 6.4 + route.offset * 12) - trailIndex * 0.7) * 0.18;
-        sprite.scale.setScalar((trailIndex === 0 ? 14 : trailIndex === 1 ? 9 : 5.5) * pulse);
+        sprite.scale.setScalar((isGalaxy ? (trailIndex === 0 ? 14 : trailIndex === 1 ? 9 : 5.5) : 8) * pulse);
       });
       controls.update();
       if (halo.visible) {
@@ -515,7 +521,7 @@ function KnowledgeSpaceScene({
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [graph, onSelect, selectedId, searchTerm, timePercent, mode]);
+  }, [graph, onSelect, selectedId, searchTerm, timePercent, mode, visualMode]);
 
   return <div ref={mountRef} className="absolute inset-0" />;
 }
@@ -529,6 +535,7 @@ export default function KnowledgeSpacePage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [timePercent, setTimePercent] = useState(100);
   const [mode, setMode] = useState<SceneMode>("all");
+  const [visualMode, setVisualMode] = useState<VisualMode>("practical");
   const [evidenceQuery, setEvidenceQuery] = useState("");
   const [showControls, setShowControls] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
@@ -542,7 +549,7 @@ export default function KnowledgeSpacePage() {
       setSelected(null);
     } catch (err) {
       console.error(err);
-      setError("ナレッジグラフを取得できませんでした。インデックス状態とAPIを確認してください。");
+      setError("現在ナレッジ機能を準備中です。しばらくしてから更新してください。");
     } finally {
       setLoading(false);
     }
@@ -625,6 +632,16 @@ export default function KnowledgeSpacePage() {
               />
             </label>
             <button
+              onClick={() => setVisualMode((prev) => prev === "practical" ? "galaxy" : "practical")}
+              className={`h-10 rounded-md border px-3 text-xs font-black transition ${
+                visualMode === "galaxy"
+                  ? "border-cyan-200/30 bg-cyan-300/16 text-cyan-100"
+                  : "border-emerald-200/25 bg-emerald-300/12 text-emerald-100"
+              }`}
+            >
+              {visualMode === "galaxy" ? "銀河" : "実務"}
+            </button>
+            <button
               onClick={() => {
                 const next = evidenceQuery || searchTerm;
                 setSearchTerm(next);
@@ -677,6 +694,7 @@ export default function KnowledgeSpacePage() {
             searchTerm={searchTerm}
             timePercent={timePercent}
             mode={mode}
+            visualMode={visualMode}
           />
         )}
 
@@ -738,6 +756,21 @@ export default function KnowledgeSpacePage() {
         </div>
 
         <div className="mt-3 grid gap-2 border-t border-white/10 pt-3">
+          <div className="flex flex-wrap gap-2">
+            {(["practical", "galaxy"] as VisualMode[]).map((item) => (
+              <button
+                key={item}
+                onClick={() => setVisualMode(item)}
+                className={`rounded-md border px-2 py-1 text-[11px] font-black transition ${
+                  visualMode === item
+                    ? "border-emerald-200/40 bg-emerald-300/18 text-emerald-50"
+                    : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
+                }`}
+              >
+                {item === "practical" ? "実務表示" : "銀河演出"}
+              </button>
+            ))}
+          </div>
           <div className="flex flex-wrap gap-2">
             {(["all", "recent", "search", "evidence"] as SceneMode[]).map((item) => (
               <button
