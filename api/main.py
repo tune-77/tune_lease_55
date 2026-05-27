@@ -1061,7 +1061,8 @@ def get_knowledge_graph(limit: int = 180):
             ],
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"ナレッジグラフ生成エラー: {e}")
+        print(f"[API] knowledge graph error: {e}")
+        raise HTTPException(status_code=503, detail="現在ナレッジ機能を準備中です。しばらくお待ちください。")
 
 
 @app.post("/api/asset-finance/save-to-obsidian")

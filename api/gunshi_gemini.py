@@ -1,4 +1,5 @@
 """軍師AI — Gemini streamGenerateContent SSE版"""
+import asyncio
 import json
 import os
 import httpx
@@ -482,35 +483,58 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
     }
     url = f"{GEMINI_STREAM_URL}?key={api_key}&alt=sse"
 
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            async with client.stream("POST", url, json=payload) as resp:
-                if resp.status_code != 200:
-                    yield {
-                        "type": "stream",
-                        "delta": f"【Gemini APIエラー (HTTP {resp.status_code})】しばらく待ってから再試行してください。",
-                    }
+    _rate_limited = False
+    for attempt in range(3):
+        if attempt > 0:
+            await asyncio.sleep(2 ** (attempt - 1))  # 1s, 2s
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                async with client.stream("POST", url, json=payload) as resp:
+                    if resp.status_code == 429:
+                        _rate_limited = True
+                        continue  # exponential backoff で再試行
+                    _rate_limited = False
+                    if resp.status_code != 200:
+                        yield {
+                            "type": "stream",
+                            "delta": build_fallback_strategy_text(params, phrases, f"HTTP {resp.status_code}"),
+                        }
+                        yield {"type": "done"}
+                        return
+                    async for line in resp.aiter_lines():
+                        if not line.startswith("data: "):
+                            continue
+                        raw = line[6:]
+                        if raw.strip() == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(raw)
+                            delta = (
+                                chunk["candidates"][0]["content"]["parts"][0].get("text", "")
+                            )
+                            if delta:
+                                yield {"type": "stream", "delta": delta}
+                        except Exception:
+                            pass
                     yield {"type": "done"}
                     return
-                async for line in resp.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    raw = line[6:]
-                    if raw.strip() == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(raw)
-                        delta = (
-                            chunk["candidates"][0]["content"]["parts"][0].get("text", "")
-                        )
-                        if delta:
-                            yield {"type": "stream", "delta": delta}
-                    except Exception:
-                        pass
-    except Exception as exc:
+        except Exception as exc:
+            yield {
+                "type": "stream",
+                "delta": build_fallback_strategy_text(params, phrases, type(exc).__name__),
+            }
+            yield {"type": "done"}
+            return
+
+    # 3回リトライしても 429 が続いた場合のフレンドリーメッセージ
+    if _rate_limited:
         yield {
             "type": "stream",
-            "delta": build_fallback_strategy_text(params, phrases, type(exc).__name__),
+            "delta": "少し混み合っています。しばらくお待ちいただくか、再度お試しください。",
         }
-
+    else:
+        yield {
+            "type": "stream",
+            "delta": build_fallback_strategy_text(params, phrases, "接続失敗"),
+        }
     yield {"type": "done"}
