@@ -15,6 +15,13 @@ _DEFAULT_VAULT_PATHS = [
 
 OUTPUT_FILE = Path("/tmp/obsidian_improvements_export.txt")
 
+# wikiリンク展開の最大深さ（1〜3を推奨; 深くするほど取得件数が増える）
+MAX_WIKI_DEPTH: int = 2
+# フォールバック抽出（タグ無し全行拾い）の有効フラグ
+ENABLE_FALLBACK: bool = False
+# BFS展開するノートの上限（循環・爆発防止）
+_MAX_WIKI_NODES: int = 50
+
 # 改善インデックスのファイル名パターン（優先順）
 _INDEX_PATTERNS = [
     "tuneLease55/改善策インデックス_2026.md",
@@ -162,11 +169,13 @@ def _convert_to_pipeline_text(content: str, source_name: str) -> str:
 
 def extract_improvements_from_index(index_file: Path, vault: Path) -> str:
     """
-    インデックスファイルとリンク先ノート（深さ1）から改善案を抽出する.
+    インデックスファイルとリンク先ノート（BFS 深さ MAX_WIKI_DEPTH）から改善案を抽出する.
 
     Returns:
         パイプライン用テキスト（[改善]/[TODO] タグ付き）
     """
+    from collections import deque
+
     output_parts: list[str] = []
 
     index_content = index_file.read_text(encoding="utf-8")
@@ -177,13 +186,18 @@ def extract_improvements_from_index(index_file: Path, vault: Path) -> str:
     if index_improvements.strip():
         output_parts.append(index_improvements)
 
-    # [[wiki リンク]] を深さ1で展開
-    links = _extract_wiki_links(index_content)
+    # BFS で [[wiki リンク]] を深さ MAX_WIKI_DEPTH まで展開
     visited: set[str] = {index_file.stem, index_file.name.replace(".md", "")}
+    # キュー要素: (link_name, depth, content_to_scan)
+    queue: deque[tuple[str, int, str]] = deque()
+    for link in _extract_wiki_links(index_content):
+        queue.append((link, 1, index_content))
 
-    for link in links:
+    while queue and len(visited) < _MAX_WIKI_NODES:
+        link, depth, _ = queue.popleft()
         link_name = link.split("|")[0].strip()
-        if link_name in visited:
+
+        if link_name in visited or depth > MAX_WIKI_DEPTH:
             continue
         visited.add(link_name)
 
@@ -195,8 +209,15 @@ def extract_improvements_from_index(index_file: Path, vault: Path) -> str:
             linked_content = linked_file.read_text(encoding="utf-8")
             linked_improvements = _convert_to_pipeline_text(linked_content, linked_file.stem)
             if linked_improvements.strip():
-                output_parts.append(f"\n# リンク先ノート: {linked_file.name}\n")
+                output_parts.append(f"\n# リンク先ノート (深さ{depth}): {linked_file.name}\n")
                 output_parts.append(linked_improvements)
+
+            # さらに深い階層のリンクをキューへ追加
+            if depth < MAX_WIKI_DEPTH:
+                for child_link in _extract_wiki_links(linked_content):
+                    child_name = child_link.split("|")[0].strip()
+                    if child_name not in visited:
+                        queue.append((child_link, depth + 1, linked_content))
         except Exception as e:
             print(f"警告: {linked_file} 読み込み失敗: {e}", file=sys.stderr)
 
