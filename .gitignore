@@ -62,3 +62,6 @@ models/sentence-transformers/
 
 # Claude内部ワークツリー
 .claude/worktrees/
+
+# パイプライン生成レポート（コミット不要）
+reports/*.json
