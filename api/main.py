@@ -93,9 +93,20 @@ from pydantic import BaseModel, Field
 from typing import List, Any, Dict, Optional
 from scoring.deal_closure_engine import build_features, build_features_from_deltas, compute_closure_likelihood
 
-# Obsidian Vault パス（環境変数優先、未設定時は OBSIDIAN_VAULT_PATH 環境変数の有無でエラーを出す）
-# ハードコードされた個人パスを排除し、ポータブルな設定に統一
+# Obsidian Vault パス（環境変数優先、未設定時は find_vault() で自動検索）
 _OBSIDIAN_VAULT_PATH: str = os.environ.get("OBSIDIAN_VAULT_PATH", "")
+if not _OBSIDIAN_VAULT_PATH:
+    try:
+        import sys as _sys_obs
+        _parent_dir = str(Path(__file__).parent.parent)
+        if _parent_dir not in _sys_obs.path:
+            _sys_obs.path.insert(0, _parent_dir)
+        from mobile_app.obsidian_bridge import find_vault as _find_vault_auto
+        _auto_vault = _find_vault_auto()
+        if _auto_vault:
+            _OBSIDIAN_VAULT_PATH = str(_auto_vault)
+    except Exception:
+        pass
 
 # ChromaDB singleton — initialize once, not per-request
 _chroma_client = None
@@ -3478,6 +3489,21 @@ def post_chat(req: ChatRequest):
         save_message(req.user_id, "user", req.message)
         save_message(req.user_id, "assistant", reply)
         total = get_message_count(req.user_id)
+
+        # 改善系メッセージを自動検出してObsidian Improvement Logに保存
+        _IMPROVEMENT_KEYWORDS = (
+            "改善", "わかりにくい", "分かりにくい", "使いにくい", "説明",
+            "入力しにくい", "導線", "バグ", "不具合", "直して", "変えて",
+            "修正して", "追加して", "欲しい", "要望", "提案",
+        )
+        if any(k in req.message for k in _IMPROVEMENT_KEYWORDS):
+            try:
+                from mobile_app.obsidian_bridge import append_improvement_note
+                body = f"**ユーザー要望**\n{req.message}\n\n**めぶき返答**\n{reply}"
+                append_improvement_note("AIチャット改善候補", body)
+            except Exception as _obs_e:
+                print(f"[Obsidian改善保存] エラー: {_obs_e}")
+
         return {"reply": reply, "total_messages": total}
     except Exception as e:
         import traceback
