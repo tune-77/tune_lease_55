@@ -18,10 +18,35 @@ from obsidian_query import split_query_terms
 _WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]")
 
 
+def _obsidian_app_vaults() -> list[Path]:
+    """Obsidianアプリの設定ファイルから登録済みVaultパスを返す。
+    open=True のVaultを優先し、同条件ならts（最終アクセス時刻）が新しい順。
+    """
+    import json
+    config = Path.home() / "Library" / "Application Support" / "obsidian" / "obsidian.json"
+    if not config.exists():
+        return []
+    try:
+        data = json.loads(config.read_text(encoding="utf-8"))
+        vaults = data.get("vaults", {})
+        # open=True を優先（1→0）、同条件はts降順
+        entries = sorted(
+            vaults.values(),
+            key=lambda v: (0 if v.get("open") else 1, -v.get("ts", 0)),
+        )
+        return [Path(v["path"]) for v in entries if v.get("path") and Path(v["path"]).exists()]
+    except Exception:
+        return []
+
+
 def _home_candidates() -> list[Path]:
     home = Path.home()
+    # OBSIDIAN_VAULT環境変数 → Obsidianアプリ登録Vault（最近使用順）→ 既定パス の優先順
+    app_vaults = _obsidian_app_vaults()
+    env_vault = Path(os.getenv("OBSIDIAN_VAULT", "")).expanduser() if os.getenv("OBSIDIAN_VAULT") else None
     roots = [
-        Path(os.getenv("OBSIDIAN_VAULT", "")).expanduser() if os.getenv("OBSIDIAN_VAULT") else None,
+        env_vault,
+        *app_vaults,
         home / "Documents" / "Obsidian Vault",
         home / "Documents",
         home / "Obsidian",
