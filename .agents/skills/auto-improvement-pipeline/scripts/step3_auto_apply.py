@@ -272,10 +272,15 @@ class Step3AutoApplier:
             ).stdout.strip()
 
             # master を最新化してから auto-improve ブランチを用意
-            subprocess.run(
-                ["git", "fetch", "origin", "master"],
-                cwd=self.workspace_root, capture_output=True, check=True,
-            )
+            _fetch_ok = True
+            try:
+                subprocess.run(
+                    ["git", "fetch", "origin", "master"],
+                    cwd=self.workspace_root, capture_output=True, check=True, timeout=30,
+                )
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as fetch_err:
+                _fetch_ok = False
+                logger.warning("ネットワーク不達、ローカルmasterから続行: %s", fetch_err)
 
             branch_list = subprocess.run(
                 ["git", "branch", "--list", self.auto_branch],
@@ -287,9 +292,15 @@ class Step3AutoApplier:
                     ["git", "checkout", self.auto_branch],
                     cwd=self.workspace_root, capture_output=True, check=True,
                 )
-            else:
+            elif _fetch_ok:
                 subprocess.run(
                     ["git", "checkout", "-b", self.auto_branch, "origin/master"],
+                    cwd=self.workspace_root, capture_output=True, check=True,
+                )
+            else:
+                # fetch 失敗時はローカル master を基点にブランチ作成
+                subprocess.run(
+                    ["git", "checkout", "-b", self.auto_branch, "master"],
                     cwd=self.workspace_root, capture_output=True, check=True,
                 )
 
@@ -320,10 +331,32 @@ class Step3AutoApplier:
             commit_hash = commit_result.stdout.strip().split()[-1] if commit_result.stdout else "unknown"
 
             # Push
-            subprocess.run(
-                ["git", "push", "-u", "origin", self.auto_branch],
-                cwd=self.workspace_root, capture_output=True, check=True,
-            )
+            try:
+                subprocess.run(
+                    ["git", "push", "-u", "origin", self.auto_branch],
+                    cwd=self.workspace_root, capture_output=True, check=True, timeout=60,
+                )
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as push_err:
+                logger.warning("push保留: リモートへの push 失敗: %s", push_err)
+                if _LEDGER_AVAILABLE:
+                    for entry in self._applied:
+                        _ledger_key_push = _ledger.compute_key(
+                            entry["title"], entry.get("file", "")
+                        )
+                        _ledger.record(_ledger_key_push, "push_pending", entry["title"],
+                                       reason="push失敗: ネットワーク不達")
+                # PR 作成はスキップして commit_hash のみ返す
+                if original_branch:
+                    subprocess.run(
+                        ["git", "checkout", original_branch],
+                        cwd=self.workspace_root, capture_output=True, check=False,
+                    )
+                return {
+                    "success": False,
+                    "commit_hash": commit_hash,
+                    "pr_url": None,
+                    "message": f"push保留: {push_err}",
+                }
 
             # PR 作成
             pr_url = self._create_pull_request()
