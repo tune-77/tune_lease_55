@@ -218,6 +218,36 @@ def render_report() -> None:
 </div>
 """, unsafe_allow_html=True)
 
+    # ── 要審議・否決時: 主要リスク強調 + 推奨アクション（REV-019/024/027）────
+    if "要審議" in hantei or "否決" in hantei:
+        _risk_items = []
+        if hints:
+            _risk_items += [f"<li><b>{html.escape(k)}</b>: {html.escape(str(v)[:100])}</li>" for k, v in list(hints.items())[:3]]
+        _q_anomalies_early = res.get("quantum_anomalies") or []
+        for _a in _q_anomalies_early[:2]:
+            _risk_items.append(f"<li>⚛️ {html.escape(str(_a)[:100])}</li>")
+        _risk_html = f'<ul style="margin:.4rem 0 0;padding-left:1.2rem;font-size:.82rem;color:#7f1d1d;line-height:1.7;">{"".join(_risk_items)}</ul>' if _risk_items else ""
+        _actions = [
+            ("📅", "期間短縮", "リース期間を短縮して月次不確実性を低減。EL（期待損失）が大幅に圧縮できます。"),
+            ("💰", "前受金・頭金", "3ヶ月分程度の前受金設定で保全性が大幅に向上します。"),
+            ("🛡️", "代表者保証", "個人連帯保証または第三者保証を追加して信用補完します。"),
+            ("📄", "追加書類", "最新決算書・試算表・取引先発注書などで財務実態を補強します。"),
+        ]
+        _act_html = "".join(
+            f'<div style="display:flex;gap:.5rem;align-items:flex-start;margin-bottom:.4rem;">'
+            f'<span style="font-size:1.1rem;">{icon}</span>'
+            f'<div><b style="font-size:.83rem;">{label}</b><br>'
+            f'<span style="font-size:.78rem;color:#64748b;">{desc}</span></div></div>'
+            for icon, label, desc in _actions
+        )
+        st.markdown(f"""
+<div style="margin-bottom:1rem;padding:.75rem 1rem;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;">
+  <p style="margin:0 0 .4rem;font-weight:700;color:#9a3412;font-size:.9rem;">⚠️ 主要リスク要因</p>
+  {_risk_html if _risk_html else '<p style="font-size:.82rem;color:#9a3412;margin:.4rem 0 0;">審査ヒントを参照してください。</p>'}
+  <p style="margin:.8rem 0 .4rem;font-weight:700;color:#9a3412;font-size:.9rem;">📋 推奨アクション（条件改善の選択肢）</p>
+  {_act_html}
+</div>""", unsafe_allow_html=True)
+
     # ── 討論スコア調整値 ────────────────────────────────────────────────────
     debate_adj = st.session_state.get("debate_score_adjustment")
     if debate_adj is not None:
@@ -333,22 +363,31 @@ def render_report() -> None:
         bank_cr    = fin.get("bank_credit") or 0
         lease_cr   = fin.get("lease_credit") or 0
 
+        def _diff_cell(user, bench, unit="%"):
+            if user is None or bench is None:
+                return "—"
+            d = user - bench
+            color = "#16a34a" if d >= 0 else "#dc2626"
+            sign = "+" if d >= 0 else ""
+            return f'<span style="color:{color};font-weight:700;font-size:.82rem;">{sign}{d:.1f}{unit}</span>'
+
         rows = [
-            ("売上高",      f"{nenshu:,.0f} 万円",         "—",                           ""),
-            ("営業利益率",  f"{_fmt(user_op,'.1f','%')}",  f"{_fmt(bench_op,'.1f','%')}", _badge(user_op, bench_op, name="営業利益率")),
-            ("自己資本比率",f"{_fmt(user_eq_d,'.1f','%')}", f"{_fmt(bench_eq_d,'.1f','%')}", _badge(user_eq_d, bench_eq_d, name="自己資本比率")),
-            ("ROA",         f"{_fmt(user_roa,'.1f','%')}",  f"{_fmt(bench_roa,'.1f','%')}", _badge(user_roa, bench_roa, name="ROA")),
-            ("流動比率",    f"{_fmt(user_cr,'.0f','%')}",   f"{_fmt(bench_cr,'.0f','%')}", _badge(user_cr, bench_cr)),
-            ("純資産",      f"{net_assets:,.0f} 万円",      "—",                           ""),
-            ("総資産",      f"{assets:,.0f} 万円",          "—",                           ""),
-            ("EBITDA",      f"{op_profit+dep:,.0f} 百万円", "—",                           ""),
-            ("銀行与信残",  f"{bank_cr:,.0f} 百万円",       "—",                           ""),
-            ("リース信用残",f"{lease_cr:,.0f} 百万円",      "—",                           ""),
+            ("売上高",      f"{nenshu:,.0f} 万円",          "—",                            "—", ""),
+            ("営業利益率",  f"{_fmt(user_op,'.1f','%')}",   f"{_fmt(bench_op,'.1f','%')}",  _diff_cell(user_op, bench_op), _badge(user_op, bench_op, name="営業利益率")),
+            ("自己資本比率",f"{_fmt(user_eq_d,'.1f','%')}", f"{_fmt(bench_eq_d,'.1f','%')}", _diff_cell(user_eq_d, bench_eq_d), _badge(user_eq_d, bench_eq_d, name="自己資本比率")),
+            ("ROA",         f"{_fmt(user_roa,'.1f','%')}",  f"{_fmt(bench_roa,'.1f','%')}",  _diff_cell(user_roa, bench_roa), _badge(user_roa, bench_roa, name="ROA")),
+            ("流動比率",    f"{_fmt(user_cr,'.0f','%')}",   f"{_fmt(bench_cr,'.0f','%')}",   _diff_cell(user_cr, bench_cr), _badge(user_cr, bench_cr)),
+            ("純資産",      f"{net_assets:,.0f} 万円",       "—",                            "—", ""),
+            ("総資産",      f"{assets:,.0f} 万円",           "—",                            "—", ""),
+            ("EBITDA",      f"{op_profit+dep:,.0f} 百万円",  "—",                            "—", ""),
+            ("銀行与信残",  f"{bank_cr:,.0f} 百万円",        "—",                            "—", ""),
+            ("リース信用残",f"{lease_cr:,.0f} 百万円",       "—",                            "—", ""),
         ]
         tbl = '<div class="rp-section"><p class="rp-section-title">💹 財務データ・業界比較</p>'
-        tbl += '<table class="rp-table"><thead><tr><th>指標</th><th>当社</th><th>業界平均</th><th>評価</th></tr></thead><tbody>'
-        for lbl, val, bch, badge in rows:
-            tbl += f'<tr><td>{lbl}</td><td><b>{val}</b></td><td>{bch}</td><td>{badge}</td></tr>'
+        tbl += '<table class="rp-table"><thead><tr><th>指標</th><th>当社</th><th>業界平均</th><th>差分</th><th>評価</th></tr></thead><tbody>'
+        for row in rows:
+            lbl, val, bch, diff, badge = row
+            tbl += f'<tr><td>{lbl}</td><td><b>{val}</b></td><td>{bch}</td><td>{diff}</td><td>{badge}</td></tr>'
         tbl += '</tbody></table></div>'
         st.markdown(tbl, unsafe_allow_html=True)
 

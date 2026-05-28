@@ -567,7 +567,10 @@ def render_apply_form(
             st.markdown("##### 📈 契約条件・属性 (利回り予測用)")
             with st.container():
                 c_y1, c_y2, c_y3 = st.columns(3)
-                contract_type = c_y1.radio("契約種類", ["一般", "自動車"], horizontal=True, index=0 if st.session_state.get("contract_type", "一般") == "一般" else 1, key="contract_type")
+                _ct_opts = ["一般", "自動車", "割賦"]
+                _ct_cur = st.session_state.get("contract_type", "一般")
+                _ct_idx = _ct_opts.index(_ct_cur) if _ct_cur in _ct_opts else 0
+                contract_type = c_y1.radio("契約種類", _ct_opts, horizontal=True, index=_ct_idx, key="contract_type")
                 deal_source = c_y2.radio("商談ソース", ["銀行紹介", "その他"], horizontal=True, index=0 if st.session_state.get("deal_source", "その他") == "銀行紹介" else 1, key="deal_source")
                 lease_term = c_y3.select_slider("契約期間（月）", options=range(0, 121, 1), value=60)
                 c_l, c_r = st.columns([0.7, 0.3])
@@ -751,18 +754,65 @@ def render_quick_edit_panel(jsic_data, lease_assets_list):
     _qD1, _qD2, _qD3 = st.columns(3)
     with _qD1:
         _q_ctype = st.radio("顧客区分", ["既存先", "新規先"], index=0 if st.session_state.get("customer_type", "既存先") == "既存先" else 1, horizontal=True, key="_quick_ctype")
-        _q_contract_type = st.radio("契約種類", ["一般", "自動車"], index=0 if st.session_state.get("contract_type", "一般") == "一般" else 1, horizontal=True, key="_quick_contract_type")
+        _qct_opts = ["一般", "自動車", "割賦"]
+        _qct_cur = st.session_state.get("contract_type", "一般")
+        _qct_idx = _qct_opts.index(_qct_cur) if _qct_cur in _qct_opts else 0
+        _q_contract_type = st.radio("契約種類", _qct_opts, index=_qct_idx, horizontal=True, key="_quick_contract_type")
     with _qD2:
         _q_deal_source = st.radio("商談ソース", ["銀行紹介", "その他"], index=0 if st.session_state.get("deal_source", "その他") == "銀行紹介" else 1, horizontal=True, key="_quick_deal_source")
         _q_lease_term = st.number_input("契約期間（月）", min_value=0, max_value=120, value=int(st.session_state.get("lease_term", 0)), step=1, key="_quick_lease_term")
     with _qD3:
         _q_acceptance_year = st.number_input("検収年（西暦）", min_value=2000, max_value=2100, value=int(st.session_state.get("acceptance_year", 2026)), step=1, key="_quick_acceptance_year")
         _q_acq = st.number_input("取得価格（百万円）", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("acquisition_cost", 0)), step=0.1, format="%.1f", key="_quick_acq")
+    # 物件名→業種推測マッピング（REV-089）
+    _ASSET_INDUSTRY_HINTS: dict[str, str] = {
+        "コンバイン": "K 農業，林業",
+        "トラクター": "K 農業，林業",
+        "田植機": "K 農業，林業",
+        "農業": "K 農業，林業",
+        "ユンボ": "D 建設業",
+        "ショベル": "D 建設業",
+        "クレーン": "D 建設業",
+        "バックホー": "D 建設業",
+        "フォークリフト": "E 製造業",
+        "旋盤": "E 製造業",
+        "プレス": "E 製造業",
+        "溶接": "E 製造業",
+        "漁船": "L 漁業",
+        "医療": "P 医療，福祉",
+        "X線": "P 医療，福祉",
+        "介護": "P 医療，福祉",
+        "トラック": "H 運輸業，郵便業",
+        "冷凍車": "H 運輸業，郵便業",
+        "サーバー": "G 情報通信業",
+        "PC": "G 情報通信業",
+        "太陽光": "D 建設業",
+        "厨房": "M 宿泊業，飲食サービス業",
+        "食洗": "M 宿泊業，飲食サービス業",
+    }
+
     _q_asset_detail = ""
     if lease_assets_list:
         _q_asset_opts = [f"{it.get('name', '')}（{it.get('score', 0)}点）" for it in lease_assets_list]
         _q_asset_idx = min(st.session_state.get("selected_asset_index", 0), len(_q_asset_opts) - 1)
         _q_asset_sel = st.selectbox("リース物件", range(len(_q_asset_opts)), format_func=lambda i: _q_asset_opts[i], index=_q_asset_idx, key="_quick_asset")
+        # 物件名から業種を推測して提案（REV-089）
+        _sel_asset_name = lease_assets_list[_q_asset_sel].get("name", "")
+        _suggested_major = next(
+            (v for k, v in _ASSET_INDUSTRY_HINTS.items() if k in _sel_asset_name),
+            None,
+        )
+        _cur_major_for_hint = st.session_state.get("select_major") or ""
+        if _suggested_major and jsic_data and _suggested_major in jsic_data and _suggested_major != _cur_major_for_hint:
+            if st.info(
+                f"💡 物件「{_sel_asset_name}」から業種 **{_suggested_major}** を推奨します。"
+                f"「適用」ボタンで大分類を切り替えます。",
+                icon=None,
+            ) is not None:
+                pass
+            if st.button(f"✅ 業種を「{_suggested_major}」に変更", key="_apply_industry_hint"):
+                st.session_state["select_major"] = _suggested_major
+                st.rerun()
         # 車両・運搬車選択時: 車種タイプ選択欄
         if lease_assets_list[_q_asset_sel].get("id") == "vehicle":
             _VEHICLE_TYPE_OPTIONS_Q = [
