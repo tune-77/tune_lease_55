@@ -544,6 +544,81 @@ def _render_industry_colored_cases(similar_cases: list):
         )
 
 
+def _render_dynamic_rate_section(dyn: dict, base_rate: float, competitor_rate: float, pd_percent: float):
+    """
+    動的金利提案エンジンの結果を表示する。
+    PD・業種・スコア・競合を加味した最適スプレッドと失注率改善効果を示す。
+    """
+    st.markdown("#### 🔬 動的金利提案（PD連動プライシング）")
+
+    d_spread = dyn["dynamic_spread"]
+    d_rate   = dyn["dynamic_rate"]
+    win_est  = dyn["win_rate_estimate"] * 100
+    win_imp  = dyn["win_rate_improvement"] * 100
+
+    # ── メトリクス行 ────────────────────────────────────────────────────
+    dc1, dc2, dc3 = st.columns(3)
+    with dc1:
+        st.markdown(
+            f"""<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px;text-align:center;">
+            <div style="font-size:0.75rem;color:#1d4ed8;font-weight:600;">動的適用金利</div>
+            <div style="font-size:1.5rem;font-weight:700;color:#1e3a5f;">{d_rate:.2f}%</div>
+            <div style="font-size:0.75rem;color:#475569;">スプレッド +{d_spread:.2f}%</div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+    with dc2:
+        win_color = "#16a34a" if win_est >= 60 else "#d97706" if win_est >= 40 else "#dc2626"
+        st.markdown(
+            f"""<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;text-align:center;">
+            <div style="font-size:0.75rem;color:#15803d;font-weight:600;">予測成約確率</div>
+            <div style="font-size:1.5rem;font-weight:700;color:{win_color};">{win_est:.0f}%</div>
+            <div style="font-size:0.75rem;color:#475569;">PD {pd_percent:.1f}% 加味</div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+    with dc3:
+        imp_sign = "+" if win_imp >= 0 else ""
+        imp_color = "#16a34a" if win_imp > 0 else "#dc2626" if win_imp < -1 else "#475569"
+        st.markdown(
+            f"""<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px;text-align:center;">
+            <div style="font-size:0.75rem;color:#c2410c;font-weight:600;">成約率改善効果</div>
+            <div style="font-size:1.5rem;font-weight:700;color:{imp_color};">{imp_sign}{win_imp:.1f}pt</div>
+            <div style="font-size:0.75rem;color:#475569;">vs 基準スプレッド</div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+
+    # ── 補正内訳 ────────────────────────────────────────────────────────
+    adjustments = [
+        ("PD補正", dyn["pd_adjustment"], "#3b82f6"),
+        ("スコア補正", dyn["score_adjustment"], "#8b5cf6"),
+        ("業種補正", dyn["industry_adjustment"], "#f59e0b"),
+        ("競合補正", dyn["competitor_adjustment"], "#ef4444"),
+    ]
+    non_zero = [(k, v, c) for k, v, c in adjustments if abs(v) > 0.001]
+    if non_zero:
+        st.caption("**補正内訳:**　" + "　".join(
+            f'<span style="color:{c};">{k} {v:+.3f}%</span>'
+            for k, v, c in non_zero
+        ), unsafe_allow_html=True)
+
+    # ── 推奨テキスト ────────────────────────────────────────────────────
+    rec = dyn.get("recommendation", "")
+    if rec:
+        st.caption(f"💡 {rec}")
+
+    # ── 競合対比バッジ ──────────────────────────────────────────────────
+    if competitor_rate > 0:
+        diff = d_rate - competitor_rate
+        if diff < 0:
+            st.success(f"競合比 {diff:.2f}% — 金利優位。成約率向上が期待できます。")
+        elif diff < 0.2:
+            st.info(f"競合比 +{diff:.2f}% — ほぼ同水準。付加価値でカバー可能。")
+        else:
+            st.warning(f"競合比 +{diff:.2f}% — 競合より高め。条件見直しを検討してください。")
+
+
 def _render_comparison_scatter(df: pd.DataFrame, current_score: float, current_rate: float, current_industry: str):
     """過去案件と現在案件の比較散布図（X:スコア, Y:金利, 色:業種, サイズ:リース額）"""
     if df.empty:
@@ -680,17 +755,21 @@ def render_rate_suggestion(res: dict, similar_cases: list | None = None):
             from montecarlo_pricing import simulate_optimal_yield
             from customer_db import get_stats
             
-            # AI（LightGBM）倒産確率が利用可能な場合は優先して適用
-            _scoring_res = res.get("scoring_result") or st.session_state.get("scoring_result")
-            pd_val = 0.0
-                
+            # AI（LightGBM）倒産確率: res.pd_percent → scoring_result.hybrid_prob の順で取得
+            pd_val = float(res.get("pd_percent") or 0.0)
+            if pd_val <= 0.0:
+                _scoring_res = res.get("scoring_result") or st.session_state.get("scoring_result")
+                if _scoring_res:
+                    _hp = _scoring_res.get("hybrid_prob") or 0.0
+                    pd_val = float(_hp) * 100.0 if float(_hp) <= 1.0 else float(_hp)
+
             _avg_w_rate = None
-            if "industry_sub" in res:
-                try:
-                    _past_stats = get_stats(res["industry_sub"])
-                    _avg_w_rate = _past_stats.get("avg_winning_rate")
-                except Exception:
-                    pass
+            try:
+                _past_stats = get_stats()
+                # get_stats() は全体統計のみ。業種別平均は historical_df から算出する。
+                _ = _past_stats  # 将来の拡張用
+            except Exception:
+                pass
                     
             _has_comp = (st.session_state.get("competitor") == "競合あり")
             mc_res = simulate_optimal_yield(
@@ -744,6 +823,26 @@ def render_rate_suggestion(res: dict, similar_cases: list | None = None):
         )
         acquisition_cost_man = acquisition_cost_thousand / 10.0
         _render_term_scenarios(_get_base_for_term, optimal_spread, acquisition_cost_man)
+
+        st.divider()
+
+        # ── 動的金利提案エンジン（PD・業種・スコア連動） ──────────────────
+        try:
+            from dynamic_rate_engine import compute_dynamic_spread
+            current_industry_dyn = res.get("industry_sub", "") or "その他"
+            dyn = compute_dynamic_spread(
+                score=score,
+                pd_percent=pd_val,
+                industry_sub=current_industry_dyn,
+                base_rate=base_rate,
+                competitor_rate=competitor_rate,
+                historical_df=df_past,
+                base_optimal_spread=optimal_spread,
+                lease_term_months=_lease_term,
+            )
+            _render_dynamic_rate_section(dyn, base_rate, competitor_rate, pd_val)
+        except Exception as _dre:
+            st.caption(f"動的プライシング計算エラー: {_dre}")
 
         st.divider()
 
