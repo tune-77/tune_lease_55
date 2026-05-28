@@ -325,13 +325,24 @@ def generate_full_report_from_res(res: dict, session_state) -> str:
     nenshu_val   = float(inputs.get("nenshu", 1) or 1) or 1.0
     rieki_val    = float(inputs.get("rieki",  0) or 0)
     op_margin    = rieki_val / nenshu_val
-    equity_ratio = float(res.get("user_eq", 0) or 0) / 100
+    equity_ratio = float(res.get("user_equity_ratio", 0) or 0) / 100
     total_debt   = float(inputs.get("bank_credit", 0) or 0) * 10_000
 
     score_median = float(res.get("score", 0) or 0)
 
-    # リスクレベルをスコアから導出（PD廃止のため）
-    if score_median >= 70:
+    # pd_percent が res に含まれる場合は優先使用、なければスコアから導出
+    _raw_pd = res.get("pd_percent")
+    if _raw_pd is not None and float(_raw_pd) > 0:
+        default_prob = float(_raw_pd) / 100.0
+        if default_prob < 0.05:
+            risk_level = "低リスク"
+        elif default_prob < 0.15:
+            risk_level = "中リスク"
+        elif default_prob < 0.30:
+            risk_level = "高リスク"
+        else:
+            risk_level = "極高リスク"
+    elif score_median >= 70:
         risk_level, default_prob = "低リスク",  0.02
     elif score_median >= 50:
         risk_level, default_prob = "中リスク",  0.08
