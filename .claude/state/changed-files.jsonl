@@ -204,3 +204,5 @@
 {"file":"api/schemas.py","action":"Edit","timestamp":"2026-05-25T09:49:41Z","important":false}
 {"file":"api/gunshi_gemini.py","action":"Edit","timestamp":"2026-05-25T09:49:49Z","important":false}
 {"file":"api/main.py","action":"Edit","timestamp":"2026-05-25T09:50:22Z","important":false}
+{"file":".agents/skills/auto-improvement-pipeline/pipeline_ledger.py","action":"Write","timestamp":"2026-05-28T23:19:29Z","important":false}
+{"file":"components/ocr_mobile_input.py","action":"Write","timestamp":"2026-05-28T23:22:14Z","important":false}
