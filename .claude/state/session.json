@@ -1,1 +1,44 @@
-{"changes_this_session":[],"cwd":"/Users/kobayashiisaoryou/clawd/tune_lease_55","duration_minutes":0,"ended_at":"2026-05-24T21:16:51Z","event_seq":189,"fork_count":0,"git":{"branch":"master","last_commit":"57eca15","uncommitted_changes":0},"harness_mem":{"healthy":true,"last_checked":"2026-05-24T21:16:37Z","last_error":""},"intent":"literal","last_event_id":"event-000189","last_message_hash":"597e3d32a7eace7b","last_message_length":197,"memory_logged":true,"orchestration":{"max_state_retries":3,"retry_backoff_seconds":10},"parent_session_id":null,"plans":{"completed_tasks":39,"exists":true,"last_modified":1777636912,"pending_tasks":0,"todo_tasks":0,"wip_tasks":0},"project_name":"tune_lease_55","prompt_seq":25,"resume_token":"resume-1779657397343626000","session_id":"session-1779657397343612000","started_at":"2026-05-24T21:16:37Z","state":"stopped","state_version":1,"updated_at":"2026-05-25T09:54:20Z"}
+{
+  "changes_this_session": [],
+  "cwd": "/Users/kobayashiisaoryou/clawd/tune_lease_55",
+  "duration_minutes": 0,
+  "ended_at": "2026-05-24T21:16:51Z",
+  "event_seq": 189,
+  "fork_count": 0,
+  "git": {
+    "branch": "master",
+    "last_commit": "57eca15",
+    "uncommitted_changes": 0
+  },
+  "harness_mem": {
+    "healthy": true,
+    "last_checked": "2026-05-24T21:16:37Z",
+    "last_error": ""
+  },
+  "intent": "semantic",
+  "last_event_id": "event-000189",
+  "last_message_hash": "597e3d32a7eace7b",
+  "last_message_length": 197,
+  "memory_logged": true,
+  "orchestration": {
+    "max_state_retries": 3,
+    "retry_backoff_seconds": 10
+  },
+  "parent_session_id": null,
+  "plans": {
+    "completed_tasks": 39,
+    "exists": true,
+    "last_modified": 1777636912,
+    "pending_tasks": 0,
+    "todo_tasks": 0,
+    "wip_tasks": 0
+  },
+  "project_name": "tune_lease_55",
+  "prompt_seq": 27,
+  "resume_token": "resume-1779657397343626000",
+  "session_id": "session-1779657397343612000",
+  "started_at": "2026-05-24T21:16:37Z",
+  "state": "stopped",
+  "state_version": 1,
+  "updated_at": "2026-05-25T09:54:20Z"
+}
