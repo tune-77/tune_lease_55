@@ -677,36 +677,51 @@ def render_rate_suggestion(res: dict, similar_cases: list | None = None):
         # ── モンテカルロ最適プライシング ──
         st.divider()
         try:
-            from montecarlo_pricing import simulate_optimal_yield
-            from customer_db import get_stats
-            
-            # AI（LightGBM）倒産確率が利用可能な場合は優先して適用
-            _scoring_res = res.get("scoring_result") or st.session_state.get("scoring_result")
-            pd_val = 0.0
-                
-            _avg_w_rate = None
-            if "industry_sub" in res:
+            from dynamic_rate_engine import compute_dynamic_rate_proposal
+
+            # LightGBM PD（res.pd_percent）を優先取得。未設定ならエンジン内でスコアから推定
+            pd_val: float | None = res.get("pd_percent")
+            if pd_val is not None:
                 try:
-                    _past_stats = get_stats(res["industry_sub"])
-                    _avg_w_rate = _past_stats.get("avg_winning_rate")
-                except Exception:
-                    pass
-                    
+                    pd_val = float(pd_val)
+                    if pd_val < 0:
+                        pd_val = None
+                except (TypeError, ValueError):
+                    pd_val = None
+
             _has_comp = (st.session_state.get("competitor") == "競合あり")
-            mc_res = simulate_optimal_yield(
-                pd_percent=pd_val, 
+            dre = compute_dynamic_rate_proposal(
+                score=score,
+                base_rate=base_rate,
+                pd_percent=pd_val,
+                competitor_rate=competitor_rate if _has_comp else 0.0,
                 lease_term_months=_lease_term,
-                historical_winning_rate=_avg_w_rate,
-                competitor_rate=competitor_rate,
-                has_competitor=_has_comp
             )
-            
-            st.markdown("#### 💡 モンテカルロ数理モデル最適値")
-            st.caption("本件の個別破綻リスク（PD）と競合条件を加味した1万回シミュレーション。逆ザヤを完全に回避します。")
+
+            st.markdown("#### 💡 動的金利エンジン（PD統合・Monte Carlo）")
+            _pd_src_label = "LightGBM" if dre.pd_source == "lgbm" else "スコア推定"
+            _conf_emoji   = {"high": "🟢", "medium": "🟡", "low": "🔴"}.get(dre.confidence, "⚪")
+            st.caption(
+                f"PD={dre.pd_percent:.1f}%（{_pd_src_label}） "
+                f"リスクプレミアム={dre.risk_premium:.3f}% "
+                f"{_conf_emoji} 信頼度:{dre.confidence}"
+            )
             mc_c1, mc_c2, mc_c3 = st.columns(3)
-            mc_c1.metric("💎 IRR（推奨利回り）", f"{mc_res['recommended_yield']:.2f}%", help="期待収益を最大化する顧客提示利回り")
-            mc_c2.metric("📈 予想成約率", f"{mc_res['success_prob']:.1f}%", help="この金利で契約してもらえる予測確率")
-            mc_c3.metric("🛡️ 提案ステータス", mc_res['status'])
+            mc_c1.metric(
+                "💎 推奨利回り（動的）",
+                f"{dre.recommended_rate:.2f}%",
+                help=f"PD={dre.pd_percent:.1f}%・RP={dre.risk_premium:.3f}%を加味した最適提案金利",
+            )
+            mc_c2.metric(
+                "📈 予想成約率",
+                f"{dre.success_prob*100:.1f}%",
+                help="この金利で契約してもらえる Monte Carlo 推定確率",
+            )
+            mc_c3.metric("🛡️ 提案ステータス", dre.status)
+
+            if dre.notes:
+                for note in dre.notes:
+                    st.caption(f"⚠️ {note}")
         except Exception as e_mc:
             st.caption(f"プライシング試算エラー: {e_mc}")
 
