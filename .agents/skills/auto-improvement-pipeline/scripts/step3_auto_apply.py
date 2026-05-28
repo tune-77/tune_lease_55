@@ -14,6 +14,38 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+# ── Claude Agent パイプライン拡張モジュール（オプション）──────────────────
+_CLASSIFIER_AVAILABLE = False
+_AGENT_RUNNER_AVAILABLE = False
+_DISPATCH_NOTIFIER_AVAILABLE = False
+
+_scripts_dir = Path(__file__).resolve().parent
+if str(_scripts_dir) not in sys.path:
+    sys.path.insert(0, str(_scripts_dir))
+
+try:
+    from improvement_classifier import classify_improvement  # type: ignore[import]
+    _CLASSIFIER_AVAILABLE = True
+except ImportError:
+    pass
+
+try:
+    from claude_agent_runner import run_claude_agent, _find_claude_bin  # type: ignore[import]
+    _AGENT_RUNNER_AVAILABLE = True
+except ImportError:
+    def _find_claude_bin() -> str | None:  # type: ignore[misc]
+        try:
+            r = subprocess.run(["which", "claude"], capture_output=True, text=True, timeout=5)
+            return r.stdout.strip() or None
+        except Exception:
+            return None
+
+try:
+    from dispatch_notifier import notify_pending_approval  # type: ignore[import]
+    _DISPATCH_NOTIFIER_AVAILABLE = True
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
 
@@ -1114,6 +1146,77 @@ class Step3AutoApplier:
 # pipeline_runner.py から呼ばれるエントリポイント
 # ────────────────────────────────────────────────────────────────────────────
 
+def _run_claude_agent_flow(
+    improvement: dict[str, Any],
+    validation: dict[str, Any],
+    applier: "Step3AutoApplier",
+) -> dict[str, Any] | None:
+    """
+    APPROVED 案件に対して Claude Agent フローを試みる。
+
+    Returns:
+        処理済みの result dict、または None（claude CLI 未検出 / classifier 未利用時）
+    """
+    if not _CLASSIFIER_AVAILABLE:
+        return None
+
+    claude_available = bool(_find_claude_bin())
+    if not claude_available:
+        return None
+
+    size = classify_improvement(improvement)
+    imp_id = improvement.get("id", "?")
+    title = improvement.get("title", "")
+
+    if size == "manual":
+        applier._needs_review.append({
+            "id": imp_id,
+            "title": title,
+            "reason": "manual: 大規模機能・外部API・インフラ変更のため手動実装が必要",
+            "detail": improvement.get("description", "")[:300],
+        })
+        return {"action": "needs_review", "reason": "manual: 手動実装が必要", "size": size}
+
+    if not _AGENT_RUNNER_AVAILABLE:
+        return None
+
+    print(f"  [{imp_id}] 🤖 claude-agent 起動 (size={size}): {title[:50]}")
+    agent_result = run_claude_agent(improvement, size)
+
+    if not agent_result["success"]:
+        logger.warning("claude-agent 失敗: %s", agent_result["message"])
+        return None  # フォールバックへ
+
+    pr_url = agent_result.get("pr_url") or ""
+    pr_number = agent_result.get("pr_number")
+    merged = agent_result.get("merged", False)
+
+    if size == "auto":
+        applier._applied.append({
+            "id": imp_id,
+            "file": improvement.get("target_module", ""),
+            "title": title,
+            "pr_url": pr_url,
+        })
+        action_label = "✅ AGENT-AUTO-MERGED" if merged else "✅ AGENT-AUTO"
+        print(f"  [{imp_id}] {action_label}: {pr_url}")
+        return {"action": "applied", "reason": f"claude-agent auto (merged={merged})",
+                "pr_url": pr_url, "size": size}
+
+    # size == "approval"
+    applier._needs_review.append({
+        "id": imp_id,
+        "title": title,
+        "reason": f"approval: 承認待ちPR #{pr_number}",
+        "detail": pr_url,
+    })
+    if _DISPATCH_NOTIFIER_AVAILABLE:
+        notify_pending_approval(pr_number, pr_url, title, size)
+    print(f"  [{imp_id}] 📋 AGENT-APPROVAL: PR #{pr_number} 承認待ち → {pr_url}")
+    return {"action": "needs_review", "reason": f"approval: PR #{pr_number} 承認待ち",
+            "pr_url": pr_url, "size": size}
+
+
 def apply_improvements_pipeline(
     improvements: list[dict[str, Any]],
     validation_results: list[dict[str, Any]],
@@ -1129,6 +1232,17 @@ def apply_improvements_pipeline(
 
     # 各改善案を処理
     for improvement, validation in zip(improvements, validation_results):
+        # APPROVED 案件は Claude Agent フローを先に試みる
+        if (
+            validation.get("status") == "APPROVED"
+            and _CLASSIFIER_AVAILABLE
+            and _find_claude_bin()
+        ):
+            agent_result = _run_claude_agent_flow(improvement, validation, applier)
+            if agent_result is not None:
+                continue  # agent が処理済み → 従来ロジックをスキップ
+
+        # 従来の自動適用ロジック
         result = applier.apply_improvement(improvement, validation)
         action_label = {
             "applied":      "✅ APPLIED",
@@ -1137,7 +1251,7 @@ def apply_improvements_pipeline(
         }.get(result["action"], result["action"])
         print(f"  [{improvement.get('id')}] {action_label}: {result['reason'][:70]}")
 
-    # Git コミット・Push・PR 作成
+    # Git コミット・Push・PR 作成（従来ロジック経由の applied 分）
     commit_result = applier.git_commit_and_push()
     if commit_result["success"]:
         print(f"✅ Git コミット・PR 作成: {commit_result.get('pr_url', 'PR URL 不明')}")
