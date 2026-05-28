@@ -223,6 +223,53 @@ def extract_improvements_from_index(index_file: Path, vault: Path) -> str:
     return "\n".join(output_parts)
 
 
+_AI_CHAT_LOG_SUBPATH = "Projects/tune_lease_55/AI Chat/Improvement Log"
+
+# AIチャット改善ログのフォーマット（[high]/[medium]/[low] + (accept)/(reject) 形式）
+_AI_CHAT_LOG_ITEM_RE = re.compile(
+    r"^- \*\*(.+?)\*\*\s*\[(?:high|medium|low)\].*$", re.MULTILINE
+)
+
+
+def extract_improvements_from_ai_chat_logs(vault: Path) -> str:
+    """
+    AI Chat/Improvement Log/ 配下の全 .md を直接スキャンして改善案を抽出する.
+
+    BFS 展開とは独立して実行し、[改善] タグ付きテキストを返す。
+    """
+    log_dir = vault / _AI_CHAT_LOG_SUBPATH
+    if not log_dir.exists():
+        print(f"警告: AI Chat ログディレクトリが存在しません: {log_dir}", file=sys.stderr)
+        return ""
+
+    md_files = sorted(log_dir.glob("*.md"))
+    if not md_files:
+        return ""
+
+    output_parts: list[str] = [f"# AIチャット改善ログ ({_AI_CHAT_LOG_SUBPATH})\n"]
+
+    for md_file in md_files:
+        try:
+            content = md_file.read_text(encoding="utf-8")
+        except Exception as e:
+            print(f"警告: {md_file} 読み込み失敗: {e}", file=sys.stderr)
+            continue
+
+        file_parts: list[str] = []
+        for m in _AI_CHAT_LOG_ITEM_RE.finditer(content):
+            item_title = m.group(1).strip()
+            if len(item_title) > 5:
+                file_parts.append(f"[改善] {item_title}")
+                file_parts.append(f"理由：AI Chat 改善ログ ({md_file.stem}) に記録された改善案")
+                file_parts.append("")
+
+        if file_parts:
+            output_parts.append(f"\n## {md_file.stem}\n")
+            output_parts.extend(file_parts)
+
+    return "\n".join(output_parts)
+
+
 def main() -> None:
     vault = _get_vault_path()
     print(f"Obsidian Vault: {vault}")
@@ -235,6 +282,11 @@ def main() -> None:
     print(f"改善インデックス: {index_file}")
 
     pipeline_text = extract_improvements_from_index(index_file, vault)
+
+    # AI Chat Improvement Log を独立スキャンして結合
+    ai_chat_text = extract_improvements_from_ai_chat_logs(vault)
+    if ai_chat_text.strip():
+        pipeline_text = pipeline_text + "\n\n" + ai_chat_text
 
     OUTPUT_FILE.write_text(pipeline_text, encoding="utf-8")
 
