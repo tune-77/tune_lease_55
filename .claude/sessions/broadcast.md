@@ -241,3 +241,21 @@
 
 ## 2026-05-25T09:50:45Z [b69490b2-5e0]
 📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
+
+## 2026-05-28T12:11:40Z [97aaa6af-f5b]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
+
+## 2026-05-28T12:11:54Z [97aaa6af-f5b]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
+
+## 2026-05-28T12:45:19Z [524ecdc5-db6]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/knowledge/obsidian_loader.py` が変更されました: パターン 'api/' にマッチ
+
+## 2026-05-28T12:45:21Z [524ecdc5-db6]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/knowledge/policy_loader.py` が変更されました: パターン 'api/' にマッチ
+
+## 2026-05-28T12:45:22Z [524ecdc5-db6]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/knowledge/feedback_watcher.py` が変更されました: パターン 'api/' にマッチ
+
+## 2026-05-28T12:45:23Z [524ecdc5-db6]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/crystallizer/obsidian_writer.py` が変更されました: パターン 'api/' にマッチ

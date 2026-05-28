@@ -31,3 +31,6 @@
 {"type":"skill","name":"restart-api","digest":"{\"skill\":\"restart-api\"}","timestamp":"2026-05-25T02:57:34Z"}
 {"type":"skill","name":"git-ship","digest":"{\"skill\":\"git-ship\",\"args\":\"ブランチ名: feature/fix-delinquent-model\"}","timestamp":"2026-05-25T09:40:01Z"}
 {"type":"skill","name":"restart-api","digest":"{\"skill\":\"restart-api\"}","timestamp":"2026-05-25T09:41:11Z"}
+{"type":"skill","name":"restart-api","digest":"{\"skill\":\"restart-api\"}","timestamp":"2026-05-28T12:15:30Z"}
+{"type":"skill","name":"git-ship","digest":"{\"skill\":\"git-ship\"}","timestamp":"2026-05-28T21:44:03Z"}
+{"type":"skill","name":"git-ship","digest":"{\"skill\":\"git-ship\"}","timestamp":"2026-05-28T22:00:23Z"}
