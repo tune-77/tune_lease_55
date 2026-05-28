@@ -18,6 +18,24 @@ logger = logging.getLogger(__name__)
 
 
 # ────────────────────────────────────────────────────────────────────────────
+# 機密データマスキング
+# ────────────────────────────────────────────────────────────────────────────
+
+SECRET_PATTERNS: list[str] = [
+    r'sk-[A-Za-z0-9]{20,}',           # OpenAI key
+    r'AIza[A-Za-z0-9_-]{35}',          # Google API key
+    r'[0-9]{4}-[0-9]{4}-[0-9]{4}',    # クレジットカード風
+]
+
+
+def _mask_secrets(text: str) -> str:
+    """APIプロンプトに含まれる可能性のある機密データをマスクする."""
+    for pat in SECRET_PATTERNS:
+        text = re.sub(pat, '[REDACTED]', text)
+    return text
+
+
+# ────────────────────────────────────────────────────────────────────────────
 # NEEDS_REVIEW 判定用キーワード
 # ────────────────────────────────────────────────────────────────────────────
 
@@ -504,8 +522,9 @@ class Step3AutoApplier:
         current_code: str,
     ) -> str:
         """unified diff 形式でのコード変更を要求するプロンプトを構築する."""
-        code_snippet = current_code[:8000]
-        is_truncated = len(current_code) > 8000
+        masked_code = _mask_secrets(current_code)
+        code_snippet = masked_code[:8000]
+        is_truncated = len(masked_code) > 8000
         return (
             "あなたは Python コード改善の専門家です。\n"
             "以下のPythonファイルに対して、指定された改善を実施してください。\n\n"
@@ -560,8 +579,9 @@ class Step3AutoApplier:
     ) -> str | None:
         """後方互換: Gemini で完全なコードを生成する（旧来のプロンプト形式）."""
         current_code = target_file.read_text(encoding="utf-8")
-        code_snippet = current_code[:8000]
-        is_truncated = len(current_code) > 8000
+        masked_code = _mask_secrets(current_code)
+        code_snippet = masked_code[:8000]
+        is_truncated = len(masked_code) > 8000
         prompt = (
             "あなたは Python コード改善の専門家です。\n"
             "以下のPythonファイルに対して、指定された改善を実施してください。\n\n"
