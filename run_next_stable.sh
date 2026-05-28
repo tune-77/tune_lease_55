@@ -254,7 +254,7 @@ else
   API_RUNNER=(python)
 fi
 while true; do
-  "${API_RUNNER[@]}" -m uvicorn api.main:app --host "$API_HOST" --port "$API_PORT" >>"$API_LOG" 2>&1 &
+  "${API_RUNNER[@]}" -m uvicorn api.main:app --host "$API_HOST" --port "$API_PORT" --reload >>"$API_LOG" 2>&1 &
   api_pid=$!
   echo "$api_pid" > "$API_PID_FILE"
   wait "$api_pid" || true

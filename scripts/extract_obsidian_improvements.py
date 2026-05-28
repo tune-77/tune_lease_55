@@ -7,10 +7,9 @@ import re
 import sys
 from pathlib import Path
 
-# Vault パス候補（環境変数 > iCloud パス > Documents パス）
+# Vault パス候補（環境変数 OBSIDIAN_VAULT_PATH > iCloud パス）
 _DEFAULT_VAULT_PATHS = [
-    Path("/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"),
-    Path("/Users/kobayashiisaoryou/Documents/Obsidian Vault"),
+    Path.home() / "Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault",
 ]
 
 OUTPUT_FILE = Path("/tmp/obsidian_improvements_export.txt")

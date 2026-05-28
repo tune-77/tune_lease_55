@@ -21,7 +21,7 @@ from typing import Iterator
 logger = logging.getLogger(__name__)
 
 _DEFAULT_VAULT_PATH = (
-    "/Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/"
+    "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/"
 )
 _VAULT_PATH = os.environ.get("OBSIDIAN_VAULT_PATH", _DEFAULT_VAULT_PATH)
 _FEEDBACK_SUBDIR = "Feedback"
