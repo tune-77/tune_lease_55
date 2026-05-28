@@ -14,7 +14,7 @@ from typing import Any
 from obsidian_query import split_query_terms
 
 
-DEFAULT_VAULT = Path("/Users/kobayashiisaoryou/Documents/Obsidian Vault")
+DEFAULT_VAULT = Path("/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault")
 HUMOR_NOTES = {
     "tone": Path("Humor/口調ルール.md"),
     "ng": Path("Humor/NG表現.md"),

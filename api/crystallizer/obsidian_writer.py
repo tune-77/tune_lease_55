@@ -11,7 +11,7 @@ import re
 from api.crystallizer.anomaly_extractor import AnomalyCase
 
 _DEFAULT_VAULT_ROOT = (
-    "/Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/"
+    "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/"
 )
 _VAULT_ROOT = os.environ.get("OBSIDIAN_VAULT_PATH", _DEFAULT_VAULT_ROOT)
 _GENERATED_DIR = "Generated"
