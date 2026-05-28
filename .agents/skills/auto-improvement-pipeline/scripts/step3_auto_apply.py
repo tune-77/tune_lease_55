@@ -18,6 +18,35 @@ logger = logging.getLogger(__name__)
 
 
 # ────────────────────────────────────────────────────────────────────────────
+# Obsidian Vault 検索ヘルパー
+# ────────────────────────────────────────────────────────────────────────────
+
+def _find_vault_path() -> Path | None:
+    """obsidian_bridge.find_vault() を優先し、失敗時は環境変数にフォールバック."""
+    # mobile_app/obsidian_bridge.py を動的にインポート
+    _script_dir = Path(__file__).resolve().parent
+    _root = _script_dir
+    while _root != _root.parent:
+        _mobile_app = _root / "mobile_app"
+        if _mobile_app.exists():
+            if str(_mobile_app) not in sys.path:
+                sys.path.insert(0, str(_mobile_app))
+            break
+        _root = _root.parent
+    try:
+        from obsidian_bridge import find_vault  # type: ignore[import]
+        return find_vault()
+    except ImportError:
+        pass
+    # フォールバック: 環境変数
+    env_vault = os.environ.get("OBSIDIAN_VAULT_PATH")
+    if env_vault:
+        p = Path(env_vault).expanduser()
+        return p if p.exists() else None
+    return None
+
+
+# ────────────────────────────────────────────────────────────────────────────
 # 機密データマスキング
 # ────────────────────────────────────────────────────────────────────────────
 
@@ -975,6 +1004,61 @@ class Step3AutoApplier:
 
     # ── Obsidian 同期（後方互換）─────────────────────────────────────────
 
+    def write_back_obsidian_flag(
+        self,
+        improvement: dict[str, Any],
+        pr_url: str,
+    ) -> None:
+        """元のObsidianノートの該当行末に ✅ PR#xxx 適用済み YYYY-MM-DD を付記する."""
+        source_file = improvement.get("source_file")
+        if not source_file:
+            logger.warning(
+                "[write_back] source_file が記録されていないためスキップ: id=%s",
+                improvement.get("id"),
+            )
+            return
+
+        vault = _find_vault_path()
+        if vault is None:
+            logger.warning("[write_back] Obsidian Vault が見つかりません。スキップ。")
+            return
+
+        src_path = Path(source_file)
+        if not src_path.is_absolute():
+            src_path = vault / source_file
+        if not src_path.exists():
+            logger.warning("[write_back] source_file が存在しません: %s", src_path)
+            return
+
+        title = improvement.get("title", "")
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        pr_label = ""
+        if pr_url:
+            m = re.search(r"/pull/(\d+)", pr_url)
+            pr_label = f" #{m.group(1)}" if m else ""
+        flag = f"  ✅ PR{pr_label} 適用済み {date_str}"
+
+        try:
+            lines = src_path.read_text(encoding="utf-8").splitlines(keepends=True)
+            modified = False
+            for i, line in enumerate(lines):
+                stripped = line.rstrip("\n\r")
+                # タイトルが行に含まれ、まだフラグが付いていない行を探す
+                if title and title in stripped and "✅" not in stripped:
+                    lines[i] = stripped + flag + "\n"
+                    modified = True
+                    break
+            if modified:
+                src_path.write_text("".join(lines), encoding="utf-8")
+                logger.info("[write_back] 書き戻し完了: %s", src_path)
+            else:
+                logger.warning(
+                    "[write_back] 該当行が見つかりませんでした: title=%r, file=%s",
+                    title, src_path,
+                )
+        except OSError as e:
+            logger.warning("[write_back] ファイル書き込みエラー: %s", e)
+
     def sync_obsidian_knowledge(
         self,
         improvement: dict[str, Any],
@@ -1060,10 +1144,12 @@ def apply_improvements_pipeline(
     elif applier._applied:
         print(f"⚠️  Git 操作失敗: {commit_result.get('message')}", file=sys.stderr)
 
-    # 適用済みに対して Obsidian 同期
+    # 適用済みに対して元ノートへのフラグ書き戻し + Obsidian 同期
     applied_ids = {e["id"] for e in applier._applied}
+    pr_url = commit_result.get("pr_url") or ""
     for imp, val in zip(improvements, validation_results):
         if imp.get("id") in applied_ids:
+            applier.write_back_obsidian_flag(imp, pr_url)
             applier.sync_obsidian_knowledge(imp, val)
 
     # Cowork 報告レポート生成

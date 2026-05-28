@@ -39,29 +39,35 @@ class ImprovementPipeline:
         chat_log: str,
         rag_context: str = "",
         dry_run: bool = False,
+        source_file: str | Path | None = None,
     ) -> dict[str, Any]:
         """
         パイプライン全体を実行する。
-        
+
         Args:
             chat_log: チャット全体のテキスト
             rag_context: Obsidian RAGから取得したコンテキスト
             dry_run: True の場合、実際の修正は行わない（検証のみ）
-        
+            source_file: チャットログの元ファイルパス（Obsidian書き戻し用）
+
         Returns:
             パイプライン実行結果
         """
-        
+
         print("🚀 自律型改善リファクタリング・パイプラインを開始します...\n")
-        
+
         # ====================
         # Step 1: 抽出・構造化
         # ====================
         print("【Step 1】チャットログから改善点を抽出・構造化中...")
-        
+
         try:
             improvements_json = extract_improvements_as_json(chat_log)
             improvements = json.loads(improvements_json)
+            # 元ファイルパスを各改善案に注入（Obsidian書き戻しで使用）
+            if source_file:
+                for imp in improvements:
+                    imp.setdefault("source_file", str(source_file))
             print(f"✅ {len(improvements)}件の改善点を抽出しました\n")
         except Exception as e:
             print(f"❌ Step 1 失敗: {e}")
