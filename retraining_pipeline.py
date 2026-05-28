@@ -50,8 +50,11 @@ FEATURE_COLS = [
     "sales_log", "bank_credit_log", "lease_credit_log",
     "op_profit", "ord_profit", "net_income", "machines", "other_assets", "rent",
     "gross_profit", "depreciation", "dep_expense", "rent_expense",
-    "grade_4_6", "grade_watch", "grade_none", "contracts",
+    "contracts",
 ]
+# grade_4_6 / grade_watch / grade_none を除外した理由:
+# ラベル(delinquent=1)は excluded_grade_cases.original_grade='9' で決まり、
+# inputs.grade も同じ格付を格納しているため grade フラグがラベルと直接相関し AUC=1.00 となる循環参照が生じていた。
 
 RF_MODEL_FILE = "spread_predictor_v2.pkl"
 LGBM_MODEL_FILE = "lgbm_model.pkl"
@@ -147,7 +150,6 @@ def _safe_float(v: object, default: float = 0.0) -> float:
 def _inputs_to_feature_row(inputs: dict) -> list[float]:
     """inputs dict から FEATURE_COLS 順の特徴量リストを返す。analysis_regression.py と同じ変換。"""
     major = str(inputs.get("industry_major") or "").strip()
-    grade = str(inputs.get("grade") or "").strip()
 
     ind_medical       = 1.0 if ("医療" in major or "福祉" in major) else 0.0
     ind_transport     = 1.0 if "運輸" in major else 0.0
@@ -158,10 +160,6 @@ def _inputs_to_feature_row(inputs: dict) -> list[float]:
     nenshu      = max(_safe_float(inputs.get("nenshu")), 0.0)
     bank_credit = max(_safe_float(inputs.get("bank_credit")), 0.0)
     lease_credit = max(_safe_float(inputs.get("lease_credit")), 0.0)
-
-    grade_4_6   = 1.0 if "4-6" in grade else 0.0
-    grade_watch = 1.0 if "要注意" in grade else 0.0
-    grade_none  = 1.0 if ("無格付" in grade or grade in ("0", "④無格付")) else 0.0
 
     return [
         ind_medical, ind_transport, ind_construction, ind_manufacturing, ind_service,
@@ -176,7 +174,6 @@ def _inputs_to_feature_row(inputs: dict) -> list[float]:
         _safe_float(inputs.get("depreciation")) / 1000.0,
         _safe_float(inputs.get("dep_expense"))  / 1000.0,
         _safe_float(inputs.get("rent_expense")) / 1000.0,
-        grade_4_6, grade_watch, grade_none,
         _safe_float(inputs.get("contracts")),
     ]
 
@@ -572,6 +569,31 @@ def run_retraining(
                 prev_auc=prev_auc,
                 rollback_reason=f"training exception: {exc}" if not dry_run else None,
                 error=str(exc) if dry_run else None,
+            )
+            _log_to_db(db_path, triggered_by, result, started_at)
+            return result
+
+        # データリーケージ疑義チェック: AUC が 0.99 超は循環参照の可能性が高い
+        if new_auc is not None and new_auc > 0.99:
+            logger.warning(
+                "[retraining_pipeline] phase=leakage_suspect new_auc=%.4f > 0.99"
+                " — 特徴量にラベルと相関する列が混入している可能性があります。"
+                " FEATURE_COLS を確認してください。",
+                new_auc,
+            )
+            if not dry_run:
+                _restore_backup(model_dir_path)
+            result = _make_result(
+                status="rolled_back" if not dry_run else "error",
+                records_used=n_records,
+                new_auc=new_auc,
+                prev_auc=prev_auc,
+                rollback_reason=(
+                    f"data_leakage_suspect: new_auc={new_auc:.4f} > 0.99"
+                ) if not dry_run else None,
+                error=(
+                    f"data_leakage_suspect: new_auc={new_auc:.4f} > 0.99"
+                ) if dry_run else None,
             )
             _log_to_db(db_path, triggered_by, result, started_at)
             return result
