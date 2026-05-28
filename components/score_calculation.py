@@ -295,10 +295,12 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         missing.append(label)
                 if missing:
                     validation_ok = False
-                    st.error(
-                        f"**判定には次の必須項目を入力してください。**\n\n"
-                        + "\n".join(f"- **{m}** は **1以上** の値を入力してください。" for m in missing)
-                        + "\n\n売上高は比率計算に、総資産は自己資本比率・学習モデルに必要です。"
+                    missing_list = "\n".join(f"- **{m}** （1以上の値を入力してください）" for m in missing)
+                    st.warning(
+                        f"⏳ **情報不足 — 追加入力が必要です**\n\n"
+                        f"以下の項目が未入力のため、判定を実行できません。\n\n"
+                        f"{missing_list}\n\n"
+                        f"💡 売上高は比率計算に、総資産は自己資本比率・学習モデルに必須です。"
                     )
             else:
                 # APIモード時はここで最終的な数値キャストを保証

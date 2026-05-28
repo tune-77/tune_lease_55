@@ -422,14 +422,28 @@ def render_report() -> None:
                 'color:#9d174d;font-size:.78rem;font-weight:700;" '
                 f'title="外挿域変数: {_ood_var_str}">⚠️ 外挿域</span>'
             ) if ood_vars else ""
+            _q_high_guidance = ""
+            if q_risk >= _QT_SR:
+                _q_high_guidance = (
+                    '<div style="margin-top:.6rem;padding:.5rem .75rem;background:#fef2f2;'
+                    'border-left:3px solid #dc2626;border-radius:4px;font-size:.8rem;color:#7f1d1d;">'
+                    '<b>📋 Q_risk 高値時の確認事項</b><br>'
+                    '① 売上高と減価償却費・賃借料の比率が業種平均と大きく乖離していないか<br>'
+                    '② 財務諸表上の数値と実態（設備保有状況等）に整合性があるか<br>'
+                    '③ 二次審査で現地確認・追加書類の取得を検討してください'
+                    '</div>'
+                )
             st.markdown(f"""
 <div class="rp-section">
-  <p class="rp-section-title">⚛️ 量子整合性チェック</p>
+  <p class="rp-section-title">⚛️ 量子整合性チェック
+    <span style="font-size:.75rem;font-weight:400;color:#94a3b8;margin-left:.5rem;" title="財務データの内部整合性を複数変数ペアの干渉パターンで検出するリスク指標。高値（{_QT_SR:.0f}以上）は財務数値間の歪みを示し、二次確認を推奨します。">（?）</span>
+  </p>
   <span style="font-size:1rem;font-weight:700;color:{q_color};">{q_label}</span>
-  <span style="font-size:.85rem;color:#64748b;margin-left:.8rem;">リスクスコア: <b>{q_risk:.1f}</b></span>
+  <span style="font-size:.85rem;color:#64748b;margin-left:.8rem;">Q_risk スコア: <b>{q_risk:.1f}</b>／100　<span style="font-weight:400;color:#94a3b8;">（基準: {_QT_SR:.0f}以上で要注意）</span></span>
   {badge_html}{ood_badge_html}
   {'<div style="font-size:.82rem;color:#334155;margin-top:.4rem;">' + html.escape(q_verdict) + '</div>' if q_verdict else ""}
   {anomaly_html}
+  {_q_high_guidance}
 </div>""", unsafe_allow_html=True)
 
             # UI.4: 量子解析コメント（自然言語レポート）

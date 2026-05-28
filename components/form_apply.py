@@ -698,7 +698,7 @@ def render_quick_edit_panel(jsic_data, lease_assets_list):
     st.markdown("#### 📊 損益計算書 P/L（百万円）")
     _q1, _q2, _q3 = st.columns(3)
     with _q1:
-        _q_nenshu = st.number_input("売上高", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("nenshu", 0)), step=0.1, format="%.1f", key="_quick_nenshu")
+        _q_nenshu = st.number_input("売上高", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("nenshu", 0)), step=0.1, format="%.1f", key="_quick_nenshu", help="決算書の売上高（百万円）。営業利益率・業種平均比較の基準になる最重要項目です。")
     with _q2:
         _q_gross = st.number_input("売上総利益（粗利）", min_value=-90_000.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("item9_gross", 0)), step=0.1, format="%.1f", key="_quick_gross")
     with _q3:
@@ -721,13 +721,13 @@ def render_quick_edit_panel(jsic_data, lease_assets_list):
         _q_rent = st.number_input("賃借料（資産）", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("item8_rent", 0)), step=0.1, format="%.1f", key="_quick_rent")
         _q_rent_exp = st.number_input("賃借料（経費）", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("item12_rent_exp", 0)), step=0.1, format="%.1f", key="_quick_rent_exp")
     with _qA3:
-        _q_machine = st.number_input("機械装置", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("item6_machine", 0)), step=0.1, format="%.1f", key="_quick_machine")
-        _q_other = st.number_input("その他資産", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("item7_other", 0)), step=0.1, format="%.1f", key="_quick_other")
+        _q_machine = st.number_input("機械装置", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("item6_machine", 0)), step=0.1, format="%.1f", key="_quick_machine", help="BS上の有形固定資産のうち機械装置（百万円）。量子整合性チェック（Q_risk）の減価償却ペア計算に使用します。")
+        _q_other = st.number_input("その他資産", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("item7_other", 0)), step=0.1, format="%.1f", key="_quick_other", help="機械装置・土地以外の有形固定資産合計（百万円）。流動資産の推計にも使用します。")
     _qB1, _qB2 = st.columns(2)
     with _qB1:
-        _q_net = st.number_input("純資産", min_value=-90_000.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("net_assets", 0)), step=0.1, format="%.1f", key="_quick_net")
+        _q_net = st.number_input("純資産", min_value=-90_000.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("net_assets", 0)), step=0.1, format="%.1f", key="_quick_net", help="BS上の純資産合計（百万円）。自己資本比率（純資産÷総資産）の算出に使用。マイナスは債務超過を意味します。")
     with _qB2:
-        _q_total = st.number_input("総資産", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("total_assets", 0)), step=0.1, format="%.1f", key="_quick_total")
+        _q_total = st.number_input("総資産", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("total_assets", 0)), step=0.1, format="%.1f", key="_quick_total", help="BS上の資産合計（百万円）。自己資本比率・推定倒産確率（PD）・学習モデルすべてに使用する必須項目です。")
 
     st.divider()
 
@@ -739,9 +739,9 @@ def render_quick_edit_panel(jsic_data, lease_assets_list):
         _q_cur_grade = st.session_state.get("grade", "②4-6 (標準)")
         _q_grade_idx = _grade_opts.index(_q_cur_grade) if _q_cur_grade in _grade_opts else 1
         _q_grade = st.selectbox("格付", _grade_opts, index=_q_grade_idx, key="_quick_grade")
-        _q_bank = st.number_input("銀行与信（百万円）", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("bank_credit", 0)), step=0.1, format="%.1f", key="_quick_bank")
+        _q_bank = st.number_input("銀行与信（百万円）", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("bank_credit", 0)), step=0.1, format="%.1f", key="_quick_bank", help="当社（弊社）の銀行向け与信残高（百万円）。他社銀行・全体合計ではなく弊社分のみ入力してください。")
     with _qC2:
-        _q_lease = st.number_input("リース与信（百万円）", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("lease_credit", 0)), step=0.1, format="%.1f", key="_quick_lease")
+        _q_lease = st.number_input("リース与信（百万円）", min_value=0.0, max_value=90_000.0, value=_to_million_for_input(st.session_state.get("lease_credit", 0)), step=0.1, format="%.1f", key="_quick_lease", help="当社（弊社）のリース向け与信残高（百万円）。他社リース・全体合計ではなく弊社分のみ入力してください。")
         _q_contracts = st.number_input("契約数（件）", min_value=0, max_value=200, value=int(st.session_state.get("contracts", 0)), step=1, key="_quick_contracts")
 
     st.divider()
