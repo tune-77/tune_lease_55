@@ -981,10 +981,12 @@ class Step3AutoApplier:
         validation_result: dict[str, Any],
     ) -> dict[str, Any]:
         """改善ログを Obsidian 改善ログフォルダへ保存する（後方互換シム）."""
-        vault_candidates = [
-            Path("/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"),
-            Path("/Users/kobayashiisaoryou/Documents/Obsidian Vault"),
-        ]
+        env_vault = os.environ.get("OBSIDIAN_VAULT_PATH")
+        vault_candidates = (
+            [Path(env_vault)]
+            if env_vault
+            else [Path.home() / "Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"]
+        )
         vault = next((v for v in vault_candidates if v.exists()), None)
         if not vault:
             return {"success": False, "note_path": None, "error": "Vault not found"}
