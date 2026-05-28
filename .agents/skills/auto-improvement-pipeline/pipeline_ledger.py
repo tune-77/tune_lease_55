@@ -23,11 +23,16 @@ def compute_key(title: str, description: str) -> str:
     return hashlib.sha1(normalized.encode()).hexdigest()[:16]
 
 
-def is_processed(key: str, cooldown_days: int = 7) -> tuple[bool, str]:
+def is_processed(
+    key: str,
+    cooldown_days: int = 7,
+    needs_review_cooldown_days: int = 30,
+) -> tuple[bool, str]:
     """
     処理済みかチェック。
 
-    - applied / needs_review → 常に True（再実行しない）
+    - applied → 常に True（再実行しない）
+    - needs_review → needs_review_cooldown_days 経過後に再評価可能（False を返す）
     - rejected → cooldown_days 経過後に再評価可能（False を返す）
     """
     if not LEDGER_PATH.exists():
@@ -55,8 +60,17 @@ def is_processed(key: str, cooldown_days: int = 7) -> tuple[bool, str]:
 
     status = latest.get("status", "")
 
-    if status in ("applied", "needs_review"):
+    if status == "applied":
         return True, status
+
+    if status == "needs_review":
+        recorded_at = latest.get("recorded_at", "")
+        try:
+            recorded_time = datetime.datetime.fromisoformat(recorded_at)
+            if (now - recorded_time).days < needs_review_cooldown_days:
+                return True, f"needs_review (cooldown: {needs_review_cooldown_days}日)"
+        except (ValueError, TypeError):
+            pass
 
     if status == "rejected":
         recorded_at = latest.get("recorded_at", "")

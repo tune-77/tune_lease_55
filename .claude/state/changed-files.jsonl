@@ -204,3 +204,8 @@
 {"file":"api/schemas.py","action":"Edit","timestamp":"2026-05-25T09:49:41Z","important":false}
 {"file":"api/gunshi_gemini.py","action":"Edit","timestamp":"2026-05-25T09:49:49Z","important":false}
 {"file":"api/main.py","action":"Edit","timestamp":"2026-05-25T09:50:22Z","important":false}
+{"file":".agents/skills/auto-improvement-pipeline/pipeline_ledger.py","action":"Edit","timestamp":"2026-05-28T23:07:48Z","important":false}
+{"file":"rag_knowledge.py","action":"Write","timestamp":"2026-05-28T23:08:02Z","important":false}
+{"file":"components/rag_qa_view.py","action":"Write","timestamp":"2026-05-28T23:08:34Z","important":false}
+{"file":"components/sidebar.py","action":"Edit","timestamp":"2026-05-28T23:08:48Z","important":false}
+{"file":"lease_logic_sumaho12.py","action":"Edit","timestamp":"2026-05-28T23:08:55Z","important":false}
