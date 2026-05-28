@@ -4586,7 +4586,7 @@ elif mode == "📋 審査・分析":
                         with k2:
                             st.metric("判定", res.get("hantei", "—"), help="承認圏内 or 要審議")
                         with k3:
-                            st.metric("推定倒産確率", f"{pd_val:.1f}%", help="財務指標ベースの簡易リスク")
+                            st.metric("推定倒産確率", f"{pd_val:.1f}%", help="PD（Probability of Default）: 自己資本比率・流動比率・営業利益率から算出した簡易デフォルト確率。目安: 10%未満=低リスク、10〜30%=要注意、30%超=高リスク。あくまで財務指標ベースの参考値です。")
                         with k4:
                             st.metric("契約期待度", f"{res.get('contract_prob', 0):.1f}%", help="定性補正後の期待度")
                         with k5:

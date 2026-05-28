@@ -470,7 +470,7 @@ class Step3AutoApplier:
             }
 
     def generate_report(self) -> Path:
-        """日次レポートを ~/Library/Logs/tunelease/reports/ に出力する."""
+        """日次レポートを ~/Library/Logs/tunelease/reports/ およびリポジトリ内 reports/ に出力する."""
         for entry in self._applied:
             entry["pr_url"] = self._pr_url
 
@@ -487,17 +487,26 @@ class Step3AutoApplier:
                 "rejected_count": len(self._rejected),
             },
         }
+        report_json = json.dumps(report, ensure_ascii=False, indent=2)
 
         reports_dir = Path.home() / "Library" / "Logs" / "tunelease" / "reports"
         reports_dir.mkdir(parents=True, exist_ok=True)
         report_path = reports_dir / f"improvement_report_{self.date_str}.json"
-        report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        report_path.write_text(report_json, encoding="utf-8")
 
         # latest.json シンボリックリンクを常に最新レポートへ向ける
         latest_link = reports_dir / "latest.json"
         if latest_link.is_symlink() or latest_link.exists():
             latest_link.unlink()
         latest_link.symlink_to(report_path)
+
+        # リポジトリ内 reports/ にも書き出す（定期タスクからBashで読める）
+        repo_reports_dir = self.workspace_root / "reports"
+        repo_reports_dir.mkdir(parents=True, exist_ok=True)
+        repo_dated = repo_reports_dir / f"improvement_report_{self.date_str}.json"
+        repo_dated.write_text(report_json, encoding="utf-8")
+        repo_latest = repo_reports_dir / "latest.json"
+        repo_latest.write_text(report_json, encoding="utf-8")
 
         return report_path
 
