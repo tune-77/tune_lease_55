@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import fnmatch
 import json
+import logging
 import os
 import re
 import subprocess
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -39,6 +44,38 @@ _SCORING_FILES: frozenset[str] = frozenset({
     "asset_scorer.py", "category_config.py", "industry_hybrid_model.py",
     "rule_manager.py", "coeff_definitions.py",
 })
+
+# テスト探索から除外するディレクトリ名
+EXCLUDE_DIRS: frozenset[str] = frozenset({
+    "pydeps", "_archive", "node_modules", ".venv", "__pycache__", ".git",
+})
+
+# 自動書き換え禁止ファイル（denylist）
+WRITE_DENYLIST: list[str] = [
+    ".streamlit/secrets.toml",
+    "data/",
+    "*.plist",
+    "scoring_core.py",
+    "retraining_pipeline.py",
+    "migrate",
+    "alembic",
+]
+
+# ── パイプライン台帳（optional）────────────────────────────────────────────
+_LEDGER_AVAILABLE: bool = False
+_ledger_module_path = str(Path(__file__).parent.parent)
+if _ledger_module_path not in sys.path:
+    sys.path.insert(0, _ledger_module_path)
+try:
+    import pipeline_ledger as _ledger  # type: ignore[import-untyped]
+    _LEDGER_AVAILABLE = True
+except ImportError:
+    _ledger = None  # type: ignore[assignment]
+
+
+def _result(action: str, reason: str, **extra: Any) -> dict[str, Any]:
+    """apply_improvement の戻り値ヘルパー."""
+    return {"action": action, "reason": reason, **extra}
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -86,6 +123,15 @@ class Step3AutoApplier:
         imp_id = improvement.get("id", "?")
         title = improvement.get("title", "")
 
+        # [#4] 台帳重複チェック（処理済みならスキップ）
+        _ledger_key: str | None = None
+        if _LEDGER_AVAILABLE:
+            _ledger_key = _ledger.compute_key(title, improvement.get("description", ""))
+            already, done_status = _ledger.is_processed(_ledger_key)
+            if already:
+                logger.info("skip: already processed (%s)", done_status)
+                return _result("skipped", f"台帳: 処理済み ({done_status})")
+
         # Step 2 で REJECTED → 即スキップ
         if validation_result.get("status") != "APPROVED":
             reason = "; ".join(validation_result.get("critical_flaws", ["REJECTED by Step2"]))
@@ -115,20 +161,23 @@ class Step3AutoApplier:
             })
             return _result("needs_review", "対象ファイル不明", patch_file=str(patch_file))
 
-        # Gemini でコード生成
-        new_code = self._generate_code_with_gemini(target_file, improvement)
+        # コード生成（Codex → Claude → Gemini フォールバック）
+        current_code = target_file.read_text(encoding="utf-8")
+        prompt = self._build_diff_prompt(target_file, improvement, current_code)
+        raw_output = self._generate_code_with_fallback(prompt, current_code, improvement)
+        new_code = self._extract_new_code(raw_output, target_file, current_code) if raw_output else None
         if not new_code:
             patch_file = self._save_patch_markdown(improvement, validation_result, target_file)
             self._needs_review.append({
                 "id": imp_id,
                 "title": title,
-                "reason": "Gemini コード生成失敗 — パッチファイルを手動確認してください",
+                "reason": "コード生成失敗（全バックエンド）— パッチファイルを手動確認してください",
                 "detail": str(patch_file),
             })
-            return _result("needs_review", "Gemini 生成失敗", patch_file=str(patch_file))
+            return _result("needs_review", "コード生成失敗", patch_file=str(patch_file))
 
         # ローカルテスト（現ブランチ上で試験的に書き換え → テスト → 元に戻す）
-        original_code = target_file.read_text(encoding="utf-8")
+        original_code = current_code
         target_file.write_text(new_code, encoding="utf-8")
         test_ok, test_output = self._run_local_tests(target_file)
         target_file.write_text(original_code, encoding="utf-8")  # 必ずロールバック
@@ -332,49 +381,100 @@ class Step3AutoApplier:
         score = 1.0 - (issues * 0.1) - (flaws * 0.2) - (breaking * 0.3)
         return max(0.0, min(1.0, score))
 
-    # ── Gemini コード生成 ─────────────────────────────────────────────────
+    # ── API キー取得（共通）─────────────────────────────────────────────────
 
-    def _get_gemini_api_key(self) -> str:
-        """環境変数 → .streamlit/secrets.toml の順で GEMINI_API_KEY を取得する."""
-        key = os.environ.get("GEMINI_API_KEY", "")
+    def _get_api_key(self, key_name: str) -> str:
+        """環境変数 → .streamlit/secrets.toml の順で API キーを取得する."""
+        key = os.environ.get(key_name, "")
         if key:
             return key
-
         secrets_path = self.workspace_root / ".streamlit" / "secrets.toml"
         if secrets_path.exists():
             try:
                 for line in secrets_path.read_text(encoding="utf-8").splitlines():
-                    if "GEMINI_API_KEY" in line and "=" in line:
+                    if key_name in line and "=" in line:
                         return line.split("=", 1)[1].strip().strip('"').strip("'")
             except OSError:
                 pass
-
         return ""
+
+    def _get_gemini_api_key(self) -> str:
+        return self._get_api_key("GEMINI_API_KEY")
+
+    # ── プロンプト構築 ────────────────────────────────────────────────────
+
+    def _build_diff_prompt(
+        self,
+        target_file: Path,
+        improvement: dict[str, Any],
+        current_code: str,
+    ) -> str:
+        """unified diff 形式でのコード変更を要求するプロンプトを構築する."""
+        code_snippet = current_code[:8000]
+        is_truncated = len(current_code) > 8000
+        return (
+            "あなたは Python コード改善の専門家です。\n"
+            "以下のPythonファイルに対して、指定された改善を実施してください。\n\n"
+            f"## 対象ファイル\n{target_file.name}"
+            + ("（先頭8000文字のみ表示）\n\n" if is_truncated else "\n\n")
+            + f"## 現在のコード\n```python\n{code_snippet}\n```\n\n"
+            "## 実施すべき改善\n"
+            f"タイトル: {improvement.get('title', '')}\n"
+            f"詳細: {improvement.get('description', '')}\n"
+            f"理由: {improvement.get('reason', '')}\n\n"
+            "## 出力ルール\n"
+            "変更箇所のみの unified diff を返してください。ファイル全体の出力は不要。"
+            "以下の形式で厳密に返すこと：\n"
+            "```diff\n"
+            f"--- a/{target_file.name}\n"
+            f"+++ b/{target_file.name}\n"
+            "@@ ... @@\n"
+            "...\n"
+            "```\n"
+            "セキュリティの脆弱性（SQLインジェクション・XSS等）を絶対に導入しないでください。\n"
+        )
+
+    # ── Gemini（旧来実装を維持）──────────────────────────────────────────
+
+    def _call_gemini_api(self, prompt: str) -> str | None:
+        """Gemini REST API を呼び出す。"""
+        api_key = self._get_gemini_api_key()
+        if not api_key:
+            logger.warning("GEMINI_API_KEY 未設定のため Gemini をスキップ")
+            return None
+        try:
+            import requests  # type: ignore[import-untyped]
+            url = (
+                "https://generativelanguage.googleapis.com/v1beta"
+                "/models/gemini-2.0-flash:generateContent"
+            )
+            resp = requests.post(
+                f"{url}?key={api_key}",
+                json={"contents": [{"parts": [{"text": prompt}]}]},
+                timeout=60,
+            )
+            resp.raise_for_status()
+            return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+        except Exception as e:
+            logger.warning("Gemini API エラー: %s", e)
+            return None
 
     def _generate_code_with_gemini(
         self,
         target_file: Path,
         improvement: dict[str, Any],
     ) -> str | None:
-        """Gemini 2.0 Flash でコード変更を生成する."""
-        api_key = self._get_gemini_api_key()
-        if not api_key:
-            print(f"  ⚠️  GEMINI_API_KEY 未設定のため Gemini 生成をスキップ: {target_file.name}",
-                  file=sys.stderr)
-            return None
-
+        """後方互換: Gemini で完全なコードを生成する（旧来のプロンプト形式）."""
         current_code = target_file.read_text(encoding="utf-8")
-        # 長大なファイルは先頭 8000 文字に制限
         code_snippet = current_code[:8000]
         is_truncated = len(current_code) > 8000
-
         prompt = (
             "あなたは Python コード改善の専門家です。\n"
             "以下のPythonファイルに対して、指定された改善を実施してください。\n\n"
             f"## 対象ファイル\n{target_file.name}"
             + ("（先頭8000文字のみ表示）\n\n" if is_truncated else "\n\n")
             + f"## 現在のコード\n```python\n{code_snippet}\n```\n\n"
-            f"## 実施すべき改善\n"
+            "## 実施すべき改善\n"
             f"タイトル: {improvement.get('title', '')}\n"
             f"詳細: {improvement.get('description', '')}\n"
             f"理由: {improvement.get('reason', '')}\n\n"
@@ -386,34 +486,184 @@ class Step3AutoApplier:
             "5. セキュリティの脆弱性（SQLインジェクション・XSS等）を絶対に導入しないでください\n"
             "6. ファイルが長くて先頭しか見えていない場合は、先頭部分の改善のみ実施し残りは省略せず維持してください\n"
         )
+        raw = self._call_gemini_api(prompt)
+        if raw is None:
+            return None
+        return self._extract_new_code(raw, target_file, current_code)
 
+    # ── コード生成バックエンド（Codex / Claude / Gemini フォールバック）───
+
+    def _try_codex(self, prompt: str, file_content: str) -> str | None:
+        """OpenAI Codex (gpt-4.1 → o4-mini) でコードを生成する."""
+        api_key = self._get_api_key("OPENAI_API_KEY")
+        if not api_key:
+            logger.warning("OPENAI_API_KEY 未設定のため Codex をスキップ")
+            return None
         try:
-            import requests  # type: ignore[import-untyped]
-            url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
-            resp = requests.post(
-                f"{url}?key={api_key}",
-                json={"contents": [{"parts": [{"text": prompt}]}]},
-                timeout=60,
+            import openai  # type: ignore[import-untyped]
+        except ImportError:
+            logger.warning("openai パッケージ未インストール。インストールを試みます")
+            try:
+                subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "openai",
+                     "--break-system-packages"],
+                    check=True, capture_output=True, timeout=60,
+                )
+                import openai  # type: ignore[import-untyped]  # noqa: F811
+            except Exception as install_err:
+                logger.warning("openai インストール失敗: %s", install_err)
+                return None
+
+        client = openai.OpenAI(api_key=api_key)
+        for model in ("gpt-4.1", "o4-mini"):
+            try:
+                resp = client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    timeout=90,
+                )
+                text = resp.choices[0].message.content or ""
+                if text.strip():
+                    logger.info("Codex (%s) でコード生成成功", model)
+                    return text
+            except openai.RateLimitError:
+                logger.warning("Codex %s: 429 Rate Limit — フォールバック", model)
+                return None
+            except openai.APITimeoutError:
+                logger.warning("Codex %s: タイムアウト — フォールバック", model)
+                return None
+            except openai.NotFoundError:
+                logger.warning("Codex: モデル %s が見つかりません。次を試します", model)
+                continue
+            except Exception as e:
+                logger.warning("Codex %s エラー: %s", model, e)
+                return None
+        return None
+
+    def _try_claude(self, prompt: str, file_content: str) -> str | None:
+        """Anthropic Claude (claude-sonnet-4-6) でコードを生成する."""
+        api_key = self._get_api_key("ANTHROPIC_API_KEY")
+        if not api_key:
+            logger.warning("ANTHROPIC_API_KEY 未設定のため Claude をスキップ")
+            return None
+        try:
+            import anthropic  # type: ignore[import-untyped]
+            client = anthropic.Anthropic(api_key=api_key)
+            msg = client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=4096,
+                messages=[{"role": "user", "content": prompt}],
             )
-            resp.raise_for_status()
-            text: str = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
-
-            # ```python ... ``` ブロックを抽出
-            match = re.search(r"```python\n(.*?)```", text, re.DOTALL)
-            if match:
-                return match.group(1)
-
-            # コードブロックなしでも Python らしければ採用
-            stripped = text.strip()
-            if stripped.startswith(("import ", "from ", "#!", '"""', "class ", "def ")):
-                return stripped
-
-            print(f"  ⚠️  Gemini 応答からコードを抽出できませんでした", file=sys.stderr)
+            text = msg.content[0].text if msg.content else ""
+            if text.strip():
+                logger.info("Claude (claude-sonnet-4-6) でコード生成成功")
+                return text
             return None
-
         except Exception as e:
-            print(f"  ⚠️  Gemini API エラー ({improvement.get('id')}): {e}", file=sys.stderr)
+            logger.warning("Claude API エラー: %s", e)
             return None
+
+    def _try_gemini(self, prompt: str, file_content: str) -> str | None:
+        """Gemini でコードを生成する（_call_gemini_api のラッパー）."""
+        raw = self._call_gemini_api(prompt)
+        if raw is None:
+            return None
+        logger.info("Gemini でコード生成成功")
+        return raw
+
+    def _generate_code_with_fallback(
+        self,
+        prompt: str,
+        file_content: str,
+        item: dict[str, Any],
+    ) -> str | None:
+        """Codex → Claude → Gemini の順でコードを生成する."""
+        result = self._try_codex(prompt, file_content)
+        if result:
+            return result
+        logger.warning("Codex failed, falling back to Claude")
+        result = self._try_claude(prompt, file_content)
+        if result:
+            return result
+        logger.warning("Claude failed, falling back to Gemini")
+        result = self._try_gemini(prompt, file_content)
+        return result
+
+    # ── diff 適用・コード抽出 ────────────────────────────────────────────
+
+    def _apply_diff(
+        self,
+        diff_text: str,
+        target_file: Path,
+        current_code: str,
+    ) -> str | None:
+        """unified diff を一時ファイルに適用して新しいファイル内容を返す."""
+        fd, tmp_path_str = tempfile.mkstemp(suffix=".py")
+        tmp_path = Path(tmp_path_str)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(current_code)
+
+            dry = subprocess.run(
+                ["patch", "--dry-run", str(tmp_path)],
+                input=diff_text, text=True, capture_output=True, timeout=10,
+            )
+            if dry.returncode != 0:
+                logger.warning(
+                    "patch --dry-run 失敗 (%s): %s", target_file.name, dry.stderr[:200]
+                )
+                return None
+
+            apply_r = subprocess.run(
+                ["patch", str(tmp_path)],
+                input=diff_text, text=True, capture_output=True, timeout=10,
+            )
+            if apply_r.returncode != 0:
+                logger.warning(
+                    "patch 適用失敗 (%s): %s", target_file.name, apply_r.stderr[:200]
+                )
+                return None
+
+            return tmp_path.read_text(encoding="utf-8")
+        except Exception as e:
+            logger.warning("diff 適用中に例外: %s", e)
+            return None
+        finally:
+            tmp_path.unlink(missing_ok=True)
+            Path(tmp_path_str + ".orig").unlink(missing_ok=True)
+
+    def _extract_new_code(
+        self,
+        raw_output: str,
+        target_file: Path,
+        current_code: str,
+    ) -> str | None:
+        """LLM 出力から新しいコードを抽出する（diff または全文コードに対応）."""
+        # ```diff ... ``` ブロック
+        diff_match = re.search(r"```diff\n(.*?)```", raw_output, re.DOTALL)
+        if diff_match:
+            result = self._apply_diff(diff_match.group(1), target_file, current_code)
+            if result:
+                return result
+
+        # 裸の unified diff
+        stripped = raw_output.strip()
+        if stripped.startswith(("--- ", "diff ")):
+            result = self._apply_diff(stripped, target_file, current_code)
+            if result:
+                return result
+
+        # ```python ... ``` ブロック
+        py_match = re.search(r"```python\n(.*?)```", raw_output, re.DOTALL)
+        if py_match:
+            return py_match.group(1)
+
+        # コードブロックなし・Python らしければ採用
+        if stripped.startswith(("import ", "from ", "#!", '"""', "class ", "def ")):
+            return stripped
+
+        logger.warning("LLM 出力からコードを抽出できませんでした（%s）", target_file.name)
+        return None
 
     # ── Git / PR ──────────────────────────────────────────────────────────
 
