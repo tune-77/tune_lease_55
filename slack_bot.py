@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -295,8 +296,12 @@ def handle_message(client: WebClient, channel: str, text: str, user: str) -> Non
         if user not in _ALLOWED_CLAUDE_USERS:
             client.chat_postMessage(channel=channel, text="⚠️ このコマンドの実行権限がありません。")
             return
-        # CLIフラグインジェクション防止: `-` で始まるトークン（短・長フラグ両方）を除去
-        sanitized_tokens = [t for t in argument.split() if not t.startswith("-")]
+        # CLIフラグインジェクション防止: shlex でトークン化しフラグ形式（- 始まり）を除去
+        try:
+            tokens = shlex.split(argument)
+        except ValueError:
+            tokens = argument.split()
+        sanitized_tokens = [t for t in tokens if not t.startswith("-")]
         sanitized_argument = " ".join(sanitized_tokens)
         if not sanitized_argument.strip():
             client.chat_postMessage(channel=channel, text="⚠️ 有効なプロンプトを入力してください。")
