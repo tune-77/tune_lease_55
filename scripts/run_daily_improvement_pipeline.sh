@@ -5,8 +5,10 @@
 PROJECT_ROOT="/Users/kobayashiisaoryou/clawd/tune_lease_55"
 PYTHON="${PROJECT_ROOT}/.venv/bin/python"
 LOG_DATE="$(date +%Y%m%d)"
-LOG_FILE="/tmp/improvement_pipeline_${LOG_DATE}.log"
-RESULT_FILE="/tmp/improvement_pipeline_${LOG_DATE}_result.json"
+LOG_DIR="${HOME}/Library/Logs/tunelease"
+mkdir -p "${LOG_DIR}/reports"
+LOG_FILE="${LOG_DIR}/improvement_${LOG_DATE}.log"
+RESULT_FILE="${LOG_DIR}/reports/improvement_report_${LOG_DATE}.json"
 EXPORT_FILE="/tmp/obsidian_improvements_export.txt"
 
 # ログへリダイレクト（stdout + stderr を同一ファイルへ）

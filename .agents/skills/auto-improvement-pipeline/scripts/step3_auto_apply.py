@@ -147,6 +147,8 @@ class Step3AutoApplier:
                 "reason": review_reason,
                 "detail": improvement.get("description", "")[:300],
             })
+            if _LEDGER_AVAILABLE and _ledger_key:
+                _ledger.record(_ledger_key, "needs_review", title, reason=review_reason)
             return _result("needs_review", review_reason)
 
         # 対象ファイル特定
@@ -159,7 +161,22 @@ class Step3AutoApplier:
                 "reason": "対象ファイルが特定できないため手動実装が必要",
                 "detail": str(patch_file),
             })
+            if _LEDGER_AVAILABLE and _ledger_key:
+                _ledger.record(_ledger_key, "needs_review", title, reason="対象ファイル不明")
             return _result("needs_review", "対象ファイル不明", patch_file=str(patch_file))
+
+        # [#5] 書き換え禁止リストチェック
+        if self._is_denylisted(target_file):
+            denylist_reason = f"denylist: 自動適用禁止ファイル ({target_file.name})"
+            self._needs_review.append({
+                "id": imp_id,
+                "title": title,
+                "reason": denylist_reason,
+                "detail": str(target_file.relative_to(self.workspace_root)),
+            })
+            if _LEDGER_AVAILABLE and _ledger_key:
+                _ledger.record(_ledger_key, "needs_review", title, reason=denylist_reason)
+            return _result("needs_review", denylist_reason)
 
         # コード生成（Codex → Claude → Gemini フォールバック）
         current_code = target_file.read_text(encoding="utf-8")
@@ -174,13 +191,44 @@ class Step3AutoApplier:
                 "reason": "コード生成失敗（全バックエンド）— パッチファイルを手動確認してください",
                 "detail": str(patch_file),
             })
+            if _LEDGER_AVAILABLE and _ledger_key:
+                _ledger.record(_ledger_key, "needs_review", title, reason="コード生成失敗")
             return _result("needs_review", "コード生成失敗", patch_file=str(patch_file))
 
         # ローカルテスト（現ブランチ上で試験的に書き換え → テスト → 元に戻す）
         original_code = current_code
+
+        # [#2-C] 健全性チェック（書き込み前に行数・関数消失を検証）
+        sanity_ok, sanity_reason = self._sanity_check(original_code, new_code, target_file)
+        if not sanity_ok:
+            patch_file = self._save_patch_markdown(improvement, validation_result, target_file)
+            self._needs_review.append({
+                "id": imp_id,
+                "title": title,
+                "reason": f"健全性チェック失敗: {sanity_reason}",
+                "detail": str(patch_file),
+            })
+            if _LEDGER_AVAILABLE and _ledger_key:
+                _ledger.record(_ledger_key, "needs_review", title, reason=f"健全性チェック失敗: {sanity_reason}")
+            return _result("needs_review", f"健全性チェック失敗: {sanity_reason}", patch_file=str(patch_file))
+
+
         target_file.write_text(new_code, encoding="utf-8")
         test_ok, test_output = self._run_local_tests(target_file)
         target_file.write_text(original_code, encoding="utf-8")  # 必ずロールバック
+
+        if test_ok is None:
+            # テスト環境未整備（pytest なし / テストファイル0件）→ 自動適用しない
+            patch_file = self._save_patch_markdown(improvement, validation_result, target_file)
+            self._needs_review.append({
+                "id": imp_id,
+                "title": title,
+                "reason": f"テスト環境未整備: {test_output[:200]}",
+                "detail": str(patch_file),
+            })
+            if _LEDGER_AVAILABLE and _ledger_key:
+                _ledger.record(_ledger_key, "needs_review", title, reason="テスト環境未整備")
+            return _result("needs_review", "テスト環境未整備", patch_file=str(patch_file))
 
         if not test_ok:
             patch_file = self._save_patch_markdown(improvement, validation_result, target_file)
@@ -190,6 +238,8 @@ class Step3AutoApplier:
                 "reason": f"テスト失敗によりロールバック: {test_output[:200]}",
                 "detail": str(patch_file),
             })
+            if _LEDGER_AVAILABLE and _ledger_key:
+                _ledger.record(_ledger_key, "needs_review", title, reason="テスト失敗")
             return _result("needs_review", "テスト失敗", patch_file=str(patch_file))
 
         # テスト通過 → 保留リストへ追加（ブランチ切り替え後に実適用）
@@ -200,6 +250,8 @@ class Step3AutoApplier:
             "title": title,
             "pr_url": None,  # git_commit_and_push 後に更新
         })
+        if _LEDGER_AVAILABLE and _ledger_key:
+            _ledger.record(_ledger_key, "applied", title)
         return _result("applied", "テスト通過・適用予定")
 
     def git_commit_and_push(self) -> dict[str, Any]:
@@ -306,7 +358,7 @@ class Step3AutoApplier:
             }
 
     def generate_report(self) -> Path:
-        """朝6時 Cowork 報告用 JSON レポートを /tmp/improvement_report_YYYYMMDD.json に出力する."""
+        """日次レポートを ~/Library/Logs/tunelease/reports/ に出力する."""
         for entry in self._applied:
             entry["pr_url"] = self._pr_url
 
@@ -324,8 +376,17 @@ class Step3AutoApplier:
             },
         }
 
-        report_path = Path(f"/tmp/improvement_report_{self.date_str}.json")
+        reports_dir = Path.home() / "Library" / "Logs" / "tunelease" / "reports"
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        report_path = reports_dir / f"improvement_report_{self.date_str}.json"
         report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        # latest.json シンボリックリンクを常に最新レポートへ向ける
+        latest_link = reports_dir / "latest.json"
+        if latest_link.is_symlink() or latest_link.exists():
+            latest_link.unlink()
+        latest_link.symlink_to(report_path)
+
         return report_path
 
     # ── NEEDS_REVIEW 判定 ─────────────────────────────────────────────────
@@ -682,7 +743,7 @@ class Step3AutoApplier:
             + (applied_lines or "なし")
             + f"\n\n### 👀 要確認の改善（{len(self._needs_review)}件）\n"
             + (review_lines or "なし")
-            + f"\n\n詳細レポート: `/tmp/improvement_report_{self.date_str}.json`\n\n"
+            + f"\n\n詳細レポート: `~/Library/Logs/tunelease/reports/improvement_report_{self.date_str}.json`\n\n"
             "🤖 Generated by auto-improvement-pipeline"
         )
 
@@ -739,33 +800,103 @@ class Step3AutoApplier:
 
     # ── テスト実行 ────────────────────────────────────────────────────────
 
-    def _run_local_tests(self, target_file: Path) -> tuple[bool, str]:
-        """pytest / py_compile でコード修正の妥当性を確認する."""
+    def _run_local_tests(
+        self, target_file: Path, timeout: int = 60
+    ) -> tuple[bool | None, str]:
+        """
+        pytest / py_compile でコード修正の妥当性を確認する。
+        戻り値: True=通過, False=失敗, None=テスト環境未整備(needs_review へ降格)
+        """
         python_bin = self.workspace_root / ".venv" / "bin" / "python"
         pytest_bin = self.workspace_root / ".venv" / "bin" / "pytest"
 
+        # 足切り: SyntaxError があれば即 False
         try:
-            test_files = list(self.workspace_root.glob(f"test_*{target_file.stem}.py"))
-            test_files += list(self.workspace_root.glob(f"**/test_*{target_file.stem}.py"))
+            syn = subprocess.run(
+                [str(python_bin), "-m", "py_compile", str(target_file)],
+                cwd=self.workspace_root, capture_output=True, text=True, timeout=30,
+            )
+            if syn.returncode != 0:
+                return False, f"SyntaxError: {syn.stderr}"
+        except subprocess.TimeoutExpired:
+            return False, "py_compile timeout"
+        except Exception as e:
+            return False, str(e)
 
-            if not test_files:
-                result = subprocess.run(
-                    [str(python_bin), "-m", "py_compile", str(target_file)],
-                    cwd=self.workspace_root, capture_output=True, text=True, timeout=30,
-                )
-                return result.returncode == 0, result.stderr or "Syntax check passed"
+        # pytest バイナリ確認（なければ needs_review）
+        if not pytest_bin.exists():
+            return None, "pytest が .venv に見つかりません — テスト無しは適用しない"
 
+        # テストファイル探索（EXCLUDE_DIRS をフィルタリング）
+        stem = target_file.stem
+        raw_files = list(self.workspace_root.glob(f"test_*{stem}.py"))
+        raw_files += list(self.workspace_root.glob(f"**/test_*{stem}.py"))
+        test_files = [
+            p for p in raw_files
+            if not any(ex in p.parts for ex in EXCLUDE_DIRS)
+        ]
+
+        if not test_files:
+            return None, f"テストファイル 0 件 ({stem}) — テスト無しは適用しない"
+
+        try:
             result = subprocess.run(
                 [str(pytest_bin)] + [str(f) for f in test_files] + ["-v", "--tb=short"],
-                cwd=self.workspace_root, capture_output=True, text=True, timeout=120,
+                cwd=self.workspace_root, capture_output=True, text=True, timeout=timeout,
             )
             output = (result.stdout + result.stderr)[-1500:]
             return result.returncode == 0, output
-
         except subprocess.TimeoutExpired:
-            return False, "Test timeout (>120s)"
+            return False, f"Test timeout (>{timeout}s)"
         except Exception as e:
             return False, str(e)
+
+    # ── 健全性チェック・denylist ─────────────────────────────────────────
+
+    @staticmethod
+    def _sanity_check(
+        original_content: str, new_content: str, file_path: Path
+    ) -> tuple[bool, str]:
+        """生成コードの健全性チェック（行数激減・関数消失を検出）."""
+        import ast as _ast
+
+        orig_lines = len(original_content.splitlines())
+        new_lines = len(new_content.splitlines())
+        if orig_lines > 0 and new_lines < orig_lines * 0.5:
+            return False, f"行数激減: {orig_lines} → {new_lines}"
+
+        try:
+            orig_tree = _ast.parse(original_content)
+            new_tree = _ast.parse(new_content)
+        except SyntaxError as e:
+            return False, f"新コードのAST解析失敗: {e}"
+
+        orig_funcs = {n.name for n in _ast.walk(orig_tree) if isinstance(n, _ast.FunctionDef)}
+        new_funcs = {n.name for n in _ast.walk(new_tree) if isinstance(n, _ast.FunctionDef)}
+        lost = orig_funcs - new_funcs
+        if len(lost) > 2:
+            return False, f"関数消失: {lost}"
+
+        return True, "OK"
+
+    def _is_denylisted(self, target_file: Path) -> bool:
+        """対象ファイルが WRITE_DENYLIST に該当するかチェック。"""
+        try:
+            rel = str(target_file.relative_to(self.workspace_root))
+        except ValueError:
+            rel = str(target_file)
+
+        for pattern in WRITE_DENYLIST:
+            if pattern.endswith("/"):
+                if rel.startswith(pattern) or f"/{pattern[:-1]}/" in f"/{rel}":
+                    return True
+            elif "*" in pattern:
+                if fnmatch.fnmatch(target_file.name, pattern):
+                    return True
+            else:
+                if pattern in rel or target_file.name == pattern:
+                    return True
+        return False
 
     # ── ファイル検索 ──────────────────────────────────────────────────────
 
