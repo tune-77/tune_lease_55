@@ -875,15 +875,16 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
         net_v    = int(d.get("net_assets", 0))
         op_rate  = round(rieki_v / nenshu_v * 100, 1) if nenshu_v > 0 else "—"
         eq_rate  = round(net_v / total_v * 100, 1) if total_v > 0 else "—"
+        _e = html.escape
         st.markdown(f"""
 <div class="wiz-summary-box">
-<b>業種</b>　{d.get("selected_major","—")} ／ {d.get("selected_sub","—")}<br>
-<b>物件</b>　{d.get("asset_name","—")}<br>
+<b>業種</b>　{_e(str(d.get("selected_major","—")))} ／ {_e(str(d.get("selected_sub","—")))}<br>
+<b>物件</b>　{_e(str(d.get("asset_name","—")))}<br>
 <b>売上高</b>　{nenshu_v / 1000:.1f}百万円　／　<b>営業利益</b>　{rieki_v / 1000:.1f}百万円　（営業利益率 {op_rate}%）<br>
 <b>総資産</b>　{total_v / 1000:.1f}百万円　／　<b>純資産</b>　{net_v / 1000:.1f}百万円　（自己資本比率 {eq_rate}%）<br>
-<b>格付</b>　{d.get("grade","—")}　／　<b>取引区分</b>　{d.get("main_bank","—")}　／　<b>競合</b>　{d.get("competitor","—")}　／　<b>営業部</b>　{d.get("sales_dept","未設定")}<br>
-<b>取得価格</b>　{int(d.get("acquisition_cost",0)) / 1000:.1f}百万円　／　<b>期間</b>　{d.get("lease_term","—")}ヶ月<br>
-<b>直感スコア</b>　{score}点　{labels.get(score,"")}
+<b>格付</b>　{_e(str(d.get("grade","—")))}　／　<b>取引区分</b>　{_e(str(d.get("main_bank","—")))}　／　<b>競合</b>　{_e(str(d.get("competitor","—")))}　／　<b>営業部</b>　{_e(str(d.get("sales_dept","未設定")))}<br>
+<b>取得価格</b>　{int(d.get("acquisition_cost",0)) / 1000:.1f}百万円　／　<b>期間</b>　{_e(str(d.get("lease_term","—")))}ヶ月<br>
+<b>直感スコア</b>　{score}点　{_e(str(labels.get(score,"")))}
 </div>
 """, unsafe_allow_html=True)
 

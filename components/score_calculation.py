@@ -513,7 +513,11 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
     
                 my_hints = hints_data.get(selected_sub, {"subsidies": [], "risks": [], "mandatory": ""})
     
-                scoring_result = None
+                scoring_result = _build_learning_pd_result(
+                    nenshu, rieki, item5_net_income, item6_machine, item7_other,
+                    item10_dep, item12_rent_exp, total_assets, net_assets,
+                    selected_major, context=form_result,
+                )
                 network_risk_summary = ""
     
                 # ==========================================================================
@@ -939,6 +943,9 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     "user_equity_ratio": user_equity_ratio,
                     "bench_op_margin": bench_op_margin,
                     "bench_equity_ratio": bench_equity_ratio,
+                    "pd_percent": round(
+                        (scoring_result.get("hybrid_prob", 0) if scoring_result else 0) * 100, 1
+                    ),
                     "financials": {
                         "nenshu": nenshu, "rieki": rieki, "total_assets": total_assets, "net_assets": net_assets
                     }
