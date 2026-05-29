@@ -4067,6 +4067,216 @@ def fluid_status():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class CounterfactualRequest(BaseModel):
+    case_id: str
+    target_score: float = 70.0
+
+
+@app.post("/api/counterfactual/analyze")
+def analyze_counterfactual(req: CounterfactualRequest):
+    """Counterfactual Explanation（REV-009）。指定案件の審査通過に必要な最小変更を計算する。"""
+    import json as _json
+    import sqlite3 as _sqlite3
+    from data_cases import _open_db
+    from scoring_core import run_quick_scoring
+
+    # 案件データ取得
+    try:
+        with _open_db() as conn:
+            conn.row_factory = _sqlite3.Row
+            row = conn.execute("SELECT data FROM past_cases WHERE id = ?", (req.case_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Case not found")
+        case = _json.loads(row["data"] or "{}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    inputs = case.get("inputs", {})
+    result = case.get("result", {})
+    if not inputs:
+        raise HTTPException(status_code=422, detail="この案件には入力データが保存されていません")
+
+    current_score = float(result.get("score") or run_quick_scoring(inputs).get("score", 0))
+    target = req.target_score
+
+    def score_with(overrides: dict) -> float:
+        merged = {**inputs, **overrides}
+        try:
+            return float(run_quick_scoring(merged).get("score", 0))
+        except Exception:
+            return 0.0
+
+    # 主要パラメータの現在値
+    nenshu = max(1.0, float(inputs.get("nenshu") or 1))
+    op_profit = float(inputs.get("op_profit") or 0)
+    ord_profit = float(inputs.get("ord_profit") or 0)
+    net_income = float(inputs.get("net_income") or 0)
+    net_assets = float(inputs.get("net_assets") or 0)
+    total_assets = max(1.0, float(inputs.get("total_assets") or 1))
+    bank_credit = float(inputs.get("bank_credit") or 0)
+    grade = str(inputs.get("grade") or "②4-6 (標準)")
+
+    current_op_margin = op_profit / nenshu * 100
+    current_eq_ratio = net_assets / total_assets * 100
+
+    analyses = []
+
+    # 1. 営業利益率改善 (op_profit増加)
+    if current_score < target:
+        for mult in [1.2, 1.5, 2.0, 3.0, 5.0, 10.0]:
+            s = score_with({"op_profit": op_profit * mult})
+            if s >= target:
+                new_margin = (op_profit * mult) / nenshu * 100
+                analyses.append({
+                    "param": "op_profit",
+                    "label": "営業利益率",
+                    "current_display": f"{current_op_margin:.1f}%",
+                    "required_display": f"{new_margin:.1f}%",
+                    "current_value": current_op_margin,
+                    "required_value": new_margin,
+                    "change_pct": (mult - 1) * 100,
+                    "achieved_score": round(s, 1),
+                    "difficulty": "易" if mult <= 1.5 else "中" if mult <= 3.0 else "難",
+                    "note": f"営業利益を現在の {mult:.0f}倍（+{(mult-1)*100:.0f}%）にする必要があります",
+                })
+                break
+
+    # 2. 自己資本比率改善 (net_assets増加)
+    if current_score < target:
+        for add_ratio in [5, 10, 20, 35, 50]:
+            new_net_assets = (current_eq_ratio + add_ratio) / 100 * total_assets
+            s = score_with({"net_assets": new_net_assets})
+            if s >= target:
+                new_eq = new_net_assets / total_assets * 100
+                analyses.append({
+                    "param": "net_assets",
+                    "label": "自己資本比率",
+                    "current_display": f"{current_eq_ratio:.1f}%",
+                    "required_display": f"{new_eq:.1f}%",
+                    "current_value": current_eq_ratio,
+                    "required_value": new_eq,
+                    "change_pct": add_ratio,
+                    "achieved_score": round(s, 1),
+                    "difficulty": "易" if add_ratio <= 10 else "中" if add_ratio <= 25 else "難",
+                    "note": f"自己資本比率を {add_ratio}pt 改善する必要があります",
+                })
+                break
+
+    # 3. 売上高改善 (nenshu増加)
+    if current_score < target:
+        for mult in [1.3, 1.5, 2.0, 3.0]:
+            s = score_with({"nenshu": nenshu * mult, "op_profit": op_profit * mult,
+                            "ord_profit": ord_profit * mult, "net_income": net_income * mult})
+            if s >= target:
+                analyses.append({
+                    "param": "nenshu",
+                    "label": "売上高（按分増加）",
+                    "current_display": f"{nenshu/1000:.1f}百万円",
+                    "required_display": f"{nenshu*mult/1000:.1f}百万円",
+                    "current_value": nenshu,
+                    "required_value": nenshu * mult,
+                    "change_pct": (mult - 1) * 100,
+                    "achieved_score": round(s, 1),
+                    "difficulty": "中" if mult <= 1.5 else "難",
+                    "note": f"売上高を {mult:.1f}倍に成長させる必要があります（利益率維持想定）",
+                })
+                break
+
+    # 4. 格付改善
+    grade_map = [
+        ("s", "S格（超優良）"),
+        ("①", "①格（優良）"),
+        ("②", "②格（標準）"),
+        ("③", "③格（注意）"),
+        ("④", "④格（要注意）"),
+    ]
+    if current_score < target:
+        for gk, gl in grade_map:
+            if grade.lower().startswith(gk):
+                continue
+            # 現在より良い格付のみ試す
+            s = score_with({"grade": gk})
+            if s >= target:
+                analyses.append({
+                    "param": "grade",
+                    "label": "社内格付",
+                    "current_display": grade,
+                    "required_display": gl,
+                    "current_value": 0,
+                    "required_value": 0,
+                    "change_pct": None,
+                    "achieved_score": round(s, 1),
+                    "difficulty": "中",
+                    "note": f"格付を {grade} → {gl} に改善する必要があります",
+                })
+                break
+
+    # 複合提案（op_profit + net_assets を半分ずつ改善）
+    if current_score < target and len(analyses) < 2:
+        for op_mult, eq_add in [(1.3, 5), (1.5, 10), (2.0, 15), (2.5, 20)]:
+            new_na = (current_eq_ratio + eq_add) / 100 * total_assets
+            s = score_with({"op_profit": op_profit * op_mult, "net_assets": new_na})
+            if s >= target:
+                analyses.append({
+                    "param": "combined",
+                    "label": "複合改善（利益率＋自己資本）",
+                    "current_display": f"利益率{current_op_margin:.1f}% / 自己資本{current_eq_ratio:.1f}%",
+                    "required_display": f"利益率{op_profit*op_mult/nenshu*100:.1f}% / 自己資本{(current_eq_ratio+eq_add):.1f}%",
+                    "current_value": 0,
+                    "required_value": 0,
+                    "change_pct": None,
+                    "achieved_score": round(s, 1),
+                    "difficulty": "中",
+                    "note": f"営業利益率+{(op_mult-1)*100:.0f}% かつ 自己資本比率+{eq_add}pt の複合改善",
+                })
+                break
+
+    # スコア感度（各パラメータを±stepで変化させたスコア列）
+    def op_sensitivity():
+        data = []
+        for pct in range(-50, 151, 10):
+            v = op_profit * (1 + pct / 100) if op_profit != 0 else pct * nenshu / 10000
+            s = score_with({"op_profit": v})
+            data.append({
+                "pct_change": pct,
+                "op_margin": round(v / nenshu * 100, 2) if nenshu > 0 else 0,
+                "score": round(s, 1),
+            })
+        return data
+
+    def eq_sensitivity():
+        data = []
+        for add in range(-30, 51, 5):
+            new_na = (current_eq_ratio + add) / 100 * total_assets
+            s = score_with({"net_assets": max(0, new_na)})
+            data.append({
+                "eq_ratio": round(current_eq_ratio + add, 1),
+                "score": round(s, 1),
+            })
+        return data
+
+    return {
+        "case_id": req.case_id,
+        "current_score": round(current_score, 1),
+        "target_score": target,
+        "gap": round(target - current_score, 1),
+        "current_metrics": {
+            "op_margin": round(current_op_margin, 2),
+            "eq_ratio": round(current_eq_ratio, 2),
+            "nenshu": nenshu,
+            "op_profit": op_profit,
+            "net_assets": net_assets,
+            "total_assets": total_assets,
+            "grade": grade,
+        },
+        "counterfactuals": analyses,
+        "op_sensitivity": op_sensitivity(),
+        "eq_sensitivity": eq_sensitivity(),
+    }
+
+
 class RateEngineRequest(BaseModel):
     score: float
     term_months: int = 60

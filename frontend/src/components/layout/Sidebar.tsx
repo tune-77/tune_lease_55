@@ -8,7 +8,8 @@ import {
   PenTool, Users, Wrench, PencilRuler, History, ScrollText,
   PieChart, LineChart, Target, Settings, Calendar, Share2, Network,
   Eye, BarChart3, TrendingUp, Globe, ChevronDown, ChevronRight, Building,
-  PanelLeftClose, PanelLeftOpen, X, Table2, Swords, MessageCircle
+  PanelLeftClose, PanelLeftOpen, X, Table2, Swords, MessageCircle,
+  Lightbulb
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
 
@@ -25,6 +26,7 @@ export default function Sidebar() {
         { name: 'リースくん (スマホUI)', href: '/lease-kun', icon: MessageSquare, color: 'text-amber-400' },
         { name: '審査・分析', href: '/', icon: ClipboardCheck, color: 'text-emerald-400' },
         { name: '審査レポート', href: '/report', icon: FileText, color: 'text-indigo-400' },
+        { name: 'Counterfactual分析', href: '/counterfactual', icon: Lightbulb, color: 'text-yellow-400' },
         { name: 'バッチ審査', href: '/batch', icon: Zap, color: 'text-yellow-400' },
         { name: '動的金利提案エンジン', href: '/rate-engine', icon: Zap, color: 'text-amber-400' },
         { name: '物件ファイナンス審査', href: '/finance', icon: Factory, color: 'text-stone-400' },
