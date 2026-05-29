@@ -182,6 +182,7 @@ function KnowledgeSpaceScene({
   timePercent,
   mode,
   visualMode,
+  categoryFilter,
 }: {
   graph: KnowledgeGraph;
   onSelect: (node: GraphNode | null) => void;
@@ -191,6 +192,7 @@ function KnowledgeSpaceScene({
   timePercent: number;
   mode: SceneMode;
   visualMode: VisualMode;
+  categoryFilter: string | null;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
 
@@ -389,7 +391,8 @@ function KnowledgeSpaceScene({
       const inTime = node.type !== "note" || !node.mtime || !maxTime || Number(node.mtime) <= cutoffTime;
       const matched = matchesSearch(node);
       const emphasis = (mode === "search" || mode === "evidence") && matched ? 1.35 : selectedId === node.id ? 1.45 : 1;
-      const dim = (mode === "recent" && !inTime) || ((mode === "search" || mode === "evidence") && terms.length > 0 && !matched) ? 0.22 : active ? 1 : 0.55;
+      const categoryMatch = !categoryFilter || node.type === "cluster" || node.category === categoryFilter;
+      const dim = ((mode === "recent" && !inTime) || ((mode === "search" || mode === "evidence") && terms.length > 0 && !matched) || !categoryMatch) ? 0.22 : active ? 1 : 0.55;
       const baseSize = isGalaxy
         ? (node.type === "cluster" ? 16 : node.type === "external" ? 6.5 : 8.5)
         : (node.type === "cluster" ? 11 : node.type === "external" ? 4 : 5.5);
@@ -525,7 +528,7 @@ function KnowledgeSpaceScene({
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [graph, onSelect, selectedId, searchTerm, timePercent, mode, visualMode]);
+  }, [graph, onSelect, selectedId, searchTerm, timePercent, mode, visualMode, categoryFilter]);
 
   return <div ref={mountRef} className="absolute inset-0" />;
 }
@@ -545,6 +548,7 @@ export default function KnowledgeSpacePage() {
   const [showDetails, setShowDetails] = useState(false);
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
   const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
 
   const fetchGraph = async (nextLimit = limit) => {
     setLoading(true);
@@ -591,6 +595,19 @@ export default function KnowledgeSpacePage() {
       .sort((a, b) => (b.link_count || 0) - (a.link_count || 0))
       .slice(0, 3) || []
   ), [graph]);
+
+  const visibleNodeCount = useMemo(() => {
+    if (!graph) return 0;
+    if (categoryFilter) return graph.nodes.filter(n => n.category === categoryFilter).length;
+    if (searchTerm.trim()) {
+      const terms = searchTerm.toLowerCase().split(/\s+/).filter(Boolean);
+      return graph.nodes.filter(n => {
+        const h = [n.label, n.path, n.category, ...(n.sections || [])].join(" ").toLowerCase();
+        return terms.every(t => h.includes(t));
+      }).length;
+    }
+    return graph.nodes.length;
+  }, [graph, categoryFilter, searchTerm]);
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#05070d] text-slate-100">
@@ -705,6 +722,7 @@ export default function KnowledgeSpacePage() {
             timePercent={timePercent}
             mode={mode}
             visualMode={visualMode}
+            categoryFilter={categoryFilter}
           />
         )}
 
@@ -734,13 +752,58 @@ export default function KnowledgeSpacePage() {
       {hoveredNode && (
         <div
           className="pointer-events-none fixed z-50"
-          style={{ left: hoverPos.x + 16, top: hoverPos.y - 36 }}
+          style={{
+            left: hoverPos.x > window.innerWidth - 300 ? hoverPos.x - 280 : hoverPos.x + 16,
+            top: hoverPos.y > window.innerHeight - 160 ? hoverPos.y - 130 : hoverPos.y - 36,
+          }}
         >
-          <div className="max-w-[260px] rounded-md border border-white/20 bg-slate-900/92 px-2.5 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-sm">
-            <div className="truncate">{hoveredNode.label}</div>
+          <div className="w-[268px] rounded-xl border border-white/20 bg-slate-900/95 p-3 shadow-2xl backdrop-blur-md">
+            {/* ラベル */}
+            <div className="break-words text-sm font-black leading-snug text-white">{hoveredNode.label}</div>
+
+            {/* カテゴリバッジ */}
+            <div className="mt-1.5 flex items-center gap-2">
+              <span
+                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black"
+                style={{ backgroundColor: `${hoveredNode.color}33`, color: hoveredNode.color }}
+              >
+                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: hoveredNode.color }} />
+                {hoveredNode.category}
+              </span>
+              <span className="text-[10px] font-bold text-slate-400 capitalize">{hoveredNode.type}</span>
+            </div>
+
+            {/* ファイルパス */}
             {hoveredNode.path && (
-              <div className="mt-0.5 truncate text-[10px] font-normal text-slate-400">
-                {hoveredNode.path.split("/").pop()}
+              <div className="mt-1.5 flex items-start gap-1">
+                <span className="mt-0.5 shrink-0 text-[9px] font-black uppercase tracking-widest text-slate-500">PATH</span>
+                <div className="min-w-0 text-[10px] text-slate-400 break-all leading-relaxed">
+                  {hoveredNode.path}
+                </div>
+              </div>
+            )}
+
+            {/* stats */}
+            {(hoveredNode.link_count != null || hoveredNode.chunk_count != null) && (
+              <div className="mt-2 flex gap-3 border-t border-white/10 pt-2 text-[11px]">
+                {hoveredNode.chunk_count != null && (
+                  <div className="flex flex-col items-center">
+                    <span className="font-black text-cyan-300">{hoveredNode.chunk_count}</span>
+                    <span className="text-[9px] text-slate-500">chunks</span>
+                  </div>
+                )}
+                {hoveredNode.link_count != null && (
+                  <div className="flex flex-col items-center">
+                    <span className="font-black text-amber-300">{hoveredNode.link_count}</span>
+                    <span className="text-[9px] text-slate-500">links</span>
+                  </div>
+                )}
+                {hoveredNode.sections?.length ? (
+                  <div className="flex flex-col items-center">
+                    <span className="font-black text-slate-300">{hoveredNode.sections.length}</span>
+                    <span className="text-[9px] text-slate-500">sections</span>
+                  </div>
+                ) : null}
               </div>
             )}
           </div>
@@ -757,28 +820,59 @@ export default function KnowledgeSpacePage() {
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="grid grid-cols-3 gap-2 text-center">
-          <div className="rounded-md bg-white/5 px-2 py-2">
-            <div className="text-[10px] font-bold text-slate-400">Chunks</div>
-            <div className="text-lg font-black text-white">{graph?.summary?.indexed_chunks ?? "-"}</div>
+        <div className="grid grid-cols-4 gap-1.5 text-center">
+          <div className="rounded-md bg-white/5 px-1 py-2">
+            <div className="text-[9px] font-bold text-slate-400">Chunks</div>
+            <div className="text-base font-black text-white">{graph?.summary?.indexed_chunks ?? "-"}</div>
           </div>
-          <div className="rounded-md bg-white/5 px-2 py-2">
-            <div className="text-[10px] font-bold text-slate-400">Notes</div>
-            <div className="text-lg font-black text-white">{graph?.summary?.notes ?? "-"}</div>
+          <div className="rounded-md bg-white/5 px-1 py-2">
+            <div className="text-[9px] font-bold text-slate-400">Notes</div>
+            <div className="text-base font-black text-white">{graph?.summary?.notes ?? "-"}</div>
           </div>
-          <div className="rounded-md bg-white/5 px-2 py-2">
-            <div className="text-[10px] font-bold text-slate-400">Links</div>
-            <div className="text-lg font-black text-white">{graph?.summary?.links ?? "-"}</div>
+          <div className="rounded-md bg-white/5 px-1 py-2">
+            <div className="text-[9px] font-bold text-slate-400">Links</div>
+            <div className="text-base font-black text-white">{graph?.summary?.links ?? "-"}</div>
+          </div>
+          <div className="rounded-md bg-cyan-400/10 px-1 py-2">
+            <div className="text-[9px] font-bold text-cyan-400">表示中</div>
+            <div className="text-base font-black text-cyan-200">{visibleNodeCount}</div>
           </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          {visibleLegend.map((item) => (
-            <span key={item.category} className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-bold text-slate-200">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-              {item.label}
-            </span>
-          ))}
+        {/* カテゴリ凡例フィルター */}
+        <div className="mt-3">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">カテゴリ</span>
+            {categoryFilter && (
+              <button
+                onClick={() => setCategoryFilter(null)}
+                className="text-[10px] font-bold text-cyan-400 hover:text-white transition"
+              >
+                クリア
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {visibleLegend.map((item) => {
+              const active = categoryFilter === item.category;
+              return (
+                <button
+                  key={item.category}
+                  onClick={() => setCategoryFilter(active ? null : item.category)}
+                  className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-bold transition-all ${
+                    active
+                      ? "border-white/30 bg-white/15 text-white scale-105"
+                      : categoryFilter
+                        ? "border-white/5 bg-white/3 text-slate-500 opacity-50"
+                        : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10 hover:border-white/20"
+                  }`}
+                >
+                  <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="mt-3 grid gap-2 border-t border-white/10 pt-3">
