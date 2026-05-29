@@ -191,6 +191,7 @@ function KnowledgeSpaceScene({
   visualMode: VisualMode;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -454,8 +455,39 @@ function KnowledgeSpaceScene({
         const r = Math.max(14, star.userData.visualSize || (node?.radius || 5) + 10);
         halo.scale.setScalar(r / 13);
         (halo.material as THREE.MeshBasicMaterial).opacity = 0.55;
+        const tip = tooltipRef.current;
+        if (tip && node) {
+          const stem = node.path ? node.path.replace(/^.*\//, "").replace(/\.md$/i, "") : null;
+          const showStem = stem && stem !== node.label;
+          tip.textContent = "";
+          const nameEl = document.createElement("span");
+          nameEl.style.cssText = "font-weight:700;color:#e2e8f0";
+          nameEl.textContent = node.label;
+          tip.appendChild(nameEl);
+          if (showStem && stem) {
+            const br1 = document.createElement("br");
+            const stemEl = document.createElement("span");
+            stemEl.style.cssText = "font-size:10px;color:#94a3b8";
+            stemEl.textContent = stem;
+            tip.appendChild(br1);
+            tip.appendChild(stemEl);
+          }
+          if (node.link_count) {
+            const br2 = document.createElement("br");
+            const linkEl = document.createElement("span");
+            linkEl.style.cssText = "font-size:10px;color:#7dd3fc";
+            linkEl.textContent = `${node.link_count} links`;
+            tip.appendChild(br2);
+            tip.appendChild(linkEl);
+          }
+          tip.style.left = `${event.clientX - rect.left + 14}px`;
+          tip.style.top = `${event.clientY - rect.top - 44}px`;
+          tip.style.display = "block";
+        }
       } else {
         (halo.material as THREE.MeshBasicMaterial).opacity = 0;
+        const tip = tooltipRef.current;
+        if (tip) tip.style.display = "none";
       }
     };
 
@@ -523,7 +555,16 @@ function KnowledgeSpaceScene({
     };
   }, [graph, onSelect, selectedId, searchTerm, timePercent, mode, visualMode]);
 
-  return <div ref={mountRef} className="absolute inset-0" />;
+  return (
+    <div className="absolute inset-0">
+      <div ref={mountRef} className="absolute inset-0" />
+      <div
+        ref={tooltipRef}
+        className="pointer-events-none absolute z-50 rounded-md border border-white/20 bg-slate-900/90 px-2.5 py-1.5 text-sm shadow-xl backdrop-blur-sm"
+        style={{ display: "none" }}
+      />
+    </div>
+  );
 }
 
 export default function KnowledgeSpacePage() {
