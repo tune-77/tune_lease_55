@@ -9,7 +9,8 @@ import {
   PieChart, LineChart, Target, Settings, Calendar, Share2, Network,
   Eye, BarChart3, TrendingUp, Globe, ChevronDown, ChevronRight, Building,
   PanelLeftClose, PanelLeftOpen, X, Table2, Swords, MessageCircle,
-  BarChart2, Building2, BookOpen, Gift, HelpCircle, Megaphone, Calculator
+  BarChart2, Building2, BookOpen, Gift, HelpCircle, Megaphone, Calculator,
+  Receipt, LifeBuoy, ClipboardList
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
 
@@ -62,8 +63,11 @@ export default function Sidebar() {
         { name: '業種別リース物件例', href: '/industry-assets', icon: Factory, color: 'text-slate-500' },
         { name: '残価設定ガイドライン', href: '/residual-guide', icon: Calculator, color: 'text-purple-400' },
         { name: '営業向け説明ガイド', href: '/sales-guide', icon: Megaphone, color: 'text-blue-500' },
+        { name: '固定資産税シミュレーター', href: '/tax-calc', icon: Receipt, color: 'text-orange-400' },
         { name: '補助金情報', href: '/subsidies', icon: Gift, color: 'text-amber-400' },
         { name: 'リース知識 FAQ', href: '/faq', icon: HelpCircle, color: 'text-slate-400' },
+        { name: 'システム機能一覧', href: '/help', icon: LifeBuoy, color: 'text-blue-300' },
+        { name: '改善ログ', href: '/improvement-log', icon: ClipboardList, color: 'text-slate-400' },
       ]
     },
     {

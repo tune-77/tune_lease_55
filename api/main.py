@@ -1213,6 +1213,51 @@ def get_sales_dept_winrate():
     return {"items": result, "overall_rate": overall_rate, "total_won": total_won, "total_lost": total_lost}
 
 
+@app.get("/api/improvement-log")
+def get_improvement_log():
+    """最新の改善パイプラインログをサマリー形式で返す（REV-135）。"""
+    import glob as _glob
+    log_dir = os.path.expanduser("~/Library/Logs/tunelease")
+    ledger_path = os.path.join(log_dir, "ledger.jsonl")
+    if not os.path.exists(ledger_path):
+        return {"items": [], "date": None, "approved": 0, "needs_review": 0}
+    import json as _json
+    items: list[dict] = []
+    approved = 0
+    needs_review = 0
+    with open(ledger_path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = _json.loads(line)
+                status = obj.get("status", "")
+                if status == "APPROVED":
+                    approved += 1
+                elif status in ("NEEDS_REVIEW", "needs_review"):
+                    needs_review += 1
+                items.append({
+                    "id": obj.get("id", ""),
+                    "title": obj.get("title", ""),
+                    "status": status,
+                    "priority": obj.get("priority", ""),
+                    "date": obj.get("date") or obj.get("created_at", ""),
+                })
+            except Exception:
+                pass
+    items.sort(key=lambda x: x.get("id") or "", reverse=True)
+    log_files = sorted(_glob.glob(os.path.join(log_dir, "improvement_*.log")), reverse=True)
+    log_date = None
+    if log_files:
+        import re as _re
+        m = _re.search(r"improvement_(\d{8})", log_files[0])
+        if m:
+            d = m.group(1)
+            log_date = f"{d[:4]}-{d[4:6]}-{d[6:]}"
+    return {"items": items[:200], "date": log_date, "approved": approved, "needs_review": needs_review}
+
+
 @app.get("/api/subsidies")
 def get_subsidies(q: str = ""):
     """補助金マスタ一覧を返す。q で asset_keywords/name を部分一致フィルタ（REV-022/047）。"""
