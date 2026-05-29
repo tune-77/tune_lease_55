@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../../lib/api';
 import { FileText, RefreshCw, ChevronDown, Loader2, AlertCircle, AlertTriangle, TrendingDown, ShieldAlert, CheckCircle2, ClipboardList } from 'lucide-react';
+import QRiskPanel from '../../components/analysis/QRiskPanel';
 
 type CaseRow = {
   id: string;
@@ -403,6 +404,16 @@ export default function ReportPage() {
                     inputs={caseDetail.inputs}
                     result={caseDetail.result}
                   />
+                )}
+                {/* REV-089/113/114: Q_risk パネル */}
+                {caseDetail && typeof caseDetail.result.quantum_risk === 'number' && (
+                  <div className="mb-5">
+                    <QRiskPanel
+                      quantumRisk={caseDetail.result.quantum_risk}
+                      creditQuantumStrongWarning={caseDetail.result.credit_quantum_strong_warning === true}
+                      compact={true}
+                    />
+                  </div>
                 )}
 
                 <MarkdownBlock md={report} />

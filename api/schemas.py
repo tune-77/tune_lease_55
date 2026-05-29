@@ -67,6 +67,8 @@ class ScoringResponse(BaseModel):
     asset_warnings: Optional[list] = None      # 物件リスク警告フラグ（BEP・換金性・残存価値）
     asset_bonuses: Optional[list] = None       # 物件プラス評価（換金性・残存価値優位）
     default_warnings: list = []                # デフォルト率モデルによる高リスク警告（スコア非影響）
+    quantum_risk: Optional[float] = None       # 量子干渉リスクスコア 0-100（財務矛盾検出）
+    credit_quantum_strong_warning: bool = False  # 信用リスク群×Q_risk の強警戒フラグ
 
 class CaseRegisterRequest(BaseModel):
     case_id: str
