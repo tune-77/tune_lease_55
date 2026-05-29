@@ -353,6 +353,22 @@ def _format_deduplicated(improvements: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _load_consolidator() -> object | None:
+    """improvement_consolidator モジュールを動的ロードして consolidate_with_ai を返す."""
+    import importlib.util
+    mod_path = Path(__file__).parent / "improvement_consolidator.py"
+    if not mod_path.exists():
+        return None
+    try:
+        spec = importlib.util.spec_from_file_location("improvement_consolidator", mod_path)
+        mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        return getattr(mod, "consolidate_with_ai", None)
+    except Exception as e:
+        print(f"警告: improvement_consolidator のロード失敗: {e}", file=sys.stderr)
+        return None
+
+
 def main() -> None:
     vault = _get_vault_path()
     print(f"Obsidian Vault: {vault}")
@@ -377,10 +393,22 @@ def main() -> None:
     deduped = deduplicate_improvements(raw_improvements)
     after_count = len(deduped)
 
-    deduped_text = _format_deduplicated(deduped)
-    OUTPUT_FILE.write_text(deduped_text, encoding="utf-8")
+    # AI統合（Gemini APIが使えない場合は deduped をそのまま使用）
+    consolidate_with_ai = _load_consolidator()
+    if consolidate_with_ai is not None:
+        final = consolidate_with_ai(deduped)
+    else:
+        final = deduped
+    final_count = len(final)
 
-    print(f"抽出完了: {OUTPUT_FILE} — {after_count}件の改善案（重複排除前: {before_count}件）")
+    final_text = _format_deduplicated(final)
+    OUTPUT_FILE.write_text(final_text, encoding="utf-8")
+
+    ai_note = f" → AI統合後: {final_count}件" if final_count != after_count else ""
+    print(
+        f"抽出完了: {OUTPUT_FILE} — {final_count}件の改善案"
+        f"（重複排除前: {before_count}件、排除後: {after_count}件{ai_note}）"
+    )
 
 
 if __name__ == "__main__":
