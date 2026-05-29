@@ -8,7 +8,8 @@ import {
   PenTool, Users, Wrench, PencilRuler, History, ScrollText,
   PieChart, LineChart, Target, Settings, Calendar, Share2, Network,
   Eye, BarChart3, TrendingUp, Globe, ChevronDown, ChevronRight, Building,
-  PanelLeftClose, PanelLeftOpen, X, Table2, Swords, MessageCircle
+  PanelLeftClose, PanelLeftOpen, X, Table2, Swords, MessageCircle,
+  HelpCircle, GitMerge
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
 
@@ -37,6 +38,7 @@ export default function Sidebar() {
         { name: 'マルチエージェント討論審査', href: '/debate', icon: Swords, color: 'text-violet-500' },
         { name: '結果登録 (成約/失注)', href: '/register', icon: PenTool, color: 'text-rose-400' },
         { name: '過去案件一覧', href: '/cases', icon: Table2, color: 'text-cyan-400' },
+        { name: 'カウンターファクチュアル分析', href: '/counterfactual', icon: GitMerge, color: 'text-fuchsia-400' },
       ]
     },
     {
@@ -70,6 +72,7 @@ export default function Sidebar() {
         { name: '審査ルール設定', href: '/rules', icon: Settings, color: 'text-slate-300' },
         { name: '基準金利マスタ', href: '/interest', icon: Calendar, color: 'text-slate-300' },
         { name: '企業番号設定', href: '/corporate-number', icon: Building, color: 'text-blue-300' },
+        { name: 'ナレッジ・FAQ', href: '/faq', icon: HelpCircle, color: 'text-indigo-300' },
       ]
     }
   ];
