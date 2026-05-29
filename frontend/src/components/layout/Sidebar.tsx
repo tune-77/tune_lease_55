@@ -8,7 +8,8 @@ import {
   PenTool, Users, Wrench, PencilRuler, History, ScrollText,
   PieChart, LineChart, Target, Settings, Calendar, Share2, Network,
   Eye, BarChart3, TrendingUp, Globe, ChevronDown, ChevronRight, Building,
-  PanelLeftClose, PanelLeftOpen, X, Table2, Swords, MessageCircle
+  PanelLeftClose, PanelLeftOpen, X, Table2, Swords, MessageCircle,
+  BarChart2, Building2, BookOpen, Gift, HelpCircle
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
 
@@ -44,12 +45,22 @@ export default function Sidebar() {
         { name: '履歴分析・ダッシュボード', href: '/history-dash', icon: PieChart, color: 'text-sky-400' },
         { name: '営業部ダッシュボード', href: '/department', icon: Users, color: 'text-emerald-400' },
         { name: '3期財務分析', href: '/financial', icon: BarChart3, color: 'text-rose-500' },
+        { name: '業種別成約率', href: '/industry-winrate', icon: BarChart2, color: 'text-blue-400' },
+        { name: '営業部別成約率', href: '/sales-dept-winrate', icon: Building2, color: 'text-indigo-400' },
         { name: 'TimesFM 時系列予測', href: '/timesfm', icon: TrendingUp, color: 'text-emerald-500' },
         { name: '競合関係グラフ', href: '/competitor', icon: Share2, color: 'text-orange-400' },
         { name: '案件類似ネットワーク', href: '/similar', icon: Network, color: 'text-teal-400' },
         { name: '知識宇宙マップ', href: '/knowledge-space', icon: Network, color: 'text-cyan-300' },
         { name: 'ビジュアルインサイト', href: '/visual', icon: Eye, color: 'text-blue-300' },
         { name: '文明年代記', href: '/chronicle', icon: Globe, color: 'text-purple-500' },
+      ]
+    },
+    {
+      title: '参照・ナレッジ',
+      items: [
+        { name: '法定耐用年数一覧', href: '/useful-life', icon: BookOpen, color: 'text-blue-400' },
+        { name: '補助金情報', href: '/subsidies', icon: Gift, color: 'text-amber-400' },
+        { name: 'リース知識 FAQ', href: '/faq', icon: HelpCircle, color: 'text-slate-400' },
       ]
     },
     {

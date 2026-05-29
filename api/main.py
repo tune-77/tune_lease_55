@@ -1213,6 +1213,25 @@ def get_sales_dept_winrate():
     return {"items": result, "overall_rate": overall_rate, "total_won": total_won, "total_lost": total_lost}
 
 
+@app.get("/api/subsidies")
+def get_subsidies(q: str = ""):
+    """補助金マスタ一覧を返す。q で asset_keywords/name を部分一致フィルタ（REV-022/047）。"""
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "lease_data.db")
+    if not os.path.exists(db_path):
+        return []
+    import sqlite3 as _sqlite3
+    conn = _sqlite3.connect(db_path)
+    conn.row_factory = _sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM subsidy_master WHERE active = 1 ORDER BY max_amount DESC")
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    if q.strip():
+        q_l = q.lower()
+        rows = [r for r in rows if q_l in (r.get("name") or "").lower() or q_l in (r.get("asset_keywords") or "").lower() or q_l in (r.get("notes") or "").lower()]
+    return rows
+
+
 @app.get("/api/asset/useful-life-all")
 def get_useful_life_all():
     """法定耐用年数の全品目をカテゴリ付きで返す（REV-085/121）。"""
