@@ -107,6 +107,72 @@ def list_pending_approvals(unnotified_only: bool = False) -> list[dict]:
     return records
 
 
+_DISPATCH_QUEUE_PATH = Path.home() / "Library" / "Logs" / "tunelease" / "dispatch_queue.jsonl"
+
+_CATEGORY_KEYWORDS: dict[str, list[str]] = {
+    "small_ui": ["表示", "文言", "ラベル", "placeholder", "tooltip", "PD", "Q_risk"],
+    "rag_chat": ["チャット", "RAG", "Q&A", "提案", "示唆"],
+    "data": ["モデル", "データ", "分析", "AUC", "ダッシュボード"],
+}
+
+
+def classify_candidate(improvement: dict) -> str:
+    """改善案をカテゴリ分類する（small_ui / rag_chat / data / large）."""
+    text = improvement.get("title", "") + " " + improvement.get("description", "")
+    for category, keywords in _CATEGORY_KEYWORDS.items():
+        if any(kw in text for kw in keywords):
+            return category
+    return "large"
+
+
+def notify_improvement_candidates(improvements: list[dict], report_date: str) -> dict:
+    """
+    承認済み改善案の中から「打ち合わせが必要なもの」をDispatch向けに整形して
+    ~/Library/Logs/tunelease/dispatch_queue.jsonl に追記する。
+
+    フォーマット:
+    {
+      "type": "improvement_candidates",
+      "date": "2026-05-29",
+      "candidates": [
+        {"id": "REV-002", "title": "...", "category": "large|small_ui|rag_chat|data"},
+        ...
+      ],
+      "message": "本日の改善候補です。着手するものを選んでください。"
+    }
+    """
+    _ensure_log_dir()
+
+    seen_titles: set[str] = set()
+    candidates: list[dict] = []
+    for imp in improvements:
+        title = imp.get("title", "")
+        if title in seen_titles:
+            continue
+        seen_titles.add(title)
+        candidates.append({
+            "id": imp.get("id", ""),
+            "title": title,
+            "category": classify_candidate(imp),
+        })
+
+    record: dict = {
+        "type": "improvement_candidates",
+        "date": report_date,
+        "candidates": candidates,
+        "message": "本日の改善候補です。着手するものを選んでください。",
+    }
+
+    try:
+        with _DISPATCH_QUEUE_PATH.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        logger.info("dispatch_queue 記録: %d 件の改善候補", len(candidates))
+    except OSError as e:
+        logger.warning("dispatch_queue.jsonl 書き込みエラー: %s", e)
+
+    return record
+
+
 if __name__ == "__main__":
     result = notify_pending_approval(
         pr_number=999,

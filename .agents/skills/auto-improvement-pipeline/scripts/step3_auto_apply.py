@@ -41,7 +41,7 @@ except ImportError:
             return None
 
 try:
-    from dispatch_notifier import notify_pending_approval  # type: ignore[import]
+    from dispatch_notifier import notify_pending_approval, notify_improvement_candidates, classify_candidate  # type: ignore[import]
     _DISPATCH_NOTIFIER_AVAILABLE = True
 except ImportError:
     pass
@@ -1278,6 +1278,25 @@ def apply_improvements_pipeline(
     # Cowork 報告レポート生成
     report_path = applier.generate_report()
     print(f"📄 Cowork 報告レポート: {report_path}")
+
+    # Dispatch 改善候補通知（ノイズ防止しきい値: small_ui≥5 or large≥1）
+    if _DISPATCH_NOTIFIER_AVAILABLE:
+        _approved_imps = [
+            imp for imp, val in zip(improvements, validation_results)
+            if val.get("status") == "APPROVED"
+        ]
+        if _approved_imps:
+            _cats = [classify_candidate(imp) for imp in _approved_imps]
+            _small_ui_count = _cats.count("small_ui")
+            _large_count = _cats.count("large")
+            if _small_ui_count >= 5 or _large_count >= 1:
+                notify_improvement_candidates(
+                    _approved_imps, datetime.now().strftime("%Y-%m-%d")
+                )
+                print(
+                    f"📬 Dispatch 改善候補通知: {len(_approved_imps)}件"
+                    f"（small_ui={_small_ui_count}, large={_large_count}）"
+                )
 
     return {
         "applied_count": len(applier._applied),
