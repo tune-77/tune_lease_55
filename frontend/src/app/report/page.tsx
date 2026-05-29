@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../../lib/api';
-import { FileText, RefreshCw, ChevronDown, Loader2, AlertCircle, AlertTriangle, TrendingDown, ShieldAlert } from 'lucide-react';
+import { FileText, RefreshCw, ChevronDown, Loader2, AlertCircle, AlertTriangle, TrendingDown, ShieldAlert, CheckCircle2, ClipboardList } from 'lucide-react';
 
 type CaseRow = {
   id: string;
@@ -127,6 +127,79 @@ function ConditionalRiskPanel({ score, inputs, result }: {
       <p className="text-[10px] text-amber-600 mt-3 font-bold">
         ※ 上記リスク要因に対する改善条件（担保・保証人追加等）を付した上での承認を検討してください。
       </p>
+    </div>
+  );
+}
+
+type Action = { label: string; detail: string; priority: 'must' | 'should' };
+
+function buildRecommendedActions(risks: RiskFactor[]): Action[] {
+  const actions: Action[] = [];
+  const labels = risks.map(r => r.label);
+
+  if (labels.includes('営業利益率')) {
+    actions.push({ label: '直近試算表・受注状況の追加提出を要求', detail: '利益率改善の見通しを確認する', priority: 'must' });
+    actions.push({ label: '担保（動産・不動産）の設定を検討', detail: '利益率低水準のリスクを担保でカバー', priority: 'should' });
+  }
+  if (labels.includes('自己資本比率')) {
+    actions.push({ label: '代表者連帯保証の取得', detail: '自己資本が薄い場合の信用補完', priority: 'must' });
+    actions.push({ label: '追加担保（不動産・定期預金等）の検討', detail: '自己資本不足を担保で補填', priority: 'should' });
+  }
+  if (labels.includes('デフォルト確率（PD）')) {
+    actions.push({ label: '信用保険（リース信用保険）の付保を検討', detail: 'PD高水準のリスクヘッジとして有効', priority: 'must' });
+    actions.push({ label: 'リース期間を短縮して総エクスポージャーを圧縮', detail: '長期リースはリスクを拡大させる', priority: 'should' });
+  }
+  if (labels.includes('格付スコア')) {
+    actions.push({ label: '代表者・第三者保証の強化', detail: '格付が低い場合の信用力補完', priority: 'must' });
+    actions.push({ label: '物件担保（リース物件）の条件追加', detail: '中途解約時の残価リスク軽減', priority: 'should' });
+  }
+  if (labels.includes('流動比率')) {
+    actions.push({ label: '運転資金・資金繰り表の提出を要求', detail: '短期支払能力の確認', priority: 'must' });
+    actions.push({ label: 'リース料の分割実行・段階払いの検討', detail: '初期月次負担を軽減して流動性を確保', priority: 'should' });
+  }
+  if (labels.includes('負債比率')) {
+    actions.push({ label: '既存借入の返済スケジュール確認', detail: '過多な負債が返済圧迫につながるリスクを評価', priority: 'must' });
+  }
+
+  // 共通
+  actions.push({ label: '3期分の決算書（勘定科目内訳含む）の確認', detail: '財務トレンドの確認', priority: 'should' });
+  actions.push({ label: '主要取引先・支払実績の確認', detail: '業容・信用状況の定性確認', priority: 'should' });
+
+  // 優先度でソート：mustを先に
+  return actions.sort((a, b) => (a.priority === 'must' ? -1 : 1) - (b.priority === 'must' ? -1 : 1));
+}
+
+function RecommendedActionsPanel({ score, inputs, result }: {
+  score: number;
+  inputs: Record<string, unknown>;
+  result: Record<string, unknown>;
+}) {
+  if (score < 60 || score >= 70) return null;
+  const risks = extractRiskFactors(inputs, result);
+  const actions = buildRecommendedActions(risks);
+
+  return (
+    <div className="mb-5 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+      <div className="flex items-center gap-2 mb-3">
+        <ClipboardList className="w-5 h-5 text-blue-600 flex-shrink-0" />
+        <span className="font-black text-blue-800 text-sm">条件付き承認 — 推奨アクション</span>
+      </div>
+      <div className="space-y-2">
+        {actions.map((a, i) => (
+          <div key={i} className={`flex items-start gap-2.5 p-2.5 rounded-lg border ${a.priority === 'must' ? 'bg-white border-blue-300' : 'bg-blue-50/60 border-blue-100'}`}>
+            {a.priority === 'must'
+              ? <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+              : <CheckCircle2 className="w-4 h-4 text-blue-300 flex-shrink-0 mt-0.5" />}
+            <div>
+              <p className={`text-xs font-black ${a.priority === 'must' ? 'text-blue-800' : 'text-blue-600'}`}>
+                {a.priority === 'must' && <span className="mr-1 text-[9px] bg-blue-600 text-white rounded px-1 py-0.5">必須</span>}
+                {a.label}
+              </p>
+              <p className="text-[11px] text-slate-500 mt-0.5">{a.detail}</p>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -318,6 +391,14 @@ export default function ReportPage() {
                 {/* REV-027: 条件付き承認リスクパネル */}
                 {score !== null && caseDetail && (
                   <ConditionalRiskPanel
+                    score={score}
+                    inputs={caseDetail.inputs}
+                    result={caseDetail.result}
+                  />
+                )}
+                {/* REV-019: 推奨アクションパネル */}
+                {score !== null && caseDetail && (
+                  <RecommendedActionsPanel
                     score={score}
                     inputs={caseDetail.inputs}
                     result={caseDetail.result}

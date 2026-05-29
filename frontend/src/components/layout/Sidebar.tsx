@@ -9,7 +9,7 @@ import {
   PieChart, LineChart, Target, Settings, Calendar, Share2, Network,
   Eye, BarChart3, TrendingUp, Globe, ChevronDown, ChevronRight, Building,
   PanelLeftClose, PanelLeftOpen, X, Table2, Swords, MessageCircle,
-  HelpCircle, GitMerge
+  HelpCircle, GitMerge, Gift, Briefcase
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
 
@@ -46,6 +46,7 @@ export default function Sidebar() {
       items: [
         { name: '履歴分析・ダッシュボード', href: '/history-dash', icon: PieChart, color: 'text-sky-400' },
         { name: '営業部ダッシュボード', href: '/department', icon: Users, color: 'text-emerald-400' },
+        { name: '業種別成約率分析', href: '/industry-stats', icon: Briefcase, color: 'text-sky-500' },
         { name: '3期財務分析', href: '/financial', icon: BarChart3, color: 'text-rose-500' },
         { name: 'TimesFM 時系列予測', href: '/timesfm', icon: TrendingUp, color: 'text-emerald-500' },
         { name: '競合関係グラフ', href: '/competitor', icon: Share2, color: 'text-orange-400' },
@@ -73,6 +74,7 @@ export default function Sidebar() {
         { name: '基準金利マスタ', href: '/interest', icon: Calendar, color: 'text-slate-300' },
         { name: '企業番号設定', href: '/corporate-number', icon: Building, color: 'text-blue-300' },
         { name: 'ナレッジ・FAQ', href: '/faq', icon: HelpCircle, color: 'text-indigo-300' },
+        { name: '補助金情報', href: '/subsidy', icon: Gift, color: 'text-emerald-300' },
       ]
     }
   ];

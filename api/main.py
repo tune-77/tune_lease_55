@@ -356,6 +356,56 @@ def calc_deal_closure_probability(req: DealClosureRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/industry/stats")
+def api_industry_stats():
+    """業種別成約率・平均スコア集計（REV-055）"""
+    import json
+    from contextlib import closing
+    from data_cases import _open_db
+    with closing(_open_db()) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT industry_sub, final_status, COUNT(*) as cnt, AVG(score) as avg_score
+            FROM past_cases
+            WHERE industry_sub IS NOT NULL AND industry_sub != '' AND industry_sub != '0'
+              AND final_status IN ('成約', '失注')
+            GROUP BY industry_sub, final_status
+        """)
+        rows = cur.fetchall()
+
+    industry_data: dict = {}
+    for industry, status, cnt, avg_sc in rows:
+        if industry not in industry_data:
+            industry_data[industry] = {"total": 0, "won": 0, "lost": 0, "score_sum": 0.0, "score_cnt": 0}
+        d = industry_data[industry]
+        d["total"] += cnt
+        if status == "成約":
+            d["won"] += cnt
+        else:
+            d["lost"] += cnt
+        if avg_sc is not None:
+            d["score_sum"] += avg_sc * cnt
+            d["score_cnt"] += cnt
+
+    result = []
+    for industry, d in industry_data.items():
+        total = d["total"]
+        if total < 3:
+            continue
+        rate = round(d["won"] / total * 100, 1) if total > 0 else 0.0
+        avg_score = round(d["score_sum"] / d["score_cnt"], 1) if d["score_cnt"] > 0 else None
+        result.append({
+            "industry": industry,
+            "total": total,
+            "won": d["won"],
+            "lost": d["lost"],
+            "contract_rate": rate,
+            "avg_score": avg_score,
+        })
+
+    return sorted(result, key=lambda x: x["total"], reverse=True)
+
+
 @app.get("/api/cases")
 def list_cases(limit: int = 30, offset: int = 0, sort: str = "desc"):
     """過去案件一覧 (limit/offset/sort 対応)"""
