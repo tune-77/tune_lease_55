@@ -13,6 +13,8 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+_CLAUDE_TIMEOUT_SECONDS = 90
+
 
 def _find_claude_bin() -> str | None:
     """which claude でパスを取得する."""
@@ -82,9 +84,34 @@ def _build_claude_prompt(improvement: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
+def _cleanup_branch(workspace: Path, branch_name: str) -> None:
+    """現在のブランチをmaster に戻し、作業ブランチを削除する."""
+    subprocess.run(["git", "checkout", "master"], cwd=workspace, capture_output=True)
+    subprocess.run(["git", "branch", "-D", branch_name], cwd=workspace, capture_output=True)
+
+
+def _has_file_changes(workspace: Path) -> bool:
+    """
+    git diff --stat HEAD と git status --porcelain で実際のファイル変更を確認する。
+
+    uncommitted な変更と HEAD との差分の両方をチェックする。
+    """
+    diff_result = subprocess.run(
+        ["git", "diff", "--stat", "HEAD"],
+        cwd=workspace, capture_output=True, text=True,
+    )
+    status_result = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=workspace, capture_output=True, text=True,
+    )
+    return bool(diff_result.stdout.strip()) or bool(status_result.stdout.strip())
+
+
 def run_claude_agent(improvement: dict[str, Any], size: str) -> dict[str, Any]:
     """
     Claude Code CLI で改善案を実装し、PRを作成する。
+
+    auto のみ実行。approval / manual は Claude を呼び出さず即リターンする。
 
     Args:
         improvement: 改善案 dict（title, description, source_file, target_module を含む）
@@ -99,6 +126,16 @@ def run_claude_agent(improvement: dict[str, Any], size: str) -> dict[str, Any]:
             "message": str,
         }
     """
+    # ── auto のみ実行（それ以外は Claude を呼び出さない）────────────────
+    if size != "auto":
+        return {
+            "success": False,
+            "pr_number": None,
+            "pr_url": None,
+            "merged": False,
+            "message": f"size={size!r} は Claude 自動実装の対象外です（auto のみ対応）",
+        }
+
     claude_bin = _find_claude_bin()
     if not claude_bin:
         return {
@@ -130,45 +167,47 @@ def run_claude_agent(improvement: dict[str, Any], size: str) -> dict[str, Any]:
             "message": f"ブランチ作成失敗: {e.stderr[:200]}",
         }
 
-    # ── claude --print で実装 ────────────────────────────────────────────
+    # ── claude --print で実装（タイムアウト 90 秒）──────────────────────
     prompt = _build_claude_prompt(improvement)
+    timed_out = False
     try:
         result = subprocess.run(
             [claude_bin, "--print", prompt],
             cwd=workspace,
             capture_output=True,
             text=True,
-            timeout=300,
+            timeout=_CLAUDE_TIMEOUT_SECONDS,
         )
         if result.returncode != 0:
-            logger.warning("claude 実行エラー (rc=%d): %s", result.returncode, result.stderr[:300])
+            logger.warning(
+                "claude 実行エラー (rc=%d): %s", result.returncode, result.stderr[:300]
+            )
     except subprocess.TimeoutExpired:
-        logger.warning("claude 実行タイムアウト (300s)")
+        timed_out = True
+        logger.warning("claude 実行タイムアウト (%ds): ブランチを削除して終了", _CLAUDE_TIMEOUT_SECONDS)
     except Exception as e:
         logger.warning("claude 実行例外: %s", e)
 
-    # ── git status で変更があるか確認 ────────────────────────────────────
-    status_result = subprocess.run(
-        ["git", "status", "--porcelain"],
-        cwd=workspace, capture_output=True, text=True,
-    )
-    has_changes = bool(status_result.stdout.strip())
-
-    if not has_changes:
-        subprocess.run(
-            ["git", "checkout", "master"],
-            cwd=workspace, capture_output=True,
-        )
-        subprocess.run(
-            ["git", "branch", "-D", branch_name],
-            cwd=workspace, capture_output=True,
-        )
+    # タイムアウト時はブランチを削除して終了（空 PR 防止）
+    if timed_out:
+        _cleanup_branch(workspace, branch_name)
         return {
             "success": False,
             "pr_number": None,
             "pr_url": None,
             "merged": False,
-            "message": "claude が変更を生成しませんでした（git status が空）",
+            "message": f"claude 実行タイムアウト（{_CLAUDE_TIMEOUT_SECONDS}s）: ブランチを削除しました",
+        }
+
+    # ── git diff --stat HEAD でファイル変更を確認（空 PR 防止）──────────
+    if not _has_file_changes(workspace):
+        _cleanup_branch(workspace, branch_name)
+        return {
+            "success": False,
+            "pr_number": None,
+            "pr_url": None,
+            "merged": False,
+            "message": "claude が変更を生成しませんでした（git diff --stat HEAD が空）",
         }
 
     # ── コミット ─────────────────────────────────────────────────────────
@@ -188,7 +227,9 @@ def run_claude_agent(improvement: dict[str, Any], size: str) -> dict[str, Any]:
             cwd=workspace, capture_output=True, text=True, check=True,
         )
     except subprocess.CalledProcessError as e:
-        logger.warning("コミット失敗: %s", e.stderr[:200] if hasattr(e, "stderr") else str(e))
+        logger.warning(
+            "コミット失敗: %s", e.stderr[:200] if hasattr(e, "stderr") else str(e)
+        )
 
     # ── Push ─────────────────────────────────────────────────────────────
     try:
@@ -197,10 +238,7 @@ def run_claude_agent(improvement: dict[str, Any], size: str) -> dict[str, Any]:
             cwd=workspace, capture_output=True, text=True, check=True, timeout=60,
         )
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
-        subprocess.run(
-            ["git", "checkout", "master"],
-            cwd=workspace, capture_output=True,
-        )
+        _cleanup_branch(workspace, branch_name)
         return {
             "success": False,
             "pr_number": None,
@@ -216,33 +254,24 @@ def run_claude_agent(improvement: dict[str, Any], size: str) -> dict[str, Any]:
         f"**規模分類**: `{size}`\n\n"
         "🤖 Generated by claude-agent-runner (auto-improvement-pipeline)"
     )
-    pr_title = f"feat: {title}"
-    if size == "auto":
-        pr_title = f"[auto-merge] {pr_title}"
+    pr_title = f"[auto-merge] feat: {title}"
 
-    gh_create_args = [
-        "gh", "pr", "create",
-        "--title", pr_title,
-        "--body", pr_body,
-        "--base", "master",
-        "--head", branch_name,
-    ]
-    if size == "approval":
-        gh_create_args.append("--draft")
-
-    pr_url: str | None = None
-    pr_number: int | None = None
     try:
         pr_result = subprocess.run(
-            gh_create_args,
+            [
+                "gh", "pr", "create",
+                "--title", pr_title,
+                "--body", pr_body,
+                "--base", "master",
+                "--head", branch_name,
+            ],
             cwd=workspace, capture_output=True, text=True, check=True,
         )
         pr_url = pr_result.stdout.strip()
         pr_number = _extract_pr_number(pr_url)
         logger.info("PR 作成: %s", pr_url)
     except subprocess.CalledProcessError as e:
-        logger.warning("PR 作成失敗: %s", e.stderr[:300] if hasattr(e, "stderr") else str(e))
-        subprocess.run(["git", "checkout", "master"], cwd=workspace, capture_output=True)
+        _cleanup_branch(workspace, branch_name)
         return {
             "success": False,
             "pr_number": None,
@@ -251,9 +280,9 @@ def run_claude_agent(improvement: dict[str, Any], size: str) -> dict[str, Any]:
             "message": f"PR 作成失敗: {e.stderr[:200] if hasattr(e, 'stderr') else str(e)}",
         }
 
-    # ── auto: 自動マージ ─────────────────────────────────────────────────
+    # ── 自動マージ ────────────────────────────────────────────────────────
     merged = False
-    if size == "auto" and pr_number:
+    if pr_number:
         try:
             merge_result = subprocess.run(
                 ["gh", "pr", "merge", str(pr_number), "--merge", "--auto"],
@@ -263,40 +292,25 @@ def run_claude_agent(improvement: dict[str, Any], size: str) -> dict[str, Any]:
                 merged = True
                 logger.info("PR #%d 自動マージ完了", pr_number)
             else:
-                logger.warning("自動マージ失敗 (rc=%d): %s", merge_result.returncode, merge_result.stderr[:200])
+                logger.warning(
+                    "自動マージ失敗 (rc=%d): %s",
+                    merge_result.returncode, merge_result.stderr[:200],
+                )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             logger.warning("自動マージ例外: %s", e)
 
-    # ── approval: ドラフト → 公開状態に ─────────────────────────────────
-    elif size == "approval" and pr_number:
-        try:
-            subprocess.run(
-                ["gh", "pr", "ready", str(pr_number)],
-                cwd=workspace, capture_output=True, text=True, timeout=30,
-            )
-            logger.info("PR #%d を公開状態にしました", pr_number)
-        except Exception as e:
-            logger.warning("gh pr ready 失敗: %s", e)
-
-    # 元のブランチに戻る
-    subprocess.run(
-        ["git", "checkout", "master"],
-        cwd=workspace, capture_output=True,
-    )
+    subprocess.run(["git", "checkout", "master"], cwd=workspace, capture_output=True)
 
     return {
         "success": True,
         "pr_number": pr_number,
         "pr_url": pr_url,
         "merged": merged,
-        "message": (
-            f"PR 作成完了（{'自動マージ済み' if merged else size}）: {pr_url}"
-        ),
+        "message": f"PR 作成完了（{'自動マージ済み' if merged else '未マージ'}）: {pr_url}",
     }
 
 
 if __name__ == "__main__":
-    # 簡易動作確認（dry run）
     if "--check" in sys.argv:
         claude_bin = _find_claude_bin()
         print(f"claude CLI: {claude_bin or '見つかりません'}")
