@@ -26,6 +26,7 @@ export default function Sidebar() {
         { name: '審査・分析', href: '/', icon: ClipboardCheck, color: 'text-emerald-400' },
         { name: '審査レポート', href: '/report', icon: FileText, color: 'text-indigo-400' },
         { name: 'バッチ審査', href: '/batch', icon: Zap, color: 'text-yellow-400' },
+        { name: '動的金利提案エンジン', href: '/rate-engine', icon: Zap, color: 'text-amber-400' },
         { name: '物件ファイナンス審査', href: '/finance', icon: Factory, color: 'text-stone-400' },
       ]
     },

@@ -4065,3 +4065,105 @@ def fluid_status():
         return get_fluid_status()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class RateEngineRequest(BaseModel):
+    score: float
+    term_months: int = 60
+    asset_id: str = "other"
+    grade: str = "②"
+    lease_amount: float = 10000000
+    year_month: str = ""
+
+
+@app.post("/api/rate-engine/propose")
+def propose_lease_rate(req: RateEngineRequest):
+    """動的金利提案エンジン（REV-002）。借手スコア・物件種別・期間から最適金利を提案する。"""
+    import datetime
+    from base_rate_master import get_base_rate_by_term
+
+    year_month = req.year_month or datetime.date.today().strftime("%Y-%m")
+    term_months = max(12, min(120, req.term_months))
+    term_years = term_months / 12
+
+    base_rate = get_base_rate_by_term(year_month, term_months)
+    if base_rate is None:
+        for i in range(1, 7):
+            prev_date = datetime.date.today().replace(day=1) - datetime.timedelta(days=30 * i)
+            base_rate = get_base_rate_by_term(prev_date.strftime("%Y-%m"), term_months)
+            if base_rate is not None:
+                break
+    if base_rate is None:
+        base_rate = 2.0
+
+    _asset_spreads: dict[tuple[str, int], float] = {
+        ("medical", 1): 0.25, ("medical", 3): 0.30, ("medical", 5): 0.35, ("medical", 7): 0.40,
+        ("it", 1): 0.35, ("it", 3): 0.50, ("it", 5): 0.65, ("it", 7): 0.75,
+        ("pc", 1): 0.35, ("pc", 3): 0.50, ("pc", 5): 0.65, ("pc", 7): 0.75,
+        ("vehicle", 1): 0.28, ("vehicle", 3): 0.32, ("vehicle", 5): 0.38, ("vehicle", 7): 0.45,
+        ("car", 1): 0.28, ("car", 3): 0.32, ("car", 5): 0.38, ("car", 7): 0.45,
+        ("machinery", 1): 0.30, ("machinery", 3): 0.38, ("machinery", 5): 0.45, ("machinery", 7): 0.52,
+        ("construction", 1): 0.32, ("construction", 3): 0.40, ("construction", 5): 0.48, ("construction", 7): 0.55,
+        ("solar", 1): 0.28, ("solar", 3): 0.35, ("solar", 5): 0.42, ("solar", 7): 0.50,
+        ("other", 1): 0.32, ("other", 3): 0.40, ("other", 5): 0.50, ("other", 7): 0.58,
+    }
+    valid_terms = [1, 3, 5, 7]
+    nearest_t = min(valid_terms, key=lambda t: abs(t - term_years))
+    asset_id_lower = req.asset_id.lower()
+    matched_prefix = next((k for (k, _) in _asset_spreads if asset_id_lower.startswith(k) and k != "other"), None)
+    asset_spread = _asset_spreads.get((matched_prefix or "other", nearest_t), 0.45)
+
+    _grade_spreads = {"s": -0.10, "①": -0.10, "a": 0.10, "②": 0.25, "b": 0.25,
+                      "③": 0.55, "c": 0.55, "④": 0.90, "d": 0.90}
+    grade_lower = req.grade.strip().lower()
+    grade_spread = next((v for k, v in _grade_spreads.items() if grade_lower.startswith(k)), 0.30)
+
+    score = max(0.0, min(100.0, req.score))
+    if score >= 90: risk_adj = -0.10
+    elif score >= 80: risk_adj = -0.05
+    elif score >= 70: risk_adj = 0.00
+    elif score >= 60: risk_adj = 0.15
+    elif score >= 50: risk_adj = 0.30
+    else: risk_adj = 0.50
+
+    proposed_rate = round(max(0.5, base_rate + asset_spread + grade_spread + risk_adj), 4)
+
+    monthly_rate = proposed_rate / 100 / 12
+    amount = max(1.0, req.lease_amount)
+    if monthly_rate > 0:
+        monthly_payment = amount * monthly_rate / (1 - (1 + monthly_rate) ** (-term_months))
+    else:
+        monthly_payment = amount / term_months
+    total_payment = monthly_payment * term_months
+    total_interest = total_payment - amount
+
+    sensitivity = []
+    for s in range(max(0, int(score) - 30), min(101, int(score) + 35), 5):
+        if s >= 90: r = -0.10
+        elif s >= 80: r = -0.05
+        elif s >= 70: r = 0.00
+        elif s >= 60: r = 0.15
+        elif s >= 50: r = 0.30
+        else: r = 0.50
+        sensitivity.append({
+            "score": s,
+            "rate": round(base_rate + asset_spread + grade_spread + r, 4),
+            "is_current": abs(s - score) < 5,
+        })
+
+    return {
+        "year_month": year_month,
+        "proposed_rate": proposed_rate,
+        "breakdown": {
+            "base_rate": round(base_rate, 4),
+            "asset_spread": round(asset_spread, 4),
+            "grade_spread": round(grade_spread, 4),
+            "risk_adjustment": round(risk_adj, 4),
+        },
+        "monthly_payment": round(monthly_payment),
+        "total_payment": round(total_payment),
+        "total_interest": round(total_interest),
+        "term_months": term_months,
+        "lease_amount": amount,
+        "sensitivity": sensitivity,
+    }
