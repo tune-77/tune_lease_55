@@ -1,7 +1,11 @@
 "use client";
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../../lib/api';
-import { FileText, RefreshCw, ChevronDown, Loader2, AlertCircle } from 'lucide-react';
+import {
+  FileText, RefreshCw, ChevronDown, Loader2, AlertCircle,
+  Zap, ShieldAlert, CheckCircle2, XCircle, AlertTriangle,
+  TrendingUp, TrendingDown, Minus, BarChart2
+} from 'lucide-react';
 
 type CaseRow = {
   id: string;
@@ -12,11 +16,114 @@ type CaseRow = {
   final_status: string;
 };
 
+type TotalScorerResult = {
+  total_score?: number;
+  grade?: string;
+  grade_text?: string;
+  grade_color?: string;
+  obligor_score?: number;
+  asset_score?: number;
+};
+
+type CaseDetail = {
+  result?: {
+    score?: number;
+    hantei?: string;
+    quantum_risk?: number | null;
+    credit_quantum_strong_warning?: boolean;
+    pd_percent?: number;
+    total_scorer_result?: TotalScorerResult;
+    user_op?: number;
+    bench_op?: number;
+    user_eq?: number;
+    bench_eq?: number;
+    user_dscr?: number;
+    asset_name?: string;
+    hints?: { subsidies?: string[]; risks?: string[]; mandatory?: string };
+  };
+  inputs?: Record<string, unknown>;
+};
+
 const STATUS_DOT: Record<string, string> = {
   '成約': 'bg-emerald-400',
   '失注': 'bg-rose-400',
   '未登録': 'bg-slate-300',
 };
+
+const GRADE_ACTIONS: Record<string, { icon: React.ReactNode; color: string; actions: string[] }> = {
+  '承認': {
+    icon: <CheckCircle2 className="w-4 h-4" />,
+    color: 'emerald',
+    actions: [
+      '契約条件を最終確認し、正式承認書を発行する',
+      '物件検収・引渡しスケジュールを調整する',
+      '初回リース料の引落口座・日程を確認する',
+      '顧客へ承認連絡と今後の流れを説明する',
+    ],
+  },
+  '条件付き承認': {
+    icon: <AlertTriangle className="w-4 h-4" />,
+    color: 'amber',
+    actions: [
+      '保証人の追加 or 担保提供の可否を顧客に確認する',
+      'リース金額の減額（当初申請の80〜90%水準）を検討する',
+      '最新決算書・試算表の追加提出を要請する',
+      '月次返済シミュレーションを提示し、DSCR余裕度を説明する',
+      'リース期間を短縮して月額負担を上げる代わりにリスクを低減する',
+    ],
+  },
+  '否決': {
+    icon: <XCircle className="w-4 h-4" />,
+    color: 'rose',
+    actions: [
+      '否決理由を整理し、顧客へ丁寧に説明する（具体的数値は伏せる）',
+      '補助金活用・自己資本の積み増しなど改善策を提示する',
+      '6〜12ヶ月後の再申請を視野に改善ロードマップを提案する',
+      '競合他社への移行を防ぐため、別商品（割賦・レンタル）を提案する',
+    ],
+  },
+};
+
+function QRiskGauge({ value }: { value: number }) {
+  const pct = Math.min(100, Math.max(0, value));
+  const color = pct >= 60 ? '#ef4444' : pct >= 35 ? '#f59e0b' : '#22c55e';
+  const label = pct >= 60 ? '高リスク' : pct >= 35 ? '要注意' : '正常';
+  return (
+    <div className="space-y-1.5">
+      <div className="flex justify-between items-center text-xs">
+        <span className="font-bold text-slate-600">Q_risk</span>
+        <span className="font-black" style={{ color }}>{pct.toFixed(1)}</span>
+      </div>
+      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: color }} />
+      </div>
+      <div className="flex justify-between text-[10px] text-slate-400">
+        <span>0</span>
+        <span className="font-bold" style={{ color }}>{label}</span>
+        <span>100</span>
+      </div>
+    </div>
+  );
+}
+
+function CompareRow({ label, user, bench, unit = '%' }: { label: string; user?: number; bench?: number; unit?: string }) {
+  if (user == null || bench == null) return null;
+  const diff = user - bench;
+  const isGood = diff >= 0;
+  return (
+    <div className="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0 text-xs">
+      <span className="text-slate-600 font-medium">{label}</span>
+      <div className="flex items-center gap-3">
+        <span className="text-slate-400">目安 {bench.toFixed(1)}{unit}</span>
+        <span className="font-black text-slate-800">{user.toFixed(1)}{unit}</span>
+        <span className={`flex items-center gap-0.5 font-bold ${isGood ? 'text-emerald-500' : 'text-rose-500'}`}>
+          {isGood ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+          {Math.abs(diff).toFixed(1)}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 function MarkdownBlock({ md }: { md: string }) {
   const lines = md.split('\n');
@@ -41,6 +148,8 @@ export default function ReportPage() {
   const [cases, setCases] = useState<CaseRow[]>([]);
   const [loadingCases, setLoadingCases] = useState(false);
   const [selectedId, setSelectedId] = useState('');
+  const [caseDetail, setCaseDetail] = useState<CaseDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [report, setReport] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -59,16 +168,25 @@ export default function ReportPage() {
 
   useEffect(() => { fetchCases(); }, [fetchCases]);
 
+  useEffect(() => {
+    if (!selectedId) { setCaseDetail(null); return; }
+    setLoadingDetail(true);
+    setCaseDetail(null);
+    apiClient.get(`/api/cases/${selectedId}`)
+      .then(res => setCaseDetail(res.data))
+      .catch(() => setCaseDetail(null))
+      .finally(() => setLoadingDetail(false));
+  }, [selectedId]);
+
   const generate = async () => {
     if (!selectedId) return;
     setGenerating(true);
     setReport(null);
     setError(null);
     try {
-      const detail = await apiClient.get(`/api/cases/${selectedId}`);
-      const caseData = detail.data;
-      const result_data = caseData.result || {};
-      const inputs = caseData.inputs || caseData;
+      const detail = caseDetail || (await apiClient.get(`/api/cases/${selectedId}`)).data;
+      const result_data = detail.result || {};
+      const inputs = detail.inputs || detail;
       const res = await apiClient.post('/api/report/generate', { result_data, inputs });
       setReport(res.data.report_markdown || '（レポートが空です）');
     } catch (e: unknown) {
@@ -80,6 +198,11 @@ export default function ReportPage() {
   };
 
   const selectedCase = cases.find(c => c.id === selectedId);
+  const result = caseDetail?.result;
+  const gradeText = result?.total_scorer_result?.grade_text;
+  const gradeInfo = gradeText ? GRADE_ACTIONS[gradeText] ?? GRADE_ACTIONS['条件付き承認'] : null;
+  const qRisk = result?.quantum_risk;
+  const hasQRiskWarning = result?.credit_quantum_strong_warning || (qRisk != null && qRisk >= 60);
 
   return (
     <div className="p-6 min-h-[calc(100vh-2rem)] animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -92,7 +215,7 @@ export default function ReportPage() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* 左: 案件選択 */}
+        {/* 左: 案件選択 + インサイトパネル */}
         <div className="xl:col-span-1 space-y-4">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
             <div className="flex items-center justify-between mb-3">
@@ -140,10 +263,149 @@ export default function ReportPage() {
                 : <><FileText className="w-4 h-4" />レポート生成</>}
             </button>
           </div>
+
+          {/* クイックインサイトパネル */}
+          {loadingDetail && (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex items-center justify-center h-32">
+              <Loader2 className="w-5 h-5 animate-spin text-slate-300" />
+            </div>
+          )}
+
+          {result && !loadingDetail && (
+            <div className="space-y-3">
+              {/* スコア・グレード */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
+                <h3 className="text-xs font-black text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <BarChart2 className="w-3.5 h-3.5" /> スコアサマリー
+                </h3>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-3xl font-black text-slate-800">{result.score != null ? Math.round(result.score) : '—'}</p>
+                    <p className="text-xs text-slate-400">総合スコア</p>
+                  </div>
+                  {gradeText && (
+                    <div className={`px-3 py-1.5 rounded-xl text-sm font-black flex items-center gap-1.5
+                      ${gradeText === '承認' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                        gradeText === '否決' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
+                        'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                      {gradeInfo?.icon}
+                      {gradeText}
+                    </div>
+                  )}
+                </div>
+                {result.pd_percent != null && (
+                  <div className="flex items-center gap-2 text-xs text-slate-500 pt-1 border-t border-slate-100">
+                    <Minus className="w-3 h-3" /> PD率:
+                    <span className={`font-black ${result.pd_percent > 30 ? 'text-rose-600' : result.pd_percent > 15 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                      {result.pd_percent.toFixed(1)}%
+                    </span>
+                  </div>
+                )}
+                {result.asset_name && (
+                  <p className="text-xs text-slate-400">物件: {result.asset_name}</p>
+                )}
+              </div>
+
+              {/* Q_risk パネル */}
+              {qRisk != null && (
+                <div className={`bg-white rounded-2xl border shadow-sm p-5 space-y-3 ${hasQRiskWarning ? 'border-red-200' : 'border-slate-200'}`}>
+                  <h3 className="text-xs font-black text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5 text-yellow-500" /> 量子リスク (Q_risk)
+                  </h3>
+                  <QRiskGauge value={qRisk} />
+                  {hasQRiskWarning && (
+                    <div className="flex items-start gap-2 p-2.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
+                      <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <span className="font-bold">財務指標の矛盾・異常が検出されました。決算書の精査を推奨します。</span>
+                    </div>
+                  )}
+                  <p className="text-[10px] text-slate-400 leading-relaxed">
+                    Q_riskは財務指標間の矛盾・異常パターンを量子干渉計算で検出したスコアです。
+                    35以上で要注意、60以上で強警戒となります。
+                  </p>
+                </div>
+              )}
+
+              {/* 業種平均比較 */}
+              {(result.user_op != null || result.user_eq != null) && (
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                  <h3 className="text-xs font-black text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                    <TrendingUp className="w-3.5 h-3.5" /> 業種平均比較
+                  </h3>
+                  <CompareRow label="営業利益率" user={result.user_op} bench={result.bench_op} />
+                  <CompareRow label="自己資本比率" user={result.user_eq} bench={result.bench_eq} />
+                  {result.user_dscr != null && (
+                    <div className="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0 text-xs">
+                      <span className="text-slate-600 font-medium">DSCR</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-slate-400">目安 1.5倍</span>
+                        <span className={`font-black ${result.user_dscr >= 1.5 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {result.user_dscr.toFixed(2)}倍
+                        </span>
+                        {result.user_dscr >= 1.5 ? <CheckCircle2 className="w-3 h-3 text-emerald-500" /> : <AlertTriangle className="w-3 h-3 text-rose-500" />}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ヒント */}
+              {result.hints && (
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-2">
+                  <h3 className="text-xs font-black text-slate-500 uppercase tracking-wider">AIヒント</h3>
+                  {result.hints.mandatory && (
+                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+                      <span className="font-black">必須確認:</span> {result.hints.mandatory}
+                    </div>
+                  )}
+                  {result.hints.subsidies && result.hints.subsidies.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-black text-slate-400 mb-1">💰 補助金候補</p>
+                      {result.hints.subsidies.map((s, i) => (
+                        <p key={i} className="text-xs text-slate-600">・{s}</p>
+                      ))}
+                    </div>
+                  )}
+                  {result.hints.risks && result.hints.risks.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-black text-slate-400 mb-1">⚠️ リスク要因</p>
+                      {result.hints.risks.map((r, i) => (
+                        <p key={i} className="text-xs text-slate-600">・{r}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* 右: レポート表示 */}
-        <div className="xl:col-span-2">
+        {/* 右: 推奨アクション + レポート表示 */}
+        <div className="xl:col-span-2 space-y-4">
+          {/* 条件付き承認の推奨アクション (REV-019) */}
+          {gradeInfo && result && !loadingDetail && (
+            <div className={`rounded-2xl border shadow-sm p-5
+              ${gradeText === '承認' ? 'bg-emerald-50 border-emerald-200' :
+                gradeText === '否決' ? 'bg-rose-50 border-rose-200' :
+                'bg-amber-50 border-amber-200'}`}>
+              <div className="flex items-center gap-2 mb-3">
+                <span className={`text-${gradeInfo.color}-600`}>{gradeInfo.icon}</span>
+                <h2 className={`text-sm font-black text-${gradeInfo.color}-800`}>
+                  {gradeText} — 推奨アクション
+                </h2>
+              </div>
+              <ul className="space-y-2">
+                {gradeInfo.actions.map((action, i) => (
+                  <li key={i} className={`flex items-start gap-2 text-sm text-${gradeInfo.color}-800`}>
+                    <span className={`text-${gradeInfo.color}-400 font-black shrink-0`}>{i + 1}.</span>
+                    {action}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* レポート表示エリア */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 min-h-[400px]">
             {error && (
               <div className="flex items-start gap-3 p-4 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-sm font-bold">
