@@ -232,3 +232,8 @@
 {"file":"frontend/src/app/drift/page.tsx","action":"Write","timestamp":"2026-05-29T12:50:51Z","important":false}
 {"file":"components/report.py","action":"Edit","timestamp":"2026-05-29T19:04:16Z","important":false}
 {"file":"frontend/src/app/knowledge-space/page.tsx","action":"Edit","timestamp":"2026-05-29T19:07:01Z","important":false}
+{"file":"api/main.py","action":"Edit","timestamp":"2026-05-29T21:07:50Z","important":false}
+{"file":"frontend/src/app/report/page.tsx","action":"Edit","timestamp":"2026-05-29T21:08:02Z","important":false}
+{"file":"frontend/src/app/subsidy/page.tsx","action":"Write","timestamp":"2026-05-29T21:10:02Z","important":false}
+{"file":"frontend/src/app/industry-stats/page.tsx","action":"Write","timestamp":"2026-05-29T21:10:53Z","important":false}
+{"file":"frontend/src/components/layout/Sidebar.tsx","action":"Edit","timestamp":"2026-05-29T21:11:02Z","important":false}
