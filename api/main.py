@@ -1172,6 +1172,47 @@ def get_industry_winrate():
     return {"items": result, "overall_rate": overall_rate, "total_won": total_won, "total_lost": total_lost}
 
 
+@app.get("/api/cases/sales-dept-winrate")
+def get_sales_dept_winrate():
+    """営業部別成約率を集計して返す（REV-112）。"""
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "lease_data.db")
+    if not os.path.exists(db_path):
+        return {"items": [], "overall_rate": 0.0, "total_won": 0, "total_lost": 0}
+    import sqlite3 as _sqlite3
+    conn = _sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT sales_dept,
+               SUM(CASE WHEN final_status IN ('成約','検収完了') THEN 1 ELSE 0 END) as won,
+               SUM(CASE WHEN final_status = '失注' THEN 1 ELSE 0 END) as lost,
+               COUNT(*) as total,
+               ROUND(AVG(score), 1) as avg_score
+        FROM past_cases
+        WHERE sales_dept NOT IN ('', '0', '未設定')
+          AND final_status IN ('成約','検収完了','失注')
+        GROUP BY sales_dept
+        ORDER BY total DESC
+    """)
+    rows = cur.fetchall()
+    conn.close()
+    total_won = sum(r[1] for r in rows)
+    total_lost = sum(r[2] for r in rows)
+    overall_rate = round(total_won / (total_won + total_lost) * 100, 1) if (total_won + total_lost) > 0 else 0.0
+    result = []
+    for dept, won, lost, total, avg_score in rows:
+        rate = round(won / (won + lost) * 100, 1) if (won + lost) > 0 else 0.0
+        result.append({
+            "dept": dept,
+            "won": won,
+            "lost": lost,
+            "total": total,
+            "win_rate": rate,
+            "avg_score": avg_score or 0.0,
+            "diff": round(rate - overall_rate, 1),
+        })
+    return {"items": result, "overall_rate": overall_rate, "total_won": total_won, "total_lost": total_lost}
+
+
 @app.get("/api/asset/useful-life-all")
 def get_useful_life_all():
     """法定耐用年数の全品目をカテゴリ付きで返す（REV-085/121）。"""
