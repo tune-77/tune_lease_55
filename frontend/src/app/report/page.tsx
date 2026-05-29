@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../../lib/api';
-import { FileText, RefreshCw, ChevronDown, Loader2, AlertCircle } from 'lucide-react';
+import { FileText, RefreshCw, ChevronDown, Loader2, AlertCircle, AlertTriangle, TrendingDown, ShieldAlert } from 'lucide-react';
 
 type CaseRow = {
   id: string;
@@ -12,11 +12,124 @@ type CaseRow = {
   final_status: string;
 };
 
+type RiskFactor = {
+  label: string;
+  value: string;
+  benchmark: string;
+  severity: 'high' | 'medium';
+};
+
 const STATUS_DOT: Record<string, string> = {
   '成約': 'bg-emerald-400',
   '失注': 'bg-rose-400',
   '未登録': 'bg-slate-300',
 };
+
+function extractRiskFactors(inputs: Record<string, unknown>, result: Record<string, unknown>): RiskFactor[] {
+  const risks: RiskFactor[] = [];
+
+  const opMargin = typeof inputs.op_margin === 'number' ? inputs.op_margin : null;
+  const eqRatio = typeof inputs.equity_ratio === 'number' ? inputs.equity_ratio
+    : typeof inputs.eq_ratio === 'number' ? inputs.eq_ratio : null;
+  const pdRaw = result.pd_percent ?? (result as Record<string, unknown>).pd;
+  const pd = typeof pdRaw === 'number' ? pdRaw : null;
+  const grade = typeof inputs.grade === 'number' ? inputs.grade : null;
+  const debtRatio = typeof inputs.debt_ratio === 'number' ? inputs.debt_ratio : null;
+  const currentRatio = typeof inputs.current_ratio === 'number' ? inputs.current_ratio : null;
+
+  if (opMargin !== null && opMargin < 5) {
+    risks.push({
+      label: '営業利益率',
+      value: `${opMargin.toFixed(1)}%`,
+      benchmark: '目安 5%以上',
+      severity: opMargin < 2 ? 'high' : 'medium',
+    });
+  }
+  if (eqRatio !== null && eqRatio < 20) {
+    risks.push({
+      label: '自己資本比率',
+      value: `${eqRatio.toFixed(1)}%`,
+      benchmark: '目安 20%以上',
+      severity: eqRatio < 10 ? 'high' : 'medium',
+    });
+  }
+  if (pd !== null && pd > 3) {
+    risks.push({
+      label: 'デフォルト確率（PD）',
+      value: `${pd.toFixed(2)}%`,
+      benchmark: '目安 3%以下',
+      severity: pd > 6 ? 'high' : 'medium',
+    });
+  }
+  if (grade !== null && grade >= 7) {
+    risks.push({
+      label: '格付スコア',
+      value: `${grade}点`,
+      benchmark: '目安 6点以下',
+      severity: grade >= 10 ? 'high' : 'medium',
+    });
+  }
+  if (debtRatio !== null && debtRatio > 60) {
+    risks.push({
+      label: '負債比率',
+      value: `${debtRatio.toFixed(1)}%`,
+      benchmark: '目安 60%以下',
+      severity: debtRatio > 80 ? 'high' : 'medium',
+    });
+  }
+  if (currentRatio !== null && currentRatio < 100) {
+    risks.push({
+      label: '流動比率',
+      value: `${currentRatio.toFixed(1)}%`,
+      benchmark: '目安 100%以上',
+      severity: currentRatio < 80 ? 'high' : 'medium',
+    });
+  }
+
+  return risks.sort((a, b) => (a.severity === 'high' ? -1 : 1) - (b.severity === 'high' ? -1 : 1));
+}
+
+function ConditionalRiskPanel({ score, inputs, result }: {
+  score: number;
+  inputs: Record<string, unknown>;
+  result: Record<string, unknown>;
+}) {
+  if (score < 60 || score >= 70) return null;
+
+  const risks = extractRiskFactors(inputs, result);
+
+  return (
+    <div className="mb-5 p-4 bg-amber-50 border border-amber-300 rounded-xl">
+      <div className="flex items-center gap-2 mb-3">
+        <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0" />
+        <span className="font-black text-amber-800 text-sm">条件付き承認 — 主要リスク要因</span>
+        <span className="ml-auto text-xs font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">スコア {Math.round(score)}pt</span>
+      </div>
+      {risks.length === 0 ? (
+        <p className="text-xs text-amber-700 font-bold">詳細な財務データが取得できませんでした。レポートを参照してください。</p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {risks.map(r => (
+            <div key={r.label} className={`flex items-start gap-2 p-2.5 rounded-lg border ${r.severity === 'high' ? 'bg-rose-50 border-rose-200' : 'bg-amber-100/60 border-amber-200'}`}>
+              {r.severity === 'high'
+                ? <AlertTriangle className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
+                : <TrendingDown className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />}
+              <div>
+                <p className={`text-xs font-black ${r.severity === 'high' ? 'text-rose-700' : 'text-amber-800'}`}>{r.label}</p>
+                <p className={`text-xs font-bold ${r.severity === 'high' ? 'text-rose-600' : 'text-amber-700'}`}>
+                  {r.value} <span className="font-normal text-slate-500">（{r.benchmark}）</span>
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="text-[10px] text-amber-600 mt-3 font-bold">
+        ※ 上記リスク要因に対する改善条件（担保・保証人追加等）を付した上での承認を検討してください。
+      </p>
+    </div>
+  );
+}
 
 function MarkdownBlock({ md }: { md: string }) {
   const lines = md.split('\n');
@@ -44,6 +157,7 @@ export default function ReportPage() {
   const [generating, setGenerating] = useState(false);
   const [report, setReport] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [caseDetail, setCaseDetail] = useState<{ inputs: Record<string, unknown>; result: Record<string, unknown> } | null>(null);
 
   const fetchCases = useCallback(async () => {
     setLoadingCases(true);
@@ -59,6 +173,21 @@ export default function ReportPage() {
 
   useEffect(() => { fetchCases(); }, [fetchCases]);
 
+  const handleSelectCase = useCallback(async (id: string) => {
+    setSelectedId(id);
+    setReport(null);
+    setError(null);
+    setCaseDetail(null);
+    if (!id) return;
+    try {
+      const detail = await apiClient.get(`/api/cases/${id}`);
+      const d = detail.data;
+      setCaseDetail({ inputs: d.inputs || {}, result: d.result || {} });
+    } catch {
+      // detail取得失敗は無視（レポート生成時に再取得する）
+    }
+  }, []);
+
   const generate = async () => {
     if (!selectedId) return;
     setGenerating(true);
@@ -69,6 +198,7 @@ export default function ReportPage() {
       const caseData = detail.data;
       const result_data = caseData.result || {};
       const inputs = caseData.inputs || caseData;
+      setCaseDetail({ inputs, result: result_data });
       const res = await apiClient.post('/api/report/generate', { result_data, inputs });
       setReport(res.data.report_markdown || '（レポートが空です）');
     } catch (e: unknown) {
@@ -80,6 +210,8 @@ export default function ReportPage() {
   };
 
   const selectedCase = cases.find(c => c.id === selectedId);
+  const score = selectedCase?.score ?? null;
+  const isConditional = score !== null && score >= 60 && score < 70;
 
   return (
     <div className="p-6 min-h-[calc(100vh-2rem)] animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -106,7 +238,7 @@ export default function ReportPage() {
             <div className="relative">
               <select
                 value={selectedId}
-                onChange={e => { setSelectedId(e.target.value); setReport(null); setError(null); }}
+                onChange={e => handleSelectCase(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 appearance-none pr-8"
               >
                 <option value="">— 案件を選択 —</option>
@@ -120,12 +252,15 @@ export default function ReportPage() {
             </div>
 
             {selectedCase && (
-              <div className="mt-3 p-3 bg-slate-50 rounded-xl text-xs space-y-1">
+              <div className={`mt-3 p-3 rounded-xl text-xs space-y-1 ${isConditional ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'}`}>
                 <div className="flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full ${STATUS_DOT[selectedCase.final_status] || 'bg-slate-300'}`} />
                   <span className="font-black text-slate-700">{selectedCase.final_status}</span>
+                  {isConditional && (
+                    <span className="ml-auto text-[10px] font-black text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">条件付き承認</span>
+                  )}
                 </div>
-                <div className="text-slate-500">スコア: <span className="font-black text-slate-700">{selectedCase.score != null ? Math.round(selectedCase.score) : '—'}</span></div>
+                <div className="text-slate-500">スコア: <span className={`font-black ${isConditional ? 'text-amber-700' : 'text-slate-700'}`}>{score != null ? Math.round(score) : '—'}</span></div>
                 <div className="text-slate-500 font-mono truncate">{selectedCase.id}</div>
               </div>
             )}
@@ -179,6 +314,16 @@ export default function ReportPage() {
                     コピー
                   </button>
                 </div>
+
+                {/* REV-027: 条件付き承認リスクパネル */}
+                {score !== null && caseDetail && (
+                  <ConditionalRiskPanel
+                    score={score}
+                    inputs={caseDetail.inputs}
+                    result={caseDetail.result}
+                  />
+                )}
+
                 <MarkdownBlock md={report} />
               </>
             )}

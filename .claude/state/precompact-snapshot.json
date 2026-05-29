@@ -13,10 +13,10 @@
       }
     },
     "recommended": true,
-    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 221 session age (minutes) exceed threshold 120",
+    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 6684 session age (minutes) exceed threshold 120",
     "reasons": [
       "20 recent edit count exceed threshold 8",
-      "221 session age (minutes) exceed threshold 120"
+      "6684 session age (minutes) exceed threshold 120"
     ],
     "candidates": [
       {
@@ -50,7 +50,7 @@
       {
         "key": "session_age_minutes",
         "label": "session age (minutes)",
-        "actual": 221,
+        "actual": 6684,
         "threshold": 120,
         "triggered": true
       }
@@ -60,7 +60,7 @@
       "blockedTasks": 0,
       "recentEdits": 20,
       "failedChecks": 0,
-      "sessionAgeMinutes": 221
+      "sessionAgeMinutes": 6684
     }
   },
   "continuity": {
@@ -72,29 +72,29 @@
   "legacy_version": "1.0.0",
   "metrics": null,
   "recentEdits": [
-    ".claude/reports/code-review/latest.md",
     ".claude/sessions/.last_inbox_check",
+    ".claude/sessions/broadcast.md",
     ".claude/state/changed-files.jsonl",
+    ".claude/state/handoff-artifact.json",
+    ".claude/state/instructions-loaded.jsonl",
+    ".claude/state/precompact-snapshot.json",
     ".claude/state/session-events.jsonl",
+    ".claude/state/session-events.jsonl.1",
+    ".claude/state/session-events.jsonl.2",
+    ".claude/state/session-events.jsonl.3",
+    ".claude/state/session-events.jsonl.4",
+    ".claude/state/session-events.jsonl.5",
     ".claude/state/session.json",
     ".claude/state/test-recommendation.json",
     ".claude/state/tooling-policy.json",
-    ".claude/state/worktree-info.json",
-    "data/ml_rf_v4.pkl",
-    "data/weekly_plot.json",
-    "scoring_output_bridge.json",
-    "api/chroma_db/2b9f80e3-f766-4bb1-843c-12572b88cf59/data_level0.bin",
-    "api/chroma_db/2b9f80e3-f766-4bb1-843c-12572b88cf59/header.bin",
-    "api/chroma_db/2b9f80e3-f766-4bb1-843c-12572b88cf59/index_metadata.pickle",
-    "api/chroma_db/2b9f80e3-f766-4bb1-843c-12572b88cf59/length.bin",
-    "api/chroma_db/2b9f80e3-f766-4bb1-843c-12572b88cf59/link_lists.bin",
-    "api/chroma_db/8e364f9b-9fc0-457b-90f3-78a0f47400ed/data_level0.bin",
-    "api/chroma_db/8e364f9b-9fc0-457b-90f3-78a0f47400ed/header.bin",
-    "api/chroma_db/8e364f9b-9fc0-457b-90f3-78a0f47400ed/length.bin",
-    "api/chroma_db/8e364f9b-9fc0-457b-90f3-78a0f47400ed/link_lists.bin"
+    ".claude/state/usage-stats.jsonl",
+    "api/main.py",
+    "frontend/.claude/state/changed-files.jsonl",
+    "frontend/src/app/knowledge-space/page.tsx",
+    "frontend/src/components/layout/Sidebar.tsx"
   ],
   "sessionId": "",
-  "timestamp": "2026-05-23T09:13:44Z",
+  "timestamp": "2026-05-29T12:41:24Z",
   "version": "1.0.0",
   "wipTasks": null
 }

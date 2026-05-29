@@ -176,6 +176,7 @@ const createStarTexture = () => {
 function KnowledgeSpaceScene({
   graph,
   onSelect,
+  onHover,
   selectedId,
   searchTerm,
   timePercent,
@@ -184,6 +185,7 @@ function KnowledgeSpaceScene({
 }: {
   graph: KnowledgeGraph;
   onSelect: (node: GraphNode | null) => void;
+  onHover: (node: GraphNode | null, x: number, y: number) => void;
   selectedId?: string;
   searchTerm: string;
   timePercent: number;
@@ -454,8 +456,10 @@ function KnowledgeSpaceScene({
         const r = Math.max(14, star.userData.visualSize || (node?.radius || 5) + 10);
         halo.scale.setScalar(r / 13);
         (halo.material as THREE.MeshBasicMaterial).opacity = 0.55;
+        onHover(node || null, event.clientX, event.clientY);
       } else {
         (halo.material as THREE.MeshBasicMaterial).opacity = 0;
+        onHover(null, 0, 0);
       }
     };
 
@@ -539,6 +543,8 @@ export default function KnowledgeSpacePage() {
   const [evidenceQuery, setEvidenceQuery] = useState("");
   const [showControls, setShowControls] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
+  const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
 
   const fetchGraph = async (nextLimit = limit) => {
     setLoading(true);
@@ -690,6 +696,10 @@ export default function KnowledgeSpacePage() {
               if (node) setShowDetails(true);
               if (node) setMode("all");
             }}
+            onHover={(node, x, y) => {
+              setHoveredNode(node);
+              if (node) setHoverPos({ x, y });
+            }}
             selectedId={selected?.id}
             searchTerm={searchTerm}
             timePercent={timePercent}
@@ -720,6 +730,22 @@ export default function KnowledgeSpacePage() {
           </div>
         )}
       </section>
+
+      {hoveredNode && (
+        <div
+          className="pointer-events-none fixed z-50"
+          style={{ left: hoverPos.x + 16, top: hoverPos.y - 36 }}
+        >
+          <div className="max-w-[260px] rounded-md border border-white/20 bg-slate-900/92 px-2.5 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-sm">
+            <div className="truncate">{hoveredNode.label}</div>
+            {hoveredNode.path && (
+              <div className="mt-0.5 truncate text-[10px] font-normal text-slate-400">
+                {hoveredNode.path.split("/").pop()}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <aside className={`${showControls ? "block" : "hidden"} absolute bottom-3 left-3 right-3 z-30 max-h-[44vh] overflow-y-auto rounded-md border border-white/10 bg-slate-950/86 p-3 shadow-2xl backdrop-blur-md md:bottom-4 md:left-4 md:right-auto md:block md:max-h-none md:w-[min(420px,calc(100vw-2rem))] md:overflow-visible md:p-4`}>
         <div className="mb-2 flex items-center justify-between md:hidden">
