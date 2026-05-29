@@ -1213,6 +1213,48 @@ def get_sales_dept_winrate():
     return {"items": result, "overall_rate": overall_rate, "total_won": total_won, "total_lost": total_lost}
 
 
+@app.get("/api/payment/alerts")
+def get_payment_alerts():
+    """延滞・デフォルト案件を検出してアラートリストを返す（REV-070）。"""
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "lease_data.db")
+    if not os.path.exists(db_path):
+        return {"alerts": [], "summary": {"normal": 0, "overdue": 0, "default": 0, "completed": 0}}
+    import sqlite3 as _sqlite3
+    conn = _sqlite3.connect(db_path)
+    conn.row_factory = _sqlite3.Row
+    cur = conn.cursor()
+    # payment_historyが存在するか確認
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='payment_history'")
+    if not cur.fetchone():
+        conn.close()
+        return {"alerts": [], "summary": {"normal": 0, "overdue": 0, "default": 0, "completed": 0}}
+    cur.execute("""
+        SELECT ph.id, ph.contract_id, ph.check_date, ph.payment_status,
+               ph.overdue_amount, ph.screening_score, ph.notes,
+               pc.industry_sub, pc.score as original_score
+        FROM payment_history ph
+        LEFT JOIN past_cases pc ON ph.contract_id = pc.id
+        ORDER BY ph.check_date DESC
+    """)
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    summary = {"normal": 0, "overdue": 0, "default": 0, "completed": 0}
+    alerts = []
+    for row in rows:
+        status = row.get("payment_status", "")
+        if status == "正常":
+            summary["normal"] += 1
+        elif status == "延滞":
+            summary["overdue"] += 1
+            alerts.append({**row, "severity": "warning", "message": f"延滞発生 — 過延滞額: {row.get('overdue_amount', 0):,}円"})
+        elif status == "デフォルト":
+            summary["default"] += 1
+            alerts.append({**row, "severity": "critical", "message": "デフォルト — 早急な対応が必要です"})
+        elif status == "完済":
+            summary["completed"] += 1
+    return {"alerts": alerts, "summary": summary, "total": len(rows)}
+
+
 @app.get("/api/improvement-log")
 def get_improvement_log():
     """最新の改善パイプラインログをサマリー形式で返す（REV-135）。"""

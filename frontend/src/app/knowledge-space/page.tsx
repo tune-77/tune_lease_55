@@ -429,6 +429,29 @@ function KnowledgeSpaceScene({
       }
     });
 
+    // REV-136: 引用元強調 — link_count >= 5 のノードに金色のアウラを追加
+    const CITATION_THRESHOLD = 5;
+    graph.nodes.forEach((node) => {
+      const position = positions.get(node.id);
+      if (!position || !node.link_count || node.link_count < CITATION_THRESHOLD) return;
+      const intensity = Math.min(1, (node.link_count - CITATION_THRESHOLD) / 15);
+      const auraMaterial = new THREE.SpriteMaterial({
+        map: starTexture || undefined,
+        color: new THREE.Color("#fbbf24").lerp(new THREE.Color("#f97316"), intensity),
+        transparent: true,
+        opacity: (0.10 + intensity * 0.18) * (isGalaxy ? 1 : 0.7),
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const aura = new THREE.Sprite(auraMaterial);
+      aura.position.copy(position);
+      const existingStar = starById.get(node.id);
+      const baseScale = existingStar ? existingStar.scale.x : 12;
+      aura.scale.setScalar(baseScale * 2.6);
+      root.add(aura);
+      starMaterials.push(auraMaterial);
+    });
+
     const haloGeometry = new THREE.RingGeometry(10, 10.7, 64);
     const haloMaterial = new THREE.MeshBasicMaterial({ color: "#f8fafc", transparent: true, opacity: 0.0, side: THREE.DoubleSide });
     const halo = new THREE.Mesh(haloGeometry, haloMaterial);
@@ -880,7 +903,14 @@ export default function KnowledgeSpacePage() {
                 {selected.type === "cluster" ? <Network className="h-5 w-5 text-cyan-200" /> : <FileText className="h-5 w-5 text-cyan-200" />}
               </div>
               <div className="min-w-0">
-                <div className="break-words text-base font-black text-white">{selected.label}</div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="break-words text-base font-black text-white">{selected.label}</div>
+                  {(selected.link_count ?? 0) >= 5 && (
+                    <span className="shrink-0 rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] font-bold text-amber-200">
+                      ⭐ 引用元 {selected.link_count}links
+                    </span>
+                  )}
+                </div>
                 {selected.path && <div className="mt-1 break-words text-xs font-bold text-slate-400">{selected.path}</div>}
               </div>
             </div>

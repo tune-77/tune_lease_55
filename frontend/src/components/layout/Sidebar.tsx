@@ -10,7 +10,7 @@ import {
   Eye, BarChart3, TrendingUp, Globe, ChevronDown, ChevronRight, Building,
   PanelLeftClose, PanelLeftOpen, X, Table2, Swords, MessageCircle,
   BarChart2, Building2, BookOpen, Gift, HelpCircle, Megaphone, Calculator,
-  Receipt, LifeBuoy, ClipboardList
+  Receipt, LifeBuoy, ClipboardList, CreditCard
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
 
@@ -68,6 +68,7 @@ export default function Sidebar() {
         { name: 'リース知識 FAQ', href: '/faq', icon: HelpCircle, color: 'text-slate-400' },
         { name: 'システム機能一覧', href: '/help', icon: LifeBuoy, color: 'text-blue-300' },
         { name: '改善ログ', href: '/improvement-log', icon: ClipboardList, color: 'text-slate-400' },
+        { name: '支払いアラート', href: '/payment-check', icon: CreditCard, color: 'text-red-400' },
       ]
     },
     {
