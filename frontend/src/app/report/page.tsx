@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../../lib/api';
-import { FileText, RefreshCw, ChevronDown, Loader2, AlertCircle, AlertTriangle, TrendingDown, ShieldAlert, CheckCircle2, ClipboardList } from 'lucide-react';
+import { FileText, RefreshCw, ChevronDown, Loader2, AlertCircle, AlertTriangle, TrendingDown, ShieldAlert, CheckCircle2, ClipboardList, BarChart3, MessageSquare } from 'lucide-react';
 
 type CaseRow = {
   id: string;
@@ -17,6 +17,12 @@ type RiskFactor = {
   value: string;
   benchmark: string;
   severity: 'high' | 'medium';
+};
+
+type IndustryBenchmark = {
+  industry: string;
+  avg_score: number | null;
+  total: number;
 };
 
 const STATUS_DOT: Record<string, string> = {
@@ -204,6 +210,112 @@ function RecommendedActionsPanel({ score, inputs, result }: {
   );
 }
 
+// REV-025: 業種平均との財務比較パネル
+function IndustryBenchmarkPanel({ score, benchmark }: { score: number; benchmark: IndustryBenchmark }) {
+  if (benchmark.avg_score === null) return null;
+  const diff = score - benchmark.avg_score;
+  const above = diff >= 0;
+
+  return (
+    <div className="mb-5 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <BarChart3 className="w-5 h-5 text-sky-600 flex-shrink-0" />
+        <span className="font-black text-slate-700 text-sm">業種平均スコア比較</span>
+        <span className="ml-auto text-[10px] font-bold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-full max-w-[160px] truncate" title={benchmark.industry}>{benchmark.industry}</span>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <div className="text-center p-3 bg-white border border-slate-200 rounded-xl">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">本案件</p>
+          <p className="text-2xl font-black text-slate-800">{Math.round(score)}<span className="text-sm font-bold text-slate-400">pt</span></p>
+        </div>
+        <div className="text-center p-3 bg-white border border-slate-200 rounded-xl">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">業種平均</p>
+          <p className="text-2xl font-black text-slate-500">{Math.round(benchmark.avg_score)}<span className="text-sm font-bold text-slate-400">pt</span></p>
+          <p className="text-[10px] text-slate-400">{benchmark.total}件参照</p>
+        </div>
+        <div className={`text-center p-3 rounded-xl border ${above ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">差分</p>
+          <p className={`text-2xl font-black ${above ? 'text-emerald-600' : 'text-rose-600'}`}>
+            {above ? '+' : ''}{diff.toFixed(1)}<span className="text-sm font-bold">pt</span>
+          </p>
+          <p className={`text-[10px] font-bold ${above ? 'text-emerald-600' : 'text-rose-600'}`}>
+            {above ? '平均以上' : '平均以下'}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// REV-048: 営業向け審査結果説明ガイドライン
+function SalesGuidePanel({ score }: { score: number }) {
+  const rounded = Math.round(score);
+  const range = score >= 70 ? 'approved' : score >= 60 ? 'conditional' : 'rejected';
+
+  const configs = {
+    approved: {
+      title: '承認案件 — 営業向け説明ガイド',
+      wrap: 'bg-emerald-50 border-emerald-300',
+      hdr: 'text-emerald-800',
+      badge: 'bg-emerald-100 text-emerald-700',
+      badgeText: `承認推奨 ${rounded}pt`,
+      points: [
+        { label: 'スコアの伝え方', body: `AIスコア ${rounded}ptは審査基準（70pt以上）をクリアしており、財務健全性が確認されました。` },
+        { label: '金利・条件提示', body: '信用リスクが低いため標準金利での提示が可能です。追加担保・保証は原則不要です。' },
+        { label: '期間・条件の柔軟対応', body: '法定耐用年数の範囲内で希望期間に対応できます。長期契約によるコスト最適化も提案可能です。' },
+        { label: '次のステップ', body: '本審査書類（決算書3期・申込書）が揃い次第、即日〜3営業日での回答が可能です。' },
+      ],
+    },
+    conditional: {
+      title: '条件付き承認 — 営業向け説明ガイド',
+      wrap: 'bg-amber-50 border-amber-300',
+      hdr: 'text-amber-800',
+      badge: 'bg-amber-100 text-amber-700',
+      badgeText: `条件付き承認 ${rounded}pt`,
+      points: [
+        { label: 'スコアの伝え方', body: `AIスコア ${rounded}ptは審査ゾーン（60〜69pt）にあります。否決ではなく、一定条件のもとで承認可能な状態です。` },
+        { label: '付帯条件の説明', body: '担保（不動産・動産）の追加または代表者の連帯保証が条件となる場合があります。' },
+        { label: '金利について', body: '信用リスク補正として通常より0.2〜0.5%程度高い金利になる場合があります。補助金活用で実質負担を軽減する方法もあります。' },
+        { label: '追加書類の依頼', body: '直近試算表・主要取引先契約書・銀行口座入出金履歴（直近3ヶ月分）の追加提出をお願いします。' },
+        { label: '次のステップ', body: '条件が整い次第、再審査（3〜5営業日）を経て最終回答となります。早めの書類収集をお願いします。' },
+      ],
+    },
+    rejected: {
+      title: '否決案件 — 営業向け説明ガイド',
+      wrap: 'bg-rose-50 border-rose-300',
+      hdr: 'text-rose-800',
+      badge: 'bg-rose-100 text-rose-700',
+      badgeText: `否決 ${rounded}pt`,
+      points: [
+        { label: '伝え方の注意', body: '今回の審査結果は否決ですが、企業価値の否定ではありません。財務指標改善後の再申請をご案内ください。' },
+        { label: '否決理由の説明', body: '主要財務指標（利益率・自己資本比率・デフォルト確率等）が現時点の審査基準を満たしていません。具体的な改善目標をお伝えください。' },
+        { label: '代替提案', body: '① リース金額の縮小　② リース期間の短縮　③ 信用保証協会保証の活用　④ 補助金との組み合わせ　のいずれかを検討できます。' },
+        { label: '再申請の条件', body: `スコア60pt以上（現在${rounded}pt）を目指すには、営業利益率5%以上・自己資本比率20%以上が目安です。` },
+        { label: '次のステップ', body: '財務改善が見込まれる場合は6〜12ヶ月後の再申請をご案内ください。最新決算書または試算表を再提出いただきます。' },
+      ],
+    },
+  };
+
+  const g = configs[range];
+  return (
+    <div className={`mb-5 p-4 border rounded-xl ${g.wrap}`}>
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <MessageSquare className="w-5 h-5 flex-shrink-0 text-slate-600" />
+        <span className={`font-black text-sm ${g.hdr}`}>{g.title}</span>
+        <span className={`ml-auto text-[10px] font-black px-2 py-0.5 rounded-full ${g.badge}`}>{g.badgeText}</span>
+      </div>
+      <div className="space-y-2">
+        {g.points.map((p, i) => (
+          <div key={i} className="p-2.5 bg-white/70 rounded-lg">
+            <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${g.hdr}`}>{p.label}</p>
+            <p className="text-xs text-slate-700 leading-relaxed">{p.body}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function MarkdownBlock({ md }: { md: string }) {
   const lines = md.split('\n');
   return (
@@ -231,6 +343,8 @@ export default function ReportPage() {
   const [report, setReport] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [caseDetail, setCaseDetail] = useState<{ inputs: Record<string, unknown>; result: Record<string, unknown> } | null>(null);
+  const [allIndustryStats, setAllIndustryStats] = useState<IndustryBenchmark[]>([]);
+  const [industryBenchmark, setIndustryBenchmark] = useState<IndustryBenchmark | null>(null);
 
   const fetchCases = useCallback(async () => {
     setLoadingCases(true);
@@ -246,20 +360,33 @@ export default function ReportPage() {
 
   useEffect(() => { fetchCases(); }, [fetchCases]);
 
+  useEffect(() => {
+    apiClient.get<IndustryBenchmark[]>('/api/industry/stats')
+      .then(r => setAllIndustryStats(r.data))
+      .catch(() => {});
+  }, []);
+
   const handleSelectCase = useCallback(async (id: string) => {
     setSelectedId(id);
     setReport(null);
     setError(null);
     setCaseDetail(null);
+    setIndustryBenchmark(null);
     if (!id) return;
     try {
       const detail = await apiClient.get(`/api/cases/${id}`);
       const d = detail.data;
-      setCaseDetail({ inputs: d.inputs || {}, result: d.result || {} });
+      const inputs = d.inputs || {};
+      setCaseDetail({ inputs, result: d.result || {} });
+      const industry = typeof inputs.industry_sub === 'string' ? inputs.industry_sub : null;
+      if (industry && allIndustryStats.length > 0) {
+        const match = allIndustryStats.find(r => r.industry === industry);
+        if (match) setIndustryBenchmark(match);
+      }
     } catch {
       // detail取得失敗は無視（レポート生成時に再取得する）
     }
-  }, []);
+  }, [allIndustryStats]);
 
   const generate = async () => {
     if (!selectedId) return;
@@ -403,6 +530,14 @@ export default function ReportPage() {
                     inputs={caseDetail.inputs}
                     result={caseDetail.result}
                   />
+                )}
+                {/* REV-025: 業種平均比較 */}
+                {score !== null && industryBenchmark && (
+                  <IndustryBenchmarkPanel score={score} benchmark={industryBenchmark} />
+                )}
+                {/* REV-048: 営業向けガイドライン */}
+                {score !== null && (
+                  <SalesGuidePanel score={score} />
                 )}
 
                 <MarkdownBlock md={report} />
