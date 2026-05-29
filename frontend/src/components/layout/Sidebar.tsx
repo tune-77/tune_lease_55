@@ -9,7 +9,7 @@ import {
   PieChart, LineChart, Target, Settings, Calendar, Share2, Network,
   Eye, BarChart3, TrendingUp, Globe, ChevronDown, ChevronRight, Building,
   PanelLeftClose, PanelLeftOpen, X, Table2, Swords, MessageCircle,
-  BarChart2, Building2, BookOpen, Gift, HelpCircle
+  BarChart2, Building2, BookOpen, Gift, HelpCircle, Megaphone, Calculator
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
 
@@ -59,6 +59,9 @@ export default function Sidebar() {
       title: '参照・ナレッジ',
       items: [
         { name: '法定耐用年数一覧', href: '/useful-life', icon: BookOpen, color: 'text-blue-400' },
+        { name: '業種別リース物件例', href: '/industry-assets', icon: Factory, color: 'text-slate-500' },
+        { name: '残価設定ガイドライン', href: '/residual-guide', icon: Calculator, color: 'text-purple-400' },
+        { name: '営業向け説明ガイド', href: '/sales-guide', icon: Megaphone, color: 'text-blue-500' },
         { name: '補助金情報', href: '/subsidies', icon: Gift, color: 'text-amber-400' },
         { name: 'リース知識 FAQ', href: '/faq', icon: HelpCircle, color: 'text-slate-400' },
       ]
