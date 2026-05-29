@@ -1123,6 +1123,66 @@ def _load_useful_life_table() -> list[dict]:
     return _USEFUL_LIFE_TABLE
 
 
+@app.get("/api/cases/industry-winrate")
+def get_industry_winrate():
+    """業種別成約率を past_cases から集計して返す（REV-055/117~119）。"""
+    import sqlite3 as _sqlite3
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "lease_data.db")
+    if not os.path.exists(db_path):
+        return []
+    conn = _sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT industry_sub, final_status, COUNT(*) FROM past_cases "
+        "WHERE final_status IS NOT NULL AND final_status != '' "
+        "GROUP BY industry_sub, final_status"
+    )
+    rows = cur.fetchall()
+    conn.close()
+    _SUCCESS = {"成約", "検収完了"}
+    _FAILURE = {"失注"}
+    agg: dict = {}
+    for industry, status, cnt in rows:
+        if not industry or industry == "0":
+            continue
+        d = agg.setdefault(industry, {"won": 0, "lost": 0})
+        if status in _SUCCESS:
+            d["won"] += cnt
+        elif status in _FAILURE:
+            d["lost"] += cnt
+    result = []
+    total_won = sum(v["won"] for v in agg.values())
+    total_lost = sum(v["lost"] for v in agg.values())
+    total_all = total_won + total_lost
+    overall_rate = round(total_won / total_all * 100, 1) if total_all > 0 else 0
+    for industry, d in agg.items():
+        total = d["won"] + d["lost"]
+        if total == 0:
+            continue
+        rate = round(d["won"] / total * 100, 1)
+        result.append({
+            "industry": industry,
+            "won": d["won"],
+            "lost": d["lost"],
+            "total": total,
+            "win_rate": rate,
+            "diff": round(rate - overall_rate, 1),
+        })
+    result.sort(key=lambda x: x["total"], reverse=True)
+    return {"items": result, "overall_rate": overall_rate, "total_won": total_won, "total_lost": total_lost}
+
+
+@app.get("/api/asset/useful-life-all")
+def get_useful_life_all():
+    """法定耐用年数の全品目をカテゴリ付きで返す（REV-085/121）。"""
+    import json as _json
+    json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "static_data", "useful_life_equipment.json")
+    if not os.path.exists(json_path):
+        return {"categories": []}
+    with open(json_path, encoding="utf-8") as f:
+        return _json.load(f)
+
+
 @app.get("/api/asset/useful-life-search")
 def search_useful_life(q: str = ""):
     """国税庁の法定耐用年数表からキーワード検索（name/category/subcategory）。最大20件返す。"""
