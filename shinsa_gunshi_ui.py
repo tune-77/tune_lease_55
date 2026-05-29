@@ -540,7 +540,7 @@ def render_gunshi() -> None:
             st.dataframe(
                 df[show_cols].head(20).rename(columns={
                     "id": "ID", "created_at": "日時", "industry": "業種",
-                    "score": "スコア", "pd_pct": "PD%", "resale": "リセール",
+                    "score": "スコア", "pd_pct": "PD%（デフォルト確率）", "resale": "リセール",
                     "repeat_cnt": "リピート", "posterior": "承認確率", "result": "結果",
                 }),
                 width='stretch',
@@ -871,7 +871,7 @@ def render_gunshi_in_results(
     with st.expander("📌 自動抽出パラメータ（クリックで確認）", expanded=False):
         pc1, pc2, pc3, pc4, pc5, pc6 = st.columns(6)
         pc1.metric("スコア",         f"{g['score']:.0f}")
-        pc2.metric("PD",             f"{g['pd_pct']:.1f}%")
+        pc2.metric("PD（デフォルト確率）", f"{g['pd_pct']:.1f}%", help="Probability of Default：債務不履行が発生する確率。高いほどリスク大。")
         pc3.metric("業種カテゴリ",   g["industry_cat"])
         pc4.metric("リセール評価",   g["resale"])
         pc5.metric("リピート回数",   g["repeat_cnt"])
