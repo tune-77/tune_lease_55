@@ -10,7 +10,7 @@ import {
   Eye, BarChart3, TrendingUp, Globe, ChevronDown, ChevronRight, Building,
   PanelLeftClose, PanelLeftOpen, X, Table2, Swords, MessageCircle,
   BarChart2, Building2, BookOpen, Gift, HelpCircle, Megaphone, Calculator,
-  Receipt, LifeBuoy, ClipboardList, CreditCard
+  Receipt, LifeBuoy, ClipboardList, CreditCard, Activity
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
 
@@ -76,6 +76,7 @@ export default function Sidebar() {
       items: [
         { name: '定性要因分析 (50件〜)', href: '/qualitative', icon: Target, color: 'text-pink-400' },
         { name: '定量要因分析 (50件〜)', href: '/quantitative', icon: LineChart, color: 'text-red-400' },
+        { name: 'ドリフト監視', href: '/drift', icon: Activity, color: 'text-indigo-400' },
         { name: '係数分析・更新 (β)', href: '/coef-analysis', icon: Wrench, color: 'text-slate-400' },
         { name: '係数入力（事前係数）', href: '/coef-input', icon: PencilRuler, color: 'text-slate-400' },
         { name: '係数変更履歴', href: '/coef-history', icon: History, color: 'text-slate-400' },

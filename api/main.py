@@ -4272,3 +4272,83 @@ def fluid_status():
         return get_fluid_status()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/drift-stats")
+def get_drift_stats():
+    """スコアリングドリフト監視用統計を返す（REV-008）。"""
+    import sqlite3 as _sqlite3
+    import json as _json
+    from data_cases import _open_db
+    try:
+        with _open_db() as conn:
+            conn.row_factory = _sqlite3.Row
+            rows = conn.execute(
+                "SELECT timestamp, score, final_status, data FROM past_cases WHERE score IS NOT NULL ORDER BY timestamp ASC"
+            ).fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    monthly: dict = {}
+    score_by_status: dict = {"成約": [], "失注": []}
+    all_scores: list = []
+
+    for row in rows:
+        ts = (row["timestamp"] or "")[:7]  # YYYY-MM
+        score = row["score"]
+        status = row["final_status"] or "未登録"
+        all_scores.append(score)
+        if ts:
+            if ts not in monthly:
+                monthly[ts] = {"month": ts, "count": 0, "won": 0, "lost": 0, "score_sum": 0.0, "score_won": [], "score_lost": []}
+            monthly[ts]["count"] += 1
+            monthly[ts]["score_sum"] += score
+            if status == "成約":
+                monthly[ts]["won"] += 1
+                monthly[ts]["score_won"].append(score)
+                score_by_status["成約"].append(score)
+            elif status == "失注":
+                monthly[ts]["lost"] += 1
+                monthly[ts]["score_lost"].append(score)
+                score_by_status["失注"].append(score)
+
+    monthly_list = []
+    for m in sorted(monthly.keys()):
+        d = monthly[m]
+        total_decided = d["won"] + d["lost"]
+        monthly_list.append({
+            "month": m,
+            "count": d["count"],
+            "won": d["won"],
+            "lost": d["lost"],
+            "win_rate": round(d["won"] / total_decided * 100, 1) if total_decided > 0 else None,
+            "avg_score": round(d["score_sum"] / d["count"], 1) if d["count"] > 0 else None,
+            "avg_score_won": round(sum(d["score_won"]) / len(d["score_won"]), 1) if d["score_won"] else None,
+            "avg_score_lost": round(sum(d["score_lost"]) / len(d["score_lost"]), 1) if d["score_lost"] else None,
+        })
+
+    avg_won = round(sum(score_by_status["成約"]) / len(score_by_status["成約"]), 1) if score_by_status["成約"] else None
+    avg_lost = round(sum(score_by_status["失注"]) / len(score_by_status["失注"]), 1) if score_by_status["失注"] else None
+    separation = round(avg_won - avg_lost, 1) if avg_won is not None and avg_lost is not None else None
+
+    bins = [0] * 10
+    for s in all_scores:
+        idx = min(9, int(s // 10))
+        bins[idx] += 1
+    score_dist = [{"range": f"{i*10}–{i*10+9}", "count": bins[i]} for i in range(10)]
+
+    drift_alert = separation is not None and separation < 5.0
+
+    return {
+        "monthly": monthly_list,
+        "summary": {
+            "total": len(all_scores),
+            "won_count": len(score_by_status["成約"]),
+            "lost_count": len(score_by_status["失注"]),
+            "avg_score_won": avg_won,
+            "avg_score_lost": avg_lost,
+            "separation": separation,
+            "drift_alert": drift_alert,
+        },
+        "score_dist": score_dist,
+    }
