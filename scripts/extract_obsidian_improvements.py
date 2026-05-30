@@ -300,15 +300,57 @@ def _parse_improvements(text: str) -> list[dict]:
     return items
 
 
+def _jaccard_similarity(a: str, b: str) -> float:
+    """2文字列のJaccard類似度（2-gram）を返す。0.0〜1.0。"""
+    def bigrams(s: str) -> set[str]:
+        s = re.sub(r'\s+', '', s)
+        return {s[i:i+2] for i in range(len(s) - 1)} if len(s) >= 2 else set()
+    sa, sb = bigrams(a), bigrams(b)
+    if not sa and not sb:
+        return 1.0
+    if not sa or not sb:
+        return 0.0
+    return len(sa & sb) / len(sa | sb)
+
+
+# テーマグループ：同グループ内は最初の1件のみ残す
+_THEME_GROUPS: list[tuple[str, ...]] = [
+    ("曖昧な質問", "曖昧な発言", "曖昧な比較", "曖昧な要求", "曖昧な予算", "漠然とした"),
+    ("Q_risk", "Q_riskの説明", "Q_risk説明", "量子干渉リスク"),
+    ("補助金情報", "補助金案件", "補助金情報提供"),
+    ("業種別成約率", "業種別成約率データ", "業種別成約率の傾向"),
+    ("知識宇宙", "知識宇宙マップ", "知識宇宙のファイル名"),
+    ("リース対象外", "リース対象外資産", "リース対象外物件"),
+    ("リース対象物件", "リース対象物件の判断", "リース対象物件の明確化"),
+    ("リース見積もり", "リース初期情報", "リース可否判断"),
+    ("情報不足", "案件開始時の情報不足", "リース可否判断に必要な情報"),
+    ("条件付き承認", "条件付承認", "条件付き承認の推奨"),
+    ("八奈見杏奈", "八奈見杏奈の応答", "八奈見杏奈の発言"),
+    ("機能範囲外", "機能範囲外の質問", "範囲外コマンド"),
+]
+
+_JACCARD_THRESHOLD = 0.55  # この値以上なら重複とみなす
+
+
 def deduplicate_improvements(improvements: list[dict]) -> list[dict]:
     """改善案リストから重複を排除し duplicate_count を付与する.
 
-    重複判定基準:
-    1. タイトル完全一致 → 最初の出現を残す
-    2. タイトル先頭40文字が一致 → 同一とみなし最初を残す
-    3. 一方のタイトルが他方に含まれる（8文字以上）→ 短い方を残す
+    重複判定基準（優先順）:
+    1. タイトル完全一致
+    2. タイトル先頭40文字一致
+    3. 一方が他方に含まれる（8文字以上）
+    4. テーマグループ一致（同グループは先頭1件のみ残す）
+    5. Jaccard 2-gram 類似度 >= 0.55
     """
     _SUBSET_MIN_LEN = 8
+
+    def _in_same_theme(a: str, b: str) -> bool:
+        for group in _THEME_GROUPS:
+            a_match = any(kw in a for kw in group)
+            b_match = any(kw in b for kw in group)
+            if a_match and b_match:
+                return True
+        return False
 
     result: list[dict] = []
 
@@ -321,16 +363,26 @@ def deduplicate_improvements(improvements: list[dict]) -> list[dict]:
             kept_title = kept["title"]
             kept_prefix = kept_title[:40]
 
-            # 完全一致 or 先頭40文字一致
+            # 1. 完全一致 / 先頭40文字一致
             if title == kept_title or title_prefix == kept_prefix:
                 matched_idx = i
                 break
 
-            # サブセット判定（短すぎる文字列の誤検出を防ぐ最小長チェック）
+            # 2. サブセット判定
             if len(title) >= _SUBSET_MIN_LEN and len(kept_title) >= _SUBSET_MIN_LEN:
                 if title in kept_title or kept_title in title:
                     matched_idx = i
                     break
+
+            # 3. テーマグループ一致
+            if _in_same_theme(title, kept_title):
+                matched_idx = i
+                break
+
+            # 4. Jaccard 類似度
+            if _jaccard_similarity(title, kept_title) >= _JACCARD_THRESHOLD:
+                matched_idx = i
+                break
 
         if matched_idx >= 0:
             kept = result[matched_idx]
