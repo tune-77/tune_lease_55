@@ -8,7 +8,9 @@ from datetime import datetime
 class MahalanobisScorer:
     def __init__(self, feature_names: list[str], score_scale: float = 5.0):
         self.feature_names = feature_names
-        self.log_features = [f for f in feature_names if any(k in f for k in ('nenshu', 'profit', 'assets'))]
+        self.log_features = [f for f in feature_names if any(k in f for k in (
+            'nenshu', 'profit', 'assets', 'income', 'machines', 'credit', 'expense',
+        ))]
         self.scaler = StandardScaler()
         self.precision_: np.ndarray | None = None
         self.mu_: np.ndarray | None = None

@@ -346,6 +346,8 @@ def calculate_score_full(req: ScoringRequest):
             default_warnings=result.get("default_warnings", []),
             quantum_risk=result.get("quantum_risk"),
             credit_quantum_strong_warning=result.get("credit_quantum_strong_warning", False),
+            mahalanobis_score=result.get("mahalanobis_score"),
+            mahalanobis_advice=result.get("mahalanobis_advice"),
         )
     except Exception as e:
         import traceback
