@@ -1329,6 +1329,28 @@ def get_payment_alerts():
     return {"alerts": alerts, "summary": summary, "total": len(rows)}
 
 
+def _load_title_to_rev() -> dict[str, str]:
+    """最新の improvement_report_*.json からタイトル→REV番号マップを返す。"""
+    import glob as _g
+    import json as _j
+    reports = sorted(
+        _g.glob(os.path.expanduser("~/Library/Logs/tunelease/reports/improvement_report_*.json")),
+        reverse=True,
+    )
+    mapping: dict[str, str] = {}
+    for rpath in reports[:5]:
+        try:
+            d = _j.load(open(rpath, encoding="utf-8"))
+            for item in d.get("needs_review", []) + d.get("applied_improvements", []):
+                t = item.get("title", "")
+                rev = item.get("id", "")
+                if t and rev and t not in mapping:
+                    mapping[t] = rev
+        except Exception:
+            pass
+    return mapping
+
+
 def _load_obsidian_implemented_titles() -> set[str]:
     """Obsidian 実装済み改善一覧のタイトルを返す。"""
     from pathlib import Path as _Path
@@ -1437,6 +1459,11 @@ def get_improvement_log():
         items = [it for it in items if not _is_implemented(it.get("title", ""), impl_titles)]
     # ④ 残ったアイテム間で類似タイトルを重複排除
     items = _dedup_by_similarity(items)
+    # ⑤ improvement_report から REV番号を付与
+    title_to_rev = _load_title_to_rev()
+    for it in items:
+        if not it.get("id"):
+            it["id"] = title_to_rev.get(it.get("title", ""), "")
     approved = sum(1 for it in items if it["status"] == "APPROVED")
     needs_review = sum(1 for it in items if it["status"] in ("NEEDS_REVIEW", "needs_review"))
     items.sort(key=lambda x: x.get("id") or x.get("title") or "", reverse=True)
