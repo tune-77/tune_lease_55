@@ -1358,7 +1358,7 @@ def _log_bigrams(s: str) -> set[str]:
     return {s[i:i+2] for i in range(len(s) - 1)} if len(s) >= 2 else set()
 
 
-def _is_implemented(title: str, impl_titles: set[str], threshold: float = 0.50) -> bool:
+def _is_implemented(title: str, impl_titles: set[str], threshold: float = 0.45) -> bool:
     tl = title.lower()
     for impl in impl_titles:
         il = impl.lower()
@@ -1372,7 +1372,7 @@ def _is_implemented(title: str, impl_titles: set[str], threshold: float = 0.50) 
     return False
 
 
-def _dedup_by_similarity(items: list[dict], threshold: float = 0.55) -> list[dict]:
+def _dedup_by_similarity(items: list[dict], threshold: float = 0.50) -> list[dict]:
     """タイトルの類似度でまとめ、代表1件だけ残す。"""
     result: list[dict] = []
     for it in items:
