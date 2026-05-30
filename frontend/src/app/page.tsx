@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import axios from "axios";
-import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2 } from "lucide-react";
+import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, ChevronRight } from "lucide-react";
 import ScoreDAG from "../components/ScoreDAG";
 import { ScoringFormData, defaultFormData } from "../types";
 import FormGeneral from "../components/form/FormGeneral";
@@ -17,6 +17,7 @@ import AIAnalysis from "../components/analysis/AIAnalysis";
 import AdvancedAnalysis from "../components/analysis/AdvancedAnalysis";
 import GunshiAdvice from "../components/analysis/GunshiAdvice";
 import ReportGenerator from "../components/analysis/ReportGenerator";
+import QRiskPanel from "../components/analysis/QRiskPanel";
 import { triggerMebuki } from "../components/layout/FloatingMebuki";
 
 export default function Dashboard() {
@@ -151,6 +152,23 @@ export default function Dashboard() {
             {/* コンテンツエリア */}
             {activeTab === "input" && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 relative z-0">
+
+                {/* REV-023: 入力ステップガイド */}
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-3 flex flex-wrap items-center gap-2 text-sm">
+                  {[
+                    { num: 1, label: "基本属性・取引情報" },
+                    { num: 2, label: "財務情報 (P/L・B/S)" },
+                    { num: 3, label: "定性評価・物件条件" },
+                  ].map((step, i, arr) => (
+                    <span key={step.num} className="flex items-center gap-1.5">
+                      <span className="w-5 h-5 bg-blue-500 text-white rounded-full text-xs font-black flex items-center justify-center flex-shrink-0">{step.num}</span>
+                      <span className="font-bold text-blue-700 hidden sm:inline text-xs">{step.label}</span>
+                      {i < arr.length - 1 && <ChevronRight className="w-3 h-3 text-blue-300 flex-shrink-0 ml-0.5" />}
+                    </span>
+                  ))}
+                  <span className="ml-auto text-[10px] text-blue-500 hidden md:inline">すべて入力後、下の「審査エンジンを実行」ボタンを押してください</span>
+                </div>
+
                 <FormGeneral data={formData} onChange={handleFieldChange} />
                 <FormFinancial data={formData} onChange={handleFieldChange} />
                 <FormQualitative data={formData} onChange={handleFieldChange} />
@@ -204,6 +222,15 @@ export default function Dashboard() {
                     
                     {/* 主要指標サマリ (カッコいいカード) */}
                     <IndicatorCards data={result} />
+
+                    {/* REV-089/113/114: Q_risk パネル */}
+                    {result.quantum_risk != null && (
+                      <QRiskPanel
+                        quantumRisk={result.quantum_risk}
+                        creditQuantumStrongWarning={result.credit_quantum_strong_warning ?? false}
+                        compact={false}
+                      />
+                    )}
 
                     {/* 📊 新設: Recharts による本物のインタラクティブグラフ群 */}
                     <RealGraphs

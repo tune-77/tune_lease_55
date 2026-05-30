@@ -1874,6 +1874,18 @@ elif mode == "📈 マクロ経済・S&P500予測":
     from components.macro_prediction_view import render_macro_prediction_view
     render_macro_prediction_view()
 
+elif mode == "📊 業種別成約率":
+    from components.industry_winrate_view import render_industry_winrate_view
+    render_industry_winrate_view()
+
+elif mode == "🏢 営業部別成約率":
+    from components.sales_dept_winrate_view import render_sales_dept_winrate_view
+    render_sales_dept_winrate_view()
+
+elif mode == "📋 法定耐用年数一覧":
+    from components.useful_life_view import render_useful_life_view
+    render_useful_life_view()
+
 # ── 🔭 モデル診断 (Phase 0) ──────────────────────────────────────────────────
 elif mode == "🔭 モデル診断":
     from components.model_diagnostics_view import render_model_diagnostics

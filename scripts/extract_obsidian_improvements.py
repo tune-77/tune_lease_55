@@ -270,6 +270,105 @@ def extract_improvements_from_ai_chat_logs(vault: Path) -> str:
     return "\n".join(output_parts)
 
 
+def _normalize_title(title: str) -> str:
+    """タイトルを比較用に正規化する（前後空白削除・連続空白を1つに）."""
+    return re.sub(r'\s+', ' ', title.strip())
+
+
+def _parse_improvements(text: str) -> list[dict]:
+    """パイプラインテキストから改善案リストを生成する（[改善]/[TODO]タグ行を抽出）."""
+    items: list[dict] = []
+    lines = text.split("\n")
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith("[改善]") or line.startswith("[TODO]"):
+            tag = "改善" if line.startswith("[改善]") else "TODO"
+            title = _normalize_title(line[len(f"[{tag}]"):])
+            reason = ""
+            if i + 1 < len(lines) and lines[i + 1].startswith("理由："):
+                reason = lines[i + 1][3:].strip()
+                i += 1
+            if title:
+                items.append({"tag": tag, "title": title, "reason": reason})
+        i += 1
+    return items
+
+
+def deduplicate_improvements(improvements: list[dict]) -> list[dict]:
+    """改善案リストから重複を排除し duplicate_count を付与する.
+
+    重複判定基準:
+    1. タイトル完全一致 → 最初の出現を残す
+    2. タイトル先頭40文字が一致 → 同一とみなし最初を残す
+    3. 一方のタイトルが他方に含まれる（8文字以上）→ 短い方を残す
+    """
+    _SUBSET_MIN_LEN = 8
+
+    result: list[dict] = []
+
+    for imp in improvements:
+        title = imp["title"]
+        title_prefix = title[:40]
+
+        matched_idx = -1
+        for i, kept in enumerate(result):
+            kept_title = kept["title"]
+            kept_prefix = kept_title[:40]
+
+            # 完全一致 or 先頭40文字一致
+            if title == kept_title or title_prefix == kept_prefix:
+                matched_idx = i
+                break
+
+            # サブセット判定（短すぎる文字列の誤検出を防ぐ最小長チェック）
+            if len(title) >= _SUBSET_MIN_LEN and len(kept_title) >= _SUBSET_MIN_LEN:
+                if title in kept_title or kept_title in title:
+                    matched_idx = i
+                    break
+
+        if matched_idx >= 0:
+            kept = result[matched_idx]
+            kept["duplicate_count"] += 1
+            # 短い方のタイトルを保持（サブセット排除）
+            if len(title) < len(kept["title"]) and title in kept["title"]:
+                kept["title"] = title
+                kept["reason"] = imp["reason"]
+        else:
+            result.append({**imp, "duplicate_count": 1})
+
+    return result
+
+
+def _format_deduplicated(improvements: list[dict]) -> str:
+    """deduplicate_improvements の結果をパイプライン用テキストに変換する."""
+    lines: list[str] = []
+    for imp in improvements:
+        tag = imp["tag"]
+        count = imp.get("duplicate_count", 1)
+        count_note = f"（重複元: {count}件）" if count > 1 else ""
+        lines.append(f"[{tag}] {imp['title']}")
+        lines.append(f"理由：{imp['reason']}{count_note}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _load_consolidator() -> object | None:
+    """improvement_consolidator モジュールを動的ロードして consolidate_with_ai を返す."""
+    import importlib.util
+    mod_path = Path(__file__).parent / "improvement_consolidator.py"
+    if not mod_path.exists():
+        return None
+    try:
+        spec = importlib.util.spec_from_file_location("improvement_consolidator", mod_path)
+        mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        return getattr(mod, "consolidate_with_ai", None)
+    except Exception as e:
+        print(f"警告: improvement_consolidator のロード失敗: {e}", file=sys.stderr)
+        return None
+
+
 def main() -> None:
     vault = _get_vault_path()
     print(f"Obsidian Vault: {vault}")
@@ -288,10 +387,28 @@ def main() -> None:
     if ai_chat_text.strip():
         pipeline_text = pipeline_text + "\n\n" + ai_chat_text
 
-    OUTPUT_FILE.write_text(pipeline_text, encoding="utf-8")
+    # 重複排除
+    raw_improvements = _parse_improvements(pipeline_text)
+    before_count = len(raw_improvements)
+    deduped = deduplicate_improvements(raw_improvements)
+    after_count = len(deduped)
 
-    tag_count = pipeline_text.count("[改善]") + pipeline_text.count("[TODO]")
-    print(f"抽出完了: {OUTPUT_FILE} — {tag_count}件の改善案タグ")
+    # AI統合（Gemini APIが使えない場合は deduped をそのまま使用）
+    consolidate_with_ai = _load_consolidator()
+    if consolidate_with_ai is not None:
+        final = consolidate_with_ai(deduped)
+    else:
+        final = deduped
+    final_count = len(final)
+
+    final_text = _format_deduplicated(final)
+    OUTPUT_FILE.write_text(final_text, encoding="utf-8")
+
+    ai_note = f" → AI統合後: {final_count}件" if final_count != after_count else ""
+    print(
+        f"抽出完了: {OUTPUT_FILE} — {final_count}件の改善案"
+        f"（重複排除前: {before_count}件、排除後: {after_count}件{ai_note}）"
+    )
 
 
 if __name__ == "__main__":

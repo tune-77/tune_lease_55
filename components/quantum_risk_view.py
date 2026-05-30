@@ -309,7 +309,9 @@ def _render_single_wave_case(q_engine) -> None:
     """)
     
     c1, c2, c3 = st.columns(3)
-    c1.metric("⚛️ 波動干渉 Q_risk", f"{analysis['q_risk']}%")
+    _qv = analysis['q_risk']
+    _qlv = "🟢 低" if _qv < 30 else ("🟡 中" if _qv < 60 else "🔴 高")
+    c1.metric("⚛️ 波動干渉 Q_risk", f"{_qv}%", delta=_qlv, delta_color="off")
     c2.metric("⚡ 理論最大強度 (I_max)", f"{analysis['i_max']}")
     c3.metric("🌊 実測強度 (I_actual)", f"{analysis['i_actual']}")
     
@@ -479,9 +481,13 @@ def _display_q_risk_results(
 
         # ── メトリクス（ツールチップ付き） ─────────────────────────────────
         c1, c2, c3, c4 = st.columns(4)
+        _qr_val = row['q_risk']
+        _qr_lv = "🟢 低" if _qr_val < 30 else ("🟡 中" if _qr_val < 60 else "🔴 高")
         c1.metric(
             "⚛️ Q_risk",
-            f"{row['q_risk']:.1f} / 100",
+            f"{_qr_val:.1f} / 100",
+            delta=_qr_lv,
+            delta_color="off",
             help="財務比率10ペアの位相ズレをRMS合成したスコア。"
                  "40以上で要注意・60以上で財務構造の矛盾あり。"
                  "個々の指標は正常でも複数の組み合わせがおかしい場合に上昇します。",

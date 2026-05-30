@@ -737,10 +737,10 @@ def _render_step(step: int, jsic_data: dict, assets: list) -> None:
                                   step=0.1, key="wiz_depe", placeholder="空欄→0")
         rent_a = st.number_input("賃借料（資産）百万円", 0.0, 90_000.0,
                                   value=round(d["item8_rent"] / 1000, 1) if "item8_rent" in d else None,
-                                  step=0.1, key="wiz_renta", placeholder="空欄→0")
+                                  step=0.1, key="wiz_renta", placeholder="例: 1.0（=100万円）。B/S記載額、不明なら0")
         rent_e = st.number_input("賃借料（経費）百万円", 0.0, 90_000.0,
                                   value=round(d["item12_rent_exp"] / 1000, 1) if "item12_rent_exp" in d else None,
-                                  step=0.1, key="wiz_rente", placeholder="空欄→0")
+                                  step=0.1, key="wiz_rente", placeholder="例: 1.0（=100万円）。P/L記載額、不明なら0")
         dep_a_v  = round((dep_a  or 0.0) * 1000)
         dep_e_v  = round((dep_e  or 0.0) * 1000)
         rent_a_v = round((rent_a or 0.0) * 1000)

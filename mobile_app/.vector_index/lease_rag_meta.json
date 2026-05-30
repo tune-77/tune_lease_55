@@ -1,0 +1,1112 @@
+{
+  "30.areas/リース審査AIナレッジグラフ.md": {
+    "title": "リース審査AIナレッジグラフ",
+    "path": "30.areas/リース審査AIナレッジグラフ.md",
+    "content_preview": "リース審査AIナレッジグラフ ---\ntags: [rag, graph, architecture, リース審査]\ntype: architecture\npriority: critical\n---\n\n# リース審査 AI ナレッジグラフ\n\n**RAG システムの知識体系と相互リンク**\n\n---\n\n## 🎯 コア層（最優先）\n\n### 審査判定の基軸\n```\nユーザー質問\n  ↓\n【Q-Ris",
+    "timestamp": "2026-05-30T14:33:43.464530"
+  },
+  "30.areas/RAG検索インデックス.md": {
+    "title": "RAG検索インデックス",
+    "path": "30.areas/RAG検索インデックス.md",
+    "content_preview": "RAG検索インデックス ---\ntags: [rag, index, search, リース審査]\ntype: index\npriority: critical\n---\n\n# RAG 検索インデックス\n\n**リース審査 AI RAG システム用の検索・取得最適化ドキュメント**\n\n---\n\n## 🎯 論点別インデックス\n\n### 財務分析\n| 論点 | 参照先 | キーワード |\n|------|",
+    "timestamp": "2026-05-30T14:33:43.464551"
+  },
+  "30.areas/リース審査AI検索辞書.md": {
+    "title": "リース審査AI検索辞書",
+    "path": "30.areas/リース審査AI検索辞書.md",
+    "content_preview": "リース審査AI検索辞書 ---\ntags: [rag, search, dictionary, リース審査]\ntype: search-index\npriority: high\nrag_weight: 0.95\n---\n\n# リース審査 AI 検索辞書\n\n**RAG システムの検索最適化辞書 - ユーザークエリ → 参照ノート**\n\n---\n\n## 🏭 業種別検索マップ\n\n### 飲食業\n**特徴",
+    "timestamp": "2026-05-30T14:33:43.464586"
+  },
+  "Clippings/リース審査AI 自律高度化システム構想.md": {
+    "title": "リース審査AI 自律高度化システム構想",
+    "path": "Clippings/リース審査AI 自律高度化システム構想.md",
+    "content_preview": "リース審査AI 自律高度化システム構想 ---\ntitle: \"リース審査AI 自律高度化システム構想\"\nsource: \"https://htmlpreview.github.io/?https://github.com/tune-77/tune_lease_55/blob/master/docs/autonomous_ai_lease_system_plan.html#loop\"\nauthor",
+    "timestamp": "2026-05-30T14:33:43.464594"
+  },
+  "Clippings/八奈見杏菜 キャラクター分析メモ.md": {
+    "title": "八奈見杏菜 キャラクター分析メモ",
+    "path": "Clippings/八奈見杏菜 キャラクター分析メモ.md",
+    "content_preview": "八奈見杏菜 キャラクター分析メモ ---\ntags: ['reference', 'clipping']\n---\n\n# 八奈見杏菜（マケイン）キャラクター分析メモ\n\n作成日: 2026-05-16\n用途: 軍師AI・チャットAIの八奈見口調実装のリファレンス\n\n---\n\n## 基本設定\n\n- **作品**: 負けヒロインが多すぎる！（マケイン）\n- **声優**: 遠野ひかる\n- **身長**: ",
+    "timestamp": "2026-05-30T14:33:43.464602"
+  },
+  "Clippings/茨城県｜水戸市｜ひたちなか市｜日立市｜常陸太田市｜つくば市｜カーレポ株式会社｜自動車｜PDI｜新車整備｜ベンツ｜中古車｜中古部品｜買取｜廃車｜リサイクル.md": {
+    "title": "茨城県｜水戸市｜ひたちなか市｜日立市｜常陸太田市｜つくば市｜カーレポ株式会社｜自動車｜PDI｜新車整備｜ベンツ｜中古車｜中古部品｜買取｜廃車｜リサイクル",
+    "path": "Clippings/茨城県｜水戸市｜ひたちなか市｜日立市｜常陸太田市｜つくば市｜カーレポ株式会社｜自動車｜PDI｜新車整備｜ベンツ｜中古車｜中古部品｜買取｜廃車｜リサイクル.md",
+    "content_preview": "茨城県｜水戸市｜ひたちなか市｜日立市｜常陸太田市｜つくば市｜カーレポ株式会社｜自動車｜PDI｜新車整備｜ベンツ｜中古車｜中古部品｜買取｜廃車｜リサイクル ---\ntitle: \"茨城県｜水戸市｜ひたちなか市｜日立市｜常陸太田市｜つくば市｜カーレポ株式会社｜自動車｜PDI｜新車整備｜ベンツ｜中古車｜中古部品｜買取｜廃車｜リサイクル\"\nsource: \"https://www.carepo.jp/\"\n",
+    "timestamp": "2026-05-30T14:33:43.464609"
+  },
+  "Clippings/株式会社川上キカイ.md": {
+    "title": "株式会社川上キカイ",
+    "path": "Clippings/株式会社川上キカイ.md",
+    "content_preview": "株式会社川上キカイ ---\ntitle: 株式会社川上キカイ\nsource: https://www.kawakami-kikai.info/\nauthor:\npublished:\ncreated: 2026-05-13\ndescription:\ntags: ['reference', 'clipping']\n  - clippings\n---\n![](https://www.kawakami-k",
+    "timestamp": "2026-05-30T14:33:43.464617"
+  },
+  "Clippings/リース会社の債権回収  債権回収に強い 千葉 弁護士法人さくら北総法律事務所.md": {
+    "title": "リース会社の債権回収  債権回収に強い 千葉 弁護士法人さくら北総法律事務所",
+    "path": "Clippings/リース会社の債権回収  債権回収に強い 千葉 弁護士法人さくら北総法律事務所.md",
+    "content_preview": "リース会社の債権回収  債権回収に強い 千葉 弁護士法人さくら北総法律事務所 ---\ntitle: \"リース会社の債権回収 | 債権回収に強い 千葉 弁護士法人さくら北総法律事務所\"\nsource: \"https://sakura-hokuso.com/houjinhoumu/saiken-kaishu/ri-sudai.html\"\nauthor:\npublished:\ncreated: 2026",
+    "timestamp": "2026-05-30T14:33:43.464625"
+  },
+  "Clippings/リース審査AIに有用な情報50選.md": {
+    "title": "リース審査AIに有用な情報50選",
+    "path": "Clippings/リース審査AIに有用な情報50選.md",
+    "content_preview": "リース審査AIに有用な情報50選 ---\ntitle: \"リース審査AIに有用な情報50選\"\nsource: \"curated by Codex\"\ncreated: 2026-05-13\nproject: tune_lease_55\ntags: ['reference', 'clipping']\n  - clippings\n  - lease\n  - credit-screening\n  - cu",
+    "timestamp": "2026-05-30T14:33:43.464633"
+  },
+  "Clippings/株式会社タウ｜TAU.md": {
+    "title": "株式会社タウ｜TAU",
+    "path": "Clippings/株式会社タウ｜TAU.md",
+    "content_preview": "株式会社タウ｜TAU ---\ntitle: \"株式会社タウ｜TAU\"\nsource: \"https://tau.co.jp/\"\nauthor:\npublished: 2026年04月08日\ncreated: 2026-05-13\ndescription: \"株式会社タウのコーポレートサイトです。タウの想い、事業紹介、企業情報、経営情報、採用情報などを掲載しています。「モノや人が大切にされ続ける循環",
+    "timestamp": "2026-05-30T14:33:43.464640"
+  },
+  "Clippings/リースは高額.md": {
+    "title": "リースは高額",
+    "path": "Clippings/リースは高額.md",
+    "content_preview": "リースは高額 ---\ntitle: \"検索結果\"\nsource: \"https://www.google.com/search?q=%E9%AB%98%E9%A1%8D%E3%83%AA%E3%83%BC%E3%82%B9&sca_esv=902c31b61ac8c1b2&rlz=1C5CHFA_enJP1014JP1015&sxsrf=ANbL-n6eNYI_B6xf08xamw1f9n1wjd",
+    "timestamp": "2026-05-30T14:33:43.464647"
+  },
+  "Clippings/パソコンはリース・レンタル・購入どれが最適？契約期間・保守・処分まで徹底比較.md": {
+    "title": "パソコンはリース・レンタル・購入どれが最適？契約期間・保守・処分まで徹底比較",
+    "path": "Clippings/パソコンはリース・レンタル・購入どれが最適？契約期間・保守・処分まで徹底比較.md",
+    "content_preview": "パソコンはリース・レンタル・購入どれが最適？契約期間・保守・処分まで徹底比較 ---\ntitle: \"パソコンはリース・レンタル・購入どれが最適？契約期間・保守・処分まで徹底比較\"\nsource: \"https://www.mhc-itp.co.jp/column/basic/20180509_140323.html\"\nauthor:\npublished:\ncreated: 2026-05-13\n",
+    "timestamp": "2026-05-30T14:33:43.464655"
+  },
+  "Clippings/CNW（キャッチャー・ネットワーク）｜中古動産・中古機械の買取＆販売.md": {
+    "title": "CNW（キャッチャー・ネットワーク）｜中古動産・中古機械の買取＆販売",
+    "path": "Clippings/CNW（キャッチャー・ネットワーク）｜中古動産・中古機械の買取＆販売.md",
+    "content_preview": "CNW（キャッチャー・ネットワーク）｜中古動産・中古機械の買取＆販売 ---\ntitle: \"CNW（キャッチャー・ネットワーク）｜中古動産・中古機械の買取＆販売\"\nsource: \"https://www.c-nw.jp/\"\nauthor:\npublished:\ncreated: 2026-05-13\ndescription: \"CNW（キャッチャー・ネットワーク）は、中古機械、什器備品、車など",
+    "timestamp": "2026-05-30T14:33:43.464662"
+  },
+  "Clippings/リースの利用価値.md": {
+    "title": "リースの利用価値",
+    "path": "Clippings/リースの利用価値.md",
+    "content_preview": "リースの利用価値 ---\ntitle: \"検索結果\"\nsource: \"https://www.google.com/search?q=%E3%83%AA%E3%83%BC%E3%82%B9%E3%81%AE%E5%88%A9%E7%94%A8%E4%BE%A1%E5%80%A4&rlz=1C5CHFA_enJP1014JP1015&oq=%E3%83%AA%E3%83%BC%E3%82%B9%E",
+    "timestamp": "2026-05-30T14:33:43.464669"
+  },
+  "Asset Knowledge/Q-Risk.md": {
+    "title": "Q-Risk",
+    "path": "Asset Knowledge/Q-Risk.md",
+    "content_preview": "Q-Risk ---\ntags: ['financial-analysis', '知識資産', 'risk-assessment', 'q-risk', 'knowledge']\ntype: reference\ncategory: 財務分析\npriority: critical\nrag_weight: 1.0\nkeywords: ['自己資本比率', '経常利益', '流動比率', 'リスク評価'",
+    "timestamp": "2026-05-30T14:33:43.464677"
+  },
+  "Daily/2026-05-23.md": {
+    "title": "2026-05-23",
+    "path": "Daily/2026-05-23.md",
+    "content_preview": "2026-05-23 ---\ntags: ['daily']\n---\n\n## 05:08 Codex\n\nニュース参照後の判断変更を1クリックで記録する導線を追加。Nextの討論画面とStreamlitの分析結果にボタンを配置し、Obsidianの日次ノートと効果測定へ残すようにした。\n\n\n## 05:11 Codex\n\nObsidian の未接続 DATA を洗い、Cloud Run 移行検討・リ",
+    "timestamp": "2026-05-30T14:33:43.464685"
+  },
+  "Daily/2026-05-13.md": {
+    "title": "2026-05-13",
+    "path": "Daily/2026-05-13.md",
+    "content_preview": "2026-05-13 ---\ntags: ['daily']\n---\n\n## 20:13 Codex\n\n## 2026-05-13 Codex\n\n### Summary\n- リース審査AIの案件結果登録画面に、見積提示日・顧客反応日・結果日の入力欄を追加。\n- 通常の結果登録フォームとクイック登録ウィジェットの両方に反映。\n- 入力値は `YYYY-MM-DD` 形式で検証し、存在しない日付は保存",
+    "timestamp": "2026-05-30T14:33:43.464692"
+  },
+  "Daily/2026-05-27.md": {
+    "title": "2026-05-27",
+    "path": "Daily/2026-05-27.md",
+    "content_preview": "2026-05-27 ---\ntags: ['daily']\n---\n\n## 07:20 Lease News\n- 収集件数: 18\n- 主なテーマ: 物流・車両 8件, 金融・与信 4件, 製造・DX 3件\n- 詳細: [[Projects/tune_lease_55/News/2026-05-27_lease-news|今日のリース最新情報]]\n",
+    "timestamp": "2026-05-30T14:33:43.464699"
+  },
+  "Daily/2026-05-12.md": {
+    "title": "2026-05-12",
+    "path": "Daily/2026-05-12.md",
+    "content_preview": "2026-05-12 ---\ntags: ['daily']\n---\n\n## 21:01 Codex\n\n### Summary\n- リース審査AIを 2026-05-08 20:14 の `ec12105` まで戻した後、信用リスク群検知と金利補完を再構築した。\n- `8-3 / 9 / 10` 系格付を通常DATAから分離し、信用リスク群DATAとして保存・検知する仕組みを追加した。\n- `ba",
+    "timestamp": "2026-05-30T14:33:43.464707"
+  },
+  "Daily/2026-05-26.md": {
+    "title": "2026-05-26",
+    "path": "Daily/2026-05-26.md",
+    "content_preview": "2026-05-26 ---\ntags: ['daily']\n---\n\n## 04:40 Lease News\n- 収集件数: 18\n- 主なテーマ: 物流・車両 10件, 金融・与信 4件, 製造・DX 2件\n- 詳細: [[Projects/tune_lease_55/News/2026-05-26_lease-news|今日のリース最新情報]]\n\n\n## 04:53 Lease News\n-",
+    "timestamp": "2026-05-30T14:33:43.464714"
+  },
+  "Daily/2026-05-22.md": {
+    "title": "2026-05-22",
+    "path": "Daily/2026-05-22.md",
+    "content_preview": "2026-05-22 ---\ntags: ['daily']\n---\n\n## 06:24 Lease News\n- 収集件数: 18\n- 主なテーマ: 金融・与信 12件, 金利・政策 3件, 設備投資 1件\n- 詳細: [[Projects/tune_lease_55/News/2026-05-22_lease-news|今日のリース最新情報]]\n\n\n## 06:24 Codex\n\nLease ",
+    "timestamp": "2026-05-30T14:33:43.464722"
+  },
+  "Daily/2026-05-29.md": {
+    "title": "2026-05-29",
+    "path": "Daily/2026-05-29.md",
+    "content_preview": "2026-05-29 ---\ntags: ['daily']\n---\n\n## 07:20 Lease News\n- 収集件数: 18\n- 主なテーマ: 金融・与信 9件, 物流・車両 6件, 設備投資 2件\n- 詳細: [[Projects/tune_lease_55/News/2026-05-29_lease-news|今日のリース最新情報]]\n",
+    "timestamp": "2026-05-30T14:33:43.464729"
+  },
+  "Daily/2026-05-28.md": {
+    "title": "2026-05-28",
+    "path": "Daily/2026-05-28.md",
+    "content_preview": "2026-05-28 ---\ntags: ['2026-05-28', 'daily']\ndate: 2026-05-28\n---\n\n# 2026-05-28\n\n## 07:20 Lease News\n- 収集件数: 18\n- 主なテーマ: 金融・与信 9件, 物流・車両 6件, 製造・DX 2件\n- 詳細: [[Projects/tune_lease_55/News/2026-05-28_lea",
+    "timestamp": "2026-05-30T14:33:43.464736"
+  },
+  "Daily/2026-05-25.md": {
+    "title": "2026-05-25",
+    "path": "Daily/2026-05-25.md",
+    "content_preview": "2026-05-25 ---\ntags: ['daily']\n---\n\n## 06:50 Lease News\n- 収集件数: 18\n- 主なテーマ: 物流・車両 7件, 金融・与信 5件, 金利・政策 2件\n- 詳細: [[Projects/tune_lease_55/News/2026-05-25_lease-news|今日のリース最新情報]]\n\n\n## 07:20 Lease News\n- ",
+    "timestamp": "2026-05-30T14:33:43.464744"
+  },
+  "Daily/2026-05-30.md": {
+    "title": "2026-05-30",
+    "path": "Daily/2026-05-30.md",
+    "content_preview": "2026-05-30 ---\ntags: ['2026-05-30', 'daily']\ndate: 2026-05-30\n---\n\n# 2026-05-30\n\n## 07:20 Lease News\n- 収集件数: 18\n- 主なテーマ: 金融・与信 10件, 物流・車両 3件, 設備投資 2件\n- 詳細: [[Projects/tune_lease_55/News/2026-05-30_lea",
+    "timestamp": "2026-05-30T14:33:43.464752"
+  },
+  "Daily/2026-05-20.md": {
+    "title": "2026-05-20",
+    "path": "Daily/2026-05-20.md",
+    "content_preview": "2026-05-20 ---\ntags: ['daily']\n---\n\n## 05:54 Codex\n\n### Summary\n- tune_lease_55 の Next / Flask / DB 周りの単位整理と、定量分析の AUC 比較結果を Obsidian に連携。\n- 画面入力は百万円、内部計算とDB保存は千円、という現在の実装整理をメモ化。\n\n### Decisions\n- Next",
+    "timestamp": "2026-05-30T14:33:43.464759"
+  },
+  "Daily/2026-05-24.md": {
+    "title": "2026-05-24",
+    "path": "Daily/2026-05-24.md",
+    "content_preview": "2026-05-24 ---\ntags: ['daily']\n---\n\n## 07:20 Lease News\n- 収集件数: 18\n- 主なテーマ: 金融・与信 6件, 物流・車両 6件, 製造・DX 3件\n- 詳細: [[Projects/tune_lease_55/News/2026-05-24_lease-news|今日のリース最新情報]]\n\n\n## 19:04 Codex\n\n## 202",
+    "timestamp": "2026-05-30T14:33:43.464766"
+  },
+  "tuneLease55/改善策インデックス_2026.md": {
+    "title": "改善策インデックス_2026",
+    "path": "tuneLease55/改善策インデックス_2026.md",
+    "content_preview": "改善策インデックス_2026 # tuneLease55 改善策インデックス（2026年〜）\n\n作成日：2026-05-25\n\n## 概要\ntuneLease55（FastAPI + Next.js + LightGBM + Gemini 2.0 Flash）の継続的改善策をまとめたインデックス。  \n各ノートへのwikiリンクは双方向で連携済み。\n\n---\n\n## スコアリング改善\n- [[物件",
+    "timestamp": "2026-05-30T14:33:43.464773"
+  },
+  "Humor/リスク別ユーモア.md": {
+    "title": "リスク別ユーモア",
+    "path": "Humor/リスク別ユーモア.md",
+    "content_preview": "リスク別ユーモア ---\ncreated: 2026-05-13\nsource: codex\nproject: tune_lease_55\ntags: ['humor']\n  - humor\n  - risk\n---\n\n# リスク別ユーモア\n\n## 低リスク\n\n- 数字がきれいに整っていて、審査表がいつもより少し機嫌よく見えます。\n- 財務の足回りが安定していて、リース期間中も落ち着いて走れそうで",
+    "timestamp": "2026-05-30T14:33:43.464781"
+  },
+  "Humor/Draft_時事ユーモア候補.md": {
+    "title": "Draft_時事ユーモア候補",
+    "path": "Humor/Draft_時事ユーモア候補.md",
+    "content_preview": "Draft_時事ユーモア候補 ---\ncreated: 2026-05-13\nsource: humor_generator.py\nproject: tune_lease_55\ntags: ['humor']\n  - humor\n  - generated\n---\n\n# 時事ユーモア候補\n\n審査本文は真面目に保ち、最後の1文だけ柔らかくするための候補。\n\n- **中リスク / 建設業 / 建設機械",
+    "timestamp": "2026-05-30T14:33:43.464788"
+  },
+  "Humor/NG表現.md": {
+    "title": "NG表現",
+    "path": "Humor/NG表現.md",
+    "content_preview": "NG表現 ---\ncreated: 2026-05-13\nsource: codex\nproject: tune_lease_55\ntags: ['humor']\n  - humor\n  - safety\n  - ng\n---\n\n# NG表現\n\nAIユーモアコメントで避ける表現。\n\n## 禁止\n\n- 顧客を馬鹿にする表現。\n- 倒産、延滞、資金ショートを笑いにする表現。\n- 反社、粉飾、訴訟などの",
+    "timestamp": "2026-05-30T14:33:43.464795"
+  },
+  "Humor/口調ルール.md": {
+    "title": "口調ルール",
+    "path": "Humor/口調ルール.md",
+    "content_preview": "口調ルール ---\ncreated: 2026-05-13\nsource: codex\nproject: tune_lease_55\ntags: ['humor']\n  - humor\n  - ai-comment\n---\n\n# 口調ルール\n\nリース審査AIのコメントにユーモアを足すための基本ルール。\n\n## 共通ルール\n\n- 審査判断、財務分析、条件提示は必ず真面目に書く。\n- ユーモアは最後に",
+    "timestamp": "2026-05-30T14:33:43.464802"
+  },
+  "Humor/物件別ユーモア.md": {
+    "title": "物件別ユーモア",
+    "path": "Humor/物件別ユーモア.md",
+    "content_preview": "物件別ユーモア ---\ncreated: 2026-05-13\nsource: codex\nproject: tune_lease_55\ntags: ['humor']\n  - humor\n  - asset\n---\n\n# 物件別ユーモア\n\n## 車両\n\n- 走る資産だからこそ、事故時の保険と満了時の出口も一緒に見たい案件です。\n- エンジンより先に、返済計画のアイドリングが安定しているか確認しま",
+    "timestamp": "2026-05-30T14:33:43.464810"
+  },
+  "Humor/業種別ユーモア.md": {
+    "title": "業種別ユーモア",
+    "path": "Humor/業種別ユーモア.md",
+    "content_preview": "業種別ユーモア ---\ncreated: 2026-05-13\nsource: codex\nproject: tune_lease_55\ntags: ['humor']\n  - humor\n  - industry\n---\n\n# 業種別ユーモア\n\n## 建設業\n\n- 財務の基礎工事がどこまで固まっているか、ここは丁寧に地盤調査したい案件です。\n- 受注と資金繰りの足場を組んでから進めたい案件です。",
+    "timestamp": "2026-05-30T14:33:43.464817"
+  },
+  "改善ログ/20260529_REV-021.md": {
+    "title": "20260529_REV-021",
+    "path": "改善ログ/20260529_REV-021.md",
+    "content_preview": "20260529_REV-021 ---\ntags: ['log', 'improvement']\n---\n\n# リース対象物件の判断基準の明確化\n\n**ID**: REV-021\n**対象**: None\n**日時**: 2026-05-29 08:26:10\n\n## 改善内容\nリース対象物件の判断基準の明確化\n理由：AI Chat 改善ログ (2026-05-16) に記録された改善案\n\n##",
+    "timestamp": "2026-05-30T14:33:43.464824"
+  },
+  "改善ログ/2026-05-30_グラフビュー改善.md": {
+    "title": "2026-05-30_グラフビュー改善",
+    "path": "改善ログ/2026-05-30_グラフビュー改善.md",
+    "content_preview": "2026-05-30_グラフビュー改善 ---\ntags: ['daily', 'improvement', 'ui-ux', 'log', 'obsidian']\ndate: 2026-05-30\n---\n\n# Obsidian グラフビュー改善\n\n## 改善内容\nObsidian のグラフビューをカラフルで見栄えの良いものに改善。\n\n### 実施内容\n\n#### 1️⃣ カラー分けルール導入\n",
+    "timestamp": "2026-05-30T14:33:43.464831"
+  },
+  "改善ログ/20260529_REV-024.md": {
+    "title": "20260529_REV-024",
+    "path": "改善ログ/20260529_REV-024.md",
+    "content_preview": "20260529_REV-024 ---\ntags: ['log', 'improvement']\n---\n\n# 条件付き承認の推奨アクション自動提示\n\n**ID**: REV-024\n**対象**: None\n**日時**: 2026-05-29 08:26:02\n\n## 改善内容\n条件付き承認の推奨アクション自動提示\n理由：AI Chat 改善ログ (2026-05-16) に記録された改善案",
+    "timestamp": "2026-05-30T14:33:43.464839"
+  },
+  "改善ログ/20260529_REV-020.md": {
+    "title": "20260529_REV-020",
+    "path": "改善ログ/20260529_REV-020.md",
+    "content_preview": "20260529_REV-020 ---\ntags: ['log', 'improvement']\n---\n\n# 案件開始時の情報不足に対する自動的な情報要求\n\n**ID**: REV-020\n**対象**: None\n**日時**: 2026-05-29 08:26:02\n\n## 改善内容\n案件開始時の情報不足に対する自動的な情報要求\n理由：AI Chat 改善ログ (2026-05-16) に",
+    "timestamp": "2026-05-30T14:33:43.464846"
+  },
+  "改善ログ/20260529_REV-019.md": {
+    "title": "20260529_REV-019",
+    "path": "改善ログ/20260529_REV-019.md",
+    "content_preview": "20260529_REV-019 ---\ntags: ['log', 'improvement']\n---\n\n# 条件付き承認時の推奨アクション自動提示\n\n**ID**: REV-019\n**対象**: None\n**日時**: 2026-05-29 08:26:02\n\n## 改善内容\n条件付き承認時の推奨アクション自動提示\n理由：AI Chat 改善ログ (2026-05-16) に記録された改",
+    "timestamp": "2026-05-30T14:33:43.464853"
+  },
+  "改善ログ/20260529_REV-018.md": {
+    "title": "20260529_REV-018",
+    "path": "改善ログ/20260529_REV-018.md",
+    "content_preview": "20260529_REV-018 ---\ntags: ['log', 'improvement']\n---\n\n# 入力欄の説明文の明確化\n\n**ID**: REV-018\n**対象**: None\n**日時**: 2026-05-29 08:26:10\n\n## 改善内容\n入力欄の説明文の明確化\n理由：AI Chat 改善ログ (2026-05-16) に記録された改善案\n\n## 検証結果\n改善案I",
+    "timestamp": "2026-05-30T14:33:43.464861"
+  },
+  "改善ログ/20260529_REV-017.md": {
+    "title": "20260529_REV-017",
+    "path": "改善ログ/20260529_REV-017.md",
+    "content_preview": "20260529_REV-017 ---\ntags: ['log', 'improvement']\n---\n\n# AIチャット改善プロセス自動化\n\n**ID**: REV-017\n**対象**: None\n**日時**: 2026-05-29 08:26:10\n\n## 改善内容\nAIチャット改善プロセス自動化\n理由：AI Chat 改善ログ (2026-05-16) に記録された改善案\n\n## 検",
+    "timestamp": "2026-05-30T14:33:43.464868"
+  },
+  "改善ログ/20260530_REV-107.md": {
+    "title": "20260530_REV-107",
+    "path": "改善ログ/20260530_REV-107.md",
+    "content_preview": "20260530_REV-107 ---\ntags: ['log', 'improvement']\n---\n\n# 知識宇宙マップのファイル名表示\n\n**ID**: REV-107\n**対象**: None\n**日時**: 2026-05-30 04:16:16\n\n## 改善内容\n知識宇宙マップのファイル名表示\n理由：AI Chat 改善ログ (2026-05-28) に記録された改善案（重複元: ",
+    "timestamp": "2026-05-30T14:33:43.464875"
+  },
+  "改善ログ/20260529_REV-022.md": {
+    "title": "20260529_REV-022",
+    "path": "改善ログ/20260529_REV-022.md",
+    "content_preview": "20260529_REV-022 ---\ntags: ['log', 'improvement']\n---\n\n# 補助金情報提供の体系化\n\n**ID**: REV-022\n**対象**: None\n**日時**: 2026-05-29 08:26:10\n\n## 改善内容\n補助金情報提供の体系化\n理由：AI Chat 改善ログ (2026-05-16) に記録された改善案\n\n## 検証結果\n改善案I",
+    "timestamp": "2026-05-30T14:33:43.464882"
+  },
+  "改善ログ/20260529_REV-026.md": {
+    "title": "20260529_REV-026",
+    "path": "改善ログ/20260529_REV-026.md",
+    "content_preview": "20260529_REV-026 ---\ntags: ['log', 'improvement']\n---\n\n# 業種平均との比較表示機能\n\n**ID**: REV-026\n**対象**: None\n**日時**: 2026-05-29 08:26:02\n\n## 改善内容\n業種平均との比較表示機能\n理由：AI Chat 改善ログ (2026-05-16) に記録された改善案\n\n## 検証結果\n改善",
+    "timestamp": "2026-05-30T14:33:43.464889"
+  },
+  "リース知識/審査実務チェックポイント.md": {
+    "title": "審査実務チェックポイント",
+    "path": "リース知識/審査実務チェックポイント.md",
+    "content_preview": "審査実務チェックポイント ---\ntags: ['lease', '知識', 'リース']\ntype: procedure\ncategory: 審査実務\npriority: critical\nrag_weight: 0.95\nkeywords: ['チェックリスト', '審査', '判定基準']\n---\n\n# リース審査の実務的チェックポイント\n\n> 作成日: 2026-05-23 / リース審査",
+    "timestamp": "2026-05-30T14:33:43.464897"
+  },
+  "リース知識/物件残存価値・処分実務.md": {
+    "title": "物件残存価値・処分実務",
+    "path": "リース知識/物件残存価値・処分実務.md",
+    "content_preview": "物件残存価値・処分実務 ---\ntags: ['lease', '知識', 'リース']\ntype: reference\ncategory: 物件評価\npriority: high\nrag_weight: 0.9\nkeywords: ['残価', '残存価値', '処分', '中古相場']\n---\n\n# リース物件の残存価値・処分実務\n\n> 作成日: 2026-05-23 / リース審査AI 知識",
+    "timestamp": "2026-05-30T14:33:43.464904"
+  },
+  "リース知識/業種別リースリスク.md": {
+    "title": "業種別リースリスク",
+    "path": "リース知識/業種別リースリスク.md",
+    "content_preview": "業種別リースリスク ---\ntags: ['lease', '知識', 'リース']\n---\n\n# 業種別リースリスク特性\n\n> 作成日: 2026-05-23 / リース審査AI 知識ベース\n\n---\n\n## 概要\n\nリース審査においては、申込企業の業種ごとに固有のリスク特性を把握することが不可欠である。\n同じ財務内容であっても、業種によって倒産確率・物件流動性・稼働安定性が大きく異なるため、\n",
+    "timestamp": "2026-05-30T14:33:43.464912"
+  },
+  "リース知識/格付８−２先への対応.md": {
+    "title": "格付８−２先への対応",
+    "path": "リース知識/格付８−２先への対応.md",
+    "content_preview": "格付８−２先への対応 ---\ntags: ['lease', '知識', 'リース']\n---\n\n\n銀行と協調リース",
+    "timestamp": "2026-05-30T14:33:43.464918"
+  },
+  "リース知識/リース料率・金利相場.md": {
+    "title": "リース料率・金利相場",
+    "path": "リース知識/リース料率・金利相場.md",
+    "content_preview": "リース料率・金利相場 ---\ntags: ['lease', '知識', 'リース']\n---\n\n# リース料率・金利の市場相場\n\n> 作成日: 2026-05-23 / リース審査AI 知識ベース\n\n---\n\n## 概要\n\nリース料率は「月額リース料 ÷ 物件価格（取得価額）× 100」で表される割合であり、\n金利とは異なる概念だが、市場金利水準と強い相関を持つ。\n本書では2025〜2026年時",
+    "timestamp": "2026-05-30T14:33:43.464926"
+  },
+  "リース知識/リース審査：業種別ポイント.md": {
+    "title": "リース審査：業種別ポイント",
+    "path": "リース知識/リース審査：業種別ポイント.md",
+    "content_preview": "リース審査：業種別ポイント ---\ntags: ['industry-specific', 'lease-audit', 'lease', '知識', 'リース', 'risk-assessment']\ntype: reference\ncategory: 業種リスク\npriority: critical\nrag_weight: 1.0\nkeywords: ['業種別', '飲食業', '建設業',",
+    "timestamp": "2026-05-30T14:33:43.464933"
+  },
+  "リース知識/補助金・税制優遇とリース.md": {
+    "title": "補助金・税制優遇とリース",
+    "path": "リース知識/補助金・税制優遇とリース.md",
+    "content_preview": "補助金・税制優遇とリース ---\ntags: ['lease', '知識', 'リース']\n---\n\n# 補助金・税制優遇とリースの組み合わせ\n\n> 作成日: 2026-05-23 / リース審査AI 知識ベース\n\n---\n\n## 概要\n\n中小企業の設備投資において、補助金・税制優遇とリースを組み合わせることで、\n実質的な設備投資コストを大幅に圧縮できる。\nただし制度ごとに「リース適用可否」の条件",
+    "timestamp": "2026-05-30T14:33:43.464941"
+  },
+  "Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/過去判断根拠_サンプル.md": {
+    "title": "過去判断根拠_サンプル",
+    "path": "Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/過去判断根拠_サンプル.md",
+    "content_preview": "過去判断根拠_サンプル ---\ntags: ['tune-lease-55', 'project']\n---\n\n",
+    "timestamp": "2026-05-30T14:33:43.464948"
+  },
+  "tuneLease55/知見・分析/物件換金性スコア分析_20260525.md": {
+    "title": "物件換金性スコア分析_20260525",
+    "path": "tuneLease55/知見・分析/物件換金性スコア分析_20260525.md",
+    "content_preview": "物件換金性スコア分析_20260525 # 物件換金性スコアリング 検証知見\n\n## 背景\ntuneLease55の審査スコアリングにおいて、物件の換金性・残存価値・BEPを数値スコアとして借手スコアに加算する方式を検討した（2026-05-25）。\n\n## バックテスト概要\n- 対象：past_casesテーブル 1,901件（成約1,151件 / 失注750件）\n- ベースライン：final_",
+    "timestamp": "2026-05-30T14:33:43.464955"
+  },
+  "Learning-Wiki/raw/articles/トラックは　購入選択権が多い.md": {
+    "title": "トラックは　購入選択権が多い",
+    "path": "Learning-Wiki/raw/articles/トラックは　購入選択権が多い.md",
+    "content_preview": "トラックは　購入選択権が多い ---\ntags: ['wiki', 'learning']\n---\n\n",
+    "timestamp": "2026-05-30T14:33:43.464962"
+  },
+  "Learning-Wiki/raw/articles/ぐんぎんリースは金利が低い.md": {
+    "title": "ぐんぎんリースは金利が低い",
+    "path": "Learning-Wiki/raw/articles/ぐんぎんリースは金利が低い.md",
+    "content_preview": "ぐんぎんリースは金利が低い ---\ntags: ['wiki', 'learning']\n---\n\n",
+    "timestamp": "2026-05-30T14:33:43.464969"
+  },
+  "Learning-Wiki/raw/articles/サーバーは５年が多い.md": {
+    "title": "サーバーは５年が多い",
+    "path": "Learning-Wiki/raw/articles/サーバーは５年が多い.md",
+    "content_preview": "サーバーは５年が多い ---\ntags: ['wiki', 'learning']\n---\n\n",
+    "timestamp": "2026-05-30T14:33:43.464976"
+  },
+  "Projects/tune_lease_55/2026-05-23.md": {
+    "title": "2026-05-23",
+    "path": "Projects/tune_lease_55/2026-05-23.md",
+    "content_preview": "2026-05-23 ---\ntags: ['tune-lease-55', 'daily', 'project']\n---\n\n## 05:08 Codex\n\n## 2026-05-23 Codex\n\n- ニュース参照後の判断変更を1クリックで記録する導線を追加。Next と Streamlit の両方にボタンを配置し、Obsidian 日次ノートと `lease_news_metrics.jso",
+    "timestamp": "2026-05-30T14:33:43.464983"
+  },
+  "Projects/tune_lease_55/PHASE1_IMPLEMENTATION_STATUS.md": {
+    "title": "PHASE1_IMPLEMENTATION_STATUS",
+    "path": "Projects/tune_lease_55/PHASE1_IMPLEMENTATION_STATUS.md",
+    "content_preview": "PHASE1_IMPLEMENTATION_STATUS ---\ntags: ['implementation', 'project', 'phase1', 'status', 'tune-lease-55']\n---\n\n# Phase 1 実装ステータス\n\n## 概要\nリース審査 AI チャット最適化の Phase 1 実装状況を追跡するドキュメント。\n\n## 実装内容\n- [[AI Chat ",
+    "timestamp": "2026-05-30T14:33:43.464991"
+  },
+  "Projects/tune_lease_55/tune_lease_55_wiki.md": {
+    "title": "tune_lease_55_wiki",
+    "path": "Projects/tune_lease_55/tune_lease_55_wiki.md",
+    "content_preview": "tune_lease_55_wiki ---\ntags: ['tune-lease-55', 'project']\n---\n\n# リース審査AI システム Wiki\n\n作成日: 2026-05-16  \nプロジェクト: tune_lease_55  \nリポジトリ: https://github.com/tune-77/tune_lease_55\n\n---\n\n## 1. プロジェクト概要\n\n**目的",
+    "timestamp": "2026-05-30T14:33:43.464998"
+  },
+  "Projects/tune_lease_55/部門別DATA連携マップ_リース知識と営業部.md": {
+    "title": "部門別DATA連携マップ_リース知識と営業部",
+    "path": "Projects/tune_lease_55/部門別DATA連携マップ_リース知識と営業部.md",
+    "content_preview": "部門別DATA連携マップ_リース知識と営業部 ---\ncreated: 2026-05-23\nsource: codex\n---\n\n# 部門別DATA連携マップ リース知識と営業部\n\n## Summary\n- リース知識ノートを、営業部別DATA・業種別DATA・倒産率ベンチへつなぐための部門連携マップ。\n- 営業部ごとの成約率・失注率・業種構成は、単独で評価せず、業種別リースリスク、料率・金利、",
+    "timestamp": "2026-05-30T14:33:43.465006"
+  },
+  "Projects/tune_lease_55/軍師AI現行設計.md": {
+    "title": "軍師AI現行設計",
+    "path": "Projects/tune_lease_55/軍師AI現行設計.md",
+    "content_preview": "軍師AI現行設計 ---\ntags: ['tune-lease-55', 'project']\n---\n\n",
+    "timestamp": "2026-05-30T14:33:43.465013"
+  },
+  "Projects/tune_lease_55/2026-05-12_メンテナンスリース_autoresearch.md": {
+    "title": "2026-05-12_メンテナンスリース_autoresearch",
+    "path": "Projects/tune_lease_55/2026-05-12_メンテナンスリース_autoresearch.md",
+    "content_preview": "2026-05-12_メンテナンスリース_autoresearch ---\ncreated: 2026-05-12\nsource: codex\n---\n\n# メンテナンスリース autoreserch\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[検索語インデックス|検索語インデックス]]\n- [[2026-05-12_フ",
+    "timestamp": "2026-05-30T14:33:43.465021"
+  },
+  "Projects/tune_lease_55/2026-05-12_ファイナンスリース_autoresearch.md": {
+    "title": "2026-05-12_ファイナンスリース_autoresearch",
+    "path": "Projects/tune_lease_55/2026-05-12_ファイナンスリース_autoresearch.md",
+    "content_preview": "2026-05-12_ファイナンスリース_autoresearch ---\ncreated: 2026-05-12\nsource: codex\n---\n\n# ファイナンスリース autoreserch\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[検索語インデックス|検索語インデックス]]\n- [[2026-05-12_メ",
+    "timestamp": "2026-05-30T14:33:43.465028"
+  },
+  "Projects/tune_lease_55/2026-05-12_リース市場の今後見込み_autoresearch.md": {
+    "title": "2026-05-12_リース市場の今後見込み_autoresearch",
+    "path": "Projects/tune_lease_55/2026-05-12_リース市場の今後見込み_autoresearch.md",
+    "content_preview": "2026-05-12_リース市場の今後見込み_autoresearch ---\ncreated: 2026-05-12\nsource: codex\n---\n\n# リース市場の今後見込み autoreserch\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[検索語インデックス|検索語インデックス]]\n- [[ESGリース_リ",
+    "timestamp": "2026-05-30T14:33:43.465035"
+  },
+  "Projects/tune_lease_55/PHASE1_IMPLEMENTATION_PLAN.md": {
+    "title": "PHASE1_IMPLEMENTATION_PLAN",
+    "path": "Projects/tune_lease_55/PHASE1_IMPLEMENTATION_PLAN.md",
+    "content_preview": "PHASE1_IMPLEMENTATION_PLAN ---\ntags: ['plan', 'project', 'phase1', 'roadmap', 'tune-lease-55']\n---\n\n# Phase 1 実装計画\n\n## 目的\nリース審査AIチャット（`mobile_app/chat_assistant.py`）の品質・速度・専門性を向上させる。\n\n## 実装スコープ\n\n### 改",
+    "timestamp": "2026-05-30T14:33:43.465043"
+  },
+  "Projects/tune_lease_55/Lease News Collector.md": {
+    "title": "Lease News Collector",
+    "path": "Projects/tune_lease_55/Lease News Collector.md",
+    "content_preview": "Lease News Collector ---\ncreated: 2026-05-22\nsource: codex\n---\n\n# Lease News Collector\n\n- Goal: collect lease-related news every day and write it into Obsidian.\\n- Schedule: launchd at 07:20 daily.\\n-",
+    "timestamp": "2026-05-30T14:33:43.465050"
+  },
+  "Projects/tune_lease_55/2026-05-23_ニュース判断変更記録.md": {
+    "title": "2026-05-23_ニュース判断変更記録",
+    "path": "Projects/tune_lease_55/2026-05-23_ニュース判断変更記録.md",
+    "content_preview": "2026-05-23_ニュース判断変更記録 ---\ncreated: 2026-05-23\nsource: codex\n---\n\n# ニュース判断変更記録\n\n## 目的\nニュース参照後の判断変更を1クリックで記録し、Obsidianの日次ノートと効果測定へ残す導線を追加した。\n\n## 変更点\n- Next の討論画面に「このニュースで判断変更を記録」ボタンを追加\n- Streamlit の分析結果",
+    "timestamp": "2026-05-30T14:33:43.465058"
+  },
+  "Projects/tune_lease_55/2026-05-13_自動車タイプ別自動車税.md": {
+    "title": "2026-05-13_自動車タイプ別自動車税",
+    "path": "Projects/tune_lease_55/2026-05-13_自動車タイプ別自動車税.md",
+    "content_preview": "2026-05-13_自動車タイプ別自動車税 ---\ncreated: 2026-05-13\nsource: codex\n---\n\n# 2026-05-13 自動車タイプ別自動車税\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[検索語インデックス|検索語インデックス]]\n- [[2026-05-13_業種別調査まとめ|業種",
+    "timestamp": "2026-05-30T14:33:43.465065"
+  },
+  "Projects/tune_lease_55/業種別傾向.md": {
+    "title": "業種別傾向",
+    "path": "Projects/tune_lease_55/業種別傾向.md",
+    "content_preview": "業種別傾向 ---\ntags: ['tune-lease-55', 'project']\n---\n\n# 業種別傾向ノート\n\n> **生成元**: `tuneLease55` 審査DB (`data/lease_data.db`) — `past_cases` 1,935件 / `ml_features` 1,941件\n> **生成日**: 2026-05-19\n> **対象期間**: 全登録案件（",
+    "timestamp": "2026-05-30T14:33:43.465072"
+  },
+  "Projects/tune_lease_55/2026-05-13_ユーモアまとめ.md": {
+    "title": "2026-05-13_ユーモアまとめ",
+    "path": "Projects/tune_lease_55/2026-05-13_ユーモアまとめ.md",
+    "content_preview": "2026-05-13_ユーモアまとめ ---\ncreated: 2026-05-13\nsource: codex\n---\n\n# 2026-05-13 ユーモアまとめ\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[検索語インデックス|検索語インデックス]]\n- [[軍師AIマルチエージェント_実装結果|軍師AIマルチエージェ",
+    "timestamp": "2026-05-30T14:33:43.465079"
+  },
+  "Projects/tune_lease_55/CloudRun移行検討.md": {
+    "title": "CloudRun移行検討",
+    "path": "Projects/tune_lease_55/CloudRun移行検討.md",
+    "content_preview": "CloudRun移行検討 ---\ntags: ['tune-lease-55', 'project']\n---\n\n# tuneLease55 — Google Cloud Run 移行検討\n\n> 作成日: 2026-05-20  \n> 対象システム: tuneLease55（賃貸審査支援システム）  \n> 配置場所: `~/clawd/tune_lease_55/`\n\n---\n\n## 目次\n\n1.",
+    "timestamp": "2026-05-30T14:33:43.465086"
+  },
+  "Projects/tune_lease_55/uv移行メモ.md": {
+    "title": "uv移行メモ",
+    "path": "Projects/tune_lease_55/uv移行メモ.md",
+    "content_preview": "uv移行メモ ---\ntags: ['tune-lease-55', 'project']\n---\n\n# uv 移行メモ — tuneLease55\n\n作成日: 2026-05-20  \n調査・作業: Claude (Cowork mode)\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[2026-05-20_単位統一と定",
+    "timestamp": "2026-05-30T14:33:43.465093"
+  },
+  "Projects/tune_lease_55/PHASE1_PRELAUNCH_CHECKLIST.md": {
+    "title": "PHASE1_PRELAUNCH_CHECKLIST",
+    "path": "Projects/tune_lease_55/PHASE1_PRELAUNCH_CHECKLIST.md",
+    "content_preview": "PHASE1_PRELAUNCH_CHECKLIST ---\ntags: ['project', 'phase1', 'checklist', 'tune-lease-55', 'launch']\n---\n\n# Phase 1 ローンチチェックリスト\n\n## ✅ 実装完了項目\n\n- [x] Web検索キーワード拡張\n- [x] リース審査専門プロンプト作成\n- [x] JSON出力スキーマ簡潔化\n",
+    "timestamp": "2026-05-30T14:33:43.465100"
+  },
+  "Projects/tune_lease_55/2026-05-13_期待使用期間_autoresearch.md": {
+    "title": "2026-05-13_期待使用期間_autoresearch",
+    "path": "Projects/tune_lease_55/2026-05-13_期待使用期間_autoresearch.md",
+    "content_preview": "2026-05-13_期待使用期間_autoresearch ---\ncreated: 2026-05-13\nsource: codex\n---\n\n# 期待使用期間 autoreserch\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[検索語インデックス|検索語インデックス]]\n- [[2026-05-12_リース法定耐用",
+    "timestamp": "2026-05-30T14:33:43.465108"
+  },
+  "Projects/tune_lease_55/2026-05-13_業種別調査まとめ.md": {
+    "title": "2026-05-13_業種別調査まとめ",
+    "path": "Projects/tune_lease_55/2026-05-13_業種別調査まとめ.md",
+    "content_preview": "2026-05-13_業種別調査まとめ ---\ncreated: 2026-05-13\nsource: codex\n---\n\n# 2026-05-13 業種別調査まとめ\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[検索語インデックス|検索語インデックス]]\n- [[業種別傾向|業種別傾向]]\n\n## Summary\n\nリ",
+    "timestamp": "2026-05-30T14:33:43.465115"
+  },
+  "Projects/tune_lease_55/日付別DATA連携インデックス.md": {
+    "title": "日付別DATA連携インデックス",
+    "path": "Projects/tune_lease_55/日付別DATA連携インデックス.md",
+    "content_preview": "日付別DATA連携インデックス ---\ncreated: 2026-05-23\nsource: codex\n---\n\n# 日付別DATA連携インデックス\n\n## Summary\n- `tune_lease_55` の日付入りDATA/分析ノートを時系列で辿るための入口。\n- Generated系のスコア乖離・高スコア業種、過去案件分析、業種別調査、単位統一、信用リスク群DATAをまとめて接続する。",
+    "timestamp": "2026-05-30T14:33:43.465122"
+  },
+  "Projects/tune_lease_55/WHY_USER_COUNT_MATTERS.md": {
+    "title": "WHY_USER_COUNT_MATTERS",
+    "path": "Projects/tune_lease_55/WHY_USER_COUNT_MATTERS.md",
+    "content_preview": "WHY_USER_COUNT_MATTERS ---\ntags: ['business-strategy', 'tune-lease-55', 'project', 'user-growth']\n---\n\n# ユーザー数が重要な理由\n\n## 背景\nリース審査AIシステムにおいて、ユーザー採用数は成功の重要な指標。\n\n## ビジネス的観点\n\n### 1. 収益モデル\n- ユーザー数 = 利用料金の直",
+    "timestamp": "2026-05-30T14:33:43.465130"
+  },
+  "Projects/tune_lease_55/リース満了後の対応.md": {
+    "title": "リース満了後の対応",
+    "path": "Projects/tune_lease_55/リース満了後の対応.md",
+    "content_preview": "リース満了後の対応 ---\ntags: ['tune-lease-55', 'project']\n---\n\n# リース満了後の対応 ― 包括的リサーチレポート\n\n**作成日：2026年5月22日**\n**対象市場：日本国内リース市場**\n\n---\n\n## エグゼクティブサマリー\n\n日本のリース市場は2024年度に取扱高5兆847億円（前年度比＋9.8%）と3年連続で増加しており、リース満了後の対応",
+    "timestamp": "2026-05-30T14:33:43.465137"
+  },
+  "Projects/tune_lease_55/2026-05-12_信用リスク群とスコアリング高速化.md": {
+    "title": "2026-05-12_信用リスク群とスコアリング高速化",
+    "path": "Projects/tune_lease_55/2026-05-12_信用リスク群とスコアリング高速化.md",
+    "content_preview": "2026-05-12_信用リスク群とスコアリング高速化 ---\ncreated: 2026-05-12\nsource: codex\n---\n\n# 信用リスク群検知とスコアリング高速化\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[検索語インデックス|検索語インデックス]]\n- [[審査ナレッジ|審査ナレッジ]]\n\n## S",
+    "timestamp": "2026-05-30T14:33:43.465144"
+  },
+  "Projects/tune_lease_55/検索語インデックス.md": {
+    "title": "検索語インデックス",
+    "path": "Projects/tune_lease_55/検索語インデックス.md",
+    "content_preview": "検索語インデックス ---\ncreated: 2026-05-20\nsource: codex\nproject: tune_lease_55\n---\n\n# 検索語インデックス\n\nObsidian 内検索で拾いやすくするための索引用語集。\n同じテーマを別の言い方でも辿れるようにしている。\n\n## スコアリング・単位\n\n- スコアリング\n- 審査\n- borrower score\n- 借主スコア\n- ",
+    "timestamp": "2026-05-30T14:33:43.465152"
+  },
+  "Projects/tune_lease_55/2026-05-12_群馬埼玉栃木リース会社_autoresearch.md": {
+    "title": "2026-05-12_群馬埼玉栃木リース会社_autoresearch",
+    "path": "Projects/tune_lease_55/2026-05-12_群馬埼玉栃木リース会社_autoresearch.md",
+    "content_preview": "2026-05-12_群馬埼玉栃木リース会社_autoresearch ---\ncreated: 2026-05-12\nsource: codex\n---\n\n# 群馬・埼玉・栃木のリース会社 autoreserch\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[検索語インデックス|検索語インデックス]]\n- [[2026-",
+    "timestamp": "2026-05-30T14:33:43.465159"
+  },
+  "Projects/tune_lease_55/審査ナレッジ.md": {
+    "title": "審査ナレッジ",
+    "path": "Projects/tune_lease_55/審査ナレッジ.md",
+    "content_preview": "審査ナレッジ ---\ntags: ['tune-lease-55', 'project']\n---\n\n# 審査ナレッジノート\n\n> **生成元**: `tuneLease55` DB + `coeff_definitions.py` + `ml_features`テーブル分析\n> **生成日**: 2026-05-19\n> **対象**: 成約1,150件 / 失注750件 の比較分析\n\n## R",
+    "timestamp": "2026-05-30T14:33:43.465166"
+  },
+  "Projects/tune_lease_55/リースvs銀行借入_リサーチ.md": {
+    "title": "リースvs銀行借入_リサーチ",
+    "path": "Projects/tune_lease_55/リースvs銀行借入_リサーチ.md",
+    "content_preview": "リースvs銀行借入_リサーチ ---\ntags: ['tune-lease-55', 'project']\n---\n\n# リースと銀行借入の違い\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[検索語インデックス|検索語インデックス]]\n- [[2026-05-12_リースと銀行借入の違い_autoresearch|リースと",
+    "timestamp": "2026-05-30T14:33:43.465173"
+  },
+  "Projects/tune_lease_55/tuneLease55 システム概要.md": {
+    "title": "tuneLease55 システム概要",
+    "path": "Projects/tune_lease_55/tuneLease55 システム概要.md",
+    "content_preview": "tuneLease55 システム概要 ---\ntags: ['tune-lease-55', 'project']\n---\n\n",
+    "timestamp": "2026-05-30T14:33:43.465180"
+  },
+  "Projects/tune_lease_55/過去判断根拠_サンプル.md": {
+    "title": "過去判断根拠_サンプル",
+    "path": "Projects/tune_lease_55/過去判断根拠_サンプル.md",
+    "content_preview": "過去判断根拠_サンプル ---\ntags: ['tune-lease-55', 'project']\n---\n\n# 過去判断根拠サンプル\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[検索語インデックス|検索語インデックス]]\n- [[審査ナレッジ|審査ナレッジ]]\n\n> **生成元**: `tuneLease55` DB",
+    "timestamp": "2026-05-30T14:33:43.465187"
+  },
+  "Projects/tune_lease_55/2026-05-13_失注要因分析.md": {
+    "title": "2026-05-13_失注要因分析",
+    "path": "Projects/tune_lease_55/2026-05-13_失注要因分析.md",
+    "content_preview": "2026-05-13_失注要因分析 ---\ncreated: 2026-05-13\nsource: codex\n---\n\n# 2026-05-13 失注要因分析\n\n## Summary\n\n`past_cases` の成約・失注データを対象に、失注要因を暫定分析した。顧客名や個別案件名は含めない。\n\n- 対象: 成約 1,162件、失注 750件、合計 1,912件\n- 全体失注率: 39.2%\n-",
+    "timestamp": "2026-05-30T14:33:43.465195"
+  },
+  "Projects/tune_lease_55/2026-05-12_リース動産保険_autoresearch.md": {
+    "title": "2026-05-12_リース動産保険_autoresearch",
+    "path": "Projects/tune_lease_55/2026-05-12_リース動産保険_autoresearch.md",
+    "content_preview": "2026-05-12_リース動産保険_autoresearch ---\ncreated: 2026-05-12\nsource: codex\n---\n\n# リース動産保険 autoreserch\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[検索語インデックス|検索語インデックス]]\n- [[2026-05-12_再リース_",
+    "timestamp": "2026-05-30T14:33:43.465202"
+  },
+  "Projects/tune_lease_55/2026-05-13_補助金まとめ.md": {
+    "title": "2026-05-13_補助金まとめ",
+    "path": "Projects/tune_lease_55/2026-05-13_補助金まとめ.md",
+    "content_preview": "2026-05-13_補助金まとめ ---\ncreated: 2026-05-13\nsource: codex\n---\n\n# 2026-05-13 補助金まとめ\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[検索語インデックス|検索語インデックス]]\n- [[2026-05-13_リース審査AI_知識分解|リース審査AI ",
+    "timestamp": "2026-05-30T14:33:43.465209"
+  },
+  "Projects/tune_lease_55/2026-05-12_リースと銀行借入の違い_autoresearch.md": {
+    "title": "2026-05-12_リースと銀行借入の違い_autoresearch",
+    "path": "Projects/tune_lease_55/2026-05-12_リースと銀行借入の違い_autoresearch.md",
+    "content_preview": "2026-05-12_リースと銀行借入の違い_autoresearch ---\ncreated: 2026-05-12\nsource: codex\n---\n\n# リースと銀行借入の違い autoreserch\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[検索語インデックス|検索語インデックス]]\n- [[2026-05-",
+    "timestamp": "2026-05-30T14:33:43.465216"
+  },
+  "Projects/tune_lease_55/2026-05-17_AIChat_Obsidian検索修正.md": {
+    "title": "2026-05-17_AIChat_Obsidian検索修正",
+    "path": "Projects/tune_lease_55/2026-05-17_AIChat_Obsidian検索修正.md",
+    "content_preview": "2026-05-17_AIChat_Obsidian検索修正 ---\ncreated: 2026-05-17\nsource: codex\n---\n\n# AIChat Obsidian検索修正とClaude復帰時の注意\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[2026-05-20_単位統一と定量分析改善|単位統一と定量",
+    "timestamp": "2026-05-30T14:33:43.465223"
+  },
+  "Projects/tune_lease_55/軍師AIマルチエージェント設計.md": {
+    "title": "軍師AIマルチエージェント設計",
+    "path": "Projects/tune_lease_55/軍師AIマルチエージェント設計.md",
+    "content_preview": "軍師AIマルチエージェント設計 ---\ntags: ['tune-lease-55', 'project']\n---\n\n# 軍師AI マルチエージェント設計（慎重派 vs 積極派 討論型審査）\n\n> 作成日：2026-05-20  \n> ステータス：設計案 v1.0  \n> 関連：[[LightGBMスコアリング]] [[軍師AI現行設計]] [[審査ナレッジ]]\n\n検索語: 軍師AI / マルチ",
+    "timestamp": "2026-05-30T14:33:43.465230"
+  },
+  "Projects/tune_lease_55/2026-05-20_単位統一と定量分析改善.md": {
+    "title": "2026-05-20_単位統一と定量分析改善",
+    "path": "Projects/tune_lease_55/2026-05-20_単位統一と定量分析改善.md",
+    "content_preview": "2026-05-20_単位統一と定量分析改善 ---\ncreated: 2026-05-20\nsource: codex\n---\n\n# 単位統一と定量分析改善\n\n---\ncreated: 2026-05-20\nsource: codex\nproject: tune_lease_55\n---\n\n# 単位統一と定量分析改善\n\n## Summary\nNext / Flask / DB の入力・内部保存単",
+    "timestamp": "2026-05-30T14:33:43.465237"
+  },
+  "Projects/tune_lease_55/DATA連携マップ_倒産率と業種リスク.md": {
+    "title": "DATA連携マップ_倒産率と業種リスク",
+    "path": "Projects/tune_lease_55/DATA連携マップ_倒産率と業種リスク.md",
+    "content_preview": "DATA連携マップ_倒産率と業種リスク ---\ncreated: 2026-05-23\nsource: codex\n---\n\n# DATA連携マップ 倒産率と業種リスク\n\n## Summary\n- 中小企業の業種別倒産率調査を、Obsidian内のDATA/Analysis系ノートとリポジトリ内DATAへ接続するためのマップ。\n- 外部倒産率ベンチは、過去案件の成約/失注統計や業種別スコア傾向とは",
+    "timestamp": "2026-05-30T14:33:43.465244"
+  },
+  "Projects/tune_lease_55/2026-05-12_リース基本ルール_autoresearch.md": {
+    "title": "2026-05-12_リース基本ルール_autoresearch",
+    "path": "Projects/tune_lease_55/2026-05-12_リース基本ルール_autoresearch.md",
+    "content_preview": "2026-05-12_リース基本ルール_autoresearch ---\ncreated: 2026-05-12\nsource: codex\n---\n\n# リース基本ルール autoreserch\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[検索語インデックス|検索語インデックス]]\n- [[2026-05-12_リース",
+    "timestamp": "2026-05-30T14:33:43.465252"
+  },
+  "Projects/tune_lease_55/tune_lease_55 Wiki.md": {
+    "title": "tune_lease_55 Wiki",
+    "path": "Projects/tune_lease_55/tune_lease_55 Wiki.md",
+    "content_preview": "tune_lease_55 Wiki ---\ncreated: 2026-05-12\nsource: codex\n---\n\n# tune_lease_55 Wiki\n\n## Hub\n\nこのノートは `tune_lease_55` のObsidian Wiki入口。作業ログ、設計判断、DB補正、スコアリング改善をここから辿る。\n\n## Latest Notes\n\n- [[Daily/2026-05-",
+    "timestamp": "2026-05-30T14:33:43.465259"
+  },
+  "Projects/tune_lease_55/ESGリース_リサーチ.md": {
+    "title": "ESGリース_リサーチ",
+    "path": "Projects/tune_lease_55/ESGリース_リサーチ.md",
+    "content_preview": "ESGリース_リサーチ ---\ntags: ['tune-lease-55', 'project']\n---\n\n# ESGリース（ESG Leasing）包括的リサーチレポート\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[検索語インデックス|検索語インデックス]]\n- [[2026-05-12_リース市場の今後見込み_a",
+    "timestamp": "2026-05-30T14:33:43.465266"
+  },
+  "Projects/tune_lease_55/2026-05-13_all_file_ingest_index.md": {
+    "title": "2026-05-13_all_file_ingest_index",
+    "path": "Projects/tune_lease_55/2026-05-13_all_file_ingest_index.md",
+    "content_preview": "2026-05-13_all_file_ingest_index ---\ncreated: 2026-05-13\nsource: codex\n---\n\n# All File Ingest Index\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[検索語インデックス|検索語インデックス]]\n- [[2026-05-13_リー",
+    "timestamp": "2026-05-30T14:33:43.465273"
+  },
+  "Projects/tune_lease_55/2026-05-12_リース法定耐用年数_autoresearch.md": {
+    "title": "2026-05-12_リース法定耐用年数_autoresearch",
+    "path": "Projects/tune_lease_55/2026-05-12_リース法定耐用年数_autoresearch.md",
+    "content_preview": "2026-05-12_リース法定耐用年数_autoresearch ---\ncreated: 2026-05-12\nsource: codex\n---\n\n# リース法定耐用年数 autoreserch\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[検索語インデックス|検索語インデックス]]\n- [[2026-05-13_期",
+    "timestamp": "2026-05-30T14:33:43.465280"
+  },
+  "Projects/tune_lease_55/2026-05-13_リースをよく利用する業種_autoresearch.md": {
+    "title": "2026-05-13_リースをよく利用する業種_autoresearch",
+    "path": "Projects/tune_lease_55/2026-05-13_リースをよく利用する業種_autoresearch.md",
+    "content_preview": "2026-05-13_リースをよく利用する業種_autoresearch ---\ncreated: 2026-05-13\nsource: codex\n---\n\n# リースをよく利用する業種 autoreserch\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[検索語インデックス|検索語インデックス]]\n- [[2026-0",
+    "timestamp": "2026-05-30T14:33:43.465288"
+  },
+  "Projects/tune_lease_55/2026-05-13_成約要因分析.md": {
+    "title": "2026-05-13_成約要因分析",
+    "path": "Projects/tune_lease_55/2026-05-13_成約要因分析.md",
+    "content_preview": "2026-05-13_成約要因分析 ---\ncreated: 2026-05-13\nsource: codex\n---\n\n# 2026-05-13 成約要因分析\n\n## Summary\n\n`past_cases` の成約・失注データを対象に、成約要因を暫定分析した。顧客名や個別案件名は含めない。失注要因分析と比較できるよう、同じ切り口で整理した。\n\n- 対象: 成約 1,162件、失注 750件、",
+    "timestamp": "2026-05-30T14:33:43.465295"
+  },
+  "Projects/tune_lease_55/2026-05-12_リース審査ポイント_autoresearch.md": {
+    "title": "2026-05-12_リース審査ポイント_autoresearch",
+    "path": "Projects/tune_lease_55/2026-05-12_リース審査ポイント_autoresearch.md",
+    "content_preview": "2026-05-12_リース審査ポイント_autoresearch ---\ncreated: 2026-05-12\nsource: codex\n---\n\n# リース審査のポイント autoreserch\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[検索語インデックス|検索語インデックス]]\n- [[2026-05-13_",
+    "timestamp": "2026-05-30T14:33:43.465302"
+  },
+  "Projects/tune_lease_55/2026-05-12_再リース_autoresearch.md": {
+    "title": "2026-05-12_再リース_autoresearch",
+    "path": "Projects/tune_lease_55/2026-05-12_再リース_autoresearch.md",
+    "content_preview": "2026-05-12_再リース_autoresearch ---\ncreated: 2026-05-12\nsource: codex\n---\n\n# 再リース autoreserch\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[検索語インデックス|検索語インデックス]]\n- [[2026-05-12_リース動産保険_aut",
+    "timestamp": "2026-05-30T14:33:43.465309"
+  },
+  "Projects/tune_lease_55/今後の改善点.md": {
+    "title": "今後の改善点",
+    "path": "Projects/tune_lease_55/今後の改善点.md",
+    "content_preview": "今後の改善点 ---\ntags: ['tune-lease-55', 'project']\n---\n\n# tuneLease55 今後の改善点（深層分析）\n\n> 作成日：2026-05-20  \n> 対象システム：tuneLease55 リース審査システム（FastAPI + Streamlit + Next.js PWA）  \n> 現状：1,935件審査データ / LightGBM AUC ~0",
+    "timestamp": "2026-05-30T14:33:43.465317"
+  },
+  "Projects/tune_lease_55/審査方針.md": {
+    "title": "審査方針",
+    "path": "Projects/tune_lease_55/審査方針.md",
+    "content_preview": "審査方針 ---\nactive: true\nupdated: 2026-05-22\n---\n\n# 今月の審査方針\n\n## 重点業種・優遇方針\n- **製造業（金属・機械）**: 設備投資意欲が高い時期。スコア50以上であれば積極的に承認検討。\n- **医療・介護**: 診療報酬改定後の設備更新需要あり。実績ある法人は条件緩和可。\n\n## 注意業種・慎重方針\n- **飲食業**: 光熱費高騰・人件費",
+    "timestamp": "2026-05-30T14:33:43.465324"
+  },
+  "Projects/tune_lease_55/2026-05-13_リース審査AI_知識分解.md": {
+    "title": "2026-05-13_リース審査AI_知識分解",
+    "path": "Projects/tune_lease_55/2026-05-13_リース審査AI_知識分解.md",
+    "content_preview": "2026-05-13_リース審査AI_知識分解 ---\ncreated: 2026-05-13\nsource: codex\nproject: tune_lease_55\ntags: ['tune-lease-55', 'daily', 'project']\n  - lease\n  - ai-screening\n  - rules\n  - features\n  - comment-generatio",
+    "timestamp": "2026-05-30T14:33:43.465331"
+  },
+  "Projects/tune_lease_55/軍師AIマルチエージェント_実装結果.md": {
+    "title": "軍師AIマルチエージェント_実装結果",
+    "path": "Projects/tune_lease_55/軍師AIマルチエージェント_実装結果.md",
+    "content_preview": "軍師AIマルチエージェント_実装結果 ---\ntags: ['tune-lease-55', 'project']\n---\n\n# 軍師AI マルチエージェント実装結果\n\n## Related\n\n- [[tune_lease_55 Wiki|tune_lease_55 Wiki]]\n- [[検索語インデックス|検索語インデックス]]\n- [[軍師AIマルチエージェント設計|軍師AIマルチエージェント",
+    "timestamp": "2026-05-30T14:33:43.465339"
+  },
+  "Projects/tune_lease_55/Generated/2026-05-29_スコア乖離.md": {
+    "title": "2026-05-29_スコア乖離",
+    "path": "Projects/tune_lease_55/Generated/2026-05-29_スコア乖離.md",
+    "content_preview": "2026-05-29_スコア乖離 ---\ngenerated_by: crystallizer\ngenerated_at: 2026-05-29\nevidence_records: [\"20260521150940746856_b7323525\", \"20260518210322090257_8fd31790\", \"20260517004443496475_3b620881\", \"20260504",
+    "timestamp": "2026-05-30T14:33:43.465346"
+  },
+  "Projects/tune_lease_55/Generated/2026-05-23_スコア乖離.md": {
+    "title": "2026-05-23_スコア乖離",
+    "path": "Projects/tune_lease_55/Generated/2026-05-23_スコア乖離.md",
+    "content_preview": "2026-05-23_スコア乖離 ---\ngenerated_by: crystallizer\ngenerated_at: 2026-05-23\nevidence_records: [\"20260521150940746856_b7323525\", \"20260520113513786789_582a3f2f\", \"20260520113512234385_f31d44b2\", \"20260520",
+    "timestamp": "2026-05-30T14:33:43.465353"
+  },
+  "Projects/tune_lease_55/Generated/2026-05-24_総合工事業低スコア多発.md": {
+    "title": "2026-05-24_総合工事業低スコア多発",
+    "path": "Projects/tune_lease_55/Generated/2026-05-24_総合工事業低スコア多発.md",
+    "content_preview": "2026-05-24_総合工事業低スコア多発 ---\ngenerated_by: crystallizer\ngenerated_at: 2026-05-24\nevidence_records: [\"20260523194949276362_e415287b\", \"20260523194948148594_8073e3a4\", \"20260521150940746856_b7323525\", \"20",
+    "timestamp": "2026-05-30T14:33:43.465361"
+  },
+  "Projects/tune_lease_55/Generated/2026-05-25_スコア乖離.md": {
+    "title": "2026-05-25_スコア乖離",
+    "path": "Projects/tune_lease_55/Generated/2026-05-25_スコア乖離.md",
+    "content_preview": "2026-05-25_スコア乖離 ---\ngenerated_by: crystallizer\ngenerated_at: 2026-05-25\nevidence_records: [\"20260521150940746856_b7323525\", \"20260518210322090257_8fd31790\", \"20260517004443496475_3b620881\", \"20260504",
+    "timestamp": "2026-05-30T14:33:43.465368"
+  },
+  "Projects/tune_lease_55/Generated/2026-05-26_スコア乖離と業種.md": {
+    "title": "2026-05-26_スコア乖離と業種",
+    "path": "Projects/tune_lease_55/Generated/2026-05-26_スコア乖離と業種.md",
+    "content_preview": "2026-05-26_スコア乖離と業種 ---\ngenerated_by: crystallizer\ngenerated_at: 2026-05-26\nevidence_records: [\"20260521150940746856_b7323525\", \"20260518210322090257_8fd31790\", \"20260517004443496475_3b620881\", \"20260",
+    "timestamp": "2026-05-30T14:33:43.465375"
+  },
+  "Projects/tune_lease_55/Generated/2026-05-21_スコア乖離.md": {
+    "title": "2026-05-21_スコア乖離",
+    "path": "Projects/tune_lease_55/Generated/2026-05-21_スコア乖離.md",
+    "content_preview": "2026-05-21_スコア乖離 ---\nstatus: draft\ngenerated_by: crystallizer\ngenerated_at: 2026-05-21\nevidence_records: ['20260520113513786789_582a3f2f', '20260520113512234385_f31d44b2', '20260520112018753548_b5f687",
+    "timestamp": "2026-05-30T14:33:43.465382"
+  },
+  "Projects/tune_lease_55/Generated/2026-05-22_高スコア業種.md": {
+    "title": "2026-05-22_高スコア業種",
+    "path": "Projects/tune_lease_55/Generated/2026-05-22_高スコア業種.md",
+    "content_preview": "2026-05-22_高スコア業種 ---\ngenerated_by: crystallizer\ngenerated_at: 2026-05-22\nevidence_records: [\"20260521203231909705_beceee8a\", \"20260521203230845880_7e7611d2\", \"20260521201632418627_bf7ed082\", \"2026052",
+    "timestamp": "2026-05-30T14:33:43.465390"
+  },
+  "Projects/tune_lease_55/Generated/2026-05-30_スコア乖離.md": {
+    "title": "2026-05-30_スコア乖離",
+    "path": "Projects/tune_lease_55/Generated/2026-05-30_スコア乖離.md",
+    "content_preview": "2026-05-30_スコア乖離 ---\ngenerated_by: crystallizer\ngenerated_at: 2026-05-30\nevidence_records: [\"20260521150940746856_b7323525\", \"20260518210322090257_8fd31790\", \"20260517004443496475_3b620881\", \"20260504",
+    "timestamp": "2026-05-30T14:33:43.465397"
+  },
+  "Projects/tune_lease_55/Research/リースBOT_追加知識候補_2026-05-23.md": {
+    "title": "リースBOT_追加知識候補_2026-05-23",
+    "path": "Projects/tune_lease_55/Research/リースBOT_追加知識候補_2026-05-23.md",
+    "content_preview": "リースBOT_追加知識候補_2026-05-23 ---\ncreated: 2026-05-23\nsource: codex\n---\n\n# リースBOT 追加知識候補 2026-05-23\n\n検索語: リースBOT, リース知識, 新リース会計基準, ESGリース, 省力化投資補助金, 動産総合保険, 中途解約, 再リース, リース満了, 与信審査, 競合対策\n\n## Summary\n\nリースBO",
+    "timestamp": "2026-05-30T14:33:43.465404"
+  },
+  "Projects/tune_lease_55/Research/中小企業_業種別倒産率_2026-05-23.md": {
+    "title": "中小企業_業種別倒産率_2026-05-23",
+    "path": "Projects/tune_lease_55/Research/中小企業_業種別倒産率_2026-05-23.md",
+    "content_preview": "中小企業_業種別倒産率_2026-05-23 ---\ncreated: 2026-05-23\nsource: codex\n---\n\n# 中小企業 業種別倒産率 調査メモ\n\n## Summary\n- 中小企業の業種別倒産率について、最新公表情報を基に概算した。\n- 公的統計で「中小企業 × 業種別の倒産率」がそのまま掲載された表は見当たらないため、実務上は「業種別倒産件数 / 業種別中小企業数」で近",
+    "timestamp": "2026-05-30T14:33:43.465411"
+  },
+  "Projects/tune_lease_55/Research/関東圏_競合リース会社_2026-05-23.md": {
+    "title": "関東圏_競合リース会社_2026-05-23",
+    "path": "Projects/tune_lease_55/Research/関東圏_競合リース会社_2026-05-23.md",
+    "content_preview": "関東圏_競合リース会社_2026-05-23 ---\ncreated: 2026-05-23\nsource: codex\nproject: tune_lease_55\ntype: research\n---\n\n# 関東圏 競合リース会社 2026-05-23\n\n検索語: 関東 リース会社, 競合リース会社, 地銀系リース, 銀行系リース, オートリース, 設備リース, 北関東 リース, 首都圏 リー",
+    "timestamp": "2026-05-30T14:33:43.465418"
+  },
+  "Projects/tune_lease_55/Asset Knowledge/物件ファイナンス検索索引.md": {
+    "title": "物件ファイナンス検索索引",
+    "path": "Projects/tune_lease_55/Asset Knowledge/物件ファイナンス検索索引.md",
+    "content_preview": "物件ファイナンス検索索引 ---\ncreated: 2026-05-24\nsource: codex\n---\n\n# 物件ファイナンス検索索引\n\n---\nproject: tune_lease_55\ntype: asset_knowledge_index\nkeywords:\n  - 物件ファイナンス\n  - 残価\n  - 再販リスク\n  - 稟議根拠\n  - 中古相場\n  - 物件特性\n---\n\n#",
+    "timestamp": "2026-05-30T14:33:43.465425"
+  },
+  "Projects/tune_lease_55/Chat/2026-05-22_AI相談メモ.md": {
+    "title": "2026-05-22_AI相談メモ",
+    "path": "Projects/tune_lease_55/Chat/2026-05-22_AI相談メモ.md",
+    "content_preview": "2026-05-22_AI相談メモ ---\ndate: 2026-05-22\ntype: chat_log\n---\n\n# AI相談メモ\n\n**User**: 元気？\n\n---\n\n**めぶき**: 元気ですよ！今日もリース審査について、何かお手伝いできることはありますか？ どんなことでもお気軽にご相談くださいね。\n\n---\n\n**User**: リースと銀行借入の違いは？\n\n---\n\n**めぶき**",
+    "timestamp": "2026-05-30T14:33:43.465432"
+  },
+  "Projects/tune_lease_55/AI Chat/2026-05-23.md": {
+    "title": "2026-05-23",
+    "path": "Projects/tune_lease_55/AI Chat/2026-05-23.md",
+    "content_preview": "2026-05-23 ---\ntitle: 2026-05-23\ntags: ['2026-05-23', 'daily', 'ai-chat', 'project', 'ai-system', 'tune-lease-55']\nchat_date: 2026-05-23\ncreated: 2026-05-30\n---\n## 03:47 法人10台、リース期間5年のパソコンリース案件\n\nユーザーは",
+    "timestamp": "2026-05-30T14:33:43.465440"
+  },
+  "Projects/tune_lease_55/AI Chat/2026-05-17.md": {
+    "title": "2026-05-17",
+    "path": "Projects/tune_lease_55/AI Chat/2026-05-17.md",
+    "content_preview": "2026-05-17 ---\ntitle: 2026-05-17\ntags: ['2026-05-17', 'daily', 'ai-chat', 'project', 'ai-system', 'tune-lease-55']\nchat_date: 2026-05-17\ncreated: 2026-05-30\n---\n## 00:39 条件付き承認メモ\n\n条件付き承認は追加資料・期間短縮・前受金",
+    "timestamp": "2026-05-30T14:33:43.465447"
+  },
+  "Projects/tune_lease_55/AI Chat/2026-05-27.md": {
+    "title": "2026-05-27",
+    "path": "Projects/tune_lease_55/AI Chat/2026-05-27.md",
+    "content_preview": "2026-05-27 ---\ntitle: 2026-05-27\ntags: ['daily', 'ai-chat', 'project', 'ai-system', '2026-05-27', 'tune-lease-55']\nchat_date: 2026-05-27\ncreated: 2026-05-30\n---\n## 03:43 UI改善候補: Q_risk表示の改善\n\n## UI改善候補",
+    "timestamp": "2026-05-30T14:33:43.465454"
+  },
+  "Projects/tune_lease_55/AI Chat/2026-05-26.md": {
+    "title": "2026-05-26",
+    "path": "Projects/tune_lease_55/AI Chat/2026-05-26.md",
+    "content_preview": "2026-05-26 ---\ntitle: 2026-05-26\ntags: ['daily', 'ai-chat', '2026-05-26', 'project', 'ai-system', 'tune-lease-55']\nchat_date: 2026-05-26\ncreated: 2026-05-30\n---\n## 21:01 サーバーの法定耐用年数とリース審査\n\nサーバーの法定耐用年数",
+    "timestamp": "2026-05-30T14:33:43.465462"
+  },
+  "Projects/tune_lease_55/AI Chat/2026-05-22.md": {
+    "title": "2026-05-22",
+    "path": "Projects/tune_lease_55/AI Chat/2026-05-22.md",
+    "content_preview": "2026-05-22 ---\ntitle: 2026-05-22\ntags: ['daily', '2026-05-22', 'ai-chat', 'project', 'ai-system', 'tune-lease-55']\nchat_date: 2026-05-22\ncreated: 2026-05-30\n---\n## 05:06 リース満了後の選択肢\n\nリース満了後の主な選択肢は以下の通り",
+    "timestamp": "2026-05-30T14:33:43.465469"
+  },
+  "Projects/tune_lease_55/AI Chat/2026-05-16.md": {
+    "title": "2026-05-16",
+    "path": "Projects/tune_lease_55/AI Chat/2026-05-16.md",
+    "content_preview": "2026-05-16 ---\ntitle: 2026-05-16\ntags: ['daily', 'ai-chat', 'project', 'ai-system', 'tune-lease-55', '2026-05-16']\nchat_date: 2026-05-16\ncreated: 2026-05-30\n---\n## 09:37 案件対応方針の要点\n\n- 案件は条件付承認の可能性あり（スコ",
+    "timestamp": "2026-05-30T14:33:43.465476"
+  },
+  "Projects/tune_lease_55/AI Chat/2026-05-29.md": {
+    "title": "2026-05-29",
+    "path": "Projects/tune_lease_55/AI Chat/2026-05-29.md",
+    "content_preview": "2026-05-29 ---\ntitle: 2026-05-29\ntags: ['daily', 'ai-chat', 'project', '2026-05-29', 'ai-system', 'tune-lease-55']\nchat_date: 2026-05-29\ncreated: 2026-05-30\n---\n## 03:30 トラックリース審査の注意点\n\n## トラックリース審査の注意",
+    "timestamp": "2026-05-30T14:33:43.465483"
+  },
+  "Projects/tune_lease_55/AI Chat/2026-05-18.md": {
+    "title": "2026-05-18",
+    "path": "Projects/tune_lease_55/AI Chat/2026-05-18.md",
+    "content_preview": "2026-05-18 ---\ntitle: 2026-05-18\ntags: ['daily', 'ai-chat', 'project', '2026-05-18', 'ai-system', 'tune-lease-55']\nchat_date: 2026-05-18\ncreated: 2026-05-30\n---\n## 21:11 製造業・工作機械向け補助金候補\n\n製造業の工作機械導入案件に",
+    "timestamp": "2026-05-30T14:33:43.465490"
+  },
+  "Projects/tune_lease_55/AI Chat/2026-05-25.md": {
+    "title": "2026-05-25",
+    "path": "Projects/tune_lease_55/AI Chat/2026-05-25.md",
+    "content_preview": "2026-05-25 ---\ntitle: 2026-05-25\ntags: ['daily', 'ai-chat', '2026-05-25', 'project', 'ai-system', 'tune-lease-55']\nchat_date: 2026-05-25\ncreated: 2026-05-30\n---\n## 21:53 購入選択権とファイナンス・リース判定\n\n購入選択権、特に割安",
+    "timestamp": "2026-05-30T14:33:43.465497"
+  },
+  "Projects/tune_lease_55/AI Chat/2026-05-21.md": {
+    "title": "2026-05-21",
+    "path": "Projects/tune_lease_55/AI Chat/2026-05-21.md",
+    "content_preview": "2026-05-21 ---\ntitle: 2026-05-21\ntags: ['daily', '2026-05-21', 'ai-chat', 'project', 'ai-system', 'tune-lease-55']\nchat_date: 2026-05-21\ncreated: 2026-05-30\n---\n## 18:40 リース対象外：土地・建物の理由\n\nリース対象は減価償却可能な",
+    "timestamp": "2026-05-30T14:33:43.465505"
+  },
+  "Projects/tune_lease_55/AI Chat/2026-05-20.md": {
+    "title": "2026-05-20",
+    "path": "Projects/tune_lease_55/AI Chat/2026-05-20.md",
+    "content_preview": "2026-05-20 ---\ntitle: 2026-05-20\ntags: ['daily', 'ai-chat', 'project', 'ai-system', '2026-05-20', 'tune-lease-55']\nchat_date: 2026-05-20\ncreated: 2026-05-30\n---\n## 11:21 P 医療・福祉 1.9点案件 逆転戦略\n\nスコア1.9のP ",
+    "timestamp": "2026-05-30T14:33:43.465519"
+  },
+  "Projects/tune_lease_55/Feedback/sample_feedback_建設業_単年黒字.md": {
+    "title": "sample_feedback_建設業_単年黒字",
+    "path": "Projects/tune_lease_55/Feedback/sample_feedback_建設業_単年黒字.md",
+    "content_preview": "sample_feedback_建設業_単年黒字 ---\ncase_id: CASE-2026-SAMPLE\nagent: 石橋\ncorrection: 建設業の単年黒字は季節性変動が大きいため、3期平均で評価すべき。公共工事受注が中心の場合は年度末集中による見かけ上の黒字に注意。\n---\n\n## 背景\n\n石橋（慎重派）が単年赤字を理由に否決を主張したが、実態は年度末集中による一時的な赤字。\n3期",
+    "timestamp": "2026-05-30T14:33:43.465527"
+  },
+  "Projects/tune_lease_55/Feedback/README.md": {
+    "title": "README",
+    "path": "Projects/tune_lease_55/Feedback/README.md",
+    "content_preview": "README ---\ntags: ['tune-lease-55', 'project']\n---\n\n# フィードバック の書き方\n\nこのフォルダに担当者がAI討論結果への訂正・補足を書くと、次回の討論に自動的に反映されます。\n\n## ファイルの作成方法\n\n1. このフォルダに `.md` ファイルを新規作成（ファイル名は自由）\n2. 以下の frontmatter（YAML）を先頭に記述する\n\n",
+    "timestamp": "2026-05-30T14:33:43.465535"
+  },
+  "Projects/tune_lease_55/News/2026-05-25_lease-news.md": {
+    "title": "2026-05-25_lease-news",
+    "path": "Projects/tune_lease_55/News/2026-05-25_lease-news.md",
+    "content_preview": "2026-05-25_lease-news ---\ncreated: 2026-05-25\nsource: codex\ntopic: lease-news\nprofile: industry-watch\n---\n\n# リース最新情報 2026-05-25\n\n## 今日の要点\n- 主なテーマ: 物流・車両 8件, 金融・与信 5件, 金利・政策 2件, 製造・DX 2件\n- 収集セット: 基礎 6件",
+    "timestamp": "2026-05-30T14:33:43.465542"
+  },
+  "Projects/tune_lease_55/News/2026-05-26_lease-news.md": {
+    "title": "2026-05-26_lease-news",
+    "path": "Projects/tune_lease_55/News/2026-05-26_lease-news.md",
+    "content_preview": "2026-05-26_lease-news ---\ncreated: 2026-05-26\nsource: codex\ntopic: lease-news\nprofile: industry-watch\n---\n\n# リース最新情報 2026-05-26\n\n## 今日の要点\n- 主なテーマ: 物流・車両 9件, 金融・与信 5件, 製造・DX 2件, 設備投資 1件\n- 収集セット: 物流・車両 ",
+    "timestamp": "2026-05-30T14:33:43.465564"
+  },
+  "Projects/tune_lease_55/News/2026-05-22_lease-news.md": {
+    "title": "2026-05-22_lease-news",
+    "path": "Projects/tune_lease_55/News/2026-05-22_lease-news.md",
+    "content_preview": "2026-05-22_lease-news ---\ncreated: 2026-05-22\nsource: codex\ntopic: lease-news\nprofile: industry-watch\n---\n\n# リース最新情報 2026-05-22\n\n## 今日の要点\n- 主なテーマ: 物流・車両 7件, 金融・与信 5件, 金利・政策 2件, 設備投資 2件\n- 収集セット: 基礎 6件,",
+    "timestamp": "2026-05-30T14:33:43.465572"
+  },
+  "Projects/tune_lease_55/News/2026-05-28_lease-news.md": {
+    "title": "2026-05-28_lease-news",
+    "path": "Projects/tune_lease_55/News/2026-05-28_lease-news.md",
+    "content_preview": "2026-05-28_lease-news ---\ncreated: 2026-05-28\nsource: codex\ntopic: lease-news\nprofile: industry-watch\n---\n\n# リース最新情報 2026-05-28\n\n## 今日の要点\n- 主なテーマ: 金融・与信 9件, 物流・車両 6件, 製造・DX 2件, 設備投資 1件\n- 収集セット: 基礎 7件,",
+    "timestamp": "2026-05-30T14:33:43.465581"
+  },
+  "Projects/tune_lease_55/News/2026-05-29_lease-news.md": {
+    "title": "2026-05-29_lease-news",
+    "path": "Projects/tune_lease_55/News/2026-05-29_lease-news.md",
+    "content_preview": "2026-05-29_lease-news ---\ncreated: 2026-05-29\nsource: codex\ntopic: lease-news\nprofile: industry-watch\n---\n\n# リース最新情報 2026-05-29\n\n## 今日の要点\n- 主なテーマ: 金融・与信 9件, 物流・車両 6件, 設備投資 2件, 製造・DX 1件\n- 収集セット: 基礎 8件,",
+    "timestamp": "2026-05-30T14:33:43.465591"
+  },
+  "Projects/tune_lease_55/News/2026-05-23_lease-news.md": {
+    "title": "2026-05-23_lease-news",
+    "path": "Projects/tune_lease_55/News/2026-05-23_lease-news.md",
+    "content_preview": "2026-05-23_lease-news ---\ncreated: 2026-05-23\nsource: codex\ntopic: lease-news\nprofile: industry-watch\n---\n\n# リース最新情報 2026-05-23\n\n## 今日の要点\n- 主なテーマ: 物流・車両 6件, 金融・与信 5件, 製造・DX 4件, 金利・政策 2件\n- 収集セット: 基礎 6件",
+    "timestamp": "2026-05-30T14:33:43.465600"
+  },
+  "Projects/tune_lease_55/News/2026-05-30_lease-news.md": {
+    "title": "2026-05-30_lease-news",
+    "path": "Projects/tune_lease_55/News/2026-05-30_lease-news.md",
+    "content_preview": "2026-05-30_lease-news ---\ncreated: 2026-05-30\nsource: codex\ntopic: lease-news\nprofile: industry-watch\n---\n\n# リース最新情報 2026-05-30\n\n## 今日の要点\n- 主なテーマ: 金融・与信 10件, 物流・車両 3件, 設備投資 2件, 製造・DX 1件\n- 収集セット: 基礎 8件",
+    "timestamp": "2026-05-30T14:33:43.465608"
+  },
+  "Projects/tune_lease_55/News/2026-05-27_lease-news.md": {
+    "title": "2026-05-27_lease-news",
+    "path": "Projects/tune_lease_55/News/2026-05-27_lease-news.md",
+    "content_preview": "2026-05-27_lease-news ---\ncreated: 2026-05-27\nsource: codex\ntopic: lease-news\nprofile: industry-watch\n---\n\n# リース最新情報 2026-05-27\n\n## 今日の要点\n- 主なテーマ: 物流・車両 8件, 金融・与信 4件, 製造・DX 3件, 設備投資 2件\n- 収集セット: 物流・車両 ",
+    "timestamp": "2026-05-30T14:33:43.465617"
+  },
+  "Projects/tune_lease_55/News/2026-05-24_lease-news.md": {
+    "title": "2026-05-24_lease-news",
+    "path": "Projects/tune_lease_55/News/2026-05-24_lease-news.md",
+    "content_preview": "2026-05-24_lease-news ---\ncreated: 2026-05-24\nsource: codex\ntopic: lease-news\nprofile: industry-watch\n---\n\n# リース最新情報 2026-05-24\n\n## 今日の要点\n- 主なテーマ: 金融・与信 6件, 物流・車両 6件, 製造・DX 3件, 金利・政策 2件\n- 収集セット: 基礎 6件",
+    "timestamp": "2026-05-30T14:33:43.465627"
+  },
+  "Projects/tune_lease_55/AI Chat/Web Research/2026-05-27.md": {
+    "title": "2026-05-27",
+    "path": "Projects/tune_lease_55/AI Chat/Web Research/2026-05-27.md",
+    "content_preview": "2026-05-27 ---\ntitle: 2026-05-27\ntags: ['daily', 'ai-chat', 'project', 'ai-system', '2026-05-27', 'tune-lease-55']\nchat_date: 2026-05-27\ncreated: 2026-05-30\n---\n## 20:37 Web情報: ラーメン屋の収益構造と課題\n\n## ラーメン屋",
+    "timestamp": "2026-05-30T14:33:43.465636"
+  },
+  "Projects/tune_lease_55/AI Chat/Web Research/2026-05-26.md": {
+    "title": "2026-05-26",
+    "path": "Projects/tune_lease_55/AI Chat/Web Research/2026-05-26.md",
+    "content_preview": "2026-05-26 ---\ntitle: 2026-05-26\ntags: ['daily', 'ai-chat', '2026-05-26', 'project', 'ai-system', 'tune-lease-55']\nchat_date: 2026-05-26\ncreated: 2026-05-30\n---\n## 21:15 宿泊業界動向 2026年予測\n\n- インバウンド需要は回復基",
+    "timestamp": "2026-05-30T14:33:43.465644"
+  },
+  "Projects/tune_lease_55/AI Chat/Web Research/2026-05-22.md": {
+    "title": "2026-05-22",
+    "path": "Projects/tune_lease_55/AI Chat/Web Research/2026-05-22.md",
+    "content_preview": "2026-05-22 ---\ntitle: 2026-05-22\ntags: ['daily', '2026-05-22', 'ai-chat', 'project', 'ai-system', 'tune-lease-55']\nchat_date: 2026-05-22\ncreated: 2026-05-30\n---\n## 08:09 Web情報: リース業界の動向と展望\n\n- 帝国データバンク",
+    "timestamp": "2026-05-30T14:33:43.465654"
+  },
+  "Projects/tune_lease_55/AI Chat/Web Research/2026-05-16.md": {
+    "title": "2026-05-16",
+    "path": "Projects/tune_lease_55/AI Chat/Web Research/2026-05-16.md",
+    "content_preview": "2026-05-16 ---\ntitle: 2026-05-16\ntags: ['daily', 'ai-chat', 'project', 'ai-system', 'tune-lease-55', '2026-05-16']\nchat_date: 2026-05-16\ncreated: 2026-05-30\n---\n## 10:53 Gemini 2.5 Flash アップデート情報\n\nGoo",
+    "timestamp": "2026-05-30T14:33:43.465664"
+  },
+  "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-23.md": {
+    "title": "2026-05-23",
+    "path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-23.md",
+    "content_preview": "2026-05-23 ---\ntitle: 2026-05-23\ntags: ['2026-05-23', 'daily', 'ai-chat', 'project', 'ai-system', 'tune-lease-55']\nchat_date: 2026-05-23\ncreated: 2026-05-30\n---\n## 03:43 AI改善候補\n\n## 抽出された改善候補\n\n- **漠然とし",
+    "timestamp": "2026-05-30T14:33:43.465673"
+  },
+  "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-17.md": {
+    "title": "2026-05-17",
+    "path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-17.md",
+    "content_preview": "2026-05-17 ---\ntitle: 2026-05-17\ntags: ['2026-05-17', 'daily', 'ai-chat', 'project', 'ai-system', 'tune-lease-55']\nchat_date: 2026-05-17\ncreated: 2026-05-30\n---\n## 00:39 条件付き承認メモ\n\n## 抽出された改善候補\n\n- **条件",
+    "timestamp": "2026-05-30T14:33:43.465681"
+  },
+  "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-27.md": {
+    "title": "2026-05-27",
+    "path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-27.md",
+    "content_preview": "2026-05-27 ---\ntitle: 2026-05-27\ntags: ['daily', 'ai-chat', 'project', 'ai-system', '2026-05-27', 'tune-lease-55']\nchat_date: 2026-05-27\ncreated: 2026-05-30\n---\n## 03:43 UI改善候補: Q_risk表示の改善\n\n## 抽出された改",
+    "timestamp": "2026-05-30T14:33:43.465690"
+  },
+  "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-26.md": {
+    "title": "2026-05-26",
+    "path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-26.md",
+    "content_preview": "2026-05-26 ---\ntitle: 2026-05-26\ntags: ['daily', 'ai-chat', '2026-05-26', 'project', 'ai-system', 'tune-lease-55']\nchat_date: 2026-05-26\ncreated: 2026-05-30\n---\n## 21:00 AI改善候補\n\n## 抽出された改善候補\n\n- **リース対",
+    "timestamp": "2026-05-30T14:33:43.465699"
+  },
+  "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-22.md": {
+    "title": "2026-05-22",
+    "path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-22.md",
+    "content_preview": "2026-05-22 ---\ntitle: 2026-05-22\ntags: ['daily', '2026-05-22', 'ai-chat', 'project', 'ai-system', 'tune-lease-55']\nchat_date: 2026-05-22\ncreated: 2026-05-30\n---\n## 05:07 AI改善候補\n\n## 抽出された改善候補\n\n- **曖昧な発",
+    "timestamp": "2026-05-30T14:33:43.465709"
+  },
+  "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-16.md": {
+    "title": "2026-05-16",
+    "path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-16.md",
+    "content_preview": "2026-05-16 ---\ntitle: 2026-05-16\ntags: ['daily', 'ai-chat', 'project', 'ai-system', 'tune-lease-55', '2026-05-16']\nchat_date: 2026-05-16\ncreated: 2026-05-30\n---\n## 10:17 AIチャット改善要望とUI/UXフィードバック\n\n## 抽出",
+    "timestamp": "2026-05-30T14:33:43.465716"
+  },
+  "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-29.md": {
+    "title": "2026-05-29",
+    "path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-29.md",
+    "content_preview": "2026-05-29 ---\ntitle: 2026-05-29\ntags: ['daily', 'ai-chat', 'project', '2026-05-29', 'ai-system', 'tune-lease-55']\nchat_date: 2026-05-29\ncreated: 2026-05-30\n---\n## 03:31 Q_riskの定義と確認ポイント\n\n## 抽出された改善候補",
+    "timestamp": "2026-05-30T14:33:43.465725"
+  },
+  "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-18.md": {
+    "title": "2026-05-18",
+    "path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-18.md",
+    "content_preview": "2026-05-18 ---\ntitle: 2026-05-18\ntags: ['daily', 'ai-chat', 'project', '2026-05-18', 'ai-system', 'tune-lease-55']\nchat_date: 2026-05-18\ncreated: 2026-05-30\n---\n## 20:41 AI改善候補\n\n## 抽出された改善候補\n\n- **審査結果",
+    "timestamp": "2026-05-30T14:33:43.465735"
+  },
+  "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-28.md": {
+    "title": "2026-05-28",
+    "path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-28.md",
+    "content_preview": "2026-05-28 ---\ntitle: 2026-05-28\ntags: ['daily', 'tune-lease-55', 'ai-chat', 'project', 'ai-system', '2026-05-28']\nchat_date: 2026-05-28\ncreated: 2026-05-30\n---\n## 20:28 AI改善候補\n\n## 抽出された改善候補\n\n- **業種別成",
+    "timestamp": "2026-05-30T14:33:43.465744"
+  },
+  "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-25.md": {
+    "title": "2026-05-25",
+    "path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-25.md",
+    "content_preview": "2026-05-25 ---\ntitle: 2026-05-25\ntags: ['daily', 'ai-chat', '2026-05-25', 'project', 'ai-system', 'tune-lease-55']\nchat_date: 2026-05-25\ncreated: 2026-05-30\n---\n## 00:37 AI改善候補\n\n## 抽出された改善候補\n\n- **範囲外コ",
+    "timestamp": "2026-05-30T14:33:43.465752"
+  },
+  "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-21.md": {
+    "title": "2026-05-21",
+    "path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-21.md",
+    "content_preview": "2026-05-21 ---\ntitle: 2026-05-21\ntags: ['daily', '2026-05-21', 'ai-chat', 'project', 'ai-system', 'tune-lease-55']\nchat_date: 2026-05-21\ncreated: 2026-05-30\n---\n## 18:37 AI改善候補\n\n## 抽出された改善候補\n\n- **曖昧な比",
+    "timestamp": "2026-05-30T14:33:43.465761"
+  },
+  "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-30.md": {
+    "title": "2026-05-30",
+    "path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-30.md",
+    "content_preview": "2026-05-30 ---\ntags: ['daily', 'ai-chat', 'project', 'ai-system', 'tune-lease-55']\n---\n\n## 10:26 AI改善候補\n\n## 抽出された改善候補\n\n- **曖昧な質問への対応強化** [medium] (accept)\n  - ユーザー要望: ユーザーが漠然とした質問をした際に、AIが適切に意図を汲み取り、必",
+    "timestamp": "2026-05-30T14:33:43.465769"
+  },
+  "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-20.md": {
+    "title": "2026-05-20",
+    "path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-20.md",
+    "content_preview": "2026-05-20 ---\ntitle: 2026-05-20\ntags: ['daily', 'ai-chat', 'project', 'ai-system', '2026-05-20', 'tune-lease-55']\nchat_date: 2026-05-20\ncreated: 2026-05-30\n---\n## 07:01 AI改善候補\n\n## 抽出された改善候補\n\n- **漠然とし",
+    "timestamp": "2026-05-30T14:33:43.465779"
+  },
+  "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-24.md": {
+    "title": "2026-05-24",
+    "path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-24.md",
+    "content_preview": "2026-05-24 ---\ntitle: 2026-05-24\ntags: ['daily', 'ai-chat', '2026-05-24', 'project', 'ai-system', 'tune-lease-55']\nchat_date: 2026-05-24\ncreated: 2026-05-30\n---\n## 10:34 AI改善候補\n\n## 抽出された改善候補\n\n- **未知の用",
+    "timestamp": "2026-05-30T14:33:43.465787"
+  },
+  "Projects/tune_lease_55/AI Chat/Weekly Review/2026-W20.md": {
+    "title": "2026-W20",
+    "path": "Projects/tune_lease_55/AI Chat/Weekly Review/2026-W20.md",
+    "content_preview": "2026-W20 ---\ntitle: 2026-W20\ntags: ['2026-05-30', 'ai-chat', 'project', 'ai-system', 'tune-lease-55']\nchat_date: 2026-05-30\ncreated: 2026-05-30\n---\n## 14:13 今週の改善候補レビュー\n\n## 今週の改善候補まとめ\n\n- 入力導線の明確化と改善 (",
+    "timestamp": "2026-05-30T14:33:43.465796"
+  },
+  "Projects/tune_lease_55/AI Chat/Weekly Review/2026-W21.md": {
+    "title": "2026-W21",
+    "path": "Projects/tune_lease_55/AI Chat/Weekly Review/2026-W21.md",
+    "content_preview": "2026-W21 ---\ntitle: 2026-W21\ntags: ['2026-05-30', 'ai-chat', 'project', 'ai-system', 'tune-lease-55']\nchat_date: 2026-05-30\ncreated: 2026-05-30\n---\n## 20:41 週次改善レビュー: 営業向け説明ガイドライン\n\n## 今週の改善候補まとめ\n\n- 審査",
+    "timestamp": "2026-05-30T14:33:43.465805"
+  },
+  "Projects/tune_lease_55/AI Chat/Weekly Review/2026-W22.md": {
+    "title": "2026-W22",
+    "path": "Projects/tune_lease_55/AI Chat/Weekly Review/2026-W22.md",
+    "content_preview": "2026-W22 ---\ntitle: 2026-W22\ntags: ['2026-05-30', 'ai-chat', 'project', 'ai-system', 'tune-lease-55']\nchat_date: 2026-05-30\ncreated: 2026-05-30\n---\n## 00:37 週次改善レビュー: 範囲外コマンド対応\n\n## 今週の改善候補まとめ\n\n- 範囲外コマ",
+    "timestamp": "2026-05-30T14:33:43.465815"
+  },
+  "Projects/tune_lease_55/Asset Finance/2026-05/2026-05-25_減価率設定まとめ.md": {
+    "title": "2026-05-25_減価率設定まとめ",
+    "path": "Projects/tune_lease_55/Asset Finance/2026-05/2026-05-25_減価率設定まとめ.md",
+    "content_preview": "2026-05-25_減価率設定まとめ ---\ncreated: 2026-05-25\nsource: codex\nproject: tune_lease_55\ntags: ['asset-finance', 'daily', 'project', 'depreciation', '財務分析', 'tune-lease-55', 'コード調査']\n---\n\n# 減価率（Depreciation R",
+    "timestamp": "2026-05-30T14:33:43.465822"
+  },
+  "Projects/tune_lease_55/Asset Finance/2026-05/2026-05-25.md": {
+    "title": "2026-05-25",
+    "path": "Projects/tune_lease_55/Asset Finance/2026-05/2026-05-25.md",
+    "content_preview": "2026-05-25 ---\ntitle: 2026-05-25\ntags: ['asset-finance', 'daily', '資産分析', 'その他', 'project', '財務分析', 'tune-lease-55']\nasset_type: その他\nanalysis_type: financial_analysis\ncreated: 2026-05-30\nupdated: 2026",
+    "timestamp": "2026-05-30T14:33:43.465832"
+  },
+  "Projects/tune_lease_55/Cases/2026-05/2026-05-17.md": {
+    "title": "2026-05-17",
+    "path": "Projects/tune_lease_55/Cases/2026-05/2026-05-17.md",
+    "content_preview": "2026-05-17 ---\ntitle: 2026-05-17\ntags: ['daily', 'tune-lease-55', 'open', '案件', 'project', 'case']\nindustry: unknown\nscore_range: [36, 46]\ncredit_rating: unknown\ncase_status: open\ncreated: 2026-05-30\n",
+    "timestamp": "2026-05-30T14:33:43.465840"
+  },
+  "Projects/tune_lease_55/Cases/2026-05/2026-05-16.md": {
+    "title": "2026-05-16",
+    "path": "Projects/tune_lease_55/Cases/2026-05/2026-05-16.md",
+    "content_preview": "2026-05-16 ---\ntitle: 2026-05-16\ntags: ['daily', 'tune-lease-55', 'open', '案件', 'project', 'case']\nindustry: unknown\nscore_range: [67, 77]\ncredit_rating: unknown\ncase_status: open\ncreated: 2026-05-30\n",
+    "timestamp": "2026-05-30T14:33:43.465850"
+  },
+  "Projects/tune_lease_55/Cases/2026-05/2026-05-19.md": {
+    "title": "2026-05-19",
+    "path": "Projects/tune_lease_55/Cases/2026-05/2026-05-19.md",
+    "content_preview": "2026-05-19 ---\ntitle: 2026-05-19\ntags: ['daily', 'tune-lease-55', 'open', '案件', 'project', 'case']\nindustry: unknown\nscore_range: [82, 92]\ncredit_rating: unknown\ncase_status: open\ncreated: 2026-05-30\n",
+    "timestamp": "2026-05-30T14:33:43.465857"
+  },
+  "Projects/tune_lease_55/Asset Knowledge/高所作業車/高所作業車 点検記録・安全装置・再販リスク.md": {
+    "title": "高所作業車 点検記録・安全装置・再販リスク",
+    "path": "Projects/tune_lease_55/Asset Knowledge/高所作業車/高所作業車 点検記録・安全装置・再販リスク.md",
+    "content_preview": "高所作業車 点検記録・安全装置・再販リスク ---\ncreated: 2026-05-24\nsource: codex\n---\n\n# 高所作業車 点検記録・安全装置・再販リスク\n\n---\nproject: tune_lease_55\ntype: asset_knowledge\nasset_type: 高所作業車\nkeywords:\n  - 高所作業車\n  - アイチ\n  - タダノ\n  - ブーム",
+    "timestamp": "2026-05-30T14:33:43.465867"
+  },
+  "Projects/tune_lease_55/Asset Knowledge/フォークリフト/フォークリフト 残価・バッテリー劣化・再販リスク.md": {
+    "title": "フォークリフト 残価・バッテリー劣化・再販リスク",
+    "path": "Projects/tune_lease_55/Asset Knowledge/フォークリフト/フォークリフト 残価・バッテリー劣化・再販リスク.md",
+    "content_preview": "フォークリフト 残価・バッテリー劣化・再販リスク ---\ncreated: 2026-05-24\nsource: codex\n---\n\n# フォークリフト 残価・バッテリー劣化・再販リスク\n\n---\nproject: tune_lease_55\ntype: asset_knowledge\nasset_type: フォークリフト\nkeywords:\n  - フォークリフト\n  - トヨタ フォークリ",
+    "timestamp": "2026-05-30T14:33:43.465877"
+  },
+  "Projects/tune_lease_55/Asset Knowledge/測定器・検査装置/測定器・検査装置 校正証明・保守期限・再販リスク.md": {
+    "title": "測定器・検査装置 校正証明・保守期限・再販リスク",
+    "path": "Projects/tune_lease_55/Asset Knowledge/測定器・検査装置/測定器・検査装置 校正証明・保守期限・再販リスク.md",
+    "content_preview": "測定器・検査装置 校正証明・保守期限・再販リスク ---\ncreated: 2026-05-24\nsource: codex\n---\n\n# 測定器・検査装置 校正証明・保守期限・再販リスク\n\n---\nproject: tune_lease_55\ntype: asset_knowledge\nasset_type: 測定器・検査装置\nkeywords:\n  - 測定器\n  - 検査装置\n  - 三次元",
+    "timestamp": "2026-05-30T14:33:43.465886"
+  },
+  "Projects/tune_lease_55/Asset Knowledge/工作機械/工作機械 中古相場・残価・再販リスク.md": {
+    "title": "工作機械 中古相場・残価・再販リスク",
+    "path": "Projects/tune_lease_55/Asset Knowledge/工作機械/工作機械 中古相場・残価・再販リスク.md",
+    "content_preview": "工作機械 中古相場・残価・再販リスク ---\ncreated: 2026-05-24\nsource: codex\n---\n\n# 工作機械 中古相場・残価・再販リスク\n\n---\nproject: tune_lease_55\ntype: asset_knowledge\nasset_type: 工作機械\nkeywords:\n  - 工作機械 中古相場\n  - マシニングセンタ\n  - NC旋盤\n  - ",
+    "timestamp": "2026-05-30T14:33:43.465893"
+  },
+  "Projects/tune_lease_55/Asset Knowledge/車両/冷蔵冷凍車・商用車 メンテリース 残価・再販リスク.md": {
+    "title": "冷蔵冷凍車・商用車 メンテリース 残価・再販リスク",
+    "path": "Projects/tune_lease_55/Asset Knowledge/車両/冷蔵冷凍車・商用車 メンテリース 残価・再販リスク.md",
+    "content_preview": "冷蔵冷凍車・商用車 メンテリース 残価・再販リスク ---\ncreated: 2026-05-24\nsource: codex\n---\n\n# 冷蔵冷凍車・商用車 メンテリース 残価・再販リスク\n\n---\nproject: tune_lease_55\ntype: asset_knowledge\nasset_type: 車両\nkeywords:\n  - 車両 メンテリース\n  - 冷凍車\n  - 冷蔵",
+    "timestamp": "2026-05-30T14:33:43.465902"
+  },
+  "Projects/tune_lease_55/Asset Knowledge/建機/コマツ PC200 油圧ショベル 残価・再販リスク.md": {
+    "title": "コマツ PC200 油圧ショベル 残価・再販リスク",
+    "path": "Projects/tune_lease_55/Asset Knowledge/建機/コマツ PC200 油圧ショベル 残価・再販リスク.md",
+    "content_preview": "コマツ PC200 油圧ショベル 残価・再販リスク ---\ncreated: 2026-05-24\nsource: codex\n---\n\n# コマツ PC200 油圧ショベル 残価・再販リスク\n\n---\nproject: tune_lease_55\ntype: asset_knowledge\nasset_type: 建機\nkeywords:\n  - コマツ PC200\n  - KOMATSU PC",
+    "timestamp": "2026-05-30T14:33:43.465912"
+  },
+  "Projects/tune_lease_55/Asset Knowledge/発電機・コンプレッサー/発電機・コンプレッサー 稼働時間・排ガス規制・中古需要.md": {
+    "title": "発電機・コンプレッサー 稼働時間・排ガス規制・中古需要",
+    "path": "Projects/tune_lease_55/Asset Knowledge/発電機・コンプレッサー/発電機・コンプレッサー 稼働時間・排ガス規制・中古需要.md",
+    "content_preview": "発電機・コンプレッサー 稼働時間・排ガス規制・中古需要 ---\ncreated: 2026-05-24\nsource: codex\n---\n\n# 発電機・コンプレッサー 稼働時間・排ガス規制・中古需要\n\n---\nproject: tune_lease_55\ntype: asset_knowledge\nasset_type: 発電機・コンプレッサー\nkeywords:\n  - 発電機\n  - コンプ",
+    "timestamp": "2026-05-30T14:33:43.465921"
+  },
+  "Projects/tune_lease_55/Asset Knowledge/射出成形機/射出成形機 トン数・制御装置・残価リスク.md": {
+    "title": "射出成形機 トン数・制御装置・残価リスク",
+    "path": "Projects/tune_lease_55/Asset Knowledge/射出成形機/射出成形機 トン数・制御装置・残価リスク.md",
+    "content_preview": "射出成形機 トン数・制御装置・残価リスク ---\ncreated: 2026-05-24\nsource: codex\n---\n\n# 射出成形機 トン数・制御装置・残価リスク\n\n---\nproject: tune_lease_55\ntype: asset_knowledge\nasset_type: 射出成形機\nkeywords:\n  - 射出成形機\n  - 日本製鋼所\n  - 住友重機械\n  - フ",
+    "timestamp": "2026-05-30T14:33:43.465928"
+  },
+  "Projects/tune_lease_55/Asset Knowledge/医療機器/医療機器 残価・保守期限・薬機法.md": {
+    "title": "医療機器 残価・保守期限・薬機法",
+    "path": "Projects/tune_lease_55/Asset Knowledge/医療機器/医療機器 残価・保守期限・薬機法.md",
+    "content_preview": "医療機器 残価・保守期限・薬機法 ---\ncreated: 2026-05-24\nsource: codex\n---\n\n# 医療機器 残価・保守期限・薬機法\n\n---\nproject: tune_lease_55\ntype: asset_knowledge\nasset_type: 医療機器\nkeywords:\n  - 医療機器 残価\n  - 中古医療機器\n  - CT\n  - MRI\n  - 内視",
+    "timestamp": "2026-05-30T14:33:43.465937"
+  },
+  "Asset Knowledge/リース審査基礎知識/02_決算書分析と財務指標.md": {
+    "title": "02_決算書分析と財務指標",
+    "path": "Asset Knowledge/リース審査基礎知識/02_決算書分析と財務指標.md",
+    "content_preview": "02_決算書分析と財務指標 ---\ntags: ['知識資産', 'knowledge']\ntype: reference\ncategory: 財務分析\npriority: high\nrag_weight: 0.9\nkeywords: ['決算書', '財務指標', '分析方法']\n---\n\n# リース審査：決算書分析と財務指標\n\n**作成日**: 2026-05-30  \n**情報源**: ネッ",
+    "timestamp": "2026-05-30T14:33:43.465948"
+  },
+  "Asset Knowledge/リース審査基礎知識/03_業種別審査と金利相場.md": {
+    "title": "03_業種別審査と金利相場",
+    "path": "Asset Knowledge/リース審査基礎知識/03_業種別審査と金利相場.md",
+    "content_preview": "03_業種別審査と金利相場 ---\ntags: ['知識資産', 'knowledge']\n---\n\n# リース審査：業種別ポイントと金利相場\n\n**作成日**: 2026-05-30  \n**情報源**: ネット検索  \n**対象**: 業種による審査の違いと金利の相場観\n\n---\n\n## 🎯 業種による審査の難易度\n\n### ✅ 審査が通りやすい業種（信頼度：高）\n\n#### 1. **士業・",
+    "timestamp": "2026-05-30T14:33:43.465960"
+  },
+  "Asset Knowledge/リース審査基礎知識/01_審査書類と基本流れ.md": {
+    "title": "01_審査書類と基本流れ",
+    "path": "Asset Knowledge/リース審査基礎知識/01_審査書類と基本流れ.md",
+    "content_preview": "01_審査書類と基本流れ ---\ntags: ['知識資産', 'knowledge']\n---\n\n# リース審査：必要書類と基本流れ\n\n**作成日**: 2026-05-30  \n**情報源**: ネット検索  \n**対象**: リース審査プロセスの標準化\n\n---\n\n## 📋 リース審査で必要な書類\n\n### 必須書類（必ず提出）\n\n#### 1. 決算書（財務諸表）\n- **貸借対照表**:",
+    "timestamp": "2026-05-30T14:33:43.465970"
+  },
+  "Asset Knowledge/リース審査基礎知識/04_残価リスク評価と市場動向.md": {
+    "title": "04_残価リスク評価と市場動向",
+    "path": "Asset Knowledge/リース審査基礎知識/04_残価リスク評価と市場動向.md",
+    "content_preview": "04_残価リスク評価と市場動向 ---\ntags: ['知識資産', 'knowledge']\n---\n\n# リース審査：残価リスク評価と市場動向\n\n**作成日**: 2026-05-30  \n**情報源**: ネット検索  \n**対象**: リース会社が抱える残価リスク理解\n\n---\n\n## 📌 残価（残存価値）とは\n\n### 定義\n\n```\n新品購入価格\n   ↓ (リース利用で減価)\n5年リ",
+    "timestamp": "2026-05-30T14:33:43.465979"
+  },
+  "30.areas/AI Chat最適化計画/実装完了記録.md": {
+    "title": "実装完了記録",
+    "path": "30.areas/AI Chat最適化計画/実装完了記録.md",
+    "content_preview": "実装完了記録 ---\ntags: ['area', 'important']\n---\n\n# AI Chat 最適化計画 - 実装完了記録\n\n**実装日**: 2026-05-30\n**対象ファイル**: `mobile_app/chat_assistant.py`\n**ステータス**: ✅ 完了\n\n---\n\n## 実装内容概要\n\nリース審査AIチャット (`mobile_app/chat_assi",
+    "timestamp": "2026-05-30T14:33:43.465986"
+  },
+  "30.areas/RAGシステム統合実装ログ.md": {
+    "title": "RAGシステム統合実装ログ",
+    "path": "30.areas/RAGシステム統合実装ログ.md",
+    "content_preview": "RAGシステム統合実装ログ ---\ntags: [rag, implementation, phase3, completion]\ntype: implementation-log\npriority: high\ndate: 2026-05-30\n---\n\n# RAG システム統合実装ログ\n\n## 🎯 完成状況\n\n**【フェーズ1-3 全実装完了】**\n\n```\n┌─────────────────",
+    "timestamp": "2026-05-30T14:33:43.464561"
+  },
+  "30.areas/AI Chat最適化・RAG完全実装記録.md": {
+    "title": "AI Chat最適化・RAG完全実装記録",
+    "path": "30.areas/AI Chat最適化・RAG完全実装記録.md",
+    "content_preview": "AI Chat最適化・RAG完全実装記録 ---\ntags: [ai-chat, rag, optimization, summary, phase1-3]\ntype: project-summary\npriority: critical\ndate: 2026-05-30\n---\n\n# 【完全実装】リース審査 AI - 最適化・RAG システム\n\n## 🎯 プロジェクト完了サマリー\n\n```\n━━",
+    "timestamp": "2026-05-30T14:33:43.464569"
+  },
+  "Projects/tune_lease_55/AI Chat/2026-05-30.md": {
+    "title": "2026-05-30",
+    "path": "Projects/tune_lease_55/AI Chat/2026-05-30.md",
+    "content_preview": "2026-05-30 ## 14:24 建設業のパン屋事業参入に関する検討\n\nユーザーが建設業からのパン屋事業参入について質問。異業種参入であり、一般的なシナジー効果は低いと判断。もしシナジーを主張する場合は、具体的な事業計画、市場分析、財務計画が必須となる。特に新規事業としての信用リスクと、財務矛盾（Q_risk）への影響を詳細に確認する必要がある。\n",
+    "timestamp": "2026-05-30T14:33:43.465512"
+  },
+  "30.areas/RAG毎日メンテナンス設定.md": {
+    "title": "RAG毎日メンテナンス設定",
+    "path": "30.areas/RAG毎日メンテナンス設定.md",
+    "content_preview": "RAG毎日メンテナンス設定 ---\ntags: [rag, maintenance, automation, schedule]\ntype: operations\npriority: high\ndate: 2026-05-30\n---\n\n# RAG システム 毎日メンテナンス設定\n\n## 🔄 自動スケジュール設定\n\n**実行時刻**: 毎朝 **3時00分**（UTC+9）  \n**実行環境**:",
+    "timestamp": "2026-05-30T14:33:43.464578"
+  }
+}
