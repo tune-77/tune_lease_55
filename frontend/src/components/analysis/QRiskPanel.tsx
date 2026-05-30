@@ -91,13 +91,33 @@ export default function QRiskPanel({ quantumRisk, creditQuantumStrongWarning = f
 
       {expanded && (
         <>
-          {/* REV-113: Q_risk の説明 */}
+          {/* REV-072/073/102: Q_risk の説明 + 解釈ガイド */}
           <div className="mt-3 flex items-start gap-2 p-2.5 bg-white/70 rounded-lg border border-slate-200">
             <Info className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" />
-            <p className="text-[11px] text-slate-600 leading-relaxed">
-              <strong>Q_riskとは：</strong>財務データの内部矛盾（利益率・減価償却・借入金・キャッシュフローの整合性）を量子干渉アルゴリズムで検出するリスクスコアです。
-              値が高いほど財務データに矛盾・異常が多いことを示し、スコアリング精度に影響する場合があります。
-            </p>
+            <div>
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                <strong>Q_riskとは：</strong>財務データの内部矛盾（利益率・減価償却・借入金・キャッシュフローの整合性）を量子干渉アルゴリズムで検出するリスクスコアです。
+                値が高いほど財務データに矛盾・異常が多いことを示し、スコアリング精度に影響する場合があります。
+              </p>
+              {/* REV-072/073: 解釈ガイド */}
+              <div className="mt-2 space-y-1">
+                {[
+                  { range: '0〜34', label: '通常', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', note: '財務整合性に問題なし。スコアリング精度は高い' },
+                  { range: '35〜59', label: '要注意', color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200', note: '軽微な矛盾あり。財務書類の精査を推奨' },
+                  { range: '60以上', label: '強警戒', color: 'text-rose-700', bg: 'bg-rose-50 border-rose-200', note: '重大な矛盾の可能性。追加書類での確認が必要' },
+                ].map(row => (
+                  <div key={row.range} className={`flex items-center gap-2 px-2 py-1 rounded border text-[10px] ${row.bg}`}>
+                    <span className={`font-black w-12 flex-shrink-0 ${row.color}`}>{row.range}</span>
+                    <span className={`font-black w-10 flex-shrink-0 ${row.color}`}>{row.label}</span>
+                    <span className="text-slate-600">{row.note}</span>
+                  </div>
+                ))}
+              </div>
+              {/* REV-102: 重要な補足 */}
+              <p className="text-[10px] text-slate-500 mt-1.5 font-bold">
+                ※ Q_riskは自動否決の指標ではなく、財務データの信頼性を示すフラグです。高値でも定性確認で補完できる場合があります。
+              </p>
+            </div>
           </div>
 
           {/* ゲージバー */}
