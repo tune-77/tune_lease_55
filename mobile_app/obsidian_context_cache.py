@@ -17,23 +17,26 @@ from typing import Any
 
 
 class ObsidianContextCache:
-    """In-memory cache for Obsidian search results with TTL."""
+    """In-memory cache for Obsidian search results with TTL and size limits."""
 
-    def __init__(self, ttl_seconds: int = 300):
+    def __init__(self, ttl_seconds: int = 300, max_size: int = 1000):
         """
         Initialize the cache.
 
         Args:
             ttl_seconds: Time-to-live for cache entries (default: 5 minutes)
+            max_size: Maximum number of cache entries (default: 1000)
         """
         self.cache: dict[str, dict[str, Any]] = {}
         self.ttl = ttl_seconds
+        self.max_size = max_size
         self.lock = threading.RLock()
         self.stats = {
             "hits": 0,
             "misses": 0,
             "evictions": 0,
             "invalidations": 0,
+            "size_limit_evictions": 0,
         }
 
     def _hash_key(self, query: str) -> str:
@@ -81,6 +84,18 @@ class ObsidianContextCache:
         """
         with self.lock:
             key = self._hash_key(query)
+
+            # Check if we need to evict old entries due to size limit
+            if len(self.cache) >= self.max_size and key not in self.cache:
+                # Find and remove the least recently accessed entry
+                lru_key = min(
+                    self.cache.keys(),
+                    key=lambda k: self.cache[k]["accessed"],
+                )
+                del self.cache[lru_key]
+                self.stats["size_limit_evictions"] += 1
+
+            # Add new entry
             self.cache[key] = {
                 "data": data,
                 "expires": datetime.now() + timedelta(seconds=self.ttl),
@@ -114,10 +129,12 @@ class ObsidianContextCache:
             )
             return {
                 "size": len(self.cache),
+                "max_size": self.max_size,
                 "hits": self.stats["hits"],
                 "misses": self.stats["misses"],
                 "hit_rate_percent": hit_rate,
                 "evictions": self.stats["evictions"],
+                "size_limit_evictions": self.stats["size_limit_evictions"],
                 "invalidations": self.stats["invalidations"],
                 "total_requests": total_requests,
             }
@@ -135,7 +152,8 @@ class ObsidianContextCache:
 
 
 # Global cache instance
-_obsidian_context_cache = ObsidianContextCache(ttl_seconds=300)
+# Max 1000 entries, 5-minute TTL
+_obsidian_context_cache = ObsidianContextCache(ttl_seconds=300, max_size=1000)
 
 
 def get_cache() -> ObsidianContextCache:

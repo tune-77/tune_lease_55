@@ -15,6 +15,9 @@ logging.basicConfig(
     format='%(asctime)s [%(name)s] %(levelname)s: %(message)s'
 )
 
+# ===== Phase 1: Feature flags for rollback & control
+ENABLE_OBSIDIAN_CACHE = os.environ.get("ENABLE_OBSIDIAN_CACHE", "true").lower() == "true"
+
 try:
     from obsidian_bridge import (
         append_chat_note,
@@ -441,19 +444,29 @@ def build_chat_reply(
             "saved": False,
         }
 
-    # ===== Obsidian context collection (with caching)
+    # ===== Obsidian context collection (with optional caching)
     t0 = time.time()
     if use_obsidian:
-        # Try cache first, fall back to collect_obsidian_context
-        obsidian_hits = cached_collect_obsidian_context(
-            message,
-            collect_fn=collect_obsidian_context,
-            limit=4,
-        )
-        from_cache = "cache" if get_cache().get(message) else "miss"
+        if ENABLE_OBSIDIAN_CACHE:
+            # Try cache first, fall back to collect_obsidian_context
+            try:
+                obsidian_hits = cached_collect_obsidian_context(
+                    message,
+                    collect_fn=collect_obsidian_context,
+                    limit=4,
+                )
+                from_cache = "cache_hit" if get_cache().get(message) else "cache_miss"
+            except Exception as e:
+                logger.error(f"Cache error, falling back to non-cached search: {e}")
+                obsidian_hits = collect_obsidian_context(message)
+                from_cache = "cache_error_fallback"
+        else:
+            # Caching is disabled (rollback mode)
+            obsidian_hits = collect_obsidian_context(message)
+            from_cache = "cache_disabled"
     else:
         obsidian_hits = []
-        from_cache = "disabled"
+        from_cache = "obsidian_disabled"
     t_obsidian_search = time.time() - t0
 
     # ===== Obsidian digest generation
