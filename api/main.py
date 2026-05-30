@@ -6,6 +6,15 @@ _os_early.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 _os_early.environ.setdefault("MKL_NUM_THREADS", "1")
 _os_early.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 _os_early.environ.setdefault("PYTORCH_MPS_HIGH_WATERMARK_RATIO", "0.0")
+# HuggingFace tokenizers (sentence-transformers が内部で利用) の Rust スレッドが
+# fork 後に「leaked semaphore」を量産する macOS 既知問題への対策。
+# 並列化を無効化することでセマフォリーク・ワーカーゾンビ化を防ぐ。
+_os_early.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+# sentence-transformers / huggingface_hub が起動時に
+# モデル名の HEAD リクエストを飛ばすことがあり、ネットワーク待ちで
+# uvicorn ワーカーが応答不能になるケースがある。既定でオフラインモード。
+_os_early.environ.setdefault("HF_HUB_OFFLINE", "1")
+_os_early.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 del _os_early
 
 
@@ -147,23 +156,34 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
     # startup: Obsidian ナレッジのバックグラウンドインデックス化（30秒遅延 — OMP競合回避）
-    def _delayed_indexing():
-        import time as _t; _t.sleep(30)
-        try:
-            from api.knowledge.indexer import start_background_indexing
-            start_background_indexing()
-        except Exception as e:
-            print(f"[API] knowledge indexing start failed (non-fatal): {e}")
-    import threading as _th; _th.Thread(target=_delayed_indexing, daemon=True, name="delayed-indexer").start()
+    # 既定では無効。ENABLE_OBSIDIAN_INDEXING=true で明示的に有効化する。
+    # sentence-transformers の重い初期化が --reload 環境下でワーカーをゾンビ化させる
+    # 原因になっていたため、API 主要機能から切り離す。
+    import threading as _th
+    if os.environ.get("ENABLE_OBSIDIAN_INDEXING", "false").lower() == "true":
+        def _delayed_indexing():
+            import time as _t; _t.sleep(30)
+            try:
+                from api.knowledge.indexer import start_background_indexing
+                start_background_indexing()
+            except Exception as e:
+                print(f"[API] knowledge indexing start failed (non-fatal): {e}")
+        _th.Thread(target=_delayed_indexing, daemon=True, name="delayed-indexer").start()
+    else:
+        print("[API] Obsidian indexing disabled (set ENABLE_OBSIDIAN_INDEXING=true to enable)")
     # startup: Obsidian フィードバックのバックグラウンド読み込み（30秒遅延）
-    def _delayed_feedback():
-        import time as _t; _t.sleep(30)
-        try:
-            from api.knowledge.feedback_watcher import start_background_feedback_loading
-            start_background_feedback_loading()
-        except Exception as e:
-            print(f"[API] feedback loading start failed (non-fatal): {e}")
-    _th.Thread(target=_delayed_feedback, daemon=True, name="delayed-feedback").start()
+    # 既定では無効。ENABLE_FEEDBACK_LOADING=true で明示的に有効化する。
+    if os.environ.get("ENABLE_FEEDBACK_LOADING", "false").lower() == "true":
+        def _delayed_feedback():
+            import time as _t; _t.sleep(30)
+            try:
+                from api.knowledge.feedback_watcher import start_background_feedback_loading
+                start_background_feedback_loading()
+            except Exception as e:
+                print(f"[API] feedback loading start failed (non-fatal): {e}")
+        _th.Thread(target=_delayed_feedback, daemon=True, name="delayed-feedback").start()
+    else:
+        print("[API] Feedback loading disabled (set ENABLE_FEEDBACK_LOADING=true to enable)")
     # startup: 会話履歴テーブルの初期化
     try:
         from api.database import init_conversation_history_table

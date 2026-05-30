@@ -212,8 +212,9 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">契約種類</label>
             <select name="contract_type" value={data.contract_type} onChange={handleChange} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 h-[46px]">
-              <option>一般</option><option>自動車</option>
+              <option>一般</option><option>自動車</option><option>割賦</option>
             </select>
+            <p className="text-[10px] text-slate-400 mt-0.5">割賦は所有権移転ありの分割払い契約</p>
           </div>
         </div>
 

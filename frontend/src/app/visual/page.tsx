@@ -4,8 +4,17 @@ import axios from 'axios';
 import * as d3 from 'd3';
 import { sankey as d3Sankey, sankeyLinkHorizontal } from 'd3-sankey';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
-import { Eye, Activity, ChartPie, Grid, GitMerge, MousePointer2, Lightbulb, ChevronDown, ChevronUp } from 'lucide-react';
-import { ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { Eye, Activity, ChartPie, Grid, GitMerge, MousePointer2, Lightbulb, ChevronDown, ChevronUp, TrendingUp } from 'lucide-react';
+import { ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip, Legend, BarChart, Bar, Cell, LabelList } from 'recharts';
+
+type IndustryStat = {
+  industry: string;
+  total: number;
+  won: number;
+  lost: number;
+  contract_rate: number;
+  avg_score: number | null;
+};
 
 // REV-109: **bold** マーカーを JSX に変換
 function formatInsight(text: string): React.ReactNode {
@@ -16,13 +25,14 @@ function formatInsight(text: string): React.ReactNode {
 export default function VisualPage() {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'bubble' | 'heatmap' | 'sankey'>('bubble');
+  const [activeTab, setActiveTab] = useState<'bubble' | 'heatmap' | 'sankey' | 'industry'>('bubble');
   const [insightOpen, setInsightOpen] = useState(true);
   const sankeyRef = useRef<SVGSVGElement>(null);
+  const [industryStats, setIndustryStats] = useState<IndustryStat[]>([]);
 
   useEffect(() => {
     triggerMebuki('guide', 'ビジュアルインサイト画面ですね！\n過去の案件をマッピングして成約の傾向を探ります！');
-    
+
     const fetchData = async () => {
       try {
         const res = await axios.get(`/api/visual/data`);
@@ -34,6 +44,11 @@ export default function VisualPage() {
       }
     };
     fetchData();
+
+    // REV-035/094/095: 業種別成約率データを取得
+    axios.get('/api/industry/stats')
+      .then(res => setIndustryStats(res.data || []))
+      .catch(() => {});
   }, []);
 
   // Sankeyデータ構築
@@ -262,8 +277,22 @@ export default function VisualPage() {
       ];
     }
 
+    if (activeTab === 'industry' && industryStats.length > 0) {
+      const sorted = [...industryStats].sort((a, b) => b.contract_rate - a.contract_rate);
+      const top = sorted[0];
+      const bottom = sorted[sorted.length - 1];
+      const avg = industryStats.reduce((s, d) => s + d.contract_rate, 0) / industryStats.length;
+      return [
+        `最高成約率は **${top.industry}** で **${top.contract_rate}%**（${top.total}件）。重点営業ターゲット業種です。`,
+        `全体平均成約率は **${avg.toFixed(1)}%**。平均を **${(top.contract_rate - avg).toFixed(1)}pt 上回る** ${top.industry} への案件集中が成約率向上の近道です。`,
+        bottom.contract_rate < 40
+          ? `**${bottom.industry}** の成約率は **${bottom.contract_rate}%** と最低水準。審査基準の再検討またはリソース再配分を検討してください。`
+          : `全業種の成約率が **40%以上** を維持しています。底上げより上位業種のシェア拡大を優先してください。`,
+      ];
+    }
+
     return [];
-  }, [data, activeTab]);
+  }, [data, activeTab, industryStats]);
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
@@ -302,7 +331,8 @@ export default function VisualPage() {
         {[
           {id: 'bubble', label: '案件マップ', icon: ChartPie},
           {id: 'heatmap', label: '熱分布分析', icon: Grid},
-          {id: 'sankey', label: '案件フロー', icon: GitMerge}
+          {id: 'sankey', label: '案件フロー', icon: GitMerge},
+          {id: 'industry', label: '業種別成約率', icon: TrendingUp},
         ].map(tab => (
           <button 
             key={tab.id}
@@ -441,6 +471,92 @@ export default function VisualPage() {
              <div className="w-full flex justify-center bg-slate-50/50 p-3 rounded-3xl border border-slate-100 shadow-inner">
                <svg ref={sankeyRef} className="w-full max-w-full" viewBox="0 0 640 300" preserveAspectRatio="xMidYMid meet" />
              </div>
+           </div>
+         )}
+
+         {/* REV-035/094/095: 業種別成約率タブ */}
+         {activeTab === 'industry' && (
+           <div className="animate-in fade-in duration-500">
+             <div className="mb-6">
+               <h3 className="text-2xl font-black text-slate-800">📊 業種別成約率ランキング</h3>
+               <p className="text-slate-400 text-sm font-bold">過去案件（3件以上）の業種ごとの成約率と平均スコアを集計。</p>
+             </div>
+             {industryStats.length === 0 ? (
+               <div className="flex items-center justify-center h-64 text-slate-400 font-bold">データがありません（3件以上の業種が必要です）</div>
+             ) : (() => {
+               const sorted = [...industryStats].sort((a, b) => b.contract_rate - a.contract_rate);
+               return (
+                 <>
+                   {/* 凡例 */}
+                   <div className="flex items-center gap-4 mb-4 text-xs font-bold flex-wrap">
+                     <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-emerald-500 inline-block" />60%以上（高成約率）</span>
+                     <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-amber-400 inline-block" />40〜59%（中程度）</span>
+                     <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-rose-400 inline-block" />40%未満（低成約率）</span>
+                   </div>
+
+                   {/* 横棒グラフ */}
+                   <ResponsiveContainer width="100%" height={Math.max(300, sorted.length * 36)}>
+                     <BarChart layout="vertical" data={sorted} margin={{ top: 4, right: 90, left: 4, bottom: 4 }} barCategoryGap="20%">
+                       <XAxis type="number" domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} tick={{ fontSize: 11 }} tickCount={6} />
+                       <YAxis type="category" dataKey="industry" width={140} tick={{ fontSize: 11, fontWeight: 'bold' }} />
+                       <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="#e2e8f0" />
+                       <Tooltip
+                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                         formatter={(value: any, _name: any, props: any) => {
+                           const d = props?.payload as IndustryStat | undefined;
+                           if (!d) return [`${value}%`, '成約率'];
+                           return [`${value}% （${d.won}/${d.total}件）`, '成約率'];
+                         }}
+                         contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                       />
+                       <Bar dataKey="contract_rate" radius={[0, 6, 6, 0]} maxBarSize={28}>
+                         {sorted.map((entry, idx) => (
+                           <Cell
+                             key={idx}
+                             fill={entry.contract_rate >= 60 ? '#10b981' : entry.contract_rate >= 40 ? '#f59e0b' : '#f87171'}
+                           />
+                         ))}
+                         <LabelList
+                           dataKey="contract_rate"
+                           position="right"
+                           // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                           formatter={(v: any) => `${v}%`}
+                           style={{ fontSize: 11, fontWeight: 'bold', fill: '#475569' }}
+                         />
+                       </Bar>
+                     </BarChart>
+                   </ResponsiveContainer>
+
+                   {/* サマリーテーブル */}
+                   <div className="mt-6 overflow-x-auto">
+                     <table className="w-full text-xs border-collapse">
+                       <thead>
+                         <tr className="bg-slate-100">
+                           <th className="text-left px-3 py-2 font-black text-slate-600">業種</th>
+                           <th className="text-right px-3 py-2 font-black text-slate-600">件数</th>
+                           <th className="text-right px-3 py-2 font-black text-slate-600">成約</th>
+                           <th className="text-right px-3 py-2 font-black text-slate-600">成約率</th>
+                           <th className="text-right px-3 py-2 font-black text-slate-600">平均スコア</th>
+                         </tr>
+                       </thead>
+                       <tbody>
+                         {sorted.map((row, i) => (
+                           <tr key={row.industry} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                             <td className="px-3 py-2 font-bold text-slate-700">{row.industry}</td>
+                             <td className="text-right px-3 py-2 text-slate-500">{row.total}</td>
+                             <td className="text-right px-3 py-2 text-emerald-600 font-bold">{row.won}</td>
+                             <td className={`text-right px-3 py-2 font-black ${row.contract_rate >= 60 ? 'text-emerald-600' : row.contract_rate >= 40 ? 'text-amber-600' : 'text-rose-500'}`}>
+                               {row.contract_rate}%
+                             </td>
+                             <td className="text-right px-3 py-2 text-slate-500">{row.avg_score != null ? `${row.avg_score}pt` : '—'}</td>
+                           </tr>
+                         ))}
+                       </tbody>
+                     </table>
+                   </div>
+                 </>
+               );
+             })()}
            </div>
          )}
       </div>

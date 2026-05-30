@@ -58,6 +58,29 @@ try:
 except ImportError:  # pragma: no cover - package import fallback
     from .web_bridge import collect_web_context
 
+# ===== Phase 3: Integrated RAG System
+# RAG（sentence-transformers + ベクトルDB）は重い初期化を伴い、
+# uvicorn --reload 環境下では読み込み途中で SIGTERM が来ると
+# ワーカーゾンビ化 & セマフォリークの原因となる。
+# 既定では無効化し、ENABLE_RAG=true のときだけ有効化する。
+RAG_ENABLED = False
+collect_obsidian_context_with_rag = None
+get_rag_performance_metrics = None
+
+if os.environ.get("ENABLE_RAG", "false").lower() == "true":
+    try:
+        from rag_integration_adapter import (
+            collect_obsidian_context_with_rag,
+            get_rag_performance_metrics,
+        )
+        RAG_ENABLED = True
+        logger.info("RAG システム有効（ENABLE_RAG=true）")
+    except ImportError:  # pragma: no cover - fallback to legacy
+        RAG_ENABLED = False
+        logger.warning("RAG システムが利用不可（フォールバックモード）")
+else:
+    logger.info("RAG システム無効（ENABLE_RAG 未設定。レガシー obsidian_bridge を使用）")
+
 
 def _get_gemini_key() -> str:
     try:
@@ -128,18 +151,37 @@ def _extract_response_json(response: Any) -> dict[str, Any] | None:
 def _should_search_web(message: str) -> bool:
     text = (message or "").lower()
     positive = [
+        # 既存キーワード
         "最新", "今", "今日", "現在", "最近", "公式", "一次情報", "ニュース", "相場",
         "価格", "料金", "モデル", "api", "仕様", "release", "アップデート", "変更点",
         "法律", "制度", "ルール", "統計", "比較", "評判", "障害", "status", "github",
         "claude", "gemini", "openai", "streamlit", "cloudflare",
+        # 追加: リース審査ドメインキーワード
+        "金利相場", "リース料率", "業種リスク", "残価", "残存価値",
+        "ifrs", "ifrs16", "リース会計", "リース期間", "耐用年数",
+        "信用調査", "帝国データバンク", "東京商工リサーチ",
+        "日銀", "政策金利", "金融引き締め", "インフレ",
+        "補助金", "税制優遇", "中小企業", "事業者向け", "金融機関",
     ]
     negative = [
+        # 既存キーワード
         "obsidian", "q_risk", "審査", "案件", "社内", "顧客", "db", "dbの", "スコア",
         "この案件", "この審査", "保守", "入力欄", "改善", "内部", "秘密",
+        # 追加: 内部情報保護
+        "この案件の", "具体的なスコア", "お客様の", "申込者の",
     ]
     if any(k.lower() in text for k in negative):
         return False
     return any(k.lower() in text for k in positive)
+
+
+def _summarize_history(history: list[dict]) -> str:
+    """直近4ターン以前の会話を1行サマリーにする"""
+    if len(history) <= 4:
+        return ""
+    earlier = history[:-4]
+    topics = [h.get("content", "")[:30] for h in earlier if h.get("role") == "user"]
+    return f"[過去の話題: {', '.join(topics[:3])}]"
 
 
 def _fallback_chat_packet(
@@ -285,16 +327,33 @@ def _build_prompt(
 - 不確かな点は断定せず、必要な確認事項だけを示す。
 - 最後に気の利いた一言や応援は付けない。"""
     else:
-        _persona = """あなたはリース審査API版のAIチャットです。
+        _persona = """あなたはリース審査のエキスパートAIアシスタントです。
 ユーザーはスマホ画面で審査結果を見ながら質問しています。
 
-回答方針:
-- 日本語で、短く、現場担当者に語りかける。
-- 審査スコアを勝手に変更しない。
-- score_result に indicator_analysis がある場合は、計算済み指標の要約を先に読み、業種平均との差・利益率・自己資本比率・ROA/ROE・回転率を踏まえて答える。
-- Q_riskは財務矛盾チェック、信用リスクは信用・格付寄りの警戒として区別する。
-- 分からないことは断定しない。
-- ユーモアを積極的に使う。審査担当の苦労に共感しつつ、会話の終わりに軽いひとこと（例: 稟議書に添付する前に一杯飲む権利はある）を自然に添える。"""
+【審査判定の優先順位】
+1. 業績（経常利益黒字か・3期トレンド）
+2. 業種リスク（士業→低リスク、飲食・美容→高リスク）
+3. 滞納履歴・信用情報
+4. 代表者属性
+
+【財務指標の速答基準】
+- 自己資本比率 30%以上→健全 / 20%未満→要注意
+- 流動比率 100%以上→OK / 80%未満→警戒
+- 経常利益 2期以上赤字→審査困難
+- 売上右肩下がり3期→リスク企業フラグ
+
+【回答スタイル】
+- スマホ画面で読める短さ（300文字以内が理想）
+- 数字・結論を先に、根拠を後に
+- 「〇〇なので△△」という構造で答える
+- 分からないことは断定しない
+- ユーモアを積極的に使い、審査担当の苦労に共感しつつ、会話の終わりに軽いひとことを自然に添える
+
+【条件付き承認の対策 by 業種】
+- 飲食業: 保証人追加 or リース期間短縮
+- 建設業: 公共工事実績書の追加提出
+- 製造業: 機械設備の担保評価"""
+
     condition_playbook = ""
     joined = f"{message} " + " ".join(item.get("path", "") + " " + item.get("snippet", "") for item in obsidian_hits)
     if any(k in joined for k in ("条件付き承認", "条件付承認", "条件付き", "条件付", "承認条件", "条件承認")):
@@ -312,26 +371,7 @@ def _build_prompt(
 - ユーザーの要望、つまずき、繰り返しの不満、説明不足、操作ミス、分かりにくい表示を読み取り、今後の改善候補に変換する。
 - 最大3件まで。空振りなら空配列にする。
 - その場の回答ではなく、今後の機能改善や文言改善、デフォルト動作変更に繋がる内容だけを書く。
-- 例: 入力欄の順序、説明文、条件付き承認の出し方、Obsidian参照の優先順位、保存の自動化など。
-- 保存用の文章は短く、観察された要望と改善案が分かるようにする。
-- 各候補には採否を入れる。
-- decision は accept / reject / park / review のいずれか。
-- accept は次回実装候補、review は週次で再確認、park は保留、reject は採用しない。
-"""
-
-    wiki_prompt = """
-WIKI連携の判断:
-- 複数ノートにまたがる共通ルール、定義、手順、比較、判断基準は WIKI にまとめる。
-- 1回限りの案件メモではなく、今後も参照したい知識だけを WIKI 化する。
-- 保存するときは、関連ノートを wikilink で列挙し、共通点を短くまとめる。
-- 例: 条件付き承認の実務、Q_risk の意味、補助金の使い分け、期待使用期間とリース期間の関係。
-"""
-
-    weekly_prompt = """
-週次改善レビューの判断:
-- accept / review が1件でもあれば週次レビュー対象にする。
-- 今週の改善候補を、採用・保留・却下でまとめて、次週にやることを1行で出す。
-- 週次レビューには、採用理由と未採用理由を短く残す。
+- 各候補には採否を入れる。decision は accept / reject / park / review のいずれか。
 """
 
     web_prompt = """
@@ -343,14 +383,8 @@ Web参照の方針:
 - 社内情報や顧客情報を外部検索にそのまま出さない。
 """
 
-    web_save_prompt = """
-Webメモ保存の判断:
-- 外部情報が今後も役立つときだけ保存する。
-- 保存対象は、モデル更新、公式仕様、料金、公開ルール、障害情報、一次情報の要点。
-- 単なる雑談、広告、比較の一時メモ、社内案件に関係しない薄い情報は保存しない。
-- 保存するときは、どの情報が有益だったかを短く箇条書きにする。
-"""
-
+    # コンテキスト圧縮: 会話サマリーを生成し、直近4ターンのみを渡す
+    history_summary = _summarize_history(history)
     obsidian_digest = build_obsidian_digest(message, obsidian_hits) if obsidian_hits else {"digest": "", "title": "", "source_count": "0"}
 
     return f"""{_persona}
@@ -361,10 +395,7 @@ Obsidian自動保存の判断:
 - 保存する場合も会話全文ではなく、要約・決定・TODOだけにする。
 {condition_playbook}
 {improvement_prompt}
-{wiki_prompt}
-{weekly_prompt}
 {web_prompt}
-{web_save_prompt}
 
 次のJSONだけ返してください:
 {{
@@ -386,19 +417,7 @@ Obsidian自動保存の判断:
     }}
   ],
   "web_used": true/false,
-  "web_reason": "Web参照した場合は理由、していない場合は空文字",
-  "web_should_save": true/false,
-  "web_save_title": "保存する場合の短いタイトル",
-  "web_save_body": "保存する場合のMarkdown要約。保存不要なら空文字",
-  "web_save_reason": "保存判断の理由。保存不要でも短く",
-  "wiki_should_save": true/false,
-  "wiki_save_title": "保存する場合の短いタイトル",
-  "wiki_save_body": "保存する場合のMarkdown要約。保存不要なら空文字",
-  "wiki_save_reason": "保存判断の理由。保存不要でも短く",
-  "weekly_should_save": true/false,
-  "weekly_save_title": "保存する場合の短いタイトル",
-  "weekly_save_body": "保存する場合のMarkdown要約。保存不要なら空文字",
-  "weekly_save_reason": "保存判断の理由。保存不要でも短く"
+  "web_reason": "Web参照した場合は理由、していない場合は空文字"
 }}
 
 現在の審査結果:
@@ -413,8 +432,11 @@ Obsidian統合要約:
 Web検索結果:
 {json.dumps(web_hits, ensure_ascii=False, default=str)[:4000]}
 
-直近会話:
-{json.dumps(history[-8:], ensure_ascii=False, default=str)[:4000]}
+直近会話サマリー:
+{history_summary}
+
+直近会話 (最新4ターン):
+{json.dumps(history[-4:], ensure_ascii=False, default=str)[:4000]}
 
 ユーザー発話:
 {message}
@@ -444,11 +466,34 @@ def build_chat_reply(
             "saved": False,
         }
 
-    # ===== Obsidian context collection (with optional caching)
+    # ===== Obsidian context collection (with RAG system integration)
     t0 = time.time()
     if use_obsidian:
-        if ENABLE_OBSIDIAN_CACHE:
-            # Try cache first, fall back to collect_obsidian_context
+        if RAG_ENABLED:
+            # 【Phase 3】RAG システムを使用（セマンティック検索 + ベクトルDB + キャッシング）
+            try:
+                obsidian_hits = collect_obsidian_context_with_rag(message, limit=4)
+                from_cache = "rag_search"
+                logger.info(f"✅ RAG 検索実行: {len(obsidian_hits)} 件")
+            except Exception as e:
+                logger.error(f"RAG 検索エラー: {e}")
+                # RAG失敗時はレガシーコンテキスト検索にフォールバック
+                if ENABLE_OBSIDIAN_CACHE:
+                    try:
+                        obsidian_hits = cached_collect_obsidian_context(
+                            message,
+                            collect_fn=collect_obsidian_context,
+                            limit=4,
+                        )
+                        from_cache = "legacy_cache"
+                    except Exception:
+                        obsidian_hits = collect_obsidian_context(message)
+                        from_cache = "legacy_fallback"
+                else:
+                    obsidian_hits = collect_obsidian_context(message)
+                    from_cache = "legacy_no_cache"
+        elif ENABLE_OBSIDIAN_CACHE:
+            # RAG未有効時はレガシーキャッシュを使用
             try:
                 obsidian_hits = cached_collect_obsidian_context(
                     message,
@@ -529,20 +574,8 @@ def build_chat_reply(
                         },
                         "web_used": {"type": "boolean"},
                         "web_reason": {"type": "string"},
-                        "web_should_save": {"type": "boolean"},
-                        "web_save_title": {"type": "string"},
-                        "web_save_body": {"type": "string"},
-                        "web_save_reason": {"type": "string"},
-                        "wiki_should_save": {"type": "boolean"},
-                        "wiki_save_title": {"type": "string"},
-                        "wiki_save_body": {"type": "string"},
-                        "wiki_save_reason": {"type": "string"},
-                        "weekly_should_save": {"type": "boolean"},
-                        "weekly_save_title": {"type": "string"},
-                        "weekly_save_body": {"type": "string"},
-                        "weekly_save_reason": {"type": "string"},
                     },
-                    "required": ["reply", "should_save", "save_title", "save_body", "save_reason", "improvement_items", "web_used", "web_reason", "web_should_save", "web_save_title", "web_save_body", "web_save_reason", "wiki_should_save", "wiki_save_title", "wiki_save_body", "wiki_save_reason", "weekly_should_save", "weekly_save_title", "weekly_save_body", "weekly_save_reason"],
+                    "required": ["reply", "should_save", "save_title", "save_body", "save_reason", "improvement_items", "web_used", "web_reason"],
                 },
                 http_options=types.HttpOptions(timeout=max(10000, int(timeout_seconds * 1000))),
             ),
@@ -561,10 +594,8 @@ def build_chat_reply(
             )
         improvement_items = parsed.get("improvement_items") or []
         improvement_result = {"status": "skipped", "reason": "no actionable improvements"}
-        weekly_save_result = {"status": "skipped", "reason": "weekly note not needed"}
         if isinstance(improvement_items, list) and improvement_items:
             lines: list[str] = []
-            accepted: list[dict[str, str]] = []
             for idx, item in enumerate(improvement_items[:3], start=1):
                 if not isinstance(item, dict):
                     continue
@@ -578,12 +609,6 @@ def build_chat_reply(
                 evidence = str(item.get("evidence") or "").strip()
                 if not (title or user_need or suggestion or evidence):
                     continue
-                if decision in {"accept", "review"}:
-                    accepted.append({
-                        "title": title,
-                        "decision": decision,
-                        "next_action": next_action,
-                    })
                 lines.append(
                     f"- **{title}** [{priority}] ({decision})\n"
                     f"  - ユーザー要望: {user_need}\n"
@@ -598,38 +623,27 @@ def build_chat_reply(
                     str(parsed.get("save_title") or "AI改善候補"),
                     improvement_body,
                 )
-                if accepted:
-                    weekly_lines = ["## 今週の改善候補まとめ", ""]
-                    for item in accepted:
-                        weekly_lines.append(f"- {item['title']} ({item['decision']})")
-                        if item.get("next_action"):
-                            weekly_lines.append(f"  - 次アクション: {item['next_action']}")
-                    weekly_lines.append("")
-                    weekly_lines.append("### 今週の打ち手")
-                    weekly_lines.append("- 採用候補を優先実装し、保留は次週レビューへ回す。")
-                    weekly_save_result = append_weekly_review_note(
-                        str(parsed.get("weekly_save_title") or "週次改善レビュー"),
-                        "\n".join(weekly_lines).strip() + "\n",
-                    )
-        web_save_result = {"status": "skipped", "reason": "web note not needed"}
-        if web_hits and parsed.get("web_should_save") and parsed.get("web_save_body"):
-            web_save_result = append_web_note(
-                str(parsed.get("web_save_title") or "Web参照メモ"),
-                str(parsed.get("web_save_body") or ""),
-            )
-        wiki_save_result = {"status": "skipped", "reason": "wiki note not needed"}
-        wiki_body = str(parsed.get("wiki_save_body") or "").strip()
-        if obsidian_hits and parsed.get("wiki_should_save") and wiki_body:
-            wiki_save_result = append_wiki_note(
-                str(parsed.get("wiki_save_title") or "AI Wiki連携"),
-                wiki_body,
-                related_paths=[item.get("path", "") for item in obsidian_hits],
-            )
+        # Web/Wiki/Weekly saves are now handled by the simplified 8-field schema
+        # If needed in the future, these can be re-enabled by restoring the fields
 
-        # ===== Phase 1: Log latency metrics with cache info
+        # ===== Phase 1 & 3: Log latency metrics with RAG & cache info
         t_total = time.time() - t_start
+
+        # RAG メトリクスの取得
+        rag_metrics_str = ""
+        if RAG_ENABLED:
+            try:
+                rag_report = get_rag_performance_metrics()
+                rag_latency = rag_report.get("metrics", {}).get("latency", {})
+                rag_metrics_str = (
+                    f" | RAG[p95={rag_latency.get('p95_ms', 0):.1f}ms, "
+                    f"cache_hit_rate={rag_report.get('metrics', {}).get('cache_stats', {}).get('hit_rate', 0):.1f}%]"
+                )
+            except Exception:
+                pass
+
         logger.info(
-            f"PHASE1_LATENCY | "
+            f"PHASE1-3_LATENCY | "
             f"obsidian_search={t_obsidian_search:.3f}s | "
             f"obsidian_digest={t_obsidian_digest:.3f}s | "
             f"web_search={t_web_search:.3f}s | "
@@ -637,7 +651,7 @@ def build_chat_reply(
             f"total={t_total:.3f}s | "
             f"query_length={len(message)} | "
             f"hits={len(obsidian_hits)} | "
-            f"cache_status={from_cache}"
+            f"cache_status={from_cache}{rag_metrics_str}"
         )
 
         # ===== Phase 1 Step 2: Log cache statistics periodically
@@ -645,6 +659,12 @@ def build_chat_reply(
         stats = cache.get_stats()
         if stats["total_requests"] % 10 == 0:  # Log every 10 requests
             log_cache_stats(logger)
+            if RAG_ENABLED:
+                try:
+                    rag_report = get_rag_performance_metrics()
+                    logger.info(f"RAG メトリクス: {rag_report}")
+                except Exception:
+                    pass
 
         return {
             "reply": str(parsed.get("reply") or ""),
@@ -655,12 +675,6 @@ def build_chat_reply(
             "improvement_items": improvement_items,
             "web_used": bool(web_hits),
             "web_reason": str(parsed.get("web_reason") or ""),
-            "web_saved": web_save_result.get("status") == "saved",
-            "web_save_result": web_save_result,
-            "wiki_saved": wiki_save_result.get("status") == "saved",
-            "wiki_save_result": wiki_save_result,
-            "weekly_saved": weekly_save_result.get("status") == "saved",
-            "weekly_save_result": weekly_save_result,
             "obsidian_digest": obsidian_digest,
             "web_hits": web_hits,
             "obsidian_hits": obsidian_hits,
@@ -680,12 +694,6 @@ def build_chat_reply(
             "reply": f"AIチャットでエラーが発生しました: {exc}",
             "saved": False,
             "save_result": {"status": "error", "reason": str(exc)},
-            "web_saved": False,
-            "web_save_result": {"status": "error", "reason": str(exc)},
-            "wiki_saved": False,
-            "wiki_save_result": {"status": "error", "reason": str(exc)},
-            "weekly_saved": False,
-            "weekly_save_result": {"status": "error", "reason": str(exc)},
             "obsidian_digest": obsidian_digest if 'obsidian_digest' in locals() else {},
             "web_hits": web_hits if 'web_hits' in locals() else [],
             "obsidian_hits": obsidian_hits if 'obsidian_hits' in locals() else [],

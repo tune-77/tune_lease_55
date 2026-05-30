@@ -64,8 +64,8 @@ function extractRiskFactors(inputs: Record<string, unknown>, result: Record<stri
     risks.push({
       label: 'デフォルト確率（PD）',
       value: `${pd.toFixed(2)}%`,
-      benchmark: '目安 3%以下',
-      severity: pd > 6 ? 'high' : 'medium',
+      benchmark: pd > 8 ? '8%超 ＝ 強警戒' : '目安 3%以下・3〜8%=要注意',
+      severity: pd > 8 ? 'high' : 'medium',
     });
   }
   if (grade !== null && grade >= 7) {
@@ -104,25 +104,49 @@ function ConditionalRiskPanel({ score, inputs, result }: {
   if (score < 60 || score >= 70) return null;
 
   const risks = extractRiskFactors(inputs, result);
+  const highCount = risks.filter(r => r.severity === 'high').length;
+  const medCount = risks.filter(r => r.severity === 'medium').length;
 
   return (
     <div className="mb-5 p-4 bg-amber-50 border border-amber-300 rounded-xl">
-      <div className="flex items-center gap-2 mb-3">
+      {/* REV-026: ヘッダー + 重要度カウントバッジ */}
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
         <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0" />
         <span className="font-black text-amber-800 text-sm">条件付き承認 — 主要リスク要因</span>
         <span className="ml-auto text-xs font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">スコア {Math.round(score)}pt</span>
       </div>
+      {/* REV-026: 重要度サマリー行 */}
+      {risks.length > 0 && (
+        <div className="flex items-center gap-2 mb-3">
+          {highCount > 0 && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-black bg-rose-600 text-white px-2 py-0.5 rounded-full">
+              <AlertTriangle className="w-3 h-3" /> 高リスク {highCount}件
+            </span>
+          )}
+          {medCount > 0 && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-black bg-amber-500 text-white px-2 py-0.5 rounded-full">
+              <TrendingDown className="w-3 h-3" /> 要注意 {medCount}件
+            </span>
+          )}
+        </div>
+      )}
       {risks.length === 0 ? (
         <p className="text-xs text-amber-700 font-bold">詳細な財務データが取得できませんでした。レポートを参照してください。</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {risks.map(r => (
+          {risks.map((r, idx) => (
             <div key={r.label} className={`flex items-start gap-2 p-2.5 rounded-lg border ${r.severity === 'high' ? 'bg-rose-50 border-rose-200' : 'bg-amber-100/60 border-amber-200'}`}>
-              {r.severity === 'high'
-                ? <AlertTriangle className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
-                : <TrendingDown className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />}
-              <div>
-                <p className={`text-xs font-black ${r.severity === 'high' ? 'text-rose-700' : 'text-amber-800'}`}>{r.label}</p>
+              {/* REV-026: 順位番号 */}
+              <span className={`flex-shrink-0 w-5 h-5 rounded-full text-[10px] font-black flex items-center justify-center ${r.severity === 'high' ? 'bg-rose-500 text-white' : 'bg-amber-400 text-white'}`}>
+                {idx + 1}
+              </span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1 flex-wrap">
+                  <p className={`text-xs font-black ${r.severity === 'high' ? 'text-rose-700' : 'text-amber-800'}`}>{r.label}</p>
+                  {idx === 0 && r.severity === 'high' && (
+                    <span className="text-[9px] font-black bg-rose-600 text-white px-1 py-0.5 rounded">最優先</span>
+                  )}
+                </div>
                 <p className={`text-xs font-bold ${r.severity === 'high' ? 'text-rose-600' : 'text-amber-700'}`}>
                   {r.value} <span className="font-normal text-slate-500">（{r.benchmark}）</span>
                 </p>
