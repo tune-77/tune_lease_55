@@ -3,7 +3,8 @@
 import React, { useState } from 'react';
 import {
   HelpCircle, ChevronDown, ChevronUp, BookOpen, Cpu, Zap,
-  Building2, TrendingDown, Clock, RefreshCw, Wrench
+  Building2, TrendingDown, Clock, RefreshCw, Wrench,
+  Ban, RotateCcw, Factory, Percent, Landmark
 } from 'lucide-react';
 
 type FaqItem = {
@@ -500,6 +501,337 @@ const sections: FaqSection[] = [
               <li><strong>リース終了後の対応</strong>：再リース・返却・買取のいずれかを事前確認</li>
             </ul>
             <p className="text-[11px] text-slate-500 bg-slate-100 rounded p-2">リースバックは財務改善の有効手段ですが、当システムのAIスコアに加えて担当者の定性判断を重視してください。</p>
+          </div>
+        ),
+      },
+    ],
+  },
+
+  // REV-058/059: リース対象外物件の明確化
+  {
+    id: 'non-leaseable',
+    title: 'リース対象外となる物件・資産',
+    icon: <Ban className="w-5 h-5" />,
+    color: 'text-red-600',
+    items: [
+      {
+        q: 'リースにできない物件・資産の種類は？',
+        a: (
+          <div className="space-y-3">
+            <p>以下に該当する物件・資産は原則としてリースの対象外です。</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {[
+                { cat: '不動産', items: ['土地（原則対象外）', '建物・構築物本体', '内装工事（固着度が高いもの）'] },
+                { cat: '消耗品・短命資産', items: ['消耗品（文具・用紙等）', '耐用年数1年未満の資産', '一回使用で費消されるもの'] },
+                { cat: '無形資産', items: ['特許権・商標権・のれん', 'ソフトウェアライセンス（SaaS型）', '営業権・顧客リスト'] },
+                { cat: 'その他', items: ['生き物・農産物・水産物', '有価証券・金融商品', '既に所有権のない資産（他社リース中のもの）'] },
+              ].map(g => (
+                <div key={g.cat} className="bg-red-50 border border-red-100 rounded-lg p-3">
+                  <p className="font-black text-red-700 text-xs mb-1.5">{g.cat}</p>
+                  <ul className="space-y-0.5">
+                    {g.items.map(i => (
+                      <li key={i} className="text-xs text-slate-600 flex items-start gap-1.5">
+                        <span className="mt-1.5 w-1 h-1 rounded-full bg-red-300 flex-shrink-0" />
+                        {i}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-500 bg-slate-100 rounded p-2">※ 建物付属設備（電気・空調・給排水設備等）は取り外し可能かつ独立して使用できるものはリース対象になる場合があります。</p>
+          </div>
+        ),
+      },
+      {
+        q: '「固着した物件」はなぜリース対象外なのですか？',
+        a: (
+          <div className="space-y-2">
+            <p>リースは<strong>所有権がリース会社にあり、使用権のみユーザーが持つ</strong>取引形態です。そのため、取り外しや移動ができない固着設備（建物と一体化した内装・基礎工事等）は、リース会社が担保として回収・処分できないためリース不可となります。</p>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs">
+              <p className="font-black text-amber-700 mb-1">判断基準の目安</p>
+              <ul className="list-disc ml-4 space-y-0.5 text-slate-600">
+                <li>取り外しに建物解体が必要 → 対象外</li>
+                <li>独立して機能・使用できる → 対象の可能性あり</li>
+                <li>撤去・移設コストが物件価値の50%超 → 要協議</li>
+              </ul>
+            </div>
+          </div>
+        ),
+      },
+      {
+        q: '中古品・既存設備はリース対象になりますか？',
+        a: (
+          <div className="space-y-2">
+            <p>中古品はリース対象になる場合がありますが、以下の条件を確認する必要があります：</p>
+            <ul className="list-disc ml-4 text-xs space-y-1">
+              <li><strong>残存耐用年数</strong>：リース期間より長い残存年数があること</li>
+              <li><strong>市場価格の確認</strong>：適正な中古市場価格を査定できること</li>
+              <li><strong>所有権の明確化</strong>：売主に確実な所有権があること（担保・抵当権等がないこと）</li>
+              <li><strong>動作確認</strong>：設備が正常に稼働しており、保守可能であること</li>
+            </ul>
+          </div>
+        ),
+      },
+    ],
+  },
+
+  // REV-063: リース物件の処分・返却・再リース
+  {
+    id: 'lease-end',
+    title: 'リース期間満了・返却・再リース',
+    icon: <RotateCcw className="w-5 h-5" />,
+    color: 'text-teal-600',
+    items: [
+      {
+        q: 'リース期間が終了したらどうなりますか？',
+        a: (
+          <div className="space-y-3">
+            <p>リース期間満了時には主に以下の3つの選択肢があります：</p>
+            <div className="grid grid-cols-1 gap-2">
+              {[
+                { icon: '①', label: '返却', desc: 'リース会社に物件を返却して契約終了。次の最新機器へのリースに乗り換え可能。', color: 'bg-sky-50 border-sky-200 text-sky-800' },
+                { icon: '②', label: '再リース（継続使用）', desc: '同じ物件を通常より低いリース料で継続してリース。再リース料は通常、元のリース料の1/10〜1/5程度。', color: 'bg-emerald-50 border-emerald-200 text-emerald-800' },
+                { icon: '③', label: '買取（購入）', desc: '残価（帳簿価額・市場価値等）で物件を購入。オペレーティングリースでは選択肢にない場合あり。', color: 'bg-amber-50 border-amber-200 text-amber-800' },
+              ].map(opt => (
+                <div key={opt.icon} className={`p-3 rounded-lg border ${opt.color}`}>
+                  <p className="font-black text-sm mb-1">{opt.icon} {opt.label}</p>
+                  <p className="text-xs leading-relaxed">{opt.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ),
+      },
+      {
+        q: '中途解約はできますか？違約金はどのくらいですか？',
+        a: (
+          <div className="space-y-2">
+            <p>ファイナンスリースは原則として<strong>中途解約不可</strong>です。やむを得ない事情での解約時は、残存リース料相当額（残存リース料総額 − 利息相当額）が違約金として請求されます。</p>
+            <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 text-xs">
+              <p className="font-black text-rose-700 mb-1">違約金の目安</p>
+              <p className="text-slate-600">残存リース料の80〜100%程度が一般的。残期間が長いほど負担が大きい。</p>
+              <p className="text-slate-600 mt-1">例: 月額リース料10万円・残20ヶ月の場合 → 160〜200万円程度</p>
+            </div>
+            <p className="text-[11px] text-slate-500">オペレーティングリースは物件や契約条件により中途解約条項が設けられることがあります。契約書の確認が必要です。</p>
+          </div>
+        ),
+      },
+      {
+        q: '返却時の物件の状態・原状回復義務はどうなりますか？',
+        a: (
+          <div className="space-y-2">
+            <p>返却時は<strong>通常の使用による自然消耗を超えた損耗・破損</strong>がある場合、修繕費用をユーザーが負担します。</p>
+            <ul className="list-disc ml-4 text-xs space-y-1">
+              <li>通常の使用による摩耗・劣化：ユーザー負担なし</li>
+              <li>改造・無断加工による損傷：ユーザー負担（原状回復義務）</li>
+              <li>事故・水没等による損傷：ユーザー負担（保険でカバー可能なケースあり）</li>
+              <li>データ消去：IT機器の場合、ユーザーが完全消去を証明する義務あり</li>
+            </ul>
+          </div>
+        ),
+      },
+    ],
+  },
+
+  // REV-064: 業種別リース物件例
+  {
+    id: 'industry-items',
+    title: '業種別リース物件の例',
+    icon: <Factory className="w-5 h-5" />,
+    color: 'text-orange-600',
+    items: [
+      {
+        q: '製造業・建設業でよく使われるリース物件は？',
+        a: (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="bg-orange-50">
+                  <th className="border border-slate-200 px-3 py-2 text-left font-black text-orange-800">業種</th>
+                  <th className="border border-slate-200 px-3 py-2 text-left font-black text-orange-800">代表的なリース物件</th>
+                  <th className="border border-slate-200 px-3 py-2 text-center font-black text-orange-800">耐用年数目安</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ['金属加工・製造', '工作機械・プレス機・NC旋盤・溶接機', '10〜15年'],
+                  ['食品製造', '冷凍冷蔵庫・包装機・充填機・殺菌装置', '8〜12年'],
+                  ['建設・土木', '油圧ショベル・クレーン・フォークリフト・高所作業車', '6〜15年'],
+                  ['印刷・出版', 'オフセット印刷機・デジタル印刷機・断裁機', '8〜10年'],
+                  ['物流・倉庫', 'フォークリフト・自動倉庫システム・仕分け機', '4〜12年'],
+                ].map(([ind, items, years]) => (
+                  <tr key={ind} className="even:bg-white odd:bg-slate-50/40">
+                    <td className="border border-slate-200 px-3 py-2 font-bold text-slate-700">{ind}</td>
+                    <td className="border border-slate-200 px-3 py-2 text-slate-600">{items}</td>
+                    <td className="border border-slate-200 px-3 py-2 text-center font-bold text-orange-700">{years}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ),
+      },
+      {
+        q: 'サービス業・医療・飲食業でよく使われるリース物件は？',
+        a: (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="bg-indigo-50">
+                  <th className="border border-slate-200 px-3 py-2 text-left font-black text-indigo-800">業種</th>
+                  <th className="border border-slate-200 px-3 py-2 text-left font-black text-indigo-800">代表的なリース物件</th>
+                  <th className="border border-slate-200 px-3 py-2 text-center font-black text-indigo-800">耐用年数目安</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ['医療・クリニック', 'CT・MRI・レントゲン・内視鏡・手術ロボット', '5〜7年'],
+                  ['飲食・ホテル', '業務用厨房機器・食洗機・製氷機・エスプレッソマシン', '6〜10年'],
+                  ['美容・エステ', '美容医療機器・脱毛レーザー・エステ機器', '5〜8年'],
+                  ['小売・店舗', 'POS端末・セルフレジ・冷蔵ショーケース・電子棚札', '5〜10年'],
+                  ['オフィス・IT', 'サーバー・PC・複合機・ネットワーク機器', '4〜8年'],
+                ].map(([ind, items, years]) => (
+                  <tr key={ind} className="even:bg-white odd:bg-slate-50/40">
+                    <td className="border border-slate-200 px-3 py-2 font-bold text-slate-700">{ind}</td>
+                    <td className="border border-slate-200 px-3 py-2 text-slate-600">{items}</td>
+                    <td className="border border-slate-200 px-3 py-2 text-center font-bold text-indigo-700">{years}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ),
+      },
+    ],
+  },
+
+  // REV-066: 残価設定ガイドライン
+  {
+    id: 'residual-value',
+    title: '残価（リジデュアルバリュー）の設定ガイドライン',
+    icon: <Percent className="w-5 h-5" />,
+    color: 'text-violet-600',
+    items: [
+      {
+        q: '残価とは何ですか？リースにどう影響しますか？',
+        a: (
+          <div className="space-y-2">
+            <p><strong>残価（Residual Value / RV）</strong>とはリース期間終了時点での物件の推定市場価値です。オペレーティングリースでは残価をリース会社が保証するため、ユーザーの月次リース料を低く抑えられます。</p>
+            <div className="bg-violet-50 border border-violet-200 rounded-lg p-3 text-xs">
+              <p className="font-black text-violet-700 mb-1">リース料計算への影響</p>
+              <p className="text-slate-600">月次リース料 ＝ （物件価格 − 残価） ÷ リース期間 ＋ 金利コスト</p>
+              <p className="text-slate-600 mt-1">残価が高いほど月次リース料が低くなる（ただし残価リスクはリース会社が負担）</p>
+            </div>
+          </div>
+        ),
+      },
+      {
+        q: '物件別の残価設定目安を教えてください',
+        a: (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="bg-violet-50">
+                  <th className="border border-slate-200 px-3 py-2 text-left font-black text-violet-800">物件カテゴリ</th>
+                  <th className="border border-slate-200 px-3 py-2 text-center font-black text-violet-800">残価率目安（取得価格比）</th>
+                  <th className="border border-slate-200 px-3 py-2 text-left font-black text-violet-800">ポイント</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ['車両（商用・乗用）', '20〜40%', '市場流動性が高く残価は安定'],
+                  ['建設機械・フォークリフト', '25〜45%', 'ブランド・稼働時間が価値に影響'],
+                  ['工作機械・製造設備', '15〜30%', '機種・精度・産業需要に依存'],
+                  ['PC・IT機器', '5〜15%', '陳腐化が速く残価は低め'],
+                  ['医療機器', '20〜35%', '認可維持・メーカーサポートが重要'],
+                  ['太陽光発電設備', '30〜50%', '売電契約・FITが価値を左右'],
+                ].map(([cat, rv, note]) => (
+                  <tr key={cat} className="even:bg-white odd:bg-slate-50/40">
+                    <td className="border border-slate-200 px-3 py-2 font-bold text-slate-700">{cat}</td>
+                    <td className="border border-slate-200 px-3 py-2 text-center font-black text-violet-700">{rv}</td>
+                    <td className="border border-slate-200 px-3 py-2 text-slate-600">{note}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ),
+      },
+      {
+        q: '残価リスクとはどのようなリスクですか？',
+        a: (
+          <div className="space-y-2">
+            <p>残価リスクとは、<strong>期間満了時の実際の市場価値が設定残価を下回るリスク</strong>です。オペレーティングリースではリース会社がこのリスクを負います。</p>
+            <ul className="list-disc ml-4 text-xs space-y-1">
+              <li><strong>技術革新リスク</strong>：IT機器・医療機器は新技術により旧型の価値が急落</li>
+              <li><strong>市場需給リスク</strong>：景気後退で中古市場全体の価格が下落</li>
+              <li><strong>法規制リスク</strong>：環境規制強化（排ガス・フロン規制等）で特定物件が流通不可に</li>
+              <li><strong>損耗リスク</strong>：使用状況が悪く想定以上に価値が劣化</li>
+            </ul>
+            <p className="text-[11px] text-slate-500 bg-slate-100 rounded p-2">審査上は「残価設定が高いオペレーティングリース案件」では物件の市場流動性・将来需要を特に慎重に評価してください。</p>
+          </div>
+        ),
+      },
+    ],
+  },
+
+  // REV-077: 固定資産税とリースの関係
+  {
+    id: 'property-tax',
+    title: '固定資産税とリースの関係',
+    icon: <Landmark className="w-5 h-5" />,
+    color: 'text-slate-600',
+    items: [
+      {
+        q: 'リース物件の固定資産税は誰が払いますか？',
+        a: (
+          <div className="space-y-2">
+            <p>リース物件の<strong>固定資産税はリース会社（所有者）が納税義務者</strong>となります。ただし、その固定資産税相当額はリース料に含まれてユーザーが実質的に負担します。</p>
+            <div className="bg-slate-100 border border-slate-200 rounded-lg p-3 text-xs">
+              <p className="font-black text-slate-700 mb-1">リース料の内訳（概念）</p>
+              <div className="space-y-1 text-slate-600">
+                <p>リース料 ＝ 物件取得原価の回収分</p>
+                <p>　　　　　＋ 固定資産税相当額</p>
+                <p>　　　　　＋ 金利（資金調達コスト）</p>
+                <p>　　　　　＋ リース会社の利益・諸経費</p>
+              </div>
+            </div>
+          </div>
+        ),
+      },
+      {
+        q: '固定資産税はどのくらいの金額になりますか？',
+        a: (
+          <div className="space-y-2">
+            <p>固定資産税の税率は原則<strong>1.4%（評価額に対して）</strong>です。減価償却により評価額は毎年減少します。</p>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs">
+              <p className="font-black text-slate-700 mb-1">概算例（取得価格1,000万円の設備の場合）</p>
+              <div className="space-y-0.5 text-slate-600">
+                <p>初年度: 評価額≒700万円 × 1.4% ＝ 約98,000円/年</p>
+                <p>3年目: 評価額≒400万円 × 1.4% ＝ 約56,000円/年</p>
+                <p>5年目: 評価額≒200万円 × 1.4% ＝ 約28,000円/年</p>
+              </div>
+            </div>
+          </div>
+        ),
+      },
+      {
+        q: 'ファイナンスリースとオペレーティングリースで固定資産税の扱いは違いますか？',
+        a: (
+          <div className="space-y-2">
+            <p>所有権がリース会社にある場合、<strong>どちらのリース形態でも固定資産税の納税義務者はリース会社</strong>です。ただし会計処理上の扱いに注意が必要です。</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="font-black text-blue-700 mb-1">ファイナンスリース</p>
+                <p className="text-slate-600">固定資産税相当額はリース料の一部として費用計上。リース資産・負債は借手が計上（IFRS/日本基準）。</p>
+              </div>
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                <p className="font-black text-emerald-700 mb-1">オペレーティングリース</p>
+                <p className="text-slate-600">固定資産税相当額を含むリース料全額を費用（支払リース料）として計上。資産・負債はオフバランス。</p>
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-500">※ 所有権移転ファイナンスリースでは最終的にユーザーが所有者となるため、以降の固定資産税はユーザーが直接納税します。</p>
           </div>
         ),
       },
