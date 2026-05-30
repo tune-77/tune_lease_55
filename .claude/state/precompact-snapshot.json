@@ -13,10 +13,10 @@
       }
     },
     "recommended": true,
-    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 6684 session age (minutes) exceed threshold 120",
+    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 7847 session age (minutes) exceed threshold 120",
     "reasons": [
       "20 recent edit count exceed threshold 8",
-      "6684 session age (minutes) exceed threshold 120"
+      "7847 session age (minutes) exceed threshold 120"
     ],
     "candidates": [
       {
@@ -50,7 +50,7 @@
       {
         "key": "session_age_minutes",
         "label": "session age (minutes)",
-        "actual": 6684,
+        "actual": 7847,
         "threshold": 120,
         "triggered": true
       }
@@ -60,7 +60,7 @@
       "blockedTasks": 0,
       "recentEdits": 20,
       "failedChecks": 0,
-      "sessionAgeMinutes": 6684
+      "sessionAgeMinutes": 7847
     }
   },
   "continuity": {
@@ -84,17 +84,17 @@
     ".claude/state/session-events.jsonl.3",
     ".claude/state/session-events.jsonl.4",
     ".claude/state/session-events.jsonl.5",
+    ".claude/state/session-skills-used.json",
     ".claude/state/session.json",
     ".claude/state/test-recommendation.json",
     ".claude/state/tooling-policy.json",
     ".claude/state/usage-stats.jsonl",
-    "api/main.py",
-    "frontend/.claude/state/changed-files.jsonl",
-    "frontend/src/app/knowledge-space/page.tsx",
-    "frontend/src/components/layout/Sidebar.tsx"
+    "scripts/sync_implemented_to_obsidian.py",
+    "models/lgbm_model.bak.pkl",
+    "models/spread_predictor_v2.bak.pkl"
   ],
   "sessionId": "",
-  "timestamp": "2026-05-29T12:41:24Z",
+  "timestamp": "2026-05-30T08:04:27Z",
   "version": "1.0.0",
   "wipTasks": null
 }

@@ -220,6 +220,32 @@ class LocalVectorDB:
         logger.info(f"✅ {len(response)} 件の結果を取得")
         return response
     
+    def delete(self, document_ids: list[str]) -> int:
+        """
+        PHASE 2: ドキュメントを削除
+
+        Args:
+            document_ids: 削除するドキュメント ID のリスト
+
+        Returns:
+            実際に削除されたドキュメント数
+        """
+        logger.info(f"🗑️  {len(document_ids)} 個のドキュメント削除中...")
+
+        deleted_count = 0
+        for doc_id in document_ids:
+            if doc_id in self.index.vectors:
+                self.index.delete_vector(doc_id)
+                deleted_count += 1
+            else:
+                logger.warning(f"⚠️  ドキュメント {doc_id} は存在しません")
+
+        if deleted_count > 0:
+            self.index._save()
+
+        logger.info(f"✅ 削除完了: {deleted_count} / {len(document_ids)} 件")
+        return deleted_count
+
     def get_stats(self) -> dict:
         """DB の統計情報を取得"""
         return self.index.get_stats()
