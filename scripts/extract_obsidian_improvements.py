@@ -398,6 +398,39 @@ def main() -> None:
     deduped = deduplicate_improvements(raw_improvements)
     after_count = len(deduped)
 
+    # 実装済み除外リスト（インデックスファイルの「実装済み改善一覧」セクションから読み込む）
+    implemented_titles: set[str] = set()
+    try:
+        idx_content = index_file.read_text(encoding="utf-8")
+        in_impl_section = False
+        for line in idx_content.splitlines():
+            stripped = line.strip()
+            if "実装済み改善一覧" in stripped and stripped.startswith("#"):
+                in_impl_section = True
+                continue
+            if in_impl_section and stripped.startswith("#"):
+                break  # 次セクションで終了
+            if in_impl_section and stripped.startswith("✅ 実装済"):
+                title = _normalize_title(stripped.replace("✅ 実装済", "").lstrip())
+                if title:
+                    implemented_titles.add(title)
+    except Exception:
+        pass
+
+    if implemented_titles:
+        before_impl = len(deduped)
+        deduped = [
+            imp for imp in deduped
+            if not any(
+                t in _normalize_title(imp["title"]) or _normalize_title(imp["title"]) in t
+                for t in implemented_titles
+            )
+        ]
+        skipped = before_impl - len(deduped)
+        if skipped:
+            print(f"実装済み除外: {skipped}件スキップ（残り{len(deduped)}件）")
+        after_count = len(deduped)
+
     # AI統合（Gemini APIが使えない場合は deduped をそのまま使用）
     consolidate_with_ai = _load_consolidator()
     if consolidate_with_ai is not None:
