@@ -8,6 +8,7 @@ interface SliderInputProps {
   max: number;
   step: number;
   unit?: string;
+  hint?: string;
   onChange: (name: string, value: number) => void;
 }
 
@@ -19,6 +20,7 @@ export default function SliderInput({
   max,
   step,
   unit = "百万円",
+  hint,
   onChange
 }: SliderInputProps) {
   // ローカル文字列state: 入力中の中間状態（"-", "1.", "-0." など）を保持
@@ -110,6 +112,7 @@ export default function SliderInput({
           <span className="text-slate-500 sm:text-sm font-medium whitespace-nowrap">{unit}</span>
         </div>
       </div>
+      {hint && <p className="text-[10px] text-slate-400 mt-2">{hint}</p>}
     </div>
   );
 }

@@ -146,18 +146,21 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
             <select name="main_bank" value={data.main_bank} onChange={handleChange} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 h-[46px]">
               <option>メイン先</option><option>非メイン先</option>
             </select>
+            <p className="text-[10px] text-slate-400 mt-0.5">メイン先は与信スコアが優遇されます</p>
           </div>
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">顧客区分</label>
             <select name="customer_type" value={data.customer_type} onChange={handleChange} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 h-[46px]">
               <option>既存先</option><option>新規先</option>
             </select>
+            <p className="text-[10px] text-slate-400 mt-0.5">既存先は継続取引として加点されます</p>
           </div>
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">商談ソース</label>
             <select name="deal_source" value={data.deal_source} onChange={handleChange} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 h-[46px]">
               <option>銀行紹介</option><option>その他</option>
             </select>
+            <p className="text-[10px] text-slate-400 mt-0.5">銀行紹介は信頼スコアが加点されます</p>
           </div>
         </div>
 
@@ -204,6 +207,7 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
               <option>③要注意以下</option>
               <option>④無格付</option>
             </select>
+            <p className="text-[10px] text-slate-400 mt-0.5">銀行内部格付。①1-3が最優良。審査スコアに直結します</p>
           </div>
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">契約種類</label>
@@ -248,11 +252,13 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">銀行与信残高 (百万円)</label>
             <input type="number" name="bank_credit" value={data.bank_credit} step="0.1" onChange={handleChange} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
+            <p className="text-[10px] text-slate-400 mt-0.5">現在の銀行借入残高（百万円単位）</p>
           </div>
-          
+
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">リース与信残高 (百万円)</label>
             <input type="number" name="lease_credit" value={data.lease_credit} step="0.1" onChange={handleChange} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
+            <p className="text-[10px] text-slate-400 mt-0.5">他社含む現在のリース残高（百万円単位）</p>
           </div>
         </div>
 

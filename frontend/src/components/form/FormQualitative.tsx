@@ -172,14 +172,17 @@ export default function FormQualitative({ data, onChange }: FormQualitativeProps
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">物件取得価額 (百万円)</label>
             <input type="number" name="acquisition_cost" value={data.acquisition_cost} step="0.1" onChange={handleNumber} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
+            <p className="text-[10px] text-slate-400 mt-0.5">購入価格または見積額（百万円単位）</p>
           </div>
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">リース期間 (月)</label>
             <input type="number" name="lease_term" value={data.lease_term} onChange={handleNumber} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
+            <p className="text-[10px] text-slate-400 mt-0.5">月数で入力 (例: 3年=36ヶ月、5年=60ヶ月)</p>
           </div>
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">検収年 (西暦)</label>
             <input type="number" name="acceptance_year" value={data.acceptance_year} onChange={handleNumber} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
+            <p className="text-[10px] text-slate-400 mt-0.5">物件を受け取った年または予定年（西暦4桁）</p>
           </div>
         </div>
       </div>
@@ -214,7 +217,8 @@ export default function FormQualitative({ data, onChange }: FormQualitativeProps
         </div>
 
         <div className="mt-8 border-t border-slate-100 pt-6">
-          <label className="text-sm font-bold text-slate-600 block mb-2">🎈 直感スコア (1:懸念あり 〜 5:確信あり)</label>
+          <label className="text-sm font-bold text-slate-600 block mb-1">🎈 直感スコア (1:懸念あり 〜 5:確信あり)</label>
+          <p className="text-[10px] text-slate-400 mb-2">訪問後の現場感覚を数値化。AIの補正係数に反映されます</p>
           <SliderInput label="" name="intuition" value={data.intuition} min={1} max={5} step={1} unit="点" onChange={handleSlider} />
         </div>
 
