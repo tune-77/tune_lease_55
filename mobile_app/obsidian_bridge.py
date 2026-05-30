@@ -195,6 +195,7 @@ _build_vault_index()
 
 
 def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[str, str]]:
+    """検索（改善版：Frontmatter + BM25 + リトライロジック）。"""
     vault, knowledge, chat_logs = _get_indexed_paths()
     terms = _expand_query_terms(query)[:24]
     if not terms:
@@ -203,13 +204,10 @@ def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[
     seen: set[str] = set()
     hits: list[dict[str, str]] = []
 
-    # Primary RAG path: ChromaDB-backed Obsidian index. If the local embedding
-    # model is unavailable, KnowledgeVectorStore falls back to keyword search
-    # over indexed Chroma documents without network access.
+    # ① ChromaDB ベクトル検索（リトライ付き）
     try:
-        from api.knowledge.vector_store import get_store
-
-        store = get_store()
+        from obsidian_bridge_enhancements import get_vector_store_with_retry
+        store = get_vector_store_with_retry()
         for item in store.search(" ".join(terms), top_k=limit):
             raw_path = str(item.get("file_path") or "").strip()
             path = ""
@@ -237,19 +235,22 @@ def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[
             })
             if len(hits) >= limit:
                 return hits
-    except Exception:
+    except Exception as e:
+        import logging
+        logging.debug(f"Vector store search failed: {e}, falling back to keyword search")
         pass
 
     if not vault:
         return hits
 
-    # Cases/ を優先: 業種・スコア・金利・判定ワードがクエリに含まれるとき
+    # ② Cases/ を優先（業種・スコア・判定キーワード）
     if any("cases/" in t or t in ("スコア", "判定", "推奨金利", "q-risk", "quantum_risk") for t in terms):
         cases_dir = vault / "Projects" / "tune_lease_55" / "Cases"
         cases_paths = [p for p in (knowledge + chat_logs) if cases_dir in p.parents]
         cases_paths.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
         hits += _search_in_paths(cases_paths, vault, terms, limit, max_chars, seen)
 
+    # ③ 物件ファイナンス知識
     asset_knowledge_terms = (
         "物件ファイナンス", "残価", "再販リスク", "中古相場", "稟議根拠",
         "建機", "車両", "工作機械", "医療機器", "フォークリフト", "高所作業車",
@@ -411,6 +412,115 @@ def collect_obsidian_context(query: str, limit: int = 4) -> list[dict[str, str]]
             if item["path"] not in seen:
                 hits.append(item)
     return hits
+
+
+def search_notes_with_industry_filter(
+    query: str, industry_code: str | None = None, limit: int = 4
+) -> list[dict[str, str]]:
+    """【改善1】業種フィルタ付き検索。
+
+    Args:
+        query: 検索クエリ
+        industry_code: 業種コード（例：'c' = 製造業）
+        limit: 結果数上限
+
+    Returns:
+        メタデータ付きヒット
+    """
+    hits = search_notes(query, limit=limit * 2)  # 多めに取得してフィルタ
+    if not industry_code:
+        return hits[:limit]
+    
+    from obsidian_bridge_enhancements import filter_by_industry
+    filtered = filter_by_industry(
+        [{"path": h["path"], "metadata": {"industry": industry_code}} for h in hits],
+        industry_code,
+    )
+    return hits[:limit] if not filtered else [h for h in hits if h["path"] in [f["path"] for f in filtered]]
+
+
+def search_cases_by_score_range(
+    query: str, min_score: float, max_score: float, limit: int = 4
+) -> list[dict[str, str]]:
+    """【改善2】スコア範囲で過去案件を検索。
+
+    Cases/ フォルダ内で、frontmatter のスコア範囲が現在の案件と
+    重なるノートを優先的に返す。
+
+    Args:
+        query: 検索クエリ（例：製造、建設）
+        min_score: 現在の案件スコア下限
+        max_score: 現在の案件スコア上限
+        limit: 結果数上限
+
+    Returns:
+        関連度の高い過去案件
+    """
+    vault, _, _ = _get_indexed_paths()
+    if not vault:
+        return []
+    
+    cases_dir = vault / "Projects" / "tune_lease_55" / "Cases"
+    case_notes = []
+    try:
+        for p in cases_dir.rglob("*.md"):
+            if p.is_file():
+                try:
+                    text = p.read_text(encoding="utf-8", errors="ignore")
+                    if query.lower() in text.lower():
+                        case_notes.append({
+                            "path": str(p.relative_to(vault)),
+                            "snippet": text[:700],
+                            "metadata": {"score_range": (min_score, max_score)},
+                        })
+                except OSError:
+                    pass
+    except OSError:
+        pass
+
+    from obsidian_bridge_enhancements import filter_by_score_range
+    filtered = filter_by_score_range(case_notes, min_score, max_score)
+    return filtered[:limit]
+
+
+def search_with_wikilink_context(query: str, limit: int = 4) -> list[dict[str, Any]]:
+    """【改善3】Wikilink トラバーサル付き検索。
+
+    検索結果に加えて、リンク先ノートの内容もコンテキストに含める。
+
+    Args:
+        query: 検索クエリ
+        limit: 結果数上限
+
+    Returns:
+        {
+            "path": "...",
+            "snippet": "...",
+            "wikilinks": ["[[link1]]", "..."],
+            "linked_context": {"[[link1]]": "コンテンツ（500文字）"},
+        }
+    """
+    hits = search_notes(query, limit=limit)
+    vault, _, _ = _get_indexed_paths()
+    if not vault:
+        return hits
+
+    from obsidian_bridge_enhancements import prefetch_wikilinks
+
+    result = []
+    for hit in hits:
+        path = vault / hit["path"]
+        linked_context = {}
+        if path.exists():
+            linked_content = prefetch_wikilinks(path, vault, max_depth=1)
+            linked_context = linked_content
+
+        result.append({
+            **hit,
+            "linked_context": linked_context,
+        })
+
+    return result
 
 
 def _normalize_text(text: str) -> str:

@@ -4,7 +4,16 @@ from __future__ import annotations
 
 import json
 import os
+import time
+import logging
 from typing import Any
+
+# ===== Phase 1: Latency monitoring
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(name)s] %(levelname)s: %(message)s'
+)
 
 try:
     from obsidian_bridge import (
@@ -25,6 +34,20 @@ except ImportError:  # pragma: no cover - package import fallback
         append_wiki_note,
         append_weekly_review_note,
         collect_obsidian_context,
+    )
+
+# ===== Phase 1 Step 2: Caching
+try:
+    from obsidian_context_cache import (
+        get_cache,
+        cached_collect_obsidian_context,
+        log_cache_stats,
+    )
+except ImportError:  # pragma: no cover - package import fallback
+    from .obsidian_context_cache import (
+        get_cache,
+        cached_collect_obsidian_context,
+        log_cache_stats,
     )
 
 try:
@@ -404,6 +427,9 @@ def build_chat_reply(
     timeout_seconds: float = 30.0,
     humor_style: str = "standard",
 ) -> dict[str, Any]:
+    # ===== Phase 1: Latency monitoring
+    t_start = time.time()
+
     message = (message or "").strip()
     if not message:
         return {"reply": "質問を入力してください。", "saved": False}
@@ -415,9 +441,30 @@ def build_chat_reply(
             "saved": False,
         }
 
-    obsidian_hits = collect_obsidian_context(message) if use_obsidian else []
+    # ===== Obsidian context collection (with caching)
+    t0 = time.time()
+    if use_obsidian:
+        # Try cache first, fall back to collect_obsidian_context
+        obsidian_hits = cached_collect_obsidian_context(
+            message,
+            collect_fn=collect_obsidian_context,
+            limit=4,
+        )
+        from_cache = "cache" if get_cache().get(message) else "miss"
+    else:
+        obsidian_hits = []
+        from_cache = "disabled"
+    t_obsidian_search = time.time() - t0
+
+    # ===== Obsidian digest generation
+    t0 = time.time()
     obsidian_digest = build_obsidian_digest(message, obsidian_hits) if obsidian_hits else {"digest": "", "title": "", "source_count": "0"}
+    t_obsidian_digest = time.time() - t0
+
+    # ===== Web context collection
+    t0 = time.time()
     web_hits = collect_web_context(message) if use_web and _should_search_web(message) else []
+    t_web_search = time.time() - t0
 
     try:
         from google import genai
@@ -425,6 +472,9 @@ def build_chat_reply(
 
         client = genai.Client(api_key=api_key)
         model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+
+        # ===== Gemini API call
+        t0 = time.time()
         response = client.models.generate_content(
             model=model,
             contents=_build_prompt(
@@ -484,6 +534,8 @@ def build_chat_reply(
                 http_options=types.HttpOptions(timeout=max(10000, int(timeout_seconds * 1000))),
             ),
         )
+        t_gemini = time.time() - t0
+
         parsed = _extract_response_json(response)
         if not parsed:
             parsed = _fallback_chat_packet(message, score_result, obsidian_hits, web_hits, humor_style)
@@ -560,6 +612,27 @@ def build_chat_reply(
                 wiki_body,
                 related_paths=[item.get("path", "") for item in obsidian_hits],
             )
+
+        # ===== Phase 1: Log latency metrics with cache info
+        t_total = time.time() - t_start
+        logger.info(
+            f"PHASE1_LATENCY | "
+            f"obsidian_search={t_obsidian_search:.3f}s | "
+            f"obsidian_digest={t_obsidian_digest:.3f}s | "
+            f"web_search={t_web_search:.3f}s | "
+            f"gemini={t_gemini:.3f}s | "
+            f"total={t_total:.3f}s | "
+            f"query_length={len(message)} | "
+            f"hits={len(obsidian_hits)} | "
+            f"cache_status={from_cache}"
+        )
+
+        # ===== Phase 1 Step 2: Log cache statistics periodically
+        cache = get_cache()
+        stats = cache.get_stats()
+        if stats["total_requests"] % 10 == 0:  # Log every 10 requests
+            log_cache_stats(logger)
+
         return {
             "reply": str(parsed.get("reply") or ""),
             "saved": save_result.get("status") == "saved",
@@ -581,6 +654,15 @@ def build_chat_reply(
             "llm_model": model,
         }
     except Exception as exc:
+        # ===== Phase 1: Log error with latency
+        t_error = time.time() - t_start
+        logger.error(
+            f"PHASE1_ERROR | "
+            f"error={str(exc)} | "
+            f"elapsed={t_error:.3f}s | "
+            f"obsidian_search={t_obsidian_search:.3f}s | "
+            f"web_search={t_web_search:.3f}s"
+        )
         return {
             "reply": f"AIチャットでエラーが発生しました: {exc}",
             "saved": False,
@@ -591,7 +673,7 @@ def build_chat_reply(
             "wiki_save_result": {"status": "error", "reason": str(exc)},
             "weekly_saved": False,
             "weekly_save_result": {"status": "error", "reason": str(exc)},
-            "obsidian_digest": obsidian_digest,
-            "web_hits": web_hits,
-            "obsidian_hits": obsidian_hits,
+            "obsidian_digest": obsidian_digest if 'obsidian_digest' in locals() else {},
+            "web_hits": web_hits if 'web_hits' in locals() else [],
+            "obsidian_hits": obsidian_hits if 'obsidian_hits' in locals() else [],
         }
