@@ -25,6 +25,11 @@ if [ ! -x "${PYTHON}" ]; then
     exit 1
 fi
 
+# --- Step -1: git コミット履歴から実装済みを Obsidian に自動追記 ---
+echo ""
+echo "[Step -1] 実装済み改善を Obsidian インデックスに自動同期中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/sync_implemented_to_obsidian.py" || true
+
 # --- Step 0: Obsidian 改善インデックス抽出 ---
 echo ""
 echo "[Step 0] Obsidian 改善インデックスから改善案を抽出中..."
