@@ -10,7 +10,7 @@ import {
   Eye, BarChart3, TrendingUp, Globe, ChevronDown, ChevronRight, Building,
   PanelLeftClose, PanelLeftOpen, X, Table2, Swords, MessageCircle,
   BarChart2, Building2, BookOpen, Gift, HelpCircle, Megaphone, Calculator,
-  Receipt, LifeBuoy, ClipboardList, CreditCard, Activity
+  Receipt, LifeBuoy, ClipboardList, CreditCard, Activity, GitMerge, Briefcase
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
 
@@ -28,6 +28,7 @@ export default function Sidebar() {
         { name: '審査・分析', href: '/', icon: ClipboardCheck, color: 'text-emerald-400' },
         { name: '審査レポート', href: '/report', icon: FileText, color: 'text-indigo-400' },
         { name: 'バッチ審査', href: '/batch', icon: Zap, color: 'text-yellow-400' },
+        { name: '動的金利提案エンジン', href: '/rate-engine', icon: Zap, color: 'text-amber-400' },
         { name: '物件ファイナンス審査', href: '/finance', icon: Factory, color: 'text-stone-400' },
       ]
     },
@@ -38,6 +39,7 @@ export default function Sidebar() {
         { name: 'マルチエージェント討論審査', href: '/debate', icon: Swords, color: 'text-violet-500' },
         { name: '結果登録 (成約/失注)', href: '/register', icon: PenTool, color: 'text-rose-400' },
         { name: '過去案件一覧', href: '/cases', icon: Table2, color: 'text-cyan-400' },
+        { name: 'カウンターファクチュアル分析', href: '/counterfactual', icon: GitMerge, color: 'text-fuchsia-400' },
       ]
     },
     {
@@ -45,6 +47,7 @@ export default function Sidebar() {
       items: [
         { name: '履歴分析・ダッシュボード', href: '/history-dash', icon: PieChart, color: 'text-sky-400' },
         { name: '営業部ダッシュボード', href: '/department', icon: Users, color: 'text-emerald-400' },
+        { name: '業種別成約率分析', href: '/industry-stats', icon: Briefcase, color: 'text-sky-500' },
         { name: '3期財務分析', href: '/financial', icon: BarChart3, color: 'text-rose-500' },
         { name: '業種別成約率', href: '/industry-winrate', icon: BarChart2, color: 'text-blue-400' },
         { name: '営業部別成約率', href: '/sales-dept-winrate', icon: Building2, color: 'text-indigo-400' },
@@ -89,6 +92,8 @@ export default function Sidebar() {
         { name: '審査ルール設定', href: '/rules', icon: Settings, color: 'text-slate-300' },
         { name: '基準金利マスタ', href: '/interest', icon: Calendar, color: 'text-slate-300' },
         { name: '企業番号設定', href: '/corporate-number', icon: Building, color: 'text-blue-300' },
+        { name: 'ナレッジ・FAQ', href: '/faq', icon: HelpCircle, color: 'text-indigo-300' },
+        { name: '補助金情報', href: '/subsidy', icon: Gift, color: 'text-emerald-300' },
       ]
     }
   ];

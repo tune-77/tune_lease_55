@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-05-25T09:51:39Z",
-  "changed_file": "scoring_core.py",
+  "timestamp": "2026-05-30T06:22:37Z",
+  "changed_file": "frontend/src/app/subsidy/page.tsx",
   "test_command": "pytest -v",
   "related_test": "",
   "recommendation": "テストの実行を推奨します"

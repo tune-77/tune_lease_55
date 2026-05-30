@@ -6,6 +6,15 @@ _os_early.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 _os_early.environ.setdefault("MKL_NUM_THREADS", "1")
 _os_early.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 _os_early.environ.setdefault("PYTORCH_MPS_HIGH_WATERMARK_RATIO", "0.0")
+# HuggingFace tokenizers (sentence-transformers が内部で利用) の Rust スレッドが
+# fork 後に「leaked semaphore」を量産する macOS 既知問題への対策。
+# 並列化を無効化することでセマフォリーク・ワーカーゾンビ化を防ぐ。
+_os_early.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+# sentence-transformers / huggingface_hub が起動時に
+# モデル名の HEAD リクエストを飛ばすことがあり、ネットワーク待ちで
+# uvicorn ワーカーが応答不能になるケースがある。既定でオフラインモード。
+_os_early.environ.setdefault("HF_HUB_OFFLINE", "1")
+_os_early.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 del _os_early
 
 
@@ -147,23 +156,34 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
     # startup: Obsidian ナレッジのバックグラウンドインデックス化（30秒遅延 — OMP競合回避）
-    def _delayed_indexing():
-        import time as _t; _t.sleep(30)
-        try:
-            from api.knowledge.indexer import start_background_indexing
-            start_background_indexing()
-        except Exception as e:
-            print(f"[API] knowledge indexing start failed (non-fatal): {e}")
-    import threading as _th; _th.Thread(target=_delayed_indexing, daemon=True, name="delayed-indexer").start()
+    # 既定では無効。ENABLE_OBSIDIAN_INDEXING=true で明示的に有効化する。
+    # sentence-transformers の重い初期化が --reload 環境下でワーカーをゾンビ化させる
+    # 原因になっていたため、API 主要機能から切り離す。
+    import threading as _th
+    if os.environ.get("ENABLE_OBSIDIAN_INDEXING", "false").lower() == "true":
+        def _delayed_indexing():
+            import time as _t; _t.sleep(30)
+            try:
+                from api.knowledge.indexer import start_background_indexing
+                start_background_indexing()
+            except Exception as e:
+                print(f"[API] knowledge indexing start failed (non-fatal): {e}")
+        _th.Thread(target=_delayed_indexing, daemon=True, name="delayed-indexer").start()
+    else:
+        print("[API] Obsidian indexing disabled (set ENABLE_OBSIDIAN_INDEXING=true to enable)")
     # startup: Obsidian フィードバックのバックグラウンド読み込み（30秒遅延）
-    def _delayed_feedback():
-        import time as _t; _t.sleep(30)
-        try:
-            from api.knowledge.feedback_watcher import start_background_feedback_loading
-            start_background_feedback_loading()
-        except Exception as e:
-            print(f"[API] feedback loading start failed (non-fatal): {e}")
-    _th.Thread(target=_delayed_feedback, daemon=True, name="delayed-feedback").start()
+    # 既定では無効。ENABLE_FEEDBACK_LOADING=true で明示的に有効化する。
+    if os.environ.get("ENABLE_FEEDBACK_LOADING", "false").lower() == "true":
+        def _delayed_feedback():
+            import time as _t; _t.sleep(30)
+            try:
+                from api.knowledge.feedback_watcher import start_background_feedback_loading
+                start_background_feedback_loading()
+            except Exception as e:
+                print(f"[API] feedback loading start failed (non-fatal): {e}")
+        _th.Thread(target=_delayed_feedback, daemon=True, name="delayed-feedback").start()
+    else:
+        print("[API] Feedback loading disabled (set ENABLE_FEEDBACK_LOADING=true to enable)")
     # startup: 会話履歴テーブルの初期化
     try:
         from api.database import init_conversation_history_table
@@ -296,6 +316,8 @@ def calculate_score_full(req: ScoringRequest):
                     "hantei": result.get("hantei", ""),
                     "user_eq": result.get("user_eq", 0),
                     "user_op": result.get("user_op", 0),
+                    "quantum_risk": result.get("quantum_risk"),
+                    "credit_quantum_strong_warning": result.get("credit_quantum_strong_warning", False),
                 },
             }
             case_id = save_case_log(case_data)
@@ -322,6 +344,8 @@ def calculate_score_full(req: ScoringRequest):
             asset_warnings=result.get("asset_warnings", []),
             asset_bonuses=result.get("asset_bonuses", []),
             default_warnings=result.get("default_warnings", []),
+            quantum_risk=result.get("quantum_risk"),
+            credit_quantum_strong_warning=result.get("credit_quantum_strong_warning", False),
         )
     except Exception as e:
         import traceback
@@ -355,6 +379,56 @@ def calc_deal_closure_probability(req: DealClosureRequest):
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/industry/stats")
+def api_industry_stats():
+    """業種別成約率・平均スコア集計（REV-055）"""
+    import json
+    from contextlib import closing
+    from data_cases import _open_db
+    with closing(_open_db()) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT industry_sub, final_status, COUNT(*) as cnt, AVG(score) as avg_score
+            FROM past_cases
+            WHERE industry_sub IS NOT NULL AND industry_sub != '' AND industry_sub != '0'
+              AND final_status IN ('成約', '失注')
+            GROUP BY industry_sub, final_status
+        """)
+        rows = cur.fetchall()
+
+    industry_data: dict = {}
+    for industry, status, cnt, avg_sc in rows:
+        if industry not in industry_data:
+            industry_data[industry] = {"total": 0, "won": 0, "lost": 0, "score_sum": 0.0, "score_cnt": 0}
+        d = industry_data[industry]
+        d["total"] += cnt
+        if status == "成約":
+            d["won"] += cnt
+        else:
+            d["lost"] += cnt
+        if avg_sc is not None:
+            d["score_sum"] += avg_sc * cnt
+            d["score_cnt"] += cnt
+
+    result = []
+    for industry, d in industry_data.items():
+        total = d["total"]
+        if total < 3:
+            continue
+        rate = round(d["won"] / total * 100, 1) if total > 0 else 0.0
+        avg_score = round(d["score_sum"] / d["score_cnt"], 1) if d["score_cnt"] > 0 else None
+        result.append({
+            "industry": industry,
+            "total": total,
+            "won": d["won"],
+            "lost": d["lost"],
+            "contract_rate": rate,
+            "avg_score": avg_score,
+        })
+
+    return sorted(result, key=lambda x: x["total"], reverse=True)
+
 
 @app.get("/api/cases")
 def list_cases(limit: int = 30, offset: int = 0, sort: str = "desc"):
@@ -4351,4 +4425,316 @@ def get_drift_stats():
             "drift_alert": drift_alert,
         },
         "score_dist": score_dist,
+    }
+
+
+class CounterfactualRequest(BaseModel):
+    case_id: str
+    target_score: float = 70.0
+
+
+@app.post("/api/counterfactual/analyze")
+def analyze_counterfactual(req: CounterfactualRequest):
+    """Counterfactual Explanation（REV-009）。指定案件の審査通過に必要な最小変更を計算する。"""
+    import json as _json
+    import sqlite3 as _sqlite3
+    from data_cases import _open_db
+    from scoring_core import run_quick_scoring
+
+    # 案件データ取得
+    try:
+        with _open_db() as conn:
+            conn.row_factory = _sqlite3.Row
+            row = conn.execute("SELECT data FROM past_cases WHERE id = ?", (req.case_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Case not found")
+        case = _json.loads(row["data"] or "{}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    inputs = case.get("inputs", {})
+    result = case.get("result", {})
+    if not inputs:
+        raise HTTPException(status_code=422, detail="この案件には入力データが保存されていません")
+
+    current_score = float(result.get("score") or run_quick_scoring(inputs).get("score", 0))
+    target = req.target_score
+
+    def score_with(overrides: dict) -> float:
+        merged = {**inputs, **overrides}
+        try:
+            return float(run_quick_scoring(merged).get("score", 0))
+        except Exception:
+            return 0.0
+
+    # 主要パラメータの現在値
+    nenshu = max(1.0, float(inputs.get("nenshu") or 1))
+    op_profit = float(inputs.get("op_profit") or 0)
+    ord_profit = float(inputs.get("ord_profit") or 0)
+    net_income = float(inputs.get("net_income") or 0)
+    net_assets = float(inputs.get("net_assets") or 0)
+    total_assets = max(1.0, float(inputs.get("total_assets") or 1))
+    bank_credit = float(inputs.get("bank_credit") or 0)
+    grade = str(inputs.get("grade") or "②4-6 (標準)")
+
+    current_op_margin = op_profit / nenshu * 100
+    current_eq_ratio = net_assets / total_assets * 100
+
+    analyses = []
+
+    # 1. 営業利益率改善 (op_profit増加)
+    if current_score < target:
+        for mult in [1.2, 1.5, 2.0, 3.0, 5.0, 10.0]:
+            s = score_with({"op_profit": op_profit * mult})
+            if s >= target:
+                new_margin = (op_profit * mult) / nenshu * 100
+                analyses.append({
+                    "param": "op_profit",
+                    "label": "営業利益率",
+                    "current_display": f"{current_op_margin:.1f}%",
+                    "required_display": f"{new_margin:.1f}%",
+                    "current_value": current_op_margin,
+                    "required_value": new_margin,
+                    "change_pct": (mult - 1) * 100,
+                    "achieved_score": round(s, 1),
+                    "difficulty": "易" if mult <= 1.5 else "中" if mult <= 3.0 else "難",
+                    "note": f"営業利益を現在の {mult:.0f}倍（+{(mult-1)*100:.0f}%）にする必要があります",
+                })
+                break
+
+    # 2. 自己資本比率改善 (net_assets増加)
+    if current_score < target:
+        for add_ratio in [5, 10, 20, 35, 50]:
+            new_net_assets = (current_eq_ratio + add_ratio) / 100 * total_assets
+            s = score_with({"net_assets": new_net_assets})
+            if s >= target:
+                new_eq = new_net_assets / total_assets * 100
+                analyses.append({
+                    "param": "net_assets",
+                    "label": "自己資本比率",
+                    "current_display": f"{current_eq_ratio:.1f}%",
+                    "required_display": f"{new_eq:.1f}%",
+                    "current_value": current_eq_ratio,
+                    "required_value": new_eq,
+                    "change_pct": add_ratio,
+                    "achieved_score": round(s, 1),
+                    "difficulty": "易" if add_ratio <= 10 else "中" if add_ratio <= 25 else "難",
+                    "note": f"自己資本比率を {add_ratio}pt 改善する必要があります",
+                })
+                break
+
+    # 3. 売上高改善 (nenshu増加)
+    if current_score < target:
+        for mult in [1.3, 1.5, 2.0, 3.0]:
+            s = score_with({"nenshu": nenshu * mult, "op_profit": op_profit * mult,
+                            "ord_profit": ord_profit * mult, "net_income": net_income * mult})
+            if s >= target:
+                analyses.append({
+                    "param": "nenshu",
+                    "label": "売上高（按分増加）",
+                    "current_display": f"{nenshu/1000:.1f}百万円",
+                    "required_display": f"{nenshu*mult/1000:.1f}百万円",
+                    "current_value": nenshu,
+                    "required_value": nenshu * mult,
+                    "change_pct": (mult - 1) * 100,
+                    "achieved_score": round(s, 1),
+                    "difficulty": "中" if mult <= 1.5 else "難",
+                    "note": f"売上高を {mult:.1f}倍に成長させる必要があります（利益率維持想定）",
+                })
+                break
+
+    # 4. 格付改善
+    grade_map = [
+        ("s", "S格（超優良）"),
+        ("①", "①格（優良）"),
+        ("②", "②格（標準）"),
+        ("③", "③格（注意）"),
+        ("④", "④格（要注意）"),
+    ]
+    if current_score < target:
+        for gk, gl in grade_map:
+            if grade.lower().startswith(gk):
+                continue
+            # 現在より良い格付のみ試す
+            s = score_with({"grade": gk})
+            if s >= target:
+                analyses.append({
+                    "param": "grade",
+                    "label": "社内格付",
+                    "current_display": grade,
+                    "required_display": gl,
+                    "current_value": 0,
+                    "required_value": 0,
+                    "change_pct": None,
+                    "achieved_score": round(s, 1),
+                    "difficulty": "中",
+                    "note": f"格付を {grade} → {gl} に改善する必要があります",
+                })
+                break
+
+    # 複合提案（op_profit + net_assets を半分ずつ改善）
+    if current_score < target and len(analyses) < 2:
+        for op_mult, eq_add in [(1.3, 5), (1.5, 10), (2.0, 15), (2.5, 20)]:
+            new_na = (current_eq_ratio + eq_add) / 100 * total_assets
+            s = score_with({"op_profit": op_profit * op_mult, "net_assets": new_na})
+            if s >= target:
+                analyses.append({
+                    "param": "combined",
+                    "label": "複合改善（利益率＋自己資本）",
+                    "current_display": f"利益率{current_op_margin:.1f}% / 自己資本{current_eq_ratio:.1f}%",
+                    "required_display": f"利益率{op_profit*op_mult/nenshu*100:.1f}% / 自己資本{(current_eq_ratio+eq_add):.1f}%",
+                    "current_value": 0,
+                    "required_value": 0,
+                    "change_pct": None,
+                    "achieved_score": round(s, 1),
+                    "difficulty": "中",
+                    "note": f"営業利益率+{(op_mult-1)*100:.0f}% かつ 自己資本比率+{eq_add}pt の複合改善",
+                })
+                break
+
+    # スコア感度（各パラメータを±stepで変化させたスコア列）
+    def op_sensitivity():
+        data = []
+        for pct in range(-50, 151, 10):
+            v = op_profit * (1 + pct / 100) if op_profit != 0 else pct * nenshu / 10000
+            s = score_with({"op_profit": v})
+            data.append({
+                "pct_change": pct,
+                "op_margin": round(v / nenshu * 100, 2) if nenshu > 0 else 0,
+                "score": round(s, 1),
+            })
+        return data
+
+    def eq_sensitivity():
+        data = []
+        for add in range(-30, 51, 5):
+            new_na = (current_eq_ratio + add) / 100 * total_assets
+            s = score_with({"net_assets": max(0, new_na)})
+            data.append({
+                "eq_ratio": round(current_eq_ratio + add, 1),
+                "score": round(s, 1),
+            })
+        return data
+
+    return {
+        "case_id": req.case_id,
+        "current_score": round(current_score, 1),
+        "target_score": target,
+        "gap": round(target - current_score, 1),
+        "current_metrics": {
+            "op_margin": round(current_op_margin, 2),
+            "eq_ratio": round(current_eq_ratio, 2),
+            "nenshu": nenshu,
+            "op_profit": op_profit,
+            "net_assets": net_assets,
+            "total_assets": total_assets,
+            "grade": grade,
+        },
+        "counterfactuals": analyses,
+        "op_sensitivity": op_sensitivity(),
+        "eq_sensitivity": eq_sensitivity(),
+    }
+
+
+class RateEngineRequest(BaseModel):
+    score: float
+    term_months: int = 60
+    asset_id: str = "other"
+    grade: str = "②"
+    lease_amount: float = 10000000
+    year_month: str = ""
+
+
+@app.post("/api/rate-engine/propose")
+def propose_lease_rate(req: RateEngineRequest):
+    """動的金利提案エンジン（REV-002）。借手スコア・物件種別・期間から最適金利を提案する。"""
+    import datetime
+    from base_rate_master import get_base_rate_by_term
+
+    year_month = req.year_month or datetime.date.today().strftime("%Y-%m")
+    term_months = max(12, min(120, req.term_months))
+    term_years = term_months / 12
+
+    base_rate = get_base_rate_by_term(year_month, term_months)
+    if base_rate is None:
+        for i in range(1, 7):
+            prev_date = datetime.date.today().replace(day=1) - datetime.timedelta(days=30 * i)
+            base_rate = get_base_rate_by_term(prev_date.strftime("%Y-%m"), term_months)
+            if base_rate is not None:
+                break
+    if base_rate is None:
+        base_rate = 2.0
+
+    _asset_spreads: dict[tuple[str, int], float] = {
+        ("medical", 1): 0.25, ("medical", 3): 0.30, ("medical", 5): 0.35, ("medical", 7): 0.40,
+        ("it", 1): 0.35, ("it", 3): 0.50, ("it", 5): 0.65, ("it", 7): 0.75,
+        ("pc", 1): 0.35, ("pc", 3): 0.50, ("pc", 5): 0.65, ("pc", 7): 0.75,
+        ("vehicle", 1): 0.28, ("vehicle", 3): 0.32, ("vehicle", 5): 0.38, ("vehicle", 7): 0.45,
+        ("car", 1): 0.28, ("car", 3): 0.32, ("car", 5): 0.38, ("car", 7): 0.45,
+        ("machinery", 1): 0.30, ("machinery", 3): 0.38, ("machinery", 5): 0.45, ("machinery", 7): 0.52,
+        ("construction", 1): 0.32, ("construction", 3): 0.40, ("construction", 5): 0.48, ("construction", 7): 0.55,
+        ("solar", 1): 0.28, ("solar", 3): 0.35, ("solar", 5): 0.42, ("solar", 7): 0.50,
+        ("other", 1): 0.32, ("other", 3): 0.40, ("other", 5): 0.50, ("other", 7): 0.58,
+    }
+    valid_terms = [1, 3, 5, 7]
+    nearest_t = min(valid_terms, key=lambda t: abs(t - term_years))
+    asset_id_lower = req.asset_id.lower()
+    matched_prefix = next((k for (k, _) in _asset_spreads if asset_id_lower.startswith(k) and k != "other"), None)
+    asset_spread = _asset_spreads.get((matched_prefix or "other", nearest_t), 0.45)
+
+    _grade_spreads = {"s": -0.10, "①": -0.10, "a": 0.10, "②": 0.25, "b": 0.25,
+                      "③": 0.55, "c": 0.55, "④": 0.90, "d": 0.90}
+    grade_lower = req.grade.strip().lower()
+    grade_spread = next((v for k, v in _grade_spreads.items() if grade_lower.startswith(k)), 0.30)
+
+    score = max(0.0, min(100.0, req.score))
+    if score >= 90: risk_adj = -0.10
+    elif score >= 80: risk_adj = -0.05
+    elif score >= 70: risk_adj = 0.00
+    elif score >= 60: risk_adj = 0.15
+    elif score >= 50: risk_adj = 0.30
+    else: risk_adj = 0.50
+
+    proposed_rate = round(max(0.5, base_rate + asset_spread + grade_spread + risk_adj), 4)
+
+    monthly_rate = proposed_rate / 100 / 12
+    amount = max(1.0, req.lease_amount)
+    if monthly_rate > 0:
+        monthly_payment = amount * monthly_rate / (1 - (1 + monthly_rate) ** (-term_months))
+    else:
+        monthly_payment = amount / term_months
+    total_payment = monthly_payment * term_months
+    total_interest = total_payment - amount
+
+    sensitivity = []
+    for s in range(max(0, int(score) - 30), min(101, int(score) + 35), 5):
+        if s >= 90: r = -0.10
+        elif s >= 80: r = -0.05
+        elif s >= 70: r = 0.00
+        elif s >= 60: r = 0.15
+        elif s >= 50: r = 0.30
+        else: r = 0.50
+        sensitivity.append({
+            "score": s,
+            "rate": round(base_rate + asset_spread + grade_spread + r, 4),
+            "is_current": abs(s - score) < 5,
+        })
+
+    return {
+        "year_month": year_month,
+        "proposed_rate": proposed_rate,
+        "breakdown": {
+            "base_rate": round(base_rate, 4),
+            "asset_spread": round(asset_spread, 4),
+            "grade_spread": round(grade_spread, 4),
+            "risk_adjustment": round(risk_adj, 4),
+        },
+        "monthly_payment": round(monthly_payment),
+        "total_payment": round(total_payment),
+        "total_interest": round(total_interest),
+        "term_months": term_months,
+        "lease_amount": amount,
+        "sensitivity": sensitivity,
     }

@@ -1,92 +1,66 @@
 ---
 name: restart-api
-description: FastAPI (port 8000) のクリーン再起動。迷子uvicorn(0.0.0.0:8000)を親ごと終了してから run_next_stable.sh のsupervisorに再起動させる。「再起動」「API落ちた」「uvicorn迷子」「restart-api」のキーワードで使用。
+description: FastAPI (port 8000) + Next.js (port 3000) のクリーン再起動。ビルド要否を自動判定して漏れなく反映する。「再起動」「API落ちた」「uvicorn迷子」「restart-api」「フロント反映されない」のキーワードで使用。
 ---
 
 # restart-api スキル
 
-FastAPI の迷子プロセスを安全に整理してクリーン再起動する。
+FastAPI と Next.js を安全に停止し、`run_next_stable.sh` でビルドチェック付き再起動する。
+**`SKIP_BUILD` は使わない** — `frontend_build_needed()` が自動判定するため、ビルド漏れが起きない。
 
 ## 手順
 
 ### 1. 現状確認
 
 ```bash
-lsof -ti:8000 | xargs ps -o pid,ppid,args -p 2>/dev/null | cat
+lsof -i:8000 -i:3000 2>/dev/null | grep LISTEN | cat
 ```
 
-### 2. 迷子プロセス（0.0.0.0:8000）の親ごとkill
+### 2. 両ポートのプロセスを全停止
 
 ```bash
-# 0.0.0.0バインドのuvicornとその親supervisorをkill
-rogue_pids=$(lsof -ti:8000 2>/dev/null | xargs -I{} sh -c 'ps -o pid=,args= -p {} 2>/dev/null' | grep '0\.0\.0\.0' | awk '{print $1}')
-if [ -n "$rogue_pids" ]; then
-  # 親PIDも取得してkill
-  for pid in $rogue_pids; do
-    ppid=$(ps -o ppid= -p $pid 2>/dev/null | tr -d ' ')
-    echo "Killing rogue PID=$pid PPID=$ppid"
-    kill $ppid $pid 2>/dev/null || true
-  done
-fi
+kill $(lsof -ti:8000 -ti:3000) 2>/dev/null || true
+sleep 2
+echo "stopped"
 ```
 
-### 3. 127.0.0.1側も再起動（新コード読み込みのため）
+### 3. run_next_stable.sh でビルドチェック付き再起動
 
 ```bash
-kill $(lsof -ti:8000) 2>/dev/null || true
+cd /Users/kobayashiisaoryou/clawd/tune_lease_55
+FORCE_RESTART=1 nohup bash run_next_stable.sh > logs/next/restart_$(date +%Y%m%d_%H%M%S).log 2>&1 &
+echo "launcher PID: $!"
 ```
 
-### 4. supervisor再起動を待つ（10秒）
+### 4. 起動を待つ（15秒）
 
 ```bash
-sleep 10
+sleep 15
 ```
 
-### 5. 動作確認
+### 5. API・フロント両方の動作確認
 
 ```bash
-curl -s -o /dev/null -w "FastAPI: %{http_code}\n" http://127.0.0.1:8000/
-lsof -ti:8000 | xargs ps -o pid,args -p 2>/dev/null | cat
+/usr/bin/curl -s --max-time 5 -o /dev/null -w "FastAPI : %{http_code}\n" http://127.0.0.1:8000/docs
+/usr/bin/curl -s --max-time 5 -o /dev/null -w "Next.js : %{http_code}\n" http://127.0.0.1:3000/
 ```
 
-### 6. Cloudflare トンネル起動確認・起動・URL表示
-
-フロントエンド（Next.js port 3000）向けのトンネルを起動する。
+### 6. Cloudflare トンネル URL 表示
 
 ```bash
-CF_LOG="/tmp/cloudflared_3000.log"
+CF_LOG="/Users/kobayashiisaoryou/Library/Logs/tunelease/cloudflare_3000.log"
 
-show_cf_url() {
-  for i in $(seq 1 15); do
-    url=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$CF_LOG" 2>/dev/null | head -1)
-    if [ -n "$url" ]; then
-      echo "✅ Cloudflare URL: $url"
-      return 0
-    fi
-    sleep 1
-  done
-  echo "⚠️  URL取得タイムアウト — $CF_LOG を確認"
-}
-
-if ps aux | grep -v grep | grep 'cloudflared' | grep '3000' > /dev/null 2>&1; then
-  echo "Cloudflare tunnel for :3000 already running"
-  url=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$CF_LOG" 2>/dev/null | head -1)
-  if [ -n "$url" ]; then
-    echo "✅ Cloudflare URL: $url"
-  else
-    echo "(既存トンネルのURL: $CF_LOG を確認)"
-  fi
+url=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$CF_LOG" 2>/dev/null | tail -1)
+if [ -n "$url" ]; then
+  echo "✅ Cloudflare URL: $url"
 else
-  echo "Cloudflare tunnel for :3000 not running — starting..."
-  > "$CF_LOG"
-  nohup cloudflared tunnel --url http://127.0.0.1:3000 > "$CF_LOG" 2>&1 &
-  show_cf_url
+  echo "⚠️  Cloudflare URL が取得できません — $CF_LOG を確認"
 fi
 ```
 
 ### 7. 結果報告
 
-- ✅ FastAPI: HTTP 200 が返れば成功
-- ポート8000に `127.0.0.1` バインドのプロセスが1つだけ残っていればOK
-- `0.0.0.0` バインドが残っていたら手順2を繰り返す
-- ✅ Cloudflare URL が表示されれば完了（既存・新規ともに URL を出力）
+- ✅ FastAPI: 200、Next.js: 200 であれば成功
+- ビルドログは `logs/next/restart_*.log` に保存される
+- Cloudflare URL が変わった場合は新しい URL をユーザーに伝える
+- どちらかが 200 でない場合は `logs/next/restart_*.log` の末尾を確認してエラー原因を報告する

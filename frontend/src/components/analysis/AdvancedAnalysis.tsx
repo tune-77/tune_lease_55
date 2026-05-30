@@ -172,8 +172,16 @@ export default function AdvancedAnalysis({ industrySub = "", companyName = "", s
                     <polyline points={medianLine} fill="none" stroke="#10b981" strokeWidth="1.5" />
                   )}
                 </svg>
-                <div className="absolute top-2 left-2 bg-white/90 text-[10px] font-bold px-2 py-1 rounded shadow border border-slate-100 text-slate-600">
-                  倒産確率(スコア推定): {bankruptcyPct}% (5年後)
+                <div className={`absolute top-2 left-2 text-[10px] font-bold px-2 py-1 rounded shadow border text-white ${
+                  bankruptcyPct < 3 ? 'bg-emerald-500 border-emerald-600' :
+                  bankruptcyPct < 8 ? 'bg-amber-500 border-amber-600' :
+                  'bg-red-500 border-red-600'
+                }`}>
+                  PD（デフォルト確率）: {bankruptcyPct}%
+                  <span className="ml-1 opacity-80">{bankruptcyPct < 3 ? '▼低リスク' : bankruptcyPct < 8 ? '▲要注意' : '⚠要警戒'}</span>
+                </div>
+                <div className="absolute top-2 right-2 bg-white/90 text-[9px] text-slate-400 px-1.5 py-0.5 rounded border border-slate-100">
+                  スコア推定・5年後参考値
                 </div>
                 <div className="absolute bottom-2 right-2 text-[9px] text-slate-400">
                   {mcResult.timesfm_available ? 'TimesFM使用' : 'GBM'}

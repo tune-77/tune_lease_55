@@ -1,11 +1,8 @@
 "use client";
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../../lib/api';
-import {
-  FileText, RefreshCw, ChevronDown, Loader2, AlertCircle,
-  Zap, ShieldAlert, CheckCircle2, XCircle, AlertTriangle,
-  TrendingUp, TrendingDown, Minus, BarChart2
-} from 'lucide-react';
+import { FileText, RefreshCw, ChevronDown, Loader2, AlertCircle, AlertTriangle, TrendingDown, ShieldAlert, CheckCircle2, ClipboardList, BarChart3, MessageSquare } from 'lucide-react';
+import QRiskPanel from '../../components/analysis/QRiskPanel';
 
 type CaseRow = {
   id: string;
@@ -16,32 +13,17 @@ type CaseRow = {
   final_status: string;
 };
 
-type TotalScorerResult = {
-  total_score?: number;
-  grade?: string;
-  grade_text?: string;
-  grade_color?: string;
-  obligor_score?: number;
-  asset_score?: number;
+type RiskFactor = {
+  label: string;
+  value: string;
+  benchmark: string;
+  severity: 'high' | 'medium';
 };
 
-type CaseDetail = {
-  result?: {
-    score?: number;
-    hantei?: string;
-    quantum_risk?: number | null;
-    credit_quantum_strong_warning?: boolean;
-    pd_percent?: number;
-    total_scorer_result?: TotalScorerResult;
-    user_op?: number;
-    bench_op?: number;
-    user_eq?: number;
-    bench_eq?: number;
-    user_dscr?: number;
-    asset_name?: string;
-    hints?: { subsidies?: string[]; risks?: string[]; mandatory?: string };
-  };
-  inputs?: Record<string, unknown>;
+type IndustryBenchmark = {
+  industry: string;
+  avg_score: number | null;
+  total: number;
 };
 
 const STATUS_DOT: Record<string, string> = {
@@ -50,76 +32,310 @@ const STATUS_DOT: Record<string, string> = {
   '未登録': 'bg-slate-300',
 };
 
-const GRADE_ACTIONS: Record<string, { icon: React.ReactNode; color: string; actions: string[] }> = {
-  '承認': {
-    icon: <CheckCircle2 className="w-4 h-4" />,
-    color: 'emerald',
-    actions: [
-      '契約条件を最終確認し、正式承認書を発行する',
-      '物件検収・引渡しスケジュールを調整する',
-      '初回リース料の引落口座・日程を確認する',
-      '顧客へ承認連絡と今後の流れを説明する',
-    ],
-  },
-  '条件付き承認': {
-    icon: <AlertTriangle className="w-4 h-4" />,
-    color: 'amber',
-    actions: [
-      '保証人の追加 or 担保提供の可否を顧客に確認する',
-      'リース金額の減額（当初申請の80〜90%水準）を検討する',
-      '最新決算書・試算表の追加提出を要請する',
-      '月次返済シミュレーションを提示し、DSCR余裕度を説明する',
-      'リース期間を短縮して月額負担を上げる代わりにリスクを低減する',
-    ],
-  },
-  '否決': {
-    icon: <XCircle className="w-4 h-4" />,
-    color: 'rose',
-    actions: [
-      '否決理由を整理し、顧客へ丁寧に説明する（具体的数値は伏せる）',
-      '補助金活用・自己資本の積み増しなど改善策を提示する',
-      '6〜12ヶ月後の再申請を視野に改善ロードマップを提案する',
-      '競合他社への移行を防ぐため、別商品（割賦・レンタル）を提案する',
-    ],
-  },
-};
+function extractRiskFactors(inputs: Record<string, unknown>, result: Record<string, unknown>): RiskFactor[] {
+  const risks: RiskFactor[] = [];
 
-function QRiskGauge({ value }: { value: number }) {
-  const pct = Math.min(100, Math.max(0, value));
-  const color = pct >= 60 ? '#ef4444' : pct >= 35 ? '#f59e0b' : '#22c55e';
-  const label = pct >= 60 ? '高リスク' : pct >= 35 ? '要注意' : '正常';
+  const opMargin = typeof inputs.op_margin === 'number' ? inputs.op_margin : null;
+  const eqRatio = typeof inputs.equity_ratio === 'number' ? inputs.equity_ratio
+    : typeof inputs.eq_ratio === 'number' ? inputs.eq_ratio : null;
+  const pdRaw = result.pd_percent ?? (result as Record<string, unknown>).pd;
+  const pd = typeof pdRaw === 'number' ? pdRaw : null;
+  const grade = typeof inputs.grade === 'number' ? inputs.grade : null;
+  const debtRatio = typeof inputs.debt_ratio === 'number' ? inputs.debt_ratio : null;
+  const currentRatio = typeof inputs.current_ratio === 'number' ? inputs.current_ratio : null;
+
+  if (opMargin !== null && opMargin < 5) {
+    risks.push({
+      label: '営業利益率',
+      value: `${opMargin.toFixed(1)}%`,
+      benchmark: '目安 5%以上',
+      severity: opMargin < 2 ? 'high' : 'medium',
+    });
+  }
+  if (eqRatio !== null && eqRatio < 20) {
+    risks.push({
+      label: '自己資本比率',
+      value: `${eqRatio.toFixed(1)}%`,
+      benchmark: '目安 20%以上',
+      severity: eqRatio < 10 ? 'high' : 'medium',
+    });
+  }
+  if (pd !== null && pd > 3) {
+    risks.push({
+      label: 'デフォルト確率（PD）',
+      value: `${pd.toFixed(2)}%`,
+      benchmark: pd > 8 ? '8%超 ＝ 強警戒' : '目安 3%以下・3〜8%=要注意',
+      severity: pd > 8 ? 'high' : 'medium',
+    });
+  }
+  if (grade !== null && grade >= 7) {
+    risks.push({
+      label: '格付スコア',
+      value: `${grade}点`,
+      benchmark: '目安 6点以下',
+      severity: grade >= 10 ? 'high' : 'medium',
+    });
+  }
+  if (debtRatio !== null && debtRatio > 60) {
+    risks.push({
+      label: '負債比率',
+      value: `${debtRatio.toFixed(1)}%`,
+      benchmark: '目安 60%以下',
+      severity: debtRatio > 80 ? 'high' : 'medium',
+    });
+  }
+  if (currentRatio !== null && currentRatio < 100) {
+    risks.push({
+      label: '流動比率',
+      value: `${currentRatio.toFixed(1)}%`,
+      benchmark: '目安 100%以上',
+      severity: currentRatio < 80 ? 'high' : 'medium',
+    });
+  }
+
+  return risks.sort((a, b) => (a.severity === 'high' ? -1 : 1) - (b.severity === 'high' ? -1 : 1));
+}
+
+function ConditionalRiskPanel({ score, inputs, result }: {
+  score: number;
+  inputs: Record<string, unknown>;
+  result: Record<string, unknown>;
+}) {
+  if (score < 60 || score >= 70) return null;
+
+  const risks = extractRiskFactors(inputs, result);
+  const highCount = risks.filter(r => r.severity === 'high').length;
+  const medCount = risks.filter(r => r.severity === 'medium').length;
+
   return (
-    <div className="space-y-1.5">
-      <div className="flex justify-between items-center text-xs">
-        <span className="font-bold text-slate-600">Q_risk</span>
-        <span className="font-black" style={{ color }}>{pct.toFixed(1)}</span>
+    <div className="mb-5 p-4 bg-amber-50 border border-amber-300 rounded-xl">
+      {/* REV-026: ヘッダー + 重要度カウントバッジ */}
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0" />
+        <span className="font-black text-amber-800 text-sm">条件付き承認 — 主要リスク要因</span>
+        <span className="ml-auto text-xs font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">スコア {Math.round(score)}pt</span>
       </div>
-      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: color }} />
+      {/* REV-026: 重要度サマリー行 */}
+      {risks.length > 0 && (
+        <div className="flex items-center gap-2 mb-3">
+          {highCount > 0 && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-black bg-rose-600 text-white px-2 py-0.5 rounded-full">
+              <AlertTriangle className="w-3 h-3" /> 高リスク {highCount}件
+            </span>
+          )}
+          {medCount > 0 && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-black bg-amber-500 text-white px-2 py-0.5 rounded-full">
+              <TrendingDown className="w-3 h-3" /> 要注意 {medCount}件
+            </span>
+          )}
+        </div>
+      )}
+      {risks.length === 0 ? (
+        <p className="text-xs text-amber-700 font-bold">詳細な財務データが取得できませんでした。レポートを参照してください。</p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {risks.map((r, idx) => (
+            <div key={r.label} className={`flex items-start gap-2 p-2.5 rounded-lg border ${r.severity === 'high' ? 'bg-rose-50 border-rose-200' : 'bg-amber-100/60 border-amber-200'}`}>
+              {/* REV-026: 順位番号 */}
+              <span className={`flex-shrink-0 w-5 h-5 rounded-full text-[10px] font-black flex items-center justify-center ${r.severity === 'high' ? 'bg-rose-500 text-white' : 'bg-amber-400 text-white'}`}>
+                {idx + 1}
+              </span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1 flex-wrap">
+                  <p className={`text-xs font-black ${r.severity === 'high' ? 'text-rose-700' : 'text-amber-800'}`}>{r.label}</p>
+                  {idx === 0 && r.severity === 'high' && (
+                    <span className="text-[9px] font-black bg-rose-600 text-white px-1 py-0.5 rounded">最優先</span>
+                  )}
+                </div>
+                <p className={`text-xs font-bold ${r.severity === 'high' ? 'text-rose-600' : 'text-amber-700'}`}>
+                  {r.value} <span className="font-normal text-slate-500">（{r.benchmark}）</span>
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="text-[10px] text-amber-600 mt-3 font-bold">
+        ※ 上記リスク要因に対する改善条件（担保・保証人追加等）を付した上での承認を検討してください。
+      </p>
+    </div>
+  );
+}
+
+type Action = { label: string; detail: string; priority: 'must' | 'should' };
+
+function buildRecommendedActions(risks: RiskFactor[]): Action[] {
+  const actions: Action[] = [];
+  const labels = risks.map(r => r.label);
+
+  if (labels.includes('営業利益率')) {
+    actions.push({ label: '直近試算表・受注状況の追加提出を要求', detail: '利益率改善の見通しを確認する', priority: 'must' });
+    actions.push({ label: '担保（動産・不動産）の設定を検討', detail: '利益率低水準のリスクを担保でカバー', priority: 'should' });
+  }
+  if (labels.includes('自己資本比率')) {
+    actions.push({ label: '代表者連帯保証の取得', detail: '自己資本が薄い場合の信用補完', priority: 'must' });
+    actions.push({ label: '追加担保（不動産・定期預金等）の検討', detail: '自己資本不足を担保で補填', priority: 'should' });
+  }
+  if (labels.includes('デフォルト確率（PD）')) {
+    actions.push({ label: '信用保険（リース信用保険）の付保を検討', detail: 'PD高水準のリスクヘッジとして有効', priority: 'must' });
+    actions.push({ label: 'リース期間を短縮して総エクスポージャーを圧縮', detail: '長期リースはリスクを拡大させる', priority: 'should' });
+  }
+  if (labels.includes('格付スコア')) {
+    actions.push({ label: '代表者・第三者保証の強化', detail: '格付が低い場合の信用力補完', priority: 'must' });
+    actions.push({ label: '物件担保（リース物件）の条件追加', detail: '中途解約時の残価リスク軽減', priority: 'should' });
+  }
+  if (labels.includes('流動比率')) {
+    actions.push({ label: '運転資金・資金繰り表の提出を要求', detail: '短期支払能力の確認', priority: 'must' });
+    actions.push({ label: 'リース料の分割実行・段階払いの検討', detail: '初期月次負担を軽減して流動性を確保', priority: 'should' });
+  }
+  if (labels.includes('負債比率')) {
+    actions.push({ label: '既存借入の返済スケジュール確認', detail: '過多な負債が返済圧迫につながるリスクを評価', priority: 'must' });
+  }
+
+  // 共通
+  actions.push({ label: '3期分の決算書（勘定科目内訳含む）の確認', detail: '財務トレンドの確認', priority: 'should' });
+  actions.push({ label: '主要取引先・支払実績の確認', detail: '業容・信用状況の定性確認', priority: 'should' });
+
+  // 優先度でソート：mustを先に
+  return actions.sort((a, b) => (a.priority === 'must' ? -1 : 1) - (b.priority === 'must' ? -1 : 1));
+}
+
+function RecommendedActionsPanel({ score, inputs, result }: {
+  score: number;
+  inputs: Record<string, unknown>;
+  result: Record<string, unknown>;
+}) {
+  if (score < 60 || score >= 70) return null;
+  const risks = extractRiskFactors(inputs, result);
+  const actions = buildRecommendedActions(risks);
+
+  return (
+    <div className="mb-5 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+      <div className="flex items-center gap-2 mb-3">
+        <ClipboardList className="w-5 h-5 text-blue-600 flex-shrink-0" />
+        <span className="font-black text-blue-800 text-sm">条件付き承認 — 推奨アクション</span>
       </div>
-      <div className="flex justify-between text-[10px] text-slate-400">
-        <span>0</span>
-        <span className="font-bold" style={{ color }}>{label}</span>
-        <span>100</span>
+      <div className="space-y-2">
+        {actions.map((a, i) => (
+          <div key={i} className={`flex items-start gap-2.5 p-2.5 rounded-lg border ${a.priority === 'must' ? 'bg-white border-blue-300' : 'bg-blue-50/60 border-blue-100'}`}>
+            {a.priority === 'must'
+              ? <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+              : <CheckCircle2 className="w-4 h-4 text-blue-300 flex-shrink-0 mt-0.5" />}
+            <div>
+              <p className={`text-xs font-black ${a.priority === 'must' ? 'text-blue-800' : 'text-blue-600'}`}>
+                {a.priority === 'must' && <span className="mr-1 text-[9px] bg-blue-600 text-white rounded px-1 py-0.5">必須</span>}
+                {a.label}
+              </p>
+              <p className="text-[11px] text-slate-500 mt-0.5">{a.detail}</p>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
-function CompareRow({ label, user, bench, unit = '%' }: { label: string; user?: number; bench?: number; unit?: string }) {
-  if (user == null || bench == null) return null;
-  const diff = user - bench;
-  const isGood = diff >= 0;
+// REV-025: 業種平均との財務比較パネル
+function IndustryBenchmarkPanel({ score, benchmark }: { score: number; benchmark: IndustryBenchmark }) {
+  if (benchmark.avg_score === null) return null;
+  const diff = score - benchmark.avg_score;
+  const above = diff >= 0;
+
   return (
-    <div className="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0 text-xs">
-      <span className="text-slate-600 font-medium">{label}</span>
-      <div className="flex items-center gap-3">
-        <span className="text-slate-400">目安 {bench.toFixed(1)}{unit}</span>
-        <span className="font-black text-slate-800">{user.toFixed(1)}{unit}</span>
-        <span className={`flex items-center gap-0.5 font-bold ${isGood ? 'text-emerald-500' : 'text-rose-500'}`}>
-          {isGood ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-          {Math.abs(diff).toFixed(1)}
-        </span>
+    <div className="mb-5 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <BarChart3 className="w-5 h-5 text-sky-600 flex-shrink-0" />
+        <span className="font-black text-slate-700 text-sm">業種平均スコア比較</span>
+        <span className="ml-auto text-[10px] font-bold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-full max-w-[160px] truncate" title={benchmark.industry}>{benchmark.industry}</span>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <div className="text-center p-3 bg-white border border-slate-200 rounded-xl">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">本案件</p>
+          <p className="text-2xl font-black text-slate-800">{Math.round(score)}<span className="text-sm font-bold text-slate-400">pt</span></p>
+        </div>
+        <div className="text-center p-3 bg-white border border-slate-200 rounded-xl">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">業種平均</p>
+          <p className="text-2xl font-black text-slate-500">{Math.round(benchmark.avg_score)}<span className="text-sm font-bold text-slate-400">pt</span></p>
+          <p className="text-[10px] text-slate-400">{benchmark.total}件参照</p>
+        </div>
+        <div className={`text-center p-3 rounded-xl border ${above ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">差分</p>
+          <p className={`text-2xl font-black ${above ? 'text-emerald-600' : 'text-rose-600'}`}>
+            {above ? '+' : ''}{diff.toFixed(1)}<span className="text-sm font-bold">pt</span>
+          </p>
+          <p className={`text-[10px] font-bold ${above ? 'text-emerald-600' : 'text-rose-600'}`}>
+            {above ? '平均以上' : '平均以下'}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// REV-048: 営業向け審査結果説明ガイドライン
+function SalesGuidePanel({ score }: { score: number }) {
+  const rounded = Math.round(score);
+  const range = score >= 70 ? 'approved' : score >= 60 ? 'conditional' : 'rejected';
+
+  const configs = {
+    approved: {
+      title: '承認案件 — 営業向け説明ガイド',
+      wrap: 'bg-emerald-50 border-emerald-300',
+      hdr: 'text-emerald-800',
+      badge: 'bg-emerald-100 text-emerald-700',
+      badgeText: `承認推奨 ${rounded}pt`,
+      points: [
+        { label: 'スコアの伝え方', body: `AIスコア ${rounded}ptは審査基準（70pt以上）をクリアしており、財務健全性が確認されました。` },
+        { label: '金利・条件提示', body: '信用リスクが低いため標準金利での提示が可能です。追加担保・保証は原則不要です。' },
+        { label: '期間・条件の柔軟対応', body: '法定耐用年数の範囲内で希望期間に対応できます。長期契約によるコスト最適化も提案可能です。' },
+        { label: '次のステップ', body: '本審査書類（決算書3期・申込書）が揃い次第、即日〜3営業日での回答が可能です。' },
+      ],
+    },
+    conditional: {
+      title: '条件付き承認 — 営業向け説明ガイド',
+      wrap: 'bg-amber-50 border-amber-300',
+      hdr: 'text-amber-800',
+      badge: 'bg-amber-100 text-amber-700',
+      badgeText: `条件付き承認 ${rounded}pt`,
+      points: [
+        { label: 'スコアの伝え方', body: `AIスコア ${rounded}ptは審査ゾーン（60〜69pt）にあります。否決ではなく、一定条件のもとで承認可能な状態です。` },
+        { label: '付帯条件の説明', body: '担保（不動産・動産）の追加または代表者の連帯保証が条件となる場合があります。' },
+        { label: '金利について', body: '信用リスク補正として通常より0.2〜0.5%程度高い金利になる場合があります。補助金活用で実質負担を軽減する方法もあります。' },
+        { label: '追加書類の依頼', body: '直近試算表・主要取引先契約書・銀行口座入出金履歴（直近3ヶ月分）の追加提出をお願いします。' },
+        { label: '次のステップ', body: '条件が整い次第、再審査（3〜5営業日）を経て最終回答となります。早めの書類収集をお願いします。' },
+      ],
+    },
+    rejected: {
+      title: '否決案件 — 営業向け説明ガイド',
+      wrap: 'bg-rose-50 border-rose-300',
+      hdr: 'text-rose-800',
+      badge: 'bg-rose-100 text-rose-700',
+      badgeText: `否決 ${rounded}pt`,
+      points: [
+        { label: '伝え方の注意', body: '今回の審査結果は否決ですが、企業価値の否定ではありません。財務指標改善後の再申請をご案内ください。' },
+        { label: '否決理由の説明', body: '主要財務指標（利益率・自己資本比率・デフォルト確率等）が現時点の審査基準を満たしていません。具体的な改善目標をお伝えください。' },
+        { label: '代替提案', body: '① リース金額の縮小　② リース期間の短縮　③ 信用保証協会保証の活用　④ 補助金との組み合わせ　のいずれかを検討できます。' },
+        { label: '再申請の条件', body: `スコア60pt以上（現在${rounded}pt）を目指すには、営業利益率5%以上・自己資本比率20%以上が目安です。` },
+        { label: '次のステップ', body: '財務改善が見込まれる場合は6〜12ヶ月後の再申請をご案内ください。最新決算書または試算表を再提出いただきます。' },
+      ],
+    },
+  };
+
+  const g = configs[range];
+  return (
+    <div className={`mb-5 p-4 border rounded-xl ${g.wrap}`}>
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <MessageSquare className="w-5 h-5 flex-shrink-0 text-slate-600" />
+        <span className={`font-black text-sm ${g.hdr}`}>{g.title}</span>
+        <span className={`ml-auto text-[10px] font-black px-2 py-0.5 rounded-full ${g.badge}`}>{g.badgeText}</span>
+      </div>
+      <div className="space-y-2">
+        {g.points.map((p, i) => (
+          <div key={i} className="p-2.5 bg-white/70 rounded-lg">
+            <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${g.hdr}`}>{p.label}</p>
+            <p className="text-xs text-slate-700 leading-relaxed">{p.body}</p>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -148,11 +364,12 @@ export default function ReportPage() {
   const [cases, setCases] = useState<CaseRow[]>([]);
   const [loadingCases, setLoadingCases] = useState(false);
   const [selectedId, setSelectedId] = useState('');
-  const [caseDetail, setCaseDetail] = useState<CaseDetail | null>(null);
-  const [loadingDetail, setLoadingDetail] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [report, setReport] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [caseDetail, setCaseDetail] = useState<{ inputs: Record<string, unknown>; result: Record<string, unknown> } | null>(null);
+  const [allIndustryStats, setAllIndustryStats] = useState<IndustryBenchmark[]>([]);
+  const [industryBenchmark, setIndustryBenchmark] = useState<IndustryBenchmark | null>(null);
 
   const fetchCases = useCallback(async () => {
     setLoadingCases(true);
@@ -169,14 +386,32 @@ export default function ReportPage() {
   useEffect(() => { fetchCases(); }, [fetchCases]);
 
   useEffect(() => {
-    if (!selectedId) { setCaseDetail(null); return; }
-    setLoadingDetail(true);
+    apiClient.get<IndustryBenchmark[]>('/api/industry/stats')
+      .then(r => setAllIndustryStats(r.data))
+      .catch(() => {});
+  }, []);
+
+  const handleSelectCase = useCallback(async (id: string) => {
+    setSelectedId(id);
+    setReport(null);
+    setError(null);
     setCaseDetail(null);
-    apiClient.get(`/api/cases/${selectedId}`)
-      .then(res => setCaseDetail(res.data))
-      .catch(() => setCaseDetail(null))
-      .finally(() => setLoadingDetail(false));
-  }, [selectedId]);
+    setIndustryBenchmark(null);
+    if (!id) return;
+    try {
+      const detail = await apiClient.get(`/api/cases/${id}`);
+      const d = detail.data;
+      const inputs = d.inputs || {};
+      setCaseDetail({ inputs, result: d.result || {} });
+      const industry = typeof inputs.industry_sub === 'string' ? inputs.industry_sub : null;
+      if (industry && allIndustryStats.length > 0) {
+        const match = allIndustryStats.find(r => r.industry === industry);
+        if (match) setIndustryBenchmark(match);
+      }
+    } catch {
+      // detail取得失敗は無視（レポート生成時に再取得する）
+    }
+  }, [allIndustryStats]);
 
   const generate = async () => {
     if (!selectedId) return;
@@ -184,9 +419,11 @@ export default function ReportPage() {
     setReport(null);
     setError(null);
     try {
-      const detail = caseDetail || (await apiClient.get(`/api/cases/${selectedId}`)).data;
-      const result_data = detail.result || {};
-      const inputs = detail.inputs || detail;
+      const detail = await apiClient.get(`/api/cases/${selectedId}`);
+      const caseData = detail.data;
+      const result_data = caseData.result || {};
+      const inputs = caseData.inputs || caseData;
+      setCaseDetail({ inputs, result: result_data });
       const res = await apiClient.post('/api/report/generate', { result_data, inputs });
       setReport(res.data.report_markdown || '（レポートが空です）');
     } catch (e: unknown) {
@@ -198,11 +435,8 @@ export default function ReportPage() {
   };
 
   const selectedCase = cases.find(c => c.id === selectedId);
-  const result = caseDetail?.result;
-  const gradeText = result?.total_scorer_result?.grade_text;
-  const gradeInfo = gradeText ? GRADE_ACTIONS[gradeText] ?? GRADE_ACTIONS['条件付き承認'] : null;
-  const qRisk = result?.quantum_risk;
-  const hasQRiskWarning = result?.credit_quantum_strong_warning || (qRisk != null && qRisk >= 60);
+  const score = selectedCase?.score ?? null;
+  const isConditional = score !== null && score >= 60 && score < 70;
 
   return (
     <div className="p-6 min-h-[calc(100vh-2rem)] animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -215,7 +449,7 @@ export default function ReportPage() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* 左: 案件選択 + インサイトパネル */}
+        {/* 左: 案件選択 */}
         <div className="xl:col-span-1 space-y-4">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
             <div className="flex items-center justify-between mb-3">
@@ -229,7 +463,7 @@ export default function ReportPage() {
             <div className="relative">
               <select
                 value={selectedId}
-                onChange={e => { setSelectedId(e.target.value); setReport(null); setError(null); }}
+                onChange={e => handleSelectCase(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 appearance-none pr-8"
               >
                 <option value="">— 案件を選択 —</option>
@@ -243,12 +477,15 @@ export default function ReportPage() {
             </div>
 
             {selectedCase && (
-              <div className="mt-3 p-3 bg-slate-50 rounded-xl text-xs space-y-1">
+              <div className={`mt-3 p-3 rounded-xl text-xs space-y-1 ${isConditional ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'}`}>
                 <div className="flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full ${STATUS_DOT[selectedCase.final_status] || 'bg-slate-300'}`} />
                   <span className="font-black text-slate-700">{selectedCase.final_status}</span>
+                  {isConditional && (
+                    <span className="ml-auto text-[10px] font-black text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">条件付き承認</span>
+                  )}
                 </div>
-                <div className="text-slate-500">スコア: <span className="font-black text-slate-700">{selectedCase.score != null ? Math.round(selectedCase.score) : '—'}</span></div>
+                <div className="text-slate-500">スコア: <span className={`font-black ${isConditional ? 'text-amber-700' : 'text-slate-700'}`}>{score != null ? Math.round(score) : '—'}</span></div>
                 <div className="text-slate-500 font-mono truncate">{selectedCase.id}</div>
               </div>
             )}
@@ -263,149 +500,10 @@ export default function ReportPage() {
                 : <><FileText className="w-4 h-4" />レポート生成</>}
             </button>
           </div>
-
-          {/* クイックインサイトパネル */}
-          {loadingDetail && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex items-center justify-center h-32">
-              <Loader2 className="w-5 h-5 animate-spin text-slate-300" />
-            </div>
-          )}
-
-          {result && !loadingDetail && (
-            <div className="space-y-3">
-              {/* スコア・グレード */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
-                <h3 className="text-xs font-black text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <BarChart2 className="w-3.5 h-3.5" /> スコアサマリー
-                </h3>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-3xl font-black text-slate-800">{result.score != null ? Math.round(result.score) : '—'}</p>
-                    <p className="text-xs text-slate-400">総合スコア</p>
-                  </div>
-                  {gradeText && (
-                    <div className={`px-3 py-1.5 rounded-xl text-sm font-black flex items-center gap-1.5
-                      ${gradeText === '承認' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                        gradeText === '否決' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
-                        'bg-amber-50 text-amber-700 border border-amber-200'}`}>
-                      {gradeInfo?.icon}
-                      {gradeText}
-                    </div>
-                  )}
-                </div>
-                {result.pd_percent != null && (
-                  <div className="flex items-center gap-2 text-xs text-slate-500 pt-1 border-t border-slate-100">
-                    <Minus className="w-3 h-3" /> PD率:
-                    <span className={`font-black ${result.pd_percent > 30 ? 'text-rose-600' : result.pd_percent > 15 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                      {result.pd_percent.toFixed(1)}%
-                    </span>
-                  </div>
-                )}
-                {result.asset_name && (
-                  <p className="text-xs text-slate-400">物件: {result.asset_name}</p>
-                )}
-              </div>
-
-              {/* Q_risk パネル */}
-              {qRisk != null && (
-                <div className={`bg-white rounded-2xl border shadow-sm p-5 space-y-3 ${hasQRiskWarning ? 'border-red-200' : 'border-slate-200'}`}>
-                  <h3 className="text-xs font-black text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                    <Zap className="w-3.5 h-3.5 text-yellow-500" /> 量子リスク (Q_risk)
-                  </h3>
-                  <QRiskGauge value={qRisk} />
-                  {hasQRiskWarning && (
-                    <div className="flex items-start gap-2 p-2.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
-                      <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                      <span className="font-bold">財務指標の矛盾・異常が検出されました。決算書の精査を推奨します。</span>
-                    </div>
-                  )}
-                  <p className="text-[10px] text-slate-400 leading-relaxed">
-                    Q_riskは財務指標間の矛盾・異常パターンを量子干渉計算で検出したスコアです。
-                    35以上で要注意、60以上で強警戒となります。
-                  </p>
-                </div>
-              )}
-
-              {/* 業種平均比較 */}
-              {(result.user_op != null || result.user_eq != null) && (
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-                  <h3 className="text-xs font-black text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                    <TrendingUp className="w-3.5 h-3.5" /> 業種平均比較
-                  </h3>
-                  <CompareRow label="営業利益率" user={result.user_op} bench={result.bench_op} />
-                  <CompareRow label="自己資本比率" user={result.user_eq} bench={result.bench_eq} />
-                  {result.user_dscr != null && (
-                    <div className="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0 text-xs">
-                      <span className="text-slate-600 font-medium">DSCR</span>
-                      <div className="flex items-center gap-3">
-                        <span className="text-slate-400">目安 1.5倍</span>
-                        <span className={`font-black ${result.user_dscr >= 1.5 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {result.user_dscr.toFixed(2)}倍
-                        </span>
-                        {result.user_dscr >= 1.5 ? <CheckCircle2 className="w-3 h-3 text-emerald-500" /> : <AlertTriangle className="w-3 h-3 text-rose-500" />}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* ヒント */}
-              {result.hints && (
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-2">
-                  <h3 className="text-xs font-black text-slate-500 uppercase tracking-wider">AIヒント</h3>
-                  {result.hints.mandatory && (
-                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
-                      <span className="font-black">必須確認:</span> {result.hints.mandatory}
-                    </div>
-                  )}
-                  {result.hints.subsidies && result.hints.subsidies.length > 0 && (
-                    <div>
-                      <p className="text-[10px] font-black text-slate-400 mb-1">💰 補助金候補</p>
-                      {result.hints.subsidies.map((s, i) => (
-                        <p key={i} className="text-xs text-slate-600">・{s}</p>
-                      ))}
-                    </div>
-                  )}
-                  {result.hints.risks && result.hints.risks.length > 0 && (
-                    <div>
-                      <p className="text-[10px] font-black text-slate-400 mb-1">⚠️ リスク要因</p>
-                      {result.hints.risks.map((r, i) => (
-                        <p key={i} className="text-xs text-slate-600">・{r}</p>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
-        {/* 右: 推奨アクション + レポート表示 */}
-        <div className="xl:col-span-2 space-y-4">
-          {/* 条件付き承認の推奨アクション (REV-019) */}
-          {gradeInfo && result && !loadingDetail && (
-            <div className={`rounded-2xl border shadow-sm p-5
-              ${gradeText === '承認' ? 'bg-emerald-50 border-emerald-200' :
-                gradeText === '否決' ? 'bg-rose-50 border-rose-200' :
-                'bg-amber-50 border-amber-200'}`}>
-              <div className="flex items-center gap-2 mb-3">
-                <span className={`text-${gradeInfo.color}-600`}>{gradeInfo.icon}</span>
-                <h2 className={`text-sm font-black text-${gradeInfo.color}-800`}>
-                  {gradeText} — 推奨アクション
-                </h2>
-              </div>
-              <ul className="space-y-2">
-                {gradeInfo.actions.map((action, i) => (
-                  <li key={i} className={`flex items-start gap-2 text-sm text-${gradeInfo.color}-800`}>
-                    <span className={`text-${gradeInfo.color}-400 font-black shrink-0`}>{i + 1}.</span>
-                    {action}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* レポート表示エリア */}
+        {/* 右: レポート表示 */}
+        <div className="xl:col-span-2">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 min-h-[400px]">
             {error && (
               <div className="flex items-start gap-3 p-4 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-sm font-bold">
@@ -441,6 +539,42 @@ export default function ReportPage() {
                     コピー
                   </button>
                 </div>
+
+                {/* REV-027: 条件付き承認リスクパネル */}
+                {score !== null && caseDetail && (
+                  <ConditionalRiskPanel
+                    score={score}
+                    inputs={caseDetail.inputs}
+                    result={caseDetail.result}
+                  />
+                )}
+                {/* REV-019: 推奨アクションパネル */}
+                {score !== null && caseDetail && (
+                  <RecommendedActionsPanel
+                    score={score}
+                    inputs={caseDetail.inputs}
+                    result={caseDetail.result}
+                  />
+                )}
+                {/* REV-025: 業種平均比較 */}
+                {score !== null && industryBenchmark && (
+                  <IndustryBenchmarkPanel score={score} benchmark={industryBenchmark} />
+                )}
+                {/* REV-048: 営業向けガイドライン */}
+                {score !== null && (
+                  <SalesGuidePanel score={score} />
+                )}
+                {/* REV-089/113/114: Q_risk パネル */}
+                {caseDetail && typeof caseDetail.result.quantum_risk === 'number' && (
+                  <div className="mb-5">
+                    <QRiskPanel
+                      quantumRisk={caseDetail.result.quantum_risk}
+                      creditQuantumStrongWarning={caseDetail.result.credit_quantum_strong_warning === true}
+                      compact={true}
+                    />
+                  </div>
+                )}
+
                 <MarkdownBlock md={report} />
               </>
             )}

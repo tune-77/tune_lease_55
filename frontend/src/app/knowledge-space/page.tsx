@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -54,6 +54,49 @@ const hashValue = (text: string) => {
     hash = Math.imul(hash, 16777619);
   }
   return Math.abs(hash >>> 0);
+};
+
+const buildObsidianPositions = (nodes: GraphNode[]) => {
+  const positions = new Map<string, THREE.Vector3>();
+  const categoryOrder = ["asset", "research", "knowledge", "case", "feedback", "wiki", "daily", "external"];
+  const noteGroups = new Map<string, GraphNode[]>();
+  nodes.filter((n) => n.type !== "cluster").forEach((n) => {
+    const cat = n.type === "external" ? "external" : n.category;
+    const arr = noteGroups.get(cat) || [];
+    arr.push(n);
+    noteGroups.set(cat, arr);
+  });
+  const clusterCenters = new Map<string, THREE.Vector3>();
+  nodes.filter((n) => n.type === "cluster").forEach((n) => {
+    const cat = n.id.replace("cluster:", "");
+    const arm = Math.max(0, categoryOrder.indexOf(cat));
+    const angle = (arm / Math.max(1, categoryOrder.length)) * Math.PI * 2;
+    const r = 20 + arm * 2;
+    const pos = new THREE.Vector3(Math.cos(angle) * r, (arm % 3 - 1) * 5, Math.sin(angle) * r);
+    positions.set(n.id, pos);
+    clusterCenters.set(cat, pos);
+  });
+  nodes.forEach((n) => {
+    if (positions.has(n.id)) return;
+    const seed = hashValue(n.id);
+    if (n.type === "external") {
+      const r = 80 + (seed % 35);
+      const a = (seed % 1000) / 1000 * Math.PI * 2;
+      positions.set(n.id, new THREE.Vector3(Math.cos(a) * r, ((seed >> 8) % 20) - 10, Math.sin(a) * r));
+      return;
+    }
+    const cat = n.category;
+    const arm = Math.max(0, categoryOrder.indexOf(cat));
+    const baseAngle = (arm / Math.max(1, categoryOrder.length)) * Math.PI * 2;
+    const center = clusterCenters.get(cat) || new THREE.Vector3();
+    const group = noteGroups.get(cat) || [n];
+    const idx = Math.max(0, group.findIndex((x) => x.id === n.id));
+    const r = 3 + Math.sqrt(idx + 1) * 3.2;
+    const a = baseAngle + ((seed % 1000) / 1000) * Math.PI * 2;
+    const jy = ((seed >> 16) % 100) / 100 * 10 - 5;
+    positions.set(n.id, new THREE.Vector3(center.x + Math.cos(a) * r, jy, center.z + Math.sin(a) * r));
+  });
+  return positions;
 };
 
 const buildPositions = (nodes: GraphNode[]) => {
@@ -176,22 +219,25 @@ const createStarTexture = () => {
 function KnowledgeSpaceScene({
   graph,
   onSelect,
+  onHover,
   selectedId,
   searchTerm,
   timePercent,
   mode,
   visualMode,
+  categoryFilter,
 }: {
   graph: KnowledgeGraph;
   onSelect: (node: GraphNode | null) => void;
+  onHover: (node: GraphNode | null, x: number, y: number) => void;
   selectedId?: string;
   searchTerm: string;
   timePercent: number;
   mode: SceneMode;
   visualMode: VisualMode;
+  categoryFilter: string | null;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
-  const tooltipRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -199,8 +245,8 @@ function KnowledgeSpaceScene({
 
     const scene = new THREE.Scene();
     const isGalaxy = visualMode === "galaxy";
-    scene.background = new THREE.Color(isGalaxy ? "#05070d" : "#070b12");
-    scene.fog = new THREE.FogExp2(isGalaxy ? "#05070d" : "#070b12", isGalaxy ? 0.00145 : 0.0022);
+    scene.background = new THREE.Color(isGalaxy ? "#05070d" : "#0d1117");
+    scene.fog = new THREE.FogExp2(isGalaxy ? "#05070d" : "#0d1117", isGalaxy ? 0.00145 : 0.0018);
 
     const isCompact = mount.clientWidth < 640;
     const camera = new THREE.PerspectiveCamera(58, mount.clientWidth / Math.max(1, mount.clientHeight), 0.1, 1400);
@@ -220,22 +266,27 @@ function KnowledgeSpaceScene({
     controls.maxDistance = 520;
     controls.target.set(0, 0, 0);
 
-    scene.add(new THREE.AmbientLight("#dbeafe", isGalaxy ? 0.42 : 0.55));
-    const keyLight = new THREE.DirectionalLight("#ffffff", isGalaxy ? 1.15 : 0.85);
+    scene.add(new THREE.AmbientLight("#dbeafe", isGalaxy ? 0.42 : 0.9));
+    const keyLight = new THREE.DirectionalLight("#ffffff", isGalaxy ? 1.15 : 1.2);
     keyLight.position.set(80, 120, 80);
     scene.add(keyLight);
-    const coreLight = new THREE.PointLight("#fef3c7", isGalaxy ? 4.5 : 1.2, 300);
+    const coreLight = new THREE.PointLight("#fef3c7", isGalaxy ? 4.5 : 1.8, 300);
     coreLight.position.set(0, 0, 0);
     scene.add(coreLight);
-    const rimLight = new THREE.PointLight("#38bdf8", isGalaxy ? 1.9 : 0.8, 420);
+    const rimLight = new THREE.PointLight("#38bdf8", isGalaxy ? 1.9 : 1.4, 420);
     rimLight.position.set(-180, 30, 150);
     scene.add(rimLight);
+    if (!isGalaxy) {
+      const fillLight = new THREE.DirectionalLight("#c7d2fe", 0.6);
+      fillLight.position.set(-60, -40, 100);
+      scene.add(fillLight);
+    }
 
     const root = new THREE.Group();
     root.position.y = isCompact ? 75 : 0;
     scene.add(root);
 
-    const positions = buildPositions(graph.nodes);
+    const positions = isGalaxy ? buildPositions(graph.nodes) : buildObsidianPositions(graph.nodes);
     const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
     const starById = new Map<string, THREE.Sprite>();
     const rayTargets: THREE.Object3D[] = [];
@@ -309,7 +360,7 @@ function KnowledgeSpaceScene({
     const lineMaterial = new THREE.LineBasicMaterial({
       vertexColors: true,
       transparent: true,
-      opacity: isGalaxy ? 0.1 : 0.24,
+      opacity: isGalaxy ? 0.1 : 0.42,
       blending: isGalaxy ? THREE.AdditiveBlending : THREE.NormalBlending,
       depthWrite: false,
     });
@@ -388,19 +439,62 @@ function KnowledgeSpaceScene({
       const inTime = node.type !== "note" || !node.mtime || !maxTime || Number(node.mtime) <= cutoffTime;
       const matched = matchesSearch(node);
       const emphasis = (mode === "search" || mode === "evidence") && matched ? 1.35 : selectedId === node.id ? 1.45 : 1;
-      const dim = (mode === "recent" && !inTime) || ((mode === "search" || mode === "evidence") && terms.length > 0 && !matched) ? 0.22 : active ? 1 : 0.55;
-      const baseSize = isGalaxy
-        ? (node.type === "cluster" ? 16 : node.type === "external" ? 6.5 : 8.5)
-        : (node.type === "cluster" ? 11 : node.type === "external" ? 4 : 5.5);
-      const starSize = (baseSize + power * (node.type === "cluster" ? (isGalaxy ? 28 : 12) : (isGalaxy ? 21 : 9))) * emphasis;
-      const color = new THREE.Color(node.color || "#e2e8f0").lerp(new THREE.Color("#fff7d6"), isGalaxy ? 0.25 + power * 0.38 : 0.08 + power * 0.12);
+      const categoryMatch = !categoryFilter || node.type === "cluster" || node.category === categoryFilter;
+      const dim = ((mode === "recent" && !inTime) || ((mode === "search" || mode === "evidence") && terms.length > 0 && !matched) || !categoryMatch) ? 0.18 : active ? 1 : 0.55;
+
+      if (!isGalaxy) {
+        // ── Obsidian風 球体ノード ──────────────────────────────
+        const r = node.type === "cluster"
+          ? 1.6 + power * 1.4
+          : node.type === "external"
+            ? 0.35
+            : 0.45 + power * 0.9;
+        const nodeColor = new THREE.Color(node.color || "#7dd3fc");
+        const geo = new THREE.SphereGeometry(r * emphasis, 14, 10);
+        const mat = new THREE.MeshPhongMaterial({
+          color: nodeColor,
+          emissive: nodeColor.clone().multiplyScalar(0.28 + power * 0.22),
+          shininess: 60,
+          transparent: true,
+          opacity: dim,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.copy(position);
+        mesh.userData.nodeId = node.id;
+        mesh.userData.visualSize = r * emphasis;
+        root.add(mesh);
+        starById.set(node.id, mesh as unknown as THREE.Sprite);
+        starMaterials.push(mat as unknown as THREE.SpriteMaterial);
+        rayTargets.push(mesh);
+        // 選択/高強調ノードにリング
+        if (emphasis > 1) {
+          const ringGeo = new THREE.RingGeometry(r * 1.6, r * 1.95, 32);
+          const ringMat = new THREE.MeshBasicMaterial({
+            color: nodeColor,
+            transparent: true,
+            opacity: 0.55 * dim,
+            side: THREE.DoubleSide,
+          });
+          const ring = new THREE.Mesh(ringGeo, ringMat);
+          ring.position.copy(position);
+          ring.rotation.x = Math.PI / 2;
+          root.add(ring);
+          starMaterials.push(ringMat as unknown as THREE.SpriteMaterial);
+        }
+        return;
+      }
+
+      // ── 銀河モード: 既存 Sprite ────────────────────────────
+      const baseSize = node.type === "cluster" ? 16 : node.type === "external" ? 6.5 : 8.5;
+      const starSize = (baseSize + power * (node.type === "cluster" ? 28 : 21)) * emphasis;
+      const color = new THREE.Color(node.color || "#e2e8f0").lerp(new THREE.Color("#fff7d6"), 0.25 + power * 0.38);
       const material = new THREE.SpriteMaterial({
         map: starTexture || undefined,
         color,
         transparent: true,
-        opacity: (isGalaxy ? 0.48 + power * 0.48 : 0.62 + power * 0.22) * dim,
+        opacity: (0.48 + power * 0.48) * dim,
         depthWrite: false,
-        blending: isGalaxy ? THREE.AdditiveBlending : THREE.NormalBlending,
+        blending: THREE.AdditiveBlending,
       });
       const star = new THREE.Sprite(material);
       star.position.copy(position);
@@ -411,45 +505,21 @@ function KnowledgeSpaceScene({
       starById.set(node.id, star);
       starMaterials.push(material);
       rayTargets.push(star);
-
-      if (isGalaxy ? (power > 0.42 || emphasis > 1) : emphasis > 1) {
+      if (power > 0.42 || emphasis > 1) {
         const flareMaterial = new THREE.SpriteMaterial({
           map: starTexture || undefined,
           color: color.clone().lerp(new THREE.Color("#ffffff"), 0.38),
           transparent: true,
-          opacity: (isGalaxy ? 0.12 + power * 0.18 + (emphasis > 1 ? 0.18 : 0) : 0.22) * dim,
+          opacity: (0.12 + power * 0.18 + (emphasis > 1 ? 0.18 : 0)) * dim,
           depthWrite: false,
-          blending: isGalaxy ? THREE.AdditiveBlending : THREE.NormalBlending,
+          blending: THREE.AdditiveBlending,
         });
         const flare = new THREE.Sprite(flareMaterial);
         flare.position.copy(position);
-        flare.scale.setScalar(starSize * (isGalaxy ? 1.9 + power * 1.1 + (emphasis > 1 ? 0.7 : 0) : 1.45));
+        flare.scale.setScalar(starSize * (1.9 + power * 1.1 + (emphasis > 1 ? 0.7 : 0)));
         root.add(flare);
         starMaterials.push(flareMaterial);
       }
-    });
-
-    // REV-136: 引用元強調 — link_count >= 5 のノードに金色のアウラを追加
-    const CITATION_THRESHOLD = 5;
-    graph.nodes.forEach((node) => {
-      const position = positions.get(node.id);
-      if (!position || !node.link_count || node.link_count < CITATION_THRESHOLD) return;
-      const intensity = Math.min(1, (node.link_count - CITATION_THRESHOLD) / 15);
-      const auraMaterial = new THREE.SpriteMaterial({
-        map: starTexture || undefined,
-        color: new THREE.Color("#fbbf24").lerp(new THREE.Color("#f97316"), intensity),
-        transparent: true,
-        opacity: (0.10 + intensity * 0.18) * (isGalaxy ? 1 : 0.7),
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      });
-      const aura = new THREE.Sprite(auraMaterial);
-      aura.position.copy(position);
-      const existingStar = starById.get(node.id);
-      const baseScale = existingStar ? existingStar.scale.x : 12;
-      aura.scale.setScalar(baseScale * 2.6);
-      root.add(aura);
-      starMaterials.push(auraMaterial);
     });
 
     const haloGeometry = new THREE.RingGeometry(10, 10.7, 64);
@@ -471,46 +541,13 @@ function KnowledgeSpaceScene({
       renderer.domElement.style.cursor = hoveredId ? "pointer" : "grab";
       const star = hoveredId ? starById.get(hoveredId) : null;
       if (star) {
-        halo.visible = true;
-        halo.position.copy(star.position);
-        halo.quaternion.copy(camera.quaternion);
         const node = nodeById.get(hoveredId);
-        const r = Math.max(14, star.userData.visualSize || (node?.radius || 5) + 10);
-        halo.scale.setScalar(r / 13);
-        (halo.material as THREE.MeshBasicMaterial).opacity = 0.55;
-        const tip = tooltipRef.current;
-        if (tip && node) {
-          const stem = node.path ? node.path.replace(/^.*\//, "").replace(/\.md$/i, "") : null;
-          const showStem = stem && stem !== node.label;
-          tip.textContent = "";
-          const nameEl = document.createElement("span");
-          nameEl.style.cssText = "font-weight:700;color:#e2e8f0";
-          nameEl.textContent = node.label;
-          tip.appendChild(nameEl);
-          if (showStem && stem) {
-            const br1 = document.createElement("br");
-            const stemEl = document.createElement("span");
-            stemEl.style.cssText = "font-size:10px;color:#94a3b8";
-            stemEl.textContent = stem;
-            tip.appendChild(br1);
-            tip.appendChild(stemEl);
-          }
-          if (node.link_count) {
-            const br2 = document.createElement("br");
-            const linkEl = document.createElement("span");
-            linkEl.style.cssText = "font-size:10px;color:#7dd3fc";
-            linkEl.textContent = `${node.link_count} links`;
-            tip.appendChild(br2);
-            tip.appendChild(linkEl);
-          }
-          tip.style.left = `${event.clientX - rect.left + 14}px`;
-          tip.style.top = `${event.clientY - rect.top - 44}px`;
-          tip.style.display = "block";
-        }
+        halo.visible = false;
+        onHover(node || null, event.clientX, event.clientY);
       } else {
+        halo.visible = false;
         (halo.material as THREE.MeshBasicMaterial).opacity = 0;
-        const tip = tooltipRef.current;
-        if (tip) tip.style.display = "none";
+        onHover(null, 0, 0);
       }
     };
 
@@ -534,7 +571,7 @@ function KnowledgeSpaceScene({
     let frame = 0;
     const animate = () => {
       frame = requestAnimationFrame(animate);
-      root.rotation.y += isGalaxy ? 0.0012 : 0.00025;
+      root.rotation.y += isGalaxy ? 0.0012 : 0.00015;
       root.rotation.x = (isCompact ? -0.64 : -0.62) + Math.sin(Date.now() * 0.00016) * 0.02;
       const elapsed = performance.now() * 0.001;
       flowLights.forEach((sprite) => {
@@ -576,18 +613,9 @@ function KnowledgeSpaceScene({
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [graph, onSelect, selectedId, searchTerm, timePercent, mode, visualMode]);
+  }, [graph, onSelect, selectedId, searchTerm, timePercent, mode, visualMode, categoryFilter]);
 
-  return (
-    <div className="absolute inset-0">
-      <div ref={mountRef} className="absolute inset-0" />
-      <div
-        ref={tooltipRef}
-        className="pointer-events-none absolute z-50 rounded-md border border-white/20 bg-slate-900/90 px-2.5 py-1.5 text-sm shadow-xl backdrop-blur-sm"
-        style={{ display: "none" }}
-      />
-    </div>
-  );
+  return <div ref={mountRef} className="absolute inset-0" />;
 }
 
 export default function KnowledgeSpacePage() {
@@ -603,6 +631,18 @@ export default function KnowledgeSpacePage() {
   const [evidenceQuery, setEvidenceQuery] = useState("");
   const [showControls, setShowControls] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
+  const handleSelect = useCallback((node: GraphNode | null) => {
+    setSelected(node);
+    if (node) setShowDetails(true);
+    if (node) setMode("all");
+  }, []);
+  const handleHover = useCallback((node: GraphNode | null, x: number, y: number) => {
+    setHoveredNode(node);
+    if (node) setHoverPos({ x, y });
+  }, []);
+  const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
 
   const fetchGraph = async (nextLimit = limit) => {
     setLoading(true);
@@ -649,6 +689,19 @@ export default function KnowledgeSpacePage() {
       .sort((a, b) => (b.link_count || 0) - (a.link_count || 0))
       .slice(0, 3) || []
   ), [graph]);
+
+  const visibleNodeCount = useMemo(() => {
+    if (!graph) return 0;
+    if (categoryFilter) return graph.nodes.filter(n => n.category === categoryFilter).length;
+    if (searchTerm.trim()) {
+      const terms = searchTerm.toLowerCase().split(/\s+/).filter(Boolean);
+      return graph.nodes.filter(n => {
+        const h = [n.label, n.path, n.category, ...(n.sections || [])].join(" ").toLowerCase();
+        return terms.every(t => h.includes(t));
+      }).length;
+    }
+    return graph.nodes.length;
+  }, [graph, categoryFilter, searchTerm]);
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#05070d] text-slate-100">
@@ -749,16 +802,14 @@ export default function KnowledgeSpacePage() {
         {graph && graph.nodes.length > 0 && (
           <KnowledgeSpaceScene
             graph={graph}
-            onSelect={(node) => {
-              setSelected(node);
-              if (node) setShowDetails(true);
-              if (node) setMode("all");
-            }}
+            onSelect={handleSelect}
+            onHover={handleHover}
             selectedId={selected?.id}
             searchTerm={searchTerm}
             timePercent={timePercent}
             mode={mode}
             visualMode={visualMode}
+            categoryFilter={categoryFilter}
           />
         )}
 
@@ -785,6 +836,23 @@ export default function KnowledgeSpacePage() {
         )}
       </section>
 
+      {hoveredNode && (
+        <div
+          className="pointer-events-none fixed z-50"
+          style={{
+            left: hoverPos.x > window.innerWidth - 300 ? hoverPos.x - 280 : hoverPos.x + 16,
+            top: hoverPos.y > window.innerHeight - 160 ? hoverPos.y - 130 : hoverPos.y - 36,
+          }}
+        >
+          <div
+            className="rounded-lg border border-white/20 bg-slate-900/90 px-3 py-1.5 shadow-xl backdrop-blur-sm"
+            style={{ borderLeftColor: hoveredNode.color, borderLeftWidth: 3 }}
+          >
+            <div className="text-xs font-bold text-white leading-snug">{hoveredNode.label}</div>
+          </div>
+        </div>
+      )}
+
       <aside className={`${showControls ? "block" : "hidden"} absolute bottom-3 left-3 right-3 z-30 max-h-[44vh] overflow-y-auto rounded-md border border-white/10 bg-slate-950/86 p-3 shadow-2xl backdrop-blur-md md:bottom-4 md:left-4 md:right-auto md:block md:max-h-none md:w-[min(420px,calc(100vw-2rem))] md:overflow-visible md:p-4`}>
         <div className="mb-2 flex items-center justify-between md:hidden">
           <div className="text-xs font-black text-cyan-100">表示操作</div>
@@ -795,28 +863,59 @@ export default function KnowledgeSpacePage() {
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="grid grid-cols-3 gap-2 text-center">
-          <div className="rounded-md bg-white/5 px-2 py-2">
-            <div className="text-[10px] font-bold text-slate-400">Chunks</div>
-            <div className="text-lg font-black text-white">{graph?.summary?.indexed_chunks ?? "-"}</div>
+        <div className="grid grid-cols-4 gap-1.5 text-center">
+          <div className="rounded-md bg-white/5 px-1 py-2">
+            <div className="text-[9px] font-bold text-slate-400">Chunks</div>
+            <div className="text-base font-black text-white">{graph?.summary?.indexed_chunks ?? "-"}</div>
           </div>
-          <div className="rounded-md bg-white/5 px-2 py-2">
-            <div className="text-[10px] font-bold text-slate-400">Notes</div>
-            <div className="text-lg font-black text-white">{graph?.summary?.notes ?? "-"}</div>
+          <div className="rounded-md bg-white/5 px-1 py-2">
+            <div className="text-[9px] font-bold text-slate-400">Notes</div>
+            <div className="text-base font-black text-white">{graph?.summary?.notes ?? "-"}</div>
           </div>
-          <div className="rounded-md bg-white/5 px-2 py-2">
-            <div className="text-[10px] font-bold text-slate-400">Links</div>
-            <div className="text-lg font-black text-white">{graph?.summary?.links ?? "-"}</div>
+          <div className="rounded-md bg-white/5 px-1 py-2">
+            <div className="text-[9px] font-bold text-slate-400">Links</div>
+            <div className="text-base font-black text-white">{graph?.summary?.links ?? "-"}</div>
+          </div>
+          <div className="rounded-md bg-cyan-400/10 px-1 py-2">
+            <div className="text-[9px] font-bold text-cyan-400">表示中</div>
+            <div className="text-base font-black text-cyan-200">{visibleNodeCount}</div>
           </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          {visibleLegend.map((item) => (
-            <span key={item.category} className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-bold text-slate-200">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-              {item.label}
-            </span>
-          ))}
+        {/* カテゴリ凡例フィルター */}
+        <div className="mt-3">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">カテゴリ</span>
+            {categoryFilter && (
+              <button
+                onClick={() => setCategoryFilter(null)}
+                className="text-[10px] font-bold text-cyan-400 hover:text-white transition"
+              >
+                クリア
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {visibleLegend.map((item) => {
+              const active = categoryFilter === item.category;
+              return (
+                <button
+                  key={item.category}
+                  onClick={() => setCategoryFilter(active ? null : item.category)}
+                  className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-bold transition-all ${
+                    active
+                      ? "border-white/30 bg-white/15 text-white scale-105"
+                      : categoryFilter
+                        ? "border-white/5 bg-white/3 text-slate-500 opacity-50"
+                        : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10 hover:border-white/20"
+                  }`}
+                >
+                  <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="mt-3 grid gap-2 border-t border-white/10 pt-3">
@@ -903,14 +1002,7 @@ export default function KnowledgeSpacePage() {
                 {selected.type === "cluster" ? <Network className="h-5 w-5 text-cyan-200" /> : <FileText className="h-5 w-5 text-cyan-200" />}
               </div>
               <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <div className="break-words text-base font-black text-white">{selected.label}</div>
-                  {(selected.link_count ?? 0) >= 5 && (
-                    <span className="shrink-0 rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] font-bold text-amber-200">
-                      ⭐ 引用元 {selected.link_count}links
-                    </span>
-                  )}
-                </div>
+                <div className="break-words text-base font-black text-white">{selected.label}</div>
                 {selected.path && <div className="mt-1 break-words text-xs font-bold text-slate-400">{selected.path}</div>}
               </div>
             </div>
