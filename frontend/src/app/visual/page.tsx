@@ -4,13 +4,20 @@ import axios from 'axios';
 import * as d3 from 'd3';
 import { sankey as d3Sankey, sankeyLinkHorizontal } from 'd3-sankey';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
-import { Eye, Activity, ChartPie, Grid, GitMerge, MousePointer2 } from 'lucide-react';
+import { Eye, Activity, ChartPie, Grid, GitMerge, MousePointer2, Lightbulb, ChevronDown, ChevronUp } from 'lucide-react';
 import { ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+
+// REV-109: **bold** マーカーを JSX に変換
+function formatInsight(text: string): React.ReactNode {
+  const parts = text.split(/\*\*(.*?)\*\*/g);
+  return parts.map((p, i) => i % 2 === 1 ? <strong key={i} className="text-slate-800">{p}</strong> : p);
+}
 
 export default function VisualPage() {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'bubble' | 'heatmap' | 'sankey'>('bubble');
+  const [insightOpen, setInsightOpen] = useState(true);
   const sankeyRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
@@ -183,6 +190,81 @@ export default function VisualPage() {
     return { matrix, bands: bandsList.map(b => b.label), industries };
   }, [data]);
 
+  // REV-109: タブごとのデータ駆動インサイト自動生成
+  const aiInsights = useMemo((): string[] => {
+    if (!data.length) return [];
+
+    const won = data.filter(c => c.status === '成約');
+    const lost = data.filter(c => c.status === '失注');
+
+    if (activeTab === 'bubble') {
+      const avgWon = won.length ? won.reduce((s, c) => s + (c.score || 0), 0) / won.length : 0;
+      const avgLost = lost.length ? lost.reduce((s, c) => s + (c.score || 0), 0) / lost.length : 0;
+      const over70 = data.filter(c => c.score >= 70);
+      const over70Rate = over70.length ? (over70.filter(c => c.status === '成約').length / over70.length * 100).toFixed(0) : null;
+      const insights = [
+        `成約案件の平均スコアは **${avgWon.toFixed(1)}pt**、失注は **${avgLost.toFixed(1)}pt**。差分 **${(avgWon - avgLost).toFixed(1)}pt** が現在の成否境界線です。`,
+        over70Rate ? `スコア **70pt以上** の案件の成約率は **${over70Rate}%** — 高スコア案件の優先クロージングが成約率向上に直結します。` : null,
+        `右上エリア（高スコア×高スプレッド）の緑クラスターが理想的な案件プロファイルです。この領域を狙う業種・物件選定を優先してください。`,
+      ];
+      return insights.filter(Boolean) as string[];
+    }
+
+    if (activeTab === 'heatmap') {
+      const bands = [
+        { min: 0, max: 50, label: '～50' },
+        { min: 50, max: 65, label: '50〜65' },
+        { min: 65, max: 80, label: '65〜80' },
+        { min: 80, max: 200, label: '80〜' },
+      ];
+      const industryCounts: Record<string, { won: number; total: number }> = {};
+      data.forEach(c => {
+        const ind = c.industry_major || '不明';
+        if (!industryCounts[ind]) industryCounts[ind] = { won: 0, total: 0 };
+        industryCounts[ind].total++;
+        if (c.status === '成約') industryCounts[ind].won++;
+      });
+      let hotInd = '', hotRate = 0, hotTotal = 0, hotWon = 0;
+      Object.entries(industryCounts).forEach(([ind, cnt]) => {
+        if (cnt.total >= 3 && cnt.won / cnt.total > hotRate) {
+          hotRate = cnt.won / cnt.total; hotInd = ind; hotTotal = cnt.total; hotWon = cnt.won;
+        }
+      });
+      let bestInd = '', bestBand = '', bestCellRate = 0;
+      Object.keys(industryCounts).forEach(ind => {
+        bands.forEach(b => {
+          const matching = data.filter(c => (c.industry_major || '不明') === ind && c.score >= b.min && c.score < b.max);
+          if (matching.length >= 2) {
+            const r = matching.filter(c => c.status === '成約').length / matching.length;
+            if (r > bestCellRate) { bestCellRate = r; bestInd = ind; bestBand = b.label; }
+          }
+        });
+      });
+      return [
+        hotInd ? `**${hotInd}** 業種の成約率が **${(hotRate * 100).toFixed(0)}%** で最高（${hotTotal}件中 ${hotWon}件成約）。重点営業ターゲットです。` : '',
+        bestInd ? `最パフォーマンスセルは **${bestInd} × ${bestBand}pt帯** で成約率 **${(bestCellRate * 100).toFixed(0)}%**。このゾーンの案件獲得を優先してください。` : '',
+        `濃い緑のセルが「勝ち筋」です。赤・NO DATAのセルへのリソース配分を減らし、緑ゾーンに集中することで成約率の底上げが期待できます。`,
+      ].filter(Boolean);
+    }
+
+    if (activeTab === 'sankey') {
+      const total = data.length;
+      const wonCount = won.length;
+      const overallRate = (wonCount / total * 100).toFixed(1);
+      const hi = data.filter(c => c.score >= 65);
+      const hiRate = hi.length ? (hi.filter(c => c.status === '成約').length / hi.length * 100).toFixed(0) : '0';
+      const mid = data.filter(c => c.score >= 50 && c.score < 65);
+      const midRate = mid.length ? (mid.filter(c => c.status === '成約').length / mid.length * 100).toFixed(0) : '0';
+      return [
+        `全 **${total}件** のうち **${wonCount}件** が成約（全体成約率 **${overallRate}%**）。`,
+        `スコア **65pt以上** の成約率は **${hiRate}%**、50〜65ptは **${midRate}%** — スコア帯が成否の最大分岐点です。`,
+        `フローの太さが案件数を表します。細くなるフローの手前（業種・スコア帯）を特定し、そのステージでの改善施策を検討してください。`,
+      ];
+    }
+
+    return [];
+  }, [data, activeTab]);
+
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       const d = payload[0].payload;
@@ -231,6 +313,33 @@ export default function VisualPage() {
           </button>
         ))}
       </div>
+
+      {/* REV-109: AI 状況説明コメントパネル */}
+      {aiInsights.length > 0 && (
+        <div className="mb-5 bg-indigo-50 border border-indigo-200 rounded-2xl overflow-hidden">
+          <button
+            onClick={() => setInsightOpen(o => !o)}
+            className="w-full flex items-center gap-2.5 px-5 py-3 text-left hover:bg-indigo-100/60 transition-colors"
+          >
+            <Lightbulb className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+            <span className="font-black text-indigo-700 text-sm">AI 分析コメント</span>
+            <span className="text-[10px] font-bold text-indigo-400 bg-indigo-100 px-2 py-0.5 rounded-full ml-1">データ自動解析</span>
+            <span className="ml-auto text-indigo-400">
+              {insightOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </span>
+          </button>
+          {insightOpen && (
+            <div className="px-5 pb-4 space-y-2">
+              {aiInsights.map((insight, i) => (
+                <div key={i} className="flex items-start gap-2.5">
+                  <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-indigo-400 flex-shrink-0" />
+                  <p className="text-sm text-slate-600 leading-relaxed">{formatInsight(insight)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-200 relative overflow-hidden">
          {activeTab === 'bubble' && (
