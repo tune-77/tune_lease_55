@@ -1354,6 +1354,7 @@ def get_improvement_log():
                 elif status in ("NEEDS_REVIEW", "needs_review"):
                     needs_review += 1
                 items.append({
+                    "key": obj.get("key", ""),
                     "id": obj.get("id", ""),
                     "title": obj.get("title", ""),
                     "status": status,
@@ -1362,7 +1363,19 @@ def get_improvement_log():
                 })
             except Exception:
                 pass
-    items.sort(key=lambda x: x.get("id") or "", reverse=True)
+    # 最新ステータスのみ保持（同一 key の重複を除去）
+    seen_keys: set[str] = set()
+    deduped: list[dict] = []
+    for it in reversed(items):  # 新しい順に並んでいるので reversed で古い→新しい
+        k = it.get("key") or it.get("title", "")
+        if k not in seen_keys:
+            seen_keys.add(k)
+            deduped.append(it)
+    items = list(reversed(deduped))  # 元の新しい順に戻す
+    # applied は表示カウントから除外（既に消し込み済み）
+    approved = sum(1 for it in items if it["status"] == "APPROVED")
+    needs_review = sum(1 for it in items if it["status"] in ("NEEDS_REVIEW", "needs_review"))
+    items.sort(key=lambda x: x.get("id") or x.get("title") or "", reverse=True)
     log_files = sorted(_glob.glob(os.path.join(log_dir, "improvement_*.log")), reverse=True)
     log_date = None
     if log_files:
@@ -1372,6 +1385,31 @@ def get_improvement_log():
             d = m.group(1)
             log_date = f"{d[:4]}-{d[4:6]}-{d[6:]}"
     return {"items": items[:200], "date": log_date, "approved": approved, "needs_review": needs_review}
+
+
+class DismissImprovementRequest(BaseModel):
+    key: str
+    title: str
+
+
+@app.post("/api/improvement-log/dismiss")
+def dismiss_improvement(req: DismissImprovementRequest):
+    """改善案を「実装済み」としてledgerに追記しパイプライン候補から除外する。"""
+    import json as _json
+    from datetime import datetime as _dt
+    ledger_path = os.path.expanduser("~/Library/Logs/tunelease/ledger.jsonl")
+    os.makedirs(os.path.dirname(ledger_path), exist_ok=True)
+    entry = {
+        "key": req.key,
+        "status": "applied",
+        "title": req.title,
+        "pr_url": "",
+        "reason": "UI経由で手動実装済みマーク",
+        "recorded_at": _dt.now().isoformat(),
+    }
+    with open(ledger_path, "a", encoding="utf-8") as f:
+        f.write(_json.dumps(entry, ensure_ascii=False) + "\n")
+    return {"ok": True, "key": req.key, "title": req.title}
 
 
 @app.get("/api/subsidies")
