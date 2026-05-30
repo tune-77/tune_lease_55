@@ -2,9 +2,10 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import axios from "axios";
-import { ClipboardList, RefreshCw, CheckCircle2, AlertCircle } from "lucide-react";
+import { ClipboardList, RefreshCw, CheckCircle2, AlertCircle, CheckSquare } from "lucide-react";
 
 type LogItem = {
+  key: string;
   id: string;
   title: string;
   status: string;
@@ -37,6 +38,8 @@ export default function ImprovementLogPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"ALL" | "APPROVED" | "NEEDS_REVIEW">("ALL");
   const [search, setSearch] = useState("");
+  const [dismissing, setDismissing] = useState<Set<string>>(new Set());
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -52,7 +55,22 @@ export default function ImprovementLogPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  const handleDismiss = useCallback(async (item: LogItem) => {
+    const k = item.key || item.title;
+    if (dismissing.has(k) || dismissed.has(k)) return;
+    setDismissing(prev => new Set(prev).add(k));
+    try {
+      await axios.post("/api/improvement-log/dismiss", { key: item.key || item.title, title: item.title });
+      setDismissed(prev => new Set(prev).add(k));
+    } catch {
+      // silent — ユーザーはリロードで確認できる
+    } finally {
+      setDismissing(prev => { const s = new Set(prev); s.delete(k); return s; });
+    }
+  }, [dismissing, dismissed]);
+
   const filtered = (data?.items ?? []).filter((it) => {
+    if (dismissed.has(it.key || it.title)) return false;
     const matchFilter = filter === "ALL" || it.status === filter || (filter === "NEEDS_REVIEW" && it.status === "needs_review");
     const matchSearch = !search || it.title.toLowerCase().includes(search.toLowerCase()) || it.id.toLowerCase().includes(search.toLowerCase());
     return matchFilter && matchSearch;
@@ -138,21 +156,26 @@ export default function ImprovementLogPage() {
                 <th className="text-left px-4 py-2">タイトル</th>
                 <th className="text-center px-3 py-2 w-24">ステータス</th>
                 <th className="text-center px-3 py-2 w-20">優先度</th>
+                <th className="text-center px-3 py-2 w-24">消し込み</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="text-center py-10 text-slate-400">
+                  <td colSpan={5} className="text-center py-10 text-slate-400">
                     {data ? "該当する改善案がありません" : "データを取得できませんでした"}
                   </td>
                 </tr>
               ) : (
                 filtered.map((it, i) => {
                   const s = STATUS_STYLE[it.status] ?? { bg: "#f8fafc", text: "#64748b", label: it.status };
+                  const k = it.key || it.title;
+                  const isDismissing = dismissing.has(k);
+                  const isDismissed = dismissed.has(k);
+                  const canDismiss = it.status !== "applied" && !isDismissed;
                   return (
-                    <tr key={it.id || i} className={i % 2 === 0 ? "bg-white" : "bg-slate-50"}>
-                      <td className="px-4 py-2 font-mono text-xs text-slate-500">{it.id}</td>
+                    <tr key={it.id || k || i} className={i % 2 === 0 ? "bg-white" : "bg-slate-50"}>
+                      <td className="px-4 py-2 font-mono text-xs text-slate-500">{it.id || "—"}</td>
                       <td className="px-4 py-2 text-slate-700">{it.title || "—"}</td>
                       <td className="px-3 py-2 text-center">
                         <span
@@ -164,6 +187,28 @@ export default function ImprovementLogPage() {
                       </td>
                       <td className={`px-3 py-2 text-center text-xs font-bold ${PRIORITY_COLOR[it.priority] ?? "text-slate-400"}`}>
                         {it.priority || "—"}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        {isDismissed ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600">
+                            <CheckCircle2 size={13} /> 完了
+                          </span>
+                        ) : (
+                          <button
+                            disabled={!canDismiss || isDismissing}
+                            onClick={() => handleDismiss(it)}
+                            className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-bold transition-colors
+                              ${canDismiss && !isDismissing
+                                ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200"
+                                : "text-slate-300 cursor-not-allowed"}`}
+                            title="実装済みとしてパイプラインから除外"
+                          >
+                            {isDismissing
+                              ? <RefreshCw size={11} className="animate-spin" />
+                              : <CheckSquare size={11} />}
+                            実装済
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
