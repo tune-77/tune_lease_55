@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { LifeBuoy, ExternalLink } from "lucide-react";
+import { LifeBuoy, ExternalLink, Info, AlertTriangle, CheckCircle2, TrendingDown } from "lucide-react";
 import Link from "next/link";
 
 type FeatureItem = {
@@ -223,6 +223,125 @@ export default function HelpPage() {
           </div>
         </div>
       ))}
+
+      {/* スコア判定クイックリファレンス */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
+        <h2 className="text-sm font-bold text-slate-700 border-b border-slate-200 pb-2">📊 スコア判定クイックリファレンス</h2>
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { range: '70点以上', label: '承認推奨', color: 'bg-emerald-50 border-emerald-200 text-emerald-800', icon: <CheckCircle2 className="w-4 h-4 text-emerald-500" /> },
+            { range: '60〜69点', label: '条件付き承認', color: 'bg-amber-50 border-amber-200 text-amber-800', icon: <AlertTriangle className="w-4 h-4 text-amber-500" /> },
+            { range: '60点未満', label: '否決', color: 'bg-rose-50 border-rose-200 text-rose-800', icon: <TrendingDown className="w-4 h-4 text-rose-500" /> },
+          ].map(s => (
+            <div key={s.range} className={`rounded-xl border p-3 text-center ${s.color}`}>
+              <div className="flex justify-center mb-1">{s.icon}</div>
+              <p className="text-lg font-black">{s.range}</p>
+              <p className="text-xs font-bold mt-0.5">{s.label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 主要財務指標 閾値一覧 */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
+        <h2 className="text-sm font-bold text-slate-700 border-b border-slate-200 pb-2">📐 主要指標の審査基準値</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-50">
+                <th className="border border-slate-200 px-3 py-2 text-left font-black text-slate-600">指標</th>
+                <th className="border border-slate-200 px-3 py-2 text-center font-black text-emerald-700">良好</th>
+                <th className="border border-slate-200 px-3 py-2 text-center font-black text-amber-700">要注意</th>
+                <th className="border border-slate-200 px-3 py-2 text-center font-black text-rose-700">高リスク</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                ['営業利益率', '5%以上', '2〜5%', '2%未満'],
+                ['自己資本比率', '20%以上', '10〜20%', '10%未満'],
+                ['デフォルト確率（PD）', '3%以下', '3〜8%', '8%超'],
+                ['流動比率', '100%以上', '80〜100%', '80%未満'],
+                ['負債比率', '60%以下', '60〜80%', '80%超'],
+                ['Q_risk（量子干渉リスク）', '35未満', '35〜59', '60以上'],
+              ].map(([label, good, warn, risk]) => (
+                <tr key={label} className="even:bg-white odd:bg-slate-50/40">
+                  <td className="border border-slate-200 px-3 py-2 font-bold text-slate-700">{label}</td>
+                  <td className="border border-slate-200 px-3 py-2 text-center text-emerald-700 font-bold">{good}</td>
+                  <td className="border border-slate-200 px-3 py-2 text-center text-amber-700 font-bold">{warn}</td>
+                  <td className="border border-slate-200 px-3 py-2 text-center text-rose-700 font-bold">{risk}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 標準ワークフロー */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
+        <h2 className="text-sm font-bold text-slate-700 border-b border-slate-200 pb-2">🔄 標準審査フロー</h2>
+        <div className="flex flex-col sm:flex-row gap-2">
+          {[
+            { step: '1', label: '情報入力', desc: 'リースくんウィザードまたは定量審査で基本情報を入力', href: '/lease-kun' },
+            { step: '2', label: 'スコアリング', desc: 'LightGBMモデルによる自動スコア算出・PD評価', href: '/' },
+            { step: '3', label: 'レポート確認', desc: '審査レポート・業種比較・営業ガイドを確認', href: '/report' },
+            { step: '4', label: 'AI相談', desc: '疑問点をAIチャットまたはエージェント議論で深掘り', href: '/chat' },
+          ].map(s => (
+            <Link key={s.step} href={s.href} className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 hover:border-blue-300 hover:bg-blue-50 transition-all group">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] font-black flex items-center justify-center flex-shrink-0">{s.step}</span>
+                <p className="font-black text-sm text-slate-700 group-hover:text-indigo-700">{s.label}</p>
+              </div>
+              <p className="text-xs text-slate-500 leading-relaxed">{s.desc}</p>
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      {/* モデル説明 */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
+        <h2 className="text-sm font-bold text-slate-700 border-b border-slate-200 pb-2">🧠 AIモデル構成</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+          {[
+            { name: 'スコアリングモデル', model: 'LightGBM（spread_predictor_v2）', role: '審査スコア（0〜100pt）を算出。売上・利益率・自己資本・業種等から総合評価。', color: 'border-indigo-200 bg-indigo-50' },
+            { name: 'デフォルト率モデル', model: 'LightGBM（lgbm_model）', role: 'デフォルト確率（PD）を算出。スコアとは独立した補助指標として警告表示。', color: 'border-rose-200 bg-rose-50' },
+            { name: '量子干渉リスク（Q_risk）', model: 'quantum_analysis_module', role: '複数リスク要因の非線形相互作用を検出。35以上で要注意、60以上で強警戒。', color: 'border-violet-200 bg-violet-50' },
+          ].map(m => (
+            <div key={m.name} className={`rounded-xl border p-3 ${m.color}`}>
+              <p className="font-black text-slate-800 mb-1">{m.name}</p>
+              <p className="text-[10px] font-mono text-slate-500 mb-1.5">{m.model}</p>
+              <p className="text-slate-600 leading-relaxed">{m.role}</p>
+            </div>
+          ))}
+        </div>
+        <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-700">
+          <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <p>スコアリングモデルとデフォルト率モデルは<strong>独立して動作</strong>します。スコアが高くてもPDが高い場合があります（財務トレンドの変化など）。両方を参照して総合判断してください。</p>
+        </div>
+      </div>
+
+      {/* よくある質問 */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
+        <h2 className="text-sm font-bold text-slate-700 border-b border-slate-200 pb-2">❓ よくある質問</h2>
+        <div className="space-y-2">
+          {[
+            { q: 'スコアが70点を超えているのに条件付き承認になるのはなぜ？', a: 'AIスコアは参考値です。Q_risk（量子干渉リスク）が高い・PDが高い・担当者による定性評価で懸念がある場合は最終判断が変わります。' },
+            { q: 'AIチャットとエージェント議論の違いは？', a: 'AIチャット（めぶきちゃん）は1対1の対話型相談。エージェント議論は複数AIが異なる立場から審査案件を多角的に評価し合意形成を行います。' },
+            { q: '業種別成約率のデータはいつ更新されますか？', a: '審査案件のステータス（成約/失注）が登録されるたびにリアルタイムで更新されます。' },
+            { q: 'レポートを印刷したい', a: 'レポートページの「コピー」ボタンでMarkdownテキストをクリップボードにコピーできます。その後、任意のエディタ・ドキュメントに貼り付けて印刷してください。' },
+            { q: 'スマートフォンから使えますか？', a: '専用スマホUI（モバイルアプリ版）を提供しています。ヤナミ/雪風ペルソナとの審査相談が可能です。' },
+          ].map((item, i) => (
+            <details key={i} className="group border border-slate-200 rounded-xl overflow-hidden">
+              <summary className="flex items-start gap-3 px-4 py-3 cursor-pointer bg-white hover:bg-slate-50 transition-colors">
+                <span className="text-indigo-500 font-black text-xs mt-0.5 shrink-0">Q.</span>
+                <span className="text-sm font-bold text-slate-700 flex-1">{item.q}</span>
+              </summary>
+              <div className="px-4 py-3 bg-slate-50 border-t border-slate-100 text-xs text-slate-600 leading-relaxed">
+                <span className="font-black text-slate-500 mr-1">A.</span>{item.a}
+              </div>
+            </details>
+          ))}
+        </div>
+      </div>
 
       <div className="text-center pt-2">
         <Link href="/improvement-log" className="text-xs text-slate-400 hover:text-slate-600 underline">

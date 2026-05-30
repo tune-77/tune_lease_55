@@ -341,6 +341,114 @@ function SalesGuidePanel({ score }: { score: number }) {
   );
 }
 
+// 営業トーキングポイント自動生成パネル
+function SalesScriptPanel({ score, inputs, result }: {
+  score: number;
+  inputs: Record<string, unknown>;
+  result: Record<string, unknown>;
+}) {
+  const company = typeof inputs.company_name === 'string' && inputs.company_name ? inputs.company_name : null;
+  const industry = typeof inputs.industry_sub === 'string' && inputs.industry_sub ? inputs.industry_sub : null;
+  const assetType = typeof inputs.asset_type === 'string' && inputs.asset_type ? inputs.asset_type : null;
+  const leaseAmount = typeof inputs.lease_amount === 'number' ? inputs.lease_amount : null;
+  const leasePeriod = typeof inputs.lease_period === 'number' ? inputs.lease_period : null;
+  const range = score >= 70 ? 'approved' : score >= 60 ? 'conditional' : 'rejected';
+  const pd = typeof result.pd_percent === 'number' ? result.pd_percent : null;
+  const quantumRisk = typeof result.quantum_risk === 'number' ? result.quantum_risk : null;
+  const rounded = Math.round(score);
+
+  const scripts: { label: string; script: string }[] = [];
+
+  if (range === 'approved') {
+    scripts.push({
+      label: '冒頭',
+      script: `「${company ? company + '様の' : ''}AIスコアは${rounded}点で審査基準（70点）をクリアしています。財務健全性が確認されました。」`,
+    });
+    if (industry) {
+      scripts.push({
+        label: '業種評価',
+        script: `「${industry}業界の中で標準的な金利条件での提示が可能です。追加担保・保証は原則不要です。」`,
+      });
+    }
+    if (assetType) {
+      scripts.push({
+        label: '物件説明',
+        script: `「${assetType}の物件は耐用年数内での標準リースが適用できます。長期契約によるコスト最適化もご提案可能です。」`,
+      });
+    }
+    if (leaseAmount && leasePeriod) {
+      const monthly = Math.round((leaseAmount * 1000 * 0.025) / leasePeriod);
+      scripts.push({
+        label: '月次概算',
+        script: `「月次リース料は概算で${monthly.toLocaleString()}円程度（標準金利ベース・税別）の見込みです。」`,
+      });
+    }
+    scripts.push({
+      label: 'クロージング',
+      script: '「本審査書類（決算書3期・申込書）が揃い次第、1〜3営業日での回答が可能です。早めにご準備いただくとスムーズです。」',
+    });
+  } else if (range === 'conditional') {
+    scripts.push({
+      label: '冒頭',
+      script: `「${company ? company + '様の' : ''}スコアは${rounded}点です。否決ではなく、一定条件のもとで承認可能な状態です。」`,
+    });
+    if (pd !== null && pd > 3) {
+      scripts.push({
+        label: 'リスクの説明',
+        script: `「財務パターン分析でデフォルト確率が${pd.toFixed(1)}%と基準を上回っています。代表者保証または担保設定をいただけると審査が前進します。」`,
+      });
+    }
+    if (quantumRisk !== null && quantumRisk >= 35) {
+      scripts.push({
+        label: '複合リスク',
+        script: '「複数の財務指標に懸念点が重なっています。直近3ヶ月の試算表と主要取引先の契約書を追加でご提出ください。」',
+      });
+    }
+    scripts.push({
+      label: '条件整理',
+      script: '「担保・保証条件が整い次第、3〜5営業日で最終回答いたします。書類の早期収集をお願いします。」',
+    });
+  } else {
+    scripts.push({
+      label: '冒頭',
+      script: `「${company ? company + '様の' : ''}スコアは${rounded}点で、現時点では審査基準（60点）に未達です。企業様の価値を否定するものではありません。」`,
+    });
+    scripts.push({
+      label: '改善ポイント',
+      script: '「営業利益率5%以上・自己資本比率20%以上を目安に財務改善いただくと、6〜12ヶ月後の再申請でスコア向上が見込まれます。」',
+    });
+    scripts.push({
+      label: '代替提案',
+      script: '「リース金額の縮小・期間短縮・信用保証協会保証の活用など、現状に合わせた代替プランもご相談できます。」',
+    });
+  }
+
+  const wrap = range === 'approved' ? 'bg-teal-50 border-teal-200' : range === 'conditional' ? 'bg-orange-50 border-orange-200' : 'bg-slate-50 border-slate-200';
+  const hdr = range === 'approved' ? 'text-teal-800' : range === 'conditional' ? 'text-orange-800' : 'text-slate-700';
+  const pill = range === 'approved' ? 'bg-teal-100 text-teal-700' : range === 'conditional' ? 'bg-orange-100 text-orange-700' : 'bg-slate-100 text-slate-500';
+
+  return (
+    <div className={`mb-5 p-4 border rounded-xl ${wrap}`}>
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <MessageSquare className="w-5 h-5 flex-shrink-0 text-slate-500" />
+        <span className={`font-black text-sm ${hdr}`}>営業トーキングポイント（自動生成）</span>
+        {company && (
+          <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${pill}`}>{company}</span>
+        )}
+      </div>
+      <div className="space-y-2">
+        {scripts.map((s, i) => (
+          <div key={i} className="bg-white/80 rounded-lg p-3 border border-white/60">
+            <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${hdr}`}>{s.label}</p>
+            <p className="text-xs text-slate-700 leading-relaxed">{s.script}</p>
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] text-slate-400 mt-3">※ 入力データをもとに自動生成したスクリプト案です。実際の説明は状況に応じて調整してください。</p>
+    </div>
+  );
+}
+
 function MarkdownBlock({ md }: { md: string }) {
   const lines = md.split('\n');
   return (
@@ -563,6 +671,10 @@ export default function ReportPage() {
                 {/* REV-048: 営業向けガイドライン */}
                 {score !== null && (
                   <SalesGuidePanel score={score} />
+                )}
+                {/* 営業トーキングポイント自動生成 */}
+                {score !== null && caseDetail && (
+                  <SalesScriptPanel score={score} inputs={caseDetail.inputs} result={caseDetail.result} />
                 )}
                 {/* REV-089/113/114: Q_risk パネル */}
                 {caseDetail && typeof caseDetail.result.quantum_risk === 'number' && (
