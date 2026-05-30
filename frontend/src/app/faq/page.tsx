@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import {
   HelpCircle, ChevronDown, ChevronUp, BookOpen, Cpu, Zap,
   Building2, TrendingDown, Clock, RefreshCw, Wrench,
-  Ban, RotateCcw, Factory, Percent, Landmark
+  Ban, RotateCcw, Factory, Percent, Landmark, Package, Trash2, HardHat
 } from 'lucide-react';
 
 type FaqItem = {
@@ -918,6 +918,205 @@ const sections: FaqSection[] = [
               <li>本部のFC加盟契約書・開業サポート内容の確認</li>
               <li>同FC他加盟店の平均売上・損益データの参照</li>
               <li>本部保証やロイヤリティの資金計画への影響確認</li>
+            </ul>
+          </div>
+        ),
+      },
+    ],
+  },
+
+  // リース対象外資産・判断基準
+  {
+    id: 'non-leaseable',
+    title: 'リース対象外・対象判断の基準',
+    icon: <Ban className="w-5 h-5" />,
+    color: 'text-rose-600',
+    items: [
+      {
+        q: 'リースできない資産（リース対象外）はどれですか？',
+        a: (
+          <div className="space-y-3">
+            <p>以下の資産はリース取引の対象外です：</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              {[
+                ['土地・建物（不動産）', '動産リースの対象外。不動産リースは別途スキームが必要。'],
+                ['消耗品・原材料', '使用により価値がゼロになる物品はリース不可。'],
+                ['有価証券・商品在庫', '金融資産・流動資産はリース対象外。'],
+                ['無形資産（ソフトウェア単体）', '単体のSaaSや保守サービスはリース不可（ハードとセットなら可）。'],
+                ['廃棄物処理費・解体費用', 'サービス費用であり物件取得に該当しない。'],
+                ['リース会社の業種規制品目', '武器・賭博機器等は法令・社内規程で禁止。'],
+              ].map(([item, reason]) => (
+                <div key={item} className="bg-rose-50 border border-rose-100 rounded-lg p-2.5">
+                  <p className="font-black text-rose-700 mb-1">{item}</p>
+                  <p className="text-slate-600">{reason}</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-500 bg-slate-100 rounded p-2">※ 工事費・設置費用は物件価格の一部として含められる場合があります（下記Q参照）。</p>
+          </div>
+        ),
+      },
+      {
+        q: 'リース対象になるかどうかの判断基準を教えてください',
+        a: (
+          <div className="space-y-2">
+            <p>リース会社が物件をリース対象と判断する際の主な基準は以下の4点です：</p>
+            <div className="space-y-2 text-xs">
+              {[
+                ['① 特定性・独立性', '識別可能な固定資産として管理できること（シリアル番号・型番等）。'],
+                ['② 換金性（流動性）', 'リース終了時または途中解約時に売却・処分が可能であること。汎用性が高いほど評価UP。'],
+                ['③ 取得費用の明確性', '物件取得原価が明確に積算できること（工事費が主体の場合は難しい）。'],
+                ['④ 経済的耐用年数', '物件の実用的な使用可能年数が確認できること。消耗品・短命品は対象外。'],
+              ].map(([label, desc]) => (
+                <div key={label} className="flex gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                  <span className="font-black text-slate-700 shrink-0">{label}</span>
+                  <span className="text-slate-600">{desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ),
+      },
+      {
+        q: '工事費・設置費用もリースに含められますか？',
+        a: (
+          <div className="space-y-2">
+            <p>一定の条件のもとで、工事費・設置費用を物件取得価額に含めてリースできます。</p>
+            <ul className="list-disc ml-4 text-xs space-y-1">
+              <li><strong>対象となる費用</strong>：物件の設置・据付工事費（配管・電気配線含む）、輸送費、試運転費用</li>
+              <li><strong>目安</strong>：工事費が物件本体価格の<strong>50%以内</strong>であれば一体でリース可能なケースが多い</li>
+              <li><strong>注意点</strong>：工事費が主体（物件価格より高い）の場合はリース組成が困難。建設工事そのものは対象外</li>
+            </ul>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs">
+              <p className="font-black text-amber-700 mb-1">高額工事費用を含む案件の審査上の確認ポイント</p>
+              <ul className="list-disc ml-4 text-slate-600 space-y-0.5">
+                <li>工事完了後の設備が独立した資産として認識できるか</li>
+                <li>撤去・移設が現実的に可能か（換金性の確認）</li>
+                <li>工事業者への直接支払いスキームとするか、ユーザー立替払後にリース会社が買取るかを整理</li>
+              </ul>
+            </div>
+          </div>
+        ),
+      },
+    ],
+  },
+
+  // リース終了時・処分FAQ
+  {
+    id: 'end-of-lease',
+    title: 'リース終了・中途解約・物件処分',
+    icon: <Trash2 className="w-5 h-5" />,
+    color: 'text-slate-600',
+    items: [
+      {
+        q: 'リース終了時の選択肢はどれくらいありますか？',
+        a: (
+          <div className="space-y-2">
+            <p>リース期間満了時の主な選択肢は以下の3つです：</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+              {[
+                { title: '① 返却', desc: '物件をリース会社に返却して契約終了。最もシンプル。', color: 'bg-blue-50 border-blue-200 text-blue-800' },
+                { title: '② 再リース', desc: '同物件のリース期間を延長（通常1年単位）。月額は下がるケースが多い。', color: 'bg-emerald-50 border-emerald-200 text-emerald-800' },
+                { title: '③ 買取り', desc: '時価または残価でユーザーが物件を購入。所有権が移転する。', color: 'bg-amber-50 border-amber-200 text-amber-800' },
+              ].map(opt => (
+                <div key={opt.title} className={`rounded-lg p-3 border ${opt.color}`}>
+                  <p className="font-black mb-1">{opt.title}</p>
+                  <p className="text-slate-600">{opt.desc}</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-500 bg-slate-100 rounded p-2">※ 選択可能な選択肢はリース種別・契約内容によって異なります。契約書の「期間終了後の処理」条項を事前に確認してください。</p>
+          </div>
+        ),
+      },
+      {
+        q: 'リース物件の返却時に費用は発生しますか？',
+        a: (
+          <div className="space-y-2">
+            <p>返却時の費用負担は契約内容によりますが、一般的に以下のケースで費用が発生します：</p>
+            <ul className="list-disc ml-4 text-xs space-y-1">
+              <li><strong>原状回復費用</strong>：使用による通常摩耗を超える損傷がある場合。特にOA機器・フォークリフトで問題になりやすい</li>
+              <li><strong>輸送・撤去費用</strong>：返却のための運搬・据付解除費用（契約に規定がある場合はユーザー負担）</li>
+              <li><strong>データ消去費用</strong>：PC・複合機等では個人情報保護の観点からリース会社指定の消去が必要な場合がある</li>
+            </ul>
+          </div>
+        ),
+      },
+      {
+        q: '中途解約はできますか？解約金の計算方法は？',
+        a: (
+          <div className="space-y-2">
+            <p>ファイナンスリースは原則として<strong>中途解約不可</strong>です。ただし、やむを得ない事情がある場合は解約損害金（違約金）の支払いにより解約が認められるケースがあります。</p>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs">
+              <p className="font-black text-slate-700 mb-1">解約損害金の一般的な計算方式</p>
+              <p className="text-slate-600">残存リース料の現在価値合計 − リース物件の処分価額</p>
+              <p className="text-slate-500 mt-1">（物件価値が高いほど損害金は少なくなる傾向）</p>
+            </div>
+            <p className="text-xs text-slate-600">オペレーティングリースの場合は解約条件が緩いケースが多いですが、残価リスクの補填を求められる場合があります。</p>
+          </div>
+        ),
+      },
+    ],
+  },
+
+  // 内装・建物付帯設備のリース
+  {
+    id: 'construction-lease',
+    title: '内装・建物付帯設備・ソフトウェアのリース',
+    icon: <HardHat className="w-5 h-5" />,
+    color: 'text-orange-600',
+    items: [
+      {
+        q: '店舗の内装工事費はリースできますか？',
+        a: (
+          <div className="space-y-2">
+            <p>内装工事費は原則として<strong>リース対象外</strong>ですが、設備機器部分を切り出してリース組成することが可能です。</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                <p className="font-black text-emerald-700 mb-1">リース可能な部分</p>
+                <ul className="list-disc ml-3 text-slate-600 space-y-0.5">
+                  <li>厨房機器・調理設備</li>
+                  <li>空調機器（個別設置型）</li>
+                  <li>サイン・照明設備</li>
+                  <li>POS・レジシステム</li>
+                </ul>
+              </div>
+              <div className="bg-rose-50 border border-rose-200 rounded-lg p-3">
+                <p className="font-black text-rose-700 mb-1">リース困難な部分</p>
+                <ul className="list-disc ml-3 text-slate-600 space-y-0.5">
+                  <li>壁・床・天井の仕上げ工事</li>
+                  <li>建物躯体への埋込み設備</li>
+                  <li>撤去不能な造作工事</li>
+                  <li>開業準備費・デザイン費</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        ),
+      },
+      {
+        q: 'ソフトウェアのみのリースは可能ですか？',
+        a: (
+          <div className="space-y-2">
+            <p><strong>単体のソフトウェア（ライセンス・SaaS）はリース対象外</strong>です。ただし以下のケースでは組み込みが可能です：</p>
+            <ul className="list-disc ml-4 text-xs space-y-1">
+              <li><strong>ハードウェアと一体型</strong>：PC・サーバー等のハードにプリインストールされたソフトはセットでリース可能</li>
+              <li><strong>組込みシステム</strong>：産業機器に組み込まれた制御ソフトは物件の一部として扱える場合がある</li>
+              <li><strong>オンプレ型業務システム</strong>：サーバーと一体で構成するシステムはハード込みでリース可能（SaaSは不可）</li>
+            </ul>
+          </div>
+        ),
+      },
+      {
+        q: '太陽光発電設備・蓄電池はリース対象になりますか？',
+        a: (
+          <div className="space-y-2">
+            <p>太陽光パネル・蓄電池は<strong>リース対象として認められます</strong>。ただし以下の点を確認してください：</p>
+            <ul className="list-disc ml-4 text-xs space-y-1">
+              <li><strong>FIT（固定価格買取制度）との整合</strong>：リース会社が設備所有者となるためFITの名義調整が必要</li>
+              <li><strong>物件価値の評価</strong>：FIT終了後の残存価値・売電収入の見通しが審査に影響</li>
+              <li><strong>設置場所の権利</strong>：屋根・土地の使用権（賃貸借契約等）が確保されていること</li>
+              <li><strong>O&M（運営保守）コスト</strong>：発電量低下リスクや維持管理費を資金計画に組み込むこと</li>
             </ul>
           </div>
         ),
