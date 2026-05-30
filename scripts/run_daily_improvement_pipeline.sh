@@ -60,6 +60,22 @@ echo "[Step 1-3] auto-improvement-pipeline 実行中..."
     --workspace "${PROJECT_ROOT}"
 PIPELINE_EXIT=$?
 
+# --- Step 4: reports/latest.json を更新して Gist に push ---
+LATEST_FILE="${PROJECT_ROOT}/reports/latest.json"
+GIST_ID="3980215df65cf75e972471f048b10d15"
+if [ -f "${RESULT_FILE}" ]; then
+    cp "${RESULT_FILE}" "${LATEST_FILE}"
+    echo ""
+    echo "[Step 4] Gist に結果を更新中..."
+    if command -v gh >/dev/null 2>&1; then
+        gh gist edit "${GIST_ID}" "${LATEST_FILE}" 2>/dev/null && \
+            echo "Gist 更新完了: https://gist.github.com/tune-77/${GIST_ID}" || \
+            echo "警告: Gist 更新に失敗しました（パイプライン結果は保存済み）"
+    else
+        echo "警告: gh コマンドが見つかりません（Gist 更新スキップ）"
+    fi
+fi
+
 echo ""
 echo "========================================"
 echo "改善パイプライン終了: $(date '+%Y-%m-%d %H:%M:%S')"
@@ -67,5 +83,6 @@ echo "終了コード: ${PIPELINE_EXIT}"
 if [ -f "${RESULT_FILE}" ]; then
     echo "結果ファイル: ${RESULT_FILE}"
 fi
+echo "Gist: https://gist.githubusercontent.com/tune-77/${GIST_ID}/raw/latest.json"
 echo "ログファイル: ${LOG_FILE}"
 echo "========================================"

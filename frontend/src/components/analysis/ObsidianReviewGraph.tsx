@@ -120,6 +120,18 @@ export default function ObsidianReviewGraph({ graph, title = "Obsidianグラフ"
       .attr("opacity", (d: any) => (d.type === "wikilink" ? 0.5 : 0.85))
       .attr("marker-end", (d: any) => (d.type === "wikilink" ? "url(#arrow-link)" : "url(#arrow-main)"));
 
+    // 引用元ノード用のグロー filter 定義
+    const glowFilter = defs.append("filter")
+      .attr("id", "glow-citation")
+      .attr("x", "-50%").attr("y", "-50%")
+      .attr("width", "200%").attr("height", "200%");
+    glowFilter.append("feGaussianBlur")
+      .attr("stdDeviation", "3")
+      .attr("result", "coloredBlur");
+    const feMerge = glowFilter.append("feMerge");
+    feMerge.append("feMergeNode").attr("in", "coloredBlur");
+    feMerge.append("feMergeNode").attr("in", "SourceGraphic");
+
     const node = g.append("g")
       .selectAll("g")
       .data(prepared.nodes)
@@ -145,13 +157,45 @@ export default function ObsidianReviewGraph({ graph, title = "Obsidianグラフ"
           }) as any,
       );
 
+    // 引用元ノードにハローリング（外側の光輪）を追加
+    node.filter((d: any) => d.used)
+      .append("circle")
+      .attr("r", (d: any) => (d.radius || 12) + 6)
+      .attr("fill", "none")
+      .attr("stroke", "#f59e0b")
+      .attr("stroke-width", 2.5)
+      .attr("opacity", 0.55)
+      .attr("filter", "url(#glow-citation)");
+
     node.append("circle")
       .attr("r", (d: any) => d.radius || 12)
       .attr("fill", (d: any) => d.color || "#94a3b8")
-      .attr("stroke", (d: any) => (d.used ? "#0f172a" : "#e2e8f0"))
-      .attr("stroke-width", (d: any) => (d.used || d.type === "focus" ? 3 : 1.5))
+      .attr("stroke", (d: any) => (d.used ? "#f59e0b" : d.type === "focus" ? "#0f172a" : "#e2e8f0"))
+      .attr("stroke-width", (d: any) => (d.used ? 3 : d.type === "focus" ? 3 : 1.5))
       .attr("opacity", (d: any) => (d.type === "linked" ? 0.7 : 1))
-      .attr("filter", (d: any) => (d.used || d.type === "focus" ? "drop-shadow(0 4px 8px rgba(15,23,42,0.16))" : null));
+      .attr("filter", (d: any) => (d.used ? "url(#glow-citation)" : d.type === "focus" ? "drop-shadow(0 4px 8px rgba(15,23,42,0.16))" : null));
+
+    // 引用元ノードに「引」バッジを追加
+    node.filter((d: any) => d.used)
+      .append("circle")
+      .attr("r", 6)
+      .attr("cx", (d: any) => (d.radius || 12) * 0.7)
+      .attr("cy", (d: any) => -(d.radius || 12) * 0.7)
+      .attr("fill", "#f59e0b")
+      .attr("stroke", "#fff")
+      .attr("stroke-width", 1.5);
+
+    node.filter((d: any) => d.used)
+      .append("text")
+      .text("引")
+      .attr("x", (d: any) => (d.radius || 12) * 0.7)
+      .attr("y", (d: any) => -(d.radius || 12) * 0.7)
+      .attr("text-anchor", "middle")
+      .attr("dominant-baseline", "central")
+      .attr("font-size", 6)
+      .attr("font-weight", 900)
+      .attr("fill", "#fff")
+      .attr("pointer-events", "none");
 
     node.append("text")
       .text((d: any) => truncate(d.label, d.type === "linked" ? 18 : 26))
@@ -220,6 +264,13 @@ export default function ObsidianReviewGraph({ graph, title = "Obsidianグラフ"
             {item.label}
           </div>
         ))}
+        <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-black text-amber-700">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-50" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-500" />
+          </span>
+          引用元（実際に使用）
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
