@@ -1,60 +1,82 @@
 # リース審査AI — Claude Code プロジェクト指示書
 
 ## プロジェクト概要
-温水式リース審査AIシステム（Streamlit + SQLite + Slack Bot）。
-審査スコアリング・レポート・エージェント議論・リースくんウィザードを提供する。
+
+**Next.js 14 (App Router) + FastAPI + SQLite** によるリース審査 AI システム。
+
+| レイヤー | 技術 | 役割 |
+|---------|------|------|
+| フロントエンド | Next.js 14 / TypeScript | 審査 UI・ダッシュボード群 (`frontend/`) |
+| API サーバー | FastAPI (Python 3.10+) | スコアリング・案件管理・AI 連携 (`api/`) |
+| AI スコアリング | LightGBM + 量子干渉モジュール | 財務分析・リスク評価（ルート直下） |
+| DB | SQLite (`data/lease_data.db`) | 案件ログ・マスタ |
+| レガシー | Streamlit (`tune_lease_55.py`) | 旧 UI（段階的廃止中） |
+
+---
 
 ## 主要ファイル構成
-- `tune_lease_55.py` — Streamlit エントリポイント・ページルーティング
-- `components/` — 各画面コンポーネント（chat_wizard, report, home, sidebar 等）
-- `scoring/` — AIスコアリングロジック（industry_hybrid_model.py 等）
-- `asset_scorer.py`, `total_scorer.py`, `category_config.py`, `scoring_core.py` — スコアリング中核（ルート直下）
-- `quantum_analysis_module.py` — 量子干渉スコアによる財務矛盾検出（score_calculation で呼ばれ quantum_risk≥35 で要注意フラグ）
-- `train_quantum.py` — quantum_model.joblib の学習スクリプト
-- `slack_bot.py` / `slack_screening.py` — Slack ボット・審査フロー
-- `data/` — SQLite DB・セッションファイル（機密情報含む、コミット禁止）
-- `.claude/reports/` — エージェント間共有レポート
 
-エージェント協調プロトコルの詳細は `.claude/AGENTS.md` を参照。
+```
+frontend/src/app/           # Next.js ページ（25+ ページ）
+frontend/src/components/    # 共通コンポーネント
+api/main.py                 # FastAPI エンドポイント（全 API）
+api/schemas.py              # Pydantic モデル
+scoring_core.py             # スコアリング統合ロジック
+asset_scorer.py             # 物件スコアリング
+quantum_analysis_module.py  # 量子干渉スコア（≥35 で要注意フラグ）
+data_cases.py               # 案件 DB 操作
+data/                       # SQLite DB・セッション（コミット禁止）
+```
+
+---
+
+## コーディング規約
+
+### Python
+- Python 3.10+、型アノテーション推奨
+- 数値単位：フロント入力は **千円**、スコアリングモジュール内は **円**（`toThousandYenPayload()` で変換）
+- FastAPI エンドポイントは `api/main.py`、Pydantic モデルは `api/schemas.py` で管理
+
+### TypeScript / Next.js — 詳細は @.claude/rules/frontend.md
+
+- **strict mode** 厳守（`as any` 原則禁止）
+- API 呼び出しは `src/lib/api.ts` の `apiClient` を使用
+- グラフ: Recharts / Three.js、アイコン: lucide-react、スタイル: Tailwind CSS
+
+---
+
+## ⚠️ 絶対禁止（必読）
+
+```bash
+# eslint --fix は実行禁止（UIコンポーネントが削除される事故が発生済み）
+cd frontend && npm run lint:fix   # ❌
+cd frontend && npx eslint --fix   # ❌
+
+# 正しい使い方（チェックのみ）
+cd frontend && npm run lint       # ✅
+cd frontend && npx tsc --noEmit   # ✅ PR 前に必ず実行
+```
+
+---
+
+## 開発・PR ワークフロー — 詳細は @.claude/rules/workflow.md
+
+- ブランチ命名: `feature/rev-<番号>-<説明>` / `fix/<説明>` / `chore/<説明>`
+- `/git-ship` スキルで add → commit → push → PR 作成を一括実行
+- `master` pull 前: `git stash -- .claude/ && git pull origin master && git stash drop`
+
+---
+
+## セキュリティ — 詳細は @.claude/rules/security.md
+
+コミット禁止: `.streamlit/secrets.toml` / `data/` 配下すべて / `models/*.bak.*`
 
 ---
 
 ## Serena MCP 使用方針
-コード調査・編集は Serena の `get_symbols_overview` / `find_symbol` / `replace_symbol_body` を優先して使うこと。ファイル全体の `Read` より先にシンボル単位での取得を試みる。
 
-## コーディング規約
-- Python 3.10+、型アノテーション推奨
-- Streamlit の `st.session_state` 操作は副作用に注意
-- `data/` 以下のファイルはコミットしない（`.gitignore` 参照）
-- 数値は基本「千円」単位（スコアリングモジュールは「円」単位、変換注意）
+コード調査・編集は Serena の `get_symbols_overview` / `find_symbol` / `replace_symbol_body` を優先。ファイル全体の `Read` より先にシンボル単位での取得を試みる。
 
-## セキュリティ注意事項
-- `.streamlit/secrets.toml` は絶対にコミットしない
-- `data/*.db`, `data/*.sqlite`, `data/*.jsonl` はコミットしない
-- Slack トークンは環境変数か secrets.toml から取得
+---
 
-## ⚠️ フロントエンド lint ルール（必読）
-
-**`eslint --fix` は絶対に実行してはならない。**
-
-過去に `eslint --fix` がUIコンポーネントやAPIエンドポイントを削除する事故が発生している。
-
-### 正しい lint の使い方
-```bash
-# ✅ チェックのみ（これだけ使う）
-cd frontend && npm run lint
-
-# ❌ 絶対禁止（コードが削除される）
-cd frontend && npm run lint:fix   # → わざとエラーになるよう設定済み
-cd frontend && npx eslint --fix   # → 実行禁止
-```
-
-### lint エラーが出たとき
-1. エラーメッセージを読んで **手動で修正** する
-2. `no-unused-vars` 警告が出ても、そのコードが実際に使われているなら削除しない
-3. 意図的に未使用の変数は `_` プレフィックスを付ける（例: `_unused`）
-4. どうしても抑制が必要な場合は `// eslint-disable-next-line rule-name` コメントを使う
-
-### next build と lint は分離済み
-`next build` は lint を実行しない（`ignoreDuringBuilds: true`）。
-lint は CI の `frontend-lint` ジョブが **報告のみ** で実行する（ブロックしない）。
+エージェント協調プロトコルの詳細は `.claude/AGENTS.md` を参照。
