@@ -894,6 +894,26 @@ def run_quick_scoring(inputs: dict) -> dict:
     except Exception:
         quantum_risk_score = None
 
+    mahalanobis_score: float | None = None
+    mahalanobis_advice: list | None = None
+    try:
+        import pandas as _pd
+        from mahalanobis_engine import MahalanobisScorer
+        from train_mahalanobis import FEATURES as _MAHA_FEATURES, _extract_val as _maha_extract
+        _maha_path = os.path.join(_SCRIPT_DIR, "data", "mahalanobis_model.joblib")
+        if os.path.exists(_maha_path):
+            _maha = MahalanobisScorer.load(_maha_path)
+            _maha_row = {f: _maha_extract({"inputs": inputs}, f) for f in _MAHA_FEATURES}
+            _maha_df = _pd.DataFrame([_maha_row])
+            _ms, _, _, _ = _maha.get_analysis(_maha_df)
+            mahalanobis_score = round(float(_ms), 1)
+            mahalanobis_advice = [
+                {"feat": a["feat"], "direction": a["direction"], "delta": round(float(a["delta"]), 0)}
+                for a in _maha.advise_improvement(_maha_df, top_k=3)
+            ]
+    except Exception:
+        pass
+
     credit_quantum_strong_warning = (
         credit_risk_group.get("score", 0.0) >= 70.0
         and quantum_risk_score is not None

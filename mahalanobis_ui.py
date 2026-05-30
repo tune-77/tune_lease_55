@@ -11,27 +11,27 @@ st.set_page_config(layout="wide", page_title="マハラノビス距離審査", p
 MODEL_PATH = "data/mahalanobis_model.joblib"
 
 FEAT_LABELS = {
-    "nenshu": "売上高 (千円)",
-    "op_profit": "営業利益 (千円)",
-    "ord_profit": "経常利益 (千円)",
-    "net_income": "当期純利益 (千円)",
-    "net_assets": "純資産 (千円)",
-    "total_assets": "総資産 (千円)",
-    "contracts": "取引件数",
+    "nenshu":      "売上高 (千円)",
+    "op_profit":   "営業利益 (千円)",
+    "ord_profit":  "経常利益 (千円)",
+    "net_income":  "当期純利益 (千円)",
+    "bank_credit": "銀行与信 (千円)",
+    "dep_expense": "減価償却費 (千円)",
+    "machines":    "機械装置 (千円)",
 }
-LOG_FEATS = {"nenshu", "net_assets", "total_assets"}
+LOG_FEATS = {"nenshu", "bank_credit", "machines", "dep_expense"}
 DEFAULTS = {
     "nenshu": 500_000, "op_profit": 20_000, "ord_profit": 18_000,
-    "net_income": 10_000, "net_assets": 150_000, "total_assets": 600_000, "contracts": 3,
+    "net_income": 10_000, "bank_credit": 50_000, "dep_expense": 5_000, "machines": 30_000,
 }
 SLIDER_CFG = {
-    "nenshu":       (0, 5_000_000, 10_000),
-    "op_profit":    (-500_000, 500_000, 1_000),
-    "ord_profit":   (-500_000, 500_000, 1_000),
-    "net_income":   (-500_000, 500_000, 1_000),
-    "net_assets":   (-500_000, 2_000_000, 10_000),
-    "total_assets": (0, 5_000_000, 10_000),
-    "contracts":    (0, 100, 1),
+    "nenshu":      (0, 5_000_000, 10_000),
+    "op_profit":   (-500_000, 500_000, 1_000),
+    "ord_profit":  (-500_000, 500_000, 1_000),
+    "net_income":  (-500_000, 500_000, 1_000),
+    "bank_credit": (0, 2_000_000, 10_000),
+    "dep_expense": (0, 500_000, 1_000),
+    "machines":    (0, 2_000_000, 10_000),
 }
 
 

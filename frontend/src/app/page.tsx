@@ -18,6 +18,7 @@ import AdvancedAnalysis from "../components/analysis/AdvancedAnalysis";
 import GunshiAdvice from "../components/analysis/GunshiAdvice";
 import ReportGenerator from "../components/analysis/ReportGenerator";
 import QRiskPanel from "../components/analysis/QRiskPanel";
+import MahalanobisPanel from "../components/analysis/MahalanobisPanel";
 import { triggerMebuki } from "../components/layout/FloatingMebuki";
 
 export default function Dashboard() {
@@ -222,6 +223,15 @@ export default function Dashboard() {
                     
                     {/* 主要指標サマリ (カッコいいカード) */}
                     <IndicatorCards data={result} />
+
+                    {/* 財務プロファイル類似度 */}
+                    {result.mahalanobis_score != null && (
+                      <MahalanobisPanel
+                        score={result.mahalanobis_score}
+                        advice={result.mahalanobis_advice}
+                        compact={false}
+                      />
+                    )}
 
                     {/* REV-089/113/114: Q_risk パネル */}
                     {result.quantum_risk != null && (

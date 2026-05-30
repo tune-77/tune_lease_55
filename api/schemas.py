@@ -69,6 +69,8 @@ class ScoringResponse(BaseModel):
     default_warnings: list = []                # デフォルト率モデルによる高リスク警告（スコア非影響）
     quantum_risk: Optional[float] = None       # 量子干渉リスクスコア 0-100（財務矛盾検出）
     credit_quantum_strong_warning: bool = False  # 信用リスク群×Q_risk の強警戒フラグ
+    mahalanobis_score: Optional[float] = None  # 財務プロファイル類似度スコア 0-100
+    mahalanobis_advice: Optional[list] = None  # 改善アドバイス [{feat, direction, delta}]
 
 class CaseRegisterRequest(BaseModel):
     case_id: str
