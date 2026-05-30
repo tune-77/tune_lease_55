@@ -1372,7 +1372,8 @@ def get_improvement_log():
             seen_keys.add(k)
             deduped.append(it)
     items = list(reversed(deduped))  # 元の新しい順に戻す
-    # applied は表示カウントから除外（既に消し込み済み）
+    # applied（実装済み消し込み済み）はリストから除外
+    items = [it for it in items if it["status"] != "applied"]
     approved = sum(1 for it in items if it["status"] == "APPROVED")
     needs_review = sum(1 for it in items if it["status"] in ("NEEDS_REVIEW", "needs_review"))
     items.sort(key=lambda x: x.get("id") or x.get("title") or "", reverse=True)
