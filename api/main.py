@@ -1329,6 +1329,70 @@ def get_payment_alerts():
     return {"alerts": alerts, "summary": summary, "total": len(rows)}
 
 
+def _load_obsidian_implemented_titles() -> set[str]:
+    """Obsidian 実装済み改善一覧のタイトルを返す。"""
+    from pathlib import Path as _Path
+    vault = _Path.home() / "Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
+    index_file = vault / "tuneLease55/改善策インデックス_2026.md"
+    if not index_file.exists():
+        return set()
+    implemented: set[str] = set()
+    in_section = False
+    for line in index_file.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if "実装済み改善一覧" in stripped:
+            in_section = True
+            continue
+        if in_section and stripped.startswith("#"):
+            break
+        if in_section and "✅ 実装済" in stripped:
+            title = stripped.replace("✅ 実装済", "").split("<!--")[0].strip()
+            if title:
+                implemented.add(title)
+    return implemented
+
+
+def _log_bigrams(s: str) -> set[str]:
+    import re as _r
+    s = _r.sub(r'\s+', '', s.lower())
+    return {s[i:i+2] for i in range(len(s) - 1)} if len(s) >= 2 else set()
+
+
+def _is_implemented(title: str, impl_titles: set[str], threshold: float = 0.50) -> bool:
+    tl = title.lower()
+    for impl in impl_titles:
+        il = impl.lower()
+        if tl == il:
+            return True
+        if len(title) >= 6 and (tl in il or il in tl):
+            return True
+        sa, sb = _log_bigrams(title), _log_bigrams(impl)
+        if sa and sb and len(sa & sb) / len(sa | sb) >= threshold:
+            return True
+    return False
+
+
+def _dedup_by_similarity(items: list[dict], threshold: float = 0.55) -> list[dict]:
+    """タイトルの類似度でまとめ、代表1件だけ残す。"""
+    result: list[dict] = []
+    for it in items:
+        title = it.get("title", "")
+        tl = title.lower()
+        matched = False
+        for kept in result:
+            kt = kept.get("title", "").lower()
+            if tl == kt or (len(title) >= 6 and (tl in kt or kt in tl)):
+                matched = True
+                break
+            sa, sb = _log_bigrams(title), _log_bigrams(kept.get("title", ""))
+            if sa and sb and len(sa & sb) / len(sa | sb) >= threshold:
+                matched = True
+                break
+        if not matched:
+            result.append(it)
+    return result
+
+
 @app.get("/api/improvement-log")
 def get_improvement_log():
     """最新の改善パイプラインログをサマリー形式で返す（REV-135）。"""
@@ -1339,8 +1403,6 @@ def get_improvement_log():
         return {"items": [], "date": None, "approved": 0, "needs_review": 0}
     import json as _json
     items: list[dict] = []
-    approved = 0
-    needs_review = 0
     with open(ledger_path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -1348,32 +1410,33 @@ def get_improvement_log():
                 continue
             try:
                 obj = _json.loads(line)
-                status = obj.get("status", "")
-                if status == "APPROVED":
-                    approved += 1
-                elif status in ("NEEDS_REVIEW", "needs_review"):
-                    needs_review += 1
                 items.append({
                     "key": obj.get("key", ""),
                     "id": obj.get("id", ""),
                     "title": obj.get("title", ""),
-                    "status": status,
+                    "status": obj.get("status", ""),
                     "priority": obj.get("priority", ""),
                     "date": obj.get("date") or obj.get("created_at", ""),
                 })
             except Exception:
                 pass
-    # 最新ステータスのみ保持（同一 key の重複を除去）
+    # ① 同一キーは最新ステータスのみ保持
     seen_keys: set[str] = set()
     deduped: list[dict] = []
-    for it in reversed(items):  # 新しい順に並んでいるので reversed で古い→新しい
+    for it in reversed(items):
         k = it.get("key") or it.get("title", "")
         if k not in seen_keys:
             seen_keys.add(k)
             deduped.append(it)
-    items = list(reversed(deduped))  # 元の新しい順に戻す
-    # applied（実装済み消し込み済み）はリストから除外
+    items = list(reversed(deduped))
+    # ② applied（手動消し込み済み）を除外
     items = [it for it in items if it["status"] != "applied"]
+    # ③ Obsidian 実装済みリストと照合して自動除外
+    impl_titles = _load_obsidian_implemented_titles()
+    if impl_titles:
+        items = [it for it in items if not _is_implemented(it.get("title", ""), impl_titles)]
+    # ④ 残ったアイテム間で類似タイトルを重複排除
+    items = _dedup_by_similarity(items)
     approved = sum(1 for it in items if it["status"] == "APPROVED")
     needs_review = sum(1 for it in items if it["status"] in ("NEEDS_REVIEW", "needs_review"))
     items.sort(key=lambda x: x.get("id") or x.get("title") or "", reverse=True)
