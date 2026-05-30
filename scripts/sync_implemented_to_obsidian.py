@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import sys
@@ -124,6 +125,56 @@ def _append_to_index(index_file: Path, new_entries: list[str]) -> None:
     index_file.write_text("\n".join(lines), encoding="utf-8")
 
 
+_LEDGER_PATH = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
+
+
+def _compute_key(title: str) -> str:
+    import hashlib
+    normalized = f"{title.strip().lower()}|"
+    return hashlib.sha1(normalized.encode()).hexdigest()[:16]
+
+
+def _get_ledger_applied_keys() -> set[str]:
+    """ledger.jsonl で applied 済みのキーセットを返す。"""
+    if not _LEDGER_PATH.exists():
+        return set()
+    applied: set[str] = set()
+    for line in _LEDGER_PATH.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+            if obj.get("status") == "applied":
+                applied.add(obj.get("key", ""))
+        except Exception:
+            pass
+    return applied
+
+
+def _sync_obsidian_to_ledger(impl_titles: set[str]) -> int:
+    """Obsidian 実装済みタイトルをledgerに applied として書き込む（未記録分のみ）。"""
+    already_applied = _get_ledger_applied_keys()
+    _LEDGER_PATH.parent.mkdir(parents=True, exist_ok=True)
+    new_count = 0
+    with _LEDGER_PATH.open("a", encoding="utf-8") as f:
+        for title in impl_titles:
+            key = _compute_key(title)
+            if key not in already_applied:
+                entry = {
+                    "key": key,
+                    "status": "applied",
+                    "title": title,
+                    "pr_url": "",
+                    "reason": "Obsidian実装済みリストから自動同期",
+                    "recorded_at": date.today().isoformat(),
+                }
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                already_applied.add(key)
+                new_count += 1
+    return new_count
+
+
 def main() -> None:
     vault = _get_vault()
     if vault is None:
@@ -135,26 +186,33 @@ def main() -> None:
         print(f"警告: インデックスファイルが見つかりません: {index_file}", file=sys.stderr)
         return
 
+    # Obsidian実装済みリスト → ledger に applied 書き込み（永続ブロック）
+    existing_impl = _load_existing_impl(index_file)
+    ledger_synced = _sync_obsidian_to_ledger(existing_impl)
+    if ledger_synced:
+        print(f"✅ ledger に applied 同期: {ledger_synced} 件（パイプラインから永続除外）")
+    else:
+        print("情報: ledger 同期済み（新規なし）")
+
+    # git コミット → Obsidian 追記
     commits = _get_recent_commits(days=3)
     if not commits:
-        print("情報: 直近コミットなし。スキップします。")
+        print("情報: 直近コミットなし。Obsidian追記をスキップします。")
         return
 
     export_titles = _load_export_titles()
-    existing_impl = _load_existing_impl(index_file)
 
     new_entries: list[str] = []
     for commit_line in commits:
-        commit_msg = commit_line[8:] if len(commit_line) > 8 else commit_line  # ハッシュを除去
+        commit_msg = commit_line[8:] if len(commit_line) > 8 else commit_line
 
         for keyword, hints in _COMMIT_TO_TITLE_HINTS.items():
             if not re.search(keyword, commit_msg, re.IGNORECASE):
                 continue
             for hint in hints:
-                # export_titles から部分一致するタイトルを探す
                 matched = next(
                     (t for t in export_titles if hint in t or t in hint),
-                    hint  # export にない場合はhintをそのまま使う
+                    hint
                 )
                 if matched not in existing_impl and matched not in new_entries:
                     new_entries.append(matched)
@@ -165,7 +223,7 @@ def main() -> None:
         for e in new_entries:
             print(f"   - {e}")
     else:
-        print("情報: 新規実装済み項目なし。")
+        print("情報: 新規 Obsidian 追記なし。")
 
 
 if __name__ == "__main__":
