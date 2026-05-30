@@ -17,6 +17,7 @@ import AIAnalysis from "../components/analysis/AIAnalysis";
 import AdvancedAnalysis from "../components/analysis/AdvancedAnalysis";
 import GunshiAdvice from "../components/analysis/GunshiAdvice";
 import ReportGenerator from "../components/analysis/ReportGenerator";
+import QRiskPanel from "../components/analysis/QRiskPanel";
 import { triggerMebuki } from "../components/layout/FloatingMebuki";
 
 export default function Dashboard() {
@@ -204,6 +205,15 @@ export default function Dashboard() {
                     
                     {/* 主要指標サマリ (カッコいいカード) */}
                     <IndicatorCards data={result} />
+
+                    {/* REV-089/113/114: Q_risk パネル */}
+                    {result.quantum_risk != null && (
+                      <QRiskPanel
+                        quantumRisk={result.quantum_risk}
+                        creditQuantumStrongWarning={result.credit_quantum_strong_warning ?? false}
+                        compact={false}
+                      />
+                    )}
 
                     {/* 📊 新設: Recharts による本物のインタラクティブグラフ群 */}
                     <RealGraphs

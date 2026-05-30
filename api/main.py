@@ -296,6 +296,8 @@ def calculate_score_full(req: ScoringRequest):
                     "hantei": result.get("hantei", ""),
                     "user_eq": result.get("user_eq", 0),
                     "user_op": result.get("user_op", 0),
+                    "quantum_risk": result.get("quantum_risk"),
+                    "credit_quantum_strong_warning": result.get("credit_quantum_strong_warning", False),
                 },
             }
             case_id = save_case_log(case_data)
@@ -322,6 +324,8 @@ def calculate_score_full(req: ScoringRequest):
             asset_warnings=result.get("asset_warnings", []),
             asset_bonuses=result.get("asset_bonuses", []),
             default_warnings=result.get("default_warnings", []),
+            quantum_risk=result.get("quantum_risk"),
+            credit_quantum_strong_warning=result.get("credit_quantum_strong_warning", False),
         )
     except Exception as e:
         import traceback
