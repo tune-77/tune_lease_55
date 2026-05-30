@@ -48,6 +48,9 @@ _ENTANGLE_ALPHA: float            = float(_M.get("entangle_alpha", 50.0))
 _ENTANGLE_RISK_FACTOR: float      = float(_M.get("entangle_risk_factor", 0.2))
 _MIN_INDUSTRY_CASES: int          = int(_CFG.get("training", {}).get("min_industry_cases", 2))
 _OOD_Z_THRESHOLD: float           = float(_T.get("ood_z_threshold", 2.0))
+_DISC_MIN_CASES: int              = int(_CFG.get("training", {}).get("disc_min_cases", 5))
+_DISC_WEIGHT_SCALE: float         = float(_T.get("disc_weight_scale", 2.0))
+_DISC_TRIGGER_N: int              = int(_CFG.get("training", {}).get("disc_trigger_n", 10))
 
 _GRADE_MAP: dict[str, float] = {
     "①A格": 9.0, "①a": 9.0, "A": 9.0,
@@ -69,13 +72,15 @@ _BASE_PAIRS: list[tuple[str, str, float]] = [
     ("op_profit",    "depreciation",  1.0),
     ("op_profit",    "trend_val",     1.0),
     ("net_income",   "ord_profit",    0.15),  # 全件ほぼ整合→小重み
+    ("revenue",      "op_profit",     0.6),   # 売上と利益の全業種共通チェック
+    # net_assets_val ⇔ net_income: 入力データにnet_assetsがほぼゼロのため削除（discriminative sep=-0.085）
 ]
 
 # 業種別追加ペア: (変数A, 変数B, 重み)
 _CONSTRUCTION_PAIRS: list[tuple[str, str, float]] = [
     ("op_profit",    "machines",      2.0),
     ("op_profit",    "equip_total",   2.5),  # 設備なし高利益
-    ("qualit_score", "op_profit",     1.2),
+    # qualit_score ⇔ op_profit: 成約企業が「定性良く高利益」という自然パターンを誤検知（discriminative sep=-0.142）
 ]
 
 # H 運輸業（44 道路貨物など）: 車両・設備集約型
@@ -105,13 +110,53 @@ _RENTAL_PAIRS: list[tuple[str, str, float]] = [
     ("machines",     "net_income",    1.8),  # 保有資産と収益性
 ]
 
+# G 情報通信（39-43）: 知識集約型・設備軽量型
+_IT_PAIRS: list[tuple[str, str, float]] = [
+    ("op_profit",    "equip_total",   1.8),  # IT企業で設備過多×利益低迷
+    ("net_income",   "ord_profit",    1.5),  # 特別損益チェック
+    ("revenue",      "op_profit",     2.0),  # 売上はあるが利益が激減（成長倒れ）
+]
+
+# I 卸売・小売（50-61）: 薄利多売型
+_WHOLESALE_PAIRS: list[tuple[str, str, float]] = [
+    ("revenue",      "op_profit",     2.5),  # 薄利業態で利益乖離が大きい
+    ("net_income",   "ord_profit",    1.5),  # 棚卸損失・特別損失
+    ("op_profit",    "depreciation",  1.2),  # 倉庫・搬送設備と利益の整合
+]
+
+# J 金融・保険（62-69）: レバレッジ依存型
+_FINANCE_PAIRS: list[tuple[str, str, float]] = [
+    ("net_income",       "ord_profit",    2.5),  # 特別損益・金利負担の乖離
+    ("op_profit",        "ord_profit",    2.0),  # 金利コストで経常利益急落
+    ("equity_ratio_val", "net_income",    2.0),  # 自己資本比率と利益整合（レバレッジ過大）
+]
+
+# L 学術・専門サービス（71-79）: 知識・人的資本型
+_PROFESSIONAL_PAIRS: list[tuple[str, str, float]] = [
+    ("op_profit",    "machines",      2.0),  # 専門サービスで設備過多（外注倒れ）
+    ("revenue",      "op_profit",     1.8),  # 受注はあるが粗利が出ない
+    ("net_income",   "ord_profit",    1.2),
+]
+
+# M 宿泊・飲食（80-82）: 設備・労働集約型
+_HOSPITALITY_PAIRS: list[tuple[str, str, float]] = [
+    ("op_profit",    "machines",      1.8),  # 厨房・設備と収益性の乖離
+    ("depreciation", "machines",      2.0),  # 設備と償却の整合（老朽化リスク）
+    ("op_profit",    "equip_total",   1.5),
+]
+
 # 業種コード → 追加ペアリスト のマップ
 _INDUSTRY_PAIR_MAP: dict[str, list[tuple[str, str, float]]] = {
     "D": _CONSTRUCTION_PAIRS,
-    "H": _TRANSPORT_PAIRS,
-    "P": _MEDICAL_PAIRS,
     "E": _MANUFACTURING_PAIRS,
+    "G": _IT_PAIRS,
+    "H": _TRANSPORT_PAIRS,
+    "I": _WHOLESALE_PAIRS,
+    "J": _FINANCE_PAIRS,
     "K": _RENTAL_PAIRS,
+    "L": _PROFESSIONAL_PAIRS,
+    "M": _HOSPITALITY_PAIRS,
+    "P": _MEDICAL_PAIRS,
 }
 
 # 業種コード → 日本語説明
@@ -121,25 +166,50 @@ INDUSTRY_RISK_DESCRIPTIONS: dict[str, dict] = {
         "risk_summary": "設備投資(機械・機器)なしで高利益を計上するパターンが典型的な矛盾。",
         "key_pairs": ["op_profit ⇔ machines", "op_profit ⇔ equip_total"],
     },
-    "H": {
-        "name": "運輸業",
-        "risk_summary": "車両・設備が収益の源泉。設備薄く高利益は燃料費・整備費の過少計上を示唆。",
-        "key_pairs": ["machines ⇔ op_profit", "depreciation ⇔ machines"],
-    },
-    "P": {
-        "name": "医療・福祉",
-        "risk_summary": "保険収入で安定するはずが純利益と営業利益が大きく乖離する場合は借入過多・特別損失を疑う。",
-        "key_pairs": ["net_income ⇔ op_profit", "ord_profit ⇔ op_profit"],
-    },
     "E": {
         "name": "製造業",
         "risk_summary": "装置産業のため設備投資が薄い場合は外注依存・設備老朽化リスク。償却と設備の乖離を監視。",
         "key_pairs": ["machines ⇔ op_profit", "depreciation ⇔ machines"],
     },
+    "G": {
+        "name": "情報通信業",
+        "risk_summary": "知識集約型のため設備は軽量なはず。設備過多×利益低迷は不採算システム投資を示唆。売上急拡大でも利益が伴わない場合は構造的赤字リスク。",
+        "key_pairs": ["revenue ⇔ op_profit", "op_profit ⇔ equip_total"],
+    },
+    "H": {
+        "name": "運輸業",
+        "risk_summary": "車両・設備が収益の源泉。設備薄く高利益は燃料費・整備費の過少計上を示唆。",
+        "key_pairs": ["machines ⇔ op_profit", "depreciation ⇔ machines"],
+    },
+    "I": {
+        "name": "卸売・小売業",
+        "risk_summary": "薄利多売業態のため利益率乖離は棚卸損失・返品・不良在庫を示唆。売上規模と利益の乖離に注意。",
+        "key_pairs": ["revenue ⇔ op_profit", "net_income ⇔ ord_profit"],
+    },
+    "J": {
+        "name": "金融・保険業",
+        "risk_summary": "レバレッジ依存型。自己資本比率と収益性の乖離は過大借入リスク。金利上昇で経常利益が急落するパターンを監視。",
+        "key_pairs": ["net_income ⇔ ord_profit", "equity_ratio_val ⇔ net_income"],
+    },
     "K": {
         "name": "不動産・物品賃貸",
         "risk_summary": "賃貸資産の減価償却が高いはず。償却費と利益の乖離は資産評価の歪みを示す。",
         "key_pairs": ["depreciation ⇔ op_profit", "machines ⇔ net_income"],
+    },
+    "L": {
+        "name": "学術・専門サービス業",
+        "risk_summary": "人的資本型のため設備過多は不採算。受注はあるが粗利が出ない場合はプロジェクト原価管理の失敗を示唆。",
+        "key_pairs": ["op_profit ⇔ machines", "revenue ⇔ op_profit"],
+    },
+    "M": {
+        "name": "宿泊・飲食業",
+        "risk_summary": "設備・労働集約型。厨房・設備と収益性の乖離は稼働率低下・食材コスト高騰を示唆。償却と設備の整合が重要。",
+        "key_pairs": ["op_profit ⇔ machines", "depreciation ⇔ machines"],
+    },
+    "P": {
+        "name": "医療・福祉",
+        "risk_summary": "保険収入で安定するはずが純利益と営業利益が大きく乖離する場合は借入過多・特別損失を疑う。",
+        "key_pairs": ["net_income ⇔ op_profit", "ord_profit ⇔ op_profit"],
     },
 }
 
@@ -299,7 +369,10 @@ class QuantumGate:
         if df_lost:
             lost_records = [_extract_features(self._unwrap_inputs(c)) for c in df_lost]
             lost_records = [r for r in lost_records if r is not None]
-            self._tune_weights(lost_records)
+            if len(records) >= _DISC_TRIGGER_N and len(lost_records) >= _DISC_TRIGGER_N:
+                self._tune_weights_discriminative(records, lost_records)
+            else:
+                self._tune_weights(lost_records)
 
         self._fitted = True
         logger.info("QuantumGate fitted: seiyaku=%d lost=%d", len(records), len(df_lost or []))
@@ -324,6 +397,122 @@ class QuantumGate:
             if mean_d >= _WEIGHT_BOOST_INTERFERENCE:
                 base = self.industry_pair_weights.get(name, 1.0)
                 self.industry_pair_weights[name] = min(base * _WEIGHT_BOOST_FACTOR, _WEIGHT_BOOST_MAX)
+
+    def _tune_weights_discriminative(
+        self,
+        seiyaku_records: list[dict[str, float]],
+        lost_records: list[dict[str, float]],
+    ) -> None:
+        """
+        成約/失注の干渉度平均差（separation）でペア重みを設定する。
+        separation = mean_lost - mean_seiyaku
+          > 0: 失注で干渉度が高い = 予測的ペア → weight boost
+          ≤ 0: 逆向きまたはノイズ → weight 引き下げ
+        """
+        from collections import defaultdict
+
+        pair_won: dict[str, list[float]] = defaultdict(list)
+        pair_lost_d: dict[str, list[float]] = defaultdict(list)
+
+        for rec in seiyaku_records:
+            fs = self._feature_states(rec)
+            for name, psi_a, psi_b, _ in self._iter_pairs(rec, fs):
+                pair_won[name].append(self.analyzer.interference(psi_a, psi_b))
+
+        for rec in lost_records:
+            fs = self._feature_states(rec)
+            for name, psi_a, psi_b, _ in self._iter_pairs(rec, fs):
+                pair_lost_d[name].append(self.analyzer.interference(psi_a, psi_b))
+
+        stats: dict[str, dict] = {}
+        boosted = 0
+        for name in set(pair_won) | set(pair_lost_d):
+            won_v = pair_won.get(name, [])
+            lost_v = pair_lost_d.get(name, [])
+            if len(won_v) < _DISC_MIN_CASES or len(lost_v) < _DISC_MIN_CASES:
+                continue
+            mean_won = float(np.mean(won_v))
+            mean_lost = float(np.mean(lost_v))
+            sep = mean_lost - mean_won
+            stats[name] = {
+                "mean_won": round(mean_won, 4),
+                "mean_lost": round(mean_lost, 4),
+                "separation": round(sep, 4),
+                "n_won": len(won_v),
+                "n_lost": len(lost_v),
+            }
+            if sep > 0:
+                new_w = min(1.0 + sep * _DISC_WEIGHT_SCALE, _WEIGHT_BOOST_MAX)
+                boosted += 1
+            else:
+                new_w = max(0.3, 1.0 + sep)
+            self.industry_pair_weights[name] = round(new_w, 4)
+
+        self.pair_discrimination_stats_: dict[str, dict] = stats
+        logger.info(
+            "discriminative weight tuning (global): %d/%d ペアが失注側で高干渉",
+            boosted, len(stats),
+        )
+
+        self._tune_weights_discriminative_by_industry(seiyaku_records, lost_records)
+
+    def _tune_weights_discriminative_by_industry(
+        self,
+        seiyaku_records: list[dict[str, float]],
+        lost_records: list[dict[str, float]],
+    ) -> None:
+        """業種別に separation を計算してペア重みを設定する"""
+        from collections import defaultdict
+
+        by_ind_won: dict[str, list] = defaultdict(list)
+        by_ind_lost: dict[str, list] = defaultdict(list)
+        for rec in seiyaku_records:
+            by_ind_won[rec.get("_major_str", "") or "__unknown__"].append(rec)
+        for rec in lost_records:
+            by_ind_lost[rec.get("_major_str", "") or "__unknown__"].append(rec)
+
+        for major in set(by_ind_won) | set(by_ind_lost):
+            won_recs = by_ind_won.get(major, [])
+            lost_recs = by_ind_lost.get(major, [])
+            if len(won_recs) < _DISC_MIN_CASES or len(lost_recs) < _DISC_MIN_CASES:
+                logger.debug(
+                    "業種 %s: won=%d lost=%d < %d件、業種別discriminative tuning スキップ",
+                    major, len(won_recs), len(lost_recs), _DISC_MIN_CASES,
+                )
+                continue
+
+            pair_won: dict[str, list] = defaultdict(list)
+            pair_lost_d: dict[str, list] = defaultdict(list)
+            for rec in won_recs:
+                fs = self._feature_states(rec)
+                for name, psi_a, psi_b, _ in self._iter_pairs(rec, fs):
+                    pair_won[name].append(self.analyzer.interference(psi_a, psi_b))
+            for rec in lost_recs:
+                fs = self._feature_states(rec)
+                for name, psi_a, psi_b, _ in self._iter_pairs(rec, fs):
+                    pair_lost_d[name].append(self.analyzer.interference(psi_a, psi_b))
+
+            ind_weights = dict(self.industry_weights.get(major, {}))
+            updated = 0
+            for name in set(pair_won) | set(pair_lost_d):
+                won_v = pair_won.get(name, [])
+                lost_v = pair_lost_d.get(name, [])
+                if len(won_v) < _DISC_MIN_CASES or len(lost_v) < _DISC_MIN_CASES:
+                    continue
+                sep = float(np.mean(lost_v)) - float(np.mean(won_v))
+                if sep > 0:
+                    new_w = min(1.0 + sep * _DISC_WEIGHT_SCALE, _WEIGHT_BOOST_MAX)
+                else:
+                    new_w = max(0.3, 1.0 + sep)
+                ind_weights[name] = round(new_w, 4)
+                updated += 1
+
+            if ind_weights:
+                self.industry_weights[major] = ind_weights
+                logger.info(
+                    "業種 %s: discriminative tuning won=%d lost=%d %d ペア更新",
+                    major, len(won_recs), len(lost_recs), updated,
+                )
 
     def _tune_weights_by_industry(self, lost_records: list[dict[str, float]]) -> None:
         """業種別に分離してペア重みを調整（industry_weights に反映）"""
@@ -464,14 +653,17 @@ class QuantumGate:
         fm = self.feature_map
         states: dict[str, np.ndarray] = {}
         for key, vtype in [
-            ("op_profit",    "log"),
-            ("depreciation", "log"),
-            ("machines",     "log"),
-            ("equip_total",  "log"),
-            ("net_income",   "log"),
-            ("ord_profit",   "log"),
-            ("trend_val",    "grade"),
-            ("qualit_score", "ratio"),
+            ("op_profit",        "log"),
+            ("depreciation",     "log"),
+            ("machines",         "log"),
+            ("equip_total",      "log"),
+            ("net_income",       "log"),
+            ("ord_profit",       "log"),
+            ("revenue",          "log"),
+            ("net_assets_val",   "log"),
+            ("trend_val",        "grade"),
+            ("qualit_score",     "ratio"),
+            ("equity_ratio_val", "ratio"),
         ]:
             v = rec.get(key, 0.0)
             states[key] = fm.to_state(v, key, vtype)
@@ -610,6 +802,11 @@ def _extract_features(inputs: dict[str, Any]) -> dict[str, float] | None:
             industry_sub = str(inputs.get("industry_sub") or "")
             major_code = _infer_major_code(industry_sub)
 
+        revenue = _f("nenshu") / 1000.0
+        net_assets_val = _f("net_assets") / 1000.0
+        total_assets_val = max(_f("total_assets", 1.0) / 1000.0, 0.001)
+        equity_ratio_val = net_assets_val / total_assets_val
+
         return {
             "op_profit":           op,
             "depreciation":        dep,
@@ -617,6 +814,9 @@ def _extract_features(inputs: dict[str, Any]) -> dict[str, float] | None:
             "equip_total":         dep + mach,
             "net_income":          net,
             "ord_profit":          ordi,
+            "revenue":             revenue,
+            "net_assets_val":      net_assets_val,
+            "equity_ratio_val":    equity_ratio_val,
             "trend_val":           trend_val,
             "qualit_score":        qualit_score,
             "qualit_binary":       qualit_binary,
@@ -640,17 +840,112 @@ def _explain(pair_anomalies: dict[str, float], rec: dict[str, float]) -> list[st
     top = sorted(pair_anomalies.items(), key=lambda x: x[1], reverse=True)[:3]
     msgs = []
     label_map = {
-        "op_profit_x_depreciation":  "営業利益と減価償却の乖離（設備投資不整合）",
-        "op_profit_x_trend_val":     "営業利益とトレンドグレードの矛盾（将来不確実）",
-        "net_income_x_ord_profit":   "純利益と経常利益の乖離（特別損益異常）",
-        "op_profit_x_machines":      "営業利益と機械装置の乖離（資本集約性不整合）",
-        "op_profit_x_equip_total":   "高利益×低設備の矛盾（建設業典型リスク）",
-        "qualit_score_x_op_profit":  "定性リスクと財務利益の干渉",
+        "op_profit_x_depreciation":      "営業利益と減価償却の乖離（設備投資不整合）",
+        "op_profit_x_trend_val":         "営業利益とトレンドグレードの矛盾（将来不確実）",
+        "net_income_x_ord_profit":       "純利益と経常利益の乖離（特別損益異常）",
+        "op_profit_x_machines":          "営業利益と機械装置の乖離（資本集約性不整合）",
+        "op_profit_x_equip_total":       "高利益×低設備の矛盾（建設業典型リスク）",
+        "revenue_x_op_profit":           "売上高と営業利益の乖離（利益率異常）",
+        "equity_ratio_val_x_net_income": "自己資本比率と純利益の乖離（レバレッジ過大リスク）",
+        "op_profit_x_ord_profit":        "営業利益と経常利益の乖離（金利負担・営業外費用異常）",
     }
     for name, val in top:
         label = label_map.get(name, name)
         msgs.append(f"{label}: 乖離度 {val:.2f}")
     return msgs
+
+
+def compute_simple_q_risk(inputs: dict[str, Any]) -> dict[str, Any]:
+    """
+    財務矛盾ルールによる q_risk 計算。
+    QuantumGate.predict() と同一フォーマットを返す。
+    学習済みモデルファイル不要。
+
+    実績データ（成約1188/失注757）の discriminative analysis で有効と確認された
+    2本のシグナルと補助ルールで構成:
+      R1: 格付低×利益率高 (sep=+0.064 最強)
+      R2: 売上規模対比利益率異常 (sep=+0.030)
+      R3: 営業赤字
+      R4: 特別損益乖離
+      R5: 業種別設備矛盾（建設/運輸）
+    """
+    def _f(k: str, d: float = 0.0) -> float:
+        v = inputs.get(k)
+        return float(v) if v is not None else d
+
+    nenshu_k = _f("nenshu")
+    op_k     = _f("op_profit")
+    ord_k    = _f("ord_profit")
+    net_k    = _f("net_income")
+    mach_k   = _f("machines", _f("machinery_equipment"))
+
+    grade_raw = str(inputs.get("grade") or "④無格付")
+    grade_val = _grade_to_float(grade_raw)  # 9=A格(最良) / 1=D格(最悪)
+
+    op_margin = op_k / max(nenshu_k, 1.0) if nenshu_k > 0 else 0.0
+
+    industry_major = str(inputs.get("industry_major") or "")
+    major_code = industry_major.split(" ")[0].strip()
+    if not major_code:
+        major_code = _infer_major_code(str(inputs.get("industry_sub") or ""))
+
+    score = 0.0
+    flags: list[str] = []
+
+    # R1: 格付低×利益率高（最強シグナル）
+    # 低格付なのに利益率が高い = 粉飾・一過性利益の疑い
+    if grade_val <= 5.0 and op_margin > 0.05:
+        grade_factor = (5.0 - grade_val) / 5.0          # C格=0.0 … D格=0.8
+        margin_factor = min((op_margin - 0.05) / 0.25, 1.0)
+        contrib = 35.0 * max(grade_factor, 0.1) * (0.5 + 0.5 * margin_factor)
+        score += contrib
+        flags.append(f"格付({grade_raw})と利益率({op_margin:.0%})の矛盾")
+
+    # R2: 売上規模対比利益率異常（売上はあるが利益が薄すぎる）
+    if nenshu_k > 10_000 and op_margin < 0.005:
+        severity = max(0.0, 0.005 - op_margin) / 0.005
+        contrib = 20.0 * severity
+        score += contrib
+        flags.append(f"売上({nenshu_k/1000:.0f}百万)対比利益率異常({op_margin:.1%})")
+
+    # R3: 営業赤字
+    if op_k < 0:
+        red_depth = min(abs(op_k) / max(nenshu_k, 1.0), 0.5) / 0.5
+        contrib = 25.0 + 15.0 * red_depth
+        score += contrib
+        flags.append(f"営業赤字({op_k/1000:.1f}百万)")
+
+    # R4: 特別損益乖離（経常→純利益で大幅減）
+    if ord_k > 0 and net_k < ord_k * 0.5:
+        gap = (ord_k - net_k) / ord_k
+        contrib = min(15.0, gap * 20.0)
+        score += contrib
+        flags.append(f"特別損益乖離（経常→純利益 {gap:.0%}減）")
+
+    # R5: 業種別設備矛盾
+    if major_code == "D" and op_k > 0 and mach_k < op_k * 0.3:
+        contrib = min(15.0, (1.0 - mach_k / max(op_k * 0.3, 1.0)) * 15.0)
+        score += contrib
+        flags.append(f"建設業: 設備薄({mach_k/1000:.1f}百万)×高利益({op_k/1000:.1f}百万)")
+    elif major_code == "H" and op_k > 0 and mach_k < op_k:
+        contrib = min(10.0, (1.0 - mach_k / max(op_k, 1.0)) * 10.0)
+        score += contrib
+        flags.append(f"運輸業: 車両薄({mach_k/1000:.1f}百万)×利益({op_k/1000:.1f}百万)")
+
+    q_risk = float(np.clip(score, 0.0, 100.0))
+    return {
+        "quantum_risk":      round(q_risk, 2),
+        "pair_anomalies":    {},
+        "pair_contributions": {},
+        "explained_risk":    round(q_risk, 2),
+        "entropy_risk":      0.0,
+        "residual_signal":   0.0,
+        "ood_flags":         {},
+        "entangle_entropy":  0.0,
+        "geo_distance_max":  0.0,
+        "verdict":           _verdict(q_risk),
+        "explanation":       flags,
+    }
 
 
 def _null_result() -> dict[str, Any]:

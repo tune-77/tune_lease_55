@@ -888,14 +888,9 @@ def run_quick_scoring(inputs: dict) -> dict:
             "available": False,
         }
     credit_risk_warnings = credit_risk_group.get("reasons", []) if credit_risk_group.get("flag") else []
-    quantum_risk_score = None
     try:
-        from quantum_analysis_module import QuantumGate
-
-        _q_model_path = os.path.join(_SCRIPT_DIR, "data", "quantum_model.joblib")
-        if os.path.exists(_q_model_path):
-            _q_gate = QuantumGate.load_cached(_q_model_path)
-            quantum_risk_score = float(_q_gate.predict({"inputs": inputs}).get("quantum_risk", 0.0))
+        from quantum_analysis_module import compute_simple_q_risk
+        quantum_risk_score = float(compute_simple_q_risk(inputs).get("quantum_risk", 0.0))
     except Exception:
         quantum_risk_score = None
 
