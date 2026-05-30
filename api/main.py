@@ -348,6 +348,10 @@ def calculate_score_full(req: ScoringRequest):
             credit_quantum_strong_warning=result.get("credit_quantum_strong_warning", False),
             mahalanobis_score=result.get("mahalanobis_score"),
             mahalanobis_advice=result.get("mahalanobis_advice"),
+            umap_anomaly_score=result.get("umap_anomaly_score"),
+            umap_x=result.get("umap_x"),
+            umap_y=result.get("umap_y"),
+            umap_similar=result.get("umap_similar"),
         )
     except Exception as e:
         import traceback
@@ -4993,3 +4997,14 @@ def propose_lease_rate(req: RateEngineRequest):
         "lease_amount": amount,
         "sensitivity": sensitivity,
     }
+
+
+@app.get("/api/umap/embeddings")
+def get_umap_embeddings():
+    """UMAP 2D散布図用の学習データ埋め込みを返す（フロントエンドで一度キャッシュして使用）。"""
+    embed_path = os.path.join(_REPO_ROOT, "data", "umap_embeddings.json")
+    if not os.path.exists(embed_path):
+        raise HTTPException(status_code=404, detail="umap_embeddings.json が見つかりません。train_umap_anomaly.py を実行してください。")
+    with open(embed_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return data

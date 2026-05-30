@@ -914,6 +914,24 @@ def run_quick_scoring(inputs: dict) -> dict:
     except Exception:
         pass
 
+    umap_anomaly_score: float | None = None
+    umap_x: float | None = None
+    umap_y: float | None = None
+    umap_similar: list | None = None
+    try:
+        import pandas as _pd
+        from umap_anomaly_engine import UMAPAnomalyScorer
+        from train_mahalanobis import FEATURES as _UMAP_FEATURES, _extract_val as _umap_extract
+        _umap_path = os.path.join(_SCRIPT_DIR, "data", "umap_anomaly_model.joblib")
+        if os.path.exists(_umap_path):
+            _umap = UMAPAnomalyScorer.load(_umap_path)
+            _umap_row = {f: _umap_extract({"inputs": inputs}, f) for f in _UMAP_FEATURES}
+            _umap_df = _pd.DataFrame([_umap_row])
+            umap_anomaly_score, umap_x, umap_y = _umap.score(_umap_df)
+            umap_similar = _umap.find_similar(_umap_df, top_k=3)
+    except Exception:
+        pass
+
     credit_quantum_strong_warning = (
         credit_risk_group.get("score", 0.0) >= 70.0
         and quantum_risk_score is not None
@@ -950,6 +968,10 @@ def run_quick_scoring(inputs: dict) -> dict:
         "credit_risk_warnings": credit_risk_warnings,
         "quantum_risk": quantum_risk_score,
         "credit_quantum_strong_warning": credit_quantum_strong_warning,
+        "umap_anomaly_score": umap_anomaly_score,
+        "umap_x": umap_x,
+        "umap_y": umap_y,
+        "umap_similar": umap_similar,
         # 直感スコア関連
         "intuition_score": intuition_score,
         "intuition_adj": intuition_adj,
