@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import axios from "axios";
-import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, ChevronRight } from "lucide-react";
+import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, ChevronRight, AlertTriangle } from "lucide-react";
 import ScoreDAG from "../components/ScoreDAG";
 import { ScoringFormData, defaultFormData } from "../types";
 import FormGeneral from "../components/form/FormGeneral";
@@ -230,6 +230,26 @@ export default function Dashboard() {
                         creditQuantumStrongWarning={result.credit_quantum_strong_warning ?? false}
                         compact={false}
                       />
+                    )}
+
+                    {/* REV-004: デフォルト率モデル警告パネル */}
+                    {result.default_warnings?.length > 0 && (
+                      <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 shadow-sm">
+                        <div className="flex items-center gap-2 mb-2">
+                          <AlertTriangle className="w-5 h-5 text-rose-600 flex-shrink-0" />
+                          <span className="font-black text-rose-800 text-sm">デフォルト率モデル 高リスク警告</span>
+                          <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-600 border border-rose-200">スコアに非影響</span>
+                        </div>
+                        <ul className="space-y-1">
+                          {(result.default_warnings as string[]).map((w, i) => (
+                            <li key={i} className="text-xs text-rose-700 font-medium flex items-start gap-1.5">
+                              <span className="mt-0.5 w-1.5 h-1.5 rounded-full bg-rose-400 flex-shrink-0" />
+                              {w}
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="text-[10px] text-rose-400 mt-2">財務パターンを学習済みLightGBMモデルで判定。審査スコアとは独立した補助指標です。</p>
+                      </div>
                     )}
 
                     {/* 📊 新設: Recharts による本物のインタラクティブグラフ群 */}
