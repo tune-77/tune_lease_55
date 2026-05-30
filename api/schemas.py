@@ -71,6 +71,10 @@ class ScoringResponse(BaseModel):
     credit_quantum_strong_warning: bool = False  # 信用リスク群×Q_risk の強警戒フラグ
     mahalanobis_score: Optional[float] = None  # 財務プロファイル類似度スコア 0-100
     mahalanobis_advice: Optional[list] = None  # 改善アドバイス [{feat, direction, delta}]
+    umap_anomaly_score: Optional[float] = None  # 非線形異常スコア 0-100（IF+UMAP）
+    umap_x: Optional[float] = None              # UMAP 2D x座標
+    umap_y: Optional[float] = None              # UMAP 2D y座標
+    umap_similar: Optional[list] = None         # 近傍成約案件 [{x,y,status}]
 
 class CaseRegisterRequest(BaseModel):
     case_id: str

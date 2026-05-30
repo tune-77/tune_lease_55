@@ -19,6 +19,7 @@ import GunshiAdvice from "../components/analysis/GunshiAdvice";
 import ReportGenerator from "../components/analysis/ReportGenerator";
 import QRiskPanel from "../components/analysis/QRiskPanel";
 import MahalanobisPanel from "../components/analysis/MahalanobisPanel";
+import UMAPPanel from "../components/analysis/UMAPPanel";
 import { triggerMebuki } from "../components/layout/FloatingMebuki";
 
 export default function Dashboard() {
@@ -223,6 +224,17 @@ export default function Dashboard() {
                     
                     {/* 主要指標サマリ (カッコいいカード) */}
                     <IndicatorCards data={result} />
+
+                    {/* 財務分布マップ（UMAP + Isolation Forest）*/}
+                    {result.umap_anomaly_score != null && result.umap_x != null && result.umap_y != null && (
+                      <UMAPPanel
+                        score={result.umap_anomaly_score}
+                        umapX={result.umap_x}
+                        umapY={result.umap_y}
+                        similar={result.umap_similar}
+                        compact={false}
+                      />
+                    )}
 
                     {/* 財務プロファイル類似度 */}
                     {result.mahalanobis_score != null && (
