@@ -9,6 +9,8 @@ RAG キャッシング層（LRU キャッシュ + 高速化）
 
 import time
 import logging
+import re
+import threading
 from functools import lru_cache, wraps
 from typing import Any, Callable
 from collections import OrderedDict
@@ -19,11 +21,11 @@ logger = logging.getLogger(__name__)
 
 class LRURAGCache:
     """LRU キャッシュ実装"""
-    
+
     def __init__(self, maxsize: int = 256, ttl_seconds: int = 3600):
         """
         初期化
-        
+
         Args:
             maxsize: キャッシュサイズ
             ttl_seconds: キャッシュ有効期限（秒）
@@ -33,36 +35,57 @@ class LRURAGCache:
         self.cache: OrderedDict[str, tuple[Any, datetime]] = OrderedDict()
         self.hits = 0
         self.misses = 0
-    
+        self._lock = threading.RLock()  # PHASE 2: スレッドセーフ対応
+
+    @staticmethod
+    def _normalize_query(query: str) -> str:
+        """
+        PHASE 2: クエリを正規化してキャッシュヒット率を上げる
+
+        同義のクエリ（例: "飲食業リース" と "飲食業のリース"）を同じキーで扱う
+
+        Args:
+            query: 元のクエリ文字列
+
+        Returns:
+            正規化されたクエリ
+        """
+        q = query.strip().lower()
+        q = re.sub(r'[\s　]+', '', q)  # 全角・半角スペースを削除
+        q = re.sub(r'[のがをはもで]', '', q)  # 日本語助詞を除去（最小限）
+        return q
+
     def get(self, key: str) -> Any | None:
-        """キャッシュから取得"""
-        if key not in self.cache:
-            self.misses += 1
-            return None
-        
-        value, timestamp = self.cache[key]
-        
-        # TTL チェック
-        if datetime.now() - timestamp > timedelta(seconds=self.ttl_seconds):
-            del self.cache[key]
-            self.misses += 1
-            return None
-        
-        # LRU: 最近使用したアイテムを最後に移動
-        self.cache.move_to_end(key)
-        self.hits += 1
-        return value
+        """キャッシュから取得（PHASE 2: スレッドセーフ対応）"""
+        with self._lock:
+            if key not in self.cache:
+                self.misses += 1
+                return None
+
+            value, timestamp = self.cache[key]
+
+            # TTL チェック
+            if datetime.now() - timestamp > timedelta(seconds=self.ttl_seconds):
+                del self.cache[key]
+                self.misses += 1
+                return None
+
+            # LRU: 最近使用したアイテムを最後に移動
+            self.cache.move_to_end(key)
+            self.hits += 1
+            return value
     
     def set(self, key: str, value: Any):
-        """キャッシュに設定"""
-        if key in self.cache:
-            self.cache.move_to_end(key)
-        
-        self.cache[key] = (value, datetime.now())
-        
-        # 容量超過時は最古のアイテムを削除
-        if len(self.cache) > self.maxsize:
-            self.cache.popitem(last=False)
+        """キャッシュに設定（PHASE 2: スレッドセーフ対応）"""
+        with self._lock:
+            if key in self.cache:
+                self.cache.move_to_end(key)
+
+            self.cache[key] = (value, datetime.now())
+
+            # 容量超過時は最古のアイテムを削除
+            if len(self.cache) > self.maxsize:
+                self.cache.popitem(last=False)
     
     def clear(self):
         """キャッシュをクリア"""
@@ -127,18 +150,19 @@ class OptimizedRAGPipeline:
     def retrieve_cached(self, query: str, retriever: Any) -> tuple[list[dict], float]:
         """
         キャッシュ付きで検索
-        
+
         Args:
             query: 検索クエリ
             retriever: RAG retriever
-            
+
         Returns:
             (結果, レイテンシ)
         """
         start_time = time.time()
-        
-        # キャッシュキー
-        cache_key = f"retrieve:{query}"
+
+        # PHASE 2: クエリ正規化でキャッシュヒット率を向上
+        normalized_query = self.cache._normalize_query(query)
+        cache_key = f"retrieve:{normalized_query}"
         cached_result = self.cache.get(cache_key)
         
         if cached_result is not None:

@@ -268,6 +268,23 @@ def _run_backtest(gate, lost: list[dict]) -> None:
     logger.info("Q_risk 分布: min=%.1f mean=%.1f max=%.1f",
                 min(q_risks), float(np.mean(q_risks)), max(q_risks))
 
+    # ペア識別力レポート
+    stats = getattr(gate, "pair_discrimination_stats_", None)
+    if stats:
+        logger.info("--- ペア識別力 (separation = mean_lost - mean_won) ---")
+        sorted_pairs = sorted(stats.items(), key=lambda x: x[1]["separation"], reverse=True)
+        for name, s in sorted_pairs:
+            mark = "✓" if s["separation"] > 0 else "✗"
+            w = gate.industry_pair_weights.get(name, 1.0)
+            logger.info(
+                "  %s %-40s sep=%+.4f (won=%.3f lost=%.3f n=%d/%d) weight=%.3f",
+                mark, name, s["separation"],
+                s["mean_won"], s["mean_lost"],
+                s["n_won"], s["n_lost"], w,
+            )
+        predictive = sum(1 for s in stats.values() if s["separation"] > 0)
+        logger.info("予測的ペア: %d/%d", predictive, len(stats))
+
     # マハラノビスとの独立性確認
     try:
         maha_path = str(PROJECT_ROOT / "data" / "mahalanobis_model.joblib")

@@ -242,3 +242,16 @@
 {"file":"api/main.py","action":"Edit","timestamp":"2026-05-30T05:51:37Z","important":false}
 {"file":".claude/skills/restart-api/skill.md","action":"Edit","timestamp":"2026-05-30T06:07:33Z","important":false}
 {"file":"frontend/src/app/subsidy/page.tsx","action":"Edit","timestamp":"2026-05-30T06:22:37Z","important":false}
+{"file":"frontend/src/app/page.tsx","action":"Edit","timestamp":"2026-05-30T07:12:27Z","important":false}
+{"file":"scripts/extract_obsidian_improvements.py","action":"Edit","timestamp":"2026-05-30T07:22:27Z","important":false}
+{"file":"/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/tuneLease55/改善策インデックス_2026.md","action":"Edit","timestamp":"2026-05-30T07:22:53Z","important":false}
+{"file":"scripts/sync_implemented_to_obsidian.py","action":"Write","timestamp":"2026-05-30T07:27:56Z","important":false}
+{"file":"scripts/run_daily_improvement_pipeline.sh","action":"Edit","timestamp":"2026-05-30T07:28:08Z","important":false}
+{"file":"frontend/src/app/faq/page.tsx","action":"Edit","timestamp":"2026-05-30T07:41:51Z","important":false}
+{"file":"frontend/src/app/report/page.tsx","action":"Edit","timestamp":"2026-05-30T07:43:40Z","important":false}
+{"file":"frontend/src/app/help/page.tsx","action":"Edit","timestamp":"2026-05-30T07:43:53Z","important":false}
+{"file":"frontend/src/app/improvement-log/page.tsx","action":"Edit","timestamp":"2026-05-30T07:49:03Z","important":false}
+{"file":"api/main.py","action":"Edit","timestamp":"2026-05-30T07:53:25Z","important":false}
+{"file":"quantum_analysis_module.py","action":"Edit","timestamp":"2026-05-30T12:16:40Z","important":false}
+{"file":"train_quantum.py","action":"Edit","timestamp":"2026-05-30T12:22:21Z","important":false}
+{"file":"scoring_core.py","action":"Edit","timestamp":"2026-05-30T12:32:54Z","important":false}
