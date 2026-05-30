@@ -127,6 +127,11 @@ def _convert_to_pipeline_text(content: str, source_name: str) -> str:
             ])
             continue
 
+        # ✅ 実装済タグがある行はスキップ
+        _DONE_MARKERS = ("✅ 実装済", "✅実装済", "✅ 完了", "✅完了", "✅ done", "✅done")
+        if any(m in stripped for m in _DONE_MARKERS):
+            continue
+
         # 未解決課題セクションのリスト項目
         if "未解決" in current_section and stripped.startswith("-"):
             item = stripped.lstrip("- ").strip()
