@@ -1855,6 +1855,11 @@ elif mode == "⚛️ 量子波形ビジュアル":
     from components.aurion_wave_view import render_aurion_wave_view
     render_aurion_wave_view()
 
+# ── 📚 ナレッジQ&A (RAG) ──────────────────────────────────────────────────────
+elif mode == "📚 ナレッジQ&A":
+    from components.rag_qa_view import render_rag_qa_view
+    render_rag_qa_view()
+
 # ── 🔬 未使用変数スクリーニング ─────────────────────────────────────────────────
 elif mode == "🔬 未使用変数スクリーニング":
     from components.variable_screener_view import render_variable_screener_view
