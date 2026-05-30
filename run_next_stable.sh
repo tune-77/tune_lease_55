@@ -254,7 +254,27 @@ else
   API_RUNNER=(python)
 fi
 while true; do
-  "${API_RUNNER[@]}" -m uvicorn api.main:app --host "$API_HOST" --port "$API_PORT" --reload >>"$API_LOG" 2>&1 &
+  # --reload-exclude: WatchFiles のリロード嵐を防ぐ。
+  # mobile_app/.vector_index, .embeddings_cache.json などのランタイム書き込みが
+  # トリガーされるとワーカーが sentence-transformers モデル読み込み中に
+  # SIGTERM され、ゾンビ化＋セマフォリークが発生するため除外する。
+  "${API_RUNNER[@]}" -m uvicorn api.main:app --host "$API_HOST" --port "$API_PORT" --reload \
+    --reload-exclude "mobile_app/.vector_index/*" \
+    --reload-exclude "mobile_app/.embeddings_cache.json" \
+    --reload-exclude "data/*" \
+    --reload-exclude "logs/*" \
+    --reload-exclude "**/__pycache__/*" \
+    --reload-exclude "**/*.pyc" \
+    --reload-exclude ".claude/*" \
+    --reload-exclude "**/.DS_Store" \
+    --reload-exclude "frontend/*" \
+    --reload-exclude "models/*" \
+    --reload-exclude "**/*.log" \
+    --reload-exclude "**/*.jsonl" \
+    --reload-exclude "**/*.db" \
+    --reload-exclude "**/*.sqlite*" \
+    --reload-exclude "api/chroma_db/*" \
+    >>"$API_LOG" 2>&1 &
   api_pid=$!
   echo "$api_pid" > "$API_PID_FILE"
   wait "$api_pid" || true
