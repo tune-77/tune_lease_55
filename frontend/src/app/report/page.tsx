@@ -64,8 +64,8 @@ function extractRiskFactors(inputs: Record<string, unknown>, result: Record<stri
     risks.push({
       label: 'デフォルト確率（PD）',
       value: `${pd.toFixed(2)}%`,
-      benchmark: '目安 3%以下',
-      severity: pd > 6 ? 'high' : 'medium',
+      benchmark: pd > 8 ? '8%超 ＝ 強警戒' : '目安 3%以下・3〜8%=要注意',
+      severity: pd > 8 ? 'high' : 'medium',
     });
   }
   if (grade !== null && grade >= 7) {
