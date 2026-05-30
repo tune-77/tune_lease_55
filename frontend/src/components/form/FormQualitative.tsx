@@ -1,7 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { Mic, MicOff } from 'lucide-react';
+import { Mic, MicOff, Lightbulb, AlertTriangle } from 'lucide-react';
 import { ScoringFormData } from '../../types';
 import SliderInput from '../SliderInput';
+
+// REV-064: 物件ごとの法定耐用年数 / REV-068: 推奨業種
+const ASSET_INFO: Record<string, { usefulLifeYears: number; industryMajor: string }> = {
+  '建設機械':           { usefulLifeYears: 6,  industryMajor: 'D 建設業' },
+  'IT・OA機器':         { usefulLifeYears: 4,  industryMajor: 'G 情報通信業' },
+  '医療機器':           { usefulLifeYears: 6,  industryMajor: 'P 医療，福祉' },
+  '車両・運搬車':       { usefulLifeYears: 4,  industryMajor: 'H 運輸業，郵便業' },
+  '製造設備・工作機械': { usefulLifeYears: 10, industryMajor: 'E 製造業' },
+  'オフィス家具・内装': { usefulLifeYears: 8,  industryMajor: 'R サービス業（他に分類されないもの）' },
+  '飲食店設備':         { usefulLifeYears: 8,  industryMajor: 'M 宿泊業，飲食サービス業' },
+  '太陽光・省エネ設備': { usefulLifeYears: 17, industryMajor: 'D 建設業' },
+};
 
 interface FormQualitativeProps {
   data: ScoringFormData;
@@ -56,6 +68,19 @@ export default function FormQualitative({ data, onChange }: FormQualitativeProps
   const [isListening, setIsListening] = useState(false);
   const [speechError, setSpeechError] = useState('');
   const [speechSupported, setSpeechSupported] = useState(isSpeechSupported);
+
+  // REV-064/068/050: 物件情報から計算する派生値
+  const assetInfo = ASSET_INFO[data.asset_name] ?? null;
+  const leaseWarning = (() => {
+    const t = data.lease_term;
+    if (!t || t <= 0) return null;
+    if (t < 12) return 'リース期間は通常12ヶ月以上です';
+    if (t > 84) return '84ヶ月（7年）超は長期すぎる場合があります';
+    if (assetInfo && t > assetInfo.usefulLifeYears * 12 * 1.2)
+      return `リース期間が法定耐用年数（${assetInfo.usefulLifeYears}年）の120%を超過しています`;
+    return null;
+  })();
+  const showIndustrySuggestion = !!(assetInfo && data.industry_major !== assetInfo.industryMajor);
 
   // マスターデータの取得
   useEffect(() => {
@@ -154,7 +179,15 @@ export default function FormQualitative({ data, onChange }: FormQualitativeProps
         
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
           <div className="space-y-1 lg:col-span-2">
-            <label className="text-sm font-bold text-slate-600 block">対象物件</label>
+            {/* REV-064: 法定耐用年数バッジ */}
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-bold text-slate-600 block">対象物件</label>
+              {assetInfo && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200">
+                  耐用{assetInfo.usefulLifeYears}年
+                </span>
+              )}
+            </div>
             <select name="asset_name" value={data.asset_name} onChange={handleSelect} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 h-[46px]">
               <option value="">（選択してください）</option>
               {assetItems.map(name => <option key={name} value={name}>{name}</option>)}
@@ -175,13 +208,49 @@ export default function FormQualitative({ data, onChange }: FormQualitativeProps
           </div>
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">リース期間 (月)</label>
-            <input type="number" name="lease_term" value={data.lease_term} onChange={handleNumber} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
+            <input
+              type="number"
+              name="lease_term"
+              value={data.lease_term}
+              onChange={handleNumber}
+              className={`w-full bg-slate-50 border rounded-lg p-2.5 outline-none focus:ring-2 text-right h-[46px] ${
+                leaseWarning ? 'border-amber-400 focus:ring-amber-300' : 'border-slate-300 focus:ring-blue-500'
+              }`}
+            />
+            {/* REV-050: リース期間バリデーション警告 */}
+            {leaseWarning && (
+              <p className="flex items-center gap-1 text-[10px] font-bold text-amber-600 mt-0.5">
+                <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                {leaseWarning}
+              </p>
+            )}
           </div>
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">検収年 (西暦)</label>
             <input type="number" name="acceptance_year" value={data.acceptance_year} onChange={handleNumber} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
           </div>
         </div>
+
+        {/* REV-068: 推奨業種バナー */}
+        {showIndustrySuggestion && assetInfo && (
+          <div className="flex items-start gap-2 p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-sm">
+            <Lightbulb className="w-4 h-4 text-indigo-500 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-bold text-indigo-800 text-[12px]">業種の確認をおすすめします</p>
+              <p className="text-[11px] text-indigo-700 mt-0.5">
+                <span className="font-bold">{data.asset_name}</span> の推奨業種は
+                <span className="font-bold">「{assetInfo.industryMajor}」</span> です（現在: {data.industry_major}）。
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onChange('industry_major', assetInfo.industryMajor)}
+              className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition whitespace-nowrap"
+            >
+              適用
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 定性評価（6大項目） */}
