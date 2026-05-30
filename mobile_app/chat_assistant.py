@@ -36,6 +36,20 @@ except ImportError:  # pragma: no cover - package import fallback
         collect_obsidian_context,
     )
 
+# ===== Phase 1 Step 2: Caching
+try:
+    from obsidian_context_cache import (
+        get_cache,
+        cached_collect_obsidian_context,
+        log_cache_stats,
+    )
+except ImportError:  # pragma: no cover - package import fallback
+    from .obsidian_context_cache import (
+        get_cache,
+        cached_collect_obsidian_context,
+        log_cache_stats,
+    )
+
 try:
     from web_bridge import collect_web_context
 except ImportError:  # pragma: no cover - package import fallback
@@ -427,9 +441,19 @@ def build_chat_reply(
             "saved": False,
         }
 
-    # ===== Obsidian context collection
+    # ===== Obsidian context collection (with caching)
     t0 = time.time()
-    obsidian_hits = collect_obsidian_context(message) if use_obsidian else []
+    if use_obsidian:
+        # Try cache first, fall back to collect_obsidian_context
+        obsidian_hits = cached_collect_obsidian_context(
+            message,
+            collect_fn=collect_obsidian_context,
+            limit=4,
+        )
+        from_cache = "cache" if get_cache().get(message) else "miss"
+    else:
+        obsidian_hits = []
+        from_cache = "disabled"
     t_obsidian_search = time.time() - t0
 
     # ===== Obsidian digest generation
@@ -589,7 +613,7 @@ def build_chat_reply(
                 related_paths=[item.get("path", "") for item in obsidian_hits],
             )
 
-        # ===== Phase 1: Log latency metrics
+        # ===== Phase 1: Log latency metrics with cache info
         t_total = time.time() - t_start
         logger.info(
             f"PHASE1_LATENCY | "
@@ -599,8 +623,15 @@ def build_chat_reply(
             f"gemini={t_gemini:.3f}s | "
             f"total={t_total:.3f}s | "
             f"query_length={len(message)} | "
-            f"hits={len(obsidian_hits)}"
+            f"hits={len(obsidian_hits)} | "
+            f"cache_status={from_cache}"
         )
+
+        # ===== Phase 1 Step 2: Log cache statistics periodically
+        cache = get_cache()
+        stats = cache.get_stats()
+        if stats["total_requests"] % 10 == 0:  # Log every 10 requests
+            log_cache_stats(logger)
 
         return {
             "reply": str(parsed.get("reply") or ""),
