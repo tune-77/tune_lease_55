@@ -114,8 +114,8 @@ export default function ImprovementLogPage() {
           <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-3 shadow-sm">
             <ClipboardList size={20} className="text-slate-400" />
             <div>
-              <p className="text-xs text-slate-500">合計</p>
-              <p className="text-xl font-bold text-slate-800">{data.items.length} 件</p>
+              <p className="text-xs text-slate-500">合計（当日候補）</p>
+              <p className="text-xl font-bold text-slate-800">{data.approved + data.needs_review} 件</p>
             </div>
           </div>
         </div>
@@ -172,7 +172,7 @@ export default function ImprovementLogPage() {
                   const k = it.key || it.title;
                   const isDismissing = dismissing.has(k);
                   const isDismissed = dismissed.has(k);
-                  const canDismiss = it.status !== "applied" && !isDismissed;
+                  const canDismiss = it.status !== "applied" && it.status !== "APPROVED" && !isDismissed;
                   return (
                     <tr key={it.id || k || i} className={i % 2 === 0 ? "bg-white" : "bg-slate-50"}>
                       <td className="px-4 py-2 font-mono text-xs text-slate-500">{it.id || "—"}</td>

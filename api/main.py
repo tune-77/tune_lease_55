@@ -1415,67 +1415,165 @@ def _dedup_by_similarity(items: list[dict], threshold: float = 0.50) -> list[dic
     return result
 
 
-@app.get("/api/improvement-log")
-def get_improvement_log():
-    """最新の改善パイプラインログをサマリー形式で返す（REV-135）。"""
-    import glob as _glob
-    log_dir = os.path.expanduser("~/Library/Logs/tunelease")
-    ledger_path = os.path.join(log_dir, "ledger.jsonl")
+def _load_applied_from_ledger() -> tuple[set[str], set[str]]:
+    """ledger.jsonl から applied の key セットとタイトルセットを返す。"""
+    import json as _j
+    applied_keys: set[str] = set()
+    applied_titles: set[str] = set()
+    ledger_path = os.path.expanduser("~/Library/Logs/tunelease/ledger.jsonl")
     if not os.path.exists(ledger_path):
-        return {"items": [], "date": None, "approved": 0, "needs_review": 0}
-    import json as _json
-    items: list[dict] = []
+        return applied_keys, applied_titles
     with open(ledger_path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
                 continue
             try:
-                obj = _json.loads(line)
-                items.append({
-                    "key": obj.get("key", ""),
-                    "id": obj.get("id", ""),
-                    "title": obj.get("title", ""),
-                    "status": obj.get("status", ""),
-                    "priority": obj.get("priority", ""),
-                    "date": obj.get("date") or obj.get("created_at", ""),
-                })
+                obj = _j.loads(line)
+                if obj.get("status") == "applied":
+                    applied_keys.add(obj.get("key", ""))
+                    t = obj.get("title", "")
+                    if t:
+                        applied_titles.add(t)
             except Exception:
                 pass
-    # ① 同一キーは最新ステータスのみ保持
-    seen_keys: set[str] = set()
-    deduped: list[dict] = []
-    for it in reversed(items):
-        k = it.get("key") or it.get("title", "")
-        if k not in seen_keys:
-            seen_keys.add(k)
-            deduped.append(it)
-    items = list(reversed(deduped))
-    # ② applied（手動消し込み済み）を除外
-    items = [it for it in items if it["status"] != "applied"]
-    # ③ Obsidian 実装済みリストと照合して自動除外
+    return applied_keys, applied_titles
+
+
+def _find_similar_pipeline_items(text: str, threshold: float = 0.38) -> list[dict]:
+    """テキストと類似するパイプライン改善候補（レポート＋ledger）を返す（上位5件）。"""
+    import glob as _g, json as _j
+    log_dir = os.path.expanduser("~/Library/Logs/tunelease")
+    candidates: list[dict] = []
+    seen_titles: set[str] = set()
+    # レポートから収集
+    reports = sorted(
+        _g.glob(os.path.join(log_dir, "reports", "improvement_report_*.json")),
+        reverse=True,
+    )
+    for rpath in reports[:3]:
+        try:
+            d = _j.load(open(rpath, encoding="utf-8"))
+            for item in d.get("needs_review", []) + d.get("applied_improvements", []):
+                t = item.get("title", "")
+                if t and t not in seen_titles:
+                    seen_titles.add(t)
+                    candidates.append({"id": item.get("id", ""), "title": t, "status": "needs_review"})
+        except Exception:
+            pass
+    # ledger から収集（最新のステータスを優先）
+    ledger_path = os.path.join(log_dir, "ledger.jsonl")
+    if os.path.exists(ledger_path):
+        ledger_latest: dict[str, dict] = {}
+        with open(ledger_path, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    obj = _j.loads(line.strip())
+                    t = obj.get("title", "")
+                    if t:
+                        ledger_latest[t] = obj
+                except Exception:
+                    pass
+        for t, obj in ledger_latest.items():
+            if t not in seen_titles:
+                seen_titles.add(t)
+                candidates.append({"id": obj.get("id", ""), "title": t, "status": obj.get("status", "")})
+
+    matches: list[dict] = []
+    for c in candidates:
+        if _is_implemented(text, {c["title"]}, threshold=threshold):
+            matches.append(c)
+        if len(matches) >= 5:
+            break
+    return matches
+
+
+@app.get("/api/improvement-log")
+def get_improvement_log():
+    """最新の改善パイプラインログをサマリー形式で返す（REV-135）。
+    ソース: improvement_report_*.json（日次パイプライン候補）
+    ステータス: ledger + Obsidian で APPROVED / NEEDS_REVIEW に分類して全件表示。
+    """
+    import glob as _glob, json as _json, re as _re
+    log_dir = os.path.expanduser("~/Library/Logs/tunelease")
+
+    # ① 実装済みセット（ledger applied + Obsidian）
+    applied_keys, applied_titles = _load_applied_from_ledger()
     impl_titles = _load_obsidian_implemented_titles()
-    if impl_titles:
-        items = [it for it in items if not _is_implemented(it.get("title", ""), impl_titles)]
-    # ④ 残ったアイテム間で類似タイトルを重複排除
-    items = _dedup_by_similarity(items)
-    # ⑤ improvement_report から REV番号を付与
+    all_impl = applied_titles | impl_titles
+
+    # ② improvement_report_*.json から候補を収集（最新2件）
+    reports = sorted(
+        _glob.glob(os.path.join(log_dir, "reports", "improvement_report_*.json")),
+        reverse=True,
+    )
+    report_map: dict[str, dict] = {}  # title → item（先着1件）
+    log_date: str | None = None
+    for rpath in reports[:2]:
+        try:
+            m = _re.search(r"improvement_report_(\d{8})", rpath)
+            if m and log_date is None:
+                d = m.group(1)
+                log_date = f"{d[:4]}-{d[4:6]}-{d[6:]}"
+            data = _json.load(open(rpath, encoding="utf-8"))
+            for item in data.get("needs_review", []) + data.get("applied_improvements", []):
+                t = item.get("title", "")
+                if t and t not in report_map:
+                    report_map[t] = item
+        except Exception:
+            pass
+
+    # レポートが空の場合は ledger から NEEDS_REVIEW 分を補完
+    if not report_map:
+        ledger_path = os.path.join(log_dir, "ledger.jsonl")
+        if os.path.exists(ledger_path):
+            with open(ledger_path, encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        obj = _json.loads(line.strip())
+                        t = obj.get("title", "")
+                        if t and t not in report_map and obj.get("status") not in ("applied",):
+                            report_map[t] = obj
+                    except Exception:
+                        pass
+
+    # ③ 各アイテムのステータスを判定
+    items: list[dict] = []
+    for title, item in report_map.items():
+        key = item.get("key", "")
+        is_done = (key and key in applied_keys) or _is_implemented(title, all_impl)
+        status = "APPROVED" if is_done else "NEEDS_REVIEW"
+        items.append({
+            "key": key,
+            "id": item.get("id", ""),
+            "title": title,
+            "status": status,
+            "priority": item.get("priority", "MEDIUM"),
+            "date": item.get("date") or item.get("created_at", ""),
+        })
+
+    # ④ NEEDS_REVIEW 内の類似タイトルを重複排除
+    needs_review_items = [it for it in items if it["status"] == "NEEDS_REVIEW"]
+    approved_items = [it for it in items if it["status"] == "APPROVED"]
+    needs_review_items = _dedup_by_similarity(needs_review_items)
+
+    # ⑤ REV番号付与
     title_to_rev = _load_title_to_rev()
-    for it in items:
+    for it in needs_review_items + approved_items:
         if not it.get("id"):
             it["id"] = title_to_rev.get(it.get("title", ""), "")
-    approved = sum(1 for it in items if it["status"] == "APPROVED")
-    needs_review = sum(1 for it in items if it["status"] in ("NEEDS_REVIEW", "needs_review"))
-    items.sort(key=lambda x: x.get("id") or x.get("title") or "", reverse=True)
-    log_files = sorted(_glob.glob(os.path.join(log_dir, "improvement_*.log")), reverse=True)
-    log_date = None
-    if log_files:
-        import re as _re
-        m = _re.search(r"improvement_(\d{8})", log_files[0])
-        if m:
-            d = m.group(1)
-            log_date = f"{d[:4]}-{d[4:6]}-{d[6:]}"
-    return {"items": items[:200], "date": log_date, "approved": approved, "needs_review": needs_review}
+
+    # ⑥ ソート・件数制限（NEEDS_REVIEW→APPROVED の順）
+    needs_review_items.sort(key=lambda x: x.get("id") or x.get("title") or "", reverse=True)
+    approved_items.sort(key=lambda x: x.get("id") or x.get("title") or "", reverse=True)
+    combined = needs_review_items + approved_items[:50]
+
+    return {
+        "items": combined,
+        "date": log_date,
+        "approved": len(approved_items),
+        "needs_review": len(needs_review_items),
+    }
 
 
 class DismissImprovementRequest(BaseModel):
@@ -3895,8 +3993,34 @@ def post_chat(req: ChatRequest):
         except Exception as e:
             print(f"[DB Query] 統計取得エラー: {e}")
 
-        # システムプロンプトにRAGコンテキストとDB統計を追記
-        effective_prompt = _CHAT_SYSTEM_PROMPT + rag_context + db_context
+        # 改善提案キーワード検知 → 既存パイプライン候補と照合してコンテキスト注入
+        _IMPROVEMENT_KEYWORDS = (
+            "改善", "わかりにくい", "分かりにくい", "使いにくい", "説明",
+            "入力しにくい", "導線", "バグ", "不具合", "直して", "変えて",
+            "修正して", "追加して", "欲しい", "要望", "提案",
+        )
+        improvement_context = ""
+        similar_existing: list[dict] = []
+        if any(k in req.message for k in _IMPROVEMENT_KEYWORDS):
+            try:
+                similar_existing = _find_similar_pipeline_items(req.message, threshold=0.35)
+                if similar_existing:
+                    lines = []
+                    for s in similar_existing:
+                        rev = s.get("id") or ""
+                        st = s.get("status", "")
+                        label = "実装済み" if st == "applied" else "改善候補として登録済み"
+                        lines.append(f"- {rev + ': ' if rev else ''}{s['title']} ({label})")
+                    improvement_context = (
+                        "\n\n【改善案照合】ユーザーの要望と類似する既存候補:\n"
+                        + "\n".join(lines)
+                        + "\n同じ内容であれば重複登録を避け、既存候補として案内してください。"
+                    )
+            except Exception as _ie:
+                print(f"[改善照合] エラー: {_ie}")
+
+        # システムプロンプトにRAGコンテキスト・DB統計・改善照合を追記
+        effective_prompt = _CHAT_SYSTEM_PROMPT + rag_context + db_context + improvement_context
 
         history = get_recent_messages(req.user_id, limit=20)
         history_for_gemini = [{"role": m["role"], "content": m["content"]} for m in history]
@@ -3905,13 +4029,8 @@ def post_chat(req: ChatRequest):
         save_message(req.user_id, "assistant", reply)
         total = get_message_count(req.user_id)
 
-        # 改善系メッセージを自動検出してObsidian Improvement Logに保存
-        _IMPROVEMENT_KEYWORDS = (
-            "改善", "わかりにくい", "分かりにくい", "使いにくい", "説明",
-            "入力しにくい", "導線", "バグ", "不具合", "直して", "変えて",
-            "修正して", "追加して", "欲しい", "要望", "提案",
-        )
-        if any(k in req.message for k in _IMPROVEMENT_KEYWORDS):
+        # 改善メモをObsidianに保存（類似候補がすでにある場合はスキップして重複防止）
+        if any(k in req.message for k in _IMPROVEMENT_KEYWORDS) and not similar_existing:
             try:
                 from mobile_app.obsidian_bridge import append_improvement_note
                 body = f"**ユーザー要望**\n{req.message}\n\n**めぶき返答**\n{reply}"
