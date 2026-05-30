@@ -285,6 +285,23 @@ def render_visual_insights():
     if last_res and last_inputs:
         current_case = {**last_res, **last_inputs}
 
+    # AI状況説明
+    df_all = _build_dataframe()
+    n_total = len(df_all)
+    n_won = int((df_all["status"] == "成約").sum()) if n_total > 0 else 0
+    n_lost = int((df_all["status"] == "失注").sum()) if n_total > 0 else 0
+    overall_rate = round(n_won / n_total * 100, 1) if n_total > 0 else 0.0
+
+    if n_total == 0:
+        st.info("📋 まだ審査済み案件がありません。審査を実施して「案件登録」すると、ここに分析グラフが表示されます。")
+    else:
+        _case_ctx = f"現在の案件 (スコア {last_res.get('score', '—')}pt)" if last_res else "現在の案件なし"
+        st.info(
+            f"🤖 **AI分析状況**: 登録済み案件 **{n_total}件**（成約 {n_won}件 / 失注 {n_lost}件 / 全体成約率 **{overall_rate}%**）を可視化中。"
+            f" | {_case_ctx} — ★マークで位置を確認できます。"
+            f" スコア70pt以上・スプレッド1.5%以下の領域が高成約ゾーンです。"
+        )
+
     tab1, tab2, tab3 = st.tabs(["🫧 バブルチャート", "🌡️ ヒートマップ", "🌊 サンキー図"])
 
     with tab1:

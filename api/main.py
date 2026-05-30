@@ -1197,6 +1197,213 @@ def _load_useful_life_table() -> list[dict]:
     return _USEFUL_LIFE_TABLE
 
 
+@app.get("/api/cases/industry-winrate")
+def get_industry_winrate():
+    """業種別成約率を past_cases から集計して返す（REV-055/117~119）。"""
+    import sqlite3 as _sqlite3
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "lease_data.db")
+    if not os.path.exists(db_path):
+        return []
+    conn = _sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT industry_sub, final_status, COUNT(*) FROM past_cases "
+        "WHERE final_status IS NOT NULL AND final_status != '' "
+        "GROUP BY industry_sub, final_status"
+    )
+    rows = cur.fetchall()
+    conn.close()
+    _SUCCESS = {"成約", "検収完了"}
+    _FAILURE = {"失注"}
+    agg: dict = {}
+    for industry, status, cnt in rows:
+        if not industry or industry == "0":
+            continue
+        d = agg.setdefault(industry, {"won": 0, "lost": 0})
+        if status in _SUCCESS:
+            d["won"] += cnt
+        elif status in _FAILURE:
+            d["lost"] += cnt
+    result = []
+    total_won = sum(v["won"] for v in agg.values())
+    total_lost = sum(v["lost"] for v in agg.values())
+    total_all = total_won + total_lost
+    overall_rate = round(total_won / total_all * 100, 1) if total_all > 0 else 0
+    for industry, d in agg.items():
+        total = d["won"] + d["lost"]
+        if total == 0:
+            continue
+        rate = round(d["won"] / total * 100, 1)
+        result.append({
+            "industry": industry,
+            "won": d["won"],
+            "lost": d["lost"],
+            "total": total,
+            "win_rate": rate,
+            "diff": round(rate - overall_rate, 1),
+        })
+    result.sort(key=lambda x: x["total"], reverse=True)
+    return {"items": result, "overall_rate": overall_rate, "total_won": total_won, "total_lost": total_lost}
+
+
+@app.get("/api/cases/sales-dept-winrate")
+def get_sales_dept_winrate():
+    """営業部別成約率を集計して返す（REV-112）。"""
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "lease_data.db")
+    if not os.path.exists(db_path):
+        return {"items": [], "overall_rate": 0.0, "total_won": 0, "total_lost": 0}
+    import sqlite3 as _sqlite3
+    conn = _sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT sales_dept,
+               SUM(CASE WHEN final_status IN ('成約','検収完了') THEN 1 ELSE 0 END) as won,
+               SUM(CASE WHEN final_status = '失注' THEN 1 ELSE 0 END) as lost,
+               COUNT(*) as total,
+               ROUND(AVG(score), 1) as avg_score
+        FROM past_cases
+        WHERE sales_dept NOT IN ('', '0', '未設定')
+          AND final_status IN ('成約','検収完了','失注')
+        GROUP BY sales_dept
+        ORDER BY total DESC
+    """)
+    rows = cur.fetchall()
+    conn.close()
+    total_won = sum(r[1] for r in rows)
+    total_lost = sum(r[2] for r in rows)
+    overall_rate = round(total_won / (total_won + total_lost) * 100, 1) if (total_won + total_lost) > 0 else 0.0
+    result = []
+    for dept, won, lost, total, avg_score in rows:
+        rate = round(won / (won + lost) * 100, 1) if (won + lost) > 0 else 0.0
+        result.append({
+            "dept": dept,
+            "won": won,
+            "lost": lost,
+            "total": total,
+            "win_rate": rate,
+            "avg_score": avg_score or 0.0,
+            "diff": round(rate - overall_rate, 1),
+        })
+    return {"items": result, "overall_rate": overall_rate, "total_won": total_won, "total_lost": total_lost}
+
+
+@app.get("/api/payment/alerts")
+def get_payment_alerts():
+    """延滞・デフォルト案件を検出してアラートリストを返す（REV-070）。"""
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "lease_data.db")
+    if not os.path.exists(db_path):
+        return {"alerts": [], "summary": {"normal": 0, "overdue": 0, "default": 0, "completed": 0}}
+    import sqlite3 as _sqlite3
+    conn = _sqlite3.connect(db_path)
+    conn.row_factory = _sqlite3.Row
+    cur = conn.cursor()
+    # payment_historyが存在するか確認
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='payment_history'")
+    if not cur.fetchone():
+        conn.close()
+        return {"alerts": [], "summary": {"normal": 0, "overdue": 0, "default": 0, "completed": 0}}
+    cur.execute("""
+        SELECT ph.id, ph.contract_id, ph.check_date, ph.payment_status,
+               ph.overdue_amount, ph.screening_score, ph.notes,
+               pc.industry_sub, pc.score as original_score
+        FROM payment_history ph
+        LEFT JOIN past_cases pc ON ph.contract_id = pc.id
+        ORDER BY ph.check_date DESC
+    """)
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    summary = {"normal": 0, "overdue": 0, "default": 0, "completed": 0}
+    alerts = []
+    for row in rows:
+        status = row.get("payment_status", "")
+        if status == "正常":
+            summary["normal"] += 1
+        elif status == "延滞":
+            summary["overdue"] += 1
+            alerts.append({**row, "severity": "warning", "message": f"延滞発生 — 過延滞額: {row.get('overdue_amount', 0):,}円"})
+        elif status == "デフォルト":
+            summary["default"] += 1
+            alerts.append({**row, "severity": "critical", "message": "デフォルト — 早急な対応が必要です"})
+        elif status == "完済":
+            summary["completed"] += 1
+    return {"alerts": alerts, "summary": summary, "total": len(rows)}
+
+
+@app.get("/api/improvement-log")
+def get_improvement_log():
+    """最新の改善パイプラインログをサマリー形式で返す（REV-135）。"""
+    import glob as _glob
+    log_dir = os.path.expanduser("~/Library/Logs/tunelease")
+    ledger_path = os.path.join(log_dir, "ledger.jsonl")
+    if not os.path.exists(ledger_path):
+        return {"items": [], "date": None, "approved": 0, "needs_review": 0}
+    import json as _json
+    items: list[dict] = []
+    approved = 0
+    needs_review = 0
+    with open(ledger_path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = _json.loads(line)
+                status = obj.get("status", "")
+                if status == "APPROVED":
+                    approved += 1
+                elif status in ("NEEDS_REVIEW", "needs_review"):
+                    needs_review += 1
+                items.append({
+                    "id": obj.get("id", ""),
+                    "title": obj.get("title", ""),
+                    "status": status,
+                    "priority": obj.get("priority", ""),
+                    "date": obj.get("date") or obj.get("created_at", ""),
+                })
+            except Exception:
+                pass
+    items.sort(key=lambda x: x.get("id") or "", reverse=True)
+    log_files = sorted(_glob.glob(os.path.join(log_dir, "improvement_*.log")), reverse=True)
+    log_date = None
+    if log_files:
+        import re as _re
+        m = _re.search(r"improvement_(\d{8})", log_files[0])
+        if m:
+            d = m.group(1)
+            log_date = f"{d[:4]}-{d[4:6]}-{d[6:]}"
+    return {"items": items[:200], "date": log_date, "approved": approved, "needs_review": needs_review}
+
+
+@app.get("/api/subsidies")
+def get_subsidies(q: str = ""):
+    """補助金マスタ一覧を返す。q で asset_keywords/name を部分一致フィルタ（REV-022/047）。"""
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "lease_data.db")
+    if not os.path.exists(db_path):
+        return []
+    import sqlite3 as _sqlite3
+    conn = _sqlite3.connect(db_path)
+    conn.row_factory = _sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM subsidy_master WHERE active = 1 ORDER BY max_amount DESC")
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    if q.strip():
+        q_l = q.lower()
+        rows = [r for r in rows if q_l in (r.get("name") or "").lower() or q_l in (r.get("asset_keywords") or "").lower() or q_l in (r.get("notes") or "").lower()]
+    return rows
+
+
+@app.get("/api/asset/useful-life-all")
+def get_useful_life_all():
+    """法定耐用年数の全品目をカテゴリ付きで返す（REV-085/121）。"""
+    import json as _json
+    json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "static_data", "useful_life_equipment.json")
+    if not os.path.exists(json_path):
+        return {"categories": []}
+    with open(json_path, encoding="utf-8") as f:
+        return _json.load(f)
+
+
 @app.get("/api/asset/useful-life-search")
 def search_useful_life(q: str = ""):
     """国税庁の法定耐用年数表からキーワード検索（name/category/subcategory）。最大20件返す。"""
@@ -4139,6 +4346,86 @@ def fluid_status():
         return get_fluid_status()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/drift-stats")
+def get_drift_stats():
+    """スコアリングドリフト監視用統計を返す（REV-008）。"""
+    import sqlite3 as _sqlite3
+    import json as _json
+    from data_cases import _open_db
+    try:
+        with _open_db() as conn:
+            conn.row_factory = _sqlite3.Row
+            rows = conn.execute(
+                "SELECT timestamp, score, final_status, data FROM past_cases WHERE score IS NOT NULL ORDER BY timestamp ASC"
+            ).fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    monthly: dict = {}
+    score_by_status: dict = {"成約": [], "失注": []}
+    all_scores: list = []
+
+    for row in rows:
+        ts = (row["timestamp"] or "")[:7]  # YYYY-MM
+        score = row["score"]
+        status = row["final_status"] or "未登録"
+        all_scores.append(score)
+        if ts:
+            if ts not in monthly:
+                monthly[ts] = {"month": ts, "count": 0, "won": 0, "lost": 0, "score_sum": 0.0, "score_won": [], "score_lost": []}
+            monthly[ts]["count"] += 1
+            monthly[ts]["score_sum"] += score
+            if status == "成約":
+                monthly[ts]["won"] += 1
+                monthly[ts]["score_won"].append(score)
+                score_by_status["成約"].append(score)
+            elif status == "失注":
+                monthly[ts]["lost"] += 1
+                monthly[ts]["score_lost"].append(score)
+                score_by_status["失注"].append(score)
+
+    monthly_list = []
+    for m in sorted(monthly.keys()):
+        d = monthly[m]
+        total_decided = d["won"] + d["lost"]
+        monthly_list.append({
+            "month": m,
+            "count": d["count"],
+            "won": d["won"],
+            "lost": d["lost"],
+            "win_rate": round(d["won"] / total_decided * 100, 1) if total_decided > 0 else None,
+            "avg_score": round(d["score_sum"] / d["count"], 1) if d["count"] > 0 else None,
+            "avg_score_won": round(sum(d["score_won"]) / len(d["score_won"]), 1) if d["score_won"] else None,
+            "avg_score_lost": round(sum(d["score_lost"]) / len(d["score_lost"]), 1) if d["score_lost"] else None,
+        })
+
+    avg_won = round(sum(score_by_status["成約"]) / len(score_by_status["成約"]), 1) if score_by_status["成約"] else None
+    avg_lost = round(sum(score_by_status["失注"]) / len(score_by_status["失注"]), 1) if score_by_status["失注"] else None
+    separation = round(avg_won - avg_lost, 1) if avg_won is not None and avg_lost is not None else None
+
+    bins = [0] * 10
+    for s in all_scores:
+        idx = min(9, int(s // 10))
+        bins[idx] += 1
+    score_dist = [{"range": f"{i*10}–{i*10+9}", "count": bins[i]} for i in range(10)]
+
+    drift_alert = separation is not None and separation < 5.0
+
+    return {
+        "monthly": monthly_list,
+        "summary": {
+            "total": len(all_scores),
+            "won_count": len(score_by_status["成約"]),
+            "lost_count": len(score_by_status["失注"]),
+            "avg_score_won": avg_won,
+            "avg_score_lost": avg_lost,
+            "separation": separation,
+            "drift_alert": drift_alert,
+        },
+        "score_dist": score_dist,
+    }
 
 
 class CounterfactualRequest(BaseModel):

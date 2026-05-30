@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { apiClient } from "@/lib/api";
-import { Send, Trash2, Loader2, MessageCircle, Bot, User, NotebookPen, Mic, Network } from "lucide-react";
+import { Send, Trash2, Loader2, MessageCircle, Bot, User, NotebookPen, Mic, Network, Database, ChevronDown, ChevronUp } from "lucide-react";
 
 interface ChatMessage {
   id: number;
@@ -118,6 +118,8 @@ export default function ChatPage() {
   const [showSubtitle, setShowSubtitle] = useState(true);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [listening, setListening] = useState(false);
+  const [recentCases, setRecentCases] = useState<{ id: string; company_name: string; score: number | null; final_status: string }[]>([]);
+  const [showCasesPanel, setShowCasesPanel] = useState(false);
   const messageListRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
@@ -134,6 +136,9 @@ export default function ChatPage() {
     loadHistory();
     const timer = setTimeout(() => setShowSubtitle(false), 5000);
     setVoiceSupported(Boolean(getSpeechRecognition()));
+    apiClient.get("/api/cases?limit=8&sort=desc")
+      .then(res => setRecentCases(res.data || []))
+      .catch(() => {});
     return () => clearTimeout(timer);
   }, []);
 
@@ -269,6 +274,14 @@ export default function ChatPage() {
     }
   };
 
+  const insertCaseContext = (c: { company_name: string; score: number | null; final_status: string }) => {
+    const snippet = `[案件参照] ${c.company_name || "名称なし"} スコア:${c.score != null ? Math.round(c.score) : "—"} ステータス:${c.final_status} `;
+    setInput(prev => prev ? `${prev}\n${snippet}` : snippet);
+    setShowCasesPanel(false);
+    textareaRef.current?.focus();
+    window.setTimeout(resizeTextarea, 0);
+  };
+
   const openKnowledgeEvidence = (query: string) => {
     const trimmed = query.replace(/\s+/g, " ").trim().slice(0, 120);
     if (!trimmed) return;
@@ -333,6 +346,37 @@ export default function ChatPage() {
           </button>
         </div>
       </div>
+
+      {/* DB案件クイック参照パネル (REV-130) */}
+      {recentCases.length > 0 && (
+        <div className="flex-shrink-0 mb-2">
+          <button
+            onClick={() => setShowCasesPanel(p => !p)}
+            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-blue-600 transition-colors px-2 py-1 rounded-lg hover:bg-blue-50"
+          >
+            <Database className="w-3.5 h-3.5" />
+            <span>案件DB参照</span>
+            {showCasesPanel ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          </button>
+          {showCasesPanel && (
+            <div className="mt-1 p-2 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-wrap gap-1.5">
+              {recentCases.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => insertCaseContext(c)}
+                  className={`text-xs px-2.5 py-1 rounded-full font-bold border transition-all hover:shadow-sm
+                    ${c.final_status === '成約' ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100' :
+                      c.final_status === '失注' ? 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100' :
+                      'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                >
+                  {c.company_name || "名称なし"} {c.score != null ? `(${Math.round(c.score)})` : ""}
+                </button>
+              ))}
+              <p className="w-full text-[10px] text-slate-400 px-1 pt-0.5">クリックでチャットに案件情報を挿入します</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* メッセージエリア */}
       <div ref={messageListRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-4 pr-1 pb-4">

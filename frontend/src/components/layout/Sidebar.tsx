@@ -9,7 +9,8 @@ import {
   PieChart, LineChart, Target, Settings, Calendar, Share2, Network,
   Eye, BarChart3, TrendingUp, Globe, ChevronDown, ChevronRight, Building,
   PanelLeftClose, PanelLeftOpen, X, Table2, Swords, MessageCircle,
-  HelpCircle, GitMerge, Gift, Briefcase
+  BarChart2, Building2, BookOpen, Gift, HelpCircle, Megaphone, Calculator,
+  Receipt, LifeBuoy, ClipboardList, CreditCard, Activity, GitMerge, Briefcase
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
 
@@ -48,6 +49,8 @@ export default function Sidebar() {
         { name: '営業部ダッシュボード', href: '/department', icon: Users, color: 'text-emerald-400' },
         { name: '業種別成約率分析', href: '/industry-stats', icon: Briefcase, color: 'text-sky-500' },
         { name: '3期財務分析', href: '/financial', icon: BarChart3, color: 'text-rose-500' },
+        { name: '業種別成約率', href: '/industry-winrate', icon: BarChart2, color: 'text-blue-400' },
+        { name: '営業部別成約率', href: '/sales-dept-winrate', icon: Building2, color: 'text-indigo-400' },
         { name: 'TimesFM 時系列予測', href: '/timesfm', icon: TrendingUp, color: 'text-emerald-500' },
         { name: '競合関係グラフ', href: '/competitor', icon: Share2, color: 'text-orange-400' },
         { name: '案件類似ネットワーク', href: '/similar', icon: Network, color: 'text-teal-400' },
@@ -57,10 +60,26 @@ export default function Sidebar() {
       ]
     },
     {
+      title: '参照・ナレッジ',
+      items: [
+        { name: '法定耐用年数一覧', href: '/useful-life', icon: BookOpen, color: 'text-blue-400' },
+        { name: '業種別リース物件例', href: '/industry-assets', icon: Factory, color: 'text-slate-500' },
+        { name: '残価設定ガイドライン', href: '/residual-guide', icon: Calculator, color: 'text-purple-400' },
+        { name: '営業向け説明ガイド', href: '/sales-guide', icon: Megaphone, color: 'text-blue-500' },
+        { name: '固定資産税シミュレーター', href: '/tax-calc', icon: Receipt, color: 'text-orange-400' },
+        { name: '補助金情報', href: '/subsidies', icon: Gift, color: 'text-amber-400' },
+        { name: 'リース知識 FAQ', href: '/faq', icon: HelpCircle, color: 'text-slate-400' },
+        { name: 'システム機能一覧', href: '/help', icon: LifeBuoy, color: 'text-blue-300' },
+        { name: '改善ログ', href: '/improvement-log', icon: ClipboardList, color: 'text-slate-400' },
+        { name: '支払いアラート', href: '/payment-check', icon: CreditCard, color: 'text-red-400' },
+      ]
+    },
+    {
       title: '係数分析・ログ',
       items: [
         { name: '定性要因分析 (50件〜)', href: '/qualitative', icon: Target, color: 'text-pink-400' },
         { name: '定量要因分析 (50件〜)', href: '/quantitative', icon: LineChart, color: 'text-red-400' },
+        { name: 'ドリフト監視', href: '/drift', icon: Activity, color: 'text-indigo-400' },
         { name: '係数分析・更新 (β)', href: '/coef-analysis', icon: Wrench, color: 'text-slate-400' },
         { name: '係数入力（事前係数）', href: '/coef-input', icon: PencilRuler, color: 'text-slate-400' },
         { name: '係数変更履歴', href: '/coef-history', icon: History, color: 'text-slate-400' },
