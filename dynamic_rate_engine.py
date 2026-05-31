@@ -1,197 +1,157 @@
 """
+dynamic_rate_engine.py
 動的金利提案エンジン MVP（Phase1）
 
-【概要】
-LightGBM が算出した PD（倒産確率）と Monte Carlo プライシングを統合し、
-スコア・競合・業種・期間を考慮した多因子ダイナミックプライシングを行う。
-
-【失注率削減の仕組み】
-- PD を正しく反映したリスクプレミアムを計算し、過剰な金利設定を防止
-- スコアが高い案件では積極的に低スプレッドを提示して成約率を改善
-- 競合金利を意識したスプレッド上限制約を設ける
+スプレッド = 基準スプレッド + PD補正 + 業種補正 + スコア補正 + 競合補正
+各補正はクランプ済みで逆ザヤを防止。
 """
 from __future__ import annotations
 
-import math
-from dataclasses import dataclass, field
-from typing import Optional
-
 import numpy as np
+import pandas as pd
+
+# デフォルトPD基準値（業界全体の平均的な倒産確率）
+_BASELINE_PD_PCT = 5.0
+# PD 1%変化あたりのスプレッド調整幅（%）
+_PD_RATE_PER_PCT = 0.025
+# スコア1点変化あたりのスプレッド調整幅（%）
+_SCORE_RATE_PER_PT = 0.003
+# スコアの基準点（この値でスコア補正がゼロ）
+_SCORE_BASELINE = 60.0
 
 
-@dataclass
-class RateProposal:
-    """動的金利提案の結果"""
-    recommended_rate: float
-    spread: float
-    base_rate: float
-    success_prob: float
-    pd_percent: float
-    lgd_percent: float
-    expected_spread: float
-    risk_premium: float
-    status: str
-    confidence: str  # "high" / "medium" / "low"
-    pd_source: str   # "lgbm" / "score_fallback"
-    scenarios: list[dict] = field(default_factory=list)
-    mc_yield_curves: list[dict] = field(default_factory=list)
-    notes: list[str] = field(default_factory=list)
-
-
-def pd_from_score(score: float) -> float:
-    """スコアから年間倒産確率（小数）を経験則で推定するフォールバック。
-
-    実務的な目安:
-        score >= 80 → PD ≈ 1%
-        score == 60 → PD ≈ 5%
-        score == 40 → PD ≈ 15%
-        score <= 25 → PD ≈ 30%
+def _industry_spread_adjustment(industry_sub: str, df: pd.DataFrame) -> float:
     """
-    x = (score - 60.0) * (-0.08)
-    return float(np.clip(1.0 / (1.0 + math.exp(-x)), 0.005, 0.40))
-
-
-def compute_risk_premium(pd_percent: float, lgd_percent: float = 80.0, lease_term_months: int = 60) -> float:
-    """PD・LGD・期間から最低限必要なリスクプレミアム（年率%）を算出する。
-
-    簡易式: RP = PD_annual × LGD × √(term/60)
-    長期ほど累積リスクが増加するため期間係数で調整する。
+    業種別の成約スプレッド平均と全体平均の差を業種補正として返す。
+    データが不足している場合は 0.0 を返す。
     """
-    pd_annual = pd_percent / 100.0
-    lgd = lgd_percent / 100.0
-    term_adj = math.sqrt(max(lease_term_months, 12) / 60.0)
-    rp = pd_annual * lgd * term_adj * 100.0
-    return round(rp, 3)
+    if df.empty or "spread" not in df.columns or "industry_sub" not in df.columns:
+        return 0.0
+
+    won = df[df.get("won", pd.Series(dtype=int)) == 1] if "won" in df.columns else df
+    if won.empty:
+        return 0.0
+
+    overall_mean = won["spread"].mean()
+    industry_df = won[won["industry_sub"] == industry_sub]
+    if len(industry_df) < 3:
+        return 0.0
+
+    industry_mean = industry_df["spread"].mean()
+    adj = industry_mean - overall_mean
+    return float(np.clip(adj, -0.20, 0.20))
 
 
-def _sigmoid_win_prob(rate: float, r_mid: float, k: float = 1.5) -> float:
-    """シグモイド曲線による成約確率推定。rate > r_mid で確率低下。"""
-    return float(np.clip(1.0 / (1.0 + np.exp(k * (rate - r_mid))), 0.01, 0.99))
-
-
-def compute_dynamic_rate_proposal(
+def compute_dynamic_spread(
     score: float,
+    pd_percent: float,
+    industry_sub: str,
     base_rate: float,
-    pd_percent: Optional[float] = None,
-    competitor_rate: float = 0.0,
+    competitor_rate: float,
+    historical_df: pd.DataFrame,
+    base_optimal_spread: float,
     lease_term_months: int = 60,
-    lgd_percent: float = 80.0,
-    n_trials: int = 10000,
-) -> RateProposal:
+) -> dict:
     """
-    動的金利提案エンジン本体。
+    PD・スコア・業種・競合を加味した動的スプレッドを算出する。
 
-    Args:
-        score: 審査スコア（0–100）
-        base_rate: 基準金利（%）
-        pd_percent: LightGBM 推定倒産確率（%）。None / 負値の場合はスコアから推定
-        competitor_rate: 競合他社の提示金利（%）。0 なら競合なし
-        lease_term_months: リース期間（月）
-        lgd_percent: Loss Given Default（%）
-        n_trials: Monte Carlo 試行回数
+    Parameters
+    ----------
+    score              : 借手スコア（0-100）
+    pd_percent         : LightGBM等で推定された倒産確率（%）
+    industry_sub       : 業種（細分類）
+    base_rate          : 基準金利（%）
+    competitor_rate    : 競合他社金利（0なら競合なし）
+    historical_df      : 過去案件DataFrame（_load_rate_dataframe() の戻り値）
+    base_optimal_spread: suggest_rate() で算出した基準スプレッド
+    lease_term_months  : リース期間（ヶ月）
 
-    Returns:
-        RateProposal dataclass
+    Returns
+    -------
+    dict with keys:
+        dynamic_spread      : 動的スプレッド（%）
+        dynamic_rate        : 動的適用金利（%）
+        pd_adjustment       : PD補正値
+        score_adjustment    : スコア補正値
+        industry_adjustment : 業種補正値
+        competitor_adjustment: 競合補正値
+        win_rate_estimate   : 予測成約確率（0–1）
+        win_rate_improvement: 基準スプレッドとの成約確率差（percentage points）
+        recommendation      : 要約テキスト
     """
-    # ── 1. PD確定 ──────────────────────────────────────────────────────────────
-    if pd_percent is not None and pd_percent >= 0:
-        pd_source = "lgbm"
+    # ── 1. PD補正: 業界基準(5%)超 → スプレッド増、未満 → 減（成約率狙い） ──
+    pd_adj = float(np.clip(
+        (pd_percent - _BASELINE_PD_PCT) * _PD_RATE_PER_PCT,
+        -0.30, 0.50
+    ))
+
+    # ── 2. スコア補正: 高スコア借手は優遇（スプレッド引き下げ） ──────────
+    score_adj = float(np.clip(
+        -(score - _SCORE_BASELINE) * _SCORE_RATE_PER_PT,
+        -0.20, 0.20
+    ))
+
+    # ── 3. 業種補正: 業種別歴史実績スプレッドからの乖離 ────────────────
+    ind_adj = _industry_spread_adjustment(industry_sub, historical_df)
+
+    # ── 4. 動的スプレッド（補正前） ───────────────────────────────────────
+    raw_spread = base_optimal_spread + pd_adj + score_adj + ind_adj
+
+    # ── 5. 競合補正: 競合金利がある場合は競合比 -0.1% 以内に収める ────
+    comp_adj = 0.0
+    if competitor_rate > 0 and base_rate > 0:
+        comp_spread = competitor_rate - base_rate
+        if raw_spread > comp_spread + 0.05:
+            comp_adj = (comp_spread + 0.05) - raw_spread
+            comp_adj = float(np.clip(comp_adj, -0.50, 0.0))
+
+    dynamic_spread = float(np.clip(raw_spread + comp_adj, 0.05, 5.0))
+    dynamic_rate = base_rate + dynamic_spread
+
+    # ── 6. 成約確率推定（ロジスティック近似） ────────────────────────────
+    # 競合スプレッドを基準に相対位置から確率推定
+    if competitor_rate > 0 and base_rate > 0:
+        comp_spread = competitor_rate - base_rate
+        gap = comp_spread - dynamic_spread  # 正 → 競合より低い（有利）
+        win_rate_est = float(1.0 / (1.0 + np.exp(-3.0 * gap)))
     else:
-        pd_percent = pd_from_score(score) * 100.0
-        pd_source = "score_fallback"
+        # 競合なし: スコアと過去データから推定
+        win_rate_est = float(np.clip(0.50 + (score - _SCORE_BASELINE) * 0.006, 0.30, 0.90))
 
-    # ── 2. リスクプレミアム ─────────────────────────────────────────────────────
-    rp = compute_risk_premium(pd_percent, lgd_percent, lease_term_months)
-
-    # ── 3. Monte Carlo 最適プライシング ────────────────────────────────────────
-    from montecarlo_pricing import simulate_optimal_yield
-
-    has_competitor = competitor_rate > 0.0
-    mc = simulate_optimal_yield(
-        pd_percent=pd_percent,
-        lease_term_months=lease_term_months,
-        lgd_percent=lgd_percent,
-        n_trials=n_trials,
-        historical_winning_rate=None,
-        competitor_rate=competitor_rate if has_competitor else None,
-        has_competitor=has_competitor,
-    )
-
-    mc_rate: float = float(mc["recommended_yield"])
-    mc_success: float = float(mc["success_prob"])
-    mc_status: str = mc["status"]
-
-    # ── 4. スコアベース補正 ────────────────────────────────────────────────────
-    # スコア80点基準。高スコアほど低金利を提示できる（最大 -0.30%, 最小 +0.50%）
-    score_adj = float(np.clip((80.0 - float(score)) * 0.01, -0.30, 0.50))
-
-    # ── 5. 最終レート確定 ──────────────────────────────────────────────────────
-    final_rate = mc_rate + score_adj
-    min_rate = base_rate + max(rp, 0.05)          # リスクプレミアム下限
-    max_rate = base_rate + 6.0                     # 市場上限
-    final_rate = float(np.clip(final_rate, min_rate, max_rate))
-    spread = round(final_rate - base_rate, 4)
-
-    # ── 6. シナリオ生成 ────────────────────────────────────────────────────────
-    T_offset = 0.15
-    conservative_spread = float(np.clip(spread - T_offset, max(rp * 0.8, 0.01), 6.0))
-    aggressive_spread   = float(np.clip(spread + T_offset, max(rp * 0.8, 0.01), 6.0))
-
-    r_mid = competitor_rate if has_competitor else (base_rate + 2.5)
-    k = 2.0 if has_competitor else 1.2
-
-    scenarios: list[dict] = []
-    for label, emoji, sp, desc in [
-        ("守り",   "🛡️", conservative_spread,
-         "成約確率優先。競合優位を取りに行く場合。"),
-        ("推奨",   "⚖️", spread,
-         f"期待収益最大点（PD={pd_percent:.1f}% / RP={rp:.3f}%込み）。"),
-        ("強気",   "⚔️", aggressive_spread,
-         "利幅優先。スコアが高く交渉優位な場合。"),
-    ]:
-        rate_val = round(base_rate + sp, 4)
-        wp = _sigmoid_win_prob(rate_val, r_mid, k) if label != "推奨" else round(mc_success / 100.0, 4)
-        scenarios.append({
-            "label":            label,
-            "emoji":            emoji,
-            "spread":           round(sp, 4),
-            "rate":             rate_val,
-            "win_prob":         round(wp, 4),
-            "expected_profit":  round(wp * sp, 4),
-            "description":      desc,
-        })
-
-    # ── 7. 信頼度 ──────────────────────────────────────────────────────────────
-    if pd_source == "lgbm" and float(score) >= 60:
-        confidence = "high"
-    elif pd_source == "lgbm" or float(score) >= 50:
-        confidence = "medium"
+    # ── 7. 基準スプレッドとの成約確率差（改善効果） ─────────────────────
+    if competitor_rate > 0 and base_rate > 0:
+        comp_spread_v = competitor_rate - base_rate
+        gap_base = comp_spread_v - base_optimal_spread
+        base_win_rate = float(1.0 / (1.0 + np.exp(-3.0 * gap_base)))
     else:
-        confidence = "low"
+        base_win_rate = win_rate_est
+    win_rate_improvement = win_rate_est - base_win_rate
 
-    notes: list[str] = []
-    if pd_source == "score_fallback":
-        notes.append("PD は LightGBM 未利用のためスコアから推定（精度低め）")
-    if float(score) < 40:
-        notes.append("スコア低（<40）: リスクプレミアムにより金利が高め")
-    if has_competitor:
-        notes.append(f"競合金利 {competitor_rate:.2f}% を考慮して算出")
-    if pd_percent > 20:
-        notes.append(f"PD={pd_percent:.1f}% 過大リスク: 保証人・担保検討を推奨")
+    # ── 8. 推奨テキスト ──────────────────────────────────────────────────
+    parts = []
+    if pd_adj > 0.01:
+        parts.append(f"リスクプレミアム +{pd_adj:.2f}%（PD {pd_percent:.1f}%）")
+    elif pd_adj < -0.01:
+        parts.append(f"優良先割引 {pd_adj:.2f}%（PD {pd_percent:.1f}%低リスク）")
+    if ind_adj > 0.01:
+        parts.append(f"業種割増 +{ind_adj:.2f}%")
+    elif ind_adj < -0.01:
+        parts.append(f"業種割引 {ind_adj:.2f}%")
+    if score_adj < -0.01:
+        parts.append(f"高スコア割引 {score_adj:.2f}%")
+    if comp_adj < -0.01:
+        parts.append(f"競合対応調整 {comp_adj:.2f}%")
 
-    return RateProposal(
-        recommended_rate=round(final_rate, 4),
-        spread=spread,
-        base_rate=base_rate,
-        success_prob=round(mc_success / 100.0, 4),
-        pd_percent=round(pd_percent, 2),
-        lgd_percent=lgd_percent,
-        expected_spread=round(spread * mc_success / 100.0, 4),
-        risk_premium=rp,
-        status=mc_status,
-        confidence=confidence,
-        pd_source=pd_source,
-        scenarios=scenarios,
-        mc_yield_curves=mc.get("yield_curves", []),
-        notes=notes,
-    )
+    recommendation = "、".join(parts) if parts else "標準スプレッド適用"
+
+    return {
+        "dynamic_spread": round(dynamic_spread, 3),
+        "dynamic_rate": round(dynamic_rate, 3),
+        "pd_adjustment": round(pd_adj, 3),
+        "score_adjustment": round(score_adj, 3),
+        "industry_adjustment": round(ind_adj, 3),
+        "competitor_adjustment": round(comp_adj, 3),
+        "win_rate_estimate": round(win_rate_est, 3),
+        "win_rate_improvement": round(win_rate_improvement, 3),
+        "recommendation": recommendation,
+    }
