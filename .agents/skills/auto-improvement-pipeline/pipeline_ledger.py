@@ -90,6 +90,7 @@ def record(
     title: str,
     pr_url: str = "",
     reason: str = "",
+    canonical_key: str = "",
 ) -> None:
     """台帳に記録（追記）"""
     _ensure_dir()
@@ -97,6 +98,7 @@ def record(
         "key": key,
         "status": status,
         "title": title,
+        "canonical_key": canonical_key,
         "pr_url": pr_url,
         "reason": reason,
         "recorded_at": datetime.datetime.now().isoformat(),

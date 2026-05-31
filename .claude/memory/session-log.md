@@ -213,13 +213,13 @@
 
 ---
 
-## セッション: 2026-05-28T11:26:00Z
+## セッション: 2026-05-31T07:36:47Z
 
-- session_id: `session-1779967542676208000`
+- session_id: `session-1780212988855435000`
 - project: `tune_lease_55`
-- branch: `master`
-- started_at: `2026-05-28T11:25:42Z`
-- ended_at: `2026-05-28T11:26:00Z`
+- branch: `feature/rev-025-obsidian-citation-highlight`
+- started_at: `2026-05-31T07:36:28Z`
+- ended_at: `2026-05-31T07:36:47Z`
 - changes: 0
 
 ### 変更ファイル

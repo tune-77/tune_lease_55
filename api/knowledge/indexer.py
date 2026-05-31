@@ -6,6 +6,7 @@ Obsidian Vault のインデックス化スクリプト。
 from __future__ import annotations
 
 import logging
+import os
 import threading
 from typing import Callable
 
@@ -35,6 +36,7 @@ def _get_indexed_mtimes() -> dict[str, float]:
 def run_indexing(
     vault_path: str = _VAULT_PATH,
     on_done: Callable[[int, int], None] | None = None,
+    prune_missing: bool = False,
 ) -> tuple[int, int]:
     """
     Vault をスキャンして差分チャンクを upsert する。
@@ -55,15 +57,16 @@ def run_indexing(
     skipped = 0
 
     for chunk in scan_vault(vault_path):
-        cached_mtime = indexed_mtimes.get(chunk.doc_id, 0.0)
-        if chunk.mtime <= cached_mtime:
-            skipped += 1
-            continue
         if chunk.doc_id in seen_ids:
             logger.debug(f"[Indexer] duplicate doc_id skipped: {chunk.doc_id} ({chunk.file_name}#{chunk.section})")
             skipped += 1
             continue
         seen_ids.add(chunk.doc_id)
+
+        cached_mtime = indexed_mtimes.get(chunk.doc_id, 0.0)
+        if chunk.mtime <= cached_mtime:
+            skipped += 1
+            continue
 
         pending.append(chunk)
         if len(pending) >= _BATCH_SIZE:
@@ -73,11 +76,41 @@ def run_indexing(
     if pending:
         added += get_store().upsert_chunks(pending)
 
+    pruned = 0
+    if prune_missing:
+        pruned = _prune_missing(vault_path, seen_ids)
+
     total = added + skipped
-    logger.info(f"[Indexer] done: added={added}, skipped={skipped}, total={total}")
+    logger.info(f"[Indexer] done: added={added}, skipped={skipped}, pruned={pruned}, total={total}")
     if on_done:
         on_done(added, skipped)
     return added, skipped
+
+
+def _prune_missing(vault_path: str, current_ids: set[str]) -> int:
+    """Delete Chroma chunks whose source file under vault_path no longer exists."""
+    store = get_store()
+    try:
+        store._ensure_collection()
+        result = store._collection.get(include=["metadatas"])
+    except Exception as exc:
+        logger.warning("[Indexer] prune skipped: %s", exc)
+        return 0
+
+    vault_root = os.path.abspath(vault_path)
+    delete_ids: list[str] = []
+    for doc_id, meta in zip(result.get("ids") or [], result.get("metadatas") or []):
+        file_path = os.path.abspath(str((meta or {}).get("file_path") or ""))
+        if not file_path.startswith(vault_root + os.sep):
+            continue
+        if doc_id not in current_ids:
+            delete_ids.append(doc_id)
+
+    if not delete_ids:
+        return 0
+    store._collection.delete(ids=delete_ids)
+    logger.info("[Indexer] pruned missing chunks: %d", len(delete_ids))
+    return len(delete_ids)
 
 
 def start_background_indexing(vault_path: str = _VAULT_PATH) -> threading.Thread:

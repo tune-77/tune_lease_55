@@ -89,12 +89,27 @@ def normalize_chat_text(content: str) -> str:
 
 
 def _chat_max_tokens() -> int:
-    raw = os.environ.get("MEBUKI_CHAT_MAX_TOKENS", "420")
+    raw = os.environ.get("MEBUKI_CHAT_MAX_TOKENS", "1200")
     try:
         value = int(raw)
     except ValueError:
-        value = 420
-    return max(160, min(800, value))
+        value = 1200
+    return max(400, min(2400, value))
+
+
+def _candidate_finish_reason(data: dict) -> str:
+    try:
+        candidate = (data.get("candidates") or [{}])[0]
+        return str(candidate.get("finishReason") or candidate.get("finish_reason") or "")
+    except Exception:
+        return ""
+
+
+def _candidate_text(data: dict) -> str:
+    try:
+        return str(data["candidates"][0]["content"]["parts"][0]["text"])
+    except Exception:
+        return ""
 
 
 def get_message_count(user_id: str = "default") -> int:
@@ -203,4 +218,40 @@ def call_gemini_chat(
         timeout=60,
     )
     resp.raise_for_status()
-    return normalize_chat_text(resp.json()["candidates"][0]["content"]["parts"][0]["text"])
+    data = resp.json()
+    text = _candidate_text(data)
+
+    if _candidate_finish_reason(data).upper() == "MAX_TOKENS" and text.strip():
+        continuation_payload = {
+            "system_instruction": {"parts": [{"text": system_prompt}]},
+            "contents": contents + [
+                {"role": "model", "parts": [{"text": text}]},
+                {
+                    "role": "user",
+                    "parts": [{
+                        "text": (
+                            "前の回答が途中で切れています。"
+                            "重複せず、直前の続きから必要な結論まで簡潔に続けてください。"
+                        )
+                    }],
+                },
+            ],
+            "generationConfig": {
+                "temperature": 0.35,
+                "maxOutputTokens": _chat_max_tokens(),
+            },
+        }
+        try:
+            cont = requests.post(
+                f"{_GEMINI_URL}?key={api_key}",
+                json=continuation_payload,
+                timeout=60,
+            )
+            cont.raise_for_status()
+            continuation = _candidate_text(cont.json()).strip()
+            if continuation:
+                text = f"{text.rstrip()}\n\n{continuation}"
+        except Exception:
+            text = f"{text.rstrip()}\n\n（回答が長く、続きの取得に失敗しました。必要なら「続き」と送ってください。）"
+
+    return normalize_chat_text(text)

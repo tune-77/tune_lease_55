@@ -3,9 +3,27 @@
 from __future__ import annotations
 
 import os
+import json
 import re
 import sys
 from pathlib import Path
+
+_PIPELINE_SCRIPTS_DIR = (
+    Path(__file__).resolve().parent.parent
+    / ".agents"
+    / "skills"
+    / "auto-improvement-pipeline"
+    / "scripts"
+)
+if _PIPELINE_SCRIPTS_DIR.exists():
+    sys.path.insert(0, str(_PIPELINE_SCRIPTS_DIR))
+
+try:
+    from improvement_identity import canonical_key
+except ImportError:
+    def canonical_key(title: str, description: str = "") -> str:
+        normalized = re.sub(r"\s+", " ", f"{title} {description}".strip().lower())
+        return normalized[:80]
 
 # Vault パス候補（環境変数 OBSIDIAN_VAULT_PATH > iCloud パス）
 _DEFAULT_VAULT_PATHS = [
@@ -87,7 +105,16 @@ def _extract_wiki_links(text: str) -> list[str]:
     return re.findall(r'\[\[([^\]]+)\]\]', text)
 
 
-def _convert_to_pipeline_text(content: str, source_name: str) -> str:
+def _is_applied_title(title: str, applied_keys: set[str] | None = None) -> bool:
+    """台帳上 applied 済みの改善タイトルか判定する."""
+    return bool(applied_keys and canonical_key(title) in applied_keys)
+
+
+def _convert_to_pipeline_text(
+    content: str,
+    source_name: str,
+    applied_keys: set[str] | None = None,
+) -> str:
     """
     Obsidian マークダウンをパイプライン用 [改善]/[TODO] タグ付きテキストに変換する.
 
@@ -135,6 +162,8 @@ def _convert_to_pipeline_text(content: str, source_name: str) -> str:
         # 未解決課題セクションのリスト項目
         if "未解決" in current_section and stripped.startswith("-"):
             item = stripped.lstrip("- ").strip()
+            if _has_done_marker(item) or _is_applied_title(item, applied_keys):
+                continue
             if item and len(item) > 5:
                 output_lines.append(f"[改善] {item}")
                 output_lines.append(f"理由：{source_name} の未解決課題として記録済み")
@@ -151,6 +180,8 @@ def _convert_to_pipeline_text(content: str, source_name: str) -> str:
             # 高優先度セクション内の箇条書き → [改善]
             if is_high_priority and stripped.startswith("- ") and not stripped.startswith("- - "):
                 item = stripped[2:].strip()
+                if _has_done_marker(item) or _is_applied_title(item, applied_keys):
+                    continue
                 # マークダウン装飾除去
                 item = re.sub(r'\*\*(.+?)\*\*', r'\1', item)
                 item = re.sub(r'`(.+?)`', r'\1', item)
@@ -163,6 +194,8 @@ def _convert_to_pipeline_text(content: str, source_name: str) -> str:
             # Phase1 の未チェック項目 → [TODO]
             elif "Phase" in current_section and "🔲" in stripped:
                 item = stripped.replace("🔲", "").strip()
+                if _has_done_marker(item) or _is_applied_title(item, applied_keys):
+                    continue
                 if item:
                     output_lines.append(f"[TODO] {item}")
                     output_lines.append(f"理由：Phase1 ロードマップの未実装タスク — {source_name}")
@@ -181,12 +214,13 @@ def extract_improvements_from_index(index_file: Path, vault: Path) -> str:
     from collections import deque
 
     output_parts: list[str] = []
+    applied_keys = _load_applied_ledger_keys()
 
     index_content = index_file.read_text(encoding="utf-8")
     output_parts.append(f"# 改善案抽出元: {index_file.name}\n")
 
     # インデックス本体から抽出
-    index_improvements = _convert_to_pipeline_text(index_content, index_file.stem)
+    index_improvements = _convert_to_pipeline_text(index_content, index_file.stem, applied_keys)
     if index_improvements.strip():
         output_parts.append(index_improvements)
 
@@ -211,7 +245,7 @@ def extract_improvements_from_index(index_file: Path, vault: Path) -> str:
 
         try:
             linked_content = linked_file.read_text(encoding="utf-8")
-            linked_improvements = _convert_to_pipeline_text(linked_content, linked_file.stem)
+            linked_improvements = _convert_to_pipeline_text(linked_content, linked_file.stem, applied_keys)
             if linked_improvements.strip():
                 output_parts.append(f"\n# リンク先ノート (深さ{depth}): {linked_file.name}\n")
                 output_parts.append(linked_improvements)
@@ -232,8 +266,54 @@ _AI_CHAT_LOG_SUBPATH = "Projects/tune_lease_55/AI Chat/Improvement Log"
 
 # AIチャット改善ログのフォーマット（[high]/[medium]/[low] + (accept)/(reject) 形式）
 _AI_CHAT_LOG_ITEM_RE = re.compile(
-    r"^- \*\*(.+?)\*\*\s*\[(?:high|medium|low)\].*$", re.MULTILINE
+    r"^- \*\*(.+?)\*\*\s*\[(?:high|medium|low)\]\s*\((accept|review|park|reject)\).*$",
+    re.MULTILINE,
 )
+_ACTIVE_AI_CHAT_DECISIONS = {"accept", "review"}
+_LEDGER_PATH = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
+_DONE_MARKERS = ("✅", "実装済", "改善済", "対応済", "完了")
+
+
+def _normalize_ledger_title(title: str) -> str:
+    """台帳比較用にタイトルを正規化する."""
+    title = re.sub(r"<!--.*?-->", "", title)
+    title = re.sub(r"\s+", " ", title)
+    return title.strip().lower()
+
+
+def _has_done_marker(text: str) -> bool:
+    """改善済み・実装済みマーカーを含む行を判定する."""
+    return any(marker in text for marker in _DONE_MARKERS)
+
+
+def _load_applied_ledger_keys() -> set[str]:
+    """auto-improvement 台帳から applied 済み canonical_key を取得する."""
+    if not _LEDGER_PATH.exists():
+        return set()
+
+    latest_by_key: dict[str, str] = {}
+    try:
+        for line in _LEDGER_PATH.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            title = str(entry.get("title", ""))
+            key = str(entry.get("canonical_key") or canonical_key(title))
+            status = str(entry.get("status", ""))
+            if key:
+                latest_by_key[key] = status
+    except OSError:
+        return set()
+
+    return {
+        key
+        for key, status in latest_by_key.items()
+        if status == "applied"
+    }
 
 
 def extract_improvements_from_ai_chat_logs(vault: Path) -> str:
@@ -252,6 +332,7 @@ def extract_improvements_from_ai_chat_logs(vault: Path) -> str:
         return ""
 
     output_parts: list[str] = [f"# AIチャット改善ログ ({_AI_CHAT_LOG_SUBPATH})\n"]
+    applied_keys = _load_applied_ledger_keys()
 
     for md_file in md_files:
         try:
@@ -263,9 +344,17 @@ def extract_improvements_from_ai_chat_logs(vault: Path) -> str:
         file_parts: list[str] = []
         for m in _AI_CHAT_LOG_ITEM_RE.finditer(content):
             item_title = m.group(1).strip()
+            decision = m.group(2).strip().lower()
+            if decision not in _ACTIVE_AI_CHAT_DECISIONS:
+                continue
+            if canonical_key(item_title) in applied_keys:
+                continue
             if len(item_title) > 5:
                 file_parts.append(f"[改善] {item_title}")
-                file_parts.append(f"理由：AI Chat 改善ログ ({md_file.stem}) に記録された改善案")
+                file_parts.append(
+                    f"理由：AI Chat 改善ログ ({md_file.stem}) に記録された改善案"
+                    f"（decision: {decision}）"
+                )
                 file_parts.append("")
 
         if file_parts:
@@ -295,6 +384,9 @@ def _parse_improvements(text: str) -> list[dict]:
                 reason = lines[i + 1][3:].strip()
                 i += 1
             if title:
+                if _has_done_marker(title):
+                    i += 1
+                    continue
                 items.append({"tag": tag, "title": title, "reason": reason})
         i += 1
     return items

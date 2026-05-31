@@ -83,6 +83,7 @@ export default function Sidebar() {
         { name: '係数分析・更新 (β)', href: '/coef-analysis', icon: Wrench, color: 'text-slate-400' },
         { name: '係数入力（事前係数）', href: '/coef-input', icon: PencilRuler, color: 'text-slate-400' },
         { name: '係数変更履歴', href: '/coef-history', icon: History, color: 'text-slate-400' },
+        { name: '改善ログ', href: '/improvement-log', icon: ScrollText, color: 'text-amber-400' },
         { name: 'アプリログ', href: '/logs', icon: ScrollText, color: 'text-slate-500' },
       ]
     },

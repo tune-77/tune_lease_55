@@ -82,11 +82,11 @@ def full_reindex(vault_path: str) -> tuple[int, int]:
     return added, skipped
 
 
-def diff_reindex(vault_path: str) -> tuple[int, int]:
+def diff_reindex(vault_path: str, prune_missing: bool = False) -> tuple[int, int]:
     """差分更新: mtime が変化したチャンクのみ upsert。"""
     logger.info("[reindex] 差分更新モード")
     from api.knowledge.indexer import run_indexing
-    return run_indexing(vault_path)
+    return run_indexing(vault_path, prune_missing=prune_missing)
 
 
 def main() -> None:
@@ -103,6 +103,11 @@ def main() -> None:
         default=VAULT_PATH,
         help=f"Obsidian Vault のパス (default: {VAULT_PATH})",
     )
+    parser.add_argument(
+        "--prune-missing",
+        action="store_true",
+        help="指定Vault配下で消えたファイルの古いチャンクをChromaDBから削除",
+    )
     args = parser.parse_args()
 
     logger.info("=" * 60)
@@ -112,7 +117,7 @@ def main() -> None:
     if args.full:
         added, skipped = full_reindex(args.vault)
     else:
-        added, skipped = diff_reindex(args.vault)
+        added, skipped = diff_reindex(args.vault, prune_missing=args.prune_missing)
 
     elapsed = time.time() - start
 
