@@ -62,6 +62,9 @@ models/sentence-transformers/
 
 # Claude内部ワークツリー
 .claude/worktrees/
-
 # パイプライン生成レポート（コミット不要）
 reports/*.json
+.claude/state/
+.claude/sessions/
+.claude/sessions/
+>>>>>>> claude/ignore-local-state-and-fix-ai-chat
