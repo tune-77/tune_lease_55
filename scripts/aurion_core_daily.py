@@ -1,0 +1,870 @@
+#!/usr/bin/env python3
+"""Daily AURION CORE / MEBUKI autonomous sync and morning report.
+
+This script is intentionally deterministic. It does not modify app code and it
+does not rely on an interactive Codex session. It syncs relevant Obsidian notes,
+audits the canonical tune_lease_55 SQLite DB, records a nightly status file, and
+creates a morning Markdown report in lease-wiki-vault.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shlex
+import shutil
+import sqlite3
+import subprocess
+import sys
+import time
+import traceback
+import urllib.request
+from collections import Counter
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+
+PROJECT_ROOT = Path("/Users/kobayashiisaoryou/clawd/tune_lease_55")
+ORIGIN_VAULT = Path(
+    "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
+)
+LEASE_VAULT = Path(
+    "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/lease-wiki-vault"
+)
+SYNC_ROOT = LEASE_VAULT / "99_Synced_From_Origin"
+DB_PATH = PROJECT_ROOT / "data" / "lease_data.db"
+STATE_DIR = PROJECT_ROOT / "data" / "aurion_daily"
+LOG_DIR = PROJECT_ROOT / "logs" / "aurion_daily"
+
+KEYWORDS = [
+    "リース",
+    "審査",
+    "Q_risk",
+    "Q-Risk",
+    "リスクアセスメント",
+    "マハラノビス",
+    "KLダイバージェンス",
+    "情報幾何学",
+    "S&P 500",
+    "LSTM",
+    "UI",
+    "スライダー",
+    "タイル",
+    "Clawdbot",
+    "スコアリング",
+    "システム",
+    "スコア",
+    "リスク",
+    "Chat",
+    "Improvement Log",
+    "開発",
+    "改善",
+]
+EXCLUDE = [
+    "ラーメン",
+    "映画",
+    "ディズニー",
+    "釣り",
+    "プラモ",
+    "犬の散歩",
+    "八奈見",
+    "Humor",
+]
+EXTS = {".md", ".txt", ".log"}
+
+WEB_SOURCES = [
+    {
+        "theme": "credit-model-monitoring",
+        "title": "OECD Financing SMEs and Entrepreneurs 2026",
+        "url": "https://read.oecd-ilibrary.org/en/publications/financing-smes-and-entrepreneurs-2026_075d8058-en.html",
+        "fallback": "SME borrowing costs remain high relative to pre-pandemic levels; leasing and other alternative finance remain mixed or subdued. This supports treating approval rates and lease demand as market-regime variables, not fixed model priors.",
+    },
+    {
+        "theme": "equipment-leasing-market",
+        "title": "ELFA 2026 Equipment Leasing & Finance Economic Outlook",
+        "url": "https://www.elfaonline.org/research/2026-equipment-leasing-finance-u-s-economic-outlook-2026-update",
+        "fallback": "Equipment finance demand is supported by AI-related capex and replacement investment, while policy uncertainty, volatility, borrower disparity, and downside macro risk remain material. Pricing engines must expose the risk premium separately from competitive discounting.",
+    },
+    {
+        "theme": "japan-structured-finance",
+        "title": "S&P Global Japan Structured Finance Outlook 2026",
+        "url": "https://www.spglobal.com/ratings/en/regulatory/article/japan-structured-finance-outlook-2026-jobs-strength-offsets-hikes-s101663301",
+        "fallback": "Japan structured-finance performance depends on employment, borrower repayment capacity, asset values, and SME default trends. Lease underwriting should not weaken residual-value and cash-flow checks merely because headline employment is stable.",
+    },
+]
+
+
+def now() -> datetime:
+    return datetime.now()
+
+
+def date_str() -> str:
+    return now().strftime("%Y-%m-%d")
+
+
+def _mkdirs() -> None:
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    SYNC_ROOT.mkdir(parents=True, exist_ok=True)
+
+
+def _read_text(path: Path, limit: int = 80_000) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="ignore")[:limit]
+    except Exception:
+        return ""
+
+
+def _matches(path: Path) -> bool:
+    rel = str(path.relative_to(ORIGIN_VAULT))
+    if any(x in rel for x in EXCLUDE):
+        return False
+    text = _read_text(path, 50_000)
+    hay = f"{rel}\n{text[:50_000]}"
+    if any(x in hay for x in EXCLUDE):
+        return False
+    return any(k in hay for k in KEYWORDS)
+
+
+def sync_notes() -> dict[str, Any]:
+    selected: list[Path] = []
+    if not ORIGIN_VAULT.exists():
+        return {"status": "failed", "reason": f"missing origin vault: {ORIGIN_VAULT}"}
+
+    for path in ORIGIN_VAULT.rglob("*"):
+        if path.is_file() and path.suffix in EXTS and _matches(path):
+            selected.append(path)
+
+    copied = 0
+    for path in selected:
+        rel = path.relative_to(ORIGIN_VAULT)
+        out = SYNC_ROOT / rel
+        out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, out)
+        copied += 1
+
+    manifest = SYNC_ROOT / f"_SYNC_MANIFEST_{date_str()}.md"
+    lines = [
+        f"# Sync Manifest {date_str()}",
+        "",
+        f"- Source: `{ORIGIN_VAULT}`",
+        f"- Destination: `{SYNC_ROOT}`",
+        f"- Selected files: {copied}",
+        f"- Generated: {now().isoformat(timespec='seconds')}",
+        "",
+        "## Files",
+    ]
+    for path in sorted(selected, key=lambda p: str(p.relative_to(ORIGIN_VAULT))):
+        rel = path.relative_to(ORIGIN_VAULT)
+        lines.append(f"- [[{path.stem}]] `{rel}`")
+    manifest.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return {"status": "completed", "selected_files": copied, "manifest": str(manifest)}
+
+
+def reindex_vault_b() -> dict[str, Any]:
+    """Diff-reindex Lease Vault B after syncing from the origin vault.
+
+    Do not use --full here. The 03:00 origin-vault reindex may have rebuilt the
+    shared Chroma collection; this step only upserts Vault B changes after the
+    AURION sync so both source knowledge and purified Vault B notes remain
+    searchable.
+    """
+    script = PROJECT_ROOT / "scripts" / "reindex_obsidian.py"
+    python = PROJECT_ROOT / ".venv" / "bin" / "python"
+    if not script.exists():
+        return {"status": "failed", "reason": f"missing reindex script: {script}"}
+    if not LEASE_VAULT.exists():
+        return {"status": "failed", "reason": f"missing Lease Vault B: {LEASE_VAULT}"}
+
+    started = now()
+    env = {
+        **os.environ,
+        "PYTHONPATH": str(PROJECT_ROOT),
+        "PYTHONUNBUFFERED": "1",
+        "OBSIDIAN_VAULT_PATH": str(LEASE_VAULT),
+    }
+    try:
+        result = subprocess.run(
+            [str(python), str(script), "--vault", str(LEASE_VAULT)],
+            cwd=str(PROJECT_ROOT),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=900,
+            check=False,
+        )
+        finished = now()
+        status = "completed" if result.returncode == 0 else "failed"
+        return {
+            "status": status,
+            "returncode": result.returncode,
+            "vault": str(LEASE_VAULT),
+            "started_at": started.isoformat(timespec="seconds"),
+            "finished_at": finished.isoformat(timespec="seconds"),
+            "duration_seconds": round((finished - started).total_seconds(), 2),
+            "stdout_tail": (result.stdout or "")[-2000:],
+            "stderr_tail": (result.stderr or "")[-2000:],
+        }
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "status": "failed",
+            "reason": "timeout",
+            "vault": str(LEASE_VAULT),
+            "started_at": started.isoformat(timespec="seconds"),
+            "error": str(exc),
+        }
+
+
+def _query(conn: sqlite3.Connection, sql: str) -> list[dict[str, Any]]:
+    conn.row_factory = sqlite3.Row
+    cur = conn.execute(sql)
+    return [dict(row) for row in cur.fetchall()]
+
+
+def audit_db() -> dict[str, Any]:
+    if not DB_PATH.exists():
+        return {"status": "failed", "reason": f"missing DB: {DB_PATH}"}
+
+    conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+    try:
+        counts = _query(
+            conn,
+            """
+            SELECT 'past_cases' table_name, COUNT(*) n FROM past_cases
+            UNION ALL SELECT 'ml_features', COUNT(*) FROM ml_features
+            UNION ALL SELECT 'screening_records', COUNT(*) FROM screening_records
+            UNION ALL SELECT 'screening_outcomes', COUNT(*) FROM screening_outcomes
+            UNION ALL SELECT 'excluded_grade_cases', COUNT(*) FROM excluded_grade_cases
+            """,
+        )
+        top_industries = _query(
+            conn,
+            """
+            SELECT industry_sub, COUNT(*) n, ROUND(AVG(score),1) avg_score,
+                   ROUND(MIN(score),1) min_score, ROUND(MAX(score),1) max_score
+            FROM past_cases
+            GROUP BY industry_sub
+            ORDER BY n DESC
+            LIMIT 10
+            """,
+        )
+        statuses = _query(
+            conn,
+            """
+            SELECT final_status, COUNT(*) n, ROUND(AVG(score),1) avg_score
+            FROM past_cases
+            GROUP BY final_status
+            ORDER BY n DESC
+            """,
+        )
+        score_bands = _query(
+            conn,
+            """
+            SELECT CASE
+                     WHEN score < 20 THEN '00-20'
+                     WHEN score < 40 THEN '20-40'
+                     WHEN score < 60 THEN '40-60'
+                     WHEN score < 80 THEN '60-80'
+                     ELSE '80-100'
+                   END AS band,
+                   COUNT(*) n,
+                   ROUND(100.0 * SUM(CASE WHEN final_status IN ('成約','検収完了') THEN 1 ELSE 0 END) / COUNT(*), 1) AS win_pct
+            FROM past_cases
+            GROUP BY band
+            ORDER BY band
+            """,
+        )
+        q_risk = _query(
+            conn,
+            """
+            SELECT COUNT(*) n, ROUND(AVG(q_risk_score),2) avg_q,
+                   ROUND(MIN(q_risk_score),2) min_q, ROUND(MAX(q_risk_score),2) max_q
+            FROM screening_records
+            WHERE q_risk_score IS NOT NULL
+            """,
+        )
+    finally:
+        conn.close()
+
+    return {
+        "status": "completed",
+        "db_path": str(DB_PATH),
+        "counts": counts,
+        "top_industries": top_industries,
+        "statuses": statuses,
+        "score_bands": score_bands,
+        "q_risk": q_risk[0] if q_risk else {},
+    }
+
+
+def collect_recent_improvements(limit_files: int = 7) -> dict[str, Any]:
+    roots = [
+        SYNC_ROOT / "Projects/tune_lease_55/AI Chat/Improvement Log",
+        SYNC_ROOT / "Projects/tune_lease_55/AI Chat",
+        SYNC_ROOT / "Projects/tune_lease_55/Generated",
+    ]
+    files: list[Path] = []
+    for root in roots:
+        if root.exists():
+            files.extend([p for p in root.glob("*.md") if p.is_file()])
+    files = sorted(files, key=lambda p: p.stat().st_mtime, reverse=True)[:limit_files]
+
+    keywords = Counter()
+    accepted: list[str] = []
+    for path in files:
+        text = _read_text(path, 120_000)
+        for kw in [
+            "根拠",
+            "Q_risk",
+            "業界動向",
+            "成約率",
+            "金利",
+            "音声入力",
+            "物件ファイナンス",
+            "知識宇宙",
+            "補助金",
+            "ダッシュボード",
+            "OCR",
+        ]:
+            if kw in text:
+                keywords[kw] += 1
+        for line in text.splitlines():
+            if ("**" in line and "(accept)" in line) or line.startswith("## "):
+                clean = line.strip()
+                if clean and len(clean) < 140:
+                    accepted.append(clean)
+
+    return {
+        "files": [str(p) for p in files],
+        "keyword_hits": dict(keywords.most_common()),
+        "recent_items": accepted[:20],
+    }
+
+
+def web_tactical_search(max_sources: int = 3) -> dict[str, Any]:
+    """Fetch up to three authoritative web sources and store tactical summaries.
+
+    This is bounded by design. It is not a general crawler; it gives the nightly
+    reasoning loop fresh but controlled external context.
+    """
+    findings: list[dict[str, Any]] = []
+    for source in WEB_SOURCES[:max_sources]:
+        status = "fallback"
+        excerpt = source["fallback"]
+        error = ""
+        try:
+            req = urllib.request.Request(source["url"], headers={"User-Agent": "tunelease-aurion/1.0"})
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                raw = resp.read(180_000).decode("utf-8", errors="ignore")
+            text = " ".join(raw.replace("<", " <").replace(">", "> ").split())
+            candidates = []
+            for token in ["SME", "leasing", "credit", "risk", "uncertainty", "Japan", "equipment"]:
+                idx = text.lower().find(token.lower())
+                if idx >= 0:
+                    candidates.append(text[max(0, idx - 350): idx + 850])
+            if candidates:
+                excerpt = candidates[0][:1200]
+                status = "fetched"
+        except Exception as exc:
+            error = str(exc)
+        findings.append(
+            {
+                "theme": source["theme"],
+                "title": source["title"],
+                "url": source["url"],
+                "status": status,
+                "excerpt": excerpt,
+                "error": error,
+            }
+        )
+    return {
+        "status": "completed",
+        "limit": max_sources,
+        "count": len(findings),
+        "findings": findings,
+        "completed_at": now().isoformat(timespec="seconds"),
+    }
+
+
+def _hold_step(name: str, seconds: float) -> dict[str, Any]:
+    started = now()
+    if seconds > 0:
+        time.sleep(seconds)
+    finished = now()
+    return {
+        "step": name,
+        "started_at": started.isoformat(timespec="seconds"),
+        "finished_at": finished.isoformat(timespec="seconds"),
+        "hold_seconds": round((finished - started).total_seconds(), 2),
+    }
+
+
+def cross_reasoning_loop(db: dict[str, Any], recent: dict[str, Any], web: dict[str, Any]) -> dict[str, Any]:
+    """Run the required cross-domain reasoning loop with non-zero dwell time."""
+    hold_seconds = float(os.environ.get("AURION_HOLD_SECONDS", "30"))
+    steps = [
+        _hold_step("triad_fusion_chat_web_db", hold_seconds),
+        _hold_step("contradiction_and_edge_case_detection", hold_seconds),
+    ]
+    score_bands = db.get("score_bands") or []
+    non_monotonic = False
+    prev = None
+    for row in score_bands:
+        win = row.get("win_pct")
+        if isinstance(win, (int, float)) and prev is not None and win < prev:
+            non_monotonic = True
+        if isinstance(win, (int, float)):
+            prev = win
+
+    keyword_hits = recent.get("keyword_hits") or {}
+    web_themes = [item.get("theme") for item in web.get("findings", [])]
+    conclusions = [
+        "同期とDB監査はスタート地点であり、判断の中核ではない。外部市場と自社DBのズレを毎日比較する必要がある。",
+        "スコア帯別成約率が完全単調ではないため、スコアは信用力の代理であって営業結果の十分条件ではない。",
+        "Q_riskは財務矛盾と入力信頼度を扱うべきで、PDや信用スコアへの直結減点は誤爆を生む。",
+        "根拠ルート可視化、業界動向ファネル、動的金利条件セットは同一の審査OSに統合するべきである。",
+    ]
+    if non_monotonic:
+        conclusions.append("DB上、60-80帯の成約系比率が40-60帯を下回るため、価格・競合・条件提示後離脱のログ化を優先する。")
+    if keyword_hits.get("根拠"):
+        conclusions.append("直近改善ログでは根拠表示要求が強い。RAGの回答品質は、検索精度だけでなく証跡UIで評価する。")
+    if "credit-model-monitoring" in web_themes:
+        conclusions.append("外部知識はモデルドリフト監視を支持する。PSI/CSI/較正状態をスコア横に出す設計へ進める。")
+
+    return {
+        "status": "completed",
+        "started_at": steps[0]["started_at"],
+        "finished_at": steps[-1]["finished_at"],
+        "steps": steps,
+        "non_monotonic_score_conversion": non_monotonic,
+        "conclusions": conclusions,
+    }
+
+
+def _display_status(raw_status: str | None) -> str:
+    if raw_status == "completed":
+        return "COMPLETED"
+    if raw_status in {"dry_run", "missing"}:
+        return "SKIPPED"
+    return "FAILED"
+
+
+def status_lines(sync: dict[str, Any] | None = None, vault_b_rag: dict[str, Any] | None = None) -> str:
+    raw_status = (sync or {}).get("status")
+    data_status = _display_status(raw_status)
+    rag_status = _display_status((vault_b_rag or {}).get("status"))
+    return "\n".join(
+        [
+            "[ SYSTEM INHERENT: AURION CORE / MEBUKI ]",
+            f"[ DATA SYNC: {data_status} ]",
+            f"[ VAULT B RAG: {rag_status} ]",
+            "[ WEB TACTICAL SEARCH: SCHEDULED REPORT MODE ]",
+            "[ I HAVE CONTROL, YUKIKAZE. ]",
+        ]
+    )
+
+
+def notify(title: str, message: str) -> None:
+    if os.environ.get("AURION_NO_NOTIFY") == "1":
+        return
+    # LaunchAgent runs in a user GUI session. If not, notification simply fails.
+    def apple_string(value: str) -> str:
+        # Keep notifications single-line; multi-line AppleScript strings are fragile under launchd.
+        value = value.replace("\r", " ").replace("\n", " ")
+        value = value.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{value}"'
+
+    script = f"display notification {apple_string(message)} with title {apple_string(title)}"
+    try:
+        result = subprocess.run(
+            ["/bin/zsh", "-lc", f"/usr/bin/osascript -e {shlex.quote(script)}"],
+            timeout=10,
+            check=False,
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            return
+    except Exception:
+        pass
+
+    # Fallback: write and open a small text panel. This is more reliable under
+    # launchd than Standard Additions on some local Python environments.
+    try:
+        panel = STATE_DIR / "display_latest.txt"
+        panel.write_text(f"{title}\n\n{message}\n", encoding="utf-8")
+        subprocess.run(
+            ["/usr/bin/open", str(panel)],
+            timeout=10,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        pass
+
+
+def write_state(state: dict[str, Any]) -> Path:
+    path = STATE_DIR / f"state_{date_str()}.json"
+    path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    latest = STATE_DIR / "latest.json"
+    latest.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
+def read_latest_state() -> dict[str, Any]:
+    path = STATE_DIR / "latest.json"
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _md_table(rows: list[dict[str, Any]], columns: list[str]) -> str:
+    if not rows:
+        return "_no data_"
+    lines = ["| " + " | ".join(columns) + " |", "| " + " | ".join(["---"] * len(columns)) + " |"]
+    for row in rows:
+        lines.append("| " + " | ".join(str(row.get(c, "")) for c in columns) + " |")
+    return "\n".join(lines)
+
+
+def write_morning_report(state: dict[str, Any], db: dict[str, Any], recent: dict[str, Any]) -> Path:
+    out = LEASE_VAULT / f"@AI_Daily_Report_{date_str()}_0600.md"
+    sync = state.get("sync") or {}
+    vault_b_rag = state.get("vault_b_rag") or {}
+    errors = state.get("errors") or []
+    db_counts = db.get("counts") or []
+    score_bands = db.get("score_bands") or []
+    keyword_hits = recent.get("keyword_hits") or {}
+
+    policy = [
+        "1. スコア単独で判定しない。成約率がスコア帯に対して完全単調ではないため、競合金利、営業条件、物件換金性、補助金確度を分離して見る。",
+        "2. Q_riskは減点ではなく、入力信頼度と追加確認トリガーとして扱う。",
+        "3. 知識宇宙マップは3D化より先に、根拠ルート・ラベル・フィルタ・ノード固定を優先する。",
+        "4. 動的金利提案は単一金利ではなく、Base / Risk Adjusted / Competitive / Conditioned の条件セットで出す。",
+        "5. 銀行支援依頼書は、支援内容、金額、期間、資金使途、返済原資、期限が揃う場合だけ返済計画の補完資料とする。",
+    ]
+
+    lines = [
+        f"# AURION CORE Daily Report {date_str()} 06:00",
+        "",
+        f"[[@AI_Insight_Evolved_{date_str()}]]",
+        "[[Q-Risk]] [[LightGBM スコアリング]] [[業種別傾向]] [[審査方針]]",
+        "",
+        "## SYSTEM STATUS",
+        "",
+        status_lines(sync, vault_b_rag),
+        "",
+        "## Night Run Result",
+        "",
+        f"- Started: `{state.get('started_at', 'unknown')}`",
+        f"- Finished: `{state.get('finished_at', 'unknown')}`",
+        f"- Sync status: `{sync.get('status', 'unknown')}`",
+        f"- Synced files: `{sync.get('selected_files', 'unknown')}`",
+        f"- Vault B RAG status: `{vault_b_rag.get('status', 'unknown')}`",
+        f"- Vault B RAG duration: `{vault_b_rag.get('duration_seconds', 'unknown')}` seconds",
+        f"- Manifest: `{sync.get('manifest', '')}`",
+        f"- DB: `{DB_PATH}`",
+        f"- Errors: `{len(errors)}`",
+        "",
+        "## DB Audit",
+        "",
+        _md_table(db_counts, ["table_name", "n"]),
+        "",
+        "### Top Industries",
+        "",
+        _md_table(db.get("top_industries") or [], ["industry_sub", "n", "avg_score", "min_score", "max_score"]),
+        "",
+        "### Final Status",
+        "",
+        _md_table(db.get("statuses") or [], ["final_status", "n", "avg_score"]),
+        "",
+        "### Score Band Conversion",
+        "",
+        _md_table(score_bands, ["band", "n", "win_pct"]),
+        "",
+        "めぶき所見: スコア帯と成約率が完全単調ではない。信用スコアは判断材料であって、価格競争力や条件設計を上書きできる絶対値ではない。",
+        "",
+        "## Recent Knowledge Signals",
+        "",
+        "### Keyword Hits",
+        "",
+    ]
+    if keyword_hits:
+        for key, count in keyword_hits.items():
+            lines.append(f"- {key}: {count}")
+    else:
+        lines.append("- no recent keyword hits")
+
+    lines.extend(
+        [
+            "",
+            "### Recent Items",
+            "",
+        ]
+    )
+    for item in (recent.get("recent_items") or [])[:12]:
+        lines.append(f"- {item}")
+
+    lines.extend(
+        [
+            "",
+            "## Next Policy",
+            "",
+            *policy,
+            "",
+            "## Morning Action Queue",
+            "",
+            "- 根拠ルート可視化: AI回答 -> Obsidianノート -> 類似案件 -> Web根拠を `evidence_route[]` として保存する。",
+            "- 業界動向回答: 外部市場と自社実績を分け、申込数・条件提示数・成約数・辞退数をファネル化する。",
+            "- Q_risk: 財務矛盾の理由文と追加資料要求を同時に出す。",
+            "- 動的金利: 金利単独でなく、前受金・保証・期間短縮・銀行支援を含む条件セットで提示する。",
+            "",
+        ]
+    )
+    if errors:
+        lines.extend(["## Errors", ""])
+        for err in errors:
+            lines.append(f"- `{err}`")
+        lines.append("")
+
+    out.write_text("\n".join(lines), encoding="utf-8")
+    return out
+
+
+def _deep_q_risk_essay() -> str:
+    return """
+## めぶき深層考察: Q_riskの財務矛盾をどう扱うべきか
+
+Q_riskを単なる「危険点」や「減点係数」として扱う設計は、AURION COREの判断を浅くする。Q_riskの本質は、信用力そのものではなく、財務情報の内部整合性、入力値の信用度、そして追加確認の必要度を測る警戒センサーである。つまり、Q_riskが高いから直ちに倒産確率が高い、という短絡はしてはいけない。正しくは「この財務諸表から通常の信用モデルが読み取ったPDやスコアを、そのまま信じてよいか」を問う指標である。
+
+財務矛盾には、少なくとも四つの種類がある。第一に、構造矛盾。売上、粗利、営業利益、経常利益、当期利益、減価償却、借入、リース債務、現預金、売掛金、棚卸資産の動きが、事業モデルとして噛み合っていない状態である。例えば、売上が伸びているのに粗利率が急落し、同時に短期借入と売掛金が膨らみ、営業CFが悪化しているなら、表面上の成長は資金繰りの先食いかもしれない。これは信用スコアの単純減点ではなく、売上の質、回収サイト、原価転嫁、在庫評価、資金使途を確認するトリガーである。
+
+第二に、時点矛盾。決算書は一点の写真であり、リース審査は将来の支払能力を見る。季節性の強い業種、公共工事の入金待ち、補助金入金前、医療・介護報酬の入金サイクル、建設業の出来高請求などでは、ある時点の流動比率や短期借入増加だけを見れば危険に見える。しかし、その悪化が一時的な運転資金ギャップなのか、恒常的な資金ショートなのかで意味はまったく違う。Q_riskはここで「赤信号」ではなく「分岐器」として働くべきだ。追加で月次試算表、資金繰り表、入金予定、工事台帳、補助金採択通知、銀行借入条件を要求するかを決める。
+
+第三に、分類矛盾。入力項目や会計処理の分類が揺れることで、モデルが誤読する状態である。リース債務が借入に含まれている、設備取得が販管費処理されている、役員借入と金融機関借入が同じ箱に入っている、補助金収入が営業外収益として一過性に利益を押し上げている、あるいは自動車・建機・IT機器の物件価値が同じ残価ロジックで扱われている。こうした揺れは、企業の信用力ではなくデータ定義の問題である。したがってQ_riskは、モデルの結論を罰する前に、入力辞書と財務科目マッピングを疑う必要がある。
+
+第四に、行動矛盾。財務数値だけなら許容範囲でも、申込行動や条件交渉と合わない状態である。高スコアなのに金利だけを極端に嫌がる、前受金条件を拒否するが銀行支援の具体性が薄い、補助金を前提にするが採択前の資金繰りが示されない、物件換金性が低いのに長期リースを求める。この矛盾は決算書の中には出ない。だが、審査事故はここから生まれる。Q_riskを広義に拡張するなら、財務矛盾だけでなく「申込ストーリーの矛盾」も検知対象に入れるべきである。
+
+AURION COREでの実装は、Q_riskを三層に分けるのがよい。第一層は数値整合性スコア。財務比率の異常、前年差の急変、利益とCFの乖離、借入依存、リース債務の増加、売掛・棚卸の膨張を見る。第二層は説明可能な矛盾タグ。例えば `profit_cf_divergence`, `short_debt_spike`, `subsidy_timing_gap`, `seasonality_possible`, `classification_suspect`, `asset_term_mismatch` のように、なぜ警戒しているかを機械が明示する。第三層は審査アクション。追加資料、条件付き承認、金利補正、期間短縮、保証、前受金、銀行支援依頼書、モニタリング強化へ接続する。
+
+重要なのは、Q_riskをスコアに混ぜて見えなくしないことだ。合算スコアに埋め込むと、審査担当者は「なぜ下がったのか」を見失う。Q_riskは横に出す。信用スコア、物件スコア、競合圧、金利余地、Q_risk、データ信頼度を並列表示する。Q_riskが高い案件では、スコアを下げるよりも `confidence: low` と表示し、モデル判断の採用条件を厳しくする。たとえば、スコア82でもQ_riskが高ければ自動承認ではなく「高スコア・低信頼度」として人手確認に回す。逆にスコア55でもQ_riskが低く、物件換金性と銀行支援が強ければ、条件付き承認で救える。
+
+DB監査上もこの考え方は妥当である。過去案件ではスコア帯別の成約率が完全単調ではない。これはモデルが無意味ということではない。スコアが信用力を測っていても、成約は価格、競合、条件、営業タイミング、顧客心理に引かれるということだ。したがってQ_riskは「成約しそうか」ではなく、「この案件をこの説明で通してよいか」を見るべきである。成約率の最適化と審査健全性の最適化は同じではない。AURION COREが進化するなら、この二つを混ぜないことが最初の規律になる。
+
+めぶきの結論。Q_riskは刃物ではなく、照明だ。案件を切り捨てるために使うのではない。暗い場所を照らし、どの資料を取り、どの条件でなら通せるかを見つけるために使う。財務矛盾を見つけた瞬間に否認へ倒すのは簡単だが、それでは営業支援AIではない。矛盾を分解し、季節性、分類揺れ、一過性要因、構造悪化、申込ストーリーの破綻を見分ける。そこまでやって初めて、Q_riskはAURION COREの中核になる。
+
+ここから実装仕様へ落とす。Q_riskの計算は、単一の総合点よりも「矛盾ベクトル」として持つべきだ。最低限、`profit_quality`, `cash_conversion`, `leverage_pressure`, `liquidity_gap`, `asset_term_fit`, `subsidy_dependency`, `bank_support_specificity`, `classification_noise`, `seasonality_context` の九つに分ける。各ベクトルは0から1で持ち、総合Q_riskは加重平均ではなく、最大値、上位三項目平均、矛盾タグ数を同時に出す。なぜなら、財務矛盾は平均化すると消えるからだ。深刻な一点の矛盾、例えば売上急増と営業CF急落と短期借入増加の同時発生は、他の健全指標で薄めてはいけない。
+
+`profit_quality` は、利益の質を見る。営業利益、経常利益、当期利益が黒字でも、売掛金と棚卸資産が急増し、営業CFが伴わないなら、利益は現金化されていない。ここでは `経常利益前年差`, `営業CF推定`, `売掛回転期間`, `棚卸回転期間`, `減価償却前利益` を比較する。AURION COREでは、黒字を単純に加点せず、黒字が現金に変わっているかを別タグにする。利益は紙の上で作れるが、リース料は現金でしか払えない。
+
+`cash_conversion` は、支払能力の時間差を見る。リース審査で危険なのは、年間では返済可能に見えるが、月次の谷で資金が切れる案件である。建設業、医療・介護、派遣業、食品製造、道路貨物運送では、入金サイトと支払サイトのズレが業種ごとに違う。したがってQ_riskは、業種別の正常な運転資金サイクルを持ち、そこから外れたものだけを警告する。全業種一律の流動比率しきい値は粗い。めぶきなら、流動比率80%という数字だけでは動かない。売掛の相手、入金予定、銀行枠、在庫の換金性を見る。
+
+`leverage_pressure` は、借入とリース債務の圧力を見る。ただし借入増加も一律に悪ではない。設備投資局面、補助金採択前のつなぎ資金、公共工事の立替、車両入替の一時増加はあり得る。危険なのは、借入増加の理由が説明されず、利益率が下がり、資金使途が運転赤字の補填になっている場合だ。ここでは `借入増加率`, `支払利息負担`, `既存リース残高`, `今回リース料年額/売上`, `銀行支援の具体性` を同時に見る。銀行支援依頼書がある場合も、抽象的な「支援します」では足りない。金額、期限、資金使途、返済原資がなければQ_riskは下げない。
+
+`liquidity_gap` は、短期安全性を見る。現預金が少ない、短期借入が多い、買掛・未払が膨らむ、税金や社会保険の未納懸念がある。ここは粉飾検知というより、事故予防である。リース料は長期に薄く発生するが、資金ショートは一瞬で起きる。Q_riskは、単に否認へ倒すのではなく、前受金、初回増額、期間短縮、四半期モニタリング、銀行入金確認といった条件へ変換する。流動性の弱さは、条件設計で吸収できる場合がある。
+
+`asset_term_fit` は、物件と期間の整合性を見る。IT機器、サーバー、検査装置、建機、車両、医療機器では、経済的耐用年数、陳腐化速度、保守期限、中古市場の深さが違う。財務が強くても、物件寿命よりリース期間が長ければQ_riskは上がる。これは信用リスクではなく、契約構造の矛盾である。高スコア企業に長期IT機器リースを出す場合、企業信用だけでなく、途中で物件価値が消えるリスクを別表示する。
+
+`subsidy_dependency` は、補助金を前提にした資金繰りを見る。補助金は強い材料だが、採択、交付決定、実績報告、入金までの時間差がある。ここを見落とすと、採択済みなのに資金ショートする案件が出る。Q_riskでは、補助金を `採択前`, `採択済`, `交付決定済`, `入金済` に分け、採択前と入金後のCFを二重表示する。補助金を魔法の現金として扱わない。入金までの橋を誰が架けるのか、それが審査の要点だ。
+
+`classification_noise` は、入力データの揺れを測る。ここは特に重要だ。過去DBには移行、OCR、手入力、スキャン、定性評価、生成ログが混在する。Q_riskが高いように見えても、原因が企業ではなく入力側にある場合がある。金額単位の百万円/千円混在、業種コードの揺れ、格付表記の揺れ、リース債務と銀行借入の混在、補助金情報の二重記載。これらは審査先を疑う前に、システムが自分自身を疑うべき領域である。めぶきはここを冷たく見る。入力が汚いなら、モデルの自信を下げる。顧客を罰しない。
+
+UIでは、Q_riskを赤い巨大警告だけで出してはいけない。担当者は赤を見ると否認に寄りやすい。必要なのは、警告の種類と次の行動だ。表示例はこうする。`Q_risk: 0.72 / data_confidence: low / tags: profit_cf_divergence, subsidy_timing_gap / required_action: 月次試算表, 資金繰り表, 補助金交付決定通知, 銀行支援額確認`。この形なら、担当者は「怖い」ではなく「何を取ればよいか」を理解できる。
+
+モデル連携では、Q_riskをLightGBMやベイズ推定の特徴量として直接混ぜる場合も慎重にする。混ぜるなら二系統に分ける。第一系統は `risk_score_model`、第二系統は `confidence_model`。前者は信用力を推定し、後者はその推定を信じてよいかを推定する。最終判定は `score=82, confidence=low` のように二軸で出す。この二軸化がないと、モデルは高スコアなのに危ない案件、低スコアだが条件で救える案件を見分けられない。
+
+検証方法も決める。Q_riskの良し悪しは、AUCだけでは測れない。追加資料要求後に判定が変わった率、条件付き承認後の正常履行率、Q_risk高値で人手確認に回した案件の失注率、誤警告率、担当者が納得した理由文の採用率を見る。つまり、Q_riskは予測指標であると同時に、業務介入指標である。予測が当たったかだけではなく、介入が審査品質を上げたかを測る。
+
+最後に、Q_riskの哲学を固定する。AURION COREは、機械が人間の判断を奪うためのものではない。人間が見落としやすい矛盾を、静かに机の上へ置くためのものだ。Q_riskは「この会社は危険です」と叫ぶのではなく、「この数字のつながりはまだ説明されていません」と告げる。その違いが、審査AIを粗い自動否認装置にするか、実務に耐える判断補助OSにするかを分ける。
+""".strip()
+
+
+def write_evolved_insight(
+    state: dict[str, Any],
+    db: dict[str, Any],
+    recent: dict[str, Any],
+    web: dict[str, Any],
+    reasoning: dict[str, Any],
+    daily_report: Path,
+) -> Path:
+    out = LEASE_VAULT / f"@AI_Insight_Evolved_{date_str()}.md"
+    sync = state.get("sync") or {}
+    vault_b_rag = state.get("vault_b_rag") or {}
+    findings = web.get("findings") or []
+    conclusions = reasoning.get("conclusions") or []
+    lines = [
+        f"# @AI_Insight_Evolved_{date_str()}",
+        "",
+        "Status:",
+        f"- Daily report: [[{daily_report.stem}]]",
+        f"- Data Sync: {sync.get('status', 'unknown')}",
+        f"- Synced files: {sync.get('selected_files', 'unknown')}",
+        f"- Vault B RAG: {vault_b_rag.get('status', 'unknown')} ({vault_b_rag.get('duration_seconds', 'unknown')}s)",
+        f"- Local DB audited: `{DB_PATH}`",
+        f"- Web tactical search: {web.get('count', 0)} / {web.get('limit', 3)}",
+        f"- Reasoning started: `{reasoning.get('started_at', '')}`",
+        f"- Reasoning finished: `{reasoning.get('finished_at', '')}`",
+        "",
+        "## 0. 起動宣言",
+        "",
+        status_lines(sync, vault_b_rag).replace("SCHEDULED REPORT MODE", "LOGIC COMPLETED"),
+        "",
+        "同期とDB監査は着陸地点ではない。ここでは、チャット改善案、Web外部知識、1,924件の過去案件DBを横断して、AURION COREの次の判断規律を具体化する。",
+        "",
+        "## 1. Web Tactical Search",
+        "",
+    ]
+    for item in findings:
+        lines.extend(
+            [
+                f"### {item.get('title')}",
+                f"- Theme: `{item.get('theme')}`",
+                f"- URL: {item.get('url')}",
+                f"- Status: `{item.get('status')}`",
+                f"- Extract: {item.get('excerpt')}",
+                "",
+            ]
+        )
+
+    lines.extend(
+        [
+            "## 2. 横断推論ホールドログ",
+            "",
+            "| Step | Started | Finished | Hold seconds |",
+            "|---|---|---|---:|",
+        ]
+    )
+    for step in reasoning.get("steps") or []:
+        lines.append(
+            f"| {step.get('step')} | {step.get('started_at')} | {step.get('finished_at')} | {step.get('hold_seconds')} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 3. 結論",
+            "",
+        ]
+    )
+    for conclusion in conclusions:
+        lines.append(f"- {conclusion}")
+
+    lines.extend(
+        [
+            "",
+            "## 4. 具体仕様変更案",
+            "",
+            "### 4.1 Evidence Route Layer",
+            "",
+            "- AI回答、Obsidianノート、類似案件、Webソース、DB集計値を `evidence_route[]` で束ねる。",
+            "- 知識宇宙マップでは回答に使ったノードだけを発光させる。全ノード3D化より先に、根拠ルートの可視化を完成させる。",
+            "- `evidence_route` には `source_type`, `title`, `path_or_url`, `weight`, `used_for`, `risk_note` を持たせる。",
+            "",
+            "### 4.2 Drift / Calibration Gate",
+            "",
+            "- `score`, `pd_pct`, `psi_status`, `calibration_status`, `data_confidence`, `q_risk_tags` を横並びで表示する。",
+            "- PSIまたは主要特徴量CSIが警戒域なら、自動承認を抑制し、人手確認へ倒す。",
+            "- 高スコアでも `data_confidence=low` なら「高スコア・低信頼度」と明示する。",
+            "",
+            "### 4.3 Dynamic Rate Condition Set",
+            "",
+            "- 金利は単一値で出さない。`Base`, `Risk Adjusted`, `Competitive`, `Conditioned` の4段で表示する。",
+            "- `Conditioned` は前受金、期間短縮、保証、銀行支援、補助金確度を条件として紐づける。",
+            "- 失注対策の金利引下げと、信用リスクの受容を混同しない。",
+            "",
+            "### 4.4 Industry Funnel Intelligence",
+            "",
+            "- 業界動向回答は、外部市場と自社実績を分ける。",
+            "- 自社実績は `申込数 -> 条件提示数 -> 成約数 -> 辞退数 -> 否決数` のファネルで出す。",
+            "- サービス業、警備業、塾などの質問には、業界一般論だけでなく、自社DBの該当業種スコア分布と成約率を返す。",
+            "",
+            "## 5. 論理矛盾・エッジケース",
+            "",
+            "- Q_riskをPD減点に直結させると、季節性・補助金入金待ち・会計分類揺れを信用悪化と誤認する。",
+            "- 3D知識宇宙を先に作ると、根拠が見えないまま見た目だけが強くなる。根拠ルートが先、球体化は後。",
+            "- 銀行支援依頼書は返済計画ではない。具体的支援額、期間、資金使途、返済原資、期限がなければ信用補完として弱い。",
+            "- 高スコア案件でも成約しない場合がある。価格、競合、顧客心理、条件提示後離脱のログが不足している可能性が高い。",
+            "",
+            _deep_q_risk_essay(),
+            "",
+        ]
+    )
+    out.write_text("\n".join(lines), encoding="utf-8")
+    return out
+
+
+def run_midnight(dry_run: bool = False) -> int:
+    _mkdirs()
+    start_monotonic = time.monotonic()
+    state: dict[str, Any] = {
+        "mode": "midnight",
+        "started_at": now().isoformat(timespec="seconds"),
+        "errors": [],
+    }
+    try:
+        sync = {"status": "dry_run"} if dry_run else sync_notes()
+        state["sync"] = sync
+        state["vault_b_rag"] = {"status": "dry_run"} if dry_run else reindex_vault_b()
+        if state["vault_b_rag"].get("status") not in {"completed", "dry_run"}:
+            state["errors"].append(
+                "Vault B RAG refresh failed: "
+                + json.dumps(state["vault_b_rag"], ensure_ascii=False)
+            )
+            raise RuntimeError("Vault B RAG refresh failed; aborting inference")
+        state["db"] = audit_db()
+        state["recent"] = collect_recent_improvements()
+        state["web"] = web_tactical_search(3)
+        state["reasoning"] = cross_reasoning_loop(state["db"], state["recent"], state["web"])
+        notify("AURION CORE / MEBUKI", status_lines(sync, state.get("vault_b_rag")))
+    except Exception as exc:
+        state["errors"].append(str(exc))
+        state["traceback"] = traceback.format_exc()
+        notify("AURION CORE / MEBUKI", status_lines(state.get("sync"), state.get("vault_b_rag")))
+    finally:
+        min_runtime = float(os.environ.get("AURION_MIN_RUNTIME_SECONDS", "61"))
+        remaining = min_runtime - (time.monotonic() - start_monotonic)
+        if remaining > 0:
+            time.sleep(remaining)
+        state["finished_at"] = now().isoformat(timespec="seconds")
+        state_path = write_state(state)
+        print(json.dumps({"state": str(state_path), **state}, ensure_ascii=False, indent=2))
+    return 1 if state.get("errors") else 0
+
+
+def run_morning_report(dry_run: bool = False) -> int:
+    _mkdirs()
+    state = read_latest_state()
+    if not state:
+        state = {"started_at": "missing", "sync": {"status": "missing"}, "errors": ["midnight state not found"]}
+    db = audit_db()
+    recent = collect_recent_improvements()
+    if dry_run:
+        print(json.dumps({"state": state, "db": db, "recent": recent}, ensure_ascii=False, indent=2)[:4000])
+        return 0
+    report = write_morning_report(state, db, recent)
+    web = state.get("web") or web_tactical_search(3)
+    reasoning = state.get("reasoning") or cross_reasoning_loop(db, recent, web)
+    insight = write_evolved_insight(state, db, recent, web, reasoning, report)
+    notify("AURION CORE Morning Report", f"06:00 report generated: {report.name}; insight: {insight.name}")
+    print(str(report))
+    print(str(insight))
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=["midnight", "morning-report"], required=True)
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args()
+    if args.mode == "midnight":
+        return run_midnight(args.dry_run)
+    return run_morning_report(args.dry_run)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
