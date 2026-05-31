@@ -4419,7 +4419,7 @@ def get_latest_screening():
                     total_assets_raw = _safe_float(_first_non_empty(inputs.get("total_assets"), d.get("total_assets")))
 
                     if nenshu_raw > 0:
-                        defaults["nenshu"] = _to_million(nenshu_raw)
+                        defaults["nenshu"] = round(nenshu_raw, 2)
                     if nenshu_raw > 0:
                         defaults["op_margin_pct"] = round(op_profit_raw / nenshu_raw * 100, 1)
                     if total_assets_raw > 0:
@@ -4429,11 +4429,11 @@ def get_latest_screening():
                     lease_credit_raw = _safe_float(_first_non_empty(inputs.get("lease_credit"), d.get("lease_credit")))
                     acquisition_cost_raw = _safe_float(_first_non_empty(inputs.get("acquisition_cost"), d.get("acquisition_cost")))
                     if bank_credit_raw:
-                        defaults["bank_credit"] = _to_million(bank_credit_raw)
+                        defaults["bank_credit"] = round(bank_credit_raw, 2)
                     if lease_credit_raw:
-                        defaults["lease_credit"] = _to_million(lease_credit_raw)
+                        defaults["lease_credit"] = round(lease_credit_raw, 2)
                     if acquisition_cost_raw:
-                        defaults["lease_amount"] = _to_million(acquisition_cost_raw)
+                        defaults["lease_amount"] = round(acquisition_cost_raw, 2)
 
                     asset_name = _first_non_empty(
                         inputs.get("asset_name"),
