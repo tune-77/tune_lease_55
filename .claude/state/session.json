@@ -3,7 +3,7 @@
   "cwd": "/Users/kobayashiisaoryou/clawd/tune_lease_55",
   "duration_minutes": 0,
   "ended_at": "2026-05-24T21:16:51Z",
-  "event_seq": 212,
+  "event_seq": 203,
   "fork_count": 0,
   "git": {
     "branch": "master",
@@ -15,10 +15,10 @@
     "last_checked": "2026-05-24T21:16:37Z",
     "last_error": ""
   },
-  "intent": "semantic",
-  "last_event_id": "event-000212",
-  "last_message_hash": "597e3d32a7eace7b",
-  "last_message_length": 197,
+  "intent": "literal",
+  "last_event_id": "event-000203",
+  "last_message_hash": "c05a92c97484faab",
+  "last_message_length": 153,
   "memory_logged": true,
   "orchestration": {
     "max_state_retries": 3,
@@ -34,11 +34,11 @@
     "wip_tasks": 0
   },
   "project_name": "tune_lease_55",
-  "prompt_seq": 27,
+  "prompt_seq": 30,
   "resume_token": "resume-1779657397343626000",
   "session_id": "session-1779657397343612000",
   "started_at": "2026-05-24T21:16:37Z",
   "state": "stopped",
   "state_version": 1,
-  "updated_at": "2026-05-28T22:53:50Z"
+  "updated_at": "2026-05-28T23:05:14Z"
 }
