@@ -1896,6 +1896,10 @@ elif mode == "📐 自然勾配A/B比較":
     from components.ngd_comparison_view import render_ngd_comparison
     render_ngd_comparison()
 
+elif mode == "📡 データドリフト監視":
+    from components.data_drift_dashboard import render_data_drift_dashboard
+    render_data_drift_dashboard()
+
 elif mode == "📝 案件修正":
     from components.case_editor import render_case_editor
     render_case_editor()
