@@ -1291,11 +1291,16 @@ def _generate_cached_interjection(sales, profit, net_assets, rent, industry, ano
         「また私の仕事増やす気？」「これじゃQ_riskが爆発するんだけど」などのメタ的なボヤキや、食い意地の張った発言（おごり要求など）を1〜2行で。
         絵文字も使って軽快に。絶対に長文にならないこと（最大60文字程度）。
         """
-        res = chat_with_retry([
-            {"role": "system", "content": AI_HONNE_SYSTEM},
-            {"role": "user", "content": prompt}
-        ])
-        return res
+        res = chat_with_retry(
+            model=get_ollama_model(),
+            messages=[
+                {"role": "system", "content": AI_HONNE_SYSTEM},
+                {"role": "user", "content": prompt},
+            ],
+            retries=1,
+            timeout_seconds=30,
+        )
+        return (res.get("message") or {}).get("content", "").strip()
     except Exception as e:
         log_error(f"リアルタイムツッコミ生成エラー: {e}")
         return None

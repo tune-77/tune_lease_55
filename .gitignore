@@ -45,3 +45,5 @@ dashboard_images/
 
 # Claude内部ワークツリー
 .claude/worktrees/
+.claude/state/
+.claude/sessions/
