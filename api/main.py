@@ -4295,7 +4295,6 @@ def save_debate_to_obsidian(req: SaveDebateToObsidianRequest):
     relative_path = f"Debates/{filename}"
     return {"path": relative_path}
 
-
 @app.get("/api/analysis/network_risk")
 def api_network_risk(industry: str = ""):
     """業種コードまたは業種名からサプライチェーン波及リスクを計算する"""
