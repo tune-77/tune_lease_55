@@ -371,3 +371,21 @@ def test_1211_training_exception_rollback(tmp_path):
     assert (model_dir / retraining_pipeline.RF_MODEL_FILE).exists()
     restored_content = (model_dir / retraining_pipeline.RF_MODEL_FILE).read_bytes()
     assert restored_content == original_content, "旧モデルの内容が復元されていない"
+
+
+# ---------------------------------------------------------------------------
+# AC-1212: grade フラグが FEATURE_COLS に含まれていないことを検証（循環参照防止）
+# ---------------------------------------------------------------------------
+
+def test_1212_no_grade_flags_in_feature_cols():
+    """grade_4_6 / grade_watch / grade_none が FEATURE_COLS に含まれていないことを確認。
+
+    excluded_grade_cases(original_grade='9') を delinquent=1 のソースに使う設計上、
+    grade フラグを特徴量に含めると「格付9 → 全フラグ0」という循環参照 (circular reference) が
+    生まれ AUC=1.00 のデータリーケージを引き起こすため、意図的に除外する。
+    """
+    leakage_cols = {"grade_4_6", "grade_watch", "grade_none"}
+    found = leakage_cols & set(retraining_pipeline.FEATURE_COLS)
+    assert not found, (
+        f"循環参照を引き起こす grade フラグが FEATURE_COLS に含まれています: {found}"
+    )

@@ -50,7 +50,11 @@ FEATURE_COLS = [
     "sales_log", "bank_credit_log", "lease_credit_log",
     "op_profit", "ord_profit", "net_income", "machines", "other_assets", "rent",
     "gross_profit", "depreciation", "dep_expense", "rent_expense",
-    "grade_4_6", "grade_watch", "grade_none", "contracts",
+    # grade_4_6 / grade_watch / grade_none は意図的に除外する。
+    # excluded_grade_cases(original_grade='9') を delinquent=1 のソースに使う設計上、
+    # grade フラグを特徴量に含めると「格付9 → 全フラグ0」という循環参照が生まれ
+    # AUC=1.00 のデータリーケージを引き起こす (circular reference)。
+    "contracts",
 ]
 
 RF_MODEL_FILE = "spread_predictor_v2.pkl"
@@ -145,9 +149,10 @@ def _safe_float(v: object, default: float = 0.0) -> float:
 
 
 def _inputs_to_feature_row(inputs: dict) -> list[float]:
-    """inputs dict から FEATURE_COLS 順の特徴量リストを返す。analysis_regression.py と同じ変換。"""
+    """inputs dict から FEATURE_COLS 順の特徴量リストを返す。analysis_regression.py と同じ変換。
+    grade フラグ (grade_4_6/grade_watch/grade_none) は FEATURE_COLS から除外済み。
+    """
     major = str(inputs.get("industry_major") or "").strip()
-    grade = str(inputs.get("grade") or "").strip()
 
     ind_medical       = 1.0 if ("医療" in major or "福祉" in major) else 0.0
     ind_transport     = 1.0 if "運輸" in major else 0.0
@@ -155,13 +160,9 @@ def _inputs_to_feature_row(inputs: dict) -> list[float]:
     ind_manufacturing = 1.0 if "製造" in major else 0.0
     ind_service       = 1.0 if any(x in major for x in ["卸売", "小売", "サービス"]) else 0.0
 
-    nenshu      = max(_safe_float(inputs.get("nenshu")), 0.0)
-    bank_credit = max(_safe_float(inputs.get("bank_credit")), 0.0)
+    nenshu       = max(_safe_float(inputs.get("nenshu")), 0.0)
+    bank_credit  = max(_safe_float(inputs.get("bank_credit")), 0.0)
     lease_credit = max(_safe_float(inputs.get("lease_credit")), 0.0)
-
-    grade_4_6   = 1.0 if "4-6" in grade else 0.0
-    grade_watch = 1.0 if "要注意" in grade else 0.0
-    grade_none  = 1.0 if ("無格付" in grade or grade in ("0", "④無格付")) else 0.0
 
     return [
         ind_medical, ind_transport, ind_construction, ind_manufacturing, ind_service,
@@ -176,7 +177,6 @@ def _inputs_to_feature_row(inputs: dict) -> list[float]:
         _safe_float(inputs.get("depreciation")) / 1000.0,
         _safe_float(inputs.get("dep_expense"))  / 1000.0,
         _safe_float(inputs.get("rent_expense")) / 1000.0,
-        grade_4_6, grade_watch, grade_none,
         _safe_float(inputs.get("contracts")),
     ]
 
