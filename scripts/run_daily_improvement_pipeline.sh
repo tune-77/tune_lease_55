@@ -81,3 +81,4 @@ fi
 echo "Gist: https://gist.githubusercontent.com/tune-77/${GIST_ID}/raw/latest.json"
 echo "ログファイル: ${LOG_FILE}"
 echo "========================================"
+exit "${PIPELINE_EXIT}"

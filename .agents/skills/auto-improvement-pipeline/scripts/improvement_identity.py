@@ -45,7 +45,7 @@ _NOISE_PATTERNS = [
     r"対応済.*$",
     r"完了.*$",
     r"phase\s*\d+",
-    r"api",
+    r"(?<![a-z])api(?![a-z])",
     r"機能",
     r"追加",
     r"強化",
