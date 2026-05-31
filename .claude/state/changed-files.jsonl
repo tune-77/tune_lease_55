@@ -204,5 +204,7 @@
 {"file":"api/schemas.py","action":"Edit","timestamp":"2026-05-25T09:49:41Z","important":false}
 {"file":"api/gunshi_gemini.py","action":"Edit","timestamp":"2026-05-25T09:49:49Z","important":false}
 {"file":"api/main.py","action":"Edit","timestamp":"2026-05-25T09:50:22Z","important":false}
-{"file":"scoring/two_stage_model.py","action":"Write","timestamp":"2026-05-28T22:53:18Z","important":false}
-{"file":"dynamic_rate_engine.py","action":"Write","timestamp":"2026-05-28T22:53:50Z","important":false}
+{"file":"tests/test_dynamic_rate_engine.py","action":"Write","timestamp":"2026-05-28T22:54:18Z","important":false}
+{"file":"components/rate_suggestion.py","action":"Edit","timestamp":"2026-05-28T22:54:47Z","important":false}
+{"file":"edinet_collector.py","action":"Edit","timestamp":"2026-05-28T22:57:11Z","important":false}
+{"file":"tests/spec_phase4/test_P4-002.py","action":"Edit","timestamp":"2026-05-28T22:58:32Z","important":false}

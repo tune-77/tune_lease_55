@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 EDINET_BASE = "https://disclosure.edinet-api.go.jp/api/v2"
 API_TIMEOUT = 10
 RATE_SLEEP = 0.5
+COMPANY_CACHE_TTL_DAYS = 7
 
 
 class EdinetFinancialsResult(TypedDict):
@@ -79,8 +80,74 @@ def _get_db_connection(db_path: str) -> sqlite3.Connection:
             UNIQUE(corporate_number, fiscal_year)
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS edinet_company_list (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            corporate_number    TEXT    NOT NULL UNIQUE,
+            edinet_code         TEXT    NOT NULL,
+            filer_name          TEXT,
+            fetched_at          TEXT    NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
     conn.commit()
     return conn
+
+
+def _is_company_cache_fresh(conn: sqlite3.Connection) -> bool:
+    """企業一覧キャッシュが COMPANY_CACHE_TTL_DAYS 以内に取得済みかチェック。"""
+    try:
+        cutoff = (datetime.now() - timedelta(days=COMPANY_CACHE_TTL_DAYS)).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+        row = conn.execute(
+            "SELECT COUNT(*) FROM edinet_company_list WHERE fetched_at > ?",
+            (cutoff,),
+        ).fetchone()
+        return bool(row and row[0] > 0)
+    except Exception:
+        return False
+
+
+def _lookup_edinet_code_from_cache(
+    conn: sqlite3.Connection, corporate_number: str
+) -> str | None:
+    """キャッシュ済み企業一覧から edinetCode を返す。"""
+    try:
+        row = conn.execute(
+            "SELECT edinet_code FROM edinet_company_list WHERE corporate_number = ?",
+            (corporate_number,),
+        ).fetchone()
+        return row[0] if row else None
+    except Exception:
+        return None
+
+
+def _write_company_list_cache(
+    conn: sqlite3.Connection, companies: list[dict]
+) -> None:
+    """企業一覧を DB に全件 INSERT OR REPLACE（TTL リセット）。"""
+    try:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        conn.executemany(
+            """
+            INSERT OR REPLACE INTO edinet_company_list
+            (corporate_number, edinet_code, filer_name, fetched_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            [
+                (
+                    c.get("corporateNumber"),
+                    c.get("edinetCode"),
+                    c.get("filerName"),
+                    now,
+                )
+                for c in companies
+                if c.get("corporateNumber") and c.get("edinetCode")
+            ],
+        )
+        conn.commit()
+    except Exception as e:
+        logger.warning(f"[edinet_collector] company_list cache write error: {e}")
 
 
 def _check_cache(
@@ -236,9 +303,36 @@ def _parse_xbrl_financials(xbrl_bytes: bytes) -> dict:
 def resolve_edinet_code(
     corporate_number: str,
     api_key: str | None = None,
+    db_path: str | None = None,
 ) -> str | None:
-    """法人番号から EDINET 企業コードを解決する。見つからない場合は None。"""
+    """法人番号から EDINET 企業コードを解決する。見つからない場合は None。
+
+    db_path が指定された場合は edinet_company_list テーブルを 7 日 TTL で利用し、
+    companies.json への不要なリクエストを抑制する。
+    """
+    conn: sqlite3.Connection | None = None
+    if db_path:
+        try:
+            conn = _get_db_connection(db_path)
+        except Exception as e:
+            logger.warning(f"[edinet_collector] resolve_edinet_code db error: {e}")
+
     try:
+        # キャッシュが有効なら DB ルックアップのみで解決
+        if conn and _is_company_cache_fresh(conn):
+            edinet_code = _lookup_edinet_code_from_cache(conn, corporate_number)
+            if edinet_code is not None:
+                logger.debug(
+                    f"[edinet_collector] company_list cache hit for {corporate_number}"
+                )
+                return edinet_code
+            # キャッシュに見つからない場合も API は叩かない（登録なし）
+            logger.debug(
+                f"[edinet_collector] company_list cache miss (not registered): {corporate_number}"
+            )
+            return None
+
+        # キャッシュ未作成 or 期限切れ → API から全件取得してキャッシュ更新
         params: dict = {"type": "2"}
         if api_key:
             params["Subscription-Key"] = api_key
@@ -250,13 +344,21 @@ def resolve_edinet_code(
         )
         resp.raise_for_status()
         data = resp.json()
-        for company in data.get("results", []):
+        companies = data.get("results", [])
+
+        if conn:
+            _write_company_list_cache(conn, companies)
+
+        for company in companies:
             if company.get("corporateNumber") == corporate_number:
                 return company.get("edinetCode")
         return None
     except Exception as e:
         logger.warning(f"[edinet_collector] resolve_edinet_code error: {e}")
         return None
+    finally:
+        if conn:
+            conn.close()
 
 
 def _find_doc_id(edinet_code: str, fiscal_year: int, api_key: str | None) -> str | None:
@@ -369,10 +471,15 @@ def fetch_edinet_financials(
             conn.close()
             return cached
 
-    # EDINET Code 解決
+    # EDINET Code 解決（企業一覧キャッシュを利用）
+    # conn は resolve_edinet_code が db_path を内部で開閉するため一旦クローズする
+    if conn:
+        conn.close()
+        conn = None
+
     edinet_code: str | None = None
     try:
-        edinet_code = resolve_edinet_code(corporate_number, api_key)
+        edinet_code = resolve_edinet_code(corporate_number, api_key, db_path=db_path)
     except Exception as e:
         logger.warning(f"[edinet_collector] FALLBACK: resolve_edinet_code exception: {e}")
 
@@ -380,8 +487,6 @@ def fetch_edinet_financials(
         logger.warning(
             f"[edinet_collector] FALLBACK: edinetCode not resolved for {corporate_number}"
         )
-        if conn:
-            conn.close()
         return _fallback_result(error="edinetCode not found for the given corporate_number")
 
     # 書類 ID 取得
@@ -396,8 +501,6 @@ def fetch_edinet_financials(
             f"[edinet_collector] FALLBACK: annual report not found for "
             f"{edinet_code} {fiscal_year}"
         )
-        if conn:
-            conn.close()
         return _fallback_result(error="annual report not found")
 
     # XBRL ダウンロード & パース
@@ -409,8 +512,6 @@ def fetch_edinet_financials(
 
     if not financials:
         logger.warning(f"[edinet_collector] FALLBACK: XBRL parse failed for {doc_id}")
-        if conn:
-            conn.close()
         return _fallback_result(error="XBRL parse failed")
 
     logger.info(
@@ -418,10 +519,13 @@ def fetch_edinet_financials(
         f"fiscal_year={fiscal_year}"
     )
 
-    # BR-416: キャッシュ書き込み
-    if conn:
+    # BR-416: キャッシュ書き込み（DB 再接続）
+    try:
+        conn = _get_db_connection(db_path)
         _write_cache(conn, corporate_number, fiscal_year, edinet_code, financials)
         conn.close()
+    except Exception as e:
+        logger.warning(f"[edinet_collector] cache write error after fetch: {e}")
 
     return {
         "success": True,

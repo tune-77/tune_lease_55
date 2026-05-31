@@ -149,6 +149,10 @@ from edinet_collector import (
     resolve_edinet_code,
     _parse_xbrl_financials,
     _validate_corporate_number,
+    _get_db_connection,
+    _is_company_cache_fresh,
+    _lookup_edinet_code_from_cache,
+    _write_company_list_cache,
 )
 
 
@@ -410,3 +414,133 @@ def test_parse_xbrl_financials_basic():
     assert result["net_income"] == pytest.approx(200.0, abs=1.0)
     assert result["total_assets"] == pytest.approx(10000.0, abs=1.0)
     assert result["equity_ratio"] == pytest.approx(40.0, abs=0.1)
+
+
+# ---------------------------------------------------------------------------
+# 企業一覧キャッシュ（edinet_company_list）テスト
+# ---------------------------------------------------------------------------
+
+def _make_companies_list(corp_no: str = "1234567890123", code: str = "E12345") -> list[dict]:
+    return [
+        {"corporateNumber": corp_no, "edinetCode": code, "filerName": "テスト株式会社"},
+        {"corporateNumber": "9999999999991", "edinetCode": "E99999", "filerName": "他社"},
+    ]
+
+
+def test_company_cache_empty_on_fresh_db(tmp_path):
+    """新規DBは企業一覧キャッシュなし → _is_company_cache_fresh が False を返す。"""
+    db_path = str(tmp_path / "test.db")
+    conn = _get_db_connection(db_path)
+    assert _is_company_cache_fresh(conn) is False
+    conn.close()
+
+
+def test_company_cache_write_and_lookup(tmp_path):
+    """企業一覧を書き込んだ後に法人番号でルックアップできる。"""
+    db_path = str(tmp_path / "test.db")
+    conn = _get_db_connection(db_path)
+    _write_company_list_cache(conn, _make_companies_list())
+    assert _is_company_cache_fresh(conn) is True
+    assert _lookup_edinet_code_from_cache(conn, "1234567890123") == "E12345"
+    assert _lookup_edinet_code_from_cache(conn, "9999999999991") == "E99999"
+    assert _lookup_edinet_code_from_cache(conn, "0000000000000") is None
+    conn.close()
+
+
+def test_resolve_edinet_code_uses_company_cache(tmp_path):
+    """キャッシュが有効なら companies.json への HTTP リクエストが発行されない。"""
+    db_path = str(tmp_path / "test.db")
+    conn = _get_db_connection(db_path)
+    _write_company_list_cache(conn, _make_companies_list("1234567890123", "E12345"))
+    conn.close()
+
+    with patch("requests.get") as mock_get:
+        result = resolve_edinet_code("1234567890123", db_path=db_path)
+        mock_get.assert_not_called()
+
+    assert result == "E12345"
+
+
+def test_resolve_edinet_code_refreshes_stale_cache(tmp_path):
+    """企業一覧キャッシュが期限切れなら API を叩いてキャッシュを更新する。"""
+    import sqlite3 as _sqlite3
+
+    db_path = str(tmp_path / "test.db")
+    conn = _get_db_connection(db_path)
+    # 8日前のキャッシュを挿入
+    from datetime import datetime, timedelta
+    old_time = (datetime.now() - timedelta(days=8)).strftime("%Y-%m-%d %H:%M:%S")
+    conn.execute(
+        "INSERT INTO edinet_company_list (corporate_number, edinet_code, filer_name, fetched_at) VALUES (?,?,?,?)",
+        ("1234567890123", "E_OLD", "旧社名", old_time),
+    )
+    conn.commit()
+    conn.close()
+
+    fresh_response = MagicMock()
+    fresh_response.raise_for_status.return_value = None
+    fresh_response.json.return_value = {
+        "results": [{"corporateNumber": "1234567890123", "edinetCode": "E_NEW", "filerName": "新社名"}]
+    }
+
+    with patch("requests.get", return_value=fresh_response) as mock_get:
+        result = resolve_edinet_code("1234567890123", db_path=db_path)
+        mock_get.assert_called_once()
+
+    assert result == "E_NEW"
+
+    # キャッシュが更新されていること
+    conn2 = _sqlite3.connect(db_path)
+    row = conn2.execute(
+        "SELECT edinet_code FROM edinet_company_list WHERE corporate_number=?",
+        ("1234567890123",),
+    ).fetchone()
+    conn2.close()
+    assert row[0] == "E_NEW"
+
+
+def test_resolve_edinet_code_not_in_fresh_cache_returns_none(tmp_path):
+    """キャッシュが有効でも対象法人番号が存在しない場合は None を返す（API は叩かない）。"""
+    db_path = str(tmp_path / "test.db")
+    conn = _get_db_connection(db_path)
+    _write_company_list_cache(conn, _make_companies_list("9999999999991", "E99999"))
+    conn.close()
+
+    with patch("requests.get") as mock_get:
+        result = resolve_edinet_code("1234567890123", db_path=db_path)
+        mock_get.assert_not_called()
+
+    assert result is None
+
+
+def test_fetch_edinet_uses_company_cache_no_extra_api_call(tmp_path):
+    """fetch_edinet_financials が企業一覧キャッシュを利用し、
+    companies.json 呼び出しなしで正常取得できる。"""
+    db_path = _make_in_memory_db_path(tmp_path)
+    # 企業一覧キャッシュを事前に投入
+    conn = _get_db_connection(db_path)
+    _write_company_list_cache(conn, _make_companies_list("1234567890123", "E12345"))
+    conn.close()
+
+    call_log: list[str] = []
+
+    def _side_effect(url, **kwargs):
+        call_log.append(url)
+        resp = MagicMock()
+        resp.raise_for_status.return_value = None
+        if "companies.json" in url:
+            resp.json.return_value = {"results": []}  # 呼ばれても空を返す
+        elif "documents.json" in url:
+            resp.json.return_value = _make_documents_response("E12345", "S100XXXX")
+        elif "documents/S100XXXX" in url:
+            resp.content = _make_xbrl_zip()
+        else:
+            resp.json.return_value = {"results": []}
+        return resp
+
+    with patch("requests.get", side_effect=_side_effect):
+        result = fetch_edinet_financials("1234567890123", fiscal_year=2024, db_path=db_path)
+
+    assert result["success"] is True
+    assert not any("companies.json" in u for u in call_log), \
+        f"companies.json が呼ばれた: {call_log}"
