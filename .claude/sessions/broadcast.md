@@ -242,56 +242,20 @@
 ## 2026-05-25T09:50:45Z [b69490b2-5e0]
 📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
 
-## 2026-05-29T11:13:26Z [3ab72f67-53d]
+## 2026-05-28T12:11:40Z [97aaa6af-f5b]
 📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
 
-## 2026-05-29T12:29:06Z [3ab72f67-53d]
+## 2026-05-28T12:11:54Z [97aaa6af-f5b]
 📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
 
-## 2026-05-29T12:35:41Z [3ab72f67-53d]
-📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
+## 2026-05-28T12:45:19Z [524ecdc5-db6]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/knowledge/obsidian_loader.py` が変更されました: パターン 'api/' にマッチ
 
-## 2026-05-29T12:40:41Z [3ab72f67-53d]
-📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
+## 2026-05-28T12:45:21Z [524ecdc5-db6]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/knowledge/policy_loader.py` が変更されました: パターン 'api/' にマッチ
 
-## 2026-05-29T12:50:03Z [3ab72f67-53d]
-📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
+## 2026-05-28T12:45:22Z [524ecdc5-db6]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/knowledge/feedback_watcher.py` が変更されました: パターン 'api/' にマッチ
 
-## 2026-05-29T21:07:50Z [3ab72f67-53d]
-📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
-
-## 2026-05-30T05:51:37Z [26f5c172-020]
-📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
-
-## 2026-05-30T05:51:53Z [26f5c172-020]
-📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
-
-## 2026-05-30T06:07:33Z [26f5c172-020]
-📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/.claude/skills/restart-api/skill.md` が変更されました: パターン 'api/' にマッチ
-
-## 2026-05-30T07:41:48Z [26f5c172-020]
-📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
-
-## 2026-05-30T07:48:56Z [26f5c172-020]
-📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
-
-## 2026-05-30T07:53:25Z [26f5c172-020]
-📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
-
-## 2026-05-30T07:56:13Z [26f5c172-020]
-📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
-
-## 2026-05-30T07:59:45Z [26f5c172-020]
-📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
-
-## 2026-05-30T08:01:07Z [26f5c172-020]
-📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
-
-## 2026-05-30T08:01:23Z [26f5c172-020]
-📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
-
-## 2026-05-30T08:13:09Z [26f5c172-020]
-📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
-
-## 2026-05-30T08:13:34Z [26f5c172-020]
-📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py` が変更されました: パターン 'api/' にマッチ
+## 2026-05-28T12:45:23Z [524ecdc5-db6]
+📁 `/Users/kobayashiisaoryou/clawd/tune_lease_55/api/crystallizer/obsidian_writer.py` が変更されました: パターン 'api/' にマッチ

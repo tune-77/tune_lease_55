@@ -56,6 +56,9 @@ FEATURE_COLS = [
     # AUC=1.00 のデータリーケージを引き起こす (circular reference)。
     "contracts",
 ]
+# grade_4_6 / grade_watch / grade_none を除外した理由:
+# ラベル(delinquent=1)は excluded_grade_cases.original_grade='9' で決まり、
+# inputs.grade も同じ格付を格納しているため grade フラグがラベルと直接相関し AUC=1.00 となる循環参照が生じていた。
 
 RF_MODEL_FILE = "spread_predictor_v2.pkl"
 LGBM_MODEL_FILE = "lgbm_model.pkl"
@@ -572,6 +575,31 @@ def run_retraining(
                 prev_auc=prev_auc,
                 rollback_reason=f"training exception: {exc}" if not dry_run else None,
                 error=str(exc) if dry_run else None,
+            )
+            _log_to_db(db_path, triggered_by, result, started_at)
+            return result
+
+        # データリーケージ疑義チェック: AUC が 0.99 超は循環参照の可能性が高い
+        if new_auc is not None and new_auc > 0.99:
+            logger.warning(
+                "[retraining_pipeline] phase=leakage_suspect new_auc=%.4f > 0.99"
+                " — 特徴量にラベルと相関する列が混入している可能性があります。"
+                " FEATURE_COLS を確認してください。",
+                new_auc,
+            )
+            if not dry_run:
+                _restore_backup(model_dir_path)
+            result = _make_result(
+                status="rolled_back" if not dry_run else "error",
+                records_used=n_records,
+                new_auc=new_auc,
+                prev_auc=prev_auc,
+                rollback_reason=(
+                    f"data_leakage_suspect: new_auc={new_auc:.4f} > 0.99"
+                ) if not dry_run else None,
+                error=(
+                    f"data_leakage_suspect: new_auc={new_auc:.4f} > 0.99"
+                ) if dry_run else None,
             )
             _log_to_db(db_path, triggered_by, result, started_at)
             return result
