@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import hashlib
 import json
 import re
 import sys
@@ -24,6 +25,14 @@ except ImportError:
     def canonical_key(title: str, description: str = "") -> str:
         normalized = re.sub(r"\s+", " ", f"{title} {description}".strip().lower())
         return normalized[:80]
+
+
+def _title_key(title: str) -> str:
+    """タイトル単体で安定する台帳照合キーを返す."""
+    normalized = re.sub(r"\s+", " ", str(title or "").strip().lower())
+    normalized = re.sub(r"[\s　・/（）()【】\[\]「」:：,，.。_-]+", "", normalized)
+    digest = hashlib.sha1(normalized.encode("utf-8")).hexdigest()[:12]
+    return f"title_{digest}"
 
 # Vault パス候補（環境変数 OBSIDIAN_VAULT_PATH > iCloud パス）
 _DEFAULT_VAULT_PATHS = [
@@ -107,7 +116,9 @@ def _extract_wiki_links(text: str) -> list[str]:
 
 def _is_applied_title(title: str, applied_keys: set[str] | None = None) -> bool:
     """台帳上 applied 済みの改善タイトルか判定する."""
-    return bool(applied_keys and canonical_key(title) in applied_keys)
+    if not applied_keys:
+        return False
+    return _title_key(title) in applied_keys or canonical_key(title) in applied_keys
 
 
 def _convert_to_pipeline_text(
@@ -306,6 +317,9 @@ def _load_applied_ledger_keys() -> set[str]:
             status = str(entry.get("status", ""))
             if key:
                 latest_by_key[key] = status
+            title_key = _title_key(title)
+            if title_key:
+                latest_by_key[title_key] = status
     except OSError:
         return set()
 
@@ -347,7 +361,7 @@ def extract_improvements_from_ai_chat_logs(vault: Path) -> str:
             decision = m.group(2).strip().lower()
             if decision not in _ACTIVE_AI_CHAT_DECISIONS:
                 continue
-            if canonical_key(item_title) in applied_keys:
+            if _title_key(item_title) in applied_keys or canonical_key(item_title) in applied_keys:
                 continue
             if len(item_title) > 5:
                 file_parts.append(f"[改善] {item_title}")
