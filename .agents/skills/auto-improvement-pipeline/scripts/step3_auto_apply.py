@@ -30,6 +30,18 @@ except ImportError:
     pass
 
 try:
+    from auto_fix_policy import evaluate_auto_fix_policy  # type: ignore[import]
+except ImportError:
+    def evaluate_auto_fix_policy(improvement: dict[str, Any], workspace_root: str | Path | None = None) -> dict[str, Any]:
+        return {
+            "auto_fix_allowed": False,
+            "reason": "auto_fix_policy unavailable",
+            "risk": "unknown",
+            "max_files": 0,
+            "required_checks": [],
+        }
+
+try:
     from claude_agent_runner import run_claude_agent, _find_claude_bin  # type: ignore[import]
     _AGENT_RUNNER_AVAILABLE = True
 except ImportError:
@@ -151,6 +163,12 @@ try:
 except ImportError:
     _ledger = None  # type: ignore[assignment]
 
+try:
+    from improvement_identity import canonical_key as _canonical_key
+except ImportError:
+    def _canonical_key(title: str, description: str = "") -> str:
+        return ""
+
 
 def _result(action: str, reason: str, **extra: Any) -> dict[str, Any]:
     """apply_improvement の戻り値ヘルパー."""
@@ -205,7 +223,11 @@ class Step3AutoApplier:
         # [#4] 台帳重複チェック（処理済みならスキップ）
         _ledger_key: str | None = None
         if _LEDGER_AVAILABLE:
-            _ledger_key = _ledger.compute_key(title, improvement.get("description", ""))
+            _ledger_key = (
+                str(improvement.get("canonical_key") or "")
+                or _canonical_key(title, improvement.get("description", ""))
+                or _ledger.compute_key(title, improvement.get("description", ""))
+            )
             already, done_status = _ledger.is_processed(_ledger_key)
             if already:
                 logger.info("skip: already processed (%s)", done_status)
@@ -217,6 +239,26 @@ class Step3AutoApplier:
             self._rejected.append({"id": imp_id, "title": title, "reason": reason})
             return _result("skipped", reason)
 
+        policy = evaluate_auto_fix_policy(improvement, self.workspace_root)
+        if not policy.get("auto_fix_allowed"):
+            reason = f"auto_fix_policy: {policy.get('reason', '自動修正対象外')}"
+            self._needs_review.append({
+                "id": imp_id,
+                "title": title,
+                "reason": reason,
+                "detail": improvement.get("description", "")[:300],
+                "auto_fix_policy": policy,
+            })
+            if _LEDGER_AVAILABLE and _ledger_key:
+                _ledger.record(
+                    _ledger_key,
+                    "needs_review",
+                    title,
+                    reason=reason,
+                    canonical_key=str(improvement.get("canonical_key", "")),
+                )
+            return _result("needs_review", reason)
+
         # NEEDS_REVIEW 判定
         needs_review, review_reason = self._check_needs_review(improvement, validation_result)
         if needs_review:
@@ -227,7 +269,13 @@ class Step3AutoApplier:
                 "detail": improvement.get("description", "")[:300],
             })
             if _LEDGER_AVAILABLE and _ledger_key:
-                _ledger.record(_ledger_key, "needs_review", title, reason=review_reason)
+                _ledger.record(
+                    _ledger_key,
+                    "needs_review",
+                    title,
+                    reason=review_reason,
+                    canonical_key=str(improvement.get("canonical_key", "")),
+                )
             return _result("needs_review", review_reason)
 
         # 対象ファイル特定
@@ -241,7 +289,13 @@ class Step3AutoApplier:
                 "detail": str(patch_file),
             })
             if _LEDGER_AVAILABLE and _ledger_key:
-                _ledger.record(_ledger_key, "needs_review", title, reason="対象ファイル不明")
+                _ledger.record(
+                    _ledger_key,
+                    "needs_review",
+                    title,
+                    reason="対象ファイル不明",
+                    canonical_key=str(improvement.get("canonical_key", "")),
+                )
             return _result("needs_review", "対象ファイル不明", patch_file=str(patch_file))
 
         # [#5] 書き換え禁止リストチェック
@@ -254,7 +308,13 @@ class Step3AutoApplier:
                 "detail": str(target_file.relative_to(self.workspace_root)),
             })
             if _LEDGER_AVAILABLE and _ledger_key:
-                _ledger.record(_ledger_key, "needs_review", title, reason=denylist_reason)
+                _ledger.record(
+                    _ledger_key,
+                    "needs_review",
+                    title,
+                    reason=denylist_reason,
+                    canonical_key=str(improvement.get("canonical_key", "")),
+                )
             return _result("needs_review", denylist_reason)
 
         # コード生成（Codex → Claude → Gemini フォールバック）
@@ -271,7 +331,13 @@ class Step3AutoApplier:
                 "detail": str(patch_file),
             })
             if _LEDGER_AVAILABLE and _ledger_key:
-                _ledger.record(_ledger_key, "needs_review", title, reason="コード生成失敗")
+                _ledger.record(
+                    _ledger_key,
+                    "needs_review",
+                    title,
+                    reason="コード生成失敗",
+                    canonical_key=str(improvement.get("canonical_key", "")),
+                )
             return _result("needs_review", "コード生成失敗", patch_file=str(patch_file))
 
         # ローカルテスト（現ブランチ上で試験的に書き換え → テスト → 元に戻す）
@@ -288,7 +354,13 @@ class Step3AutoApplier:
                 "detail": str(patch_file),
             })
             if _LEDGER_AVAILABLE and _ledger_key:
-                _ledger.record(_ledger_key, "needs_review", title, reason=f"健全性チェック失敗: {sanity_reason}")
+                _ledger.record(
+                    _ledger_key,
+                    "needs_review",
+                    title,
+                    reason=f"健全性チェック失敗: {sanity_reason}",
+                    canonical_key=str(improvement.get("canonical_key", "")),
+                )
             return _result("needs_review", f"健全性チェック失敗: {sanity_reason}", patch_file=str(patch_file))
 
 
@@ -306,7 +378,13 @@ class Step3AutoApplier:
                 "detail": str(patch_file),
             })
             if _LEDGER_AVAILABLE and _ledger_key:
-                _ledger.record(_ledger_key, "needs_review", title, reason="テスト環境未整備")
+                _ledger.record(
+                    _ledger_key,
+                    "needs_review",
+                    title,
+                    reason="テスト環境未整備",
+                    canonical_key=str(improvement.get("canonical_key", "")),
+                )
             return _result("needs_review", "テスト環境未整備", patch_file=str(patch_file))
 
         if not test_ok:
@@ -318,7 +396,13 @@ class Step3AutoApplier:
                 "detail": str(patch_file),
             })
             if _LEDGER_AVAILABLE and _ledger_key:
-                _ledger.record(_ledger_key, "needs_review", title, reason="テスト失敗")
+                _ledger.record(
+                    _ledger_key,
+                    "needs_review",
+                    title,
+                    reason="テスト失敗",
+                    canonical_key=str(improvement.get("canonical_key", "")),
+                )
             return _result("needs_review", "テスト失敗", patch_file=str(patch_file))
 
         # テスト通過 → 保留リストへ追加（ブランチ切り替え後に実適用）
@@ -327,10 +411,16 @@ class Step3AutoApplier:
             "id": imp_id,
             "file": str(target_file.relative_to(self.workspace_root)),
             "title": title,
+            "canonical_key": str(improvement.get("canonical_key", "")),
             "pr_url": None,  # git_commit_and_push 後に更新
         })
         if _LEDGER_AVAILABLE and _ledger_key:
-            _ledger.record(_ledger_key, "applied", title)
+            _ledger.record(
+                _ledger_key,
+                "applied",
+                title,
+                canonical_key=str(improvement.get("canonical_key", "")),
+            )
         return _result("applied", "テスト通過・適用予定")
 
     def git_commit_and_push(self) -> dict[str, Any]:
@@ -419,11 +509,18 @@ class Step3AutoApplier:
                 logger.warning("push保留: リモートへの push 失敗: %s", push_err)
                 if _LEDGER_AVAILABLE:
                     for entry in self._applied:
-                        _ledger_key_push = _ledger.compute_key(
-                            entry["title"], entry.get("file", "")
+                        _ledger_key_push = (
+                            str(entry.get("canonical_key") or "")
+                            or _canonical_key(entry["title"], entry.get("file", ""))
+                            or _ledger.compute_key(entry["title"], entry.get("file", ""))
                         )
-                        _ledger.record(_ledger_key_push, "push_pending", entry["title"],
-                                       reason="push失敗: ネットワーク不達")
+                        _ledger.record(
+                            _ledger_key_push,
+                            "push_pending",
+                            entry["title"],
+                            reason="push失敗: ネットワーク不達",
+                            canonical_key=str(entry.get("canonical_key", "")),
+                        )
                 # PR 作成はスキップして commit_hash のみ返す
                 if original_branch:
                     subprocess.run(
@@ -1028,10 +1125,27 @@ class Step3AutoApplier:
         if not target_module:
             return None
 
-        name = target_module if target_module.endswith(".py") else f"{target_module}.py"
+        target = Path(target_module)
+        if target.is_absolute() and target.is_file():
+            try:
+                target.relative_to(self.workspace_root)
+            except ValueError:
+                return None
+            return target
+
+        if target.suffix:
+            direct = self.workspace_root / target
+            if direct.is_file():
+                return direct
+            name = target.name
+        else:
+            name = f"{target_module}.py"
 
         candidates = [
             self.workspace_root / name,
+            self.workspace_root / target_module,
+            self.workspace_root / "frontend" / "src" / target_module,
+            self.workspace_root / "frontend" / "src" / name,
             self.workspace_root / "components" / name,
             self.workspace_root / "scoring" / name,
             self.workspace_root / "api" / name,
@@ -1177,6 +1291,36 @@ def _run_claude_agent_flow(
     imp_id = improvement.get("id", "?")
     title = improvement.get("title", "")
 
+    policy = evaluate_auto_fix_policy(improvement, applier.workspace_root)
+    if not policy.get("auto_fix_allowed"):
+        reason = f"auto_fix_policy: {policy.get('reason', '自動修正対象外')}"
+        applier._needs_review.append({
+            "id": imp_id,
+            "title": title,
+            "reason": reason,
+            "detail": improvement.get("description", "")[:300],
+            "auto_fix_policy": policy,
+        })
+        if _LEDGER_AVAILABLE:
+            ledger_key = (
+                str(improvement.get("canonical_key") or "")
+                or _canonical_key(title, improvement.get("description", ""))
+                or _ledger.compute_key(title, improvement.get("description", ""))
+            )
+            _ledger.record(
+                ledger_key,
+                "needs_review",
+                title,
+                reason=reason,
+                canonical_key=str(improvement.get("canonical_key", "")),
+            )
+        return {
+            "action": "needs_review",
+            "reason": reason,
+            "size": size,
+            "auto_fix_policy": policy,
+        }
+
     if size == "manual":
         applier._needs_review.append({
             "id": imp_id,
@@ -1201,12 +1345,26 @@ def _run_claude_agent_flow(
     merged = agent_result.get("merged", False)
 
     if size == "auto":
+        ledger_key = (
+            str(improvement.get("canonical_key") or "")
+            or _canonical_key(title, improvement.get("description", ""))
+            or (_ledger.compute_key(title, improvement.get("description", "")) if _LEDGER_AVAILABLE else "")
+        )
         applier._applied.append({
             "id": imp_id,
             "file": improvement.get("target_module", ""),
             "title": title,
+            "canonical_key": str(improvement.get("canonical_key", "")),
             "pr_url": pr_url,
         })
+        if _LEDGER_AVAILABLE and ledger_key:
+            _ledger.record(
+                ledger_key,
+                "applied",
+                title,
+                pr_url=pr_url,
+                canonical_key=str(improvement.get("canonical_key", "")),
+            )
         action_label = "✅ AGENT-AUTO-MERGED" if merged else "✅ AGENT-AUTO"
         print(f"  [{imp_id}] {action_label}: {pr_url}")
         return {"action": "applied", "reason": f"claude-agent auto (merged={merged})",
@@ -1219,6 +1377,20 @@ def _run_claude_agent_flow(
         "reason": f"approval: 承認待ちPR #{pr_number}",
         "detail": pr_url,
     })
+    if _LEDGER_AVAILABLE:
+        ledger_key = (
+            str(improvement.get("canonical_key") or "")
+            or _canonical_key(title, improvement.get("description", ""))
+            or _ledger.compute_key(title, improvement.get("description", ""))
+        )
+        _ledger.record(
+            ledger_key,
+            "needs_review",
+            title,
+            pr_url=pr_url,
+            reason=f"approval: 承認待ちPR #{pr_number}",
+            canonical_key=str(improvement.get("canonical_key", "")),
+        )
     if _DISPATCH_NOTIFIER_AVAILABLE:
         notify_pending_approval(pr_number, pr_url, title, size)
     print(f"  [{imp_id}] 📋 AGENT-APPROVAL: PR #{pr_number} 承認待ち → {pr_url}")
@@ -1269,9 +1441,12 @@ def apply_improvements_pipeline(
 
     # 適用済みに対して元ノートへのフラグ書き戻し + Obsidian 同期
     applied_ids = {e["id"] for e in applier._applied}
-    pr_url = commit_result.get("pr_url") or ""
+    applied_by_id = {e["id"]: e for e in applier._applied}
+    default_pr_url = commit_result.get("pr_url") or ""
     for imp, val in zip(improvements, validation_results):
         if imp.get("id") in applied_ids:
+            entry = applied_by_id.get(imp.get("id"), {})
+            pr_url = entry.get("pr_url") or default_pr_url
             applier.write_back_obsidian_flag(imp, pr_url)
             applier.sync_obsidian_knowledge(imp, val)
 

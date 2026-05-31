@@ -157,6 +157,42 @@ const sections: FaqSection[] = [
     ],
   },
 
+  {
+    id: 'q-risk',
+    title: 'Q_riskの考え方',
+    icon: <Cpu className="w-5 h-5" />,
+    color: 'text-violet-600',
+    items: [
+      {
+        q: 'Q_riskとは何ですか？',
+        a: (
+          <div className="space-y-3">
+            <p>
+              <strong>既存スコアだけでは説明できない成約・失注の歪みを見つける探索シグナル</strong>です。
+              旧来の財務矛盾スコアや減点係数として固定せず、スコアリング外で成約を動かす要因を探します。
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {[
+                { label: '高スコア失注', desc: 'スコアは強いのに、金利・競合・条件提示後離脱で取れない案件。' },
+                { label: '低スコア成約', desc: 'スコアは弱いのに、銀行支援・前受金・補助金・物件換金性で取れる案件。' },
+                { label: '同スコア帯の分岐', desc: '同じスコア帯でも、営業部・業種細分・物件・提案順序で結果が割れる案件。' },
+                { label: '非スコア因子', desc: '価格、競合、銀行支援、補助金タイミング、営業導線、顧客の急ぎ度。' },
+              ].map(i => (
+                <div key={i.label} className="rounded-lg bg-white border border-violet-100 p-3">
+                  <p className="text-xs font-black text-violet-700 mb-1">{i.label}</p>
+                  <p className="text-xs text-slate-600 leading-relaxed">{i.desc}</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-500 bg-white border border-slate-200 rounded-lg p-2">
+              Q_riskはスコアを自動で下げるための指標ではありません。成約の正体を探すため、優先的に深掘りする対象を示します。
+            </p>
+          </div>
+        ),
+      },
+    ],
+  },
+
   // REV-069: 高額工事費リース審査基準
   {
     id: 'construction-faq',

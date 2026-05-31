@@ -237,3 +237,5 @@
 {"file":"frontend/src/app/subsidy/page.tsx","action":"Write","timestamp":"2026-05-29T21:10:02Z","important":false}
 {"file":"frontend/src/app/industry-stats/page.tsx","action":"Write","timestamp":"2026-05-29T21:10:53Z","important":false}
 {"file":"frontend/src/components/layout/Sidebar.tsx","action":"Edit","timestamp":"2026-05-29T21:11:02Z","important":false}
+{"file":"scripts/run_daily_improvement_pipeline.sh","action":"Edit","timestamp":"2026-05-30T21:11:45Z","important":false}
+{"file":"frontend/src/components/analysis/ObsidianReviewGraph.tsx","action":"Edit","timestamp":"2026-05-30T21:18:02Z","important":false}

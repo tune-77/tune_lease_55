@@ -15,6 +15,10 @@ try:
     from step1_extract_and_structure import extract_improvements_as_json
     from step2_validation_checker import validate_improvements_batch
     from step3_auto_apply import apply_improvements_pipeline
+    from improvement_deduplicator import deduplicate_improvements
+    from implementation_ranker import rank_improvements
+    from obsidian_compliance_checker import check_obsidian_compliance
+    from auto_fix_policy import evaluate_auto_fix_policy
 except ImportError as e:
     print(f"❌ スクリプトインポートエラー: {e}")
     sys.exit(1)
@@ -85,6 +89,55 @@ class ImprovementPipeline:
                 "validations": [],
                 "applied": [],
             }
+
+        original_improvements = improvements
+
+        # ====================
+        # Step 1.5: 統合・重複排除
+        # ====================
+        print("【Step 1.5】改善案を統合・重複排除中...")
+
+        try:
+            improvements, grouped_improvements = deduplicate_improvements(improvements)
+            duplicate_count = sum(g.get("duplicate_count", 0) for g in grouped_improvements)
+            print(
+                f"✅ 統合完了: {len(original_improvements)}件 → "
+                f"{len(improvements)}件（重複 {duplicate_count}件）\n"
+            )
+        except Exception as e:
+            print(f"❌ Step 1.5 失敗: {e}")
+            return {
+                "status": "FAILED",
+                "step": 1.5,
+                "error": str(e),
+                "improvements": original_improvements,
+            }
+
+        # ====================
+        # Step 1.6: 実装可能性ランク付け
+        # ====================
+        print("【Step 1.6】実装可能性と改善順を判定中...")
+
+        try:
+            improvements, recommended_order = rank_improvements(improvements)
+            print(f"✅ 優先順を作成しました: {len(recommended_order)}件\n")
+            for item in recommended_order[:5]:
+                print(
+                    f"  {item['order']:02d}. [{item['id']}] {item['title']} "
+                    f"({item['category']}, score={item['priority_score']})"
+                )
+            if len(recommended_order) > 5:
+                print(f"  ... 他 {len(recommended_order) - 5}件")
+            print()
+        except Exception as e:
+            print(f"❌ Step 1.6 失敗: {e}")
+            return {
+                "status": "FAILED",
+                "step": 1.6,
+                "error": str(e),
+                "improvements": improvements,
+                "grouped_improvements": grouped_improvements,
+            }
         
         # ====================
         # Step 2: 妥当性検証
@@ -114,6 +167,32 @@ class ImprovementPipeline:
                 "step": 2,
                 "error": str(e),
             }
+
+        # ====================
+        # Step 2.5: Obsidian連携整合性チェック
+        # ====================
+        print("\n【Step 2.5】Obsidian連携ルールを確認中...")
+
+        try:
+            obsidian_compliance = check_obsidian_compliance(improvements, self.workspace_root)
+            violation_count = len(obsidian_compliance.get("violations", []))
+            route_count = len(obsidian_compliance.get("route_sensitive_ids", []))
+            print(
+                f"✅ Obsidian整合性チェック完了: "
+                f"status={obsidian_compliance.get('status')}, "
+                f"violations={violation_count}, route_sensitive={route_count}\n"
+            )
+        except Exception as e:
+            print(f"❌ Step 2.5 失敗: {e}")
+            return {
+                "status": "FAILED",
+                "step": 2.5,
+                "error": str(e),
+                "improvements": improvements,
+                "validations": validation_results,
+                "grouped_improvements": grouped_improvements,
+                "recommended_order": recommended_order,
+            }
         
         # ====================
         # Step 3: 自動修正・デプロイ
@@ -125,22 +204,46 @@ class ImprovementPipeline:
         
         try:
             if dry_run:
-                # Dry run: 承認された改善をリストアップするのみ
+                # Dry run: 承認された改善を小規模自動修正候補と要確認に分ける
                 approved_improvements = [
                     imp for imp, val in zip(improvements, validation_results)
                     if val["status"] == "APPROVED"
                 ]
+                auto_fix_candidates: list[dict[str, Any]] = []
+                policy_needs_review: list[dict[str, Any]] = []
+                for imp in approved_improvements:
+                    policy = evaluate_auto_fix_policy(imp, self.workspace_root)
+                    item = {
+                        "id": imp.get("id"),
+                        "title": imp.get("title"),
+                        "canonical_key": imp.get("canonical_key"),
+                        "auto_fix_policy": policy,
+                    }
+                    if policy.get("auto_fix_allowed"):
+                        auto_fix_candidates.append(item)
+                    else:
+                        policy_needs_review.append(item)
                 
                 result = {
                     "status": "DRY_RUN_COMPLETE",
+                    "original_improvements": original_improvements,
                     "improvements": improvements,
                     "validations": validation_results,
                     "approved_improvements": approved_improvements,
+                    "auto_fix_candidates": auto_fix_candidates,
+                    "policy_needs_review": policy_needs_review,
+                    "grouped_improvements": grouped_improvements,
+                    "recommended_order": recommended_order,
+                    "obsidian_compliance": obsidian_compliance,
                     "applied_count": 0,
                     "failed_count": 0,
                 }
                 
-                print(f"✅ Dry run 完了: {len(approved_improvements)}件の改善が適用可能です")
+                print(
+                    "✅ Dry run 完了: "
+                    f"自動修正候補 {len(auto_fix_candidates)}件, "
+                    f"ポリシー要確認 {len(policy_needs_review)}件"
+                )
             
             else:
                 # 本実行: 改善を適用
@@ -150,8 +253,12 @@ class ImprovementPipeline:
                     self.workspace_root,
                 )
                 
+                result["original_improvements"] = original_improvements
                 result["improvements"] = improvements
                 result["validations"] = validation_results
+                result["grouped_improvements"] = grouped_improvements
+                result["recommended_order"] = recommended_order
+                result["obsidian_compliance"] = obsidian_compliance
                 result["status"] = "COMPLETED" if result["applied_count"] > 0 else "NO_APPLIED"
                 
                 print(f"✅ 自動修正完了: {result['applied_count']}件適用, {result['failed_count']}件失敗")
@@ -164,8 +271,12 @@ class ImprovementPipeline:
                 "status": "FAILED",
                 "step": 3,
                 "error": str(e),
+                "original_improvements": original_improvements,
                 "improvements": improvements,
                 "validations": validation_results,
+                "grouped_improvements": grouped_improvements,
+                "recommended_order": recommended_order,
+                "obsidian_compliance": obsidian_compliance,
             }
         
         return result

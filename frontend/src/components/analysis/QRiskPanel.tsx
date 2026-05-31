@@ -13,7 +13,7 @@ function getLevel(q: number): QRiskLevel {
 
 const LEVEL_CONFIG = {
   normal: {
-    label: '通常',
+    label: '観測低',
     badge: 'bg-emerald-100 text-emerald-700 border-emerald-200',
     bar: 'bg-emerald-400',
     wrap: 'bg-white border-slate-200',
@@ -21,7 +21,7 @@ const LEVEL_CONFIG = {
     hdr: 'text-slate-700',
   },
   caution: {
-    label: '要注意',
+    label: '探索対象',
     badge: 'bg-amber-100 text-amber-700 border-amber-200',
     bar: 'bg-amber-400',
     wrap: 'bg-amber-50 border-amber-200',
@@ -29,7 +29,7 @@ const LEVEL_CONFIG = {
     hdr: 'text-amber-800',
   },
   critical: {
-    label: '強警戒',
+    label: '重点探索',
     badge: 'bg-rose-100 text-rose-700 border-rose-200',
     bar: 'bg-rose-500',
     wrap: 'bg-rose-50 border-rose-300',
@@ -38,17 +38,17 @@ const LEVEL_CONFIG = {
   },
 };
 
-// REV-114: Q_risk が高い場合の審査影響
+// NEXT版: Q_risk は旧式の財務矛盾スコアではなく、成約外因子の探索軸として表示する。
 const CAUTION_IMPACTS = [
-  { label: '財務整合性の再確認', detail: '3期分の財務諸表（PL・BS・CF計算書）の数値整合性を手動でクロスチェックしてください。' },
-  { label: '減価償却・固定資産の矛盾確認', detail: '減価償却費と固定資産残高の推移に矛盾がないか確認。急激な減少・増加がある場合は詳細説明を要求。' },
-  { label: '営業CFと利益の乖離確認', detail: '営業キャッシュフローと営業利益の乖離が大きい場合は、売掛金回収状況や棚卸評価の適正性を確認。' },
+  { label: '高スコア失注・低スコア成約の確認', detail: '信用スコアだけでは説明できない結果差を抽出し、価格、競合、営業導線、顧客事情を比較してください。' },
+  { label: '条件提示後の離脱要因', detail: '金利、前受金、保証、期間短縮、競合条件への反応を確認し、成約を動かした非スコア因子をタグ化してください。' },
+  { label: '物件・補助金・銀行支援の橋渡し', detail: '物件換金性、補助金の入金タイミング、銀行支援の具体性がスコア外の安心材料になっていないか確認してください。' },
 ];
 
 const CRITICAL_IMPACTS = [
   ...CAUTION_IMPACTS,
-  { label: '信用リスク群との複合警戒', detail: '信用リスクスコアが高水準かつQ_riskも高水準です。財務データの信頼性に重大な疑義がある可能性があります。第三者機関（公認会計士等）の確認を推奨します。' },
-  { label: '追加書類の強制要求', detail: '勘定科目内訳書・補助元帳・仕入先別明細などの補助資料提出を必須条件として設定してください。' },
+  { label: '同スコア帯の結果分岐', detail: '同じスコア帯で成約・失注が割れる案件を並べ、営業部、業種細分、物件、提案順序、決裁者事情を比較してください。' },
+  { label: '成約ストーリーの不足', detail: '稟議で通る説明、顧客の導入期限、銀行紹介の強さ、代替条件の提示有無を確認し、次回の提案条件へ戻してください。' },
 ];
 
 type Props = {
@@ -70,13 +70,13 @@ export default function QRiskPanel({ quantumRisk, creditQuantumStrongWarning = f
       {/* ヘッダー */}
       <div className="flex items-center gap-2 flex-wrap">
         <Activity className="w-5 h-5 text-slate-500 flex-shrink-0" />
-        <span className={`font-black text-sm ${cfg.hdr}`}>量子干渉リスク（Q_risk）</span>
+        <span className={`font-black text-sm ${cfg.hdr}`}>成約外因子探索（Q_risk）</span>
         <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${cfg.badge}`}>
           {cfg.label} {quantumRisk.toFixed(1)}
         </span>
         {creditQuantumStrongWarning && (
           <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-600 text-white">
-            信用×Q_risk 強警戒
+            信用×成約外因子 分岐注意
           </span>
         )}
         {compact && (
@@ -95,8 +95,8 @@ export default function QRiskPanel({ quantumRisk, creditQuantumStrongWarning = f
           <div className="mt-3 flex items-start gap-2 p-2.5 bg-white/70 rounded-lg border border-slate-200">
             <Info className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" />
             <p className="text-[11px] text-slate-600 leading-relaxed">
-              <strong>Q_riskとは：</strong>財務データの内部矛盾（利益率・減価償却・借入金・キャッシュフローの整合性）を量子干渉アルゴリズムで検出するリスクスコアです。
-              値が高いほど財務データに矛盾・異常が多いことを示し、スコアリング精度に影響する場合があります。
+              <strong>Q_riskとは：</strong>既存スコアだけでは説明できない成約・失注の歪みを見つける探索シグナルです。
+              今までの計算式や財務矛盾スコアには固定せず、高スコア失注、低スコア成約、同スコア帯の結果分岐から、価格・競合・銀行支援・補助金・物件換金性・営業導線などの非スコア因子を探します。
             </p>
           </div>
 
@@ -104,8 +104,8 @@ export default function QRiskPanel({ quantumRisk, creditQuantumStrongWarning = f
           <div className="mt-3">
             <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1 font-bold">
               <span>0</span>
-              <span className="text-emerald-600">35 要注意</span>
-              <span className="text-rose-600">60 強警戒</span>
+              <span className="text-emerald-600">35 探索対象</span>
+              <span className="text-rose-600">60 重点探索</span>
               <span>100</span>
             </div>
             <div className="relative h-3 bg-slate-100 rounded-full overflow-hidden">
@@ -131,7 +131,7 @@ export default function QRiskPanel({ quantumRisk, creditQuantumStrongWarning = f
           {showImpacts && (
             <div className="mt-3">
               <p className={`text-[10px] font-black uppercase tracking-widest mb-2 ${cfg.hdr}`}>
-                {level === 'critical' ? '⚠ 審査上の必須確認事項' : '審査上の確認ポイント'}
+                {level === 'critical' ? '重点探索する非スコア因子' : '確認する非スコア因子'}
               </p>
               <div className="space-y-1.5">
                 {impacts.map((imp, i) => (
@@ -146,7 +146,7 @@ export default function QRiskPanel({ quantumRisk, creditQuantumStrongWarning = f
 
           {level === 'normal' && (
             <p className="mt-2 text-[11px] text-emerald-600 font-bold">
-              ✓ 財務データの内部矛盾は検出されませんでした。
+              ✓ 既存スコア外の成約分岐シグナルは低めです。ただし、Q_riskは減点ではなく探索対象の優先度です。
             </p>
           )}
         </>

@@ -212,3 +212,23 @@
 - （必要に応じて追記）
 
 ---
+
+## セッション: 2026-05-31T07:36:47Z
+
+- session_id: `session-1780212988855435000`
+- project: `tune_lease_55`
+- branch: `feature/rev-025-obsidian-citation-highlight`
+- started_at: `2026-05-31T07:36:28Z`
+- ended_at: `2026-05-31T07:36:47Z`
+- changes: 0
+
+### 変更ファイル
+- （なし）
+
+### 重要な変更（important=true）
+- （なし）
+
+### 次回への引き継ぎ（任意）
+- （必要に応じて追記）
+
+---

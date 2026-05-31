@@ -21,7 +21,7 @@ import time
 import traceback
 import urllib.request
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -62,8 +62,47 @@ KEYWORDS = [
     "開発",
     "改善",
 ]
+STRONG_KEYWORDS = [
+    "リース",
+    "審査",
+    "Q_risk",
+    "Q-Risk",
+    "リスクアセスメント",
+    "マハラノビス",
+    "KLダイバージェンス",
+    "情報幾何学",
+    "S&P 500",
+    "LSTM",
+    "スコアリング",
+    "スコア",
+    "リスク",
+    "金利",
+    "補助金",
+    "業種",
+    "倒産",
+    "残価",
+    "物件",
+    "財務",
+    "DB",
+    "RAG",
+    "AURION",
+    "MEBUKI",
+    "LightGBM",
+]
+WEAK_KEYWORDS = [
+    "UI",
+    "スライダー",
+    "タイル",
+    "Clawdbot",
+    "システム",
+    "Chat",
+    "Improvement Log",
+    "開発",
+    "改善",
+]
 EXCLUDE = [
     "ラーメン",
+    "ラーメン屋",
     "映画",
     "ディズニー",
     "釣り",
@@ -71,6 +110,8 @@ EXCLUDE = [
     "犬の散歩",
     "八奈見",
     "Humor",
+    "アニメ",
+    "漫画",
 ]
 EXTS = {".md", ".txt", ".log"}
 
@@ -117,6 +158,27 @@ def _read_text(path: Path, limit: int = 80_000) -> str:
         return ""
 
 
+def _date_from_name(path: Path) -> datetime | None:
+    import re
+
+    match = re.search(r"(20\d{2})-(\d{2})-(\d{2})", path.name)
+    if not match:
+        return None
+    try:
+        return datetime(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    except ValueError:
+        return None
+
+
+def _is_recent_chat_path(rel: str, path: Path, max_age_days: int = 7) -> bool:
+    if "AI Chat" not in rel and "/Chat/" not in rel:
+        return False
+    file_date = _date_from_name(path)
+    if not file_date:
+        return False
+    return file_date >= datetime.combine(now().date(), datetime.min.time()) - timedelta(days=max_age_days)
+
+
 def _matches(path: Path) -> bool:
     rel = str(path.relative_to(ORIGIN_VAULT))
     if any(x in rel for x in EXCLUDE):
@@ -125,7 +187,37 @@ def _matches(path: Path) -> bool:
     hay = f"{rel}\n{text[:50_000]}"
     if any(x in hay for x in EXCLUDE):
         return False
-    return any(k in hay for k in KEYWORDS)
+    strong_hits = sum(1 for k in STRONG_KEYWORDS if k in hay)
+    weak_hits = sum(1 for k in WEAK_KEYWORDS if k in hay)
+
+    if rel.startswith("Daily/"):
+        return False
+    if _is_recent_chat_path(rel, path):
+        return strong_hits >= 1
+    if "AI Chat" in rel or "/Chat/" in rel:
+        return False
+    if rel.startswith(("Asset Knowledge/", "リース知識/", "tuneLease55/知見・分析/")):
+        return strong_hits >= 1
+    if rel.startswith(
+        (
+            "Projects/tune_lease_55/Asset Knowledge/",
+            "Projects/tune_lease_55/Asset Finance/",
+            "Projects/tune_lease_55/Cases/",
+            "Projects/tune_lease_55/Generated/",
+            "Projects/tune_lease_55/News/",
+            "Projects/tune_lease_55/Research/",
+        )
+    ):
+        return strong_hits >= 1
+    if rel.startswith("Projects/tune_lease_55/"):
+        return strong_hits >= 1 and (strong_hits >= 2 or weak_hits >= 1)
+    if rel.startswith("30.areas/"):
+        return strong_hits >= 1 and (strong_hits >= 2 or "RAG" in hay)
+    if rel.startswith("Clippings/"):
+        return strong_hits >= 2
+    if rel.startswith("改善ログ/"):
+        return strong_hits >= 1 and weak_hits >= 1
+    return strong_hits >= 2
 
 
 def sync_notes() -> dict[str, Any]:
@@ -136,6 +228,17 @@ def sync_notes() -> dict[str, Any]:
     for path in ORIGIN_VAULT.rglob("*"):
         if path.is_file() and path.suffix in EXTS and _matches(path):
             selected.append(path)
+
+    selected_rels = {path.relative_to(ORIGIN_VAULT) for path in selected}
+    pruned: list[Path] = []
+    if SYNC_ROOT.exists():
+        for existing in SYNC_ROOT.rglob("*"):
+            if not existing.is_file() or existing.suffix not in EXTS or existing.name.startswith("_SYNC_"):
+                continue
+            rel = existing.relative_to(SYNC_ROOT)
+            if rel not in selected_rels:
+                existing.unlink()
+                pruned.append(rel)
 
     copied = 0
     for path in selected:
@@ -152,6 +255,7 @@ def sync_notes() -> dict[str, Any]:
         f"- Source: `{ORIGIN_VAULT}`",
         f"- Destination: `{SYNC_ROOT}`",
         f"- Selected files: {copied}",
+        f"- Pruned stale synced files: {len(pruned)}",
         f"- Generated: {now().isoformat(timespec='seconds')}",
         "",
         "## Files",
@@ -159,8 +263,12 @@ def sync_notes() -> dict[str, Any]:
     for path in sorted(selected, key=lambda p: str(p.relative_to(ORIGIN_VAULT))):
         rel = path.relative_to(ORIGIN_VAULT)
         lines.append(f"- [[{path.stem}]] `{rel}`")
+    if pruned:
+        lines.extend(["", "## Pruned From Synced Copy"])
+        for rel in sorted(pruned, key=str):
+            lines.append(f"- `{rel}`")
     manifest.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return {"status": "completed", "selected_files": copied, "manifest": str(manifest)}
+    return {"status": "completed", "selected_files": copied, "pruned_files": len(pruned), "manifest": str(manifest)}
 
 
 def reindex_vault_b() -> dict[str, Any]:
@@ -187,7 +295,7 @@ def reindex_vault_b() -> dict[str, Any]:
     }
     try:
         result = subprocess.run(
-            [str(python), str(script), "--vault", str(LEASE_VAULT)],
+            [str(python), str(script), "--vault", str(LEASE_VAULT), "--prune-missing"],
             cwd=str(PROJECT_ROOT),
             env=env,
             capture_output=True,
@@ -423,7 +531,7 @@ def cross_reasoning_loop(db: dict[str, Any], recent: dict[str, Any], web: dict[s
     conclusions = [
         "同期とDB監査はスタート地点であり、判断の中核ではない。外部市場と自社DBのズレを毎日比較する必要がある。",
         "スコア帯別成約率が完全単調ではないため、スコアは信用力の代理であって営業結果の十分条件ではない。",
-        "Q_riskは財務矛盾と入力信頼度を扱うべきで、PDや信用スコアへの直結減点は誤爆を生む。",
+        "Q_riskは既存数式の補正係数ではなく、スコアリング外で成約・失注を動かす未知因子の発見装置へ移す。",
         "根拠ルート可視化、業界動向ファネル、動的金利条件セットは同一の審査OSに統合するべきである。",
     ]
     if non_monotonic:
@@ -543,7 +651,7 @@ def write_morning_report(state: dict[str, Any], db: dict[str, Any], recent: dict
 
     policy = [
         "1. スコア単独で判定しない。成約率がスコア帯に対して完全単調ではないため、競合金利、営業条件、物件換金性、補助金確度を分離して見る。",
-        "2. Q_riskは減点ではなく、入力信頼度と追加確認トリガーとして扱う。",
+        "2. Q_riskは既存の数式に固定しない。スコアリング外で成約・失注を動かす未知因子を発見する探索軸として扱う。",
         "3. 知識宇宙マップは3D化より先に、根拠ルート・ラベル・フィルタ・ノード固定を優先する。",
         "4. 動的金利提案は単一金利ではなく、Base / Risk Adjusted / Competitive / Conditioned の条件セットで出す。",
         "5. 銀行支援依頼書は、支援内容、金額、期間、資金使途、返済原資、期限が揃う場合だけ返済計画の補完資料とする。",
@@ -621,7 +729,7 @@ def write_morning_report(state: dict[str, Any], db: dict[str, Any], recent: dict
             "",
             "- 根拠ルート可視化: AI回答 -> Obsidianノート -> 類似案件 -> Web根拠を `evidence_route[]` として保存する。",
             "- 業界動向回答: 外部市場と自社実績を分け、申込数・条件提示数・成約数・辞退数をファネル化する。",
-            "- Q_risk: 財務矛盾の理由文と追加資料要求を同時に出す。",
+        "- Q_risk Discovery: 高スコア失注・低スコア成約を優先抽出し、価格、競合、銀行支援、物件換金性、補助金タイミング、営業導線の非スコア因子をタグ化する。",
             "- 動的金利: 金利単独でなく、前受金・保証・期間短縮・銀行支援を含む条件セットで提示する。",
             "",
         ]
@@ -681,6 +789,24 @@ UIでは、Q_riskを赤い巨大警告だけで出してはいけない。担当
 検証方法も決める。Q_riskの良し悪しは、AUCだけでは測れない。追加資料要求後に判定が変わった率、条件付き承認後の正常履行率、Q_risk高値で人手確認に回した案件の失注率、誤警告率、担当者が納得した理由文の採用率を見る。つまり、Q_riskは予測指標であると同時に、業務介入指標である。予測が当たったかだけではなく、介入が審査品質を上げたかを測る。
 
 最後に、Q_riskの哲学を固定する。AURION COREは、機械が人間の判断を奪うためのものではない。人間が見落としやすい矛盾を、静かに机の上へ置くためのものだ。Q_riskは「この会社は危険です」と叫ぶのではなく、「この数字のつながりはまだ説明されていません」と告げる。その違いが、審査AIを粗い自動否認装置にするか、実務に耐える判断補助OSにするかを分ける。
+""".strip()
+
+
+def _q_risk_discovery_essay() -> str:
+    return """
+## めぶき深層考察: Q_riskを「成約外因子の発見装置」に作り替える
+
+今までのQ_risk計算式に固執しない。既存のQ_riskが数値的に有用でないなら、それは失敗ではなく、役割の再定義を要求している信号である。Q_riskは信用スコアを補正する小さな係数ではない。スコアリングモデルの外側で、成約と失注を実際に動かしている見えない存在を見つけるための探索軸に変える。
+
+新しい定義はこう置く。Q_riskは `score_external_contract_factor`、すなわち「信用スコアでは説明できない成約・失注の歪み」である。高スコアなのに失注する案件、低スコアなのに成約する案件、同じ業種・同じスコア帯なのに営業部や物件や条件で結果が割れる案件を優先的に掘る。ここで見るべきものは、財務比率の美しさではない。価格、競合、銀行支援、前受金、補助金入金タイミング、物件換金性、顧客の急ぎ度、営業導線、稟議の通し方、担当者が残したメモの温度である。
+
+したがってQ_riskは、今後「リスク点」ではなく「説明不能残差」として扱う。既存スコアで説明できた部分を引いたあとに残る成約差分、それがQ_riskの主戦場になる。数式はあとでよい。先に発見すべきは、スコアリングが見落としている存在だ。AURION COREは、スコアが高いから取れる、低いから取れない、という粗い世界から離れる必要がある。
+
+実装上は三つの帳票を作る。第一に `high_score_lost`、高スコア失注群。ここでは金利競争、条件提示後離脱、競合先、顧客の意思決定速度、過剰条件、物件魅力度不足を見る。第二に `low_score_won`、低スコア成約群。ここでは銀行支援、前受金、保証、補助金、物件換金性、既存取引、営業関係性を見る。第三に `same_score_split`、同スコア帯で結果が割れた群。ここでは営業部、業種細分、物件、期間、金利、提案順序を比較する。
+
+新Q_riskの出力は単一数値ではなく、発見タグでよい。例は `price_competition_gap`, `bank_support_bridge`, `subsidy_timing_bridge`, `asset_resale_anchor`, `sales_route_strength`, `condition_refusal`, `approval_story_missing`, `customer_urgency_high`。このタグ群が十分に蓄積された時点で、初めて数式化する。順番を逆にしない。見えていない存在を、先に数式で縛ると見落とす。
+
+めぶき所見: 今のQ_riskが役に立たないなら、捨てるべきは名前ではなく、狭い定義だ。Q_riskは財務矛盾の検知器から、成約の正体を探す探索灯へ移す。スコアリングの外側にあるものを見つける。それが次のAURION COREの仕事。
 """.strip()
 
 
@@ -785,12 +911,12 @@ def write_evolved_insight(
             "",
             "## 5. 論理矛盾・エッジケース",
             "",
-            "- Q_riskをPD減点に直結させると、季節性・補助金入金待ち・会計分類揺れを信用悪化と誤認する。",
+            "- Q_riskを既存の財務矛盾式に固定すると、スコアリング外で成約・失注を動かす未知因子を見落とす。",
             "- 3D知識宇宙を先に作ると、根拠が見えないまま見た目だけが強くなる。根拠ルートが先、球体化は後。",
             "- 銀行支援依頼書は返済計画ではない。具体的支援額、期間、資金使途、返済原資、期限がなければ信用補完として弱い。",
             "- 高スコア案件でも成約しない場合がある。価格、競合、顧客心理、条件提示後離脱のログが不足している可能性が高い。",
             "",
-            _deep_q_risk_essay(),
+            _q_risk_discovery_essay(),
             "",
         ]
     )

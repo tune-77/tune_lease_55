@@ -32,8 +32,11 @@
     "restart-api",
     "restart-api",
     "git-ship",
-    "restart-api"
+    "restart-api",
+    "schedule",
+    "git-ship",
+    "git-ship"
   ],
   "session_start": "2026-04-25T21:59:45Z",
-  "last_used": "2026-05-25T09:41:11Z"
+  "last_used": "2026-05-31T07:36:58Z"
 }

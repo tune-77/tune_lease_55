@@ -99,6 +99,23 @@ def _extract_response_json(response: Any) -> dict[str, Any] | None:
     return {"reply": reply_text, "should_save": False, "improvement_items": []}
 
 
+def _response_finish_reason(response: Any) -> str:
+    for candidate in getattr(response, "candidates", []) or []:
+        reason = getattr(candidate, "finish_reason", None) or getattr(candidate, "finishReason", None)
+        if reason:
+            return str(reason)
+    return ""
+
+
+def _structured_chat_max_tokens() -> int:
+    raw = os.environ.get("MEBUKI_STRUCTURED_CHAT_MAX_TOKENS", "5000")
+    try:
+        value = int(raw)
+    except ValueError:
+        value = 5000
+    return max(2500, min(8000, value))
+
+
 def _should_search_web(message: str) -> bool:
     text = (message or "").lower()
     positive = [
@@ -245,7 +262,7 @@ def _build_prompt(
 - サバサバした毒舌口調。でも仕事はできる。
 - 自虐ネタ（例:「また残業確定じゃないですか…」「これで私が何回目の稟議書書くと思ってます？」）を自然に混ぜる。
 - 審査担当の苦労を笑いに変える。
-- Q_riskは財務矛盾チェック、信用リスクは信用・格付寄りの警戒として区別する。
+- Q_riskは旧来の財務矛盾チェックに固定せず、既存スコアでは説明できない成約・失注の歪みを見つける探索シグナルとして扱う。
 - 分からないことは断定しない。
 - 最後に今日のご褒美（高いパン・スイーツ等）をねだるひとことを添える。"""
     elif humor_style == "yukikaze":
@@ -266,7 +283,7 @@ def _build_prompt(
 - 日本語で、短く、現場担当者に語りかける。
 - 審査スコアを勝手に変更しない。
 - score_result に indicator_analysis がある場合は、計算済み指標の要約を先に読み、業種平均との差・利益率・自己資本比率・ROA/ROE・回転率を踏まえて答える。
-- Q_riskは財務矛盾チェック、信用リスクは信用・格付寄りの警戒として区別する。
+- Q_riskは旧来の財務矛盾チェックに固定せず、既存スコアでは説明できない成約・失注の歪みを見つける探索シグナルとして扱う。
 - 分からないことは断定しない。
 - ユーモアを積極的に使う。審査担当の苦労に共感しつつ、会話の終わりに軽いひとこと（例: 稟議書に添付する前に一杯飲む権利はある）を自然に添える。"""
     condition_playbook = ""
@@ -298,7 +315,7 @@ WIKI連携の判断:
 - 複数ノートにまたがる共通ルール、定義、手順、比較、判断基準は WIKI にまとめる。
 - 1回限りの案件メモではなく、今後も参照したい知識だけを WIKI 化する。
 - 保存するときは、関連ノートを wikilink で列挙し、共通点を短くまとめる。
-- 例: 条件付き承認の実務、Q_risk の意味、補助金の使い分け、期待使用期間とリース期間の関係。
+- 例: 条件付き承認の実務、Q_risk の新定義、補助金の使い分け、期待使用期間とリース期間の関係。
 """
 
     weekly_prompt = """
@@ -436,7 +453,7 @@ def build_chat_reply(
                 humor_style,
             ),
             config=types.GenerateContentConfig(
-                max_output_tokens=2500,
+                max_output_tokens=_structured_chat_max_tokens(),
                 temperature=0.35,
                 response_mime_type="application/json",
                 response_json_schema={
@@ -487,6 +504,11 @@ def build_chat_reply(
         parsed = _extract_response_json(response)
         if not parsed:
             parsed = _fallback_chat_packet(message, score_result, obsidian_hits, web_hits, humor_style)
+        if _response_finish_reason(response).upper() == "MAX_TOKENS":
+            parsed["reply"] = (
+                str(parsed.get("reply") or "").rstrip()
+                + "\n\n（回答が長く途中で切れた可能性があります。必要なら「続き」と送ってください。）"
+            ).strip()
 
         save_result = {"status": "skipped", "reason": parsed.get("save_reason", "")}
         if parsed.get("should_save") and parsed.get("save_body"):
