@@ -1,0 +1,7 @@
+interface:
+  display_name: "Improvement Report Sync"
+  short_description: "改善済み項目を報告書とlatest.jsonへ自動同期する"
+  default_prompt: "Use $improvement-report-sync to move completed improvement items from needs_review to applied and keep reports/latest.json in sync."
+
+policy:
+  allow_implicit_invocation: true
