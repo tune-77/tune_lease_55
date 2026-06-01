@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import axios from "axios";
-import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2 } from "lucide-react";
+import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, ListOrdered, BadgeInfo } from "lucide-react";
 import ScoreDAG from "../components/ScoreDAG";
 import { ScoringFormData, defaultFormData } from "../types";
 import FormGeneral from "../components/form/FormGeneral";
@@ -29,6 +29,16 @@ export default function Dashboard() {
 
   // タブ管理
   const [activeTab, setActiveTab] = useState<"input" | "analysis">("input");
+  const inputSections = [
+    { id: "form-general", label: "1. 案件特定", hint: "企業番号・業種・取引区分" },
+    { id: "form-financial", label: "2. 財務", hint: "P/L・B/S" },
+    { id: "form-qualitative", label: "3. 定性・物件", hint: "物件条件・メモ・音声入力" },
+  ];
+
+  const scrollToSection = (id: string) => {
+    const el = document.getElementById(id);
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   // フィールドの変更ハンドラー
   const handleFieldChange = (name: string, value: string | number | string[]) => {
@@ -152,9 +162,46 @@ export default function Dashboard() {
             {/* コンテンツエリア */}
             {activeTab === "input" && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 relative z-0">
-                <FormGeneral data={formData} onChange={handleFieldChange} />
-                <FormFinancial data={formData} onChange={handleFieldChange} />
-                <FormQualitative data={formData} onChange={handleFieldChange} />
+                <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                        <ListOrdered className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-black text-slate-800">入力の順番</h3>
+                        <p className="mt-1 text-xs text-slate-500">上から順に埋めると、案件特定から分析まで迷いにくいです。</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                      <BadgeInfo className="h-4 w-4 text-slate-400" />
+                      必須は企業番号・売上高・総資産・取得価額です
+                    </div>
+                  </div>
+                  <div className="mt-4 grid gap-2 md:grid-cols-3">
+                    {inputSections.map((section) => (
+                      <button
+                        key={section.id}
+                        type="button"
+                        onClick={() => scrollToSection(section.id)}
+                        className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-left hover:border-blue-200 hover:bg-blue-50 transition-colors"
+                      >
+                        <div className="text-sm font-black text-slate-800">{section.label}</div>
+                        <div className="mt-1 text-xs text-slate-500">{section.hint}</div>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
+                <section id="form-general" className="scroll-mt-28">
+                  <FormGeneral data={formData} onChange={handleFieldChange} />
+                </section>
+                <section id="form-financial" className="scroll-mt-28">
+                  <FormFinancial data={formData} onChange={handleFieldChange} />
+                </section>
+                <section id="form-qualitative" className="scroll-mt-28">
+                  <FormQualitative data={formData} onChange={handleFieldChange} />
+                </section>
 
                 <div className="sticky bottom-6 z-40 bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-blue-100 flex items-center justify-between">
                   <div className="text-sm font-bold text-slate-500">
