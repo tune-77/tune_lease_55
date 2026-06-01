@@ -65,6 +65,7 @@ API_PID_FILE="$LOG_DIR/api_${API_PORT}.pid"
 NEXT_PID_FILE="$LOG_DIR/next_${NEXT_PORT}.pid"
 API_SUPERVISOR_PID_FILE="$LOG_DIR/api_${API_PORT}.supervisor.pid"
 NEXT_SUPERVISOR_PID_FILE="$LOG_DIR/next_${NEXT_PORT}.supervisor.pid"
+TUNNEL_SUPERVISOR_PID_FILE="$LOG_DIR/tunnel_${NEXT_PORT}.supervisor.pid"
 TUNNEL_PID_FILE="$LOG_DIR/tunnel_${NEXT_PORT}.pid"
 TUNNEL_LOG="$LOG_DIR/tunnel_${TS}.log"
 BUILD_STAMP="$LOG_DIR/frontend_build.stamp"
@@ -186,6 +187,10 @@ cleanup() {
     kill "$(cat "$NEXT_SUPERVISOR_PID_FILE")" 2>/dev/null || true
     rm -f "$NEXT_SUPERVISOR_PID_FILE"
   fi
+  if [ -f "$TUNNEL_SUPERVISOR_PID_FILE" ]; then
+    kill "$(cat "$TUNNEL_SUPERVISOR_PID_FILE")" 2>/dev/null || true
+    rm -f "$TUNNEL_SUPERVISOR_PID_FILE"
+  fi
   if [ -f "$API_PID_FILE" ]; then
     kill "$(cat "$API_PID_FILE")" 2>/dev/null || true
     rm -f "$API_PID_FILE"
@@ -300,9 +305,17 @@ echo "$NEXT_SUPERVISOR_PID" > "$NEXT_SUPERVISOR_PID_FILE"
 
 if [ "$PUBLIC_TUNNEL" = "1" ]; then
   echo "Starting Cloudflare Tunnel for http://${NEXT_HOST}:${NEXT_PORT}"
-  cloudflared tunnel --url "http://${NEXT_HOST}:${NEXT_PORT}" >"$TUNNEL_LOG" 2>&1 &
-  tunnel_pid=$!
-  echo "$tunnel_pid" > "$TUNNEL_PID_FILE"
+  while true; do
+    cloudflared tunnel --url "http://${NEXT_HOST}:${NEXT_PORT}" >>"$TUNNEL_LOG" 2>&1 &
+    tunnel_pid=$!
+    echo "$tunnel_pid" > "$TUNNEL_PID_FILE"
+    wait "$tunnel_pid" || true
+    rm -f "$TUNNEL_PID_FILE"
+    echo "$(date '+%F %T') Cloudflare Tunnel exited; restarting in ${RESTART_DELAY_SECONDS} seconds" | tee -a "$TUNNEL_LOG"
+    sleep "$RESTART_DELAY_SECONDS"
+  done &
+  TUNNEL_SUPERVISOR_PID=$!
+  echo "$TUNNEL_SUPERVISOR_PID" > "$TUNNEL_SUPERVISOR_PID_FILE"
 fi
 
 echo ""
@@ -318,4 +331,8 @@ echo "==================================="
 echo ""
 echo "Press Ctrl+C to stop."
 
-wait "$API_SUPERVISOR_PID" "$NEXT_SUPERVISOR_PID"
+if [ "$PUBLIC_TUNNEL" = "1" ]; then
+  wait "$API_SUPERVISOR_PID" "$NEXT_SUPERVISOR_PID" "$TUNNEL_SUPERVISOR_PID"
+else
+  wait "$API_SUPERVISOR_PID" "$NEXT_SUPERVISOR_PID"
+fi

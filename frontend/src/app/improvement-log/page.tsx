@@ -33,6 +33,7 @@ type ImprovementLog = {
   approved: number;
   auto_fix_candidates: number;
   needs_review: number;
+  parked?: number;
   rejected: number;
   applied: number;
   items: ImprovementItem[];
@@ -49,6 +50,7 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   AUTO_FIX_CANDIDATE: { label: "自動修正候補", className: "bg-blue-50 text-blue-700 border-blue-200" },
   NEEDS_REVIEW: { label: "要確認", className: "bg-amber-50 text-amber-700 border-amber-200" },
   needs_review: { label: "要確認", className: "bg-amber-50 text-amber-700 border-amber-200" },
+  PARKED: { label: "保留", className: "bg-slate-50 text-slate-500 border-slate-200" },
   REJECTED: { label: "拒否", className: "bg-rose-50 text-rose-700 border-rose-200" },
   APPLIED: { label: "適用済", className: "bg-slate-100 text-slate-700 border-slate-300" },
   SKIPPED: { label: "スキップ", className: "bg-slate-50 text-slate-500 border-slate-200" },
@@ -128,11 +130,12 @@ export default function ImprovementLogPage() {
           </button>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-5">
+        <div className="grid gap-3 md:grid-cols-6">
           <Stat label="適用済" value={data?.applied ?? 0} icon={<CheckCircle2 className="h-4 w-4" />} />
           <Stat label="承認" value={data?.approved ?? 0} icon={<CheckCircle2 className="h-4 w-4" />} />
           <Stat label="自動修正候補" value={data?.auto_fix_candidates ?? 0} icon={<Wrench className="h-4 w-4" />} />
           <Stat label="要確認" value={data?.needs_review ?? 0} icon={<AlertCircle className="h-4 w-4" />} />
+          <Stat label="保留" value={data?.parked ?? 0} icon={<AlertCircle className="h-4 w-4" />} />
           <Stat label="拒否" value={data?.rejected ?? 0} icon={<AlertCircle className="h-4 w-4" />} />
         </div>
 
@@ -148,7 +151,7 @@ export default function ImprovementLogPage() {
               />
             </div>
             <div className="flex flex-wrap gap-2">
-              {["ALL", "AUTO_FIX_CANDIDATE", "NEEDS_REVIEW", "REJECTED", "APPLIED"].map((key) => (
+              {["ALL", "AUTO_FIX_CANDIDATE", "NEEDS_REVIEW", "PARKED", "REJECTED", "APPLIED"].map((key) => (
                 <button
                   key={key}
                   onClick={() => setStatus(key)}

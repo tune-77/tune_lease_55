@@ -108,6 +108,7 @@ def list_pending_approvals(unnotified_only: bool = False) -> list[dict]:
 
 
 _DISPATCH_QUEUE_PATH = Path.home() / "Library" / "Logs" / "tunelease" / "dispatch_queue.jsonl"
+_MORNING_CANDIDATE_LIMIT = 3
 
 _CATEGORY_KEYWORDS: dict[str, list[str]] = {
     "small_ui": ["表示", "文言", "ラベル", "placeholder", "tooltip", "PD", "Q_risk"],
@@ -138,7 +139,7 @@ def notify_improvement_candidates(improvements: list[dict], report_date: str) ->
         {"id": "REV-002", "title": "...", "category": "large|small_ui|rag_chat|data"},
         ...
       ],
-      "message": "本日の改善候補です。着手するものを選んでください。"
+      "message": "本日の改善候補です。最大3件だけ見て、着手・保留・破棄を決めてください。"
     }
     """
     _ensure_log_dir()
@@ -146,6 +147,8 @@ def notify_improvement_candidates(improvements: list[dict], report_date: str) ->
     seen_titles: set[str] = set()
     candidates: list[dict] = []
     for imp in improvements:
+        if len(candidates) >= _MORNING_CANDIDATE_LIMIT:
+            break
         title = imp.get("title", "")
         if title in seen_titles:
             continue
@@ -160,7 +163,7 @@ def notify_improvement_candidates(improvements: list[dict], report_date: str) ->
         "type": "improvement_candidates",
         "date": report_date,
         "candidates": candidates,
-        "message": "本日の改善候補です。着手するものを選んでください。",
+        "message": "本日の改善候補です。最大3件だけ見て、着手・保留・破棄を決めてください。",
     }
 
     try:

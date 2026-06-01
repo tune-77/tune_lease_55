@@ -1465,11 +1465,11 @@ def apply_improvements_pipeline(
             _small_ui_count = _cats.count("small_ui")
             _large_count = _cats.count("large")
             if _small_ui_count >= 5 or _large_count >= 1:
-                notify_improvement_candidates(
+                _dispatch_record = notify_improvement_candidates(
                     _approved_imps, datetime.now().strftime("%Y-%m-%d")
                 )
                 print(
-                    f"📬 Dispatch 改善候補通知: {len(_approved_imps)}件"
+                    f"📬 Dispatch 改善候補通知: {len(_dispatch_record.get('candidates', []))}件"
                     f"（small_ui={_small_ui_count}, large={_large_count}）"
                 )
 

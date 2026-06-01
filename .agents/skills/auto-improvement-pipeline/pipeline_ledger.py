@@ -1,7 +1,7 @@
 """
 改善案の処理履歴を追跡するJSONL台帳。
 キー: title + description の正規化後 SHA1
-状態: applied / needs_review / rejected
+状態: applied / needs_review / parked / rejected
 """
 from __future__ import annotations
 
@@ -33,6 +33,7 @@ def is_processed(
 
     - applied → 常に True（再実行しない）
     - needs_review → needs_review_cooldown_days 経過後に再評価可能（False を返す）
+    - parked → needs_review_cooldown_days 経過後に再評価可能（False を返す）
     - rejected → cooldown_days 経過後に再評価可能（False を返す）
     """
     if not LEDGER_PATH.exists():
@@ -63,12 +64,12 @@ def is_processed(
     if status == "applied":
         return True, status
 
-    if status == "needs_review":
+    if status in {"needs_review", "parked"}:
         recorded_at = latest.get("recorded_at", "")
         try:
             recorded_time = datetime.datetime.fromisoformat(recorded_at)
             if (now - recorded_time).days < needs_review_cooldown_days:
-                return True, f"needs_review (cooldown: {needs_review_cooldown_days}日)"
+                return True, f"{status} (cooldown: {needs_review_cooldown_days}日)"
         except (ValueError, TypeError):
             pass
 
@@ -108,9 +109,9 @@ def record(
 
 
 def get_summary() -> dict[str, int]:
-    """applied / needs_review / rejected の件数サマリ（最新ステータスで集計）"""
+    """applied / needs_review / parked / rejected の件数サマリ（最新ステータスで集計）"""
     if not LEDGER_PATH.exists():
-        return {"applied": 0, "needs_review": 0, "rejected": 0, "total": 0}
+        return {"applied": 0, "needs_review": 0, "parked": 0, "rejected": 0, "total": 0}
 
     latest_status: dict[str, str] = {}
 
@@ -128,9 +129,9 @@ def get_summary() -> dict[str, int]:
             except json.JSONDecodeError:
                 continue
     except OSError:
-        return {"applied": 0, "needs_review": 0, "rejected": 0, "total": 0}
+        return {"applied": 0, "needs_review": 0, "parked": 0, "rejected": 0, "total": 0}
 
-    counts: dict[str, int] = {"applied": 0, "needs_review": 0, "rejected": 0}
+    counts: dict[str, int] = {"applied": 0, "needs_review": 0, "parked": 0, "rejected": 0}
     for s in latest_status.values():
         if s in counts:
             counts[s] += 1

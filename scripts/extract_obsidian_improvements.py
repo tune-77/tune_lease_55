@@ -114,17 +114,17 @@ def _extract_wiki_links(text: str) -> list[str]:
     return re.findall(r'\[\[([^\]]+)\]\]', text)
 
 
-def _is_applied_title(title: str, applied_keys: set[str] | None = None) -> bool:
-    """台帳上 applied 済みの改善タイトルか判定する."""
-    if not applied_keys:
+def _is_inactive_title(title: str, inactive_keys: set[str] | None = None) -> bool:
+    """台帳上 active 抽出しない改善タイトルか判定する."""
+    if not inactive_keys:
         return False
-    return _title_key(title) in applied_keys or canonical_key(title) in applied_keys
+    return _title_key(title) in inactive_keys or canonical_key(title) in inactive_keys
 
 
 def _convert_to_pipeline_text(
     content: str,
     source_name: str,
-    applied_keys: set[str] | None = None,
+    inactive_keys: set[str] | None = None,
 ) -> str:
     """
     Obsidian マークダウンをパイプライン用 [改善]/[TODO] タグ付きテキストに変換する.
@@ -173,7 +173,7 @@ def _convert_to_pipeline_text(
         # 未解決課題セクションのリスト項目
         if "未解決" in current_section and stripped.startswith("-"):
             item = stripped.lstrip("- ").strip()
-            if _has_done_marker(item) or _is_applied_title(item, applied_keys):
+            if _has_done_marker(item) or _is_inactive_title(item, inactive_keys):
                 continue
             if item and len(item) > 5:
                 output_lines.append(f"[改善] {item}")
@@ -191,7 +191,7 @@ def _convert_to_pipeline_text(
             # 高優先度セクション内の箇条書き → [改善]
             if is_high_priority and stripped.startswith("- ") and not stripped.startswith("- - "):
                 item = stripped[2:].strip()
-                if _has_done_marker(item) or _is_applied_title(item, applied_keys):
+                if _has_done_marker(item) or _is_inactive_title(item, inactive_keys):
                     continue
                 # マークダウン装飾除去
                 item = re.sub(r'\*\*(.+?)\*\*', r'\1', item)
@@ -205,7 +205,7 @@ def _convert_to_pipeline_text(
             # Phase1 の未チェック項目 → [TODO]
             elif "Phase" in current_section and "🔲" in stripped:
                 item = stripped.replace("🔲", "").strip()
-                if _has_done_marker(item) or _is_applied_title(item, applied_keys):
+                if _has_done_marker(item) or _is_inactive_title(item, inactive_keys):
                     continue
                 if item:
                     output_lines.append(f"[TODO] {item}")
@@ -225,13 +225,13 @@ def extract_improvements_from_index(index_file: Path, vault: Path) -> str:
     from collections import deque
 
     output_parts: list[str] = []
-    applied_keys = _load_applied_ledger_keys()
+    inactive_keys = _load_inactive_ledger_keys()
 
     index_content = index_file.read_text(encoding="utf-8")
     output_parts.append(f"# 改善案抽出元: {index_file.name}\n")
 
     # インデックス本体から抽出
-    index_improvements = _convert_to_pipeline_text(index_content, index_file.stem, applied_keys)
+    index_improvements = _convert_to_pipeline_text(index_content, index_file.stem, inactive_keys)
     if index_improvements.strip():
         output_parts.append(index_improvements)
 
@@ -256,7 +256,7 @@ def extract_improvements_from_index(index_file: Path, vault: Path) -> str:
 
         try:
             linked_content = linked_file.read_text(encoding="utf-8")
-            linked_improvements = _convert_to_pipeline_text(linked_content, linked_file.stem, applied_keys)
+            linked_improvements = _convert_to_pipeline_text(linked_content, linked_file.stem, inactive_keys)
             if linked_improvements.strip():
                 output_parts.append(f"\n# リンク先ノート (深さ{depth}): {linked_file.name}\n")
                 output_parts.append(linked_improvements)
@@ -297,8 +297,8 @@ def _has_done_marker(text: str) -> bool:
     return any(marker in text for marker in _DONE_MARKERS)
 
 
-def _load_applied_ledger_keys() -> set[str]:
-    """auto-improvement 台帳から applied 済み canonical_key を取得する."""
+def _load_inactive_ledger_keys() -> set[str]:
+    """auto-improvement 台帳から active 抽出しない canonical_key を取得する."""
     if not _LEDGER_PATH.exists():
         return set()
 
@@ -326,7 +326,7 @@ def _load_applied_ledger_keys() -> set[str]:
     return {
         key
         for key, status in latest_by_key.items()
-        if status == "applied"
+        if status in {"applied", "parked"}
     }
 
 
@@ -346,7 +346,7 @@ def extract_improvements_from_ai_chat_logs(vault: Path) -> str:
         return ""
 
     output_parts: list[str] = [f"# AIチャット改善ログ ({_AI_CHAT_LOG_SUBPATH})\n"]
-    applied_keys = _load_applied_ledger_keys()
+    inactive_keys = _load_inactive_ledger_keys()
 
     for md_file in md_files:
         try:
@@ -361,7 +361,7 @@ def extract_improvements_from_ai_chat_logs(vault: Path) -> str:
             decision = m.group(2).strip().lower()
             if decision not in _ACTIVE_AI_CHAT_DECISIONS:
                 continue
-            if _title_key(item_title) in applied_keys or canonical_key(item_title) in applied_keys:
+            if _title_key(item_title) in inactive_keys or canonical_key(item_title) in inactive_keys:
                 continue
             if len(item_title) > 5:
                 file_parts.append(f"[改善] {item_title}")
