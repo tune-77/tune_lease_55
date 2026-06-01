@@ -81,6 +81,21 @@ git log --oneline -3
 git branch -a | grep <branch>  # 削除されていればOK
 ```
 
+最後にObsidianへ作業ログを残す。Codex作業なら `codex-work-log`、Claude作業なら `claude-work-log` を使う：
+
+```bash
+python3 .agents/skills/obsidian/scripts/obsidian_note.py codex-work-log \
+  --vault "$OBSIDIAN_VAULT" \
+  --summary "<今回の作業要約>" \
+  --decision "<重要な決定>" \
+  --change "<変更ファイル>" \
+  --verification "<実行した検証>" \
+  --git "commit: <sha>" \
+  --git "merge: <sha>"
+```
+
+`OBSIDIAN_VAULT` が未設定またはVaultが複数ある場合は、`/Users/kobayashiisaoryou/Documents/Obsidian Vault` を優先する。会話全文、秘密情報、DB生データは保存せず、要約だけを残す。
+
 ---
 
 ## Bフロー：直接push（masterブランチ）
@@ -94,6 +109,18 @@ git commit -m "<自動生成メッセージ>"
 
 # 3. push
 git push origin master
+```
+
+push後にObsidianへ作業ログを残す。Codex作業なら `codex-work-log`、Claude作業なら `claude-work-log` を使う：
+
+```bash
+python3 .agents/skills/obsidian/scripts/obsidian_note.py codex-work-log \
+  --vault "$OBSIDIAN_VAULT" \
+  --summary "<今回の作業要約>" \
+  --decision "<重要な決定>" \
+  --change "<変更ファイル>" \
+  --verification "<実行した検証>" \
+  --git "commit: <sha>"
 ```
 
 ---
