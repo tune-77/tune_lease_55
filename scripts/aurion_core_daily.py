@@ -440,9 +440,11 @@ def read_codex_auto_queue() -> dict[str, Any]:
                     "codex_auto_safe_count": meta.get("safe_count", 0),
                     "codex_auto_maybe_count": meta.get("maybe_count", 0),
                     "manual_or_blocked_count": meta.get("manual_or_blocked_count", 0),
+                    "blocked_by_quota_count": meta.get("blocked_by_quota_count", 0),
                     "limit": meta.get("limit", MORNING_IMPROVEMENT_LIMIT),
                     "generated_at": meta.get("generated_at", ""),
                     "items": [],
+                    "blocked_by_quota": [],
                 }
         except Exception as exc:
             return {"status": "ERROR", "path": str(latest_path), "error": str(exc)}
@@ -454,7 +456,9 @@ def read_codex_auto_queue() -> dict[str, Any]:
         "codex_auto_safe_count": 0,
         "codex_auto_maybe_count": 0,
         "manual_or_blocked_count": 0,
+        "blocked_by_quota_count": 0,
         "items": [],
+        "blocked_by_quota": [],
     }
 
 
@@ -960,6 +964,7 @@ def write_morning_report(
         lines.append(f"- {item}")
 
     queue_items = codex_queue.get("items") or []
+    quota_items = codex_queue.get("blocked_by_quota") or []
     lines.extend(
         [
             "",
@@ -970,6 +975,7 @@ def write_morning_report(
             f"- Queued today: `{codex_queue.get('queued_count', len(queue_items))}` / `{codex_queue.get('limit', MORNING_IMPROVEMENT_LIMIT)}`",
             f"- Maybe candidates: `{codex_queue.get('codex_auto_maybe_count', 0)}`",
             f"- Manual or blocked: `{codex_queue.get('manual_or_blocked_count', 0)}`",
+            f"- Blocked by quota: `{codex_queue.get('blocked_by_quota_count', len(quota_items))}`",
             f"- Queue file: `{codex_queue.get('path', '')}`",
             "",
         ]
@@ -984,6 +990,18 @@ def write_morning_report(
                 lines.append(f"  - reason: {reason}")
     else:
         lines.append("- No Codex auto candidates queued today.")
+
+    if quota_items:
+        lines.append("")
+        lines.append("### Blocked by Codex Quota")
+        lines.append("")
+        for item in quota_items[:MORNING_IMPROVEMENT_LIMIT]:
+            lines.append(f"- `{item.get('id', '')}` {item.get('title', '')}")
+            detail = item.get("detail") or item.get("reason") or ""
+            if detail:
+                lines.append(f"  - detail: {detail}")
+            if item.get("last_attempted_at"):
+                lines.append(f"  - last_attempted_at: `{item.get('last_attempted_at')}`")
 
     gap_items = declaration_gaps.get("items") or []
     lines.extend(
@@ -1306,7 +1324,7 @@ def run_morning_report(dry_run: bool = False) -> int:
     insight = write_evolved_insight(state, db, recent, web, reasoning, report)
     notify(
         "AURION CORE Morning Report",
-        f"06:00 report generated: {report.name}; Codex queue {codex_queue.get('queued_count', 0)}/{codex_queue.get('codex_auto_safe_count', 0)}; gaps {declaration_gaps.get('count', 0)}; insight: {insight.name}",
+        f"06:00 report generated: {report.name}; Codex queue {codex_queue.get('queued_count', 0)}/{codex_queue.get('codex_auto_safe_count', 0)}; quota {codex_queue.get('blocked_by_quota_count', 0)}; gaps {declaration_gaps.get('count', 0)}; insight: {insight.name}",
     )
     print(str(report))
     print(str(insight))

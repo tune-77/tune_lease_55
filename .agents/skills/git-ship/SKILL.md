@@ -132,6 +132,15 @@ python3 .agents/skills/obsidian/scripts/obsidian_note.py codex-work-log \
 - `--no-verify` は使わない
 - force pushは使わない
 - worktreeが残っている場合は `git worktree prune` で掃除する
+- Codexが利用制限・課金条件で実装途中に止まった場合は、改善IDを `applied` にせず、次で保留記録する：
+
+```bash
+python3 scripts/record_codex_auto_status.py REV-xxx \
+  --status blocked_by_quota \
+  --detail "Codex usage limit reached before implementation"
+```
+
+この状態は次回の自動改善キューから除外され、朝レポートの `Blocked by Codex Quota` に表示される。
 
 ## エラー時
 

@@ -42,6 +42,8 @@ SAFE_TITLE_KEYWORDS = [
     "補助金",
 ]
 
+EXECUTION_STATUS_FILE = "codex_auto_execution_status.json"
+
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -61,6 +63,29 @@ def load_json(path: Path) -> dict[str, Any]:
 def dump_json(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def load_execution_status(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {"items": {}}
+    try:
+        data = load_json(path)
+    except Exception:
+        return {"items": {}}
+    if not isinstance(data.get("items"), dict):
+        data["items"] = {}
+    return data
+
+
+def quota_blocked_items(status: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    items = status.get("items") or {}
+    blocked: dict[str, dict[str, Any]] = {}
+    for rev_id, record in items.items():
+        if not isinstance(record, dict):
+            continue
+        if record.get("status") == "blocked_by_quota":
+            blocked[str(rev_id)] = record
+    return blocked
 
 
 def item_text(item: dict[str, Any]) -> str:
@@ -130,14 +155,28 @@ def queue_item(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build_queue(report: dict[str, Any], limit: int) -> dict[str, Any]:
+def build_queue(report: dict[str, Any], limit: int, execution_status: dict[str, Any] | None = None) -> dict[str, Any]:
     needs_review = [item for item in report.get("needs_review") or [] if isinstance(item, dict)]
+    quota_blocked = quota_blocked_items(execution_status or {})
     safe: list[dict[str, Any]] = []
     maybe: list[dict[str, Any]] = []
     blocked: list[dict[str, Any]] = []
+    quota_hold: list[dict[str, Any]] = []
 
     for index, item in enumerate(needs_review):
         item["_source_index"] = index
+        rev_id = str(item.get("id") or "")
+        if rev_id in quota_blocked:
+            quota_hold.append(
+                {
+                    "id": item.get("id"),
+                    "title": item.get("title"),
+                    "reason": "blocked_by_quota",
+                    "last_attempted_at": quota_blocked[rev_id].get("updated_at", ""),
+                    "detail": quota_blocked[rev_id].get("detail", ""),
+                }
+            )
+            continue
         is_manual, reason = is_blocked(item)
         if is_manual:
             blocked.append({"id": item.get("id"), "title": item.get("title"), "reason": reason})
@@ -157,10 +196,12 @@ def build_queue(report: dict[str, Any], limit: int) -> dict[str, Any]:
         "codex_auto_safe_count": len(safe),
         "codex_auto_maybe_count": len(maybe),
         "manual_or_blocked_count": len(blocked),
+        "blocked_by_quota_count": len(quota_hold),
         "queued_count": len(queued),
         "status": "READY" if queued else "EMPTY",
         "items": [queue_item(item) for item in queued],
         "skipped_safe_ids": [item.get("id") for item in safe_sorted[limit:]],
+        "blocked_by_quota": quota_hold,
         "manual_or_blocked": blocked,
     }
 
@@ -177,6 +218,7 @@ def update_latest(latest_path: Path, queue_path: Path, queue: dict[str, Any]) ->
         "safe_count": queue.get("codex_auto_safe_count", 0),
         "maybe_count": queue.get("codex_auto_maybe_count", 0),
         "manual_or_blocked_count": queue.get("manual_or_blocked_count", 0),
+        "blocked_by_quota_count": queue.get("blocked_by_quota_count", 0),
         "limit": queue.get("limit"),
         "generated_at": queue.get("generated_at"),
     }
@@ -191,17 +233,20 @@ def main() -> None:
     parser.add_argument("--report", type=Path, default=None, help="Improvement report JSON.")
     parser.add_argument("--latest", type=Path, default=root / "reports" / "latest.json")
     parser.add_argument("--output", type=Path, default=None, help="Queue JSON path.")
+    parser.add_argument("--status-file", type=Path, default=root / "reports" / EXECUTION_STATUS_FILE)
     parser.add_argument("--limit", type=int, default=3)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     report_path = args.report or latest_report_path(root)
     report = load_json(report_path)
+    execution_status = load_execution_status(args.status_file)
     report_date = str(report.get("date") or dt.date.today().isoformat()).replace("-", "")
     output_path = args.output or root / "reports" / f"codex_auto_queue_{report_date}.json"
 
-    queue = build_queue(report, max(0, args.limit))
+    queue = build_queue(report, max(0, args.limit), execution_status)
     queue["source_report"] = str(report_path)
+    queue["execution_status_file"] = str(args.status_file)
 
     if args.dry_run:
         print(json.dumps(queue, ensure_ascii=False, indent=2))
