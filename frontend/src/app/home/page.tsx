@@ -321,7 +321,7 @@ export default function HomeDashboard() {
                       最新の改善項目
                     </h3>
                     <p className="text-xs text-slate-500 font-bold mt-1">
-                      {improvementCounts?.needs_review ?? improvementHighlights.length}件の要確認候補を表示
+                      朝に見る候補は最大3件まで
                     </p>
                   </div>
                   {stats?.improvement_highlights?.source && (

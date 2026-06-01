@@ -179,21 +179,57 @@ initGraph();
 </html>
 `;
 
+type SimilarGraphSettings = {
+  chargeStrength: number;
+  linkBaseDistance: number;
+  collisionPadding: number;
+  nodeScale: number;
+  zoomMax: number;
+  fitOnLoad: boolean;
+};
+
+const SIMILAR_SETTINGS_KEY = "similar-network-d3-settings";
+const DEFAULT_SIMILAR_SETTINGS: SimilarGraphSettings = {
+  chargeStrength: -180,
+  linkBaseDistance: 102,
+  collisionPadding: 10,
+  nodeScale: 1,
+  zoomMax: 3.5,
+  fitOnLoad: true,
+};
 
 export default function SimilarPage() {
   const [graphData, setGraphData] = useState<any>(null);
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [chargeStrength, setChargeStrength] = useState(-120);
-  const [linkBaseDistance, setLinkBaseDistance] = useState(85);
-  const [collisionPadding, setCollisionPadding] = useState(6);
-  const [nodeScale, setNodeScale] = useState(0.9);
-  const [zoomMax, setZoomMax] = useState(4);
-  const [fitOnLoad, setFitOnLoad] = useState(true);
+  const [chargeStrength, setChargeStrength] = useState(DEFAULT_SIMILAR_SETTINGS.chargeStrength);
+  const [linkBaseDistance, setLinkBaseDistance] = useState(DEFAULT_SIMILAR_SETTINGS.linkBaseDistance);
+  const [collisionPadding, setCollisionPadding] = useState(DEFAULT_SIMILAR_SETTINGS.collisionPadding);
+  const [nodeScale, setNodeScale] = useState(DEFAULT_SIMILAR_SETTINGS.nodeScale);
+  const [zoomMax, setZoomMax] = useState(DEFAULT_SIMILAR_SETTINGS.zoomMax);
+  const [fitOnLoad, setFitOnLoad] = useState(DEFAULT_SIMILAR_SETTINGS.fitOnLoad);
   const [viewKey, setViewKey] = useState(0);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     triggerMebuki('guide', '案件類似ネットワーク画面ですね！\n過去の案件から似たパターンのものを可視化します！');
+
+    try {
+      const raw = window.localStorage.getItem(SIMILAR_SETTINGS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<SimilarGraphSettings>;
+        setChargeStrength(typeof parsed.chargeStrength === "number" ? parsed.chargeStrength : DEFAULT_SIMILAR_SETTINGS.chargeStrength);
+        setLinkBaseDistance(typeof parsed.linkBaseDistance === "number" ? parsed.linkBaseDistance : DEFAULT_SIMILAR_SETTINGS.linkBaseDistance);
+        setCollisionPadding(typeof parsed.collisionPadding === "number" ? parsed.collisionPadding : DEFAULT_SIMILAR_SETTINGS.collisionPadding);
+        setNodeScale(typeof parsed.nodeScale === "number" ? parsed.nodeScale : DEFAULT_SIMILAR_SETTINGS.nodeScale);
+        setZoomMax(typeof parsed.zoomMax === "number" ? parsed.zoomMax : DEFAULT_SIMILAR_SETTINGS.zoomMax);
+        setFitOnLoad(typeof parsed.fitOnLoad === "boolean" ? parsed.fitOnLoad : DEFAULT_SIMILAR_SETTINGS.fitOnLoad);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setHydrated(true);
+    }
     
     const fetchData = async () => {
       try {
@@ -208,6 +244,33 @@ export default function SimilarPage() {
     };
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      const payload: SimilarGraphSettings = {
+        chargeStrength,
+        linkBaseDistance,
+        collisionPadding,
+        nodeScale,
+        zoomMax,
+        fitOnLoad,
+      };
+      window.localStorage.setItem(SIMILAR_SETTINGS_KEY, JSON.stringify(payload));
+    } catch {
+      // ignore
+    }
+  }, [hydrated, chargeStrength, linkBaseDistance, collisionPadding, nodeScale, zoomMax, fitOnLoad]);
+
+  const resetSettings = () => {
+    setChargeStrength(DEFAULT_SIMILAR_SETTINGS.chargeStrength);
+    setLinkBaseDistance(DEFAULT_SIMILAR_SETTINGS.linkBaseDistance);
+    setCollisionPadding(DEFAULT_SIMILAR_SETTINGS.collisionPadding);
+    setNodeScale(DEFAULT_SIMILAR_SETTINGS.nodeScale);
+    setZoomMax(DEFAULT_SIMILAR_SETTINGS.zoomMax);
+    setFitOnLoad(DEFAULT_SIMILAR_SETTINGS.fitOnLoad);
+    setViewKey((v) => v + 1);
+  };
 
   if (loading) {
     return (
@@ -284,6 +347,13 @@ export default function SimilarPage() {
           >
             <RotateCcw className="w-4 h-4" />
             再配置
+          </button>
+          <button
+            type="button"
+            onClick={resetSettings}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-bold shadow-sm hover:bg-slate-50 transition-colors"
+          >
+            初期値に戻す
           </button>
           <div className="text-xs text-slate-500">広がりすぎるときは反発を弱め、リンク距離を短くすると詰まります。</div>
         </div>

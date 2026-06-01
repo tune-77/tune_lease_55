@@ -2471,7 +2471,7 @@ def get_dashboard_stats():
             raise HTTPException(status_code=503, detail="dashboard stats cache unavailable")
         payload = dict(payload)
         payload["lease_news_focus"] = _lease_news_focus_to_dict(get_latest_lease_news_focus())
-        payload["improvement_highlights"] = _load_latest_improvement_highlights(limit=4)
+        payload["improvement_highlights"] = _load_latest_improvement_highlights(limit=3)
         return payload
     except Exception as e:
         import traceback
@@ -2506,7 +2506,7 @@ def _latest_improvement_report_path() -> Path | None:
     return candidates[-1] if candidates else None
 
 
-def _load_latest_improvement_highlights(limit: int = 4) -> dict:
+def _load_latest_improvement_highlights(limit: int = 3) -> dict:
     report_path = _latest_improvement_report_path()
     if not report_path:
         return {"available": False, "items": [], "source": ""}
@@ -2518,10 +2518,24 @@ def _load_latest_improvement_highlights(limit: int = 4) -> dict:
     needs_review_items = report.get("needs_review") or []
     raw_items = needs_review_items or report.get("auto_fix_candidates") or report.get("improvements") or []
     items: list[dict[str, str]] = []
-    for raw in raw_items[:limit]:
+    for raw in raw_items:
+        if len(items) >= limit:
+            break
         if not isinstance(raw, dict):
             continue
         policy = raw.get("auto_fix_policy") or {}
+        temp_item = {
+            "status": "NEEDS_REVIEW" if raw in needs_review_items else "AUTO_FIX_CANDIDATE",
+            "priority": raw.get("priority") or policy.get("risk") or "",
+            "reason": raw.get("reason") or policy.get("reason") or "",
+            "detail": raw.get("detail") or raw.get("description") or "",
+            "duplicate_count": raw.get("duplicate_count") or 0,
+            "recommended_order": raw.get("recommended_order"),
+            "auto_fix_policy": policy,
+        }
+        should_park, _park_reason = _should_park_improvement(temp_item)
+        if should_park:
+            continue
         items.append({
             "id": str(raw.get("id") or ""),
             "title": str(raw.get("title") or ""),
@@ -3418,10 +3432,10 @@ def _improvement_canonical_key(title: str, description: str = "") -> str:
         return normalized[:80]
 
 
-def _applied_improvement_keys() -> set[str]:
+def _latest_improvement_statuses() -> dict[str, str]:
     ledger_path = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
     if not ledger_path.exists():
-        return set()
+        return {}
     latest_by_key: dict[str, str] = {}
     try:
         for line in ledger_path.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -3437,14 +3451,75 @@ def _applied_improvement_keys() -> set[str]:
             if key:
                 latest_by_key[key] = status
     except OSError:
-        return set()
+        return {}
+    return latest_by_key
+
+
+def _applied_improvement_keys() -> set[str]:
+    latest_by_key = _latest_improvement_statuses()
     return {key for key, status in latest_by_key.items() if status == "applied"}
+
+
+_PARK_AFTER_DAYS = 7
+_PARK_WEAK_AFTER_DAYS = 3
+
+
+def _improvement_source_age_days(item: dict) -> int | None:
+    import datetime as _dt
+
+    text = " ".join(str(item.get(key) or "") for key in ("reason", "detail", "description"))
+    match = re.search(r"(20\d{2}-\d{2}-\d{2})", text)
+    if not match:
+        return None
+    try:
+        source_day = _dt.date.fromisoformat(match.group(1))
+    except ValueError:
+        return None
+    return max(0, (_dt.date.today() - source_day).days)
+
+
+def _should_park_improvement(item: dict) -> tuple[bool, str]:
+    if item.get("status") != "NEEDS_REVIEW":
+        return False, ""
+
+    priority = str(item.get("priority") or "").lower()
+    policy = item.get("auto_fix_policy") or {}
+    risk = str(policy.get("risk") or "").lower()
+    reason = str(item.get("reason") or policy.get("reason") or "")
+    duplicate_count = int(item.get("duplicate_count") or 0)
+    recommended_order = item.get("recommended_order")
+    age_days = _improvement_source_age_days(item)
+
+    has_strong_signal = (
+        priority == "high"
+        or risk == "high"
+        or duplicate_count >= 3
+        or (isinstance(recommended_order, int) and recommended_order <= 3)
+    )
+    if has_strong_signal:
+        return False, ""
+
+    is_weak = (
+        priority == "low"
+        or (
+            duplicate_count <= 1
+            and recommended_order is None
+            and ("対象ファイル未特定" in reason or "対象ファイル不明" in reason)
+        )
+    )
+
+    if age_days is not None and age_days >= _PARK_AFTER_DAYS:
+        return True, f"{age_days}日経過した未着手候補のため自動park"
+    if is_weak and age_days is not None and age_days >= _PARK_WEAK_AFTER_DAYS:
+        return True, f"弱いシグナルの候補が{age_days}日経過したため自動park"
+    return False, ""
 
 
 def _normalize_improvement_report(report: dict) -> dict:
     """旧/新の改善パイプラインレポートをNext表示用に正規化する."""
     items_by_id: dict[str, dict] = {}
-    applied_keys = _applied_improvement_keys()
+    latest_statuses = _latest_improvement_statuses()
+    applied_keys = {key for key, status in latest_statuses.items() if status == "applied"}
 
     for item in report.get("improvements") or []:
         if not isinstance(item, dict):
@@ -3500,6 +3575,7 @@ def _normalize_improvement_report(report: dict) -> dict:
                 "status": status,
                 "canonical_key": canonical,
                 "reason": entry.get("reason") or policy.get("reason") or base.get("reason") or "",
+                "detail": entry.get("detail") or entry.get("description") or base.get("detail") or "",
                 "auto_fix_policy": policy,
             })
 
@@ -3527,9 +3603,19 @@ def _normalize_improvement_report(report: dict) -> dict:
     for item in items_by_id.values():
         canonical = item.get("canonical_key") or _improvement_canonical_key(str(item.get("title") or ""))
         item["canonical_key"] = canonical
-        if canonical in applied_keys:
+        ledger_status = latest_statuses.get(canonical)
+        if ledger_status == "applied" or canonical in applied_keys:
             item["status"] = "APPLIED"
             item["reason"] = "改善済み登録済み"
+        elif ledger_status == "parked":
+            item["status"] = "PARKED"
+            item["reason"] = "park済み登録済み"
+        else:
+            should_park, park_reason = _should_park_improvement(item)
+            if should_park:
+                item["status"] = "PARKED"
+                item["park_reason"] = park_reason
+                item["reason"] = park_reason
 
     items = sorted(
         items_by_id.values(),
@@ -3547,6 +3633,7 @@ def _normalize_improvement_report(report: dict) -> dict:
         "approved": sum(1 for item in items if item.get("status") in {"APPROVED", "AUTO_FIX_CANDIDATE"}),
         "auto_fix_candidates": sum(1 for item in items if item.get("status") == "AUTO_FIX_CANDIDATE"),
         "needs_review": sum(1 for item in items if item.get("status") == "NEEDS_REVIEW"),
+        "parked": sum(1 for item in items if item.get("status") == "PARKED"),
         "rejected": sum(1 for item in items if item.get("status") == "REJECTED"),
         "applied": sum(1 for item in items if item.get("status") == "APPLIED") or summary.get("applied_count", 0),
         "items": items,
@@ -3566,6 +3653,7 @@ def get_improvement_log():
             "approved": 0,
             "auto_fix_candidates": 0,
             "needs_review": 0,
+            "parked": 0,
             "rejected": 0,
             "applied": 0,
             "items": [],

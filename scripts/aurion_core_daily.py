@@ -407,6 +407,9 @@ def audit_db() -> dict[str, Any]:
     }
 
 
+MORNING_IMPROVEMENT_LIMIT = 3
+
+
 def collect_recent_improvements(limit_files: int = 7) -> dict[str, Any]:
     roots = [
         SYNC_ROOT / "Projects/tune_lease_55/AI Chat/Improvement Log",
@@ -447,7 +450,7 @@ def collect_recent_improvements(limit_files: int = 7) -> dict[str, Any]:
     return {
         "files": [str(p) for p in files],
         "keyword_hits": dict(keywords.most_common()),
-        "recent_items": accepted[:20],
+        "recent_items": accepted[:MORNING_IMPROVEMENT_LIMIT],
     }
 
 
@@ -715,7 +718,7 @@ def write_morning_report(state: dict[str, Any], db: dict[str, Any], recent: dict
             "",
         ]
     )
-    for item in (recent.get("recent_items") or [])[:12]:
+    for item in (recent.get("recent_items") or [])[:MORNING_IMPROVEMENT_LIMIT]:
         lines.append(f"- {item}")
 
     lines.extend(
@@ -727,11 +730,11 @@ def write_morning_report(state: dict[str, Any], db: dict[str, Any], recent: dict
             "",
             "## Morning Design Review Queue",
             "",
+            f"> 今日の改善レビューは最大{MORNING_IMPROVEMENT_LIMIT}件まで。候補を増やすより、捨てる・寝かせる・着手するを決める。",
+            "",
             "- AIの最終目的: 承認率向上、貸倒率低減、収益最大化、一致率向上、ポートフォリオ最適化の優先順位と衝突関係をレビューする。",
             "- AIの役割: 審査官、審査支援、リスク検知、条件提案、経営支援のどれを本線にするかをレビューする。",
             "- 評価指標: 技術指標、業務指標、経営指標の対応関係をレビューする。",
-            "- 責任分担: AIが提示してよい判断と、人間が最終責任を負う判断をレビューする。",
-            "- 差分分析: 過去7日間の新規洞察、既出洞察、修正仮説、否定仮説を分ける。",
             "",
         ]
     )
