@@ -35,6 +35,7 @@ LEASE_VAULT = Path(
 )
 SYNC_ROOT = LEASE_VAULT / "99_Synced_From_Origin"
 DB_PATH = PROJECT_ROOT / "data" / "lease_data.db"
+REPORTS_DIR = PROJECT_ROOT / "reports"
 STATE_DIR = PROJECT_ROOT / "data" / "aurion_daily"
 LOG_DIR = PROJECT_ROOT / "logs" / "aurion_daily"
 
@@ -410,6 +411,50 @@ def audit_db() -> dict[str, Any]:
 MORNING_IMPROVEMENT_LIMIT = 3
 
 
+def read_codex_auto_queue() -> dict[str, Any]:
+    queue_files = sorted(REPORTS_DIR.glob("codex_auto_queue_*.json"))
+    latest_path = REPORTS_DIR / "latest.json"
+    queue: dict[str, Any] = {}
+
+    if queue_files:
+        path = queue_files[-1]
+        try:
+            queue = json.loads(path.read_text(encoding="utf-8"))
+            queue["path"] = str(path)
+            return queue
+        except Exception as exc:
+            return {"status": "ERROR", "path": str(path), "error": str(exc)}
+
+    if latest_path.exists():
+        try:
+            latest = json.loads(latest_path.read_text(encoding="utf-8"))
+            meta = latest.get("codex_auto_queue") or {}
+            if meta:
+                return {
+                    "status": meta.get("status", "UNKNOWN"),
+                    "path": meta.get("path", ""),
+                    "queued_count": meta.get("queued_count", 0),
+                    "codex_auto_safe_count": meta.get("safe_count", 0),
+                    "codex_auto_maybe_count": meta.get("maybe_count", 0),
+                    "manual_or_blocked_count": meta.get("manual_or_blocked_count", 0),
+                    "limit": meta.get("limit", MORNING_IMPROVEMENT_LIMIT),
+                    "generated_at": meta.get("generated_at", ""),
+                    "items": [],
+                }
+        except Exception as exc:
+            return {"status": "ERROR", "path": str(latest_path), "error": str(exc)}
+
+    return {
+        "status": "MISSING",
+        "path": "",
+        "queued_count": 0,
+        "codex_auto_safe_count": 0,
+        "codex_auto_maybe_count": 0,
+        "manual_or_blocked_count": 0,
+        "items": [],
+    }
+
+
 def collect_recent_improvements(limit_files: int = 7) -> dict[str, Any]:
     roots = [
         SYNC_ROOT / "Projects/tune_lease_55/AI Chat/Improvement Log",
@@ -643,7 +688,12 @@ def _md_table(rows: list[dict[str, Any]], columns: list[str]) -> str:
     return "\n".join(lines)
 
 
-def write_morning_report(state: dict[str, Any], db: dict[str, Any], recent: dict[str, Any]) -> Path:
+def write_morning_report(
+    state: dict[str, Any],
+    db: dict[str, Any],
+    recent: dict[str, Any],
+    codex_queue: dict[str, Any] | None = None,
+) -> Path:
     out = LEASE_VAULT / f"@AI_Daily_Report_{date_str()}_0600.md"
     sync = state.get("sync") or {}
     vault_b_rag = state.get("vault_b_rag") or {}
@@ -651,6 +701,7 @@ def write_morning_report(state: dict[str, Any], db: dict[str, Any], recent: dict
     db_counts = db.get("counts") or []
     score_bands = db.get("score_bands") or []
     keyword_hits = recent.get("keyword_hits") or {}
+    codex_queue = codex_queue or read_codex_auto_queue()
 
     policy = [
         "1. 最終目的を先に固定する。承認率、貸倒率、収益、審査担当者との一致率、ポートフォリオ最適化は同時に最大化できない。",
@@ -720,6 +771,32 @@ def write_morning_report(state: dict[str, Any], db: dict[str, Any], recent: dict
     )
     for item in (recent.get("recent_items") or [])[:MORNING_IMPROVEMENT_LIMIT]:
         lines.append(f"- {item}")
+
+    queue_items = codex_queue.get("items") or []
+    lines.extend(
+        [
+            "",
+            "## Codex Auto Improvement Queue",
+            "",
+            f"- Status: `{codex_queue.get('status', 'UNKNOWN')}`",
+            f"- Safe candidates: `{codex_queue.get('codex_auto_safe_count', 0)}`",
+            f"- Queued today: `{codex_queue.get('queued_count', len(queue_items))}` / `{codex_queue.get('limit', MORNING_IMPROVEMENT_LIMIT)}`",
+            f"- Maybe candidates: `{codex_queue.get('codex_auto_maybe_count', 0)}`",
+            f"- Manual or blocked: `{codex_queue.get('manual_or_blocked_count', 0)}`",
+            f"- Queue file: `{codex_queue.get('path', '')}`",
+            "",
+        ]
+    )
+    if queue_items:
+        lines.append("### Today's Codex Candidates")
+        lines.append("")
+        for item in queue_items[:MORNING_IMPROVEMENT_LIMIT]:
+            lines.append(f"- `{item.get('id', '')}` {item.get('title', '')}")
+            reason = item.get("reason") or ""
+            if reason:
+                lines.append(f"  - reason: {reason}")
+    else:
+        lines.append("- No Codex auto candidates queued today.")
 
     lines.extend(
         [
@@ -987,14 +1064,18 @@ def run_morning_report(dry_run: bool = False) -> int:
         state = {"started_at": "missing", "sync": {"status": "missing"}, "errors": ["midnight state not found"]}
     db = audit_db()
     recent = collect_recent_improvements()
+    codex_queue = read_codex_auto_queue()
     if dry_run:
-        print(json.dumps({"state": state, "db": db, "recent": recent}, ensure_ascii=False, indent=2)[:4000])
+        print(json.dumps({"state": state, "db": db, "recent": recent, "codex_queue": codex_queue}, ensure_ascii=False, indent=2)[:4000])
         return 0
-    report = write_morning_report(state, db, recent)
+    report = write_morning_report(state, db, recent, codex_queue)
     web = state.get("web") or web_tactical_search(3)
     reasoning = state.get("reasoning") or cross_reasoning_loop(db, recent, web)
     insight = write_evolved_insight(state, db, recent, web, reasoning, report)
-    notify("AURION CORE Morning Report", f"06:00 report generated: {report.name}; insight: {insight.name}")
+    notify(
+        "AURION CORE Morning Report",
+        f"06:00 report generated: {report.name}; Codex queue {codex_queue.get('queued_count', 0)}/{codex_queue.get('codex_auto_safe_count', 0)}; insight: {insight.name}",
+    )
     print(str(report))
     print(str(insight))
     return 0

@@ -85,10 +85,29 @@ if [ -f "${RESULT_FILE}" ]; then
     fi
 fi
 
-# --- Step 6: 最終結果を Gist に push ---
+# --- Step 6: Codex 自動実行キューを生成 ---
+if [ -f "${RESULT_FILE}" ]; then
+    echo ""
+    echo "[Step 6] Codex 自動実行キューを生成中..."
+    CODEX_QUEUE_FILE="${PROJECT_ROOT}/reports/codex_auto_queue_${LOG_DATE}.json"
+    "${PYTHON}" "${PROJECT_ROOT}/scripts/build_codex_auto_queue.py" \
+        --report "${RESULT_FILE}" \
+        --latest "${LATEST_FILE}" \
+        --output "${CODEX_QUEUE_FILE}" \
+        --limit 3
+    QUEUE_EXIT=$?
+    if [ ${QUEUE_EXIT} -ne 0 ]; then
+        echo "警告: Codex 自動実行キュー生成に失敗しました（終了コード ${QUEUE_EXIT}）"
+        if [ ${FINAL_EXIT} -eq 0 ]; then
+            FINAL_EXIT=${QUEUE_EXIT}
+        fi
+    fi
+fi
+
+# --- Step 7: 最終結果を Gist に push ---
 if [ -f "${LATEST_FILE}" ]; then
     echo ""
-    echo "[Step 6] Gist に最終結果を更新中..."
+    echo "[Step 7] Gist に最終結果を更新中..."
     if [ ${FINAL_EXIT} -eq 0 ]; then
         if command -v gh >/dev/null 2>&1; then
             if gh gist edit "${GIST_ID}" "${LATEST_FILE}" 2>/dev/null; then
@@ -118,6 +137,9 @@ echo "改善パイプライン終了: $(date '+%Y-%m-%d %H:%M:%S')"
 echo "終了コード: ${FINAL_EXIT}"
 if [ -f "${RESULT_FILE}" ]; then
     echo "結果ファイル: ${RESULT_FILE}"
+fi
+if [ -n "${CODEX_QUEUE_FILE:-}" ] && [ -f "${CODEX_QUEUE_FILE}" ]; then
+    echo "Codex 自動実行キュー: ${CODEX_QUEUE_FILE}"
 fi
 echo "Gist: https://gist.githubusercontent.com/tune-77/${GIST_ID}/raw/latest.json"
 echo "ログファイル: ${LOG_FILE}"
