@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
 import { apiClient } from "@/lib/api";
-import { Send, X, Loader2, NotebookPen } from "lucide-react";
+import { Send, X, Loader2, NotebookPen, Lightbulb } from "lucide-react";
 
 const YANAMI_BOT_MESSAGES = [
   "システム稼働中。いつでもサポートします！",
@@ -46,6 +46,7 @@ export default function FloatingMebuki() {
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [savingObsidian, setSavingObsidian] = useState(false);
+  const [improvementMode, setImprovementMode] = useState(false);
   const [saveToast, setSaveToast] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -138,6 +139,7 @@ export default function FloatingMebuki() {
       const res = await apiClient.post("/api/chat", {
         message: text,
         user_id: USER_ID,
+        intent: improvementMode ? "improvement" : undefined,
       });
       const assistantMsg: ChatMessage = {
         id: Date.now() + 1,
@@ -147,6 +149,10 @@ export default function FloatingMebuki() {
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, assistantMsg]);
+      if (improvementMode && res.data.improvement_saved) {
+        setSaveToast("改善メモに登録しました");
+        setTimeout(() => setSaveToast(null), 2000);
+      }
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -315,34 +321,55 @@ export default function FloatingMebuki() {
           </div>
 
           {/* 入力エリア */}
-          <div className="flex-shrink-0 bg-white border-t border-slate-200 p-2 flex gap-2 items-end">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="メッセージを入力（Enter送信）"
-              rows={1}
-              disabled={loading}
-              className="flex-1 resize-none bg-transparent outline-none text-xs text-slate-800 placeholder:text-slate-400 px-2 py-1.5 max-h-24 overflow-y-auto leading-relaxed"
-              style={{ minHeight: "2rem" }}
-              onInput={(e) => {
-                const el = e.currentTarget;
-                el.style.height = "auto";
-                el.style.height = `${el.scrollHeight}px`;
-              }}
-            />
-            <button
-              onClick={sendMessage}
-              disabled={loading || !input.trim()}
-              className="w-8 h-8 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 rounded-xl flex items-center justify-center transition-colors flex-shrink-0"
-            >
-              {loading ? (
-                <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
-              ) : (
-                <Send className="w-3.5 h-3.5 text-white" />
+          <div className={`flex-shrink-0 border-t p-2 ${improvementMode ? "bg-amber-50 border-amber-200" : "bg-white border-slate-200"}`}>
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setImprovementMode((current) => !current)}
+                className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-black transition-colors ${
+                  improvementMode
+                    ? "bg-amber-500 text-white shadow-sm"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                <Lightbulb className="h-3 w-3" />
+                改善メモ
+              </button>
+              {improvementMode && (
+                <span className="text-[9px] font-bold text-amber-700">Logに保存</span>
               )}
-            </button>
+            </div>
+            <div className="flex gap-2 items-end">
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={improvementMode ? "改善したい点を入力" : "メッセージを入力（Enter送信）"}
+                rows={1}
+                disabled={loading}
+                className="flex-1 resize-none bg-transparent outline-none text-xs text-slate-800 placeholder:text-slate-400 px-2 py-1.5 max-h-24 overflow-y-auto leading-relaxed"
+                style={{ minHeight: "2rem" }}
+                onInput={(e) => {
+                  const el = e.currentTarget;
+                  el.style.height = "auto";
+                  el.style.height = `${el.scrollHeight}px`;
+                }}
+              />
+              <button
+                onClick={sendMessage}
+                disabled={loading || !input.trim()}
+                className={`w-8 h-8 disabled:bg-slate-300 rounded-xl flex items-center justify-center transition-colors flex-shrink-0 ${
+                  improvementMode ? "bg-amber-500 hover:bg-amber-600" : "bg-emerald-500 hover:bg-emerald-600"
+                }`}
+              >
+                {loading ? (
+                  <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
+                ) : (
+                  <Send className="w-3.5 h-3.5 text-white" />
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
