@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Small helper for writing Codex notes into an Obsidian vault."""
+"""Small helper for writing agent work notes into an Obsidian vault."""
 
 from __future__ import annotations
 
@@ -45,6 +45,9 @@ def require_vault(raw: str | None) -> Path:
         if not (vault / ".obsidian").exists():
             raise SystemExit(f"Not an Obsidian vault: {vault}")
         return vault
+    preferred = Path.home() / "Documents" / "Obsidian Vault"
+    if (preferred / ".obsidian").exists():
+        return preferred.resolve()
     vaults = find_vaults()
     if len(vaults) == 1:
         return vaults[0]
@@ -70,6 +73,46 @@ def append_text(path: Path, text: str) -> None:
     prefix = "\n\n" if path.exists() and path.read_text(encoding="utf-8").strip() else ""
     with path.open("a", encoding="utf-8") as f:
         f.write(prefix + body + "\n")
+
+
+def bullet_lines(items: list[str]) -> list[str]:
+    if not items:
+        return ["- none"]
+    return [f"- {item.strip()}" for item in items if item.strip()] or ["- none"]
+
+
+def cmd_agent_work_log(args: argparse.Namespace) -> None:
+    vault = require_vault(args.vault)
+    day = args.date or dt.date.today().isoformat()
+    folder = args.folder.strip("/") if args.folder else ""
+    rel = f"{folder}/{day}.md" if folder else f"{day}.md"
+    path = safe_note_path(vault, rel)
+    now = dt.datetime.now().strftime("%H:%M")
+    agent = args.agent.strip() if args.agent else "Agent"
+    title = args.title or f"{agent} Work Log"
+
+    lines = [
+        f"## {now} {title}",
+        "",
+        "### Summary",
+        *bullet_lines(args.summary),
+        "",
+        "### Decisions",
+        *bullet_lines(args.decision),
+        "",
+        "### Changes",
+        *bullet_lines(args.change),
+        "",
+        "### Verification",
+        *bullet_lines(args.verification),
+        "",
+        "### Git",
+        *bullet_lines(args.git),
+    ]
+    if args.open_item:
+        lines.extend(["", "### Open Items", *bullet_lines(args.open_item)])
+    append_text(path, "\n".join(lines))
+    print(path)
 
 
 def cmd_find_vaults(_: argparse.Namespace) -> None:
@@ -137,6 +180,25 @@ def main() -> None:
     p.add_argument("--date")
     p.add_argument("--text", required=True)
     p.set_defaults(func=cmd_append_daily)
+
+    def add_work_log_parser(name: str, default_agent: str) -> None:
+        p = sub.add_parser(name)
+        p.add_argument("--vault")
+        p.add_argument("--folder", default="Daily")
+        p.add_argument("--date")
+        p.add_argument("--agent", default=default_agent)
+        p.add_argument("--title")
+        p.add_argument("--summary", action="append", default=[])
+        p.add_argument("--decision", action="append", default=[])
+        p.add_argument("--change", action="append", default=[])
+        p.add_argument("--verification", action="append", default=[])
+        p.add_argument("--git", action="append", default=[])
+        p.add_argument("--open-item", action="append", default=[])
+        p.set_defaults(func=cmd_agent_work_log)
+
+    add_work_log_parser("agent-work-log", "Agent")
+    add_work_log_parser("codex-work-log", "Codex")
+    add_work_log_parser("claude-work-log", "Claude")
 
     p = sub.add_parser("write-note")
     p.add_argument("--vault")

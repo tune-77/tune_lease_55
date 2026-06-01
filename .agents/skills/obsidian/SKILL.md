@@ -48,6 +48,9 @@ Codexの作業結果、意思決定、TODO、検証ログをObsidian VaultへMar
 ```bash
 python3 .agents/skills/obsidian/scripts/obsidian_note.py find-vaults
 python3 .agents/skills/obsidian/scripts/obsidian_note.py append-daily --vault /path/to/vault --text "..."
+python3 .agents/skills/obsidian/scripts/obsidian_note.py agent-work-log --agent Codex --vault /path/to/vault --summary "..." --decision "..." --change "..." --verification "..." --git "..."
+python3 .agents/skills/obsidian/scripts/obsidian_note.py codex-work-log --vault /path/to/vault --summary "..." --decision "..." --change "..." --verification "..." --git "..."
+python3 .agents/skills/obsidian/scripts/obsidian_note.py claude-work-log --vault /path/to/vault --summary "..." --decision "..." --change "..." --verification "..." --git "..."
 python3 .agents/skills/obsidian/scripts/obsidian_note.py write-note --vault /path/to/vault --path "Codex/example.md" --title "Example" --text "..."
 python3 .agents/skills/obsidian/scripts/obsidian_note.py search --vault /path/to/vault --query "lease"
 ```
@@ -73,6 +76,36 @@ Vaultがワークスペース外の場合、通常の権限ルールに従って
 ### Open Items
 - ...
 ```
+
+Agent作業ログ:
+
+```markdown
+## HH:MM Codex Work Log
+
+または
+
+## HH:MM Claude Work Log
+
+### Summary
+- ...
+
+### Decisions
+- ...
+
+### Changes
+- ...
+
+### Verification
+- ...
+
+### Git
+- ...
+```
+
+運用:
+- Codex/Claudeとの会話全文は保存しない。
+- 保存するのは、作業要約、意思決定、変更ファイル、検証、commit/merge SHA、残課題だけにする。
+- `git-ship` 後は、機密情報を含めずに `codex-work-log` または `claude-work-log` で日次ノートへ追記する。
 
 プロジェクトノート:
 
