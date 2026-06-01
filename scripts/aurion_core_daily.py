@@ -10,8 +10,10 @@ creates a morning Markdown report in lease-wiki-vault.
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import os
+import re
 import shlex
 import shutil
 import sqlite3
@@ -409,6 +411,7 @@ def audit_db() -> dict[str, Any]:
 
 
 MORNING_IMPROVEMENT_LIMIT = 3
+IMPROVEMENT_GAP_LOOKBACK_HOURS = 36
 
 
 def read_codex_auto_queue() -> dict[str, Any]:
@@ -452,6 +455,188 @@ def read_codex_auto_queue() -> dict[str, Any]:
         "codex_auto_maybe_count": 0,
         "manual_or_blocked_count": 0,
         "items": [],
+    }
+
+
+def latest_improvement_report_path() -> Path | None:
+    reports = sorted(REPORTS_DIR.glob("improvement_report_*.json"))
+    return reports[-1] if reports else None
+
+
+def _git_recent_commits(hours: int = IMPROVEMENT_GAP_LOOKBACK_HOURS, limit: int = 40) -> list[dict[str, Any]]:
+    since = f"{hours} hours ago"
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(PROJECT_ROOT),
+                "log",
+                f"--since={since}",
+                f"--max-count={limit}",
+                "--name-only",
+                "--pretty=format:__COMMIT__%H%x1f%h%x1f%ad%x1f%s",
+                "--date=iso-strict",
+            ],
+            timeout=15,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except Exception:
+        return []
+    if result.returncode != 0:
+        return []
+
+    commits: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    for raw_line in result.stdout.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("__COMMIT__"):
+            if current:
+                commits.append(current)
+            parts = line.removeprefix("__COMMIT__").split("\x1f")
+            current = {
+                "sha": parts[0] if len(parts) > 0 else "",
+                "short_sha": parts[1] if len(parts) > 1 else "",
+                "date": parts[2] if len(parts) > 2 else "",
+                "subject": parts[3] if len(parts) > 3 else "",
+                "files": [],
+            }
+        elif current is not None:
+            current["files"].append(line)
+    if current:
+        commits.append(current)
+    return commits
+
+
+def _normalize_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value.lower()).strip()
+
+
+def _match_terms(value: str) -> list[str]:
+    terms = re.findall(r"[a-z0-9_/-]{3,}|[一-龥ぁ-んァ-ンー]{2,}", value.lower())
+    blocked = {"改善", "表示", "対応", "追加", "更新", "修正", "設定", "機能", "今日"}
+    deduped: list[str] = []
+    for term in terms:
+        if term in blocked or term in deduped:
+            continue
+        deduped.append(term)
+    return deduped[:10]
+
+
+def collect_improvement_declaration_gaps() -> dict[str, Any]:
+    """Find likely implemented-but-not-registered improvement items.
+
+    This deliberately reports candidates only. It never changes improvement
+    report statuses because a false "applied" is worse than a noisy reminder.
+    """
+    report_path = latest_improvement_report_path()
+    if not report_path:
+        return {"status": "MISSING_REPORT", "items": [], "count": 0}
+
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {"status": "ERROR", "path": str(report_path), "error": str(exc), "items": [], "count": 0}
+
+    by_id: dict[str, dict[str, Any]] = {}
+    status_by_id: dict[str, str] = {}
+    for status in ("applied", "needs_review", "rejected", "high_risk"):
+        for item in report.get(status) or []:
+            if not isinstance(item, dict) or not item.get("id"):
+                continue
+            rev_id = str(item["id"])
+            by_id.setdefault(rev_id, item)
+            status_by_id.setdefault(rev_id, status)
+
+    open_items = [
+        item for rev_id, item in by_id.items()
+        if status_by_id.get(rev_id) in {"needs_review", "high_risk"}
+    ]
+    commits = _git_recent_commits()
+    candidates: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    seen_rev_ids: set[str] = set()
+
+    for commit in commits:
+        commit_text = _normalize_text(
+            " ".join([commit.get("subject", ""), " ".join(commit.get("files") or [])])
+        )
+        mentioned_ids = sorted(set(re.findall(r"\bREV-\d{3,}\b", commit_text, flags=re.IGNORECASE)))
+        for raw_id in mentioned_ids:
+            rev_id = raw_id.upper()
+            item = by_id.get(rev_id)
+            status = status_by_id.get(rev_id, "unknown")
+            if item and status in {"needs_review", "high_risk"}:
+                if rev_id in seen_rev_ids:
+                    continue
+                key = (rev_id, commit.get("short_sha", ""), "explicit_rev_id")
+                if key not in seen:
+                    seen.add(key)
+                    seen_rev_ids.add(rev_id)
+                    candidates.append(
+                        {
+                            "id": rev_id,
+                            "title": item.get("title", ""),
+                            "current_status": status,
+                            "confidence": "high",
+                            "reason": "commit mentions REV id but report is still open",
+                            "commit": commit.get("short_sha", ""),
+                            "subject": commit.get("subject", ""),
+                            "files": commit.get("files", [])[:6],
+                        }
+                    )
+
+        if mentioned_ids:
+            continue
+
+        for item in open_items:
+            rev_id = str(item.get("id"))
+            if rev_id in seen_rev_ids:
+                continue
+            title = str(item.get("title") or "")
+            terms = _match_terms(title)
+            hits = [term for term in terms if term in commit_text]
+            ratio = difflib.SequenceMatcher(None, _normalize_text(title), commit_text).ratio()
+            if len(hits) >= 2 or ratio >= 0.34:
+                key = (rev_id, commit.get("short_sha", ""), "similarity")
+                if key in seen:
+                    continue
+                seen.add(key)
+                seen_rev_ids.add(rev_id)
+                candidates.append(
+                    {
+                        "id": rev_id,
+                        "title": title,
+                        "current_status": status_by_id.get(rev_id, "unknown"),
+                        "confidence": "medium",
+                        "reason": "commit has no REV id but looks related",
+                        "matched_terms": hits[:5],
+                        "commit": commit.get("short_sha", ""),
+                        "subject": commit.get("subject", ""),
+                        "files": commit.get("files", [])[:6],
+                    }
+                )
+
+    confidence_order = {"high": 0, "medium": 1, "low": 2}
+    candidates = sorted(
+        candidates,
+        key=lambda item: (
+            confidence_order.get(str(item.get("confidence")), 9),
+            str(item.get("id") or ""),
+            str(item.get("commit") or ""),
+        ),
+    )
+    return {
+        "status": "OK",
+        "path": str(report_path),
+        "lookback_hours": IMPROVEMENT_GAP_LOOKBACK_HOURS,
+        "commit_count": len(commits),
+        "count": len(candidates),
+        "items": candidates[:10],
     }
 
 
@@ -693,6 +878,7 @@ def write_morning_report(
     db: dict[str, Any],
     recent: dict[str, Any],
     codex_queue: dict[str, Any] | None = None,
+    declaration_gaps: dict[str, Any] | None = None,
 ) -> Path:
     out = LEASE_VAULT / f"@AI_Daily_Report_{date_str()}_0600.md"
     sync = state.get("sync") or {}
@@ -702,6 +888,7 @@ def write_morning_report(
     score_bands = db.get("score_bands") or []
     keyword_hits = recent.get("keyword_hits") or {}
     codex_queue = codex_queue or read_codex_auto_queue()
+    declaration_gaps = declaration_gaps or collect_improvement_declaration_gaps()
 
     policy = [
         "1. 最終目的を先に固定する。承認率、貸倒率、収益、審査担当者との一致率、ポートフォリオ最適化は同時に最大化できない。",
@@ -797,6 +984,38 @@ def write_morning_report(
                 lines.append(f"  - reason: {reason}")
     else:
         lines.append("- No Codex auto candidates queued today.")
+
+    gap_items = declaration_gaps.get("items") or []
+    lines.extend(
+        [
+            "",
+            "## Improvement Declaration Gap Check",
+            "",
+            f"- Status: `{declaration_gaps.get('status', 'UNKNOWN')}`",
+            f"- Lookback: `{declaration_gaps.get('lookback_hours', IMPROVEMENT_GAP_LOOKBACK_HOURS)}` hours",
+            f"- Commits scanned: `{declaration_gaps.get('commit_count', 0)}`",
+            f"- Suspected unregistered items: `{declaration_gaps.get('count', len(gap_items))}`",
+            f"- Report file: `{declaration_gaps.get('path', '')}`",
+            "",
+        ]
+    )
+    if gap_items:
+        lines.append("### Suspected Registration Gaps")
+        lines.append("")
+        for item in gap_items[:MORNING_IMPROVEMENT_LIMIT]:
+            lines.append(
+                f"- `{item.get('id', '')}` {item.get('title', '')} "
+                f"({item.get('confidence', '')}, status={item.get('current_status', '')})"
+            )
+            lines.append(f"  - commit: `{item.get('commit', '')}` {item.get('subject', '')}")
+            reason = item.get("reason") or ""
+            if reason:
+                lines.append(f"  - reason: {reason}")
+            matched_terms = item.get("matched_terms") or []
+            if matched_terms:
+                lines.append(f"  - matched_terms: {', '.join(matched_terms)}")
+    else:
+        lines.append("- No suspected registration gaps in recent commits.")
 
     lines.extend(
         [
@@ -1065,16 +1284,29 @@ def run_morning_report(dry_run: bool = False) -> int:
     db = audit_db()
     recent = collect_recent_improvements()
     codex_queue = read_codex_auto_queue()
+    declaration_gaps = collect_improvement_declaration_gaps()
     if dry_run:
-        print(json.dumps({"state": state, "db": db, "recent": recent, "codex_queue": codex_queue}, ensure_ascii=False, indent=2)[:4000])
+        print(
+            json.dumps(
+                {
+                    "state": state,
+                    "db": db,
+                    "recent": recent,
+                    "codex_queue": codex_queue,
+                    "declaration_gaps": declaration_gaps,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )[:4000]
+        )
         return 0
-    report = write_morning_report(state, db, recent, codex_queue)
+    report = write_morning_report(state, db, recent, codex_queue, declaration_gaps)
     web = state.get("web") or web_tactical_search(3)
     reasoning = state.get("reasoning") or cross_reasoning_loop(db, recent, web)
     insight = write_evolved_insight(state, db, recent, web, reasoning, report)
     notify(
         "AURION CORE Morning Report",
-        f"06:00 report generated: {report.name}; Codex queue {codex_queue.get('queued_count', 0)}/{codex_queue.get('codex_auto_safe_count', 0)}; insight: {insight.name}",
+        f"06:00 report generated: {report.name}; Codex queue {codex_queue.get('queued_count', 0)}/{codex_queue.get('codex_auto_safe_count', 0)}; gaps {declaration_gaps.get('count', 0)}; insight: {insight.name}",
     )
     print(str(report))
     print(str(insight))
