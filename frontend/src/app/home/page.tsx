@@ -2,7 +2,21 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
-import { PieChart, BarChart3, TrendingUp, Users, Target, Activity, CheckCircle, XCircle } from 'lucide-react';
+import {
+  PieChart,
+  BarChart3,
+  TrendingUp,
+  Users,
+  Target,
+  Activity,
+  CheckCircle,
+  XCircle,
+  Settings,
+  Eye,
+  EyeOff,
+  ScrollText,
+  Newspaper,
+} from 'lucide-react';
 
 type TopDriver = {
   label?: string;
@@ -35,15 +49,75 @@ type RecentCase = {
 type DashboardStats = {
   analysis?: DashboardAnalysis;
   recent_cases?: RecentCase[];
+  improvement_highlights?: {
+    available?: boolean;
+    date?: string;
+    generated_at?: string;
+    status?: string;
+    source?: string;
+    counts?: {
+      applied?: number;
+      auto_fix_candidates?: number;
+      needs_review?: number;
+      rejected?: number;
+    };
+    items?: Array<{
+      id?: string;
+      title?: string;
+      status?: string;
+      priority?: string;
+      reason?: string;
+      category?: string;
+      canonical_key?: string;
+    }>;
+  };
+  lease_news_focus?: {
+    available?: boolean;
+    note_path?: string;
+    note_date?: string;
+    profile?: string;
+    theme_summary?: string;
+    bucket_summary?: string;
+    tag_summary?: string;
+    focus_lines?: string[];
+    headline?: string;
+  };
+};
+
+type HomePanelSettings = {
+  showKpis: boolean;
+  showHighlights: boolean;
+  showNews: boolean;
+  showRecentCases: boolean;
+};
+
+const HOME_SETTINGS_KEY = "home-dashboard-panel-settings";
+const DEFAULT_PANEL_SETTINGS: HomePanelSettings = {
+  showKpis: true,
+  showHighlights: true,
+  showNews: true,
+  showRecentCases: true,
 };
 
 export default function HomeDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [panelSettings, setPanelSettings] = useState<HomePanelSettings>(DEFAULT_PANEL_SETTINGS);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     // 画面マウント時にめぶきちゃんを更新
     triggerMebuki('guide', 'ホーム画面ですね！\n全社的な審査・成約の直近データを分析しました！');
+
+    try {
+      const raw = window.localStorage.getItem(HOME_SETTINGS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<HomePanelSettings>;
+        setPanelSettings((prev) => ({ ...prev, ...parsed }));
+      }
+    } catch {
+      // ignore
+    }
 
     const fetchStats = async () => {
       try {
@@ -58,6 +132,14 @@ export default function HomeDashboard() {
     fetchStats();
   }, []);
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(HOME_SETTINGS_KEY, JSON.stringify(panelSettings));
+    } catch {
+      // ignore
+    }
+  }, [panelSettings]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[calc(100vh-2rem)]">
@@ -71,8 +153,15 @@ export default function HomeDashboard() {
 
   const analysis = stats?.analysis;
   const recentCases = stats?.recent_cases || [];
+  const improvementHighlights = stats?.improvement_highlights?.items || [];
+  const improvementCounts = stats?.improvement_highlights?.counts;
+  const newsFocus = stats?.lease_news_focus;
 
   const avgScoreBorrower = analysis?.avg_score_borrower ?? null;
+
+  const togglePanel = (key: keyof HomePanelSettings) => {
+    setPanelSettings((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   return (
     <div className="p-8 min-h-[calc(100vh-2rem)] animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -119,7 +208,52 @@ export default function HomeDashboard() {
         <div className="absolute bottom-[-20%] left-[-10%] w-64 h-64 bg-blue-400/20 rounded-full blur-3xl"></div>
       </div>
 
-      {!analysis ? (
+      <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-black text-slate-700">
+              <Settings className="h-4 w-4 text-slate-500" />
+              ホーム画面のカスタマイズ
+            </div>
+            <p className="mt-1 text-xs text-slate-500">表示するパネルを切り替えます。設定はこのブラウザに保存されます。</p>
+          </div>
+          <button
+            onClick={() => setSettingsOpen((prev) => !prev)}
+            className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+          >
+            {settingsOpen ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            {settingsOpen ? "設定を閉じる" : "表示設定"}
+          </button>
+        </div>
+        {settingsOpen && (
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            {[
+              { key: "showKpis", label: "KPI", desc: "総成約数と平均指標" },
+              { key: "showHighlights", label: "改善項目", desc: "最新の改善候補" },
+              { key: "showNews", label: "リースニュース", desc: "最新の論点" },
+              { key: "showRecentCases", label: "案件履歴", desc: "最近の成約・失注" },
+            ].map((item) => {
+              const checked = panelSettings[item.key as keyof HomePanelSettings];
+              return (
+                <label key={item.key} className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 cursor-pointer hover:bg-slate-100">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => togglePanel(item.key as keyof HomePanelSettings)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="flex-1">
+                    <span className="block text-sm font-bold text-slate-700">{item.label}</span>
+                    <span className="block text-xs text-slate-500">{item.desc}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {!analysis && (
         <div className="bg-amber-50 border border-amber-200 p-6 rounded-2xl flex items-start gap-4">
           <TrendingUp className="w-8 h-8 text-amber-500 shrink-0" />
           <div>
@@ -127,53 +261,143 @@ export default function HomeDashboard() {
             <p className="text-amber-700 mt-1">成約データが5件以上貯まると、AIによる成約要因分析・実績集計がこの画面に表示されます。「結果登録」画面から最終ステータスを登録してください。</p>
           </div>
         </div>
-      ) : (
-        <div className="space-y-6">
-          {/* KPIカード群 */}
+      )}
+
+      <div className="space-y-6 mt-6">
+        {panelSettings.showKpis && analysis && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
               <div className="flex justify-between items-start">
-                 <div>
-                   <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">総成約数 (分析対象)</p>
-                   <h3 className="text-4xl font-black text-slate-800 mt-2">{analysis.closed_count} <span className="text-lg font-bold text-slate-400">件</span></h3>
-                 </div>
-                 <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center">
-                   <Target className="w-6 h-6" />
-                 </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">総成約数 (分析対象)</p>
+                  <h3 className="text-4xl font-black text-slate-800 mt-2">{analysis.closed_count} <span className="text-lg font-bold text-slate-400">件</span></h3>
+                </div>
+                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center">
+                  <Target className="w-6 h-6" />
+                </div>
               </div>
             </div>
             
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
               <div className="flex justify-between items-start">
-                 <div>
-                   <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">成約平均 定性スコア</p>
-                   <h3 className="text-4xl font-black text-indigo-700 mt-2">
-                     {analysis.qualitative_summary?.avg_weighted?.toFixed(1) || "-"} 
-                     <span className="text-lg font-bold text-slate-400"> / 100</span>
-                   </h3>
-                 </div>
-                 <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center">
-                   <Users className="w-6 h-6" />
-                 </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">成約平均 定性スコア</p>
+                  <h3 className="text-4xl font-black text-indigo-700 mt-2">
+                    {analysis.qualitative_summary?.avg_weighted?.toFixed(1) || "-"}
+                    <span className="text-lg font-bold text-slate-400"> / 100</span>
+                  </h3>
+                </div>
+                <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center">
+                  <Users className="w-6 h-6" />
+                </div>
               </div>
             </div>
 
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
               <div className="flex justify-between items-start">
-                 <div>
-                   <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">成約平均 信用スコア</p>
-                   <h3 className="text-4xl font-black text-emerald-600 mt-2">
-                     {avgScoreBorrower !== null ? avgScoreBorrower.toFixed(1) : "-"}
-                     <span className="text-lg font-bold text-slate-400"> %</span>
-                   </h3>
-                 </div>
-                 <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center">
-                   <BarChart3 className="w-6 h-6" />
-                 </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">成約平均 信用スコア</p>
+                  <h3 className="text-4xl font-black text-emerald-600 mt-2">
+                    {avgScoreBorrower !== null ? avgScoreBorrower.toFixed(1) : "-"}
+                    <span className="text-lg font-bold text-slate-400"> %</span>
+                  </h3>
+                </div>
+                <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center">
+                  <BarChart3 className="w-6 h-6" />
+                </div>
               </div>
             </div>
           </div>
+        )}
 
+        {(panelSettings.showHighlights || panelSettings.showNews) && (
+          <div className={`grid grid-cols-1 gap-6 ${panelSettings.showHighlights && panelSettings.showNews ? "lg:grid-cols-2" : ""}`}>
+            {panelSettings.showHighlights && (
+              <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                      <ScrollText className="text-amber-500 w-5 h-5" />
+                      最新の改善項目
+                    </h3>
+                    <p className="text-xs text-slate-500 font-bold mt-1">
+                      {improvementCounts?.needs_review ?? improvementHighlights.length}件の要確認候補を表示
+                    </p>
+                  </div>
+                  {stats?.improvement_highlights?.source && (
+                    <span className="text-[10px] font-bold text-slate-400 break-all max-w-40 text-right">
+                      {stats.improvement_highlights.source}
+                    </span>
+                  )}
+                </div>
+                {improvementHighlights.length === 0 ? (
+                  <p className="text-sm text-slate-500">改善候補がまだありません。</p>
+                ) : (
+                  <div className="space-y-3">
+                    {improvementHighlights.map((item) => (
+                      <div key={item.id || item.canonical_key || item.title} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[10px] font-black text-white">{item.id || "-"}</span>
+                          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-black text-amber-700">{item.status || "要確認"}</span>
+                          {item.priority && <span className="rounded-full bg-slate-200 px-2.5 py-1 text-[10px] font-black text-slate-600">{item.priority}</span>}
+                        </div>
+                        <div className="mt-2 font-bold text-slate-800">{item.title || "-"}</div>
+                        <p className="mt-1 text-xs leading-relaxed text-slate-600">{item.reason || "理由なし"}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {panelSettings.showNews && (
+              <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                      <Newspaper className="text-sky-500 w-5 h-5" />
+                      リースニュースの注目論点
+                    </h3>
+                    <p className="text-xs text-slate-500 font-bold mt-1">
+                      {newsFocus?.headline || "最新ニュースの論点を表示"}
+                    </p>
+                  </div>
+                  {newsFocus?.note_date && (
+                    <span className="text-[10px] font-bold text-slate-400">{newsFocus.note_date}</span>
+                  )}
+                </div>
+                {!newsFocus?.available ? (
+                  <p className="text-sm text-slate-500">ニュース要約がまだありません。</p>
+                ) : (
+                  <div className="space-y-4">
+                    {(newsFocus.theme_summary || newsFocus.bucket_summary || newsFocus.tag_summary) && (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                        {newsFocus.theme_summary && <p><span className="font-bold">主なテーマ:</span> {newsFocus.theme_summary}</p>}
+                        {newsFocus.bucket_summary && <p className="mt-1"><span className="font-bold">収集セット:</span> {newsFocus.bucket_summary}</p>}
+                        {newsFocus.tag_summary && <p className="mt-1"><span className="font-bold">重点タグ:</span> {newsFocus.tag_summary}</p>}
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      {(newsFocus.focus_lines || []).slice(0, 4).map((line, index) => (
+                        <div key={index} className="flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-3">
+                          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[10px] font-black text-sky-700">
+                            {index + 1}
+                          </span>
+                          <p className="text-sm leading-relaxed text-slate-700">{line}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {newsFocus.note_path && (
+                      <p className="break-all text-[11px] text-slate-400">{newsFocus.note_path}</p>
+                    )}
+                  </div>
+                )}
+              </section>
+            )}
+          </div>
+        )}
+
+        {analysis && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* 成約要因トップ3 */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
@@ -182,7 +406,7 @@ export default function HomeDashboard() {
                 成約要因トップ3ドライバー
               </h3>
               <p className="text-xs text-slate-500 font-bold mb-6">成約に最も寄与している因子（回帰分析結果）</p>
-              
+
               <div className="space-y-4">
                 {analysis.top3_drivers?.map((d: TopDriver, index: number) => (
                   <div key={index} className="flex items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
@@ -209,7 +433,7 @@ export default function HomeDashboard() {
                 <BarChart3 className="text-blue-500 w-5 h-5" />
                 成約案件の平均財務主要指標
               </h3>
-              
+
               <div className="flex-1 overflow-auto border rounded-xl border-slate-200 bg-slate-50">
                 <table className="w-full text-sm text-left">
                   <thead className="bg-slate-100/80 sticky top-0 font-bold text-slate-600">
@@ -233,47 +457,51 @@ export default function HomeDashboard() {
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* 最近の案件一覧 */}
-      <h3 className="font-black text-2xl text-slate-800 mt-12 mb-6 border-l-4 border-blue-600 pl-3">📋 最新の案件履歴</h3>
+      {panelSettings.showRecentCases && (
+        <>
+          <h3 className="font-black text-2xl text-slate-800 mt-12 mb-6 border-l-4 border-blue-600 pl-3">📋 最新の案件履歴</h3>
       
-      {recentCases.length === 0 ? (
-        <p className="text-slate-500 font-bold">まだ案件履歴がありません。審査画面からデータを入力・実行してください。</p>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {recentCases.slice(0, 10).map((c: RecentCase, i: number) => {
-            const isClosed = c.final_status === "成約";
-            const isLost = c.final_status === "失注";
-            return (
-              <div key={i} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow relative overflow-hidden group">
-                <div className={`absolute top-0 left-0 w-2 h-full ${isClosed ? 'bg-green-500' : isLost ? 'bg-rose-500' : 'bg-slate-300'}`}></div>
-                
-                <div className="flex justify-between items-start mb-3 ml-2">
-                  <div className="flex items-center gap-2">
-                    {isClosed ? <CheckCircle className="text-green-500 w-5 h-5" /> : isLost ? <XCircle className="text-rose-500 w-5 h-5" /> : <Activity className="text-slate-400 w-5 h-5" />}
-                    <span className="text-xs font-bold text-slate-400">{c.timestamp?.slice(0, 16)}</span>
+          {recentCases.length === 0 ? (
+            <p className="text-slate-500 font-bold">まだ案件履歴がありません。審査画面からデータを入力・実行してください。</p>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {recentCases.slice(0, 10).map((c: RecentCase, i: number) => {
+                const isClosed = c.final_status === "成約";
+                const isLost = c.final_status === "失注";
+                return (
+                  <div key={i} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow relative overflow-hidden group">
+                    <div className={`absolute top-0 left-0 w-2 h-full ${isClosed ? 'bg-green-500' : isLost ? 'bg-rose-500' : 'bg-slate-300'}`}></div>
+
+                    <div className="flex justify-between items-start mb-3 ml-2">
+                      <div className="flex items-center gap-2">
+                        {isClosed ? <CheckCircle className="text-green-500 w-5 h-5" /> : isLost ? <XCircle className="text-rose-500 w-5 h-5" /> : <Activity className="text-slate-400 w-5 h-5" />}
+                        <span className="text-xs font-bold text-slate-400">{c.timestamp?.slice(0, 16)}</span>
+                      </div>
+                      <div className="text-xl font-black text-slate-800">
+                        <span className="text-xs font-bold text-slate-400 mr-2">審査スコア</span>
+                        {(c.result?.score ?? 0).toFixed(0)} <span className="text-sm">点</span>
+                      </div>
+                    </div>
+
+                    <h4 className="font-bold text-lg text-slate-700 ml-2 mb-1">{c.industry_major || "不明な業種"} <span className="text-sm text-slate-500">- {c.industry_sub}</span></h4>
+                    <div className="flex items-center gap-3 ml-2 mt-3">
+                      <span className={`text-[10px] uppercase font-black px-2 py-1 rounded bg-slate-100 ${isClosed ? 'text-green-700' : isLost ? 'text-rose-700' : 'text-slate-500'}`}>
+                        {c.final_status || "未登録"}
+                      </span>
+                      <span className="text-xs font-bold text-slate-500 bg-slate-50 px-2 py-1 rounded border">
+                        判定: {c.result?.hantei || "不明"}
+                      </span>
+                    </div>
                   </div>
-                  <div className="text-xl font-black text-slate-800">
-                    <span className="text-xs font-bold text-slate-400 mr-2">審査スコア</span>
-                    {(c.result?.score ?? 0).toFixed(0)} <span className="text-sm">点</span>
-                  </div>
-                </div>
-                
-                <h4 className="font-bold text-lg text-slate-700 ml-2 mb-1">{c.industry_major || "不明な業種"} <span className="text-sm text-slate-500">- {c.industry_sub}</span></h4>
-                <div className="flex items-center gap-3 ml-2 mt-3">
-                  <span className={`text-[10px] uppercase font-black px-2 py-1 rounded bg-slate-100 ${isClosed ? 'text-green-700' : isLost ? 'text-rose-700' : 'text-slate-500'}`}>
-                    {c.final_status || "未登録"}
-                  </span>
-                  <span className="text-xs font-bold text-slate-500 bg-slate-50 px-2 py-1 rounded border">
-                    判定: {c.result?.hantei || "不明"}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
