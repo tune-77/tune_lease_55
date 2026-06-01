@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { apiClient } from "@/lib/api";
-import { Send, Trash2, Loader2, MessageCircle, Bot, User, NotebookPen, Mic, Network } from "lucide-react";
+import { Send, Trash2, Loader2, MessageCircle, Bot, User, NotebookPen, Mic, Network, Lightbulb } from "lucide-react";
 
 interface ChatMessage {
   id: number;
@@ -118,6 +118,7 @@ export default function ChatPage() {
   const [showSubtitle, setShowSubtitle] = useState(true);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [listening, setListening] = useState(false);
+  const [improvementMode, setImprovementMode] = useState(false);
   const messageListRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
@@ -174,6 +175,7 @@ export default function ChatPage() {
       const res = await apiClient.post("/api/chat", {
         message: text,
         user_id: userId,
+        intent: improvementMode ? "improvement" : undefined,
       });
       const assistantMsg: ChatMessage = {
         id: Date.now() + 1,
@@ -183,6 +185,10 @@ export default function ChatPage() {
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, assistantMsg]);
+      if (improvementMode && res.data.improvement_saved) {
+        setSaveToast("改善メモに登録しました");
+        setTimeout(() => setSaveToast(null), 2000);
+      }
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -419,43 +425,66 @@ export default function ChatPage() {
       </div>
 
       {/* 入力エリア */}
-      <div className="flex-shrink-0 bg-white border border-slate-200 rounded-2xl shadow-lg p-2 flex gap-2 items-end">
-        <textarea
-          ref={textareaRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="メッセージを入力（Enterで送信 / Shift+Enterで改行）"
-          rows={1}
-          disabled={loading}
-          className="flex-1 resize-none bg-transparent outline-none text-sm text-slate-800 placeholder:text-slate-400 px-2 py-2 max-h-40 overflow-y-auto leading-relaxed"
-          style={{ minHeight: "2.5rem" }}
-          onInput={resizeTextarea}
-        />
-        <button
-          type="button"
-          onClick={startVoiceInput}
-          disabled={!voiceSupported || loading}
-          title={voiceSupported ? "音声入力" : "このブラウザは音声入力に未対応です"}
-          className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors flex-shrink-0 ${
-            listening
-              ? "bg-rose-600 text-white"
-              : "bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:bg-slate-100 disabled:text-slate-300"
-          }`}
-        >
-          <Mic className="w-4 h-4" />
-        </button>
-        <button
-          onClick={sendMessage}
-          disabled={loading || !input.trim()}
-          className="w-10 h-10 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 rounded-xl flex items-center justify-center transition-colors flex-shrink-0"
-        >
-          {loading ? (
-            <Loader2 className="w-4 h-4 text-white animate-spin" />
-          ) : (
-            <Send className="w-4 h-4 text-white" />
+      <div className={`flex-shrink-0 rounded-2xl shadow-lg border p-2 ${improvementMode ? "bg-amber-50 border-amber-200" : "bg-white border-slate-200"}`}>
+        <div className="mb-2 flex items-center justify-between gap-2 px-1">
+          <button
+            type="button"
+            onClick={() => setImprovementMode((current) => !current)}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-black transition-colors ${
+              improvementMode
+                ? "bg-amber-500 text-white shadow-sm"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            <Lightbulb className="h-3.5 w-3.5" />
+            改善メモ
+          </button>
+          {improvementMode && (
+            <span className="text-[11px] font-bold text-amber-700">
+              送信すると Improvement Log に保存
+            </span>
           )}
-        </button>
+        </div>
+        <div className="flex gap-2 items-end">
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={improvementMode ? "改善したい点を入力（例: この画面の導線が分かりにくい）" : "メッセージを入力（Enterで送信 / Shift+Enterで改行）"}
+            rows={1}
+            disabled={loading}
+            className="flex-1 resize-none bg-transparent outline-none text-sm text-slate-800 placeholder:text-slate-400 px-2 py-2 max-h-40 overflow-y-auto leading-relaxed"
+            style={{ minHeight: "2.5rem" }}
+            onInput={resizeTextarea}
+          />
+          <button
+            type="button"
+            onClick={startVoiceInput}
+            disabled={!voiceSupported || loading}
+            title={voiceSupported ? "音声入力" : "このブラウザは音声入力に未対応です"}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors flex-shrink-0 ${
+              listening
+                ? "bg-rose-600 text-white"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:bg-slate-100 disabled:text-slate-300"
+            }`}
+          >
+            <Mic className="w-4 h-4" />
+          </button>
+          <button
+            onClick={sendMessage}
+            disabled={loading || !input.trim()}
+            className={`w-10 h-10 disabled:bg-slate-300 rounded-xl flex items-center justify-center transition-colors flex-shrink-0 ${
+              improvementMode ? "bg-amber-500 hover:bg-amber-600" : "bg-blue-600 hover:bg-blue-700"
+            }`}
+          >
+            {loading ? (
+              <Loader2 className="w-4 h-4 text-white animate-spin" />
+            ) : (
+              <Send className="w-4 h-4 text-white" />
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
