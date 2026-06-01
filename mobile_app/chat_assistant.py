@@ -32,6 +32,11 @@ try:
 except ImportError:  # pragma: no cover - package import fallback
     from .web_bridge import collect_web_context
 
+try:
+    from chat_intent import build_chat_guidance
+except ImportError:  # pragma: no cover - package import fallback
+    from ..chat_intent import build_chat_guidance
+
 
 def _get_gemini_key() -> str:
     try:
@@ -344,6 +349,8 @@ Webメモ保存の判断:
 
     obsidian_digest = build_obsidian_digest(message, obsidian_hits) if obsidian_hits else {"digest": "", "title": "", "source_count": "0"}
 
+    guidance = build_chat_guidance(message, history)
+
     return f"""{_persona}
 
 Obsidian自動保存の判断:
@@ -356,6 +363,7 @@ Obsidian自動保存の判断:
 {weekly_prompt}
 {web_prompt}
 {web_save_prompt}
+{guidance.prompt_suffix}
 
 次のJSONだけ返してください:
 {{

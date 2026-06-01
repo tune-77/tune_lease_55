@@ -1999,11 +1999,97 @@ def get_dashboard_stats():
             payload = refresh_dashboard_stats_cache()
         if payload is None:
             raise HTTPException(status_code=503, detail="dashboard stats cache unavailable")
+        payload = dict(payload)
+        payload["lease_news_focus"] = _lease_news_focus_to_dict(get_latest_lease_news_focus())
+        payload["improvement_highlights"] = _load_latest_improvement_highlights(limit=4)
         return payload
     except Exception as e:
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _lease_news_focus_to_dict(focus):
+    if not focus or not getattr(focus, "available", False):
+        return {"available": False}
+    return {
+        "available": True,
+        "note_path": getattr(focus, "note_path", ""),
+        "note_date": getattr(focus, "note_date", ""),
+        "profile": getattr(focus, "profile", ""),
+        "theme_summary": getattr(focus, "theme_summary", ""),
+        "bucket_summary": getattr(focus, "bucket_summary", ""),
+        "tag_summary": getattr(focus, "tag_summary", ""),
+        "focus_lines": list(getattr(focus, "focus_lines", ()) or ()),
+        "memo_lines": list(getattr(focus, "memo_lines", ()) or ()),
+        "metrics_lines": list(getattr(focus, "metrics_lines", ()) or ()),
+        "headline": getattr(focus, "headline", ""),
+    }
+
+
+def _latest_improvement_report_path() -> Path | None:
+    reports_dir = Path(_REPO_ROOT) / "reports"
+    latest = reports_dir / "latest.json"
+    if latest.exists():
+        return latest
+    candidates = sorted(reports_dir.glob("improvement_report_*.json"))
+    return candidates[-1] if candidates else None
+
+
+def _load_latest_improvement_highlights(limit: int = 4) -> dict:
+    report_path = _latest_improvement_report_path()
+    if not report_path:
+        return {"available": False, "items": [], "source": ""}
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"available": False, "items": [], "source": str(report_path)}
+
+    needs_review_items = report.get("needs_review") or []
+    raw_items = needs_review_items or report.get("auto_fix_candidates") or report.get("improvements") or []
+    items: list[dict[str, str]] = []
+    for raw in raw_items[:limit]:
+        if not isinstance(raw, dict):
+            continue
+        policy = raw.get("auto_fix_policy") or {}
+        items.append({
+            "id": str(raw.get("id") or ""),
+            "title": str(raw.get("title") or ""),
+            "status": "要確認" if raw in needs_review_items else "候補",
+            "priority": str(raw.get("priority") or policy.get("risk") or ""),
+            "reason": str(raw.get("reason") or policy.get("reason") or ""),
+            "category": str(raw.get("category") or ""),
+            "canonical_key": str(raw.get("canonical_key") or ""),
+        })
+
+    def _report_count(key: str, fallback_items) -> int:
+        summary = report.get("summary") or {}
+        summary_key = f"{key}_count"
+        value = summary.get(summary_key, report.get(summary_key))
+        if value is None:
+            value = report.get(key)
+        if isinstance(value, list):
+            return len(value)
+        if isinstance(value, (int, float)):
+            return int(value)
+        if isinstance(value, str) and value.isdigit():
+            return int(value)
+        return len(fallback_items or [])
+
+    return {
+        "available": bool(items),
+        "date": str(report.get("date") or ""),
+        "generated_at": str(report.get("generated_at") or ""),
+        "status": str(report.get("status") or ""),
+        "source": str(report_path),
+        "items": items,
+        "counts": {
+            "applied": _report_count("applied", report.get("applied")),
+            "auto_fix_candidates": _report_count("auto_fix_candidates", report.get("auto_fix_candidates")),
+            "needs_review": _report_count("needs_review", needs_review_items),
+            "rejected": _report_count("rejected", report.get("rejected")),
+        },
+    }
 
 @app.get("/api/department/stats")
 def get_department_stats():
@@ -3691,6 +3777,7 @@ def post_chat(req: ChatRequest):
             call_gemini_chat,
             get_message_count,
         )
+        from chat_intent import build_chat_guidance
 
         # RAG: 共通ストアから関連ナレッジを取得。ローカル埋め込みモデルが
         # 未キャッシュでもキーワード検索へフォールバックする。
@@ -3720,10 +3807,10 @@ def post_chat(req: ChatRequest):
             print(f"[DB Query] 統計取得エラー: {e}")
 
         # システムプロンプトにRAGコンテキストとDB統計を追記
-        effective_prompt = _CHAT_SYSTEM_PROMPT + rag_context + db_context
-
         history = get_recent_messages(req.user_id, limit=20)
         history_for_gemini = [{"role": m["role"], "content": m["content"]} for m in history]
+        guidance = build_chat_guidance(req.message, history_for_gemini)
+        effective_prompt = _CHAT_SYSTEM_PROMPT + rag_context + db_context + guidance.prompt_suffix
         reply = call_gemini_chat(effective_prompt, history_for_gemini, req.message)
         save_message(req.user_id, "user", req.message)
         save_message(req.user_id, "assistant", reply)
