@@ -55,30 +55,66 @@ echo "[Step 1-3] auto-improvement-pipeline 実行中..."
     --workspace "${PROJECT_ROOT}"
 PIPELINE_EXIT=$?
 
-# --- Step 4: reports/latest.json を更新して Gist に push ---
+# --- Step 4: reports/latest.json を更新（Step 5 の前提） ---
 LATEST_FILE="${PROJECT_ROOT}/reports/latest.json"
 GIST_ID="3980215df65cf75e972471f048b10d15"
+FINAL_EXIT="${PIPELINE_EXIT}"
 if [ -f "${RESULT_FILE}" ]; then
     cp "${RESULT_FILE}" "${LATEST_FILE}"
+fi
+
+# --- Step 5: 改善済み登録を report/latest に同期 ---
+if [ -f "${RESULT_FILE}" ]; then
     echo ""
-    echo "[Step 4] Gist に結果を更新中..."
-    if command -v gh >/dev/null 2>&1; then
-        gh gist edit "${GIST_ID}" "${LATEST_FILE}" 2>/dev/null && \
-            echo "Gist 更新完了: https://gist.github.com/tune-77/${GIST_ID}" || \
-            echo "警告: Gist 更新に失敗しました（パイプライン結果は保存済み）"
+    echo "[Step 5] 改善済み項目を report/latest に同期中..."
+    "${PYTHON}" "${PROJECT_ROOT}/.agents/skills/improvement-report-sync/scripts/sync_improvement_reports.py" \
+        --report "${RESULT_FILE}" \
+        --latest "${LATEST_FILE}" \
+        --from-report
+    SYNC_EXIT=$?
+    if [ ${SYNC_EXIT} -ne 0 ]; then
+        echo "警告: Step 5 の同期に失敗しました（終了コード ${SYNC_EXIT}）"
+        if [ ${FINAL_EXIT} -eq 0 ]; then
+            FINAL_EXIT=${SYNC_EXIT}
+        fi
+    fi
+fi
+
+# --- Step 6: 最終結果を Gist に push ---
+if [ -f "${LATEST_FILE}" ]; then
+    echo ""
+    echo "[Step 6] Gist に最終結果を更新中..."
+    if [ ${FINAL_EXIT} -eq 0 ]; then
+        if command -v gh >/dev/null 2>&1; then
+            if gh gist edit "${GIST_ID}" "${LATEST_FILE}" 2>/dev/null; then
+                echo "Gist 更新完了: https://gist.github.com/tune-77/${GIST_ID}"
+                GIST_EXIT=0
+            else
+                GIST_EXIT=$?
+                echo "警告: Gist 更新に失敗しました（ローカル結果は保存済み）"
+            fi
+            if [ ${GIST_EXIT} -ne 0 ] && [ ${FINAL_EXIT} -eq 0 ]; then
+                FINAL_EXIT=${GIST_EXIT}
+            fi
+        else
+            echo "警告: gh コマンドが見つかりません（Gist 更新スキップ）"
+            if [ ${FINAL_EXIT} -eq 0 ]; then
+                FINAL_EXIT=1
+            fi
+        fi
     else
-        echo "警告: gh コマンドが見つかりません（Gist 更新スキップ）"
+        echo "警告: 前段で失敗したため Gist 更新をスキップします"
     fi
 fi
 
 echo ""
 echo "========================================"
 echo "改善パイプライン終了: $(date '+%Y-%m-%d %H:%M:%S')"
-echo "終了コード: ${PIPELINE_EXIT}"
+echo "終了コード: ${FINAL_EXIT}"
 if [ -f "${RESULT_FILE}" ]; then
     echo "結果ファイル: ${RESULT_FILE}"
 fi
 echo "Gist: https://gist.githubusercontent.com/tune-77/${GIST_ID}/raw/latest.json"
 echo "ログファイル: ${LOG_FILE}"
 echo "========================================"
-exit "${PIPELINE_EXIT}"
+exit "${FINAL_EXIT}"
