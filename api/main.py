@@ -1710,6 +1710,10 @@ def _format_gunshi_history(history: List[Dict[str, str]]) -> str:
 def _normalize_yukikaze_datalink_reply(reply_text: str, user_message: str) -> str:
     import re
     from datetime import date
+    try:
+        from chat_intent import is_today_scope_clarification_needed
+    except Exception:  # pragma: no cover - fallback
+        is_today_scope_clarification_needed = lambda _msg: False  # type: ignore
 
     text = (reply_text or "").replace("\r\n", "\n")
     text = re.sub(r"(これで.*?進みますように[！!．\.]?|稟議書も.*?進みますように[！!．\.]?|よろしければ.*|ご参考までに.*|必要であれば.*|必要なら.*|お気軽に.*|安心してください.*|頑張って.*|お疲れ様です.*|ですよね.*)", "", text, flags=re.I)
@@ -1727,6 +1731,12 @@ def _normalize_yukikaze_datalink_reply(reply_text: str, user_message: str) -> st
         return "\n".join(allowed_lines)
 
     msg = (user_message or "").strip()
+    if is_today_scope_clarification_needed(msg):
+        return "\n".join([
+            "DATALINK LOG:",
+            "TX: PANPANPAN // Scope clarification required.",
+            "RX: 今日の何について知りたいですか？",
+        ])
     date_like = bool(re.search(r"(日付|今日|何日|何曜日|曜日|date|today)", msg, re.I))
     if date_like:
         weekday = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][date.today().weekday()]

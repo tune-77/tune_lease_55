@@ -72,6 +72,27 @@ _INDUSTRY_SPECIFIC_HINTS = (
     "ガス",
 )
 
+_TODAY_SCOPE_HINTS = (
+    "案件",
+    "ニュース",
+    "改善",
+    "成約",
+    "失注",
+    "履歴",
+    "要約",
+    "分析",
+    "レポート",
+    "指標",
+    "予定",
+    "スケジュール",
+    "会議",
+    "審査",
+    "結果",
+    "データ",
+    "売上",
+    "ダッシュボード",
+)
+
 
 def normalize_chat_text(text: str) -> str:
     """比較用に空白と記号を寄せた文字列へ正規化する."""
@@ -120,6 +141,17 @@ def is_industry_clarification_needed(message: str) -> bool:
     return True
 
 
+def is_today_scope_clarification_needed(message: str) -> bool:
+    text = str(message or "").strip()
+    if "今日の" not in text and "today's" not in text.lower():
+        return False
+    if any(token in text for token in _TODAY_SCOPE_HINTS):
+        return False
+    if any(token in text for token in ("日付", "何日", "何曜日", "date", "today")):
+        return False
+    return True
+
+
 def is_out_of_scope(message: str) -> bool:
     text = str(message or "")
     if any(hint in text for hint in _LEASE_SCOPE_HINTS):
@@ -136,11 +168,16 @@ class ChatGuidance:
     repeated_query: bool = False
     detail_request: bool = False
     industry_clarification_needed: bool = False
+    today_scope_clarification_needed: bool = False
     out_of_scope: bool = False
 
     @property
     def prompt_lines(self) -> tuple[str, ...]:
         lines: list[str] = []
+        if self.today_scope_clarification_needed:
+            lines.append(
+                "『今日の』だけでは対象が曖昧なので、今日の何について知りたいかを1文で確認する。"
+            )
         if self.industry_clarification_needed:
             lines.append(
                 "業界情報の質問は、業種大分類/小分類、比較対象、見たい観点（成約率・金利・財務・ニュース）を先に確認する。"
@@ -173,5 +210,6 @@ def build_chat_guidance(message: str, history: list[dict[str, str]] | None = Non
         repeated_query=is_repeated_query(message, history),
         detail_request=is_detail_request(message),
         industry_clarification_needed=is_industry_clarification_needed(message),
+        today_scope_clarification_needed=is_today_scope_clarification_needed(message),
         out_of_scope=is_out_of_scope(message),
     )

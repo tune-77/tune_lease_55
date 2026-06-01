@@ -182,6 +182,34 @@ def _fallback_chat_packet(
             "weekly_save_body": "",
             "weekly_save_reason": "fallback",
         }
+    try:
+        from chat_intent import is_today_scope_clarification_needed
+    except ImportError:  # pragma: no cover - package import fallback
+        from ..chat_intent import is_today_scope_clarification_needed
+
+    if is_today_scope_clarification_needed(message):
+        return {
+            "reply": "今日の何について知りたいですか？ 案件、ニュース、改善候補、日付のどれかを指定してください。",
+            "should_save": False,
+            "save_title": "今日の質問の確認",
+            "save_body": "曖昧な『今日の』は対象が不明なため、案件・ニュース・改善候補・日付のどれかを確認する。",
+            "save_reason": "曖昧語の意図確認",
+            "improvement_items": [],
+            "web_used": bool(web_hits),
+            "web_reason": "fallback",
+            "web_should_save": False,
+            "web_save_title": "",
+            "web_save_body": "",
+            "web_save_reason": "fallback",
+            "wiki_should_save": False,
+            "wiki_save_title": "",
+            "wiki_save_body": "",
+            "wiki_save_reason": "fallback",
+            "weekly_should_save": False,
+            "weekly_save_title": "",
+            "weekly_save_body": "",
+            "weekly_save_reason": "fallback",
+        }
     if any(k in msg_lower for k in ("条件付き承認", "条件付承認", "条件付", "条件付き", "承認条件")):
         reply = "条件付き承認なら、追加資料・期間短縮・前受金・保証担保の順で整理しておけば十分戦えます。最後は営業向けの一言に落とします。"
         improvement_items = [{
