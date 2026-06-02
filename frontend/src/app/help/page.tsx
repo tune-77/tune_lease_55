@@ -63,9 +63,9 @@ const FEATURES: FeatureGroup[] = [
       },
       {
         icon: "🏢",
-        name: "営業部別成約率",
-        href: "/sales-dept-winrate",
-        description: "営業部ごとの成約率・平均スコア・特性メモを表示。",
+        name: "営業部別分析",
+        href: "/department",
+        description: "営業部ごとの成約率・平均スコア・平均金利・業種構成を表示。",
         tags: ["分析", "営業"],
       },
       {
@@ -125,7 +125,7 @@ const FEATURES: FeatureGroup[] = [
       {
         icon: "💰",
         name: "補助金情報",
-        href: "/subsidies",
+        href: "/subsidy",
         description: "リース設備に活用できる主要補助金の一覧と検索。",
         tags: ["補助金"],
       },
