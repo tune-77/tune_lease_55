@@ -15,12 +15,15 @@ Codexの作業結果、意思決定、TODO、検証ログをObsidian VaultへMar
 - 個人情報、APIキー、DBの生データ、顧客名、秘密情報は必要最小限に要約する。
 - 既存ノートを編集する前に対象パスを確認する。
 - 追記は原則として見出し単位で行い、既存本文を破壊しない。
+- ユーザーが単に「Obsidianに保存」「Vaultに保存」と言った場合は、通常の `Obsidian Vault` を既定保存先にする。`lease-wiki-vault` は、ユーザーが明示的に `lease-wiki` / `wiki vault` / `lease_wikiの方` と指定した場合だけ使う。
 - Vaultが不明な場合は、`OBSIDIAN_VAULT` 環境変数、ユーザー指定パス、一般的な `~/Documents` / iCloud Drive 配下の順に探す。
 
 ## 標準ワークフロー
 
 1. Vaultを決める
    - ユーザーがパスを指定していればそれを使う。
+   - 未指定なら、まず `/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault` を使う。
+   - `lease-wiki-vault` は通常保存先ではない。ユーザーが明示した場合だけ使う。
    - 未指定なら `OBSIDIAN_VAULT` を確認する。
    - それでも不明なら `find` で `.obsidian` ディレクトリを探す。
 
