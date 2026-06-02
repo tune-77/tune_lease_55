@@ -300,16 +300,24 @@ export default function RegisterPage() {
                     </div>
                  </div>
                  {status === '失注' && (
-                    <div className="animate-in slide-in-from-top-2 duration-300">
-                        <label className="block text-xs font-black text-rose-500 uppercase mb-2 flex items-center gap-1">
-                           <TrendingDown className="w-3 h-3" /> 失注理由
-                        </label>
-                        <textarea 
-                           className="w-full bg-rose-50/30 border border-rose-100 p-4 rounded-xl text-sm font-bold text-rose-700 outline-none h-20"
-                           value={lostReason}
-                           onChange={(e) => setLostReason(e.target.value)}
-                           placeholder="金利競合で敗退、あるいは条件不一致など..."
-                        />
+                    <div className="animate-in slide-in-from-top-2 duration-300 space-y-3">
+                        <div>
+                            <label className="block text-xs font-black text-rose-500 uppercase mb-2 flex items-center gap-1">
+                               <TrendingDown className="w-3 h-3" /> 失注理由
+                            </label>
+                            <textarea
+                               className="w-full bg-rose-50/30 border border-rose-100 p-4 rounded-xl text-sm font-bold text-rose-700 outline-none h-20"
+                               value={lostReason}
+                               onChange={(e) => setLostReason(e.target.value)}
+                               placeholder="金利競合で敗退、あるいは条件不一致など..."
+                            />
+                        </div>
+                        {!lostReason && (
+                            <div className="flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-700 font-bold animate-in slide-in-from-top-2 duration-300">
+                                <span>💡</span>
+                                <span>失注理由を入力すると営業分析の精度が上がります（任意）</span>
+                            </div>
+                        )}
                     </div>
                  )}
               </div>
