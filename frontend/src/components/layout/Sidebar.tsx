@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import {
   Home, MessageSquare, ClipboardCheck, FileText, Bot, Zap, Factory,
   PenTool, Users, Wrench, PencilRuler, History, ScrollText,
-  PieChart, LineChart, Target, Settings, Calendar, Share2, Network,
+  LineChart, Target, Settings, Calendar, Share2, Network,
   Eye, BarChart3, TrendingUp, Globe, ChevronDown, ChevronRight, Building,
   PanelLeftClose, PanelLeftOpen, X, Table2, Swords, MessageCircle,
   BarChart2, BookOpen, Gift, HelpCircle, Megaphone, Calculator,
@@ -45,7 +45,6 @@ export default function Sidebar() {
     {
       title: '高度分析・グラフ',
       items: [
-        { name: '履歴分析・ダッシュボード', href: '/history-dash', icon: PieChart, color: 'text-sky-400' },
         { name: '営業部別分析', href: '/department', icon: Users, color: 'text-emerald-400' },
         { name: '業種別成約率分析', href: '/industry-stats', icon: Briefcase, color: 'text-sky-500' },
         { name: '3期財務分析', href: '/financial', icon: BarChart3, color: 'text-rose-500' },

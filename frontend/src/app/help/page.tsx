@@ -69,13 +69,6 @@ const FEATURES: FeatureGroup[] = [
         tags: ["分析", "営業"],
       },
       {
-        icon: "📉",
-        name: "履歴分析・ダッシュボード",
-        href: "/history-dash",
-        description: "時系列での審査件数・スコア推移・成約率トレンドを可視化。",
-        tags: ["分析", "時系列"],
-      },
-      {
         icon: "🫧",
         name: "ビジュアルインサイト",
         href: "/visual",
