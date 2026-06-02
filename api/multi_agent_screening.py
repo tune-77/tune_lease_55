@@ -23,10 +23,12 @@ from api.knowledge.policy_loader import load_policy
 from api.knowledge.feedback_watcher import search_feedback, feedback_count
 from lease_news_digest import lease_news_focus_as_text
 
-# ── モデル・エンドポイント定数 ───────────────────────────────────────────────────
+# ── モデル・エンドポイント ───────────────────────────────────────────────────
 # 石橋・風林火山: Gemini Flash（軽量・高速、temperature差で個性を分離）
 # 軍師: Gemini Flash（同モデルでも上位プロンプト + temperature=0.3 で裁定役）
-_GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+def _gemini_url() -> str:
+    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 _DEBATE_LOW  = 40  # これ以下 → 否決ファストパス
 _DEBATE_HIGH = 60  # これ以上 → 承認ファストパス
@@ -147,7 +149,7 @@ def _llm_call(system: str, prompt: str, temperature: float, max_tokens: int = 10
         },
     }
     resp = requests.post(
-        f"{_GEMINI_URL}?key={api_key}",
+        f"{_gemini_url()}?key={api_key}",
         json=payload,
         timeout=60,
     )
@@ -243,7 +245,7 @@ def _llm_call_with_knowledge(
         },
     }
     resp1 = requests.post(
-        f"{_GEMINI_URL}?key={api_key}", json=payload_t1, timeout=60
+        f"{_gemini_url()}?key={api_key}", json=payload_t1, timeout=60
     )
     resp1.raise_for_status()
     candidate1 = resp1.json()["candidates"][0]["content"]
@@ -302,7 +304,7 @@ def _llm_call_with_knowledge(
             },
         }
         resp2 = requests.post(
-            f"{_GEMINI_URL}?key={api_key}", json=payload_t2, timeout=60
+            f"{_gemini_url()}?key={api_key}", json=payload_t2, timeout=60
         )
         resp2.raise_for_status()
         raw2 = resp2.json()["candidates"][0]["content"]["parts"][0]["text"].strip()

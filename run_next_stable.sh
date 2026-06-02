@@ -14,6 +14,8 @@ SKIP_BUILD="${SKIP_BUILD:-0}"
 REUSE_RUNNING="${REUSE_RUNNING:-1}"
 RESTART_SCOPE="${RESTART_SCOPE:-all}"  # all | api
 RESTART_DELAY_SECONDS="${RESTART_DELAY_SECONDS:-1}"
+API_RELOAD="${API_RELOAD:-0}"
+SKIP_STALE_LAUNCHER_SWEEP="${SKIP_STALE_LAUNCHER_SWEEP:-0}"
 
 if [ "$RESTART_SCOPE" = "api" ]; then
   api_pids="$(lsof -ti :8000 2>/dev/null || true)"
@@ -224,7 +226,9 @@ if [ "$FORCE_RESTART" != "1" ] && [ "$REUSE_RUNNING" = "1" ]; then
 fi
 
 if [ "$FORCE_RESTART" = "1" ]; then
-  stop_existing_launchers
+  if [ "$SKIP_STALE_LAUNCHER_SWEEP" != "1" ]; then
+    stop_existing_launchers
+  fi
   stop_cloudflare_tunnels
   stop_port_process "$API_PORT" "FastAPI"
   stop_port_process "$NEXT_PORT" "Next.js"
@@ -259,27 +263,28 @@ else
   API_RUNNER=(python)
 fi
 while true; do
-  # --reload-exclude: WatchFiles のリロード嵐を防ぐ。
-  # mobile_app/.vector_index, .embeddings_cache.json などのランタイム書き込みが
-  # トリガーされるとワーカーが sentence-transformers モデル読み込み中に
-  # SIGTERM され、ゾンビ化＋セマフォリークが発生するため除外する。
-  "${API_RUNNER[@]}" -m uvicorn api.main:app --host "$API_HOST" --port "$API_PORT" --reload \
-    --reload-exclude "mobile_app/.vector_index/*" \
-    --reload-exclude "mobile_app/.embeddings_cache.json" \
-    --reload-exclude "data/*" \
-    --reload-exclude "logs/*" \
-    --reload-exclude "**/__pycache__/*" \
-    --reload-exclude "**/*.pyc" \
-    --reload-exclude ".claude/*" \
-    --reload-exclude "**/.DS_Store" \
-    --reload-exclude "frontend/*" \
-    --reload-exclude "models/*" \
-    --reload-exclude "**/*.log" \
-    --reload-exclude "**/*.jsonl" \
-    --reload-exclude "**/*.db" \
-    --reload-exclude "**/*.sqlite*" \
-    --reload-exclude "api/chroma_db/*" \
-    >>"$API_LOG" 2>&1 &
+  api_args=(-m uvicorn api.main:app --host "$API_HOST" --port "$API_PORT")
+  if [ "$API_RELOAD" = "1" ]; then
+    # 開発時だけ明示的にreloadを有効化する。通常運用ではreloadなしにして、
+    # AIモデルロード中のSIGTERM・セマフォリーク・親だけ残る不安定化を避ける。
+    api_args+=(--reload)
+    api_args+=(--reload-exclude "mobile_app/.vector_index/*")
+    api_args+=(--reload-exclude "mobile_app/.embeddings_cache.json")
+    api_args+=(--reload-exclude "data/*")
+    api_args+=(--reload-exclude "logs/*")
+    api_args+=(--reload-exclude "**/__pycache__/*")
+    api_args+=(--reload-exclude "**/*.pyc")
+    api_args+=(--reload-exclude ".claude/*")
+    api_args+=(--reload-exclude "**/.DS_Store")
+    api_args+=(--reload-exclude "frontend/*")
+    api_args+=(--reload-exclude "models/*")
+    api_args+=(--reload-exclude "**/*.log")
+    api_args+=(--reload-exclude "**/*.jsonl")
+    api_args+=(--reload-exclude "**/*.db")
+    api_args+=(--reload-exclude "**/*.sqlite*")
+    api_args+=(--reload-exclude "api/chroma_db/*")
+  fi
+  "${API_RUNNER[@]}" "${api_args[@]}" >>"$API_LOG" 2>&1 &
   api_pid=$!
   echo "$api_pid" > "$API_PID_FILE"
   wait "$api_pid" || true

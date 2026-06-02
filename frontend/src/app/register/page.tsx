@@ -6,14 +6,21 @@ import { CheckCircle, XCircle, FileText, Activity, Save, Search, User, Percent, 
 
 const conditionOptions = ["本件限度", "次回決算まで本件限度", "金融機関と協調", "独立・新設向け条件", "親会社等保証", "担保・保全あり", "その他"];
 
+const parseRateInput = (value: string, fallback = 0.0) => {
+  const normalized = value.trim().replace(',', '.');
+  if (!normalized) return fallback;
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
 export default function RegisterPage() {
   const [targetId, setTargetId] = useState('');
   const [status, setStatus] = useState<'成約'|'失注'>('成約');
-  const [finalRate, setFinalRate] = useState(0.0);
-  const [baseRate, setBaseRate] = useState(2.1);
+  const [finalRate, setFinalRate] = useState('0.0');
+  const [baseRate, setBaseRate] = useState('2.1');
   const [lostReason, setLostReason] = useState('');
   const [competitorName, setCompetitorName] = useState('');
-  const [competitorRate, setCompetitorRate] = useState(0.0);
+  const [competitorRate, setCompetitorRate] = useState('0.0');
   const [selectedConditions, setSelectedConditions] = useState<string[]>([]);
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -107,12 +114,12 @@ export default function RegisterPage() {
       await apiClient.post(`/api/cases/register`, {
         case_id: targetId,
         status: status,
-        final_rate: finalRate,
-        base_rate_at_time: baseRate,
+        final_rate: parseRateInput(finalRate),
+        base_rate_at_time: parseRateInput(baseRate, 2.1),
         lost_reason: lostReason,
         loan_conditions: selectedConditions,
         competitor_name: competitorName,
-        competitor_rate: competitorRate,
+        competitor_rate: parseRateInput(competitorRate),
         note: note
       });
       triggerMebuki('approve', `${targetId} の結果を登録しました！ご協力ありがとうございます！`);
@@ -249,7 +256,7 @@ export default function RegisterPage() {
                     <label className="block text-xs font-black text-slate-400 uppercase mb-2">最終獲得レート (%)</label>
                     <input 
                        type="text" inputMode="decimal" step="0.01" value={finalRate}
-                       onChange={(e) => setFinalRate(parseFloat(e.target.value))}
+                       onChange={(e) => setFinalRate(e.target.value)}
                        className="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl font-bold text-emerald-600 outline-none"
                     />
                  </div>
@@ -257,7 +264,7 @@ export default function RegisterPage() {
                     <label className="block text-xs font-black text-slate-400 uppercase mb-2">当時の基準金利 (%)</label>
                     <input 
                        type="text" inputMode="decimal" step="0.01" value={baseRate}
-                       onChange={(e) => setBaseRate(parseFloat(e.target.value))}
+                       onChange={(e) => setBaseRate(e.target.value)}
                        className="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl font-bold text-slate-600 outline-none"
                     />
                  </div>
@@ -287,7 +294,7 @@ export default function RegisterPage() {
                         <label className="block text-xs font-black text-slate-400 uppercase mb-2">他社提示レート (%)</label>
                         <input 
                            type="text" inputMode="decimal" step="0.01" value={competitorRate}
-                           onChange={(e) => setCompetitorRate(parseFloat(e.target.value))}
+                           onChange={(e) => setCompetitorRate(e.target.value)}
                            className="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl font-bold text-orange-600 outline-none"
                         />
                     </div>

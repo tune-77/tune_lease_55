@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.tunelease.next</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/run_next_stable.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/kobayashiisaoryou/clawd/tune_lease_55</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>FORCE_RESTART</key>
+    <string>1</string>
+    <key>PUBLIC_TUNNEL</key>
+    <string>1</string>
+    <key>API_HOST</key>
+    <string>127.0.0.1</string>
+    <key>NEXT_HOST</key>
+    <string>127.0.0.1</string>
+    <key>API_RELOAD</key>
+    <string>0</string>
+    <key>SKIP_STALE_LAUNCHER_SWEEP</key>
+    <string>1</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/logs/next/launchd.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/logs/next/launchd.err.log</string>
+</dict>
+</plist>

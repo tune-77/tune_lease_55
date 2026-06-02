@@ -83,6 +83,11 @@ def _load_secrets_to_env():
 
 _load_secrets_to_env()
 
+
+def _gemini_generate_url() -> str:
+    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
 from scoring_core import run_quick_scoring
 from api.scoring_full import run_full_scoring_api
 from api.gunshi_gemini import stream_gunshi_gemini
@@ -2439,7 +2444,7 @@ def generate_gunshi_chat(req: GunshiChatRequest):
                                 
             if api_key:
                 import requests
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+                url = _gemini_generate_url()
                 r = requests.post(
                     f"{url}?key={api_key}",
                     json={"contents": [{"parts": [{"text": prompt}]}]},
@@ -3038,7 +3043,7 @@ LGBMの主な重要度: {_top_factor_text(result.get("lgb_importance"))}
     try:
         import requests
 
-        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+        url = _gemini_generate_url()
         response = requests.post(
             f"{url}?key={api_key}",
             json={"contents": [{"parts": [{"text": prompt}]}]},
@@ -3183,12 +3188,12 @@ def get_current_interest():
 class CaseRegistration(BaseModel):
     case_id: str
     status: str  # "成約" or "失注"
-    final_rate: float = 0.0
-    base_rate_at_time: float = 2.1
+    final_rate: Optional[float] = 0.0
+    base_rate_at_time: Optional[float] = 2.1
     lost_reason: str = ""
-    loan_conditions: list[str] = []
+    loan_conditions: list[str] = Field(default_factory=list)
     competitor_name: str = ""
-    competitor_rate: float = 0.0
+    competitor_rate: Optional[float] = 0.0
     note: str = ""
 
 
@@ -3258,6 +3263,9 @@ def stamp_case_progress(req: CaseProgressStampRequest):
 def register_case_result(req: CaseRegistration):
     from data_cases import load_all_cases, update_case
     cases = load_all_cases()
+    final_rate = float(req.final_rate or 0.0)
+    base_rate_at_time = float(req.base_rate_at_time or 2.1)
+    competitor_rate = float(req.competitor_rate or 0.0)
     
     target_case_id = None
     for c in cases:
@@ -3282,19 +3290,19 @@ def register_case_result(req: CaseRegistration):
 
     patches = {
         "final_status": req.status,
-        "final_rate": req.final_rate,
-        "base_rate_at_time": req.base_rate_at_time,
+        "final_rate": final_rate,
+        "base_rate_at_time": base_rate_at_time,
         "loan_conditions": req.loan_conditions,
         "competitor_name": req.competitor_name,
-        "competitor_rate": req.competitor_rate if req.competitor_rate > 0 else None,
+        "competitor_rate": competitor_rate if competitor_rate > 0 else None,
         "final_note": req.note,
         "registration_date": registration_date,
         "estimate_sent_date": estimate_sent_date,
         "final_result_date": now_date,
         "final_result_timestamp": now_iso,
     }
-    if req.status == "成約" and req.final_rate > 0:
-        patches["winning_spread"] = req.final_rate - req.base_rate_at_time
+    if req.status == "成約" and final_rate > 0:
+        patches["winning_spread"] = final_rate - base_rate_at_time
     if req.status == "失注":
         patches["lost_reason"] = req.lost_reason
 

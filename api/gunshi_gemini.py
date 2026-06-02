@@ -11,10 +11,12 @@ from shinsa_gunshi_logic import (
     PHRASES_100,
 )
 
-GEMINI_STREAM_URL = (
-    "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-2.0-flash:streamGenerateContent"
-)
+def _gemini_stream_url() -> str:
+    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    return (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{model}:streamGenerateContent"
+    )
 
 
 def _normalize_resale_eval(value: object) -> str:
@@ -481,7 +483,7 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
         ],
         "generationConfig": {"maxOutputTokens": 1024, "temperature": 0.7},
     }
-    url = f"{GEMINI_STREAM_URL}?key={api_key}&alt=sse"
+    url = f"{_gemini_stream_url()}?key={api_key}&alt=sse"
 
     _rate_limited = False
     for attempt in range(3):

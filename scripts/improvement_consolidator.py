@@ -8,7 +8,7 @@ import re
 import sys
 import urllib.request
 
-_GEMINI_MODEL = "gemini-2.0-flash"
+_GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
 _GEMINI_REST_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
     f"{_GEMINI_MODEL}:generateContent"

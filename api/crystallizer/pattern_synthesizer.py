@@ -10,7 +10,9 @@ import requests
 
 from api.crystallizer.anomaly_extractor import AnomalyCase
 
-_GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+def _gemini_url() -> str:
+    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 _SYSTEM = """あなたはリース審査のナレッジマネジメント専門家です。
 与えられた審査案件群から、今後の審査に役立つ新しいパターンや教訓を簡潔に言語化してください。
@@ -52,7 +54,7 @@ def synthesize_pattern(cases: list[AnomalyCase]) -> str:
     }
     try:
         resp = requests.post(
-            f"{_GEMINI_URL}?key={api_key}", json=payload, timeout=60
+            f"{_gemini_url()}?key={api_key}", json=payload, timeout=60
         )
         resp.raise_for_status()
         return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
