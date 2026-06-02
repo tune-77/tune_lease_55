@@ -205,21 +205,40 @@ function SubsidyCard({ sub }: { sub: SubsidyItem }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-start gap-3 px-5 py-4 text-left hover:bg-slate-50 transition-colors"
-      >
-        <span className={`mt-0.5 flex-shrink-0 ${sub.color}`}>{sub.icon}</span>
-        <div className="flex-1 min-w-0">
-          <div className="font-black text-slate-800 text-sm leading-snug">{sub.shortName}</div>
-          <div className="text-xs text-slate-500 mt-0.5 truncate">{sub.name}</div>
-          <div className="flex flex-wrap gap-2 mt-1.5">
-            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 rounded px-2 py-0.5">上限 {sub.maxAmount.split(' / ')[0]}</span>
-            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 rounded px-2 py-0.5">補助率 {sub.rate}</span>
+      <div className="flex items-start gap-2 px-5 py-4 hover:bg-slate-50 transition-colors">
+        <button
+          type="button"
+          onClick={() => setOpen(o => !o)}
+          className="flex min-w-0 flex-1 items-start gap-3 text-left"
+        >
+          <span className={`mt-0.5 flex-shrink-0 ${sub.color}`}>{sub.icon}</span>
+          <div className="min-w-0 flex-1">
+            <div className="font-black text-slate-800 text-sm leading-snug">{sub.shortName}</div>
+            <div className="text-xs text-slate-500 mt-0.5 truncate">{sub.name}</div>
+            <div className="flex flex-wrap gap-2 mt-1.5">
+              <span className="text-[10px] font-bold text-slate-500 bg-slate-100 rounded px-2 py-0.5">上限 {sub.maxAmount.split(' / ')[0]}</span>
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 rounded px-2 py-0.5">補助率 {sub.rate}</span>
+            </div>
           </div>
-        </div>
-        {open ? <ChevronUp className="w-4 h-4 text-slate-400 flex-shrink-0 mt-1" /> : <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0 mt-1" />}
-      </button>
+        </button>
+        <a
+          href={sub.officialUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-0.5 inline-flex h-8 flex-shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-black text-slate-700 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700"
+        >
+          公式HP
+          <ExternalLink className="h-3 w-3" />
+        </a>
+        <button
+          type="button"
+          onClick={() => setOpen(o => !o)}
+          className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+          aria-label={open ? `${sub.shortName}を閉じる` : `${sub.shortName}を開く`}
+        >
+          {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
+      </div>
 
       {open && (
         <div className="px-5 pb-5 border-t border-slate-100 space-y-4">
@@ -245,16 +264,6 @@ function SubsidyCard({ sub }: { sub: SubsidyItem }) {
               <p className="text-xs font-bold text-blue-700">{sub.leaseAdvantage}</p>
             </div>
           </div>
-
-          <a
-            href={sub.officialUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700"
-          >
-            公式HPを開く
-            <ExternalLink className="h-3.5 w-3.5" />
-          </a>
 
           <div>
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">審査上の確認ポイント</p>
