@@ -508,6 +508,130 @@ class CaseResultPatch(BaseModel):
     source: str = "app"
 
 
+def _get_case_payload(case_id: str) -> dict:
+    """past_cases から保存済みJSONを取得する。"""
+    import json as _json
+    import sqlite3 as _sqlite3
+    from contextlib import closing as _closing
+    from data_cases import _open_db
+
+    with _closing(_open_db()) as conn:
+        conn.row_factory = _sqlite3.Row
+        row = conn.execute("SELECT data FROM past_cases WHERE id = ?", (case_id,)).fetchone()
+    if row is None:
+        return {}
+    try:
+        payload = _json.loads(row["data"] or "{}")
+        return payload if isinstance(payload, dict) else {}
+    except Exception:
+        return {}
+
+
+def _safe_obsidian_filename(value: str) -> str:
+    import re as _re
+
+    clean = _re.sub(r'[\\/:*?"<>|\n\r\t]', "_", str(value or "").strip())
+    clean = _re.sub(r"\s+", "_", clean).strip("._")
+    return clean[:72] or "case"
+
+
+def _append_case_result_reflection_to_obsidian(case_id: str, case_data: dict, patches: dict) -> dict:
+    """案件結果登録を、再利用できる短い振り返りノートとしてObsidianへ追記する。"""
+    import datetime as _dt
+
+    vault_raw = _OBSIDIAN_VAULT_PATH or os.environ.get("OBSIDIAN_VAULT") or os.environ.get("OBSIDIAN_VAULT_PATH") or ""
+    if not vault_raw:
+        return {"status": "skipped", "reason": "obsidian_vault_not_configured"}
+    vault = Path(vault_raw).expanduser().resolve()
+    if not (vault / ".obsidian").exists():
+        return {"status": "skipped", "reason": "obsidian_vault_not_found", "vault": str(vault)}
+
+    inputs = case_data.get("inputs") if isinstance(case_data.get("inputs"), dict) else case_data
+    result = case_data.get("result") if isinstance(case_data.get("result"), dict) else {}
+    now = _dt.datetime.now()
+    day = (patches.get("final_result_date") or now.date().isoformat())[:10]
+    status = str(patches.get("final_status") or case_data.get("final_status") or "")
+    score = case_data.get("score", result.get("score"))
+    company = str(inputs.get("company_name") or case_data.get("company_name") or "名称未設定").strip()
+    company_no = str(inputs.get("company_no") or case_data.get("company_no") or "").strip()
+    industry = str(inputs.get("industry_sub") or inputs.get("industry_major") or case_data.get("industry_sub") or "").strip()
+    asset = str(inputs.get("asset_name") or inputs.get("asset_type") or "").strip()
+    competitor_rate = patches.get("competitor_rate", case_data.get("competitor_rate"))
+    loss_reason = patches.get("lost_reason", case_data.get("lost_reason") or case_data.get("loss_reason"))
+    qrisk = result.get("quantum_risk", case_data.get("quantum_risk"))
+
+    source_factors: list[str] = []
+    if competitor_rate not in (None, "", 0):
+        source_factors.append(f"競合金利 {competitor_rate}%")
+    if loss_reason:
+        source_factors.append(f"失注理由: {loss_reason}")
+    deal_source = inputs.get("deal_source") or case_data.get("deal_source")
+    if deal_source:
+        source_factors.append(f"商談ソース: {deal_source}")
+    if qrisk not in (None, ""):
+        source_factors.append(f"Q_risk: {qrisk}")
+
+    if status in ("成約", "検収", "検収完了"):
+        learned = "スコア・営業導線・銀行支援・物件条件のどれが成約に寄与したかを次回同種案件で確認する。"
+        missed = "高スコア成約でも、価格・競合・補助金タイミングなど非スコア要因を後追いで記録する。"
+    elif status == "失注":
+        learned = "失注要因をスコア要因と非スコア要因に分け、次回の初期ヒアリング項目へ戻す。"
+        missed = "スコアが妥当でも、競合金利・物件代替・銀行支援・顧客都合で外れる可能性を確認する。"
+    else:
+        learned = "結果ステータス更新として保存。後続の成約/失注登録時に要因を補完する。"
+        missed = "結果が確定していない場合は、次回更新で競合・補助金・銀行支援の有無を追記する。"
+
+    rel = Path("Projects") / "tune_lease_55" / "Case Reviews" / f"{day}_{_safe_obsidian_filename(case_id)}.md"
+    path = (vault / rel).resolve()
+    if vault not in path.parents and path != vault:
+        return {"status": "error", "reason": "unsafe_obsidian_path"}
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    header = ""
+    if not path.exists():
+        header = (
+            "---\n"
+            f"created: {now.date().isoformat()}\n"
+            "source: tune_lease_55\n"
+            "type: case_result_reflection\n"
+            f"case_id: {case_id}\n"
+            "---\n\n"
+            f"# 案件結果振り返り - {company}\n\n"
+        )
+
+    lines = [
+        f"## {now.strftime('%H:%M')} 結果登録",
+        "",
+        "### Case",
+        f"- 案件ID: {case_id}",
+        f"- 企業: {company}{(' / ' + company_no) if company_no else ''}",
+        f"- 業種: {industry or '未設定'}",
+        f"- 物件: {asset or '未設定'}",
+        f"- スコア: {score if score not in (None, '') else '未設定'}",
+        f"- 結果: {status or '未設定'}",
+    ]
+    if competitor_rate not in (None, "", 0):
+        lines.append(f"- 競合金利: {competitor_rate}%")
+    if loss_reason:
+        lines.append(f"- 失注理由: {loss_reason}")
+    lines.extend([
+        "",
+        "### Reflection",
+        f"- 効いた/外した判断: {learned}",
+        f"- 見直す観点: {missed}",
+        f"- 非スコア要因: {', '.join(source_factors) if source_factors else '未記録。営業・競合・銀行支援・補助金・物件換金性を次回確認する。'}",
+        "- 次に同種案件で見る点: 業種、物件、金額、期間、競合、銀行支援、補助金タイミング。",
+    ])
+    with path.open("a", encoding="utf-8") as f:
+        if header:
+            f.write(header)
+        elif path.read_text(encoding="utf-8", errors="ignore").strip():
+            f.write("\n\n")
+        f.write("\n".join(lines).strip() + "\n")
+
+    return {"status": "saved", "path": str(path), "relative_path": str(rel)}
+
+
 class BatchScoreRequest(BaseModel):
     csv_text: Optional[str] = None
     csv_base64: Optional[str] = None
@@ -2028,7 +2152,14 @@ def patch_case_result(case_id: str, req: CaseResultPatch):
     if not update_case(case_id, patches):
         raise HTTPException(status_code=404, detail="案件が見つからないか更新失敗")
 
-    return {"status": "updated", "case_id": case_id}
+    obsidian_result = {"status": "skipped", "reason": "not_attempted"}
+    try:
+        updated_case = _get_case_payload(case_id)
+        obsidian_result = _append_case_result_reflection_to_obsidian(case_id, updated_case, patches)
+    except Exception as e:
+        obsidian_result = {"status": "error", "reason": str(e)}
+
+    return {"status": "updated", "case_id": case_id, "obsidian_reflection": obsidian_result}
 
 
 @app.get("/api/cases/pending")
