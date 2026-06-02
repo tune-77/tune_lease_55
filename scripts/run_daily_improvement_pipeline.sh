@@ -104,10 +104,40 @@ if [ -f "${RESULT_FILE}" ]; then
     fi
 fi
 
-# --- Step 7: 最終結果を Gist に push ---
+# --- Step 7: Wiki 昇格キューを生成 ---
+echo ""
+echo "[Step 7] Wiki 昇格キューを生成中..."
+WIKI_QUEUE_FILE="${PROJECT_ROOT}/reports/wiki_promotion_queue_${LOG_DATE}.json"
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_wiki_promotion_queue.py" \
+    --latest "${LATEST_FILE}" \
+    --output "${WIKI_QUEUE_FILE}" \
+    --limit 3
+WIKI_QUEUE_EXIT=$?
+if [ ${WIKI_QUEUE_EXIT} -ne 0 ]; then
+    echo "警告: Wiki 昇格キュー生成に失敗しました（終了コード ${WIKI_QUEUE_EXIT}）"
+    if [ ${FINAL_EXIT} -eq 0 ]; then
+        FINAL_EXIT=${WIKI_QUEUE_EXIT}
+    fi
+else
+    echo ""
+    echo "[Step 7.1] Wiki 昇格キューを自動適用中..."
+    "${PYTHON}" "${PROJECT_ROOT}/scripts/promote_wiki_queue.py" \
+        --queue "${WIKI_QUEUE_FILE}" \
+        --latest "${LATEST_FILE}" \
+        --limit 3
+    WIKI_PROMOTE_EXIT=$?
+    if [ ${WIKI_PROMOTE_EXIT} -ne 0 ]; then
+        echo "警告: Wiki 昇格キューの自動適用に失敗しました（終了コード ${WIKI_PROMOTE_EXIT}）"
+        if [ ${FINAL_EXIT} -eq 0 ]; then
+            FINAL_EXIT=${WIKI_PROMOTE_EXIT}
+        fi
+    fi
+fi
+
+# --- Step 8: 最終結果を Gist に push ---
 if [ -f "${LATEST_FILE}" ]; then
     echo ""
-    echo "[Step 7] Gist に最終結果を更新中..."
+    echo "[Step 8] Gist に最終結果を更新中..."
     if [ ${FINAL_EXIT} -eq 0 ]; then
         if command -v gh >/dev/null 2>&1; then
             if gh gist edit "${GIST_ID}" "${LATEST_FILE}" 2>/dev/null; then
@@ -140,6 +170,12 @@ if [ -f "${RESULT_FILE}" ]; then
 fi
 if [ -n "${CODEX_QUEUE_FILE:-}" ] && [ -f "${CODEX_QUEUE_FILE}" ]; then
     echo "Codex 自動実行キュー: ${CODEX_QUEUE_FILE}"
+fi
+if [ -n "${WIKI_QUEUE_FILE:-}" ] && [ -f "${WIKI_QUEUE_FILE}" ]; then
+    echo "Wiki 昇格キュー: ${WIKI_QUEUE_FILE}"
+fi
+if [ -f "${PROJECT_ROOT}/reports/wiki_promotion_status.json" ]; then
+    echo "Wiki 昇格ステータス: ${PROJECT_ROOT}/reports/wiki_promotion_status.json"
 fi
 echo "Gist: https://gist.githubusercontent.com/tune-77/${GIST_ID}/raw/latest.json"
 echo "ログファイル: ${LOG_FILE}"

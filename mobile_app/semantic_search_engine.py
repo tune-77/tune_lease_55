@@ -172,31 +172,17 @@ class SemanticRAGRetriever:
         self.obsidian_documents = self._load_obsidian_documents()
     
     def _load_obsidian_documents(self) -> list[dict]:
-        """Obsidian ドキュメントを読み込む"""
-        documents = []
-        vault_path = Path("/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault")
-        
-        for md_file in vault_path.rglob("*.md"):
-            if any(skip in str(md_file) for skip in [".obsidian", ".claude", ".claudian"]):
-                continue
-            
+        """Obsidian ドキュメントを共通ブリッジ経由で読み込む。"""
+        try:
+            from mobile_app.obsidian_bridge import iter_indexed_obsidian_documents
+        except Exception:
             try:
-                with open(md_file, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                
-                # Frontmatter を抽出
-                title = md_file.stem
-                rel_path = md_file.relative_to(vault_path)
-                
-                documents.append({
-                    "title": title,
-                    "path": str(rel_path),
-                    "content": content[:1000],  # 最初の1000文字
-                    "full_path": str(md_file)
-                })
+                from obsidian_bridge import iter_indexed_obsidian_documents
             except Exception as e:
-                logger.warning(f"⚠️  ドキュメント読み込みエラー: {md_file} - {e}")
-        
+                logger.warning(f"⚠️  Obsidian 共通ブリッジ読み込みエラー: {e}")
+                return []
+
+        documents = iter_indexed_obsidian_documents(include_chat_logs=False, max_chars=1000)
         logger.info(f"✅ {len(documents)} 個のドキュメント読み込み完了")
         return documents
     

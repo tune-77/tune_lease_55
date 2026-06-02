@@ -190,6 +190,41 @@ def _get_indexed_paths() -> tuple[Path | None, list[Path], list[Path]]:
     )
 
 
+def iter_indexed_obsidian_documents(
+    *,
+    include_chat_logs: bool = False,
+    max_chars: int = 1000,
+) -> list[dict[str, str]]:
+    """Return indexed Obsidian documents through the shared bridge path.
+
+    AI chat and RAG entry points should use this helper instead of scanning the
+    vault directly, so folder prioritization and exclusions stay consistent.
+    """
+    vault, knowledge, chat_logs = _get_indexed_paths()
+    if not vault:
+        return []
+    paths = knowledge + (chat_logs if include_chat_logs else [])
+    documents: list[dict[str, str]] = []
+    for path in paths:
+        if not path.is_file() or any(skip in path.parts for skip in (".obsidian", ".claude", ".claudian")):
+            continue
+        try:
+            content = path.read_text(encoding="utf-8", errors="ignore")
+            rel_path = str(path.relative_to(vault))
+        except OSError:
+            continue
+        documents.append(
+            {
+                "title": path.stem,
+                "path": rel_path,
+                "content": content[:max_chars],
+                "full_path": str(path),
+                "source_type": "chat_log" if _is_chat_log(path) else "knowledge",
+            }
+        )
+    return documents
+
+
 # モジュール import 時にインデックスを初期化
 _build_vault_index()
 
@@ -594,6 +629,39 @@ def build_obsidian_digest(query: str, hits: list[dict[str, str]], max_items: int
     }
 
 
+def _source_metadata_lines(
+    *,
+    source_query: str | None = None,
+    related_paths: Iterable[str] | None = None,
+) -> list[str]:
+    source_notes: list[str] = []
+    used_wiki_pages: list[str] = []
+    for item in related_paths or []:
+        rel = str(item or "").strip().replace("\\", "/")
+        if not rel:
+            continue
+        source_notes.append(rel)
+        if not _is_chat_log(Path(rel)):
+            used_wiki_pages.append(rel)
+
+    if not source_query and not source_notes:
+        return []
+
+    lines = ["", "### Source Metadata"]
+    if source_query:
+        safe_query = str(source_query).strip().replace("\n", " ")[:240]
+        lines.append(f"- generated_from_query: {safe_query}")
+    if used_wiki_pages:
+        lines.append("- used_wiki_pages:")
+        for rel in used_wiki_pages[:12]:
+            lines.append(f"  - {rel}")
+    if source_notes:
+        lines.append("- source_notes:")
+        for rel in source_notes[:12]:
+            lines.append(f"  - {rel}")
+    return lines
+
+
 def append_chat_note(title: str, body: str) -> dict[str, str]:
     vault = find_vault()
     if not vault:
@@ -651,7 +719,12 @@ def append_web_note(title: str, body: str) -> dict[str, str]:
     return {"status": "saved", "path": str(path)}
 
 
-def append_wiki_note(title: str, body: str, related_paths: Iterable[str] | None = None) -> dict[str, str]:
+def append_wiki_note(
+    title: str,
+    body: str,
+    related_paths: Iterable[str] | None = None,
+    source_query: str | None = None,
+) -> dict[str, str]:
     vault = find_vault()
     if not vault:
         return {"status": "skipped", "reason": "Obsidian vault not found"}
@@ -672,6 +745,9 @@ def append_wiki_note(title: str, body: str, related_paths: Iterable[str] | None 
         section_lines.append("### 関連ノート")
         for link in related[:8]:
             section_lines.append(f"- {link}")
+        section_lines.append("")
+    section_lines.extend(_source_metadata_lines(source_query=source_query, related_paths=related_paths))
+    if len(section_lines) > 2 and section_lines[-1] != "":
         section_lines.append("")
     if clean_body:
         section_lines.append(clean_body)
@@ -745,7 +821,11 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
-def append_asset_finance_note(asset_case: dict, result: dict, related_paths: Iterable[str] | None = None) -> dict[str, str]:
+def append_asset_finance_note(
+    asset_case: dict,
+    result: dict,
+    related_paths: Iterable[str] | None = None,
+) -> dict[str, str]:
     """物件ファイナンス審査結果を Asset Finance/ 以下の日次ログに追記する。"""
     vault = find_vault()
     if not vault:
@@ -793,6 +873,7 @@ def append_asset_finance_note(asset_case: dict, result: dict, related_paths: Ite
             lines.append("")
             lines.append("### 関連メモ")
             lines.extend(f"- {link}" for link in related_links[:8])
+            lines.extend(_source_metadata_lines(related_paths=related_paths))
 
     if reasons:
         lines.append("")

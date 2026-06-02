@@ -617,6 +617,7 @@ def build_chat_reply(
                 str(parsed.get("wiki_save_title") or "AI Wiki連携"),
                 wiki_body,
                 related_paths=[item.get("path", "") for item in obsidian_hits],
+                source_query=message,
             )
         return {
             "reply": str(parsed.get("reply") or ""),

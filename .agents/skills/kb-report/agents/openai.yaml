@@ -1,0 +1,3 @@
+name: kb-report
+short_description: "Create traceable Obsidian reports from promoted wiki/knowledge notes."
+default_prompt: "Use $kb-report to answer from Obsidian knowledge notes and save a report with used_wiki_pages/source_notes metadata."
