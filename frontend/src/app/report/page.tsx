@@ -11,6 +11,7 @@ type CaseRow = {
   company_no: string | null;
   score: number | null;
   final_status: string;
+  source?: string;
 };
 
 type RiskFactor = {
@@ -637,9 +638,16 @@ export default function ReportPage() {
             {report && !generating && (
               <>
                 <div className="flex items-center justify-between mb-5 pb-4 border-b border-slate-100">
-                  <h2 className="font-black text-slate-700">
-                    {selectedCase?.company_name || '審査レポート'}
-                  </h2>
+                  <div className="min-w-0">
+                    <h2 className="font-black text-slate-700 truncate">
+                      {selectedCase?.company_name || '審査レポート'}
+                    </h2>
+                    {selectedCase?.source && (
+                      <div className="mt-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        情報源: {selectedCase.source}
+                      </div>
+                    )}
+                  </div>
                   <button
                     onClick={() => navigator.clipboard?.writeText(report)}
                     className="text-xs font-bold text-slate-400 hover:text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-all"

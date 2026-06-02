@@ -20,6 +20,21 @@ _DETAIL_HINTS = (
     "補足",
 )
 
+_VAGUE_QUESTION_HINTS = (
+    "どう思う",
+    "大丈夫",
+    "いける",
+    "問題ある",
+    "どうしたら",
+    "どうすれば",
+    "教えて",
+    "知りたい",
+    "確認したい",
+    "判断して",
+    "アドバイス",
+    "どれがいい",
+)
+
 _INDUSTRY_HINTS = (
     "業界情報",
     "業界",
@@ -93,6 +108,31 @@ _TODAY_SCOPE_HINTS = (
     "ダッシュボード",
 )
 
+_AMBIGUOUS_CONTEXT_HINTS = (
+    "案件",
+    "審査",
+    "業界",
+    "リース",
+    "補助金",
+    "ニュース",
+    "改善",
+    "入力",
+    "画面",
+    "Obsidian",
+    "Q_risk",
+    "Q-Risk",
+    "金利",
+    "財務",
+    "物件",
+    "会社",
+    "企業",
+    "スコア",
+    "成約",
+    "失注",
+    "比較",
+    "一覧",
+)
+
 
 def normalize_chat_text(text: str) -> str:
     """比較用に空白と記号を寄せた文字列へ正規化する."""
@@ -128,6 +168,19 @@ def is_repeated_query(message: str, history: list[dict[str, str]] | None = None)
 def is_detail_request(message: str) -> bool:
     text = str(message or "")
     return any(hint in text for hint in _DETAIL_HINTS)
+
+
+def is_ambiguous_question(message: str) -> bool:
+    text = str(message or "").strip()
+    if not text:
+        return False
+    if not any(mark in text for mark in ("?", "？")) and not any(hint in text for hint in _VAGUE_QUESTION_HINTS):
+        return False
+    if any(hint in text for hint in _AMBIGUOUS_CONTEXT_HINTS):
+        return False
+    if len(normalize_chat_text(text)) > 18 and not any(hint in text for hint in ("どう思う", "大丈夫", "教えて")):
+        return False
+    return True
 
 
 def is_industry_clarification_needed(message: str) -> bool:
@@ -167,6 +220,7 @@ def is_out_of_scope(message: str) -> bool:
 class ChatGuidance:
     repeated_query: bool = False
     detail_request: bool = False
+    ambiguous_question_clarification_needed: bool = False
     industry_clarification_needed: bool = False
     today_scope_clarification_needed: bool = False
     out_of_scope: bool = False
@@ -177,6 +231,10 @@ class ChatGuidance:
         if self.today_scope_clarification_needed:
             lines.append(
                 "『今日の』だけでは対象が曖昧なので、今日の何について知りたいかを1文で確認する。"
+            )
+        if self.ambiguous_question_clarification_needed:
+            lines.append(
+                "質問が曖昧なら、対象・目的・比較軸のどれか1つを1文で確認してから答える。"
             )
         if self.industry_clarification_needed:
             lines.append(
@@ -209,6 +267,7 @@ def build_chat_guidance(message: str, history: list[dict[str, str]] | None = Non
     return ChatGuidance(
         repeated_query=is_repeated_query(message, history),
         detail_request=is_detail_request(message),
+        ambiguous_question_clarification_needed=is_ambiguous_question(message),
         industry_clarification_needed=is_industry_clarification_needed(message),
         today_scope_clarification_needed=is_today_scope_clarification_needed(message),
         out_of_scope=is_out_of_scope(message),

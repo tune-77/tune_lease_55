@@ -20,9 +20,13 @@ del _os_early
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response, StreamingResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 import json
 import re
 import sys
@@ -216,6 +220,25 @@ async def lifespan(app: FastAPI):
         pass
 
 
+limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        return response
+
+
+_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
 app = FastAPI(
     title="Lease Scoring API",
     description="リース審査ロジックのバックエンドAPI",
@@ -223,13 +246,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# モダンフロントエンド(Next.js)のReactローカルサーバー(例: 3000番ポート)からのアクセスを許可
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Next.js ローカルサーバーからのアクセスのみ許可（ワイルドカード廃止）
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
 )
 
 @app.get("/")
@@ -460,7 +488,8 @@ def list_cases(limit: int = 30, offset: int = 0, sort: str = "desc"):
                 f"SELECT id, timestamp, industry_sub, score, final_status, "
                 f"json_extract(data,'$.company_name') AS company_name, "
                 f"json_extract(data,'$.company_no')   AS company_no, "
-                f"json_extract(data,'$.judgment')     AS judgment "
+                f"json_extract(data,'$.judgment')     AS judgment, "
+                f"COALESCE(json_extract(data,'$._source'), 'past_cases') AS source "
                 f"FROM past_cases ORDER BY timestamp {order} LIMIT ? OFFSET ?",
                 (limit, offset),
             ).fetchall()
@@ -2032,7 +2061,9 @@ def get_case_detail(case_id: str):
             ).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Case not found")
-        return json.loads(row["data"] or "{}")
+        payload = json.loads(row["data"] or "{}")
+        payload.setdefault("_source", "past_cases")
+        return payload
     except HTTPException:
         raise
     except Exception as e:
@@ -2176,8 +2207,9 @@ def _normalize_yukikaze_datalink_reply(reply_text: str, user_message: str) -> st
     import re
     from datetime import date
     try:
-        from chat_intent import is_today_scope_clarification_needed
+        from chat_intent import is_ambiguous_question, is_today_scope_clarification_needed
     except Exception:  # pragma: no cover - fallback
+        is_ambiguous_question = lambda _msg: False  # type: ignore
         is_today_scope_clarification_needed = lambda _msg: False  # type: ignore
 
     text = (reply_text or "").replace("\r\n", "\n")
@@ -2201,6 +2233,12 @@ def _normalize_yukikaze_datalink_reply(reply_text: str, user_message: str) -> st
             "DATALINK LOG:",
             "TX: PANPANPAN // Scope clarification required.",
             "RX: 今日の何について知りたいですか？",
+        ])
+    if is_ambiguous_question(msg):
+        return "\n".join([
+            "DATALINK LOG:",
+            "TX: PANPANPAN // Ambiguous question detected.",
+            "RX: 何についての質問ですか？ 対象、目的、比較したい相手のどれかを教えてください。",
         ])
     date_like = bool(re.search(r"(日付|今日|何日|何曜日|曜日|date|today)", msg, re.I))
     if date_like:

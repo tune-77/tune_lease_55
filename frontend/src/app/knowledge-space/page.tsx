@@ -531,6 +531,14 @@ function KnowledgeSpaceScene({
     const pointer = new THREE.Vector2();
     let hoveredId = "";
 
+    const clearHover = () => {
+      hoveredId = "";
+      renderer.domElement.style.cursor = "grab";
+      halo.visible = false;
+      (halo.material as THREE.MeshBasicMaterial).opacity = 0;
+      onHover(null, 0, 0);
+    };
+
     const updatePointer = (event: PointerEvent) => {
       const rect = renderer.domElement.getBoundingClientRect();
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -545,9 +553,7 @@ function KnowledgeSpaceScene({
         halo.visible = false;
         onHover(node || null, event.clientX, event.clientY);
       } else {
-        halo.visible = false;
-        (halo.material as THREE.MeshBasicMaterial).opacity = 0;
-        onHover(null, 0, 0);
+        clearHover();
       }
     };
 
@@ -556,6 +562,7 @@ function KnowledgeSpaceScene({
     };
 
     renderer.domElement.addEventListener("pointermove", updatePointer);
+    renderer.domElement.addEventListener("pointerleave", clearHover);
     renderer.domElement.addEventListener("click", clickNode);
 
     const resize = () => {
@@ -595,6 +602,7 @@ function KnowledgeSpaceScene({
       cancelAnimationFrame(frame);
       window.removeEventListener("resize", resize);
       renderer.domElement.removeEventListener("pointermove", updatePointer);
+      renderer.domElement.removeEventListener("pointerleave", clearHover);
       renderer.domElement.removeEventListener("click", clickNode);
       controls.dispose();
       lineGeometry.dispose();
@@ -840,15 +848,16 @@ export default function KnowledgeSpacePage() {
         <div
           className="pointer-events-none fixed z-50"
           style={{
-            left: hoverPos.x > window.innerWidth - 300 ? hoverPos.x - 280 : hoverPos.x + 16,
-            top: hoverPos.y > window.innerHeight - 160 ? hoverPos.y - 130 : hoverPos.y - 36,
+            left: hoverPos.x > window.innerWidth - 260 ? hoverPos.x - 230 : hoverPos.x + 14,
+            top: hoverPos.y > window.innerHeight - 120 ? hoverPos.y - 100 : hoverPos.y - 28,
           }}
         >
           <div
-            className="rounded-lg border border-white/20 bg-slate-900/90 px-3 py-1.5 shadow-xl backdrop-blur-sm"
-            style={{ borderLeftColor: hoveredNode.color, borderLeftWidth: 3 }}
+            className="flex max-w-[220px] items-center gap-2 rounded-full border border-white/15 bg-slate-900/92 px-3 py-1.5 shadow-xl backdrop-blur-sm"
+            style={{ boxShadow: `0 0 0 1px ${hoveredNode.color}22, 0 12px 32px rgba(2,6,23,0.42)` }}
           >
-            <div className="text-xs font-bold text-white leading-snug">{hoveredNode.label}</div>
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: hoveredNode.color }} />
+            <div className="truncate text-[11px] font-bold text-white leading-tight">{hoveredNode.label}</div>
           </div>
         </div>
       )}

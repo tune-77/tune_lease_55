@@ -183,9 +183,9 @@ def _fallback_chat_packet(
             "weekly_save_reason": "fallback",
         }
     try:
-        from chat_intent import is_today_scope_clarification_needed
+        from chat_intent import is_ambiguous_question, is_today_scope_clarification_needed
     except ImportError:  # pragma: no cover - package import fallback
-        from ..chat_intent import is_today_scope_clarification_needed
+        from ..chat_intent import is_ambiguous_question, is_today_scope_clarification_needed
 
     if is_today_scope_clarification_needed(message):
         return {
@@ -193,6 +193,29 @@ def _fallback_chat_packet(
             "should_save": False,
             "save_title": "今日の質問の確認",
             "save_body": "曖昧な『今日の』は対象が不明なため、案件・ニュース・改善候補・日付のどれかを確認する。",
+            "save_reason": "曖昧語の意図確認",
+            "improvement_items": [],
+            "web_used": bool(web_hits),
+            "web_reason": "fallback",
+            "web_should_save": False,
+            "web_save_title": "",
+            "web_save_body": "",
+            "web_save_reason": "fallback",
+            "wiki_should_save": False,
+            "wiki_save_title": "",
+            "wiki_save_body": "",
+            "wiki_save_reason": "fallback",
+            "weekly_should_save": False,
+            "weekly_save_title": "",
+            "weekly_save_body": "",
+            "weekly_save_reason": "fallback",
+        }
+    if is_ambiguous_question(message):
+        return {
+            "reply": "何についての質問ですか？ 対象、目的、比較したい相手のどれかを1つ教えてください。",
+            "should_save": False,
+            "save_title": "曖昧質問の確認",
+            "save_body": "質問が曖昧だったため、対象・目的・比較軸のどれかを確認する。",
             "save_reason": "曖昧語の意図確認",
             "improvement_items": [],
             "web_used": bool(web_hits),

@@ -15,6 +15,7 @@ type Case = {
   judgment: string | null;
   final_status: string;
   industry_sub: string;
+  source?: string;
 };
 
 type ResultForm = {
@@ -155,6 +156,11 @@ export default function CasesPage() {
                       <td className="px-4 py-3">
                         <div className="font-bold text-slate-800 truncate max-w-[160px]">{c.company_name || '—'}</div>
                         <div className="text-xs text-slate-400 font-mono">{c.company_no || c.id.slice(0, 8)}</div>
+                        <div className="mt-1">
+                          <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-500">
+                            {c.source || 'past_cases'}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{c.timestamp?.slice(0, 10) || '—'}</td>
                       <td className="px-4 py-3 text-center">
@@ -218,6 +224,11 @@ export default function CasesPage() {
                 <p className="text-xs text-slate-400 font-bold mb-5 truncate">
                   {selected.company_name || selected.id}
                 </p>
+                <div className="mb-4">
+                  <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-500">
+                    情報源: {selected.source || 'past_cases'}
+                  </span>
+                </div>
 
                 <div className="space-y-4">
                   <div>

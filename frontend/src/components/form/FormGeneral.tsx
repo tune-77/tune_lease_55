@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ScoringFormData } from '../../types';
 import { API_BASE } from '../../lib/api';
 
@@ -27,6 +27,12 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
   const [industryMaster, setIndustryMaster] = useState<IndustryMaster>({});
   const [majors, setMajors] = useState<string[]>([]);
   const [subs, setSubs] = useState<string[]>([]);
+  const numericFieldOrder = ['contracts', 'bank_credit', 'lease_credit'] as const;
+  const numericFieldRefs = useRef<Record<(typeof numericFieldOrder)[number], HTMLInputElement | null>>({
+    contracts: null,
+    bank_credit: null,
+    lease_credit: null,
+  });
 
   // マスターデータの取得
   useEffect(() => {
@@ -65,6 +71,14 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
     const { name, value, type } = e.target;
     onChange(name, type === 'number' ? Number(value) : value);
+  };
+
+  const focusNextNumericField = (field: (typeof numericFieldOrder)[number]) => {
+    const currentIndex = numericFieldOrder.indexOf(field);
+    const nextField = numericFieldOrder[currentIndex + 1];
+    if (!nextField) return;
+    numericFieldRefs.current[nextField]?.focus();
+    numericFieldRefs.current[nextField]?.select();
   };
 
   return (
@@ -247,18 +261,56 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">既存の契約数 (件)</label>
-            <input type="number" name="contracts" value={data.contracts} onChange={handleChange} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
+            <input
+              ref={(el) => { numericFieldRefs.current.contracts = el; }}
+              type="number"
+              name="contracts"
+              value={data.contracts}
+              onChange={handleChange}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                focusNextNumericField('contracts');
+              }}
+              className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]"
+            />
           </div>
 
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">銀行与信残高 (百万円)</label>
-            <input type="number" name="bank_credit" value={data.bank_credit} step="0.1" onChange={handleChange} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
+            <input
+              ref={(el) => { numericFieldRefs.current.bank_credit = el; }}
+              type="number"
+              name="bank_credit"
+              value={data.bank_credit}
+              step="0.1"
+              onChange={handleChange}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                focusNextNumericField('bank_credit');
+              }}
+              className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]"
+            />
             <p className="text-[10px] text-slate-400 mt-0.5">現在の銀行借入残高（百万円単位）</p>
           </div>
 
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">リース与信残高 (百万円)</label>
-            <input type="number" name="lease_credit" value={data.lease_credit} step="0.1" onChange={handleChange} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
+            <input
+              ref={(el) => { numericFieldRefs.current.lease_credit = el; }}
+              type="number"
+              name="lease_credit"
+              value={data.lease_credit}
+              step="0.1"
+              onChange={handleChange}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                focusNextNumericField('lease_credit');
+              }}
+              className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]"
+            />
             <p className="text-[10px] text-slate-400 mt-0.5">他社含む現在のリース残高（百万円単位）</p>
           </div>
         </div>
