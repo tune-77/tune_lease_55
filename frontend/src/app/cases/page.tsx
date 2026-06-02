@@ -83,9 +83,13 @@ export default function CasesPage() {
 
   const handleSubmit = async () => {
     if (!selected) return;
+    if (form.final_status === '失注' && !form.loss_reason) {
+      setMsg({ text: '失注理由を入力してください', ok: false });
+      return;
+    }
     setSubmitting(true);
     setMsg(null);
-    const payload: Record<string, unknown> = {};
+    const payload: Record<string, unknown> = { source: 'app' };
     if (form.final_status) payload.final_status = form.final_status;
     if (form.competitor_rate) payload.competitor_rate = parseFloat(form.competitor_rate);
     if (form.loss_reason) payload.loss_reason = form.loss_reason;
@@ -287,7 +291,7 @@ export default function CasesPage() {
 
                   <button
                     onClick={handleSubmit}
-                    disabled={submitting || !form.final_status}
+                    disabled={submitting || !form.final_status || (form.final_status === '失注' && !form.loss_reason)}
                     className="w-full py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-black text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {submitting ? '更新中...' : '結果を登録'}

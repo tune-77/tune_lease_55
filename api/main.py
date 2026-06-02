@@ -505,6 +505,7 @@ class CaseResultPatch(BaseModel):
     competitor_rate: Optional[float] = None
     loss_reason: Optional[str] = None
     final_result_date: Optional[str] = None
+    source: str = "app"
 
 
 class BatchScoreRequest(BaseModel):
@@ -2007,6 +2008,9 @@ def patch_case_result(case_id: str, req: CaseResultPatch):
 
     if req.final_status is not None and req.final_status not in FINAL_STATUS_VALID:
         raise HTTPException(status_code=422, detail=f"不正な final_status: {req.final_status}")
+
+    if req.source == "app" and req.final_status == "失注" and not (req.loss_reason or "").strip():
+        raise HTTPException(status_code=400, detail="失注理由を入力してください")
 
     patches: dict = {}
     if req.final_status is not None:
