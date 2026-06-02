@@ -238,6 +238,14 @@ export default function BatchPage() {
             <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500 leading-relaxed">
               判定結果を確認してから、結果表の上に表示される保存ボタンで過去案件DBへ登録します。
             </div>
+
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700 font-bold flex items-start gap-2">
+              <span>💡</span>
+              <span>
+                失注理由を入力すると営業分析の精度が上がります（任意）。
+                CSVに <code className="font-mono bg-amber-100 px-1 rounded">lost_reason</code> 列を含めてください。
+              </span>
+            </div>
           </div>
 
           {message && (
