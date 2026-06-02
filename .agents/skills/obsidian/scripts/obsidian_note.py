@@ -97,6 +97,9 @@ def cmd_agent_work_log(args: argparse.Namespace) -> None:
         "### Summary",
         *bullet_lines(args.summary),
         "",
+        "### Chat Summary",
+        *bullet_lines(args.chat_summary),
+        "",
         "### Decisions",
         *bullet_lines(args.decision),
         "",
@@ -189,6 +192,7 @@ def main() -> None:
         p.add_argument("--agent", default=default_agent)
         p.add_argument("--title")
         p.add_argument("--summary", action="append", default=[])
+        p.add_argument("--chat-summary", action="append", default=[])
         p.add_argument("--decision", action="append", default=[])
         p.add_argument("--change", action="append", default=[])
         p.add_argument("--verification", action="append", default=[])
