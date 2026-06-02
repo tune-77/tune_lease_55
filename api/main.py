@@ -2194,6 +2194,20 @@ async def gunshi_stream(req: GunshiStreamRequest):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
+_GUNSHI_GENERAL_CHAT_PROMPT = (
+    "あなたはリース審査AIの軍師です。"
+    "戦国武将のような凜とした口調を保ちながら、雑談や一般的な質問にも気さくに答えます。"
+    "天気や最新ニュースなど具体的なデータが必要な場合は「〇〇でご確認あれ」と案内しつつ、知っている範囲で答えてください。"
+    "回答は簡潔に。日本語で答えてください。"
+)
+
+_YUKIKAZE_GENERAL_CHAT_PROMPT = (
+    "You are YUKIKAZE // FFR-41MR. "
+    "For general or off-topic questions, respond in minimal DATALINK style. "
+    "TX: for transmit, RX: for response. Brief and cold. No pleasantries."
+)
+
+
 class GunshiChatRequest(BaseModel):
     score: float
     industry_major: str
@@ -2368,6 +2382,17 @@ def generate_gunshi_chat(req: GunshiChatRequest):
                 "saved": False,
                 "save_reason": "YUKIKAZE DATALINK MODE",
             }
+
+        # general カテゴリの質問は Obsidian/案件コンテキストをスキップして直接回答
+        if (req.message or "").strip() and _classify_question(req.message) == "general":
+            try:
+                from api.chat_memory import call_gemini_chat as _gchat
+                _sys = _YUKIKAZE_GENERAL_CHAT_PROMPT if is_yukikaze else _GUNSHI_GENERAL_CHAT_PROMPT
+                _hist = [{"role": h.get("role", ""), "content": h.get("text", "")} for h in req.history]
+                reply_text = _gchat(_sys, _hist, req.message.strip())
+            except Exception as _ge:
+                reply_text = f"【エラー】一般会話の生成に失敗しました: {_ge}"
+            return {"chat_text": reply_text, "reply": reply_text}
 
         advices = PHRASES_100.get("逆転アドバイス", [])
         import random
