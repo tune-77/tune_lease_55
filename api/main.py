@@ -988,6 +988,23 @@ def _knowledge_graph_category(path: str) -> str:
     return "knowledge"
 
 
+def _knowledge_graph_source(path: str) -> dict[str, str | bool]:
+    low = path.lower()
+    if "projects/tune_lease_55/cases/" in low:
+        return {"kind": "case", "label": "過去案件", "highlight": True}
+    if "projects/tune_lease_55/feedback/" in low or "improvement" in low:
+        return {"kind": "feedback", "label": "改善ログ", "highlight": True}
+    if "projects/tune_lease_55/news/" in low or "research" in low or "clippings" in low:
+        return {"kind": "research", "label": "調査・ニュース", "highlight": True}
+    if "daily/" in low:
+        return {"kind": "daily", "label": "日次メモ", "highlight": True}
+    if "wiki" in low or "検索語" in path:
+        return {"kind": "wiki", "label": "Wiki", "highlight": True}
+    if "projects/tune_lease_55/asset" in low:
+        return {"kind": "asset", "label": "物件・残価", "highlight": True}
+    return {"kind": "knowledge", "label": "知識ノート", "highlight": False}
+
+
 @app.get("/api/knowledge/graph")
 def get_knowledge_graph(limit: int = 180):
     """インデックス済み Obsidian ナレッジをファイル単位の3Dグラフ用に返す。"""
@@ -1027,6 +1044,7 @@ def get_knowledge_graph(limit: int = 180):
                 "label": stem or os.path.basename(path),
                 "path": path,
                 "category": _knowledge_graph_category(path),
+                "source": _knowledge_graph_source(path),
                 "sections": set(),
                 "wikilinks": set(),
                 "chunk_count": 0,
@@ -1107,6 +1125,9 @@ def get_knowledge_graph(limit: int = 180):
                 "path": note["path"],
                 "type": "note",
                 "category": category,
+                "source_kind": note["source"]["kind"],
+                "source_label": note["source"]["label"],
+                "source_highlight": note["source"]["highlight"],
                 "color": color_map.get(category, color_map["knowledge"]),
                 "radius": round(radius, 2),
                 "chunk_count": note["chunk_count"],
@@ -2536,6 +2557,7 @@ def _lease_news_focus_to_dict(focus):
         "focus_lines": list(getattr(focus, "focus_lines", ()) or ()),
         "memo_lines": list(getattr(focus, "memo_lines", ()) or ()),
         "metrics_lines": list(getattr(focus, "metrics_lines", ()) or ()),
+        "article_titles": list(getattr(focus, "article_titles", ()) or ()),
         "headline": getattr(focus, "headline", ""),
     }
 
@@ -2567,6 +2589,8 @@ def _load_latest_improvement_highlights(limit: int = 3) -> dict:
         if not isinstance(raw, dict):
             continue
         policy = raw.get("auto_fix_policy") or {}
+        if str(policy.get("risk") or raw.get("priority") or "").lower() == "high":
+            continue
         temp_item = {
             "status": "NEEDS_REVIEW" if raw in needs_review_items else "AUTO_FIX_CANDIDATE",
             "priority": raw.get("priority") or policy.get("risk") or "",
@@ -4369,6 +4393,36 @@ _CHAT_SYSTEM_PROMPT = """あなたはtuneリース審査システムの専属AI�
 その情報を優先的に参照してください。ただし回答には長く貼らず、必要な要点だけ短く反映してください。"""
 
 
+_GENERAL_CHAT_SYSTEM_PROMPT = """あなたはめぶきちゃん、tuneリース会社のAIアシスタントです。
+リース審査の専門家ですが、雑談や一般的な質問にも気さくに答えます。
+天気や最新ニュースなど具体的な情報が必要な場合は「詳しくは〇〇でご確認ください」と案内しつつ、知っている範囲で答えてください。
+回答は親しみやすく短めに。日本語で答えてください。"""
+
+
+def _classify_question(message: str) -> str:
+    """Gemini で質問カテゴリを判定する。返り値は 'lease_screening'/'lease_knowledge'/'general'。"""
+    import json as _json, re as _re
+    try:
+        from api.chat_memory import call_gemini_chat as _g
+        classify_prompt = (
+            "以下の質問を1つのカテゴリに分類してください。JSONを1行だけ返してください。\n\n"
+            "カテゴリ定義:\n"
+            "- lease_screening: リース審査・スコアリング・個別案件の採否に直接関係する質問\n"
+            "- lease_knowledge: リース全般の知識（金利・会計・物件・補助金・業界動向など）\n"
+            "- general: 天気・ニュース・雑談・日常会話など、リースと無関係な質問\n\n"
+            '返答形式（このJSONのみ）: {"category": "カテゴリ名"}'
+        )
+        raw = _g(classify_prompt, [], message).strip()
+        m = _re.search(r'\{[^}]+\}', raw)
+        if m:
+            cat = _json.loads(m.group()).get("category", "lease_knowledge")
+            if cat in ("lease_screening", "lease_knowledge", "general"):
+                return cat
+    except Exception as _e:
+        print(f"[classify_question] エラー: {_e}")
+    return "lease_knowledge"
+
+
 class ChatRequest(BaseModel):
     message: str
     user_id: str = "default"
@@ -4467,6 +4521,17 @@ def post_chat(req: ChatRequest):
                 "improvement_saved": note_result.get("status") == "saved",
                 "improvement_result": note_result,
             }
+
+        # カテゴリ判定: general なら RAG をスキップして直接回答
+        question_category = _classify_question(req.message)
+        if question_category == "general":
+            history = get_recent_messages(req.user_id, limit=20)
+            history_for_gemini = [{"role": m["role"], "content": m["content"]} for m in history]
+            reply = call_gemini_chat(_GENERAL_CHAT_SYSTEM_PROMPT, history_for_gemini, req.message)
+            save_message(req.user_id, "user", req.message)
+            save_message(req.user_id, "assistant", reply)
+            total = get_message_count(req.user_id)
+            return {"reply": reply, "total_messages": total}
 
         # RAG: 共通ストアから関連ナレッジを取得。ローカル埋め込みモデルが
         # 未キャッシュでもキーワード検索へフォールバックする。
