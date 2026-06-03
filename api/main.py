@@ -439,6 +439,11 @@ def _build_conditional_approval_actions(inputs: dict, result: dict) -> list[dict
     customer_type = str(inputs.get("customer_type") or "")
     main_bank = str(inputs.get("main_bank") or "")
     competitor = str(inputs.get("competitor") or "")
+    sales_dept = str(inputs.get("sales_dept") or "")
+    asset_name = str(inputs.get("asset_name") or "").strip()
+    asset_purpose = str(inputs.get("asset_purpose") or "").strip()
+    asset_location = str(inputs.get("asset_location") or "").strip()
+    asset_evidence = str(inputs.get("asset_evidence_level") or "").strip()
     lease_term = int(_score_float(inputs.get("lease_term"), 60))
 
     if score < 60:
@@ -455,18 +460,345 @@ def _build_conditional_approval_actions(inputs: dict, result: dict) -> list[dict
         add("must", "設備明細・減価償却・リース残高の整合性確認", f"Q_risk {q_risk:.1f} のため、入力値の矛盾を先に潰す。", "データ確認")
     if credit_risk >= 45:
         add("must", "借入返済予定表と既存リース支払状況を確認", f"信用リスク群スコア {credit_risk:.1f} が要監視水準。", "信用確認")
+    if not asset_name or not asset_purpose or asset_evidence in ("", "未確認"):
+        add("must", "対象物件・用途・確認資料を稟議前に確定", "物件名・用途・見積/型式確認が不足すると、資金使途と回収可能性の説明が弱くなる。", "物件確認")
+    elif asset_location:
+        add("should", "設置場所と稼働実態を稟議補足へ反映", f"{asset_location} での使用前提を明記し、用途「{asset_purpose}」との整合を説明する。", "物件確認")
     if competitor == "競合あり":
         add("should", "競合見積の対象範囲・保守条件・期間差を確認", "金利差だけで比較されると失注しやすいため、条件差を明文化する。", "競合")
     if customer_type == "新規先":
         add("should", "商流・実質経営者・主要取引先を確認", "新規先は定性情報の不足が差し戻し要因になりやすい。", "定性")
     if main_bank == "メイン先":
         add("should", "メイン行の支援姿勢を稟議補足へ記載", "銀行支援がある場合は、継続取引・支援依頼書を条件補強に使える。", "銀行支援")
+    if sales_dept and sales_dept != "未設定":
+        add("should", "営業部の取引背景・顧客接点を補足", f"{sales_dept} の接点から、商談発生経緯・既存取引・フォロー体制を稟議へ残す。", "営業情報")
     if nenshu > 0 and acquisition_cost / nenshu >= 0.25:
         add("should", "前受金または期間短縮で年商比負担を下げる", "取得価額が年商比で大きく、月額負担と出口リスクの説明が必要。", "負担軽減")
     if lease_term >= 72:
         add("should", "リース期間短縮または中途点検条件を検討", "長期化により財務変化・物件価値変動リスクが増える。", "期間")
 
     return actions[:6]
+
+
+def _build_screening_context_notes(
+    inputs: dict,
+    result: dict,
+    conditional_actions: list[dict],
+    rate_proposal: dict,
+) -> dict:
+    """入力した案件文脈を、審査コメント・条件案・リスク理由へ明示的に反映する。"""
+    score = _score_float(result.get("score", result.get("hantei_score")), 0.0)
+    hantei = str(result.get("hantei") or "未判定")
+    op_margin = _score_float(result.get("user_op_margin", result.get("user_op")), 0.0)
+    equity_ratio = _score_float(result.get("user_equity_ratio", result.get("user_eq")), 0.0)
+    q_risk = _score_float(result.get("quantum_risk"), 0.0)
+    credit_risk = _score_float(result.get("credit_risk_group_score"), 0.0)
+    acquisition_cost = _score_float(inputs.get("acquisition_cost"), 0.0)
+    nenshu = _score_float(inputs.get("nenshu"), 0.0)
+    lease_term = int(_score_float(inputs.get("lease_term"), 60))
+
+    company_name = str(inputs.get("company_name") or "").strip()
+    industry_major = str(inputs.get("industry_major") or result.get("industry_major") or "").strip()
+    industry_sub = str(inputs.get("industry_sub") or result.get("industry_sub") or "").strip()
+    industry_detail = str(inputs.get("industry_detail") or "").strip()
+    sales_dept = str(inputs.get("sales_dept") or "未設定").strip()
+    customer_type = str(inputs.get("customer_type") or "").strip()
+    main_bank = str(inputs.get("main_bank") or "").strip()
+    competitor = str(inputs.get("competitor") or "").strip()
+    deal_source = str(inputs.get("deal_source") or "").strip()
+    deal_occurrence = str(inputs.get("deal_occurrence") or "").strip()
+    grade = str(inputs.get("grade") or "").strip()
+    asset_name = str(inputs.get("asset_name") or "").strip()
+    asset_detail = str(inputs.get("asset_detail") or "").strip()
+    asset_purpose = str(inputs.get("asset_purpose") or "").strip()
+    asset_location = str(inputs.get("asset_location") or "").strip()
+    asset_evidence = str(inputs.get("asset_evidence_level") or "").strip()
+
+    commentary: list[dict] = []
+    risk_reasons: list[dict] = []
+    missing_inputs: list[str] = []
+    reflected_inputs: list[str] = []
+
+    def add_comment(label: str, text: str, tone: str = "neutral", refs: list[str] | None = None) -> None:
+        commentary.append({"label": label, "text": text, "tone": tone, "input_refs": refs or []})
+        reflected_inputs.extend(refs or [])
+
+    def add_risk(level: str, title: str, reason: str, refs: list[str] | None = None) -> None:
+        risk_reasons.append({"level": level, "title": title, "reason": reason, "input_refs": refs or []})
+        reflected_inputs.extend(refs or [])
+
+    if company_name:
+        add_comment("案件概要", f"{company_name} の {industry_sub or industry_major} 案件として、スコア {score:.1f} / 判定「{hantei}」を確認。", "neutral", ["company_name", "industry_sub", "score"])
+    else:
+        add_comment("案件概要", f"{industry_sub or industry_major or '業種未設定'} 案件として、スコア {score:.1f} / 判定「{hantei}」を確認。", "neutral", ["industry_sub", "score"])
+        missing_inputs.append("企業名")
+
+    if asset_name and asset_purpose:
+        detail = f"対象物件「{asset_name}」は「{asset_purpose}」目的の導入。"
+        if asset_location:
+            detail += f" 使用場所は {asset_location}。"
+        if asset_detail:
+            detail += f" 型式・仕様は {asset_detail}。"
+        add_comment("物件・用途", detail, "positive", ["asset_name", "asset_purpose", "asset_location", "asset_detail"])
+    else:
+        add_risk("high", "物件・資金使途の説明不足", "対象物件名または導入目的が不足しており、稟議で資金使途・必要性・回収可能性を説明しにくい。", ["asset_name", "asset_purpose"])
+        if not asset_name:
+            missing_inputs.append("対象物件名")
+        if not asset_purpose:
+            missing_inputs.append("導入目的・用途")
+
+    if asset_evidence in ("", "未確認"):
+        add_risk("high", "確認資料不足", "見積・型式・中古相場などの確認資料が未確認のため、対象物件の妥当性と残価リスクを追加確認する必要がある。", ["asset_evidence_level"])
+        missing_inputs.append("確認資料")
+    else:
+        add_comment("確認資料", f"確認資料は「{asset_evidence}」。物件条件の説明根拠として稟議に反映できる。", "positive", ["asset_evidence_level"])
+
+    if sales_dept and sales_dept != "未設定":
+        add_comment("営業部", f"{sales_dept} の案件として、商談経緯・フォロー体制・地域接点を補足材料にできる。", "neutral", ["sales_dept"])
+    else:
+        missing_inputs.append("営業部")
+
+    commercial_parts = []
+    if customer_type:
+        commercial_parts.append(customer_type)
+    if main_bank:
+        commercial_parts.append(main_bank)
+    if deal_source:
+        commercial_parts.append(deal_source)
+    if deal_occurrence and deal_occurrence != "不明":
+        commercial_parts.append(f"発生経緯: {deal_occurrence}")
+    if commercial_parts:
+        add_comment("取引背景", " / ".join(commercial_parts) + "。信用補完や営業経緯の説明に反映。", "neutral", ["customer_type", "main_bank", "deal_source", "deal_occurrence"])
+
+    if competitor == "競合あり":
+        add_risk("medium", "競合条件比較", "競合ありのため、金利だけでなく対象範囲・保守・期間差を揃えて比較する必要がある。", ["competitor", "competitor_rate"])
+    elif competitor:
+        add_comment("競合", f"{competitor}。条件案は競合比較よりも信用・物件条件を中心に組み立てる。", "neutral", ["competitor"])
+
+    if grade:
+        add_comment("格付", f"社内格付「{grade}」を金利スプレッドと信用補完要否に反映。", "neutral", ["grade"])
+
+    if op_margin < 2:
+        add_risk("high", "利益率不足", f"営業利益率 {op_margin:.1f}% と薄く、返済原資の説明が弱い。直近試算表・受注残で補強が必要。", ["op_profit", "nenshu"])
+    elif op_margin >= 5:
+        add_comment("収益力", f"営業利益率 {op_margin:.1f}% は返済原資の説明材料になる。", "positive", ["op_profit", "nenshu"])
+
+    if equity_ratio < 15:
+        add_risk("medium", "自己資本の薄さ", f"自己資本比率 {equity_ratio:.1f}% のため、前受金・保証・期間短縮で損失吸収力を補う余地がある。", ["net_assets", "total_assets"])
+    elif equity_ratio >= 25:
+        add_comment("財務安定性", f"自己資本比率 {equity_ratio:.1f}% は財務安定性の補強材料になる。", "positive", ["net_assets", "total_assets"])
+
+    if q_risk >= 35:
+        add_risk("medium", "複合リスク", f"Q_risk {q_risk:.1f} のため、財務・物件・商談条件のズレを確認する。", ["quantum_risk"])
+    if credit_risk >= 45:
+        add_risk("high", "信用リスク群", f"信用リスク群スコア {credit_risk:.1f} が高く、既存借入・リース残高の返済状況確認が必要。", ["bank_credit", "lease_credit", "contracts"])
+    if nenshu > 0 and acquisition_cost / nenshu >= 0.25:
+        add_risk("medium", "年商比負担", "取得価額が年商比で大きく、月額負担・導入効果・出口リスクの説明を厚くする必要がある。", ["acquisition_cost", "nenshu"])
+    if lease_term >= 72:
+        add_risk("medium", "長期契約", f"リース期間 {lease_term}ヶ月は長めで、財務変化・物件価値変動の確認が必要。", ["lease_term"])
+
+    condition_rationale = []
+    if asset_name and asset_purpose:
+        condition_rationale.append({
+            "condition": "物件・用途の稟議記載を必須化",
+            "reason": f"対象物件「{asset_name}」を「{asset_purpose}」に使う前提を、資金使途と導入効果の説明に使う。",
+            "input_refs": ["asset_name", "asset_purpose", "asset_location", "asset_detail"],
+        })
+        reflected_inputs.extend(["asset_name", "asset_purpose", "asset_location", "asset_detail"])
+    if asset_evidence in ("", "未確認"):
+        condition_rationale.append({
+            "condition": "見積・型式・中古相場の確認資料を取得",
+            "reason": "確認資料が未確認のため、取得価額・物件仕様・残価リスクの説明が弱い。",
+            "input_refs": ["asset_evidence_level", "acquisition_cost"],
+        })
+        reflected_inputs.extend(["asset_evidence_level", "acquisition_cost"])
+    if sales_dept and sales_dept != "未設定":
+        condition_rationale.append({
+            "condition": "営業部のフォロー体制を条件補足へ記載",
+            "reason": f"{sales_dept} の顧客接点・商談経緯を、審査後フォローと条件交渉の材料にする。",
+            "input_refs": ["sales_dept", "deal_source", "deal_occurrence"],
+        })
+        reflected_inputs.extend(["sales_dept", "deal_source", "deal_occurrence"])
+    for action in conditional_actions[:5]:
+        action_text = str(action.get("action") or "")
+        refs = []
+        if any(key in action_text for key in ("物件", "用途", "設置")):
+            refs = ["asset_name", "asset_purpose", "asset_location", "asset_evidence_level"]
+        elif "営業部" in action_text or "商談" in action_text:
+            refs = ["sales_dept", "deal_source", "deal_occurrence"]
+        elif "競合" in action_text:
+            refs = ["competitor", "competitor_rate"]
+        elif "銀行" in action_text or "メイン" in action_text:
+            refs = ["main_bank", "deal_source"]
+        elif "期間" in action_text:
+            refs = ["lease_term", "acquisition_cost"]
+        elif "前受" in action_text or "保証" in action_text or "担保" in action_text:
+            refs = ["score", "net_assets", "total_assets", "acquisition_cost"]
+        condition_rationale.append({
+            "condition": action_text,
+            "reason": action.get("reason", ""),
+            "input_refs": refs,
+        })
+        reflected_inputs.extend(refs)
+
+    rate_breakdown = (rate_proposal or {}).get("breakdown") or {}
+    if rate_breakdown:
+        add_comment(
+            "金利条件",
+            "提案金利は基準金利、物件スプレッド、格付スプレッド、スコア調整を合算して算出。"
+            f" 物件 {rate_breakdown.get('asset_spread', 0):.2f}% / 格付 {rate_breakdown.get('grade_spread', 0):.2f}% / リスク {rate_breakdown.get('risk_adjustment', 0):.2f}%。",
+            "neutral",
+            ["asset_name", "industry_sub", "grade", "score"],
+        )
+
+    reflected_unique = sorted({str(item) for item in reflected_inputs if item})
+    important_inputs = {
+        "company_name", "industry_major", "industry_sub", "grade", "customer_type", "main_bank",
+        "competitor", "deal_source", "sales_dept", "asset_name", "asset_detail", "asset_purpose",
+        "asset_location", "asset_evidence_level", "nenshu", "op_profit", "net_assets",
+        "total_assets", "lease_term", "acquisition_cost",
+    }
+    reflection_score = round(min(100, len(set(reflected_unique) & important_inputs) / len(important_inputs) * 100))
+
+    missing_unique = []
+    for item in missing_inputs:
+        if item and item not in missing_unique:
+            missing_unique.append(item)
+
+    return {
+        "summary": f"入力文脈の反映度 {reflection_score}%: 物件・営業・財務・商談背景を審査コメント、条件案、リスク理由へ展開しました。",
+        "reflection_score": reflection_score,
+        "commentary": commentary[:8],
+        "risk_reasons": risk_reasons[:8],
+        "condition_rationale": condition_rationale,
+        "missing_inputs": missing_unique,
+        "reflected_inputs": reflected_unique,
+        "industry_context": {
+            "major": industry_major,
+            "sub": industry_sub,
+            "detail": industry_detail,
+        },
+    }
+
+
+def _build_approval_comment_draft(
+    inputs: dict,
+    result: dict,
+    conditional_actions: list[dict],
+    rate_proposal: dict,
+    screening_context_notes: dict,
+) -> dict:
+    """稟議へ貼り付けやすい審査コメント案を生成する。"""
+    score = _score_float(result.get("score", result.get("hantei_score")), 0.0)
+    hantei = str(result.get("hantei") or "未判定")
+    company_name = str(inputs.get("company_name") or "対象先").strip()
+    industry_major = str(inputs.get("industry_major") or result.get("industry_major") or "").strip()
+    industry_sub = str(inputs.get("industry_sub") or result.get("industry_sub") or "").strip()
+    grade = str(inputs.get("grade") or "").strip()
+    customer_type = str(inputs.get("customer_type") or "").strip()
+    main_bank = str(inputs.get("main_bank") or "").strip()
+    deal_source = str(inputs.get("deal_source") or "").strip()
+    sales_dept = str(inputs.get("sales_dept") or "未設定").strip()
+    competitor = str(inputs.get("competitor") or "").strip()
+    asset_name = str(inputs.get("asset_name") or "").strip()
+    asset_detail = str(inputs.get("asset_detail") or "").strip()
+    asset_purpose = str(inputs.get("asset_purpose") or "").strip()
+    asset_location = str(inputs.get("asset_location") or "").strip()
+    asset_evidence = str(inputs.get("asset_evidence_level") or "").strip()
+    lease_term = int(_score_float(inputs.get("lease_term"), 60))
+    acquisition_cost = _score_float(inputs.get("acquisition_cost"), 0.0)
+    op_margin = _score_float(result.get("user_op_margin", result.get("user_op")), 0.0)
+    equity_ratio = _score_float(result.get("user_equity_ratio", result.get("user_eq")), 0.0)
+    q_risk = result.get("quantum_risk")
+
+    amount_million = acquisition_cost / 1000 if acquisition_cost >= 1000 else acquisition_cost
+    proposed_rate = (rate_proposal or {}).get("proposed_rate")
+    monthly_payment = (rate_proposal or {}).get("monthly_payment")
+    risks = screening_context_notes.get("risk_reasons") or []
+    missing = screening_context_notes.get("missing_inputs") or []
+
+    deal_bits = [bit for bit in [customer_type, main_bank, deal_source, sales_dept if sales_dept != "未設定" else ""] if bit]
+    industry_label = industry_sub or industry_major or "業種未設定"
+    asset_sentence = "対象物件は未確定。"
+    if asset_name:
+        asset_sentence = f"対象物件は「{asset_name}」"
+        if asset_detail:
+            asset_sentence += f"（{asset_detail}）"
+        if asset_purpose:
+            asset_sentence += f"であり、導入目的は「{asset_purpose}」。"
+        else:
+            asset_sentence += "。導入目的は追加確認が必要。"
+        if asset_location:
+            asset_sentence += f" 使用場所は {asset_location}。"
+        if asset_evidence and asset_evidence != "未確認":
+            asset_sentence += f" 確認資料は「{asset_evidence}」。"
+        else:
+            asset_sentence += " 見積・型式等の確認資料は未確認。"
+
+    judgment_line = "条件付きで前向きに検討。"
+    if score >= 70:
+        judgment_line = "現時点では承認方向で検討可能。"
+    elif score < 60:
+        judgment_line = "現条件のままでは慎重判断とし、条件補強または案件条件の見直しを要する。"
+
+    summary = (
+        f"{company_name}（{industry_label}）について、AI審査スコアは {score:.1f} 点、判定は「{hantei}」。"
+        f"{judgment_line}"
+    )
+
+    basis_lines = [
+        f"取引背景は {' / '.join(deal_bits) if deal_bits else '未整理'}。社内格付は「{grade or '未設定'}」。",
+        asset_sentence,
+        f"取得価額は約 {amount_million:.1f} 百万円、リース期間は {lease_term} ヶ月。"
+        + (f" 提案金利は {float(proposed_rate):.2f}%、月額目安は {int(monthly_payment):,}円。" if proposed_rate and monthly_payment else ""),
+        f"営業利益率は {op_margin:.1f}%、自己資本比率は {equity_ratio:.1f}%。"
+        + (f" Q_risk は {float(q_risk):.1f}。" if q_risk not in (None, "") else ""),
+    ]
+
+    risk_lines = []
+    for item in risks[:4]:
+        title = str(item.get("title") or "").strip()
+        reason = str(item.get("reason") or "").strip()
+        if title and reason:
+            risk_lines.append(f"{title}: {reason}")
+    if not risk_lines:
+        risk_lines.append("重大な追加リスクは限定的。通常の財務・物件確認を継続する。")
+
+    condition_lines = []
+    for action in conditional_actions[:5]:
+        action_text = str(action.get("action") or "").strip()
+        reason = str(action.get("reason") or "").strip()
+        if action_text:
+            condition_lines.append(f"{action_text}" + (f"（{reason}）" if reason else ""))
+    if not condition_lines and score >= 70:
+        condition_lines.append("通常の見積・契約条件確認を前提に進める。")
+    if missing:
+        condition_lines.append("不足資料: " + "、".join(str(item) for item in missing[:5]) + "。")
+
+    final_opinion = (
+        "上記より、物件・用途・取引背景を確認したうえで、条件を付して稟議上申する。"
+        if score < 70 else
+        "上記より、通常確認事項を充足することを前提に稟議上申する。"
+    )
+
+    sections = [
+        {"title": "概要", "body": summary},
+        {"title": "判断根拠", "body": "\n".join(f"- {line}" for line in basis_lines)},
+        {"title": "主なリスク", "body": "\n".join(f"- {line}" for line in risk_lines)},
+        {"title": "承認条件・確認事項", "body": "\n".join(f"- {line}" for line in condition_lines[:6])},
+        {"title": "総合意見", "body": final_opinion},
+    ]
+    full_text = "\n\n".join(f"【{section['title']}】\n{section['body']}" for section in sections)
+
+    return {
+        "title": f"{company_name} 稟議コメント案",
+        "verdict": hantei,
+        "score": round(score, 1),
+        "summary": summary,
+        "sections": sections,
+        "full_text": full_text,
+        "copy_hint": "稟議本文へ貼り付け後、顧客固有の事情・正式資料名・社内決裁条件を追記してください。",
+    }
 
 
 def _build_data_source_summary(inputs: dict, result: dict) -> dict:
@@ -575,13 +907,13 @@ def _build_rate_proposal(inputs: dict, result: dict) -> dict:
 
     proposed_rate = round(max(0.5, base_rate + asset_spread + grade_spread + risk_adjustment), 4)
     monthly_rate = proposed_rate / 100 / 12
-    monthly_payment = lease_amount * monthly_rate / (1 - (1 + monthly_rate) ** (-term_months)) if monthly_rate > 0 else lease_amount / term_months
+    monthly_payment_thousand_yen = lease_amount * monthly_rate / (1 - (1 + monthly_rate) ** (-term_months)) if monthly_rate > 0 else lease_amount / term_months
     return {
         "year_month": year_month,
         "proposed_rate": proposed_rate,
         "term_months": term_months,
         "lease_amount": lease_amount,
-        "monthly_payment": round(monthly_payment),
+        "monthly_payment": round(monthly_payment_thousand_yen * 1000),
         "breakdown": {
             "base_rate": round(base_rate, 4),
             "asset_spread": round(asset_spread, 4),
@@ -601,6 +933,8 @@ def calculate_score(req: ScoringRequest):
         conditional_actions = _build_conditional_approval_actions(inputs, result)
         rate_proposal = _build_rate_proposal(inputs, result)
         data_source_summary = _build_data_source_summary(inputs, result)
+        screening_context_notes = _build_screening_context_notes(inputs, result, conditional_actions, rate_proposal)
+        approval_comment_draft = _build_approval_comment_draft(inputs, result, conditional_actions, rate_proposal, screening_context_notes)
         
         # 期待する戻り値のキーにマッピング
         return ScoringResponse(
@@ -623,6 +957,8 @@ def calculate_score(req: ScoringRequest):
             conditional_approval_actions=conditional_actions,
             rate_proposal=rate_proposal,
             data_source_summary=data_source_summary,
+            screening_context_notes=screening_context_notes,
+            approval_comment_draft=approval_comment_draft,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -635,6 +971,8 @@ def calculate_score_full(req: ScoringRequest):
         conditional_actions = _build_conditional_approval_actions(inputs, result)
         rate_proposal = _build_rate_proposal(inputs, result)
         data_source_summary = _build_data_source_summary(inputs, result)
+        screening_context_notes = _build_screening_context_notes(inputs, result, conditional_actions, rate_proposal)
+        approval_comment_draft = _build_approval_comment_draft(inputs, result, conditional_actions, rate_proposal, screening_context_notes)
 
         # ── DB保存 ──────────────────────────────────────────────
         case_id = None
@@ -692,6 +1030,8 @@ def calculate_score_full(req: ScoringRequest):
             conditional_approval_actions=conditional_actions,
             rate_proposal=rate_proposal,
             data_source_summary=data_source_summary,
+            screening_context_notes=screening_context_notes,
+            approval_comment_draft=approval_comment_draft,
         )
     except Exception as e:
         import traceback

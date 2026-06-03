@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import axios from "axios";
-import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, ClipboardList, DollarSign, Database, CheckCircle2 } from "lucide-react";
+import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, ClipboardList, DollarSign, Database, CheckCircle2, FileText, Copy } from "lucide-react";
 import ScoreDAG from "../components/ScoreDAG";
 import { ScoringFormData, defaultFormData } from "../types";
 import FormGeneral from "../components/form/FormGeneral";
@@ -154,6 +154,169 @@ function DataSourceSummaryCard({ summary }: { summary?: any }) {
           )}
         </div>
       )}
+    </section>
+  );
+}
+
+function ScreeningContextNotesCard({ notes }: { notes?: any }) {
+  if (!notes) return null;
+  const commentary = Array.isArray(notes.commentary) ? notes.commentary : [];
+  const risks = Array.isArray(notes.risk_reasons) ? notes.risk_reasons : [];
+  const conditions = Array.isArray(notes.condition_rationale) ? notes.condition_rationale : [];
+  const missing = Array.isArray(notes.missing_inputs) ? notes.missing_inputs : [];
+  const reflected = Array.isArray(notes.reflected_inputs) ? notes.reflected_inputs : [];
+  const score = typeof notes.reflection_score === "number" ? notes.reflection_score : 0;
+
+  return (
+    <section className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 shadow-sm">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="flex items-start gap-2">
+          <FileText className="mt-0.5 h-5 w-5 flex-shrink-0 text-indigo-700" />
+          <div>
+            <h3 className="text-sm font-black text-indigo-950">入力反映メモ</h3>
+            <p className="mt-1 text-[11px] font-bold leading-relaxed text-indigo-700">
+              {notes.summary || "入力情報を審査コメント・条件案・リスク理由へ反映しました。"}
+            </p>
+          </div>
+        </div>
+        <div className="rounded-xl border border-indigo-200 bg-white px-4 py-2 text-right">
+          <div className="text-[10px] font-black text-indigo-500">反映度</div>
+          <div className="text-2xl font-black text-indigo-800">{score}%</div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 xl:grid-cols-3">
+        <div className="rounded-xl border border-indigo-100 bg-white p-3">
+          <div className="mb-2 text-[11px] font-black uppercase tracking-widest text-indigo-500">審査コメント</div>
+          <div className="space-y-2">
+            {commentary.length === 0 ? (
+              <p className="text-xs font-bold text-slate-400">反映できるコメントがありません。</p>
+            ) : commentary.slice(0, 5).map((item: any, index: number) => (
+              <div key={`${item.label}-${index}`} className="rounded-lg bg-slate-50 p-2">
+                <div className="text-[11px] font-black text-slate-700">{item.label}</div>
+                <p className="mt-1 text-xs font-bold leading-relaxed text-slate-600">{item.text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-indigo-100 bg-white p-3">
+          <div className="mb-2 text-[11px] font-black uppercase tracking-widest text-rose-500">リスク理由</div>
+          <div className="space-y-2">
+            {risks.length === 0 ? (
+              <p className="text-xs font-bold text-slate-400">重大な追加リスク理由はありません。</p>
+            ) : risks.slice(0, 5).map((item: any, index: number) => (
+              <div key={`${item.title}-${index}`} className={`rounded-lg border p-2 ${
+                item.level === "high" ? "border-rose-200 bg-rose-50" : "border-amber-200 bg-amber-50"
+              }`}>
+                <div className={`text-[11px] font-black ${item.level === "high" ? "text-rose-700" : "text-amber-700"}`}>{item.title}</div>
+                <p className="mt-1 text-xs font-bold leading-relaxed text-slate-700">{item.reason}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-indigo-100 bg-white p-3">
+          <div className="mb-2 text-[11px] font-black uppercase tracking-widest text-emerald-600">条件案への反映</div>
+          <div className="space-y-2">
+            {conditions.length === 0 ? (
+              <p className="text-xs font-bold text-slate-400">条件案への追加反映はありません。</p>
+            ) : conditions.slice(0, 5).map((item: any, index: number) => (
+              <div key={`${item.condition}-${index}`} className="rounded-lg bg-emerald-50 p-2">
+                <div className="text-[11px] font-black text-emerald-800">{item.condition}</div>
+                {item.reason && <p className="mt-1 text-xs font-bold leading-relaxed text-slate-600">{item.reason}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        <div className="rounded-xl border border-indigo-100 bg-white px-3 py-2">
+          <div className="mb-1 text-[10px] font-black text-slate-400">反映済み入力</div>
+          <div className="flex flex-wrap gap-1.5">
+            {reflected.slice(0, 14).map((field: string) => (
+              <span key={field} className="rounded-md bg-indigo-100 px-2 py-1 text-[10px] font-black text-indigo-700">{field}</span>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-xl border border-indigo-100 bg-white px-3 py-2">
+          <div className="mb-1 text-[10px] font-black text-slate-400">不足している説明材料</div>
+          {missing.length === 0 ? (
+            <p className="text-xs font-bold text-emerald-700">主要な不足項目はありません。</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {missing.map((field: string) => (
+                <span key={field} className="rounded-md bg-amber-100 px-2 py-1 text-[10px] font-black text-amber-700">{field}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ApprovalCommentDraftCard({ draft }: { draft?: any }) {
+  const [copied, setCopied] = useState(false);
+  if (!draft?.full_text) return null;
+  const sections = Array.isArray(draft.sections) ? draft.sections : [];
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(draft.full_text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="flex items-start gap-2">
+          <FileText className="mt-0.5 h-5 w-5 flex-shrink-0 text-slate-700" />
+          <div>
+            <h3 className="text-sm font-black text-slate-900">稟議コメント案</h3>
+            <p className="mt-1 text-[11px] font-bold leading-relaxed text-slate-500">
+              入力反映メモを、稟議本文に貼り付けやすい形式へ整えました。
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-black text-white shadow-sm hover:bg-slate-800 transition-colors"
+        >
+          <Copy className="h-4 w-4" />
+          {copied ? "コピー済み" : "本文コピー"}
+        </button>
+      </div>
+
+      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-slate-900 px-2 py-1 text-[10px] font-black text-white">{draft.verdict || "未判定"}</span>
+          {typeof draft.score === "number" && (
+            <span className="rounded-full bg-white px-2 py-1 text-[10px] font-black text-slate-600 border border-slate-200">score {draft.score.toFixed(1)}</span>
+          )}
+          <span className="text-xs font-black text-slate-700">{draft.title}</span>
+        </div>
+        {draft.summary && <p className="mt-2 text-xs font-bold leading-relaxed text-slate-600">{draft.summary}</p>}
+      </div>
+
+      <div className="mt-3 grid gap-3 lg:grid-cols-2">
+        {sections.map((section: any, index: number) => (
+          <div key={`${section.title}-${index}`} className="rounded-xl border border-slate-200 bg-white p-3">
+            <div className="text-[11px] font-black text-slate-500">{section.title}</div>
+            <div className="mt-2 whitespace-pre-wrap text-xs font-bold leading-relaxed text-slate-700">{section.body}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-amber-800">
+        {draft.copy_hint || "貼り付け後、正式資料名と個別事情を追記してください。"}
+      </div>
     </section>
   );
 }
@@ -441,6 +604,8 @@ export default function Dashboard() {
                     )}
 
                     <ConditionalApprovalActionsCard actions={result.conditional_approval_actions} />
+                    <ScreeningContextNotesCard notes={result.screening_context_notes} />
+                    <ApprovalCommentDraftCard draft={result.approval_comment_draft} />
                     <RateProposalCard proposal={result.rate_proposal} />
                     <DataSourceSummaryCard summary={result.data_source_summary} />
 
