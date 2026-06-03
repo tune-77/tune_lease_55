@@ -14,6 +14,9 @@ type GraphNode = {
   color: string;
   radius?: number;
   path?: string;
+  source_kind?: string;
+  source_label?: string;
+  source_highlight?: boolean;
   chunk_count?: number;
   link_count?: number;
   mtime?: number;
@@ -302,7 +305,7 @@ function KnowledgeSpaceScene({
     const terms = searchTerm.toLowerCase().split(/\s+/).map((term) => term.trim()).filter(Boolean);
     const matchesSearch = (node: GraphNode) => {
       if (!terms.length) return true;
-      const haystack = [node.label, node.path, node.category, ...(node.sections || [])].join(" ").toLowerCase();
+      const haystack = [node.label, node.path, node.category, node.source_label, node.source_kind, ...(node.sections || [])].join(" ").toLowerCase();
       return terms.every((term) => haystack.includes(term));
     };
     const activeNodeIds = new Set<string>();
@@ -438,7 +441,7 @@ function KnowledgeSpaceScene({
       const active = activeNodeIds.has(node.id);
       const inTime = node.type !== "note" || !node.mtime || !maxTime || Number(node.mtime) <= cutoffTime;
       const matched = matchesSearch(node);
-      const emphasis = (mode === "search" || mode === "evidence") && matched ? 1.35 : selectedId === node.id ? 1.45 : 1;
+      const emphasis = (mode === "search" || mode === "evidence") && matched ? 1.35 : selectedId === node.id ? 1.45 : node.source_highlight ? 1.12 : 1;
       const categoryMatch = !categoryFilter || node.type === "cluster" || node.category === categoryFilter;
       const dim = ((mode === "recent" && !inTime) || ((mode === "search" || mode === "evidence") && terms.length > 0 && !matched) || !categoryMatch) ? 0.18 : active ? 1 : 0.55;
 
@@ -466,13 +469,13 @@ function KnowledgeSpaceScene({
         starById.set(node.id, mesh as unknown as THREE.Sprite);
         starMaterials.push(mat as unknown as THREE.SpriteMaterial);
         rayTargets.push(mesh);
-        // 選択/高強調ノードにリング
-        if (emphasis > 1) {
+        // 選択/検索一致/引用元ノードにリング
+        if (emphasis > 1 || node.source_highlight) {
           const ringGeo = new THREE.RingGeometry(r * 1.6, r * 1.95, 32);
           const ringMat = new THREE.MeshBasicMaterial({
-            color: nodeColor,
+            color: node.source_highlight ? new THREE.Color("#fbbf24") : nodeColor,
             transparent: true,
-            opacity: 0.55 * dim,
+            opacity: (node.source_highlight ? 0.7 : 0.55) * dim,
             side: THREE.DoubleSide,
           });
           const ring = new THREE.Mesh(ringGeo, ringMat);
@@ -505,12 +508,12 @@ function KnowledgeSpaceScene({
       starById.set(node.id, star);
       starMaterials.push(material);
       rayTargets.push(star);
-      if (power > 0.42 || emphasis > 1) {
+      if (power > 0.42 || emphasis > 1 || node.source_highlight) {
         const flareMaterial = new THREE.SpriteMaterial({
           map: starTexture || undefined,
-          color: color.clone().lerp(new THREE.Color("#ffffff"), 0.38),
+          color: node.source_highlight ? "#fbbf24" : color.clone().lerp(new THREE.Color("#ffffff"), 0.38),
           transparent: true,
-          opacity: (0.12 + power * 0.18 + (emphasis > 1 ? 0.18 : 0)) * dim,
+          opacity: (0.12 + power * 0.18 + (emphasis > 1 ? 0.18 : 0) + (node.source_highlight ? 0.1 : 0)) * dim,
           depthWrite: false,
           blending: THREE.AdditiveBlending,
         });
@@ -697,6 +700,29 @@ export default function KnowledgeSpacePage() {
       .sort((a, b) => (b.link_count || 0) - (a.link_count || 0))
       .slice(0, 3) || []
   ), [graph]);
+  const sourceStats = useMemo(() => {
+    if (!graph) return [];
+    const map = new Map<string, { label: string; kind: string; count: number; highlighted: number; color: string }>();
+    graph.nodes
+      .filter((node) => node.type === "note" && (node.source_label || node.source_kind))
+      .forEach((node) => {
+        const kind = node.source_kind || node.category || "unknown";
+        const label = node.source_label || kind;
+        const current = map.get(kind) || { label, kind, count: 0, highlighted: 0, color: node.color || "#67e8f9" };
+        current.count += 1;
+        if (node.source_highlight) current.highlighted += 1;
+        if (!current.color && node.color) current.color = node.color;
+        map.set(kind, current);
+      });
+    return Array.from(map.values()).sort((a, b) => b.highlighted - a.highlighted || b.count - a.count);
+  }, [graph]);
+  const evidenceHighlights = useMemo(() => (
+    graph?.nodes
+      .filter((node) => node.type === "note" && node.source_highlight)
+      .slice()
+      .sort((a, b) => (b.link_count || 0) - (a.link_count || 0))
+      .slice(0, 4) || []
+  ), [graph]);
 
   const visibleNodeCount = useMemo(() => {
     if (!graph) return 0;
@@ -704,7 +730,7 @@ export default function KnowledgeSpacePage() {
     if (searchTerm.trim()) {
       const terms = searchTerm.toLowerCase().split(/\s+/).filter(Boolean);
       return graph.nodes.filter(n => {
-        const h = [n.label, n.path, n.category, ...(n.sections || [])].join(" ").toLowerCase();
+        const h = [n.label, n.path, n.category, n.source_label, n.source_kind, ...(n.sections || [])].join(" ").toLowerCase();
         return terms.every(t => h.includes(t));
       }).length;
     }
@@ -857,7 +883,12 @@ export default function KnowledgeSpacePage() {
             style={{ boxShadow: `0 0 0 1px ${hoveredNode.color}22, 0 12px 32px rgba(2,6,23,0.42)` }}
           >
             <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: hoveredNode.color }} />
-            <div className="truncate text-[11px] font-bold text-white leading-tight">{hoveredNode.label}</div>
+            <div className="min-w-0">
+              <div className="truncate text-[11px] font-bold text-white leading-tight">{hoveredNode.label}</div>
+              {hoveredNode.source_label && (
+                <div className="truncate text-[10px] font-bold text-amber-200">{hoveredNode.source_label}</div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -926,6 +957,56 @@ export default function KnowledgeSpacePage() {
             })}
           </div>
         </div>
+
+        {sourceStats.length > 0 && (
+          <div className="mt-3 border-t border-white/10 pt-3">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-widest text-amber-200">根拠レイヤー</span>
+              <span className="text-[10px] font-bold text-slate-500">引用元を強調</span>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              {sourceStats.slice(0, 6).map((item) => (
+                <button
+                  key={item.kind}
+                  onClick={() => {
+                    setSearchTerm(item.label);
+                    setMode("evidence");
+                    setCategoryFilter(null);
+                  }}
+                  className="rounded-md border border-amber-200/12 bg-amber-300/8 px-2 py-1.5 text-left transition hover:border-amber-200/30 hover:bg-amber-300/14"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color || "#fbbf24" }} />
+                    <span className="min-w-0 truncate text-[11px] font-black text-amber-100">{item.label}</span>
+                  </div>
+                  <div className="mt-0.5 text-[10px] font-bold text-slate-500">
+                    {item.count} notes / 強調 {item.highlighted}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {evidenceHighlights.length > 0 && (
+          <div className="mt-3 grid gap-1 border-t border-white/10 pt-3 text-[11px] font-bold text-slate-300">
+            <div className="text-slate-400">主要根拠ノート</div>
+            {evidenceHighlights.map((node) => (
+              <button
+                key={node.id}
+                onClick={() => {
+                  setSelected(node);
+                  setSearchTerm(node.label);
+                  setMode("evidence");
+                  setShowDetails(true);
+                }}
+                className="truncate rounded-md bg-amber-300/10 px-2 py-1 text-left text-amber-100 transition hover:bg-amber-300/18"
+              >
+                {node.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="mt-3 grid gap-2 border-t border-white/10 pt-3">
           <div className="flex flex-wrap gap-2">
@@ -1012,6 +1093,11 @@ export default function KnowledgeSpacePage() {
               </div>
               <div className="min-w-0">
                 <div className="break-words text-base font-black text-white">{selected.label}</div>
+                {selected.source_label && (
+                  <div className="mt-1 inline-flex items-center rounded-md border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[11px] font-black text-amber-100">
+                    引用元: {selected.source_label}
+                  </div>
+                )}
                 {selected.path && <div className="mt-1 break-words text-xs font-bold text-slate-400">{selected.path}</div>}
               </div>
             </div>

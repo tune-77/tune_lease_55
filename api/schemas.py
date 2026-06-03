@@ -24,6 +24,7 @@ class ScoringRequest(BaseModel):
     num_competitors: str = Field(default="未入力", description="競合社数")
     deal_occurrence: str = Field(default="不明", description="発生経緯")
     deal_source: str = Field(default="銀行紹介", description="商談ソース")
+    sales_dept: str = Field(default="未設定", description="営業部")
     contract_type: str = Field(default="一般", description="契約種類")
     
     bank_credit: float = Field(default=0.0, description="銀行与信残高")
@@ -35,6 +36,11 @@ class ScoringRequest(BaseModel):
     
     asset_score: Optional[float] = Field(default=50.0, description="物件スコア（0-100）")
     selected_asset_id: Optional[str] = Field(default="", description="選択物件ID")
+    asset_name: Optional[str] = Field(default="", description="対象物件名")
+    asset_detail: Optional[str] = Field(default="", description="型式・メーカー・仕様など")
+    asset_purpose: Optional[str] = Field(default="", description="導入目的・用途")
+    asset_location: Optional[str] = Field(default="", description="設置場所・使用場所")
+    asset_evidence_level: Optional[str] = Field(default="", description="物件確認資料の充足度")
     
     # 定性評価
     qual_corr_company_history: str = Field(default="未選択")
@@ -75,6 +81,9 @@ class ScoringResponse(BaseModel):
     umap_x: Optional[float] = None              # UMAP 2D x座標
     umap_y: Optional[float] = None              # UMAP 2D y座標
     umap_similar: Optional[list] = None         # 近傍成約案件 [{x,y,status}]
+    conditional_approval_actions: Optional[list] = None  # 条件付き承認時の推奨アクション
+    rate_proposal: Optional[dict] = None        # 動的金利提案サマリ
+    data_source_summary: Optional[dict] = None  # 入力値・判定根拠の情報源サマリ
 
 class CaseRegisterRequest(BaseModel):
     case_id: str

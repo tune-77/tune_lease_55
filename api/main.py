@@ -303,12 +303,304 @@ def get_qualitative_items():
     except Exception:
         return {"items": []}
 
+
+class IndustrySuggestRequest(BaseModel):
+    asset_name: str = ""
+    industry_detail: str = ""
+    company_name: str = ""
+
+
+def _load_industry_master() -> dict:
+    paths = [
+        os.path.join(_REPO_ROOT, "static_data", "industry_trends_jsic.json"),
+        os.path.join(_REPO_ROOT, "industry_trends_jsic.json"),
+    ]
+    for p in paths:
+        if os.path.exists(p):
+            with open(p, "r", encoding="utf-8") as f:
+                return json.load(f)
+    return {}
+
+
+def _industry_subs_for_major(master: dict, major: str) -> list[str]:
+    entry = master.get(major)
+    if not entry:
+        return []
+    if isinstance(entry, list):
+        return [str(item) for item in entry if item]
+    if isinstance(entry, dict):
+        sub = entry.get("sub")
+        if isinstance(sub, dict):
+            return list(sub.keys())
+        return [str(k) for k in entry.keys() if k != "mapping"]
+    return []
+
+
+_INDUSTRY_SUGGESTION_RULES = [
+    {
+        "major": "E 製造業",
+        "sub_terms": [("09 食料品製造業", ["食品", "惣菜", "弁当", "菓子", "パン"]), ("21 金属製品製造業", ["金属", "板金", "溶接"]), ("24 生産用機械器具製造業", ["工作機械", "加工機", "旋盤", "マシニング", "製造設備", "ロボット"])],
+        "terms": ["製造", "工場", "加工", "工作機械", "生産設備", "プレス", "射出", "溶接", "切削"],
+    },
+    {
+        "major": "D 建設業",
+        "sub_terms": [("06 総合工事業", ["建設", "土木", "建築"]), ("07 職別工事業", ["内装", "足場", "電気工事", "管工事"]), ("08 設備工事業", ["設備工事", "空調", "配管"])],
+        "terms": ["建機", "ショベル", "クレーン", "ダンプ", "土木", "建設", "工事", "足場"],
+    },
+    {
+        "major": "H 運輸業・郵便業",
+        "sub_terms": [("44 道路貨物運送業", ["トラック", "配送", "貨物", "運送"]), ("43 道路旅客運送業(バス・タクシー)", ["バス", "タクシー"])],
+        "terms": ["車両", "トラック", "冷凍車", "配送", "運送", "物流", "フォークリフト"],
+    },
+    {
+        "major": "P 医療・福祉",
+        "sub_terms": [("83 医療業(病院・診療所)", ["医療", "クリニック", "歯科", "病院"]), ("85 社会保険・社会福祉・介護事業", ["介護", "福祉", "老人ホーム"])],
+        "terms": ["医療", "検査機", "ct", "mri", "レントゲン", "超音波", "歯科", "介護"],
+    },
+    {
+        "major": "G 情報通信業",
+        "sub_terms": [("39 情報サービス業", ["システム", "ソフトウェア", "サーバ", "クラウド"]), ("40 インターネット附随サービス業", ["ec", "web", "アプリ"])],
+        "terms": ["it", "oa", "pc", "サーバ", "ネットワーク", "システム", "ソフトウェア", "クラウド"],
+    },
+    {
+        "major": "M 宿泊業・飲食サービス業",
+        "sub_terms": [("76 飲食店", ["飲食", "厨房", "レストラン", "カフェ"]), ("75 宿泊業", ["ホテル", "旅館"])],
+        "terms": ["厨房", "飲食", "店舗", "レストラン", "カフェ", "ホテル", "宿泊"],
+    },
+    {
+        "major": "I 卸売業・小売業",
+        "sub_terms": [("56-61 各種小売業", ["店舗", "小売", "食品販売", "スーパー"]), ("50-55 各種卸売業", ["卸売", "倉庫"])],
+        "terms": ["小売", "店舗什器", "pos", "販売", "卸売", "倉庫"],
+    },
+    {
+        "major": "R サービス業(他に分類されないもの)",
+        "sub_terms": [("89 自動車整備業", ["整備", "車検"]), ("91 職業紹介・労働者派遣業", ["派遣", "職業紹介"])],
+        "terms": ["サービス", "整備", "清掃", "保守", "レンタル", "オフィス家具", "内装"],
+    },
+]
+
+
+@app.post("/api/industry/suggest")
+def suggest_industry(req: IndustrySuggestRequest):
+    text = " ".join([req.asset_name, req.industry_detail, req.company_name]).lower()
+    master = _load_industry_master()
+    suggestions: list[dict] = []
+    for rule in _INDUSTRY_SUGGESTION_RULES:
+        matched_terms = [term for term in rule["terms"] if term.lower() in text]
+        for sub_name, sub_terms in rule.get("sub_terms", []):
+            matched_terms.extend([term for term in sub_terms if term.lower() in text])
+        if not matched_terms:
+            continue
+
+        major = rule["major"]
+        if master and major not in master:
+            continue
+        subs = _industry_subs_for_major(master, major)
+        preferred_sub = next((sub_name for sub_name, sub_terms in rule.get("sub_terms", []) if any(term.lower() in text for term in sub_terms)), "")
+        industry_sub = preferred_sub if preferred_sub in subs else (subs[0] if subs else preferred_sub)
+        confidence = min(0.95, 0.55 + 0.12 * len(set(matched_terms)))
+        suggestions.append({
+            "industry_major": major,
+            "industry_sub": industry_sub,
+            "confidence": round(confidence, 2),
+            "matched_terms": sorted(set(matched_terms))[:6],
+            "reason": f"{', '.join(sorted(set(matched_terms))[:3])} から推測",
+        })
+
+    suggestions.sort(key=lambda item: item["confidence"], reverse=True)
+    return {"suggestions": suggestions[:3]}
+
+
+def _score_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _build_conditional_approval_actions(inputs: dict, result: dict) -> list[dict]:
+    """条件付き承認に近い案件で、審査担当者が次に取る条件を標準化する。"""
+    score = _score_float(result.get("score", result.get("hantei_score")), 0.0)
+    if score >= 71:
+        return []
+
+    actions: list[dict] = []
+
+    def add(priority: str, action: str, reason: str, category: str) -> None:
+        if not any(item["action"] == action for item in actions):
+            actions.append({"priority": priority, "action": action, "reason": reason, "category": category})
+
+    op_margin = _score_float(result.get("user_op_margin"), 0.0)
+    equity_ratio = _score_float(result.get("user_equity_ratio"), 0.0)
+    q_risk = _score_float(result.get("quantum_risk"), 0.0)
+    credit_risk = _score_float(result.get("credit_risk_group_score"), 0.0)
+    acquisition_cost = _score_float(inputs.get("acquisition_cost"), 0.0)
+    nenshu = _score_float(inputs.get("nenshu"), 0.0)
+    customer_type = str(inputs.get("customer_type") or "")
+    main_bank = str(inputs.get("main_bank") or "")
+    competitor = str(inputs.get("competitor") or "")
+    lease_term = int(_score_float(inputs.get("lease_term"), 60))
+
+    if score < 60:
+        add("must", "取得額の圧縮または対象物件の分割を再提案", "現条件では承認ラインまで距離があるため、エクスポージャーを先に下げる。", "構造変更")
+        add("must", "代表者保証・追加担保・前受金のいずれかを条件化", "信用補完なしで押すより、損失限定条件を先に置く。", "信用補完")
+    else:
+        add("must", "追加資料と承認条件を先に提示", "条件付き承認圏では、審査部に突かれる前に論点を固定する。", "稟議")
+
+    if op_margin < 2:
+        add("must", "直近試算表・受注残・資金繰り表を追加取得", f"営業利益率が {op_margin:.1f}% と薄く、返済原資の説明が必要。", "財務")
+    if equity_ratio < 15:
+        add("should", "前受金または保証追加で自己資本の薄さを補完", f"自己資本比率が {equity_ratio:.1f}% で、損失吸収力の説明が弱い。", "信用補完")
+    if q_risk >= 35:
+        add("must", "設備明細・減価償却・リース残高の整合性確認", f"Q_risk {q_risk:.1f} のため、入力値の矛盾を先に潰す。", "データ確認")
+    if credit_risk >= 45:
+        add("must", "借入返済予定表と既存リース支払状況を確認", f"信用リスク群スコア {credit_risk:.1f} が要監視水準。", "信用確認")
+    if competitor == "競合あり":
+        add("should", "競合見積の対象範囲・保守条件・期間差を確認", "金利差だけで比較されると失注しやすいため、条件差を明文化する。", "競合")
+    if customer_type == "新規先":
+        add("should", "商流・実質経営者・主要取引先を確認", "新規先は定性情報の不足が差し戻し要因になりやすい。", "定性")
+    if main_bank == "メイン先":
+        add("should", "メイン行の支援姿勢を稟議補足へ記載", "銀行支援がある場合は、継続取引・支援依頼書を条件補強に使える。", "銀行支援")
+    if nenshu > 0 and acquisition_cost / nenshu >= 0.25:
+        add("should", "前受金または期間短縮で年商比負担を下げる", "取得価額が年商比で大きく、月額負担と出口リスクの説明が必要。", "負担軽減")
+    if lease_term >= 72:
+        add("should", "リース期間短縮または中途点検条件を検討", "長期化により財務変化・物件価値変動リスクが増える。", "期間")
+
+    return actions[:6]
+
+
+def _build_data_source_summary(inputs: dict, result: dict) -> dict:
+    manual_fields = [
+        "company_no", "company_name", "industry_major", "industry_sub", "grade",
+        "customer_type", "main_bank", "competitor", "deal_source", "sales_dept", "contract_type",
+        "nenshu", "op_profit", "ord_profit", "net_income", "net_assets", "total_assets",
+        "bank_credit", "lease_credit", "contracts", "lease_term", "acquisition_cost",
+        "asset_score", "selected_asset_id", "asset_name", "asset_detail", "asset_purpose",
+        "asset_location", "asset_evidence_level", "passion_text", "intuition",
+    ]
+    filled = [key for key in manual_fields if inputs.get(key) not in (None, "", 0, [], {})]
+    asset_fields = ["asset_name", "asset_detail", "asset_purpose", "asset_location", "asset_evidence_level"]
+    asset_filled = [key for key in asset_fields if inputs.get(key) not in (None, "", 0, [], {})]
+    asset_evidence = str(inputs.get("asset_evidence_level") or "")
+    asset_clarity_warnings = []
+    if not inputs.get("asset_name"):
+        asset_clarity_warnings.append("対象物件名が未設定")
+    if not inputs.get("asset_purpose"):
+        asset_clarity_warnings.append("導入目的・用途が未設定")
+    if asset_evidence in ("", "未確認"):
+        asset_clarity_warnings.append("見積・型式・中古相場などの確認資料が未確認")
+    return {
+        "primary_source": "画面入力 + マスタ + 審査モデル",
+        "manual_input_count": len(filled),
+        "manual_input_fields": filled[:12],
+        "asset_clarity": {
+            "filled_count": len(asset_filled),
+            "required_count": len(asset_fields),
+            "status": "明確" if len(asset_filled) >= 4 and not asset_clarity_warnings else "要確認",
+            "warnings": asset_clarity_warnings,
+        },
+        "model_sources": [
+            "RandomForest borrower score",
+            "業種ベンチマーク",
+            "物件スコア/物件警告",
+            "Q_risk/信用リスク補助指標",
+        ],
+        "system_generated_fields": [
+            "score", "hantei", "comparison", "conditional_approval_actions", "rate_proposal",
+        ],
+        "warnings": [
+            "画面入力値はユーザー申告値として扱う",
+            "マスタ・モデル由来の値は審査補助であり最終判断を代替しない",
+        ],
+        "case_id": result.get("case_id"),
+    }
+
+
+def _build_rate_proposal(inputs: dict, result: dict) -> dict:
+    import datetime
+    from base_rate_master import get_base_rate_by_term
+
+    score = max(0.0, min(100.0, _score_float(result.get("score", result.get("hantei_score")), 0.0)))
+    term_months = max(12, min(120, int(_score_float(inputs.get("lease_term"), 60))))
+    lease_amount = max(1.0, _score_float(inputs.get("acquisition_cost"), 1.0))
+    year_month = datetime.date.today().strftime("%Y-%m")
+
+    base_rate = get_base_rate_by_term(year_month, term_months)
+    if base_rate is None:
+        for i in range(1, 7):
+            prev_date = datetime.date.today().replace(day=1) - datetime.timedelta(days=30 * i)
+            base_rate = get_base_rate_by_term(prev_date.strftime("%Y-%m"), term_months)
+            if base_rate is not None:
+                year_month = prev_date.strftime("%Y-%m")
+                break
+    if base_rate is None:
+        base_rate = 2.0
+
+    asset_text = " ".join(str(inputs.get(k) or "") for k in ("selected_asset_id", "asset_name", "industry_sub")).lower()
+    if any(k in asset_text for k in ("medical", "医療")):
+        asset_spread = 0.35
+    elif any(k in asset_text for k in ("it", "pc", "サーバ", "情報")):
+        asset_spread = 0.65
+    elif any(k in asset_text for k in ("vehicle", "car", "車両", "運送")):
+        asset_spread = 0.38
+    elif any(k in asset_text for k in ("machinery", "machine", "機械", "建機", "製造")):
+        asset_spread = 0.48
+    else:
+        asset_spread = 0.50
+
+    grade = str(inputs.get("grade") or "").strip().lower()
+    if grade.startswith(("s", "①")):
+        grade_spread = -0.10
+    elif grade.startswith(("a", "②")):
+        grade_spread = 0.25
+    elif grade.startswith(("b", "③")):
+        grade_spread = 0.55
+    elif grade.startswith(("c", "④", "d")):
+        grade_spread = 0.90
+    else:
+        grade_spread = 0.30
+
+    if score >= 90:
+        risk_adjustment = -0.10
+    elif score >= 80:
+        risk_adjustment = -0.05
+    elif score >= 70:
+        risk_adjustment = 0.00
+    elif score >= 60:
+        risk_adjustment = 0.15
+    elif score >= 50:
+        risk_adjustment = 0.30
+    else:
+        risk_adjustment = 0.50
+
+    proposed_rate = round(max(0.5, base_rate + asset_spread + grade_spread + risk_adjustment), 4)
+    monthly_rate = proposed_rate / 100 / 12
+    monthly_payment = lease_amount * monthly_rate / (1 - (1 + monthly_rate) ** (-term_months)) if monthly_rate > 0 else lease_amount / term_months
+    return {
+        "year_month": year_month,
+        "proposed_rate": proposed_rate,
+        "term_months": term_months,
+        "lease_amount": lease_amount,
+        "monthly_payment": round(monthly_payment),
+        "breakdown": {
+            "base_rate": round(base_rate, 4),
+            "asset_spread": round(asset_spread, 4),
+            "grade_spread": round(grade_spread, 4),
+            "risk_adjustment": round(risk_adjustment, 4),
+        },
+        "guidance": "審査結果欄の初期提示用。競合条件・保守範囲・前受金条件で最終調整する。",
+    }
+
+
 @app.post("/api/score/calculate", response_model=ScoringResponse)
 def calculate_score(req: ScoringRequest):
     try:
         # パラメータを辞書化して existing の関数に渡す
         inputs = req.model_dump()
         result = run_quick_scoring(inputs)
+        conditional_actions = _build_conditional_approval_actions(inputs, result)
+        rate_proposal = _build_rate_proposal(inputs, result)
+        data_source_summary = _build_data_source_summary(inputs, result)
         
         # 期待する戻り値のキーにマッピング
         return ScoringResponse(
@@ -328,6 +620,9 @@ def calculate_score(req: ScoringRequest):
             asset_warnings=result.get("asset_warnings", []),
             asset_bonuses=result.get("asset_bonuses", []),
             default_warnings=result.get("default_warnings", []),
+            conditional_approval_actions=conditional_actions,
+            rate_proposal=rate_proposal,
+            data_source_summary=data_source_summary,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -337,6 +632,9 @@ def calculate_score_full(req: ScoringRequest):
     try:
         inputs = req.model_dump()
         result = run_full_scoring_api(inputs)
+        conditional_actions = _build_conditional_approval_actions(inputs, result)
+        rate_proposal = _build_rate_proposal(inputs, result)
+        data_source_summary = _build_data_source_summary(inputs, result)
 
         # ── DB保存 ──────────────────────────────────────────────
         case_id = None
@@ -345,6 +643,7 @@ def calculate_score_full(req: ScoringRequest):
             case_data = {
                 "company_no":   inputs.get("company_no", ""),
                 "company_name": inputs.get("company_name", ""),
+                "sales_dept":   inputs.get("sales_dept", "未設定") or "未設定",
                 "industry_sub": result.get("industry_sub", inputs.get("industry_sub", "")),
                 "industry_major": result.get("industry_major", inputs.get("industry_major", "")),
                 "inputs": inputs,
@@ -360,6 +659,7 @@ def calculate_score_full(req: ScoringRequest):
             case_id = save_case_log(case_data)
         except Exception as _save_err:
             print(f"[WARNING] DB save failed: {_save_err}")
+        data_source_summary["case_id"] = case_id
 
         return ScoringResponse(
             score=result.get("score", 0.0),
@@ -389,6 +689,9 @@ def calculate_score_full(req: ScoringRequest):
             umap_x=result.get("umap_x"),
             umap_y=result.get("umap_y"),
             umap_similar=result.get("umap_similar"),
+            conditional_approval_actions=conditional_actions,
+            rate_proposal=rate_proposal,
+            data_source_summary=data_source_summary,
         )
     except Exception as e:
         import traceback

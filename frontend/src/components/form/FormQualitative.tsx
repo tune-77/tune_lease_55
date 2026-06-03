@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Mic, MicOff, Lightbulb, AlertTriangle } from 'lucide-react';
+import { Mic, MicOff, Lightbulb, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { ScoringFormData } from '../../types';
 import SliderInput from '../SliderInput';
 
@@ -7,11 +7,11 @@ import SliderInput from '../SliderInput';
 const ASSET_INFO: Record<string, { usefulLifeYears: number; industryMajor: string }> = {
   '建設機械':           { usefulLifeYears: 6,  industryMajor: 'D 建設業' },
   'IT・OA機器':         { usefulLifeYears: 4,  industryMajor: 'G 情報通信業' },
-  '医療機器':           { usefulLifeYears: 6,  industryMajor: 'P 医療，福祉' },
-  '車両・運搬車':       { usefulLifeYears: 4,  industryMajor: 'H 運輸業，郵便業' },
+  '医療機器':           { usefulLifeYears: 6,  industryMajor: 'P 医療・福祉' },
+  '車両・運搬車':       { usefulLifeYears: 4,  industryMajor: 'H 運輸業・郵便業' },
   '製造設備・工作機械': { usefulLifeYears: 10, industryMajor: 'E 製造業' },
-  'オフィス家具・内装': { usefulLifeYears: 8,  industryMajor: 'R サービス業（他に分類されないもの）' },
-  '飲食店設備':         { usefulLifeYears: 8,  industryMajor: 'M 宿泊業，飲食サービス業' },
+  'オフィス家具・内装': { usefulLifeYears: 8,  industryMajor: 'R サービス業(他に分類されないもの)' },
+  '飲食店設備':         { usefulLifeYears: 8,  industryMajor: 'M 宿泊業・飲食サービス業' },
   '太陽光・省エネ設備': { usefulLifeYears: 17, industryMajor: 'D 建設業' },
 };
 
@@ -81,6 +81,14 @@ export default function FormQualitative({ data, onChange }: FormQualitativeProps
     return null;
   })();
   const showIndustrySuggestion = !!(assetInfo && data.industry_major !== assetInfo.industryMajor);
+  const assetClarityItems = [
+    { key: 'asset_name', label: '物件名', filled: Boolean(data.asset_name) },
+    { key: 'asset_detail', label: '型式・仕様', filled: Boolean(data.asset_detail?.trim()) },
+    { key: 'asset_purpose', label: '導入目的', filled: Boolean(data.asset_purpose?.trim()) },
+    { key: 'asset_location', label: '設置場所', filled: Boolean(data.asset_location?.trim()) },
+    { key: 'asset_evidence_level', label: '確認資料', filled: data.asset_evidence_level !== '未確認' },
+  ];
+  const assetClarityCount = assetClarityItems.filter(item => item.filled).length;
 
   // マスターデータの取得
   useEffect(() => {
@@ -109,7 +117,7 @@ export default function FormQualitative({ data, onChange }: FormQualitativeProps
     fetchMaster();
   }, []);
   
-  const handleSelect = (e: React.ChangeEvent<HTMLSelectElement | HTMLTextAreaElement>) => {
+  const handleSelect = (e: React.ChangeEvent<HTMLSelectElement | HTMLTextAreaElement | HTMLInputElement>) => {
     onChange(e.target.name, e.target.value);
   };
   
@@ -253,6 +261,84 @@ export default function FormQualitative({ data, onChange }: FormQualitativeProps
             </button>
           </div>
         )}
+
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-black text-slate-800">対象物件の明確化</p>
+              <p className="text-[11px] font-bold text-slate-500">稟議で「何を・どこで・何のために使うか」を説明するための確認欄です。</p>
+            </div>
+            <div className={`rounded-full px-3 py-1 text-[11px] font-black ${
+              assetClarityCount >= 4 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+            }`}>
+              明確化 {assetClarityCount}/5
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-600 block">型式・メーカー・仕様</label>
+              <input
+                type="text"
+                name="asset_detail"
+                value={data.asset_detail || ''}
+                onChange={handleSelect}
+                placeholder="例）〇〇製 5軸マシニングセンタ 型式ABC-100"
+                className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-600 block">設置場所・使用場所</label>
+              <input
+                type="text"
+                name="asset_location"
+                value={data.asset_location || ''}
+                onChange={handleSelect}
+                placeholder="例）本社工場 第2ライン / 新店舗厨房"
+                className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            <div className="space-y-1 md:col-span-2">
+              <label className="text-xs font-bold text-slate-600 block">導入目的・用途</label>
+              <input
+                type="text"
+                name="asset_purpose"
+                value={data.asset_purpose || ''}
+                onChange={handleSelect}
+                placeholder="例）受注増対応、外注加工の内製化、配送能力増強"
+                className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-600 block">確認資料</label>
+              <select
+                name="asset_evidence_level"
+                value={data.asset_evidence_level || '未確認'}
+                onChange={handleSelect}
+                className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 h-[42px]"
+              >
+                <option>未確認</option>
+                <option>見積あり</option>
+                <option>見積・型式確認済</option>
+                <option>見積・型式・中古相場確認済</option>
+              </select>
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {assetClarityItems.map((item) => (
+              <span
+                key={item.key}
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black ${
+                  item.filled ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-slate-400 border border-slate-200'
+                }`}
+              >
+                {item.filled ? <CheckCircle2 className="h-3 w-3" /> : <span className="h-3 w-3 rounded-full border border-slate-300" />}
+                {item.label}
+              </span>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* 定性評価（6大項目） */}

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import axios from "axios";
-import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo } from "lucide-react";
+import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, ClipboardList, DollarSign, Database, CheckCircle2 } from "lucide-react";
 import ScoreDAG from "../components/ScoreDAG";
 import { ScoringFormData, defaultFormData } from "../types";
 import FormGeneral from "../components/form/FormGeneral";
@@ -21,6 +21,142 @@ import QRiskPanel from "../components/analysis/QRiskPanel";
 import MahalanobisPanel from "../components/analysis/MahalanobisPanel";
 import UMAPPanel from "../components/analysis/UMAPPanel";
 import { triggerMebuki } from "../components/layout/FloatingMebuki";
+
+function ConditionalApprovalActionsCard({ actions }: { actions?: Array<{ priority?: string; action?: string; reason?: string; category?: string }> }) {
+  if (!actions?.length) return null;
+  return (
+    <section className="bg-amber-50 border border-amber-200 rounded-2xl p-4 shadow-sm">
+      <div className="flex items-center gap-2 mb-3">
+        <ClipboardList className="w-5 h-5 text-amber-700" />
+        <div>
+          <h3 className="text-sm font-black text-amber-900">条件付き承認アクション</h3>
+          <p className="text-[11px] font-bold text-amber-700">稟議前に潰す条件を優先順で提示します。</p>
+        </div>
+      </div>
+      <div className="grid gap-2 md:grid-cols-2">
+        {actions.map((item, index) => {
+          const must = item.priority === "must";
+          return (
+            <div key={`${item.action}-${index}`} className={`rounded-xl border p-3 ${must ? "bg-white border-amber-300" : "bg-amber-100/60 border-amber-200"}`}>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className={`w-4 h-4 ${must ? "text-amber-700" : "text-amber-500"}`} />
+                <span className={`text-[10px] font-black rounded-full px-2 py-0.5 ${must ? "bg-amber-700 text-white" : "bg-white text-amber-700 border border-amber-200"}`}>
+                  {must ? "必須" : "推奨"}
+                </span>
+                {item.category && <span className="text-[10px] font-bold text-slate-500">{item.category}</span>}
+              </div>
+              <p className="mt-2 text-sm font-black text-slate-800">{item.action}</p>
+              {item.reason && <p className="mt-1 text-xs font-bold leading-relaxed text-slate-600">{item.reason}</p>}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function RateProposalCard({ proposal }: { proposal?: any }) {
+  if (!proposal?.proposed_rate) return null;
+  const breakdown = proposal.breakdown || {};
+  const rows = [
+    ["基準金利", breakdown.base_rate],
+    ["物件スプレッド", breakdown.asset_spread],
+    ["格付スプレッド", breakdown.grade_spread],
+    ["リスク調整", breakdown.risk_adjustment],
+  ];
+  return (
+    <section className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 shadow-sm">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-2">
+          <DollarSign className="w-5 h-5 text-emerald-700" />
+          <div>
+            <h3 className="text-sm font-black text-emerald-900">動的金利提案</h3>
+            <p className="text-[11px] font-bold text-emerald-700">{proposal.guidance || "審査結果欄の初期提示用です。"}</p>
+          </div>
+        </div>
+        <div className="rounded-xl bg-white border border-emerald-200 px-4 py-2 text-right">
+          <div className="text-[10px] font-black text-emerald-600">提案金利</div>
+          <div className="text-3xl font-black text-emerald-800">{Number(proposal.proposed_rate).toFixed(2)}%</div>
+        </div>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-5">
+        {rows.map(([label, value]) => (
+          <div key={label as string} className="rounded-xl bg-white border border-emerald-100 px-3 py-2">
+            <div className="text-[10px] font-black text-slate-400">{label}</div>
+            <div className="text-sm font-black text-slate-800">{typeof value === "number" ? `${value.toFixed(2)}%` : "-"}</div>
+          </div>
+        ))}
+        <div className="rounded-xl bg-white border border-emerald-100 px-3 py-2">
+          <div className="text-[10px] font-black text-slate-400">月額目安</div>
+          <div className="text-sm font-black text-slate-800">{proposal.monthly_payment ? `${Number(proposal.monthly_payment).toLocaleString("ja-JP")}円` : "-"}</div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DataSourceSummaryCard({ summary }: { summary?: any }) {
+  if (!summary) return null;
+  const assetClarity = summary.asset_clarity;
+  return (
+    <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+      <div className="flex items-center gap-2 mb-3">
+        <Database className="w-5 h-5 text-slate-600" />
+        <div>
+          <h3 className="text-sm font-black text-slate-800">案件データの情報源</h3>
+          <p className="text-[11px] font-bold text-slate-500">{summary.primary_source}</p>
+        </div>
+        <span className="ml-auto rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-600">
+          入力 {summary.manual_input_count ?? 0}項目
+        </span>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">画面入力</div>
+          <div className="flex flex-wrap gap-1.5">
+            {(summary.manual_input_fields || []).map((field: string) => (
+              <span key={field} className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">{field}</span>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">モデル/マスタ</div>
+          <ul className="space-y-1">
+            {(summary.model_sources || []).map((source: string) => (
+              <li key={source} className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                {source}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      {assetClarity && (
+        <div className={`mt-3 rounded-xl border px-3 py-2 ${
+          assetClarity.status === "明確" ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"
+        }`}>
+          <div className="flex items-center justify-between gap-2">
+            <span className={`text-xs font-black ${assetClarity.status === "明確" ? "text-emerald-800" : "text-amber-800"}`}>
+              物件明確化: {assetClarity.status}
+            </span>
+            <span className={`text-[11px] font-black ${assetClarity.status === "明確" ? "text-emerald-700" : "text-amber-700"}`}>
+              {assetClarity.filled_count}/{assetClarity.required_count}
+            </span>
+          </div>
+          {!!assetClarity.warnings?.length && (
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {assetClarity.warnings.map((warning: string) => (
+                <span key={warning} className="rounded-md bg-white px-2 py-1 text-[10px] font-bold text-amber-700">
+                  {warning}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(false);
@@ -303,6 +439,10 @@ export default function Dashboard() {
                         <p className="text-[10px] text-rose-400 mt-2">財務パターンを学習済みLightGBMモデルで判定。審査スコアとは独立した補助指標です。</p>
                       </div>
                     )}
+
+                    <ConditionalApprovalActionsCard actions={result.conditional_approval_actions} />
+                    <RateProposalCard proposal={result.rate_proposal} />
+                    <DataSourceSummaryCard summary={result.data_source_summary} />
 
                     {/* 📊 新設: Recharts による本物のインタラクティブグラフ群 */}
                     <RealGraphs
