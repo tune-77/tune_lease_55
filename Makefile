@@ -3,7 +3,7 @@
 # 使い方: make <コマンド名>
 # ─────────────────────────────────────────────────────────────
 
-.PHONY: test test-v lint iv shap app help migrate-fluid migrate-grade9 feed feed-dry launchd-install launchd-uninstall pipeline-status retrain
+.PHONY: test test-v harness lint iv shap app help migrate-fluid migrate-grade9 feed feed-dry launchd-install launchd-uninstall pipeline-status retrain
 
 ## ──────────────────────────────────
 ## テスト関連
@@ -16,6 +16,10 @@ test:
 # テスト実行（詳細表示）
 test-v:
 	python3 -m pytest tests/ -v --tb=short --color=yes
+
+# スコアリング導線の軽量スモークハーネス
+harness:
+	python3 scripts/run_scoring_harness.py
 
 # 構文チェック
 lint:
@@ -96,6 +100,7 @@ help:
 	@echo ""
 	@echo "  make test           テストを実行（シンプル）"
 	@echo "  make test-v         テストを実行（詳細）"
+	@echo "  make harness        スコアリング導線の軽量スモークハーネスを実行"
 	@echo "  make lint           構文チェック"
 	@echo "  make iv             IV分析を実行"
 	@echo "  make shap           SHAP分析を実行（画像出力）"
