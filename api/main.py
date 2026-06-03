@@ -6583,6 +6583,24 @@ importance: {summary.get("importance", "中")}
     except Exception:
         pass
 
+    try:
+        import threading
+        import sys as _sys
+        _scripts_dir = str(Path(__file__).resolve().parent.parent / "scripts")
+
+        def _run_wikilink():
+            if _scripts_dir not in _sys.path:
+                _sys.path.insert(0, _scripts_dir)
+            try:
+                from auto_wikilink import run_on_files
+                run_on_files([fpath], vault)
+            except Exception:
+                pass
+
+        threading.Thread(target=_run_wikilink, name="news-wikilink", daemon=True).start()
+    except Exception:
+        pass
+
     return str(fpath)
 
 
