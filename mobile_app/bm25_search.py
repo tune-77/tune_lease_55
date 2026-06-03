@@ -20,10 +20,11 @@ except ImportError:
 
 try:
     import fugashi
+    import ipadic
     FUGASHI_AVAILABLE = True
 except ImportError:
     FUGASHI_AVAILABLE = False
-    logging.warning("⚠️  fugashi not installed. Install with: pip install fugashi unidic-lite")
+    logging.warning("⚠️  fugashi not installed. Install with: pip install fugashi ipadic")
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ class BM25SearchEngine:
 
         self.bm25 = None
         self.documents = []
-        self.tokenizer = fugashi.Tagger() if FUGASHI_AVAILABLE else None
+        self.tokenizer = fugashi.GenericTagger('-d ' + ipadic.DICDIR) if FUGASHI_AVAILABLE else None
 
         logger.info("✅ BM25 検索エンジン初期化完了")
 

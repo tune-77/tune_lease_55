@@ -84,6 +84,8 @@ class ScoringResponse(BaseModel):
     conditional_approval_actions: Optional[list] = None  # 条件付き承認時の推奨アクション
     rate_proposal: Optional[dict] = None        # 動的金利提案サマリ
     data_source_summary: Optional[dict] = None  # 入力値・判定根拠の情報源サマリ
+    screening_context_notes: Optional[dict] = None  # 入力情報を審査コメント・条件・リスクへ反映したメモ
+    approval_comment_draft: Optional[dict] = None  # 稟議コメント案
 
 class CaseRegisterRequest(BaseModel):
     case_id: str

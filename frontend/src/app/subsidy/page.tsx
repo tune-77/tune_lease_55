@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Gift, ChevronDown, ChevronUp, ExternalLink, Zap, Cpu, Factory, Leaf, Building2, TrendingUp, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Gift, ChevronDown, ChevronUp, ExternalLink, Zap, Cpu, Factory, Leaf, Building2, TrendingUp, AlertCircle, CheckCircle2, Search, X } from 'lucide-react';
 
 type SubsidyItem = {
   name: string;
@@ -201,6 +201,39 @@ const subsidies: SubsidyItem[] = [
   },
 ];
 
+const quickFilters = [
+  { label: '設備投資', query: '設備 機械 装置' },
+  { label: 'IT・AI', query: 'IT AI デジタル ソフト' },
+  { label: '省エネ・脱炭素', query: '省エネ 脱炭素 ESG ZEB 再エネ' },
+  { label: '車両', query: '車両 トラック 商用車' },
+  { label: 'リース前提', query: 'リース前提 指定リース リース料低減' },
+];
+
+const referenceChecklist = [
+  '交付決定前の契約・発注・支払が対象外にならないか',
+  '申請者・所有者・使用者がリース契約と矛盾しないか',
+  '補助金が取得価額・リース料・前受金のどこに反映されるか',
+  '公募要領、対象設備、型番、支払方法、併用可否を公式情報で確認したか',
+];
+
+function matchesSubsidy(sub: SubsidyItem, query: string) {
+  const terms = query.toLowerCase().split(/\s+/).map((term) => term.trim()).filter(Boolean);
+  if (!terms.length) return true;
+  const haystack = [
+    sub.name,
+    sub.shortName,
+    sub.maxAmount,
+    sub.rate,
+    sub.target,
+    sub.deadline,
+    sub.leaseRelation,
+    sub.leaseAdvantage,
+    sub.caution || '',
+    ...sub.points,
+  ].join(' ').toLowerCase();
+  return terms.some((term) => haystack.includes(term));
+}
+
 function SubsidyCard({ sub }: { sub: SubsidyItem }) {
   const [open, setOpen] = useState(false);
   return (
@@ -290,6 +323,11 @@ function SubsidyCard({ sub }: { sub: SubsidyItem }) {
 }
 
 export default function SubsidyPage() {
+  const [query, setQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState('');
+  const effectiveQuery = [query, activeFilter].filter(Boolean).join(' ');
+  const filteredSubsidies = subsidies.filter((sub) => matchesSubsidy(sub, effectiveQuery));
+
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
@@ -305,10 +343,74 @@ export default function SubsidyPage() {
         <p className="text-xs leading-relaxed">補助金の活用により設備取得コストが削減されると、リースの計算ベース（取得価額）が下がり、月次リース料の圧縮につながります。また補助金受給後にリースバックを組み合わせることで資金繰り改善と設備近代化を同時に実現できるケースがあります。ただし補助金の種類によって「リース取得可否」「申請者」「転売制限」が異なるため、個別案件ごとに担当者・申請機関に確認してください。</p>
       </div>
 
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+          <label className="flex min-h-11 flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3">
+            <Search className="h-4 w-4 text-slate-400" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="設備名・制度名・論点で検索"
+              className="w-full bg-transparent text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-400"
+            />
+          </label>
+          {(query || activeFilter) && (
+            <button
+              type="button"
+              onClick={() => {
+                setQuery('');
+                setActiveFilter('');
+              }}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-600 hover:bg-slate-50"
+            >
+              <X className="h-4 w-4" />
+              解除
+            </button>
+          )}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {quickFilters.map((filter) => {
+            const active = activeFilter === filter.query;
+            return (
+              <button
+                key={filter.label}
+                type="button"
+                onClick={() => setActiveFilter(active ? '' : filter.query)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-black transition ${
+                  active
+                    ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                    : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                {filter.label}
+              </button>
+            );
+          })}
+          <span className="ml-auto text-xs font-bold text-slate-400">{filteredSubsidies.length} / {subsidies.length}件</span>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+        <p className="text-sm font-black text-amber-900">案件で補助金を参照するときの確認順</p>
+        <div className="mt-3 grid gap-2 md:grid-cols-2">
+          {referenceChecklist.map((item, index) => (
+            <div key={item} className="flex items-start gap-2 rounded-xl bg-white/70 p-3 text-xs font-bold leading-relaxed text-amber-900">
+              <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-200 text-[10px] font-black text-amber-800">{index + 1}</span>
+              {item}
+            </div>
+          ))}
+        </div>
+      </section>
+
       <div className="space-y-3">
-        {subsidies.map(sub => (
+        {filteredSubsidies.map(sub => (
           <SubsidyCard key={sub.shortName} sub={sub} />
         ))}
+        {filteredSubsidies.length === 0 && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm font-bold text-slate-500">
+            該当する補助金カードがありません。検索語を短くするか、絞り込みを解除してください。
+          </div>
+        )}
       </div>
 
       <div className="text-center text-xs text-slate-400 pt-4 border-t border-slate-100">
