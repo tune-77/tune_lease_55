@@ -21,7 +21,7 @@ from api.context.context_bundle import build_context_bundle
 from api.knowledge.vector_store import get_store as _get_knowledge_store
 from api.knowledge.policy_loader import load_policy
 from api.knowledge.feedback_watcher import search_feedback, feedback_count
-from lease_news_digest import lease_news_focus_as_text
+from lease_news_digest import find_vault, lease_news_focus_as_text
 
 # ── モデル・エンドポイント ───────────────────────────────────────────────────
 # 石橋・風林火山: Gemini Flash（軽量・高速、temperature差で個性を分離）
@@ -97,9 +97,61 @@ def _build_case_ctx(params: dict) -> str:
         for line in news_lines[:4]:
             parts.append(f"- {line}")
         focus_block = "\n".join(parts)
+
+    digest_block = ""
+    try:
+        digest_block = _get_recent_news_digest_block(limit=3)
+    except Exception:
+        pass
+
+    suffix = ""
     if focus_block:
-        return base + "\n\n" + focus_block
-    return base
+        suffix += "\n\n" + focus_block
+    if digest_block:
+        suffix += "\n\n" + digest_block
+    return base + suffix if suffix else base
+
+
+def _get_recent_news_digest_block(limit: int = 3) -> str:
+    import json as _json, re as _re
+    from pathlib import Path
+
+    vault = find_vault()
+    if not vault:
+        return ""
+    news_dir = vault / "リースニュース"
+    if not news_dir.exists():
+        return ""
+    md_files = sorted(news_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not md_files:
+        return ""
+
+    lines = ["【個別ニュース要約（直近）】"]
+    for fpath in md_files[:limit]:
+        try:
+            raw = fpath.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        title_m = _re.search(r"^# (.+)$", raw, _re.MULTILINE)
+        title = title_m.group(1).strip() if title_m else fpath.stem
+        region = ""
+        fm_m = _re.match(r"^---\s*\n(.*?)\n---\s*\n", raw, _re.DOTALL)
+        if fm_m:
+            for fl in fm_m.group(1).splitlines():
+                if fl.startswith("region:"):
+                    region = fl.split(":", 1)[1].strip()
+        summary_m = _re.search(r"## 3行要約\s*\n((?:- .+\n?){1,3})", raw)
+        summary = ""
+        if summary_m:
+            bullets = [l.lstrip("- ").strip() for l in summary_m.group(1).strip().splitlines() if l.strip()]
+            summary = " / ".join(bullets[:2])
+        memo_m = _re.search(r"## 活用メモ\s*\n(.+?)(?:\n##|\Z)", raw, _re.DOTALL)
+        memo = memo_m.group(1).strip()[:100] if memo_m else ""
+        tag = f"[{region}]" if region else ""
+        lines.append(f"- {tag}{title}: {summary}")
+        if memo:
+            lines.append(f"  活用: {memo}")
+    return "\n".join(lines) if len(lines) > 1 else ""
 
 
 def _get_gemini_api_key() -> str:

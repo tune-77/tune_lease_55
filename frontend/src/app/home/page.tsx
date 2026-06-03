@@ -16,6 +16,11 @@ import {
   EyeOff,
   ScrollText,
   Newspaper,
+  Plus,
+  Send,
+  Loader2,
+  ExternalLink,
+  Tag,
 } from 'lucide-react';
 
 type TopDriver = {
@@ -80,8 +85,25 @@ type DashboardStats = {
     bucket_summary?: string;
     tag_summary?: string;
     focus_lines?: string[];
+    memo_lines?: string[];
+    metrics_lines?: string[];
+    article_titles?: string[];
     headline?: string;
   };
+};
+
+type NewsSummaryItem = {
+  date: string;
+  title: string;
+  summary_lines: string[];
+  usage_memo: string;
+  tags: string[];
+  region: string;
+  importance: string;
+  source: string;
+  file_path: string;
+  week: string;
+  month: string;
 };
 
 type HomePanelSettings = {
@@ -89,6 +111,7 @@ type HomePanelSettings = {
   showHighlights: boolean;
   showNews: boolean;
   showRecentCases: boolean;
+  showNewsDigest: boolean;
 };
 
 const HOME_SETTINGS_KEY = "home-dashboard-panel-settings";
@@ -97,6 +120,7 @@ const DEFAULT_PANEL_SETTINGS: HomePanelSettings = {
   showHighlights: true,
   showNews: true,
   showRecentCases: true,
+  showNewsDigest: true,
 };
 
 export default function HomeDashboard() {
@@ -104,6 +128,13 @@ export default function HomeDashboard() {
   const [loading, setLoading] = useState(true);
   const [panelSettings, setPanelSettings] = useState<HomePanelSettings>(DEFAULT_PANEL_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const [recentNews, setRecentNews] = useState<NewsSummaryItem[]>([]);
+  const [newsFormOpen, setNewsFormOpen] = useState(false);
+  const [newsUrl, setNewsUrl] = useState("");
+  const [newsBody, setNewsBody] = useState("");
+  const [newsSubmitting, setNewsSubmitting] = useState(false);
+  const [newsResult, setNewsResult] = useState<{ title: string; summary_lines: string[]; usage_memo: string; tags: string[]; importance: string } | null>(null);
 
   useEffect(() => {
     // 画面マウント時にめぶきちゃんを更新
@@ -129,7 +160,16 @@ export default function HomeDashboard() {
         setLoading(false);
       }
     };
+    const fetchRecentNews = async () => {
+      try {
+        const res = await axios.get(`/api/lease-news/recent?limit=5`);
+        setRecentNews(res.data.items || []);
+      } catch {
+        // ignore
+      }
+    };
     fetchStats();
+    fetchRecentNews();
   }, []);
 
   useEffect(() => {
@@ -161,6 +201,27 @@ export default function HomeDashboard() {
 
   const togglePanel = (key: keyof HomePanelSettings) => {
     setPanelSettings((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleNewsSubmit = async () => {
+    if (!newsUrl.trim() && !newsBody.trim()) return;
+    setNewsSubmitting(true);
+    setNewsResult(null);
+    try {
+      const res = await axios.post(`/api/lease-news/summarize`, {
+        url: newsUrl.trim(),
+        body_text: newsBody.trim(),
+      });
+      setNewsResult(res.data);
+      setNewsUrl("");
+      setNewsBody("");
+      const updated = await axios.get(`/api/lease-news/recent?limit=5`);
+      setRecentNews(updated.data.items || []);
+    } catch (err) {
+      console.error("News summarization failed", err);
+    } finally {
+      setNewsSubmitting(false);
+    }
   };
 
   return (
@@ -231,6 +292,7 @@ export default function HomeDashboard() {
               { key: "showKpis", label: "KPI", desc: "総成約数と平均指標" },
               { key: "showHighlights", label: "改善項目", desc: "最新の改善候補" },
               { key: "showNews", label: "リースニュース", desc: "最新の論点" },
+              { key: "showNewsDigest", label: "ニュースダイジェスト", desc: "AI要約ニュース" },
               { key: "showRecentCases", label: "案件履歴", desc: "最近の成約・失注" },
             ].map((item) => {
               const checked = panelSettings[item.key as keyof HomePanelSettings];
@@ -390,6 +452,39 @@ export default function HomeDashboard() {
                     {newsFocus.note_path && (
                       <p className="break-all text-[11px] text-slate-400">{newsFocus.note_path}</p>
                     )}
+                    {(newsFocus.article_titles || []).length > 0 && (
+                      <div className="rounded-xl border border-sky-100 bg-sky-50 p-4">
+                        <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-sky-600">注目記事</p>
+                        <div className="space-y-2">
+                          {(newsFocus.article_titles || []).slice(0, 3).map((title, index) => (
+                            <p key={index} className="text-xs font-bold leading-relaxed text-slate-700">{title}</p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {(newsFocus.memo_lines || []).length > 0 && (
+                      <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
+                        <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-amber-600">審査メモ</p>
+                        <div className="space-y-1.5">
+                          {(newsFocus.memo_lines || []).slice(0, 3).map((line, index) => (
+                            <p key={index} className="text-xs leading-relaxed text-amber-900">{line}</p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {(newsFocus.metrics_lines || []).length > 0 && (
+                      <div className="grid grid-cols-2 gap-2">
+                        {(newsFocus.metrics_lines || []).slice(0, 4).map((line, index) => {
+                          const [label, value] = line.split(":").map((part) => part.trim());
+                          return (
+                            <div key={index} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                              <p className="text-[10px] font-black text-slate-400">{label || "指標"}</p>
+                              <p className="mt-1 text-sm font-black text-slate-700">{value || line}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
               </section>
@@ -459,6 +554,141 @@ export default function HomeDashboard() {
           </div>
         )}
       </div>
+
+      {/* ニュースダイジェスト */}
+      {panelSettings.showNewsDigest && (
+        <section className="mt-8">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="font-black text-2xl text-slate-800 border-l-4 border-sky-600 pl-3 flex items-center gap-2">
+              <Newspaper className="w-6 h-6 text-sky-500" />
+              最新リースニュース
+            </h3>
+            <button
+              onClick={() => setNewsFormOpen((prev) => !prev)}
+              className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2 text-sm font-bold text-white hover:bg-sky-700 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              ニュースを追加
+            </button>
+          </div>
+
+          {newsFormOpen && (
+            <div className="mb-6 rounded-2xl border border-sky-200 bg-sky-50 p-6">
+              <h4 className="font-bold text-slate-800 mb-4">ニュース要約を作成</h4>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-600 mb-1">URL</label>
+                  <input
+                    type="url"
+                    value={newsUrl}
+                    onChange={(e) => setNewsUrl(e.target.value)}
+                    placeholder="https://example.com/news/..."
+                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-600 mb-1">または本文テキスト</label>
+                  <textarea
+                    value={newsBody}
+                    onChange={(e) => setNewsBody(e.target.value)}
+                    placeholder="ニュース記事の本文をペースト..."
+                    rows={4}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none resize-none"
+                  />
+                </div>
+                <button
+                  onClick={handleNewsSubmit}
+                  disabled={newsSubmitting || (!newsUrl.trim() && !newsBody.trim())}
+                  className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {newsSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  {newsSubmitting ? "AI要約中..." : "AI要約して保存"}
+                </button>
+              </div>
+
+              {newsResult && (
+                <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <p className="font-bold text-emerald-800 mb-2">保存しました: {newsResult.title}</p>
+                  <ul className="text-sm text-emerald-700 space-y-1">
+                    {newsResult.summary_lines.map((line, i) => (
+                      <li key={i}>• {line}</li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 text-xs text-emerald-600">{newsResult.usage_memo}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {recentNews.length === 0 ? (
+            <p className="text-sm text-slate-500">ニュースダイジェストがまだありません。「ニュースを追加」ボタンからニュースを登録してください。</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {recentNews.map((item, i) => {
+                const importanceBg =
+                  item.importance === "高" ? "bg-rose-100 text-rose-700 border-rose-200" :
+                  item.importance === "中" ? "bg-amber-100 text-amber-700 border-amber-200" :
+                  "bg-slate-100 text-slate-600 border-slate-200";
+                const regionBg =
+                  item.region === "米国" ? "bg-blue-100 text-blue-700" :
+                  item.region === "欧州" ? "bg-violet-100 text-violet-700" :
+                  item.region === "アジア" ? "bg-emerald-100 text-emerald-700" :
+                  "bg-sky-100 text-sky-700";
+                return (
+                  <div key={i} className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 hover:shadow-md transition-shadow flex flex-col">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-400">{item.date}</span>
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${regionBg}`}>
+                          {item.region || "国内"}
+                        </span>
+                      </div>
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${importanceBg}`}>
+                        {item.importance === "高" ? "重要" : item.importance === "中" ? "注目" : "通常"}
+                      </span>
+                    </div>
+                    <h4 className="font-bold text-slate-800 text-sm mb-3 leading-snug">{item.title}</h4>
+                    <div className="space-y-1.5 mb-3 flex-1">
+                      {item.summary_lines.map((line, j) => (
+                        <p key={j} className="text-xs text-slate-600 leading-relaxed flex items-start gap-1.5">
+                          <span className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[9px] font-black text-sky-700">
+                            {j + 1}
+                          </span>
+                          {line}
+                        </p>
+                      ))}
+                    </div>
+                    {item.usage_memo && (
+                      <p className="text-[11px] text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-3 border border-amber-100">
+                        {item.usage_memo}
+                      </p>
+                    )}
+                    <div className="flex flex-wrap gap-1.5 mt-auto">
+                      {item.tags.map((tag, k) => (
+                        <span key={k} className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 bg-slate-100 rounded-full px-2 py-0.5">
+                          <Tag className="w-2.5 h-2.5" />
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                    {item.source && item.source !== "手動入力" && (
+                      <a
+                        href={item.source}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-3 inline-flex items-center gap-1 text-[11px] text-sky-600 hover:text-sky-800 font-bold"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        元記事を見る
+                      </a>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* 最近の案件一覧 */}
       {panelSettings.showRecentCases && (
