@@ -6646,6 +6646,7 @@ def get_recent_lease_news(limit: int = 5):
             "region": "国内",
             "importance": "通常",
             "source": "",
+            "article_url": "",
             "file_path": str(fpath),
             "week": "",
             "month": "",
@@ -6690,6 +6691,12 @@ def get_recent_lease_news(limit: int = 5):
         memo_match = re.search(r"## 活用メモ\s*\n(.+?)(?:\n##|\Z)", raw, re.DOTALL)
         if memo_match:
             item["usage_memo"] = memo_match.group(1).strip()
+
+        link_match = re.search(r"^- link:\s*(.+)$", raw, re.MULTILINE)
+        if link_match:
+            item["article_url"] = link_match.group(1).strip()
+        elif item["source"].startswith(("http://", "https://")):
+            item["article_url"] = item["source"]
 
         items.append(item)
 

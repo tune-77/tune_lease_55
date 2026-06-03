@@ -101,6 +101,7 @@ type NewsSummaryItem = {
   region: string;
   importance: string;
   source: string;
+  article_url: string;
   file_path: string;
   week: string;
   month: string;
@@ -671,17 +672,22 @@ export default function HomeDashboard() {
                         </span>
                       ))}
                     </div>
-                    {item.source && item.source !== "手動入力" && (
-                      <a
-                        href={item.source}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-3 inline-flex items-center gap-1 text-[11px] text-sky-600 hover:text-sky-800 font-bold"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                        元記事を見る
-                      </a>
-                    )}
+                    <div className="mt-3 flex items-center justify-between gap-2 flex-wrap">
+                      {item.source && item.source !== "手動入力" && (
+                        <span className="text-[10px] font-bold text-slate-400">{item.source}</span>
+                      )}
+                      {item.article_url && (
+                        <a
+                          href={item.article_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-[11px] text-sky-600 hover:text-sky-800 font-bold ml-auto"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          元記事を見る →
+                        </a>
+                      )}
+                    </div>
                   </div>
                 );
               })}
