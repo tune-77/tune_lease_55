@@ -161,7 +161,8 @@ def main() -> None:
         ]
 
     if not applied_ids:
-        raise SystemExit("No improvement IDs provided. Use --applied REV-xxx or --from-report.")
+        print("適用済み改善項目なし（スキップ）")
+        return
 
     updated_report, moved, skipped = sync_report(report, applied_ids)
     updated_latest = sync_latest(latest, applied_ids) if latest else {}
