@@ -96,7 +96,9 @@ from scoring_core import run_quick_scoring
 from api.scoring_full import run_full_scoring_api
 from api.gunshi_gemini import stream_gunshi_gemini
 from lease_news_digest import (
+    find_vault,
     get_latest_lease_news_focus,
+    record_lease_news_collection,
     record_lease_news_judgment_change,
     record_lease_news_view,
 )
@@ -106,6 +108,8 @@ from api.schemas import (
     CaseRegisterRequest,
     DealClosureRequest,
     DealClosureResponse,
+    LeaseNewsSummarizeRequest,
+    LeaseNewsSummaryItem,
 )
 from pydantic import BaseModel, Field
 from typing import List, Any, Dict, Optional
@@ -1104,7 +1108,7 @@ def _knowledge_graph_category(path: str) -> str:
         return "asset"
     if "projects/tune_lease_55/feedback/" in low or "improvement" in low:
         return "feedback"
-    if "projects/tune_lease_55/news/" in low or "research" in low or "clippings" in low:
+    if "projects/tune_lease_55/news/" in low or "research" in low or "clippings" in low or "リースニュース/" in path:
         return "research"
     if "daily/" in low:
         return "daily"
@@ -1119,7 +1123,7 @@ def _knowledge_graph_source(path: str) -> dict[str, str | bool]:
         return {"kind": "case", "label": "過去案件", "highlight": True}
     if "projects/tune_lease_55/feedback/" in low or "improvement" in low:
         return {"kind": "feedback", "label": "改善ログ", "highlight": True}
-    if "projects/tune_lease_55/news/" in low or "research" in low or "clippings" in low:
+    if "projects/tune_lease_55/news/" in low or "research" in low or "clippings" in low or "リースニュース/" in path:
         return {"kind": "research", "label": "調査・ニュース", "highlight": True}
     if "daily/" in low:
         return {"kind": "daily", "label": "日次メモ", "highlight": True}
@@ -4560,13 +4564,22 @@ _GENERAL_CHAT_SYSTEM_PROMPT = """あなたはめぶきちゃん、tuneリース�
 
 
 def _classify_question(message: str) -> str:
-    """Gemini で質問カテゴリを判定する。返り値は 'lease_screening'/'lease_knowledge'/'general'。"""
+    """Gemini で質問カテゴリを判定する。返り値は 'lease_screening'/'lease_knowledge'/'general'/'news_summarize'。"""
     import json as _json, re as _re
+
+    _NEWS_KEYWORDS = ("ニュースを要約", "記事を要約", "このニュース", "要約して保存", "ニュース保存", "要約してobsidian", "要約してメモ")
+    low = message.lower()
+    if any(k in message for k in _NEWS_KEYWORDS):
+        return "news_summarize"
+    if ("http://" in low or "https://" in low) and ("要約" in message or "まとめ" in message or "保存" in message):
+        return "news_summarize"
+
     try:
         from api.chat_memory import call_gemini_chat as _g
         classify_prompt = (
             "以下の質問を1つのカテゴリに分類してください。JSONを1行だけ返してください。\n\n"
             "カテゴリ定義:\n"
+            "- news_summarize: ニュース記事のURLや本文を渡して要約・保存を依頼している\n"
             "- lease_screening: リース審査・スコアリング・個別案件の採否に直接関係する質問\n"
             "- lease_knowledge: リース全般の知識（金利・会計・物件・補助金・業界動向など）\n"
             "- general: 天気・ニュース・雑談・日常会話など、リースと無関係な質問\n\n"
@@ -4576,7 +4589,7 @@ def _classify_question(message: str) -> str:
         m = _re.search(r'\{[^}]+\}', raw)
         if m:
             cat = _json.loads(m.group()).get("category", "lease_knowledge")
-            if cat in ("lease_screening", "lease_knowledge", "general"):
+            if cat in ("lease_screening", "lease_knowledge", "general", "news_summarize"):
                 return cat
     except Exception as _e:
         print(f"[classify_question] エラー: {_e}")
@@ -4682,8 +4695,38 @@ def post_chat(req: ChatRequest):
                 "improvement_result": note_result,
             }
 
-        # カテゴリ判定: general なら RAG をスキップして直接回答
+        # カテゴリ判定
         question_category = _classify_question(req.message)
+
+        if question_category == "news_summarize":
+            save_message(req.user_id, "user", req.message)
+            try:
+                import re as _nre
+                url_match = _nre.search(r'https?://[^\s\)）」』\]]+', req.message)
+                news_url = url_match.group(0) if url_match else ""
+                body_text = ""
+                if not news_url:
+                    body_text = req.message
+                result = summarize_lease_news(LeaseNewsSummarizeRequest(url=news_url, body_text=body_text))
+                lines = result.get("summary_lines", [])
+                title = result.get("title", "")
+                region = result.get("region", "国内")
+                tags = result.get("tags", [])
+                memo = result.get("usage_memo", "")
+                reply = (
+                    f"ニュースを要約してObsidianに保存しました！\n\n"
+                    f"**{title}** [{region}]\n\n"
+                    + "\n".join(f"- {l}" for l in lines)
+                    + (f"\n\n**活用メモ**: {memo}" if memo else "")
+                    + (f"\n\nタグ: {', '.join(tags)}" if tags else "")
+                )
+            except Exception as _news_e:
+                reply = f"ニュースの要約に失敗しました: {_news_e}"
+            save_message(req.user_id, "assistant", reply)
+            total = get_message_count(req.user_id)
+            return {"reply": reply, "total_messages": total}
+
+        # general なら RAG をスキップして直接回答
         if question_category == "general":
             history = get_recent_messages(req.user_id, limit=20)
             history_for_gemini = [{"role": m["role"], "content": m["content"]} for m in history]
@@ -5728,3 +5771,283 @@ def get_umap_embeddings():
     with open(embed_path, "r", encoding="utf-8") as f:
         data = json.load(f)
     return data
+
+
+# ── リースニュース要約・保存 ──────────────────────────────────────
+
+_NEWS_OBSIDIAN_DIR = "リースニュース"
+
+
+def _news_vault_root() -> Path | None:
+    vault = find_vault()
+    if vault and vault.is_dir():
+        return vault
+    fallback = Path.home() / "Documents" / "Obsidian Vault"
+    return fallback if fallback.is_dir() else None
+
+
+def _safe_news_filename(text: str, max_len: int = 40) -> str:
+    cleaned = re.sub(r'[\\/:*?"<>|\n\r\t]', "_", text)
+    cleaned = cleaned.strip("_").strip()
+    return cleaned[:max_len] if cleaned else "ニュース"
+
+
+def _fetch_url_text(url: str) -> str:
+    import requests as _req
+    resp = _req.get(url, timeout=15, headers={"User-Agent": "TuneLeaseBot/1.0"})
+    resp.raise_for_status()
+    from html.parser import HTMLParser
+
+    class _TextExtractor(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self._parts: list[str] = []
+            self._skip = False
+
+        def handle_starttag(self, tag, attrs):
+            if tag in ("script", "style", "nav", "header", "footer"):
+                self._skip = True
+
+        def handle_endtag(self, tag):
+            if tag in ("script", "style", "nav", "header", "footer"):
+                self._skip = False
+
+        def handle_data(self, data):
+            if not self._skip:
+                stripped = data.strip()
+                if stripped:
+                    self._parts.append(stripped)
+
+    parser = _TextExtractor()
+    parser.feed(resp.text)
+    return "\n".join(parser._parts)[:6000]
+
+
+def _summarize_news_with_gemini(text: str, source: str) -> dict:
+    api_key = _get_gemini_api_key()
+    if not api_key:
+        raise HTTPException(status_code=503, detail="Gemini APIキーが未設定です")
+
+    prompt = f"""あなたはリース業界の営業担当向けにニュースを要約するアシスタントです。
+以下のニュース記事を読み、JSON形式で以下を出力してください。JSON以外は出力しないでください。
+
+{{
+  "title": "ニュースタイトル（15文字〜30文字）",
+  "summary_lines": ["要約1", "要約2", "要約3"],
+  "usage_memo": "営業・提案への活用ポイント（1〜2行）",
+  "tags": ["タグ1", "タグ2", "タグ3"],
+  "region": "国内/米国/欧州/アジア のいずれか1つ",
+  "importance": "高/中/低"
+}}
+
+タグはリース種別（ファイナンスリース、オペレーティングリース等）、トピック（金利動向、規制変更、市場動向等）から選んでください。
+regionは記事の主な対象地域を判定してください。日本国内のニュースは「国内」、米国は「米国」、欧州は「欧州」、中国・東南アジア等は「アジア」。複数地域にまたがる場合は主な地域を1つ選んでください。
+
+ニュース記事:
+{text[:4000]}
+"""
+
+    import requests as _req
+    url = _gemini_generate_url()
+    response = _req.post(
+        f"{url}?key={api_key}",
+        json={"contents": [{"parts": [{"text": prompt}]}]},
+        timeout=30,
+    )
+    response.raise_for_status()
+    raw = response.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+    raw = re.sub(r"^```json\s*", "", raw)
+    raw = re.sub(r"\s*```$", "", raw)
+    result = json.loads(raw)
+    valid_regions = {"国内", "米国", "欧州", "アジア"}
+    if result.get("region") not in valid_regions:
+        result["region"] = "国内"
+    return result
+
+
+def _save_news_to_obsidian(summary: dict, source: str) -> str | None:
+    import datetime as _dt
+
+    vault = _news_vault_root()
+    if not vault:
+        return None
+
+    news_dir = vault / _NEWS_OBSIDIAN_DIR
+    news_dir.mkdir(parents=True, exist_ok=True)
+
+    today_obj = _dt.date.today()
+    today = today_obj.isoformat()
+    iso_cal = today_obj.isocalendar()
+    week = f"{iso_cal[0]}-W{iso_cal[1]:02d}"
+    month = today_obj.strftime("%Y-%m")
+
+    title = summary.get("title", "ニュース")
+    fname = f"{today}_リースニュース_{_safe_news_filename(title)}.md"
+    fpath = news_dir / fname
+
+    tags_yaml = json.dumps(summary.get("tags", []), ensure_ascii=False)
+    lines = summary.get("summary_lines", [])
+    memo = summary.get("usage_memo", "")
+    region = summary.get("region", "国内")
+
+    content = f"""---
+date: {today}
+week: {week}
+month: {month}
+tags: {tags_yaml}
+region: {region}
+source: {source or "手動入力"}
+importance: {summary.get("importance", "中")}
+---
+# {title}
+
+## 3行要約
+- {lines[0] if len(lines) > 0 else ""}
+- {lines[1] if len(lines) > 1 else ""}
+- {lines[2] if len(lines) > 2 else ""}
+
+## 活用メモ
+{memo}
+"""
+
+    fpath.write_text(content, encoding="utf-8")
+
+    try:
+        record_lease_news_collection(
+            date_str=today,
+            note_path=str(fpath.relative_to(vault)) if vault else fname,
+            article_count=1,
+            source_summary=source[:100],
+            tag_summary=", ".join(summary.get("tags", [])),
+        )
+    except Exception:
+        pass
+
+    try:
+        import threading
+        from api.knowledge.obsidian_loader import _chunk_by_h2, _parse_frontmatter
+        from api.knowledge.vector_store import get_store
+
+        raw = fpath.read_text(encoding="utf-8")
+        meta, body = _parse_frontmatter(raw)
+        chunks = _chunk_by_h2(body, str(fpath), fpath.name, meta, fpath.stat().st_mtime)
+        if chunks:
+            threading.Thread(
+                target=lambda: get_store().upsert_chunks(chunks),
+                name="news-rag-index",
+                daemon=True,
+            ).start()
+    except Exception:
+        pass
+
+    return str(fpath)
+
+
+@app.post("/api/lease-news/summarize")
+def summarize_lease_news(req: LeaseNewsSummarizeRequest):
+    """ニュースURL or 本文テキストをAI要約し、Obsidianに保存する。"""
+    import datetime as _dt
+
+    source = req.url or "手動入力"
+    if req.url and req.url.strip():
+        try:
+            text = _fetch_url_text(req.url.strip())
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"URLの取得に失敗: {e}")
+    elif req.body_text and req.body_text.strip():
+        text = req.body_text.strip()
+    else:
+        raise HTTPException(status_code=400, detail="URLまたは本文テキストを入力してください")
+
+    summary = _summarize_news_with_gemini(text, source)
+    saved_path = _save_news_to_obsidian(summary, source)
+
+    return {
+        "status": "ok",
+        "title": summary.get("title", ""),
+        "summary_lines": summary.get("summary_lines", []),
+        "usage_memo": summary.get("usage_memo", ""),
+        "tags": summary.get("tags", []),
+        "region": summary.get("region", "国内"),
+        "importance": summary.get("importance", "中"),
+        "saved_path": saved_path,
+    }
+
+
+@app.get("/api/lease-news/recent")
+def get_recent_lease_news(limit: int = 5):
+    """Obsidianの リースニュース/ フォルダから直近N件のニュース要約を返す。"""
+    vault = _news_vault_root()
+    if not vault:
+        return {"items": []}
+
+    news_dir = vault / _NEWS_OBSIDIAN_DIR
+    if not news_dir.exists():
+        return {"items": []}
+
+    md_files = sorted(news_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+    items: list[dict] = []
+
+    for fpath in md_files[:limit]:
+        try:
+            raw = fpath.read_text(encoding="utf-8")
+        except Exception:
+            continue
+
+        item: dict = {
+            "date": "",
+            "title": fpath.stem,
+            "summary_lines": [],
+            "usage_memo": "",
+            "tags": [],
+            "region": "国内",
+            "importance": "通常",
+            "source": "",
+            "file_path": str(fpath),
+            "week": "",
+            "month": "",
+        }
+
+        fm_match = re.match(r"^---\s*\n(.*?)\n---\s*\n", raw, re.DOTALL)
+        if fm_match:
+            fm = fm_match.group(1)
+            for line in fm.splitlines():
+                if line.startswith("date:"):
+                    item["date"] = line.split(":", 1)[1].strip()
+                elif line.startswith("tags:"):
+                    try:
+                        item["tags"] = json.loads(line.split(":", 1)[1].strip())
+                    except Exception:
+                        pass
+                elif line.startswith("region:"):
+                    item["region"] = line.split(":", 1)[1].strip()
+                elif line.startswith("source:"):
+                    item["source"] = line.split(":", 1)[1].strip()
+                elif line.startswith("importance:"):
+                    item["importance"] = line.split(":", 1)[1].strip()
+                elif line.startswith("week:"):
+                    item["week"] = line.split(":", 1)[1].strip()
+                elif line.startswith("month:"):
+                    item["month"] = line.split(":", 1)[1].strip()
+
+        title_match = re.search(r"^# (.+)$", raw, re.MULTILINE)
+        if title_match:
+            item["title"] = title_match.group(1).strip()
+
+        summary_section = re.search(
+            r"## 3行要約\s*\n((?:- .+\n?){1,3})", raw
+        )
+        if summary_section:
+            item["summary_lines"] = [
+                line.lstrip("- ").strip()
+                for line in summary_section.group(1).strip().splitlines()
+                if line.strip()
+            ]
+
+        memo_match = re.search(r"## 活用メモ\s*\n(.+?)(?:\n##|\Z)", raw, re.DOTALL)
+        if memo_match:
+            item["usage_memo"] = memo_match.group(1).strip()
+
+        items.append(item)
+
+    return {"items": items}

@@ -104,3 +104,22 @@ class DealClosureResponse(BaseModel):
     delta_send: int
     delta_response: int
     model_note: str
+
+
+class LeaseNewsSummarizeRequest(BaseModel):
+    url: Optional[str] = Field(default="", description="ニュースのURL")
+    body_text: Optional[str] = Field(default="", description="ニュース本文テキスト")
+
+
+class LeaseNewsSummaryItem(BaseModel):
+    date: str
+    title: str
+    summary_lines: list[str] = []
+    usage_memo: str = ""
+    tags: list[str] = []
+    region: str = "国内"
+    importance: str = "通常"
+    source: str = ""
+    file_path: str = ""
+    week: str = ""
+    month: str = ""
