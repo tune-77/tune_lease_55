@@ -538,6 +538,19 @@ def _trigger_rag_index(file_paths: list[Path]) -> None:
         print(f"[rag] index skipped: {exc}", file=sys.stderr)
 
 
+def _trigger_auto_wikilink(file_paths: list[Path], vault: Path) -> None:
+    """保存済みファイルに wikiリンクを自動付与する。"""
+    try:
+        sys.path.insert(0, str(_SCRIPT_DIR))
+        from auto_wikilink import run_on_files
+        results = run_on_files(file_paths, vault)
+        changed = sum(1 for r in results if r.get("changes", 0) > 0)
+        if changed:
+            print(f"[wikilink] {changed} files updated with wikilinks")
+    except Exception as exc:
+        print(f"[wikilink] skipped: {exc}", file=sys.stderr)
+
+
 def _append_daily_digest(vault: Path, daily_dir: str, news_dir: str, date_str: str, articles: list[Article]) -> Path:
     daily_rel = f"{daily_dir.strip('/')}/{date_str}.md"
     path = _safe_note_path(vault, daily_rel)
@@ -626,6 +639,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     daily_path = _append_daily_digest(vault, daily_dir, news_dir, date_str, articles)
+    _trigger_auto_wikilink(saved_paths, vault)
     _trigger_rag_index(saved_paths)
 
     print(f"articles={len(articles)}")

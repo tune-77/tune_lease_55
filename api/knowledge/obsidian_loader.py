@@ -16,6 +16,13 @@ logger = logging.getLogger(__name__)
 _DEFAULT_VAULT_PATH = "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
 _VAULT_PATH = os.environ.get("OBSIDIAN_VAULT_PATH", _DEFAULT_VAULT_PATH)
 
+# scan_vault が必ず対象に含めるべき Vault 直下サブディレクトリ（明示ドキュメント）
+_REQUIRED_SUBDIRS: tuple[str, ...] = (
+    "リースニュース",
+    "リース知識",
+    "Projects/tune_lease_55",
+)
+
 # YAML frontmatter パターン
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 # H2 見出し（## ）
