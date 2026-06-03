@@ -16,6 +16,14 @@ interface IndustryMaster {
   [major: string]: IndustryMasterEntry | string[];
 }
 
+interface IndustrySuggestion {
+  industry_major: string;
+  industry_sub: string;
+  confidence: number;
+  matched_terms: string[];
+  reason: string;
+}
+
 function extractSubs(entry: IndustryMasterEntry | string[] | undefined): string[] {
   if (!entry) return [];
   if (Array.isArray(entry)) return entry.filter(Boolean);
@@ -27,6 +35,7 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
   const [industryMaster, setIndustryMaster] = useState<IndustryMaster>({});
   const [majors, setMajors] = useState<string[]>([]);
   const [subs, setSubs] = useState<string[]>([]);
+  const [industrySuggestions, setIndustrySuggestions] = useState<IndustrySuggestion[]>([]);
   const numericFieldOrder = ['contracts', 'bank_credit', 'lease_credit'] as const;
   const numericFieldRefs = useRef<Record<(typeof numericFieldOrder)[number], HTMLInputElement | null>>({
     contracts: null,
@@ -67,6 +76,37 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
       }
     }
   }, [data.industry_major, industryMaster]);
+
+  useEffect(() => {
+    const hintText = [data.asset_name, data.industry_detail, data.company_name].filter(Boolean).join(' ').trim();
+    if (hintText.length < 2) {
+      setIndustrySuggestions([]);
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/industry/suggest`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            asset_name: data.asset_name || '',
+            industry_detail: data.industry_detail || '',
+            company_name: data.company_name || '',
+          }),
+        });
+        if (!res.ok) return;
+        const body = await res.json();
+        setIndustrySuggestions((body.suggestions || []).filter((item: IndustrySuggestion) => (
+          item.industry_major !== data.industry_major || item.industry_sub !== data.industry_sub
+        )));
+      } catch (err) {
+        console.error('Failed to suggest industry:', err);
+      }
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [data.asset_name, data.industry_detail, data.company_name, data.industry_major, data.industry_sub]);
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
     const { name, value, type } = e.target;
@@ -154,7 +194,52 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
           <p className="text-[10px] text-slate-400 mt-1">※ AIがより正確な業界分析を行うためのヒントになります</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+        {industrySuggestions.length > 0 && (
+          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div>
+                <p className="text-[12px] font-black text-emerald-800">業種候補</p>
+                <p className="text-[10px] font-bold text-emerald-700">物件名・企業名・詳細キーワードから推測。必要ならクリックで反映します。</p>
+              </div>
+              <span className="rounded-full bg-white px-2 py-1 text-[10px] font-black text-emerald-700">
+                {industrySuggestions.length}件
+              </span>
+            </div>
+            <div className="grid gap-2 md:grid-cols-3">
+              {industrySuggestions.map((item) => (
+                <button
+                  type="button"
+                  key={`${item.industry_major}-${item.industry_sub}`}
+                  onClick={() => {
+                    onChange('industry_major', item.industry_major);
+                    onChange('industry_sub', item.industry_sub);
+                  }}
+                  className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-left transition hover:border-emerald-400 hover:bg-emerald-100/50"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-[12px] font-black text-slate-800">{item.industry_major}</span>
+                    <span className="shrink-0 text-[10px] font-black text-emerald-700">{Math.round(item.confidence * 100)}%</span>
+                  </div>
+                  <div className="mt-1 truncate text-[11px] font-bold text-slate-600">{item.industry_sub || '中分類未特定'}</div>
+                  <div className="mt-1 truncate text-[10px] font-bold text-slate-400">{item.reason}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
+          <div className="space-y-1">
+            <label className="text-sm font-bold text-slate-600 block">営業部</label>
+            <select name="sales_dept" value={data.sales_dept || "未設定"} onChange={handleChange} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 h-[46px]">
+              <option>未設定</option>
+              <option>宇都宮営業部</option>
+              <option>小山営業部</option>
+              <option>足利営業部</option>
+              <option>埼玉営業部</option>
+            </select>
+            <p className="text-[10px] text-slate-400 mt-0.5">営業部別分析・成約率比較に使用します</p>
+          </div>
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">取引区分</label>
             <select name="main_bank" value={data.main_bank} onChange={handleChange} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 h-[46px]">

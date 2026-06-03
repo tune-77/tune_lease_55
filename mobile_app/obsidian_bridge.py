@@ -41,17 +41,26 @@ def _obsidian_app_vaults() -> list[Path]:
 
 def _home_candidates() -> list[Path]:
     home = Path.home()
-    # OBSIDIAN_VAULT環境変数 → Obsidianアプリ登録Vault（最近使用順）→ 既定パス の優先順
+    # 通常の Obsidian Vault を既定にする。
+    # lease-wiki-vault はユーザーが明示指定した場合だけ使うため、アプリの最近使用順より後に置く。
     app_vaults = _obsidian_app_vaults()
     env_vault = Path(os.getenv("OBSIDIAN_VAULT", "")).expanduser() if os.getenv("OBSIDIAN_VAULT") else None
+    icloud_docs = home / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents"
+    default_vaults = [
+        icloud_docs / "Obsidian Vault",
+        home / "Documents" / "Obsidian Vault",
+    ]
+    regular_app_vaults = [p for p in app_vaults if p.name != "lease-wiki-vault"]
+    lease_wiki_vaults = [p for p in app_vaults if p.name == "lease-wiki-vault"]
     roots = [
         env_vault,
-        *app_vaults,
-        home / "Documents" / "Obsidian Vault",
+        *default_vaults,
+        *regular_app_vaults,
         home / "Documents",
         home / "Obsidian",
-        home / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents",
+        icloud_docs,
         home / "Library" / "Mobile Documents" / "com~apple~CloudDocs",
+        *lease_wiki_vaults,
     ]
     return [p for p in roots if p and p.exists()]
 

@@ -16,6 +16,7 @@ export interface ScoringFormData {
   num_competitors: string; // 競合社数
   deal_occurrence: string; // 発生経緯
   deal_source: string;
+  sales_dept: string; // 営業部
   
   // P/L (損益計算書) - UI入力値は百万円、API送信時に千円へ換算
   nenshu: number;
@@ -46,6 +47,10 @@ export interface ScoringFormData {
   acquisition_cost: number;
   selected_asset_id: string;
   asset_name: string;
+  asset_detail: string;
+  asset_purpose: string;
+  asset_location: string;
+  asset_evidence_level: string;
   asset_score: number;
   
   // 定性評価 (6大項目)
@@ -81,6 +86,7 @@ export const defaultFormData: ScoringFormData = {
   num_competitors: "未入力",
   deal_occurrence: "不明",
   deal_source: "銀行紹介",
+  sales_dept: "未設定",
   nenshu: 200,
   gross_profit: 50,
   op_profit: 15,
@@ -103,6 +109,10 @@ export const defaultFormData: ScoringFormData = {
   acquisition_cost: 3,
   selected_asset_id: "",
   asset_name: "",
+  asset_detail: "",
+  asset_purpose: "",
+  asset_location: "",
+  asset_evidence_level: "未確認",
   asset_score: 50.0,
   
   qual_corr_company_history: "未選択",

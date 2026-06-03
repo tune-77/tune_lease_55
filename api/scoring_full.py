@@ -91,6 +91,7 @@ def run_full_scoring_api(inputs: dict) -> dict:
         "customer_type": str(inputs.get("customer_type", "既存先")),
         "contract_type": str(inputs.get("contract_type", "一般")),
         "deal_source": str(inputs.get("deal_source", "銀行紹介")),
+        "sales_dept": str(inputs.get("sales_dept", "未設定")),
         "lease_term": int(inputs.get("lease_term", 60)),
         "acceptance_year": 2026,
         "acquisition_cost": float(inputs.get("acquisition_cost", 0)),
