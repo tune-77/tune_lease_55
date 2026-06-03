@@ -42,8 +42,8 @@ def _vault_candidates() -> list[Path]:
     raw_candidates = [
         os.environ.get("OBSIDIAN_VAULT_PATH"),
         os.environ.get("OBSIDIAN_VAULT"),
+        str(home / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / "Obsidian Vault"),
         str(home / "Documents" / "Obsidian Vault"),
-        str(home / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents"),
         str(home / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "Obsidian Vault"),
     ]
     out: list[Path] = []
