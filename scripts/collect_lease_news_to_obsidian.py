@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import html
+import json
 import os
 import re
 import sys
@@ -115,7 +116,7 @@ PROFILE_DEFINITIONS: dict[str, dict[str, tuple[str, ...]]] = {
     },
 }
 
-DEFAULT_NEWS_DIR = "Projects/tune_lease_55/News"
+DEFAULT_NEWS_DIR = "リースニュース"
 DEFAULT_DAILY_DIR = "Daily"
 DEFAULT_PROFILE = "industry-watch"
 
@@ -245,6 +246,39 @@ def _extract_tags(text: str) -> tuple[str, ...]:
     if not tags:
         tags.append("その他")
     return tuple(tags)
+
+
+def _safe_filename(text: str, max_len: int = 30) -> str:
+    cleaned = re.sub(r'[\\/:*?"<>|\n\r\t]', "_", text)
+    cleaned = cleaned.strip("_").strip()
+    return cleaned[:max_len] if cleaned else "記事"
+
+
+def _infer_region(article: "Article") -> str:
+    text = " ".join([article.title, article.source, article.raw_source, article.query]).lower()
+    foreign_sources = ("reuters", "bloomberg", "wsj", "ft.com", "cnbc", "bbc", "ap ", "afp")
+    us_keywords = ("fed", "federal reserve", "us ", "united states", "wall street", "sec ", "nyse")
+    eu_keywords = ("ecb", "european", "euro", "deutschland", "boe ", "bank of england")
+    asia_ex_jp = ("china", "korea", "taiwan", "asean", "singapore", "hong kong", "india", "southeast asia")
+    if any(kw in text for kw in us_keywords):
+        return "米国"
+    if any(kw in text for kw in eu_keywords):
+        return "欧州"
+    if any(kw in text for kw in asia_ex_jp):
+        return "アジア"
+    if any(kw in text for kw in foreign_sources):
+        return "米国"
+    return "国内"
+
+
+def _infer_importance(article: "Article") -> str:
+    if article.source_kind == "official" and article.score >= 1:
+        return "高"
+    if article.score >= 2 or "法令" in article.tags or "金利" in article.tags:
+        return "高"
+    if article.score >= 1:
+        return "中"
+    return "低"
 
 
 def _review_line(tags: tuple[str, ...], theme: str) -> str:
@@ -407,111 +441,101 @@ def _source_counts(articles: list[Article]) -> list[tuple[str, int]]:
     return sorted(counts.items(), key=lambda item: (item[1], item[0]), reverse=True)
 
 
-def _build_digest(
+def _build_article_content(
+    article: Article,
+    date_str: str,
+    week: str,
+    month: str,
+    profile: str,
+) -> str:
+    region = _infer_region(article)
+    importance = _infer_importance(article)
+    tags_json = json.dumps(list(article.tags), ensure_ascii=False)
+    pub = article.published_iso or ""
+    review = _review_line(article.tags, article.theme)
+    summary_text = article.summary or ""
+    lines: list[str] = []
+    if summary_text:
+        words = summary_text.split("。")
+        s1 = words[0].strip() + ("。" if words[0].strip() else "")
+        s2 = (words[1].strip() + "。") if len(words) > 1 and words[1].strip() else ""
+        s3 = review
+    else:
+        s1 = article.title
+        s2 = ""
+        s3 = review
+
+    content = f"""---
+date: {date_str}
+week: {week}
+month: {month}
+tags: {tags_json}
+region: {region}
+source: {article.source or "Google News"}
+importance: {importance}
+profile: {profile}
+---
+# {article.title}
+
+## 3行要約
+- {s1}
+- {s2 or "（詳細なし）"}
+- {s3}
+
+## 活用メモ
+{review}
+
+## 詳細
+- query: {article.query}
+- theme: {article.theme}
+- published: {pub}
+- link: {article.link}
+"""
+    return content.strip() + "\n"
+
+
+def _save_articles_to_obsidian(
     articles: list[Article],
-    queries: list[tuple[str, str]],
-    feeds: list[tuple[str, str, str]],
+    vault: Path,
+    news_dir: str,
     date_str: str,
     profile: str,
-    metrics_bucket: dict[str, int] | None = None,
-) -> str:
-    counts = _theme_counts(articles)
-    top_themes = ", ".join(f"{name} {count}件" for name, count in counts[:4]) if counts else "なし"
-    bucket_counts = _bucket_counts(articles)
-    bucket_summary = ", ".join(f"{name} {count}件" for name, count in bucket_counts[:4]) if bucket_counts else "なし"
-    tag_counts = _tag_counts(articles)
-    top_tags = ", ".join(f"{name} {count}件" for name, count in tag_counts[:5]) if tag_counts else "なし"
-    source_counts = _source_counts(articles)
-    source_summary = ", ".join(f"{name} {count}件" for name, count in source_counts[:3]) if source_counts else "なし"
-    metrics_bucket = metrics_bucket or {}
-    collection_count = int(metrics_bucket.get("collections", 0)) + 1
-    view_count = int(metrics_bucket.get("views", 0))
-    notable = articles[:3]
-    query_groups = "\n".join(f"- {group}: {query}" for group, query in queries)
-    feed_sources = "\n".join(f"- {group}: {name}" for group, name, _ in feeds)
+) -> list[Path]:
+    today_obj = dt.date.fromisoformat(date_str)
+    iso_cal = today_obj.isocalendar()
+    week = f"{iso_cal[0]}-W{iso_cal[1]:02d}"
+    month = today_obj.strftime("%Y-%m")
+    target_dir = vault / news_dir
+    target_dir.mkdir(parents=True, exist_ok=True)
+    saved: list[Path] = []
+    for art in articles:
+        fname = f"{date_str}_リースニュース_{_safe_filename(art.title)}.md"
+        fpath = _safe_note_path(vault, f"{news_dir}/{fname}")
+        content = _build_article_content(art, date_str, week, month, profile)
+        fpath.write_text(content, encoding="utf-8")
+        saved.append(fpath)
+    return saved
 
-    lines = [
-        "---",
-        f"created: {date_str}",
-        "source: codex",
-        "topic: lease-news",
-        f"profile: {profile}",
-        "---",
-        "",
-        f"# リース最新情報 {date_str}",
-        "",
-        "## 今日の要点",
-        f"- 主なテーマ: {top_themes}",
-        f"- 収集セット: {bucket_summary}",
-        f"- ソース内訳: {source_summary}",
-        f"- 重点タグ: {top_tags}",
-        "- 審査では、金利・設備投資・与信環境の変化を優先して確認する。",
-        "- 直近の営業案件では、競合提示金利と基準金利の差を見直す。",
-        "",
-        "## 検索語セット",
-        query_groups or "- なし",
-        "",
-        "## RSSソース",
-        feed_sources or "- なし",
-        "",
-        "## 注目記事",
-    ]
 
-    for art in notable:
-        pub = art.published_iso or "日時不明"
-        lines.extend([
-            f"### {art.title}",
-            f"- source: {art.source}",
-            f"- published: {pub}",
-            f"- theme: {art.theme}",
-            f"- query: {art.query}",
-            f"- tags: {' / '.join(art.tags)}",
-            f"- 審査論点: {_review_line(art.tags, art.theme)}",
-            f"- link: {art.link}",
-            f"- summary: {art.summary or '（要約なし）'}",
-            "",
-        ])
-
-    lines.extend([
-        "## 収集ソース",
-        (query_groups or "- なし") + ("\n" + feed_sources if feed_sources else ""),
-        "",
-        "## 重点タグ",
-        ("\n".join(f"- {name}: {count}件" for name, count in tag_counts[:10]) or "- なし"),
-        "",
-        "## 効果測定",
-        f"- 総記事数: {len(articles)}",
-        f"- 公式RSS件数: {sum(count for kind, count in source_counts if kind == 'official')}",
-        f"- 検索件数: {sum(count for kind, count in source_counts if kind == 'google')}",
-        f"- 主要タグ数: {len(tag_counts)}",
-        f"- 収集回数: {collection_count}",
-        f"- 参照回数: {view_count}",
-        f"- 参考用レビュー件数: {min(3, len(articles))}",
-        "",
-        "## 全件一覧",
-    ])
-
-    if not articles:
-        lines.append("- 記事なし")
-    else:
-        for art in articles:
-            pub = art.published_iso or ""
-            lines.append(f"- [{art.title}]({art.link}) | {art.source} | {pub} | {art.theme} | {' / '.join(art.tags)}")
-            if art.summary:
-                lines.append(f"  - {art.summary}")
-
-    lines.extend([
-        "",
-        "## 審査メモ",
-        "- 金利関連が増えている日は、提示金利・競合金利・基準金利差の説明を厚くする。",
-        "- 設備投資関連が増えている日は、リース期間・中古価値・再リース余地の確認を強める。",
-        "- 与信/法令関連が増えている日は、入力の不備や契約条件の再確認を優先する。",
-        "- 物流/車両関連が増えている日は、稼働率・保守費用・更新タイミングを確認する。",
-        "- 建設/不動産関連が増えている日は、工期・移設可能性・現場稼働への影響を確認する。",
-        "- 製造/DX関連が増えている日は、更新投資の回収期間と生産性改善効果を確認する。",
-    ])
-
-    return "\n".join(lines).strip() + "\n"
+def _trigger_rag_index(file_paths: list[Path]) -> None:
+    try:
+        from api.knowledge.obsidian_loader import _chunk_by_h2, _parse_frontmatter
+        from api.knowledge.vector_store import get_store
+        store = get_store()
+        all_chunks = []
+        for fpath in file_paths:
+            try:
+                raw = fpath.read_text(encoding="utf-8")
+                meta, body = _parse_frontmatter(raw)
+                chunks = _chunk_by_h2(body, str(fpath), fpath.name, meta, fpath.stat().st_mtime)
+                all_chunks.extend(chunks)
+            except Exception:
+                pass
+        if all_chunks:
+            store.upsert_chunks(all_chunks)
+            print(f"[rag] indexed {len(all_chunks)} chunks from {len(file_paths)} files")
+    except Exception as exc:
+        print(f"[rag] index skipped: {exc}", file=sys.stderr)
 
 
 def _append_daily_digest(vault: Path, daily_dir: str, news_dir: str, date_str: str, articles: list[Article]) -> Path:
@@ -523,7 +547,7 @@ def _append_daily_digest(vault: Path, daily_dir: str, news_dir: str, date_str: s
         f"## {dt.datetime.now().strftime('%H:%M')} Lease News",
         f"- 収集件数: {len(articles)}",
         f"- 主なテーマ: {theme_summary}",
-        f"- 詳細: [[{news_dir}/{date_str}_lease-news|今日のリース最新情報]]",
+        f"- 保存先: [[{news_dir}/|リースニュース/]]",
     ])
     _append_text(path, body)
     return path
@@ -575,33 +599,38 @@ def main(argv: list[str] | None = None) -> int:
     articles = articles[: max(1, int(args.limit))]
 
     date_str = dt.date.today().isoformat()
-    metrics_bucket = get_lease_news_metrics(date_str)
-    digest = _build_digest(articles, query_specs, feed_specs, date_str, profile, metrics_bucket)
     news_dir = args.news_dir.strip("/") or DEFAULT_NEWS_DIR
     daily_dir = args.daily_dir.strip("/") or DEFAULT_DAILY_DIR
+
     if args.dry_run:
-        news_path = _safe_note_path(vault, f"{news_dir}/{date_str}_lease-news.md", create_parent=False)
         print(f"DRY-RUN: {len(articles)} articles")
-        print(news_path)
+        print(f"target_dir={vault / news_dir}")
+        for art in articles[:3]:
+            fname = f"{date_str}_リースニュース_{_safe_filename(art.title)}.md"
+            print(f"  {fname}")
         return 0
 
-    news_path = _safe_note_path(vault, f"{news_dir}/{date_str}_lease-news.md")
-    news_path.write_text(digest, encoding="utf-8")
+    saved_paths = _save_articles_to_obsidian(articles, vault, news_dir, date_str, profile)
+
     source_counts = _source_counts(articles)
     tag_counts = _tag_counts(articles)
     source_summary = ", ".join(f"{name} {count}件" for name, count in source_counts[:3]) if source_counts else ""
     tag_summary = ", ".join(f"{name} {count}件" for name, count in tag_counts[:5]) if tag_counts else ""
+    first_path = saved_paths[0] if saved_paths else vault / news_dir
     record_lease_news_collection(
         date_str,
-        str(news_path.relative_to(vault)),
+        str(first_path.relative_to(vault)) if saved_paths else news_dir,
         len(articles),
         source_summary=source_summary,
         tag_summary=tag_summary,
     )
+
     daily_path = _append_daily_digest(vault, daily_dir, news_dir, date_str, articles)
+    _trigger_rag_index(saved_paths)
 
     print(f"articles={len(articles)}")
-    print(f"news_note={news_path}")
+    print(f"saved_files={len(saved_paths)}")
+    print(f"news_dir={vault / news_dir}")
     print(f"daily_note={daily_path}")
     return 0
 
