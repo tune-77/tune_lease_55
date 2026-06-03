@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-DEFAULT_NEWS_REL_DIR = Path("Projects/tune_lease_55/News")
+DEFAULT_NEWS_REL_DIR = Path("リースニュース")
 METRICS_PATH = Path(__file__).resolve().parent / "data" / "lease_news_metrics.json"
 
 
@@ -26,6 +26,7 @@ class LeaseNewsFocus:
     focus_lines: tuple[str, ...] = ()
     memo_lines: tuple[str, ...] = ()
     metrics_lines: tuple[str, ...] = ()
+    article_titles: tuple[str, ...] = ()
 
     @property
     def headline(self) -> str:
@@ -64,7 +65,7 @@ def _latest_news_note(vault: Path) -> Path | None:
     news_dir = vault / DEFAULT_NEWS_REL_DIR
     if not news_dir.exists():
         return None
-    notes = list(news_dir.glob("*_lease-news.md"))
+    notes = list(news_dir.glob("*_リースニュース_*.md")) or list(news_dir.glob("*_lease-news.md"))
     if not notes:
         return None
     notes.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
@@ -103,6 +104,19 @@ def _extract_prefixed_lines(text: str, prefix: str) -> list[str]:
         if stripped.startswith(prefix):
             results.append(stripped[len(prefix):].strip())
     return results
+
+
+def _extract_article_titles(text: str, limit: int = 3) -> list[str]:
+    titles: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("### "):
+            title = stripped[4:].strip()
+            if title:
+                titles.append(title)
+        if len(titles) >= limit:
+            break
+    return titles
 
 
 def _infer_focus_lines(theme_summary: str, bucket_summary: str, memo_lines: list[str]) -> list[str]:
@@ -146,8 +160,14 @@ def get_latest_lease_news_focus(vault: Path | None = None) -> LeaseNewsFocus:
     except OSError:
         return LeaseNewsFocus(available=False)
 
+    # 新フォーマット（PR #265）: date:, tags:, region:, importance:
+    # 旧フォーマット: created:, profile:, - 主なテーマ:
+    date_match = re.search(r"^date:\s*(.+)$", text, re.MULTILINE)
     created_match = re.search(r"^created:\s*(.+)$", text, re.MULTILINE)
     profile_match = re.search(r"^profile:\s*(.+)$", text, re.MULTILINE)
+    region_match = re.search(r"^region:\s*(.+)$", text, re.MULTILINE)
+    importance_match = re.search(r"^importance:\s*(.+)$", text, re.MULTILINE)
+    # 旧フォーマット用フィールド（新フォーマットでは空になる）
     theme_match = re.search(r"^- 主なテーマ:\s*(.+)$", text, re.MULTILINE)
     bucket_match = re.search(r"^- 収集セット:\s*(.+)$", text, re.MULTILINE)
     tag_match = re.search(r"^- 重点タグ:\s*(.+)$", text, re.MULTILINE)
@@ -155,15 +175,27 @@ def get_latest_lease_news_focus(vault: Path | None = None) -> LeaseNewsFocus:
     memo_bullets = _extract_bullets(memo_section)
     metrics_section = _extract_section(text, "効果測定")
     metrics_bullets = _extract_bullets(metrics_section)
-    article_review_lines = _extract_prefixed_lines(text, "- 審査論点:")
+    # 新フォーマットの活用メモを審査論点として使用
+    usage_memo_section = _extract_section(text, "活用メモ")
+    article_review_lines = _extract_prefixed_lines(text, "- 審査論点:") or [
+        line.strip() for line in usage_memo_section if line.strip()
+    ]
+    article_titles = _extract_article_titles(text, limit=3)
 
+    # 新フォーマット: region/importanceをtheme_summaryとして使用
+    region = (region_match.group(1).strip() if region_match else "").strip()
+    importance = (importance_match.group(1).strip() if importance_match else "").strip()
     theme_summary = (theme_match.group(1).strip() if theme_match else "").strip()
+    if not theme_summary and (region or importance):
+        theme_summary = " / ".join(filter(None, [region, importance]))
     bucket_summary = (bucket_match.group(1).strip() if bucket_match else "").strip()
     tag_summary = (tag_match.group(1).strip() if tag_match else "").strip()
     focus_source = article_review_lines or _infer_focus_lines(theme_summary, bucket_summary, memo_bullets)
     focus_lines = tuple((focus_source[:4] if isinstance(focus_source, list) else list(focus_source)[:4]))
     note_date = ""
-    if created_match:
+    if date_match:
+        note_date = date_match.group(1).strip()
+    elif created_match:
         note_date = created_match.group(1).strip()
     else:
         try:
@@ -182,6 +214,7 @@ def get_latest_lease_news_focus(vault: Path | None = None) -> LeaseNewsFocus:
         focus_lines=focus_lines,
         memo_lines=tuple(memo_bullets),
         metrics_lines=tuple(metrics_bullets),
+        article_titles=tuple(article_titles),
     )
 
 
