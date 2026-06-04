@@ -28,12 +28,20 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / ".agents" / "skills" / "auto-improvement-pipeline"))
+_PIPELINE_DIR = Path(__file__).resolve().parent.parent / ".agents" / "skills" / "auto-improvement-pipeline"
+sys.path.insert(0, str(_PIPELINE_DIR))
+sys.path.insert(0, str(_PIPELINE_DIR / "scripts"))
 
 try:
     import pipeline_ledger as ledger  # type: ignore
 except ImportError:
     ledger = None  # type: ignore
+
+try:
+    from improvement_identity import canonical_key as _canonical_key  # type: ignore
+except ImportError:
+    def _canonical_key(title: str, description: str = "") -> str:  # type: ignore[misc]
+        return f"rev_{title.strip().lower()}"
 
 LEDGER_PATH = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
 
@@ -162,24 +170,44 @@ def _fetch_pr_rev_map() -> dict[str, dict]:
     return rev_map
 
 
-def _get_ledger_latest() -> dict[str, str]:
-    """台帳から REV キー → 最新ステータスを返す。"""
+def _get_ledger_latest() -> dict[str, dict]:
+    """台帳から REV ID → {status, migrated} を返す。
+
+    - migrated=True: 既に canonical_key 形式（新形式）で記録済み
+    - migrated=False: key=REV-NNN の旧形式のみ（canonical_key への移行が必要）
+    """
     if not LEDGER_PATH.exists():
         return {}
-    latest: dict[str, str] = {}
+    # まず全エントリを走査し latest status と形式フラグを収集
+    status_by_rev: dict[str, str] = {}
+    migrated: set[str] = set()
+
     for line in LEDGER_PATH.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line:
             continue
         try:
             e = json.loads(line)
-            k = e.get("key", "")
             s = e.get("status", "")
-            if k.startswith("REV-") and s:
-                latest[k] = s
+            if not s:
+                continue
+            # 新形式: rev_id フィールドに REV ID を持つ
+            rev_id = e.get("rev_id", "")
+            if rev_id.startswith("REV-"):
+                status_by_rev[rev_id] = s
+                migrated.add(rev_id)
+                continue
+            # レガシー形式: key フィールドが "REV-NNN"
+            k = e.get("key", "")
+            if k.startswith("REV-"):
+                status_by_rev[k] = s
         except json.JSONDecodeError:
             continue
-    return latest
+
+    return {
+        rev_id: {"status": s, "migrated": rev_id in migrated}
+        for rev_id, s in status_by_rev.items()
+    }
 
 
 def _append_ledger(entry: dict) -> None:
@@ -204,23 +232,30 @@ def main() -> None:
 
     # PR から判定した applied / rejected
     for rev_id, info in sorted(pr_map.items()):
-        current = ledger_latest.get(rev_id, "")
+        entry_info = ledger_latest.get(rev_id, {})
+        current_status = entry_info.get("status", "")
+        already_migrated = entry_info.get("migrated", False)
         new_status = info["status"]
         pr_num = info["pr_num"]
 
-        if current == new_status:
-            continue  # 変更なし
+        # ステータスが同じかつ新形式で記録済みなら何もしない
+        if current_status == new_status and already_migrated:
+            continue
 
         reason = (
             f"PR #{pr_num} マージ済み" if new_status == "applied"
             else f"PR #{pr_num} クローズ（未マージ）"
         )
+        if current_status == new_status and not already_migrated:
+            reason += "（旧形式→canonical_key 移行）"
         title = REV_TITLES.get(rev_id, rev_id)
+        ck = _canonical_key(title)
         updates.append({
-            "key": rev_id,
+            "key": ck,          # pipeline が is_processed() で照合するキー
+            "rev_id": rev_id,   # 人間可読の REV ID（参照用）
             "status": new_status,
             "title": title,
-            "canonical_key": rev_id.lower(),
+            "canonical_key": ck,
             "pr_url": f"https://github.com/kobayashiisaoryou/tune_lease_55/pull/{pr_num}",
             "reason": reason,
             "recorded_at": now,
@@ -247,14 +282,19 @@ def main() -> None:
         for rev_id in sorted(all_rev_ids):
             if rev_id in pr_map:
                 continue  # PR あり → スキップ
-            current = ledger_latest.get(rev_id, "")
-            if current in ("applied", "deferred"):
+            entry_info = ledger_latest.get(rev_id, {})
+            current = entry_info.get("status", "")
+            already_migrated = entry_info.get("migrated", False)
+            if current in ("applied", "deferred") and already_migrated:
                 continue
+            deferred_title = REV_TITLES.get(rev_id, rev_id)
+            deferred_ck = _canonical_key(deferred_title)
             updates.append({
-                "key": rev_id,
+                "key": deferred_ck,
+                "rev_id": rev_id,
                 "status": "deferred",
-                "title": REV_TITLES.get(rev_id, rev_id),
-                "canonical_key": rev_id.lower(),
+                "title": deferred_title,
+                "canonical_key": deferred_ck,
                 "pr_url": "",
                 "reason": "PR なし・手動タグ群",
                 "recorded_at": now,
@@ -267,7 +307,8 @@ def main() -> None:
     print(f"\n{'[DRY-RUN] ' if not args.apply else ''}更新件数: {len(updates)}\n")
     by_status: dict[str, list[str]] = {}
     for u in updates:
-        by_status.setdefault(u["status"], []).append(f"  {u['key']}: {u['title'][:40]}")
+        label = u.get("rev_id") or u["key"]
+        by_status.setdefault(u["status"], []).append(f"  {label}: {u['title'][:40]}")
 
     for st, lines in sorted(by_status.items()):
         print(f"=== {st} ({len(lines)}) ===")
