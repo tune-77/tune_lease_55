@@ -13,6 +13,7 @@ import {
   Receipt, LifeBuoy, ClipboardList, CreditCard, Activity, GitMerge, Briefcase
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
+import ThemeSelector from '@/components/layout/ThemeSelector';
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -196,7 +197,10 @@ export default function Sidebar() {
         </nav>
 
         {/* 下部設定エリア */}
-        <div className={`p-4 bg-slate-950/50 border-t border-slate-800 transition-all ${isCollapsed ? 'items-center flex justify-center' : ''}`}>
+        <div className={`p-4 bg-slate-950/50 border-t border-slate-800 space-y-3 transition-all ${isCollapsed ? 'flex flex-col items-center' : ''}`}>
+          {/* テーマ選択 */}
+          <ThemeSelector collapsed={isCollapsed} />
+
            <div className={`flex items-center gap-3 p-2 bg-slate-900 rounded-2xl border border-slate-800 cursor-pointer hover:border-slate-700 transition-all ${isCollapsed ? 'justify-center w-12 h-12' : 'px-3 w-full'}`}>
               <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-black text-white shrink-0">
                 USER
