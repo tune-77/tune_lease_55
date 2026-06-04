@@ -48,6 +48,14 @@ KNOWN_PR_OVERRIDES: dict[str, tuple[int, str]] = {
     "REV-016": (211, "applied"),    # PR#211 で同時マージ扱い
 }
 
+# PR を経由せずコードレビューで実装確認済みの REV
+# (commit_hash, 実装ファイル, 説明)
+KNOWN_APPLIED_NO_PR: dict[str, tuple[str, str, str]] = {
+    "REV-013": ("aaf3b6a", "chat_intent.py", "is_today_scope_clarification_needed / is_ambiguous_question として実装済み"),
+    "REV-014": ("aaf3b6a", "chat_intent.py", "is_industry_clarification_needed として実装済み"),
+    "REV-017": ("aaf3b6a", "chat_intent.py", "is_repeated_query として実装済み"),
+}
+
 # REV ID → タイトル（reports から取得したマスタ）
 REV_TITLES: dict[str, str] = {
     "REV-001": "EDINET連携（Phase2）",
@@ -58,7 +66,10 @@ REV_TITLES: dict[str, str] = {
     "REV-009": "帝国データバンクAPI連携 / Counterfactual分析",
     "REV-010": "公平性・バイアス監査基盤",
     "REV-011": "条件付き承認の推奨アクション自動提示",
+    "REV-013": "曖昧な質問「今日の」への対応強化",
+    "REV-014": "業界情報に関する質問の具体化支援",
     "REV-016": "リース審査外の質問への対応",
+    "REV-017": "同一クエリ繰り返し対応",
     "REV-018": "詳細情報要求への対応強化",
     "REV-019": "物件名からの業種自動推測と更新",
     "REV-022": "知識宇宙マップの視覚化機能強化",
@@ -212,6 +223,21 @@ def main() -> None:
             "canonical_key": rev_id.lower(),
             "pr_url": f"https://github.com/kobayashiisaoryou/tune_lease_55/pull/{pr_num}",
             "reason": reason,
+            "recorded_at": now,
+        })
+
+    # PR なし・コードレビュー確認済みの applied
+    for rev_id, (commit, src_file, desc) in sorted(KNOWN_APPLIED_NO_PR.items()):
+        current = ledger_latest.get(rev_id, "")
+        if current == "applied":
+            continue
+        updates.append({
+            "key": rev_id,
+            "status": "applied",
+            "title": REV_TITLES.get(rev_id, rev_id),
+            "canonical_key": rev_id.lower(),
+            "pr_url": None,
+            "reason": f"コードレビュー確認済み: {src_file} (commit: {commit}) — {desc}",
             "recorded_at": now,
         })
 
