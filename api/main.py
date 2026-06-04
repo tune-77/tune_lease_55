@@ -5239,6 +5239,51 @@ def _classify_question(message: str) -> str:
     return "lease_knowledge"
 
 
+_OBSIDIAN_AUTO_SAVE_JUDGE_PROMPT = """あなたはリース審査AIシステムのナレッジ管理担当です。
+以下の会話（ユーザーとめぶきちゃんのやり取り1往復）を評価し、Obsidianに保存すべきかを判断してください。
+
+【保存すべき内容】
+- 今後も再利用できる審査の判断・方針・結論
+- リース業界・法規制・財務分析に関する具体的な知識や数値
+- 重要なTODO・決定事項・注意点・業務のコツ
+- ユーザーの好みや業務スタイルに関する発見
+- Q_riskや量子スコアの解釈に関する重要な指摘
+
+【保存しない内容】
+- 単なる挨拶・雑談・一時的な確認・軽い質問
+- 曖昧な質問への一般的な返答（新情報がない）
+- 秘密情報・APIキー・顧客個人データ
+- 会話全文（要約・決定・TODOだけにする）
+
+次のJSONだけ返してください（前置き・説明・コードブロック不要）:
+{"should_save": true, "save_title": "タイトル20字以内", "save_body": "Markdown要約（箇条書き可）", "save_reason": "判断理由（短く）"}
+または
+{"should_save": false, "save_title": "", "save_body": "", "save_reason": "保存不要な理由"}"""
+
+
+def _auto_save_chat_to_obsidian(user_message: str, reply: str) -> None:
+    """会話をAIが評価して重要な知見だけObsidianに保存する（バックグラウンドスレッド用）。"""
+    try:
+        from api.chat_memory import call_gemini_chat as _gchat
+        from mobile_app.obsidian_bridge import append_chat_note
+        import json as _json, re as _re
+
+        exchange = f"ユーザー: {user_message[:600]}\n\nめぶき: {reply[:1000]}"
+        raw = _gchat(_OBSIDIAN_AUTO_SAVE_JUDGE_PROMPT, [], exchange).strip()
+
+        m = _re.search(r'\{.*\}', raw, _re.DOTALL)
+        if not m:
+            return
+        data = _json.loads(m.group())
+        if data.get("should_save") and data.get("save_body"):
+            append_chat_note(
+                str(data.get("save_title") or "めぶきチャットメモ"),
+                str(data.get("save_body") or ""),
+            )
+    except Exception as _e:
+        print(f"[Obsidian自動保存] エラー: {_e}")
+
+
 class ChatRequest(BaseModel):
     message: str
     user_id: str = "default"
@@ -5450,6 +5495,14 @@ def post_chat(req: ChatRequest):
                 append_improvement_note("AIチャット改善候補", body)
             except Exception as _obs_e:
                 print(f"[Obsidian改善保存] エラー: {_obs_e}")
+
+        # 重要な知見をObsidianへ自動保存（AIが取捨選択・バックグラウンド実行でレスポンス遅延なし）
+        import threading as _threading
+        _threading.Thread(
+            target=_auto_save_chat_to_obsidian,
+            args=(req.message, reply),
+            daemon=True,
+        ).start()
 
         return {"reply": reply, "total_messages": total}
     except Exception as e:
