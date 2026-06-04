@@ -7,8 +7,8 @@ import {
   Home, MessageSquare, ClipboardCheck, FileText, Bot, Zap, Factory,
   PenTool, Users, Wrench, PencilRuler, History, ScrollText,
   LineChart, Target, Settings, Calendar, Share2, Network,
-  Eye, BarChart3, TrendingUp, Globe, ChevronDown, ChevronRight, Building,
-  PanelLeftClose, PanelLeftOpen, X, Table2, Swords, MessageCircle,
+  Eye, BarChart3, TrendingUp, Globe, ChevronDown, ChevronRight, ChevronLeft, Building,
+  X, Menu, Table2, Swords, MessageCircle,
   BarChart2, BookOpen, Gift, HelpCircle, Megaphone, Calculator,
   Receipt, LifeBuoy, ClipboardList, CreditCard, Activity, GitMerge, Briefcase
 } from 'lucide-react';
@@ -136,13 +136,6 @@ export default function Sidebar() {
             </div>
           )}
           
-          {/* デスクトップ用トグルボタン */}
-          <button 
-            onClick={toggleSidebar}
-            className={`hidden lg:flex absolute -right-3 top-20 w-6 h-6 bg-slate-800 border border-slate-700 rounded-full items-center justify-center shadow-lg text-slate-400 hover:text-white transition-all z-10 hover:scale-110 active:scale-95`}
-          >
-            {isCollapsed ? <PanelLeftOpen className="w-3 h-3" /> : <PanelLeftClose className="w-3 h-3" />}
-          </button>
         </div>
 
         {/* モバイル用閉じるボタン */}
@@ -217,6 +210,24 @@ export default function Sidebar() {
            </div>
         </div>
       </aside>
+
+      {/* デスクトップ用 画面右端固定トグルボタン */}
+      <button
+        onClick={toggleSidebar}
+        aria-label={isCollapsed ? 'サイドバーを開く' : 'サイドバーを閉じる'}
+        className="hidden lg:flex fixed right-0 top-1/2 -translate-y-1/2 z-[70] w-8 h-14 bg-slate-800 border border-slate-700 border-r-0 rounded-l-xl items-center justify-center shadow-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-all active:scale-95"
+      >
+        {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+      </button>
+
+      {/* モバイル用 画面右端固定トグルボタン */}
+      <button
+        onClick={toggleMobile}
+        aria-label={isMobileOpen ? 'サイドバーを閉じる' : 'サイドバーを開く'}
+        className="lg:hidden fixed right-0 top-1/2 -translate-y-1/2 z-[70] w-12 h-14 bg-slate-800 border border-slate-700 border-r-0 rounded-l-xl flex items-center justify-center shadow-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-all active:scale-95"
+      >
+        {isMobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+      </button>
     </>
   );
 }
