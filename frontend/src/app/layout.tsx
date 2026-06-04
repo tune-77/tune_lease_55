@@ -3,7 +3,9 @@ import type { Metadata, Viewport } from 'next';
 import Sidebar from '@/components/layout/Sidebar';
 import FloatingMebuki from '@/components/layout/FloatingMebuki';
 import MobileHeader from '@/components/layout/MobileHeader';
+import ThemeSelector from '@/components/layout/ThemeSelector';
 import { SidebarProvider } from '@/context/SidebarContext';
+import { ThemeProvider } from '@/context/ThemeContext';
 import ContentWrapper from '@/components/layout/ContentWrapper';
 
 export const metadata: Metadata = {
@@ -31,27 +33,32 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ja">
-      <body className="bg-[#f8fafc] text-slate-800 antialiased">
-        <SidebarProvider>
-          <div className="flex min-h-screen relative overflow-x-hidden">
-            {/* 左側のサイドバー */}
-            <Sidebar />
-            
-            <div className="flex-1 flex flex-col min-w-0">
-              {/* スマホ画面のみ表示されるヘッダー */}
-              <MobileHeader />
+    <html lang="ja" suppressHydrationWarning>
+      <body className="text-slate-800 antialiased">
+        <ThemeProvider>
+          <SidebarProvider>
+            <div className="flex min-h-screen relative overflow-x-hidden">
+              {/* 左側のサイドバー */}
+              <Sidebar />
 
-              {/* メインコンテンツエリア (ContentWrapperでマージン制御) */}
-              <ContentWrapper>
-                {children}
-              </ContentWrapper>
+              <div className="flex-1 flex flex-col min-w-0">
+                {/* スマホ画面のみ表示されるヘッダー */}
+                <MobileHeader />
+
+                {/* メインコンテンツエリア (ContentWrapperでマージン制御) */}
+                <ContentWrapper>
+                  {children}
+                </ContentWrapper>
+              </div>
+
+              {/* 全画面共通フローティングBOT (めぶきちゃん) */}
+              <FloatingMebuki />
+
+              {/* 背景テーマ選択 */}
+              <ThemeSelector />
             </div>
-            
-            {/* 全画面共通フローティングBOT (めぶきちゃん) */}
-            <FloatingMebuki />
-          </div>
-        </SidebarProvider>
+          </SidebarProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
