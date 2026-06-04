@@ -5488,7 +5488,8 @@ def post_chat(req: ChatRequest):
         total = get_message_count(req.user_id)
 
         # 改善メモをObsidianに保存（類似候補がすでにある場合はスキップして重複防止）
-        if any(k in req.message for k in _IMPROVEMENT_KEYWORDS) and not similar_existing:
+        _is_improvement_msg = any(k in req.message for k in _IMPROVEMENT_KEYWORDS)
+        if _is_improvement_msg and not similar_existing:
             try:
                 from mobile_app.obsidian_bridge import append_improvement_note
                 body = f"**ユーザー要望**\n{req.message}\n\n**めぶき返答**\n{reply}"
@@ -5497,12 +5498,14 @@ def post_chat(req: ChatRequest):
                 print(f"[Obsidian改善保存] エラー: {_obs_e}")
 
         # 重要な知見をObsidianへ自動保存（AIが取捨選択・バックグラウンド実行でレスポンス遅延なし）
-        import threading as _threading
-        _threading.Thread(
-            target=_auto_save_chat_to_obsidian,
-            args=(req.message, reply),
-            daemon=True,
-        ).start()
+        # 改善キーワードを含むメッセージはImprovementLogで既に処理済みのためスキップ
+        if not _is_improvement_msg:
+            import threading as _threading
+            _threading.Thread(
+                target=_auto_save_chat_to_obsidian,
+                args=(req.message, reply),
+                daemon=True,
+            ).start()
 
         return {"reply": reply, "total_messages": total}
     except Exception as e:
