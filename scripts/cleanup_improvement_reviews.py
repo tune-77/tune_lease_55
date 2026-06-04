@@ -28,12 +28,20 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / ".agents" / "skills" / "auto-improvement-pipeline"))
+_PIPELINE_DIR = Path(__file__).resolve().parent.parent / ".agents" / "skills" / "auto-improvement-pipeline"
+sys.path.insert(0, str(_PIPELINE_DIR))
+sys.path.insert(0, str(_PIPELINE_DIR / "scripts"))
 
 try:
     import pipeline_ledger as ledger  # type: ignore
 except ImportError:
     ledger = None  # type: ignore
+
+try:
+    from improvement_identity import canonical_key as _canonical_key  # type: ignore
+except ImportError:
+    def _canonical_key(title: str, description: str = "") -> str:  # type: ignore[misc]
+        return f"rev_{title.strip().lower()}"
 
 LEDGER_PATH = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
 
@@ -85,6 +93,14 @@ KNOWN_PR_OVERRIDES: dict[str, tuple[int, str]] = {
     "REV-016": (211, "applied"),    # PR#211 で同時マージ扱い
 }
 
+# PR を経由せずコードレビューで実装確認済みの REV
+# (commit_hash, 実装ファイル, 説明)
+KNOWN_APPLIED_NO_PR: dict[str, tuple[str, str, str]] = {
+    "REV-013": ("aaf3b6a", "chat_intent.py", "is_today_scope_clarification_needed / is_ambiguous_question として実装済み"),
+    "REV-014": ("aaf3b6a", "chat_intent.py", "is_industry_clarification_needed として実装済み"),
+    "REV-017": ("aaf3b6a", "chat_intent.py", "is_repeated_query として実装済み"),
+}
+
 # REV ID → タイトル（reports から取得したマスタ）
 REV_TITLES: dict[str, str] = {
     "REV-001": "EDINET連携（Phase2）",
@@ -95,7 +111,10 @@ REV_TITLES: dict[str, str] = {
     "REV-009": "帝国データバンクAPI連携 / Counterfactual分析",
     "REV-010": "公平性・バイアス監査基盤",
     "REV-011": "条件付き承認の推奨アクション自動提示",
+    "REV-013": "曖昧な質問「今日の」への対応強化",
+    "REV-014": "業界情報に関する質問の具体化支援",
     "REV-016": "リース審査外の質問への対応",
+    "REV-017": "同一クエリ繰り返し対応",
     "REV-018": "詳細情報要求への対応強化",
     "REV-019": "物件名からの業種自動推測と更新",
     "REV-022": "知識宇宙マップの視覚化機能強化",
@@ -189,23 +208,44 @@ def _fetch_pr_rev_map() -> dict[str, dict]:
 
 
 def _get_ledger_latest() -> dict[str, dict]:
-    """台帳から key → {status, recorded_at} の最新エントリを返す。"""
+    """台帳から key → {status, migrated} の最新エントリを返す。
+
+    - migrated=True: 既に canonical_key 形式（新形式）で記録済み
+    - misc_* / 任意キーも含めて返す（KNOWN_CODE_APPLIED の照合に使用）
+    """
     if not LEDGER_PATH.exists():
         return {}
-    latest: dict[str, dict] = {}
+    status_by_key: dict[str, str] = {}
+    migrated: set[str] = set()
+
     for line in LEDGER_PATH.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line:
             continue
         try:
             e = json.loads(line)
-            k = e.get("key", "")
             s = e.get("status", "")
-            if k and s:
-                latest[k] = {"status": s, "recorded_at": e.get("recorded_at", "")}
+            if not s:
+                continue
+            # 新形式: rev_id フィールドに REV ID を持つ
+            rev_id = e.get("rev_id", "")
+            if rev_id.startswith("REV-"):
+                status_by_key[rev_id] = s
+                migrated.add(rev_id)
+                continue
+            # canonical_key / misc_* を含む全キー
+            k = e.get("key", "")
+            if k:
+                status_by_key[k] = s
+                if k.startswith("REV-"):
+                    migrated.add(k)
         except json.JSONDecodeError:
             continue
-    return latest
+
+    return {
+        k: {"status": s, "migrated": k in migrated}
+        for k, s in status_by_key.items()
+    }
 
 
 def _append_ledger(entry: dict) -> None:
@@ -230,33 +270,54 @@ def main() -> None:
 
     # PR から判定した applied / rejected
     for rev_id, info in sorted(pr_map.items()):
-        current_status = ledger_latest.get(rev_id, {}).get("status", "")
+        entry_info = ledger_latest.get(rev_id, {})
+        current_status = entry_info.get("status", "")
+        already_migrated = entry_info.get("migrated", False)
         new_status = info["status"]
         pr_num = info["pr_num"]
 
-        if current_status == new_status:
-            continue  # 変更なし
+        # ステータスが同じかつ新形式で記録済みなら何もしない
+        if current_status == new_status and already_migrated:
+            continue
 
         reason = (
             f"PR #{pr_num} マージ済み" if new_status == "applied"
             else f"PR #{pr_num} クローズ（未マージ）"
         )
+        if current_status == new_status and not already_migrated:
+            reason += "（旧形式→canonical_key 移行）"
         title = REV_TITLES.get(rev_id, rev_id)
+        ck = _canonical_key(title)
         updates.append({
-            "key": rev_id,
+            "key": ck,          # pipeline が is_processed() で照合するキー
+            "rev_id": rev_id,   # 人間可読の REV ID（参照用）
             "status": new_status,
             "title": title,
-            "canonical_key": rev_id.lower(),
+            "canonical_key": ck,
             "pr_url": f"https://github.com/kobayashiisaoryou/tune_lease_55/pull/{pr_num}",
             "reason": reason,
             "recorded_at": now,
         })
 
-    # コードコミット直接で実装済みが確認された非 PR 項目
+    # PR なし・コードレビュー確認済みの REV 項目 (KNOWN_APPLIED_NO_PR)
+    for rev_id, (commit, src_file, desc) in sorted(KNOWN_APPLIED_NO_PR.items()):
+        entry_info = ledger_latest.get(rev_id, {})
+        if entry_info.get("status") == "applied":
+            continue
+        updates.append({
+            "key": rev_id,
+            "status": "applied",
+            "title": REV_TITLES.get(rev_id, rev_id),
+            "canonical_key": rev_id.lower(),
+            "pr_url": None,
+            "reason": f"コードレビュー確認済み: {src_file} (commit: {commit}) — {desc}",
+            "recorded_at": now,
+        })
+
+    # PR #273 rawチャットメモ＋重複エントリのコード確認済み applied (KNOWN_CODE_APPLIED)
     for (key, title, reason) in KNOWN_CODE_APPLIED:
         entry_info = ledger_latest.get(key, {})
-        current_status = entry_info.get("status", "") if isinstance(entry_info, dict) else entry_info
-        if current_status == "applied":
+        if entry_info.get("status") == "applied":
             continue
         updates.append({
             "key": key,
@@ -275,14 +336,19 @@ def main() -> None:
         for rev_id in sorted(all_rev_ids):
             if rev_id in pr_map:
                 continue  # PR あり → スキップ
-            current = ledger_latest.get(rev_id, {}).get("status", "")
-            if current in ("applied", "deferred"):
+            entry_info = ledger_latest.get(rev_id, {})
+            current = entry_info.get("status", "")
+            already_migrated = entry_info.get("migrated", False)
+            if current in ("applied", "deferred") and already_migrated:
                 continue
+            deferred_title = REV_TITLES.get(rev_id, rev_id)
+            deferred_ck = _canonical_key(deferred_title)
             updates.append({
-                "key": rev_id,
+                "key": deferred_ck,
+                "rev_id": rev_id,
                 "status": "deferred",
-                "title": REV_TITLES.get(rev_id, rev_id),
-                "canonical_key": rev_id.lower(),
+                "title": deferred_title,
+                "canonical_key": deferred_ck,
                 "pr_url": "",
                 "reason": "PR なし・手動タグ群",
                 "recorded_at": now,
@@ -295,7 +361,8 @@ def main() -> None:
     print(f"\n{'[DRY-RUN] ' if not args.apply else ''}更新件数: {len(updates)}\n")
     by_status: dict[str, list[str]] = {}
     for u in updates:
-        by_status.setdefault(u["status"], []).append(f"  {u['key']}: {u['title'][:40]}")
+        label = u.get("rev_id") or u["key"]
+        by_status.setdefault(u["status"], []).append(f"  {label}: {u['title'][:40]}")
 
     for st, lines in sorted(by_status.items()):
         print(f"=== {st} ({len(lines)}) ===")

@@ -280,6 +280,12 @@ _AI_CHAT_LOG_ITEM_RE = re.compile(
     r"^- \*\*(.+?)\*\*\s*\[(?:high|medium|low)\]\s*\((accept|review|park|reject)\).*$",
     re.MULTILINE,
 )
+
+# 自由記述フォーマット（api/main.py の /api/chat?intent=improvement 経由保存分）
+_RAW_ISSUE_RE = re.compile(r"^[-・]\s*課題[:：]\s*(.+)$", re.MULTILINE)
+_RAW_PRIORITY_RE = re.compile(r"^[-・]\s*優先度[:：]\s*(high|medium|low)", re.MULTILINE | re.IGNORECASE)
+_RAW_ORIGIN_RE = re.compile(r"## 原文\s*\n(.*?)(?=\n## |\Z)", re.DOTALL)
+_UNORGANIZED_MARKER = "未整理"
 _ACTIVE_AI_CHAT_DECISIONS = {"accept", "review"}
 _LEDGER_PATH = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
 _DONE_MARKERS = ("✅", "実装済", "改善済", "対応済", "完了")
@@ -330,6 +336,75 @@ def _load_inactive_ledger_keys() -> set[str]:
     }
 
 
+def _extract_raw_chat_improvements(
+    content: str,
+    stem: str,
+    inactive_keys: set[str],
+) -> list[str]:
+    """
+    「チャット改善メモ」の自由記述フォーマット（api/main.py 経由保存分）から改善案を抽出する.
+
+    ## HH:MM チャット改善メモ セクションを解析し [改善] タグ付きテキストを返す。
+    構造化フォーマット（- **title** [priority] (decision)）が既にある入力行はスキップ。
+    """
+    output: list[str] = []
+
+    # ナビ行（---ナビ ... ---）を除いたメインコンテンツを取得
+    main = content
+    nav_end = content.find("---\n", content.find("---ナビ"))
+    if nav_end != -1:
+        main = content[nav_end + 4:]
+
+    # セクションを ## HH:MM で分割
+    sections = re.split(r'\n(?=## \d{2}:\d{2} )', "\n" + main)
+
+    for section in sections:
+        if not section.strip():
+            continue
+        first_line = section.strip().split("\n")[0]
+        if not re.match(r"^## \d{2}:\d{2} ", first_line):
+            continue
+
+        # 「## 原文」がないセクションは対象外（チャット改善メモ以外のエントリ）
+        if "## 原文" not in section:
+            continue
+
+        # 既に構造化フォーマットがあるセクションはスキップ（二重登録防止）
+        if _AI_CHAT_LOG_ITEM_RE.search(section):
+            continue
+
+        # 課題を抽出
+        issue_m = _RAW_ISSUE_RE.search(section)
+        issue = issue_m.group(1).strip() if issue_m else ""
+
+        # 優先度を抽出
+        priority_m = _RAW_PRIORITY_RE.search(section)
+        priority = priority_m.group(1).strip().lower() if priority_m else "medium"
+
+        # 課題が「未整理」または空の場合は原文をタイトルとして使う
+        if not issue or _UNORGANIZED_MARKER in issue:
+            origin_m = _RAW_ORIGIN_RE.search(section)
+            if origin_m:
+                issue = origin_m.group(1).strip().split("\n")[0].strip()[:80]
+            if not issue or len(issue) < 5:
+                continue
+
+        if _has_done_marker(issue):
+            continue
+        if _title_key(issue) in inactive_keys or canonical_key(issue) in inactive_keys:
+            continue
+        if len(issue) < 5:
+            continue
+
+        output.append(f"[改善] {issue}")
+        output.append(
+            f"理由：AI Chat 改善ログ ({stem}) のチャット改善メモ（raw, priority: {priority}）"
+        )
+        output.append("")
+
+    return output
+
+
 def extract_improvements_from_ai_chat_logs(vault: Path) -> str:
     """
     AI Chat/Improvement Log/ 配下の全 .md を直接スキャンして改善案を抽出する.
@@ -370,6 +445,10 @@ def extract_improvements_from_ai_chat_logs(vault: Path) -> str:
                     f"（decision: {decision}）"
                 )
                 file_parts.append("")
+
+        # 自由記述フォーマット（api/main.py 経由のチャット改善メモ）も抽出
+        raw_parts = _extract_raw_chat_improvements(content, md_file.stem, inactive_keys)
+        file_parts.extend(raw_parts)
 
         if file_parts:
             output_parts.append(f"\n## {md_file.stem}\n")
