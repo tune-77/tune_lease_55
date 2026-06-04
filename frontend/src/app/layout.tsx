@@ -3,7 +3,6 @@ import type { Metadata, Viewport } from 'next';
 import Sidebar from '@/components/layout/Sidebar';
 import FloatingMebuki from '@/components/layout/FloatingMebuki';
 import MobileHeader from '@/components/layout/MobileHeader';
-import ThemeSelector from '@/components/layout/ThemeSelector';
 import { SidebarProvider } from '@/context/SidebarContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import ContentWrapper from '@/components/layout/ContentWrapper';
@@ -54,8 +53,6 @@ export default function RootLayout({
               {/* 全画面共通フローティングBOT (めぶきちゃん) */}
               <FloatingMebuki />
 
-              {/* 背景テーマ選択 */}
-              <ThemeSelector />
             </div>
           </SidebarProvider>
         </ThemeProvider>
