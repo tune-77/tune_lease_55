@@ -36,15 +36,58 @@
   }
 }
 
+/* ── テーマ CSS 変数 ── */
+:root,
+[data-theme="light"] {
+  --bg-primary: #f8fafc;
+  --bg-grad-1: hsla(210, 100%, 97%, 1);
+  --bg-grad-2: hsla(200, 100%, 95%, 1);
+  --bg-grad-3: hsla(220, 100%, 97%, 1);
+  --text-body: #0f172a;
+}
+
+[data-theme="dark"] {
+  --bg-primary: #0f172a;
+  --bg-grad-1: hsla(222, 47%, 12%, 1);
+  --bg-grad-2: hsla(215, 50%, 8%, 1);
+  --bg-grad-3: hsla(230, 45%, 14%, 1);
+  --text-body: #f1f5f9;
+}
+
+[data-theme="warm"] {
+  --bg-primary: #fdf6e3;
+  --bg-grad-1: hsla(43, 96%, 95%, 1);
+  --bg-grad-2: hsla(35, 90%, 93%, 1);
+  --bg-grad-3: hsla(50, 95%, 96%, 1);
+  --text-body: #1c1410;
+}
+
+[data-theme="cool"] {
+  --bg-primary: #e8f4f8;
+  --bg-grad-1: hsla(195, 70%, 94%, 1);
+  --bg-grad-2: hsla(185, 65%, 92%, 1);
+  --bg-grad-3: hsla(205, 72%, 95%, 1);
+  --text-body: #0c2a35;
+}
+
+[data-theme="forest"] {
+  --bg-primary: #f0f7f0;
+  --bg-grad-1: hsla(130, 50%, 94%, 1);
+  --bg-grad-2: hsla(145, 45%, 92%, 1);
+  --bg-grad-3: hsla(120, 48%, 95%, 1);
+  --text-body: #0d1f0d;
+}
+
 body {
-  color: var(--color-foreground);
-  background: var(--color-background);
+  color: var(--text-body, #0f172a);
+  background: var(--bg-primary, #f8fafc);
   background-image:
-    radial-gradient(at 0% 0%, hsla(210, 100%, 97%, 1) 0, transparent 50%),
-    radial-gradient(at 50% 0%, hsla(200, 100%, 95%, 1) 0, transparent 50%),
-    radial-gradient(at 100% 0%, hsla(220, 100%, 97%, 1) 0, transparent 50%);
+    radial-gradient(at 0% 0%, var(--bg-grad-1, hsla(210, 100%, 97%, 1)) 0, transparent 50%),
+    radial-gradient(at 50% 0%, var(--bg-grad-2, hsla(200, 100%, 95%, 1)) 0, transparent 50%),
+    radial-gradient(at 100% 0%, var(--bg-grad-3, hsla(220, 100%, 97%, 1)) 0, transparent 50%);
   background-attachment: fixed;
   font-family: "Inter", "Hiragino Kaku Gothic ProN", sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 @media (max-width: 767px) {
