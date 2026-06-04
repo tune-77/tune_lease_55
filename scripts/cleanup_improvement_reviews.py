@@ -47,6 +47,43 @@ LEDGER_PATH = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
 
 # PR タイトルに REV-NNN が明記されていないが確認済みのもの
 # (PR 番号, status)
+# PR を経ずにコミット直接で実装済みが確認されたチャット改善メモ
+# (canonical_key, title, commit_or_reason)
+# → --apply 実行時に台帳へ applied として追記する
+KNOWN_CODE_APPLIED: list[tuple[str, str, str]] = [
+    # PR #273 で取り込まれた raw チャットメモ（2026-06-01/02）のうち実装済みもの
+    ("misc_3dd41b39e887", "結果登録で金利が入れられない",
+     "e7e71ea: parseRateInput 追加・入力を text 型に変更"),
+    ("misc_9ae8c238acbf", "最終結果登録時にエラーが発生する",
+     "e7e71ea: api/main.py + register/page.tsx を安定化"),
+    ("misc_7531d9ed95dd", "ビジュアルインサイト画面にAIコメントがない",
+     "REV-109実装済み: visual/page.tsx L347 AI状況説明コメントパネル"),
+    ("misc_3145ef0539d7", "ニュースの要約機能がない",
+     "PR #265: リースニュース要約→Obsidian保存→ホーム掲示"),
+    ("misc_a79737a7c5ae", "リースニュースの記事内容が薄い",
+     "PR #265/266: Gemini要約＋新フォーマット統一により内容拡充"),
+    # needs_review だが実装済み REV と同一タイトルの重複エントリ
+    ("repeat_query",                 "同一クエリ繰り返し対応",              "REV-017 applied: chat_intent.py"),
+    ("industry_question_clarification", "業界情報に関する質問の具体化支援", "REV-014 applied: chat_intent.py"),
+    ("misc_08d6373ad7e9",            "業種別成約率の傾向情報提供",          "REV-023 applied（重複キー）"),
+    ("misc_1c13f7a8dbd0",            "条件付き承認の推奨アクション自動提示","REV-011 applied（重複キー）"),
+    ("misc_1dd0127850bb",            "業界別成約率データの提供",             "REV-041 applied（重複キー）"),
+    ("misc_2182c9351393",            "ホーム画面への改善項目表示",           "REV-050 applied（重複キー）"),
+    ("misc_26cd5d97058f",            "2段階モデル設計・実装",                "REV-002 applied: 動的金利提案エンジン"),
+    ("misc_54f6bcf4b493",            "業種別成約率の傾向情報提供",           "REV-023 applied（重複）"),
+    ("misc_5bd5ed432830",            "曖昧な質問「今日の」への対応強化",    "REV-013 applied: chat_intent.py"),
+    ("misc_5cebef364a12",            "補助金関連情報の整理と参照性向上",    "REV-055 applied（重複キー）"),
+    ("misc_6abc8ad3aaa1",            "アンサンブルモデル（CatBoost追加）",  "REV-004 applied（重複キー）"),
+    ("misc_8bade82fc31d",            "数字入力の効率化とOCRの改善",          "REV-048 applied（重複キー）"),
+    ("misc_b0d8041cab2b",            "期間指定データ集計機能の追加",         "REV-040 applied（重複キー）"),
+    ("misc_bcc44e9f249e",            "条件付き承認の推奨アクション自動提示","REV-011 applied（重複）"),
+    ("misc_bccd69403e88",            "知識宇宙マップの視覚化機能強化",       "REV-022 applied（重複キー）"),
+    ("misc_c992757ce799",            "曖昧な質問「今日の」への対応強化",    "REV-013 applied（重複）"),
+    ("misc_cecb0a5a3d79",            "知識宇宙マップの視覚化機能強化",       "REV-022 applied（重複）"),
+    ("misc_d1199d9942d4",            "ホーム画面へのリースニュース表示",     "PR #265 実装済み"),
+    ("misc_70ff923bdcdf",            "ホーム画面リースニュースまとめのコンテンツ拡充", "PR #265/266 実装済み"),
+]
+
 KNOWN_PR_OVERRIDES: dict[str, tuple[int, str]] = {
     "REV-001": (193, "rejected"),   # PR#193 CLOSED: EDINET API連携
     "REV-005": (202, "applied"),    # PR#202 MERGED: OCRモバイル入力機能
@@ -171,15 +208,14 @@ def _fetch_pr_rev_map() -> dict[str, dict]:
 
 
 def _get_ledger_latest() -> dict[str, dict]:
-    """台帳から REV ID → {status, migrated} を返す。
+    """台帳から key → {status, migrated} の最新エントリを返す。
 
     - migrated=True: 既に canonical_key 形式（新形式）で記録済み
-    - migrated=False: key=REV-NNN の旧形式のみ（canonical_key への移行が必要）
+    - misc_* / 任意キーも含めて返す（KNOWN_CODE_APPLIED の照合に使用）
     """
     if not LEDGER_PATH.exists():
         return {}
-    # まず全エントリを走査し latest status と形式フラグを収集
-    status_by_rev: dict[str, str] = {}
+    status_by_key: dict[str, str] = {}
     migrated: set[str] = set()
 
     for line in LEDGER_PATH.read_text(encoding="utf-8").splitlines():
@@ -194,19 +230,21 @@ def _get_ledger_latest() -> dict[str, dict]:
             # 新形式: rev_id フィールドに REV ID を持つ
             rev_id = e.get("rev_id", "")
             if rev_id.startswith("REV-"):
-                status_by_rev[rev_id] = s
+                status_by_key[rev_id] = s
                 migrated.add(rev_id)
                 continue
-            # レガシー形式: key フィールドが "REV-NNN"
+            # canonical_key / misc_* を含む全キー
             k = e.get("key", "")
-            if k.startswith("REV-"):
-                status_by_rev[k] = s
+            if k:
+                status_by_key[k] = s
+                if k.startswith("REV-"):
+                    migrated.add(k)
         except json.JSONDecodeError:
             continue
 
     return {
-        rev_id: {"status": s, "migrated": rev_id in migrated}
-        for rev_id, s in status_by_rev.items()
+        k: {"status": s, "migrated": k in migrated}
+        for k, s in status_by_key.items()
     }
 
 
@@ -261,10 +299,10 @@ def main() -> None:
             "recorded_at": now,
         })
 
-    # PR なし・コードレビュー確認済みの applied
+    # PR なし・コードレビュー確認済みの REV 項目 (KNOWN_APPLIED_NO_PR)
     for rev_id, (commit, src_file, desc) in sorted(KNOWN_APPLIED_NO_PR.items()):
-        current = ledger_latest.get(rev_id, "")
-        if current == "applied":
+        entry_info = ledger_latest.get(rev_id, {})
+        if entry_info.get("status") == "applied":
             continue
         updates.append({
             "key": rev_id,
@@ -273,6 +311,22 @@ def main() -> None:
             "canonical_key": rev_id.lower(),
             "pr_url": None,
             "reason": f"コードレビュー確認済み: {src_file} (commit: {commit}) — {desc}",
+            "recorded_at": now,
+        })
+
+    # PR #273 rawチャットメモ＋重複エントリのコード確認済み applied (KNOWN_CODE_APPLIED)
+    for (key, title, reason) in KNOWN_CODE_APPLIED:
+        entry_info = ledger_latest.get(key, {})
+        if entry_info.get("status") == "applied":
+            continue
+        updates.append({
+            "key": key,
+            "rev_id": "",
+            "status": "applied",
+            "title": title,
+            "canonical_key": key,
+            "pr_url": "",
+            "reason": reason,
             "recorded_at": now,
         })
 
