@@ -51,6 +51,16 @@ fi
 IMPROVEMENT_COUNT=$(grep -c '^\[改善\]\|^\[TODO\]' "${EXPORT_FILE}" 2>/dev/null || echo 0)
 echo "抽出された改善案タグ数: ${IMPROVEMENT_COUNT}件"
 
+# --- Step 0.5: lease-wiki-vault @AI_Insight_Evolved から差分抽出（追記） ---
+echo ""
+echo "[Step 0.5] lease-wiki-vault @AI_Insight_Evolved から改善案を差分抽出中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/extract_wiki_vault_insights.py" >> "${EXPORT_FILE}" || true
+
+# --- Step 0.6: DB スコアリング指標の自動分析（追記） ---
+echo ""
+echo "[Step 0.6] DB スコアリング指標の自動分析中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_scoring_drift.py" >> "${EXPORT_FILE}" || true
+
 # --- Step 1-3: pipeline_runner.py 経由で一括実行 ---
 echo ""
 echo "[Step 1-3] auto-improvement-pipeline 実行中..."
@@ -160,6 +170,10 @@ if [ -f "${LATEST_FILE}" ]; then
         echo "警告: 前段で失敗したため Gist 更新をスキップします"
     fi
 fi
+
+echo ""
+echo "[Step 9] 滞留改善案の自動 parking（21日以上 needs_review）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/rotate_weekly_focus.py" || true
 
 echo ""
 echo "========================================"
