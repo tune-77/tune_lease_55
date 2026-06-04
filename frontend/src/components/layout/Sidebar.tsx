@@ -211,11 +211,11 @@ export default function Sidebar() {
         </div>
       </aside>
 
-      {/* デスクトップ用 画面右端固定トグルボタン */}
+      {/* デスクトップ用 画面左端固定トグルボタン */}
       <button
         onClick={toggleSidebar}
         aria-label={isCollapsed ? 'サイドバーを開く' : 'サイドバーを閉じる'}
-        className="hidden lg:flex fixed right-0 top-1/2 -translate-y-1/2 z-[70] w-8 h-14 bg-slate-800 border border-slate-700 border-r-0 rounded-l-xl items-center justify-center shadow-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-all active:scale-95"
+        className="hidden lg:flex fixed left-0 top-1/2 -translate-y-1/2 z-[70] w-8 h-14 bg-slate-800 border border-slate-700 border-l-0 rounded-r-xl items-center justify-center shadow-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-all active:scale-95"
       >
         {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
       </button>
