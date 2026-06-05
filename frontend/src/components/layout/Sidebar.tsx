@@ -219,16 +219,16 @@ export default function Sidebar() {
       <button
         onClick={toggleSidebar}
         aria-label={isCollapsed ? 'サイドバーを開く' : 'サイドバーを閉じる'}
-        className="hidden lg:flex fixed left-0 top-1/2 -translate-y-1/2 z-[70] w-8 h-14 bg-slate-800 border border-slate-700 border-l-0 rounded-r-xl items-center justify-center shadow-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-all active:scale-95"
+        className="hidden lg:flex fixed left-0 top-[58vh] -translate-y-1/2 z-[70] w-10 h-20 bg-slate-800 border border-slate-700 border-l-0 rounded-r-2xl items-center justify-center shadow-lg text-slate-400 hover:text-white hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 transition-all active:scale-95"
       >
-        {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+        {isCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
       </button>
 
       {/* モバイル用 画面右端固定トグルボタン */}
       <button
         onClick={toggleMobile}
         aria-label={isMobileOpen ? 'サイドバーを閉じる' : 'サイドバーを開く'}
-        className="lg:hidden fixed right-0 top-1/2 -translate-y-1/2 z-[70] w-12 h-14 bg-slate-800 border border-slate-700 border-r-0 rounded-l-xl flex items-center justify-center shadow-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-all active:scale-95"
+        className="lg:hidden fixed right-0 top-[58vh] -translate-y-1/2 z-[70] w-14 h-20 bg-slate-800 border border-slate-700 border-r-0 rounded-l-2xl flex items-center justify-center shadow-lg text-slate-400 hover:text-white hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 transition-all active:scale-95"
       >
         {isMobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
       </button>
