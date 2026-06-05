@@ -134,13 +134,47 @@ export default function ChatPage() {
   };
 
   useEffect(() => {
-    loadHistory();
+    loadHistory().then(() => {
+      const raw = window.localStorage.getItem("lease-gunshi-context");
+      if (raw) {
+        window.localStorage.removeItem("lease-gunshi-context");
+        try {
+          const ctx = JSON.parse(raw) as {
+            score?: number;
+            hantei?: string;
+            score_borrower?: number;
+            company_name?: string;
+            asset_name?: string;
+            industry_sub?: string;
+            quantum_risk?: number;
+            case_id?: string;
+          };
+          const lines: string[] = [
+            `【審査結果の相談】${ctx.company_name ? ` ${ctx.company_name}` : ""}`,
+            `・物件: ${ctx.asset_name ?? "—"}`,
+            `・業種: ${ctx.industry_sub ?? "—"}`,
+            `・総合スコア: ${ctx.score != null ? ctx.score.toFixed(1) + "点" : "—"}`,
+            `・判定: ${ctx.hantei ?? "—"}`,
+            `・借手スコア: ${ctx.score_borrower != null ? ctx.score_borrower.toFixed(1) + "点" : "—"}`,
+          ];
+          if (ctx.quantum_risk != null) {
+            lines.push(`・量子リスク: ${ctx.quantum_risk.toFixed(1)}`);
+          }
+          lines.push("", "この案件について、審査上のポイントや懸念点を教えてください。");
+          const autoMessage = lines.join("\n");
+          window.setTimeout(() => sendMessageWithText(autoMessage), 400);
+        } catch {
+          // JSON parse失敗は無視
+        }
+      }
+    });
     const timer = setTimeout(() => setShowSubtitle(false), 5000);
     setVoiceSupported(Boolean(getSpeechRecognition()));
     apiClient.get("/api/cases?limit=8&sort=desc")
       .then(res => setRecentCases(res.data || []))
       .catch(() => {});
     return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -158,6 +192,48 @@ export default function ChatPage() {
       // 履歴取得失敗は無視して空スタートにする
     } finally {
       setHistoryLoading(false);
+    }
+  };
+
+  const sendMessageWithText = async (text: string) => {
+    if (!text.trim() || loading) return;
+    const optimisticUser: ChatMessage = {
+      id: Date.now(),
+      user_id: userId,
+      role: "user",
+      content: text,
+      created_at: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, optimisticUser]);
+    setLoading(true);
+    try {
+      const res = await apiClient.post("/api/chat", {
+        message: text,
+        user_id: userId,
+      });
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now() + 1,
+          user_id: userId,
+          role: "assistant",
+          content: res.data.reply,
+          created_at: new Date().toISOString(),
+        },
+      ]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now() + 1,
+          user_id: userId,
+          role: "assistant",
+          content: "エラーが発生しました。もう一度お試しください。",
+          created_at: new Date().toISOString(),
+        },
+      ]);
+    } finally {
+      setLoading(false);
     }
   };
 

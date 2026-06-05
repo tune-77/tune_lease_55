@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Activity, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Activity, ChevronDown, MessageSquare } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import { toThousandYenPayload } from '../../lib/scoringUnits';
 
@@ -9,6 +10,18 @@ import { toThousandYenPayload } from '../../lib/scoringUnits';
 type Message = {
   role: 'bot' | 'user' | 'humor';
   text: React.ReactNode;
+};
+
+type ScoreResult = {
+  score: number;
+  score_base?: number;
+  hantei: string;
+  score_borrower?: number;
+  company_name?: string;
+  asset_name?: string;
+  industry_sub?: string;
+  quantum_risk?: number;
+  case_id?: string;
 };
 
 type IndustryMasterEntry = {
@@ -33,6 +46,7 @@ const STEPS = [
 
 // --- メインコンポーネント ---
 export default function LeaseKunWizard() {
+  const router = useRouter();
   const [step, setStep] = useState(0);
   const [history, setHistory] = useState<Message[]>([
     { role: 'bot', text: 'はじめまして！リースくんです 🎩 まず企業名と業種から教えてね！' }
@@ -260,7 +274,14 @@ export default function LeaseKunWizard() {
             総合スコア: {(res.data.score_base ?? res.data.score)?.toFixed(1)}点<br/>
             判定: {res.data.hantei}<br/>
             借手スコア: {res.data.score_borrower?.toFixed(1)}点<br/><br/>
-            詳細は「📋 審査・分析」タブから確認してね！
+            詳細は「📋 審査・分析」タブから確認してね！<br/><br/>
+            <button
+              onClick={() => handleGunshiConsult(res.data)}
+              className="mt-2 flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-2 rounded-lg shadow transition-colors w-full justify-center"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              軍師AIに相談する
+            </button>
           </span>
         )
       }]);
@@ -286,6 +307,21 @@ export default function LeaseKunWizard() {
       nw.pop(); // user message
       return nw;
     });
+  };
+
+  const handleGunshiConsult = (result: ScoreResult) => {
+    const context = {
+      score: result.score_base ?? result.score,
+      hantei: result.hantei,
+      score_borrower: result.score_borrower,
+      company_name: result.company_name || formData.company_name || '（未入力）',
+      asset_name: result.asset_name || formData.asset_name,
+      industry_sub: result.industry_sub || formData.industry_sub,
+      quantum_risk: result.quantum_risk,
+      case_id: result.case_id,
+    };
+    window.localStorage.setItem('lease-gunshi-context', JSON.stringify(context));
+    router.push('/chat');
   };
 
   // 定性評価のオプション群
