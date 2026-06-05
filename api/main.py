@@ -987,6 +987,7 @@ def calculate_score_full(req: ScoringRequest):
                 "inputs": inputs,
                 "result": {
                     "score": result.get("score", 0),
+                    "score_base": result.get("score_base", result.get("score", 0)),
                     "hantei": result.get("hantei", ""),
                     "user_eq": result.get("user_eq", 0),
                     "user_op": result.get("user_op", 0),
@@ -1008,7 +1009,7 @@ def calculate_score_full(req: ScoringRequest):
             bench_op_margin=result.get("bench_op", 0.0),
             bench_equity_ratio=result.get("bench_eq", 0.0),
             score_borrower=result.get("score_borrower", 0.0),
-            score_base=result.get("hantei_score", result.get("score", 0.0)),
+            score_base=result.get("score_base", result.get("score", 0.0)),
             industry_sub=result.get("industry_sub", req.industry_sub),
             industry_major=result.get("industry_major", req.industry_major),
             ai_completed_factors=result.get("ai_completed_factors", []),
