@@ -18,6 +18,14 @@
     -webkit-text-size-adjust: 100%;
   }
 
+  h1,
+  h2,
+  h3 {
+    word-break: keep-all;
+    overflow-wrap: normal;
+    line-break: strict;
+  }
+
   *,
   ::after,
   ::before,

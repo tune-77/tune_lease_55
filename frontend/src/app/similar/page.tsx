@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import { Network, Activity, Users, FileCheck, FileX, Link as LinkIcon, SlidersHorizontal, RotateCcw } from 'lucide-react';
@@ -53,6 +53,7 @@ function initGraph() {
     const fitOnLoad = CONFIG?.fitOnLoad ?? true;
     const zoomMax = CONFIG?.zoomMax ?? 4;
     const nodeScale = CONFIG?.nodeScale ?? 1;
+    const initialSpread = CONFIG?.initialSpread ?? 1;
 
     // Clear previous
     d3.select("#root").selectAll("svg").remove();
@@ -63,6 +64,14 @@ function initGraph() {
     .call(zoom);
 
     const g = svg.append("g");
+
+    GRAPH_DATA.nodes.forEach((node, index) => {
+      if (typeof node.x === "number" && typeof node.y === "number") return;
+      const angle = (index / Math.max(1, GRAPH_DATA.nodes.length)) * Math.PI * 2;
+      const ring = Math.sqrt(index + 1) * 15 * initialSpread;
+      node.x = W / 2 + Math.cos(angle) * ring;
+      node.y = H / 2 + Math.sin(angle) * ring;
+    });
 
     // シミュレーション
     const sim = d3.forceSimulation(GRAPH_DATA.nodes)
@@ -185,7 +194,18 @@ type SimilarGraphSettings = {
   collisionPadding: number;
   nodeScale: number;
   zoomMax: number;
+  initialSpread: number;
   fitOnLoad: boolean;
+};
+
+type SimilarGraphData = {
+  nodes?: Array<{ id?: string; radius?: number; x?: number; y?: number }>;
+  edges?: Array<{ source: number | string; target: number | string; similarity?: number }>;
+  summary?: {
+    total?: number;
+    won?: number;
+    lost?: number;
+  };
 };
 
 const SIMILAR_SETTINGS_KEY = "similar-network-d3-settings";
@@ -195,34 +215,97 @@ const DEFAULT_SIMILAR_SETTINGS: SimilarGraphSettings = {
   collisionPadding: 10,
   nodeScale: 1,
   zoomMax: 3.5,
+  initialSpread: 1,
   fitOnLoad: true,
 };
 
+const getRecommendedSettings = (data?: SimilarGraphData | null): SimilarGraphSettings => {
+  const total = data?.summary?.total ?? data?.nodes?.length ?? 0;
+  const edgeCount = data?.edges?.length ?? 0;
+  const density = total > 0 ? edgeCount / total : 0;
+
+  if (total <= 25) {
+    return {
+      chargeStrength: -115,
+      linkBaseDistance: 88,
+      collisionPadding: 8,
+      nodeScale: 1.12,
+      zoomMax: 4.5,
+      initialSpread: 0.8,
+      fitOnLoad: true,
+    };
+  }
+
+  if (total <= 90 && density <= 3.2) {
+    return DEFAULT_SIMILAR_SETTINGS;
+  }
+
+  if (total <= 180) {
+    return {
+      chargeStrength: density > 4 ? -260 : -220,
+      linkBaseDistance: density > 4 ? 128 : 116,
+      collisionPadding: 13,
+      nodeScale: 0.94,
+      zoomMax: 3.2,
+      initialSpread: 1.16,
+      fitOnLoad: true,
+    };
+  }
+
+  return {
+    chargeStrength: density > 4 ? -360 : -300,
+    linkBaseDistance: density > 4 ? 150 : 136,
+    collisionPadding: 16,
+    nodeScale: 0.82,
+    zoomMax: 2.8,
+    initialSpread: 1.36,
+    fitOnLoad: true,
+  };
+};
+
 export default function SimilarPage() {
-  const [graphData, setGraphData] = useState<any>(null);
-  const [summary, setSummary] = useState<any>(null);
+  const [graphData, setGraphData] = useState<SimilarGraphData | null>(null);
+  const [summary, setSummary] = useState<SimilarGraphData["summary"] | null>(null);
   const [loading, setLoading] = useState(true);
   const [chargeStrength, setChargeStrength] = useState(DEFAULT_SIMILAR_SETTINGS.chargeStrength);
   const [linkBaseDistance, setLinkBaseDistance] = useState(DEFAULT_SIMILAR_SETTINGS.linkBaseDistance);
   const [collisionPadding, setCollisionPadding] = useState(DEFAULT_SIMILAR_SETTINGS.collisionPadding);
   const [nodeScale, setNodeScale] = useState(DEFAULT_SIMILAR_SETTINGS.nodeScale);
   const [zoomMax, setZoomMax] = useState(DEFAULT_SIMILAR_SETTINGS.zoomMax);
+  const [initialSpread, setInitialSpread] = useState(DEFAULT_SIMILAR_SETTINGS.initialSpread);
   const [fitOnLoad, setFitOnLoad] = useState(DEFAULT_SIMILAR_SETTINGS.fitOnLoad);
   const [viewKey, setViewKey] = useState(0);
   const [hydrated, setHydrated] = useState(false);
+  const [usingSavedSettings, setUsingSavedSettings] = useState(false);
+
+  const applySettings = useCallback((settings: SimilarGraphSettings, saved = true) => {
+    setChargeStrength(settings.chargeStrength);
+    setLinkBaseDistance(settings.linkBaseDistance);
+    setCollisionPadding(settings.collisionPadding);
+    setNodeScale(settings.nodeScale);
+    setZoomMax(settings.zoomMax);
+    setInitialSpread(settings.initialSpread);
+    setFitOnLoad(settings.fitOnLoad);
+    setUsingSavedSettings(saved);
+    setViewKey((v) => v + 1);
+  }, []);
 
   useEffect(() => {
     triggerMebuki('guide', '案件類似ネットワーク画面ですね！\n過去の案件から似たパターンのものを可視化します！');
 
+    let loadedFromStorage = false;
     try {
       const raw = window.localStorage.getItem(SIMILAR_SETTINGS_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<SimilarGraphSettings>;
+        loadedFromStorage = true;
+        setUsingSavedSettings(true);
         setChargeStrength(typeof parsed.chargeStrength === "number" ? parsed.chargeStrength : DEFAULT_SIMILAR_SETTINGS.chargeStrength);
         setLinkBaseDistance(typeof parsed.linkBaseDistance === "number" ? parsed.linkBaseDistance : DEFAULT_SIMILAR_SETTINGS.linkBaseDistance);
         setCollisionPadding(typeof parsed.collisionPadding === "number" ? parsed.collisionPadding : DEFAULT_SIMILAR_SETTINGS.collisionPadding);
         setNodeScale(typeof parsed.nodeScale === "number" ? parsed.nodeScale : DEFAULT_SIMILAR_SETTINGS.nodeScale);
         setZoomMax(typeof parsed.zoomMax === "number" ? parsed.zoomMax : DEFAULT_SIMILAR_SETTINGS.zoomMax);
+        setInitialSpread(typeof parsed.initialSpread === "number" ? parsed.initialSpread : DEFAULT_SIMILAR_SETTINGS.initialSpread);
         setFitOnLoad(typeof parsed.fitOnLoad === "boolean" ? parsed.fitOnLoad : DEFAULT_SIMILAR_SETTINGS.fitOnLoad);
       }
     } catch {
@@ -233,9 +316,12 @@ export default function SimilarPage() {
     
     const fetchData = async () => {
       try {
-        const res = await axios.get(`/api/similar/data`);
+        const res = await axios.get<SimilarGraphData>(`/api/similar/data`);
         setGraphData(res.data);
-        setSummary(res.data.summary);
+        setSummary(res.data.summary || null);
+        if (!loadedFromStorage) {
+          applySettings(getRecommendedSettings(res.data), false);
+        }
       } catch (err) {
         console.error("Failed to load similar network data", err);
       } finally {
@@ -243,10 +329,10 @@ export default function SimilarPage() {
       }
     };
     fetchData();
-  }, []);
+  }, [applySettings]);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !usingSavedSettings) return;
     try {
       const payload: SimilarGraphSettings = {
         chargeStrength,
@@ -254,23 +340,39 @@ export default function SimilarPage() {
         collisionPadding,
         nodeScale,
         zoomMax,
+        initialSpread,
         fitOnLoad,
       };
       window.localStorage.setItem(SIMILAR_SETTINGS_KEY, JSON.stringify(payload));
     } catch {
       // ignore
     }
-  }, [hydrated, chargeStrength, linkBaseDistance, collisionPadding, nodeScale, zoomMax, fitOnLoad]);
+  }, [hydrated, usingSavedSettings, chargeStrength, linkBaseDistance, collisionPadding, nodeScale, zoomMax, initialSpread, fitOnLoad]);
+
+  const updateSetting = <K extends keyof SimilarGraphSettings>(key: K, value: SimilarGraphSettings[K]) => {
+    setUsingSavedSettings(true);
+    if (key === "chargeStrength") setChargeStrength(value as number);
+    if (key === "linkBaseDistance") setLinkBaseDistance(value as number);
+    if (key === "collisionPadding") setCollisionPadding(value as number);
+    if (key === "nodeScale") setNodeScale(value as number);
+    if (key === "zoomMax") setZoomMax(value as number);
+    if (key === "initialSpread") setInitialSpread(value as number);
+    if (key === "fitOnLoad") setFitOnLoad(value as boolean);
+  };
 
   const resetSettings = () => {
-    setChargeStrength(DEFAULT_SIMILAR_SETTINGS.chargeStrength);
-    setLinkBaseDistance(DEFAULT_SIMILAR_SETTINGS.linkBaseDistance);
-    setCollisionPadding(DEFAULT_SIMILAR_SETTINGS.collisionPadding);
-    setNodeScale(DEFAULT_SIMILAR_SETTINGS.nodeScale);
-    setZoomMax(DEFAULT_SIMILAR_SETTINGS.zoomMax);
-    setFitOnLoad(DEFAULT_SIMILAR_SETTINGS.fitOnLoad);
-    setViewKey((v) => v + 1);
+    applySettings(getRecommendedSettings(graphData), false);
+    try {
+      window.localStorage.removeItem(SIMILAR_SETTINGS_KEY);
+    } catch {
+      // ignore
+    }
   };
+
+  const settingsLabel = usingSavedSettings ? "カスタム保存中" : "データ量に応じた推奨値";
+  const settingsLabelClass = usingSavedSettings
+    ? "bg-sky-50 text-sky-700 border-sky-200"
+    : "bg-emerald-50 text-emerald-700 border-emerald-200";
 
   if (loading) {
     return (
@@ -286,17 +388,25 @@ export default function SimilarPage() {
   return (
     <div className="p-8 min-h-[calc(100vh-2rem)] animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="mb-8">
-        <h1 className="text-3xl font-black text-slate-800 flex items-center gap-3">
-          <Network className="w-8 h-8 text-teal-600" />
-          案件類似ネットワーク (D3.js)
+        <h1 className="flex flex-wrap items-center gap-3 text-2xl sm:text-3xl font-black leading-tight text-slate-800">
+          <Network className="w-8 h-8 shrink-0 text-teal-600" />
+          <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span className="whitespace-nowrap">案件類似ネットワーク</span>
+            <span className="whitespace-nowrap text-xl sm:text-2xl text-slate-500">(D3.js)</span>
+          </span>
         </h1>
         <p className="text-slate-500 font-bold mt-2">過去案件をノードとし、類似度（業種・スコア・競合）に応じてエッジで繋ぎます。</p>
       </div>
 
       <div className="mb-6 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-        <div className="flex items-center gap-2 mb-4 text-slate-700 font-bold">
-          <SlidersHorizontal className="w-4 h-4 text-teal-600" />
-          調整画面
+        <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 text-slate-700 font-bold">
+            <SlidersHorizontal className="w-4 h-4 text-teal-600" />
+            調整画面
+          </div>
+          <div className={`inline-flex w-fit items-center rounded-full border px-3 py-1 text-xs font-bold ${settingsLabelClass}`}>
+            {settingsLabel}
+          </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           <label className="space-y-2">
@@ -304,38 +414,45 @@ export default function SimilarPage() {
               <span>反発の強さ</span>
               <span className="font-bold text-slate-800">{chargeStrength}</span>
             </div>
-            <input type="range" min={-600} max={-40} step={10} value={chargeStrength} onChange={(e) => setChargeStrength(Number(e.target.value))} className="w-full" />
+            <input type="range" min={-600} max={-40} step={10} value={chargeStrength} onChange={(e) => updateSetting("chargeStrength", Number(e.target.value))} className="w-full" />
           </label>
           <label className="space-y-2">
             <div className="flex justify-between text-sm text-slate-600">
               <span>リンク距離</span>
               <span className="font-bold text-slate-800">{linkBaseDistance}</span>
             </div>
-            <input type="range" min={50} max={220} step={5} value={linkBaseDistance} onChange={(e) => setLinkBaseDistance(Number(e.target.value))} className="w-full" />
+            <input type="range" min={50} max={220} step={5} value={linkBaseDistance} onChange={(e) => updateSetting("linkBaseDistance", Number(e.target.value))} className="w-full" />
           </label>
           <label className="space-y-2">
             <div className="flex justify-between text-sm text-slate-600">
               <span>衝突余白</span>
               <span className="font-bold text-slate-800">{collisionPadding}</span>
             </div>
-            <input type="range" min={0} max={40} step={1} value={collisionPadding} onChange={(e) => setCollisionPadding(Number(e.target.value))} className="w-full" />
+            <input type="range" min={0} max={40} step={1} value={collisionPadding} onChange={(e) => updateSetting("collisionPadding", Number(e.target.value))} className="w-full" />
           </label>
           <label className="space-y-2">
             <div className="flex justify-between text-sm text-slate-600">
               <span>ノードサイズ</span>
               <span className="font-bold text-slate-800">{nodeScale.toFixed(2)}x</span>
             </div>
-            <input type="range" min={0.7} max={1.6} step={0.05} value={nodeScale} onChange={(e) => setNodeScale(Number(e.target.value))} className="w-full" />
+            <input type="range" min={0.7} max={1.6} step={0.05} value={nodeScale} onChange={(e) => updateSetting("nodeScale", Number(e.target.value))} className="w-full" />
           </label>
           <label className="space-y-2">
             <div className="flex justify-between text-sm text-slate-600">
               <span>ズーム上限</span>
               <span className="font-bold text-slate-800">{zoomMax.toFixed(1)}x</span>
             </div>
-            <input type="range" min={1.5} max={8} step={0.5} value={zoomMax} onChange={(e) => setZoomMax(Number(e.target.value))} className="w-full" />
+            <input type="range" min={1.5} max={8} step={0.5} value={zoomMax} onChange={(e) => updateSetting("zoomMax", Number(e.target.value))} className="w-full" />
+          </label>
+          <label className="space-y-2">
+            <div className="flex justify-between text-sm text-slate-600">
+              <span>初期広がり</span>
+              <span className="font-bold text-slate-800">{initialSpread.toFixed(2)}x</span>
+            </div>
+            <input type="range" min={0.5} max={2.2} step={0.05} value={initialSpread} onChange={(e) => updateSetting("initialSpread", Number(e.target.value))} className="w-full" />
           </label>
           <label className="flex items-center gap-3 pt-7 text-sm font-bold text-slate-700">
-            <input type="checkbox" checked={fitOnLoad} onChange={(e) => setFitOnLoad(e.target.checked)} className="w-4 h-4 rounded border-slate-300" />
+            <input type="checkbox" checked={fitOnLoad} onChange={(e) => updateSetting("fitOnLoad", e.target.checked)} className="w-4 h-4 rounded border-slate-300" />
             初期表示で全体をフィット
           </label>
         </div>
@@ -353,13 +470,20 @@ export default function SimilarPage() {
             onClick={resetSettings}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-bold shadow-sm hover:bg-slate-50 transition-colors"
           >
-            初期値に戻す
+            推奨値に戻す
+          </button>
+          <button
+            type="button"
+            onClick={() => applySettings(DEFAULT_SIMILAR_SETTINGS, true)}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-bold shadow-sm hover:bg-slate-50 transition-colors"
+          >
+            標準プリセット
           </button>
           <div className="text-xs text-slate-500">広がりすぎるときは反発を弱め、リンク距離を短くすると詰まります。</div>
         </div>
       </div>
 
-      {summary && summary.total < 2 ? (
+      {summary && (summary.total ?? 0) < 2 ? (
         <div className="bg-amber-50 border border-amber-200 p-6 rounded-2xl flex items-start gap-4">
           <Activity className="w-8 h-8 text-amber-500 shrink-0" />
           <div>
@@ -401,6 +525,7 @@ export default function SimilarPage() {
                   collisionPadding,
                   nodeScale,
                   zoomMax,
+                  initialSpread,
                   fitOnLoad,
                 }))}
               className="w-full h-full border-none"

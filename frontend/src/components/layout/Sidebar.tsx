@@ -184,7 +184,7 @@ export default function Sidebar() {
                       title={isCollapsed ? item.name : undefined}
                     >
                       <item.icon className={`w-5 h-5 flex-shrink-0 transition-transform group-hover:scale-110 ${isActive ? 'text-blue-400' : item.color}`} />
-                      {!isCollapsed && <span className="tracking-tight">{item.name}</span>}
+                      {!isCollapsed && <span className="min-w-0 truncate tracking-tight">{item.name}</span>}
                       {isActive && !isCollapsed && (
                         <div className="absolute right-3 w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]" />
                       )}

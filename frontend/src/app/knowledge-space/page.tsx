@@ -50,6 +50,12 @@ type KnowledgeGraph = {
 type SceneMode = "all" | "recent" | "search" | "evidence";
 type VisualMode = "practical" | "galaxy";
 
+type EvidenceRoute = {
+  target: GraphNode;
+  path: GraphNode[];
+  edgeTypes: string[];
+};
+
 const hashValue = (text: string) => {
   let hash = 2166136261;
   for (let i = 0; i < text.length; i += 1) {
@@ -219,6 +225,76 @@ const createStarTexture = () => {
   return texture;
 };
 
+const buildEvidenceRoutes = (graph: KnowledgeGraph | null, selected: GraphNode | null): EvidenceRoute[] => {
+  if (!graph || !selected) return [];
+  const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const evidenceTargets = graph.nodes.filter((node) => (
+    node.type === "note" && node.source_highlight && node.id !== selected.id
+  ));
+
+  if (selected.source_highlight) {
+    return [{ target: selected, path: [selected], edgeTypes: [] }];
+  }
+  if (!evidenceTargets.length) return [];
+
+  const targetIds = new Set(evidenceTargets.map((node) => node.id));
+  const buildAdjacency = (includeClusterEdges: boolean) => {
+    const adjacency = new Map<string, Array<{ next: string; type: string }>>();
+    graph.edges.forEach((edge) => {
+      if (!includeClusterEdges && edge.type === "cluster") return;
+      if (!nodeById.has(edge.source) || !nodeById.has(edge.target)) return;
+      const sourceList = adjacency.get(edge.source) || [];
+      sourceList.push({ next: edge.target, type: edge.type });
+      adjacency.set(edge.source, sourceList);
+      const targetList = adjacency.get(edge.target) || [];
+      targetList.push({ next: edge.source, type: edge.type });
+      adjacency.set(edge.target, targetList);
+    });
+    return adjacency;
+  };
+
+  const findRoutes = (includeClusterEdges: boolean) => {
+    const adjacency = buildAdjacency(includeClusterEdges);
+    const queue: Array<{ id: string; path: string[]; edgeTypes: string[] }> = [{ id: selected.id, path: [selected.id], edgeTypes: [] }];
+    const visited = new Set([selected.id]);
+    const routes: EvidenceRoute[] = [];
+
+    while (queue.length && routes.length < 3) {
+      const current = queue.shift();
+      if (!current) break;
+      if (current.path.length > 6) continue;
+
+      if (targetIds.has(current.id)) {
+        const pathNodes = current.path.map((id) => nodeById.get(id)).filter(Boolean) as GraphNode[];
+        const target = nodeById.get(current.id);
+        if (target) routes.push({ target, path: pathNodes, edgeTypes: current.edgeTypes });
+        continue;
+      }
+
+      const nextLinks = (adjacency.get(current.id) || [])
+        .slice()
+        .sort((a, b) => {
+          const aNode = nodeById.get(a.next);
+          const bNode = nodeById.get(b.next);
+          return Number(Boolean(bNode?.source_highlight)) - Number(Boolean(aNode?.source_highlight));
+        });
+      nextLinks.forEach((link) => {
+        if (visited.has(link.next)) return;
+        visited.add(link.next);
+        queue.push({
+          id: link.next,
+          path: [...current.path, link.next],
+          edgeTypes: [...current.edgeTypes, link.type],
+        });
+      });
+    }
+    return routes;
+  };
+
+  const linkedRoutes = findRoutes(false);
+  return linkedRoutes.length ? linkedRoutes : findRoutes(true);
+};
+
 function KnowledgeSpaceScene({
   graph,
   onSelect,
@@ -308,15 +384,21 @@ function KnowledgeSpaceScene({
       const haystack = [node.label, node.path, node.category, node.source_label, node.source_kind, ...(node.sections || [])].join(" ").toLowerCase();
       return terms.every((term) => haystack.includes(term));
     };
+    const matchesEvidence = (node: GraphNode) => {
+      if (node.source_highlight) return true;
+      if (!terms.length) return false;
+      return matchesSearch(node);
+    };
     const activeNodeIds = new Set<string>();
     graph.nodes.forEach((node) => {
       const inTime = node.type !== "note" || !node.mtime || !maxTime || Number(node.mtime) <= cutoffTime;
       const matched = matchesSearch(node);
+      const evidenceMatched = matchesEvidence(node);
       const selected = selectedId && node.id === selectedId;
       const connected = selectedId && graph.edges.some((edge) => (
         (edge.source === selectedId && edge.target === node.id) || (edge.target === selectedId && edge.source === node.id)
       ));
-      if ((mode === "recent" && inTime) || (mode === "search" && matched) || (mode === "evidence" && matched) || mode === "all" || selected || connected) {
+      if ((mode === "recent" && inTime) || (mode === "search" && matched) || (mode === "evidence" && evidenceMatched) || mode === "all" || selected || connected) {
         activeNodeIds.add(node.id);
       }
     });
@@ -441,9 +523,10 @@ function KnowledgeSpaceScene({
       const active = activeNodeIds.has(node.id);
       const inTime = node.type !== "note" || !node.mtime || !maxTime || Number(node.mtime) <= cutoffTime;
       const matched = matchesSearch(node);
-      const emphasis = (mode === "search" || mode === "evidence") && matched ? 1.35 : selectedId === node.id ? 1.45 : node.source_highlight ? 1.12 : 1;
+      const evidenceMatched = matchesEvidence(node);
+      const emphasis = (mode === "search" && matched) || (mode === "evidence" && evidenceMatched) ? 1.35 : selectedId === node.id ? 1.45 : node.source_highlight ? 1.12 : 1;
       const categoryMatch = !categoryFilter || node.type === "cluster" || node.category === categoryFilter;
-      const dim = ((mode === "recent" && !inTime) || ((mode === "search" || mode === "evidence") && terms.length > 0 && !matched) || !categoryMatch) ? 0.18 : active ? 1 : 0.55;
+      const dim = ((mode === "recent" && !inTime) || (mode === "search" && terms.length > 0 && !matched) || (mode === "evidence" && !evidenceMatched) || !categoryMatch) ? 0.18 : active ? 1 : 0.55;
 
       if (!isGalaxy) {
         // ── Obsidian風 球体ノード ──────────────────────────────
@@ -483,6 +566,20 @@ function KnowledgeSpaceScene({
           ring.rotation.x = Math.PI / 2;
           root.add(ring);
           starMaterials.push(ringMat as unknown as THREE.SpriteMaterial);
+        }
+        if (node.source_highlight) {
+          const badgeGeo = new THREE.SphereGeometry(Math.max(0.18, r * 0.38), 12, 8);
+          const badgeMat = new THREE.MeshBasicMaterial({
+            color: "#fbbf24",
+            transparent: true,
+            opacity: 0.92 * dim,
+          });
+          const badge = new THREE.Mesh(badgeGeo, badgeMat);
+          badge.position.copy(position).add(new THREE.Vector3(r * 1.35, r * 1.35, 0));
+          badge.userData.nodeId = node.id;
+          root.add(badge);
+          starMaterials.push(badgeMat as unknown as THREE.SpriteMaterial);
+          rayTargets.push(badge);
         }
         return;
       }
@@ -723,10 +820,14 @@ export default function KnowledgeSpacePage() {
       .sort((a, b) => (b.link_count || 0) - (a.link_count || 0))
       .slice(0, 4) || []
   ), [graph]);
+  const evidenceRoutes = useMemo(() => buildEvidenceRoutes(graph, selected), [graph, selected]);
 
   const visibleNodeCount = useMemo(() => {
     if (!graph) return 0;
     if (categoryFilter) return graph.nodes.filter(n => n.category === categoryFilter).length;
+    if (mode === "evidence" && !searchTerm.trim()) {
+      return graph.nodes.filter(n => n.type === "note" && n.source_highlight).length;
+    }
     if (searchTerm.trim()) {
       const terms = searchTerm.toLowerCase().split(/\s+/).filter(Boolean);
       return graph.nodes.filter(n => {
@@ -735,7 +836,7 @@ export default function KnowledgeSpacePage() {
       }).length;
     }
     return graph.nodes.length;
-  }, [graph, categoryFilter, searchTerm]);
+  }, [graph, categoryFilter, mode, searchTerm]);
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#05070d] text-slate-100">
@@ -885,6 +986,9 @@ export default function KnowledgeSpacePage() {
             <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: hoveredNode.color }} />
             <div className="min-w-0">
               <div className="truncate text-[11px] font-bold text-white leading-tight">{hoveredNode.label}</div>
+              {hoveredNode.source_highlight && (
+                <div className="truncate text-[10px] font-black text-amber-100">引用元強調ノード</div>
+              )}
               {hoveredNode.source_label && (
                 <div className="truncate text-[10px] font-bold text-amber-200">{hoveredNode.source_label}</div>
               )}
@@ -962,7 +1066,16 @@ export default function KnowledgeSpacePage() {
           <div className="mt-3 border-t border-white/10 pt-3">
             <div className="mb-1.5 flex items-center justify-between">
               <span className="text-[10px] font-black uppercase tracking-widest text-amber-200">根拠レイヤー</span>
-              <span className="text-[10px] font-bold text-slate-500">引用元を強調</span>
+              <button
+                onClick={() => {
+                  setSearchTerm("");
+                  setMode("evidence");
+                  setCategoryFilter(null);
+                }}
+                className="rounded-md border border-amber-200/15 bg-amber-300/8 px-2 py-1 text-[10px] font-black text-amber-100 transition hover:bg-amber-300/16"
+              >
+                強調のみ
+              </button>
             </div>
             <div className="grid grid-cols-2 gap-1.5">
               {sourceStats.slice(0, 6).map((item) => (
@@ -1093,6 +1206,12 @@ export default function KnowledgeSpacePage() {
               </div>
               <div className="min-w-0">
                 <div className="break-words text-base font-black text-white">{selected.label}</div>
+                {selected.source_highlight && (
+                  <div className="mt-1 inline-flex items-center gap-1 rounded-md border border-amber-300/30 bg-amber-300/14 px-2 py-0.5 text-[11px] font-black text-amber-50">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-300" />
+                    引用元として強調表示中
+                  </div>
+                )}
                 {selected.source_label && (
                   <div className="mt-1 inline-flex items-center rounded-md border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[11px] font-black text-amber-100">
                     引用元: {selected.source_label}
@@ -1125,6 +1244,66 @@ export default function KnowledgeSpacePage() {
                 </div>
               </div>
             ) : null}
+            <div className="mt-3 border-t border-white/10 pt-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="text-xs font-black text-amber-100">根拠ルート</div>
+                {evidenceRoutes.length > 0 && (
+                  <button
+                    onClick={() => {
+                      setSearchTerm(evidenceRoutes[0].path.map((node) => node.label).join(" "));
+                      setMode("evidence");
+                    }}
+                    className="rounded-md border border-amber-200/20 bg-amber-300/10 px-2 py-1 text-[10px] font-black text-amber-100 transition hover:bg-amber-300/18"
+                  >
+                    ルート強調
+                  </button>
+                )}
+              </div>
+              {evidenceRoutes.length > 0 ? (
+                <div className="space-y-2">
+                  {evidenceRoutes.map((route) => (
+                    <div key={`${selected.id}-${route.target.id}`} className="rounded-md border border-amber-200/12 bg-amber-300/8 p-2">
+                      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-black text-amber-100">
+                        <span className="h-2 w-2 shrink-0 rounded-full bg-amber-300" />
+                        {route.target.label}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {route.path.map((node, index) => (
+                          <React.Fragment key={`${route.target.id}-${node.id}-${index}`}>
+                            <button
+                              onClick={() => {
+                                setSelected(node);
+                                setSearchTerm(node.label);
+                                setMode(node.source_highlight ? "evidence" : "search");
+                              }}
+                              className={`max-w-[132px] truncate rounded-md px-2 py-1 text-[10px] font-bold transition ${
+                                node.id === selected.id
+                                  ? "bg-cyan-300/16 text-cyan-100"
+                                  : node.source_highlight
+                                    ? "bg-amber-300/16 text-amber-100"
+                                    : "bg-white/6 text-slate-300 hover:bg-white/10"
+                              }`}
+                              title={node.path || node.label}
+                            >
+                              {node.label}
+                            </button>
+                            {index < route.path.length - 1 && (
+                              <span className="text-[10px] font-black text-slate-500">
+                                {route.edgeTypes[index] === "wikilink" ? "→" : route.edgeTypes[index] === "cluster" ? "・" : "↔"}
+                              </span>
+                            )}
+                          </React.Fragment>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold leading-5 text-slate-400">
+                  このノードから強調済み根拠ノートへの明示リンクはまだありません。
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <div className="text-sm leading-6 text-slate-300">

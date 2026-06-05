@@ -802,6 +802,14 @@ def _build_approval_comment_draft(
 
 
 def _build_data_source_summary(inputs: dict, result: dict) -> dict:
+    def _has_input_value(key: str) -> bool:
+        value = inputs.get(key)
+        if value in (None, "", 0, [], {}):
+            return False
+        if key == "asset_evidence_level" and str(value).strip() in ("", "未確認"):
+            return False
+        return True
+
     manual_fields = [
         "company_no", "company_name", "industry_major", "industry_sub", "grade",
         "customer_type", "main_bank", "competitor", "deal_source", "sales_dept", "contract_type",
@@ -810,9 +818,9 @@ def _build_data_source_summary(inputs: dict, result: dict) -> dict:
         "asset_score", "selected_asset_id", "asset_name", "asset_detail", "asset_purpose",
         "asset_location", "asset_evidence_level", "passion_text", "intuition",
     ]
-    filled = [key for key in manual_fields if inputs.get(key) not in (None, "", 0, [], {})]
+    filled = [key for key in manual_fields if _has_input_value(key)]
     asset_fields = ["asset_name", "asset_detail", "asset_purpose", "asset_location", "asset_evidence_level"]
-    asset_filled = [key for key in asset_fields if inputs.get(key) not in (None, "", 0, [], {})]
+    asset_filled = [key for key in asset_fields if _has_input_value(key)]
     asset_evidence = str(inputs.get("asset_evidence_level") or "")
     asset_clarity_warnings = []
     if not inputs.get("asset_name"):

@@ -22,6 +22,40 @@ import MahalanobisPanel from "../components/analysis/MahalanobisPanel";
 import UMAPPanel from "../components/analysis/UMAPPanel";
 import { triggerMebuki } from "../components/layout/FloatingMebuki";
 
+const DATA_SOURCE_FIELD_LABELS: Record<string, string> = {
+  company_no: "企業番号",
+  company_name: "企業名",
+  industry_major: "大分類業種",
+  industry_sub: "小分類業種",
+  grade: "社内格付",
+  customer_type: "新規/既存",
+  main_bank: "メイン先区分",
+  competitor: "競合状況",
+  deal_source: "商談ソース",
+  sales_dept: "営業部",
+  contract_type: "契約種類",
+  nenshu: "売上高",
+  op_profit: "営業利益",
+  ord_profit: "経常利益",
+  net_income: "純利益",
+  net_assets: "純資産",
+  total_assets: "総資産",
+  bank_credit: "銀行与信",
+  lease_credit: "リース与信",
+  contracts: "契約件数",
+  lease_term: "リース期間",
+  acquisition_cost: "取得価格",
+  asset_score: "物件スコア",
+  selected_asset_id: "物件ID",
+  asset_name: "対象物件名",
+  asset_detail: "型式・仕様",
+  asset_purpose: "導入目的",
+  asset_location: "設置場所",
+  asset_evidence_level: "確認資料",
+  passion_text: "営業メモ",
+  intuition: "直感スコア",
+};
+
 function ConditionalApprovalActionsCard({ actions }: { actions?: Array<{ priority?: string; action?: string; reason?: string; category?: string }> }) {
   if (!actions?.length) return null;
   return (
@@ -98,6 +132,7 @@ function RateProposalCard({ proposal }: { proposal?: any }) {
 function DataSourceSummaryCard({ summary }: { summary?: any }) {
   if (!summary) return null;
   const assetClarity = summary.asset_clarity;
+  const manualFields = summary.manual_input_fields || [];
   return (
     <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
       <div className="flex items-center gap-2 mb-3">
@@ -114,9 +149,16 @@ function DataSourceSummaryCard({ summary }: { summary?: any }) {
         <div>
           <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">画面入力</div>
           <div className="flex flex-wrap gap-1.5">
-            {(summary.manual_input_fields || []).map((field: string) => (
-              <span key={field} className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">{field}</span>
+            {manualFields.map((field: string) => (
+              <span key={field} className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">
+                {DATA_SOURCE_FIELD_LABELS[field] || field}
+              </span>
             ))}
+            {!manualFields.length && (
+              <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-700">
+                画面入力の反映項目なし
+              </span>
+            )}
           </div>
         </div>
         <div>
