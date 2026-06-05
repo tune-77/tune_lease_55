@@ -64,7 +64,14 @@ models/sentence-transformers/
 .claude/worktrees/
 # パイプライン生成レポート（コミット不要）
 reports/*.json
+
+# Claude / Codex runtime state (local only)
 .claude/state/
 .claude/sessions/
-.claude/sessions/
->>>>>>> claude/ignore-local-state-and-fix-ai-chat
+frontend/.claude/state/
+frontend/.claude/sessions/
+
+# Generated local indexes / runtime bridge files
+mobile_app/.vector_index/
+mobile_app/.sync_state.json
+scoring_output_bridge.json
