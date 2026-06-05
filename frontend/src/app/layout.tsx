@@ -1,5 +1,6 @@
 import './globals.css';
 import type { Metadata, Viewport } from 'next';
+import Script from 'next/script';
 import Sidebar from '@/components/layout/Sidebar';
 import FloatingMebuki from '@/components/layout/FloatingMebuki';
 import MobileHeader from '@/components/layout/MobileHeader';
@@ -34,6 +35,26 @@ export default function RootLayout({
   return (
     <html lang="ja" suppressHydrationWarning>
       <body className="text-slate-800 antialiased">
+        <Script id="sw-cleanup" strategy="beforeInteractive">{`
+          (function () {
+            try {
+              if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(function (registrations) {
+                  registrations.forEach(function (registration) {
+                    registration.unregister();
+                  });
+                }).catch(function () {});
+              }
+              if ('caches' in window) {
+                caches.keys().then(function (keys) {
+                  keys.forEach(function (key) {
+                    caches.delete(key);
+                  });
+                }).catch(function () {});
+              }
+            } catch (e) {}
+          })();
+        `}</Script>
         <ThemeProvider>
           <SidebarProvider>
             <div className="flex min-h-screen relative overflow-x-hidden">

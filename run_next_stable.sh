@@ -12,19 +12,117 @@ FORCE_RESTART="${FORCE_RESTART:-0}"
 FORCE_BUILD="${FORCE_BUILD:-0}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
 REUSE_RUNNING="${REUSE_RUNNING:-1}"
-RESTART_SCOPE="${RESTART_SCOPE:-all}"  # all | api
+RESTART_SCOPE="${RESTART_SCOPE:-all}"  # all | status | api | next | tunnel
 RESTART_DELAY_SECONDS="${RESTART_DELAY_SECONDS:-1}"
 API_RELOAD="${API_RELOAD:-0}"
 SKIP_STALE_LAUNCHER_SWEEP="${SKIP_STALE_LAUNCHER_SWEEP:-0}"
 
-if [ "$RESTART_SCOPE" = "api" ]; then
-  api_pids="$(lsof -ti :8000 2>/dev/null || true)"
-  if [ -n "$api_pids" ]; then
-    echo "API-only restart requested; nudging FastAPI on port 8000: ${api_pids}"
-    kill $api_pids 2>/dev/null || true
-    exit 0
+API_PORT="${API_PORT:-8000}"
+NEXT_PORT="${NEXT_PORT:-3000}"
+API_HOST="${API_HOST:-127.0.0.1}"
+NEXT_HOST="${NEXT_HOST:-127.0.0.1}"
+PUBLIC_TUNNEL="${PUBLIC_TUNNEL:-0}"
+LOG_DIR="logs/next"
+mkdir -p "$LOG_DIR"
+
+pid_file_alive() {
+  local file="$1"
+  local pid
+  if [ ! -f "$file" ]; then
+    return 1
   fi
-  echo "API-only restart requested, but FastAPI is not listening; continuing with full launch."
+  pid="$(cat "$file" 2>/dev/null || true)"
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
+
+latest_tunnel_url() {
+  local latest_log
+  latest_log="$(ls -t "$LOG_DIR"/tunnel_*.log 2>/dev/null | head -1 || true)"
+  if [ -n "$latest_log" ]; then
+    rg -o "https://[a-zA-Z0-9-]+\\.trycloudflare\\.com" "$latest_log" 2>/dev/null | tail -1 || true
+  fi
+}
+
+print_status() {
+  local api_state="DOWN"
+  local next_state="DOWN"
+  local tunnel_url
+  if curl -fsS --max-time 2 "http://${API_HOST}:${API_PORT}/docs" >/dev/null 2>&1; then
+    api_state="OK"
+  elif lsof -ti :"$API_PORT" >/dev/null 2>&1; then
+    api_state="LISTENING"
+  fi
+  if curl -fsS --max-time 2 "http://${NEXT_HOST}:${NEXT_PORT}/" >/dev/null 2>&1; then
+    next_state="OK"
+  elif lsof -ti :"$NEXT_PORT" >/dev/null 2>&1; then
+    next_state="LISTENING"
+  fi
+  tunnel_url="$(latest_tunnel_url)"
+  echo "Status:"
+  echo "  API  : ${api_state} http://${API_HOST}:${API_PORT}"
+  echo "  Next : ${next_state} http://${NEXT_HOST}:${NEXT_PORT}"
+  if [ -n "$tunnel_url" ]; then
+    echo "  Tunnel: ${tunnel_url}"
+  else
+    echo "  Tunnel: not found"
+  fi
+}
+
+if [ "$RESTART_SCOPE" = "status" ]; then
+  print_status
+  exit 0
+fi
+
+if [ "$RESTART_SCOPE" = "api" ]; then
+  api_pids="$(lsof -ti :"$API_PORT" 2>/dev/null || true)"
+  if [ -n "$api_pids" ]; then
+    echo "API-only restart requested; nudging FastAPI on port ${API_PORT}: ${api_pids}"
+    kill $api_pids 2>/dev/null || true
+    if pid_file_alive "$LOG_DIR/api_${API_PORT}.supervisor.pid"; then
+      exit 0
+    fi
+    echo "FastAPI supervisor is not alive; continuing with full launch."
+    FORCE_RESTART=1
+  else
+    echo "API-only restart requested, but FastAPI is not listening; continuing with full launch."
+    FORCE_RESTART=1
+  fi
+fi
+
+if [ "$RESTART_SCOPE" = "next" ]; then
+  next_pids="$(lsof -ti :"$NEXT_PORT" 2>/dev/null || true)"
+  if [ -n "$next_pids" ]; then
+    echo "Next-only restart requested; nudging Next.js on port ${NEXT_PORT}: ${next_pids}"
+    kill $next_pids 2>/dev/null || true
+    if pid_file_alive "$LOG_DIR/next_${NEXT_PORT}.supervisor.pid"; then
+      exit 0
+    fi
+    echo "Next.js supervisor is not alive; continuing with full launch."
+    FORCE_RESTART=1
+  else
+    echo "Next-only restart requested, but Next.js is not listening; continuing with full launch."
+    FORCE_RESTART=1
+  fi
+fi
+
+if [ "$RESTART_SCOPE" = "tunnel" ]; then
+  tunnel_pids="$(ps -eo pid=,command= 2>/dev/null | awk -v url="http://${NEXT_HOST}:${NEXT_PORT}" '$0 ~ /[c]loudflared tunnel --url/ && index($0, url) {print $1}' | tr '\n' ' ')"
+  if [ -n "$tunnel_pids" ]; then
+    echo "Tunnel-only restart requested; nudging Cloudflare Tunnel:${tunnel_pids}"
+    kill $tunnel_pids 2>/dev/null || true
+    if pid_file_alive "$LOG_DIR/tunnel_${NEXT_PORT}.supervisor.pid"; then
+      exit 0
+    fi
+    echo "Cloudflare Tunnel supervisor is not alive; continuing with full launch."
+    FORCE_RESTART=1
+  else
+    echo "Tunnel-only restart requested, but no matching Cloudflare Tunnel is running."
+    if [ "$PUBLIC_TUNNEL" = "1" ]; then
+      FORCE_RESTART=1
+    else
+      exit 0
+    fi
+  fi
 fi
 
 # ── ロックファイル: 二重起動を防ぐ ──────────────────────────────
@@ -50,14 +148,6 @@ fi
 echo $$ > "$LOCK_FILE"
 trap 'rm -f "$LOCK_FILE"' EXIT
 # ───────────────────────────────────────────────────────────────────
-
-API_PORT="${API_PORT:-8000}"
-NEXT_PORT="${NEXT_PORT:-3000}"
-API_HOST="${API_HOST:-127.0.0.1}"
-NEXT_HOST="${NEXT_HOST:-127.0.0.1}"
-PUBLIC_TUNNEL="${PUBLIC_TUNNEL:-0}"
-LOG_DIR="logs/next"
-mkdir -p "$LOG_DIR"
 
 TS="$(date +%Y%m%d_%H%M%S)"
 API_LOG="$LOG_DIR/api_${TS}.log"
@@ -220,6 +310,10 @@ if [ "$FORCE_RESTART" != "1" ] && [ "$REUSE_RUNNING" = "1" ]; then
     echo "FastAPI and Next.js are already running. No restart/build needed."
     echo "  API  : http://${API_HOST}:${API_PORT}"
     echo "  Next : http://${NEXT_HOST}:${NEXT_PORT}"
+    tunnel_url="$(latest_tunnel_url)"
+    if [ -n "$tunnel_url" ]; then
+      echo "  Tunnel: ${tunnel_url}"
+    fi
     echo "To force a restart: FORCE_RESTART=1 bash run_next_stable.sh"
     exit 0
   fi
@@ -329,7 +423,19 @@ echo "Stable launcher started"
 echo "  API   : http://${API_HOST}:${API_PORT}"
 echo "  Next  : http://${NEXT_HOST}:${NEXT_PORT}"
 if [ "$PUBLIC_TUNNEL" = "1" ]; then
-  echo "  Tunnel: see ${TUNNEL_LOG}"
+  tunnel_url=""
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    tunnel_url="$(latest_tunnel_url)"
+    if [ -n "$tunnel_url" ]; then
+      break
+    fi
+    sleep 0.5
+  done
+  if [ -n "$tunnel_url" ]; then
+    echo "  Tunnel: ${tunnel_url}"
+  else
+    echo "  Tunnel: see ${TUNNEL_LOG}"
+  fi
 fi
 echo "  Logs  : ${LOG_DIR}"
 echo "==================================="
