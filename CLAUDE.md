@@ -148,4 +148,21 @@ cd frontend && npx tsc --noEmit   # ✅ PR 前に必ず実行
 
 ---
 
+### 7. PR命名規則
+
+実装したREV番号は **必ずPRタイトルに含める**：
+
+```
+feat: REV-039 パイプライン承認UI追加
+fix: REV-282 UMAPタイムアウト修正
+chore: REV-267 REV-035 REV-036 Obsidianパス修正・サイドバー改善
+feat: REV-035/036/040 複数REVまとめ実装
+```
+
+- 複数のREVをまとめる場合はスペース区切りまたはスラッシュ区切りで列挙
+- `cleanup_improvement_reviews.py --apply` がPRタイトルからREV番号を自動抽出し台帳を applied に更新する
+- PRタイトルにREV番号が **ない** と台帳が更新されず「やったかも？」手動確認が発生する
+
+---
+
 *このファイルはClaude Codeが自動的に読み込みます。使うたびに「やらかしパターン」を追記して育てていきます。*

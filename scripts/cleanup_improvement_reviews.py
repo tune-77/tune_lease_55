@@ -155,18 +155,18 @@ REV_TITLES: dict[str, str] = {
 
 
 def _extract_revs(title: str) -> list[int]:
-    """PR タイトルから REV 番号を全て抽出する。
+    """PR タイトルから REV 番号を全て抽出する（大文字小文字不問）。
 
-    "REV-040/050/064/068" のようなスラッシュ区切りも処理する。
+    対応フォーマット:
+      "feat: REV-039 タイトル"          → [39]
+      "fix: REV-282 REV-267 タイトル"   → [282, 267]
+      "chore: REV-035/036/040 タイトル" → [35, 36, 40]
     """
     revs: list[int] = []
     for m in re.finditer(r"REV-(\d+)", title, re.IGNORECASE):
         revs.append(int(m.group(1)))
-        rest = title[m.end():]
-        for extra in re.findall(r"^(?:/(\d+))+", rest):
-            pass
-        # スラッシュ区切りの追加番号を個別に取得
-        slash_match = re.match(r"((?:/\d+)+)", rest)
+        # スラッシュ区切りの追加番号 (REV-035/036/040 形式)
+        slash_match = re.match(r"((?:/\d+)+)", title[m.end():])
         if slash_match:
             for num in re.findall(r"/(\d+)", slash_match.group(1)):
                 revs.append(int(num))
