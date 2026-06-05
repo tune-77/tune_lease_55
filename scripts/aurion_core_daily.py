@@ -903,6 +903,12 @@ def write_morning_report(
     ]
 
     lines = [
+        "---",
+        f"date: {date_str()}",
+        "tags: [日次レポート, AURION]",
+        "source: AI生成",
+        "---",
+        "",
         f"# AURION CORE Daily Report {date_str()} 06:00",
         "",
         f"[[@AI_Insight_Evolved_{date_str()}]]",
@@ -1142,6 +1148,12 @@ def write_evolved_insight(
     findings = web.get("findings") or []
     conclusions = reasoning.get("conclusions") or []
     lines = [
+        "---",
+        f"date: {date_str()}",
+        "tags: [AI洞察, AURION]",
+        "source: AI生成",
+        "---",
+        "",
         f"# @AI_Insight_Evolved_{date_str()}",
         "",
         "Status:",
