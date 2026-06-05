@@ -257,7 +257,7 @@ export default function LeaseKunWizard() {
         text: (
           <span>
             <b>🎉 審査完了！</b><br/>
-            総合スコア: {res.data.score?.toFixed(1)}点<br/>
+            総合スコア: {(res.data.score_base ?? res.data.score)?.toFixed(1)}点<br/>
             判定: {res.data.hantei}<br/>
             借手スコア: {res.data.score_borrower?.toFixed(1)}点<br/><br/>
             詳細は「📋 審査・分析」タブから確認してね！

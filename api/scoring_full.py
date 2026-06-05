@@ -2,7 +2,12 @@ import sys
 import os
 import json
 import importlib
+import threading
 from unittest.mock import MagicMock
+
+# FastAPI はシンク関数をスレッドプールで実行するため、
+# 複数リクエストが同時に scoring_output_bridge.json を上書きする競合を防ぐ
+_scoring_lock = threading.Lock()
 
 # --- 審査エンジン用の共有セッション環境 ---
 _SHARED_SESSION_STATE = {}
@@ -40,7 +45,23 @@ def get_latest_module():
         return components.score_calculation
 
 # 初回インポート
-from constants import REQUIRED_FIELDS, RECOMMENDED_FIELDS
+from constants import REQUIRED_FIELDS, RECOMMENDED_FIELDS, QUALITATIVE_SCORING_CORRECTION_ITEMS
+
+# 定性評価: ラベル文字列 → セッション保存用 1-based インデックス の変換マップ
+# score_calculation.py は st.session_state["qual_corr_<id>"] に
+# 「options リスト内の 1-based 位置」を整数として保存することを期待している。
+def _build_qual_label_idx_map() -> dict:
+    """{ item_id: { label_str: 1-based-idx } } を返す。"""
+    mapping: dict = {}
+    for item in QUALITATIVE_SCORING_CORRECTION_ITEMS:
+        item_map: dict = {}
+        for i, opt in enumerate(item.get("options") or []):
+            label = opt[1] if isinstance(opt, (list, tuple)) and len(opt) >= 2 else str(opt)
+            item_map[label] = i + 1  # 1-based
+        mapping[item["id"]] = item_map
+    return mapping
+
+_QUAL_LABEL_IDX_MAP: dict = _build_qual_label_idx_map()
 
 # データキャッシュ
 _CACHE = {}
@@ -58,17 +79,24 @@ def _load_json(filename):
     except: return {}
 
 def run_full_scoring_api(inputs: dict) -> dict:
+    with _scoring_lock:
+        return _run_full_scoring_api_locked(inputs)
+
+
+def _run_full_scoring_api_locked(inputs: dict) -> dict:
     print("\n[DEBUG] --- run_full_scoring_api START ---")
-    
+
     # 物理ファイルを事前に削除 (古い結果を拾わないため)
-    RESULT_FILE = "/Users/kobayashiisaoryou/clawd/tune_lease_55/scoring_output_bridge.json"
+    RESULT_FILE = os.path.join(SCRIPT_DIR, "scoring_output_bridge.json")
     if os.path.exists(RESULT_FILE):
         try: os.remove(RESULT_FILE)
         except: pass
 
     # セッション完全クリア
+    # _SHARED_SESSION_STATE と mock_st.session_state は別オブジェクトなので両方クリア
     _SHARED_SESSION_STATE.clear()
-    
+    mock_st.session_state.clear()
+
     # フロントエンドからの入力マッピング
     form_result = {
         "submitted_judge": True,
@@ -93,7 +121,6 @@ def run_full_scoring_api(inputs: dict) -> dict:
         "deal_source": str(inputs.get("deal_source", "銀行紹介")),
         "sales_dept": str(inputs.get("sales_dept", "未設定")),
         "lease_term": int(inputs.get("lease_term", 60)),
-        "acceptance_year": 2026,
         "acquisition_cost": float(inputs.get("acquisition_cost", 0)),
         "asset_score": float(inputs.get("asset_score", 50.0)),
         "industry_major": str(inputs.get("industry_major", "G 情報通信業")),
@@ -110,18 +137,34 @@ def run_full_scoring_api(inputs: dict) -> dict:
         "competitor": str(inputs.get("competitor", "競合なし")),
         "num_competitors": str(inputs.get("num_competitors", "未入力")),
         "deal_occurrence": str(inputs.get("deal_occurrence", "不明")),
+        "acceptance_year": int(inputs.get("acceptance_year", 2026)),
+        "asset_detail": str(inputs.get("asset_detail", "")),
+        "asset_purpose": str(inputs.get("asset_purpose", "")),
+        "asset_location": str(inputs.get("asset_location", "")),
+        "asset_evidence_level": str(inputs.get("asset_evidence_level", "")),
         "_auto_judge": True,
         "_api_mode": True
     }
 
-    # セッションにセット
+    # 定性評価: フロントが送る文字列ラベルを 1-based インデックスへ変換して
+    # セッションステートにセット（score_calculation.py が期待する形式）
+    for _item in QUALITATIVE_SCORING_CORRECTION_ITEMS:
+        _key = f"qual_corr_{_item['id']}"
+        _label = str(inputs.get(_key, "未選択"))
+        _idx = _QUAL_LABEL_IDX_MAP.get(_item["id"], {}).get(_label, 0)
+        form_result[_key] = _idx
+
+    # セッションにセット（mock_st.session_state が score_calculation.py から参照される実体）
     for k, v in form_result.items():
         _SHARED_SESSION_STATE[k] = v
-        
+        mock_st.session_state[k] = v
+
     for field in REQUIRED_FIELDS:
         f_key = field[0]
-        if f_key not in _SHARED_SESSION_STATE:
-            _SHARED_SESSION_STATE[f_key] = form_result.get(f_key, 0)
+        if f_key not in mock_st.session_state:
+            val = form_result.get(f_key, 0)
+            _SHARED_SESSION_STATE[f_key] = val
+            mock_st.session_state[f_key] = val
 
     try:
         # 最新のモジュールを取得

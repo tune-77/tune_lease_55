@@ -10,6 +10,10 @@ import numpy as np
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
 
+# UMAP モデルキャッシュ（run_quick_scoring 呼び出しのたびにロードしない）
+_umap_model_cache = None
+_umap_model_path_cache: str | None = None
+
 # パスを追加してからインポート
 import sys
 if _REPO_ROOT not in sys.path:
@@ -925,7 +929,12 @@ def run_quick_scoring(inputs: dict) -> dict:
         from train_mahalanobis import FEATURES as _UMAP_FEATURES, _extract_val as _umap_extract
         _umap_path = os.path.join(_SCRIPT_DIR, "data", "umap_anomaly_model.joblib")
         if os.path.exists(_umap_path):
-            _umap = UMAPAnomalyScorer.load(_umap_path)
+            # モジュールレベルでキャッシュ済みモデルを再利用してロードコストを削減
+            global _umap_model_cache, _umap_model_path_cache
+            if _umap_model_cache is None or _umap_model_path_cache != _umap_path:
+                _umap_model_cache = UMAPAnomalyScorer.load(_umap_path)
+                _umap_model_path_cache = _umap_path
+            _umap = _umap_model_cache
             _umap_row = {f: _umap_extract({"inputs": inputs}, f) for f in _UMAP_FEATURES}
             _umap_df = _pd.DataFrame([_umap_row])
             # UMAP.transform() はデータポイントごとに勾配降下法を実行するため非常に遅い。
