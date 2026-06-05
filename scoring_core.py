@@ -920,6 +920,7 @@ def run_quick_scoring(inputs: dict) -> dict:
     umap_similar: list | None = None
     try:
         import pandas as _pd
+        import threading as _umap_threading
         from umap_anomaly_engine import UMAPAnomalyScorer
         from train_mahalanobis import FEATURES as _UMAP_FEATURES, _extract_val as _umap_extract
         _umap_path = os.path.join(_SCRIPT_DIR, "data", "umap_anomaly_model.joblib")
@@ -927,8 +928,21 @@ def run_quick_scoring(inputs: dict) -> dict:
             _umap = UMAPAnomalyScorer.load(_umap_path)
             _umap_row = {f: _umap_extract({"inputs": inputs}, f) for f in _UMAP_FEATURES}
             _umap_df = _pd.DataFrame([_umap_row])
-            umap_anomaly_score, umap_x, umap_y = _umap.score(_umap_df)
-            umap_similar = _umap.find_similar(_umap_df, top_k=3)
+            # UMAP.transform() はデータポイントごとに勾配降下法を実行するため非常に遅い。
+            # 5秒タイムアウト付きスレッドで実行し、超過した場合はスキップする。
+            _umap_result: list = []
+            def _run_umap():
+                try:
+                    _s, _x, _y = _umap.score(_umap_df)
+                    _sim = _umap.find_similar(_umap_df, top_k=3)
+                    _umap_result.extend([_s, _x, _y, _sim])
+                except Exception:
+                    pass
+            _umap_thread = _umap_threading.Thread(target=_run_umap, daemon=True)
+            _umap_thread.start()
+            _umap_thread.join(timeout=5.0)
+            if len(_umap_result) == 4:
+                umap_anomaly_score, umap_x, umap_y, umap_similar = _umap_result
     except Exception:
         pass
 
