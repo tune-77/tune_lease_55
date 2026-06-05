@@ -683,10 +683,15 @@ def append_chat_note(title: str, body: str) -> dict[str, str]:
     clean_body = (body or "").strip()
     if not clean_body:
         return {"status": "skipped", "reason": "empty note body"}
-    section = f"## {now} {clean_title}\n\n{clean_body}\n"
-    prefix = "\n" if path.exists() and path.read_text(encoding="utf-8", errors="ignore").strip() else ""
+    is_new = not path.exists() or not path.read_text(encoding="utf-8", errors="ignore").strip()
+    if is_new:
+        timestamp = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+        header = f"---\ndate: {timestamp}\ntags: [チャット, AIチャット]\n---\n\n"
+    else:
+        header = "\n"
+    section = f"## {now} {clean_title}\n\n### 要点\n{clean_body}\n"
     with path.open("a", encoding="utf-8") as f:
-        f.write(prefix + section)
+        f.write(header + section)
     return {"status": "saved", "path": str(path)}
 
 
@@ -702,10 +707,15 @@ def append_improvement_note(title: str, body: str) -> dict[str, str]:
     clean_body = (body or "").strip()
     if not clean_body:
         return {"status": "skipped", "reason": "empty note body"}
-    section = f"## {now} {clean_title}\n\n{clean_body}\n"
-    prefix = "\n" if path.exists() and path.read_text(encoding="utf-8", errors="ignore").strip() else ""
+    is_new = not path.exists() or not path.read_text(encoding="utf-8", errors="ignore").strip()
+    if is_new:
+        timestamp = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+        header = f"---\ndate: {timestamp}\ntags: [チャット, 改善メモ]\n---\n\n"
+    else:
+        header = "\n"
+    section = f"## {now} {clean_title}\n\n### 要点\n{clean_body}\n"
     with path.open("a", encoding="utf-8") as f:
-        f.write(prefix + section)
+        f.write(header + section)
     return {"status": "saved", "path": str(path)}
 
 
@@ -721,10 +731,15 @@ def append_web_note(title: str, body: str) -> dict[str, str]:
     clean_body = (body or "").strip()
     if not clean_body:
         return {"status": "skipped", "reason": "empty note body"}
-    section = f"## {now} {clean_title}\n\n{clean_body}\n"
-    prefix = "\n" if path.exists() and path.read_text(encoding="utf-8", errors="ignore").strip() else ""
+    is_new = not path.exists() or not path.read_text(encoding="utf-8", errors="ignore").strip()
+    if is_new:
+        timestamp = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+        header = f"---\ndate: {timestamp}\ntags: [チャット, Web参照]\n---\n\n"
+    else:
+        header = "\n"
+    section = f"## {now} {clean_title}\n\n### 要点\n{clean_body}\n"
     with path.open("a", encoding="utf-8") as f:
-        f.write(prefix + section)
+        f.write(header + section)
     return {"status": "saved", "path": str(path)}
 
 
@@ -749,6 +764,12 @@ def append_wiki_note(
             related.append(_to_wikilink(item, Path(item).stem))
     if not clean_body and not related:
         return {"status": "skipped", "reason": "empty note body"}
+    is_new = not path.exists() or not path.read_text(encoding="utf-8", errors="ignore").strip()
+    if is_new:
+        day = dt.date.today().isoformat()
+        header = f"---\ndate: {day}\ntags: [知識, Wiki]\nsource: AI生成\n---\n\n"
+    else:
+        header = "\n"
     section_lines = [f"## {now} {clean_title}", ""]
     if related:
         section_lines.append("### 関連ノート")
@@ -761,9 +782,8 @@ def append_wiki_note(
     if clean_body:
         section_lines.append(clean_body)
     section = "\n".join(section_lines).rstrip() + "\n"
-    prefix = "\n" if path.exists() and path.read_text(encoding="utf-8", errors="ignore").strip() else ""
     with path.open("a", encoding="utf-8") as f:
-        f.write(prefix + section)
+        f.write(header + section)
     return {"status": "saved", "path": str(path)}
 
 
@@ -960,8 +980,13 @@ def append_weekly_review_note(title: str, body: str) -> dict[str, str]:
     clean_body = (body or "").strip()
     if not clean_body:
         return {"status": "skipped", "reason": "empty note body"}
-    section = f"## {now} {clean_title}\n\n{clean_body}\n"
-    prefix = "\n" if path.exists() and path.read_text(encoding="utf-8", errors="ignore").strip() else ""
+    is_new = not path.exists() or not path.read_text(encoding="utf-8", errors="ignore").strip()
+    if is_new:
+        timestamp = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+        header = f"---\ndate: {timestamp}\ntags: [チャット, 週次レビュー]\n---\n\n"
+    else:
+        header = "\n"
+    section = f"## {now} {clean_title}\n\n### 要点\n{clean_body}\n"
     with path.open("a", encoding="utf-8") as f:
-        f.write(prefix + section)
+        f.write(header + section)
     return {"status": "saved", "path": str(path)}
