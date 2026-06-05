@@ -8,7 +8,7 @@ import requests
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # sumaho12 ではなくリポジトリルート (clawd 内) を参照
 REPO_DIR = os.path.dirname(BASE_DIR)
-JSIC_FILE = os.path.join(REPO_DIR, "industry_trends_jsic.json")
+JSIC_FILE = os.path.join(REPO_DIR, "static_data", "industry_trends_jsic.json")
 EXTENDED_TRENDS_FILE = os.path.join(REPO_DIR, "industry_trends_extended.json")
 OUTPUT_FILE = os.path.join(REPO_DIR, "industry_reports_a4.json")
 
