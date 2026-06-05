@@ -112,6 +112,7 @@ from api.schemas import (
     DealClosureResponse,
     LeaseNewsSummarizeRequest,
     LeaseNewsSummaryItem,
+    ReviewImprovementRequest,
 )
 from pydantic import BaseModel, Field
 from typing import List, Any, Dict, Optional
@@ -376,10 +377,24 @@ _INDUSTRY_SUGGESTION_RULES = [
     },
     {
         "major": "R サービス業(他に分類されないもの)",
-        "sub_terms": [("89 自動車整備業", ["整備", "車検"]), ("91 職業紹介・労働者派遣業", ["派遣", "職業紹介"])],
+        "sub_terms": [("89 自動車整備業", ["整備", "車検"]), ("サービス業全般", ["派遣", "職業紹介", "清掃", "保守", "サービス"])],
         "terms": ["サービス", "整備", "清掃", "保守", "レンタル", "オフィス家具", "内装"],
     },
 ]
+
+
+SERVICE_GENERAL_LABEL = "サービス業全般"
+_SERVICE_GENERAL_ALIASES = {
+    "91 職業紹介・労働者派遣業",
+    "R サービス業(他に分類されないもの)",
+}
+
+
+def _normalize_industry_for_stats(industry: str) -> str:
+    label = str(industry or "").strip()
+    if label in _SERVICE_GENERAL_ALIASES:
+        return SERVICE_GENERAL_LABEL
+    return label
 
 
 @app.post("/api/industry/suggest")
@@ -1096,6 +1111,7 @@ def api_industry_stats():
 
     industry_data: dict = {}
     for industry, status, cnt, avg_sc in rows:
+        industry = _normalize_industry_for_stats(industry)
         if industry not in industry_data:
             industry_data[industry] = {"total": 0, "won": 0, "lost": 0, "score_sum": 0.0, "score_cnt": 0}
         d = industry_data[industry]
@@ -2063,6 +2079,7 @@ def get_industry_winrate():
     for industry, status, cnt in rows:
         if not industry or industry == "0":
             continue
+        industry = _normalize_industry_for_stats(industry)
         d = agg.setdefault(industry, {"won": 0, "lost": 0})
         if status in _SUCCESS:
             d["won"] += cnt
@@ -2443,6 +2460,53 @@ def dismiss_improvement(req: DismissImprovementRequest):
     with open(ledger_path, "a", encoding="utf-8") as f:
         f.write(_json.dumps(entry, ensure_ascii=False) + "\n")
     return {"ok": True, "key": req.key, "title": req.title}
+
+
+@app.post("/api/improvement-log/review")
+def review_improvement(req: ReviewImprovementRequest):
+    """改善案の承認・却下・deferredをledgerに書き込む（REV-039）。"""
+    import json as _json
+    from datetime import datetime as _dt
+    ledger_path = os.path.expanduser("~/Library/Logs/tunelease/ledger.jsonl")
+    os.makedirs(os.path.dirname(ledger_path), exist_ok=True)
+    entry = {
+        "key": req.key,
+        "canonical_key": req.key,
+        "status": req.action,
+        "title": req.title,
+        "pr_url": "",
+        "reason": req.reason or f"UI経由で{req.action}",
+        "recorded_at": _dt.now().isoformat(),
+    }
+    with open(ledger_path, "a", encoding="utf-8") as f:
+        f.write(_json.dumps(entry, ensure_ascii=False) + "\n")
+    return {"ok": True, "key": req.key, "action": req.action}
+
+
+@app.get("/api/improvement-pipeline/summary")
+def get_improvement_pipeline_summary():
+    """最新パイプライン実行のサマリーを返す（REV-039）。latest.json直読み。"""
+    import json as _json, re as _re
+    path = _latest_improvement_report_path()
+    if path is None:
+        return {"run_date": None, "applied_count": 0, "needs_review_count": 0, "failed_count": 0, "commit_result": None}
+    try:
+        with open(path, encoding="utf-8") as f:
+            report = _json.load(f)
+    except Exception:
+        return {"run_date": None, "applied_count": 0, "needs_review_count": 0, "failed_count": 0, "commit_result": None}
+    run_date: str | None = None
+    m = _re.search(r"(\d{8})", path.name)
+    if m:
+        d = m.group(1)
+        run_date = f"{d[:4]}-{d[4:6]}-{d[6:]}"
+    return {
+        "run_date": run_date,
+        "applied_count": report.get("applied_count", 0),
+        "needs_review_count": report.get("needs_review_count", len(report.get("needs_review", []))),
+        "failed_count": report.get("failed_count", 0),
+        "commit_result": report.get("commit_result"),
+    }
 
 
 @app.get("/api/subsidies")
@@ -6560,7 +6624,11 @@ def get_umap_embeddings():
 
 # ── リースニュース要約・保存 ──────────────────────────────────────
 
-_NEWS_OBSIDIAN_DIR = "リースニュース"
+_NEWS_OBSIDIAN_DIR = "05-クリップ_記事/リースニュース"
+_NEWS_OBSIDIAN_DIR_ALIASES = (
+    "05-クリップ_記事/リースニュース",
+    "リースニュース",
+)
 
 
 def _news_vault_root() -> Path | None:
@@ -6575,6 +6643,23 @@ def _safe_news_filename(text: str, max_len: int = 40) -> str:
     cleaned = re.sub(r'[\\/:*?"<>|\n\r\t]', "_", text)
     cleaned = cleaned.strip("_").strip()
     return cleaned[:max_len] if cleaned else "ニュース"
+
+
+def _lease_news_dir(vault: Path, create: bool = False) -> Path | None:
+    """Return the Obsidian folder used for lease-news notes.
+
+    Existing notes live under 05-クリップ_記事/リースニュース.  Keep the old
+    root-level リースニュース path readable for compatibility.
+    """
+    for rel in _NEWS_OBSIDIAN_DIR_ALIASES:
+        candidate = vault / rel
+        if candidate.exists():
+            return candidate
+    if create:
+        candidate = vault / _NEWS_OBSIDIAN_DIR
+        candidate.mkdir(parents=True, exist_ok=True)
+        return candidate
+    return None
 
 
 def _fetch_url_text(url: str) -> str:
@@ -6657,8 +6742,9 @@ def _save_news_to_obsidian(summary: dict, source: str) -> str | None:
     if not vault:
         return None
 
-    news_dir = vault / _NEWS_OBSIDIAN_DIR
-    news_dir.mkdir(parents=True, exist_ok=True)
+    news_dir = _lease_news_dir(vault, create=True)
+    if not news_dir:
+        return None
 
     today_obj = _dt.date.today()
     today = today_obj.isoformat()
@@ -6784,8 +6870,8 @@ def get_recent_lease_news(limit: int = 5):
     if not vault:
         return {"items": []}
 
-    news_dir = vault / _NEWS_OBSIDIAN_DIR
-    if not news_dir.exists():
+    news_dir = _lease_news_dir(vault)
+    if not news_dir:
         return {"items": []}
 
     md_files = sorted(news_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)

@@ -10,6 +10,9 @@ import {
   Search,
   ShieldCheck,
   Wrench,
+  XCircle,
+  Clock,
+  GitCommit,
 } from "lucide-react";
 
 type ImprovementItem = {
@@ -45,6 +48,14 @@ type ImprovementLog = {
   source?: string;
 };
 
+type PipelineSummary = {
+  run_date: string | null;
+  applied_count: number;
+  needs_review_count: number;
+  failed_count: number;
+  commit_result: { success: boolean; message?: string; pr_url?: string | null } | null;
+};
+
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   APPROVED: { label: "承認", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   AUTO_FIX_CANDIDATE: { label: "自動修正候補", className: "bg-blue-50 text-blue-700 border-blue-200" },
@@ -69,15 +80,21 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 export default function ImprovementLogPage() {
   const [data, setData] = useState<ImprovementLog | null>(null);
+  const [summary, setSummary] = useState<PipelineSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("ALL");
+  const [status, setStatus] = useState("NEEDS_REVIEW");
+  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
 
   const fetchLog = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await axios.get<ImprovementLog>("/api/improvement-log");
-      setData(res.data);
+      const [logRes, summaryRes] = await Promise.all([
+        axios.get<ImprovementLog>("/api/improvement-log"),
+        axios.get<PipelineSummary>("/api/improvement-pipeline/summary"),
+      ]);
+      setData(logRes.data);
+      setSummary(summaryRes.data);
     } catch {
       setData(null);
     } finally {
@@ -88,6 +105,26 @@ export default function ImprovementLogPage() {
   useEffect(() => {
     fetchLog();
   }, [fetchLog]);
+
+  const handleReview = useCallback(
+    async (item: ImprovementItem, action: "approved" | "rejected" | "deferred") => {
+      const itemKey = item.canonical_key || item.id || item.title;
+      setActionLoading((prev) => ({ ...prev, [itemKey]: true }));
+      try {
+        await axios.post("/api/improvement-log/review", {
+          key: item.canonical_key || item.id || "",
+          title: item.title,
+          action,
+        });
+        await fetchLog();
+      } catch {
+        // 失敗時は何もしない（再fetchで状態は保持される）
+      } finally {
+        setActionLoading((prev) => ({ ...prev, [itemKey]: false }));
+      }
+    },
+    [fetchLog]
+  );
 
   const filteredItems = useMemo(() => {
     const items = data?.items ?? [];
@@ -130,13 +167,53 @@ export default function ImprovementLogPage() {
           </button>
         </div>
 
+        {/* 朝報告サマリーカード */}
+        {summary && (
+          <section className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
+              <GitCommit className="h-4 w-4" />
+              パイプライン実行サマリー
+              {summary.run_date && (
+                <span className="ml-1 text-xs font-normal text-slate-400">{summary.run_date}</span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <SummaryChip
+                label="自動適用"
+                value={summary.applied_count}
+                color="emerald"
+                icon={<CheckCircle2 className="h-3.5 w-3.5" />}
+              />
+              <SummaryChip
+                label="要確認"
+                value={summary.needs_review_count}
+                color="amber"
+                icon={<AlertCircle className="h-3.5 w-3.5" />}
+              />
+              <SummaryChip
+                label="失敗"
+                value={summary.failed_count}
+                color="rose"
+                icon={<XCircle className="h-3.5 w-3.5" />}
+              />
+              <div className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium border-slate-200 bg-slate-50 text-slate-600">
+                <GitCommit className="h-3.5 w-3.5" />
+                コミット:{" "}
+                {summary.commit_result?.success
+                  ? <span className="text-emerald-600">成功</span>
+                  : <span className="text-slate-400">{summary.commit_result?.message || "なし"}</span>}
+              </div>
+            </div>
+          </section>
+        )}
+
         <div className="grid gap-3 md:grid-cols-6">
           <Stat label="適用済" value={data?.applied ?? 0} icon={<CheckCircle2 className="h-4 w-4" />} />
           <Stat label="承認" value={data?.approved ?? 0} icon={<CheckCircle2 className="h-4 w-4" />} />
           <Stat label="自動修正候補" value={data?.auto_fix_candidates ?? 0} icon={<Wrench className="h-4 w-4" />} />
           <Stat label="要確認" value={data?.needs_review ?? 0} icon={<AlertCircle className="h-4 w-4" />} />
-          <Stat label="保留" value={data?.parked ?? 0} icon={<AlertCircle className="h-4 w-4" />} />
-          <Stat label="拒否" value={data?.rejected ?? 0} icon={<AlertCircle className="h-4 w-4" />} />
+          <Stat label="保留" value={data?.parked ?? 0} icon={<Clock className="h-4 w-4" />} />
+          <Stat label="拒否" value={data?.rejected ?? 0} icon={<XCircle className="h-4 w-4" />} />
         </div>
 
         <section className="rounded-lg border border-slate-200 bg-white p-4">
@@ -182,7 +259,7 @@ export default function ImprovementLogPage() {
             <div className="p-10 text-center text-sm text-slate-500">該当する改善案がありません</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-sm">
+              <table className="w-full min-w-[1000px] text-sm">
                 <thead className="bg-slate-100 text-left text-xs text-slate-500">
                   <tr>
                     <th className="px-4 py-3">順</th>
@@ -191,6 +268,7 @@ export default function ImprovementLogPage() {
                     <th className="px-4 py-3">分類</th>
                     <th className="px-4 py-3">状態</th>
                     <th className="px-4 py-3">理由</th>
+                    <th className="px-4 py-3">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -199,6 +277,9 @@ export default function ImprovementLogPage() {
                       label: item.status || "-",
                       className: "bg-slate-50 text-slate-600 border-slate-200",
                     };
+                    const itemKey = item.canonical_key || item.id || item.title;
+                    const isNeedsReview = item.status === "NEEDS_REVIEW" || item.status === "needs_review";
+                    const isActing = !!actionLoading[itemKey];
                     return (
                       <tr key={`${item.id}-${item.status}`} className="align-top hover:bg-slate-50">
                         <td className="px-4 py-3 font-mono text-xs text-slate-500">{item.recommended_order ?? "-"}</td>
@@ -220,6 +301,32 @@ export default function ImprovementLogPage() {
                         </td>
                         <td className="px-4 py-3 text-xs leading-relaxed text-slate-600">
                           {item.auto_fix_policy?.reason || item.reason || "-"}
+                        </td>
+                        <td className="px-4 py-3">
+                          {isNeedsReview ? (
+                            <div className="flex gap-1.5">
+                              <ActionButton
+                                label="承認"
+                                onClick={() => handleReview(item, "approved")}
+                                disabled={isActing}
+                                variant="approve"
+                              />
+                              <ActionButton
+                                label="却下"
+                                onClick={() => handleReview(item, "rejected")}
+                                disabled={isActing}
+                                variant="reject"
+                              />
+                              <ActionButton
+                                label="defer"
+                                onClick={() => handleReview(item, "deferred")}
+                                disabled={isActing}
+                                variant="defer"
+                              />
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-300">—</span>
+                          )}
                         </td>
                       </tr>
                     );
@@ -243,5 +350,57 @@ function Stat({ label, value, icon }: { label: string; value: number; icon: Reac
       </div>
       <div className="mt-2 text-2xl font-bold text-slate-900">{value}</div>
     </div>
+  );
+}
+
+function SummaryChip({
+  label,
+  value,
+  color,
+  icon,
+}: {
+  label: string;
+  value: number;
+  color: "emerald" | "amber" | "rose";
+  icon: React.ReactNode;
+}) {
+  const colorMap = {
+    emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    amber: "border-amber-200 bg-amber-50 text-amber-700",
+    rose: "border-rose-200 bg-rose-50 text-rose-700",
+  };
+  return (
+    <div className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${colorMap[color]}`}>
+      {icon}
+      {label}: <span className="font-bold">{value}</span>
+    </div>
+  );
+}
+
+const ACTION_STYLES = {
+  approve: "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100",
+  reject: "border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100",
+  defer: "border-slate-300 bg-slate-50 text-slate-600 hover:bg-slate-100",
+};
+
+function ActionButton({
+  label,
+  onClick,
+  disabled,
+  variant,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled: boolean;
+  variant: "approve" | "reject" | "defer";
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`rounded border px-2 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${ACTION_STYLES[variant]}`}
+    >
+      {label}
+    </button>
   );
 }

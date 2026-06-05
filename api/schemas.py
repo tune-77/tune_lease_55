@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Literal, Optional
 
 class ScoringRequest(BaseModel):
     company_no: Optional[str] = Field(default="", description="企業番号")
@@ -134,3 +134,10 @@ class LeaseNewsSummaryItem(BaseModel):
     file_path: str = ""
     week: str = ""
     month: str = ""
+
+
+class ReviewImprovementRequest(BaseModel):
+    key: str
+    title: str
+    action: Literal["approved", "rejected", "deferred"]
+    reason: str = ""
