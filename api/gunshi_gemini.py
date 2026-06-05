@@ -138,6 +138,8 @@ def _load_pdca_feedback() -> str:
 
 def _fetch_rag_context(asset_name: str, industry_cat: str) -> str:
     """ChromaDB から案件特性（物件名・業種）に応じた知見ノートを取得する。失敗時は空文字。"""
+    if os.environ.get("ENABLE_GUNSHI_RAG", "").lower() not in {"1", "true", "yes"}:
+        return ""
     if not (asset_name or industry_cat):
         return ""
     try:
@@ -490,6 +492,7 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
         if attempt > 0:
             await asyncio.sleep(2 ** (attempt - 1))  # 1s, 2s
         try:
+            emitted_text = ""
             async with httpx.AsyncClient(timeout=60.0) as client:
                 async with client.stream("POST", url, json=payload) as resp:
                     if resp.status_code == 429:
@@ -515,9 +518,20 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
                                 chunk["candidates"][0]["content"]["parts"][0].get("text", "")
                             )
                             if delta:
+                                emitted_text += delta
                                 yield {"type": "stream", "delta": delta}
                         except Exception:
                             pass
+                    if len(emitted_text.strip()) < 120:
+                        prefix = "\n\n" if emitted_text.strip() else ""
+                        yield {
+                            "type": "stream",
+                            "delta": prefix + build_fallback_strategy_text(
+                                params,
+                                phrases,
+                                "Gemini応答が短すぎたため補完",
+                            ),
+                        }
                     yield {"type": "done"}
                     return
         except Exception as exc:

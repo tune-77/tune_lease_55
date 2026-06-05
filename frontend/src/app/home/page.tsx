@@ -243,17 +243,6 @@ export default function HomeDashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newsPrefecture]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[calc(100vh-2rem)]">
-        <div className="flex flex-col items-center">
-          <Activity className="w-12 h-12 text-blue-500 animate-spin mb-4" />
-          <h2 className="text-xl font-bold text-slate-500">データを集計中...</h2>
-        </div>
-      </div>
-    );
-  }
-
   const analysis = stats?.analysis;
   const recentCases = stats?.recent_cases || [];
   const improvementHighlights = stats?.improvement_highlights?.items || [];
@@ -327,7 +316,7 @@ export default function HomeDashboard() {
               <div className="text-[10px] font-black uppercase tracking-widest text-blue-200">System Status</div>
               <div className="text-sm font-black flex items-center gap-2">
                 <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-                ONLINE & SYNCED
+                {loading ? "ONLINE & SYNCING" : "ONLINE & SYNCED"}
               </div>
             </div>
             <div className="bg-white/10 backdrop-blur-md border border-white/20 px-6 py-3 rounded-2xl">

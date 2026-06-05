@@ -11,6 +11,17 @@ import plotly.graph_objects as go
 _DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "lease_data.db")
 _SUCCESS = {"成約", "検収完了"}
 _FAILURE = {"失注"}
+_SERVICE_GENERAL_ALIASES = {
+    "91 職業紹介・労働者派遣業",
+    "R サービス業(他に分類されないもの)",
+}
+
+
+def _normalize_industry_for_stats(industry: str) -> str:
+    label = str(industry or "").strip()
+    if label in _SERVICE_GENERAL_ALIASES:
+        return "サービス業全般"
+    return label
 
 
 def _load_winrate() -> list[dict]:
@@ -30,6 +41,7 @@ def _load_winrate() -> list[dict]:
     for industry, status, cnt in rows:
         if not industry or industry == "0":
             continue
+        industry = _normalize_industry_for_stats(industry)
         d = agg.setdefault(industry, {"won": 0, "lost": 0, "other": 0})
         if status in _SUCCESS:
             d["won"] += cnt

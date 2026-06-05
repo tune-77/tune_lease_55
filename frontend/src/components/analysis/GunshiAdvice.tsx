@@ -169,6 +169,9 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
   const initialFetchKeyRef = useRef<string>("");
   const similarFetchKeyRef = useRef<string>("");
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const initialStrategyQuestion = score > 0
+    ? `この案件（スコア ${score.toFixed(1)}点、${industry_major || "指定なし"}）の稟議を通すための「逆転戦略」を教えてくれ！`
+    : "";
 
   useEffect(() => {
     const el = chatScrollRef.current;
@@ -320,6 +323,7 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
               setBayesFactors(chunk.factors || []);
             } else if (chunk.type === 'strategy_cards') {
               setStrategyCards(chunk.cards || null);
+              setStrategyOpen(Boolean(chunk.cards));
               if (chunk.cards?.bayes_factors?.length) {
                 setBayesFactors(chunk.cards.bayes_factors);
               }
@@ -413,11 +417,10 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
     if (initialFetchKeyRef.current === fetchKey) return;
     initialFetchKeyRef.current = fetchKey;
 
-    const initialQuestion = `この案件（スコア ${score.toFixed(1)}点、${industry_major || "指定なし"}）の稟議を通すための「逆転戦略」を教えてくれ！`;
-    const nextHistory: ChatMessage[] = [{ role: 'user', text: initialQuestion }];
+    const nextHistory: ChatMessage[] = [{ role: 'user', text: initialStrategyQuestion }];
     setChatHistory(nextHistory);
     fetchStreamChat(nextHistory);
-  }, [score, industry_major, formData]);
+  }, [score, industry_major, formData, initialStrategyQuestion]);
 
   useEffect(() => {
     if (score === 0) return;
@@ -848,6 +851,17 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {initialStrategyQuestion && (
+          <div className={`rounded-xl border shadow-sm px-4 py-3 ${isYukikaze ? 'bg-black/85 border-red-900 text-amber-50 font-mono' : 'bg-blue-50 border-blue-200'}`}>
+            <div className={`text-[10px] font-black mb-1 ${isYukikaze ? 'text-red-300 tracking-widest' : 'text-blue-700'}`}>
+              {isYukikaze ? 'PILOT QUERY' : '今回の問い'}
+            </div>
+            <div className={`text-sm font-bold leading-6 ${isYukikaze ? 'text-amber-100' : 'text-slate-800'}`}>
+              {initialStrategyQuestion}
+            </div>
           </div>
         )}
 
