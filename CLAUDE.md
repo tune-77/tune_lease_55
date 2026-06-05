@@ -138,10 +138,10 @@ cd frontend && npx tsc --noEmit   # ✅ PR 前に必ず実行
 ### 6. やらかしパターン（実例から）
 
 ```
-✗ VaultパスをDocumentsに向けていた → iCloudパスを優先する
-✗ UMAPモデルが毎リクエストロードされていた → モジュールレベルでキャッシュ
+✗ VaultパスをDocumentsに向けていた → iCloudパスを優先。uvicornは.zshrcを読まないためENV変数はplistで設定
+✗ UMAPモデルが毎リクエスト重い計算を実行 → スレッドプール枯渇・500エラー。scoring_core.pyを触るときはUMAPの存在を確認し、モジュールレベルでキャッシュ
 ✗ score_baseキー名が間違っていた → 変更後は必ずキー名を grep で確認
-✗ `canonical_key` がREV ID形式 → パイプラインの `canonical_key(title)` と統一
+✗ canonical_keyのフォーマット不整合 → CLIがREV ID形式・パイプラインがcanonical_key(title)形式。ledgerを操作するスクリプトは必ずcanonical_key(title)形式で書く
 ✗ パイプラインのステップを変更して壊した → 追記のみ、既存ステップは変更しない
 ✗ フローティングUIが邪魔 → UIは先に場所を聞いてから実装する
 ```

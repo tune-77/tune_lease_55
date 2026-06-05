@@ -968,6 +968,49 @@ def append_asset_knowledge_backlinks(
     return {"status": "saved", "updated": updated}
 
 
+def append_work_log(
+    title: str,
+    what: str,
+    why_hard: str = "",
+    next_time: str = "",
+    lesson: str = "",
+    pr: str | None = None,
+    tags: list[str] | None = None,
+) -> dict[str, str]:
+    """Codexスタイルの作業ログをObsidianに追記する。"""
+    vault = find_vault()
+    if not vault:
+        return {"status": "skipped", "reason": "Obsidian vault not found"}
+    day = dt.date.today().isoformat()
+    rel = f"Projects/tune_lease_55/Work Logs/{day}.md"
+    path = _safe_note_path(vault, rel)
+    _tags = tags or ["作業ログ"]
+    tag_str = ", ".join(_tags)
+    is_new = not path.exists() or not path.read_text(encoding="utf-8", errors="ignore").strip()
+    if is_new:
+        timestamp = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+        header = f"---\ndate: {timestamp}\ntype: work_log\ntags: [{tag_str}]\n---\n\n"
+    else:
+        header = "\n"
+    pr_suffix = f"（PR #{pr}）" if pr else ""
+    section_lines = [
+        f"## 作業: {title}{pr_suffix}",
+        "",
+        "### 何をしたか",
+        (what or "").strip(),
+    ]
+    if why_hard:
+        section_lines += ["", "### なぜ大変だったか", why_hard.strip()]
+    if next_time:
+        section_lines += ["", "### 次回どう切り分けるか", next_time.strip()]
+    if lesson:
+        section_lines += ["", "### 教訓", lesson.strip()]
+    section = "\n".join(section_lines) + "\n"
+    with path.open("a", encoding="utf-8") as f:
+        f.write(header + section)
+    return {"status": "saved", "path": str(path)}
+
+
 def append_weekly_review_note(title: str, body: str) -> dict[str, str]:
     vault = find_vault()
     if not vault:
