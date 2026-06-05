@@ -141,3 +141,18 @@ class ReviewImprovementRequest(BaseModel):
     title: str
     action: Literal["approved", "rejected", "deferred"]
     reason: str = ""
+
+
+class WorkLogRequest(BaseModel):
+    title: str
+    what: str
+    why_hard: str = ""
+    next_time: str = ""
+    lesson: str = ""
+    pr: str | None = None
+    tags: list[str] = ["作業ログ"]
+
+
+class WorkLogResponse(BaseModel):
+    memory_path: str
+    obsidian: dict

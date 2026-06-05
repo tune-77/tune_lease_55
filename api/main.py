@@ -113,6 +113,8 @@ from api.schemas import (
     LeaseNewsSummarizeRequest,
     LeaseNewsSummaryItem,
     ReviewImprovementRequest,
+    WorkLogRequest,
+    WorkLogResponse,
 )
 from pydantic import BaseModel, Field
 from typing import List, Any, Dict, Optional
@@ -6861,6 +6863,54 @@ def summarize_lease_news(req: LeaseNewsSummarizeRequest):
         "importance": summary.get("importance", "中"),
         "saved_path": saved_path,
     }
+
+
+@app.post("/api/work-log", response_model=WorkLogResponse)
+def save_work_log(req: WorkLogRequest):
+    """Codexスタイルの作業ログをmemory/とObsidianに保存する。"""
+    import datetime as _dt
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    MEMORY_DIR = _Path.home() / ".claude" / "projects" / "-Users-kobayashiisaoryou-clawd-tune-lease-55" / "memory"
+    MEMORY_DIR.mkdir(parents=True, exist_ok=True)
+
+    ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    pr_suffix = f"（PR #{req.pr}）" if req.pr else ""
+    body_lines = [
+        f"## 作業: {req.title}{pr_suffix}",
+        "",
+        "### 何をしたか",
+        req.what,
+    ]
+    if req.why_hard:
+        body_lines += ["", "### なぜ大変だったか", req.why_hard]
+    if req.next_time:
+        body_lines += ["", "### 次回どう切り分けるか", req.next_time]
+    if req.lesson:
+        body_lines += ["", "### 教訓", req.lesson]
+
+    tag_str = ", ".join(req.tags)
+    now_str = _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+    mem_content = (
+        f"---\nname: work_log_{ts}\ndescription: 作業ログ: {req.title}\n"
+        f"metadata:\n  type: project\n---\n\n"
+        f"---\ndate: {now_str}\ntype: work_log\ntags: [{tag_str}]\n---\n\n"
+        + "\n".join(body_lines) + "\n"
+    )
+    mem_path = MEMORY_DIR / f"work_log_{ts}.md"
+    mem_path.write_text(mem_content, encoding="utf-8")
+
+    try:
+        from mobile_app.obsidian_bridge import append_work_log
+        obs_result = append_work_log(
+            title=req.title, what=req.what, why_hard=req.why_hard,
+            next_time=req.next_time, lesson=req.lesson, pr=req.pr, tags=req.tags,
+        )
+    except Exception as e:
+        obs_result = {"status": "error", "reason": str(e)}
+
+    return WorkLogResponse(memory_path=str(mem_path), obsidian=obs_result)
 
 
 @app.get("/api/lease-news/recent")
