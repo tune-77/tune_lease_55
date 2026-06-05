@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { apiClient } from "@/lib/api";
 import { Send, Trash2, Loader2, MessageCircle, Bot, User, NotebookPen, Mic, Network, Database, ChevronDown, ChevronUp, Lightbulb } from "lucide-react";
+import { extractPrefectureFromText, normalizePrefecture } from "@/lib/prefecture";
 
 interface ChatMessage {
   id: number;
@@ -11,6 +12,55 @@ interface ChatMessage {
   content: string;
   created_at: string;
 }
+
+type ChatContext = {
+  score?: number;
+  hantei?: string;
+  score_borrower?: number;
+  company_name?: string;
+  asset_name?: string;
+  asset_location?: string;
+  prefecture?: string;
+  industry_sub?: string;
+  industry_major?: string;
+  sales_dept?: string;
+  quantum_risk?: number;
+  case_id?: string;
+};
+
+type LeaseNewsFocus = {
+  available?: boolean;
+  note_path?: string;
+  note_date?: string;
+  profile?: string;
+  theme_summary?: string;
+  bucket_summary?: string;
+  tag_summary?: string;
+  focus_lines?: string[];
+  memo_lines?: string[];
+  metrics_lines?: string[];
+  article_titles?: string[];
+  headline?: string;
+};
+
+type LeaseNewsBrief = {
+  available?: boolean;
+  prefecture?: string;
+  region?: string;
+  geo_context?: string;
+  national_headline?: string;
+  national_focus_lines?: string[];
+  regional_available?: boolean;
+  regional_title?: string;
+  regional_summary_lines?: string[];
+  regional_usage_memo?: string;
+  regional_tags?: string[];
+  regional_source?: string;
+  opening_line?: string;
+  question_line?: string;
+  note_date?: string;
+  note_path?: string;
+};
 
 type SpeechRecognitionResultLike = ArrayLike<{ transcript: string }>;
 
@@ -121,6 +171,12 @@ export default function ChatPage() {
   const [recentCases, setRecentCases] = useState<{ id: string; company_name: string; score: number | null; final_status: string }[]>([]);
   const [showCasesPanel, setShowCasesPanel] = useState(false);
   const [improvementMode, setImprovementMode] = useState(false);
+  const [leaseNewsFocus, setLeaseNewsFocus] = useState<LeaseNewsFocus | null>(null);
+  const [leaseNewsBrief, setLeaseNewsBrief] = useState<LeaseNewsBrief | null>(null);
+  const [chatContext, setChatContext] = useState<ChatContext>({});
+  const [newsPrefecture, setNewsPrefecture] = useState("");
+  const [showDailyNewsBrief, setShowDailyNewsBrief] = useState(false);
+  const [newsPrefectureReady, setNewsPrefectureReady] = useState(false);
   const messageListRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
@@ -139,24 +195,28 @@ export default function ChatPage() {
       if (raw) {
         window.localStorage.removeItem("lease-gunshi-context");
         try {
-          const ctx = JSON.parse(raw) as {
-            score?: number;
-            hantei?: string;
-            score_borrower?: number;
-            company_name?: string;
-            asset_name?: string;
-            industry_sub?: string;
-            quantum_risk?: number;
-            case_id?: string;
-          };
+          const ctx = JSON.parse(raw) as ChatContext;
+          setChatContext(ctx);
+          const derivedPrefecture = normalizePrefecture(
+            ctx.prefecture || extractPrefectureFromText(ctx.asset_location || "")
+          );
+          const cachedPrefecture = window.localStorage.getItem("lease-news-prefecture-hint") || "";
+          const nextPrefecture = derivedPrefecture || cachedPrefecture;
+          if (nextPrefecture) {
+            setNewsPrefecture(nextPrefecture);
+          }
           const lines: string[] = [
             `【審査結果の相談】${ctx.company_name ? ` ${ctx.company_name}` : ""}`,
             `・物件: ${ctx.asset_name ?? "—"}`,
             `・業種: ${ctx.industry_sub ?? "—"}`,
+            `・営業部: ${ctx.sales_dept ?? "—"}`,
             `・総合スコア: ${ctx.score != null ? ctx.score.toFixed(1) + "点" : "—"}`,
             `・判定: ${ctx.hantei ?? "—"}`,
             `・借手スコア: ${ctx.score_borrower != null ? ctx.score_borrower.toFixed(1) + "点" : "—"}`,
           ];
+          if (ctx.asset_location) {
+            lines.push(`・設置場所: ${ctx.asset_location}`);
+          }
           if (ctx.quantum_risk != null) {
             lines.push(`・量子リスク: ${ctx.quantum_risk.toFixed(1)}`);
           }
@@ -167,15 +227,33 @@ export default function ChatPage() {
           // JSON parse失敗は無視
         }
       }
+      setNewsPrefectureReady(true);
     });
     const timer = setTimeout(() => setShowSubtitle(false), 5000);
     setVoiceSupported(Boolean(getSpeechRecognition()));
     apiClient.get("/api/cases?limit=8&sort=desc")
       .then(res => setRecentCases(res.data || []))
       .catch(() => {});
+    apiClient.get("/api/lease-news/focus")
+      .then((res) => setLeaseNewsFocus(res.data || null))
+      .catch(() => {});
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!newsPrefectureReady) return;
+    const normalized = normalizePrefecture(newsPrefecture);
+    const nextPrefecture = normalized || "";
+    const cachedIndustry = chatContext.industry_sub || chatContext.industry_major || "";
+    if (nextPrefecture) {
+      window.localStorage.setItem("lease-news-prefecture-hint", nextPrefecture);
+    } else {
+      window.localStorage.removeItem("lease-news-prefecture-hint");
+    }
+    loadLeaseNewsBrief(nextPrefecture, cachedIndustry);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newsPrefecture, chatContext.industry_sub, chatContext.industry_major]);
 
   useEffect(() => {
     scrollToBottom();
@@ -195,6 +273,28 @@ export default function ChatPage() {
     }
   };
 
+  const loadLeaseNewsBrief = async (prefectureHint: string, industryHint: string) => {
+    try {
+      const res = await apiClient.get("/api/lease-news/brief", {
+        params: {
+          prefecture: prefectureHint,
+          industry: industryHint,
+        },
+      });
+      setLeaseNewsBrief(res.data || null);
+      const todayKey = new Date().toISOString().slice(0, 10);
+      const showKey = `lease-news-brief-seen-${todayKey}-${prefectureHint || "national"}`;
+      const seen = window.localStorage.getItem(showKey);
+      setShowDailyNewsBrief(!seen && Boolean(res.data?.available));
+      if (!seen && res.data?.available) {
+        window.localStorage.setItem(showKey, "1");
+      }
+    } catch {
+      setLeaseNewsBrief(null);
+      setShowDailyNewsBrief(false);
+    }
+  };
+
   const sendMessageWithText = async (text: string) => {
     if (!text.trim() || loading) return;
     const optimisticUser: ChatMessage = {
@@ -210,7 +310,15 @@ export default function ChatPage() {
       const res = await apiClient.post("/api/chat", {
         message: text,
         user_id: userId,
+        prefecture: normalizePrefecture(newsPrefecture),
+        industry: chatContext.industry_sub || chatContext.industry_major || "",
       });
+      if (res.data?.lease_news_focus) {
+        setLeaseNewsFocus(res.data.lease_news_focus);
+      }
+      if (res.data?.lease_news_brief) {
+        setLeaseNewsBrief(res.data.lease_news_brief);
+      }
       setMessages((prev) => [
         ...prev,
         {
@@ -257,7 +365,15 @@ export default function ChatPage() {
         message: text,
         user_id: userId,
         intent: improvementMode ? "improvement" : undefined,
+        prefecture: normalizePrefecture(newsPrefecture),
+        industry: chatContext.industry_sub || chatContext.industry_major || "",
       });
+      if (res.data?.lease_news_focus) {
+        setLeaseNewsFocus(res.data.lease_news_focus);
+      }
+      if (res.data?.lease_news_brief) {
+        setLeaseNewsBrief(res.data.lease_news_brief);
+      }
       const assistantMsg: ChatMessage = {
         id: Date.now() + 1,
         user_id: userId,
@@ -428,6 +544,145 @@ export default function ChatPage() {
           </button>
         </div>
       </div>
+
+      {showDailyNewsBrief && leaseNewsBrief?.available && (
+        <section className="flex-shrink-0 mb-3 rounded-2xl border border-amber-200 bg-amber-50/90 p-4 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-black uppercase tracking-wide text-amber-700">今日のニュースブリーフ</div>
+              <h2 className="mt-1 text-sm font-black text-amber-950">
+                {leaseNewsBrief.opening_line || "今日はこのようなニュースがあります。"}
+              </h2>
+              <p className="mt-1 text-xs font-bold leading-relaxed text-amber-800">
+                {leaseNewsBrief.question_line || "この案件で、今日は何を先に確認しますか？"}
+              </p>
+              {leaseNewsBrief.geo_context && (
+                <p className="mt-2 text-[11px] font-bold leading-relaxed text-amber-700 whitespace-pre-wrap">
+                  {leaseNewsBrief.geo_context}
+                </p>
+              )}
+            </div>
+            <div className="flex flex-col gap-2 sm:min-w-56">
+              <input
+                type="text"
+                value={newsPrefecture}
+                onChange={(e) => setNewsPrefecture(e.target.value)}
+                placeholder="取引地域（例: 大阪府）"
+                className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 outline-none placeholder:text-slate-400"
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextPref = normalizePrefecture(newsPrefecture);
+                    loadLeaseNewsBrief(nextPref, chatContext.industry_sub || chatContext.industry_major || "");
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-100 transition-colors"
+                >
+                  更新
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const prompt = leaseNewsBrief.question_line || "今日のニュースで審査上気にする点は？";
+                    setInput((prev) => (prev ? `${prev}\n${prompt}` : prompt));
+                    textareaRef.current?.focus();
+                    window.setTimeout(resizeTextarea, 0);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-100 transition-colors"
+                >
+                  この論点で相談
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            <div className="rounded-xl border border-white/80 bg-white/80 p-3">
+              <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">全国論点</div>
+              <p className="mt-1 text-xs font-bold leading-relaxed text-slate-700">
+                {leaseNewsBrief.national_headline || leaseNewsFocus?.headline || "最新ニュースの論点を表示します"}
+              </p>
+              {leaseNewsBrief.national_focus_lines?.length ? (
+                <ul className="mt-2 space-y-1">
+                  {leaseNewsBrief.national_focus_lines.slice(0, 3).map((line, i) => (
+                    <li key={i} className="text-[11px] leading-relaxed text-slate-600">・{line}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+            <div className="rounded-xl border border-white/80 bg-white/80 p-3">
+              <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">地域論点</div>
+              {leaseNewsBrief.regional_available ? (
+                <>
+                  <p className="mt-1 text-xs font-bold leading-relaxed text-slate-700">
+                    {leaseNewsBrief.regional_title}
+                  </p>
+                  {leaseNewsBrief.regional_summary_lines?.length ? (
+                    <ul className="mt-2 space-y-1">
+                      {leaseNewsBrief.regional_summary_lines.slice(0, 3).map((line, i) => (
+                        <li key={i} className="text-[11px] leading-relaxed text-slate-600">・{line}</li>
+                      ))}
+                    </ul>
+                  ) : leaseNewsBrief.regional_usage_memo ? (
+                    <p className="mt-2 text-[11px] leading-relaxed text-slate-600">{leaseNewsBrief.regional_usage_memo}</p>
+                  ) : null}
+                </>
+              ) : (
+                <p className="mt-1 text-xs text-slate-500">取引地域を入れると地域論点も出ます。</p>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {leaseNewsFocus?.available && (
+        <section className="flex-shrink-0 mb-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-xs font-black uppercase tracking-wide text-amber-700">最新リースニュース</div>
+              <h2 className="mt-1 text-sm font-black text-amber-950">
+                {leaseNewsFocus.headline || leaseNewsFocus.theme_summary || "最新ニュースの注目論点"}
+              </h2>
+              {leaseNewsFocus.note_date && (
+                <p className="mt-1 text-[11px] text-amber-700">更新: {leaseNewsFocus.note_date}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const snippet = leaseNewsFocus.focus_lines?.slice(0, 3).map((line) => `- ${line}`).join("\n") || "";
+                  if (!snippet) return;
+                  setInput((prev) => (prev ? `${prev}\n${snippet}` : snippet));
+                  textareaRef.current?.focus();
+                  window.setTimeout(resizeTextarea, 0);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-100 transition-colors"
+              >
+                入力に追加
+              </button>
+              <button
+                type="button"
+                onClick={() => openKnowledgeEvidence(leaseNewsFocus.headline || leaseNewsFocus.theme_summary || leaseNewsFocus.tag_summary || "")}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-100 transition-colors"
+              >
+                根拠ルート
+              </button>
+            </div>
+          </div>
+          {leaseNewsFocus.focus_lines?.length ? (
+            <div className="mt-3 grid gap-1.5">
+              {leaseNewsFocus.focus_lines.slice(0, 3).map((line, i) => (
+                <p key={i} className="text-xs leading-relaxed text-amber-900">
+                  ・{line}
+                </p>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-3 text-xs text-amber-800">ニュースの注目論点を取得しました。</p>
+          )}
+        </section>
+      )}
 
       {/* DB案件クイック参照パネル (REV-130) */}
       {recentCases.length > 0 && (

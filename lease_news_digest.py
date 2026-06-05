@@ -37,6 +37,102 @@ class LeaseNewsFocus:
         return "最新ニュースの論点あり"
 
 
+@dataclass(frozen=True)
+class LeaseNewsBrief:
+    available: bool
+    prefecture: str = ""
+    region: str = ""
+    geo_context: str = ""
+    national_headline: str = ""
+    national_focus_lines: tuple[str, ...] = ()
+    regional_available: bool = False
+    regional_title: str = ""
+    regional_summary_lines: tuple[str, ...] = ()
+    regional_usage_memo: str = ""
+    regional_tags: tuple[str, ...] = ()
+    regional_source: str = ""
+    opening_line: str = ""
+    question_line: str = ""
+    note_date: str = ""
+    note_path: str = ""
+
+
+def _parse_news_note(path: Path) -> dict:
+    item: dict = {
+        "date": "",
+        "title": path.stem,
+        "summary_lines": [],
+        "usage_memo": "",
+        "tags": [],
+        "region": "国内",
+        "importance": "通常",
+        "source": "",
+        "article_url": "",
+        "file_path": str(path),
+        "week": "",
+        "month": "",
+    }
+    try:
+        raw = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return item
+
+    fm_match = re.match(r"^---\s*\n(.*?)\n---\s*\n", raw, re.DOTALL)
+    if fm_match:
+        fm = fm_match.group(1)
+        for line in fm.splitlines():
+            if line.startswith("date:"):
+                item["date"] = line.split(":", 1)[1].strip()
+            elif line.startswith("tags:"):
+                try:
+                    item["tags"] = json.loads(line.split(":", 1)[1].strip())
+                except Exception:
+                    pass
+            elif line.startswith("region:"):
+                item["region"] = line.split(":", 1)[1].strip()
+            elif line.startswith("source:"):
+                item["source"] = line.split(":", 1)[1].strip()
+            elif line.startswith("importance:"):
+                item["importance"] = line.split(":", 1)[1].strip()
+            elif line.startswith("week:"):
+                item["week"] = line.split(":", 1)[1].strip()
+            elif line.startswith("month:"):
+                item["month"] = line.split(":", 1)[1].strip()
+
+    title_match = re.search(r"^# (.+)$", raw, re.MULTILINE)
+    if title_match:
+        item["title"] = title_match.group(1).strip()
+
+    summary_section = re.search(r"## 3行要約\s*\n((?:- .+\n?){1,3})", raw)
+    if summary_section:
+        item["summary_lines"] = [
+            line.lstrip("- ").strip()
+            for line in summary_section.group(1).strip().splitlines()
+            if line.strip()
+        ]
+
+    memo_match = re.search(r"## 活用メモ\s*\n(.+?)(?:\n##|\Z)", raw, re.DOTALL)
+    if memo_match:
+        item["usage_memo"] = memo_match.group(1).strip()
+
+    link_match = re.search(r"^- link:\s*(.+)$", raw, re.MULTILINE)
+    if link_match:
+        item["article_url"] = link_match.group(1).strip()
+    elif item["source"].startswith(("http://", "https://")):
+        item["article_url"] = item["source"]
+
+    return item
+
+
+def _recent_news_items(vault: Path, limit: int = 10) -> list[dict]:
+    news_dir = vault / DEFAULT_NEWS_REL_DIR
+    if not news_dir.exists():
+        return []
+    md_files = sorted(news_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+    items = [_parse_news_note(fpath) for fpath in md_files[:limit]]
+    return items
+
+
 def _vault_candidates() -> list[Path]:
     home = Path.home()
     raw_candidates = [
@@ -231,6 +327,83 @@ def lease_news_focus_as_text(vault: Path | None = None) -> str:
         lines.append(f"重点タグ: {focus.tag_summary}")
     lines.extend(f"- {line}" for line in focus.focus_lines)
     return "\n".join(lines).strip()
+
+
+def build_lease_news_brief(
+    prefecture: str = "",
+    industry: str = "",
+    vault: Path | None = None,
+) -> LeaseNewsBrief:
+    vault = vault or find_vault()
+    if not vault:
+        return LeaseNewsBrief(available=False)
+
+    try:
+        from api.context.geo_enricher import get_geo_context, get_region_from_prefecture
+    except Exception:
+        get_geo_context = None  # type: ignore[assignment]
+        get_region_from_prefecture = None  # type: ignore[assignment]
+
+    region = ""
+    if prefecture and get_region_from_prefecture:
+        region = get_region_from_prefecture(prefecture)
+    geo_context = get_geo_context(prefecture=prefecture, industry=industry) if get_geo_context else ""
+
+    focus = get_latest_lease_news_focus(vault=vault)
+    national_lines = tuple(focus.focus_lines[:3]) if focus.available else ()
+    national_headline = focus.headline if focus.available else ""
+    note_date = focus.note_date if focus.available else ""
+    note_path = focus.note_path if focus.available else ""
+
+    recent_items = _recent_news_items(vault, limit=12)
+    regional_item: dict | None = None
+    if region:
+        regional_candidates = [item for item in recent_items if str(item.get("region") or "") == region]
+        if regional_candidates:
+            regional_item = regional_candidates[0]
+        elif recent_items:
+            regional_item = recent_items[0]
+
+    regional_available = bool(regional_item)
+    regional_title = str(regional_item.get("title") or "") if regional_item else ""
+    regional_summary_lines = tuple((regional_item.get("summary_lines") or [])[:3]) if regional_item else ()
+    regional_usage_memo = str(regional_item.get("usage_memo") or "") if regional_item else ""
+    regional_tags = tuple((regional_item.get("tags") or [])[:4]) if regional_item else ()
+    regional_source = str(regional_item.get("source") or "") if regional_item else ""
+
+    opening_parts = ["今日はこのようなニュースがあります。"]
+    if national_headline:
+        opening_parts.append(f"全国では「{national_headline}」。")
+    if region and regional_available and regional_title:
+        opening_parts.append(f"{prefecture or region}では「{regional_title}」。")
+    elif region:
+        opening_parts.append(f"{prefecture or region}向けの地域論点も確認できます。")
+    else:
+        opening_parts.append("取引地域が分かれば、地域論点も追加できます。")
+    opening_line = " ".join(opening_parts)
+
+    question_line = "この案件で、今日は何を先に確認しますか？"
+    if region:
+        question_line = f"この{prefecture or region}の案件で、今日はどこを先に確認しますか？"
+
+    return LeaseNewsBrief(
+        available=bool(focus.available or regional_available),
+        prefecture=prefecture,
+        region=region,
+        geo_context=geo_context,
+        national_headline=national_headline,
+        national_focus_lines=national_lines,
+        regional_available=regional_available,
+        regional_title=regional_title,
+        regional_summary_lines=regional_summary_lines,
+        regional_usage_memo=regional_usage_memo,
+        regional_tags=regional_tags,
+        regional_source=regional_source,
+        opening_line=opening_line,
+        question_line=question_line,
+        note_date=note_date,
+        note_path=note_path,
+    )
 
 
 def _load_metrics() -> dict:

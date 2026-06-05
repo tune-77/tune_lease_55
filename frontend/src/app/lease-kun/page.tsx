@@ -5,6 +5,7 @@ import { ArrowLeft, Activity, ChevronDown, MessageSquare } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import { toThousandYenPayload } from '../../lib/scoringUnits';
+import { extractPrefectureFromText } from '@/lib/prefecture';
 
 // --- 型定義 ---
 type Message = {
@@ -19,7 +20,9 @@ type ScoreResult = {
   score_borrower?: number;
   company_name?: string;
   asset_name?: string;
+  asset_location?: string;
   industry_sub?: string;
+  sales_dept?: string;
   quantum_risk?: number;
   case_id?: string;
 };
@@ -66,11 +69,13 @@ export default function LeaseKunWizard() {
     company_no: '', company_name: '',
     industry_major: 'D 建設業', industry_sub: '06 総合工事業',
     // Step 1
+    sales_dept: '未設定',
     main_bank: 'メイン先', competitor: '競合なし',
     num_competitors: '未入力', deal_source: 'その他', deal_occurrence: '不明',
     customer_type: '新規先',
     // Step 2
     asset_name: 'IT・OA機器',
+    asset_location: '',
     // Step 3 (PL)
     nenshu: '', gross_profit: '', op_profit: '', ord_profit: '', net_income: '',
     // Step 4 (BS)
@@ -145,7 +150,11 @@ export default function LeaseKunWizard() {
 
     switch (step) {
       case 0:
-        answerText = `${formData.company_name || '（企業名未入力）'} / ${formData.industry_major} / ${formData.industry_sub}`;
+        if (!formData.sales_dept || formData.sales_dept === '未設定') {
+          newErrors.sales_dept = '営業部を選択してください';
+        }
+        if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return; }
+        answerText = `${formData.company_name || '（企業名未入力）'} / ${formData.industry_major} / ${formData.industry_sub} / ${formData.sales_dept}`;
         nextBotText = `次は取引状況について。当行メイン先？競合はいる？`;
         break;
       case 1:
@@ -224,8 +233,10 @@ export default function LeaseKunWizard() {
         company_no:                   formData.company_no,
         company_name:                 formData.company_name,
         asset_name:                   formData.asset_name,
+        asset_location:               formData.asset_location,
         industry_major:               formData.industry_major,
         industry_sub:                 formData.industry_sub,
+        sales_dept:                   formData.sales_dept,
         main_bank:                    formData.main_bank,
         competitor:                   formData.competitor,
         num_competitors:              formData.num_competitors,
@@ -310,13 +321,17 @@ export default function LeaseKunWizard() {
   };
 
   const handleGunshiConsult = (result: ScoreResult) => {
+    const assetLocation = formData.asset_location || result.asset_location || '';
     const context = {
       score: result.score_base ?? result.score,
       hantei: result.hantei,
       score_borrower: result.score_borrower,
       company_name: result.company_name || formData.company_name || '（未入力）',
       asset_name: result.asset_name || formData.asset_name,
+      asset_location: assetLocation,
+      prefecture: extractPrefectureFromText(assetLocation),
       industry_sub: result.industry_sub || formData.industry_sub,
+      sales_dept: result.sales_dept || formData.sales_dept,
       quantum_risk: result.quantum_risk,
       case_id: result.case_id,
     };
@@ -465,6 +480,22 @@ export default function LeaseKunWizard() {
                   </select>
                   <ChevronDown className="absolute right-3 top-8 w-4 h-4 text-slate-400 pointer-events-none" />
                 </div>
+                <div>
+                  <label className={lbl}>営業部 <span className="text-red-500">※必須</span></label>
+                  <select
+                    name="sales_dept"
+                    value={formData.sales_dept}
+                    onChange={handleChange}
+                    className={errors.sales_dept ? inpErr : sel}
+                  >
+                    <option>未設定</option>
+                    <option>宇都宮営業部</option>
+                    <option>小山営業部</option>
+                    <option>足利営業部</option>
+                    <option>埼玉営業部</option>
+                  </select>
+                  {errors.sales_dept && <p className={errMsg}>{errors.sales_dept}</p>}
+                </div>
               </>
             )}
 
@@ -518,7 +549,7 @@ export default function LeaseKunWizard() {
 
             {/* Step 2: 物件 */}
             {step === 2 && (
-              <div>
+              <div className="space-y-2">
                 <label className={lbl}>物件選択</label>
                 <select name="asset_name" value={formData.asset_name} onChange={handleChange} className={sel}>
                   <option>建設機械</option>
@@ -531,6 +562,17 @@ export default function LeaseKunWizard() {
                   <option>太陽光・省エネ設備</option>
                   <option>その他・未選択</option>
                 </select>
+                <div>
+                  <label className={lbl}>設置場所（任意）</label>
+                  <input
+                    type="text"
+                    name="asset_location"
+                    value={formData.asset_location}
+                    onChange={handleChange}
+                    placeholder="例: 大阪府大阪市"
+                    className={inp}
+                  />
+                </div>
               </div>
             )}
 

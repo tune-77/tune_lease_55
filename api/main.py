@@ -97,10 +97,12 @@ from api.scoring_full import run_full_scoring_api
 from api.gunshi_gemini import stream_gunshi_gemini
 from lease_news_digest import (
     find_vault,
+    build_lease_news_brief,
     get_latest_lease_news_focus,
     record_lease_news_collection,
     record_lease_news_judgment_change,
     record_lease_news_view,
+    lease_news_focus_as_text,
 )
 from api.schemas import (
     ScoringRequest,
@@ -3378,6 +3380,47 @@ def _lease_news_focus_to_dict(focus):
     }
 
 
+def _lease_news_brief_to_dict(brief):
+    if not brief or not getattr(brief, "available", False):
+        return {"available": False}
+    return {
+        "available": True,
+        "prefecture": getattr(brief, "prefecture", ""),
+        "region": getattr(brief, "region", ""),
+        "geo_context": getattr(brief, "geo_context", ""),
+        "national_headline": getattr(brief, "national_headline", ""),
+        "national_focus_lines": list(getattr(brief, "national_focus_lines", ()) or ()),
+        "regional_available": getattr(brief, "regional_available", False),
+        "regional_title": getattr(brief, "regional_title", ""),
+        "regional_summary_lines": list(getattr(brief, "regional_summary_lines", ()) or ()),
+        "regional_usage_memo": getattr(brief, "regional_usage_memo", ""),
+        "regional_tags": list(getattr(brief, "regional_tags", ()) or ()),
+        "regional_source": getattr(brief, "regional_source", ""),
+        "opening_line": getattr(brief, "opening_line", ""),
+        "question_line": getattr(brief, "question_line", ""),
+        "note_date": getattr(brief, "note_date", ""),
+        "note_path": getattr(brief, "note_path", ""),
+    }
+
+
+@app.get("/api/lease-news/focus")
+def get_lease_news_focus_api():
+    """ホーム画面とAICHATで共通利用する最新ニュースの注目論点を返す。"""
+    try:
+        return _lease_news_focus_to_dict(get_latest_lease_news_focus())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/lease-news/brief")
+def get_lease_news_brief_api(prefecture: str = "", industry: str = ""):
+    """AICHATとホームで共通利用する、全国+地域のニュースブリーフを返す。"""
+    try:
+        return _lease_news_brief_to_dict(build_lease_news_brief(prefecture=prefecture, industry=industry))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def _latest_improvement_report_path() -> Path | None:
     reports_dir = Path(_REPO_ROOT) / "reports"
     latest = reports_dir / "latest.json"
@@ -5297,6 +5340,8 @@ class ChatRequest(BaseModel):
     message: str
     user_id: str = "default"
     intent: Optional[str] = None
+    prefecture: str = ""
+    industry: str = ""
 
 
 @app.post("/api/chat")
@@ -5312,6 +5357,36 @@ def post_chat(req: ChatRequest):
             get_message_count,
         )
         from chat_intent import build_chat_guidance
+        news_focus = _lease_news_focus_to_dict(get_latest_lease_news_focus())
+        news_focus_text = lease_news_focus_as_text() if news_focus.get("available") else ""
+        news_focus_context = f"\n\n【最新ニュースの注目論点】\n{news_focus_text}" if news_focus_text else ""
+        news_brief = _lease_news_brief_to_dict(
+            build_lease_news_brief(prefecture=req.prefecture or "", industry=req.industry or "")
+        )
+        news_brief_context = ""
+        if news_brief.get("available"):
+            brief_lines = [news_brief.get("opening_line", "").strip()]
+            geo_context = str(news_brief.get("geo_context") or "").strip()
+            if geo_context:
+                brief_lines.append(geo_context)
+            national_headline = str(news_brief.get("national_headline") or "").strip()
+            if national_headline:
+                brief_lines.append(f"全国論点: {national_headline}")
+            national_lines = [str(line).strip() for line in news_brief.get("national_focus_lines", []) if str(line).strip()]
+            if national_lines:
+                brief_lines.extend([f"- {line}" for line in national_lines[:3]])
+            if news_brief.get("regional_available"):
+                regional_title = str(news_brief.get("regional_title") or "").strip()
+                if regional_title:
+                    brief_lines.append(f"地域論点: {regional_title}")
+                regional_lines = [str(line).strip() for line in news_brief.get("regional_summary_lines", []) if str(line).strip()]
+                if regional_lines:
+                    brief_lines.extend([f"- {line}" for line in regional_lines[:3]])
+                regional_memo = str(news_brief.get("regional_usage_memo") or "").strip()
+                if regional_memo:
+                    brief_lines.append(f"活用メモ: {regional_memo}")
+            brief_lines.append(str(news_brief.get("question_line") or "").strip())
+            news_brief_context = "\n\n【今日のニュースブリーフ】\n" + "\n".join(line for line in brief_lines if line)
 
         if (req.intent or "").strip().lower() == "improvement":
             save_message(req.user_id, "user", req.message)
@@ -5390,6 +5465,8 @@ def post_chat(req: ChatRequest):
                 "total_messages": total,
                 "improvement_saved": note_result.get("status") == "saved",
                 "improvement_result": note_result,
+                "lease_news_focus": news_focus,
+                "lease_news_brief": news_brief,
             }
 
         # カテゴリ判定
@@ -5421,17 +5498,17 @@ def post_chat(req: ChatRequest):
                 reply = f"ニュースの要約に失敗しました: {_news_e}"
             save_message(req.user_id, "assistant", reply)
             total = get_message_count(req.user_id)
-            return {"reply": reply, "total_messages": total}
+            return {"reply": reply, "total_messages": total, "lease_news_focus": news_focus, "lease_news_brief": news_brief}
 
         # general なら RAG をスキップして直接回答
         if question_category == "general":
             history = get_recent_messages(req.user_id, limit=20)
             history_for_gemini = [{"role": m["role"], "content": m["content"]} for m in history]
-            reply = call_gemini_chat(_GENERAL_CHAT_SYSTEM_PROMPT, history_for_gemini, req.message)
+            reply = call_gemini_chat(_GENERAL_CHAT_SYSTEM_PROMPT + news_focus_context + news_brief_context, history_for_gemini, req.message)
             save_message(req.user_id, "user", req.message)
             save_message(req.user_id, "assistant", reply)
             total = get_message_count(req.user_id)
-            return {"reply": reply, "total_messages": total}
+            return {"reply": reply, "total_messages": total, "lease_news_focus": news_focus, "lease_news_brief": news_brief}
 
         # RAG: 共通ストアから関連ナレッジを取得。ローカル埋め込みモデルが
         # 未キャッシュでもキーワード検索へフォールバックする。
@@ -5490,7 +5567,7 @@ def post_chat(req: ChatRequest):
         history_for_gemini = [{"role": m["role"], "content": m["content"]} for m in history]
         guidance = build_chat_guidance(req.message, history_for_gemini)
         # システムプロンプトにRAGコンテキスト・DB統計・改善照合・会話ガイダンスを追記
-        effective_prompt = _CHAT_SYSTEM_PROMPT + rag_context + db_context + improvement_context + guidance.prompt_suffix
+        effective_prompt = _CHAT_SYSTEM_PROMPT + news_focus_context + news_brief_context + rag_context + db_context + improvement_context + guidance.prompt_suffix
         reply = call_gemini_chat(effective_prompt, history_for_gemini, req.message)
         save_message(req.user_id, "user", req.message)
         save_message(req.user_id, "assistant", reply)
@@ -5516,7 +5593,7 @@ def post_chat(req: ChatRequest):
                 daemon=True,
             ).start()
 
-        return {"reply": reply, "total_messages": total}
+        return {"reply": reply, "total_messages": total, "lease_news_focus": news_focus, "lease_news_brief": news_brief}
     except Exception as e:
         import traceback
         traceback.print_exc()

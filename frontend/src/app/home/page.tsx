@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import {
@@ -22,6 +22,7 @@ import {
   ExternalLink,
   Tag,
 } from 'lucide-react';
+import { normalizePrefecture } from '@/lib/prefecture';
 
 type TopDriver = {
   label?: string;
@@ -90,6 +91,24 @@ type DashboardStats = {
     article_titles?: string[];
     headline?: string;
   };
+  lease_news_brief?: {
+    available?: boolean;
+    prefecture?: string;
+    region?: string;
+    geo_context?: string;
+    national_headline?: string;
+    national_focus_lines?: string[];
+    regional_available?: boolean;
+    regional_title?: string;
+    regional_summary_lines?: string[];
+    regional_usage_memo?: string;
+    regional_tags?: string[];
+    regional_source?: string;
+    opening_line?: string;
+    question_line?: string;
+    note_date?: string;
+    note_path?: string;
+  };
 };
 
 type NewsSummaryItem = {
@@ -129,6 +148,11 @@ export default function HomeDashboard() {
   const [loading, setLoading] = useState(true);
   const [panelSettings, setPanelSettings] = useState<HomePanelSettings>(DEFAULT_PANEL_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [leaseNewsFocus, setLeaseNewsFocus] = useState<DashboardStats["lease_news_focus"] | null>(null);
+  const [leaseNewsBrief, setLeaseNewsBrief] = useState<DashboardStats["lease_news_brief"] | null>(null);
+  const [newsPrefecture, setNewsPrefecture] = useState("");
+  const [showDailyNewsBrief, setShowDailyNewsBrief] = useState(false);
+  const newsPrefectureReadyRef = useRef(false);
 
   const [recentNews, setRecentNews] = useState<NewsSummaryItem[]>([]);
   const [newsFormOpen, setNewsFormOpen] = useState(false);
@@ -146,6 +170,17 @@ export default function HomeDashboard() {
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<HomePanelSettings>;
         setPanelSettings((prev) => ({ ...prev, ...parsed }));
+      }
+    } catch {
+      // ignore
+    }
+
+    let initialPrefecture = "";
+    try {
+      const rawPref = window.localStorage.getItem("lease-news-prefecture-hint") || "";
+      if (rawPref) {
+        initialPrefecture = rawPref;
+        setNewsPrefecture(rawPref);
       }
     } catch {
       // ignore
@@ -169,8 +204,18 @@ export default function HomeDashboard() {
         // ignore
       }
     };
+    const fetchLeaseNewsFocus = async () => {
+      try {
+        const res = await axios.get(`/api/lease-news/focus`);
+        setLeaseNewsFocus(res.data || null);
+      } catch {
+        // ignore
+      }
+    };
     fetchStats();
     fetchRecentNews();
+    fetchLeaseNewsFocus();
+    newsPrefectureReadyRef.current = true;
   }, []);
 
   useEffect(() => {
@@ -180,6 +225,23 @@ export default function HomeDashboard() {
       // ignore
     }
   }, [panelSettings]);
+
+  useEffect(() => {
+    if (!newsPrefectureReadyRef.current) return;
+    const normalized = normalizePrefecture(newsPrefecture);
+    const nextPrefecture = normalized || "";
+    try {
+      if (nextPrefecture) {
+        window.localStorage.setItem("lease-news-prefecture-hint", nextPrefecture);
+      } else {
+        window.localStorage.removeItem("lease-news-prefecture-hint");
+      }
+    } catch {
+      // ignore
+    }
+    loadLeaseNewsBrief(nextPrefecture);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newsPrefecture]);
 
   if (loading) {
     return (
@@ -196,12 +258,33 @@ export default function HomeDashboard() {
   const recentCases = stats?.recent_cases || [];
   const improvementHighlights = stats?.improvement_highlights?.items || [];
   const improvementCounts = stats?.improvement_highlights?.counts;
-  const newsFocus = stats?.lease_news_focus;
+  const newsFocus = leaseNewsFocus ?? stats?.lease_news_focus;
 
   const avgScoreBorrower = analysis?.avg_score_borrower ?? null;
 
   const togglePanel = (key: keyof HomePanelSettings) => {
     setPanelSettings((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const loadLeaseNewsBrief = async (prefectureHint: string) => {
+    try {
+      const res = await axios.get(`/api/lease-news/brief`, {
+        params: {
+          prefecture: prefectureHint,
+        },
+      });
+      setLeaseNewsBrief(res.data || null);
+      const todayKey = new Date().toISOString().slice(0, 10);
+      const showKey = `lease-news-brief-seen-${todayKey}-${prefectureHint || "national"}`;
+      const seen = window.localStorage.getItem(showKey);
+      setShowDailyNewsBrief(!seen && Boolean(res.data?.available));
+      if (!seen && res.data?.available) {
+        window.localStorage.setItem(showKey, "1");
+      }
+    } catch {
+      setLeaseNewsBrief(null);
+      setShowDailyNewsBrief(false);
+    }
   };
 
   const handleNewsSubmit = async () => {
@@ -269,6 +352,83 @@ export default function HomeDashboard() {
         <div className="absolute top-[-20%] right-[-10%] w-96 h-96 bg-white/10 rounded-full blur-3xl"></div>
         <div className="absolute bottom-[-20%] left-[-10%] w-64 h-64 bg-blue-400/20 rounded-full blur-3xl"></div>
       </div>
+
+      {showDailyNewsBrief && leaseNewsBrief?.available && (
+        <section className="mb-6 rounded-2xl border border-amber-200 bg-amber-50/90 p-4 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-black uppercase tracking-wide text-amber-700">今日のニュースブリーフ</div>
+              <h2 className="mt-1 text-sm font-black text-amber-950">
+                {leaseNewsBrief.opening_line || "今日はこのようなニュースがあります。"}
+              </h2>
+              <p className="mt-1 text-xs font-bold leading-relaxed text-amber-800">
+                {leaseNewsBrief.question_line || "この案件で、今日は何を先に確認しますか？"}
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 sm:min-w-56">
+              <input
+                type="text"
+                value={newsPrefecture}
+                onChange={(e) => setNewsPrefecture(e.target.value)}
+                placeholder="取引地域（例: 大阪府）"
+                className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 outline-none placeholder:text-slate-400"
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => loadLeaseNewsBrief(normalizePrefecture(newsPrefecture))}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-100 transition-colors"
+                >
+                  更新
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.location.href = "/chat"}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-100 transition-colors"
+                >
+                  AICHATで相談
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            <div className="rounded-xl border border-white/80 bg-white/80 p-3">
+              <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">全国論点</div>
+              <p className="mt-1 text-xs font-bold leading-relaxed text-slate-700">
+                {leaseNewsBrief.national_headline || leaseNewsFocus?.headline || "最新ニュースの論点を表示します"}
+              </p>
+              {leaseNewsBrief.national_focus_lines?.length ? (
+                <ul className="mt-2 space-y-1">
+                  {leaseNewsBrief.national_focus_lines.slice(0, 3).map((line, i) => (
+                    <li key={i} className="text-[11px] leading-relaxed text-slate-600">・{line}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+            <div className="rounded-xl border border-white/80 bg-white/80 p-3">
+              <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">地域論点</div>
+              {leaseNewsBrief.regional_available ? (
+                <>
+                  <p className="mt-1 text-xs font-bold leading-relaxed text-slate-700">
+                    {leaseNewsBrief.regional_title}
+                  </p>
+                  {leaseNewsBrief.regional_summary_lines?.length ? (
+                    <ul className="mt-2 space-y-1">
+                      {leaseNewsBrief.regional_summary_lines.slice(0, 3).map((line, i) => (
+                        <li key={i} className="text-[11px] leading-relaxed text-slate-600">・{line}</li>
+                      ))}
+                    </ul>
+                  ) : leaseNewsBrief.regional_usage_memo ? (
+                    <p className="mt-2 text-[11px] leading-relaxed text-slate-600">{leaseNewsBrief.regional_usage_memo}</p>
+                  ) : null}
+                </>
+              ) : (
+                <p className="mt-1 text-xs text-slate-500">取引地域を入れると地域論点も出ます。</p>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
