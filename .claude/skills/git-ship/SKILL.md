@@ -83,6 +83,27 @@ git log --oneline -3
 git branch -a | grep <branch>  # 削除されていればOK
 ```
 
+### マージ後: 作業ログ自動生成
+
+マージ確認が完了したら、以下の情報をもとに作業ログを自動生成・保存する：
+
+1. `git log --oneline -1` でマージコミットのタイトルを取得
+2. `git diff --stat master~1 master` で変更ファイル一覧を取得
+3. PRタイトルと変更ファイルから「何をしたか」を1〜2行で要約
+4. 以下のコマンドで保存：
+
+```bash
+python3 scripts/save_work_log.py \
+  --title "<PRタイトル（REV番号を含む）>" \
+  --what "<変更内容の1〜2行要約>" \
+  --pr <PR番号> \
+  --tags "自動生成"
+```
+
+- `--why-hard` / `--next-time` は自動生成では省略可（後で「改善ポイント」として追記できる）
+- PR番号が不明な場合は `--pr` も省略可
+- Obsidianへの保存が失敗しても処理は続行される（`skipped` が返るだけ）
+
 ---
 
 ## Bフロー：直接push（masterブランチ）
