@@ -1,0 +1,18 @@
+substitutions:
+  _IMAGE_URI: ""
+  _FASTAPI_URL: ""
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - Dockerfile.web
+      - --build-arg
+      - "FASTAPI_URL=${_FASTAPI_URL}"
+      - -t
+      - "${_IMAGE_URI}"
+      - frontend
+
+images:
+  - "${_IMAGE_URI}"

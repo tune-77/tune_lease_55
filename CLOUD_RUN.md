@@ -41,29 +41,48 @@ included in HTTP URLs or normal request logs.
 
 ## Deploy
 
-The script uses the currently configured Google Cloud project by default.
-Deployment is private unless `ALLOW_UNAUTHENTICATED=1` is explicitly set.
-Before deploying, it packages the current SQLite snapshots and selected Obsidian
-notes into `.cloudrun_bundle/` and bakes that bundle into the container image.
+The current setup is split into two Cloud Run services:
+
+- API service: `tune-lease-55-api`
+- Web service: `tune-lease-55-web`
+
+Role split:
+
+- API service handles FastAPI, SQLite, Obsidian-backed analysis, and all `/api/*`
+  requests.
+- Web service handles Next.js pages and UI, and proxies `/api/*` to the API
+  service at build time.
+
+Before deploying the API, it packages the current SQLite snapshots and selected
+Obsidian notes into `.cloudrun_bundle/` and bakes that bundle into the API
+container image.
 
 ```bash
-PROJECT_ID=gen-lang-client-0420497423 \
-REGION=asia-northeast1 \
-SERVICE_NAME=tune-lease-55 \
-./scripts/deploy_cloud_run.sh
+ALLOW_UNAUTHENTICATED=1 ./scripts/deploy_cloud_run_api.sh
+ALLOW_UNAUTHENTICATED=1 ./scripts/deploy_cloud_run_web.sh
 ```
 
-For a public service:
+The legacy wrapper still exists:
 
 ```bash
 ALLOW_UNAUTHENTICATED=1 ./scripts/deploy_cloud_run.sh
 ```
 
+Use the API script when only backend logic changed. Use the Web script when
+only frontend/Next.js changed. Run the wrapper only when both changed.
+
+Update rule:
+
+- If you touched `api/`, `data/`, `runtime_paths.py`, or bundle logic, deploy
+  the API service.
+- If you touched `frontend/src/` or `frontend/next.config.ts`, deploy the Web
+  service.
+
 ## Important persistence limitation
 
 Cloud Run's writable container filesystem is temporary and consumes instance
-memory. The current deployment uses a bundled snapshot of the SQLite database
-and selected Obsidian folders, then copies that snapshot into the runtime
+memory. The API deployment uses a bundled snapshot of the SQLite database and
+selected Obsidian folders, then copies that snapshot into the runtime
 filesystem on boot. It is still ephemeral and will be lost when the instance
 restarts.
 
@@ -74,17 +93,18 @@ Before production use:
    if you need durable edits.
 3. Store generated files and news notes in Cloud Storage or a database if they
    must survive restarts.
-4. Keep maximum instances at `1` until the physical scoring bridge and shared
-   session state are removed.
+4. Keep maximum instances at `1` for the API service until the physical
+   scoring bridge and shared session state are removed.
+5. The Web service can scale separately from the API service.
 
 ## Verification
 
 ```bash
-gcloud run services describe tune-lease-55 \
+gcloud run services describe tune-lease-55-api \
   --region asia-northeast1 \
   --project gen-lang-client-0420497423
 
-gcloud run services logs read tune-lease-55 \
+gcloud run services logs read tune-lease-55-api \
   --region asia-northeast1 \
   --project gen-lang-client-0420497423 \
   --limit 100

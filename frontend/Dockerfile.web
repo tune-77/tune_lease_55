@@ -1,0 +1,26 @@
+# syntax=docker/dockerfile:1.7
+
+FROM node:20-bookworm-slim AS frontend-builder
+WORKDIR /build
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . ./
+ARG FASTAPI_URL=http://127.0.0.1:8000
+ENV FASTAPI_URL=$FASTAPI_URL
+RUN npm run build
+
+FROM node:20-bookworm-slim AS runtime
+WORKDIR /app
+
+COPY --from=frontend-builder /build/.next/standalone/ ./
+COPY --from=frontend-builder /build/.next/static/ ./.next/static/
+COPY --from=frontend-builder /build/public/ ./public/
+
+ENV HOSTNAME=0.0.0.0 \
+    PORT=8080
+
+EXPOSE 8080
+
+CMD ["node", "server.js"]
