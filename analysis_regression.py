@@ -976,6 +976,20 @@ COEFF_LABELS = {
     "new_customer_deal_occurrence_nomination": "新規先×指名案件",
     "new_customer_deal_occurrence_comp": "新規先×相見積もり",
     "new_customer_contract_auto": "新規先×自動車契約",
+    # COEFF_EXTRA_KEYS で未登録だったキー
+    "customer_new": "新規先フラグ",
+    "deal_source_bank": "銀行紹介",
+    "dscr_approx": "返済余力(DSCR近似)",
+    "interest_coverage": "支払利息カバー率",
+    # INDICATOR_MAIN_KEYS（比率系）
+    "ratio_op_margin": "営業利益率",
+    "ratio_gross_margin": "売上総利益率",
+    "ratio_ord_margin": "経常利益率",
+    "ratio_net_margin": "当期純利益率",
+    "ratio_fixed_assets": "固定資産比率",
+    "ratio_rent": "賃借料比率",
+    "ratio_depreciation": "減価償却比率",
+    "ratio_machines": "機械装置比率",
 }
 
 
