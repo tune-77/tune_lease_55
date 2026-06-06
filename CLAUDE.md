@@ -1,185 +1,64 @@
-# リース審査AI — Claude Code プロジェクト指示書
+# リース審査AI — CLAUDE.md
 
-## プロジェクト概要
+## ⚠️ 最優先ルール
 
-**Next.js 14 (App Router) + FastAPI + SQLite** によるリース審査 AI システム。
+### 絶対禁止
+- `eslint --fix` 禁止（UIコンポーネント削除事故あり）→ `npm run lint` でチェックのみ
+- `data/` 配下・`.streamlit/secrets.toml` はコミット禁止
+- PR前: `cd frontend && npx tsc --noEmit` 必須
 
-| レイヤー | 技術 | 役割 |
-|---------|------|------|
-| フロントエンド | Next.js 14 / TypeScript | 審査 UI・ダッシュボード群 (`frontend/`) |
-| API サーバー | FastAPI (Python 3.10+) | スコアリング・案件管理・AI 連携 (`api/`) |
-| AI スコアリング | LightGBM + 量子干渉モジュール | 財務分析・リスク評価（ルート直下） |
-| DB | SQLite (`data/lease_data.db`) | 案件ログ・マスタ |
-| レガシー | Streamlit (`tune_lease_55.py`) | 旧 UI（段階的廃止中） |
+### スコープ厳守
+- 指示された箇所**だけ**変更する。関係ないコードは触らない
+- 実装中に気づいた改善点は実装せず `[改善ポイント] タイトル` でチャットに残す
+- 曖昧な指示は「○○が✅になれば完了と理解しましたが合っていますか？」と確認してから1行も書かない
+
+### PR命名（自動化に必須）
+PRタイトルに **REV番号を必ず含める** 例: `feat: REV-039 パイプライン承認UI追加`
+→ 含めないと `cleanup_improvement_reviews.py --apply` が台帳を更新できない
 
 ---
 
-## 主要ファイル構成
+## 要注意領域（変更前に Work Logs を確認）
+
+| ファイル/領域 | 危険理由 | 注意点・やらかし教訓 |
+|---|---|---|
+| `scoring_core.py` | スコアは審査結果に直結 | UMAPはモジュールレベルキャッシュ必須（毎リクエスト実行→スレッドプール枯渇）。`score_base`と`score`キーを区別 |
+| `api/main.py /api/chat` | 3経路混在（改善/通常/軍師AI） | `intent` 分岐を壊さない |
+| `obsidian_bridge.py` / ChromaDB | パス変更でRAG全壊 | iCloudパス優先。uvicornは `.zshrc` を読まないので ENV は plist で設定 |
+| `run_daily_improvement_pipeline.sh` | ステップ変更で朝報告停止 | 追記のみ・`\|\| true` 付き |
+| `ledger.jsonl` | 追記形式、最後のエントリが有効 | キーは必ず `canonical_key(title)` 形式（CLI の REV-ID 形式とは別物） |
+
+Work Logs: `~/Documents/Obsidian Vault/Projects/tune_lease_55/Work Logs/`
+
+---
+
+## 数値単位（バグの温床）
+
+フロント入力: **千円** → `toThousandYenPayload()` → スコアリングモジュール内: **円**
+
+スコア判定: ≥70=承認 / 60-69=条件付き / <60=否決 | Q_risk: ≥35=要注意 / ≥60=強警戒
+
+---
+
+## プロジェクト構成
+
+**Next.js 14 + FastAPI + SQLite**
 
 ```
-frontend/src/app/           # Next.js ページ（25+ ページ）
-frontend/src/components/    # 共通コンポーネント
-api/main.py                 # FastAPI エンドポイント（全 API）
-api/schemas.py              # Pydantic モデル
-scoring_core.py             # スコアリング統合ロジック
-asset_scorer.py             # 物件スコアリング
-quantum_analysis_module.py  # 量子干渉スコア（≥35 で要注意フラグ）
-data_cases.py               # 案件 DB 操作
-data/                       # SQLite DB・セッション（コミット禁止）
-```
-
----
-
-## コーディング規約
-
-### Python
-- Python 3.10+、型アノテーション推奨
-- 数値単位：フロント入力は **千円**、スコアリングモジュール内は **円**（`toThousandYenPayload()` で変換）
-- FastAPI エンドポイントは `api/main.py`、Pydantic モデルは `api/schemas.py` で管理
-
-### TypeScript / Next.js — 詳細は @.claude/rules/frontend.md
-
-- **strict mode** 厳守（`as any` 原則禁止）
-- API 呼び出しは `src/lib/api.ts` の `apiClient` を使用
-- グラフ: Recharts / Three.js、アイコン: lucide-react、スタイル: Tailwind CSS
-
----
-
-## ⚠️ 絶対禁止（必読）
-
-```bash
-# eslint --fix は実行禁止（UIコンポーネントが削除される事故が発生済み）
-cd frontend && npm run lint:fix   # ❌
-cd frontend && npx eslint --fix   # ❌
-
-# 正しい使い方（チェックのみ）
-cd frontend && npm run lint       # ✅
-cd frontend && npx tsc --noEmit   # ✅ PR 前に必ず実行
+frontend/src/app/     # UI（25+ ページ）
+api/main.py           # FastAPI エンドポイント（全API）
+api/schemas.py        # Pydantic モデル
+scoring_core.py       # スコアリング（LightGBM + 量子干渉）
+data/lease_data.db    # SQLite（コミット禁止）
 ```
 
 ---
 
-## 開発・PR ワークフロー — 詳細は @.claude/rules/workflow.md
+## 規約・ツール
 
-- ブランチ命名: `feature/rev-<番号>-<説明>` / `fix/<説明>` / `chore/<説明>`
-- `/git-ship` スキルで add → commit → push → PR 作成を一括実行
-- `master` pull 前: `git stash -- .claude/ && git pull origin master && git stash drop`
+- **TS/Next.js**: strict mode厳守・`apiClient`（`src/lib/api.ts`）経由でAPI呼び出し。詳細: @.claude/rules/frontend.md
+- **Serena MCP**: `get_symbols_overview` / `find_symbol` / `replace_symbol_body` を優先（Read より先）
+- **ブランチ**: `feature/rev-<番号>-<説明>` / `fix/...` / `chore/...`
+- **一括ship**: `/git-ship` で add→commit→push→PR作成
 
----
-
-## セキュリティ — 詳細は @.claude/rules/security.md
-
-コミット禁止: `.streamlit/secrets.toml` / `data/` 配下すべて / `models/*.bak.*`
-
----
-
-## Serena MCP 使用方針
-
-コード調査・編集は Serena の `get_symbols_overview` / `find_symbol` / `replace_symbol_body` を優先。ファイル全体の `Read` より先にシンボル単位での取得を試みる。
-
----
-
-エージェント協調プロトコルの詳細は `.claude/AGENTS.md` を参照。
-
----
-
-## AI行動原則
-
-### 0. 動く前に止まれ
-
-指示を受けたらコードを書く前に：
-- 変更が影響するファイル・テーブル・サービスを列挙する
-- 不明な点は推測せず確認する
-- 「ついでに直したい箇所」は実装せず、後で別タスクにする
-
-### 1. 影響範囲を把握してから触る
-
-#### 要注意領域（変更前に必ず確認）
-| 領域 | なぜ危険か | 確認すること |
-|------|-----------|-------------|
-| `scoring_core.py` / `score_calculation.py` | スコアロジックの変更は審査結果に直結 | 既存テストが通るか、`score_base`と`score`の区別 |
-| `run_daily_improvement_pipeline.sh` | 既存ステップを壊すと朝報告が止まる | 変更は追記のみ、`\|\| true` をつける |
-| `obsidian_bridge.py` / ChromaDB | パスを変えると全RAGが壊れる | VaultパスとiCloudパスの対応を確認 |
-| `ledger.jsonl` | 追記形式、最後のエントリが有効 | キー形式が `canonical_key(title)` 形式か |
-| `api/main.py` の `/api/chat` | 改善ポイント・通常チャット・軍師AIの3経路が混在 | `intent` 分岐を壊していないか |
-
-#### 作業前の参照チェック
-
-以下の領域に触れる作業を始める前に、Obsidianの Work Logs を確認せよ：
-
-```bash
-# 関連する過去ログを確認（例）
-ls "/Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/Work Logs/"
-cat "/Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/Work Logs/$(date +%Y-%m-%d).md" 2>/dev/null || \
-cat "/Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/Work Logs/$(ls /Users/kobayashiisaoryou/Documents/Obsidian\ Vault/Projects/tune_lease_55/Work\ Logs/ | tail -1)" 2>/dev/null
-```
-
-特に以下の作業は必ず直近ログを確認してから着手：
-- `scoring_core.py` / `score_calculation.py` の変更 → UMAPタイムアウト問題の再発防止
-- `obsidian_bridge.py` / ChromaDB / Vault パスの変更 → パス不整合問題の再発防止
-- `ledger.jsonl` / `cleanup_improvement_reviews.py` の変更 → canonical_keyフォーマット問題の再発防止
-- `api/main.py` の `/api/chat` 周辺 → チャット経路の混在問題の再発防止
-
-#### 安全な変更パターン
-- **新規ファイル追加** → 既存コードに影響しない
-- **パイプラインへの追記** → `|| true` 付きで末尾に追加
-- **フロントエンドのUI変更** → APIに影響しない範囲
-
-### 2. 外科的に変更する
-
-- 指示された箇所だけ変更する。関係ないコードには触れない
-- リファクタリングは頼まれていない限りしない
-- 変数名・関数名の改名は指示された場合のみ
-
-### 3. シンプルさを優先する
-
-- 頼まれていない抽象化・汎用化を加えない
-- `|| true` / フォールバック付きで失敗しても既存が動く設計にする
-- 新しい依存ライブラリは最終手段
-
-### 4. 目標志向で動く
-
-実装前に成功基準を確認する：
-- 「動いた」の定義は何か
-- どのエンドポイント・画面・ファイルで確認できるか
-- 既存機能が壊れていないことをどう確認するか
-
-曖昧な指示は「〇〇が✅になれば完了と理解しましたが合っていますか？」と確認してから一行も書かない。
-
-### 5. 改善ポイントの取り扱い
-
-- 実装中に気づいた改善点は **実装しない**
-- `[改善ポイント] タイトル` 形式でチャットに残し、改善パイプラインに流す
-- スコープを広げると別のバグを生む
-
-### 6. やらかしパターン（実例から）
-
-```
-✗ VaultパスをDocumentsに向けていた → iCloudパスを優先。uvicornは.zshrcを読まないためENV変数はplistで設定
-✗ UMAPモデルが毎リクエスト重い計算を実行 → スレッドプール枯渇・500エラー。scoring_core.pyを触るときはUMAPの存在を確認し、モジュールレベルでキャッシュ
-✗ score_baseキー名が間違っていた → 変更後は必ずキー名を grep で確認
-✗ canonical_keyのフォーマット不整合 → CLIがREV ID形式・パイプラインがcanonical_key(title)形式。ledgerを操作するスクリプトは必ずcanonical_key(title)形式で書く
-✗ パイプラインのステップを変更して壊した → 追記のみ、既存ステップは変更しない
-✗ フローティングUIが邪魔 → UIは先に場所を聞いてから実装する
-```
-
----
-
-### 7. PR命名規則
-
-実装したREV番号は **必ずPRタイトルに含める**：
-
-```
-feat: REV-039 パイプライン承認UI追加
-fix: REV-282 UMAPタイムアウト修正
-chore: REV-267 REV-035 REV-036 Obsidianパス修正・サイドバー改善
-feat: REV-035/036/040 複数REVまとめ実装
-```
-
-- 複数のREVをまとめる場合はスペース区切りまたはスラッシュ区切りで列挙
-- `cleanup_improvement_reviews.py --apply` がPRタイトルからREV番号を自動抽出し台帳を applied に更新する
-- PRタイトルにREV番号が **ない** と台帳が更新されず「やったかも？」手動確認が発生する
-
----
-
-*このファイルはClaude Codeが自動的に読み込みます。使うたびに「やらかしパターン」を追記して育てていきます。*
+詳細: @.claude/rules/workflow.md | @.claude/rules/security.md | .claude/AGENTS.md
