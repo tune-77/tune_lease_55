@@ -103,6 +103,23 @@ cd frontend && npx tsc --noEmit   # ✅ PR 前に必ず実行
 | `ledger.jsonl` | 追記形式、最後のエントリが有効 | キー形式が `canonical_key(title)` 形式か |
 | `api/main.py` の `/api/chat` | 改善ポイント・通常チャット・軍師AIの3経路が混在 | `intent` 分岐を壊していないか |
 
+#### 作業前の参照チェック
+
+以下の領域に触れる作業を始める前に、Obsidianの Work Logs を確認せよ：
+
+```bash
+# 関連する過去ログを確認（例）
+ls "/Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/Work Logs/"
+cat "/Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/Work Logs/$(date +%Y-%m-%d).md" 2>/dev/null || \
+cat "/Users/kobayashiisaoryou/Documents/Obsidian Vault/Projects/tune_lease_55/Work Logs/$(ls /Users/kobayashiisaoryou/Documents/Obsidian\ Vault/Projects/tune_lease_55/Work\ Logs/ | tail -1)" 2>/dev/null
+```
+
+特に以下の作業は必ず直近ログを確認してから着手：
+- `scoring_core.py` / `score_calculation.py` の変更 → UMAPタイムアウト問題の再発防止
+- `obsidian_bridge.py` / ChromaDB / Vault パスの変更 → パス不整合問題の再発防止
+- `ledger.jsonl` / `cleanup_improvement_reviews.py` の変更 → canonical_keyフォーマット問題の再発防止
+- `api/main.py` の `/api/chat` 周辺 → チャット経路の混在問題の再発防止
+
 #### 安全な変更パターン
 - **新規ファイル追加** → 既存コードに影響しない
 - **パイプラインへの追記** → `|| true` 付きで末尾に追加
