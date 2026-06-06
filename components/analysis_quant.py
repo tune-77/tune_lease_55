@@ -86,24 +86,24 @@ def render_quantitative_analysis():
             c1, c2, c3 = st.columns(3)
             with c1:
                 if "accuracy_lr" in result_q:
-                    st.metric("ロジスティック回帰 正解率", f"{result_q['accuracy_lr']*100:.1f}%")
+                    st.metric("ロジスティック回帰(LR) 正解率", f"{result_q['accuracy_lr']*100:.1f}%")
                 if "auc_lr" in result_q and result_q.get("auc_lr") is not None:
-                    st.metric("ロジスティック回帰 AUC", f"{result_q['auc_lr']:.3f}")
+                    st.metric("LR AUC（識別精度）", f"{result_q['auc_lr']:.3f}")
                 if "lr_error" in result_q:
                     st.error(result_q["lr_error"])
             with c2:
                 if "accuracy_lgb" in result_q:
-                    st.metric("LightGBM 正解率", f"{result_q['accuracy_lgb']*100:.1f}%")
+                    st.metric("LightGBM(LGB) 正解率", f"{result_q['accuracy_lgb']*100:.1f}%")
                 if "auc_lgb" in result_q and result_q.get("auc_lgb") is not None:
-                    st.metric("LightGBM AUC", f"{result_q['auc_lgb']:.3f}")
+                    st.metric("LGB AUC（識別精度）", f"{result_q['auc_lgb']:.3f}")
                 if "lgb_error" in result_q:
                     st.error(result_q["lgb_error"])
             with c3:
                 if "auc_ensemble" in result_q:
                     st.metric("アンサンブル 正解率", f"{result_q['accuracy_ensemble']*100:.1f}%")
-                    st.metric("アンサンブル AUC", f"{result_q['auc_ensemble']:.3f}")
+                    st.metric("アンサンブル AUC（識別精度）", f"{result_q['auc_ensemble']:.3f}")
                     alpha_q = result_q.get("ensemble_alpha", 0.5)
-                    st.caption(f"最適割合: LR {alpha_q:.0%} + LGB {1-alpha_q:.0%}")
+                    st.caption(f"最適配分: ロジスティック回帰 {alpha_q:.0%} + LightGBM {1-alpha_q:.0%}")
 
             st.divider()
             st.subheader("ロジスティック回帰 係数（成約に効く方向: 正で成約にプラス）")
@@ -162,15 +162,15 @@ def render_quantitative_analysis():
                         st.metric("分析件数", f"{res['n_cases']}件（成約{res['n_positive']}/失注{res['n_negative']}）")
                         c1, c2, c3 = st.columns(3)
                         with c1:
-                            if "accuracy_lr" in res: st.metric("LR 正解率", f"{res['accuracy_lr']*100:.1f}%")
-                            if "auc_lr" in res and res.get("auc_lr"): st.metric("LR AUC", f"{res['auc_lr']:.3f}")
+                            if "accuracy_lr" in res: st.metric("ロジスティック回帰(LR) 正解率", f"{res['accuracy_lr']*100:.1f}%")
+                            if "auc_lr" in res and res.get("auc_lr"): st.metric("LR AUC（識別精度）", f"{res['auc_lr']:.3f}")
                         with c2:
-                            if "accuracy_lgb" in res: st.metric("LGB 正解率", f"{res['accuracy_lgb']*100:.1f}%")
-                            if "auc_lgb" in res and res.get("auc_lgb"): st.metric("LGB AUC", f"{res['auc_lgb']:.3f}")
+                            if "accuracy_lgb" in res: st.metric("LightGBM(LGB) 正解率", f"{res['accuracy_lgb']*100:.1f}%")
+                            if "auc_lgb" in res and res.get("auc_lgb"): st.metric("LGB AUC（識別精度）", f"{res['auc_lgb']:.3f}")
                         with c3:
                             if "auc_ensemble" in res:
-                                st.metric("アンサンブル AUC", f"{res['auc_ensemble']:.3f}")
-                                st.caption(f"最適: LR {res.get('ensemble_alpha', 0.5):.0%} + LGB {1-res.get('ensemble_alpha', 0.5):.0%}")
+                                st.metric("アンサンブル AUC（識別精度）", f"{res['auc_ensemble']:.3f}")
+                                st.caption(f"最適配分: ロジスティック回帰 {res.get('ensemble_alpha', 0.5):.0%} + LightGBM {1-res.get('ensemble_alpha', 0.5):.0%}")
                         if "lgb_importance" in res:
                             names = [COEFF_LABELS.get(k, k) for k in res["feature_names"]]
                             imp = pd.DataFrame([(names[i], v) for i, (_, v) in enumerate(res["lgb_importance"])], columns=["項目", "重要度"]).sort_values("重要度", ascending=False)
@@ -202,17 +202,17 @@ def render_quantitative_analysis():
                         st.metric("分析件数", f"{res['n_cases']}件（成約{res['n_positive']}/失注{res['n_negative']}）")
                         c1, c2, c3 = st.columns(3)
                         with c1:
-                            if "accuracy_lr" in res: st.metric("LR 正解率", f"{res['accuracy_lr']*100:.1f}%")
-                            if "auc_lr" in res and res.get("auc_lr"): st.metric("LR AUC", f"{res['auc_lr']:.3f}")
+                            if "accuracy_lr" in res: st.metric("ロジスティック回帰(LR) 正解率", f"{res['accuracy_lr']*100:.1f}%")
+                            if "auc_lr" in res and res.get("auc_lr"): st.metric("LR AUC（識別精度）", f"{res['auc_lr']:.3f}")
                         with c2:
-                            if "accuracy_lgb" in res: st.metric("LGB 正解率", f"{res['accuracy_lgb']*100:.1f}%")
-                            if "auc_lgb" in res and res.get("auc_lgb"): st.metric("LGB AUC", f"{res['auc_lgb']:.3f}")
+                            if "accuracy_lgb" in res: st.metric("LightGBM(LGB) 正解率", f"{res['accuracy_lgb']*100:.1f}%")
+                            if "auc_lgb" in res and res.get("auc_lgb"): st.metric("LGB AUC（識別精度）", f"{res['auc_lgb']:.3f}")
                         with c3:
                             if "auc_ensemble" in res:
-                                st.metric("アンサンブル AUC", f"{res['auc_ensemble']:.3f}")
-                                st.caption(f"最適: LR {res.get('ensemble_alpha', 0.5):.0%} + LGB {1-res.get('ensemble_alpha', 0.5):.0%}")
+                                st.metric("アンサンブル AUC（識別精度）", f"{res['auc_ensemble']:.3f}")
+                                st.caption(f"最適配分: ロジスティック回帰 {res.get('ensemble_alpha', 0.5):.0%} + LightGBM {1-res.get('ensemble_alpha', 0.5):.0%}")
                         if "lgb_importance" in res:
-                            fnames = res["feature_names"]
+                            fnames = [COEFF_LABELS.get(k, k) for k in res["feature_names"]]
                             imp = pd.DataFrame([(fnames[i], v) for i, (_, v) in enumerate(res["lgb_importance"])], columns=["項目", "重要度"]).sort_values("重要度", ascending=False)
                             st.dataframe(imp.head(10), width='stretch', hide_index=True)
 
