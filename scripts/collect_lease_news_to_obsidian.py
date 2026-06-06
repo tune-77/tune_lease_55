@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import html
 import json
 import os
@@ -19,9 +20,10 @@ import unicodedata
 import urllib.parse
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 import requests
 
@@ -116,7 +118,7 @@ PROFILE_DEFINITIONS: dict[str, dict[str, tuple[str, ...]]] = {
     },
 }
 
-DEFAULT_NEWS_DIR = "リースニュース"
+DEFAULT_NEWS_DIR = "05-クリップ_記事/リースニュース"
 DEFAULT_DAILY_DIR = "Daily"
 DEFAULT_PROFILE = "industry-watch"
 
@@ -148,6 +150,16 @@ class Article:
     tags: tuple[str, ...] = ()
     score: int = 0
     raw_source: str = ""
+    industries: tuple[str, ...] = ()
+    lease_assets: tuple[str, ...] = ()
+    credit_risk_impact: str = ""
+    screening_checks: tuple[str, ...] = ()
+    impact_direction: str = "neutral"
+    classification_confidence: float = 0.0
+    source_reliability: str = "medium"
+    valid_until: str = ""
+    canonical_topic: str = ""
+    classification_source: str = "rule"
 
     @property
     def published_iso(self) -> str:
@@ -198,6 +210,10 @@ def _append_text(path: Path, text: str) -> None:
 
 def _normalize_text(text: str) -> str:
     return unicodedata.normalize("NFKC", html.unescape(text or "")).strip()
+
+
+def _yaml_string(value: Any) -> str:
+    return json.dumps(str(value or ""), ensure_ascii=False)
 
 
 def _strip_tags(text: str) -> str:
@@ -252,6 +268,281 @@ def _safe_filename(text: str, max_len: int = 30) -> str:
     cleaned = re.sub(r'[\\/:*?"<>|\n\r\t]', "_", text)
     cleaned = cleaned.strip("_").strip()
     return cleaned[:max_len] if cleaned else "記事"
+
+
+def _canonical_url(url: str) -> str:
+    value = _normalize_text(url)
+    if not value:
+        return ""
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+        filtered = [
+            (key, val)
+            for key, val in query
+            if not key.lower().startswith("utm_")
+            and key.lower() not in {"gclid", "fbclid", "yclid", "mc_cid", "mc_eid"}
+        ]
+        path = parsed.path.rstrip("/") or "/"
+        return urllib.parse.urlunsplit(
+            (
+                parsed.scheme.lower(),
+                parsed.netloc.lower(),
+                path,
+                urllib.parse.urlencode(filtered, doseq=True),
+                "",
+            )
+        )
+    except Exception:
+        return value
+
+
+def _normalized_title(title: str, source: str = "") -> str:
+    value = _normalize_text(title).lower()
+    source_value = _normalize_text(source).lower()
+    if source_value:
+        value = re.sub(rf"\s*[-｜|]\s*{re.escape(source_value)}\s*$", "", value)
+    value = re.sub(r"\s*[-｜|]\s*[^-｜|]{2,30}$", "", value)
+    return re.sub(r"[\W_]+", "", value, flags=re.UNICODE)
+
+
+def _canonical_topic_from_title(article: Article) -> str:
+    title = _normalize_text(article.title)
+    source = _normalize_text(article.source)
+    if source:
+        title = re.sub(rf"\s*[-｜|]\s*{re.escape(source)}\s*$", "", title, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", title).strip()[:120]
+
+
+def _default_valid_until(article: Article, base_date: dt.date | None = None) -> str:
+    base = base_date or (article.published.date() if article.published else dt.date.today())
+    text = " ".join([article.title, article.summary, article.theme, *article.tags])
+    deadline = re.search(r"(20\d{2})[年/-](\d{1,2})[月/-](\d{1,2})日?", text)
+    if deadline and any(term in text for term in ("期限", "締切", "募集", "施行")):
+        try:
+            return dt.date(int(deadline.group(1)), int(deadline.group(2)), int(deadline.group(3))).isoformat()
+        except ValueError:
+            pass
+    if "金利" in article.tags:
+        days = 60
+    elif "法令" in article.tags:
+        days = 365
+    elif any(term in text for term in ("補助金", "助成金", "公募")):
+        days = 180
+    elif article.theme in {"設備投資", "製造・DX"}:
+        days = 365
+    else:
+        days = 180
+    return (base + dt.timedelta(days=days)).isoformat()
+
+
+def _rule_classification(article: Article) -> dict[str, Any]:
+    tag_industries = {
+        "物流/車両": ["運送業", "物流業"],
+        "建設/不動産": ["建設業", "不動産業"],
+        "製造/DX": ["製造業"],
+        "金融・与信": ["金融業"],
+    }
+    tag_assets = {
+        "物流/車両": ["車両", "物流設備"],
+        "建設/不動産": ["建設機械", "建物附属設備"],
+        "製造/DX": ["生産設備", "IT・DX設備"],
+        "設備投資": ["設備機器"],
+    }
+    industries: list[str] = []
+    assets: list[str] = []
+    for tag in article.tags:
+        industries.extend(tag_industries.get(tag, []))
+        assets.extend(tag_assets.get(tag, []))
+    if article.theme == "金融・与信":
+        industries.append("全業種")
+
+    negative_terms = ("倒産", "赤字", "減益", "破産", "延滞", "悪化", "縮小", "停止", "不正", "違反")
+    positive_terms = ("増益", "成長", "回復", "支援", "補助金", "効率化", "省力化", "拡大", "改善")
+    text = " ".join([article.title, article.summary])
+    negative = sum(term in text for term in negative_terms)
+    positive = sum(term in text for term in positive_terms)
+    direction = "negative" if negative > positive else "positive" if positive > negative else "neutral"
+
+    checks = [_review_line(article.tags, article.theme)]
+    if direction == "negative":
+        checks.append("ニュース記載の悪化要因が対象企業の資金繰りと返済余力へ波及していないか確認する。")
+    elif direction == "positive":
+        checks.append("改善効果が一時的な期待ではなく、受注・利益・キャッシュフローに反映される時期を確認する。")
+
+    reliability = "high" if article.source_kind == "official" else "medium"
+    impact = {
+        "positive": "業績・投資回収・返済余力を改善する可能性がある。",
+        "negative": "業績・資金繰り・返済余力を悪化させる可能性がある。",
+        "neutral": "直接的な信用リスクへの影響は限定的だが、関連業界の前提条件として確認する。",
+    }[direction]
+    return {
+        "industries": list(dict.fromkeys(industries)) or ["全業種"],
+        "lease_assets": list(dict.fromkeys(assets)) or ["対象物件未特定"],
+        "credit_risk_impact": impact,
+        "screening_checks": list(dict.fromkeys(checks)),
+        "impact_direction": direction,
+        "classification_confidence": 0.45,
+        "source_reliability": reliability,
+        "valid_until": _default_valid_until(article),
+        "canonical_topic": _canonical_topic_from_title(article),
+        "classification_source": "rule",
+    }
+
+
+def _get_gemini_key() -> str:
+    try:
+        from secret_manager import get_gemini_api_key
+
+        value = get_gemini_api_key()
+        return value.strip() if isinstance(value, str) else ""
+    except Exception:
+        value = os.environ.get("GEMINI_API_KEY", "")
+        return value.strip() if isinstance(value, str) else ""
+
+
+def _as_string_tuple(value: Any, limit: int = 8) -> tuple[str, ...]:
+    if isinstance(value, str):
+        values = re.split(r"[,、\n]", value)
+    elif isinstance(value, list):
+        values = value
+    else:
+        values = []
+    cleaned = [_normalize_text(str(item))[:160] for item in values if _normalize_text(str(item))]
+    return tuple(dict.fromkeys(cleaned))[:limit]
+
+
+def _normalize_classification(article: Article, value: dict[str, Any] | None) -> dict[str, Any]:
+    fallback = _rule_classification(article)
+    value = value or {}
+    direction = str(value.get("impact_direction") or fallback["impact_direction"]).strip().lower()
+    if direction not in {"positive", "negative", "neutral", "mixed"}:
+        direction = fallback["impact_direction"]
+    reliability = str(value.get("source_reliability") or fallback["source_reliability"]).strip().lower()
+    if reliability not in {"high", "medium", "low"}:
+        reliability = fallback["source_reliability"]
+    try:
+        confidence = max(0.0, min(1.0, float(value.get("classification_confidence", fallback["classification_confidence"]))))
+    except (TypeError, ValueError):
+        confidence = fallback["classification_confidence"]
+    valid_until = str(value.get("valid_until") or fallback["valid_until"]).strip()
+    try:
+        dt.date.fromisoformat(valid_until)
+    except ValueError:
+        valid_until = fallback["valid_until"]
+    return {
+        "industries": _as_string_tuple(value.get("industries")) or tuple(fallback["industries"]),
+        "lease_assets": _as_string_tuple(value.get("lease_assets")) or tuple(fallback["lease_assets"]),
+        "credit_risk_impact": _normalize_text(str(value.get("credit_risk_impact") or fallback["credit_risk_impact"]))[:500],
+        "screening_checks": _as_string_tuple(value.get("screening_checks"), limit=6) or tuple(fallback["screening_checks"]),
+        "impact_direction": direction,
+        "classification_confidence": confidence,
+        "source_reliability": reliability,
+        "valid_until": valid_until,
+        "canonical_topic": _normalize_text(str(value.get("canonical_topic") or fallback["canonical_topic"]))[:120],
+        "classification_source": str(value.get("classification_source") or "gemini"),
+    }
+
+
+def _apply_classification(article: Article, value: dict[str, Any] | None) -> None:
+    normalized = _normalize_classification(article, value)
+    article.industries = normalized["industries"]
+    article.lease_assets = normalized["lease_assets"]
+    article.credit_risk_impact = normalized["credit_risk_impact"]
+    article.screening_checks = normalized["screening_checks"]
+    article.impact_direction = normalized["impact_direction"]
+    article.classification_confidence = normalized["classification_confidence"]
+    article.source_reliability = normalized["source_reliability"]
+    article.valid_until = normalized["valid_until"]
+    article.canonical_topic = normalized["canonical_topic"]
+    article.classification_source = normalized["classification_source"]
+
+
+def classify_articles(articles: list[Article], use_ai: bool = True) -> None:
+    for article in articles:
+        _apply_classification(article, _rule_classification(article))
+    api_key = _get_gemini_key() if use_ai else ""
+    if not api_key or not articles:
+        return
+    try:
+        from google import genai
+        from google.genai import types
+
+        payload = [
+            {
+                "article_index": index,
+                "title": article.title,
+                "summary": article.summary,
+                "source": article.source,
+                "published": article.published_iso,
+                "query": article.query,
+                "rule_tags": list(article.tags),
+            }
+            for index, article in enumerate(articles)
+        ]
+        prompt = (
+            "以下のリース関連ニュースを、リース審査で後から検索・再利用できるよう分類してください。"
+            "記事にない事実は推測せず、不明な対象物件は「対象物件未特定」としてください。"
+            "impact_directionはpositive/negative/neutral/mixed、source_reliabilityはhigh/medium/low、"
+            "valid_untilはYYYY-MM-DDです。法令は原則1年、市況は60日、企業ニュースは180日、"
+            "設備・技術動向は1年を目安にしてください。canonical_topicは同一事象を束ねられる短い名称です。\n"
+            + json.dumps(payload, ensure_ascii=False)
+        )
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.1,
+                max_output_tokens=6000,
+                response_mime_type="application/json",
+                response_json_schema={
+                    "type": "object",
+                    "properties": {
+                        "classifications": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "article_index": {"type": "integer"},
+                                    "industries": {"type": "array", "items": {"type": "string"}},
+                                    "lease_assets": {"type": "array", "items": {"type": "string"}},
+                                    "credit_risk_impact": {"type": "string"},
+                                    "screening_checks": {"type": "array", "items": {"type": "string"}},
+                                    "impact_direction": {"type": "string"},
+                                    "classification_confidence": {"type": "number"},
+                                    "source_reliability": {"type": "string"},
+                                    "valid_until": {"type": "string"},
+                                    "canonical_topic": {"type": "string"},
+                                },
+                                "required": [
+                                    "article_index",
+                                    "industries",
+                                    "lease_assets",
+                                    "credit_risk_impact",
+                                    "screening_checks",
+                                    "impact_direction",
+                                    "classification_confidence",
+                                    "source_reliability",
+                                    "valid_until",
+                                    "canonical_topic",
+                                ],
+                            },
+                        }
+                    },
+                    "required": ["classifications"],
+                },
+                http_options=types.HttpOptions(timeout=30000),
+            ),
+        )
+        parsed = json.loads(response.text or "{}")
+        for item in parsed.get("classifications", []):
+            index = int(item.get("article_index", -1))
+            if 0 <= index < len(articles):
+                item["classification_source"] = "gemini"
+                _apply_classification(articles[index], item)
+    except Exception as exc:
+        print(f"[news] Gemini classification skipped; rule fallback used: {exc}", file=sys.stderr)
 
 
 def _infer_region(article: "Article") -> str:
@@ -453,6 +744,10 @@ def _build_article_content(
     tags_json = json.dumps(list(article.tags), ensure_ascii=False)
     pub = article.published_iso or ""
     review = _review_line(article.tags, article.theme)
+    canonical_url = _canonical_url(article.link)
+    dedup_id = hashlib.sha256(
+        (canonical_url or _normalized_title(article.title, article.source)).encode("utf-8")
+    ).hexdigest()[:16]
     summary_text = article.summary or ""
     lines: list[str] = []
     if summary_text:
@@ -471,9 +766,19 @@ week: {week}
 month: {month}
 tags: {tags_json}
 region: {region}
-source: {article.source or "Google News"}
+source: {_yaml_string(article.source or "Google News")}
 importance: {importance}
 profile: {profile}
+industries: {_yaml_string(", ".join(article.industries))}
+lease_assets: {_yaml_string(", ".join(article.lease_assets))}
+impact_direction: {article.impact_direction}
+source_reliability: {article.source_reliability}
+classification_confidence: {article.classification_confidence:.2f}
+valid_until: {article.valid_until}
+canonical_topic: {_yaml_string(article.canonical_topic)}
+canonical_url: {_yaml_string(canonical_url)}
+dedup_id: {dedup_id}
+classification_source: {article.classification_source}
 ---
 # {article.title}
 
@@ -485,6 +790,19 @@ profile: {profile}
 ## 活用メモ
 {review}
 
+## AI審査分類
+- 対象業種: {", ".join(article.industries)}
+- リース物件: {", ".join(article.lease_assets)}
+- 信用リスクへの影響: {article.credit_risk_impact}
+- 影響方向: {article.impact_direction}
+- 情報の信頼度: {article.source_reliability}
+- 分類確信度: {article.classification_confidence:.2f}
+- 有効期限: {article.valid_until}
+- 同一トピック: {article.canonical_topic}
+
+### 審査上の確認事項
+{chr(10).join(f"- {item}" for item in article.screening_checks)}
+
 ## 詳細
 - query: {article.query}
 - theme: {article.theme}
@@ -492,6 +810,84 @@ profile: {profile}
 - link: {article.link}
 """
     return content.strip() + "\n"
+
+
+def _load_existing_news(vault: Path, news_dir: str) -> list[dict[str, Any]]:
+    target_dir = vault / news_dir
+    if not target_dir.exists():
+        return []
+    records: list[dict[str, Any]] = []
+    try:
+        import yaml
+    except Exception:
+        yaml = None
+    for path in target_dir.glob("*.md"):
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        meta: dict[str, Any] = {}
+        match = re.match(r"^---\s*\n(.*?)\n---\s*\n", raw, re.DOTALL)
+        if match and yaml:
+            try:
+                loaded = yaml.safe_load(match.group(1)) or {}
+                meta = loaded if isinstance(loaded, dict) else {}
+            except Exception:
+                meta = {}
+        title_match = re.search(r"^#\s+(.+)$", raw, re.MULTILINE)
+        link_match = re.search(r"^-\s+link:\s*(.+)$", raw, re.MULTILINE)
+        records.append(
+            {
+                "path": path,
+                "raw": raw,
+                "title": title_match.group(1).strip() if title_match else path.stem,
+                "canonical_url": _canonical_url(str(meta.get("canonical_url") or (link_match.group(1).strip() if link_match else ""))),
+                "canonical_topic": _normalize_text(str(meta.get("canonical_topic") or "")),
+            }
+        )
+    return records
+
+
+def _find_duplicate(article: Article, records: list[dict[str, Any]]) -> dict[str, Any] | None:
+    article_url = _canonical_url(article.link)
+    article_title = _normalized_title(article.title, article.source)
+    article_topic = _normalize_text(article.canonical_topic).lower()
+    for record in records:
+        if article_url and record["canonical_url"] and article_url == record["canonical_url"]:
+            return record
+    best: tuple[float, dict[str, Any] | None] = (0.0, None)
+    for record in records:
+        title_score = SequenceMatcher(
+            None,
+            article_title,
+            _normalized_title(str(record["title"])),
+        ).ratio()
+        record_topic = str(record["canonical_topic"]).lower()
+        same_topic = bool(article_topic and record_topic and article_topic == record_topic)
+        threshold = 0.84 if same_topic else 0.92
+        if title_score >= threshold and title_score > best[0]:
+            best = (title_score, record)
+    return best[1]
+
+
+def _merge_related_report(record: dict[str, Any], article: Article) -> bool:
+    raw = str(record["raw"])
+    canonical_url = _canonical_url(article.link)
+    if canonical_url and canonical_url in raw:
+        return False
+    line = (
+        f"- {article.published_iso or dt.date.today().isoformat()} | "
+        f"{article.source or '不明'} | [{article.title}]({article.link})"
+    )
+    heading = "## 関連報道"
+    if heading in raw:
+        raw = raw.rstrip() + "\n" + line + "\n"
+    else:
+        raw = raw.rstrip() + f"\n\n{heading}\n{line}\n"
+    path = Path(record["path"])
+    path.write_text(raw, encoding="utf-8")
+    record["raw"] = raw
+    return True
 
 
 def _save_articles_to_obsidian(
@@ -508,13 +904,28 @@ def _save_articles_to_obsidian(
     target_dir = vault / news_dir
     target_dir.mkdir(parents=True, exist_ok=True)
     saved: list[Path] = []
+    existing = _load_existing_news(vault, news_dir)
     for art in articles:
+        duplicate = _find_duplicate(art, existing)
+        if duplicate:
+            if _merge_related_report(duplicate, art):
+                saved.append(Path(duplicate["path"]))
+            continue
         fname = f"{date_str}_リースニュース_{_safe_filename(art.title)}.md"
         fpath = _safe_note_path(vault, f"{news_dir}/{fname}")
         content = _build_article_content(art, date_str, week, month, profile)
         fpath.write_text(content, encoding="utf-8")
         saved.append(fpath)
-    return saved
+        existing.append(
+            {
+                "path": fpath,
+                "raw": content,
+                "title": art.title,
+                "canonical_url": _canonical_url(art.link),
+                "canonical_topic": art.canonical_topic,
+            }
+        )
+    return list(dict.fromkeys(saved))
 
 
 def _trigger_rag_index(file_paths: list[Path]) -> None:
@@ -584,6 +995,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit", type=int, default=18, help="Maximum articles to write.")
     parser.add_argument("--per-query", type=int, default=6, help="Maximum articles to take per query.")
     parser.add_argument("--per-feed", type=int, default=6, help="Maximum articles to take per RSS feed.")
+    parser.add_argument(
+        "--no-ai-classify",
+        action="store_true",
+        help="Skip Gemini classification and use deterministic rule classification.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Do not write notes, only print a summary.")
     return parser
 
@@ -610,6 +1026,10 @@ def main(argv: list[str] | None = None) -> int:
         per_feed=max(1, int(args.per_feed)),
     )
     articles = articles[: max(1, int(args.limit))]
+    classify_articles(
+        articles,
+        use_ai=not args.no_ai_classify and os.environ.get("LEASE_NEWS_AI_CLASSIFY", "1") != "0",
+    )
 
     date_str = dt.date.today().isoformat()
     news_dir = args.news_dir.strip("/") or DEFAULT_NEWS_DIR

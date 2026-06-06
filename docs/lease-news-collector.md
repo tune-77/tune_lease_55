@@ -10,8 +10,13 @@ Files:
 What it does:
 - searches Google News RSS with industry-specific query sets
 - reads official RSS feeds from METI, FSA, and MLIT
-- deduplicates articles
-- writes a daily digest note to Obsidian
+- classifies articles with Gemini, with a deterministic rule fallback
+- adds industry, lease asset, credit impact, screening checks, impact direction,
+  source reliability, validity date, and canonical topic metadata
+- deduplicates by normalized URL, title similarity, and canonical topic
+- merges duplicate coverage into the existing note's `関連報道` section
+- writes one searchable note per news topic to Obsidian
+- indexes saved or updated notes into the Obsidian RAG store
 - appends a short summary to `Daily/YYYY-MM-DD.md`
 
 Default schedule:
@@ -19,7 +24,7 @@ Default schedule:
 - launchd default profile: `industry-watch`
 
 Default Obsidian targets:
-- `Projects/tune_lease_55/News/YYYY-MM-DD_lease-news.md`
+- `05-クリップ_記事/リースニュース/YYYY-MM-DD_リースニュース_*.md`
 - `Daily/YYYY-MM-DD.md`
 
 Built-in profiles:
@@ -45,6 +50,9 @@ Optional env overrides:
 - `PYTHON_BIN`
 - `LEASE_NEWS_PROFILE`
 - `LEASE_NEWS_QUERIES`
+- `LEASE_NEWS_AI_CLASSIFY` (`0` disables Gemini classification)
+- `GEMINI_API_KEY`
+- `GEMINI_MODEL`
 
 Optional CLI overrides:
 - `--profile`
@@ -54,3 +62,4 @@ Optional CLI overrides:
 - `--limit`
 - `--per-query`
 - `--per-feed`
+- `--no-ai-classify`

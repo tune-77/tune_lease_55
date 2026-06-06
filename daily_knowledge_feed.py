@@ -146,6 +146,32 @@ def task_lease_news_rss() -> dict:
         return {"error": str(e)}
 
 
+def task_lease_judgment_research() -> dict:
+    """審査判断に直接使う知識をWeb調査し、通常のObsidian Vaultへ保存する。"""
+    import subprocess
+
+    script = _DIR / "scripts" / "auto_research_lease_judgment.py"
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=str(_DIR),
+        capture_output=True,
+        text=True,
+        timeout=180,
+        env={
+            **os.environ,
+            "PYTHONPATH": str(_DIR),
+        },
+    )
+    payload: dict = {
+        "returncode": result.returncode,
+        "stdout": result.stdout[-1000:] if result.stdout else "",
+        "stderr": result.stderr[-500:] if result.stderr else "",
+    }
+    if result.returncode != 0:
+        raise RuntimeError(payload["stderr"] or "lease judgment auto research failed")
+    return payload
+
+
 def task_macro_drift_check() -> dict:
     """コンセプトドリフト検知を実行し、異常時に Slack 通知する。"""
     from macro_drift_monitor import check_concept_drift
@@ -181,6 +207,7 @@ TASKS: dict[str, tuple[str, Callable]] = {
     "estat":    ("e-Stat 法人企業統計（年次）",        task_estat_annual),
     "bench":    ("e-Stat 業種別財務指標",              task_estat_benchmarks),
     "boj":      ("日銀金利 API",                      task_boj_rate),
+    "research": ("リース判断 Auto Research",           task_lease_judgment_research),
     "news":     ("リース業界ニュース RSS",              task_lease_news_rss),
     "drift":    ("コンセプトドリフト検知",              task_macro_drift_check),
     "pipeline": ("FluidPipeline 再学習チェック",       task_fluid_pipeline_status),
