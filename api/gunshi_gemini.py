@@ -485,7 +485,8 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
         ],
         "generationConfig": {"maxOutputTokens": 1024, "temperature": 0.7},
     }
-    url = f"{_gemini_stream_url()}?key={api_key}&alt=sse"
+    url = f"{_gemini_stream_url()}?alt=sse"
+    headers = {"x-goog-api-key": api_key}
 
     _rate_limited = False
     for attempt in range(3):
@@ -494,7 +495,7 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
         try:
             emitted_text = ""
             async with httpx.AsyncClient(timeout=60.0) as client:
-                async with client.stream("POST", url, json=payload) as resp:
+                async with client.stream("POST", url, json=payload, headers=headers) as resp:
                     if resp.status_code == 429:
                         _rate_limited = True
                         continue  # exponential backoff で再試行

@@ -54,7 +54,10 @@ def synthesize_pattern(cases: list[AnomalyCase]) -> str:
     }
     try:
         resp = requests.post(
-            f"{_gemini_url()}?key={api_key}", json=payload, timeout=60
+            _gemini_url(),
+            json=payload,
+            headers={"x-goog-api-key": api_key},
+            timeout=60,
         )
         resp.raise_for_status()
         return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()

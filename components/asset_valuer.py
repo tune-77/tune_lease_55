@@ -4,10 +4,11 @@ from typing import Optional
 import streamlit as st
 from components.agent_hub import _ai_call
 from expected_usage_period import find_item_by_name
+from runtime_paths import REPO_ROOT
 
 def _load_nta_useful_life() -> dict:
     """static_data/useful_life_equipment.json を読み込む"""
-    path = "/Users/kobayashiisaoryou/clawd/tune_lease_55/static_data/useful_life_equipment.json"
+    path = REPO_ROOT / "static_data" / "useful_life_equipment.json"
     if not os.path.exists(path):
         return {}
     try:

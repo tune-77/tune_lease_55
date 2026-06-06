@@ -4,6 +4,7 @@ import numpy as np
 import plotly.graph_objects as go
 import datetime
 import os
+from runtime_paths import REPO_ROOT
 
 def render_macro_prediction_view():
     st.title("📈 マクロ経済・S&P500予測 (β)")
@@ -74,7 +75,7 @@ def render_macro_prediction_view():
         st.subheader("LSTM 予測 × VIX 指数")
         st.caption("ディープラーニング（LSTM）によるS&P 500 と市場恐怖指数（VIX）のトレンド先読み")
 
-        vix_model_path = "/Users/kobayashiisaoryou/clawd/sp500-vix-predictor/predict.py"
+        vix_model_path = REPO_ROOT.parent / "sp500-vix-predictor" / "predict.py"
         if not os.path.exists(vix_model_path):
             st.error(f"LSTM予測モジュールが見つかりません: {vix_model_path}")
         else:

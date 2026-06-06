@@ -18,12 +18,11 @@ import re
 import threading
 from typing import Iterator
 
+from runtime_paths import get_obsidian_vault_path
+
 logger = logging.getLogger(__name__)
 
-_DEFAULT_VAULT_PATH = (
-    "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/"
-)
-_VAULT_PATH = os.environ.get("OBSIDIAN_VAULT_PATH", _DEFAULT_VAULT_PATH)
+_VAULT_PATH = get_obsidian_vault_path()
 _FEEDBACK_SUBDIR = "Feedback"
 _FEEDBACK_COLLECTION = "lease_feedback"
 _MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"

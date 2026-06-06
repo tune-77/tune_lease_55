@@ -6,9 +6,10 @@ import streamlit as st
 import sqlite3
 import os
 import plotly.graph_objects as go
+from runtime_paths import get_data_path
 
 
-_DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "lease_data.db")
+_DB_PATH = get_data_path("lease_data.db")
 _SUCCESS = {"成約", "検収完了"}
 _FAILURE = {"失注"}
 

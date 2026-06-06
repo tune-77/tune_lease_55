@@ -11,9 +11,10 @@ from pathlib import Path
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from runtime_paths import get_data_path
 
 PROJECT_ROOT = Path(__file__).parent.parent
-DB_PATH = PROJECT_ROOT / "data" / "lease_data.db"
+DB_PATH = Path(get_data_path("lease_data.db"))
 QMODEL_PATH = str(PROJECT_ROOT / "data" / "quantum_model.joblib")
 FEEDBACK_PATH = PROJECT_ROOT / "data" / "quantum_feedback.jsonl"
 

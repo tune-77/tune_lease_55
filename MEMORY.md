@@ -50,6 +50,7 @@
   - モデル見直しフックに `department_significance` を追加した。営業部ごとの業種分布・スコア・金利・売上をカイ二乗検定 / Kruskal-Wallis / ANOVA でまとめて判定し、`sales_dept_significance` で自動実行するようにした。
   - Streamlit の起動は `run_streamlit_stable.sh` 経由に切り替えた。`run_lease_app.sh` からの直起動をやめ、再起動ループと `server.fileWatcherType none` で落ちにくくした。
   - Next/Cloudflare 再起動後に「ホームが開かない」と見える場合、`curl 200` だけで正常判断しない。`/home` が全画面ローディングだけを返していないか、API ログで `/api/dashboard/stats` が返っているか、最新 `logs/next/tunnel_*.log` の URL を使っているかを確認する。2026-06-06 に `frontend/src/app/home/page.tsx` の全画面 `loading` gate を外し、API 集計中でもホーム本体を先に描画する方針にした。
+  - Cloud Run では SQLite と Obsidian を `.cloudrun_bundle/` にスナップショットしてからイメージへ焼き込み、起動時に `/app/data` と `/app/obsidian_vault` へ展開する方式にした。`scripts/package_cloud_run_bundle.sh` がその入口で、開発機の絶対パスに依存しない。
 
 ## Preferences
 - **User**: Kobayashi

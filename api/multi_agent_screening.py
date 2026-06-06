@@ -201,8 +201,9 @@ def _llm_call(system: str, prompt: str, temperature: float, max_tokens: int = 10
         },
     }
     resp = requests.post(
-        f"{_gemini_url()}?key={api_key}",
+        _gemini_url(),
         json=payload,
+        headers={"x-goog-api-key": api_key},
         timeout=60,
     )
     resp.raise_for_status()
@@ -297,7 +298,10 @@ def _llm_call_with_knowledge(
         },
     }
     resp1 = requests.post(
-        f"{_gemini_url()}?key={api_key}", json=payload_t1, timeout=60
+        _gemini_url(),
+        json=payload_t1,
+        headers={"x-goog-api-key": api_key},
+        timeout=60,
     )
     resp1.raise_for_status()
     candidate1 = resp1.json()["candidates"][0]["content"]
@@ -356,7 +360,10 @@ def _llm_call_with_knowledge(
             },
         }
         resp2 = requests.post(
-            f"{_gemini_url()}?key={api_key}", json=payload_t2, timeout=60
+            _gemini_url(),
+            json=payload_t2,
+            headers={"x-goog-api-key": api_key},
+            timeout=60,
         )
         resp2.raise_for_status()
         raw2 = resp2.json()["candidates"][0]["content"]["parts"][0]["text"].strip()

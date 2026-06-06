@@ -11,10 +11,11 @@ import re
 from dataclasses import dataclass, field
 from typing import Iterator
 
+from runtime_paths import get_obsidian_vault_path
+
 logger = logging.getLogger(__name__)
 
-_DEFAULT_VAULT_PATH = "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
-_VAULT_PATH = os.environ.get("OBSIDIAN_VAULT_PATH", _DEFAULT_VAULT_PATH)
+_VAULT_PATH = get_obsidian_vault_path()
 
 # scan_vault が必ず対象に含めるべき Vault 直下サブディレクトリ（明示ドキュメント）
 _REQUIRED_SUBDIRS: tuple[str, ...] = (

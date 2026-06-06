@@ -13,8 +13,9 @@ from typing import Optional
 
 import pandas as pd
 import streamlit as st
+from runtime_paths import get_data_path
 
-_LEASE_DB_PATH = "/Users/kobayashiisaoryou/clawd/tune_lease_55/data/lease_data.db"
+_LEASE_DB_PATH = get_data_path("lease_data.db")
 
 PAYMENT_STATUS_OPTIONS = ["正常", "延滞", "デフォルト", "完済"]
 _STATUS_ICON = {"正常": "🟢", "延滞": "🟡", "デフォルト": "🔴", "完済": "🔵"}

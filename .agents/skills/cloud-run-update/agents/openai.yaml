@@ -1,0 +1,7 @@
+interface:
+  display_name: "Cloud Run 更新"
+  short_description: "Cloud Run の再デプロイ手順を3行で固定"
+  default_prompt: "Use $cloud-run-update to run the standard 3-line Cloud Run update procedure for tune_lease_55."
+
+policy:
+  allow_implicit_invocation: true

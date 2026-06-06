@@ -27,11 +27,12 @@ from datetime import date
 from typing import Optional
 
 import streamlit as st
+from runtime_paths import get_data_path
 
 # ── パス設定 ─────────────────────────────────────────────────────────────────
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _BASE = os.path.dirname(_DIR)
-_DB_PATH = os.path.join(_BASE, "data", "lease_data.db")
+_DB_PATH = get_data_path("lease_data.db")
 
 # ── 初期補助金データ（手動更新のベースライン） ──────────────────────────────
 _INITIAL_SUBSIDIES = [

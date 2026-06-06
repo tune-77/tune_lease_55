@@ -8,7 +8,9 @@ import sqlite3
 import datetime
 import os
 
-_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tune_lease_55", "data", "lease_data.db")
+from runtime_paths import get_data_path
+
+_DB_PATH = get_data_path("lease_data.db")
 
 # リース期間列の定義（月数上限, 列名）
 _TERM_MAP = [

@@ -26,9 +26,10 @@ import joblib
 from ai_chat import _gemini_chat
 from config import GEMINI_MODEL_DEFAULT
 from secret_manager import get_gemini_api_key
+from runtime_paths import get_data_path
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_DB_PATH = os.path.join(_REPO_ROOT, "data", "lease_data.db")
+_DB_PATH = get_data_path("lease_data.db")
 _WIN_STATUSES = {"成約", "検収完了", "検収"}
 _VALID_STATUSES = _WIN_STATUSES | {"失注"}
 

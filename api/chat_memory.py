@@ -11,9 +11,9 @@ from contextlib import closing
 from typing import Optional
 import requests
 import re
+from runtime_paths import get_data_path
 
-_DATA_DIR = "/Users/kobayashiisaoryou/clawd/tune_lease_55/data"
-DB_PATH = os.path.join(_DATA_DIR, "lease_data.db")
+DB_PATH = get_data_path("lease_data.db")
 
 _GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
@@ -186,7 +186,12 @@ def get_summary(user_id: str = "default") -> str:
             "contents": [{"role": "user", "parts": [{"text": lines}]}],
             "generationConfig": {"temperature": 0.2, "maxOutputTokens": 256},
         }
-        resp = requests.post(f"{_gemini_url()}?key={api_key}", json=payload, timeout=30)
+        resp = requests.post(
+            _gemini_url(),
+            json=payload,
+            headers={"x-goog-api-key": api_key},
+            timeout=30,
+        )
         resp.raise_for_status()
         return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
     except Exception:
@@ -221,8 +226,9 @@ def call_gemini_chat(
         },
     }
     resp = requests.post(
-        f"{_gemini_url()}?key={api_key}",
+        _gemini_url(),
         json=payload,
+        headers={"x-goog-api-key": api_key},
         timeout=60,
     )
     resp.raise_for_status()
@@ -251,8 +257,9 @@ def call_gemini_chat(
         }
         try:
             cont = requests.post(
-                f"{_gemini_url()}?key={api_key}",
+                _gemini_url(),
                 json=continuation_payload,
+                headers={"x-goog-api-key": api_key},
                 timeout=60,
             )
             cont.raise_for_status()
