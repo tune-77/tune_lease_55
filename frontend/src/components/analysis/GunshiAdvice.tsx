@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import DOMPurify from 'dompurify';
-import { Activity, AlertTriangle, CheckCircle2, FileText, HelpCircle, MessageSquare, Target, Users } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, FileText, HelpCircle, Loader2, MessageSquare, PenLine, Target, Users } from 'lucide-react';
 import type { ScoringFormData } from '@/types';
 
 interface GunshiAdviceProps {
   score: number;
+  modelDecision: string;
   industry_major: string;
   formData: GunshiFormData;
   onChatLoaded?: (text: string) => void;
@@ -19,18 +20,6 @@ type ChatMessage = {
   meta?: string;
 };
 
-type SimilarCase = {
-  id?: number | string;
-  name: string;
-  industry: string;
-  score: number;
-  status: string;
-  similarity: number;
-  equity: number;
-  revenue: number;
-  conditions: string[];
-};
-
 type StrategyCards = {
   headline?: string;
   stance?: string;
@@ -42,15 +31,7 @@ type StrategyCards = {
   customer_one_liners?: string[];
   ringi_lines?: string[];
   badges?: string[];
-  bayes_factors?: BayesFactor[];
   disclaimer?: string;
-};
-
-type BayesFactor = {
-  label?: string;
-  detail?: string;
-  delta_pct?: number;
-  direction?: 'base' | 'up' | 'down' | 'flat';
 };
 
 type WebHit = {
@@ -70,9 +51,6 @@ type GunshiChatResponse = {
 
 type GunshiStreamChunk = {
   type?: 'bayes' | 'phrases' | 'strategy_cards' | 'stream' | 'done';
-  prior?: number;
-  posterior?: number;
-  factors?: BayesFactor[];
   cards?: StrategyCards;
   delta?: string;
 };
@@ -90,6 +68,16 @@ type YukikazeStatus = {
 
 const HUMOR_MODE_STORAGE_KEY = 'lease-gunshi-humor-mode';
 const YUKIKAZE_DIFFICULT_CASE_LINE = 'GOOD LUCK, FUKAI LT.';
+
+const normalizeDecision = (value: string, score: number) => {
+  const text = String(value || '').replace('条件付き', '条件付');
+  if (text.includes('否決') || text.includes('否認')) return '否決';
+  if (text.includes('条件付') || text.includes('要審議') || text.includes('要確認') || text.includes('ボーダー')) return '条件付';
+  if (text.includes('承認') || text.includes('良決')) return '承認';
+  if (score >= 80) return '承認';
+  if (score >= 50) return '条件付';
+  return '否決';
+};
 
 const getInitialHumorMode = (): HumorMode => {
   if (typeof window === 'undefined') return 'yanami';
@@ -149,7 +137,7 @@ const getYukikazeStatus = (score: number): YukikazeStatus => {
   };
 };
 
-export default function GunshiAdvice({ score, industry_major, formData, onChatLoaded }: GunshiAdviceProps) {
+export default function GunshiAdvice({ score, modelDecision, industry_major, formData, onChatLoaded }: GunshiAdviceProps) {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [question, setQuestion] = useState("");
@@ -158,17 +146,17 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
   const [useWeb, setUseWeb] = useState(true);
   const [advisorMode, setAdvisorMode] = useState<'gunshi' | 'chat'>('gunshi');
   const [statusText, setStatusText] = useState('');
-  const [similarCases, setSimilarCases] = useState<SimilarCase[]>([]);
-  const [similarOpen, setSimilarOpen] = useState(false);
-  const [prior, setPrior] = useState<number | null>(null);
-  const [posterior, setPosterior] = useState<number | null>(null);
-  const [bayesFactors, setBayesFactors] = useState<BayesFactor[]>([]);
   const [streamingText, setStreamingText] = useState('');
   const [strategyCards, setStrategyCards] = useState<StrategyCards | null>(null);
   const [strategyOpen, setStrategyOpen] = useState(false);
+  const [humanDecision, setHumanDecision] = useState('');
+  const [judgmentChangeReason, setJudgmentChangeReason] = useState('');
+  const [judgmentSaving, setJudgmentSaving] = useState(false);
+  const [judgmentStatus, setJudgmentStatus] = useState<'success' | 'error' | ''>('');
   const initialFetchKeyRef = useRef<string>("");
-  const similarFetchKeyRef = useRef<string>("");
+  const feedbackCaseIdRef = useRef(`gunshi-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const normalizedModelDecision = normalizeDecision(modelDecision, score);
   const initialStrategyQuestion = score > 0
     ? `この案件（スコア ${score.toFixed(1)}点、${industry_major || "指定なし"}）の稟議を通すための「逆転戦略」を教えてくれ！`
     : "";
@@ -178,6 +166,13 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
     if (!el) return;
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
   }, [chatHistory, streamingText]);
+
+  useEffect(() => {
+    setHumanDecision(normalizedModelDecision);
+    setJudgmentChangeReason('');
+    setJudgmentStatus('');
+    feedbackCaseIdRef.current = `gunshi-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }, [normalizedModelDecision, score, formData.company_no]);
 
   const handleHumorModeChange = (mode: HumorMode) => {
     setHumorMode(mode);
@@ -281,9 +276,6 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
     setLoading(true);
     setStreamingText('');
     setStrategyCards(null);
-    setPrior(null);
-    setPosterior(null);
-    setBayesFactors([]);
     setStatusText('AIが考えています...');
 
     try {
@@ -317,16 +309,9 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
           if (!rawData) continue;
           try {
             const chunk = JSON.parse(rawData) as GunshiStreamChunk;
-            if (chunk.type === 'bayes') {
-              setPrior(chunk.prior ?? null);
-              setPosterior(chunk.posterior ?? null);
-              setBayesFactors(chunk.factors || []);
-            } else if (chunk.type === 'strategy_cards') {
+            if (chunk.type === 'strategy_cards') {
               setStrategyCards(chunk.cards || null);
               setStrategyOpen(Boolean(chunk.cards));
-              if (chunk.cards?.bayes_factors?.length) {
-                setBayesFactors(chunk.cards.bayes_factors);
-              }
             } else if (chunk.type === 'stream' && chunk.delta) {
               fullText += chunk.delta;
               setStreamingText(fullText);
@@ -422,43 +407,6 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
     fetchStreamChat(nextHistory);
   }, [score, industry_major, formData, initialStrategyQuestion]);
 
-  useEffect(() => {
-    if (score === 0) return;
-    const sigKey = [
-      formData.nenshu,
-      formData.op_profit,
-      formData.net_assets,
-      formData.total_assets,
-      formData.bank_credit,
-      formData.lease_credit,
-      formData.industry_sub,
-      industry_major,
-    ].join(":");
-    if (similarFetchKeyRef.current === sigKey) return;
-    similarFetchKeyRef.current = sigKey;
-
-    (async () => {
-      try {
-        const res = await axios.post(`/api/similar/inline`, {
-          nenshu: Number(formData.nenshu) || 0,
-          op_profit: Number(formData.op_profit) || 0,
-          equity_ratio: Number(formData.total_assets) > 0
-            ? (Number(formData.net_assets) / Number(formData.total_assets)) * 100
-            : 0,
-          bank_credit: Number(formData.bank_credit) || 0,
-          lease_credit: Number(formData.lease_credit) || 0,
-          industry_sub: formData.industry_sub || "",
-          industry_major: industry_major || "",
-          max_count: 3,
-        });
-        setSimilarCases(res.data?.similar_cases || []);
-      } catch (err) {
-        console.error("Failed to fetch similar cases", err);
-        setSimilarCases([]);
-      }
-    })();
-  }, [score, industry_major, formData]);
-
   const handleSubmit = async () => {
     const trimmedQuestion = question.trim();
     if (!trimmedQuestion || loading) return;
@@ -467,6 +415,61 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
     setQuestion("");
     setChatHistory(nextHistory);
     await fetchChat(trimmedQuestion, nextHistory, chatHistory);
+  };
+
+  const handleRecordJudgmentChange = async () => {
+    if (
+      judgmentSaving ||
+      humanDecision === normalizedModelDecision ||
+      judgmentChangeReason.trim().length < 5
+    ) return;
+
+    setJudgmentSaving(true);
+    setJudgmentStatus('');
+    const latestAssistantReply = [...chatHistory]
+      .reverse()
+      .find((message) => message.role === 'assistant')?.text || '';
+    try {
+      await axios.post('/api/judgment-feedback', {
+        case_id: feedbackCaseIdRef.current,
+        model_decision: normalizedModelDecision,
+        human_decision: humanDecision,
+        reason: judgmentChangeReason.trim(),
+        source: 'gunshi_chat',
+        score,
+        input_snapshot: {
+          industry_major,
+          industry_sub: formData.industry_sub,
+          grade: formData.grade,
+          customer_type: formData.customer_type,
+          nenshu: formData.nenshu,
+          op_profit: formData.op_profit,
+          ord_profit: formData.ord_profit,
+          net_income: formData.net_income,
+          net_assets: formData.net_assets,
+          total_assets: formData.total_assets,
+          bank_credit: formData.bank_credit,
+          lease_credit: formData.lease_credit,
+          contracts: formData.contracts,
+          asset_name: formData.asset_name,
+          acquisition_cost: formData.acquisition_cost,
+          lease_term: formData.lease_term,
+        },
+        evidence_snapshot: {
+          strategy_headline: strategyCards?.headline || '',
+          strategy_stance: strategyCards?.stance || '',
+          risk_cards: strategyCards?.risk_cards || [],
+          today_moves: strategyCards?.today_moves || [],
+          latest_gunshi_reply: latestAssistantReply.slice(0, 2000),
+        },
+      });
+      setJudgmentStatus('success');
+    } catch (error) {
+      console.error('Failed to record judgment feedback', error);
+      setJudgmentStatus('error');
+    } finally {
+      setJudgmentSaving(false);
+    }
   };
 
   const renderMarkdown = (text: string, yukikaze = false) => {
@@ -576,43 +579,6 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
     );
   };
 
-  const renderBayesFactors = () => {
-    if (!bayesFactors.length) return null;
-    const factorClass = (direction?: BayesFactor['direction']) => {
-      if (direction === 'up') return 'border-emerald-200 bg-emerald-50 text-emerald-800';
-      if (direction === 'down') return 'border-red-200 bg-red-50 text-red-800';
-      if (direction === 'base') return 'border-blue-200 bg-blue-50 text-blue-800';
-      return 'border-slate-200 bg-slate-50 text-slate-700';
-    };
-    const deltaLabel = (factor: BayesFactor) => {
-      if (factor.direction === 'base') return '基準';
-      const value = Number(factor.delta_pct || 0);
-      if (value > 0) return `+${value.toFixed(1)}pt`;
-      if (value < 0) return `${value.toFixed(1)}pt`;
-      return '±0pt';
-    };
-
-    return (
-      <div className="mt-3 grid grid-cols-1 gap-1.5">
-        {bayesFactors.slice(0, 7).map((factor, i) => (
-          <div key={`${factor.label || 'factor'}-${i}`} className={`rounded-lg border px-2.5 py-2 ${factorClass(factor.direction)}`}>
-            <div className="flex items-start justify-between gap-2">
-              <span className="text-[11px] font-black leading-4">{factor.label || '要因'}</span>
-              <span className="shrink-0 text-[10px] font-black">{deltaLabel(factor)}</span>
-            </div>
-            {factor.detail && (
-              <div className="mt-0.5 text-[10px] leading-4 font-medium opacity-80">
-                {factor.detail}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  const priorPct = prior !== null ? Math.round(prior * 100) : null;
-  const posteriorPct = posterior !== null ? Math.round(posterior * 100) : null;
   const isYukikaze = humorMode === 'yukikaze';
   const yukikazeStatus = getYukikazeStatus(score);
   const isDifficultYukikazeCase = isYukikaze && ['WARNING', 'ALERT', 'CRITICAL'].includes(yukikazeStatus.level);
@@ -645,10 +611,10 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
           </div>
           <div>
             <h3 className={`font-bold text-sm tracking-wide ${isYukikaze ? 'font-mono text-amber-100' : ''}`}>
-              {isYukikaze ? 'YUKIKAZE // FFR-41MR' : '審査軍師 (Gemini 連動型)'}
+              {isYukikaze ? 'YUKIKAZE // FFR-41MR' : '軍師AI 戦略相談'}
             </h3>
             <p className={`text-[10px] font-medium ${isYukikaze ? 'text-red-300 font-mono tracking-widest' : 'text-blue-200'}`}>
-              {isYukikaze ? 'TACTICAL LEASE SCORING AI' : 'BNベースの戦略提案AI'}
+              {isYukikaze ? 'TACTICAL LEASE SCORING AI' : '数値分析をもとに次の行動と稟議表現を提案'}
             </p>
           </div>
         </div>
@@ -746,53 +712,6 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
           </label>
         </div>
 
-        {/* ベイズ推定ゲージ */}
-        {priorPct !== null && posteriorPct !== null && (
-          <div className={`mt-3 pt-3 ${isYukikaze ? 'border-t border-red-950/70' : 'border-t border-slate-100'}`}>
-            <div className="flex items-center justify-between mb-1.5">
-              <span className={`text-[10px] font-bold ${isYukikaze ? 'text-red-300 tracking-widest' : 'text-slate-500'}`}>{isYukikaze ? 'JAM PROBABILITY UPDATE' : '📊 ベイズ更新'}</span>
-              <span className={`text-[11px] font-bold ${isYukikaze ? 'text-amber-100' : 'text-slate-700'}`}>
-                事前 {priorPct}%
-                <span className="text-slate-400 mx-1">→</span>
-                <span className={
-                  posteriorPct >= 60
-                    ? 'text-emerald-600'
-                    : posteriorPct >= 40
-                    ? 'text-amber-600'
-                    : 'text-red-600'
-                }>
-                  事後 {posteriorPct}%
-                </span>
-              </span>
-            </div>
-            <div className={`relative h-3 rounded-full overflow-hidden ${isYukikaze ? 'bg-red-950/70 border border-red-900' : 'bg-slate-100'}`}>
-              {/* 事前確率マーカー */}
-              <div
-                className="absolute top-0 h-full w-0.5 bg-slate-400 z-10"
-                style={{ left: `${priorPct}%` }}
-              />
-              {/* 事後確率バー (アニメーション付き) */}
-              <div
-                className={`h-full rounded-full transition-all duration-1000 ease-out ${
-                  isYukikaze
-                    ? 'bg-gradient-to-r from-red-700 via-amber-500 to-amber-200'
-                    : posteriorPct >= 60
-                    ? 'bg-gradient-to-r from-emerald-400 to-emerald-500'
-                    : posteriorPct >= 40
-                    ? 'bg-gradient-to-r from-amber-400 to-amber-500'
-                    : 'bg-gradient-to-r from-red-400 to-red-500'
-                }`}
-                style={{ width: `${posteriorPct}%` }}
-              />
-            </div>
-            <div className="flex justify-between mt-0.5">
-              <span className="text-[9px] text-slate-400">0%</span>
-              <span className="text-[9px] text-slate-400">50%</span>
-              <span className="text-[9px] text-slate-400">100%</span>
-            </div>
-            {!isYukikaze && renderBayesFactors()}
-          </div>
-        )}
       </div>
 
       {/* チャットエリア */}
@@ -802,57 +721,6 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
             {isYukikaze ? 'TACTICAL SESSION LINKED' : 'ダッシュボード連携セッション開始'}
           </span>
         </div>
-
-        {score > 0 && similarCases.length > 0 && (
-          <div className={`rounded-xl border shadow-sm ${isYukikaze ? 'bg-black/80 border-red-950 text-amber-50 font-mono' : 'bg-white border-slate-200'}`}>
-            <button
-              type="button"
-              onClick={() => setSimilarOpen(v => !v)}
-              className="w-full flex items-center justify-between px-4 py-2.5 text-left"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-base">📚</span>
-                <span className={`text-xs font-bold ${isYukikaze ? 'text-amber-100' : 'text-slate-700'}`}>{isYukikaze ? 'ARCHIVED ENGAGEMENTS' : '類似過去案件'} ({similarCases.length}件)</span>
-                <span className={`text-[10px] font-medium ${isYukikaze ? 'text-red-300' : 'text-slate-400'}`}>成約・承認済みのみ</span>
-              </div>
-              <span className={`text-xs ${isYukikaze ? 'text-red-300' : 'text-slate-400'}`}>{similarOpen ? '▲' : '▼'}</span>
-            </button>
-            {similarOpen && (
-              <div className="px-3 pb-3 space-y-2">
-                {similarCases.map((c, i) => {
-                  const isSuccess = c.status.includes('成約') || c.status.includes('承認');
-                  return (
-                    <div key={c.id ?? i} className={`border rounded-lg p-2.5 ${isYukikaze ? 'border-red-950 bg-red-950/20' : 'border-slate-100 bg-slate-50/50'}`}>
-                      <div className="flex items-center justify-between gap-2 mb-1.5">
-                        <div className={`text-xs font-bold truncate ${isYukikaze ? 'text-amber-100' : 'text-slate-800'}`}>{c.name}</div>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
-                          isSuccess ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
-                        }`}>
-                          {c.status}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3 text-[10px] text-slate-600 mb-1">
-                        <span className="font-medium">{c.industry || '業種未設定'}</span>
-                        <span>スコア <span className="font-bold text-slate-800">{Number(c.score).toFixed(1)}</span></span>
-                        <span>自己資本 <span className="font-bold text-slate-800">{c.equity}%</span></span>
-                        <span className="ml-auto text-amber-600 font-bold">類似度 {c.similarity}%</span>
-                      </div>
-                      {c.conditions && c.conditions.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1.5">
-                          {c.conditions.slice(0, 4).map((cond, j) => (
-                            <span key={j} className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700">
-                              {cond}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
 
         {initialStrategyQuestion && (
           <div className={`rounded-xl border shadow-sm px-4 py-3 ${isYukikaze ? 'bg-black/85 border-red-900 text-amber-50 font-mono' : 'bg-blue-50 border-blue-200'}`}>
@@ -1030,6 +898,94 @@ export default function GunshiAdvice({ score, industry_major, formData, onChatLo
 
       <div className={footerClass}>
         <div className="space-y-2">
+          {score > 0 && (
+            <div className={`border-b pb-3 ${isYukikaze ? 'border-red-900/60' : 'border-slate-200'}`}>
+              <div className="mb-2">
+                <div className={`text-xs font-black ${isYukikaze ? 'text-amber-100' : 'text-slate-800'}`}>
+                  担当者の最終判断を記録
+                </div>
+                <div className={`mt-0.5 text-[10px] ${isYukikaze ? 'text-red-300' : 'text-slate-500'}`}>
+                  AI判断を変更する場合だけ入力
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[0.8fr_0.8fr_1.6fr_auto] sm:items-end">
+                <label className="min-w-0">
+                  <span className={`text-[10px] font-bold ${isYukikaze ? 'text-red-300' : 'text-slate-600'}`}>AI判断</span>
+                  <input
+                    value={normalizedModelDecision}
+                    readOnly
+                    className={`mt-1 h-9 w-full rounded-md border px-2.5 text-xs font-bold ${
+                      isYukikaze
+                        ? 'border-red-900 bg-black text-amber-100'
+                        : 'border-slate-200 bg-slate-100 text-slate-700'
+                    }`}
+                  />
+                </label>
+                <label className="min-w-0">
+                  <span className={`text-[10px] font-bold ${isYukikaze ? 'text-red-300' : 'text-slate-600'}`}>担当者判断</span>
+                  <select
+                    value={humanDecision}
+                    onChange={(event) => {
+                      setHumanDecision(event.target.value);
+                      setJudgmentStatus('');
+                    }}
+                    className={`mt-1 h-9 w-full rounded-md border px-2.5 text-xs font-bold ${
+                      isYukikaze
+                        ? 'border-red-800 bg-black text-amber-100'
+                        : 'border-slate-300 bg-white text-slate-800'
+                    }`}
+                  >
+                    <option value="承認">承認</option>
+                    <option value="条件付">条件付</option>
+                    <option value="否決">否決</option>
+                  </select>
+                </label>
+                <label className="min-w-0">
+                  <span className={`text-[10px] font-bold ${isYukikaze ? 'text-red-300' : 'text-slate-600'}`}>変更理由</span>
+                  <input
+                    value={judgmentChangeReason}
+                    onChange={(event) => {
+                      setJudgmentChangeReason(event.target.value);
+                      setJudgmentStatus('');
+                    }}
+                    placeholder="AI判断を変更した理由"
+                    className={`mt-1 h-9 w-full rounded-md border px-2.5 text-xs outline-none ${
+                      isYukikaze
+                        ? 'border-red-800 bg-black text-amber-100 placeholder:text-red-900'
+                        : 'border-slate-300 bg-white text-slate-800 placeholder:text-slate-400'
+                    }`}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={handleRecordJudgmentChange}
+                  disabled={
+                    judgmentSaving ||
+                    humanDecision === normalizedModelDecision ||
+                    judgmentChangeReason.trim().length < 5
+                  }
+                  className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-md border px-3 text-xs font-black disabled:cursor-not-allowed disabled:opacity-40 ${
+                    isYukikaze
+                      ? 'border-red-600 bg-red-950 text-amber-100 hover:bg-red-900'
+                      : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100'
+                  }`}
+                >
+                  {judgmentSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PenLine className="h-3.5 w-3.5" />}
+                  {judgmentSaving ? '記録中' : '変更を記録'}
+                </button>
+              </div>
+              {judgmentStatus === 'success' && (
+                <div className={`mt-2 text-[11px] font-bold ${isYukikaze ? 'text-emerald-300' : 'text-emerald-700'}`}>
+                  モデル改善候補として記録しました。
+                </div>
+              )}
+              {judgmentStatus === 'error' && (
+                <div className={`mt-2 text-[11px] font-bold ${isYukikaze ? 'text-red-300' : 'text-rose-700'}`}>
+                  記録に失敗しました。
+                </div>
+              )}
+            </div>
+          )}
           {statusText && (
             <div className={`text-[11px] ${isYukikaze ? 'text-red-300' : 'text-slate-500'}`}>
               {isYukikaze ? `SYSTEM: ${statusText}` : statusText}

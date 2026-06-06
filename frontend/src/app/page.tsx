@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import axios from "axios";
-import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database } from "lucide-react";
+import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, FileOutput, SlidersHorizontal } from "lucide-react";
 import ScoreDAG from "../components/ScoreDAG";
 import { ScoringFormData, defaultFormData } from "../types";
 import FormGeneral from "../components/form/FormGeneral";
@@ -300,7 +300,7 @@ export default function Dashboard() {
                 }`}
               >
                 <PieChart className="w-5 h-5" />
-                分析結果・レポート
+                数値分析
               </button>
             </div>
 
@@ -392,40 +392,8 @@ export default function Dashboard() {
                   </div>
                 ) : (
                   <>
-                    {/* DAGグラフ */}
-                    <ScoreDAG data={result} />
-                    
-                    {/* 主要指標サマリ (カッコいいカード) */}
+                    {/* 初期表示は判断に必要な結論だけに絞る */}
                     <IndicatorCards data={result} />
-
-                    {/* 財務分布マップ（UMAP + Isolation Forest）*/}
-                    {result.umap_anomaly_score != null && result.umap_x != null && result.umap_y != null && (
-                      <UMAPPanel
-                        score={result.umap_anomaly_score}
-                        umapX={result.umap_x}
-                        umapY={result.umap_y}
-                        similar={result.umap_similar}
-                        compact={false}
-                      />
-                    )}
-
-                    {/* 財務プロファイル類似度 */}
-                    {result.mahalanobis_score != null && (
-                      <MahalanobisPanel
-                        score={result.mahalanobis_score}
-                        advice={result.mahalanobis_advice}
-                        compact={false}
-                      />
-                    )}
-
-                    {/* REV-089/113/114: Q_risk パネル */}
-                    {result.quantum_risk != null && (
-                      <QRiskPanel
-                        quantumRisk={result.quantum_risk}
-                        creditQuantumStrongWarning={result.credit_quantum_strong_warning ?? false}
-                        compact={false}
-                      />
-                    )}
 
                     {/* REV-004: デフォルト率モデル警告パネル */}
                     {result.default_warnings?.length > 0 && (
@@ -448,30 +416,88 @@ export default function Dashboard() {
                     )}
 
                     <RateProposalCard proposal={result.rate_proposal} />
-                    <DataSourceSummaryCard summary={result.data_source_summary} />
 
-                    {/* 📊 新設: Recharts による本物のインタラクティブグラフ群 */}
-                    <RealGraphs
-                      companyName={formData.company_name || ""}
-                      nenshu={formData.nenshu || 0}
-                      opMarginPct={result?.user_op_margin || 0}
-                      equityRatio={result?.user_equity_ratio || 0}
-                      scoreBorrower={result?.score_borrower || 50}
-                      scoreBase={result?.score_base || 50}
-                    />
+                    <div className="space-y-3">
+                      <details className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                        <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
+                          <SlidersHorizontal className="h-4 w-4 text-indigo-600" />
+                          <span className="text-sm font-black text-slate-800">スコア構成・補助指標</span>
+                          <span className="ml-auto hidden text-[11px] font-bold text-slate-400 sm:inline">DAG / Q_risk / 類似度</span>
+                          <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
+                        </summary>
+                        <div className="space-y-4 border-t border-slate-100 p-4">
+                          <ScoreDAG data={result} />
 
-                    {/* 最終審査レポート */}
-                    <ReportGenerator apiResult={result} formData={formData} gunshiText={gunshiText} />
+                          {result.quantum_risk != null && (
+                            <QRiskPanel
+                              quantumRisk={result.quantum_risk}
+                              creditQuantumStrongWarning={result.credit_quantum_strong_warning ?? false}
+                              compact={false}
+                            />
+                          )}
+
+                          {result.umap_anomaly_score != null && result.umap_x != null && result.umap_y != null && (
+                            <UMAPPanel
+                              score={result.umap_anomaly_score}
+                              umapX={result.umap_x}
+                              umapY={result.umap_y}
+                              similar={result.umap_similar}
+                              compact={false}
+                            />
+                          )}
+
+                          {result.mahalanobis_score != null && (
+                            <MahalanobisPanel
+                              score={result.mahalanobis_score}
+                              advice={result.mahalanobis_advice}
+                              compact={false}
+                            />
+                          )}
+                        </div>
+                      </details>
+
+                      <details className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                        <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
+                          <ChartNoAxesCombined className="h-4 w-4 text-emerald-600" />
+                          <span className="text-sm font-black text-slate-800">詳細グラフ・入力情報</span>
+                          <span className="ml-auto hidden text-[11px] font-bold text-slate-400 sm:inline">財務比較 / 情報源</span>
+                          <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
+                        </summary>
+                        <div className="space-y-4 border-t border-slate-100 p-4">
+                          <RealGraphs
+                            companyName={formData.company_name || ""}
+                            nenshu={formData.nenshu || 0}
+                            opMarginPct={result?.user_op_margin || 0}
+                            equityRatio={result?.user_equity_ratio || 0}
+                            scoreBorrower={result?.score_borrower || 50}
+                            scoreBase={result?.score_base || 50}
+                          />
+                          <DataSourceSummaryCard summary={result.data_source_summary} />
+                        </div>
+                      </details>
+
+                      <details className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                        <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
+                          <FileOutput className="h-4 w-4 text-slate-700" />
+                          <span className="text-sm font-black text-slate-800">稟議書・レポート出力</span>
+                          <ChevronDown className="ml-auto h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
+                        </summary>
+                        <div className="border-t border-slate-100 p-4 [&>div]:mt-0">
+                          <ReportGenerator apiResult={result} formData={formData} gunshiText={gunshiText} />
+                        </div>
+                      </details>
+                    </div>
                   </>
                 )}
               </div>
             )}
           </div>
 
-          {/* 右カラム: 審査軍師 (逆転プラン自動提案) */}
+          {/* 右カラム: 数値の再掲ではなく、戦略・質問・稟議表現を担当 */}
           <div className="w-full 2xl:w-[42%] mt-8 2xl:mt-0 relative z-10">
             <GunshiAdvice
               score={result?.score_base || 0}
+              modelDecision={result?.hantei || ""}
               industry_major={result?.industry_major || formData.industry_major || ""}
               formData={formData}
               onChatLoaded={setGunshiText}

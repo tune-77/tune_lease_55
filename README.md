@@ -1,56 +1,105 @@
 # リース審査AI システム
 
-リース会社向けの社内審査支援ツール。財務データを入力するだけで審査スコアを算出し、金利サジェスト・軍師コメント・成約予測・改善提案まで一気通貫で行う Streamlit / Next.js アプリ。
+リース審査の入力、スコアリング、金利提案、軍師AI、過去案件分析、Obsidian 知識活用をまとめた社内向け審査支援システムです。
+
+現在の主系統は **Next.js + FastAPI** です。Streamlit 版は既存機能の参照・一部運用のために残していますが、日常利用と外部公開は `run_next_stable.sh` を使います。
 
 ---
 
-## 構想ドキュメント
+## 現在の仕様
 
-- [Claude × Codex × Gemini API による自律高度化システム構想](docs/autonomous_ai_lease_system_plan.html)
+| 領域 | 現仕様 |
+|------|--------|
+| フロントエンド | Next.js production (`next build` -> `next start`) |
+| API | FastAPI。Next の `/api/*` から FastAPI へプロキシ |
+| 主起動 | `run_next_stable.sh` |
+| 外部公開 | Cloudflare quick tunnel (`PUBLIC_TUNNEL=1`) |
+| 主スコアAPI | `POST /api/score/full` |
+| 借手モデル | 既存先: RandomForest / 新規先: LogisticRegression |
+| 定性モデル | LR と LightGBM の比較表示 |
+| Q_risk | 財務データの矛盾・歪みを示す補助指標。自動減点ではなく深掘り対象 |
+| 知識連携 | Obsidian Vault のニュース、審査メモ、判断変更ログを利用 |
 
 ---
 
-## 主な機能
+## 主な画面
 
-| 機能 | 概要 |
+| 画面 | 役割 |
 |------|------|
-| **審査スコアリング** | 単体主モデル＋ベイズ推論で審査スコアを算出（承認ライン: 71点） |
-| **限界改善シミュレーター** | ボーダーライン案件に「どの指標をいくら改善すれば承認圏内か」を提示 |
-| **軍師コメント** | ベイズ推論＋LLM（Gemini）による審査所見の自動生成 |
-| **金利サジェスト** | 過去の成約データから最適なリースレートを提案 |
-| **定量要因・ML分析** | ロジスティック回帰・RandomForest・LGBMで成約要因を複合分析し、Gemini が2〜3行で要点を要約 |
-| **基準金利マスタ** | 月次の基準金利を管理・参照（社内決定金利を毎月登録） |
-| **競合関係グラフ** | 業種×競合他社の競合関係を D3.js で可視化 |
-| **案件結果登録** | 審査後の成約/失注・獲得レート・競合情報を記録 |
-| **自動係数最適化** | 成約実績50件到達後、以降20件ごとに回帰係数を自動更新 |
-| **バッチ審査** | Excel アップロードで複数案件を一括スコアリング |
-| **PDF出力** | 審査結果レポートを PDF で出力 |
+| `/home` | ホームダッシュボード。KPI、注目論点、最新リースニュース、ニュースダイジェストを表示 |
+| `/` | 審査入力と分析結果。左は数値・モデル根拠、右は軍師AI |
+| `/lease-kun` | 入力を絞ったスマホ向け審査導線 |
+| `/quantitative` | 定量要因分析。LR / RandomForest / LGBM の指標・重要度を比較 |
+| `/qualitative` | 定性因子分析。定性LR・LightGBM を比較 |
+| `/history-dash` | 過去案件から成約ドライバー、平均財務、タグ傾向を確認 |
+| `/finance` | 物件ファイナンス審査。Obsidian 関連メモと稟議条件案を利用 |
+| `/chat` | AIチャット。Obsidian 文脈、ニュース論点、直近審査文脈を参照 |
+| `/debate` | 境界案件の討論・軍師裁定 |
+| `/report` | 審査レポート出力 |
+
+### 審査分析画面の役割分担
+
+`/` の分析画面は情報過多を避けるため、役割を分けています。
+
+- 左カラム常時表示: 主要指標、重大警告、金利提案
+- 左カラム折りたたみ: スコアDAG・Q_risk・類似度、詳細グラフ・情報源、稟議書・レポート出力
+- 右カラム: 軍師AI。逆転戦略、審査部のツッコミ予測、顧客に聞くこと、稟議メモ、追加相談
+
+軍師AIと重複する文章系ブロック（条件付き承認アクション、入力反映メモ、稟議コメント案、AI審査アドバイス、高度シミュレーション）は、分析画面の初期表示から外しています。詳細なモデル根拠は必要なときだけ開く設計です。
+
+通常分析タブの名称は「数値分析」です。軍師AI側ではベイズゲージや類似案件一覧を再表示せず、数値分析の結果を受けて「次に何をするか」を提示します。
 
 ---
 
 ## 起動方法
 
+### 通常起動
+
 ```bash
 cd /path/to/tune_lease_55
-./run_next_stable.sh
+bash run_next_stable.sh
 ```
 
-Streamlit 単体で起動する場合:
+起動後:
+
+- Next: `http://127.0.0.1:3000`
+- FastAPI: `http://127.0.0.1:8000`
+- API docs: `http://127.0.0.1:8000/docs`
+
+### Cloudflare Tunnel 付き
 
 ```bash
-./run_streamlit_stable.sh
+PUBLIC_TUNNEL=1 bash run_next_stable.sh
 ```
 
-公開URLが必要なら:
+起動ログに `https://xxxx.trycloudflare.com` が表示されます。quick tunnel の URL は使い捨てなので、毎回最新の `logs/next/tunnel_*.log` または起動ログを確認してください。
+
+### 状態確認・部分再起動
+
+フル再起動の前に `RESTART_SCOPE=status` を使います。
 
 ```bash
-PUBLIC_TUNNEL=1 ./run_next_stable.sh
+RESTART_SCOPE=status bash run_next_stable.sh
+RESTART_SCOPE=api bash run_next_stable.sh
+RESTART_SCOPE=next bash run_next_stable.sh
+RESTART_SCOPE=tunnel bash run_next_stable.sh
 ```
 
-`run_next_stable.sh` は `FastAPI + Next.js production + Cloudflare Tunnel` をまとめて安定起動します。
-`next dev` は使わず、`next build` → `next start` に固定しています。
+`curl 200` だけで正常判断しないでください。特に `/home` は API 集計中でも本体を先に描画する設計なので、画面がローディングだけになっていないかも確認します。
 
-APIキーの設定（初回のみ）:
+### Streamlit 版
+
+```bash
+bash run_streamlit_stable.sh
+```
+
+Streamlit は旧導線・一部管理機能のために残しています。新規の画面改善は原則 Next 側に入れます。
+
+---
+
+## 環境変数・秘密情報
+
+API キーは環境変数または `.streamlit/secrets.toml` で管理します。秘密情報は Git にコミットしません。
 
 ```toml
 # .streamlit/secrets.toml
@@ -59,190 +108,177 @@ SLACK_BOT_TOKEN = "your-slack-bot-token"
 ANYTHING_LLM_API_KEY = "your-anything-llm-key"
 ```
 
-環境変数でも設定可能（優先順位: 環境変数 > secrets.toml > session_state）。
+主な環境変数:
+
+| 変数 | 用途 |
+|------|------|
+| `PUBLIC_TUNNEL=1` | Cloudflare quick tunnel を起動 |
+| `RESTART_SCOPE=status/api/next/tunnel` | 状態確認・部分再起動 |
+| `API_HOST=127.0.0.1` | FastAPI bind host |
+| `NEXT_HOST=127.0.0.1` | Next bind host |
+| `ENABLE_GUNSHI_RAG=1` | 軍師AIでローカルRAGを有効化 |
+| `ENABLE_OBSIDIAN_INDEXING=true` | FastAPI 起動時の Obsidian index を有効化 |
 
 ---
 
-## ML モデルの仕組み
+## スコアリング仕様
 
-### スコアリングパイプライン
+### スコア構成
 
 ```
-財務入力
+入力値
   ↓
-① ロジスティック回帰（LR）        ← 係数更新用
-② 主モデル分類器              ← data/lgb_main_model.joblib / data/lgb_main_model_new.joblib
-定量スコア（既存先は RF、新規先は LR を採用）
-  ↓ + ベイズ推論 + 定性評価 + 物件スコア + 直感補正
-最終スコア（0〜100点）
+単位変換・特徴量生成
+  ↓
+借手モデル
+  - 既存先: RandomForest
+  - 新規先: LogisticRegression
+  ↓
+bench_score / ind_score / Q_risk / 定性評価 / 物件スコア / 直感補正
+  ↓
+最終スコア・判定・金利提案・軍師AI文脈
 ```
 
-### 定量要因・ML分析
+### 主要スコア
 
-- ロジスティック回帰で符号と係数の向きを確認する
-- RandomForest で非線形な重要度を確認する
-- LGBM で主モデルの重要度を確認する
-- `/quantitative` では3モデルの指標と重要度を並べ、Gemini が2〜3行で要点をまとめる
+| 項目 | 意味 |
+|------|------|
+| `score_borrower` | 借手モデルの基礎スコア |
+| `bench_score` | 業界ベンチマーク比較用の参考指標 |
+| `ind_score` | 業種別比較用の参考指標 |
+| `asset_score` | 物件の保全性・汎用性・残価リスク等 |
+| `score` / `score_base` | 画面表示用の総合スコア |
+| `ai_prob` | RandomForest 由来の PD 表示。失敗時のみフォールバック |
+| `quantum_risk` | Q_risk。財務入力の矛盾・歪みを示す補助指標 |
 
-### DSCR 特徴量（キャッシュフロー系）
+`bench_score` と `ind_score` はブレンド前提ではなく、乖離アラート・参考比較に使います。
 
-| 特徴量 | 定義 | 意味 |
-|--------|------|------|
-| `dscr_approx` | 営業利益 ÷ (減価償却費 + 賃借料) | 固定費に対する利益カバー力 |
-| `interest_coverage` | 営業利益 ÷ 支払利息 | 利息支払い余力 |
+### モデルファイル
 
-### モデル再学習（ローカルで実行可能）
+| ファイル | 内容 |
+|---------|------|
+| `data/lgb_main_model.joblib` | 既存先向け借手モデル。現在は RandomForest バンドル |
+| `data/lgb_main_model_new.joblib` | 新規先向け借手モデル。現在は LogisticRegression バンドル |
+| `data/ml_rf_v4.pkl` | 既存導線で利用する RandomForest 主モデル |
+| `data/lgb_qual_model.joblib` | 定性モデル |
 
-```bash
-# 1. DB からトレーニングデータを抽出
-python export_cases_for_colab.py   # → data/cases_for_colab.json
-
-# 2. 学習（data/ 直下にモデルファイルを自動保存）
-python train_lgb_colab.py
-```
-
-生成されるファイル:
-- `data/lgb_main_model.joblib` — 既存先向け定量モデル（RandomForest）
-- `data/lgb_main_model_new.joblib` — 新規先向け定量モデル（LogisticRegression）
-- `data/lgb_qual_model.joblib` — 定性モデル
+> `data/` 配下の DB、モデル、jsonl、キャッシュは原則 Git 管理しません。
 
 ---
 
-## 限界改善シミュレーター
+## Obsidian・ニュース連携
 
-スコアが承認ライン付近（71点 − 2以内）の案件に対し、改善提案パネルを自動表示する。
+既定の保存先は通常の Obsidian Vault です。
 
-```
-現在スコア: 67.4 → 要審議
-
-✅ 単独改善で承認ラインに到達できる案
-┌────────────┬──────────────────┬────────┬────────────┐
-│ 指標       │ 改善量           │ 推定   │ 効果       │
-├────────────┼──────────────────┼────────┼────────────┤
-│ 売上高     │ +15%（約360万増）│ 72.1   │ 承認圏内   │
-│ 信用格付   │ 要注意 → 4-6    │ 74.5   │ 承認圏内   │
-└────────────┴──────────────────┴────────┴────────────┘
+```text
+/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault
 ```
 
-実装: `components/marginal_improvement.py`
+`lease-wiki-vault` は、明示的に指定された場合だけ使います。
+
+### ニュース
+
+最新リースニュースは主に以下を参照します。
+
+```text
+Obsidian Vault/05-クリップ_記事/リースニュース
+```
+
+`/api/lease-news/recent` はこのフォルダを主系統として読み、旧 `Obsidian Vault/リースニュース` も互換パスとして扱います。
+
+ニュースは保存するだけでなく、`/home`、`/chat`、`/debate`、審査コメントの注目論点として再利用します。
+
+`/debate` と審査分析画面の軍師AIチャットで、AI判断を担当者が変更した場合は、担当者の最終判断、変更理由、審査入力、裁定・軍師回答の根拠を `judgment_feedback` テーブルへ保存します。ニュースは必須ではなく、表示されている場合だけ補足根拠として保存します。保存時点ではモデル改善候補であり、レビューで `approved` になったデータだけを承認判断モデルの教師データとして取り出せます。担当者判断を延滞・デフォルト実績と同一視せず、既存のデフォルト予測再学習へ直接混ぜません。
+
+関連API:
+
+- `POST /api/lease-news/judgment-change`
+- `POST /api/judgment-feedback`
+- `GET /api/judgment-feedback/summary`
+- `GET /api/judgment-feedback/candidates`
+- `POST /api/judgment-feedback/{record_id}/review`
+
+### AIチャットの Obsidian 検索ルール
+
+Obsidian 検索は共通経路を使います。
+
+- 検索語分解: `obsidian_query.py`
+- AIプロンプト用文脈: `obsidian_ai_context.py`
+- Vault検索本体: `mobile_app/obsidian_bridge.py`
+
+チャット実装ごとに `vault.rglob("*.md")` を直接呼ばないでください。
 
 ---
 
 ## プロジェクト構造
 
-```
+```text
 tune_lease_55/
-├── tune_lease_55.py              # エントリポイント・ページルーティング
-├── scoring_core.py               # スコア計算コア（LR・LGB・DSCR・最適閾値）
-├── coeff_definitions.py          # 全業種×既存先/新規先の回帰係数定義
-├── asset_scorer.py               # 物件スコアリング
-├── total_scorer.py               # 合計スコア集約
-├── category_config.py            # 業種カテゴリ設定
-├── bayesian_engine.py            # ベイズ推論エンジン
-├── quantum_analysis_module.py    # 量子干渉スコア（財務矛盾検出）
-├── data_cases.py                 # 案件データの読み書き
-├── auto_optimizer.py             # 自動最適化トリガー
-├── analysis_regression.py        # 回帰分析・混合重み最適化
-├── export_cases_for_colab.py     # 学習データ抽出スクリプト
-├── train_lgb_colab.py            # 主モデル再学習スクリプト（ローカル実行可）
-├── components/
-│   ├── chat_wizard.py            # リースくんウィザード（対話型入力）
-│   ├── form_apply.py             # 審査入力フォーム
-│   ├── score_calculation.py      # スコア計算・ログ保存
-│   ├── analysis_results.py       # 分析結果表示
-│   ├── marginal_improvement.py   # 限界改善シミュレーター
-│   ├── shinsa_gunshi.py          # 軍師コメント生成
-│   ├── rate_suggestion.py        # 金利サジェスト
-│   ├── graph_view.py             # 競合関係グラフ（D3.js）
-│   ├── form_status.py            # 案件結果登録
-│   ├── dashboard.py              # ダッシュボード
-│   ├── batch_scoring.py          # バッチ審査
-│   ├── report.py                 # レポート生成
-│   ├── sidebar.py                # サイドバー UI
-│   └── settings.py               # 設定画面
+├── api/
+│   ├── main.py                  # FastAPI 本体、/api/score/full、ニュース、Obsidian連携
+│   ├── gunshi_gemini.py          # 軍師AI SSE / Gemini / 代替戦略
+│   └── knowledge/                # Obsidian index / vector store
+├── frontend/
+│   └── src/
+│       ├── app/                  # Next.js App Router 各画面
+│       ├── components/analysis/  # GunshiAdvice, Q_risk, レポート等
+│       ├── components/form/      # 審査入力フォーム
+│       └── lib/                  # API / 単位変換
+├── components/                   # Streamlit 由来の審査・分析ロジック
+│   ├── score_calculation.py      # run_scoring。APIモードでは副作用フックを抑制
+│   ├── analysis_results.py       # Streamlit 分析表示
+│   └── dashboard.py              # Streamlit ダッシュボード
 ├── scoring/                      # スコアリングサブモジュール
-│   └── feature_engineering_custom.py
-├── slack_bot.py                  # Slack ボット
-├── slack_screening.py            # Slack 審査フロー
-├── data/                         # SQLite DB・モデルファイル（コミット禁止）
-└── .streamlit/secrets.toml       # 秘密情報（コミット禁止）
+├── data/                         # DB・モデル・ログ。原則コミット禁止
+├── logs/next/                    # 起動ログ・ビルドログ・tunnelログ
+├── memory/                       # 日次作業メモ
+├── run_next_stable.sh            # FastAPI + Next + tunnel 安定起動
+└── run_streamlit_stable.sh       # Streamlit 安定起動
 ```
 
 ---
 
-## スコアリングの仕組み（詳細）
+## 開発・検証
 
-### 現在のスコア構成
+### Frontend build
 
-- `score_borrower` は **RandomForest 単体** の借手スコア
-- `bench_score` と `ind_score` は **参考指標** として保持し、差分アラートや診断に使う
-- 最終 `score` は借手スコアに物件スコアや各種補正を加えた総合点
-- 顧客区分（既存先/新規先）で借手モデルを切り替える
+```bash
+cd frontend
+npm run build
+```
 
-#### 使い分け
+### Python syntax check
 
-1. `score_borrower` で借手の基礎体力を見る
-2. `bench_score` / `ind_score` で業界・業種平均との差を確認する
-3. 差分が大きい案件だけ要確認に回す
-4. 重みの再推定は、参考指標が安定してから別途行う
+```bash
+python -m py_compile api/main.py api/gunshi_gemini.py components/score_calculation.py
+```
 
+### API / Next 疎通
 
-### 金利サジェスト
+```bash
+curl --max-time 10 -sS http://127.0.0.1:3000/ >/dev/null && echo NEXT_OK
+curl --max-time 10 -sS http://127.0.0.1:8000/docs >/dev/null && echo API_OK
+```
 
-- 過去の成約データ（スプレッド・スコア・競合情報）から推奨金利レンジを算出
-- 「競合なし失注」（現金購入・銀行融資への切り替え）はサンプルから除外
-- スコアに応じた調整・競合他社情報がある場合は競合スプレッドも反映
-
----
-
-## 運用ガードレール
-
-### 自動係数更新の安全条件
-
-- 成約/失注の登録済み案件が **50件** を超えた時点で初回実行
-- 以降 **20件ごと** に自動実行
-- AUC・判定乖離率・業種別精度を同時監視
-- 結果は `data/coeff_auto.json` に保存、次回起動から自動反映
-
-### 監査ログの最小セット
-
-案件ごとに以下を保存する運用を推奨:
-
-- 入力値（匿名ID・業種・主要財務指標）
-- 使用係数バージョン（manual/auto と更新日時）
-- 判定スコアと承認可否
-- 金利提案の根拠（スプレッド/競合情報の有無）
-
-### 運用 KPI（週次・月次）
-
-- 承認率・成約率
-- スコア帯別成約率
-- 提示金利と獲得金利のギャップ
-- モデル更新前後の性能差（AUC/成約率）
+sandbox 内で `listen EPERM` や localhost 接続失敗が出る場合があります。`next-server` が生きているのに curl だけ失敗する場合は、権限付きで再確認してからアプリ障害と判断します。
 
 ---
 
-## データファイル
+## Git 運用
 
-| ファイル | 内容 |
-|---------|------|
-| `data/lease_data.db` | 全案件ログ（SQLite）。スコア・成約/失注・金利・競合情報を記録 |
-| `data/screening_db.sqlite` | 軍師モード用 DB（ベイズ証拠重み） |
-| `data/coeff_overrides.json` | 係数の手動上書き・モデル混合重みの手動設定 |
-| `data/coeff_auto.json` | 自動最適化で算出した係数の保存先 |
-| `data/lgb_main_model.joblib` | RandomForest 定量モデル（既存先） |
-| `data/lgb_main_model_new.joblib` | LogisticRegression 定量モデル（新規先） |
-| `data/lgb_qual_model.joblib` | LightGBM 定性モデル |
-| `data/business_rules.json` | 業種別ビジネスルール |
-| `data/industry_benchmarks.json` | 業種別財務指標ベンチマーク |
-
-> `data/` 配下の `.db` / `.sqlite` / `.joblib` / `.jsonl` は Git で管理しない（`.gitignore` 参照）。
+- `data/` 配下は原則コミットしない
+- `.streamlit/secrets.toml` はコミットしない
+- `frontend/.next/`、`node_modules/`、ログ、キャッシュはコミットしない
+- 変更後は `npm run build` または該当する Python syntax check を実行する
+- `git-ship` 時は `data/` と secrets を除外して commit/push する
 
 ---
 
-## 注意事項
+## 運用上の注意
 
-- `coeff_definitions.py` はリポジトリルートに配置（直接参照のため）
-- Gemini API キーは `.streamlit/secrets.toml` で管理（Git にコミットしない）
-- 基準金利は毎月末に翌月分を `📅 基準金利マスタ` 画面から登録する
-- 数値の単位は画面により異なる。Streamlit / Flask / NEXT 版の入力は **百万円** 単位。
+- ホームが開かないように見える場合、`curl 200` だけではなく、全画面ローディングで止まっていないか確認する
+- Cloudflare quick tunnel の URL は毎回変わる。古い trycloudflare URL を信用しない
+- `/api/score/full` は FastAPI プロセス安定性のため、APIモードでは Streamlit 側の recorder / FluidPipeline フックを抑制している
+- 軍師AIの RAG は通常無効。必要時だけ `ENABLE_GUNSHI_RAG=1`
+- Q_risk は「否決理由」ではなく「確認すべき歪みの候補」として扱う
+- 画面改善では、情報を増やすより審査判断に必要な情報へ絞る

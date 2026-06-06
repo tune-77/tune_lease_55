@@ -10,6 +10,7 @@ import datetime as dt
 import os
 import re
 import time
+import unicodedata
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -109,8 +110,120 @@ def _to_wikilink(rel_path: str, alias: str | None = None) -> str:
     return f"[[{stem}]]"
 
 
-def _search_in_paths(paths: list[Path], vault: Path, terms: list[str], limit: int, max_chars: int, seen: set[str]) -> list[dict[str, str]]:
-    hits: list[dict[str, str]] = []
+_GENERIC_SEARCH_TERMS = {
+    "確認", "確認事項", "注意", "注意点", "ポイント", "リスク", "関係", "違い",
+    "意味", "見方", "方法", "理由", "原因", "対策", "手順", "選択肢", "営業説明",
+    "案件", "会社", "場合", "するとき", "するときの",
+}
+_CHAT_INTENT_TERMS = ("チャット", "会話", "履歴", "日報", "daily", "weekly review", "改善ログ")
+_HUMOR_INTENT_TERMS = ("ユーモア", "笑い", "面白", "口調")
+_REFERENCE_PATH_PREFIXES = ("リース知識/", "projects/tune_lease_55/")
+_LOWER_PRIORITY_PATH_PARTS = ("05-クリップ_記事/", "06-日記_作業ログ/", "/news/")
+
+
+def _normalize_search_text(text: str) -> str:
+    normalized = unicodedata.normalize("NFKC", text or "").lower()
+    normalized = re.sub(r"[‐‑‒–—―−_]+", "-", normalized)
+    return re.sub(r"\s+", " ", normalized)
+
+
+def _candidate_score(
+    *,
+    path: str,
+    text: str,
+    primary_terms: list[str],
+    expanded_terms: list[str],
+    query: str,
+    source_bonus: float = 0.0,
+) -> float:
+    normalized_path = _normalize_search_text(path)
+    filename = _normalize_search_text(Path(path).stem)
+    body = _normalize_search_text(text)
+    normalized_query = _normalize_search_text(query)
+    primary = [_normalize_search_text(t) for t in primary_terms if t not in _GENERIC_SEARCH_TERMS]
+    secondary = [_normalize_search_text(t) for t in expanded_terms if t not in primary_terms]
+
+    score = source_bonus
+    matched_primary = 0
+    for term in primary:
+        if not term:
+            continue
+        matched = False
+        if term in filename:
+            score += 18
+            matched = True
+        elif term in normalized_path:
+            score += 10
+            matched = True
+        if term in body:
+            score += min(body.count(term), 3) * 3
+            matched = True
+        if matched:
+            matched_primary += 1
+
+    for term in secondary:
+        if not term or term in _GENERIC_SEARCH_TERMS:
+            continue
+        if term in filename:
+            score += 12
+        elif term in normalized_path:
+            score += 5
+        elif term in body:
+            score += 1
+
+    if primary:
+        coverage = matched_primary / len(primary)
+        score += coverage * 16
+        if matched_primary == len(primary):
+            score += 8
+    if len(normalized_query) >= 4 and normalized_query in body:
+        score += 5
+
+    is_chat_log = any(f"/{folder.lower()}/" in f"/{normalized_path}/" for folder in _CHAT_LOG_DIRS)
+    asks_for_chat = any(term in normalized_query for term in _CHAT_INTENT_TERMS)
+    if is_chat_log and not asks_for_chat:
+        score -= 24
+    elif not is_chat_log:
+        score += 5
+
+    if normalized_path.startswith(_REFERENCE_PATH_PREFIXES):
+        score += 7
+    if any(part in normalized_path for part in _LOWER_PRIORITY_PATH_PARTS):
+        score -= 8
+
+    is_humor = "humor/" in normalized_path or "ユーモア" in normalized_path or "八奈見" in path
+    asks_for_humor = any(term in normalized_query for term in _HUMOR_INTENT_TERMS)
+    if is_humor and not asks_for_humor:
+        score -= 60
+    elif is_humor and asks_for_humor:
+        score += 25
+
+    if "cases/" in normalized_path and any(
+        term in normalized_query for term in ("過去", "類似", "スコア", "判定", "金利", "q-risk", "q_risk")
+    ):
+        score += 12
+    if "asset knowledge/" in normalized_path and any(
+        term in normalized_query for term in ("物件", "残価", "中古", "売却", "換金", "再販")
+    ):
+        score += 12
+    if "業種別" in normalized_path and any(term in normalized_query for term in ("業", "業種")):
+        score += 10
+    return score
+
+
+def _search_in_paths(
+    paths: list[Path],
+    vault: Path,
+    terms: list[str],
+    limit: int,
+    max_chars: int,
+    seen: set[str],
+    *,
+    query: str = "",
+    primary_terms: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    primary_terms = primary_terms or terms
     for path in paths:
         if not path.is_file():
             continue
@@ -121,11 +234,12 @@ def _search_in_paths(paths: list[Path], vault: Path, terms: list[str], limit: in
             text = path.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
-        low = text.lower()
-        name = path.name.lower()
-        if not any(t in low or t in name for t in terms):
+        low = _normalize_search_text(text)
+        name = _normalize_search_text(path.name)
+        normalized_terms = [_normalize_search_text(t) for t in terms]
+        if not any(t in low or t in name for t in normalized_terms):
             continue
-        first = min((low.find(t) for t in terms if t in low), default=0)
+        first = min((low.find(t) for t in normalized_terms if t in low), default=0)
         start = max(0, first - 160)
         snippet = text[start:start + max_chars].strip()
         wikilinks_seen: set[str] = set()
@@ -135,15 +249,23 @@ def _search_in_paths(paths: list[Path], vault: Path, terms: list[str], limit: in
             if link and link not in wikilinks_seen:
                 wikilinks_seen.add(link)
                 wikilinks.append(link)
-        seen.add(rel)
-        hits.append({
+        hit = {
             "path": rel,
             "snippet": snippet,
             "wikilinks": wikilinks,
-        })
-        if len(hits) >= limit:
-            break
-    return hits
+            "score": _candidate_score(
+                path=rel,
+                text=text,
+                primary_terms=primary_terms,
+                expanded_terms=terms,
+                query=query,
+            ),
+        }
+        candidates.append(hit)
+    candidates.sort(key=lambda item: (-float(item["score"]), item["path"]))
+    selected = candidates[:limit]
+    seen.update(str(item["path"]) for item in selected)
+    return selected
 
 
 _CHAT_LOG_DIRS = ("AI Chat", "Improvement Log", "Weekly Review", "Daily")
@@ -239,35 +361,41 @@ _build_vault_index()
 
 
 def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[str, str]]:
-    """検索（改善版：Frontmatter + BM25 + リトライロジック）。"""
+    """Search the shared Vault and rerank candidates by query relevance."""
     vault, knowledge, chat_logs = _get_indexed_paths()
+    primary_terms = _split_query_terms(query)
     terms = _expand_query_terms(query)[:24]
     if not terms:
         return []
 
-    seen: set[str] = set()
-    hits: list[dict[str, str]] = []
+    candidates: dict[str, dict[str, Any]] = {}
 
-    # ① ChromaDB ベクトル検索（リトライ付き）
+    # Vector search supplies semantic candidates; lexical/path scoring decides final order.
     try:
         from obsidian_bridge_enhancements import get_vector_store_with_retry
         store = get_vector_store_with_retry()
-        for item in store.search(" ".join(terms), top_k=limit):
+        vector_limit = max(limit * 4, 12)
+        for rank, item in enumerate(store.search(" ".join(terms), top_k=vector_limit)):
             raw_path = str(item.get("file_path") or "").strip()
             path = ""
             if raw_path:
                 try:
                     raw = Path(raw_path)
-                    path = str(raw.relative_to(vault)) if vault and raw.is_absolute() else raw_path
+                    if vault and raw.is_absolute():
+                        try:
+                            path = str(raw.relative_to(vault))
+                        except ValueError:
+                            continue
+                    else:
+                        path = raw_path
                 except Exception:
                     path = raw_path
             if not path:
                 path = str(item.get("file_name") or item.get("ref") or "").strip()
-            if not path or path in seen:
+            if not path:
                 continue
-            seen.add(path)
             text = str(item.get("text") or "").strip()
-            hits.append({
+            candidates[path] = {
                 "path": path,
                 "snippet": text[:max_chars],
                 "wikilinks": [
@@ -276,73 +404,43 @@ def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[
                     if link.strip()
                 ],
                 "source": str(item.get("source") or "rag"),
-            })
-            if len(hits) >= limit:
-                return hits
+                "score": _candidate_score(
+                    path=path,
+                    text=text,
+                    primary_terms=primary_terms,
+                    expanded_terms=terms,
+                    query=query,
+                    source_bonus=max(2.0, 10.0 - rank * 0.5),
+                ),
+            }
     except Exception as e:
         import logging
         logging.debug(f"Vector store search failed: {e}, falling back to keyword search")
-        pass
 
     if not vault:
-        return hits
+        return sorted(candidates.values(), key=lambda item: -float(item["score"]))[:limit]
 
-    # ② Cases/ を優先（業種・スコア・判定キーワード）
-    if any("cases/" in t or t in ("スコア", "判定", "推奨金利", "q-risk", "quantum_risk") for t in terms):
-        cases_dir = vault / "Projects" / "tune_lease_55" / "Cases"
-        cases_paths = [p for p in (knowledge + chat_logs) if cases_dir in p.parents]
-        cases_paths.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
-        hits += _search_in_paths(cases_paths, vault, terms, limit, max_chars, seen)
-
-    # ③ 物件ファイナンス知識
-    asset_knowledge_terms = (
-        "物件ファイナンス", "残価", "再販リスク", "中古相場", "稟議根拠",
-        "建機", "車両", "工作機械", "医療機器", "フォークリフト", "高所作業車",
-        "発電機", "コンプレッサー", "射出成形機", "測定器", "検査装置",
-        "pc200", "冷凍車", "メンテリース", "校正証明", "保守期限",
+    keyword_hits = _search_in_paths(
+        knowledge + chat_logs,
+        vault,
+        terms,
+        max(limit * 5, 20),
+        max_chars,
+        set(),
+        query=query,
+        primary_terms=primary_terms,
     )
-    if len(hits) < limit and any(t in asset_knowledge_terms for t in terms):
-        remaining = limit - len(hits)
-        asset_dir = vault / "Projects" / "tune_lease_55" / "Asset Knowledge"
-        asset_paths = [p for p in knowledge if asset_dir in p.parents]
-        generic_asset_terms = {
-            "物件ファイナンス", "リース", "bep", "残価", "再販リスク", "稟議根拠",
-            "中古相場", "保守期限", "再校正", "建機", "車両", "工作機械", "医療機器",
-            "アワーメーター", "走行距離", "メンテナンス", "制御装置", "薬機法",
-            "設置撤去費", "陳腐化", "保守", "バッテリー", "飛行時間", "法規制",
-        }
-        specific_terms = [t for t in terms if t not in generic_asset_terms]
+    for hit in keyword_hits:
+        path = str(hit["path"])
+        existing = candidates.get(path)
+        if existing is None or float(hit["score"]) > float(existing["score"]):
+            candidates[path] = hit
 
-        def _asset_specific_score(path: Path) -> int:
-            hay = f"{path.stem.lower()} {str(path.parent.relative_to(vault)).lower()}"
-            return sum(1 for t in specific_terms if t and t in hay)
-
-        def _asset_match_score(path: Path) -> int:
-            hay = f"{path.stem.lower()} {str(path.parent.relative_to(vault)).lower()}"
-            return _asset_specific_score(path) * 3 + sum(1 for t in terms if t and t in hay)
-
-        if specific_terms:
-            asset_paths = [p for p in asset_paths if _asset_specific_score(p) > 0]
-        asset_paths.sort(key=lambda p: (
-            -_asset_match_score(p),
-            -(p.stat().st_mtime if p.exists() else 0),
-        ))
-        hits += _search_in_paths(asset_paths, vault, terms, remaining, max_chars, seen)
-
-    if len(hits) < limit:
-        remaining = limit - len(hits)
-        # ① ファイル名にクエリ語を含む知識ノート → ② その他の知識ノート → ③ チャットログ
-        name_match: list[Path] = []
-        other_knowledge: list[Path] = []
-        for p in knowledge:
-            if any(t in p.stem.lower() for t in terms):
-                name_match.append(p)
-            else:
-                other_knowledge.append(p)
-        ordered = name_match + other_knowledge + chat_logs
-        hits += _search_in_paths(ordered, vault, terms, remaining, max_chars, seen)
-
-    return hits
+    ranked = sorted(
+        candidates.values(),
+        key=lambda item: (-float(item.get("score", 0)), str(item.get("path", ""))),
+    )
+    return ranked[:limit]
 
 
 def _split_query_terms(query: str) -> list[str]:
@@ -379,6 +477,19 @@ def _expand_query_terms(query: str) -> list[str]:
             "省力化投資補助金",
             "中小企業省力化投資補助金",
         ])
+    domain_expansions = {
+        "資金繰り": ["キャッシュフロー", "手元資金", "支払能力", "返済能力", "格付8-2", "格付8−2"],
+        "銀行借入": ["借入", "銀行", "融資", "リースvs銀行借入"],
+        "再リース": ["満了", "満了後", "返却", "買取", "再リース"],
+        "残価": ["残存価値", "換金性", "中古売却", "処分"],
+        "中古売却": ["中古相場", "換金性", "残存価値", "処分"],
+        "動産保険": ["保険", "免責", "保険金", "事故"],
+        "期待使用期間": ["経済耐用年数", "リース期間", "使用期間"],
+        "建設業": ["業種別リースリスク", "業種別審査", "工事", "受注", "工期"],
+    }
+    for trigger, aliases in domain_expansions.items():
+        if trigger in joined:
+            expanded.extend(aliases)
 
     # Cases/ 専用: 業種・スコア・判定キーワードで過去案件ログを引く
     _INDUSTRY_MAP = {
@@ -448,14 +559,7 @@ def recent_notes(limit: int = 3, folders: Iterable[str] | None = None, max_chars
 
 
 def collect_obsidian_context(query: str, limit: int = 4) -> list[dict[str, str]]:
-    hits = search_notes(query, limit=limit)
-    if len(hits) < limit:
-        recent = recent_notes(limit=limit - len(hits))
-        seen = {item["path"] for item in hits}
-        for item in recent:
-            if item["path"] not in seen:
-                hits.append(item)
-    return hits
+    return search_notes(query, limit=limit)
 
 
 def search_notes_with_industry_filter(

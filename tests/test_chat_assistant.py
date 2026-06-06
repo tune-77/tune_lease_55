@@ -166,6 +166,7 @@ def test_split_query_terms_handles_chatty_japanese_questions():
     assert split_query_terms("補助金について教えて") == ["補助金"]
     assert split_query_terms("期待使用期間とリース期間の関係を教えて") == ["期待使用期間", "リース期間", "関係"]
     assert split_query_terms("格付の見方を教えて") == ["格付", "見方"]
+    assert split_query_terms("格付８−２先について教えて") == ["格付8-2先"]
 
 
 def test_search_notes_prioritizes_subsidy_knowledge_over_chat_logs(tmp_path, monkeypatch):
@@ -238,6 +239,44 @@ def test_obsidian_ai_context_block_uses_split_search_terms(tmp_path, monkeypatch
     block = build_obsidian_ai_context_block("補助金について教えて")
     assert "Projects/tune_lease_55/2026-05-13_補助金まとめ.md" in block
     assert "中小企業省力化投資補助金" in block
+
+
+def test_search_notes_reranks_knowledge_and_suppresses_unrelated_humor(tmp_path, monkeypatch):
+    vault = _make_vault(tmp_path)
+    notes = {
+        "リース知識/格付８−２先への対応.md": "# 資金繰り\n\nキャッシュフローと手元資金を確認する。",
+        "Projects/tune_lease_55/AI Chat/2026-06-06.md": "資金繰りが厳しい会社の確認事項を質問した。",
+        "Humor/八奈見.md": "資金繰りをユーモア口調で説明する。",
+    }
+    for rel, body in notes.items():
+        note = vault / rel
+        note.parent.mkdir(parents=True, exist_ok=True)
+        note.write_text(body, encoding="utf-8")
+    monkeypatch.setenv("OBSIDIAN_VAULT", str(vault))
+
+    from mobile_app import obsidian_bridge
+    importlib.reload(obsidian_bridge)
+
+    hits = obsidian_bridge.search_notes("資金繰りが厳しい会社にリースを出す時の確認事項は？", limit=3)
+    assert hits[0]["path"] == "リース知識/格付８−２先への対応.md"
+    assert all("Humor/" not in hit["path"] for hit in hits[:2])
+
+
+def test_search_notes_allows_humor_when_query_requests_it(tmp_path, monkeypatch):
+    vault = _make_vault(tmp_path)
+    humor = vault / "Humor" / "審査コメント口調.md"
+    humor.parent.mkdir(parents=True, exist_ok=True)
+    humor.write_text("審査コメントのユーモア口調ルール。", encoding="utf-8")
+    normal = vault / "リース知識" / "審査コメント.md"
+    normal.parent.mkdir(parents=True, exist_ok=True)
+    normal.write_text("審査コメントの基本ルール。", encoding="utf-8")
+    monkeypatch.setenv("OBSIDIAN_VAULT", str(vault))
+
+    from mobile_app import obsidian_bridge
+    importlib.reload(obsidian_bridge)
+
+    hits = obsidian_bridge.search_notes("審査コメントのユーモア口調ルールを確認したい", limit=2)
+    assert hits[0]["path"] == "Humor/審査コメント口調.md"
 
 
 def test_append_wiki_note_writes_hub(tmp_path, monkeypatch):

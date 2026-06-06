@@ -269,8 +269,10 @@ export default function DebatePage() {
   const [error, setError] = useState<string | null>(null);
   const [obsidianSaving, setObsidianSaving] = useState(false);
   const [obsidianToast, setObsidianToast] = useState<"success" | "error" | null>(null);
-  const [newsJudgmentSaving, setNewsJudgmentSaving] = useState(false);
-  const [newsJudgmentToast, setNewsJudgmentToast] = useState<"success" | "error" | null>(null);
+  const [judgmentSaving, setJudgmentSaving] = useState(false);
+  const [judgmentToast, setJudgmentToast] = useState<"success" | "error" | null>(null);
+  const [humanDecision, setHumanDecision] = useState("");
+  const [judgmentChangeReason, setJudgmentChangeReason] = useState("");
   const [autoFilled, setAutoFilled] = useState(false);
   const [history, setHistory] = useState<ConversationHistory | null>(null);
   const sessionIdRef = useRef<string>(
@@ -326,6 +328,8 @@ export default function DebatePage() {
       const payload = { ...form, session_id: sessionIdRef.current };
       const { data } = await apiClient.post("/api/multi-agent-screening", payload);
       setResult(data);
+      setHumanDecision(data.arbiter.final);
+      setJudgmentChangeReason("");
       // 討論完了後に履歴を再取得
       if (form.company_name?.trim()) {
         apiClient.get(`/api/conversation-history?company_name=${encodeURIComponent(form.company_name.trim())}&limit=5`)
@@ -373,27 +377,42 @@ export default function DebatePage() {
     }
   };
 
-  const handleRecordNewsJudgmentChange = async () => {
-    if (!result || !form.news_focus?.length) return;
-    setNewsJudgmentSaving(true);
-    setNewsJudgmentToast(null);
+  const handleRecordJudgmentChange = async () => {
+    if (!result) return;
+    setJudgmentSaving(true);
+    setJudgmentToast(null);
     try {
-      await apiClient.post("/api/lease-news/judgment-change", {
-        company_name: form.company_name,
+      await apiClient.post("/api/judgment-feedback", {
+        case_id: sessionIdRef.current,
         score: result.score,
-        final_decision: result.arbiter.final,
-        news_focus: form.news_focus,
-        news_focus_summary: form.news_focus_summary,
-        news_focus_tag_summary: form.news_focus_tag_summary,
-        news_focus_note_path: form.news_focus_note_path,
-        news_focus_note_date: form.news_focus_note_date,
+        model_decision: result.arbiter.final,
+        human_decision: humanDecision,
+        reason: judgmentChangeReason,
+        source: "debate",
+        input_snapshot: {
+          industry_major: form.industry_major,
+          nenshu: form.nenshu,
+          op_margin_pct: form.op_margin_pct,
+          equity_ratio: form.equity_ratio,
+          bank_credit: form.bank_credit,
+          lease_credit: form.lease_credit,
+          asset_name: form.asset_name,
+          lease_amount: form.lease_amount,
+        },
+        evidence_snapshot: {
+          arbiter_reasoning: result.arbiter.reasoning,
+          conditions: result.arbiter.conditions,
+          news_focus: form.news_focus,
+          news_focus_summary: form.news_focus_summary,
+          news_focus_note_path: form.news_focus_note_path,
+        },
       });
-      setNewsJudgmentToast("success");
+      setJudgmentToast("success");
     } catch {
-      setNewsJudgmentToast("error");
+      setJudgmentToast("error");
     } finally {
-      setNewsJudgmentSaving(false);
-      setTimeout(() => setNewsJudgmentToast(null), 2000);
+      setJudgmentSaving(false);
+      setTimeout(() => setJudgmentToast(null), 2000);
     }
   };
 
@@ -613,37 +632,71 @@ export default function DebatePage() {
             <DebateLog log={result.debate_log} sameR1={result.same_opinion_r1} />
           )}
 
-          {form.news_focus?.length > 0 && (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div className="min-w-0">
-                  <p className="text-sm font-black text-amber-900">ニュースで判断変更を記録</p>
-                  <p className="text-xs text-amber-800 mt-1">
-                    押すと今日の Obsidian 日次ノートと効果測定に残ります。
+                  <p className="text-sm font-black text-slate-800">担当者の最終判断を記録</p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    AI判断を変更する場合だけ、最終判断と理由を入力します。
                   </p>
                 </div>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_2fr_auto] md:items-end">
+                <label className="block min-w-0">
+                  <span className="text-xs font-bold text-slate-700">AI判断</span>
+                  <input
+                    value={result.arbiter.final}
+                    readOnly
+                    className="mt-1 w-full rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-sm font-bold text-slate-700"
+                  />
+                </label>
+                <label className="block min-w-0">
+                  <span className="text-xs font-bold text-slate-700">担当者判断</span>
+                  <select
+                    value={humanDecision}
+                    onChange={(event) => setHumanDecision(event.target.value)}
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800"
+                  >
+                    <option value="承認">承認</option>
+                    <option value="条件付">条件付</option>
+                    <option value="否決">否決</option>
+                  </select>
+                </label>
+                <label className="block min-w-0">
+                  <span className="text-xs font-bold text-slate-700">変更理由</span>
+                  <input
+                    value={judgmentChangeReason}
+                    onChange={(event) => setJudgmentChangeReason(event.target.value)}
+                    placeholder="AI判断を変更した理由"
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+                  />
+                </label>
                 <button
                   type="button"
-                  onClick={handleRecordNewsJudgmentChange}
-                  disabled={newsJudgmentSaving || !result}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-black text-amber-800 hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                  onClick={handleRecordJudgmentChange}
+                  disabled={
+                    judgmentSaving ||
+                    !result ||
+                    humanDecision === result.arbiter.final ||
+                    judgmentChangeReason.trim().length < 5
+                  }
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-sm font-black text-slate-800 hover:bg-slate-100 disabled:opacity-50 transition-colors"
                 >
-                  {newsJudgmentSaving ? (
+                  {judgmentSaving ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <PenLine className="w-4 h-4" />
                   )}
-                  {newsJudgmentSaving ? "記録中..." : "このニュースで判断変更を記録"}
+                  {judgmentSaving ? "記録中..." : "判断変更を記録"}
                 </button>
               </div>
-              {newsJudgmentToast === "success" && (
+              {judgmentToast === "success" && (
                 <p className="mt-3 text-sm font-bold text-emerald-700">判断変更を記録しました。</p>
               )}
-              {newsJudgmentToast === "error" && (
+              {judgmentToast === "error" && (
                 <p className="mt-3 text-sm font-bold text-rose-700">記録に失敗しました。</p>
               )}
             </div>
-          )}
 
           {/* Obsidian 保存ボタン */}
           <div className="flex items-center gap-3">

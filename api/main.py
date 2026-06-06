@@ -6087,23 +6087,45 @@ def get_latest_screening():
 
 
 class LeaseNewsJudgmentChangeRequest(BaseModel):
+    case_id: str = ""
     company_name: str = ""
     score: Optional[float] = None
+    model_decision: str = ""
     final_decision: str = ""
-    news_focus: List[str] = []
+    news_focus: List[str] = Field(default_factory=list)
     news_focus_summary: str = ""
     news_focus_tag_summary: str = ""
     news_focus_note_path: str = ""
     news_focus_note_date: str = ""
     reason: str = ""
+    input_snapshot: dict = Field(default_factory=dict)
 
 
 @app.post("/api/lease-news/judgment-change")
 def record_lease_news_judgment_change_api(req: LeaseNewsJudgmentChangeRequest):
     """ニュース参照後の判断変更を記録する。"""
     import datetime as _dt
+    from judgment_feedback import record_judgment_feedback
 
     try:
+        feedback = record_judgment_feedback(
+            case_id=req.case_id or f"news-{_dt.datetime.now().isoformat()}",
+            model_decision=req.model_decision,
+            human_decision=req.final_decision,
+            reason=req.reason,
+            source="lease_news_debate",
+            score=req.score,
+            input_snapshot=req.input_snapshot,
+            evidence_snapshot={
+                "news_focus": req.news_focus,
+                "summary": req.news_focus_summary,
+                "tags": req.news_focus_tag_summary,
+                "note_path": req.news_focus_note_path,
+                "note_date": req.news_focus_note_date,
+            },
+        )
+        if not feedback.get("success"):
+            raise HTTPException(status_code=422, detail=feedback.get("error"))
         bucket = record_lease_news_judgment_change(
             date_str=_dt.date.today().isoformat(),
             note_path=req.news_focus_note_path or "",
@@ -6116,9 +6138,72 @@ def record_lease_news_judgment_change_api(req: LeaseNewsJudgmentChangeRequest):
             theme_summary=req.news_focus_summary or "",
             tag_summary=req.news_focus_tag_summary or "",
         )
-        return {"status": "recorded", "metrics": bucket}
+        return {"status": "recorded", "metrics": bucket, "model_improvement": feedback}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/judgment-feedback/summary")
+def judgment_feedback_summary_api():
+    from judgment_feedback import get_judgment_feedback_summary
+
+    return get_judgment_feedback_summary()
+
+
+class JudgmentFeedbackReviewRequest(BaseModel):
+    review_status: str
+
+
+class JudgmentFeedbackCreateRequest(BaseModel):
+    case_id: str
+    model_decision: str
+    human_decision: str
+    reason: str
+    source: str = "debate"
+    score: Optional[float] = None
+    input_snapshot: dict = Field(default_factory=dict)
+    evidence_snapshot: dict = Field(default_factory=dict)
+
+
+@app.post("/api/judgment-feedback")
+def create_judgment_feedback_api(req: JudgmentFeedbackCreateRequest):
+    from judgment_feedback import record_judgment_feedback
+
+    result = record_judgment_feedback(
+        case_id=req.case_id,
+        model_decision=req.model_decision,
+        human_decision=req.human_decision,
+        reason=req.reason,
+        source=req.source,
+        score=req.score,
+        input_snapshot=req.input_snapshot,
+        evidence_snapshot=req.evidence_snapshot,
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=422, detail=result.get("error"))
+    return result
+
+
+@app.get("/api/judgment-feedback/candidates")
+def judgment_feedback_candidates_api(approved_only: bool = False):
+    from judgment_feedback import load_judgment_training_candidates
+
+    return {
+        "items": load_judgment_training_candidates(approved_only=approved_only),
+        "approved_only": approved_only,
+    }
+
+
+@app.post("/api/judgment-feedback/{record_id}/review")
+def review_judgment_feedback_api(record_id: int, req: JudgmentFeedbackReviewRequest):
+    from judgment_feedback import review_judgment_feedback
+
+    result = review_judgment_feedback(record_id, req.review_status)
+    if not result.get("success"):
+        raise HTTPException(status_code=422, detail=result.get("error"))
+    return result
 
 
 # ── screening_outcomes エンドポイント（追加のみ、既存ルート不変）──────────────────
