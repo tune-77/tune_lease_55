@@ -43,6 +43,11 @@ export default function QuantitativePage() {
       .slice(0, 15);
   };
 
+  const shortAxisLabel = (value: unknown) => {
+    const text = String(value ?? "");
+    return text.length > 18 ? `${text.slice(0, 17)}...` : text;
+  };
+
   const modelCards = [
     { label: 'Logistic Regression', key: 'lr', color: 'text-emerald-600' },
     { label: 'RandomForest', key: 'rf', color: 'text-amber-600' },
@@ -125,12 +130,12 @@ export default function QuantitativePage() {
             </div>
           </div>
 
-          <div className="h-[500px]">
+          <div className="h-[500px] overflow-hidden">
              <ResponsiveContainer width="100%" height="100%">
                <BarChart data={getImportanceData('lgb_importance')} layout="vertical">
                  <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
                  <XAxis type="number" />
-                 <YAxis dataKey="name" type="category" width={150} tick={{fontSize: 11, fontWeight: 'bold'}} />
+                 <YAxis dataKey="name" type="category" width={170} interval={0} tickFormatter={shortAxisLabel} tick={{fontSize: 10, fontWeight: 'bold'}} />
                  <Tooltip 
                    cursor={{fill: 'rgba(244, 63, 94, 0.05)'}}
                    contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
@@ -151,12 +156,12 @@ export default function QuantitativePage() {
               <BarChart3 className="w-5 h-5 text-amber-500" />
               RandomForest 特徴量重要度 (Top 15)
             </h3>
-            <div className="h-[420px]">
+            <div className="h-[420px] overflow-hidden">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={getImportanceData('rf_importance')} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
                   <XAxis type="number" />
-                  <YAxis dataKey="name" type="category" width={150} tick={{fontSize: 11, fontWeight: 'bold'}} />
+                  <YAxis dataKey="name" type="category" width={170} interval={0} tickFormatter={shortAxisLabel} tick={{fontSize: 10, fontWeight: 'bold'}} />
                   <Tooltip cursor={{fill: 'rgba(245, 158, 11, 0.06)'}} />
                   <Bar dataKey="value" fill="#f59e0b" radius={[0, 4, 4, 0]} />
                 </BarChart>
@@ -169,12 +174,12 @@ export default function QuantitativePage() {
               <Sigma className="w-5 h-5 text-emerald-500" />
               Logistic Regression 係数影響度 (Top 15)
             </h3>
-            <div className="h-[420px]">
+            <div className="h-[420px] overflow-hidden">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={getImportanceData('lr_coef', true)} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
                   <XAxis type="number" />
-                  <YAxis dataKey="name" type="category" width={150} tick={{fontSize: 11, fontWeight: 'bold'}} />
+                  <YAxis dataKey="name" type="category" width={170} interval={0} tickFormatter={shortAxisLabel} tick={{fontSize: 10, fontWeight: 'bold'}} />
                   <Tooltip cursor={{fill: 'rgba(16, 185, 129, 0.06)'}} />
                   <Bar dataKey="value" fill="#10b981" radius={[0, 4, 4, 0]} />
                 </BarChart>
@@ -188,15 +193,15 @@ export default function QuantitativePage() {
            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs font-mono">
               <div className="p-3 bg-white rounded-lg border border-slate-200">
                  <div className="text-slate-400 mb-1">Ensemble Alpha</div>
-                 <div className="text-slate-800 font-bold">{data?.ensemble_alpha}</div>
+                 <div className="text-slate-800 font-bold break-all">{data?.ensemble_alpha}</div>
               </div>
               <div className="p-3 bg-white rounded-lg border border-slate-200">
                  <div className="text-slate-400 mb-1">N Positive</div>
-                 <div className="text-slate-800 font-bold">{data?.n_positive}</div>
+                 <div className="text-slate-800 font-bold break-all">{data?.n_positive}</div>
               </div>
               <div className="p-3 bg-white rounded-lg border border-slate-200">
                  <div className="text-slate-400 mb-1">N Negative</div>
-                 <div className="text-slate-800 font-bold">{data?.n_negative}</div>
+                 <div className="text-slate-800 font-bold break-all">{data?.n_negative}</div>
               </div>
               <div className="p-3 bg-white rounded-lg border border-slate-200">
                  <div className="text-slate-400 mb-1">Random Seed</div>

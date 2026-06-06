@@ -654,15 +654,17 @@ export default function HomeDashboard() {
 
               <div className="space-y-4">
                 {analysis.top3_drivers?.map((d: TopDriver, index: number) => (
-                  <div key={index} className="flex items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  <div key={index} className="flex items-center gap-3 sm:gap-4 bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-100 min-w-0">
                     <div className="w-8 h-8 shrink-0 bg-slate-800 text-white rounded-full flex items-center justify-center font-black">
                       {index + 1}
                     </div>
-                    <div className="flex-1">
-                      <div className="font-bold text-slate-700">{d.label}</div>
-                      <div className="text-xs text-slate-500 mt-0.5">回帰係数: {(d.coef || 0).toFixed(4)}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-slate-700 truncate" title={d.label}>{d.label}</div>
+                      <div className="text-[11px] sm:text-xs text-slate-500 mt-0.5 truncate" title={`回帰係数: ${(d.coef || 0).toFixed(4)}`}>
+                        回帰係数: <span className="tabular-nums">{(d.coef || 0).toFixed(4)}</span>
+                      </div>
                     </div>
-                    <div className={`text-sm font-bold px-3 py-1 rounded border ${
+                    <div className={`shrink-0 text-xs sm:text-sm font-bold px-2 sm:px-3 py-1 rounded border ${
                       d.direction === 'プラス' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-rose-50 text-rose-700 border-rose-200'
                     }`}>
                       {d.direction}

@@ -54,22 +54,22 @@ export default function HistoryDashPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         {data?.top3_drivers?.map((driver: any, i: number) => (
-          <div key={i} className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+          <div key={i} className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group min-w-0">
             <div className={`absolute top-0 left-0 w-1 h-full ${driver.direction === 'プラス' ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
-            <div className="flex items-center gap-4 mb-4">
+            <div className="flex items-center gap-4 mb-4 min-w-0">
               <div className={`p-3 rounded-xl ${driver.direction === 'プラス' ? 'bg-emerald-50' : 'bg-rose-50'}`}>
                 <Target className={`w-6 h-6 ${driver.direction === 'プラス' ? 'text-emerald-600' : 'text-rose-600'}`} />
               </div>
-              <div>
+              <div className="min-w-0">
                 <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Top Driver #{i+1}</div>
-                <div className="text-lg font-black text-slate-700">{driver.label}</div>
+                <div className="text-lg font-black text-slate-700 truncate" title={driver.label}>{driver.label}</div>
               </div>
             </div>
-            <div className="flex items-end justify-between">
+            <div className="flex items-end justify-between gap-3 min-w-0">
               <div className={`text-sm font-bold ${driver.direction === 'プラス' ? 'text-emerald-600' : 'text-rose-600'}`}>
                 {driver.direction}の寄与
               </div>
-              <div className="text-2xl font-black text-slate-800">{Math.abs(driver.coef).toFixed(3)}</div>
+              <div className="shrink-0 text-2xl font-black text-slate-800 tabular-nums">{Math.abs(driver.coef).toFixed(3)}</div>
             </div>
           </div>
         ))}

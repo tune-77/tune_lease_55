@@ -34,6 +34,11 @@ export default function QualitativePage() {
       .sort((a: any, b: any) => Math.abs(b.value) - Math.abs(a.value));
   };
 
+  const shortAxisLabel = (value: unknown) => {
+    const text = String(value ?? "");
+    return text.length > 18 ? `${text.slice(0, 17)}...` : text;
+  };
+
   if (loading) return (
     <div className="p-8 flex items-center justify-center min-h-screen">
       <div className="flex flex-col items-center gap-4">
@@ -67,12 +72,12 @@ export default function QualitativePage() {
             <BarChart3 className="w-5 h-5 text-pink-500" />
             定性因子の回帰係数 (寄与度)
           </h3>
-          <div className="h-[500px]">
+          <div className="h-[500px] overflow-hidden">
              <ResponsiveContainer width="100%" height="100%">
                <BarChart data={getCoefData()} layout="vertical">
                  <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
                  <XAxis type="number" />
-                 <YAxis dataKey="name" type="category" width={150} tick={{fontSize: 11, fontWeight: 'bold'}} />
+                 <YAxis dataKey="name" type="category" width={170} interval={0} tickFormatter={shortAxisLabel} tick={{fontSize: 10, fontWeight: 'bold'}} />
                  <Tooltip 
                    cursor={{fill: 'rgba(236, 72, 153, 0.05)'}}
                    contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
