@@ -62,3 +62,21 @@ data/lease_data.db    # SQLite（コミット禁止）
 - **一括ship**: `/git-ship` で add→commit→push→PR作成
 
 詳細: @.claude/rules/workflow.md | @.claude/rules/security.md | .claude/AGENTS.md
+
+---
+
+## Freshman Rules（Vault成長に伴う品質維持）
+
+### Cite the Source
+スコアリング・審査ロジック・業種データに関する提案を出す前に、必ず
+`static_data/` または `notes/` の特定ファイル名を引用すること。
+Vault に出典がない場合は「これは推測です」と明示する。
+
+### Plan-First Checkpoint
+`scoring_core.py` / `analysis_*.py` / フロントエンドコンポーネントを
+変更し始める前に、CLAUDE.md と関連ファイルを読み、
+3文の変更計画を提示して承認を得てから着手すること。
+
+### Kill the Assumptions
+3ヶ月以上前の `ledger.jsonl` の決定事項や `CLAUDE.md` の設計方針と
+矛盾する変更を提案する前に、必ず確認を取ること。最新が正しいとは限らない。
