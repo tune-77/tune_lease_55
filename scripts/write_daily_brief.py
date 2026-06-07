@@ -39,7 +39,16 @@ def format_macro_summary(macro: dict) -> str:
     if unemp := macro.get("unemployment", {}):
         lines.append(f"- 失業率: **{unemp.get('value', '-')}%**")
     if assessment := macro.get("assessment", ""):
-        lines.append(f"- 環境評価: {assessment}")
+        if isinstance(assessment, dict):
+            env = assessment.get("macro_env", "-")
+            risk = assessment.get("macro_risk_score", "-")
+            lines.append(f"- 環境評価: **{env}**（リスクスコア: {risk}）")
+            for factor in assessment.get("factors", {}).values():
+                comment = factor.get("comment", "")
+                if comment:
+                    lines.append(f"  - {comment}")
+        else:
+            lines.append(f"- 環境評価: {assessment}")
 
     fetched = macro.get("fetched_at", "")
     if fetched:
