@@ -847,14 +847,19 @@ def run_quick_scoring(inputs: dict) -> dict:
     base_score = max(0, min(100, round(base_score + equity_penalty, 1)))
 
     # ── リース費用比率ペナルティ ────────────────────────────────────────────────
-    # RFモデルは rent_expense の絶対額を学習済みのため、ここでは業界平均との相対比のみ補正する
+    # 検証結果(n=1106)に基づく設計:
+    #   D(1.5-2倍): 低・高ベンチ両グループで否決率73-77% → -1.5点は有効
+    #   E(2倍超) × 高ベンチ(≥2%): 飲食・不動産はリース積極活用=優良傾向 → ペナルティ無効
+    #   E(2倍超) × 低ベンチ(<2%): 卸売0.6%等は比率が爆発しやすいため絶対lcr>3%を条件に追加
     lease_ratio_adj = 0.0
     if bench_lease_cost_ratio > 0 and user_lease_cost_ratio > 0:
         ratio_vs_bench = user_lease_cost_ratio / bench_lease_cost_ratio
         if ratio_vs_bench > 2.0:
-            lease_ratio_adj = -3.0   # 業界平均の2倍超：リース負担過大
+            if bench_lease_cost_ratio < 2.0 and user_lease_cost_ratio > 3.0:
+                lease_ratio_adj = -3.0   # 低ベンチ業種 かつ 絶対lcr>3%：実態として過大
+            # 高ベンチ業種(≥2%)の2倍超はペナルティなし
         elif ratio_vs_bench > 1.5:
-            lease_ratio_adj = -1.5   # 業界平均の1.5倍超：やや過大
+            lease_ratio_adj = -1.5   # 1.5-2倍：両グループで否決率高い
     base_score = max(0, min(100, round(base_score + lease_ratio_adj, 1)))
 
     # ── 担当者直感スコア補正（1-5スケール、中立=3、±INTUITION_MAX_ADJ 点まで）──
