@@ -846,6 +846,27 @@ def run_quick_scoring(inputs: dict) -> dict:
         intuition_adj = round((intuition_score - 3.0) / 2.0 * INTUITION_MAX_ADJ, 2)
 
     final_score = max(0, min(100, round(base_score + intuition_adj, 1)))
+
+    # マクロリスク補正（macro_context.json が存在する場合のみ適用）
+    macro_adj = 0.0
+    try:
+        _macro_path = os.path.join(_SCRIPT_DIR, "static_data", "macro_context.json")
+        if os.path.exists(_macro_path):
+            with open(_macro_path, encoding="utf-8") as _mf:
+                _mc = json.load(_mf)
+            _boj_rate = _mc.get("boj_policy_rate", {}).get("value")
+            _mrisk = _mc.get("assessment", {}).get("macro_risk_score")
+            if isinstance(_boj_rate, (int, float)) and _boj_rate >= 1.0:
+                macro_adj -= 3.0
+            if isinstance(_mrisk, (int, float)):
+                if _mrisk >= 50:
+                    macro_adj -= 2.0
+                elif _mrisk <= 20:
+                    macro_adj += 1.0
+    except Exception:
+        pass
+
+    final_score = max(0, min(100, round(final_score + macro_adj, 1)))
     hantei = "承認圏内" if final_score >= APPROVAL_LINE else "要審議"
 
     # 直感スコアが高いのに要審議 → 上長確認フラグ
@@ -998,6 +1019,7 @@ def run_quick_scoring(inputs: dict) -> dict:
         # 直感スコア関連
         "intuition_score": intuition_score,
         "intuition_adj": intuition_adj,
+        "macro_adj": macro_adj,
         "manager_review_flag": manager_review_flag,
         # SHAP近似: 各特徴量の寄与度（上位5件はUI表示に活用）
         "score_contributions": score_contributions,
