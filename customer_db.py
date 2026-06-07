@@ -22,9 +22,10 @@ import json
 from contextlib import closing
 from typing import Optional
 
-# DB は tune_lease_55/ フォルダ内に保存 (絶対パス固定)
-_DB_ROOT = "/Users/kobayashiisaoryou/clawd/tune_lease_55/data"
-_DB_PATH = os.path.join(_DB_ROOT, "screening_db.sqlite")
+from runtime_paths import get_data_path
+
+# DB は DATA_DIR 配下に保存（Cloud Run では /app/data）
+_DB_PATH = get_data_path("screening_db.sqlite")
 
 
 # ─────────────────────────────────────────────

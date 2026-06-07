@@ -12,6 +12,7 @@ import datetime
 from typing import Optional
 import numpy as np
 import pandas as pd
+from runtime_paths import get_data_dir
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
@@ -21,8 +22,8 @@ if _REPO_ROOT not in sys.path:
 from coeff_definitions import COEFFS
 from charts import _equity_ratio_display
 
-# ファイルパス（絶対パス固定）
-_DATA_DIR = "/Users/kobayashiisaoryou/clawd/tune_lease_55/data"
+# ローカルではリポジトリ内 data/、Cloud Run等では DATA_DIR で差し替える。
+_DATA_DIR = str(get_data_dir())
 CASES_FILE = os.path.join(os.path.dirname(_DATA_DIR), "past_cases.jsonl") # obsolete
 DB_PATH = os.path.join(_DATA_DIR, "lease_data.db")
 COEFF_OVERRIDES_FILE = os.path.join(_DATA_DIR, "coeff_overrides.json")

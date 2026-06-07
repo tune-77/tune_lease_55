@@ -12,8 +12,7 @@ import {
   CheckCircle,
   XCircle,
   Settings,
-  Eye,
-  EyeOff,
+  X,
   ScrollText,
   Newspaper,
   Plus,
@@ -300,6 +299,13 @@ export default function HomeDashboard() {
   return (
     <div className="p-8 min-h-[calc(100vh-2rem)] animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="mb-12 relative overflow-hidden bg-gradient-to-r from-blue-600 to-indigo-700 rounded-[2.5rem] p-10 text-white shadow-2xl shadow-blue-500/20 group">
+        <button
+          onClick={() => setSettingsOpen(true)}
+          className="absolute top-4 right-4 z-20 inline-flex items-center gap-1.5 rounded-xl bg-white/20 backdrop-blur-md border border-white/30 px-3 py-2 text-sm font-bold text-white hover:bg-white/30 transition-colors"
+        >
+          <Settings className="h-4 w-4" />
+          カスタマイズ
+        </button>
         <div className="relative z-10 max-w-2xl">
           <h1 className="text-4xl font-black mb-4 flex items-center gap-4">
             <span className="bg-white/20 p-3 rounded-2xl backdrop-blur-md">
@@ -419,51 +425,6 @@ export default function HomeDashboard() {
         </section>
       )}
 
-      <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="flex items-center gap-2 text-sm font-black text-slate-700">
-              <Settings className="h-4 w-4 text-slate-500" />
-              ホーム画面のカスタマイズ
-            </div>
-            <p className="mt-1 text-xs text-slate-500">表示するパネルを切り替えます。設定はこのブラウザに保存されます。</p>
-          </div>
-          <button
-            onClick={() => setSettingsOpen((prev) => !prev)}
-            className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-          >
-            {settingsOpen ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            {settingsOpen ? "設定を閉じる" : "表示設定"}
-          </button>
-        </div>
-        {settingsOpen && (
-          <div className="mt-4 grid gap-3 md:grid-cols-4">
-            {[
-              { key: "showKpis", label: "KPI", desc: "総成約数と平均指標" },
-              { key: "showHighlights", label: "改善項目", desc: "最新の改善候補" },
-              { key: "showNews", label: "リースニュース", desc: "最新の論点" },
-              { key: "showNewsDigest", label: "ニュースダイジェスト", desc: "AI要約ニュース" },
-              { key: "showRecentCases", label: "案件履歴", desc: "最近の成約・失注" },
-            ].map((item) => {
-              const checked = panelSettings[item.key as keyof HomePanelSettings];
-              return (
-                <label key={item.key} className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 cursor-pointer hover:bg-slate-100">
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => togglePanel(item.key as keyof HomePanelSettings)}
-                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="flex-1">
-                    <span className="block text-sm font-bold text-slate-700">{item.label}</span>
-                    <span className="block text-xs text-slate-500">{item.desc}</span>
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-        )}
-      </section>
 
       {!analysis && (
         <div className="bg-amber-50 border border-amber-200 p-6 rounded-2xl flex items-start gap-4">
@@ -890,6 +851,63 @@ export default function HomeDashboard() {
           )}
         </>
       )}
+
+      {/* Slide-over customization panel */}
+      {settingsOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-40"
+          onClick={() => setSettingsOpen(false)}
+        />
+      )}
+      <div
+        className={`fixed top-0 right-0 h-full w-80 bg-white shadow-2xl z-50 flex flex-col transition-transform duration-300 ease-in-out ${
+          settingsOpen ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        <div className="flex items-center justify-between p-4 border-b border-slate-200">
+          <div className="flex items-center gap-2">
+            <Settings className="h-5 w-5 text-slate-600" />
+            <h2 className="font-black text-slate-800 text-base">ホームのカスタマイズ</h2>
+          </div>
+          <button
+            onClick={() => setSettingsOpen(false)}
+            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 transition-colors"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          <p className="text-xs text-slate-500 mb-4">表示するパネルを切り替えます。設定はこのブラウザに保存されます。</p>
+          <div className="space-y-3">
+            {[
+              { key: "showKpis", label: "KPI", desc: "総成約数と平均指標" },
+              { key: "showHighlights", label: "改善項目", desc: "最新の改善候補" },
+              { key: "showNews", label: "リースニュース", desc: "最新の論点" },
+              { key: "showNewsDigest", label: "ニュースダイジェスト", desc: "AI要約ニュース" },
+              { key: "showRecentCases", label: "案件履歴", desc: "最近の成約・失注" },
+            ].map((item) => {
+              const checked = panelSettings[item.key as keyof HomePanelSettings];
+              return (
+                <label
+                  key={item.key}
+                  className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 cursor-pointer hover:bg-slate-100"
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => togglePanel(item.key as keyof HomePanelSettings)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="flex-1">
+                    <span className="block text-sm font-bold text-slate-700">{item.label}</span>
+                    <span className="block text-xs text-slate-500">{item.desc}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

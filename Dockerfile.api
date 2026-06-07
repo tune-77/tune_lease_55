@@ -1,0 +1,47 @@
+# syntax=docker/dockerfile:1.7
+
+FROM python:3.11-slim-bookworm AS python-deps
+WORKDIR /build
+
+ENV UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/opt/venv
+
+RUN pip install --no-cache-dir uv
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+
+FROM python:3.11-slim-bookworm AS runtime
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=python-deps /opt/venv /opt/venv
+COPY . .
+COPY .cloudrun_bundle/ /app/.cloudrun_bundle/
+
+RUN chmod +x scripts/start_cloud_run.sh \
+    && mkdir -p /app/data /app/obsidian_vault /tmp/tune-lease \
+    && chmod -R a-w /app/.cloudrun_bundle \
+    && useradd --create-home --uid 10001 appuser \
+    && chown -R appuser:appuser /app /tmp/tune-lease
+
+USER appuser
+
+ENV PATH=/opt/venv/bin:$PATH \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    FASTAPI_HOST=0.0.0.0 \
+    FASTAPI_PORT=8080 \
+    DATA_DIR=/app/data \
+    CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle \
+    OBSIDIAN_VAULT_PATH=/app/obsidian_vault \
+    ENABLE_OBSIDIAN_INDEXING=false \
+    ENABLE_FEEDBACK_LOADING=false \
+    ENABLE_GUNSHI_RAG=false \
+    HOSTNAME=0.0.0.0
+
+EXPOSE 8080
+
+CMD ["python", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]

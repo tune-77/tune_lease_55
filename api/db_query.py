@@ -9,6 +9,7 @@ import re
 import sqlite3
 from contextlib import closing
 from typing import Optional
+from runtime_paths import get_data_path
 
 _DB_PATH: Optional[str] = None
 
@@ -16,10 +17,7 @@ _DB_PATH: Optional[str] = None
 def _get_db_path() -> str:
     global _DB_PATH
     if _DB_PATH is None:
-        import os
-        _here = os.path.dirname(os.path.abspath(__file__))
-        _root = os.path.dirname(_here)
-        _DB_PATH = os.path.join(_root, "data", "lease_data.db")
+        _DB_PATH = get_data_path("lease_data.db")
     return _DB_PATH
 
 

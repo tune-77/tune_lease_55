@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import streamlit as st
+from runtime_paths import get_data_path
 
 try:
     import plotly.graph_objects as go
@@ -24,8 +25,8 @@ except ImportError:
     _HAS_SCIPY = False
 
 _BASE = Path(__file__).parent.parent
-_DB_PATH = _BASE / "data" / "screening_db.sqlite"
-_LEASE_DB_PATH = _BASE / "data" / "lease_data.db"
+_DB_PATH = Path(get_data_path("screening_db.sqlite"))
+_LEASE_DB_PATH = Path(get_data_path("lease_data.db"))
 _VIS_LIMIT = 500
 
 # 6 indicators available from both DB and last_result

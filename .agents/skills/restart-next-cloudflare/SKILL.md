@@ -5,17 +5,33 @@ description: Restart the tune_lease_55 Next/FastAPI production-style launcher wi
 
 # Restart Next With Cloudflare
 
-Use this skill to keep the current app stack available and publish the Next UI through Cloudflare Tunnel. Prefer health checks and targeted restarts before a full restart.
+Use this skill to keep the current app stack available and publish the Next UI through Cloudflare Tunnel. Prefer the persistent LaunchAgent so the app does not stop when the Codex or terminal session ends.
 
 ## Fast Path
 
 Run from the repository root:
 
 ```bash
-PATH=/usr/local/bin:/opt/homebrew/bin:/Applications/Codex.app/Contents/Resources:$PATH RESTART_SCOPE=status PUBLIC_TUNNEL=1 API_HOST=127.0.0.1 NEXT_HOST=127.0.0.1 bash run_next_stable.sh
+launchctl print gui/$(id -u)/com.tunelease.next
 ```
 
-If API and Next are OK, do not restart. Report the existing URL.
+If the service exists, restart it persistently:
+
+```bash
+launchctl kickstart -k gui/$(id -u)/com.tunelease.next
+```
+
+If the service is not installed, install and start it:
+
+```bash
+bash scripts/install_next_launchagent.sh
+```
+
+Then check application status:
+
+```bash
+PATH=/usr/local/bin:/opt/homebrew/bin:/Applications/Codex.app/Contents/Resources:$PATH RESTART_SCOPE=status PUBLIC_TUNNEL=1 API_HOST=127.0.0.1 NEXT_HOST=127.0.0.1 bash run_next_stable.sh
+```
 
 ## Targeted Restarts
 
@@ -37,7 +53,7 @@ These nudge the supervised child process and let the existing launcher restart o
 
 ## Full Restart
 
-Use this only when targeted restart is insufficient or the launcher/supervisors are stale:
+Use this only when LaunchAgent operation is unavailable or the user explicitly requests a foreground launcher:
 
 ```bash
 FORCE_RESTART=1 PATH=/usr/local/bin:/opt/homebrew/bin:/Applications/Codex.app/Contents/Resources:$PATH PUBLIC_TUNNEL=1 API_HOST=127.0.0.1 NEXT_HOST=127.0.0.1 bash run_next_stable.sh
@@ -46,19 +62,20 @@ FORCE_RESTART=1 PATH=/usr/local/bin:/opt/homebrew/bin:/Applications/Codex.app/Co
 ## Workflow
 
 1. Run status first.
-2. If only API is down, run `RESTART_SCOPE=api`.
-3. If only Next is down, run `RESTART_SCOPE=next`.
-4. If the public URL is dead but local Next is OK, run `RESTART_SCOPE=tunnel`.
-5. Use full restart only if the launcher itself is stale or targeted restarts do not recover the app.
-6. Keep the launcher session running; it supervises FastAPI and Next.
-7. Verify health:
+2. Confirm `com.tunelease.next` is registered with `launchctl`.
+3. Use `launchctl kickstart -k` for a persistent full restart.
+4. If only API is down, run `RESTART_SCOPE=api`.
+5. If only Next is down, run `RESTART_SCOPE=next`.
+6. If the public URL is dead but local Next is OK, run `RESTART_SCOPE=tunnel`.
+7. Use the foreground full restart only if launchd is unavailable.
+8. Verify health:
 
 ```bash
 curl --max-time 10 -sS http://127.0.0.1:8000/docs >/dev/null
 curl --max-time 10 -sS http://127.0.0.1:3000/ >/dev/null
 ```
 
-8. Report the local Next URL and the Cloudflare URL printed by `run_next_stable.sh`.
+9. Report the local Next URL and the newest Cloudflare URL.
 
 ## Notes
 

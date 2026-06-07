@@ -37,6 +37,12 @@
   <key>KeepAlive</key>
   <true/>
 
+  <key>ProcessType</key>
+  <string>Background</string>
+
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
   <key>StandardOutPath</key>
   <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/logs/next/launchd.out.log</string>
 

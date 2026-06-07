@@ -9,13 +9,14 @@ import os
 import sqlite3
 from contextlib import closing
 from datetime import datetime
+from runtime_paths import get_data_path
 
 # ==============================================================================
 # パス設定
 # ==============================================================================
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _BASE = os.path.dirname(_DIR)  # tune_lease_55/
-GUNSHI_DB_PATH = os.path.join(_BASE, "data", "lease_data.db")
+GUNSHI_DB_PATH = get_data_path("lease_data.db")
 
 
 # ==============================================================================

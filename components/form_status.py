@@ -12,10 +12,10 @@ from datetime import datetime
 from contextlib import closing
 
 import streamlit as st
+from runtime_paths import get_data_path
 
-# DB パス (絶対パス固定)
-_DB_ROOT = os.path.join("/Users/kobayashiisaoryou/clawd/tune_lease_55", "data")
-_LEASE_DB_PATH = os.path.join(_DB_ROOT, "lease_data.db")
+# DB パス（Cloud Run では /app/data）
+_LEASE_DB_PATH = get_data_path("lease_data.db")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 

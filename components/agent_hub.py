@@ -26,11 +26,12 @@ import requests
 import streamlit as st
 
 from session_keys import SK
+from runtime_paths import get_data_path
 
 # ── ディレクトリ設定 ────────────────────────────────────────────────────────
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _BASE_DIR   = os.path.dirname(_SCRIPT_DIR)
-_DB_PATH    = os.path.join(os.path.dirname(_BASE_DIR), "tune_lease_55", "data", "lease_data.db")
+_DB_PATH    = get_data_path("lease_data.db")
 _HUB_LOG    = os.path.join(_BASE_DIR, "data", "agent_hub_log.jsonl")
 _AGENT_THOUGHTS = os.path.join(_BASE_DIR, "data", "agent_thoughts.jsonl")
 

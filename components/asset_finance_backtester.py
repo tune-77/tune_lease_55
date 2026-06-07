@@ -5,12 +5,13 @@ import pandas as pd
 import numpy as np
 from contextlib import closing
 from sklearn.metrics import roc_auc_score, classification_report
+from runtime_paths import get_data_path
 
 # パスの設定
 import sys
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _BASE_DIR = os.path.dirname(_SCRIPT_DIR)
-_DB_PATH = os.path.join(_BASE_DIR, "data", "lease_data.db")
+_DB_PATH = get_data_path("lease_data.db")
 
 if _BASE_DIR not in sys.path:
     sys.path.insert(0, _BASE_DIR)

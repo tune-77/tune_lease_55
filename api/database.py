@@ -5,17 +5,12 @@ DB は data_cases.py と同じ lease_data.db を共有する。
 from __future__ import annotations
 
 import os
-import pathlib
 import sqlite3
 from contextlib import closing
 from typing import Optional
+from runtime_paths import get_data_path
 
-# __file__ 基準でポータブルに解決（絶対パスのハードコードを排除）
-_DATA_DIR = os.environ.get(
-    "LEASE_DATA_DIR",
-    str(pathlib.Path(__file__).parent.parent / "data"),
-)
-DB_PATH = os.path.join(_DATA_DIR, "lease_data.db")
+DB_PATH = get_data_path("lease_data.db")
 
 
 def _open_db(path: str = DB_PATH) -> sqlite3.Connection:

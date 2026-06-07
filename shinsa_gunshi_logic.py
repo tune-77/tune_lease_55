@@ -14,6 +14,7 @@ import time
 from contextlib import closing
 from datetime import datetime
 from typing import Generator
+from runtime_paths import get_data_path
 
 # DB 操作は専用モジュールに委譲（後方互換のため re-export）
 from components.shinsa_gunshi_db import (  # noqa: E402
@@ -33,7 +34,7 @@ import streamlit as st
 # ==============================================================================
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _BASE = os.path.dirname(_DIR)  # tune_lease_55/
-GUNSHI_DB_PATH = os.path.join(_BASE, "data", "lease_data.db")
+GUNSHI_DB_PATH = get_data_path("lease_data.db")
 
 # Ollama ホスト（環境変数で上書き可）
 OLLAMA_BASE = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")

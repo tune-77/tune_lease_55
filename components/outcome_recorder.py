@@ -16,9 +16,10 @@ from datetime import date, datetime
 from typing import Optional
 
 import streamlit as st
+from runtime_paths import get_data_path
 
 _DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.path.join(_DIR, "data", "lease_data.db")
+DB_PATH = get_data_path("lease_data.db")
 
 _STATUS_LABELS = {
     "normal":    "✅ 正常（支払い継続中）",
