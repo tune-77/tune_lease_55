@@ -1,0 +1,61 @@
+{
+  "fetched_at": "2026-06-07T10:30:44.697230",
+  "source": "FinceptTerminal/AkShare (https://github.com/Fincept-Corporation/FinceptTerminal)",
+  "boj_policy_rate": {
+    "value": 0.75,
+    "prev": 0.75,
+    "period": "2026年04月",
+    "published": "2026-04-28",
+    "source": "akshare.macro_japan_bank_rate"
+  },
+  "core_cpi": {
+    "value": 1.1,
+    "prev": 1.4,
+    "period": "2026年04月",
+    "published": "2026-05-22",
+    "source": "akshare.macro_japan_core_cpi_yearly"
+  },
+  "cpi": {
+    "value": 1.4,
+    "prev": 1.5,
+    "period": "2026年04月",
+    "published": "2026-05-22",
+    "source": "akshare.macro_japan_cpi_yearly"
+  },
+  "leading_indicator": {
+    "value": 115.9,
+    "prev": 115.4,
+    "period": "2026年04月",
+    "published": "2026-06-25",
+    "source": "akshare.macro_japan_head_indicator"
+  },
+  "unemployment": {
+    "value": 2.5,
+    "prev": 2.7,
+    "period": "2026年04月",
+    "published": "2026-05-29",
+    "source": "akshare.macro_japan_unemployment_rate"
+  },
+  "assessment": {
+    "macro_risk_score": 20.0,
+    "macro_env": "良好",
+    "factors": {
+      "policy_rate": {
+        "score": 40,
+        "comment": "政策金利 0.75%: 緩やかな上昇局面"
+      },
+      "core_cpi": {
+        "score": 20,
+        "comment": "コアCPI 1.1%: 低インフレ環境"
+      },
+      "leading_indicator": {
+        "score": 10,
+        "comment": "景気先行指数 115.9: 強い拡張局面"
+      },
+      "unemployment": {
+        "score": 10,
+        "comment": "失業率 2.5%: 完全雇用水準"
+      }
+    }
+  }
+}
