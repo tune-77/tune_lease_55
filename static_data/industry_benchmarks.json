@@ -1,10 +1,15 @@
 {
     "06 総合工事業": {
         "op_margin": 4.46,
-        "equity_ratio": 35.0,
+        "equity_ratio": 42.9,
         "comment": "資材高騰で利益率は低下傾向。自己資本の厚みが重要。",
         "op_margin_source": "e-Stat法人企業統計",
-        "op_margin_updated": "2026-06-07"
+        "op_margin_updated": "2026-06-07",
+        "equity_ratio_source": "e-Stat法人企業統計",
+        "equity_ratio_updated": "2026-06-07",
+        "lease_cost_ratio": 1.08,
+        "lease_cost_ratio_source": "e-Stat法人企業統計",
+        "lease_cost_ratio_updated": "2026-06-07"
     },
     "07 職別工事業(大工・とび等)": {
         "op_margin": 3.8,
@@ -18,38 +23,63 @@
     },
     "09 食料品製造業": {
         "op_margin": 3.65,
-        "equity_ratio": 45.0,
+        "equity_ratio": 44.3,
         "comment": "薄利多売モデル。価格転嫁の遅れが致命的になりやすい。",
         "op_margin_source": "e-Stat法人企業統計",
-        "op_margin_updated": "2026-06-07"
+        "op_margin_updated": "2026-06-07",
+        "equity_ratio_source": "e-Stat法人企業統計",
+        "equity_ratio_updated": "2026-06-07",
+        "lease_cost_ratio": 0.77,
+        "lease_cost_ratio_source": "e-Stat法人企業統計",
+        "lease_cost_ratio_updated": "2026-06-07"
     },
     "21 金属製品製造業": {
         "op_margin": 4.04,
-        "equity_ratio": 42.0,
+        "equity_ratio": 49.7,
         "comment": "エネルギーコスト比率が高い。損益分岐点比率を要チェック。",
         "op_margin_source": "e-Stat法人企業統計",
-        "op_margin_updated": "2026-06-07"
+        "op_margin_updated": "2026-06-07",
+        "equity_ratio_source": "e-Stat法人企業統計",
+        "equity_ratio_updated": "2026-06-07",
+        "lease_cost_ratio": 1.39,
+        "lease_cost_ratio_source": "e-Stat法人企業統計",
+        "lease_cost_ratio_updated": "2026-06-07"
     },
     "24 生産用機械器具製造業": {
         "op_margin": 7.84,
-        "equity_ratio": 50.0,
+        "equity_ratio": 52.2,
         "comment": "高付加価値製品が多く利益率は高め。在庫回転期間が長くなりがち。",
         "op_margin_source": "e-Stat法人企業統計",
-        "op_margin_updated": "2026-06-07"
+        "op_margin_updated": "2026-06-07",
+        "equity_ratio_source": "e-Stat法人企業統計",
+        "equity_ratio_updated": "2026-06-07",
+        "lease_cost_ratio": 1.03,
+        "lease_cost_ratio_source": "e-Stat法人企業統計",
+        "lease_cost_ratio_updated": "2026-06-07"
     },
     "26 情報通信機械器具製造業": {
         "op_margin": 6.34,
-        "equity_ratio": 55.0,
+        "equity_ratio": 50.7,
         "comment": "設備投資負担が大きいが、償却前利益(EBITDA)は厚い傾向。",
         "op_margin_source": "e-Stat法人企業統計",
-        "op_margin_updated": "2026-06-07"
+        "op_margin_updated": "2026-06-07",
+        "equity_ratio_source": "e-Stat法人企業統計",
+        "equity_ratio_updated": "2026-06-07",
+        "lease_cost_ratio": 1.25,
+        "lease_cost_ratio_source": "e-Stat法人企業統計",
+        "lease_cost_ratio_updated": "2026-06-07"
     },
     "44 道路貨物運送業": {
         "op_margin": 5.94,
-        "equity_ratio": 20.0,
+        "equity_ratio": 35.1,
         "comment": "構造的に低収益。1%の改善が大きな意味を持つ。",
         "op_margin_source": "e-Stat法人企業統計",
-        "op_margin_updated": "2026-06-07"
+        "op_margin_updated": "2026-06-07",
+        "equity_ratio_source": "e-Stat法人企業統計",
+        "equity_ratio_updated": "2026-06-07",
+        "lease_cost_ratio": 2.64,
+        "lease_cost_ratio_source": "e-Stat法人企業統計",
+        "lease_cost_ratio_updated": "2026-06-07"
     },
     "43 道路旅客運送業(バス・タクシー)": {
         "op_margin": 2.0,
@@ -58,31 +88,51 @@
     },
     "50-55 各種卸売業": {
         "op_margin": 2.25,
-        "equity_ratio": 30.0,
+        "equity_ratio": 39.5,
         "comment": "マージンビジネスのため利益率は低い。売掛金の回収サイトが鍵。",
         "op_margin_source": "e-Stat法人企業統計",
-        "op_margin_updated": "2026-06-07"
+        "op_margin_updated": "2026-06-07",
+        "equity_ratio_source": "e-Stat法人企業統計",
+        "equity_ratio_updated": "2026-06-07",
+        "lease_cost_ratio": 0.6,
+        "lease_cost_ratio_source": "e-Stat法人企業統計",
+        "lease_cost_ratio_updated": "2026-06-07"
     },
     "56-61 各種小売業": {
         "op_margin": 2.71,
-        "equity_ratio": 35.0,
+        "equity_ratio": 39.1,
         "comment": "在庫リスクが高い。棚卸資産回転率とセットで見ること。",
         "op_margin_source": "e-Stat法人企業統計",
-        "op_margin_updated": "2026-06-07"
+        "op_margin_updated": "2026-06-07",
+        "equity_ratio_source": "e-Stat法人企業統計",
+        "equity_ratio_updated": "2026-06-07",
+        "lease_cost_ratio": 2.63,
+        "lease_cost_ratio_source": "e-Stat法人企業統計",
+        "lease_cost_ratio_updated": "2026-06-07"
     },
     "68 不動産代理・仲介": {
         "op_margin": 12.2,
-        "equity_ratio": 40.0,
+        "equity_ratio": 38.0,
         "comment": "仕入がないため利益率は高いが、景気変動に敏感。",
         "op_margin_source": "e-Stat法人企業統計",
-        "op_margin_updated": "2026-06-07"
+        "op_margin_updated": "2026-06-07",
+        "equity_ratio_source": "e-Stat法人企業統計",
+        "equity_ratio_updated": "2026-06-07",
+        "lease_cost_ratio": 6.13,
+        "lease_cost_ratio_source": "e-Stat法人企業統計",
+        "lease_cost_ratio_updated": "2026-06-07"
     },
     "70 物品賃貸業(リース・レンタル)": {
         "op_margin": 6.59,
-        "equity_ratio": 15.0,
+        "equity_ratio": 17.4,
         "comment": "レバレッジを効かせる業態のため、自己資本比率は低くても許容される。",
         "op_margin_source": "e-Stat法人企業統計",
-        "op_margin_updated": "2026-06-07"
+        "op_margin_updated": "2026-06-07",
+        "equity_ratio_source": "e-Stat法人企業統計",
+        "equity_ratio_updated": "2026-06-07",
+        "lease_cost_ratio": 1.45,
+        "lease_cost_ratio_source": "e-Stat法人企業統計",
+        "lease_cost_ratio_updated": "2026-06-07"
     },
     "75 宿泊業": {
         "op_margin": 5.0,
@@ -91,17 +141,27 @@
     },
     "76 飲食店": {
         "op_margin": 2.8,
-        "equity_ratio": 15.0,
+        "equity_ratio": 24.9,
         "comment": "現金商売のため手元流動性は高いが、自己資本の蓄積は遅い。",
         "op_margin_source": "e-Stat法人企業統計",
-        "op_margin_updated": "2026-06-07"
+        "op_margin_updated": "2026-06-07",
+        "equity_ratio_source": "e-Stat法人企業統計",
+        "equity_ratio_updated": "2026-06-07",
+        "lease_cost_ratio": 7.49,
+        "lease_cost_ratio_source": "e-Stat法人企業統計",
+        "lease_cost_ratio_updated": "2026-06-07"
     },
     "83 医療業(病院・診療所)": {
         "op_margin": 3.08,
-        "equity_ratio": 25.0,
+        "equity_ratio": 32.2,
         "comment": "公定価格のため利益コントロールが難しい。医療法人特有の会計に注意。",
         "op_margin_source": "e-Stat法人企業統計",
-        "op_margin_updated": "2026-06-07"
+        "op_margin_updated": "2026-06-07",
+        "equity_ratio_source": "e-Stat法人企業統計",
+        "equity_ratio_updated": "2026-06-07",
+        "lease_cost_ratio": 5.1,
+        "lease_cost_ratio_source": "e-Stat法人企業統計",
+        "lease_cost_ratio_updated": "2026-06-07"
     },
     "85 社会保険・社会福祉・介護事業": {
         "op_margin": 3.0,
@@ -115,9 +175,14 @@
     },
     "91 職業紹介・労働者派遣業": {
         "op_margin": 3.91,
-        "equity_ratio": 50.0,
+        "equity_ratio": 47.9,
         "comment": "設備が不要なため高収益・高自己資本になりやすい。",
         "op_margin_source": "e-Stat法人企業統計",
-        "op_margin_updated": "2026-06-07"
+        "op_margin_updated": "2026-06-07",
+        "equity_ratio_source": "e-Stat法人企業統計",
+        "equity_ratio_updated": "2026-06-07",
+        "lease_cost_ratio": 1.62,
+        "lease_cost_ratio_source": "e-Stat法人企業統計",
+        "lease_cost_ratio_updated": "2026-06-07"
     }
 }

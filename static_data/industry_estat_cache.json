@@ -1,72 +1,320 @@
 {
-  "fetched_at": "2026-06-07T10:54:33.062146",
+  "fetched_at": "2026-06-07T11:03:41.651478",
   "source": "e-Stat法人企業統計",
   "stats_data_id": "0003060791",
-  "op_margins_by_estat_code": {
-    "119": 3.49,
-    "138": 2.16,
-    "103": -1.47,
-    "146": 5.14,
-    "110": 1.96,
-    "115": 8.49,
-    "152": 3.08,
-    "142": 8.16,
-    "136": 2.99,
-    "157": 2.78,
-    "151": 7.89,
-    "160": 3.91,
-    "125": 5.32,
-    "106": 18.97,
-    "113": 3.13,
-    "108": 5.39,
-    "153": 4.87,
-    "137": 8.1,
-    "135": 5.23,
-    "118": 3.67,
-    "121": 7.84,
-    "114": 1.53,
-    "126": 4.83,
-    "145": 6.34,
-    "101": -4.03,
-    "111": 1.97,
-    "102": -0.41,
-    "128": 2.71,
-    "122": 7.07,
-    "139": 6.55,
-    "148": 1.21,
-    "162": -9.56,
-    "120": 4.04,
-    "127": 2.25,
-    "149": 6.83,
-    "150": 6.59,
-    "107": 4.46,
-    "158": 57.7,
-    "131": 5.94,
-    "129": 2.42,
-    "105": -3.52,
-    "132": 4.76,
-    "134": 5.3,
-    "154": 6.75,
-    "163": -0.82,
-    "130": 12.2,
-    "156": 2.8,
-    "140": 2.06,
-    "112": 2.2,
-    "117": 5.49,
-    "123": 5.12,
-    "141": 3.76,
-    "143": 5.37,
-    "124": 9.14,
-    "109": 3.65,
-    "155": 10.94,
-    "133": 4.19,
-    "104": 5.01,
-    "116": 0.62,
-    "161": 17.83,
-    "159": 3.1,
-    "144": 4.87
+  "metrics_by_estat_code": {
+    "104": {
+      "op_margin": 5.01,
+      "equity_ratio": 42.1,
+      "lease_cost_ratio": 1.83
+    },
+    "108": {
+      "op_margin": 5.39,
+      "equity_ratio": 50.3,
+      "lease_cost_ratio": 0.85
+    },
+    "109": {
+      "op_margin": 3.65,
+      "equity_ratio": 44.3,
+      "lease_cost_ratio": 0.77
+    },
+    "110": {
+      "op_margin": 1.96,
+      "equity_ratio": 47.8,
+      "lease_cost_ratio": 1.46
+    },
+    "163": {
+      "op_margin": -0.82,
+      "equity_ratio": 33.1,
+      "lease_cost_ratio": 1.63
+    },
+    "111": {
+      "op_margin": 1.97,
+      "equity_ratio": 37.7,
+      "lease_cost_ratio": 1.71
+    },
+    "112": {
+      "op_margin": 2.2,
+      "equity_ratio": 47.1,
+      "lease_cost_ratio": 0.84
+    },
+    "113": {
+      "op_margin": 3.13,
+      "equity_ratio": 43.0,
+      "lease_cost_ratio": 0.88
+    },
+    "114": {
+      "op_margin": 1.53,
+      "equity_ratio": 50.8,
+      "lease_cost_ratio": 2.57
+    },
+    "115": {
+      "op_margin": 8.49,
+      "equity_ratio": 52.9,
+      "lease_cost_ratio": 0.88
+    },
+    "116": {
+      "op_margin": 0.62,
+      "equity_ratio": 28.4,
+      "lease_cost_ratio": 0.53
+    },
+    "117": {
+      "op_margin": 5.49,
+      "equity_ratio": 53.3,
+      "lease_cost_ratio": 1.21
+    },
+    "118": {
+      "op_margin": 3.67,
+      "equity_ratio": 46.8,
+      "lease_cost_ratio": 0.47
+    },
+    "119": {
+      "op_margin": 3.49,
+      "equity_ratio": 39.5,
+      "lease_cost_ratio": 0.37
+    },
+    "120": {
+      "op_margin": 4.04,
+      "equity_ratio": 49.7,
+      "lease_cost_ratio": 1.39
+    },
+    "154": {
+      "op_margin": 6.75,
+      "equity_ratio": 58.6,
+      "lease_cost_ratio": 1.26
+    },
+    "121": {
+      "op_margin": 7.84,
+      "equity_ratio": 52.2,
+      "lease_cost_ratio": 1.03
+    },
+    "124": {
+      "op_margin": 9.14,
+      "equity_ratio": 53.9,
+      "lease_cost_ratio": 0.92
+    },
+    "122": {
+      "op_margin": 7.07,
+      "equity_ratio": 50.4,
+      "lease_cost_ratio": 0.85
+    },
+    "145": {
+      "op_margin": 6.34,
+      "equity_ratio": 50.7,
+      "lease_cost_ratio": 1.25
+    },
+    "146": {
+      "op_margin": 5.14,
+      "equity_ratio": 52.2,
+      "lease_cost_ratio": 0.41
+    },
+    "123": {
+      "op_margin": 5.12,
+      "equity_ratio": 54.0,
+      "lease_cost_ratio": 0.38
+    },
+    "125": {
+      "op_margin": 5.32,
+      "equity_ratio": 35.7,
+      "lease_cost_ratio": 0.83
+    },
+    "126": {
+      "op_margin": 4.83,
+      "equity_ratio": 52.0,
+      "lease_cost_ratio": 1.02
+    },
+    "144": {
+      "op_margin": 4.87,
+      "equity_ratio": 39.2,
+      "lease_cost_ratio": 2.2
+    },
+    "105": {
+      "op_margin": -3.52,
+      "equity_ratio": 21.8,
+      "lease_cost_ratio": 0.97
+    },
+    "101": {
+      "op_margin": -4.03,
+      "equity_ratio": 19.0,
+      "lease_cost_ratio": 1.01
+    },
+    "162": {
+      "op_margin": -9.56,
+      "equity_ratio": 14.5,
+      "lease_cost_ratio": 0.83
+    },
+    "102": {
+      "op_margin": -0.41,
+      "equity_ratio": 25.7,
+      "lease_cost_ratio": 0.82
+    },
+    "103": {
+      "op_margin": -1.47,
+      "equity_ratio": 34.4,
+      "lease_cost_ratio": 0.8
+    },
+    "106": {
+      "op_margin": 18.97,
+      "equity_ratio": 68.4,
+      "lease_cost_ratio": 0.88
+    },
+    "107": {
+      "op_margin": 4.46,
+      "equity_ratio": 42.9,
+      "lease_cost_ratio": 1.08
+    },
+    "135": {
+      "op_margin": 5.23,
+      "equity_ratio": 20.8,
+      "lease_cost_ratio": 0.94
+    },
+    "136": {
+      "op_margin": 2.99,
+      "equity_ratio": 41.8,
+      "lease_cost_ratio": 0.95
+    },
+    "142": {
+      "op_margin": 8.16,
+      "equity_ratio": 51.7,
+      "lease_cost_ratio": 2.15
+    },
+    "134": {
+      "op_margin": 5.3,
+      "equity_ratio": 34.2,
+      "lease_cost_ratio": 5.43
+    },
+    "131": {
+      "op_margin": 5.94,
+      "equity_ratio": 35.1,
+      "lease_cost_ratio": 2.64
+    },
+    "132": {
+      "op_margin": 4.76,
+      "equity_ratio": 39.5,
+      "lease_cost_ratio": 5.27
+    },
+    "133": {
+      "op_margin": 4.19,
+      "equity_ratio": 30.5,
+      "lease_cost_ratio": 11.23
+    },
+    "129": {
+      "op_margin": 2.42,
+      "equity_ratio": 39.4,
+      "lease_cost_ratio": 1.34
+    },
+    "127": {
+      "op_margin": 2.25,
+      "equity_ratio": 39.5,
+      "lease_cost_ratio": 0.6
+    },
+    "128": {
+      "op_margin": 2.71,
+      "equity_ratio": 39.1,
+      "lease_cost_ratio": 2.63
+    },
+    "155": {
+      "op_margin": 10.94,
+      "equity_ratio": 34.0,
+      "lease_cost_ratio": 5.09
+    },
+    "130": {
+      "op_margin": 12.2,
+      "equity_ratio": 38.0,
+      "lease_cost_ratio": 6.13
+    },
+    "149": {
+      "op_margin": 6.83,
+      "equity_ratio": 17.7,
+      "lease_cost_ratio": 1.67
+    },
+    "150": {
+      "op_margin": 6.59,
+      "equity_ratio": 17.4,
+      "lease_cost_ratio": 1.45
+    },
+    "151": {
+      "op_margin": 7.89,
+      "equity_ratio": 20.6,
+      "lease_cost_ratio": 2.61
+    },
+    "137": {
+      "op_margin": 8.1,
+      "equity_ratio": 42.1,
+      "lease_cost_ratio": 3.54
+    },
+    "156": {
+      "op_margin": 2.8,
+      "equity_ratio": 24.9,
+      "lease_cost_ratio": 7.49
+    },
+    "139": {
+      "op_margin": 6.55,
+      "equity_ratio": 27.6,
+      "lease_cost_ratio": 9.74
+    },
+    "148": {
+      "op_margin": 1.21,
+      "equity_ratio": 22.8,
+      "lease_cost_ratio": 6.53
+    },
+    "157": {
+      "op_margin": 2.78,
+      "equity_ratio": 35.9,
+      "lease_cost_ratio": 4.0
+    },
+    "140": {
+      "op_margin": 2.06,
+      "equity_ratio": 24.7,
+      "lease_cost_ratio": 3.87
+    },
+    "141": {
+      "op_margin": 3.76,
+      "equity_ratio": 46.1,
+      "lease_cost_ratio": 4.17
+    },
+    "161": {
+      "op_margin": 17.83,
+      "equity_ratio": 45.2,
+      "lease_cost_ratio": 2.17
+    },
+    "138": {
+      "op_margin": 2.16,
+      "equity_ratio": 35.8,
+      "lease_cost_ratio": 1.27
+    },
+    "158": {
+      "op_margin": 57.7,
+      "equity_ratio": 45.6,
+      "lease_cost_ratio": 1.81
+    },
+    "159": {
+      "op_margin": 3.1,
+      "equity_ratio": 45.2,
+      "lease_cost_ratio": 2.67
+    },
+    "153": {
+      "op_margin": 4.87,
+      "equity_ratio": 37.8,
+      "lease_cost_ratio": 8.27
+    },
+    "152": {
+      "op_margin": 3.08,
+      "equity_ratio": 32.2,
+      "lease_cost_ratio": 5.1
+    },
+    "160": {
+      "op_margin": 3.91,
+      "equity_ratio": 47.9,
+      "lease_cost_ratio": 1.62
+    },
+    "143": {
+      "op_margin": 5.37,
+      "equity_ratio": 41.7,
+      "lease_cost_ratio": 1.92
+    }
   },
   "raw_summary": {
-    "total_values": 5904
+    "total_values": 11808
   }
 }
