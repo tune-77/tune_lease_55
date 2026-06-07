@@ -60,6 +60,12 @@ else
   echo "Warning: Secret Manager secret GEMINI_API_KEY was not found." >&2
 fi
 
+if gcloud secrets describe ESTAT_APP_ID --project "$PROJECT_ID" >/dev/null 2>&1; then
+  deploy_args+=(--set-secrets "ESTAT_APP_ID=ESTAT_APP_ID:latest")
+else
+  echo "Warning: Secret Manager secret ESTAT_APP_ID was not found." >&2
+fi
+
 if [[ -n "$SERVICE_ACCOUNT" ]]; then
   deploy_args+=(--service-account "$SERVICE_ACCOUNT")
 fi
