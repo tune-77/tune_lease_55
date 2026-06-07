@@ -185,11 +185,15 @@ echo "[Step 10] e-Stat業種別統計更新..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/fetch_estat_industry.py" || true
 
 echo ""
-echo "[Step 11] DAILY-BRIEF.md を Obsidian Vault に書き出し..."
+echo "[Step 11] Sidecar Agent Brief を生成（読み取り専用）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/agent_sidecar_reader.py" || true
+
+echo ""
+echo "[Step 12] DAILY-BRIEF.md を Obsidian Vault に書き出し..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/write_daily_brief.py" || true
 
 echo ""
-echo "[Step 12] 週次セルフマネジメントサマリ（月曜のみ）..."
+echo "[Step 13] 週次セルフマネジメントサマリ（月曜のみ）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/weekly_self_management.py" || true
 
 echo ""

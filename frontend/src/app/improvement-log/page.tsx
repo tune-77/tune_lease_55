@@ -56,6 +56,28 @@ type PipelineSummary = {
   commit_result: { success: boolean; message?: string; pr_url?: string | null } | null;
 };
 
+type GapItem = {
+  id: string;
+  title: string;
+  priority: "critical" | "high" | "medium" | "low" | string;
+  category: string;
+  evidence?: string[];
+  impact?: string;
+  recommended_action?: string;
+  suggested_program?: string;
+  guardrail?: string;
+  source_refs?: string[];
+};
+
+type GapAnalysis = {
+  available: boolean;
+  generated_at?: string;
+  mode?: string;
+  source?: string;
+  counts?: Record<string, number>;
+  items: GapItem[];
+};
+
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   APPROVED: { label: "承認", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   AUTO_FIX_CANDIDATE: { label: "自動修正候補", className: "bg-blue-50 text-blue-700 border-blue-200" },
@@ -81,6 +103,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 export default function ImprovementLogPage() {
   const [data, setData] = useState<ImprovementLog | null>(null);
   const [summary, setSummary] = useState<PipelineSummary | null>(null);
+  const [gapAnalysis, setGapAnalysis] = useState<GapAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("NEEDS_REVIEW");
@@ -89,12 +112,14 @@ export default function ImprovementLogPage() {
   const fetchLog = useCallback(async () => {
     setLoading(true);
     try {
-      const [logRes, summaryRes] = await Promise.all([
+      const [logRes, summaryRes, gapsRes] = await Promise.all([
         axios.get<ImprovementLog>("/api/improvement-log"),
         axios.get<PipelineSummary>("/api/improvement-pipeline/summary"),
+        axios.get<GapAnalysis>("/api/lease-system-gaps"),
       ]);
       setData(logRes.data);
       setSummary(summaryRes.data);
+      setGapAnalysis(gapsRes.data);
     } catch {
       setData(null);
     } finally {
@@ -204,6 +229,65 @@ export default function ImprovementLogPage() {
                   : <span className="text-slate-400">{summary.commit_result?.message || "なし"}</span>}
               </div>
             </div>
+          </section>
+        )}
+
+        {gapAnalysis?.available && (
+          <section className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="mb-3 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                  <AlertCircle className="h-4 w-4 text-rose-500" />
+                  不足項目・改善診断
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  本体非連動の読み取り専用診断。スコア・DB・モデルは変更しません。
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="rounded-full bg-rose-50 px-2.5 py-1 font-bold text-rose-700">
+                  Critical {gapAnalysis.counts?.critical ?? 0}
+                </span>
+                <span className="rounded-full bg-amber-50 px-2.5 py-1 font-bold text-amber-700">
+                  High {gapAnalysis.counts?.high ?? 0}
+                </span>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 font-bold text-slate-600">
+                  Total {gapAnalysis.items?.length ?? 0}
+                </span>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {(gapAnalysis.items || []).map((item) => (
+                <div key={item.id} className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-xs font-bold text-slate-500">{item.id}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${gapPriorityClass(item.priority)}`}>
+                      {item.priority}
+                    </span>
+                    <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                      {item.category}
+                    </span>
+                  </div>
+                  <h2 className="mt-2 text-sm font-bold text-slate-900">{item.title}</h2>
+                  {item.impact && <p className="mt-1 text-xs leading-relaxed text-slate-600">{item.impact}</p>}
+                  {item.recommended_action && (
+                    <p className="mt-2 text-xs leading-relaxed text-slate-700">
+                      <span className="font-bold">次の対応:</span> {item.recommended_action}
+                    </p>
+                  )}
+                  {item.evidence?.length ? (
+                    <div className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                      {item.evidence.slice(0, 2).map((line, index) => (
+                        <div key={index}>・{line}</div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+            {gapAnalysis.source && (
+              <p className="mt-3 break-all text-[11px] text-slate-400">{gapAnalysis.source}</p>
+            )}
           </section>
         )}
 
@@ -382,6 +466,14 @@ const ACTION_STYLES = {
   reject: "border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100",
   defer: "border-slate-300 bg-slate-50 text-slate-600 hover:bg-slate-100",
 };
+
+function gapPriorityClass(priority: string) {
+  const key = String(priority || "").toLowerCase();
+  if (key === "critical") return "bg-rose-100 text-rose-800";
+  if (key === "high") return "bg-amber-100 text-amber-800";
+  if (key === "medium") return "bg-sky-100 text-sky-800";
+  return "bg-slate-200 text-slate-700";
+}
 
 function ActionButton({
   label,

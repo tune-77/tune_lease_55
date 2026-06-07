@@ -117,13 +117,38 @@ _GENERIC_SEARCH_TERMS = {
 }
 _CHAT_INTENT_TERMS = ("チャット", "会話", "履歴", "日報", "daily", "weekly review", "改善ログ")
 _HUMOR_INTENT_TERMS = ("ユーモア", "笑い", "面白", "口調")
-_REFERENCE_PATH_PREFIXES = ("リース知識/", "projects/tune_lease_55/")
+_REFERENCE_PATH_PREFIXES = ("リース知識/", "projects/tune_lease_55/", "projects/tune-lease-55/")
 _LOWER_PRIORITY_PATH_PARTS = ("05-クリップ_記事/", "06-日記_作業ログ/", "/news/")
+_SOURCE_PRIORITY_RULES = (
+    ("リース知識/", 1.00),
+    ("projects/tune_lease_55/asset knowledge/", 0.95),
+    ("projects/tune_lease_55/asset finance/", 0.92),
+    ("projects/tune_lease_55/cases/", 0.90),
+    ("projects/tune_lease_55/feedback/", 0.82),
+    ("projects/tune_lease_55/research/", 0.76),
+    ("projects/tune_lease_55/", 0.70),
+    ("07-アーカイブ/asset knowledge/", 0.68),
+    ("06-日記_作業ログ/", 0.48),
+    ("projects/tune_lease_55/ai chat/", 0.42),
+    ("daily/", 0.35),
+)
+_NOISE_PATH_PARTS = (
+    "weekly review",
+    "improvement log",
+    "検索語インデックス",
+    "05-クリップ_記事/",
+)
 
 
 def _normalize_search_text(text: str) -> str:
     normalized = unicodedata.normalize("NFKC", text or "").lower()
     normalized = re.sub(r"[‐‑‒–—―−_]+", "-", normalized)
+    return re.sub(r"\s+", " ", normalized)
+
+
+def _normalize_path_text(path: str) -> str:
+    normalized = unicodedata.normalize("NFKC", path or "").lower().replace("\\", "/")
+    normalized = re.sub(r"[‐‑‒–—―−]+", "-", normalized)
     return re.sub(r"\s+", " ", normalized)
 
 
@@ -209,6 +234,141 @@ def _candidate_score(
     if "業種別" in normalized_path and any(term in normalized_query for term in ("業", "業種")):
         score += 10
     return score
+
+
+def _path_source_priority(path: str) -> float:
+    normalized_path = _normalize_path_text(path)
+    for prefix, priority in _SOURCE_PRIORITY_RULES:
+        if normalized_path.startswith(prefix):
+            return priority
+    return 0.55
+
+
+def _query_intent_bonus(path: str, query: str) -> float:
+    normalized_path = _normalize_path_text(path)
+    normalized_query = _normalize_search_text(query)
+    bonus = 0.0
+    if "cases/" in normalized_path and any(
+        term in normalized_query for term in ("過去", "類似", "案件", "事例", "前回", "スコア", "判定", "金利")
+    ):
+        bonus += 0.22
+    if "asset knowledge/" in normalized_path and any(
+        term in normalized_query for term in ("物件", "残価", "中古", "売却", "換金", "再販", "処分")
+    ):
+        bonus += 0.22
+    if "research/" in normalized_path and any(
+        term in normalized_query for term in ("補助金", "助成金", "税制", "ニュース", "調査", "市場")
+    ):
+        bonus += 0.12
+    if normalized_path.startswith("リース知識/") and any(
+        term in normalized_query for term in ("審査", "確認", "条件", "承認", "格付", "q-risk", "q_risk")
+    ):
+        bonus += 0.16
+    return min(bonus, 0.30)
+
+
+def _noise_penalty(path: str, query: str) -> float:
+    normalized_path = _normalize_path_text(path)
+    normalized_query = _normalize_search_text(query)
+    penalty = 0.0
+    asks_for_chat = any(term in normalized_query for term in _CHAT_INTENT_TERMS)
+    asks_for_humor = any(term in normalized_query for term in _HUMOR_INTENT_TERMS)
+    if not asks_for_chat and any(part in normalized_path for part in ("ai chat/", "daily/", "weekly review", "improvement log")):
+        penalty += 0.28
+    if not asks_for_humor and any(part in normalized_path for part in ("humor/", "ユーモア", "八奈見")):
+        penalty += 0.70
+    if any(part in normalized_path for part in _NOISE_PATH_PARTS):
+        penalty += 0.12
+    if "wiki" in normalized_path and "wiki" not in normalized_query:
+        penalty += 0.04
+    return min(penalty, 0.90)
+
+
+def _term_coverage_score(path: str, text: str, primary_terms: list[str]) -> tuple[float, int, int]:
+    primary = [_normalize_search_text(t) for t in primary_terms if t and t not in _GENERIC_SEARCH_TERMS]
+    if not primary:
+        return 0.0, 0, 0
+    haystack = f"{_normalize_search_text(path)} {_normalize_search_text(Path(path).stem)} {_normalize_search_text(text)}"
+    matched = sum(1 for term in primary if term and term in haystack)
+    coverage = matched / len(primary)
+    return coverage, matched, len(primary)
+
+
+def _semantic_score_from_item(item: dict[str, Any] | None, vector_rank: int | None = None) -> float:
+    if not item:
+        return 0.0
+    if item.get("rank_score") is not None:
+        try:
+            # vector_store rank_score is centered around similarity + business priority.
+            return max(0.0, min(1.0, (float(item["rank_score"]) + 1.0) / 2.0))
+        except (TypeError, ValueError):
+            pass
+    if item.get("distance") is not None:
+        try:
+            return max(0.0, min(1.0, 1.0 - float(item["distance"])))
+        except (TypeError, ValueError):
+            pass
+    if vector_rank is not None:
+        return max(0.0, 1.0 - vector_rank * 0.04)
+    return 0.0
+
+
+def _rerank_obsidian_candidates(
+    candidates: dict[str, dict[str, Any]],
+    *,
+    query: str,
+    primary_terms: list[str],
+    limit: int,
+) -> list[dict[str, Any]]:
+    if not candidates:
+        return []
+    raw_scores = [float(item.get("score") or 0.0) for item in candidates.values()]
+    min_raw = min(raw_scores)
+    max_raw = max(raw_scores)
+    spread = max(max_raw - min_raw, 1.0)
+
+    ranked: list[tuple[float, str, dict[str, Any]]] = []
+    for path, item in candidates.items():
+        snippet = str(item.get("snippet") or "")
+        raw_score = float(item.get("score") or 0.0)
+        keyword_score = max(0.0, min(1.0, (raw_score - min_raw) / spread))
+        coverage, matched_terms, total_terms = _term_coverage_score(path, snippet, primary_terms)
+        source_priority = _path_source_priority(path)
+        intent_bonus = _query_intent_bonus(path, query)
+        penalty = _noise_penalty(path, query)
+        semantic_score = float(item.get("semantic_score") or 0.0)
+
+        final_score = (
+            0.35 * semantic_score
+            + 0.30 * keyword_score
+            + 0.20 * source_priority
+            + 0.10 * coverage
+            + 0.05 * intent_bonus
+            - penalty
+        )
+        if coverage == 1.0 and total_terms:
+            final_score += 0.12
+        elif total_terms and coverage < 0.5:
+            final_score -= 0.10
+
+        enriched = dict(item)
+        enriched["score"] = round(raw_score, 4)
+        enriched["final_score"] = round(final_score, 4)
+        enriched["score_breakdown"] = {
+            "semantic": round(semantic_score, 4),
+            "keyword": round(keyword_score, 4),
+            "source_priority": round(source_priority, 4),
+            "term_coverage": round(coverage, 4),
+            "matched_terms": matched_terms,
+            "total_terms": total_terms,
+            "intent_bonus": round(intent_bonus, 4),
+            "noise_penalty": round(penalty, 4),
+            "raw_score": round(raw_score, 4),
+        }
+        ranked.append((final_score, path, enriched))
+
+    ranked.sort(key=lambda entry: (-entry[0], entry[1]))
+    return [item for _score, _path, item in ranked[:limit]]
 
 
 def _search_in_paths(
@@ -374,7 +534,7 @@ def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[
     try:
         from obsidian_bridge_enhancements import get_vector_store_with_retry
         store = get_vector_store_with_retry()
-        vector_limit = max(limit * 4, 12)
+        vector_limit = max(limit * 6, 20)
         for rank, item in enumerate(store.search(" ".join(terms), top_k=vector_limit)):
             raw_path = str(item.get("file_path") or "").strip()
             path = ""
@@ -395,6 +555,7 @@ def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[
             if not path:
                 continue
             text = str(item.get("text") or "").strip()
+            semantic_score = _semantic_score_from_item(item, rank)
             candidates[path] = {
                 "path": path,
                 "snippet": text[:max_chars],
@@ -404,6 +565,10 @@ def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[
                     if link.strip()
                 ],
                 "source": str(item.get("source") or "rag"),
+                "semantic_score": round(semantic_score, 4),
+                "vector_rank": rank + 1,
+                "vector_distance": item.get("distance"),
+                "vector_rank_score": item.get("rank_score"),
                 "score": _candidate_score(
                     path=path,
                     text=text,
@@ -418,13 +583,18 @@ def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[
         logging.debug(f"Vector store search failed: {e}, falling back to keyword search")
 
     if not vault:
-        return sorted(candidates.values(), key=lambda item: -float(item["score"]))[:limit]
+        return _rerank_obsidian_candidates(
+            candidates,
+            query=query,
+            primary_terms=primary_terms,
+            limit=limit,
+        )
 
     keyword_hits = _search_in_paths(
         knowledge + chat_logs,
         vault,
         terms,
-        max(limit * 5, 20),
+        max(limit * 8, 30),
         max_chars,
         set(),
         query=query,
@@ -434,13 +604,26 @@ def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[
         path = str(hit["path"])
         existing = candidates.get(path)
         if existing is None or float(hit["score"]) > float(existing["score"]):
-            candidates[path] = hit
+            merged = dict(hit)
+            if existing:
+                merged["semantic_score"] = existing.get("semantic_score", 0.0)
+                merged["vector_rank"] = existing.get("vector_rank")
+                merged["vector_distance"] = existing.get("vector_distance")
+                merged["vector_rank_score"] = existing.get("vector_rank_score")
+                merged["source"] = f"{existing.get('source', 'rag')}+keyword"
+            else:
+                merged["semantic_score"] = 0.0
+                merged["source"] = "keyword"
+            candidates[path] = merged
+        elif existing is not None:
+            existing["source"] = f"{existing.get('source', 'rag')}+keyword"
 
-    ranked = sorted(
-        candidates.values(),
-        key=lambda item: (-float(item.get("score", 0)), str(item.get("path", ""))),
+    return _rerank_obsidian_candidates(
+        candidates,
+        query=query,
+        primary_terms=primary_terms,
+        limit=limit,
     )
-    return ranked[:limit]
 
 
 def _split_query_terms(query: str) -> list[str]:

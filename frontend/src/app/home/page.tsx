@@ -20,6 +20,7 @@ import {
   Loader2,
   ExternalLink,
   Tag,
+  AlertTriangle,
 } from 'lucide-react';
 import { normalizePrefecture } from '@/lib/prefecture';
 
@@ -51,6 +52,16 @@ type RecentCase = {
   };
 };
 
+type GapItem = {
+  id?: string;
+  title?: string;
+  priority?: string;
+  category?: string;
+  impact?: string;
+  recommended_action?: string;
+  evidence?: string[];
+};
+
 type DashboardStats = {
   analysis?: DashboardAnalysis;
   recent_cases?: RecentCase[];
@@ -75,6 +86,14 @@ type DashboardStats = {
       category?: string;
       canonical_key?: string;
     }>;
+  };
+  lease_system_gaps?: {
+    available?: boolean;
+    generated_at?: string;
+    mode?: string;
+    source?: string;
+    counts?: Record<string, number>;
+    items?: GapItem[];
   };
   lease_news_focus?: {
     available?: boolean;
@@ -131,6 +150,7 @@ type HomePanelSettings = {
   showNews: boolean;
   showRecentCases: boolean;
   showNewsDigest: boolean;
+  showGaps: boolean;
 };
 
 const HOME_SETTINGS_KEY = "home-dashboard-panel-settings";
@@ -140,6 +160,7 @@ const DEFAULT_PANEL_SETTINGS: HomePanelSettings = {
   showNews: true,
   showRecentCases: true,
   showNewsDigest: true,
+  showGaps: true,
 };
 
 export default function HomeDashboard() {
@@ -246,6 +267,8 @@ export default function HomeDashboard() {
   const recentCases = stats?.recent_cases || [];
   const improvementHighlights = stats?.improvement_highlights?.items || [];
   const improvementCounts = stats?.improvement_highlights?.counts;
+  const gapHighlights = stats?.lease_system_gaps?.items || [];
+  const gapCounts = stats?.lease_system_gaps?.counts || {};
   const newsFocus = leaseNewsFocus ?? stats?.lease_news_focus;
 
   const avgScoreBorrower = analysis?.avg_score_borrower ?? null;
@@ -603,6 +626,57 @@ export default function HomeDashboard() {
           </div>
         )}
 
+        {panelSettings.showGaps && (
+          <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-4">
+              <div>
+                <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                  <AlertTriangle className="text-rose-500 w-5 h-5" />
+                  不足項目・改善診断
+                </h3>
+                <p className="text-xs text-slate-500 font-bold mt-1">
+                  本体非連動の読み取り専用診断。詳細は改善ログへ。
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-[10px] font-black">
+                <span className="rounded-full bg-rose-100 px-2.5 py-1 text-rose-700">Critical {gapCounts.critical || 0}</span>
+                <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-700">High {gapCounts.high || 0}</span>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">Total {gapHighlights.length}</span>
+              </div>
+            </div>
+            {gapHighlights.length === 0 ? (
+              <p className="text-sm text-slate-500">不足項目レポートがまだありません。</p>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                {gapHighlights.slice(0, 3).map((item) => (
+                  <div key={item.id || item.title} className="rounded-xl border border-slate-200 bg-slate-50 p-4 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-[11px] font-black text-slate-500">{item.id || "-"}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${gapPriorityClass(item.priority)}`}>
+                        {item.priority || "unknown"}
+                      </span>
+                      {item.category && (
+                        <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-slate-500">
+                          {item.category}
+                        </span>
+                      )}
+                    </div>
+                    <h4 className="mt-2 text-sm font-black leading-snug text-slate-800">{item.title || "-"}</h4>
+                    {item.impact && (
+                      <p className="mt-2 text-xs leading-relaxed text-slate-600">{item.impact}</p>
+                    )}
+                    {item.recommended_action && (
+                      <p className="mt-2 text-[11px] leading-relaxed text-slate-700">
+                        <span className="font-black">次:</span> {item.recommended_action}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
         {analysis && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* 成約要因トップ3 */}
@@ -882,6 +956,7 @@ export default function HomeDashboard() {
             {[
               { key: "showKpis", label: "KPI", desc: "総成約数と平均指標" },
               { key: "showHighlights", label: "改善項目", desc: "最新の改善候補" },
+              { key: "showGaps", label: "不足項目", desc: "改善診断の上位3件" },
               { key: "showNews", label: "リースニュース", desc: "最新の論点" },
               { key: "showNewsDigest", label: "ニュースダイジェスト", desc: "AI要約ニュース" },
               { key: "showRecentCases", label: "案件履歴", desc: "最近の成約・失注" },
@@ -910,4 +985,12 @@ export default function HomeDashboard() {
       </div>
     </div>
   );
+}
+
+function gapPriorityClass(priority?: string) {
+  const key = String(priority || "").toLowerCase();
+  if (key === "critical") return "bg-rose-100 text-rose-800";
+  if (key === "high") return "bg-amber-100 text-amber-800";
+  if (key === "medium") return "bg-sky-100 text-sky-800";
+  return "bg-slate-200 text-slate-700";
 }

@@ -339,6 +339,50 @@ class KnowledgeVectorStore:
             score += 0.10
         return score
 
+    def _term_coverage(self, query: str, hit: dict) -> tuple[float, int, int]:
+        terms = [term for term in self._query_terms(query) if term not in {"確認", "注意", "リスク", "関係", "方法"}]
+        if not terms:
+            return 0.0, 0, 0
+        haystack = " ".join(
+            [
+                str(hit.get("text") or ""),
+                str(hit.get("file_name") or ""),
+                str(hit.get("section") or ""),
+                str(hit.get("ref") or ""),
+                self._display_path(hit),
+                str(hit.get("wikilinks") or ""),
+            ]
+        ).lower()
+        matched = sum(1 for term in terms if term in haystack)
+        return matched / len(terms), matched, len(terms)
+
+    def _source_priority(self, hit: dict) -> float:
+        path = self._display_path(hit)
+        for prefix, boost in _PREFERRED_PATH_BOOSTS:
+            if path.startswith(prefix):
+                return min(1.0, 0.72 + boost * 2.2)
+        for prefix, penalty in _LOW_PRIORITY_PATH_PENALTIES:
+            if path.startswith(prefix):
+                return max(0.1, 0.50 - penalty)
+        return 0.55
+
+    def _noise_penalty(self, query: str, hit: dict) -> float:
+        priority = self._business_priority(query, hit)
+        if priority <= -9.0:
+            return 1.0
+        path = self._display_path(hit)
+        file_name = str(hit.get("file_name") or "")
+        low_query = (query or "").lower()
+        penalty = 0.0
+        if not any(term in low_query for term in ("チャット", "会話", "日報", "weekly", "改善ログ")):
+            if any(path.startswith(prefix) for prefix, _penalty in _LOW_PRIORITY_PATH_PENALTIES):
+                penalty += 0.18
+        if "検索語インデックス" in file_name and not any(term in query for term in ("検索語", "インデックス", "wiki")):
+            penalty += 0.18
+        if ("Wiki" in file_name or "wiki" in file_name) and "wiki" not in low_query:
+            penalty += 0.04
+        return min(penalty, 1.0)
+
     def _rerank_hits(self, query: str, hits: list[dict], top_k: int) -> list[dict]:
         ranked: list[tuple[float, int, dict]] = []
         for idx, hit in enumerate(hits):
@@ -346,13 +390,39 @@ class KnowledgeVectorStore:
             if priority <= -9.0:
                 continue
             if hit.get("distance") is not None:
-                base = -float(hit.get("distance") or 0.0)
+                distance = float(hit.get("distance") or 0.0)
+                semantic_score = max(0.0, min(1.0, 1.0 - distance))
+                base = semantic_score
             else:
-                base = float(hit.get("score") or 0.0) / 20.0
-            rank_score = base + priority
+                semantic_score = 0.0
+                base = min(1.0, float(hit.get("score") or 0.0) / 20.0)
+            coverage, matched_terms, total_terms = self._term_coverage(query, hit)
+            source_priority = self._source_priority(hit)
+            noise_penalty = self._noise_penalty(query, hit)
+            rank_score = (
+                0.40 * base
+                + 0.25 * coverage
+                + 0.20 * source_priority
+                + 0.15 * max(-0.3, min(0.3, priority))
+                - noise_penalty
+            )
+            if coverage == 1.0 and total_terms:
+                rank_score += 0.08
+            elif total_terms and coverage < 0.5:
+                rank_score -= 0.08
             item = dict(hit)
             item["rank_score"] = round(rank_score, 4)
             item["priority_score"] = round(priority, 4)
+            item["score_breakdown"] = {
+                "semantic": round(semantic_score, 4),
+                "base": round(base, 4),
+                "term_coverage": round(coverage, 4),
+                "matched_terms": matched_terms,
+                "total_terms": total_terms,
+                "source_priority": round(source_priority, 4),
+                "business_priority": round(priority, 4),
+                "noise_penalty": round(noise_penalty, 4),
+            }
             ranked.append((rank_score, -idx, item))
         ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
         return [item for _score, _idx, item in ranked[:top_k]]

@@ -279,6 +279,27 @@ def test_search_notes_allows_humor_when_query_requests_it(tmp_path, monkeypatch)
     assert hits[0]["path"] == "Humor/審査コメント口調.md"
 
 
+def test_search_notes_returns_rerank_breakdown_and_asset_priority(tmp_path, monkeypatch):
+    vault = _make_vault(tmp_path)
+    asset = vault / "Projects" / "tune_lease_55" / "Asset Knowledge" / "工作機械.md"
+    asset.parent.mkdir(parents=True, exist_ok=True)
+    asset.write_text("工作機械の残価と中古売却、再販リスクを確認する。", encoding="utf-8")
+    chat_log = vault / "Projects" / "tune_lease_55" / "AI Chat" / "2026-06-08.md"
+    chat_log.parent.mkdir(parents=True, exist_ok=True)
+    chat_log.write_text("残価と中古売却について雑談したチャットログ。", encoding="utf-8")
+    monkeypatch.setenv("OBSIDIAN_VAULT", str(vault))
+
+    from mobile_app import obsidian_bridge
+    importlib.reload(obsidian_bridge)
+
+    hits = obsidian_bridge.search_notes("残価 中古売却", limit=2)
+    assert hits[0]["path"] == "Projects/tune_lease_55/Asset Knowledge/工作機械.md"
+    assert "final_score" in hits[0]
+    assert hits[0]["score_breakdown"]["source_priority"] == 0.95
+    assert hits[0]["score_breakdown"]["term_coverage"] == 1.0
+    assert hits[1]["score_breakdown"]["noise_penalty"] > 0
+
+
 def test_append_wiki_note_writes_hub(tmp_path, monkeypatch):
     vault = _make_vault(tmp_path)
     monkeypatch.setenv("OBSIDIAN_VAULT", str(vault))

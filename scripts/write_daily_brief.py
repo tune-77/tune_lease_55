@@ -13,6 +13,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 VAULT_PATH = Path.home() / "Documents" / "Obsidian Vault"
 LATEST_JSON = PROJECT_ROOT / "reports" / "latest.json"
 MACRO_JSON = PROJECT_ROOT / "static_data" / "macro_context.json"
+SIDECAR_BRIEF_MD = PROJECT_ROOT / "reports" / "agent_sidecar_brief.md"
 OUTPUT_PATH = VAULT_PATH / "DAILY-BRIEF.md"
 
 
@@ -91,6 +92,22 @@ def format_new_rev_candidates(report: dict) -> str:
     return "\n".join(lines)
 
 
+def format_agent_sidecar_notes(max_chars: int = 1800) -> str:
+    """Read sidecar agent observations as advisory context only."""
+    if not SIDECAR_BRIEF_MD.exists():
+        return "_Sidecar agent brief 未生成_"
+    try:
+        text = SIDECAR_BRIEF_MD.read_text(encoding="utf-8", errors="ignore").strip()
+    except OSError:
+        return "_Sidecar agent brief 読み込み不可_"
+    if not text:
+        return "_Sidecar agent brief 空_"
+    marker = "## Reports"
+    if marker in text:
+        text = text.split(marker, 1)[1].strip()
+    return text[:max_chars].strip()
+
+
 def main() -> None:
     if not VAULT_PATH.exists():
         print(f"[write_daily_brief] Vault が見つかりません: {VAULT_PATH}。スキップします。")
@@ -136,6 +153,10 @@ def main() -> None:
 ## マクロ経済環境
 
 {format_macro_summary(macro)}
+
+## Sidecar Agent Notes（参考・本体非連動）
+
+{format_agent_sidecar_notes()}
 
 ---
 
