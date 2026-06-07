@@ -30,6 +30,11 @@ echo ""
 echo "[Step -1] 実装済み改善を Obsidian インデックスに自動同期中..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/sync_implemented_to_obsidian.py" || true
 
+# --- Step 0.0: マクロデータ更新 ---
+echo ""
+echo "[Step 0.0] マクロデータ更新..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/fetch_fincept_data.py" || true
+
 # --- Step 0: Obsidian 改善インデックス抽出 ---
 echo ""
 echo "[Step 0] Obsidian 改善インデックスから改善案を抽出中..."
@@ -174,6 +179,10 @@ fi
 echo ""
 echo "[Step 9] 滞留改善案の自動 parking（21日以上 needs_review）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/rotate_weekly_focus.py" || true
+
+echo ""
+echo "[Step 10] e-Stat業種別統計更新..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/fetch_estat_industry.py" || true
 
 echo ""
 echo "========================================"
