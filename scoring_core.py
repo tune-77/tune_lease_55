@@ -702,13 +702,24 @@ def run_quick_scoring(inputs: dict) -> dict:
     else:
         bench_equity_ratio = float(bench.get("equity_ratio_display") or 0)
     bench_comment = (bench.get("comment") or "").strip()
+    bench_lease_cost_ratio = float(bench.get("lease_cost_ratio") or 0)
+    rent_expense_ky = _safe_float(inputs.get("rent_expense"))  # 千円
+    user_lease_cost_ratio = (rent_expense_ky / nenshu * 100) if nenshu > 0 else 0.0
 
     comp_margin = "高い" if user_op_margin >= bench_op_margin else "低い"
     comp_equity = "高い" if user_equity_ratio >= bench_equity_ratio else "低い"
+    _lease_line = ""
+    if bench_lease_cost_ratio > 0:
+        comp_lease = "高い" if user_lease_cost_ratio > bench_lease_cost_ratio else "低い"
+        _lease_line = (
+            f"\n- **リース費用比率**: {user_lease_cost_ratio:.1f}% "
+            f"(業界目安: {bench_lease_cost_ratio:.1f}%) → 平均より{comp_lease}"
+        )
     comparison = (
         f"- **営業利益率**: {user_op_margin:.1f}% (業界目安: {bench_op_margin:.1f}%) → 平均より{comp_margin}\n"
         f"- **自己資本比率**: {user_equity_ratio:.1f}% (業界目安: {bench_equity_ratio:.1f}%) → 平均より{comp_equity}\n"
         f"- **業界**: {bench_comment or '—'}"
+        f"{_lease_line}"
     )
 
     # ── 単位変換メモ ───────────────────────────────────────────────────────────
@@ -834,6 +845,17 @@ def run_quick_scoring(inputs: dict) -> dict:
         # -1%ごとに約0.5点減点、最大-30点
         equity_penalty = max(-30.0, user_equity_ratio * 0.5)
     base_score = max(0, min(100, round(base_score + equity_penalty, 1)))
+
+    # ── リース費用比率ペナルティ ────────────────────────────────────────────────
+    # RFモデルは rent_expense の絶対額を学習済みのため、ここでは業界平均との相対比のみ補正する
+    lease_ratio_adj = 0.0
+    if bench_lease_cost_ratio > 0 and user_lease_cost_ratio > 0:
+        ratio_vs_bench = user_lease_cost_ratio / bench_lease_cost_ratio
+        if ratio_vs_bench > 2.0:
+            lease_ratio_adj = -3.0   # 業界平均の2倍超：リース負担過大
+        elif ratio_vs_bench > 1.5:
+            lease_ratio_adj = -1.5   # 業界平均の1.5倍超：やや過大
+    base_score = max(0, min(100, round(base_score + lease_ratio_adj, 1)))
 
     # ── 担当者直感スコア補正（1-5スケール、中立=3、±INTUITION_MAX_ADJ 点まで）──
     # 画面や経路によって直感スコアのキーが `intuition_score` / `intuition` に分かれていたため、
@@ -999,6 +1021,9 @@ def run_quick_scoring(inputs: dict) -> dict:
         "user_equity_ratio": user_equity_ratio,
         "bench_op_margin": bench_op_margin,
         "bench_equity_ratio": bench_equity_ratio,
+        "user_lease_cost_ratio": round(user_lease_cost_ratio, 2),
+        "bench_lease_cost_ratio": bench_lease_cost_ratio,
+        "lease_ratio_adj": lease_ratio_adj,
         "score_borrower": round(score_borrower, 1),
         "industry_sub": industry_sub,
         "industry_major": industry_major,
