@@ -619,10 +619,10 @@ export default function LeaseKunWizard() {
             {step === 6 && (
               <div className="space-y-2">
                 <select name="grade" value={formData.grade} onChange={handleChange} className={sel}>
-                  <option>①正常先</option>
-                  <option>②要注意先（要管理）</option>
-                  <option>③要注意先</option>
-                  <option>④無格付先</option>
+                  <option>① 1-3先</option>
+                  <option>② 4-6先</option>
+                  <option>③ 要注意先</option>
+                  <option>④ 無格付先</option>
                 </select>
                 <div className="grid grid-cols-3 gap-2">
                   <input type="text" inputMode="decimal" name="contracts" value={formData.contracts} onChange={handleChange} placeholder="契約件数" className={inp} />
