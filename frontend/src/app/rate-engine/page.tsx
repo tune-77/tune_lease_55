@@ -23,10 +23,10 @@ const ASSET_OPTIONS = [
 ];
 
 const GRADE_OPTIONS = [
-  { id: "①", label: "①1-3（優良）" },
-  { id: "②", label: "②4-6（標準）" },
-  { id: "③", label: "③7-9（注意）" },
-  { id: "④", label: "④10+（要注意）" },
+  { id: "① 1-3先", label: "① 1-3先" },
+  { id: "② 4-6先", label: "② 4-6先" },
+  { id: "③ 要注意先", label: "③ 要注意先" },
+  { id: "④ 無格付先", label: "④ 無格付先" },
 ];
 
 const TERM_OPTIONS = [
@@ -71,7 +71,7 @@ export default function RateEnginePage() {
   const [score, setScore] = useState(70);
   const [termMonths, setTermMonths] = useState(60);
   const [assetId, setAssetId] = useState("other");
-  const [grade, setGrade] = useState("②");
+  const [grade, setGrade] = useState("② 4-6先");
   const [amount, setAmount] = useState("10000000");
   const [result, setResult] = useState<RateResult | null>(null);
   const [loading, setLoading] = useState(false);
