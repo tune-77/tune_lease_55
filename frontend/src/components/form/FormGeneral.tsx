@@ -301,10 +301,10 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">格付</label>
             <select name="grade" value={data.grade} onChange={handleChange} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 h-[46px]">
-              <option>①1-3 (優良)</option>
-              <option>②4-6 (標準)</option>
-              <option>③要注意以下</option>
-              <option>④無格付</option>
+              <option>①正常先</option>
+              <option>②要注意先（要管理）</option>
+              <option>③要注意先</option>
+              <option>④無格付先</option>
             </select>
             <p className="text-[10px] text-slate-400 mt-0.5">銀行内部格付。①1-3が最優良。審査スコアに直結します</p>
           </div>

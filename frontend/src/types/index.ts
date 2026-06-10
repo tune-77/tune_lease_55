@@ -75,7 +75,7 @@ export const defaultFormData: ScoringFormData = {
   industry_major: "D 建設業",
   industry_sub: "06 総合工事業",
   industry_detail: "",
-  grade: "②4-6 (標準)",
+  grade: "②要注意先（要管理）",
   trend_grade_t0: "無格付",
   trend_grade_t1: "無格付",
   trend_grade_t2: "無格付",
