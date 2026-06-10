@@ -23,10 +23,10 @@ const ASSET_OPTIONS = [
 ];
 
 const GRADE_OPTIONS = [
-  { id: "①", label: "①1-3（優良）" },
-  { id: "②", label: "②4-6（標準）" },
-  { id: "③", label: "③7-9（注意）" },
-  { id: "④", label: "④10+（要注意）" },
+  { id: "①", label: "①正常先" },
+  { id: "②", label: "②要注意先（要管理）" },
+  { id: "③", label: "③要注意先" },
+  { id: "④", label: "④無格付先" },
 ];
 
 const TERM_OPTIONS = [
