@@ -320,8 +320,8 @@ export default function HomeDashboard() {
   };
 
   return (
-    <div className="p-8 min-h-[calc(100vh-2rem)] animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="mb-12 relative overflow-hidden bg-gradient-to-r from-blue-600 to-indigo-700 rounded-[2.5rem] p-10 text-white shadow-2xl shadow-blue-500/20 group">
+    <div className="p-4 sm:p-8 min-h-[calc(100vh-2rem)] animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="mb-8 sm:mb-12 relative overflow-hidden bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl sm:rounded-[2.5rem] p-6 sm:p-10 text-white shadow-2xl shadow-blue-500/20 group">
         <button
           onClick={() => setSettingsOpen(true)}
           className="absolute top-4 right-4 z-20 inline-flex items-center gap-1.5 rounded-xl bg-white/20 backdrop-blur-md border border-white/30 px-3 py-2 text-sm font-bold text-white hover:bg-white/30 transition-colors"
@@ -330,27 +330,27 @@ export default function HomeDashboard() {
           カスタマイズ
         </button>
         <div className="relative z-10 max-w-2xl">
-          <h1 className="text-4xl font-black mb-4 flex items-center gap-4">
-            <span className="bg-white/20 p-3 rounded-2xl backdrop-blur-md">
+          <h1 className="text-2xl sm:text-4xl font-black mb-4 flex items-center gap-3 sm:gap-4">
+            <span className="bg-white/20 p-2 sm:p-3 rounded-xl sm:rounded-2xl backdrop-blur-md">
               <PieChart className="w-8 h-8 text-white" />
             </span>
             リース審査アシスタント：めぶき
           </h1>
-          <p className="text-blue-100 text-lg font-bold leading-relaxed mb-8 opacity-90">
+          <p className="text-blue-100 text-sm sm:text-lg font-bold leading-relaxed mb-6 sm:mb-8 opacity-90">
             お疲れ様です！本日の審査状況と、蓄積された成約データをAIが徹底分析しました。<br/>
             最適な審査判断のためのインサイトをお届けします。
           </p>
-          <div className="flex gap-4">
-            <div className="bg-white/10 backdrop-blur-md border border-white/20 px-6 py-3 rounded-2xl">
+          <div className="flex flex-wrap gap-3">
+            <div className="bg-white/10 backdrop-blur-md border border-white/20 px-3 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-2xl">
               <div className="text-[10px] font-black uppercase tracking-widest text-blue-200">System Status</div>
-              <div className="text-sm font-black flex items-center gap-2">
+              <div className="text-xs sm:text-sm font-black flex items-center gap-2">
                 <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
                 {loading ? "ONLINE & SYNCING" : "ONLINE & SYNCED"}
               </div>
             </div>
-            <div className="bg-white/10 backdrop-blur-md border border-white/20 px-6 py-3 rounded-2xl">
+            <div className="bg-white/10 backdrop-blur-md border border-white/20 px-3 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-2xl">
               <div className="text-[10px] font-black uppercase tracking-widest text-blue-200">AI Intelligence</div>
-              <div className="text-sm font-black">TimesFM v1.2 Active</div>
+              <div className="text-xs sm:text-sm font-black">TimesFM v1.2 Active</div>
             </div>
           </div>
         </div>
