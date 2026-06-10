@@ -324,6 +324,10 @@ if [ "$FORCE_RESTART" = "1" ]; then
     stop_existing_launchers
   fi
   stop_cloudflare_tunnels
+  # lsof ベースの stop_port_process だけでは supervisor 終了後に re-parent された
+  # uvicorn が残存するレースがある。名前で直接 kill して確実に排除する。
+  pkill -f "uvicorn api.main:app" 2>/dev/null || true
+  sleep 1
   stop_port_process "$API_PORT" "FastAPI"
   stop_port_process "$NEXT_PORT" "Next.js"
 else
