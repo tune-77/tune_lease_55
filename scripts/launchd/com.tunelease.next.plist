@@ -27,8 +27,6 @@
     <string>127.0.0.1</string>
     <key>API_RELOAD</key>
     <string>0</string>
-    <key>SKIP_STALE_LAUNCHER_SWEEP</key>
-    <string>1</string>
   </dict>
 
   <key>RunAtLoad</key>
