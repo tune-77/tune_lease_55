@@ -880,21 +880,27 @@ def _build_data_source_summary(inputs: dict, result: dict) -> dict:
 
 def _build_rate_proposal(inputs: dict, result: dict) -> dict:
     import datetime
-    from base_rate_master import get_base_rate_by_term
+    try:
+        from base_rate_master import get_base_rate_by_term
+    except Exception:
+        get_base_rate_by_term = lambda *a, **kw: None  # noqa: E731
 
     score = max(0.0, min(100.0, _score_float(result.get("score", result.get("hantei_score")), 0.0)))
     term_months = max(12, min(120, int(_score_float(inputs.get("lease_term"), 60))))
     lease_amount = max(1.0, _score_float(inputs.get("acquisition_cost"), 1.0))
     year_month = datetime.date.today().strftime("%Y-%m")
 
-    base_rate = get_base_rate_by_term(year_month, term_months)
-    if base_rate is None:
-        for i in range(1, 7):
-            prev_date = datetime.date.today().replace(day=1) - datetime.timedelta(days=30 * i)
-            base_rate = get_base_rate_by_term(prev_date.strftime("%Y-%m"), term_months)
-            if base_rate is not None:
-                year_month = prev_date.strftime("%Y-%m")
-                break
+    try:
+        base_rate = get_base_rate_by_term(year_month, term_months)
+        if base_rate is None:
+            for i in range(1, 7):
+                prev_date = datetime.date.today().replace(day=1) - datetime.timedelta(days=30 * i)
+                base_rate = get_base_rate_by_term(prev_date.strftime("%Y-%m"), term_months)
+                if base_rate is not None:
+                    year_month = prev_date.strftime("%Y-%m")
+                    break
+    except Exception:
+        base_rate = None
     if base_rate is None:
         base_rate = 2.0
 
