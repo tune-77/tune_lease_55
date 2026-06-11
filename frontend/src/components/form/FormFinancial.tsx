@@ -1,6 +1,8 @@
-import React from 'react';
+'use client';
+import React, { useState } from 'react';
 import SliderInput from '../SliderInput';
 import { ScoringFormData } from '../../types';
+import OcrUpload, { OcrResult } from './OcrUpload';
 
 interface FormFinancialProps {
   data: ScoringFormData;
@@ -8,8 +10,36 @@ interface FormFinancialProps {
 }
 
 export default function FormFinancial({ data, onChange }: FormFinancialProps) {
+  const [showOcr, setShowOcr] = useState(false);
+
+  const handleOcrApply = (ocr: OcrResult) => {
+    (Object.entries(ocr) as [keyof OcrResult, number | null][]).forEach(([key, val]) => {
+      if (val !== null && val !== undefined) {
+        onChange(key, val);
+      }
+    });
+    setShowOcr(false);
+  };
+
   return (
     <div className="space-y-6">
+
+      {/* OCR読み取り（折りたたみ）*/}
+      <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
+        <button
+          type="button"
+          onClick={() => setShowOcr(!showOcr)}
+          className="flex items-center gap-2 text-sm font-semibold text-blue-700 hover:text-blue-900"
+        >
+          <span>{showOcr ? '▲' : '▼'}</span>
+          決算書画像からOCR読み取り（AI）
+        </button>
+        {showOcr && (
+          <div className="mt-3">
+            <OcrUpload onApply={handleOcrApply} />
+          </div>
+        )}
+      </div>
       
       {/* P/L セクション */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
