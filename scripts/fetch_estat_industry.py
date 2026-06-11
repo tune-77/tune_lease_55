@@ -28,6 +28,10 @@ STATIC_DIR = REPO_ROOT / "static_data"
 BENCHMARKS_PATH = STATIC_DIR / "industry_benchmarks.json"
 CACHE_PATH = STATIC_DIR / "industry_estat_cache.json"
 
+# iCloud メインVault（write_daily_brief.py / check_aurion_state.py と同一定義）
+_ICLOUD_DOCS = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents"
+ICLOUD_MAIN_VAULT_PATH = _ICLOUD_DOCS / "Obsidian Vault"
+
 # e-Stat API エンドポイント
 ESTAT_BASE_URL = "https://api.e-stat.go.jp/rest/3.0/app/json/getStatsData"
 
@@ -226,7 +230,48 @@ def update_benchmarks(metrics: dict[str, dict[str, float]]) -> dict[str, list[st
     with open(BENCHMARKS_PATH, "w", encoding="utf-8") as f:
         json.dump(benchmarks, f, ensure_ascii=False, indent=4)
 
+    if changes:
+        _write_estat_update_log(changes, today)
+
     return changes
+
+
+def _write_estat_update_log(changes: dict[str, list[str]], date_str: str) -> None:
+    """変更があった業種の差分サマリを iCloud メインVault に Markdown として保存する。"""
+    if not ICLOUD_MAIN_VAULT_PATH.exists():
+        return
+
+    log_dir = ICLOUD_MAIN_VAULT_PATH / "Projects" / "tune_lease_55" / "Industry"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / f"e-Stat更新ログ_{date_str}.md"
+
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    lines = [
+        f"# e-Stat業種別財務指標 更新ログ — {date_str}",
+        "",
+        f"> 自動生成: {now} | `fetch_estat_industry.py` | 更新業種数: {len(changes)}",
+        "",
+        "## 更新された業種と差分",
+        "",
+    ]
+    for industry, diffs in sorted(changes.items()):
+        lines.append(f"### {industry}")
+        for d in diffs:
+            lines.append(f"- {d}")
+        lines.append("")
+
+    lines += [
+        "## 出典",
+        "",
+        "- e-Stat 法人企業統計調査（財務省）statsDataId=0003060791",
+        f"- `static_data/industry_benchmarks.json` に反映済み",
+    ]
+
+    try:
+        log_path.write_text("\n".join(lines), encoding="utf-8")
+        print(f"  e-Stat更新ログ保存: {log_path}")
+    except OSError as e:
+        print(f"  警告: e-Stat更新ログ保存失敗: {e}")
 
 
 def update_from_cache() -> bool:

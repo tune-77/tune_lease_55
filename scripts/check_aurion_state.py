@@ -20,10 +20,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 AURION_DIR = PROJECT_ROOT / "data" / "aurion_daily"
 EXPORT_FILE = Path(os.environ.get("EXPORT_FILE", "/tmp/obsidian_improvements_export.txt"))
 
-# DAILY-BRIEF の書き出し先（write_daily_brief.py と同じパス）
+# Vault パス（write_daily_brief.py と同一定義）
 _VAULT_PATH = Path.home() / "Documents" / "Obsidian Vault"
 _ICLOUD_DOCS = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents"
 _ICLOUD_VAULT_PATH = _ICLOUD_DOCS / "lease-wiki-vault"
+_ICLOUD_MAIN_VAULT_PATH = _ICLOUD_DOCS / "Obsidian Vault"   # reindex_obsidian._DEFAULT_VAULT と同一
 
 
 def find_latest_state() -> Path | None:
@@ -107,19 +108,52 @@ def append_to_daily_brief(alerts: list[str], state_path: Path, state: dict) -> N
 """
     section += "\n".join(f"- {a}" for a in alerts) + "\n"
 
-    for vault in [_VAULT_PATH, _ICLOUD_VAULT_PATH]:
+    for vault in [_VAULT_PATH, _ICLOUD_VAULT_PATH, _ICLOUD_MAIN_VAULT_PATH]:
         brief = vault / "DAILY-BRIEF.md"
         if brief.exists():
             try:
                 existing = brief.read_text(encoding="utf-8")
                 if "aurion 自動診断アラート" in existing:
-                    # 既存アラートセクションを上書き
                     marker = "## ⚠️ aurion 自動診断アラート"
                     existing = existing.split(marker)[0].rstrip()
                 brief.write_text(existing + "\n" + section, encoding="utf-8")
                 print(f"  DAILY-BRIEF.md にアラート追記: {brief}")
             except OSError as e:
                 print(f"  警告: DAILY-BRIEF.md 書き込み失敗 ({brief}): {e}")
+
+
+def save_alert_file(alerts: list[str], state_path: Path, state: dict) -> None:
+    """iCloud メインVault の Projects/tune_lease_55/Alerts/ にアラートファイルを保存する。"""
+    if not alerts or not _ICLOUD_MAIN_VAULT_PATH.exists():
+        return
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    started_at = state.get("started_at", "不明")
+
+    alert_dir = _ICLOUD_MAIN_VAULT_PATH / "Projects" / "tune_lease_55" / "Alerts"
+    alert_dir.mkdir(parents=True, exist_ok=True)
+    alert_path = alert_dir / f"aurion_alert_{today}.md"
+
+    content = f"""# aurion 自動診断アラート — {today}
+
+> 生成: {now} | 診断ファイル: `{state_path.name}` (started: {started_at})
+
+## 検出された異常
+
+"""
+    content += "\n".join(f"- {a}" for a in alerts) + "\n"
+
+    conclusions = state.get("reasoning", {}).get("conclusions", [])
+    if conclusions:
+        content += "\n## aurion 推論サマリ\n\n"
+        content += "\n".join(f"- {c}" for c in conclusions) + "\n"
+
+    try:
+        alert_path.write_text(content, encoding="utf-8")
+        print(f"  アラートファイル保存: {alert_path}")
+    except OSError as e:
+        print(f"  警告: アラートファイル保存失敗: {e}")
 
 
 def main() -> int:
@@ -143,6 +177,7 @@ def main() -> int:
             print(f"    - {a}")
         append_to_export(alerts, state_path)
         append_to_daily_brief(alerts, state_path, state)
+        save_alert_file(alerts, state_path, state)
     else:
         print("  ✅ 異常なし")
 

@@ -187,11 +187,13 @@ def task_machinery_orders_to_vault() -> dict:
     signal = core["macro_signal"]
 
     icloud_docs = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents"
-    vault_path = icloud_docs / "lease-wiki-vault"
-    if not vault_path.exists():
-        return {"skipped": True, "reason": f"lease-wiki-vault が見つかりません: {vault_path}"}
+    lease_wiki_vault = icloud_docs / "lease-wiki-vault"
+    icloud_main_vault = icloud_docs / "Obsidian Vault"   # reindex_obsidian._DEFAULT_VAULT と同一
 
-    output_dir = vault_path / "10_Industry_Data"
+    if not lease_wiki_vault.exists() and not icloud_main_vault.exists():
+        return {"skipped": True, "reason": "iCloud Vault が見つかりません"}
+
+    output_dir = lease_wiki_vault / "10_Industry_Data"
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"機械受注統計_{latest_month}.md"
 
@@ -237,9 +239,21 @@ def task_machinery_orders_to_vault() -> dict:
 - データ取得日: {meta['retrieved_at']}
 """
 
-    output_path.write_text(content, encoding="utf-8")
+    written: list[str] = []
+    if lease_wiki_vault.exists():
+        output_path.write_text(content, encoding="utf-8")
+        written.append(str(output_path))
+
+    # iCloud メインVault の Projects/tune_lease_55/Industry/ にも書き出す
+    if icloud_main_vault.exists():
+        main_dir = icloud_main_vault / "Projects" / "tune_lease_55" / "Industry"
+        main_dir.mkdir(parents=True, exist_ok=True)
+        main_path = main_dir / f"機械受注統計_{latest_month}.md"
+        main_path.write_text(content, encoding="utf-8")
+        written.append(str(main_path))
+
     return {
-        "output": str(output_path),
+        "written": written,
         "latest_month": latest_month,
         "macro_signal": signal,
     }
