@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 # バッチサイズ（大きな Vault でも OOM しないよう分割 upsert）
 _BATCH_SIZE = 50
 
+# この文字数未満のチャンクはインデックスから除外（「要確認」「TODO」等の短文ノイズ対策）
+_MIN_CHUNK_LENGTH = 20
+
 
 def _get_indexed_mtimes() -> dict[str, float]:
     """ChromaDB に保存済みの doc_id → mtime マップを取得する。"""
@@ -61,6 +64,12 @@ def run_indexing(
             logger.debug(f"[Indexer] duplicate doc_id skipped: {chunk.doc_id} ({chunk.file_name}#{chunk.section})")
             skipped += 1
             continue
+
+        if len(chunk.text.strip()) < _MIN_CHUNK_LENGTH:
+            logger.debug(f"[Indexer] short chunk skipped: {chunk.file_name}#{chunk.section!r} ({len(chunk.text.strip())} chars)")
+            skipped += 1
+            continue
+
         seen_ids.add(chunk.doc_id)
 
         cached_mtime = indexed_mtimes.get(chunk.doc_id, 0.0)
