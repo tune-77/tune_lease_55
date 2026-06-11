@@ -1840,15 +1840,27 @@ def get_knowledge_graph(limit: int = 180):
         store = get_store()
         store._ensure_collection()  # collection only; does not force encoder/network
         collection = store._collection
-        if collection is None or collection.count() == 0:
+        try:
+            chunk_total = collection.count() if collection is not None else 0
+            raw = collection.get(include=["metadatas"]) if chunk_total else None
+        except Exception as stale_error:
+            # 再インデックスでコレクションが作り直されると、キャッシュ済みハンドルが
+            # "Collection [...] does not exist" で無効になる。取り直して1回だけリトライ。
+            if "does not exist" not in str(stale_error):
+                raise
+            store._collection = None
+            store._client = None
+            store._ensure_collection()
+            collection = store._collection
+            chunk_total = collection.count() if collection is not None else 0
+            raw = collection.get(include=["metadatas"]) if chunk_total else None
+        if not raw:
             return {
                 "nodes": [],
                 "edges": [],
                 "summary": {"indexed_chunks": 0, "notes": 0, "links": 0, "limit": limit},
                 "legend": [],
             }
-
-        raw = collection.get(include=["metadatas"])
         metadatas = raw.get("metadatas") or []
 
         notes: dict[str, dict[str, Any]] = {}

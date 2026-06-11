@@ -30,6 +30,14 @@
       "cwd": "frontend",
       "port": 3100,
       "autoPort": false
+    },
+    {
+      "name": "frontend-dev",
+      "runtimeExecutable": "/Users/kobayashiisaoryou/clawd/tune_lease_55/frontend/node_modules/.bin/next",
+      "runtimeArgs": ["dev", "--webpack", "--hostname", "127.0.0.1", "--port", "3101"],
+      "cwd": "frontend",
+      "port": 3101,
+      "autoPort": false
     }
   ]
 }
