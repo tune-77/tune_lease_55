@@ -86,6 +86,7 @@ class ScoringResponse(BaseModel):
     data_source_summary: Optional[dict] = None  # 入力値・判定根拠の情報源サマリ
     screening_context_notes: Optional[dict] = None  # 入力情報を審査コメント・条件・リスクへ反映したメモ
     approval_comment_draft: Optional[dict] = None  # 稟議コメント案
+    estat_context: Optional[dict] = None  # e-Stat統合コンテキスト（業種・リース・景気）
 
 class CaseRegisterRequest(BaseModel):
     case_id: str

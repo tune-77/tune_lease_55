@@ -35,6 +35,7 @@ from constants import (
     STRENGTH_TAG_OPTIONS
 )
 from indicators import format_indicator_comparison
+from estat_context import build_estat_context
 
 QUALITATIVE_DELTA_FACTOR = 0.3
 
@@ -185,6 +186,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
     bench_lease_burden = 0.0
     bench_capex_to_sales = 0.0
     bench_lease_to_capex = 0.0
+    estat_context = None
     qual_weight_sum = 0
     _eff_approval = 71
     
@@ -457,6 +459,25 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 except Exception:
                     user_lease_credit_pct = None
                     user_annual_lease_pct = None
+
+                try:
+                    estat_context = build_estat_context(
+                        selected_major=selected_major or "",
+                        selected_sub=selected_sub or "",
+                        user_op_margin=user_op_margin,
+                        user_equity_ratio=user_equity_ratio,
+                        user_current_ratio=user_current_ratio,
+                        user_debt_ratio=user_debt_ratio,
+                        user_asset_turnover=user_asset_turnover,
+                        user_annual_lease_pct=user_annual_lease_pct,
+                        user_lease_credit_pct=user_lease_credit_pct,
+                        benchmarks_data=benchmarks_data,
+                        capex_lease_data=capex_lease_data,
+                    )
+                except Exception as e:
+                    if _api_mode:
+                        print(f"[CORE_WARN] e-Stat context build failed: {e}")
+                    estat_context = None
 
                 # リース負担率比較テキスト行
                 _lease_compare_line = ""
@@ -790,6 +811,13 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 except Exception:
                     pass
 
+                if estat_context:
+                    ai_completed_factors.append({
+                        "factor": "e-Stat統合文脈",
+                        "effect_percent": 0,
+                        "detail": estat_context.get("summary", ""),
+                    })
+
                 from bayesian_engine import THRESHOLD_APPROVAL
                 approval_line = THRESHOLD_APPROVAL * 100
                 
@@ -950,7 +978,15 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     ),
                     "financials": {
                         "nenshu": nenshu, "rieki": rieki, "total_assets": total_assets, "net_assets": net_assets
-                    }
+                    },
+                    "lease_burden_data": {
+                        "user_lease_credit_pct":  user_lease_credit_pct,
+                        "user_annual_lease_pct":  user_annual_lease_pct,
+                        "bench_lease_burden":     bench_lease_burden,
+                        "bench_capex_to_sales":   bench_capex_to_sales,
+                        "bench_lease_to_capex":   bench_lease_to_capex,
+                    },
+                    "estat_context": estat_context,
                 }
                 # [物理ファイル通信] APIへの確実なデータ受け渡し用 (絶対パス固定)
                 import json
@@ -1286,6 +1322,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                         "bench_capex_to_sales":   bench_capex_to_sales,
                         "bench_lease_to_capex":   bench_lease_to_capex,
                     },
+                    "estat_context": estat_context,
                 }
 
                 try:

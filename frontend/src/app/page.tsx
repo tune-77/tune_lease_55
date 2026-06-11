@@ -500,6 +500,7 @@ export default function Dashboard() {
               modelDecision={result?.hantei || ""}
               industry_major={result?.industry_major || formData.industry_major || ""}
               formData={formData}
+              estatContext={result?.estat_context || null}
               onChatLoaded={setGunshiText}
             />
           </div>

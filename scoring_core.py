@@ -23,6 +23,7 @@ if _SCRIPT_DIR not in sys.path:
 
 from data_cases import get_effective_coeffs
 from app_logger import log_warning
+from estat_context import build_estat_context
 
 APPROVAL_LINE = int(os.environ.get("APPROVAL_LINE", "71"))  # 承認ライン（デフォルト71点）
 
@@ -108,6 +109,25 @@ def _load_benchmarks():
             return json.load(f)
     except Exception as e:
         log_warning(f"業界目安JSON読み込み失敗: {e}", context="_load_benchmarks")
+        return {}
+
+
+def _load_capex_lease_data():
+    """industry_capex_lease.json を読み込む。"""
+    candidates = [
+        os.path.join(_SCRIPT_DIR, "data", "industry_capex_lease.json"),
+        os.path.join(_SCRIPT_DIR, "static_data", "industry_capex_lease.json"),
+        os.path.join(_REPO_ROOT, "data", "industry_capex_lease.json"),
+        os.path.join(_REPO_ROOT, "static_data", "industry_capex_lease.json"),
+    ]
+    path = next((p for p in candidates if os.path.exists(p)), None)
+    if not path:
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        log_warning(f"設備投資・リースJSON読み込み失敗: {e}", context="_load_capex_lease_data")
         return {}
 
 
@@ -692,6 +712,7 @@ def run_quick_scoring(inputs: dict) -> dict:
 
     user_op_margin = (op_profit / nenshu * 100) if nenshu > 0 else 0.0
     user_equity_ratio = (net_assets / total_assets * 100) if total_assets > 0 else 0.0
+    user_lease_credit_pct = (lease_credit / nenshu * 100) if nenshu > 0 and lease_credit > 0 else None
 
     benchmarks = _load_benchmarks()
     bench = benchmarks.get(industry_sub, {})
@@ -703,8 +724,26 @@ def run_quick_scoring(inputs: dict) -> dict:
         bench_equity_ratio = float(bench.get("equity_ratio_display") or 0)
     bench_comment = (bench.get("comment") or "").strip()
     bench_lease_cost_ratio = float(bench.get("lease_cost_ratio") or 0)
+    capex_lease_data = _load_capex_lease_data()
     rent_expense_ky = _safe_float(inputs.get("rent_expense"))  # 千円
     user_lease_cost_ratio = (rent_expense_ky / nenshu * 100) if nenshu > 0 else 0.0
+    estat_context = None
+    try:
+        estat_context = build_estat_context(
+            selected_major=industry_major,
+            selected_sub=industry_sub,
+            user_op_margin=user_op_margin,
+            user_equity_ratio=user_equity_ratio,
+            user_current_ratio=_safe_float(inputs.get("current_ratio"), default=None),
+            user_debt_ratio=_safe_float(inputs.get("debt_ratio"), default=None),
+            user_asset_turnover=_safe_float(inputs.get("asset_turnover"), default=None),
+            user_annual_lease_pct=None,
+            user_lease_credit_pct=user_lease_credit_pct,
+            benchmarks_data=benchmarks,
+            capex_lease_data=capex_lease_data,
+        )
+    except Exception as exc:
+        log_warning(f"e-Stat統合文脈生成失敗: {exc}", context="run_quick_scoring")
 
     comp_margin = "高い" if user_op_margin >= bench_op_margin else "低い"
     comp_equity = "高い" if user_equity_ratio >= bench_equity_ratio else "低い"
@@ -1064,6 +1103,7 @@ def run_quick_scoring(inputs: dict) -> dict:
         "asset_score": asset_score,
         # デフォルト率モデルによる高リスク警告フラグ— スコアには影響しない
         "default_warnings": default_warnings,
+        "estat_context": estat_context,
     }
 
 

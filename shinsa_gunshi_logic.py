@@ -818,6 +818,7 @@ def build_gunshi_prompt(
     humor_style: str = "standard", # ← 八奈見モード拡張用
     asset_market_context: str = "",  # ← get_asset_context_for_ai() の返値
     asset_finance_context: str = "", # ← アセットファイナンス評価データの返値
+    estat_context_text: str = "",  # ← e-Stat統合文脈
 ) -> str:
     """軍師プロンプトを生成する。"""
     success_patterns = success_patterns or {"success_samples": [], "fail_samples": []}
@@ -895,6 +896,13 @@ def build_gunshi_prompt(
         af_section = (
             "\n【アセット・ファイナンス審査データ（BEP/担保評価）— 必ず論拠の補強として引用すること】\n"
             f"{asset_finance_context.strip()}\n"
+        )
+
+    estat_section = ""
+    if estat_context_text and estat_context_text.strip():
+        estat_section = (
+            "\n【e-Stat統合文脈— 業種平常値・リース適性・景気局面】\n"
+            f"{estat_context_text.strip()}\n"
         )
 
     # ── 逆転のベイズ加点セクション ───────────────────────────────────────
@@ -1154,7 +1162,7 @@ WARNING、ALERT、CRITICAL相当の難しい案件では `GOOD LUCK, FUKAI LT.` 
 - 担当者直感スコア: {intuition} / 5
 - ベイズ推定 承認確率: {posterior*100:.1f}%
 - 対象物件: {asset_name or "不明"}{vehicle_context}
-{trend_section}{comp_section}{market_section}{af_section}
+{trend_section}{comp_section}{estat_section}{market_section}{af_section}
 {rb_section}
 {fp0_section}
 {success_text}

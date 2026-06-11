@@ -9,6 +9,7 @@ interface GunshiAdviceProps {
   modelDecision: string;
   industry_major: string;
   formData: GunshiFormData;
+  estatContext?: Record<string, unknown> | null;
   onChatLoaded?: (text: string) => void;
 }
 
@@ -137,7 +138,7 @@ const getYukikazeStatus = (score: number): YukikazeStatus => {
   };
 };
 
-export default function GunshiAdvice({ score, modelDecision, industry_major, formData, onChatLoaded }: GunshiAdviceProps) {
+export default function GunshiAdvice({ score, modelDecision, industry_major, formData, estatContext, onChatLoaded }: GunshiAdviceProps) {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [question, setQuestion] = useState("");
@@ -205,6 +206,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
       subsidy_flag: /補助金|助成金|ものづくり|省力化/.test(subsidyText),
       bank_support: formData.deal_source === "銀行紹介" || formData.main_bank === "メイン先",
       intuition_score: Number(formData.intuition) || 50,
+      estat_context: estatContext || null,
       company_name: formData.company_name || "",
       asset_name: formData.asset_name || "",
       acquisition_cost: Number(formData.acquisition_cost) || 0,
@@ -245,6 +247,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
       use_web: useWeb,
       use_obsidian: true,
       mode: advisorMode,
+      estat_context: estatContext || null,
     };
   };
 
@@ -398,6 +401,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
       formData.total_assets || 0,
       formData.bank_credit || 0,
       formData.lease_credit || 0,
+      JSON.stringify(estatContext || null),
     ].join(":");
     if (initialFetchKeyRef.current === fetchKey) return;
     initialFetchKeyRef.current = fetchKey;
@@ -405,7 +409,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
     const nextHistory: ChatMessage[] = [{ role: 'user', text: initialStrategyQuestion }];
     setChatHistory(nextHistory);
     fetchStreamChat(nextHistory);
-  }, [score, industry_major, formData, initialStrategyQuestion]);
+  }, [score, industry_major, formData, estatContext, initialStrategyQuestion]);
 
   const handleSubmit = async () => {
     const trimmedQuestion = question.trim();
