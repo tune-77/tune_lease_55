@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["rev", "title", "type", "files", "safety"],
+  "properties": {
+    "rev": {"type": "string", "description": "REV-NNN"},
+    "title": {"type": "string"},
+    "type": {
+      "type": "string",
+      "enum": ["find_replace", "tailwind_class", "config_value"]
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "changes"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "リポジトリルートからの相対パス"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["find", "replace"],
+              "properties": {
+                "find": {"type": "string"},
+                "replace": {"type": "string"},
+                "occurrence": {
+                  "type": "integer",
+                  "description": "何番目の一致か（省略時は全て）"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "safety": {
+      "type": "string",
+      "enum": ["tsc", "lint", "none"],
+      "description": "実行後のチェック"
+    },
+    "max_lines_changed": {"type": "integer", "default": 50},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "approved_at": {"type": "string", "format": "date-time"},
+    "applied_at": {"type": "string", "format": "date-time"},
+    "pr_number": {"type": "integer"}
+  }
+}

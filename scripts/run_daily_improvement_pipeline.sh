@@ -197,6 +197,12 @@ echo "[Step 13] 週次セルフマネジメントサマリ（月曜のみ）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/weekly_self_management.py" || true
 
 echo ""
+echo "[Step 14] レシピ生成（承認はしない）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/generate_recipes.py" || true
+PENDING_RECIPE_COUNT=$(ls "${PROJECT_ROOT}/data/recipes/pending/"*.json 2>/dev/null | wc -l | tr -d ' ')
+echo "承認待ちレシピ: ${PENDING_RECIPE_COUNT}件"
+
+echo ""
 echo "========================================"
 echo "改善パイプライン終了: $(date '+%Y-%m-%d %H:%M:%S')"
 echo "終了コード: ${FINAL_EXIT}"
