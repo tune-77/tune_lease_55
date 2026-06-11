@@ -35,6 +35,11 @@ echo ""
 echo "[Step 0.0] マクロデータ更新..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/fetch_fincept_data.py" || true
 
+# --- Step 0.1: aurion 状態チェック → 異常フラグを EXPORT_FILE と DAILY-BRIEF に反映 ---
+echo ""
+echo "[Step 0.1] aurion 自動診断ステータス確認..."
+EXPORT_FILE="${EXPORT_FILE}" "${PYTHON}" "${PROJECT_ROOT}/scripts/check_aurion_state.py" || true
+
 # --- Step 0: Obsidian 改善インデックス抽出 ---
 echo ""
 echo "[Step 0] Obsidian 改善インデックスから改善案を抽出中..."

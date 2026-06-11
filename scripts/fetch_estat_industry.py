@@ -221,10 +221,41 @@ def update_benchmarks(metrics: dict[str, dict[str, float]]) -> dict[str, list[st
         if diffs:
             changes[bench_key] = diffs
 
+    benchmarks["_last_updated"] = datetime.now().isoformat()
+
     with open(BENCHMARKS_PATH, "w", encoding="utf-8") as f:
         json.dump(benchmarks, f, ensure_ascii=False, indent=4)
 
     return changes
+
+
+def update_from_cache() -> bool:
+    """ESTAT_APP_ID 未設定時にキャッシュから industry_benchmarks.json を更新する。
+
+    industry_estat_cache.json が存在し metrics_by_estat_code が空でない場合のみ実行。
+    """
+    if not CACHE_PATH.exists():
+        return False
+    try:
+        with open(CACHE_PATH, encoding="utf-8") as f:
+            cache = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return False
+
+    metrics: dict[str, dict[str, float]] = cache.get("metrics_by_estat_code", {})
+    if not metrics:
+        return False
+
+    fetched_at = cache.get("fetched_at", "不明")
+    print(f"  キャッシュからロード (fetched_at={fetched_at}, 業種数={len(metrics)})")
+    changes = update_benchmarks(metrics)
+    if changes:
+        print(f"  industry_benchmarks.json 更新（キャッシュ）: {len(changes)} 業種")
+        for k, diffs in changes.items():
+            print(f"    {k}: {', '.join(diffs)}")
+    else:
+        print("  変更なし（キャッシュ値と既存値が同一）")
+    return True
 
 
 def save_cache(raw: dict, metrics: dict[str, dict[str, float]]) -> None:
@@ -250,7 +281,11 @@ def save_cache(raw: dict, metrics: dict[str, dict[str, float]]) -> None:
 def main() -> int:
     app_id = _get_app_id()
     if not app_id:
-        print("[fetch_estat_industry] ESTAT_APP_ID 未設定 → スキップ")
+        print("[fetch_estat_industry] ESTAT_APP_ID 未設定 → キャッシュから更新を試みます")
+        if update_from_cache():
+            print("[fetch_estat_industry] キャッシュ反映完了")
+        else:
+            print("[fetch_estat_industry] キャッシュなし → スキップ")
         return 0
 
     print("[fetch_estat_industry] e-Stat API 業種別統計更新開始...")
