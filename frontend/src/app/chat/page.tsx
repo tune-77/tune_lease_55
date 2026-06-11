@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { apiClient } from "@/lib/api";
-import { Send, Trash2, Loader2, MessageCircle, Bot, User, NotebookPen, Mic, Network, Database, ChevronDown, ChevronUp, Lightbulb } from "lucide-react";
+import { Send, Trash2, Loader2, MessageCircle, Bot, User, NotebookPen, Mic, Network, Database, ChevronDown, ChevronUp, Lightbulb, Volume2, VolumeX } from "lucide-react";
 import { extractPrefectureFromText, normalizePrefecture } from "@/lib/prefecture";
 import { formatLocalDateKey } from "@/lib/date";
 
@@ -178,12 +178,21 @@ export default function ChatPage() {
   const [newsPrefecture, setNewsPrefecture] = useState("");
   const [showDailyNewsBrief, setShowDailyNewsBrief] = useState(false);
   const [newsPrefectureReady, setNewsPrefectureReady] = useState(false);
+  const [speechEnabled, setSpeechEnabled] = useState(false);
   const messageListRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const briefRequestSeqRef = useRef(0);
 
   const userId = "default";
+
+  const speakText = (text: string) => {
+    if (!speechEnabled || typeof window === "undefined" || !window.speechSynthesis) return;
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = "ja-JP";
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utter);
+  };
 
   const scrollToBottom = () => {
     const el = messageListRef.current;
@@ -329,16 +338,18 @@ export default function ChatPage() {
       if (res.data?.lease_news_brief) {
         setLeaseNewsBrief(res.data.lease_news_brief);
       }
+      const reply = res.data.reply as string;
       setMessages((prev) => [
         ...prev,
         {
           id: Date.now() + 1,
           user_id: userId,
           role: "assistant",
-          content: res.data.reply,
+          content: reply,
           created_at: new Date().toISOString(),
         },
       ]);
+      speakText(reply);
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -392,6 +403,7 @@ export default function ChatPage() {
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, assistantMsg]);
+      speakText(res.data.reply as string);
       if (improvementMode && res.data.improvement_saved) {
         setSaveToast("改善メモに登録しました");
         setTimeout(() => setSaveToast(null), 2000);
@@ -812,23 +824,38 @@ export default function ChatPage() {
       {/* 入力エリア */}
       <div className={`flex-shrink-0 rounded-2xl shadow-lg border p-2 ${improvementMode ? "bg-amber-50 border-amber-200" : "bg-white border-slate-200"}`}>
         <div className="mb-2 flex items-center justify-between gap-2 px-1">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setImprovementMode((current) => !current)}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-black transition-colors ${
+                improvementMode
+                  ? "bg-amber-500 text-white shadow-sm"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              <Lightbulb className="h-3.5 w-3.5" />
+              改善メモ
+            </button>
+            {improvementMode && (
+              <span className="text-[11px] font-bold text-amber-700">
+                送信すると Improvement Log に保存
+              </span>
+            )}
+          </div>
           <button
             type="button"
-            onClick={() => setImprovementMode((current) => !current)}
+            onClick={() => setSpeechEnabled((v) => !v)}
+            title={speechEnabled ? "音声読み上げON（クリックでOFF）" : "音声読み上げOFF（クリックでON）"}
             className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-black transition-colors ${
-              improvementMode
-                ? "bg-amber-500 text-white shadow-sm"
+              speechEnabled
+                ? "bg-blue-500 text-white shadow-sm"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
           >
-            <Lightbulb className="h-3.5 w-3.5" />
-            改善メモ
+            {speechEnabled ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+            音声
           </button>
-          {improvementMode && (
-            <span className="text-[11px] font-bold text-amber-700">
-              送信すると Improvement Log に保存
-            </span>
-          )}
         </div>
         <div className="flex gap-2 items-end">
           <textarea
@@ -847,10 +874,10 @@ export default function ChatPage() {
             type="button"
             onClick={startVoiceInput}
             disabled={!voiceSupported || loading}
-            title={voiceSupported ? "音声入力" : "このブラウザは音声入力に未対応です"}
+            title={voiceSupported ? (listening ? "録音中（クリックで停止）" : "音声入力") : "このブラウザは音声入力に未対応です"}
             className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors flex-shrink-0 ${
               listening
-                ? "bg-rose-600 text-white"
+                ? "bg-rose-600 text-white animate-pulse"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:bg-slate-100 disabled:text-slate-300"
             }`}
           >
