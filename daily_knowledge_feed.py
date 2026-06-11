@@ -172,6 +172,93 @@ def task_lease_judgment_research() -> dict:
     return payload
 
 
+def task_machinery_orders_to_vault() -> dict:
+    """機械受注統計分析結果を lease-wiki-vault に Markdown ノートとして書き出す。"""
+    analysis_path = _DIR / "data" / "external" / "estat_machinery_orders" / "machinery_orders_analysis.json"
+    if not analysis_path.exists():
+        return {"skipped": True, "reason": "machinery_orders_analysis.json が存在しない"}
+
+    data = json.loads(analysis_path.read_text(encoding="utf-8"))
+    meta = data["metadata"]
+    core = data["core_indicator"]
+    latest = data["latest_values_100m_yen"]
+
+    latest_month = meta["latest_month"]  # e.g. "2026-03"
+    signal = core["macro_signal"]
+
+    icloud_docs = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents"
+    lease_wiki_vault = icloud_docs / "lease-wiki-vault"
+    icloud_main_vault = icloud_docs / "Obsidian Vault"   # reindex_obsidian._DEFAULT_VAULT と同一
+
+    if not lease_wiki_vault.exists() and not icloud_main_vault.exists():
+        return {"skipped": True, "reason": "iCloud Vault が見つかりません"}
+
+    output_dir = lease_wiki_vault / "10_Industry_Data"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / f"機械受注統計_{latest_month}.md"
+
+    content = f"""# 機械受注統計_{latest_month}
+
+> e-Stat 内閣府 機械受注統計 | 自動生成: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+
+## マクロ判定: {signal}
+
+## 最新値（{latest_month}、季節調整値・億円）
+
+| 項目 | 値（億円） |
+|------|-----------|
+| 受注額合計 | {latest.get('受注額合計', '-'):,.1f} |
+| 船舶・電力を除く民需 | {latest.get('民間需要（船舶・電力を除く）', '-'):,.1f} |
+| 製造業 | {latest.get('民間需要_製造業計', '-'):,.1f} |
+| 非製造業（除船・電） | {latest.get('民間需要_非製造業（船舶・電力を除く）', '-'):,.1f} |
+| 海外需要 | {latest.get('海外需要', '-'):,.1f} |
+| 官公需 | {latest.get('官公需計', '-'):,.1f} |
+
+## 変化率
+
+- 前月比（季節調整）: **{core['latest_mom_pct']:+.1f}%**
+- 前年同月比（原系列）: **{core['latest_yoy_pct_original']:+.1f}%**
+- 3か月平均の3か月前比: **{core['three_month_average_change_vs_3m_ago_pct']:+.1f}%**
+
+## 傾向
+
+- 3か月移動平均: {core['latest_3m_average_100m_yen']:,.1f}億円
+- 12か月移動平均: {core['latest_12m_average_100m_yen']:,.1f}億円
+- 期間線形傾向: 1か月当たり{core['monthly_linear_trend_100m_yen']:+.1f}億円
+
+## リース審査への活用メモ
+
+- マクロ判定が「改善」の場合は設備投資需要の増加局面として審査コメントへ反映可能
+- 「減速」の場合は中古流通性・再販価格の確認を通常より厳しく行う
+- 製造業/非製造業を分け、顧客業種に合う系列を参照すること
+
+## 出典
+
+- e-Stat 統計表ID: {meta['stats_data_id']}
+- 観測期間: {meta['period']}
+- データ取得日: {meta['retrieved_at']}
+"""
+
+    written: list[str] = []
+    if lease_wiki_vault.exists():
+        output_path.write_text(content, encoding="utf-8")
+        written.append(str(output_path))
+
+    # iCloud メインVault の Projects/tune_lease_55/Industry/ にも書き出す
+    if icloud_main_vault.exists():
+        main_dir = icloud_main_vault / "Projects" / "tune_lease_55" / "Industry"
+        main_dir.mkdir(parents=True, exist_ok=True)
+        main_path = main_dir / f"機械受注統計_{latest_month}.md"
+        main_path.write_text(content, encoding="utf-8")
+        written.append(str(main_path))
+
+    return {
+        "written": written,
+        "latest_month": latest_month,
+        "macro_signal": signal,
+    }
+
+
 def task_macro_drift_check() -> dict:
     """コンセプトドリフト検知を実行し、異常時に Slack 通知する。"""
     from macro_drift_monitor import check_concept_drift
@@ -204,13 +291,14 @@ def task_fluid_pipeline_status() -> dict:
 # ──────────────────────────────────────────────────────────────────────────────
 
 TASKS: dict[str, tuple[str, Callable]] = {
-    "estat":    ("e-Stat 法人企業統計（年次）",        task_estat_annual),
-    "bench":    ("e-Stat 業種別財務指標",              task_estat_benchmarks),
-    "boj":      ("日銀金利 API",                      task_boj_rate),
-    "research": ("リース判断 Auto Research",           task_lease_judgment_research),
-    "news":     ("リース業界ニュース RSS",              task_lease_news_rss),
-    "drift":    ("コンセプトドリフト検知",              task_macro_drift_check),
-    "pipeline": ("FluidPipeline 再学習チェック",       task_fluid_pipeline_status),
+    "estat":    ("e-Stat 法人企業統計（年次）",              task_estat_annual),
+    "bench":    ("e-Stat 業種別財務指標",                    task_estat_benchmarks),
+    "boj":      ("日銀金利 API",                            task_boj_rate),
+    "machinery":("機械受注統計 → lease-wiki-vault",          task_machinery_orders_to_vault),
+    "research": ("リース判断 Auto Research",                 task_lease_judgment_research),
+    "news":     ("リース業界ニュース RSS",                    task_lease_news_rss),
+    "drift":    ("コンセプトドリフト検知",                    task_macro_drift_check),
+    "pipeline": ("FluidPipeline 再学習チェック",             task_fluid_pipeline_status),
 }
 
 

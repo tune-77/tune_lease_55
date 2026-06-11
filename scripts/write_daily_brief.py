@@ -11,6 +11,10 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
 VAULT_PATH = Path.home() / "Documents" / "Obsidian Vault"
+# iCloud Vault パス（obsidian_bridge.py と reindex_obsidian.py の定義に準拠）
+_ICLOUD_DOCS = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents"
+ICLOUD_VAULT_PATH = _ICLOUD_DOCS / "lease-wiki-vault"          # RAG インデックス対象
+ICLOUD_MAIN_VAULT_PATH = _ICLOUD_DOCS / "Obsidian Vault"       # メインVault（reindex_obsidian._DEFAULT_VAULT と同一）
 LATEST_JSON = PROJECT_ROOT / "reports" / "latest.json"
 MACRO_JSON = PROJECT_ROOT / "static_data" / "macro_context.json"
 SIDECAR_BRIEF_MD = PROJECT_ROOT / "reports" / "agent_sidecar_brief.md"
@@ -165,6 +169,17 @@ _次回更新: 翌 AM4:00 （run_daily_improvement_pipeline.sh）_
 
     OUTPUT_PATH.write_text(content, encoding="utf-8")
     print(f"[write_daily_brief] 書き出し完了: {OUTPUT_PATH}")
+
+    for vault, label in [
+        (ICLOUD_VAULT_PATH, "lease-wiki-vault"),
+        (ICLOUD_MAIN_VAULT_PATH, "iCloud メインVault"),
+    ]:
+        if vault.exists():
+            out = vault / "DAILY-BRIEF.md"
+            out.write_text(content, encoding="utf-8")
+            print(f"[write_daily_brief] {label} に書き出し: {out}")
+        else:
+            print(f"[write_daily_brief] {label} が見つかりません（スキップ）: {vault}")
 
 
 if __name__ == "__main__":
