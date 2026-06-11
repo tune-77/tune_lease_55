@@ -272,6 +272,9 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
 )
 
+from routers.ocr import router as ocr_router
+app.include_router(ocr_router, prefix="/api")
+
 @app.get("/")
 def read_root():
     return {"message": "Lease Scoring API is running."}
