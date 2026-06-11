@@ -64,8 +64,13 @@ def full_reindex(vault_path: str) -> tuple[int, int]:
     pending, added, skipped = [], 0, 0
     seen_ids: set[str] = set()
 
+    from api.knowledge.indexer import _MIN_CHUNK_LENGTH
+
     for chunk in scan_vault(vault_path):
         if chunk.doc_id in seen_ids:
+            skipped += 1
+            continue
+        if len(chunk.text.strip()) < _MIN_CHUNK_LENGTH:
             skipped += 1
             continue
         seen_ids.add(chunk.doc_id)
