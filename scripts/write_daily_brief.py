@@ -10,11 +10,10 @@ from datetime import datetime
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
-VAULT_PATH = Path.home() / "Documents" / "Obsidian Vault"
-# iCloud Vault パス（obsidian_bridge.py と reindex_obsidian.py の定義に準拠）
 _ICLOUD_DOCS = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents"
 ICLOUD_VAULT_PATH = _ICLOUD_DOCS / "lease-wiki-vault"          # RAG インデックス対象
 ICLOUD_MAIN_VAULT_PATH = _ICLOUD_DOCS / "Obsidian Vault"       # メインVault（reindex_obsidian._DEFAULT_VAULT と同一）
+VAULT_PATH = ICLOUD_MAIN_VAULT_PATH
 LATEST_JSON = PROJECT_ROOT / "reports" / "latest.json"
 MACRO_JSON = PROJECT_ROOT / "static_data" / "macro_context.json"
 SIDECAR_BRIEF_MD = PROJECT_ROOT / "reports" / "agent_sidecar_brief.md"
@@ -114,7 +113,7 @@ def format_agent_sidecar_notes(max_chars: int = 1800) -> str:
 
 def main() -> None:
     if not VAULT_PATH.exists():
-        print(f"[write_daily_brief] Vault が見つかりません: {VAULT_PATH}。スキップします。")
+        print(f"[write_daily_brief] iCloud Vault が見つかりません: {VAULT_PATH}。スキップします。")
         sys.exit(0)
 
     report = load_json(LATEST_JSON)

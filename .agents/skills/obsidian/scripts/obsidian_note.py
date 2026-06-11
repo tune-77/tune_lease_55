@@ -12,9 +12,9 @@ from pathlib import Path
 def _home_candidates() -> list[Path]:
     home = Path.home()
     roots = [
+        home / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents",
         home / "Documents",
         home / "Obsidian",
-        home / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents",
         home / "Library" / "Mobile Documents" / "com~apple~CloudDocs",
     ]
     return [p for p in roots if p.exists()]
@@ -45,7 +45,7 @@ def require_vault(raw: str | None) -> Path:
         if not (vault / ".obsidian").exists():
             raise SystemExit(f"Not an Obsidian vault: {vault}")
         return vault
-    preferred = Path.home() / "Documents" / "Obsidian Vault"
+    preferred = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / "Obsidian Vault"
     if (preferred / ".obsidian").exists():
         return preferred.resolve()
     vaults = find_vaults()

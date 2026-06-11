@@ -61,3 +61,4 @@
   - **Visual Evidence**: Use charts (Radar, Scatter) to persuade.
   - **Mobile First**: Optimize for smartphone usage via Streamlit adjustments (Flet was discarded).
 - **AI Chat / Knowledge Loop**: Obsidian 連携を使って、会話メモ・改善ログ・Webメモ・Wiki を相互参照させる方針を好む。最終目的は、リースシステム自体が保存知識を再利用しながら自律的に改善していくこと。
+- **Obsidian Default**: 既定の保存先は iCloud 上の `Obsidian Vault`。影響: `~/Documents/Obsidian Vault` を既定として案内すると誤誘導になる。次の行動: 保存先案内・スクリプト・説明文は iCloud Vault を先に示す。

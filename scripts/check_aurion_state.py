@@ -20,8 +20,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 AURION_DIR = PROJECT_ROOT / "data" / "aurion_daily"
 EXPORT_FILE = Path(os.environ.get("EXPORT_FILE", "/tmp/obsidian_improvements_export.txt"))
 
-# Vault パス（write_daily_brief.py と同一定義）
-_VAULT_PATH = Path.home() / "Documents" / "Obsidian Vault"
+# Vault パス（iCloud のメイン Vault を既定にする）
+_VAULT_PATH = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / "Obsidian Vault"
 _ICLOUD_DOCS = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents"
 _ICLOUD_VAULT_PATH = _ICLOUD_DOCS / "lease-wiki-vault"
 _ICLOUD_MAIN_VAULT_PATH = _ICLOUD_DOCS / "Obsidian Vault"   # reindex_obsidian._DEFAULT_VAULT と同一

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect daily lease-related news and write a digest into Obsidian.
+"""Collect daily lease-related news and write a digest into iCloud 上の Obsidian Vault.
 
 The collector uses Google News RSS search queries by default, deduplicates
 articles, summarizes them into a compact Markdown note, and optionally appends
@@ -38,7 +38,6 @@ from lease_news_digest import get_lease_news_metrics, record_lease_news_collecti
 DEFAULT_VAULT_CANDIDATES = [
     Path(os.environ.get("OBSIDIAN_VAULT", "")).expanduser() if os.environ.get("OBSIDIAN_VAULT") else None,
     Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / "Obsidian Vault",
-    Path.home() / "Documents" / "Obsidian Vault",
     Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents",
     Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "Obsidian Vault",
 ]
@@ -181,10 +180,10 @@ def find_vault(override: str | None = None) -> Path:
         path = Path(override).expanduser()
         if path.exists() and path.is_dir():
             return path
-        raise FileNotFoundError(f"Obsidian vault not found: {path}")
+        raise FileNotFoundError(f"iCloud 上の Obsidian Vault が見つかりません: {path}")
     candidates = _candidate_vaults()
     if not candidates:
-        raise FileNotFoundError("Obsidian vault not found. Set OBSIDIAN_VAULT or pass --vault.")
+        raise FileNotFoundError("iCloud 上の Obsidian Vault が見つかりません。OBSIDIAN_VAULT を設定するか --vault を指定してください。")
     return candidates[0]
 
 
@@ -978,8 +977,8 @@ def _append_daily_digest(vault: Path, daily_dir: str, news_dir: str, date_str: s
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Collect daily lease-related news into Obsidian.")
-    parser.add_argument("--vault", default=None, help="Source Obsidian vault path. Defaults to auto-detect.")
+    parser = argparse.ArgumentParser(description="Collect daily lease-related news into iCloud 上の Obsidian Vault.")
+    parser.add_argument("--vault", default=None, help="iCloud 上の Obsidian Vault パス（省略時は自動検出）")
     parser.add_argument("--news-dir", default=DEFAULT_NEWS_DIR, help="Obsidian note directory for news digests.")
     parser.add_argument("--daily-dir", default=DEFAULT_DAILY_DIR, help="Daily note directory to append a short digest.")
     parser.add_argument(

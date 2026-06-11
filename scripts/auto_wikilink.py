@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Obsidian Vault の孤立ファイルに wikiリンクを自動付与する。
+"""iCloud 上の Obsidian Vault の孤立ファイルに wikiリンクを自動付与する。
 
 対象フォルダ: Projects/tune_lease_55/, リースニュース/, リース知識/
 除外フォルダ: Daily/, Clippings/
@@ -27,7 +27,6 @@ _DEFAULT_VAULT_CANDIDATES = [
     Path(os.environ.get("OBSIDIAN_VAULT", "")).expanduser()
     if os.environ.get("OBSIDIAN_VAULT") else None,
     Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / "Obsidian Vault",
-    Path.home() / "Documents" / "Obsidian Vault",
     Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents",
 ]
 
@@ -55,7 +54,7 @@ def find_vault(override: str | None = None) -> Path:
         if p and p.is_dir():
             return p.resolve()
     raise FileNotFoundError(
-        "Obsidian Vault not found. Set OBSIDIAN_VAULT or pass --vault."
+        "iCloud 上の Obsidian Vault が見つかりません。OBSIDIAN_VAULT を設定するか --vault を指定してください。"
     )
 
 
@@ -337,7 +336,7 @@ def run_on_files(
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Obsidian wikiリンク自動付与スクリプト")
-    p.add_argument("--vault", default=None, help="Obsidian Vault パス（省略時は自動検出）")
+    p.add_argument("--vault", default=None, help="iCloud 上の Obsidian Vault パス（省略時は自動検出）")
     p.add_argument("--dry-run", action="store_true", help="ファイルを変更せずに確認のみ")
     p.add_argument("--file", dest="files", metavar="PATH", nargs="+",
                    help="処理対象ファイルを直接指定（省略時は対象フォルダ全体）")

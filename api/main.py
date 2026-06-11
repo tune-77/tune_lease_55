@@ -5718,7 +5718,7 @@ class SaveToObsidianRequest(BaseModel):
 
 @app.post("/api/chat/save-to-obsidian")
 def save_chat_to_obsidian(req: SaveToObsidianRequest):
-    """チャット履歴を Obsidian Vault の Chat/ フォルダに保存する。"""
+    """チャット履歴を iCloud 上の Obsidian Vault の Chat/ フォルダに保存する。"""
     import datetime
     import re as _re
 
@@ -5733,7 +5733,7 @@ def save_chat_to_obsidian(req: SaveToObsidianRequest):
     if not vault_root or not os.path.isdir(vault_root):
         raise HTTPException(
             status_code=503,
-            detail="Obsidian Vault が見つかりません。環境変数 OBSIDIAN_VAULT_PATH を設定してください。",
+            detail="iCloud 上の Obsidian Vault が見つかりません。環境変数 OBSIDIAN_VAULT_PATH を設定してください。",
         )
 
     chat_dir = os.path.join(vault_root, "Chat")
@@ -5804,7 +5804,7 @@ class SaveDebateToObsidianRequest(BaseModel):
 
 @app.post("/api/debate/save-to-obsidian")
 def save_debate_to_obsidian(req: SaveDebateToObsidianRequest):
-    """討論審査結果を Obsidian Vault の Debates/ フォルダに保存する。"""
+    """討論審査結果を iCloud 上の Obsidian Vault の Debates/ フォルダに保存する。"""
     import datetime
     import re as _re
 
@@ -5813,7 +5813,7 @@ def save_debate_to_obsidian(req: SaveDebateToObsidianRequest):
     if not vault_root or not os.path.isdir(vault_root):
         raise HTTPException(
             status_code=503,
-            detail="Obsidian Vault が見つかりません。環境変数 OBSIDIAN_VAULT_PATH を設定してください。",
+            detail="iCloud 上の Obsidian Vault が見つかりません。環境変数 OBSIDIAN_VAULT_PATH を設定してください。",
         )
 
     debates_dir = os.path.join(vault_root, "Debates")
@@ -6745,7 +6745,7 @@ def _news_vault_root() -> Path | None:
     vault = find_vault()
     if vault and vault.is_dir():
         return vault
-    fallback = Path.home() / "Documents" / "Obsidian Vault"
+    fallback = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / "Obsidian Vault"
     return fallback if fallback.is_dir() else None
 
 

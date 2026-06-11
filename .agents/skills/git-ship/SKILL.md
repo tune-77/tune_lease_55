@@ -95,7 +95,7 @@ python3 .agents/skills/obsidian/scripts/obsidian_note.py codex-work-log \
   --git "merge: <sha>"
 ```
 
-`OBSIDIAN_VAULT` が未設定またはVaultが複数ある場合は、`/Users/kobayashiisaoryou/Documents/Obsidian Vault` を優先する。会話全文、秘密情報、DB生データは保存せず、作業要約と会話要約だけを残す。
+`OBSIDIAN_VAULT` が未設定またはVaultが複数ある場合は、`/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault` を優先する。会話全文、秘密情報、DB生データは保存せず、作業要約と会話要約だけを残す。
 
 ---
 

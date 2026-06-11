@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Backup an Obsidian vault to timestamped snapshot folders.
+"""Backup an iCloud 上の Obsidian Vault to timestamped snapshot folders.
 
 The script copies the whole vault directory, including `.obsidian/`,
 into a backup root as:
@@ -33,7 +33,6 @@ from typing import Iterable
 DEFAULT_VAULT_CANDIDATES = [
     Path(os.environ.get("OBSIDIAN_VAULT", "")).expanduser() if os.environ.get("OBSIDIAN_VAULT") else None,
     Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / "Obsidian Vault",
-    Path.home() / "Documents" / "Obsidian Vault",
     Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents",
     Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "Obsidian Vault",
 ]
@@ -78,12 +77,12 @@ def find_vault(override: str | None = None) -> Path:
         path = Path(override).expanduser()
         if path.exists() and path.is_dir():
             return path
-        raise FileNotFoundError(f"Obsidian vault not found: {path}")
+        raise FileNotFoundError(f"iCloud 上の Obsidian Vault が見つかりません: {path}")
 
     candidates = _candidate_vaults()
     if not candidates:
         raise FileNotFoundError(
-            "Obsidian vault not found. Set OBSIDIAN_VAULT or pass --vault."
+            "iCloud 上の Obsidian Vault が見つかりません。OBSIDIAN_VAULT を設定するか --vault を指定してください。"
         )
     return candidates[0]
 
@@ -197,8 +196,8 @@ def backup_vault(
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Create a timestamped backup of an Obsidian vault.")
-    parser.add_argument("--vault", default=None, help="Source Obsidian vault path. Defaults to auto-detect.")
+    parser = argparse.ArgumentParser(description="Create a timestamped backup of an iCloud 上の Obsidian Vault.")
+    parser.add_argument("--vault", default=None, help="iCloud 上の Obsidian Vault パス（省略時は自動検出）")
     parser.add_argument("--backup-root", default=str(DEFAULT_BACKUP_ROOT), help="Backup root directory.")
     parser.add_argument("--keep", type=int, default=10, help="Keep newest N snapshots per vault.")
     parser.add_argument("--dry-run", action="store_true", help="Print what would happen without copying files.")

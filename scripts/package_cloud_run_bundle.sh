@@ -9,8 +9,7 @@ VAULT_OUT="$BUNDLE_DIR/obsidian_vault"
 SOURCE_VAULT="${OBSIDIAN_VAULT_PATH:-}"
 if [[ -z "$SOURCE_VAULT" ]]; then
   for candidate in \
-    "$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault" \
-    "$HOME/Documents/Obsidian Vault"; do
+    "$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"; do
     if [[ -d "$candidate" ]]; then
       SOURCE_VAULT="$candidate"
       break
@@ -55,7 +54,7 @@ PY
 validate_past_cases "$DATA_OUT/lease_data.db"
 
 if [[ -z "$SOURCE_VAULT" ]]; then
-  echo "Obsidian Vault が見つかりません。OBSIDIAN_VAULT_PATH を設定してください。" >&2
+  echo "iCloud 上の Obsidian Vault が見つかりません。OBSIDIAN_VAULT_PATH を設定してください。" >&2
   exit 1
 fi
 

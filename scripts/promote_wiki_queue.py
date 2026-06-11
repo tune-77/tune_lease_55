@@ -213,7 +213,7 @@ def promote_queue(
     find_vault = load_bridge()
     vault = find_vault()
     if not vault:
-        raise SystemExit("Obsidian vault not found.")
+        raise SystemExit("iCloud 上の Obsidian Vault が見つかりません。")
 
     queue = load_json(queue_path)
     status = load_json(status_path)

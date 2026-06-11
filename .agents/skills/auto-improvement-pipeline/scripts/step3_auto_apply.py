@@ -1175,7 +1175,7 @@ class Step3AutoApplier:
 
         vault = _find_vault_path()
         if vault is None:
-            logger.warning("[write_back] Obsidian Vault が見つかりません。スキップ。")
+            logger.warning("[write_back] iCloud 上の Obsidian Vault が見つかりません。スキップ。")
             return
 
         src_path = Path(source_file)

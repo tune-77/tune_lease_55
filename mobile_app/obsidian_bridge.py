@@ -42,7 +42,7 @@ def _obsidian_app_vaults() -> list[Path]:
 
 def _home_candidates() -> list[Path]:
     home = Path.home()
-    # 通常の Obsidian Vault を既定にする。
+    # iCloud 上の通常の Obsidian Vault を既定にする。
     # lease-wiki-vault はユーザーが明示指定した場合だけ使うため、アプリの最近使用順より後に置く。
     app_vaults = _obsidian_app_vaults()
     env_vault = Path(os.getenv("OBSIDIAN_VAULT", "")).expanduser() if os.getenv("OBSIDIAN_VAULT") else None
@@ -961,7 +961,7 @@ def _source_metadata_lines(
 def append_chat_note(title: str, body: str) -> dict[str, str]:
     vault = find_vault()
     if not vault:
-        return {"status": "skipped", "reason": "Obsidian vault not found"}
+        return {"status": "skipped", "reason": "iCloud 上の Obsidian Vault が見つかりません"}
     day = dt.date.today().isoformat()
     rel = f"Projects/tune_lease_55/AI Chat/{day}.md"
     path = _safe_note_path(vault, rel)
@@ -985,7 +985,7 @@ def append_chat_note(title: str, body: str) -> dict[str, str]:
 def append_improvement_note(title: str, body: str) -> dict[str, str]:
     vault = find_vault()
     if not vault:
-        return {"status": "skipped", "reason": "Obsidian vault not found"}
+        return {"status": "skipped", "reason": "iCloud 上の Obsidian Vault が見つかりません"}
     day = dt.date.today().isoformat()
     rel = f"Projects/tune_lease_55/AI Chat/Improvement Log/{day}.md"
     path = _safe_note_path(vault, rel)
@@ -1009,7 +1009,7 @@ def append_improvement_note(title: str, body: str) -> dict[str, str]:
 def append_web_note(title: str, body: str) -> dict[str, str]:
     vault = find_vault()
     if not vault:
-        return {"status": "skipped", "reason": "Obsidian vault not found"}
+        return {"status": "skipped", "reason": "iCloud 上の Obsidian Vault が見つかりません"}
     day = dt.date.today().isoformat()
     rel = f"Projects/tune_lease_55/AI Chat/Web Research/{day}.md"
     path = _safe_note_path(vault, rel)
@@ -1038,7 +1038,7 @@ def append_wiki_note(
 ) -> dict[str, str]:
     vault = find_vault()
     if not vault:
-        return {"status": "skipped", "reason": "Obsidian vault not found"}
+        return {"status": "skipped", "reason": "iCloud 上の Obsidian Vault が見つかりません"}
     rel = "Projects/tune_lease_55/tune_lease_55 Wiki.md"
     path = _safe_note_path(vault, rel)
     now = dt.datetime.now().strftime("%H:%M")
@@ -1078,7 +1078,7 @@ def append_case_log(score_result: dict, case: dict) -> dict[str, str]:
     """スコアリング結果を Cases/ 以下の日次ログに追記する。"""
     vault = find_vault()
     if not vault:
-        return {"status": "skipped", "reason": "Obsidian vault not found"}
+        return {"status": "skipped", "reason": "iCloud 上の Obsidian Vault が見つかりません"}
 
     today = dt.date.today()
     ym = today.strftime("%Y-%m")
@@ -1145,7 +1145,7 @@ def append_asset_finance_note(
     """物件ファイナンス審査結果を Asset Finance/ 以下の日次ログに追記する。"""
     vault = find_vault()
     if not vault:
-        return {"status": "skipped", "reason": "Obsidian vault not found"}
+        return {"status": "skipped", "reason": "iCloud 上の Obsidian Vault が見つかりません"}
 
     today = dt.date.today()
     ym = today.strftime("%Y-%m")
@@ -1220,7 +1220,7 @@ def append_asset_knowledge_backlinks(
     """Asset Knowledgeノート側へ、この知識を使った審査結果リンクを追記する。"""
     vault = find_vault()
     if not vault:
-        return {"status": "skipped", "reason": "Obsidian vault not found", "updated": []}
+        return {"status": "skipped", "reason": "iCloud 上の Obsidian Vault が見つかりません", "updated": []}
 
     updated: list[str] = []
     now = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -1267,7 +1267,7 @@ def append_work_log(
     """Codexスタイルの作業ログをObsidianに追記する。"""
     vault = find_vault()
     if not vault:
-        return {"status": "skipped", "reason": "Obsidian vault not found"}
+        return {"status": "skipped", "reason": "iCloud 上の Obsidian Vault が見つかりません"}
     day = dt.date.today().isoformat()
     rel = f"Projects/tune_lease_55/Work Logs/{day}.md"
     path = _safe_note_path(vault, rel)
@@ -1301,7 +1301,7 @@ def append_work_log(
 def append_weekly_review_note(title: str, body: str) -> dict[str, str]:
     vault = find_vault()
     if not vault:
-        return {"status": "skipped", "reason": "Obsidian vault not found"}
+        return {"status": "skipped", "reason": "iCloud 上の Obsidian Vault が見つかりません"}
     iso_year, iso_week, _ = dt.date.today().isocalendar()
     rel = f"Projects/tune_lease_55/AI Chat/Weekly Review/{iso_year}-W{iso_week:02d}.md"
     path = _safe_note_path(vault, rel)

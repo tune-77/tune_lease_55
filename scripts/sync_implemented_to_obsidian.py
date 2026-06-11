@@ -178,7 +178,7 @@ def _sync_obsidian_to_ledger(impl_titles: set[str]) -> int:
 def main() -> None:
     vault = _get_vault()
     if vault is None:
-        print("警告: Obsidian Vault が見つかりません。スキップします。", file=sys.stderr)
+        print("警告: iCloud 上の Obsidian Vault が見つかりません。スキップします。", file=sys.stderr)
         return
 
     index_file = vault / _INDEX_REL

@@ -40,7 +40,7 @@ def build_obsidian_ai_context_block(
 
     lines = [
         f"【{heading}】",
-        "以下はObsidian Vaultから検索した社内知識です。チャットログより知識ノートを優先しています。",
+        "以下は iCloud 上の Obsidian Vault から検索した社内知識です。チャットログより知識ノートを優先しています。",
     ]
     digest_text = str((digest or {}).get("digest") or "").strip()
     if digest_text:

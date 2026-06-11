@@ -13,10 +13,10 @@
       }
     },
     "recommended": true,
-    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 7847 session age (minutes) exceed threshold 120",
+    "summary": "Context reset recommended (auto): 16 recent edit count exceed threshold 8; 15580 session age (minutes) exceed threshold 120",
     "reasons": [
-      "20 recent edit count exceed threshold 8",
-      "7847 session age (minutes) exceed threshold 120"
+      "16 recent edit count exceed threshold 8",
+      "15580 session age (minutes) exceed threshold 120"
     ],
     "candidates": [
       {
@@ -36,7 +36,7 @@
       {
         "key": "recent_edits",
         "label": "recent edit count",
-        "actual": 20,
+        "actual": 16,
         "threshold": 8,
         "triggered": true
       },
@@ -50,7 +50,7 @@
       {
         "key": "session_age_minutes",
         "label": "session age (minutes)",
-        "actual": 7847,
+        "actual": 15580,
         "threshold": 120,
         "triggered": true
       }
@@ -58,9 +58,9 @@
     "counters": {
       "wipTasks": 0,
       "blockedTasks": 0,
-      "recentEdits": 20,
+      "recentEdits": 16,
       "failedChecks": 0,
-      "sessionAgeMinutes": 7847
+      "sessionAgeMinutes": 15580
     }
   },
   "continuity": {
@@ -72,29 +72,25 @@
   "legacy_version": "1.0.0",
   "metrics": null,
   "recentEdits": [
-    ".claude/sessions/.last_inbox_check",
-    ".claude/sessions/broadcast.md",
-    ".claude/state/changed-files.jsonl",
     ".claude/state/handoff-artifact.json",
-    ".claude/state/instructions-loaded.jsonl",
     ".claude/state/precompact-snapshot.json",
-    ".claude/state/session-events.jsonl",
-    ".claude/state/session-events.jsonl.1",
-    ".claude/state/session-events.jsonl.2",
-    ".claude/state/session-events.jsonl.3",
-    ".claude/state/session-events.jsonl.4",
-    ".claude/state/session-events.jsonl.5",
-    ".claude/state/session-skills-used.json",
-    ".claude/state/session.json",
-    ".claude/state/test-recommendation.json",
-    ".claude/state/tooling-policy.json",
-    ".claude/state/usage-stats.jsonl",
-    "scripts/sync_implemented_to_obsidian.py",
-    "models/lgbm_model.bak.pkl",
-    "models/spread_predictor_v2.bak.pkl"
+    ".claude/state/worktree-info.json",
+    "data/weekly_plot.json",
+    "reports/agent_sidecar_brief.md",
+    "data/aurion_daily/latest.json",
+    "data/aurion_daily/state_2026-06-07.json",
+    "data/aurion_daily/state_2026-06-08.json",
+    "data/aurion_daily/state_2026-06-09.json",
+    "data/aurion_daily/state_2026-06-10.json",
+    "data/aurion_daily/state_2026-06-11.json",
+    "data/external/estat_machinery_orders/machinery_orders_202303_202603_long.csv",
+    "data/external/estat_machinery_orders/machinery_orders_202303_202603_raw.json",
+    "data/external/estat_machinery_orders/machinery_orders_202303_202603_wide.csv",
+    "data/external/estat_machinery_orders/machinery_orders_analysis.json",
+    "memory/2026-06-08.md"
   ],
   "sessionId": "",
-  "timestamp": "2026-05-30T08:04:27Z",
+  "timestamp": "2026-06-11T03:17:06Z",
   "version": "1.0.0",
   "wipTasks": null
 }

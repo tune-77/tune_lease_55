@@ -71,7 +71,7 @@ def _get_vault_path() -> Path:
         if candidate.exists():
             return candidate
 
-    print("エラー: Obsidian Vault が見つかりません。", file=sys.stderr)
+    print("エラー: iCloud 上の Obsidian Vault が見つかりません。", file=sys.stderr)
     sys.exit(1)
 
 

@@ -18,7 +18,7 @@
 | 借手モデル | 既存先: RandomForest / 新規先: LogisticRegression |
 | 定性モデル | LR と LightGBM の比較表示 |
 | Q_risk | 財務データの矛盾・歪みを示す補助指標。自動減点ではなく深掘り対象 |
-| 知識連携 | Obsidian Vault のニュース、審査メモ、判断変更ログを利用 |
+| 知識連携 | iCloud 上の Obsidian Vault のニュース、審査メモ、判断変更ログを利用 |
 
 ---
 
@@ -168,7 +168,7 @@ bench_score / ind_score / Q_risk / 定性評価 / 物件スコア / 直感補正
 
 ## Obsidian・ニュース連携
 
-既定の保存先は通常の Obsidian Vault です。
+既定の保存先は iCloud 上の通常の Obsidian Vault です。
 
 ```text
 /Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault

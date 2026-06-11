@@ -43,7 +43,7 @@ def _resolve_vault() -> Path:
         if p.exists():
             return p
     logger.error(
-        "Obsidian Vault が見つかりません。OBSIDIAN_VAULT_PATH 環境変数を設定してください。"
+        "iCloud 上の Obsidian Vault が見つかりません。OBSIDIAN_VAULT_PATH 環境変数を設定してください。"
     )
     sys.exit(1)
 

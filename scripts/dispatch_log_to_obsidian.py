@@ -195,7 +195,7 @@ def main() -> None:
 
     vault = find_vault()
     if not vault:
-        print("Error: Obsidian Vault が見つかりません", file=sys.stderr)
+        print("Error: iCloud 上の Obsidian Vault が見つかりません", file=sys.stderr)
         sys.exit(1)
 
     print(f"Vault: {vault}")
