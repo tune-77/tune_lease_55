@@ -325,6 +325,7 @@ function KnowledgeSpaceScene({
   mode,
   visualMode,
   categoryFilter,
+  flightMode,
 }: {
   graph: KnowledgeGraph;
   onSelect: (node: GraphNode | null) => void;
@@ -335,10 +336,11 @@ function KnowledgeSpaceScene({
   mode: SceneMode;
   visualMode: VisualMode;
   categoryFilter: string | null;
+  flightMode: boolean;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
   // 選択・検索・モード変更でシーンを作り直してもカメラ視点を引き継ぐ
-  const viewStateRef = useRef<{ position: THREE.Vector3; target: THREE.Vector3; rootRotationY: number } | null>(null);
+  const viewStateRef = useRef<{ position: THREE.Vector3; quaternion: THREE.Quaternion; target: THREE.Vector3; rootRotationY: number } | null>(null);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -358,18 +360,33 @@ function KnowledgeSpaceScene({
     renderer.setSize(mount.clientWidth, mount.clientHeight);
     mount.appendChild(renderer.domElement);
 
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.06;
-    controls.rotateSpeed = 0.45;
-    controls.zoomSpeed = 0.75;
-    controls.minDistance = 75;
-    controls.maxDistance = 520;
-    controls.target.set(0, 0, 0);
-    if (viewStateRef.current) {
-      camera.position.copy(viewStateRef.current.position);
-      controls.target.copy(viewStateRef.current.target);
-      controls.update();
+    let orbitControls: OrbitControls | null = null;
+    let flyControls: FlyControls | null = null;
+    if (flightMode) {
+      flyControls = new FlyControls(camera, renderer.domElement);
+      flyControls.movementSpeed = 110;
+      flyControls.rollSpeed = 0.5;
+      flyControls.dragToLook = true;
+      if (viewStateRef.current) {
+        camera.position.copy(viewStateRef.current.position);
+        camera.quaternion.copy(viewStateRef.current.quaternion);
+      } else {
+        camera.lookAt(0, 0, 0);
+      }
+    } else {
+      orbitControls = new OrbitControls(camera, renderer.domElement);
+      orbitControls.enableDamping = true;
+      orbitControls.dampingFactor = 0.06;
+      orbitControls.rotateSpeed = 0.45;
+      orbitControls.zoomSpeed = 0.75;
+      orbitControls.minDistance = 75;
+      orbitControls.maxDistance = 520;
+      orbitControls.target.set(0, 0, 0);
+      if (viewStateRef.current) {
+        camera.position.copy(viewStateRef.current.position);
+        orbitControls.target.copy(viewStateRef.current.target);
+        orbitControls.update();
+      }
     }
 
     scene.add(new THREE.AmbientLight("#dbeafe", isGalaxy ? 0.42 : 0.9));
@@ -447,6 +464,104 @@ function KnowledgeSpaceScene({
       blending: THREE.AdditiveBlending,
     });
     root.add(new THREE.Points(dustGeometry, dustMaterial));
+
+    // ── JWST風ディープスペース演出（銀河モードのみ）────────────────
+    const deepSpaceGeometries: THREE.BufferGeometry[] = [];
+    const deepSpaceMaterials: THREE.Material[] = [];
+    const deepSpaceTextures: THREE.Texture[] = [];
+    if (isGalaxy) {
+      // 遠景の星空シェル（fog の影響を受けない全天の微光星）
+      const starCount = 4200;
+      const bgPositions = new Float32Array(starCount * 3);
+      const bgColors = new Float32Array(starCount * 3);
+      const starPalette = ["#ffffff", "#dbeafe", "#fde68a", "#fecaca", "#bae6fd"];
+      for (let i = 0; i < starCount; i += 1) {
+        const seed = hashValue(`bg:${i}`);
+        const u = ((seed % 10000) / 10000) * 2 - 1;
+        const theta = (((seed >> 8) % 10000) / 10000) * Math.PI * 2;
+        const radius = 620 + (((seed >> 16) % 1000) / 1000) * 540;
+        const ring = Math.sqrt(Math.max(0, 1 - u * u));
+        bgPositions[i * 3] = Math.cos(theta) * ring * radius;
+        bgPositions[i * 3 + 1] = u * radius;
+        bgPositions[i * 3 + 2] = Math.sin(theta) * ring * radius;
+        const tint = new THREE.Color(starPalette[seed % starPalette.length]);
+        const brightness = 0.4 + (((seed >> 4) % 100) / 100) * 0.6;
+        bgColors[i * 3] = tint.r * brightness;
+        bgColors[i * 3 + 1] = tint.g * brightness;
+        bgColors[i * 3 + 2] = tint.b * brightness;
+      }
+      const bgGeometry = new THREE.BufferGeometry();
+      bgGeometry.setAttribute("position", new THREE.BufferAttribute(bgPositions, 3));
+      bgGeometry.setAttribute("color", new THREE.BufferAttribute(bgColors, 3));
+      const bgMaterial = new THREE.PointsMaterial({
+        size: 1.7,
+        sizeAttenuation: true,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.9,
+        depthWrite: false,
+        fog: false,
+        blending: THREE.AdditiveBlending,
+      });
+      scene.add(new THREE.Points(bgGeometry, bgMaterial));
+      deepSpaceGeometries.push(bgGeometry);
+      deepSpaceMaterials.push(bgMaterial);
+
+      // JWSTパレットの星雲（アンバー/ローズ/ティール/インディゴ）
+      const nebulaSpecs = [
+        { inner: "rgba(245,158,11,0.50)", outer: "rgba(154,52,18,0.16)" },
+        { inner: "rgba(244,114,182,0.42)", outer: "rgba(157,23,77,0.14)" },
+        { inner: "rgba(45,212,191,0.42)", outer: "rgba(14,116,144,0.14)" },
+        { inner: "rgba(129,140,248,0.45)", outer: "rgba(49,46,129,0.16)" },
+      ];
+      const nebulaTextures = nebulaSpecs.map((spec) => createNebulaTexture(spec.inner, spec.outer));
+      nebulaTextures.forEach((texture) => {
+        if (texture) deepSpaceTextures.push(texture);
+      });
+      for (let i = 0; i < 10; i += 1) {
+        const texture = nebulaTextures[i % nebulaTextures.length];
+        if (!texture) continue;
+        const seed = hashValue(`nebula:${i}`);
+        const material = new THREE.SpriteMaterial({
+          map: texture,
+          transparent: true,
+          opacity: 0.18 + ((seed % 100) / 100) * 0.14,
+          depthWrite: false,
+          fog: false,
+          rotation: ((seed >> 6) % 628) / 100,
+          blending: THREE.AdditiveBlending,
+        });
+        const sprite = new THREE.Sprite(material);
+        const angle = (((seed >> 3) % 1000) / 1000) * Math.PI * 2;
+        const radius = 150 + ((seed >> 9) % 360);
+        sprite.position.set(Math.cos(angle) * radius, (((seed >> 13) % 320) - 160) * 0.9, Math.sin(angle) * radius);
+        sprite.scale.setScalar(210 + ((seed >> 5) % 320));
+        root.add(sprite);
+        deepSpaceMaterials.push(material);
+      }
+
+      // 回折スパイク付きの輝星
+      for (let i = 0; i < 36; i += 1) {
+        const seed = hashValue(`hero:${i}`);
+        const tint = new THREE.Color(starPalette[seed % starPalette.length]).lerp(new THREE.Color("#fff7d6"), 0.3);
+        const material = new THREE.SpriteMaterial({
+          map: starTexture || undefined,
+          color: tint,
+          transparent: true,
+          opacity: 0.38 + ((seed % 100) / 100) * 0.5,
+          depthWrite: false,
+          fog: false,
+          blending: THREE.AdditiveBlending,
+        });
+        const sprite = new THREE.Sprite(material);
+        const angle = (((seed >> 2) % 1000) / 1000) * Math.PI * 2;
+        const radius = 130 + ((seed >> 7) % 420);
+        sprite.position.set(Math.cos(angle) * radius, ((seed >> 11) % 260) - 130, Math.sin(angle) * radius);
+        sprite.scale.setScalar(4 + ((seed >> 4) % 18));
+        root.add(sprite);
+        deepSpaceMaterials.push(material);
+      }
+    }
 
     const coreGeometry = new THREE.SphereGeometry(10, 40, 24);
     const coreMaterial = new THREE.MeshBasicMaterial({
@@ -615,14 +730,15 @@ function KnowledgeSpaceScene({
       }
 
       // ── 銀河モード: 既存 Sprite ────────────────────────────
-      const baseSize = node.type === "cluster" ? 16 : node.type === "external" ? 6.5 : 8.5;
-      const starSize = (baseSize + power * (node.type === "cluster" ? 28 : 21)) * emphasis;
-      const color = new THREE.Color(node.color || "#e2e8f0").lerp(new THREE.Color("#fff7d6"), 0.25 + power * 0.38);
+      // 加算合成の重なりで中心が白飛びしないよう、サイズ・不透明度は控えめにする
+      const baseSize = node.type === "cluster" ? 11 : node.type === "external" ? 5 : 6;
+      const starSize = (baseSize + power * (node.type === "cluster" ? 18 : 13)) * emphasis;
+      const color = new THREE.Color(node.color || "#e2e8f0").lerp(new THREE.Color("#fff7d6"), 0.2 + power * 0.3);
       const material = new THREE.SpriteMaterial({
         map: starTexture || undefined,
         color,
         transparent: true,
-        opacity: (0.48 + power * 0.48) * dim,
+        opacity: (0.34 + power * 0.42) * dim,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
       });
@@ -640,7 +756,7 @@ function KnowledgeSpaceScene({
           map: starTexture || undefined,
           color: node.source_highlight ? "#fbbf24" : color.clone().lerp(new THREE.Color("#ffffff"), 0.38),
           transparent: true,
-          opacity: (0.12 + power * 0.18 + (emphasis > 1 ? 0.18 : 0) + (node.source_highlight ? 0.1 : 0)) * dim,
+          opacity: (0.07 + power * 0.11 + (emphasis > 1 ? 0.12 : 0) + (node.source_highlight ? 0.07 : 0)) * dim,
           depthWrite: false,
           blending: THREE.AdditiveBlending,
         });
@@ -716,10 +832,16 @@ function KnowledgeSpaceScene({
     window.addEventListener("resize", resize);
 
     let frame = 0;
+    const clock = new THREE.Clock();
+    root.rotation.x = isCompact ? -0.64 : -0.62;
     const animate = () => {
       frame = requestAnimationFrame(animate);
-      root.rotation.y += isGalaxy ? 0.0012 : 0.00015;
-      root.rotation.x = (isCompact ? -0.64 : -0.62) + Math.sin(Date.now() * 0.00016) * 0.02;
+      const delta = clock.getDelta();
+      if (!flightMode) {
+        // 宇宙船モード中は銀河を固定して操縦の基準を保つ
+        root.rotation.y += isGalaxy ? 0.0012 : 0.00015;
+        root.rotation.x = (isCompact ? -0.64 : -0.62) + Math.sin(Date.now() * 0.00016) * 0.02;
+      }
       const elapsed = performance.now() * 0.001;
       flowLights.forEach((sprite) => {
         const route = animatedRoutes[sprite.userData.routeIndex as number];
@@ -730,7 +852,8 @@ function KnowledgeSpaceScene({
         const pulse = 0.68 + Math.sin((elapsed * 6.4 + route.offset * 12) - trailIndex * 0.7) * 0.18;
         sprite.scale.setScalar((isGalaxy ? (trailIndex === 0 ? 14 : trailIndex === 1 ? 9 : 5.5) : 8) * pulse);
       });
-      controls.update();
+      if (flyControls) flyControls.update(delta);
+      if (orbitControls) orbitControls.update();
       if (halo.visible) {
         halo.quaternion.copy(camera.quaternion);
       }
@@ -739,9 +862,14 @@ function KnowledgeSpaceScene({
     animate();
 
     return () => {
+      // 宇宙船モードには注視点がないため、進行方向の先を OrbitControls 用 target として保存する
+      const forwardTarget = orbitControls
+        ? orbitControls.target.clone()
+        : camera.position.clone().add(new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).multiplyScalar(180));
       viewStateRef.current = {
         position: camera.position.clone(),
-        target: controls.target.clone(),
+        quaternion: camera.quaternion.clone(),
+        target: forwardTarget,
         rootRotationY: root.rotation.y,
       };
       cancelAnimationFrame(frame);
@@ -750,7 +878,8 @@ function KnowledgeSpaceScene({
       renderer.domElement.removeEventListener("pointermove", updatePointer);
       renderer.domElement.removeEventListener("pointerleave", clearHover);
       renderer.domElement.removeEventListener("click", clickNode);
-      controls.dispose();
+      orbitControls?.dispose();
+      flyControls?.dispose();
       lineGeometry.dispose();
       lineMaterial.dispose();
       routeGlowGeometry.dispose();
@@ -763,11 +892,14 @@ function KnowledgeSpaceScene({
       haloMaterial.dispose();
       starMaterials.forEach((material) => material.dispose());
       flowMaterials.forEach((material) => material.dispose());
+      deepSpaceGeometries.forEach((geometry) => geometry.dispose());
+      deepSpaceMaterials.forEach((material) => material.dispose());
+      deepSpaceTextures.forEach((texture) => texture.dispose());
       starTexture?.dispose();
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [graph, onSelect, selectedId, searchTerm, timePercent, mode, visualMode, categoryFilter]);
+  }, [graph, onSelect, selectedId, searchTerm, timePercent, mode, visualMode, categoryFilter, flightMode]);
 
   return <div ref={mountRef} className="absolute inset-0" />;
 }
@@ -782,6 +914,13 @@ export default function KnowledgeSpacePage() {
   const [timePercent, setTimePercent] = useState(100);
   const [mode, setMode] = useState<SceneMode>("all");
   const [visualMode, setVisualMode] = useState<VisualMode>("practical");
+  const [flightMode, setFlightMode] = useState(false);
+  const toggleFlightMode = useCallback(() => {
+    setFlightMode((prev) => {
+      if (!prev) setVisualMode("galaxy");
+      return !prev;
+    });
+  }, []);
   const [evidenceQuery, setEvidenceQuery] = useState("");
   const [showControls, setShowControls] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
@@ -940,6 +1079,17 @@ export default function KnowledgeSpacePage() {
               {visualMode === "galaxy" ? "銀河" : "実務"}
             </button>
             <button
+              onClick={toggleFlightMode}
+              className={`flex h-10 items-center gap-1.5 rounded-md border px-3 text-xs font-black transition ${
+                flightMode
+                  ? "border-fuchsia-200/40 bg-fuchsia-300/18 text-fuchsia-100"
+                  : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
+              }`}
+            >
+              <Rocket className="h-4 w-4" />
+              宇宙船
+            </button>
+            <button
               onClick={() => {
                 const next = evidenceQuery || searchTerm;
                 setSearchTerm(next);
@@ -991,7 +1141,14 @@ export default function KnowledgeSpacePage() {
             mode={mode}
             visualMode={visualMode}
             categoryFilter={categoryFilter}
+            flightMode={flightMode}
           />
+        )}
+
+        {flightMode && (
+          <div className="pointer-events-none absolute bottom-3 left-1/2 z-40 -translate-x-1/2 whitespace-nowrap rounded-md border border-fuchsia-200/25 bg-slate-950/85 px-4 py-2 text-[11px] font-bold text-fuchsia-100 shadow-xl backdrop-blur-sm">
+          🚀 W/S: 前進・後退　A/D: 左右　R/F: 上昇・下降　Q/E: ロール　ドラッグ: 視点旋回
+          </div>
         )}
 
         {loading && (
@@ -1182,6 +1339,17 @@ export default function KnowledgeSpacePage() {
                 {item === "practical" ? "実務表示" : "銀河演出"}
               </button>
             ))}
+            <button
+              onClick={toggleFlightMode}
+              className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-black transition ${
+                flightMode
+                  ? "border-fuchsia-200/40 bg-fuchsia-300/18 text-fuchsia-100"
+                  : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
+              }`}
+            >
+              <Rocket className="h-3.5 w-3.5" />
+              宇宙船モード
+            </button>
           </div>
           <div className="flex flex-wrap gap-2">
             {(["all", "recent", "search", "evidence"] as SceneMode[]).map((item) => (
