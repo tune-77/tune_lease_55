@@ -178,7 +178,7 @@ export default function ChatPage() {
   const [newsPrefecture, setNewsPrefecture] = useState("");
   const [showDailyNewsBrief, setShowDailyNewsBrief] = useState(false);
   const [newsPrefectureReady, setNewsPrefectureReady] = useState(false);
-  const [speechEnabled, setSpeechEnabled] = useState(false);
+  const [speechEnabled, setSpeechEnabled] = useState(true);
   const messageListRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
@@ -843,19 +843,6 @@ export default function ChatPage() {
               </span>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => setSpeechEnabled((v) => !v)}
-            title={speechEnabled ? "音声読み上げON（クリックでOFF）" : "音声読み上げOFF（クリックでON）"}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-black transition-colors ${
-              speechEnabled
-                ? "bg-blue-500 text-white shadow-sm"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            }`}
-          >
-            {speechEnabled ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
-            音声
-          </button>
         </div>
         <div className="flex gap-2 items-end">
           <textarea
@@ -882,6 +869,18 @@ export default function ChatPage() {
             }`}
           >
             <Mic className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setSpeechEnabled((v) => !v)}
+            title={speechEnabled ? "音声読み上げON（クリックでOFF）" : "音声読み上げOFF（クリックでON）"}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors flex-shrink-0 ${
+              speechEnabled
+                ? "bg-blue-500 text-white shadow-sm"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            {speechEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
           </button>
           <button
             onClick={sendMessage}
