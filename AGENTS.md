@@ -65,6 +65,7 @@ Capture what matters. Decisions, context, things to remember. Skip the secrets u
 - Don't run destructive commands without asking.
 - `trash` > `rm` (recoverable beats gone forever)
 - When in doubt, ask.
+- Do not expand or refactor the daily improvement pipeline unless the user explicitly asks for it. If it is already working, leave it alone.
 
 ## External vs Internal
 

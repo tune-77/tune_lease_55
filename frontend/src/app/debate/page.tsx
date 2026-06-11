@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import axios from "axios";
 import { apiClient } from "@/lib/api";
 import {
   Swords, Shield, Zap, Crown, ChevronDown, ChevronUp,

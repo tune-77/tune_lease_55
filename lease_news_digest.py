@@ -10,7 +10,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-DEFAULT_NEWS_REL_DIR = Path("リースニュース")
+DEFAULT_NEWS_REL_DIRS = (
+    Path("05-クリップ_記事") / "リースニュース",
+    Path("リースニュース"),
+)
 METRICS_PATH = Path(__file__).resolve().parent / "data" / "lease_news_metrics.json"
 
 
@@ -55,6 +58,33 @@ class LeaseNewsBrief:
     question_line: str = ""
     note_date: str = ""
     note_path: str = ""
+
+
+@dataclass(frozen=True)
+class LeaseNewsFocusWriteResult:
+    note_path: str
+    daily_note_path: str
+    theme_summary: str
+    tag_summary: str
+
+
+@dataclass(frozen=True)
+class LeaseNewsReflectionWriteResult:
+    note_path: str
+    daily_note_path: str
+    headline: str
+
+
+@dataclass(frozen=True)
+class LeaseNewsReflection:
+    available: bool
+    note_path: str = ""
+    note_date: str = ""
+    theme_summary: str = ""
+    tag_summary: str = ""
+    headline: str = ""
+    thought_lines: tuple[str, ...] = ()
+    tomorrow_lines: tuple[str, ...] = ()
 
 
 def _parse_news_note(path: Path) -> dict:
@@ -125,10 +155,15 @@ def _parse_news_note(path: Path) -> dict:
 
 
 def _recent_news_items(vault: Path, limit: int = 10) -> list[dict]:
-    news_dir = vault / DEFAULT_NEWS_REL_DIR
-    if not news_dir.exists():
+    md_files: list[Path] = []
+    for rel_dir in DEFAULT_NEWS_REL_DIRS:
+        news_dir = vault / rel_dir
+        if not news_dir.exists():
+            continue
+        md_files.extend(news_dir.glob("*.md"))
+    if not md_files:
         return []
-    md_files = sorted(news_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+    md_files = sorted(md_files, key=lambda p: p.stat().st_mtime, reverse=True)
     items = [_parse_news_note(fpath) for fpath in md_files[:limit]]
     return items
 
@@ -158,10 +193,26 @@ def find_vault() -> Path | None:
 
 
 def _latest_news_note(vault: Path) -> Path | None:
-    news_dir = vault / DEFAULT_NEWS_REL_DIR
-    if not news_dir.exists():
+    notes: list[Path] = []
+    for rel_dir in DEFAULT_NEWS_REL_DIRS:
+        news_dir = vault / rel_dir
+        if not news_dir.exists():
+            continue
+        notes.extend(news_dir.glob("*_リースニュース_*.md"))
+        notes.extend(news_dir.glob("*_lease-news.md"))
+    if not notes:
         return None
-    notes = list(news_dir.glob("*_リースニュース_*.md")) or list(news_dir.glob("*_lease-news.md"))
+    notes.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
+    return notes[0]
+
+
+def _latest_reflection_note(vault: Path) -> Path | None:
+    news_dirs = [vault / "Projects" / "tune_lease_55" / "News", vault / "Projects" / "tune_lease_55"]
+    notes: list[Path] = []
+    for news_dir in news_dirs:
+        if not news_dir.exists():
+            continue
+        notes.extend(news_dir.glob("*_lease-news-reflection.md"))
     if not notes:
         return None
     notes.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
@@ -286,8 +337,15 @@ def get_latest_lease_news_focus(vault: Path | None = None) -> LeaseNewsFocus:
         theme_summary = " / ".join(filter(None, [region, importance]))
     bucket_summary = (bucket_match.group(1).strip() if bucket_match else "").strip()
     tag_summary = (tag_match.group(1).strip() if tag_match else "").strip()
-    focus_source = article_review_lines or _infer_focus_lines(theme_summary, bucket_summary, memo_bullets)
-    focus_lines = tuple((focus_source[:4] if isinstance(focus_source, list) else list(focus_source)[:4]))
+    focus_source = list(article_review_lines)
+    memo_for_inference = memo_bullets or [line for line in article_review_lines if line.strip()]
+    inferred_focus = _infer_focus_lines(theme_summary, bucket_summary, memo_for_inference)
+    for line in inferred_focus:
+        if line not in focus_source:
+            focus_source.append(line)
+    if not focus_source:
+        focus_source = inferred_focus
+    focus_lines = tuple(focus_source[:4])
     note_date = ""
     if date_match:
         note_date = date_match.group(1).strip()
@@ -327,6 +385,41 @@ def lease_news_focus_as_text(vault: Path | None = None) -> str:
         lines.append(f"重点タグ: {focus.tag_summary}")
     lines.extend(f"- {line}" for line in focus.focus_lines)
     return "\n".join(lines).strip()
+
+
+def get_latest_lease_news_reflection(vault: Path | None = None) -> LeaseNewsReflection:
+    vault = vault or find_vault()
+    if not vault:
+        return LeaseNewsReflection(available=False)
+
+    note = _latest_reflection_note(vault)
+    if not note or not note.exists():
+        return LeaseNewsReflection(available=False)
+
+    try:
+        text = note.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return LeaseNewsReflection(available=False)
+
+    date_match = re.search(r"^date:\s*(.+)$", text, re.MULTILINE)
+    theme_match = re.search(r"^theme_summary:\s*(.+)$", text, re.MULTILINE)
+    tag_match = re.search(r"^tag_summary:\s*(.+)$", text, re.MULTILINE)
+    headline_match = re.search(r"^#\s+(.+)$", text, re.MULTILINE)
+    thought_section = _extract_section(text, "今日の考え")
+    tomorrow_section = _extract_section(text, "明日見ること")
+    thought_lines = tuple(_extract_bullets(thought_section))
+    tomorrow_lines = tuple(_extract_bullets(tomorrow_section))
+
+    return LeaseNewsReflection(
+        available=True,
+        note_path=str(note.relative_to(vault)),
+        note_date=date_match.group(1).strip() if date_match else "",
+        theme_summary=theme_match.group(1).strip() if theme_match else "",
+        tag_summary=tag_match.group(1).strip() if tag_match else "",
+        headline=headline_match.group(1).strip() if headline_match else "",
+        thought_lines=thought_lines,
+        tomorrow_lines=tomorrow_lines,
+    )
 
 
 def build_lease_news_brief(
@@ -440,11 +533,16 @@ def _ensure_day_bucket(data: dict, date_str: str) -> dict:
         buckets[date_str] = {
             "collections": 0,
             "views": 0,
+            "focus_notes": 0,
             "judgment_changes": 0,
             "last_note": "",
             "last_tags": "",
             "last_source_summary": "",
             "last_article_count": 0,
+            "last_focus_note": "",
+            "last_focus_theme": "",
+            "last_focus_tags": "",
+            "last_focus_source_note_date": "",
             "last_judgment_note": "",
             "last_judgment_source_note_date": "",
             "last_judgment_company": "",
@@ -484,6 +582,246 @@ def record_lease_news_view(date_str: str, note_path: str = "", tag_summary: str 
     data["updated_at"] = dt.datetime.now().isoformat(timespec="seconds")
     _save_metrics(data)
     return bucket
+
+
+def record_lease_news_focus(
+    date_str: str,
+    vault: Path | None = None,
+    note_path: str = "",
+    source_note_date: str = "",
+    theme_summary: str = "",
+    bucket_summary: str = "",
+    tag_summary: str = "",
+    focus_lines: tuple[str, ...] = (),
+    memo_lines: tuple[str, ...] = (),
+    metrics_lines: tuple[str, ...] = (),
+    article_titles: tuple[str, ...] = (),
+) -> dict:
+    data = _load_metrics()
+    bucket = _ensure_day_bucket(data, date_str)
+    bucket["focus_notes"] = int(bucket.get("focus_notes", 0)) + 1
+    if note_path:
+        bucket["last_focus_note"] = note_path
+    if source_note_date:
+        bucket["last_focus_source_note_date"] = source_note_date
+    if theme_summary:
+        bucket["last_focus_theme"] = theme_summary
+    if tag_summary:
+        bucket["last_focus_tags"] = tag_summary
+    if bucket_summary:
+        bucket["last_source_summary"] = bucket_summary
+    data["updated_at"] = dt.datetime.now().isoformat(timespec="seconds")
+    _save_metrics(data)
+
+    vault = vault or find_vault()
+    if vault:
+        now_label = dt.datetime.now().strftime("%H:%M")
+        lines = [
+            f"## {now_label} リースニュースの注目論点",
+            "",
+            f"- テーマ: {theme_summary or '不明'}",
+            f"- 収集セット: {bucket_summary or '不明'}",
+            f"- 重点タグ: {tag_summary or 'なし'}",
+        ]
+        if note_path:
+            lines.append(f"- 参照ノート: {note_path}")
+        if source_note_date:
+            lines.append(f"- 参照ニュース日付: {source_note_date}")
+        if article_titles:
+            lines.extend(["", "- 参照記事:"])
+            for title in article_titles[:5]:
+                lines.append(f"  - {title}")
+        if focus_lines:
+            lines.extend(["", "- 注目論点:"])
+            for line in focus_lines[:4]:
+                lines.append(f"  - {line}")
+        if memo_lines:
+            lines.extend(["", "- 活用メモ:"])
+            for line in memo_lines[:3]:
+                lines.append(f"  - {line}")
+        if metrics_lines:
+            lines.extend(["", "- 追加メモ:"])
+            for line in metrics_lines[:3]:
+                lines.append(f"  - {line}")
+        _append_markdown(_daily_note_path(vault, date_str), "\n".join(lines))
+
+    return bucket
+
+
+def write_lease_news_focus_note(
+    date_str: str | None = None,
+    vault: Path | None = None,
+    focus: LeaseNewsFocus | None = None,
+) -> LeaseNewsFocusWriteResult | None:
+    vault = vault or find_vault()
+    if not vault:
+        return None
+
+    focus = focus or get_latest_lease_news_focus(vault=vault)
+    if not focus.available:
+        return None
+
+    focus_date = date_str or dt.date.today().isoformat()
+    news_dir = vault / "Projects" / "tune_lease_55" / "News"
+    news_dir.mkdir(parents=True, exist_ok=True)
+    note_path = news_dir / f"{focus_date}_lease-news-focus.md"
+
+    focus_lines = list(focus.focus_lines[:4]) or ["直近のニュースを踏まえ、提示条件と審査コメントを更新する。"]
+    memo_lines = list(focus.memo_lines[:3])
+    metrics_lines = list(focus.metrics_lines[:3])
+    article_titles = list(focus.article_titles[:5])
+
+    content_lines = [
+        "---",
+        f"date: {focus_date}",
+        f"source_note_date: {focus.note_date}",
+        f"source_note_path: {focus.note_path}",
+        f"profile: {focus.profile}",
+        f"theme_summary: {focus.theme_summary}",
+        f"bucket_summary: {focus.bucket_summary}",
+        f"tag_summary: {focus.tag_summary}",
+        "---",
+        f"# リースニュースの注目論点 — {focus_date}",
+        "",
+        "## 概要",
+        f"- テーマ: {focus.theme_summary or '不明'}",
+        f"- 収集セット: {focus.bucket_summary or '不明'}",
+        f"- 重点タグ: {focus.tag_summary or 'なし'}",
+    ]
+    if focus.note_path:
+        content_lines.append(f"- 参照ノート: [[{focus.note_path}]]")
+    if focus.note_date:
+        content_lines.append(f"- 参照ニュース日付: {focus.note_date}")
+    if article_titles:
+        content_lines.extend(["", "## 参照記事"])
+        content_lines.extend(f"- {title}" for title in article_titles)
+    content_lines.extend(["", "## 注目論点"])
+    content_lines.extend(f"- {line}" for line in focus_lines)
+    if memo_lines:
+        content_lines.extend(["", "## 活用メモ"])
+        content_lines.extend(f"- {line}" for line in memo_lines)
+    if metrics_lines:
+        content_lines.extend(["", "## 追加メモ"])
+        content_lines.extend(f"- {line}" for line in metrics_lines)
+    content = "\n".join(content_lines).rstrip() + "\n"
+    note_path.write_text(content, encoding="utf-8")
+
+    try:
+        record_lease_news_focus(
+            date_str=focus_date,
+            vault=vault,
+            note_path=str(note_path.relative_to(vault)),
+            source_note_date=focus.note_date,
+            theme_summary=focus.theme_summary,
+            bucket_summary=focus.bucket_summary,
+            tag_summary=focus.tag_summary,
+            focus_lines=tuple(focus_lines),
+            memo_lines=tuple(memo_lines),
+            metrics_lines=tuple(metrics_lines),
+            article_titles=tuple(article_titles),
+        )
+    except Exception:
+        pass
+
+    return LeaseNewsFocusWriteResult(
+        note_path=str(note_path),
+        daily_note_path=str(_daily_note_path(vault, focus_date)),
+        theme_summary=focus.theme_summary,
+        tag_summary=focus.tag_summary,
+    )
+
+
+def write_lease_news_reflection_note(
+    date_str: str | None = None,
+    vault: Path | None = None,
+    focus: LeaseNewsFocus | None = None,
+) -> LeaseNewsReflectionWriteResult | None:
+    vault = vault or find_vault()
+    if not vault:
+        return None
+
+    focus = focus or get_latest_lease_news_focus(vault=vault)
+    if not focus.available:
+        return None
+
+    reflection_date = date_str or dt.date.today().isoformat()
+    news_dir = vault / "Projects" / "tune_lease_55" / "News"
+    news_dir.mkdir(parents=True, exist_ok=True)
+    note_path = news_dir / f"{reflection_date}_lease-news-reflection.md"
+
+    theme = focus.theme_summary or "不明"
+    tag_summary = focus.tag_summary or "なし"
+    focus_lines = list(focus.focus_lines[:3]) or ["直近のニュースを見て、判断の前提を更新する。"]
+    headline = focus.headline or "最新ニュースの論点あり"
+    thoughts = [
+        "今日の判断で変えるなら、審査コメントのどこか。",
+        "この論点は単発か、継続的な環境変化か。",
+        "明日もう一度見るべき案件条件は何か。",
+    ]
+    if any(key in " ".join(focus_lines) for key in ("金利", "政策", "為替")):
+        thoughts[0] = "今日の判断では、金利前提と提示条件の説明を少し厚くする。"
+    if any(key in " ".join(focus_lines) for key in ("設備投資", "省力化", "自動化", "更新")):
+        thoughts[1] = "この論点は、設備更新や省力化投資の継続テーマとして見る。"
+    if any(key in " ".join(focus_lines) for key in ("物流", "車両", "建設", "製造")):
+        thoughts[2] = "明日は、同業種の更新投資案件を優先して確認する。"
+
+    content_lines = [
+        "---",
+        f"date: {reflection_date}",
+        f"source_note_date: {focus.note_date}",
+        f"source_note_path: {focus.note_path}",
+        f"theme_summary: {theme}",
+        f"tag_summary: {tag_summary}",
+        "---",
+        f"# リースニュースの今日の考え — {reflection_date}",
+        "",
+        "## 一言",
+        f"- {headline}",
+        "",
+        "## 今日の論点",
+    ]
+    content_lines.extend(f"- {line}" for line in focus_lines)
+    content_lines.extend([
+        "",
+        "## 今日の考え",
+    ])
+    content_lines.extend(f"- {line}" for line in thoughts)
+    content_lines.extend([
+        "",
+        "## 明日見ること",
+        f"- {thoughts[2]}",
+        "",
+        "## 判断の前提",
+        f"- テーマ: {theme}",
+        f"- 重点タグ: {tag_summary}",
+    ])
+    if focus.note_path:
+        content_lines.append(f"- 参照ノート: [[{focus.note_path}]]")
+    content = "\n".join(content_lines).rstrip() + "\n"
+    note_path.write_text(content, encoding="utf-8")
+
+    try:
+        record_lease_news_focus(
+            date_str=reflection_date,
+            vault=vault,
+            note_path=str(note_path.relative_to(vault)),
+            source_note_date=focus.note_date,
+            theme_summary=theme,
+            bucket_summary=focus.bucket_summary,
+            tag_summary=tag_summary,
+            focus_lines=tuple(focus_lines),
+            memo_lines=tuple(thoughts),
+            metrics_lines=tuple(),
+            article_titles=focus.article_titles,
+        )
+    except Exception:
+        pass
+
+    return LeaseNewsReflectionWriteResult(
+        note_path=str(note_path),
+        daily_note_path=str(_daily_note_path(vault, reflection_date)),
+        headline=headline,
+    )
 
 
 def record_lease_news_judgment_change(

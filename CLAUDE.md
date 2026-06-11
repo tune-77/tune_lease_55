@@ -42,7 +42,7 @@ Work Logs: `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vau
 
 ## プロジェクト構成
 
-**Next.js 14 + FastAPI + SQLite**
+**Next.js 16 + FastAPI + SQLite**
 
 ```
 frontend/src/app/     # UI（25+ ページ）

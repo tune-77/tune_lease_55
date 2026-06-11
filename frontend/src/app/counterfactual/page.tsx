@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import axios from "axios";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine
@@ -93,7 +92,7 @@ export default function CounterfactualPage() {
     setResult(null);
     setError(null);
     try {
-      const res = await axios.post<CFResult>("/api/counterfactual/analyze", {
+      const res = await apiClient.post<CFResult>("/api/counterfactual/analyze", {
         case_id: selectedId,
         target_score: targetScore,
       });

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { apiClient } from "@/lib/api";
 import { BarChart2, RefreshCw, TrendingUp } from "lucide-react";
 import {
   Bar,
@@ -45,7 +45,7 @@ export default function IndustryWinratePage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await axios.get<WinrateData>("/api/cases/industry-winrate");
+      const res = await apiClient.get<WinrateData>("/api/cases/industry-winrate");
       setData(res.data);
     } catch (e) {
       setError("データの取得に失敗しました");

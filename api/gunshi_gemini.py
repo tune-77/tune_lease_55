@@ -3,6 +3,7 @@ import asyncio
 import json
 import os
 import httpx
+from prompt_feedback import build_pdca_prompt_block, record_prompt_feedback
 from shinsa_gunshi_logic import (
     EVIDENCE_WEIGHTS,
     compute_prior,
@@ -114,26 +115,7 @@ def build_bayes_factors(params: dict, prior: float, posterior: float) -> list[di
 
 def _load_pdca_feedback() -> str:
     """pdca_ai_rules.json が存在すれば審査フィードバック文字列を返す。なければ空文字。"""
-    import json
-    try:
-        _dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        path = os.path.join(_dir, "data", "pdca_ai_rules.json")
-        if not os.path.exists(path):
-            return ""
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if not data:
-            return ""
-        lines: list[str] = []
-        summary = data.get("reflection_summary", "")
-        if summary:
-            lines.append(f"【傾向サマリー】{summary}")
-        for addon in data.get("ai_prompt_addons", []):
-            if isinstance(addon, str) and addon.strip():
-                lines.append(f"- {addon.strip()}")
-        return "\n".join(lines)
-    except Exception:
-        return ""
+    return build_pdca_prompt_block()
 
 
 def _fetch_rag_context(asset_name: str, industry_cat: str) -> str:
@@ -210,6 +192,7 @@ def build_system_instruction(
     industry_cat: str = "",
     default_warnings: list[str] | None = None,
     estat_context: dict | None = None,
+    include_pdca: bool = True,
 ) -> str:
     # PHRASES_100 は dict[str, list[dict]] なので全カテゴリのtextを列挙
     all_phrases = []
@@ -224,9 +207,10 @@ def build_system_instruction(
         "承認奪取のための戦略・フレーズを武将スタイルで提案してください。\n"
         f"利用可能なフレーズ辞書（{len(all_phrases)}件）:\n{phrases_text}\n"
     )
-    pdca_block = _load_pdca_feedback()
-    if pdca_block:
-        base += f"\n【過去の審査フィードバック】\n{pdca_block}\n"
+    if include_pdca:
+        pdca_block = _load_pdca_feedback()
+        if pdca_block:
+            base += f"\n【過去の審査フィードバック】\n{pdca_block}\n"
     rag_block = _fetch_rag_context(asset_name, industry_cat)
     if rag_block:
         base += f"\n{rag_block}\n"
@@ -510,6 +494,47 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
     )
     # phrase_dicts は list[dict] — text フィールドを抽出
     phrases = [p.get("text", str(p)) if isinstance(p, dict) else str(p) for p in phrase_dicts]
+    base_system_instruction = build_system_instruction(
+        params.get("asset_warnings"),
+        params.get("asset_bonuses"),
+        str(params.get("asset_name") or ""),
+        str(params.get("industry_cat") or ""),
+        params.get("default_warnings"),
+        params.get("estat_context"),
+        include_pdca=False,
+    )
+    final_system_instruction = build_system_instruction(
+        params.get("asset_warnings"),
+        params.get("asset_bonuses"),
+        str(params.get("asset_name") or ""),
+        str(params.get("industry_cat") or ""),
+        params.get("default_warnings"),
+        params.get("estat_context"),
+        include_pdca=True,
+    )
+    question_text = build_user_prompt(params)
+    base_prompt = f"{base_system_instruction}\n\n{question_text}".strip()
+    final_prompt = f"{final_system_instruction}\n\n{question_text}".strip()
+
+    def _record_feedback(response_text: str, *, reason: str = "") -> None:
+        try:
+            record_prompt_feedback(
+                surface="next_gunshi_stream",
+                question=question_text,
+                base_prompt=base_prompt,
+                final_prompt=final_prompt,
+                response=response_text,
+                extra={
+                    "score": score,
+                    "pd_pct": pd_pct,
+                    "industry_cat": industry_cat,
+                    "asset_name": str(params.get("asset_name") or ""),
+                    "llm_model": os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
+                    "fallback_reason": reason,
+                },
+            )
+        except Exception:
+            pass
 
     yield {
         "type": "bayes",
@@ -524,25 +549,15 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
     }
 
     if not api_key:
-        yield {
-            "type": "stream",
-            "delta": build_fallback_strategy_text(params, phrases, "GEMINI_API_KEY未設定"),
-        }
+        fallback_text = build_fallback_strategy_text(params, phrases, "GEMINI_API_KEY未設定")
+        yield {"type": "stream", "delta": fallback_text}
+        _record_feedback(fallback_text, reason="GEMINI_API_KEY未設定")
         yield {"type": "done"}
         return
 
     payload = {
-        "system_instruction": {"parts": [{"text": build_system_instruction(
-            params.get("asset_warnings"),
-            params.get("asset_bonuses"),
-            str(params.get("asset_name") or ""),
-            str(params.get("industry_cat") or ""),
-            params.get("default_warnings"),
-            params.get("estat_context"),
-        )}]},
-        "contents": [
-            {"role": "user", "parts": [{"text": build_user_prompt(params)}]}
-        ],
+        "system_instruction": {"parts": [{"text": final_system_instruction}]},
+        "contents": [{"role": "user", "parts": [{"text": question_text}]}],
         "generationConfig": {"maxOutputTokens": 1024, "temperature": 0.7},
     }
     url = f"{_gemini_stream_url()}?alt=sse"
@@ -561,10 +576,9 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
                         continue  # exponential backoff で再試行
                     _rate_limited = False
                     if resp.status_code != 200:
-                        yield {
-                            "type": "stream",
-                            "delta": build_fallback_strategy_text(params, phrases, f"HTTP {resp.status_code}"),
-                        }
+                        fallback_text = build_fallback_strategy_text(params, phrases, f"HTTP {resp.status_code}")
+                        yield {"type": "stream", "delta": fallback_text}
+                        _record_feedback(fallback_text, reason=f"HTTP {resp.status_code}")
                         yield {"type": "done"}
                         return
                     async for line in resp.aiter_lines():
@@ -583,35 +597,36 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
                                 yield {"type": "stream", "delta": delta}
                         except Exception:
                             pass
+                    response_text = emitted_text
                     if len(emitted_text.strip()) < 120:
                         prefix = "\n\n" if emitted_text.strip() else ""
+                        fallback_text = build_fallback_strategy_text(
+                            params,
+                            phrases,
+                            "Gemini応答が短すぎたため補完",
+                        )
+                        response_text = f"{response_text}{prefix}{fallback_text}"
                         yield {
                             "type": "stream",
-                            "delta": prefix + build_fallback_strategy_text(
-                                params,
-                                phrases,
-                                "Gemini応答が短すぎたため補完",
-                            ),
+                            "delta": prefix + fallback_text,
                         }
+                    _record_feedback(response_text or build_fallback_strategy_text(params, phrases, "Gemini応答取得"), reason="")
                     yield {"type": "done"}
                     return
         except Exception as exc:
-            yield {
-                "type": "stream",
-                "delta": build_fallback_strategy_text(params, phrases, type(exc).__name__),
-            }
+            fallback_text = build_fallback_strategy_text(params, phrases, type(exc).__name__)
+            yield {"type": "stream", "delta": fallback_text}
+            _record_feedback(fallback_text, reason=type(exc).__name__)
             yield {"type": "done"}
             return
 
     # 3回リトライしても 429 が続いた場合のフレンドリーメッセージ
     if _rate_limited:
-        yield {
-            "type": "stream",
-            "delta": "少し混み合っています。しばらくお待ちいただくか、再度お試しください。",
-        }
+        fallback_text = "少し混み合っています。しばらくお待ちいただくか、再度お試しください。"
+        yield {"type": "stream", "delta": fallback_text}
+        _record_feedback(fallback_text, reason="rate_limited")
     else:
-        yield {
-            "type": "stream",
-            "delta": build_fallback_strategy_text(params, phrases, "接続失敗"),
-        }
+        fallback_text = build_fallback_strategy_text(params, phrases, "接続失敗")
+        yield {"type": "stream", "delta": fallback_text}
+        _record_feedback(fallback_text, reason="接続失敗")
     yield {"type": "done"}

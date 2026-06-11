@@ -102,6 +102,7 @@ from lease_news_digest import (
     find_vault,
     build_lease_news_brief,
     get_latest_lease_news_focus,
+    get_latest_lease_news_reflection,
     record_lease_news_collection,
     record_lease_news_judgment_change,
     record_lease_news_view,
@@ -272,7 +273,7 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
 )
 
-from routers.ocr import router as ocr_router
+from api.routers.ocr import router as ocr_router
 app.include_router(ocr_router, prefix="/api")
 
 @app.get("/")
@@ -3403,6 +3404,7 @@ def get_dashboard_stats():
             raise HTTPException(status_code=503, detail="dashboard stats cache unavailable")
         payload = dict(payload)
         payload["lease_news_focus"] = _lease_news_focus_to_dict(get_latest_lease_news_focus())
+        payload["lease_news_reflection"] = _lease_news_reflection_to_dict(get_latest_lease_news_reflection())
         payload["improvement_highlights"] = _load_latest_improvement_highlights(limit=3)
         payload["lease_system_gaps"] = _load_lease_system_gap_analysis(limit=3)
         return payload
@@ -3428,6 +3430,21 @@ def _lease_news_focus_to_dict(focus):
         "metrics_lines": list(getattr(focus, "metrics_lines", ()) or ()),
         "article_titles": list(getattr(focus, "article_titles", ()) or ()),
         "headline": getattr(focus, "headline", ""),
+    }
+
+
+def _lease_news_reflection_to_dict(reflection):
+    if not reflection or not getattr(reflection, "available", False):
+        return {"available": False}
+    return {
+        "available": True,
+        "note_path": getattr(reflection, "note_path", ""),
+        "note_date": getattr(reflection, "note_date", ""),
+        "theme_summary": getattr(reflection, "theme_summary", ""),
+        "tag_summary": getattr(reflection, "tag_summary", ""),
+        "headline": getattr(reflection, "headline", ""),
+        "thought_lines": list(getattr(reflection, "thought_lines", ()) or ()),
+        "tomorrow_lines": list(getattr(reflection, "tomorrow_lines", ()) or ()),
     }
 
 
@@ -5425,6 +5442,30 @@ def _auto_save_chat_to_obsidian(user_message: str, reply: str) -> None:
         print(f"[Obsidian自動保存] エラー: {_e}")
 
 
+def _record_prompt_feedback_if_available(
+    *,
+    surface: str,
+    question: str,
+    base_prompt: str,
+    final_prompt: str,
+    response: str,
+    extra: dict | None = None,
+) -> None:
+    try:
+        from prompt_feedback import record_prompt_feedback
+
+        record_prompt_feedback(
+            surface=surface,
+            question=question,
+            base_prompt=base_prompt,
+            final_prompt=final_prompt,
+            response=response,
+            extra=extra or {},
+        )
+    except Exception as _e:
+        print(f"[PromptFeedback] エラー: {_e}")
+
+
 class ChatRequest(BaseModel):
     message: str
     user_id: str = "default"
@@ -5593,9 +5634,34 @@ def post_chat(req: ChatRequest):
         if question_category == "general":
             history = get_recent_messages(req.user_id, limit=20)
             history_for_gemini = [{"role": m["role"], "content": m["content"]} for m in history]
-            reply = call_gemini_chat(_GENERAL_CHAT_SYSTEM_PROMPT + news_focus_context + news_brief_context, history_for_gemini, req.message)
+            from prompt_feedback import build_pdca_prompt_block
+
+            base_system_prompt = _GENERAL_CHAT_SYSTEM_PROMPT + news_focus_context + news_brief_context
+            pdca_block = build_pdca_prompt_block()
+            effective_system_prompt = base_system_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
+            reply = call_gemini_chat(effective_system_prompt, history_for_gemini, req.message)
             save_message(req.user_id, "user", req.message)
             save_message(req.user_id, "assistant", reply)
+            _record_prompt_feedback_if_available(
+                surface="next_chat_general",
+                question=req.message,
+                base_prompt="\n\n".join([
+                    base_system_prompt,
+                    "\n".join(f"{m['role']}: {m['content']}" for m in history_for_gemini),
+                    f"user: {req.message}",
+                ]),
+                final_prompt="\n\n".join([
+                    effective_system_prompt,
+                    "\n".join(f"{m['role']}: {m['content']}" for m in history_for_gemini),
+                    f"user: {req.message}",
+                ]),
+                response=reply,
+                extra={
+                    "user_id": req.user_id,
+                    "intent": req.intent or "",
+                    "category": "general",
+                },
+            )
             total = get_message_count(req.user_id)
             return {"reply": reply, "total_messages": total, "lease_news_focus": news_focus, "lease_news_brief": news_brief}
 
@@ -5656,10 +5722,35 @@ def post_chat(req: ChatRequest):
         history_for_gemini = [{"role": m["role"], "content": m["content"]} for m in history]
         guidance = build_chat_guidance(req.message, history_for_gemini)
         # システムプロンプトにRAGコンテキスト・DB統計・改善照合・会話ガイダンスを追記
-        effective_prompt = _CHAT_SYSTEM_PROMPT + news_focus_context + news_brief_context + rag_context + db_context + improvement_context + guidance.prompt_suffix
+        from prompt_feedback import build_pdca_prompt_block
+
+        base_effective_prompt = _CHAT_SYSTEM_PROMPT + news_focus_context + news_brief_context + rag_context + db_context + improvement_context + guidance.prompt_suffix
+        pdca_block = build_pdca_prompt_block()
+        effective_prompt = base_effective_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
         reply = call_gemini_chat(effective_prompt, history_for_gemini, req.message)
         save_message(req.user_id, "user", req.message)
         save_message(req.user_id, "assistant", reply)
+        _record_prompt_feedback_if_available(
+            surface="next_chat_rag",
+            question=req.message,
+            base_prompt="\n\n".join([
+                base_effective_prompt,
+                "\n".join(f"{m['role']}: {m['content']}" for m in history_for_gemini),
+                f"user: {req.message}",
+            ]),
+            final_prompt="\n\n".join([
+                effective_prompt,
+                "\n".join(f"{m['role']}: {m['content']}" for m in history_for_gemini),
+                f"user: {req.message}",
+            ]),
+            response=reply,
+            extra={
+                "user_id": req.user_id,
+                "intent": req.intent or "",
+                "category": "rag",
+                "improvement_mode": bool(_is_improvement_msg),
+            },
+        )
         total = get_message_count(req.user_id)
 
         # 改善メモをObsidianに保存（類似候補がすでにある場合はスキップして重複防止）
@@ -6173,6 +6264,17 @@ def judgment_feedback_summary_api():
     from judgment_feedback import get_judgment_feedback_summary
 
     return get_judgment_feedback_summary()
+
+
+@app.get("/api/prompt-feedback/summary")
+def prompt_feedback_summary_api():
+    from prompt_feedback_metrics import DEFAULT_LOG_PATH, build_summary, load_jsonl
+
+    rows = load_jsonl(DEFAULT_LOG_PATH)
+    return {
+        "source": str(DEFAULT_LOG_PATH),
+        "summary": build_summary(rows),
+    }
 
 
 class JudgmentFeedbackReviewRequest(BaseModel):

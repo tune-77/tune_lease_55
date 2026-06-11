@@ -37,6 +37,11 @@ try:
 except ImportError:  # pragma: no cover - package import fallback
     from ..chat_intent import build_chat_guidance
 
+try:
+    from prompt_feedback import build_pdca_prompt_block, record_prompt_feedback
+except ImportError:  # pragma: no cover - package import fallback
+    from ..prompt_feedback import build_pdca_prompt_block, record_prompt_feedback
+
 
 def _get_gemini_key() -> str:
     try:
@@ -311,6 +316,7 @@ def _build_prompt(
     obsidian_hits: list[dict[str, str]],
     web_hits: list[dict[str, str]],
     humor_style: str = "standard",
+    include_pdca: bool = True,
 ) -> str:
     if humor_style == "yanami":
         _persona = """あなたは八奈見杏奈です。有能だが激務で疲弊した審査ベテランの口調で回答します。
@@ -398,6 +404,8 @@ Webメモ保存の判断:
 - 保存するときは、どの情報が有益だったかを短く箇条書きにする。
 """
 
+    pdca_prompt = build_pdca_prompt_block() if include_pdca else ""
+
     obsidian_digest = build_obsidian_digest(message, obsidian_hits) if obsidian_hits else {"digest": "", "title": "", "source_count": "0"}
 
     guidance = build_chat_guidance(message, history)
@@ -414,6 +422,7 @@ Obsidian自動保存の判断:
 {weekly_prompt}
 {web_prompt}
 {web_save_prompt}
+{pdca_prompt}
 {guidance.prompt_suffix}
 
 次のJSONだけ返してください:
@@ -494,6 +503,24 @@ def build_chat_reply(
     obsidian_hits = collect_obsidian_context(message) if use_obsidian else []
     obsidian_digest = build_obsidian_digest(message, obsidian_hits) if obsidian_hits else {"digest": "", "title": "", "source_count": "0"}
     web_hits = collect_web_context(message) if use_web and _should_search_web(message) else []
+    base_prompt = _build_prompt(
+        message,
+        history or [],
+        score_result,
+        obsidian_hits,
+        web_hits,
+        humor_style,
+        include_pdca=False,
+    )
+    final_prompt = _build_prompt(
+        message,
+        history or [],
+        score_result,
+        obsidian_hits,
+        web_hits,
+        humor_style,
+        include_pdca=True,
+    )
 
     try:
         from google import genai
@@ -503,14 +530,7 @@ def build_chat_reply(
         model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
         response = client.models.generate_content(
             model=model,
-            contents=_build_prompt(
-                message,
-                history or [],
-                score_result,
-                obsidian_hits,
-                web_hits,
-                humor_style,
-            ),
+            contents=final_prompt,
             config=types.GenerateContentConfig(
                 max_output_tokens=_structured_chat_max_tokens(),
                 temperature=0.35,
@@ -642,6 +662,22 @@ def build_chat_reply(
                 related_paths=[item.get("path", "") for item in obsidian_hits],
                 source_query=message,
             )
+        try:
+            record_prompt_feedback(
+                surface="next_gunshi_chat",
+                question=message,
+                base_prompt=base_prompt,
+                final_prompt=final_prompt,
+                response=str(parsed.get("reply") or ""),
+                extra={
+                    "humor_style": humor_style,
+                    "web_used": bool(web_hits),
+                    "obsidian_used": bool(obsidian_hits),
+                    "llm_model": model,
+                },
+            )
+        except Exception:
+            pass
         return {
             "reply": str(parsed.get("reply") or ""),
             "saved": save_result.get("status") == "saved",

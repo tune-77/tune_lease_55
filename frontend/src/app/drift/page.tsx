@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import axios from "axios";
+import { apiClient } from "@/lib/api";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, ReferenceLine
@@ -59,7 +59,7 @@ export default function DriftPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await axios.get<DriftData>("/api/drift-stats");
+      const res = await apiClient.get<DriftData>("/api/drift-stats");
       setData(res.data);
     } catch {
       setData(null);

@@ -32,7 +32,12 @@ _REPO_ROOT = _SCRIPT_DIR.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from lease_news_digest import get_lease_news_metrics, record_lease_news_collection
+from lease_news_digest import (
+    get_lease_news_metrics,
+    record_lease_news_collection,
+    write_lease_news_focus_note,
+    write_lease_news_reflection_note,
+)
 
 
 DEFAULT_VAULT_CANDIDATES = [
@@ -1058,11 +1063,26 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     daily_path = _append_daily_digest(vault, daily_dir, news_dir, date_str, articles)
-    _trigger_auto_wikilink(saved_paths, vault)
-    _trigger_rag_index(saved_paths)
+    focus_result = write_lease_news_focus_note(date_str=date_str, vault=vault)
+    reflection_result = write_lease_news_reflection_note(date_str=date_str, vault=vault, focus=None)
+    focus_paths = list(saved_paths)
+    if focus_result:
+        focus_path = Path(focus_result.note_path)
+        focus_paths.append(focus_path)
+        print(f"focus_note={focus_path}")
+    if reflection_result:
+        reflection_path = Path(reflection_result.note_path)
+        focus_paths.append(reflection_path)
+        print(f"reflection_note={reflection_path}")
+    _trigger_auto_wikilink(focus_paths, vault)
+    _trigger_rag_index(focus_paths)
 
     print(f"articles={len(articles)}")
     print(f"saved_files={len(saved_paths)}")
+    if focus_result:
+        print(f"focus_saved=1")
+    if reflection_result:
+        print(f"reflection_saved=1")
     print(f"news_dir={vault / news_dir}")
     print(f"daily_note={daily_path}")
     return 0

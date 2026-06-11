@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { apiClient } from '@/lib/api';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import { Building, Settings, ShieldCheck, Key, Save, Activity, Globe } from 'lucide-react';
 
@@ -21,7 +21,7 @@ export default function CorporateNumberPage() {
   const fetchSettings = async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`/api/settings/corporate_number`);
+      const res = await apiClient.get(`/api/settings/corporate_number`);
       setSettings(res.data);
     } catch (err) {
       console.error(err);
@@ -33,7 +33,7 @@ export default function CorporateNumberPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await axios.post(`/api/settings/corporate_number`, settings);
+      await apiClient.post(`/api/settings/corporate_number`, settings);
       triggerMebuki('approve', '設定を保存しました！完璧です！\\nこれで審査の自動化がまた一歩進みましたね。');
     } catch (err) {
       console.error(err);

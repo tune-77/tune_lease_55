@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { apiClient } from '@/lib/api';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import { Settings, ShieldCheck, Save, Activity, Sliders, Info } from 'lucide-react';
 
@@ -17,7 +17,7 @@ export default function RulesPage() {
   const fetchRules = async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`/api/settings/rules`);
+      const res = await apiClient.get(`/api/settings/rules`);
       setRules(res.data);
     } catch (err) {
       console.error(err);
@@ -30,7 +30,7 @@ export default function RulesPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await axios.post(`/api/settings/rules`, rules);
+      await apiClient.post(`/api/settings/rules`, rules);
       triggerMebuki('approve', '審査ルールを更新しました！\\nこれで次からの審査に新しい基準が適用されます。');
     } catch (err) {
       console.error(err);

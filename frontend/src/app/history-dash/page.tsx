@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { apiClient } from '@/lib/api';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import { PieChart, TrendingUp, Users, Target, Activity, DollarSign, Award } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Cell, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
@@ -17,7 +17,7 @@ export default function HistoryDashPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`/api/analysis/contract_drivers`);
+      const res = await apiClient.get(`/api/analysis/contract_drivers`);
       setData(res.data);
     } catch (err) {
       console.error(err);

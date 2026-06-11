@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import axios from "axios";
+import { apiClient } from "@/lib/api";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine
@@ -81,7 +81,7 @@ export default function RateEnginePage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await axios.post<RateResult>("/api/rate-engine/propose", {
+      const res = await apiClient.post<RateResult>("/api/rate-engine/propose", {
         score,
         term_months: termMonths,
         asset_id: assetId,

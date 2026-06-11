@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { apiClient } from '@/lib/api';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import { Calendar, Percent, Activity, Save, Download, AlertTriangle, CheckCircle, ChevronRight, Database, TrendingUp } from 'lucide-react';
 import {
@@ -58,8 +58,8 @@ export default function InterestPage() {
     setLoading(true);
     try {
       const [ratesRes, currentRes] = await Promise.all([
-        axios.get(`/api/settings/interest`),
-        axios.get(`/api/settings/interest/current`),
+        apiClient.get(`/api/settings/interest`),
+        apiClient.get(`/api/settings/interest/current`),
       ]);
       const rateData: RateRow[] = ratesRes.data;
       const cur = currentRes.data;
@@ -82,7 +82,7 @@ export default function InterestPage() {
       for (const col of TERM_COLS) {
         payload[col] = form[col] !== '' ? parseFloat(form[col]) : null;
       }
-      await axios.post(`/api/settings/interest`, payload);
+      await apiClient.post(`/api/settings/interest`, payload);
       triggerMebuki('approve', `${form.month} の基準金利を登録しました！`);
       showToast(`${form.month} を登録しました`);
       fetchAll();
@@ -112,7 +112,7 @@ export default function InterestPage() {
         for (const col of TERM_COLS) {
           payload[col] = (patch as any)[col] !== undefined ? (patch as any)[col] : (original as any)?.[col] ?? null;
         }
-        await axios.post(`/api/settings/interest`, payload);
+        await apiClient.post(`/api/settings/interest`, payload);
       }
       showToast(`${changed.length}件を保存しました`);
       setEditRows({});
@@ -128,7 +128,7 @@ export default function InterestPage() {
     setSeeding(true);
     setSeedResult(null);
     try {
-      const res = await axios.post(`/api/settings/interest/seed?overwrite=${overwrite}`);
+      const res = await apiClient.post(`/api/settings/interest/seed?overwrite=${overwrite}`);
       setSeedResult(`✅ ${res.data.inserted}件投入、${res.data.skipped}件スキップ`);
       fetchAll();
     } catch {

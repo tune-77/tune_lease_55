@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { apiClient } from '@/lib/api';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import { Layout, TrendingUp, DollarSign, Activity } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ComposedChart } from 'recharts';
@@ -35,7 +35,7 @@ export default function FinancialPage() {
   const runForecast = async () => {
     setLoading(true);
     try {
-      const res = await axios.post(`/api/forecast`, {
+      const res = await apiClient.post(`/api/forecast`, {
         sales: sales.map(v => parseFloat(v) || 0),
         profit: profit.map(v => parseFloat(v) || 0),
         net_assets: netAssets.map(v => parseFloat(v) || 0),

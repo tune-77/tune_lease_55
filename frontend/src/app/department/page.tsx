@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { apiClient } from "@/lib/api";
 import {
   Activity,
   BarChart3,
@@ -128,7 +128,7 @@ export default function DepartmentDashboardPage() {
       setLoading(true);
     }
     try {
-      const res = await axios.get<DepartmentStats>("/api/department/stats", {
+      const res = await apiClient.get<DepartmentStats>("/api/department/stats", {
         headers: { "Cache-Control": "no-cache" },
       });
       setStats(res.data);

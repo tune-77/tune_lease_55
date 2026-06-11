@@ -15,6 +15,7 @@ from contextlib import closing
 from datetime import datetime
 from typing import Generator
 from runtime_paths import get_data_path
+from prompt_feedback import build_pdca_prompt_block
 
 # DB 操作は専用モジュールに委譲（後方互換のため re-export）
 from components.shinsa_gunshi_db import (  # noqa: E402
@@ -1007,35 +1008,7 @@ def build_gunshi_prompt(
     else:
         system_persona = "あなたは絶対承認を勝ち取る軍師です。"
 
-    import os, json
-    # FP-002: パスバグ修正 — dirname は1回だけ（tune_lease_55/ 直下が正しい位置）
-    _pdca_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "pdca_ai_rules.json")
-    pdca_addon_text = ""
-    try:
-        if os.path.exists(_pdca_file):
-            with open(_pdca_file, "r", encoding="utf-8") as f:
-                _pdca_data = json.load(f)
-
-            _addons = _pdca_data.get("ai_prompt_addons", [])
-            _summary = _pdca_data.get("reflection_summary", "")
-            _last_run = _pdca_data.get("last_run", "")
-            _analyzed = _pdca_data.get("analyzed_count", 0)
-
-            if _addons:
-                pdca_addon_text = "\n\n【自動学習システムからの特記事項（PDCA反映ルール）】\n"
-                # 最終更新日と分析件数を添付（信頼性の根拠）
-                if _last_run:
-                    _run_date = _last_run[:10] if len(_last_run) >= 10 else _last_run
-                    pdca_addon_text += f"（直近 {_analyzed} 件の審査実績を {_run_date} に分析した結果）\n"
-                # 直近3件のルールを優先（長くなりすぎを防ぐ）
-                pdca_addon_text += "直近の審査傾向を踏まえ、以下のルールを必ず遵守して評価に反映させてください：\n"
-                pdca_addon_text += "\n".join([f"・{r}" for r in _addons[-3:]])
-                # 総括サマリーがあれば冒頭ヒントとして添加
-                if _summary and len(_summary) > 20:
-                    _s = _summary.strip()[:200]
-                    pdca_addon_text += f"\n\n（審査傾向サマリー: {_s}）"
-    except Exception:
-        pass
+    pdca_addon_text = build_pdca_prompt_block()
 
     obsidian_humor_text = ""
     try:

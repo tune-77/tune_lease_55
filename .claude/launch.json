@@ -22,6 +22,14 @@
       "cwd": "frontend",
       "port": 3000,
       "autoPort": false
+    },
+    {
+      "name": "frontend-preview",
+      "runtimeExecutable": "/Users/kobayashiisaoryou/clawd/tune_lease_55/frontend/node_modules/.bin/next",
+      "runtimeArgs": ["start", "--hostname", "127.0.0.1", "--port", "3100"],
+      "cwd": "frontend",
+      "port": 3100,
+      "autoPort": false
     }
   ]
 }

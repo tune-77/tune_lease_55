@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import { apiClient } from "@/lib/api";
 import { 
   Milestone, 
   History, 
@@ -88,11 +88,11 @@ export default function ChroniclePage() {
       };
 
       const [sum, hist, snaps, sim, log] = await Promise.all([
-        safe(axios.get(`/api/chronicle/summary`), null),
-        safe(axios.get(`/api/chronicle/history`), { history: [] }),
-        safe(axios.get(`/api/chronicle/snapshots`), { snapshots: [] }),
-        safe(axios.get(`/api/chronicle/simulation/history`), { history: [] }),
-        safe(axios.get(`/api/chronicle/simulation/archaia_log`), { logs: [] }),
+        safe(apiClient.get(`/api/chronicle/summary`), null),
+        safe(apiClient.get(`/api/chronicle/history`), { history: [] }),
+        safe(apiClient.get(`/api/chronicle/snapshots`), { snapshots: [] }),
+        safe(apiClient.get(`/api/chronicle/simulation/history`), { history: [] }),
+        safe(apiClient.get(`/api/chronicle/simulation/archaia_log`), { logs: [] }),
       ]);
       if (sum.data) setSummary(sum.data);
       setHistory(hist.data?.history || []);
@@ -109,7 +109,7 @@ export default function ChroniclePage() {
   const runSimulation = async () => {
     setSimulating(true);
     try {
-      await axios.post(`/api/chronicle/simulation/round`);
+      await apiClient.post(`/api/chronicle/simulation/round`);
       await fetchAll();
     } catch (err: any) {
       alert("Simulation failed: " + (err.response?.data?.detail || err.message));
@@ -121,7 +121,7 @@ export default function ChroniclePage() {
   const handleRollback = async (snapId: string) => {
     if (!confirm(`Are you sure you want to rollback to ${snapId}?`)) return;
     try {
-      const res = await axios.post(`/api/chronicle/rollback`, { snapshot_id: snapId });
+      const res = await apiClient.post(`/api/chronicle/rollback`, { snapshot_id: snapId });
       if (res.data.status === "success") {
         alert("Rollback Successful");
         fetchAll();

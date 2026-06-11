@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import axios from "axios";
+import { apiClient } from "@/lib/api";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { RefreshCw, Search, Sparkles, Network, FileText, SlidersHorizontal, X } from "lucide-react";
+import { FlyControls } from "three/examples/jsm/controls/FlyControls.js";
+import { RefreshCw, Search, Sparkles, Network, FileText, SlidersHorizontal, X, Rocket } from "lucide-react";
 
 type GraphNode = {
   id: string;
@@ -184,6 +185,25 @@ const buildGalaxyDust = (nodes: GraphNode[]) => {
   return { positions, colors };
 };
 
+const createNebulaTexture = (inner: string, outer: string) => {
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  const center = size / 2;
+  const gradient = context.createRadialGradient(center, center, 0, center, center, center);
+  gradient.addColorStop(0, inner);
+  gradient.addColorStop(0.38, outer);
+  gradient.addColorStop(1, "rgba(0,0,0,0)");
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, size, size);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+};
+
 const createStarTexture = () => {
   const size = 96;
   const canvas = document.createElement("canvas");
@@ -317,6 +337,8 @@ function KnowledgeSpaceScene({
   categoryFilter: string | null;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
+  // 選択・検索・モード変更でシーンを作り直してもカメラ視点を引き継ぐ
+  const viewStateRef = useRef<{ position: THREE.Vector3; target: THREE.Vector3; rootRotationY: number } | null>(null);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -344,6 +366,11 @@ function KnowledgeSpaceScene({
     controls.minDistance = 75;
     controls.maxDistance = 520;
     controls.target.set(0, 0, 0);
+    if (viewStateRef.current) {
+      camera.position.copy(viewStateRef.current.position);
+      controls.target.copy(viewStateRef.current.target);
+      controls.update();
+    }
 
     scene.add(new THREE.AmbientLight("#dbeafe", isGalaxy ? 0.42 : 0.9));
     const keyLight = new THREE.DirectionalLight("#ffffff", isGalaxy ? 1.15 : 1.2);
@@ -363,6 +390,9 @@ function KnowledgeSpaceScene({
 
     const root = new THREE.Group();
     root.position.y = isCompact ? 75 : 0;
+    if (viewStateRef.current) {
+      root.rotation.y = viewStateRef.current.rootRotationY;
+    }
     scene.add(root);
 
     const positions = isGalaxy ? buildPositions(graph.nodes) : buildObsidianPositions(graph.nodes);
@@ -657,10 +687,20 @@ function KnowledgeSpaceScene({
       }
     };
 
-    const clickNode = () => {
+    let pointerDownX = 0;
+    let pointerDownY = 0;
+    const trackPointerDown = (event: PointerEvent) => {
+      pointerDownX = event.clientX;
+      pointerDownY = event.clientY;
+    };
+
+    const clickNode = (event: MouseEvent) => {
+      // ドラッグ（回転・パン）の終わりに発火する click は選択扱いしない
+      if (Math.hypot(event.clientX - pointerDownX, event.clientY - pointerDownY) > 5) return;
       onSelect(hoveredId ? nodeById.get(hoveredId) || null : null);
     };
 
+    renderer.domElement.addEventListener("pointerdown", trackPointerDown);
     renderer.domElement.addEventListener("pointermove", updatePointer);
     renderer.domElement.addEventListener("pointerleave", clearHover);
     renderer.domElement.addEventListener("click", clickNode);
@@ -699,8 +739,14 @@ function KnowledgeSpaceScene({
     animate();
 
     return () => {
+      viewStateRef.current = {
+        position: camera.position.clone(),
+        target: controls.target.clone(),
+        rootRotationY: root.rotation.y,
+      };
       cancelAnimationFrame(frame);
       window.removeEventListener("resize", resize);
+      renderer.domElement.removeEventListener("pointerdown", trackPointerDown);
       renderer.domElement.removeEventListener("pointermove", updatePointer);
       renderer.domElement.removeEventListener("pointerleave", clearHover);
       renderer.domElement.removeEventListener("click", clickNode);
@@ -756,7 +802,7 @@ export default function KnowledgeSpacePage() {
     setLoading(true);
     setError("");
     try {
-      const res = await axios.get<KnowledgeGraph>("/api/knowledge/graph", { params: { limit: nextLimit } });
+      const res = await apiClient.get<KnowledgeGraph>("/api/knowledge/graph", { params: { limit: nextLimit } });
       setGraph(res.data);
       setSelected(null);
     } catch (err) {

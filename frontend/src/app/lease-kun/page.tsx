@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Activity, ChevronDown, MessageSquare } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import axios from 'axios';
+import { apiClient } from '@/lib/api';
 import { toThousandYenPayload } from '../../lib/scoringUnits';
 import { extractPrefectureFromText } from '@/lib/prefecture';
 
@@ -274,7 +274,7 @@ export default function LeaseKunWizard() {
         intuition:                    Number(formData.intuition),
       });
 
-      const res = await axios.post(`/api/score/full`, payload);
+      const res = await apiClient.post(`/api/score/full`, payload);
       setSubmitted(true);
 
       setHistory(prev => [...prev, {

@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
+import { apiClient } from '@/lib/api';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import {
   PieChart,
@@ -23,6 +23,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { normalizePrefecture } from '@/lib/prefecture';
+import { formatLocalDateKey } from '@/lib/date';
 
 type TopDriver = {
   label?: string;
@@ -109,6 +110,16 @@ type DashboardStats = {
     article_titles?: string[];
     headline?: string;
   };
+  lease_news_reflection?: {
+    available?: boolean;
+    note_path?: string;
+    note_date?: string;
+    theme_summary?: string;
+    tag_summary?: string;
+    headline?: string;
+    thought_lines?: string[];
+    tomorrow_lines?: string[];
+  };
   lease_news_brief?: {
     available?: boolean;
     prefecture?: string;
@@ -169,10 +180,12 @@ export default function HomeDashboard() {
   const [panelSettings, setPanelSettings] = useState<HomePanelSettings>(DEFAULT_PANEL_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [leaseNewsFocus, setLeaseNewsFocus] = useState<DashboardStats["lease_news_focus"] | null>(null);
+  const leaseNewsReflection = stats?.lease_news_reflection;
   const [leaseNewsBrief, setLeaseNewsBrief] = useState<DashboardStats["lease_news_brief"] | null>(null);
   const [newsPrefecture, setNewsPrefecture] = useState("");
   const [showDailyNewsBrief, setShowDailyNewsBrief] = useState(false);
   const newsPrefectureReadyRef = useRef(false);
+  const briefRequestSeqRef = useRef(0);
 
   const [recentNews, setRecentNews] = useState<NewsSummaryItem[]>([]);
   const [newsFormOpen, setNewsFormOpen] = useState(false);
@@ -208,7 +221,7 @@ export default function HomeDashboard() {
 
     const fetchStats = async () => {
       try {
-        const res = await axios.get(`/api/dashboard/stats`);
+        const res = await apiClient.get(`/api/dashboard/stats`);
         setStats(res.data);
       } catch (err) {
         console.error("Failed to load dashboard stats", err);
@@ -218,7 +231,7 @@ export default function HomeDashboard() {
     };
     const fetchRecentNews = async () => {
       try {
-        const res = await axios.get(`/api/lease-news/recent?limit=5`);
+        const res = await apiClient.get(`/api/lease-news/recent?limit=5`);
         setRecentNews(res.data.items || []);
       } catch {
         // ignore
@@ -226,7 +239,7 @@ export default function HomeDashboard() {
     };
     const fetchLeaseNewsFocus = async () => {
       try {
-        const res = await axios.get(`/api/lease-news/focus`);
+        const res = await apiClient.get(`/api/lease-news/focus`);
         setLeaseNewsFocus(res.data || null);
       } catch {
         // ignore
@@ -248,19 +261,22 @@ export default function HomeDashboard() {
 
   useEffect(() => {
     if (!newsPrefectureReadyRef.current) return;
-    const normalized = normalizePrefecture(newsPrefecture);
-    const nextPrefecture = normalized || "";
-    try {
-      if (nextPrefecture) {
-        window.localStorage.setItem("lease-news-prefecture-hint", nextPrefecture);
-      } else {
-        window.localStorage.removeItem("lease-news-prefecture-hint");
+    // 1キーストロークごとの API 呼び出しを避けるためデバウンスする
+    const timer = window.setTimeout(() => {
+      const normalized = normalizePrefecture(newsPrefecture);
+      const nextPrefecture = normalized || "";
+      try {
+        if (nextPrefecture) {
+          window.localStorage.setItem("lease-news-prefecture-hint", nextPrefecture);
+        } else {
+          window.localStorage.removeItem("lease-news-prefecture-hint");
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
-    }
-    loadLeaseNewsBrief(nextPrefecture);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+      loadLeaseNewsBrief(nextPrefecture);
+    }, 400);
+    return () => window.clearTimeout(timer);
   }, [newsPrefecture]);
 
   const analysis = stats?.analysis;
@@ -278,23 +294,27 @@ export default function HomeDashboard() {
   };
 
   const loadLeaseNewsBrief = async (prefectureHint: string) => {
+    const seq = ++briefRequestSeqRef.current;
     try {
-      const res = await axios.get(`/api/lease-news/brief`, {
+      const res = await apiClient.get(`/api/lease-news/brief`, {
         params: {
           prefecture: prefectureHint,
         },
       });
+      // 後発リクエストが既にある場合、古いレスポンスで上書きしない
+      if (seq !== briefRequestSeqRef.current) return;
       setLeaseNewsBrief(res.data || null);
-      const todayKey = new Date().toISOString().slice(0, 10);
-      const showKey = `lease-news-brief-seen-${todayKey}-${prefectureHint || "national"}`;
+      const showKey = `lease-news-brief-seen-${formatLocalDateKey()}`;
       const seen = window.localStorage.getItem(showKey);
-      setShowDailyNewsBrief(!seen && Boolean(res.data?.available));
-      if (!seen && res.data?.available) {
+      const available = Boolean(res.data?.available);
+      // 一度表示したら入力編集中に閉じない（既読判定は自動表示の初回のみ）
+      setShowDailyNewsBrief((prev) => prev || (!seen && available));
+      if (!seen && available) {
         window.localStorage.setItem(showKey, "1");
       }
     } catch {
+      if (seq !== briefRequestSeqRef.current) return;
       setLeaseNewsBrief(null);
-      setShowDailyNewsBrief(false);
     }
   };
 
@@ -303,14 +323,14 @@ export default function HomeDashboard() {
     setNewsSubmitting(true);
     setNewsResult(null);
     try {
-      const res = await axios.post(`/api/lease-news/summarize`, {
+      const res = await apiClient.post(`/api/lease-news/summarize`, {
         url: newsUrl.trim(),
         body_text: newsBody.trim(),
       });
       setNewsResult(res.data);
       setNewsUrl("");
       setNewsBody("");
-      const updated = await axios.get(`/api/lease-news/recent?limit=5`);
+      const updated = await apiClient.get(`/api/lease-news/recent?limit=5`);
       setRecentNews(updated.data.items || []);
     } catch (err) {
       console.error("News summarization failed", err);
@@ -623,6 +643,58 @@ export default function HomeDashboard() {
                 )}
               </section>
             )}
+
+            {panelSettings.showNews && leaseNewsReflection?.available && (
+              <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                      <ScrollText className="text-amber-500 w-5 h-5" />
+                      今日の考え
+                    </h3>
+                    <p className="text-xs text-slate-500 font-bold mt-1">
+                      {leaseNewsReflection.headline || "ニュースを見て考えたこと"}
+                    </p>
+                  </div>
+                  {leaseNewsReflection.note_date && (
+                    <span className="text-[10px] font-bold text-slate-400">{leaseNewsReflection.note_date}</span>
+                  )}
+                </div>
+                <div className="space-y-4">
+                  {(leaseNewsReflection.theme_summary || leaseNewsReflection.tag_summary) && (
+                    <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-900">
+                      {leaseNewsReflection.theme_summary && <p><span className="font-bold">テーマ:</span> {leaseNewsReflection.theme_summary}</p>}
+                      {leaseNewsReflection.tag_summary && <p className="mt-1"><span className="font-bold">重点タグ:</span> {leaseNewsReflection.tag_summary}</p>}
+                    </div>
+                  )}
+                  {(leaseNewsReflection.thought_lines || []).length > 0 && (
+                    <div className="space-y-2">
+                      {(leaseNewsReflection.thought_lines || []).slice(0, 4).map((line, index) => (
+                        <div key={index} className="flex items-start gap-2 rounded-xl border border-amber-100 bg-white p-3">
+                          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[10px] font-black text-amber-700">
+                            {index + 1}
+                          </span>
+                          <p className="text-sm leading-relaxed text-slate-700">{line}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(leaseNewsReflection.tomorrow_lines || []).length > 0 && (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-slate-500">明日見ること</p>
+                      <div className="space-y-1.5">
+                        {(leaseNewsReflection.tomorrow_lines || []).slice(0, 3).map((line, index) => (
+                          <p key={index} className="text-xs leading-relaxed text-slate-700">{line}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {leaseNewsReflection.note_path && (
+                    <p className="break-all text-[11px] text-slate-400">{leaseNewsReflection.note_path}</p>
+                  )}
+                </div>
+              </section>
+            )}
           </div>
         )}
 
@@ -905,7 +977,7 @@ export default function HomeDashboard() {
                       </div>
                       <div className="text-xl font-black text-slate-800">
                         <span className="text-xs font-bold text-slate-400 mr-2">審査スコア</span>
-                        {(c.result?.score ?? 0).toFixed(0)} <span className="text-sm">点</span>
+                        {c.result?.score != null ? c.result.score.toFixed(0) : "-"} <span className="text-sm">点</span>
                       </div>
                     </div>
 

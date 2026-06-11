@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import axios from "axios";
+import { apiClient } from "@/lib/api";
 import { 
   Bot, 
   Terminal, 
@@ -139,7 +139,7 @@ export default function AgentHubPage() {
 
   const fetchThoughts = async () => {
     try {
-      const res = await axios.get(`/api/agent_hub/thoughts?limit=30`);
+      const res = await apiClient.get(`/api/agent_hub/thoughts?limit=30`);
       setThoughts(res.data.thoughts || []);
     } catch (err) {
       console.error("Failed to fetch thoughts", err);
@@ -150,7 +150,7 @@ export default function AgentHubPage() {
 
   const fetchLatestNovel = async () => {
     try {
-      const res = await axios.get(`/api/agent_hub/novel/latest`);
+      const res = await apiClient.get(`/api/agent_hub/novel/latest`);
       setLatestNovel(res.data.novel);
     } catch (err) {
       console.error("Failed to fetch novel", err);
@@ -159,7 +159,7 @@ export default function AgentHubPage() {
 
   const fetchEpisodes = async () => {
     try {
-      const res = await axios.get(`/api/agent_hub/novel/episodes`);
+      const res = await apiClient.get(`/api/agent_hub/novel/episodes`);
       setEpisodes(res.data.episodes || []);
     } catch (err) {
       console.error("Failed to fetch episodes", err);
@@ -169,7 +169,7 @@ export default function AgentHubPage() {
   const generatePlot = async () => {
     setIsGeneratingPlot(true);
     try {
-      const res = await axios.post(`/api/agent_hub/script/generate`);
+      const res = await apiClient.post(`/api/agent_hub/script/generate`);
       setLatestPlot(res.data);
       fetchThoughts();
     } catch (err: any) {
@@ -182,7 +182,7 @@ export default function AgentHubPage() {
   const fetchObsidianNotes = async () => {
     setIsLoadingObsidian(true);
     try {
-      const res = await axios.get(`/api/obsidian/notes`);
+      const res = await apiClient.get(`/api/obsidian/notes`);
       setObsidianNotes((res.data || []).slice(0, 20));
       setShowObsidianPanel(true);
     } catch (err: any) {
@@ -204,7 +204,7 @@ export default function AgentHubPage() {
     setIsWritingNovel(true);
     setNovelResult(null);
     try {
-      const res = await axios.post(`/api/agent_hub/novel/generate`, {
+      const res = await apiClient.post(`/api/agent_hub/novel/generate`, {
         obsidian_paths: selectedObsidianPaths,
       });
       setNovelResult(res.data);
@@ -225,14 +225,14 @@ export default function AgentHubPage() {
 
     try {
       if (agentId === "novel") {
-        const res = await axios.post(`/api/agent_hub/novel/generate`, {
+        const res = await apiClient.post(`/api/agent_hub/novel/generate`, {
           obsidian_paths: selectedObsidianPaths,
         });
         setResult(res.data);
         fetchLatestNovel();
         fetchThoughts();
       } else {
-        const res = await axios.post(`/api/agent_hub/run_agent`, {
+        const res = await apiClient.post(`/api/agent_hub/run_agent`, {
           agent_id: agentId,
           params: agentId === "benchmark" ? { industry: benchmarkIndustry } : {}
         });

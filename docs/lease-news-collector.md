@@ -16,6 +16,7 @@ What it does:
 - deduplicates by normalized URL, title similarity, and canonical topic
 - merges duplicate coverage into the existing note's `関連報道` section
 - writes one searchable note per news topic to Obsidian
+- writes a short daily focus note under `Projects/tune_lease_55/News/` so the latest news points are reused instead of only archived
 - indexes saved or updated notes into the Obsidian RAG store
 - appends a short summary to `Daily/YYYY-MM-DD.md`
 

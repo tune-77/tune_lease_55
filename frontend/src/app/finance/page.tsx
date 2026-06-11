@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import axios from "axios";
+import { apiClient } from "@/lib/api";
 import {
   AlertCircle,
   Banknote,
@@ -355,7 +355,7 @@ export default function FinancePage() {
     const timer = setTimeout(async () => {
       setAssetSearchLoading(true);
       try {
-        const res = await axios.get<UsefulLifeItem[]>(
+        const res = await apiClient.get<UsefulLifeItem[]>(
           `/api/asset/useful-life-search?q=${encodeURIComponent(assetSearch)}`
         );
         setAssetResults(res.data);
@@ -442,7 +442,7 @@ export default function FinancePage() {
   const fetchSimilarNotes = async (sourceInput: Record<string, unknown>, decision = "") => {
     setSimilarLoading(true);
     try {
-      const res = await axios.post<SimilarNotesResult>("/api/asset-finance/similar-notes", {
+      const res = await apiClient.post<SimilarNotesResult>("/api/asset-finance/similar-notes", {
         asset_type: sourceInput.asset_type || form.asset_type,
         asset_name: sourceInput.asset_name || form.asset_name,
         financial_score: sourceInput.financial_score || form.financial_score,
@@ -465,7 +465,7 @@ export default function FinancePage() {
         ...form,
         ai_residual_pct: form.ai_residual_pct === "" ? null : Number(form.ai_residual_pct),
       };
-      const res = await axios.post<FinanceResult>("/api/asset-finance/evaluate", payload);
+      const res = await apiClient.post<FinanceResult>("/api/asset-finance/evaluate", payload);
       setResult(res.data);
       setObsidianMessage(null);
       fetchSimilarNotes(res.data.input || payload, res.data.decision);
@@ -482,7 +482,7 @@ export default function FinancePage() {
     setObsidianLoading(true);
     setObsidianMessage(null);
     try {
-      const res = await axios.post<ObsidianContext>("/api/asset-finance/obsidian-context", {
+      const res = await apiClient.post<ObsidianContext>("/api/asset-finance/obsidian-context", {
         asset_type: sourceInput?.asset_type || activeInput.asset_type || form.asset_type,
         asset_name: sourceInput?.asset_name || activeInput.asset_name || form.asset_name,
         financial_score: sourceInput?.financial_score || activeInput.financial_score || form.financial_score,
@@ -506,7 +506,7 @@ export default function FinancePage() {
     setObsidianMessage(null);
     try {
       const relatedPaths = obsidianContext?.hits.map((hit) => hit.path) || [];
-      await axios.post("/api/asset-finance/save-to-obsidian", {
+      await apiClient.post("/api/asset-finance/save-to-obsidian", {
         input: result.input || form,
         result,
         related_paths: relatedPaths,

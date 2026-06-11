@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { apiClient } from "@/lib/api";
 import { Send, Trash2, Loader2, MessageCircle, Bot, User, NotebookPen, Mic, Network, Database, ChevronDown, ChevronUp, Lightbulb } from "lucide-react";
 import { extractPrefectureFromText, normalizePrefecture } from "@/lib/prefecture";
+import { formatLocalDateKey } from "@/lib/date";
 
 interface ChatMessage {
   id: number;
@@ -180,6 +181,7 @@ export default function ChatPage() {
   const messageListRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const briefRequestSeqRef = useRef(0);
 
   const userId = "default";
 
@@ -243,15 +245,19 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!newsPrefectureReady) return;
-    const normalized = normalizePrefecture(newsPrefecture);
-    const nextPrefecture = normalized || "";
-    const cachedIndustry = chatContext.industry_sub || chatContext.industry_major || "";
-    if (nextPrefecture) {
-      window.localStorage.setItem("lease-news-prefecture-hint", nextPrefecture);
-    } else {
-      window.localStorage.removeItem("lease-news-prefecture-hint");
-    }
-    loadLeaseNewsBrief(nextPrefecture, cachedIndustry);
+    // 1キーストロークごとの API 呼び出しを避けるためデバウンスする
+    const timer = window.setTimeout(() => {
+      const normalized = normalizePrefecture(newsPrefecture);
+      const nextPrefecture = normalized || "";
+      const cachedIndustry = chatContext.industry_sub || chatContext.industry_major || "";
+      if (nextPrefecture) {
+        window.localStorage.setItem("lease-news-prefecture-hint", nextPrefecture);
+      } else {
+        window.localStorage.removeItem("lease-news-prefecture-hint");
+      }
+      loadLeaseNewsBrief(nextPrefecture, cachedIndustry);
+    }, 400);
+    return () => window.clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newsPrefecture, chatContext.industry_sub, chatContext.industry_major]);
 
@@ -274,6 +280,7 @@ export default function ChatPage() {
   };
 
   const loadLeaseNewsBrief = async (prefectureHint: string, industryHint: string) => {
+    const seq = ++briefRequestSeqRef.current;
     try {
       const res = await apiClient.get("/api/lease-news/brief", {
         params: {
@@ -281,17 +288,20 @@ export default function ChatPage() {
           industry: industryHint,
         },
       });
+      // 後発リクエストが既にある場合、古いレスポンスで上書きしない
+      if (seq !== briefRequestSeqRef.current) return;
       setLeaseNewsBrief(res.data || null);
-      const todayKey = new Date().toISOString().slice(0, 10);
-      const showKey = `lease-news-brief-seen-${todayKey}-${prefectureHint || "national"}`;
+      const showKey = `lease-news-brief-seen-${formatLocalDateKey()}`;
       const seen = window.localStorage.getItem(showKey);
-      setShowDailyNewsBrief(!seen && Boolean(res.data?.available));
-      if (!seen && res.data?.available) {
+      const available = Boolean(res.data?.available);
+      // 一度表示したら入力編集中に閉じない（既読判定は自動表示の初回のみ）
+      setShowDailyNewsBrief((prev) => prev || (!seen && available));
+      if (!seen && available) {
         window.localStorage.setItem(showKey, "1");
       }
     } catch {
+      if (seq !== briefRequestSeqRef.current) return;
       setLeaseNewsBrief(null);
-      setShowDailyNewsBrief(false);
     }
   };
 

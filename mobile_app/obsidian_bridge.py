@@ -1320,3 +1320,27 @@ def append_weekly_review_note(title: str, body: str) -> dict[str, str]:
     with path.open("a", encoding="utf-8") as f:
         f.write(header + section)
     return {"status": "saved", "path": str(path)}
+
+
+def append_monthly_review_note(title: str, body: str) -> dict[str, str]:
+    vault = find_vault()
+    if not vault:
+        return {"status": "skipped", "reason": "iCloud 上の Obsidian Vault が見つかりません"}
+    year_month = dt.date.today().strftime("%Y-%m")
+    rel = f"Projects/tune_lease_55/AI Chat/Monthly Review/{year_month}.md"
+    path = _safe_note_path(vault, rel)
+    now = dt.datetime.now().strftime("%H:%M")
+    clean_title = (title or "月次改善レビュー").strip()[:80]
+    clean_body = (body or "").strip()
+    if not clean_body:
+        return {"status": "skipped", "reason": "empty note body"}
+    is_new = not path.exists() or not path.read_text(encoding="utf-8", errors="ignore").strip()
+    if is_new:
+        timestamp = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+        header = f"---\ndate: {timestamp}\ntags: [チャット, 月次レビュー]\n---\n\n"
+    else:
+        header = "\n"
+    section = f"## {now} {clean_title}\n\n### 要点\n{clean_body}\n"
+    with path.open("a", encoding="utf-8") as f:
+        f.write(header + section)
+    return {"status": "saved", "path": str(path)}

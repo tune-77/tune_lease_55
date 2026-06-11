@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useRef, useState } from 'react';
-import axios from 'axios';
+import { apiClient } from '@/lib/api';
 import * as d3 from 'd3';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import { Share2, Users, Activity, Target, Zap, MousePointer2 } from 'lucide-react';
@@ -18,7 +18,7 @@ export default function CompetitorPage() {
 
   const fetchData = async () => {
     try {
-      const res = await axios.get(`/api/analysis/competitor_graph`);
+      const res = await apiClient.get(`/api/analysis/competitor_graph`);
       setData(res.data);
     } catch (err) {
       console.error(err);

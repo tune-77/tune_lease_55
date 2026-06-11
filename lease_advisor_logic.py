@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Mapping
 
+from prompt_feedback import build_pdca_prompt_block
+
 
 FOCUS_LABELS: dict[str, str] = {
     "general": "全般",
@@ -47,6 +49,7 @@ def build_lease_advisor_prompt(
     obsidian_block: str = "",
     subsidy_block: str = "",
     competitor_block: str = "",
+    include_pdca: bool = True,
 ) -> str:
     """Build a focused prompt for the lease sales advisor tab."""
     focus_key = focus if focus in FOCUS_LABELS else "general"
@@ -54,6 +57,7 @@ def build_lease_advisor_prompt(
     focus_guidance = _FOCUS_GUIDANCE[focus_key]
     question_text = (question or "").strip() or "この案件の次の打ち手を教えて"
     case_text = _format_case_context(case_context)
+    pdca_block = build_pdca_prompt_block() if include_pdca else ""
 
     return f"""あなたは地方リース会社の営業担当を支援する「リース参謀BOT」です。
 審査を通すことだけでなく、成約、競合対策、補助金、満了実務、顧客説明まで含めて、営業担当が次に動ける答えを返してください。
@@ -64,6 +68,8 @@ def build_lease_advisor_prompt(
 
 【営業担当の質問】
 {question_text}
+
+{pdca_block}
 
 【案件コンテキスト】
 {case_text}

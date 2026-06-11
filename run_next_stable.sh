@@ -279,10 +279,6 @@ cleanup() {
     kill "$(cat "$NEXT_SUPERVISOR_PID_FILE")" 2>/dev/null || true
     rm -f "$NEXT_SUPERVISOR_PID_FILE"
   fi
-  if [ -f "$TUNNEL_SUPERVISOR_PID_FILE" ]; then
-    kill "$(cat "$TUNNEL_SUPERVISOR_PID_FILE")" 2>/dev/null || true
-    rm -f "$TUNNEL_SUPERVISOR_PID_FILE"
-  fi
   if [ -f "$API_PID_FILE" ]; then
     kill "$(cat "$API_PID_FILE")" 2>/dev/null || true
     rm -f "$API_PID_FILE"
@@ -291,11 +287,8 @@ cleanup() {
     kill "$(cat "$NEXT_PID_FILE")" 2>/dev/null || true
     rm -f "$NEXT_PID_FILE"
   fi
-  if [ -f "$TUNNEL_PID_FILE" ]; then
-    kill "$(cat "$TUNNEL_PID_FILE")" 2>/dev/null || true
-    rm -f "$TUNNEL_PID_FILE"
-  fi
-  stop_cloudflare_tunnels
+  # Cloudflare Tunnel はここでは止めない。再起動のたびに quick tunnel の URL が
+  # 変わるのを防ぐため、トンネルの停止・再起動は RESTART_SCOPE=tunnel 限定にする。
   stop_port_process "$API_PORT" "FastAPI"
   stop_port_process "$NEXT_PORT" "Next.js"
   rm -f "$LOCK_FILE"
@@ -323,7 +316,7 @@ if [ "$FORCE_RESTART" = "1" ]; then
   if [ "$SKIP_STALE_LAUNCHER_SWEEP" != "1" ]; then
     stop_existing_launchers
   fi
-  stop_cloudflare_tunnels
+  # Cloudflare Tunnel は殺さない（URL 維持のため）。起動済みなら後段で再利用される。
   # lsof ベースの stop_port_process だけでは supervisor 終了後に re-parent された
   # uvicorn が残存するレースがある。名前で直接 kill して確実に排除する。
   pkill -f "uvicorn api.main:app" 2>/dev/null || true
@@ -406,9 +399,23 @@ done &
 NEXT_SUPERVISOR_PID=$!
 echo "$NEXT_SUPERVISOR_PID" > "$NEXT_SUPERVISOR_PID_FILE"
 
+running_tunnel_pid() {
+  ps -eo pid=,command= 2>/dev/null \
+    | awk -v url="http://${NEXT_HOST}:${NEXT_PORT}" '$0 ~ /[c]loudflared tunnel --url/ && index($0, url) {print $1; exit}'
+}
+
 if [ "$PUBLIC_TUNNEL" = "1" ]; then
   echo "Starting Cloudflare Tunnel for http://${NEXT_HOST}:${NEXT_PORT}"
   while true; do
+    existing_tunnel_pid="$(running_tunnel_pid)"
+    if [ -n "$existing_tunnel_pid" ]; then
+      # 既存トンネルを再利用する（quick tunnel の URL を維持）。死んだら次周で起動。
+      while kill -0 "$existing_tunnel_pid" 2>/dev/null; do
+        sleep 5
+      done
+      echo "$(date '+%F %T') Reused Cloudflare Tunnel exited; starting a new one" | tee -a "$TUNNEL_LOG"
+      continue
+    fi
     cloudflared tunnel --url "http://${NEXT_HOST}:${NEXT_PORT}" >>"$TUNNEL_LOG" 2>&1 &
     tunnel_pid=$!
     echo "$tunnel_pid" > "$TUNNEL_PID_FILE"

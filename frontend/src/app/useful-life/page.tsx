@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { apiClient } from "@/lib/api";
 import { BookOpen, Search } from "lucide-react";
 
 type EquipmentItem = {
@@ -48,7 +48,7 @@ export default function UsefulLifePage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await axios.get<UsefulLifeData>("/api/asset/useful-life-all");
+      const res = await apiClient.get<UsefulLifeData>("/api/asset/useful-life-all");
       setData(res.data);
     } catch {
       setData(null);

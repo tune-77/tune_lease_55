@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import axios from 'axios';
+import { apiClient } from '@/lib/api';
 import * as d3 from 'd3';
 import { sankey as d3Sankey, sankeyLinkHorizontal } from 'd3-sankey';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
@@ -35,7 +35,7 @@ export default function VisualPage() {
 
     const fetchData = async () => {
       try {
-        const res = await axios.get(`/api/visual/data`);
+        const res = await apiClient.get(`/api/visual/data`);
         setData(res.data.cases || []);
       } catch (err) {
         console.error("Failed to load visual data", err);
@@ -46,7 +46,7 @@ export default function VisualPage() {
     fetchData();
 
     // REV-035/094/095: 業種別成約率データを取得
-    axios.get('/api/industry/stats')
+    apiClient.get('/api/industry/stats')
       .then(res => setIndustryStats(res.data || []))
       .catch(() => {});
   }, []);

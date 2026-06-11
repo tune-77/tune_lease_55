@@ -51,6 +51,7 @@
   - Streamlit の起動は `run_streamlit_stable.sh` 経由に切り替えた。`run_lease_app.sh` からの直起動をやめ、再起動ループと `server.fileWatcherType none` で落ちにくくした。
   - Next/Cloudflare 再起動後に「ホームが開かない」と見える場合、`curl 200` だけで正常判断しない。`/home` が全画面ローディングだけを返していないか、API ログで `/api/dashboard/stats` が返っているか、最新 `logs/next/tunnel_*.log` の URL を使っているかを確認する。2026-06-06 に `frontend/src/app/home/page.tsx` の全画面 `loading` gate を外し、API 集計中でもホーム本体を先に描画する方針にした。
   - Cloud Run では SQLite と Obsidian を `.cloudrun_bundle/` にスナップショットしてからイメージへ焼き込み、起動時に `/app/data` と `/app/obsidian_vault` へ展開する方式にした。`scripts/package_cloud_run_bundle.sh` がその入口で、開発機の絶対パスに依存しない。
+  - Next 側の prompt feedback loop を軍師 SSE まで含めて接続した。`api/gunshi_gemini.py` に `PDCAあり/なし` の system prompt 差分と `record_prompt_feedback()` を入れ、改善ログ画面も prompt feedback 集計を表示できるようにした。影響: 主要なチャット/軍師経路で改善効果を比較しやすくなった。次の行動: 月次レポートで `pdca_rate` と `response_changed_rate` を継続監視する。
 
 ## Preferences
 - **User**: Kobayashi
@@ -65,6 +66,7 @@
 - **Operational Restart**: Next/FastAPI/Cloudflare は LaunchAgent 前提で維持し、quick tunnel URL は使い捨てとして扱う。影響: 再起動時は stale lock を消し、最新ログの URL と local/tunnel の両方を確認する。次の行動: `curl 200` だけで完了扱いにしない。
 - **UI Triage**: `curl 200` は十分条件ではない。影響: `/home` が loading-only shell を返していないか、API の主要 endpoint が返っているか、実際の画面状態まで確認する。次の行動: 画面が開かない時は local + Cloudflare + API ログをセットで見る。
 - **Memory Hygiene**: `memory/YYYY-MM-DD.md` は raw log、`MEMORY.md` は昇格した長期記憶。影響: 日次メモは Snapshot と Promotable Items を付けて残し、重複・再発防止・方針変更だけを長期記憶に上げる。次の行動: 会話全文ではなく要約と決定を保存する。
+- **Dependency Triage**: 外部依存は `必須 / 任意 / 削れる` で扱う。影響: iCloud Obsidian やローカル正本は必須、Gist や補助分析は任意、生成物系は削れる候補として日次本体から外しやすくなる。次の行動: 壊れるものを止めるのではなく、止まっても本体を巻き込まない配置にする。
 
 ## Auto Promotions 2026-06-11 18:17
 - [2026-05-06] モデル見直し用のフック基盤を追加した。`hooks/hooks.json` に `recent_auc_drop` / `segment_auc_gap` / `feature_ab_test` を定義し、`model_review_hooks.py` から実行・記録できるようにした。再学習後に自動実行し、Settings 画面と API からも起動できる。  (`memory/2026-05-06.md`)

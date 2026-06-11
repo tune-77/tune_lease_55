@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { apiClient } from '@/lib/api';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import { Target, MessageSquare, Award, BarChart3, Activity } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from 'recharts';
@@ -17,7 +17,7 @@ export default function QualitativePage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await axios.post(`/api/analysis/qualitative`);
+      const res = await apiClient.post(`/api/analysis/qualitative`);
       setData(res.data);
     } catch (err) {
       console.error(err);

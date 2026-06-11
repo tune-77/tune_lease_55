@@ -22,6 +22,7 @@ from ai_chat import (
     is_ai_available,
     save_debate_log,
 )
+from prompt_feedback import record_prompt_feedback
 from data_cases import append_consultation_memory
 from web_services import get_advice_context_extras, get_stats, get_trend_extended
 from knowledge import build_knowledge_context
@@ -437,6 +438,19 @@ def _render_tab_chat(selected_sub: str, jsic_data: dict) -> None:
                             kb_use_industry=st.session_state.get("kb_use_industry", True),
                             kb_use_improvement=st.session_state.get("kb_use_improvement", False),
                         )
+                        base_context_prompt = get_ai_consultation_prompt(
+                            q=q,
+                            res=res,
+                            selected_sub=selected_sub,
+                            jsic_data=jsic_data,
+                            news_content=st.session_state.get("selected_news_content"),
+                            kb_use_faq=st.session_state.get("kb_use_faq", True),
+                            kb_use_cases=st.session_state.get("kb_use_cases", True),
+                            kb_use_manual=st.session_state.get("kb_use_manual", True),
+                            kb_use_industry=st.session_state.get("kb_use_industry", True),
+                            kb_use_improvement=st.session_state.get("kb_use_improvement", False),
+                            include_pdca=False,
+                        )
                     _engine = st.session_state.get("ai_engine", "ollama")
                     _model = get_ollama_model()
                     _api_key = (
@@ -459,6 +473,18 @@ def _render_tab_chat(selected_sub: str, jsic_data: dict) -> None:
                         st.markdown(content)
                     st.session_state.messages.append({"role": "assistant", "content": content})
                     append_consultation_memory(q, content)
+                    record_prompt_feedback(
+                        surface="consultation",
+                        question=q,
+                        base_prompt=base_context_prompt,
+                        final_prompt=context_prompt,
+                        response=content,
+                        extra={
+                            "engine": _engine,
+                            "model": _model if _engine != "gemini" else _gemini_model,
+                            "selected_sub": selected_sub,
+                        },
+                    )
                     if st.session_state.get("ai_engine") == "gemini":
                         if content and "APIキーが" not in content and "Gemini API エラー:" not in content:
                             st.session_state["last_gemini_debug"] = "OK"
@@ -534,6 +560,15 @@ def _render_tab_lease_advisor(selected_sub: str, jsic_data: dict) -> None:
                 subsidy_block=subsidy_block,
                 competitor_block=competitor_block,
             )
+            base_prompt = build_lease_advisor_prompt(
+                question=q,
+                case_context=case_context,
+                focus=focus,
+                obsidian_block=obsidian_block,
+                subsidy_block=subsidy_block,
+                competitor_block=competitor_block,
+                include_pdca=False,
+            )
 
         _engine = st.session_state.get("ai_engine", "ollama")
         _api_key = (
@@ -554,6 +589,19 @@ def _render_tab_lease_advisor(selected_sub: str, jsic_data: dict) -> None:
         _show_ai_error(content)
         st.session_state["lease_advisor_answer"] = content
         append_consultation_memory(f"[リース参謀/{FOCUS_LABELS.get(focus, focus)}] {q}", content)
+        record_prompt_feedback(
+            surface="lease_advisor",
+            question=q,
+            base_prompt=base_prompt,
+            final_prompt=prompt,
+            response=content,
+            extra={
+                "engine": _engine,
+                "model": st.session_state.get("gemini_model", GEMINI_MODEL_DEFAULT) if _engine == "gemini" else get_ollama_model(),
+                "focus": focus,
+                "selected_sub": current_industry,
+            },
+        )
         if _engine == "gemini":
             st.session_state["last_gemini_debug"] = (
                 "OK" if content and "APIキーが" not in content and "Gemini API エラー:" not in content

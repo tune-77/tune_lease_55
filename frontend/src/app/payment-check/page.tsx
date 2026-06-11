@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import axios from "axios";
+import { apiClient } from "@/lib/api";
 import { AlertTriangle, CheckCircle2, RefreshCw, XCircle, CreditCard } from "lucide-react";
 
 type Alert = {
@@ -55,7 +55,7 @@ export default function PaymentCheckPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await axios.get<AlertData>("/api/payment/alerts");
+      const res = await apiClient.get<AlertData>("/api/payment/alerts");
       setData(res.data);
     } catch {
       setData(null);

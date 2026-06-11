@@ -1,6 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useState } from 'react';
-import axios from 'axios';
+import { apiClient } from '@/lib/api';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import { Network, Activity, Users, FileCheck, FileX, Link as LinkIcon, SlidersHorizontal, RotateCcw } from 'lucide-react';
 
@@ -316,7 +316,7 @@ export default function SimilarPage() {
     
     const fetchData = async () => {
       try {
-        const res = await axios.get<SimilarGraphData>(`/api/similar/data`);
+        const res = await apiClient.get<SimilarGraphData>(`/api/similar/data`);
         setGraphData(res.data);
         setSummary(res.data.summary || null);
         if (!loadedFromStorage) {

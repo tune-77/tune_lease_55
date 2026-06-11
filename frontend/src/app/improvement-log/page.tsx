@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { apiClient } from "@/lib/api";
 import {
   AlertCircle,
   CheckCircle2,
@@ -78,6 +78,31 @@ type GapAnalysis = {
   items: GapItem[];
 };
 
+type PromptFeedbackSummary = {
+  source?: string;
+  summary?: {
+    total: number;
+    pdca_count: number;
+    pdca_rate: number;
+    previous_diff_count: number;
+    previous_diff_rate: number;
+    avg_response_len: number;
+    avg_prompt_base_len: number;
+    avg_prompt_final_len: number;
+    avg_prompt_diff_added: number;
+    avg_prompt_diff_removed: number;
+    avg_prompt_diff_context: number;
+    by_surface: Record<string, {
+      count: number;
+      pdca_rate: number;
+      avg_response_len: number;
+      avg_prompt_diff_added: number;
+      avg_prompt_diff_removed: number;
+      response_changed_rate: number;
+    }>;
+  };
+};
+
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   APPROVED: { label: "承認", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   AUTO_FIX_CANDIDATE: { label: "自動修正候補", className: "bg-blue-50 text-blue-700 border-blue-200" },
@@ -104,6 +129,7 @@ export default function ImprovementLogPage() {
   const [data, setData] = useState<ImprovementLog | null>(null);
   const [summary, setSummary] = useState<PipelineSummary | null>(null);
   const [gapAnalysis, setGapAnalysis] = useState<GapAnalysis | null>(null);
+  const [promptSummary, setPromptSummary] = useState<PromptFeedbackSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("NEEDS_REVIEW");
@@ -112,14 +138,16 @@ export default function ImprovementLogPage() {
   const fetchLog = useCallback(async () => {
     setLoading(true);
     try {
-      const [logRes, summaryRes, gapsRes] = await Promise.all([
-        axios.get<ImprovementLog>("/api/improvement-log"),
-        axios.get<PipelineSummary>("/api/improvement-pipeline/summary"),
-        axios.get<GapAnalysis>("/api/lease-system-gaps"),
+      const [logRes, summaryRes, gapsRes, promptRes] = await Promise.all([
+        apiClient.get<ImprovementLog>("/api/improvement-log"),
+        apiClient.get<PipelineSummary>("/api/improvement-pipeline/summary"),
+        apiClient.get<GapAnalysis>("/api/lease-system-gaps"),
+        apiClient.get<PromptFeedbackSummary>("/api/prompt-feedback/summary"),
       ]);
       setData(logRes.data);
       setSummary(summaryRes.data);
       setGapAnalysis(gapsRes.data);
+      setPromptSummary(promptRes.data || null);
     } catch {
       setData(null);
     } finally {
@@ -136,7 +164,7 @@ export default function ImprovementLogPage() {
       const itemKey = item.canonical_key || item.id || item.title;
       setActionLoading((prev) => ({ ...prev, [itemKey]: true }));
       try {
-        await axios.post("/api/improvement-log/review", {
+        await apiClient.post("/api/improvement-log/review", {
           key: item.canonical_key || item.id || "",
           title: item.title,
           action,
@@ -228,6 +256,37 @@ export default function ImprovementLogPage() {
                   ? <span className="text-emerald-600">成功</span>
                   : <span className="text-slate-400">{summary.commit_result?.message || "なし"}</span>}
               </div>
+            </div>
+          </section>
+        )}
+
+        {promptSummary?.summary && (
+          <section className="rounded-lg border border-cyan-200 bg-cyan-50 p-4">
+            <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-cyan-900">
+              <ShieldCheck className="h-4 w-4" />
+              プロンプト改善ループ
+              {promptSummary.source && (
+                <span className="ml-1 text-xs font-normal text-cyan-700">{promptSummary.source}</span>
+              )}
+            </div>
+            <div className="grid gap-3 md:grid-cols-4">
+              <MiniMetric label="総件数" value={promptSummary.summary.total} />
+              <MiniMetric label="PDCA反映率" value={`${promptSummary.summary.pdca_rate}%`} />
+              <MiniMetric label="前回差分率" value={`${promptSummary.summary.previous_diff_rate}%`} />
+              <MiniMetric label="平均応答長" value={promptSummary.summary.avg_response_len} />
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              {Object.entries(promptSummary.summary.by_surface || {}).slice(0, 4).map(([surface, stats]) => (
+                <div key={surface} className="rounded-lg border border-cyan-100 bg-white p-3">
+                  <div className="text-sm font-semibold text-slate-900">{surface}</div>
+                  <div className="mt-1 text-xs text-slate-600">
+                    {stats.count}件 / PDCA {stats.pdca_rate}% / 変化率 {stats.response_changed_rate}%
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    平均長 {stats.avg_response_len} / diff +{stats.avg_prompt_diff_added} -{stats.avg_prompt_diff_removed}
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
         )}
@@ -457,6 +516,15 @@ function SummaryChip({
     <div className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${colorMap[color]}`}>
       {icon}
       {label}: <span className="font-bold">{value}</span>
+    </div>
+  );
+}
+
+function MiniMetric({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-cyan-100 bg-white p-3">
+      <div className="text-xs font-medium text-slate-500">{label}</div>
+      <div className="mt-1 text-lg font-bold text-slate-900">{value}</div>
     </div>
   );
 }

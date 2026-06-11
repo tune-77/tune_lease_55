@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { apiClient } from "@/lib/api";
 import { Building2, RefreshCw, TrendingUp } from "lucide-react";
 import {
   Bar,
@@ -52,7 +52,7 @@ export default function SalesDeptWinratePage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await axios.get<WinrateData>("/api/cases/sales-dept-winrate");
+      const res = await apiClient.get<WinrateData>("/api/cases/sales-dept-winrate");
       setData(res.data);
     } catch {
       setError("データの取得に失敗しました");

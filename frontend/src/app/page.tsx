@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import axios from "axios";
+import { apiClient } from "@/lib/api";
 import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, FileOutput, SlidersHorizontal } from "lucide-react";
 import ScoreDAG from "../components/ScoreDAG";
 import { ScoringFormData, defaultFormData } from "../types";
@@ -196,7 +196,7 @@ export default function Dashboard() {
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      const res = await axios.post(`/api/score/full`, toThousandYenPayload(formData));
+      const res = await apiClient.post(`/api/score/full`, toThousandYenPayload(formData));
       setResult(res.data);
       setActiveTab("analysis");
 

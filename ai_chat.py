@@ -21,6 +21,7 @@ from config import (
 from app_logger import log_warning, log_error
 from secret_manager import get_gemini_api_key
 from indicators import format_indicator_comparison
+from prompt_feedback import build_pdca_prompt_block
 
 # 旧名称の後方互換エイリアス
 _get_gemini_key_from_secrets = get_gemini_api_key
@@ -1125,6 +1126,7 @@ def get_ai_consultation_prompt(
     kb_use_manual: bool = True,
     kb_use_industry: bool = True,
     kb_use_improvement: bool = False,
+    include_pdca: bool = True,
 ) -> str:
     """
     AI相談チャット用のコンテキスト付きプロンプトを構築して返す。
@@ -1213,6 +1215,8 @@ def get_ai_consultation_prompt(
     if score is not None:
         result_block = f"【審査スコア】{score:.1f}点\n【財務評価】{comparison}"
 
+    pdca_block = build_pdca_prompt_block() if include_pdca else ""
+
     # ─── プロンプト組み立て ───────────────────────────────────────────────────
     # AnythingLLM が取得できた場合：社内知識ベースを最優先に置き、明示的な指示を付加する
     # 取得できなかった場合：従来どおり内部ナレッジベース（kb_block）を優先する
@@ -1225,6 +1229,7 @@ def get_ai_consultation_prompt(
         )
         parts = [
             system_instruction,
+            pdca_block,
             anything_block,          # ← 最優先・先頭配置
             obsidian_block,
             result_block,
@@ -1239,6 +1244,7 @@ def get_ai_consultation_prompt(
     else:
         parts = [
             "あなたはリース審査のAI審査オフィサーです。以下の情報を参照して、審査担当者の質問に答えてください。Obsidian知識ノートがある場合は、そこを優先して根拠にしてください。",
+            pdca_block,
             obsidian_block,
             result_block,
             trend_block,
