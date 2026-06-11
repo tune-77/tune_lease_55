@@ -62,3 +62,23 @@
   - **Mobile First**: Optimize for smartphone usage via Streamlit adjustments (Flet was discarded).
 - **AI Chat / Knowledge Loop**: Obsidian 連携を使って、会話メモ・改善ログ・Webメモ・Wiki を相互参照させる方針を好む。最終目的は、リースシステム自体が保存知識を再利用しながら自律的に改善していくこと。
 - **Obsidian Default**: 既定の保存先は iCloud 上の `Obsidian Vault`。影響: `~/Documents/Obsidian Vault` を既定として案内すると誤誘導になる。次の行動: 保存先案内・スクリプト・説明文は iCloud Vault を先に示す。
+- **Operational Restart**: Next/FastAPI/Cloudflare は LaunchAgent 前提で維持し、quick tunnel URL は使い捨てとして扱う。影響: 再起動時は stale lock を消し、最新ログの URL と local/tunnel の両方を確認する。次の行動: `curl 200` だけで完了扱いにしない。
+- **UI Triage**: `curl 200` は十分条件ではない。影響: `/home` が loading-only shell を返していないか、API の主要 endpoint が返っているか、実際の画面状態まで確認する。次の行動: 画面が開かない時は local + Cloudflare + API ログをセットで見る。
+- **Memory Hygiene**: `memory/YYYY-MM-DD.md` は raw log、`MEMORY.md` は昇格した長期記憶。影響: 日次メモは Snapshot と Promotable Items を付けて残し、重複・再発防止・方針変更だけを長期記憶に上げる。次の行動: 会話全文ではなく要約と決定を保存する。
+
+## Auto Promotions 2026-06-11 18:17
+- [2026-05-06] モデル見直し用のフック基盤を追加した。`hooks/hooks.json` に `recent_auc_drop` / `segment_auc_gap` / `feature_ab_test` を定義し、`model_review_hooks.py` から実行・記録できるようにした。再学習後に自動実行し、Settings 画面と API からも起動できる。  (`memory/2026-05-06.md`)
+- [2026-05-06] モデル見直しフックに `industry_monitor` を追加した。業種別AUCと `bench_score / ind_score` の乖離を同じフレームで表示し、`industry_auc_bench_gap` として `全体 / 医療 / 運送業 / サービス業 / 製造業` を一覧監視できるようにした。  (`memory/2026-05-06.md`)
+- [2026-05-06] モデル見直しフックの実行時に、数値だけでなく説明文も表示するようにした。`industry_monitor` では「AUCが低い業種」や「bench/ind乖離が大きい業種」がその場で分かるようにして、実行結果の読み取り負荷を下げた。  (`memory/2026-05-06.md`)
+- [2026-05-06] モデル見直しフックに `department_significance` を追加した。営業部ごとの業種分布・スコア・金利・売上をカイ二乗検定 / Kruskal-Wallis / ANOVA でまとめて判定し、`sales_dept_significance` として自動実行できるようにした。  (`memory/2026-05-06.md`)
+- [2026-05-06] Streamlit の起動を `run_streamlit_stable.sh` 経由に切り替えた。`run_lease_app.sh` から直起動せず、再起動ループと `server.fileWatcherType none` で落ちにくくした。  (`memory/2026-05-06.md`)
+- [2026-06-01] When the user asks for analysis, the default should be design review and decision framing, not more implementation proposals.  (`memory/2026-06-01.md`)
+- [2026-06-01] Cloudflare tunnel instability should be captured in the log with the exact recovery behavior and URL.  (`memory/2026-06-01.md`)
+- [2026-06-02] Keep raw logs separate from promoted knowledge; the promotion queue is the place for repeatable insights.  (`memory/2026-06-02.md`)
+- [2026-06-02] Work logs should record summaries and decisions, not full conversation transcripts.  (`memory/2026-06-02.md`)
+- [2026-06-06] A `curl 200` alone is not enough for UI health; the page can still be a loading-only shell.  (`memory/2026-06-06.md`)
+- [2026-06-06] News/research automation is most useful when it writes directly into the normal Vault and into the RAG index.  (`memory/2026-06-06.md`)
+- [2026-06-07] The launcher should remain LaunchAgent-first; foreground restart workflows are too fragile for routine use.  (`memory/2026-06-07.md`)
+- [2026-06-07] Cloudflare quick tunnel URLs are disposable and must be refreshed from the newest log when debugging.  (`memory/2026-06-07.md`)
+- [2026-06-08] User perceived a clear improvement in system stability and workflow quality.  (`memory/2026-06-08.md`)
+- [2026-06-08] The restart workflow needs to stay lock-cleanup aware and should keep verifying both local and tunnel endpoints.  (`memory/2026-06-08.md`)

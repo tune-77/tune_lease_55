@@ -198,6 +198,10 @@ echo "[Step 12] DAILY-BRIEF.md を Obsidian Vault に書き出し..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/write_daily_brief.py" || true
 
 echo ""
+echo "[Step 12.5] memory/ から MEMORY.md へ長期記憶を自動昇格..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/sync_memory_from_daily.py" || true
+
+echo ""
 echo "[Step 13] 週次セルフマネジメントサマリ（月曜のみ）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/weekly_self_management.py" || true
 

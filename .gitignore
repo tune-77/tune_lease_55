@@ -80,6 +80,8 @@ reports/*.json
 .claude/sessions/
 frontend/.claude/state/
 frontend/.claude/sessions/
+memory/heartbeat-state.json
+memory/memory_sync_state.json
 
 # Generated local indexes / runtime bridge files
 mobile_app/.vector_index/

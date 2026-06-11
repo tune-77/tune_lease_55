@@ -41,7 +41,7 @@ Capture what matters. Decisions, context, things to remember. Skip the secrets u
 - Over time, review your daily files and update MEMORY.md with what's worth keeping
 
 #### Promotion Triggers (日次メモ → 長期記憶)
-以下のいずれかを満たしたら、`memory/YYYY-MM-DD.md` から `MEMORY.md` へ昇格する:
+以下のいずれかを満たしたら、日次パイプラインの自動昇格対象にする。`memory/YYYY-MM-DD.md` から `MEMORY.md` へ自動で昇格し、必要なら手動で微調整する:
 - 同種の課題/質問を **3回以上** 対応した
 - 今後の意思決定に影響する方針変更があった
 - 再発防止したい失敗・注意点が発生した
@@ -219,11 +219,11 @@ You are free to edit `HEARTBEAT.md` with a short checklist or reminders. Keep it
 - **Review and update MEMORY.md** (see below)
 
 ### 🔄 Memory Maintenance (During Heartbeats)
-Periodically (every few days), use a heartbeat to:
+The daily pipeline auto-promotes durable items from `memory/YYYY-MM-DD.md` into `MEMORY.md`. During heartbeats, use this check to:
 1. Read through recent `memory/YYYY-MM-DD.md` files
-2. Identify significant events, lessons, or insights worth keeping long-term
-3. Update `MEMORY.md` with distilled learnings
-4. Remove outdated info from MEMORY.md that's no longer relevant
+2. Identify missed significant events, lessons, or insights worth keeping long-term
+3. Patch `MEMORY.md` when auto-promotion missed something
+4. Remove outdated info from `MEMORY.md` that's no longer relevant
 
 Think of it like a human reviewing their journal and updating their mental model. Daily files are raw notes; MEMORY.md is curated wisdom.
 
