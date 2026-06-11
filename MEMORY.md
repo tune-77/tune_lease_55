@@ -52,6 +52,7 @@
   - Next/Cloudflare 再起動後に「ホームが開かない」と見える場合、`curl 200` だけで正常判断しない。`/home` が全画面ローディングだけを返していないか、API ログで `/api/dashboard/stats` が返っているか、最新 `logs/next/tunnel_*.log` の URL を使っているかを確認する。2026-06-06 に `frontend/src/app/home/page.tsx` の全画面 `loading` gate を外し、API 集計中でもホーム本体を先に描画する方針にした。
   - Cloud Run では SQLite と Obsidian を `.cloudrun_bundle/` にスナップショットしてからイメージへ焼き込み、起動時に `/app/data` と `/app/obsidian_vault` へ展開する方式にした。`scripts/package_cloud_run_bundle.sh` がその入口で、開発機の絶対パスに依存しない。
   - Next 側の prompt feedback loop を軍師 SSE まで含めて接続した。`api/gunshi_gemini.py` に `PDCAあり/なし` の system prompt 差分と `record_prompt_feedback()` を入れ、改善ログ画面も prompt feedback 集計を表示できるようにした。影響: 主要なチャット/軍師経路で改善効果を比較しやすくなった。次の行動: 月次レポートで `pdca_rate` と `response_changed_rate` を継続監視する。
+  - 改善ログに「修正登録」ボタンを追加し、押した内容を `pdca_ai_rules.json` の `ai_prompt_addons` に1クリックで追記できるようにした。影響: 修正をユーザー操作から直接ルール化できるようになった。次の行動: 追加されたルールが過剰に増えないか、月次で重複・ノイズを確認する。
 
 ## Preferences
 - **User**: Kobayashi

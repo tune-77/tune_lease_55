@@ -26,6 +26,18 @@ def load_pdca_rules(path: str | None = None) -> dict[str, Any]:
         return {}
 
 
+def save_pdca_rules(data: dict[str, Any], path: str | None = None) -> bool:
+    """Persist the PDCA rule set to disk."""
+    target = path or DEFAULT_PDCA_RULES_FILE
+    try:
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
+
+
 def _dedupe_rules(rules: list[Any]) -> list[str]:
     cleaned: list[str] = []
     seen: set[str] = set()
@@ -73,6 +85,39 @@ def build_pdca_prompt_block(
     if include_summary and summary:
         lines.append(f"（審査傾向サマリー: {summary[:200]}）")
     return "\n".join(lines)
+
+
+def append_pdca_rule(
+    rule: str,
+    *,
+    path: str | None = None,
+    source: str = "manual",
+    reflection_summary: str | None = None,
+) -> dict[str, Any]:
+    """Append a new learned rule while deduplicating existing addons."""
+    target = path or DEFAULT_PDCA_RULES_FILE
+    data = load_pdca_rules(target)
+    addons = _dedupe_rules(list(data.get("ai_prompt_addons", [])))
+    rule_text = str(rule or "").strip()
+    appended = False
+    if rule_text and rule_text not in addons:
+        addons.append(rule_text)
+        appended = True
+    data["ai_prompt_addons"] = addons
+    if reflection_summary is not None:
+        data["reflection_summary"] = str(reflection_summary).strip()
+    data.setdefault("last_run", data.get("last_run", ""))
+    data["manual_rule_source"] = source
+    data["manual_rule_count"] = int(data.get("manual_rule_count") or 0) + (1 if appended else 0)
+    saved = save_pdca_rules(data, target)
+    return {
+        "ok": saved,
+        "appended": appended,
+        "rule": rule_text,
+        "count": len(addons),
+        "path": target,
+        "data": data,
+    }
 
 
 def _shorten(text: str, limit: int = 1200) -> str:

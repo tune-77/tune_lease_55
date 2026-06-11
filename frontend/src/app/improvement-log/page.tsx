@@ -13,6 +13,7 @@ import {
   XCircle,
   Clock,
   GitCommit,
+  Sparkles,
 } from "lucide-react";
 
 type ImprovementItem = {
@@ -168,6 +169,30 @@ export default function ImprovementLogPage() {
           key: item.canonical_key || item.id || "",
           title: item.title,
           action,
+        });
+        await fetchLog();
+      } catch {
+        // 失敗時は何もしない（再fetchで状態は保持される）
+      } finally {
+        setActionLoading((prev) => ({ ...prev, [itemKey]: false }));
+      }
+    },
+    [fetchLog]
+  );
+
+  const handleRegisterPromptRule = useCallback(
+    async (item: ImprovementItem) => {
+      const itemKey = item.canonical_key || item.id || item.title;
+      setActionLoading((prev) => ({ ...prev, [itemKey]: true }));
+      const reason = item.auto_fix_policy?.reason || item.reason || item.title || "";
+      const rule = `${item.title || item.id || "改善項目"}: ${reason}`.trim();
+      try {
+        await apiClient.post("/api/prompt-feedback/rules/register", {
+          title: item.title || item.id || "改善項目",
+          rule,
+          source: "improvement-log",
+          surface: item.category || "",
+          reason,
         });
         await fetchLog();
       } catch {
@@ -466,6 +491,13 @@ export default function ImprovementLogPage() {
                                 disabled={isActing}
                                 variant="defer"
                               />
+                              <ActionButton
+                                label="修正登録"
+                                onClick={() => handleRegisterPromptRule(item)}
+                                disabled={isActing}
+                                variant="learn"
+                                icon={<Sparkles className="h-3.5 w-3.5" />}
+                              />
                             </div>
                           ) : (
                             <span className="text-xs text-slate-300">—</span>
@@ -533,6 +565,7 @@ const ACTION_STYLES = {
   approve: "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100",
   reject: "border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100",
   defer: "border-slate-300 bg-slate-50 text-slate-600 hover:bg-slate-100",
+  learn: "border-cyan-300 bg-cyan-50 text-cyan-700 hover:bg-cyan-100",
 };
 
 function gapPriorityClass(priority: string) {
@@ -548,11 +581,13 @@ function ActionButton({
   onClick,
   disabled,
   variant,
+  icon,
 }: {
   label: string;
   onClick: () => void;
   disabled: boolean;
-  variant: "approve" | "reject" | "defer";
+  variant: "approve" | "reject" | "defer" | "learn";
+  icon?: React.ReactNode;
 }) {
   return (
     <button
@@ -560,6 +595,7 @@ function ActionButton({
       disabled={disabled}
       className={`rounded border px-2 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${ACTION_STYLES[variant]}`}
     >
+      {icon ? <span className="mr-1 inline-flex align-middle">{icon}</span> : null}
       {label}
     </button>
   );

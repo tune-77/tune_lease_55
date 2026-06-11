@@ -117,6 +117,7 @@ from api.schemas import (
     LeaseNewsSummarizeRequest,
     LeaseNewsSummaryItem,
     ReviewImprovementRequest,
+    PromptRuleRegisterRequest,
     WorkLogRequest,
     WorkLogResponse,
 )
@@ -2401,6 +2402,27 @@ def _save_improvement_log_to_obsidian(entry: dict) -> dict:
         return {"status": "skipped", "reason": f"Obsidian save failed: {exc}"}
 
 
+def _save_prompt_rule_to_obsidian(entry: dict) -> dict:
+    """Mirror a prompt-rule registration to the user's Obsidian vault."""
+    title = str(entry.get("title") or "PDCA修正登録")
+    lines = [
+        f"- source: {entry.get('source') or 'manual'}",
+        f"- surface: {entry.get('surface') or ''}",
+        f"- title: {title}",
+        f"- rule: {entry.get('rule') or ''}",
+        f"- reason: {entry.get('reason') or ''}",
+        f"- recorded_at: {entry.get('recorded_at') or ''}",
+        "- source: prompt-feedback API",
+    ]
+    body = "\n".join(lines)
+    try:
+        from mobile_app.obsidian_bridge import append_improvement_note
+
+        return append_improvement_note(f"PDCA修正登録: {title}", body)
+    except Exception as exc:
+        return {"status": "skipped", "reason": f"Obsidian save failed: {exc}"}
+
+
 @app.post("/api/improvement-log/dismiss")
 def dismiss_improvement(req: DismissImprovementRequest):
     """改善案を「実装済み」としてledgerとObsidianに追記する。"""
@@ -2442,6 +2464,48 @@ def review_improvement(req: ReviewImprovementRequest):
         f.write(_json.dumps(entry, ensure_ascii=False) + "\n")
     obsidian_result = _save_improvement_log_to_obsidian(entry)
     return {"ok": True, "key": req.key, "action": req.action, "obsidian": obsidian_result}
+
+
+@app.post("/api/prompt-feedback/rules/register")
+def register_prompt_rule(req: PromptRuleRegisterRequest):
+    """UIから1クリックで修正ルールを `pdca_ai_rules.json` に追記する。"""
+    import json as _json
+    from datetime import datetime as _dt
+    from prompt_feedback import append_pdca_rule
+
+    ledger_path = os.path.expanduser("~/Library/Logs/tunelease/ledger.jsonl")
+    os.makedirs(os.path.dirname(ledger_path), exist_ok=True)
+    rule_text = str(req.rule or "").strip()
+    title = str(req.title or "").strip()
+    reason = str(req.reason or "").strip()
+    normalized_rule = rule_text or title
+    append_result = append_pdca_rule(
+        normalized_rule,
+        source=req.source or "manual",
+        reflection_summary=req.summary or None,
+    )
+    entry = {
+        "key": req.surface or title,
+        "canonical_key": req.surface or title,
+        "status": "rule_registered",
+        "title": title,
+        "rule": normalized_rule,
+        "reason": reason or normalized_rule,
+        "source": req.source or "manual",
+        "surface": req.surface or "",
+        "recorded_at": _dt.now().isoformat(),
+    }
+    with open(ledger_path, "a", encoding="utf-8") as f:
+        f.write(_json.dumps(entry, ensure_ascii=False) + "\n")
+    obsidian_result = _save_prompt_rule_to_obsidian(entry)
+    return {
+        "ok": True,
+        "appended": append_result.get("appended", False),
+        "count": append_result.get("count", 0),
+        "rule": append_result.get("rule", normalized_rule),
+        "path": append_result.get("path"),
+        "obsidian": obsidian_result,
+    }
 
 
 @app.get("/api/improvement-pipeline/summary")

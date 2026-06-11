@@ -144,6 +144,15 @@ class ReviewImprovementRequest(BaseModel):
     reason: str = ""
 
 
+class PromptRuleRegisterRequest(BaseModel):
+    title: str
+    rule: str
+    source: str = "manual"
+    surface: str = ""
+    reason: str = ""
+    summary: str = ""
+
+
 class WorkLogRequest(BaseModel):
     title: str
     what: str

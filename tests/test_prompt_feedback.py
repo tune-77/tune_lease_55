@@ -156,3 +156,26 @@ def test_prompt_feedback_metrics_summary_shape():
     assert summary["total"] == 1
     assert summary["by_surface"]["next_chat_general"]["count"] == 1
     assert summary["avg_prompt_final_len"] == 120.0
+
+
+def test_append_pdca_rule_dedupes_and_persists(tmp_path):
+    import prompt_feedback
+
+    rules_path = tmp_path / "pdca_ai_rules.json"
+    first = prompt_feedback.append_pdca_rule(
+        "境界案件では条件提示を先に出す。",
+        path=str(rules_path),
+        source="manual",
+    )
+    second = prompt_feedback.append_pdca_rule(
+        "境界案件では条件提示を先に出す。",
+        path=str(rules_path),
+        source="manual",
+    )
+
+    assert first["ok"] is True
+    assert first["appended"] is True
+    assert second["appended"] is False
+    data = prompt_feedback.load_pdca_rules(str(rules_path))
+    assert data["ai_prompt_addons"] == ["境界案件では条件提示を先に出す。"]
+    assert data["manual_rule_count"] == 1
