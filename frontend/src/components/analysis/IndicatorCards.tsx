@@ -1,5 +1,5 @@
 import React from 'react';
-import { Target, TrendingUp, ShieldCheck } from 'lucide-react';
+import { Database, ShieldCheck, Target, TrendingUp } from 'lucide-react';
 
 type IndicatorData = {
   score_base?: number;
@@ -7,6 +7,25 @@ type IndicatorData = {
   bench_op_margin?: number;
   user_equity_ratio?: number;
   bench_equity_ratio?: number;
+  estat_context?: {
+    summary?: string;
+    status?: string;
+    score?: number;
+    score_components?: {
+      industry_gap_score?: number;
+      lease_fit_score?: number;
+      macro_cycle_score?: number;
+    };
+    recommendations?: string[];
+    dimensions?: Array<{
+      label?: string;
+      status?: string;
+      score?: number;
+      summary?: string;
+      comment?: string;
+      metrics?: Record<string, number | string | null>;
+    }>;
+  };
 };
 
 interface IndicatorCardsProps {
@@ -44,7 +63,7 @@ export default function IndicatorCards({ data }: IndicatorCardsProps) {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
       
       {/* 営業利益率 */}
       <div className="bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition">
@@ -149,6 +168,66 @@ export default function IndicatorCards({ data }: IndicatorCardsProps) {
         <div className="text-xs font-medium text-white/80 mt-2">
           {isApproved ? '承認ラインをクリアしています🎉' : '承認ライン(71点)に達していません⚠️'}
         </div>
+      </div>
+
+      {/* e-Stat統合コンテキスト */}
+      <div className="bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-700 rounded-3xl p-6 shadow-lg shadow-slate-200/20 text-white">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-white/10 text-cyan-200 rounded-lg">
+              <Database className="w-4 h-4" />
+            </div>
+            <span className="font-bold text-white/90">e-Stat統合</span>
+          </div>
+          <span className={`text-[10px] font-bold px-2 py-1 rounded-md border ${
+            data.estat_context?.status === 'green'
+              ? 'bg-emerald-400/15 text-emerald-200 border-emerald-400/30'
+              : data.estat_context?.status === 'red'
+                ? 'bg-rose-400/15 text-rose-200 border-rose-400/30'
+                : 'bg-amber-400/15 text-amber-200 border-amber-400/30'
+          }`}>
+            {data.estat_context?.status === 'green' ? '整合良好' : data.estat_context?.status === 'red' ? '要確認' : '参考'}
+          </span>
+        </div>
+
+        <div className="mb-3">
+          <div className="text-[10px] font-black uppercase tracking-widest text-white/50">総合（3項目合成点）</div>
+          <div className="mt-1 text-sm font-bold text-white/90 leading-relaxed">
+            {data.estat_context?.summary || '業種・リース・景気の参照情報です。'}
+          </div>
+          <div className="mt-1 text-[11px] text-white/60 leading-relaxed">
+            100点満点で、同業平均との差・リース負担の重さ・景気の向きを合成した参考点です。
+          </div>
+        </div>
+
+        <div className="flex items-end gap-2 mb-3">
+          <span className="text-4xl font-black text-white drop-shadow-md">
+            {(data.estat_context?.score ?? 50).toFixed(1)}
+          </span>
+          <span className="text-lg font-bold text-white/70 mb-1">点</span>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            ['同業差', data.estat_context?.score_components?.industry_gap_score],
+            ['リース負担', data.estat_context?.score_components?.lease_fit_score],
+            ['景気の向き', data.estat_context?.score_components?.macro_cycle_score],
+          ].map(([label, value]) => (
+            <div key={label as string} className="rounded-2xl bg-white/10 border border-white/10 px-3 py-2">
+              <div className="text-[10px] font-black text-white/50">{label}</div>
+              <div className="text-sm font-black text-white">{typeof value === 'number' ? `${Number(value).toFixed(1)}` : '—'}</div>
+            </div>
+          ))}
+        </div>
+
+        {!!data.estat_context?.recommendations?.length && (
+          <div className="mt-3 rounded-2xl bg-white/10 border border-white/10 p-3">
+            <div className="text-[10px] font-black uppercase tracking-widest text-white/50 mb-1">示唆</div>
+            <div className="text-xs leading-relaxed text-white/85">
+              {data.estat_context.recommendations[0]}
+            </div>
+          </div>
+        )}
       </div>
 
     </div>

@@ -535,6 +535,7 @@ def _build_screening_context_notes(
     asset_purpose = str(inputs.get("asset_purpose") or "").strip()
     asset_location = str(inputs.get("asset_location") or "").strip()
     asset_evidence = str(inputs.get("asset_evidence_level") or "").strip()
+    estat_context = result.get("estat_context") or {}
 
     commentary: list[dict] = []
     risk_reasons: list[dict] = []
@@ -673,6 +674,17 @@ def _build_screening_context_notes(
             ["asset_name", "industry_sub", "grade", "score"],
         )
 
+    if estat_context:
+        add_comment(
+            "e-Stat統合文脈",
+            str(estat_context.get("summary") or "業種・リース・景気の3層コンテキストを確認。"),
+            "neutral",
+            ["estat_context"],
+        )
+        for rec in estat_context.get("recommendations", [])[:2]:
+            if rec:
+                add_comment("e-Stat示唆", str(rec), "neutral", ["estat_context"])
+
     reflected_unique = sorted({str(item) for item in reflected_inputs if item})
     important_inputs = {
         "company_name", "industry_major", "industry_sub", "grade", "customer_type", "main_bank",
@@ -700,6 +712,7 @@ def _build_screening_context_notes(
             "sub": industry_sub,
             "detail": industry_detail,
         },
+        "estat_context": estat_context or None,
     }
 
 
@@ -864,6 +877,7 @@ def _build_data_source_summary(inputs: dict, result: dict) -> dict:
         "model_sources": [
             "RandomForest borrower score",
             "業種ベンチマーク",
+            "e-Stat業種/景気コンテキスト",
             "物件スコア/物件警告",
             "Q_risk/信用リスク補助指標",
         ],
@@ -989,6 +1003,7 @@ def calculate_score(req: ScoringRequest):
             data_source_summary=data_source_summary,
             screening_context_notes=screening_context_notes,
             approval_comment_draft=approval_comment_draft,
+            estat_context=result.get("estat_context"),
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1063,6 +1078,7 @@ def calculate_score_full(req: ScoringRequest):
             data_source_summary=data_source_summary,
             screening_context_notes=screening_context_notes,
             approval_comment_draft=approval_comment_draft,
+            estat_context=result.get("estat_context"),
         )
     except Exception as e:
         import traceback
@@ -2979,6 +2995,7 @@ class GunshiStreamRequest(BaseModel):
     asset_warnings: list = []
     asset_bonuses: list = []
     default_warnings: list = []
+    estat_context: Optional[dict] = None
 
 
 @app.post("/api/gunshi/stream")
@@ -3022,6 +3039,27 @@ class GunshiChatRequest(BaseModel):
     use_web: bool = True
     use_obsidian: bool = True
     mode: str = "gunshi"  # 'gunshi'（戦略アドバイス）/ 'chat'（自由相談=Flask AIチャット）
+    estat_context: Optional[dict] = None
+
+
+def _format_estat_context_for_prompt(estat_context: Optional[dict]) -> str:
+    if not estat_context:
+        return ""
+    summary = str(estat_context.get("summary") or "").strip()
+    if not summary:
+        return ""
+    lines = [summary]
+    score = estat_context.get("score")
+    status = estat_context.get("status")
+    if score is not None:
+        lines.append(f"総合 {float(score):.1f}点")
+    if status:
+        status_label = {"green": "整合良好", "yellow": "参考", "red": "要確認"}.get(str(status), str(status))
+        lines.append(f"判定 {status_label}")
+    recs = [str(item).strip() for item in (estat_context.get("recommendations") or []) if str(item).strip()]
+    if recs:
+        lines.append("示唆 " + " / ".join(recs[:2]))
+    return "\n".join(lines)
 
 
 def _format_gunshi_history(history: List[Dict[str, str]]) -> str:
@@ -3135,6 +3173,7 @@ def generate_gunshi_chat(req: GunshiChatRequest):
                         "score": req.score,
                         "industry_major": req.industry_major,
                         "asset_name": req.asset_name,
+                        "estat_context": req.estat_context,
                     },
                     use_obsidian=req.use_obsidian,
                     use_web=req.use_web,
@@ -3163,6 +3202,7 @@ def generate_gunshi_chat(req: GunshiChatRequest):
                         "score": req.score,
                         "industry_major": req.industry_major,
                         "asset_name": req.asset_name,
+                        "estat_context": req.estat_context,
                     },
                     use_obsidian=req.use_obsidian,
                     use_web=req.use_web,
@@ -3211,6 +3251,7 @@ def generate_gunshi_chat(req: GunshiChatRequest):
                 top_phrases=sampled,
                 asset_name=req.asset_name,
                 humor_style=req.humor_style,
+                estat_context_text=_format_estat_context_for_prompt(req.estat_context),
             )
             if is_yukikaze:
                 prompt += (

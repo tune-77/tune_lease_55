@@ -163,12 +163,53 @@ def _fetch_rag_context(asset_name: str, industry_cat: str) -> str:
         return ""
 
 
+def _format_estat_context(estat_context: dict | None) -> str:
+    """e-Stat統合文脈を短いプロンプト用テキストに整形する。"""
+    if not estat_context:
+        return ""
+    summary = str(estat_context.get("summary") or "").strip()
+    if not summary:
+        return ""
+    lines = [f"【e-Stat 3層整合点】{summary}"]
+    score = estat_context.get("score")
+    status = estat_context.get("status")
+    if score is not None or status:
+        status_label = {
+            "green": "整合良好",
+            "yellow": "参考",
+            "red": "要確認",
+        }.get(str(status or ""), str(status or ""))
+        if score is not None:
+            lines.append(f"- 総合: {float(score):.1f}点 / {status_label}".rstrip(" /"))
+        elif status_label:
+            lines.append(f"- 総合: {status_label}")
+    components = estat_context.get("score_components") or {}
+    if isinstance(components, dict) and components:
+        parts = []
+        for key, label in [
+            ("industry_gap_score", "同業差"),
+            ("lease_fit_score", "リース負担"),
+            ("macro_cycle_score", "景気の向き"),
+        ]:
+            value = components.get(key)
+            if value is not None:
+                parts.append(f"{label} {float(value):.1f}")
+        if parts:
+            lines.append("- 内訳: " + " / ".join(parts))
+    recs = [str(item).strip() for item in (estat_context.get("recommendations") or []) if str(item).strip()]
+    if recs:
+        lines.append("- 示唆: " + " / ".join(recs[:2]))
+    lines.append("- 定義: 同業平均との差・リース負担の重さ・景気の向きを合成した100点満点の参考点")
+    return "\n".join(lines)
+
+
 def build_system_instruction(
     asset_warnings: list[str] | None = None,
     asset_bonuses: list[str] | None = None,
     asset_name: str = "",
     industry_cat: str = "",
     default_warnings: list[str] | None = None,
+    estat_context: dict | None = None,
 ) -> str:
     # PHRASES_100 は dict[str, list[dict]] なので全カテゴリのtextを列挙
     all_phrases = []
@@ -189,6 +230,9 @@ def build_system_instruction(
     rag_block = _fetch_rag_context(asset_name, industry_cat)
     if rag_block:
         base += f"\n{rag_block}\n"
+    estat_block = _format_estat_context(estat_context)
+    if estat_block:
+        base += f"\n{estat_block}\n"
     if asset_warnings:
         warnings_text = "\n".join(asset_warnings)
         base += (
@@ -236,11 +280,14 @@ def build_user_prompt(params: dict) -> str:
         asset_name=params.get("asset_name", ""),
         n=3,
     )
+    estat_context = _format_estat_context(params.get("estat_context"))
+    estat_section = f"\n{estat_context}\n" if estat_context else ""
     return (
         f"案件: 業種={industry_cat} "
         f"スコア={score} "
         f"ベイズ推定: {prior:.1%} → {posterior:.1%}\n"
         f"推奨フレーズ(top3): {phrases}\n"
+        f"{estat_section}"
         "この案件の承認奪取戦略を述べよ。"
     )
 
@@ -318,6 +365,9 @@ def build_strategy_cards(params: dict, phrases: list[str], prior: float, posteri
     op_profit = float(params.get("op_profit", 0) or 0)
     nenshu = float(params.get("nenshu", 0) or 0)
     op_margin = op_profit / nenshu * 100 if nenshu else None
+    estat_context = params.get("estat_context") or {}
+    estat_summary = str(estat_context.get("summary") or "").strip()
+    estat_recs = [str(item).strip() for item in (estat_context.get("recommendations") or []) if str(item).strip()]
 
     if score >= 70:
         stance = "承認寄せ"
@@ -401,6 +451,8 @@ def build_strategy_cards(params: dict, phrases: list[str], prior: float, posteri
         badges.append("補助金確認")
     if bank_support:
         badges.append("銀行導線あり")
+    if estat_summary:
+        badges.append("e-Stat")
 
     return {
         "headline": headline,
@@ -414,6 +466,13 @@ def build_strategy_cards(params: dict, phrases: list[str], prior: float, posteri
         "ringi_lines": phrase_lines + ringi_lines,
         "badges": badges,
         "bayes_factors": build_bayes_factors(params, prior, posterior),
+        "estat_context": {
+            "summary": estat_summary,
+            "score": estat_context.get("score"),
+            "status": estat_context.get("status"),
+            "score_components": estat_context.get("score_components") or {},
+            "recommendations": estat_recs[:2],
+        } if estat_summary else None,
         "disclaimer": "軍師AIは判定を上書きしません。最終判断は審査ルール、スコア、担当者確認に従ってください。",
     }
 
@@ -479,6 +538,7 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
             str(params.get("asset_name") or ""),
             str(params.get("industry_cat") or ""),
             params.get("default_warnings"),
+            params.get("estat_context"),
         )}]},
         "contents": [
             {"role": "user", "parts": [{"text": build_user_prompt(params)}]}

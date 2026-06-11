@@ -2068,6 +2068,31 @@ def render_analysis_results(
                         f"{_capex_txt}{_lc_txt}"
                     )
 
+            # ----- e-Stat統合文脈（業種・リース・景気） -----
+            _estat = res.get("estat_context") or {}
+            if _estat:
+                with st.expander("📚 e-Stat統合文脈（業種・リース・景気）", expanded=False):
+                    _ec_score = float(_estat.get("score") or 0)
+                    _ec_status = str(_estat.get("status") or "yellow")
+                    _ec_components = _estat.get("score_components") or {}
+                    st.caption("3層整合点: 同業平均との差・リース負担の重さ・景気の向きを100点満点で合成した参考点です。")
+                    _cols = st.columns(4)
+                    _cols[0].metric("総合", f"{_ec_score:.1f}", delta=_ec_status)
+                    _cols[1].metric("業種", f"{float(_ec_components.get('industry_gap_score') or 0):.1f}")
+                    _cols[2].metric("リース", f"{float(_ec_components.get('lease_fit_score') or 0):.1f}")
+                    _cols[3].metric("景気", f"{float(_ec_components.get('macro_cycle_score') or 0):.1f}")
+                    if _estat.get("summary"):
+                        st.caption(f"総括: {str(_estat.get('summary'))}")
+                    if _estat.get("recommendations"):
+                        st.markdown("\n".join(f"- {item}" for item in _estat.get("recommendations", [])[:5]))
+                    if _estat.get("dimensions"):
+                        for dim in _estat.get("dimensions", [])[:3]:
+                            label = str(dim.get("label") or "")
+                            status = str(dim.get("status") or "")
+                            summary = str(dim.get("summary") or "")
+                            if label or summary:
+                                st.caption(f"{label} ({status}): {summary}")
+
             # ----- DSCR ＋ 追加財務指標 vs 業種平均 -----
             _u_dscr = res.get("user_dscr")
             # run_quick_scoring() 経由の場合は dscr_approx にフォールバック
