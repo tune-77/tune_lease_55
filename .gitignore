@@ -52,6 +52,8 @@ data/weekly_plot.json
 data/weekly_report_sent.json
 # ユーザーカスタマイズ（環境ごとに異なる設定）
 data/coeff_overrides.json
+# レシピファイル（承認フローはローカルのみ・コミット禁止）
+data/recipes/**/*.json
 
 # ログ・デバッグ出力
 logs/
