@@ -84,6 +84,27 @@ if [ -f "${RESULT_FILE}" ]; then
     fi
 fi
 
+echo ""
+echo "[反映] 再帰的自己改善レポートを生成中..."
+RECURSIVE_JSON_FILE="${PROJECT_ROOT}/reports/recursive_self_improvement_${LOG_DATE}.json"
+RECURSIVE_MD_FILE="${PROJECT_ROOT}/reports/recursive_self_improvement_${LOG_DATE}.md"
+RECURSIVE_LATEST_JSON="${PROJECT_ROOT}/reports/recursive_self_improvement_latest.json"
+RECURSIVE_LATEST_MD="${PROJECT_ROOT}/reports/recursive_self_improvement_latest.md"
+"${PYTHON}" "${PROJECT_ROOT}/scripts/recursive_self_improvement.py" \
+    --report "${LATEST_FILE}" \
+    --prompt-log "${PROJECT_ROOT}/data/prompt_feedback_log.jsonl" \
+    --output-json "${RECURSIVE_JSON_FILE}" \
+    --output-md "${RECURSIVE_MD_FILE}" \
+    --latest-json "${RECURSIVE_LATEST_JSON}" \
+    --latest-md "${RECURSIVE_LATEST_MD}"
+RECURSIVE_EXIT=$?
+if [ ${RECURSIVE_EXIT} -ne 0 ]; then
+    echo "警告: 再帰的自己改善レポート生成に失敗しました（終了コード ${RECURSIVE_EXIT}）"
+    if [ ${FINAL_EXIT} -eq 0 ]; then
+        FINAL_EXIT=${RECURSIVE_EXIT}
+    fi
+fi
+
 # Codex キュー
 if [ -f "${RESULT_FILE}" ]; then
     echo ""

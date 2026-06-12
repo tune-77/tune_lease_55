@@ -53,6 +53,9 @@
   - Cloud Run では SQLite と Obsidian を `.cloudrun_bundle/` にスナップショットしてからイメージへ焼き込み、起動時に `/app/data` と `/app/obsidian_vault` へ展開する方式にした。`scripts/package_cloud_run_bundle.sh` がその入口で、開発機の絶対パスに依存しない。
   - Next 側の prompt feedback loop を軍師 SSE まで含めて接続した。`api/gunshi_gemini.py` に `PDCAあり/なし` の system prompt 差分と `record_prompt_feedback()` を入れ、改善ログ画面も prompt feedback 集計を表示できるようにした。影響: 主要なチャット/軍師経路で改善効果を比較しやすくなった。次の行動: 月次レポートで `pdca_rate` と `response_changed_rate` を継続監視する。
   - 改善ログに「修正登録」ボタンを追加し、押した内容を `pdca_ai_rules.json` の `ai_prompt_addons` に1クリックで追記できるようにした。影響: 修正をユーザー操作から直接ルール化できるようになった。次の行動: 追加されたルールが過剰に増えないか、月次で重複・ノイズを確認する。
+  - `scripts/recursive_self_improvement.py` を追加し、改善レポートと prompt feedback を束ねた再帰的自己改善レポートを日次改善パイプラインに接続した。影響: 改善結果が次の改善候補に戻る閉ループが実装された。次の行動: `reports/recursive_self_improvement_latest.json` の `repeat_issue_rate` と `noise_rate` を継続監視する。
+  - 改善系の正本は `reports/latest.json`、派生物は `reports/recursive_self_improvement_*.json` と切り分けた。影響: 再帰レポートが canonical report を汚さない。次の行動: 派生物を増やすときも正本を上書きしない。
+  - `docs/improvement_source_of_truth.md` と `specs/phase6/P6-001-recursive-self-improvement.md` を相互参照させ、仕様定義と保存先の正本一覧を分離した。影響: どこを直すべきかが文書上でも明確になった。次の行動: 振る舞い変更は SPEC、保存先変更は正本一覧で扱う。
 
 ## Preferences
 - **User**: Kobayashi
