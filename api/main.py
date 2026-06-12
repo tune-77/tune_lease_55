@@ -3521,6 +3521,7 @@ def _lease_news_reflection_to_dict(reflection):
         "headline": getattr(reflection, "headline", ""),
         "thought_lines": list(getattr(reflection, "thought_lines", ()) or ()),
         "tomorrow_lines": list(getattr(reflection, "tomorrow_lines", ()) or ()),
+        "illustration_url": getattr(reflection, "illustration_url", ""),
     }
 
 

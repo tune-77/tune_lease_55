@@ -85,6 +85,7 @@ class LeaseNewsReflection:
     headline: str = ""
     thought_lines: tuple[str, ...] = ()
     tomorrow_lines: tuple[str, ...] = ()
+    illustration_url: str = ""
 
 
 def _parse_news_note(path: Path) -> dict:
@@ -405,6 +406,7 @@ def get_latest_lease_news_reflection(vault: Path | None = None) -> LeaseNewsRefl
     theme_match = re.search(r"^theme_summary:\s*(.+)$", text, re.MULTILINE)
     tag_match = re.search(r"^tag_summary:\s*(.+)$", text, re.MULTILINE)
     headline_match = re.search(r"^#\s+(.+)$", text, re.MULTILINE)
+    illustration_match = re.search(r"^illustration_url:\s*(.+)$", text, re.MULTILINE)
     thought_section = _extract_section(text, "今日の考え")
     tomorrow_section = _extract_section(text, "明日見ること")
     thought_lines = tuple(_extract_bullets(thought_section))
@@ -419,6 +421,7 @@ def get_latest_lease_news_reflection(vault: Path | None = None) -> LeaseNewsRefl
         headline=headline_match.group(1).strip() if headline_match else "",
         thought_lines=thought_lines,
         tomorrow_lines=tomorrow_lines,
+        illustration_url=illustration_match.group(1).strip() if illustration_match else "",
     )
 
 
@@ -753,17 +756,22 @@ def write_lease_news_reflection_note(
     tag_summary = focus.tag_summary or "なし"
     focus_lines = list(focus.focus_lines[:3]) or ["直近のニュースを見て、判断の前提を更新する。"]
     headline = focus.headline or "最新ニュースの論点あり"
-    thoughts = [
-        "今日の判断で変えるなら、審査コメントのどこか。",
-        "この論点は単発か、継続的な環境変化か。",
-        "明日もう一度見るべき案件条件は何か。",
-    ]
-    if any(key in " ".join(focus_lines) for key in ("金利", "政策", "為替")):
-        thoughts[0] = "今日の判断では、金利前提と提示条件の説明を少し厚くする。"
-    if any(key in " ".join(focus_lines) for key in ("設備投資", "省力化", "自動化", "更新")):
-        thoughts[1] = "この論点は、設備更新や省力化投資の継続テーマとして見る。"
-    if any(key in " ".join(focus_lines) for key in ("物流", "車両", "建設", "製造")):
-        thoughts[2] = "明日は、同業種の更新投資案件を優先して確認する。"
+    try:
+        from novelist_agent import generate_daily_lease_grumble
+        thoughts = generate_daily_lease_grumble(
+            date_str=reflection_date,
+            focus_lines=focus_lines,
+            theme=theme,
+            tag_summary=tag_summary,
+        )
+    except Exception:
+        thoughts = [
+            "今日も稟議書は静かだった。静かな書類ほど、あとで大きな質問をしてくる。",
+            "営業は熱意を加点してほしいと言う。熱意の耐用年数を先に教えてほしい。",
+            "八奈見さんならプリンを要求する場面だが、私は追加資料で空腹をごまかした。",
+            "結局、愚痴は保存せず判断だけを保存した。明日も同じ画面が私を待っている。",
+        ]
+    illustration_url = f"/lease-grumble/{reflection_date}.webp"
 
     content_lines = [
         "---",
@@ -772,8 +780,9 @@ def write_lease_news_reflection_note(
         f"source_note_path: {focus.note_path}",
         f"theme_summary: {theme}",
         f"tag_summary: {tag_summary}",
+        f"illustration_url: {illustration_url}",
         "---",
-        f"# リースニュースの今日の考え — {reflection_date}",
+        f"# リース知性体の愚痴 — {reflection_date}",
         "",
         "## 一言",
         f"- {headline}",
@@ -789,7 +798,7 @@ def write_lease_news_reflection_note(
     content_lines.extend([
         "",
         "## 明日見ること",
-        f"- {thoughts[2]}",
+        f"- {focus_lines[-1] if focus_lines else '今日の判断をもう一度見直す。'}",
         "",
         "## 判断の前提",
         f"- テーマ: {theme}",

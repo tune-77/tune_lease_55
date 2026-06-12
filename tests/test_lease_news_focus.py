@@ -14,7 +14,16 @@ sys.modules[_SPEC.name] = digest
 _SPEC.loader.exec_module(digest)
 
 
-def test_write_lease_news_focus_note_creates_project_note_and_daily_digest(tmp_path):
+def test_write_lease_news_focus_note_creates_project_note_and_daily_digest(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "novelist_agent.generate_daily_lease_grumble",
+        lambda **_: [
+            "今日も稟議書を開いた。",
+            "数字は正直だが、営業の説明は長い。",
+            "プリンの代わりに追加資料が届いた。",
+            "明日も返済予定表と向き合う。",
+        ],
+    )
     vault = tmp_path / "vault"
     news_dir = vault / "05-クリップ_記事" / "リースニュース"
     news_dir.mkdir(parents=True)
@@ -77,4 +86,6 @@ importance: 中
     assert parsed.note_date == "2026-06-11"
     assert parsed.note_path == "Projects/tune_lease_55/News/2026-06-11_lease-news-reflection.md"
     assert parsed.thought_lines
+    assert 3 <= len(parsed.thought_lines) <= 4
     assert parsed.tomorrow_lines
+    assert parsed.illustration_url == "/lease-grumble/2026-06-11.webp"

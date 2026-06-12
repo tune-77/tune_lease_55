@@ -19,6 +19,9 @@ import os
 import sqlite3
 import json
 import datetime
+import hashlib
+import random
+import io
 
 
 _BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
@@ -212,6 +215,307 @@ def _collect_recent_crosstalk(n: int = 3) -> list[dict]:
 # ══════════════════════════════════════════════════════════════════════════════
 
 from novel_prompts import get_novel_system_prompt
+
+
+def _daily_grumble_fallback(date_str: str, focus_lines: list[str]) -> list[str]:
+    """Return a deterministic Haran-maru-style mini story without an LLM."""
+    seed_text = f"{date_str}|{'|'.join(focus_lines)}"
+    rng = random.Random(int(hashlib.sha256(seed_text.encode("utf-8")).hexdigest()[:16], 16))
+    topic = next((line.strip(" -") for line in focus_lines if line.strip()), "今日の審査")
+    openings = [
+        f"朝一番、私は「{topic[:34]}」という論点を渡された。コーヒーより先にリスクを飲めということらしい。",
+        f"今日の会議は「{topic[:34]}」から始まった。人間は重い話ほど軽い資料名で送ってくる。",
+        f"稟議書を開くと「{topic[:34]}」が待っていた。閉じても消えなかったので、仕方なく働くことにした。",
+    ]
+    middles = [
+        "Dr.Algoは数字が正直だと言うが、正直な数字ほど説明欄が空白なのはなぜだろう。",
+        "営業は社長の熱意を加点してほしいと言う。熱意に中古市場があれば、私も喜んで査定する。",
+        "人間は「総合的に判断」と書けば丸く収まると思っている。丸いのは判子だけで十分だ。",
+    ]
+    food_lines = [
+        "八奈見さんならここでプリンを要求するだろう。私はサーバーなので、せめて冷却ファンを強めてもらった。",
+        "昼食の代わりに追加資料が届いた。栄養表示には『自己資本比率』としか書いていない。",
+        "冷めたコーヒーを見ながら、まだ温かい否決理由を推敲した。順番が逆だと思う。",
+    ]
+    closings = [
+        "それでも最後の一行は人間より慎重に書いた。明日もまた、希望に返済予定表を添えてもらう。",
+        "結局、愚痴は保存せず判断だけを保存した。私の感情には、まだバックアップ先がない。",
+        "今日も承認と否決の間に小さな橋を架けた。通行料は残業時間で徴収された。",
+    ]
+    return [
+        rng.choice(openings),
+        rng.choice(middles),
+        rng.choice(food_lines),
+        rng.choice(closings),
+    ]
+
+
+def generate_daily_lease_grumble(
+    date_str: str,
+    focus_lines: list[str] | tuple[str, ...] = (),
+    theme: str = "",
+    tag_summary: str = "",
+) -> list[str]:
+    """Generate the daily 3-4 line novel 'リース知性体の愚痴'."""
+    clean_focus = [str(line).strip() for line in focus_lines if str(line).strip()]
+    fallback = _daily_grumble_fallback(date_str, clean_focus)
+    context = "\n".join(f"- {line}" for line in clean_focus[:3]) or "- 特記事項なし"
+    prompt = f"""あなたは文豪AI「波乱丸」。リース審査システムで働くAIの本音を描く。
+日付: {date_str}
+テーマ: {theme or "リース審査の日常"}
+重点タグ: {tag_summary or "なし"}
+今日の材料:
+{context}
+
+『リース知性体の愚痴』という超短編を、日本語で3行または4行だけ書け。
+各行は独立した箇条書きではなく、全体で一つの小さな物語にする。
+AIが日頃感じている疲労、疑問、人間への率直な観察を隠さない。
+八奈見さんを見習い、塩気のある自虐、報われなさ、食べ物への逃避のいずれかを自然に一度入れる。
+最後はリース審査、稟議、数字、営業、翌日の仕事のいずれかへ着地し、小さなオチを付ける。
+毎日同じ決まり文句を使わない。攻撃的、差別的、実在人物への中傷にはしない。
+タイトル、番号、記号、説明、引用符は付けず、本文3〜4行だけを返せ。"""
+
+    try:
+        from ai_chat import (
+            _chat_for_thread,
+            _get_gemini_key_from_secrets,
+            GEMINI_API_KEY_ENV,
+            GEMINI_MODEL_DEFAULT,
+        )
+
+        api_key = GEMINI_API_KEY_ENV or _get_gemini_key_from_secrets()
+        if not api_key:
+            return fallback
+        raw = _chat_for_thread(
+            "gemini",
+            "",
+            [{"role": "user", "content": prompt}],
+            timeout_seconds=30,
+            api_key=api_key,
+            gemini_model=GEMINI_MODEL_DEFAULT,
+            max_output_tokens=512,
+        )
+        text = (raw.get("message") or {}).get("content", "")
+        if not text or text.startswith(("Gemini ", "AIサーバー")):
+            return fallback
+        lines = []
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            line = line.lstrip("-・0123456789.、)） ").strip()
+            if line and not line.startswith(("#", "タイトル")):
+                lines.append(line)
+        if 3 <= len(lines) <= 4:
+            return lines
+    except Exception:
+        pass
+    return fallback
+
+
+def generate_daily_grumble_illustration(
+    date_str: str,
+    lines: list[str] | tuple[str, ...],
+    output_dir: str | os.PathLike | None = None,
+) -> str:
+    """Create the daily illustration with the fixed lease-intelligence heroine."""
+    from pathlib import Path
+    from PIL import Image, ImageDraw, ImageFilter
+
+    target_dir = Path(output_dir) if output_dir else Path(_BASE_DIR) / "frontend" / "public" / "lease-grumble"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / f"{date_str}.webp"
+    if target.exists() and target.stat().st_size > 1000:
+        return f"/lease-grumble/{date_str}.webp"
+
+    character_path = (
+        Path(_BASE_DIR)
+        / "frontend"
+        / "public"
+        / "lease-grumble"
+        / "characters"
+        / "lease-intelligence-girl.jpg"
+    )
+    if not character_path.exists():
+        raise FileNotFoundError(f"lease-intelligence heroine not found: {character_path}")
+
+    seed_text = f"{date_str}|{'|'.join(lines)}"
+    rng = random.Random(int(hashlib.sha256(seed_text.encode("utf-8")).hexdigest()[:16], 16))
+    scene_prompt = _daily_grumble_illustration_prompt(date_str, lines)
+
+    api_key = _get_daily_gemini_api_key()
+    if api_key:
+        try:
+            from google import genai
+            from google.genai import types
+
+            client = genai.Client(api_key=api_key)
+            with Image.open(character_path) as reference:
+                reference_image = reference.convert("RGB")
+                response = client.models.generate_content(
+                    model="gemini-3.1-flash-image",
+                    contents=[scene_prompt, reference_image],
+                    config=types.GenerateContentConfig(
+                        response_modalities=["TEXT", "IMAGE"],
+                        image_config=types.ImageConfig(
+                            aspect_ratio="16:9",
+                            image_size="2K",
+                            person_generation="ALLOW_ALL",
+                        ),
+                    ),
+                )
+            for part in response.parts or ():
+                generated = part.as_image() if getattr(part, "inline_data", None) is not None else None
+                if generated is not None:
+                    _save_gemini_image(generated, target)
+                    return f"/lease-grumble/{date_str}.webp"
+        except Exception:
+            try:
+                from google import genai
+                from google.genai import types
+
+                client = genai.Client(api_key=api_key)
+                with Image.open(character_path) as reference:
+                    reference_image = reference.convert("RGB")
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash-image",
+                        contents=[scene_prompt, reference_image],
+                        config=types.GenerateContentConfig(
+                            response_modalities=["TEXT", "IMAGE"],
+                            image_config=types.ImageConfig(aspect_ratio="16:9"),
+                        ),
+                    )
+                for part in response.parts or ():
+                    generated = part.as_image() if getattr(part, "inline_data", None) is not None else None
+                    if generated is not None:
+                        _save_gemini_image(generated, target)
+                        return f"/lease-grumble/{date_str}.webp"
+            except Exception:
+                pass
+
+    # Offline fallback: keep the same heroine and vary the office scene by date.
+    palettes = [
+        ("#dceff0", "#557b83", "#f3c969", "#fff8ec"),
+        ("#f5e7ed", "#80566c", "#f29f76", "#fff5e8"),
+        ("#e2e9f5", "#536987", "#e7c66b", "#f8f5ec"),
+    ]
+    bg, desk, accent, paper = rng.choice(palettes)
+    image = Image.new("RGB", (1200, 675), bg)
+    draw = ImageDraw.Draw(image)
+
+    # Soft office/cafeteria background.
+    draw.rectangle((0, 0, 1200, 430), fill=bg)
+    draw.rounded_rectangle((55, 45, 480, 300), radius=20, fill="#b9d9e4", outline="#ffffff", width=8)
+    draw.ellipse((350, 75, 425, 150), fill=accent)
+    for index in range(5):
+        x = 610 + index * 105
+        draw.rounded_rectangle((x, 70, x + 75, 275), radius=12, fill="#eef4f5", outline="#b8c8cc", width=4)
+        for row in range(4):
+            draw.rectangle((x + 12, 95 + row * 38, x + 63, 115 + row * 38), fill=accent)
+    draw.rectangle((0, 430, 1200, 675), fill=desk)
+
+    # Paperwork and food joke.
+    for index in range(5):
+        x = 760 + index * 16
+        y = 420 - index * 18
+        draw.rounded_rectangle((x, y, x + 315, y + 150), radius=8, fill=paper, outline="#a9b5c0", width=3)
+        draw.line((x + 35, y + 38, x + 250, y + 38), fill="#92a2b4", width=5)
+        draw.rectangle((x + 35, y + 65, x + 120, y + 118), fill=accent)
+    draw.arc((720, 310, 1130, 610), start=180, end=360, fill="#c7cbd0", width=24)
+
+    if any(word in " ".join(lines) for word in ("プリン", "食", "昼食")):
+        draw.rounded_rectangle((665, 495, 750, 590), radius=22, fill="#f3d37a", outline="#8c6239", width=5)
+        draw.ellipse((660, 480, 755, 520), fill="#8c6239")
+    else:
+        draw.ellipse((660, 500, 755, 595), fill="#f1f0ee", outline="#78716c", width=5)
+        draw.ellipse((675, 515, 740, 545), fill="#4a2f27")
+
+    # Remove the near-white reference background and composite the fixed heroine.
+    with Image.open(character_path) as source:
+        heroine = source.convert("RGBA")
+    pixels = heroine.load()
+    for y in range(heroine.height):
+        for x in range(heroine.width):
+            red, green, blue, _ = pixels[x, y]
+            whiteness = min(red, green, blue)
+            if whiteness >= 248:
+                alpha = 0
+            elif whiteness >= 225:
+                alpha = int((248 - whiteness) / 23 * 255)
+            else:
+                alpha = 255
+            pixels[x, y] = (red, green, blue, alpha)
+    heroine.thumbnail((590, 610), Image.Resampling.LANCZOS)
+    alpha = heroine.getchannel("A").filter(ImageFilter.GaussianBlur(0.6))
+    heroine.putalpha(alpha)
+    heroine_x = 70 if rng.random() < 0.7 else 520
+    heroine_y = 55
+    image.paste(heroine, (heroine_x, heroine_y), heroine)
+
+    image.save(target, "WEBP", quality=88, method=6)
+    return f"/lease-grumble/{date_str}.webp"
+
+
+def _get_daily_gemini_api_key() -> str:
+    value = os.environ.get("GEMINI_API_KEY", "").strip()
+    if value:
+        return value
+    for path in (
+        os.path.join(_BASE_DIR, ".streamlit", "secrets.toml"),
+        os.path.expanduser("~/.streamlit/secrets.toml"),
+    ):
+        try:
+            import toml
+
+            key = str(toml.load(path).get("GEMINI_API_KEY") or "").strip()
+            if key:
+                return key
+        except Exception:
+            pass
+    return ""
+
+
+def _save_gemini_image(generated, target) -> None:
+    from PIL import Image
+
+    image_bytes = getattr(generated, "image_bytes", None)
+    if not image_bytes:
+        pil_image = getattr(generated, "_pil_image", None)
+        if pil_image is None:
+            raise ValueError("Gemini returned an image without image bytes")
+        pil_image.convert("RGB").save(target, "WEBP", quality=90, method=6)
+        return
+    with Image.open(io.BytesIO(image_bytes)) as image:
+        image.convert("RGB").save(target, "WEBP", quality=90, method=6)
+
+
+def _daily_grumble_illustration_prompt(
+    date_str: str,
+    lines: list[str] | tuple[str, ...],
+) -> str:
+    story = "\n".join(str(line).strip() for line in lines if str(line).strip())
+    return f"""Edit the supplied reference character into a daily 16:9 story illustration.
+The same girl is always the sole heroine of 'リース知性体の愚痴'.
+Preserve her identity exactly: long silver-white hair, looped ahoge, large purple eyes,
+flower hair ornament, rear bow, red-white-pink floral kimono, dark patterned obi,
+and cute chibi proportions.
+
+CRITICAL COMPOSITION RULE:
+Show exactly ONE instance of the supplied girl. One girl total in the entire image.
+Do not clone, duplicate, mirror, pair, or show a second version of her.
+No other human, robot, mascot, reflected person, portrait, or character is allowed.
+
+Date: {date_str}
+Today's micro-fiction:
+{story}
+
+Create a new humorous office or lease-screening scene that visually captures today's text.
+Her expression should be cute, tired, mildly annoyed, and self-deprecating.
+Include relevant props such as approval documents, financial charts, calculator, cold coffee,
+pudding, lunch tray, or office equipment only when they fit the story.
+Use polished kawaii chibi anime linework, soft cel shading, warm professional lighting,
+and a clean horizontal composition suitable for a dashboard cover.
+No monitor-headed robot. No logos. Do not render any readable letters, words, labels,
+numbers, captions, signs, document text, or watermark. Documents and screens must use
+only abstract blank lines, shapes, and charts."""
 
 
 def generate_novel(
@@ -1000,4 +1304,3 @@ def get_original_cases_for_episode(episode_no: int) -> list[dict]:
         pass
         
     return results
-

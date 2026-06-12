@@ -1065,6 +1065,19 @@ def main(argv: list[str] | None = None) -> int:
     daily_path = _append_daily_digest(vault, daily_dir, news_dir, date_str, articles)
     focus_result = write_lease_news_focus_note(date_str=date_str, vault=vault)
     reflection_result = write_lease_news_reflection_note(date_str=date_str, vault=vault, focus=None)
+    if reflection_result:
+        try:
+            from lease_news_digest import get_latest_lease_news_reflection
+            from novelist_agent import generate_daily_grumble_illustration
+
+            reflection = get_latest_lease_news_reflection(vault=vault)
+            illustration_url = generate_daily_grumble_illustration(
+                date_str=date_str,
+                lines=list(reflection.thought_lines),
+            )
+            print(f"reflection_illustration={illustration_url}")
+        except Exception as exc:
+            print(f"reflection_illustration_error={exc}")
     focus_paths = list(saved_paths)
     if focus_result:
         focus_path = Path(focus_result.note_path)

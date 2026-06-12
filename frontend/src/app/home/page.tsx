@@ -119,6 +119,7 @@ type DashboardStats = {
     headline?: string;
     thought_lines?: string[];
     tomorrow_lines?: string[];
+    illustration_url?: string;
   };
   lease_news_brief?: {
     available?: boolean;
@@ -650,7 +651,7 @@ export default function HomeDashboard() {
                   <div>
                     <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
                       <ScrollText className="text-amber-500 w-5 h-5" />
-                      今日の考え
+                      リース知性体の愚痴
                     </h3>
                     <p className="text-xs text-slate-500 font-bold mt-1">
                       {leaseNewsReflection.headline || "ニュースを見て考えたこと"}
@@ -661,6 +662,13 @@ export default function HomeDashboard() {
                   )}
                 </div>
                 <div className="space-y-4">
+                  {leaseNewsReflection.illustration_url && (
+                    <img
+                      src={leaseNewsReflection.illustration_url}
+                      alt="リース知性体の愚痴の挿絵"
+                      className="aspect-[16/9] w-full rounded-xl border border-amber-100 object-cover"
+                    />
+                  )}
                   {(leaseNewsReflection.theme_summary || leaseNewsReflection.tag_summary) && (
                     <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-900">
                       {leaseNewsReflection.theme_summary && <p><span className="font-bold">テーマ:</span> {leaseNewsReflection.theme_summary}</p>}

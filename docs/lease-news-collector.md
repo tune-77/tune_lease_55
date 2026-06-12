@@ -21,7 +21,7 @@ What it does:
 - appends a short summary to `Daily/YYYY-MM-DD.md`
 
 Default schedule:
-- daily at 07:20 via `launchd`
+- daily at 06:00 via `launchd`
 - launchd default profile: `industry-watch`
 
 Default Obsidian targets:
