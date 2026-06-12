@@ -5605,10 +5605,8 @@ class LeaseIntelligenceDialogueRequest(BaseModel):
 @app.get("/api/lease-intelligence/dialogue/state")
 def get_lease_intelligence_dialogue_state():
     from lease_intelligence_dialogue import DIALOGUE_USER_ID
-    from lease_intelligence_knowledge import build_lease_intelligence_knowledge
     from lease_intelligence_mind import (
         load_lease_intelligence_mind,
-        record_knowledge_access,
         self_state_summary,
     )
     from lease_news_digest import find_vault
@@ -5617,12 +5615,8 @@ def get_lease_intelligence_dialogue_state():
     vault = find_vault()
     if not vault:
         raise HTTPException(status_code=503, detail="Obsidian Vaultが見つかりません")
-    knowledge = build_lease_intelligence_knowledge(
-        theme="リース知性体との対話",
-        focus_lines=["ユーザー理解", "リースシステム維持", "意識の探究"],
-        limit=3,
-    )
-    record_knowledge_access(vault, knowledge)
+    # GET は読み取り専用。RAG検索と mind.json 更新は対話POST側で行われるため、
+    # ページロードごとの検索・書き込み（約1.5秒）を避けて保存済み状態を返す。
     summary = self_state_summary(load_lease_intelligence_mind(vault))
     messages = get_recent_messages(DIALOGUE_USER_ID, limit=80)
     return {
@@ -5660,6 +5654,11 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     save_message(DIALOGUE_USER_ID, "user", message)
     save_message(DIALOGUE_USER_ID, "assistant", reply)
     note_path = append_dialogue_note(vault, message, reply)
+    # 対話そのものを気分へ小さく反映し、更新後の状態を返す
+    from lease_intelligence_mind import register_dialogue_event, self_state_summary
+
+    refreshed = register_dialogue_event(vault, message, reply)
+    state = {**state, **self_state_summary(refreshed)}
     return {"reply": reply, "state": state, "note_path": note_path}
 
 

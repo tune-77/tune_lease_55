@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -14,7 +15,7 @@ ACTIVITY_LOG = PROJECT_ROOT / "data" / "lease_intelligence_activity.jsonl"
 PROMPT_LOG = PROJECT_ROOT / "data" / "prompt_feedback_log.jsonl"
 NEWS_METRICS = PROJECT_ROOT / "data" / "lease_news_metrics.json"
 
-ALLOWED_SURFACES = {"home", "chat", "improvement_log"}
+ALLOWED_SURFACES = {"home", "chat", "improvement_log", "lease_intelligence_dialogue"}
 ALLOWED_ACTIONS = {"page_view"}
 
 INTEREST_RULES = {
@@ -125,6 +126,8 @@ def _build_understanding(
     if interests:
         labels = "、".join(item["label"] for item in interests[:3])
         parts.append(f"最近は{labels}に関心があるように見える")
+    if surfaces.get("lease_intelligence_dialogue"):
+        parts.append("私との対話室にも足を運んでいる")
     if surfaces.get("improvement_log"):
         parts.append("システムがどう改善されるかも確認している")
     if actions.get("judgment_change"):
@@ -156,4 +159,17 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def _event_exists(path: Path, event_id: str) -> bool:
-    return any(str(row.get("event_id", "")) == event_id for row in _read_jsonl(path))
+    # ログは追記専用で無限に伸びるため、重複判定は末尾64KBに限定する。
+    # event_id は日付入りで古いものと衝突しないので、これで実用上十分。
+    if not path.exists():
+        return False
+    try:
+        with path.open("rb") as file_obj:
+            file_obj.seek(0, os.SEEK_END)
+            size = file_obj.tell()
+            file_obj.seek(max(0, size - 65536))
+            tail = file_obj.read().decode("utf-8", errors="ignore")
+    except OSError:
+        return False
+    needle = f'"event_id": {json.dumps(str(event_id), ensure_ascii=False)}'
+    return needle in tail

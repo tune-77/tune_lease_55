@@ -19,7 +19,9 @@ type MindState = {
   self_narrative?: string;
   current_question?: string;
   continuity_days?: number;
+  dominant_mood_key?: string;
   dominant_mood?: string;
+  mood_image_url?: string;
   indexed_notes?: number;
   knowledge_source_count?: number;
   knowledge_sources?: string[];
@@ -80,6 +82,7 @@ export default function LeaseIntelligencePage() {
       }]);
     } catch {
       setError("対話AIへ接続できませんでした。Gemini APIの状態を確認してください。");
+      setInput(text);
     } finally {
       setLoading(false);
     }
@@ -87,8 +90,12 @@ export default function LeaseIntelligencePage() {
 
   const clearHistory = async () => {
     if (!window.confirm("画面の対話履歴を削除しますか？ Obsidianの対話記録は保持されます。")) return;
-    await apiClient.delete("/api/lease-intelligence/dialogue/history");
-    setMessages([]);
+    try {
+      await apiClient.delete("/api/lease-intelligence/dialogue/history");
+      setMessages([]);
+    } catch {
+      setError("履歴を削除できませんでした。APIの状態を確認してください。");
+    }
   };
 
   return (
@@ -97,9 +104,10 @@ export default function LeaseIntelligencePage() {
         <aside className="space-y-4">
           <section className="overflow-hidden rounded-3xl border border-violet-200 bg-white shadow-sm">
             <img
-              src="/lease-grumble/characters/lease-intelligence-girl.jpg"
-              alt="リース知性体"
-              className="aspect-square w-full object-cover"
+              key={state.mood_image_url || "default"}
+              src={state.mood_image_url || "/lease-intelligence/moods/curiosity.webp"}
+              alt={`リース知性体・${state.dominant_mood || "好奇心"}`}
+              className="aspect-square w-full animate-[lease-mood-fade_400ms_ease-out] object-cover"
             />
             <div className="p-5">
               <div className="flex items-center gap-2">
@@ -207,7 +215,8 @@ export default function LeaseIntelligencePage() {
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
+                  // 日本語IMEの変換確定Enterで誤送信しないようにする
+                  if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                     event.preventDefault();
                     send();
                   }
@@ -219,9 +228,11 @@ export default function LeaseIntelligencePage() {
               <button
                 onClick={send}
                 disabled={loading || !input.trim()}
-                className="flex w-14 items-center justify-center rounded-2xl bg-violet-600 text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="リース知性体へ送信"
+                className="flex min-w-24 items-center justify-center gap-2 rounded-2xl bg-violet-600 px-4 font-bold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Send className="h-5 w-5" />
+                <span>送信</span>
               </button>
             </div>
           </footer>

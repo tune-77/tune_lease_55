@@ -13,10 +13,10 @@
       }
     },
     "recommended": true,
-    "summary": "Context reset recommended (auto): 16 recent edit count exceed threshold 8; 15580 session age (minutes) exceed threshold 120",
+    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 1886 session age (minutes) exceed threshold 120",
     "reasons": [
-      "16 recent edit count exceed threshold 8",
-      "15580 session age (minutes) exceed threshold 120"
+      "20 recent edit count exceed threshold 8",
+      "1886 session age (minutes) exceed threshold 120"
     ],
     "candidates": [
       {
@@ -36,7 +36,7 @@
       {
         "key": "recent_edits",
         "label": "recent edit count",
-        "actual": 16,
+        "actual": 20,
         "threshold": 8,
         "triggered": true
       },
@@ -50,7 +50,7 @@
       {
         "key": "session_age_minutes",
         "label": "session age (minutes)",
-        "actual": 15580,
+        "actual": 1886,
         "threshold": 120,
         "triggered": true
       }
@@ -58,9 +58,9 @@
     "counters": {
       "wipTasks": 0,
       "blockedTasks": 0,
-      "recentEdits": 16,
+      "recentEdits": 20,
       "failedChecks": 0,
-      "sessionAgeMinutes": 15580
+      "sessionAgeMinutes": 1886
     }
   },
   "continuity": {
@@ -72,25 +72,29 @@
   "legacy_version": "1.0.0",
   "metrics": null,
   "recentEdits": [
-    ".claude/state/handoff-artifact.json",
-    ".claude/state/precompact-snapshot.json",
-    ".claude/state/worktree-info.json",
+    "api/main.py",
     "data/weekly_plot.json",
+    "frontend/src/app/globals.css",
+    "frontend/src/app/lease-intelligence/page.tsx",
+    "frontend/src/components/layout/FloatingMebuki.tsx",
+    "lease_intelligence_activity.py",
+    "lease_intelligence_knowledge.py",
+    "lease_intelligence_mind.py",
+    "memory/2026-06-13.md",
     "reports/agent_sidecar_brief.md",
+    "static_data/industry_benchmarks.json",
+    "static_data/industry_estat_cache.json",
+    "tests/test_lease_intelligence_activity.py",
+    "tests/test_lease_intelligence_knowledge.py",
+    "tests/test_lease_intelligence_mind.py",
     "data/aurion_daily/latest.json",
     "data/aurion_daily/state_2026-06-07.json",
     "data/aurion_daily/state_2026-06-08.json",
     "data/aurion_daily/state_2026-06-09.json",
-    "data/aurion_daily/state_2026-06-10.json",
-    "data/aurion_daily/state_2026-06-11.json",
-    "data/external/estat_machinery_orders/machinery_orders_202303_202603_long.csv",
-    "data/external/estat_machinery_orders/machinery_orders_202303_202603_raw.json",
-    "data/external/estat_machinery_orders/machinery_orders_202303_202603_wide.csv",
-    "data/external/estat_machinery_orders/machinery_orders_analysis.json",
-    "memory/2026-06-08.md"
+    "data/aurion_daily/state_2026-06-10.json"
   ],
   "sessionId": "",
-  "timestamp": "2026-06-11T03:17:06Z",
+  "timestamp": "2026-06-12T23:25:35Z",
   "version": "1.0.0",
   "wipTasks": null
 }

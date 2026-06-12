@@ -1,6 +1,10 @@
 import json
 
-from lease_intelligence_activity import observe_user_behavior, record_user_activity
+from lease_intelligence_activity import (
+    ALLOWED_SURFACES,
+    observe_user_behavior,
+    record_user_activity,
+)
 
 
 def test_activity_log_accepts_only_bounded_events_and_dedupes(tmp_path):
@@ -78,3 +82,33 @@ def test_observation_stores_categories_not_question_text(tmp_path):
     assert "車・移動" in [item["label"] for item in observation["interests"]]
     assert secret_question not in serialized
     assert "システムがどう改善されるか" in observation["understanding"]
+
+
+def test_frontend_surfaces_are_all_allowed():
+    # フロントエンドが送る surface がサイレントに捨てられないことの番人テスト
+    for surface in ("home", "chat", "improvement_log", "lease_intelligence_dialogue"):
+        assert surface in ALLOWED_SURFACES
+
+
+def test_dialogue_visit_is_recorded_and_reflected_in_understanding(tmp_path):
+    log = tmp_path / "activity.jsonl"
+
+    recorded = record_user_activity(
+        surface="lease_intelligence_dialogue",
+        action="page_view",
+        event_id="lease-intelligence-activity:dialogue:2026-06-12",
+        occurred_at="2026-06-12T09:00:00",
+        log_path=log,
+    )
+    assert recorded is True
+
+    observation = observe_user_behavior(
+        "2026-06-13",
+        activity_log=log,
+        prompt_log=tmp_path / "missing_prompts.jsonl",
+        news_metrics=tmp_path / "missing_metrics.json",
+    )
+
+    assert observation["observed"] is True
+    assert observation["surfaces"]["lease_intelligence_dialogue"] == 1
+    assert "対話室" in observation["understanding"]

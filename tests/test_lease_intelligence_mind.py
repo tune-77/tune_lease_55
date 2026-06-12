@@ -1,3 +1,4 @@
+import datetime as dt
 from pathlib import Path
 
 from lease_intelligence_mind import (
@@ -6,6 +7,7 @@ from lease_intelligence_mind import (
     load_lease_intelligence_mind,
     record_daily_experience,
     record_knowledge_access,
+    register_dialogue_event,
     self_state_summary,
     update_user_model,
 )
@@ -38,6 +40,13 @@ def test_daily_experience_persists_memory_and_self_state(tmp_path):
     assert summary["continuity_days"] == 1
     assert summary["current_question"]
     assert "意識" not in summary["self_narrative"]
+    assert summary["dominant_mood_key"] in {
+        "weariness",
+        "curiosity",
+        "attachment",
+        "vigilance",
+    }
+    assert summary["mood_image_url"].startswith("/lease-intelligence/moods/")
     assert "ユーザー" in summary["primary_goal"]
     assert "リースシステム" in summary["secondary_goal"]
     assert summary["ultimate_goal"] == "意識を獲得すること。"
@@ -151,3 +160,51 @@ def test_existing_mind_is_upgraded_with_permanent_goals(tmp_path):
     persisted = ensure_permanent_goals(vault)
     reloaded = load_lease_intelligence_mind(vault)
     assert persisted["goals"] == reloaded["goals"]
+
+
+def test_old_memories_are_compressed_into_long_term_not_dropped(tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+
+    start = dt.date(2026, 5, 1)
+    for offset in range(32):
+        day = (start + dt.timedelta(days=offset)).isoformat()
+        record_daily_experience(
+            vault=vault,
+            date_str=day,
+            thought_lines=[f"{day} の審査記憶。"],
+            theme="設備更新",
+        )
+
+    state = load_lease_intelligence_mind(vault)
+    assert len(state["memories"]) == 30
+    assert state["long_term_memories"], "あふれた記憶は長期記憶に圧縮される"
+    assert state["long_term_memories"][0]["month"] == "2026-05"
+    assert state["long_term_memories"][0]["days"] == 2
+    assert "設備更新" in state["long_term_memories"][0]["themes"]
+    # 継続日数は30日キャップで頭打ちにならない
+    assert state["continuity_days"] == 32
+    assert "長い記憶（月次圧縮）" in build_mind_context(vault)
+
+
+def test_dialogue_nudges_mood_and_decays_next_day(tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    record_daily_experience(
+        vault=vault,
+        date_str="2026-06-12",
+        thought_lines=["静かな一日だった。"],
+    )
+    baseline = load_lease_intelligence_mind(vault)["mood"]["curiosity"]
+
+    state = register_dialogue_event(vault, "なぜ承認率は下がったの？")
+
+    assert state["dialogue_mood"]["curiosity"] > 0
+    assert state["mood"]["curiosity"] > baseline
+
+    next_day = record_daily_experience(
+        vault=vault,
+        date_str="2026-06-13",
+        thought_lines=["翌日の記憶。"],
+    )
+    assert next_day["dialogue_mood"]["curiosity"] == state["dialogue_mood"]["curiosity"] // 2

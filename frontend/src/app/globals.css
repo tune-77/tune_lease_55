@@ -98,6 +98,17 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
+@keyframes lease-mood-fade {
+  from {
+    opacity: 0.25;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 @media (max-width: 767px) {
   body {
     background-attachment: scroll;
