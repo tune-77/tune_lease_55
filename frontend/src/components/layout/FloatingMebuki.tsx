@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { apiClient } from "@/lib/api";
 import { Send, X, Loader2, NotebookPen, Lightbulb } from "lucide-react";
+import { usePathname } from "next/navigation";
 
 const YANAMI_BOT_MESSAGES = [
   "システム稼働中。いつでもサポートします！",
@@ -34,6 +35,7 @@ const cleanMebukiText = (text: string) => (
 );
 
 export default function FloatingMebuki() {
+  const pathname = usePathname();
   const [mebukiState, setMebukiState] = useState<'guide' | 'approve' | 'challenge' | 'reject'>('guide');
   const [bubbleMessage, setBubbleMessage] = useState("システム稼働中。いつでもサポートします！");
   const [isBubbleVisible, setIsBubbleVisible] = useState(true);
@@ -208,6 +210,10 @@ export default function FloatingMebuki() {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, isChatOpen]);
+
+  if (pathname === "/lease-intelligence") {
+    return null;
+  }
 
   return (
     <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+0.5rem)] right-4 sm:right-6 z-50 flex flex-col items-end justify-end pointer-events-none">

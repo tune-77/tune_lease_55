@@ -2,10 +2,37 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Any, Iterable
 
 from obsidian_query import split_query_terms
+
+# インデックス全件の列挙は対話のたびに行うには重いので、件数だけをTTL付きでキャッシュする
+_COUNT_TTL_SECONDS = 600.0
+_count_cache: dict[str, Any] = {"at": 0.0, "counts": None}
+
+
+def _load_document_counts() -> dict[str, int]:
+    from mobile_app.obsidian_bridge import iter_indexed_obsidian_documents
+
+    documents = iter_indexed_obsidian_documents(include_chat_logs=True, max_chars=1)
+    return {
+        "indexed_notes": len(documents),
+        "knowledge_notes": sum(1 for item in documents if item.get("source_type") == "knowledge"),
+        "chat_log_notes": sum(1 for item in documents if item.get("source_type") == "chat_log"),
+    }
+
+
+def _document_counts(now: float | None = None) -> dict[str, int]:
+    now = time.time() if now is None else now
+    cached = _count_cache.get("counts")
+    if cached is not None and now - float(_count_cache.get("at", 0.0)) < _COUNT_TTL_SECONDS:
+        return cached
+    counts = _load_document_counts()
+    _count_cache["at"] = now
+    _count_cache["counts"] = counts
+    return counts
 
 
 @dataclass(frozen=True)
@@ -52,10 +79,9 @@ def build_lease_intelligence_knowledge(
         query = "リース 審査 判断 設備 与信"
 
     try:
-        from mobile_app.obsidian_bridge import iter_indexed_obsidian_documents
         from obsidian_ai_context import collect_obsidian_ai_context
 
-        documents = iter_indexed_obsidian_documents(include_chat_logs=True, max_chars=1)
+        counts = _document_counts()
         result = collect_obsidian_ai_context(
             query,
             limit=limit,
@@ -65,20 +91,18 @@ def build_lease_intelligence_knowledge(
     except Exception:
         return LeaseIntelligenceKnowledge(available=False, query=query)
 
-    knowledge_notes = sum(1 for item in documents if item.get("source_type") == "knowledge")
-    chat_log_notes = sum(1 for item in documents if item.get("source_type") == "chat_log")
     source_paths = tuple(
         str(hit.get("path") or "").strip()
         for hit in result.get("hits", [])
         if str(hit.get("path") or "").strip()
     )
     return LeaseIntelligenceKnowledge(
-        available=bool(documents),
+        available=counts["indexed_notes"] > 0,
         query=query,
         context_block=str(result.get("block") or ""),
-        indexed_notes=len(documents),
-        knowledge_notes=knowledge_notes,
-        chat_log_notes=chat_log_notes,
+        indexed_notes=counts["indexed_notes"],
+        knowledge_notes=counts["knowledge_notes"],
+        chat_log_notes=counts["chat_log_notes"],
         source_paths=source_paths,
     )
 

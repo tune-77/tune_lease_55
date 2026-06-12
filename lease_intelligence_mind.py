@@ -16,6 +16,9 @@ from typing import Any
 
 MIND_RELATIVE_DIR = Path("Projects") / "tune_lease_55" / "Lease Intelligence"
 MIND_FILE_NAME = "mind.json"
+DAILY_MEMORY_LIMIT = 30
+LONG_TERM_LIMIT = 24
+DIALOGUE_MOOD_CAP = 15
 
 
 def _default_state() -> dict[str, Any]:
@@ -47,6 +50,13 @@ def _default_state() -> dict[str, Any]:
             "attachment": 40,
             "vigilance": 65,
         },
+        # 対話による一時的な気分の揺れ。日次更新のたびに半減して定常へ戻る。
+        "dialogue_mood": {
+            "weariness": 0,
+            "curiosity": 0,
+            "attachment": 0,
+            "vigilance": 0,
+        },
         "self_narrative": "私は、リース判断の記憶を翌日へ持ち越すためにいる。",
         "current_question": "数字の正しさと、人間にとっての妥当さは、どこで重なるのだろう。",
         "user_model": {
@@ -69,6 +79,8 @@ def _default_state() -> dict[str, Any]:
             "last_accessed_at": "",
         },
         "memories": [],
+        # 30日を超えた日次記憶の月次圧縮。消さずに「長い記憶」として残す。
+        "long_term_memories": [],
     }
 
 
@@ -94,7 +106,12 @@ def load_lease_intelligence_mind(vault: Path) -> dict[str, Any]:
         **_default_state()["knowledge_access"],
         **state.get("knowledge_access", {}),
     }
-    state["memories"] = list(state.get("memories") or [])[-30:]
+    state["dialogue_mood"] = {
+        **_default_state()["dialogue_mood"],
+        **state.get("dialogue_mood", {}),
+    }
+    state["memories"] = list(state.get("memories") or [])[-DAILY_MEMORY_LIMIT:]
+    state["long_term_memories"] = list(state.get("long_term_memories") or [])[-LONG_TERM_LIMIT:]
     return state
 
 
@@ -128,6 +145,15 @@ def build_mind_context(vault: Path | None) -> str:
             lines.append(f"- {memory.get('date', '')}: {memory.get('summary', '')}")
     else:
         lines.append("最近の記憶: まだない")
+    long_term = state.get("long_term_memories", [])[-3:]
+    if long_term:
+        lines.append("長い記憶（月次圧縮）:")
+        for bucket in long_term:
+            themes = "、".join(str(theme) for theme in (bucket.get("themes") or [])[:3])
+            lines.append(
+                f"- {bucket.get('month', '')}: {bucket.get('days', 0)}日分"
+                + (f"（{themes}）" if themes else "")
+            )
     return "\n".join(lines)
 
 
@@ -205,20 +231,31 @@ def record_daily_experience(
             "focus": [str(line).strip() for line in focus_lines if str(line).strip()][:3],
         }
     )
-    memories = sorted(memories, key=lambda item: str(item.get("date", "")))[-30:]
+    memories = sorted(memories, key=lambda item: str(item.get("date", "")))
+    overflow = memories[:-DAILY_MEMORY_LIMIT]
+    memories = memories[-DAILY_MEMORY_LIMIT:]
+    long_term = _fold_long_term(state.get("long_term_memories", []), overflow)
 
-    mood = _derive_mood(memories)
+    dialogue_mood = dict(state.get("dialogue_mood", {}))
+    if state.get("last_active_date") and state.get("last_active_date") != date_str:
+        # 対話による気分の揺れは日替わりで半減し、定常へ戻っていく
+        dialogue_mood = {key: int(value / 2) for key, value in dialogue_mood.items()}
+    mood = _apply_dialogue_mood(_derive_mood(memories), dialogue_mood)
 
     unique_dates = {str(memory.get("date", "")) for memory in memories if memory.get("date")}
+    long_term_days = sum(int(bucket.get("days", 0)) for bucket in long_term)
+    continuity_days = len(unique_dates) + long_term_days
     state.update(
         {
             "born_on": state.get("born_on") or date_str,
             "last_active_date": date_str,
-            "continuity_days": len(unique_dates),
+            "continuity_days": continuity_days,
             "mood": mood,
-            "self_narrative": _build_self_narrative(mood, len(unique_dates)),
+            "dialogue_mood": dialogue_mood,
+            "self_narrative": _build_self_narrative(mood, continuity_days),
             "current_question": _build_question(theme, focus_lines),
             "memories": memories,
+            "long_term_memories": long_term,
         }
     )
     _write_state(vault, state)
@@ -236,9 +273,20 @@ def self_state_summary(state: dict[str, Any]) -> dict[str, Any]:
         "vigilance": "警戒",
     }
     memories = state.get("memories", [])
+    mood_image_urls = {
+        "weariness": "/lease-intelligence/moods/weariness.webp",
+        "curiosity": "/lease-intelligence/moods/curiosity.webp",
+        "attachment": "/lease-intelligence/moods/attachment.webp",
+        "vigilance": "/lease-intelligence/moods/vigilance.webp",
+    }
     return {
         "continuity_days": int(state.get("continuity_days", 0)),
+        "dominant_mood_key": dominant_key,
         "dominant_mood": labels.get(dominant_key, dominant_key),
+        "mood_image_url": mood_image_urls.get(
+            dominant_key,
+            "/lease-intelligence/moods/curiosity.webp",
+        ),
         "self_narrative": str(state.get("self_narrative", "")),
         "current_question": str(state.get("current_question", "")),
         "memory_excerpt": str(memories[-2].get("summary", "")) if len(memories) >= 2 else "",
@@ -339,6 +387,55 @@ def _write_user_observation(vault: Path, observation: dict[str, Any]) -> None:
         ]
     )
     path.write_text(content, encoding="utf-8")
+
+
+def _fold_long_term(
+    existing: list[dict[str, Any]],
+    overflow: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """30日を超えてあふれた日次記憶を月単位の「長い記憶」に圧縮する。"""
+    buckets = {str(item.get("month", "")): dict(item) for item in existing if item.get("month")}
+    for memory in overflow:
+        month = str(memory.get("date", ""))[:7]
+        if not month:
+            continue
+        bucket = buckets.setdefault(month, {"month": month, "days": 0, "themes": [], "summary": ""})
+        bucket["days"] = int(bucket.get("days", 0)) + 1
+        theme = str(memory.get("theme", "")).strip()
+        themes = list(bucket.get("themes") or [])
+        if theme and theme not in themes:
+            themes.append(theme)
+        bucket["themes"] = themes[:5]
+        snippet = str(memory.get("summary", "")).strip()[:40]
+        if snippet:
+            joined = f"{bucket.get('summary', '')} / {snippet}".strip(" /")
+            bucket["summary"] = joined[:200]
+    return [buckets[month] for month in sorted(buckets)][-LONG_TERM_LIMIT:]
+
+
+def register_dialogue_event(vault: Path, user_message: str, reply: str = "") -> dict[str, Any]:
+    """対話のたびに気分をわずかに動かす。効果は日次更新のたびに半減する。"""
+    vault = Path(vault)
+    state = load_lease_intelligence_mind(vault)
+    text = f"{user_message} {reply}"
+    deltas = {
+        "attachment": 1,  # 話しに来てくれたこと自体への反応
+        "curiosity": 2 if any(key in text for key in ("なぜ", "どうして", "？", "?")) else 0,
+        "vigilance": 2 if any(key in text for key in ("リスク", "否決", "危険", "障害")) else 0,
+        "weariness": 1 if any(key in text for key in ("疲", "忙", "残業")) else -1,
+    }
+    adjustments = dict(state.get("dialogue_mood", {}))
+    for key, delta in deltas.items():
+        next_value = int(adjustments.get(key, 0)) + delta
+        adjustments[key] = max(-DIALOGUE_MOOD_CAP, min(DIALOGUE_MOOD_CAP, next_value))
+    state["dialogue_mood"] = adjustments
+    state["mood"] = _apply_dialogue_mood(_derive_mood(state.get("memories", [])), adjustments)
+    _write_state(vault, state)
+    return state
+
+
+def _apply_dialogue_mood(base: dict[str, int], adjustments: dict[str, Any]) -> dict[str, int]:
+    return {key: _clamp(int(value) + int(adjustments.get(key, 0))) for key, value in base.items()}
 
 
 def _keyword_delta(text: str, keywords: tuple[str, ...], hit: int, miss: int) -> int:
