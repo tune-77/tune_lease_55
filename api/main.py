@@ -5794,6 +5794,8 @@ def post_chat(req: ChatRequest):
             except Exception as _ie:
                 print(f"[改善照合] エラー: {_ie}")
 
+        _is_improvement_msg = any(k in req.message for k in _IMPROVEMENT_KEYWORDS)
+
         history = get_recent_messages(req.user_id, limit=20)
         history_for_gemini = [{"role": m["role"], "content": m["content"]} for m in history]
         guidance = build_chat_guidance(req.message, history_for_gemini)
@@ -5830,7 +5832,6 @@ def post_chat(req: ChatRequest):
         total = get_message_count(req.user_id)
 
         # 改善メモをObsidianに保存（類似候補がすでにある場合はスキップして重複防止）
-        _is_improvement_msg = any(k in req.message for k in _IMPROVEMENT_KEYWORDS)
         if _is_improvement_msg and not similar_existing:
             try:
                 from mobile_app.obsidian_bridge import append_improvement_note

@@ -7,7 +7,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent
 DEFAULT_DATA_DIR = REPO_ROOT / "data"
-DEFAULT_OBSIDIAN_VAULT = Path.home() / "Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
+DEFAULT_OBSIDIAN_VAULT = Path.home() / "Library/Mobile Documents/iCloud~md~obsidian/Documents/obsidian-vault"
+LEGACY_OBSIDIAN_VAULT = Path.home() / "Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
 
 
 def get_data_dir() -> Path:
@@ -27,5 +28,10 @@ def get_obsidian_vault_path() -> str:
     raw = os.environ.get("OBSIDIAN_VAULT_PATH") or os.environ.get("OBSIDIAN_VAULT") or ""
     if raw:
         return raw
+
+    if DEFAULT_OBSIDIAN_VAULT.exists():
+        return str(DEFAULT_OBSIDIAN_VAULT)
+    if LEGACY_OBSIDIAN_VAULT.exists():
+        return str(LEGACY_OBSIDIAN_VAULT)
 
     return str(DEFAULT_OBSIDIAN_VAULT)

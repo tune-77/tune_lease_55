@@ -4,35 +4,30 @@ import { useEffect } from "react";
 
 export default function ServiceWorkerCleanup() {
   useEffect(() => {
-    if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
-
-    let cancelled = false;
-
-    const cleanup = async () => {
-      try {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(registrations.map((registration) => registration.unregister()));
-      } catch {
-        // ignore
+    try {
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker
+          .getRegistrations()
+          .then((registrations) => {
+            registrations.forEach((registration) => {
+              registration.unregister();
+            });
+          })
+          .catch(() => {});
       }
-
-      try {
-        if ("caches" in window) {
-          const keys = await caches.keys();
-          await Promise.all(keys.map((key) => caches.delete(key)));
-        }
-      } catch {
-        // ignore
+      if ("caches" in window) {
+        caches
+          .keys()
+          .then((keys) => {
+            keys.forEach((key) => {
+              caches.delete(key);
+            });
+          })
+          .catch(() => {});
       }
-
-      if (cancelled) return;
-    };
-
-    void cleanup();
-
-    return () => {
-      cancelled = true;
-    };
+    } catch {
+      // ignore
+    }
   }, []);
 
   return null;
