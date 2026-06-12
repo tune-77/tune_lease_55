@@ -3574,6 +3574,15 @@ def _latest_improvement_report_path() -> Path | None:
     return candidates[-1] if candidates else None
 
 
+def _latest_recursive_self_improvement_path() -> Path | None:
+    reports_dir = Path(_REPO_ROOT) / "reports"
+    latest = reports_dir / "recursive_self_improvement_latest.json"
+    if latest.exists():
+        return latest
+    candidates = sorted(reports_dir.glob("recursive_self_improvement_*.json"))
+    return candidates[-1] if candidates else None
+
+
 def _load_latest_improvement_highlights(limit: int = 3) -> dict:
     report_path = _latest_improvement_report_path()
     if not report_path:
@@ -4669,6 +4678,8 @@ def _normalize_improvement_report(report: dict) -> dict:
         })
 
     def mark(entries: list, status: str) -> None:
+        if not isinstance(entries, list):
+            return
         for entry in entries or []:
             if not isinstance(entry, dict):
                 continue
@@ -4756,6 +4767,7 @@ def _normalize_improvement_report(report: dict) -> dict:
 @app.get("/api/improvement-log")
 def get_improvement_log():
     report_path = _latest_improvement_report_path()
+    recursive_path = _latest_recursive_self_improvement_path()
     if not report_path:
         return {
             "date": "",
@@ -4769,11 +4781,28 @@ def get_improvement_log():
             "applied": 0,
             "items": [],
             "obsidian_compliance": {},
+            "recursive_self_improvement": {},
             "source": "",
         }
     try:
         report = json.loads(report_path.read_text(encoding="utf-8"))
-        return _normalize_improvement_report(report)
+        normalized = _normalize_improvement_report(report)
+        if recursive_path:
+            try:
+                recursive_report = json.loads(recursive_path.read_text(encoding="utf-8"))
+            except Exception:
+                recursive_report = {}
+        else:
+            recursive_report = {}
+        normalized["recursive_self_improvement"] = {
+            "source": str(recursive_path or ""),
+            "generated_at": recursive_report.get("generated_at", ""),
+            "canonical_candidate_count": recursive_report.get("canonical_candidate_count", 0),
+            "ranked_queue_count": recursive_report.get("ranked_queue_count", 0),
+            "suppressed_count": recursive_report.get("suppressed_count", 0),
+            "measurement_summary": recursive_report.get("measurement_summary") or {},
+        }
+        return normalized
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"改善ログ読み込み失敗: {e}")
 

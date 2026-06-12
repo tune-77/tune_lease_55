@@ -46,6 +46,22 @@ type ImprovementLog = {
     violations?: unknown[];
     route_sensitive_ids?: string[];
   };
+  recursive_self_improvement?: {
+    source?: string;
+    generated_at?: string;
+    canonical_candidate_count?: number;
+    ranked_queue_count?: number;
+    suppressed_count?: number;
+    measurement_summary?: {
+      pdca_rate?: number;
+      response_changed_rate?: number;
+      repeat_issue_rate?: number;
+      reuse_rate?: number;
+      noise_rate?: number;
+      prompt_total?: number;
+      prompt_previous_diff_count?: number;
+    };
+  };
   source?: string;
 };
 
@@ -313,6 +329,43 @@ export default function ImprovementLogPage() {
                 </div>
               ))}
             </div>
+          </section>
+        )}
+
+        {data?.recursive_self_improvement?.measurement_summary && (
+          <section className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
+            <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-indigo-900">
+              <Sparkles className="h-4 w-4" />
+              再帰的自己改善
+              {data.recursive_self_improvement.generated_at && (
+                <span className="ml-1 text-xs font-normal text-indigo-700">
+                  {data.recursive_self_improvement.generated_at}
+                </span>
+              )}
+            </div>
+            <div className="grid gap-3 md:grid-cols-5">
+              <MiniMetric label="PDCA反映率" value={`${data.recursive_self_improvement.measurement_summary.pdca_rate ?? 0}%`} />
+              <MiniMetric label="応答変化率" value={`${data.recursive_self_improvement.measurement_summary.response_changed_rate ?? 0}%`} />
+              <MiniMetric label="再発率" value={`${data.recursive_self_improvement.measurement_summary.repeat_issue_rate ?? 0}%`} />
+              <MiniMetric label="再利用率" value={`${data.recursive_self_improvement.measurement_summary.reuse_rate ?? 0}%`} />
+              <MiniMetric label="ノイズ率" value={`${data.recursive_self_improvement.measurement_summary.noise_rate ?? 0}%`} />
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-indigo-800">
+              <span className="rounded-full bg-white px-2 py-1">
+                候補 {data.recursive_self_improvement.canonical_candidate_count ?? 0}
+              </span>
+              <span className="rounded-full bg-white px-2 py-1">
+                キュー {data.recursive_self_improvement.ranked_queue_count ?? 0}
+              </span>
+              <span className="rounded-full bg-white px-2 py-1">
+                抑制 {data.recursive_self_improvement.suppressed_count ?? 0}
+              </span>
+            </div>
+            {data.recursive_self_improvement.source && (
+              <p className="mt-3 break-all text-[11px] text-indigo-500">
+                {data.recursive_self_improvement.source}
+              </p>
+            )}
           </section>
         )}
 
