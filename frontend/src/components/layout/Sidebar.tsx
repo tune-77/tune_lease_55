@@ -10,7 +10,7 @@ import {
   Eye, BarChart3, TrendingUp, Globe, ChevronDown, ChevronRight, ChevronLeft, Building,
   X, Menu, Table2, Swords, MessageCircle,
   BarChart2, BookOpen, Gift, HelpCircle, Megaphone, Calculator,
-  Receipt, LifeBuoy, ClipboardList, CreditCard, Activity, GitMerge, Briefcase
+  Receipt, LifeBuoy, ClipboardList, CreditCard, Activity, GitMerge, Briefcase, Brain
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
 import ThemeSelector from '@/components/layout/ThemeSelector';
@@ -24,6 +24,7 @@ export default function Sidebar() {
       title: '審査メイン',
       items: [
         { name: 'ホーム', href: '/home', icon: Home, color: 'text-blue-400' },
+        { name: 'リース知性体との対話', href: '/lease-intelligence', icon: Brain, color: 'text-violet-400' },
         { name: '💬 AIチャット', href: '/chat', icon: MessageCircle, color: 'text-cyan-400' },
         { name: 'リースくん (スマホUI)', href: '/lease-kun', icon: MessageSquare, color: 'text-amber-400' },
         { name: '審査・分析', href: '/', icon: ClipboardCheck, color: 'text-emerald-400' },

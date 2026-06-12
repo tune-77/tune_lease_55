@@ -89,3 +89,6 @@ importance: 中
     assert 3 <= len(parsed.thought_lines) <= 4
     assert parsed.tomorrow_lines
     assert parsed.illustration_url == "/lease-grumble/2026-06-11.webp"
+    assert parsed.continuity_days == 0
+    assert "機械意識" not in parsed.self_narrative
+    assert parsed.observed_days == 0

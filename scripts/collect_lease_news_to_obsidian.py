@@ -1068,7 +1068,10 @@ def main(argv: list[str] | None = None) -> int:
     if reflection_result:
         try:
             from lease_news_digest import get_latest_lease_news_reflection
-            from novelist_agent import generate_daily_grumble_illustration
+            from novelist_agent import (
+                archive_old_grumble_illustrations,
+                generate_daily_grumble_illustration,
+            )
 
             reflection = get_latest_lease_news_reflection(vault=vault)
             illustration_url = generate_daily_grumble_illustration(
@@ -1076,6 +1079,14 @@ def main(argv: list[str] | None = None) -> int:
                 lines=list(reflection.thought_lines),
             )
             print(f"reflection_illustration={illustration_url}")
+            archived_images = archive_old_grumble_illustrations(
+                vault=vault,
+                keep_days=30,
+                today=date_str,
+            )
+            print(f"reflection_illustrations_archived={len(archived_images)}")
+            for archived_image in archived_images:
+                print(f"reflection_illustration_archive={archived_image}")
         except Exception as exc:
             print(f"reflection_illustration_error={exc}")
     focus_paths = list(saved_paths)
