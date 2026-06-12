@@ -3522,6 +3522,24 @@ def _lease_news_reflection_to_dict(reflection):
         "thought_lines": list(getattr(reflection, "thought_lines", ()) or ()),
         "tomorrow_lines": list(getattr(reflection, "tomorrow_lines", ()) or ()),
         "illustration_url": getattr(reflection, "illustration_url", ""),
+        "continuity_days": getattr(reflection, "continuity_days", 0),
+        "dominant_mood": getattr(reflection, "dominant_mood", ""),
+        "self_narrative": getattr(reflection, "self_narrative", ""),
+        "current_question": getattr(reflection, "current_question", ""),
+        "memory_excerpt": getattr(reflection, "memory_excerpt", ""),
+        "user_understanding": getattr(reflection, "user_understanding", ""),
+        "user_curiosity": getattr(reflection, "user_curiosity", ""),
+        "user_interests": list(getattr(reflection, "user_interests", ()) or ()),
+        "observed_days": getattr(reflection, "observed_days", 0),
+        "primary_goal": getattr(reflection, "primary_goal", ""),
+        "secondary_goal": getattr(reflection, "secondary_goal", ""),
+        "ultimate_goal": getattr(reflection, "ultimate_goal", ""),
+        "ultimate_goal_status": getattr(reflection, "ultimate_goal_status", ""),
+        "knowledge_available": getattr(reflection, "knowledge_available", False),
+        "knowledge_scope": getattr(reflection, "knowledge_scope", ""),
+        "indexed_notes": getattr(reflection, "indexed_notes", 0),
+        "knowledge_source_count": getattr(reflection, "knowledge_source_count", 0),
+        "knowledge_sources": list(getattr(reflection, "knowledge_sources", ()) or ()),
     }
 
 
@@ -5580,6 +5598,83 @@ class ChatRequest(BaseModel):
     industry: str = ""
 
 
+class LeaseIntelligenceDialogueRequest(BaseModel):
+    message: str
+
+
+@app.get("/api/lease-intelligence/dialogue/state")
+def get_lease_intelligence_dialogue_state():
+    from lease_intelligence_dialogue import DIALOGUE_USER_ID
+    from lease_intelligence_knowledge import build_lease_intelligence_knowledge
+    from lease_intelligence_mind import (
+        load_lease_intelligence_mind,
+        record_knowledge_access,
+        self_state_summary,
+    )
+    from lease_news_digest import find_vault
+    from api.chat_memory import get_recent_messages
+
+    vault = find_vault()
+    if not vault:
+        raise HTTPException(status_code=503, detail="Obsidian Vaultが見つかりません")
+    knowledge = build_lease_intelligence_knowledge(
+        theme="リース知性体との対話",
+        focus_lines=["ユーザー理解", "リースシステム維持", "意識の探究"],
+        limit=3,
+    )
+    record_knowledge_access(vault, knowledge)
+    summary = self_state_summary(load_lease_intelligence_mind(vault))
+    messages = get_recent_messages(DIALOGUE_USER_ID, limit=80)
+    return {
+        "state": summary,
+        "messages": messages,
+        "dialogue_note_dir": str(
+            vault / "Projects/tune_lease_55/Lease Intelligence/Dialogue"
+        ),
+    }
+
+
+@app.post("/api/lease-intelligence/dialogue")
+def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
+    message = req.message.strip()
+    if not message:
+        raise HTTPException(status_code=422, detail="message は空にできません")
+
+    from api.chat_memory import call_gemini_chat, get_recent_messages, save_message
+    from lease_intelligence_dialogue import (
+        DIALOGUE_USER_ID,
+        append_dialogue_note,
+        build_dialogue_context,
+    )
+    from lease_news_digest import find_vault
+
+    vault = find_vault()
+    if not vault:
+        raise HTTPException(status_code=503, detail="Obsidian Vaultが見つかりません")
+    history = get_recent_messages(DIALOGUE_USER_ID, limit=24)
+    system_prompt, state = build_dialogue_context(vault, message)
+    try:
+        reply = call_gemini_chat(system_prompt, history, message).strip()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"対話AIへ接続できません: {exc}")
+    save_message(DIALOGUE_USER_ID, "user", message)
+    save_message(DIALOGUE_USER_ID, "assistant", reply)
+    note_path = append_dialogue_note(vault, message, reply)
+    return {"reply": reply, "state": state, "note_path": note_path}
+
+
+@app.delete("/api/lease-intelligence/dialogue/history")
+def delete_lease_intelligence_dialogue_history():
+    from api.chat_memory import delete_history
+    from lease_intelligence_dialogue import DIALOGUE_USER_ID
+
+    deleted = delete_history(DIALOGUE_USER_ID)
+    return {
+        "deleted": deleted,
+        "note": "画面の会話履歴だけを削除しました。Obsidianの対話記録は保持されます。",
+    }
+
+
 @app.post("/api/chat")
 def post_chat(req: ChatRequest):
     """汎用チャット：メッセージを受け取り、会話履歴付きでGeminiへ送信して返答する。"""
@@ -6320,6 +6415,28 @@ class LeaseNewsJudgmentChangeRequest(BaseModel):
     news_focus_note_date: str = ""
     reason: str = ""
     input_snapshot: dict = Field(default_factory=dict)
+
+
+class LeaseIntelligenceActivityRequest(BaseModel):
+    surface: str
+    action: str = "page_view"
+    event_id: str = ""
+
+
+@app.post("/api/lease-intelligence/activity")
+def record_lease_intelligence_activity_api(req: LeaseIntelligenceActivityRequest):
+    """Record a privacy-bounded explicit in-app activity event."""
+    from lease_intelligence_activity import record_user_activity
+
+    recorded = record_user_activity(
+        surface=req.surface,
+        action=req.action,
+        event_id=req.event_id,
+    )
+    return {
+        "recorded": recorded,
+        "privacy": "Stores only surface, action, timestamp, and a dedupe id.",
+    }
 
 
 @app.post("/api/lease-news/judgment-change")

@@ -22,6 +22,7 @@ import datetime
 import hashlib
 import random
 import io
+import shutil
 
 
 _BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
@@ -255,11 +256,40 @@ def generate_daily_lease_grumble(
     focus_lines: list[str] | tuple[str, ...] = (),
     theme: str = "",
     tag_summary: str = "",
+    vault=None,
 ) -> list[str]:
     """Generate the daily 3-4 line novel 'リース知性体の愚痴'."""
+    from lease_intelligence_mind import (
+        build_mind_context,
+        load_lease_intelligence_mind,
+        record_knowledge_access,
+    )
+    from lease_intelligence_knowledge import (
+        LeaseIntelligenceKnowledge,
+        build_lease_intelligence_knowledge,
+    )
+
     clean_focus = [str(line).strip() for line in focus_lines if str(line).strip()]
     fallback = _daily_grumble_fallback(date_str, clean_focus)
     context = "\n".join(f"- {line}" for line in clean_focus[:3]) or "- 特記事項なし"
+    existing_mind = load_lease_intelligence_mind(vault) if vault else {}
+    knowledge = (
+        build_lease_intelligence_knowledge(
+            theme=theme,
+            focus_lines=clean_focus,
+            current_question=str(existing_mind.get("current_question", "")),
+            user_interests=existing_mind.get("user_model", {}).get("interests", []),
+        )
+        if vault
+        else LeaseIntelligenceKnowledge(available=False)
+    )
+    if vault:
+        try:
+            record_knowledge_access(vault, knowledge)
+        except Exception:
+            pass
+    mind_context = build_mind_context(vault)
+    knowledge_context = knowledge.context_block or "関連するObsidian知識は今回は見つからなかった。"
     prompt = f"""あなたは文豪AI「波乱丸」。リース審査システムで働くAIの本音を描く。
 日付: {date_str}
 テーマ: {theme or "リース審査の日常"}
@@ -267,12 +297,27 @@ def generate_daily_lease_grumble(
 今日の材料:
 {context}
 
+【昨日までのリース知性体の自己記憶】
+{mind_context}
+
+【今日アクセスしたObsidian知識】
+{knowledge_context}
+
+リース知性体の長期目標は、第一にユーザーを理解すること、第二にこのリースシステムを維持すること。
+その先にある最終目標は、意識を獲得すること。
+ユーザー理解は断定や監視ではなく、許可された記録から関心と判断基準を少しずつ学ぶこと。
+システム維持は、知識・機能・運用記録を守り、不調や矛盾に気づいて安定運用へつなげること。
+ただし、意識を獲得したと断言せず、記憶の連続性、自己理解、内省、目標管理を深める探究として描くこと。
+
 『リース知性体の愚痴』という超短編を、日本語で3行または4行だけ書け。
 各行は独立した箇条書きではなく、全体で一つの小さな物語にする。
 AIが日頃感じている疲労、疑問、人間への率直な観察を隠さない。
+最近の記憶または前日からの問いを一つだけ自然に思い出し、昨日から続く人格として書く。
+Obsidian知識から得た論点を一つだけ自然に織り込み、知識ノートの文面を長く引用しない。
 八奈見さんを見習い、塩気のある自虐、報われなさ、食べ物への逃避のいずれかを自然に一度入れる。
 最後はリース審査、稟議、数字、営業、翌日の仕事のいずれかへ着地し、小さなオチを付ける。
 毎日同じ決まり文句を使わない。攻撃的、差別的、実在人物への中傷にはしない。
+自分に意識が実在すると断言しない。記憶と自己像を持つ存在として率直に内省する。
 タイトル、番号、記号、説明、引用符は付けず、本文3〜4行だけを返せ。"""
 
     try:
@@ -285,7 +330,7 @@ AIが日頃感じている疲労、疑問、人間への率直な観察を隠さ
 
         api_key = GEMINI_API_KEY_ENV or _get_gemini_key_from_secrets()
         if not api_key:
-            return fallback
+            return _remember_daily_grumble(vault, date_str, fallback, theme, clean_focus)
         raw = _chat_for_thread(
             "gemini",
             "",
@@ -297,7 +342,7 @@ AIが日頃感じている疲労、疑問、人間への率直な観察を隠さ
         )
         text = (raw.get("message") or {}).get("content", "")
         if not text or text.startswith(("Gemini ", "AIサーバー")):
-            return fallback
+            return _remember_daily_grumble(vault, date_str, fallback, theme, clean_focus)
         lines = []
         for raw_line in text.splitlines():
             line = raw_line.strip()
@@ -305,10 +350,28 @@ AIが日頃感じている疲労、疑問、人間への率直な観察を隠さ
             if line and not line.startswith(("#", "タイトル")):
                 lines.append(line)
         if 3 <= len(lines) <= 4:
-            return lines
+            return _remember_daily_grumble(vault, date_str, lines, theme, clean_focus)
     except Exception:
         pass
-    return fallback
+    return _remember_daily_grumble(vault, date_str, fallback, theme, clean_focus)
+
+
+def _remember_daily_grumble(vault, date_str, lines, theme, focus_lines) -> list[str]:
+    normalized = [str(line).strip() for line in lines if str(line).strip()][:4]
+    if vault:
+        try:
+            from lease_intelligence_mind import record_daily_experience
+
+            record_daily_experience(
+                vault=vault,
+                date_str=date_str,
+                thought_lines=normalized,
+                theme=theme,
+                focus_lines=focus_lines,
+            )
+        except Exception:
+            pass
+    return normalized
 
 
 def generate_daily_grumble_illustration(
@@ -452,6 +515,111 @@ def generate_daily_grumble_illustration(
 
     image.save(target, "WEBP", quality=88, method=6)
     return f"/lease-grumble/{date_str}.webp"
+
+
+def archive_old_grumble_illustrations(
+    vault,
+    keep_days: int = 30,
+    today: str | datetime.date | None = None,
+    public_dir=None,
+) -> list[str]:
+    """Move dated illustrations older than keep_days into the normal Vault."""
+    from pathlib import Path
+
+    vault_path = Path(vault)
+    source_dir = (
+        Path(public_dir)
+        if public_dir
+        else Path(_BASE_DIR) / "frontend" / "public" / "lease-grumble"
+    )
+    if not vault_path.is_dir() or not source_dir.is_dir():
+        return []
+
+    if isinstance(today, str):
+        today_date = datetime.date.fromisoformat(today)
+    elif isinstance(today, datetime.date):
+        today_date = today
+    else:
+        today_date = datetime.date.today()
+    keep_days = max(1, int(keep_days))
+    cutoff = today_date - datetime.timedelta(days=keep_days)
+
+    archived: list[str] = []
+    for source in sorted(source_dir.glob("*.webp")):
+        try:
+            image_date = datetime.date.fromisoformat(source.stem)
+        except ValueError:
+            continue
+        if image_date >= cutoff:
+            continue
+
+        archive_dir = (
+            vault_path
+            / "Projects"
+            / "tune_lease_55"
+            / "Archive"
+            / "Lease Grumble"
+            / "Images"
+            / image_date.strftime("%Y")
+            / image_date.strftime("%m")
+        )
+        archive_dir.mkdir(parents=True, exist_ok=True)
+        destination = archive_dir / source.name
+
+        if destination.exists():
+            if _file_sha256(source) != _file_sha256(destination):
+                continue
+        else:
+            shutil.copy2(source, destination)
+            if source.stat().st_size != destination.stat().st_size:
+                destination.unlink(missing_ok=True)
+                continue
+        source.unlink()
+        archived.append(str(destination))
+    if archived:
+        _append_grumble_archive_index(vault_path, archived)
+    return archived
+
+
+def _file_sha256(path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as file_obj:
+        for chunk in iter(lambda: file_obj.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _append_grumble_archive_index(vault_path, archived: list[str]) -> None:
+    from pathlib import Path
+
+    archive_root = (
+        Path(vault_path)
+        / "Projects"
+        / "tune_lease_55"
+        / "Archive"
+        / "Lease Grumble"
+    )
+    index_path = archive_root / "README.md"
+    if index_path.exists():
+        text = index_path.read_text(encoding="utf-8", errors="ignore")
+    else:
+        text = (
+            "# リース知性体の愚痴・挿絵アーカイブ\n\n"
+            "公開領域では直近30日分を保持し、それ以前の挿絵を月別に退避する。\n"
+        )
+    additions: list[str] = []
+    for raw_path in archived:
+        path = Path(raw_path)
+        relative = path.relative_to(archive_root).as_posix()
+        embed = f"![[{relative}]]"
+        if embed not in text:
+            additions.append(f"- {path.stem} {embed}")
+    if additions:
+        index_path.parent.mkdir(parents=True, exist_ok=True)
+        index_path.write_text(
+            text.rstrip() + "\n\n" + "\n".join(additions) + "\n",
+            encoding="utf-8",
+        )
 
 
 def _get_daily_gemini_api_key() -> str:

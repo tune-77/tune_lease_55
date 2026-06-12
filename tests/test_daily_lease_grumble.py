@@ -1,4 +1,5 @@
 from novelist_agent import (
+    archive_old_grumble_illustrations,
     _daily_grumble_illustration_prompt,
     _save_gemini_image,
     generate_daily_grumble_illustration,
@@ -57,3 +58,82 @@ def test_save_gemini_image_converts_bytes_to_webp(tmp_path):
     with Image.open(target) as saved:
         assert saved.format == "WEBP"
         assert saved.size == (32, 18)
+
+
+def test_archive_old_grumble_illustrations_moves_only_expired_images(tmp_path):
+    public_dir = tmp_path / "public"
+    vault = tmp_path / "vault"
+    public_dir.mkdir()
+    vault.mkdir()
+    old_image = public_dir / "2026-05-01.webp"
+    recent_image = public_dir / "2026-06-01.webp"
+    ignored_image = public_dir / "cover.webp"
+    old_image.write_bytes(b"old-image")
+    recent_image.write_bytes(b"recent-image")
+    ignored_image.write_bytes(b"cover")
+
+    archived = archive_old_grumble_illustrations(
+        vault=vault,
+        keep_days=30,
+        today="2026-06-13",
+        public_dir=public_dir,
+    )
+
+    destination = (
+        vault
+        / "Projects"
+        / "tune_lease_55"
+        / "Archive"
+        / "Lease Grumble"
+        / "Images"
+        / "2026"
+        / "05"
+        / old_image.name
+    )
+    assert archived == [str(destination)]
+    assert destination.read_bytes() == b"old-image"
+    assert not old_image.exists()
+    assert recent_image.exists()
+    assert ignored_image.exists()
+    index = (
+        vault
+        / "Projects"
+        / "tune_lease_55"
+        / "Archive"
+        / "Lease Grumble"
+        / "README.md"
+    ).read_text(encoding="utf-8")
+    assert "2026-05-01" in index
+    assert "![[Images/2026/05/2026-05-01.webp]]" in index
+
+
+def test_archive_old_grumble_illustrations_keeps_conflicting_archive(tmp_path):
+    public_dir = tmp_path / "public"
+    vault = tmp_path / "vault"
+    public_dir.mkdir()
+    source = public_dir / "2026-05-01.webp"
+    source.write_bytes(b"new-content")
+    destination = (
+        vault
+        / "Projects"
+        / "tune_lease_55"
+        / "Archive"
+        / "Lease Grumble"
+        / "Images"
+        / "2026"
+        / "05"
+        / source.name
+    )
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(b"existing-content")
+
+    archived = archive_old_grumble_illustrations(
+        vault=vault,
+        keep_days=30,
+        today="2026-06-13",
+        public_dir=public_dir,
+    )
+
+    assert archived == []
+    assert source.exists()
+    assert destination.read_bytes() == b"existing-content"

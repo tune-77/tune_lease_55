@@ -19,6 +19,9 @@ What it does:
 - writes a short daily focus note under `Projects/tune_lease_55/News/` so the latest news points are reused instead of only archived
 - indexes saved or updated notes into the Obsidian RAG store
 - appends a short summary to `Daily/YYYY-MM-DD.md`
+- keeps the latest 30 days of `lease-grumble` illustrations under the frontend
+  and archives older images to
+  `Projects/tune_lease_55/Archive/Lease Grumble/Images/YYYY/MM/` in the normal Obsidian Vault
 
 Default schedule:
 - daily at 06:00 via `launchd`

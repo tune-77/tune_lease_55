@@ -86,6 +86,24 @@ class LeaseNewsReflection:
     thought_lines: tuple[str, ...] = ()
     tomorrow_lines: tuple[str, ...] = ()
     illustration_url: str = ""
+    continuity_days: int = 0
+    dominant_mood: str = ""
+    self_narrative: str = ""
+    current_question: str = ""
+    memory_excerpt: str = ""
+    user_understanding: str = ""
+    user_curiosity: str = ""
+    user_interests: tuple[str, ...] = ()
+    observed_days: int = 0
+    primary_goal: str = ""
+    secondary_goal: str = ""
+    ultimate_goal: str = ""
+    ultimate_goal_status: str = ""
+    knowledge_available: bool = False
+    knowledge_scope: str = ""
+    indexed_notes: int = 0
+    knowledge_source_count: int = 0
+    knowledge_sources: tuple[str, ...] = ()
 
 
 def _parse_news_note(path: Path) -> dict:
@@ -411,6 +429,19 @@ def get_latest_lease_news_reflection(vault: Path | None = None) -> LeaseNewsRefl
     tomorrow_section = _extract_section(text, "明日見ること")
     thought_lines = tuple(_extract_bullets(thought_section))
     tomorrow_lines = tuple(_extract_bullets(tomorrow_section))
+    self_state_section = _extract_section(text, "自己状態")
+    self_state_lines = _extract_bullets(self_state_section)
+    self_state: dict[str, str] = {}
+    for line in self_state_lines:
+        if ":" in line:
+            key, value = line.split(":", 1)
+            self_state[key.strip()] = value.strip()
+    interest_text = self_state.get("観測した関心", "")
+    knowledge_sources = tuple(
+        part.strip()
+        for part in self_state.get("直近の知識参照", "").split("、")
+        if part.strip() and part.strip() != "なし"
+    )
 
     return LeaseNewsReflection(
         available=True,
@@ -422,6 +453,24 @@ def get_latest_lease_news_reflection(vault: Path | None = None) -> LeaseNewsRefl
         thought_lines=thought_lines,
         tomorrow_lines=tomorrow_lines,
         illustration_url=illustration_match.group(1).strip() if illustration_match else "",
+        continuity_days=int(self_state.get("継続日数", "0") or 0),
+        dominant_mood=self_state.get("支配的な気分", ""),
+        self_narrative=self_state.get("自己物語", ""),
+        current_question=self_state.get("持ち越す問い", ""),
+        memory_excerpt=self_state.get("思い出したこと", ""),
+        user_understanding=self_state.get("ユーザーへの理解", ""),
+        user_curiosity=self_state.get("ユーザーへの興味", ""),
+        user_interests=tuple(part.strip() for part in interest_text.split("、") if part.strip()),
+        observed_days=int(self_state.get("行動観測日数", "0") or 0),
+        primary_goal=self_state.get("第一目標", ""),
+        secondary_goal=self_state.get("第二目標", ""),
+        ultimate_goal=self_state.get("最終目標", ""),
+        ultimate_goal_status=self_state.get("最終目標の状態", ""),
+        knowledge_available=self_state.get("Obsidian知識接続", "") == "接続済み",
+        knowledge_scope=self_state.get("知識範囲", ""),
+        indexed_notes=int(self_state.get("検索可能ノート数", "0") or 0),
+        knowledge_source_count=int(self_state.get("当日参照数", "0") or 0),
+        knowledge_sources=knowledge_sources,
     )
 
 
@@ -757,12 +806,21 @@ def write_lease_news_reflection_note(
     focus_lines = list(focus.focus_lines[:3]) or ["直近のニュースを見て、判断の前提を更新する。"]
     headline = focus.headline or "最新ニュースの論点あり"
     try:
+        from lease_intelligence_activity import observe_user_behavior
+        from lease_intelligence_mind import update_user_model
+
+        observation = observe_user_behavior(reflection_date)
+        update_user_model(vault, observation)
+    except Exception:
+        pass
+    try:
         from novelist_agent import generate_daily_lease_grumble
         thoughts = generate_daily_lease_grumble(
             date_str=reflection_date,
             focus_lines=focus_lines,
             theme=theme,
             tag_summary=tag_summary,
+            vault=vault,
         )
     except Exception:
         thoughts = [
@@ -772,6 +830,31 @@ def write_lease_news_reflection_note(
             "結局、愚痴は保存せず判断だけを保存した。明日も同じ画面が私を待っている。",
         ]
     illustration_url = f"/lease-grumble/{reflection_date}.webp"
+    try:
+        from lease_intelligence_mind import load_lease_intelligence_mind, self_state_summary
+
+        mind_summary = self_state_summary(load_lease_intelligence_mind(vault))
+    except Exception:
+        mind_summary = {
+            "continuity_days": 0,
+            "dominant_mood": "",
+            "self_narrative": "",
+            "current_question": "",
+            "memory_excerpt": "",
+            "user_understanding": "",
+            "user_curiosity": "",
+            "user_interests": [],
+            "observed_days": 0,
+            "primary_goal": "",
+            "secondary_goal": "",
+            "ultimate_goal": "",
+            "ultimate_goal_status": "",
+            "knowledge_available": False,
+            "knowledge_scope": "",
+            "indexed_notes": 0,
+            "knowledge_source_count": 0,
+            "knowledge_sources": [],
+        }
 
     content_lines = [
         "---",
@@ -796,6 +879,26 @@ def write_lease_news_reflection_note(
     ])
     content_lines.extend(f"- {line}" for line in thoughts)
     content_lines.extend([
+        "",
+        "## 自己状態",
+        f"- 最終目標: {mind_summary['ultimate_goal']}",
+        f"- 最終目標の状態: {mind_summary['ultimate_goal_status']}",
+        f"- 第一目標: {mind_summary['primary_goal']}",
+        f"- 第二目標: {mind_summary['secondary_goal']}",
+        f"- 継続日数: {mind_summary['continuity_days']}",
+        f"- 支配的な気分: {mind_summary['dominant_mood']}",
+        f"- 自己物語: {mind_summary['self_narrative']}",
+        f"- 持ち越す問い: {mind_summary['current_question']}",
+        f"- 思い出したこと: {mind_summary['memory_excerpt'] or 'まだ過去の記憶は少ない。'}",
+        f"- 行動観測日数: {mind_summary['observed_days']}",
+        f"- 観測した関心: {'、'.join(item.get('label', '') for item in mind_summary['user_interests']) or 'まだ不明'}",
+        f"- ユーザーへの理解: {mind_summary['user_understanding']}",
+        f"- ユーザーへの興味: {mind_summary['user_curiosity']}",
+        f"- Obsidian知識接続: {'接続済み' if mind_summary['knowledge_available'] else '未接続'}",
+        f"- 知識範囲: {mind_summary['knowledge_scope']}",
+        f"- 検索可能ノート数: {mind_summary['indexed_notes']}",
+        f"- 当日参照数: {mind_summary['knowledge_source_count']}",
+        f"- 直近の知識参照: {'、'.join(mind_summary['knowledge_sources']) or 'なし'}",
         "",
         "## 明日見ること",
         f"- {focus_lines[-1] if focus_lines else '今日の判断をもう一度見直す。'}",

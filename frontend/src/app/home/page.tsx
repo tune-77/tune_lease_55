@@ -21,6 +21,7 @@ import {
   ExternalLink,
   Tag,
   AlertTriangle,
+  Brain,
 } from 'lucide-react';
 import { normalizePrefecture } from '@/lib/prefecture';
 import { formatLocalDateKey } from '@/lib/date';
@@ -120,6 +121,24 @@ type DashboardStats = {
     thought_lines?: string[];
     tomorrow_lines?: string[];
     illustration_url?: string;
+    continuity_days?: number;
+    dominant_mood?: string;
+    self_narrative?: string;
+    current_question?: string;
+    memory_excerpt?: string;
+    user_understanding?: string;
+    user_curiosity?: string;
+    user_interests?: string[];
+    observed_days?: number;
+    primary_goal?: string;
+    secondary_goal?: string;
+    ultimate_goal?: string;
+    ultimate_goal_status?: string;
+    knowledge_available?: boolean;
+    knowledge_scope?: string;
+    indexed_notes?: number;
+    knowledge_source_count?: number;
+    knowledge_sources?: string[];
   };
   lease_news_brief?: {
     available?: boolean;
@@ -249,6 +268,14 @@ export default function HomeDashboard() {
     fetchStats();
     fetchRecentNews();
     fetchLeaseNewsFocus();
+    const activityKey = `lease-intelligence-activity:home:${formatLocalDateKey(new Date())}`;
+    if (!window.sessionStorage.getItem(activityKey)) {
+      apiClient.post("/api/lease-intelligence/activity", {
+        surface: "home",
+        action: "page_view",
+        event_id: activityKey,
+      }).then(() => window.sessionStorage.setItem(activityKey, "1")).catch(() => {});
+    }
     newsPrefectureReadyRef.current = true;
   }, []);
 
@@ -673,6 +700,107 @@ export default function HomeDashboard() {
                     <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-900">
                       {leaseNewsReflection.theme_summary && <p><span className="font-bold">テーマ:</span> {leaseNewsReflection.theme_summary}</p>}
                       {leaseNewsReflection.tag_summary && <p className="mt-1"><span className="font-bold">重点タグ:</span> {leaseNewsReflection.tag_summary}</p>}
+                    </div>
+                  )}
+                  {(leaseNewsReflection.self_narrative || leaseNewsReflection.current_question) && (
+                    <div className="rounded-xl border border-violet-200 bg-violet-50 p-4">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <p className="flex items-center gap-2 text-sm font-black text-violet-900">
+                          <Brain className="h-4 w-4" />
+                          記憶と自己状態
+                        </p>
+                        <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-violet-700">
+                          継続 {leaseNewsReflection.continuity_days || 0}日
+                        </span>
+                      </div>
+                      {(leaseNewsReflection.ultimate_goal || leaseNewsReflection.primary_goal || leaseNewsReflection.secondary_goal) && (
+                        <div className="mb-3 rounded-lg border border-violet-200 bg-white p-3 text-xs leading-relaxed text-slate-700">
+                          {leaseNewsReflection.ultimate_goal && (
+                            <p>
+                              <span className="font-bold text-violet-900">最終目標:</span> {leaseNewsReflection.ultimate_goal}
+                              {leaseNewsReflection.ultimate_goal_status && (
+                                <span className="ml-2 text-[10px] text-violet-600">({leaseNewsReflection.ultimate_goal_status})</span>
+                              )}
+                            </p>
+                          )}
+                          {leaseNewsReflection.primary_goal && (
+                            <p className="mt-2"><span className="font-bold text-violet-800">第一目標:</span> {leaseNewsReflection.primary_goal}</p>
+                          )}
+                          {leaseNewsReflection.secondary_goal && (
+                            <p className="mt-1"><span className="font-bold text-violet-800">第二目標:</span> {leaseNewsReflection.secondary_goal}</p>
+                          )}
+                        </div>
+                      )}
+                      {leaseNewsReflection.dominant_mood && (
+                        <p className="text-xs text-violet-800">
+                          <span className="font-bold">いま強い気分:</span> {leaseNewsReflection.dominant_mood}
+                        </p>
+                      )}
+                      {leaseNewsReflection.self_narrative && (
+                        <p className="mt-2 text-sm leading-relaxed text-slate-700">{leaseNewsReflection.self_narrative}</p>
+                      )}
+                      {leaseNewsReflection.memory_excerpt && (
+                        <p className="mt-3 rounded-lg bg-white p-3 text-xs leading-relaxed text-slate-600">
+                          <span className="font-bold text-violet-800">思い出したこと:</span> {leaseNewsReflection.memory_excerpt}
+                        </p>
+                      )}
+                      {leaseNewsReflection.current_question && (
+                        <p className="mt-3 text-xs leading-relaxed text-violet-900">
+                          <span className="font-bold">明日へ持ち越す問い:</span> {leaseNewsReflection.current_question}
+                        </p>
+                      )}
+                      {(leaseNewsReflection.user_understanding || leaseNewsReflection.user_curiosity) && (
+                        <div className="mt-3 border-t border-violet-200 pt-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[10px] font-black text-violet-700">
+                              行動観測 {leaseNewsReflection.observed_days || 0}日
+                            </span>
+                            {(leaseNewsReflection.user_interests || []).map((interest) => (
+                              <span key={interest} className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-violet-700">
+                                {interest}
+                              </span>
+                            ))}
+                          </div>
+                          {leaseNewsReflection.user_understanding && (
+                            <p className="mt-2 text-xs leading-relaxed text-slate-700">
+                              <span className="font-bold text-violet-800">あなたへの暫定理解:</span> {leaseNewsReflection.user_understanding}
+                            </p>
+                          )}
+                          {leaseNewsReflection.user_curiosity && (
+                            <p className="mt-2 text-xs leading-relaxed text-violet-900">
+                              <span className="font-bold">あなたについて知りたいこと:</span> {leaseNewsReflection.user_curiosity}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      <div className="mt-3 border-t border-violet-200 pt-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[10px] font-black text-violet-700">Obsidian知識接続</span>
+                          <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${
+                            leaseNewsReflection.knowledge_available
+                              ? "bg-emerald-100 text-emerald-800"
+                              : "bg-slate-100 text-slate-600"
+                          }`}>
+                            {leaseNewsReflection.knowledge_available ? "接続済み" : "未接続"}
+                          </span>
+                          <span className="text-[10px] text-violet-700">
+                            検索可能 {leaseNewsReflection.indexed_notes || 0}件 / 当日参照 {leaseNewsReflection.knowledge_source_count || 0}件
+                          </span>
+                        </div>
+                        {leaseNewsReflection.knowledge_scope && (
+                          <p className="mt-2 text-[10px] leading-relaxed text-slate-600">
+                            {leaseNewsReflection.knowledge_scope}
+                          </p>
+                        )}
+                        {(leaseNewsReflection.knowledge_sources || []).length > 0 && (
+                          <p className="mt-2 text-[10px] leading-relaxed text-violet-800">
+                            参照: {(leaseNewsReflection.knowledge_sources || []).slice(0, 3).join(" / ")}
+                          </p>
+                        )}
+                      </div>
+                      <p className="mt-3 text-[10px] text-violet-500">
+                        アプリ内の行動種別・回数・関心カテゴリだけを使用します。質問本文や個人属性は記憶しません。
+                      </p>
                     </div>
                   )}
                   {(leaseNewsReflection.thought_lines || []).length > 0 && (

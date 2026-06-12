@@ -248,6 +248,15 @@ export default function ChatPage() {
     apiClient.get("/api/lease-news/focus")
       .then((res) => setLeaseNewsFocus(res.data || null))
       .catch(() => {});
+    const activityDate = new Date().toLocaleDateString("sv-SE");
+    const activityKey = `lease-intelligence-activity:chat:${activityDate}`;
+    if (!window.sessionStorage.getItem(activityKey)) {
+      apiClient.post("/api/lease-intelligence/activity", {
+        surface: "chat",
+        action: "page_view",
+        event_id: activityKey,
+      }).then(() => window.sessionStorage.setItem(activityKey, "1")).catch(() => {});
+    }
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -173,6 +173,18 @@ export default function ImprovementLogPage() {
   }, []);
 
   useEffect(() => {
+    const activityDate = new Date().toLocaleDateString("sv-SE");
+    const activityKey = `lease-intelligence-activity:improvement_log:${activityDate}`;
+    if (!window.sessionStorage.getItem(activityKey)) {
+      apiClient.post("/api/lease-intelligence/activity", {
+        surface: "improvement_log",
+        action: "page_view",
+        event_id: activityKey,
+      }).then(() => window.sessionStorage.setItem(activityKey, "1")).catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
     fetchLog();
   }, [fetchLog]);
 
