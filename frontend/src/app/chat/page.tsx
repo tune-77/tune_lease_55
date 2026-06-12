@@ -521,7 +521,7 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] max-w-3xl mx-auto px-4 py-6 overflow-hidden">
+    <div className="flex flex-col h-[calc(100dvh-4rem)] max-w-3xl mx-auto px-4 py-6 overflow-hidden">
       {/* ヘッダー */}
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
         <div className="flex items-center gap-3">
