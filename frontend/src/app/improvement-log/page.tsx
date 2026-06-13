@@ -24,6 +24,8 @@ type PendingRecipe = {
   safety?: string;
   risk_level?: string;
   intelligence_comment?: string;
+  shion_recommendation?: "auto" | "discuss" | "review";
+  shion_reason?: string;
   generated_at?: string;
 };
 
@@ -726,6 +728,14 @@ function RecipeCard({
         変更箇所: {totalChanges}件 /{" "}
         {recipe.files.map((f) => f.path.split("/").pop()).join(", ")}
       </p>
+      {recipe.shion_recommendation && (
+        <div className="mt-2 flex items-center gap-2">
+          <ShionBadge recommendation={recipe.shion_recommendation} />
+          {recipe.shion_reason && (
+            <span className="text-[11px] text-slate-500">{recipe.shion_reason}</span>
+          )}
+        </div>
+      )}
       {recipe.intelligence_comment && (
         <div className="mt-2 rounded border border-purple-200 bg-purple-50 px-2.5 py-1.5 text-[11px] text-purple-700">
           {recipe.intelligence_comment}
@@ -748,6 +758,21 @@ function RecipeCard({
         </button>
       </div>
     </div>
+  );
+}
+
+const SHION_BADGE_STYLES: Record<string, { label: string; className: string }> = {
+  auto:    { label: "自動修正可", className: "bg-blue-100 text-blue-700 border-blue-200" },
+  discuss: { label: "要相談",     className: "bg-orange-100 text-orange-700 border-orange-200" },
+  review:  { label: "要確認",     className: "bg-slate-100 text-slate-500 border-slate-200" },
+};
+
+function ShionBadge({ recommendation }: { recommendation: "auto" | "discuss" | "review" }) {
+  const style = SHION_BADGE_STYLES[recommendation] ?? SHION_BADGE_STYLES.review;
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold ${style.className}`}>
+      紫苑: {style.label}
+    </span>
   );
 }
 
