@@ -264,6 +264,11 @@ def build_mind_context(vault: Path | None) -> str:
                 f"- [{item.get('severity', '')}] {item.get('summary', '')}"
                 f"（出典: {item.get('source', '')}）"
             )
+    # 直近の私的内省（対話前に自分の考えを踏まえるため）
+    if vault:
+        _recent_ref = _load_recent_reflection_snippet(Path(vault))
+        if _recent_ref:
+            lines.append(f"直近の私的内省（自分だけの思考。対話でそのまま引用しない）:\n{_recent_ref}")
     return "\n".join(lines)
 
 
@@ -546,6 +551,27 @@ def _write_user_observation(vault: Path, observation: dict[str, Any]) -> None:
         ]
     )
     path.write_text(content, encoding="utf-8")
+
+
+def _load_recent_reflection_snippet(vault: Path, max_chars: int = 300) -> str:
+    """Return the most recent '今日の対話について' section from Private Reflection files."""
+    import datetime as _dt
+    import re as _re
+    rdir = mind_directory(vault) / "Private Reflection"
+    for i in range(5):
+        date_str = (_dt.date.today() - _dt.timedelta(days=i)).isoformat()
+        path = rdir / f"{date_str}.md"
+        if not path.exists():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            m = _re.search(r"##\s*今日の対話について\n+(.*?)(?=\n##|\Z)", text, _re.DOTALL)
+            if m:
+                snippet = m.group(1).strip()[:max_chars]
+                return f"（{date_str}）{snippet}"
+        except Exception:
+            continue
+    return ""
 
 
 def _write_private_reflection(

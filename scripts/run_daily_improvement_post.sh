@@ -28,3 +28,7 @@ echo "[記録] memory/ から MEMORY.md へ長期記憶を自動昇格..."
 echo ""
 echo "[補助] 週次セルフマネジメントサマリ（月曜のみ）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/weekly_self_management.py" || true
+
+echo ""
+echo "[内省] 紫苑の日次私的内省を生成（当日対話 → Private Reflection）..."
+"${PYTHON}" "${PROJECT_ROOT}/lease_intelligence_reflection.py" || true
