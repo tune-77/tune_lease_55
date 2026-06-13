@@ -67,8 +67,99 @@ def _consultation_prompt(
 2. 誤り・見落とし・未確認事項
 3. コードまたは記録から確認できる根拠
 4. 紫苑が自分の結論へ統合するための助言
+5. 採用・棄却根拠（必ず回答の末尾に以下の形式で追加すること）
 
-根拠がないことは断定せず、推測と事実を分けてください。"""
+[EVIDENCE]
+採用: 根拠の要点 // 採用した理由
+棄却: 根拠の要点 // 棄却した理由
+[/EVIDENCE]
+
+根拠がない場合は「採用: なし // -」と記載。根拠がないことは断定せず、推測と事実を分けてください。"""
+
+
+def _parse_reasoning_path_from_advice(advice: str) -> dict[str, Any]:
+    """Extract structured evidence selection from the [EVIDENCE] block in advice."""
+    m = re.search(r"\[EVIDENCE\](.*?)\[/EVIDENCE\]", advice, re.DOTALL)
+    if not m:
+        return {"parse_ok": False}
+    block = m.group(1)
+    adopted_raw = re.findall(r"採用[:：]\s*(.+?)\s*//\s*(.+)", block)
+    rejected_raw = re.findall(r"棄却[:：]\s*(.+?)\s*//\s*(.+)", block)
+    return {
+        "parse_ok": True,
+        "adopted": [
+            {"evidence": e.strip(), "reason": r.strip()}
+            for e, r in adopted_raw
+            if e.strip() not in ("なし", "-", "")
+        ],
+        "rejected": [
+            {"evidence": e.strip(), "reason": r.strip()}
+            for e, r in rejected_raw
+            if e.strip() not in ("なし", "-", "")
+        ],
+    }
+
+
+def _append_reasoning_path_note(vault: Path, record: dict[str, Any]) -> None:
+    """Append Shion's selection path to today's Learning note."""
+    directory = (
+        vault / "Projects" / "tune_lease_55" / "Lease Intelligence" / "Learning"
+    )
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{dt.date.today().isoformat()}.md"
+    now_str = record["created_at"][11:19]
+
+    kept_lines = "\n".join(f"  - {k}" for k in record.get("kept", [])) or "  （なし）"
+    dropped_lines = (
+        "\n".join(
+            f"  - {d.get('item', '')} ／ 棄却理由: {d.get('reason', '')}"
+            for d in record.get("dropped", [])
+        )
+        or "  （なし）"
+    )
+    pivot_lines = "\n".join(f"  - {p}" for p in record.get("pivots", [])) or "  （なし）"
+    weights_lines = (
+        "\n".join(f"  - {k}: {v}" for k, v in record.get("value_weights", {}).items())
+        or "  （なし）"
+    )
+    section = (
+        f"\n### 紫苑の選択経路 / {now_str} / {record['consultation_id']}\n\n"
+        f"**維持した根拠**\n{kept_lines}\n\n"
+        f"**棄却した根拠と理由**\n{dropped_lines}\n\n"
+        f"**転換点**\n{pivot_lines}\n\n"
+        f"**価値の重み付け**\n{weights_lines}\n"
+    )
+    with path.open("a", encoding="utf-8") as file_obj:
+        file_obj.write(section)
+
+
+def save_shion_reasoning_path(
+    consultation_id: str,
+    kept: list[str] | None = None,
+    dropped: list[dict] | None = None,
+    pivots: list[str] | None = None,
+    value_weights: dict[str, str] | None = None,
+    vault: Path | None = None,
+) -> dict[str, Any]:
+    """Record Shion's own reasoning path after integrating senior advice."""
+    if not consultation_id:
+        return {"saved": False, "error": "consultation_id が必要です"}
+    record: dict[str, Any] = {
+        "type": "shion_reasoning_path",
+        "created_at": dt.datetime.now().isoformat(timespec="seconds"),
+        "consultation_id": consultation_id,
+        "kept": list(kept or []),
+        "dropped": list(dropped or []),
+        "pivots": list(pivots or []),
+        "value_weights": dict(value_weights or {}),
+    }
+    _append_jsonl(record)
+    if vault:
+        try:
+            _append_reasoning_path_note(Path(vault), record)
+        except Exception as exc:
+            record["note_error"] = str(exc)
+    return {"saved": True, "consultation_id": consultation_id}
 
 
 def _find_cli(name: str) -> str:
@@ -256,6 +347,7 @@ def consult_senior_reasoner(
         "confidence": confidence_value,
         "evidence_summary": safe_evidence,
         "advice": advice[:8000],
+        "reasoning_path": _parse_reasoning_path_from_advice(advice),
         "status": "awaiting_shion_synthesis",
     }
     note_path = _append_learning_note(Path(vault), record)
@@ -323,4 +415,5 @@ __all__ = [
     "consult_senior_reasoner",
     "finalize_consultation_learning",
     "sanitize_consultation_text",
+    "save_shion_reasoning_path",
 ]

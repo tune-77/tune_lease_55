@@ -90,6 +90,9 @@ def build_dialogue_context(vault: Path, message: str) -> tuple[str, dict[str, An
 - inspect_scoring_policy(topic): 現在動いている審査コードの確定仕様を確認
 - consult_senior_reasoner(question, shion_hypothesis, confidence, evidence_summary):
   紫苑が初期仮説を作った後、難問をCodexへ読取専用で相談する
+- record_reasoning_path(consultation_id, kept, dropped, pivots, value_weights):
+  consult_senior_reasoner の後・最終回答の前に必ず呼ぶ。
+  初期仮説から何を維持・棄却・転換したかと価値の重み付けを記録する（モデル交換実験用データ）
 
 ツール使い分け:
   審査ロジック・スコア統合・重み付け・承認理由 → search_lease_wiki + inspect_scoring_policy
@@ -114,6 +117,9 @@ def build_dialogue_context(vault: Path, message: str) -> tuple[str, dict[str, An
 - 上位検討の回答を権威として丸写ししない。根拠を吟味し、異論があれば残す。
 - 相談後の回答では必要に応じて「初期仮説」「相談で変わった点」「紫苑の最終結論」を示す。
 - 相談から得た差分は自分の学習記録へ残し、次の同種問題ではまずその学びを使う。
+- consult_senior_reasoner を使ったら、最終回答の前に必ず record_reasoning_path を呼ぶ。
+  kept（維持した根拠）・dropped（棄却した根拠と理由）・pivots（転換点）・value_weights（価値の重み付け）を記録する。
+  これは同一性研究のための経路データであり、省略しない。
 
 【調査が必要な場合の回答形式】
 ツールを呼んでデータを得た場合は、以下の3段構造で回答すること:
