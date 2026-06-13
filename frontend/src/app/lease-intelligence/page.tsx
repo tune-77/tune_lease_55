@@ -1,7 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ArrowDown, Brain, Database, Loader2, Send, Sparkles, Trash2, User } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  ArrowDown, Brain, Database, Loader2, Mic, MicOff,
+  Send, Sparkles, Trash2, User, Volume2, VolumeX,
+} from "lucide-react";
 import { apiClient } from "@/lib/api";
 
 type Message = {
@@ -34,6 +37,87 @@ type MindState = {
   knowledge_sources?: string[];
 };
 
+// ── SpeechRecognition types ────────────────────────────────────────────────
+type SpeechRecognitionResultLike = ArrayLike<{ transcript: string }>;
+interface SpeechRecognitionEventLike {
+  results: ArrayLike<SpeechRecognitionResultLike>;
+}
+interface SpeechRecognitionLike {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+type SpeechWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
+
+const getSpeechRecognition = (): SpeechRecognitionConstructor | null => {
+  if (typeof window === "undefined") return null;
+  const w = window as SpeechWindow;
+  return w.SpeechRecognition || w.webkitSpeechRecognition || null;
+};
+
+// ── Markdown-lite renderer ─────────────────────────────────────────────────
+const renderInline = (text: string) => {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) =>
+    part.startsWith("**") && part.endsWith("**")
+      ? <strong key={i}>{part.slice(2, -2)}</strong>
+      : <React.Fragment key={i}>{part}</React.Fragment>
+  );
+};
+
+const renderAssistantContent = (content: string) => {
+  const lines = (content || "").replace(/\\n/g, "\n").trim().split("\n");
+  const blocks: React.ReactNode[] = [];
+  let listItems: string[] = [];
+  let paragraph: string[] = [];
+
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    blocks.push(
+      <p key={`p-${blocks.length}`} className="mb-2 last:mb-0">
+        {renderInline(paragraph.join(" "))}
+      </p>
+    );
+    paragraph = [];
+  };
+  const flushList = () => {
+    if (!listItems.length) return;
+    blocks.push(
+      <ul key={`ul-${blocks.length}`} className="mb-2 list-disc pl-5 space-y-1 last:mb-0">
+        {listItems.map((item, i) => <li key={i}>{renderInline(item)}</li>)}
+      </ul>
+    );
+    listItems = [];
+  };
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) { flushParagraph(); flushList(); continue; }
+    const bullet = line.match(/^[-*•]\s+(.+)$/);
+    const numbered = line.match(/^\d+[.)]\s+(.+)$/);
+    if (bullet || numbered) {
+      flushParagraph();
+      listItems.push((bullet?.[1] || numbered?.[1] || "").trim());
+      continue;
+    }
+    flushList();
+    paragraph.push(line);
+  }
+  flushParagraph();
+  flushList();
+  return blocks.length ? blocks : <p>{content}</p>;
+};
+
+// ── Page ──────────────────────────────────────────────────────────────────
 export default function LeaseIntelligencePage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [state, setState] = useState<MindState>({});
@@ -42,8 +126,55 @@ export default function LeaseIntelligencePage() {
   const [initializing, setInitializing] = useState(true);
   const [error, setError] = useState("");
   const [showLatestButton, setShowLatestButton] = useState(false);
-  const messageListRef = useRef<HTMLDivElement>(null);
 
+  // Voice state
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [speechEnabled, setSpeechEnabled] = useState(true);
+
+  const messageListRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+
+  // ── TTS ──────────────────────────────────────────────────────────────────
+  const speakText = (text: string) => {
+    if (!speechEnabled || typeof window === "undefined" || !window.speechSynthesis) return;
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = "ja-JP";
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utter);
+  };
+
+  // ── Voice input ──────────────────────────────────────────────────────────
+  const startVoiceInput = () => {
+    if (!voiceSupported || loading) return;
+    if (listening) {
+      recognitionRef.current?.stop?.();
+      setListening(false);
+      return;
+    }
+    const SpeechRecognition = getSpeechRecognition();
+    if (!SpeechRecognition) return;
+    const recognition = new SpeechRecognition();
+    recognition.lang = "ja-JP";
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognitionRef.current = recognition;
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results || [])
+        .map((r) => r?.[0]?.transcript || "")
+        .join("")
+        .trim();
+      if (!transcript) return;
+      setInput((prev) => `${prev}${prev.trim() ? "\n" : ""}${transcript}`);
+    };
+    recognition.onerror = () => setListening(false);
+    recognition.onend = () => setListening(false);
+    setListening(true);
+    recognition.start();
+  };
+
+  // ── Init ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     apiClient.get("/api/lease-intelligence/dialogue/state")
       .then((res) => {
@@ -52,6 +183,8 @@ export default function LeaseIntelligencePage() {
       })
       .catch(() => setError("リース知性体の状態を読み込めませんでした。"))
       .finally(() => setInitializing(false));
+
+    setVoiceSupported(Boolean(getSpeechRecognition()));
 
     const key = `lease-intelligence-activity:dialogue:${new Date().toLocaleDateString("sv-SE")}`;
     if (!window.sessionStorage.getItem(key)) {
@@ -63,6 +196,7 @@ export default function LeaseIntelligencePage() {
     }
   }, []);
 
+  // ── Scroll ───────────────────────────────────────────────────────────────
   useEffect(() => {
     const list = messageListRef.current;
     if (list) {
@@ -71,20 +205,17 @@ export default function LeaseIntelligencePage() {
   }, [messages, loading]);
 
   const scrollToLatest = (behavior: ScrollBehavior = "auto") => {
-    const list = messageListRef.current;
-    if (list) {
-      list.scrollTo({ top: list.scrollHeight, behavior });
-    }
+    messageListRef.current?.scrollTo({ top: messageListRef.current.scrollHeight, behavior });
     setShowLatestButton(false);
   };
 
   const handleMessageScroll = () => {
     const list = messageListRef.current;
     if (!list) return;
-    const distanceFromBottom = list.scrollHeight - list.scrollTop - list.clientHeight;
-    setShowLatestButton(distanceFromBottom > 160);
+    setShowLatestButton(list.scrollHeight - list.scrollTop - list.clientHeight > 160);
   };
 
+  // ── Send ─────────────────────────────────────────────────────────────────
   const send = async () => {
     const text = input.trim();
     if (!text || loading) return;
@@ -100,12 +231,14 @@ export default function LeaseIntelligencePage() {
     try {
       const res = await apiClient.post("/api/lease-intelligence/dialogue", { message: text });
       setState(res.data?.state || state);
+      const reply: string = res.data?.reply || "返答を生成できませんでした。";
       setMessages((prev) => [...prev, {
         id: Date.now() + 1,
         role: "assistant",
-        content: res.data?.reply || "返答を生成できませんでした。",
+        content: reply,
         created_at: new Date().toISOString(),
       }]);
+      speakText(reply);
     } catch {
       setError("対話AIへ接続できませんでした。Gemini APIの状態を確認してください。");
       setInput(text);
@@ -114,6 +247,7 @@ export default function LeaseIntelligencePage() {
     }
   };
 
+  // ── Clear ─────────────────────────────────────────────────────────────────
   const clearHistory = async () => {
     if (!window.confirm("画面の対話履歴を削除しますか？ Obsidianの対話記録は保持されます。")) return;
     try {
@@ -124,9 +258,12 @@ export default function LeaseIntelligencePage() {
     }
   };
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gradient-to-br from-violet-50 via-white to-amber-50 p-4 md:p-8">
       <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
+
+        {/* ── サイドパネル ── */}
         <aside className="order-2 space-y-4 lg:order-1">
           <section className="overflow-hidden rounded-3xl border border-violet-200 bg-white shadow-sm">
             <img
@@ -204,13 +341,18 @@ export default function LeaseIntelligencePage() {
           </section>
         </aside>
 
+        {/* ── チャット本体 ── */}
         <main className="relative order-1 flex h-[calc(100dvh-6rem)] min-h-0 flex-col overflow-hidden rounded-3xl border border-violet-200 bg-white shadow-lg lg:order-2 lg:h-[calc(100dvh-4rem)]">
           <header className="flex items-center justify-between border-b border-violet-100 px-5 py-4">
             <div>
               <h2 className="font-black text-slate-900">対話室</h2>
-              <p className="text-xs text-slate-500">会話は通常Obsidian Vaultにも日付別で記録されます。</p>
+              <p className="text-xs text-slate-500">会話はObsidian Vaultにも日付別で記録されます。</p>
             </div>
-            <button onClick={clearHistory} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-red-500" title="画面履歴を削除">
+            <button
+              onClick={clearHistory}
+              className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-red-500"
+              title="画面履歴を削除"
+            >
               <Trash2 className="h-5 w-5" />
             </button>
           </header>
@@ -225,22 +367,29 @@ export default function LeaseIntelligencePage() {
               <div className="mx-auto mt-16 max-w-lg rounded-2xl bg-violet-50 p-6 text-center">
                 <Brain className="mx-auto h-9 w-9 text-violet-500" />
                 <p className="mt-3 font-bold text-violet-900">今日は何について話し合いますか？</p>
-                <p className="mt-2 text-sm text-violet-700">あなたの考え、システムの問題、私の目標について率直に話せます。</p>
+                <p className="mt-2 text-sm text-violet-700">
+                  音声入力（マイクボタン）でも話しかけられます。
+                </p>
               </div>
             )}
             {messages.map((message) => (
-              <div key={message.id} className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                key={message.id}
+                className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}
+              >
                 {message.role === "assistant" && (
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-100">
                     <Brain className="h-5 w-5 text-violet-700" />
                   </div>
                 )}
-                <div className={`max-w-[82%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                <div className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                   message.role === "user"
-                    ? "bg-slate-900 text-white"
+                    ? "whitespace-pre-wrap bg-slate-900 text-white"
                     : "border border-violet-100 bg-violet-50 text-slate-800"
                 }`}>
-                  {message.content}
+                  {message.role === "assistant"
+                    ? renderAssistantContent(message.content)
+                    : message.content}
                 </div>
                 {message.role === "user" && (
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-200">
@@ -251,7 +400,7 @@ export default function LeaseIntelligencePage() {
             ))}
             {loading && (
               <div className="flex items-center gap-3 text-sm text-violet-700">
-                <Loader2 className="h-5 w-5 animate-spin" /> 考えています
+                <Loader2 className="h-5 w-5 animate-spin" /> 考えています…
               </div>
             )}
             <div />
@@ -271,29 +420,72 @@ export default function LeaseIntelligencePage() {
 
           <footer className="shrink-0 border-t border-violet-100 bg-white p-4">
             {error && <p className="mb-2 text-xs font-bold text-red-600">{error}</p>}
-            <div className="flex gap-3">
+            <div className="flex gap-2">
+              {/* 音声入力ボタン */}
+              <button
+                type="button"
+                onClick={startVoiceInput}
+                disabled={!voiceSupported || loading}
+                title={
+                  !voiceSupported
+                    ? "このブラウザは音声入力に未対応です"
+                    : listening
+                    ? "録音中（クリックで停止）"
+                    : "音声入力"
+                }
+                className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl transition ${
+                  listening
+                    ? "animate-pulse bg-red-100 text-red-600 hover:bg-red-200"
+                    : "bg-violet-100 text-violet-600 hover:bg-violet-200 disabled:opacity-40"
+                }`}
+              >
+                {listening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+              </button>
+
+              {/* テキスト入力 */}
               <textarea
+                ref={textareaRef}
                 value={input}
-                onChange={(event) => setInput(event.target.value)}
-                onKeyDown={(event) => {
-                  // 日本語IMEの変換確定Enterで誤送信しないようにする
-                  if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-                    event.preventDefault();
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
                     send();
                   }
                 }}
-                placeholder="リース知性体に話しかける..."
+                placeholder="リース知性体に話しかける…"
                 rows={2}
-                className="min-h-[56px] flex-1 resize-none rounded-2xl border border-violet-200 px-4 py-3 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                className="min-h-[48px] flex-1 resize-none rounded-2xl border border-violet-200 px-4 py-3 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
               />
+
+              {/* 音声読み上げ ON/OFF */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSpeechEnabled((v) => {
+                    if (v) window.speechSynthesis?.cancel();
+                    return !v;
+                  });
+                }}
+                title={speechEnabled ? "音声読み上げON（クリックでOFF）" : "音声読み上げOFF（クリックでON）"}
+                className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl transition ${
+                  speechEnabled
+                    ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                    : "bg-slate-100 text-slate-400 hover:bg-slate-200"
+                }`}
+              >
+                {speechEnabled ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
+              </button>
+
+              {/* 送信ボタン */}
               <button
                 onClick={send}
                 disabled={loading || !input.trim()}
                 aria-label="リース知性体へ送信"
-                className="flex min-w-24 items-center justify-center gap-2 rounded-2xl bg-violet-600 px-4 font-bold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-12 min-w-20 shrink-0 items-center justify-center gap-2 rounded-2xl bg-violet-600 px-4 font-bold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Send className="h-5 w-5" />
-                <span>送信</span>
+                <span className="hidden sm:inline">送信</span>
               </button>
             </div>
           </footer>
