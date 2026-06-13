@@ -330,7 +330,7 @@ export default function ImprovementLogPage() {
                 : "text-slate-600 hover:bg-slate-100"
             }`}
           >
-            改善案
+            改善候補リスト
           </button>
           <button
             onClick={() => setActiveTab("recipes")}
