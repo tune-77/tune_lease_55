@@ -1,15 +1,24 @@
-"""Track investigation promises Shion makes and execute them on the next turn."""
+"""Track investigation promises Shion makes and execute them on the next turn.
+Also writes countermeasures to the improvement dispatch queue for the daily pipeline.
+"""
 from __future__ import annotations
 
 import json
 import re
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from runtime_paths import get_data_path
 
 PENDING_PATH = get_data_path("shion_pending_tasks.json")
+DISPATCH_QUEUE_PATH = Path.home() / "Library" / "Logs" / "tunelease" / "dispatch_queue.jsonl"
+
+_COUNTERMEASURE_RE = re.compile(
+    r"\*{0,2}③\s*対応策\*{0,2}[^\n]*\n(.*?)(?=\n\*{0,2}[①-⑩]|\Z)",
+    re.DOTALL,
+)
 
 _PROMISE_PATTERNS = [
     r"調べ(?:てみ|ます|ました|てみます|てみました|てきます|させていただき)",
@@ -74,3 +83,57 @@ def mark_done(task_ids: list[str]) -> None:
             t["status"] = "done"
             t["done_at"] = datetime.now().isoformat()
     _save(tasks)
+
+
+def _extract_countermeasure_block(shion_reply: str) -> str:
+    """Extract the ③対応策 section from Shion's reply."""
+    m = _COUNTERMEASURE_RE.search(shion_reply)
+    if not m:
+        return ""
+    return m.group(1).strip()
+
+
+def _lines_to_candidates(block: str, user_message: str) -> list[dict]:
+    """Convert countermeasure text into dispatch_queue candidate entries."""
+    candidates = []
+    # Each bullet or numbered line becomes one candidate
+    lines = [l.strip().lstrip("-・•*0123456789.）) ").strip() for l in block.splitlines()]
+    lines = [l for l in lines if len(l) > 5]
+    if not lines:
+        # Whole block as single candidate
+        lines = [block[:120]]
+    for line in lines[:5]:  # max 5 candidates per reply
+        candidates.append({
+            "id": f"SHION-{str(uuid.uuid4())[:6].upper()}",
+            "title": line[:80],
+            "category": "shion",
+            "reason": f"紫苑が調査した結果の対応策。元の問い: {user_message[:60]}",
+            "source": "shion_dialogue",
+        })
+    return candidates
+
+
+def save_countermeasures_to_dispatch(user_message: str, shion_reply: str) -> int:
+    """If Shion's reply has a ③対応策 section, append it to dispatch_queue.jsonl.
+    Returns the number of candidates written (0 if none found).
+    """
+    block = _extract_countermeasure_block(shion_reply)
+    if not block:
+        return 0
+    candidates = _lines_to_candidates(block, user_message)
+    if not candidates:
+        return 0
+    entry = {
+        "type": "improvement_candidates",
+        "date": datetime.now().strftime("%Y-%m-%d"),
+        "source": "shion",
+        "candidates": candidates,
+        "message": "紫苑の調査から生成された対応策です。着手・保留・破棄を決めてください。",
+    }
+    try:
+        DISPATCH_QUEUE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(DISPATCH_QUEUE_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        return 0
+    return len(candidates)

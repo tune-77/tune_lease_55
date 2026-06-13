@@ -5670,6 +5670,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
         extract_and_save_promises,
         get_pending_tasks,
         mark_done,
+        save_countermeasures_to_dispatch,
     )
     from lease_intelligence_tools import TOOL_DECLARATIONS, execute_tool
     from lease_news_digest import find_vault
@@ -5711,6 +5712,8 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
 
     # 今回の返答に調査約束が含まれていたら記録する
     extract_and_save_promises(message, reply)
+    # 対応策が含まれていたら改善ディスパッチキューに追記する
+    save_countermeasures_to_dispatch(message, reply)
 
     from lease_intelligence_mind import register_dialogue_event, self_state_summary
 
