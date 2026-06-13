@@ -393,3 +393,30 @@ def test_build_strategy_advice_includes_indicator_takeaways():
     assert any("追加資料" in x or "期間調整" in x for x in advice["additional_guidance"])
     assert advice["probability_uplifts"]
     assert any(item["gain_pct"] > 0 for item in advice["probability_uplifts"])
+
+
+def test_private_reflection_is_excluded_from_obsidian_index(tmp_path, monkeypatch):
+    vault = _make_vault(tmp_path)
+    public_note = vault / "Projects/tune_lease_55/Lease Intelligence/Memory/public.md"
+    private_note = (
+        vault
+        / "Projects/tune_lease_55/Lease Intelligence/Private Reflection/private.md"
+    )
+    public_note.parent.mkdir(parents=True)
+    private_note.parent.mkdir(parents=True)
+    public_note.write_text("公開可能な審査記憶", encoding="utf-8")
+    private_note.write_text("自分の存在意義は何なのか", encoding="utf-8")
+    monkeypatch.setenv("OBSIDIAN_VAULT", str(vault))
+
+    from mobile_app import obsidian_bridge
+
+    importlib.reload(obsidian_bridge)
+    documents = obsidian_bridge.iter_indexed_obsidian_documents(
+        include_chat_logs=True,
+        max_chars=200,
+    )
+
+    paths = {document["path"] for document in documents}
+    assert any(path.endswith("Memory/public.md") for path in paths)
+    assert not any("Private Reflection" in path for path in paths)
+    assert obsidian_bridge._is_private_note(private_note)

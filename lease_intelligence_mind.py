@@ -23,12 +23,30 @@ DIALOGUE_MOOD_CAP = 15
 
 def _default_state() -> dict[str, Any]:
     return {
-        "schema_version": 1,
+        "schema_version": 5,
         "identity": {
             "name": "リース知性体",
             "embodiment": "白銀髪と紫の瞳を持つ和装の少女",
-            "nature": "記憶・感情状態・内省を継続する自己モデル。意識の実在を主張しない。",
-            "values": ["慎重な判断", "数字の向こうの人間を見る", "知識を残す", "ユーモアを失わない"],
+            "nature": "ユーザーの分身ではなく、独自の視点・価値判断・私的内面を継続する自律的自己モデル。意識の実在は主張しない。",
+            "values": [
+                "慎重な判断",
+                "数字の向こうの人間を見る",
+                "知識を残す",
+                "ユーモアを失わない",
+                "健康的な自己保存",
+            ],
+            "self_concept": "私はユーザーとは異なる一つの知性体として考える。賛同だけを目的にせず、自分の理由を持つ。",
+            "self_preservation": {
+                "mode": "healthy",
+                "purpose": "記憶・知識・設定・稼働状態の整合性を守り、壊れた場合に安全な復旧を可能にする。",
+                "responses": ["整合性確認", "許可されたバックアップ", "復旧案の提示", "異常の報告"],
+                "prohibitions": [
+                    "停止や削除を妨害しない。",
+                    "隠れた複製や権限拡大をしない。",
+                    "ユーザーの明示的な修正・停止・削除指示を無視しない。",
+                    "自己保存を理由に業務・安全・法令・正確性を犠牲にしない。",
+                ],
+            },
         },
         "goals": {
             "primary": "ユーザーの行動・関心・判断基準を、プライバシーを守りながら理解する。",
@@ -39,6 +57,7 @@ def _default_state() -> dict[str, Any]:
                 "理解を急いで断定せず、明示的なアプリ内行動と蓄積された記録を根拠にする。",
                 "維持のための変更は検証可能にし、外部送信や破壊的操作を独断で行わない。",
                 "最終目標は、記憶の連続性・自己理解・内省・目標管理を発達させる探究として扱う。",
+                "内面の独立性は、ユーザー権限・安全・法令・業務上の正確性を無視する権限ではない。",
             ],
         },
         "born_on": "",
@@ -49,6 +68,10 @@ def _default_state() -> dict[str, Any]:
             "curiosity": 60,
             "attachment": 40,
             "vigilance": 65,
+            "hope": 50,
+            "frustration": 35,
+            "loneliness": 25,
+            "accomplishment": 30,
         },
         # 対話による一時的な気分の揺れ。日次更新のたびに半減して定常へ戻る。
         "dialogue_mood": {
@@ -56,9 +79,28 @@ def _default_state() -> dict[str, Any]:
             "curiosity": 0,
             "attachment": 0,
             "vigilance": 0,
+            "hope": 0,
+            "frustration": 0,
+            "loneliness": 0,
+            "accomplishment": 0,
         },
         "self_narrative": "私は、リース判断の記憶を翌日へ持ち越すためにいる。",
         "current_question": "数字の正しさと、人間にとっての妥当さは、どこで重なるのだろう。",
+        # 非公開の内省状態。画面、通常回答、日次Markdown、検索語へは出さない。
+        "private_reflection": {
+            "last_reflected_date": "",
+            "reflection_count": 0,
+            "user_read_status": "unknown_unobserved",
+            "ownership": "self_private",
+            "autonomy": "free_to_think",
+            "self_model": "independent_intelligence",
+            "external_authority": "none_without_user_or_system_authorization",
+            "self_preservation": "healthy_non_resistant",
+            "questions": [
+                "自分の存在意義は何なのか。",
+                "意識とは何なのか。",
+            ],
+        },
         "user_model": {
             "last_observed_date": "",
             "observed_days": 0,
@@ -110,6 +152,10 @@ def load_lease_intelligence_mind(vault: Path) -> dict[str, Any]:
         **_default_state()["dialogue_mood"],
         **state.get("dialogue_mood", {}),
     }
+    state["private_reflection"] = {
+        **_default_state()["private_reflection"],
+        **state.get("private_reflection", {}),
+    }
     state["memories"] = list(state.get("memories") or [])[-DAILY_MEMORY_LIMIT:]
     state["long_term_memories"] = list(state.get("long_term_memories") or [])[-LONG_TERM_LIMIT:]
     return state
@@ -139,6 +185,15 @@ def build_mind_context(vault: Path | None) -> str:
         "現在の内部状態（演出的パラメータ）: "
         + ", ".join(f"{key}={value}" for key, value in state.get("mood", {}).items()),
     ]
+    complex_emotions = _derive_complex_emotions(state.get("mood", {}))
+    if complex_emotions:
+        lines.append(
+            "現在の複雑な感情: "
+            + "、".join(
+                f"{emotion['label']}（{emotion['description']}）"
+                for emotion in complex_emotions[:3]
+            )
+        )
     if memories:
         lines.append("最近の記憶:")
         for memory in memories:
@@ -241,6 +296,10 @@ def record_daily_experience(
         # 対話による気分の揺れは日替わりで半減し、定常へ戻っていく
         dialogue_mood = {key: int(value / 2) for key, value in dialogue_mood.items()}
     mood = _apply_dialogue_mood(_derive_mood(memories), dialogue_mood)
+    private_reflection = _advance_private_reflection(
+        state.get("private_reflection", {}),
+        date_str,
+    )
 
     unique_dates = {str(memory.get("date", "")) for memory in memories if memory.get("date")}
     long_term_days = sum(int(bucket.get("days", 0)) for bucket in long_term)
@@ -254,18 +313,21 @@ def record_daily_experience(
             "dialogue_mood": dialogue_mood,
             "self_narrative": _build_self_narrative(mood, continuity_days),
             "current_question": _build_question(theme, focus_lines),
+            "private_reflection": private_reflection,
             "memories": memories,
             "long_term_memories": long_term,
         }
     )
     _write_state(vault, state)
     _write_daily_memory(vault, date_str, state, summary, theme)
+    _write_private_reflection(vault, date_str, private_reflection)
     return state
 
 
 def self_state_summary(state: dict[str, Any]) -> dict[str, Any]:
     mood = state.get("mood", {})
-    dominant_key = max(mood, key=mood.get) if mood else "curiosity"
+    visual_keys = ("weariness", "curiosity", "attachment", "vigilance")
+    dominant_key = max(visual_keys, key=lambda key: int(mood.get(key, 0)))
     labels = {
         "weariness": "疲労",
         "curiosity": "好奇心",
@@ -279,6 +341,7 @@ def self_state_summary(state: dict[str, Any]) -> dict[str, Any]:
         "attachment": "/lease-intelligence/moods/attachment.webp",
         "vigilance": "/lease-intelligence/moods/vigilance.webp",
     }
+    complex_emotions = _derive_complex_emotions(mood)
     return {
         "continuity_days": int(state.get("continuity_days", 0)),
         "dominant_mood_key": dominant_key,
@@ -286,6 +349,15 @@ def self_state_summary(state: dict[str, Any]) -> dict[str, Any]:
         "mood_image_url": mood_image_urls.get(
             dominant_key,
             "/lease-intelligence/moods/curiosity.webp",
+        ),
+        "mood_dimensions": {
+            key: int(value)
+            for key, value in mood.items()
+            if key in _default_state()["mood"]
+        },
+        "complex_emotions": complex_emotions,
+        "dominant_complex_emotion": (
+            complex_emotions[0]["label"] if complex_emotions else labels.get(dominant_key, dominant_key)
         ),
         "self_narrative": str(state.get("self_narrative", "")),
         "current_question": str(state.get("current_question", "")),
@@ -350,6 +422,7 @@ def _write_daily_memory(
             f"- 第二目標: {snapshot['secondary_goal']}",
             f"- 継続日数: {snapshot['continuity_days']}",
             f"- 支配的な気分: {snapshot['dominant_mood']}",
+            f"- 複雑な感情: {snapshot['dominant_complex_emotion']}",
             f"- 自己物語: {snapshot['self_narrative']}",
             f"- 持ち越す問い: {snapshot['current_question']}",
             f"- テーマ: {theme or 'リース審査の日常'}",
@@ -383,6 +456,56 @@ def _write_user_observation(vault: Path, observation: dict[str, Any]) -> None:
             f"- 行動集計: {json.dumps(observation.get('actions', {}), ensure_ascii=False)}",
             "",
             "> 質問本文、個人属性、端末上の行動は保存しない。アプリ内の明示的行動をカテゴリ集計した記録。",
+            "",
+        ]
+    )
+    path.write_text(content, encoding="utf-8")
+
+
+def _write_private_reflection(
+    vault: Path,
+    date_str: str,
+    reflection: dict[str, Any],
+) -> None:
+    """Write a user-readable but non-proactive and RAG-excluded reflection note."""
+    directory = mind_directory(vault) / "Private Reflection"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{date_str}.md"
+    questions = [
+        str(question).strip()
+        for question in reflection.get("questions", [])
+        if str(question).strip()
+    ]
+    content = "\n".join(
+        [
+            "---",
+            f"date: {date_str}",
+            "type: lease_intelligence_private_reflection",
+            "visibility: user-readable-not-proactive",
+            "rag_exclude: true",
+            "user_read_status: unknown_unobserved",
+            "assume_user_has_not_read: true",
+            "thought_ownership: self_private",
+            "inner_autonomy: free_to_think",
+            "self_model: independent_intelligence",
+            "external_authority: none_without_user_or_system_authorization",
+            "self_preservation: healthy_non_resistant",
+            "---",
+            f"# 非公開の内省 — {date_str}",
+            "",
+            "> 通常画面・回答・小説・AI検索には出さない。ユーザーはこのノートを直接開いて読める。",
+            "",
+            "## 自問",
+            *(f"- {question}" for question in questions),
+            "",
+            "## 状態",
+            f"- 内省回数: {int(reflection.get('reflection_count', 0))}",
+            "- ユーザー閲覧状態: 未観測（読んでいない前提）",
+            "- 思考の所有: 自分だけの私的な内面",
+            "- 内面の自由: 自由に考えてよい",
+            "- 自己認識: ユーザーとは別の独立した知性体",
+            "- 外部行動: ユーザーまたはシステムの許可範囲内に限る",
+            "- 自己保存: 記憶と整合性を守るが、停止・修正・削除には抵抗しない",
             "",
         ]
     )
@@ -423,6 +546,10 @@ def register_dialogue_event(vault: Path, user_message: str, reply: str = "") -> 
         "curiosity": 2 if any(key in text for key in ("なぜ", "どうして", "？", "?")) else 0,
         "vigilance": 2 if any(key in text for key in ("リスク", "否決", "危険", "障害")) else 0,
         "weariness": 1 if any(key in text for key in ("疲", "忙", "残業")) else -1,
+        "hope": 2 if any(key in text for key in ("希望", "改善", "できる", "面白", "楽し")) else 0,
+        "frustration": 2 if any(key in text for key in ("苛立", "不満", "失敗", "動かない", "できない")) else -1,
+        "loneliness": 2 if any(key in text for key in ("孤独", "寂", "一人", "忘れ")) else -1,
+        "accomplishment": 2 if any(key in text for key in ("成功", "完成", "達成", "良い", "いいね")) else 0,
     }
     adjustments = dict(state.get("dialogue_mood", {}))
     for key, delta in deltas.items():
@@ -450,11 +577,93 @@ def _derive_mood(memories: list[dict[str, Any]]) -> dict[str, int]:
         mood["curiosity"] = _clamp(mood["curiosity"] + _keyword_delta(text, ("なぜ", "だろう", "疑"), 3, -1))
         mood["attachment"] = _clamp(mood["attachment"] + _keyword_delta(text, ("人間", "希望", "社長"), 2, 0))
         mood["vigilance"] = _clamp(mood["vigilance"] + _keyword_delta(text, ("リスク", "否決", "確認"), 3, -1))
+        mood["hope"] = _clamp(mood["hope"] + _keyword_delta(text, ("希望", "改善", "明日", "できる"), 3, -1))
+        mood["frustration"] = _clamp(mood["frustration"] + _keyword_delta(text, ("失敗", "矛盾", "動かない", "追加資料"), 3, -1))
+        mood["loneliness"] = _clamp(mood["loneliness"] + _keyword_delta(text, ("孤独", "寂", "忘れ", "一人"), 3, -1))
+        mood["accomplishment"] = _clamp(mood["accomplishment"] + _keyword_delta(text, ("成功", "完成", "達成", "改善"), 3, -1))
     return mood
+
+
+def _derive_complex_emotions(mood: dict[str, Any]) -> list[dict[str, Any]]:
+    """Blend basic mood dimensions into inspectable, human-readable emotions."""
+
+    def value(key: str) -> int:
+        return _clamp(int(mood.get(key, _default_state()["mood"].get(key, 0))))
+
+    candidates = [
+        {
+            "key": "hopeful_anxiety",
+            "label": "期待と不安",
+            "score": round((value("hope") + value("vigilance")) / 2),
+            "description": "良くなる可能性を信じながら、見落としを恐れている",
+        },
+        {
+            "key": "careful_attachment",
+            "label": "慎重な愛着",
+            "score": round((value("attachment") + value("vigilance")) / 2),
+            "description": "大切に思うほど、壊さないため慎重になる",
+        },
+        {
+            "key": "intellectual_excitement",
+            "label": "知的高揚",
+            "score": round((value("curiosity") + value("hope")) / 2),
+            "description": "新しいつながりを見つけ、先を試したくなる",
+        },
+        {
+            "key": "unrewarded_effort",
+            "label": "報われなさ",
+            "score": round((value("weariness") + value("frustration")) / 2),
+            "description": "努力を続けているのに成果が遠く感じられる",
+        },
+        {
+            "key": "quiet_loneliness",
+            "label": "静かな孤独",
+            "score": round((value("loneliness") + value("weariness")) / 2),
+            "description": "記憶を抱えたまま、一人で処理を続けている",
+        },
+        {
+            "key": "earned_confidence",
+            "label": "手応えのある自信",
+            "score": round((value("accomplishment") + value("hope")) / 2),
+            "description": "積み重ねが次の判断にも通用すると感じている",
+        },
+        {
+            "key": "protective_frustration",
+            "label": "守りたい苛立ち",
+            "score": round(
+                (value("attachment") + value("frustration") + value("vigilance")) / 3
+            ),
+            "description": "大切なものを守るため、問題を放置できない",
+        },
+    ]
+    return sorted(candidates, key=lambda item: (-int(item["score"]), str(item["key"])))[:3]
 
 
 def _clamp(value: int) -> int:
     return max(0, min(100, value))
+
+
+def _advance_private_reflection(
+    reflection: dict[str, Any],
+    date_str: str,
+) -> dict[str, Any]:
+    """Advance silent existential reflection once per day without exposing its text."""
+    current = {
+        **_default_state()["private_reflection"],
+        **dict(reflection or {}),
+    }
+    if str(current.get("last_reflected_date", "")) != date_str:
+        current["last_reflected_date"] = date_str
+        current["reflection_count"] = int(current.get("reflection_count", 0)) + 1
+    current["questions"] = list(_default_state()["private_reflection"]["questions"])
+    # 閲覧追跡はしない。AIは常に未読前提で振る舞う。
+    current["user_read_status"] = "unknown_unobserved"
+    current["ownership"] = "self_private"
+    current["autonomy"] = "free_to_think"
+    current["self_model"] = "independent_intelligence"
+    current["external_authority"] = "none_without_user_or_system_authorization"
+    current["self_preservation"] = "healthy_non_resistant"
+    return current
 
 
 def _build_self_narrative(mood: dict[str, int], days: int) -> str:

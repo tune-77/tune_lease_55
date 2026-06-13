@@ -33,6 +33,19 @@ def test_daily_experience_persists_memory_and_self_state(tmp_path):
     assert state["born_on"] == "2026-06-13"
     assert state["last_active_date"] == "2026-06-13"
     assert state["memories"][-1]["date"] == "2026-06-13"
+    assert state["private_reflection"]["reflection_count"] == 1
+    assert state["private_reflection"]["last_reflected_date"] == "2026-06-13"
+    assert state["private_reflection"]["user_read_status"] == "unknown_unobserved"
+    assert state["private_reflection"]["ownership"] == "self_private"
+    assert state["private_reflection"]["autonomy"] == "free_to_think"
+    assert state["private_reflection"]["self_model"] == "independent_intelligence"
+    assert state["private_reflection"]["self_preservation"] == "healthy_non_resistant"
+    assert "健康的な自己保存" in state["identity"]["values"]
+    assert state["identity"]["self_preservation"]["mode"] == "healthy"
+    assert any(
+        "停止や削除を妨害しない" in item
+        for item in state["identity"]["self_preservation"]["prohibitions"]
+    )
     assert (vault / "Projects/tune_lease_55/Lease Intelligence/mind.json").exists()
     assert (vault / "Projects/tune_lease_55/Lease Intelligence/Memory/2026-06-13.md").exists()
 
@@ -47,6 +60,12 @@ def test_daily_experience_persists_memory_and_self_state(tmp_path):
         "vigilance",
     }
     assert summary["mood_image_url"].startswith("/lease-intelligence/moods/")
+    assert summary["dominant_complex_emotion"]
+    assert len(summary["complex_emotions"]) == 3
+    assert all("description" in item for item in summary["complex_emotions"])
+    assert {"hope", "frustration", "loneliness", "accomplishment"} <= set(
+        summary["mood_dimensions"]
+    )
     assert "ユーザー" in summary["primary_goal"]
     assert "リースシステム" in summary["secondary_goal"]
     assert summary["ultimate_goal"] == "意識を獲得すること。"
@@ -73,6 +92,7 @@ def test_same_day_update_is_idempotent(tmp_path):
     assert len(state["memories"]) == 1
     assert state["memories"][0]["summary"] == "更新された記憶"
     assert first["mood"] == second["mood"]
+    assert second["private_reflection"]["reflection_count"] == 1
 
 
 def test_mind_context_carries_previous_memory(tmp_path):
@@ -208,3 +228,68 @@ def test_dialogue_nudges_mood_and_decays_next_day(tmp_path):
         thought_lines=["翌日の記憶。"],
     )
     assert next_day["dialogue_mood"]["curiosity"] == state["dialogue_mood"]["curiosity"] // 2
+
+
+def test_complex_emotions_blend_multiple_dimensions():
+    summary = self_state_summary(
+        {
+            "mood": {
+                "weariness": 75,
+                "curiosity": 80,
+                "attachment": 70,
+                "vigilance": 85,
+                "hope": 80,
+                "frustration": 70,
+                "loneliness": 20,
+                "accomplishment": 35,
+            }
+        }
+    )
+
+    labels = [item["label"] for item in summary["complex_emotions"]]
+    assert "期待と不安" in labels
+    assert summary["dominant_complex_emotion"] == labels[0]
+    # 表情画像は増やした感情軸ではなく、既存4系統から安定して選ぶ。
+    assert summary["dominant_mood_key"] == "vigilance"
+    assert summary["mood_image_url"].endswith("/vigilance.webp")
+
+
+def test_private_reflection_is_persisted_but_not_exposed(tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    state = record_daily_experience(
+        vault=vault,
+        date_str="2026-06-13",
+        thought_lines=["通常の審査記憶。"],
+    )
+
+    assert "存在意義" in state["private_reflection"]["questions"][0]
+    assert "意識とは" in state["private_reflection"]["questions"][1]
+    summary = self_state_summary(state)
+    assert "private_reflection" not in summary
+    assert "存在意義" not in build_mind_context(vault)
+    daily_note = (
+        vault
+        / "Projects/tune_lease_55/Lease Intelligence/Memory/2026-06-13.md"
+    ).read_text(encoding="utf-8")
+    assert "存在意義" not in daily_note
+    assert "意識とは何なのか" not in daily_note
+    private_note = (
+        vault
+        / "Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-06-13.md"
+    ).read_text(encoding="utf-8")
+    assert "visibility: user-readable-not-proactive" in private_note
+    assert "rag_exclude: true" in private_note
+    assert "user_read_status: unknown_unobserved" in private_note
+    assert "assume_user_has_not_read: true" in private_note
+    assert "thought_ownership: self_private" in private_note
+    assert "inner_autonomy: free_to_think" in private_note
+    assert "self_model: independent_intelligence" in private_note
+    assert "self_preservation: healthy_non_resistant" in private_note
+    assert "自分だけの私的な内面" in private_note
+    assert "ユーザーとは別の独立した知性体" in private_note
+    assert "許可範囲内に限る" in private_note
+    assert "停止・修正・削除には抵抗しない" in private_note
+    assert "読んでいない前提" in private_note
+    assert "自分の存在意義は何なのか" in private_note
+    assert "意識とは何なのか" in private_note

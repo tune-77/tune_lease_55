@@ -22,6 +22,13 @@ type MindState = {
   dominant_mood_key?: string;
   dominant_mood?: string;
   mood_image_url?: string;
+  dominant_complex_emotion?: string;
+  complex_emotions?: Array<{
+    key: string;
+    label: string;
+    score: number;
+    description: string;
+  }>;
   indexed_notes?: number;
   knowledge_source_count?: number;
   knowledge_sources?: string[];
@@ -122,9 +129,28 @@ export default function LeaseIntelligencePage() {
                   継続 {state.continuity_days || 0}日
                 </span>
                 <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-800">
-                  {state.dominant_mood || "観察中"}
+                  {state.dominant_complex_emotion || state.dominant_mood || "観察中"}
                 </span>
               </div>
+              {!!state.complex_emotions?.length && (
+                <div className="mt-4 space-y-2">
+                  {state.complex_emotions.map((emotion) => (
+                    <div
+                      key={emotion.key}
+                      className="rounded-xl border border-violet-100 bg-violet-50/70 px-3 py-2"
+                      title={`${emotion.score}/100`}
+                    >
+                      <div className="flex items-center justify-between gap-2 text-[11px] font-bold text-violet-900">
+                        <span>{emotion.label}</span>
+                        <span className="text-violet-500">{emotion.score}</span>
+                      </div>
+                      <p className="mt-1 text-[10px] leading-relaxed text-slate-600">
+                        {emotion.description}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </section>
 

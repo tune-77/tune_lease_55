@@ -430,11 +430,17 @@ def _search_in_paths(
 
 
 _CHAT_LOG_DIRS = ("AI Chat", "Improvement Log", "Weekly Review", "Daily")
+_PRIVATE_NOTE_DIRS = ("Private Reflection",)
 
 
 def _is_chat_log(path: Path) -> bool:
     parts = path.parts
     return any(d in parts for d in _CHAT_LOG_DIRS)
+
+
+def _is_private_note(path: Path) -> bool:
+    """Notes readable by the user but excluded from every AI retrieval path."""
+    return any(directory in path.parts for directory in _PRIVATE_NOTE_DIRS)
 
 
 # モジュール起動時に1回だけ vault を走査し、Flask の request thread での rglob 不安定挙動を回避する。
@@ -457,6 +463,8 @@ def _build_vault_index() -> None:
     chat_logs: list[Path] = []
     try:
         for p in vault.rglob("*.md"):
+            if _is_private_note(p):
+                continue
             if _is_chat_log(p):
                 chat_logs.append(p)
             else:
@@ -498,7 +506,11 @@ def iter_indexed_obsidian_documents(
     paths = knowledge + (chat_logs if include_chat_logs else [])
     documents: list[dict[str, str]] = []
     for path in paths:
-        if not path.is_file() or any(skip in path.parts for skip in (".obsidian", ".claude", ".claudian")):
+        if (
+            not path.is_file()
+            or _is_private_note(path)
+            or any(skip in path.parts for skip in (".obsidian", ".claude", ".claudian"))
+        ):
             continue
         try:
             content = path.read_text(encoding="utf-8", errors="ignore")
@@ -554,6 +566,8 @@ def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[
             if not path:
                 path = str(item.get("file_name") or item.get("ref") or "").strip()
             if not path:
+                continue
+            if _is_private_note(Path(path)):
                 continue
             text = str(item.get("text") or "").strip()
             semantic_score = _semantic_score_from_item(item, rank)
