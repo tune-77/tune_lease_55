@@ -5660,27 +5660,61 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     if not message:
         raise HTTPException(status_code=422, detail="message は空にできません")
 
-    from api.chat_memory import call_gemini_chat, get_recent_messages, save_message
+    from api.chat_memory import call_gemini_with_tools, get_recent_messages, save_message
     from lease_intelligence_dialogue import (
         DIALOGUE_USER_ID,
         append_dialogue_note,
         build_dialogue_context,
     )
+    from lease_intelligence_pending import (
+        extract_and_save_promises,
+        get_pending_tasks,
+        mark_done,
+        save_countermeasures_to_dispatch,
+    )
+    from lease_intelligence_tools import TOOL_DECLARATIONS, execute_tool
     from lease_news_digest import find_vault
 
     vault = find_vault()
     if not vault:
         raise HTTPException(status_code=503, detail="Obsidian Vaultが見つかりません")
+
+    # 前回約束した調査タスクがあれば冒頭に報告する
+    pending = get_pending_tasks()
+    pending_prefix = ""
+    if pending:
+        topics = "、".join(f"「{t['topic'][:40]}」" for t in pending[:3])
+        pending_prefix = f"[前回お約束した調査を先に実行します: {topics}]\n\n"
+        mark_done([t["id"] for t in pending])
+
+    full_message = pending_prefix + message if pending_prefix else message
+
     history = get_recent_messages(DIALOGUE_USER_ID, limit=24)
-    system_prompt, state = build_dialogue_context(vault, message)
+    system_prompt, state = build_dialogue_context(vault, full_message)
+
+    def _tool_executor(name: str, args: dict) -> object:
+        return execute_tool(name, args, vault)
+
     try:
-        reply = call_gemini_chat(system_prompt, history, message).strip()
+        reply = call_gemini_with_tools(
+            system_prompt,
+            history,
+            full_message,
+            TOOL_DECLARATIONS,
+            _tool_executor,
+        ).strip()
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"対話AIへ接続できません: {exc}")
+
     save_message(DIALOGUE_USER_ID, "user", message)
     save_message(DIALOGUE_USER_ID, "assistant", reply)
     note_path = append_dialogue_note(vault, message, reply)
-    # 対話そのものを気分へ小さく反映し、更新後の状態を返す
+
+    # 今回の返答に調査約束が含まれていたら記録する
+    extract_and_save_promises(message, reply)
+    # 対応策が含まれていたら改善ディスパッチキューに追記する
+    save_countermeasures_to_dispatch(message, reply)
+
     from lease_intelligence_mind import register_dialogue_event, self_state_summary
 
     refreshed = register_dialogue_event(vault, message, reply)
@@ -5952,7 +5986,17 @@ def post_chat(req: ChatRequest):
         # システムプロンプトにRAGコンテキスト・DB統計・改善照合・会話ガイダンスを追記
         from prompt_feedback import build_pdca_prompt_block
 
-        base_effective_prompt = _CHAT_SYSTEM_PROMPT + news_focus_context + news_brief_context + rag_context + db_context + improvement_context + guidance.prompt_suffix
+        judgment_learning_context = ""
+        try:
+            from judgment_feedback import build_judgment_learning_prompt_block
+
+            learned = build_judgment_learning_prompt_block()
+            if learned:
+                judgment_learning_context = f"\n\n{learned}"
+        except Exception as _judgment_learning_error:
+            print(f"[判断差分学習] 読み込みエラー: {_judgment_learning_error}")
+
+        base_effective_prompt = _CHAT_SYSTEM_PROMPT + news_focus_context + news_brief_context + rag_context + db_context + improvement_context + judgment_learning_context + guidance.prompt_suffix
         pdca_block = build_pdca_prompt_block()
         effective_prompt = base_effective_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
         reply = call_gemini_chat(effective_prompt, history_for_gemini, req.message)

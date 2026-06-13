@@ -198,6 +198,83 @@ def get_summary(user_id: str = "default") -> str:
         return ""
 
 
+def call_gemini_with_tools(
+    system_prompt: str,
+    history: list[dict],
+    user_message: str,
+    tool_declarations: list[dict],
+    tool_executor: "Callable[[str, dict], Any]",
+    max_tool_rounds: int = 3,
+) -> str:
+    """
+    Gemini API を function calling 対応の multi-turn 形式で呼び出す。
+    tool_declarations: Gemini function_declarations スキーマのリスト
+    tool_executor: (tool_name, args_dict) -> result_any を実行する関数
+    """
+    from typing import Callable, Any as _Any  # noqa: F401
+
+    api_key = _get_gemini_api_key()
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY が設定されていません")
+
+    contents: list[dict] = []
+    for msg in history:
+        gemini_role = "user" if msg["role"] == "user" else "model"
+        contents.append({"role": gemini_role, "parts": [{"text": msg["content"]}]})
+    contents.append({"role": "user", "parts": [{"text": user_message}]})
+
+    base_payload: dict = {
+        "system_instruction": {"parts": [{"text": system_prompt}]},
+        "tools": [{"function_declarations": tool_declarations}],
+        "tool_config": {"function_calling_config": {"mode": "AUTO"}},
+        "generationConfig": {
+            "temperature": 0.45,
+            "maxOutputTokens": _chat_max_tokens(),
+        },
+    }
+
+    text = ""
+    for _round in range(max_tool_rounds + 1):
+        payload = {**base_payload, "contents": contents}
+        resp = requests.post(
+            _gemini_url(),
+            json=payload,
+            headers={"x-goog-api-key": api_key},
+            timeout=90,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        candidate = (data.get("candidates") or [{}])[0]
+        parts = (candidate.get("content") or {}).get("parts") or []
+
+        # Collect any function calls in this response
+        func_calls = [p["functionCall"] for p in parts if "functionCall" in p]
+        text_parts = [p.get("text", "") for p in parts if "text" in p]
+        if text_parts:
+            text = normalize_chat_text("".join(text_parts))
+
+        if not func_calls or _round == max_tool_rounds:
+            break
+
+        # Append model turn (function calls)
+        contents.append({"role": "model", "parts": parts})
+
+        # Execute each tool and build function response parts
+        response_parts = []
+        for fc in func_calls:
+            result = tool_executor(fc["name"], fc.get("args") or {})
+            response_parts.append({
+                "functionResponse": {
+                    "name": fc["name"],
+                    "response": {"result": result},
+                }
+            })
+        contents.append({"role": "user", "parts": response_parts})
+
+    return text
+
+
 def call_gemini_chat(
     system_prompt: str,
     history: list[dict],
