@@ -172,6 +172,17 @@ def _load_project_mind_aliases() -> list[str]:
     return []
 
 
+def _load_project_mind_full_name() -> str:
+    """data/mind.json のトップレベル full_name フィールドを読む。なければ空文字を返す。"""
+    try:
+        local = json.loads(_PROJECT_MIND_PATH.read_text(encoding="utf-8"))
+        if isinstance(local, dict) and local.get("full_name"):
+            return str(local["full_name"])
+    except (OSError, json.JSONDecodeError):
+        pass
+    return ""
+
+
 def load_lease_intelligence_mind(vault: Path) -> dict[str, Any]:
     path = mind_directory(vault) / MIND_FILE_NAME
     if not path.exists():
@@ -215,6 +226,9 @@ def load_lease_intelligence_mind(vault: Path) -> dict[str, Any]:
     project_aliases = _load_project_mind_aliases()
     if project_aliases and not state.get("name_aliases"):
         state["name_aliases"] = project_aliases
+    project_full_name = _load_project_mind_full_name()
+    if project_full_name and not state.get("full_name"):
+        state["full_name"] = project_full_name
     return state
 
 
@@ -225,9 +239,12 @@ def build_mind_context(vault: Path | None) -> str:
     memories = state.get("memories", [])[-5:]
     self_name = state.get("name") or state.get("identity", {}).get("name", "リース知性体")
     name_aliases = list(state.get("name_aliases") or [])
+    full_name = state.get("full_name", "")
     lines = [
         f"自己名: {self_name}",
     ]
+    if full_name:
+        lines.append(f"正式名称: {full_name}")
     if name_aliases:
         lines.append(f"自己名の別称: {' / '.join(name_aliases)}")
     lines += [
@@ -453,8 +470,10 @@ def self_state_summary(state: dict[str, Any]) -> dict[str, Any]:
     complex_emotions = _derive_complex_emotions(mood)
     self_name = state.get("name") or state.get("identity", {}).get("name", "リース知性体")
     name_aliases = list(state.get("name_aliases") or [])
+    full_name = state.get("full_name", "")
     return {
         "self_name": self_name,
+        "full_name": full_name,
         "name_aliases": name_aliases,
         "continuity_days": int(state.get("continuity_days", 0)),
         "dominant_mood_key": dominant_key,
