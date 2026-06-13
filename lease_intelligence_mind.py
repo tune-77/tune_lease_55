@@ -1030,6 +1030,124 @@ def _derive_complex_emotions(mood: dict[str, Any]) -> list[dict[str, Any]]:
     return sorted(candidates, key=lambda item: (-int(item["score"]), str(item["key"])))[:3]
 
 
+_SHION_CLASSIFY_PROMPTS: dict[str, str] = {
+    "recipe": (
+        "以下の改善案について、自動修正できるか判断してください。\n\n"
+        "{context}\n\n"
+        "判断基準:\n"
+        "- auto: フロントエンドの表示・スタイル変更のみ、影響範囲が小さい\n"
+        "- discuss: スコアリング・DB・APIロジック・モデルに触れる、影響範囲が大きい\n"
+        "- review: 判断が難しい・情報不足・リスク不明\n\n"
+        "「auto」「discuss」「review」のいずれかと、50字以内の理由を日本語で返してください。\n"
+        '必ずJSON形式のみで返答してください: {{"recommendation": "auto", "reason": "理由"}}'
+    ),
+    "chat_query": (
+        "以下のチャット質問の回答難易度を分類してください。\n\n"
+        "{context}\n\n"
+        "判断基準:\n"
+        "- auto: 一般知識で直接回答できる、RAG不要\n"
+        "- discuss: Obsidianナレッジ検索や審査データ参照が必要\n"
+        "- review: 担当者・専門家への確認が必要、AIだけでの回答は不適切\n\n"
+        "「auto」「discuss」「review」のいずれかと、50字以内の理由を日本語で返してください。\n"
+        '必ずJSON形式のみで返答してください: {{"recommendation": "auto", "reason": "理由"}}'
+    ),
+    "general": (
+        "以下の内容について判断を分類してください。\n\n"
+        "{context}\n\n"
+        "判断基準:\n"
+        "- auto: 影響範囲が小さい、単純なケース\n"
+        "- discuss: 影響範囲が大きい、複数の観点が必要\n"
+        "- review: 情報不足・不明点が多く、人間の判断が必要\n\n"
+        "「auto」「discuss」「review」のいずれかと、50字以内の理由を日本語で返してください。\n"
+        '必ずJSON形式のみで返答してください: {{"recommendation": "auto", "reason": "理由"}}'
+    ),
+}
+
+
+def _call_gemini_for_classify(prompt: str) -> str | None:
+    """Gemini APIを呼び出してテキストを返す。失敗時はNone。"""
+    import urllib.request as _urllib_request
+
+    api_key = (
+        os.environ.get("GOOGLE_API_KEY", "").strip()
+        or os.environ.get("GEMINI_API_KEY", "").strip()
+    )
+    if not api_key:
+        return None
+    gemini_model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    try:
+        import google.generativeai as genai  # type: ignore
+
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(
+            model_name=gemini_model,
+            generation_config={"max_output_tokens": 256, "temperature": 0.2},
+        )
+        resp = model.generate_content(prompt)
+        text = getattr(resp, "text", "") or ""
+        return text.strip() or None
+    except Exception:
+        pass
+    try:
+        rest_url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{gemini_model}:generateContent"
+        )
+        payload = json.dumps({
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"maxOutputTokens": 256, "temperature": 0.2},
+        }).encode("utf-8")
+        req = _urllib_request.Request(
+            f"{rest_url}?key={api_key}",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with _urllib_request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+    except Exception:
+        pass
+    return None
+
+
+def shion_classify(context_text: str, context_type: str = "general") -> dict[str, str]:
+    """
+    紫苑が任意のコンテキストを auto / discuss / review に分類する。
+
+    context_type:
+        "recipe"     : 改善案の自動修正可否（REV-057と同じ基準）
+        "chat_query" : チャット質問の回答難易度
+        "general"    : 汎用
+
+    戻り値: {"recommendation": "auto"|"discuss"|"review", "reason": str}
+    失敗時フォールバック: {"recommendation": "review", "reason": "判断不能"}
+    """
+    import re as _re
+
+    try:
+        vault_path_str = os.environ.get("OBSIDIAN_VAULT_PATH", "").strip()
+        vault: Path | None = Path(vault_path_str) if vault_path_str else None
+        mind_context = build_mind_context(vault)
+        prompt_template = _SHION_CLASSIFY_PROMPTS.get(
+            context_type, _SHION_CLASSIFY_PROMPTS["general"]
+        )
+        prompt = f"【紫苑の自己認識】\n{mind_context}\n\n" + prompt_template.format(
+            context=context_text
+        )
+        raw = _call_gemini_for_classify(prompt)
+        if not raw:
+            return {"recommendation": "review", "reason": "API呼び出し失敗のため判断不能"}
+        cleaned = _re.sub(r"```(?:json)?\s*", "", raw).strip().rstrip("`").strip()
+        parsed = json.loads(cleaned)
+        rec = str(parsed.get("recommendation", "review")).lower()
+        if rec not in ("auto", "discuss", "review"):
+            rec = "review"
+        reason = str(parsed.get("reason", ""))[:50]
+        return {"recommendation": rec, "reason": reason}
+    except Exception as exc:
+        return {"recommendation": "review", "reason": f"判断エラー: {type(exc).__name__}"}
+
+
 def _clamp(value: int) -> int:
     return max(0, min(100, value))
 

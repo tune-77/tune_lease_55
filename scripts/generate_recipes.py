@@ -13,9 +13,7 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import sys
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -118,66 +116,6 @@ def _build_intelligence_comment(rev: str, title: str, ledger_candidates: dict[st
         return ""
 
 
-_GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
-_GEMINI_REST_URL = (
-    "https://generativelanguage.googleapis.com/v1beta/models/"
-    f"{_GEMINI_MODEL}:generateContent"
-)
-
-_SHION_JUDGMENT_PROMPT = """\
-以下の改善案について、自動修正できるか判断してください。
-
-改善タイトル: {title}
-変更対象ファイル: {target_files}
-過去の類似改善: {similar_count}件
-関連Obsidianノート: {obsidian_context}
-
-判断基準:
-- auto: フロントエンドの表示・スタイル変更のみ、影響範囲が小さい
-- discuss: スコアリング・DB・APIロジック・モデルに触れる、影響範囲が大きい
-- review: 判断が難しい・情報不足・リスク不明
-
-「auto」「discuss」「review」のいずれかと、50字以内の理由を日本語で返してください。
-必ずJSON形式のみで返答してください: {{"recommendation": "auto", "reason": "理由"}}
-"""
-
-
-def _call_gemini_for_shion(prompt: str) -> str | None:
-    api_key = (
-        os.environ.get("GOOGLE_API_KEY", "").strip()
-        or os.environ.get("GEMINI_API_KEY", "").strip()
-    )
-    if not api_key:
-        return None
-    try:
-        import google.generativeai as genai  # type: ignore
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(
-            model_name=_GEMINI_MODEL,
-            generation_config={"max_output_tokens": 256, "temperature": 0.2},
-        )
-        resp = model.generate_content(prompt)
-        text = getattr(resp, "text", "") or ""
-        return text.strip() or None
-    except Exception:
-        pass
-    try:
-        payload = json.dumps({
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"maxOutputTokens": 256, "temperature": 0.2},
-        }).encode("utf-8")
-        url = f"{_GEMINI_REST_URL}?key={api_key}"
-        req = urllib.request.Request(
-            url, data=payload, headers={"Content-Type": "application/json"}
-        )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        return data["candidates"][0]["content"]["parts"][0]["text"].strip()
-    except Exception:
-        pass
-    return None
-
-
 def _build_shion_recommendation(
     rev: str,
     title: str,
@@ -187,25 +125,17 @@ def _build_shion_recommendation(
 ) -> tuple[str, str]:
     """紫苑の判断: (recommendation, reason) を返す。失敗時は ("review", ...)"""
     try:
+        from lease_intelligence_mind import shion_classify
         similar_count = _count_similar_in_ledger(rev, title, ledger_candidates)
-        obsidian_context = intelligence_comment or "なし"
         files_str = ", ".join(target_files) if target_files else "不明"
-        prompt = _SHION_JUDGMENT_PROMPT.format(
-            title=title,
-            target_files=files_str,
-            similar_count=similar_count,
-            obsidian_context=obsidian_context,
-        )
-        raw = _call_gemini_for_shion(prompt)
-        if not raw:
-            return ("review", "API呼び出し失敗のため判断不能")
-        cleaned = re.sub(r"```(?:json)?\s*", "", raw).strip().rstrip("`").strip()
-        parsed = json.loads(cleaned)
-        rec = str(parsed.get("recommendation", "review")).lower()
-        if rec not in ("auto", "discuss", "review"):
-            rec = "review"
-        reason = str(parsed.get("reason", ""))[:50]
-        return (rec, reason)
+        context_text = "\n".join([
+            f"改善タイトル: {title}",
+            f"変更対象ファイル: {files_str}",
+            f"過去の類似改善: {similar_count}件",
+            f"関連Obsidianノート: {intelligence_comment or 'なし'}",
+        ])
+        result = shion_classify(context_text, "recipe")
+        return (result["recommendation"], result["reason"])
     except Exception as e:
         return ("review", f"判断エラー: {type(e).__name__}")
 

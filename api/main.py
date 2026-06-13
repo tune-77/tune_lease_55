@@ -5747,11 +5747,37 @@ def delete_lease_intelligence_dialogue_history():
     }
 
 
+def _log_shion_query_class(message: str) -> None:
+    """shion_classify の結果を data/chat_logs.jsonl に非同期で記録する（レスポンス遅延なし）。"""
+    import json as _json
+    import threading as _threading
+    from datetime import datetime, timezone
+
+    def _run() -> None:
+        try:
+            from lease_intelligence_mind import shion_classify
+            result = shion_classify(message[:500], "chat_query")
+            log_path = Path(__file__).parent.parent / "data" / "chat_logs.jsonl"
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            entry = {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "message_preview": message[:80],
+                "shion_query_class": result,
+            }
+            with log_path.open("a", encoding="utf-8") as f:
+                f.write(_json.dumps(entry, ensure_ascii=False) + "\n")
+        except Exception:
+            pass
+
+    _threading.Thread(target=_run, daemon=True).start()
+
+
 @app.post("/api/chat")
 def post_chat(req: ChatRequest):
     """汎用チャット：メッセージを受け取り、会話履歴付きでGeminiへ送信して返答する。"""
     if not req.message.strip():
         raise HTTPException(status_code=422, detail="message は空にできません")
+    _log_shion_query_class(req.message)
     try:
         from api.chat_memory import (
             get_recent_messages,
