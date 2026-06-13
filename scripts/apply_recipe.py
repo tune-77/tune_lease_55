@@ -44,10 +44,15 @@ def _run(cmd: list[str], cwd: Path | None = None, check: bool = True) -> subproc
 
 def _check_git_clean() -> None:
     result = _run(["git", "status", "--porcelain"])
-    if result.stdout.strip():
+    # data/ 配下はコミットしない前提のファイルが常に存在するため除外する
+    dirty_lines = [
+        line for line in result.stdout.splitlines()
+        if line and not line[3:].startswith("data/")
+    ]
+    if dirty_lines:
         raise RuntimeError(
             "git ワーキングツリーに未コミットの変更があります。apply_recipe を中断します。\n"
-            + result.stdout
+            + "\n".join(dirty_lines)
         )
 
 
@@ -205,8 +210,9 @@ def _process_recipe(recipe_path: Path) -> tuple[str, str]:
             abs_path.write_text(original, encoding="utf-8")
         return "skipped", f"safety チェック失敗 ({safety}): {safety_msg[:200]}"
 
-    # ブランチ作成
-    branch = f"auto-recipe/{rev}"
+    # ブランチ作成（feat/rev-xxx 形式に統一）
+    rev_lower = rev.lower().replace("/", "-")
+    branch = f"feat/{rev_lower}"
     try:
         _run(["git", "checkout", "-b", branch])
     except subprocess.CalledProcessError as e:
