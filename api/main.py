@@ -5691,9 +5691,15 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
 
     history = get_recent_messages(DIALOGUE_USER_ID, limit=24)
     system_prompt, state = build_dialogue_context(vault, full_message)
+    consultation_ids: list[str] = []
 
     def _tool_executor(name: str, args: dict) -> object:
-        return execute_tool(name, args, vault)
+        result = execute_tool(name, args, vault)
+        if name == "consult_senior_reasoner" and isinstance(result, dict):
+            consultation_id = str(result.get("consultation_id") or "").strip()
+            if consultation_id:
+                consultation_ids.append(consultation_id)
+        return result
 
     try:
         reply = call_gemini_with_tools(
@@ -5709,6 +5715,13 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     save_message(DIALOGUE_USER_ID, "user", message)
     save_message(DIALOGUE_USER_ID, "assistant", reply)
     note_path = append_dialogue_note(vault, message, reply)
+    if consultation_ids:
+        try:
+            from lease_intelligence_consultation import finalize_consultation_learning
+
+            finalize_consultation_learning(vault, consultation_ids, reply)
+        except Exception as exc:
+            print(f"[ShionConsultation] 学習統合の保存に失敗: {exc}")
 
     # 今回の返答に調査約束が含まれていたら記録する
     extract_and_save_promises(message, reply)

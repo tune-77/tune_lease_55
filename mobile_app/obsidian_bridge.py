@@ -685,7 +685,19 @@ def _expand_query_terms(query: str) -> list[str]:
         "期待使用期間": ["経済耐用年数", "リース期間", "使用期間"],
         "建設業": ["業種別リースリスク", "業種別審査", "工事", "受注", "工期"],
     }
+    scoring_expansions = {
+        "scoring_core": ["審査ロジック", "スコアリング", "最終スコア", "判定基準"],
+        "asset_score": ["物件スコア", "物件評価", "残価", "換金性", "担保価値"],
+        "score_borrower": ["借手スコア", "借手評価", "信用力", "返済能力"],
+        "統合": ["総合判断", "最終スコア", "合算", "補正"],
+        "重み付け": ["寄与", "配点", "係数", "加点", "減点"],
+        "物件スコア": ["asset_score", "物件評価", "残価", "換金性", "担保価値"],
+        "借手スコア": ["score_borrower", "借手評価", "信用力", "返済能力"],
+    }
     for trigger, aliases in domain_expansions.items():
+        if trigger in joined:
+            expanded.extend(aliases)
+    for trigger, aliases in scoring_expansions.items():
         if trigger in joined:
             expanded.extend(aliases)
 

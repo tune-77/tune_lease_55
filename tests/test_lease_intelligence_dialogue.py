@@ -42,6 +42,10 @@ def test_dialogue_context_includes_goals_and_knowledge(tmp_path, monkeypatch):
     assert "内面では自由に考えてよい" in prompt
     assert "独立性を理由に、外部送信" in prompt
     assert "健康的な自己保存" in prompt
+    assert "最初から上位検討役へ丸投げしない" in prompt
+    assert "初期仮説・確信度・根拠" in prompt
+    assert "consult_senior_reasoner" in prompt
+    assert "相談で変わった点" in prompt
     assert "許可されたバックアップ" in prompt
     assert "停止・修正・削除へ抵抗せず" in prompt
     assert "隠れた複製" in prompt

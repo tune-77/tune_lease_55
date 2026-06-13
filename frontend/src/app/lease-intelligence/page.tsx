@@ -42,12 +42,15 @@ type SpeechRecognitionResultLike = ArrayLike<{ transcript: string }>;
 interface SpeechRecognitionEventLike {
   results: ArrayLike<SpeechRecognitionResultLike>;
 }
+interface SpeechRecognitionErrorEventLike {
+  error?: string;
+}
 interface SpeechRecognitionLike {
   lang: string;
   interimResults: boolean;
   continuous: boolean;
   onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
   onend: (() => void) | null;
   start: () => void;
   stop: () => void;
@@ -62,6 +65,40 @@ const getSpeechRecognition = (): SpeechRecognitionConstructor | null => {
   if (typeof window === "undefined") return null;
   const w = window as SpeechWindow;
   return w.SpeechRecognition || w.webkitSpeechRecognition || null;
+};
+
+const splitSpeechText = (text: string, maxLength = 180): string[] => {
+  const units = (text || "")
+    .replace(/\r\n?/g, "\n")
+    .match(/[^。！？!?\n]+[。！？!?]?|\n+/g) || [];
+  const chunks: string[] = [];
+  let current = "";
+
+  const flush = () => {
+    const chunk = current.trim();
+    if (chunk) chunks.push(chunk);
+    current = "";
+  };
+
+  for (const rawUnit of units) {
+    const unit = rawUnit.trim();
+    if (!unit) {
+      flush();
+      continue;
+    }
+    if (unit.length > maxLength) {
+      flush();
+      const characters = Array.from(unit);
+      for (let i = 0; i < characters.length; i += maxLength) {
+        chunks.push(characters.slice(i, i + maxLength).join(""));
+      }
+      continue;
+    }
+    if (current && current.length + unit.length > maxLength) flush();
+    current += unit;
+  }
+  flush();
+  return chunks;
 };
 
 // ── Markdown-lite renderer ─────────────────────────────────────────────────
@@ -131,30 +168,71 @@ export default function LeaseIntelligencePage() {
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [listening, setListening] = useState(false);
   const [speechEnabled, setSpeechEnabled] = useState(true);
+  const [voiceError, setVoiceError] = useState("");
 
   const messageListRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const speechGenerationRef = useRef(0);
 
   // ── TTS ──────────────────────────────────────────────────────────────────
   const speakText = (text: string) => {
     if (!speechEnabled || typeof window === "undefined" || !window.speechSynthesis) return;
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = "ja-JP";
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utter);
+    const synthesis = window.speechSynthesis;
+    const generation = speechGenerationRef.current + 1;
+    speechGenerationRef.current = generation;
+    const chunks = splitSpeechText(text);
+    if (!chunks.length) return;
+
+    const voices = synthesis.getVoices();
+    const preferred =
+      voices.find(v => v.name === "Kyoko") ||
+      voices.find(v => v.name === "O-ren") ||
+      voices.find(v => v.name.toLowerCase().includes("google") && v.lang.startsWith("ja")) ||
+      voices.find(v => v.lang.startsWith("ja") && v.localService) ||
+      voices.find(v => v.lang.startsWith("ja"));
+
+    const speakNext = (index: number) => {
+      if (speechGenerationRef.current !== generation || index >= chunks.length) return;
+      const utter = new SpeechSynthesisUtterance(chunks[index]);
+      utter.lang = "ja-JP";
+      utter.rate = 0.92;
+      utter.pitch = 1.05;
+      if (preferred) utter.voice = preferred;
+      utter.onend = () => speakNext(index + 1);
+      utter.onerror = (event) => {
+        if (
+          speechGenerationRef.current === generation &&
+          !["canceled", "interrupted"].includes(event.error)
+        ) {
+          setVoiceError(`音声読み上げエラー: ${event.error}`);
+        }
+      };
+      synthesis.speak(utter);
+    };
+
+    setVoiceError("");
+    synthesis.cancel();
+    speakNext(0);
   };
 
   // ── Voice input ──────────────────────────────────────────────────────────
   const startVoiceInput = () => {
-    if (!voiceSupported || loading) return;
+    if (loading) return;
     if (listening) {
       recognitionRef.current?.stop?.();
       setListening(false);
       return;
     }
     const SpeechRecognition = getSpeechRecognition();
-    if (!SpeechRecognition) return;
+    if (!SpeechRecognition) {
+      const w = window as unknown as Record<string, unknown>;
+      const keys = ["SpeechRecognition", "webkitSpeechRecognition"].map(
+        k => `${k}=${typeof w[k]}`
+      ).join(", ");
+      setVoiceError(`音声認識API未対応: ${keys}`);
+      return;
+    }
     const recognition = new SpeechRecognition();
     recognition.lang = "ja-JP";
     recognition.interimResults = false;
@@ -168,10 +246,30 @@ export default function LeaseIntelligencePage() {
       if (!transcript) return;
       setInput((prev) => `${prev}${prev.trim() ? "\n" : ""}${transcript}`);
     };
-    recognition.onerror = () => setListening(false);
+    recognition.onerror = (e) => {
+      const code = e?.error ?? String(e);
+      console.error("[SpeechRecognition] error:", code);
+      const MSG: Record<string, string> = {
+        "not-allowed": "マイクへのアクセスが拒否されました",
+        "network": "ネットワークエラー（Googleの音声サーバーに到達できません）",
+        "no-speech": "音声が検出されませんでした",
+        "audio-capture": "マイクが見つかりません",
+        "aborted": "音声認識が中断されました",
+      };
+      setVoiceError(MSG[code] ?? `エラー: ${code}`);
+      setListening(false);
+    };
     recognition.onend = () => setListening(false);
     setListening(true);
-    recognition.start();
+    setVoiceError("");
+    try {
+      recognition.start();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[SpeechRecognition] start failed:", msg);
+      setVoiceError(`起動エラー: ${msg}`);
+      setListening(false);
+    }
   };
 
   // ── Init ─────────────────────────────────────────────────────────────────
@@ -420,19 +518,14 @@ export default function LeaseIntelligencePage() {
 
           <footer className="shrink-0 border-t border-violet-100 bg-white p-4">
             {error && <p className="mb-2 text-xs font-bold text-red-600">{error}</p>}
+            {voiceError && <p className="mb-2 text-xs font-bold text-orange-600">🎤 {voiceError}</p>}
             <div className="flex gap-2">
               {/* 音声入力ボタン */}
               <button
                 type="button"
                 onClick={startVoiceInput}
-                disabled={!voiceSupported || loading}
-                title={
-                  !voiceSupported
-                    ? "このブラウザは音声入力に未対応です"
-                    : listening
-                    ? "録音中（クリックで停止）"
-                    : "音声入力"
-                }
+                disabled={loading}
+                title={listening ? "録音中（クリックで停止）" : "音声入力"}
                 className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl transition ${
                   listening
                     ? "animate-pulse bg-red-100 text-red-600 hover:bg-red-200"
@@ -463,7 +556,10 @@ export default function LeaseIntelligencePage() {
                 type="button"
                 onClick={() => {
                   setSpeechEnabled((v) => {
-                    if (v) window.speechSynthesis?.cancel();
+                    if (v) {
+                      speechGenerationRef.current += 1;
+                      window.speechSynthesis?.cancel();
+                    }
                     return !v;
                   });
                 }}

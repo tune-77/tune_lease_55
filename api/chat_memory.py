@@ -97,12 +97,21 @@ def normalize_chat_text(content: str) -> str:
 
 
 def _chat_max_tokens() -> int:
-    raw = os.environ.get("MEBUKI_CHAT_MAX_TOKENS", "1200")
+    raw = os.environ.get("MEBUKI_CHAT_MAX_TOKENS", "2400")
     try:
         value = int(raw)
     except ValueError:
-        value = 1200
-    return max(400, min(2400, value))
+        value = 2400
+    return max(800, min(8192, value))
+
+
+def _chat_continuation_rounds() -> int:
+    raw = os.environ.get("MEBUKI_CHAT_CONTINUATION_ROUNDS", "3")
+    try:
+        value = int(raw)
+    except ValueError:
+        value = 3
+    return max(1, min(5, value))
 
 
 def _candidate_finish_reason(data: dict) -> str:
@@ -118,6 +127,72 @@ def _candidate_text(data: dict) -> str:
         return str(data["candidates"][0]["content"]["parts"][0]["text"])
     except Exception:
         return ""
+
+
+def _continue_truncated_response(
+    *,
+    api_key: str,
+    system_prompt: str,
+    contents: list[dict],
+    initial_data: dict,
+    initial_text: str,
+    timeout: int,
+) -> str:
+    """Continue MAX_TOKENS responses until Gemini reports a completed turn."""
+    text = str(initial_text or "").strip()
+    data = initial_data
+    continuation_contents = list(contents)
+
+    for _ in range(_chat_continuation_rounds()):
+        if _candidate_finish_reason(data).upper() != "MAX_TOKENS" or not text:
+            break
+        previous_chunk = _candidate_text(data).strip()
+        if not previous_chunk:
+            break
+        continuation_contents.extend(
+            [
+                {"role": "model", "parts": [{"text": previous_chunk}]},
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "text": (
+                                "直前の回答は出力上限で途切れました。"
+                                "既出部分を繰り返さず、切れた箇所の直後から回答を続け、"
+                                "文・箇条書き・結論を必ず完結させてください。"
+                            )
+                        }
+                    ],
+                },
+            ]
+        )
+        payload = {
+            "system_instruction": {"parts": [{"text": system_prompt}]},
+            "contents": continuation_contents,
+            "generationConfig": {
+                "temperature": 0.25,
+                "maxOutputTokens": _chat_max_tokens(),
+            },
+        }
+        response = requests.post(
+            _gemini_url(),
+            json=payload,
+            headers={"x-goog-api-key": api_key},
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        data = response.json()
+        chunk = _candidate_text(data).strip()
+        if not chunk:
+            break
+        text = f"{text.rstrip()}\n\n{chunk}"
+
+    if _candidate_finish_reason(data).upper() == "MAX_TOKENS":
+        text = (
+            f"{text.rstrip()}\n\n"
+            "（回答が非常に長いため、続きは要点を分けて質問してください。）"
+        )
+    return text
 
 
 def get_message_count(user_id: str = "default") -> int:
@@ -255,6 +330,15 @@ def call_gemini_with_tools(
             text = normalize_chat_text("".join(text_parts))
 
         if not func_calls or _round == max_tool_rounds:
+            if text_parts:
+                text = _continue_truncated_response(
+                    api_key=api_key,
+                    system_prompt=system_prompt,
+                    contents=contents,
+                    initial_data=data,
+                    initial_text=text,
+                    timeout=90,
+                )
             break
 
         # Append model turn (function calls)
@@ -313,37 +397,19 @@ def call_gemini_chat(
     text = _candidate_text(data)
 
     if _candidate_finish_reason(data).upper() == "MAX_TOKENS" and text.strip():
-        continuation_payload = {
-            "system_instruction": {"parts": [{"text": system_prompt}]},
-            "contents": contents + [
-                {"role": "model", "parts": [{"text": text}]},
-                {
-                    "role": "user",
-                    "parts": [{
-                        "text": (
-                            "前の回答が途中で切れています。"
-                            "重複せず、直前の続きから必要な結論まで簡潔に続けてください。"
-                        )
-                    }],
-                },
-            ],
-            "generationConfig": {
-                "temperature": 0.35,
-                "maxOutputTokens": _chat_max_tokens(),
-            },
-        }
         try:
-            cont = requests.post(
-                _gemini_url(),
-                json=continuation_payload,
-                headers={"x-goog-api-key": api_key},
+            text = _continue_truncated_response(
+                api_key=api_key,
+                system_prompt=system_prompt,
+                contents=contents,
+                initial_data=data,
+                initial_text=text,
                 timeout=60,
             )
-            cont.raise_for_status()
-            continuation = _candidate_text(cont.json()).strip()
-            if continuation:
-                text = f"{text.rstrip()}\n\n{continuation}"
         except Exception:
-            text = f"{text.rstrip()}\n\n（回答が長く、続きの取得に失敗しました。必要なら「続き」と送ってください。）"
+            text = (
+                f"{text.rstrip()}\n\n"
+                "（回答が長く、続きの取得に失敗しました。必要なら「続き」と送ってください。）"
+            )
 
     return normalize_chat_text(text)

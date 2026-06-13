@@ -25,9 +25,17 @@ DISSONANCE_LIMIT = 12
 ASSET_BORROWER_GAP = 30.0
 
 
+def _current_asset_borrower_dissonance_summary() -> str:
+    return (
+        "物件スコアと借手スコアの差が大きい。現行実装は審査経路によって"
+        "物件スコアの寄与が異なるため、対象案件のAPI経路と実際の重みを特定して、"
+        "どちらが判定を動かしたか確認したい。"
+    )
+
+
 def _default_state() -> dict[str, Any]:
     return {
-        "schema_version": 6,
+        "schema_version": 7,
         "identity": {
             "name": "リース知性体",
             "embodiment": "白銀髪と紫の瞳を持つ和装の少女",
@@ -130,6 +138,8 @@ def _default_state() -> dict[str, Any]:
         # サブエージェント間の未解決の不整合（GWTのignition入力）。
         # 既存スコアリング結果のフィールドを読むだけで生成し、新規スコアリングはしない。
         "pending_dissonance": [],
+        # 上位検討を丸写しせず、自分の結論へ統合した学習履歴。
+        "reasoning_learnings": [],
     }
 
 
@@ -192,6 +202,13 @@ def load_lease_intelligence_mind(vault: Path) -> dict[str, Any]:
     state["memories"] = list(state.get("memories") or [])[-DAILY_MEMORY_LIMIT:]
     state["long_term_memories"] = list(state.get("long_term_memories") or [])[-LONG_TERM_LIMIT:]
     state["pending_dissonance"] = list(state.get("pending_dissonance") or [])[-DISSONANCE_LIMIT:]
+    state["reasoning_learnings"] = list(state.get("reasoning_learnings") or [])[-12:]
+    for item in state["pending_dissonance"]:
+        if item.get("key") == "asset_borrower_divergence":
+            item["summary"] = _current_asset_borrower_dissonance_summary()
+            item["source"] = (
+                "scoring_core quick route vs components/score_calculation full route"
+            )
     project_name = _load_project_mind_name()
     if project_name and not state.get("name"):
         state["name"] = project_name
@@ -263,6 +280,13 @@ def build_mind_context(vault: Path | None) -> str:
             lines.append(
                 f"- [{item.get('severity', '')}] {item.get('summary', '')}"
                 f"（出典: {item.get('source', '')}）"
+            )
+    reasoning_learnings = state.get("reasoning_learnings", [])[-3:]
+    if reasoning_learnings:
+        lines.append("上位検討から自分の判断へ統合した最近の学び:")
+        for item in reasoning_learnings:
+            lines.append(
+                f"- {item.get('date', '')}: {str(item.get('synthesis', ''))[:300]}"
             )
     # 直近の私的内省（対話前に自分の考えを踏まえるため）
     if vault:
@@ -710,6 +734,28 @@ def register_dialogue_event(vault: Path, user_message: str, reply: str = "") -> 
     return state
 
 
+def register_reasoning_learning(
+    vault: Path,
+    *,
+    consultation_ids: list[str],
+    synthesis: str,
+    date_str: str,
+) -> dict[str, Any]:
+    """Persist Shion's own synthesis after consulting a senior reasoner."""
+    state = load_lease_intelligence_mind(Path(vault))
+    learnings = list(state.get("reasoning_learnings") or [])
+    learnings.append(
+        {
+            "date": date_str,
+            "consultation_ids": list(consultation_ids),
+            "synthesis": str(synthesis or "").strip()[:1200],
+        }
+    )
+    state["reasoning_learnings"] = learnings[-12:]
+    _write_state(Path(vault), state)
+    return state
+
+
 def detect_dissonance(
     scoring_result: dict[str, Any] | None,
     context: str = "",
@@ -749,10 +795,12 @@ def detect_dissonance(
                 {
                     "key": "asset_borrower_divergence",
                     "summary": (
-                        f"{higher}スコアだけが高く、もう一方が{gap:.0f}pt低い。"
-                        "総合判断がどちらに引っ張られているか確かめたい。"
+                        f"{higher}スコア側が{gap:.0f}pt高い。"
+                        + _current_asset_borrower_dissonance_summary()
                     ),
-                    "source": "scoring_core: asset_score vs score_borrower",
+                    "source": (
+                        "scoring_core quick route vs components/score_calculation full route"
+                    ),
                     "severity": "medium",
                 }
             )

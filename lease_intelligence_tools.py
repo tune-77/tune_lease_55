@@ -194,35 +194,87 @@ def get_weekly_trend(weeks: int = 4) -> dict[str, Any]:
     return {"raw": str(data)[:500]}
 
 
-def _search_vault(query: str, vault: Path, limit: int) -> dict[str, Any]:
-    """Shared keyword search implementation for any Obsidian vault directory."""
-    results: list[dict] = []
-    q = query.lower()
-    try:
-        for md_file in sorted(vault.rglob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True):
-            try:
-                text = md_file.read_text(encoding="utf-8", errors="ignore")
-                if q in text.lower():
-                    idx = text.lower().find(q)
-                    start = max(0, idx - 120)
-                    end = min(len(text), idx + 300)
-                    snippet = text[start:end].strip()
-                    results.append({
-                        "file": str(md_file.relative_to(vault)),
-                        "snippet": snippet,
-                    })
-                    if len(results) >= limit:
-                        break
-            except Exception:
-                continue
-    except Exception as e:
-        return {"error": str(e), "results": []}
-    return {"results": results, "count": len(results)}
-
-
 def search_obsidian(query: str, vault: Path, limit: int = 3) -> dict[str, Any]:
-    """Search main Obsidian vault markdown files for notes matching the query."""
-    return _search_vault(query, vault, limit)
+    """Search the main Vault through the shared Obsidian RAG route."""
+    from obsidian_ai_context import collect_obsidian_ai_context
+
+    result = collect_obsidian_ai_context(
+        query,
+        limit=max(1, min(limit, 10)),
+        max_chars=3200,
+        heading="Obsidian業務記録・方針メモ",
+    )
+    hits = [
+        {
+            "file": str(hit.get("path") or ""),
+            "snippet": str(hit.get("snippet") or "")[:700],
+            "source": str(hit.get("source") or ""),
+            "score": hit.get("score"),
+        }
+        for hit in result.get("hits", [])
+    ]
+    return {
+        "results": hits,
+        "count": len(hits),
+        "query": query,
+        "search_route": "obsidian_query -> obsidian_ai_context -> mobile_app.obsidian_bridge",
+    }
+
+
+def inspect_scoring_policy(topic: str = "") -> dict[str, Any]:
+    """Return route-aware executable scoring policy."""
+    from category_config import ASSET_WEIGHT
+    from data_cases import get_score_weights
+    from scoring_core import APPROVAL_LINE
+
+    borrower_weight, asset_weight, _, _ = get_score_weights()
+    category_weights = {
+        category: {
+            "asset_weight": float(config.get("asset_w", 0.0)),
+            "obligor_weight": float(config.get("obligor_w", 0.0)),
+        }
+        for category, config in ASSET_WEIGHT.items()
+    }
+    facts = {
+        "approval_line": APPROVAL_LINE,
+        "requires_route_identification": True,
+        "routes": {
+            "quick_batch_scoring_core": {
+                "asset_score_affects_final_score": False,
+                "base_score_source": "score_borrower",
+                "role": "warning_and_display",
+                "source": "scoring_core.py",
+            },
+            "next_full_api": {
+                "endpoint": "/api/score/full",
+                "asset_score_affects_final_score": True,
+                "uncategorized_weights": {
+                    "asset_weight": round(float(asset_weight), 4),
+                    "borrower_weight": round(float(borrower_weight), 4),
+                },
+                "category_weights": category_weights,
+                "dynamic_asset_weight_cap": 0.5,
+                "source": "components/score_calculation.py",
+            },
+        },
+    }
+    return {
+        "topic": topic,
+        "status": "current_implementation_route_split",
+        "facts": facts,
+        "explanation": (
+            "現行実装は経路で異なる。scoring_coreを使う簡易・バッチ経路では"
+            "asset_scoreを最終点へ直接加算しない。一方、Next主要画面の"
+            "/api/score/full では物件スコアを借手側スコアと加重合成する。"
+            "承認理由を説明する前に、対象案件が通ったAPI経路を特定する必要がある。"
+        ),
+        "sources": [
+            "scoring_core.py: base_score = score_borrower",
+            "frontend/src/app/page.tsx: POST /api/score/full",
+            "components/score_calculation.py: weighted asset and obligor score",
+            "category_config.py: ASSET_WEIGHT",
+        ],
+    }
 
 
 # ── Wiki embedding helpers ────────────────────────────────────────────────────
@@ -388,6 +440,20 @@ def execute_tool(name: str, args: dict, vault: Path | None = None) -> Any:
         return search_obsidian(args.get("query", ""), vault, int(args.get("limit", 3)))
     if name == "search_lease_wiki":
         return search_lease_wiki(args.get("query", ""), int(args.get("limit", 3)))
+    if name == "inspect_scoring_policy":
+        return inspect_scoring_policy(args.get("topic", ""))
+    if name == "consult_senior_reasoner":
+        if vault is None:
+            return {"error": "vault path not available", "consulted": False}
+        from lease_intelligence_consultation import consult_senior_reasoner
+
+        return consult_senior_reasoner(
+            question=args.get("question", ""),
+            shion_hypothesis=args.get("shion_hypothesis", ""),
+            confidence=args.get("confidence", 0.5),
+            evidence_summary=args.get("evidence_summary", ""),
+            vault=vault,
+        )
     return {"error": f"unknown tool: {name}"}
 
 
@@ -466,6 +532,55 @@ TOOL_DECLARATIONS: list[dict] = [
                 "limit": {"type": "integer", "description": "返す件数（デフォルト3）"},
             },
             "required": ["query"],
+        },
+    },
+    {
+        "name": "inspect_scoring_policy",
+        "description": (
+            "現行の実行コードに基づき、最終スコア・借手スコア・物件スコア・承認ラインの"
+            "関係を確認する。審査ロジック、統合、重み付け、なぜ承認されたかを説明するときは、"
+            "WikiやObsidian検索だけで結論を出さず必ずこのツールで実装仕様を照合する。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "topic": {"type": "string", "description": "確認したい論点"},
+            },
+        },
+    },
+    {
+        "name": "consult_senior_reasoner",
+        "description": (
+            "紫苑が自分の初期仮説を作った後、難問・矛盾・低確信度の論点をCodexへ"
+            "読取専用で相談する。利用前に必ず紫苑自身の仮説、確信度、確認済み根拠を渡す。"
+            "得た助言は丸写しせず、何を維持・修正したかを紫苑自身の結論へ統合する。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "個人名・社名・生の財務数値を除いた抽象的な論点",
+                },
+                "shion_hypothesis": {
+                    "type": "string",
+                    "description": "相談前に紫苑自身が考えた初期仮説",
+                },
+                "confidence": {
+                    "type": "number",
+                    "description": "初期仮説の確信度（0から1）",
+                },
+                "evidence_summary": {
+                    "type": "string",
+                    "description": "紫苑がツール等で確認した根拠の要約",
+                },
+            },
+            "required": [
+                "question",
+                "shion_hypothesis",
+                "confidence",
+                "evidence_summary",
+            ],
         },
     },
 ]

@@ -69,7 +69,7 @@ class ScoringResponse(BaseModel):
     case_id: Optional[str] = None  # DB保存後の案件ID
     company_no: Optional[str] = None
     company_name: Optional[str] = None
-    asset_score: Optional[float] = None        # 物件スコア（表示用。final_scoreには影響しない）
+    asset_score: Optional[float] = None        # 経路依存: Full審査では加重合成、quickでは警告・表示用
     asset_warnings: Optional[list] = None      # 物件リスク警告フラグ（BEP・換金性・残存価値）
     asset_bonuses: Optional[list] = None       # 物件プラス評価（換金性・残存価値優位）
     default_warnings: list = []                # デフォルト率モデルによる高リスク警告（スコア非影響）
