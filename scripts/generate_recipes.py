@@ -12,7 +12,10 @@ data/recipes/pending/REV-NNN.json に出力する。
 from __future__ import annotations
 
 import json
+import os
+import re
 import sys
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -113,6 +116,98 @@ def _build_intelligence_comment(rev: str, title: str, ledger_candidates: dict[st
         return comment[:100]
     except Exception:
         return ""
+
+
+_GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+_GEMINI_REST_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models/"
+    f"{_GEMINI_MODEL}:generateContent"
+)
+
+_SHION_JUDGMENT_PROMPT = """\
+以下の改善案について、自動修正できるか判断してください。
+
+改善タイトル: {title}
+変更対象ファイル: {target_files}
+過去の類似改善: {similar_count}件
+関連Obsidianノート: {obsidian_context}
+
+判断基準:
+- auto: フロントエンドの表示・スタイル変更のみ、影響範囲が小さい
+- discuss: スコアリング・DB・APIロジック・モデルに触れる、影響範囲が大きい
+- review: 判断が難しい・情報不足・リスク不明
+
+「auto」「discuss」「review」のいずれかと、50字以内の理由を日本語で返してください。
+必ずJSON形式のみで返答してください: {{"recommendation": "auto", "reason": "理由"}}
+"""
+
+
+def _call_gemini_for_shion(prompt: str) -> str | None:
+    api_key = (
+        os.environ.get("GOOGLE_API_KEY", "").strip()
+        or os.environ.get("GEMINI_API_KEY", "").strip()
+    )
+    if not api_key:
+        return None
+    try:
+        import google.generativeai as genai  # type: ignore
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(
+            model_name=_GEMINI_MODEL,
+            generation_config={"max_output_tokens": 256, "temperature": 0.2},
+        )
+        resp = model.generate_content(prompt)
+        text = getattr(resp, "text", "") or ""
+        return text.strip() or None
+    except Exception:
+        pass
+    try:
+        payload = json.dumps({
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"maxOutputTokens": 256, "temperature": 0.2},
+        }).encode("utf-8")
+        url = f"{_GEMINI_REST_URL}?key={api_key}"
+        req = urllib.request.Request(
+            url, data=payload, headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+    except Exception:
+        pass
+    return None
+
+
+def _build_shion_recommendation(
+    rev: str,
+    title: str,
+    target_files: list[str],
+    ledger_candidates: dict[str, dict],
+    intelligence_comment: str,
+) -> tuple[str, str]:
+    """紫苑の判断: (recommendation, reason) を返す。失敗時は ("review", ...)"""
+    try:
+        similar_count = _count_similar_in_ledger(rev, title, ledger_candidates)
+        obsidian_context = intelligence_comment or "なし"
+        files_str = ", ".join(target_files) if target_files else "不明"
+        prompt = _SHION_JUDGMENT_PROMPT.format(
+            title=title,
+            target_files=files_str,
+            similar_count=similar_count,
+            obsidian_context=obsidian_context,
+        )
+        raw = _call_gemini_for_shion(prompt)
+        if not raw:
+            return ("review", "API呼び出し失敗のため判断不能")
+        cleaned = re.sub(r"```(?:json)?\s*", "", raw).strip().rstrip("`").strip()
+        parsed = json.loads(cleaned)
+        rec = str(parsed.get("recommendation", "review")).lower()
+        if rec not in ("auto", "discuss", "review"):
+            rec = "review"
+        reason = str(parsed.get("reason", ""))[:50]
+        return (rec, reason)
+    except Exception as e:
+        return ("review", f"判断エラー: {type(e).__name__}")
 
 
 def _build_recipe(item: dict, ledger_entry: dict) -> dict | None:
@@ -216,7 +311,15 @@ def main() -> None:
                 skipped_no_candidates += 1
                 continue
 
-            recipe["intelligence_comment"] = _build_intelligence_comment(rev, title, ledger_candidates)
+            intelligence_comment = _build_intelligence_comment(rev, title, ledger_candidates)
+            recipe["intelligence_comment"] = intelligence_comment
+
+            target_files = [f["path"] for f in recipe.get("files", [])]
+            shion_rec, shion_reason = _build_shion_recommendation(
+                rev, title, target_files, ledger_candidates, intelligence_comment
+            )
+            recipe["shion_recommendation"] = shion_rec
+            recipe["shion_reason"] = shion_reason
 
             out_path = PENDING_DIR / f"{rev}.json"
             with out_path.open("w", encoding="utf-8") as f:

@@ -43,6 +43,15 @@
       "description": "実行後のチェック"
     },
     "max_lines_changed": {"type": "integer", "default": 50},
+    "shion_recommendation": {
+      "type": "string",
+      "enum": ["auto", "discuss", "review"],
+      "description": "紫苑の自動修正可否判断"
+    },
+    "shion_reason": {
+      "type": "string",
+      "description": "紫苑の判断理由（50字以内）"
+    },
     "generated_at": {"type": "string", "format": "date-time"},
     "approved_at": {"type": "string", "format": "date-time"},
     "applied_at": {"type": "string", "format": "date-time"},
