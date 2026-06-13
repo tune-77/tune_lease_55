@@ -9,6 +9,15 @@ from typing import Any
 
 from runtime_paths import get_data_path
 
+_LEASE_WIKI_VAULT = (
+    Path.home()
+    / "Library"
+    / "Mobile Documents"
+    / "iCloud~md~obsidian"
+    / "Documents"
+    / "lease-wiki-vault"
+)
+
 DB_PATH = get_data_path("lease_data.db")
 
 
@@ -182,8 +191,8 @@ def get_weekly_trend(weeks: int = 4) -> dict[str, Any]:
     return {"raw": str(data)[:500]}
 
 
-def search_obsidian(query: str, vault: Path, limit: int = 3) -> dict[str, Any]:
-    """Search Obsidian vault markdown files for notes matching the query."""
+def _search_vault(query: str, vault: Path, limit: int) -> dict[str, Any]:
+    """Shared keyword search implementation for any Obsidian vault directory."""
     results: list[dict] = []
     q = query.lower()
     try:
@@ -197,6 +206,62 @@ def search_obsidian(query: str, vault: Path, limit: int = 3) -> dict[str, Any]:
                     snippet = text[start:end].strip()
                     results.append({
                         "file": str(md_file.relative_to(vault)),
+                        "snippet": snippet,
+                    })
+                    if len(results) >= limit:
+                        break
+            except Exception:
+                continue
+    except Exception as e:
+        return {"error": str(e), "results": []}
+    return {"results": results, "count": len(results)}
+
+
+def search_obsidian(query: str, vault: Path, limit: int = 3) -> dict[str, Any]:
+    """Search main Obsidian vault markdown files for notes matching the query."""
+    return _search_vault(query, vault, limit)
+
+
+_WIKI_SKIP_PREFIXES = ("@AI_", "@Web_", "99_Synced_From_Origin")
+
+
+def search_lease_wiki(query: str, limit: int = 3) -> dict[str, Any]:
+    """Search the lease-wiki-vault for specialized lease domain knowledge.
+
+    The wiki contains: scoring thresholds, asset risk by category, interest rate
+    benchmarks, LightGBM model specs, field definitions, design decisions.
+    Use this for questions about HOW the scoring system works or WHY a result
+    appears — not for searching past cases (use search_cases for that).
+    """
+    if not _LEASE_WIKI_VAULT.exists():
+        return {"error": "lease-wiki-vault が見つかりません", "results": []}
+
+    results: list[dict] = []
+    q = query.lower()
+    # Prioritize numbered dirs (00_ … 10_), then other files; exclude auto-generated noise
+    try:
+        all_files = list(_LEASE_WIKI_VAULT.rglob("*.md"))
+        def _sort_key(p: Path) -> tuple[int, str]:
+            rel = p.relative_to(_LEASE_WIKI_VAULT)
+            top = rel.parts[0] if rel.parts else ""
+            # numbered dirs first, then everything else
+            priority = 0 if top[:2].isdigit() else 1
+            return (priority, str(rel))
+
+        for md_file in sorted(all_files, key=_sort_key):
+            rel = md_file.relative_to(_LEASE_WIKI_VAULT)
+            top = rel.parts[0] if rel.parts else ""
+            if any(top.startswith(skip) for skip in _WIKI_SKIP_PREFIXES):
+                continue
+            try:
+                text = md_file.read_text(encoding="utf-8", errors="ignore")
+                if q in text.lower():
+                    idx = text.lower().find(q)
+                    start = max(0, idx - 120)
+                    end = min(len(text), idx + 300)
+                    snippet = text[start:end].strip()
+                    results.append({
+                        "file": str(rel),
                         "snippet": snippet,
                     })
                     if len(results) >= limit:
@@ -226,6 +291,8 @@ def execute_tool(name: str, args: dict, vault: Path | None = None) -> Any:
         if vault is None:
             return {"error": "vault path not available"}
         return search_obsidian(args.get("query", ""), vault, int(args.get("limit", 3)))
+    if name == "search_lease_wiki":
+        return search_lease_wiki(args.get("query", ""), int(args.get("limit", 3)))
     return {"error": f"unknown tool: {name}"}
 
 
@@ -279,11 +346,28 @@ TOOL_DECLARATIONS: list[dict] = [
     },
     {
         "name": "search_obsidian",
-        "description": "Obsidian Vaultのナレッジノートをキーワード検索する。業界情報・業務記録・方針メモを参照できる。",
+        "description": "Obsidian Vaultのナレッジノートをキーワード検索する。業界情報・業務記録・Daily Brief・方針メモを参照できる。",
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "検索キーワード"},
+                "limit": {"type": "integer", "description": "返す件数（デフォルト3）"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "search_lease_wiki",
+        "description": (
+            "リース審査専門Wikiをキーワード検索する。"
+            "スコア閾値・物件カテゴリ別リスク・金利相場・LightGBMモデル仕様・設計決定ログなど"
+            "「なぜそうスコアされるのか」「このカテゴリのリスクは？」といった審査ロジック系の質問に使う。"
+            "過去案件の検索は search_cases を使うこと。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "検索キーワード（例: 残価リスク・承認ライン・工作機械・金利）"},
                 "limit": {"type": "integer", "description": "返す件数（デフォルト3）"},
             },
             "required": ["query"],
