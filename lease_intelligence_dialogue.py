@@ -85,7 +85,13 @@ def build_dialogue_context(vault: Path, message: str) -> tuple[str, dict[str, An
 - get_score_detail(company_name): 指定会社の最新スコアと要因分解・リスクフラグを取得
 - compare_similar_cases(industry, score_min, score_max): 同業種・同スコア帯の過去案件を比較
 - get_weekly_trend(weeks): 週次スコア・件数トレンドを取得
-- search_obsidian(query): Obsidian Vaultのナレッジノートをキーワード検索
+- search_obsidian(query): Obsidian Vaultの業務記録・Daily Brief・方針メモを検索
+- search_lease_wiki(query): リース審査専門Wiki（スコア閾値・物件リスク・金利相場・モデル仕様・設計決定）を検索
+
+ツール使い分け:
+  審査ロジック・スコア基準・物件カテゴリ別リスク → search_lease_wiki
+  過去の具体的な案件・会社 → search_cases / get_score_detail
+  業務記録・パイプライン設計・方針 → search_obsidian
 
 【調査が必要な場合の回答形式】
 ツールを呼んでデータを得た場合は、以下の3段構造で回答すること:
