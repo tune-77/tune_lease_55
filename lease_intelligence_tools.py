@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -17,6 +19,7 @@ _LEASE_WIKI_VAULT = (
     / "Documents"
     / "lease-wiki-vault"
 )
+_WIKI_CACHE_PATH = get_data_path("wiki_embedding_cache.json")
 
 DB_PATH = get_data_path("lease_data.db")
 
@@ -222,55 +225,147 @@ def search_obsidian(query: str, vault: Path, limit: int = 3) -> dict[str, Any]:
     return _search_vault(query, vault, limit)
 
 
-_WIKI_SKIP_PREFIXES = ("@AI_", "@Web_", "99_Synced_From_Origin")
+# ── Wiki embedding helpers ────────────────────────────────────────────────────
+
+def _gemini_api_key_for_tools() -> str:
+    key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if key:
+        return key
+    here = Path(__file__).parent
+    for _ in range(4):
+        sec = here / ".streamlit" / "secrets.toml"
+        if sec.exists():
+            for line in sec.read_text(encoding="utf-8").splitlines():
+                m = re.match(r'^GEMINI_API_KEY\s*=\s*["\'](.+)["\']', line.strip())
+                if m:
+                    return m.group(1)
+        here = here.parent
+    return ""
+
+
+def _embed_text(text: str, api_key: str) -> list[float]:
+    import requests
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent"
+    payload = {"content": {"parts": [{"text": text[:8000]}]}}
+    resp = requests.post(url, json=payload, headers={"x-goog-api-key": api_key}, timeout=30)
+    resp.raise_for_status()
+    return resp.json()["embedding"]["values"]
+
+
+def _cosine_sim(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    na = sum(x * x for x in a) ** 0.5
+    nb = sum(x * x for x in b) ** 0.5
+    return dot / (na * nb) if na and nb else 0.0
+
+
+def _load_wiki_cache() -> dict:
+    try:
+        if Path(_WIKI_CACHE_PATH).exists():
+            return json.loads(Path(_WIKI_CACHE_PATH).read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _save_wiki_cache(cache: dict) -> None:
+    path = Path(_WIKI_CACHE_PATH)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+
+
+def _wiki_numbered_files() -> list[Path]:
+    """Return files only from numbered directories (00_–10_) in the wiki."""
+    if not _LEASE_WIKI_VAULT.exists():
+        return []
+    return [
+        p for p in _LEASE_WIKI_VAULT.rglob("*.md")
+        if p.relative_to(_LEASE_WIKI_VAULT).parts
+        and p.relative_to(_LEASE_WIKI_VAULT).parts[0][:2].isdigit()
+    ]
+
+
+def _refresh_wiki_cache(cache: dict, api_key: str) -> tuple[dict, bool]:
+    """Re-embed changed or new wiki files; prune deleted ones. Returns (cache, changed)."""
+    files = _wiki_numbered_files()
+    changed = False
+    current_rels: set[str] = set()
+
+    for md_file in files:
+        rel = str(md_file.relative_to(_LEASE_WIKI_VAULT))
+        current_rels.add(rel)
+        mtime = md_file.stat().st_mtime
+        if cache.get(rel, {}).get("mtime") == mtime:
+            continue
+        try:
+            raw = md_file.read_text(encoding="utf-8", errors="ignore")
+            text = re.sub(r"^---\n.*?\n---\n", "", raw, flags=re.DOTALL).strip()
+            embedding = _embed_text(text, api_key)
+            cache[rel] = {"mtime": mtime, "embedding": embedding, "snippet": text[:300]}
+            changed = True
+        except Exception:
+            continue
+
+    for rel in list(cache.keys()):
+        if rel not in current_rels:
+            del cache[rel]
+            changed = True
+
+    return cache, changed
+
+
+def _wiki_keyword_fallback(query: str, limit: int) -> dict[str, Any]:
+    """Keyword fallback when embedding is unavailable."""
+    results: list[dict] = []
+    q = query.lower()
+    for md_file in sorted(_wiki_numbered_files(), key=lambda p: str(p.relative_to(_LEASE_WIKI_VAULT))):
+        try:
+            text = md_file.read_text(encoding="utf-8", errors="ignore")
+            if q in text.lower():
+                idx = text.lower().find(q)
+                snippet = text[max(0, idx - 120): idx + 300].strip()
+                results.append({"file": str(md_file.relative_to(_LEASE_WIKI_VAULT)), "snippet": snippet})
+                if len(results) >= limit:
+                    break
+        except Exception:
+            continue
+    return {"results": results, "count": len(results), "mode": "keyword"}
 
 
 def search_lease_wiki(query: str, limit: int = 3) -> dict[str, Any]:
-    """Search the lease-wiki-vault for specialized lease domain knowledge.
+    """Semantic search of the lease-wiki-vault using Gemini text-embedding-004.
 
-    The wiki contains: scoring thresholds, asset risk by category, interest rate
+    Covers: scoring thresholds, asset-category residual risk, interest rate
     benchmarks, LightGBM model specs, field definitions, design decisions.
-    Use this for questions about HOW the scoring system works or WHY a result
-    appears — not for searching past cases (use search_cases for that).
+    Falls back to keyword search if the embedding API is unavailable.
     """
     if not _LEASE_WIKI_VAULT.exists():
         return {"error": "lease-wiki-vault が見つかりません", "results": []}
 
-    results: list[dict] = []
-    q = query.lower()
-    # Prioritize numbered dirs (00_ … 10_), then other files; exclude auto-generated noise
-    try:
-        all_files = list(_LEASE_WIKI_VAULT.rglob("*.md"))
-        def _sort_key(p: Path) -> tuple[int, str]:
-            rel = p.relative_to(_LEASE_WIKI_VAULT)
-            top = rel.parts[0] if rel.parts else ""
-            # numbered dirs first, then everything else
-            priority = 0 if top[:2].isdigit() else 1
-            return (priority, str(rel))
+    api_key = _gemini_api_key_for_tools()
+    if not api_key:
+        return _wiki_keyword_fallback(query, limit)
 
-        for md_file in sorted(all_files, key=_sort_key):
-            rel = md_file.relative_to(_LEASE_WIKI_VAULT)
-            top = rel.parts[0] if rel.parts else ""
-            if any(top.startswith(skip) for skip in _WIKI_SKIP_PREFIXES):
-                continue
-            try:
-                text = md_file.read_text(encoding="utf-8", errors="ignore")
-                if q in text.lower():
-                    idx = text.lower().find(q)
-                    start = max(0, idx - 120)
-                    end = min(len(text), idx + 300)
-                    snippet = text[start:end].strip()
-                    results.append({
-                        "file": str(rel),
-                        "snippet": snippet,
-                    })
-                    if len(results) >= limit:
-                        break
-            except Exception:
-                continue
-    except Exception as e:
-        return {"error": str(e), "results": []}
-    return {"results": results, "count": len(results)}
+    try:
+        cache = _load_wiki_cache()
+        cache, changed = _refresh_wiki_cache(cache, api_key)
+        if changed:
+            _save_wiki_cache(cache)
+
+        q_emb = _embed_text(query, api_key)
+        scored = [
+            (_cosine_sim(q_emb, entry["embedding"]), rel, entry.get("snippet", ""))
+            for rel, entry in cache.items()
+            if "embedding" in entry
+        ]
+        scored.sort(reverse=True)
+        results = [
+            {"file": rel, "snippet": snippet, "score": round(score, 3)}
+            for score, rel, snippet in scored[:limit]
+        ]
+        return {"results": results, "count": len(results), "mode": "semantic"}
+    except Exception:
+        return _wiki_keyword_fallback(query, limit)
 
 
 def execute_tool(name: str, args: dict, vault: Path | None = None) -> Any:

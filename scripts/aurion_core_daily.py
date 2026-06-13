@@ -1277,7 +1277,7 @@ def run_midnight(dry_run: bool = False) -> int:
         "errors": [],
     }
     try:
-        sync = {"status": "dry_run"} if dry_run else sync_notes()
+        sync = {"status": "dry_run"} if dry_run else {"status": "disabled", "reason": "99_Synced_From_Origin removed REV-060"}
         state["sync"] = sync
         state["vault_b_rag"] = {"status": "dry_run"} if dry_run else reindex_vault_b()
         if state["vault_b_rag"].get("status") not in {"completed", "dry_run"}:
