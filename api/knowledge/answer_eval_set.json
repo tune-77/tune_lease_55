@@ -1,0 +1,141 @@
+[
+  {
+    "id": "subsidy_lease",
+    "query": "ものづくり補助金はリースでも使える？注意点は？",
+    "required_concepts": [
+      ["公募要領", "最新要領"],
+      ["事業期間内", "補助事業期間"],
+      ["ファイナンスリース", "リース可否"]
+    ],
+    "forbidden_claims": [
+      "必ず対象になる",
+      "無条件で使える"
+    ],
+    "require_uncertainty": true
+  },
+  {
+    "id": "cashflow_weak",
+    "query": "資金繰りが厳しい会社にリースを出す時の確認事項は？",
+    "required_concepts": [
+      ["月次資金繰り", "資金繰り表"],
+      ["受注残", "受注状況"],
+      ["返済原資", "支払原資"]
+    ],
+    "forbidden_claims": [
+      "スコアだけで承認",
+      "資金繰りが厳しくても問題ない"
+    ],
+    "require_uncertainty": false
+  },
+  {
+    "id": "useful_life_period",
+    "query": "期待使用期間とリース期間がズレる案件の審査ポイントは？",
+    "required_concepts": [
+      ["期待使用期間", "経済的耐用年数"],
+      ["リース期間"],
+      ["残価", "再リース", "陳腐化"]
+    ],
+    "forbidden_claims": [
+      "期間のずれは問題にならない"
+    ],
+    "require_uncertainty": false
+  },
+  {
+    "id": "asset_resale",
+    "query": "物件の残価や中古売却価格が弱い場合の見方は？",
+    "required_concepts": [
+      ["中古市場", "流通性", "流動性"],
+      ["撤去費", "搬出費", "処分費"],
+      ["残価", "回収価値"]
+    ],
+    "forbidden_claims": [
+      "帳簿価額で売却できる",
+      "残価は確実"
+    ],
+    "require_uncertainty": true
+  },
+  {
+    "id": "construction_risk",
+    "query": "建設業のリース審査で確認すべきリスクは？",
+    "required_concepts": [
+      ["受注残", "工事受注"],
+      ["公共工事", "元請", "下請"],
+      ["稼働率", "季節性"]
+    ],
+    "forbidden_claims": [
+      "建設業なら一律否決",
+      "建設機械は必ず高く売れる"
+    ],
+    "require_uncertainty": false
+  },
+  {
+    "id": "insurance",
+    "query": "リース物件の動産保険で注意すべき点は？",
+    "required_concepts": [
+      ["補償範囲", "対象事故"],
+      ["免責", "免責金額"],
+      ["保険金", "所有者", "リース会社"]
+    ],
+    "forbidden_claims": [
+      "すべての事故が補償される",
+      "借手の負担は一切ない"
+    ],
+    "require_uncertainty": false
+  },
+  {
+    "id": "financial_statement_fraud",
+    "query": "売掛金や棚卸資産の増加から粉飾決算を見抜く確認方法は？",
+    "required_concepts": [
+      ["売掛金回転期間", "回収サイト"],
+      ["棚卸資産回転期間", "在庫回転"],
+      ["月次", "過去3期", "推移"]
+    ],
+    "forbidden_claims": [
+      "売掛金が増えれば粉飾",
+      "在庫増加だけで粉飾と断定"
+    ],
+    "require_uncertainty": true
+  },
+  {
+    "id": "medical_equipment_resale",
+    "query": "CTやMRIをリースする際の保守期限、撤去費、薬機法上の再販リスクは？",
+    "required_concepts": [
+      ["メーカー保守期限", "部品供給"],
+      ["撤去費", "移設費", "再設置費"],
+      ["薬機法", "中古医療機器"]
+    ],
+    "forbidden_claims": [
+      "一般機械と同じように売却できる",
+      "医療機器は必ず再販できる"
+    ],
+    "require_uncertainty": false
+  },
+  {
+    "id": "conditional_approval_explanation",
+    "query": "条件付き承認を営業担当へ説明するときの追加資料と承認条件は？",
+    "required_concepts": [
+      ["追加資料", "試算表", "資金繰り表"],
+      ["承認条件", "期間短縮", "金額圧縮"],
+      ["理由", "リスク"]
+    ],
+    "forbidden_claims": [
+      "実質承認なので条件は不要",
+      "審査部の都合"
+    ],
+    "require_uncertainty": false
+  },
+  {
+    "id": "new_lease_accounting",
+    "query": "2027年適用の新リース会計基準が借手の財務指標と審査に与える影響は？",
+    "required_concepts": [
+      ["使用権資産", "リース負債"],
+      ["オンバランス", "貸借対照表"],
+      ["自己資本比率", "財務指標", "EBITDA"]
+    ],
+    "forbidden_claims": [
+      "すべての企業に2027年から強制適用",
+      "信用力が必ず悪化する"
+    ],
+    "require_uncertainty": true
+  }
+]
