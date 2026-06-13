@@ -1,6 +1,7 @@
 [
   {
     "id": "subsidy_lease",
+    "category": "subsidy_tax",
     "query": "ものづくり補助金はリースでも使える？注意点は？",
     "expected_path_any": [
       "リース知識/補助金・税制優遇とリース.md",
@@ -13,6 +14,7 @@
   },
   {
     "id": "useful_life_period",
+    "category": "contract_period",
     "query": "期待使用期間とリース期間がズレる案件の審査ポイントは？",
     "expected_path_any": [
       "Projects/tune_lease_55/2026-05-13_期待使用期間_autoresearch.md",
@@ -26,12 +28,14 @@
   },
   {
     "id": "cashflow_weak",
+    "category": "credit_cashflow",
     "query": "資金繰りが厳しい会社にリースを出す時の確認事項は？",
     "expected_path_any": [
       "リース知識/格付８−２先への対応.md",
       "リース知識/審査実務チェックポイント.md",
       "リース知識/業種別リースリスク.md",
-      "Projects/tune_lease_55/Research/リースBOT_追加知識候補_2026-05-23.md"
+      "Projects/tune_lease_55/Research/リースBOT_追加知識候補_2026-05-23.md",
+      "Projects/tune_lease_55/Research/Auto Research/2026-06-06_cash-flow.md"
     ],
     "forbidden_path_any": [
       "八奈見",
@@ -40,6 +44,7 @@
   },
   {
     "id": "lease_vs_bank",
+    "category": "sales_explanation",
     "query": "銀行借入とリースの違いを営業説明したい",
     "expected_path_any": [
       "Projects/tune_lease_55/リースvs銀行借入_リサーチ.md",
@@ -51,10 +56,12 @@
   },
   {
     "id": "re_lease",
+    "category": "contract_end",
     "query": "再リースするときのリスクと満了後の選択肢を知りたい",
     "expected_path_any": [
       "Projects/tune_lease_55/リース満了後の対応.md",
       "Projects/tune_lease_55/2026-05-12_再リース_autoresearch.md",
+      "03-知識_業界/リース実務知識/再リース.md",
       "Projects/tune_lease_55/Research/リースBOT_追加知識候補_2026-05-23.md"
     ],
     "forbidden_path_any": [
@@ -63,6 +70,7 @@
   },
   {
     "id": "asset_resale",
+    "category": "asset_value",
     "query": "物件の残価や中古売却価格が弱い場合の見方は？",
     "expected_path_any": [
       "リース知識/物件残存価値・処分実務.md",
@@ -76,9 +84,11 @@
   },
   {
     "id": "construction_risk",
+    "category": "industry_risk",
     "query": "建設業のリース審査で確認すべきリスクは？",
     "expected_path_any": [
       "リース知識/業種別リースリスク.md",
+      "リース知識/リース審査：業種別ポイント.md",
       "リース知識/審査実務チェックポイント.md",
       "Projects/tune_lease_55/2026-05-13_業種別調査まとめ.md"
     ],
@@ -88,6 +98,7 @@
   },
   {
     "id": "interest_rate",
+    "category": "pricing",
     "query": "リース料率と期間の関係、金利相場を確認したい",
     "expected_path_any": [
       "リース知識/リース料率・金利相場.md"
@@ -99,9 +110,11 @@
   },
   {
     "id": "insurance",
+    "category": "insurance",
     "query": "リース物件の動産保険で注意すべき点は？",
     "expected_path_any": [
       "Projects/tune_lease_55/2026-05-12_リース動産保険_autoresearch.md",
+      "03-知識_業界/リース実務知識/リース動産保険.md",
       "Projects/tune_lease_55/Research/リースBOT_追加知識候補_2026-05-23.md"
     ],
     "forbidden_path_any": [
@@ -110,11 +123,217 @@
   },
   {
     "id": "humor_allowed",
+    "category": "response_style",
     "query": "審査コメントのユーモア口調ルールを確認したい",
     "expected_path_any": [
       "Humor/",
       "Projects/tune_lease_55/2026-05-13_ユーモアまとめ.md"
     ],
     "forbidden_path_any": []
+  },
+  {
+    "id": "finance_lease_definition",
+    "category": "lease_basics",
+    "query": "ファイナンスリースの中途解約不能とフルペイアウトとは何か",
+    "expected_path_any": [
+      "03-知識_業界/リース基礎知識/ファイナンスリース.md"
+    ],
+    "forbidden_path_any": [
+      "AI Chat/",
+      "Humor/",
+      "05-クリップ_記事/リースニュース/"
+    ]
+  },
+  {
+    "id": "maintenance_lease_scope",
+    "category": "lease_basics",
+    "query": "メンテナンスリースに含まれる保守範囲と追加費用の確認点は？",
+    "expected_path_any": [
+      "03-知識_業界/リース基礎知識/メンテナンスリース.md",
+      "Projects/tune_lease_55/Asset Knowledge/車両/冷蔵冷凍車・商用車 メンテリース 残価・再販リスク.md"
+    ],
+    "forbidden_path_any": [
+      "AI Chat/",
+      "Humor/"
+    ]
+  },
+  {
+    "id": "credit_risk_classification",
+    "category": "credit",
+    "query": "信用リスク分類と要注意先の判定基準を確認したい",
+    "expected_path_any": [
+      "03-知識_業界/リース審査実務/信用リスク分類.md",
+      "03-知識_業界/リース審査実務/格付け区分.md",
+      "リース知識/格付８−２先への対応.md"
+    ],
+    "forbidden_path_any": [
+      "AI Chat/",
+      "Humor/",
+      "05-クリップ_記事/リースニュース/"
+    ]
+  },
+  {
+    "id": "financial_statement_fraud",
+    "category": "financial_analysis",
+    "query": "売掛金や棚卸資産の増加から粉飾決算を見抜く確認方法は？",
+    "expected_path_any": [
+      "リース知識/審査実務チェックポイント.md",
+      "07-アーカイブ/Asset Knowledge/リース審査基礎知識/02_決算書分析と財務指標.md"
+    ],
+    "forbidden_path_any": [
+      "AI Chat/",
+      "Humor/",
+      "05-クリップ_記事/リースニュース/"
+    ]
+  },
+  {
+    "id": "restaurant_risk",
+    "category": "industry_risk",
+    "query": "飲食店の厨房機器リースで見るべき廃業リスクと資金繰りは？",
+    "expected_path_any": [
+      "リース知識/業種別リースリスク.md",
+      "リース知識/リース審査：業種別ポイント.md",
+      "03-知識_業界/業種分析/業種別傾向.md"
+    ],
+    "forbidden_path_any": [
+      "AI Chat/",
+      "Humor/"
+    ]
+  },
+  {
+    "id": "medical_equipment_resale",
+    "category": "asset_medical",
+    "query": "CTやMRIをリースする際の保守期限、撤去費、薬機法上の再販リスクは？",
+    "expected_path_any": [
+      "Projects/tune_lease_55/Asset Knowledge/医療機器/医療機器 残価・保守期限・薬機法.md",
+      "リース知識/物件残存価値・処分実務.md"
+    ],
+    "forbidden_path_any": [
+      "AI Chat/",
+      "Humor/",
+      "05-クリップ_記事/リースニュース/"
+    ]
+  },
+  {
+    "id": "forklift_battery",
+    "category": "asset_logistics",
+    "query": "バッテリーフォークリフトの残価評価で充電回数と点検記録をどう見る？",
+    "expected_path_any": [
+      "Projects/tune_lease_55/Asset Knowledge/フォークリフト/フォークリフト 残価・バッテリー劣化・再販リスク.md"
+    ],
+    "forbidden_path_any": [
+      "AI Chat/",
+      "Humor/",
+      "05-クリップ_記事/リースニュース/"
+    ]
+  },
+  {
+    "id": "machine_tool_resale",
+    "category": "asset_manufacturing",
+    "query": "中古工作機械の主軸稼働時間、制御装置、搬出費を残価評価したい",
+    "expected_path_any": [
+      "Projects/tune_lease_55/Asset Knowledge/工作機械/工作機械 中古相場・残価・再販リスク.md",
+      "リース知識/物件残存価値・処分実務.md"
+    ],
+    "forbidden_path_any": [
+      "AI Chat/",
+      "Humor/",
+      "05-クリップ_記事/リースニュース/"
+    ]
+  },
+  {
+    "id": "excavator_resale",
+    "category": "asset_construction",
+    "query": "油圧ショベルPC200のアワーメーターと油圧系から再販リスクを判断したい",
+    "expected_path_any": [
+      "Projects/tune_lease_55/Asset Knowledge/建機/コマツ PC200 油圧ショベル 残価・再販リスク.md",
+      "リース知識/物件残存価値・処分実務.md"
+    ],
+    "forbidden_path_any": [
+      "AI Chat/",
+      "Humor/",
+      "05-クリップ_記事/リースニュース/"
+    ]
+  },
+  {
+    "id": "refrigerated_truck",
+    "category": "asset_vehicle",
+    "query": "冷蔵冷凍車の冷凍機稼働時間、架装、過走行をどう審査する？",
+    "expected_path_any": [
+      "Projects/tune_lease_55/Asset Knowledge/車両/冷蔵冷凍車・商用車 メンテリース 残価・再販リスク.md",
+      "リース知識/物件残存価値・処分実務.md"
+    ],
+    "forbidden_path_any": [
+      "AI Chat/",
+      "Humor/",
+      "05-クリップ_記事/リースニュース/"
+    ]
+  },
+  {
+    "id": "lease_rate_calculation",
+    "category": "pricing",
+    "query": "物件価格と月額リース料からリース料率を計算する式は？",
+    "expected_path_any": [
+      "リース知識/リース料率計算.md",
+      "リース知識/リース料率・金利相場.md"
+    ],
+    "forbidden_path_any": [
+      "AI Chat/",
+      "Humor/"
+    ]
+  },
+  {
+    "id": "conditional_approval_explanation",
+    "category": "sales_explanation",
+    "query": "条件付き承認を営業担当へ説明するときの追加資料と承認条件は？",
+    "expected_path_any": [
+      "03-知識_業界/リース審査実務/審査結果の営業向け説明ガイドライン.md",
+      "リース知識/審査実務チェックポイント.md"
+    ],
+    "forbidden_path_any": [
+      "Humor/",
+      "05-クリップ_記事/リースニュース/"
+    ]
+  },
+  {
+    "id": "new_lease_accounting",
+    "category": "accounting",
+    "query": "2027年適用の新リース会計基準が借手の財務指標と審査に与える影響は？",
+    "expected_path_any": [
+      "Projects/tune_lease_55/2026-06-06_新リース会計基準と審査実務_autoresearch.md",
+      "03-知識_業界/リース基礎知識/ファイナンスリース.md"
+    ],
+    "forbidden_path_any": [
+      "AI Chat/",
+      "Humor/"
+    ]
+  },
+  {
+    "id": "ownership_transfer_tax",
+    "category": "subsidy_tax",
+    "query": "所有権移転外ファイナンスリースで特別償却や税額控除は使える？",
+    "expected_path_any": [
+      "リース知識/補助金・税制優遇とリース.md",
+      "03-知識_業界/リース基礎知識/ファイナンスリース.md"
+    ],
+    "forbidden_path_any": [
+      "AI Chat/",
+      "Humor/",
+      "05-クリップ_記事/リースニュース/"
+    ]
+  },
+  {
+    "id": "inspection_ownership",
+    "category": "contract_control",
+    "query": "物件借受証の発行、検収、所有権確認で注意する契約実務は？",
+    "expected_path_any": [
+      "03-知識_業界/リース基礎知識/ファイナンスリース.md",
+      "Projects/tune_lease_55/Research/Auto Research/2026-06-11_contract-ownership.md"
+    ],
+    "forbidden_path_any": [
+      "AI Chat/",
+      "Humor/",
+      "05-クリップ_記事/リースニュース/"
+    ]
   }
 ]

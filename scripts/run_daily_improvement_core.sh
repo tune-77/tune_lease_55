@@ -105,6 +105,14 @@ if [ ${RECURSIVE_EXIT} -ne 0 ]; then
     fi
 fi
 
+echo ""
+echo "[反映] Obsidian RAG評価・安全な自動修正を実行中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/auto_fix_obsidian_rag.py" \
+    --eval-set "${PROJECT_ROOT}/api/knowledge/rag_eval_set.json" \
+    --config "${PROJECT_ROOT}/config/rag_ranking.json" \
+    --report "${PROJECT_ROOT}/reports/rag_auto_fix_latest.json" || \
+    echo "警告: RAG自動修正は完了しませんでした（改善パイプラインは継続します）"
+
 # Codex キュー
 if [ -f "${RESULT_FILE}" ]; then
     echo ""

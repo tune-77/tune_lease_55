@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "preferred_path_boosts": {
+    "リース知識/": 0.1,
+    "03-知識_業界/": 0.09,
+    "Projects/tune_lease_55/Asset Knowledge/": 0.09,
+    "Projects/tune_lease_55/Asset Finance/": 0.09,
+    "Projects/tune_lease_55/Cases/": 0.08,
+    "Projects/tune_lease_55/Feedback/": 0.07,
+    "Projects/tune_lease_55/Research/": 0.07,
+    "Projects/tune_lease_55/": 0.05,
+    "tuneLease55/知見・分析/": 0.05
+  },
+  "low_priority_path_penalties": {
+    "05-クリップ_記事/リースニュース/": 0.25,
+    "リースニュース/": 0.25,
+    "07-アーカイブ/": 0.16,
+    "Projects/tune_lease_55/AI Chat/": 0.15,
+    "Projects/tune_lease_55/Improvement Log/": 0.15,
+    "Projects/tune_lease_55/Weekly Review/": 0.15,
+    "Daily/": 0.12,
+    "Clippings/": 0.08,
+    "Humor/": 0.05
+  },
+  "sync_copy_penalty": 0.35,
+  "keyword_pool_multiplier": 4,
+  "keyword_pool_min": 12
+}

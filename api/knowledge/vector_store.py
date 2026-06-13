@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 import hashlib
+import json
 import logging
 import math
 import re
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _CHROMA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "chroma_db")
 _COLLECTION_NAME = "obsidian_knowledge"
+_RANKING_CONFIG_PATH = os.path.join(_REPO_ROOT, "config", "rag_ranking.json")
 _REMOTE_MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
 _LOCAL_MODEL_DIR = os.path.join(
     _REPO_ROOT,
@@ -30,6 +32,7 @@ _MODEL_NAME = os.environ.get("OBSIDIAN_RAG_MODEL") or (
 
 _PREFERRED_PATH_BOOSTS = (
     ("リース知識/", 0.10),
+    ("03-知識_業界/", 0.09),
     ("Projects/tune_lease_55/Asset Knowledge/", 0.09),
     ("Projects/tune_lease_55/Asset Finance/", 0.09),
     ("Projects/tune_lease_55/Cases/", 0.08),
@@ -39,6 +42,9 @@ _PREFERRED_PATH_BOOSTS = (
     ("tuneLease55/知見・分析/", 0.05),
 )
 _LOW_PRIORITY_PATH_PENALTIES = (
+    ("05-クリップ_記事/リースニュース/", 0.25),
+    ("リースニュース/", 0.25),
+    ("07-アーカイブ/", 0.16),
     ("Projects/tune_lease_55/AI Chat/", 0.15),
     ("Projects/tune_lease_55/Improvement Log/", 0.15),
     ("Projects/tune_lease_55/Weekly Review/", 0.15),
@@ -49,19 +55,101 @@ _LOW_PRIORITY_PATH_PENALTIES = (
 _CONTEXTUAL_NOISE_TERMS = ("八奈見", "キャラクター", "ユーモア", "口調", "Humor")
 _NOISE_ALLOWED_TERMS = ("八奈見", "キャラ", "ユーモア", "口調", "冗談", "笑", "yanami", "humor")
 
+_DEFAULT_RANKING_CONFIG = {
+    "preferred_path_boosts": dict(_PREFERRED_PATH_BOOSTS),
+    "low_priority_path_penalties": dict(_LOW_PRIORITY_PATH_PENALTIES),
+    "sync_copy_penalty": 0.35,
+    "keyword_pool_multiplier": 4,
+    "keyword_pool_min": 12,
+}
+
+
+def load_ranking_config(path: str = _RANKING_CONFIG_PATH) -> dict:
+    config = {
+        "preferred_path_boosts": dict(_DEFAULT_RANKING_CONFIG["preferred_path_boosts"]),
+        "low_priority_path_penalties": dict(_DEFAULT_RANKING_CONFIG["low_priority_path_penalties"]),
+        "sync_copy_penalty": _DEFAULT_RANKING_CONFIG["sync_copy_penalty"],
+        "keyword_pool_multiplier": _DEFAULT_RANKING_CONFIG["keyword_pool_multiplier"],
+        "keyword_pool_min": _DEFAULT_RANKING_CONFIG["keyword_pool_min"],
+    }
+    try:
+        with open(path, encoding="utf-8") as config_file:
+            raw = json.load(config_file)
+    except (OSError, ValueError, TypeError):
+        return config
+    if not isinstance(raw, dict):
+        return config
+    for key in ("preferred_path_boosts", "low_priority_path_penalties"):
+        values = raw.get(key)
+        if isinstance(values, dict):
+            for prefix, value in values.items():
+                try:
+                    config[key][str(prefix)] = float(value)
+                except (TypeError, ValueError):
+                    continue
+    for key in ("sync_copy_penalty",):
+        try:
+            config[key] = float(raw.get(key, config[key]))
+        except (TypeError, ValueError):
+            pass
+    for key in ("keyword_pool_multiplier", "keyword_pool_min"):
+        try:
+            config[key] = int(raw.get(key, config[key]))
+        except (TypeError, ValueError):
+            pass
+    return config
+
 
 class KnowledgeVectorStore:
     """ChromaDB ラッパー。遅延初期化でスタートアップをブロックしない。"""
 
-    def __init__(self, chroma_dir: str = _CHROMA_DIR, model_name: str = _MODEL_NAME):
+    def __init__(
+        self,
+        chroma_dir: str = _CHROMA_DIR,
+        model_name: str = _MODEL_NAME,
+        ranking_config: dict | None = None,
+    ):
         self._chroma_dir = chroma_dir
         self._model_name = model_name
         self._client = None
         self._collection = None
         self._encoder = None
         self._encoder_failed = False
+        self._ranking_config_path = _RANKING_CONFIG_PATH if ranking_config is None else None
+        self._ranking_config_mtime = 0.0
+        self._ranking_config = ranking_config or load_ranking_config()
+        if self._ranking_config_path:
+            try:
+                self._ranking_config_mtime = os.path.getmtime(self._ranking_config_path)
+            except OSError:
+                pass
         self._init_lock = threading.Lock()
         self._encoder_lock = threading.Lock()
+
+    def set_ranking_config(self, config: dict) -> None:
+        """Replace only the bounded retrieval-ranking configuration."""
+        self._ranking_config = config
+
+    def _maybe_reload_ranking_config(self) -> None:
+        if not self._ranking_config_path:
+            return
+        try:
+            mtime = os.path.getmtime(self._ranking_config_path)
+        except OSError:
+            return
+        if mtime <= self._ranking_config_mtime:
+            return
+        self._ranking_config = load_ranking_config(self._ranking_config_path)
+        self._ranking_config_mtime = mtime
+        logger.info("[KnowledgeVectorStore] ranking config reloaded: %s", self._ranking_config_path)
+
+    def _preferred_path_boosts(self) -> tuple[tuple[str, float], ...]:
+        values = self._ranking_config.get("preferred_path_boosts") or {}
+        return tuple((str(prefix), float(value)) for prefix, value in values.items())
+
+    def _low_priority_path_penalties(self) -> tuple[tuple[str, float], ...]:
+        values = self._ranking_config.get("low_priority_path_penalties") or {}
+        return tuple((str(prefix), float(value)) for prefix, value in values.items())
 
     def _ensure_collection(self) -> None:
         """初回アクセス時に ChromaDB collection だけを初期化する。"""
@@ -302,14 +390,16 @@ class KnowledgeVectorStore:
 
         low_query = (query or "").lower()
         score = 0.0
-        for prefix, boost in _PREFERRED_PATH_BOOSTS:
+        for prefix, boost in self._preferred_path_boosts():
             if path.startswith(prefix):
                 score += boost
                 break
-        for prefix, penalty in _LOW_PRIORITY_PATH_PENALTIES:
+        for prefix, penalty in self._low_priority_path_penalties():
             if path.startswith(prefix):
                 score -= penalty
                 break
+        if "/lease-wiki-vault/" in path:
+            score -= float(self._ranking_config.get("sync_copy_penalty", 0.35))
 
         case_intent = any(term in low_query for term in ("過去", "類似", "案件", "事例", "前回", "cases"))
         asset_intent = any(term in low_query for term in ("物件", "残価", "再販", "中古", "換金", "処分", "売却"))
@@ -358,10 +448,12 @@ class KnowledgeVectorStore:
 
     def _source_priority(self, hit: dict) -> float:
         path = self._display_path(hit)
-        for prefix, boost in _PREFERRED_PATH_BOOSTS:
+        if "/lease-wiki-vault/" in path:
+            return 0.15
+        for prefix, boost in self._preferred_path_boosts():
             if path.startswith(prefix):
                 return min(1.0, 0.72 + boost * 2.2)
-        for prefix, penalty in _LOW_PRIORITY_PATH_PENALTIES:
+        for prefix, penalty in self._low_priority_path_penalties():
             if path.startswith(prefix):
                 return max(0.1, 0.50 - penalty)
         return 0.55
@@ -375,8 +467,17 @@ class KnowledgeVectorStore:
         low_query = (query or "").lower()
         penalty = 0.0
         if not any(term in low_query for term in ("チャット", "会話", "日報", "weekly", "改善ログ")):
-            if any(path.startswith(prefix) for prefix, _penalty in _LOW_PRIORITY_PATH_PENALTIES):
+            if any(path.startswith(prefix) for prefix, _penalty in self._low_priority_path_penalties()):
                 penalty += 0.18
+        if any(
+            path.startswith(prefix)
+            for prefix in ("05-クリップ_記事/リースニュース/", "リースニュース/")
+        ) and "ニュース" not in low_query:
+            penalty += 0.45
+        if path.startswith("07-アーカイブ/"):
+            penalty += 0.18
+        if "/lease-wiki-vault/" in path:
+            penalty += float(self._ranking_config.get("sync_copy_penalty", 0.35))
         if "検索語インデックス" in file_name and not any(term in query for term in ("検索語", "インデックス", "wiki")):
             penalty += 0.18
         if ("Wiki" in file_name or "wiki" in file_name) and "wiki" not in low_query:
@@ -425,7 +526,17 @@ class KnowledgeVectorStore:
             }
             ranked.append((rank_score, -idx, item))
         ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
-        return [item for _score, _idx, item in ranked[:top_k]]
+        selected: list[dict] = []
+        seen_paths: set[str] = set()
+        for _score, _idx, item in ranked:
+            path = self._display_path(item)
+            if path in seen_paths:
+                continue
+            seen_paths.add(path)
+            selected.append(item)
+            if len(selected) >= top_k:
+                break
+        return selected
 
     def search(
         self,
@@ -445,6 +556,7 @@ class KnowledgeVectorStore:
         Returns:
             [{"text": str, "ref": str, "distance": float, ...}, ...]
         """
+        self._maybe_reload_ranking_config()
         self._ensure_collection()
 
         if self._collection.count() == 0:
@@ -488,7 +600,28 @@ class KnowledgeVectorStore:
                 "distance": round(float(dist), 4),
                 "source": "vector",
             })
-        return self._rerank_hits(query, hits, top_k=top_k)
+
+        # Semantic search can miss exact domain terms in long notes. Merge a
+        # lexical candidate pool before the final evaluator-owned rerank.
+        keyword_multiplier = max(1, int(self._ranking_config.get("keyword_pool_multiplier", 4)))
+        keyword_min = max(top_k, int(self._ranking_config.get("keyword_pool_min", 12)))
+        keyword_hits = self._keyword_search(
+            effective_query,
+            top_k=max(top_k * keyword_multiplier, keyword_min),
+        )
+        merged: dict[tuple[str, str], dict] = {}
+        for hit in [*hits, *keyword_hits]:
+            key = (self._display_path(hit), str(hit.get("section") or ""))
+            existing = merged.get(key)
+            if existing is None:
+                merged[key] = hit
+                continue
+            if existing.get("distance") is None and hit.get("distance") is not None:
+                merged[key] = hit
+            elif hit.get("score") is not None:
+                existing["score"] = max(float(existing.get("score") or 0.0), float(hit.get("score") or 0.0))
+                existing["source"] = "vector+keyword"
+        return self._rerank_hits(query, list(merged.values()), top_k=top_k)
 
     def count(self) -> int:
         """インデックス内のドキュメント数を返す。"""
