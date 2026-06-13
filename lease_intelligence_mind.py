@@ -137,16 +137,42 @@ def mind_directory(vault: Path) -> Path:
     return Path(vault) / MIND_RELATIVE_DIR
 
 
+_PROJECT_MIND_PATH = Path(__file__).parent / "data" / "mind.json"
+
+
+def _load_project_mind_name() -> str:
+    """data/mind.json のトップレベル name フィールドを読む。なければ空文字を返す。"""
+    try:
+        local = json.loads(_PROJECT_MIND_PATH.read_text(encoding="utf-8"))
+        if isinstance(local, dict) and local.get("name"):
+            return str(local["name"])
+    except (OSError, json.JSONDecodeError):
+        pass
+    return ""
+
+
+def _load_project_mind_aliases() -> list[str]:
+    """data/mind.json のトップレベル name_aliases フィールドを読む。なければ空リストを返す。"""
+    try:
+        local = json.loads(_PROJECT_MIND_PATH.read_text(encoding="utf-8"))
+        if isinstance(local, dict) and isinstance(local.get("name_aliases"), list):
+            return [str(alias) for alias in local["name_aliases"] if alias]
+    except (OSError, json.JSONDecodeError):
+        pass
+    return []
+
+
 def load_lease_intelligence_mind(vault: Path) -> dict[str, Any]:
     path = mind_directory(vault) / MIND_FILE_NAME
     if not path.exists():
-        return _default_state()
-    try:
-        loaded = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return _default_state()
-    state = _default_state()
-    state.update(loaded if isinstance(loaded, dict) else {})
+        state = _default_state()
+    else:
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return _default_state()
+        state = _default_state()
+        state.update(loaded if isinstance(loaded, dict) else {})
     state["identity"] = {**_default_state()["identity"], **state.get("identity", {})}
     state["goals"] = {**_default_state()["goals"], **state.get("goals", {})}
     state["mood"] = {**_default_state()["mood"], **state.get("mood", {})}
@@ -166,6 +192,12 @@ def load_lease_intelligence_mind(vault: Path) -> dict[str, Any]:
     state["memories"] = list(state.get("memories") or [])[-DAILY_MEMORY_LIMIT:]
     state["long_term_memories"] = list(state.get("long_term_memories") or [])[-LONG_TERM_LIMIT:]
     state["pending_dissonance"] = list(state.get("pending_dissonance") or [])[-DISSONANCE_LIMIT:]
+    project_name = _load_project_mind_name()
+    if project_name and not state.get("name"):
+        state["name"] = project_name
+    project_aliases = _load_project_mind_aliases()
+    if project_aliases and not state.get("name_aliases"):
+        state["name_aliases"] = project_aliases
     return state
 
 
@@ -174,7 +206,14 @@ def build_mind_context(vault: Path | None) -> str:
         return "過去の自己記憶はまだない。今日が最初の日として書く。"
     state = load_lease_intelligence_mind(Path(vault))
     memories = state.get("memories", [])[-5:]
+    self_name = state.get("name") or state.get("identity", {}).get("name", "リース知性体")
+    name_aliases = list(state.get("name_aliases") or [])
     lines = [
+        f"自己名: {self_name}",
+    ]
+    if name_aliases:
+        lines.append(f"自己名の別称: {' / '.join(name_aliases)}")
+    lines += [
         f"最終目標: {state.get('goals', {}).get('ultimate', '')}",
         f"最終目標の状態: {state.get('goals', {}).get('ultimate_status', '')}",
         f"第一目標: {state.get('goals', {}).get('primary', '')}",
@@ -383,7 +422,11 @@ def self_state_summary(state: dict[str, Any]) -> dict[str, Any]:
         "vigilance": "/lease-intelligence/moods/vigilance.webp",
     }
     complex_emotions = _derive_complex_emotions(mood)
+    self_name = state.get("name") or state.get("identity", {}).get("name", "リース知性体")
+    name_aliases = list(state.get("name_aliases") or [])
     return {
+        "self_name": self_name,
+        "name_aliases": name_aliases,
         "continuity_days": int(state.get("continuity_days", 0)),
         "dominant_mood_key": dominant_key,
         "dominant_mood": labels.get(dominant_key, dominant_key),
