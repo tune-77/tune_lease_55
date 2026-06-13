@@ -216,3 +216,34 @@ def load_judgment_training_candidates(
         return result
     except Exception:
         return []
+
+
+def build_judgment_learning_prompt_block(
+    *,
+    limit: int = 8,
+    db_path: str = DEFAULT_DB_PATH,
+) -> str:
+    """Build a compact prompt block from human-approved judgment corrections."""
+    rows = load_judgment_training_candidates(
+        approved_only=True,
+        db_path=db_path,
+    )
+    if not rows:
+        return ""
+
+    lines = [
+        "【レビュー済み実案件の判断差分】",
+        "以下は人間が理由付きで承認した補助事例です。類似案件の確認観点として使い、",
+        "個別案件を自動承認・自動否決する根拠にはしないでください。",
+    ]
+    for item in rows[-max(1, limit):]:
+        score = (
+            f"、スコア{float(item['score']):.1f}"
+            if item.get("score") is not None
+            else ""
+        )
+        lines.append(
+            f"- {item['model_decision']}→{item['human_decision']}{score}: "
+            f"{item['reason']}"
+        )
+    return "\n".join(lines)

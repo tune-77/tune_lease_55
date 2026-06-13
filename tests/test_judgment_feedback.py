@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from judgment_feedback import (
+    build_judgment_learning_prompt_block,
     get_judgment_feedback_summary,
     load_judgment_training_candidates,
     record_judgment_feedback,
@@ -61,3 +62,21 @@ def test_only_approved_rows_feed_training_export(tmp_path):
     candidates = load_judgment_training_candidates(db_path=db_path)
     assert len(candidates) == 1
     assert candidates[0]["target_label"] == 1
+
+    block = build_judgment_learning_prompt_block(db_path=db_path)
+    assert "承認→条件付" in block
+    assert "追加担保を条件にする" in block
+
+
+def test_unapproved_feedback_is_not_in_learning_prompt(tmp_path):
+    db_path = str(tmp_path / "lease.db")
+    record_judgment_feedback(
+        case_id="case-3",
+        model_decision="承認",
+        human_decision="否決",
+        reason="直近の受注急減を重く見た",
+        source="test",
+        db_path=db_path,
+    )
+
+    assert build_judgment_learning_prompt_block(db_path=db_path) == ""
