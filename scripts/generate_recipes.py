@@ -16,7 +16,11 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT_FOR_IMPORT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT_FOR_IMPORT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT_FOR_IMPORT))
+
+PROJECT_ROOT = PROJECT_ROOT_FOR_IMPORT
 LATEST_JSON = PROJECT_ROOT / "reports" / "latest.json"
 PENDING_DIR = PROJECT_ROOT / "data" / "recipes" / "pending"
 APPLIED_DIR = PROJECT_ROOT / "data" / "recipes" / "applied"
@@ -80,6 +84,35 @@ def _is_policy_auto(policy: object) -> bool:
     if isinstance(policy, dict):
         return bool(policy.get("auto_fix_allowed")) or policy.get("policy") == "auto"
     return False
+
+
+def _count_similar_in_ledger(rev: str, title: str, candidates: dict[str, dict]) -> int:
+    title_words = set(title.lower().split())
+    count = 0
+    for cand_rev, entry in candidates.items():
+        if cand_rev == rev:
+            continue
+        cand_title = (entry.get("title", "") or "").lower()
+        if any(w in cand_title for w in title_words if len(w) > 2):
+            count += 1
+    return count
+
+
+def _build_intelligence_comment(rev: str, title: str, ledger_candidates: dict[str, dict]) -> str:
+    try:
+        from lease_intelligence_knowledge import build_lease_intelligence_knowledge
+        knowledge = build_lease_intelligence_knowledge(theme=title, limit=3)
+        top_note = ""
+        if knowledge.source_paths:
+            top_note = Path(knowledge.source_paths[0]).stem
+        similar_count = _count_similar_in_ledger(rev, title, ledger_candidates)
+        parts: list[str] = [f"過去の類似改善: {similar_count}件"]
+        if top_note:
+            parts.append(f"関連Obsidianノート: {top_note}")
+        comment = " / ".join(parts)
+        return comment[:100]
+    except Exception:
+        return ""
 
 
 def _build_recipe(item: dict, ledger_entry: dict) -> dict | None:
@@ -182,6 +215,8 @@ def main() -> None:
             if recipe is None:
                 skipped_no_candidates += 1
                 continue
+
+            recipe["intelligence_comment"] = _build_intelligence_comment(rev, title, ledger_candidates)
 
             out_path = PENDING_DIR / f"{rev}.json"
             with out_path.open("w", encoding="utf-8") as f:

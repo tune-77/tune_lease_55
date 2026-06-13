@@ -7457,3 +7457,56 @@ def get_recent_lease_news(limit: int = 5):
         items.append(item)
 
     return {"items": items}
+
+
+# ---------- recipes エンドポイント ----------
+
+_RECIPES_ROOT = Path(_REPO_ROOT) / "data" / "recipes"
+
+
+def _recipe_risk_level(recipe: dict) -> str:
+    safety = recipe.get("safety", "none")
+    files = recipe.get("files", [])
+    total_changes = sum(len(f.get("changes", [])) for f in files)
+    if total_changes >= 10 or safety == "tsc":
+        return "medium"
+    return "low"
+
+
+@app.get("/api/recipes/pending")
+def get_pending_recipes():
+    pending_dir = _RECIPES_ROOT / "pending"
+    recipes: list[dict] = []
+    if not pending_dir.exists():
+        return {"recipes": recipes}
+    for path in sorted(pending_dir.glob("*.json")):
+        try:
+            recipe = json.loads(path.read_text(encoding="utf-8"))
+            recipe["id"] = path.stem
+            recipe.setdefault("risk_level", _recipe_risk_level(recipe))
+            recipes.append(recipe)
+        except Exception:
+            pass
+    return {"recipes": recipes}
+
+
+@app.post("/api/recipes/{recipe_id}/approve")
+def approve_recipe(recipe_id: str):
+    src = _RECIPES_ROOT / "pending" / f"{recipe_id}.json"
+    if not src.exists():
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    dst_dir = _RECIPES_ROOT / "approved"
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    src.rename(dst_dir / f"{recipe_id}.json")
+    return {"status": "approved", "id": recipe_id}
+
+
+@app.post("/api/recipes/{recipe_id}/reject")
+def reject_recipe(recipe_id: str):
+    src = _RECIPES_ROOT / "pending" / f"{recipe_id}.json"
+    if not src.exists():
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    dst_dir = _RECIPES_ROOT / "rejected"
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    src.rename(dst_dir / f"{recipe_id}.json")
+    return {"status": "rejected", "id": recipe_id}

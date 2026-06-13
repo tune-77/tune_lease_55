@@ -16,6 +16,17 @@ import {
   Sparkles,
 } from "lucide-react";
 
+type PendingRecipe = {
+  id: string;
+  rev: string;
+  title: string;
+  files: { path: string; changes: { find: string; replace: string }[] }[];
+  safety?: string;
+  risk_level?: string;
+  intelligence_comment?: string;
+  generated_at?: string;
+};
+
 type ImprovementItem = {
   id: string;
   title: string;
@@ -143,6 +154,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export default function ImprovementLogPage() {
+  const [activeTab, setActiveTab] = useState<"improvements" | "recipes">("improvements");
   const [data, setData] = useState<ImprovementLog | null>(null);
   const [summary, setSummary] = useState<PipelineSummary | null>(null);
   const [gapAnalysis, setGapAnalysis] = useState<GapAnalysis | null>(null);
@@ -151,6 +163,33 @@ export default function ImprovementLogPage() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("NEEDS_REVIEW");
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
+  const [pendingRecipes, setPendingRecipes] = useState<PendingRecipe[]>([]);
+  const [recipesLoading, setRecipesLoading] = useState(false);
+  const [dismissedRecipes, setDismissedRecipes] = useState<Set<string>>(new Set());
+
+  const fetchRecipes = useCallback(async () => {
+    setRecipesLoading(true);
+    try {
+      const res = await apiClient.get<{ recipes: PendingRecipe[] }>("/api/recipes/pending");
+      setPendingRecipes(res.data.recipes ?? []);
+    } catch {
+      setPendingRecipes([]);
+    } finally {
+      setRecipesLoading(false);
+    }
+  }, []);
+
+  const handleRecipeAction = useCallback(
+    async (recipe: PendingRecipe, action: "approve" | "reject") => {
+      try {
+        await apiClient.post(`/api/recipes/${recipe.id}/${action}`);
+        setDismissedRecipes((prev) => new Set(prev).add(recipe.id));
+      } catch {
+        // 失敗時はカードを維持
+      }
+    },
+    []
+  );
 
   const fetchLog = useCallback(async () => {
     setLoading(true);
@@ -187,6 +226,10 @@ export default function ImprovementLogPage() {
   useEffect(() => {
     fetchLog();
   }, [fetchLog]);
+
+  useEffect(() => {
+    fetchRecipes();
+  }, [fetchRecipes]);
 
   const handleReview = useCallback(
     async (item: ImprovementItem, action: "approved" | "rejected" | "deferred") => {
@@ -249,6 +292,8 @@ export default function ImprovementLogPage() {
   const obsidianStatus = data?.obsidian_compliance?.status || "unknown";
   const obsidianViolations = data?.obsidian_compliance?.violations?.length || 0;
 
+  const visibleRecipes = pendingRecipes.filter((r) => !dismissedRecipes.has(r.id));
+
   return (
     <main className="min-h-screen bg-slate-50 p-4 md:p-6">
       <div className="mx-auto max-w-6xl space-y-5">
@@ -265,13 +310,70 @@ export default function ImprovementLogPage() {
             </div>
           </div>
           <button
-            onClick={fetchLog}
+            onClick={activeTab === "improvements" ? fetchLog : fetchRecipes}
             className="ml-auto inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
           >
             <RefreshCw className="h-4 w-4" />
             更新
           </button>
         </div>
+
+        {/* タブナビゲーション */}
+        <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1">
+          <button
+            onClick={() => setActiveTab("improvements")}
+            className={`flex-1 rounded-md px-4 py-2 text-sm font-semibold transition-colors ${
+              activeTab === "improvements"
+                ? "bg-slate-900 text-white"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            改善案
+          </button>
+          <button
+            onClick={() => setActiveTab("recipes")}
+            className={`flex-1 rounded-md px-4 py-2 text-sm font-semibold transition-colors ${
+              activeTab === "recipes"
+                ? "bg-slate-900 text-white"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            レシピ承認
+            {visibleRecipes.length > 0 && (
+              <span className="ml-2 inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 text-xs font-bold text-white">
+                {visibleRecipes.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* レシピ承認タブ */}
+        {activeTab === "recipes" && (
+          <section className="space-y-3">
+            {recipesLoading ? (
+              <div className="rounded-lg border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
+                読み込み中...
+              </div>
+            ) : visibleRecipes.length === 0 ? (
+              <div className="rounded-lg border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
+                承認待ちのレシピはありません
+              </div>
+            ) : (
+              visibleRecipes.map((recipe) => (
+                <RecipeCard
+                  key={recipe.id}
+                  recipe={recipe}
+                  onApprove={() => handleRecipeAction(recipe, "approve")}
+                  onReject={() => handleRecipeAction(recipe, "reject")}
+                />
+              ))
+            )}
+          </section>
+        )}
+
+        {/* 改善案タブ */}
+        {activeTab === "improvements" && (
+        <>
 
         {/* 朝報告サマリーカード */}
         {summary && (
@@ -576,8 +678,76 @@ export default function ImprovementLogPage() {
             </div>
           )}
         </section>
+        </>
+        )}
       </div>
     </main>
+  );
+}
+
+function RecipeCard({
+  recipe,
+  onApprove,
+  onReject,
+}: {
+  recipe: PendingRecipe;
+  onApprove: () => void;
+  onReject: () => void;
+}) {
+  const [acting, setActing] = useState(false);
+  const totalChanges = recipe.files.reduce((sum, f) => sum + f.changes.length, 0);
+  const riskLevel = recipe.risk_level ?? "low";
+  const riskBadge =
+    riskLevel === "high"
+      ? "bg-rose-100 text-rose-700 border-rose-200"
+      : riskLevel === "medium"
+      ? "bg-amber-100 text-amber-700 border-amber-200"
+      : "bg-emerald-100 text-emerald-700 border-emerald-200";
+
+  const handle = async (action: () => Promise<void> | void) => {
+    setActing(true);
+    try {
+      await action();
+    } finally {
+      setActing(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-mono text-xs font-bold text-slate-500">{recipe.rev ?? recipe.id}</span>
+        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${riskBadge}`}>
+          {riskLevel}
+        </span>
+      </div>
+      <h3 className="mt-2 text-sm font-bold text-slate-900">{recipe.title}</h3>
+      <p className="mt-1 text-xs text-slate-500">
+        変更箇所: {totalChanges}件 /{" "}
+        {recipe.files.map((f) => f.path.split("/").pop()).join(", ")}
+      </p>
+      {recipe.intelligence_comment && (
+        <div className="mt-2 rounded border border-purple-200 bg-purple-50 px-2.5 py-1.5 text-[11px] text-purple-700">
+          {recipe.intelligence_comment}
+        </div>
+      )}
+      <div className="mt-3 flex gap-2">
+        <button
+          onClick={() => handle(onApprove)}
+          disabled={acting}
+          className="rounded border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-40"
+        >
+          ✅ 承認
+        </button>
+        <button
+          onClick={() => handle(onReject)}
+          disabled={acting}
+          className="rounded border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-40"
+        >
+          ❌ 却下
+        </button>
+      </div>
+    </div>
   );
 }
 
