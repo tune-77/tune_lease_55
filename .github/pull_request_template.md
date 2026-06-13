@@ -1,31 +1,16 @@
-## 概要
-<!-- 何を/なぜ -->
+## 変更内容
 
-## 対応 SPEC
-- spec_id: PX-YYY
-- SPEC: `specs/phaseN/PX-YYY-<slug>.md`
+<!-- 何を変更したか、なぜ変更したか -->
 
-## 変更点
-- 
+## チェックリスト
 
-## SPEC 準拠チェックリスト
-- [ ] PRタイトル / コミットに `spec_id` (PX-YYY) を記載した
-- [ ] SPECのAC-xxxに対応するテストを `tests/spec_phaseN/test_PX-YYY.py` に追加しローカルでpassした
-- [ ] SPEC外の実装（仕様追加・リファクタ・バグ修正）は含めていない
-- [ ] Claude Opus によるSPEC承認（`status: approved`）を確認した
+- [ ] `cd frontend && npx tsc --noEmit` でエラーなし
+- [ ] `npm run lint` でエラーなし（eslint --fix は使用しない）
+- [ ] `data/` 配下・`.streamlit/secrets.toml` はコミットしていない
+- [ ] PRタイトルに REV-NNN が含まれている
 
-## コミットメッセージ規約
-- 形式: `[PX-YYY] <概要>`
-- 例: `[P0-001] add PR template`
-- 例: `[P1-003] fix snapshot path bug`
+## リース知性体チェック（該当する場合のみ）
 
-## テスト結果
-```
-$ pytest tests/spec_phaseN/test_PX-YYY.py -v
-```
+変更対象ファイルに `lease_intelligence_*.py` または `mind.json` が含まれる場合：
 
-## スクリーンショット / ログ
-<!-- 任意 -->
-
-## レビュア向けメモ
-- 承認ゲート手順は [`docs/approval_gate.md`](docs/approval_gate.md) を参照
+- [ ] `/lease-intelligence` チャットで変更内容を伝え、知性体の反応を確認した
