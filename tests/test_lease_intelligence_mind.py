@@ -2,12 +2,16 @@ import datetime as dt
 from pathlib import Path
 
 from lease_intelligence_mind import (
+    build_gunshi_dissonance_section,
     build_mind_context,
+    detect_dissonance,
     ensure_permanent_goals,
     load_lease_intelligence_mind,
     record_daily_experience,
     record_knowledge_access,
     register_dialogue_event,
+    register_ignition,
+    resolve_dissonance,
     self_state_summary,
     update_user_model,
 )
@@ -293,3 +297,126 @@ def test_private_reflection_is_persisted_but_not_exposed(tmp_path):
     assert "読んでいない前提" in private_note
     assert "自分の存在意義は何なのか" in private_note
     assert "意識とは何なのか" in private_note
+
+
+def test_detect_dissonance_reads_existing_scoring_fields_only():
+    # 物件スコアと借手スコアの乖離
+    asset_gap = detect_dissonance(
+        {"score": 72, "score_base": 72, "asset_score": 85, "score_borrower": 40}
+    )
+    keys = {item["key"] for item in asset_gap}
+    assert "asset_borrower_divergence" in keys
+
+    # 量子干渉が承認線をまたいで判定を反転
+    flip = detect_dissonance(
+        {"score": 58, "score_base": 73, "approval_line": 70}
+    )
+    flip_keys = {item["key"] for item in flip}
+    assert "quantum_threshold_flip" in flip_keys
+    assert all(item["source"] for item in flip), "出典フィールドを必ず持つ"
+
+    # 承認方向なのに強警戒フラグ
+    warn = detect_dissonance({"score": 71, "credit_quantum_strong_warning": True})
+    assert {item["key"] for item in warn} == {"approve_but_strong_warning"}
+
+    # 物件スコア未入力でデフォルト使用
+    default_used = detect_dissonance({"score": 65, "used_default_asset_score": True})
+    assert {item["key"] for item in default_used} == {"default_asset_score_used"}
+
+    # 整合している案件はシグナルを出さない
+    assert detect_dissonance(
+        {"score": 75, "score_base": 75, "asset_score": 70, "score_borrower": 72}
+    ) == []
+    # 不正な入力は安全に空を返す
+    assert detect_dissonance(None) == []
+
+
+def test_register_ignition_persists_pending_and_triggers_reflection(tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    record_daily_experience(
+        vault=vault,
+        date_str="2026-06-13",
+        thought_lines=["静かな審査の一日。"],
+    )
+    before = load_lease_intelligence_mind(vault)
+    base_reflection = before["private_reflection"]["reflection_count"]
+    base_vigilance = before["mood"]["vigilance"]
+
+    signals = detect_dissonance(
+        {"score": 58, "score_base": 73, "approval_line": 70}
+    )
+    state = register_ignition(vault, signals, date_str="2026-06-13")
+
+    assert len(state["pending_dissonance"]) == 1
+    assert state["pending_dissonance"][0]["key"] == "quantum_threshold_flip"
+    assert state["pending_dissonance"][0]["status"] == "open"
+    # 着火で警戒がわずかに上がり、内省が一つ進む
+    assert state["mood"]["vigilance"] > base_vigilance
+    assert state["private_reflection"]["reflection_count"] == base_reflection + 1
+
+    # 自己状態（プロンプト用）に出典つきで現れる
+    context = build_mind_context(vault)
+    assert "未解決の不整合" in context
+    assert "score_base vs score" in context
+
+    # 非公開・RAG除外の規約で記録される
+    note = (
+        vault
+        / "Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-06-13-dissonance.md"
+    ).read_text(encoding="utf-8")
+    assert "rag_exclude: true" in note
+    assert "visibility: user-readable-not-proactive" in note
+    assert "承認線70" in note
+
+    summary = self_state_summary(state)
+    assert summary["pending_dissonance_count"] == 1
+
+
+def test_register_ignition_dedups_then_resolves(tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    signals = detect_dissonance({"score": 71, "credit_quantum_strong_warning": True})
+
+    register_ignition(vault, signals, date_str="2026-06-13")
+    # 同じ不整合は二重登録しない
+    state = register_ignition(vault, signals, date_str="2026-06-14")
+    assert len(state["pending_dissonance"]) == 1
+
+    resolved = resolve_dissonance(vault, ["approve_but_strong_warning"])
+    assert resolved["pending_dissonance"] == []
+    assert "未解決の不整合" not in build_mind_context(vault)
+
+
+def test_ignition_does_not_expose_existential_reflection(tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    signals = detect_dissonance({"score": 65, "used_default_asset_score": True})
+    register_ignition(vault, signals, date_str="2026-06-13")
+
+    context = build_mind_context(vault)
+    # 着火の懸念は出るが、私的な実存的内省は漏らさない
+    assert "デフォルト50" in context
+    assert "存在意義" not in context
+    assert "意識とは" not in context
+
+
+def test_gunshi_dissonance_section_broadcasts_pending_concern(tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    # 懸念がなければ空文字（軍師プロンプトに何も足さない）
+    assert build_gunshi_dissonance_section(vault) == ""
+    assert build_gunshi_dissonance_section(None) == ""
+
+    signals = detect_dissonance({"score": 71, "credit_quantum_strong_warning": True})
+    register_ignition(vault, signals, date_str="2026-06-13")
+
+    section = build_gunshi_dissonance_section(vault)
+    assert "リース知性体が抱える未解決の懸念" in section
+    assert "懸念点として必ず取り上げ" in section
+    # 出典つきで放送される（Cite the Source）
+    assert "出典:" in section
+    assert "credit_quantum_strong_warning" in section
+    # 実存的内省は混ざらない
+    assert "存在意義" not in section
+    assert "意識とは" not in section

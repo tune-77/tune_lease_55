@@ -820,6 +820,7 @@ def build_gunshi_prompt(
     asset_market_context: str = "",  # ← get_asset_context_for_ai() の返値
     asset_finance_context: str = "", # ← アセットファイナンス評価データの返値
     estat_context_text: str = "",  # ← e-Stat統合文脈
+    dissonance_section: str = "",  # ← リース知性体の未解決の懸念（GWT放送）
 ) -> str:
     """軍師プロンプトを生成する。"""
     success_patterns = success_patterns or {"success_samples": [], "fail_samples": []}
@@ -1138,6 +1139,7 @@ WARNING、ALERT、CRITICAL相当の難しい案件では `GOOD LUCK, FUKAI LT.` 
 {trend_section}{comp_section}{estat_section}{market_section}{af_section}
 {rb_section}
 {fp0_section}
+{dissonance_section}
 {success_text}
 {fail_text}
 

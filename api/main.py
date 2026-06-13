@@ -1050,6 +1050,21 @@ def calculate_score_full(req: ScoringRequest):
             print(f"[WARNING] DB save failed: {_save_err}")
         data_source_summary["case_id"] = case_id
 
+        # リース知性体の着火: サブエージェント間の不整合を検知したら内省を起動する。
+        # 既存スコアリング結果のフィールドを読むだけ・審査レスポンスには影響しない完全非ブロッキング。
+        # PII混入を避けるため会社名等は渡さず、数値フィールドのみで判定する。
+        try:
+            from lease_intelligence_mind import detect_dissonance, register_ignition
+            from lease_news_digest import find_vault as _find_vault
+
+            _vault = _find_vault()
+            if _vault:
+                _signals = detect_dissonance(result)
+                if _signals:
+                    register_ignition(_vault, _signals)
+        except Exception as _ignite_err:
+            print(f"[WARNING] lease-intelligence ignition skipped: {_ignite_err}")
+
         return ScoringResponse(
             score=result.get("score", 0.0),
             hantei=result.get("hantei", "未判定"),
@@ -3318,6 +3333,16 @@ def generate_gunshi_chat(req: GunshiChatRequest):
 
         has_case_context = req.score != 0 or bool((req.industry_major or "").strip())
         if has_case_context:
+            # リース知性体の未解決の懸念を軍師プロンプトへ放送する（GWT broadcast）。
+            # スコアリング時に記録済みの pending_dissonance を読むだけ・完全非ブロッキング。
+            _dissonance_section = ""
+            try:
+                from lease_intelligence_mind import build_gunshi_dissonance_section
+                from lease_news_digest import find_vault as _find_vault
+
+                _dissonance_section = build_gunshi_dissonance_section(_find_vault())
+            except Exception as _diss_err:
+                print(f"[WARNING] gunshi dissonance section skipped: {_diss_err}")
             prompt = build_gunshi_prompt(
                 industry=req.industry_major,
                 score=req.score,
@@ -3332,6 +3357,7 @@ def generate_gunshi_chat(req: GunshiChatRequest):
                 asset_name=req.asset_name,
                 humor_style=req.humor_style,
                 estat_context_text=_format_estat_context_for_prompt(req.estat_context),
+                dissonance_section=_dissonance_section,
             )
             if is_yukikaze:
                 prompt += (
