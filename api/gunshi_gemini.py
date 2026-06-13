@@ -193,6 +193,7 @@ def build_system_instruction(
     default_warnings: list[str] | None = None,
     estat_context: dict | None = None,
     include_pdca: bool = True,
+    dissonance_block: str = "",
 ) -> str:
     # PHRASES_100 は dict[str, list[dict]] なので全カテゴリのtextを列挙
     all_phrases = []
@@ -239,6 +240,8 @@ def build_system_instruction(
             "財務分析モデルが以下のリスクを検出しています。審査の最終判断に反映してください：\n"
             f"{warnings_text}\n"
         )
+    if dissonance_block and dissonance_block.strip():
+        base += f"\n{dissonance_block.strip()}\n"
     return base
 
 
@@ -276,8 +279,17 @@ def build_user_prompt(params: dict) -> str:
     )
 
 
-def build_fallback_strategy_text(params: dict, phrases: list[str], reason: str = "") -> str:
-    """Build a deterministic strategy when Gemini streaming is unavailable."""
+def build_fallback_strategy_text(
+    params: dict,
+    phrases: list[str],
+    reason: str = "",
+    dissonance_block: str = "",
+) -> str:
+    """Build a deterministic strategy when Gemini streaming is unavailable.
+
+    Gemini応答が取れずフォールバックする場合でも、リース知性体の未解決の懸念
+    （dissonance_block）が人間の読む最終文に必ず残るよう、専用セクションへ差し込む。
+    """
     score = float(params.get("score", 0) or 0)
     pd_pct = float(params.get("pd_pct", 0) or 0)
     industry_cat = str(params.get("industry_cat") or "指定なし")
@@ -314,6 +326,8 @@ def build_fallback_strategy_text(params: dict, phrases: list[str], reason: str =
     phrase_lines = [f"- {p}" for p in phrases[:3] if p]
     phrase_block = "\n".join(phrase_lines) if phrase_lines else "- 物件の必要性、換価性、返済原資を一体で説明する。"
     note = f"\n\n※ Gemini接続の代替応答です（{reason}）。" if reason else ""
+    # フォールバックでも知性体の懸念を必ず残す（GWT放送をGemini不調時にも貫通させる）。
+    concern = f"\n\n{dissonance_block.strip()}" if dissonance_block and dissonance_block.strip() else ""
 
     return (
         f"【軍師AI 代替戦略】\n"
@@ -323,6 +337,7 @@ def build_fallback_strategy_text(params: dict, phrases: list[str], reason: str =
         f"二、まず取る作戦\n{first_move}\n\n"
         f"三、稟議で押す材料\n"
         + "\n".join(f"- {item}" for item in evidence)
+        + concern
         + "\n\n"
         f"四、使うべき軍師フレーズ\n{phrase_block}"
         f"{note}"
@@ -494,6 +509,16 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
     )
     # phrase_dicts は list[dict] — text フィールドを抽出
     phrases = [p.get("text", str(p)) if isinstance(p, dict) else str(p) for p in phrase_dicts]
+    # リース知性体の未解決の懸念を軍師プロンプトへ放送する（GWT broadcast）。
+    # スコアリング時に記録済みの pending_dissonance を読むだけ・完全非ブロッキング。
+    dissonance_block = ""
+    try:
+        from lease_intelligence_mind import build_gunshi_dissonance_section
+        from lease_news_digest import find_vault as _find_vault
+
+        dissonance_block = build_gunshi_dissonance_section(_find_vault())
+    except Exception as _diss_err:
+        print(f"[WARNING] gunshi-stream dissonance broadcast skipped: {_diss_err}")
     base_system_instruction = build_system_instruction(
         params.get("asset_warnings"),
         params.get("asset_bonuses"),
@@ -502,6 +527,7 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
         params.get("default_warnings"),
         params.get("estat_context"),
         include_pdca=False,
+        dissonance_block=dissonance_block,
     )
     final_system_instruction = build_system_instruction(
         params.get("asset_warnings"),
@@ -511,6 +537,7 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
         params.get("default_warnings"),
         params.get("estat_context"),
         include_pdca=True,
+        dissonance_block=dissonance_block,
     )
     question_text = build_user_prompt(params)
     base_prompt = f"{base_system_instruction}\n\n{question_text}".strip()
@@ -549,7 +576,7 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
     }
 
     if not api_key:
-        fallback_text = build_fallback_strategy_text(params, phrases, "GEMINI_API_KEY未設定")
+        fallback_text = build_fallback_strategy_text(params, phrases, "GEMINI_API_KEY未設定", dissonance_block=dissonance_block)
         yield {"type": "stream", "delta": fallback_text}
         _record_feedback(fallback_text, reason="GEMINI_API_KEY未設定")
         yield {"type": "done"}
@@ -576,7 +603,7 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
                         continue  # exponential backoff で再試行
                     _rate_limited = False
                     if resp.status_code != 200:
-                        fallback_text = build_fallback_strategy_text(params, phrases, f"HTTP {resp.status_code}")
+                        fallback_text = build_fallback_strategy_text(params, phrases, f"HTTP {resp.status_code}", dissonance_block=dissonance_block)
                         yield {"type": "stream", "delta": fallback_text}
                         _record_feedback(fallback_text, reason=f"HTTP {resp.status_code}")
                         yield {"type": "done"}
@@ -604,17 +631,18 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
                             params,
                             phrases,
                             "Gemini応答が短すぎたため補完",
+                            dissonance_block=dissonance_block,
                         )
                         response_text = f"{response_text}{prefix}{fallback_text}"
                         yield {
                             "type": "stream",
                             "delta": prefix + fallback_text,
                         }
-                    _record_feedback(response_text or build_fallback_strategy_text(params, phrases, "Gemini応答取得"), reason="")
+                    _record_feedback(response_text or build_fallback_strategy_text(params, phrases, "Gemini応答取得", dissonance_block=dissonance_block), reason="")
                     yield {"type": "done"}
                     return
         except Exception as exc:
-            fallback_text = build_fallback_strategy_text(params, phrases, type(exc).__name__)
+            fallback_text = build_fallback_strategy_text(params, phrases, type(exc).__name__, dissonance_block=dissonance_block)
             yield {"type": "stream", "delta": fallback_text}
             _record_feedback(fallback_text, reason=type(exc).__name__)
             yield {"type": "done"}
@@ -626,7 +654,7 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
         yield {"type": "stream", "delta": fallback_text}
         _record_feedback(fallback_text, reason="rate_limited")
     else:
-        fallback_text = build_fallback_strategy_text(params, phrases, "接続失敗")
+        fallback_text = build_fallback_strategy_text(params, phrases, "接続失敗", dissonance_block=dissonance_block)
         yield {"type": "stream", "delta": fallback_text}
         _record_feedback(fallback_text, reason="接続失敗")
     yield {"type": "done"}

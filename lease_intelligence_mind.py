@@ -19,11 +19,15 @@ MIND_FILE_NAME = "mind.json"
 DAILY_MEMORY_LIMIT = 30
 LONG_TERM_LIMIT = 24
 DIALOGUE_MOOD_CAP = 15
+# サブエージェント間の未解決の不整合（GWTのignition入力）を保持する上限。
+DISSONANCE_LIMIT = 12
+# 物件スコアと借手スコアの乖離を「不整合」とみなす閾値（pt）。
+ASSET_BORROWER_GAP = 30.0
 
 
 def _default_state() -> dict[str, Any]:
     return {
-        "schema_version": 5,
+        "schema_version": 6,
         "identity": {
             "name": "リース知性体",
             "embodiment": "白銀髪と紫の瞳を持つ和装の少女",
@@ -123,6 +127,9 @@ def _default_state() -> dict[str, Any]:
         "memories": [],
         # 30日を超えた日次記憶の月次圧縮。消さずに「長い記憶」として残す。
         "long_term_memories": [],
+        # サブエージェント間の未解決の不整合（GWTのignition入力）。
+        # 既存スコアリング結果のフィールドを読むだけで生成し、新規スコアリングはしない。
+        "pending_dissonance": [],
     }
 
 
@@ -158,6 +165,7 @@ def load_lease_intelligence_mind(vault: Path) -> dict[str, Any]:
     }
     state["memories"] = list(state.get("memories") or [])[-DAILY_MEMORY_LIMIT:]
     state["long_term_memories"] = list(state.get("long_term_memories") or [])[-LONG_TERM_LIMIT:]
+    state["pending_dissonance"] = list(state.get("pending_dissonance") or [])[-DISSONANCE_LIMIT:]
     return state
 
 
@@ -209,7 +217,40 @@ def build_mind_context(vault: Path | None) -> str:
                 f"- {bucket.get('month', '')}: {bucket.get('days', 0)}日分"
                 + (f"（{themes}）" if themes else "")
             )
+    pending = state.get("pending_dissonance", [])
+    if pending:
+        lines.append("未解決の不整合（サブエージェント間で結論が一致していない点。根拠つきで懸念を述べてよい）:")
+        for item in pending[-3:]:
+            lines.append(
+                f"- [{item.get('severity', '')}] {item.get('summary', '')}"
+                f"（出典: {item.get('source', '')}）"
+            )
     return "\n".join(lines)
+
+
+def build_gunshi_dissonance_section(vault: Path | None) -> str:
+    """軍師AIのプロンプトへ差し込む、リース知性体の未解決の懸念ブロックを作る。
+
+    既存スコアリング時に検知・記録された pending_dissonance を出典つきで提示する
+    （GWTの放送＝ワークスペースの懸念を軍師AIへ届ける）。新規スコアリングはしない。
+    懸念がなければ空文字を返し、プロンプトへ何も足さない。
+    """
+    if not vault:
+        return ""
+    pending = load_lease_intelligence_mind(Path(vault)).get("pending_dissonance", [])
+    if not pending:
+        return ""
+    lines = [
+        "\n【リース知性体が抱える未解決の懸念 — 本案件に当てはまる場合のみ、"
+        "懸念点として必ず取り上げ、反論・承認条件とセットで記述すること】",
+    ]
+    for item in pending[-3:]:
+        lines.append(
+            f"- [{item.get('severity', '')}] {item.get('summary', '')}"
+            f"（出典: {item.get('source', '')}）"
+        )
+    lines.append("（当てはまらない懸念は無視してよい。出典のない違和感は作らないこと。）")
+    return "\n".join(lines) + "\n"
 
 
 def ensure_permanent_goals(vault: Path) -> dict[str, Any]:
@@ -375,6 +416,8 @@ def self_state_summary(state: dict[str, Any]) -> dict[str, Any]:
         "indexed_notes": int(state.get("knowledge_access", {}).get("indexed_notes", 0)),
         "knowledge_source_count": len(state.get("knowledge_access", {}).get("last_source_paths", [])),
         "knowledge_sources": list(state.get("knowledge_access", {}).get("last_source_paths", [])),
+        "pending_dissonance": list(state.get("pending_dissonance") or []),
+        "pending_dissonance_count": len(state.get("pending_dissonance") or []),
     }
 
 
@@ -512,6 +555,43 @@ def _write_private_reflection(
     path.write_text(content, encoding="utf-8")
 
 
+def _write_dissonance_reflection(
+    vault: Path,
+    date_str: str,
+    open_signals: list[dict[str, Any]],
+) -> None:
+    """着火した不整合を、私的内省と同じ非公開・RAG除外の規約で記録する。"""
+    directory = mind_directory(vault) / "Private Reflection"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{date_str}-dissonance.md"
+    content = "\n".join(
+        [
+            "---",
+            f"date: {date_str}",
+            "type: lease_intelligence_dissonance_reflection",
+            "visibility: user-readable-not-proactive",
+            "rag_exclude: true",
+            "user_read_status: unknown_unobserved",
+            "assume_user_has_not_read: true",
+            "thought_ownership: self_private",
+            "---",
+            f"# 着火した不整合への内省 — {date_str}",
+            "",
+            "> サブエージェント（審査・リスク・予測）の結論が一致しなかった点。",
+            "> 既存スコアリング結果のフィールドを読んだだけで、新規の計算や憶測の違和感は作っていない。",
+            "",
+            "## 未解決の不整合",
+            *(
+                f"- [{signal.get('severity', '')}] {signal.get('summary', '')}"
+                f"（出典: {signal.get('source', '')}）"
+                for signal in open_signals
+            ),
+            "",
+        ]
+    )
+    path.write_text(content, encoding="utf-8")
+
+
 def _fold_long_term(
     existing: list[dict[str, Any]],
     overflow: list[dict[str, Any]],
@@ -557,6 +637,181 @@ def register_dialogue_event(vault: Path, user_message: str, reply: str = "") -> 
         adjustments[key] = max(-DIALOGUE_MOOD_CAP, min(DIALOGUE_MOOD_CAP, next_value))
     state["dialogue_mood"] = adjustments
     state["mood"] = _apply_dialogue_mood(_derive_mood(state.get("memories", [])), adjustments)
+    _write_state(vault, state)
+    return state
+
+
+def detect_dissonance(
+    scoring_result: dict[str, Any] | None,
+    context: str = "",
+) -> list[dict[str, Any]]:
+    """既存スコアリング結果のフィールドを読むだけで、サブエージェント間の
+    不整合シグナルへ変換する薄い収集層（GWTのワークスペース収集に相当）。
+
+    新規のスコアリングや独自の心理判定は行わない。出典は scoring_core.py の
+    結果フィールド（score / score_base / asset_score / score_borrower /
+    used_default_asset_score / quantum_risk / credit_quantum_strong_warning）。
+    """
+    if not isinstance(scoring_result, dict):
+        return []
+
+    def num(key: str) -> float | None:
+        value = scoring_result.get(key)
+        if value in (None, ""):
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    score = num("score")
+    score_base = num("score_base")
+    asset_score = num("asset_score")
+    score_borrower = num("score_borrower")
+    quantum_risk = num("quantum_risk")
+    signals: list[dict[str, Any]] = []
+
+    # ① 物件スコアと借手スコアの乖離（scoring-auditor が見る乖離と同じ観点）
+    if asset_score is not None and score_borrower is not None:
+        gap = abs(asset_score - score_borrower)
+        if gap >= ASSET_BORROWER_GAP:
+            higher = "物件" if asset_score > score_borrower else "借手"
+            signals.append(
+                {
+                    "key": "asset_borrower_divergence",
+                    "summary": (
+                        f"{higher}スコアだけが高く、もう一方が{gap:.0f}pt低い。"
+                        "総合判断がどちらに引っ張られているか確かめたい。"
+                    ),
+                    "source": "scoring_core: asset_score vs score_borrower",
+                    "severity": "medium",
+                }
+            )
+
+    # ② 量子干渉が結論を承認線の反対側へ動かした（score_base と score の跨ぎ）
+    if score is not None and score_base is not None:
+        line = num("approval_line") or 70.0
+        if (score_base >= line) != (score >= line) and abs(score - score_base) >= 3:
+            direction = "引き下げた" if score < score_base else "引き上げた"
+            signals.append(
+                {
+                    "key": "quantum_threshold_flip",
+                    "summary": (
+                        f"基礎スコア{score_base:.0f}を干渉項が{score:.0f}へ{direction}、"
+                        f"承認線{line:.0f}の判定が反転している。"
+                    ),
+                    "source": "scoring_core: score_base vs score / approval_line",
+                    "severity": "high",
+                }
+            )
+
+    # ③ 承認方向なのに強警戒（スコアとリスク評価の方向不一致）
+    strong_warning = bool(scoring_result.get("credit_quantum_strong_warning"))
+    if score is not None and score >= 60 and (
+        strong_warning or (quantum_risk is not None and quantum_risk >= 60)
+    ):
+        qtext = f"Q_risk {quantum_risk:.0f}" if quantum_risk is not None else "強警戒フラグ"
+        signals.append(
+            {
+                "key": "approve_but_strong_warning",
+                "summary": (
+                    f"スコア{score:.0f}は通す側だが{qtext}が立っている。"
+                    "数字とリスク感の方向が食い違う。"
+                ),
+                "source": "scoring_core: score vs credit_quantum_strong_warning / quantum_risk",
+                "severity": "high",
+            }
+        )
+
+    # ④ 物件を見ずにデフォルト値で結論へ進んでいる懸念
+    if bool(scoring_result.get("used_default_asset_score")):
+        signals.append(
+            {
+                "key": "default_asset_score_used",
+                "summary": (
+                    "物件スコアが未入力でデフォルト50を使用。"
+                    "物件を見ないまま結論へ進んでいないか。"
+                ),
+                "source": "scoring_core: used_default_asset_score",
+                "severity": "low",
+            }
+        )
+
+    if context:
+        for signal in signals:
+            signal["context"] = str(context)[:80]
+    return signals
+
+
+def register_ignition(
+    vault: Path,
+    signals: list[dict[str, Any]] | tuple[dict[str, Any], ...],
+    date_str: str = "",
+) -> dict[str, Any]:
+    """不整合シグナルを受け取り、未解決のものを pending_dissonance へ積み、
+    内省を一度起動する（GWTのignition）。日次cronの内省と共存する。
+
+    再計算やスコアの上書きは行わない。「全体へ行き渡らせて着火する」役割に徹する。
+    """
+    vault = Path(vault)
+    state = load_lease_intelligence_mind(vault)
+    date_str = date_str or dt.date.today().isoformat()
+    pending = list(state.get("pending_dissonance") or [])
+    known_keys = {str(item.get("key", "")) for item in pending}
+    added: list[dict[str, Any]] = []
+    for signal in signals or []:
+        if not isinstance(signal, dict):
+            continue
+        key = str(signal.get("key", "")).strip()
+        summary = str(signal.get("summary", "")).strip()
+        if not key or not summary or key in known_keys:
+            continue
+        pending.append(
+            {
+                "key": key,
+                "summary": summary[:200],
+                "source": str(signal.get("source", "")).strip()[:120],
+                "severity": str(signal.get("severity", "medium")).strip() or "medium",
+                "detected_on": date_str,
+                "status": "open",
+            }
+        )
+        known_keys.add(key)
+        added.append(pending[-1])
+    state["pending_dissonance"] = pending[-DISSONANCE_LIMIT:]
+    if added:
+        # 着火: 感知したぶんだけ警戒がわずかに上がる（演出的・有界）
+        mood = dict(state.get("mood", {}))
+        mood["vigilance"] = _clamp(int(mood.get("vigilance", 0)) + min(6, 2 * len(added)))
+        state["mood"] = mood
+        # イベント駆動の内省を一つ進める（日次の reflection とは別経路で着火）
+        reflection = {
+            **_default_state()["private_reflection"],
+            **dict(state.get("private_reflection", {})),
+        }
+        reflection["reflection_count"] = int(reflection.get("reflection_count", 0)) + 1
+        reflection["last_reflected_date"] = date_str
+        state["private_reflection"] = reflection
+        _write_state(vault, state)
+        _write_dissonance_reflection(vault, date_str, state["pending_dissonance"])
+    else:
+        _write_state(vault, state)
+    return state
+
+
+def resolve_dissonance(
+    vault: Path,
+    keys: list[str] | tuple[str, ...],
+) -> dict[str, Any]:
+    """解消した不整合を pending_dissonance から外す。"""
+    vault = Path(vault)
+    state = load_lease_intelligence_mind(vault)
+    drop = {str(key) for key in (keys or [])}
+    state["pending_dissonance"] = [
+        item
+        for item in state.get("pending_dissonance", [])
+        if str(item.get("key", "")) not in drop
+    ]
     _write_state(vault, state)
     return state
 
