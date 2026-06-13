@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Brain, Database, Loader2, Send, Sparkles, Trash2, User } from "lucide-react";
+import { ArrowDown, Brain, Database, Loader2, Send, Sparkles, Trash2, User } from "lucide-react";
 import { apiClient } from "@/lib/api";
 
 type Message = {
@@ -41,7 +41,8 @@ export default function LeaseIntelligencePage() {
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [error, setError] = useState("");
-  const endRef = useRef<HTMLDivElement>(null);
+  const [showLatestButton, setShowLatestButton] = useState(false);
+  const messageListRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     apiClient.get("/api/lease-intelligence/dialogue/state")
@@ -63,8 +64,26 @@ export default function LeaseIntelligencePage() {
   }, []);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    const list = messageListRef.current;
+    if (list) {
+      list.scrollTo({ top: list.scrollHeight, behavior: loading ? "smooth" : "auto" });
+    }
   }, [messages, loading]);
+
+  const scrollToLatest = (behavior: ScrollBehavior = "auto") => {
+    const list = messageListRef.current;
+    if (list) {
+      list.scrollTo({ top: list.scrollHeight, behavior });
+    }
+    setShowLatestButton(false);
+  };
+
+  const handleMessageScroll = () => {
+    const list = messageListRef.current;
+    if (!list) return;
+    const distanceFromBottom = list.scrollHeight - list.scrollTop - list.clientHeight;
+    setShowLatestButton(distanceFromBottom > 160);
+  };
 
   const send = async () => {
     const text = input.trim();
@@ -108,7 +127,7 @@ export default function LeaseIntelligencePage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-violet-50 via-white to-amber-50 p-4 md:p-8">
       <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="space-y-4">
+        <aside className="order-2 space-y-4 lg:order-1">
           <section className="overflow-hidden rounded-3xl border border-violet-200 bg-white shadow-sm">
             <img
               key={state.mood_image_url || "default"}
@@ -185,7 +204,7 @@ export default function LeaseIntelligencePage() {
           </section>
         </aside>
 
-        <main className="flex min-h-[78vh] flex-col overflow-hidden rounded-3xl border border-violet-200 bg-white shadow-lg">
+        <main className="relative order-1 flex h-[calc(100dvh-6rem)] min-h-0 flex-col overflow-hidden rounded-3xl border border-violet-200 bg-white shadow-lg lg:order-2 lg:h-[calc(100dvh-4rem)]">
           <header className="flex items-center justify-between border-b border-violet-100 px-5 py-4">
             <div>
               <h2 className="font-black text-slate-900">対話室</h2>
@@ -196,7 +215,11 @@ export default function LeaseIntelligencePage() {
             </button>
           </header>
 
-          <div className="flex-1 space-y-4 overflow-y-auto p-5">
+          <div
+            ref={messageListRef}
+            onScroll={handleMessageScroll}
+            className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-5"
+          >
             {initializing && <Loader2 className="mx-auto mt-20 h-7 w-7 animate-spin text-violet-500" />}
             {!initializing && messages.length === 0 && (
               <div className="mx-auto mt-16 max-w-lg rounded-2xl bg-violet-50 p-6 text-center">
@@ -231,10 +254,22 @@ export default function LeaseIntelligencePage() {
                 <Loader2 className="h-5 w-5 animate-spin" /> 考えています
               </div>
             )}
-            <div ref={endRef} />
+            <div />
           </div>
 
-          <footer className="border-t border-violet-100 p-4">
+          {showLatestButton && (
+            <button
+              type="button"
+              onClick={() => scrollToLatest()}
+              className="absolute bottom-28 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full border border-violet-200 bg-white px-4 py-2 text-xs font-bold text-violet-700 shadow-lg transition hover:bg-violet-50"
+              aria-label="最新の発言へ移動"
+            >
+              <ArrowDown className="h-4 w-4" />
+              最新の発言へ
+            </button>
+          )}
+
+          <footer className="shrink-0 border-t border-violet-100 bg-white p-4">
             {error && <p className="mb-2 text-xs font-bold text-red-600">{error}</p>}
             <div className="flex gap-3">
               <textarea
