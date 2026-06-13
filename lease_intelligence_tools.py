@@ -454,6 +454,17 @@ def execute_tool(name: str, args: dict, vault: Path | None = None) -> Any:
             evidence_summary=args.get("evidence_summary", ""),
             vault=vault,
         )
+    if name == "record_reasoning_path":
+        from lease_intelligence_consultation import save_shion_reasoning_path
+
+        return save_shion_reasoning_path(
+            consultation_id=str(args.get("consultation_id", "")),
+            kept=list(args.get("kept", [])),
+            dropped=list(args.get("dropped", [])),
+            pivots=list(args.get("pivots", [])),
+            value_weights=dict(args.get("value_weights", {})),
+            vault=vault,
+        )
     return {"error": f"unknown tool: {name}"}
 
 
@@ -554,6 +565,7 @@ TOOL_DECLARATIONS: list[dict] = [
             "紫苑が自分の初期仮説を作った後、難問・矛盾・低確信度の論点をCodexへ"
             "読取専用で相談する。利用前に必ず紫苑自身の仮説、確信度、確認済み根拠を渡す。"
             "得た助言は丸写しせず、何を維持・修正したかを紫苑自身の結論へ統合する。"
+            "相談後は必ず record_reasoning_path を呼んで選択経路を記録すること。"
         ),
         "parameters": {
             "type": "object",
@@ -581,6 +593,49 @@ TOOL_DECLARATIONS: list[dict] = [
                 "confidence",
                 "evidence_summary",
             ],
+        },
+    },
+    {
+        "name": "record_reasoning_path",
+        "description": (
+            "consult_senior_reasoner の助言を統合した後、最終回答の前に必ず呼ぶ。"
+            "紫苑が初期仮説から何を維持・棄却・転換したかと価値の重み付けを記録する。"
+            "このデータはモデル交換実験で推論経路の同一性を比較するために使われる。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "consultation_id": {
+                    "type": "string",
+                    "description": "consult_senior_reasoner が返した consultation_id",
+                },
+                "kept": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "初期仮説から維持した根拠・判断のリスト",
+                },
+                "dropped": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "item": {"type": "string", "description": "棄却した根拠"},
+                            "reason": {"type": "string", "description": "棄却理由"},
+                        },
+                    },
+                    "description": "初期仮説から棄却した根拠と棄却理由",
+                },
+                "pivots": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "助言を受けて方向転換した瞬間の説明（例: 'Aを重視していたがBが反証になったため転換'）",
+                },
+                "value_weights": {
+                    "type": "object",
+                    "description": "最終判断で重視した価値軸と重みの説明（例: {'財務安定性': '最重視', '担保': '二次的'}）",
+                },
+            },
+            "required": ["consultation_id"],
         },
     },
 ]
