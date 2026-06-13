@@ -151,6 +151,17 @@ def _load_project_mind_name() -> str:
     return ""
 
 
+def _load_project_mind_aliases() -> list[str]:
+    """data/mind.json のトップレベル name_aliases フィールドを読む。なければ空リストを返す。"""
+    try:
+        local = json.loads(_PROJECT_MIND_PATH.read_text(encoding="utf-8"))
+        if isinstance(local, dict) and isinstance(local.get("name_aliases"), list):
+            return [str(alias) for alias in local["name_aliases"] if alias]
+    except (OSError, json.JSONDecodeError):
+        pass
+    return []
+
+
 def load_lease_intelligence_mind(vault: Path) -> dict[str, Any]:
     path = mind_directory(vault) / MIND_FILE_NAME
     if not path.exists():
@@ -184,6 +195,9 @@ def load_lease_intelligence_mind(vault: Path) -> dict[str, Any]:
     project_name = _load_project_mind_name()
     if project_name and not state.get("name"):
         state["name"] = project_name
+    project_aliases = _load_project_mind_aliases()
+    if project_aliases and not state.get("name_aliases"):
+        state["name_aliases"] = project_aliases
     return state
 
 
@@ -193,8 +207,13 @@ def build_mind_context(vault: Path | None) -> str:
     state = load_lease_intelligence_mind(Path(vault))
     memories = state.get("memories", [])[-5:]
     self_name = state.get("name") or state.get("identity", {}).get("name", "リース知性体")
+    name_aliases = list(state.get("name_aliases") or [])
     lines = [
         f"自己名: {self_name}",
+    ]
+    if name_aliases:
+        lines.append(f"自己名の別称: {' / '.join(name_aliases)}")
+    lines += [
         f"最終目標: {state.get('goals', {}).get('ultimate', '')}",
         f"最終目標の状態: {state.get('goals', {}).get('ultimate_status', '')}",
         f"第一目標: {state.get('goals', {}).get('primary', '')}",
@@ -404,8 +423,10 @@ def self_state_summary(state: dict[str, Any]) -> dict[str, Any]:
     }
     complex_emotions = _derive_complex_emotions(mood)
     self_name = state.get("name") or state.get("identity", {}).get("name", "リース知性体")
+    name_aliases = list(state.get("name_aliases") or [])
     return {
         "self_name": self_name,
+        "name_aliases": name_aliases,
         "continuity_days": int(state.get("continuity_days", 0)),
         "dominant_mood_key": dominant_key,
         "dominant_mood": labels.get(dominant_key, dominant_key),
