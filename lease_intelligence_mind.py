@@ -1027,7 +1027,7 @@ def _derive_complex_emotions(mood: dict[str, Any]) -> list[dict[str, Any]]:
             "description": "大切なものを守るため、問題を放置できない",
         },
     ]
-    return sorted(candidates, key=lambda item: (-int(item["score"]), str(item["key"])))[:3]
+    return sorted(candidates, key=lambda item: (-int(item["score"]), str(item["key"])))
 
 
 _SHION_CLASSIFY_PROMPTS: dict[str, str] = {
