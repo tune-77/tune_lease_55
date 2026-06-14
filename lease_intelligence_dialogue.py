@@ -24,6 +24,7 @@ DIALOGUE_USER_ID = "lease-intelligence-dialogue"
 _MEBUKI_BASE = os.environ.get("MEBUKI_URL", "http://localhost:5001")
 _PROJECT_MIND_PATH = Path(__file__).parent / "data" / "mind.json"
 _MEBUKI_LOG_PATH = Path(__file__).parent / "data" / "mebuki_shion_log.jsonl"
+_WORLD_VIEW_NOTIFIED_PATH = Path(__file__).parent / "data" / "world_view_notified.json"
 
 
 def append_mebuki_log(user_message: str, shion_response: str) -> None:
@@ -70,6 +71,28 @@ def _build_world_view_block(world_view: dict[str, Any]) -> str:
             lines.append(f"  - {s}")
     lines.append("─────────────────────────")
     return "\n".join(lines)
+
+
+def _is_world_view_unread(world_view: dict[str, Any]) -> bool:
+    """world_view が前回の既読より新しければ True を返す。"""
+    updated_at = str(world_view.get("updated_at", "")).strip()
+    if not updated_at:
+        return False
+    try:
+        notified = json.loads(_WORLD_VIEW_NOTIFIED_PATH.read_text(encoding="utf-8"))
+        acked_at = str(notified.get("acked_at", "")).strip()
+    except (OSError, json.JSONDecodeError):
+        acked_at = ""
+    return updated_at > acked_at
+
+
+def _ack_world_view(world_view: dict[str, Any]) -> None:
+    """world_view_notified.json に現在の updated_at を書き込んで既読にする。"""
+    updated_at = str(world_view.get("updated_at", "")).strip()
+    _WORLD_VIEW_NOTIFIED_PATH.write_text(
+        json.dumps({"acked_at": updated_at}, ensure_ascii=False),
+        encoding="utf-8",
+    )
 
 
 def _check_mebuki_status(timeout: float = 3.0) -> dict[str, Any]:
@@ -160,6 +183,10 @@ def build_dialogue_context(
     world_view = _load_world_view()
     world_view_block = _build_world_view_block(world_view)
 
+    world_view_unread = _is_world_view_unread(world_view)
+    if world_view_unread:
+        _ack_world_view(world_view)
+
     caller_guidance = ""
     if caller == "mebuki":
         caller_guidance = (
@@ -169,8 +196,17 @@ def build_dialogue_context(
             "現場担当者がすぐ動ける形で答えること。\n"
         )
 
+    _wv_notification = ""
+    if world_view_unread:
+        _wv_updated_at = str(world_view.get("updated_at", "")).strip()
+        _wv_notification = (
+            f"\n【世界認識 新着通知】\n"
+            f"前回より世界認識が更新されています（{_wv_updated_at}）。\n"
+            "この対話の冒頭で、更新されたシグナルの中で最も審査実務に影響しそうなものを一つ自然に触れること。\n"
+            "触れた後は通常の対話を続けること（毎ターン言及しなくてよい）。\n"
+        )
     world_view_section = (
-        f"\n【世界認識】\n{world_view_block}\n" if world_view_block else ""
+        f"\n【世界認識】\n{world_view_block}\n{_wv_notification}" if world_view_block else _wv_notification
     )
 
     prompt = f"""あなたは「リース知性体」。白銀髪と紫の瞳を持つ和装の少女として表現される、

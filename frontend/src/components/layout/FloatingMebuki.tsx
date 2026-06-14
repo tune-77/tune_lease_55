@@ -41,6 +41,7 @@ export default function FloatingMebuki() {
   const [isBubbleVisible, setIsBubbleVisible] = useState(true);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const eventOverrideRef = useRef<boolean>(false);
+  const worldViewAckedRef = useRef<boolean>(false);
 
   // Chat state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -93,6 +94,31 @@ export default function FloatingMebuki() {
       clearInterval(boyakiInterval);
     };
   }, [isChatOpen]);
+
+  // world_view 更新チェック（マウント時と10分ごと）
+  useEffect(() => {
+    const checkWorldView = async () => {
+      if (worldViewAckedRef.current) return;
+      try {
+        const res = await apiClient.get("/api/world-view-status");
+        if (res.data.has_update && !worldViewAckedRef.current) {
+          const summary: string = res.data.summary || "";
+          const preview = summary.slice(0, 30) + (summary.length > 30 ? "…" : "");
+          setBubbleMessage(`🌏 世界認識が更新されました：${preview}`);
+          setMebukiState('guide');
+          setIsBubbleVisible(true);
+          worldViewAckedRef.current = true;
+          apiClient.post("/api/world-view-ack").catch(() => {});
+        }
+      } catch {
+        // 失敗は無視
+      }
+    };
+
+    checkWorldView();
+    const interval = setInterval(checkWorldView, 10 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // チャットパネル開閉
   const handleMebukiClick = () => {

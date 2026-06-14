@@ -7618,3 +7618,47 @@ def reject_recipe(recipe_id: str):
     dst_dir.mkdir(parents=True, exist_ok=True)
     src.rename(dst_dir / f"{recipe_id}.json")
     return {"status": "rejected", "id": recipe_id}
+
+
+# ── 世界認識 通知ステータス ────────────────────────────────────────────────
+_WORLD_VIEW_MIND_PATH = Path(__file__).parent.parent / "data" / "mind.json"
+_WORLD_VIEW_NOTIFIED_PATH = Path(__file__).parent.parent / "data" / "world_view_notified.json"
+
+
+def _wv_load_mind() -> dict:
+    try:
+        d = json.loads(_WORLD_VIEW_MIND_PATH.read_text(encoding="utf-8"))
+        return d.get("world_view", {}) if isinstance(d, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _wv_load_notified() -> dict:
+    try:
+        return json.loads(_WORLD_VIEW_NOTIFIED_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"acked_at": ""}
+
+
+@app.get("/api/world-view-status")
+def get_world_view_status():
+    world_view = _wv_load_mind()
+    updated_at = str(world_view.get("updated_at", "")).strip()
+    acked_at = str(_wv_load_notified().get("acked_at", "")).strip()
+    has_update = bool(updated_at and updated_at > acked_at)
+    return {
+        "has_update": has_update,
+        "updated_at": updated_at,
+        "summary": str(world_view.get("summary", "")).strip(),
+    }
+
+
+@app.post("/api/world-view-ack")
+def post_world_view_ack():
+    world_view = _wv_load_mind()
+    updated_at = str(world_view.get("updated_at", "")).strip()
+    _WORLD_VIEW_NOTIFIED_PATH.write_text(
+        json.dumps({"acked_at": updated_at}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return {"status": "acked", "acked_at": updated_at}
