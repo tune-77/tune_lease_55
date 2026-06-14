@@ -1,13 +1,57 @@
-"""承認待ちPRをpending_approvals.jsonlに記録し、Dispatch通知文を生成する."""
+"""承認待ちPRをpending_approvals.jsonlに記録し、Slack に通知する."""
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def _get_slack_webhook() -> str | None:
+    """環境変数 → .streamlit/secrets.toml の順で Slack Webhook URL を取得する."""
+    url = os.environ.get("SLACK_WEBHOOK_URL", "")
+    if url:
+        return url
+    secrets_candidates = [
+        Path.home() / "clawd" / "tune_lease_55" / ".streamlit" / "secrets.toml",
+        Path(__file__).resolve().parents[4] / ".streamlit" / "secrets.toml",
+    ]
+    for secrets_path in secrets_candidates:
+        if secrets_path.exists():
+            try:
+                for line in secrets_path.read_text(encoding="utf-8").splitlines():
+                    if "SLACK_WEBHOOK_URL" in line and "=" in line:
+                        return line.split("=", 1)[1].strip().strip('"').strip("'")
+            except OSError:
+                pass
+    return None
+
+
+def _send_slack_message(text: str) -> bool:
+    """Slack Incoming Webhook にメッセージを送信する。失敗時は False を返す。"""
+    webhook_url = _get_slack_webhook()
+    if not webhook_url:
+        logger.warning("SLACK_WEBHOOK_URL 未設定のため Slack 通知をスキップ")
+        return False
+    try:
+        import urllib.request
+        import urllib.parse
+        payload = json.dumps({"text": text}).encode("utf-8")
+        req = urllib.request.Request(
+            webhook_url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return resp.status == 200
+    except Exception as e:
+        logger.warning("Slack 送信エラー: %s", e)
+        return False
 
 _PENDING_LOG_PATH = Path.home() / "Library" / "Logs" / "tunelease" / "pending_approvals.jsonl"
 
@@ -78,9 +122,14 @@ def notify_pending_approval(
     """
     record = record_pending_approval(pr_number, pr_url, title, size)
 
+    sent = _send_slack_message(record.get("dispatch_message", ""))
+    if sent:
+        logger.info("Slack 通知送信済み: PR #%s", pr_number)
+
     return {
         "recorded": True,
         "dispatch_message": record.get("dispatch_message", ""),
+        "slack_sent": sent,
         "record": record,
     }
 
@@ -172,6 +221,11 @@ def notify_improvement_candidates(improvements: list[dict], report_date: str) ->
         logger.info("dispatch_queue 記録: %d 件の改善候補", len(candidates))
     except OSError as e:
         logger.warning("dispatch_queue.jsonl 書き込みエラー: %s", e)
+
+    if candidates:
+        lines = [f"• [{c['category']}] {c['id']} {c['title']}" for c in candidates]
+        slack_text = f"*本日の改善候補 ({report_date})*\n" + "\n".join(lines) + "\n着手・保留・破棄を決めてください。"
+        _send_slack_message(slack_text)
 
     return record
 
