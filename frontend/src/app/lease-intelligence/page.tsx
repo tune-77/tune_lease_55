@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import {
-  ArrowDown, Brain, Database, Loader2, Mic, MicOff,
+  ArrowDown, Brain, Check, Copy, Database, Loader2, Mic, MicOff,
   Send, Sparkles, Trash2, User, Volume2, VolumeX,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
@@ -169,6 +169,15 @@ export default function LeaseIntelligencePage() {
   const [listening, setListening] = useState(false);
   const [speechEnabled, setSpeechEnabled] = useState(true);
   const [voiceError, setVoiceError] = useState("");
+
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+
+  const copyMessage = (id: number, text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    }).catch(() => {});
+  };
 
   const messageListRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -480,7 +489,7 @@ export default function LeaseIntelligencePage() {
                     <Brain className="h-5 w-5 text-violet-700" />
                   </div>
                 )}
-                <div className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                <div className={`relative group/bubble max-w-[82%] rounded-2xl px-4 py-3 pr-9 text-sm leading-relaxed ${
                   message.role === "user"
                     ? "whitespace-pre-wrap bg-slate-900 text-white"
                     : "border border-violet-100 bg-violet-50 text-slate-800"
@@ -488,6 +497,19 @@ export default function LeaseIntelligencePage() {
                   {message.role === "assistant"
                     ? renderAssistantContent(message.content)
                     : message.content}
+                  <button
+                    onClick={() => copyMessage(message.id, message.content)}
+                    title="コピー"
+                    className={`absolute top-2 right-2 flex h-6 w-6 items-center justify-center rounded-md opacity-0 transition-opacity group-hover/bubble:opacity-100 ${
+                      message.role === "user"
+                        ? "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                        : "bg-violet-200 text-violet-700 hover:bg-violet-300"
+                    }`}
+                  >
+                    {copiedId === message.id
+                      ? <Check className="h-3.5 w-3.5" />
+                      : <Copy className="h-3.5 w-3.5" />}
+                  </button>
                 </div>
                 {message.role === "user" && (
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-200">
