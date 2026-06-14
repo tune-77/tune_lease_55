@@ -1,4 +1,4 @@
-"""world_feed.jsonl の直近N件を読み、Claude API で紫苑視点の世界読みを生成する。
+"""world_feed.jsonl の直近N件を読み、Gemini API で紫苑視点の世界読みを生成する。
 
 生成結果は data/mind.json の world_view フィールドに書き込む。
 Usage: python update_world_view.py [--limit N]
@@ -18,7 +18,23 @@ from pathlib import Path
 _FEED_PATH = Path(__file__).parent / "data" / "world_feed.jsonl"
 _MIND_PATH = Path(__file__).parent / "data" / "mind.json"
 _DEFAULT_LIMIT = 20
-_CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
+_GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+
+
+def _gemini_api_key() -> str:
+    key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if key:
+        return key
+    here = Path(__file__).parent
+    for _ in range(5):
+        sec = here / ".streamlit" / "secrets.toml"
+        if sec.exists():
+            for line in sec.read_text(encoding="utf-8").splitlines():
+                m = re.match(r'^GEMINI_API_KEY\s*=\s*["\'](.+)["\']', line.strip())
+                if m:
+                    return m.group(1)
+        here = here.parent
+    return ""
 
 
 def _read_recent_feed(limit: int) -> list[dict]:
@@ -80,22 +96,31 @@ def _build_prompt(entries: list[dict]) -> str:
 """
 
 
-def _call_claude(prompt: str) -> dict:
-    """Claude API を呼んで world_view JSON を取得する。失敗時は空辞書を返す。"""
+def _call_gemini(prompt: str) -> dict:
+    """Gemini API を呼んで world_view JSON を取得する。失敗時は空辞書を返す。"""
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-        message = client.messages.create(
-            model=_CLAUDE_MODEL,
-            max_tokens=512,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        raw = message.content[0].text.strip()
+        import requests
+        api_key = _gemini_api_key()
+        if not api_key:
+            print("[update_world_view] GEMINI_API_KEY が見つかりません", file=sys.stderr)
+            return {}
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{_GEMINI_MODEL}:generateContent"
+        payload = {
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.7,
+                "maxOutputTokens": 2048,
+                "thinkingConfig": {"thinkingBudget": 512},
+            },
+        }
+        resp = requests.post(url, json=payload, headers={"x-goog-api-key": api_key}, timeout=60)
+        resp.raise_for_status()
+        raw = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
         m = re.search(r'\{[\s\S]*\}', raw)
         if m:
             return json.loads(m.group(0))
     except Exception as exc:
-        print(f"[update_world_view] Claude API 呼び出し失敗: {exc}", file=sys.stderr)
+        print(f"[update_world_view] Gemini API 呼び出し失敗: {exc}", file=sys.stderr)
     return {}
 
 
@@ -125,7 +150,7 @@ def main(limit: int = _DEFAULT_LIMIT) -> None:
     print(f"[update_world_view] フィード {len(entries)}件を読み込みました。")
 
     prompt = _build_prompt(entries)
-    result = _call_claude(prompt)
+    result = _call_gemini(prompt)
 
     if not result.get("summary"):
         print("[update_world_view] 世界観の生成に失敗しました（graceful degradation）", file=sys.stderr)
