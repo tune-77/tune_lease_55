@@ -507,9 +507,27 @@ def _score_one(row: dict) -> dict:
 
         inputs["asset_score"] = asset_score
         inputs["lease_asset_score"] = asset_score
-        
+
         # run_quick_scoring 呼び出し
         res = run_quick_scoring(inputs)
+
+        # ── ASSET_WEIGHT 加重合成（詳細審査 score_calculation.py:939 と同等）──
+        # run_quick_scoring の final_score は借手スコアのみ（物件への寄与ゼロ）。
+        # asset_category が特定されている場合のみカテゴリ別ウェイトで合成する。
+        if asset_category:
+            from category_config import ASSET_WEIGHT
+            _wt = ASSET_WEIGHT.get(asset_category, {})
+            _aw = _wt.get("asset_w")
+            _ow = _wt.get("obligor_w")
+            if _aw is not None and _ow is not None:
+                _approval_line = res.get("approval_line", 71)
+                _weighted_score = round(asset_score * _aw + res["score"] * _ow, 1)
+                res["score"]          = _weighted_score
+                res["score_base"]     = _weighted_score
+                res["hantei"]         = "承認圏内" if _weighted_score >= _approval_line else "要審議"
+                res["asset_weight"]   = _aw
+                res["obligor_weight"] = _ow
+                res["asset_category"] = asset_category
 
         # DB保存用のJSON構成
         # 日付欄 → ISO形式に変換（空欄は save_case_log が登録日時で補完）
