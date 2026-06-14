@@ -1333,6 +1333,10 @@ def run_midnight(dry_run: bool = False) -> int:
         state["errors"].append(str(exc))
         state["traceback"] = traceback.format_exc()
         notify("AURION CORE / MEBUKI", status_lines(state.get("sync"), state.get("vault_b_rag")))
+        _send_slack(
+            f"🚨 *AURION CORE midnight エラー ({date_str()})*\n"
+            + "\n".join(f"• {e}" for e in state["errors"][:3])
+        )
     finally:
         min_runtime = float(os.environ.get("AURION_MIN_RUNTIME_SECONDS", "61"))
         remaining = min_runtime - (time.monotonic() - start_monotonic)
@@ -1349,6 +1353,7 @@ def run_morning_report(dry_run: bool = False) -> int:
     state = read_latest_state()
     if not state:
         state = {"started_at": "missing", "sync": {"status": "missing"}, "errors": ["midnight state not found"]}
+        _send_slack(f"🚨 *AURION CORE 朝報エラー ({date_str()})*\n• midnight の実行記録が見つかりません")
     db = audit_db()
     recent = collect_recent_improvements()
     codex_queue = read_codex_auto_queue()
