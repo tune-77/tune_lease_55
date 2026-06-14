@@ -47,7 +47,6 @@ def get_latest_module():
 # 初回インポート
 from constants import REQUIRED_FIELDS, RECOMMENDED_FIELDS, QUALITATIVE_SCORING_CORRECTION_ITEMS
 from category_config import ASSET_ID_TO_CATEGORY
-from soul_factor_miner import build_reverse_bayes_bonus
 
 # 定性評価: ラベル文字列 → セッション保存用 1-based インデックス の変換マップ
 # score_calculation.py は st.session_state["qual_corr_<id>"] に
@@ -211,16 +210,6 @@ def _run_full_scoring_api_locked(inputs: dict) -> dict:
                     if _key in res and isinstance(res[_key], (int, float)):
                         res[_key] = max(0.0, min(100.0, round(res[_key] + _pen, 1)))
                 print(f"[DEBUG] equity_penalty={_pen:.1f} applied (equity_ratio={_eq:.1f}%)")
-
-            # 逆転ベイズ加点（deal_source=="その他" かつ customer_type=="新規先" のみ発動）
-            _rbb = build_reverse_bayes_bonus(form_result)
-            if _rbb is not None:
-                _bp = int(_rbb.get("bonus_points", 0))
-                if _bp > 0:
-                    for _key in ("score", "hantei_score"):
-                        if _key in res and isinstance(res[_key], (int, float)):
-                            res[_key] = min(100.0, round(float(res[_key]) + _bp, 1))
-                    print(f"[DEBUG] reverse_bayes_bonus={_bp} applied (posterior={_rbb.get('posterior')})")
 
             return res
         except Exception as e:
