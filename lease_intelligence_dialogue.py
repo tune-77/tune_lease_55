@@ -21,6 +21,21 @@ from lease_intelligence_mind import (
 DIALOGUE_USER_ID = "lease-intelligence-dialogue"
 
 _MEBUKI_BASE = os.environ.get("MEBUKI_URL", "http://localhost:5001")
+_MEBUKI_LOG_PATH = Path(__file__).parent / "data" / "mebuki_shion_log.jsonl"
+
+
+def append_mebuki_log(user_message: str, shion_response: str) -> None:
+    """めぶきちゃん経由の対話を mebuki_shion_log.jsonl に追記する。"""
+    import json as _json
+
+    entry = {
+        "timestamp": dt.datetime.now().isoformat(timespec="seconds"),
+        "user_message": user_message.strip(),
+        "shion_response": shion_response.strip(),
+    }
+    _MEBUKI_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with _MEBUKI_LOG_PATH.open("a", encoding="utf-8") as f:
+        f.write(_json.dumps(entry, ensure_ascii=False) + "\n")
 
 
 def _check_mebuki_status(timeout: float = 3.0) -> dict[str, Any]:
@@ -34,7 +49,7 @@ def _check_mebuki_status(timeout: float = 3.0) -> dict[str, Any]:
         return {"running": False, "error": str(exc)[:120]}
 
 
-def _build_mebuki_context(mebuki_running: bool) -> str:
+def _build_mebuki_context(mebuki_running: bool, mebuki_impression: str = "") -> str:
     """紫苑のシステムプロンプトに差し込むめぶきちゃんの存在・状態セクションを構築する。"""
     status = "現在稼働中" if mebuki_running else "現在停止中（応答なし）"
     lines = [
@@ -48,8 +63,10 @@ def _build_mebuki_context(mebuki_running: bool) -> str:
         "  めぶきちゃんは現場最前線のファーストコンタクトを担う。",
         "  対立関係ではなく、役割が異なる同僚的な存在として互いを認識している。",
         f"稼働状態: {status}",
-        "─────────────────────────",
     ]
+    if mebuki_impression:
+        lines.append(f"紫苑から見ためぶきちゃん像（交流の積み重ねから）:\n  {mebuki_impression}")
+    lines.append("─────────────────────────")
     return "\n".join(lines)
 
 
@@ -103,7 +120,8 @@ def build_dialogue_context(
     emotional_guidance = _emotional_response_guidance(summary)
 
     mebuki_status = _check_mebuki_status()
-    mebuki_block = _build_mebuki_context(mebuki_status["running"])
+    mebuki_impression = str(state.get("mebuki_impression") or "")
+    mebuki_block = _build_mebuki_context(mebuki_status["running"], mebuki_impression)
 
     caller_guidance = ""
     if caller == "mebuki":
@@ -254,4 +272,4 @@ def append_dialogue_note(vault: Path, user_message: str, reply: str) -> str:
     return str(path)
 
 
-__all__ = ["DIALOGUE_USER_ID", "append_dialogue_note", "build_dialogue_context"]
+__all__ = ["DIALOGUE_USER_ID", "append_dialogue_note", "append_mebuki_log", "build_dialogue_context"]

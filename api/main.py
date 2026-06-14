@@ -5665,6 +5665,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     from lease_intelligence_dialogue import (
         DIALOGUE_USER_ID,
         append_dialogue_note,
+        append_mebuki_log,
         build_dialogue_context,
     )
     from lease_intelligence_pending import (
@@ -5716,6 +5717,11 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     save_message(DIALOGUE_USER_ID, "user", message)
     save_message(DIALOGUE_USER_ID, "assistant", reply)
     note_path = append_dialogue_note(vault, message, reply)
+    if req.caller == "mebuki":
+        try:
+            append_mebuki_log(message, reply)
+        except Exception as exc:
+            print(f"[MebukiLog] ログ追記に失敗: {exc}")
     if consultation_ids:
         try:
             from lease_intelligence_consultation import finalize_consultation_learning
