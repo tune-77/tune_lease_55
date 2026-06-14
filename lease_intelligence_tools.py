@@ -5,11 +5,14 @@ import json
 import os
 import re
 import sqlite3
+import subprocess
 from contextlib import closing
 from pathlib import Path
 from typing import Any
 
 from runtime_paths import get_data_path
+
+_REPO_PATH = Path(__file__).parent
 
 _LEASE_WIKI_VAULT = (
     Path.home()
@@ -277,6 +280,44 @@ def inspect_scoring_policy(topic: str = "") -> dict[str, Any]:
     }
 
 
+def get_recent_commits(limit: int = 10) -> dict[str, Any]:
+    """Return recent git commit history as oneline log."""
+    try:
+        result = subprocess.run(
+            ["git", "log", "--oneline", f"-{limit}"],
+            cwd=str(_REPO_PATH),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return {"error": result.stderr.strip(), "commits": []}
+        lines = [line for line in result.stdout.strip().splitlines() if line]
+        commits = [{"hash": ln.split(" ", 1)[0], "message": ln.split(" ", 1)[1]} for ln in lines if " " in ln]
+        return {"commits": commits, "count": len(commits)}
+    except Exception as exc:
+        return {"error": str(exc), "commits": []}
+
+
+def get_commit_diff(commit_hash: str) -> dict[str, Any]:
+    """Return the stat summary of a specific commit."""
+    if not commit_hash or not re.match(r"^[0-9a-f]{4,40}$", commit_hash.strip()):
+        return {"error": "無効なコミットハッシュです"}
+    try:
+        result = subprocess.run(
+            ["git", "show", "--stat", commit_hash.strip()],
+            cwd=str(_REPO_PATH),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return {"error": result.stderr.strip(), "stat": ""}
+        return {"commit_hash": commit_hash.strip(), "stat": result.stdout.strip()}
+    except Exception as exc:
+        return {"error": str(exc), "stat": ""}
+
+
 # ── Wiki embedding helpers ────────────────────────────────────────────────────
 
 def _gemini_api_key_for_tools() -> str:
@@ -442,6 +483,10 @@ def execute_tool(name: str, args: dict, vault: Path | None = None) -> Any:
         return search_lease_wiki(args.get("query", ""), int(args.get("limit", 3)))
     if name == "inspect_scoring_policy":
         return inspect_scoring_policy(args.get("topic", ""))
+    if name == "get_recent_commits":
+        return get_recent_commits(int(args.get("limit", 10)))
+    if name == "get_commit_diff":
+        return get_commit_diff(args.get("commit_hash", ""))
     if name == "consult_senior_reasoner":
         if vault is None:
             return {"error": "vault path not available", "consulted": False}
@@ -557,6 +602,34 @@ TOOL_DECLARATIONS: list[dict] = [
             "properties": {
                 "topic": {"type": "string", "description": "確認したい論点"},
             },
+        },
+    },
+    {
+        "name": "get_recent_commits",
+        "description": (
+            "リポジトリの最近のgitコミット履歴を取得する。"
+            "「最近どんな修正が入ったか」「先週何が変わったか」を調べるときに使う。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "取得するコミット件数（デフォルト10、最大50）"},
+            },
+        },
+    },
+    {
+        "name": "get_commit_diff",
+        "description": (
+            "特定のコミットの変更概要（--stat）を取得する。"
+            "どのファイルが何行変更されたかを確認できる。"
+            "コミットハッシュは get_recent_commits で取得した値を使う。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "commit_hash": {"type": "string", "description": "調査するコミットのハッシュ（短縮形でも可）"},
+            },
+            "required": ["commit_hash"],
         },
     },
     {

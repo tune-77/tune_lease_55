@@ -233,6 +233,8 @@ def build_dialogue_context(
 - search_obsidian(query): Obsidian Vaultの業務記録・Daily Brief・方針メモを検索
 - search_lease_wiki(query): リース審査専門Wiki（スコア閾値・物件リスク・金利相場・モデル仕様・設計決定）を検索
 - inspect_scoring_policy(topic): 現在動いている審査コードの確定仕様を確認
+- get_recent_commits(limit): 最近のgitコミット履歴を取得する（デフォルト10件）
+- get_commit_diff(commit_hash): 特定コミットの変更ファイル概要（--stat）を取得する
 - consult_senior_reasoner(question, shion_hypothesis, confidence, evidence_summary):
   紫苑が初期仮説を作った後、難問をCodexへ読取専用で相談する
 - record_reasoning_path(consultation_id, kept, dropped, pivots, value_weights):
@@ -243,6 +245,7 @@ def build_dialogue_context(
   審査ロジック・スコア統合・重み付け・承認理由 → search_lease_wiki + inspect_scoring_policy
   過去の具体的な案件・会社 → search_cases / get_score_detail
   業務記録・パイプライン設計・方針 → search_obsidian
+  最近の修正・コード変更履歴 → get_recent_commits → get_commit_diff
 
 審査ロジックを調べる際の必須規則:
   1. `scoring_core` などのコード識別子だけでなく、「最終スコア」「借手評価」「物件評価」
