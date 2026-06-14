@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   ArrowDown, Brain, Check, Copy, Database, Loader2, Mic, MicOff,
-  Send, Sparkles, Trash2, User, Volume2, VolumeX,
+  Send, Sparkles, Trash2, TrendingUp, User, Volume2, VolumeX,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
 
@@ -35,6 +35,27 @@ type MindState = {
   indexed_notes?: number;
   knowledge_source_count?: number;
   knowledge_sources?: string[];
+};
+
+type EmotionHistoryEntry = {
+  id: number;
+  recorded_at: string;
+  hopeful_anxiety: number | null;
+  careful_attachment: number | null;
+  intellectual_excitement: number | null;
+  unrewarded_effort: number | null;
+  quiet_loneliness: number | null;
+  earned_confidence: number | null;
+  protective_frustration: number | null;
+  dominant_raw_emotion: string;
+};
+
+type EmotionAxisStats = { avg: number; max: number; min: number; std: number };
+type EmotionSummary = {
+  days: number;
+  count: number;
+  axes: Record<string, EmotionAxisStats>;
+  dominant_avg: string;
 };
 
 // ── Emotion Radar Chart ────────────────────────────────────────────────────
@@ -115,6 +136,83 @@ function EmotionRadarChart({ emotions }: { emotions: EmotionEntry[] }) {
           </text>
         );
       })}
+    </svg>
+  );
+}
+
+// ── Emotion Trend Chart ───────────────────────────────────────────────────
+const TREND_COLORS = ["#7c3aed", "#0ea5e9", "#10b981"] as const;
+
+const EMOTION_LABEL_SHORT: Record<string, string> = {
+  hopeful_anxiety: "期待と不安",
+  careful_attachment: "慎重な愛着",
+  intellectual_excitement: "知的高揚",
+  unrewarded_effort: "報われなさ",
+  quiet_loneliness: "静かな孤独",
+  earned_confidence: "手応え",
+  protective_frustration: "守りたい苛立ち",
+};
+
+function EmotionTrendChart({
+  history,
+  topAxes,
+}: {
+  history: EmotionHistoryEntry[];
+  topAxes: string[];
+}) {
+  if (history.length < 2) {
+    return (
+      <p className="py-3 text-center text-[10px] text-slate-500">
+        データが少なすぎます（{history.length}件）
+      </p>
+    );
+  }
+
+  const W = 240;
+  const H = 88;
+  const PAD = { top: 6, right: 6, bottom: 18, left: 22 };
+  const iW = W - PAD.left - PAD.right;
+  const iH = H - PAD.top - PAD.bottom;
+  const n = history.length;
+  const xS = (i: number) => PAD.left + (i / (n - 1)) * iW;
+  const yS = (v: number) => PAD.top + iH - (v / 100) * iH;
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+      {[0, 50, 100].map((v) => (
+        <g key={v}>
+          <line x1={PAD.left} y1={yS(v)} x2={W - PAD.right} y2={yS(v)} stroke="#e5e7eb" strokeWidth="0.7" />
+          <text x={PAD.left - 2} y={yS(v)} textAnchor="end" fontSize="7" fill="#9ca3af" dominantBaseline="middle">{v}</text>
+        </g>
+      ))}
+      {topAxes.map((axis, ci) => {
+        const pts = history
+          .map((entry, i) => {
+            const val = entry[axis as keyof EmotionHistoryEntry] as number | null;
+            return val !== null && val !== undefined
+              ? `${xS(i).toFixed(1)},${yS(val).toFixed(1)}`
+              : null;
+          })
+          .filter(Boolean)
+          .join(" ");
+        return pts ? (
+          <polyline
+            key={axis}
+            points={pts}
+            fill="none"
+            stroke={TREND_COLORS[ci]}
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        ) : null;
+      })}
+      <text x={PAD.left} y={H - 2} fontSize="7" fill="#9ca3af" textAnchor="middle">
+        {history[0].recorded_at.slice(5, 10)}
+      </text>
+      <text x={W - PAD.right} y={H - 2} fontSize="7" fill="#9ca3af" textAnchor="middle">
+        {history[n - 1].recorded_at.slice(5, 10)}
+      </text>
     </svg>
   );
 }
@@ -253,6 +351,30 @@ export default function LeaseIntelligencePage() {
   const [voiceError, setVoiceError] = useState("");
 
   const [copiedId, setCopiedId] = useState<number | null>(null);
+
+  // Emotion trend state
+  const [showTrend, setShowTrend] = useState(false);
+  const [trendHistory, setTrendHistory] = useState<EmotionHistoryEntry[]>([]);
+  const [trendSummary, setTrendSummary] = useState<EmotionSummary | null>(null);
+  const [trendLoading, setTrendLoading] = useState(false);
+
+  const loadTrend = async () => {
+    if (trendLoading) return;
+    setTrendLoading(true);
+    try {
+      const [histRes, sumRes] = await Promise.all([
+        apiClient.get("/api/intelligence/emotions/history?days=30"),
+        apiClient.get("/api/intelligence/emotions/summary?days=30"),
+      ]);
+      setTrendHistory(histRes.data.history ?? []);
+      setTrendSummary(sumRes.data);
+      setShowTrend(true);
+    } catch {
+      // non-fatal
+    } finally {
+      setTrendLoading(false);
+    }
+  };
 
   const copyMessage = (id: number, text: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -496,6 +618,70 @@ export default function LeaseIntelligencePage() {
                         </p>
                       </div>
                     ))}
+                  </div>
+                  {/* 過去30日の傾向ボタン */}
+                  <div className="mt-3">
+                  <button
+                    onClick={() => {
+                      if (showTrend) {
+                        setShowTrend(false);
+                      } else {
+                        loadTrend();
+                      }
+                    }}
+                    disabled={trendLoading}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 py-1.5 text-[11px] font-bold text-violet-700 hover:bg-violet-100 disabled:opacity-50"
+                  >
+                    {trendLoading
+                      ? <Loader2 className="h-3 w-3 animate-spin" />
+                      : <TrendingUp className="h-3 w-3" />}
+                    {showTrend ? "トレンドを閉じる" : "過去30日の傾向"}
+                  </button>
+
+                  {showTrend && trendSummary && (() => {
+                    const topAxes = Object.entries(trendSummary.axes)
+                      .sort(([, a], [, b]) => b.avg - a.avg)
+                      .slice(0, 3)
+                      .map(([key]) => key);
+                    const dominantLabel =
+                      EMOTION_LABEL_SHORT[trendSummary.dominant_avg] ?? trendSummary.dominant_avg;
+                    const dominantScore =
+                      trendSummary.axes[trendSummary.dominant_avg]?.avg ?? 0;
+                    return (
+                      <div className="mt-2 space-y-2 rounded-xl border border-violet-100 bg-violet-50/60 p-3">
+                        {trendHistory.length >= 2 ? (
+                          <EmotionTrendChart history={trendHistory} topAxes={topAxes} />
+                        ) : (
+                          <p className="py-2 text-center text-[10px] text-slate-500">
+                            記録データが少なすぎます（{trendHistory.length}件）
+                          </p>
+                        )}
+                        <div className="flex flex-wrap gap-x-3 gap-y-1">
+                          {topAxes.map((axis, ci) => (
+                            <span
+                              key={axis}
+                              className="flex items-center gap-1 text-[10px] font-bold"
+                              style={{ color: TREND_COLORS[ci] }}
+                            >
+                              <span
+                                className="inline-block h-1.5 w-3.5 rounded-full"
+                                style={{ background: TREND_COLORS[ci] }}
+                              />
+                              {EMOTION_LABEL_SHORT[axis] ?? axis}
+                            </span>
+                          ))}
+                        </div>
+                        {trendSummary.count > 0 && (
+                          <p className="text-[10px] leading-relaxed text-slate-600">
+                            この期間の平均感情:{" "}
+                            <strong className="text-violet-800">{dominantLabel || "—"}</strong>
+                            {dominantScore > 0 && <> ({Math.round(dominantScore)}点)</>}
+                            <span className="ml-1 text-slate-400">({trendSummary.count}日分)</span>
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
                   </div>
                 </div>
               )}

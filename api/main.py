@@ -213,6 +213,34 @@ async def lifespan(app: FastAPI):
         init_conversation_history_table()
     except Exception as e:
         print(f"[API] conversation_history table init failed (non-fatal): {e}")
+    # startup: 感情履歴テーブルの初期化 + 当日分の自動記録（REV-075）
+    try:
+        from api.database import init_emotion_history_table
+        init_emotion_history_table()
+    except Exception as e:
+        print(f"[API] emotion_history table init failed (non-fatal): {e}")
+
+    def _record_today_emotion():
+        try:
+            from lease_intelligence_mind import (
+                _derive_complex_emotions,
+                load_lease_intelligence_mind,
+            )
+            from lease_news_digest import find_vault
+            from api.database import record_emotion_snapshot
+
+            vault = find_vault()
+            if not vault:
+                return
+            state = load_lease_intelligence_mind(vault)
+            emotions = _derive_complex_emotions(state.get("mood", {}))
+            scores = {e["key"]: float(e["score"]) for e in emotions}
+            dominant = emotions[0]["key"] if emotions else ""
+            record_emotion_snapshot(scores, dominant)
+        except Exception as e:
+            print(f"[API] emotion auto-record failed (non-fatal): {e}")
+
+    _th.Thread(target=_record_today_emotion, daemon=True, name="emotion-recorder").start()
     # startup: 汎用チャットメッセージテーブルの初期化
     try:
         from api.chat_memory import init_chat_messages_table
@@ -6570,6 +6598,54 @@ def record_lease_intelligence_activity_api(req: LeaseIntelligenceActivityRequest
         "recorded": recorded,
         "privacy": "Stores only surface, action, timestamp, and a dedupe id.",
     }
+
+
+# ── 感情時系列 エンドポイント（REV-075）───────────────────────────────────────
+
+@app.post("/api/intelligence/emotions/record")
+def record_emotion_history_api():
+    """現在の感情スコアをDBに保存する（1日1回、当日分が既にあればスキップ）。"""
+    try:
+        from lease_intelligence_mind import (
+            _derive_complex_emotions,
+            load_lease_intelligence_mind,
+        )
+        from lease_news_digest import find_vault
+        from api.database import record_emotion_snapshot
+
+        vault = find_vault()
+        if not vault:
+            raise HTTPException(status_code=503, detail="Obsidian Vaultが見つかりません")
+        state = load_lease_intelligence_mind(vault)
+        emotions = _derive_complex_emotions(state.get("mood", {}))
+        scores = {e["key"]: float(e["score"]) for e in emotions}
+        dominant = emotions[0]["key"] if emotions else ""
+        row_id, inserted = record_emotion_snapshot(scores, dominant)
+        return {"id": row_id, "inserted": inserted, "scores": scores}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/intelligence/emotions/history")
+def get_emotion_history_api(days: int = 30):
+    """過去N日分の7軸感情スコアを時系列で返す。"""
+    try:
+        from api.database import get_emotion_history
+        return {"days": days, "history": get_emotion_history(days)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/intelligence/emotions/summary")
+def get_emotion_summary_api(days: int = 30):
+    """期間内の各軸の平均・最大・最小・標準偏差を返す。"""
+    try:
+        from api.database import get_emotion_summary
+        return get_emotion_summary(days)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/lease-news/judgment-change")
