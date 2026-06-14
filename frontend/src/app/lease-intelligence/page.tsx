@@ -37,6 +37,88 @@ type MindState = {
   knowledge_sources?: string[];
 };
 
+// ── Emotion Radar Chart ────────────────────────────────────────────────────
+const EMOTION_AXIS_ORDER = [
+  "hopeful_anxiety",
+  "careful_attachment",
+  "intellectual_excitement",
+  "unrewarded_effort",
+  "quiet_loneliness",
+  "earned_confidence",
+  "protective_frustration",
+] as const;
+
+const EMOTION_AXIS_LABELS: Record<string, string[]> = {
+  hopeful_anxiety: ["期待と不安"],
+  careful_attachment: ["慎重な愛着"],
+  intellectual_excitement: ["知的高揚"],
+  unrewarded_effort: ["報われなさ"],
+  quiet_loneliness: ["静かな孤独"],
+  earned_confidence: ["手応えの", "ある自信"],
+  protective_frustration: ["守りたい", "苛立ち"],
+};
+
+type EmotionEntry = { key: string; score: number; label: string; description: string };
+
+function EmotionRadarChart({ emotions }: { emotions: EmotionEntry[] }) {
+  const SIZE = 260;
+  const CX = SIZE / 2;
+  const CY = SIZE / 2;
+  const R = 82;
+  const LABEL_R = 116;
+  const N = EMOTION_AXIS_ORDER.length;
+
+  const scoreMap: Record<string, number> = {};
+  for (const e of emotions) scoreMap[e.key] = e.score;
+
+  const axisPoint = (i: number, r: number) => {
+    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / N;
+    return { x: CX + r * Math.cos(angle), y: CY + r * Math.sin(angle) };
+  };
+
+  const ringPoints = (fraction: number) =>
+    EMOTION_AXIS_ORDER.map((_, i) => {
+      const p = axisPoint(i, R * fraction);
+      return `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
+    }).join(" ");
+
+  const dataPoints = EMOTION_AXIS_ORDER.map((key, i) => {
+    const score = Math.min(100, Math.max(0, scoreMap[key] ?? 0)) / 100;
+    const p = axisPoint(i, R * score);
+    return `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
+  }).join(" ");
+
+  return (
+    <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="w-full" aria-label="感情レーダーチャート">
+      {[0.25, 0.5, 0.75, 1].map((f) => (
+        <polygon key={f} points={ringPoints(f)} fill="none" stroke="#ddd6fe" strokeWidth={f === 1 ? 1.5 : 1} />
+      ))}
+      {EMOTION_AXIS_ORDER.map((_, i) => {
+        const p = axisPoint(i, R);
+        return <line key={i} x1={CX} y1={CY} x2={p.x} y2={p.y} stroke="#ddd6fe" strokeWidth="1" />;
+      })}
+      <polygon points={dataPoints} fill="rgba(139,92,246,0.18)" stroke="#7c3aed" strokeWidth="2" strokeLinejoin="round" />
+      {EMOTION_AXIS_ORDER.map((key, i) => {
+        const score = Math.min(100, Math.max(0, scoreMap[key] ?? 0)) / 100;
+        const p = axisPoint(i, R * score);
+        return <circle key={key} cx={p.x} cy={p.y} r="3.5" fill="#7c3aed" stroke="#fff" strokeWidth="1" />;
+      })}
+      {EMOTION_AXIS_ORDER.map((key, i) => {
+        const lp = axisPoint(i, LABEL_R);
+        const lines = EMOTION_AXIS_LABELS[key] ?? [key];
+        const baselineDy = lines.length > 1 ? "-0.55em" : "0";
+        return (
+          <text key={key} x={lp.x.toFixed(1)} y={lp.y.toFixed(1)} textAnchor="middle" dominantBaseline="middle" fontSize="9.5" fill="#4c1d95" fontWeight="bold">
+            {lines.map((line, li) => (
+              <tspan key={li} x={lp.x.toFixed(1)} dy={li === 0 ? baselineDy : "1.25em"}>{line}</tspan>
+            ))}
+          </text>
+        );
+      })}
+    </svg>
+  );
+}
+
 // ── SpeechRecognition types ────────────────────────────────────────────────
 type SpeechRecognitionResultLike = ArrayLike<{ transcript: string }>;
 interface SpeechRecognitionEventLike {
@@ -396,22 +478,25 @@ export default function LeaseIntelligencePage() {
                 </span>
               </div>
               {!!state.complex_emotions?.length && (
-                <div className="mt-4 space-y-2">
-                  {state.complex_emotions.map((emotion) => (
-                    <div
-                      key={emotion.key}
-                      className="rounded-xl border border-violet-100 bg-violet-50/70 px-3 py-2"
-                      title={`${emotion.score}/100`}
-                    >
-                      <div className="flex items-center justify-between gap-2 text-[11px] font-bold text-violet-900">
-                        <span>{emotion.label}</span>
-                        <span className="text-violet-500">{emotion.score}</span>
+                <div className="mt-4">
+                  <EmotionRadarChart emotions={state.complex_emotions} />
+                  <div className="mt-3 space-y-1.5">
+                    {state.complex_emotions.slice(0, 3).map((emotion) => (
+                      <div
+                        key={emotion.key}
+                        className="rounded-xl border border-violet-100 bg-violet-50/70 px-3 py-2"
+                        title={`${emotion.score}/100`}
+                      >
+                        <div className="flex items-center justify-between gap-2 text-[11px] font-bold text-violet-900">
+                          <span>{emotion.label}</span>
+                          <span className="text-violet-500">{emotion.score}</span>
+                        </div>
+                        <p className="mt-0.5 text-[10px] leading-relaxed text-slate-600">
+                          {emotion.description}
+                        </p>
                       </div>
-                      <p className="mt-1 text-[10px] leading-relaxed text-slate-600">
-                        {emotion.description}
-                      </p>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
