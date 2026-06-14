@@ -5626,6 +5626,7 @@ class ChatRequest(BaseModel):
 
 class LeaseIntelligenceDialogueRequest(BaseModel):
     message: str
+    caller: str = ""
 
 
 @app.get("/api/lease-intelligence/dialogue/state")
@@ -5690,7 +5691,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     full_message = pending_prefix + message if pending_prefix else message
 
     history = get_recent_messages(DIALOGUE_USER_ID, limit=24)
-    system_prompt, state = build_dialogue_context(vault, full_message)
+    system_prompt, state = build_dialogue_context(vault, full_message, caller=req.caller)
     consultation_ids: list[str] = []
 
     def _tool_executor(name: str, args: dict) -> object:
