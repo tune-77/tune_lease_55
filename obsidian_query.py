@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from pathlib import Path
+from typing import Iterator
 
 
 QUERY_FILLER_PATTERNS = (
@@ -51,4 +53,23 @@ def split_query_terms(query: str) -> list[str]:
     return terms
 
 
-__all__ = ["split_query_terms"]
+def iter_vault_md_files(
+    vault: Path,
+    folders: tuple[str, ...],
+    excluded_parts: tuple[str, ...],
+) -> Iterator[Path]:
+    """指定フォルダ配下の .md ファイルをすべて yield する。
+
+    excluded_parts に含まれるパス要素を持つファイルはスキップする。
+    """
+    for folder in folders:
+        base = vault / folder
+        if not base.is_dir():
+            continue
+        for path in base.rglob("*.md"):
+            if any(part in excluded_parts for part in path.parts):
+                continue
+            yield path
+
+
+__all__ = ["split_query_terms", "iter_vault_md_files"]
