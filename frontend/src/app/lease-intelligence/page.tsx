@@ -38,6 +38,9 @@ type MindState = {
 };
 
 // ── Emotion Radar Chart ────────────────────────────────────────────────────
+// REV-074: verified alignment with lease_intelligence_mind._derive_complex_emotions()
+// API contract: complex_emotions[].{ key, label, score: int 0-100, description }
+// EMOTION_AXIS_ORDER must match the 7 candidate keys defined in that function.
 const EMOTION_AXIS_ORDER = [
   "hopeful_anxiety",
   "careful_attachment",
@@ -116,6 +119,115 @@ function EmotionRadarChart({ emotions }: { emotions: EmotionEntry[] }) {
         );
       })}
     </svg>
+  );
+}
+
+// ── Emotion Radar Feedback ─────────────────────────────────────────────────
+const EMOTION_AXIS_OPTIONS = [
+  { value: "", label: "（感情軸を選択）" },
+  { value: "hopeful_anxiety", label: "期待と不安" },
+  { value: "careful_attachment", label: "慎重な愛着" },
+  { value: "intellectual_excitement", label: "知的高揚" },
+  { value: "unrewarded_effort", label: "報われなさ" },
+  { value: "quiet_loneliness", label: "静かな孤独" },
+  { value: "earned_confidence", label: "手応えのある自信" },
+  { value: "protective_frustration", label: "守りたい苛立ち" },
+];
+
+function EmotionFeedbackArea() {
+  const [phase, setPhase] = useState<"idle" | "form" | "done">("idle");
+  const [comment, setComment] = useState("");
+  const [category, setCategory] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleGood = async () => {
+    setSubmitting(true);
+    try {
+      await apiClient.post("/api/intelligence/emotions/feedback", { rating: "good" });
+      setPhase("done");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await apiClient.post("/api/intelligence/emotions/feedback", {
+        rating: "needs_improvement",
+        comment: comment.trim() || undefined,
+        emotion_category: category || undefined,
+      });
+      setPhase("done");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (phase === "done") {
+    return (
+      <p className="mt-3 text-center text-[11px] text-violet-600 font-bold">
+        ありがとうございます ✓
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-3">
+      {phase === "idle" && (
+        <div className="flex gap-2">
+          <button
+            onClick={handleGood}
+            disabled={submitting}
+            className="flex-1 rounded-xl border border-violet-200 bg-violet-50 py-1.5 text-[11px] font-bold text-violet-700 hover:bg-violet-100 disabled:opacity-50"
+          >
+            👍 わかりやすい
+          </button>
+          <button
+            onClick={() => setPhase("form")}
+            className="flex-1 rounded-xl border border-slate-200 bg-slate-50 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-slate-100"
+          >
+            📝 意見を送る
+          </button>
+        </div>
+      )}
+      {phase === "form" && (
+        <div className="space-y-2 rounded-xl border border-violet-100 bg-violet-50/60 p-3">
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            className="w-full rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
+          >
+            {EMOTION_AXIS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <textarea
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="気になった点や改善案を教えてください"
+            rows={3}
+            className="w-full resize-none rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400"
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPhase("idle")}
+              className="flex-1 rounded-lg border border-slate-200 py-1.5 text-[11px] text-slate-500 hover:bg-slate-50"
+            >
+              キャンセル
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="flex-1 rounded-lg bg-violet-600 py-1.5 text-[11px] font-bold text-white hover:bg-violet-700 disabled:opacity-50"
+            >
+              {submitting ? "送信中…" : "送信"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -497,6 +609,7 @@ export default function LeaseIntelligencePage() {
                       </div>
                     ))}
                   </div>
+                  <EmotionFeedbackArea />
                 </div>
               )}
             </div>
