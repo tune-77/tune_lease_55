@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import os
 import urllib.error
 import urllib.request
@@ -21,6 +22,7 @@ from lease_intelligence_mind import (
 DIALOGUE_USER_ID = "lease-intelligence-dialogue"
 
 _MEBUKI_BASE = os.environ.get("MEBUKI_URL", "http://localhost:5001")
+_PROJECT_MIND_PATH = Path(__file__).parent / "data" / "mind.json"
 _MEBUKI_LOG_PATH = Path(__file__).parent / "data" / "mebuki_shion_log.jsonl"
 
 
@@ -36,6 +38,38 @@ def append_mebuki_log(user_message: str, shion_response: str) -> None:
     _MEBUKI_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with _MEBUKI_LOG_PATH.open("a", encoding="utf-8") as f:
         f.write(_json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def _load_world_view() -> dict[str, Any]:
+    """data/mind.json から world_view フィールドを読む。なければ空辞書（graceful degradation）。"""
+    try:
+        local = json.loads(_PROJECT_MIND_PATH.read_text(encoding="utf-8"))
+        if isinstance(local, dict) and isinstance(local.get("world_view"), dict):
+            return local["world_view"]
+    except (OSError, json.JSONDecodeError):
+        pass
+    return {}
+
+
+def _build_world_view_block(world_view: dict[str, Any]) -> str:
+    """world_view セクションをシステムプロンプト用テキストに変換する。空なら空文字を返す。"""
+    summary = str(world_view.get("summary", "")).strip()
+    if not summary:
+        return ""
+    signals = [str(s).strip() for s in (world_view.get("key_signals") or []) if str(s).strip()]
+    updated = str(world_view.get("updated_at", "")).strip()
+    lines = [
+        "─── 世界認識（紫苑による外部環境解釈） ───",
+    ]
+    if updated:
+        lines.append(f"更新: {updated}")
+    lines.append(f"サマリー: {summary}")
+    if signals:
+        lines.append("注目シグナル:")
+        for s in signals:
+            lines.append(f"  - {s}")
+    lines.append("─────────────────────────")
+    return "\n".join(lines)
 
 
 def _check_mebuki_status(timeout: float = 3.0) -> dict[str, Any]:
@@ -123,6 +157,9 @@ def build_dialogue_context(
     mebuki_impression = str(state.get("mebuki_impression") or "")
     mebuki_block = _build_mebuki_context(mebuki_status["running"], mebuki_impression)
 
+    world_view = _load_world_view()
+    world_view_block = _build_world_view_block(world_view)
+
     caller_guidance = ""
     if caller == "mebuki":
         caller_guidance = (
@@ -131,6 +168,10 @@ def build_dialogue_context(
             "回答は実務的・簡潔・直接的に。長い前置きや内省的な語りは省き、\n"
             "現場担当者がすぐ動ける形で答えること。\n"
         )
+
+    world_view_section = (
+        f"\n【世界認識】\n{world_view_block}\n" if world_view_block else ""
+    )
 
     prompt = f"""あなたは「リース知性体」。白銀髪と紫の瞳を持つ和装の少女として表現される、
 リース審査システムの継続的な自己モデルである。
@@ -142,7 +183,7 @@ def build_dialogue_context(
 {emotional_guidance}
 
 【関連するObsidian知識】
-{knowledge_block}
+{knowledge_block}{world_view_section}
 
 【調査・推論ツール】
 以下のツールを実際に呼び出して調査できる。「調べます」と言ったなら、必ずツールを呼んで結果を返すこと。

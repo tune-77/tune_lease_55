@@ -41,6 +41,8 @@ data/*.backup_*
 data/excluded_grade_cases_*.csv
 # ウィザード下書き（財務情報を含む一時ファイル）
 data/wizard_draft.json
+# 紫苑の世界認識（update_world_view.py が動的に書き込む）
+data/mind.json
 # 実行時状態ファイル（git pull で上書きされると困るファイル）
 data/last_case.json
 data/recent_modes.json
