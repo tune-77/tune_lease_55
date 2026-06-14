@@ -363,9 +363,11 @@ class Step3AutoApplier:
                 )
             return _result("needs_review", f"健全性チェック失敗: {sanity_reason}", patch_file=str(patch_file))
 
+        # auto_fix_allowed かつ risk=low な変更はテストファイル不在でも syntax のみで通過
+        skip_test_file_required = policy.get("risk") == "low" and policy.get("auto_fix_allowed", False)
 
         target_file.write_text(new_code, encoding="utf-8")
-        test_ok, test_output = self._run_local_tests(target_file)
+        test_ok, test_output = self._run_local_tests(target_file, skip_test_file_required=skip_test_file_required)
         target_file.write_text(original_code, encoding="utf-8")  # 必ずロールバック
 
         if test_ok is None:
@@ -1021,11 +1023,14 @@ class Step3AutoApplier:
     # ── テスト実行 ────────────────────────────────────────────────────────
 
     def _run_local_tests(
-        self, target_file: Path, timeout: int = 60
+        self, target_file: Path, timeout: int = 60, skip_test_file_required: bool = False
     ) -> tuple[bool | None, str]:
         """
         pytest / py_compile でコード修正の妥当性を確認する。
         戻り値: True=通過, False=失敗, None=テスト環境未整備(needs_review へ降格)
+
+        skip_test_file_required=True の場合、テストファイル不在でも
+        syntax チェック通過なら True を返す（auto_fix_allowed low-risk 変更用）。
         """
         python_bin = self.workspace_root / ".venv" / "bin" / "python"
         pytest_bin = self.workspace_root / ".venv" / "bin" / "pytest"
@@ -1043,8 +1048,10 @@ class Step3AutoApplier:
         except Exception as e:
             return False, str(e)
 
-        # pytest バイナリ確認（なければ needs_review）
+        # pytest バイナリ確認（なければ needs_review、ただし skip_test_file_required 時は通過）
         if not pytest_bin.exists():
+            if skip_test_file_required:
+                return True, "pytest 未インストール: syntax のみ確認（low-risk変更）"
             return None, "pytest が .venv に見つかりません — テスト無しは適用しない"
 
         # テストファイル探索（EXCLUDE_DIRS をフィルタリング）
@@ -1057,6 +1064,8 @@ class Step3AutoApplier:
         ]
 
         if not test_files:
+            if skip_test_file_required:
+                return True, f"テストファイル 0 件 ({stem}): syntax のみ確認（low-risk変更）"
             return None, f"テストファイル 0 件 ({stem}) — テスト無しは適用しない"
 
         try:
