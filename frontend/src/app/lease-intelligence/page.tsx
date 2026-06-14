@@ -38,6 +38,9 @@ type MindState = {
 };
 
 // ── Emotion Radar Chart ────────────────────────────────────────────────────
+// REV-074: verified alignment with lease_intelligence_mind._derive_complex_emotions()
+// API contract: complex_emotions[].{ key, label, score: int 0-100, description }
+// EMOTION_AXIS_ORDER must match the 7 candidate keys defined in that function.
 const EMOTION_AXIS_ORDER = [
   "hopeful_anxiety",
   "careful_attachment",
