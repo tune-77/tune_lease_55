@@ -12,11 +12,15 @@ from typing import TypedDict, Literal, Optional
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from useful_life_lookup import get_legal_useful_life  # 別表第二優先・別表第一フォールバック
+
 logger = logging.getLogger(__name__)
 
-# 法定耐用年数マスタ（法人税法施行令別表第一に基づく代表値）単位：年
-LEGAL_USEFUL_LIFE_YEARS: dict[str, int] = {
-    # 電子機器・OA機器
+# 別表第一ベースの完全一致マスタ（get_legal_useful_life がカバーしない品目用）
+# 別表第二優先ロジックは get_legal_useful_life に委譲しているため、
+# ここには部分一致できない固有品目のみ残す
+_EXACT_MATCH_YEARS: dict[str, int] = {
+    # 電子機器・OA機器（別表第一・器具及び備品）
     "電子計算機": 4,
     "複写機": 5,
     "ファクシミリ": 5,
@@ -27,14 +31,12 @@ LEGAL_USEFUL_LIFE_YEARS: dict[str, int] = {
     "工作機械": 10,
     "印刷機械": 10,
     "農業機械": 7,
-    "建設機械": 6,
-    "フォークリフト": 3,
-    # 輸送機器
+    # 輸送機器（別表第一・車両及び運搬具）
     "自動車（普通）": 6,
     "自動車（小型）": 4,
     "トラック": 5,
     "バス": 5,
-    # 医療機器
+    # 医療機器（別表第一・器具及び備品）
     "医療機器": 6,
     "歯科用機器": 7,
     # 設備機器
@@ -76,11 +78,16 @@ def check_lease_rules(
     is_re_lease: bool = False,
     insurance_applicable: str = "不明",
     re_lease_insurance: str = "不明",
+    industry_sub: str = "",
 ) -> RuleCheckResult:
     """
     リースルールチェックを実行し、警告リストを返す。
 
     スコア計算には影響しない。例外を外部に伝播させない設計。
+
+    Args:
+        industry_sub: 借主の業種小分類（例: "44 道路貨物運送業"）。
+                      別表第二業種別設備の耐用年数を優先適用する。
     """
     try:
         # BR-108: 不正入力ガード
@@ -90,24 +97,37 @@ def check_lease_rules(
         warnings: list[WarningItem] = []
 
         # BR-101 / BR-102: 法定耐用年数チェック
-        if asset_type and asset_type in LEGAL_USEFUL_LIFE_YEARS:
-            legal_months = LEGAL_USEFUL_LIFE_YEARS[asset_type] * 12
-            if lease_term_months > legal_months:
-                # BR-101: 超過
-                warnings.append(WarningItem(
-                    code="TERM_EXCEEDS_LEGAL_LIFE",
-                    severity="high",
-                    message=f"リース期間（{lease_term_months}ヶ月）が法定耐用年数（{legal_months}ヶ月）を超過しています。",
-                    source="法人税法施行令別表第一（器具及び備品）",
-                ))
-            elif lease_term_months > legal_months * 0.9:
-                # BR-102: 近接
-                warnings.append(WarningItem(
-                    code="TERM_NEAR_LEGAL_LIFE",
-                    severity="medium",
-                    message=f"リース期間（{lease_term_months}ヶ月）が法定耐用年数（{legal_months}ヶ月）の90%を超えています。",
-                    source="法人税法施行令別表第一（器具及び備品）",
-                ))
+        # 別表第二（業種別）> 別表第一（物件種別）の優先順位で耐用年数を取得
+        if asset_type:
+            # まず get_legal_useful_life（別表第二優先）で解決を試みる
+            legal_years = get_legal_useful_life(asset_type, industry_sub)
+            # 部分一致で解決できなかったデフォルト値(7)かつ完全一致マスタにある場合は上書き
+            if legal_years == 7 and asset_type in _EXACT_MATCH_YEARS:
+                legal_years = _EXACT_MATCH_YEARS[asset_type]
+
+            if legal_years > 0:
+                legal_months = legal_years * 12
+                # 別表の種別を出典として表示
+                source_note = (
+                    f"別表第二業種別設備（{industry_sub}）" if industry_sub
+                    else "耐用年数省令別表第一・第二"
+                )
+                if lease_term_months > legal_months:
+                    # BR-101: 超過
+                    warnings.append(WarningItem(
+                        code="TERM_EXCEEDS_LEGAL_LIFE",
+                        severity="high",
+                        message=f"リース期間（{lease_term_months}ヶ月）が法定耐用年数（{legal_months}ヶ月）を超過しています。",
+                        source=source_note,
+                    ))
+                elif lease_term_months > legal_months * 0.9:
+                    # BR-102: 近接
+                    warnings.append(WarningItem(
+                        code="TERM_NEAR_LEGAL_LIFE",
+                        severity="medium",
+                        message=f"リース期間（{lease_term_months}ヶ月）が法定耐用年数（{legal_months}ヶ月）の90%を超えています。",
+                        source=source_note,
+                    ))
         # BR-106: マスタ不在 → スキップ
 
         # BR-103: 期待使用期間チェック

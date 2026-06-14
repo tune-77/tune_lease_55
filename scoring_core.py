@@ -24,6 +24,7 @@ if _SCRIPT_DIR not in sys.path:
 from data_cases import get_effective_coeffs
 from app_logger import log_warning
 from estat_context import build_estat_context
+from useful_life_lookup import get_legal_useful_life
 
 APPROVAL_LINE = int(os.environ.get("APPROVAL_LINE", "71"))  # 承認ライン（デフォルト71点）
 
@@ -612,31 +613,38 @@ def compute_interest_coverage(inputs: dict) -> float:
 
 
 def generate_asset_warnings(
-    asset_name: str, term_months: int
+    asset_name: str, term_months: int, industry_sub: str = ""
 ) -> tuple[list[str], list[str]]:
-    """物件名とリース期間から換金性・BEP・残存価値を評価し (warnings, bonuses) を返す。"""
+    """物件名・リース期間・借主業種から換金性・BEP・残存価値を評価し (warnings, bonuses) を返す。
+
+    Args:
+        industry_sub: 借主の業種小分類（例: "44 道路貨物運送業"）。
+                      指定すると別表第二業種別設備の耐用年数を優先適用する。
+    """
     name = (asset_name or "").lower()
 
-    # キーワードマッピング: (useful_life年, 換金性ラベル)
-    MAPPING = [
+    # 換金性マッピング（耐用年数は get_legal_useful_life に委譲）
+    LIQUIDITY_MAPPING = [
         (["トラック", "スーパーグレード", "プロフィア", "キャリイ", "elf", "エルフ",
-          "キャンター", "デュトロ", "ダイナ", "レンジャー"],      4, "高"),
-        (["フォークリフト"],                                       5, "高"),
-        (["クレーン", "ショベル", "ブルドーザー", "バックホウ", "ユンボ"], 6, "中"),
-        (["医療", "介護", "mri", "ct", "レントゲン", "透析"],    8, "中"),
-        (["複合機", "コピー機", "oa", "プリンタ"],               5, "中"),
-        (["防犯カメラ", "監視カメラ", "セキュリティカメラ"],      6, "低"),
+          "キャンター", "デュトロ", "ダイナ", "レンジャー"],      "高"),
+        (["フォークリフト"],                                       "高"),
+        (["ブルドーザー"],                                         "中"),
+        (["クレーン"],                                             "中"),
+        (["ショベル", "バックホウ", "ユンボ"],                     "中"),
+        (["医療", "介護", "mri", "ct", "レントゲン", "透析"],    "中"),
+        (["複合機", "コピー機", "oa", "プリンタ"],               "中"),
+        (["防犯カメラ", "監視カメラ", "セキュリティカメラ"],      "低"),
         (["pc", "パソコン", "ソフト", "サーバ", "ネットワーク",
-          "タブレット", "スイッチ", "ルータ"],                    4, "極低"),
+          "タブレット", "スイッチ", "ルータ"],                    "極低"),
         (["工作機械", "旋盤", "マシニング", "プレス", "射出成形",
-          "製造機", "溶接機"],                                    10, "低"),
+          "製造機", "溶接機"],                                    "低"),
     ]
 
-    useful_life_yr = 7
+    # 別表第二（業種別）> 別表第一 の優先順位で耐用年数を取得
+    useful_life_yr = get_legal_useful_life(name, industry_sub)
     liquidity = "中"
-    for keywords, life, liq in MAPPING:
+    for keywords, liq in LIQUIDITY_MAPPING:
         if any(kw in name for kw in keywords):
-            useful_life_yr = life
             liquidity = liq
             break
 
@@ -954,7 +962,8 @@ def run_quick_scoring(inputs: dict) -> dict:
         or ""
     )
     _term_months = _safe_int(inputs.get("lease_term"), default=60)
-    asset_warnings, asset_bonuses = generate_asset_warnings(_asset_name, _term_months)
+    _industry_sub = str(inputs.get("industry_sub") or "")
+    asset_warnings, asset_bonuses = generate_asset_warnings(_asset_name, _term_months, _industry_sub)
 
     # デフォルト率モデルによる高リスク警告フラグ（スコアには影響しない）
     default_warnings = generate_default_warnings(inputs)
