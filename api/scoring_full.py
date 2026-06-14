@@ -46,6 +46,7 @@ def get_latest_module():
 
 # 初回インポート
 from constants import REQUIRED_FIELDS, RECOMMENDED_FIELDS, QUALITATIVE_SCORING_CORRECTION_ITEMS
+from category_config import ASSET_ID_TO_CATEGORY
 
 # 定性評価: ラベル文字列 → セッション保存用 1-based インデックス の変換マップ
 # score_calculation.py は st.session_state["qual_corr_<id>"] に
@@ -143,7 +144,9 @@ def _run_full_scoring_api_locked(inputs: dict) -> dict:
         "asset_location": str(inputs.get("asset_location", "")),
         "asset_evidence_level": str(inputs.get("asset_evidence_level", "")),
         "_auto_judge": True,
-        "_api_mode": True
+        "_api_mode": True,
+        "selected_asset_id": str(inputs.get("selected_asset_id", "other")),
+        "asset_category": ASSET_ID_TO_CATEGORY.get(str(inputs.get("selected_asset_id", "other"))),
     }
 
     # 定性評価: フロントが送る文字列ラベルを 1-based インデックスへ変換して
