@@ -124,6 +124,54 @@ def get_conversation_history(company_name: str, limit: int = 5) -> list[dict]:
     return ordered
 
 
+def init_emotion_feedback_table() -> None:
+    """emotion_feedback テーブルを冪等に作成する。"""
+    with closing(_open_db()) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS emotion_feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                rating TEXT NOT NULL CHECK(rating IN ('good', 'needs_improvement')),
+                comment TEXT,
+                emotion_category TEXT,
+                resolved BOOLEAN DEFAULT 0
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_emofb_resolved ON emotion_feedback(resolved)"
+        )
+        conn.commit()
+
+
+def save_emotion_feedback(rating: str, comment: Optional[str], emotion_category: Optional[str]) -> int:
+    """フィードバックを保存し、新規レコードの id を返す。"""
+    init_emotion_feedback_table()
+    with closing(_open_db()) as conn:
+        cur = conn.execute(
+            "INSERT INTO emotion_feedback (rating, comment, emotion_category) VALUES (?, ?, ?)",
+            (rating, comment or None, emotion_category or None),
+        )
+        conn.commit()
+        return cur.lastrowid  # type: ignore[return-value]
+
+
+def get_emotion_feedbacks(resolved: Optional[bool] = None) -> list[dict]:
+    """フィードバック一覧を返す。resolved=False で未解決のみ。"""
+    init_emotion_feedback_table()
+    with closing(_open_db()) as conn:
+        conn.row_factory = sqlite3.Row
+        if resolved is None:
+            rows = conn.execute(
+                "SELECT * FROM emotion_feedback ORDER BY created_at DESC"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM emotion_feedback WHERE resolved = ? ORDER BY created_at DESC",
+                (1 if resolved else 0,),
+            ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def delete_conversation_session(session_id: str) -> int:
     """session_id に紐づく全レコードを削除し、削除件数を返す。"""
     init_conversation_history_table()
