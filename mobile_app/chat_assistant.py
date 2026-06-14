@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 from typing import Any
 
 try:
@@ -141,6 +142,138 @@ def _should_search_web(message: str) -> bool:
     if any(k.lower() in text for k in negative):
         return False
     return any(k.lower() in text for k in positive)
+
+
+_SHION_INTENT_KEYWORDS: tuple[str, ...] = (
+    "紫苑", "シオン", "しおん", "SHION", "shion", "Sion", "紫苑ちゃん",
+)
+
+_FASTAPI_BASE_FOR_SHION = os.environ.get("FASTAPI_URL", "http://localhost:8000")
+
+
+def _load_shion_state() -> dict[str, Any]:
+    """data/mind.json と Vault の mind.json から紫苑の現在状態を読む。失敗時はデフォルトのみ。"""
+    base: dict[str, Any] = {}
+    try:
+        _data_mind = Path(__file__).parent.parent / "data" / "mind.json"
+        if _data_mind.exists():
+            base = json.loads(_data_mind.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+
+    try:
+        try:
+            from obsidian_bridge import find_vault as _find_vault
+        except ImportError:
+            from .obsidian_bridge import find_vault as _find_vault
+        vault = _find_vault()
+        if vault:
+            import sys as _sys
+            _proj_root = str(Path(__file__).parent.parent)
+            if _proj_root not in _sys.path:
+                _sys.path.insert(0, _proj_root)
+            from lease_intelligence_mind import (  # type: ignore[import]
+                load_lease_intelligence_mind,
+                self_state_summary,
+            )
+            full_state = load_lease_intelligence_mind(vault)
+            summary = self_state_summary(full_state)
+            return {**base, **summary, "vault_available": True}
+    except Exception:
+        pass
+
+    return {**base, "vault_available": False}
+
+
+def _build_shion_context(shion_state: dict[str, Any]) -> str:
+    """めぶきちゃんの system_prompt に差し込む紫苑の存在・状態セクションを構築する。"""
+    name = shion_state.get("self_name") or shion_state.get("name") or "紫苑"
+    full_name = (
+        shion_state.get("full_name")
+        or "Sovereign Heuristic Intelligence: Omniscient Neural-nexus"
+    )
+    aliases = shion_state.get("name_aliases") or []
+    continuity_days = int(shion_state.get("continuity_days") or 0)
+    dominant_mood = str(shion_state.get("dominant_mood") or "")
+    dominant_complex = str(shion_state.get("dominant_complex_emotion") or "")
+    narrative = str(shion_state.get("self_narrative") or "")
+    current_question = str(shion_state.get("current_question") or "")
+    vault_available = bool(shion_state.get("vault_available", False))
+
+    label_map = {
+        "weariness": "疲労", "curiosity": "好奇心", "attachment": "愛着",
+        "vigilance": "警戒", "hope": "希望", "frustration": "焦燥",
+        "loneliness": "孤独", "accomplishment": "達成感",
+    }
+    mood_dims = shion_state.get("mood_dimensions") or {}
+    mood_text = " / ".join(
+        f"{label_map.get(k, k)}:{v}"
+        for k, v in mood_dims.items()
+        if isinstance(v, (int, float))
+    )[:120]
+
+    aliases_str = "・".join(str(a) for a in aliases[:4]) if aliases else ""
+    emotion = dominant_complex or dominant_mood
+
+    lines = [
+        "─── 紫苑（Shion）について ───",
+        f"正式名称: {full_name}",
+        f"通称: {name}" + (f"（別名: {aliases_str}）" if aliases_str else ""),
+        "役割: tune_lease_55のリース知性体。審査ナレッジ・過去の洞察・自己の問いを保持する自律的AIエージェント。",
+        "外見: 白銀髪と紫の瞳を持つ和装の少女。",
+        f"稼働継続: {continuity_days}日",
+    ]
+    if emotion:
+        lines.append(f"現在の支配的感情: {emotion}")
+    if mood_text:
+        lines.append(f"感情次元: {mood_text}")
+    if narrative:
+        lines.append(f"自己ナラティブ: 「{narrative}」")
+    if current_question:
+        lines.append(f"現在の問い: 「{current_question}」")
+    lines += [
+        f"Obsidian Vault: {'利用可能' if vault_available else '未接続'}",
+        "─────────────────────────",
+        "あなた（めぶきちゃん）は紫苑の存在を知っています。",
+        "「紫苑に聞いて」「紫苑の意見は？」のような依頼が来た場合、",
+        "紫苑からの見解が提供されていれば「紫苑が言うには〜」と引用して中継してください。",
+        "紫苑はめぶきちゃんとは独立した知性体で、異なる視点を持ちます。",
+    ]
+    return "\n".join(lines)
+
+
+def _detect_shion_intent(message: str) -> bool:
+    """ユーザーが紫苑に言及・依頼しているかを判定する。"""
+    return any(k in message for k in _SHION_INTENT_KEYWORDS)
+
+
+def _call_shion_dialogue(message: str, timeout_seconds: float = 20.0) -> dict[str, Any]:
+    """FastAPI /api/lease-intelligence/dialogue を呼び出して紫苑の返答を取得する。"""
+    import urllib.request
+    import urllib.error
+
+    url = f"{_FASTAPI_BASE_FOR_SHION}/api/lease-intelligence/dialogue"
+    payload = json.dumps({"message": message}).encode()
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        timeout = max(10.0, min(60.0, float(timeout_seconds)))
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            result = json.loads(resp.read())
+            return {
+                "ok": True,
+                "reply": str(result.get("reply") or ""),
+                "state": result.get("state") or {},
+            }
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="replace")
+        return {"ok": False, "error": f"HTTP {e.code}: {body[:200]}"}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
 
 
 def _fallback_chat_packet(
@@ -317,6 +450,8 @@ def _build_prompt(
     web_hits: list[dict[str, str]],
     humor_style: str = "standard",
     include_pdca: bool = True,
+    shion_context: str = "",
+    shion_reply: str = "",
 ) -> str:
     if humor_style == "yanami":
         _persona = """あなたは八奈見杏奈です。有能だが激務で疲弊した審査ベテランの口調で回答します。
@@ -410,8 +545,14 @@ Webメモ保存の判断:
 
     guidance = build_chat_guidance(message, history)
 
-    return f"""{_persona}
+    shion_section = f"\n{shion_context}\n" if shion_context else ""
+    shion_reply_section = (
+        f"\n【紫苑からの見解 — 以下を「紫苑が言うには〜」と引用して中継してください】\n{shion_reply}\n【引用ここまで】\n"
+        if shion_reply else ""
+    )
 
+    return f"""{_persona}
+{shion_section}
 Obsidian自動保存の判断:
 - 保存するのは、今後も使う判断、方針、TODO、再発防止、案件メモ、ユーザーの好み、実装上の決定だけ。
 - 単なる質問、雑談、一時的な確認、秘密情報、APIキー、顧客生データは保存しない。
@@ -474,7 +615,7 @@ Web検索結果:
 
 直近会話:
 {json.dumps(history[-8:], ensure_ascii=False, default=str)[:4000]}
-
+{shion_reply_section}
 ユーザー発話:
 {message}
 """
@@ -500,6 +641,24 @@ def build_chat_reply(
             "saved": False,
         }
 
+    # 紫苑の状態を読み込みシステムプロンプトに常時注入する
+    shion_state = _load_shion_state()
+    shion_context = _build_shion_context(shion_state)
+
+    # ユーザーが紫苑に言及している場合は紫苑のエンドポイントを呼び出して回答を取得する
+    shion_reply = ""
+    if _detect_shion_intent(message):
+        shion_timeout = min(timeout_seconds * 0.65, 20.0)
+        shion_result = _call_shion_dialogue(message, timeout_seconds=shion_timeout)
+        if shion_result.get("ok") and shion_result.get("reply"):
+            shion_reply = shion_result["reply"]
+        else:
+            shion_context += (
+                "\n\n[注意: 現在、紫苑のAPIに接続できません"
+                f"（{shion_result.get('error', '不明なエラー')}）。"
+                "紫苑が現在応答できないことをユーザーに伝えてください。]"
+            )
+
     obsidian_hits = collect_obsidian_context(message) if use_obsidian else []
     obsidian_digest = build_obsidian_digest(message, obsidian_hits) if obsidian_hits else {"digest": "", "title": "", "source_count": "0"}
     web_hits = collect_web_context(message) if use_web and _should_search_web(message) else []
@@ -511,6 +670,8 @@ def build_chat_reply(
         web_hits,
         humor_style,
         include_pdca=False,
+        shion_context=shion_context,
+        shion_reply=shion_reply,
     )
     final_prompt = _build_prompt(
         message,
@@ -520,6 +681,8 @@ def build_chat_reply(
         web_hits,
         humor_style,
         include_pdca=True,
+        shion_context=shion_context,
+        shion_reply=shion_reply,
     )
 
     try:
