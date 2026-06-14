@@ -19,6 +19,12 @@ import re
 import sys
 from pathlib import Path
 
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from obsidian_query import iter_vault_md_files  # noqa: E402
+
 # ---------------------------------------------------------------------------
 # Vault detection
 # ---------------------------------------------------------------------------
@@ -69,17 +75,11 @@ def build_title_index(vault: Path) -> dict[str, str]:
     日本語ファイル名も含めてインデックス化する。
     """
     index: dict[str, str] = {}
-    for folder in TARGET_FOLDERS:
-        base = vault / folder
-        if not base.is_dir():
-            continue
-        for path in base.rglob("*.md"):
-            if any(part in EXCLUDED_PARTS for part in path.parts):
-                continue
-            stem = path.stem
-            rel = str(path.relative_to(vault))
-            if stem not in index:
-                index[stem] = rel
+    for path in iter_vault_md_files(vault, TARGET_FOLDERS, EXCLUDED_PARTS):
+        stem = path.stem
+        rel = str(path.relative_to(vault))
+        if stem not in index:
+            index[stem] = rel
     return index
 
 
@@ -285,15 +285,7 @@ def process_vault(
     if target_paths is not None:
         paths = target_paths
     else:
-        paths = []
-        for folder in TARGET_FOLDERS:
-            base = vault / folder
-            if not base.is_dir():
-                continue
-            for p in base.rglob("*.md"):
-                if any(part in EXCLUDED_PARTS for part in p.parts):
-                    continue
-                paths.append(p)
+        paths = list(iter_vault_md_files(vault, TARGET_FOLDERS, EXCLUDED_PARTS))
 
     results = []
     for p in sorted(paths):
