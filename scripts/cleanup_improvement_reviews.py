@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -43,7 +44,10 @@ except ImportError:
     def _canonical_key(title: str, description: str = "") -> str:  # type: ignore[misc]
         return f"rev_{title.strip().lower()}"
 
-LEDGER_PATH = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
+LEDGER_PATH = Path(
+    os.environ.get("LEDGER_PATH",
+                   str(Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"))
+)
 
 # PR タイトルに REV-NNN が明記されていないが確認済みのもの
 # (PR 番号, status)
