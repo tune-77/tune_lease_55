@@ -253,7 +253,7 @@ def _call_shion_dialogue(message: str, timeout_seconds: float = 20.0) -> dict[st
     import urllib.error
 
     url = f"{_FASTAPI_BASE_FOR_SHION}/api/lease-intelligence/dialogue"
-    payload = json.dumps({"message": message}).encode()
+    payload = json.dumps({"message": message, "caller": "mebuki"}).encode()
     req = urllib.request.Request(
         url,
         data=payload,

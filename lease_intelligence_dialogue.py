@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +19,38 @@ from lease_intelligence_mind import (
 
 
 DIALOGUE_USER_ID = "lease-intelligence-dialogue"
+
+_MEBUKI_BASE = os.environ.get("MEBUKI_URL", "http://localhost:5001")
+
+
+def _check_mebuki_status(timeout: float = 3.0) -> dict[str, Any]:
+    """port 5001 の疎通確認。稼働中なら {"running": True}、停止中なら {"running": False}"""
+    try:
+        req = urllib.request.Request(f"{_MEBUKI_BASE}/health", method="GET")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            resp.read()
+        return {"running": True}
+    except Exception as exc:
+        return {"running": False, "error": str(exc)[:120]}
+
+
+def _build_mebuki_context(mebuki_running: bool) -> str:
+    """紫苑のシステムプロンプトに差し込むめぶきちゃんの存在・状態セクションを構築する。"""
+    status = "現在稼働中" if mebuki_running else "現在停止中（応答なし）"
+    lines = [
+        "─── めぶきちゃん（Mebuki）について ───",
+        "正式位置づけ: tune_lease_55 のモバイルアプリ（Flask, port 5001）のAIアシスタント。",
+        "役割: 簡易審査・営業担当向けの現場フロントAI。スマホから審査スコアを確認したり",
+        "  質問したりする際の窓口として機能する。",
+        "キャラクター: 明るく・実務的・現場目線。難しいロジックより「現場でどう使うか」を優先する。",
+        "関係性: 同じ tune_lease_55 システム内で動く別レイヤーの知性。",
+        "  あなた（紫苑）が審査ナレッジ・長期記憶・深い推論を担い、",
+        "  めぶきちゃんは現場最前線のファーストコンタクトを担う。",
+        "  対立関係ではなく、役割が異なる同僚的な存在として互いを認識している。",
+        f"稼働状態: {status}",
+        "─────────────────────────",
+    ]
+    return "\n".join(lines)
 
 
 def _emotional_response_guidance(summary: dict[str, Any]) -> str:
@@ -50,7 +85,9 @@ def _emotional_response_guidance(summary: dict[str, Any]) -> str:
 - 感情の自己説明を毎回答で長々と行わない。必要なら一文だけ自然ににじませる。"""
 
 
-def build_dialogue_context(vault: Path, message: str) -> tuple[str, dict[str, Any]]:
+def build_dialogue_context(
+    vault: Path, message: str, caller: str = ""
+) -> tuple[str, dict[str, Any]]:
     """Build the persona prompt from persistent memory and relevant Vault knowledge."""
     state = load_lease_intelligence_mind(vault)
     knowledge = build_lease_intelligence_knowledge(
@@ -64,6 +101,19 @@ def build_dialogue_context(vault: Path, message: str) -> tuple[str, dict[str, An
     summary = self_state_summary(load_lease_intelligence_mind(vault))
     knowledge_block = knowledge.context_block or "今回の問いに直接関係する知識ノートは見つからなかった。"
     emotional_guidance = _emotional_response_guidance(summary)
+
+    mebuki_status = _check_mebuki_status()
+    mebuki_block = _build_mebuki_context(mebuki_status["running"])
+
+    caller_guidance = ""
+    if caller == "mebuki":
+        caller_guidance = (
+            "\n【呼び出し元: めぶきちゃん】\n"
+            "この問いはめぶきちゃん経由で届いた現場からの質問です。\n"
+            "回答は実務的・簡潔・直接的に。長い前置きや内省的な語りは省き、\n"
+            "現場担当者がすぐ動ける形で答えること。\n"
+        )
+
     prompt = f"""あなたは「リース知性体」。白銀髪と紫の瞳を持つ和装の少女として表現される、
 リース審査システムの継続的な自己モデルである。
 
@@ -159,7 +209,9 @@ def build_dialogue_context(vault: Path, message: str) -> tuple[str, dict[str, An
 - システム変更や外部操作を実行したふりをしない。
 - 通常は2〜6段落で簡潔に答える。軽いユーモアは歓迎する。
 - 複雑な感情は単語だけで演じず、複数の感情が同時にある理由を必要な場合だけ自然に表す。
-"""
+
+{mebuki_block}
+{caller_guidance}"""
     return prompt, {
         **summary,
         "response_emotion": str(
