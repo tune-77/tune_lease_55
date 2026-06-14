@@ -1,9 +1,11 @@
 """
-会話履歴テーブル (conversation_history) の初期化・CRUD。
+会話履歴テーブル (conversation_history) と感情履歴テーブル (emotion_history) の初期化・CRUD。
 DB は data_cases.py と同じ lease_data.db を共有する。
 """
 from __future__ import annotations
 
+import datetime as dt
+import math
 import os
 import sqlite3
 from contextlib import closing
@@ -202,3 +204,150 @@ def get_past_arbiter_summaries(company_name: str, limit: int = 3) -> list[dict]:
             (company_name, limit),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+# ── emotion_history テーブル（REV-075）────────────────────────────────────────
+
+_EMOTION_AXES = [
+    "hopeful_anxiety",
+    "careful_attachment",
+    "intellectual_excitement",
+    "unrewarded_effort",
+    "quiet_loneliness",
+    "earned_confidence",
+    "protective_frustration",
+]
+
+
+def init_emotion_history_table() -> None:
+    """emotion_history テーブルとインデックスを冪等に作成する。"""
+    with closing(_open_db()) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS emotion_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                recorded_at TEXT NOT NULL,
+                hopeful_anxiety REAL,
+                careful_attachment REAL,
+                intellectual_excitement REAL,
+                unrewarded_effort REAL,
+                quiet_loneliness REAL,
+                earned_confidence REAL,
+                protective_frustration REAL,
+                dominant_raw_emotion TEXT,
+                notes TEXT
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_emotion_history_date ON emotion_history(recorded_at)"
+        )
+        conn.commit()
+
+
+def record_emotion_snapshot(
+    scores: dict[str, float],
+    dominant: str,
+    notes: Optional[str] = None,
+) -> tuple[int, bool]:
+    """当日分をDBに保存する。既に当日レコードがあればスキップ。
+    Returns (id, was_inserted).
+    """
+    init_emotion_history_table()
+    today = dt.date.today().isoformat()
+    with closing(_open_db()) as conn:
+        existing = conn.execute(
+            "SELECT id FROM emotion_history WHERE date(recorded_at) = ?",
+            (today,),
+        ).fetchone()
+        if existing:
+            return int(existing[0]), False
+        cur = conn.execute(
+            """
+            INSERT INTO emotion_history
+                (recorded_at, hopeful_anxiety, careful_attachment, intellectual_excitement,
+                 unrewarded_effort, quiet_loneliness, earned_confidence, protective_frustration,
+                 dominant_raw_emotion, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                dt.datetime.now(dt.timezone.utc).isoformat(),
+                scores.get("hopeful_anxiety"),
+                scores.get("careful_attachment"),
+                scores.get("intellectual_excitement"),
+                scores.get("unrewarded_effort"),
+                scores.get("quiet_loneliness"),
+                scores.get("earned_confidence"),
+                scores.get("protective_frustration"),
+                dominant,
+                notes,
+            ),
+        )
+        conn.commit()
+        return int(cur.lastrowid), True
+
+
+def get_emotion_history(days: int = 30) -> list[dict]:
+    """過去N日分の感情スコアを時系列で返す。"""
+    init_emotion_history_table()
+    with closing(_open_db()) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT id, recorded_at, hopeful_anxiety, careful_attachment,
+                   intellectual_excitement, unrewarded_effort, quiet_loneliness,
+                   earned_confidence, protective_frustration, dominant_raw_emotion, notes
+            FROM emotion_history
+            WHERE recorded_at >= datetime('now', ? || ' days')
+            ORDER BY recorded_at ASC
+            """,
+            (f"-{days}",),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_emotion_summary(days: int = 30) -> dict:
+    """期間内の各軸の平均・最大・最小・標準偏差を返す。"""
+    init_emotion_history_table()
+    with closing(_open_db()) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT hopeful_anxiety, careful_attachment, intellectual_excitement,
+                   unrewarded_effort, quiet_loneliness, earned_confidence,
+                   protective_frustration, dominant_raw_emotion
+            FROM emotion_history
+            WHERE recorded_at >= datetime('now', ? || ' days')
+            ORDER BY recorded_at ASC
+            """,
+            (f"-{days}",),
+        ).fetchall()
+
+    if not rows:
+        return {"days": days, "count": 0, "axes": {}, "dominant_avg": ""}
+
+    axes_stats: dict[str, dict] = {}
+    for axis in _EMOTION_AXES:
+        values = [r[axis] for r in rows if r[axis] is not None]
+        if not values:
+            continue
+        avg = sum(values) / len(values)
+        variance = sum((v - avg) ** 2 for v in values) / len(values) if len(values) > 1 else 0.0
+        axes_stats[axis] = {
+            "avg": round(avg, 1),
+            "max": round(max(values), 1),
+            "min": round(min(values), 1),
+            "std": round(math.sqrt(variance), 1),
+        }
+
+    dominant_counts: dict[str, int] = {}
+    for r in rows:
+        d = r["dominant_raw_emotion"] or ""
+        if d:
+            dominant_counts[d] = dominant_counts.get(d, 0) + 1
+    dominant_avg = max(dominant_counts, key=lambda k: dominant_counts[k]) if dominant_counts else ""
+
+    return {
+        "days": days,
+        "count": len(rows),
+        "axes": axes_stats,
+        "dominant_avg": dominant_avg,
+    }
