@@ -7738,3 +7738,57 @@ def post_world_view_ack():
         encoding="utf-8",
     )
     return {"status": "acked", "acked_at": updated_at}
+
+
+# ── REV-076: 感情レーダーチャート フィードバック ─────────────────────────────
+
+class EmotionFeedbackRequest(BaseModel):
+    rating: str  # 'good' | 'needs_improvement'
+    comment: Optional[str] = None
+    emotion_category: Optional[str] = None
+
+
+def _append_emotion_feedback_to_obsidian(rating: str, comment: Optional[str], emotion_category: Optional[str]) -> dict:
+    """フィードバックを Obsidian の感情可視化フィードバック.md に追記する。"""
+    import datetime as _dt
+    vault_raw = _OBSIDIAN_VAULT_PATH or os.environ.get("OBSIDIAN_VAULT") or os.environ.get("OBSIDIAN_VAULT_PATH") or ""
+    if not vault_raw:
+        return {"status": "skipped", "reason": "obsidian_vault_not_configured"}
+    vault = Path(vault_raw).expanduser().resolve()
+    if not (vault / ".obsidian").exists():
+        return {"status": "skipped", "reason": "obsidian_vault_not_found"}
+
+    now = _dt.datetime.now()
+    rel = Path("Projects") / "tune_lease_55" / "Lease Intelligence" / "感情可視化フィードバック.md"
+    path = (vault / rel).resolve()
+    if vault not in path.parents and path != vault:
+        return {"status": "error", "reason": "unsafe_path"}
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    rating_label = "👍 わかりやすい" if rating == "good" else "📝 意見あり"
+    lines = [f"\n## {now.strftime('%Y-%m-%d %H:%M')} — {rating_label}"]
+    if emotion_category:
+        lines.append(f"- 感情軸: {emotion_category}")
+    if comment:
+        lines.append(f"- コメント: {comment}")
+
+    with path.open("a", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    return {"status": "ok", "path": str(rel)}
+
+
+@app.post("/api/intelligence/emotions/feedback")
+def post_emotion_feedback(req: EmotionFeedbackRequest):
+    if req.rating not in ("good", "needs_improvement"):
+        raise HTTPException(status_code=422, detail="rating は 'good' または 'needs_improvement' で指定してください")
+    from api.database import save_emotion_feedback
+    record_id = save_emotion_feedback(req.rating, req.comment, req.emotion_category)
+    obsidian_result = _append_emotion_feedback_to_obsidian(req.rating, req.comment, req.emotion_category)
+    return {"status": "saved", "id": record_id, "obsidian": obsidian_result}
+
+
+@app.get("/api/intelligence/emotions/feedback")
+def get_emotion_feedback(resolved: Optional[bool] = None):
+    from api.database import get_emotion_feedbacks
+    items = get_emotion_feedbacks(resolved=resolved)
+    return {"items": items, "total": len(items)}
