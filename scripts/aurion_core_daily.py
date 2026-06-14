@@ -811,6 +811,44 @@ def status_lines(sync: dict[str, Any] | None = None, vault_b_rag: dict[str, Any]
     )
 
 
+def _get_slack_webhook() -> str:
+    """環境変数 → .streamlit/secrets.toml の順で Slack Webhook URL を取得する."""
+    url = os.environ.get("SLACK_WEBHOOK_URL", "")
+    if url:
+        return url
+    for secrets_path in [
+        PROJECT_ROOT / ".streamlit" / "secrets.toml",
+        Path.home() / ".streamlit" / "secrets.toml",
+    ]:
+        if secrets_path.exists():
+            try:
+                for line in secrets_path.read_text(encoding="utf-8").splitlines():
+                    if "SLACK_WEBHOOK_URL" in line and "=" in line:
+                        return line.split("=", 1)[1].strip().strip('"').strip("'")
+            except OSError:
+                pass
+    return ""
+
+
+def _send_slack(text: str) -> None:
+    """Slack Incoming Webhook にメッセージを送信する。失敗は警告のみ。"""
+    webhook_url = _get_slack_webhook()
+    if not webhook_url:
+        return
+    try:
+        payload = json.dumps({"text": text}).encode("utf-8")
+        req = urllib.request.Request(
+            webhook_url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10):
+            pass
+    except Exception as exc:
+        print(f"[WARN] Slack 送信失敗: {exc}", file=sys.stderr)
+
+
 def notify(title: str, message: str) -> None:
     if os.environ.get("AURION_NO_NOTIFY") == "1":
         return
@@ -1338,6 +1376,17 @@ def run_morning_report(dry_run: bool = False) -> int:
         "AURION CORE Morning Report",
         f"06:00 report generated: {report.name}; Codex queue {codex_queue.get('queued_count', 0)}/{codex_queue.get('codex_auto_safe_count', 0)}; quota {codex_queue.get('blocked_by_quota_count', 0)}; gaps {declaration_gaps.get('count', 0)}; insight: {insight.name}",
     )
+
+    db_counts = {row["table_name"]: row["n"] for row in db.get("counts") or []}
+    slack_lines = [
+        f"*AURION CORE 朝報 {date_str()}*",
+        f"📊 past_cases: {db_counts.get('past_cases', '?')}件 / screening_records: {db_counts.get('screening_records', '?')}件",
+        f"🤖 Codex候補: {codex_queue.get('queued_count', 0)}件 (safe={codex_queue.get('codex_auto_safe_count', 0)}, quota超={codex_queue.get('blocked_by_quota_count', 0)})",
+        f"🔍 登録漏れ疑い: {declaration_gaps.get('count', 0)}件",
+        f"📋 {report.name}",
+    ]
+    _send_slack("\n".join(slack_lines))
+
     print(str(report))
     print(str(insight))
     return 0
