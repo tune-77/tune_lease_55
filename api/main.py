@@ -5854,6 +5854,28 @@ def post_lease_intelligence_self_audit():
     return result
 
 
+@app.get("/api/lease-intelligence/knowledge-gaps")
+def get_knowledge_gaps():
+    """紫苑の知識ギャップ一覧を返す（REV-082）。"""
+    from lease_intelligence_mind import load_lease_intelligence_mind
+    from lease_news_digest import find_vault
+
+    vault = find_vault()
+    if not vault:
+        raise HTTPException(status_code=503, detail="Obsidian Vaultが見つかりません")
+
+    try:
+        mind = load_lease_intelligence_mind(vault)
+        gaps = mind.get("knowledge_gaps", [])
+        open_gaps = [g for g in gaps if g.get("status") == "open"]
+        return {
+            "total": len(open_gaps),
+            "gaps": open_gaps,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 def _log_shion_query_class(message: str) -> None:
     """shion_classify の結果を data/chat_logs.jsonl に非同期で記録する（レスポンス遅延なし）。"""
     import json as _json

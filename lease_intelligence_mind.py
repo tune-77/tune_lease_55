@@ -27,6 +27,8 @@ DISSONANCE_LIMIT = 12
 SCREENING_FEEDBACK_LIMIT = 10
 # 物件スコアと借手スコアの乖離を「不整合」とみなす閾値（pt）。
 ASSET_BORROWER_GAP = 30.0
+# 保持する知識ギャップエントリの上限。
+KNOWLEDGE_GAP_LIMIT = 10
 
 
 def _current_asset_borrower_dissonance_summary() -> str:
@@ -1296,6 +1298,36 @@ def _build_question(theme: str, focus_lines: list[str] | tuple[str, ...]) -> str
 # A) 自律検証ループ（REV-080）
 # ---------------------------------------------------------------------------
 
+def record_knowledge_gap(
+    vault: Path,
+    topic: str,
+    reason: str,
+    gap_type: str = "research",
+) -> dict[str, Any]:
+    """紫苑の知識ギャップを記録する。gap_type: 'research' | 'vault' | 'connection'"""
+    from datetime import date
+
+    vault = Path(vault)
+    state = load_lease_intelligence_mind(vault)
+    gaps = state.get("knowledge_gaps", [])
+
+    # 同じtopicが既にあれば上書き
+    gaps = [g for g in gaps if g.get("topic") != topic]
+
+    gaps.append({
+        "topic": topic,
+        "reason": reason,
+        "gap_type": gap_type,
+        "created_at": date.today().isoformat(),
+        "status": "open",
+    })
+
+    gaps = gaps[-KNOWLEDGE_GAP_LIMIT:]
+    state["knowledge_gaps"] = gaps
+    _write_state(vault, state)
+    return {"recorded": True, "topic": topic, "total_gaps": len(gaps)}
+
+
 def _write_self_audit_report(
     vault: Path,
     date_str: str,
@@ -1340,6 +1372,21 @@ def _write_self_audit_report(
             "## 紫苑の自己コメント",
             shion_comment,
         ]
+
+    # 知識の渇望セクション
+    knowledge_gaps = result.get("knowledge_gaps", [])
+    open_gaps = [g for g in knowledge_gaps if g.get("status") == "open"]
+    content_lines += ["", "## 知識の渇望"]
+    if open_gaps:
+        for gap in open_gaps:
+            content_lines += [
+                f"- トピック: {gap.get('topic', '')}",
+                f"  - 理由: {gap.get('reason', '')}",
+                f"  - 種別: {gap.get('gap_type', '')}",
+                f"  - 記録日: {gap.get('created_at', '')}",
+            ]
+    else:
+        content_lines.append("現時点で特定の知識不足は検出されていません。")
 
     content_lines += [
         "",
@@ -1466,12 +1513,56 @@ def run_self_audit(vault: Path) -> dict[str, Any]:
                 pass
         if len(dominant_moods) >= 7 and len(set(dominant_moods)) == 1:
             _NEGATIVE_MOODS = {"weariness", "frustration", "loneliness"}
-            _POSITIVE_MOODS = {"curiosity", "hope", "accomplishment", "attachment"}
             mood = dominant_moods[0]
             if mood in _NEGATIVE_MOODS:
                 issues.append(
                     f"{mood}が7日間持続しています。注意が必要かもしれません"
                 )
+
+    # 6. current_questionに関連するObsidianノートが少ないか
+    detected_gaps: list[dict[str, Any]] = []
+    vault_md_files = list(vault.rglob("*.md"))
+    current_question = state.get("current_question", "")
+    if current_question:
+        question_short = current_question[:50]
+        keyword = current_question[:10] if len(current_question) >= 10 else current_question
+        related_notes = [
+            f for f in vault_md_files
+            if keyword in f.read_text(encoding="utf-8", errors="ignore")
+        ]
+        if len(related_notes) < 3:
+            gap_topic = question_short
+            gap_reason = (
+                f"current_questionのトピック「{question_short}」に関連するノートが"
+                f"{len(related_notes)}件しかありません"
+            )
+            detected_gaps.append({"topic": gap_topic, "reason": gap_reason, "gap_type": "research"})
+            issues.append(f"知識ギャップ検出: {gap_reason}")
+
+    # 7. memoriesで繰り返し言及されているトピックのノート確認
+    if len(memories) >= 3:
+        all_summaries = " ".join([m.get("summary", "") for m in memories[-7:]])
+        _TRACK_KEYWORDS = [
+            "ESG", "金利上昇", "残価設定", "物件担保", "信用リスク",
+            "業種集中", "太陽光", "医療機器", "建設機械", "IT機器",
+            "デフォルト", "回収", "保証",
+        ]
+        for kw in _TRACK_KEYWORDS:
+            count = all_summaries.count(kw)
+            if count >= 2:
+                related = [
+                    f for f in vault_md_files
+                    if kw in f.read_text(encoding="utf-8", errors="ignore")
+                ]
+                if len(related) < 2:
+                    gap_topic = f"{kw}に関する知見"
+                    gap_reason = (
+                        f"直近の記憶で{count}回言及されているが、Obsidianノートが{len(related)}件しかない"
+                    )
+                    detected_gaps.append({"topic": gap_topic, "reason": gap_reason, "gap_type": "research"})
+
+    for gap in detected_gaps:
+        record_knowledge_gap(vault, gap["topic"], gap["reason"], gap_type=gap["gap_type"])
 
     healthy = len(issues) == 0
     result: dict[str, Any] = {
@@ -1480,6 +1571,7 @@ def run_self_audit(vault: Path) -> dict[str, Any]:
         "checked_at": dt.datetime.now().isoformat(timespec="seconds"),
         "memories_count": len(memories),
         "continuity_days": continuity_days,
+        "knowledge_gaps": detected_gaps,
     }
 
     # novelist_agent 経由で紫苑コメントを生成（失敗時はフォールバック）
