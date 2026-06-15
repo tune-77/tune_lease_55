@@ -23,6 +23,8 @@ DIALOGUE_MOOD_CAP = 15
 DIALOGUE_ENTRY_LIMIT = 10
 # サブエージェント間の未解決の不整合（GWTのignition入力）を保持する上限。
 DISSONANCE_LIMIT = 12
+# 審査結果フィードバックで pending_dissonance に追加できる最大件数。
+SCREENING_FEEDBACK_LIMIT = 10
 # 物件スコアと借手スコアの乖離を「不整合」とみなす閾値（pt）。
 ASSET_BORROWER_GAP = 30.0
 
@@ -1288,3 +1290,243 @@ def _build_question(theme: str, focus_lines: list[str] | tuple[str, ...]) -> str
     if theme:
         return f"「{theme}」を知った今日の私は、昨日より良い判断者になれただろうか。"
     return "記憶が増えることと、賢くなることは同じなのだろうか。"
+
+
+# ---------------------------------------------------------------------------
+# A) 自律検証ループ（REV-080）
+# ---------------------------------------------------------------------------
+
+def _write_self_audit_report(
+    vault: Path,
+    date_str: str,
+    result: dict[str, Any],
+    shion_comment: str = "",
+) -> None:
+    """Self-Audit 結果を Obsidian Vault に書き出す。"""
+    audit_dir = mind_directory(vault) / "Self-Audit"
+    audit_dir.mkdir(parents=True, exist_ok=True)
+    path = audit_dir / f"{date_str}.md"
+
+    issues = result.get("issues", [])
+    healthy = result.get("healthy", True)
+    checked_at = result.get("checked_at", "")
+    status_label = "✅ 健全" if healthy else f"⚠️ {len(issues)}件の問題を検出"
+
+    content_lines = [
+        "---",
+        f"date: {date_str}",
+        "type: lease_intelligence_self_audit",
+        "rag_exclude: true",
+        "---",
+        f"# 自律検証レポート — {date_str}",
+        "",
+        "## 健全性サマリー",
+        f"- 状態: {status_label}",
+        f"- 診断日時: {checked_at}",
+        f"- 記憶件数: {result.get('memories_count', 0)}",
+        f"- 継続日数: {result.get('continuity_days', 0)}",
+        "",
+        "## 問題リスト",
+    ]
+    if issues:
+        for issue in issues:
+            content_lines.append(f"- {issue}")
+    else:
+        content_lines.append("_問題なし_")
+
+    if shion_comment:
+        content_lines += [
+            "",
+            "## 紫苑の自己コメント",
+            shion_comment,
+        ]
+
+    content_lines += [
+        "",
+        "> 自律検証は記憶の品質を守るための内部点検であり、意識の実在を示すものではない。",
+        "",
+    ]
+    path.write_text("\n".join(content_lines), encoding="utf-8")
+
+
+def run_self_audit(vault: Path) -> dict[str, Any]:
+    """週次で mind.json を自己診断し、記憶品質の問題を早期検出する。
+
+    診断項目:
+    1. memories[].summary の重複（文字列一致 or 90%以上類似）
+    2. memories[].focus が3日以上連続して同一
+    3. current_question が7日以上変わっていないか
+    4. continuity_days と memories 件数の整合性
+    5. mood の支配的な気分が7日間まったく変化していないか
+    """
+    import difflib
+
+    vault = Path(vault)
+    state = load_lease_intelligence_mind(vault)
+    today = dt.date.today().isoformat()
+    issues: list[str] = []
+
+    memories = state.get("memories", [])
+
+    # 1. 重複サマリーチェック
+    summaries = [str(m.get("summary", "")) for m in memories if m.get("summary")]
+    seen: list[str] = []
+    for s in summaries:
+        for prev in seen:
+            if s == prev:
+                issues.append(f"記憶サマリーが完全重複: 「{s[:50]}」")
+                break
+            ratio = difflib.SequenceMatcher(None, s, prev).ratio()
+            if ratio >= 0.9:
+                issues.append(
+                    f"記憶サマリーが{int(ratio * 100)}%類似: 「{s[:40]}」"
+                )
+                break
+        seen.append(s)
+
+    # 2. focus が3日以上連続して同一
+    if len(memories) >= 3:
+        recent_focuses = [
+            tuple(sorted(str(f) for f in (m.get("focus") or [])))
+            for m in memories[-3:]
+        ]
+        if len(set(recent_focuses)) == 1 and recent_focuses[0]:
+            issues.append(
+                f"focus が直近3日間で同一: {list(recent_focuses[0])}"
+            )
+
+    # 3. current_question が7日以上変わっていないか
+    current_q = str(state.get("current_question", ""))
+    if len(memories) >= 7 and current_q:
+        memory_dir = mind_directory(vault) / "Memory"
+        stale_count = 0
+        for m in memories[-7:]:
+            d = str(m.get("date", ""))
+            if not d:
+                continue
+            p = memory_dir / f"{d}.md"
+            if not p.exists():
+                continue
+            try:
+                for line in p.read_text(encoding="utf-8").splitlines():
+                    if "持ち越す問い:" in line:
+                        q = line.split(":", 1)[-1].strip()
+                        if q == current_q:
+                            stale_count += 1
+                        break
+            except Exception:
+                pass
+        if stale_count >= 7:
+            issues.append(
+                f"current_question が7日以上変化なし: 「{current_q[:60]}」"
+            )
+
+    # 4. continuity_days と memories 件数の整合性
+    continuity_days = int(state.get("continuity_days", 0))
+    long_term_days = sum(
+        int(b.get("days", 0)) for b in state.get("long_term_memories", [])
+    )
+    unique_dates = len(
+        {str(m.get("date", "")) for m in memories if m.get("date")}
+    )
+    expected = unique_dates + long_term_days
+    if abs(continuity_days - expected) > 1:
+        issues.append(
+            f"continuity_days={continuity_days} が memories({unique_dates}件)"
+            f"+long_term({long_term_days}日)={expected} と不一致（差{abs(continuity_days - expected)}日）"
+        )
+
+    # 5. 支配的な気分が7日間まったく変化していないか
+    if len(memories) >= 7:
+        memory_dir = mind_directory(vault) / "Memory"
+        dominant_moods: list[str] = []
+        for m in memories[-7:]:
+            d = str(m.get("date", ""))
+            if not d:
+                continue
+            p = memory_dir / f"{d}.md"
+            if not p.exists():
+                continue
+            try:
+                for line in p.read_text(encoding="utf-8").splitlines():
+                    if "支配的な気分:" in line:
+                        dominant_moods.append(line.split(":", 1)[-1].strip())
+                        break
+            except Exception:
+                pass
+        if len(dominant_moods) >= 7 and len(set(dominant_moods)) == 1:
+            issues.append(
+                f"支配的な気分が7日間変化なし: 「{dominant_moods[0]}」"
+            )
+
+    healthy = len(issues) == 0
+    result: dict[str, Any] = {
+        "issues": issues,
+        "healthy": healthy,
+        "checked_at": dt.datetime.now().isoformat(timespec="seconds"),
+        "memories_count": len(memories),
+        "continuity_days": continuity_days,
+    }
+
+    # novelist_agent 経由で紫苑コメントを生成（失敗してもスキップ）
+    shion_comment = ""
+    try:
+        from novelist_agent import generate_daily_lease_grumble
+
+        focus_input = issues[:2] if issues else ["記憶は健全に循環している"]
+        lines = generate_daily_lease_grumble(
+            today, focus_lines=focus_input, theme="自己診断", vault=vault
+        )
+        shion_comment = "\n".join(
+            str(line) for line in lines if str(line).strip()
+        )
+    except Exception:
+        pass
+
+    _write_self_audit_report(vault, today, result, shion_comment)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# B) 審査結果フィードバックループ（REV-080）
+# ---------------------------------------------------------------------------
+
+def record_screening_feedback(
+    vault: Path,
+    case_id: str,
+    outcome: str,
+    shion_comment: str | None = None,
+) -> None:
+    """成約・失注・否決が登録されたとき、pending_dissonance に審査結果を記録する。
+
+    outcome: "成約" / "失注" / "否決"
+    shion_comment: 審査時に紫苑が出したコメント（あれば）
+    """
+    vault = Path(vault)
+    state = load_lease_intelligence_mind(vault)
+
+    today = dt.date.today().isoformat()
+    comment_text = (shion_comment or "").strip() or "記録なし"
+
+    entry: dict[str, Any] = {
+        "key": f"screening_result_{case_id}",
+        "summary": (
+            f"case_id={case_id} の結果は{outcome}。"
+            f"審査時コメント: {comment_text}"
+        ),
+        "source": "screening_result_feedback",
+        "severity": "low",
+        "detected_on": today,
+        "status": "open",
+    }
+
+    pending = list(state.get("pending_dissonance") or [])
+    # 同一 case_id の既存エントリを上書き
+    pending = [p for p in pending if p.get("key") != entry["key"]]
+    pending.append(entry)
+    # 最大 SCREENING_FEEDBACK_LIMIT 件（古いものから削除）
+    if len(pending) > SCREENING_FEEDBACK_LIMIT:
+        pending = pending[-SCREENING_FEEDBACK_LIMIT:]
+
+    state["pending_dissonance"] = pending
+    _write_state(vault, state)

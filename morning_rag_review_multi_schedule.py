@@ -54,6 +54,7 @@ def weekly_monday_analysis():
     logger.info("  - 実装済み改善の効果測定")
     logger.info("  - 失注案件の傾向分析")
     logger.info("  - 改善優先度の再評価")
+    logger.info("  - 紫苑 self-audit 実行（REV-080）")
 
     report = {
         "schedule": "weekly_monday_9am",
@@ -64,6 +65,7 @@ def weekly_monday_analysis():
             "implementation_effectiveness",
             "lost_deal_analysis",
             "priority_reassessment",
+            "shion_self_audit",
         ],
     }
 
@@ -77,6 +79,26 @@ def weekly_monday_analysis():
             logger.info(f"  - 分析対象ログ: {len(lines)} entries")
     except Exception as e:
         logger.warning(f"ログ分析エラー: {e}")
+
+    # 紫苑 self-audit（REV-080）: 毎週月曜 06:30 相当（このスクリプトの週次実行タイミングで実行）
+    try:
+        import sys
+        from pathlib import Path as _Path
+        _root = str(_Path(__file__).parent)
+        if _root not in sys.path:
+            sys.path.insert(0, _root)
+        from lease_intelligence_mind import run_self_audit
+        from lease_news_digest import find_vault
+        _vault = find_vault()
+        if _vault:
+            audit_result = run_self_audit(_vault)
+            report["shion_self_audit"] = audit_result
+            status = "healthy" if audit_result.get("healthy") else f"{len(audit_result.get('issues', []))} issues"
+            logger.info(f"  - 紫苑 self-audit 完了: {status}")
+        else:
+            logger.warning("  - 紫苑 self-audit スキップ: Obsidian Vault が見つかりません")
+    except Exception as _audit_err:
+        logger.warning(f"  - 紫苑 self-audit エラー（非致命的）: {_audit_err}")
 
     return report
 

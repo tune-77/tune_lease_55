@@ -2961,6 +2961,18 @@ def patch_case_result(case_id: str, req: CaseResultPatch):
     except Exception as e:
         obsidian_result = {"status": "error", "reason": str(e)}
 
+    # 紫苑フィードバックループ（REV-080）
+    outcome = req.final_status or ""
+    if outcome in ("成約", "失注"):
+        try:
+            from lease_intelligence_mind import record_screening_feedback
+            from lease_news_digest import find_vault as _find_vault_fb
+            _fb_vault = _find_vault_fb()
+            if _fb_vault:
+                record_screening_feedback(_fb_vault, case_id, outcome)
+        except Exception as _fb_err:
+            print(f"[ShionFeedback] record_screening_feedback skipped: {_fb_err}")
+
     return {"status": "updated", "case_id": case_id, "obsidian_reflection": obsidian_result}
 
 
@@ -4500,6 +4512,17 @@ def register_case_result(req: CaseRegistration):
     except Exception:
         pass
 
+    # 紫苑フィードバックループ（REV-080）
+    if req.status in ("成約", "失注"):
+        try:
+            from lease_intelligence_mind import record_screening_feedback
+            from lease_news_digest import find_vault as _find_vault_reg
+            _reg_vault = _find_vault_reg()
+            if _reg_vault:
+                record_screening_feedback(_reg_vault, target_case_id, req.status)
+        except Exception as _reg_err:
+            print(f"[ShionFeedback] record_screening_feedback skipped: {_reg_err}")
+
     return {"status": "success", "message": f"Results updated for {target_case_id}"}
 
 # ── アプリログ
@@ -5811,6 +5834,24 @@ def delete_lease_intelligence_dialogue_history():
         "deleted": deleted,
         "note": "画面の会話履歴だけを削除しました。Obsidianの対話記録は保持されます。",
     }
+
+
+@app.post("/api/lease-intelligence/self-audit")
+def post_lease_intelligence_self_audit():
+    """紫苑の自律検証ループを即時実行する（REV-080）。週次 cron からも呼ばれる。"""
+    from lease_intelligence_mind import run_self_audit
+    from lease_news_digest import find_vault
+
+    vault = find_vault()
+    if not vault:
+        raise HTTPException(status_code=503, detail="Obsidian Vaultが見つかりません")
+
+    try:
+        result = run_self_audit(vault)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"self-audit 実行エラー: {exc}")
+
+    return result
 
 
 def _log_shion_query_class(message: str) -> None:
