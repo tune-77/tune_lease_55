@@ -5785,6 +5785,19 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
 
     refreshed = register_dialogue_event(vault, message, reply)
     state = {**state, **self_state_summary(refreshed)}
+
+    # 記憶・ユーザーモデル・現在の問いをレスポンスをブロックせず非同期で更新する
+    try:
+        import threading as _threading
+        from lease_intelligence_mind import record_dialogue_memory as _record_dlg_mem
+        _threading.Thread(
+            target=_record_dlg_mem,
+            args=(vault, message, reply),
+            daemon=True,
+        ).start()
+    except Exception as _dlg_exc:
+        print(f"[DialogueMemory] 記憶更新の起動に失敗: {_dlg_exc}")
+
     return {"reply": reply, "state": state, "note_path": note_path}
 
 
