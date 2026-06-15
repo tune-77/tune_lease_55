@@ -1417,9 +1417,16 @@ def run_self_audit(vault: Path) -> dict[str, Any]:
             except Exception:
                 pass
         if stale_count >= 7:
-            issues.append(
-                f"current_question が7日以上変化なし: 「{current_q[:60]}」"
+            _INQUIRY_KEYWORDS = (
+                "どう", "なぜ", "どのように", "どこ", "いつ", "何が",
+                "How", "Why", "What",
             )
+            is_exploratory = any(kw in current_q for kw in _INQUIRY_KEYWORDS)
+            if not is_exploratory:
+                issues.append(
+                    f"7日以上同じ問いが記録されています。探求が深まっているのか、"
+                    f"または行き詰まっているのかご確認ください: 「{current_q[:60]}」"
+                )
 
     # 4. continuity_days と memories 件数の整合性
     continuity_days = int(state.get("continuity_days", 0))
@@ -1455,9 +1462,13 @@ def run_self_audit(vault: Path) -> dict[str, Any]:
             except Exception:
                 pass
         if len(dominant_moods) >= 7 and len(set(dominant_moods)) == 1:
-            issues.append(
-                f"支配的な気分が7日間変化なし: 「{dominant_moods[0]}」"
-            )
+            _NEGATIVE_MOODS = {"weariness", "frustration", "loneliness"}
+            _POSITIVE_MOODS = {"curiosity", "hope", "accomplishment", "attachment"}
+            mood = dominant_moods[0]
+            if mood in _NEGATIVE_MOODS:
+                issues.append(
+                    f"{mood}が7日間持続しています。注意が必要かもしれません"
+                )
 
     healthy = len(issues) == 0
     result: dict[str, Any] = {
@@ -1468,7 +1479,7 @@ def run_self_audit(vault: Path) -> dict[str, Any]:
         "continuity_days": continuity_days,
     }
 
-    # novelist_agent 経由で紫苑コメントを生成（失敗してもスキップ）
+    # novelist_agent 経由で紫苑コメントを生成（失敗時はフォールバック）
     shion_comment = ""
     try:
         from novelist_agent import generate_daily_lease_grumble
@@ -1482,6 +1493,15 @@ def run_self_audit(vault: Path) -> dict[str, Any]:
         )
     except Exception:
         pass
+    if not shion_comment:
+        shion_comment = (
+            "自己診断を実行しました。"
+            + (
+                "問題は検出されませんでした。今日も判断を渡せます。"
+                if healthy
+                else "以下の問題が検出されました。確認が必要です。"
+            )
+        )
 
     _write_self_audit_report(vault, today, result, shion_comment)
     return result
@@ -1508,6 +1528,24 @@ def record_screening_feedback(
     today = dt.date.today().isoformat()
     comment_text = (shion_comment or "").strip() or "記録なし"
 
+    _POSITIVE_KEYWORDS = ("成約", "承認", "適格", "問題なし", "良好")
+    _NEGATIVE_KEYWORDS = ("懸念", "リスク", "注意", "否決", "厳しい", "困難")
+    comment_clean = (shion_comment or "").strip()
+    if not comment_clean:
+        severity = "low"
+    elif (
+        any(kw in comment_clean for kw in _POSITIVE_KEYWORDS)
+        and outcome in ("失注", "否決")
+    ):
+        severity = "high"
+    elif (
+        any(kw in comment_clean for kw in _NEGATIVE_KEYWORDS)
+        and outcome == "成約"
+    ):
+        severity = "medium"
+    else:
+        severity = "low"
+
     entry: dict[str, Any] = {
         "key": f"screening_result_{case_id}",
         "summary": (
@@ -1515,7 +1553,7 @@ def record_screening_feedback(
             f"審査時コメント: {comment_text}"
         ),
         "source": "screening_result_feedback",
-        "severity": "low",
+        "severity": severity,
         "detected_on": today,
         "status": "open",
     }
