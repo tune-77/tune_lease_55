@@ -296,7 +296,12 @@ def generate_daily_lease_grumble(
         f"{_mood_label.get(k, k)}={v}" for k, v in top_moods
     ) if top_moods else "特になし"
 
-    memory_topic = (memory_summary[:34] if memory_summary else current_question[:34]) if (memory_summary or current_question) else ""
+    # focus_lines が空の場合は前日ぼやきを topic に流用しない（自己参照ループ防止）
+    memory_topic = (
+        (memory_summary[:34] if memory_summary else current_question[:34])
+        if (clean_focus and (memory_summary or current_question))
+        else ""
+    )
     fallback = _daily_grumble_fallback(date_str, clean_focus, memory_topic=memory_topic)
 
     knowledge = (
