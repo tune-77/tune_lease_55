@@ -1396,6 +1396,42 @@ def _write_self_audit_report(
     path.write_text("\n".join(content_lines), encoding="utf-8")
 
 
+def _extract_dynamic_keywords_via_novelist(memories: list[dict[str, Any]]) -> list[str] | None:
+    """Gemini（_call_gemini_for_classify経由）に直近記憶から繰り返しトピックを抽出させる。
+
+    失敗時はNoneを返す。呼び出し側が固定_TRACK_KEYWORDSへフォールバックする。
+    """
+    import re as _re
+
+    summaries_text = "\n".join(
+        f"- {m.get('summary', '')}" for m in memories if m.get("summary")
+    )
+    if not summaries_text.strip():
+        return None
+
+    prompt = (
+        "以下は紫苑の最近の審査記憶のサマリーです。\n"
+        "紫苑が繰り返し考えていると思われるトピックや概念を、5つ以内で抽出してください。\n"
+        "業務用語でも、人間心理でも、社会現象でも構いません。\n"
+        '必ずJSON配列のみで返してください。'
+        '例: ["信用リスク", "返済能力の過信", "業況悪化の申告遅れ"]\n\n'
+        f"{summaries_text}"
+    )
+
+    raw = _call_gemini_for_classify(prompt)
+    if not raw:
+        return None
+
+    try:
+        cleaned = _re.sub(r"```(?:json)?\s*", "", raw).strip().rstrip("`").strip()
+        parsed = json.loads(cleaned)
+        if isinstance(parsed, list):
+            return [str(kw).strip() for kw in parsed if str(kw).strip()][:5]
+    except (json.JSONDecodeError, ValueError):
+        pass
+    return None
+
+
 def run_self_audit(vault: Path) -> dict[str, Any]:
     """週次で mind.json を自己診断し、記憶品質の問題を早期検出する。
 
@@ -1539,17 +1575,19 @@ def run_self_audit(vault: Path) -> dict[str, Any]:
             detected_gaps.append({"topic": gap_topic, "reason": gap_reason, "gap_type": "research"})
             issues.append(f"知識ギャップ検出: {gap_reason}")
 
-    # 7. memoriesで繰り返し言及されているトピックのノート確認
+    # 7. memoriesで繰り返し言及されているトピックのノート確認（動的キーワード抽出）
+    _TRACK_KEYWORDS = [
+        "ESG", "金利上昇", "残価設定", "物件担保", "信用リスク",
+        "業種集中", "太陽光", "医療機器", "建設機械", "IT機器",
+        "デフォルト", "回収", "保証",
+    ]
     if len(memories) >= 3:
-        all_summaries = " ".join([m.get("summary", "") for m in memories[-7:]])
-        _TRACK_KEYWORDS = [
-            "ESG", "金利上昇", "残価設定", "物件担保", "信用リスク",
-            "業種集中", "太陽光", "医療機器", "建設機械", "IT機器",
-            "デフォルト", "回収", "保証",
-        ]
-        for kw in _TRACK_KEYWORDS:
-            count = all_summaries.count(kw)
-            if count >= 2:
+        recent_for_check7 = memories[-7:]
+        all_summaries = " ".join([m.get("summary", "") for m in recent_for_check7])
+        dynamic_keywords = _extract_dynamic_keywords_via_novelist(recent_for_check7)
+        if dynamic_keywords is not None:
+            # 動的抽出成功: LLMが選んだトピックをvaultノート数で評価（出現回数チェックは不要）
+            for kw in dynamic_keywords:
                 related = [
                     f for f in vault_md_files
                     if kw in f.read_text(encoding="utf-8", errors="ignore")
@@ -1557,9 +1595,24 @@ def run_self_audit(vault: Path) -> dict[str, Any]:
                 if len(related) < 2:
                     gap_topic = f"{kw}に関する知見"
                     gap_reason = (
-                        f"直近の記憶で{count}回言及されているが、Obsidianノートが{len(related)}件しかない"
+                        f"記憶から抽出されたトピック「{kw}」のObsidianノートが{len(related)}件しかない"
                     )
                     detected_gaps.append({"topic": gap_topic, "reason": gap_reason, "gap_type": "research"})
+        else:
+            # フォールバック: 固定_TRACK_KEYWORDSを使い既存ロジックで確認
+            for kw in _TRACK_KEYWORDS:
+                count = all_summaries.count(kw)
+                if count >= 2:
+                    related = [
+                        f for f in vault_md_files
+                        if kw in f.read_text(encoding="utf-8", errors="ignore")
+                    ]
+                    if len(related) < 2:
+                        gap_topic = f"{kw}に関する知見"
+                        gap_reason = (
+                            f"直近の記憶で{count}回言及されているが、Obsidianノートが{len(related)}件しかない"
+                        )
+                        detected_gaps.append({"topic": gap_topic, "reason": gap_reason, "gap_type": "research"})
 
     for gap in detected_gaps:
         record_knowledge_gap(vault, gap["topic"], gap["reason"], gap_type=gap["gap_type"])
