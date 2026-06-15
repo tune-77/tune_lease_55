@@ -19,7 +19,7 @@ SCORING_MODELS_DIR = os.environ.get("LEASE_SCORING_MODELS_DIR", os.path.join(_PK
 # AI エンジン
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "lease-anna")
 GEMINI_API_KEY_ENV = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_MODEL_DEFAULT = "gemini-2.0-flash"
+GEMINI_MODEL_DEFAULT = "gemini-2.5-flash"
 
 # ファイルパス
 CASES_FILE = os.path.join(BASE_DIR, "past_cases.jsonl")
