@@ -410,7 +410,7 @@ def _remember_daily_grumble(vault, date_str, lines, theme, focus_lines) -> list[
                 date_str=date_str,
                 thought_lines=normalized,
                 theme=theme,
-                focus_lines=focus_lines,
+                focus_lines=[],
             )
         except Exception:
             pass
