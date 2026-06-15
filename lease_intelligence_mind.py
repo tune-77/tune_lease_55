@@ -19,6 +19,8 @@ MIND_FILE_NAME = "mind.json"
 DAILY_MEMORY_LIMIT = 30
 LONG_TERM_LIMIT = 24
 DIALOGUE_MOOD_CAP = 15
+# 1セッション内で対話から追加できる memories エントリの上限。
+DIALOGUE_ENTRY_LIMIT = 10
 # サブエージェント間の未解決の不整合（GWTのignition入力）を保持する上限。
 DISSONANCE_LIMIT = 12
 # 物件スコアと借手スコアの乖離を「不整合」とみなす閾値（pt）。
@@ -749,6 +751,98 @@ def register_dialogue_event(vault: Path, user_message: str, reply: str = "") -> 
         adjustments[key] = max(-DIALOGUE_MOOD_CAP, min(DIALOGUE_MOOD_CAP, next_value))
     state["dialogue_mood"] = adjustments
     state["mood"] = _apply_dialogue_mood(_derive_mood(state.get("memories", [])), adjustments)
+    _write_state(vault, state)
+    return state
+
+
+def record_dialogue_memory(vault: Path, user_message: str, ai_response: str) -> dict[str, Any]:
+    """対話からリアルタイムで記憶・ユーザーモデル・現在の問いを更新する。
+
+    日次バッチが動かない時間帯でも mind.json が対話を通じて変化するよう、
+    register_dialogue_event() の後に非同期で呼び出す。
+    """
+    vault = Path(vault)
+    state = load_lease_intelligence_mind(vault)
+    today = dt.date.today().isoformat()
+    combined = f"{user_message} {ai_response}"
+
+    # --- 1. memories に対話エントリを追加 ---
+    user_snippet = user_message.strip()[:80]
+    ai_snippet = ai_response.strip()[:80]
+    summary = f"ユーザー:「{user_snippet}」→ {ai_snippet}"
+
+    theme = ""
+    if any(k in combined for k in ("スコア", "承認", "否決", "審査")):
+        theme = "審査"
+    elif any(k in combined for k in ("金利", "与信", "信用")):
+        theme = "与信"
+    elif any(k in combined for k in ("設備", "物件", "リース物件")):
+        theme = "物件"
+    elif any(k in combined for k in ("改善", "バグ", "修正", "エラー")):
+        theme = "システム"
+    elif any(k in combined for k in ("意識", "記憶", "感情", "自分")):
+        theme = "自己内省"
+
+    memories = list(state.get("memories", []))
+
+    # 今日の対話エントリが DIALOGUE_ENTRY_LIMIT 件以上なら最古から削除
+    today_dialogue_idx = [
+        i for i, m in enumerate(memories)
+        if m.get("date") == today and m.get("type") == "dialogue"
+    ]
+    while len(today_dialogue_idx) >= DIALOGUE_ENTRY_LIMIT:
+        memories.pop(today_dialogue_idx[0])
+        today_dialogue_idx = today_dialogue_idx[1:]
+
+    memories.append({
+        "date": today,
+        "summary": summary[:220],
+        "theme": theme,
+        "type": "dialogue",
+    })
+    state["memories"] = memories[-DAILY_MEMORY_LIMIT:]
+
+    # --- 2. user_model.understanding を更新 ---
+    user_model = {**_default_state()["user_model"], **dict(state.get("user_model", {}))}
+    interest_map = [
+        (("スコア", "審査", "否決", "承認"), "スコアリング・審査"),
+        (("金利", "与信", "信用"), "金利・与信"),
+        (("設備", "物件", "担保"), "物件評価"),
+        (("改善", "バグ", "エラー", "修正"), "システム改善"),
+        (("意識", "記憶", "感情", "自分", "紫苑"), "紫苑との対話"),
+    ]
+    detected_interest: str | None = None
+    for keywords, label in interest_map:
+        if any(k in user_message for k in keywords):
+            detected_interest = label
+            break
+
+    if detected_interest:
+        interests = list(user_model.get("interests") or [])
+        existing_labels = {
+            (i.get("label") if isinstance(i, dict) else str(i))
+            for i in interests
+        }
+        if detected_interest not in existing_labels:
+            interests.append({"label": detected_interest, "date": today})
+            user_model["interests"] = interests[:5]
+        user_model["understanding"] = (
+            f"「{detected_interest}」への関心が対話から観察された（{today}）。"
+        )
+
+    user_model["last_observed_date"] = today
+    state["user_model"] = user_model
+
+    # --- 3. current_question の更新（疑問・問いかけが含まれる場合のみ） ---
+    has_question = (
+        "？" in user_message
+        or "?" in user_message
+        or any(k in user_message for k in ("なぜ", "どうして", "なんで", "どういう", "どのように", "どんな"))
+    )
+    if has_question:
+        q_snippet = user_message.strip()[:60]
+        state["current_question"] = f"「{q_snippet}」— この問いの本質を次の対話前に深めておきたい。"
+
     _write_state(vault, state)
     return state
 

@@ -221,7 +221,7 @@ def _latest_news_note(vault: Path) -> Path | None:
         notes.extend(news_dir.glob("*_lease-news.md"))
     if not notes:
         return None
-    notes.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
+    notes.sort(key=lambda p: p.name[:10], reverse=True)
     return notes[0]
 
 
@@ -234,7 +234,7 @@ def _latest_reflection_note(vault: Path) -> Path | None:
         notes.extend(news_dir.glob("*_lease-news-reflection.md"))
     if not notes:
         return None
-    notes.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
+    notes.sort(key=lambda p: p.name[:10], reverse=True)
     return notes[0]
 
 

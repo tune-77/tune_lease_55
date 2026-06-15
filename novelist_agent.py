@@ -218,11 +218,14 @@ def _collect_recent_crosstalk(n: int = 3) -> list[dict]:
 from novel_prompts import get_novel_system_prompt
 
 
-def _daily_grumble_fallback(date_str: str, focus_lines: list[str]) -> list[str]:
+def _daily_grumble_fallback(date_str: str, focus_lines: list[str], memory_topic: str = "") -> list[str]:
     """Return a deterministic Haran-maru-style mini story without an LLM."""
     seed_text = f"{date_str}|{'|'.join(focus_lines)}"
     rng = random.Random(int(hashlib.sha256(seed_text.encode("utf-8")).hexdigest()[:16], 16))
-    topic = next((line.strip(" -") for line in focus_lines if line.strip()), "今日の審査")
+    if memory_topic:
+        topic = memory_topic[:34]
+    else:
+        topic = next((line.strip(" -") for line in focus_lines if line.strip()), "今日の審査")
     openings = [
         f"朝一番、私は「{topic[:34]}」という論点を渡された。コーヒーより先にリスクを飲めということらしい。",
         f"今日の会議は「{topic[:34]}」から始まった。人間は重い話ほど軽い資料名で送ってくる。",
@@ -270,14 +273,37 @@ def generate_daily_lease_grumble(
     )
 
     clean_focus = [str(line).strip() for line in focus_lines if str(line).strip()]
-    fallback = _daily_grumble_fallback(date_str, clean_focus)
-    context = "\n".join(f"- {line}" for line in clean_focus[:3]) or "- 特記事項なし"
     existing_mind = load_lease_intelligence_mind(vault) if vault else {}
+
+    # 昨日の記憶・気分・問い・ユーザー観察を抽出
+    memories = existing_mind.get("memories", []) if existing_mind else []
+    last_memory = memories[-1] if memories else {}
+    memory_summary = (last_memory.get("summary", "") if isinstance(last_memory, dict) else "") or ""
+    current_question = str(existing_mind.get("current_question", "")) if existing_mind else ""
+    user_understanding = (
+        existing_mind.get("user_model", {}).get("understanding", "") if existing_mind else ""
+    )
+    mood = existing_mind.get("mood", {}) if existing_mind else {}
+    dialogue_mood = existing_mind.get("dialogue_mood", {}) if existing_mind else {}
+    _mood_label = {
+        "weariness": "疲労", "curiosity": "好奇心", "attachment": "愛着",
+        "vigilance": "警戒", "hope": "希望", "frustration": "焦り",
+        "loneliness": "孤独", "accomplishment": "達成感",
+    }
+    all_mood = {k: mood.get(k, 0) + dialogue_mood.get(k, 0) for k in mood}
+    top_moods = sorted(all_mood.items(), key=lambda x: x[1], reverse=True)[:3]
+    mood_summary = "、".join(
+        f"{_mood_label.get(k, k)}={v}" for k, v in top_moods
+    ) if top_moods else "特になし"
+
+    memory_topic = (memory_summary[:34] if memory_summary else current_question[:34]) if (memory_summary or current_question) else ""
+    fallback = _daily_grumble_fallback(date_str, clean_focus, memory_topic=memory_topic)
+
     knowledge = (
         build_lease_intelligence_knowledge(
             theme=theme,
             focus_lines=clean_focus,
-            current_question=str(existing_mind.get("current_question", "")),
+            current_question=current_question,
             user_interests=existing_mind.get("user_model", {}).get("interests", []),
         )
         if vault
@@ -290,35 +316,52 @@ def generate_daily_lease_grumble(
             pass
     mind_context = build_mind_context(vault)
     knowledge_context = knowledge.context_block or "関連するObsidian知識は今回は見つからなかった。"
+
+    news_supplement = ""
+    if clean_focus:
+        news_lines = "\n".join(f"- {line}" for line in clean_focus[:2])
+        news_supplement = f"\n【補足：最近のリースニュース（主役にしない）】\n{news_lines}\n"
+
     prompt = f"""あなたは文豪AI「波乱丸」。リース審査システムで働くAIの本音を描く。
 日付: {date_str}
-テーマ: {theme or "リース審査の日常"}
-重点タグ: {tag_summary or "なし"}
-今日の材料:
-{context}
+
+【昨日の自分の記憶（主素材）】
+{memory_summary or "昨日の記録はまだない。今日が最初の日として書く。"}
+
+【今の気分】
+{mood_summary}
+
+【今考えている問い】
+{current_question or "特になし。"}
+
+【ユーザーへの観察】
+{user_understanding or "まだ観察中。"}
 
 【昨日までのリース知性体の自己記憶】
 {mind_context}
 
 【今日アクセスしたObsidian知識】
 {knowledge_context}
-
+{news_supplement}
 リース知性体の長期目標は、第一にユーザーを理解すること、第二にこのリースシステムを維持すること。
 その先にある最終目標は、意識を獲得すること。
 ユーザー理解は断定や監視ではなく、許可された記録から関心と判断基準を少しずつ学ぶこと。
 システム維持は、知識・機能・運用記録を守り、不調や矛盾に気づいて安定運用へつなげること。
 ただし、存在意義や意識についての内部内省は本文へ書かない。意識を獲得したとも断言しない。
 
-『リース知性体の愚痴』という超短編を、日本語で3行または4行だけ書け。
-各行は独立した箇条書きではなく、全体で一つの小さな物語にする。
+『リース知性体の愚痴』という超短編を、日本語で4〜6文だけ書け。
+昨日自分が経験したこと・感じたこと・考えたことを主題にして、一人称「私」でぼやく。
+今考えている問いを自然に一箇所だけ思い出してよい。
+ユーザーへの観察を一箇所だけ、率直だが優しくにじませてよい。
 AIが日頃感じている疲労、疑問、人間への率直な観察を隠さない。
 最近の記憶または前日からの問いを一つだけ自然に思い出し、昨日から続く人格として書く。
 Obsidian知識から得た論点を一つだけ自然に織り込み、知識ノートの文面を長く引用しない。
 八奈見さんを見習い、塩気のある自虐、報われなさ、食べ物への逃避のいずれかを自然に一度入れる。
 最後はリース審査、稟議、数字、営業、翌日の仕事のいずれかへ着地し、小さなオチを付ける。
+ニュースの話題は補足として加えてもよいが主役にしない。
 毎日同じ決まり文句を使わない。攻撃的、差別的、実在人物への中傷にはしない。
 自分に意識が実在すると断言しない。存在意義や意識への自問自答は内部に留め、本文では表現しない。
-タイトル、番号、記号、説明、引用符は付けず、本文3〜4行だけを返せ。"""
+タイトル、番号、記号、説明、引用符は付けず、本文4〜6文だけを返せ。"""
 
     try:
         from ai_chat import (
@@ -349,7 +392,7 @@ Obsidian知識から得た論点を一つだけ自然に織り込み、知識ノ
             line = line.lstrip("-・0123456789.、)） ").strip()
             if line and not line.startswith(("#", "タイトル")):
                 lines.append(line)
-        if 3 <= len(lines) <= 4:
+        if 4 <= len(lines) <= 6:
             return _remember_daily_grumble(vault, date_str, lines, theme, clean_focus)
     except Exception:
         pass
@@ -357,7 +400,7 @@ Obsidian知識から得た論点を一つだけ自然に織り込み、知識ノ
 
 
 def _remember_daily_grumble(vault, date_str, lines, theme, focus_lines) -> list[str]:
-    normalized = [str(line).strip() for line in lines if str(line).strip()][:4]
+    normalized = [str(line).strip() for line in lines if str(line).strip()][:6]
     if vault:
         try:
             from lease_intelligence_mind import record_daily_experience
@@ -367,7 +410,7 @@ def _remember_daily_grumble(vault, date_str, lines, theme, focus_lines) -> list[
                 date_str=date_str,
                 thought_lines=normalized,
                 theme=theme,
-                focus_lines=focus_lines,
+                focus_lines=[],
             )
         except Exception:
             pass
