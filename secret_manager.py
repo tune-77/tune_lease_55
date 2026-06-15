@@ -9,7 +9,7 @@ from pathlib import Path
 import toml
 from typing import Optional
 
-SECRETS_TOML_PATH = Path(".streamlit/secrets.toml")
+SECRETS_TOML_PATH = Path(__file__).parent / ".streamlit" / "secrets.toml"
 
 def get_secret_value(key: str, fallback: Optional[str] = None) -> Optional[str]:
     """
