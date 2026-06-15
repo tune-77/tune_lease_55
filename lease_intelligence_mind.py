@@ -1396,37 +1396,40 @@ def run_self_audit(vault: Path) -> dict[str, Any]:
             )
 
     # 3. current_question が7日以上変わっていないか
-    current_q = str(state.get("current_question", ""))
-    if len(memories) >= 7 and current_q:
-        memory_dir = mind_directory(vault) / "Memory"
-        stale_count = 0
-        for m in memories[-7:]:
-            d = str(m.get("date", ""))
-            if not d:
-                continue
-            p = memory_dir / f"{d}.md"
-            if not p.exists():
-                continue
-            try:
-                for line in p.read_text(encoding="utf-8").splitlines():
-                    if "持ち越す問い:" in line:
-                        q = line.split(":", 1)[-1].strip()
-                        if q == current_q:
-                            stale_count += 1
-                        break
-            except Exception:
-                pass
-        if stale_count >= 7:
-            _INQUIRY_KEYWORDS = (
-                "どう", "なぜ", "どのように", "どこ", "いつ", "何が",
-                "How", "Why", "What",
-            )
-            is_exploratory = any(kw in current_q for kw in _INQUIRY_KEYWORDS)
-            if not is_exploratory:
-                issues.append(
-                    f"7日以上同じ問いが記録されています。探求が深まっているのか、"
-                    f"または行き詰まっているのかご確認ください: 「{current_q[:60]}」"
+    current_q = str(state.get("current_question", "") or "")
+    if len(memories) >= 7:
+        if not current_q:
+            issues.append("current_questionが設定されていません（問いが失われているかもしれません）")
+        else:
+            memory_dir = mind_directory(vault) / "Memory"
+            stale_count = 0
+            for m in memories[-7:]:
+                d = str(m.get("date", ""))
+                if not d:
+                    continue
+                p = memory_dir / f"{d}.md"
+                if not p.exists():
+                    continue
+                try:
+                    for line in p.read_text(encoding="utf-8").splitlines():
+                        if "持ち越す問い:" in line:
+                            q = line.split(":", 1)[-1].strip()
+                            if q == current_q:
+                                stale_count += 1
+                            break
+                except Exception:
+                    pass
+            if stale_count >= 7:
+                _INQUIRY_KEYWORDS = (
+                    "どう", "なぜ", "どのように", "どこ", "いつ", "何が",
+                    "How", "Why", "What",
                 )
+                is_exploratory = any(kw in current_q for kw in _INQUIRY_KEYWORDS)
+                if not is_exploratory:
+                    issues.append(
+                        "current_questionが7日以上同じです。探求が深まっているのか、"
+                        "行き詰まっているのか確認が必要かもしれません"
+                    )
 
     # 4. continuity_days と memories 件数の整合性
     continuity_days = int(state.get("continuity_days", 0))
@@ -1499,7 +1502,7 @@ def run_self_audit(vault: Path) -> dict[str, Any]:
             + (
                 "問題は検出されませんでした。今日も判断を渡せます。"
                 if healthy
-                else "以下の問題が検出されました。確認が必要です。"
+                else "以下の問題が検出されました。確認をお勧めします。"
             )
         )
 
@@ -1528,8 +1531,8 @@ def record_screening_feedback(
     today = dt.date.today().isoformat()
     comment_text = (shion_comment or "").strip() or "記録なし"
 
-    _POSITIVE_KEYWORDS = ("成約", "承認", "適格", "問題なし", "良好")
-    _NEGATIVE_KEYWORDS = ("懸念", "リスク", "注意", "否決", "厳しい", "困難")
+    _POSITIVE_KEYWORDS = ("成約", "承認", "適格", "問題なし", "良好", "良い", "問題ない", "優良")
+    _NEGATIVE_KEYWORDS = ("懸念", "リスク", "注意", "否決", "厳しい", "困難", "危険", "不安")
     comment_clean = (shion_comment or "").strip()
     if not comment_clean:
         severity = "low"
