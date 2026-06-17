@@ -17,7 +17,9 @@ from typing import Any
 MIND_RELATIVE_DIR = Path("Projects") / "tune_lease_55" / "Lease Intelligence"
 MIND_FILE_NAME = "mind.json"
 DAILY_MEMORY_LIMIT = 30
-LONG_TERM_LIMIT = 24
+# long_term_memories（月次圧縮バケット＋会話キーポイント＋圧縮要約）の保持上限。
+# compress_long_term_memories(max_items=50) が意味的圧縮を行えるよう、閾値より広く取る。
+LONG_TERM_LIMIT = 60
 DIALOGUE_MOOD_CAP = 15
 # 1セッション内で対話から追加できる memories エントリの上限。
 DIALOGUE_ENTRY_LIMIT = 10
@@ -463,6 +465,11 @@ def record_daily_experience(
     ]
     _write_daily_memory(vault, date_str, state, summary, theme, day_keypoints)
     _write_private_reflection(vault, date_str, private_reflection)
+    # 長期記憶が増えすぎたら意味的に圧縮する（REV-091）。失敗しても日次処理は止めない。
+    try:
+        compress_long_term_memories(vault)
+    except Exception as exc:
+        print(f"[CompressLongTerm] 長期記憶の圧縮に失敗: {exc}")
     return state
 
 
@@ -901,6 +908,92 @@ def save_conversation_keypoints(
             }
         )
     state["long_term_memories"] = long_term[-LONG_TERM_LIMIT:]
+    _write_state(vault, state)
+    return state
+
+
+def _memory_entry_text(entry: dict[str, Any]) -> str:
+    """long_term_memories の1エントリを要約用テキストに変換する。"""
+    if not isinstance(entry, dict):
+        return str(entry).strip()
+    content = str(entry.get("content", "")).strip()
+    if content:
+        return content
+    if entry.get("month"):
+        themes = "、".join(str(theme) for theme in (entry.get("themes") or []))
+        summary = str(entry.get("summary", "")).strip()
+        return f"{entry.get('month')}: {themes} {summary}".strip()
+    return str(entry.get("summary", "")).strip()
+
+
+def _summarize_memories_via_gemini(texts: list[str]) -> list[str] | None:
+    """古い記憶テキスト群を Gemini で意味的にまとめ、テーマ別の要約配列を返す。
+
+    失敗時は None を返し、呼び出し側が単純連結フォールバックを使う。
+    """
+    import re as _re
+
+    joined = "\n".join(f"- {text}" for text in texts if text.strip())
+    if not joined.strip():
+        return None
+    prompt = (
+        "以下はリース審査AI『紫苑』の古い長期記憶（会話キーポイント・月次要約）の一覧です。\n"
+        "情報を失わないよう、意味的に近いものをまとめ、テーマ別の要約を3〜6個に圧縮してください。\n"
+        "各要約は60字以内の日本語の一文。社名・個人名・生の財務数値は含めないこと。\n"
+        '必ずJSON配列のみで返してください。例: ["金利上昇局面では再リース余地を重視する傾向", "債務超過案件は原則否決方向"]\n\n'
+        f"{joined[:4000]}"
+    )
+    raw = _call_gemini_for_classify(prompt)
+    if not raw:
+        return None
+    try:
+        cleaned = _re.sub(r"```(?:json)?\s*", "", raw).strip().rstrip("`").strip()
+        match = _re.search(r"\[.*\]", cleaned, _re.DOTALL)
+        if match:
+            cleaned = match.group(0)
+        parsed = json.loads(cleaned)
+        if isinstance(parsed, list):
+            return [str(item).strip() for item in parsed if str(item).strip()][:6]
+    except (json.JSONDecodeError, ValueError):
+        pass
+    return None
+
+
+def compress_long_term_memories(vault: Path, max_items: int = 50) -> dict[str, Any]:
+    """long_term_memories が max_items 件を超えたら古い方の半分を意味的に圧縮する（REV-091）。
+
+    古い半分を Gemini でテーマ別要約へまとめ、`compressed_memory` 型エントリへ畳む。
+    Gemini が使えない場合は単純連結要約へフォールバックし、記憶を失わない。
+    record_daily_experience から日次で呼ばれるほか、単独の日次タスクからも呼べる。
+    """
+    vault = Path(vault)
+    state = load_lease_intelligence_mind(vault)
+    long_term = list(state.get("long_term_memories") or [])
+    if len(long_term) <= max_items:
+        return state
+
+    split_idx = len(long_term) // 2
+    older = long_term[:split_idx]
+    newer = long_term[split_idx:]
+    today = dt.date.today().isoformat()
+
+    texts = [t for t in (_memory_entry_text(item) for item in older) if t]
+    summaries = _summarize_memories_via_gemini(texts)
+    if not summaries:
+        # フォールバック: 古い記憶を失わないよう連結要約を1件だけ作る。
+        joined = " / ".join(texts)[:400]
+        summaries = [joined] if joined else []
+
+    compressed = [
+        {
+            "date": today,
+            "type": "compressed_memory",
+            "content": summary[:300],
+            "source_count": len(older),
+        }
+        for summary in summaries
+    ]
+    state["long_term_memories"] = (compressed + newer)[-LONG_TERM_LIMIT:]
     _write_state(vault, state)
     return state
 
