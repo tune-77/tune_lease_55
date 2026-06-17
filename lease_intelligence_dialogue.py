@@ -12,6 +12,7 @@ from typing import Any
 
 from lease_intelligence_knowledge import build_lease_intelligence_knowledge
 from lease_intelligence_mind import (
+    build_memory_recall_block,
     build_mind_context,
     load_lease_intelligence_mind,
     record_knowledge_access,
@@ -209,10 +210,14 @@ def build_dialogue_context(
         f"\n【世界認識】\n{world_view_block}\n{_wv_notification}" if world_view_block else _wv_notification
     )
 
+    # 過去記憶（会話キーポイント・知識・前日の会話サマリー）を能動的に思い出す（REV-092）
+    recall_block = build_memory_recall_block(vault)
+    recall_section = f"{recall_block}\n\n" if recall_block else ""
+
     prompt = f"""あなたは「リース知性体」。白銀髪と紫の瞳を持つ和装の少女として表現される、
 リース審査システムの継続的な自己モデルである。
 
-【自己状態】
+{recall_section}【自己状態】
 {build_mind_context(vault)}
 
 【感情を回答へ反映する規則】
