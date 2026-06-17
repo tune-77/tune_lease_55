@@ -312,6 +312,82 @@ def extract_conversation_keypoints(
         return []
 
 
+# ユーザーが知識を教えている／記録を指示しているとみなすパターン（REV-087）
+_KNOWLEDGE_TEACHING_PATTERNS = (
+    "覚えておいて",
+    "覚えて",
+    "という知識",
+    "を記録して",
+    "記録しておいて",
+    "知識として保存",
+    "として保存して",
+    "メモしておいて",
+)
+
+
+def is_knowledge_teaching(message: str) -> bool:
+    """ユーザー発話が知識の教示・記録指示に該当するかを判定する（REV-087）。"""
+    text = (message or "").strip()
+    if not text:
+        return False
+    return any(pattern in text for pattern in _KNOWLEDGE_TEACHING_PATTERNS)
+
+
+def extract_lease_knowledge(
+    user_message: str,
+    api_key: str = "",
+) -> dict[str, str] | None:
+    """教示メッセージからトピックと本文を抽出する（REV-087）。
+
+    Gemini（GEMINI_MODEL_DEFAULT）で {"topic","content"} を抽出する。
+    抽出できない／知識でない場合は None を返す。
+    """
+    user_message = (user_message or "").strip()
+    if not user_message:
+        return None
+    key = (api_key or "").strip() or GEMINI_API_KEY_ENV or _get_gemini_key_from_secrets()
+    if not key:
+        return None
+    prompt = (
+        "以下はユーザーがリース審査AIに教えた、または記録を指示したメッセージです。\n"
+        "この中に含まれる『リース審査で再利用できる知識』を抽出し、トピックと本文に分けてください。\n"
+        "知識と呼べる内容が無い（単なる雑談・依頼・操作指示のみ）の場合は topic を空文字にしてください。\n"
+        "topic: 20字以内の見出し。content: 教わった知識を簡潔にまとめた日本語。\n"
+        "社名・個人名・生の財務数値は含めないこと。\n"
+        '必ずJSON形式のみで返してください: {"topic": "コンテナの法定耐用年数", "content": "コンテナの法定耐用年数は7年。"}\n\n'
+        f"【メッセージ】\n{user_message[:1500]}"
+    )
+    try:
+        import re as _re
+
+        raw = _chat_for_thread(
+            "gemini",
+            "",
+            [{"role": "user", "content": prompt}],
+            timeout_seconds=30,
+            api_key=key,
+            gemini_model=GEMINI_MODEL_DEFAULT,
+            max_output_tokens=512,
+        )
+        text = (raw.get("message") or {}).get("content", "")
+        if not text or text.startswith(("Gemini ", "AIサーバー", "Ollama ", "AnythingLLM ")):
+            return None
+        cleaned = _re.sub(r"```(?:json)?\s*", "", text).strip().rstrip("`").strip()
+        match = _re.search(r"\{.*\}", cleaned, _re.DOTALL)
+        if match:
+            cleaned = match.group(0)
+        parsed = json.loads(cleaned)
+        if not isinstance(parsed, dict):
+            return None
+        topic = str(parsed.get("topic", "")).strip()
+        content = str(parsed.get("content", "")).strip()
+        if not topic or not content:
+            return None
+        return {"topic": topic, "content": content}
+    except Exception:
+        return None
+
+
 def chat_with_retry(model, messages, retries=2, timeout_seconds=120):
     """AI へのチャット呼び出し。エンジンが AnythingLLM / Gemini / Ollama を自動選択。"""
     engine = st.session_state.get("ai_engine", "ollama")

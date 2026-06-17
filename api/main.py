@@ -5846,6 +5846,34 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     except Exception as _kp_start_exc:
         print(f"[ConversationKeypoints] 起動に失敗: {_kp_start_exc}")
 
+    # 教示パターンに合致する場合、教わった知識を Knowledge/ へ昇格する（REV-087）。
+    try:
+        from ai_chat import is_knowledge_teaching
+
+        if is_knowledge_teaching(message):
+            import datetime as _kdt
+            import threading as _kn_threading
+
+            def _elevate_knowledge() -> None:
+                try:
+                    from ai_chat import extract_lease_knowledge
+                    from lease_intelligence_mind import record_lease_knowledge
+
+                    knowledge = extract_lease_knowledge(message)
+                    if knowledge:
+                        record_lease_knowledge(
+                            vault,
+                            knowledge["topic"],
+                            knowledge["content"],
+                            _kdt.date.today().isoformat(),
+                        )
+                except Exception as _kn_exc:
+                    print(f"[KnowledgeElevation] 抽出・保存に失敗: {_kn_exc}")
+
+            _kn_threading.Thread(target=_elevate_knowledge, daemon=True).start()
+    except Exception as _kn_start_exc:
+        print(f"[KnowledgeElevation] 起動に失敗: {_kn_start_exc}")
+
     return {"reply": reply, "state": state, "note_path": note_path}
 
 

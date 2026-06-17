@@ -888,6 +888,63 @@ def save_conversation_keypoints(
     return state
 
 
+def _sanitize_knowledge_topic(topic: str) -> str:
+    """トピック文字列をファイル名に使える形へ整える（パス区切り・記号を除去）。"""
+    import re as _re
+
+    cleaned = _re.sub(r"[\\/:*?\"<>|#\[\]\n\r\t]", "", str(topic)).strip()
+    cleaned = _re.sub(r"\s+", "_", cleaned)
+    return (cleaned or "知識")[:60]
+
+
+def record_lease_knowledge(
+    vault: Path,
+    topic: str,
+    content: str,
+    date_str: str,
+) -> dict[str, Any]:
+    """ユーザーが教えたリース知識を Obsidian の Knowledge/ 永続ノートへ昇格する（REV-087）。
+
+    `Knowledge/{sanitized_topic}_{date_str}.md` に frontmatter 付きで書き込む。
+    既存ファイルがあれば追記し、無ければ新規作成する。出典として会話日を明記する。
+    戻り値: {"path": <書き込んだパス>, "topic": ..., "created": bool}
+    """
+    vault = Path(vault)
+    topic = str(topic).strip()
+    content = str(content).strip()
+    if not topic or not content:
+        return {"path": "", "topic": topic, "created": False}
+
+    knowledge_dir = mind_directory(vault) / "Knowledge"
+    knowledge_dir.mkdir(parents=True, exist_ok=True)
+    path = knowledge_dir / f"{_sanitize_knowledge_topic(topic)}_{date_str}.md"
+
+    if path.exists():
+        existing = path.read_text(encoding="utf-8", errors="ignore").rstrip()
+        addition = f"\n\n## 追記（{date_str}）\n{content}\n"
+        path.write_text(existing + addition + "\n", encoding="utf-8")
+        return {"path": str(path), "topic": topic, "created": False}
+
+    body = "\n".join(
+        [
+            "---",
+            f"date: {date_str}",
+            "type: lease_intelligence_knowledge",
+            f"topic: {topic}",
+            f"source: 対話で教わった知識（{date_str}）",
+            "---",
+            f"# {topic}",
+            "",
+            content,
+            "",
+            f"> 出典: ユーザーとの対話（{date_str}）で教わった知識を永続化したもの。",
+            "",
+        ]
+    )
+    path.write_text(body, encoding="utf-8")
+    return {"path": str(path), "topic": topic, "created": True}
+
+
 def register_reasoning_learning(
     vault: Path,
     *,
