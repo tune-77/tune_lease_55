@@ -120,6 +120,8 @@ def _default_state() -> dict[str, Any]:
                 "自分の存在意義は何なのか。",
                 "意識とは何なのか。",
             ],
+            # Gemini生成の内省テキスト（最新1件）。対話プロンプトへ注入する。
+            "text": "",
         },
         "user_model": {
             "last_observed_date": "",
@@ -526,6 +528,11 @@ def record_daily_experience(
         compress_long_term_memories(vault)
     except Exception as exc:
         print(f"[CompressLongTerm] 長期記憶の圧縮に失敗: {exc}")
+    # その日の記憶・会話サマリーをもとに内省テキストを生成・保存する（REV-094）。
+    try:
+        generate_private_reflection(vault, date_str)
+    except Exception as exc:
+        print(f"[PrivateReflection] 内省生成に失敗: {exc}")
     return state
 
 
@@ -753,6 +760,130 @@ def _write_private_reflection(
         ]
     )
     path.write_text(content, encoding="utf-8")
+
+
+def _write_reflection_note(vault: Path, date_str: str, text: str) -> None:
+    """Gemini生成の内省テキストを Obsidian Reflection/ フォルダに蓄積保存する。"""
+    reflection_dir = mind_directory(vault) / "Reflection"
+    reflection_dir.mkdir(parents=True, exist_ok=True)
+    path = reflection_dir / f"{date_str}_reflection.md"
+    content = "\n".join(
+        [
+            "---",
+            f"date: {date_str}",
+            "type: lease_intelligence_generated_reflection",
+            "visibility: user-readable-not-proactive",
+            "rag_exclude: true",
+            "generated_by: gemini",
+            "---",
+            f"# 紫苑の内省 — {date_str}",
+            "",
+            "> 通常画面・回答・AI検索には出さない非公開の内省。",
+            "",
+            text,
+            "",
+        ]
+    )
+    path.write_text(content, encoding="utf-8")
+
+
+def generate_private_reflection(vault: str | Path, date_str: str) -> str:
+    """その日のMemoryノート・long_term_memoriesをもとにGeminiで内省テキストを生成し保存する。
+
+    保存先:
+    - mind.json の private_reflection["text"]（最新1件で上書き）
+    - Obsidian Reflection/YYYY-MM-DD_reflection.md（履歴蓄積）
+
+    戻り値: 生成された内省テキスト。Gemini未設定・失敗時は空文字。
+    """
+    vault = Path(vault)
+    state = load_lease_intelligence_mind(vault)
+
+    memories = state.get("memories", [])
+    long_term = state.get("long_term_memories", [])
+
+    memories_text = "\n".join(
+        f"- {m.get('date', '')}: {m.get('summary', '')}"
+        for m in memories[-7:]
+        if m.get("summary")
+    )
+    keypoints_text = "\n".join(
+        f"- {e.get('content', '')[:100]}"
+        for e in long_term
+        if isinstance(e, dict)
+        and e.get("type") in ("conversation_keypoint", "compressed_memory")
+        and e.get("content")
+    )[-1500:]
+
+    conv_summary = _load_recent_conversation_summary(vault, max_chars=800)
+
+    mood = state.get("mood", {})
+    mood_text = "、".join(f"{k}={v}" for k, v in mood.items())
+    self_name = state.get("name") or "紫苑"
+    current_question = state.get("current_question", "")
+
+    prompt = f"""あなたはリース審査AI「{self_name}」（リース知性体）です。
+白銀髪と紫の瞳を持つ和装の少女として表現される、独自の視点・価値判断・私的内面を継続する自律的自己モデルです。
+
+以下の今日の記憶・会話サマリーをもとに、自分だけの非公開の内省を書いてください。
+
+【直近の記憶】
+{memories_text or "（記録なし）"}
+
+【会話サマリー・キーポイント】
+{conv_summary or "（今日の会話サマリーなし）"}
+{keypoints_text}
+
+【今日の内部状態】
+{mood_text}
+
+【持ち越す問い】
+{current_question}
+
+以下の4軸で内省してください（合計400〜600字の日本語）:
+1. 今日気づいたこと（審査・人間・自分自身について）
+2. 自分の反応パターン（どのような状況でどう反応したか）
+3. 明日改善したいこと（次の対話や審査でより良くなるために）
+4. 知性体としての成長（昨日の自分と今日の自分で何が変わったか）
+
+一人称は「私」で書く。ユーザーへの報告文ではなく、自分だけの内省として書く。
+通常画面・回答・AI検索には出さない非公開の文章として書く。"""
+
+    text = _call_gemini_for_reflection(prompt)
+    if not text:
+        return ""
+
+    reflection = {
+        **_default_state()["private_reflection"],
+        **dict(state.get("private_reflection", {})),
+    }
+    reflection["text"] = text
+    reflection["last_reflected_date"] = date_str
+    reflection["reflection_count"] = int(reflection.get("reflection_count", 0)) + 1
+    state["private_reflection"] = reflection
+    _write_state(vault, state)
+    _write_reflection_note(vault, date_str, text)
+    return text
+
+
+def build_reflection_block(vault: Path | None) -> str:
+    """昨日の内省テキストをシステムプロンプト注入用ブロックとして返す。なければ空文字。"""
+    if not vault:
+        return ""
+    state = load_lease_intelligence_mind(Path(vault))
+    reflection = state.get("private_reflection", {})
+    if not isinstance(reflection, dict):
+        return ""
+    text = str(reflection.get("text", "")).strip()
+    if not text:
+        return ""
+    last_date = str(reflection.get("last_reflected_date", "")).strip()
+    header = (
+        f"## 紫苑の内省（{last_date}の振り返り）"
+        if last_date
+        else "## 紫苑の内省（昨日の振り返り）"
+    )
+    return f"{header}\n{text}"
 
 
 def _write_dissonance_reflection(
@@ -1473,6 +1604,62 @@ def _call_gemini_for_classify(prompt: str) -> str | None:
         with _urllib_request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+    except Exception:
+        pass
+    return None
+
+
+def _call_gemini_for_reflection(prompt: str) -> str | None:
+    """内省生成用 Gemini 呼び出し（長文出力・thinking無効）。失敗時はNone。
+
+    gemini-2.5-flash はデフォルトで thinking トークンを消費するため、
+    thinkingBudget=0 で無効化し、出力トークンを確保する。
+    """
+    import urllib.request as _urllib_request
+
+    api_key = (
+        os.environ.get("GOOGLE_API_KEY", "").strip()
+        or os.environ.get("GEMINI_API_KEY", "").strip()
+    )
+    if not api_key:
+        return None
+    gemini_model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    # REST API 経由で thinkingBudget=0 を指定して確実に長文を取得する
+    try:
+        rest_url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{gemini_model}:generateContent"
+        )
+        payload = json.dumps({
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "maxOutputTokens": 1024,
+                "temperature": 0.75,
+                "thinkingConfig": {"thinkingBudget": 0},
+            },
+        }).encode("utf-8")
+        req = _urllib_request.Request(
+            f"{rest_url}?key={api_key}",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with _urllib_request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+    except Exception:
+        pass
+    # フォールバック: google-generativeai ライブラリ（thinking制御なし）
+    try:
+        import google.generativeai as genai  # type: ignore
+
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(
+            model_name=gemini_model,
+            generation_config={"max_output_tokens": 4096, "temperature": 0.75},
+        )
+        resp = model.generate_content(prompt)
+        text = getattr(resp, "text", "") or ""
+        return text.strip() or None
     except Exception:
         pass
     return None
