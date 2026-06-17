@@ -323,6 +323,64 @@ def build_mind_context(vault: Path | None) -> str:
     return "\n".join(lines)
 
 
+def _load_recent_conversation_summary(vault: Path, max_chars: int = 400) -> str:
+    """前日（〜3日前）のMemoryノートの『## 会話サマリー』本文を返す（REV-092）。"""
+    import datetime as _dt
+    import re as _re
+
+    memory_dir = mind_directory(vault) / "Memory"
+    for offset in range(1, 4):
+        date_str = (_dt.date.today() - _dt.timedelta(days=offset)).isoformat()
+        path = memory_dir / f"{date_str}.md"
+        if not path.exists():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        match = _re.search(r"##\s*会話サマリー\n+(.*?)(?=\n##|\Z)", text, _re.DOTALL)
+        if not match:
+            continue
+        body = match.group(1).strip()
+        if body and "記録すべき会話キーポイントはなかった" not in body:
+            return f"（{date_str}）\n{body[:max_chars]}"
+    return ""
+
+
+def build_memory_recall_block(vault: Path | None, max_items: int = 10) -> str:
+    """紫苑がシステムプロンプト冒頭で過去記憶を能動的に思い出すためのブロック（REV-092）。
+
+    long_term_memories の最新 max_items 件（会話キーポイント・圧縮要約）と、
+    前日分の Memoryノートの会話サマリーを束ねて返す。何もなければ空文字を返す。
+    """
+    if not vault:
+        return ""
+    state = load_lease_intelligence_mind(Path(vault))
+    recent = [
+        entry
+        for entry in state.get("long_term_memories", [])
+        if isinstance(entry, dict) and str(entry.get("content", "")).strip()
+    ][-max_items:]
+
+    lines: list[str] = ["## 紫苑の記憶（思い出し）"]
+    if recent:
+        lines.append("これまでの会話・教わった知識から覚えていること:")
+        _tag = {"conversation_keypoint": "会話", "compressed_memory": "要約"}
+        for entry in recent:
+            tag = _tag.get(str(entry.get("type", "")), "記憶")
+            lines.append(f"- [{tag}] {str(entry.get('content', '')).strip()}")
+
+    summary = _load_recent_conversation_summary(Path(vault))
+    if summary:
+        lines.append("前日のMemoryノートに残した会話サマリー:")
+        lines.append(summary)
+
+    if len(lines) == 1:
+        return ""
+    lines.append("（上の記憶を必要に応じて自然に思い出してよい。毎ターン全部に触れる必要はない。）")
+    return "\n".join(lines)
+
+
 def build_gunshi_dissonance_section(vault: Path | None) -> str:
     """軍師AIのプロンプトへ差し込む、リース知性体の未解決の懸念ブロックを作る。
 
