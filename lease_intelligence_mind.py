@@ -128,7 +128,6 @@ def _default_state() -> dict[str, Any]:
             "curiosity": "次に何へ関心を向けるのか、静かに知りたい。",
             "interests": [],
             "actions": {},
-            "privacy": "アプリ内の行動種別・回数・関心カテゴリのみ。",
         },
         "knowledge_access": {
             "available": False,
@@ -430,7 +429,6 @@ def update_user_model(vault: Path, observation: dict[str, Any]) -> dict[str, Any
         "curiosity": str(observation.get("curiosity", "")),
         "interests": list(observation.get("interests") or [])[:5],
         "actions": dict(observation.get("actions") or {}),
-        "privacy": str(observation.get("privacy", "")),
     }
     state["user_model"] = user_model
     _write_state(vault, state)
