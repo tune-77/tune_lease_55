@@ -287,7 +287,9 @@ def build_mind_context(vault: Path | None) -> str:
             lines.append(f"- {memory.get('date', '')}: {memory.get('summary', '')}")
     else:
         lines.append("最近の記憶: まだない")
-    long_term = state.get("long_term_memories", [])[-3:]
+    long_term = [
+        bucket for bucket in state.get("long_term_memories", []) if bucket.get("month")
+    ][-3:]
     if long_term:
         lines.append("長い記憶（月次圧縮）:")
         for bucket in long_term:
@@ -716,6 +718,8 @@ def _fold_long_term(
 ) -> list[dict[str, Any]]:
     """30日を超えてあふれた日次記憶を月単位の「長い記憶」に圧縮する。"""
     buckets = {str(item.get("month", "")): dict(item) for item in existing if item.get("month")}
+    # 月次バケット以外のエントリ（会話キーポイント等）はそのまま持ち越す。
+    passthrough = [dict(item) for item in existing if not item.get("month")]
     for memory in overflow:
         month = str(memory.get("date", ""))[:7]
         if not month:
@@ -731,7 +735,8 @@ def _fold_long_term(
         if snippet:
             joined = f"{bucket.get('summary', '')} / {snippet}".strip(" /")
             bucket["summary"] = joined[:200]
-    return [buckets[month] for month in sorted(buckets)][-LONG_TERM_LIMIT:]
+    folded = [buckets[month] for month in sorted(buckets)]
+    return (folded + passthrough)[-LONG_TERM_LIMIT:]
 
 
 def register_dialogue_event(vault: Path, user_message: str, reply: str = "") -> dict[str, Any]:
@@ -847,6 +852,38 @@ def record_dialogue_memory(vault: Path, user_message: str, ai_response: str) -> 
         q_snippet = user_message.strip()[:60]
         state["current_question"] = f"「{q_snippet}」— この問いの本質を次の対話前に深めておきたい。"
 
+    _write_state(vault, state)
+    return state
+
+
+def save_conversation_keypoints(
+    vault: Path,
+    session_id: str,
+    keypoints: list[str],
+    date_str: str,
+) -> dict[str, Any]:
+    """会話から抽出したキーポイントを long_term_memories へ永続保存する（REV-086）。
+
+    各キーポイントを {"date", "type": "conversation_keypoint", "content", "session_id"}
+    の形式で long_term_memories に追記する。月次圧縮バケットとは別エントリとして共存し、
+    _fold_long_term の passthrough で日次更新時も失われない。
+    """
+    vault = Path(vault)
+    cleaned = [str(point).strip() for point in (keypoints or []) if str(point).strip()]
+    if not cleaned:
+        return load_lease_intelligence_mind(vault)
+    state = load_lease_intelligence_mind(vault)
+    long_term = list(state.get("long_term_memories") or [])
+    for point in cleaned:
+        long_term.append(
+            {
+                "date": str(date_str),
+                "type": "conversation_keypoint",
+                "content": point[:300],
+                "session_id": str(session_id),
+            }
+        )
+    state["long_term_memories"] = long_term[-LONG_TERM_LIMIT:]
     _write_state(vault, state)
     return state
 

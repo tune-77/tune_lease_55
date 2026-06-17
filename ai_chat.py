@@ -245,6 +245,73 @@ def _chat_for_thread(engine: str, model: str, messages: list, timeout_seconds: i
         return {"message": {"content": f"AIサーバーが応答しませんでした: {e}"}}
 
 
+def _parse_json_array_robust(raw: str) -> list[str] | None:
+    """LLM応答からJSON配列を堅牢に取り出す。コードフェンス除去・部分抽出を含む。"""
+    import re as _re
+
+    if not raw:
+        return None
+    cleaned = _re.sub(r"```(?:json)?\s*", "", raw).strip().rstrip("`").strip()
+    candidates = [cleaned]
+    match = _re.search(r"\[.*\]", cleaned, _re.DOTALL)
+    if match:
+        candidates.append(match.group(0))
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(parsed, list):
+            return [str(item).strip() for item in parsed if str(item).strip()]
+    return None
+
+
+def extract_conversation_keypoints(
+    user_message: str,
+    ai_response: str,
+    api_key: str = "",
+    max_points: int = 5,
+) -> list[str]:
+    """1会話ターンから、ユーザーが伝えた重要情報・指摘・知識を3〜5点に要約する（REV-086）。
+
+    Gemini（GEMINI_MODEL_DEFAULT）で抽出し、失敗時は空リストを返す（記憶保存はスキップ）。
+    """
+    user_message = (user_message or "").strip()
+    if not user_message:
+        return []
+    key = (api_key or "").strip() or GEMINI_API_KEY_ENV or _get_gemini_key_from_secrets()
+    if not key:
+        return []
+    prompt = (
+        "以下は、ユーザーとリース審査AI『紫苑』の1往復の会話です。\n"
+        "この会話でユーザーが伝えた重要情報・指摘・教えてくれた知識・判断基準を、\n"
+        f"紫苑が翌日以降も覚えておくべき要点として3〜{max_points}点に要約してください。\n"
+        "雑談や挨拶しか無い場合は空配列で返してください。\n"
+        "各要点は40字以内の簡潔な日本語の一文。社名・個人名・生の財務数値は含めないこと。\n"
+        '必ずJSON配列のみで返してください。例: ["コンテナの法定耐用年数は7年", "債務超過は否決方向で見る"]\n\n'
+        f"【ユーザー】\n{user_message[:1500]}\n\n【紫苑】\n{(ai_response or '').strip()[:1500]}"
+    )
+    try:
+        raw = _chat_for_thread(
+            "gemini",
+            "",
+            [{"role": "user", "content": prompt}],
+            timeout_seconds=30,
+            api_key=key,
+            gemini_model=GEMINI_MODEL_DEFAULT,
+            max_output_tokens=512,
+        )
+        text = (raw.get("message") or {}).get("content", "")
+        if not text or text.startswith(("Gemini ", "AIサーバー", "Ollama ", "AnythingLLM ")):
+            return []
+        points = _parse_json_array_robust(text)
+        if points is None:
+            return []
+        return points[:max_points]
+    except Exception:
+        return []
+
+
 def chat_with_retry(model, messages, retries=2, timeout_seconds=120):
     """AI へのチャット呼び出し。エンジンが AnythingLLM / Gemini / Ollama を自動選択。"""
     engine = st.session_state.get("ai_engine", "ollama")

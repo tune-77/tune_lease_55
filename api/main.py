@@ -5821,6 +5821,31 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     except Exception as _dlg_exc:
         print(f"[DialogueMemory] 記憶更新の起動に失敗: {_dlg_exc}")
 
+    # 会話キーポイントを抽出して長期記憶へ保存する（REV-086）。レスポンスはブロックしない。
+    try:
+        import datetime as _dt
+        import threading as _kp_threading
+
+        def _save_keypoints() -> None:
+            try:
+                from ai_chat import extract_conversation_keypoints
+                from lease_intelligence_mind import save_conversation_keypoints
+
+                keypoints = extract_conversation_keypoints(message, reply)
+                if keypoints:
+                    save_conversation_keypoints(
+                        vault,
+                        DIALOGUE_USER_ID,
+                        keypoints,
+                        _dt.date.today().isoformat(),
+                    )
+            except Exception as _kp_exc:
+                print(f"[ConversationKeypoints] 抽出・保存に失敗: {_kp_exc}")
+
+        _kp_threading.Thread(target=_save_keypoints, daemon=True).start()
+    except Exception as _kp_start_exc:
+        print(f"[ConversationKeypoints] 起動に失敗: {_kp_start_exc}")
+
     return {"reply": reply, "state": state, "note_path": note_path}
 
 
