@@ -254,6 +254,30 @@ def _daily_grumble_fallback(date_str: str, focus_lines: list[str], memory_topic:
     ]
 
 
+def _business_metric_topic() -> str:
+    """前日ぼやきテキストに依存しない、審査件数・業務指標ベースの中立的な topic を返す。
+
+    自己参照ループ（前日ぼやき → 翌日 topic → ぼやき入れ子崩壊）を断つため、
+    memory_summary（前日ぼやき）ではなく直近の審査件数・業種からトピックを作る。
+    取得できない場合は空文字を返し、呼び出し側が focus_lines 等へフォールバックする。
+    """
+    try:
+        screenings = _collect_recent_screenings(5)
+    except Exception:
+        screenings = []
+    if not screenings:
+        return ""
+    count = len(screenings)
+    industries = [
+        str(item.get("industry", "")).strip()
+        for item in screenings
+        if str(item.get("industry", "")).strip() and str(item.get("industry", "")).strip() != "不明業種"
+    ]
+    if industries:
+        return f"直近{count}件の審査（{industries[0]}など）"
+    return f"直近{count}件の審査"
+
+
 def generate_daily_lease_grumble(
     date_str: str,
     focus_lines: list[str] | tuple[str, ...] = (),
@@ -296,12 +320,12 @@ def generate_daily_lease_grumble(
         f"{_mood_label.get(k, k)}={v}" for k, v in top_moods
     ) if top_moods else "特になし"
 
-    # focus_lines が空の場合は前日ぼやきを topic に流用しない（自己参照ループ防止）
-    memory_topic = (
-        (memory_summary[:34] if memory_summary else current_question[:34])
-        if (clean_focus and (memory_summary or current_question))
-        else ""
-    )
+    # 自己参照ループ完全修正（REV-089）:
+    # memory_summary（前日ぼやき）は focus_lines の有無に関わらず topic に一切使わない。
+    # topic は審査件数・業務指標から生成し、取れなければ業務上の問い（current_question）へ
+    # フォールバックする。これによりぼやきテキストが翌日の topic へ戻る経路を断つ。
+    metric_topic = _business_metric_topic()
+    memory_topic = (metric_topic or current_question)[:34]
     fallback = _daily_grumble_fallback(date_str, clean_focus, memory_topic=memory_topic)
 
     knowledge = (
