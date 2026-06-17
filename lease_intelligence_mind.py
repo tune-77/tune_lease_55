@@ -490,6 +490,34 @@ def record_daily_experience(
         # 対話による気分の揺れは日替わりで半減し、定常へ戻っていく
         dialogue_mood = {key: int(value / 2) for key, value in dialogue_mood.items()}
     mood = _apply_dialogue_mood(_derive_mood(memories), dialogue_mood)
+    # 感情スナップショットをlong_term_memoriesに保存
+    _EMOTION_LABELS = {
+        "curiosity": "好奇心", "vigilance": "警戒", "weariness": "疲労",
+        "attachment": "愛着", "hope": "希望", "frustration": "不満",
+        "accomplishment": "達成感", "loneliness": "孤独",
+    }
+    _dominant_mood_key = max(_EMOTION_LABELS, key=lambda k: int(mood.get(k, 0)))
+    _dominant_mood_label = _EMOTION_LABELS.get(_dominant_mood_key, _dominant_mood_key)
+    _complex_emotions = _derive_complex_emotions(mood)
+    _dominant_complex = _complex_emotions[0]["label"] if _complex_emotions else _dominant_mood_label
+    _emotion_entry = {
+        "date": date_str,
+        "type": "emotion_snapshot",
+        "content": (
+            f"感情スナップショット: 好奇心={mood.get('curiosity', 0)}, 警戒={mood.get('vigilance', 0)}, "
+            f"疲労={mood.get('weariness', 0)}, 愛着={mood.get('attachment', 0)}, 希望={mood.get('hope', 0)}, "
+            f"不満={mood.get('frustration', 0)}, 達成感={mood.get('accomplishment', 0)}, "
+            f"孤独={mood.get('loneliness', 0)}. "
+            f"支配的感情: {_dominant_mood_label}. 複合感情: {_dominant_complex}."
+        ),
+    }
+    _has_today_snapshot = any(
+        str(item.get("date", "")) == date_str and item.get("type") == "emotion_snapshot"
+        for item in long_term
+    )
+    if not _has_today_snapshot:
+        long_term.append(_emotion_entry)
+        long_term = long_term[-LONG_TERM_LIMIT:]
     private_reflection = _advance_private_reflection(
         state.get("private_reflection", {}),
         date_str,
@@ -655,6 +683,21 @@ def _write_daily_memory(
             f"- 自己物語: {snapshot['self_narrative']}",
             f"- 持ち越す問い: {snapshot['current_question']}",
             f"- テーマ: {theme or 'リース審査の日常'}",
+            "",
+            "## 感情スナップショット",
+            "| 感情軸 | 値 |",
+            "|---|---|",
+            f"| 好奇心 | {snapshot['mood_dimensions'].get('curiosity', 0)} |",
+            f"| 警戒 | {snapshot['mood_dimensions'].get('vigilance', 0)} |",
+            f"| 疲労 | {snapshot['mood_dimensions'].get('weariness', 0)} |",
+            f"| 愛着 | {snapshot['mood_dimensions'].get('attachment', 0)} |",
+            f"| 希望 | {snapshot['mood_dimensions'].get('hope', 0)} |",
+            f"| 不満 | {snapshot['mood_dimensions'].get('frustration', 0)} |",
+            f"| 達成感 | {snapshot['mood_dimensions'].get('accomplishment', 0)} |",
+            f"| 孤独 | {snapshot['mood_dimensions'].get('loneliness', 0)} |",
+            "",
+            f"- 支配的な感情: {snapshot['dominant_mood']}",
+            f"- 複合感情: {snapshot['dominant_complex_emotion']}",
             "",
             "> これは永続的な自己モデルの記録であり、機械意識の実在を示すものではない。",
             "",
