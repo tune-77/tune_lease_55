@@ -1273,6 +1273,16 @@ _SHION_CLASSIFY_PROMPTS: dict[str, str] = {
 }
 
 
+# shion_classify がJSON解析に失敗した際に返す安全なデフォルト分類（REV-090）。
+# recommendation/reason は既存呼び出し側（generate_recipes.py 等）の後方互換のため保持する。
+_SHION_CLASSIFY_DEFAULT: dict[str, Any] = {
+    "recommendation": "review",
+    "reason": "判断不能",
+    "type": "unknown",
+    "save": False,
+}
+
+
 def _call_gemini_for_classify(prompt: str) -> str | None:
     """Gemini APIを呼び出してテキストを返す。失敗時はNone。"""
     import urllib.request as _urllib_request
@@ -1319,7 +1329,7 @@ def _call_gemini_for_classify(prompt: str) -> str | None:
     return None
 
 
-def shion_classify(context_text: str, context_type: str = "general") -> dict[str, str]:
+def shion_classify(context_text: str, context_type: str = "general") -> dict[str, Any]:
     """
     紫苑が任意のコンテキストを auto / discuss / review に分類する。
 
@@ -1345,16 +1355,34 @@ def shion_classify(context_text: str, context_type: str = "general") -> dict[str
         )
         raw = _call_gemini_for_classify(prompt)
         if not raw:
-            return {"recommendation": "review", "reason": "API呼び出し失敗のため判断不能"}
+            return dict(_SHION_CLASSIFY_DEFAULT, reason="API呼び出し失敗のため判断不能")
         cleaned = _re.sub(r"```(?:json)?\s*", "", raw).strip().rstrip("`").strip()
-        parsed = json.loads(cleaned)
+        # JSON解析を堅牢化（REV-090）: 直接parse → 失敗時は部分抽出（{...}）→ それでも
+        # 失敗ならエラーを記録してデフォルト分類を返す。
+        parsed: Any = None
+        try:
+            parsed = json.loads(cleaned)
+        except (json.JSONDecodeError, ValueError):
+            match = _re.search(r"\{.*\}", cleaned, _re.DOTALL)
+            if match:
+                try:
+                    parsed = json.loads(match.group(0))
+                except (json.JSONDecodeError, ValueError):
+                    parsed = None
+        if not isinstance(parsed, dict):
+            print(
+                "[ShionClassify] JSON解析に失敗。デフォルト分類を返す。"
+                f" raw応答(先頭120字): {str(raw)[:120]!r}"
+            )
+            return dict(_SHION_CLASSIFY_DEFAULT, reason="応答のJSON解析に失敗")
         rec = str(parsed.get("recommendation", "review")).lower()
         if rec not in ("auto", "discuss", "review"):
             rec = "review"
         reason = str(parsed.get("reason", ""))[:50]
         return {"recommendation": rec, "reason": reason}
     except Exception as exc:
-        return {"recommendation": "review", "reason": f"判断エラー: {type(exc).__name__}"}
+        print(f"[ShionClassify] 分類処理で例外: {type(exc).__name__}: {exc}")
+        return dict(_SHION_CLASSIFY_DEFAULT, reason=f"判断エラー: {type(exc).__name__}")
 
 
 def _clamp(value: int) -> int:
