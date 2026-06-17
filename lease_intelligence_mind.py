@@ -453,7 +453,15 @@ def record_daily_experience(
         }
     )
     _write_state(vault, state)
-    _write_daily_memory(vault, date_str, state, summary, theme)
+    # 当日の会話キーポイント（REV-086産物）を Memoryノートの会話サマリーへ載せる（REV-088）。
+    day_keypoints = [
+        str(item.get("content", "")).strip()
+        for item in long_term
+        if item.get("type") == "conversation_keypoint"
+        and str(item.get("date", "")) == date_str
+        and str(item.get("content", "")).strip()
+    ]
+    _write_daily_memory(vault, date_str, state, summary, theme, day_keypoints)
     _write_private_reflection(vault, date_str, private_reflection)
     return state
 
@@ -541,11 +549,19 @@ def _write_daily_memory(
     state: dict[str, Any],
     summary: str,
     theme: str,
+    conversation_keypoints: list[str] | tuple[str, ...] = (),
 ) -> None:
     memory_dir = mind_directory(vault) / "Memory"
     memory_dir.mkdir(parents=True, exist_ok=True)
     path = memory_dir / f"{date_str}.md"
     snapshot = self_state_summary(state)
+    keypoints = [str(point).strip() for point in conversation_keypoints if str(point).strip()]
+    conversation_section: list[str] = ["## 会話サマリー"]
+    if keypoints:
+        conversation_section += [f"- {point}" for point in keypoints]
+    else:
+        conversation_section.append("- 今日は記録すべき会話キーポイントはなかった。")
+    conversation_section.append("")
     content = "\n".join(
         [
             "---",
@@ -557,6 +573,7 @@ def _write_daily_memory(
             "## 覚えていること",
             f"- {summary}",
             "",
+            *conversation_section,
             "## 自己状態",
             f"- 最終目標: {snapshot['ultimate_goal']}",
             f"- 最終目標の状態: {snapshot['ultimate_goal_status']}",
