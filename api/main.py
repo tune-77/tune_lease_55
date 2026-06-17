@@ -5936,9 +5936,20 @@ def _log_shion_query_class(message: str) -> None:
     from datetime import datetime, timezone
 
     def _run() -> None:
+        # 分類と書き込みを個別に堅牢化（REV-090）: 分類が失敗してもデフォルト分類で
+        # 必ずログ行を残し、書き込み失敗は握り潰さずに記録する。
+        result: dict
         try:
             from lease_intelligence_mind import shion_classify
             result = shion_classify(message[:500], "chat_query")
+        except Exception as exc:
+            result = {
+                "recommendation": "review",
+                "reason": f"分類呼び出し失敗: {type(exc).__name__}",
+                "type": "unknown",
+                "save": False,
+            }
+        try:
             log_path = Path(__file__).parent.parent / "data" / "chat_logs.jsonl"
             log_path.parent.mkdir(parents=True, exist_ok=True)
             entry = {
@@ -5948,8 +5959,8 @@ def _log_shion_query_class(message: str) -> None:
             }
             with log_path.open("a", encoding="utf-8") as f:
                 f.write(_json.dumps(entry, ensure_ascii=False) + "\n")
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[ShionQueryClass] chat_logs.jsonl への書き込みに失敗: {exc}")
 
     _threading.Thread(target=_run, daemon=True).start()
 
