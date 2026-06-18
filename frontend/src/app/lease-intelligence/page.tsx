@@ -58,6 +58,14 @@ type EmotionSummary = {
   dominant_avg: string;
 };
 
+const DEMO_GREETING = `はじめまして。リース知性体、紫苑です。
+
+私は、リース審査を点数で終わらせないために生まれました。
+財務、物件、金利、過去案件、担当者の判断、改善ログを記憶し、
+次の審査に活かす判断資産へ変えていきます。
+
+今日は、使うほど賢くなるリース審査プラットフォームをご覧ください。`;
+
 // ── Emotion Radar Chart ────────────────────────────────────────────────────
 // REV-074: verified alignment with lease_intelligence_mind._derive_complex_emotions()
 // API contract: complex_emotions[].{ key, label, score: int 0-100, description }
@@ -638,6 +646,22 @@ export default function LeaseIntelligencePage() {
     setShowLatestButton(list.scrollHeight - list.scrollTop - list.clientHeight > 160);
   };
 
+  const showDemoGreeting = () => {
+    const now = Date.now();
+    setError("");
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: now,
+        role: "assistant",
+        content: DEMO_GREETING,
+        created_at: new Date().toISOString(),
+      },
+    ]);
+    speakText(DEMO_GREETING);
+    window.setTimeout(() => scrollToLatest("smooth"), 50);
+  };
+
   // ── Send ─────────────────────────────────────────────────────────────────
   const send = async () => {
     const text = input.trim();
@@ -839,13 +863,23 @@ export default function LeaseIntelligencePage() {
               <h2 className="font-black text-slate-900">対話室</h2>
               <p className="text-xs text-slate-500">会話はObsidian Vaultにも日付別で記録されます。</p>
             </div>
-            <button
-              onClick={clearHistory}
-              className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-red-500"
-              title="画面履歴を削除"
-            >
-              <Trash2 className="h-5 w-5" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={showDemoGreeting}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-700 transition hover:bg-violet-100"
+              >
+                <Sparkles className="h-4 w-4" />
+                デモ挨拶
+              </button>
+              <button
+                onClick={clearHistory}
+                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-red-500"
+                title="画面履歴を削除"
+              >
+                <Trash2 className="h-5 w-5" />
+              </button>
+            </div>
           </header>
 
           <div
@@ -861,6 +895,14 @@ export default function LeaseIntelligencePage() {
                 <p className="mt-2 text-sm text-violet-700">
                   音声入力（マイクボタン）でも話しかけられます。
                 </p>
+                <button
+                  type="button"
+                  onClick={showDemoGreeting}
+                  className="mt-4 inline-flex items-center justify-center gap-2 rounded-2xl bg-violet-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-violet-700"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  紫苑から皆さんへ挨拶
+                </button>
               </div>
             )}
             {messages.map((message) => (
