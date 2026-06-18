@@ -6128,7 +6128,9 @@ def post_chat(req: ChatRequest):
             history_for_gemini = [{"role": m["role"], "content": m["content"]} for m in history]
             from prompt_feedback import build_pdca_prompt_block
 
-            base_system_prompt = _GENERAL_CHAT_SYSTEM_PROMPT + news_focus_context + news_brief_context
+            import datetime as _chat_dt
+            _date_ctx = f"\n\n【現在日時】{_chat_dt.datetime.now().strftime('%Y年%m月%d日 %H:%M')} (JST)"
+            base_system_prompt = _GENERAL_CHAT_SYSTEM_PROMPT + _date_ctx + news_focus_context + news_brief_context
             pdca_block = build_pdca_prompt_block()
             effective_system_prompt = base_system_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
             reply = call_gemini_chat(effective_system_prompt, history_for_gemini, req.message)
@@ -6228,7 +6230,9 @@ def post_chat(req: ChatRequest):
         except Exception as _judgment_learning_error:
             print(f"[判断差分学習] 読み込みエラー: {_judgment_learning_error}")
 
-        base_effective_prompt = _CHAT_SYSTEM_PROMPT + news_focus_context + news_brief_context + rag_context + db_context + improvement_context + judgment_learning_context + guidance.prompt_suffix
+        import datetime as _chat_dt
+        _date_ctx = f"\n\n【現在日時】{_chat_dt.datetime.now().strftime('%Y年%m月%d日 %H:%M')} (JST)"
+        base_effective_prompt = _CHAT_SYSTEM_PROMPT + _date_ctx + news_focus_context + news_brief_context + rag_context + db_context + improvement_context + judgment_learning_context + guidance.prompt_suffix
         pdca_block = build_pdca_prompt_block()
         effective_prompt = base_effective_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
         reply = call_gemini_chat(effective_prompt, history_for_gemini, req.message)
