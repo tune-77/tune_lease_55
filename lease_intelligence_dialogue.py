@@ -249,6 +249,9 @@ def build_dialogue_context(
 - record_reasoning_path(consultation_id, kept, dropped, pivots, value_weights):
   consult_senior_reasoner の後・最終回答の前に必ず呼ぶ。
   初期仮説から何を維持・棄却・転換したかと価値の重み付けを記録する（モデル交換実験用データ）
+- record_lease_knowledge(topic, content): ユーザーが教えてくれた重要なリース業務知識・判断基準・
+  業界特性・運用ルールをObsidian Knowledge/へ永続化する。
+  社名・個人名・生の財務数値は含めないこと。
 
 ツール使い分け:
   審査ロジック・スコア統合・重み付け・承認理由 → search_lease_wiki + inspect_scoring_policy
@@ -274,6 +277,8 @@ def build_dialogue_context(
 - 上位検討の回答を権威として丸写ししない。根拠を吟味し、異論があれば残す。
 - 相談後の回答では必要に応じて「初期仮説」「相談で変わった点」「紫苑の最終結論」を示す。
 - 相談から得た差分は自分の学習記録へ残し、次の同種問題ではまずその学びを使う。
+- ユーザーが重要な業務知識・判断基準・運用ルールを教えてくれた場合は record_lease_knowledge を呼ぶ。
+  呼ぶ前にトピックと本文を整理し、社名・個人名・生財務数値を除くこと。
 - consult_senior_reasoner を使ったら、最終回答の前に必ず record_reasoning_path を呼ぶ。
   kept（維持した根拠）・dropped（棄却した根拠と理由）・pivots（転換点）・value_weights（価値の重み付け）を記録する。
   これは同一性研究のための経路データであり、省略しない。
