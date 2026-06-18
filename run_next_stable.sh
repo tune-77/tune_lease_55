@@ -338,6 +338,12 @@ if frontend_build_needed; then
   (cd frontend && npm run build) >>"$BUILD_LOG" 2>&1
   touch "$BUILD_STAMP"
   echo "Build log: $BUILD_LOG"
+  # standalone モード用: static と public を standalone/ 以下にコピー
+  if [ -d "frontend/.next/standalone" ]; then
+    cp -r frontend/.next/static frontend/.next/standalone/.next/static 2>/dev/null || true
+    cp -r frontend/public frontend/.next/standalone/public 2>/dev/null || true
+    echo "Copied static assets to standalone directory."
+  fi
 else
   echo "Skipping frontend build; no frontend source changes since last successful build."
   echo "Build log: not created"
@@ -388,7 +394,11 @@ echo "$API_SUPERVISOR_PID" > "$API_SUPERVISOR_PID_FILE"
 
 echo "Starting Next.js on http://${NEXT_HOST}:${NEXT_PORT}"
 while true; do
-  (cd frontend && npm run start -- --hostname "$NEXT_HOST" --port "$NEXT_PORT") >>"$NEXT_LOG" 2>&1 &
+  if [ -f "frontend/.next/standalone/server.js" ]; then
+    (cd frontend/.next/standalone && HOSTNAME="$NEXT_HOST" PORT="$NEXT_PORT" node server.js) >>"$NEXT_LOG" 2>&1 &
+  else
+    (cd frontend && npm run start -- --hostname "$NEXT_HOST" --port "$NEXT_PORT") >>"$NEXT_LOG" 2>&1 &
+  fi
   next_pid=$!
   echo "$next_pid" > "$NEXT_PID_FILE"
   wait "$next_pid" || true

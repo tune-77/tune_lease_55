@@ -7011,6 +7011,21 @@ def prompt_feedback_summary_api():
     }
 
 
+@app.get("/api/operational-trust/summary")
+def operational_trust_summary_api():
+    from operational_trust import build_operational_trust_summary
+
+    vault = None
+    try:
+        from lease_news_digest import find_vault
+
+        found = find_vault()
+        vault = Path(found) if found else None
+    except Exception:
+        vault = None
+    return build_operational_trust_summary(Path(_REPO_ROOT), vault=vault)
+
+
 class JudgmentFeedbackReviewRequest(BaseModel):
     review_status: str
 
