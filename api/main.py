@@ -4582,6 +4582,38 @@ def register_case_result(req: CaseRegistration):
         except Exception as _reg_err:
             print(f"[ShionFeedback] record_screening_feedback skipped: {_reg_err}")
 
+    # ミニPDCAトリガー: 成約/失注登録時にAI判定vs実結果を記録し、5件溜まったらPDCA実行
+    if req.status in ("成約", "失注"):
+        try:
+            from judgment_feedback import record_judgment_feedback, count_unprocessed_feedback
+            _ai_score = float(c.get("score") or c.get("score_base") or 0)
+            _ai_decision = "承認" if _ai_score >= 70 else "条件付き" if _ai_score >= 60 else "否決"
+            _human_decision = "承認" if req.status == "成約" else "否決"
+            _fb = record_judgment_feedback(
+                case_id=target_case_id,
+                model_decision=_ai_decision,
+                human_decision=_human_decision,
+                reason=f"案件登録トリガー: {req.status}（AIスコア {_ai_score:.1f}）",
+                source="register_trigger",
+                score=_ai_score if _ai_score > 0 else None,
+            )
+            if _fb.get("success"):
+                _pending = count_unprocessed_feedback()
+                if _pending >= 5:
+                    try:
+                        from llm_pdca_reflection import run_monthly_pdca_reflection
+                        import threading
+                        threading.Thread(
+                            target=run_monthly_pdca_reflection,
+                            kwargs={"force": True, "max_cases": 20},
+                            daemon=True,
+                        ).start()
+                        print(f"[MiniPDCA] triggered (pending={_pending})")
+                    except Exception as _pdca_err:
+                        print(f"[MiniPDCA] reflection skipped: {_pdca_err}")
+        except Exception as _mini_err:
+            print(f"[MiniPDCA] feedback skipped: {_mini_err}")
+
     return {"status": "success", "message": f"Results updated for {target_case_id}"}
 
 # ── アプリログ
