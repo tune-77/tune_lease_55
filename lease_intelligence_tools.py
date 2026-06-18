@@ -510,6 +510,19 @@ def execute_tool(name: str, args: dict, vault: Path | None = None) -> Any:
             value_weights=dict(args.get("value_weights", {})),
             vault=vault,
         )
+    if name == "record_lease_knowledge":
+        if vault is None:
+            return {"error": "vault path not available"}
+        import datetime as _dt
+
+        from lease_intelligence_mind import record_lease_knowledge
+
+        return record_lease_knowledge(
+            vault=vault,
+            topic=str(args.get("topic", "")),
+            content=str(args.get("content", "")),
+            date_str=str(args.get("date_str", "") or _dt.date.today().isoformat()),
+        )
     return {"error": f"unknown tool: {name}"}
 
 
@@ -709,6 +722,33 @@ TOOL_DECLARATIONS: list[dict] = [
                 },
             },
             "required": ["consultation_id"],
+        },
+    },
+    {
+        "name": "record_lease_knowledge",
+        "description": (
+            "ユーザーが教えてくれたリース業務知識をObsidianのKnowledge/へ永続化する（REV-098）。"
+            "ユーザーが重要なリース業務知識・判断基準・業界特性・運用ルールを教えてくれたとき、"
+            "または会話から再利用価値の高い知識を抽出できたときに呼ぶ。"
+            "社名・個人名・法人番号・生の財務数値は含めないこと。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "topic": {
+                    "type": "string",
+                    "description": "知識のトピック（20字以内の見出し）。ファイル名になるため記号は使わないこと。",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "教わった知識の本文。業務で再利用できる形に整理した日本語で記述する。",
+                },
+                "date_str": {
+                    "type": "string",
+                    "description": "記録日（YYYY-MM-DD形式）。省略時は今日の日付を使う。",
+                },
+            },
+            "required": ["topic", "content"],
         },
     },
 ]
