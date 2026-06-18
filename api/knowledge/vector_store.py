@@ -38,6 +38,7 @@ _PREFERRED_PATH_BOOSTS = (
     ("Projects/tune_lease_55/Cases/", 0.08),
     ("Projects/tune_lease_55/Feedback/", 0.07),
     ("Projects/tune_lease_55/Research/", 0.07),
+    ("Lease Intelligence/Memory/", 0.06),
     ("Projects/tune_lease_55/", 0.05),
     ("tuneLease55/知見・分析/", 0.05),
 )
