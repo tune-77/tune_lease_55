@@ -133,6 +133,56 @@ type PromptFeedbackSummary = {
   };
 };
 
+type OperationalTrustSummary = {
+  status: "ok" | "attention" | string;
+  attention: string[];
+  memory_usage: {
+    source: string;
+    total: number;
+    recent_days: number;
+    recent_total: number;
+    pdca_applied_count: number;
+    judgment_learning_count: number;
+    latest_timestamp: string;
+    by_surface: Record<string, number>;
+    recent_items: {
+      timestamp: string;
+      surface: string;
+      knowledge_ref_count: number;
+      pdca_applied: boolean;
+      judgment_learning_used: boolean;
+      question_hash: string;
+    }[];
+  };
+  pdca_rules: {
+    source: string;
+    active: number;
+    expiring_soon: number;
+    expired: number;
+    inactive: number;
+    manual_rule_count: number;
+    rules: {
+      rule: string;
+      source: string;
+      status: string;
+      expires_at: string;
+      days_left: number | null;
+    }[];
+  };
+  knowledge_corrections: {
+    available: boolean;
+    source?: string;
+    total: number;
+    needs_review: number;
+    items: {
+      path: string;
+      name: string;
+      status: string;
+      updated_at: string;
+    }[];
+  };
+};
+
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   APPROVED: { label: "承認", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   AUTO_FIX_CANDIDATE: { label: "自動修正候補", className: "bg-blue-50 text-blue-700 border-blue-200" },
@@ -161,6 +211,7 @@ export default function ImprovementLogPage() {
   const [summary, setSummary] = useState<PipelineSummary | null>(null);
   const [gapAnalysis, setGapAnalysis] = useState<GapAnalysis | null>(null);
   const [promptSummary, setPromptSummary] = useState<PromptFeedbackSummary | null>(null);
+  const [trustSummary, setTrustSummary] = useState<OperationalTrustSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("NEEDS_REVIEW");
@@ -196,16 +247,18 @@ export default function ImprovementLogPage() {
   const fetchLog = useCallback(async () => {
     setLoading(true);
     try {
-      const [logRes, summaryRes, gapsRes, promptRes] = await Promise.all([
+      const [logRes, summaryRes, gapsRes, promptRes, trustRes] = await Promise.all([
         apiClient.get<ImprovementLog>("/api/improvement-log"),
         apiClient.get<PipelineSummary>("/api/improvement-pipeline/summary"),
         apiClient.get<GapAnalysis>("/api/lease-system-gaps"),
         apiClient.get<PromptFeedbackSummary>("/api/prompt-feedback/summary"),
+        apiClient.get<OperationalTrustSummary>("/api/operational-trust/summary"),
       ]);
       setData(logRes.data);
       setSummary(summaryRes.data);
       setGapAnalysis(gapsRes.data);
       setPromptSummary(promptRes.data || null);
+      setTrustSummary(trustRes.data || null);
     } catch {
       setData(null);
     } finally {
@@ -444,6 +497,85 @@ export default function ImprovementLogPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          </section>
+        )}
+
+        {trustSummary && (
+          <section className="rounded-lg border border-emerald-200 bg-white p-4">
+            <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                  実務安心運用
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                    trustSummary.status === "ok"
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-amber-100 text-amber-800"
+                  }`}>
+                    {trustSummary.status === "ok" ? "OK" : "要確認"}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  記憶使用・PDCA期限・Knowledge訂正候補を読み取り専用で監査します。
+                </p>
+              </div>
+              {trustSummary.attention.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {trustSummary.attention.map((item) => (
+                    <span key={item} className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800">
+                      {trustAttentionLabel(item)}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="grid gap-3 md:grid-cols-4">
+              <TrustMetric label="監査ログ" value={`${trustSummary.memory_usage.recent_total}件`} detail={`直近${trustSummary.memory_usage.recent_days}日`} />
+              <TrustMetric label="PDCA適用" value={`${trustSummary.memory_usage.pdca_applied_count}件`} detail="応答ログ内" />
+              <TrustMetric label="有効PDCA" value={`${trustSummary.pdca_rules.active}件`} detail={`期限近 ${trustSummary.pdca_rules.expiring_soon} / 期限切れ ${trustSummary.pdca_rules.expired}`} />
+              <TrustMetric label="訂正候補" value={`${trustSummary.knowledge_corrections.needs_review}件`} detail={`全${trustSummary.knowledge_corrections.total}件`} />
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="text-xs font-bold text-slate-700">直近の記憶使用ログ</div>
+                <div className="mt-2 space-y-1.5">
+                  {trustSummary.memory_usage.recent_items.length === 0 ? (
+                    <div className="text-xs text-slate-500">直近ログはありません</div>
+                  ) : trustSummary.memory_usage.recent_items.slice(-4).map((item, index) => (
+                    <div key={`${item.timestamp}-${index}`} className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                      <span className="font-mono text-slate-400">{item.timestamp || "-"}</span>
+                      <span className="rounded-full bg-white px-2 py-0.5 font-semibold text-slate-700">{item.surface}</span>
+                      <span>refs {item.knowledge_ref_count}</span>
+                      {item.pdca_applied && <span className="text-emerald-700">PDCA</span>}
+                      {item.judgment_learning_used && <span className="text-indigo-700">判断学習</span>}
+                      {item.question_hash && <span className="font-mono text-slate-400">#{item.question_hash}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="text-xs font-bold text-slate-700">Knowledge訂正レビュー</div>
+                <div className="mt-2 space-y-1.5">
+                  {!trustSummary.knowledge_corrections.available ? (
+                    <div className="text-xs text-slate-500">Vaultを確認できません</div>
+                  ) : trustSummary.knowledge_corrections.items.length === 0 ? (
+                    <div className="text-xs text-slate-500">訂正候補はありません</div>
+                  ) : trustSummary.knowledge_corrections.items.slice(0, 4).map((item) => (
+                    <div key={item.path} className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                      <span className={`rounded-full px-2 py-0.5 font-semibold ${
+                        item.status === "needs_review"
+                          ? "bg-amber-100 text-amber-800"
+                          : "bg-white text-slate-600"
+                      }`}>
+                        {item.status}
+                      </span>
+                      <span className="max-w-[22rem] truncate">{item.name}</span>
+                      <span className="font-mono text-slate-400">{item.updated_at}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </section>
         )}
@@ -819,6 +951,26 @@ function MiniMetric({ label, value }: { label: string; value: React.ReactNode })
       <div className="mt-1 text-lg font-bold text-slate-900">{value}</div>
     </div>
   );
+}
+
+function TrustMetric({ label, value, detail }: { label: string; value: React.ReactNode; detail: string }) {
+  return (
+    <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3">
+      <div className="text-xs font-medium text-emerald-800">{label}</div>
+      <div className="mt-1 text-lg font-bold text-slate-900">{value}</div>
+      <div className="mt-1 text-[11px] text-slate-500">{detail}</div>
+    </div>
+  );
+}
+
+function trustAttentionLabel(item: string) {
+  const labels: Record<string, string> = {
+    knowledge_corrections_need_review: "Knowledge訂正レビュー",
+    pdca_rules_expired: "PDCA期限切れ",
+    pdca_rules_expiring_soon: "PDCA期限近い",
+    memory_usage_log_not_recent: "監査ログ未更新",
+  };
+  return labels[item] || item;
 }
 
 const ACTION_STYLES = {
