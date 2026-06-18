@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "legacy_version": "1.0.0",
   "artifactType": "structured-handoff",
-  "timestamp": "2026-06-14T00:57:15Z",
+  "timestamp": "2026-06-18T13:38:51Z",
   "sessionId": "",
   "previous_state": {
     "summary": "Before compaction: 20 recent edit(s)",
@@ -26,19 +26,19 @@
       "severity": "medium",
       "kind": "verification",
       "summary": "20 recent edit(s) should be re-validated after resume",
-      "detail": "data/coeff_auto.json, data/training_meta.json, data/weekly_plot.json, mobile_app/lease_rule_checks.py, scoring_core.py"
+      "detail": ".claude/memory/session-log.md, .claude/state/session.events.jsonl, frontend/.claude/state/instructions-loaded.jsonl, data/aurion_daily/display_latest.txt, data/aurion_daily/latest.json"
     }
   ],
   "failed_checks": null,
   "decision_log": [
     {
-      "timestamp": "2026-06-14T00:57:15Z",
+      "timestamp": "2026-06-18T13:38:51Z",
       "actor": "pre-compact-save",
       "decision": "canonical_handoff_artifact_written",
       "rationale": "Persist a stable JSON artifact in .claude/state for long-running session handoff."
     },
     {
-      "timestamp": "2026-06-14T00:57:15Z",
+      "timestamp": "2026-06-18T13:38:51Z",
       "actor": "pre-compact-save",
       "decision": "legacy_snapshot_mirrored",
       "rationale": "Keep precompact-snapshot.json for backward compatibility with older hooks."
@@ -57,10 +57,9 @@
       }
     },
     "recommended": true,
-    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 3418 session age (minutes) exceed threshold 120",
+    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8",
     "reasons": [
-      "20 recent edit count exceed threshold 8",
-      "3418 session age (minutes) exceed threshold 120"
+      "20 recent edit count exceed threshold 8"
     ],
     "candidates": [
       {
@@ -94,9 +93,9 @@
       {
         "key": "session_age_minutes",
         "label": "session age (minutes)",
-        "actual": 3418,
+        "actual": 48,
         "threshold": 120,
-        "triggered": true
+        "triggered": false
       }
     ],
     "counters": {
@@ -104,7 +103,7 @@
       "blockedTasks": 0,
       "recentEdits": 20,
       "failedChecks": 0,
-      "sessionAgeMinutes": 3418
+      "sessionAgeMinutes": 48
     }
   },
   "continuity": {
@@ -116,12 +115,18 @@
   "planItems": null,
   "wipTasks": null,
   "recentEdits": [
-    "data/coeff_auto.json",
-    "data/training_meta.json",
-    "data/weekly_plot.json",
-    "mobile_app/lease_rule_checks.py",
-    "scoring_core.py",
+    ".claude/memory/session-log.md",
+    ".claude/state/session.events.jsonl",
+    "frontend/.claude/state/instructions-loaded.jsonl",
+    "data/aurion_daily/display_latest.txt",
     "data/aurion_daily/latest.json",
+    "data/aurion_daily/state_2026-05-31.json",
+    "data/aurion_daily/state_2026-06-01.json",
+    "data/aurion_daily/state_2026-06-02.json",
+    "data/aurion_daily/state_2026-06-03.json",
+    "data/aurion_daily/state_2026-06-04.json",
+    "data/aurion_daily/state_2026-06-05.json",
+    "data/aurion_daily/state_2026-06-06.json",
     "data/aurion_daily/state_2026-06-07.json",
     "data/aurion_daily/state_2026-06-08.json",
     "data/aurion_daily/state_2026-06-09.json",
@@ -129,12 +134,6 @@
     "data/aurion_daily/state_2026-06-11.json",
     "data/aurion_daily/state_2026-06-12.json",
     "data/aurion_daily/state_2026-06-13.json",
-    "data/aurion_daily/state_2026-06-14.json",
-    "data/external/estat_machinery_orders/machinery_orders_202303_202603_long.csv",
-    "data/external/estat_machinery_orders/machinery_orders_202303_202603_raw.json",
-    "data/external/estat_machinery_orders/machinery_orders_202303_202603_wide.csv",
-    "data/external/estat_machinery_orders/machinery_orders_analysis.json",
-    "data/identity_experiment/20260614_043408.jsonl",
-    "data/identity_experiment/20260614_043715.jsonl"
+    "data/aurion_daily/state_2026-06-14.json"
   ]
 }

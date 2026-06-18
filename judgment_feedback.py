@@ -152,6 +152,19 @@ def get_judgment_feedback_summary(db_path: str = DEFAULT_DB_PATH) -> dict[str, i
         return {"total": 0, "candidates": 0, "approved": 0}
 
 
+def count_unprocessed_feedback(db_path: str = DEFAULT_DB_PATH) -> int:
+    """review_status='candidate' のフィードバック件数を返す（PDCA実行判定用）。"""
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.executescript(_DDL)
+            (n,) = conn.execute(
+                "SELECT COUNT(*) FROM judgment_feedback WHERE review_status='candidate'"
+            ).fetchone()
+        return int(n or 0)
+    except Exception:
+        return 0
+
+
 def review_judgment_feedback(
     record_id: int,
     review_status: str,
