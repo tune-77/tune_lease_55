@@ -346,7 +346,7 @@ def is_knowledge_teaching(message: str) -> bool:
     if any(pattern in text for pattern in _KNOWLEDGE_TEACHING_PATTERNS):
         return True
     # 自動検出：長文 + ドメイン語 + 非質問形式（REV-097）
-    if len(text) >= 100 and any(kw in text for kw in _LEASE_DOMAIN_KEYWORDS):
+    if len(text) >= 10 and any(kw in text for kw in _LEASE_DOMAIN_KEYWORDS):
         if not any(text.endswith(q) for q in _QUESTION_ENDINGS):
             return True
     return False
