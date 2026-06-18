@@ -14,12 +14,55 @@ import streamlit.components.v1 as components
 from data_cases import load_past_cases
 
 
+def _finite_float(value) -> float | None:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed != parsed or parsed in (float("inf"), float("-inf")):
+        return None
+    return parsed
+
+
 def _score_of(case: dict) -> float:
-    return float(
-        case.get("score")
-        or (case.get("result") or {}).get("score")
-        or 0
-    )
+    result = case.get("result") if isinstance(case.get("result"), dict) else {}
+    scoring_result = case.get("scoring_result") if isinstance(case.get("scoring_result"), dict) else {}
+    inputs = case.get("inputs") if isinstance(case.get("inputs"), dict) else {}
+
+    for value in (
+        case.get("score"),
+        result.get("score"),
+        case.get("hantei_score"),
+        result.get("hantei_score"),
+        case.get("score_borrower"),
+        result.get("score_borrower"),
+        inputs.get("score"),
+        inputs.get("hantei_score"),
+    ):
+        parsed = _finite_float(value)
+        if parsed is not None and parsed > 0:
+            return parsed
+
+    for value in (
+        case.get("contract_prob"),
+        result.get("contract_prob"),
+        scoring_result.get("ai_prob"),
+        scoring_result.get("hybrid_prob"),
+        scoring_result.get("legacy_prob"),
+    ):
+        parsed = _finite_float(value)
+        if parsed is None or parsed <= 0:
+            continue
+        return parsed * 100 if parsed <= 1 else parsed
+
+    return 0.0
+
+
+def _case_field(case: dict, key: str, default: str = "") -> str:
+    result = case.get("result") if isinstance(case.get("result"), dict) else {}
+    inputs = case.get("inputs") if isinstance(case.get("inputs"), dict) else {}
+    value = case.get(key) or inputs.get(key) or result.get(key) or default
+    return str(value).strip() if value is not None else default
 
 
 def _similarity(a: dict, b: dict) -> float:
@@ -59,14 +102,16 @@ def build_network_data(current_case: dict | None = None) -> dict:
     node_index: dict[str, int] = {}
 
     for c in cases:
-        status = c.get("final_status", "未登録")
+        status = _case_field(c, "final_status", "未登録")
         score = _score_of(c)
         if score <= 0:
             continue
 
-        cid = c.get("id", "")
-        label = (c.get("industry_sub") or c.get("industry_major") or "不明")[:8]
-        timestamp = (c.get("timestamp") or "")[:10]
+        cid = _case_field(c, "id") or f"case-{len(nodes) + 1}"
+        industry_major = _case_field(c, "industry_major", "不明")
+        industry_sub = _case_field(c, "industry_sub", industry_major or "不明")
+        label = (industry_sub or industry_major or "不明")[:8]
+        timestamp = _case_field(c, "timestamp")[:10]
 
         if status == "成約":
             color = "#3b82f6"      # 青
@@ -81,15 +126,15 @@ def build_network_data(current_case: dict | None = None) -> dict:
         nodes.append({
             "id": cid,
             "label": f"{label}\n{score:.0f}pt",
-            "industry_major": c.get("industry_major") or "不明",
-            "industry_sub": c.get("industry_sub") or "不明",
+            "industry_major": industry_major or "不明",
+            "industry_sub": industry_sub or "不明",
             "score": score,
             "status": status,
             "color": color,
             "shape": shape,
             "radius": 8 + score / 100 * 10,
-            "competitor_name": c.get("competitor_name") or "",
-            "final_rate": float(c.get("final_rate") or 0),
+            "competitor_name": _case_field(c, "competitor_name"),
+            "final_rate": _finite_float(c.get("final_rate")) or 0.0,
             "timestamp": timestamp,
             "is_current": False,
         })

@@ -135,6 +135,8 @@ def _get_pr_number(output: str) -> int | None:
 
 def _append_ledger(rev: str, title: str, pr_number: int | None, pr_url: str) -> None:
     entry = {
+        "key": rev,
+        "canonical_key": rev,
         "rev_id": rev,
         "status": "applied",
         "title": title,

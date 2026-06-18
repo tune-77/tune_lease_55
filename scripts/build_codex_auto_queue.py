@@ -120,10 +120,12 @@ def is_blocked(item: dict[str, Any]) -> tuple[bool, str]:
 
 def is_codex_safe(item: dict[str, Any]) -> bool:
     policy = item.get("auto_fix_policy") or {}
+    if policy.get("auto_fix_allowed") is not True:
+        return False
     risk = str(policy.get("risk") or "").lower()
     max_files = policy.get("max_files")
     title = str(item.get("title") or "")
-    if risk not in {"low", "medium"}:
+    if risk != "low":
         return False
     if max_files is not None and max_files > 1:
         return False

@@ -147,6 +147,8 @@ class ReviewImprovementRequest(BaseModel):
 class PromptRuleRegisterRequest(BaseModel):
     title: str
     rule: str
+    key: str = ""
+    canonical_key: str = ""
     source: str = "manual"
     surface: str = ""
     reason: str = ""

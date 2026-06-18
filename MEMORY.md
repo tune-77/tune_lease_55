@@ -99,3 +99,6 @@
 - [2026-06-07] Cloudflare quick tunnel URLs are disposable and must be refreshed from the newest log when debugging.  (`memory/2026-06-07.md`)
 - [2026-06-08] User perceived a clear improvement in system stability and workflow quality.  (`memory/2026-06-08.md`)
 - [2026-06-08] The restart workflow needs to stay lock-cleanup aware and should keep verifying both local and tunnel endpoints.  (`memory/2026-06-08.md`)
+
+## Auto Promotions 2026-06-19 04:00
+- [2026-06-19] ループエンジニアリングは自動化拡大より、正本保護・欠損可視化・読み取り専用観測から始めるのが安全。  (`memory/2026-06-19.md`)

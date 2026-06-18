@@ -29,6 +29,21 @@ type PendingRecipe = {
   generated_at?: string;
 };
 
+type RecipeStatus = {
+  pending_count: number;
+  approved_count: number;
+  applied_count: number;
+  rejected_count: number;
+  codex_auto_queue?: {
+    status?: string;
+    queued_count?: number;
+    safe_count?: number;
+    maybe_count?: number;
+    manual_or_blocked_count?: number;
+  };
+  note?: string;
+};
+
 type ImprovementItem = {
   id: string;
   title: string;
@@ -191,6 +206,8 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   PARKED: { label: "保留", className: "bg-slate-50 text-slate-500 border-slate-200" },
   REJECTED: { label: "拒否", className: "bg-rose-50 text-rose-700 border-rose-200" },
   APPLIED: { label: "適用済", className: "bg-slate-100 text-slate-700 border-slate-300" },
+  RULE_REGISTERED: { label: "AIルール登録", className: "bg-indigo-50 text-indigo-700 border-indigo-200" },
+  RULE_REVIEW: { label: "AIルール要確認", className: "bg-violet-50 text-violet-700 border-violet-200" },
   SKIPPED: { label: "スキップ", className: "bg-slate-50 text-slate-500 border-slate-200" },
 };
 
@@ -219,14 +236,23 @@ export default function ImprovementLogPage() {
   const [pendingRecipes, setPendingRecipes] = useState<PendingRecipe[]>([]);
   const [recipesLoading, setRecipesLoading] = useState(false);
   const [dismissedRecipes, setDismissedRecipes] = useState<Set<string>>(new Set());
+  const [recipeStatus, setRecipeStatus] = useState<RecipeStatus | null>(null);
+  const [recipeError, setRecipeError] = useState("");
 
   const fetchRecipes = useCallback(async () => {
     setRecipesLoading(true);
+    setRecipeError("");
     try {
-      const res = await apiClient.get<{ recipes: PendingRecipe[] }>("/api/recipes/pending");
+      const [res, statusRes] = await Promise.all([
+        apiClient.get<{ recipes: PendingRecipe[] }>("/api/recipes/pending"),
+        apiClient.get<RecipeStatus>("/api/recipes/status"),
+      ]);
       setPendingRecipes(res.data.recipes ?? []);
-    } catch {
+      setRecipeStatus(statusRes.data ?? null);
+    } catch (error) {
       setPendingRecipes([]);
+      setRecipeStatus(null);
+      setRecipeError("自動修正案の状態を取得できませんでした");
     } finally {
       setRecipesLoading(false);
     }
@@ -234,14 +260,16 @@ export default function ImprovementLogPage() {
 
   const handleRecipeAction = useCallback(
     async (recipe: PendingRecipe, action: "approve" | "reject") => {
+      setRecipeError("");
       try {
         await apiClient.post(`/api/recipes/${recipe.id}/${action}`);
         setDismissedRecipes((prev) => new Set(prev).add(recipe.id));
-      } catch {
-        // 失敗時はカードを維持
+        await fetchRecipes();
+      } catch (error) {
+        setRecipeError(action === "approve" ? "自動修正案の承認に失敗しました" : "自動修正案の却下に失敗しました");
       }
     },
-    []
+    [fetchRecipes]
   );
 
   const fetchLog = useCallback(async () => {
@@ -316,6 +344,8 @@ export default function ImprovementLogPage() {
         await apiClient.post("/api/prompt-feedback/rules/register", {
           title: item.title || item.id || "改善項目",
           rule,
+          key: item.canonical_key || item.id || item.title || "",
+          canonical_key: item.canonical_key || item.id || item.title || "",
           source: "improvement-log",
           surface: item.category || "",
           reason,
@@ -393,7 +423,7 @@ export default function ImprovementLogPage() {
                 : "text-slate-600 hover:bg-slate-100"
             }`}
           >
-            レシピ承認
+            自動修正案
             {visibleRecipes.length > 0 && (
               <span className="ml-2 inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 text-xs font-bold text-white">
                 {visibleRecipes.length}
@@ -402,16 +432,43 @@ export default function ImprovementLogPage() {
           </button>
         </div>
 
-        {/* レシピ承認タブ */}
+        {/* 自動修正案タブ */}
         {activeTab === "recipes" && (
           <section className="space-y-3">
+            <div className="rounded-lg border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                <span className="rounded-full bg-amber-50 px-2 py-1 font-semibold text-amber-700">
+                  承認待ち {recipeStatus?.pending_count ?? visibleRecipes.length}
+                </span>
+                <span className="rounded-full bg-blue-50 px-2 py-1 font-semibold text-blue-700">
+                  適用待ち {recipeStatus?.approved_count ?? 0}
+                </span>
+                <span className="rounded-full bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">
+                  適用済 {recipeStatus?.applied_count ?? 0}
+                </span>
+                <span className="rounded-full bg-rose-50 px-2 py-1 font-semibold text-rose-700">
+                  却下 {recipeStatus?.rejected_count ?? 0}
+                </span>
+              </div>
+              {recipeStatus?.codex_auto_queue && (
+                <p className="mt-2 text-xs text-slate-500">
+                  Codex自動キュー: {recipeStatus.codex_auto_queue.status || "-"} / safe {recipeStatus.codex_auto_queue.safe_count ?? 0} / maybe {recipeStatus.codex_auto_queue.maybe_count ?? 0} / manual {recipeStatus.codex_auto_queue.manual_or_blocked_count ?? 0}
+                </p>
+              )}
+              <p className="mt-2 text-xs text-slate-500">
+                承認は自動修正案を「適用待ち」へ移す操作です。実適用は適用待ちの修正案を別処理で実行します。
+              </p>
+              {recipeError && (
+                <p className="mt-2 text-xs font-semibold text-rose-600">{recipeError}</p>
+              )}
+            </div>
             {recipesLoading ? (
               <div className="rounded-lg border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
                 読み込み中...
               </div>
             ) : visibleRecipes.length === 0 ? (
               <div className="rounded-lg border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
-                承認待ちのレシピはありません
+                承認待ちの自動修正案はありません。安全な自動修正候補が生成された時だけここに表示されます。
               </div>
             ) : (
               visibleRecipes.map((recipe) => (
@@ -787,13 +844,13 @@ export default function ImprovementLogPage() {
                                 variant="reject"
                               />
                               <ActionButton
-                                label="defer"
+                                label="保留"
                                 onClick={() => handleReview(item, "deferred")}
                                 disabled={isActing}
                                 variant="defer"
                               />
                               <ActionButton
-                                label="修正登録"
+                                label="AIルール登録"
                                 onClick={() => handleRegisterPromptRule(item)}
                                 disabled={isActing}
                                 variant="learn"
@@ -879,7 +936,7 @@ function RecipeCard({
           disabled={acting}
           className="rounded border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-40"
         >
-          ✅ 承認
+          承認して適用待ちへ
         </button>
         <button
           onClick={() => handle(onReject)}
