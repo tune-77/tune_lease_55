@@ -324,13 +324,32 @@ _KNOWLEDGE_TEACHING_PATTERNS = (
     "メモしておいて",
 )
 
+# 自動検出に使うドメイン関連語（REV-097）
+_LEASE_DOMAIN_KEYWORDS = (
+    "リース", "金利", "審査", "償却", "担保", "物件", "業種", "法定耐用",
+    "融資", "保証", "割賦", "耐用年数", "残価", "元本", "月額", "賃料",
+    "保証金", "返済", "債務", "信用", "格付", "財務", "決算", "売上",
+    "利益", "自己資本", "負債", "流動", "固定資産", "減価償却", "キャッシュ",
+    "与信", "延滞", "貸倒", "回収", "抵当", "質権", "連帯", "保証人",
+)
+
+# 質問形式の末尾パターン（REV-097）
+_QUESTION_ENDINGS = ("？", "?", "か？", "ですか", "ますか", "でしょうか")
+
 
 def is_knowledge_teaching(message: str) -> bool:
-    """ユーザー発話が知識の教示・記録指示に該当するかを判定する（REV-087）。"""
+    """ユーザー発話が知識の教示・記録指示に該当するかを判定する（REV-087/097）。"""
     text = (message or "").strip()
     if not text:
         return False
-    return any(pattern in text for pattern in _KNOWLEDGE_TEACHING_PATTERNS)
+    # 既存の明示キーワードトリガー（REV-087）
+    if any(pattern in text for pattern in _KNOWLEDGE_TEACHING_PATTERNS):
+        return True
+    # 自動検出：長文 + ドメイン語 + 非質問形式（REV-097）
+    if len(text) >= 10 and any(kw in text for kw in _LEASE_DOMAIN_KEYWORDS):
+        if not any(text.endswith(q) for q in _QUESTION_ENDINGS):
+            return True
+    return False
 
 
 def extract_lease_knowledge(
