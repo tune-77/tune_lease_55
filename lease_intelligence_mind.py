@@ -17,9 +17,10 @@ from typing import Any
 MIND_RELATIVE_DIR = Path("Projects") / "tune_lease_55" / "Lease Intelligence"
 MIND_FILE_NAME = "mind.json"
 DAILY_MEMORY_LIMIT = 30
-# long_term_memories（月次圧縮バケット＋会話キーポイント＋圧縮要約）の保持上限。
+# long_term_memories（月次圧縮バケット＋圧縮要約）の保持上限。
 # compress_long_term_memories(max_items=50) が意味的圧縮を行えるよう、閾値より広く取る。
 LONG_TERM_LIMIT = 60
+CONVERSATION_KEYPOINT_LIMIT = 120
 DIALOGUE_MOOD_CAP = 15
 # 1セッション内で対話から追加できる memories エントリの上限。
 DIALOGUE_ENTRY_LIMIT = 10
@@ -144,6 +145,8 @@ def _default_state() -> dict[str, Any]:
         "memories": [],
         # 30日を超えた日次記憶の月次圧縮。消さずに「長い記憶」として残す。
         "long_term_memories": [],
+        # 会話から抽出した短いキーポイント。月次記憶とは別枠で保持する。
+        "conversation_keypoints": [],
         # サブエージェント間の未解決の不整合（GWTのignition入力）。
         # 既存スコアリング結果のフィールドを読むだけで生成し、新規スコアリングはしない。
         "pending_dissonance": [],
@@ -192,6 +195,28 @@ def _load_project_mind_full_name() -> str:
     return ""
 
 
+def _dedupe_conversation_keypoints(items: list[Any]) -> list[dict[str, Any]]:
+    cleaned: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        content = str(item.get("content", "")).strip()
+        if not content:
+            continue
+        date = str(item.get("date", "")).strip()
+        session_id = str(item.get("session_id", "")).strip()
+        key = (date, session_id, content)
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized = dict(item)
+        normalized["type"] = "conversation_keypoint"
+        normalized["content"] = content
+        cleaned.append(normalized)
+    return cleaned
+
+
 def load_lease_intelligence_mind(vault: Path) -> dict[str, Any]:
     path = mind_directory(vault) / MIND_FILE_NAME
     if not path.exists():
@@ -220,7 +245,20 @@ def load_lease_intelligence_mind(vault: Path) -> dict[str, Any]:
         **state.get("private_reflection", {}),
     }
     state["memories"] = list(state.get("memories") or [])[-DAILY_MEMORY_LIMIT:]
-    state["long_term_memories"] = list(state.get("long_term_memories") or [])[-LONG_TERM_LIMIT:]
+    raw_long_term = list(state.get("long_term_memories") or [])
+    migrated_keypoints = [
+        item
+        for item in raw_long_term
+        if isinstance(item, dict) and item.get("type") == "conversation_keypoint"
+    ]
+    state["long_term_memories"] = [
+        item
+        for item in raw_long_term
+        if not (isinstance(item, dict) and item.get("type") == "conversation_keypoint")
+    ][-LONG_TERM_LIMIT:]
+    state["conversation_keypoints"] = _dedupe_conversation_keypoints(
+        list(state.get("conversation_keypoints") or []) + migrated_keypoints
+    )[-CONVERSATION_KEYPOINT_LIMIT:]
     state["pending_dissonance"] = list(state.get("pending_dissonance") or [])[-DISSONANCE_LIMIT:]
     state["reasoning_learnings"] = list(state.get("reasoning_learnings") or [])[-12:]
     for item in state["pending_dissonance"]:
@@ -351,17 +389,23 @@ def _load_recent_conversation_summary(vault: Path, max_chars: int = 400) -> str:
 def build_memory_recall_block(vault: Path | None, max_items: int = 10) -> str:
     """紫苑がシステムプロンプト冒頭で過去記憶を能動的に思い出すためのブロック（REV-092）。
 
-    long_term_memories の最新 max_items 件（会話キーポイント・圧縮要約）と、
+    conversation_keypoints と long_term_memories の最新 max_items 件、
     前日分の Memoryノートの会話サマリーを束ねて返す。何もなければ空文字を返す。
     """
     if not vault:
         return ""
     state = load_lease_intelligence_mind(Path(vault))
-    recent = [
+    keypoints = [
+        entry
+        for entry in state.get("conversation_keypoints", [])
+        if isinstance(entry, dict) and str(entry.get("content", "")).strip()
+    ]
+    long_term_recent = [
         entry
         for entry in state.get("long_term_memories", [])
         if isinstance(entry, dict) and str(entry.get("content", "")).strip()
-    ][-max_items:]
+    ]
+    recent = (keypoints + long_term_recent)[-max_items:]
 
     lines: list[str] = ["## 紫苑の記憶（思い出し）"]
     if recent:
@@ -544,7 +588,7 @@ def record_daily_experience(
     # 当日の会話キーポイント（REV-086産物）を Memoryノートの会話サマリーへ載せる（REV-088）。
     day_keypoints = [
         str(item.get("content", "")).strip()
-        for item in long_term
+        for item in state.get("conversation_keypoints", [])
         if item.get("type") == "conversation_keypoint"
         and str(item.get("date", "")) == date_str
         and str(item.get("content", "")).strip()
@@ -844,6 +888,7 @@ def generate_private_reflection(vault: str | Path, date_str: str) -> str:
 
     memories = state.get("memories", [])
     long_term = state.get("long_term_memories", [])
+    conversation_keypoints = state.get("conversation_keypoints", [])
 
     memories_text = "\n".join(
         f"- {m.get('date', '')}: {m.get('summary', '')}"
@@ -852,7 +897,7 @@ def generate_private_reflection(vault: str | Path, date_str: str) -> str:
     )
     keypoints_text = "\n".join(
         f"- {e.get('content', '')[:100]}"
-        for e in long_term
+        for e in list(conversation_keypoints) + list(long_term)
         if isinstance(e, dict)
         and e.get("type") in ("conversation_keypoint", "compressed_memory")
         and e.get("content")
@@ -1116,20 +1161,25 @@ def save_conversation_keypoints(
     keypoints: list[str],
     date_str: str,
 ) -> dict[str, Any]:
-    """会話から抽出したキーポイントを long_term_memories へ永続保存する（REV-086）。
+    """会話から抽出したキーポイントを専用枠へ永続保存する（REV-086）。
 
     各キーポイントを {"date", "type": "conversation_keypoint", "content", "session_id"}
-    の形式で long_term_memories に追記する。月次圧縮バケットとは別エントリとして共存し、
-    _fold_long_term の passthrough で日次更新時も失われない。
+    の形式で conversation_keypoints に追記する。月次圧縮バケットを押し出さない。
     """
     vault = Path(vault)
-    cleaned = [str(point).strip() for point in (keypoints or []) if str(point).strip()]
+    from memory_promotion_policy import should_save_conversation_keypoint
+
+    cleaned = [
+        str(point).strip()
+        for point in (keypoints or [])
+        if should_save_conversation_keypoint(str(point).strip())
+    ]
     if not cleaned:
         return load_lease_intelligence_mind(vault)
     state = load_lease_intelligence_mind(vault)
-    long_term = list(state.get("long_term_memories") or [])
+    keypoints_store = list(state.get("conversation_keypoints") or [])
     for point in cleaned:
-        long_term.append(
+        keypoints_store.append(
             {
                 "date": str(date_str),
                 "type": "conversation_keypoint",
@@ -1137,7 +1187,9 @@ def save_conversation_keypoints(
                 "session_id": str(session_id),
             }
         )
-    state["long_term_memories"] = long_term[-LONG_TERM_LIMIT:]
+    state["conversation_keypoints"] = _dedupe_conversation_keypoints(keypoints_store)[
+        -CONVERSATION_KEYPOINT_LIMIT:
+    ]
     _write_state(vault, state)
     return state
 
@@ -1237,11 +1289,19 @@ def _sanitize_knowledge_topic(topic: str) -> str:
     return (cleaned or "知識")[:60]
 
 
+def _yaml_scalar(value: Any) -> str:
+    return json.dumps(str(value or ""), ensure_ascii=False)
+
+
 def record_lease_knowledge(
     vault: Path,
     topic: str,
     content: str,
     date_str: str,
+    *,
+    source_type: str = "user_teaching",
+    confidence: float = 0.7,
+    verification_status: str = "user_taught_unverified",
 ) -> dict[str, Any]:
     """ユーザーが教えたリース知識を Obsidian の Knowledge/ 永続ノートへ昇格する（REV-087）。
 
@@ -1252,6 +1312,12 @@ def record_lease_knowledge(
     vault = Path(vault)
     topic = str(topic).strip()
     content = str(content).strip()
+    source_type = str(source_type or "user_teaching").strip()
+    verification_status = str(verification_status or "user_taught_unverified").strip()
+    try:
+        confidence = max(0.0, min(1.0, float(confidence)))
+    except (TypeError, ValueError):
+        confidence = 0.7
     if not topic or not content:
         return {"path": "", "topic": topic, "created": False}
 
@@ -1261,7 +1327,18 @@ def record_lease_knowledge(
 
     if path.exists():
         existing = path.read_text(encoding="utf-8", errors="ignore").rstrip()
-        addition = f"\n\n## 追記（{date_str}）\n{content}\n"
+        addition = "\n".join(
+            [
+                "",
+                f"## 追記（{date_str}）",
+                f"- source_type: {source_type}",
+                f"- confidence: {confidence:.2f}",
+                f"- verification_status: {verification_status}",
+                "",
+                content,
+                "",
+            ]
+        )
         path.write_text(existing + addition + "\n", encoding="utf-8")
         return {"path": str(path), "topic": topic, "created": False}
 
@@ -1270,8 +1347,12 @@ def record_lease_knowledge(
             "---",
             f"date: {date_str}",
             "type: lease_intelligence_knowledge",
-            f"topic: {topic}",
-            f"source: 対話で教わった知識（{date_str}）",
+            f"topic: {_yaml_scalar(topic)}",
+            f"source_type: {_yaml_scalar(source_type)}",
+            f"confidence: {confidence:.2f}",
+            f"verification_status: {_yaml_scalar(verification_status)}",
+            "revision_count: 0",
+            f"source: {_yaml_scalar(f'対話で教わった知識（{date_str}）')}",
             "---",
             f"# {topic}",
             "",
@@ -1283,6 +1364,47 @@ def record_lease_knowledge(
     )
     path.write_text(body, encoding="utf-8")
     return {"path": str(path), "topic": topic, "created": True}
+
+
+def record_knowledge_correction(
+    vault: Path,
+    correction_text: str,
+    date_str: str,
+    *,
+    topic_hint: str = "",
+) -> dict[str, Any]:
+    """Store a user correction as reviewable revision material, not an overwrite."""
+    vault = Path(vault)
+    correction_text = str(correction_text or "").strip()
+    if not correction_text:
+        return {"path": "", "created": False}
+    corrections_dir = mind_directory(vault) / "Knowledge Corrections"
+    corrections_dir.mkdir(parents=True, exist_ok=True)
+    topic = _sanitize_knowledge_topic(topic_hint or correction_text[:30])
+    path = corrections_dir / f"{topic}_{date_str}.md"
+    if path.exists():
+        existing = path.read_text(encoding="utf-8", errors="ignore").rstrip()
+        path.write_text(existing + f"\n\n## 追記（{date_str}）\n{correction_text}\n", encoding="utf-8")
+        return {"path": str(path), "created": False}
+    body = "\n".join(
+        [
+            "---",
+            f"date: {date_str}",
+            "type: lease_intelligence_knowledge_correction",
+            "status: needs_review",
+            f"topic_hint: {_yaml_scalar(topic_hint or topic)}",
+            "revision_policy: do_not_overwrite_original_without_review",
+            "---",
+            f"# Knowledge訂正候補 - {topic_hint or topic}",
+            "",
+            correction_text,
+            "",
+            "> 既存Knowledgeは直接上書きしない。レビュー後に改訂履歴として反映する。",
+            "",
+        ]
+    )
+    path.write_text(body, encoding="utf-8")
+    return {"path": str(path), "created": True}
 
 
 def register_reasoning_learning(

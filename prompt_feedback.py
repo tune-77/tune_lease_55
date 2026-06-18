@@ -5,7 +5,7 @@ from __future__ import annotations
 import difflib
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from hashlib import sha256
 from typing import Any
 
@@ -50,6 +50,68 @@ def _dedupe_rules(rules: list[Any]) -> list[str]:
     return cleaned
 
 
+def _meta_rule_status(data: dict[str, Any]) -> dict[str, bool]:
+    today = datetime.now().date()
+    meta = data.get("pdca_rule_meta") or []
+    if not isinstance(meta, list):
+        return {}
+    status: dict[str, bool] = {}
+    for item in meta:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("rule") or "").strip()
+        if not text:
+            continue
+        active = str(item.get("status") or "active").strip() != "inactive"
+        expires_at = str(item.get("expires_at") or "").strip()
+        if expires_at:
+            try:
+                active = active and datetime.fromisoformat(expires_at[:10]).date() >= today
+            except ValueError:
+                pass
+        status[text] = active
+    return status
+
+
+def _manual_rules_from_data(data: dict[str, Any]) -> list[str]:
+    meta_status = _meta_rule_status(data)
+    explicit = _dedupe_rules(list(data.get("manual_ai_prompt_addons") or []))
+    if explicit:
+        return [rule for rule in explicit if meta_status.get(rule, True)]
+    try:
+        count = int(data.get("manual_rule_count") or 0)
+    except (TypeError, ValueError):
+        count = 0
+    if count <= 0:
+        return []
+    addons = _dedupe_rules(list(data.get("ai_prompt_addons", [])))
+    return [rule for rule in addons[-count:] if meta_status.get(rule, True)]
+
+
+def _active_rule_texts(data: dict[str, Any]) -> list[str]:
+    meta_status = _meta_rule_status(data)
+    meta = data.get("pdca_rule_meta") or []
+    if not isinstance(meta, list):
+        meta = []
+    active: list[str] = []
+    meta_rules: set[str] = set()
+    for item in meta:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("rule") or "").strip()
+        if not text:
+            continue
+        meta_rules.add(text)
+        if meta_status.get(text, True):
+            active.append(text)
+    legacy = [
+        rule
+        for rule in list(data.get("ai_prompt_addons", []))
+        if str(rule or "").strip() not in meta_rules
+    ]
+    return _dedupe_rules(active + legacy)
+
+
 def build_pdca_prompt_block(
     path: str | None = None,
     *,
@@ -61,7 +123,8 @@ def build_pdca_prompt_block(
     if not data:
         return ""
 
-    addons = _dedupe_rules(data.get("ai_prompt_addons", []))[:max_addons]
+    manual_addons = _manual_rules_from_data(data)
+    addons = _dedupe_rules(manual_addons + _active_rule_texts(data))[:max_addons]
     summary = str(data.get("reflection_summary", "")).strip()
     last_run = str(data.get("last_run", "")).strip()
     analyzed_count = data.get("analyzed_count", 0)
@@ -93,22 +156,57 @@ def append_pdca_rule(
     path: str | None = None,
     source: str = "manual",
     reflection_summary: str | None = None,
+    ttl_days: int = 90,
 ) -> dict[str, Any]:
     """Append a new learned rule while deduplicating existing addons."""
     target = path or DEFAULT_PDCA_RULES_FILE
     data = load_pdca_rules(target)
     addons = _dedupe_rules(list(data.get("ai_prompt_addons", [])))
+    manual_addons = _manual_rules_from_data(data)
     rule_text = str(rule or "").strip()
     appended = False
     if rule_text and rule_text not in addons:
         addons.append(rule_text)
         appended = True
+    if rule_text and rule_text not in manual_addons:
+        manual_addons.append(rule_text)
     data["ai_prompt_addons"] = addons
+    data["manual_ai_prompt_addons"] = _dedupe_rules(manual_addons)
+    meta = [item for item in (data.get("pdca_rule_meta") or []) if isinstance(item, dict)]
+    existing_meta_rules = {str(item.get("rule") or "").strip() for item in meta}
+    now = datetime.now()
+    try:
+        ttl = max(1, int(ttl_days))
+    except (TypeError, ValueError):
+        ttl = 90
+    if rule_text and rule_text not in existing_meta_rules:
+        meta.append(
+            {
+                "rule": rule_text,
+                "source": source,
+                "created_at": now.isoformat(timespec="seconds"),
+                "expires_at": (now + timedelta(days=ttl)).date().isoformat(),
+                "status": "active",
+            }
+        )
+    elif rule_text:
+        for item in meta:
+            if str(item.get("rule") or "").strip() == rule_text:
+                item["source"] = source
+                item["renewed_at"] = now.isoformat(timespec="seconds")
+                item["expires_at"] = (now + timedelta(days=ttl)).date().isoformat()
+                item["status"] = "active"
+                break
+    data["pdca_rule_meta"] = meta
     if reflection_summary is not None:
         data["reflection_summary"] = str(reflection_summary).strip()
     data.setdefault("last_run", data.get("last_run", ""))
     data["manual_rule_source"] = source
-    data["manual_rule_count"] = int(data.get("manual_rule_count") or 0) + (1 if appended else 0)
+    try:
+        manual_count = int(data.get("manual_rule_count") or 0)
+    except (TypeError, ValueError):
+        manual_count = 0
+    data["manual_rule_count"] = manual_count + (1 if appended else 0)
     saved = save_pdca_rules(data, target)
     return {
         "ok": saved,

@@ -134,12 +134,52 @@ def run_monthly_pdca_reflection(force: bool = False, max_cases: int = 20) -> Opt
         if "reflection_summary" not in parsed or "ai_prompt_addons" not in parsed:
             raise KeyError("JSON missing required fields")
             
-        # 保存する
+        existing = load_pdca_rules()
+        existing_manual = list(existing.get("manual_ai_prompt_addons") or [])
+        if not existing_manual:
+            try:
+                manual_count = int(existing.get("manual_rule_count") or 0)
+            except (TypeError, ValueError):
+                manual_count = 0
+            existing_addons = list(existing.get("ai_prompt_addons") or [])
+            existing_manual = existing_addons[-manual_count:] if manual_count > 0 else []
+
+        merged_addons = []
+        for rule in list(parsed["ai_prompt_addons"] or []) + existing_manual:
+            text = str(rule or "").strip()
+            if text and text not in merged_addons:
+                merged_addons.append(text)
+
+        now = datetime.datetime.now()
+        existing_meta = [
+            item for item in (existing.get("pdca_rule_meta") or []) if isinstance(item, dict)
+        ]
+        existing_meta_rules = {str(item.get("rule") or "").strip() for item in existing_meta}
+        generated_meta = []
+        for rule in list(parsed["ai_prompt_addons"] or []):
+            text = str(rule or "").strip()
+            if not text or text in existing_meta_rules:
+                continue
+            generated_meta.append(
+                {
+                    "rule": text,
+                    "source": "monthly_pdca",
+                    "created_at": now.isoformat(timespec="seconds"),
+                    "expires_at": (now + datetime.timedelta(days=45)).date().isoformat(),
+                    "status": "active",
+                }
+            )
+
+        # 保存する。月次PDCAの再生成で手動登録ルールを消さない。
         save_data = {
-            "last_run": datetime.datetime.now().isoformat(timespec="seconds"),
+            "last_run": now.isoformat(timespec="seconds"),
             "analyzed_count": len(target_cases),
             "reflection_summary": parsed["reflection_summary"],
-            "ai_prompt_addons": parsed["ai_prompt_addons"]
+            "ai_prompt_addons": merged_addons,
+            "manual_ai_prompt_addons": existing_manual,
+            "manual_rule_source": existing.get("manual_rule_source", ""),
+            "manual_rule_count": len(existing_manual),
+            "pdca_rule_meta": existing_meta + generated_meta,
         }
         
         save_pdca_rules(save_data)

@@ -1012,6 +1012,7 @@ def calculate_score(req: ScoringRequest):
         data_source_summary = _build_data_source_summary(inputs, result)
         screening_context_notes = _build_screening_context_notes(inputs, result, conditional_actions, rate_proposal)
         approval_comment_draft = _build_approval_comment_draft(inputs, result, conditional_actions, rate_proposal, screening_context_notes)
+        _record_scoring_memory_usage("score_calculate", inputs, result)
         
         # 期待する戻り値のキーにマッピング
         return ScoringResponse(
@@ -1077,6 +1078,8 @@ def calculate_score_full(req: ScoringRequest):
         except Exception as _save_err:
             print(f"[WARNING] DB save failed: {_save_err}")
         data_source_summary["case_id"] = case_id
+        result["case_id"] = case_id
+        _record_scoring_memory_usage("score_full", inputs, result)
 
         # リース知性体の着火: サブエージェント間の不整合を検知したら内省を起動する。
         # 既存スコアリング結果のフィールドを読むだけ・審査レスポンスには影響しない完全非ブロッキング。
@@ -2523,10 +2526,14 @@ def review_improvement(req: ReviewImprovementRequest):
 
 @app.post("/api/prompt-feedback/rules/register")
 def register_prompt_rule(req: PromptRuleRegisterRequest):
-    """UIから1クリックで修正ルールを `pdca_ai_rules.json` に追記する。"""
+    """UIから1クリックで修正ルールを登録する。
+
+    強いPDCAルールに該当しないものは live prompt へ入れず、改善ログへ隔離する。
+    """
     import json as _json
     from datetime import datetime as _dt
     from prompt_feedback import append_pdca_rule
+    from memory_promotion_policy import classify_memory_destination, is_pdca_rule_candidate
 
     ledger_path = os.path.expanduser("~/Library/Logs/tunelease/ledger.jsonl")
     os.makedirs(os.path.dirname(ledger_path), exist_ok=True)
@@ -2534,10 +2541,38 @@ def register_prompt_rule(req: PromptRuleRegisterRequest):
     title = str(req.title or "").strip()
     reason = str(req.reason or "").strip()
     normalized_rule = rule_text or title
+    destination = classify_memory_destination(normalized_rule)
+
+    if not is_pdca_rule_candidate(normalized_rule):
+        entry = {
+            "key": req.surface or title,
+            "canonical_key": req.surface or title,
+            "status": "needs_review",
+            "title": title or normalized_rule[:60],
+            "rule": normalized_rule,
+            "reason": reason or "PDCAルール条件外のため改善ログへ隔離",
+            "source": req.source or "manual",
+            "surface": req.surface or "",
+            "destination": destination,
+            "recorded_at": _dt.now().isoformat(),
+        }
+        with open(ledger_path, "a", encoding="utf-8") as f:
+            f.write(_json.dumps(entry, ensure_ascii=False) + "\n")
+        obsidian_result = _save_improvement_log_to_obsidian(entry)
+        return {
+            "ok": True,
+            "appended": False,
+            "routed_to": "improvement_log",
+            "reason": "pdca_rule_conditions_not_met",
+            "rule": normalized_rule,
+            "obsidian": obsidian_result,
+        }
+
     append_result = append_pdca_rule(
         normalized_rule,
         source=req.source or "manual",
         reflection_summary=req.summary or None,
+        ttl_days=90,
     )
     entry = {
         "key": req.surface or title,
@@ -2548,6 +2583,7 @@ def register_prompt_rule(req: PromptRuleRegisterRequest):
         "reason": reason or normalized_rule,
         "source": req.source or "manual",
         "surface": req.surface or "",
+        "destination": "pdca_rule",
         "recorded_at": _dt.now().isoformat(),
     }
     with open(ledger_path, "a", encoding="utf-8") as f:
@@ -2922,6 +2958,21 @@ def _run_batch_scoring(req: BatchScoreRequest, save_to_db: bool = False):
             "excluded_grade_results": excluded_grade_results,
             "summary": summary,
         }
+
+    _record_memory_usage_if_available(
+        surface="batch_save" if save_to_db else "batch_score",
+        question=f"batch_rows={total}",
+        response=f"summary={summary}",
+        knowledge_refs=["batch_scoring", "industry_normalizer", "scoring_core"],
+        pdca_block="",
+        judgment_learning_used=False,
+        extra={
+            "total": total,
+            "saved_count": saved_count,
+            "with_result": with_result,
+            "save_to_db": bool(save_to_db),
+        },
+    )
 
     return _build_batch_response(df_in, df_out, summary, batch_token=batch_token)
 
@@ -5685,6 +5736,95 @@ def _record_prompt_feedback_if_available(
         print(f"[PromptFeedback] エラー: {_e}")
 
 
+def _record_memory_usage_if_available(
+    *,
+    surface: str,
+    question: str,
+    response: str,
+    knowledge_refs: list[str] | None = None,
+    pdca_block: str = "",
+    judgment_learning_used: bool = False,
+    extra: dict | None = None,
+) -> None:
+    """Log which memory layers influenced a response for later audit."""
+    try:
+        import hashlib as _hashlib
+        import json as _json
+        from datetime import datetime as _dt
+
+        log_path = Path(_REPO_ROOT) / "data" / "case_memory_usage_log.jsonl"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "timestamp": _dt.now().isoformat(timespec="seconds"),
+            "surface": surface,
+            "question_hash": _hashlib.sha256((question or "").encode("utf-8")).hexdigest(),
+            "question_preview": str(question or "")[:160],
+            "response_hash": _hashlib.sha256((response or "").encode("utf-8")).hexdigest(),
+            "knowledge_refs": list(knowledge_refs or [])[:12],
+            "pdca_applied": bool(str(pdca_block or "").strip()),
+            "pdca_preview": str(pdca_block or "")[:500],
+            "judgment_learning_used": bool(judgment_learning_used),
+            **(extra or {}),
+        }
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write(_json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception as _e:
+        print(f"[MemoryUsageLog] エラー: {_e}")
+
+
+def _record_scoring_memory_usage(surface: str, inputs: dict, result: dict, extra: dict | None = None) -> None:
+    try:
+        query = " / ".join(
+            part for part in [
+                str(inputs.get("industry_major") or ""),
+                str(inputs.get("industry_sub") or ""),
+                str(inputs.get("asset_name") or inputs.get("asset_detail") or ""),
+            ] if part
+        )
+        refs = ["scoring_core", "industry_benchmark", "estat_context", "asset_score_policy"]
+        if result.get("estat_context"):
+            refs.append("estat_context_present")
+        response = (
+            f"score={result.get('score')}; hantei={result.get('hantei')}; "
+            f"context={query}"
+        )
+        _record_memory_usage_if_available(
+            surface=surface,
+            question=query or surface,
+            response=response,
+            knowledge_refs=refs,
+            pdca_block="",
+            judgment_learning_used=False,
+            extra={
+                "score": result.get("score"),
+                "hantei": result.get("hantei"),
+                "case_id": result.get("case_id"),
+                **(extra or {}),
+            },
+        )
+    except Exception as _e:
+        print(f"[ScoringMemoryUsage] エラー: {_e}")
+
+
+def _record_chat_knowledge_correction_if_needed(message: str) -> None:
+    try:
+        from memory_promotion_policy import classify_memory_destination
+
+        if classify_memory_destination(message) != "knowledge_correction":
+            return
+        from lease_news_digest import find_vault
+        from lease_intelligence_mind import record_knowledge_correction
+
+        vault = find_vault()
+        if not vault:
+            return
+        import datetime as _dt
+
+        record_knowledge_correction(Path(vault), message, _dt.date.today().isoformat())
+    except Exception as _e:
+        print(f"[KnowledgeCorrection] 通常チャット訂正保存エラー: {_e}")
+
+
 class ChatRequest(BaseModel):
     message: str
     user_id: str = "default"
@@ -5809,70 +5949,60 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     refreshed = register_dialogue_event(vault, message, reply)
     state = {**state, **self_state_summary(refreshed)}
 
-    # 記憶・ユーザーモデル・現在の問いをレスポンスをブロックせず非同期で更新する
-    try:
-        import threading as _threading
-        from lease_intelligence_mind import record_dialogue_memory as _record_dlg_mem
-        _threading.Thread(
-            target=_record_dlg_mem,
-            args=(vault, message, reply),
-            daemon=True,
-        ).start()
-    except Exception as _dlg_exc:
-        print(f"[DialogueMemory] 記憶更新の起動に失敗: {_dlg_exc}")
-
-    # 会話キーポイントを抽出して長期記憶へ保存する（REV-086）。レスポンスはブロックしない。
+    # 記憶・キーポイント・Knowledge昇格を1本のバックグラウンド処理で直列化する。
     try:
         import datetime as _dt
-        import threading as _kp_threading
+        import threading as _threading
 
-        def _save_keypoints() -> None:
+        def _update_dialogue_memory_pipeline() -> None:
             try:
-                from ai_chat import extract_conversation_keypoints
-                from lease_intelligence_mind import save_conversation_keypoints
+                from ai_chat import (
+                    extract_conversation_keypoints,
+                    extract_lease_knowledge,
+                    is_knowledge_teaching,
+                )
+                from memory_promotion_policy import classify_memory_destination
+                from lease_intelligence_mind import (
+                    record_dialogue_memory,
+                    record_knowledge_correction,
+                    record_lease_knowledge,
+                    save_conversation_keypoints,
+                )
 
-                keypoints = extract_conversation_keypoints(message, reply)
-                if keypoints:
-                    save_conversation_keypoints(
-                        vault,
-                        DIALOGUE_USER_ID,
-                        keypoints,
-                        _dt.date.today().isoformat(),
-                    )
-            except Exception as _kp_exc:
-                print(f"[ConversationKeypoints] 抽出・保存に失敗: {_kp_exc}")
+                record_dialogue_memory(vault, message, reply)
+                destination = classify_memory_destination(message)
 
-        _kp_threading.Thread(target=_save_keypoints, daemon=True).start()
-    except Exception as _kp_start_exc:
-        print(f"[ConversationKeypoints] 起動に失敗: {_kp_start_exc}")
+                if destination == "conversation_keypoint":
+                    keypoints = extract_conversation_keypoints(message, reply)
+                    if keypoints:
+                        save_conversation_keypoints(
+                            vault,
+                            DIALOGUE_USER_ID,
+                            keypoints,
+                            _dt.date.today().isoformat(),
+                        )
 
-    # 教示パターンに合致する場合、教わった知識を Knowledge/ へ昇格する（REV-087）。
-    try:
-        from ai_chat import is_knowledge_teaching
-
-        if is_knowledge_teaching(message):
-            import datetime as _kdt
-            import threading as _kn_threading
-
-            def _elevate_knowledge() -> None:
-                try:
-                    from ai_chat import extract_lease_knowledge
-                    from lease_intelligence_mind import record_lease_knowledge
-
+                if destination == "knowledge" and is_knowledge_teaching(message):
                     knowledge = extract_lease_knowledge(message)
                     if knowledge:
                         record_lease_knowledge(
                             vault,
                             knowledge["topic"],
                             knowledge["content"],
-                            _kdt.date.today().isoformat(),
+                            _dt.date.today().isoformat(),
                         )
-                except Exception as _kn_exc:
-                    print(f"[KnowledgeElevation] 抽出・保存に失敗: {_kn_exc}")
+                elif destination == "knowledge_correction":
+                    record_knowledge_correction(
+                        vault,
+                        message,
+                        _dt.date.today().isoformat(),
+                    )
+            except Exception as _mem_exc:
+                print(f"[DialogueMemoryPipeline] 更新に失敗: {_mem_exc}")
 
-            _kn_threading.Thread(target=_elevate_knowledge, daemon=True).start()
-    except Exception as _kn_start_exc:
-        print(f"[KnowledgeElevation] 起動に失敗: {_kn_start_exc}")
+        _threading.Thread(target=_update_dialogue_memory_pipeline, daemon=True).start()
+    except Exception as _dlg_exc:
+        print(f"[DialogueMemoryPipeline] 起動に失敗: {_dlg_exc}")
 
     return {"reply": reply, "state": state, "note_path": note_path}
 
@@ -6156,12 +6286,23 @@ def post_chat(req: ChatRequest):
                     "category": "general",
                 },
             )
+            _record_memory_usage_if_available(
+                surface="next_chat_general",
+                question=req.message,
+                response=reply,
+                knowledge_refs=[],
+                pdca_block=pdca_block,
+                judgment_learning_used=False,
+                extra={"user_id": req.user_id, "category": "general"},
+            )
+            _record_chat_knowledge_correction_if_needed(req.message)
             total = get_message_count(req.user_id)
             return {"reply": reply, "total_messages": total, "lease_news_focus": news_focus, "lease_news_brief": news_brief}
 
         # RAG: 共通ストアから関連ナレッジを取得。ローカル埋め込みモデルが
         # 未キャッシュでもキーワード検索へフォールバックする。
         rag_context = ""
+        rag_refs: list[str] = []
         try:
             from api.knowledge.vector_store import get_store
 
@@ -6173,6 +6314,8 @@ def post_chat(req: ChatRequest):
                 if text:
                     prefix = f"{ref}: " if ref else ""
                     all_docs.append((prefix + text)[:600])
+                    if ref:
+                        rag_refs.append(ref)
             if all_docs:
                 rag_context = "\n\n【参照ナレッジ】\n" + "\n---\n".join(all_docs)
         except Exception as e:
@@ -6259,6 +6402,20 @@ def post_chat(req: ChatRequest):
                 "improvement_mode": bool(_is_improvement_msg),
             },
         )
+        _record_memory_usage_if_available(
+            surface="next_chat_rag",
+            question=req.message,
+            response=reply,
+            knowledge_refs=rag_refs,
+            pdca_block=pdca_block,
+            judgment_learning_used=bool(judgment_learning_context),
+            extra={
+                "user_id": req.user_id,
+                "category": "rag",
+                "improvement_mode": bool(_is_improvement_msg),
+            },
+        )
+        _record_chat_knowledge_correction_if_needed(req.message)
         total = get_message_count(req.user_id)
 
         # 改善メモをObsidianに保存（類似候補がすでにある場合はスキップして重複防止）
