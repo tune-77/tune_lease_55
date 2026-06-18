@@ -3533,6 +3533,14 @@ def generate_gunshi_chat(req: GunshiChatRequest):
         except Exception:
             pass
 
+        try:
+            from prompt_feedback import build_pdca_prompt_block as _build_pdca
+            _pdca_block = _build_pdca()
+            if _pdca_block:
+                prompt += f"\n\n{_pdca_block}"
+        except Exception:
+            pass
+
         history_text = _format_gunshi_history(req.history)
         if history_text:
             prompt += f"\n\n【過去の対話】\n{history_text}"
