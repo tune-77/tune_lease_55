@@ -62,3 +62,40 @@ def test_get_improvement_log_includes_recursive_summary(tmp_path, monkeypatch):
     assert result["status"] == "COMPLETED"
     assert result["recursive_self_improvement"]["canonical_candidate_count"] == 3
     assert result["recursive_self_improvement"]["measurement_summary"]["noise_rate"] == 33.3
+
+
+def test_normalize_improvement_report_reflects_review_ledger_statuses(monkeypatch):
+    import api.main as main
+
+    statuses = {
+        "key-approved": "approved",
+        "key-rejected": "rejected",
+        "key-deferred": "deferred",
+        "key-rule": "rule_registered",
+        "key-rule-review": "rule_review",
+    }
+    monkeypatch.setattr(main, "_latest_improvement_statuses", lambda: statuses)
+
+    report = {
+        "date": "2026-06-19",
+        "generated_at": "2026-06-19T05:00:00",
+        "needs_review": [
+            {"id": "REV-001", "title": "承認対象", "canonical_key": "key-approved"},
+            {"id": "REV-002", "title": "却下対象", "canonical_key": "key-rejected"},
+            {"id": "REV-003", "title": "保留対象", "canonical_key": "key-deferred"},
+            {"id": "REV-004", "title": "ルール登録対象", "canonical_key": "key-rule"},
+            {"id": "REV-005", "title": "ルール要確認対象", "canonical_key": "key-rule-review"},
+        ],
+    }
+
+    result = main._normalize_improvement_report(report)
+    by_id = {item["id"]: item for item in result["items"]}
+
+    assert by_id["REV-001"]["status"] == "APPROVED"
+    assert by_id["REV-002"]["status"] == "REJECTED"
+    assert by_id["REV-003"]["status"] == "PARKED"
+    assert by_id["REV-004"]["status"] == "RULE_REGISTERED"
+    assert by_id["REV-005"]["status"] == "RULE_REVIEW"
+    assert result["approved"] == 1
+    assert result["rejected"] == 1
+    assert result["parked"] == 1

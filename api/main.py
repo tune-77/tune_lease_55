@@ -2542,12 +2542,13 @@ def register_prompt_rule(req: PromptRuleRegisterRequest):
     reason = str(req.reason or "").strip()
     normalized_rule = rule_text or title
     destination = classify_memory_destination(normalized_rule)
+    ledger_key = str(req.canonical_key or req.key or req.surface or title).strip()
 
     if not is_pdca_rule_candidate(normalized_rule):
         entry = {
-            "key": req.surface or title,
-            "canonical_key": req.surface or title,
-            "status": "needs_review",
+            "key": ledger_key,
+            "canonical_key": ledger_key,
+            "status": "rule_review",
             "title": title or normalized_rule[:60],
             "rule": normalized_rule,
             "reason": reason or "PDCAルール条件外のため改善ログへ隔離",
@@ -2575,8 +2576,8 @@ def register_prompt_rule(req: PromptRuleRegisterRequest):
         ttl_days=90,
     )
     entry = {
-        "key": req.surface or title,
-        "canonical_key": req.surface or title,
+        "key": ledger_key,
+        "canonical_key": ledger_key,
         "status": "rule_registered",
         "title": title,
         "rule": normalized_rule,
@@ -4762,6 +4763,42 @@ def _latest_improvement_statuses() -> dict[str, str]:
     return latest_by_key
 
 
+def _ledger_status_to_improvement_status(status: str) -> str | None:
+    normalized = str(status or "").lower()
+    if normalized == "applied":
+        return "APPLIED"
+    if normalized == "approved":
+        return "APPROVED"
+    if normalized == "rejected":
+        return "REJECTED"
+    if normalized in {"deferred", "parked"}:
+        return "PARKED"
+    if normalized == "rule_registered":
+        return "RULE_REGISTERED"
+    if normalized == "rule_review":
+        return "RULE_REVIEW"
+    return None
+
+
+def _ledger_status_reason(status: str) -> str:
+    normalized = str(status or "").lower()
+    if normalized == "applied":
+        return "改善済み登録済み"
+    if normalized == "approved":
+        return "承認済み登録済み"
+    if normalized == "rejected":
+        return "却下済み登録済み"
+    if normalized == "deferred":
+        return "保留登録済み"
+    if normalized == "parked":
+        return "park済み登録済み"
+    if normalized == "rule_registered":
+        return "AIルール登録済み"
+    if normalized == "rule_review":
+        return "AIルール要確認"
+    return ""
+
+
 def _applied_improvement_keys() -> set[str]:
     latest_by_key = _latest_improvement_statuses()
     return {key for key, status in latest_by_key.items() if status == "applied"}
@@ -4874,7 +4911,7 @@ def _normalize_improvement_report(report: dict) -> dict:
             if not imp_id:
                 continue
             base = items_by_id.setdefault(imp_id, {"id": imp_id})
-            canonical = base.get("canonical_key") or _improvement_canonical_key(
+            canonical = entry.get("canonical_key") or base.get("canonical_key") or _improvement_canonical_key(
                 str(entry.get("title") or base.get("title") or ""),
                 str(entry.get("detail") or entry.get("description") or ""),
             )
@@ -4913,12 +4950,13 @@ def _normalize_improvement_report(report: dict) -> dict:
         canonical = item.get("canonical_key") or _improvement_canonical_key(str(item.get("title") or ""))
         item["canonical_key"] = canonical
         ledger_status = latest_statuses.get(canonical)
-        if ledger_status == "applied" or canonical in applied_keys:
-            item["status"] = "APPLIED"
-            item["reason"] = "改善済み登録済み"
-        elif ledger_status == "parked":
-            item["status"] = "PARKED"
-            item["reason"] = "park済み登録済み"
+        mapped_status = _ledger_status_to_improvement_status(ledger_status or "")
+        if canonical in applied_keys:
+            ledger_status = "applied"
+            mapped_status = "APPLIED"
+        if mapped_status:
+            item["status"] = mapped_status
+            item["reason"] = _ledger_status_reason(ledger_status or "") or item.get("reason") or ""
         else:
             should_park, park_reason = _should_park_improvement(item)
             if should_park:
@@ -8004,6 +8042,13 @@ def get_recent_lease_news(limit: int = 5):
 _RECIPES_ROOT = Path(_REPO_ROOT) / "data" / "recipes"
 
 
+def _recipe_count(dirname: str) -> int:
+    path = _RECIPES_ROOT / dirname
+    if not path.exists():
+        return 0
+    return sum(1 for item in path.glob("*.json") if item.is_file())
+
+
 def _recipe_risk_level(recipe: dict) -> str:
     safety = recipe.get("safety", "none")
     files = recipe.get("files", [])
@@ -8011,6 +8056,32 @@ def _recipe_risk_level(recipe: dict) -> str:
     if total_changes >= 10 or safety == "tsc":
         return "medium"
     return "low"
+
+
+@app.get("/api/recipes/status")
+def get_recipes_status():
+    latest_path = _latest_improvement_report_path()
+    latest: dict = {}
+    if latest_path and latest_path.exists():
+        try:
+            latest = json.loads(latest_path.read_text(encoding="utf-8"))
+        except Exception:
+            latest = {}
+    codex_queue = latest.get("codex_auto_queue") if isinstance(latest.get("codex_auto_queue"), dict) else {}
+    return {
+        "pending_count": _recipe_count("pending"),
+        "approved_count": _recipe_count("approved"),
+        "applied_count": _recipe_count("applied"),
+        "rejected_count": _recipe_count("rejected"),
+        "codex_auto_queue": {
+            "status": codex_queue.get("status", ""),
+            "queued_count": codex_queue.get("queued_count", 0),
+            "safe_count": codex_queue.get("safe_count", 0),
+            "maybe_count": codex_queue.get("maybe_count", 0),
+            "manual_or_blocked_count": codex_queue.get("manual_or_blocked_count", 0),
+        },
+        "note": "自動修正案の承認は適用待ちへの移動です。実適用は scripts/apply_recipe.py が適用待ちを処理します。",
+    }
 
 
 @app.get("/api/recipes/pending")

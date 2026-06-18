@@ -269,6 +269,7 @@ export default function SimilarPage() {
   const [graphData, setGraphData] = useState<SimilarGraphData | null>(null);
   const [summary, setSummary] = useState<SimilarGraphData["summary"] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [chargeStrength, setChargeStrength] = useState(DEFAULT_SIMILAR_SETTINGS.chargeStrength);
   const [linkBaseDistance, setLinkBaseDistance] = useState(DEFAULT_SIMILAR_SETTINGS.linkBaseDistance);
   const [collisionPadding, setCollisionPadding] = useState(DEFAULT_SIMILAR_SETTINGS.collisionPadding);
@@ -321,11 +322,13 @@ export default function SimilarPage() {
         const res = await apiClient.get<SimilarGraphData>(`/api/similar/data`);
         setGraphData(res.data);
         setSummary(res.data.summary || null);
+        setLoadError(null);
         if (!loadedFromStorage) {
           applySettings(getRecommendedSettings(res.data), false);
         }
       } catch (err) {
         console.error("Failed to load similar network data", err);
+        setLoadError("案件類似ネットワークのデータ取得に失敗しました。API /api/similar/data と過去案件DBを確認してください。");
       } finally {
         setLoading(false);
       }
@@ -485,7 +488,23 @@ export default function SimilarPage() {
         </div>
       </div>
 
-      {summary && (summary.total ?? 0) < 2 ? (
+      {loadError ? (
+        <div className="bg-rose-50 border border-rose-200 p-6 rounded-2xl flex items-start gap-4">
+          <Activity className="w-8 h-8 text-rose-500 shrink-0" />
+          <div>
+            <h3 className="font-bold text-rose-800 text-lg">案件データを取得できません</h3>
+            <p className="text-rose-700 mt-1">{loadError}</p>
+          </div>
+        </div>
+      ) : !graphData ? (
+        <div className="bg-amber-50 border border-amber-200 p-6 rounded-2xl flex items-start gap-4">
+          <Activity className="w-8 h-8 text-amber-500 shrink-0" />
+          <div>
+            <h3 className="font-bold text-amber-800 text-lg">案件データが読み込まれていません</h3>
+            <p className="text-amber-700 mt-1">APIからネットワーク用データが返っていないため、表示できる案件情報がありません。</p>
+          </div>
+        </div>
+      ) : summary && (summary.total ?? 0) < 2 ? (
         <div className="bg-amber-50 border border-amber-200 p-6 rounded-2xl flex items-start gap-4">
           <Activity className="w-8 h-8 text-amber-500 shrink-0" />
           <div>
