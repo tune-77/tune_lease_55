@@ -40,14 +40,21 @@ def _similarity(a: dict, b: dict) -> float:
     return round(sim, 3)
 
 
+MAX_NETWORK_NODES = 250  # D3シミュレーション性能のためノード数を制限
+
+
 def build_network_data(current_case: dict | None = None) -> dict:
     """
     ノード・エッジデータを構築する。
     current_case: 現在審査中の案件 dict（Noneなら表示しない）
     """
-    cases = load_past_cases()
+    all_cases = load_past_cases()
 
-    # 登録済み案件のみ（未登録はグレーで追加）
+    # スコアあり案件を新しい順に最大 MAX_NETWORK_NODES 件に絞る
+    scored = [c for c in all_cases if _score_of(c) > 0]
+    scored.sort(key=lambda c: (c.get("timestamp") or ""), reverse=True)
+    cases = scored[:MAX_NETWORK_NODES]
+
     nodes = []
     node_index: dict[str, int] = {}
 
@@ -120,7 +127,7 @@ def build_network_data(current_case: dict | None = None) -> dict:
             if sim < 0.5:
                 continue
             ai, bi = a["id"], b["id"]
-            if edge_count.get(ai, 0) >= 5 and edge_count.get(bi, 0) >= 5:
+            if edge_count.get(ai, 0) >= 5 or edge_count.get(bi, 0) >= 5:
                 continue
             edges.append({
                 "source": i,

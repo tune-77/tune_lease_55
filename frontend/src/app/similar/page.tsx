@@ -127,16 +127,18 @@ function initGraph() {
     .text(d => d.industry_sub ? d.industry_sub.slice(0, 8) : "");
 
     // ツールチップ
+    const _esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     const tooltip = document.getElementById("tooltip");
     node
     .on("mouseover", (e, d) => {
         const rate = d.final_rate > 0 ? d.final_rate.toFixed(2) + "%" : "—";
         tooltip.innerHTML =
-        '<b>' + d.industry_sub + '</b><br>' +
-        'スコア: ' + d.score.toFixed(0) + '<br>' +
-        '状態: ' + d.status + '<br>' +
-        '獲得金利: ' + rate + '<br>' +
-        '競合: ' + (d.competitor_name || "なし");
+        '<b>' + _esc(d.industry_sub) + '</b><br>' +
+        'スコア: ' + _esc(d.score.toFixed(0)) + '<br>' +
+        '状態: ' + _esc(d.status) + '<br>' +
+        '獲得金利: ' + _esc(rate) + '<br>' +
+        '競合: ' + _esc(d.competitor_name || "なし") + '<br>' +
+        (d.timestamp ? _esc(d.timestamp) : '');
         tooltip.style.display = "block";
         link.attr("stroke-opacity", l =>
         l.source.id === d.id || l.target.id === d.id ? 0.9 : 0.05);
@@ -240,7 +242,7 @@ const getRecommendedSettings = (data?: SimilarGraphData | null): SimilarGraphSet
     return DEFAULT_SIMILAR_SETTINGS;
   }
 
-  if (total <= 180) {
+  if (total <= 280) {
     return {
       chargeStrength: density > 4 ? -260 : -220,
       linkBaseDistance: density > 4 ? 128 : 116,
