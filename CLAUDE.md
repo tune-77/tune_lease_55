@@ -48,7 +48,7 @@ Work Logs: `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vau
 frontend/src/app/     # UI（25+ ページ）
 api/main.py           # FastAPI エンドポイント（全API）
 api/schemas.py        # Pydantic モデル
-scoring_core.py       # スコアリング（LightGBM + 量子干渉）
+scoring_core.py       # スコアリング（RandomForest主モデル + 量子干渉）
 data/lease_data.db    # SQLite（コミット禁止）
 ```
 
