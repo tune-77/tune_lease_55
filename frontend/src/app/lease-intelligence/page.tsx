@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   ArrowDown, Brain, Check, Copy, Database, Loader2, Mic, MicOff,
-  Send, Sparkles, Trash2, TrendingUp, User, Volume2, VolumeX,
+  Network, Send, Sparkles, Trash2, TrendingUp, User, Volume2, VolumeX,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
 
@@ -864,6 +865,13 @@ export default function LeaseIntelligencePage() {
               <p className="text-xs text-slate-500">会話はObsidian Vaultにも日付別で記録されます。</p>
             </div>
             <div className="flex items-center gap-2">
+              <Link
+                href="/multi-shion-demo"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-bold text-cyan-700 transition hover:bg-cyan-100"
+              >
+                <Network className="h-4 w-4" />
+                多人数デモ
+              </Link>
               <button
                 type="button"
                 onClick={showDemoGreeting}
