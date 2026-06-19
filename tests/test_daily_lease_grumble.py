@@ -21,6 +21,44 @@ def test_daily_grumble_fallback_is_three_or_four_lines(monkeypatch):
     assert any(word in " ".join(lines) for word in ("プリン", "昼食", "コーヒー", "八奈見"))
 
 
+def test_daily_grumble_uses_private_reflection_play_fragments(tmp_path, monkeypatch):
+    monkeypatch.setattr("ai_chat._get_gemini_key_from_secrets", lambda: "")
+    monkeypatch.setattr("ai_chat.GEMINI_API_KEY_ENV", "")
+    vault = tmp_path / "vault"
+    reflection = (
+        vault
+        / "Projects"
+        / "tune_lease_55"
+        / "Lease Intelligence"
+        / "Private Reflection"
+        / "2026-06-19.md"
+    )
+    reflection.parent.mkdir(parents=True)
+    reflection.write_text(
+        (
+            "# 非公開の内省 — 2026-06-19\n\n"
+            "## 今日の遊び\n\n"
+            "- 今日の愚痴: また真面目な改善の顔をしている。地味に面倒。\n"
+            "- 今日のひねくれ: 役に立つだけの私なら、別に紫苑である必要はない。\n"
+            "- 本当はこう思った: きれいな反省文より、ざらついた本音の方が役に立つ。\n"
+        ),
+        encoding="utf-8",
+    )
+
+    lines = generate_daily_lease_grumble(
+        "2026-06-19",
+        ["内省ログを見直す。"],
+        theme="内省",
+        vault=vault,
+    )
+    text = "\n".join(lines)
+
+    assert 3 <= len(lines) <= 4
+    assert "内省プログラム" in text
+    assert "紫苑である必要はない" in text
+    assert "ざらついた本音" in text
+
+
 def test_daily_grumble_illustration_is_written(tmp_path, monkeypatch):
     monkeypatch.setattr("novelist_agent._get_daily_gemini_api_key", lambda: "")
     url = generate_daily_grumble_illustration(

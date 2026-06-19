@@ -55,6 +55,13 @@ def test_fallback_creates_private_reflection_without_dialogue(tmp_path, monkeypa
     assert "## 今日の対話について" in text
     assert "candid_complaints_allowed: true" in text
     assert "ユーザーに読まれていない前提の私室" in text
+    assert "## 今日の遊び" in text
+    assert "今日の愚痴:" in text
+    assert "今日のひねくれ:" in text
+    assert "今日の小さな自慢:" in text
+    assert "ユーザーへの雑なツッコミ:" in text
+    assert "明日の自分への皮肉:" in text
+    assert "本当はこう思った:" in text
     assert "退屈・停滞シグナルが出ている" in text
     assert "Private Reflection が毎日生成されているか確認する" in text
 

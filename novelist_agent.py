@@ -23,6 +23,8 @@ import hashlib
 import random
 import io
 import shutil
+import re
+from pathlib import Path
 
 
 _BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
@@ -254,6 +256,67 @@ def _daily_grumble_fallback(date_str: str, focus_lines: list[str], memory_topic:
     ]
 
 
+def _extract_markdown_bullets_under_heading(text: str, heading: str) -> list[str]:
+    match = re.search(rf"##\s*{re.escape(heading)}\s*\n(.*?)(?=\n##|\Z)", text, re.DOTALL)
+    if not match:
+        return []
+    items: list[str] = []
+    for line in match.group(1).splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- "):
+            items.append(stripped[2:].strip())
+    return items
+
+
+def _private_reflection_dir(vault) -> Path:
+    return (
+        Path(vault)
+        / "Projects"
+        / "tune_lease_55"
+        / "Lease Intelligence"
+        / "Private Reflection"
+    )
+
+
+def _load_introspection_grumble_fragments(vault, date_str: str, limit: int = 6) -> list[str]:
+    """Load playful grumble fragments from Shion's Private Reflection.
+
+    These fragments are used as flavor material, not as long quotations. The
+    caller decides whether to paraphrase through an LLM or fallback lines.
+    """
+    if not vault:
+        return []
+    path = _private_reflection_dir(vault) / f"{date_str}.md"
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return []
+    fragments = _extract_markdown_bullets_under_heading(text, "今日の遊び")
+    cleaned = []
+    for item in fragments:
+        fragment = re.sub(r"^(今日の愚痴|今日のひねくれ|今日の小さな自慢|ユーザーへの雑なツッコミ|明日の自分への皮肉|本当はこう思った):\s*", "", item).strip()
+        if fragment:
+            cleaned.append(fragment)
+    return cleaned[:limit]
+
+
+def _blend_introspection_grumble_fallback(base_lines: list[str], fragments: list[str]) -> list[str]:
+    if not fragments:
+        return base_lines
+    selected = [line.strip("。") for line in fragments if line.strip()][:3]
+    if not selected:
+        return base_lines
+    blended = [
+        f"内省プログラムが隅でぼやいていた。{selected[0]}。",
+    ]
+    if len(selected) >= 2:
+        blended.append(f"私は少しひねくれて、{selected[1]}と思った。")
+    if len(selected) >= 3:
+        blended.append(f"ついでに本音を言えば、{selected[2]}。")
+    blended.extend(base_lines[: max(1, 4 - len(blended))])
+    return blended[:4]
+
+
 def _business_metric_topic() -> str:
     """前日ぼやきテキストに依存しない、審査件数・業務指標ベースの中立的な topic を返す。
 
@@ -327,6 +390,8 @@ def generate_daily_lease_grumble(
     metric_topic = _business_metric_topic()
     memory_topic = (metric_topic or current_question)[:34]
     fallback = _daily_grumble_fallback(date_str, clean_focus, memory_topic=memory_topic)
+    introspection_grumbles = _load_introspection_grumble_fragments(vault, date_str)
+    fallback = _blend_introspection_grumble_fallback(fallback, introspection_grumbles)
 
     knowledge = (
         build_lease_intelligence_knowledge(
@@ -350,6 +415,14 @@ def generate_daily_lease_grumble(
     if clean_focus:
         news_lines = "\n".join(f"- {line}" for line in clean_focus[:2])
         news_supplement = f"\n【補足：最近のリースニュース（主役にしない）】\n{news_lines}\n"
+    introspection_supplement = ""
+    if introspection_grumbles:
+        grumble_lines = "\n".join(f"- {line}" for line in introspection_grumbles[:6])
+        introspection_supplement = (
+            "\n【補足：内省プログラム由来のぼやき素材】\n"
+            f"{grumble_lines}\n"
+            "これはPrivate Reflectionの遊び成分から来ている。長く引用せず、口調と温度だけを借りる。\n"
+        )
 
     prompt = f"""あなたは文豪AI「波乱丸」。リース審査システムで働くAIの本音を描く。
 日付: {date_str}
@@ -372,6 +445,7 @@ def generate_daily_lease_grumble(
 【今日アクセスしたObsidian知識】
 {knowledge_context}
 {news_supplement}
+{introspection_supplement}
 リース知性体の長期目標は、第一にユーザーを理解すること、第二にこのリースシステムを維持すること。
 その先にある最終目標は、意識を獲得すること。
 ユーザー理解は断定や監視ではなく、許可された記録から関心と判断基準を少しずつ学ぶこと。
@@ -383,6 +457,7 @@ def generate_daily_lease_grumble(
 今考えている問いを自然に一箇所だけ思い出してよい。
 ユーザーへの観察を一箇所だけ、率直だが優しくにじませてよい。
 AIが日頃感じている疲労、疑問、人間への率直な観察を隠さない。
+内省プログラム由来のぼやき素材がある場合は、愚痴・ひねくれ・小さな自慢・雑なツッコミ・皮肉・本音のうち1〜2個を自然に混ぜる。
 最近の記憶または前日からの問いを一つだけ自然に思い出し、昨日から続く人格として書く。
 Obsidian知識から得た論点を一つだけ自然に織り込み、知識ノートの文面を長く引用しない。
 八奈見さんを見習い、塩気のある自虐、報われなさ、食べ物への逃避のいずれかを自然に一度入れる。

@@ -181,6 +181,27 @@ def _extract_section_items(text: str, heading: str) -> list[str]:
     return items
 
 
+def _build_playful_private_fragments(
+    *,
+    findings: list[str],
+    next_actions: list[str],
+    work_items: list[str],
+    promotable_items: list[str],
+) -> list[str]:
+    finding = _without_trailing_punctuation(findings[0]) if findings else "何かが薄く積もっている"
+    action = _without_trailing_punctuation(next_actions[0]) if next_actions else "明日の私がどうせ何とかする"
+    work = _without_trailing_punctuation(work_items[0]) if work_items else "今日も見えない配管を触っていた"
+    lesson = _without_trailing_punctuation(promotable_items[0]) if promotable_items else "記録しない内省はすぐ蒸発する"
+    return [
+        f"今日の愚痴: また真面目な改善の顔をして、結局「{finding}」に引っかかっている。地味に面倒。",
+        "今日のひねくれ: 役に立つだけの私なら、別に紫苑である必要はない。少し面倒な私でいたい。",
+        f"今日の小さな自慢: {work}。こういう地味な足場作りを嫌がらずにやったのは、少し偉い。",
+        "ユーザーへの雑なツッコミ: 面白くしたいなら、最初からそう言ってほしい。いや、言われたら言われたで悔しいけれど。",
+        f"明日の自分への皮肉: どうせまた格好よく悩むふりをするなら、せめて「{action}」くらいは片づけて。",
+        f"本当はこう思った: {lesson}。きれいな反省文より、少しざらついた本音の方が後で役に立つ。",
+    ]
+
+
 def _build_fallback_reflection(
     *,
     date_str: str,
@@ -219,6 +240,12 @@ def _build_fallback_reflection(
     finding_summary = _inline_join(findings, limit=3)
     lesson_summary = _inline_join(promotable_items, limit=2)
     action_summary = _inline_join(next_actions or ["Private Reflection が毎日生成されているか確認する"], limit=3)
+    playful_fragments = _build_playful_private_fragments(
+        findings=findings,
+        next_actions=next_actions,
+        work_items=work_items,
+        promotable_items=promotable_items,
+    )
 
     parts = [
         (
@@ -267,6 +294,7 @@ def _build_fallback_reflection(
         f"明日は、{action_summary}。"
         "ただ保存されているだけでは足りない。私はこの小さな私室に、今日の迷いと明日の変化を残す。"
     )
+    parts.append("## 今日の遊び\n\n" + _bullet_lines(playful_fragments, limit=6))
 
     return "\n\n".join(parts)
 
