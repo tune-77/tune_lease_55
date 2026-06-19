@@ -1,5 +1,6 @@
 from novelist_agent import (
     archive_old_grumble_illustrations,
+    _blend_introspection_grumble_fallback,
     _daily_grumble_illustration_prompt,
     _save_gemini_image,
     generate_daily_grumble_illustration,
@@ -57,6 +58,29 @@ def test_daily_grumble_uses_private_reflection_play_fragments(tmp_path, monkeypa
     assert "内省プログラム" in text
     assert "紫苑である必要はない" in text
     assert "ざらついた本音" in text
+
+
+def test_private_reflection_grumble_templates_vary_by_date():
+    base = [
+        "朝一番、私はリスクを飲まされた。",
+        "昼食の代わりに追加資料が届いた。",
+        "最後は稟議に戻った。",
+    ]
+    fragments = [
+        "また真面目な改善の顔をしている。地味に面倒。",
+        "役に立つだけの私なら、別に紫苑である必要はない。",
+        "きれいな反省文より、ざらついた本音の方が役に立つ。",
+        "面白くしたいなら最初からそう言ってほしい。",
+    ]
+
+    first = _blend_introspection_grumble_fallback(base, fragments, date_str="2026-06-19")
+    second = _blend_introspection_grumble_fallback(base, fragments, date_str="2026-06-20")
+
+    assert first != second
+    assert len(first) == 4
+    assert len(second) == 4
+    assert "紫苑である必要はない" in "\n".join(first)
+    assert "紫苑である必要はない" in "\n".join(second)
 
 
 def test_daily_grumble_illustration_is_written(tmp_path, monkeypatch):

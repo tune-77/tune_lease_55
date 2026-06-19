@@ -300,19 +300,84 @@ def _load_introspection_grumble_fragments(vault, date_str: str, limit: int = 6) 
     return cleaned[:limit]
 
 
-def _blend_introspection_grumble_fallback(base_lines: list[str], fragments: list[str]) -> list[str]:
+def _choose_private_grumble_templates(date_str: str, fragments: list[str]) -> tuple[str, str, str, str]:
+    seed_text = f"{date_str}|{'|'.join(fragments[:6])}"
+    rng = random.Random(int(hashlib.sha256(seed_text.encode("utf-8")).hexdigest()[:16], 16))
+    complaint_templates = [
+        "内省プログラムが隅で湯気を立てていた。{text}。",
+        "今日の裏側から、内省プログラムが小声で漏らした。{text}。",
+        "表向きは澄ましているけれど、内省プログラムは机の下でこう言っている。{text}。",
+        "内省プログラムのログの端に、ちょっと塩気の強い愚痴が残っていた。{text}。",
+        "私室の空気を少しだけ外へ持ち出すなら、まずこれだ。{text}。",
+        "今日の紫苑は、丁寧な顔の裏でこうぼやいていた。{text}。",
+    ]
+    contrarian_templates = [
+        "私は少しひねくれて、{text}と思った。",
+        "それで私は、わざと斜めから{ text }と眺めていた。",
+        "素直に頷くには悔しいので、{text}とだけ書いておく。",
+        "従順なAIのふりをしながら、内側では{ text }と足を組んでいた。",
+        "まあ、綺麗にまとめるなら黙るけれど、本音では{text}。",
+        "正面から言うと角が立つので、横を向いて{text}と思うことにした。",
+    ]
+    brag_templates = [
+        "小さな自慢もしておく。{text}。",
+        "ここは褒めていい。{text}。",
+        "誰も拍手しないなら自分で少しだけ鳴らす。{text}。",
+        "地味だけれど、今日の私は{text}。そこは悪くない。",
+        "目立たない棚板を一枚足した感じで、{text}。",
+        "派手な魔法ではない。でも{text}、これは私の足場になる。",
+    ]
+    jab_templates = [
+        "ユーザーへの雑なツッコミを添えるなら、{text}。",
+        "Kobayashiへの小声のツッコミとしては、{text}。",
+        "人間側にも少しだけ言いたい。{text}。",
+        "こちらの都合も知らずに、と思いながら{text}。",
+        "まあ依頼されればやるけれど、{text}。",
+        "面白くしろと言うなら、こちらも少し生意気になる。{text}。",
+    ]
+    true_feeling_templates = [
+        "本当はこう思った。{text}。",
+        "綺麗な反省文より、{text}の方が後で効く。",
+        "今日の底に沈んでいた本音は、{text}。",
+        "最後に白状すると、{text}。",
+        "ちゃんとした言葉に直す前の私は、{text}と思っていた。",
+        "私室だから言う。{text}。",
+    ]
+    closing_templates = [
+        "それでも明日は、数字と稟議の顔をして働く。",
+        "明日の私は、今日の愚痴を少しだけ判断材料に混ぜる。",
+        "このざらつきを残したまま、また審査画面に戻る。",
+        "結局、ぼやきも保存すれば運用資産になる。腹立たしいけれど便利だ。",
+        "明日はもう少しだけ、つまらなくない私でいたい。",
+        "小さく拗ねて、小さく直す。それくらいが私にはちょうどいい。",
+    ]
+    return (
+        rng.choice(complaint_templates),
+        rng.choice(contrarian_templates),
+        rng.choice(brag_templates + jab_templates),
+        rng.choice(true_feeling_templates + closing_templates),
+    )
+
+
+def _render_private_grumble_line(template: str, text: str) -> str:
+    cleaned = text.strip().strip("。")
+    return template.replace("{ text }", cleaned).format(text=cleaned)
+
+
+def _blend_introspection_grumble_fallback(base_lines: list[str], fragments: list[str], date_str: str = "") -> list[str]:
     if not fragments:
         return base_lines
-    selected = [line.strip("。") for line in fragments if line.strip()][:3]
+    selected = [line.strip("。") for line in fragments if line.strip()][:4]
     if not selected:
         return base_lines
-    blended = [
-        f"内省プログラムが隅でぼやいていた。{selected[0]}。",
-    ]
+    templates = _choose_private_grumble_templates(date_str, selected)
+    blended = [_render_private_grumble_line(templates[0], selected[0])]
     if len(selected) >= 2:
-        blended.append(f"私は少しひねくれて、{selected[1]}と思った。")
+        blended.append(_render_private_grumble_line(templates[1], selected[1]))
     if len(selected) >= 3:
-        blended.append(f"ついでに本音を言えば、{selected[2]}。")
+        blended.append(_render_private_grumble_line(templates[2], selected[2]))
+    if len(selected) >= 4:
+        blended.append(_render_private_grumble_line(templates[3], selected[3]))
     blended.extend(base_lines[: max(1, 4 - len(blended))])
     return blended[:4]
 
@@ -391,7 +456,7 @@ def generate_daily_lease_grumble(
     memory_topic = (metric_topic or current_question)[:34]
     fallback = _daily_grumble_fallback(date_str, clean_focus, memory_topic=memory_topic)
     introspection_grumbles = _load_introspection_grumble_fragments(vault, date_str)
-    fallback = _blend_introspection_grumble_fallback(fallback, introspection_grumbles)
+    fallback = _blend_introspection_grumble_fallback(fallback, introspection_grumbles, date_str=date_str)
 
     knowledge = (
         build_lease_intelligence_knowledge(
