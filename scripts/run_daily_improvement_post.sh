@@ -30,5 +30,5 @@ echo "[補助] 週次セルフマネジメントサマリ（月曜のみ）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/weekly_self_management.py" || true
 
 echo ""
-echo "[内省] 紫苑の日次私的内省を生成（当日対話 → Private Reflection）..."
+echo "[内省] 紫苑の日次私的内省を生成（当日対話/内省材料 → Private Reflection）..."
 "${PYTHON}" "${PROJECT_ROOT}/lease_intelligence_reflection.py" || true
