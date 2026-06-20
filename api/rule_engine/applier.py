@@ -160,6 +160,69 @@ def _collect_diffs(a: Any, b: Any, out: list, path: str) -> None:
 _VALID_SCORING_TARGETS = {"ASSET_WEIGHT", "CATEGORY_SCORE_ITEMS"}
 
 
+def _validate_scoring_weight_match(target: str, match: dict) -> "str | None":
+    """
+    match の category / param / item_id を category_config.py の実データと照合する。
+    問題なければ None、エラーがあればエラーメッセージ文字列を返す。
+
+    category_config.py はプロジェクトルートに置かれているため、
+    sys.path に _PROJECT_ROOT を追加して遅延 import する。
+    """
+    import sys
+
+    root_str = str(_PROJECT_ROOT)
+    if root_str not in sys.path:
+        sys.path.insert(0, root_str)
+
+    try:
+        from category_config import ASSET_WEIGHT, CATEGORY_SCORE_ITEMS  # type: ignore[import]
+    except ImportError as exc:
+        return f"category_config のインポートに失敗しました: {exc}"
+
+    cat = match.get("category")
+    param = match.get("param")
+    item_id = match.get("item_id")
+
+    if target == "ASSET_WEIGHT":
+        valid_cats = sorted(ASSET_WEIGHT.keys())
+        if cat not in ASSET_WEIGHT:
+            return (
+                f"カテゴリ '{cat}' が ASSET_WEIGHT に存在しません。"
+                f"有効カテゴリ: {valid_cats}"
+            )
+        if param is not None and param not in ASSET_WEIGHT[cat]:
+            valid_params = sorted(ASSET_WEIGHT[cat].keys())
+            return (
+                f"パラメータ '{param}' がカテゴリ '{cat}' の ASSET_WEIGHT に存在しません。"
+                f"有効パラメータ: {valid_params}"
+            )
+
+    elif target == "CATEGORY_SCORE_ITEMS":
+        valid_cats = sorted(CATEGORY_SCORE_ITEMS.keys())
+        if cat not in CATEGORY_SCORE_ITEMS:
+            return (
+                f"カテゴリ '{cat}' が CATEGORY_SCORE_ITEMS に存在しません。"
+                f"有効カテゴリ: {valid_cats}"
+            )
+        items = CATEGORY_SCORE_ITEMS[cat]
+        valid_ids = [item["id"] for item in items]
+        if item_id is not None and item_id not in valid_ids:
+            return (
+                f"item_id '{item_id}' がカテゴリ '{cat}' に存在しません。"
+                f"有効 item_id: {valid_ids}"
+            )
+        if item_id is not None and param is not None:
+            matched_item = next((i for i in items if i["id"] == item_id), None)
+            if matched_item and param not in matched_item:
+                valid_params = sorted(matched_item.keys())
+                return (
+                    f"パラメータ '{param}' が item_id '{item_id}' に存在しません。"
+                    f"有効パラメータ: {valid_params}"
+                )
+
+    return None
+
+
 def _apply_scoring_weight(rule: ImprovementRule) -> ApplyResult:
     """
     api/scoring_weights.json にスコアリング重みを upsert し、
@@ -191,6 +254,11 @@ def _apply_scoring_weight(rule: ImprovementRule) -> ApplyResult:
         )
     if "value" not in rule.patch:
         return ApplyResult(rule.rev_id, False, "patch に 'value' キーが必要です")
+
+    # category_config.py の実データと照合してタイポを早期検出する
+    validation_error = _validate_scoring_weight_match(target, rule.match)
+    if validation_error:
+        return ApplyResult(rule.rev_id, False, validation_error)
 
     if _SCORING_WEIGHTS_PATH.exists():
         with open(_SCORING_WEIGHTS_PATH, encoding="utf-8") as f:
