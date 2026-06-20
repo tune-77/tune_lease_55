@@ -1,0 +1,22 @@
+[
+  {
+    "rev_id": "REV-100-replay",
+    "type": "patch_json",
+    "description": "ドローン耐用年数修正（5年）の再適用テスト",
+    "target": "static_data/useful_life_equipment.json",
+    "match": {"name": "測量用ドローン"},
+    "patch": {"years": 5, "note": "無人航空機（国税庁通達・別表第一準用。REV-100-replay で自動適用確認済み）"},
+    "risk": "low",
+    "auto_fix_allowed": true
+  },
+  {
+    "rev_id": "REV-007-replay",
+    "type": "patch_json",
+    "description": "ブルドーザー耐用年数を6年に修正（useful_life_by_industry.json 側の確認テスト）",
+    "target": "static_data/useful_life_equipment.json",
+    "match": {"name": "ブルドーザー"},
+    "patch": {"years": 6, "note": "建機系マスターに合わせて6年に統一（REV-007-replay で自動適用確認済み）"},
+    "risk": "low",
+    "auto_fix_allowed": true
+  }
+]
