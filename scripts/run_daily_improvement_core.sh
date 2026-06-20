@@ -194,6 +194,11 @@ echo ""
 echo "[品質] 改善レポート品質スコアを計算中..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_improvement_quality.py" || true
 
+# スクリーニングレポート品質フィードバック集計
+echo ""
+echo "[品質] スクリーニングレポート品質フィードバックを集計中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_report_quality.py" || true
+
 # Wiki 昇格キュー
 echo ""
 echo "[反映] Wiki 昇格キューを生成中..."

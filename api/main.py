@@ -122,7 +122,7 @@ from api.schemas import (
     WorkLogResponse,
 )
 from pydantic import BaseModel, Field
-from typing import List, Any, Dict, Optional
+from typing import List, Any, Dict, Literal, Optional
 from scoring.deal_closure_engine import build_features, build_features_from_deltas, compute_closure_likelihood
 
 # Obsidian Vault パス（環境変数優先、未設定時は find_vault() で自動検索）
@@ -3981,24 +3981,52 @@ class ReportRequest(BaseModel):
     result_data: Dict[str, Any]
     inputs: Dict[str, Any]
 
+_REPORT_QUALITY_LOG = Path(__file__).parent.parent / "data" / "report_quality_log.jsonl"
+_report_quality_log_lock = __import__("threading").Lock()
+
+
 @app.post("/api/report/generate")
 def generate_report(req: ReportRequest):
     try:
+        import uuid as _uuid
         from report_generator import generate_full_report_from_res
-        # report_generator.py は session_stateを期待したりするので、ダミーで構築して渡す
+        report_id = str(_uuid.uuid4())
         dummy_session = {
             "rep_company": req.inputs.get("company_name", "（企業名未設定）"),
             "last_submitted_inputs": req.inputs,
             "humor_style": "standard"
         }
         res_data = req.result_data
-        
+
         report_text = generate_full_report_from_res(res_data, dummy_session)
-        return {"report_markdown": report_text}
+        return {"report_markdown": report_text, "report_id": report_id}
     except Exception as e:
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class ReportFeedbackRequest(BaseModel):
+    report_id: str
+    rating: Literal["good", "bad"]
+    surface: str = "report_viewer"
+    comment: str = ""
+
+
+@app.post("/api/report-feedback")
+def post_report_feedback(req: ReportFeedbackRequest) -> dict:
+    import datetime as _dt, json as _json
+    entry = _json.dumps({
+        "ts": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+        "report_id": req.report_id,
+        "rating": req.rating,
+        "surface": req.surface,
+        "comment": req.comment,
+    }, ensure_ascii=False) + "\n"
+    with _report_quality_log_lock:
+        with open(_REPORT_QUALITY_LOG, "a", encoding="utf-8") as f:
+            f.write(entry)
+    return {"status": "ok"}
 
 
 
