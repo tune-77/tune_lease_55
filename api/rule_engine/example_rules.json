@@ -18,5 +18,23 @@
     "patch": {"years": 6, "note": "建機系マスターに合わせて6年に統一（REV-007-replay で自動適用確認済み）"},
     "risk": "low",
     "auto_fix_allowed": true
+  },
+  {
+    "rev_id": "REV-scoring-001",
+    "type": "scoring_weight",
+    "description": "ドローン（測量用）のリスク乗数を0.80→0.85に調整（残存価値やや高め評価）",
+    "match": {"category": "ドローン（測量用）"},
+    "patch": {"risk_multiplier": 0.85},
+    "risk": "low",
+    "auto_fix_allowed": true
+  },
+  {
+    "rev_id": "REV-ui-001",
+    "type": "ui_text",
+    "description": "高リスク案件の承認ラベルを「条件付き承認」に統一",
+    "match": {"key": "RISK_APPROVAL_LABEL"},
+    "patch": {"value": "条件付き承認"},
+    "risk": "low",
+    "auto_fix_allowed": true
   }
 ]
