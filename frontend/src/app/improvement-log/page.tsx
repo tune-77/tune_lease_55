@@ -114,6 +114,20 @@ type GapItem = {
   source_refs?: string[];
 };
 
+type LedgerRule = {
+  rev_id: string;
+  type: string;
+  pending_review: boolean;
+  description: string;
+  source?: string;
+  target?: string;
+  risk?: string;
+  auto_fix_allowed?: boolean;
+  affected_files?: string[];
+  applied_at?: string;
+  manual_reason?: string;
+};
+
 type GapAnalysis = {
   available: boolean;
   generated_at?: string;
@@ -223,7 +237,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export default function ImprovementLogPage() {
-  const [activeTab, setActiveTab] = useState<"improvements" | "recipes">("improvements");
+  const [activeTab, setActiveTab] = useState<"improvements" | "recipes" | "ledger">("improvements");
   const [data, setData] = useState<ImprovementLog | null>(null);
   const [summary, setSummary] = useState<PipelineSummary | null>(null);
   const [gapAnalysis, setGapAnalysis] = useState<GapAnalysis | null>(null);
@@ -238,6 +252,41 @@ export default function ImprovementLogPage() {
   const [dismissedRecipes, setDismissedRecipes] = useState<Set<string>>(new Set());
   const [recipeStatus, setRecipeStatus] = useState<RecipeStatus | null>(null);
   const [recipeError, setRecipeError] = useState("");
+  const [ledgerRules, setLedgerRules] = useState<LedgerRule[]>([]);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
+  const [ledgerError, setLedgerError] = useState("");
+  const [approvingRuleIds, setApprovingRuleIds] = useState<Set<string>>(new Set());
+
+  const fetchLedgerRules = useCallback(async () => {
+    setLedgerLoading(true);
+    setLedgerError("");
+    try {
+      const res = await apiClient.get<{ rules: LedgerRule[] }>("/api/rule-engine/rules");
+      setLedgerRules(res.data.rules ?? []);
+    } catch {
+      setLedgerError("台帳ルールの取得に失敗しました");
+    } finally {
+      setLedgerLoading(false);
+    }
+  }, []);
+
+  const handleApproveRule = useCallback(async (revId: string) => {
+    setApprovingRuleIds((prev) => new Set(prev).add(revId));
+    try {
+      await apiClient.patch(`/api/rule-engine/rules/${revId}/approve`);
+      setLedgerRules((prev) =>
+        prev.map((r) => (r.rev_id === revId ? { ...r, pending_review: false } : r))
+      );
+    } catch {
+      setLedgerError(`${revId} の承認に失敗しました`);
+    } finally {
+      setApprovingRuleIds((prev) => {
+        const next = new Set(prev);
+        next.delete(revId);
+        return next;
+      });
+    }
+  }, []);
 
   const fetchRecipes = useCallback(async () => {
     setRecipesLoading(true);
@@ -313,6 +362,10 @@ export default function ImprovementLogPage() {
   useEffect(() => {
     fetchRecipes();
   }, [fetchRecipes]);
+
+  useEffect(() => {
+    fetchLedgerRules();
+  }, [fetchLedgerRules]);
 
   const handleReview = useCallback(
     async (item: ImprovementItem, action: "approved" | "rejected" | "deferred") => {
@@ -430,6 +483,21 @@ export default function ImprovementLogPage() {
               </span>
             )}
           </button>
+          <button
+            onClick={() => setActiveTab("ledger")}
+            className={`flex-1 rounded-md px-4 py-2 text-sm font-semibold transition-colors ${
+              activeTab === "ledger"
+                ? "bg-slate-900 text-white"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            台帳ルール
+            {ledgerRules.filter((r) => r.pending_review).length > 0 && (
+              <span className="ml-2 inline-flex items-center justify-center rounded-full bg-indigo-500 px-1.5 text-xs font-bold text-white">
+                {ledgerRules.filter((r) => r.pending_review).length}
+              </span>
+            )}
+          </button>
         </div>
 
         {/* 自動修正案タブ */}
@@ -479,6 +547,115 @@ export default function ImprovementLogPage() {
                   onReject={() => handleRecipeAction(recipe, "reject")}
                 />
               ))
+            )}
+          </section>
+        )}
+
+        {/* 台帳ルールタブ */}
+        {activeTab === "ledger" && (
+          <section className="space-y-3">
+            <div className="rounded-lg border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                <span className="rounded-full bg-indigo-50 px-2 py-1 font-semibold text-indigo-700">
+                  承認待ち {ledgerRules.filter((r) => r.pending_review).length}
+                </span>
+                <span className="rounded-full bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">
+                  承認済み {ledgerRules.filter((r) => !r.pending_review).length}
+                </span>
+                <span className="rounded-full bg-slate-100 px-2 py-1 font-semibold text-slate-600">
+                  合計 {ledgerRules.length}
+                </span>
+              </div>
+              <p className="mt-2 text-xs text-slate-500">
+                承認すると batch_apply の自動適用対象になります。pending_review が true のルールはスキップされます。
+              </p>
+              {ledgerError && (
+                <p className="mt-2 text-xs font-semibold text-rose-600">{ledgerError}</p>
+              )}
+            </div>
+            {ledgerLoading ? (
+              <div className="rounded-lg border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
+                読み込み中...
+              </div>
+            ) : ledgerRules.length === 0 ? (
+              <div className="rounded-lg border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
+                台帳ルールがありません
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[900px] text-sm">
+                    <thead className="bg-slate-100 text-left text-xs text-slate-500">
+                      <tr>
+                        <th className="px-4 py-3">REV-ID</th>
+                        <th className="px-4 py-3">種別</th>
+                        <th className="px-4 py-3">説明</th>
+                        <th className="px-4 py-3">リスク</th>
+                        <th className="px-4 py-3">状態</th>
+                        <th className="px-4 py-3">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {ledgerRules.map((rule) => {
+                        const isApproving = approvingRuleIds.has(rule.rev_id);
+                        const riskClass =
+                          rule.risk === "high"
+                            ? "bg-rose-100 text-rose-700"
+                            : rule.risk === "medium"
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-emerald-100 text-emerald-700";
+                        return (
+                          <tr key={rule.rev_id} className="align-top hover:bg-slate-50">
+                            <td className="px-4 py-3 font-mono text-xs font-bold text-slate-600">
+                              {rule.rev_id}
+                            </td>
+                            <td className="px-4 py-3 text-xs text-slate-500">{rule.type}</td>
+                            <td className="px-4 py-3">
+                              <div className="text-sm text-slate-800">{rule.description}</div>
+                              {rule.applied_at && (
+                                <div className="mt-0.5 text-[11px] text-slate-400">
+                                  適用済: {rule.applied_at}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              {rule.risk && (
+                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${riskClass}`}>
+                                  {rule.risk}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              {rule.pending_review ? (
+                                <span className="inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700">
+                                  承認待ち
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
+                                  ✅ 承認済み
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              {rule.pending_review ? (
+                                <button
+                                  onClick={() => handleApproveRule(rule.rev_id)}
+                                  disabled={isApproving}
+                                  className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  {isApproving ? "処理中..." : "承認する"}
+                                </button>
+                              ) : (
+                                <span className="text-xs text-slate-300">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             )}
           </section>
         )}

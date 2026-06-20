@@ -85,6 +85,10 @@ if [ -f "${RESULT_FILE}" ]; then
 fi
 
 echo ""
+echo "[反映] batch_apply — 台帳ルールを自動適用中..."
+"${PYTHON}" "${PROJECT_ROOT}/api/rule_engine/batch_apply.py" --apply || true
+
+echo ""
 echo "[反映] 再帰的自己改善レポートを生成中..."
 RECURSIVE_JSON_FILE="${PROJECT_ROOT}/reports/recursive_self_improvement_${LOG_DATE}.json"
 RECURSIVE_MD_FILE="${PROJECT_ROOT}/reports/recursive_self_improvement_${LOG_DATE}.md"
