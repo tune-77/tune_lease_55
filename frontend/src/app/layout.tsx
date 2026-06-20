@@ -3,7 +3,6 @@ import type { Metadata, Viewport } from 'next';
 import Sidebar from '@/components/layout/Sidebar';
 import FloatingMebuki from '@/components/layout/FloatingMebuki';
 import MobileHeader from '@/components/layout/MobileHeader';
-import ServiceWorkerCleanup from '@/components/layout/ServiceWorkerCleanup';
 import { SidebarProvider } from '@/context/SidebarContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import ContentWrapper from '@/components/layout/ContentWrapper';
@@ -35,7 +34,6 @@ export default function RootLayout({
   return (
     <html lang="ja" suppressHydrationWarning>
       <body className="text-slate-800 antialiased">
-        <ServiceWorkerCleanup />
         <ThemeProvider>
           <SidebarProvider>
             <div className="flex min-h-screen relative overflow-x-hidden">
