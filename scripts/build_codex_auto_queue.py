@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any
 
 
+LEDGER_RULES_PATH = "api/rule_engine/ledger_rules.json"
+
 BLOCKED_KEYWORDS = [
     "db",
     "api連携",
@@ -47,6 +49,46 @@ EXECUTION_STATUS_FILE = "codex_auto_execution_status.json"
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
+
+
+def _batch_applied_targets_today(root: Path) -> frozenset[str]:
+    """今日 batch_apply が適用したルールの target ファイルパス・basename の集合を返す。
+
+    ledger_rules.json の applied_at フィールド（UTC タイムスタンプ）が
+    今日の日付で始まるルールを対象とする。
+    batch_apply.py は専用ログを出力しないため、ledger_rules.json を唯一の記録源とする。
+    """
+    ledger_path = root / LEDGER_RULES_PATH
+    if not ledger_path.exists():
+        return frozenset()
+    try:
+        rules: list[dict[str, Any]] = json.loads(ledger_path.read_text(encoding="utf-8"))
+    except Exception:
+        return frozenset()
+    today = dt.date.today().isoformat()  # "YYYY-MM-DD"
+    targets: set[str] = set()
+    for rule in rules:
+        applied_at = str(rule.get("applied_at") or "")
+        if not applied_at.startswith(today):
+            continue
+        target = str(rule.get("target") or "").strip()
+        if target:
+            targets.add(target)           # 相対パス全体 (例: api/routers/ocr.py)
+            targets.add(Path(target).name)  # ファイル名のみ (例: ocr.py)
+    return frozenset(targets)
+
+
+def is_batch_apply_touched(
+    item: dict[str, Any], applied_targets: frozenset[str]
+) -> tuple[bool, str]:
+    """今日の batch_apply が触れたファイルに関係する REV かどうかを判定する。"""
+    if not applied_targets:
+        return False, ""
+    text = item_text(item)
+    for target in sorted(applied_targets):  # ソートで決定的な出力
+        if target.lower() in text:
+            return True, f"batch_apply 適用済みファイル: {target}"
+    return False, ""
 
 
 def latest_report_path(root: Path) -> Path:
@@ -157,13 +199,19 @@ def queue_item(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build_queue(report: dict[str, Any], limit: int, execution_status: dict[str, Any] | None = None) -> dict[str, Any]:
+def build_queue(
+    report: dict[str, Any],
+    limit: int,
+    execution_status: dict[str, Any] | None = None,
+    batch_applied_targets: frozenset[str] = frozenset(),
+) -> dict[str, Any]:
     needs_review = [item for item in report.get("needs_review") or [] if isinstance(item, dict)]
     quota_blocked = quota_blocked_items(execution_status or {})
     safe: list[dict[str, Any]] = []
     maybe: list[dict[str, Any]] = []
     blocked: list[dict[str, Any]] = []
     quota_hold: list[dict[str, Any]] = []
+    batch_apply_blocked: list[dict[str, Any]] = []
 
     for index, item in enumerate(needs_review):
         item["_source_index"] = index
@@ -177,6 +225,13 @@ def build_queue(report: dict[str, Any], limit: int, execution_status: dict[str, 
                     "last_attempted_at": quota_blocked[rev_id].get("updated_at", ""),
                     "detail": quota_blocked[rev_id].get("detail", ""),
                 }
+            )
+            continue
+        # batch_apply が今日触れたファイルを扱う REV はキューに乗せない（二重適用防止）
+        touched, touch_reason = is_batch_apply_touched(item, batch_applied_targets)
+        if touched:
+            batch_apply_blocked.append(
+                {"id": item.get("id"), "title": item.get("title"), "reason": touch_reason}
             )
             continue
         is_manual, reason = is_blocked(item)
@@ -199,12 +254,14 @@ def build_queue(report: dict[str, Any], limit: int, execution_status: dict[str, 
         "codex_auto_maybe_count": len(maybe),
         "manual_or_blocked_count": len(blocked),
         "blocked_by_quota_count": len(quota_hold),
+        "batch_apply_blocked_count": len(batch_apply_blocked),
         "queued_count": len(queued),
         "status": "READY" if queued else "EMPTY",
         "items": [queue_item(item) for item in queued],
         "skipped_safe_ids": [item.get("id") for item in safe_sorted[limit:]],
         "blocked_by_quota": quota_hold,
         "manual_or_blocked": blocked,
+        "batch_apply_blocked": batch_apply_blocked,
     }
 
 
@@ -221,6 +278,7 @@ def update_latest(latest_path: Path, queue_path: Path, queue: dict[str, Any]) ->
         "maybe_count": queue.get("codex_auto_maybe_count", 0),
         "manual_or_blocked_count": queue.get("manual_or_blocked_count", 0),
         "blocked_by_quota_count": queue.get("blocked_by_quota_count", 0),
+        "batch_apply_blocked_count": queue.get("batch_apply_blocked_count", 0),
         "limit": queue.get("limit"),
         "generated_at": queue.get("generated_at"),
     }
@@ -246,7 +304,14 @@ def main() -> None:
     report_date = str(report.get("date") or dt.date.today().isoformat()).replace("-", "")
     output_path = args.output or root / "reports" / f"codex_auto_queue_{report_date}.json"
 
-    queue = build_queue(report, max(0, args.limit), execution_status)
+    batch_applied_targets = _batch_applied_targets_today(root)
+    if batch_applied_targets:
+        print(
+            f"[build_codex_auto_queue] batch_apply guard: {len(batch_applied_targets)} target(s) today → "
+            + ", ".join(sorted(batch_applied_targets)[:5])
+        )
+
+    queue = build_queue(report, max(0, args.limit), execution_status, batch_applied_targets)
     queue["source_report"] = str(report_path)
     queue["execution_status_file"] = str(args.status_file)
 
