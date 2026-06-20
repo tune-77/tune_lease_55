@@ -1,8 +1,8 @@
 """
 改善ルールアプライヤー。
 
-完全実装: patch_json, scoring_weight, ui_text, add_api_field, endpoint_add
-スタブ:    config_value, llm_diff
+完全実装: patch_json, scoring_weight, ui_text, add_api_field, endpoint_add,
+          config_value, llm_diff
 """
 
 from __future__ import annotations
@@ -38,8 +38,8 @@ def apply_rule(rule: dict) -> ApplyResult:
         "ui_text":         _apply_ui_text,
         "scoring_weight":  _apply_scoring_weight,
         "endpoint_add":    _apply_endpoint_add,
-        "config_value":    _stub("config_value"),
-        "llm_diff":        _stub("llm_diff"),
+        "config_value":    _apply_config_value,
+        "llm_diff":        _apply_llm_diff,
     }
     handler = dispatch.get(r.type)
     if handler is None:
@@ -527,12 +527,259 @@ def _apply_endpoint_add(rule: ImprovementRule) -> ApplyResult:
 
 
 # ---------------------------------------------------------------------------
-# Stubs
+# config_value — 設定ファイルの定数値を書き換え
 # ---------------------------------------------------------------------------
 
-def _stub(type_name: str):
-    def _handler(rule: ImprovementRule) -> ApplyResult:
-        raise NotImplementedError(
-            f"rule type '{type_name}' はまだ実装されていません（REV-103 PoC スコープ外）"
+_PROTECTED_TARGETS_RE = re.compile(r"^lease_intelligence_.*\.py$|^mind\.json$")
+
+
+def _apply_config_value(rule: ImprovementRule) -> ApplyResult:
+    """
+    設定ファイル（.py / .env / .toml）内の定数を書き換える。
+
+    match.key  : 変更対象のキー名（必須）
+    patch.value: 書き込む新しい値（必須、数値・文字列・bool に対応）
+    """
+    if not rule.target:
+        return ApplyResult(rule.rev_id, False, "target が未指定です")
+    if not rule.match:
+        return ApplyResult(rule.rev_id, False, "match が未指定です")
+    if not rule.patch:
+        return ApplyResult(rule.rev_id, False, "patch が未指定です")
+
+    key = rule.match.get("key", "")
+    if not key:
+        return ApplyResult(rule.rev_id, False, "match.key が未指定です")
+    if "value" not in rule.patch:
+        return ApplyResult(rule.rev_id, False, "patch に 'value' キーが必要です")
+
+    new_value = rule.patch["value"]
+    target_path = _PROJECT_ROOT / rule.target
+
+    if not target_path.exists():
+        return ApplyResult(rule.rev_id, False, f"ファイルが存在しません: {target_path}")
+
+    suffix = target_path.suffix.lower()
+    if suffix == ".py":
+        return _config_value_py(rule.rev_id, target_path, key, new_value, rule.target)
+    elif suffix == ".env":
+        return _config_value_env(rule.rev_id, target_path, key, new_value, rule.target)
+    elif suffix in (".toml", ".ini", ".cfg"):
+        return _config_value_toml(rule.rev_id, target_path, key, new_value, rule.target)
+    else:
+        return ApplyResult(
+            rule.rev_id, False,
+            f"未対応の拡張子です: {suffix!r}。対応: .py / .env / .toml / .ini / .cfg",
         )
-    return _handler
+
+
+def _config_value_py(
+    rev_id: str, path: Path, key: str, new_value: Any, label: str
+) -> ApplyResult:
+    source = path.read_text(encoding="utf-8")
+    # KEY = value  [# optional comment]
+    # 非貪欲な value グループで末尾スペースをコメントグループに渡す
+    pattern = re.compile(
+        r"^(" + re.escape(key) + r"\s*=\s*)([^#\n]*?)(\s*#[^\n]*)?$",
+        re.MULTILINE,
+    )
+    m = pattern.search(source)
+    if not m:
+        return ApplyResult(rev_id, False, f"キー '{key}' が {label} に見つかりません")
+
+    old_raw = m.group(2).strip()
+    comment_part = m.group(3) or ""
+
+    if isinstance(new_value, bool):
+        new_raw = "True" if new_value else "False"
+    elif isinstance(new_value, str):
+        if old_raw.startswith('"'):
+            new_raw = f'"{new_value}"'
+        elif old_raw.startswith("'"):
+            new_raw = f"'{new_value}'"
+        else:
+            new_raw = f'"{new_value}"'
+    else:
+        new_raw = str(new_value)
+
+    if old_raw == new_raw:
+        return ApplyResult(rev_id, True, f"{key}: 既に {new_raw} です（冪等スキップ）")
+
+    new_source = pattern.sub(lambda mo: mo.group(1) + new_raw + comment_part, source, count=1)
+    path.write_text(new_source, encoding="utf-8")
+
+    return ApplyResult(
+        rev_id=rev_id,
+        success=True,
+        message=f"{key}: {old_raw} → {new_raw}",
+        changed_file=label,
+        diff_summary=f"--- {label}\n  {key}: {old_raw} → {new_raw}",
+    )
+
+
+def _config_value_env(
+    rev_id: str, path: Path, key: str, new_value: Any, label: str
+) -> ApplyResult:
+    source = path.read_text(encoding="utf-8")
+    pattern = re.compile(
+        r"^(" + re.escape(key) + r"=)(.*)$",
+        re.MULTILINE,
+    )
+    m = pattern.search(source)
+    if not m:
+        return ApplyResult(rev_id, False, f"キー '{key}' が {label} に見つかりません")
+
+    old_raw = m.group(2)
+    new_raw = str(new_value)
+
+    if old_raw == new_raw:
+        return ApplyResult(rev_id, True, f"{key}: 既に {new_raw!r} です（冪等スキップ）")
+
+    new_source = pattern.sub(lambda mo: mo.group(1) + new_raw, source, count=1)
+    path.write_text(new_source, encoding="utf-8")
+
+    return ApplyResult(
+        rev_id=rev_id,
+        success=True,
+        message=f"{key}: {old_raw!r} → {new_raw!r}",
+        changed_file=label,
+        diff_summary=f"--- {label}\n  {key}: {old_raw!r} → {new_raw!r}",
+    )
+
+
+def _config_value_toml(
+    rev_id: str, path: Path, key: str, new_value: Any, label: str
+) -> ApplyResult:
+    """TOML ファイルのリーフキーを正規表現で置換。コメント・フォーマットを保持する。"""
+    source = path.read_text(encoding="utf-8")
+    leaf_key = key.split(".")[-1]
+    pattern = re.compile(
+        r"^(" + re.escape(leaf_key) + r"\s*=\s*)([^\n]*?)(\s*#[^\n]*)?$",
+        re.MULTILINE,
+    )
+    m = pattern.search(source)
+    if not m:
+        return ApplyResult(rev_id, False, f"キー '{key}' が {label} に見つかりません")
+
+    old_raw = m.group(2).strip()
+    comment_part = m.group(3) or ""
+
+    if isinstance(new_value, bool):
+        new_raw = "true" if new_value else "false"
+    elif isinstance(new_value, str):
+        new_raw = f'"{new_value}"'
+    else:
+        new_raw = str(new_value)
+
+    if old_raw == new_raw:
+        return ApplyResult(rev_id, True, f"{key}: 既に {new_raw} です（冪等スキップ）")
+
+    new_source = pattern.sub(lambda mo: mo.group(1) + new_raw + comment_part, source, count=1)
+    path.write_text(new_source, encoding="utf-8")
+
+    return ApplyResult(
+        rev_id=rev_id,
+        success=True,
+        message=f"{key}: {old_raw} → {new_raw}",
+        changed_file=label,
+        diff_summary=f"--- {label}\n  {key}: {old_raw} → {new_raw}",
+    )
+
+
+# ---------------------------------------------------------------------------
+# llm_diff — LLM（Gemini）経由でコード変更を生成・適用
+# ---------------------------------------------------------------------------
+
+def _apply_llm_diff(rule: ImprovementRule) -> ApplyResult:
+    """
+    自然言語指示を Gemini に渡してコード変更を生成・適用するフォールバックアプライヤー。
+    他のタイプで表現しきれない複雑な変更に使う。
+
+    patch.instruction: 変更内容を記述した自然言語指示（必須）
+    """
+    if not rule.target:
+        return ApplyResult(rule.rev_id, False, "target が未指定です")
+    if not rule.patch:
+        return ApplyResult(rule.rev_id, False, "patch が未指定です")
+
+    instruction = rule.patch.get("instruction", "")
+    if not instruction or not instruction.strip():
+        return ApplyResult(rule.rev_id, False, "patch.instruction が空です")
+
+    # 保護ファイルチェック: lease_intelligence_*.py / mind.json への自動変更を禁止
+    target_basename = Path(rule.target).name
+    if _PROTECTED_TARGETS_RE.match(target_basename):
+        return ApplyResult(
+            rule.rev_id, False,
+            f"保護ファイル '{rule.target}' への llm_diff 適用は禁止です（紫苑確認フロー外）",
+        )
+
+    target_path = _PROJECT_ROOT / rule.target
+    if not target_path.exists():
+        return ApplyResult(rule.rev_id, False, f"ファイルが存在しません: {target_path}")
+
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    if not api_key:
+        return ApplyResult(rule.rev_id, False, "GEMINI_API_KEY が設定されていません")
+
+    current_content = target_path.read_text(encoding="utf-8")
+    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{model}:generateContent"
+    )
+    headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
+
+    payload = {
+        "system_instruction": {
+            "parts": [{
+                "text": (
+                    "あなたはPythonコード編集アシスタントです。"
+                    "指示に従ってコードを編集し、編集後のファイル全体を返してください。"
+                    "説明は不要です。コードのみ返してください。"
+                )
+            }]
+        },
+        "contents": [{
+            "role": "user",
+            "parts": [{
+                "text": (
+                    f"{instruction}\n\n"
+                    f"---\n# 対象ファイル: {rule.target}\n\n"
+                    f"```python\n{current_content}\n```"
+                )
+            }]
+        }],
+        "generationConfig": {"temperature": 0.1},
+    }
+
+    try:
+        import httpx as _httpx
+        resp = _httpx.post(url, json=payload, headers=headers, timeout=120.0)
+        resp.raise_for_status()
+        result = resp.json()
+    except Exception as e:
+        return ApplyResult(rule.rev_id, False, f"Gemini API 呼び出しに失敗しました: {e}")
+
+    try:
+        generated_text = result["candidates"][0]["content"]["parts"][0]["text"]
+    except (KeyError, IndexError, TypeError) as e:
+        return ApplyResult(rule.rev_id, False, f"Gemini レスポンスのパースに失敗しました: {e}")
+
+    # コードブロック（```python ... ``` または ``` ... ```）を抽出
+    code_block_re = re.compile(r"```(?:python)?\n(.*?)```", re.DOTALL)
+    code_m = code_block_re.search(generated_text)
+    new_content = code_m.group(1) if code_m else generated_text.strip()
+
+    if not new_content:
+        return ApplyResult(rule.rev_id, False, "Gemini レスポンスからコードを抽出できませんでした")
+
+    target_path.write_text(new_content, encoding="utf-8")
+
+    return ApplyResult(
+        rev_id=rule.rev_id,
+        success=True,
+        message=f"llm_diff applied via Gemini: {rule.target}",
+        changed_file=rule.target,
+        diff_summary=f"llm_diff: {rule.target} を Gemini 経由で変更しました",
+    )
