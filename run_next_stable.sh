@@ -340,8 +340,9 @@ if frontend_build_needed; then
   echo "Build log: $BUILD_LOG"
   # standalone モード用: static と public を standalone/ 以下にコピー
   if [ -d "frontend/.next/standalone" ]; then
-    cp -r frontend/.next/static frontend/.next/standalone/.next/static 2>/dev/null || true
-    cp -r frontend/public frontend/.next/standalone/public 2>/dev/null || true
+    mkdir -p frontend/.next/standalone/.next/static frontend/.next/standalone/public
+    rsync -a --delete frontend/.next/static/ frontend/.next/standalone/.next/static/ 2>/dev/null || true
+    rsync -a --delete frontend/public/ frontend/.next/standalone/public/ 2>/dev/null || true
     echo "Copied static assets to standalone directory."
   fi
 else
