@@ -75,5 +75,26 @@
     },
     "risk": "low",
     "auto_fix_allowed": true
+  },
+  {
+    "rev_id": "REV-014-replay",
+    "type": "config_value",
+    "description": "スコア承認ラインを 71 → 70 に変更（審査方針変更テスト）",
+    "target": "constants.py",
+    "match": {"key": "APPROVAL_LINE"},
+    "patch": {"value": 70},
+    "risk": "medium",
+    "auto_fix_allowed": false
+  },
+  {
+    "rev_id": "REV-llm-001",
+    "type": "llm_diff",
+    "description": "日時プロンプトブロックに曜日英語略称を追加（形式確認用サンプル・未適用）",
+    "target": "api/context/time_context.py",
+    "patch": {
+      "instruction": "current_datetime_prompt_block 関数の出力末尾に曜日の英語略称（Mon/Tue/Wed/Thu/Fri/Sat/Sun）を追加してください。例: '(JST, 2026-06-20, 土曜日, Sat)' の形式にしてください。既存のロジックを壊さないよう注意してください。"
+    },
+    "risk": "low",
+    "auto_fix_allowed": false
   }
 ]
