@@ -150,7 +150,7 @@ def main() -> None:
 
     gemini_api_key = _get_gemini_api_key(root)
     if gemini_api_key:
-        print("[execute_codex_queue] Gemini fallback: enabled (gemini-2.0-flash)")
+        print("[execute_codex_queue] Gemini fallback: enabled (gemini-2.5-flash)")
     else:
         print("[execute_codex_queue] Gemini fallback: disabled (GEMINI_API_KEY not set)")
 
