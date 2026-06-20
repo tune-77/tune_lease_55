@@ -1,8 +1,8 @@
 """
 改善ルールアプライヤー。
 
-完全実装: patch_json
-スタブ:    add_api_field, ui_text, scoring_weight, endpoint_add, config_value, llm_diff
+完全実装: patch_json, scoring_weight, ui_text
+スタブ:    add_api_field, endpoint_add, config_value, llm_diff
 """
 
 from __future__ import annotations
@@ -18,6 +18,11 @@ from .schema import ApplyResult, ImprovementRule
 # プロジェクトルート = このファイルの 3 階層上
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 
+# scoring_weight の保存先
+_SCORING_WEIGHTS_PATH = _PROJECT_ROOT / "api" / "scoring_weights.json"
+# ui_text の保存先
+_UI_LABELS_PATH = _PROJECT_ROOT / "frontend" / "src" / "lib" / "ui_labels.json"
+
 
 # ---------------------------------------------------------------------------
 # Public entry point
@@ -29,8 +34,8 @@ def apply_rule(rule: dict) -> ApplyResult:
     dispatch = {
         "patch_json":      _apply_patch_json,
         "add_api_field":   _stub("add_api_field"),
-        "ui_text":         _stub("ui_text"),
-        "scoring_weight":  _stub("scoring_weight"),
+        "ui_text":         _apply_ui_text,
+        "scoring_weight":  _apply_scoring_weight,
         "endpoint_add":    _stub("endpoint_add"),
         "config_value":    _stub("config_value"),
         "llm_diff":        _stub("llm_diff"),
@@ -146,6 +151,115 @@ def _collect_diffs(a: Any, b: Any, out: list, path: str) -> None:
             _collect_diffs(ai, bi, out, f"{path}[{i}]")
     else:
         out.append(f"  {path}: {a!r} → {b!r}")
+
+
+# ---------------------------------------------------------------------------
+# scoring_weight — JSON ファイルへのスコアリング重み upsert
+# ---------------------------------------------------------------------------
+
+def _apply_scoring_weight(rule: ImprovementRule) -> ApplyResult:
+    """
+    api/scoring_weights.json にスコアリング重みを upsert する。
+
+    - match 条件に合うエントリがあれば patch で上書き
+    - なければ match + patch を合わせた新規エントリを追加
+    - ファイルが存在しない場合は空リストで新規作成
+    """
+    if not rule.patch:
+        return ApplyResult(rule.rev_id, False, "patch が未指定です")
+
+    if _SCORING_WEIGHTS_PATH.exists():
+        with open(_SCORING_WEIGHTS_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+    else:
+        data = []
+
+    original = copy.deepcopy(data)
+
+    matched_idx: int | None = None
+    if rule.match:
+        for i, entry in enumerate(data):
+            if isinstance(entry, dict) and _dict_matches(entry, rule.match):
+                matched_idx = i
+                break
+
+    if matched_idx is not None:
+        for k, v in rule.patch.items():
+            data[matched_idx][k] = v
+        action = "更新"
+    else:
+        new_entry: dict = dict(rule.match or {})
+        new_entry.update(rule.patch)
+        data.append(new_entry)
+        action = "新規追加"
+
+    with open(_SCORING_WEIGHTS_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+
+    diff = _build_diff_summary(original, data, "api/scoring_weights.json")
+    return ApplyResult(
+        rev_id=rule.rev_id,
+        success=True,
+        message=f"scoring_weights.json に 1 件を{action}しました",
+        changed_file="api/scoring_weights.json",
+        diff_summary=diff,
+    )
+
+
+# ---------------------------------------------------------------------------
+# ui_text — JSON ファイルへの UI ラベル upsert
+# ---------------------------------------------------------------------------
+
+def _apply_ui_text(rule: ImprovementRule) -> ApplyResult:
+    """
+    frontend/src/lib/ui_labels.json に UI テキスト・ラベルを upsert する。
+
+    - match 条件に合うエントリがあれば patch で上書き
+    - なければ match + patch を合わせた新規エントリを追加
+    - ファイルが存在しない場合は空リストで新規作成
+    """
+    if not rule.patch:
+        return ApplyResult(rule.rev_id, False, "patch が未指定です")
+
+    if _UI_LABELS_PATH.exists():
+        with open(_UI_LABELS_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+    else:
+        _UI_LABELS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        data = []
+
+    original = copy.deepcopy(data)
+
+    matched_idx: int | None = None
+    if rule.match:
+        for i, entry in enumerate(data):
+            if isinstance(entry, dict) and _dict_matches(entry, rule.match):
+                matched_idx = i
+                break
+
+    if matched_idx is not None:
+        for k, v in rule.patch.items():
+            data[matched_idx][k] = v
+        action = "更新"
+    else:
+        new_entry = dict(rule.match or {})
+        new_entry.update(rule.patch)
+        data.append(new_entry)
+        action = "新規追加"
+
+    with open(_UI_LABELS_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+
+    diff = _build_diff_summary(original, data, "frontend/src/lib/ui_labels.json")
+    return ApplyResult(
+        rev_id=rule.rev_id,
+        success=True,
+        message=f"ui_labels.json に 1 件を{action}しました",
+        changed_file="frontend/src/lib/ui_labels.json",
+        diff_summary=diff,
+    )
 
 
 # ---------------------------------------------------------------------------
