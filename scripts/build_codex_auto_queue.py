@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +50,38 @@ EXECUTION_STATUS_FILE = "codex_auto_execution_status.json"
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
+
+
+def _load_dynamic_blocked_keywords(root: Path, days: int = 7) -> list[str]:
+    """直近 days 日の codex_queue_result_*.json から3回以上失敗したアイテムのタイトルキーワードを返す."""
+    cutoff = (dt.date.today() - dt.timedelta(days=days)).strftime("%Y%m%d")
+    fail_counts: dict[str, int] = {}
+    for path in sorted((root / "reports").glob("codex_queue_result_*.json")):
+        m = re.search(r"codex_queue_result_(\d{8})", path.name)
+        if m and m.group(1) < cutoff:
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        for item in data.get("results") or []:
+            if not isinstance(item, dict):
+                continue
+            if item.get("exit_code", 0) != 0:
+                title = str(item.get("title") or "")
+                if title:
+                    fail_counts[title] = fail_counts.get(title, 0) + 1
+
+    dynamic: list[str] = []
+    for title, count in fail_counts.items():
+        if count < 3:
+            continue
+        segs = re.split(r"[のをがにではともやへから・ 　]+", title)
+        for seg in segs:
+            kw = seg.strip()
+            if len(kw) >= 2 and kw not in BLOCKED_KEYWORDS and kw not in dynamic:
+                dynamic.append(kw)
+    return dynamic
 
 
 def _batch_applied_targets_today(root: Path) -> frozenset[str]:
@@ -145,12 +178,13 @@ def item_text(item: dict[str, Any]) -> str:
     ).lower()
 
 
-def is_blocked(item: dict[str, Any]) -> tuple[bool, str]:
+def is_blocked(item: dict[str, Any], extra_keywords: list[str] | None = None) -> tuple[bool, str]:
     policy = item.get("auto_fix_policy") or {}
     risk = str(policy.get("risk") or "").lower()
     max_files = policy.get("max_files")
     text = item_text(item)
-    hits = [keyword for keyword in BLOCKED_KEYWORDS if keyword.lower() in text]
+    all_keywords = BLOCKED_KEYWORDS + (extra_keywords or [])
+    hits = [keyword for keyword in all_keywords if keyword.lower() in text]
     if risk == "high":
         return True, "risk=high"
     if max_files == 0:
@@ -204,6 +238,7 @@ def build_queue(
     limit: int,
     execution_status: dict[str, Any] | None = None,
     batch_applied_targets: frozenset[str] = frozenset(),
+    dynamic_blocked_keywords: list[str] | None = None,
 ) -> dict[str, Any]:
     needs_review = [item for item in report.get("needs_review") or [] if isinstance(item, dict)]
     quota_blocked = quota_blocked_items(execution_status or {})
@@ -234,7 +269,7 @@ def build_queue(
                 {"id": item.get("id"), "title": item.get("title"), "reason": touch_reason}
             )
             continue
-        is_manual, reason = is_blocked(item)
+        is_manual, reason = is_blocked(item, dynamic_blocked_keywords)
         if is_manual:
             blocked.append({"id": item.get("id"), "title": item.get("title"), "reason": reason})
         elif is_codex_safe(item):
@@ -311,7 +346,14 @@ def main() -> None:
             + ", ".join(sorted(batch_applied_targets)[:5])
         )
 
-    queue = build_queue(report, max(0, args.limit), execution_status, batch_applied_targets)
+    dynamic_keywords = _load_dynamic_blocked_keywords(root)
+    if dynamic_keywords:
+        print(
+            f"[build_codex_auto_queue] dynamic blocked keywords ({len(dynamic_keywords)}): "
+            + ", ".join(dynamic_keywords[:5])
+        )
+
+    queue = build_queue(report, max(0, args.limit), execution_status, batch_applied_targets, dynamic_keywords)
     queue["source_report"] = str(report_path)
     queue["execution_status_file"] = str(args.status_file)
 
