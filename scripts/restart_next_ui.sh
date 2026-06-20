@@ -59,9 +59,9 @@ sync_standalone_assets() {
     return 0
   fi
 
-  mkdir -p frontend/.next/standalone/.next
-  cp -R frontend/.next/static frontend/.next/standalone/.next/static
-  cp -R frontend/public frontend/.next/standalone/public
+  mkdir -p frontend/.next/standalone/.next/static frontend/.next/standalone/public
+  rsync -a --delete frontend/.next/static/ frontend/.next/standalone/.next/static/
+  rsync -a --delete frontend/public/ frontend/.next/standalone/public/
   echo "Synced standalone static/public assets."
 }
 
