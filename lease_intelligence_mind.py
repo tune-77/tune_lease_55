@@ -847,6 +847,11 @@ def _write_private_reflection(
             "",
         ]
     )
+    # 既存の内省コンテンツがあれば上書きしない（reflection.py が書いた内容を保護）
+    if path.exists():
+        existing = path.read_text(encoding="utf-8")
+        if "## 今日の対話について" in existing or len(existing) > 2000:
+            return
     path.write_text(content, encoding="utf-8")
 
 
