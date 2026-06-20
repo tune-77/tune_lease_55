@@ -600,24 +600,10 @@ export default function MultiShionDemoPage() {
     const cacheBustKey = "multi-shion-demo-cache-bust-v3";
     if (typeof window === "undefined" || window.sessionStorage.getItem(cacheBustKey)) return;
 
-    const clearStalePwaCaches = async () => {
-      try {
-        window.sessionStorage.setItem(cacheBustKey, "1");
-        const registrations = await navigator.serviceWorker?.getRegistrations?.();
-        await Promise.all((registrations ?? []).map((registration) => registration.unregister()));
-        if ("caches" in window) {
-          const keys = await caches.keys();
-          await Promise.all(keys.map((key) => caches.delete(key)));
-        }
-        const url = new URL(window.location.href);
-        url.searchParams.set("fresh", String(Date.now()));
-        window.location.replace(url.toString());
-      } catch {
-        window.sessionStorage.setItem(cacheBustKey, "1");
-      }
-    };
-
-    void clearStalePwaCaches();
+    window.sessionStorage.setItem(cacheBustKey, "1");
+    if ("caches" in window) {
+      caches.delete("multi-shion-demo-v1").catch(() => {});
+    }
   }, []);
 
   const selectedCase = CASES.find((item) => item.id === caseId) ?? CASES[0];
