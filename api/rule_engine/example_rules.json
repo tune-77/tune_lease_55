@@ -45,5 +45,35 @@
     "patch": {"value": "条件付き承認"},
     "risk": "low",
     "auto_fix_allowed": true
+  },
+  {
+    "rev_id": "REV-OCR-002",
+    "type": "add_api_field",
+    "description": "ScoringRequest に OCR 抽出元ファイルパスフィールドを追加（証憑管理対応）",
+    "target": "api/schemas.py",
+    "match": {"model": "ScoringRequest"},
+    "patch": {
+      "field_name": "ocr_file_path",
+      "field_type": "Optional[str]",
+      "default": "None",
+      "description": "OCR抽出元ファイルパス（稟議書・見積書等）"
+    },
+    "risk": "low",
+    "auto_fix_allowed": true
+  },
+  {
+    "rev_id": "REV-OCR-003",
+    "type": "endpoint_add",
+    "description": "ルールエンジン稼働状況確認エンドポイントを追加",
+    "target": "api/main.py",
+    "patch": {
+      "method": "GET",
+      "path": "/api/rule_engine/status",
+      "function_name": "rule_engine_status",
+      "response_model": "dict",
+      "body": "    from api.rule_engine.schema import RuleType\n    return {\"status\": \"ok\", \"supported_types\": list(RuleType.__args__)}"
+    },
+    "risk": "low",
+    "auto_fix_allowed": true
   }
 ]

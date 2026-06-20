@@ -1,8 +1,8 @@
 """
 改善ルールアプライヤー。
 
-完全実装: patch_json, scoring_weight, ui_text
-スタブ:    add_api_field, endpoint_add, config_value, llm_diff
+完全実装: patch_json, scoring_weight, ui_text, add_api_field, endpoint_add
+スタブ:    config_value, llm_diff
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -33,10 +34,10 @@ def apply_rule(rule: dict) -> ApplyResult:
     r = ImprovementRule.from_dict(rule)
     dispatch = {
         "patch_json":      _apply_patch_json,
-        "add_api_field":   _stub("add_api_field"),
+        "add_api_field":   _apply_add_api_field,
         "ui_text":         _apply_ui_text,
         "scoring_weight":  _apply_scoring_weight,
-        "endpoint_add":    _stub("endpoint_add"),
+        "endpoint_add":    _apply_endpoint_add,
         "config_value":    _stub("config_value"),
         "llm_diff":        _stub("llm_diff"),
     }
@@ -307,6 +308,221 @@ def _apply_ui_text(rule: ImprovementRule) -> ApplyResult:
         message=f"ui_labels.json に 1 件を{action}しました",
         changed_file="frontend/src/lib/ui_labels.json",
         diff_summary=diff,
+    )
+
+
+# ---------------------------------------------------------------------------
+# add_api_field — Pydantic モデルへのフィールド追加
+# ---------------------------------------------------------------------------
+
+_VALID_HTTP_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
+
+
+def _apply_add_api_field(rule: ImprovementRule) -> ApplyResult:
+    """
+    指定 Python ファイル内の Pydantic モデルクラスに新フィールドを追加する。
+
+    patch キー:
+      field_name  (str)  追加するフィールド名（必須）
+      field_type  (str)  型アノテーション（省略時 "str"）
+      default     (str)  デフォルト値のコード片（省略時 "None"）
+      description (str)  Field(description=...) に渡す文字列（省略時は Field 不使用）
+    """
+    if not rule.target:
+        return ApplyResult(rule.rev_id, False, "target が未指定です")
+    if not rule.match:
+        return ApplyResult(rule.rev_id, False, "match が未指定です")
+    if not rule.patch:
+        return ApplyResult(rule.rev_id, False, "patch が未指定です")
+
+    model_name = rule.match.get("model", "")
+    if not model_name:
+        return ApplyResult(rule.rev_id, False, "match.model が未指定です")
+
+    field_name = rule.patch.get("field_name", "")
+    field_type = rule.patch.get("field_type", "str")
+    default = rule.patch.get("default", "None")
+    description = rule.patch.get("description", "")
+
+    if not field_name:
+        return ApplyResult(rule.rev_id, False, "patch.field_name が未指定です")
+    if not field_type or not field_type.strip():
+        return ApplyResult(rule.rev_id, False, "patch.field_type が空です")
+
+    target_path = _PROJECT_ROOT / rule.target
+    if not target_path.exists():
+        return ApplyResult(rule.rev_id, False, f"ファイルが存在しません: {target_path}")
+
+    source = target_path.read_text(encoding="utf-8")
+
+    # クラス定義の存在確認
+    class_def_re = re.compile(
+        r"^class\s+" + re.escape(model_name) + r"[\s(:]",
+        re.MULTILINE,
+    )
+    class_m = class_def_re.search(source)
+    if not class_m:
+        return ApplyResult(
+            rule.rev_id, False,
+            f"クラス '{model_name}' が {rule.target} に見つかりません",
+        )
+
+    # クラス本体の範囲（開始〜次のクラス定義 or EOF）
+    next_class_m = re.search(r"\n^class\s+", source[class_m.start() + 1:], re.MULTILINE)
+    class_body_end = (class_m.start() + 1 + next_class_m.start()) if next_class_m else len(source)
+    class_body = source[class_m.start(): class_body_end]
+
+    # 冪等チェック
+    if re.search(r"^\s+" + re.escape(field_name) + r"\s*[:=]", class_body, re.MULTILINE):
+        return ApplyResult(
+            rule.rev_id, True,
+            f"フィールド '{field_name}' は '{model_name}' に既に存在します（冪等スキップ）",
+        )
+
+    new_source = source
+
+    # Optional が必要なら import を確認・追加
+    if "Optional" in field_type and "Optional" not in source:
+        typing_m = re.search(r"^(from typing import\s+)(.+)$", new_source, re.MULTILINE)
+        if typing_m:
+            imports = sorted({x.strip() for x in typing_m.group(2).split(",")}) + ["Optional"]
+            new_source = (
+                new_source[: typing_m.start()]
+                + typing_m.group(1)
+                + ", ".join(sorted(set(imports)))
+                + new_source[typing_m.end():]
+            )
+        else:
+            new_source = "from typing import Optional\n" + new_source
+
+    # Field が必要なら import を確認・追加
+    use_field = bool(description)
+    if use_field and "Field" not in new_source:
+        pydantic_m = re.search(r"^(from pydantic import\s+)(.+)$", new_source, re.MULTILINE)
+        if pydantic_m:
+            imports = sorted({x.strip() for x in pydantic_m.group(2).split(",")} | {"Field"})
+            new_source = (
+                new_source[: pydantic_m.start()]
+                + pydantic_m.group(1)
+                + ", ".join(imports)
+                + new_source[pydantic_m.end():]
+            )
+
+    # フィールド定義行を構築
+    if use_field:
+        field_line = (
+            f'    {field_name}: {field_type} = Field(default={default}, description="{description}")\n'
+        )
+    else:
+        field_line = f"    {field_name}: {field_type} = {default}\n"
+
+    # クラス末尾（最後の非空行の直後）に挿入
+    lines = new_source.splitlines(keepends=True)
+    class_start_line = next(
+        i for i, ln in enumerate(lines)
+        if re.match(r"^class\s+" + re.escape(model_name) + r"[\s(:]", ln)
+    )
+    next_class_line = next(
+        (i for i in range(class_start_line + 1, len(lines)) if re.match(r"^class\s+", lines[i])),
+        len(lines),
+    )
+    last_content = class_start_line
+    for i in range(class_start_line + 1, next_class_line):
+        if lines[i].strip():
+            last_content = i
+
+    lines.insert(last_content + 1, field_line)
+    target_path.write_text("".join(lines), encoding="utf-8")
+
+    return ApplyResult(
+        rev_id=rule.rev_id,
+        success=True,
+        message=f"'{model_name}' に '{field_name}: {field_type}' を追加しました",
+        changed_file=rule.target,
+        diff_summary=f"+++ {rule.target}\n  追加: {field_line.strip()}",
+    )
+
+
+# ---------------------------------------------------------------------------
+# endpoint_add — FastAPI エンドポイント追加
+# ---------------------------------------------------------------------------
+
+def _apply_endpoint_add(rule: ImprovementRule) -> ApplyResult:
+    """
+    指定 Python ファイル（通常 api/main.py）に新規エンドポイントを追加する。
+
+    patch キー:
+      method         (str)  HTTP メソッド（GET/POST/PUT/PATCH/DELETE）
+      path           (str)  URLパス（"/" 始まり）
+      function_name  (str)  Python 関数名
+      response_model (str)  レスポンスモデル名（省略時 "dict"）
+      body           (str)  関数本体のコード（インデント込み）
+    """
+    if not rule.target:
+        return ApplyResult(rule.rev_id, False, "target が未指定です")
+    if not rule.patch:
+        return ApplyResult(rule.rev_id, False, "patch が未指定です")
+
+    method = rule.patch.get("method", "").upper()
+    path = rule.patch.get("path", "")
+    function_name = rule.patch.get("function_name", "")
+    response_model = rule.patch.get("response_model", "dict")
+    body = rule.patch.get("body", "    pass")
+
+    # バリデーション
+    if method not in _VALID_HTTP_METHODS:
+        return ApplyResult(
+            rule.rev_id, False,
+            f"method が無効です: {method!r}。有効値: {sorted(_VALID_HTTP_METHODS)}",
+        )
+    if not path.startswith("/"):
+        return ApplyResult(rule.rev_id, False, f"path は '/' で始まる必要があります: {path!r}")
+    if not function_name or not function_name.isidentifier():
+        return ApplyResult(
+            rule.rev_id, False,
+            f"function_name が Python 識別子として無効です: {function_name!r}",
+        )
+
+    target_path = _PROJECT_ROOT / rule.target
+    if not target_path.exists():
+        return ApplyResult(rule.rev_id, False, f"ファイルが存在しません: {target_path}")
+
+    source = target_path.read_text(encoding="utf-8")
+
+    # 冪等チェック: 同一 method+path のルートが既に存在するか
+    route_re = re.compile(
+        r'@\w+\.' + method.lower() + r'\s*\(\s*["\']' + re.escape(path) + r'["\']',
+    )
+    if route_re.search(source):
+        return ApplyResult(
+            rule.rev_id, True,
+            f"パス '{path}' ({method}) は既に {rule.target} に存在します（冪等スキップ）",
+        )
+
+    # 関数名の衝突チェック
+    fn_re = re.compile(r"^(?:async\s+)?def\s+" + re.escape(function_name) + r"\s*\(", re.MULTILINE)
+    if fn_re.search(source):
+        return ApplyResult(
+            rule.rev_id, False,
+            f"関数名 '{function_name}' が {rule.target} に既に存在します（衝突）",
+        )
+
+    # デコレーター生成（response_model が "dict" の場合は省略）
+    if response_model and response_model != "dict":
+        decorator = f'@app.{method.lower()}("{path}", response_model={response_model})'
+    else:
+        decorator = f'@app.{method.lower()}("{path}")'
+
+    endpoint_code = f"\n\n{decorator}\ndef {function_name}():\n{body}\n"
+
+    target_path.write_text(source.rstrip() + endpoint_code, encoding="utf-8")
+
+    return ApplyResult(
+        rev_id=rule.rev_id,
+        success=True,
+        message=f"エンドポイント '{method} {path}' を {rule.target} に追加しました",
+        changed_file=rule.target,
+        diff_summary=f"+++ {rule.target}\n{decorator}\ndef {function_name}(): ...",
     )
 
 
