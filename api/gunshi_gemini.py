@@ -3,6 +3,7 @@ import asyncio
 import json
 import os
 import httpx
+from api.context.time_context import with_current_datetime_context
 from prompt_feedback import build_pdca_prompt_block, record_prompt_feedback
 from shinsa_gunshi_logic import (
     EVIDENCE_WEIGHTS,
@@ -242,7 +243,7 @@ def build_system_instruction(
         )
     if dissonance_block and dissonance_block.strip():
         base += f"\n{dissonance_block.strip()}\n"
-    return base
+    return with_current_datetime_context(base)
 
 
 def build_user_prompt(params: dict) -> str:
