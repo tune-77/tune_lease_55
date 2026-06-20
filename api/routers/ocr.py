@@ -193,13 +193,13 @@ async def ocr_financial(file: UploadFile = File(...), doc_type: Optional[str] = 
         if doc_type == "tax_cert":
             if not isinstance(result.get("tax_default"), bool):
                 raise ValueError("tax_default must be a boolean.")
-            if result.get("tax_amount") is not None and not isinstance(result.get("tax_amount"), int):
+            if result.get("tax_amount") is not None and type(result.get("tax_amount")) is not int:
                 raise ValueError("tax_amount must be an integer or null.")
         # doc_type='toukibo' の場合の追加検証
         elif doc_type == "toukibo":
             if not isinstance(result.get("established_date"), str):
                 raise ValueError("established_date must be a string.")
-            if result.get("capital") is not None and not isinstance(result.get("capital"), int):
+            if result.get("capital") is not None and type(result.get("capital")) is not int:
                 raise ValueError("capital must be an integer or null.")
             if not isinstance(result.get("representative"), str):
                 raise ValueError("representative must be a string.")
@@ -212,7 +212,7 @@ async def ocr_financial(file: UploadFile = File(...), doc_type: Optional[str] = 
         elif doc_type == "estimate":
             if not isinstance(result.get("item_name"), str):
                 raise ValueError("item_name must be a string.")
-            if result.get("amount") is not None and not isinstance(result.get("amount"), int):
+            if result.get("amount") is not None and type(result.get("amount")) is not int:
                 raise ValueError("amount must be an integer or null.")
             if not isinstance(result.get("maker"), str):
                 raise ValueError("maker must be a string.")
@@ -229,7 +229,7 @@ async def ocr_financial(file: UploadFile = File(...), doc_type: Optional[str] = 
             for client in result.get("main_clients", []):
                 if not isinstance(client, str):
                     raise ValueError("Each client in 'main_clients' must be a string.")
-            if result.get("employee_count") is not None and not isinstance(result.get("employee_count"), int):
+            if result.get("employee_count") is not None and type(result.get("employee_count")) is not int:
                 raise ValueError("employee_count must be an integer or null.")
 
         return JSONResponse(content=result)
