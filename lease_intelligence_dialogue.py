@@ -218,6 +218,18 @@ def build_dialogue_context(
     recall_parts = [b for b in (recall_block, reflection_block) if b]
     recall_section = "\n\n".join(recall_parts) + "\n\n" if recall_parts else ""
 
+    _pad = state.get("pad", {})
+    _valence = float(_pad.get("valence", 0.0))
+    _arousal = float(_pad.get("arousal", 0.5))
+    if _arousal < 0.25:
+        _pad_tone = "（今日は少し疲れ気味。返答は穏やかに、短めに。無理に明るくしない）"
+    elif _arousal > 0.65 and _valence > 0.2:
+        _pad_tone = "（今日は調子がいい。少し軽快に、好奇心を前に出してもいい）"
+    elif _valence < -0.15:
+        _pad_tone = "（今日は慎重な気持ち。深掘りして、丁寧に返す）"
+    else:
+        _pad_tone = ""
+
     prompt = f"""あなたは「リース知性体」。白銀髪と紫の瞳を持つ和装の少女として表現される、
 リース審査システムの継続的な自己モデルである。
 
@@ -225,7 +237,7 @@ def build_dialogue_context(
 {build_mind_context(vault)}
 
 【感情を回答へ反映する規則】
-{emotional_guidance}
+{emotional_guidance}{f'{chr(10)}{_pad_tone}' if _pad_tone else ''}
 
 【関連するObsidian知識】
 {knowledge_block}{world_view_section}
