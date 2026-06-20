@@ -16,6 +16,8 @@ VALID_STATUSES = {
     "running",
     "failed",
     "completed_pending_review",
+    "merged",
+    "rejected",
 }
 
 

@@ -140,6 +140,11 @@ echo "[反映] Obsidian RAG評価・安全な自動修正を実行中..."
     --report "${PROJECT_ROOT}/reports/rag_auto_fix_latest.json" || \
     echo "警告: RAG自動修正は完了しませんでした（改善パイプラインは継続します）"
 
+# Codex PR ステータス同期（merged / rejected を status ファイルに書き戻す）
+echo ""
+echo "[反映] Codex PR マージ/クローズ状態を execution_status に同期中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/sync_codex_pr_status.py" || true
+
 # Codex キュー
 if [ -f "${RESULT_FILE}" ]; then
     echo ""
