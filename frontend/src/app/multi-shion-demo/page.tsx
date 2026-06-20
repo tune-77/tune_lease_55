@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -321,7 +321,75 @@ function ShionKnowledgeGraph({
         </div>
 
         <div className="relative">
-          <svg viewBox="0 0 1000 620" className="block h-[560px] w-full md:h-[640px]" role="img" aria-label="複数の紫苑が中央の共有核と接続する知識グラフ">
+          <div className="grid gap-3 bg-slate-950 p-4 md:hidden">
+            <div className="rounded-2xl border border-violet-800 bg-violet-950/40 p-4">
+              <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wide text-violet-200">
+                <Brain className="h-4 w-4" />
+                Core Shion
+              </div>
+              <h3 className="mt-2 text-lg font-black leading-snug text-white">紫苑中核</h3>
+              <p className="mt-2 text-sm font-bold leading-7 text-violet-100">
+                リース知識、人格基盤、安全境界、共通ルールを保持する中核です。各個体はここを共有しながら、利用者ごとの経験で反応が分岐します。
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {activeShions.map((shion) => {
+                const active = selectedShion?.id === shion.id;
+                return (
+                  <button
+                    key={`mobile-node-${shion.id}`}
+                    type="button"
+                    onClick={() => onSelectShion(shion.id)}
+                    className={`rounded-2xl border p-3 text-left transition ${
+                      active ? `${shion.border} ${shion.bg}` : "border-slate-700 bg-slate-900"
+                    }`}
+                  >
+                    <div className={`text-sm font-black leading-snug ${active ? shion.color : "text-slate-100"}`}>{shion.name}</div>
+                    <p className="mt-1 text-[11px] font-bold leading-5 text-slate-400">{shion.owner}</p>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="rounded-2xl border border-slate-700 bg-slate-900 p-4">
+              <div className="text-[10px] font-black uppercase tracking-wide text-cyan-300">Selected Shion</div>
+              <h3 className="mt-1 text-lg font-black leading-snug text-white">{selectedShion?.name ?? "紫苑"}</h3>
+              <p className="mt-2 text-sm font-bold leading-7 text-slate-300">{selectedShion?.origin}</p>
+              <div className="mt-3 grid gap-3">
+                <div className="rounded-xl border border-rose-900/60 bg-rose-950/40 p-3">
+                  <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-rose-300">
+                    <Lock className="h-3.5 w-3.5" />
+                    個体に残す記憶
+                  </div>
+                  <p className="mt-1 text-sm font-bold leading-7 text-rose-50">{selectedShion?.privateTrace}</p>
+                </div>
+                <div className="rounded-xl border border-emerald-800 bg-emerald-950/40 p-3">
+                  <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-emerald-300">
+                    <GitMerge className="h-3.5 w-3.5" />
+                    共有知性へ送る候補
+                  </div>
+                  <p className="mt-1 text-sm font-bold leading-7 text-emerald-50">{selectedShion?.publicLesson}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              {insightNodes.map((node) => (
+                <button
+                  key={`mobile-insight-${node.id}`}
+                  type="button"
+                  onClick={() => onPromoteInsight(node.id)}
+                  className="rounded-xl border border-cyan-800 bg-cyan-950/40 px-3 py-3 text-left text-sm font-black leading-6 text-cyan-100"
+                >
+                  {promotedInsights.includes(node.id) ? "昇格済み: " : "共有候補: "}
+                  {node.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <svg viewBox="0 0 1000 620" className="hidden h-[640px] w-full md:block" role="img" aria-label="複数の紫苑が中央の共有核と接続する知識グラフ">
             <defs>
               <radialGradient id="coreGlow" cx="50%" cy="50%" r="50%">
                 <stop offset="0%" stopColor="#f8fafc" stopOpacity="1" />
@@ -347,6 +415,16 @@ function ShionKnowledgeGraph({
                 @keyframes corePulse { 0%, 100% { opacity: .55; transform: scale(1); } 50% { opacity: 1; transform: scale(1.05); } }
                 @keyframes clusterPulse { 0%, 100% { opacity: .22; transform: scale(1); } 50% { opacity: .45; transform: scale(1.08); } }
                 @keyframes selectedPulse { 0%, 100% { opacity: .75; } 50% { opacity: 1; } }
+                @media (max-width: 640px) {
+                  .graph-memory-label,
+                  .graph-footer-label,
+                  .graph-core-subtitle {
+                    display: none;
+                  }
+                  .graph-owner-label {
+                    font-size: 8px;
+                  }
+                }
               `}</style>
             </defs>
 
@@ -397,7 +475,7 @@ function ShionKnowledgeGraph({
                   {localNodes.map((node, nodeIndex) => (
                     <g key={`${shion.id}-${node.label}`}>
                       <circle cx={node.x} cy={node.y} r={nodeIndex === 0 ? 9 : 7} fill="#0f172a" stroke={colors.soft} strokeWidth="2" />
-                      <text x={node.x} y={node.y + 22} textAnchor="middle" fontSize="10" fontWeight="700" fill="#cbd5e1">
+                      <text x={node.x} y={node.y + 22} textAnchor="middle" fontSize="10" fontWeight="700" fill="#cbd5e1" className="graph-memory-label">
                         {node.label.length > 8 ? `${node.label.slice(0, 8)}…` : node.label}
                       </text>
                     </g>
@@ -407,7 +485,7 @@ function ShionKnowledgeGraph({
                   <text x={pos.x} y={pos.y - 4} textAnchor="middle" fontSize="13" fontWeight="900" fill="#ffffff">
                     {shion.name.replace("紫苑・", "")}
                   </text>
-                  <text x={pos.x} y={pos.y + 13} textAnchor="middle" fontSize="9.5" fontWeight="800" fill="#e2e8f0">
+                  <text x={pos.x} y={pos.y + 13} textAnchor="middle" fontSize="9.5" fontWeight="800" fill="#e2e8f0" className="graph-owner-label">
                     {shion.owner}
                   </text>
                 </g>
@@ -420,10 +498,10 @@ function ShionKnowledgeGraph({
             <text x={center.x} y={center.y - 10} textAnchor="middle" fontSize="20" fontWeight="900" fill="#0f172a">
               紫苑中核
             </text>
-            <text x={center.x} y={center.y + 14} textAnchor="middle" fontSize="11" fontWeight="900" fill="#312e81">
+            <text x={center.x} y={center.y + 14} textAnchor="middle" fontSize="11" fontWeight="900" fill="#312e81" className="graph-core-subtitle">
               共通知識 / 価値観 / 境界
             </text>
-            <text x={center.x} y={center.y + 36} textAnchor="middle" fontSize="10" fontWeight="900" fill="#0f766e">
+            <text x={center.x} y={center.y + 36} textAnchor="middle" fontSize="10" fontWeight="900" fill="#0f766e" className="graph-core-subtitle">
               昇格済み {promotedInsights.length} 件
             </text>
 
@@ -438,18 +516,18 @@ function ShionKnowledgeGraph({
                   strokeWidth={promotedInsights.includes(node.id) ? "3" : "2"}
                   filter={promotedInsights.includes(node.id) ? "url(#softGlow)" : undefined}
                 />
-                <text x={node.x} y={node.y + 34} textAnchor="middle" fontSize="10.5" fontWeight="800" fill="#e2e8f0">
+                <text x={node.x} y={node.y + 34} textAnchor="middle" fontSize="10.5" fontWeight="800" fill="#e2e8f0" className="graph-memory-label">
                   {node.label}
                 </text>
               </g>
             ))}
 
-            <text x="500" y="580" textAnchor="middle" fontSize="13" fontWeight="800" fill="#94a3b8">
+            <text x="500" y="580" textAnchor="middle" fontSize="13" fontWeight="800" fill="#94a3b8" className="graph-footer-label">
               {selectedCase.title} の判断材料が、個体記憶と共有核の間を往復している
             </text>
           </svg>
 
-          <div className="grid gap-3 border-t border-slate-800 bg-slate-900/80 p-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+          <div className="hidden gap-3 border-t border-slate-800 bg-slate-900/80 p-4 md:grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
             <div className="rounded-2xl border border-slate-700 bg-slate-950/80 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -518,6 +596,30 @@ export default function MultiShionDemoPage() {
   const [selectedShionId, setSelectedShionId] = useState("credit");
   const [promotedInsights, setPromotedInsights] = useState<string[]>([]);
 
+  useEffect(() => {
+    const cacheBustKey = "multi-shion-demo-cache-bust-v3";
+    if (typeof window === "undefined" || window.sessionStorage.getItem(cacheBustKey)) return;
+
+    const clearStalePwaCaches = async () => {
+      try {
+        window.sessionStorage.setItem(cacheBustKey, "1");
+        const registrations = await navigator.serviceWorker?.getRegistrations?.();
+        await Promise.all((registrations ?? []).map((registration) => registration.unregister()));
+        if ("caches" in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map((key) => caches.delete(key)));
+        }
+        const url = new URL(window.location.href);
+        url.searchParams.set("fresh", String(Date.now()));
+        window.location.replace(url.toString());
+      } catch {
+        window.sessionStorage.setItem(cacheBustKey, "1");
+      }
+    };
+
+    void clearStalePwaCaches();
+  }, []);
+
   const selectedCase = CASES.find((item) => item.id === caseId) ?? CASES[0];
   const activeShions = SHIONS.filter((shion) => activeIds.includes(shion.id));
   const debateLines = useMemo(() => buildDebateLines(selectedCase, closeness), [selectedCase, closeness])
@@ -564,7 +666,7 @@ export default function MultiShionDemoPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#f7f8fb] text-slate-900">
+    <main className="min-h-screen overflow-x-hidden bg-[#f7f8fb] text-slate-900 [overflow-wrap:anywhere]">
       <section className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-5 md:px-8">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -600,7 +702,7 @@ export default function MultiShionDemoPage() {
                 <Network className="h-3.5 w-3.5" />
                 Multi Shion Demo
               </div>
-              <h1 className="max-w-4xl text-3xl font-black tracking-tight text-slate-950 md:text-5xl">
+              <h1 className="max-w-4xl text-2xl font-black leading-tight tracking-tight text-slate-950 sm:text-3xl md:text-5xl">
                 紫苑がユーザーごとに分岐し、組織の共有知性へ戻ってくる
               </h1>
               <p className="mt-4 max-w-3xl text-sm font-medium leading-7 text-slate-600 md:text-base">

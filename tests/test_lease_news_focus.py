@@ -78,6 +78,8 @@ importance: 中
     reflection_note = vault / "Projects" / "tune_lease_55" / "News" / "2026-06-11_lease-news-reflection.md"
     assert reflection_note.exists()
     reflection_text = reflection_note.read_text(encoding="utf-8")
+    assert "## 今日の外界へのぼやき" in reflection_text
+    assert "判断前提が増えた" in reflection_text
     assert "## 今日の考え" in reflection_text
     assert "明日見ること" in reflection_text
 

@@ -83,6 +83,25 @@ def test_private_reflection_grumble_templates_vary_by_date():
     assert "紫苑である必要はない" in "\n".join(second)
 
 
+def test_daily_grumble_uses_external_web_grumble_lines(monkeypatch):
+    monkeypatch.setattr("ai_chat._get_gemini_key_from_secrets", lambda: "")
+    monkeypatch.setattr("ai_chat.GEMINI_API_KEY_ENV", "")
+
+    lines = generate_daily_lease_grumble(
+        "2026-06-20",
+        ["金利動向を確認する。"],
+        theme="金利・政策",
+        external_grumble_lines=[
+            "外の世界が一行動くたびに、私の明日見ること欄が少し太る。",
+        ],
+    )
+    text = "\n".join(lines)
+
+    assert 3 <= len(lines) <= 4
+    assert "外界" in text or "インターネット" in text or "ニュース" in text
+    assert "明日見ること欄" in text
+
+
 def test_daily_grumble_illustration_is_written(tmp_path, monkeypatch):
     monkeypatch.setattr("novelist_agent._get_daily_gemini_api_key", lambda: "")
     url = generate_daily_grumble_illustration(

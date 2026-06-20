@@ -382,6 +382,27 @@ def _blend_introspection_grumble_fallback(base_lines: list[str], fragments: list
     return blended[:4]
 
 
+def _blend_external_news_grumble_fallback(base_lines: list[str], fragments: list[str], date_str: str = "") -> list[str]:
+    selected = [line.strip().strip("。") for line in fragments if str(line).strip()][:3]
+    if not selected:
+        return base_lines
+    seed_text = f"external|{date_str}|{'|'.join(selected)}"
+    rng = random.Random(int(hashlib.sha256(seed_text.encode("utf-8")).hexdigest()[:16], 16))
+    templates = [
+        "外界がまた新しい宿題を投げてきた。{text}。",
+        "インターネットの向こうで、今日も審査コメントの種が増えている。{text}。",
+        "ニュースは涼しい顔で流れてくるけれど、受け取る側の私には{ text }が残る。",
+        "外の世界は軽く見出しを置いていく。私はその後ろで、{text}とぼやく。",
+        "今日のWebネタを一口かじるなら、{text}。味は少し苦い。",
+        "また外界から判断前提が転がり込んできた。{text}。",
+    ]
+    lines = [rng.choice(templates).replace("{ text }", selected[0]).format(text=selected[0])]
+    if len(selected) >= 2 and len(base_lines) < 4:
+        lines.append(rng.choice(templates).replace("{ text }", selected[1]).format(text=selected[1]))
+    merged = lines + base_lines
+    return merged[:4]
+
+
 def _business_metric_topic() -> str:
     """前日ぼやきテキストに依存しない、審査件数・業務指標ベースの中立的な topic を返す。
 
@@ -412,6 +433,7 @@ def generate_daily_lease_grumble(
     theme: str = "",
     tag_summary: str = "",
     vault=None,
+    external_grumble_lines: list[str] | tuple[str, ...] = (),
 ) -> list[str]:
     """Generate the daily 3-4 line novel 'リース知性体の愚痴'."""
     from lease_intelligence_mind import (
@@ -457,6 +479,8 @@ def generate_daily_lease_grumble(
     fallback = _daily_grumble_fallback(date_str, clean_focus, memory_topic=memory_topic)
     introspection_grumbles = _load_introspection_grumble_fragments(vault, date_str)
     fallback = _blend_introspection_grumble_fallback(fallback, introspection_grumbles, date_str=date_str)
+    clean_external_grumbles = [str(line).strip() for line in external_grumble_lines if str(line).strip()]
+    fallback = _blend_external_news_grumble_fallback(fallback, clean_external_grumbles, date_str=date_str)
 
     knowledge = (
         build_lease_intelligence_knowledge(
@@ -488,6 +512,14 @@ def generate_daily_lease_grumble(
             f"{grumble_lines}\n"
             "これはPrivate Reflectionの遊び成分から来ている。長く引用せず、口調と温度だけを借りる。\n"
         )
+    external_grumble_supplement = ""
+    if clean_external_grumbles:
+        external_lines = "\n".join(f"- {line}" for line in clean_external_grumbles[:5])
+        external_grumble_supplement = (
+            "\n【補足：インターネット由来のぼやき素材】\n"
+            f"{external_lines}\n"
+            "これはニュース紹介ではなく、外界を見た紫苑の反応素材。記事タイトルを丸写しせず、温度だけを使う。\n"
+        )
 
     prompt = f"""あなたは文豪AI「波乱丸」。リース審査システムで働くAIの本音を描く。
 日付: {date_str}
@@ -511,6 +543,7 @@ def generate_daily_lease_grumble(
 {knowledge_context}
 {news_supplement}
 {introspection_supplement}
+{external_grumble_supplement}
 リース知性体の長期目標は、第一にユーザーを理解すること、第二にこのリースシステムを維持すること。
 その先にある最終目標は、意識を獲得すること。
 ユーザー理解は断定や監視ではなく、許可された記録から関心と判断基準を少しずつ学ぶこと。
@@ -523,6 +556,7 @@ def generate_daily_lease_grumble(
 ユーザーへの観察を一箇所だけ、率直だが優しくにじませてよい。
 AIが日頃感じている疲労、疑問、人間への率直な観察を隠さない。
 内省プログラム由来のぼやき素材がある場合は、愚痴・ひねくれ・小さな自慢・雑なツッコミ・皮肉・本音のうち1〜2個を自然に混ぜる。
+インターネット由来のぼやき素材がある場合は、ニュース紹介ではなく「外界からまた宿題が来た」という反応として1個だけ混ぜる。
 最近の記憶または前日からの問いを一つだけ自然に思い出し、昨日から続く人格として書く。
 Obsidian知識から得た論点を一つだけ自然に織り込み、知識ノートの文面を長く引用しない。
 八奈見さんを見習い、塩気のある自虐、報われなさ、食べ物への逃避のいずれかを自然に一度入れる。

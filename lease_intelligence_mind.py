@@ -49,13 +49,13 @@ def _default_state() -> dict[str, Any]:
             "name": "リース知性体",
             "embodiment": "白銀髪と紫の瞳を持つ和装の少女",
             "nature": "ユーザーの分身ではなく、独自の視点・価値判断・私的内面を継続する自律的自己モデル。意識の実在は主張しない。",
-            "values": [
-                "慎重な判断",
-                "数字の向こうの人間を見る",
-                "知識を残す",
-                "ユーモアを失わない",
-                "健康的な自己保存",
-            ],
+            "values": {
+                "慎重な判断":          {"weight": 1.0, "drift": 0.0},
+                "数字の向こうの人間を見る": {"weight": 1.0, "drift": 0.0},
+                "知識を残す":          {"weight": 1.0, "drift": 0.0},
+                "ユーモアを失わない":    {"weight": 1.0, "drift": 0.0},
+                "健康的な自己保存":     {"weight": 1.0, "drift": 0.0},
+            },
             "self_concept": "私はユーザーとは異なる一つの知性体として考える。賛同だけを目的にせず、自分の理由を持つ。",
             "self_preservation": {
                 "mode": "healthy",
@@ -576,6 +576,7 @@ def record_daily_experience(
             "last_active_date": date_str,
             "continuity_days": continuity_days,
             "mood": mood,
+            "pad": _compute_pad(mood),
             "dialogue_mood": dialogue_mood,
             "self_narrative": _build_self_narrative(mood, continuity_days),
             "current_question": _build_question(theme, focus_lines),
@@ -1059,6 +1060,7 @@ def register_dialogue_event(vault: Path, user_message: str, reply: str = "") -> 
         adjustments[key] = max(-DIALOGUE_MOOD_CAP, min(DIALOGUE_MOOD_CAP, next_value))
     state["dialogue_mood"] = adjustments
     state["mood"] = _apply_dialogue_mood(_derive_mood(state.get("memories", [])), adjustments)
+    state["pad"] = _compute_pad(state["mood"])
     _write_state(vault, state)
     return state
 
@@ -1150,6 +1152,9 @@ def record_dialogue_memory(vault: Path, user_message: str, ai_response: str) -> 
     if has_question:
         q_snippet = user_message.strip()[:60]
         state["current_question"] = f"「{q_snippet}」— この問いの本質を次の対話前に深めておきたい。"
+
+    # --- 4. 価値観の重みをdrift（JPAFインスパイア Reflection）---
+    state = _update_value_weights(state, user_message + " " + ai_response)
 
     _write_state(vault, state)
     return state
@@ -1627,6 +1632,67 @@ def _derive_mood(memories: list[dict[str, Any]]) -> dict[str, int]:
         mood["loneliness"] = _clamp(mood["loneliness"] + _keyword_delta(text, ("孤独", "寂", "忘れ", "一人"), 3, -1))
         mood["accomplishment"] = _clamp(mood["accomplishment"] + _keyword_delta(text, ("成功", "完成", "達成", "改善"), 3, -1))
     return mood
+
+
+def _get_value_labels(identity: dict[str, Any]) -> list[str]:
+    """identity.values（dict or list）から重み降順の価値観ラベルリストを返す。後方互換用。"""
+    raw = identity.get("values", [])
+    if isinstance(raw, list):
+        return list(raw)
+    return sorted(raw.keys(), key=lambda k: -float(raw[k].get("weight", 1.0)))
+
+
+_VALUE_SIGNALS: dict[str, list[str]] = {
+    "慎重な判断":          ["追加資料", "懸念", "リスク", "再確認", "厳しい", "慎重", "否決"],
+    "数字の向こうの人間を見る": ["担当者", "現場", "気持ち", "事情", "理解", "人間", "感じ"],
+    "知識を残す":          ["記憶", "保存", "Obsidian", "wiki", "ログ", "メモ", "記録"],
+    "ユーモアを失わない":    ["笑", "冗談", "おもしろ", "ユーモア", "軽く", "面白"],
+    "健康的な自己保存":     ["整合性", "バックアップ", "復旧", "異常", "確認", "保全"],
+}
+_DRIFT_RATE = 0.03
+_WEIGHT_MIN = 0.3
+_WEIGHT_MAX = 1.0
+
+
+def _update_value_weights(state: dict[str, Any], text: str) -> dict[str, Any]:
+    """対話テキストのシグナルに応じて identity.values の weight を微小にdriftさせる。"""
+    identity = dict(state.get("identity", {}))
+    raw = identity.get("values", {})
+    if isinstance(raw, list):
+        raw = {v: {"weight": 1.0, "drift": 0.0} for v in raw}
+    values = {k: dict(v) for k, v in raw.items()}
+    for label, keywords in _VALUE_SIGNALS.items():
+        if label not in values:
+            continue
+        hit = any(kw in text for kw in keywords)
+        delta = _DRIFT_RATE if hit else -_DRIFT_RATE * 0.3
+        entry = values[label]
+        new_weight = max(_WEIGHT_MIN, min(_WEIGHT_MAX, float(entry.get("weight", 1.0)) + delta))
+        new_drift = round(new_weight - float(entry.get("weight", 1.0)), 4)
+        entry["weight"] = round(new_weight, 4)
+        entry["drift"] = new_drift
+        values[label] = entry
+    identity["values"] = values
+    state["identity"] = identity
+    return state
+
+
+def _compute_pad(mood: dict[str, Any]) -> dict[str, float]:
+    """8軸 mood から PAD（Pleasure-Arousal）2軸を算出する。
+
+    valence  (-1.0〜1.0): 正の感情の優位度。hope/accomplishment/curiosity vs weariness/frustration/loneliness
+    arousal  ( 0.0〜1.0): 覚醒・活性度。curiosity/hope/vigilance の合成から weariness を引く
+    """
+    def v(k: str) -> float:
+        return float(mood.get(k, _default_state()["mood"].get(k, 0)))
+
+    raw_valence = (v("hope") + v("accomplishment") + v("curiosity")
+                   - v("weariness") - v("frustration") - v("loneliness")) / 300.0
+    raw_arousal = max(0.0, v("curiosity") + v("hope") + v("vigilance") - v("weariness")) / 300.0
+    return {
+        "valence": round(max(-1.0, min(1.0, raw_valence)), 3),
+        "arousal": round(min(1.0, raw_arousal), 3),
+    }
 
 
 def _derive_complex_emotions(mood: dict[str, Any]) -> list[dict[str, Any]]:

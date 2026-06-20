@@ -32,7 +32,8 @@ def load_mind_summary(mind_path: Path, max_memories: int = 5) -> str:
         return f"（記憶ファイル読み込み失敗: {exc}）"
 
     identity = data.get("identity", {})
-    values = identity.get("values", [])
+    from lease_intelligence_mind import _get_value_labels
+    values = _get_value_labels(identity)
     self_concept = identity.get("self_concept", "")
     current_q = data.get("current_question", "")
     memories = data.get("memories", [])[-max_memories:]
