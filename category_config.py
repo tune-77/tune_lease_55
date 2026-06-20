@@ -234,3 +234,49 @@ def get_grade(score: float) -> dict:
         if score >= g["min"]:
             return g
     return SCORE_GRADES[-1]
+
+
+def _load_scoring_overrides() -> None:
+    """
+    api/scoring_weights.json が存在すれば ASSET_WEIGHT / CATEGORY_SCORE_ITEMS を上書きする。
+
+    scoring_weights.json のエントリ形式:
+      {"target": "ASSET_WEIGHT",          "category": "車両",   "param": "asset_w",  "value": 0.40}
+      {"target": "CATEGORY_SCORE_ITEMS",  "category": "IT機器", "item_id": "tech_obsolescence", "param": "weight", "value": 25}
+
+    target が未知の場合はそのエントリをスキップ（ロールフォワード安全）。
+    """
+    import json
+    import os
+
+    sw_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "api", "scoring_weights.json")
+    if not os.path.exists(sw_path):
+        return
+
+    try:
+        with open(sw_path, encoding="utf-8") as f:
+            overrides = json.load(f)
+    except Exception:
+        return
+
+    for ov in overrides:
+        target = ov.get("target")
+        if target == "ASSET_WEIGHT":
+            cat = ov.get("category")
+            param = ov.get("param")
+            value = ov.get("value")
+            if cat in ASSET_WEIGHT and param in ASSET_WEIGHT[cat] and value is not None:
+                ASSET_WEIGHT[cat][param] = value
+        elif target == "CATEGORY_SCORE_ITEMS":
+            cat = ov.get("category")
+            item_id = ov.get("item_id")
+            param = ov.get("param")
+            value = ov.get("value")
+            if cat in CATEGORY_SCORE_ITEMS and value is not None:
+                for item in CATEGORY_SCORE_ITEMS[cat]:
+                    if item.get("id") == item_id and param in item:
+                        item[param] = value
+                        break
+
+
+_load_scoring_overrides()
