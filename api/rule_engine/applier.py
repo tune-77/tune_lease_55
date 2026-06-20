@@ -157,16 +157,40 @@ def _collect_diffs(a: Any, b: Any, out: list, path: str) -> None:
 # scoring_weight — JSON ファイルへのスコアリング重み upsert
 # ---------------------------------------------------------------------------
 
+_VALID_SCORING_TARGETS = {"ASSET_WEIGHT", "CATEGORY_SCORE_ITEMS"}
+
+
 def _apply_scoring_weight(rule: ImprovementRule) -> ApplyResult:
     """
-    api/scoring_weights.json にスコアリング重みを upsert する。
+    api/scoring_weights.json にスコアリング重みを upsert し、
+    category_config.py の _load_scoring_overrides() 経由でスコアラーに反映する。
 
-    - match 条件に合うエントリがあれば patch で上書き
-    - なければ match + patch を合わせた新規エントリを追加
-    - ファイルが存在しない場合は空リストで新規作成
+    scoring_weights.json エントリ形式（category_config.py が読む形式）:
+      ASSET_WEIGHT 上書き:
+        match: {"target": "ASSET_WEIGHT", "category": "車両", "param": "asset_w"}
+        patch: {"value": 0.40}
+
+      CATEGORY_SCORE_ITEMS 上書き:
+        match: {"target": "CATEGORY_SCORE_ITEMS", "category": "IT機器",
+                "item_id": "tech_obsolescence", "param": "weight"}
+        patch: {"value": 25}
+
+    match に target が必須。patch に value が必須。
     """
+    if not rule.match:
+        return ApplyResult(rule.rev_id, False, "match が未指定です")
     if not rule.patch:
         return ApplyResult(rule.rev_id, False, "patch が未指定です")
+
+    target = rule.match.get("target")
+    if target not in _VALID_SCORING_TARGETS:
+        return ApplyResult(
+            rule.rev_id, False,
+            f"match.target が未サポートです: {target!r}。"
+            f"有効値: {sorted(_VALID_SCORING_TARGETS)}"
+        )
+    if "value" not in rule.patch:
+        return ApplyResult(rule.rev_id, False, "patch に 'value' キーが必要です")
 
     if _SCORING_WEIGHTS_PATH.exists():
         with open(_SCORING_WEIGHTS_PATH, encoding="utf-8") as f:
@@ -174,22 +198,46 @@ def _apply_scoring_weight(rule: ImprovementRule) -> ApplyResult:
     else:
         data = []
 
+    # ASSET_WEIGHT ペア整合性チェック:
+    # 同カテゴリの反対側パラメータが既にファイルに明示されている場合、
+    # 合計が 1.0 になるか検証する（自動補正は _load_scoring_overrides 側が行う）
+    new_value = rule.patch["value"]
+    param = rule.match.get("param", "")
+    if target == "ASSET_WEIGHT" and param in ("asset_w", "obligor_w"):
+        other_param = "obligor_w" if param == "asset_w" else "asset_w"
+        cat = rule.match.get("category")
+        other_match = {"target": target, "category": cat, "param": other_param}
+        other_entry = next(
+            (e for e in data if isinstance(e, dict) and _dict_matches(e, other_match)),
+            None,
+        )
+        if other_entry is not None:
+            other_value = other_entry.get("value", 0)
+            pair_sum = round(new_value + other_value, 10)
+            if abs(pair_sum - 1.0) > 1e-9:
+                return ApplyResult(
+                    rule.rev_id,
+                    False,
+                    f"ASSET_WEIGHT ペア整合エラー: {cat} の {param}={new_value} + "
+                    f"{other_param}={other_value} = {pair_sum} ≠ 1.0。"
+                    "一方だけを指定すれば補数が自動計算されます。",
+                )
+
     original = copy.deepcopy(data)
 
+    # match の全キーが一致するエントリを探す
     matched_idx: int | None = None
-    if rule.match:
-        for i, entry in enumerate(data):
-            if isinstance(entry, dict) and _dict_matches(entry, rule.match):
-                matched_idx = i
-                break
+    for i, entry in enumerate(data):
+        if isinstance(entry, dict) and _dict_matches(entry, rule.match):
+            matched_idx = i
+            break
 
     if matched_idx is not None:
-        for k, v in rule.patch.items():
-            data[matched_idx][k] = v
+        data[matched_idx]["value"] = new_value
         action = "更新"
     else:
-        new_entry: dict = dict(rule.match or {})
-        new_entry.update(rule.patch)
+        new_entry: dict = dict(rule.match)
+        new_entry["value"] = new_value
         data.append(new_entry)
         action = "新規追加"
 
@@ -201,7 +249,7 @@ def _apply_scoring_weight(rule: ImprovementRule) -> ApplyResult:
     return ApplyResult(
         rev_id=rule.rev_id,
         success=True,
-        message=f"scoring_weights.json に 1 件を{action}しました",
+        message=f"scoring_weights.json に 1 件を{action}しました（{target}: {rule.match}）",
         changed_file="api/scoring_weights.json",
         diff_summary=diff,
     )

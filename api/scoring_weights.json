@@ -1,6 +1,15 @@
 [
   {
-    "category": "ドローン（測量用）",
-    "risk_multiplier": 0.85
+    "target": "ASSET_WEIGHT",
+    "category": "産業機械",
+    "param": "asset_w",
+    "value": 0.3
+  },
+  {
+    "target": "CATEGORY_SCORE_ITEMS",
+    "category": "IT機器",
+    "item_id": "tech_obsolescence",
+    "param": "weight",
+    "value": 25
   }
 ]
