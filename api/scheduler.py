@@ -64,6 +64,7 @@ def start_scheduler() -> BackgroundScheduler:
         id="crystallization_daily",
         name="知識結晶化バッチ（毎日02:00）",
         replace_existing=True,
+        misfire_grace_time=300,
     )
     _scheduler.start()
     logger.info("[Scheduler] 起動完了。毎日 02:00 JST に結晶化バッチを実行します。")
