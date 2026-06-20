@@ -204,6 +204,11 @@ else
     fi
 fi
 
+# スコアリング重み最適化の自動トリガー
+echo ""
+echo "[最適化] 30日以上前の未登録ケースを失注補完 → 重み最適化トリガー..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/auto_trigger_optimizer.py" || true
+
 if [ -f "${LATEST_FILE}" ]; then
     echo ""
     echo "[配布] Gist に最終結果を更新中..."
