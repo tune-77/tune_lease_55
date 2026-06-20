@@ -1096,6 +1096,17 @@ def calculate_score_full(req: ScoringRequest):
         except Exception as _ignite_err:
             print(f"[WARNING] lease-intelligence ignition skipped: {_ignite_err}")
 
+        # 感情トリガー（REV-101）: 審査完了 or 高リスク承認
+        try:
+            from api.emotion_trigger import trigger_scoring_complete
+            trigger_scoring_complete(
+                score=float(result.get("score", 0.0)),
+                quantum_risk=result.get("quantum_risk"),
+                credit_quantum_strong_warning=bool(result.get("credit_quantum_strong_warning", False)),
+            )
+        except Exception as _et_err:
+            print(f"[EmotionTrigger] scoring skipped: {_et_err}")
+
         return ScoringResponse(
             score=result.get("score", 0.0),
             hantei=result.get("hantei", "未判定"),
@@ -3025,6 +3036,14 @@ def patch_case_result(case_id: str, req: CaseResultPatch):
         except Exception as _fb_err:
             print(f"[ShionFeedback] record_screening_feedback skipped: {_fb_err}")
 
+    # 感情トリガー（REV-101）: 成約/失注による mood 更新
+    if outcome in ("成約", "失注"):
+        try:
+            from api.emotion_trigger import trigger_emotion
+            trigger_emotion(outcome)
+        except Exception as _et_err:
+            print(f"[EmotionTrigger] result patch skipped: {_et_err}")
+
     return {"status": "updated", "case_id": case_id, "obsidian_reflection": obsidian_result}
 
 
@@ -4582,6 +4601,14 @@ def register_case_result(req: CaseRegistration):
                 record_screening_feedback(_reg_vault, target_case_id, req.status)
         except Exception as _reg_err:
             print(f"[ShionFeedback] record_screening_feedback skipped: {_reg_err}")
+
+    # 感情トリガー（REV-101）: 成約/失注による mood 更新
+    if req.status in ("成約", "失注"):
+        try:
+            from api.emotion_trigger import trigger_emotion
+            trigger_emotion(req.status)
+        except Exception as _et_err:
+            print(f"[EmotionTrigger] register skipped: {_et_err}")
 
     # ミニPDCAトリガー: 成約/失注登録時にAI判定vs実結果を記録し、5件溜まったらPDCA実行
     if req.status in ("成約", "失注"):
