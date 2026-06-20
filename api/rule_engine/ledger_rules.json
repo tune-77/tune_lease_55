@@ -1,0 +1,196 @@
+[
+  {
+    "rev_id": "REV-007-a",
+    "type": "patch_json",
+    "description": "ブルドーザー耐用年数を 8年→6年 に修正（国税庁通達・別表第二55号準拠）",
+    "source": "dispatch_queue 2026-06-20 / canonical_candidates",
+    "target": "static_data/useful_life_equipment.json",
+    "match": {"name": "ブルドーザー"},
+    "patch": {"years": 6, "note": "耐用年数省令別表第二55号。REV-103e batch_apply で自動適用。"},
+    "affected_files": ["static_data/useful_life_equipment.json"],
+    "risk": "low",
+    "auto_fix_allowed": true
+  },
+  {
+    "rev_id": "REV-007-b",
+    "type": "patch_json",
+    "description": "ショベル・油圧ショベル耐用年数を 8年→6年 に修正（国税庁通達・別表第二55号準拠）",
+    "source": "dispatch_queue 2026-06-20 / canonical_candidates",
+    "target": "static_data/useful_life_equipment.json",
+    "match": {"name": "ショベル・油圧ショベル（パワーショベル）"},
+    "patch": {"years": 6, "note": "耐用年数省令別表第二55号。REV-103e batch_apply で自動適用。"},
+    "affected_files": ["static_data/useful_life_equipment.json"],
+    "risk": "low",
+    "auto_fix_allowed": true
+  },
+  {
+    "rev_id": "REV-OCR-002",
+    "type": "manual",
+    "description": "OCR 3期分財務データ対応（前期・前々期トレンド）",
+    "source": "data/ledger.jsonl",
+    "manual_reason": "ScoringFormData フィールド追加・フロントコンポーネント変更・LightGBM 特徴量追加・モデル再学習が必要。多ファイル横断変更かつモデル再学習を伴うため、rule_engine の自動適用対象外。",
+    "affected_files": [
+      "types/index.ts",
+      "frontend/src/components/form/OcrUpload.tsx",
+      "frontend/src/components/form/FormFinancial.tsx",
+      "api/routers/ocr.py",
+      "scoring/scoring_core.py"
+    ],
+    "risk": "high",
+    "auto_fix_allowed": false
+  },
+  {
+    "rev_id": "REV-OCR-003",
+    "type": "llm_diff",
+    "pending_llm": true,
+    "description": "納税証明書OCR対応：/api/ocr エンドポイントに doc_type='tax_cert' を追加",
+    "source": "data/ledger.jsonl",
+    "target": "api/routers/ocr.py",
+    "patch": {
+      "instruction": "既存の /api/ocr エンドポイントに doc_type='tax_cert' パラメータを追加し、納税証明書（滞納なし確認・税額情報）を OCR 処理できるよう拡張してください。既存の doc_type 分岐ロジックに新しいブランチを追加する形で実装してください。滞納有無フラグ（tax_default: bool）と税額（tax_amount: Optional[int]）をレスポンスに含めてください。既存ロジックへの影響を最小化してください。"
+    },
+    "affected_files": ["api/routers/ocr.py", "frontend/src/components/form/OcrUpload.tsx"],
+    "risk": "medium",
+    "auto_fix_allowed": false
+  },
+  {
+    "rev_id": "REV-OCR-004",
+    "type": "llm_diff",
+    "pending_llm": true,
+    "description": "登記簿謄本OCR対応：/api/ocr エンドポイントに doc_type='toukibo' を追加",
+    "source": "data/ledger.jsonl",
+    "target": "api/routers/ocr.py",
+    "patch": {
+      "instruction": "既存の /api/ocr エンドポイントに doc_type='toukibo' パラメータを追加し、登記簿謄本から設立年月日・資本金・代表者名・役員情報を抽出できるよう拡張してください。既存の doc_type 分岐ロジックに新しいブランチを追加する形で実装してください。レスポンスには established_date（str）, capital（Optional[int]）, representative（str）, directors（List[str]）を含めてください。既存ロジックへの影響を最小化してください。"
+    },
+    "affected_files": ["api/routers/ocr.py", "frontend/src/components/form/OcrUpload.tsx"],
+    "risk": "medium",
+    "auto_fix_allowed": false
+  },
+  {
+    "rev_id": "REV-OCR-005",
+    "type": "llm_diff",
+    "pending_llm": true,
+    "description": "見積書・注文書OCR対応：/api/ocr エンドポイントに doc_type='estimate' を追加",
+    "source": "data/ledger.jsonl",
+    "target": "api/routers/ocr.py",
+    "patch": {
+      "instruction": "既存の /api/ocr エンドポイントに doc_type='estimate' パラメータを追加し、見積書・注文書から物件名・金額・メーカー・型番を抽出できるよう拡張してください。既存の doc_type 分岐ロジックに新しいブランチを追加する形で実装してください。レスポンスには item_name（str）, amount（Optional[int]）, maker（str）, model_number（str）を含めてください。既存ロジックへの影響を最小化してください。"
+    },
+    "affected_files": [
+      "api/routers/ocr.py",
+      "frontend/src/components/form/OcrUpload.tsx",
+      "frontend/src/components/form/FormAsset.tsx"
+    ],
+    "risk": "medium",
+    "auto_fix_allowed": false
+  },
+  {
+    "rev_id": "REV-OCR-006",
+    "type": "llm_diff",
+    "pending_llm": true,
+    "description": "会社案内・パンフレットOCR対応：/api/ocr エンドポイントに doc_type='brochure' を追加",
+    "source": "data/ledger.jsonl",
+    "target": "api/routers/ocr.py",
+    "patch": {
+      "instruction": "既存の /api/ocr エンドポイントに doc_type='brochure' パラメータを追加し、会社案内・パンフレットから業種・事業内容・主要取引先・従業員数などを抽出できるよう拡張してください。既存の doc_type 分岐ロジックに新しいブランチを追加する形で実装してください。レスポンスには industry（str）, business_description（str）, main_clients（List[str]）, employee_count（Optional[int]）を含めてください。既存ロジックへの影響を最小化してください。"
+    },
+    "affected_files": ["api/routers/ocr.py"],
+    "risk": "medium",
+    "auto_fix_allowed": false
+  },
+  {
+    "rev_id": "REV-013",
+    "type": "manual",
+    "description": "案件ネットワーク画面で案件情報が何も表示されない（UI 表示不具合）",
+    "source": "canonical_candidates / AI Chat 改善ログ 2026-06-15",
+    "manual_reason": "対象ファイル未特定。案件ネットワーク画面のコンポーネントとデータ取得 API の両方を調査してから修正が必要。",
+    "affected_files": [],
+    "risk": "medium",
+    "auto_fix_allowed": false
+  },
+  {
+    "rev_id": "REV-004",
+    "type": "manual",
+    "description": "ポートフォリオリスク管理機能の導入（大規模機能追加）",
+    "source": "dispatch_queue 2026-06-20 / canonical_candidates",
+    "manual_reason": "新規画面・API・集計ロジック・DB スキーマ変更を伴う大規模機能追加。カテゴリ: large。rule_engine の自動適用対象外。",
+    "affected_files": [],
+    "risk": "high",
+    "auto_fix_allowed": false
+  },
+  {
+    "rev_id": "REV-010",
+    "type": "manual",
+    "description": "異常検知（Z-Score）が動作していない",
+    "source": "canonical_candidates",
+    "manual_reason": "異常検知ロジックの診断・修正が必要。バグ箇所未特定のため手動調査が先行する。",
+    "affected_files": [],
+    "risk": "medium",
+    "auto_fix_allowed": false
+  },
+  {
+    "rev_id": "REV-016",
+    "type": "llm_diff",
+    "pending_llm": true,
+    "description": "紫苑の回答冗長性改善：定型的な感謝フレーズを削減し簡潔な応答にする",
+    "source": "canonical_candidates",
+    "target": "ai_chat.py",
+    "patch": {
+      "instruction": "ai_chat.py のシステムプロンプト生成部分またはレスポンス後処理部分に、冗長な定型フレーズ（「ありがとうございます」「おっしゃる通りです」「かしこまりました」等の繰り返し）を削減するロジックを追加してください。既存の応答品質を下げず、回答の本質的な内容はすべて維持してください。既存のロジックへの影響を最小化してください。"
+    },
+    "affected_files": ["ai_chat.py"],
+    "risk": "low",
+    "auto_fix_allowed": false
+  },
+  {
+    "rev_id": "REV-017",
+    "type": "manual",
+    "description": "アプリ内の法定対応年数データが最新化されていない",
+    "source": "canonical_candidates",
+    "manual_reason": "更新が必要な具体的な品目・年数が指定されていない。国税庁通達を参照して差異を特定してから patch_json ルールとして再定義すること。",
+    "affected_files": ["static_data/useful_life_equipment.json", "api/useful_life_table.json"],
+    "risk": "medium",
+    "auto_fix_allowed": false
+  },
+  {
+    "rev_id": "REV-019",
+    "type": "manual",
+    "description": "外部市場データと自社DBのズレを毎日比較する仕組みの構築",
+    "source": "canonical_candidates",
+    "manual_reason": "外部市場データ取得・比較・アラート通知の新規パイプライン構築が必要。大規模な設計変更を伴うため手動対応。",
+    "affected_files": [],
+    "risk": "high",
+    "auto_fix_allowed": false
+  },
+  {
+    "rev_id": "REV-020",
+    "type": "manual",
+    "description": "Q_risk を成約・失注を動かす未知因子の発見装置として再設計",
+    "source": "canonical_candidates",
+    "manual_reason": "Q_risk の役割と算出ロジックの根本的な再設計が必要。scoring_core.py への大きな変更を伴い、モデル再学習も必要。",
+    "affected_files": ["scoring_core.py"],
+    "risk": "high",
+    "auto_fix_allowed": false
+  },
+  {
+    "rev_id": "REV-021",
+    "type": "manual",
+    "description": "スコア60-80帯の成約系比率低下：価格・競合・条件提示後離脱のログ化",
+    "source": "canonical_candidates",
+    "manual_reason": "新規ログ収集フィールドの追加・DB スキーマ変更・フロントエンド修正が必要。具体的な実装方針を先に決定すること。",
+    "affected_files": [],
+    "risk": "medium",
+    "auto_fix_allowed": false
+  },
+  {
+    "rev_id": "REV-023",
+    "type": "manual",
+    "description": "スコア60-80帯の成約率逆転：モデルキャリブレーション見直し",
+    "source": "canonical_candidates",
+    "manual_reason": "RandomForest モデルのキャリブレーション変更はモデル再学習・評価・検証を伴う。scoring_weight 単独では対応できない。",
+    "affected_files": ["scoring_core.py"],
+    "risk": "high",
+    "auto_fix_allowed": false
+  }
+]
