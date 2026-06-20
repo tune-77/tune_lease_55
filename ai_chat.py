@@ -10,6 +10,7 @@ import time
 import concurrent.futures
 import datetime
 from typing import Optional, Generator
+import re
 import streamlit as st
 
 from config import (
@@ -28,6 +29,27 @@ _get_gemini_key_from_secrets = get_gemini_api_key
 
 # スレッド → メインで結果を渡す用（session_state はスレッドから更新不可）
 _chat_result_holder: dict = {"result": None, "done": False}
+
+_REDUNDANT_PHRASES = [
+    "はい、承知いたしました", "はい、承知しました",
+    "はい、了解いたしました", "はい、了解しました",
+    "おっしゃる通りでございます", "おっしゃる通りです",
+    "かしこまりました", "承知いたしました", "了解いたしました",
+    "ご質問ありがとうございます", "ご指摘ありがとうございます",
+    "ありがとうございます", "その通りです",
+    "承知しました", "了解しました",
+    "はい", "ええ", "うん",
+]
+
+
+def _remove_redundant_phrases(text: str) -> str:
+    """冗長な定型フレーズを行頭から削減する（応答本質は維持）。"""
+    if not text:
+        return text
+    cleaned = text
+    for phrase in _REDUNDANT_PHRASES:
+        cleaned = re.sub(r"^\s*" + re.escape(phrase) + r"[\s、。]*", "", cleaned, flags=re.M)
+    return cleaned.strip()
 
 
 def _op_margin_judgement(user_op, bench_op) -> str:
@@ -99,7 +121,7 @@ def _ollama_chat_http(model: str, messages: list, timeout_seconds: int):
     resp.raise_for_status()
     data = resp.json()
     if "message" in data and "content" in data["message"]:
-        return {"message": {"content": data["message"]["content"]}}
+        return {"message": {"content": _remove_redundant_phrases(data["message"]["content"])}}
     raise RuntimeError("Ollama の応答形式が不正です。")
 
 
@@ -165,7 +187,7 @@ def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int,
                     if text:
                         break
         if text and text.strip():
-            return {"message": {"content": text.strip()}}
+            return {"message": {"content": _remove_redundant_phrases(text.strip())}}
     except Exception as _e1:
         log_warning(f"Gemini 新SDK失敗 ({_model}): {_e1}", context="_gemini_chat")
 
@@ -188,7 +210,7 @@ def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int,
         response = _old_model_obj.generate_content(old_contents)
         text = getattr(response, "text", "") or ""
         if text and text.strip():
-            return {"message": {"content": text.strip()}}
+            return {"message": {"content": _remove_redundant_phrases(text.strip())}}
     except Exception as _e2:
         log_warning(f"Gemini 旧SDK失敗 ({_model}): {_e2}", context="_gemini_chat")
 
@@ -209,7 +231,7 @@ def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int,
             data = _json.loads(resp_obj.read().decode("utf-8"))
         text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
         if text and text.strip():
-            return {"message": {"content": text.strip()}}
+            return {"message": {"content": _remove_redundant_phrases(text.strip())}}
         return {"message": {"content": "Gemini から空の応答が返されました。"}}
     except Exception as e:
         return _handle_error(e)
