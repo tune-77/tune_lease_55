@@ -6245,6 +6245,16 @@ def post_chat(req: ChatRequest):
             brief_lines.append(str(news_brief.get("question_line") or "").strip())
             news_brief_context = "\n\n【今日のニュースブリーフ】\n" + "\n".join(line for line in brief_lines if line)
 
+        # REV-102: mind.json から感情状態を読み込んでシステムプロンプトを動的生成する
+        import datetime as _pg_dt
+        from api.prompt_generator import (
+            load_mind as _pg_load_mind,
+            build_system_prompt as _pg_build_sp,
+            build_general_system_prompt as _pg_build_gsp,
+        )
+        _chat_now = _pg_dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+        _chat_mind = _pg_load_mind()
+
         if (req.intent or "").strip().lower() == "improvement":
             save_message(req.user_id, "user", req.message)
             original_text = req.message.strip()
@@ -6363,9 +6373,7 @@ def post_chat(req: ChatRequest):
             history_for_gemini = [{"role": m["role"], "content": m["content"]} for m in history]
             from prompt_feedback import build_pdca_prompt_block
 
-            import datetime as _chat_dt
-            _date_ctx = f"\n\n【現在日時】{_chat_dt.datetime.now().strftime('%Y年%m月%d日 %H:%M')} (JST)"
-            base_system_prompt = _GENERAL_CHAT_SYSTEM_PROMPT + _date_ctx + news_focus_context + news_brief_context
+            base_system_prompt = _pg_build_gsp(_chat_mind, _chat_now) + news_focus_context + news_brief_context
             pdca_block = build_pdca_prompt_block()
             effective_system_prompt = base_system_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
             reply = call_gemini_chat(effective_system_prompt, history_for_gemini, req.message)
@@ -6478,9 +6486,7 @@ def post_chat(req: ChatRequest):
         except Exception as _judgment_learning_error:
             print(f"[判断差分学習] 読み込みエラー: {_judgment_learning_error}")
 
-        import datetime as _chat_dt
-        _date_ctx = f"\n\n【現在日時】{_chat_dt.datetime.now().strftime('%Y年%m月%d日 %H:%M')} (JST)"
-        base_effective_prompt = _CHAT_SYSTEM_PROMPT + _date_ctx + news_focus_context + news_brief_context + rag_context + db_context + improvement_context + judgment_learning_context + guidance.prompt_suffix
+        base_effective_prompt = _pg_build_sp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + rag_context + db_context + improvement_context + judgment_learning_context + guidance.prompt_suffix
         pdca_block = build_pdca_prompt_block()
         effective_prompt = base_effective_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
         reply = call_gemini_chat(effective_prompt, history_for_gemini, req.message)
