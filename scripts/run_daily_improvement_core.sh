@@ -158,6 +158,18 @@ if [ -f "${RESULT_FILE}" ]; then
             FINAL_EXIT=${QUEUE_EXIT}
         fi
     fi
+
+    if [ -f "${CODEX_QUEUE_FILE}" ]; then
+        echo ""
+        echo "[反映] Codex 自動実行キューを実行中..."
+        "${PYTHON}" "${PROJECT_ROOT}/scripts/execute_codex_queue.py" \
+            --queue "${CODEX_QUEUE_FILE}" || true
+        EXECUTE_EXIT=$?
+        log_step "execute_codex_queue" ${EXECUTE_EXIT}
+        if [ ${EXECUTE_EXIT} -ne 0 ]; then
+            echo "警告: Codex 自動実行キューの実行に失敗しました（終了コード ${EXECUTE_EXIT}）"
+        fi
+    fi
 fi
 
 # Wiki 昇格キュー
