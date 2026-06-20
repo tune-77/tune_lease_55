@@ -47,8 +47,11 @@ def _remove_redundant_phrases(text: str) -> str:
     if not text:
         return text
     cleaned = text
+    delimiter = r"(?=$|[ \t　、。，．.!！?？:：;；\-—…])"
+    trailing = r"[ \t　、。，．.!！?？:：;；\-—…]*"
     for phrase in _REDUNDANT_PHRASES:
-        cleaned = re.sub(r"^\s*" + re.escape(phrase) + r"[\s、。]*", "", cleaned, flags=re.M)
+        pattern = r"^\s*" + re.escape(phrase) + delimiter + trailing
+        cleaned = re.sub(pattern, "", cleaned, flags=re.M)
     return cleaned.strip()
 
 
