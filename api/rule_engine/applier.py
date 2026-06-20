@@ -198,6 +198,31 @@ def _apply_scoring_weight(rule: ImprovementRule) -> ApplyResult:
     else:
         data = []
 
+    # ASSET_WEIGHT ペア整合性チェック:
+    # 同カテゴリの反対側パラメータが既にファイルに明示されている場合、
+    # 合計が 1.0 になるか検証する（自動補正は _load_scoring_overrides 側が行う）
+    new_value = rule.patch["value"]
+    param = rule.match.get("param", "")
+    if target == "ASSET_WEIGHT" and param in ("asset_w", "obligor_w"):
+        other_param = "obligor_w" if param == "asset_w" else "asset_w"
+        cat = rule.match.get("category")
+        other_match = {"target": target, "category": cat, "param": other_param}
+        other_entry = next(
+            (e for e in data if isinstance(e, dict) and _dict_matches(e, other_match)),
+            None,
+        )
+        if other_entry is not None:
+            other_value = other_entry.get("value", 0)
+            pair_sum = round(new_value + other_value, 10)
+            if abs(pair_sum - 1.0) > 1e-9:
+                return ApplyResult(
+                    rule.rev_id,
+                    False,
+                    f"ASSET_WEIGHT ペア整合エラー: {cat} の {param}={new_value} + "
+                    f"{other_param}={other_value} = {pair_sum} ≠ 1.0。"
+                    "一方だけを指定すれば補数が自動計算されます。",
+                )
+
     original = copy.deepcopy(data)
 
     # match の全キーが一致するエントリを探す
@@ -208,11 +233,11 @@ def _apply_scoring_weight(rule: ImprovementRule) -> ApplyResult:
             break
 
     if matched_idx is not None:
-        data[matched_idx]["value"] = rule.patch["value"]
+        data[matched_idx]["value"] = new_value
         action = "更新"
     else:
         new_entry: dict = dict(rule.match)
-        new_entry["value"] = rule.patch["value"]
+        new_entry["value"] = new_value
         data.append(new_entry)
         action = "新規追加"
 

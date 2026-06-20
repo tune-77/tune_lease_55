@@ -267,6 +267,11 @@ def _load_scoring_overrides() -> None:
             value = ov.get("value")
             if cat in ASSET_WEIGHT and param in ASSET_WEIGHT[cat] and value is not None:
                 ASSET_WEIGHT[cat][param] = value
+                # ペア重みを自動補正して asset_w + obligor_w = 1.0 を保証する
+                if param == "asset_w":
+                    ASSET_WEIGHT[cat]["obligor_w"] = round(1.0 - value, 10)
+                elif param == "obligor_w":
+                    ASSET_WEIGHT[cat]["asset_w"] = round(1.0 - value, 10)
         elif target == "CATEGORY_SCORE_ITEMS":
             cat = ov.get("category")
             item_id = ov.get("item_id")
