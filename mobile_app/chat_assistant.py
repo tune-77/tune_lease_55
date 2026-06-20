@@ -43,6 +43,11 @@ try:
 except ImportError:  # pragma: no cover - package import fallback
     from ..prompt_feedback import build_pdca_prompt_block, record_prompt_feedback
 
+try:
+    from api.context.time_context import current_datetime_prompt_block
+except ImportError:  # pragma: no cover - package import fallback
+    from ..api.context.time_context import current_datetime_prompt_block
+
 
 def _get_gemini_key() -> str:
     try:
@@ -544,6 +549,7 @@ Webメモ保存の判断:
     obsidian_digest = build_obsidian_digest(message, obsidian_hits) if obsidian_hits else {"digest": "", "title": "", "source_count": "0"}
 
     guidance = build_chat_guidance(message, history)
+    datetime_context = current_datetime_prompt_block()
 
     shion_section = f"\n{shion_context}\n" if shion_context else ""
     shion_reply_section = (
@@ -552,6 +558,7 @@ Webメモ保存の判断:
     )
 
     return f"""{_persona}
+{datetime_context}
 {shion_section}
 Obsidian自動保存の判断:
 - 保存するのは、今後も使う判断、方針、TODO、再発防止、案件メモ、ユーザーの好み、実装上の決定だけ。
