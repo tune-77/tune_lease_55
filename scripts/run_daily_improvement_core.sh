@@ -8,6 +8,17 @@ LOG_DATE="${LOG_DATE:-$(date +%Y%m%d)}"
 RESULT_FILE="${RESULT_FILE:-${HOME}/Library/Logs/tunelease/reports/improvement_report_${LOG_DATE}.json}"
 EXPORT_FILE="${EXPORT_FILE:-/tmp/obsidian_improvements_export.txt}"
 
+# ステップ結果を構造化ログに記録するヘルパー
+log_step() {
+    local step_name="$1"
+    local exit_code="$2"
+    local duration_s="${3:-0}"
+    local log_file="${PROJECT_ROOT}/data/pipeline_step_log.jsonl"
+    local ts
+    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "{\"ts\":\"${ts}\",\"run_date\":\"${LOG_DATE}\",\"step\":\"${step_name}\",\"exit_code\":${exit_code},\"duration_s\":${duration_s}}" >> "${log_file}"
+}
+
 echo ""
 echo "[入力・同期] 実装済み改善を Obsidian インデックスに自動同期中..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/sync_implemented_to_obsidian.py" || true
@@ -26,6 +37,7 @@ echo ""
 echo "[診断] Obsidian 改善インデックスから改善案を抽出中..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/extract_obsidian_improvements.py"
 STEP0_EXIT=$?
+log_step "extract_obsidian_improvements" ${STEP0_EXIT}
 if [ ${STEP0_EXIT} -ne 0 ]; then
     echo "警告: 改善インデックス抽出が終了コード ${STEP0_EXIT} で終了しました（パイプラインを継続します）"
 fi
@@ -59,6 +71,7 @@ echo "[改善] auto-improvement-pipeline 実行中..."
     --output "${RESULT_FILE}" \
     --workspace "${PROJECT_ROOT}"
 PIPELINE_EXIT=$?
+log_step "auto_improvement_pipeline" ${PIPELINE_EXIT}
 
 LATEST_FILE="${PROJECT_ROOT}/reports/latest.json"
 GIST_ID="3980215df65cf75e972471f048b10d15"
@@ -76,6 +89,7 @@ if [ -f "${RESULT_FILE}" ]; then
         --latest "${LATEST_FILE}" \
         --from-report
     SYNC_EXIT=$?
+    log_step "sync_improvement_reports" ${SYNC_EXIT}
     if [ ${SYNC_EXIT} -ne 0 ]; then
         echo "警告: レポート反映の同期に失敗しました（終了コード ${SYNC_EXIT}）"
         if [ ${FINAL_EXIT} -eq 0 ]; then
@@ -87,6 +101,10 @@ fi
 echo ""
 echo "[反映] RAG フィードバック分析 — ブースト/ペナルティ候補を台帳に追記中..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_rag_feedback.py" || true
+
+echo ""
+echo "[反映] パイプラインヘルス分析 — 失敗率の高いステップをルール台帳に追記中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_pipeline_health.py" || true
 
 echo ""
 echo "[反映] batch_apply — 台帳ルールを自動適用中..."
@@ -106,6 +124,7 @@ RECURSIVE_LATEST_MD="${PROJECT_ROOT}/reports/recursive_self_improvement_latest.m
     --latest-json "${RECURSIVE_LATEST_JSON}" \
     --latest-md "${RECURSIVE_LATEST_MD}"
 RECURSIVE_EXIT=$?
+log_step "recursive_self_improvement" ${RECURSIVE_EXIT}
 if [ ${RECURSIVE_EXIT} -ne 0 ]; then
     echo "警告: 再帰的自己改善レポート生成に失敗しました（終了コード ${RECURSIVE_EXIT}）"
     if [ ${FINAL_EXIT} -eq 0 ]; then
@@ -132,6 +151,7 @@ if [ -f "${RESULT_FILE}" ]; then
         --output "${CODEX_QUEUE_FILE}" \
         --limit 3
     QUEUE_EXIT=$?
+    log_step "build_codex_auto_queue" ${QUEUE_EXIT}
     if [ ${QUEUE_EXIT} -ne 0 ]; then
         echo "警告: Codex 自動実行キュー生成に失敗しました（終了コード ${QUEUE_EXIT}）"
         if [ ${FINAL_EXIT} -eq 0 ]; then
@@ -149,6 +169,7 @@ WIKI_QUEUE_FILE="${PROJECT_ROOT}/reports/wiki_promotion_queue_${LOG_DATE}.json"
     --output "${WIKI_QUEUE_FILE}" \
     --limit 3
 WIKI_QUEUE_EXIT=$?
+log_step "build_wiki_promotion_queue" ${WIKI_QUEUE_EXIT}
 if [ ${WIKI_QUEUE_EXIT} -ne 0 ]; then
     echo "警告: Wiki 昇格キュー生成に失敗しました（終了コード ${WIKI_QUEUE_EXIT}）"
     if [ ${FINAL_EXIT} -eq 0 ]; then
@@ -162,6 +183,7 @@ else
         --latest "${LATEST_FILE}" \
         --limit 3
     WIKI_PROMOTE_EXIT=$?
+    log_step "promote_wiki_queue" ${WIKI_PROMOTE_EXIT}
     if [ ${WIKI_PROMOTE_EXIT} -ne 0 ]; then
         echo "警告: Wiki 昇格キューの自動適用に失敗しました（終了コード ${WIKI_PROMOTE_EXIT}）"
         if [ ${FINAL_EXIT} -eq 0 ]; then
@@ -182,6 +204,7 @@ if [ -f "${LATEST_FILE}" ]; then
                 GIST_EXIT=$?
                 echo "警告: Gist 更新に失敗しました（ローカル結果は保存済み）"
             fi
+            log_step "gist_update" ${GIST_EXIT}
             if [ ${GIST_EXIT} -ne 0 ] && [ ${FINAL_EXIT} -eq 0 ]; then
                 FINAL_EXIT=${GIST_EXIT}
             fi
