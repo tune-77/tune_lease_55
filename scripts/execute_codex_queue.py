@@ -67,7 +67,7 @@ def _try_gemini(prompt: str, api_key: str) -> tuple[int, str, str]:
         return -1, "", "google-generativeai パッケージ未インストール"
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         response = model.generate_content(prompt)
         text = response.text or ""
         if not text.strip():
