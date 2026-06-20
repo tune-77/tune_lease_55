@@ -24,6 +24,10 @@ FAILURE_RATE_THRESHOLD = 0.5
 MIN_TOTAL_RUNS = 3
 LOOKBACK_DAYS = 7
 
+# auto_fix_allowed=true にするための条件
+AUTO_FIX_MIN_FAILURE_DAYS = 5   # 7日中5日以上失敗していること
+AUTO_FIX_RULE_TYPES = {"patch_json", "config_value"}  # 対応ルール型
+
 
 def load_recent_logs():
     if not LOG_FILE.exists():
@@ -47,14 +51,25 @@ def load_recent_logs():
 
 
 def aggregate(entries):
-    counts = defaultdict(lambda: {"good": 0, "bad": 0})
+    counts = defaultdict(lambda: {"good": 0, "bad": 0, "bad_days": set()})
     for e in entries:
         step = e.get("step", "unknown")
         if e.get("exit_code", 1) == 0:
             counts[step]["good"] += 1
         else:
             counts[step]["bad"] += 1
+            counts[step]["bad_days"].add(e.get("run_date", ""))
     return counts
+
+
+def has_auto_fix_rule(ledger: list, step: str) -> bool:
+    """ledger_rules.json に対象ステップに対応する patch_json / config_value 型ルールが存在するか。"""
+    for entry in ledger:
+        if entry.get("type") not in AUTO_FIX_RULE_TYPES:
+            continue
+        if step in str(entry.get("description") or ""):
+            return True
+    return False
 
 
 def load_ledger():
@@ -94,7 +109,7 @@ def main():
             continue
         rate = c["bad"] / total
         if rate >= FAILURE_RATE_THRESHOLD:
-            penalty_steps.append((step, c["bad"], total, rate))
+            penalty_steps.append((step, c["bad"], total, rate, len(c["bad_days"])))
 
     if not penalty_steps:
         print(f"直近{LOOKBACK_DAYS}日間で失敗率閾値({FAILURE_RATE_THRESHOLD*100:.0f}%)超のステップはありません。", flush=True)
@@ -105,7 +120,7 @@ def main():
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     added = 0
-    for step, bad, total, rate in sorted(penalty_steps, key=lambda x: -x[3]):
+    for step, bad, total, rate, bad_days in sorted(penalty_steps, key=lambda x: -x[3]):
         if already_exists(ledger, step):
             print(f"スキップ（既存）: {step}", flush=True)
             continue
@@ -113,11 +128,17 @@ def main():
         base_rev += 1
         rev_id = f"REV-{base_rev:03d}a"
         pct = int(rate * 100)
-        description = f"[パイプライン自動検出] {step} が過去{LOOKBACK_DAYS}日で失敗率{pct}%（{bad}/{total}件）"
+        description = f"[パイプライン自動検出] {step} が過去{LOOKBACK_DAYS}日で失敗率{pct}%（{bad}/{total}件, {bad_days}日失敗）"
+
+        # 7日中5日以上失敗 かつ patch_json/config_value 型ルールが存在する場合のみ自動修正許可
+        can_auto_fix = (
+            bad_days >= AUTO_FIX_MIN_FAILURE_DAYS
+            and has_auto_fix_rule(ledger, step)
+        )
 
         new_entry = {
             "rev_id": rev_id,
-            "type": "manual",
+            "type": "patch_json" if can_auto_fix else "manual",
             "pending_review": True,
             "category": "pipeline_fix",
             "description": description,
@@ -125,8 +146,8 @@ def main():
             "source": "analyze_pipeline_health",
             "detected_at": now_iso,
             "affected_files": [],
-            "risk": "medium",
-            "auto_fix_allowed": False,
+            "risk": "low" if can_auto_fix else "medium",
+            "auto_fix_allowed": can_auto_fix,
         }
         ledger.append(new_entry)
         added += 1
@@ -144,8 +165,12 @@ def main():
     for step, c in sorted(counts.items()):
         total = c["good"] + c["bad"]
         rate = c["bad"] / total if total else 0
+        bad_days = len(c["bad_days"])
         flag = " ⚠️" if rate >= FAILURE_RATE_THRESHOLD and total >= MIN_TOTAL_RUNS else ""
-        print(f"  {step}: 成功{c['good']}/失敗{c['bad']} (失敗率{rate*100:.0f}%){flag}", flush=True)
+        print(
+            f"  {step}: 成功{c['good']}/失敗{c['bad']}({bad_days}日) (失敗率{rate*100:.0f}%){flag}",
+            flush=True,
+        )
 
 
 if __name__ == "__main__":
