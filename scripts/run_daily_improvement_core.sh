@@ -107,6 +107,10 @@ echo "[反映] パイプラインヘルス分析 — 失敗率の高いステッ
 "${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_pipeline_health.py" || true
 
 echo ""
+echo "[反映] エラーログ解析 — 頻発エラーをルール台帳に追記中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_error_logs.py" || true
+
+echo ""
 echo "[反映] batch_apply — 台帳ルールを自動適用中..."
 "${PYTHON}" "${PROJECT_ROOT}/api/rule_engine/batch_apply.py" --apply || true
 
