@@ -11,9 +11,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 from prompt_feedback_metrics import DEFAULT_LOG_PATH, build_summary as build_prompt_summary, load_jsonl
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
 _PIPELINE_ROOT = _REPO_ROOT / ".agents" / "skills" / "auto-improvement-pipeline"
 _PIPELINE_SCRIPTS_DIR = _REPO_ROOT / ".agents" / "skills" / "auto-improvement-pipeline" / "scripts"
 if _PIPELINE_ROOT.exists():

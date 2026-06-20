@@ -31,6 +31,7 @@ _MODEL_NAME = os.environ.get("OBSIDIAN_RAG_MODEL") or (
 )
 
 _PREFERRED_PATH_BOOSTS = (
+    ("knowledge_base/okf_lease_concepts/", 0.10),
     ("リース知識/", 0.10),
     ("03-知識_業界/", 0.09),
     ("Projects/tune_lease_55/Asset Knowledge/", 0.09),
@@ -328,6 +329,7 @@ class KnowledgeVectorStore:
             section = str(metadata.get("section") or "").lower()
             ref = str(metadata.get("obsidian_ref") or "").lower()
             wikilinks = str(metadata.get("wikilinks") or "").lower()
+            metadata_text = self._metadata_text(metadata).lower()
             haystack = " ".join(
                 [
                     text,
@@ -335,6 +337,7 @@ class KnowledgeVectorStore:
                     section,
                     ref,
                     wikilinks,
+                    metadata_text,
                 ]
             ).lower()
             if strong_terms and not any(term in haystack for term in strong_terms):
@@ -361,11 +364,23 @@ class KnowledgeVectorStore:
                 "file_path": meta.get("file_path", ""),
                 "section": meta.get("section", ""),
                 "wikilinks": meta.get("wikilinks", ""),
+                "metadata": meta,
                 "distance": None,
                 "score": score,
                 "source": "keyword_fallback",
             })
         return self._rerank_hits(query, hits, top_k=top_k)
+
+    @staticmethod
+    def _metadata_text(metadata: dict) -> str:
+        values: list[str] = []
+        for key in ("type", "title", "domain", "tags", "source", "confidence", "status", "related"):
+            value = metadata.get(key)
+            if isinstance(value, list):
+                values.extend(str(item) for item in value)
+            elif value is not None:
+                values.append(str(value))
+        return " ".join(values)
 
     @staticmethod
     def _display_path(meta_or_hit: dict) -> str:
@@ -442,6 +457,7 @@ class KnowledgeVectorStore:
                 str(hit.get("ref") or ""),
                 self._display_path(hit),
                 str(hit.get("wikilinks") or ""),
+                self._metadata_text(hit.get("metadata") or {}),
             ]
         ).lower()
         matched = sum(1 for term in terms if term in haystack)
@@ -598,6 +614,7 @@ class KnowledgeVectorStore:
                 "file_path": meta.get("file_path", ""),
                 "section": meta.get("section", ""),
                 "wikilinks": meta.get("wikilinks", ""),
+                "metadata": meta,
                 "distance": round(float(dist), 4),
                 "source": "vector",
             })
