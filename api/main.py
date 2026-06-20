@@ -1014,11 +1014,30 @@ _WIZARD_TRACKED_FIELDS = [
     "asset_name", "passion_text", "industry_detail", "asset_detail",
     "asset_purpose", "asset_location",
 ]
+_WIZARD_FIELD_MAX_LEN = 500
+
+
+def _sanitize_wizard_str(value: object, max_len: int = _WIZARD_FIELD_MAX_LEN) -> str:
+    """文字列フィールドを制御文字除去・長さ制限してサニタイズする。"""
+    import unicodedata as _uc, re as _re
+    text = str(value) if not isinstance(value, str) else value
+    cleaned = "".join(
+        ch for ch in text
+        if ch in ("\t", "\n", "\r") or not _uc.category(ch).startswith("C")
+    )
+    cleaned = _re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", cleaned)
+    return cleaned[:max_len]
 
 
 def _log_wizard_input_task(inputs: dict) -> None:
     import datetime as _dt, json as _json
-    empty = [f for f in _WIZARD_TRACKED_FIELDS if not inputs.get(f)]
+    # 文字列フィールドをサニタイズしてから空欄チェック（制御文字のみのフィールドを「空」と正しく判定）
+    sanitized = {
+        f: _sanitize_wizard_str(inputs[f]) if isinstance(inputs.get(f), str) else inputs.get(f)
+        for f in _WIZARD_TRACKED_FIELDS
+        if f in inputs
+    }
+    empty = [f for f in _WIZARD_TRACKED_FIELDS if not sanitized.get(f)]
     entry = _json.dumps({
         "ts": _dt.datetime.now(_dt.timezone.utc).isoformat(),
         "total_fields": len(_WIZARD_TRACKED_FIELDS),
