@@ -4,6 +4,7 @@ paraphrase-multilingual-MiniLM-L12-v2 モデルで日本語テキストをベク
 """
 from __future__ import annotations
 
+import datetime
 import os
 import hashlib
 import json
@@ -64,6 +65,37 @@ _DEFAULT_RANKING_CONFIG = {
     "keyword_pool_multiplier": 4,
     "keyword_pool_min": 12,
 }
+
+_SEARCH_LOG_PATH = os.path.join(_REPO_ROOT, "data", "rag_search_log.jsonl")
+_search_log_lock = threading.Lock()
+
+
+def _write_search_log(query: str, surface: str, results: list[dict]) -> None:
+    if not results:
+        return
+    try:
+        entry = {
+            "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "query": query,
+            "surface": surface,
+            "results": [
+                {
+                    "rank": i + 1,
+                    "doc_id": r.get("doc_id", ""),
+                    "file_name": r.get("file_name", ""),
+                    "obsidian_ref": r.get("ref", ""),
+                    "final_score": r.get("rank_score"),
+                    "score_breakdown": r.get("score_breakdown"),
+                }
+                for i, r in enumerate(results[:5])
+            ],
+        }
+        line = json.dumps(entry, ensure_ascii=False) + "\n"
+        with _search_log_lock:
+            with open(_SEARCH_LOG_PATH, "a", encoding="utf-8") as f:
+                f.write(line)
+    except Exception as exc:
+        logger.warning("[KnowledgeVectorStore] search log write failed: %s", exc)
 
 
 def load_ranking_config(path: str = _RANKING_CONFIG_PATH) -> dict:
@@ -318,11 +350,12 @@ class KnowledgeVectorStore:
             logger.warning("[KnowledgeVectorStore] keyword fallback failed: %s", exc)
             return []
 
+        ids = result.get("ids") or []
         docs = result.get("documents") or []
         metas = result.get("metadatas") or []
-        ranked: list[tuple[int, int, str, dict]] = []
+        ranked: list[tuple[int, int, str, dict, str]] = []
         strong_terms = [term for term in terms if len(term) >= 3]
-        for idx, (doc, meta) in enumerate(zip(docs, metas)):
+        for idx, (doc_id, doc, meta) in enumerate(zip(ids, docs, metas)):
             text = str(doc or "")
             metadata = meta or {}
             file_name = str(metadata.get("file_name") or "").lower()
@@ -353,11 +386,12 @@ class KnowledgeVectorStore:
                 elif term in haystack:
                     score += 1
             if score:
-                ranked.append((score, -idx, text, metadata))
+                ranked.append((score, -idx, text, metadata, doc_id))
 
         hits = []
-        for score, _idx, doc, meta in ranked:
+        for score, _idx, doc, meta, did in ranked:
             hits.append({
+                "doc_id": did,
                 "text": doc,
                 "ref": meta.get("obsidian_ref", ""),
                 "file_name": meta.get("file_name", ""),
@@ -560,6 +594,7 @@ class KnowledgeVectorStore:
         query: str,
         mode: Literal["support", "refute", "both"] = "both",
         top_k: int = 3,
+        surface: str = "",
     ) -> list[dict]:
         """
         クエリに近いチャンクを検索する。
@@ -587,7 +622,9 @@ class KnowledgeVectorStore:
             effective_query = query
 
         if not self._ensure_encoder():
-            return self._keyword_search(effective_query, top_k)
+            hits = self._keyword_search(effective_query, top_k)
+            _write_search_log(query, surface, hits)
+            return hits
 
         try:
             embedding = self._embed([effective_query])[0]
@@ -599,15 +636,19 @@ class KnowledgeVectorStore:
             )
         except Exception as exc:
             logger.warning("[KnowledgeVectorStore] vector search failed, falling back to keyword: %s", exc)
-            return self._keyword_search(effective_query, top_k)
+            hits = self._keyword_search(effective_query, top_k)
+            _write_search_log(query, surface, hits)
+            return hits
 
         hits = []
-        for doc, meta, dist in zip(
+        for doc_id, doc, meta, dist in zip(
+            results["ids"][0],
             results["documents"][0],
             results["metadatas"][0],
             results["distances"][0],
         ):
             hits.append({
+                "doc_id": doc_id,
                 "text": doc,
                 "ref": meta.get("obsidian_ref", ""),
                 "file_name": meta.get("file_name", ""),
@@ -639,7 +680,9 @@ class KnowledgeVectorStore:
             elif hit.get("score") is not None:
                 existing["score"] = max(float(existing.get("score") or 0.0), float(hit.get("score") or 0.0))
                 existing["source"] = "vector+keyword"
-        return self._rerank_hits(query, list(merged.values()), top_k=top_k)
+        final = self._rerank_hits(query, list(merged.values()), top_k=top_k)
+        _write_search_log(query, surface, final)
+        return final
 
     def count(self) -> int:
         """インデックス内のドキュメント数を返す。"""

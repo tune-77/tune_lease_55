@@ -8,11 +8,20 @@ import {
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
 
+type KnowledgeRef = {
+  doc_id: string;
+  obsidian_ref: string;
+  file_name: string;
+  rank_score?: number;
+};
+
 type Message = {
   id: number;
   role: "user" | "assistant";
   content: string;
   created_at: string;
+  knowledge_refs?: KnowledgeRef[];
+  query?: string;
 };
 
 type MindState = {
@@ -472,6 +481,7 @@ export default function LeaseIntelligencePage() {
   const [voiceError, setVoiceError] = useState("");
 
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [ragFeedbackSent, setRagFeedbackSent] = useState<Set<string>>(new Set());
 
   // Emotion trend state
   const [showTrend, setShowTrend] = useState(false);
@@ -494,6 +504,28 @@ export default function LeaseIntelligencePage() {
       // non-fatal
     } finally {
       setTrendLoading(false);
+    }
+  };
+
+  const sendRagFeedback = async (
+    msgId: number,
+    ref: KnowledgeRef,
+    query: string,
+    rating: "good" | "bad",
+  ) => {
+    const key = `${msgId}:${ref.doc_id}`;
+    if (ragFeedbackSent.has(key)) return;
+    try {
+      await apiClient.post("/api/knowledge/feedback", {
+        query,
+        doc_id: ref.doc_id,
+        obsidian_ref: ref.obsidian_ref,
+        rating,
+        surface: "next_chat_rag",
+      });
+      setRagFeedbackSent((prev) => new Set([...prev, key]));
+    } catch {
+      // non-fatal
     }
   };
 
@@ -680,11 +712,14 @@ export default function LeaseIntelligencePage() {
       const res = await apiClient.post("/api/lease-intelligence/dialogue", { message: text });
       setState(res.data?.state || state);
       const reply: string = res.data?.reply || "返答を生成できませんでした。";
+      const knowledgeRefs = res.data?.knowledge_refs as KnowledgeRef[] | undefined;
       setMessages((prev) => [...prev, {
         id: Date.now() + 1,
         role: "assistant",
         content: reply,
         created_at: new Date().toISOString(),
+        knowledge_refs: knowledgeRefs?.length ? knowledgeRefs : undefined,
+        query: text,
       }]);
       speakText(reply);
     } catch {
@@ -931,6 +966,35 @@ export default function LeaseIntelligencePage() {
                   {message.role === "assistant"
                     ? renderAssistantContent(message.content)
                     : message.content}
+                  {message.role === "assistant" && !!message.knowledge_refs?.length && (
+                    <div className="mt-2 border-t border-violet-100 pt-1.5 space-y-0.5">
+                      {message.knowledge_refs.map((ref) => {
+                        const key = `${message.id}:${ref.doc_id}`;
+                        const sent = ragFeedbackSent.has(key);
+                        return (
+                          <div key={ref.doc_id} className="flex items-center justify-between gap-2">
+                            <span className="truncate text-[10px] text-slate-400" title={ref.obsidian_ref}>
+                              {ref.file_name || ref.obsidian_ref}
+                            </span>
+                            <div className="flex shrink-0 gap-0.5">
+                              <button
+                                onClick={() => sendRagFeedback(message.id, ref, message.query ?? "", "good")}
+                                disabled={sent}
+                                title="参考になった"
+                                className="rounded px-1 text-[11px] hover:bg-violet-100 disabled:opacity-40"
+                              >👍</button>
+                              <button
+                                onClick={() => sendRagFeedback(message.id, ref, message.query ?? "", "bad")}
+                                disabled={sent}
+                                title="参考にならなかった"
+                                className="rounded px-1 text-[11px] hover:bg-violet-100 disabled:opacity-40"
+                              >👎</button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                   <button
                     onClick={() => copyMessage(message.id, message.content)}
                     title="コピー"
