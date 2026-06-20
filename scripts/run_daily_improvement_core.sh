@@ -85,6 +85,10 @@ if [ -f "${RESULT_FILE}" ]; then
 fi
 
 echo ""
+echo "[反映] RAG フィードバック分析 — ブースト/ペナルティ候補を台帳に追記中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_rag_feedback.py" || true
+
+echo ""
 echo "[反映] batch_apply — 台帳ルールを自動適用中..."
 "${PYTHON}" "${PROJECT_ROOT}/api/rule_engine/batch_apply.py" --apply || true
 

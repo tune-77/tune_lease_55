@@ -308,6 +308,9 @@ app.include_router(ocr_router, prefix="/api")
 from api.routers.rule_engine import router as rule_engine_router
 app.include_router(rule_engine_router, prefix="/api")
 
+from api.routers.knowledge import router as knowledge_router
+app.include_router(knowledge_router, prefix="/api")
+
 @app.get("/")
 def read_root():
     return {"message": "Lease Scoring API is running."}
@@ -6112,7 +6115,25 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     except Exception as _dlg_exc:
         print(f"[DialogueMemoryPipeline] 起動に失敗: {_dlg_exc}")
 
-    return {"reply": reply, "state": state, "note_path": note_path}
+    # RAG 参照文書を取得してフロントエンドにフィードバックボタン用に返す
+    rag_knowledge_refs: list[dict] = []
+    try:
+        from api.knowledge.vector_store import get_store
+        _rag_hits = get_store().search(message, top_k=5, surface="next_chat_rag")
+        rag_knowledge_refs = [
+            {
+                "doc_id": h.get("doc_id", ""),
+                "obsidian_ref": str(h.get("ref") or h.get("file_name") or ""),
+                "file_name": str(h.get("file_name") or ""),
+                "rank_score": h.get("rank_score"),
+            }
+            for h in _rag_hits
+            if h.get("doc_id") or h.get("ref") or h.get("file_name")
+        ]
+    except Exception as _rag_exc:
+        print(f"[DialogueRAGRefs] 取得に失敗: {_rag_exc}")
+
+    return {"reply": reply, "state": state, "note_path": note_path, "knowledge_refs": rag_knowledge_refs}
 
 
 @app.delete("/api/lease-intelligence/dialogue/history")
