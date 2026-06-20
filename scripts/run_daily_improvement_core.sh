@@ -177,6 +177,11 @@ if [ -f "${RESULT_FILE}" ]; then
     fi
 fi
 
+# 改善レポート品質評価
+echo ""
+echo "[品質] 改善レポート品質スコアを計算中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_improvement_quality.py" || true
+
 # Wiki 昇格キュー
 echo ""
 echo "[反映] Wiki 昇格キューを生成中..."
