@@ -13,7 +13,9 @@ router = APIRouter()
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _FEEDBACK_LOG_PATH = os.path.join(_REPO_ROOT, "data", "rag_feedback_log.jsonl")
+_HIT_LOG_PATH = os.path.join(_REPO_ROOT, "data", "rag_hit_log.jsonl")
 _feedback_log_lock = threading.Lock()
+_hit_log_lock = threading.Lock()
 
 
 class RagFeedbackRequest(BaseModel):
@@ -26,8 +28,9 @@ class RagFeedbackRequest(BaseModel):
 
 @router.post("/knowledge/feedback")
 def post_rag_feedback(req: RagFeedbackRequest) -> dict:
+    now_ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
     entry = {
-        "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "ts": now_ts,
         "query": req.query,
         "doc_id": req.doc_id,
         "obsidian_ref": req.obsidian_ref,
@@ -38,4 +41,16 @@ def post_rag_feedback(req: RagFeedbackRequest) -> dict:
     with _feedback_log_lock:
         with open(_FEEDBACK_LOG_PATH, "a", encoding="utf-8") as f:
             f.write(line)
+    hit_entry = {
+        "ts": now_ts,
+        "doc_id": req.doc_id,
+        "obsidian_ref": req.obsidian_ref,
+        "rating": req.rating,
+        "surface": req.surface,
+        "hit_type": "feedback_confirmed",
+    }
+    hit_line = json.dumps(hit_entry, ensure_ascii=False) + "\n"
+    with _hit_log_lock:
+        with open(_HIT_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(hit_line)
     return {"status": "ok"}
