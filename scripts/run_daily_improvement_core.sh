@@ -219,6 +219,11 @@ echo ""
 echo "[最適化] 30日以上前の未登録ケースを失注補完 → 重み最適化トリガー..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/auto_trigger_optimizer.py" || true
 
+# スコア乖離学習 — 高スコア失注/低スコア成約/高スコア延滞を台帳に追記
+echo ""
+echo "[学習] スコア乖離パターンを検出して台帳に追記中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/learn_from_case_differences.py" || true
+
 if [ -f "${LATEST_FILE}" ]; then
     echo ""
     echo "[配布] Gist に最終結果を更新中..."
