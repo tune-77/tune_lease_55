@@ -217,6 +217,97 @@ def build_difference_report(
     }
 
 
+_LEDGER_PATH = REPO_ROOT / "api" / "rule_engine" / "ledger_rules.json"
+
+_SIGNAL_RISK = {
+    "high_score_lost": "medium",
+    "low_score_contracted": "medium",
+    "high_score_delinquent": "high",
+}
+
+
+def _load_ledger(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+
+def _save_ledger(path: Path, rules: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(rules, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _max_rev_num(rules: list[dict[str, Any]]) -> int:
+    import re as _re
+    max_num = 0
+    for r in rules:
+        m = _re.match(r"REV-(\d+)", str(r.get("rev_id") or ""))
+        if m:
+            max_num = max(max_num, int(m.group(1)))
+    return max_num
+
+
+def push_to_ledger(report: dict[str, Any], ledger_path: Path = _LEDGER_PATH) -> int:
+    """outcome_review_queue の内容を ledger_rules.json に pending_review: true で追記する。
+
+    既存の rev_id （DIFF-SIGNAL-* 形式）と重複するシグナル種別はスキップ。
+    Returns:
+        追記した件数。
+    """
+    signal_counts: dict[str, int] = (
+        report.get("summary", {}).get("outcome_signal_counts") or {}
+    )
+    if not any(v > 0 for v in signal_counts.values()):
+        return 0
+
+    rules = _load_ledger(ledger_path)
+    existing_ids = {str(r.get("rev_id") or "") for r in rules}
+    base_rev = _max_rev_num(rules)
+    now_iso = dt.datetime.now(dt.timezone.utc).isoformat()
+    added = 0
+
+    for signal_type, count in signal_counts.items():
+        if count == 0:
+            continue
+        rev_id = f"DIFF-SIGNAL-{signal_type.upper()}"
+        if rev_id in existing_ids:
+            print(f"[learn_from_case_differences] スキップ（既存）: {rev_id}", flush=True)
+            continue
+        base_rev += 1
+        definition = _SIGNAL_DEFINITIONS.get(signal_type, {})
+        rule = {
+            "rev_id": rev_id,
+            "type": "manual",
+            "pending_review": True,
+            "category": "score_gap_learning",
+            "description": (
+                f"[スコア乖離自動検出] {signal_type}: {count}件 — "
+                f"{definition.get('question', '')}"
+            ),
+            "status": "pending_review",
+            "source": "learn_from_case_differences",
+            "detected_at": now_iso,
+            "signal_count": count,
+            "affected_files": [],
+            "risk": _SIGNAL_RISK.get(signal_type, "medium"),
+            "auto_fix_allowed": False,
+        }
+        rules.append(rule)
+        existing_ids.add(rev_id)
+        added += 1
+        print(
+            f"[learn_from_case_differences] 台帳追記: {rev_id} ({count}件)",
+            flush=True,
+        )
+
+    if added > 0:
+        _save_ledger(ledger_path, rules)
+    return added
+
+
 def _atomic_write_json(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(path.suffix + ".tmp")
@@ -241,6 +332,13 @@ def main() -> None:
         )
     report["db"] = str(args.db)
     _atomic_write_json(args.report, report)
+
+    ledger_added = push_to_ledger(report)
+    if ledger_added:
+        print(
+            f"[learn_from_case_differences] ledger_rules.json に {ledger_added} 件追記",
+            flush=True,
+        )
 
     summary = report["summary"]
     signals = summary["outcome_signal_counts"]
