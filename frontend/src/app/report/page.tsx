@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../../lib/api';
 import { FileText, RefreshCw, ChevronDown, Loader2, AlertCircle, AlertTriangle, TrendingDown, ShieldAlert, CheckCircle2, ClipboardList, BarChart3, MessageSquare } from 'lucide-react';
 import QRiskPanel from '../../components/analysis/QRiskPanel';
+import { getLabel } from '../../lib/uiLabels';
 
 type CaseRow = {
   id: string;
@@ -113,7 +114,7 @@ function ConditionalRiskPanel({ score, inputs, result }: {
       {/* REV-026: ヘッダー + 重要度カウントバッジ */}
       <div className="flex items-center gap-2 mb-2 flex-wrap">
         <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0" />
-        <span className="font-black text-amber-800 text-sm">条件付き承認 — 主要リスク要因</span>
+        <span className="font-black text-amber-800 text-sm">{getLabel("RISK_APPROVAL_LABEL", "条件付き承認")} — 主要リスク要因</span>
         <span className="ml-auto text-xs font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">スコア {Math.round(score)}pt</span>
       </div>
       {/* REV-026: 重要度サマリー行 */}
@@ -214,7 +215,7 @@ function RecommendedActionsPanel({ score, inputs, result }: {
     <div className="mb-5 p-4 bg-blue-50 border border-blue-200 rounded-xl">
       <div className="flex items-center gap-2 mb-3">
         <ClipboardList className="w-5 h-5 text-blue-600 flex-shrink-0" />
-        <span className="font-black text-blue-800 text-sm">条件付き承認 — 推奨アクション</span>
+        <span className="font-black text-blue-800 text-sm">{getLabel("RISK_APPROVAL_LABEL", "条件付き承認")} — 推奨アクション</span>
       </div>
       <div className="space-y-2">
         {actions.map((a, i) => (
