@@ -99,6 +99,10 @@ if [ -f "${RESULT_FILE}" ]; then
 fi
 
 echo ""
+echo "[反映] ウィザード入力ログ分析 — 空欄率の高いフィールドを台帳に追記中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_wizard_inputs.py" || true
+
+echo ""
 echo "[反映] RAG フィードバック分析 — ブースト/ペナルティ候補を台帳に追記中..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_rag_feedback.py" || true
 

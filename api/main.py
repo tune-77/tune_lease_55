@@ -20,7 +20,7 @@ del _os_early
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response, StreamingResponse
@@ -1007,11 +1007,36 @@ def _build_rate_proposal(inputs: dict, result: dict) -> dict:
     }
 
 
+_WIZARD_INPUT_LOG = Path(__file__).parent.parent / "data" / "wizard_input_log.jsonl"
+_wizard_log_lock = __import__("threading").Lock()
+_WIZARD_TRACKED_FIELDS = [
+    "company_name", "nenshu", "op_profit", "acquisition_cost",
+    "asset_name", "passion_text", "industry_detail", "asset_detail",
+    "asset_purpose", "asset_location",
+]
+
+
+def _log_wizard_input_task(inputs: dict) -> None:
+    import datetime as _dt, json as _json
+    empty = [f for f in _WIZARD_TRACKED_FIELDS if not inputs.get(f)]
+    entry = _json.dumps({
+        "ts": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+        "total_fields": len(_WIZARD_TRACKED_FIELDS),
+        "empty_count": len(empty),
+        "empty_fields": empty,
+        "surface": "wizard_calculate",
+    }, ensure_ascii=False) + "\n"
+    with _wizard_log_lock:
+        with open(_WIZARD_INPUT_LOG, "a", encoding="utf-8") as _f:
+            _f.write(entry)
+
+
 @app.post("/api/score/calculate", response_model=ScoringResponse)
-def calculate_score(req: ScoringRequest):
+def calculate_score(req: ScoringRequest, background_tasks: BackgroundTasks):
     try:
         # パラメータを辞書化して existing の関数に渡す
         inputs = req.model_dump()
+        background_tasks.add_task(_log_wizard_input_task, inputs)
         result = run_quick_scoring(inputs)
         conditional_actions = _build_conditional_approval_actions(inputs, result)
         rate_proposal = _build_rate_proposal(inputs, result)
