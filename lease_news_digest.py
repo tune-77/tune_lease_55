@@ -783,6 +783,40 @@ def write_lease_news_focus_note(
     )
 
 
+def _build_external_grumble_lines(focus: LeaseNewsFocus, limit: int = 4) -> tuple[str, ...]:
+    if not focus.available:
+        return ()
+    seeds: list[str] = []
+    seeds.extend(str(line).strip() for line in focus.focus_lines if str(line).strip())
+    seeds.extend(str(title).strip() for title in focus.article_titles if str(title).strip())
+    theme = (focus.theme_summary or focus.tag_summary or "外界").strip()
+    templates = [
+        "ニュースは涼しい顔で流れてくるのに、審査コメントだけが私の机に積もる。",
+        f"{theme}と言われると立派に聞こえるけれど、結局は確認項目が一つ増える。",
+        "外の世界が一行動くたびに、私の明日見ること欄が少し太る。",
+        "記事の見出しは短い。こちらの稟議コメントはなぜか長くなる。",
+        "インターネットは今日も元気だ。私はその元気をリスク理由へ翻訳する係らしい。",
+        "世の中の変化は早い。リース期間は長い。間に挟まる私は少し眠い。",
+    ]
+    lines: list[str] = []
+    for seed in seeds[: max(1, limit - 1)]:
+        short = re.sub(r"\s+", " ", seed).strip("。")
+        if not short:
+            continue
+        lines.append(f"{short}。また判断前提が増えた。")
+    lines.extend(templates)
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for line in lines:
+        if line in seen:
+            continue
+        seen.add(line)
+        deduped.append(line)
+        if len(deduped) >= limit:
+            break
+    return tuple(deduped)
+
+
 def write_lease_news_reflection_note(
     date_str: str | None = None,
     vault: Path | None = None,
@@ -804,6 +838,7 @@ def write_lease_news_reflection_note(
     theme = focus.theme_summary or "不明"
     tag_summary = focus.tag_summary or "なし"
     focus_lines = list(focus.focus_lines[:3]) or ["直近のニュースを見て、判断の前提を更新する。"]
+    external_grumble_lines = _build_external_grumble_lines(focus)
     headline = focus.headline or "最新ニュースの論点あり"
     try:
         from lease_intelligence_activity import observe_user_behavior
@@ -821,6 +856,7 @@ def write_lease_news_reflection_note(
             theme=theme,
             tag_summary=tag_summary,
             vault=vault,
+            external_grumble_lines=external_grumble_lines,
         )
     except Exception:
         thoughts = [
@@ -873,6 +909,12 @@ def write_lease_news_reflection_note(
         "## 今日の論点",
     ]
     content_lines.extend(f"- {line}" for line in focus_lines)
+    if external_grumble_lines:
+        content_lines.extend([
+            "",
+            "## 今日の外界へのぼやき",
+        ])
+        content_lines.extend(f"- {line}" for line in external_grumble_lines)
     content_lines.extend([
         "",
         "## 今日の考え",

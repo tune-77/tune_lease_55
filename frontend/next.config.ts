@@ -32,7 +32,16 @@ const nextConfig: NextConfig = {
   output: "standalone",
   allowedDevOrigins: ["*.trycloudflare.com"],
   async headers() {
-    return [{ source: "/(.*)", headers: securityHeaders }];
+    return [
+      {
+        source: "/multi-shion-demo",
+        headers: [
+          ...securityHeaders,
+          { key: "Cache-Control", value: "no-store, max-age=0" },
+        ],
+      },
+      { source: "/(.*)", headers: securityHeaders },
+    ];
   },
   async rewrites() {
     return [

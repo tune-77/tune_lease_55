@@ -19,6 +19,7 @@ import ThemeSelector from '@/components/layout/ThemeSelector';
 export default function Sidebar() {
   const pathname = usePathname();
   const { isCollapsed, toggleSidebar, isMobileOpen, toggleMobile } = useSidebar();
+  const hideMobileEdgeToggle = pathname === '/multi-shion-demo';
 
   const menuGroups = [
     {
@@ -26,6 +27,7 @@ export default function Sidebar() {
       items: [
         { name: 'ホーム', href: '/home', icon: Home, color: 'text-blue-400' },
         { name: 'リース知性体との対話', href: '/lease-intelligence', icon: Brain, color: 'text-violet-400' },
+        { name: '複数紫苑デモ', href: '/multi-shion-demo', icon: Network, color: 'text-cyan-300' },
         { name: '💬 AIチャット', href: '/chat', icon: MessageCircle, color: 'text-cyan-400' },
         { name: 'リースくん (スマホUI)', href: '/lease-kun', icon: MessageSquare, color: 'text-amber-400' },
         { name: '審査・分析', href: '/', icon: ClipboardCheck, color: 'text-emerald-400' },
@@ -228,13 +230,15 @@ export default function Sidebar() {
       </button>
 
       {/* モバイル用 画面右端固定トグルボタン */}
-      <button
-        onClick={toggleMobile}
-        aria-label={isMobileOpen ? 'サイドバーを閉じる' : 'サイドバーを開く'}
-        className="lg:hidden fixed right-0 top-[58vh] -translate-y-1/2 z-[70] w-14 h-20 bg-slate-800 border border-slate-700 border-r-0 rounded-l-2xl flex items-center justify-center shadow-lg text-slate-400 hover:text-white hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 transition-all active:scale-95"
-      >
-        {isMobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-      </button>
+      {!hideMobileEdgeToggle && (
+        <button
+          onClick={toggleMobile}
+          aria-label={isMobileOpen ? 'サイドバーを閉じる' : 'サイドバーを開く'}
+          className="lg:hidden fixed right-0 top-[58vh] -translate-y-1/2 z-[70] w-14 h-20 bg-slate-800 border border-slate-700 border-r-0 rounded-l-2xl flex items-center justify-center shadow-lg text-slate-400 hover:text-white hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 transition-all active:scale-95"
+        >
+          {isMobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
+      )}
     </>
   );
 }

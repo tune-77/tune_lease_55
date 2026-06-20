@@ -237,7 +237,7 @@ export default function FloatingMebuki() {
     }
   }, [messages, isChatOpen]);
 
-  if (pathname === "/lease-intelligence") {
+  if (pathname === "/lease-intelligence" || pathname === "/multi-shion-demo") {
     return null;
   }
 
