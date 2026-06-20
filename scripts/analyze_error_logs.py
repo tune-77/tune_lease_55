@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+import unicodedata
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -22,6 +23,23 @@ LOGS_DIR = PROJECT_ROOT / "logs"
 LOG_FILES = ["api.log", "app.log"]
 LOOKBACK_DAYS = 7
 MIN_COUNT = 3
+_MAX_LINE_LEN = 2000  # これより長い行は悪意ある注入またはバイナリデータとみなしてスキップ
+
+# ledger フィールドで許可する文字: 英数字・日本語・記号・スペース・改行なし制御文字除去済み
+_SAFE_TEXT_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def _sanitize_text(text: str, max_len: int = 200) -> str:
+    """制御文字・NULLバイトを除去し、max_len 文字に切り詰める。"""
+    # unicodedata カテゴリが Cc（制御文字）のうち tab/LF/CR 以外を除去
+    cleaned = "".join(
+        ch for ch in text
+        if ch in ("\t", "\n", "\r") or not unicodedata.category(ch).startswith("C")
+    )
+    # ASCII 制御文字（0x00-0x08, 0x0b, 0x0c, 0x0e-0x1f, 0x7f）を追加除去
+    cleaned = _SAFE_TEXT_RE.sub("", cleaned)
+    return cleaned[:max_len]
+
 
 # 集計対象: ERROR / CRITICAL / Traceback / Exception
 _ERROR_LINE_RE = re.compile(
@@ -44,7 +62,8 @@ def _parse_ts(ts_str: str) -> datetime | None:
 
 
 def _extract_error_key(line: str) -> str | None:
-    """エラー行からグルーピングキーを抽出する。"""
+    """エラー行からグルーピングキーを抽出する。制御文字を除去してから処理する。"""
+    line = _sanitize_text(line, max_len=_MAX_LINE_LEN)
     m = _ERROR_LINE_RE.search(line)
     if not m:
         # Traceback 行や Exception 行も拾う
@@ -78,6 +97,9 @@ def load_error_counts(lookback_days: int = LOOKBACK_DAYS) -> dict[str, int]:
             continue
         current_ts: datetime | None = None
         for line in lines:
+            # 2000 文字超の行はバイナリデータまたは注入試行とみなしてスキップ
+            if len(line) > _MAX_LINE_LEN:
+                continue
             ts_m = re.match(r"(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})", line)
             if ts_m:
                 current_ts = _parse_ts(ts_m.group(1))
@@ -144,8 +166,10 @@ def main() -> None:
             continue
         base_rev += 1
         rev_id = f"REV-{base_rev:03d}e"
-        desc = (
-            f"[エラーログ自動検出] 直近{LOOKBACK_DAYS}日で{count}回出現: {error_key[:80]}"
+        safe_key = _sanitize_text(error_key, max_len=80)
+        desc = _sanitize_text(
+            f"[エラーログ自動検出] 直近{LOOKBACK_DAYS}日で{count}回出現: {safe_key}",
+            max_len=200,
         )
         new_entry = {
             "rev_id": rev_id,
@@ -157,7 +181,7 @@ def main() -> None:
             "source": "analyze_error_logs",
             "detected_at": now_iso,
             "error_count": count,
-            "error_pattern": error_key[:120],
+            "error_pattern": _sanitize_text(error_key, max_len=120),
             "affected_files": [],
             "risk": "medium",
             "auto_fix_allowed": False,
