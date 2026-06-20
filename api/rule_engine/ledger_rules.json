@@ -58,7 +58,7 @@
   {
     "rev_id": "REV-OCR-003",
     "type": "llm_diff",
-    "pending_llm": true,
+    "pending_llm": false,
     "description": "納税証明書OCR対応：/api/ocr エンドポイントに doc_type='tax_cert' を追加",
     "source": "data/ledger.jsonl",
     "target": "api/routers/ocr.py",
@@ -70,12 +70,13 @@
       "frontend/src/components/form/OcrUpload.tsx"
     ],
     "risk": "medium",
-    "auto_fix_allowed": false
+    "auto_fix_allowed": false,
+    "applied_at": "2026-06-20T05:58:27Z"
   },
   {
     "rev_id": "REV-OCR-004",
     "type": "llm_diff",
-    "pending_llm": true,
+    "pending_llm": false,
     "description": "登記簿謄本OCR対応：/api/ocr エンドポイントに doc_type='toukibo' を追加",
     "source": "data/ledger.jsonl",
     "target": "api/routers/ocr.py",
@@ -87,12 +88,13 @@
       "frontend/src/components/form/OcrUpload.tsx"
     ],
     "risk": "medium",
-    "auto_fix_allowed": false
+    "auto_fix_allowed": false,
+    "applied_at": "2026-06-20T05:58:27Z"
   },
   {
     "rev_id": "REV-OCR-005",
     "type": "llm_diff",
-    "pending_llm": true,
+    "pending_llm": false,
     "description": "見積書・注文書OCR対応：/api/ocr エンドポイントに doc_type='estimate' を追加",
     "source": "data/ledger.jsonl",
     "target": "api/routers/ocr.py",
@@ -105,12 +107,13 @@
       "frontend/src/components/form/FormAsset.tsx"
     ],
     "risk": "medium",
-    "auto_fix_allowed": false
+    "auto_fix_allowed": false,
+    "applied_at": "2026-06-20T05:58:27Z"
   },
   {
     "rev_id": "REV-OCR-006",
     "type": "llm_diff",
-    "pending_llm": true,
+    "pending_llm": false,
     "description": "会社案内・パンフレットOCR対応：/api/ocr エンドポイントに doc_type='brochure' を追加",
     "source": "data/ledger.jsonl",
     "target": "api/routers/ocr.py",
@@ -121,7 +124,8 @@
       "api/routers/ocr.py"
     ],
     "risk": "medium",
-    "auto_fix_allowed": false
+    "auto_fix_allowed": false,
+    "applied_at": "2026-06-20T05:58:27Z"
   },
   {
     "rev_id": "REV-013",
@@ -156,7 +160,7 @@
   {
     "rev_id": "REV-016",
     "type": "llm_diff",
-    "pending_llm": true,
+    "pending_llm": false,
     "description": "紫苑の回答冗長性改善：定型的な感謝フレーズを削減し簡潔な応答にする",
     "source": "canonical_candidates",
     "target": "ai_chat.py",
@@ -167,7 +171,8 @@
       "ai_chat.py"
     ],
     "risk": "low",
-    "auto_fix_allowed": false
+    "auto_fix_allowed": false,
+    "applied_at": "2026-06-20T05:58:27Z"
   },
   {
     "rev_id": "REV-017",
