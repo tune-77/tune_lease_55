@@ -79,6 +79,7 @@ class _Results:
         self.failed: list[tuple[str, str]] = []
         self.skipped_manual: list[tuple[str, str]] = []
         self.skipped_llm: list[tuple[str, str]] = []
+        self.skipped_pending_review: list[tuple[str, str]] = []
         self.skipped_applied: list[tuple[str, str]] = []
         self.skipped_protected: list[tuple[str, str]] = []
         self.dry_run_pending: list[tuple[str, str, str]] = []  # (rev_id, type, desc)
@@ -116,6 +117,12 @@ def run_batch(rules: list[dict], dry_run: bool, rev_filter: str | None) -> None:
         if rule_type == "llm_diff" and rule.get("pending_llm", False):
             res.skipped_llm.append((rev_id, description))
             print(f"  ⚠️  {rev_id} [llm_diff/pending] {description[:70]}")
+            continue
+
+        # pending_review フラグが立っている場合はスキップ（承認待ち）
+        if rule.get("pending_review", False):
+            res.skipped_pending_review.append((rev_id, description))
+            print(f"  ⚠️  {rev_id} [pending_review] {description[:70]}")
             continue
 
         # 保護ファイルチェック
@@ -171,9 +178,10 @@ def run_batch(rules: list[dict], dry_run: bool, rev_filter: str | None) -> None:
         print(f"  ⏭️  冪等スキップ              : {len(res.idempotent):>3} 件")
         print(f"  ❌ 適用失敗                  : {len(res.failed):>3} 件")
 
-    print(f"  ⚠️  手動対応必要 [manual]     : {len(res.skipped_manual):>3} 件")
-    print(f"  ⚠️  LLM確認待ち [pending_llm] : {len(res.skipped_llm):>3} 件")
-    print(f"  ⏭️  適用済みスキップ           : {len(res.skipped_applied):>3} 件")
+    print(f"  ⚠️  手動対応必要 [manual]        : {len(res.skipped_manual):>3} 件")
+    print(f"  ⚠️  LLM確認待ち [pending_llm]   : {len(res.skipped_llm):>3} 件")
+    print(f"  ⚠️  承認待ち [pending_review]    : {len(res.skipped_pending_review):>3} 件")
+    print(f"  ⏭️  適用済みスキップ             : {len(res.skipped_applied):>3} 件")
     if res.skipped_protected:
         print(f"  🔒 保護ファイルスキップ       : {len(res.skipped_protected):>3} 件")
     print()
@@ -189,6 +197,13 @@ def run_batch(rules: list[dict], dry_run: bool, rev_filter: str | None) -> None:
         print("   これらは --apply では自動実行されません。")
         print("   内容を確認し、pending_llm を false にしてから個別に実行してください。")
         for rev_id, desc in res.skipped_llm:
+            print(f"   {rev_id}: {desc[:90]}")
+        print()
+
+    if res.skipped_pending_review:
+        print("⚠️  承認待ちルール（pending_review）:")
+        print("   改善ログ画面の「台帳ルール」タブから承認するか、pending_review を false にしてください。")
+        for rev_id, desc in res.skipped_pending_review:
             print(f"   {rev_id}: {desc[:90]}")
         print()
 

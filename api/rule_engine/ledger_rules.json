@@ -2,6 +2,7 @@
   {
     "rev_id": "REV-007-a",
     "type": "patch_json",
+    "pending_review": false,
     "description": "ブルドーザー耐用年数を 8年→6年 に修正（国税庁通達・別表第二55号準拠）",
     "source": "dispatch_queue 2026-06-20 / canonical_candidates",
     "target": "static_data/useful_life_equipment.json",
@@ -22,6 +23,7 @@
   {
     "rev_id": "REV-007-b",
     "type": "patch_json",
+    "pending_review": false,
     "description": "ショベル・油圧ショベル耐用年数を 8年→6年 に修正（国税庁通達・別表第二55号準拠）",
     "source": "dispatch_queue 2026-06-20 / canonical_candidates",
     "target": "static_data/useful_life_equipment.json",
@@ -42,6 +44,7 @@
   {
     "rev_id": "REV-OCR-002",
     "type": "manual",
+    "pending_review": false,
     "description": "OCR 3期分財務データ対応（前期・前々期トレンド）",
     "source": "data/ledger.jsonl",
     "manual_reason": "ScoringFormData フィールド追加・フロントコンポーネント変更・LightGBM 特徴量追加・モデル再学習が必要。多ファイル横断変更かつモデル再学習を伴うため、rule_engine の自動適用対象外。",
@@ -59,6 +62,7 @@
     "rev_id": "REV-OCR-003",
     "type": "llm_diff",
     "pending_llm": false,
+    "pending_review": false,
     "description": "納税証明書OCR対応：/api/ocr エンドポイントに doc_type='tax_cert' を追加",
     "source": "data/ledger.jsonl",
     "target": "api/routers/ocr.py",
@@ -77,6 +81,7 @@
     "rev_id": "REV-OCR-004",
     "type": "llm_diff",
     "pending_llm": false,
+    "pending_review": false,
     "description": "登記簿謄本OCR対応：/api/ocr エンドポイントに doc_type='toukibo' を追加",
     "source": "data/ledger.jsonl",
     "target": "api/routers/ocr.py",
@@ -95,6 +100,7 @@
     "rev_id": "REV-OCR-005",
     "type": "llm_diff",
     "pending_llm": false,
+    "pending_review": false,
     "description": "見積書・注文書OCR対応：/api/ocr エンドポイントに doc_type='estimate' を追加",
     "source": "data/ledger.jsonl",
     "target": "api/routers/ocr.py",
@@ -114,6 +120,7 @@
     "rev_id": "REV-OCR-006",
     "type": "llm_diff",
     "pending_llm": false,
+    "pending_review": false,
     "description": "会社案内・パンフレットOCR対応：/api/ocr エンドポイントに doc_type='brochure' を追加",
     "source": "data/ledger.jsonl",
     "target": "api/routers/ocr.py",
@@ -130,6 +137,7 @@
   {
     "rev_id": "REV-013",
     "type": "manual",
+    "pending_review": false,
     "description": "案件ネットワーク画面で案件情報が何も表示されない（UI 表示不具合）",
     "source": "canonical_candidates / AI Chat 改善ログ 2026-06-15",
     "manual_reason": "対象ファイル未特定。案件ネットワーク画面のコンポーネントとデータ取得 API の両方を調査してから修正が必要。",
@@ -140,6 +148,7 @@
   {
     "rev_id": "REV-004",
     "type": "manual",
+    "pending_review": false,
     "description": "ポートフォリオリスク管理機能の導入（大規模機能追加）",
     "source": "dispatch_queue 2026-06-20 / canonical_candidates",
     "manual_reason": "新規画面・API・集計ロジック・DB スキーマ変更を伴う大規模機能追加。カテゴリ: large。rule_engine の自動適用対象外。",
@@ -150,6 +159,7 @@
   {
     "rev_id": "REV-010",
     "type": "manual",
+    "pending_review": false,
     "description": "異常検知（Z-Score）が動作していない",
     "source": "canonical_candidates",
     "manual_reason": "異常検知ロジックの診断・修正が必要。バグ箇所未特定のため手動調査が先行する。",
@@ -161,6 +171,7 @@
     "rev_id": "REV-016",
     "type": "llm_diff",
     "pending_llm": false,
+    "pending_review": false,
     "description": "紫苑の回答冗長性改善：定型的な感謝フレーズを削減し簡潔な応答にする",
     "source": "canonical_candidates",
     "target": "ai_chat.py",
@@ -177,6 +188,7 @@
   {
     "rev_id": "REV-017",
     "type": "manual",
+    "pending_review": false,
     "description": "アプリ内の法定対応年数データが最新化されていない",
     "source": "canonical_candidates",
     "manual_reason": "更新が必要な具体的な品目・年数が指定されていない。国税庁通達を参照して差異を特定してから patch_json ルールとして再定義すること。",
@@ -190,6 +202,7 @@
   {
     "rev_id": "REV-019",
     "type": "manual",
+    "pending_review": false,
     "description": "外部市場データと自社DBのズレを毎日比較する仕組みの構築",
     "source": "canonical_candidates",
     "manual_reason": "外部市場データ取得・比較・アラート通知の新規パイプライン構築が必要。大規模な設計変更を伴うため手動対応。",
@@ -200,6 +213,7 @@
   {
     "rev_id": "REV-020",
     "type": "manual",
+    "pending_review": false,
     "description": "Q_risk を成約・失注を動かす未知因子の発見装置として再設計",
     "source": "canonical_candidates",
     "manual_reason": "Q_risk の役割と算出ロジックの根本的な再設計が必要。scoring_core.py への大きな変更を伴い、モデル再学習も必要。",
@@ -212,6 +226,7 @@
   {
     "rev_id": "REV-021",
     "type": "manual",
+    "pending_review": false,
     "description": "スコア60-80帯の成約系比率低下：価格・競合・条件提示後離脱のログ化",
     "source": "canonical_candidates",
     "manual_reason": "新規ログ収集フィールドの追加・DB スキーマ変更・フロントエンド修正が必要。具体的な実装方針を先に決定すること。",
@@ -222,6 +237,7 @@
   {
     "rev_id": "REV-023",
     "type": "manual",
+    "pending_review": false,
     "description": "スコア60-80帯の成約率逆転：モデルキャリブレーション見直し",
     "source": "canonical_candidates",
     "manual_reason": "RandomForest モデルのキャリブレーション変更はモデル再学習・評価・検証を伴う。scoring_weight 単独では対応できない。",
