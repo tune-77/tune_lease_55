@@ -11,7 +11,7 @@ import {
   X, Menu, Table2, Swords, MessageCircle,
   BarChart2, BookOpen, Gift, HelpCircle, Megaphone, Calculator,
   Receipt, LifeBuoy, ClipboardList, CreditCard, Activity, GitMerge, Briefcase, Brain,
-  UserCheck, Orbit
+  UserCheck, Orbit, Sparkles
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
 import ThemeSelector from '@/components/layout/ThemeSelector';
@@ -26,6 +26,7 @@ export default function Sidebar() {
       title: '審査メイン',
       items: [
         { name: 'ホーム', href: '/home', icon: Home, color: 'text-blue-400' },
+        { name: '🚀 ハッカソンデモ', href: '/demo', icon: Sparkles, color: 'text-yellow-300' },
         { name: 'システム概要', href: '/system-overview', icon: Orbit, color: 'text-fuchsia-400' },
         { name: 'リース知性体との対話', href: '/lease-intelligence', icon: Brain, color: 'text-violet-400' },
         { name: '複数紫苑デモ', href: '/multi-shion-demo', icon: Network, color: 'text-cyan-300' },
