@@ -552,8 +552,8 @@ export default function LeaseIntelligencePage() {
 
     const voices = synthesis.getVoices();
     const preferred =
-      voices.find(v => v.name === "Kyoko") ||
       voices.find(v => v.name === "O-ren") ||
+      voices.find(v => v.name === "Kyoko") ||
       voices.find(v => v.name.toLowerCase().includes("google") && v.lang.startsWith("ja")) ||
       voices.find(v => v.lang.startsWith("ja") && v.localService) ||
       voices.find(v => v.lang.startsWith("ja"));
@@ -562,8 +562,8 @@ export default function LeaseIntelligencePage() {
       if (speechGenerationRef.current !== generation || index >= chunks.length) return;
       const utter = new SpeechSynthesisUtterance(chunks[index]);
       utter.lang = "ja-JP";
-      utter.rate = 0.92;
-      utter.pitch = 1.05;
+      utter.rate = 1.15;
+      utter.pitch = 1.35;
       if (preferred) utter.voice = preferred;
       utter.onend = () => speakNext(index + 1);
       utter.onerror = (event) => {
