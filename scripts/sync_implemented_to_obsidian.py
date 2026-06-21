@@ -13,7 +13,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _VAULT_PATHS = [
     Path.home() / "Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault",
 ]
-_INDEX_REL = "tuneLease55/改善策インデックス_2026.md"
+_INDEX_REL = "Projects/tune_lease_55/改善策インデックス_2026.md"
 _IMPL_SECTION = "## 実装済み改善一覧（パイプライン除外リスト）"
 _EXPORT_FILE = Path("/tmp/obsidian_improvements_export.txt")
 
@@ -183,8 +183,12 @@ def main() -> None:
 
     index_file = vault / _INDEX_REL
     if not index_file.exists():
-        print(f"警告: インデックスファイルが見つかりません: {index_file}", file=sys.stderr)
-        return
+        index_file.parent.mkdir(parents=True, exist_ok=True)
+        index_file.write_text(
+            f"# 改善策インデックス 2026\n\n{_IMPL_SECTION}\n\n",
+            encoding="utf-8",
+        )
+        print(f"情報: インデックスファイルを新規作成しました: {index_file}")
 
     # Obsidian実装済みリスト → ledger に applied 書き込み（永続ブロック）
     existing_impl = _load_existing_impl(index_file)

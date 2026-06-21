@@ -1315,7 +1315,19 @@ def run_midnight(dry_run: bool = False) -> int:
         "errors": [],
     }
     try:
-        sync = {"status": "dry_run"} if dry_run else {"status": "disabled", "reason": "99_Synced_From_Origin removed REV-060"}
+        if dry_run:
+            sync = {"status": "dry_run"}
+        else:
+            _sync_script = PROJECT_ROOT / "scripts" / "sync_implemented_to_obsidian.py"
+            _sync_proc = subprocess.run(
+                [sys.executable, str(_sync_script)],
+                capture_output=True, text=True,
+            )
+            sync = (
+                {"status": "completed"}
+                if _sync_proc.returncode == 0
+                else {"status": "failed", "stderr": _sync_proc.stderr[-300:]}
+            )
         state["sync"] = sync
         state["vault_b_rag"] = {"status": "dry_run"} if dry_run else reindex_vault_b()
         if state["vault_b_rag"].get("status") not in {"completed", "dry_run"}:
