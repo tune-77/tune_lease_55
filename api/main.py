@@ -27,12 +27,14 @@ from starlette.responses import Response, StreamingResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+import asyncio
 import json
 import re
+import shutil
 import sys
 import os
 from pathlib import Path
-from runtime_paths import get_data_path
+from runtime_paths import get_data_path, get_db_path
 
 # プロジェクトルートをPYTHONPATHに追加して、既存モジュール(scoring_core)をインポート可能にする
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -55,7 +57,9 @@ _brm_mod = _ilu.module_from_spec(_brm_spec)
 sys.modules["base_rate_master"] = _brm_mod
 _brm_spec.loader.exec_module(_brm_mod)
 
-_LEASE_DB_PATH = get_data_path("lease_data.db")
+_LEASE_DB_PATH = get_db_path()
+_DATA_GIT_DIR = os.environ.get("DATA_GIT_DIR", "/app/data-git")
+_git_lock = asyncio.Lock()
 
 def _load_timesfm_engine():
     """timesfm_engine を遅延ロード（初回呼び出し時のみ）。PyTorchのMPS初期化をstartupから除外する。"""
@@ -162,6 +166,82 @@ def _get_obsidian_collection():
     return _chroma_collection
 
 
+def _init_sync_log_table() -> None:
+    """sync_log テーブルを冪等に作成する（Cloud Run git push 結果記録用）。"""
+    if not os.path.exists(_LEASE_DB_PATH):
+        return
+    import sqlite3
+    try:
+        conn = sqlite3.connect(_LEASE_DB_PATH, timeout=5)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sync_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pushed_at TEXT NOT NULL,
+                success INTEGER NOT NULL,
+                error TEXT
+            )
+        """)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[sync_log] テーブル作成失敗（非致命的）: {e}")
+
+
+def _record_sync_log(success: bool, error: str = "") -> None:
+    """sync_log テーブルに git push 結果を記録する。"""
+    if not os.path.exists(_LEASE_DB_PATH):
+        return
+    import sqlite3
+    import datetime
+    try:
+        conn = sqlite3.connect(_LEASE_DB_PATH, timeout=5)
+        conn.execute(
+            "INSERT INTO sync_log (pushed_at, success, error) VALUES (?, ?, ?)",
+            (datetime.datetime.utcnow().isoformat(), 1 if success else 0, error),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[sync_log] 記録失敗（非致命的）: {e}")
+
+
+async def _git_push_db() -> None:
+    """demo.db + mind.json を data-git にコピーして git push する（BackgroundTask 用）。"""
+    if not os.path.isdir(_DATA_GIT_DIR):
+        return
+    db_dst = os.path.join(_DATA_GIT_DIR, "data", "demo.db")
+    mind_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "mind.json")
+    mind_dst = os.path.join(_DATA_GIT_DIR, "data", "mind.json")
+    success = False
+    error_msg = ""
+    try:
+        async with _git_lock:
+            if os.path.exists(_LEASE_DB_PATH):
+                shutil.copy2(_LEASE_DB_PATH, db_dst)
+            if os.path.exists(mind_src):
+                shutil.copy2(mind_src, mind_dst)
+            proc = await asyncio.create_subprocess_exec(
+                "bash", "-c",
+                "git add data/demo.db data/mind.json 2>/dev/null; "
+                "git diff --cached --quiet || "
+                "git commit -m 'auto: update from cloud-run'; "
+                "git push",
+                cwd=_DATA_GIT_DIR,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+            success = proc.returncode == 0
+            error_msg = stderr.decode(errors="replace") if not success else ""
+    except asyncio.TimeoutError:
+        error_msg = "git push timeout"
+    except Exception as exc:
+        error_msg = str(exc)
+    _record_sync_log(success, error_msg)
+    if not success:
+        print(f"[git-push] 失敗: {error_msg}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # startup: ダッシュボードキャッシュのウォームアップ
@@ -253,6 +333,8 @@ async def lifespan(app: FastAPI):
         start_scheduler()
     except Exception as e:
         print(f"[API] crystallization scheduler start failed (non-fatal): {e}")
+    # startup: sync_log テーブル初期化（Cloud Run git push 記録用）
+    _init_sync_log_table()
     yield
     # shutdown: 結晶化スケジューラー停止
     try:
@@ -260,6 +342,28 @@ async def lifespan(app: FastAPI):
         stop_scheduler()
     except Exception:
         pass
+    # shutdown: 最終 git push（コンテナ停止前にデータを永続化）
+    if os.path.isdir(_DATA_GIT_DIR):
+        try:
+            db_dst = os.path.join(_DATA_GIT_DIR, "data", "demo.db")
+            mind_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "mind.json")
+            mind_dst = os.path.join(_DATA_GIT_DIR, "data", "mind.json")
+            if os.path.exists(_LEASE_DB_PATH):
+                shutil.copy2(_LEASE_DB_PATH, db_dst)
+            if os.path.exists(mind_src):
+                shutil.copy2(mind_src, mind_dst)
+            import subprocess as _sp
+            result = _sp.run(
+                ["bash", "-c",
+                 "git add data/demo.db data/mind.json 2>/dev/null; "
+                 "git diff --cached --quiet || git commit -m 'auto: shutdown sync'; "
+                 "git push"],
+                cwd=_DATA_GIT_DIR, capture_output=True, timeout=30,
+            )
+            _record_sync_log(result.returncode == 0,
+                             result.stderr.decode(errors="replace") if result.returncode != 0 else "")
+        except Exception as _e:
+            print(f"[shutdown] final git push 失敗（非致命的）: {_e}")
 
 
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
@@ -2769,13 +2873,16 @@ def score_batch(req: BatchScoreRequest):
 
 
 @app.post("/api/batch/save")
-def save_batch(req: BatchSaveRequest):
+def save_batch(req: BatchSaveRequest, background_tasks: BackgroundTasks):
     """確認済みCSVを一括スコアリングし、過去案件DBへ保存する。"""
     if not req.confirmed:
         raise HTTPException(status_code=422, detail="confirmed=true が必要です")
     if req.batch_token:
-        return _save_cached_batch(req.batch_token)
-    return _run_batch_scoring(req, save_to_db=True)
+        result = _save_cached_batch(req.batch_token)
+    else:
+        result = _run_batch_scoring(req, save_to_db=True)
+    background_tasks.add_task(_git_push_db)
+    return result
 
 
 def _cleanup_batch_cache(now: float | None = None) -> None:
@@ -3040,7 +3147,7 @@ def _run_batch_scoring(req: BatchScoreRequest, save_to_db: bool = False):
 
 
 @app.patch("/api/cases/{case_id}/result")
-def patch_case_result(case_id: str, req: CaseResultPatch):
+def patch_case_result(case_id: str, req: CaseResultPatch, background_tasks: BackgroundTasks):
     """案件結果を部分更新 (final_status / competitor_rate / loss_reason / final_result_date)"""
     from constants import FINAL_STATUS_VALID
     from data_cases import update_case
@@ -3094,6 +3201,7 @@ def patch_case_result(case_id: str, req: CaseResultPatch):
         except Exception as _et_err:
             print(f"[EmotionTrigger] result patch skipped: {_et_err}")
 
+    background_tasks.add_task(_git_push_db)
     return {"status": "updated", "case_id": case_id, "obsidian_reflection": obsidian_result}
 
 
@@ -3162,7 +3270,7 @@ def get_case_detail(case_id: str):
 
 
 @app.delete("/api/cases/operation/clear-all")
-def clear_all_pending_cases():
+def clear_all_pending_cases(background_tasks: BackgroundTasks):
     """未登録案件をすべて削除する（一括クリア）"""
     from data_cases import _open_db, refresh_stats_caches
     try:
@@ -3170,18 +3278,20 @@ def clear_all_pending_cases():
             conn.execute("DELETE FROM past_cases WHERE final_status='未登録'")
             conn.commit()
         refresh_stats_caches()
+        background_tasks.add_task(_git_push_db)
         return {"message": "Cleared all pending cases"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/cases/{case_id}")
-def delete_case(case_id: str):
+def delete_case(case_id: str, background_tasks: BackgroundTasks):
     """案件を past_cases から削除する"""
     from data_cases import delete_case as delete_case_from_db
     try:
         delete_case_from_db(str(case_id))
     except Exception:
         pass
+    background_tasks.add_task(_git_push_db)
     return {"message": "Deleted if existed", "case_id": case_id}
 
 

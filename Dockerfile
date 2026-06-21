@@ -26,7 +26,8 @@ FROM python:3.11-slim-bookworm AS runtime
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgomp1 ca-certificates \
+    && apt-get install -y --no-install-recommends \
+       libgomp1 ca-certificates git openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=node:20-bookworm-slim /usr/local/bin/node /usr/local/bin/node
@@ -40,8 +41,8 @@ COPY --from=frontend-builder /build/frontend/.next/standalone/ frontend/
 COPY --from=frontend-builder /build/frontend/.next/static/ frontend/.next/static/
 COPY --from=frontend-builder /build/frontend/public/ frontend/public/
 
-RUN chmod +x scripts/start_cloud_run.sh \
-    && mkdir -p /app/data /app/obsidian_vault /tmp/tune-lease \
+RUN chmod +x scripts/start_cloud_run.sh scripts/entrypoint.sh \
+    && mkdir -p /app/data /app/data-git /app/api/chroma_db /app/obsidian_vault /tmp/tune-lease \
     && chmod -R a-w /app/.cloudrun_bundle \
     && useradd --create-home --uid 10001 appuser \
     && chown -R appuser:appuser /app /tmp/tune-lease
@@ -64,4 +65,4 @@ ENV PATH=/opt/venv/bin:$PATH \
 
 EXPOSE 8080
 
-CMD ["./scripts/start_cloud_run.sh"]
+CMD ["./scripts/entrypoint.sh"]

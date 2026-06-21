@@ -47,6 +47,8 @@ dependencies = [
     "sentence-transformers>=2.2.0,<3.0",
     "onnxruntime<=1.18.0",
     "apscheduler>=3.10,<4.0",
+    "google-cloud-secret-manager>=2.0",
+    "google-cloud-storage>=2.0",
 ]
 
 [project.optional-dependencies]

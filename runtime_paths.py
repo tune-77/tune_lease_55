@@ -21,6 +21,9 @@ def get_data_path(*parts: str) -> str:
 
 
 def get_db_path(name: str = "lease_data.db") -> str:
+    raw = os.environ.get("DB_PATH")
+    if raw:
+        return raw if os.path.isabs(raw) else str(REPO_ROOT / raw)
     return get_data_path(name)
 
 
