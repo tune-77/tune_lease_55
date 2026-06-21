@@ -30,7 +30,7 @@ BASE_DIR = Path(__file__).parent.parent
 SRC_DB = BASE_DIR / "data" / "lease_data.db"
 DST_DB = BASE_DIR / "data" / "demo.db"
 
-DEPT_ALIASES = ["犬部", "猫部", "鳥部", "魚部"]
+DEPT_ALIASES = ["犬営業部", "猫営業部", "鳥営業部", "魚営業部"]
 
 # Financial input fields inside past_cases.data JSON
 _FINANCIAL_INPUTS = [
