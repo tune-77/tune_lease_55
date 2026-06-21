@@ -64,7 +64,7 @@ def is_processed(
     if status == "applied":
         return True, status
 
-    if status in {"needs_review", "parked"}:
+    if status in {"needs_review", "parked", "suppressed"}:
         recorded_at = latest.get("recorded_at", "")
         try:
             recorded_time = datetime.datetime.fromisoformat(recorded_at)

@@ -86,6 +86,9 @@ KNOWN_CODE_APPLIED: list[tuple[str, str, str]] = [
     ("misc_cecb0a5a3d79",            "知識宇宙マップの視覚化機能強化",       "REV-022 applied（重複）"),
     ("misc_d1199d9942d4",            "ホーム画面へのリースニュース表示",     "PR #265 実装済み"),
     ("misc_70ff923bdcdf",            "ホーム画面リースニュースまとめのコンテンツ拡充", "PR #265/266 実装済み"),
+    ("misc_4f0e7b380ae2",
+     "ブルドーザー、ショベル・油圧ショベルのリース期間5年→6年修正",
+     "修正済み（static_data/industry_benchmarks.json にてリース期間を6年に修正確認）"),
 ]
 
 KNOWN_PR_OVERRIDES: dict[str, tuple[int, str]] = {
