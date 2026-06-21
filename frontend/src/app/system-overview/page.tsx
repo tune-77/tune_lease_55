@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Brain, Database, GitMerge, Zap, Activity, Shield, Eye, Code2, ExternalLink, Clock, RefreshCw, FileText, HardDrive, Newspaper, Search, BarChart2 } from "lucide-react";
 
@@ -18,6 +18,58 @@ type PipelineEvent = {
   badgeColor?: string;
   repeat?: string;
 };
+
+type SeciStep = {
+  num: string;
+  title: string;
+  desc: string;
+  color: string;
+  bg: string;
+  border: string;
+};
+
+const seciSteps: SeciStep[] = [
+  {
+    num: "①",
+    title: "対応",
+    desc: "審査チャット・Obsidianメモ",
+    color: "#60a5fa",
+    bg: "rgba(30,58,138,0.35)",
+    border: "rgba(96,165,250,0.5)",
+  },
+  {
+    num: "②",
+    title: "学び抽出",
+    desc: "step1 / 04:00自動実行",
+    color: "#a78bfa",
+    bg: "rgba(88,28,135,0.35)",
+    border: "rgba(167,139,250,0.5)",
+  },
+  {
+    num: "③",
+    title: "人間承認",
+    desc: "step2 / AIが根拠を提示",
+    color: "#fbbf24",
+    bg: "rgba(120,53,15,0.35)",
+    border: "rgba(251,191,36,0.5)",
+  },
+  {
+    num: "④",
+    title: "自動適用",
+    desc: "step3 / コード自動修正",
+    color: "#34d399",
+    bg: "rgba(6,78,59,0.35)",
+    border: "rgba(52,211,153,0.5)",
+  },
+  {
+    num: "⑤",
+    title: "助言注入",
+    desc: "次の審査に自動反映",
+    color: "#f472b6",
+    bg: "rgba(131,24,67,0.35)",
+    border: "rgba(244,114,182,0.5)",
+  },
+];
 
 const pipelineEvents: PipelineEvent[] = [
   {
@@ -364,6 +416,21 @@ export default function SystemOverviewPage() {
           </div>
         </section>
 
+        {/* ── 暗黙知サイクル（SECIモデル） ── */}
+        <section>
+          <div className="text-center mb-6">
+            <p className="text-xs font-bold tracking-[0.25em] uppercase text-slate-500 mb-1">Knowledge Flywheel</p>
+            <h2 className="text-2xl font-black text-white tracking-tight">使うほど、賢くなる。</h2>
+            <p className="text-sm text-slate-400 mt-2">暗黙知サイクル — 審査現場の経験が自動でシステムに還流する</p>
+          </div>
+          <div
+            className="rounded-3xl border border-slate-800 p-6"
+            style={{ background: "rgba(8,12,28,0.9)" }}
+          >
+            <SeciCycleDiagram />
+          </div>
+        </section>
+
         {/* ── 自動改善パイプライン 24hタイムライン ── */}
         <section>
           <div className="text-center mb-6">
@@ -510,6 +577,100 @@ export default function SystemOverviewPage() {
           </div>
         </section>
 
+      </div>
+    </div>
+  );
+}
+
+function SeciCycleDiagram() {
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setActiveIndex((prev) => (prev + 1) % seciSteps.length);
+    }, 3000);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <div className="space-y-6">
+      <div className="overflow-x-auto pb-2">
+        <div className="flex items-stretch min-w-[600px]">
+          {seciSteps.map((step, i) => {
+            const isActive = i === activeIndex;
+            return (
+              <React.Fragment key={i}>
+                <div
+                  className="flex-1 rounded-2xl border p-4 text-center flex flex-col items-center justify-center gap-1.5 transition-all duration-500"
+                  style={{
+                    background: isActive ? step.bg : "rgba(15,23,42,0.4)",
+                    borderColor: isActive ? step.border : "rgba(51,65,85,0.4)",
+                    boxShadow: isActive ? `0 0 20px ${step.color}35` : "none",
+                    transform: isActive ? "scale(1.05)" : "scale(1)",
+                    minHeight: "108px",
+                  }}
+                >
+                  <span
+                    className="text-2xl font-black transition-colors duration-500"
+                    style={{ color: isActive ? step.color : "#334155" }}
+                  >
+                    {step.num}
+                  </span>
+                  <span className="text-xs font-black text-white leading-tight">{step.title}</span>
+                  <span className="text-[10px] text-slate-400 leading-relaxed">{step.desc}</span>
+                </div>
+                {i < seciSteps.length - 1 && (
+                  <div className="flex items-center flex-shrink-0 px-1.5">
+                    <svg width="18" height="12" viewBox="0 0 18 12" fill="none">
+                      <path
+                        d="M0 6 L13 6 M8.5 2 L13 6 L8.5 10"
+                        stroke={isActive ? step.color : "#334155"}
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </div>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <div
+          className="flex-1 h-px rounded"
+          style={{ background: "linear-gradient(90deg, rgba(244,114,182,0.4), rgba(96,165,250,0.4))" }}
+        />
+        <div className="flex items-center gap-1.5">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M10 6A4 4 0 1 1 6 2" stroke="#60a5fa" strokeWidth="1.3" strokeLinecap="round" />
+            <path d="M5.5 0 L8 2 L5.5 4" fill="none" stroke="#60a5fa" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span className="text-[10px] font-semibold text-slate-500">⑤ → ① に自動帰還・サイクル継続</span>
+        </div>
+        <div
+          className="flex-1 h-px rounded"
+          style={{ background: "linear-gradient(90deg, rgba(96,165,250,0.4), rgba(244,114,182,0.4))" }}
+        />
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { value: "137件", label: "改善適用件数", color: "#60a5fa", bg: "rgba(30,58,138,0.2)" },
+          { value: "+8.2pt", label: "累計精度向上", color: "#34d399", bg: "rgba(6,78,59,0.2)" },
+          { value: "78%", label: "自動適用率", color: "#a78bfa", bg: "rgba(88,28,135,0.2)" },
+        ].map((stat) => (
+          <div
+            key={stat.label}
+            className="rounded-xl border border-slate-700/40 p-4 text-center"
+            style={{ background: stat.bg }}
+          >
+            <p className="text-2xl font-black" style={{ color: stat.color }}>{stat.value}</p>
+            <p className="text-[11px] text-slate-400 font-semibold mt-1">{stat.label}</p>
+          </div>
+        ))}
       </div>
     </div>
   );
