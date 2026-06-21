@@ -305,16 +305,96 @@ def validate_improvements_batch(improvements: list[dict[str, Any]], rag_context:
     return results
 
 
+def _run_demo_mode(demo_dir: "Path") -> None:
+    """--demo フラグ時: demo_step1_output.json を読んで検証し demo_step2_output.json に書き出す."""
+    import sys
+    from pathlib import Path as _Path
+
+    input_path = demo_dir / "demo_step1_output.json"
+    output_path = demo_dir / "demo_step2_output.json"
+
+    if not input_path.exists():
+        print(f"[Step2-DEMO] エラー: {input_path} が見つかりません。先に --demo で Step1 を実行してください", file=sys.stderr)
+        sys.exit(1)
+
+    with input_path.open(encoding="utf-8") as f:
+        improvements = json.load(f)
+
+    print(f"[Step2-DEMO] {len(improvements)} 件の改善案を検証中...")
+    results: list[dict[str, Any]] = []
+    for imp in improvements:
+        # デモモードではファイル存在チェックをスキップし、データ根拠があれば APPROVED とする
+        issue_type = imp.get("issue_type", "")
+        source = imp.get("source", "")
+        correct_value = imp.get("correct_value")
+        wrong_value = imp.get("wrong_value")
+
+        has_source = bool(source)
+        has_correction = correct_value is not None
+
+        if has_source and has_correction:
+            status = "APPROVED"
+            critical_flaws: list[str] = []
+            report_summary = f"✅ データ根拠あり（{source}）・修正値明確（{wrong_value} → {correct_value}）"
+        elif issue_type == "missing_data" and has_source:
+            status = "APPROVED"
+            critical_flaws = []
+            report_summary = f"✅ 新規登録案件・根拠あり（{source}）"
+        else:
+            status = "REJECTED"
+            critical_flaws = ["根拠となるデータソースが不明確です"]
+            report_summary = "❌ 根拠不明 — 追加調査が必要"
+
+        results.append({
+            "improvement_id": imp["id"],
+            "status": status,
+            "verification_report": (
+                f"改善案ID: {imp['id']}\n"
+                f"対象: {imp.get('target_module', '未指定')}\n"
+                f"優先度: {imp.get('priority', 'N/A')}\n"
+                f"\n【検証結果】\n{report_summary}"
+            ),
+            "critical_flaws": critical_flaws,
+            "alternative_suggestion": None,
+            "metadata": {
+                "issues_count": 0,
+                "flaws_count": len(critical_flaws),
+                "test_breaking": False,
+            },
+            "confidence_score": 0.92 if status == "APPROVED" else 0.30,
+        })
+        status_icon = "✅ APPROVED" if status == "APPROVED" else "❌ REJECTED"
+        print(f"  {imp['id']}: {status_icon} — {imp['title']}")
+
+    output_path.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
+    approved = sum(1 for r in results if r["status"] == "APPROVED")
+    print(f"[Step2-DEMO] 検証完了: {approved}/{len(results)} 件が承認 → {output_path}")
+
+
 if __name__ == "__main__":
-    # テスト用サンプル
-    sample_improvement = {
-        "id": "REV-001",
-        "target_module": "quantum_analysis_module.py",
-        "title": "quantum_risk の閾値を35から32に下げる",
-        "description": "現在は quantum_risk >= 35 で要注意フラグが立ちます。テストデータを見ると閾値が甘い。32に下げるべき。",
-        "reason": "最近のテストケースで、実際のリスク案件が MEDIUM で判定されている",
-        "priority": "HIGH",
-    }
-    
-    result = validate_improvement(sample_improvement)
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    import argparse
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(description="Step2: 改善案の妥当性検証")
+    parser.add_argument("--demo", action="store_true", help="デモモード: demo_step1_output.json を入力とする")
+    args = parser.parse_args()
+
+    if args.demo:
+        _script_dir = Path(__file__).resolve().parent
+        _root = _script_dir
+        while _root != _root.parent:
+            if (_root / "CLAUDE.md").exists():
+                break
+            _root = _root.parent
+        _run_demo_mode(_root / "scripts" / "demo")
+    else:
+        sample_improvement = {
+            "id": "REV-001",
+            "target_module": "quantum_analysis_module.py",
+            "title": "quantum_risk の閾値を35から32に下げる",
+            "description": "現在は quantum_risk >= 35 で要注意フラグが立ちます。テストデータを見ると閾値が甘い。32に下げるべき。",
+            "reason": "最近のテストケースで、実際のリスク案件が MEDIUM で判定されている",
+            "priority": "HIGH",
+        }
+        result = validate_improvement(sample_improvement)
+        print(json.dumps(result, ensure_ascii=False, indent=2))

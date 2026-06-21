@@ -1548,5 +1548,116 @@ def _run_self_test() -> None:
     print("\n✅ 全テスト通過")
 
 
+def _run_demo_mode(demo_dir: Path) -> None:
+    """--demo フラグ時: デモ用入力を読んで demo_ledger.jsonl に記録し結果を表示する."""
+    import sys
+
+    step1_path = demo_dir / "demo_step1_output.json"
+    step2_path = demo_dir / "demo_step2_output.json"
+    ledger_path = demo_dir / "demo_ledger.jsonl"
+
+    for p in (step1_path, step2_path):
+        if not p.exists():
+            print(f"[Step3-DEMO] エラー: {p} が見つかりません。先に Step1/Step2 を --demo で実行してください", file=sys.stderr)
+            sys.exit(1)
+
+    with step1_path.open(encoding="utf-8") as f:
+        improvements: list[dict[str, Any]] = json.load(f)
+    with step2_path.open(encoding="utf-8") as f:
+        validations: list[dict[str, Any]] = json.load(f)
+
+    val_by_id = {v["improvement_id"]: v for v in validations}
+    date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    applied: list[dict[str, Any]] = []
+    needs_review: list[dict[str, Any]] = []
+
+    print(f"[Step3-DEMO] {len(improvements)} 件の改善案を自動適用シミュレーション中...")
+
+    with ledger_path.open("a", encoding="utf-8") as ledger:
+        for imp in improvements:
+            val = val_by_id.get(imp["id"], {})
+            status = val.get("status", "REJECTED")
+            title = imp.get("title", "")
+            wrong_val = imp.get("wrong_value")
+            correct_val = imp.get("correct_value")
+            target = imp.get("target_module", "")
+
+            if status == "APPROVED":
+                # デモ: スコアリングロジック変更は手動レビューへ
+                if "scoring_core.py" in target:
+                    entry = {"id": imp["id"], "title": title, "reason": "スコアリング重要ファイル — 手動レビュー必要"}
+                    needs_review.append(entry)
+                    ledger_record = {
+                        "demo_id": imp["id"],
+                        "status": "needs_review",
+                        "title": title,
+                        "recorded_at": date_str,
+                        "reason": entry["reason"],
+                    }
+                    print(f"  {imp['id']}: 👀 NEEDS_REVIEW — {title}")
+                else:
+                    entry = {
+                        "id": imp["id"],
+                        "title": title,
+                        "target": target,
+                        "change": f"{wrong_val} → {correct_val}" if wrong_val is not None else f"新規追加: {correct_val}",
+                        "source": imp.get("source", ""),
+                    }
+                    applied.append(entry)
+                    ledger_record = {
+                        "demo_id": imp["id"],
+                        "status": "applied",
+                        "title": title,
+                        "target": target,
+                        "change": entry["change"],
+                        "recorded_at": date_str,
+                    }
+                    print(f"  {imp['id']}: ✅ APPLIED — {title} ({entry['change']})")
+            else:
+                entry = {"id": imp["id"], "title": title, "reason": "検証不合格"}
+                needs_review.append(entry)
+                ledger_record = {
+                    "demo_id": imp["id"],
+                    "status": "rejected",
+                    "title": title,
+                    "recorded_at": date_str,
+                }
+                print(f"  {imp['id']}: ❌ SKIPPED — {title}")
+
+            ledger.write(json.dumps(ledger_record, ensure_ascii=False) + "\n")
+
+    print(f"\n[Step3-DEMO] 適用: {len(applied)} 件 / 要レビュー: {len(needs_review)} 件")
+    print(f"[Step3-DEMO] デモ台帳に記録済み: {ledger_path}")
+
+    # デモサマリーをJSONで保存
+    summary_path = demo_dir / "demo_apply_summary.json"
+    summary = {
+        "executed_at": date_str,
+        "applied": applied,
+        "needs_review": needs_review,
+        "applied_count": len(applied),
+        "needs_review_count": len(needs_review),
+    }
+    summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"[Step3-DEMO] サマリー保存: {summary_path}")
+
+
 if __name__ == "__main__":
-    _run_self_test()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Step3: 承認済み改善案の自動適用")
+    parser.add_argument("--demo", action="store_true", help="デモモード: demo台帳に書き込み・本番ledger不変")
+    parser.add_argument("--self-test", action="store_true", help="自己テストを実行")
+    args = parser.parse_args()
+
+    if args.demo:
+        _script_dir = Path(__file__).resolve().parent
+        _root = _script_dir
+        while _root != _root.parent:
+            if (_root / "CLAUDE.md").exists():
+                break
+            _root = _root.parent
+        _run_demo_mode(_root / "scripts" / "demo")
+    else:
+        _run_self_test()
