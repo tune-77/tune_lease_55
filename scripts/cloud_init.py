@@ -104,6 +104,12 @@ def sync_data_files() -> None:
         if src.exists():
             shutil.copy2(str(src), str(dst))
             print(f"[cloud_init] {filename} → {dst}")
+    # data_cases.py は lease_data.db をハードコードで参照するため demo.db を複製する
+    demo_src = src_dir / "demo.db"
+    lease_dst = dst_dir / "lease_data.db"
+    if demo_src.exists() and not lease_dst.exists():
+        shutil.copy2(str(demo_src), str(lease_dst))
+        print(f"[cloud_init] demo.db → lease_data.db (alias)")
 
 
 def sync_chromadb() -> None:

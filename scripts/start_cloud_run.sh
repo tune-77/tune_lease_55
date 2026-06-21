@@ -24,15 +24,16 @@ seed_dir() {
   local dst="$2"
   if [[ -d "$src" ]]; then
     mkdir -p "$dst"
-    if [[ -z "$(find "$dst" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]; then
-      cp -R "$src"/. "$dst"/
-    fi
+    # -n: 既存ファイルは上書きしない（git cloneで配置済みのファイルを優先）
+    cp -Rn "$src"/. "$dst"/ 2>/dev/null || true
   fi
 }
 
 seed_dir "$BUNDLE_ROOT/data" "$DATA_DIR"
 if [[ -n "$OBSIDIAN_VAULT_PATH" ]]; then
   seed_dir "$BUNDLE_ROOT/obsidian_vault" "$OBSIDIAN_VAULT_PATH"
+  # vault はシステムプロンプト更新等で書き込みが発生するため権限を回復する
+  chmod -R u+w "$OBSIDIAN_VAULT_PATH" 2>/dev/null || true
 fi
 
 python -m uvicorn api.main:app \
