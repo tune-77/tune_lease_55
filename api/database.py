@@ -10,9 +10,9 @@ import os
 import sqlite3
 from contextlib import closing
 from typing import Optional
-from runtime_paths import get_data_path
+from runtime_paths import get_data_path, get_db_path
 
-DB_PATH = get_data_path("lease_data.db")
+DB_PATH = get_db_path()
 
 
 def _open_db(path: str = DB_PATH) -> sqlite3.Connection:
