@@ -2,7 +2,165 @@
 
 import React from "react";
 import Link from "next/link";
-import { Brain, Database, GitMerge, Zap, Activity, Shield, Eye, Code2, ExternalLink } from "lucide-react";
+import { Brain, Database, GitMerge, Zap, Activity, Shield, Eye, Code2, ExternalLink, Clock, RefreshCw, FileText, HardDrive, Newspaper, Search, BarChart2 } from "lucide-react";
+
+type PipelineEvent = {
+  time: string;
+  label: string;
+  desc: string;
+  script: string;
+  color: string;
+  bg: string;
+  border: string;
+  iconColor: string;
+  icon: React.ElementType;
+  badge?: string;
+  badgeColor?: string;
+  repeat?: string;
+};
+
+const pipelineEvents: PipelineEvent[] = [
+  {
+    time: "03:00",
+    label: "RAG日次見直し",
+    desc: "ChromaDB インデックス再構築・検索精度テスト・メタデータ統計・改善候補TOP3",
+    script: "morning_rag_review_v2.py / reindex_obsidian.py --full",
+    color: "#818cf8",
+    bg: "rgba(49,46,129,0.25)",
+    border: "rgba(99,102,241,0.35)",
+    iconColor: "#818cf8",
+    icon: RefreshCw,
+  },
+  {
+    time: "03:30",
+    label: "AURION 深夜自律同期",
+    desc: "Obsidian ノート同期・SQLite DB 監査・ナイトリーステータス記録・lease-wiki-vault 更新",
+    script: "aurion_core_daily.py --mode midnight",
+    color: "#a78bfa",
+    bg: "rgba(88,28,135,0.25)",
+    border: "rgba(139,92,246,0.35)",
+    iconColor: "#a78bfa",
+    icon: Brain,
+    badge: "AURION",
+    badgeColor: "rgba(139,92,246,0.2)",
+  },
+  {
+    time: "04:00",
+    label: "日次改善パイプライン",
+    desc: "Obsidian改善インデックス抽出 → auto-improvement-pipeline → batch_apply → Codexキュー生成 → 再帰的自己改善レポート",
+    script: "run_daily_improvement_pipeline.sh（core + post）",
+    color: "#34d399",
+    bg: "rgba(6,78,59,0.25)",
+    border: "rgba(52,211,153,0.35)",
+    iconColor: "#34d399",
+    icon: GitMerge,
+    badge: "MAIN",
+    badgeColor: "rgba(52,211,153,0.2)",
+  },
+  {
+    time: "04:00",
+    label: "Obsidian バックアップ",
+    desc: "Obsidian Vault を iCloud に 14世代保持でバックアップ",
+    script: "run_obsidian_backup.sh --keep 14",
+    color: "#60a5fa",
+    bg: "rgba(30,58,138,0.2)",
+    border: "rgba(96,165,250,0.3)",
+    iconColor: "#60a5fa",
+    icon: HardDrive,
+  },
+  {
+    time: "04:30",
+    label: "案件データバックアップ",
+    desc: "lease_data.db を iCloud に 12世代保持で自動バックアップ",
+    script: "backup_case_data.py --keep 12",
+    color: "#38bdf8",
+    bg: "rgba(12,74,110,0.2)",
+    border: "rgba(56,189,248,0.3)",
+    iconColor: "#38bdf8",
+    icon: Database,
+  },
+  {
+    time: "05:00",
+    label: "週次システムヘルスチェック",
+    desc: "全依存サービス疎通確認・バックアップ整合性・ログ容量・異常レポート生成",
+    script: "check_system_health.py",
+    color: "#fbbf24",
+    bg: "rgba(120,53,15,0.2)",
+    border: "rgba(251,191,36,0.3)",
+    iconColor: "#fbbf24",
+    icon: Shield,
+    repeat: "毎週月曜",
+  },
+  {
+    time: "06:00",
+    label: "AURION 朝報告生成",
+    desc: "前夜の処理サマリ・スコアリングドリフト・改善適用状況を lease-wiki-vault に朝報告として書き出し",
+    script: "aurion_core_daily.py --mode morning-report",
+    color: "#f472b6",
+    bg: "rgba(131,24,67,0.2)",
+    border: "rgba(244,114,182,0.3)",
+    iconColor: "#f472b6",
+    icon: FileText,
+    badge: "AURION",
+    badgeColor: "rgba(244,114,182,0.15)",
+  },
+  {
+    time: "06:00",
+    label: "業界ニュース収集",
+    desc: "Google News RSS + METI/FSA/MLIT 公式フィード → Obsidian daily digest に書き出し（最大18件）",
+    script: "run_lease_news_collection.sh --limit 18 --profile industry-watch",
+    color: "#4ade80",
+    bg: "rgba(20,83,45,0.2)",
+    border: "rgba(74,222,128,0.3)",
+    iconColor: "#4ade80",
+    icon: Newspaper,
+  },
+  {
+    time: "06:00",
+    label: "業界ナレッジフィード",
+    desc: "業種別最新知識をClaude APIで生成・Obsidian Vault にインジェクト",
+    script: "daily_knowledge_feed.py",
+    color: "#86efac",
+    bg: "rgba(20,83,45,0.18)",
+    border: "rgba(134,239,172,0.28)",
+    iconColor: "#86efac",
+    icon: Zap,
+  },
+  {
+    time: "06:10",
+    label: "リース審査自動調査",
+    desc: "未解決審査ロジックを自動リサーチ → 知識ベースへ反映・Obsidian に保存",
+    script: "auto_research_lease_judgment.py",
+    color: "#22d3ee",
+    bg: "rgba(8,51,68,0.22)",
+    border: "rgba(34,211,238,0.3)",
+    iconColor: "#22d3ee",
+    icon: Search,
+  },
+  {
+    time: "06:30",
+    label: "月次プロンプトFBレポート",
+    desc: "プロンプト品質フィードバック集計・改善提案を Obsidian に月次レポートとして出力",
+    script: "run_monthly_prompt_feedback_report.py --obsidian",
+    color: "#fb923c",
+    bg: "rgba(124,45,18,0.2)",
+    border: "rgba(251,146,60,0.3)",
+    iconColor: "#fb923c",
+    icon: BarChart2,
+    repeat: "毎月1日",
+  },
+  {
+    time: "22:00",
+    label: "Obsidian 日次ログ書き出し",
+    desc: "その日のパイプライン実行ログ・改善適用結果を Obsidian Vault に dispatch",
+    script: "dispatch_log_to_obsidian.py",
+    color: "#94a3b8",
+    bg: "rgba(15,23,42,0.4)",
+    border: "rgba(148,163,184,0.25)",
+    iconColor: "#94a3b8",
+    icon: FileText,
+  },
+];
 
 const loops = [
   {
@@ -203,6 +361,152 @@ export default function SystemOverviewPage() {
                 </div>
               );
             })}
+          </div>
+        </section>
+
+        {/* ── 自動改善パイプライン 24hタイムライン ── */}
+        <section>
+          <div className="text-center mb-6">
+            <p className="text-xs font-bold tracking-[0.25em] uppercase text-slate-500 mb-1">Autonomous Pipeline</p>
+            <h2 className="text-lg font-black text-slate-300 tracking-wide uppercase">自動改善パイプライン — 24h タイムライン</h2>
+            <p className="text-xs text-slate-500 mt-2">launchd で毎日自律実行。人間の操作なしに知識取込・分析・自己改善が回る。</p>
+          </div>
+
+          <div className="relative">
+            {/* 縦ライン */}
+            <div
+              className="absolute left-[72px] top-0 bottom-0 w-px"
+              style={{ background: "linear-gradient(180deg, rgba(99,102,241,0.0) 0%, rgba(99,102,241,0.4) 8%, rgba(99,102,241,0.4) 92%, rgba(99,102,241,0.0) 100%)" }}
+            />
+
+            <div className="space-y-3">
+              {pipelineEvents.map((ev, i) => {
+                const Icon = ev.icon;
+                return (
+                  <div key={i} className="flex items-start gap-4 group">
+                    {/* 時刻バッジ */}
+                    <div className="flex-shrink-0 w-[64px] text-right">
+                      <span
+                        className="text-xs font-black tabular-nums"
+                        style={{ color: ev.color }}
+                      >
+                        {ev.time}
+                      </span>
+                    </div>
+
+                    {/* タイムラインドット */}
+                    <div className="flex-shrink-0 relative z-10 mt-1">
+                      <div
+                        className="w-3 h-3 rounded-full border-2"
+                        style={{
+                          background: ev.bg,
+                          borderColor: ev.color,
+                          boxShadow: `0 0 8px ${ev.color}60`,
+                        }}
+                      />
+                    </div>
+
+                    {/* イベントカード */}
+                    <div
+                      className="flex-1 rounded-xl border p-3 mb-1 transition-all duration-200 group-hover:scale-[1.005]"
+                      style={{
+                        background: ev.bg,
+                        borderColor: ev.border,
+                      }}
+                    >
+                      <div className="flex items-start justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Icon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: ev.iconColor }} />
+                          <span className="text-xs font-black text-white">{ev.label}</span>
+                          {ev.badge && (
+                            <span
+                              className="text-[9px] font-black px-1.5 py-0.5 rounded-full border"
+                              style={{
+                                background: ev.badgeColor ?? "rgba(99,102,241,0.2)",
+                                borderColor: ev.color,
+                                color: ev.color,
+                              }}
+                            >
+                              {ev.badge}
+                            </span>
+                          )}
+                          {ev.repeat && (
+                            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+                              {ev.repeat}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-relaxed mt-1.5">{ev.desc}</p>
+                      <p
+                        className="text-[10px] font-mono mt-1.5 opacity-50"
+                        style={{ color: ev.iconColor }}
+                      >
+                        {ev.script}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* 常時稼働: Vault Watcher */}
+              <div className="flex items-start gap-4">
+                <div className="flex-shrink-0 w-[64px] text-right">
+                  <span className="text-xs font-black" style={{ color: "#f59e0b" }}>常時</span>
+                </div>
+                <div className="flex-shrink-0 relative z-10 mt-1">
+                  <div
+                    className="w-3 h-3 rounded-full border-2"
+                    style={{
+                      background: "rgba(120,53,15,0.3)",
+                      borderColor: "#f59e0b",
+                      boxShadow: "0 0 8px #f59e0b60",
+                      animation: "pulse-glow 2s ease-in-out infinite",
+                    }}
+                  />
+                </div>
+                <div
+                  className="flex-1 rounded-xl border p-3"
+                  style={{
+                    background: "rgba(120,53,15,0.15)",
+                    borderColor: "rgba(245,158,11,0.3)",
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <Eye className="w-3.5 h-3.5" style={{ color: "#f59e0b" }} />
+                    <span className="text-xs font-black text-white">Vault Watcher</span>
+                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full border" style={{ background: "rgba(245,158,11,0.15)", borderColor: "#f59e0b", color: "#f59e0b" }}>
+                      LIVE
+                    </span>
+                    <Clock className="w-3 h-3 ml-1" style={{ color: "#f59e0b", opacity: 0.6 }} />
+                    <span className="text-[10px] text-slate-500">60秒間隔</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed mt-1.5">
+                    Obsidian Vault の変更を60秒間隔で検知 → ChromaDB RAG インデックスをリアルタイム更新
+                  </p>
+                  <p className="text-[10px] font-mono mt-1.5 opacity-50" style={{ color: "#f59e0b" }}>
+                    vault_watcher.py（KeepAlive: true）
+                  </p>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          {/* 凡例 */}
+          <div className="mt-6 flex flex-wrap gap-3 justify-center">
+            {[
+              { label: "深夜 (03:xx)", color: "#a78bfa" },
+              { label: "早朝改善パイプライン (04:xx)", color: "#34d399" },
+              { label: "朝 知識収集 (06:xx)", color: "#4ade80" },
+              { label: "夜 ログ配信 (22:xx)", color: "#94a3b8" },
+              { label: "常時監視", color: "#f59e0b" },
+            ].map((leg) => (
+              <div key={leg.label} className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full" style={{ background: leg.color }} />
+                <span className="text-[10px] text-slate-500">{leg.label}</span>
+              </div>
+            ))}
           </div>
         </section>
 
