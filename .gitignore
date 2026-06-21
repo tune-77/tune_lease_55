@@ -28,6 +28,7 @@ screening_report_test.pdf
 
 # データベース・審査データ（個人情報・機密情報を含む可能性）
 data/*.db
+!data/demo.db
 data/*.sqlite
 data/*.jsonl
 data/backups/
