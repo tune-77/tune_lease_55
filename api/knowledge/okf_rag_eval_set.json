@@ -1,0 +1,86 @@
+[
+  {
+    "id": "okf_pack_index",
+    "category": "okf",
+    "query": "OKF風のリース知識パックの目的とルールは？",
+    "expected_path_any": ["knowledge_base/okf_lease_concepts/README.md"],
+    "forbidden_path_any": []
+  },
+  {
+    "id": "okf_hydraulic_excavator_period",
+    "category": "asset_life",
+    "query": "油圧ショベルのリース期間で確認すべきことは？",
+    "expected_path_any": ["knowledge_base/okf_lease_concepts/assets/hydraulic_excavator_lease_period.md"],
+    "forbidden_path_any": []
+  },
+  {
+    "id": "okf_forklift_resale",
+    "category": "asset_life",
+    "query": "フォークリフトの残価評価でバッテリーと点検記録をどう見る？",
+    "expected_path_any": ["knowledge_base/okf_lease_concepts/assets/forklift_resale_risk.md"],
+    "forbidden_path_any": []
+  },
+  {
+    "id": "okf_machine_tool_resale",
+    "category": "asset_life",
+    "query": "中古工作機械の主軸稼働時間や制御装置や搬出費の確認点は？",
+    "expected_path_any": ["knowledge_base/okf_lease_concepts/assets/machine_tool_resale_risk.md"],
+    "forbidden_path_any": []
+  },
+  {
+    "id": "okf_medical_equipment_resale",
+    "category": "asset_life",
+    "query": "CTやMRIの保守期限、撤去費、薬機法上の再販リスクは？",
+    "expected_path_any": ["knowledge_base/okf_lease_concepts/assets/medical_equipment_resale_risk.md"],
+    "forbidden_path_any": []
+  },
+  {
+    "id": "okf_conditional_approval",
+    "category": "credit",
+    "query": "条件付き承認で追加資料、期間短縮、前受金、保証をどう整理する？",
+    "expected_path_any": ["knowledge_base/okf_lease_concepts/rules/conditional_approval_playbook.md"],
+    "forbidden_path_any": []
+  },
+  {
+    "id": "okf_current_datetime",
+    "category": "agent",
+    "query": "AIが現在日時を間違えないためのプロンプトルールは？",
+    "expected_path_any": ["knowledge_base/okf_lease_concepts/rules/current_datetime_prompt_context.md"],
+    "forbidden_path_any": []
+  },
+  {
+    "id": "okf_expected_usage_period",
+    "category": "contract",
+    "query": "期待使用期間とリース期間がズレるときの判断ルールは？",
+    "expected_path_any": ["knowledge_base/okf_lease_concepts/rules/expected_usage_period_and_lease_term.md"],
+    "forbidden_path_any": []
+  },
+  {
+    "id": "okf_q_risk",
+    "category": "q_risk",
+    "query": "Q_riskはスコア補正ではなく未知因子探索としてどう解釈する？",
+    "expected_path_any": ["knowledge_base/okf_lease_concepts/rules/q_risk_interpretation.md"],
+    "forbidden_path_any": []
+  },
+  {
+    "id": "okf_score_60_80_inversion",
+    "category": "model_monitoring",
+    "query": "スコア60-80帯の成約率が40-60帯を下回る時は何を疑う？",
+    "expected_path_any": ["knowledge_base/okf_lease_concepts/rules/score_60_80_inversion.md"],
+    "forbidden_path_any": []
+  },
+  {
+    "id": "okf_shion_memory_retrieval",
+    "category": "rag",
+    "query": "紫苑の記憶参照とObsidian検索効率を安定させる共通経路は？",
+    "expected_path_any": ["knowledge_base/okf_lease_concepts/rules/shion_memory_retrieval.md"],
+    "forbidden_path_any": []
+  },
+  {
+    "id": "okf_statutory_useful_life",
+    "category": "asset_life",
+    "query": "法定耐用年数データが古い可能性がある時の扱いは？",
+    "expected_path_any": ["knowledge_base/okf_lease_concepts/rules/statutory_useful_life.md"],
+    "forbidden_path_any": []
+  }
+]
