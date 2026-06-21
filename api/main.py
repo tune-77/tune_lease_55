@@ -3367,10 +3367,49 @@ class GunshiStreamRequest(BaseModel):
 @app.post("/api/gunshi/stream")
 async def gunshi_stream(req: GunshiStreamRequest):
     api_key = os.environ.get("GEMINI_API_KEY", "")
+    params = req.model_dump()
 
     async def event_generator():
-        async for chunk in stream_gunshi_gemini(req.model_dump(), api_key):
-            yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
+        # bayes / phrases チャンクは既存ロジックで生成（互換維持）
+        from api.gunshi_gemini import (
+            compute_prior, compute_posterior, select_top_phrases,
+            _bayes_inputs, build_strategy_cards,
+        )
+        score = params.get("score", 0)
+        pd_pct = params.get("pd_pct", 0)
+        industry_cat = params.get("industry_cat", "")
+
+        prior = compute_prior(score, pd_pct)
+        bayes_inputs = _bayes_inputs(params)
+        posterior = compute_posterior(prior=prior, **bayes_inputs)
+
+        phrase_dicts = select_top_phrases(
+            industry_cat=industry_cat,
+            score=score,
+            pd_pct=pd_pct,
+            resale=bayes_inputs["resale"],
+            repeat_cnt=bayes_inputs["repeat_cnt"],
+            subsidy=bayes_inputs["subsidy"],
+            bank=bayes_inputs["bank"],
+            posterior=posterior,
+            asset_name=params.get("asset_name", ""),
+            n=3,
+        )
+        phrases = [p.get("text", str(p)) if isinstance(p, dict) else str(p) for p in phrase_dicts]
+
+        yield f"data: {json.dumps({'type': 'bayes', 'prior': prior, 'posterior': posterior}, ensure_ascii=False)}\n\n"
+        yield f"data: {json.dumps({'type': 'phrases', 'items': phrases}, ensure_ascii=False)}\n\n"
+
+        # 紫苑ADKエージェントがツールを自律実行しながらコメントをストリーム
+        try:
+            from api.shion_agent import stream_shion_screening
+            async for chunk in stream_shion_screening(params):
+                yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
+        except Exception as _adk_err:
+            # ADK失敗時は既存の軍師Geminiにフォールバック
+            print(f"[WARNING] shion ADK stream failed, fallback to gunshi_gemini: {_adk_err}")
+            async for chunk in stream_gunshi_gemini(params, api_key):
+                yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

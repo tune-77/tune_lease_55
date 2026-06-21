@@ -246,5 +246,47 @@
     ],
     "risk": "high",
     "auto_fix_allowed": false
+  },
+  {
+    "rev_id": "DIFF-SIGNAL-HIGH_SCORE_LOST",
+    "type": "manual",
+    "pending_review": true,
+    "category": "score_gap_learning",
+    "description": "[スコア乖離自動検出] high_score_lost: 147件 — 高スコアでも失注した非スコア要因を確認する。価格・競合・銀行支援・補助金タイミング・営業導線を、人間が案件記録で判定する。",
+    "status": "pending_review",
+    "source": "learn_from_case_differences",
+    "detected_at": "2026-06-20T19:01:25.697944+00:00",
+    "signal_count": 147,
+    "affected_files": [],
+    "risk": "medium",
+    "auto_fix_allowed": false
+  },
+  {
+    "rev_id": "DIFF-SIGNAL-LOW_SCORE_CONTRACTED",
+    "type": "manual",
+    "pending_review": true,
+    "category": "score_gap_learning",
+    "description": "[スコア乖離自動検出] low_score_contracted: 218件 — 低スコアでも成約した補強要因を確認する。保証・前受金・銀行支援・物件換金性・取引実績を、人間が案件記録で判定する。",
+    "status": "pending_review",
+    "source": "learn_from_case_differences",
+    "detected_at": "2026-06-20T19:01:25.697944+00:00",
+    "signal_count": 218,
+    "affected_files": [],
+    "risk": "medium",
+    "auto_fix_allowed": false
+  },
+  {
+    "rev_id": "DIFF-SIGNAL-HIGH_SCORE_DELINQUENT",
+    "type": "manual",
+    "pending_review": true,
+    "category": "score_gap_learning",
+    "description": "[スコア乖離自動検出] high_score_delinquent: 21件 — 高スコア後に延滞した見落としを確認する。資金繰り推移・受注残・返済原資・集中リスク・外部環境を、人間が案件記録で判定する。",
+    "status": "pending_review",
+    "source": "learn_from_case_differences",
+    "detected_at": "2026-06-20T19:01:25.697944+00:00",
+    "signal_count": 21,
+    "affected_files": [],
+    "risk": "high",
+    "auto_fix_allowed": false
   }
 ]

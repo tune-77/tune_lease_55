@@ -51,9 +51,15 @@ type GunshiChatResponse = {
 };
 
 type GunshiStreamChunk = {
-  type?: 'bayes' | 'phrases' | 'strategy_cards' | 'stream' | 'done';
+  type?: 'bayes' | 'phrases' | 'strategy_cards' | 'stream' | 'done' | 'tool_call' | 'tool_result';
   cards?: StrategyCards;
   delta?: string;
+  tool?: string;
+};
+
+const TOOL_LABELS: Record<string, string> = {
+  get_industry_benchmark: '業種ベンチマーク照合',
+  assess_risk_level: 'リスクレベル評価',
 };
 
 type HumorMode = 'yanami' | 'standard' | 'yukikaze';
@@ -148,6 +154,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
   const [advisorMode, setAdvisorMode] = useState<'gunshi' | 'chat'>('gunshi');
   const [statusText, setStatusText] = useState('');
   const [streamingText, setStreamingText] = useState('');
+  const [toolSteps, setToolSteps] = useState<{tool: string; done: boolean}[]>([]);
   const [strategyCards, setStrategyCards] = useState<StrategyCards | null>(null);
   const [strategyOpen, setStrategyOpen] = useState(false);
   const [humanDecision, setHumanDecision] = useState('');
@@ -279,6 +286,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
     setLoading(true);
     setStreamingText('');
     setStrategyCards(null);
+    setToolSteps([]);
     setStatusText('AIが考えています...');
 
     try {
@@ -312,7 +320,11 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
           if (!rawData) continue;
           try {
             const chunk = JSON.parse(rawData) as GunshiStreamChunk;
-            if (chunk.type === 'strategy_cards') {
+            if (chunk.type === 'tool_call' && chunk.tool) {
+              setToolSteps(prev => [...prev, { tool: chunk.tool!, done: false }]);
+            } else if (chunk.type === 'tool_result' && chunk.tool) {
+              setToolSteps(prev => prev.map(s => s.tool === chunk.tool ? { ...s, done: true } : s));
+            } else if (chunk.type === 'strategy_cards') {
               setStrategyCards(chunk.cards || null);
               setStrategyOpen(Boolean(chunk.cards));
             } else if (chunk.type === 'stream' && chunk.delta) {
@@ -865,6 +877,27 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
             </div>
           )
         ))}
+
+        {/* 紫苑 ADK ツールステップ表示 */}
+        {toolSteps.length > 0 && (
+          <div className="mx-1 mb-2 rounded-xl border border-violet-200 bg-violet-50 p-3 text-xs">
+            <p className="mb-2 font-semibold text-violet-700">🤖 紫苑が審査中...</p>
+            <div className="space-y-1">
+              {toolSteps.map((step, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  {step.done ? (
+                    <span className="text-emerald-500">✅</span>
+                  ) : (
+                    <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-violet-400 border-t-transparent" />
+                  )}
+                  <span className={step.done ? 'text-slate-600' : 'font-medium text-violet-700'}>
+                    {TOOL_LABELS[step.tool] ?? step.tool}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ストリーミング中のリアルタイムテキスト表示 */}
         {streamingText && (
