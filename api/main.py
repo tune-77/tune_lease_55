@@ -3399,6 +3399,8 @@ async def gunshi_stream(req: GunshiStreamRequest):
 
         yield f"data: {json.dumps({'type': 'bayes', 'prior': prior, 'posterior': posterior}, ensure_ascii=False)}\n\n"
         yield f"data: {json.dumps({'type': 'phrases', 'items': phrases}, ensure_ascii=False)}\n\n"
+        cards = build_strategy_cards(params, phrases, prior, posterior)
+        yield f"data: {json.dumps({'type': 'strategy_cards', 'cards': cards}, ensure_ascii=False)}\n\n"
 
         # 紫苑ADKエージェントがツールを自律実行しながらコメントをストリーム
         try:
