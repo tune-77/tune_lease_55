@@ -7,9 +7,8 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin/python</string>
-    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/scripts/reindex_obsidian.py</string>
-    <string>--full</string>
+    <string>/bin/bash</string>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/scripts/run_obsidian_reindex.sh</string>
   </array>
 
   <key>WorkingDirectory</key>
@@ -25,7 +24,7 @@
     <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin:/Users/kobayashiisaoryou/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
 
-  <!-- 毎晩 03:00 に実行 -->
+  <!-- 毎晩 03:00 に実行（reindex完了後にChromaDB→GCS sync + Cloud Run再起動） -->
   <key>StartCalendarInterval</key>
   <dict>
     <key>Hour</key>
