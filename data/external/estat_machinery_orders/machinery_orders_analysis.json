@@ -1,0 +1,66 @@
+{
+  "metadata": {
+    "stats_data_id": "0003355222",
+    "period": "2023-03 to 2026-03",
+    "latest_month": "2026-03",
+    "observations": 518,
+    "retrieved_at": "2026-06-07T16:47:11+09:00",
+    "unit": "100 million yen",
+    "estat_url": "https://www.e-stat.go.jp/dbview?sid=0003355222",
+    "cabinet_office_url": "https://www.esri.cao.go.jp/jp/stat/juchu/menu_juchu.html"
+  },
+  "core_indicator": {
+    "name": "民間需要（船舶・電力を除く）",
+    "latest_value_100m_yen": 10108.9,
+    "latest_mom_pct": -9.4,
+    "latest_yoy_pct_original": 5.9,
+    "latest_3m_average_100m_yen": 10364.0,
+    "latest_12m_average_100m_yen": 9617.4,
+    "latest_12m_volatility_100m_yen": 673.2,
+    "three_month_average_change_vs_3m_ago_pct": 6.4,
+    "monthly_linear_trend_100m_yen": 45.5,
+    "period_min_100m_yen": 8251.1,
+    "period_min_month": "2023-11",
+    "period_max_100m_yen": 11158.7,
+    "period_max_month": "2026-02",
+    "macro_signal": "中立",
+    "macro_signal_score": 1
+  },
+  "latest_values_100m_yen": {
+    "受注額合計": 39066.0,
+    "官公需計": 3981.5,
+    "民間需要_製造業計": 4883.9,
+    "民間需要_非製造業（船舶・電力を除く）": 5343.1,
+    "民間需要合計": 11734.5,
+    "民間需要（船舶・電力を除く）": 10108.9,
+    "海外需要": 24445.2
+  },
+  "change_correlations_with_core": {
+    "民間需要_製造業計": 0.672,
+    "民間需要_非製造業（船舶・電力を除く）": 0.499,
+    "民間需要合計": 0.222,
+    "受注額合計": 0.08,
+    "海外需要": -0.063,
+    "官公需計": -0.142
+  },
+  "lease_system_recommendation": {
+    "usable": true,
+    "recommended_role": "macro overlay / industry outlook feature",
+    "do_not_use_as": "standalone borrower credit decision or default label",
+    "features": [
+      "machinery_orders_core_mom",
+      "machinery_orders_core_yoy",
+      "machinery_orders_core_3m_vs_12m",
+      "machinery_orders_manufacturing_mom",
+      "machinery_orders_nonmanufacturing_mom",
+      "machinery_orders_overseas_mom",
+      "machinery_orders_macro_signal"
+    ],
+    "governance": [
+      "Use only data that was publicly available at the screening date.",
+      "Store publication date and vintage to prevent look-ahead bias.",
+      "Treat annual seasonal-adjustment revisions as versioned updates.",
+      "Validate incremental predictive value with out-of-time tests."
+    ]
+  }
+}

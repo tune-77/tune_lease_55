@@ -1,0 +1,42 @@
+{
+  "executed_at": "2026-06-22 19:59:08",
+  "applied": [
+    {
+      "id": "DEMO-001",
+      "title": "ブルドーザーリース期間の誤り",
+      "target": "useful_life_equipment.json",
+      "change": "5 → 6",
+      "source": "国税庁耐用年数表 別表第二55号"
+    },
+    {
+      "id": "DEMO-002",
+      "title": "建設業の減価率設定の疑問",
+      "target": "coeff_auto.json",
+      "change": "0.18 → 0.14",
+      "source": "中古建設機械市場データ・社内実績"
+    },
+    {
+      "id": "DEMO-003",
+      "title": "太陽光パネルのリース期間未登録",
+      "target": "useful_life_equipment.json",
+      "change": "新規追加: 17",
+      "source": "国税庁耐用年数表 別表第二（電気業用設備・その他）"
+    },
+    {
+      "id": "DEMO-005",
+      "title": "フォークリフトのリース期間デフォルト値の誤り",
+      "target": "useful_life_equipment.json",
+      "change": "5 → 4",
+      "source": "国税庁耐用年数表 別表第一（車両及び運搬具）フォークリフト"
+    }
+  ],
+  "needs_review": [
+    {
+      "id": "DEMO-004",
+      "title": "医療機器の審査スコア算出ロジックのバグ疑い",
+      "reason": "スコアリング重要ファイル — 手動レビュー必要"
+    }
+  ],
+  "applied_count": 4,
+  "needs_review_count": 1
+}

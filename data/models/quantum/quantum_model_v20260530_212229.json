@@ -1,0 +1,15 @@
+{
+  "version": "20260530_212229",
+  "seiyaku_cases": 1188,
+  "lost_cases": 757,
+  "industry_weights_keys": [
+    "E",
+    "R",
+    "M",
+    "D",
+    "H",
+    "I",
+    "P"
+  ],
+  "model_path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/data/models/quantum/quantum_model_v20260530_212229.joblib"
+}

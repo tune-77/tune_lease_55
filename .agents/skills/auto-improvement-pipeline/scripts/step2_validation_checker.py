@@ -156,7 +156,8 @@ def _check_logic_flaws(description: str) -> list[str]:
     flaws: list[str] = []
     
     # パターン1: 数値操作でゼロ除算の可能性
-    if re.search(r'分割|÷|除算|/\s*\w+|threshold|閾値', description):
+    # (?<![a-zA-Z0-9_\-]) でファイルパス中の / (例: home/page.tsx) を除外
+    if re.search(r'分割|÷|除算|(?<![a-zA-Z0-9_\-])/\s*\w+|threshold|閾値', description):
         if not re.search(r'ゼロ|空|null|チェック|確認', description):
             flaws.append("数値操作がある場合、ゼロ除算やNULL値のチェックが必要です")
     
