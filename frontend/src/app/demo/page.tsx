@@ -72,6 +72,15 @@ const CTAS = [
     glow: "hover:shadow-[0_0_30px_rgba(139,92,246,0.5)]",
   },
   {
+    label: "自己改善パイプライン",
+    sublabel: "エージェント判断をリアルタイム表示",
+    href: "/demo/pipeline",
+    primary: false,
+    Icon: Zap,
+    gradient: "from-fuchsia-600 to-pink-600",
+    glow: "hover:shadow-[0_0_30px_rgba(192,38,211,0.4)]",
+  },
+  {
     label: "マルチエージェント討論",
     sublabel: "複数紫苑がリアル審査討論",
     href: "/multi-shion-demo",
