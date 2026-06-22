@@ -692,13 +692,14 @@ class Step3AutoApplier:
     ) -> str:
         """unified diff 形式でのコード変更を要求するプロンプトを構築する."""
         masked_code = _mask_secrets(current_code)
-        code_snippet = masked_code[:8000]
-        is_truncated = len(masked_code) > 8000
+        _code_limit = 24000
+        code_snippet = masked_code[:_code_limit]
+        is_truncated = len(masked_code) > _code_limit
         return (
             "あなたは Python コード改善の専門家です。\n"
             "以下のPythonファイルに対して、指定された改善を実施してください。\n\n"
             f"## 対象ファイル\n{target_file.name}"
-            + ("（先頭8000文字のみ表示）\n\n" if is_truncated else "\n\n")
+            + (f"（先頭{_code_limit}文字のみ表示）\n\n" if is_truncated else "\n\n")
             + f"## 現在のコード\n```python\n{code_snippet}\n```\n\n"
             "## 実施すべき改善\n"
             f"タイトル: {improvement.get('title', '')}\n"
@@ -726,15 +727,20 @@ class Step3AutoApplier:
             return None
         try:
             import requests  # type: ignore[import-untyped]
-            url = (
-                "https://generativelanguage.googleapis.com/v1beta"
-                "/models/gemini-2.0-flash:generateContent"
-            )
-            resp = requests.post(
-                f"{url}?key={api_key}",
-                json={"contents": [{"parts": [{"text": prompt}]}]},
-                timeout=60,
-            )
+            # gemini-2.5-flash → フォールバックで gemini-2.5-pro
+            for model_name in ("gemini-2.5-flash", "gemini-2.5-pro"):
+                url = (
+                    "https://generativelanguage.googleapis.com/v1beta"
+                    f"/models/{model_name}:generateContent"
+                )
+                resp = requests.post(
+                    f"{url}?key={api_key}",
+                    json={"contents": [{"parts": [{"text": prompt}]}]},
+                    timeout=60,
+                )
+                if resp.status_code == 200:
+                    break
+                logger.warning("Gemini %s: %s", model_name, resp.status_code)
             resp.raise_for_status()
             return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
         except Exception as e:
