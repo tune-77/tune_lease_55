@@ -156,28 +156,102 @@ def extract_improvements_as_json(chat_log: str) -> str:
     return json.dumps(improvements, ensure_ascii=False, indent=2)
 
 
+def _run_demo_mode(demo_dir: "Path") -> None:
+    """--demo フラグ時: demo_chat_logs.json から改善点を抽出して demo_step1_output.json に書き出す."""
+    import sys
+    from pathlib import Path as _Path
+
+    chat_log_path = demo_dir / "demo_chat_logs.json"
+    output_path = demo_dir / "demo_step1_output.json"
+
+    if not chat_log_path.exists():
+        print(f"[Step1-DEMO] エラー: {chat_log_path} が見つかりません", file=sys.stderr)
+        sys.exit(1)
+
+    with chat_log_path.open(encoding="utf-8") as f:
+        chats = json.load(f)
+
+    improvements: list[dict[str, Any]] = []
+    for i, chat in enumerate(chats, start=1):
+        issue = chat.get("detected_issue", {})
+        demo_id = f"DEMO-{i:03d}"
+        title = chat.get("title", "")
+        description = (
+            f"{title}\n"
+            f"資産: {issue.get('asset') or issue.get('asset_category', '不明')}\n"
+            f"問題フィールド: {issue.get('field', '不明')}\n"
+            f"誤った値: {issue.get('wrong_value')} → 正しい値: {issue.get('correct_value')}\n"
+            f"根拠: {issue.get('source', '不明')}\n"
+            f"影響: {issue.get('impact', '不明')}"
+        )
+        target = issue.get("field", "")
+        # フィールドからターゲットモジュールを推定
+        if "lease_term" in target or "useful_life" in target:
+            target_module = "useful_life_equipment.json"
+        elif "depreciation" in target or "coefficient" in target.lower():
+            target_module = "coeff_auto.json"
+        elif "liquidity" in target or "scoring" in target:
+            target_module = "scoring_core.py"
+        else:
+            target_module = "static_data/knowledge_base.json"
+
+        improvements.append({
+            "id": demo_id,
+            "target_module": target_module,
+            "title": title,
+            "description": description,
+            "reason": issue.get("impact", ""),
+            "priority": "HIGH" if issue.get("type") in ("data_error", "missing_data") else "MEDIUM",
+            "issue_type": issue.get("type", "unknown"),
+            "source": issue.get("source", ""),
+            "wrong_value": issue.get("wrong_value"),
+            "correct_value": issue.get("correct_value"),
+            "chat_id": chat.get("id", ""),
+        })
+
+    output_path.write_text(json.dumps(improvements, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"[Step1-DEMO] {len(improvements)} 件の改善案を抽出しました → {output_path}")
+    for imp in improvements:
+        print(f"  {imp['id']}: {imp['title']} ({imp['priority']})")
+
+
 if __name__ == "__main__":
-    # テスト用のサンプルチャットログ
-    sample_chat = """
+    import argparse
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(description="Step1: チャットログから改善点を抽出")
+    parser.add_argument("--demo", action="store_true", help="デモモード: demo_chat_logs.json を入力とする")
+    args = parser.parse_args()
+
+    if args.demo:
+        # スクリプトの場所から workspace root を特定して demo ディレクトリを解決
+        _script_dir = Path(__file__).resolve().parent
+        _root = _script_dir
+        while _root != _root.parent:
+            if (_root / "CLAUDE.md").exists():
+                break
+            _root = _root.parent
+        _demo_dir = _root / "scripts" / "demo"
+        _run_demo_mode(_demo_dir)
+    else:
+        # 通常モード: サンプルチャットログでテスト
+        sample_chat = """
     ユーザー: スコアリングロジックの精度が落ちているように感じます。
-    
+
     [改善] quantum_analysis_module.py の金融矛盾検出をもっと厳しくする
     現在は quantum_risk >= 35 で要注意フラグが立ちますが、データを見ると
     閾値が甘すぎるようです。32 に下げるべきです。
-    
+
     理由：最近のテストケースで、実際のリスク案件が MEDIUM で判定されている
-    
+
     ユーザー: 次に、grade_normalizer.py で格付けの正規化ロジックに問題があります。
     [TODO] 「無格付」を正しくハンドルする
-    
+
     現在は例外を落としていますが、本来はデフォルト値を適用すべきです。
     """
-    
-    result = extract_improvements_as_json(sample_chat)
-    print(result)
-    
-    # JSON妥当性確認
-    parsed = json.loads(result)
-    print(f"\n抽出件数: {len(parsed)}")
-    for item in parsed:
-        print(f"  - {item['id']}: {item['title']}")
+        result = extract_improvements_as_json(sample_chat)
+        print(result)
+        parsed = json.loads(result)
+        print(f"\n抽出件数: {len(parsed)}")
+        for item in parsed:
+            print(f"  - {item['id']}: {item['title']}")
