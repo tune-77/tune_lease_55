@@ -45,7 +45,8 @@ def _body_text(improvement: dict[str, Any]) -> str:
 
 
 def _referenced_files(text: str) -> list[str]:
-    return re.findall(r"[\w./-]+\.(?:py|ts|tsx|js|jsx|md|json|yaml|yml|toml|plist)", text)
+    # tsx/jsx を ts/js より先に置く（ts が tsx にマッチして拡張子が切れるのを防ぐ）
+    return re.findall(r"[\w./-]+\.(?:py|tsx|ts|jsx|js|md|json|yaml|yml|toml|plist)", text)
 
 
 def evaluate_auto_fix_policy(

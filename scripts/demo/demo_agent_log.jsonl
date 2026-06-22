@@ -1,0 +1,12 @@
+{"ts": "2026-06-22T10:58:40", "agent": "ExtractionAgent", "type": "info", "message": "会話ログ5件を分析中...", "detail": null}
+{"ts": "2026-06-22T10:58:42", "agent": "ExtractionAgent", "type": "found", "message": "改善候補3件を検出", "detail": "ブルドーザー耐用年数・建設業減価率・太陽光パネル登録なし"}
+{"ts": "2026-06-22T10:58:43", "agent": "ExtractionAgent", "type": "skip", "message": "1件は既適用済みのため除外", "detail": "misc_existing: status=applied"}
+{"ts": "2026-06-22T10:58:49", "agent": "ValidationAgent", "type": "info", "message": "3件の候補を国税庁通達・業界統計と照合中...", "detail": null}
+{"ts": "2026-06-22T10:58:51", "agent": "ValidationAgent", "type": "approve", "message": "候補①承認：国税庁通達と照合 → 一致率94%", "detail": "ブルドーザー5年→6年 / 法定耐用年数省令別表第1"}
+{"ts": "2026-06-22T10:58:53", "agent": "ValidationAgent", "type": "approve", "message": "候補②承認：業界標準データと照合 → 一致率89%", "detail": "建設業減価率18%→14%"}
+{"ts": "2026-06-22T10:58:55", "agent": "ValidationAgent", "type": "reject", "message": "候補③却下：根拠データ不足", "detail": "太陽光パネル：複数規格が存在。要専門家確認。手動レビューキューへ移動。"}
+{"ts": "2026-06-22T10:59:01", "agent": "ApplyAgent", "type": "info", "message": "APPROVED 2件を適用処理中...", "detail": null}
+{"ts": "2026-06-22T10:59:03", "agent": "ApplyAgent", "type": "apply", "message": "候補①適用: industry_benchmarks.json を修正", "detail": "bulldozer.useful_life: 5 → 6"}
+{"ts": "2026-06-22T10:59:06", "agent": "ApplyAgent", "type": "apply", "message": "候補②適用: scoring_engine.py の減価率テーブルを修正", "detail": "construction.depreciation_rate: 0.18 → 0.14"}
+{"ts": "2026-06-22T10:59:11", "agent": "VerifyAgent", "type": "info", "message": "適用後スコア影響を過去案件12件で検証中...", "detail": null}
+{"ts": "2026-06-22T10:59:14", "agent": "VerifyAgent", "type": "success", "message": "適用後検証完了。影響12件。スコア変化 +5.9pt 平均。", "detail": "最大スコア変化: +8.3pt / 審査判定変化: 2件（条件付き→承認）"}

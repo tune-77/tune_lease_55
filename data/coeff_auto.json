@@ -1,10 +1,10 @@
 {
-  "_auto_weight_borrower": 0.9999986195877164,
-  "_auto_weight_asset": 1.3804122835236073e-06,
-  "_auto_weight_quant": 0.9999973690179428,
-  "_auto_weight_qual": 2.6309820572392956e-06,
-  "_auto_blend_w_main": 0.4164,
-  "_auto_blend_w_bench": 0.5836,
+  "_auto_weight_borrower": 0.9999986195996202,
+  "_auto_weight_asset": 1.380400379742096e-06,
+  "_auto_weight_quant": 0.9999901061251192,
+  "_auto_weight_qual": 9.893874880778443e-06,
+  "_auto_blend_w_main": 0.7621,
+  "_auto_blend_w_bench": 0.2379,
   "_auto_blend_w_ind": 0.0,
   "lr_coef_test_model": [
     2.3149904377497084,

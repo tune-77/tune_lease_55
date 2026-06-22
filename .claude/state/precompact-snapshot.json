@@ -13,10 +13,10 @@
       }
     },
     "recommended": true,
-    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 3700 session age (minutes) exceed threshold 120",
+    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 2013 session age (minutes) exceed threshold 120",
     "reasons": [
       "20 recent edit count exceed threshold 8",
-      "3700 session age (minutes) exceed threshold 120"
+      "2013 session age (minutes) exceed threshold 120"
     ],
     "candidates": [
       {
@@ -50,7 +50,7 @@
       {
         "key": "session_age_minutes",
         "label": "session age (minutes)",
-        "actual": 3700,
+        "actual": 2013,
         "threshold": 120,
         "triggered": true
       }
@@ -60,7 +60,7 @@
       "blockedTasks": 0,
       "recentEdits": 20,
       "failedChecks": 0,
-      "sessionAgeMinutes": 3700
+      "sessionAgeMinutes": 2013
     }
   },
   "continuity": {
@@ -74,14 +74,14 @@
   "recentEdits": [
     ".claude/state/handoff-artifact.json",
     ".claude/state/precompact-snapshot.json",
-    "MEMORY.md",
+    "CLAUDE.md",
     "api/rule_engine/ledger_rules.json",
     "data/coeff_auto.json",
     "data/training_meta.json",
     "reports/agent_sidecar_brief.md",
+    "reports/recursive_self_improvement_latest.md",
     "static_data/industry_benchmarks.json",
     "static_data/industry_estat_cache.json",
-    "api/knowledge/okf_rag_eval_set.json",
     "data/aurion_daily/display_latest.txt",
     "data/aurion_daily/latest.json",
     "data/aurion_daily/state_2026-05-31.json",
@@ -94,7 +94,7 @@
     "data/aurion_daily/state_2026-06-07.json"
   ],
   "sessionId": "",
-  "timestamp": "2026-06-21T02:30:46Z",
+  "timestamp": "2026-06-22T12:40:06Z",
   "version": "1.0.0",
   "wipTasks": null
 }

@@ -1,0 +1,67 @@
+[
+  {
+    "id": "DEMO-001",
+    "target_module": "useful_life_equipment.json",
+    "title": "ブルドーザーリース期間の誤り",
+    "description": "ブルドーザーリース期間の誤り\n資産: ブルドーザー\n問題フィールド: default_lease_term_years\n誤った値: 5 → 正しい値: 6\n根拠: 国税庁耐用年数表 別表第二55号\n影響: 月額試算額の過大計上・審査スコアの過小評価",
+    "reason": "月額試算額の過大計上・審査スコアの過小評価",
+    "priority": "HIGH",
+    "issue_type": "data_error",
+    "source": "国税庁耐用年数表 別表第二55号",
+    "wrong_value": 5,
+    "correct_value": 6,
+    "chat_id": "chat-001"
+  },
+  {
+    "id": "DEMO-002",
+    "target_module": "coeff_auto.json",
+    "title": "建設業の減価率設定の疑問",
+    "description": "建設業の減価率設定の疑問\n資産: 建設機械\n問題フィールド: annual_depreciation_rate\n誤った値: 0.18 → 正しい値: 0.14\n根拠: 中古建設機械市場データ・社内実績\n影響: 建設業審査スコア平均3〜5点の過小評価",
+    "reason": "建設業審査スコア平均3〜5点の過小評価",
+    "priority": "MEDIUM",
+    "issue_type": "coefficient_error",
+    "source": "中古建設機械市場データ・社内実績",
+    "wrong_value": 0.18,
+    "correct_value": 0.14,
+    "chat_id": "chat-002"
+  },
+  {
+    "id": "DEMO-003",
+    "target_module": "useful_life_equipment.json",
+    "title": "太陽光パネルのリース期間未登録",
+    "description": "太陽光パネルのリース期間未登録\n資産: 太陽光パネル（太陽光発電設備）\n問題フィールド: useful_life_years\n誤った値: None → 正しい値: 17\n根拠: 国税庁耐用年数表 別表第二（電気業用設備・その他）\n影響: 太陽光パネル案件でデフォルト5年が使われ、月額試算が過大計上される",
+    "reason": "太陽光パネル案件でデフォルト5年が使われ、月額試算が過大計上される",
+    "priority": "HIGH",
+    "issue_type": "missing_data",
+    "source": "国税庁耐用年数表 別表第二（電気業用設備・その他）",
+    "wrong_value": null,
+    "correct_value": 17,
+    "chat_id": "chat-003"
+  },
+  {
+    "id": "DEMO-004",
+    "target_module": "scoring_core.py",
+    "title": "医療機器の審査スコア算出ロジックのバグ疑い",
+    "description": "医療機器の審査スコア算出ロジックのバグ疑い\n資産: 医療機器（CT装置等）\n問題フィールド: asset_liquidity_score\n誤った値: 低 → 正しい値: 中高\n根拠: 社内審査実績・医療機器中古市場調査\n影響: 医療法人案件のスコアが平均10〜13点過小評価",
+    "reason": "医療法人案件のスコアが平均10〜13点過小評価",
+    "priority": "MEDIUM",
+    "issue_type": "scoring_logic_error",
+    "source": "社内審査実績・医療機器中古市場調査",
+    "wrong_value": "低",
+    "correct_value": "中高",
+    "chat_id": "chat-004"
+  },
+  {
+    "id": "DEMO-005",
+    "target_module": "useful_life_equipment.json",
+    "title": "フォークリフトのリース期間デフォルト値の誤り",
+    "description": "フォークリフトのリース期間デフォルト値の誤り\n資産: フォークリフト（電動式）\n問題フィールド: default_lease_term_years\n誤った値: 5 → 正しい値: 4\n根拠: 国税庁耐用年数表 別表第一（車両及び運搬具）フォークリフト\n影響: フォークリフト案件のデフォルト試算期間が誤っており、他社比較で高い月額が表示される",
+    "reason": "フォークリフト案件のデフォルト試算期間が誤っており、他社比較で高い月額が表示される",
+    "priority": "HIGH",
+    "issue_type": "data_error",
+    "source": "国税庁耐用年数表 別表第一（車両及び運搬具）フォークリフト",
+    "wrong_value": 5,
+    "correct_value": 4,
+    "chat_id": "chat-005"
+  }
+]

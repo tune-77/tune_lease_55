@@ -1,0 +1,269 @@
+{
+  "mode": "midnight",
+  "started_at": "2026-06-03T03:30:00",
+  "errors": [],
+  "sync": {
+    "status": "completed",
+    "selected_files": 129,
+    "pruned_files": 2,
+    "manifest": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/lease-wiki-vault/99_Synced_From_Origin/_SYNC_MANIFEST_2026-06-03.md"
+  },
+  "vault_b_rag": {
+    "status": "completed",
+    "returncode": 0,
+    "vault": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/lease-wiki-vault",
+    "started_at": "2026-06-03T03:30:00",
+    "finished_at": "2026-06-03T03:30:54",
+    "duration_seconds": 53.61,
+    "stdout_tail": "2026-06-03T03:30:00 [INFO] ============================================================\n2026-06-03T03:30:00 [INFO] [reindex] 開始  vault=/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/lease-wiki-vault  full=False\n2026-06-03T03:30:00 [INFO] [reindex] 差分更新モード\n2026-06-03T03:30:00 [INFO] [Indexer] start scanning: /Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/lease-wiki-vault\n2026-06-03T03:30:03 [INFO] [KnowledgeVectorStore] collection initialized: /Users/kobayashiisaoryou/clawd/tune_lease_55/api/chroma_db\n2026-06-03T03:30:09 [INFO] Load pretrained SentenceTransformer: /Users/kobayashiisaoryou/clawd/tune_lease_55/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2\n2026-06-03T03:30:11 [INFO] [KnowledgeVectorStore] encoder initialized in offline mode: /Users/kobayashiisaoryou/clawd/tune_lease_55/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2\n2026-06-03T03:30:52 [INFO] [Indexer] done: added=1072, skipped=41, pruned=0, total=1113\n2026-06-03T03:30:52 [INFO] [reindex] 完了  added=1072  skipped=41  total_in_db=2333  elapsed=52.5s\n2026-06-03T03:30:52 [INFO] ============================================================\n",
+    "stderr_tail": "/2 [00:00<00:00,  1.09it/s]\nBatches: 100%|██████████| 2/2 [00:01<00:00,  1.61it/s]\nBatches: 100%|██████████| 2/2 [00:01<00:00,  1.50it/s]\n\nBatches:   0%|          | 0/2 [00:00<?, ?it/s]\nBatches:  50%|█████     | 1/2 [00:01<00:01,  1.22s/it]\nBatches: 100%|██████████| 2/2 [00:01<00:00,  1.09it/s]\nBatches: 100%|██████████| 2/2 [00:01<00:00,  1.04it/s]\n\nBatches:   0%|          | 0/2 [00:00<?, ?it/s]\nBatches:  50%|█████     | 1/2 [00:01<00:01,  1.26s/it]\nBatches: 100%|██████████| 2/2 [00:01<00:00,  1.27it/s]\nBatches: 100%|██████████| 2/2 [00:01<00:00,  1.17it/s]\n\nBatches:   0%|          | 0/2 [00:00<?, ?it/s]\nBatches:  50%|█████     | 1/2 [00:01<00:01,  1.20s/it]\nBatches: 100%|██████████| 2/2 [00:01<00:00,  1.33it/s]\nBatches: 100%|██████████| 2/2 [00:01<00:00,  1.22it/s]\n\nBatches:   0%|          | 0/2 [00:00<?, ?it/s]\nBatches:  50%|█████     | 1/2 [00:01<00:01,  1.12s/it]\nBatches: 100%|██████████| 2/2 [00:01<00:00,  1.47it/s]\nBatches: 100%|██████████| 2/2 [00:01<00:00,  1.34it/s]\n\nBatches:   0%|          | 0/2 [00:00<?, ?it/s]\nBatches:  50%|█████     | 1/2 [00:00<00:00,  1.30it/s]\nBatches: 100%|██████████| 2/2 [00:01<00:00,  1.62it/s]\nBatches: 100%|██████████| 2/2 [00:01<00:00,  1.56it/s]\n\nBatches:   0%|          | 0/2 [00:00<?, ?it/s]\nBatches:  50%|█████     | 1/2 [00:01<00:01,  1.01s/it]\nBatches: 100%|██████████| 2/2 [00:01<00:00,  1.57it/s]\nBatches: 100%|██████████| 2/2 [00:01<00:00,  1.44it/s]\n\nBatches:   0%|          | 0/2 [00:00<?, ?it/s]\nBatches:  50%|█████     | 1/2 [00:00<00:00,  1.02it/s]\nBatches: 100%|██████████| 2/2 [00:01<00:00,  1.24it/s]\nBatches: 100%|██████████| 2/2 [00:01<00:00,  1.20it/s]\n\nBatches:   0%|          | 0/2 [00:00<?, ?it/s]\nBatches:  50%|█████     | 1/2 [00:00<00:00,  1.00it/s]\nBatches: 100%|██████████| 2/2 [00:01<00:00,  1.19it/s]\nBatches: 100%|██████████| 2/2 [00:01<00:00,  1.15it/s]\n\nBatches:   0%|          | 0/1 [00:00<?, ?it/s]\nBatches: 100%|██████████| 1/1 [00:00<00:00,  1.08it/s]\nBatches: 100%|██████████| 1/1 [00:00<00:00,  1.08it/s]\n"
+  },
+  "db": {
+    "status": "completed",
+    "db_path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/data/lease_data.db",
+    "counts": [
+      {
+        "table_name": "past_cases",
+        "n": 1925
+      },
+      {
+        "table_name": "ml_features",
+        "n": 1941
+      },
+      {
+        "table_name": "screening_records",
+        "n": 2068
+      },
+      {
+        "table_name": "screening_outcomes",
+        "n": 118
+      },
+      {
+        "table_name": "excluded_grade_cases",
+        "n": 99
+      }
+    ],
+    "top_industries": [
+      {
+        "industry_sub": "91 職業紹介・労働者派遣業",
+        "n": 718,
+        "avg_score": 59.5,
+        "min_score": 0.0,
+        "max_score": 100.0
+      },
+      {
+        "industry_sub": "09 食料品製造業",
+        "n": 351,
+        "avg_score": 56.8,
+        "min_score": 0.0,
+        "max_score": 100.0
+      },
+      {
+        "industry_sub": "06 総合工事業",
+        "n": 331,
+        "avg_score": 62.4,
+        "min_score": 0.0,
+        "max_score": 100.0
+      },
+      {
+        "industry_sub": "44 道路貨物運送業",
+        "n": 213,
+        "avg_score": 62.8,
+        "min_score": 0.0,
+        "max_score": 100.0
+      },
+      {
+        "industry_sub": "50-55 各種卸売業",
+        "n": 155,
+        "avg_score": 54.3,
+        "min_score": 0.3,
+        "max_score": 100.0
+      },
+      {
+        "industry_sub": "83 医療業(病院・診療所)",
+        "n": 97,
+        "avg_score": 59.3,
+        "min_score": 31.5,
+        "max_score": 100.0
+      },
+      {
+        "industry_sub": "0",
+        "n": 19,
+        "avg_score": 46.4,
+        "min_score": 10.4,
+        "max_score": 69.9
+      },
+      {
+        "industry_sub": "75 宿泊業",
+        "n": 15,
+        "avg_score": 48.3,
+        "min_score": 35.2,
+        "max_score": 60.8
+      },
+      {
+        "industry_sub": "89 自動車整備業",
+        "n": 7,
+        "avg_score": 76.0,
+        "min_score": 9.0,
+        "max_score": 100.0
+      },
+      {
+        "industry_sub": "21 金属製品製造業",
+        "n": 7,
+        "avg_score": 54.8,
+        "min_score": 10.5,
+        "max_score": 95.5
+      }
+    ],
+    "statuses": [
+      {
+        "final_status": "成約",
+        "n": 1152,
+        "avg_score": 60.3
+      },
+      {
+        "final_status": "失注",
+        "n": 750,
+        "avg_score": 57.3
+      },
+      {
+        "final_status": "検収完了",
+        "n": 19,
+        "avg_score": 69.1
+      },
+      {
+        "final_status": "稟議中",
+        "n": 2,
+        "avg_score": 64.3
+      },
+      {
+        "final_status": "スコアリングのみ",
+        "n": 2,
+        "avg_score": 64.0
+      }
+    ],
+    "score_bands": [
+      {
+        "band": "00-20",
+        "n": 54,
+        "win_pct": 27.8
+      },
+      {
+        "band": "20-40",
+        "n": 115,
+        "win_pct": 46.1
+      },
+      {
+        "band": "40-60",
+        "n": 972,
+        "win_pct": 63.2
+      },
+      {
+        "band": "60-80",
+        "n": 512,
+        "win_pct": 59.6
+      },
+      {
+        "band": "80-100",
+        "n": 272,
+        "win_pct": 67.6
+      }
+    ],
+    "q_risk": {
+      "n": 99,
+      "avg_q": 0.0,
+      "min_q": 0.0,
+      "max_q": 0.0
+    }
+  },
+  "recent": {
+    "files": [
+      "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/lease-wiki-vault/99_Synced_From_Origin/Projects/tune_lease_55/AI Chat/2026-06-01.md",
+      "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/lease-wiki-vault/99_Synced_From_Origin/Projects/tune_lease_55/Generated/2026-06-01_スコア乖離.md",
+      "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/lease-wiki-vault/99_Synced_From_Origin/Projects/tune_lease_55/AI Chat/2026-05-31.md",
+      "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/lease-wiki-vault/99_Synced_From_Origin/Projects/tune_lease_55/Generated/2026-05-31_高スコア工事業.md",
+      "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/lease-wiki-vault/99_Synced_From_Origin/Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-30.md",
+      "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/lease-wiki-vault/99_Synced_From_Origin/Projects/tune_lease_55/AI Chat/2026-05-30.md",
+      "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/lease-wiki-vault/99_Synced_From_Origin/Projects/tune_lease_55/AI Chat/Improvement Log/2026-05-28.md"
+    ],
+    "keyword_hits": {
+      "根拠": 5,
+      "知識宇宙": 3,
+      "補助金": 3,
+      "成約率": 3,
+      "金利": 2,
+      "音声入力": 1,
+      "物件ファイナンス": 1,
+      "ダッシュボード": 1,
+      "OCR": 1,
+      "Q_risk": 1
+    },
+    "recent_items": [
+      "## 07:29 軍師AIチャットのフローティングUI化とレイヤー配置要望",
+      "## 07:45 ホーム画面リースニュースまとめ改善要望",
+      "## 07:46 知識宇宙UI改善要望"
+    ]
+  },
+  "web": {
+    "status": "completed",
+    "limit": 3,
+    "count": 3,
+    "findings": [
+      {
+        "theme": "credit-model-monitoring",
+        "title": "OECD Financing SMEs and Entrepreneurs 2026",
+        "url": "https://read.oecd-ilibrary.org/en/publications/financing-smes-and-entrepreneurs-2026_075d8058-en.html",
+        "status": "fallback",
+        "excerpt": "SME borrowing costs remain high relative to pre-pandemic levels; leasing and other alternative finance remain mixed or subdued. This supports treating approval rates and lease demand as market-regime variables, not fixed model priors.",
+        "error": "HTTP Error 403: Forbidden"
+      },
+      {
+        "theme": "equipment-leasing-market",
+        "title": "ELFA 2026 Equipment Leasing & Finance Economic Outlook",
+        "url": "https://www.elfaonline.org/research/2026-equipment-leasing-finance-u-s-economic-outlook-2026-update",
+        "status": "fetched",
+        "excerpt": "<!DOCTYPE html> <html lang=\"en-US\"> <head id=\"head\"> <title> 2026 Equipment Leasing & Finance U.S. Economic Outlook </title> <link rel=\"canonical\" href=\"https://www.elfaonline.org/research/2026-equipment-leasing-finance-u-s-economic-outlook-2026-update\"> <meta name=\"url\" content=\"https://www.elfaonline.org/research/2026-equipment-leasing-finance-u-s-economic-outlook-2026-update\"> <meta property=\"og:title\" content=\"2026 Equipment Leasing & Finance U.S. Economic Outlook\"> <meta property=\"og:description\" content=\"\"> <meta property=\"og:image\" content=\"https://www.elfaonline.org/getContentAsset/d829120f-c1d7-410e-8659-c51fb0947e64/e477a59e-1df6-4e2f-9986-20ab37342540/MoMoCoverImg.webp?language=en-US\"> <meta property=\"og:url\" content=\"https://www.elfaonline.org/research/2026-equipment-leasing-finance-u-s-economic-outlook-2026-update\"> <meta property=\"og:site_name\" content=\"\"> <meta property=\"twitter:title\" content=\"202",
+        "error": ""
+      },
+      {
+        "theme": "japan-structured-finance",
+        "title": "S&P Global Japan Structured Finance Outlook 2026",
+        "url": "https://www.spglobal.com/ratings/en/regulatory/article/japan-structured-finance-outlook-2026-jobs-strength-offsets-hikes-s101663301",
+        "status": "fallback",
+        "excerpt": "Japan structured-finance performance depends on employment, borrower repayment capacity, asset values, and SME default trends. Lease underwriting should not weaken residual-value and cash-flow checks merely because headline employment is stable.",
+        "error": "HTTP Error 403: Forbidden"
+      }
+    ],
+    "completed_at": "2026-06-03T03:30:54"
+  },
+  "reasoning": {
+    "status": "completed",
+    "started_at": "2026-06-03T03:30:54",
+    "finished_at": "2026-06-03T03:31:54",
+    "steps": [
+      {
+        "step": "triad_fusion_chat_web_db",
+        "started_at": "2026-06-03T03:30:54",
+        "finished_at": "2026-06-03T03:31:24",
+        "hold_seconds": 30.0
+      },
+      {
+        "step": "contradiction_and_edge_case_detection",
+        "started_at": "2026-06-03T03:31:24",
+        "finished_at": "2026-06-03T03:31:54",
+        "hold_seconds": 30.0
+      }
+    ],
+    "non_monotonic_score_conversion": true,
+    "conclusions": [
+      "同期とDB監査はスタート地点であり、判断の中核ではない。外部市場と自社DBのズレを毎日比較する必要がある。",
+      "スコア帯別成約率が完全単調ではないため、スコアは信用力の代理であって営業結果の十分条件ではない。",
+      "Q_riskは既存数式の補正係数ではなく、スコアリング外で成約・失注を動かす未知因子の発見装置へ移す。",
+      "根拠ルート可視化、業界動向ファネル、動的金利条件セットは同一の審査OSに統合するべきである。",
+      "DB上、60-80帯の成約系比率が40-60帯を下回るため、価格・競合・条件提示後離脱のログ化を優先する。",
+      "直近改善ログでは根拠表示要求が強い。RAGの回答品質は、検索精度だけでなく証跡UIで評価する。",
+      "外部知識はモデルドリフト監視を支持する。PSI/CSI/較正状態をスコア横に出す設計へ進める。"
+    ]
+  },
+  "finished_at": "2026-06-03T03:31:55"
+}

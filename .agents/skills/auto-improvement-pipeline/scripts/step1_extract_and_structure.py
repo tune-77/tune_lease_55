@@ -73,8 +73,8 @@ def _parse_improvement_text(text: str, rev_id: str) -> dict[str, Any] | None:
     if not text or len(text) < 10:
         return None
     
-    # モジュール名抽出（「～.py」「～モジュール」「～関数」など）
-    module_match = re.search(r'([a-zA-Z0-9_.-]+\.py|[a-zA-Z0-9_]+(?:モジュール|関数|クラス))', text)
+    # モジュール名抽出（.py/.tsx/.ts/.js/.jsx/.json や「～モジュール」「～関数」など）
+    module_match = re.search(r'([a-zA-Z0-9_./-]+\.(?:py|tsx|ts|jsx|js|json)|[a-zA-Z0-9_]+(?:モジュール|関数|クラス))', text)
     target_module = module_match.group(1) if module_match else None
     
     # タイトル抽出：最初の50文字

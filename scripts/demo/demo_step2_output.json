@@ -1,0 +1,67 @@
+[
+  {
+    "improvement_id": "DEMO-001",
+    "status": "APPROVED",
+    "verification_report": "改善案ID: DEMO-001\n対象: useful_life_equipment.json\n優先度: HIGH\n\n【検証結果】\n✅ データ根拠あり（国税庁耐用年数表 別表第二55号）・修正値明確（5 → 6）",
+    "critical_flaws": [],
+    "alternative_suggestion": null,
+    "metadata": {
+      "issues_count": 0,
+      "flaws_count": 0,
+      "test_breaking": false
+    },
+    "confidence_score": 0.92
+  },
+  {
+    "improvement_id": "DEMO-002",
+    "status": "APPROVED",
+    "verification_report": "改善案ID: DEMO-002\n対象: coeff_auto.json\n優先度: MEDIUM\n\n【検証結果】\n✅ データ根拠あり（中古建設機械市場データ・社内実績）・修正値明確（0.18 → 0.14）",
+    "critical_flaws": [],
+    "alternative_suggestion": null,
+    "metadata": {
+      "issues_count": 0,
+      "flaws_count": 0,
+      "test_breaking": false
+    },
+    "confidence_score": 0.92
+  },
+  {
+    "improvement_id": "DEMO-003",
+    "status": "APPROVED",
+    "verification_report": "改善案ID: DEMO-003\n対象: useful_life_equipment.json\n優先度: HIGH\n\n【検証結果】\n✅ データ根拠あり（国税庁耐用年数表 別表第二（電気業用設備・その他））・修正値明確（None → 17）",
+    "critical_flaws": [],
+    "alternative_suggestion": null,
+    "metadata": {
+      "issues_count": 0,
+      "flaws_count": 0,
+      "test_breaking": false
+    },
+    "confidence_score": 0.92
+  },
+  {
+    "improvement_id": "DEMO-004",
+    "status": "APPROVED",
+    "verification_report": "改善案ID: DEMO-004\n対象: scoring_core.py\n優先度: MEDIUM\n\n【検証結果】\n✅ データ根拠あり（社内審査実績・医療機器中古市場調査）・修正値明確（低 → 中高）",
+    "critical_flaws": [],
+    "alternative_suggestion": null,
+    "metadata": {
+      "issues_count": 0,
+      "flaws_count": 0,
+      "test_breaking": false
+    },
+    "confidence_score": 0.92
+  },
+  {
+    "improvement_id": "DEMO-005",
+    "status": "APPROVED",
+    "verification_report": "改善案ID: DEMO-005\n対象: useful_life_equipment.json\n優先度: HIGH\n\n【検証結果】\n✅ データ根拠あり（国税庁耐用年数表 別表第一（車両及び運搬具）フォークリフト）・修正値明確（5 → 4）",
+    "critical_flaws": [],
+    "alternative_suggestion": null,
+    "metadata": {
+      "issues_count": 0,
+      "flaws_count": 0,
+      "test_breaking": false
+    },
+    "confidence_score": 0.92
+  }
+]

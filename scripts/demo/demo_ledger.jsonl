@@ -1,0 +1,25 @@
+{"demo_id": "DEMO-001", "status": "applied", "title": "ブルドーザーリース期間の誤り", "target": "useful_life_equipment.json", "change": "5 → 6", "recorded_at": "2026-06-22 07:33:01"}
+{"demo_id": "DEMO-002", "status": "applied", "title": "建設業の減価率設定の疑問", "target": "coeff_auto.json", "change": "0.18 → 0.14", "recorded_at": "2026-06-22 07:33:01"}
+{"demo_id": "DEMO-003", "status": "applied", "title": "太陽光パネルのリース期間未登録", "target": "useful_life_equipment.json", "change": "新規追加: 17", "recorded_at": "2026-06-22 07:33:01"}
+{"demo_id": "DEMO-004", "status": "needs_review", "title": "医療機器の審査スコア算出ロジックのバグ疑い", "recorded_at": "2026-06-22 07:33:01", "reason": "スコアリング重要ファイル — 手動レビュー必要"}
+{"demo_id": "DEMO-005", "status": "applied", "title": "フォークリフトのリース期間デフォルト値の誤り", "target": "useful_life_equipment.json", "change": "5 → 4", "recorded_at": "2026-06-22 07:33:01"}
+{"demo_id": "DEMO-001", "status": "applied", "title": "ブルドーザーリース期間の誤り", "target": "useful_life_equipment.json", "change": "5 → 6", "recorded_at": "2026-06-22 19:37:48"}
+{"demo_id": "DEMO-002", "status": "applied", "title": "建設業の減価率設定の疑問", "target": "coeff_auto.json", "change": "0.18 → 0.14", "recorded_at": "2026-06-22 19:37:48"}
+{"demo_id": "DEMO-003", "status": "applied", "title": "太陽光パネルのリース期間未登録", "target": "useful_life_equipment.json", "change": "新規追加: 17", "recorded_at": "2026-06-22 19:37:48"}
+{"demo_id": "DEMO-004", "status": "needs_review", "title": "医療機器の審査スコア算出ロジックのバグ疑い", "recorded_at": "2026-06-22 19:37:48", "reason": "スコアリング重要ファイル — 手動レビュー必要"}
+{"demo_id": "DEMO-005", "status": "applied", "title": "フォークリフトのリース期間デフォルト値の誤り", "target": "useful_life_equipment.json", "change": "5 → 4", "recorded_at": "2026-06-22 19:37:48"}
+{"demo_id": "DEMO-001", "status": "applied", "title": "ブルドーザーリース期間の誤り", "target": "useful_life_equipment.json", "change": "5 → 6", "recorded_at": "2026-06-22 19:38:39"}
+{"demo_id": "DEMO-002", "status": "applied", "title": "建設業の減価率設定の疑問", "target": "coeff_auto.json", "change": "0.18 → 0.14", "recorded_at": "2026-06-22 19:38:39"}
+{"demo_id": "DEMO-003", "status": "applied", "title": "太陽光パネルのリース期間未登録", "target": "useful_life_equipment.json", "change": "新規追加: 17", "recorded_at": "2026-06-22 19:38:39"}
+{"demo_id": "DEMO-004", "status": "needs_review", "title": "医療機器の審査スコア算出ロジックのバグ疑い", "recorded_at": "2026-06-22 19:38:39", "reason": "スコアリング重要ファイル — 手動レビュー必要"}
+{"demo_id": "DEMO-005", "status": "applied", "title": "フォークリフトのリース期間デフォルト値の誤り", "target": "useful_life_equipment.json", "change": "5 → 4", "recorded_at": "2026-06-22 19:38:39"}
+{"demo_id": "DEMO-001", "status": "applied", "title": "ブルドーザーリース期間の誤り", "target": "useful_life_equipment.json", "change": "5 → 6", "recorded_at": "2026-06-22 19:55:27"}
+{"demo_id": "DEMO-002", "status": "applied", "title": "建設業の減価率設定の疑問", "target": "coeff_auto.json", "change": "0.18 → 0.14", "recorded_at": "2026-06-22 19:55:27"}
+{"demo_id": "DEMO-003", "status": "applied", "title": "太陽光パネルのリース期間未登録", "target": "useful_life_equipment.json", "change": "新規追加: 17", "recorded_at": "2026-06-22 19:55:27"}
+{"demo_id": "DEMO-004", "status": "needs_review", "title": "医療機器の審査スコア算出ロジックのバグ疑い", "recorded_at": "2026-06-22 19:55:27", "reason": "スコアリング重要ファイル — 手動レビュー必要"}
+{"demo_id": "DEMO-005", "status": "applied", "title": "フォークリフトのリース期間デフォルト値の誤り", "target": "useful_life_equipment.json", "change": "5 → 4", "recorded_at": "2026-06-22 19:55:27"}
+{"demo_id": "DEMO-001", "status": "applied", "title": "ブルドーザーリース期間の誤り", "target": "useful_life_equipment.json", "change": "5 → 6", "recorded_at": "2026-06-22 19:59:08"}
+{"demo_id": "DEMO-002", "status": "applied", "title": "建設業の減価率設定の疑問", "target": "coeff_auto.json", "change": "0.18 → 0.14", "recorded_at": "2026-06-22 19:59:08"}
+{"demo_id": "DEMO-003", "status": "applied", "title": "太陽光パネルのリース期間未登録", "target": "useful_life_equipment.json", "change": "新規追加: 17", "recorded_at": "2026-06-22 19:59:08"}
+{"demo_id": "DEMO-004", "status": "needs_review", "title": "医療機器の審査スコア算出ロジックのバグ疑い", "recorded_at": "2026-06-22 19:59:08", "reason": "スコアリング重要ファイル — 手動レビュー必要"}
+{"demo_id": "DEMO-005", "status": "applied", "title": "フォークリフトのリース期間デフォルト値の誤り", "target": "useful_life_equipment.json", "change": "5 → 4", "recorded_at": "2026-06-22 19:59:08"}
