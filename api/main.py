@@ -415,6 +415,9 @@ app.include_router(rule_engine_router, prefix="/api")
 from api.routers.knowledge import router as knowledge_router
 app.include_router(knowledge_router, prefix="/api")
 
+from api.routers.demo import router as demo_router
+app.include_router(demo_router, prefix="/api")
+
 @app.get("/")
 def read_root():
     return {"message": "Lease Scoring API is running."}
