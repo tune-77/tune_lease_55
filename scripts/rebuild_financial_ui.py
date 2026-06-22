@@ -280,7 +280,7 @@ export default function TimesFMPage() {
               className="px-4 py-3 bg-slate-800 border-none text-white rounded-xl w-64 focus:ring-2 focus:ring-fuchsia-500 outline-none font-bold"
               value={target}
               onChange={(e) => setTarget(e.target.value)}
-              placeholder="ターゲットを入力..."
+              placeholder="企業名・業種を入力..."
           />
           <button onClick={executeSearch} className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl flex items-center gap-2">
              {loading ? <Activity className="w-5 h-5 animate-spin" /> : '予測を実行'}
