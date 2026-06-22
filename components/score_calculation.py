@@ -988,6 +988,22 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     },
                     "estat_context": estat_context,
                 }
+                # Q_risk: 全案件対象のルールベース計算（ブリッジファイル書き込み前に実行）
+                try:
+                    from quantum_analysis_module import compute_simple_q_risk as _compute_qr
+                    _qr_inputs = {
+                        "nenshu":         nenshu,
+                        "op_profit":      rieki,
+                        "ord_profit":     item4_ord_profit,
+                        "net_income":     item5_net_income,
+                        "machines":       item6_machine,
+                        "grade":          grade or "無格付",
+                        "industry_major": selected_major or "",
+                        "industry_sub":   selected_sub or "",
+                    }
+                    res_dict["quantum_risk"] = _compute_qr(_qr_inputs).get("quantum_risk")
+                except Exception:
+                    pass
                 # [物理ファイル通信] APIへの確実なデータ受け渡し用 (絶対パス固定)
                 import json
                 try:
@@ -1406,6 +1422,13 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     except Exception as _qe:
                         import logging as _log
                         _log.getLogger(__name__).warning("quantum selector skipped: %s", _qe)
+                # Q_risk更新後にブリッジファイルを再書き込み（スコア≥70案件の量子解析結果を反映）
+                try:
+                    _bridge_file_q = str(Path(__file__).resolve().parent.parent / "scoring_output_bridge.json")
+                    with open(_bridge_file_q, "w", encoding="utf-8") as f:
+                        json.dump(st.session_state["last_result"], f, ensure_ascii=False)
+                except Exception:
+                    pass
                 # ──────────────────────────────────────────────────────────────
 
                 # カスタムルールの影響や強制ステータスの上書き
