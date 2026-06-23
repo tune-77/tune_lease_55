@@ -42,15 +42,11 @@ except ImportError:
         }
 
 try:
-    from claude_agent_runner import run_claude_agent, _find_claude_bin  # type: ignore[import]
+    from claude_agent_runner import run_claude_agent, _get_gemini_api_key as _runner_gemini_key  # type: ignore[import]
     _AGENT_RUNNER_AVAILABLE = True
 except ImportError:
-    def _find_claude_bin() -> str | None:  # type: ignore[misc]
-        try:
-            r = subprocess.run(["which", "claude"], capture_output=True, text=True, timeout=5)
-            return r.stdout.strip() or None
-        except Exception:
-            return None
+    def _runner_gemini_key(workspace: Path | None = None) -> str | None:  # type: ignore[misc]
+        return os.environ.get("GEMINI_API_KEY") or None
 
 try:
     from dispatch_notifier import notify_pending_approval, notify_improvement_candidates, classify_candidate  # type: ignore[import]
@@ -780,7 +776,7 @@ class Step3AutoApplier:
             return None
         return self._extract_new_code(raw, target_file, current_code)
 
-    # ── コード生成バックエンド（Codex / Claude / Gemini フォールバック）───
+    # ── コード生成バックエンド（Gemini / Codex フォールバック）───
 
     def _try_codex(self, prompt: str, file_content: str) -> str | None:
         """OpenAI Codex (gpt-4.1 → o4-mini) でコードを生成する."""
@@ -829,29 +825,6 @@ class Step3AutoApplier:
                 return None
         return None
 
-    def _try_claude(self, prompt: str, file_content: str) -> str | None:
-        """Anthropic Claude (claude-sonnet-4-6) でコードを生成する."""
-        api_key = self._get_api_key("ANTHROPIC_API_KEY")
-        if not api_key:
-            logger.warning("ANTHROPIC_API_KEY 未設定のため Claude をスキップ")
-            return None
-        try:
-            import anthropic  # type: ignore[import-untyped]
-            client = anthropic.Anthropic(api_key=api_key)
-            msg = client.messages.create(
-                model="claude-sonnet-4-6",
-                max_tokens=4096,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            text = msg.content[0].text if msg.content else ""
-            if text.strip():
-                logger.info("Claude (claude-sonnet-4-6) でコード生成成功")
-                return text
-            return None
-        except Exception as e:
-            logger.warning("Claude API エラー: %s", e)
-            return None
-
     def _try_gemini(self, prompt: str, file_content: str) -> str | None:
         """Gemini でコードを生成する（_call_gemini_api のラッパー）."""
         raw = self._call_gemini_api(prompt)
@@ -866,16 +839,12 @@ class Step3AutoApplier:
         file_content: str,
         item: dict[str, Any],
     ) -> str | None:
-        """Codex → Claude → Gemini の順でコードを生成する."""
-        result = self._try_codex(prompt, file_content)
-        if result:
-            return result
-        logger.warning("Codex failed, falling back to Claude")
-        result = self._try_claude(prompt, file_content)
-        if result:
-            return result
-        logger.warning("Claude failed, falling back to Gemini")
+        """Gemini → Codex の順でコードを生成する."""
         result = self._try_gemini(prompt, file_content)
+        if result:
+            return result
+        logger.warning("Gemini failed, falling back to Codex")
+        result = self._try_codex(prompt, file_content)
         return result
 
     # ── diff 適用・コード抽出 ────────────────────────────────────────────
@@ -1298,8 +1267,8 @@ def _run_claude_agent_flow(
     if not _CLASSIFIER_AVAILABLE:
         return None
 
-    claude_available = bool(_find_claude_bin())
-    if not claude_available:
+    gemini_available = bool(_runner_gemini_key())
+    if not gemini_available:
         return None
 
     size = classify_improvement(improvement)
@@ -1348,7 +1317,7 @@ def _run_claude_agent_flow(
     if not _AGENT_RUNNER_AVAILABLE:
         return None
 
-    print(f"  [{imp_id}] 🤖 claude-agent 起動 (size={size}): {title[:50]}")
+    print(f"  [{imp_id}] 🤖 gemini-agent 起動 (size={size}): {title[:50]}")
     agent_result = run_claude_agent(improvement, size)
 
     if not agent_result["success"]:
@@ -1432,7 +1401,7 @@ def apply_improvements_pipeline(
         if (
             validation.get("status") == "APPROVED"
             and _CLASSIFIER_AVAILABLE
-            and _find_claude_bin()
+            and _runner_gemini_key()
         ):
             agent_result = _run_claude_agent_flow(improvement, validation, applier)
             if agent_result is not None:

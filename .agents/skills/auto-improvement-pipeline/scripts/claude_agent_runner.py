@@ -1,32 +1,38 @@
-"""Claude Code CLI を使って改善案を実装し、PRを作成・マージするランナー."""
+"""Gemini API を使って改善案を実装し、PRを作成・マージするランナー."""
 
 from __future__ import annotations
 
-import json
 import logging
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_CLAUDE_TIMEOUT_SECONDS = 90
+_GEMINI_TIMEOUT_SECONDS = 90
 
 
-def _find_claude_bin() -> str | None:
-    """which claude でパスを取得する."""
-    try:
-        result = subprocess.run(
-            ["which", "claude"],
-            capture_output=True, text=True, timeout=5,
-        )
-        path = result.stdout.strip()
-        return path if path else None
-    except Exception:
-        return None
+def _get_gemini_api_key(workspace: Path | None = None) -> str | None:
+    """環境変数 → .streamlit/secrets.toml の順で Gemini API キーを取得する."""
+    key = os.environ.get("GEMINI_API_KEY", "")
+    if key:
+        return key
+    if workspace is None:
+        workspace = _find_workspace_root()
+    secrets_path = workspace / ".streamlit" / "secrets.toml"
+    if secrets_path.exists():
+        try:
+            for line in secrets_path.read_text(encoding="utf-8").splitlines():
+                if "GEMINI_API_KEY" in line and "=" in line:
+                    return line.split("=", 1)[1].strip().strip('"').strip("'")
+        except OSError:
+            pass
+    return None
 
 
 def _find_workspace_root() -> Path:
@@ -50,38 +56,131 @@ def _extract_pr_number(text: str) -> int | None:
     return None
 
 
-def _build_claude_prompt(improvement: dict[str, Any]) -> str:
-    """improvement dict から claude --print に渡すプロンプトを組み立てる."""
+def _call_gemini(api_key: str, prompt: str) -> str | None:
+    """Gemini REST API を呼び出す（gemini-2.5-flash → gemini-2.5-pro フォールバック）."""
+    try:
+        import requests  # type: ignore[import-untyped]
+        for model_name in ("gemini-2.5-flash", "gemini-2.5-pro"):
+            url = (
+                "https://generativelanguage.googleapis.com/v1beta"
+                f"/models/{model_name}:generateContent"
+            )
+            resp = requests.post(
+                f"{url}?key={api_key}",
+                json={"contents": [{"parts": [{"text": prompt}]}]},
+                timeout=_GEMINI_TIMEOUT_SECONDS,
+            )
+            if resp.status_code == 200:
+                return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+            logger.warning("Gemini %s: HTTP %s", model_name, resp.status_code)
+    except Exception as e:
+        logger.warning("Gemini API エラー: %s", e)
+    return None
+
+
+def _find_target_file(improvement: dict[str, Any], workspace: Path) -> Path | None:
+    """improvement の target_module からファイルを特定する."""
+    target_module = improvement.get("target_module")
+    if not target_module:
+        return None
+    target = Path(target_module)
+    if target.is_absolute() and target.is_file():
+        return target
+    name = target.name if target.suffix else f"{target_module}.py"
+    candidates = [
+        workspace / target,
+        workspace / name,
+        workspace / "api" / name,
+        workspace / "scripts" / name,
+    ]
+    for path in candidates:
+        if path.is_file():
+            return path
+    return None
+
+
+def _apply_diff(diff_text: str, target_file: Path, current_code: str) -> str | None:
+    """unified diff を適用して新しいファイル内容を返す."""
+    fd, tmp_path_str = tempfile.mkstemp(suffix=".py")
+    tmp_path = Path(tmp_path_str)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(current_code)
+        dry = subprocess.run(
+            ["patch", "--dry-run", str(tmp_path)],
+            input=diff_text, text=True, capture_output=True, timeout=10,
+        )
+        if dry.returncode != 0:
+            return None
+        apply_r = subprocess.run(
+            ["patch", str(tmp_path)],
+            input=diff_text, text=True, capture_output=True, timeout=10,
+        )
+        if apply_r.returncode != 0:
+            return None
+        return tmp_path.read_text(encoding="utf-8")
+    except Exception as e:
+        logger.warning("diff 適用中に例外: %s", e)
+        return None
+    finally:
+        tmp_path.unlink(missing_ok=True)
+        Path(tmp_path_str + ".orig").unlink(missing_ok=True)
+
+
+def _extract_new_code(raw_output: str, target_file: Path, current_code: str) -> str | None:
+    """LLM 出力から新しいコードを抽出する（diff または全文コードに対応）."""
+    diff_match = re.search(r"```diff\n(.*?)```", raw_output, re.DOTALL)
+    if diff_match:
+        result = _apply_diff(diff_match.group(1), target_file, current_code)
+        if result:
+            return result
+
+    stripped = raw_output.strip()
+    if stripped.startswith(("--- ", "diff ")):
+        result = _apply_diff(stripped, target_file, current_code)
+        if result:
+            return result
+
+    py_match = re.search(r"```python\n(.*?)```", raw_output, re.DOTALL)
+    if py_match:
+        return py_match.group(1)
+
+    if stripped.startswith(("import ", "from ", "#!", '"""', "class ", "def ")):
+        return stripped
+
+    return None
+
+
+def _build_gemini_prompt(improvement: dict[str, Any], target_file: Path, current_code: str) -> str:
+    """Gemini に渡すコード改善プロンプトを構築する."""
     title = improvement.get("title", "改善案")
     description = improvement.get("description", "")
-    source_file = improvement.get("source_file", "")
-    target_module = improvement.get("target_module", "")
     reason = improvement.get("reason", "")
 
-    parts = [
-        f"以下の改善案を実装してください。",
-        f"",
-        f"## タイトル",
-        f"{title}",
-        f"",
-        f"## 詳細",
-        f"{description}",
-    ]
-    if reason:
-        parts += ["", "## 理由", reason]
-    if target_module:
-        parts += ["", "## 対象モジュール", target_module]
-    if source_file:
-        parts += ["", "## 出典ファイル", source_file]
-    parts += [
-        "",
-        "## 実装上の注意",
-        "- セキュリティの脆弱性（SQLインジェクション・XSS等）を絶対に導入しないでください",
-        "- 既存のテストを壊さないでください",
-        "- 変更は最小限に留め、指定された改善のみを実施してください",
-        "- 実装が完了したら変更したファイルを git add してコミットしてください",
-    ]
-    return "\n".join(parts)
+    _code_limit = 24000
+    code_snippet = current_code[:_code_limit]
+    is_truncated = len(current_code) > _code_limit
+
+    return (
+        "あなたは Python コード改善の専門家です。\n"
+        "以下のPythonファイルに対して、指定された改善を unified diff 形式で実施してください。\n\n"
+        f"## 対象ファイル\n{target_file.name}"
+        + (f"（先頭{_code_limit}文字のみ表示）\n\n" if is_truncated else "\n\n")
+        + f"## 現在のコード\n```python\n{code_snippet}\n```\n\n"
+        "## 実施すべき改善\n"
+        f"タイトル: {title}\n"
+        f"詳細: {description}\n"
+        f"理由: {reason}\n\n"
+        "## 出力ルール\n"
+        "変更箇所のみの unified diff を返してください。以下の形式で厳密に返すこと：\n"
+        "```diff\n"
+        f"--- a/{target_file.name}\n"
+        f"+++ b/{target_file.name}\n"
+        "@@ ... @@\n"
+        "...\n"
+        "```\n"
+        "セキュリティの脆弱性（SQLインジェクション・XSS等）を絶対に導入しないでください。\n"
+    )
 
 
 def _cleanup_branch(workspace: Path, branch_name: str) -> None:
@@ -91,11 +190,7 @@ def _cleanup_branch(workspace: Path, branch_name: str) -> None:
 
 
 def _has_file_changes(workspace: Path) -> bool:
-    """
-    git diff --stat HEAD と git status --porcelain で実際のファイル変更を確認する。
-
-    uncommitted な変更と HEAD との差分の両方をチェックする。
-    """
+    """git diff/status でファイル変更を確認する."""
     diff_result = subprocess.run(
         ["git", "diff", "--stat", "HEAD"],
         cwd=workspace, capture_output=True, text=True,
@@ -109,12 +204,12 @@ def _has_file_changes(workspace: Path) -> bool:
 
 def run_claude_agent(improvement: dict[str, Any], size: str) -> dict[str, Any]:
     """
-    Claude Code CLI で改善案を実装し、PRを作成する。
+    Gemini API で改善案を実装し、PRを作成する。
 
-    auto のみ実行。approval / manual は Claude を呼び出さず即リターンする。
+    auto のみ実行。approval / manual は即リターンする。
 
     Args:
-        improvement: 改善案 dict（title, description, source_file, target_module を含む）
+        improvement: 改善案 dict（title, description, target_module 等を含む）
         size:        "auto" | "approval" | "manual"
 
     Returns:
@@ -126,32 +221,40 @@ def run_claude_agent(improvement: dict[str, Any], size: str) -> dict[str, Any]:
             "message": str,
         }
     """
-    # ── auto のみ実行（それ以外は Claude を呼び出さない）────────────────
     if size != "auto":
         return {
             "success": False,
             "pr_number": None,
             "pr_url": None,
             "merged": False,
-            "message": f"size={size!r} は Claude 自動実装の対象外です（auto のみ対応）",
+            "message": f"size={size!r} は自動実装の対象外です（auto のみ対応）",
         }
 
-    claude_bin = _find_claude_bin()
-    if not claude_bin:
+    workspace = _find_workspace_root()
+    api_key = _get_gemini_api_key(workspace)
+    if not api_key:
         return {
             "success": False,
             "pr_number": None,
             "pr_url": None,
             "merged": False,
-            "message": "claude CLI が見つかりません（which claude が空）",
+            "message": "GEMINI_API_KEY が設定されていません",
         }
 
-    workspace = _find_workspace_root()
+    target_file = _find_target_file(improvement, workspace)
+    if not target_file:
+        return {
+            "success": False,
+            "pr_number": None,
+            "pr_url": None,
+            "merged": False,
+            "message": f"対象ファイルが特定できません: {improvement.get('target_module')}",
+        }
+
     date_str = datetime.now().strftime("%Y%m%d-%H%M%S")
     branch_slug = re.sub(r'[^\w-]', '-', improvement.get("title", "improvement")[:40])
     branch_name = f"feature/agent-{date_str}-{branch_slug}"
 
-    # ── ブランチ作成 ─────────────────────────────────────────────────────
     try:
         subprocess.run(
             ["git", "checkout", "-b", branch_name, "master"],
@@ -167,39 +270,33 @@ def run_claude_agent(improvement: dict[str, Any], size: str) -> dict[str, Any]:
             "message": f"ブランチ作成失敗: {e.stderr[:200]}",
         }
 
-    # ── claude --print で実装（タイムアウト 90 秒）──────────────────────
-    prompt = _build_claude_prompt(improvement)
-    timed_out = False
-    try:
-        result = subprocess.run(
-            [claude_bin, "--print", prompt],
-            cwd=workspace,
-            capture_output=True,
-            text=True,
-            timeout=_CLAUDE_TIMEOUT_SECONDS,
-        )
-        if result.returncode != 0:
-            logger.warning(
-                "claude 実行エラー (rc=%d): %s", result.returncode, result.stderr[:300]
-            )
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        logger.warning("claude 実行タイムアウト (%ds): ブランチを削除して終了", _CLAUDE_TIMEOUT_SECONDS)
-    except Exception as e:
-        logger.warning("claude 実行例外: %s", e)
+    current_code = target_file.read_text(encoding="utf-8")
+    prompt = _build_gemini_prompt(improvement, target_file, current_code)
+    raw_output = _call_gemini(api_key, prompt)
 
-    # タイムアウト時はブランチを削除して終了（空 PR 防止）
-    if timed_out:
+    if not raw_output:
         _cleanup_branch(workspace, branch_name)
         return {
             "success": False,
             "pr_number": None,
             "pr_url": None,
             "merged": False,
-            "message": f"claude 実行タイムアウト（{_CLAUDE_TIMEOUT_SECONDS}s）: ブランチを削除しました",
+            "message": "Gemini API からの応答が空でした",
         }
 
-    # ── git diff --stat HEAD でファイル変更を確認（空 PR 防止）──────────
+    new_code = _extract_new_code(raw_output, target_file, current_code)
+    if not new_code:
+        _cleanup_branch(workspace, branch_name)
+        return {
+            "success": False,
+            "pr_number": None,
+            "pr_url": None,
+            "merged": False,
+            "message": "Gemini 出力からコードを抽出できませんでした",
+        }
+
+    target_file.write_text(new_code, encoding="utf-8")
+
     if not _has_file_changes(workspace):
         _cleanup_branch(workspace, branch_name)
         return {
@@ -207,14 +304,13 @@ def run_claude_agent(improvement: dict[str, Any], size: str) -> dict[str, Any]:
             "pr_number": None,
             "pr_url": None,
             "merged": False,
-            "message": "claude が変更を生成しませんでした（git diff --stat HEAD が空）",
+            "message": "Gemini が変更を生成しませんでした（git diff が空）",
         }
 
-    # ── コミット ─────────────────────────────────────────────────────────
     title = improvement.get("title", "改善")
     commit_msg = (
         f"feat: {title}\n\n"
-        f"自動改善パイプライン（claude-agent-runner）による実装\n\n"
+        f"自動改善パイプライン（gemini-agent-runner）による実装\n\n"
         "Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
     )
     try:
@@ -231,7 +327,6 @@ def run_claude_agent(improvement: dict[str, Any], size: str) -> dict[str, Any]:
             "コミット失敗: %s", e.stderr[:200] if hasattr(e, "stderr") else str(e)
         )
 
-    # ── Push ─────────────────────────────────────────────────────────────
     try:
         subprocess.run(
             ["git", "push", "-u", "origin", branch_name],
@@ -247,12 +342,11 @@ def run_claude_agent(improvement: dict[str, Any], size: str) -> dict[str, Any]:
             "message": f"push 失敗: {e}",
         }
 
-    # ── PR 作成 ──────────────────────────────────────────────────────────
     pr_body = (
         f"## 概要\n{improvement.get('description', '')}\n\n"
         f"## 実装理由\n{improvement.get('reason', '')}\n\n"
         f"**規模分類**: `{size}`\n\n"
-        "🤖 Generated by claude-agent-runner (auto-improvement-pipeline)"
+        "🤖 Generated by gemini-agent-runner (auto-improvement-pipeline)"
     )
     pr_title = f"[auto-merge] feat: {title}"
 
@@ -280,7 +374,6 @@ def run_claude_agent(improvement: dict[str, Any], size: str) -> dict[str, Any]:
             "message": f"PR 作成失敗: {e.stderr[:200] if hasattr(e, 'stderr') else str(e)}",
         }
 
-    # ── 自動マージ ────────────────────────────────────────────────────────
     merged = False
     if pr_number:
         try:
@@ -312,6 +405,7 @@ def run_claude_agent(improvement: dict[str, Any], size: str) -> dict[str, Any]:
 
 if __name__ == "__main__":
     if "--check" in sys.argv:
-        claude_bin = _find_claude_bin()
-        print(f"claude CLI: {claude_bin or '見つかりません'}")
-        print(f"workspace: {_find_workspace_root()}")
+        workspace = _find_workspace_root()
+        api_key = _get_gemini_api_key(workspace)
+        print(f"Gemini API key: {'設定済み' if api_key else '未設定'}")
+        print(f"workspace: {workspace}")
