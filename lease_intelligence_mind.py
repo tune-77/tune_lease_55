@@ -1165,6 +1165,66 @@ def record_dialogue_memory(vault: Path, user_message: str, ai_response: str) -> 
     return state
 
 
+def _append_keypoints_to_daily_memory(
+    vault: Path,
+    date_str: str,
+    new_keypoints: list[str],
+) -> None:
+    """キーポイント保存時に Obsidian Memory ノートへ即時追記する（REV-088）。
+
+    _write_daily_memory（日次バッチ）を待たずリアルタイムで反映する。
+    ファイルが存在しない場合は最小スタブを作成する。
+    """
+    memory_dir = mind_directory(vault) / "Memory"
+    memory_dir.mkdir(parents=True, exist_ok=True)
+    path = memory_dir / f"{date_str}.md"
+
+    lines_to_add = [f"- {kp.strip()}" for kp in new_keypoints if kp.strip()]
+    if not lines_to_add:
+        return
+
+    section_header = "## 会話サマリー"
+    if path.exists():
+        text = path.read_text(encoding="utf-8")
+        if section_header in text:
+            sec_start = text.index(section_header) + len(section_header)
+            next_sec = text.find("\n## ", sec_start)
+            if next_sec == -1:
+                next_sec = len(text)
+            existing_section = text[sec_start:next_sec]
+            existing_lines = set(existing_section.splitlines())
+            new_lines = [l for l in lines_to_add if l not in existing_lines]
+            if not new_lines:
+                return
+            path.write_text(
+                text[:sec_start]
+                + existing_section.rstrip()
+                + "\n"
+                + "\n".join(new_lines)
+                + "\n"
+                + text[next_sec:].lstrip("\n"),
+                encoding="utf-8",
+            )
+        else:
+            path.write_text(
+                text.rstrip() + f"\n\n{section_header}\n" + "\n".join(lines_to_add) + "\n",
+                encoding="utf-8",
+            )
+    else:
+        content = "\n".join([
+            "---",
+            f"date: {date_str}",
+            "type: lease_intelligence_memory",
+            "---",
+            f"# リース知性体の記憶 — {date_str}",
+            "",
+            section_header,
+            *lines_to_add,
+            "",
+        ])
+        path.write_text(content, encoding="utf-8")
+
+
 def save_conversation_keypoints(
     vault: Path,
     session_id: str,
@@ -1201,6 +1261,10 @@ def save_conversation_keypoints(
         -CONVERSATION_KEYPOINT_LIMIT:
     ]
     _write_state(vault, state)
+    try:
+        _append_keypoints_to_daily_memory(vault, date_str, cleaned)
+    except Exception as _obs_exc:
+        print(f"[SaveKeypoints] Obsidian Memory 追記に失敗: {_obs_exc}")
     return state
 
 

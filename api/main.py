@@ -6237,7 +6237,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
 
     full_message = pending_prefix + message if pending_prefix else message
 
-    history = get_recent_messages(DIALOGUE_USER_ID, limit=24)
+    history = get_recent_messages(DIALOGUE_USER_ID, limit=100)
     system_prompt, state = build_dialogue_context(vault, full_message, caller=req.caller)
     consultation_ids: list[str] = []
 
@@ -6619,7 +6619,7 @@ def post_chat(req: ChatRequest):
 
         # general なら RAG をスキップして直接回答
         if question_category == "general":
-            history = get_recent_messages(req.user_id, limit=20)
+            history = get_recent_messages(req.user_id, limit=60)
             history_for_gemini = [{"role": m["role"], "content": m["content"]} for m in history]
             from prompt_feedback import build_pdca_prompt_block
 
@@ -6720,7 +6720,7 @@ def post_chat(req: ChatRequest):
 
         _is_improvement_msg = any(k in req.message for k in _IMPROVEMENT_KEYWORDS)
 
-        history = get_recent_messages(req.user_id, limit=20)
+        history = get_recent_messages(req.user_id, limit=60)
         history_for_gemini = [{"role": m["role"], "content": m["content"]} for m in history]
         guidance = build_chat_guidance(req.message, history_for_gemini)
         # システムプロンプトにRAGコンテキスト・DB統計・改善照合・会話ガイダンスを追記
