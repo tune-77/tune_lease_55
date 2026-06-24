@@ -1,5 +1,5 @@
 """
-温水式リース審査AI - lease_logic_sumaho11
+Tune式リース審査AI - lease_logic_sumaho11
 sumaho10(X) からモジュール分割（ai_chat / web_services）を完了した版。
 起動: streamlit run lease_logic_sumaho11/lease_logic_sumaho11.py （リポジトリルートで実行）
 """
@@ -578,7 +578,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 	
 # 🎨 画面のデザイン設定
-st.set_page_config(page_title="温水式リース審査AI", page_icon="🏢", layout="wide")
+st.set_page_config(page_title="Tune式リース審査AI", page_icon="🏢", layout="wide")
 
 # ==============================================================================
 # 共通機能 & キャッシュ最適化（データはリポジトリルートで sumaho8 と共通）
@@ -1752,7 +1752,7 @@ elif mode == "📋 審査・分析":
         )
 
     with menu_tabs[0]:  # 新規審査
-        st.title("🏢 温水式 リース審査アシスタント")
+        st.title("🏢 Tune式 リース審査アシスタント")
         selected_major = 'D 建設業'
         selected_sub = '06 総合工事業'
         comparison_text = 'データなし'

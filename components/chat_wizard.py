@@ -1075,5 +1075,5 @@ def render_chat_wizard() -> None:
         if draft_ts:
             st.caption(f"💾 下書き保存済み（{draft_ts}）— 前回の続きから再開できます  |  ⚠️ 財務情報が一時保存されています")
 
-    st.markdown('<div class="wiz-footer">リースくん v1.1 ── 温水式 リース審査AI</div>', unsafe_allow_html=True)
+    st.markdown('<div class="wiz-footer">リースくん v1.1 ── Tune式 リース審査AI</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)

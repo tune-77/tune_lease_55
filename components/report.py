@@ -563,7 +563,7 @@ def render_report() -> None:
             st.caption("このタブはレポート詳細用スペースです。")
 
     # ── ⑨ 印刷・PDF ─────────────────────────────────────────────────────────
-    st.markdown('<div class="rp-footer">温水式 リース審査AI — 審査レポート</div>', unsafe_allow_html=True)
+    st.markdown('<div class="rp-footer">Tune式 リース審査AI — 審査レポート</div>', unsafe_allow_html=True)
     st.divider()
 
     col_dl1, col_dl2, _ = st.columns([1, 1, 3])

@@ -703,7 +703,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
                 : isYukikaze ? 'bg-black text-slate-400 border-red-950 hover:border-red-700' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
             }`}
           >
-            🎤 八奈見
+            🎤 つん子
           </button>
           <button
             type="button"

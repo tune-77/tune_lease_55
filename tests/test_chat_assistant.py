@@ -246,7 +246,7 @@ def test_search_notes_reranks_knowledge_and_suppresses_unrelated_humor(tmp_path,
     notes = {
         "リース知識/格付８−２先への対応.md": "# 資金繰り\n\nキャッシュフローと手元資金を確認する。",
         "Projects/tune_lease_55/AI Chat/2026-06-06.md": "資金繰りが厳しい会社の確認事項を質問した。",
-        "Humor/八奈見.md": "資金繰りをユーモア口調で説明する。",
+        "Humor/つん子.md": "資金繰りをユーモア口調で説明する。",
     }
     for rel, body in notes.items():
         note = vault / rel

@@ -15,7 +15,7 @@ PD除去は主要パスで概ね完了しているが、アクティブコード
 - **[components/score_calculation.py:1270-1275]** — `scoring_output_bridge.json` への書き込みでエラーメッセージに "with PD" と書かれており、コメントがPD除去前のまま。軽微だが残置デバッグ文字列。
 - **[report_generator.py:332]** — `res.get("pd_percent", 0)` でPD参照が残存。`res` に `pd_percent` キーが存在しなくなったため `default_prob` は常に0.0になる。審査レポートのリスク文言が機能しない。
 - **[components/batch_scoring.py:516-678]** — `grade_to_pd` テーブルと `pd_pct` フィールドが残存。一括スコアリングのエクスポートCSVに "PD概算(%)" 列が出力され続ける。
-- **[components/floating_bot.py:33-35]** — `_pd_to_risk()` 関数が残存（ただし呼び出し元は1箇所のみ。八奈見コメント選択に pd_percent=0.0 固定で渡される可能性がある）。
+- **[components/floating_bot.py:33-35]** — `_pd_to_risk()` 関数が残存（ただし呼び出し元は1箇所のみ。つん子コメント選択に pd_percent=0.0 固定で渡される可能性がある）。
 - **[shinsa_gunshi_db.py:35/67/72]** — DB スキーマに `pd_pct REAL NOT NULL` が残存。`shinsa_gunshi_ui.py` のスライダーから値を受け取るため UI フローは壊れていないが、主審査フローとは切り離された独立運用になっている。
 - **[shinsa_gunshi_logic.py:846/856]** — `success_samples` / `fail_samples` のフォーマット文字列に `s['pd_pct']` が残存。DBから取得した過去事例の `pd_pct` キーが存在しない場合は `KeyError` が発生する。
 - **[api/gunshi_gemini.py:58]** — `build_user_prompt()` で `f"PD={pd_pct}%\n"` が削除済みだが、`stream_gunshi_gemini()` 内の `compute_prior(score, pd_pct)` は `pd_pct` が常に0.0で計算される。ベイズ計算の prior が score のみに依存するようになった（意図的なら許容）。

@@ -140,7 +140,7 @@ div[data-testid="stButton"] button p {
 """
 
 _HOME_CHAT_SYSTEM = (
-    "あなたは温水式リース審査AIのアシスタントです。"
+    "あなたはTune式リース審査AIのアシスタントです。"
     "リース審査・融資判断・財務指標・業界動向に関する質問に日本語で答えてください。"
     "回答は簡潔にまとめ、必要に応じて箇条書きを使ってください。"
 )
@@ -256,7 +256,7 @@ def render_home() -> None:
     st.markdown(_CSS, unsafe_allow_html=True)
 
     st.markdown(
-        '<div class="home-header"><h1>🏢 温水式 リース審査AI</h1>'
+        '<div class="home-header"><h1>🏢 Tune式 リース審査AI</h1>'
         '<p>機能を選んでください</p></div>',
         unsafe_allow_html=True,
     )

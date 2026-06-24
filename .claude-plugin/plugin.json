@@ -1,7 +1,7 @@
 {
   "name": "tune-lease-55",
   "version": "0.1.0",
-  "description": "温水式リース審査AIシステム（Streamlit + SQLite + Slack Bot）",
+  "description": "Tune式リース審査AIシステム（Streamlit + SQLite + Slack Bot）",
   "skills": [
     "./skills/"
   ]

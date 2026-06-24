@@ -1,7 +1,7 @@
 {
   "name": "リース審査AI",
   "short_name": "リース審査",
-  "description": "温水式リース審査AIシステム",
+  "description": "Tune式リース審査AIシステム",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f172a",

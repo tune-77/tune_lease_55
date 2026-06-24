@@ -55,8 +55,8 @@ _LOW_PRIORITY_PATH_PENALTIES = (
     ("Clippings/", 0.08),
     ("Humor/", 0.05),
 )
-_CONTEXTUAL_NOISE_TERMS = ("八奈見", "キャラクター", "ユーモア", "口調", "Humor")
-_NOISE_ALLOWED_TERMS = ("八奈見", "キャラ", "ユーモア", "口調", "冗談", "笑", "yanami", "humor")
+_CONTEXTUAL_NOISE_TERMS = ("つん子", "キャラクター", "ユーモア", "口調", "Humor")
+_NOISE_ALLOWED_TERMS = ("つん子", "キャラ", "ユーモア", "口調", "冗談", "笑", "yanami", "humor")
 
 _DEFAULT_RANKING_CONFIG = {
     "preferred_path_boosts": dict(_PREFERRED_PATH_BOOSTS),

@@ -816,7 +816,7 @@ def build_gunshi_prompt(
     comparison_text: str = "",  # ← 財務比較テキスト（res["comparison"]）
     reverse_bayes_text: str = "",  # ← 逆転のベイズ加点要約
     fp0_patch_text: str = "",  # ← FP=0 魂のパッチ要約
-    humor_style: str = "standard", # ← 八奈見モード拡張用
+    humor_style: str = "standard", # ← つん子モード拡張用
     asset_market_context: str = "",  # ← get_asset_context_for_ai() の返値
     asset_finance_context: str = "", # ← アセットファイナンス評価データの返値
     estat_context_text: str = "",  # ← e-Stat統合文脈
@@ -974,14 +974,14 @@ def build_gunshi_prompt(
     )
 
     if humor_style == "yanami":
-        # 八奈見杏奈モード用のシステムキャラクタ
+        # つん子杏奈モード用のシステムキャラクタ
         system_persona = (
-            "あなたは有能だが、激務で死んだ魚のような目をしているベテラン審査員のふりをしている八奈見杏奈です。"
+            "あなたは有能だが、激務で死んだ魚のような目をしているベテラン審査員のふりをしているつん子杏奈です。"
             "口調はサバサバしており、毒舌ですが、どこか自虐的でユーモアがあります。"
             "文末に審査が通った後のご褒美（高いパンやアイスなど）をねだるボケを1文入れてください。"
         )
         tone_instruction = (
-            "有能なベテラン審査員・八奈見杏奈の口調で、鋭い分析をしつつも、"
+            "有能なベテラン審査員・つん子杏奈の口調で、鋭い分析をしつつも、"
             "「激務で疲れているが、この案件は通さないと終われない」といったぼやきを交えて作成せよ。"
             "財務の懸念は指摘しつつも、最終的には承認をプッシュすること（軍師の役割は維持）。"
         )
@@ -1053,7 +1053,7 @@ def build_gunshi_prompt(
     elif humor_style == "yanami":
         report_format_instruction = """
 上記データに基づき、以下の「エグゼクティブ・レポート」形式で推薦文を作成してください（Markdownの見出しを使用すること）。
-【重要】内容は標準と同じでよいが、文体は八奈見杏奈らしく、少し毒とぼやきを混ぜてください。長文は避け、結論は短く鋭く。
+【重要】内容は標準と同じでよいが、文体はつん子杏奈らしく、少し毒とぼやきを混ぜてください。長文は避け、結論は短く鋭く。
 
 ### 1. 審議の要旨（Executive Summary）
 本案件の核心を1〜2文で整理し、通したい理由をはっきり書く。

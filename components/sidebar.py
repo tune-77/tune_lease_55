@@ -90,7 +90,7 @@ def _render_humor_style() -> None:
     st.sidebar.markdown("### 🎭 コメントスタイル")
     if "humor_style" not in st.session_state:
         st.session_state["humor_style"] = "standard"
-    _hs_labels = {"standard": "📊 標準モード", "yanami": "🎤 八奈見モード"}
+    _hs_labels = {"standard": "📊 標準モード", "yanami": "🎤 つん子モード"}
     _hs_now = st.session_state.get("humor_style", "standard")
     _hs_choice = st.sidebar.radio(
         "AIコメントの口調",
@@ -98,7 +98,7 @@ def _render_humor_style() -> None:
         format_func=lambda x: _hs_labels[x],
         index=0 if _hs_now == "standard" else 1,
         key="humor_style_radio",
-        help="八奈見モードにすると、AI分析コメントが八奈見口調になります。",
+        help="つん子モードにすると、AI分析コメントがつん子口調になります。",
     )
     if _hs_choice != _hs_now:
         st.session_state["humor_style"] = _hs_choice

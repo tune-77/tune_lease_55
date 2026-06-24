@@ -1,7 +1,7 @@
 # Memory - Long Term
 
 ## Projects
-### 温水式リース審査AI (Warm Water Style Lease Screening AI)
+### Tune式リース審査AI (Warm Water Style Lease Screening AI)
 - **Status**: Production Ready (Streamlit app)
 - **Current Version**: `lease_logic_sumaho3.py` (2026-02-10 Fix: Indentation & Variable Scope repaired)
 - **External Access**: Cloudflare Tunnel を使用（`./run_with_cloudflare.sh`）

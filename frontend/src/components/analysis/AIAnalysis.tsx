@@ -53,7 +53,7 @@ export default function AIAnalysis({ comparisonText }: AIAnalysisProps) {
           <MessageCircleWarning className="w-5 h-5" />
         </div>
         <p className="text-xs text-slate-600 font-medium leading-relaxed">
-          八奈見BOTからの補足：<br/>
+          つん子BOTからの補足：<br/>
           上記のアドバイスは、業界平均（ベンチマーク）と当社の数値を論理的に比較したものです。「リースくん」メニューから対話形式でさらに深堀り質問することも可能です。
         </p>
       </div>
