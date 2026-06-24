@@ -40,6 +40,12 @@ export default function Sidebar() {
       ]
     },
     {
+      title: '業務書類',
+      items: [
+        { name: '稟議書・見積依頼書', href: '/ringi', icon: FileText, color: 'text-indigo-400' },
+      ]
+    },
+    {
       title: '管理・エージェント',
       items: [
         { name: '汎用エージェントハブ', href: '/agent-hub', icon: Bot, color: 'text-violet-400' },
@@ -107,6 +113,7 @@ export default function Sidebar() {
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     '審査メイン': true,
+    '業務書類': true,
     '管理・エージェント': false,
     '高度分析・グラフ': true,
     '係数分析・ログ': false,
