@@ -1815,7 +1815,7 @@ def _render_novelist_panel() -> None:
             "sf_drama": "🚀 ハードSF（文明の審判）",
             "business": "👔 ビジネスドラマ（半沢流）",
             "fantasy": "⚔️ 異世界ギルド（魔道具審査）",
-            "yanami": "🍔 八奈見杏奈（ドタバタ）"
+            "yanami": "🍔 つん子杏奈（ドタバタ）"
         }
         selected_genre_label = st.selectbox(
             "小説ジャンル",

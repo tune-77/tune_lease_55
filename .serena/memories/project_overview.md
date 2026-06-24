@@ -1,6 +1,6 @@
 # プロジェクト概要
 
-温水式リース審査AI (tune_lease_55)
+Tune式リース審査AI (tune_lease_55)
 - 目的: リース案件の審査スコアリング・レポート・エージェント議論・ウィザード
 - エントリポイント: `tune_lease_55.py` (Streamlit, port 8505) + `web/app.py` (Flask, port 5050)
 - 起動: `bash run_lease_app.sh`

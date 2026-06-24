@@ -122,7 +122,7 @@ def _build_analysis_prompt(
     feat_list = "\n".join(f"- {fn}: {lbl}" for fn, lbl in zip(feature_names, feat_labels))
 
     prompt = f"""あなたはリース審査の統計分析の専門家です。
-以下のデータは温水式リース審査システムの成約・失注案件です（成約=1, 失注=0）。
+以下のデータはTune式リース審査システムの成約・失注案件です（成約=1, 失注=0）。
 総件数: {n}件（成約{n_pos}件 / 失注{n_neg}件）
 
 ## 特徴量説明

@@ -3725,7 +3725,7 @@ def generate_gunshi_chat(req: GunshiChatRequest):
                 )
             else:
                 prompt = (
-                    "あなたは温水式リース審査AIの軍師です。"
+                    "あなたはTune式リース審査AIの軍師です。"
                     "リース業界・取引先・与信判断・営業戦略・他社事例・一般論に関する自由な相談に応じてください。\n"
                     "戦国軍師の口調を保ちつつ、現実的・実務的に答えてください。"
                     "不確かな事実は断定せず、確認すべき観点を示してください。"
@@ -6522,7 +6522,7 @@ def post_chat(req: ChatRequest):
 - 優先度: high/medium/low
 - 次の行動:
 
-## 八奈見さんの愚痴
+## つん子さんの愚痴
 一言だけ。アプリ運用担当っぽく、軽くぼやく。長くしない。"""
             try:
                 organized_text = call_gemini_chat(
@@ -6530,8 +6530,8 @@ def post_chat(req: ChatRequest):
                     [],
                     original_text,
                 ).strip()
-                if "## 八奈見さんの愚痴" in organized_text:
-                    yanami_comment = organized_text.split("## 八奈見さんの愚痴", 1)[1].strip()
+                if "## つん子さんの愚痴" in organized_text:
+                    yanami_comment = organized_text.split("## つん子さんの愚痴", 1)[1].strip()
                     yanami_comment = yanami_comment.splitlines()[0].strip("- ").strip()
             except Exception as _gemini_e:
                 organize_error = str(_gemini_e)
@@ -6541,7 +6541,7 @@ def post_chat(req: ChatRequest):
                     "- 改善案: 未整理。次回レビューで具体化してください。\n"
                     "- 優先度: medium\n"
                     "- 次の行動: 原文を確認して改善候補に分解する。\n\n"
-                    "## 八奈見さんの愚痴\n"
+                    "## つん子さんの愚痴\n"
                     "また未整理の改善メモが来ましたね。あとで私がほどきます。"
                 )
                 yanami_comment = "また未整理の改善メモが来ましたね。あとで私がほどきます。"
@@ -6567,13 +6567,13 @@ def post_chat(req: ChatRequest):
             if note_result.get("status") == "saved":
                 reply = (
                     "原文とGemini整理版を改善メモとして保存しました。\n\n"
-                    f"八奈見さん: {yanami_comment or 'また改善ポイントが増えましたね。棚卸し、逃げられません。'}"
+                    f"つん子さん: {yanami_comment or 'また改善ポイントが増えましたね。棚卸し、逃げられません。'}"
                 )
             else:
                 reason = note_result.get("reason") or "保存先を確認できませんでした"
                 reply = (
                     f"改善メモとして受け取りましたが、Obsidian保存は未完了です: {reason}\n\n"
-                    f"八奈見さん: {yanami_comment or '保存先が詰まると、改善以前に私の胃が詰まります。'}"
+                    f"つん子さん: {yanami_comment or '保存先が詰まると、改善以前に私の胃が詰まります。'}"
                 )
             save_message(req.user_id, "assistant", reply)
             total = get_message_count(req.user_id)

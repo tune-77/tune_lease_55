@@ -8,7 +8,7 @@ import { ThemeProvider } from '@/context/ThemeContext';
 import ContentWrapper from '@/components/layout/ContentWrapper';
 
 export const metadata: Metadata = {
-  title: '温水式 リース審査アシスタント',
+  title: 'Tune式 リース審査アシスタント',
   description: 'AI駆動のリース与信判定・分析システム',
   manifest: '/manifest.json',
   appleWebApp: {

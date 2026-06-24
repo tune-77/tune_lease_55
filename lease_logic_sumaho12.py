@@ -1,5 +1,5 @@
 """
-温水式リース審査AI - tune_lease_55
+Tune式リース審査AI - tune_lease_55
 sumaho10(X) からモジュール分割（ai_chat / web_services）を完了した版。
 起動: streamlit run tune_lease_55/tune_lease_55.py （リポジトリルートで実行）
 """
@@ -19,7 +19,7 @@ from PIL import Image as _PILImage
 # set_page_config は必ず最初の st 呼び出しにする必要がある
 _icon_path = Path(_SCRIPT_DIR) / "assets" / "yanami_icon.png"
 _page_icon = _PILImage.open(_icon_path) if _icon_path.exists() else "🏢"
-st.set_page_config(page_title="温水式リース審査AI", page_icon=_page_icon, layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="Tune式リース審査AI", page_icon=_page_icon, layout="wide", initial_sidebar_state="auto")
 
 # Google パスワードマネージャーの提案を抑制
 st.markdown("""
@@ -844,7 +844,7 @@ elif mode == "📋 審査・分析":
         )
 
     with menu_tabs[0]:  # 新規審査
-        st.title("🏢 温水式 リース審査アシスタント")
+        st.title("🏢 Tune式 リース審査アシスタント")
         # 審査入力/分析結果の両画面で Enter キーによる次項目フォーカス移動を有効化
         st.markdown(
             """
@@ -1904,7 +1904,7 @@ elif mode == "📝 案件修正":
     from components.case_editor import render_case_editor
     render_case_editor()
 
-# ── フローティングBOT（八奈見さん）── 全ページ共通 ──────────────────────────
+# ── フローティングBOT（つん子さん）── 全ページ共通 ──────────────────────────
 try:
     from components.floating_bot import render_floating_bot
     render_floating_bot()

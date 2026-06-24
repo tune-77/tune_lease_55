@@ -217,7 +217,7 @@ def _candidate_score(
     if any(part in normalized_path for part in _LOWER_PRIORITY_PATH_PARTS):
         score -= 8
 
-    is_humor = "humor/" in normalized_path or "ユーモア" in normalized_path or "八奈見" in path
+    is_humor = "humor/" in normalized_path or "ユーモア" in normalized_path or "つん子" in path
     asks_for_humor = any(term in normalized_query for term in _HUMOR_INTENT_TERMS)
     if is_humor and not asks_for_humor:
         score -= 60
@@ -276,7 +276,7 @@ def _noise_penalty(path: str, query: str) -> float:
     asks_for_humor = any(term in normalized_query for term in _HUMOR_INTENT_TERMS)
     if not asks_for_chat and any(part in normalized_path for part in ("ai chat/", "daily/", "weekly review", "improvement log")):
         penalty += 0.28
-    if not asks_for_humor and any(part in normalized_path for part in ("humor/", "ユーモア", "八奈見")):
+    if not asks_for_humor and any(part in normalized_path for part in ("humor/", "ユーモア", "つん子")):
         penalty += 0.70
     if any(part in normalized_path for part in _NOISE_PATH_PARTS):
         penalty += 0.12

@@ -1,6 +1,6 @@
 # Agent Sidecar Brief
 
-> Generated: 2026-06-22 04:01 | source: `.claude/reports` | mode: read-only advisory
+> Generated: 2026-06-25 04:01 | source: `.claude/reports` | mode: read-only advisory
 
 ## Operating Boundary
 - This brief is advisory context only.
@@ -222,13 +222,13 @@ PD除去は主要パスで概ね完了しているが、アクティブコード
 
 ---
 
-### agent-discussion (リースくん / Tune / 八奈見杏奈 / 審査軍師 / Dr.Algo / タム / プランナー / ダッシュ) (success / stale)
+### agent-discussion (リースくん / Tune / つん子杏奈 / 審査軍師 / Dr.Algo / タム / プランナー / ダッシュ) (success / stale)
 - Source: `.claude/reports/agent-discussion/ux_debate_latest.md`
 - Task: 「ユーザーがもっと直感的に使えるようにするには？」UX改善討論
 - Timestamp: 2026-03-28 11:30
 
 **Summary:**
-8エージェントが「直感的な使いやすさ」をテーマに白熱討論。リースくんが入口UXを、ダッシュが視覚設計を、八奈見が「余計なものを削れ」と一刀両断、Dr.Algoがオンボーディングの数学的最適化を提示、タムが「においがしないUI」問題を指摘、軍師が戦略的優先順位を整理し、Tuneが6項目を承認した。
+8エージェントが「直感的な使いやすさ」をテーマに白熱討論。リースくんが入口UXを、ダッシュが視覚設計を、つん子が「余計なものを削れ」と一刀両断、Dr.Algoがオンボーディングの数学的最適化を提示、タムが「においがしないUI」問題を指摘、軍師が戦略的優先順位を整理し、Tuneが6項目を承認した。
 
 ---
 

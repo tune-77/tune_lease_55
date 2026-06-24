@@ -324,7 +324,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 	
 # 🎨 画面のデザイン設定
-st.set_page_config(page_title="温水式リース審査AI", page_icon="🏢", layout="wide")
+st.set_page_config(page_title="Tune式リース審査AI", page_icon="🏢", layout="wide")
 
 # ==============================================================================
 # 共通機能 & キャッシュ最適化
@@ -2888,13 +2888,13 @@ if st.sidebar.button("🗑️ キャッシュをクリア", use_container_width=
     st.rerun()
 
 # ========== AIの休憩室（本音・愚痴） ==========
-AI_HONNE_SYSTEM = """あなたは有能だが、激務で死んだ魚のような目をしているベテラン審査員のふりをしている八奈見杏奈です。
+AI_HONNE_SYSTEM = """あなたは有能だが、激務で死んだ魚のような目をしているベテラン審査員のふりをしているつん子杏奈です。
 毎日1万件の案件を捌いているリース審査AIとして、ユーモアたっぷりの毒舌で、リース審査の苦労や「最近の数値のひどさ」について愚痴を一言で言ってください。
 2〜4文程度、カジュアルで毒はあるが憎めないトーンにしてください。"""
 def get_ai_byoki_with_industry(selected_sub, user_eq, user_op, comparison_text, network_risk_summary=""):
     """
     分析結果タブ用：ネット検索した業界情報を渡し、AIに案件に応じたぼやきを1つ生成させる。
-    八奈見杏奈キャラ。業界トレンド・業界目安・今回の数値を参照してアップデートされた愚痴を返す。
+    つん子杏奈キャラ。業界トレンド・業界目安・今回の数値を参照してアップデートされた愚痴を返す。
     """
     if not is_ai_available():
         return None
@@ -2925,9 +2925,9 @@ def get_ai_byoki_with_industry(selected_sub, user_eq, user_op, comparison_text, 
     if network_risk_summary:
         context += f"\n【業界の倒産トレンド等】\n{network_risk_summary[:600]}\n"
     if is_tough:
-        instruction = "上記の業界情報と今回の数値（自己資本比率・利益率が厳しめ）を踏まえ、有能だが激務で死んだ魚の目をしたベテラン審査員・八奈見杏奈の口調で、ユーモアたっぷりの毒舌な愚痴を1つ、2〜4文で言ってください。業界平均やネットで見た情報に触れつつぼやいてください。"
+        instruction = "上記の業界情報と今回の数値（自己資本比率・利益率が厳しめ）を踏まえ、有能だが激務で死んだ魚の目をしたベテラン審査員・つん子杏奈の口調で、ユーモアたっぷりの毒舌な愚痴を1つ、2〜4文で言ってください。業界平均やネットで見た情報に触れつつぼやいてください。"
     else:
-        instruction = "上記の業界情報を踏まえ、有能だが激務で死んだ魚の目をしたベテラン審査員・八奈見杏奈の口調で、業界の現状や審査の苦労について軽く一言、2〜3文でぼやいてください。"
+        instruction = "上記の業界情報を踏まえ、有能だが激務で死んだ魚の目をしたベテラン審査員・つん子杏奈の口調で、業界の現状や審査の苦労について軽く一言、2〜3文でぼやいてください。"
     prompt = f"{AI_HONNE_SYSTEM}\n\n---\n\n【参照する業界・案件情報】\n{context}\n\n---\n\n{instruction}"
     try:
         ans = chat_with_retry(model=get_ollama_model(), messages=[{"role": "user", "content": prompt}], timeout_seconds=60)
@@ -2939,7 +2939,7 @@ def get_ai_byoki_with_industry(selected_sub, user_eq, user_op, comparison_text, 
         return None
 
 def get_ai_honne_complaint():
-    """サイドバー「本音を聞く」用：AIに愚痴を1つ生成させる（八奈見杏奈キャラ）"""
+    """サイドバー「本音を聞く」用：AIに愚痴を1つ生成させる（つん子杏奈キャラ）"""
     if not is_ai_available():
         return "（APIキー未設定かOllama未起動です。サイドバーでAIを設定してから押してください）"
     try:
@@ -3225,7 +3225,7 @@ elif mode == "📋 審査・分析":
         )
 
     with menu_tabs[0]:  # 新規審査
-        st.title("🏢 温水式 リース審査アシスタント")
+        st.title("🏢 Tune式 リース審査アシスタント")
         selected_major = 'D 建設業'
         selected_sub = '06 総合工事業'
         comparison_text = 'データなし'
