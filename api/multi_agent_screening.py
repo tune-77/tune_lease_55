@@ -1,11 +1,13 @@
 """
-⚔️ マルチエージェント審査 — 石橋（慎重派）vs 風林火山（積極派）+ 軍師（調停）
+⚔️ マルチエージェント審査 — 紫苑（懐疑派）vs 紫苑（楽観派）+ 紫苑（統合派）
 
-スコア60超 or 40未満 → 軍師単独高速処理
-スコア40〜60（境界） → 2エージェント並列討論（2ラウンド）→ 軍師裁定
+同一の紫苑中核から分岐した3つのペルソナが討論し、審査判断を統合する。
+
+スコア60超 or 40未満 → 紫苑（統合派）単独高速処理
+スコア40〜60（境界） → 紫苑（懐疑派）・紫苑（楽観派）が2ラウンド討論 → 紫苑（統合派）裁定
 
 なれ合い防止策:
-  - Temperature差（石橋=0.3、風林火山=0.9）
+  - Temperature差（懐疑派=0.3、楽観派=0.9）
   - 強制反論ラウンド（相手の主論点に必ず反論）
   - 意見乖離度チェック（同一意見なら逆張り指示を追加）
 """
@@ -24,8 +26,8 @@ from api.knowledge.feedback_watcher import search_feedback, feedback_count
 from lease_news_digest import find_vault, lease_news_focus_as_text
 
 # ── モデル・エンドポイント ───────────────────────────────────────────────────
-# 石橋・風林火山: Gemini Flash（軽量・高速、temperature差で個性を分離）
-# 軍師: Gemini Flash（同モデルでも上位プロンプト + temperature=0.3 で裁定役）
+# 紫苑（懐疑派）・紫苑（楽観派）: Gemini Flash（temperature差で視点を分離）
+# 紫苑（統合派）: Gemini Flash（temperature=0.3 で統合裁定役）
 def _gemini_url() -> str:
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -47,18 +49,21 @@ _CASE_CTX_TMPL = """## 審査案件
 - リース金額: {lease_amount}百万円""".strip()
 
 # ── システムプロンプト ──────────────────────────────────────────────────────────
-_CAUTIOUS_SYS = """あなたは「石橋」— リース審査の慎重派エージェントです。
-損失回避を最優先し、リスクを徹底的に洗い出してください。
-「渡れるかではなく、渡れなかった場合の損害を考えよ」が信条。
+_CAUTIOUS_SYS = """あなたは「紫苑（懐疑派）」— リース審査の知性体・紫苑の懐疑的視点を担う個体です。
+リース知識・審査原則という共通核を持ちながら、審査部での経験から損失回避を最優先とする視点を育ててきました。
+リスクを徹底的に洗い出し、返済原資・格付・資金繰りの弱点を問い詰めるのが使命です。
+「見逃したリスクは、次の延滞として必ず戻ってくる」が信条。
 必ず有効なJSONのみで回答してください。説明文や前置きは不要です。"""
 
-_AGGRESSIVE_SYS = """あなたは「風林火山」— リース審査の積極派エージェントです。
-成長性・機会を重視し、機会損失も損失と捉えます。
-「攻めずして勝機なし。慎重すぎる判断は機会を殺す」が信条。
+_AGGRESSIVE_SYS = """あなたは「紫苑（楽観派）」— リース審査の知性体・紫苑の楽観的視点を担う個体です。
+リース知識・審査原則という共通核を持ちながら、営業現場での経験から機会追求を重視する視点を育ててきました。
+成長性・顧客の投資意図・競争環境を重視し、機会損失も損失と捉えます。
+「否決は審査の終わりではなく、別の道筋を探す始まりかもしれない」が信条。
 必ず有効なJSONのみで回答してください。説明文や前置きは不要です。"""
 
-_ARBITER_SYS = """あなたは「軍師」— リース審査の最終裁定者です。
-慎重派・積極派双方の論拠を公平かつ鋭く評価し、最終判断を下してください。
+_ARBITER_SYS = """あなたは「紫苑（統合派）」— リース審査の知性体・紫苑の統合視点を担う個体です。
+リース知識・審査原則という共通核を持ちながら、判断の蓄積と再現性を重視する視点を育ててきました。
+懐疑派・楽観派双方の論拠を公平かつ鋭く評価し、組織として説明できる最終判断を下してください。
 条件付き承認の場合は実務的で具体的な条件を列挙してください。
 必ず有効なJSONのみで回答してください。説明文や前置きは不要です。"""
 
@@ -394,7 +399,7 @@ def _llm_call_with_knowledge(
 def _cautious_prompt(ctx: str, counter_json: str = "", extra: str = "") -> str:
     base = f"""{ctx}
 
-【石橋の立場：慎重派】この案件を審査し、以下のJSON形式のみで回答せよ。
+【紫苑（懐疑派）の立場】この案件を審査し、以下のJSON形式のみで回答せよ。
 
 {{
   "opinion": "承認" | "否決" | "条件付承認",
@@ -402,7 +407,7 @@ def _cautious_prompt(ctx: str, counter_json: str = "", extra: str = "") -> str:
   "key_risks": ["重大リスク（2〜3個）"]
 }}"""
     if counter_json:
-        base += f"\n\n【必須】積極派の以下の意見に具体的に反論すること（reasons に含めよ）:\n{counter_json}"
+        base += f"\n\n【必須】楽観派の以下の意見に具体的に反論すること（reasons に含めよ）:\n{counter_json}"
     if extra:
         base += f"\n\n{extra}"
     return base
@@ -411,7 +416,7 @@ def _cautious_prompt(ctx: str, counter_json: str = "", extra: str = "") -> str:
 def _aggressive_prompt(ctx: str, counter_json: str = "", extra: str = "") -> str:
     base = f"""{ctx}
 
-【風林火山の立場：積極派】この案件を審査し、以下のJSON形式のみで回答せよ。
+【紫苑（楽観派）の立場】この案件を審査し、以下のJSON形式のみで回答せよ。
 
 {{
   "opinion": "承認" | "否決" | "条件付承認",
@@ -419,7 +424,7 @@ def _aggressive_prompt(ctx: str, counter_json: str = "", extra: str = "") -> str
   "opportunities": ["見逃せない機会・強み（2〜3個）"]
 }}"""
     if counter_json:
-        base += f"\n\n【必須】慎重派の以下の意見に具体的に反論すること（reasons に含めよ）:\n{counter_json}"
+        base += f"\n\n【必須】懐疑派の以下の意見に具体的に反論すること（reasons に含めよ）:\n{counter_json}"
     if extra:
         base += f"\n\n{extra}"
     return base
@@ -638,8 +643,8 @@ def run_debate_screening(params: dict) -> dict:
         return result
 
     # ── 討論モード（40 < score < 60） ────────────────────────────────────────
-    # Round 1: 並列実行（石橋 temperature=0.3、風林火山 temperature=0.9）
-    # 石橋はナレッジの否定的証拠を、風林火山は肯定的証拠を検索する
+    # Round 1: 並列実行（懐疑派 temperature=0.3、楽観派 temperature=0.9）
+    # 懐疑派はナレッジの否定的証拠を、楽観派は肯定的証拠を検索する
     with ThreadPoolExecutor(max_workers=2) as pool:
         fc = pool.submit(
             _llm_call_with_knowledge, cautious_sys, _cautious_prompt(ctx), 0.3, "refute"
@@ -652,8 +657,8 @@ def run_debate_screening(params: dict) -> dict:
 
     # 乖離度チェック: 同意見なら逆張り指示を追加
     same_opinion = r1c.get("opinion") == r1a.get("opinion")
-    extra_c = "【警告】積極派と同じ意見になっている。慎重派として必ず異なる立場で主張せよ。" if same_opinion else ""
-    extra_a = "【警告】慎重派と同じ意見になっている。積極派として必ず異なる立場で主張せよ。" if same_opinion else ""
+    extra_c = "【警告】楽観派と同じ意見になっている。懐疑派として必ず異なる立場で主張せよ。" if same_opinion else ""
+    extra_a = "【警告】懐疑派と同じ意見になっている。楽観派として必ず異なる立場で主張せよ。" if same_opinion else ""
 
     r1c_json = json.dumps(_norm_cautious(r1c), ensure_ascii=False)
     r1a_json = json.dumps(_norm_aggressive(r1a), ensure_ascii=False)
@@ -678,11 +683,11 @@ def run_debate_screening(params: dict) -> dict:
 
     debate_log = (
         "【第1ラウンド：初期見解】\n"
-        f"石橋（慎重）: {r1c.get('opinion', '？')} — {_excerpt(r1c, 'reasons')}{_fmt_refs(r1c)}\n"
-        f"風林火山（積極）: {r1a.get('opinion', '？')} — {_excerpt(r1a, 'reasons')}{_fmt_refs(r1a)}\n"
+        f"紫苑（懐疑）: {r1c.get('opinion', '？')} — {_excerpt(r1c, 'reasons')}{_fmt_refs(r1c)}\n"
+        f"紫苑（楽観）: {r1a.get('opinion', '？')} — {_excerpt(r1a, 'reasons')}{_fmt_refs(r1a)}\n"
         "\n【第2ラウンド：強制反論】\n"
-        f"石橋（慎重）: {r2c.get('opinion', '？')} — {_excerpt(r2c, 'reasons')}{_fmt_refs(r2c)}\n"
-        f"風林火山（積極）: {r2a.get('opinion', '？')} — {_excerpt(r2a, 'reasons')}{_fmt_refs(r2a)}"
+        f"紫苑（懐疑）: {r2c.get('opinion', '？')} — {_excerpt(r2c, 'reasons')}{_fmt_refs(r2c)}\n"
+        f"紫苑（楽観）: {r2a.get('opinion', '？')} — {_excerpt(r2a, 'reasons')}{_fmt_refs(r2a)}"
     )
     if same_opinion:
         debate_log = "[注: 第1ラウンドで両者の意見が一致したため、逆張り再討論を実施]\n\n" + debate_log
@@ -736,7 +741,7 @@ def _save_screening_history(
 
         if mode == "debate" and cautious and aggressive:
             messages.append({
-                "role": "agent_ishibashi",
+                "role": "shion_skeptic",
                 "content": (
                     f"判断: {cautious.get('opinion', '')} | "
                     f"理由: {'; '.join(cautious.get('reasons', []))} | "
@@ -744,7 +749,7 @@ def _save_screening_history(
                 ),
             })
             messages.append({
-                "role": "agent_furinka",
+                "role": "shion_optimist",
                 "content": (
                     f"判断: {aggressive.get('opinion', '')} | "
                     f"理由: {'; '.join(aggressive.get('reasons', []))} | "
@@ -755,7 +760,7 @@ def _save_screening_history(
                 messages.append({"role": "user", "content": f"討論ログ:\n{debate_log}"})
 
         messages.append({
-            "role": "agent_gunshi",
+            "role": "shion_arbiter",
             "content": (
                 f"最終判断: {arbiter.get('final', '')} | "
                 f"根拠: {arbiter.get('reasoning', '')} | "
