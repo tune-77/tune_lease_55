@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { apiClient } from "@/lib/api";
 import {
-  Swords, Shield, Zap, Crown, ChevronDown, ChevronUp,
+  Brain, Orbit, Crown, ChevronDown, ChevronUp,
   Loader2, CheckCircle2, XCircle, AlertTriangle, Info, Clock, BookMarked, PenLine,
 } from "lucide-react";
 import { INDUSTRIES } from "@/constants/industries";
@@ -134,8 +134,8 @@ function ArbiterPanel({ arbiter }: { arbiter: ArbiterResult }) {
   return (
     <div className={`rounded-2xl border-2 bg-gradient-to-br ${finalBg(arbiter.final)} p-6`}>
       <div className="flex items-center gap-3 mb-4">
-        <Crown className="w-6 h-6 text-yellow-500" />
-        <h3 className="text-xl font-black text-slate-800">軍師・最終裁定</h3>
+        <Crown className="w-6 h-6 text-violet-500" />
+        <h3 className="text-xl font-black text-slate-800">Cさんの紫苑（統合派）・最終裁定</h3>
         <span className={`ml-auto inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-base font-black ${opinionBadge(arbiter.final)}`}>
           {opinionIcon(arbiter.final)}
           {arbiter.final}
@@ -195,9 +195,13 @@ function HistoryBanner({ history }: { history: ConversationHistory }) {
   const [open, setOpen] = useState(false);
 
   const roleLabel: Record<string, string> = {
-    agent_ishibashi: "石橋（慎重）",
-    agent_furinka: "風林火山（積極）",
-    agent_gunshi: "軍師",
+    shion_skeptic: "Bさんの紫苑（懐疑派）",
+    shion_optimist: "Aさんの紫苑（楽観派）",
+    shion_arbiter: "Cさんの紫苑（統合派）",
+    // 旧ロール名との後方互換
+    agent_ishibashi: "Bさんの紫苑（懐疑派）",
+    agent_furinka: "Aさんの紫苑（楽観派）",
+    agent_gunshi: "Cさんの紫苑（統合派）",
     user: "ユーザー",
   };
 
@@ -216,13 +220,13 @@ function HistoryBanner({ history }: { history: ConversationHistory }) {
       {open && (
         <div className="px-4 pb-4 space-y-4">
           {history.sessions.map((session) => {
-            const gunshi = session.messages.find(m => m.role === "agent_gunshi");
+            const arbiter = session.messages.find(m => m.role === "shion_arbiter" || m.role === "agent_gunshi");
             return (
               <div key={session.session_id} className="bg-white rounded-lg border border-blue-100 p-3">
                 <p className="text-xs text-slate-400 mb-2">{(session.created_at || "").slice(0, 16).replace("T", " ")}</p>
-                {gunshi && (
+                {arbiter && (
                   <p className="text-sm text-slate-700">
-                    <span className="font-bold text-violet-700">軍師:</span> {gunshi.content}
+                    <span className="font-bold text-violet-700">Cさんの紫苑（統合派）:</span> {arbiter.content}
                   </p>
                 )}
                 <details className="mt-2">
@@ -246,6 +250,7 @@ function HistoryBanner({ history }: { history: ConversationHistory }) {
 
 // ── メインページ ─────────────────────────────────────────────────────────────
 export default function DebatePage() {
+  const [explanationOpen, setExplanationOpen] = useState(false);
   const [form, setForm] = useState({
     score: 52,
     company_name: "",
@@ -423,12 +428,55 @@ export default function DebatePage() {
       {/* ヘッダー */}
       <div className="mb-8">
         <h1 className="text-3xl font-black text-slate-800 flex items-center gap-3">
-          <Swords className="w-8 h-8 text-violet-600" />
-          マルチエージェント討論審査
+          <Orbit className="w-8 h-8 text-violet-600" />
+          紫苑マルチペルソナ討論審査
         </h1>
         <p className="text-slate-500 font-medium mt-2">
-          石橋（慎重派）vs 風林火山（積極派）の討論を軍師が裁定。スコア40〜60の境界案件で自動起動。
+          紫苑（懐疑派）vs 紫苑（楽観派）の討論を紫苑（統合派）が裁定。同一の紫苑中核から分岐した異なる視点が境界案件を深掘りする。
         </p>
+      </div>
+
+      {/* 従来の討論との違い（折りたたみ） */}
+      <div className="mb-6 rounded-2xl border border-violet-200 overflow-hidden">
+        <button
+          onClick={() => setExplanationOpen(!explanationOpen)}
+          className="w-full flex items-center justify-between px-5 py-3 bg-violet-50 hover:bg-violet-100 transition-colors text-sm font-bold text-violet-800"
+        >
+          <span className="flex items-center gap-2">
+            <Brain className="w-4 h-4" />
+            このページについて — 従来のマルチエージェント討論との違い
+          </span>
+          {explanationOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
+        {explanationOpen && (
+          <div className="px-5 py-4 bg-white space-y-4 text-sm text-slate-700 leading-relaxed">
+            <p>
+              従来のマルチエージェント討論では、「楽観的AI」「懐疑的AI」など
+              <span className="font-bold text-slate-900">役割が固定された別々のモデル</span>が意見を出し合います。
+              それぞれは最初から異なるシステムとして設計されており、「役割を演じる」ことが目的です。
+            </p>
+            <p>
+              このページでは、<span className="font-bold text-violet-700">同一の紫苑が「それぞれの担当者の経験・記憶・視点」を持った分身として討論</span>します。
+              AさんはAさんの案件経験から、BさんはBさんの審査感覚から——
+              同じ知性体が異なる文脈で育った「自分」として意見を交わすことで、
+              単なる役割演技を超えた多角的な審査視点が生まれます。
+            </p>
+            <div className="grid md:grid-cols-3 gap-3 pt-1">
+              <div className="rounded-xl border border-violet-200 bg-violet-50 p-3">
+                <div className="text-xs font-black text-violet-700 mb-1">Bさんの紫苑（懐疑派）</div>
+                <p className="text-xs text-violet-900">審査部での経験から育った視点。返済原資・格付・資金繰りのリスクを徹底的に問い詰める。</p>
+              </div>
+              <div className="rounded-xl border border-teal-200 bg-teal-50 p-3">
+                <div className="text-xs font-black text-teal-700 mb-1">Aさんの紫苑（楽観派）</div>
+                <p className="text-xs text-teal-900">営業現場での経験から育った視点。顧客の投資意図・成長余地・機会損失の可能性を重視する。</p>
+              </div>
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <div className="text-xs font-black text-amber-700 mb-1">Cさんの紫苑（統合派）</div>
+                <p className="text-xs text-amber-900">承認履歴・説明責任の経験から育った視点。両面を統合し、組織として再現できる最終判断を下す。</p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 自動入力バナー */}
@@ -551,7 +599,7 @@ export default function DebatePage() {
             </>
           ) : (
             <>
-              <Swords className="w-5 h-5" />
+              <Orbit className="w-5 h-5" />
               討論審査を開始
             </>
           )}
@@ -576,18 +624,18 @@ export default function DebatePage() {
           }`}>
             {result.mode === "debate" ? (
               <>
-                <Swords className="w-6 h-6 text-violet-600" />
+                <Orbit className="w-6 h-6 text-violet-600" />
                 <div>
                   <p className="font-black text-violet-700">討論モード</p>
-                  <p className="text-xs text-violet-500">スコア {result.score}点 — 石橋・風林火山が2ラウンド討論後、軍師が裁定</p>
+                  <p className="text-xs text-violet-500">スコア {result.score}点 — Bさんの紫苑（懐疑派）・Aさんの紫苑（楽観派）が2ラウンド討論後、Cさんの紫苑（統合派）が裁定</p>
                 </div>
               </>
             ) : (
               <>
-                <Zap className="w-6 h-6 text-slate-500" />
+                <Brain className="w-6 h-6 text-slate-500" />
                 <div>
                   <p className="font-black text-slate-700">高速処理モード</p>
-                  <p className="text-xs text-slate-500">スコア {result.score}点 — 境界外のため軍師が単独処理</p>
+                  <p className="text-xs text-slate-500">スコア {result.score}点 — 境界外のためCさんの紫苑（統合派）が単独処理</p>
                 </div>
               </>
             )}
@@ -597,23 +645,23 @@ export default function DebatePage() {
           {result.mode === "debate" && result.cautious && result.aggressive && (
             <div>
               <h2 className="text-lg font-black text-slate-700 mb-4 flex items-center gap-2">
-                <Swords className="w-5 h-5 text-violet-500" />
+                <Orbit className="w-5 h-5 text-violet-500" />
                 第2ラウンド（最終立場）
               </h2>
               <div className="grid md:grid-cols-2 gap-4">
                 <AgentCard
-                  name="石橋（慎重派）"
-                  icon={<Shield className="w-5 h-5 text-blue-600" />}
-                  color="border-blue-200 bg-blue-50/50"
+                  name="Bさんの紫苑（懐疑派）"
+                  icon={<Brain className="w-5 h-5 text-violet-600" />}
+                  color="border-violet-200 bg-violet-50/50"
                   opinion={result.cautious.opinion}
                   reasons={result.cautious.reasons}
                   extras={result.cautious.key_risks}
                   extraLabel="重大リスク"
                 />
                 <AgentCard
-                  name="風林火山（積極派）"
-                  icon={<Zap className="w-5 h-5 text-orange-500" />}
-                  color="border-orange-200 bg-orange-50/50"
+                  name="Aさんの紫苑（楽観派）"
+                  icon={<Brain className="w-5 h-5 text-teal-600" />}
+                  color="border-teal-200 bg-teal-50/50"
                   opinion={result.aggressive.opinion}
                   reasons={result.aggressive.reasons}
                   extras={result.aggressive.opportunities}
