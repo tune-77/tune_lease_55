@@ -375,7 +375,8 @@ def run_pipeline_from_cli():
         print(f"\n✅ 結果を保存しました: {output_path}")
     
     # 終了コード
-    sys.exit(0 if result["status"] in ["COMPLETED", "DRY_RUN_COMPLETE"] else 1)
+    # NO_APPLIED = auto-apply が 0 件だが正常終了（手動レビュー待ちは想定内）
+    sys.exit(0 if result["status"] in ["COMPLETED", "NO_APPLIED", "DRY_RUN_COMPLETE"] else 1)
 
 
 if __name__ == "__main__":
