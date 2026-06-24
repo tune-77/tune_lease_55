@@ -5833,6 +5833,7 @@ class MultiAgentRequest(BaseModel):
     asset_name: str = ""
     lease_amount: float = 0
     session_id: str = ""
+    participants: Optional[dict] = None
 
 
 @app.post("/api/crystallize-now")
