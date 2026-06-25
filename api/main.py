@@ -109,6 +109,8 @@ from lease_news_digest import (
     build_lease_news_brief,
     get_latest_lease_news_focus,
     get_latest_lease_news_reflection,
+    get_latest_lease_news_actions,
+    lease_news_actions_as_text,
     record_lease_news_collection,
     record_lease_news_judgment_change,
     record_lease_news_view,
@@ -3832,6 +3834,7 @@ def get_dashboard_stats():
         payload = dict(payload)
         payload["lease_news_focus"] = _lease_news_focus_to_dict(get_latest_lease_news_focus())
         payload["lease_news_reflection"] = _lease_news_reflection_to_dict(get_latest_lease_news_reflection())
+        payload["lease_news_actions"] = _lease_news_actions_to_dict(get_latest_lease_news_actions())
         payload["improvement_highlights"] = _load_latest_improvement_highlights(limit=3)
         payload["lease_system_gaps"] = _load_lease_system_gap_analysis(limit=3)
         return payload
@@ -3894,6 +3897,35 @@ def _lease_news_reflection_to_dict(reflection):
     }
 
 
+def _lease_news_actions_to_dict(actions):
+    if not actions or not getattr(actions, "available", False):
+        return {"available": False}
+    return {
+        "available": True,
+        "date": getattr(actions, "date", ""),
+        "note_path": getattr(actions, "note_path", ""),
+        "json_path": getattr(actions, "json_path", ""),
+        "summary": getattr(actions, "summary", ""),
+        "action_items": [
+            {
+                "signal": getattr(item, "signal", ""),
+                "affected_industries": list(getattr(item, "affected_industries", ()) or ()),
+                "affected_assets": list(getattr(item, "affected_assets", ()) or ()),
+                "risk_flags": list(getattr(item, "risk_flags", ()) or ()),
+                "recommended_checks": list(getattr(item, "recommended_checks", ()) or ()),
+                "condition_impacts": list(getattr(item, "condition_impacts", ()) or ()),
+                "source_title": getattr(item, "source_title", ""),
+                "source_path": getattr(item, "source_path", ""),
+                "valid_until": getattr(item, "valid_until", ""),
+                "confidence": getattr(item, "confidence", 0.0),
+                "noise_score": getattr(item, "noise_score", 0.0),
+            }
+            for item in (getattr(actions, "action_items", ()) or ())
+        ],
+        "ignored_titles": list(getattr(actions, "ignored_titles", ()) or ()),
+    }
+
+
 def _lease_news_brief_to_dict(brief):
     if not brief or not getattr(brief, "available", False):
         return {"available": False}
@@ -3931,6 +3963,15 @@ def get_lease_news_brief_api(prefecture: str = "", industry: str = ""):
     """AICHATとホームで共通利用する、全国+地域のニュースブリーフを返す。"""
     try:
         return _lease_news_brief_to_dict(build_lease_news_brief(prefecture=prefecture, industry=industry))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/lease-news/actions")
+def get_lease_news_actions_api():
+    """日次ニュースを審査アクションへ変換した一覧を返す。"""
+    try:
+        return _lease_news_actions_to_dict(get_latest_lease_news_actions())
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -6473,6 +6514,13 @@ def post_chat(req: ChatRequest):
         news_brief = _lease_news_brief_to_dict(
             build_lease_news_brief(prefecture=req.prefecture or "", industry=req.industry or "")
         )
+        news_actions = _lease_news_actions_to_dict(get_latest_lease_news_actions())
+        news_actions_text = lease_news_actions_as_text(
+            industry=req.industry or "",
+            asset_name="",
+            surface="chat",
+        )
+        news_actions_context = f"\n\n{news_actions_text}" if news_actions_text else ""
         news_brief_context = ""
         if news_brief.get("available"):
             brief_lines = [news_brief.get("opening_line", "").strip()]
@@ -6587,6 +6635,7 @@ def post_chat(req: ChatRequest):
                 "improvement_result": note_result,
                 "lease_news_focus": news_focus,
                 "lease_news_brief": news_brief,
+                "lease_news_actions": news_actions,
             }
 
         # カテゴリ判定
@@ -6618,7 +6667,7 @@ def post_chat(req: ChatRequest):
                 reply = f"ニュースの要約に失敗しました: {_news_e}"
             save_message(req.user_id, "assistant", reply)
             total = get_message_count(req.user_id)
-            return {"reply": reply, "total_messages": total, "lease_news_focus": news_focus, "lease_news_brief": news_brief}
+            return {"reply": reply, "total_messages": total, "lease_news_focus": news_focus, "lease_news_brief": news_brief, "lease_news_actions": news_actions}
 
         # general なら RAG をスキップして直接回答
         if question_category == "general":
@@ -6628,7 +6677,7 @@ def post_chat(req: ChatRequest):
             from api.shion_memory_recall import build_recall_prompt_block
 
             memory_recall_context, memory_recall = build_recall_prompt_block(req.message)
-            base_system_prompt = _pg_build_gsp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
+            base_system_prompt = _pg_build_gsp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
             pdca_block = build_pdca_prompt_block()
             effective_system_prompt = base_system_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
             reply = call_gemini_chat(effective_system_prompt, history_for_gemini, req.message)
@@ -6672,7 +6721,7 @@ def post_chat(req: ChatRequest):
             )
             _record_chat_knowledge_correction_if_needed(req.message)
             total = get_message_count(req.user_id)
-            return {"reply": reply, "total_messages": total, "lease_news_focus": news_focus, "lease_news_brief": news_brief}
+            return {"reply": reply, "total_messages": total, "lease_news_focus": news_focus, "lease_news_brief": news_brief, "lease_news_actions": news_actions}
 
         # RAG: 共通ストアから関連ナレッジを取得。ローカル埋め込みモデルが
         # 未キャッシュでもキーワード検索へフォールバックする。
@@ -6757,7 +6806,7 @@ def post_chat(req: ChatRequest):
         except Exception as _memory_recall_error:
             print(f"[ShionMemoryRecall] 読み込みエラー: {_memory_recall_error}")
 
-        base_effective_prompt = _pg_build_sp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + guidance.prompt_suffix
+            base_effective_prompt = _pg_build_sp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + guidance.prompt_suffix
         pdca_block = build_pdca_prompt_block()
         effective_prompt = base_effective_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
         reply = call_gemini_chat(effective_prompt, history_for_gemini, req.message)
@@ -6823,7 +6872,7 @@ def post_chat(req: ChatRequest):
                 daemon=True,
             ).start()
 
-        return {"reply": reply, "total_messages": total, "lease_news_focus": news_focus, "lease_news_brief": news_brief}
+        return {"reply": reply, "total_messages": total, "lease_news_focus": news_focus, "lease_news_brief": news_brief, "lease_news_actions": news_actions}
     except Exception as e:
         import traceback
         traceback.print_exc()

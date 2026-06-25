@@ -26,7 +26,7 @@ from api.knowledge.policy_loader import load_policy
 from api.knowledge.feedback_watcher import search_feedback, feedback_count
 from api.shion_conscience import build_conscience_prompt_block, evaluate_conscience
 from api.shion_mana import build_mana_prompt_block, evaluate_mana_consultation
-from lease_news_digest import find_vault, lease_news_focus_as_text
+from lease_news_digest import find_vault, lease_news_actions_as_text, lease_news_focus_as_text
 
 # ── モデル・エンドポイント ───────────────────────────────────────────────────
 # 紫苑（懐疑派）・紫苑（楽観派）: Gemini Flash（temperature差で視点を分離）
@@ -224,6 +224,16 @@ def _build_case_ctx(params: dict) -> str:
         suffix += "\n\n" + focus_block
     if digest_block:
         suffix += "\n\n" + digest_block
+    try:
+        news_actions_text = lease_news_actions_as_text(
+            industry=params.get("industry_major") or params.get("industry_sub") or "",
+            asset_name=params.get("asset_name", ""),
+            surface="multi_agent_screening",
+        )
+    except Exception:
+        news_actions_text = ""
+    if news_actions_text:
+        suffix += "\n\n" + news_actions_text
     return base + suffix if suffix else base
 
 
@@ -234,10 +244,15 @@ def _get_recent_news_digest_block(limit: int = 3) -> str:
     vault = find_vault()
     if not vault:
         return ""
-    news_dir = vault / "リースニュース"
-    if not news_dir.exists():
-        return ""
-    md_files = sorted(news_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+    news_dirs = [
+        vault / "05-クリップ_記事" / "リースニュース",
+        vault / "リースニュース",
+    ]
+    md_files = []
+    for news_dir in news_dirs:
+        if news_dir.exists():
+            md_files.extend(news_dir.glob("*.md"))
+    md_files = sorted(md_files, key=lambda p: p.stat().st_mtime, reverse=True)
     if not md_files:
         return ""
 

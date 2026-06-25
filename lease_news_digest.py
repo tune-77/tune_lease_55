@@ -106,6 +106,32 @@ class LeaseNewsReflection:
     knowledge_sources: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class LeaseNewsAction:
+    signal: str
+    affected_industries: tuple[str, ...] = ()
+    affected_assets: tuple[str, ...] = ()
+    risk_flags: tuple[str, ...] = ()
+    recommended_checks: tuple[str, ...] = ()
+    condition_impacts: tuple[str, ...] = ()
+    source_title: str = ""
+    source_path: str = ""
+    valid_until: str = ""
+    confidence: float = 0.5
+    noise_score: float = 0.0
+
+
+@dataclass(frozen=True)
+class LeaseNewsActions:
+    available: bool
+    date: str = ""
+    note_path: str = ""
+    json_path: str = ""
+    action_items: tuple[LeaseNewsAction, ...] = ()
+    ignored_titles: tuple[str, ...] = ()
+    summary: str = ""
+
+
 def _parse_news_note(path: Path) -> dict:
     item: dict = {
         "date": "",
@@ -185,6 +211,131 @@ def _recent_news_items(vault: Path, limit: int = 10) -> list[dict]:
     md_files = sorted(md_files, key=lambda p: p.stat().st_mtime, reverse=True)
     items = [_parse_news_note(fpath) for fpath in md_files[:limit]]
     return items
+
+
+def _has_any(text: str, keywords: tuple[str, ...]) -> bool:
+    return any(keyword in text for keyword in keywords)
+
+
+def _news_noise_score(item: dict) -> float:
+    title = str(item.get("title") or "")
+    memo = str(item.get("usage_memo") or "")
+    joined = f"{title} {memo}"
+    score = 0.0
+    if _has_any(joined, ("おすすめ", "ランキング", "口コミ", "評判", "比較", "安い", "もらえる", "個人向け")):
+        score += 0.75
+    if _has_any(joined, ("審査なし", "審査が甘い")):
+        score += 0.25
+    if _has_any(joined, ("市場規模", "トップ35", "スコープ", "予測レポート")):
+        score += 0.25
+    if "その他" in " ".join(str(tag) for tag in item.get("tags", [])) and not _has_any(joined, ("金利", "決算", "格付", "設備投資", "補助金", "会計基準")):
+        score += 0.15
+    if _has_any(joined, ("金融庁", "日銀", "経産省", "補助金", "決算", "格付", "設備投資", "リース会計", "金利")):
+        score -= 0.25
+    if str(item.get("importance") or "") == "高":
+        score -= 0.05
+    return max(0.0, min(1.0, score))
+
+
+def _infer_news_action(item: dict) -> LeaseNewsAction:
+    title = str(item.get("title") or "")
+    memo = str(item.get("usage_memo") or "")
+    tags = tuple(str(tag) for tag in (item.get("tags") or []) if str(tag).strip())
+    joined = " ".join([title, memo, " ".join(tags)])
+    industries: list[str] = []
+    assets: list[str] = []
+    risk_flags: list[str] = []
+    checks: list[str] = []
+    impacts: list[str] = []
+
+    def add(target: list[str], value: str) -> None:
+        if value and value not in target:
+            target.append(value)
+
+    if _has_any(joined, ("物流", "車両", "トラック", "カーリース", "EV", "自動車")):
+        add(industries, "物流・運輸")
+        add(assets, "車両")
+        add(checks, "稼働率、走行距離、保守費、更新理由を確認する。")
+        add(checks, "リース期間終了時の中古価値と再リース余地を確認する。")
+        add(impacts, "走行距離・保守費が重い場合は期間短縮または前受金を検討する。")
+    if _has_any(joined, ("金利", "利上げ", "金融", "資金調達", "与信")):
+        add(risk_flags, "金利負担・返済余力")
+        add(checks, "月額負担増に対する返済余力と競合提示金利を確認する。")
+        add(impacts, "金利説明、保証、前受金、期間短縮の必要性を確認する。")
+    if _has_any(joined, ("設備投資", "省力化", "補助金", "助成金", "更新投資", "DX", "AI", "ロボット")):
+        add(industries, "製造・設備投資")
+        add(checks, "投資目的、補助金要件、回収期間、生産性改善効果を確認する。")
+        add(impacts, "補助金前提なら採択前提条件と未採択時の資金繰りを確認する。")
+    if _has_any(joined, ("建設", "工場", "不動産", "工期")):
+        add(industries, "建設・不動産")
+        add(checks, "工期、稼働開始時期、移設可能性、現場稼働への影響を確認する。")
+        add(impacts, "稼働開始が遅れる場合は支払開始時期や猶予条件を確認する。")
+    if _has_any(joined, ("リース会計", "会計基準", "税制", "制度", "規制", "法令")):
+        add(risk_flags, "制度・会計変更")
+        add(checks, "契約分類、会計処理、税務・補助金要件を確認する。")
+        add(impacts, "契約書条件と稟議コメントに制度影響を明記する。")
+    if not checks:
+        add(checks, "ニュースと対象企業の業種・物件・投資時期に関連があるか確認する。")
+    if not impacts:
+        add(impacts, "関連が薄い場合は審査条件へ反映せず、会話導入に留める。")
+    if not risk_flags and _has_any(joined, ("赤字", "撤退", "解約", "難色", "不正", "破綻")):
+        add(risk_flags, "信用悪化・事業継続")
+
+    noise = _news_noise_score(item)
+    confidence = max(0.2, min(0.95, 0.75 - noise * 0.4 + (0.1 if risk_flags else 0.0)))
+    try:
+        date_obj = dt.date.fromisoformat(str(item.get("date") or dt.date.today().isoformat())[:10])
+    except Exception:
+        date_obj = dt.date.today()
+    valid_until = (date_obj + dt.timedelta(days=90 if noise < 0.4 else 30)).isoformat()
+    signal = title
+    if tags:
+        signal = f"{title}（{', '.join(tags[:3])}）"
+    return LeaseNewsAction(
+        signal=signal[:120],
+        affected_industries=tuple(industries[:3]),
+        affected_assets=tuple(assets[:3]),
+        risk_flags=tuple(risk_flags[:4]),
+        recommended_checks=tuple(checks[:4]),
+        condition_impacts=tuple(impacts[:3]),
+        source_title=title,
+        source_path=str(item.get("file_path") or ""),
+        valid_until=valid_until,
+        confidence=round(confidence, 2),
+        noise_score=round(noise, 2),
+    )
+
+
+def _action_to_dict(action: LeaseNewsAction) -> dict:
+    return {
+        "signal": action.signal,
+        "affected_industries": list(action.affected_industries),
+        "affected_assets": list(action.affected_assets),
+        "risk_flags": list(action.risk_flags),
+        "recommended_checks": list(action.recommended_checks),
+        "condition_impacts": list(action.condition_impacts),
+        "source_title": action.source_title,
+        "source_path": action.source_path,
+        "valid_until": action.valid_until,
+        "confidence": action.confidence,
+        "noise_score": action.noise_score,
+    }
+
+
+def _action_from_dict(data: dict) -> LeaseNewsAction:
+    return LeaseNewsAction(
+        signal=str(data.get("signal") or ""),
+        affected_industries=tuple(str(x) for x in data.get("affected_industries", []) if str(x).strip()),
+        affected_assets=tuple(str(x) for x in data.get("affected_assets", []) if str(x).strip()),
+        risk_flags=tuple(str(x) for x in data.get("risk_flags", []) if str(x).strip()),
+        recommended_checks=tuple(str(x) for x in data.get("recommended_checks", []) if str(x).strip()),
+        condition_impacts=tuple(str(x) for x in data.get("condition_impacts", []) if str(x).strip()),
+        source_title=str(data.get("source_title") or ""),
+        source_path=str(data.get("source_path") or ""),
+        valid_until=str(data.get("valid_until") or ""),
+        confidence=float(data.get("confidence") or 0.5),
+        noise_score=float(data.get("noise_score") or 0.0),
+    )
 
 
 def _vault_candidates() -> list[Path]:
@@ -579,6 +730,196 @@ def _daily_note_path(vault: Path, date_str: str) -> Path:
     return vault / "Daily" / f"{date_str}.md"
 
 
+def _actions_json_path(date_str: str) -> Path:
+    return Path(__file__).resolve().parent / "data" / f"lease_news_actions_{date_str}.json"
+
+
+def _actions_latest_path() -> Path:
+    return Path(__file__).resolve().parent / "data" / "lease_news_actions_latest.json"
+
+
+def build_lease_news_actions(
+    date_str: str | None = None,
+    vault: Path | None = None,
+    limit: int = 5,
+) -> LeaseNewsActions:
+    vault = vault or find_vault()
+    if not vault:
+        return LeaseNewsActions(available=False)
+    action_date = date_str or dt.date.today().isoformat()
+    items = [
+        item for item in _recent_news_items(vault, limit=40)
+        if str(item.get("date") or "")[:10] == action_date
+    ]
+    if not items:
+        items = _recent_news_items(vault, limit=18)
+    actions = [_infer_news_action(item) for item in items]
+    actions.sort(key=lambda a: (a.noise_score, -a.confidence, a.source_title))
+    selected = [action for action in actions if action.noise_score < 0.7][:limit]
+    ignored = [action.source_title for action in actions if action.noise_score >= 0.7][:8]
+    summary = " / ".join(action.signal for action in selected[:3])
+    return LeaseNewsActions(
+        available=bool(selected),
+        date=action_date,
+        action_items=tuple(selected),
+        ignored_titles=tuple(ignored),
+        summary=summary,
+    )
+
+
+def write_lease_news_actions_note(
+    date_str: str | None = None,
+    vault: Path | None = None,
+    actions: LeaseNewsActions | None = None,
+) -> LeaseNewsActions | None:
+    vault = vault or find_vault()
+    if not vault:
+        return None
+    action_date = date_str or dt.date.today().isoformat()
+    actions = actions or build_lease_news_actions(date_str=action_date, vault=vault)
+    if not actions.available:
+        return None
+
+    news_dir = vault / "Projects" / "tune_lease_55" / "News"
+    news_dir.mkdir(parents=True, exist_ok=True)
+    note_path = news_dir / f"{action_date}_lease-news-actions.md"
+    json_path = _actions_json_path(action_date)
+    latest_path = _actions_latest_path()
+
+    content_lines = [
+        "---",
+        f"date: {action_date}",
+        "type: lease_news_actions",
+        f"action_count: {len(actions.action_items)}",
+        f"ignored_count: {len(actions.ignored_titles)}",
+        "---",
+        f"# リースニュース審査アクション — {action_date}",
+        "",
+        "## 今日の使いどころ",
+    ]
+    for action in actions.action_items:
+        content_lines.extend([
+            "",
+            f"### {action.signal}",
+            f"- confidence: {action.confidence}",
+            f"- noise_score: {action.noise_score}",
+            f"- valid_until: {action.valid_until}",
+        ])
+        if action.affected_industries:
+            content_lines.append(f"- 影響業種: {', '.join(action.affected_industries)}")
+        if action.affected_assets:
+            content_lines.append(f"- 影響物件: {', '.join(action.affected_assets)}")
+        if action.risk_flags:
+            content_lines.append(f"- リスク旗: {', '.join(action.risk_flags)}")
+        content_lines.append("- 確認項目:")
+        content_lines.extend(f"  - {line}" for line in action.recommended_checks)
+        content_lines.append("- 条件への影響:")
+        content_lines.extend(f"  - {line}" for line in action.condition_impacts)
+    if actions.ignored_titles:
+        content_lines.extend(["", "## ノイズ候補"])
+        content_lines.extend(f"- {title}" for title in actions.ignored_titles)
+    note_path.write_text("\n".join(content_lines).rstrip() + "\n", encoding="utf-8")
+
+    payload = {
+        "date": action_date,
+        "note_path": str(note_path.relative_to(vault)),
+        "action_items": [_action_to_dict(action) for action in actions.action_items],
+        "ignored_titles": list(actions.ignored_titles),
+        "summary": actions.summary,
+        "updated_at": dt.datetime.now().isoformat(timespec="seconds"),
+    }
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    json_text = json.dumps(payload, ensure_ascii=False, indent=2)
+    json_path.write_text(json_text, encoding="utf-8")
+    latest_path.write_text(json_text, encoding="utf-8")
+
+    data = _load_metrics()
+    bucket = _ensure_day_bucket(data, action_date)
+    bucket["actions_generated"] = int(bucket.get("actions_generated", 0)) + 1
+    bucket["last_actions_note"] = str(note_path.relative_to(vault))
+    bucket["last_actions_count"] = len(actions.action_items)
+    bucket["last_ignored_count"] = len(actions.ignored_titles)
+    data["updated_at"] = dt.datetime.now().isoformat(timespec="seconds")
+    _save_metrics(data)
+
+    return LeaseNewsActions(
+        available=True,
+        date=action_date,
+        note_path=str(note_path.relative_to(vault)),
+        json_path=str(json_path),
+        action_items=actions.action_items,
+        ignored_titles=actions.ignored_titles,
+        summary=actions.summary,
+    )
+
+
+def get_latest_lease_news_actions(vault: Path | None = None) -> LeaseNewsActions:
+    latest = _actions_latest_path()
+    if not latest.exists():
+        built = build_lease_news_actions(vault=vault)
+        return built
+    try:
+        data = json.loads(latest.read_text(encoding="utf-8"))
+    except Exception:
+        return LeaseNewsActions(available=False)
+    actions = tuple(_action_from_dict(item) for item in data.get("action_items", []) if isinstance(item, dict))
+    return LeaseNewsActions(
+        available=bool(actions),
+        date=str(data.get("date") or ""),
+        note_path=str(data.get("note_path") or ""),
+        json_path=str(latest),
+        action_items=actions,
+        ignored_titles=tuple(str(x) for x in data.get("ignored_titles", []) if str(x).strip()),
+        summary=str(data.get("summary") or ""),
+    )
+
+
+def lease_news_actions_as_text(
+    vault: Path | None = None,
+    industry: str = "",
+    asset_name: str = "",
+    limit: int = 3,
+    surface: str = "",
+) -> str:
+    actions = get_latest_lease_news_actions(vault=vault)
+    if not actions.available:
+        return ""
+    industry_text = str(industry or "")
+    asset_text = str(asset_name or "")
+
+    def score(action: LeaseNewsAction) -> tuple[int, float]:
+        match = 0
+        joined_industries = " ".join(action.affected_industries)
+        joined_assets = " ".join(action.affected_assets)
+        if industry_text and any(part and part in joined_industries for part in re.split(r"[\s/・,、]+", industry_text)):
+            match += 2
+        if asset_text and any(part and part in joined_assets for part in re.split(r"[\s/・,、]+", asset_text)):
+            match += 2
+        return (match, action.confidence - action.noise_score)
+
+    ranked = sorted(actions.action_items, key=score, reverse=True)[:limit]
+    try:
+        record_lease_news_action_use(
+            actions.date or dt.date.today().isoformat(),
+            surface=surface,
+            matched_count=len(ranked),
+        )
+    except Exception:
+        pass
+    lines = ["【この案件に効くニュース影響】"]
+    for action in ranked:
+        lines.append(f"- 該当: {action.signal}")
+        if action.risk_flags:
+            lines.append(f"  リスク旗: {', '.join(action.risk_flags)}")
+        if action.recommended_checks:
+            lines.append(f"  確認: {' / '.join(action.recommended_checks[:2])}")
+        if action.condition_impacts:
+            lines.append(f"  条件影響: {' / '.join(action.condition_impacts[:2])}")
+    if actions.ignored_titles:
+        lines.append(f"- 無視候補: {actions.ignored_titles[0]}")
+    return "\n".join(lines)
+
+
 def _ensure_day_bucket(data: dict, date_str: str) -> dict:
     buckets = data.setdefault("days", {})
     if date_str not in buckets:
@@ -631,6 +972,17 @@ def record_lease_news_view(date_str: str, note_path: str = "", tag_summary: str 
         bucket["last_note"] = note_path
     if tag_summary:
         bucket["last_tags"] = tag_summary
+    data["updated_at"] = dt.datetime.now().isoformat(timespec="seconds")
+    _save_metrics(data)
+    return bucket
+
+
+def record_lease_news_action_use(date_str: str, surface: str = "", matched_count: int = 0) -> dict:
+    data = _load_metrics()
+    bucket = _ensure_day_bucket(data, date_str or dt.date.today().isoformat())
+    bucket["news_actions_used"] = int(bucket.get("news_actions_used", 0)) + 1
+    bucket["last_actions_surface"] = surface
+    bucket["last_actions_matched_count"] = int(matched_count)
     data["updated_at"] = dt.datetime.now().isoformat(timespec="seconds")
     _save_metrics(data)
     return bucket

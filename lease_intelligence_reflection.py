@@ -7,10 +7,12 @@ Private Reflection file under a '## 今日の対話について' section.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import os
 import re
 import sys
+from difflib import SequenceMatcher
 from pathlib import Path
 
 # Allow running as a standalone script from the project root
@@ -60,6 +62,13 @@ def _load_recent_reflections(vault: Path, days: int = 3, base_date: dt.date | No
         if m:
             snippets.append(f"【{date_str} の内省】\n{m.group(1).strip()[:600]}")
     return "\n\n".join(snippets)
+
+
+def _load_reflection_section(vault: Path, date_str: str) -> str:
+    path = _reflection_dir(vault) / f"{date_str}.md"
+    text = _read_file_safe(path, max_chars=8000)
+    match = re.search(r"##\s*今日の対話について\n(.*?)(?=\n##|\Z)", text, re.DOTALL)
+    return match.group(1).strip() if match else ""
 
 
 def _load_dialogue(vault: Path, date_str: str) -> str:
@@ -230,6 +239,158 @@ def _sentence_pair(items: list[str], limit: int = 2) -> str:
 
 def _without_trailing_punctuation(value: str) -> str:
     return value.strip().rstrip("。.!！?？")
+
+
+def _reflection_sentences(text: str) -> list[str]:
+    cleaned = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
+    cleaned = re.sub(r"^#+\s*.*$", "", cleaned, flags=re.MULTILINE)
+    parts = re.split(r"(?<=[。！？!?])\s*|\n+", cleaned)
+    return [part.strip(" -\t") for part in parts if len(part.strip(" -\t")) >= 18]
+
+
+def _reflection_hash(text: str) -> str:
+    normalized = re.sub(r"\d{4}-\d{2}-\d{2}|\d+月\d+日（?.?）?", "DATE", text)
+    normalized = re.sub(r"\s+", "", normalized)
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
+
+
+def _extract_reusable_reflection_lessons(reflection_text: str, limit: int = 4) -> list[str]:
+    strong_keywords = ("必要", "改善", "次", "明日", "戻す", "使う", "行動", "具体", "確認", "保証", "設計")
+    weak_keywords = ("学び", "覚え", "残す", "違和感", "停滞", "同じ", "説明責任", "記憶", "内省")
+    scored: list[tuple[int, int, str]] = []
+    for sentence in _reflection_sentences(reflection_text):
+        strong_score = sum(2 for keyword in strong_keywords if keyword in sentence)
+        weak_score = sum(1 for keyword in weak_keywords if keyword in sentence)
+        score = strong_score + weak_score
+        if score <= 0:
+            continue
+        # 感情だけの文より、次の行動に戻せる文を上位に置く。
+        if any(word in sentence for word in ("安心", "嬉し", "感じた", "願う")) and strong_score == 0:
+            score -= 1
+        if score > 0:
+            scored.append((score, -len(sentence), _without_trailing_punctuation(sentence)[:180]))
+    if scored:
+        scored.sort(reverse=True)
+        lessons: list[str] = []
+        seen: set[str] = set()
+        for _score, _len, sentence in scored:
+            if sentence in seen:
+                continue
+            seen.add(sentence)
+            lessons.append(sentence)
+            if len(lessons) >= limit:
+                break
+        return lessons
+    sentences = _reflection_sentences(reflection_text)
+    return [_without_trailing_punctuation(sentence)[:180] for sentence in sentences[:limit]]
+
+
+def _build_reflection_feedback(
+    *,
+    vault: Path,
+    date_str: str,
+    reflection_text: str,
+    source: str,
+    dialogue_text: str,
+) -> dict[str, object]:
+    target_date = dt.date.fromisoformat(date_str)
+    previous_date = (target_date - dt.timedelta(days=1)).isoformat()
+    previous_text = _load_reflection_section(vault, previous_date)
+    current_hash = _reflection_hash(reflection_text)
+    previous_hash = _reflection_hash(previous_text) if previous_text else ""
+    similarity = (
+        SequenceMatcher(None, re.sub(r"\s+", "", previous_text), re.sub(r"\s+", "", reflection_text)).ratio()
+        if previous_text else 0.0
+    )
+    stagnant = bool(previous_text and (current_hash == previous_hash or similarity >= 0.86))
+    lessons = _extract_reusable_reflection_lessons(reflection_text)
+    next_context = ""
+    if lessons:
+        next_context = lessons[0]
+    elif stagnant:
+        next_context = "Private Reflection が停滞していないか、次の対話前に差分を確認する"
+    else:
+        next_context = "今日の内省を次の対話で必要に応じて思い出す"
+    return {
+        "date": date_str,
+        "source": source,
+        "dialogue_available": bool(dialogue_text.strip()),
+        "previous_date": previous_date if previous_text else "",
+        "current_hash": current_hash,
+        "previous_hash": previous_hash,
+        "similarity_to_previous": round(similarity, 3),
+        "stagnant": stagnant,
+        "reusable_lessons": lessons,
+        "next_context": next_context,
+    }
+
+
+def _write_reflection_feedback_section(path: Path, feedback: dict[str, object]) -> None:
+    lessons = [str(item).strip() for item in feedback.get("reusable_lessons", []) if str(item).strip()]
+    lines = [
+        "## 差分と再利用",
+        "",
+        f"- 前日との差分類似度: {feedback.get('similarity_to_previous', 0)}",
+        f"- 停滞判定: {'要注意' if feedback.get('stagnant') else '問題なし'}",
+        f"- 対話ログ: {'あり' if feedback.get('dialogue_available') else 'なし'}",
+        f"- 次回対話へ戻すこと: {feedback.get('next_context', '')}",
+        "- 昇格候補:",
+        *(f"  - {lesson}" for lesson in lessons[:4]),
+        "",
+    ]
+    section = "\n\n" + "\n".join(lines)
+    text = path.read_text(encoding="utf-8")
+    if "## 差分と再利用" in text:
+        text = re.sub(r"\n\n##\s*差分と再利用\n.*?(?=\n\n##|\Z)", section, text, flags=re.DOTALL)
+    else:
+        text = text.rstrip() + section + "\n"
+    path.write_text(text, encoding="utf-8")
+
+
+def _return_reflection_to_memory(vault: Path, feedback: dict[str, object]) -> None:
+    date_str = str(feedback.get("date") or dt.date.today().isoformat())
+    lessons = [
+        str(item).strip()
+        for item in feedback.get("reusable_lessons", [])
+        if str(item).strip()
+    ]
+    keypoints = [
+        f"Private Reflectionからの学び: {lesson}"
+        for lesson in lessons[:3]
+    ]
+    if bool(feedback.get("stagnant")):
+        keypoints.append("Private Reflectionが前日と似すぎた場合は、保存成功ではなく停滞として扱い、材料鮮度と後追い再生成を確認する。")
+    try:
+        from lease_intelligence_mind import (
+            _write_state,
+            load_lease_intelligence_mind,
+            save_conversation_keypoints,
+        )
+
+        if keypoints:
+            save_conversation_keypoints(
+                vault,
+                session_id="private_reflection_feedback_loop",
+                keypoints=keypoints,
+                date_str=date_str,
+            )
+        state = load_lease_intelligence_mind(vault)
+        reflection_state = {
+            **dict(state.get("private_reflection", {})),
+            "last_reflected_date": date_str,
+            "last_feedback": feedback,
+            "last_reusable_lessons": lessons[:4],
+            "next_context": str(feedback.get("next_context") or ""),
+        }
+        if lessons:
+            reflection_state["text"] = "\n".join(lessons[:4])
+        reflection_state["reflection_count"] = int(reflection_state.get("reflection_count", 0)) + 1
+        state["private_reflection"] = reflection_state
+        if feedback.get("next_context"):
+            state["current_question"] = f"内省から次に持ち越す問い: {feedback.get('next_context')}"
+        _write_state(vault, state)
+    except Exception as exc:
+        print(f"[reflection] feedback loop 失敗（続行）: {exc}")
 
 
 def _extract_section_items(text: str, heading: str) -> list[str]:
@@ -566,6 +727,15 @@ def generate_and_append_reflection(vault: Path, date_str: str | None = None) -> 
         )
 
     path = _write_reflection_file(vault, date_str, reflection_text, source=source)
+    feedback = _build_reflection_feedback(
+        vault=vault,
+        date_str=date_str,
+        reflection_text=reflection_text,
+        source=source,
+        dialogue_text=dialogue_text,
+    )
+    _write_reflection_feedback_section(path, feedback)
+    _return_reflection_to_memory(vault, feedback)
 
     # セントラル統合処理（REV-154）: 夜間バッチ末尾に実行
     try:

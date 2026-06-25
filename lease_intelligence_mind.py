@@ -123,6 +123,9 @@ def _default_state() -> dict[str, Any]:
             ],
             # Gemini生成の内省テキスト（最新1件）。対話プロンプトへ注入する。
             "text": "",
+            "last_feedback": {},
+            "last_reusable_lessons": [],
+            "next_context": "",
         },
         "user_model": {
             "last_observed_date": "",
@@ -961,7 +964,7 @@ def generate_private_reflection(vault: str | Path, date_str: str) -> str:
 
 
 def build_reflection_block(vault: Path | None) -> str:
-    """昨日の内省テキストをシステムプロンプト注入用ブロックとして返す。なければ空文字。"""
+    """昨日の内省テキストと次回に戻す要点をプロンプト注入用ブロックとして返す。"""
     if not vault:
         return ""
     state = load_lease_intelligence_mind(Path(vault))
@@ -969,7 +972,15 @@ def build_reflection_block(vault: Path | None) -> str:
     if not isinstance(reflection, dict):
         return ""
     text = str(reflection.get("text", "")).strip()
-    if not text:
+    lessons = [
+        str(item).strip()
+        for item in reflection.get("last_reusable_lessons", [])
+        if str(item).strip()
+    ]
+    next_context = str(reflection.get("next_context", "")).strip()
+    feedback = reflection.get("last_feedback", {})
+    stagnant = bool(feedback.get("stagnant")) if isinstance(feedback, dict) else False
+    if not text and not lessons and not next_context:
         return ""
     last_date = str(reflection.get("last_reflected_date", "")).strip()
     header = (
@@ -977,7 +988,19 @@ def build_reflection_block(vault: Path | None) -> str:
         if last_date
         else "## 紫苑の内省（昨日の振り返り）"
     )
-    return f"{header}\n{text}"
+    lines = [header]
+    text_lines = [line.strip() for line in text.splitlines() if line.strip()]
+    text_is_same_as_lessons = bool(lessons) and set(text_lines).issubset(set(lessons))
+    if text and not text_is_same_as_lessons:
+        lines.append(text)
+    if lessons:
+        lines.append("次の対話や判断へ戻す内省:")
+        lines.extend(f"- {lesson}" for lesson in lessons[:4])
+    if next_context:
+        lines.append(f"今回優先して思い出すこと: {next_context}")
+    if stagnant:
+        lines.append("注意: 直近の内省は前日と似ていた。回答では材料鮮度と差分を意識する。")
+    return "\n".join(lines)
 
 
 def _write_dissonance_reflection(
