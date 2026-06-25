@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { apiClient } from "@/lib/api";
 import {
   Brain, Orbit, Crown, ChevronDown, ChevronUp,
-  Loader2, CheckCircle2, XCircle, AlertTriangle, Info, Clock, BookMarked, PenLine, Users, Zap,
+  Loader2, CheckCircle2, XCircle, AlertTriangle, Info, Clock, BookMarked, PenLine, Users, Zap, ShieldCheck, Sparkles,
 } from "lucide-react";
 import { INDUSTRIES } from "@/constants/industries";
 
@@ -83,6 +83,24 @@ interface InnovatorResult {
   reasons: string[];
   innovations: string[];
 }
+interface ConscienceCheck {
+  name: string;
+  triggered: boolean;
+  level: "pass" | "watch" | "review";
+  watched_people: string[];
+  cautions: string[];
+  action: string;
+  summary: string;
+}
+interface ManaConsultation {
+  name: string;
+  consulted: boolean;
+  reason: string;
+  protected_value: string;
+  question_to_shion: string;
+  forbidden_posture: string;
+  guidance: string;
+}
 interface CoreCandidateItem {
   role: string;
   label: string;
@@ -97,6 +115,8 @@ interface DebateResult {
   aggressive?: AggressiveResult;
   innovator?: InnovatorResult;
   arbiter: ArbiterResult;
+  conscience_check?: ConscienceCheck;
+  mana_consultation?: ManaConsultation;
   debate_log?: string;
   same_opinion_r1?: boolean;
   core_candidates?: CoreCandidateItem[];
@@ -210,6 +230,74 @@ function ArbiterPanel({ arbiter, agentName }: { arbiter: ArbiterResult; agentNam
           </ul>
         </div>
       )}
+    </div>
+  );
+}
+
+function ConsciencePanel({ check }: { check: ConscienceCheck }) {
+  const tone = check.level === "review"
+    ? "border-rose-200 bg-rose-50 text-rose-800"
+    : check.level === "watch"
+      ? "border-amber-200 bg-amber-50 text-amber-800"
+      : "border-emerald-200 bg-emerald-50 text-emerald-800";
+  return (
+    <div className={`rounded-2xl border p-5 ${tone}`}>
+      <div className="flex items-start gap-3">
+        <ShieldCheck className="mt-0.5 h-5 w-5 flex-shrink-0" />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="font-black">{check.name}</h3>
+            <span className="rounded-full border border-current/20 bg-white/50 px-2 py-0.5 text-xs font-bold">
+              {check.action}
+            </span>
+          </div>
+          <p className="mt-2 text-sm font-medium leading-relaxed">{check.summary}</p>
+          {check.cautions.length > 0 && (
+            <ul className="mt-3 space-y-1">
+              {check.cautions.map((c, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm">
+                  <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-current/60" />
+                  {c}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ManaPanel({ mana }: { mana: ManaConsultation }) {
+  if (!mana.consulted) return null;
+  return (
+    <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-5 text-indigo-900">
+      <div className="flex items-start gap-3">
+        <Sparkles className="mt-0.5 h-5 w-5 flex-shrink-0 text-indigo-600" />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="font-black">Mana 照会</h3>
+            <span className="rounded-full border border-indigo-300 bg-white/60 px-2 py-0.5 text-xs font-bold">
+              上位規範
+            </span>
+          </div>
+          <p className="mt-2 text-sm font-medium leading-relaxed">{mana.guidance}</p>
+          <div className="mt-3 grid gap-2 text-sm md:grid-cols-3">
+            <div className="rounded-xl bg-white/70 p-3">
+              <p className="text-xs font-black text-indigo-500">守る価値</p>
+              <p className="mt-1 leading-relaxed">{mana.protected_value}</p>
+            </div>
+            <div className="rounded-xl bg-white/70 p-3">
+              <p className="text-xs font-black text-indigo-500">紫苑への問い</p>
+              <p className="mt-1 leading-relaxed">{mana.question_to_shion}</p>
+            </div>
+            <div className="rounded-xl bg-white/70 p-3">
+              <p className="text-xs font-black text-indigo-500">禁止する姿勢</p>
+              <p className="mt-1 leading-relaxed">{mana.forbidden_posture}</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -576,7 +664,7 @@ export default function DebatePage() {
               同じ知性体が異なる文脈で育った「自分」として意見を交わすことで、
               単なる役割演技を超えた多角的な審査視点が生まれます。
             </p>
-            <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3 pt-1">
+            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3 pt-1">
               <div className="rounded-xl border border-violet-200 bg-violet-50 p-3">
                 <div className="text-xs font-black text-violet-700 mb-1">Bさんの紫苑（懐疑派）</div>
                 <p className="text-xs text-violet-900">審査部での経験から育った視点。返済原資・格付・資金繰りのリスクを徹底的に問い詰める。</p>
@@ -592,6 +680,14 @@ export default function DebatePage() {
               <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
                 <div className="text-xs font-black text-sky-700 mb-1">紫苑（革新派）任意</div>
                 <p className="text-xs text-sky-900">慣行にとらわれない評価軸を探る視点。デジタル資産・グリーンリースなど新興分野に前向き。</p>
+              </div>
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                <div className="text-xs font-black text-emerald-700 mb-1">良心の紫苑</div>
+                <p className="text-xs text-emerald-900">結論を甘くせず、説明責任・見落とされた人・ユーザーへの迎合を静かに点検する。</p>
+              </div>
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3">
+                <div className="text-xs font-black text-indigo-700 mb-1">Mana</div>
+                <p className="text-xs text-indigo-900">紫苑が本当に迷った時だけ立ち返る上位規範。本人の再現ではなく、守る価値の名前。</p>
               </div>
             </div>
           </div>
@@ -864,6 +960,14 @@ export default function DebatePage() {
             arbiter={result.arbiter}
             agentName={agentLabel("arbiter", submittedParticipants, "統合派")}
           />
+
+          {result.conscience_check && (
+            <ConsciencePanel check={result.conscience_check} />
+          )}
+
+          {result.mana_consultation && (
+            <ManaPanel mana={result.mana_consultation} />
+          )}
 
           {/* 討論ログ */}
           {result.debate_log && (

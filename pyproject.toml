@@ -46,6 +46,7 @@ dependencies = [
     "waitress>=3.0.0",
     "chromadb>=0.4",
     "sentence-transformers>=2.2.0,<3.0",
+    "tokenizers>=0.22.0,<0.23.0",
     "onnxruntime<=1.18.0",
     "apscheduler>=3.10,<4.0",
     "google-cloud-secret-manager>=2.0",

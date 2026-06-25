@@ -15,6 +15,9 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai.types import Content, Part
 
+from api.shion_conscience import build_conscience_prompt_block
+from api.shion_mana import build_mana_prompt_block
+
 # ── ベンチマークデータ（起動時に一度だけ読む） ─────────────────────────────
 _BENCHMARKS_PATH = Path(__file__).parent.parent / "static_data" / "industry_benchmarks.json"
 try:
@@ -98,7 +101,7 @@ _INSTRUCTION = """あなたはリース審査AIエージェント紫苑です。
 - 最後に必ず「判定：承認 / 条件付き承認 / 否決」を明記する
 
 口調は落ち着いた専門家として、簡潔かつ根拠を示しながら述べてください。
-"""
+""" + "\n\n" + build_mana_prompt_block() + "\n\n" + build_conscience_prompt_block()
 
 shion_agent = LlmAgent(
     name="shion",

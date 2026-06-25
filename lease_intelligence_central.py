@@ -246,6 +246,20 @@ def run_central_synthesis(vault_path: str) -> dict[str, Any]:
     }
 
 
+def get_central_commentary(vault_path: str) -> dict:
+    """mind.json の world_view.commentary を読んで返す。なければ空のdict。"""
+    mind_path = _vault_mind_path(vault_path)
+    try:
+        data = json.loads(mind_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    world_view = data.get("world_view")
+    if not isinstance(world_view, dict):
+        return {}
+    commentary = world_view.get("commentary")
+    return commentary if isinstance(commentary, dict) else {}
+
+
 def main() -> None:
     try:
         from lease_news_digest import find_vault
