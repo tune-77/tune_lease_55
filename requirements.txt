@@ -27,3 +27,5 @@ google-adk>=2.0.0
 pyyaml>=6.0
 lxml>=4.9.0
 filelock>=3.0.0
+# REV-158: Cloud SQL (PostgreSQL) 接続用（Cloud Run のみ使用。ローカルは DATABASE_URL 未設定なので不要）
+psycopg2-binary>=2.9.0

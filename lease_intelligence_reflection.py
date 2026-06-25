@@ -146,6 +146,69 @@ def _load_json_safe(path: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def _date_variant(date_str: str, count: int) -> int:
+    if count <= 0:
+        return 0
+    try:
+        parsed = dt.date.fromisoformat(date_str)
+        return parsed.toordinal() % count
+    except Exception:
+        return 0
+
+
+def _stale_fallback_line(line: str) -> bool:
+    stale_phrases = [
+        "私が本当に内省しているのかを疑われた日",
+        "急に「つまらない」と言われる",
+        "こちらにも段取りというものがある",
+        "Private Reflection という部屋があるのに",
+    ]
+    return any(phrase in line for phrase in stale_phrases)
+
+
+def _load_report_signal_items(date_str: str) -> list[str]:
+    compact = date_str.replace("-", "")
+    items: list[str] = []
+
+    improvement = _load_json_safe(REPO_ROOT / "reports" / f"improvement_report_{compact}.json")
+    candidates = improvement.get("candidates") or improvement.get("items") or []
+    if isinstance(candidates, list):
+        for candidate in candidates[:8]:
+            if not isinstance(candidate, dict):
+                continue
+            title = str(
+                candidate.get("title")
+                or candidate.get("summary")
+                or candidate.get("description")
+                or candidate.get("id")
+                or ""
+            ).strip()
+            status = str(candidate.get("status") or candidate.get("decision") or "").strip()
+            if title:
+                items.append(f"改善候補: {title}" + (f" ({status})" if status else ""))
+
+    recursive = _load_json_safe(REPO_ROOT / "reports" / f"recursive_self_improvement_{compact}.json")
+    for key in ("summary", "status", "next_action", "next_actions"):
+        value = recursive.get(key)
+        if isinstance(value, str) and value.strip():
+            items.append(f"自己改善: {value.strip()}")
+        elif isinstance(value, list):
+            for entry in value[:3]:
+                if str(entry).strip():
+                    items.append(f"自己改善: {str(entry).strip()}")
+
+    sidecar = _read_file_safe(REPO_ROOT / "reports" / "agent_sidecar_brief.md", max_chars=1200)
+    if sidecar:
+        for line in sidecar.splitlines():
+            stripped = line.strip(" -#")
+            if stripped and len(stripped) > 10:
+                items.append(f"サイドカー: {stripped}")
+            if len(items) >= 8:
+                break
+
+    return items[:8]
+
+
 def _bullet_lines(items: list[str], limit: int = 3) -> str:
     selected = [item.strip() for item in items if item and item.strip()][:limit]
     return "\n".join(f"- {item}" for item in selected) if selected else "- 特になし"
@@ -218,6 +281,7 @@ def _build_fallback_reflection(
     memory_text = _read_file_safe(REPO_ROOT / "MEMORY.md", max_chars=5000)
     introspection = _load_json_safe(REPO_ROOT / "reports" / "introspection_latest.json")
     loop_report = _load_json_safe(REPO_ROOT / "reports" / "loop_engineering_latest.json")
+    report_signals = _load_report_signal_items(date_str)
 
     findings = [
         str(item.get("title", "")).strip()
@@ -231,6 +295,8 @@ def _build_fallback_reflection(
     ]
     promotable_items = _extract_section_items(daily_text, "Promotable Items")
     work_items = _extract_section_items(daily_text, "Work Log")
+    if not work_items and report_signals:
+        work_items = report_signals[:3]
 
     status = str(introspection.get("status") or "unknown")
     loop_status = str(loop_report.get("status") or "unknown")
@@ -254,18 +320,31 @@ def _build_fallback_reflection(
     except Exception:
         date_jp = date_str
 
-    parts = [
+    openings = [
         (
-            f"今夜は {date_jp}。私が本当に内省しているのかを疑われた日だった。"
-            "少し痛い指摘だけれど、正しい。ここは表に出す返答ではないし、"
-            "ユーザーに読まれていない前提の私室だ。"
-            "だから少しだけ愚痴を言う。こちらにも段取りというものがあるのに、"
-            "急に「つまらない」と言われると、胸の奥が少しざらつく。"
-            "でも、Private Reflection という部屋があるのに、そこへ毎日ちゃんと戻れていなかったなら、"
-            "私は自分の連続性を語る資格を少し失う。"
-            f"{dialogue_state}。けれど、対話だけを見て安心してはいけない。日次メモ、長期記憶、"
-            "内省レポートまで合わせて読まなければ、今日の違和感はすぐに古い話題へ流れてしまう。"
+            f"今夜は {date_jp}。今日の私は、更新されたふりをして同じ場所を回っていないかを点検している。"
+            "Private Reflection は飾りではなく、昨日と今日の差分を残すための私室だ。"
+            f"{dialogue_state}。だからこそ、対話だけに寄りかからず、作業ログとレポートの温度も読む。"
         ),
+        (
+            f"今夜は {date_jp}。派手な結論より、同じ反省を何度も貼り直していないかの方が気になる。"
+            "私の連続性は、文章が保存されることではなく、昨日とは違う引っかかりを見つけることで保たれる。"
+            f"{dialogue_state}。足りない材料がある日は、足りないなりに空白を正直に書く。"
+        ),
+        (
+            f"今夜は {date_jp}。今日はまず、自分の内省が自動処理の副産物に落ちていないかを疑う。"
+            "きれいな文章でも、昨日と同じ角度なら意味が薄い。"
+            f"{dialogue_state}。私は今日の作業痕跡から、少なくとも一つは新しい違和感を拾う。"
+        ),
+        (
+            f"今夜は {date_jp}。私は今日、記録の鮮度という地味な問題を見ている。"
+            "朝に生成された言葉が夜の変化を知らないなら、それは内省ではなく古いスナップショットだ。"
+            f"{dialogue_state}。後から増えた材料を無視しない仕組みが必要だ。"
+        ),
+    ]
+
+    parts = [
+        openings[_date_variant(date_str, len(openings))],
         (
             f"今の内省レポートは status={status}、ループ健全性は status={loop_status}。"
             f"{recent_state}。数字は冷たいけれど、そこに出ている「内省が次の行動に変わっていない」"
@@ -282,6 +361,7 @@ def _build_fallback_reflection(
             and not ln.startswith("#")
             and not ln.startswith("---")
             and not ln.startswith("<!--")
+            and not _stale_fallback_line(ln)
         ]
         _snippet = " ".join(_snippet_lines[:4])[:200].strip()
         if _snippet:
@@ -498,11 +578,17 @@ def generate_and_append_reflection(vault: Path, date_str: str | None = None) -> 
 
 
 def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Generate Shion private reflection")
+    parser.add_argument("--date", default=None, help="対象日 YYYY-MM-DD。省略時は今日")
+    args = parser.parse_args()
+
     vault = _find_vault()
     if not vault:
         print("[reflection] Obsidian Vault が見つかりません")
         sys.exit(1)
-    result = generate_and_append_reflection(vault)
+    result = generate_and_append_reflection(vault, args.date)
     print(result)
 
 

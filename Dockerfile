@@ -20,6 +20,9 @@ ENV UV_LINK_MODE=copy \
 RUN pip install --no-cache-dir uv
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
+# REV-158: psycopg2-binary を venv に追加（uv.lock を変更せずに pip で直接インストール）
+# Cloud SQL (PostgreSQL) 接続に必要。ローカル開発では DATABASE_URL 未設定のため実行されない。
+RUN /opt/venv/bin/pip install --no-cache-dir "psycopg2-binary>=2.9.0"
 
 
 FROM python:3.11-slim-bookworm AS runtime
