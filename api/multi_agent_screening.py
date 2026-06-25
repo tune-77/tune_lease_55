@@ -130,6 +130,39 @@ def _build_persona_block(profile: dict) -> str:
     return "\n".join(lines)
 
 
+def _load_shion_self_profile(role: str = "arbiter") -> dict | None:
+    """shion_self_analysis_cache.json から role 別の紫苑自己分析プロファイルを構築する。"""
+    import os as _os
+    _cache = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "data", "shion_self_analysis_cache.json")
+    try:
+        with open(_cache, encoding="utf-8") as f:
+            cache = json.load(f)
+    except Exception:
+        try:
+            from api.shion_self_analysis import get_shion_self_analysis
+            cache = get_shion_self_analysis()
+        except Exception:
+            return None
+
+    if role == "skeptic":
+        keypoints = cache.get("skeptic_traits", [])
+        style = "自己分析に基づく懐疑的視点"
+    elif role == "optimist":
+        keypoints = cache.get("optimist_traits", [])
+        style = "自己分析に基づく楽観的視点"
+    else:
+        keypoints = cache.get("optimist_traits", [])[:2] + cache.get("skeptic_traits", [])[:2]
+        style = cache.get("arbiter_style", "自己分析に基づく統合判断")
+
+    return {
+        "name": "紫苑",
+        "dept": "自己生成プロファイル",
+        "style": style,
+        "keypoints": keypoints,
+        "recent_cases": f"mind.json 自己分析（{cache.get('keypoints_used', 0)}件のシグナルから生成）",
+    }
+
+
 def _build_case_ctx(params: dict) -> str:
     base = _CASE_CTX_TMPL.format(
         company_name=params.get("company_name", "（未設定）"),
@@ -641,9 +674,15 @@ def run_debate_screening(params: dict) -> dict:
     skeptic_key = participants.get("skeptic") or ""
     optimist_key = participants.get("optimist") or ""
     arbiter_key = participants.get("arbiter") or ""
-    skeptic_profile = DEMO_USER_PROFILES.get(skeptic_key)
-    optimist_profile = DEMO_USER_PROFILES.get(optimist_key)
-    arbiter_profile = DEMO_USER_PROFILES.get(arbiter_key)
+
+    def _resolve_profile(key: str, role: str) -> dict | None:
+        if key == "shion_self":
+            return _load_shion_self_profile(role)
+        return DEMO_USER_PROFILES.get(key)
+
+    skeptic_profile = _resolve_profile(skeptic_key, "skeptic")
+    optimist_profile = _resolve_profile(optimist_key, "optimist")
+    arbiter_profile = _resolve_profile(arbiter_key, "arbiter")
 
     # ── 審査方針ノート注入: Obsidian の 審査方針.md を全エージェントへ配布 ────────
     policy_text = ""
