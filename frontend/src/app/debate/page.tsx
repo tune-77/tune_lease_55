@@ -4,9 +4,39 @@ import React, { useState, useEffect, useRef } from "react";
 import { apiClient } from "@/lib/api";
 import {
   Brain, Orbit, Crown, ChevronDown, ChevronUp,
-  Loader2, CheckCircle2, XCircle, AlertTriangle, Info, Clock, BookMarked, PenLine,
+  Loader2, CheckCircle2, XCircle, AlertTriangle, Info, Clock, BookMarked, PenLine, Users,
 } from "lucide-react";
 import { INDUSTRIES } from "@/constants/industries";
+
+// ── デモユーザー定義 ─────────────────────────────────────────────────────────
+const DEMO_USERS = [
+  { key: "tanaka", name: "田中", dept: "審査部", style: "厳格・数字重視" },
+  { key: "suzuki", name: "鈴木", dept: "営業推進", style: "積極・関係重視" },
+  { key: "sato",   name: "佐藤", dept: "リーダー", style: "バランス・説明可能性重視" },
+  { key: "yamada", name: "山田", dept: "新人",     style: "教科書的・質問多め" },
+] as const;
+
+type DemoUserKey = "tanaka" | "suzuki" | "sato" | "yamada" | "";
+
+interface Participants {
+  skeptic: DemoUserKey;
+  optimist: DemoUserKey;
+  arbiter: DemoUserKey;
+}
+
+function getUserInfo(key: DemoUserKey) {
+  return DEMO_USERS.find(u => u.key === key) ?? null;
+}
+
+function agentLabel(
+  role: keyof Participants,
+  parts: Participants | null,
+  roleLabel: string,
+) {
+  if (!parts) return `紫苑（${roleLabel}）`;
+  const info = getUserInfo(parts[role]);
+  return info ? `${info.name}さんの紫苑（${roleLabel}）` : `紫苑（${roleLabel}）`;
+}
 
 // ── 過去履歴の型 ──────────────────────────────────────────────────────────────
 interface HistoryMessage {
@@ -78,7 +108,7 @@ function finalBg(final: string) {
 // ── サブコンポーネント ────────────────────────────────────────────────────────
 
 function AgentCard({
-  name, icon, color, opinion, reasons, extras, extraLabel,
+  name, icon, color, opinion, reasons, extras, extraLabel, subtitle,
 }: {
   name: string;
   icon: React.ReactNode;
@@ -87,13 +117,17 @@ function AgentCard({
   reasons: string[];
   extras: string[];
   extraLabel: string;
+  subtitle?: string;
 }) {
   return (
     <div className={`rounded-2xl border-2 ${color} p-5 flex flex-col gap-4`}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 font-black text-lg">
           {icon}
-          {name}
+          <div>
+            {name}
+            {subtitle && <p className="text-xs font-normal text-slate-500 mt-0.5">{subtitle}</p>}
+          </div>
         </div>
         <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold ${opinionBadge(opinion)}`}>
           {opinionIcon(opinion)}
@@ -130,12 +164,12 @@ function AgentCard({
   );
 }
 
-function ArbiterPanel({ arbiter }: { arbiter: ArbiterResult }) {
+function ArbiterPanel({ arbiter, agentName }: { arbiter: ArbiterResult; agentName: string }) {
   return (
     <div className={`rounded-2xl border-2 bg-gradient-to-br ${finalBg(arbiter.final)} p-6`}>
       <div className="flex items-center gap-3 mb-4">
         <Crown className="w-6 h-6 text-violet-500" />
-        <h3 className="text-xl font-black text-slate-800">Cさんの紫苑（統合派）・最終裁定</h3>
+        <h3 className="text-xl font-black text-slate-800">{agentName}・最終裁定</h3>
         <span className={`ml-auto inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-base font-black ${opinionBadge(arbiter.final)}`}>
           {opinionIcon(arbiter.final)}
           {arbiter.final}
@@ -268,6 +302,12 @@ export default function DebatePage() {
     news_focus_note_path: "",
     news_focus_note_date: "",
   });
+  const [participants, setParticipants] = useState<Participants>({
+    skeptic: "tanaka",
+    optimist: "suzuki",
+    arbiter: "sato",
+  });
+  const [submittedParticipants, setSubmittedParticipants] = useState<Participants | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DebateResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -329,8 +369,17 @@ export default function DebatePage() {
       ? crypto.randomUUID()
       : Math.random().toString(36).slice(2);
     try {
-      const payload = { ...form, session_id: sessionIdRef.current };
+      const capturedParticipants = { ...participants };
+      const participantsPayload = Object.fromEntries(
+        Object.entries(capturedParticipants).filter(([, v]) => v !== "")
+      );
+      const payload = {
+        ...form,
+        session_id: sessionIdRef.current,
+        participants: Object.keys(participantsPayload).length > 0 ? participantsPayload : undefined,
+      };
       const { data } = await apiClient.post("/api/multi-agent-screening", payload);
+      setSubmittedParticipants(capturedParticipants);
       setResult(data);
       setHumanDecision(data.arbiter.final);
       setJudgmentChangeReason("");
@@ -477,6 +526,43 @@ export default function DebatePage() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* 参加者選択 */}
+      <div className="mb-6 bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+        <h2 className="text-lg font-black text-slate-700 mb-4 flex items-center gap-2">
+          <Users className="w-5 h-5 text-violet-500" />
+          参加者を選択
+        </h2>
+        <div className="grid md:grid-cols-3 gap-4">
+          {([
+            { role: "skeptic"  as const, label: "懐疑派",       border: "border-violet-200", bg: "bg-violet-50",  text: "text-violet-700" },
+            { role: "optimist" as const, label: "楽観派",       border: "border-teal-200",   bg: "bg-teal-50",    text: "text-teal-700" },
+            { role: "arbiter"  as const, label: "統合派（裁定）", border: "border-amber-200",  bg: "bg-amber-50",   text: "text-amber-700" },
+          ]).map(({ role, label, border, bg, text }) => {
+            const info = getUserInfo(participants[role]);
+            return (
+              <div key={role} className={`rounded-xl border-2 ${border} ${bg} p-4`}>
+                <p className={`text-xs font-black ${text} mb-2`}>紫苑（{label}）</p>
+                <select
+                  value={participants[role]}
+                  onChange={(e) =>
+                    setParticipants(prev => ({ ...prev, [role]: e.target.value as DemoUserKey }))
+                  }
+                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400"
+                >
+                  <option value="">— 未選択（デフォルト） —</option>
+                  {DEMO_USERS.map(u => (
+                    <option key={u.key} value={u.key}>{u.name}（{u.dept}）</option>
+                  ))}
+                </select>
+                {info && (
+                  <p className="mt-2 text-xs text-slate-500">{info.style}</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* 自動入力バナー */}
@@ -627,7 +713,9 @@ export default function DebatePage() {
                 <Orbit className="w-6 h-6 text-violet-600" />
                 <div>
                   <p className="font-black text-violet-700">討論モード</p>
-                  <p className="text-xs text-violet-500">スコア {result.score}点 — Bさんの紫苑（懐疑派）・Aさんの紫苑（楽観派）が2ラウンド討論後、Cさんの紫苑（統合派）が裁定</p>
+                  <p className="text-xs text-violet-500">
+                    スコア {result.score}点 — {agentLabel("skeptic", submittedParticipants, "懐疑派")}・{agentLabel("optimist", submittedParticipants, "楽観派")}が2ラウンド討論後、{agentLabel("arbiter", submittedParticipants, "統合派")}が裁定
+                  </p>
                 </div>
               </>
             ) : (
@@ -635,7 +723,7 @@ export default function DebatePage() {
                 <Brain className="w-6 h-6 text-slate-500" />
                 <div>
                   <p className="font-black text-slate-700">高速処理モード</p>
-                  <p className="text-xs text-slate-500">スコア {result.score}点 — 境界外のためCさんの紫苑（統合派）が単独処理</p>
+                  <p className="text-xs text-slate-500">スコア {result.score}点 — 境界外のため{agentLabel("arbiter", submittedParticipants, "統合派")}が単独処理</p>
                 </div>
               </>
             )}
@@ -650,7 +738,8 @@ export default function DebatePage() {
               </h2>
               <div className="grid md:grid-cols-2 gap-4">
                 <AgentCard
-                  name="Bさんの紫苑（懐疑派）"
+                  name={agentLabel("skeptic", submittedParticipants, "懐疑派")}
+                  subtitle={getUserInfo(submittedParticipants?.skeptic ?? "")?.dept}
                   icon={<Brain className="w-5 h-5 text-violet-600" />}
                   color="border-violet-200 bg-violet-50/50"
                   opinion={result.cautious.opinion}
@@ -659,7 +748,8 @@ export default function DebatePage() {
                   extraLabel="重大リスク"
                 />
                 <AgentCard
-                  name="Aさんの紫苑（楽観派）"
+                  name={agentLabel("optimist", submittedParticipants, "楽観派")}
+                  subtitle={getUserInfo(submittedParticipants?.optimist ?? "")?.dept}
                   icon={<Brain className="w-5 h-5 text-teal-600" />}
                   color="border-teal-200 bg-teal-50/50"
                   opinion={result.aggressive.opinion}
@@ -672,7 +762,10 @@ export default function DebatePage() {
           )}
 
           {/* 軍師裁定 */}
-          <ArbiterPanel arbiter={result.arbiter} />
+          <ArbiterPanel
+            arbiter={result.arbiter}
+            agentName={agentLabel("arbiter", submittedParticipants, "統合派")}
+          />
 
           {/* 討論ログ */}
           {result.debate_log && (
