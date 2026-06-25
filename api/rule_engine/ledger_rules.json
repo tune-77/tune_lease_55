@@ -408,5 +408,30 @@
     "action": "review_content",
     "penalty_strength": "weak",
     "generated_at": "2026-06-21T19:00:03.464880+00:00"
+  },
+  {
+    "rev_id": "RAG-UNRATED-2026_06_16_pricing_rate",
+    "type": "rag_boost_adjust",
+    "pending_review": true,
+    "description": "RAGヒット済み未評価: 2026-06-16_pricing-rate が直近30日で検索ヒットしたが評価なし（要内容確認）",
+    "source": "analyze_rag_feedback.py",
+    "target": "config/rag_ranking.json",
+    "path": "2026-06-16_pricing-rate",
+    "action": "review_content",
+    "penalty_strength": "weak",
+    "generated_at": "2026-06-23T19:00:24.463370+00:00"
+  },
+  {
+    "rev_id": "REV-024a",
+    "type": "manual",
+    "pending_review": true,
+    "category": "pipeline_fix",
+    "description": "[パイプライン自動検出] auto_improvement_pipeline が過去7日で失敗率100%（4/4件, 4日失敗）",
+    "status": "pending_review",
+    "source": "analyze_pipeline_health",
+    "detected_at": "2026-06-23T19:00:24Z",
+    "affected_files": [],
+    "risk": "medium",
+    "auto_fix_allowed": false
   }
 ]

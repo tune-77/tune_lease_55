@@ -74,6 +74,11 @@ interface ArbiterResult {
   reasoning: string;
   conditions: string[];
 }
+interface CoreCandidate {
+  text: string;
+  source: string;
+  case_summary: string;
+}
 interface DebateResult {
   score: number;
   mode: "solo" | "debate";
@@ -82,6 +87,7 @@ interface DebateResult {
   arbiter: ArbiterResult;
   debate_log?: string;
   same_opinion_r1?: boolean;
+  core_candidate?: CoreCandidate;
 }
 
 
@@ -314,6 +320,10 @@ export default function DebatePage() {
   const [error, setError] = useState<string | null>(null);
   const [obsidianSaving, setObsidianSaving] = useState(false);
   const [obsidianToast, setObsidianToast] = useState<"success" | "error" | null>(null);
+  const [coreText, setCoreText] = useState("");
+  const [coreEditing, setCoreEditing] = useState(false);
+  const [coreStatus, setCoreStatus] = useState<"idle" | "saving" | "success" | "skipped">("idle");
+  const [coreTotalKeypoints, setCoreTotalKeypoints] = useState<number | null>(null);
   const [judgmentSaving, setJudgmentSaving] = useState(false);
   const [judgmentToast, setJudgmentToast] = useState<"success" | "error" | null>(null);
   const [humanDecision, setHumanDecision] = useState("");
@@ -398,6 +408,10 @@ export default function DebatePage() {
       setResult(data);
       setHumanDecision(data.arbiter.final);
       setJudgmentChangeReason("");
+      setCoreText(data.core_candidate?.text ?? "");
+      setCoreEditing(false);
+      setCoreStatus("idle");
+      setCoreTotalKeypoints(null);
       // 討論完了後に履歴を再取得
       if (form.company_name?.trim()) {
         apiClient.get(`/api/conversation-history?company_name=${encodeURIComponent(form.company_name.trim())}&limit=5`)
@@ -481,6 +495,21 @@ export default function DebatePage() {
     } finally {
       setJudgmentSaving(false);
       setTimeout(() => setJudgmentToast(null), 2000);
+    }
+  };
+
+  const handlePromoteCore = async () => {
+    if (!result?.core_candidate) return;
+    setCoreStatus("saving");
+    try {
+      const { data } = await apiClient.post("/api/shion/promote-keypoint", {
+        text: coreText,
+        case_summary: result.core_candidate.case_summary,
+      });
+      setCoreTotalKeypoints(data.total_keypoints);
+      setCoreStatus("success");
+    } catch {
+      setCoreStatus("idle");
     }
   };
 
@@ -798,6 +827,81 @@ export default function DebatePage() {
           {/* 討論ログ */}
           {result.debate_log && (
             <DebateLog log={result.debate_log} sameR1={result.same_opinion_r1} />
+          )}
+
+          {/* コアに昇格 */}
+          {result.core_candidate && coreStatus !== "skipped" && (
+            <div className="rounded-2xl border-2 border-violet-200 bg-gradient-to-br from-violet-50 to-purple-50 p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-lg">✨</span>
+                <h3 className="font-black text-violet-800">紫苑のコアに昇格しますか？</h3>
+              </div>
+
+              {coreStatus === "success" ? (
+                <p className="text-sm font-bold text-emerald-700 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4" />
+                  keypoints に保存しました（合計{coreTotalKeypoints}件）
+                </p>
+              ) : coreEditing ? (
+                <div className="space-y-3">
+                  <textarea
+                    value={coreText}
+                    onChange={(e) => setCoreText(e.target.value)}
+                    rows={3}
+                    className="w-full rounded-xl border border-violet-300 bg-white px-3 py-2 text-sm text-slate-800 resize-none focus:outline-none focus:ring-2 focus:ring-violet-400"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handlePromoteCore}
+                      disabled={coreStatus === "saving" || !coreText.trim()}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-violet-600 text-white text-sm font-bold hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                    >
+                      {coreStatus === "saving" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                      保存してコアに昇格
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCoreEditing(false)}
+                      className="px-4 py-2 rounded-xl border border-violet-300 text-sm font-bold text-violet-700 hover:bg-violet-100 transition-colors"
+                    >
+                      キャンセル
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-slate-700 leading-relaxed bg-white/70 rounded-xl px-4 py-3 border border-violet-100">
+                    「{coreText}」
+                  </p>
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setCoreEditing(true)}
+                      className="px-3 py-1.5 rounded-lg border border-violet-300 text-sm font-bold text-violet-700 hover:bg-violet-100 transition-colors"
+                    >
+                      編集
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handlePromoteCore}
+                      disabled={coreStatus === "saving"}
+                      className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-violet-600 text-white text-sm font-bold hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                    >
+                      {coreStatus === "saving" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                      保存してコアに昇格
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCoreStatus("skipped")}
+                      className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm font-bold text-slate-500 hover:bg-slate-100 transition-colors"
+                    >
+                      スキップ
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
