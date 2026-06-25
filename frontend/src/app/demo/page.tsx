@@ -42,7 +42,7 @@ const RINGS = [
   },
   {
     label: "とどける",
-    desc: "マルチエージェント",
+    desc: "4ペルソナ+確信マップ",
     size: "w-36 h-36",
     borderColor: "border-emerald-500/60",
     glowColor: "shadow-[0_0_20px_rgba(52,211,153,0.3)]",
@@ -57,7 +57,7 @@ const TECH_BADGES = [
   { label: "Cloud Run", color: "bg-teal-900/50 border-teal-500/40 text-teal-300" },
   { label: "ChromaDB", color: "bg-violet-900/50 border-violet-500/40 text-violet-300" },
   { label: "LightGBM", color: "bg-emerald-900/50 border-emerald-500/40 text-emerald-300" },
-  { label: "Next.js 14", color: "bg-slate-800/70 border-slate-500/40 text-slate-300" },
+  { label: "Next.js 16", color: "bg-slate-800/70 border-slate-500/40 text-slate-300" },
   { label: "FastAPI", color: "bg-green-900/50 border-green-500/40 text-green-300" },
 ];
 
@@ -81,9 +81,9 @@ const CTAS = [
     glow: "hover:shadow-[0_0_30px_rgba(192,38,211,0.4)]",
   },
   {
-    label: "マルチエージェント討論",
-    sublabel: "複数紫苑がリアル審査討論",
-    href: "/multi-shion-demo",
+    label: "4ペルソナ討論 + 確信マップ",
+    sublabel: "慎重・積極・革新者・裁定者が討論し共有認識を可視化",
+    href: "/debate",
     primary: false,
     Icon: GitMerge,
     gradient: "from-cyan-600 to-blue-600",
@@ -167,8 +167,8 @@ export default function DemoPage() {
         </h1>
 
         <p className="mb-12 max-w-xl text-center text-base font-medium leading-relaxed text-slate-400 sm:text-lg">
-          紫苑（AI審査知性体）が<strong className="text-white">スコアリング・自己改善・多体討論</strong>を
-          フルオートで回し続けるリースファイナンスAIシステム。
+          紫苑（AI審査知性体）が<strong className="text-white">スコアリング・自己改善・4ペルソナ討論</strong>を
+          フルオートで回し続けるリースファイナンスAIシステム。討論結果はセントラル統合エンジンで<strong className="text-white">確信マップ（world_view）</strong>として蓄積される。
         </p>
 
         {/* 3円環アニメーション */}

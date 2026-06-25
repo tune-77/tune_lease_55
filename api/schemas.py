@@ -128,6 +128,9 @@ class LeaseNewsSummaryItem(BaseModel):
     title: str
     summary_lines: list[str] = []
     usage_memo: str = ""
+    summary_codes: list[str] = []
+    usage_codes: list[str] = []
+    key_phrases: list[str] = []
     tags: list[str] = []
     region: str = "国内"
     importance: str = "通常"

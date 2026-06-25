@@ -165,6 +165,9 @@ type NewsSummaryItem = {
   title: string;
   summary_lines: string[];
   usage_memo: string;
+  summary_codes?: string[];
+  usage_codes?: string[];
+  key_phrases?: string[];
   tags: string[];
   region: string;
   importance: string;
@@ -212,7 +215,16 @@ export default function HomeDashboard() {
   const [newsUrl, setNewsUrl] = useState("");
   const [newsBody, setNewsBody] = useState("");
   const [newsSubmitting, setNewsSubmitting] = useState(false);
-  const [newsResult, setNewsResult] = useState<{ title: string; summary_lines: string[]; usage_memo: string; tags: string[]; importance: string } | null>(null);
+  const [newsResult, setNewsResult] = useState<{
+    title: string;
+    summary_lines: string[];
+    usage_memo: string;
+    summary_codes?: string[];
+    usage_codes?: string[];
+    key_phrases?: string[];
+    tags: string[];
+    importance: string;
+  } | null>(null);
 
   useEffect(() => {
     // 画面マウント時にめぶきちゃんを更新
@@ -1009,6 +1021,15 @@ export default function HomeDashboard() {
                       <li key={i}>• {line}</li>
                     ))}
                   </ul>
+                  {(newsResult.key_phrases || []).length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {(newsResult.key_phrases || []).slice(0, 5).map((phrase, i) => (
+                        <span key={i} className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
+                          {phrase}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   <p className="mt-2 text-xs text-emerald-600">{newsResult.usage_memo}</p>
                 </div>
               )}
@@ -1057,6 +1078,15 @@ export default function HomeDashboard() {
                       <p className="text-[11px] text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-3 border border-amber-100">
                         {item.usage_memo}
                       </p>
+                    )}
+                    {(item.key_phrases || []).length > 0 && (
+                      <div className="mb-3 flex flex-wrap gap-1.5">
+                        {(item.key_phrases || []).slice(0, 5).map((phrase, k) => (
+                          <span key={k} className="rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-500 border border-slate-200">
+                            {phrase}
+                          </span>
+                        ))}
+                      </div>
                     )}
                     <div className="flex flex-wrap gap-1.5 mt-auto">
                       {item.tags.map((tag, k) => (

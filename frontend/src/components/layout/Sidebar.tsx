@@ -4,14 +4,14 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Home, MessageSquare, ClipboardCheck, FileText, Bot, Zap, Factory,
+  Home, MessageSquare, ClipboardCheck, FileText, Zap, Factory,
   PenTool, Users, Wrench, PencilRuler, History, ScrollText,
   LineChart, Target, Settings, Calendar, Share2, Network,
-  Eye, BarChart3, TrendingUp, Globe, ChevronDown, ChevronRight, ChevronLeft, Building,
+  Eye, BarChart3, ChevronDown, ChevronRight, ChevronLeft, Building,
   X, Menu, Table2, Swords, MessageCircle,
   BarChart2, BookOpen, Gift, HelpCircle, Megaphone, Calculator,
   Receipt, LifeBuoy, ClipboardList, CreditCard, Activity, GitMerge, Briefcase, Brain,
-  UserCheck, Orbit, Sparkles
+  Orbit, Sparkles
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
 import ThemeSelector from '@/components/layout/ThemeSelector';
@@ -48,9 +48,7 @@ export default function Sidebar() {
     {
       title: '管理・エージェント',
       items: [
-        { name: '汎用エージェントハブ', href: '/agent-hub', icon: Bot, color: 'text-violet-400' },
         { name: 'マルチエージェント討論審査', href: '/debate', icon: Swords, color: 'text-violet-500' },
-        { name: '実案件差分レビュー', href: '/judgment-review', icon: UserCheck, color: 'text-emerald-400' },
         { name: '結果登録 (成約/失注)', href: '/register', icon: PenTool, color: 'text-rose-400' },
         { name: '過去案件一覧', href: '/cases', icon: Table2, color: 'text-cyan-400' },
         { name: 'カウンターファクチュアル分析', href: '/counterfactual', icon: GitMerge, color: 'text-fuchsia-400' },
@@ -63,12 +61,9 @@ export default function Sidebar() {
         { name: '業種別成約率分析', href: '/industry-stats', icon: Briefcase, color: 'text-sky-500' },
         { name: '3期財務分析', href: '/financial', icon: BarChart3, color: 'text-rose-500' },
         { name: '業種別成約率', href: '/industry-winrate', icon: BarChart2, color: 'text-blue-400' },
-        { name: 'TimesFM 時系列予測', href: '/timesfm', icon: TrendingUp, color: 'text-emerald-500' },
         { name: '競合関係グラフ', href: '/competitor', icon: Share2, color: 'text-orange-400' },
-        { name: '案件類似ネットワーク', href: '/similar', icon: Network, color: 'text-teal-400' },
         { name: '知識宇宙マップ', href: '/knowledge-space', icon: Network, color: 'text-cyan-300' },
         { name: 'ビジュアルインサイト', href: '/visual', icon: Eye, color: 'text-blue-300' },
-        { name: '文明年代記', href: '/chronicle', icon: Globe, color: 'text-purple-500' },
       ]
     },
     {

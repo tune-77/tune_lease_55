@@ -45,6 +45,8 @@ while _REPO_ROOT in sys.path:
     sys.path.remove(_REPO_ROOT)
 sys.path.insert(0, _REPO_ROOT)
 
+from api.llm_json_guard import extract_candidate_text, parse_or_recover_json, with_retry_tokens
+
 # data_cases / base_rate_master を正しいパスから強制ロード（clawd/ 直下の同名モジュールより優先）
 import importlib.util as _ilu
 _dc_spec = _ilu.spec_from_file_location("data_cases", os.path.join(_REPO_ROOT, "data_cases.py"))
@@ -8038,18 +8040,113 @@ def _fetch_url_text(url: str) -> str:
     return "\n".join(parser._parts)[:6000]
 
 
+_NEWS_SUMMARY_CODE_TEXT = {
+    "CAPEX": "設備投資・更新需要に動きがあり、リース提案の接点になり得ます。",
+    "RATE": "金利・資金調達環境の変化が、月額負担や契約条件の説明材料になります。",
+    "REGULATION": "制度・規制変更が、顧客の投資判断や導入時期に影響し得ます。",
+    "MARKET": "市場環境や需給の変化が、業界別の提案優先度を左右します。",
+    "RISK": "信用・資金繰り・事業継続面の確認を強めるべき材料があります。",
+    "TECH": "DX・AI・省力化・脱炭素設備など、戦略投資の切り口があります。",
+    "ASSET": "対象物件の価値、保全、中古流通を確認する材料があります。",
+}
+
+_NEWS_USAGE_CODE_TEXT = {
+    "PROPOSAL_TIMING": "顧客の投資タイミング確認に使う。",
+    "RATE_EXPLAIN": "金利・月額負担・総支払額の説明に使う。",
+    "RISK_CHECK": "審査時の追加確認項目を洗い出す。",
+    "ASSET_MATCH": "物件選定、残価、保全条件の確認に使う。",
+    "INDUSTRY_TALK": "業界動向の会話導入に使う。",
+    "FOLLOW_UP": "既存顧客へのフォロー論点にする。",
+}
+
+
+def _normalize_code_list(values: object, allowed: set[str], limit: int) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    normalized = []
+    for value in values:
+        code = str(value).strip().upper()
+        if code in allowed and code not in normalized:
+            normalized.append(code)
+        if len(normalized) >= limit:
+            break
+    return normalized
+
+
+def _normalize_phrase_list(values: object, limit: int = 5) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    phrases = []
+    for value in values:
+        phrase = str(value).strip()
+        if phrase and phrase not in phrases:
+            phrases.append(phrase[:40])
+        if len(phrases) >= limit:
+            break
+    return phrases
+
+
+def _render_news_summary(result: dict, source: str) -> dict:
+    summary_codes = _normalize_code_list(
+        result.get("summary_codes"),
+        set(_NEWS_SUMMARY_CODE_TEXT.keys()),
+        3,
+    )
+    usage_codes = _normalize_code_list(
+        result.get("usage_codes"),
+        set(_NEWS_USAGE_CODE_TEXT.keys()),
+        2,
+    )
+    key_phrases = _normalize_phrase_list(result.get("key_phrases"), limit=5)
+
+    if not summary_codes:
+        summary_codes = ["MARKET"]
+    phrase_tail = f"（関連語: {'、'.join(key_phrases[:3])}）" if key_phrases else ""
+    lines = []
+    for code in summary_codes[:3]:
+        line = _NEWS_SUMMARY_CODE_TEXT.get(code, _NEWS_SUMMARY_CODE_TEXT["MARKET"])
+        lines.append(f"{line}{phrase_tail}" if not lines and phrase_tail else line)
+    while len(lines) < 3:
+        lines.append("原文を確認し、顧客業種・物件・投資時期との関係を見極めます。")
+
+    usage_parts = [
+        _NEWS_USAGE_CODE_TEXT.get(code, "")
+        for code in usage_codes
+        if _NEWS_USAGE_CODE_TEXT.get(code)
+    ]
+    if not usage_parts:
+        usage_parts = ["顧客との会話導入と、提案・審査時の確認論点整理に使う。"]
+
+    rendered = {
+        **result,
+        "summary_codes": summary_codes,
+        "usage_codes": usage_codes,
+        "key_phrases": key_phrases,
+        "summary_lines": lines[:3],
+        "usage_memo": " ".join(usage_parts),
+    }
+    if not rendered.get("title"):
+        rendered["title"] = "リース関連ニュース"
+    if not rendered.get("tags"):
+        rendered["tags"] = ["要確認"]
+    if not rendered.get("source_hint") and source:
+        rendered["source_hint"] = source[:80]
+    return rendered
+
+
 def _summarize_news_with_gemini(text: str, source: str) -> dict:
     api_key = _get_gemini_api_key()
     if not api_key:
         raise HTTPException(status_code=503, detail="Gemini APIキーが未設定です")
 
-    prompt = f"""あなたはリース業界の営業担当向けにニュースを要約するアシスタントです。
-以下のニュース記事を読み、JSON形式で以下を出力してください。JSON以外は出力しないでください。
+    prompt = f"""あなたはリース業界の営業担当向けにニュースを分類するアシスタントです。
+以下のニュース記事を読み、短い構造JSONだけを出力してください。説明文は不要です。
 
 {{
   "title": "ニュースタイトル（15文字〜30文字）",
-  "summary_lines": ["要約1", "要約2", "要約3"],
-  "usage_memo": "営業・提案への活用ポイント（1〜2行）",
+  "summary_codes": ["CAPEX/RATE/REGULATION/MARKET/RISK/TECH/ASSET から最大3件"],
+  "key_phrases": ["記事内の重要語句を最大5件、各40文字以内"],
+  "usage_codes": ["PROPOSAL_TIMING/RATE_EXPLAIN/RISK_CHECK/ASSET_MATCH/INDUSTRY_TALK/FOLLOW_UP から最大2件"],
   "tags": ["タグ1", "タグ2", "タグ3"],
   "region": "国内/米国/欧州/アジア のいずれか1つ",
   "importance": "高/中/低"
@@ -8057,28 +8154,73 @@ def _summarize_news_with_gemini(text: str, source: str) -> dict:
 
 タグはリース種別（ファイナンスリース、オペレーティングリース等）、トピック（金利動向、規制変更、市場動向等）から選んでください。
 regionは記事の主な対象地域を判定してください。日本国内のニュースは「国内」、米国は「米国」、欧州は「欧州」、中国・東南アジア等は「アジア」。複数地域にまたがる場合は主な地域を1つ選んでください。
+summary_codes と usage_codes は必ず上記の英字コードだけを返してください。
 
 ニュース記事:
 {text[:4000]}
 """
 
+    defaults = {
+        "title": "リース関連ニュース",
+        "summary_lines": [
+            "ニュース本文の自動要約が一部不完全です。",
+            "原文を確認して営業活用可否を判断してください。",
+            f"情報源: {source[:80] or '不明'}",
+        ],
+        "usage_memo": "要約の自動生成が不完全なため、原文確認後に提案材料として扱ってください。",
+        "summary_codes": ["MARKET"],
+        "usage_codes": ["INDUSTRY_TALK"],
+        "key_phrases": [],
+        "tags": ["要確認"],
+        "region": "国内",
+        "importance": "中",
+    }
+
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.2,
+            "maxOutputTokens": 1024,
+            "responseMimeType": "application/json",
+        },
+    }
+
     import requests as _req
     url = _gemini_generate_url()
-    response = _req.post(
-        url,
-        json={"contents": [{"parts": [{"text": prompt}]}]},
-        headers={"x-goog-api-key": api_key},
-        timeout=30,
-    )
-    response.raise_for_status()
-    raw = response.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-    raw = re.sub(r"^```json\s*", "", raw)
-    raw = re.sub(r"\s*```$", "", raw)
-    result = json.loads(raw)
+    result = defaults
+    raw = ""
+    finish_reason = ""
+    for current_payload in (payload, with_retry_tokens(payload, 2048)):
+        response = _req.post(
+            url,
+            json=current_payload,
+            headers={"x-goog-api-key": api_key},
+            timeout=30,
+        )
+        response.raise_for_status()
+        raw, finish_reason = extract_candidate_text(response.json())
+        result, recovered = parse_or_recover_json(
+            raw,
+            defaults=defaults,
+            string_fields={"title", "usage_memo", "region", "importance"},
+            array_fields={"summary_codes", "key_phrases", "usage_codes", "summary_lines", "tags"},
+        )
+        if not recovered and finish_reason != "MAX_TOKENS":
+            break
+        if current_payload["generationConfig"]["maxOutputTokens"] >= 2048:
+            break
     valid_regions = {"国内", "米国", "欧州", "アジア"}
     if result.get("region") not in valid_regions:
         result["region"] = "国内"
-    return result
+    if result.get("importance") not in {"高", "中", "低"}:
+        result["importance"] = "中"
+    if not isinstance(result.get("summary_lines"), list) or not result["summary_lines"]:
+        result["summary_lines"] = defaults["summary_lines"]
+    if not isinstance(result.get("tags"), list) or not result["tags"]:
+        result["tags"] = defaults["tags"]
+    if finish_reason == "MAX_TOKENS":
+        result["_finish_reason"] = finish_reason
+    return _render_news_summary(result, source)
 
 
 def _save_news_to_obsidian(summary: dict, source: str) -> str | None:
@@ -8103,6 +8245,9 @@ def _save_news_to_obsidian(summary: dict, source: str) -> str | None:
     fpath = news_dir / fname
 
     tags_yaml = json.dumps(summary.get("tags", []), ensure_ascii=False)
+    summary_codes_yaml = json.dumps(summary.get("summary_codes", []), ensure_ascii=False)
+    usage_codes_yaml = json.dumps(summary.get("usage_codes", []), ensure_ascii=False)
+    key_phrases_yaml = json.dumps(summary.get("key_phrases", []), ensure_ascii=False)
     lines = summary.get("summary_lines", [])
     memo = summary.get("usage_memo", "")
     region = summary.get("region", "国内")
@@ -8112,6 +8257,9 @@ date: {today}
 week: {week}
 month: {month}
 tags: {tags_yaml}
+summary_codes: {summary_codes_yaml}
+usage_codes: {usage_codes_yaml}
+key_phrases: {key_phrases_yaml}
 region: {region}
 source: {source or "手動入力"}
 importance: {summary.get("importance", "中")}
@@ -8202,6 +8350,9 @@ def summarize_lease_news(req: LeaseNewsSummarizeRequest):
         "title": summary.get("title", ""),
         "summary_lines": summary.get("summary_lines", []),
         "usage_memo": summary.get("usage_memo", ""),
+        "summary_codes": summary.get("summary_codes", []),
+        "usage_codes": summary.get("usage_codes", []),
+        "key_phrases": summary.get("key_phrases", []),
         "tags": summary.get("tags", []),
         "region": summary.get("region", "国内"),
         "importance": summary.get("importance", "中"),
@@ -8282,6 +8433,9 @@ def get_recent_lease_news(limit: int = 5):
             "title": fpath.stem,
             "summary_lines": [],
             "usage_memo": "",
+            "summary_codes": [],
+            "usage_codes": [],
+            "key_phrases": [],
             "tags": [],
             "region": "国内",
             "importance": "通常",
@@ -8301,6 +8455,21 @@ def get_recent_lease_news(limit: int = 5):
                 elif line.startswith("tags:"):
                     try:
                         item["tags"] = json.loads(line.split(":", 1)[1].strip())
+                    except Exception:
+                        pass
+                elif line.startswith("summary_codes:"):
+                    try:
+                        item["summary_codes"] = json.loads(line.split(":", 1)[1].strip())
+                    except Exception:
+                        pass
+                elif line.startswith("usage_codes:"):
+                    try:
+                        item["usage_codes"] = json.loads(line.split(":", 1)[1].strip())
+                    except Exception:
+                        pass
+                elif line.startswith("key_phrases:"):
+                    try:
+                        item["key_phrases"] = json.loads(line.split(":", 1)[1].strip())
                     except Exception:
                         pass
                 elif line.startswith("region:"):

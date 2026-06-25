@@ -18,6 +18,7 @@ import os
 import re
 import requests
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 from api.context.context_bundle import build_context_bundle
 from api.knowledge.vector_store import get_store as _get_knowledge_store
@@ -321,7 +322,35 @@ def _llm_call(system: str, prompt: str, temperature: float, max_tokens: int = 10
         timeout=60,
     )
     resp.raise_for_status()
-    raw = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+    data = resp.json()
+    candidate = (data.get("candidates") or [{}])[0]
+    raw = ((candidate.get("content") or {}).get("parts") or [{}])[0].get("text", "").strip()
+    finish_reason = str(candidate.get("finishReason") or "").upper()
+    if finish_reason == "MAX_TOKENS" and max_tokens < 4096:
+        retry_payload = {
+            **payload,
+            "generationConfig": {
+                **payload["generationConfig"],
+                "temperature": min(temperature, 0.2),
+                "maxOutputTokens": max(max_tokens * 4, 2048),
+            },
+        }
+        retry_resp = requests.post(
+            _gemini_url(),
+            json=retry_payload,
+            headers={"x-goog-api-key": api_key},
+            timeout=90,
+        )
+        retry_resp.raise_for_status()
+        retry_data = retry_resp.json()
+        retry_candidate = (retry_data.get("candidates") or [{}])[0]
+        retry_raw = (
+            ((retry_candidate.get("content") or {}).get("parts") or [{}])[0]
+            .get("text", "")
+            .strip()
+        )
+        if retry_raw:
+            raw = retry_raw
 
     # コードブロック除去
     if "```" in raw:
@@ -336,7 +365,106 @@ def _llm_call(system: str, prompt: str, temperature: float, max_tokens: int = 10
         m = re.search(r"\{.*\}", raw, re.DOTALL)
         if m:
             raw = m.group()
-    return json.loads(raw)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        _record_invalid_llm_json(raw, exc, finish_reason)
+        return _recover_structured_codes(raw, system) or _fallback_llm_json(system, str(exc))
+
+
+def _record_invalid_llm_json(raw: str, exc: json.JSONDecodeError, finish_reason: str = "") -> None:
+    """Keep malformed model JSON for diagnosis without failing the request."""
+    try:
+        log_path = Path(__file__).parent.parent / "data" / "multi_agent_invalid_json.jsonl"
+        entry = {
+            "error": str(exc),
+            "finish_reason": finish_reason,
+            "raw_preview": raw[:2000],
+        }
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def _fallback_llm_json(system: str, reason: str) -> dict:
+    """Return a conservative structured response when Gemini emits broken JSON."""
+    if "統合派" in system:
+        return {
+            "final": "条件付承認",
+            "reasoning": (
+                "GeminiのJSON応答が途中で破損したため、安全側の暫定判断です。"
+                f"人手で根拠と条件を再確認してください（parse error: {reason}）。"
+            ),
+            "conditions": [
+                "AI応答が不完全なため、審査根拠と条件を人手で再確認する",
+            ],
+            "_error": reason,
+        }
+    if "懐疑派" in system:
+        return {
+            "opinion": "否決",
+            "reasons": ["GeminiのJSON応答が破損したため、安全側にリスク未確認として扱う"],
+            "key_risks": ["AI応答不完全による根拠欠落"],
+            "_error": reason,
+        }
+    return {
+        "opinion": "条件付承認",
+        "reasons": ["GeminiのJSON応答が破損したため、条件付きの暫定意見として扱う"],
+        "opportunities": [],
+        "innovations": [],
+        "_error": reason,
+    }
+
+
+def _recover_structured_codes(raw: str, system: str) -> dict | None:
+    """Recover enum fields from truncated short-schema JSON."""
+    if not raw:
+        return None
+
+    def _string_field(name: str, allowed: set[str]) -> str:
+        match = re.search(rf'"{re.escape(name)}"\s*:\s*"([^"]*)"', raw)
+        value = match.group(1).strip() if match else ""
+        return value if value in allowed else ""
+
+    def _array_field(name: str, allowed: set[str], limit: int = 4) -> list[str]:
+        match = re.search(rf'"{re.escape(name)}"\s*:\s*\[(.*?)(?:\]|\Z)', raw, re.DOTALL)
+        if not match:
+            return []
+        items = re.findall(r'"([A-Za-z0-9_#\-\u3040-\u30ff\u3400-\u9fff]+)"', match.group(1))
+        return [item for item in items if item in allowed][:limit]
+
+    if "統合派" in system:
+        final = _string_field("final", {"承認", "否決", "条件付承認"}) or "条件付承認"
+        reason_codes = _array_field("reason_codes", set(_REASON_TEXTS))
+        condition_codes = _array_field("condition_codes", set(_CONDITION_TEXTS))
+        if reason_codes or condition_codes:
+            return {
+                "final": final,
+                "reason_codes": reason_codes,
+                "condition_codes": condition_codes or ["manual_review"],
+                "notes": ["JSON途中切れ救出"],
+                "_recovered": True,
+            }
+        return None
+
+    opinion = _string_field("opinion", {"承認", "否決", "条件付承認"})
+    if not opinion:
+        return None
+
+    recovered: dict[str, object] = {
+        "opinion": opinion,
+        "reason_codes": _array_field("reason_codes", set(_PERSONA_REASON_TEXTS)),
+        "notes": ["JSON途中切れ救出"],
+        "_recovered": True,
+    }
+    if "懐疑派" in system:
+        recovered["risk_codes"] = _array_field("risk_codes", set(_RISK_TEXTS))
+    elif "革新派" in system:
+        recovered["innovation_codes"] = _array_field("innovation_codes", set(_INNOVATION_TEXTS))
+    else:
+        recovered["opportunity_codes"] = _array_field("opportunity_codes", set(_OPPORTUNITY_TEXTS))
+    return recovered
 
 
 # ── Gemini Function Calling: search_knowledge ────────────────────────────────
@@ -457,9 +585,8 @@ def _llm_call_with_knowledge(
                         }
                     },
                     {"text": (
-                        "上記の検索結果を参考に、指示された JSON 形式のみで回答せよ。"
-                        "引用がある場合は reasons/opportunities/key_risks/reasoning のいずれかに"
-                        " [[ファイル名#セクション]] 形式で含めよ。"
+                        "上記の検索結果を参考に、指示された短い JSON 形式のみで回答せよ。"
+                        "長文説明は禁止。引用がある場合は notes に [[ファイル名#セクション]] 形式で最大2件だけ含めよ。"
                     )},
                 ],
             },
@@ -480,7 +607,35 @@ def _llm_call_with_knowledge(
             timeout=60,
         )
         resp2.raise_for_status()
-        raw2 = resp2.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+        data2 = resp2.json()
+        candidate2 = (data2.get("candidates") or [{}])[0]
+        raw2 = ((candidate2.get("content") or {}).get("parts") or [{}])[0].get("text", "").strip()
+        finish_reason2 = str(candidate2.get("finishReason") or "").upper()
+        if finish_reason2 == "MAX_TOKENS" and max_tokens < 4096:
+            retry_payload_t2 = {
+                **payload_t2,
+                "generationConfig": {
+                    **payload_t2["generationConfig"],
+                    "temperature": min(temperature, 0.2),
+                    "maxOutputTokens": max(max_tokens * 4, 2048),
+                },
+            }
+            retry_resp2 = requests.post(
+                _gemini_url(),
+                json=retry_payload_t2,
+                headers={"x-goog-api-key": api_key},
+                timeout=90,
+            )
+            retry_resp2.raise_for_status()
+            retry_data2 = retry_resp2.json()
+            retry_candidate2 = (retry_data2.get("candidates") or [{}])[0]
+            retry_raw2 = (
+                ((retry_candidate2.get("content") or {}).get("parts") or [{}])[0]
+                .get("text", "")
+                .strip()
+            )
+            if retry_raw2:
+                raw2 = retry_raw2
     else:
         # Function Call なし → Turn 1 のテキスト応答をそのまま使う
         raw2 = (candidate1.get("parts") or [{}])[0].get("text", "{}").strip()
@@ -497,7 +652,11 @@ def _llm_call_with_knowledge(
         if m:
             raw2 = m.group()
 
-    result = json.loads(raw2)
+    try:
+        result = json.loads(raw2)
+    except json.JSONDecodeError as exc:
+        _record_invalid_llm_json(raw2, exc, locals().get("finish_reason2", ""))
+        result = _recover_structured_codes(raw2, system) or _fallback_llm_json(system, str(exc))
     if knowledge_refs:
         result["_knowledge_refs"] = [r["ref"] for r in knowledge_refs if r.get("ref")]
     return result
@@ -508,15 +667,17 @@ def _llm_call_with_knowledge(
 def _cautious_prompt(ctx: str, counter_json: str = "", extra: str = "") -> str:
     base = f"""{ctx}
 
-【紫苑（懐疑派）の立場】この案件を審査し、以下のJSON形式のみで回答せよ。
+【紫苑（懐疑派）の立場】この案件を審査し、短いJSONのみで回答せよ。
+長文説明は禁止。日本語の長い文章は書かず、コードと短い語句だけを返す。
 
 {{
   "opinion": "承認" | "否決" | "条件付承認",
-  "reasons": ["主な判断理由（2〜3個）"],
-  "key_risks": ["重大リスク（2〜3個）"]
+  "reason_codes": ["score", "finance", "asset", "cashflow", "industry", "policy", "counter"],
+  "risk_codes": ["low_profit", "leverage", "thin_equity", "liquidity", "asset_value", "industry_downturn", "document_gap"],
+  "notes": ["10〜20字の補足を最大2個"]
 }}"""
     if counter_json:
-        base += f"\n\n【必須】楽観派の以下の意見に具体的に反論すること（reasons に含めよ）:\n{counter_json}"
+        base += f"\n\n【必須】楽観派の以下の意見に反論する場合は reason_codes に counter を含めよ:\n{counter_json}"
     if extra:
         base += f"\n\n{extra}"
     return base
@@ -525,15 +686,17 @@ def _cautious_prompt(ctx: str, counter_json: str = "", extra: str = "") -> str:
 def _aggressive_prompt(ctx: str, counter_json: str = "", extra: str = "") -> str:
     base = f"""{ctx}
 
-【紫苑（楽観派）の立場】この案件を審査し、以下のJSON形式のみで回答せよ。
+【紫苑（楽観派）の立場】この案件を審査し、短いJSONのみで回答せよ。
+長文説明は禁止。日本語の長い文章は書かず、コードと短い語句だけを返す。
 
 {{
   "opinion": "承認" | "否決" | "条件付承認",
-  "reasons": ["主な判断理由（2〜3個）"],
-  "opportunities": ["見逃せない機会・強み（2〜3個）"]
+  "reason_codes": ["score", "finance", "asset", "cashflow", "industry", "policy", "counter"],
+  "opportunity_codes": ["growth", "asset_value", "relationship", "productivity", "refinance", "strategic_need", "market_timing"],
+  "notes": ["10〜20字の補足を最大2個"]
 }}"""
     if counter_json:
-        base += f"\n\n【必須】懐疑派の以下の意見に具体的に反論すること（reasons に含めよ）:\n{counter_json}"
+        base += f"\n\n【必須】懐疑派の以下の意見に反論する場合は reason_codes に counter を含めよ:\n{counter_json}"
     if extra:
         base += f"\n\n{extra}"
     return base
@@ -542,12 +705,14 @@ def _aggressive_prompt(ctx: str, counter_json: str = "", extra: str = "") -> str
 def _innovator_prompt(ctx: str, counter_jsons: list[str] | None = None, extra: str = "") -> str:
     base = f"""{ctx}
 
-【紫苑（革新派）の立場】この案件を審査し、以下のJSON形式のみで回答せよ。
+【紫苑（革新派）の立場】この案件を審査し、短いJSONのみで回答せよ。
+長文説明は禁止。日本語の長い文章は書かず、コードと短い語句だけを返す。
 
 {{
   "opinion": "承認" | "否決" | "条件付承認",
-  "reasons": ["主な判断理由（2〜3個）"],
-  "innovations": ["新しい評価視点・慣行を超えた観点（2〜3個）"]
+  "reason_codes": ["score", "finance", "asset", "cashflow", "industry", "policy", "counter"],
+  "innovation_codes": ["alternative_structure", "usage_data", "green_lease", "subscription", "dynamic_residual", "monitoring", "staged_approval"],
+  "notes": ["10〜20字の補足を最大2個"]
 }}"""
     if counter_jsons:
         base += f"\n\n【参考】他の参加者の意見を踏まえ、革新的な視点で回答すること:\n" + "\n".join(counter_jsons)
@@ -562,26 +727,31 @@ def _arbiter_debate_prompt(ctx: str, log: str) -> str:
 【討論ログ】
 {log}
 
-上記の討論を踏まえ、軍師として最終裁定を以下のJSON形式で示せ。
+上記の討論を踏まえ、軍師として最終裁定を短いJSONで示せ。
+長文説明は禁止。日本語の長い文章は書かず、下のコードと短い語句だけを返す。
 
 {{
   "final": "承認" | "否決" | "条件付承認",
-  "reasoning": "裁定の根拠（2〜3文）",
-  "conditions": ["条件1", "条件2"]
+  "reason_codes": ["score", "finance", "asset", "cashflow", "industry", "policy", "debate_balance"],
+  "condition_codes": ["rate_explain", "asset_value_check", "cashflow_check", "guarantee", "document_check", "manual_review"],
+  "notes": ["10〜20字の補足を最大2個"]
 }}
 
-"final" が "承認" の場合、conditions は空リスト []。"""
+"reason_codes" と "condition_codes" は必要なものだけ最大4個。
+"final" が "承認" の場合、condition_codes は空リスト [] でもよい。"""
 
 
 def _arbiter_solo_prompt(ctx: str, direction: str) -> str:
     return f"""{ctx}
 
 スコアからこの案件は明確に{direction}圏内にある。速やかに裁定せよ。
+長文説明は禁止。日本語の長い文章は書かず、下のコードと短い語句だけを返す。
 
 {{
   "final": "承認" | "否決" | "条件付承認",
-  "reasoning": "裁定の根拠（1〜2文）",
-  "conditions": []
+  "reason_codes": ["score", "finance", "asset", "cashflow", "industry", "policy"],
+  "condition_codes": ["rate_explain", "asset_value_check", "cashflow_check", "guarantee", "document_check", "manual_review"],
+  "notes": ["10〜20字の補足を最大2個"]
 }}"""
 
 
@@ -595,35 +765,152 @@ def _safe_future(future, fallback: dict) -> dict:
 
 
 def _norm_cautious(d: dict) -> dict:
+    reasons, key_risks = _render_persona_explanation(d, "skeptic")
     return {
         "opinion": d.get("opinion", "否決"),
-        "reasons": d.get("reasons", []),
-        "key_risks": d.get("key_risks", []),
+        "reasons": d.get("reasons") or reasons,
+        "key_risks": d.get("key_risks") or key_risks,
     }
 
 
 def _norm_aggressive(d: dict) -> dict:
+    reasons, opportunities = _render_persona_explanation(d, "optimist")
     return {
         "opinion": d.get("opinion", "条件付承認"),
-        "reasons": d.get("reasons", []),
-        "opportunities": d.get("opportunities", []),
+        "reasons": d.get("reasons") or reasons,
+        "opportunities": d.get("opportunities") or opportunities,
     }
 
 
 def _norm_arbiter(d: dict) -> dict:
+    reasoning, conditions = _render_arbiter_explanation(d)
     return {
         "final": d.get("final", "条件付承認"),
-        "reasoning": d.get("reasoning", ""),
-        "conditions": d.get("conditions", []),
+        "reasoning": d.get("reasoning") or reasoning,
+        "conditions": d.get("conditions") or conditions,
     }
+
+
+_REASON_TEXTS = {
+    "score": "審査スコアが判定圏内にあり、一次判断の根拠になる",
+    "finance": "財務指標に大きな毀損がなく、返済原資を確認できる",
+    "asset": "リース物件の担保性・換金性・陳腐化リスクを確認する必要がある",
+    "cashflow": "短期資金繰りと季節要因を確認すべき局面である",
+    "industry": "業種環境の変化が収益・設備稼働に影響し得る",
+    "policy": "現在の審査方針・地域/季節コンテキストを踏まえる必要がある",
+    "debate_balance": "懐疑派と楽観派の論点を比較しても、条件設定でリスクを抑えられる",
+}
+
+_CONDITION_TEXTS = {
+    "rate_explain": "提示金利・リース料率と基準金利、競合条件との差を説明する",
+    "asset_value_check": "物件の中古価値、耐用年数、残価設定、陳腐化リスクを確認する",
+    "cashflow_check": "直近資金繰り、賞与・納税・季節要因による短期負担を確認する",
+    "guarantee": "必要に応じて保証、担保、追加保全を検討する",
+    "document_check": "決算書、見積書、契約条件、導入目的の裏付け資料を確認する",
+    "manual_review": "AI応答または根拠が不完全なため、人手で審査根拠を再確認する",
+}
+
+
+def _as_text_list(value: object, limit: int = 4) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(v).strip() for v in value[:limit] if str(v).strip()]
+
+
+def _render_arbiter_explanation(d: dict) -> tuple[str, list[str]]:
+    reason_codes = _as_text_list(d.get("reason_codes"))
+    condition_codes = _as_text_list(d.get("condition_codes"))
+    notes = _as_text_list(d.get("notes"), limit=2)
+
+    reasons = [_REASON_TEXTS.get(code, code) for code in reason_codes]
+    conditions = [_CONDITION_TEXTS.get(code, code) for code in condition_codes]
+
+    if not reasons:
+        reasons = ["AI裁定の構造化根拠が不足しているため、安全側に確認を残す"]
+    if d.get("final") != "承認" and not conditions:
+        conditions = [_CONDITION_TEXTS["manual_review"]]
+
+    reasoning = "。".join(reasons[:4])
+    if notes:
+        reasoning += "。補足: " + " / ".join(notes)
+    return reasoning + "。", conditions[:4]
 
 
 def _norm_innovator(d: dict) -> dict:
+    reasons, innovations = _render_persona_explanation(d, "innovator")
     return {
         "opinion": d.get("opinion", "条件付承認"),
-        "reasons": d.get("reasons", []),
-        "innovations": d.get("innovations", []),
+        "reasons": d.get("reasons") or reasons,
+        "innovations": d.get("innovations") or innovations,
     }
+
+
+_PERSONA_REASON_TEXTS = {
+    "score": "審査スコアを一次判断材料として評価する",
+    "finance": "財務指標と返済原資を中心に評価する",
+    "asset": "リース物件の保全性・換金性を判断材料にする",
+    "cashflow": "短期資金繰りと支払余力を確認する",
+    "industry": "業種環境と市況変化を踏まえる",
+    "policy": "現在の審査方針・地域/季節コンテキストを踏まえる",
+    "counter": "相手ペルソナの論点に対して反対側の観点を補う",
+}
+
+_RISK_TEXTS = {
+    "low_profit": "営業利益率が低く、収益バッファが薄い",
+    "leverage": "借入負担が重く、追加債務余力に注意が必要",
+    "thin_equity": "自己資本比率が薄く、財務耐久力に不安が残る",
+    "liquidity": "短期資金繰り悪化時の支払遅延リスクがある",
+    "asset_value": "物件の残価・中古流通・陳腐化リスクを確認する必要がある",
+    "industry_downturn": "業種環境の悪化が設備稼働や返済原資に影響し得る",
+    "document_gap": "提出資料や契約条件の不足により根拠確認が必要",
+}
+
+_OPPORTUNITY_TEXTS = {
+    "growth": "投資により売上成長や受注拡大が見込める",
+    "asset_value": "物件に一定の汎用性・中古価値があり保全性を期待できる",
+    "relationship": "既存取引や関係性を維持・拡大する機会がある",
+    "productivity": "設備導入により生産性改善やコスト削減が期待できる",
+    "refinance": "融資枠を温存し、資金調達手段を分散できる",
+    "strategic_need": "事業継続や競争力維持のため投資必要性がある",
+    "market_timing": "市況・季節要因を踏まえて投資タイミングに合理性がある",
+}
+
+_INNOVATION_TEXTS = {
+    "alternative_structure": "期間・残価・保証を組み替える代替ストラクチャーを検討する",
+    "usage_data": "稼働データや利用実績を条件管理に活用する",
+    "green_lease": "省エネ・脱炭素効果がある場合はESGリース観点を加える",
+    "subscription": "利用量連動やサブスクリプション型の回収設計を検討する",
+    "dynamic_residual": "残価を固定せず、市況に応じた見直し余地を持たせる",
+    "monitoring": "契約後モニタリングを条件化し、早期警戒を強化する",
+    "staged_approval": "一括承認ではなく段階承認・小口開始でリスクを抑える",
+}
+
+
+def _render_persona_explanation(d: dict, role: str) -> tuple[list[str], list[str]]:
+    reason_codes = _as_text_list(d.get("reason_codes"))
+    notes = _as_text_list(d.get("notes"), limit=2)
+    reasons = [_PERSONA_REASON_TEXTS.get(code, code) for code in reason_codes]
+    if notes:
+        reasons.append("補足: " + " / ".join(notes))
+    if not reasons:
+        reasons = ["AI応答の構造化根拠が不足しているため、安全側に確認を残す"]
+
+    if role == "skeptic":
+        second_codes = _as_text_list(d.get("risk_codes"))
+        second = [_RISK_TEXTS.get(code, code) for code in second_codes]
+        if not second:
+            second = ["リスク根拠が不足しているため、追加確認が必要"]
+    elif role == "innovator":
+        second_codes = _as_text_list(d.get("innovation_codes"))
+        second = [_INNOVATION_TEXTS.get(code, code) for code in second_codes]
+        if not second:
+            second = ["通常条件だけでなく代替条件の余地を確認する"]
+    else:
+        second_codes = _as_text_list(d.get("opportunity_codes"))
+        second = [_OPPORTUNITY_TEXTS.get(code, code) for code in second_codes]
+        if not second:
+            second = ["条件設定により案件化できる余地を確認する"]
+    return reasons[:4], second[:4]
 
 
 def _excerpt(d: dict, key: str, max_items: int = 2) -> str:
@@ -878,6 +1165,17 @@ def run_debate_screening(params: dict) -> dict:
         r2a = _safe_future(fa2, r1a)
         r2i = _safe_future(fi2, r1i) if fi2 else {}
 
+    def _with_refs(normed: dict, raw: dict) -> dict:
+        refs = raw.get("_knowledge_refs", [])
+        return {**normed, "_knowledge_refs": refs} if refs else normed
+
+    r1c_norm = _with_refs(_norm_cautious(r1c), r1c)
+    r1a_norm = _with_refs(_norm_aggressive(r1a), r1a)
+    r1i_norm = _with_refs(_norm_innovator(r1i), r1i) if innovator_key and r1i else {}
+    r2c_norm = _with_refs(_norm_cautious(r2c), r2c)
+    r2a_norm = _with_refs(_norm_aggressive(r2a), r2a)
+    r2i_norm = _with_refs(_norm_innovator(r2i), r2i) if innovator_key and r2i else {}
+
     # 討論ログ構築（ナレッジ引用があれば記録）
     def _fmt_refs(d: dict) -> str:
         refs = d.get("_knowledge_refs", [])
@@ -885,18 +1183,18 @@ def run_debate_screening(params: dict) -> dict:
 
     _r1_lines = (
         "【第1ラウンド：初期見解】\n"
-        f"紫苑（懐疑）: {r1c.get('opinion', '？')} — {_excerpt(r1c, 'reasons')}{_fmt_refs(r1c)}\n"
-        f"紫苑（楽観）: {r1a.get('opinion', '？')} — {_excerpt(r1a, 'reasons')}{_fmt_refs(r1a)}"
+        f"紫苑（懐疑）: {r1c_norm.get('opinion', '？')} — {_excerpt(r1c_norm, 'reasons')}{_fmt_refs(r1c_norm)}\n"
+        f"紫苑（楽観）: {r1a_norm.get('opinion', '？')} — {_excerpt(r1a_norm, 'reasons')}{_fmt_refs(r1a_norm)}"
     )
-    if innovator_key and r1i:
-        _r1_lines += f"\n紫苑（革新）: {r1i.get('opinion', '？')} — {_excerpt(r1i, 'reasons')}{_fmt_refs(r1i)}"
+    if innovator_key and r1i_norm:
+        _r1_lines += f"\n紫苑（革新）: {r1i_norm.get('opinion', '？')} — {_excerpt(r1i_norm, 'reasons')}{_fmt_refs(r1i_norm)}"
     _r2_lines = (
         "\n\n【第2ラウンド：強制反論】\n"
-        f"紫苑（懐疑）: {r2c.get('opinion', '？')} — {_excerpt(r2c, 'reasons')}{_fmt_refs(r2c)}\n"
-        f"紫苑（楽観）: {r2a.get('opinion', '？')} — {_excerpt(r2a, 'reasons')}{_fmt_refs(r2a)}"
+        f"紫苑（懐疑）: {r2c_norm.get('opinion', '？')} — {_excerpt(r2c_norm, 'reasons')}{_fmt_refs(r2c_norm)}\n"
+        f"紫苑（楽観）: {r2a_norm.get('opinion', '？')} — {_excerpt(r2a_norm, 'reasons')}{_fmt_refs(r2a_norm)}"
     )
-    if innovator_key and r2i:
-        _r2_lines += f"\n紫苑（革新）: {r2i.get('opinion', '？')} — {_excerpt(r2i, 'reasons')}{_fmt_refs(r2i)}"
+    if innovator_key and r2i_norm:
+        _r2_lines += f"\n紫苑（革新）: {r2i_norm.get('opinion', '？')} — {_excerpt(r2i_norm, 'reasons')}{_fmt_refs(r2i_norm)}"
     debate_log = _r1_lines + _r2_lines
     if same_opinion:
         debate_log = "[注: 第1ラウンドで両者の意見が一致したため、逆張り再討論を実施]\n\n" + debate_log
@@ -913,8 +1211,8 @@ def run_debate_screening(params: dict) -> dict:
     result = {
         "score": score,
         "mode": "debate",
-        "cautious": _norm_cautious(r2c),
-        "aggressive": _norm_aggressive(r2a),
+        "cautious": r2c_norm,
+        "aggressive": r2a_norm,
         "arbiter": arbiter_normed,
         "conscience_check": conscience_check,
         "mana_consultation": evaluate_mana_consultation(
@@ -927,8 +1225,8 @@ def run_debate_screening(params: dict) -> dict:
         "debate_log": debate_log,
         "same_opinion_r1": same_opinion,
     }
-    if innovator_key and r2i:
-        result["innovator"] = _norm_innovator(r2i)
+    if innovator_key and r2i_norm:
+        result["innovator"] = r2i_norm
     if bundle is not None:
         result["context_bundle"] = bundle.model_dump()
 
@@ -936,9 +1234,9 @@ def run_debate_screening(params: dict) -> dict:
     if session_id and company_name:
         _save_screening_history(
             session_id, company_name, arbiter_normed, mode="debate",
-            cautious=_norm_cautious(r2c), aggressive=_norm_aggressive(r2a),
+            cautious=r2c_norm, aggressive=r2a_norm,
             debate_log=debate_log,
-            innovator=_norm_innovator(r2i) if innovator_key and r2i else None,
+            innovator=r2i_norm if innovator_key and r2i_norm else None,
         )
 
     # core_candidates: 討論モードのみ、各ペルソナの結論から汎用的な判断基準を個別に抽出

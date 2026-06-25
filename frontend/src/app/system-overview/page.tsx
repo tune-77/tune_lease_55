@@ -269,6 +269,15 @@ const loops = [
     icon: Shield,
     iconColor: "text-red-400",
   },
+  {
+    title: "セントラル統合ループ",
+    desc: "4ペルソナ討論・自己分析のキーポイントをworld_viewとして蓄積・次回討論へ注入",
+    color: "#22d3ee",
+    bg: "from-cyan-900/40 to-cyan-950/20",
+    border: "border-cyan-500/30",
+    icon: Brain,
+    iconColor: "text-cyan-400",
+  },
 ];
 
 const shionBadges = [
@@ -278,11 +287,13 @@ const shionBadges = [
   "Obsidian連携",
   "感情モデル",
   "PR審査権限",
+  "セントラル統合",
+  "world_view",
 ];
 
 const stats = [
-  { value: "6", label: "自己改善ループ", color: "text-violet-400" },
-  { value: "115", label: "累積REV", color: "text-blue-400" },
+  { value: "7", label: "自己改善ループ", color: "text-violet-400" },
+  { value: "157", label: "累積REV", color: "text-blue-400" },
   { value: "3", label: "AIエンジン", color: "text-emerald-400" },
   { value: "紫苑", label: "リース知性体", color: "text-fuchsia-400" },
 ];
@@ -822,7 +833,7 @@ function FlowDiagram() {
         <rect x="25" y="215" width="130" height="50" rx="10" fill="rgba(15,23,42,0.8)"
           stroke="#475569" strokeWidth="1" />
         <text x="90" y="238" textAnchor="middle" fill="#94a3b8" fontSize="9.5" fontWeight="bold">Obsidian Vault</text>
-        <text x="90" y="255" textAnchor="middle" fill="#64748b" fontSize="8">知識 · mind.json · RAG</text>
+        <text x="90" y="255" textAnchor="middle" fill="#64748b" fontSize="8">知識 · mind.json · RAG · world_view</text>
       </g>
       <g className="node-fade" style={{ animationDelay: "1s" }}>
         <rect x="25" y="325" width="130" height="50" rx="10" fill="rgba(15,23,42,0.8)"

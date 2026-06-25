@@ -17,6 +17,8 @@ import requests
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+from api.llm_json_guard import extract_candidate_text, parse_or_recover_json, with_retry_tokens
+
 _DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 _MIND_PATH = os.path.join(_DATA_DIR, "mind.json")
 _CACHE_PATH = os.path.join(_DATA_DIR, "shion_self_analysis_cache.json")
@@ -186,6 +188,20 @@ _SYSTEM_PROMPT = (
 )
 
 
+_ANALYSIS_DEFAULTS = {
+    "optimist_traits": [
+        "案件の成長余地と営業上の機会を重視する",
+        "条件設定により前向きに検討できる余地を探す",
+    ],
+    "skeptic_traits": [
+        "資金繰り、財務耐久力、物件保全を慎重に確認する",
+        "説明可能性が不足する案件では追加確認を優先する",
+    ],
+    "arbiter_style": "双方の論点を整理して説明可能な判断を下す",
+    "keypoints_used": 0,
+}
+
+
 def _call_gemini(prompt: str) -> dict:
     api_key = _get_gemini_api_key()
     if not api_key:
@@ -194,27 +210,42 @@ def _call_gemini(prompt: str) -> dict:
         "system_instruction": {"parts": [{"text": _SYSTEM_PROMPT}]},
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {
-            "temperature": 0.4,
-            "maxOutputTokens": 512,
+            "temperature": 0.25,
+            "maxOutputTokens": 768,
             "responseMimeType": "application/json",
         },
     }
-    resp = requests.post(
-        _gemini_url(),
-        json=payload,
-        headers={"x-goog-api-key": api_key},
-        timeout=60,
+    raw = ""
+    finish_reason = ""
+    for current_payload in (payload, with_retry_tokens(payload, 1536)):
+        resp = requests.post(
+            _gemini_url(),
+            json=current_payload,
+            headers={"x-goog-api-key": api_key},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        raw, finish_reason = extract_candidate_text(resp.json())
+        result, recovered = parse_or_recover_json(
+            raw,
+            defaults=_ANALYSIS_DEFAULTS,
+            string_fields={"arbiter_style"},
+            array_fields={"optimist_traits", "skeptic_traits"},
+            number_fields={"keypoints_used"},
+        )
+        if not recovered and finish_reason != "MAX_TOKENS":
+            return result
+        if not recovered:
+            return result
+    result, _ = parse_or_recover_json(
+        raw,
+        defaults=_ANALYSIS_DEFAULTS,
+        string_fields={"arbiter_style"},
+        array_fields={"optimist_traits", "skeptic_traits"},
+        number_fields={"keypoints_used"},
     )
-    resp.raise_for_status()
-    raw = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-    if "```" in raw:
-        parts = raw.split("```")
-        for part in parts[1::2]:
-            cleaned = part.lstrip("json\n").strip()
-            if cleaned:
-                raw = cleaned
-                break
-    return json.loads(raw)
+    result["_finish_reason"] = finish_reason
+    return result
 
 
 def get_shion_self_analysis(force_refresh: bool = False) -> dict:

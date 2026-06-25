@@ -16,9 +16,30 @@ export type OcrResult = {
   rent_expense: number | null;
   machines: number | null;
   other_assets: number | null;
+  detected_fields?: string[];
+  missing_fields?: string[];
+  confidence?: number;
 };
 
-const FIELD_LABELS: Record<keyof OcrResult, string> = {
+type FinancialOcrField = Exclude<keyof OcrResult, 'detected_fields' | 'missing_fields' | 'confidence'>;
+
+const FINANCIAL_FIELDS: FinancialOcrField[] = [
+  'nenshu',
+  'gross_profit',
+  'op_profit',
+  'ord_profit',
+  'net_income',
+  'net_assets',
+  'total_assets',
+  'depreciation',
+  'dep_expense',
+  'rent',
+  'rent_expense',
+  'machines',
+  'other_assets',
+];
+
+const FIELD_LABELS: Record<FinancialOcrField, string> = {
   nenshu: '売上高',
   gross_profit: '売上総利益',
   op_profit: '営業利益',
@@ -87,7 +108,7 @@ export default function OcrUpload({ onApply }: Props) {
   };
 
   const previewEntries = preview
-    ? (Object.entries(preview) as [keyof OcrResult, number | null][]).filter(
+    ? FINANCIAL_FIELDS.map((key) => [key, preview[key]] as [FinancialOcrField, number | null]).filter(
         ([, v]) => v !== null
       )
     : [];
@@ -135,6 +156,18 @@ export default function OcrUpload({ onApply }: Props) {
           <p className="text-sm font-semibold text-slate-700">
             以下の値でフォームに反映しますか？
           </p>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {typeof preview.confidence === 'number' && (
+              <span className="rounded-full bg-blue-50 px-2 py-0.5 font-bold text-blue-700 border border-blue-100">
+                信頼度 {Math.round(preview.confidence * 100)}%
+              </span>
+            )}
+            {(preview.detected_fields || []).length > 0 && (
+              <span className="text-slate-500">
+                検出 {preview.detected_fields?.length || 0}項目 / 欠損 {preview.missing_fields?.length || 0}項目
+              </span>
+            )}
+          </div>
           <table className="w-full text-sm">
             <tbody>
               {previewEntries.map(([key, val]) => (
