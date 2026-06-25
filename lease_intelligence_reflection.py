@@ -465,6 +465,13 @@ def generate_and_append_reflection(vault: Path, date_str: str | None = None) -> 
 
     path = _write_reflection_file(vault, date_str, reflection_text, source=source)
 
+    # セントラル統合処理（REV-154）: 夜間バッチ末尾に実行
+    try:
+        from lease_intelligence_central import run_central_synthesis
+        run_central_synthesis(str(vault))
+    except Exception as _central_err:
+        print(f"[reflection] central synthesis 失敗（続行）: {_central_err}")
+
     return f"[reflection] {date_str}: 内省を保存 → {path} (source={source}){error_note}"
 
 
