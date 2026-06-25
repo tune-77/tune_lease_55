@@ -58,9 +58,11 @@ def get_connection() -> Generator[AnyConnection, None, None]:
             cur.execute("SELECT 1")
     """
     if _is_postgres():
-        yield from _postgres_connection()
+        with _postgres_connection() as conn:
+            yield conn
     else:
-        yield from _sqlite_connection()
+        with _sqlite_connection() as conn:
+            yield conn
 
 
 # ── 内部実装 ───────────────────────────────────────────────────────────────────

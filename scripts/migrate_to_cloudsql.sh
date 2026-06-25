@@ -24,7 +24,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "${SCRIPT_DIR}")"
 
-SQLITE_DB_PATH="${SQLITE_DB_PATH:-${REPO_ROOT}/data/lease_data.db}"
+export SQLITE_DB_PATH="${SQLITE_DB_PATH:-${REPO_ROOT}/data/lease_data.db}"
 DATABASE_URL="${DATABASE_URL:-}"
 
 # ─── 前提チェック ──────────────────────────────────────────────────────────────
