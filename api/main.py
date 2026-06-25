@@ -8583,3 +8583,40 @@ def promote_keypoint(req: PromoteKeypointRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"mind.json 書き込みエラー: {e}")
+
+
+@app.get("/api/shion/central-synthesis")
+def get_central_synthesis():
+    """セントラルの最新状態を返す（world_view.commentary を読んで返す）。"""
+    import json as _json
+    from pathlib import Path
+
+    try:
+        from lease_news_digest import find_vault
+        vault = find_vault()
+        if not vault:
+            return {"error": "Obsidian vault が見つかりません", "commentary": {}}
+
+        vault_mind = (
+            Path(vault)
+            / "Projects"
+            / "tune_lease_55"
+            / "Lease Intelligence"
+            / "mind.json"
+        )
+        if not vault_mind.exists():
+            return {"error": "mind.json が見つかりません", "commentary": {}}
+
+        data = _json.loads(vault_mind.read_text(encoding="utf-8"))
+        world_view = data.get("world_view") or {}
+        commentary = world_view.get("commentary") or {}
+
+        return {
+            "commentary": commentary,
+            "world_view_summary": world_view.get("summary", ""),
+            "total_keypoints": len(data.get("conversation_keypoints") or []),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
