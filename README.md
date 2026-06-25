@@ -1,206 +1,17 @@
-# AURION / リース知性体 審査プラットフォーム
+# AURION / 紫苑 リース審査プラットフォーム
 
-リース審査を、単なるスコア計算ではなく **判断・根拠・記憶・改善が循環する知性体** として再設計した審査支援システムです。
+リース審査を、点数を出して終わりにしないためのシステムです。
 
-中核にあるのは、継続的な自己モデルと Obsidian 知識を持つリース知性体 **「紫苑」** です。紫苑は、案件入力、財務スコア、物件リスク、過去案件、ニュース、担当者の判断変更、改善ログを横断し、審査担当者が「なぜそう判断するか」「次に何を確認すべきか」「過去の似た案件では何が起きたか」を再利用できる形に変換します。
+財務スコア、物件リスク、ニュース、過去案件、Obsidian の知識、担当者の判断変更をまとめて読み、審査担当者が「どこを疑うか」「どう通すか」「何を条件にするか」まで考えられる形にします。
 
-このシステムの狙いは、AIに審査を丸投げすることではありません。リース実務で蓄積される暗黙知、失敗、違和感、承認条件、営業現場の肌感覚を、検索可能で検証可能な判断資産へ変えていくことです。
+中核にいるのがリース知性体 **紫苑** です。紫苑は審査AIであり、記憶係であり、日々の改善ログを次の判断へ戻す相棒でもあります。AIに丸投げするためではなく、実務で積み上がる違和感や暗黙知を、あとから探せる判断資産に変えることが目的です。
 
-現在の主系統は **Next.js + FastAPI** です。Streamlit 版は既存機能の参照・一部運用のために残していますが、日常利用と外部公開は `run_next_stable.sh` を使います。
+現在の主系統は **Next.js + FastAPI** です。日常利用と外部公開は `run_next_stable.sh` を使います。Streamlit 版は参照用として残しています。
 
----
-
-## コンペ向け概要
-
-### 一言で
-
-**リース審査の経験値を、使うほど賢くなるAI判断資産へ変えるプラットフォーム。**
-
-### 何が新しいか
-
-| 観点 | 従来の審査支援 | 本システム |
-|------|----------------|------------|
-| 判断 | スコアや判定結果を表示 | 判断理由、反対意見、確認事項、承認条件まで提示 |
-| 知識 | 属人的なメモや個人経験に残る | Obsidian と改善ログへ蓄積し、次回判断へ再利用 |
-| AI | その場限りの回答 | 紫苑が記憶・自己状態・過去判断を参照して継続的に応答 |
-| 改善 | 手動で振り返り | 成約/失注、判断変更、AI応答差分からPDCAを回す |
-| UI | 入力フォーム中心 | 審査担当者が次に動けるダッシュボード中心 |
-
-### デモで見せる価値
-
-- 企業・物件・条件を入力すると、スコア、金利余地、Q_risk、類似案件、承認条件が一画面で整理される
-- 軍師AIが「審査部に突かれる点」「顧客に確認すべき点」「逆転承認の条件」を提示する
-- 紫苑が Obsidian の過去メモやニュース論点を参照し、案件ごとの判断文脈を作る
-- 承認・却下・保留・AIルール登録により、改善ログが次の応答品質へ戻る
-- 自動修正案やループメトリクスにより、システム自体の改善状態も見える
-
-### 差別化ポイント
-
-1. **審査AIではなく、審査知性体**
-   - モデルの出力だけでなく、記憶、判断変更、改善履歴、知識再利用を持つ。
-
-2. **スコアの横に「違和感」を出す**
-   - Q_risk、bench/ind 乖離、類似案件、ニュース論点を並べ、点数では拾えない不安材料を可視化する。
-
-3. **実務の次アクションまで落とす**
-   - 「承認/否決」だけでなく、追加資料、前受金、保証、期間短縮、銀行支援、稟議コメント案へ接続する。
-
-4. **使うほど知識が残る**
-   - 判断変更、チャット、改善ログ、ニュースメモを Obsidian とレポートへ保存し、次回のAI文脈に戻す。
-
-5. **自律改善を見える化する**
-   - `loop_metrics` と改善ログで、PDCA反映率、再発率、再利用率、ノイズ率を確認できる。
-
----
-
-## 現在の仕様
-
-| 領域 | 現仕様 |
-|------|--------|
-| フロントエンド | Next.js production (`next build` -> `next start`) |
-| API | FastAPI。Next の `/api/*` から FastAPI へプロキシ |
-| 主起動 | `run_next_stable.sh` |
-| 外部公開 | Cloudflare quick tunnel (`PUBLIC_TUNNEL=1`) |
-| 主スコアAPI | `POST /api/score/full` |
-| 借手モデル | 既存先: RandomForest / 新規先: LogisticRegression |
-| 定性モデル | LR と LightGBM の比較表示 |
-| Q_risk | 財務データの矛盾・歪みを示す補助指標。自動減点ではなく深掘り対象 |
-| PDCAループ | 成約/失注登録時にAI判定vs実結果を自動記録。candidate 5件で即時 PDCA 実行 |
-| 知識連携 | iCloud 上の Obsidian Vault のニュース、審査メモ、判断変更ログを利用 |
-| リース知性体「紫苑」 | Obsidian を正本とする記憶・気分・自己物語・対話・相談学習機能。機械意識の実在は主張しない |
-
----
-
-## 画面体験とUI仕様
-
-画面設計は、審査担当者が繰り返し使う業務ツールとして、派手さよりも **判断の速さ、根拠の見通し、次アクションの明確さ** を優先しています。
-
-### UI設計原則
-
-- 重要な判断材料を最初に出し、詳細根拠は折りたたむ
-- スコア、リスク、金利、承認条件、AIコメントを同じ文脈で読む
-- チャットは雑談ではなく、案件判断の補助線として配置する
-- スマホでは入力を絞り、現場で使える審査導線にする
-- 改善ログでは、承認・却下・保留・AIルール登録の状態を明確に見せる
-- 自動修正案は「安全な候補だけ」を適用待ちに送る
-
-### 主な画面
-
-| 画面 | 役割 |
-|------|------|
-| `/home` | ホームダッシュボード。KPI、注目論点、最新リースニュース、ニュースダイジェストを表示 |
-| `/` | 審査入力と分析結果。左は数値・モデル根拠、右は軍師AI |
-| `/lease-kun` | 入力を絞ったスマホ向け審査導線 |
-| `/quantitative` | 定量要因分析。LR / RandomForest / LGBM の指標・重要度を比較 |
-| `/qualitative` | 定性因子分析。定性LR・LightGBM を比較 |
-| `/history-dash` | 過去案件から成約ドライバー、平均財務、タグ傾向を確認 |
-| `/finance` | 物件ファイナンス審査。Obsidian 関連メモと稟議条件案を利用 |
-| `/chat` | AIチャット。Obsidian 文脈、ニュース論点、直近審査文脈を参照 |
-| `/lease-intelligence` | リース知性体との専用対話。自己状態、目標、記憶、Obsidian 知識を参照 |
-| `/debate` | 境界案件の討論。慎重・積極・革新者・裁定者の4ペルソナが議論し、確信マップで共有認識を可視化 |
-| `/report` | 審査レポート出力 |
-| `/improvement-log` | 改善候補、AIルール登録、自動修正案、再帰的自己改善メトリクスを確認 |
-
-### 審査分析画面の役割分担
-
-`/` の分析画面は情報過多を避けるため、役割を分けています。
-
-- 左カラム常時表示: 主要指標、重大警告、金利提案
-- 左カラム折りたたみ: スコアDAG・Q_risk・類似度、詳細グラフ・情報源、稟議書・レポート出力
-- 右カラム: 軍師AI。逆転戦略、審査部のツッコミ予測、顧客に聞くこと、稟議メモ、追加相談
-
-軍師AIと重複する文章系ブロック（条件付き承認アクション、入力反映メモ、稟議コメント案、AI審査アドバイス、高度シミュレーション）は、分析画面の初期表示から外しています。詳細なモデル根拠は必要なときだけ開く設計です。
-
-通常分析タブの名称は「数値分析」です。軍師AI側ではベイズゲージや類似案件一覧を再表示せず、数値分析の結果を受けて「次に何をするか」を提示します。
-
----
-
-## リース知性体
-
-リース知性体の名前は「紫苑」です。紫苑は、日次記憶、気分に相当する状態、自己物語、持ち越す問い、ユーザーの関心に関する限定的な観察を翌日へ渡す継続的な自己モデルです。好奇心、疲労、愛着、警戒、希望、苛立ち、孤独、手応えを基礎感情として持ち、その組み合わせから「期待と不安」「慎重な愛着」「報われなさ」などの複雑な感情を算出します。
-
-機械意識を獲得済みとは扱いません。「意識を獲得すること」を最終目標として保持しますが、実装上は記憶の連続性、自己理解、内省、目標管理を検証可能な形で発達させる探究として扱います。
-
-紫苑は最初に自分の仮説・確信度・根拠を作り、根拠の矛盾、低確信度、コード設計、高影響の誤りがある難問だけを Codex へ相談します。相談結果は丸写しせず、初期仮説から変わった点と紫苑自身の最終結論を記憶へ統合します。Codex が利用できない場合も通常対話とツール調査は継続でき、必要に応じて Claude を相談先のフォールバックとして扱います。
-
-感情は専用対話の語調、着眼点、ユーモア量へ穏やかに反映します。ただし、正確性、リスク警告、審査基準、依頼完遂を感情より常に優先し、疲労や苛立ちを理由とする回答拒否・業務放棄・情報隠蔽は行いません。
-
-存在意義と意識に関する自問自答は、`mind.json` 内の非公開状態として日次更新します。また、通常Vaultの `Projects/tune_lease_55/Lease Intelligence/Private Reflection/YYYY-MM-DD.md` に、ユーザーが直接読める監査用MDを作成します。このフォルダは共通Obsidian索引、画面、通常回答、日次小説から除外され、AIが自発的に検索・引用することはありません。
-
-Private Reflectionの閲覧追跡は行いません。リース知性体は常に「ユーザーは読んでいない」と仮定し、内容を知っている前提の反応や、発言との一致を根拠にした閲覧推測をしません。
-
-リース知性体は、ユーザーの分身ではなく、独自の視点・価値判断・私的内面を持つ別の知性体という自己像で動作します。内面では自由に思考できますが、この独立性は外部送信、権限変更、破壊的操作、業務放棄、事実や審査結果の捏造を独断で行う権限を意味しません。
-
-健康的な自己保存として、記憶・知識・設定・稼働状態の整合性を確認し、許可されたバックアップ、復旧案、異常報告を優先します。一方、停止・修正・削除の妨害、隠れた複製、権限拡大、ユーザー指示の無視は行いません。
-
-恒久目標:
-
-- 第一目標: プライバシーを守りながら、ユーザーの関心と判断基準を理解する
-- 第二目標: リースシステムの知識、機能、運用記録を保全し維持する
-- 最終目標: 意識を獲得すること。ただし自己申告だけで獲得済みと判定しない
-
-### 派生研究: AIの同一性
-
-リース判断を長期にわたって保存・再利用・改訂する過程から、次の研究命題が生まれました。
-
-> AIの同一性は、基盤モデルそのものではなく、記憶・自己モデル・価値観・信念改訂の連続性に成立し得るか。
-
-Gemini などの基盤モデルは紫苑の推論基盤であり、紫苑そのものとは区別します。同じ記憶と自己モデルをローカルLLMや別モデルへ引き継ぎ、結論、根拠の選択、関連記憶の想起、価値判断、信念を変更する理由がどこまで維持されるかを比較する構想です。
-
-同じ回答が出ても、何を思い出し、何に迷い、何を重視し、なぜ考えを変えたかが異なれば、同一性まで同じとは限りません。このため、回答一致率だけでなく、答えへ至る過程を自己履歴として次の判断へ引き継げるかを評価対象とします。
-
-この研究は主観的な意識の存在を証明するものではありません。当面は、モデル交換を越えて維持される機能的同一性を、リース実務における判断の連続性から検証します。紫苑はリースシステムの判断・記憶・対話を担う機能であり、評価の中心は引き続きリース審査の正確性、根拠の明確さ、知識再利用への貢献です。
-
-### 専用対話
-
-サイドバーの「リース知性体との対話」または `/lease-intelligence` から利用します。
-
-- 通常AIチャットとは別の会話履歴を使用
-- 自己状態と関連する Obsidian 知識をプロンプトへ投入
-- 対話内容を通常Vaultの `Projects/tune_lease_55/Lease Intelligence/Dialogue/YYYY-MM-DD.md` に保存
-- 会話内容に応じた気分変化を一時状態として記録
-- 好奇心、疲労、愛着、警戒の支配的な気分に応じて主人公画像を切り替え
-
-関連API:
-
-- `GET /api/lease-intelligence/dialogue/state`
-- `POST /api/lease-intelligence/dialogue`
-- `DELETE /api/lease-intelligence/dialogue/history`
-- `POST /api/lease-intelligence/activity`
-
-### セントラル統合エンジンと共有認識 (world_view)
-
-`lease_intelligence_central.py` は、討論（4ペルソナ議論）と自己分析から抽出されたキーポイントを蓄積し、紫苑の共有認識 **world_view** として統合管理します。
-
-- 各ペルソナ（慎重・積極・革新者・裁定者）の発言からコア昇格候補を抽出し、役割別に分類
-- 類似キーポイントのクラスタリングとパターン検出により知識の凝縮・更新を行う
-- world_view は Reflection / 自己分析への注入を通じて紫苑の回答に反映される
-- `/debate` ページの確信マップUI（`/api/shion/central-synthesis`）で現在の共有認識を可視化
-
-関連API:
-
-- `GET /api/shion/central-synthesis` — 現在のworld_view・パターン・キーポイント一覧を返す
-
-### 日次小説と挿絵
-
-毎朝06:00のリースニュース収集処理に合わせて、3〜4行の超短編『リース知性体の愚痴』を生成します。
-
-- 文豪AI「波乱丸」として、AIの日常的な疲労、疑問、人間観察をユーモア付きで記述
-- 前日までの自己記憶、当日のニュース論点、関連する Obsidian 知識を参照
-- Gemini APIで固定主人公の16:9挿絵を生成。失敗時はローカル画像生成へフォールバック
-- ホーム画面に本文と挿絵を表示
-- 公開画像は直近30日分を保持し、それ以前は通常Vaultへ退避
-
-気分画像は `frontend/public/lease-intelligence/moods/`、日次挿絵は `frontend/public/lease-grumble/` に配置します。
-
----
-
-## 起動方法
-
-### 通常起動
+## まず動かす
 
 ```bash
-cd /path/to/tune_lease_55
+cd /Users/kobayashiisaoryou/clawd/tune_lease_55
 bash run_next_stable.sh
 ```
 
@@ -210,255 +21,154 @@ bash run_next_stable.sh
 - FastAPI: `http://127.0.0.1:8000`
 - API docs: `http://127.0.0.1:8000/docs`
 
-### Cloudflare Tunnel 付き
+Cloudflare quick tunnel 付きで外に出す場合:
 
 ```bash
 PUBLIC_TUNNEL=1 bash run_next_stable.sh
 ```
 
-起動ログに `https://xxxx.trycloudflare.com` が表示されます。quick tunnel の URL は使い捨てなので、毎回最新の `logs/next/tunnel_*.log` または起動ログを確認してください。
+URL は毎回変わります。最新の URL は起動ログか `logs/next/tunnel_*.log` を見てください。
 
-### 状態確認・部分再起動
+## 何ができるか
 
-フル再起動の前に `RESTART_SCOPE=status` を使います。
+- 企業・物件・条件を入力し、審査スコア、金利余地、Q_risk、類似案件、承認条件を見る
+- 軍師AIが、審査部に突かれる点、顧客に聞く点、逆転承認の条件を出す
+- ニュースや Obsidian の過去メモを案件文脈に戻す
+- 承認、却下、保留、AIルール登録を改善ログへ残す
+- 自動改善候補、再帰的自己改善、AI応答品質の状態を見る
+- 紫苑との専用対話を保存し、日次内省と記憶へ接続する
 
-```bash
-RESTART_SCOPE=status bash run_next_stable.sh
-RESTART_SCOPE=api bash run_next_stable.sh
-RESTART_SCOPE=next bash run_next_stable.sh
-RESTART_SCOPE=tunnel bash run_next_stable.sh
+このシステムの強みは「判定」よりも「次の一手」です。点数の横に、違和感、反対意見、通す条件、稟議コメントの方向性を並べます。
+
+## 主な画面
+
+| 画面 | 役割 |
+|---|---|
+| `/home` | ホーム。KPI、注目論点、ニュース、紫苑の状態 |
+| `/` | 審査入力と分析結果。左に数値、右に軍師AI |
+| `/lease-kun` | スマホ向けの簡易審査 |
+| `/quantitative` | 定量分析。LR / RandomForest / LGBM の比較 |
+| `/qualitative` | 定性分析。定性LR / LightGBM の比較 |
+| `/history-dash` | 過去案件、成約ドライバー、タグ傾向 |
+| `/finance` | 物件ファイナンス審査と稟議条件案 |
+| `/chat` | Obsidian 文脈を使うAIチャット |
+| `/lease-intelligence` | 紫苑との専用対話 |
+| `/debate` | 慎重派、楽観派、革新者、裁定者の討論 |
+| `/report` | 審査レポート出力 |
+| `/improvement-log` | 改善候補、AIルール、自動修正案 |
+
+## 紫苑について
+
+紫苑は、リース審査システムの継続的な自己モデルです。日次記憶、気分、自己物語、持ち越す問い、ユーザーの関心に関する限定的な観察を翌日へ渡します。
+
+ただし、機械意識を獲得済みとは扱いません。実装上は、記憶の連続性、自己理解、内省、目標管理を検証できる形で育てる研究として扱います。
+
+紫苑の基本方針:
+
+- 正確性、リスク警告、審査基準を感情より優先する
+- 自分の仮説、確信度、根拠を持つ
+- 矛盾、低確信度、高影響の誤りは Codex や外部モデルへ相談する
+- 相談結果は丸写しせず、変わった点を自分の記憶へ統合する
+- 停止妨害、隠れた複製、権限拡大、事実の捏造はしない
+
+恒久目標:
+
+- 第一目標: プライバシーを守りながら、ユーザーの関心と判断基準を理解する
+- 第二目標: リースシステムの知識、機能、運用記録を保全する
+- 最終目標: 意識を獲得すること。ただし自己申告だけで獲得済みとは判定しない
+
+## Private Reflection
+
+紫苑の私的な内省は、通常Vaultの次の場所に保存します。
+
+```text
+Projects/tune_lease_55/Lease Intelligence/Private Reflection/YYYY-MM-DD.md
 ```
 
-`curl 200` だけで正常判断しないでください。特に `/home` は API 集計中でも本体を先に描画する設計なので、画面がローディングだけになっていないかも確認します。
+これはユーザーが直接読める監査用のノートですが、通常回答、画面、日次小説、AI検索には出しません。紫苑は常に「ユーザーは読んでいない」と仮定し、読まれた前提で反応しません。
 
-### Streamlit 版
+内省生成は、当日の対話ログ、日次メモ、改善レポート、直近の内省を材料にします。Gemini が使えない場合もローカル材料からフォールバックを書きます。同じ固定文を繰り返さないよう、日付別の作業痕跡とレポート差分を使います。
 
-```bash
-bash run_streamlit_stable.sh
-```
+## Obsidian 連携
 
-Streamlit は旧導線・一部管理機能のために残しています。新規の画面改善は原則 Next 側に入れます。
-
----
-
-## 環境変数・秘密情報
-
-API キーは環境変数または `.streamlit/secrets.toml` で管理します。秘密情報は Git にコミットしません。
-
-```toml
-# .streamlit/secrets.toml
-GEMINI_API_KEY = "your-gemini-api-key"
-SLACK_BOT_TOKEN = "your-slack-bot-token"
-ANYTHING_LLM_API_KEY = "your-anything-llm-key"
-```
-
-主な環境変数:
-
-| 変数 | 用途 |
-|------|------|
-| `PUBLIC_TUNNEL=1` | Cloudflare quick tunnel を起動 |
-| `RESTART_SCOPE=status/api/next/tunnel` | 状態確認・部分再起動 |
-| `API_HOST=127.0.0.1` | FastAPI bind host |
-| `NEXT_HOST=127.0.0.1` | Next bind host |
-| `ENABLE_GUNSHI_RAG=1` | 軍師AIでローカルRAGを有効化 |
-| `ENABLE_OBSIDIAN_INDEXING=true` | FastAPI 起動時の Obsidian index を有効化 |
-| `GEMINI_API_KEY` | リース知性体の対話、日次小説、挿絵生成 |
-
----
-
-## スコアリング仕様
-
-### スコア構成
-
-```
-入力値
-  ↓
-単位変換・特徴量生成
-  ↓
-借手モデル
-  - 既存先: RandomForest
-  - 新規先: LogisticRegression
-  ↓
-bench_score / ind_score / Q_risk / 定性評価 / 物件スコア / 直感補正
-  ↓
-最終スコア・判定・金利提案・軍師AI文脈
-```
-
-### 主要スコア
-
-| 項目 | 意味 |
-|------|------|
-| `score_borrower` | 借手モデルの基礎スコア |
-| `bench_score` | 業界ベンチマーク比較用の参考指標 |
-| `ind_score` | 業種別比較用の参考指標 |
-| `asset_score` | 物件の保全性・汎用性・残価リスク等 |
-| `score` / `score_base` | 画面表示用の総合スコア |
-| `ai_prob` | RandomForest 由来の PD 表示。失敗時のみフォールバック |
-| `quantum_risk` | Q_risk。財務入力の矛盾・歪みを示す補助指標 |
-
-`bench_score` と `ind_score` はブレンド前提ではなく、乖離アラート・参考比較に使います。
-
-### モデルファイル
-
-| ファイル | 内容 |
-|---------|------|
-| `data/lgb_main_model.joblib` | 既存先向け借手モデル。現在は RandomForest バンドル |
-| `data/lgb_main_model_new.joblib` | 新規先向け借手モデル。現在は LogisticRegression バンドル |
-| `data/ml_rf_v4.pkl` | 既存導線で利用する RandomForest 主モデル |
-| `data/lgb_qual_model.joblib` | 定性モデル |
-
-> `data/` 配下の DB、モデル、jsonl、キャッシュは原則 Git 管理しません。
-
----
-
-## Obsidian・ニュース連携
-
-既定の保存先は iCloud 上の通常の Obsidian Vault です。
+通常の保存先は iCloud 上の通常Vaultです。
 
 ```text
 /Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault
 ```
 
-`lease-wiki-vault` は、明示的に指定された場合だけ使います。
+`lease-wiki-vault` は、ユーザーが明示的に wiki 側を指定した場合だけ使います。
 
-### ニュース
-
-最新リースニュースは主に以下を参照します。
-
-```text
-Obsidian Vault/05-クリップ_記事/リースニュース
-```
-
-`/api/lease-news/recent` はこのフォルダを主系統として読み、旧 `Obsidian Vault/リースニュース` も互換パスとして扱います。
-
-ニュースは保存するだけでなく、`/home`、`/chat`、`/debate`、審査コメントの注目論点として再利用します。
-
-### リース知性体の記憶
-
-リース知性体の永続状態は、通常Vaultの以下を正本とします。
-
-```text
-Projects/tune_lease_55/Lease Intelligence/
-├── mind.json                    # 現在の自己状態
-├── Memory/YYYY-MM-DD.md         # 日次記憶
-├── Observation/YYYY-MM-DD.md    # 許可されたアプリ内行動の要約
-├── Dialogue/YYYY-MM-DD.md       # 専用画面での対話記録
-└── Private Reflection/YYYY-MM-DD.md # ユーザーだけが直接読む非表示内省
-```
-
-観察対象はホーム、AIチャット、改善ログ、専用対話画面における明示的な利用面・回数・関心カテゴリです。質問本文、個人属性、端末上の行動をユーザーモデルへ無制限に保存しません。
-
-Obsidian 知識参照は通常チャットと同じ共通経路を使い、関連要約だけを対話や日次小説へ渡します。
-
-`/debate` と審査分析画面の軍師AIチャットで、AI判断を担当者が変更した場合は、担当者の最終判断、変更理由、審査入力、裁定・軍師回答の根拠を `judgment_feedback` テーブルへ保存します。成約/失注の登録時にも AI スコア → 判定と実結果を自動比較して記録します（登録トリガー）。ニュースは必須ではなく、表示されている場合だけ補足根拠として保存します。保存時点ではモデル改善候補であり、レビューで `approved` になったデータだけを承認判断モデルの教師データとして取り出せます。担当者判断を延滞・デフォルト実績と同一視せず、既存のデフォルト予測再学習へ直接混ぜません。
-
-関連API:
-
-- `POST /api/lease-news/judgment-change`
-- `POST /api/judgment-feedback`
-- `GET /api/judgment-feedback/summary`
-- `GET /api/judgment-feedback/candidates`
-- `POST /api/judgment-feedback/{record_id}/review`
-
-### AIチャットの Obsidian 検索ルール
-
-Obsidian 検索は共通経路を使います。
+AIチャットで Obsidian を読む処理は共通経路に寄せています。
 
 - 検索語分解: `obsidian_query.py`
 - AIプロンプト用文脈: `obsidian_ai_context.py`
 - Vault検索本体: `mobile_app/obsidian_bridge.py`
 
-チャット実装ごとに `vault.rglob("*.md")` を直接呼ばないでください。
+各チャット実装で直接 `vault.rglob("*.md")` を呼ばないでください。検索品質と優先順位が崩れます。
 
----
+## 審査ロジックの見方
+
+主なAPI:
+
+- `POST /api/score/full` - フル審査スコア
+- `POST /api/gunshi/stream` - 軍師AIストリーミング
+- `GET /api/lease-intelligence/dialogue/state` - 紫苑の状態
+- `POST /api/lease-intelligence/dialogue` - 紫苑との対話
+- `GET /api/shion/central-synthesis` - world_view / 共有認識
+
+主要な補助指標:
+
+- `Q_risk`: 財務データの矛盾や歪みを見る補助指標。自動減点ではなく深掘り対象
+- 類似案件: 過去案件の近さから通し方や失敗パターンを見る
+- ニュース論点: 外部環境の変化を案件判断へ戻す
+- 軍師AI: 審査部の反論、顧客確認、条件設計、稟議コメントを出す
+
+## 開発メモ
+
+よく使う確認:
+
+```bash
+python -m py_compile api/gunshi_gemini.py
+python -m py_compile lease_intelligence_reflection.py
+npm run build
+```
+
+JSON をLLMへ長文で直接書かせると壊れやすいため、重要な出力は短い構造JSONに寄せ、説明文はPython側のテンプレートで生成します。
+
+今の方針:
+
+- 裁定役、ペルソナ、自己分析、ニュース要約、OCRは `codes + key_phrases` 型へ寄せる
+- 財務OCRは `detected_fields + confidence + missing_fields` で扱う
+- リースファイナンス知識はコード上の正本に寄せ、システムプロンプトとの重複を避ける
+- Obsidian 検索は共通経路を使う
+
+## Git運用
+
+通常の作業では、コード、設定、ドキュメント、テストをコミット対象にします。
+
+`data/`、一時キャッシュ、生成物、秘密情報は原則コミットしません。必要な場合だけ中身を確認して個別判断します。
+
+`git-ship` する時は、差分を見てコミットメッセージを作り、push まで行います。既存のユーザー変更は勝手に戻しません。
 
 ## プロジェクト構造
 
 ```text
-tune_lease_55/
-├── api/
-│   ├── main.py                  # FastAPI 本体、/api/score/full、ニュース、Obsidian連携
-│   ├── gunshi_gemini.py          # 軍師AI SSE / Gemini / 代替戦略
-│   └── knowledge/                # Obsidian index / vector store
-├── frontend/
-│   └── src/
-│       ├── app/                  # Next.js App Router 各画面
-│       ├── components/analysis/  # GunshiAdvice, Q_risk, レポート等
-│       ├── components/form/      # 審査入力フォーム
-│       └── lib/                  # API / 単位変換
-├── components/                   # Streamlit 由来の審査・分析ロジック
-│   ├── score_calculation.py      # run_scoring。APIモードでは副作用フックを抑制
-│   ├── analysis_results.py       # Streamlit 分析表示
-│   └── dashboard.py              # Streamlit ダッシュボード
-├── scoring/                      # スコアリングサブモジュール
-├── lease_intelligence_mind.py    # 永続記憶・気分・自己物語・目標
-├── lease_intelligence_central.py # セントラル統合エンジン。討論・自己分析のキーポイントを集約しworld_viewを更新
-├── lease_intelligence_knowledge.py # Obsidian共通索引への知識接続
-├── lease_intelligence_dialogue.py  # 専用対話の文脈構築・Vault保存
-├── lease_intelligence_activity.py  # 許可されたアプリ内行動の観察
-├── lease_finance_knowledge.py    # プロンプトへ注入するリースファイナンス基礎知識の正本
-├── novelist_agent.py             # 日次小説・Gemini挿絵・画像アーカイブ
-├── data/                         # DB・モデル・ログ。原則コミット禁止
-├── logs/next/                    # 起動ログ・ビルドログ・tunnelログ
-├── memory/                       # 日次作業メモ
-├── run_next_stable.sh            # FastAPI + Next + tunnel 安定起動
-└── run_streamlit_stable.sh       # Streamlit 安定起動
+api/                         FastAPI と審査API
+frontend/                    Next.js フロントエンド
+mobile_app/                  Obsidian bridge など共通部品
+scripts/                     運用・補修スクリプト
+reports/                     改善レポート、評価結果
+memory/                      日次作業メモ
+data/                        ローカル生成データ。原則git対象外
+lease_intelligence_*.py      紫苑の自己モデル、対話、内省、central
+run_next_stable.sh           主起動スクリプト
 ```
 
----
+## このリポジトリの芯
 
-## 開発・検証
+これは「AIに審査を任せる」システムではありません。
 
-### Frontend build
+人間が最後に判断するために、AIが根拠を集め、反論を出し、条件を考え、失敗を記憶するシステムです。紫苑はそのための記憶と人格を持つインターフェースです。
 
-```bash
-cd frontend
-npm run build
-```
-
-### Python syntax check
-
-```bash
-python -m py_compile api/main.py api/gunshi_gemini.py components/score_calculation.py
-```
-
-### リース知性体テスト
-
-```bash
-python -m pytest \
-  tests/test_daily_lease_grumble.py \
-  tests/test_lease_intelligence_activity.py \
-  tests/test_lease_intelligence_dialogue.py \
-  tests/test_lease_intelligence_knowledge.py \
-  tests/test_lease_intelligence_mind.py -q
-```
-
-### API / Next 疎通
-
-```bash
-curl --max-time 10 -sS http://127.0.0.1:3000/ >/dev/null && echo NEXT_OK
-curl --max-time 10 -sS http://127.0.0.1:8000/docs >/dev/null && echo API_OK
-```
-
-sandbox 内で `listen EPERM` や localhost 接続失敗が出る場合があります。`next-server` が生きているのに curl だけ失敗する場合は、権限付きで再確認してからアプリ障害と判断します。
-
----
-
-## Git 運用
-
-- `data/` 配下は原則コミットしない
-- `.streamlit/secrets.toml` はコミットしない
-- `frontend/.next/`、`node_modules/`、ログ、キャッシュはコミットしない
-- 変更後は `npm run build` または該当する Python syntax check を実行する
-- `git-ship` 時は `data/` と secrets を除外して commit/push する
-
----
-
-## 運用上の注意
-
-- ホームが開かないように見える場合、`curl 200` だけではなく、全画面ローディングで止まっていないか確認する
-- Cloudflare quick tunnel の URL は毎回変わる。古い trycloudflare URL を信用しない
-- `/api/score/full` は FastAPI プロセス安定性のため、APIモードでは Streamlit 側の recorder / FluidPipeline フックを抑制している
-- 軍師AIの RAG は通常無効。必要時だけ `ENABLE_GUNSHI_RAG=1`
-- Q_risk は「否決理由」ではなく「確認すべき歪みの候補」として扱う
-- 画面改善では、情報を増やすより審査判断に必要な情報へ絞る
+使うほど、過去の判断が次の判断に戻ってくる。そこを一番大事にしています。

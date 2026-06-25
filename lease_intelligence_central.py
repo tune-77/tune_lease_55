@@ -51,7 +51,11 @@ def _call_gemini(prompt: str) -> str:
         raise RuntimeError("GEMINI_API_KEY が見つかりません")
     payload = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.5, "maxOutputTokens": 2000},
+        "generationConfig": {
+            "temperature": 0.2,
+            "maxOutputTokens": 2500,
+            "responseMimeType": "application/json",
+        },
     }
     resp = requests.post(
         url, json=payload, headers={"x-goog-api-key": api_key}, timeout=60
@@ -94,6 +98,31 @@ def _group_by_role(keypoints: list[dict[str, Any]]) -> dict[str, list[dict[str, 
     return dict(groups)
 
 
+def _fallback_patterns_from_keypoints(keypoints: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return small local observations when Gemini JSON is unusable."""
+    patterns: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for kp in keypoints[:8]:
+        content = str(kp.get("content") or "").strip()
+        if not content:
+            continue
+        theme = re.sub(r"\s+", " ", content).strip("。 \n\t")[:50]
+        if not theme or theme in seen:
+            continue
+        seen.add(theme)
+        role = str(kp.get("role") or "legacy")
+        patterns.append(
+            {
+                "theme": theme,
+                "count": 1,
+                "supporting_roles": [role],
+                "conflicting_roles": [],
+                "status": "observation",
+            }
+        )
+    return patterns
+
+
 def _detect_patterns(keypoints: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
     """
     複数の keypoints に共通するテーマを Gemini で検出する。
@@ -106,6 +135,8 @@ def _detect_patterns(keypoints: list[dict[str, Any]]) -> list[dict[str, Any]] | 
     """
     if not keypoints:
         return []
+    if os.environ.get("ENABLE_CENTRAL_GEMINI", "").strip() != "1":
+        return _fallback_patterns_from_keypoints(keypoints)
 
     kp_text = "\n".join(
         f"[{i + 1}] ({kp['role']}) {kp['content']}"
@@ -139,14 +170,14 @@ status の基準:
         raw_response = _call_gemini(prompt)
         m = re.search(r"\[.*\]", raw_response, re.DOTALL)
         if not m:
-            return None
+            return _fallback_patterns_from_keypoints(keypoints)
         patterns = json.loads(m.group(0))
         if not isinstance(patterns, list):
-            return None
+            return _fallback_patterns_from_keypoints(keypoints)
         return [p for p in patterns if isinstance(p, dict) and p.get("theme")]
     except Exception as e:
-        print(f"[central] Gemini パターン検出失敗: {e}")
-        return None
+        print(f"[central] Gemini パターン検出失敗、ローカル観察に退避: {e}")
+        return _fallback_patterns_from_keypoints(keypoints)
 
 
 def _update_world_view_commentary(vault_path: str, patterns: list[dict[str, Any]]) -> None:
