@@ -10,13 +10,14 @@ import { INDUSTRIES } from "@/constants/industries";
 
 // ── デモユーザー定義 ─────────────────────────────────────────────────────────
 const DEMO_USERS = [
-  { key: "tanaka", name: "田中", dept: "審査部", style: "厳格・数字重視" },
-  { key: "suzuki", name: "鈴木", dept: "営業推進", style: "積極・関係重視" },
-  { key: "sato",   name: "佐藤", dept: "リーダー", style: "バランス・説明可能性重視" },
-  { key: "yamada", name: "山田", dept: "新人",     style: "教科書的・質問多め" },
+  { key: "tanaka",     name: "田中",           dept: "審査部",           style: "厳格・数字重視" },
+  { key: "suzuki",     name: "鈴木",           dept: "営業推進",         style: "積極・関係重視" },
+  { key: "sato",       name: "佐藤",           dept: "リーダー",         style: "バランス・説明可能性重視" },
+  { key: "yamada",     name: "山田",           dept: "新人",             style: "教科書的・質問多め" },
+  { key: "shion_self", name: "紫苑（自己分析）", dept: "自己生成プロファイル", style: "mind.jsonから自動生成" },
 ] as const;
 
-type DemoUserKey = "tanaka" | "suzuki" | "sato" | "yamada" | "";
+type DemoUserKey = "tanaka" | "suzuki" | "sato" | "yamada" | "shion_self" | "";
 
 interface Participants {
   skeptic: DemoUserKey;
@@ -319,6 +320,13 @@ export default function DebatePage() {
   const [judgmentChangeReason, setJudgmentChangeReason] = useState("");
   const [autoFilled, setAutoFilled] = useState(false);
   const [history, setHistory] = useState<ConversationHistory | null>(null);
+  const [shionSelfAnalysis, setShionSelfAnalysis] = useState<{
+    optimist_traits: string[];
+    skeptic_traits: string[];
+    arbiter_style: string;
+    generated_at: string;
+    keypoints_used: number;
+  } | null>(null);
   const sessionIdRef = useRef<string>(
     typeof crypto !== "undefined" ? crypto.randomUUID() : Math.random().toString(36).slice(2)
   );
@@ -330,6 +338,13 @@ export default function DebatePage() {
         setForm(prev => ({ ...prev, ...data }));
         setAutoFilled(true);
       })
+      .catch(() => {});
+  }, []);
+
+  // 紫苑自己分析キャッシュをページ初回ロード時に取得
+  useEffect(() => {
+    apiClient.get("/api/shion/self-analysis")
+      .then(({ data }) => setShionSelfAnalysis(data))
       .catch(() => {});
   }, []);
 
@@ -556,8 +571,21 @@ export default function DebatePage() {
                     <option key={u.key} value={u.key}>{u.name}（{u.dept}）</option>
                   ))}
                 </select>
-                {info && (
-                  <p className="mt-2 text-xs text-slate-500">{info.style}</p>
+                {participants[role] === "shion_self" ? (
+                  <div className="mt-2 space-y-1">
+                    <span className="inline-flex items-center gap-1 text-xs font-bold text-violet-700 bg-violet-100 border border-violet-300 rounded-full px-2 py-0.5">
+                      ✨ mind.jsonから自動生成
+                    </span>
+                    {shionSelfAnalysis && (
+                      <p className="text-xs text-slate-500">
+                        {shionSelfAnalysis.keypoints_used}件シグナル参照
+                        {" · "}
+                        {new Date(shionSelfAnalysis.generated_at).toLocaleDateString("ja-JP")}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  info && <p className="mt-2 text-xs text-slate-500">{info.style}</p>
                 )}
               </div>
             );

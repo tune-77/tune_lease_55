@@ -8503,3 +8503,13 @@ def get_emotion_feedback(resolved: Optional[bool] = None):
     from api.database import get_emotion_feedbacks
     items = get_emotion_feedbacks(resolved=resolved)
     return {"items": items, "total": len(items)}
+
+
+@app.get("/api/shion/self-analysis")
+def get_shion_self_analysis(refresh: bool = False):
+    """紫苑の自己分析を取得する（24時間キャッシュ）。"""
+    from api.shion_self_analysis import get_shion_self_analysis as _get_analysis
+    try:
+        return _get_analysis(force_refresh=refresh)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
