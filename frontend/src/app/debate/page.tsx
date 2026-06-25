@@ -123,6 +123,13 @@ interface DebateResult {
 }
 
 
+interface CentralSynthesis {
+  confirmed_beliefs?: Array<{ belief: string; count?: number }>
+  emerging_patterns?: Array<{ theme: string }>
+  known_tradeoffs?: Array<{ tradeoff: string }>
+  last_updated?: string
+}
+
 // ── スタイルヘルパー ─────────────────────────────────────────────────────────
 function opinionBadge(opinion: string) {
   if (opinion === "承認")
@@ -439,6 +446,8 @@ export default function DebatePage() {
     generated_at: string;
     keypoints_used: number;
   } | null>(null);
+  const [centralData, setCentralData] = useState<CentralSynthesis | null>(null);
+  const [centralOpen, setCentralOpen] = useState(false);
   const sessionIdRef = useRef<string>(
     typeof crypto !== "undefined" ? crypto.randomUUID() : Math.random().toString(36).slice(2)
   );
@@ -457,6 +466,14 @@ export default function DebatePage() {
   useEffect(() => {
     apiClient.get("/api/shion/self-analysis")
       .then(({ data }) => setShionSelfAnalysis(data))
+      .catch(() => {});
+  }, []);
+
+  // 確信マップをページ初回ロード時に取得
+  useEffect(() => {
+    fetch("/api/shion/central-synthesis")
+      .then(r => r.json())
+      .then(d => setCentralData(d.commentary || null))
       .catch(() => {});
   }, []);
 
@@ -792,6 +809,42 @@ export default function DebatePage() {
 
       {/* 過去審査履歴バナー */}
       {history && <HistoryBanner history={history} />}
+
+      {/* 確信マップ (REV-157) */}
+      {centralData && (
+        <div className="border border-purple-200 rounded-xl p-3 mb-4 bg-purple-50/50">
+          <button
+            type="button"
+            onClick={() => setCentralOpen(!centralOpen)}
+            className="text-sm font-medium text-purple-700 flex items-center gap-1"
+          >
+            📍 紫苑の確信マップ {centralOpen ? "▲" : "▼"}
+          </button>
+          {centralOpen && (
+            <div className="mt-2 text-sm space-y-2">
+              {(centralData.confirmed_beliefs?.length ?? 0) > 0 && (
+                <div>
+                  <div className="font-medium text-green-700">✅ 確信済み</div>
+                  {centralData.confirmed_beliefs!.map((b, i) => (
+                    <div key={i} className="text-gray-600">・{b.belief}</div>
+                  ))}
+                </div>
+              )}
+              {(centralData.known_tradeoffs?.length ?? 0) > 0 && (
+                <div>
+                  <div className="font-medium text-yellow-700">⚖️ トレードオフ</div>
+                  {centralData.known_tradeoffs!.map((t, i) => (
+                    <div key={i} className="text-gray-600">・{t.tradeoff}</div>
+                  ))}
+                </div>
+              )}
+              {centralData.last_updated && (
+                <div className="text-xs text-gray-400">最終更新: {centralData.last_updated}</div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 入力フォーム */}
       <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-8">
