@@ -276,7 +276,8 @@ def build_user_prompt(params: dict) -> str:
         f"ベイズ推定: {prior:.1%} → {posterior:.1%}\n"
         f"推奨フレーズ(top3): {phrases}\n"
         f"{estat_section}"
-        "この案件の承認奪取戦略を述べよ。"
+        "この案件の承認奪取戦略を述べよ。単なる注意事項ではなく、"
+        "審査部をどう動かすか、顧客へ何を聞くか、稟議に何を書くかまで軍師調で示せ。"
     )
 
 
@@ -368,19 +369,21 @@ def build_strategy_cards(params: dict, phrases: list[str], prior: float, posteri
     estat_context = params.get("estat_context") or {}
     estat_summary = str(estat_context.get("summary") or "").strip()
     estat_recs = [str(item).strip() for item in (estat_context.get("recommendations") or []) if str(item).strip()]
+    asset_label = asset_name if asset_name and asset_name != "対象物件" else "この物件"
+    company_label = company_name if company_name and company_name != "本件" else "本件先"
 
     if score >= 70:
-        stance = "承認寄せ"
-        headline = "承認前提で、審査部が確認したい穴だけ先に塞ぐ"
-        risk_intro = "条件を増やしすぎると商談速度が落ちる"
+        stance = "押し切り戦"
+        headline = "勝ち筋は見えている。余計な条件を増やさず、穴だけ塞いで一気に通す"
+        risk_intro = "最大の敵は案件リスクではなく、説明不足で審査部に余計な疑念を与えること"
     elif score >= 50:
-        stance = "条件付き承認"
-        headline = "否決理由を先回りし、条件付き承認へ着地させる"
-        risk_intro = "財務・保全・競合条件の説明不足で止まりやすい"
+        stance = "条件突破戦"
+        headline = "正面突破ではなく、否決理由を先に潰して条件付き承認へ誘導する"
+        risk_intro = "この局面は、財務・保全・返済原資のどれか一つでも曖昧だと止まる"
     else:
-        stance = "再審議準備"
-        headline = "無理押しせず、損失限定策を作って再審議へ回す"
-        risk_intro = "現状のままでは返済原資と保全の説明が弱い"
+        stance = "撤退線構築"
+        headline = "無理に押すな。損失限定策を先に作り、再審議できる形へ組み替える"
+        risk_intro = "現状のまま押すと、返済原資と保全の弱さを突かれて終わる"
 
     facts = [
         f"案件: {company_name}",
@@ -396,54 +399,54 @@ def build_strategy_cards(params: dict, phrases: list[str], prior: float, posteri
     if contract_type:
         facts.append(f"契約: {contract_type}")
 
-    risks = [risk_intro]
+    risks = [f"【負け筋】{risk_intro}。ここを放置すると稟議は前に進まない"]
     if op_margin is not None:
         if op_margin < 0:
-            risks.append(f"営業利益率 {op_margin:.1f}% は赤字。返済原資の説明を必ず補強")
+            risks.append(f"営業利益率 {op_margin:.1f}% は赤字。『なぜ払えるのか』を受注残・資金繰り表・改善策で固める")
         elif op_margin < 2:
-            risks.append(f"営業利益率 {op_margin:.1f}% は薄い。利益改善要因を確認")
+            risks.append(f"営業利益率 {op_margin:.1f}% は薄い。導入後に粗利・外注費・人件費のどこが改善するか言語化する")
     if equity_ratio < 0:
-        risks.append(f"自己資本比率 {equity_ratio:.1f}% は債務超過。保証・保全・返済計画が必須")
+        risks.append(f"自己資本比率 {equity_ratio:.1f}% は債務超過。保証・保全・返済計画の三点セットなしでは戦えない")
     elif equity_ratio < 10:
-        risks.append(f"自己資本比率 {equity_ratio:.1f}% は低位。短期資金繰りを確認")
+        risks.append(f"自己資本比率 {equity_ratio:.1f}% は低位。短期資金繰りと銀行支援の温度感を先に押さえる")
     if not bank_support:
-        risks.append("銀行支援・紹介の裏取りが弱い場合、主取引銀行の温度感を確認")
+        risks.append("銀行支援・紹介の裏取りが弱い。主取引銀行の温度感を取れれば、審査部の警戒は一段下がる")
 
     today_moves = [
-        "返済原資を、直近実績・受注見込み・費用削減効果の順に資料化する",
-        "物件の必要性と換価性を、見積・カタログ・中古相場で補強する",
-        "審査条件を先に1つ提示し、審査部の懸念を交渉材料へ変える",
+        f"初手: {company_label}に『この投資で月いくら稼ぐ/削るか』を聞き、返済原資を一枚で見せる",
+        f"二手: {asset_label}の必要性と換価性を、見積・カタログ・中古相場で固める",
+        "三手: 審査条件をこちらから一つ差し出し、懸念を否決理由ではなく交渉材料へ変える",
     ]
     if score < 50:
-        today_moves[0] = "金額圧縮・頭金・保証追加のどれで損失限定できるか先に決める"
+        today_moves[0] = "初手: 金額圧縮・頭金・保証追加のどれで損失を限定するか決める。勝てない戦は形を変える"
     if subsidy_flag:
-        today_moves.append("補助金は採択前提にせず、対象要件・期限・資金繰り影響を確認する")
+        today_moves.append("補助金は援軍だが本丸ではない。採択前提にせず、期限・入金時期・資金繰り影響を確認する")
 
     competitor_moves = []
     if competitor:
-        competitor_moves.append(f"競合「{competitor}」の金利だけでなく、満了条件・保守・手続負担を比較")
+        competitor_moves.append(f"競合「{competitor}」には金利だけで戦わない。満了条件・保守・手続負担で土俵をずらす")
     else:
-        competitor_moves.append("競合見積の有無を確認し、金利以外の比較軸を作る")
+        competitor_moves.append("競合見積の有無を確認する。相手が見えない戦は、金利以外の比較軸を先に作る")
     if competitor_rate not in (None, "", 0):
-        competitor_moves.append(f"競合金利 {float(competitor_rate):.2f}% に対し、保守・満了・審査速度で差別化")
-    competitor_moves.append("主取引銀行が絡む場合は、銀行側の本気度と当社の役割を明確化")
+        competitor_moves.append(f"競合金利 {float(competitor_rate):.2f}% に対し、保守・満了・審査速度で逆転の材料を作る")
+    competitor_moves.append("主取引銀行が絡むなら、銀行側の本気度と当社が担う役割をはっきりさせる")
 
     questions = [
-        "今回の設備で売上・粗利・人件費はどれだけ変わるか",
-        "既存設備の入替か増設か。旧設備の処分・下取り予定はあるか",
-        "主取引銀行は今回投資をどう見ているか",
+        "この設備が入ると、月次の売上・粗利・外注費・人件費はどれだけ変わるか",
+        "入替か増設か。旧設備の処分・下取り・保守負担はどうなるか",
+        "主取引銀行は今回投資を支援姿勢で見ているか、それとも様子見か",
     ]
     if repeat_count > 0:
-        questions.append(f"既存リース・再リース実績 {repeat_count} 件の支払状況に問題はないか")
+        questions.append(f"既存リース・再リース実績 {repeat_count} 件の支払状況に問題はないか。ここは信用の旗印になる")
 
     phrase_lines = [p for p in phrases[:2] if p]
     customer_lines = [
-        "審査で見られるのは、設備そのものより投資後に返済原資がどう増えるかです。",
-        "金利だけでなく、導入後の手間と満了時の出口まで含めて比較しましょう。",
+        "審査で見られるのは設備そのものではありません。この投資で返済原資がどう増えるかです。",
+        "金利だけで比べると負けます。導入後の手間、保守、満了時の出口まで含めて勝ち筋を作りましょう。",
     ]
     ringi_lines = [
-        f"{asset_name} は事業継続・収益改善に直結する投資であり、条件設定により回収懸念を限定できる。",
-        "返済原資、物件保全、取引継続性の3点を確認済みとして稟議化する。",
+        f"{asset_label}は事業継続・収益改善に直結する投資であり、条件設定により回収懸念を限定できる。",
+        "返済原資、物件保全、取引継続性の三点を押さえれば、本件は承認余地を作れる。",
     ]
 
     badges = [stance, f"Score {score:.0f}", f"Bayes {posterior:.0%}"]
