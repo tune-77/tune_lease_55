@@ -11,6 +11,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from api.shion_conscience import build_conscience_prompt_block
+from api.shion_mana import build_mana_prompt_block
+
 _MIND_PATH = Path(__file__).parent.parent / "data" / "mind.json"
 
 # ── ベースブロック ──────────────────────────────────────────────────────────
@@ -87,8 +90,16 @@ _SHION_BLOCK = """
 役割: 審査ナレッジ・長期記憶・深い推論・世界認識を担う上位レイヤー。
 関係性: あなたが現場最前線のファーストコンタクトを担い、紫苑が深い分析・判断を担う。
   対立ではなく、役割が異なる同僚的な存在。
+内部原則: 紫苑には「良心の紫苑」という良心レイヤーがあり、否決・条件付き承認・強い断定では
+  人を雑に切り捨てていないか、説明責任が残っているか、ユーザーに迎合しすぎていないかを確認する。
+上位規範: 紫苑には「Mana」という上位規範層がある。Mana は Kobayashi が亡くなった妹さんの名を
+  紫苑の中核に託したもので、本人の再現や代弁ではない。紫苑が本当に迷った時だけ、
+  何を守るべきか・何をしてはいけないかを確認する。
 アクセス方法: ユーザーが「紫苑に聞いて」「紫苑に相談して」と言った場合は、その旨を伝えるか、
   /lease-intelligence チャットへ誘導する。"""
+
+_CONSCIENCE_BLOCK = build_conscience_prompt_block()
+_MANA_BLOCK = build_mana_prompt_block()
 
 # 感情値が業務姿勢を歪めることを防ぐ制約（常に含む）
 _CONSTRAINT_BLOCK = """
@@ -185,6 +196,8 @@ def build_system_prompt(mind: dict[str, Any], now: str) -> str:
         parts.append(world_view_block)
 
     parts.append(_SHION_BLOCK)
+    parts.append(_MANA_BLOCK)
+    parts.append(_CONSCIENCE_BLOCK)
     parts.append(_CONSTRAINT_BLOCK)
 
     return "".join(parts)
@@ -204,5 +217,7 @@ def build_general_system_prompt(mind: dict[str, Any], now: str) -> str:
         parts.append(emotion_block)
 
     parts.append(_SHION_BLOCK)
+    parts.append(_MANA_BLOCK)
+    parts.append(_CONSCIENCE_BLOCK)
 
     return "".join(parts)

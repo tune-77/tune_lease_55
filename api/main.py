@@ -6623,8 +6623,10 @@ def post_chat(req: ChatRequest):
             history = get_recent_messages(req.user_id, limit=60)
             history_for_gemini = [{"role": m["role"], "content": m["content"]} for m in history]
             from prompt_feedback import build_pdca_prompt_block
+            from api.shion_memory_recall import build_recall_prompt_block
 
-            base_system_prompt = _pg_build_gsp(_chat_mind, _chat_now) + news_focus_context + news_brief_context
+            memory_recall_context, memory_recall = build_recall_prompt_block(req.message)
+            base_system_prompt = _pg_build_gsp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
             pdca_block = build_pdca_prompt_block()
             effective_system_prompt = base_system_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
             reply = call_gemini_chat(effective_system_prompt, history_for_gemini, req.message)
@@ -6657,7 +6659,14 @@ def post_chat(req: ChatRequest):
                 knowledge_refs=[],
                 pdca_block=pdca_block,
                 judgment_learning_used=False,
-                extra={"user_id": req.user_id, "category": "general"},
+                extra={
+                    "user_id": req.user_id,
+                    "category": "general",
+                    "memory_recall": {
+                        "route": memory_recall.get("route"),
+                        "refs": memory_recall.get("refs", [])[:8],
+                    },
+                },
             )
             _record_chat_knowledge_correction_if_needed(req.message)
             total = get_message_count(req.user_id)
@@ -6737,7 +6746,16 @@ def post_chat(req: ChatRequest):
         except Exception as _judgment_learning_error:
             print(f"[判断差分学習] 読み込みエラー: {_judgment_learning_error}")
 
-        base_effective_prompt = _pg_build_sp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + rag_context + db_context + improvement_context + judgment_learning_context + guidance.prompt_suffix
+        memory_recall_context = ""
+        memory_recall = {"route": "", "refs": []}
+        try:
+            from api.shion_memory_recall import build_recall_prompt_block
+
+            memory_recall_context, memory_recall = build_recall_prompt_block(req.message)
+        except Exception as _memory_recall_error:
+            print(f"[ShionMemoryRecall] 読み込みエラー: {_memory_recall_error}")
+
+        base_effective_prompt = _pg_build_sp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + guidance.prompt_suffix
         pdca_block = build_pdca_prompt_block()
         effective_prompt = base_effective_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
         reply = call_gemini_chat(effective_prompt, history_for_gemini, req.message)
@@ -6762,6 +6780,10 @@ def post_chat(req: ChatRequest):
                 "intent": req.intent or "",
                 "category": "rag",
                 "improvement_mode": bool(_is_improvement_msg),
+                "memory_recall": {
+                    "route": memory_recall.get("route"),
+                    "refs": memory_recall.get("refs", [])[:8],
+                },
             },
         )
         _record_memory_usage_if_available(
@@ -8527,6 +8549,7 @@ def promote_keypoint(req: PromoteKeypointRequest):
     import json as _json
     from pathlib import Path
     from datetime import date
+    from api.shion_memory_taxonomy import infer_applies_when
 
     text = req.text.strip()
     if not text:
@@ -8560,6 +8583,10 @@ def promote_keypoint(req: PromoteKeypointRequest):
             "source": "debate",
             "case": req.case_summary,
             "date": date.today().isoformat(),
+            "memory_type": "judgment_memory",
+            "status": "active",
+            "confidence": 0.78,
+            "applies_when": infer_applies_when(text),
         }
         if req.role:
             new_entry["role"] = req.role

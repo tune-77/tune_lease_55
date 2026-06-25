@@ -26,17 +26,37 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_LOCAL_MODEL_DIR = (
+    PROJECT_ROOT
+    / "models"
+    / "sentence-transformers"
+    / "paraphrase-multilingual-MiniLM-L12-v2"
+)
+DEFAULT_REMOTE_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+
+
+def _default_model_name() -> str:
+    configured = os.environ.get("OBSIDIAN_RAG_MODEL", "").strip()
+    if configured:
+        return configured
+    if DEFAULT_LOCAL_MODEL_DIR.is_dir():
+        return str(DEFAULT_LOCAL_MODEL_DIR)
+    return DEFAULT_REMOTE_MODEL_NAME
+
+
 class SemanticSearchEngine:
     """セマンティック検索エンジン"""
     
-    def __init__(self, model_name: str = "sentence-transformers/multilingual-MiniLM-L12-v2"):
+    def __init__(self, model_name: str | None = None):
         """
         初期化
         
         Args:
             model_name: SentenceTransformer モデル名
         """
-        self.model_name = model_name
+        self.model_name = model_name or _default_model_name()
         self.embeddings_cache = {}
         self.embedding_model = None
         self.vault_path = "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
@@ -44,14 +64,46 @@ class SemanticSearchEngine:
         
         if EMBEDDING_AVAILABLE:
             try:
-                logger.info(f"📦 Embedding モデル読み込み中: {model_name}")
-                self.embedding_model = SentenceTransformer(model_name)
+                logger.info(f"📦 Embedding モデル読み込み中: {self.model_name}")
+                if os.path.isdir(self.model_name):
+                    self.embedding_model = self._load_local_sentence_transformer(self.model_name)
+                elif os.environ.get("OBSIDIAN_RAG_USE_ENCODER", "").strip() == "1":
+                    self.embedding_model = SentenceTransformer(self.model_name, device="cpu")
+                else:
+                    logger.info(
+                        "Embedding モデルはローカルに無いためスキップします: %s",
+                        self.model_name,
+                    )
                 logger.info("✅ Embedding モデル読み込み完了")
             except Exception as e:
                 logger.error(f"❌ モデル読み込みエラー: {e}")
                 self.embedding_model = None
         
         self._load_cache()
+
+    def _load_local_sentence_transformer(self, model_name: str):
+        try:
+            return SentenceTransformer(
+                model_name,
+                device="cpu",
+                local_files_only=True,
+            )
+        except TypeError:
+            old_hf = os.environ.get("HF_HUB_OFFLINE")
+            old_tf = os.environ.get("TRANSFORMERS_OFFLINE")
+            os.environ["HF_HUB_OFFLINE"] = "1"
+            os.environ["TRANSFORMERS_OFFLINE"] = "1"
+            try:
+                return SentenceTransformer(model_name, device="cpu")
+            finally:
+                if old_hf is None:
+                    os.environ.pop("HF_HUB_OFFLINE", None)
+                else:
+                    os.environ["HF_HUB_OFFLINE"] = old_hf
+                if old_tf is None:
+                    os.environ.pop("TRANSFORMERS_OFFLINE", None)
+                else:
+                    os.environ["TRANSFORMERS_OFFLINE"] = old_tf
     
     def _load_cache(self):
         """キャッシュをファイルから読み込む"""

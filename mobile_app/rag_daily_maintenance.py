@@ -18,16 +18,21 @@
 import logging
 import json
 import os
+import sqlite3
 from datetime import datetime
+from pathlib import Path
 from mobile_app.integrated_rag_pipeline import IntegratedRAGSystem
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+REPORTS_DIR = PROJECT_ROOT / "reports"
+
 
 # ===== ChromaDB 再インデックス機能
 
-def run_chroma_reindex(vault_path: str, full_mode: bool = True) -> dict:
+def run_chroma_reindex(vault_path: str, full_mode: bool = False) -> dict:
     """
     ChromaDB 再インデックス（既存処理を統合）
 
@@ -87,7 +92,7 @@ def run_chroma_reindex(vault_path: str, full_mode: bool = True) -> dict:
         else:
             # 差分更新
             from api.knowledge.indexer import run_indexing
-            added, skipped = run_indexing(vault_path)
+            added, skipped = run_indexing(vault_path, prune_missing=True)
             logger.info(f"✅ ChromaDB 差分更新完了: {added} 件更新, {skipped} 件スキップ")
 
             return {
@@ -111,6 +116,58 @@ def run_chroma_reindex(vault_path: str, full_mode: bool = True) -> dict:
         }
 
 
+def inspect_chroma_storage() -> dict:
+    """Report Chroma HNSW directories that are no longer active segments.
+
+    This function is intentionally non-destructive. Old segment directories can
+    be cleaned later after the active segment set is visible in the nightly
+    report.
+    """
+    from api.knowledge.vector_store import _CHROMA_DIR
+
+    chroma_dir = Path(_CHROMA_DIR)
+    sqlite_path = chroma_dir / "chroma.sqlite3"
+    if not chroma_dir.exists() or not sqlite_path.exists():
+        return {"status": "missing", "path": str(chroma_dir)}
+
+    try:
+        with sqlite3.connect(sqlite_path) as conn:
+            active_segment_ids = {
+                row[0]
+                for row in conn.execute(
+                    "select id from segments where scope = 'VECTOR'"
+                ).fetchall()
+            }
+    except Exception as exc:
+        return {"status": "error", "path": str(chroma_dir), "error": str(exc)}
+
+    dirs = [p for p in chroma_dir.iterdir() if p.is_dir()]
+    orphan_dirs = [p for p in dirs if p.name not in active_segment_ids]
+
+    def _size(path: Path) -> int:
+        try:
+            return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+        except OSError:
+            return 0
+
+    orphan_bytes = sum(_size(p) for p in orphan_dirs)
+    return {
+        "status": "ok",
+        "path": str(chroma_dir),
+        "active_vector_segments": sorted(active_segment_ids),
+        "directory_count": len(dirs),
+        "orphan_directory_count": len(orphan_dirs),
+        "orphan_bytes": orphan_bytes,
+        "orphan_mib": round(orphan_bytes / 1024 / 1024, 2),
+        "orphan_directories": [p.name for p in sorted(orphan_dirs)[:20]],
+        "orphan_directory_list_truncated": len(orphan_dirs) > 20,
+    }
+
+
+def _env_truthy(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 # ===== 統合メンテナンス関数
 
 def run_daily_maintenance():
@@ -130,6 +187,7 @@ def run_daily_maintenance():
         "timestamp": datetime.now().isoformat(),
         "vault_path": vault_path,
         "chroma_reindex": {},
+        "chroma_storage": {},
         "rag_maintenance": {},
         "alerts": [],
         "status": "success"
@@ -138,7 +196,9 @@ def run_daily_maintenance():
     try:
         # ================== タスク0: ChromaDB 再インデックス ==================
         print("🔵 【タスク0】ChromaDB 再インデックス中...")
-        chroma_result = run_chroma_reindex(vault_path, full_mode=True)
+        full_mode = _env_truthy("OBSIDIAN_RAG_FULL_REINDEX")
+        chroma_result = run_chroma_reindex(vault_path, full_mode=full_mode)
+        chroma_result["full_mode"] = full_mode
         maintenance_report["chroma_reindex"] = chroma_result
         
         if chroma_result.get("status") == "success":
@@ -148,6 +208,17 @@ def run_daily_maintenance():
         else:
             print(f"   ❌ エラー: {chroma_result.get('error', 'unknown')}\n")
             maintenance_report["alerts"].append(f"ChromaDB 再インデックス失敗: {chroma_result.get('error')}")
+
+        chroma_storage = inspect_chroma_storage()
+        maintenance_report["chroma_storage"] = chroma_storage
+        if chroma_storage.get("orphan_directory_count", 0) > 0:
+            alert = (
+                "⚠️  ChromaDB の古い索引ディレクトリ候補: "
+                f"{chroma_storage.get('orphan_directory_count')} 件 / "
+                f"{chroma_storage.get('orphan_mib')} MiB"
+            )
+            print(f"   {alert}")
+            maintenance_report["alerts"].append(alert)
         
         # ================== タスク1: LocalVectorDB 同期 ==================
         print("📚 【タスク1】LocalVectorDB ドキュメント同期中...")
@@ -203,8 +274,9 @@ def run_daily_maintenance():
         
         # ================== タスク4: レポート保存 ==================
         print("💾 【タスク4】メンテナンスレポート保存中...")
-        report_file = "/tmp/rag_maintenance_latest.json"
-        with open(report_file, "w") as f:
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        report_file = REPORTS_DIR / "rag_maintenance_latest.json"
+        with open(report_file, "w", encoding="utf-8") as f:
             json.dump(maintenance_report, f, ensure_ascii=False, indent=2)
         
         print(f"   ✅ レポート保存: {report_file}\n")

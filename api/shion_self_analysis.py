@@ -123,6 +123,31 @@ def _build_analysis_prompt(local_mind: dict, keypoints: list[str]) -> str:
 
     signals_text = "\n".join(f"- {s}" for s in key_signals)
 
+    # セントラル共有認識 (REV-155)
+    central_section = ""
+    try:
+        from lease_intelligence_central import get_central_commentary
+        from lease_news_digest import find_vault
+        _vault = find_vault()
+        if _vault:
+            _commentary = get_central_commentary(str(_vault))
+            _confirmed = _commentary.get("confirmed_beliefs") or []
+            _tradeoffs = _commentary.get("known_tradeoffs") or []
+            if _confirmed or _tradeoffs:
+                _lines = ["\n## セントラルからの共有認識（討論を通じた蓄積）"]
+                if _confirmed:
+                    _lines.append("確信に昇格した論点:")
+                    for _b in _confirmed:
+                        _lines.append(f"- {_b}")
+                if _tradeoffs:
+                    _lines.append("既知のトレードオフ:")
+                    for _t in _tradeoffs:
+                        _theme = _t.get("theme") if isinstance(_t, dict) else str(_t)
+                        _lines.append(f"- {_theme}")
+                central_section = "\n".join(_lines) + "\n"
+    except Exception:
+        pass
+
     keypoints_section = ""
     if keypoints:
         kp_lines = "\n".join(f"- {kp}" for kp in keypoints)
@@ -139,7 +164,7 @@ def _build_analysis_prompt(local_mind: dict, keypoints: list[str]) -> str:
 
 ## 注目シグナル（{feed_count}件のフィードから抽出）
 {signals_text}
-{keypoints_section}
+{central_section}{keypoints_section}
 以下のJSON形式のみで回答してください（説明文不要）:
 {{
   "optimist_traits": ["楽観的傾向・重視ポイントを3〜5件、具体的な文で"],

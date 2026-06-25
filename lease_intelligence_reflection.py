@@ -443,6 +443,28 @@ def generate_and_append_reflection(vault: Path, date_str: str | None = None) -> 
             user_text_parts += ["", local_context]
         if recent_reflections:
             user_text_parts += ["", "【直近の私的内省（参考）】", recent_reflections]
+
+        # セントラル蓄積知識の注入 (REV-156)
+        try:
+            from lease_intelligence_central import get_central_commentary
+            _commentary = get_central_commentary(str(vault))
+            _confirmed = _commentary.get("confirmed_beliefs") or []
+            _tradeoffs = _commentary.get("known_tradeoffs") or []
+            if _confirmed or _tradeoffs:
+                _central_lines = ["【セントラルからの蓄積知識】"]
+                if _confirmed:
+                    _central_lines.append("確信に達した論点:")
+                    for _b in _confirmed:
+                        _central_lines.append(f"- {_b.get('belief', _b) if isinstance(_b, dict) else _b}")
+                if _tradeoffs:
+                    _central_lines.append("対立しているトレードオフ:")
+                    for _t in _tradeoffs:
+                        _central_lines.append(f"- {_t.get('tradeoff', _t) if isinstance(_t, dict) else _t}")
+                _central_lines.append("今日の Reflection では上記を踏まえて振り返ること。")
+                user_text_parts += ["", "\n".join(_central_lines)]
+        except Exception:
+            pass
+
         user_text = "\n".join(user_text_parts)
 
         try:
