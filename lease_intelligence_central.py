@@ -94,10 +94,11 @@ def _group_by_role(keypoints: list[dict[str, Any]]) -> dict[str, list[dict[str, 
     return dict(groups)
 
 
-def _detect_patterns(keypoints: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _detect_patterns(keypoints: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
     """
     複数の keypoints に共通するテーマを Gemini で検出する。
-    Gemini が使えない場合は空リストを返す。
+    Gemini が使えない場合は None を返す。既存 commentary を空で上書きしないため、
+    「分析成功だが該当なし」の [] と失敗を区別する。
 
     確認済み信念の閾値:
     - 3つ以上の異なるロールで言及された論点
@@ -138,14 +139,14 @@ status の基準:
         raw_response = _call_gemini(prompt)
         m = re.search(r"\[.*\]", raw_response, re.DOTALL)
         if not m:
-            return []
+            return None
         patterns = json.loads(m.group(0))
         if not isinstance(patterns, list):
-            return []
+            return None
         return [p for p in patterns if isinstance(p, dict) and p.get("theme")]
     except Exception as e:
         print(f"[central] Gemini パターン検出失敗: {e}")
-        return []
+        return None
 
 
 def _update_world_view_commentary(vault_path: str, patterns: list[dict[str, Any]]) -> None:
@@ -223,6 +224,17 @@ def run_central_synthesis(vault_path: str) -> dict[str, Any]:
     print(f"[central] ロール別件数: { {r: len(v) for r, v in by_role.items()} }")
 
     patterns = _detect_patterns(keypoints)
+    if patterns is None:
+        existing = get_central_commentary(vault_path)
+        return {
+            "confirmed_beliefs": existing.get("confirmed_beliefs") or [],
+            "emerging_patterns": existing.get("emerging_patterns") or [],
+            "known_tradeoffs": existing.get("known_tradeoffs") or [],
+            "processed_keypoints": len(keypoints),
+            "synthesis_date": dt.datetime.now().isoformat(timespec="seconds"),
+            "status": "skipped",
+            "note": "pattern detection failed; existing commentary was preserved",
+        }
     _update_world_view_commentary(vault_path, patterns)
 
     confirmed = [p for p in patterns if p.get("status") == "confirmed_belief"]

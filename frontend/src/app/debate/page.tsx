@@ -124,10 +124,20 @@ interface DebateResult {
 
 
 interface CentralSynthesis {
-  confirmed_beliefs?: Array<{ belief: string; count?: number }>
-  emerging_patterns?: Array<{ theme: string }>
-  known_tradeoffs?: Array<{ tradeoff: string }>
+  confirmed_beliefs?: Array<string | { belief?: string; theme?: string; count?: number }>
+  emerging_patterns?: Array<string | { theme?: string }>
+  known_tradeoffs?: Array<string | { tradeoff?: string; theme?: string; supporters?: string[]; opponents?: string[] }>
   last_updated?: string
+}
+
+function centralText(item: string | Record<string, unknown> | undefined, keys: string[]) {
+  if (!item) return "";
+  if (typeof item === "string") return item;
+  for (const key of keys) {
+    const value = item[key];
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return "";
 }
 
 // ── スタイルヘルパー ─────────────────────────────────────────────────────────
@@ -825,17 +835,23 @@ export default function DebatePage() {
               {(centralData.confirmed_beliefs?.length ?? 0) > 0 && (
                 <div>
                   <div className="font-medium text-green-700">✅ 確信済み</div>
-                  {centralData.confirmed_beliefs!.map((b, i) => (
-                    <div key={i} className="text-gray-600">・{b.belief}</div>
-                  ))}
+                  {centralData.confirmed_beliefs!
+                    .map((b) => centralText(b, ["belief", "theme"]))
+                    .filter(Boolean)
+                    .map((text, i) => (
+                      <div key={i} className="text-gray-600">・{text}</div>
+                    ))}
                 </div>
               )}
               {(centralData.known_tradeoffs?.length ?? 0) > 0 && (
                 <div>
                   <div className="font-medium text-yellow-700">⚖️ トレードオフ</div>
-                  {centralData.known_tradeoffs!.map((t, i) => (
-                    <div key={i} className="text-gray-600">・{t.tradeoff}</div>
-                  ))}
+                  {centralData.known_tradeoffs!
+                    .map((t) => centralText(t, ["tradeoff", "theme"]))
+                    .filter(Boolean)
+                    .map((text, i) => (
+                      <div key={i} className="text-gray-600">・{text}</div>
+                    ))}
                 </div>
               )}
               {centralData.last_updated && (
@@ -1138,6 +1154,7 @@ export default function DebatePage() {
                     onChange={(event) => setHumanDecision(event.target.value)}
                     className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800"
                   >
+                    <option value="">選択してください</option>
                     <option value="承認">承認</option>
                     <option value="条件付">条件付</option>
                     <option value="否決">否決</option>
@@ -1158,6 +1175,7 @@ export default function DebatePage() {
                   disabled={
                     judgmentSaving ||
                     !result ||
+                    !humanDecision ||
                     humanDecision === result.arbiter.final ||
                     judgmentChangeReason.trim().length < 5
                   }

@@ -81,7 +81,12 @@ def _load_vault_keypoints() -> list[str]:
         contents = []
         for entry in raw:
             if isinstance(entry, dict):
-                content = str(entry.get("content", "")).strip()
+                content = str(
+                    entry.get("content")
+                    or entry.get("fact")
+                    or entry.get("text")
+                    or ""
+                ).strip()
             else:
                 content = str(entry).strip()
             if content:
