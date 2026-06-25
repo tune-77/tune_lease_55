@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { apiClient } from "@/lib/api";
 import {
   Brain, Orbit, Crown, ChevronDown, ChevronUp,
-  Loader2, CheckCircle2, XCircle, AlertTriangle, Info, Clock, BookMarked, PenLine, Users,
+  Loader2, CheckCircle2, XCircle, AlertTriangle, Info, Clock, BookMarked, PenLine, Users, Zap,
 } from "lucide-react";
 import { INDUSTRIES } from "@/constants/industries";
 
@@ -23,9 +23,11 @@ interface Participants {
   skeptic: DemoUserKey;
   optimist: DemoUserKey;
   arbiter: DemoUserKey;
+  innovator?: DemoUserKey;
 }
 
-function getUserInfo(key: DemoUserKey) {
+function getUserInfo(key: DemoUserKey | undefined) {
+  if (!key) return null;
   return DEMO_USERS.find(u => u.key === key) ?? null;
 }
 
@@ -35,7 +37,9 @@ function agentLabel(
   roleLabel: string,
 ) {
   if (!parts) return `紫苑（${roleLabel}）`;
-  const info = getUserInfo(parts[role]);
+  const key = parts[role];
+  if (!key) return `紫苑（${roleLabel}）`;
+  const info = getUserInfo(key);
   return info ? `${info.name}さんの紫苑（${roleLabel}）` : `紫苑（${roleLabel}）`;
 }
 
@@ -74,7 +78,14 @@ interface ArbiterResult {
   reasoning: string;
   conditions: string[];
 }
-interface CoreCandidate {
+interface InnovatorResult {
+  opinion: string;
+  reasons: string[];
+  innovations: string[];
+}
+interface CoreCandidateItem {
+  role: string;
+  label: string;
   text: string;
   source: string;
   case_summary: string;
@@ -84,10 +95,11 @@ interface DebateResult {
   mode: "solo" | "debate";
   cautious?: CautiousResult;
   aggressive?: AggressiveResult;
+  innovator?: InnovatorResult;
   arbiter: ArbiterResult;
   debate_log?: string;
   same_opinion_r1?: boolean;
-  core_candidate?: CoreCandidate;
+  core_candidates?: CoreCandidateItem[];
 }
 
 
@@ -313,6 +325,7 @@ export default function DebatePage() {
     skeptic: "tanaka",
     optimist: "suzuki",
     arbiter: "sato",
+    innovator: "",
   });
   const [submittedParticipants, setSubmittedParticipants] = useState<Participants | null>(null);
   const [loading, setLoading] = useState(false);
@@ -320,9 +333,10 @@ export default function DebatePage() {
   const [error, setError] = useState<string | null>(null);
   const [obsidianSaving, setObsidianSaving] = useState(false);
   const [obsidianToast, setObsidianToast] = useState<"success" | "error" | null>(null);
-  const [coreText, setCoreText] = useState("");
-  const [coreEditing, setCoreEditing] = useState(false);
-  const [coreStatus, setCoreStatus] = useState<"idle" | "saving" | "success" | "skipped">("idle");
+  type CandidateStatus = "idle" | "saving" | "success" | "skipped";
+  const [candidateTexts, setCandidateTexts] = useState<Record<number, string>>({});
+  const [candidateEditings, setCandidateEditings] = useState<Record<number, boolean>>({});
+  const [candidateStatuses, setCandidateStatuses] = useState<Record<number, CandidateStatus>>({});
   const [coreTotalKeypoints, setCoreTotalKeypoints] = useState<number | null>(null);
   const [judgmentSaving, setJudgmentSaving] = useState(false);
   const [judgmentToast, setJudgmentToast] = useState<"success" | "error" | null>(null);
@@ -408,9 +422,17 @@ export default function DebatePage() {
       setResult(data);
       setHumanDecision(data.arbiter.final);
       setJudgmentChangeReason("");
-      setCoreText(data.core_candidate?.text ?? "");
-      setCoreEditing(false);
-      setCoreStatus("idle");
+      const _texts: Record<number, string> = {};
+      const _statuses: Record<number, CandidateStatus> = {};
+      const _editings: Record<number, boolean> = {};
+      (data.core_candidates ?? []).forEach((c: CoreCandidateItem, i: number) => {
+        _texts[i] = c.text;
+        _statuses[i] = "idle";
+        _editings[i] = false;
+      });
+      setCandidateTexts(_texts);
+      setCandidateStatuses(_statuses);
+      setCandidateEditings(_editings);
       setCoreTotalKeypoints(null);
       // 討論完了後に履歴を再取得
       if (form.company_name?.trim()) {
@@ -498,18 +520,18 @@ export default function DebatePage() {
     }
   };
 
-  const handlePromoteCore = async () => {
-    if (!result?.core_candidate) return;
-    setCoreStatus("saving");
+  const handlePromoteCandidate = async (idx: number, candidate: CoreCandidateItem) => {
+    setCandidateStatuses(prev => ({ ...prev, [idx]: "saving" }));
     try {
       const { data } = await apiClient.post("/api/shion/promote-keypoint", {
-        text: coreText,
-        case_summary: result.core_candidate.case_summary,
+        text: candidateTexts[idx] ?? candidate.text,
+        case_summary: candidate.case_summary,
+        role: candidate.role,
       });
       setCoreTotalKeypoints(data.total_keypoints);
-      setCoreStatus("success");
+      setCandidateStatuses(prev => ({ ...prev, [idx]: "success" }));
     } catch {
-      setCoreStatus("idle");
+      setCandidateStatuses(prev => ({ ...prev, [idx]: "idle" }));
     }
   };
 
@@ -554,7 +576,7 @@ export default function DebatePage() {
               同じ知性体が異なる文脈で育った「自分」として意見を交わすことで、
               単なる役割演技を超えた多角的な審査視点が生まれます。
             </p>
-            <div className="grid md:grid-cols-3 gap-3 pt-1">
+            <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3 pt-1">
               <div className="rounded-xl border border-violet-200 bg-violet-50 p-3">
                 <div className="text-xs font-black text-violet-700 mb-1">Bさんの紫苑（懐疑派）</div>
                 <p className="text-xs text-violet-900">審査部での経験から育った視点。返済原資・格付・資金繰りのリスクを徹底的に問い詰める。</p>
@@ -567,6 +589,10 @@ export default function DebatePage() {
                 <div className="text-xs font-black text-amber-700 mb-1">Cさんの紫苑（統合派）</div>
                 <p className="text-xs text-amber-900">承認履歴・説明責任の経験から育った視点。両面を統合し、組織として再現できる最終判断を下す。</p>
               </div>
+              <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
+                <div className="text-xs font-black text-sky-700 mb-1">紫苑（革新派）任意</div>
+                <p className="text-xs text-sky-900">慣行にとらわれない評価軸を探る視点。デジタル資産・グリーンリースなど新興分野に前向き。</p>
+              </div>
             </div>
           </div>
         )}
@@ -578,24 +604,27 @@ export default function DebatePage() {
           <Users className="w-5 h-5 text-violet-500" />
           参加者を選択
         </h2>
-        <div className="grid md:grid-cols-3 gap-4">
+        <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
           {([
-            { role: "skeptic"  as const, label: "懐疑派",       border: "border-violet-200", bg: "bg-violet-50",  text: "text-violet-700" },
-            { role: "optimist" as const, label: "楽観派",       border: "border-teal-200",   bg: "bg-teal-50",    text: "text-teal-700" },
-            { role: "arbiter"  as const, label: "統合派（裁定）", border: "border-amber-200",  bg: "bg-amber-50",   text: "text-amber-700" },
-          ]).map(({ role, label, border, bg, text }) => {
+            { role: "skeptic"   as const, label: "懐疑派",        border: "border-violet-200", bg: "bg-violet-50",  text: "text-violet-700", optional: false },
+            { role: "optimist"  as const, label: "楽観派",        border: "border-teal-200",   bg: "bg-teal-50",    text: "text-teal-700",   optional: false },
+            { role: "arbiter"   as const, label: "統合派（裁定）",  border: "border-amber-200",  bg: "bg-amber-50",   text: "text-amber-700",  optional: false },
+            { role: "innovator" as const, label: "革新派（任意）",  border: "border-sky-200",    bg: "bg-sky-50",     text: "text-sky-700",    optional: true  },
+          ]).map(({ role, label, border, bg, text, optional }) => {
             const info = getUserInfo(participants[role]);
             return (
               <div key={role} className={`rounded-xl border-2 ${border} ${bg} p-4`}>
-                <p className={`text-xs font-black ${text} mb-2`}>紫苑（{label}）</p>
+                <p className={`text-xs font-black ${text} mb-2`}>
+                  紫苑（{label}）{optional && <span className="ml-1 font-normal text-slate-400">任意</span>}
+                </p>
                 <select
-                  value={participants[role]}
+                  value={participants[role] ?? ""}
                   onChange={(e) =>
                     setParticipants(prev => ({ ...prev, [role]: e.target.value as DemoUserKey }))
                   }
                   className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400"
                 >
-                  <option value="">— 未選択（デフォルト） —</option>
+                  <option value="">{optional ? "— 参加しない —" : "— 未選択（デフォルト） —"}</option>
                   {DEMO_USERS.map(u => (
                     <option key={u.key} value={u.key}>{u.name}（{u.dept}）</option>
                   ))}
@@ -796,7 +825,7 @@ export default function DebatePage() {
               <div className="grid md:grid-cols-2 gap-4">
                 <AgentCard
                   name={agentLabel("skeptic", submittedParticipants, "懐疑派")}
-                  subtitle={getUserInfo(submittedParticipants?.skeptic ?? "")?.dept}
+                  subtitle={getUserInfo(submittedParticipants?.skeptic)?.dept}
                   icon={<Brain className="w-5 h-5 text-violet-600" />}
                   color="border-violet-200 bg-violet-50/50"
                   opinion={result.cautious.opinion}
@@ -806,7 +835,7 @@ export default function DebatePage() {
                 />
                 <AgentCard
                   name={agentLabel("optimist", submittedParticipants, "楽観派")}
-                  subtitle={getUserInfo(submittedParticipants?.optimist ?? "")?.dept}
+                  subtitle={getUserInfo(submittedParticipants?.optimist)?.dept}
                   icon={<Brain className="w-5 h-5 text-teal-600" />}
                   color="border-teal-200 bg-teal-50/50"
                   opinion={result.aggressive.opinion}
@@ -814,6 +843,18 @@ export default function DebatePage() {
                   extras={result.aggressive.opportunities}
                   extraLabel="見逃せない機会"
                 />
+                {result.innovator && (
+                  <AgentCard
+                    name={agentLabel("innovator", submittedParticipants, "革新派")}
+                    subtitle={getUserInfo(submittedParticipants?.innovator)?.dept}
+                    icon={<Zap className="w-5 h-5 text-sky-600" />}
+                    color="border-sky-200 bg-sky-50/50"
+                    opinion={result.innovator.opinion}
+                    reasons={result.innovator.reasons}
+                    extras={result.innovator.innovations}
+                    extraLabel="新しい評価視点"
+                  />
+                )}
               </div>
             </div>
           )}
@@ -829,78 +870,89 @@ export default function DebatePage() {
             <DebateLog log={result.debate_log} sameR1={result.same_opinion_r1} />
           )}
 
-          {/* コアに昇格 */}
-          {result.core_candidate && coreStatus !== "skipped" && (
-            <div className="rounded-2xl border-2 border-violet-200 bg-gradient-to-br from-violet-50 to-purple-50 p-5">
-              <div className="flex items-center gap-2 mb-3">
+          {/* コアに昇格（各ペルソナの視点ごとに個別カード） */}
+          {result.core_candidates && result.core_candidates.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
                 <span className="text-lg">✨</span>
                 <h3 className="font-black text-violet-800">紫苑のコアに昇格しますか？</h3>
+                <span className="text-xs text-slate-500 font-medium">各視点を個別に保存・スキップできます</span>
               </div>
-
-              {coreStatus === "success" ? (
-                <p className="text-sm font-bold text-emerald-700 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4" />
-                  keypoints に保存しました（合計{coreTotalKeypoints}件）
-                </p>
-              ) : coreEditing ? (
-                <div className="space-y-3">
-                  <textarea
-                    value={coreText}
-                    onChange={(e) => setCoreText(e.target.value)}
-                    rows={3}
-                    className="w-full rounded-xl border border-violet-300 bg-white px-3 py-2 text-sm text-slate-800 resize-none focus:outline-none focus:ring-2 focus:ring-violet-400"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={handlePromoteCore}
-                      disabled={coreStatus === "saving" || !coreText.trim()}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-violet-600 text-white text-sm font-bold hover:bg-violet-700 disabled:opacity-50 transition-colors"
-                    >
-                      {coreStatus === "saving" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                      保存してコアに昇格
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCoreEditing(false)}
-                      className="px-4 py-2 rounded-xl border border-violet-300 text-sm font-bold text-violet-700 hover:bg-violet-100 transition-colors"
-                    >
-                      キャンセル
-                    </button>
+              {result.core_candidates.map((candidate, idx) => {
+                const status = candidateStatuses[idx] ?? "idle";
+                const text = candidateTexts[idx] ?? candidate.text;
+                const editing = candidateEditings[idx] ?? false;
+                if (status === "skipped") return null;
+                return (
+                  <div key={idx} className="rounded-2xl border-2 border-violet-200 bg-gradient-to-br from-violet-50 to-purple-50 p-5">
+                    <p className="text-xs font-black text-violet-600 mb-2">{candidate.label}</p>
+                    {status === "success" ? (
+                      <p className="text-sm font-bold text-emerald-700 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4" />
+                        keypoints に保存しました{coreTotalKeypoints != null ? `（合計${coreTotalKeypoints}件）` : ""}
+                      </p>
+                    ) : editing ? (
+                      <div className="space-y-3">
+                        <textarea
+                          value={text}
+                          onChange={(e) => setCandidateTexts(prev => ({ ...prev, [idx]: e.target.value }))}
+                          rows={3}
+                          className="w-full rounded-xl border border-violet-300 bg-white px-3 py-2 text-sm text-slate-800 resize-none focus:outline-none focus:ring-2 focus:ring-violet-400"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handlePromoteCandidate(idx, candidate)}
+                            disabled={status === "saving" || !text.trim()}
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-violet-600 text-white text-sm font-bold hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                          >
+                            {status === "saving" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                            保存してコアに昇格
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCandidateEditings(prev => ({ ...prev, [idx]: false }))}
+                            className="px-4 py-2 rounded-xl border border-violet-300 text-sm font-bold text-violet-700 hover:bg-violet-100 transition-colors"
+                          >
+                            キャンセル
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <p className="text-sm text-slate-700 leading-relaxed bg-white/70 rounded-xl px-4 py-3 border border-violet-100">
+                          「{text}」
+                        </p>
+                        <div className="flex gap-2 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => setCandidateEditings(prev => ({ ...prev, [idx]: true }))}
+                            className="px-3 py-1.5 rounded-lg border border-violet-300 text-sm font-bold text-violet-700 hover:bg-violet-100 transition-colors"
+                          >
+                            編集
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handlePromoteCandidate(idx, candidate)}
+                            disabled={status === "saving"}
+                            className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-violet-600 text-white text-sm font-bold hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                          >
+                            {status === "saving" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                            保存してコアに昇格
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCandidateStatuses(prev => ({ ...prev, [idx]: "skipped" }))}
+                            className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm font-bold text-slate-500 hover:bg-slate-100 transition-colors"
+                          >
+                            スキップ
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <p className="text-sm text-slate-700 leading-relaxed bg-white/70 rounded-xl px-4 py-3 border border-violet-100">
-                    「{coreText}」
-                  </p>
-                  <div className="flex gap-2 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={() => setCoreEditing(true)}
-                      className="px-3 py-1.5 rounded-lg border border-violet-300 text-sm font-bold text-violet-700 hover:bg-violet-100 transition-colors"
-                    >
-                      編集
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handlePromoteCore}
-                      disabled={coreStatus === "saving"}
-                      className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-violet-600 text-white text-sm font-bold hover:bg-violet-700 disabled:opacity-50 transition-colors"
-                    >
-                      {coreStatus === "saving" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                      保存してコアに昇格
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCoreStatus("skipped")}
-                      className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm font-bold text-slate-500 hover:bg-slate-100 transition-colors"
-                    >
-                      スキップ
-                    </button>
-                  </div>
-                </div>
-              )}
+                );
+              })}
             </div>
           )}
 

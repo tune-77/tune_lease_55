@@ -8518,6 +8518,7 @@ def get_shion_self_analysis(refresh: bool = False):
 class PromoteKeypointRequest(BaseModel):
     text: str
     case_summary: str = ""
+    role: str = ""
 
 
 @app.post("/api/shion/promote-keypoint")
@@ -8554,12 +8555,14 @@ def promote_keypoint(req: PromoteKeypointRequest):
         keypoints: list = data.get("conversation_keypoints") or []
 
         # 追記
-        new_entry = {
+        new_entry: dict = {
             "fact": text,
             "source": "debate",
             "case": req.case_summary,
             "date": date.today().isoformat(),
         }
+        if req.role:
+            new_entry["role"] = req.role
         keypoints.append(new_entry)
 
         # 120件上限（古いものから削除）
