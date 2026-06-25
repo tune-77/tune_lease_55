@@ -1,10 +1,10 @@
 # Recursive Self-Improvement Report
 
-- Generated at: `2026-06-25T04:00:22`
+- Generated at: `2026-06-24T04:00:25`
 - Source report: `/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/latest.json`
-- Canonical candidates: 36
+- Canonical candidates: 52
 - Ranked queue: 0
-- Suppressed: 36
+- Suppressed: 52
 
 ## Measurement
 - PDCA rate: 100.0%

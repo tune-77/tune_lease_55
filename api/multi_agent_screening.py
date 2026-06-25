@@ -832,7 +832,89 @@ def run_debate_screening(params: dict) -> dict:
             debate_log=debate_log,
         )
 
+    # core_candidate: 討論モードのみ、arbiter の結論から汎用的な判断基準を抽出
+    if result["mode"] == "debate":
+        try:
+            candidate_text = _extract_core_candidate(
+                arbiter=arbiter_normed,
+                ctx=ctx,
+                company_name=company_name,
+                asset_name=params.get("asset_name", ""),
+                industry=params.get("industry_major") or params.get("industry_sub") or "",
+                lease_amount=params.get("lease_amount") or params.get("lease_total") or 0,
+            )
+            if candidate_text:
+                case_summary = (
+                    f"{params.get('industry_major') or params.get('industry_sub') or '業種不明'} "
+                    f"{params.get('asset_name', '')} "
+                    f"{params.get('lease_amount') or params.get('lease_total') or 0}万円 "
+                    f"{params.get('lease_months', '')}回払い"
+                ).strip()
+                result["core_candidate"] = {
+                    "text": candidate_text,
+                    "source": "debate",
+                    "case_summary": case_summary,
+                }
+        except Exception:
+            pass
+
     return result
+
+
+# ── コア候補抽出 ────────────────────────────────────────────────────────────────
+
+def _extract_core_candidate(
+    arbiter: dict,
+    ctx: str,
+    company_name: str = "",
+    asset_name: str = "",
+    industry: str = "",
+    lease_amount: float = 0,
+) -> str:
+    """arbiter の最終結論から汎用的な判断基準を1〜2文で抽出して返す。失敗時は空文字。"""
+    final = arbiter.get("final", "")
+    reasoning = arbiter.get("reasoning", "")
+    conditions = arbiter.get("conditions", [])
+    conditions_text = "、".join(conditions) if conditions else "なし"
+
+    system = (
+        "あなたはリース審査の知識を体系化する専門家です。"
+        "個別案件の審査結論から、将来の審査にも転用できる汎用的な判断基準を抽出してください。"
+        "企業名・担当者名などの固有情報は含めず、業種・物件タイプ・財務特性などの一般的な条件で表現してください。"
+        "1〜2文の日本語で回答してください。JSONではなく、テキストのみ出力してください。"
+    )
+    prompt = (
+        f"以下のリース審査結論から、汎用的な判断基準を1〜2文で抽出してください。\n\n"
+        f"【案件概要】業種: {industry} / 物件: {asset_name} / リース額: {lease_amount}万円\n"
+        f"【最終判断】{final}\n"
+        f"【根拠】{reasoning}\n"
+        f"【条件】{conditions_text}\n\n"
+        f"抽出例: 「医療機器は陳腐化リスクが高いため、残存価値評価では保守的な係数を適用すべき」\n"
+        f"1〜2文のテキストのみ出力してください。"
+    )
+
+    api_key = _get_gemini_api_key()
+    if not api_key:
+        return ""
+
+    payload = {
+        "system_instruction": {"parts": [{"text": system}]},
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.3,
+            "maxOutputTokens": 256,
+        },
+    }
+    resp = requests.post(
+        _gemini_url(),
+        json=payload,
+        headers={"x-goog-api-key": api_key},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+    # 最初の1〜2文のみを抽出（250文字上限）
+    return text[:250]
 
 
 # ── 会話履歴保存ヘルパー ────────────────────────────────────────────────────────

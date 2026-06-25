@@ -8513,3 +8513,70 @@ def get_shion_self_analysis(refresh: bool = False):
         return _get_analysis(force_refresh=refresh)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class PromoteKeypointRequest(BaseModel):
+    text: str
+    case_summary: str = ""
+
+
+@app.post("/api/shion/promote-keypoint")
+def promote_keypoint(req: PromoteKeypointRequest):
+    """討論結果から抽出した判断基準を Obsidian vault の mind.json に追記する。"""
+    import json as _json
+    from pathlib import Path
+    from datetime import date
+
+    text = req.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text が空です")
+
+    try:
+        from lease_news_digest import find_vault
+        vault = find_vault()
+        if not vault:
+            raise HTTPException(status_code=503, detail="Obsidian vault が見つかりません")
+
+        vault_mind = (
+            Path(vault)
+            / "Projects"
+            / "tune_lease_55"
+            / "Lease Intelligence"
+            / "mind.json"
+        )
+        if not vault_mind.exists():
+            raise HTTPException(status_code=503, detail=f"mind.json が見つかりません: {vault_mind}")
+
+        # 読み込み
+        with vault_mind.open(encoding="utf-8") as f:
+            data = _json.load(f)
+
+        keypoints: list = data.get("conversation_keypoints") or []
+
+        # 追記
+        new_entry = {
+            "fact": text,
+            "source": "debate",
+            "case": req.case_summary,
+            "date": date.today().isoformat(),
+        }
+        keypoints.append(new_entry)
+
+        # 120件上限（古いものから削除）
+        _LIMIT = 120
+        if len(keypoints) > _LIMIT:
+            keypoints = keypoints[-_LIMIT:]
+
+        data["conversation_keypoints"] = keypoints
+
+        # 書き戻し（一時ファイル経由でアトミックに）
+        tmp = vault_mind.with_suffix(".json.tmp")
+        tmp.write_text(_json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(vault_mind)
+
+        return {"success": True, "total_keypoints": len(keypoints)}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"mind.json 書き込みエラー: {e}")
