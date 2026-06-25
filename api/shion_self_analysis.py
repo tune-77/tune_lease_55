@@ -1,9 +1,12 @@
 """
 紫苑（SHION）自己分析モジュール
 
-data/mind.json の world_view を Gemini で分析し、
-討論ページのペルソナ注入に使う楽観/懐疑/統合の傾向を返す。
-24時間キャッシュ（data/shion_self_analysis_cache.json）。
+以下のデータを Gemini で分析し、討論ページのペルソナ注入に使う
+楽観/懐疑/統合の傾向を返す。24時間キャッシュ（data/shion_self_analysis_cache.json）。
+
+分析材料:
+  - data/mind.json の world_view（summary / key_signals）
+  - Obsidian vault mind.json の conversation_keypoints（審査チャット重要事実、最大50件）
 """
 from __future__ import annotations
 
@@ -12,11 +15,13 @@ import os
 import re
 import requests
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 
 _DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 _MIND_PATH = os.path.join(_DATA_DIR, "mind.json")
 _CACHE_PATH = os.path.join(_DATA_DIR, "shion_self_analysis_cache.json")
 _CACHE_TTL_HOURS = 24
+_KEYPOINTS_LIMIT = 50
 
 
 def _gemini_url() -> str:
@@ -45,9 +50,45 @@ def _get_gemini_api_key() -> str:
     return ""
 
 
-def _load_mind() -> dict:
+def _load_local_mind() -> dict:
+    """data/mind.json（プロジェクトローカル）を読む。"""
     with open(_MIND_PATH, encoding="utf-8") as f:
         return json.load(f)
+
+
+def _load_vault_keypoints() -> list[str]:
+    """Obsidian vault の mind.json から conversation_keypoints を読む。
+
+    vault が見つからない・読めない場合は空リストを返す。
+    """
+    try:
+        from lease_news_digest import find_vault
+        vault = find_vault()
+        if not vault:
+            return []
+        vault_mind = (
+            Path(vault)
+            / "Projects"
+            / "tune_lease_55"
+            / "Lease Intelligence"
+            / "mind.json"
+        )
+        if not vault_mind.exists():
+            return []
+        with vault_mind.open(encoding="utf-8") as f:
+            data = json.load(f)
+        raw = data.get("conversation_keypoints") or []
+        contents = []
+        for entry in raw:
+            if isinstance(entry, dict):
+                content = str(entry.get("content", "")).strip()
+            else:
+                content = str(entry).strip()
+            if content:
+                contents.append(content)
+        return contents[-_KEYPOINTS_LIMIT:]
+    except Exception:
+        return []
 
 
 def _cache_valid() -> bool:
@@ -74,14 +115,23 @@ def _save_cache(data: dict) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def _build_analysis_prompt(mind: dict) -> str:
-    wv = mind.get("world_view", {})
+def _build_analysis_prompt(local_mind: dict, keypoints: list[str]) -> str:
+    wv = local_mind.get("world_view", {})
     summary = wv.get("summary", "")
     key_signals = wv.get("key_signals", [])
     feed_count = wv.get("feed_count", 0)
 
     signals_text = "\n".join(f"- {s}" for s in key_signals)
-    return f"""以下は審査AIエージェント「紫苑（SHION）」の世界観データです。
+
+    keypoints_section = ""
+    if keypoints:
+        kp_lines = "\n".join(f"- {kp}" for kp in keypoints)
+        keypoints_section = f"""
+## 審査チャットから蓄積された重要事実（{len(keypoints)}件）
+{kp_lines}
+"""
+
+    return f"""以下は審査AIエージェント「紫苑（SHION）」の世界観データと審査経験です。
 これを分析して、紫苑が討論エージェントとして持つ傾向を抽出してください。
 
 ## 世界観サマリー
@@ -89,13 +139,13 @@ def _build_analysis_prompt(mind: dict) -> str:
 
 ## 注目シグナル（{feed_count}件のフィードから抽出）
 {signals_text}
-
+{keypoints_section}
 以下のJSON形式のみで回答してください（説明文不要）:
 {{
   "optimist_traits": ["楽観的傾向・重視ポイントを3〜5件、具体的な文で"],
   "skeptic_traits": ["懐疑的傾向・チェックポイントを3〜5件、具体的な文で"],
   "arbiter_style": "統合派としての裁定スタイルを1文で",
-  "keypoints_used": {feed_count}
+  "keypoints_used": {len(keypoints)}
 }}"""
 
 
@@ -142,8 +192,9 @@ def get_shion_self_analysis(force_refresh: bool = False) -> dict:
     if not force_refresh and _cache_valid():
         return _load_cache()
 
-    mind = _load_mind()
-    prompt = _build_analysis_prompt(mind)
+    local_mind = _load_local_mind()
+    keypoints = _load_vault_keypoints()
+    prompt = _build_analysis_prompt(local_mind, keypoints)
     result = _call_gemini(prompt)
 
     now = datetime.now(tz=timezone.utc).isoformat()
@@ -152,7 +203,7 @@ def get_shion_self_analysis(force_refresh: bool = False) -> dict:
         "skeptic_traits": result.get("skeptic_traits", []),
         "arbiter_style": result.get("arbiter_style", "双方の論点を整理して説明可能な判断を下す"),
         "generated_at": now,
-        "keypoints_used": result.get("keypoints_used", 0),
+        "keypoints_used": result.get("keypoints_used", len(keypoints)),
     }
     _save_cache(cache)
     return cache
