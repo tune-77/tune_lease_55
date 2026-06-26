@@ -722,8 +722,14 @@ export default function LeaseIntelligencePage() {
         query: text,
       }]);
       speakText(reply);
-    } catch {
-      setError("対話AIへ接続できませんでした。Gemini APIの状態を確認してください。");
+    } catch (err) {
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      const detail = axiosErr?.response?.data?.detail;
+      setError(
+        detail
+          ? `対話AIエラー: ${detail}`
+          : "対話AIへ接続できませんでした。Gemini APIの状態を確認してください。"
+      );
       setInput(text);
     } finally {
       setLoading(false);
