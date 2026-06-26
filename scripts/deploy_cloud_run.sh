@@ -18,6 +18,8 @@ MIN_INSTANCES="${MIN_INSTANCES:-0}"
 MAX_INSTANCES="${MAX_INSTANCES:-1}"
 ALLOW_UNAUTHENTICATED="${ALLOW_UNAUTHENTICATED:-1}"
 SERVICE_ACCOUNT="${SERVICE_ACCOUNT:-}"
+DATABASE_SECRET_NAME="${DATABASE_SECRET_NAME:-DATABASE_URL}"
+CLOUDSQL_INSTANCE="${CLOUDSQL_INSTANCE:-}"
 
 if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
   echo "PROJECT_ID is required." >&2
@@ -54,7 +56,7 @@ deploy_args=(
   --concurrency "$CONCURRENCY"
   --min-instances "$MIN_INSTANCES"
   --max-instances "$MAX_INSTANCES"
-  --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=false,ENABLE_FEEDBACK_LOADING=false,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,DB_PATH=data/demo.db,GCS_BUCKET=gs://tune-lease-55-data,GITHUB_REPO=git@github.com:tune-77/tune_lease_55.git,DATA_GIT_DIR=/app/data-git"
+  --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=false,ENABLE_FEEDBACK_LOADING=false,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,DB_PATH=data/demo.db,GCS_BUCKET=gs://tune-lease-55-data,GITHUB_REPO=git@github.com:tune-77/tune_lease_55.git,DATA_GIT_DIR=/app/data-git,USE_GCS_VAULT=true"
 )
 
 if gcloud secrets describe GEMINI_API_KEY --project "$PROJECT_ID" >/dev/null 2>&1; then
@@ -67,6 +69,16 @@ if gcloud secrets describe ESTAT_APP_ID --project "$PROJECT_ID" >/dev/null 2>&1;
   deploy_args+=(--set-secrets "ESTAT_APP_ID=ESTAT_APP_ID:latest")
 else
   echo "Warning: Secret Manager secret ESTAT_APP_ID was not found." >&2
+fi
+
+if gcloud secrets describe "$DATABASE_SECRET_NAME" --project "$PROJECT_ID" >/dev/null 2>&1; then
+  deploy_args+=(--set-secrets "DATABASE_URL=${DATABASE_SECRET_NAME}:latest")
+else
+  echo "Warning: Secret Manager secret ${DATABASE_SECRET_NAME} was not found. Cloud SQL will not be enabled." >&2
+fi
+
+if [[ -n "$CLOUDSQL_INSTANCE" ]]; then
+  deploy_args+=(--add-cloudsql-instances "$CLOUDSQL_INSTANCE")
 fi
 
 if [[ -n "$SERVICE_ACCOUNT" ]]; then
