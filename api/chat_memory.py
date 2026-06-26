@@ -6,14 +6,11 @@ chat_messages テーブルを lease_data.db 内に作成し、
 from __future__ import annotations
 
 import os
-import sqlite3
-from contextlib import closing
 from typing import Optional
 import requests
 import re
-from runtime_paths import get_data_path
 
-DB_PATH = get_data_path("lease_data.db")
+from api.db_connection import get_connection, placeholder, ensure_schema
 
 _GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
@@ -26,57 +23,39 @@ def _gemini_url() -> str:
     return f"{_GEMINI_API_BASE}/{_gemini_model()}:generateContent"
 
 
-def _open_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH, timeout=10)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
 def init_chat_messages_table() -> None:
-    with closing(_open_db()) as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS chat_messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL DEFAULT 'default',
-                role TEXT NOT NULL,
-                content TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_chat_user ON chat_messages(user_id, created_at)"
-        )
-        conn.commit()
+    ensure_schema()
 
 
 def get_recent_messages(user_id: str = "default", limit: int = 20) -> list[dict]:
     """直近 limit 件のメッセージを古い順で返す。"""
     init_chat_messages_table()
-    with closing(_open_db()) as conn:
-        rows = conn.execute(
-            """
+    ph = placeholder()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""
             SELECT id, user_id, role, content, created_at
             FROM chat_messages
-            WHERE user_id = ?
+            WHERE user_id = {ph}
             ORDER BY created_at DESC
-            LIMIT ?
+            LIMIT {ph}
             """,
             (user_id, limit),
-        ).fetchall()
+        )
+        rows = cur.fetchall()
     return [dict(r) for r in reversed(rows)]
 
 
 def save_message(user_id: str, role: str, content: str) -> None:
     init_chat_messages_table()
-    with closing(_open_db()) as conn:
-        conn.execute(
-            "INSERT INTO chat_messages (user_id, role, content) VALUES (?, ?, ?)",
+    ph = placeholder()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"INSERT INTO chat_messages (user_id, role, content) VALUES ({ph}, {ph}, {ph})",
             (user_id, role, content),
         )
-        conn.commit()
 
 
 def normalize_chat_text(content: str) -> str:
@@ -91,7 +70,7 @@ def normalize_chat_text(content: str) -> str:
         .replace("\r\n", "\n")
         .replace("\r", "\n")
     )
-    text = re.sub(r"(?m)^\s*[\*\u2022]\s+", "- ", text)
+    text = re.sub(r"(?m)^\s*[\*•]\s+", "- ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
@@ -197,20 +176,24 @@ def _continue_truncated_response(
 
 def get_message_count(user_id: str = "default") -> int:
     init_chat_messages_table()
-    with closing(_open_db()) as conn:
-        row = conn.execute(
-            "SELECT COUNT(*) as cnt FROM chat_messages WHERE user_id = ?", (user_id,)
-        ).fetchone()
+    ph = placeholder()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT COUNT(*) as cnt FROM chat_messages WHERE user_id = {ph}", (user_id,)
+        )
+        row = cur.fetchone()
     return row["cnt"] if row else 0
 
 
 def delete_history(user_id: str = "default") -> int:
     init_chat_messages_table()
-    with closing(_open_db()) as conn:
-        cur = conn.execute(
-            "DELETE FROM chat_messages WHERE user_id = ?", (user_id,)
+    ph = placeholder()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"DELETE FROM chat_messages WHERE user_id = {ph}", (user_id,)
         )
-        conn.commit()
         return cur.rowcount
 
 
@@ -237,15 +220,18 @@ def _get_gemini_api_key() -> str:
 
 def get_summary(user_id: str = "default") -> str:
     """直近50件をGeminiで要約して長期記憶の圧縮テキストを返す。"""
-    with closing(_open_db()) as conn:
-        rows = conn.execute(
-            """
+    ph = placeholder()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""
             SELECT role, content FROM chat_messages
-            WHERE user_id = ?
+            WHERE user_id = {ph}
             ORDER BY created_at DESC LIMIT 50
             """,
             (user_id,),
-        ).fetchall()
+        )
+        rows = cur.fetchall()
     if not rows:
         return ""
     lines = "\n".join(

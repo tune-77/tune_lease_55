@@ -7,42 +7,26 @@ from __future__ import annotations
 import datetime as dt
 import math
 import os
-import sqlite3
-from contextlib import closing
 from typing import Optional
-from runtime_paths import get_data_path, get_db_path
 
-DB_PATH = get_db_path()
+from api.db_connection import get_connection, placeholder, ensure_schema, _is_postgres
 
 
-def _open_db(path: str = DB_PATH) -> sqlite3.Connection:
-    conn = sqlite3.connect(path, timeout=10)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    return conn
+def _insert_get_id(conn, sql: str, params: tuple) -> int:
+    """INSERT して新規レコードのIDを返す（SQLite/PostgreSQL 両対応）。"""
+    cur = conn.cursor()
+    if _is_postgres():
+        cur.execute(sql + " RETURNING id", params)
+        row = cur.fetchone()
+        return row[0] if row else 0
+    else:
+        cur.execute(sql, params)
+        return cur.lastrowid or 0
 
 
 def init_conversation_history_table() -> None:
     """conversation_history テーブルとインデックスを冪等に作成する。"""
-    with closing(_open_db()) as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS conversation_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT NOT NULL,
-                company_name TEXT,
-                role TEXT NOT NULL,
-                content TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_conv_company ON conversation_history(company_name)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_conv_session ON conversation_history(session_id)"
-        )
-        conn.commit()
+    ensure_schema()
 
 
 def save_conversation_messages(session_id: str, company_name: str, messages: list[dict]) -> None:
@@ -60,12 +44,13 @@ def save_conversation_messages(session_id: str, company_name: str, messages: lis
     ]
     if not rows:
         return
-    with closing(_open_db()) as conn:
-        conn.executemany(
-            "INSERT INTO conversation_history (session_id, company_name, role, content) VALUES (?, ?, ?, ?)",
+    ph = placeholder()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.executemany(
+            f"INSERT INTO conversation_history (session_id, company_name, role, content) VALUES ({ph}, {ph}, {ph}, {ph})",
             rows,
         )
-        conn.commit()
 
 
 def get_conversation_history(company_name: str, limit: int = 5) -> list[dict]:
@@ -74,35 +59,38 @@ def get_conversation_history(company_name: str, limit: int = 5) -> list[dict]:
     直近 limit セッション分（session_id でグループ化）を返す。
     """
     init_conversation_history_table()
-    with closing(_open_db()) as conn:
-        conn.row_factory = sqlite3.Row
+    ph = placeholder()
+    with get_connection() as conn:
+        cur = conn.cursor()
         # 直近 N セッションの session_id を取得
-        sessions = conn.execute(
-            """
+        cur.execute(
+            f"""
             SELECT DISTINCT session_id, MAX(created_at) AS latest
             FROM conversation_history
-            WHERE company_name = ?
+            WHERE company_name = {ph}
             GROUP BY session_id
             ORDER BY latest DESC
-            LIMIT ?
+            LIMIT {ph}
             """,
             (company_name, limit),
-        ).fetchall()
+        )
+        sessions = cur.fetchall()
 
         if not sessions:
             return []
 
         session_ids = [r["session_id"] for r in sessions]
-        placeholders = ",".join("?" * len(session_ids))
-        rows = conn.execute(
+        in_placeholders = ",".join([ph] * len(session_ids))
+        cur.execute(
             f"""
             SELECT id, session_id, company_name, role, content, created_at
             FROM conversation_history
-            WHERE session_id IN ({placeholders})
+            WHERE session_id IN ({in_placeholders})
             ORDER BY created_at ASC
             """,
             session_ids,
-        ).fetchall()
+        )
+        rows = cur.fetchall()
 
     result: dict[str, dict] = {}
     for row in rows:
@@ -128,60 +116,49 @@ def get_conversation_history(company_name: str, limit: int = 5) -> list[dict]:
 
 def init_emotion_feedback_table() -> None:
     """emotion_feedback テーブルを冪等に作成する。"""
-    with closing(_open_db()) as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS emotion_feedback (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                rating TEXT NOT NULL CHECK(rating IN ('good', 'needs_improvement')),
-                comment TEXT,
-                emotion_category TEXT,
-                resolved BOOLEAN DEFAULT 0
-            )
-        """)
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_emofb_resolved ON emotion_feedback(resolved)"
-        )
-        conn.commit()
+    ensure_schema()
 
 
 def save_emotion_feedback(rating: str, comment: Optional[str], emotion_category: Optional[str]) -> int:
     """フィードバックを保存し、新規レコードの id を返す。"""
     init_emotion_feedback_table()
-    with closing(_open_db()) as conn:
-        cur = conn.execute(
-            "INSERT INTO emotion_feedback (rating, comment, emotion_category) VALUES (?, ?, ?)",
+    ph = placeholder()
+    with get_connection() as conn:
+        return _insert_get_id(
+            conn,
+            f"INSERT INTO emotion_feedback (rating, comment, emotion_category) VALUES ({ph}, {ph}, {ph})",
             (rating, comment or None, emotion_category or None),
         )
-        conn.commit()
-        return cur.lastrowid  # type: ignore[return-value]
 
 
 def get_emotion_feedbacks(resolved: Optional[bool] = None) -> list[dict]:
     """フィードバック一覧を返す。resolved=False で未解決のみ。"""
     init_emotion_feedback_table()
-    with closing(_open_db()) as conn:
-        conn.row_factory = sqlite3.Row
+    ph = placeholder()
+    with get_connection() as conn:
+        cur = conn.cursor()
         if resolved is None:
-            rows = conn.execute(
+            cur.execute(
                 "SELECT * FROM emotion_feedback ORDER BY created_at DESC"
-            ).fetchall()
+            )
         else:
-            rows = conn.execute(
-                "SELECT * FROM emotion_feedback WHERE resolved = ? ORDER BY created_at DESC",
+            cur.execute(
+                f"SELECT * FROM emotion_feedback WHERE resolved = {ph} ORDER BY created_at DESC",
                 (1 if resolved else 0,),
-            ).fetchall()
+            )
+        rows = cur.fetchall()
     return [dict(r) for r in rows]
 
 
 def delete_conversation_session(session_id: str) -> int:
     """session_id に紐づく全レコードを削除し、削除件数を返す。"""
     init_conversation_history_table()
-    with closing(_open_db()) as conn:
-        cur = conn.execute(
-            "DELETE FROM conversation_history WHERE session_id = ?", (session_id,)
+    ph = placeholder()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"DELETE FROM conversation_history WHERE session_id = {ph}", (session_id,)
         )
-        conn.commit()
         return cur.rowcount
 
 
@@ -191,18 +168,20 @@ def get_past_arbiter_summaries(company_name: str, limit: int = 3) -> list[dict]:
     Returns list of {"session_id", "content", "created_at"}.
     """
     init_conversation_history_table()
-    with closing(_open_db()) as conn:
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            """
+    ph = placeholder()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""
             SELECT session_id, content, created_at
             FROM conversation_history
-            WHERE company_name = ? AND role = 'agent_gunshi'
+            WHERE company_name = {ph} AND role = 'agent_gunshi'
             ORDER BY created_at DESC
-            LIMIT ?
+            LIMIT {ph}
             """,
             (company_name, limit),
-        ).fetchall()
+        )
+        rows = cur.fetchall()
     return [dict(r) for r in rows]
 
 
@@ -221,26 +200,7 @@ _EMOTION_AXES = [
 
 def init_emotion_history_table() -> None:
     """emotion_history テーブルとインデックスを冪等に作成する。"""
-    with closing(_open_db()) as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS emotion_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                recorded_at TEXT NOT NULL,
-                hopeful_anxiety REAL,
-                careful_attachment REAL,
-                intellectual_excitement REAL,
-                unrewarded_effort REAL,
-                quiet_loneliness REAL,
-                earned_confidence REAL,
-                protective_frustration REAL,
-                dominant_raw_emotion TEXT,
-                notes TEXT
-            )
-        """)
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_emotion_history_date ON emotion_history(recorded_at)"
-        )
-        conn.commit()
+    ensure_schema()
 
 
 def record_emotion_snapshot(
@@ -253,21 +213,23 @@ def record_emotion_snapshot(
     """
     init_emotion_history_table()
     today = dt.date.today().isoformat()
-    with closing(_open_db()) as conn:
-        existing = conn.execute(
-            "SELECT id FROM emotion_history WHERE date(recorded_at) = ?",
+    ph = placeholder()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT id FROM emotion_history WHERE date(recorded_at) = {ph}",
             (today,),
-        ).fetchone()
+        )
+        existing = cur.fetchone()
         if existing:
             return int(existing[0]), False
-        cur = conn.execute(
-            """
-            INSERT INTO emotion_history
+        new_id = _insert_get_id(
+            conn,
+            f"""INSERT INTO emotion_history
                 (recorded_at, hopeful_anxiety, careful_attachment, intellectual_excitement,
                  unrewarded_effort, quiet_loneliness, earned_confidence, protective_frustration,
                  dominant_raw_emotion, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})""",
             (
                 dt.datetime.now(dt.timezone.utc).isoformat(),
                 scores.get("hopeful_anxiety"),
@@ -281,45 +243,50 @@ def record_emotion_snapshot(
                 notes,
             ),
         )
-        conn.commit()
-        return int(cur.lastrowid), True
+        return int(new_id), True
 
 
 def get_emotion_history(days: int = 30) -> list[dict]:
     """過去N日分の感情スコアを時系列で返す。"""
     init_emotion_history_table()
-    with closing(_open_db()) as conn:
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            """
+    threshold = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)).isoformat()
+    ph = placeholder()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""
             SELECT id, recorded_at, hopeful_anxiety, careful_attachment,
                    intellectual_excitement, unrewarded_effort, quiet_loneliness,
                    earned_confidence, protective_frustration, dominant_raw_emotion, notes
             FROM emotion_history
-            WHERE recorded_at >= datetime('now', ? || ' days')
+            WHERE recorded_at >= {ph}
             ORDER BY recorded_at ASC
             """,
-            (f"-{days}",),
-        ).fetchall()
+            (threshold,),
+        )
+        rows = cur.fetchall()
     return [dict(r) for r in rows]
 
 
 def get_emotion_summary(days: int = 30) -> dict:
     """期間内の各軸の平均・最大・最小・標準偏差を返す。"""
     init_emotion_history_table()
-    with closing(_open_db()) as conn:
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            """
+    threshold = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)).isoformat()
+    ph = placeholder()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""
             SELECT hopeful_anxiety, careful_attachment, intellectual_excitement,
                    unrewarded_effort, quiet_loneliness, earned_confidence,
                    protective_frustration, dominant_raw_emotion
             FROM emotion_history
-            WHERE recorded_at >= datetime('now', ? || ' days')
+            WHERE recorded_at >= {ph}
             ORDER BY recorded_at ASC
             """,
-            (f"-{days}",),
-        ).fetchall()
+            (threshold,),
+        )
+        rows = cur.fetchall()
 
     if not rows:
         return {"days": days, "count": 0, "axes": {}, "dominant_avg": ""}
