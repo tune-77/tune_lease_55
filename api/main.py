@@ -6320,6 +6320,10 @@ class ChatRequest(BaseModel):
 class LeaseIntelligenceDialogueRequest(BaseModel):
     message: str
     caller: str = ""
+    file_content: Optional[str] = None
+    file_type: Optional[str] = None
+    file_name: Optional[str] = None
+    file_mime_type: Optional[str] = None
 
 
 @app.get("/api/lease-intelligence/dialogue/state")
@@ -6384,6 +6388,18 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
 
     full_message = pending_prefix + message if pending_prefix else message
 
+    # ── ファイル添付処理 ─────────────────────────────────────────────────────
+    extra_user_parts: list[dict] = []
+    if req.file_type == "csv" and req.file_content:
+        _fname = req.file_name or "添付ファイル"
+        _csv_preview = req.file_content[:8000]  # 100KB制限内の安全な切り詰め
+        full_message = (
+            f"[添付CSVファイル: {_fname}]\n```csv\n{_csv_preview}\n```\n\n{full_message}"
+        )
+    elif req.file_type == "image" and req.file_content:
+        _mime = req.file_mime_type or "image/jpeg"
+        extra_user_parts = [{"inline_data": {"mime_type": _mime, "data": req.file_content}}]
+
     history = get_recent_messages(DIALOGUE_USER_ID, limit=100)
     system_prompt, state = build_dialogue_context(vault, full_message, caller=req.caller)
     consultation_ids: list[str] = []
@@ -6403,6 +6419,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
             full_message,
             TOOL_DECLARATIONS,
             _tool_executor,
+            extra_user_parts=extra_user_parts or None,
         ).strip()
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"対話AIへ接続できません: {exc}")

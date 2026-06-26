@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowDown, Brain, Check, Copy, Database, Loader2, Mic, MicOff,
-  Network, Send, Sparkles, Trash2, TrendingUp, User, Volume2, VolumeX,
+  Network, Paperclip, Send, Sparkles, Trash2, TrendingUp, User, Volume2, VolumeX, X,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
 
@@ -15,6 +15,13 @@ type KnowledgeRef = {
   rank_score?: number;
 };
 
+type AttachedFile = {
+  name: string;
+  type: "csv" | "image";
+  content: string;
+  mimeType?: string;
+};
+
 type Message = {
   id: number;
   role: "user" | "assistant";
@@ -22,6 +29,8 @@ type Message = {
   created_at: string;
   knowledge_refs?: KnowledgeRef[];
   query?: string;
+  attachedFileName?: string;
+  attachedFileType?: "csv" | "image";
 };
 
 type MindState = {
@@ -536,8 +545,12 @@ export default function LeaseIntelligencePage() {
     }).catch(() => {});
   };
 
+  const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
+  const [fileError, setFileError] = useState("");
+
   const messageListRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const speechGenerationRef = useRef(0);
 
@@ -580,6 +593,48 @@ export default function LeaseIntelligencePage() {
     setVoiceError("");
     synthesis.cancel();
     speakNext(0);
+  };
+
+  // ── File attach ──────────────────────────────────────────────────────────
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileError("");
+
+    const isImage = /^image\/(png|jpeg|jpg)$/.test(file.type);
+    const isCsv = file.type === "text/csv" || file.name.toLowerCase().endsWith(".csv");
+
+    if (!isImage && !isCsv) {
+      setFileError("CSV または PNG/JPG 画像のみ対応しています");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+    if (isImage && file.size > 4 * 1024 * 1024) {
+      setFileError("画像は4MB以内にしてください");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+    if (isCsv && file.size > 100 * 1024) {
+      setFileError("CSVは100KB以内にしてください");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    if (isImage) {
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const base64 = dataUrl.split(",")[1] ?? "";
+        setAttachedFile({ name: file.name, type: "image", content: base64, mimeType: file.type });
+      };
+      reader.readAsDataURL(file);
+    } else {
+      reader.onload = () => {
+        setAttachedFile({ name: file.name, type: "csv", content: reader.result as string });
+      };
+      reader.readAsText(file, "utf-8");
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   // ── Voice input ──────────────────────────────────────────────────────────
@@ -698,18 +753,30 @@ export default function LeaseIntelligencePage() {
   // ── Send ─────────────────────────────────────────────────────────────────
   const send = async () => {
     const text = input.trim();
-    if (!text || loading) return;
+    if ((!text && !attachedFile) || loading) return;
     setInput("");
     setError("");
+    setFileError("");
+    const currentFile = attachedFile;
+    setAttachedFile(null);
     setMessages((prev) => [...prev, {
       id: Date.now(),
       role: "user",
-      content: text,
+      content: text || "（ファイルを添付しました）",
       created_at: new Date().toISOString(),
+      attachedFileName: currentFile?.name,
+      attachedFileType: currentFile?.type,
     }]);
     setLoading(true);
     try {
-      const res = await apiClient.post("/api/lease-intelligence/dialogue", { message: text });
+      const payload: Record<string, string> = { message: text || "添付ファイルの内容を分析してください。" };
+      if (currentFile) {
+        payload.file_content = currentFile.content;
+        payload.file_type = currentFile.type;
+        payload.file_name = currentFile.name;
+        if (currentFile.mimeType) payload.file_mime_type = currentFile.mimeType;
+      }
+      const res = await apiClient.post("/api/lease-intelligence/dialogue", payload);
       setState(res.data?.state || state);
       const reply: string = res.data?.reply || "返答を生成できませんでした。";
       const knowledgeRefs = res.data?.knowledge_refs as KnowledgeRef[] | undefined;
@@ -731,6 +798,7 @@ export default function LeaseIntelligencePage() {
           : "対話AIへ接続できませんでした。Gemini APIの状態を確認してください。"
       );
       setInput(text);
+      setAttachedFile(currentFile);
     } finally {
       setLoading(false);
     }
@@ -972,6 +1040,15 @@ export default function LeaseIntelligencePage() {
                   {message.role === "assistant"
                     ? renderAssistantContent(message.content)
                     : message.content}
+                  {message.role === "user" && message.attachedFileName && (
+                    <div className="mt-1.5 flex items-center gap-1 rounded-lg bg-slate-700 px-2 py-1 text-[11px] text-slate-300">
+                      <Paperclip className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{message.attachedFileName}</span>
+                      <span className="shrink-0 text-slate-500">
+                        ({message.attachedFileType === "image" ? "画像" : "CSV"})
+                      </span>
+                    </div>
+                  )}
                   {message.role === "assistant" && !!message.knowledge_refs?.length && (
                     <div className="mt-2 border-t border-violet-100 pt-1.5 space-y-0.5">
                       {message.knowledge_refs.map((ref) => {
@@ -1045,6 +1122,29 @@ export default function LeaseIntelligencePage() {
           <footer className="shrink-0 border-t border-violet-100 bg-white p-4">
             {error && <p className="mb-2 text-xs font-bold text-red-600">{error}</p>}
             {voiceError && <p className="mb-2 text-xs font-bold text-orange-600">🎤 {voiceError}</p>}
+            {fileError && <p className="mb-2 text-xs font-bold text-orange-600">📎 {fileError}</p>}
+
+            {/* ファイルプレビュー */}
+            {attachedFile && (
+              <div className="mb-2 flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
+                <Paperclip className="h-4 w-4 shrink-0 text-violet-500" />
+                <span className="min-w-0 flex-1 truncate text-xs font-bold text-violet-800">
+                  {attachedFile.name}
+                </span>
+                <span className="shrink-0 text-[11px] text-violet-500">
+                  {attachedFile.type === "image" ? "画像" : "CSV"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => { setAttachedFile(null); setFileError(""); }}
+                  className="shrink-0 rounded-full p-0.5 text-violet-400 hover:bg-violet-200 hover:text-violet-700"
+                  title="添付を削除"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+
             <div className="flex gap-2">
               {/* 音声入力ボタン */}
               <button
@@ -1059,6 +1159,28 @@ export default function LeaseIntelligencePage() {
                 }`}
               >
                 {listening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+              </button>
+
+              {/* ファイル添付ボタン */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,text/csv,image/png,image/jpeg"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={loading}
+                title="ファイルを添付（CSV・PNG・JPG）"
+                className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl transition ${
+                  attachedFile
+                    ? "bg-violet-600 text-white hover:bg-violet-700"
+                    : "bg-violet-100 text-violet-600 hover:bg-violet-200 disabled:opacity-40"
+                }`}
+              >
+                <Paperclip className="h-5 w-5" />
               </button>
 
               {/* テキスト入力 */}
@@ -1102,7 +1224,7 @@ export default function LeaseIntelligencePage() {
               {/* 送信ボタン */}
               <button
                 onClick={send}
-                disabled={loading || !input.trim()}
+                disabled={loading || (!input.trim() && !attachedFile)}
                 aria-label="リース知性体へ送信"
                 className="flex h-12 min-w-20 shrink-0 items-center justify-center gap-2 rounded-2xl bg-violet-600 px-4 font-bold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
