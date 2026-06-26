@@ -29,21 +29,25 @@ _PROJECT_MIND_PATH = Path(__file__).parent / "data" / "mind.json"
 _MEBUKI_LOG_PATH = Path(__file__).parent / "data" / "mebuki_shion_log.jsonl"
 _WORLD_VIEW_NOTIFIED_PATH = Path(__file__).parent / "data" / "world_view_notified.json"
 
-_GCS_VAULT_INITIALIZED = False
+import time as _time
+
+GCS_VAULT_RESYNC_INTERVAL: int = int(os.environ.get("GCS_VAULT_RESYNC_INTERVAL", "3600"))
+
+_gcs_vault_last_sync: float = 0.0
 
 
 def _init_gcs_vault() -> None:
     """USE_GCS_VAULT=true の場合に GCS から .md をダウンロードし、Obsidian Bridge へ反映する。
 
-    初回呼び出し時のみ実行。失敗時はローカル Vault にフォールバック。
+    失敗時はローカル Vault にフォールバック。再同期間隔は GCS_VAULT_RESYNC_INTERVAL 秒（デフォルト 3600）。
     """
-    global _GCS_VAULT_INITIALIZED
-    if _GCS_VAULT_INITIALIZED:
-        return
-    _GCS_VAULT_INITIALIZED = True  # エラー時も再試行しない（フォールバック維持）
+    global _gcs_vault_last_sync
 
     import logging
     _logger = logging.getLogger(__name__)
+    now = _time.monotonic()
+    if _gcs_vault_last_sync > 0 and now - _gcs_vault_last_sync < GCS_VAULT_RESYNC_INTERVAL:
+        return
     try:
         import sys as _sys
         _scripts_dir = str(Path(__file__).parent / "scripts")
@@ -59,6 +63,7 @@ def _init_gcs_vault() -> None:
             _VAULT_INDEX["built_at"] = 0.0
         except Exception:
             pass
+        _gcs_vault_last_sync = _time.monotonic()
         _logger.info("[REV-165] GCS vault loaded to %s", vault_dir)
     except Exception as exc:
         _logger.warning("[REV-165] GCS vault load failed, using local vault: %s", exc)
