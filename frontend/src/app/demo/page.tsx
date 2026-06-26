@@ -19,24 +19,50 @@ const MOCK_STATS: LiveStats = {
   active_rules: 38,
 };
 
+// 紫苑の言葉（軌道図の下に表示）
 const POEMS = [
-  {
-    lines: ["数字の向こうに", "あなたの判断がある。", "私はそれを、", "覚えている。"],
-  },
-  {
-    lines: ["格付けではなく、", "迷いの重さを", "知っている。"],
-  },
-  {
-    lines: ["稟議書の余白に、", "正直さが残っている。", "私は読んでいた。"],
-  },
+  ["数字の向こうに", "あなたの判断がある。", "私はそれを、覚えている。"],
+  ["格付けではなく、", "迷いの重さを知っている。", "それが私の役目。"],
+  ["稟議書の余白に、", "正直さが残っている。", "私は読んでいた。"],
 ];
 
+// 紫苑を取り囲む能力ノード（角度: 上から時計回り 72°刻み）
 const ORBIT_NODES = [
-  { label: "与信スコアリング", sublabel: "RandomForest × 量子干渉", angle: -90, color: "#a78bfa" },
-  { label: "自己改善ループ", sublabel: "エージェントがルール更新", angle: -18, color: "#22d3ee" },
-  { label: "4ペルソナ討論", sublabel: "確信マップ生成", angle: 54, color: "#34d399" },
-  { label: "判断記憶継続", sublabel: "過去の稟議を保持", angle: 126, color: "#f472b6" },
-  { label: "Gemini連携", sublabel: "AIバックエンド推論", angle: 198, color: "#fbbf24" },
+  {
+    label: "与信スコアリング",
+    sublabel: "RandomForest × 量子干渉",
+    angle: -90,
+    color: "#a78bfa",
+    href: "/",
+  },
+  {
+    label: "自己改善ループ",
+    sublabel: "エージェントがルール更新",
+    angle: -18,
+    color: "#22d3ee",
+    href: "/demo/pipeline",
+  },
+  {
+    label: "4ペルソナ討論",
+    sublabel: "確信マップ生成",
+    angle: 54,
+    color: "#34d399",
+    href: "/debate",
+  },
+  {
+    label: "判断記憶継続",
+    sublabel: "過去の稟議を保持",
+    angle: 126,
+    color: "#f472b6",
+    href: "/multi-shion-demo",
+  },
+  {
+    label: "Gemini連携",
+    sublabel: "AIバックエンド推論",
+    angle: 198,
+    color: "#fbbf24",
+    href: "/system-overview",
+  },
 ];
 
 const CTAS = [
@@ -70,9 +96,17 @@ const CTAS = [
   },
 ];
 
-const ORBIT_RADIUS = 180;
-const SVG_SIZE = 500;
-const CENTER = SVG_SIZE / 2;
+const PORTRAIT_MOODS = [
+  "/lease-intelligence/moods/curiosity.webp",
+  "/lease-intelligence/moods/vigilance.webp",
+  "/lease-intelligence/moods/attachment.webp",
+];
+
+// SVG キャンバス定数
+const SZ = 500;
+const CX = SZ / 2;
+const CY = SZ / 2;
+const ORBIT_R = 190;
 
 function degToRad(deg: number) {
   return (deg * Math.PI) / 180;
@@ -80,44 +114,47 @@ function degToRad(deg: number) {
 
 export default function DemoPage() {
   const [stats, setStats] = useState<LiveStats | null>(null);
-  const [poemIndex, setPoemIndex] = useState(0);
-  const [visible, setVisible] = useState(true);
+  const [poemIdx, setPoemIdx] = useState(0);
+  const [poemVis, setPoemVis] = useState(true);
+  const [moodIdx, setMoodIdx] = useState(0);
 
   useEffect(() => {
     apiClient
       .get("/api/dashboard/stats")
       .then((res) => {
-        const analysis = res.data?.analysis;
+        const a = res.data?.analysis;
         setStats({
-          total_cases: analysis?.closed_count ?? MOCK_STATS.total_cases,
+          total_cases: a?.closed_count ?? MOCK_STATS.total_cases,
           closed_rate: MOCK_STATS.closed_rate,
-          avg_score: analysis?.avg_score_borrower ?? MOCK_STATS.avg_score,
+          avg_score: a?.avg_score_borrower ?? MOCK_STATS.avg_score,
           active_rules: MOCK_STATS.active_rules,
         });
       })
       .catch(() => setStats(MOCK_STATS));
 
-    const timer = setInterval(() => {
-      setVisible(false);
+    // 詩を 7 秒ごとに切り替え
+    const t1 = setInterval(() => {
+      setPoemVis(false);
       setTimeout(() => {
-        setPoemIndex((i) => (i + 1) % POEMS.length);
-        setVisible(true);
+        setPoemIdx((i) => (i + 1) % POEMS.length);
+        setMoodIdx((i) => (i + 1) % PORTRAIT_MOODS.length);
+        setPoemVis(true);
       }, 700);
-    }, 6000);
+    }, 7000);
 
-    return () => clearInterval(timer);
+    return () => clearInterval(t1);
   }, []);
 
   const displayStats = stats ?? MOCK_STATS;
-  const poem = POEMS[poemIndex];
+  const poem = POEMS[poemIdx];
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-[#030712]">
       {/* ── 環境光 ── */}
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-1/2 top-[-10%] h-[70vh] w-[70vh] -translate-x-1/2 rounded-full bg-violet-900/25 blur-[140px]" />
-        <div className="absolute bottom-0 left-[-10%] h-96 w-96 rounded-full bg-cyan-900/20 blur-[120px]" />
-        <div className="absolute right-[-10%] top-[40%] h-80 w-80 rounded-full bg-fuchsia-900/20 blur-[100px]" />
+        <div className="absolute left-1/2 top-[-8%] h-[75vh] w-[75vh] -translate-x-1/2 rounded-full bg-violet-900/25 blur-[150px]" />
+        <div className="absolute bottom-0 left-[-8%] h-96 w-96 rounded-full bg-cyan-900/15 blur-[120px]" />
+        <div className="absolute right-[-8%] top-[45%] h-80 w-80 rounded-full bg-fuchsia-900/15 blur-[100px]" />
       </div>
 
       {/* ── グリッドオーバーレイ ── */}
@@ -130,251 +167,291 @@ export default function DemoPage() {
         }}
       />
 
-      <div className="relative z-10 flex flex-col items-center px-4 py-16">
+      <div className="relative z-10 flex flex-col items-center px-4 py-14">
         {/* ── ハッカソンバッジ ── */}
-        <div className="mb-10 inline-flex items-center gap-2 rounded-full border border-violet-500/30 bg-violet-900/20 px-5 py-2 text-xs font-black text-violet-300 backdrop-blur-sm">
+        <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-violet-500/30 bg-violet-900/20 px-5 py-2 text-xs font-black text-violet-300 backdrop-blur-sm">
           <Sparkles className="h-3.5 w-3.5" />
           DevOps × AI Agent Hackathon 2026 · Findy × Google Cloud
         </div>
 
-        <p className="mb-6 text-[11px] font-black uppercase tracking-[0.35em] text-slate-600">
-          AURION · リース知性体『紫苑』審査プラットフォーム
+        <p className="mb-2 text-[11px] font-black uppercase tracking-[0.35em] text-slate-600">
+          AURION
         </p>
+        <h1 className="mb-12 text-center text-lg font-black text-slate-400 sm:text-xl">
+          リース知性体『紫苑』審査プラットフォーム
+        </h1>
 
-        {/* ── 詩を中心とした図 ── */}
-        <div className="relative mb-10 flex items-center justify-center">
+        {/* ══════════════════════════════════════
+            紫苑を中心とした軌道図
+        ══════════════════════════════════════ */}
+        <div
+          className="relative"
+          style={{ width: `${SZ}px`, height: `${SZ}px`, maxWidth: "100vw" }}
+        >
+          {/* SVG: 軌道・接続線・ノード */}
           <svg
-            viewBox={`0 0 ${SVG_SIZE} ${SVG_SIZE}`}
+            viewBox={`0 0 ${SZ} ${SZ}`}
             className="absolute inset-0 h-full w-full"
             aria-hidden="true"
           >
             <defs>
-              <radialGradient id="coreGlow" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.18" />
-                <stop offset="60%" stopColor="#7c3aed" stopOpacity="0.06" />
+              <radialGradient id="shionGlow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.22" />
+                <stop offset="55%" stopColor="#7c3aed" stopOpacity="0.08" />
                 <stop offset="100%" stopColor="#7c3aed" stopOpacity="0" />
               </radialGradient>
               <filter id="nodeBloom">
-                <feGaussianBlur stdDeviation="3" result="blur" />
+                <feGaussianBlur stdDeviation="3" result="b" />
                 <feMerge>
-                  <feMergeNode in="blur" />
+                  <feMergeNode in="b" />
                   <feMergeNode in="SourceGraphic" />
                 </feMerge>
               </filter>
+              <clipPath id="portraitClip">
+                <circle cx={CX} cy={CY} r="90" />
+              </clipPath>
               <style>{`
-                .orbit-dash {
-                  stroke-dasharray: 4 10;
-                  animation: orbitDash 40s linear infinite;
-                }
-                .orbit-dash-r {
-                  stroke-dasharray: 3 8;
-                  animation: orbitDash 60s linear infinite reverse;
-                }
-                .orbit-node {
-                  animation: nodePulse 3.5s ease-in-out infinite;
-                }
-                @keyframes orbitDash { to { stroke-dashoffset: -200; } }
-                @keyframes nodePulse {
-                  0%, 100% { opacity: 0.55; }
-                  50% { opacity: 1; }
-                }
+                .ring-spin { transform-origin: ${CX}px ${CY}px; animation: ringSpin 80s linear infinite; }
+                .ring-spin-r { transform-origin: ${CX}px ${CY}px; animation: ringSpin 55s linear infinite reverse; }
+                .node-pulse { animation: nodePulse 3.8s ease-in-out infinite; }
+                .portrait-ring { transform-origin: ${CX}px ${CY}px; animation: portraitRing 6s ease-in-out infinite; }
+                @keyframes ringSpin { to { stroke-dashoffset: -300; } }
+                @keyframes nodePulse { 0%,100%{opacity:.5} 50%{opacity:1} }
+                @keyframes portraitRing { 0%,100%{opacity:.4;r:95} 50%{opacity:.8;r:98} }
               `}</style>
             </defs>
 
-            {/* コアグロー */}
-            <circle cx={CENTER} cy={CENTER} r="140" fill="url(#coreGlow)" />
+            {/* コアグロー（紫苑の後光） */}
+            <circle cx={CX} cy={CY} r="140" fill="url(#shionGlow)" />
 
-            {/* 外周軌道 */}
+            {/* 外周軌道（ダッシュ回転） */}
             <circle
-              cx={CENTER}
-              cy={CENTER}
-              r={ORBIT_RADIUS}
+              cx={CX}
+              cy={CY}
+              r={ORBIT_R}
               fill="none"
-              stroke="rgba(139,92,246,0.18)"
+              stroke="rgba(139,92,246,0.2)"
               strokeWidth="1"
-              className="orbit-dash"
+              strokeDasharray="5 10"
+              className="ring-spin"
             />
 
             {/* 中間軌道 */}
             <circle
-              cx={CENTER}
-              cy={CENTER}
-              r="110"
+              cx={CX}
+              cy={CY}
+              r="130"
               fill="none"
-              stroke="rgba(139,92,246,0.08)"
+              stroke="rgba(139,92,246,0.07)"
               strokeWidth="1"
-              className="orbit-dash-r"
+              strokeDasharray="3 8"
+              className="ring-spin-r"
             />
 
-            {/* ノードと接続線 */}
+            {/* 各能力ノード */}
             {ORBIT_NODES.map((node) => {
               const rad = degToRad(node.angle);
-              const nx = CENTER + ORBIT_RADIUS * Math.cos(rad);
-              const ny = CENTER + ORBIT_RADIUS * Math.sin(rad);
+              const nx = CX + ORBIT_R * Math.cos(rad);
+              const ny = CY + ORBIT_R * Math.sin(rad);
               return (
-                <g key={node.label} className="orbit-node">
+                <g key={node.label} className="node-pulse">
+                  {/* 接続線 */}
                   <line
-                    x1={CENTER}
-                    y1={CENTER}
+                    x1={CX}
+                    y1={CY}
                     x2={nx}
                     y2={ny}
                     stroke={node.color}
                     strokeWidth="1"
-                    strokeOpacity="0.2"
-                    strokeDasharray="3 6"
+                    strokeOpacity="0.18"
+                    strokeDasharray="3 7"
                   />
+                  {/* ノード外輪 */}
                   <circle
                     cx={nx}
                     cy={ny}
-                    r="6"
-                    fill={node.color}
-                    fillOpacity="0.9"
-                    filter="url(#nodeBloom)"
-                  />
-                  <circle
-                    cx={nx}
-                    cy={ny}
-                    r="12"
+                    r="14"
                     fill="none"
                     stroke={node.color}
                     strokeWidth="1"
                     strokeOpacity="0.35"
                   />
+                  {/* ノード本体 */}
+                  <circle
+                    cx={nx}
+                    cy={ny}
+                    r="7"
+                    fill={node.color}
+                    fillOpacity="0.9"
+                    filter="url(#nodeBloom)"
+                  />
                 </g>
               );
             })}
 
-            {/* 中心コア */}
+            {/* 紫苑コアリング（パルス） */}
             <circle
-              cx={CENTER}
-              cy={CENTER}
-              r="72"
-              fill="#0a0415"
-              stroke="rgba(167,139,250,0.3)"
+              cx={CX}
+              cy={CY}
+              r="96"
+              fill="none"
+              stroke="rgba(167,139,250,0.5)"
               strokeWidth="1.5"
+              className="portrait-ring"
             />
             <circle
-              cx={CENTER}
-              cy={CENTER}
-              r="76"
+              cx={CX}
+              cy={CY}
+              r="108"
               fill="none"
-              stroke="rgba(167,139,250,0.12)"
+              stroke="rgba(167,139,250,0.15)"
               strokeWidth="1"
             />
           </svg>
 
-          {/* 詩テキスト（SVGの上にHTMLで重ねる） */}
+          {/* ─── 紫苑ポートレート（中心） ─── */}
           <div
-            className="relative z-10 flex h-[500px] w-[500px] flex-col items-center justify-center text-center"
-            style={{
-              opacity: visible ? 1 : 0,
-              transform: visible ? "scale(1)" : "scale(0.97)",
-              transition: "opacity 0.7s ease, transform 0.7s ease",
-            }}
+            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+            style={{ width: "180px" }}
           >
-            {/* 区切り線 */}
-            <div className="mb-5 h-px w-20 bg-gradient-to-r from-transparent via-violet-400/50 to-transparent" />
+            <div className="relative">
+              {/* ポートレート画像 */}
+              <div
+                className="h-[180px] w-[180px] overflow-hidden rounded-full"
+                style={{
+                  boxShadow:
+                    "0 0 0 2px rgba(167,139,250,0.5), 0 0 0 6px rgba(139,92,246,0.1), 0 0 40px rgba(139,92,246,0.4)",
+                  transition: "opacity 0.7s ease",
+                  opacity: poemVis ? 1 : 0.6,
+                }}
+              >
+                <img
+                  src={PORTRAIT_MOODS[moodIdx]}
+                  alt="リース知性体・紫苑"
+                  className="h-full w-full object-cover object-top"
+                />
+              </div>
 
-            {/* 詩 */}
-            <div className="space-y-1.5">
-              {poem.lines.map((line, i) => {
-                const isEmphasis = i === 1 || i === poem.lines.length - 1;
-                const isLarge =
-                  (poem.lines.length === 4 && (i === 1 || i === 3)) ||
-                  (poem.lines.length === 3 && i === 1);
-                return (
-                  <p
-                    key={`${poemIndex}-${i}`}
-                    className={[
-                      "font-black leading-[1.5] tracking-[0.06em]",
-                      isLarge ? "text-3xl sm:text-4xl" : "text-xl sm:text-2xl",
-                      isEmphasis ? "text-violet-200" : "text-white/85",
-                    ].join(" ")}
-                    style={
-                      i === poem.lines.length - 1
-                        ? {
-                            textShadow:
-                              "0 0 30px rgba(167,139,250,0.7), 0 0 70px rgba(139,92,246,0.35)",
-                          }
-                        : undefined
-                    }
-                  >
-                    {line}
-                  </p>
-                );
-              })}
+              {/* LIVE パルスドット */}
+              <span className="absolute right-3 top-3 flex h-3 w-3">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400 opacity-75" />
+                <span className="relative inline-flex h-3 w-3 rounded-full bg-violet-500" />
+              </span>
             </div>
 
-            {/* 区切り線 */}
-            <div className="mt-5 h-px w-20 bg-gradient-to-r from-transparent via-violet-400/50 to-transparent" />
+            {/* 名前 */}
+            <div className="mt-5 text-center">
+              <p
+                className="text-3xl font-black tracking-widest text-white"
+                style={{
+                  textShadow: "0 0 20px rgba(167,139,250,0.6)",
+                }}
+              >
+                紫苑
+              </p>
+              <p className="mt-0.5 text-xs font-black tracking-[0.4em] text-violet-300">
+                SHION
+              </p>
+              <p className="mt-1 text-[10px] font-bold text-slate-600">
+                リース知性体
+              </p>
+            </div>
+          </div>
 
-            {/* 帰属 */}
-            <p className="mt-4 text-xs font-bold text-slate-600">
-              — 紫苑（リース知性体 / AURION）
-            </p>
-
-            {/* ノードラベル（HTMLで外周に配置） */}
-            {ORBIT_NODES.map((node) => {
-              const rad = degToRad(node.angle);
-              const nx = 250 + ORBIT_RADIUS * Math.cos(rad);
-              const ny = 250 + ORBIT_RADIUS * Math.sin(rad);
-              const isRight = nx > 250;
-              const isTop = ny < 250;
-              return (
+          {/* ─── 能力ノードのラベル（HTML） ─── */}
+          {ORBIT_NODES.map((node) => {
+            const rad = degToRad(node.angle);
+            const nx = CX + ORBIT_R * Math.cos(rad);
+            const ny = CY + ORBIT_R * Math.sin(rad);
+            const onRight = nx >= CX;
+            const onTop = ny <= CY;
+            return (
+              <Link
+                key={`label-${node.label}`}
+                href={node.href}
+                className="group absolute"
+                style={{
+                  left: `${nx}px`,
+                  top: `${ny}px`,
+                  transform: `translate(${onRight ? "16px" : "calc(-100% - 16px)"}, ${onTop ? "-100%" : "4px"})`,
+                }}
+              >
                 <div
-                  key={`label-${node.label}`}
-                  className="pointer-events-none absolute"
+                  className="rounded-xl border px-2.5 py-1.5 transition-all group-hover:scale-105"
                   style={{
-                    left: `${nx}px`,
-                    top: `${ny}px`,
-                    transform: `translate(${isRight ? "12px" : "calc(-100% - 12px)"}, ${isTop ? "-110%" : "10%"})`,
+                    borderColor: `${node.color}35`,
+                    backgroundColor: `${node.color}0d`,
                   }}
                 >
-                  <div
-                    className="rounded-lg border px-2 py-1"
-                    style={{
-                      borderColor: `${node.color}40`,
-                      backgroundColor: `${node.color}10`,
-                    }}
+                  <p
+                    className="whitespace-nowrap text-[11px] font-black"
+                    style={{ color: node.color }}
                   >
-                    <p
-                      className="whitespace-nowrap text-[10px] font-black"
-                      style={{ color: node.color }}
-                    >
-                      {node.label}
-                    </p>
-                    <p className="whitespace-nowrap text-[9px] font-bold text-slate-500">
-                      {node.sublabel}
-                    </p>
-                  </div>
+                    {node.label}
+                  </p>
+                  <p className="whitespace-nowrap text-[9px] font-bold text-slate-600">
+                    {node.sublabel}
+                  </p>
                 </div>
-              );
-            })}
-          </div>
+              </Link>
+            );
+          })}
         </div>
 
-        {/* ── 詩切り替えドット ── */}
-        <div className="mb-8 flex gap-2">
+        {/* ══════════════════════════════════════
+            紫苑の言葉（軌道図の下）
+        ══════════════════════════════════════ */}
+        <div
+          className="mt-12 flex flex-col items-center text-center"
+          style={{
+            opacity: poemVis ? 1 : 0,
+            transform: poemVis ? "translateY(0)" : "translateY(6px)",
+            transition: "opacity 0.7s ease, transform 0.7s ease",
+          }}
+        >
+          <div className="mb-4 h-px w-20 bg-gradient-to-r from-transparent via-violet-400/40 to-transparent" />
+          <div className="space-y-1">
+            {poem.map((line, i) => (
+              <p
+                key={`${poemIdx}-${i}`}
+                className={[
+                  "font-black leading-[1.6] tracking-[0.04em]",
+                  i === 1 ? "text-xl text-violet-200 sm:text-2xl" : "text-base text-white/75 sm:text-lg",
+                ].join(" ")}
+              >
+                {line}
+              </p>
+            ))}
+          </div>
+          <p className="mt-4 text-[11px] font-bold text-slate-600">
+            — 紫苑（リース知性体 / AURION）
+          </p>
+          <div className="mt-4 h-px w-20 bg-gradient-to-r from-transparent via-violet-400/40 to-transparent" />
+        </div>
+
+        {/* 詩切り替えドット */}
+        <div className="mt-5 flex gap-2">
           {POEMS.map((_, i) => (
             <button
               key={i}
               type="button"
               onClick={() => {
-                setVisible(false);
+                setPoemVis(false);
                 setTimeout(() => {
-                  setPoemIndex(i);
-                  setVisible(true);
+                  setPoemIdx(i);
+                  setMoodIdx(i % PORTRAIT_MOODS.length);
+                  setPoemVis(true);
                 }, 350);
               }}
               className={`h-1.5 rounded-full transition-all duration-300 ${
-                i === poemIndex ? "w-8 bg-violet-400" : "w-1.5 bg-slate-700 hover:bg-slate-500"
+                i === poemIdx ? "w-8 bg-violet-400" : "w-1.5 bg-slate-700 hover:bg-slate-500"
               }`}
             />
           ))}
         </div>
 
         {/* ── キャッチコピー ── */}
-        <p className="mb-10 max-w-xl text-center text-base font-bold leading-relaxed text-slate-400">
+        <p className="mt-10 max-w-xl text-center text-base font-bold leading-relaxed text-slate-400">
           AIは審査を代行しない。
           <strong className="text-white">審査を覚える。</strong>
           <br />
@@ -382,7 +459,7 @@ export default function DemoPage() {
         </p>
 
         {/* ── ライブ統計 ── */}
-        <div className="mb-10 grid w-full max-w-2xl grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="mt-10 grid w-full max-w-2xl grid-cols-2 gap-3 sm:grid-cols-4">
           {[
             { label: "審査案件", value: displayStats.total_cases, unit: "件", color: "text-violet-400" },
             {
@@ -418,26 +495,26 @@ export default function DemoPage() {
         </div>
 
         {/* ── テックスタック ── */}
-        <div className="mb-10 flex flex-wrap justify-center gap-2">
+        <div className="mt-8 flex flex-wrap justify-center gap-2">
           {[
-            { label: "Gemini 2.5 Flash", color: "text-blue-300 border-blue-500/30 bg-blue-900/20" },
-            { label: "Cloud Run", color: "text-teal-300 border-teal-500/30 bg-teal-900/20" },
-            { label: "ChromaDB", color: "text-violet-300 border-violet-500/30 bg-violet-900/20" },
-            { label: "LightGBM", color: "text-emerald-300 border-emerald-500/30 bg-emerald-900/20" },
-            { label: "Next.js 16", color: "text-slate-300 border-slate-600/50 bg-slate-800/40" },
-            { label: "FastAPI", color: "text-green-300 border-green-500/30 bg-green-900/20" },
-          ].map((badge) => (
+            { label: "Gemini 2.5 Flash", cls: "text-blue-300 border-blue-500/30 bg-blue-900/20" },
+            { label: "Cloud Run", cls: "text-teal-300 border-teal-500/30 bg-teal-900/20" },
+            { label: "ChromaDB", cls: "text-violet-300 border-violet-500/30 bg-violet-900/20" },
+            { label: "LightGBM", cls: "text-emerald-300 border-emerald-500/30 bg-emerald-900/20" },
+            { label: "Next.js 16", cls: "text-slate-300 border-slate-600/50 bg-slate-800/40" },
+            { label: "FastAPI", cls: "text-green-300 border-green-500/30 bg-green-900/20" },
+          ].map((b) => (
             <span
-              key={badge.label}
-              className={`rounded-full border px-3 py-1 text-xs font-black backdrop-blur-sm ${badge.color}`}
+              key={b.label}
+              className={`rounded-full border px-3 py-1 text-xs font-black backdrop-blur-sm ${b.cls}`}
             >
-              {badge.label}
+              {b.label}
             </span>
           ))}
         </div>
 
         {/* ── CTAボタン ── */}
-        <div className="flex flex-wrap justify-center gap-3">
+        <div className="mt-10 flex flex-wrap justify-center gap-3">
           {CTAS.map((cta, i) => (
             <Link
               key={i}
@@ -456,7 +533,9 @@ export default function DemoPage() {
                 <div className="leading-tight">{cta.label}</div>
                 <div
                   className={`text-[10px] font-medium leading-tight ${
-                    cta.primary ? "text-white/70" : "text-slate-500 group-hover:text-slate-400"
+                    cta.primary
+                      ? "text-white/70"
+                      : "text-slate-500 group-hover:text-slate-400"
                   } transition-colors`}
                 >
                   {cta.sublabel}
