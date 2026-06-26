@@ -46,6 +46,7 @@ while _REPO_ROOT in sys.path:
 sys.path.insert(0, _REPO_ROOT)
 
 from api.llm_json_guard import extract_candidate_text, parse_or_recover_json, with_retry_tokens
+from api.db_connection import get_connection, placeholder
 
 # data_cases / base_rate_master を正しいパスから強制ロード（clawd/ 直下の同名モジュールより優先）
 import importlib.util as _ilu
@@ -116,6 +117,10 @@ from lease_news_digest import (
     record_lease_news_view,
     lease_news_focus_as_text,
 )
+from obsidian_daily_intelligence import (
+    obsidian_daily_intelligence_as_text,
+    record_obsidian_daily_intelligence_event,
+)
 from api.schemas import (
     ScoringRequest,
     ScoringResponse,
@@ -174,19 +179,16 @@ def _init_sync_log_table() -> None:
     """sync_log テーブルを冪等に作成する（Cloud Run git push 結果記録用）。"""
     if not os.path.exists(_LEASE_DB_PATH):
         return
-    import sqlite3
     try:
-        conn = sqlite3.connect(_LEASE_DB_PATH, timeout=5)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS sync_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                pushed_at TEXT NOT NULL,
-                success INTEGER NOT NULL,
-                error TEXT
-            )
-        """)
-        conn.commit()
-        conn.close()
+        with get_connection() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS sync_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    pushed_at TEXT NOT NULL,
+                    success INTEGER NOT NULL,
+                    error TEXT
+                )
+            """)
     except Exception as e:
         print(f"[sync_log] テーブル作成失敗（非致命的）: {e}")
 
@@ -195,16 +197,14 @@ def _record_sync_log(success: bool, error: str = "") -> None:
     """sync_log テーブルに git push 結果を記録する。"""
     if not os.path.exists(_LEASE_DB_PATH):
         return
-    import sqlite3
     import datetime
+    _ph = placeholder()
     try:
-        conn = sqlite3.connect(_LEASE_DB_PATH, timeout=5)
-        conn.execute(
-            "INSERT INTO sync_log (pushed_at, success, error) VALUES (?, ?, ?)",
-            (datetime.datetime.utcnow().isoformat(), 1 if success else 0, error),
-        )
-        conn.commit()
-        conn.close()
+        with get_connection() as conn:
+            conn.execute(
+                f"INSERT INTO sync_log (pushed_at, success, error) VALUES ({_ph}, {_ph}, {_ph})",
+                (datetime.datetime.utcnow().isoformat(), 1 if success else 0, error),
+            )
     except Exception as e:
         print(f"[sync_log] 記録失敗（非致命的）: {e}")
 
@@ -2320,19 +2320,16 @@ def _load_useful_life_table() -> list[dict]:
 @app.get("/api/cases/industry-winrate")
 def get_industry_winrate():
     """業種別成約率を past_cases から集計して返す（REV-055/117~119）。"""
-    import sqlite3 as _sqlite3
-    db_path = _LEASE_DB_PATH
-    if not os.path.exists(db_path):
+    if not os.path.exists(_LEASE_DB_PATH):
         return []
-    conn = _sqlite3.connect(db_path)
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT industry_sub, final_status, COUNT(*) FROM past_cases "
-        "WHERE final_status IS NOT NULL AND final_status != '' "
-        "GROUP BY industry_sub, final_status"
-    )
-    rows = cur.fetchall()
-    conn.close()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT industry_sub, final_status, COUNT(*) FROM past_cases "
+            "WHERE final_status IS NOT NULL AND final_status != '' "
+            "GROUP BY industry_sub, final_status"
+        )
+        rows = cur.fetchall()
     _SUCCESS = {"成約", "検収完了"}
     _FAILURE = {"失注"}
     agg: dict = {}
@@ -2370,26 +2367,23 @@ def get_industry_winrate():
 @app.get("/api/cases/sales-dept-winrate")
 def get_sales_dept_winrate():
     """営業部別成約率を集計して返す（REV-112）。"""
-    db_path = _LEASE_DB_PATH
-    if not os.path.exists(db_path):
+    if not os.path.exists(_LEASE_DB_PATH):
         return {"items": [], "overall_rate": 0.0, "total_won": 0, "total_lost": 0}
-    import sqlite3 as _sqlite3
-    conn = _sqlite3.connect(db_path)
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT sales_dept,
-               SUM(CASE WHEN final_status IN ('成約','検収完了') THEN 1 ELSE 0 END) as won,
-               SUM(CASE WHEN final_status = '失注' THEN 1 ELSE 0 END) as lost,
-               COUNT(*) as total,
-               ROUND(AVG(score), 1) as avg_score
-        FROM past_cases
-        WHERE sales_dept NOT IN ('', '0', '未設定')
-          AND final_status IN ('成約','検収完了','失注')
-        GROUP BY sales_dept
-        ORDER BY total DESC
-    """)
-    rows = cur.fetchall()
-    conn.close()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT sales_dept,
+                   SUM(CASE WHEN final_status IN ('成約','検収完了') THEN 1 ELSE 0 END) as won,
+                   SUM(CASE WHEN final_status = '失注' THEN 1 ELSE 0 END) as lost,
+                   COUNT(*) as total,
+                   ROUND(AVG(score), 1) as avg_score
+            FROM past_cases
+            WHERE sales_dept NOT IN ('', '0', '未設定')
+              AND final_status IN ('成約','検収完了','失注')
+            GROUP BY sales_dept
+            ORDER BY total DESC
+        """)
+        rows = cur.fetchall()
     total_won = sum(r[1] for r in rows)
     total_lost = sum(r[2] for r in rows)
     overall_rate = round(total_won / (total_won + total_lost) * 100, 1) if (total_won + total_lost) > 0 else 0.0
@@ -2411,28 +2405,23 @@ def get_sales_dept_winrate():
 @app.get("/api/payment/alerts")
 def get_payment_alerts():
     """延滞・デフォルト案件を検出してアラートリストを返す（REV-070）。"""
-    db_path = _LEASE_DB_PATH
-    if not os.path.exists(db_path):
+    if not os.path.exists(_LEASE_DB_PATH):
         return {"alerts": [], "summary": {"normal": 0, "overdue": 0, "default": 0, "completed": 0}}
-    import sqlite3 as _sqlite3
-    conn = _sqlite3.connect(db_path)
-    conn.row_factory = _sqlite3.Row
-    cur = conn.cursor()
-    # payment_historyが存在するか確認
-    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='payment_history'")
-    if not cur.fetchone():
-        conn.close()
-        return {"alerts": [], "summary": {"normal": 0, "overdue": 0, "default": 0, "completed": 0}}
-    cur.execute("""
-        SELECT ph.id, ph.contract_id, ph.check_date, ph.payment_status,
-               ph.overdue_amount, ph.screening_score, ph.notes,
-               pc.industry_sub, pc.score as original_score
-        FROM payment_history ph
-        LEFT JOIN past_cases pc ON ph.contract_id = pc.id
-        ORDER BY ph.check_date DESC
-    """)
-    rows = [dict(r) for r in cur.fetchall()]
-    conn.close()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        # payment_historyが存在するか確認
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='payment_history'")
+        if not cur.fetchone():
+            return {"alerts": [], "summary": {"normal": 0, "overdue": 0, "default": 0, "completed": 0}}
+        cur.execute("""
+            SELECT ph.id, ph.contract_id, ph.check_date, ph.payment_status,
+                   ph.overdue_amount, ph.screening_score, ph.notes,
+                   pc.industry_sub, pc.score as original_score
+            FROM payment_history ph
+            LEFT JOIN past_cases pc ON ph.contract_id = pc.id
+            ORDER BY ph.check_date DESC
+        """)
+        rows = [dict(r) for r in cur.fetchall()]
     summary = {"normal": 0, "overdue": 0, "default": 0, "completed": 0}
     alerts = []
     for row in rows:
@@ -2805,16 +2794,12 @@ def get_improvement_pipeline_summary():
 @app.get("/api/subsidies")
 def get_subsidies(q: str = ""):
     """補助金マスタ一覧を返す。q で asset_keywords/name を部分一致フィルタ（REV-022/047）。"""
-    db_path = _LEASE_DB_PATH
-    if not os.path.exists(db_path):
+    if not os.path.exists(_LEASE_DB_PATH):
         return []
-    import sqlite3 as _sqlite3
-    conn = _sqlite3.connect(db_path)
-    conn.row_factory = _sqlite3.Row
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM subsidy_master WHERE active = 1 ORDER BY max_amount DESC")
-    rows = [dict(r) for r in cur.fetchall()]
-    conn.close()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM subsidy_master WHERE active = 1 ORDER BY max_amount DESC")
+        rows = [dict(r) for r in cur.fetchall()]
     if q.strip():
         q_l = q.lower()
         rows = [r for r in rows if q_l in (r.get("name") or "").lower() or q_l in (r.get("asset_keywords") or "").lower() or q_l in (r.get("notes") or "").lower()]
@@ -6525,6 +6510,12 @@ def post_chat(req: ChatRequest):
             surface="chat",
         )
         news_actions_context = f"\n\n{news_actions_text}" if news_actions_text else ""
+        try:
+            obsidian_daily_text = obsidian_daily_intelligence_as_text(route="chat")
+        except Exception as _obsidian_daily_error:
+            print(f"[ObsidianDailyIntelligence] 読み込みエラー: {_obsidian_daily_error}")
+            obsidian_daily_text = ""
+        obsidian_daily_context = f"\n\n{obsidian_daily_text}" if obsidian_daily_text else ""
         news_brief_context = ""
         if news_brief.get("available"):
             brief_lines = [news_brief.get("opening_line", "").strip()]
@@ -6681,10 +6672,27 @@ def post_chat(req: ChatRequest):
             from api.shion_memory_recall import build_recall_prompt_block
 
             memory_recall_context, memory_recall = build_recall_prompt_block(req.message)
-            base_system_prompt = _pg_build_gsp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
+            base_system_prompt = _pg_build_gsp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
             pdca_block = build_pdca_prompt_block()
             effective_system_prompt = base_system_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
+            obsidian_daily_injected = {}
+            if obsidian_daily_context:
+                obsidian_daily_injected = record_obsidian_daily_intelligence_event(
+                    surface="next_chat_general",
+                    route="chat",
+                    event="injected",
+                    question=req.message,
+                )
             reply = call_gemini_chat(effective_system_prompt, history_for_gemini, req.message)
+            obsidian_daily_effect = {}
+            if obsidian_daily_context:
+                obsidian_daily_effect = record_obsidian_daily_intelligence_event(
+                    surface="next_chat_general",
+                    route="chat",
+                    event="response_evaluated",
+                    question=req.message,
+                    response_text=reply,
+                )
             save_message(req.user_id, "user", req.message)
             save_message(req.user_id, "assistant", reply)
             _record_prompt_feedback_if_available(
@@ -6725,7 +6733,18 @@ def post_chat(req: ChatRequest):
             )
             _record_chat_knowledge_correction_if_needed(req.message)
             total = get_message_count(req.user_id)
-            return {"reply": reply, "total_messages": total, "lease_news_focus": news_focus, "lease_news_brief": news_brief, "lease_news_actions": news_actions}
+            return {
+                "reply": reply,
+                "total_messages": total,
+                "lease_news_focus": news_focus,
+                "lease_news_brief": news_brief,
+                "lease_news_actions": news_actions,
+                "obsidian_daily_intelligence": {
+                    "used": bool(obsidian_daily_context),
+                    "injected": obsidian_daily_injected,
+                    "effect": obsidian_daily_effect,
+                },
+            }
 
         # RAG: 共通ストアから関連ナレッジを取得。ローカル埋め込みモデルが
         # 未キャッシュでもキーワード検索へフォールバックする。
@@ -6810,10 +6829,27 @@ def post_chat(req: ChatRequest):
         except Exception as _memory_recall_error:
             print(f"[ShionMemoryRecall] 読み込みエラー: {_memory_recall_error}")
 
-            base_effective_prompt = _pg_build_sp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + guidance.prompt_suffix
+        base_effective_prompt = _pg_build_sp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + guidance.prompt_suffix
         pdca_block = build_pdca_prompt_block()
         effective_prompt = base_effective_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
+        obsidian_daily_injected = {}
+        if obsidian_daily_context:
+            obsidian_daily_injected = record_obsidian_daily_intelligence_event(
+                surface="next_chat_rag",
+                route="chat",
+                event="injected",
+                question=req.message,
+            )
         reply = call_gemini_chat(effective_prompt, history_for_gemini, req.message)
+        obsidian_daily_effect = {}
+        if obsidian_daily_context:
+            obsidian_daily_effect = record_obsidian_daily_intelligence_event(
+                surface="next_chat_rag",
+                route="chat",
+                event="response_evaluated",
+                question=req.message,
+                response_text=reply,
+            )
         save_message(req.user_id, "user", req.message)
         save_message(req.user_id, "assistant", reply)
         _record_prompt_feedback_if_available(
@@ -6876,7 +6912,18 @@ def post_chat(req: ChatRequest):
                 daemon=True,
             ).start()
 
-        return {"reply": reply, "total_messages": total, "lease_news_focus": news_focus, "lease_news_brief": news_brief, "lease_news_actions": news_actions}
+        return {
+            "reply": reply,
+            "total_messages": total,
+            "lease_news_focus": news_focus,
+            "lease_news_brief": news_brief,
+            "lease_news_actions": news_actions,
+            "obsidian_daily_intelligence": {
+                "used": bool(obsidian_daily_context),
+                "injected": obsidian_daily_injected,
+                "effect": obsidian_daily_effect,
+            },
+        }
     except Exception as e:
         import traceback
         traceback.print_exc()
