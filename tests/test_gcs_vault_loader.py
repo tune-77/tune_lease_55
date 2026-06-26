@@ -114,6 +114,15 @@ class TestDownloadVault:
 
         client_mock.list_blobs.assert_called_once_with("my-bucket", prefix="custom/")
 
+    def test_normalizes_gs_url_bucket(self, tmp_path: Path) -> None:
+        client_mock = MagicMock()
+        client_mock.list_blobs.return_value = []
+        _gcs_mock.Client.return_value = client_mock
+
+        download_vault(dest_dir=tmp_path, bucket="gs://my-bucket/some-prefix", prefix="custom/")
+
+        client_mock.list_blobs.assert_called_once_with("my-bucket", prefix="custom/")
+
     def test_creates_nested_directories(self, tmp_path: Path) -> None:
         blobs = [
             _make_blob("vault/deep/nested/dir/note.md", b"deep"),

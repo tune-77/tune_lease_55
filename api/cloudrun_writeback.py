@@ -21,6 +21,10 @@ PII_KEYS = {
     "email",
     "representative",
     "hojin_name",
+    "note",
+    "reason",
+    "passion_text",
+    "asset_location",
 }
 
 
@@ -111,6 +115,7 @@ def record_cloudrun_input_event(
         return {"ok": False, "skipped": True, "reason": "writeback_disabled", "event_id": entry["event_id"]}
 
     try:
+        from google.api_core.exceptions import NotFound  # type: ignore[import-untyped]
         from google.cloud import storage  # type: ignore[import-untyped]
         from scripts.gcs_lock import GCSLock
 
@@ -126,11 +131,18 @@ def record_cloudrun_input_event(
 
         with GCSLock(bucket_name=bucket_name, target_file=gcs_path, ttl_seconds=30):
             try:
+                blob.reload()
                 current = blob.download_as_text()
-            except Exception:
+                generation = blob.generation
+            except NotFound:
                 current = ""
+                generation = 0
             blob.metadata = {"mtime": now.isoformat(), "event_type": "cloudrun_input"}
-            blob.upload_from_string(current + line, content_type="application/jsonl; charset=utf-8")
+            blob.upload_from_string(
+                current + line,
+                content_type="application/jsonl; charset=utf-8",
+                if_generation_match=generation,
+            )
         return {"ok": True, "skipped": False, "gcs_path": gcs_path, "event_id": entry["event_id"]}
     except Exception as exc:
         _fallback(entry, str(exc))

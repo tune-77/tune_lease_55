@@ -18,6 +18,14 @@ GCS_VAULT_PREFIX = os.environ.get("GCS_VAULT_PREFIX", "vault/")
 _DEFAULT_LOCAL_DIR = Path("/tmp/gcs_vault")
 
 
+def _bucket_name(value: str) -> str:
+    """gs://bucket/prefix 形式でも Storage API の bucket 名へ正規化する。"""
+    normalized = (value or "").strip()
+    if normalized.startswith("gs://"):
+        normalized = normalized[5:]
+    return normalized.split("/", 1)[0]
+
+
 def _safe_relative_path(blob_name: str, prefix: str) -> Path | None:
     """GCS blob 名を dest_dir 配下の安全な相対パスへ変換する。"""
     rel = blob_name[len(prefix):]
@@ -58,7 +66,7 @@ def download_vault(
     """
     from google.cloud import storage  # type: ignore[import-untyped]
 
-    bkt = bucket or GCS_BUCKET
+    bkt = _bucket_name(bucket or GCS_BUCKET)
     pfx = prefix or GCS_VAULT_PREFIX
     dest = dest_dir or _DEFAULT_LOCAL_DIR
     dest.mkdir(parents=True, exist_ok=True)

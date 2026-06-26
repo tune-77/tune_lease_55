@@ -6,7 +6,7 @@ import os
 import threading
 from typing import Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 
 from api.cloudrun_writeback import record_cloudrun_input_event
@@ -29,7 +29,7 @@ class RagFeedbackRequest(BaseModel):
 
 
 @router.post("/knowledge/feedback")
-def post_rag_feedback(req: RagFeedbackRequest) -> dict:
+def post_rag_feedback(req: RagFeedbackRequest, background_tasks: BackgroundTasks) -> dict:
     now_ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
     entry = {
         "ts": now_ts,
@@ -55,7 +55,8 @@ def post_rag_feedback(req: RagFeedbackRequest) -> dict:
     with _hit_log_lock:
         with open(_HIT_LOG_PATH, "a", encoding="utf-8") as f:
             f.write(hit_line)
-    record_cloudrun_input_event(
+    background_tasks.add_task(
+        record_cloudrun_input_event,
         event_type="rag_feedback",
         surface=req.surface,
         payload=entry,

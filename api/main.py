@@ -7546,7 +7546,7 @@ def get_emotion_summary_api(days: int = 30):
 
 
 @app.post("/api/lease-news/judgment-change")
-def record_lease_news_judgment_change_api(req: LeaseNewsJudgmentChangeRequest):
+def record_lease_news_judgment_change_api(req: LeaseNewsJudgmentChangeRequest, background_tasks: BackgroundTasks):
     """ニュース参照後の判断変更を記録する。"""
     import datetime as _dt
     from judgment_feedback import record_judgment_feedback
@@ -7570,7 +7570,8 @@ def record_lease_news_judgment_change_api(req: LeaseNewsJudgmentChangeRequest):
         )
         if not feedback.get("success"):
             raise HTTPException(status_code=422, detail=feedback.get("error"))
-        record_cloudrun_input_event(
+        background_tasks.add_task(
+            record_cloudrun_input_event,
             event_type="lease_news_judgment_change",
             surface="lease_news_judgment_change",
             payload=req.model_dump(),
@@ -7643,7 +7644,7 @@ class JudgmentFeedbackCreateRequest(BaseModel):
 
 
 @app.post("/api/judgment-feedback")
-def create_judgment_feedback_api(req: JudgmentFeedbackCreateRequest):
+def create_judgment_feedback_api(req: JudgmentFeedbackCreateRequest, background_tasks: BackgroundTasks):
     from judgment_feedback import record_judgment_feedback
 
     result = record_judgment_feedback(
@@ -7658,7 +7659,8 @@ def create_judgment_feedback_api(req: JudgmentFeedbackCreateRequest):
     )
     if not result.get("success"):
         raise HTTPException(status_code=422, detail=result.get("error"))
-    record_cloudrun_input_event(
+    background_tasks.add_task(
+        record_cloudrun_input_event,
         event_type="judgment_feedback_created",
         surface="judgment_feedback",
         payload={**req.model_dump(), "record_id": result.get("record_id")},
