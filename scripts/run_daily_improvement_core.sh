@@ -20,6 +20,10 @@ log_step() {
 }
 
 echo ""
+echo "[入力・同期] Cloud Run入力イベントを GCS から取り込み中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/sync_cloudrun_inputs_from_gcs.py" || true
+
+echo ""
 echo "[入力・同期] 実装済み改善を Obsidian インデックスに自動同期中..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/sync_implemented_to_obsidian.py" || true
 

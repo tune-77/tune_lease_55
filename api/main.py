@@ -29,6 +29,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import asyncio
 import json
+import logging
 import re
 import shutil
 import sys
@@ -48,6 +49,7 @@ sys.path.insert(0, _REPO_ROOT)
 from api.llm_json_guard import extract_candidate_text, parse_or_recover_json, with_retry_tokens
 from api.db_connection import current_backend, get_connection, placeholder
 from api.cloudrun_writeback import record_cloudrun_input_event
+logger = logging.getLogger(__name__)
 
 # data_cases / base_rate_master を正しいパスから強制ロード（clawd/ 直下の同名モジュールより優先）
 import importlib.util as _ilu
@@ -1452,18 +1454,20 @@ def calc_deal_closure_probability(req: DealClosureRequest):
 def api_industry_stats():
     """業種別成約率・平均スコア集計（REV-055）"""
     import json
-    from contextlib import closing
-    from data_cases import _open_db
-    with closing(_open_db()) as conn:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT industry_sub, final_status, COUNT(*) as cnt, AVG(score) as avg_score
-            FROM past_cases
-            WHERE industry_sub IS NOT NULL AND industry_sub != '' AND industry_sub != '0'
-              AND final_status IN ('成約', '失注')
-            GROUP BY industry_sub, final_status
-        """)
-        rows = cur.fetchall()
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT industry_sub, final_status, COUNT(*) as cnt, AVG(score) as avg_score
+                FROM past_cases
+                WHERE industry_sub IS NOT NULL AND industry_sub != '' AND industry_sub != '0'
+                  AND final_status IN ('成約', '失注')
+                GROUP BY industry_sub, final_status
+            """)
+            rows = cur.fetchall()
+    except Exception as e:
+        logger.error("api_industry_stats DB error: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
     industry_data: dict = {}
     for industry, status, cnt, avg_sc in rows:
@@ -1503,17 +1507,13 @@ def api_industry_stats():
 def list_cases(limit: int = 30, offset: int = 0, sort: str = "desc"):
     """過去案件一覧 (limit/offset/sort 対応)"""
     import json
-    from contextlib import closing
-    from data_cases import _open_db
 
     limit = min(max(limit, 1), 200)
     offset = max(offset, 0)
     order = "DESC" if sort.lower() != "asc" else "ASC"
     rows = []
     try:
-        with closing(_open_db()) as conn:
-            import sqlite3
-            conn.row_factory = sqlite3.Row
+        with get_connection() as conn:
             res = conn.execute(
                 f"SELECT id, timestamp, industry_sub, score, final_status, "
                 f"json_extract(data,'$.company_name') AS company_name, "
@@ -1526,6 +1526,7 @@ def list_cases(limit: int = 30, offset: int = 0, sort: str = "desc"):
             for r in res:
                 rows.append(dict(r))
     except Exception as e:
+        logger.error("list_cases DB error: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
     return rows
 
@@ -1541,13 +1542,13 @@ class CaseResultPatch(BaseModel):
 def _get_case_payload(case_id: str) -> dict:
     """past_cases から保存済みJSONを取得する。"""
     import json as _json
-    import sqlite3 as _sqlite3
-    from contextlib import closing as _closing
-    from data_cases import _open_db
 
-    with _closing(_open_db()) as conn:
-        conn.row_factory = _sqlite3.Row
-        row = conn.execute("SELECT data FROM past_cases WHERE id = ?", (case_id,)).fetchone()
+    try:
+        with get_connection() as conn:
+            row = conn.execute("SELECT data FROM past_cases WHERE id = ?", (case_id,)).fetchone()
+    except Exception as e:
+        logger.error("_get_case_payload DB error case_id=%s: %s", case_id, e)
+        return {}
     if row is None:
         return {}
     try:
@@ -3311,15 +3312,11 @@ def patch_case_result(case_id: str, req: CaseResultPatch, background_tasks: Back
 def get_pending_cases():
     """全DB(lease_data.db, screening_db.sqlite)から未登録案件を統合して取得する"""
     import json
-    from contextlib import closing
-    from data_cases import _open_db
 
     rows = []
 
     try:
-        with closing(_open_db()) as conn:
-            import sqlite3
-            conn.row_factory = sqlite3.Row
+        with get_connection() as conn:
             res = conn.execute(
                 "SELECT id, timestamp, industry_sub, score, data "
                 "FROM past_cases WHERE final_status='未登録' ORDER BY timestamp DESC LIMIT 50"
@@ -3341,8 +3338,8 @@ def get_pending_cases():
                     "final_result_date": d.get("final_result_date"),
                     "_source": "past_cases"
                 })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error("get_pending_cases DB error: %s", e)
 
     return rows
 
@@ -3350,13 +3347,9 @@ def get_pending_cases():
 def get_case_detail(case_id: str):
     """案件の全データを返す（result + inputs を含む）"""
     import json
-    from contextlib import closing
-    from data_cases import _open_db
 
     try:
-        with closing(_open_db()) as conn:
-            import sqlite3
-            conn.row_factory = sqlite3.Row
+        with get_connection() as conn:
             row = conn.execute(
                 "SELECT data FROM past_cases WHERE id = ?", (case_id,)
             ).fetchone()
@@ -3368,21 +3361,22 @@ def get_case_detail(case_id: str):
     except HTTPException:
         raise
     except Exception as e:
+        logger.error("get_case_detail DB error case_id=%s: %s", case_id, e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.delete("/api/cases/operation/clear-all")
 def clear_all_pending_cases(background_tasks: BackgroundTasks):
     """未登録案件をすべて削除する（一括クリア）"""
-    from data_cases import _open_db, refresh_stats_caches
+    from data_cases import refresh_stats_caches
     try:
-        with _open_db() as conn:
+        with get_connection() as conn:
             conn.execute("DELETE FROM past_cases WHERE final_status='未登録'")
-            conn.commit()
         refresh_stats_caches()
         background_tasks.add_task(_git_push_db)
         return {"message": "Cleared all pending cases"}
     except Exception as e:
+        logger.error("clear_all_pending_cases DB error: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/cases/{case_id}")
@@ -7329,7 +7323,6 @@ def get_latest_screening():
     """
     import json as _json
     import os as _os
-    from contextlib import closing as _closing
 
     defaults = {
         "score": 52,
@@ -7368,10 +7361,7 @@ def get_latest_screening():
             return 0.0
 
     try:
-        from data_cases import _open_db
-        with _closing(_open_db()) as conn:
-            import sqlite3 as _sqlite3
-            conn.row_factory = _sqlite3.Row
+        with get_connection() as conn:
 
             # screening_records から最新スコアを取得
             try:
@@ -7449,8 +7439,8 @@ def get_latest_screening():
             except Exception:
                 pass
 
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error("get_latest_screening DB error: %s", e)
 
     try:
         focus = get_latest_lease_news_focus()
@@ -7799,16 +7789,14 @@ def fluid_status():
 @app.get("/api/drift-stats")
 def get_drift_stats():
     """スコアリングドリフト監視用統計を返す（REV-008）。"""
-    import sqlite3 as _sqlite3
     import json as _json
-    from data_cases import _open_db
     try:
-        with _open_db() as conn:
-            conn.row_factory = _sqlite3.Row
+        with get_connection() as conn:
             rows = conn.execute(
                 "SELECT timestamp, score, final_status, data FROM past_cases WHERE score IS NOT NULL ORDER BY timestamp ASC"
             ).fetchall()
     except Exception as e:
+        logger.error("get_drift_stats DB error: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
     monthly: dict = {}
@@ -7885,14 +7873,11 @@ class CounterfactualRequest(BaseModel):
 def analyze_counterfactual(req: CounterfactualRequest):
     """Counterfactual Explanation（REV-009）。指定案件の審査通過に必要な最小変更を計算する。"""
     import json as _json
-    import sqlite3 as _sqlite3
-    from data_cases import _open_db
     from scoring_core import run_quick_scoring
 
     # 案件データ取得
     try:
-        with _open_db() as conn:
-            conn.row_factory = _sqlite3.Row
+        with get_connection() as conn:
             row = conn.execute("SELECT data FROM past_cases WHERE id = ?", (req.case_id,)).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Case not found")
@@ -7900,6 +7885,7 @@ def analyze_counterfactual(req: CounterfactualRequest):
     except HTTPException:
         raise
     except Exception as e:
+        logger.error("analyze_counterfactual DB error case_id=%s: %s", req.case_id, e)
         raise HTTPException(status_code=500, detail=str(e))
 
     inputs = case.get("inputs", {})

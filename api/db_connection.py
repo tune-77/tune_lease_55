@@ -81,6 +81,9 @@ def _sqlite_connection() -> Generator[sqlite3.Connection, None, None]:
     db_path = get_db_path()
     conn = sqlite3.connect(db_path, timeout=10)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA synchronous=NORMAL")
     try:
         yield conn
         conn.commit()
