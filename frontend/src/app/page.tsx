@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { apiClient } from "@/lib/api";
-import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, FileOutput, SlidersHorizontal } from "lucide-react";
+import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, FileOutput, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus } from "lucide-react";
 import ScoreDAG from "../components/ScoreDAG";
 import { ScoringFormData, defaultFormData } from "../types";
 import FormGeneral from "../components/form/FormGeneral";
@@ -18,6 +18,7 @@ import ReportGenerator from "../components/analysis/ReportGenerator";
 import QRiskPanel from "../components/analysis/QRiskPanel";
 import MahalanobisPanel from "../components/analysis/MahalanobisPanel";
 import UMAPPanel from "../components/analysis/UMAPPanel";
+import OcrUpload from "../components/analysis/OcrUpload";
 import { triggerMebuki } from "../components/layout/FloatingMebuki";
 
 const DATA_SOURCE_FIELD_LABELS: Record<string, string> = {
@@ -53,6 +54,78 @@ const DATA_SOURCE_FIELD_LABELS: Record<string, string> = {
   passion_text: "営業メモ",
   intuition: "直感スコア",
 };
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function AiHeroCard({ result }: { result?: Record<string, any> }) {
+  if (!result) return null;
+  const score: number = result.score_base ?? 0;
+  const hantei: string = result.hantei ?? "";
+  const isApproved = score >= 71;
+  const isConditional = score >= 60 && score < 71;
+
+  let gradientClass = "from-rose-500 to-rose-600";
+  let shadowClass = "shadow-rose-200";
+  let badge = "否決";
+  let BadgeIcon = XCircle;
+  if (isApproved) {
+    gradientClass = "from-emerald-500 to-teal-600";
+    shadowClass = "shadow-emerald-200";
+    badge = "承認";
+    BadgeIcon = ShieldCheck;
+  } else if (isConditional) {
+    gradientClass = "from-amber-500 to-orange-500";
+    shadowClass = "shadow-amber-200";
+    badge = "条件付き";
+    BadgeIcon = Minus;
+  }
+
+  return (
+    <div className={`bg-gradient-to-br ${gradientClass} rounded-3xl p-6 md:p-8 shadow-2xl ${shadowClass} text-white mb-6`}>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <div className="text-xs font-black uppercase tracking-widest text-white/60 mb-1">AI 審査判定</div>
+          <div className="flex items-end gap-3">
+            <span className="text-7xl md:text-8xl font-black drop-shadow-lg leading-none">
+              {score.toFixed(1)}
+            </span>
+            <span className="text-2xl font-bold text-white/70 mb-2">点</span>
+          </div>
+          {hantei && (
+            <p className="mt-2 text-sm font-bold text-white/80 leading-relaxed max-w-xl">
+              {hantei}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-col items-center gap-2">
+          <div className="flex items-center gap-2 bg-white/20 rounded-2xl px-6 py-4 backdrop-blur-sm">
+            <BadgeIcon className="w-7 h-7" />
+            <span className="text-2xl font-black">{badge}</span>
+          </div>
+          <div className="text-[11px] font-bold text-white/60">
+            承認ライン: 71点以上
+          </div>
+        </div>
+      </div>
+      {result.score_borrower != null && (
+        <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2">
+          {[
+            { label: "借手スコア", value: result.score_borrower?.toFixed(1) },
+            { label: "量子リスク", value: result.quantum_risk?.toFixed(1) },
+            { label: "UMAP異常度", value: result.umap_anomaly_score?.toFixed(1) },
+            { label: "マハラノビス", value: result.mahalanobis_score?.toFixed(1) },
+          ].map(({ label, value }) =>
+            value != null ? (
+              <div key={label} className="rounded-xl bg-white/15 px-3 py-2 text-center backdrop-blur-sm">
+                <div className="text-[10px] font-black text-white/60">{label}</div>
+                <div className="text-lg font-black">{value}</div>
+              </div>
+            ) : null
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function RateProposalCard({ proposal }: { proposal?: any }) {
   if (!proposal?.proposed_rate) return null;
@@ -277,11 +350,14 @@ export default function Dashboard() {
           </Link>
         </div>
 
+        {/* AI審査判定ヒーローカード（結果あり時のみ最上部に表示） */}
+        <AiHeroCard result={result} />
+
         <div className="flex flex-col 2xl:flex-row gap-6">
 
           {/* 左カラム: メイン操作エリア (入力・分析) */}
           <div className="w-full 2xl:w-[58%] flex flex-col">
-            
+
             {/* タブナビゲーション */}
             <div className="flex bg-slate-200/50 p-1 rounded-xl mb-6 shadow-inner w-full sm:w-fit font-bold relative z-10">
               <button 
@@ -336,6 +412,24 @@ export default function Dashboard() {
                       </button>
                     ))}
                   </div>
+                </section>
+
+                {/* 決算書OCR読み取り */}
+                <section className="bg-white border border-indigo-100 rounded-2xl p-4 shadow-sm">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                      <ScanText className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-800">決算書OCR読み取り</h3>
+                      <p className="text-xs text-slate-500">画像・PDFから財務数値を自動入力（Gemini Vision）</p>
+                    </div>
+                  </div>
+                  <OcrUpload
+                    onApply={(fields) => {
+                      Object.entries(fields).forEach(([k, v]) => handleFieldChange(k, v as string | number | string[]));
+                    }}
+                  />
                 </section>
 
                 <section id="form-general" className="scroll-mt-28">
