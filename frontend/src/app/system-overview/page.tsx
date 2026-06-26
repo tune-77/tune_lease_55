@@ -217,7 +217,7 @@ const pipelineEvents: PipelineEvent[] = [
 const loops = [
   {
     title: "スコアリングループ",
-    desc: "RandomForest + 量子干渉モデルの継続的係数最適化",
+    desc: "LightGBM + 量子干渉モデルの継続的係数最適化",
     color: "#a78bfa",
     bg: "from-violet-900/40 to-violet-950/20",
     border: "border-violet-500/30",
@@ -281,11 +281,13 @@ const loops = [
 ];
 
 const shionBadges = [
+  "Gemini 2.5 Flash",
+  "GCS Vault",
   "ChromaDB RAG",
-  "Gemini 2.5",
   "mind.json",
   "Obsidian連携",
   "感情モデル",
+  "リアルタイム音声",
   "PR審査権限",
   "セントラル統合",
   "world_view",
@@ -293,8 +295,8 @@ const shionBadges = [
 
 const stats = [
   { value: "7", label: "自己改善ループ", color: "text-violet-400" },
-  { value: "157", label: "累積REV", color: "text-blue-400" },
-  { value: "3", label: "AIエンジン", color: "text-emerald-400" },
+  { value: "170+", label: "累積REV", color: "text-blue-400" },
+  { value: "4", label: "AIエンジン", color: "text-emerald-400" },
   { value: "紫苑", label: "リース知性体", color: "text-fuchsia-400" },
 ];
 
@@ -330,6 +332,38 @@ export default function SystemOverviewPage() {
           <p className="text-xl text-slate-400 font-medium">自律進化型リース審査プラットフォーム</p>
           <div className="h-px w-32 mx-auto mt-4" style={{ background: "linear-gradient(90deg, transparent, #a78bfa, transparent)" }} />
         </header>
+
+        {/* ── Cloud Run デプロイバナー ── */}
+        <section>
+          <div
+            className="rounded-2xl border p-4 flex flex-wrap items-center justify-between gap-3"
+            style={{
+              background: "linear-gradient(135deg, rgba(6,78,59,0.3) 0%, rgba(8,12,28,0.9) 100%)",
+              borderColor: "rgba(52,211,153,0.35)",
+              boxShadow: "0 0 24px rgba(52,211,153,0.08)",
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                style={{ background: "#34d399", boxShadow: "0 0 8px #34d399", animation: "pulse-glow 2s ease-in-out infinite" }}
+              />
+              <div>
+                <p className="text-xs font-black text-emerald-300 tracking-wide">CLOUD RUN デプロイ済み</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">ハッカソン 7/10 デモ用 — asia-northeast1</p>
+              </div>
+            </div>
+            <a
+              href="https://tune-lease-55-1020894094172.asia-northeast1.run.app"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-xs font-bold text-emerald-400 hover:text-emerald-300 transition-colors"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span className="font-mono text-[10px]">tune-lease-55-1020894094172.asia-northeast1.run.app</span>
+            </a>
+          </div>
+        </section>
 
         {/* ── 統計バー ── */}
         <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -401,6 +435,96 @@ export default function SystemOverviewPage() {
             style={{ background: "rgba(8,12,28,0.9)" }}
           >
             <FlowDiagram />
+          </div>
+        </section>
+
+        {/* ── 実装済みページ一覧（5グループ） ── */}
+        <section>
+          <h2 className="text-lg font-black text-slate-300 mb-5 text-center tracking-wide uppercase">実装済みページ一覧</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[
+              {
+                group: "審査ワークフロー",
+                color: "#60a5fa",
+                border: "border-blue-500/30",
+                bg: "from-blue-900/30 to-blue-950/10",
+                pages: ["ホーム", "審査・分析", "AIチャット", "審査レポート", "バッチ審査", "稟議書・見積依頼書", "結果登録（成約/失注）", "過去案件一覧"],
+              },
+              {
+                group: "🌸 紫苑 AI",
+                color: "#e879f9",
+                border: "border-fuchsia-500/30",
+                bg: "from-fuchsia-900/30 to-fuchsia-950/10",
+                pages: ["紫苑デモホーム", "ハッカソンデモ", "リアルタイム音声チャット", "リース知性体との対話", "複数紫苑デモ", "リースくん", "マルチエージェント討論", "知識ループ可視化", "システム概要"],
+              },
+              {
+                group: "分析・グラフ",
+                color: "#34d399",
+                border: "border-emerald-500/30",
+                bg: "from-emerald-900/30 to-emerald-950/10",
+                pages: ["営業部別分析", "業種別成約率", "競合関係グラフ", "知識宇宙マップ", "ビジュアルインサイト"],
+              },
+              {
+                group: "参照・ナレッジ",
+                color: "#fbbf24",
+                border: "border-amber-500/30",
+                bg: "from-amber-900/30 to-amber-950/10",
+                pages: ["法定耐用年数一覧", "業種別リース物件例", "残価設定ガイドライン", "営業向け説明ガイド", "リース/融資/現金比較", "FAQ", "システム機能一覧", "改善ログ"],
+              },
+              {
+                group: "設定・マスタ",
+                color: "#94a3b8",
+                border: "border-slate-500/30",
+                bg: "from-slate-800/40 to-slate-900/20",
+                pages: ["基準金利マスタ", "補助金情報"],
+              },
+            ].map((g) => (
+              <div
+                key={g.group}
+                className={`rounded-2xl border ${g.border} bg-gradient-to-br ${g.bg} p-5 space-y-3`}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: g.color }} />
+                  <h3 className="font-black text-white text-sm">{g.group}</h3>
+                  <span className="ml-auto text-[10px] font-bold text-slate-500">{g.pages.length}ページ</span>
+                </div>
+                <ul className="space-y-1">
+                  {g.pages.map((p) => (
+                    <li key={p} className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                      <span className="w-1 h-1 rounded-full flex-shrink-0" style={{ background: g.color, opacity: 0.6 }} />
+                      {p}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+
+            {/* アーキテクチャカード */}
+            <div
+              className="rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-900/30 to-violet-950/10 p-5 space-y-3"
+            >
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: "#a78bfa" }} />
+                <h3 className="font-black text-white text-sm">アーキテクチャ</h3>
+              </div>
+              <ul className="space-y-1.5">
+                {[
+                  ["フロントエンド", "Next.js 16 (App Router)"],
+                  ["バックエンド", "FastAPI (Python)"],
+                  ["DB", "SQLite / PostgreSQL"],
+                  ["クラウド記憶", "GCS Vault"],
+                  ["AI推論", "Gemini 2.5 Flash"],
+                  ["スコアリング", "LightGBM + 量子干渉"],
+                  ["RAG", "ChromaDB + Obsidian"],
+                  ["デプロイ", "Cloud Run (asia-northeast1)"],
+                ].map(([k, v]) => (
+                  <li key={k} className="text-[11px] flex gap-2">
+                    <span className="text-slate-500 flex-shrink-0 w-24">{k}</span>
+                    <span className="text-slate-300 font-semibold">{v}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         </section>
 
@@ -669,7 +793,7 @@ function SeciCycleDiagram() {
 
       <div className="grid grid-cols-3 gap-3">
         {[
-          { value: "137件", label: "改善適用件数", color: "#60a5fa", bg: "rgba(30,58,138,0.2)" },
+          { value: "170+件", label: "累積REV適用", color: "#60a5fa", bg: "rgba(30,58,138,0.2)" },
           { value: "+8.2pt", label: "累計精度向上", color: "#34d399", bg: "rgba(6,78,59,0.2)" },
           { value: "78%", label: "自動適用率", color: "#a78bfa", bg: "rgba(88,28,135,0.2)" },
         ].map((stat) => (
