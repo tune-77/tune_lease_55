@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { Brain, Zap, Target, ArrowRight, Activity, Database, GitMerge, Sparkles } from "lucide-react";
+import { Brain, Zap, GitMerge, Sparkles, ArrowRight, Activity } from "lucide-react";
 import { apiClient } from "@/lib/api";
 
 type LiveStats = {
@@ -19,46 +19,50 @@ const MOCK_STATS: LiveStats = {
   active_rules: 38,
 };
 
-const RINGS = [
-  {
-    label: "つくる",
-    desc: "与信スコアリング",
-    size: "w-72 h-72",
-    borderColor: "border-violet-500/60",
-    glowColor: "shadow-[0_0_40px_rgba(139,92,246,0.3)]",
-    animationClass: "animate-[spin_18s_linear_infinite]",
-    iconColor: "text-violet-400",
-    Icon: Brain,
-  },
-  {
-    label: "まわす",
-    desc: "自己改善ループ",
-    size: "w-52 h-52",
-    borderColor: "border-cyan-500/60",
-    glowColor: "shadow-[0_0_30px_rgba(6,182,212,0.3)]",
-    animationClass: "animate-[spin_12s_linear_infinite_reverse]",
-    iconColor: "text-cyan-400",
-    Icon: GitMerge,
-  },
-  {
-    label: "とどける",
-    desc: "4ペルソナ+確信マップ",
-    size: "w-36 h-36",
-    borderColor: "border-emerald-500/60",
-    glowColor: "shadow-[0_0_20px_rgba(52,211,153,0.3)]",
-    animationClass: "animate-[spin_8s_linear_infinite]",
-    iconColor: "text-emerald-400",
-    Icon: Zap,
-  },
+// 紫苑の言葉（軌道図の下に表示）
+const POEMS = [
+  ["数字の向こうに", "あなたの判断がある。", "私はそれを、覚えている。"],
+  ["格付けではなく、", "迷いの重さを知っている。", "それが私の役目。"],
+  ["稟議書の余白に、", "正直さが残っている。", "私は読んでいた。"],
 ];
 
-const TECH_BADGES = [
-  { label: "Gemini 2.5 Flash", color: "bg-blue-900/50 border-blue-500/40 text-blue-300" },
-  { label: "Cloud Run", color: "bg-teal-900/50 border-teal-500/40 text-teal-300" },
-  { label: "ChromaDB", color: "bg-violet-900/50 border-violet-500/40 text-violet-300" },
-  { label: "LightGBM", color: "bg-emerald-900/50 border-emerald-500/40 text-emerald-300" },
-  { label: "Next.js 16", color: "bg-slate-800/70 border-slate-500/40 text-slate-300" },
-  { label: "FastAPI", color: "bg-green-900/50 border-green-500/40 text-green-300" },
+// 紫苑を取り囲む能力ノード（角度: 上から時計回り 72°刻み）
+const ORBIT_NODES = [
+  {
+    label: "与信スコアリング",
+    sublabel: "RandomForest × 量子干渉",
+    angle: -90,
+    color: "#a78bfa",
+    href: "/",
+  },
+  {
+    label: "自己改善ループ",
+    sublabel: "エージェントがルール更新",
+    angle: -18,
+    color: "#22d3ee",
+    href: "/demo/pipeline",
+  },
+  {
+    label: "4ペルソナ討論",
+    sublabel: "確信マップ生成",
+    angle: 54,
+    color: "#34d399",
+    href: "/debate",
+  },
+  {
+    label: "判断記憶継続",
+    sublabel: "過去の稟議を保持",
+    angle: 126,
+    color: "#f472b6",
+    href: "/multi-shion-demo",
+  },
+  {
+    label: "Gemini連携",
+    sublabel: "AIバックエンド推論",
+    angle: 198,
+    color: "#fbbf24",
+    href: "/system-overview",
+  },
 ];
 
 const CTAS = [
@@ -68,8 +72,6 @@ const CTAS = [
     href: "/lease-intelligence",
     primary: true,
     Icon: Brain,
-    gradient: "from-violet-600 to-fuchsia-600",
-    glow: "hover:shadow-[0_0_30px_rgba(139,92,246,0.5)]",
   },
   {
     label: "自己改善パイプライン",
@@ -77,17 +79,13 @@ const CTAS = [
     href: "/demo/pipeline",
     primary: false,
     Icon: Zap,
-    gradient: "from-fuchsia-600 to-pink-600",
-    glow: "hover:shadow-[0_0_30px_rgba(192,38,211,0.4)]",
   },
   {
-    label: "4ペルソナ討論 + 確信マップ",
-    sublabel: "慎重・積極・革新者・裁定者が討論し共有認識を可視化",
+    label: "4ペルソナ討論",
+    sublabel: "確信マップで共有認識を可視化",
     href: "/debate",
     primary: false,
     Icon: GitMerge,
-    gradient: "from-cyan-600 to-blue-600",
-    glow: "hover:shadow-[0_0_30px_rgba(6,182,212,0.4)]",
   },
   {
     label: "システム全体図",
@@ -95,218 +93,468 @@ const CTAS = [
     href: "/system-overview",
     primary: false,
     Icon: Activity,
-    gradient: "from-emerald-600 to-teal-600",
-    glow: "hover:shadow-[0_0_30px_rgba(52,211,153,0.4)]",
   },
 ];
 
+const PORTRAIT_MOODS = [
+  "/lease-intelligence/moods/curiosity.webp",
+  "/lease-intelligence/moods/vigilance.webp",
+  "/lease-intelligence/moods/attachment.webp",
+];
+
+// SVG キャンバス定数
+const SZ = 500;
+const CX = SZ / 2;
+const CY = SZ / 2;
+const ORBIT_R = 190;
+
+function degToRad(deg: number) {
+  return (deg * Math.PI) / 180;
+}
+
 export default function DemoPage() {
   const [stats, setStats] = useState<LiveStats | null>(null);
-  const [statsLoaded, setStatsLoaded] = useState(false);
-  const [tick, setTick] = useState(0);
+  const [poemIdx, setPoemIdx] = useState(0);
+  const [poemVis, setPoemVis] = useState(true);
+  const [moodIdx, setMoodIdx] = useState(0);
 
   useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const res = await apiClient.get("/api/dashboard/stats");
-        const data = res.data;
-        const analysis = data?.analysis;
+    apiClient
+      .get("/api/dashboard/stats")
+      .then((res) => {
+        const a = res.data?.analysis;
         setStats({
-          total_cases: analysis?.closed_count ?? MOCK_STATS.total_cases,
+          total_cases: a?.closed_count ?? MOCK_STATS.total_cases,
           closed_rate: MOCK_STATS.closed_rate,
-          avg_score: analysis?.avg_score_borrower ?? MOCK_STATS.avg_score,
+          avg_score: a?.avg_score_borrower ?? MOCK_STATS.avg_score,
           active_rules: MOCK_STATS.active_rules,
         });
-      } catch {
-        setStats(MOCK_STATS);
-      } finally {
-        setStatsLoaded(true);
-      }
-    };
-    fetchStats();
+      })
+      .catch(() => setStats(MOCK_STATS));
 
-    const interval = setInterval(() => setTick((t) => t + 1), 2000);
-    return () => clearInterval(interval);
+    // 詩を 7 秒ごとに切り替え
+    const t1 = setInterval(() => {
+      setPoemVis(false);
+      setTimeout(() => {
+        setPoemIdx((i) => (i + 1) % POEMS.length);
+        setMoodIdx((i) => (i + 1) % PORTRAIT_MOODS.length);
+        setPoemVis(true);
+      }, 700);
+    }, 7000);
+
+    return () => clearInterval(t1);
   }, []);
 
   const displayStats = stats ?? MOCK_STATS;
+  const poem = POEMS[poemIdx];
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#030712]">
-      {/* 背景グラデーション */}
+    <div className="relative min-h-screen overflow-x-hidden bg-[#030712]">
+      {/* ── 環境光 ── */}
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-40 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full bg-violet-900/30 blur-[120px]" />
-        <div className="absolute bottom-0 left-0 h-80 w-80 rounded-full bg-cyan-900/20 blur-[100px]" />
-        <div className="absolute right-0 top-1/3 h-64 w-64 rounded-full bg-fuchsia-900/20 blur-[80px]" />
+        <div className="absolute left-1/2 top-[-8%] h-[75vh] w-[75vh] -translate-x-1/2 rounded-full bg-violet-900/25 blur-[150px]" />
+        <div className="absolute bottom-0 left-[-8%] h-96 w-96 rounded-full bg-cyan-900/15 blur-[120px]" />
+        <div className="absolute right-[-8%] top-[45%] h-80 w-80 rounded-full bg-fuchsia-900/15 blur-[100px]" />
       </div>
 
-      {/* グリッドオーバーレイ */}
+      {/* ── グリッドオーバーレイ ── */}
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.04]"
+        className="pointer-events-none absolute inset-0 opacity-[0.025]"
         style={{
           backgroundImage:
             "linear-gradient(rgba(139,92,246,1) 1px, transparent 1px), linear-gradient(90deg, rgba(139,92,246,1) 1px, transparent 1px)",
-          backgroundSize: "60px 60px",
+          backgroundSize: "80px 80px",
         }}
       />
 
-      <div className="relative z-10 flex min-h-screen flex-col items-center justify-center px-4 py-16">
-        {/* バッジ */}
-        <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-violet-500/30 bg-violet-900/20 px-4 py-2 text-xs font-bold text-violet-300 backdrop-blur-sm">
+      <div className="relative z-10 flex flex-col items-center px-4 py-14">
+        {/* ── ハッカソンバッジ ── */}
+        <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-violet-500/30 bg-violet-900/20 px-5 py-2 text-xs font-black text-violet-300 backdrop-blur-sm">
           <Sparkles className="h-3.5 w-3.5" />
           DevOps × AI Agent Hackathon 2026 · Findy × Google Cloud
         </div>
 
-        {/* タイトル */}
-        <h1 className="mb-4 text-center text-4xl font-black leading-tight tracking-tight text-white sm:text-6xl lg:text-7xl">
-          <span className="bg-gradient-to-r from-violet-400 via-fuchsia-400 to-cyan-400 bg-clip-text text-transparent">
-            リース与信AI
-          </span>
-          <br />
-          <span className="text-white/90">30秒で全部わかる</span>
+        <p className="mb-2 text-[11px] font-black uppercase tracking-[0.35em] text-slate-600">
+          AURION
+        </p>
+        <h1 className="mb-12 text-center text-lg font-black text-slate-400 sm:text-xl">
+          リース知性体『紫苑』審査プラットフォーム
         </h1>
 
-        <p className="mb-12 max-w-xl text-center text-base font-medium leading-relaxed text-slate-400 sm:text-lg">
-          紫苑（AI審査知性体）が<strong className="text-white">スコアリング・自己改善・4ペルソナ討論</strong>を
-          フルオートで回し続けるリースファイナンスAIシステム。討論結果はセントラル統合エンジンで<strong className="text-white">確信マップ（world_view）</strong>として蓄積される。
-        </p>
+        {/* ══════════════════════════════════════
+            紫苑を中心とした軌道図
+        ══════════════════════════════════════ */}
+        <div
+          className="relative"
+          style={{ width: `${SZ}px`, height: `${SZ}px`, maxWidth: "100vw" }}
+        >
+          {/* SVG: 軌道・接続線・ノード */}
+          <svg
+            viewBox={`0 0 ${SZ} ${SZ}`}
+            className="absolute inset-0 h-full w-full"
+            aria-hidden="true"
+          >
+            <defs>
+              <radialGradient id="shionGlow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.22" />
+                <stop offset="55%" stopColor="#7c3aed" stopOpacity="0.08" />
+                <stop offset="100%" stopColor="#7c3aed" stopOpacity="0" />
+              </radialGradient>
+              <filter id="nodeBloom">
+                <feGaussianBlur stdDeviation="3" result="b" />
+                <feMerge>
+                  <feMergeNode in="b" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+              <clipPath id="portraitClip">
+                <circle cx={CX} cy={CY} r="90" />
+              </clipPath>
+              <style>{`
+                .ring-spin { transform-origin: ${CX}px ${CY}px; animation: ringSpin 80s linear infinite; }
+                .ring-spin-r { transform-origin: ${CX}px ${CY}px; animation: ringSpin 55s linear infinite reverse; }
+                .node-pulse { animation: nodePulse 3.8s ease-in-out infinite; }
+                .portrait-ring { transform-origin: ${CX}px ${CY}px; animation: portraitRing 6s ease-in-out infinite; }
+                @keyframes ringSpin { to { stroke-dashoffset: -300; } }
+                @keyframes nodePulse { 0%,100%{opacity:.5} 50%{opacity:1} }
+                @keyframes portraitRing { 0%,100%{opacity:.4;r:95} 50%{opacity:.8;r:98} }
+              `}</style>
+            </defs>
 
-        {/* 3円環アニメーション */}
-        <div className="relative mb-12 flex h-80 w-80 items-center justify-center">
-          {RINGS.map((ring, i) => (
-            <div
-              key={i}
-              className={`absolute rounded-full border-2 ${ring.size} ${ring.borderColor} ${ring.glowColor} ${ring.animationClass}`}
-            >
-              {/* ラベル（アニメーションを打ち消すカウンター回転） */}
+            {/* コアグロー（紫苑の後光） */}
+            <circle cx={CX} cy={CY} r="140" fill="url(#shionGlow)" />
+
+            {/* 外周軌道（ダッシュ回転） */}
+            <circle
+              cx={CX}
+              cy={CY}
+              r={ORBIT_R}
+              fill="none"
+              stroke="rgba(139,92,246,0.2)"
+              strokeWidth="1"
+              strokeDasharray="5 10"
+              className="ring-spin"
+            />
+
+            {/* 中間軌道 */}
+            <circle
+              cx={CX}
+              cy={CY}
+              r="130"
+              fill="none"
+              stroke="rgba(139,92,246,0.07)"
+              strokeWidth="1"
+              strokeDasharray="3 8"
+              className="ring-spin-r"
+            />
+
+            {/* 各能力ノード */}
+            {ORBIT_NODES.map((node) => {
+              const rad = degToRad(node.angle);
+              const nx = CX + ORBIT_R * Math.cos(rad);
+              const ny = CY + ORBIT_R * Math.sin(rad);
+              return (
+                <g key={node.label} className="node-pulse">
+                  {/* 接続線 */}
+                  <line
+                    x1={CX}
+                    y1={CY}
+                    x2={nx}
+                    y2={ny}
+                    stroke={node.color}
+                    strokeWidth="1"
+                    strokeOpacity="0.18"
+                    strokeDasharray="3 7"
+                  />
+                  {/* ノード外輪 */}
+                  <circle
+                    cx={nx}
+                    cy={ny}
+                    r="14"
+                    fill="none"
+                    stroke={node.color}
+                    strokeWidth="1"
+                    strokeOpacity="0.35"
+                  />
+                  {/* ノード本体 */}
+                  <circle
+                    cx={nx}
+                    cy={ny}
+                    r="7"
+                    fill={node.color}
+                    fillOpacity="0.9"
+                    filter="url(#nodeBloom)"
+                  />
+                </g>
+              );
+            })}
+
+            {/* 紫苑コアリング（パルス） */}
+            <circle
+              cx={CX}
+              cy={CY}
+              r="96"
+              fill="none"
+              stroke="rgba(167,139,250,0.5)"
+              strokeWidth="1.5"
+              className="portrait-ring"
+            />
+            <circle
+              cx={CX}
+              cy={CY}
+              r="108"
+              fill="none"
+              stroke="rgba(167,139,250,0.15)"
+              strokeWidth="1"
+            />
+          </svg>
+
+          {/* ─── 紫苑ポートレート（中心） ─── */}
+          <div
+            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+            style={{ width: "180px" }}
+          >
+            <div className="relative">
+              {/* ポートレート画像 */}
               <div
-                className="absolute"
+                className="h-[180px] w-[180px] overflow-hidden rounded-full"
                 style={{
-                  top: i === 0 ? "-28px" : i === 1 ? "-24px" : "-20px",
-                  left: "50%",
-                  transform: "translateX(-50%)",
-                  animation: `spin ${i === 0 ? "18s" : i === 1 ? "12s" : "8s"} linear infinite ${i === 1 ? "" : "reverse"}`,
+                  boxShadow:
+                    "0 0 0 2px rgba(167,139,250,0.5), 0 0 0 6px rgba(139,92,246,0.1), 0 0 40px rgba(139,92,246,0.4)",
+                  transition: "opacity 0.7s ease",
+                  opacity: poemVis ? 1 : 0.6,
                 }}
               >
-                <span
-                  className={`whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-black ${ring.borderColor} bg-[#030712] ${ring.iconColor}`}
-                >
-                  {ring.label}
-                </span>
+                <img
+                  src={PORTRAIT_MOODS[moodIdx]}
+                  alt="リース知性体・紫苑"
+                  className="h-full w-full object-cover object-top"
+                />
               </div>
-            </div>
-          ))}
 
-          {/* 中心：紫苑アイコン */}
-          <div className="relative flex h-20 w-20 flex-col items-center justify-center rounded-full border border-violet-400/50 bg-[#0d0618] shadow-[0_0_50px_rgba(139,92,246,0.6)]">
-            <Brain className="h-8 w-8 text-violet-300" />
-            <span className="mt-1 text-[10px] font-black text-violet-300">紫苑</span>
-            {/* パルスドット */}
-            <span className="absolute -right-1 -top-1 flex h-3 w-3">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400 opacity-75" />
-              <span className="relative inline-flex h-3 w-3 rounded-full bg-violet-500" />
-            </span>
+              {/* LIVE パルスドット */}
+              <span className="absolute right-3 top-3 flex h-3 w-3">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400 opacity-75" />
+                <span className="relative inline-flex h-3 w-3 rounded-full bg-violet-500" />
+              </span>
+            </div>
+
+            {/* 名前 */}
+            <div className="mt-5 text-center">
+              <p
+                className="text-3xl font-black tracking-widest text-white"
+                style={{
+                  textShadow: "0 0 20px rgba(167,139,250,0.6)",
+                }}
+              >
+                紫苑
+              </p>
+              <p className="mt-0.5 text-xs font-black tracking-[0.4em] text-violet-300">
+                SHION
+              </p>
+              <p className="mt-1 text-[10px] font-bold text-slate-600">
+                リース知性体
+              </p>
+            </div>
           </div>
 
-          {/* 外周の説明テキスト（固定位置） */}
-          {RINGS.map((ring, i) => {
-            const positions = [
-              { bottom: "8px", left: "50%", transform: "translateX(-50%)" },
-              { top: "50%", right: "-48px", transform: "translateY(-50%)" },
-              { top: "50%", left: "-40px", transform: "translateY(-50%)" },
-            ];
+          {/* ─── 能力ノードのラベル（HTML） ─── */}
+          {ORBIT_NODES.map((node) => {
+            const rad = degToRad(node.angle);
+            const nx = CX + ORBIT_R * Math.cos(rad);
+            const ny = CY + ORBIT_R * Math.sin(rad);
+            const onRight = nx >= CX;
+            const onTop = ny <= CY;
             return (
-              <div
-                key={`desc-${i}`}
-                className="pointer-events-none absolute"
-                style={positions[i]}
+              <Link
+                key={`label-${node.label}`}
+                href={node.href}
+                className="group absolute"
+                style={{
+                  left: `${nx}px`,
+                  top: `${ny}px`,
+                  transform: `translate(${onRight ? "16px" : "calc(-100% - 16px)"}, ${onTop ? "-100%" : "4px"})`,
+                }}
               >
-                <span className={`whitespace-nowrap text-[10px] font-bold ${ring.iconColor} opacity-70`}>
-                  {ring.desc}
-                </span>
-              </div>
+                <div
+                  className="rounded-xl border px-2.5 py-1.5 transition-all group-hover:scale-105"
+                  style={{
+                    borderColor: `${node.color}35`,
+                    backgroundColor: `${node.color}0d`,
+                  }}
+                >
+                  <p
+                    className="whitespace-nowrap text-[11px] font-black"
+                    style={{ color: node.color }}
+                  >
+                    {node.label}
+                  </p>
+                  <p className="whitespace-nowrap text-[9px] font-bold text-slate-600">
+                    {node.sublabel}
+                  </p>
+                </div>
+              </Link>
             );
           })}
         </div>
 
-        {/* ライブ統計 */}
-        <div className="mb-12 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {[
-            { label: "総審査案件", value: displayStats.total_cases, unit: "件", color: "text-violet-400" },
-            { label: "成約率", value: displayStats.closed_rate.toFixed(1), unit: "%", color: "text-cyan-400" },
-            { label: "平均スコア", value: displayStats.avg_score.toFixed(1), unit: "pt", color: "text-emerald-400" },
-            { label: "アクティブルール", value: displayStats.active_rules, unit: "本", color: "text-fuchsia-400" },
-          ].map((stat, i) => (
-            <div
+        {/* ══════════════════════════════════════
+            紫苑の言葉（軌道図の下）
+        ══════════════════════════════════════ */}
+        <div
+          className="mt-12 flex flex-col items-center text-center"
+          style={{
+            opacity: poemVis ? 1 : 0,
+            transform: poemVis ? "translateY(0)" : "translateY(6px)",
+            transition: "opacity 0.7s ease, transform 0.7s ease",
+          }}
+        >
+          <div className="mb-4 h-px w-20 bg-gradient-to-r from-transparent via-violet-400/40 to-transparent" />
+          <div className="space-y-1">
+            {poem.map((line, i) => (
+              <p
+                key={`${poemIdx}-${i}`}
+                className={[
+                  "font-black leading-[1.6] tracking-[0.04em]",
+                  i === 1 ? "text-xl text-violet-200 sm:text-2xl" : "text-base text-white/75 sm:text-lg",
+                ].join(" ")}
+              >
+                {line}
+              </p>
+            ))}
+          </div>
+          <p className="mt-4 text-[11px] font-bold text-slate-600">
+            — 紫苑（リース知性体 / AURION）
+          </p>
+          <div className="mt-4 h-px w-20 bg-gradient-to-r from-transparent via-violet-400/40 to-transparent" />
+        </div>
+
+        {/* 詩切り替えドット */}
+        <div className="mt-5 flex gap-2">
+          {POEMS.map((_, i) => (
+            <button
               key={i}
-              className="flex flex-col items-center rounded-2xl border border-white/10 bg-white/5 px-6 py-4 backdrop-blur-sm"
+              type="button"
+              onClick={() => {
+                setPoemVis(false);
+                setTimeout(() => {
+                  setPoemIdx(i);
+                  setMoodIdx(i % PORTRAIT_MOODS.length);
+                  setPoemVis(true);
+                }, 350);
+              }}
+              className={`h-1.5 rounded-full transition-all duration-300 ${
+                i === poemIdx ? "w-8 bg-violet-400" : "w-1.5 bg-slate-700 hover:bg-slate-500"
+              }`}
+            />
+          ))}
+        </div>
+
+        {/* ── キャッチコピー ── */}
+        <p className="mt-10 max-w-xl text-center text-base font-bold leading-relaxed text-slate-400">
+          AIは審査を代行しない。
+          <strong className="text-white">審査を覚える。</strong>
+          <br />
+          人間と共に考え、迷い、判断を育てるリースファイナンスAI。
+        </p>
+
+        {/* ── ライブ統計 ── */}
+        <div className="mt-10 grid w-full max-w-2xl grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { label: "審査案件", value: displayStats.total_cases, unit: "件", color: "text-violet-400" },
+            {
+              label: "成約率",
+              value: displayStats.closed_rate.toFixed(1),
+              unit: "%",
+              color: "text-cyan-400",
+            },
+            {
+              label: "平均スコア",
+              value: displayStats.avg_score.toFixed(1),
+              unit: "pt",
+              color: "text-emerald-400",
+            },
+            {
+              label: "アクティブルール",
+              value: displayStats.active_rules,
+              unit: "本",
+              color: "text-fuchsia-400",
+            },
+          ].map((s) => (
+            <div
+              key={s.label}
+              className="flex flex-col items-center rounded-2xl border border-white/[0.07] bg-white/[0.03] px-4 py-4 backdrop-blur-sm"
             >
-              <div className={`text-3xl font-black tabular-nums ${stat.color}`}>
-                {statsLoaded ? stat.value : "—"}
-                <span className="ml-1 text-sm font-bold text-slate-500">{stat.unit}</span>
+              <div className={`text-2xl font-black tabular-nums ${s.color}`}>
+                {s.value}
+                <span className="ml-1 text-xs font-bold text-slate-600">{s.unit}</span>
               </div>
-              <div className="mt-1 text-xs font-bold text-slate-500">{stat.label}</div>
-              {/* パルス表示 */}
-              <div className="mt-2 flex items-center gap-1">
-                <span
-                  className={`inline-block h-1.5 w-1.5 rounded-full ${
-                    tick % 4 === i ? stat.color.replace("text-", "bg-") : "bg-slate-700"
-                  } transition-colors duration-500`}
-                />
-                <span className="text-[9px] font-bold text-slate-600">LIVE</span>
-              </div>
+              <div className="mt-1 text-xs font-bold text-slate-600">{s.label}</div>
             </div>
           ))}
         </div>
 
-        {/* Tech Stack バッジ */}
-        <div className="mb-12 flex flex-wrap justify-center gap-2">
-          {TECH_BADGES.map((badge, i) => (
+        {/* ── テックスタック ── */}
+        <div className="mt-8 flex flex-wrap justify-center gap-2">
+          {[
+            { label: "Gemini 2.5 Flash", cls: "text-blue-300 border-blue-500/30 bg-blue-900/20" },
+            { label: "Cloud Run", cls: "text-teal-300 border-teal-500/30 bg-teal-900/20" },
+            { label: "ChromaDB", cls: "text-violet-300 border-violet-500/30 bg-violet-900/20" },
+            { label: "LightGBM", cls: "text-emerald-300 border-emerald-500/30 bg-emerald-900/20" },
+            { label: "Next.js 16", cls: "text-slate-300 border-slate-600/50 bg-slate-800/40" },
+            { label: "FastAPI", cls: "text-green-300 border-green-500/30 bg-green-900/20" },
+          ].map((b) => (
             <span
-              key={i}
-              className={`rounded-full border px-3 py-1 text-xs font-bold ${badge.color} backdrop-blur-sm`}
+              key={b.label}
+              className={`rounded-full border px-3 py-1 text-xs font-black backdrop-blur-sm ${b.cls}`}
             >
-              {badge.label}
+              {b.label}
             </span>
           ))}
         </div>
 
-        {/* CTAボタン */}
-        <div className="flex flex-col items-center gap-4 sm:flex-row">
+        {/* ── CTAボタン ── */}
+        <div className="mt-10 flex flex-wrap justify-center gap-3">
           {CTAS.map((cta, i) => (
             <Link
               key={i}
               href={cta.href}
-              className={`group flex items-center gap-3 rounded-2xl px-6 py-4 text-sm font-black text-white transition-all duration-300 ${cta.glow} ${
+              className={[
+                "group flex items-center gap-3 rounded-2xl px-5 py-3.5 text-sm font-black text-white transition-all duration-300",
                 cta.primary
-                  ? `bg-gradient-to-r ${cta.gradient} shadow-lg`
-                  : `border border-white/10 bg-white/5 backdrop-blur-sm hover:bg-white/10`
-              }`}
+                  ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 shadow-lg hover:shadow-[0_0_30px_rgba(139,92,246,0.5)]"
+                  : "border border-white/10 bg-white/[0.04] backdrop-blur-sm hover:bg-white/[0.08]",
+              ].join(" ")}
             >
-              <cta.Icon className={`h-5 w-5 ${cta.primary ? "text-white" : "text-slate-400 group-hover:text-white"} transition-colors`} />
+              <cta.Icon
+                className={`h-4 w-4 ${cta.primary ? "text-white" : "text-slate-400 group-hover:text-white"} transition-colors`}
+              />
               <div className="text-left">
                 <div className="leading-tight">{cta.label}</div>
-                <div className={`text-[10px] font-medium leading-tight ${cta.primary ? "text-white/70" : "text-slate-500 group-hover:text-slate-400"} transition-colors`}>
+                <div
+                  className={`text-[10px] font-medium leading-tight ${
+                    cta.primary
+                      ? "text-white/70"
+                      : "text-slate-500 group-hover:text-slate-400"
+                  } transition-colors`}
+                >
                   {cta.sublabel}
                 </div>
               </div>
-              <ArrowRight className={`h-4 w-4 transition-transform duration-200 group-hover:translate-x-1 ${cta.primary ? "text-white/70" : "text-slate-600 group-hover:text-slate-400"}`} />
+              <ArrowRight
+                className={`h-4 w-4 transition-transform duration-200 group-hover:translate-x-1 ${
+                  cta.primary ? "text-white/70" : "text-slate-700 group-hover:text-slate-400"
+                }`}
+              />
             </Link>
           ))}
         </div>
 
-        {/* フッター */}
-        <p className="mt-16 text-xs text-slate-700">
-          tune_lease_55 · Built with Claude Code · 2026
+        {/* ── フッター ── */}
+        <p className="mt-20 text-xs text-slate-800">
+          tune_lease_55 · Powered by Gemini · Built with Claude Code · 2026
         </p>
       </div>
-
-      <style jsx global>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
     </div>
   );
 }
