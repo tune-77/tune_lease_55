@@ -27,6 +27,7 @@ export default function Sidebar() {
       items: [
         { name: 'ホーム', href: '/home', icon: Home, color: 'text-blue-400' },
         { name: '🚀 ハッカソンデモ', href: '/demo', icon: Sparkles, color: 'text-yellow-300' },
+        { name: '知識ループ可視化', href: '/demo/knowledge-loop', icon: GitMerge, color: 'text-emerald-300' },
         { name: 'システム概要', href: '/system-overview', icon: Orbit, color: 'text-fuchsia-400' },
         { name: 'リース知性体との対話', href: '/lease-intelligence', icon: Brain, color: 'text-violet-400' },
         { name: '複数紫苑デモ', href: '/multi-shion-demo', icon: Network, color: 'text-cyan-300' },
@@ -35,8 +36,6 @@ export default function Sidebar() {
         { name: '審査・分析', href: '/', icon: ClipboardCheck, color: 'text-emerald-400' },
         { name: '審査レポート', href: '/report', icon: FileText, color: 'text-indigo-400' },
         { name: 'バッチ審査', href: '/batch', icon: Zap, color: 'text-yellow-400' },
-        { name: '動的金利提案エンジン', href: '/rate-engine', icon: Zap, color: 'text-amber-400' },
-        { name: '物件ファイナンス審査', href: '/finance', icon: Factory, color: 'text-stone-400' },
       ]
     },
     {
@@ -51,7 +50,6 @@ export default function Sidebar() {
         { name: 'マルチエージェント討論審査', href: '/debate', icon: Swords, color: 'text-violet-500' },
         { name: '結果登録 (成約/失注)', href: '/register', icon: PenTool, color: 'text-rose-400' },
         { name: '過去案件一覧', href: '/cases', icon: Table2, color: 'text-cyan-400' },
-        { name: 'カウンターファクチュアル分析', href: '/counterfactual', icon: GitMerge, color: 'text-fuchsia-400' },
       ]
     },
     {
@@ -59,7 +57,6 @@ export default function Sidebar() {
       items: [
         { name: '営業部別分析', href: '/department', icon: Users, color: 'text-emerald-400' },
         { name: '業種別成約率分析', href: '/industry-stats', icon: Briefcase, color: 'text-sky-500' },
-        { name: '3期財務分析', href: '/financial', icon: BarChart3, color: 'text-rose-500' },
         { name: '業種別成約率', href: '/industry-winrate', icon: BarChart2, color: 'text-blue-400' },
         { name: '競合関係グラフ', href: '/competitor', icon: Share2, color: 'text-orange-400' },
         { name: '知識宇宙マップ', href: '/knowledge-space', icon: Network, color: 'text-cyan-300' },
@@ -73,33 +70,22 @@ export default function Sidebar() {
         { name: '業種別リース物件例', href: '/industry-assets', icon: Factory, color: 'text-slate-500' },
         { name: '残価設定ガイドライン', href: '/residual-guide', icon: Calculator, color: 'text-purple-400' },
         { name: '営業向け説明ガイド', href: '/sales-guide', icon: Megaphone, color: 'text-blue-500' },
-        { name: '固定資産税シミュレーター', href: '/tax-calc', icon: Receipt, color: 'text-orange-400' },
         { name: 'リース/融資/現金 比較', href: '/simulator', icon: Calculator, color: 'text-blue-400' },
         { name: 'リース知識 FAQ', href: '/faq', icon: HelpCircle, color: 'text-slate-400' },
         { name: 'システム機能一覧', href: '/help', icon: LifeBuoy, color: 'text-blue-300' },
         { name: '改善ログ', href: '/improvement-log', icon: ClipboardList, color: 'text-slate-400' },
-        { name: '支払いアラート', href: '/payment-check', icon: CreditCard, color: 'text-red-400' },
       ]
     },
     {
       title: '係数分析・ログ',
       items: [
-        { name: '定性要因分析 (50件〜)', href: '/qualitative', icon: Target, color: 'text-pink-400' },
-        { name: '定量要因分析 (50件〜)', href: '/quantitative', icon: LineChart, color: 'text-red-400' },
-        { name: 'ドリフト監視', href: '/drift', icon: Activity, color: 'text-indigo-400' },
-        { name: '係数分析・更新 (β)', href: '/coef-analysis', icon: Wrench, color: 'text-slate-400' },
-        { name: '係数入力（事前係数）', href: '/coef-input', icon: PencilRuler, color: 'text-slate-400' },
-        { name: '係数変更履歴', href: '/coef-history', icon: History, color: 'text-slate-400' },
         { name: '改善ログ', href: '/improvement-log', icon: ScrollText, color: 'text-amber-400' },
-        { name: 'アプリログ', href: '/logs', icon: ScrollText, color: 'text-slate-500' },
       ]
     },
     {
       title: '設定・マスタ',
       items: [
-        { name: '審査ルール設定', href: '/rules', icon: Settings, color: 'text-slate-300' },
         { name: '基準金利マスタ', href: '/interest', icon: Calendar, color: 'text-slate-300' },
-        { name: '企業番号設定', href: '/corporate-number', icon: Building, color: 'text-blue-300' },
         { name: 'ナレッジ・FAQ', href: '/faq', icon: HelpCircle, color: 'text-indigo-300' },
         { name: '補助金情報', href: '/subsidy', icon: Gift, color: 'text-emerald-300' },
       ]
