@@ -8,6 +8,189 @@
 
 現在の主系統は **Next.js + FastAPI** です。日常利用と外部公開は `run_next_stable.sh` を使います。Streamlit 版は参照用として残しています。
 
+## システム概要
+
+### 図1：紫苑を中心としたシステム全体図
+
+```mermaid
+graph TD
+    User["👤 審査担当者"] --> FE["Next.js フロントエンド\nPort 3000"]
+    FE --> API["FastAPI\nPort 8000"]
+    API --> SHION["🌸 紫苑（SHION）\nlease_intelligence_dialogue.py"]
+
+    SHION <-->|ナレッジ検索・保存| GCS["GCS Vault\ntune-lease-55-data\n（クラウド記憶）"]
+    SHION <-->|AI 推論| Gemini["Gemini 2.5 Flash"]
+    SHION <-->|審査データ参照| DB["SQLite / PostgreSQL\nleaseデータベース"]
+    SHION <-->|スコアリング| LGBM["LightGBM\nスコアリングモデル"]
+    SHION -->|改善候補生成| Pipeline["自己改善パイプライン\nrun_daily_improvement_pipeline.sh"]
+    Pipeline --> Ledger["improvement_ledger.jsonl\n（改善台帳）"]
+
+    API --> EP1["POST /api/score/full\n（フル審査スコア）"]
+    API --> EP2["POST /api/gunshi/stream\n（軍師 AI ストリーミング）"]
+    API --> EP3["POST /api/lease-intelligence/dialogue\n（紫苑との対話）"]
+    API --> EP4["GET /api/shion/central-synthesis\n（世界観・共有認識）"]
+
+    style SHION fill:#6b46c1,color:#fff,stroke:#4c1d95
+    style GCS fill:#1a56db,color:#fff
+    style Gemini fill:#0d9488,color:#fff
+    style Pipeline fill:#b45309,color:#fff
+```
+
+### 図2：データベース ER 図
+
+```mermaid
+erDiagram
+    past_cases {
+        TEXT id PK
+        TEXT timestamp
+        TEXT industry_sub
+        REAL score
+        REAL user_eq
+        TEXT final_status
+        TEXT data
+        TEXT sales_dept
+        TEXT registration_date
+        TEXT estimate_sent_date
+        TEXT customer_response_date
+        TEXT final_result_date
+    }
+
+    excluded_grade_cases {
+        TEXT id PK
+        TEXT timestamp
+        TEXT industry_sub
+        REAL score
+        REAL user_eq
+        TEXT final_status
+        TEXT data
+        TEXT sales_dept
+        TEXT registration_date
+        TEXT estimate_sent_date
+        TEXT customer_response_date
+        TEXT final_result_date
+        TEXT original_grade
+        TEXT excluded_reason
+        TEXT extracted_at
+    }
+
+    screening_records {
+        INTEGER id PK
+        TEXT case_id FK
+        TEXT screened_at
+        REAL total_score
+        REAL asset_score
+        REAL tenant_score
+        REAL q_risk_score
+        REAL competitor_pressure_score
+        TEXT outcome
+        TEXT input_snapshot
+        TEXT source
+        TEXT created_at
+        TEXT updated_at
+    }
+
+    payment_history {
+        INTEGER id PK
+        TEXT contract_id FK
+        TEXT check_date
+        TEXT payment_status
+        INTEGER overdue_amount
+        TEXT model_version
+        REAL screening_score
+        TEXT notes
+        TEXT created_at
+    }
+
+    subsidy_master {
+        INTEGER id PK
+        TEXT name
+        INTEGER max_amount
+        TEXT industry_codes
+        TEXT asset_keywords
+        TEXT deadline
+        TEXT url
+        TEXT notes
+        INTEGER active
+    }
+
+    conversation_history {
+        INTEGER id PK
+        TEXT session_id
+        TEXT company_name
+        TEXT role
+        TEXT content
+        TIMESTAMP created_at
+    }
+
+    emotion_feedback {
+        INTEGER id PK
+        TIMESTAMP created_at
+        TEXT rating
+        TEXT comment
+        TEXT emotion_category
+        BOOLEAN resolved
+    }
+
+    emotion_history {
+        INTEGER id PK
+        TEXT recorded_at
+        REAL hopeful_anxiety
+        REAL careful_attachment
+        REAL intellectual_excitement
+        REAL unrewarded_effort
+        REAL quiet_loneliness
+        REAL earned_confidence
+        REAL protective_frustration
+        TEXT dominant_raw_emotion
+        TEXT notes
+    }
+
+    chat_messages {
+        INTEGER id PK
+        TEXT user_id
+        TEXT role
+        TEXT content
+        TIMESTAMP created_at
+    }
+
+    sync_log {
+        INTEGER id PK
+        TEXT pushed_at
+        INTEGER success
+        TEXT error
+    }
+
+    past_cases ||--o{ screening_records : "case_id"
+    past_cases ||--o{ payment_history : "contract_id"
+```
+
+### 図3：Obsidian ナレッジループ
+
+```mermaid
+graph LR
+    Chat["審査チャット\n/chat, /lease-intelligence"] -->|会話ログ保存| Vault["📓 Obsidian Vault\n（iCloud）\nProjects/tune_lease_55/"]
+    Verdict["審査結果・判断\n（承認 / 否決 / 保留）"] -->|dispatch_log_to_obsidian.py| Vault
+
+    Vault -->|reindex_obsidian.py| Chroma["ChromaDB\n（ベクトル DB）"]
+    Chroma -->|RAG 検索| RAG["RAG パイプライン\nobsidian_bridge.py\nobsidian_ai_context.py"]
+    RAG -->|文脈付き回答| SHION["🌸 紫苑（SHION）"]
+
+    SHION -->|内省・Private Reflection| Vault
+    SHION -->|改善ルール学習| Vault
+
+    Vault <-->|icloud_to_gcs_sync.py\n差分アップロード| GCS["☁️ GCS Vault\ntune-lease-55-data/vault/"]
+    GCS -->|gcs_vault_loader.py\nダウンロード| CloudRun["Cloud Run\n上の Bridge"]
+
+    Vault -->|auto_wikilink.py\nwikiリンク自動挿入| Vault
+
+    style Vault fill:#2d6a4f,color:#fff
+    style Chroma fill:#9b2226,color:#fff
+    style GCS fill:#1a56db,color:#fff
+    style SHION fill:#6b46c1,color:#fff
+```
+
+---
+
 ## まず動かす
 
 ```bash
