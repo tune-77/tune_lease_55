@@ -47,6 +47,7 @@ sys.path.insert(0, _REPO_ROOT)
 
 from api.llm_json_guard import extract_candidate_text, parse_or_recover_json, with_retry_tokens
 from api.db_connection import current_backend, get_connection, placeholder
+from api.cloudrun_writeback import record_cloudrun_input_event
 
 # data_cases / base_rate_master を正しいパスから強制ロード（clawd/ 直下の同名モジュールより優先）
 import importlib.util as _ilu
@@ -275,6 +276,12 @@ async def _git_push_db() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # startup: DB スキーマ自動初期化（REV-167 — Cloud SQL 冷起動時のテーブル不在対策）
+    try:
+        from api.db_connection import ensure_schema
+        ensure_schema()
+    except Exception as e:
+        print(f"[API] ensure_schema failed (non-fatal): {e}")
     # startup: ダッシュボードキャッシュのウォームアップ
     try:
         from data_cases import (
@@ -1258,6 +1265,21 @@ def calculate_score(req: ScoringRequest, background_tasks: BackgroundTasks):
         inputs = req.model_dump()
         background_tasks.add_task(_log_wizard_input_task, inputs)
         result = run_quick_scoring(inputs)
+        background_tasks.add_task(
+            record_cloudrun_input_event,
+            event_type="score_calculated",
+            surface="score_calculate",
+            payload={
+                "inputs": inputs,
+                "result": {
+                    "score": result.get("score"),
+                    "hantei": result.get("hantei"),
+                    "industry_sub": result.get("industry_sub"),
+                    "industry_major": result.get("industry_major"),
+                    "asset_score": result.get("asset_score"),
+                },
+            },
+        )
         conditional_actions = _build_conditional_approval_actions(inputs, result)
         rate_proposal = _build_rate_proposal(inputs, result)
         data_source_summary = _build_data_source_summary(inputs, result)
@@ -4884,7 +4906,7 @@ def stamp_case_progress(req: CaseProgressStampRequest):
     }
 
 @app.post("/api/cases/register")
-def register_case_result(req: CaseRegistration):
+def register_case_result(req: CaseRegistration, background_tasks: BackgroundTasks):
     from data_cases import load_all_cases, update_case
     cases = load_all_cases()
     final_rate = float(req.final_rate or 0.0)
@@ -4932,6 +4954,20 @@ def register_case_result(req: CaseRegistration):
 
     if not update_case(target_case_id, patches):
         raise HTTPException(status_code=500, detail="Failed to update DB")
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="case_result_registered",
+        surface="cases_register",
+        payload={
+            "case_id": target_case_id,
+            "status": req.status,
+            "final_rate": final_rate,
+            "base_rate_at_time": base_rate_at_time,
+            "competitor_rate": competitor_rate,
+            "lost_reason": req.lost_reason,
+            "note": req.note,
+        },
+    )
 
     try:
         from shinsa_gunshi import refresh_evidence_weights
@@ -7544,6 +7580,11 @@ def record_lease_news_judgment_change_api(req: LeaseNewsJudgmentChangeRequest):
         )
         if not feedback.get("success"):
             raise HTTPException(status_code=422, detail=feedback.get("error"))
+        record_cloudrun_input_event(
+            event_type="lease_news_judgment_change",
+            surface="lease_news_judgment_change",
+            payload=req.model_dump(),
+        )
         bucket = record_lease_news_judgment_change(
             date_str=_dt.date.today().isoformat(),
             note_path=req.news_focus_note_path or "",
@@ -7627,6 +7668,11 @@ def create_judgment_feedback_api(req: JudgmentFeedbackCreateRequest):
     )
     if not result.get("success"):
         raise HTTPException(status_code=422, detail=result.get("error"))
+    record_cloudrun_input_event(
+        event_type="judgment_feedback_created",
+        surface="judgment_feedback",
+        payload={**req.model_dump(), "record_id": result.get("record_id")},
+    )
     return result
 
 
