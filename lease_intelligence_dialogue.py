@@ -29,6 +29,40 @@ _PROJECT_MIND_PATH = Path(__file__).parent / "data" / "mind.json"
 _MEBUKI_LOG_PATH = Path(__file__).parent / "data" / "mebuki_shion_log.jsonl"
 _WORLD_VIEW_NOTIFIED_PATH = Path(__file__).parent / "data" / "world_view_notified.json"
 
+_GCS_VAULT_INITIALIZED = False
+
+
+def _init_gcs_vault() -> None:
+    """USE_GCS_VAULT=true の場合に GCS から .md をダウンロードし、Obsidian Bridge へ反映する。
+
+    初回呼び出し時のみ実行。失敗時はローカル Vault にフォールバック。
+    """
+    global _GCS_VAULT_INITIALIZED
+    if _GCS_VAULT_INITIALIZED:
+        return
+    _GCS_VAULT_INITIALIZED = True  # エラー時も再試行しない（フォールバック維持）
+
+    import logging
+    _logger = logging.getLogger(__name__)
+    try:
+        import sys as _sys
+        _scripts_dir = str(Path(__file__).parent / "scripts")
+        if _scripts_dir not in _sys.path:
+            _sys.path.insert(0, _scripts_dir)
+        from gcs_vault_loader import download_vault  # type: ignore[import-not-found]
+
+        vault_dir = download_vault()
+        os.environ["OBSIDIAN_VAULT"] = str(vault_dir)
+        # obsidian_bridge のインデックスを次アクセス時に強制再構築する
+        try:
+            from mobile_app.obsidian_bridge import _VAULT_INDEX
+            _VAULT_INDEX["built_at"] = 0.0
+        except Exception:
+            pass
+        _logger.info("[REV-165] GCS vault loaded to %s", vault_dir)
+    except Exception as exc:
+        _logger.warning("[REV-165] GCS vault load failed, using local vault: %s", exc)
+
 
 def append_mebuki_log(user_message: str, shion_response: str) -> None:
     """めぶきちゃん経由の対話を mebuki_shion_log.jsonl に追記する。"""
@@ -166,6 +200,9 @@ def build_dialogue_context(
     vault: Path, message: str, caller: str = ""
 ) -> tuple[str, dict[str, Any]]:
     """Build the persona prompt from persistent memory and relevant Vault knowledge."""
+    if os.environ.get("USE_GCS_VAULT", "").lower() in ("1", "true"):
+        _init_gcs_vault()
+
     state = load_lease_intelligence_mind(vault)
     knowledge = build_lease_intelligence_knowledge(
         theme="リース知性体との対話",
