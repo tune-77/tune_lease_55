@@ -17,6 +17,7 @@ SQLite (lease_data.db) → Cloud SQL (PostgreSQL) 初回マイグレーション
 
 注意:
     lease_data.db は .gitignore で除外済み。このスクリプト自体もファイルに触れない。
+    既存の PostgreSQL テーブルが SQLite スキーマと一致しない場合は、投入前に停止する。
 """
 
 import os
@@ -31,6 +32,13 @@ REPO_ROOT = SCRIPT_DIR.parent
 SQLITE_DB_PATH = Path(os.environ.get("SQLITE_DB_PATH", REPO_ROOT / "data" / "lease_data.db"))
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 SKIP_TABLES = {"sqlite_sequence"}
+PG_TYPE_ALIASES = {
+    "int8": "bigint",
+    "integer": "bigint",
+    "int4": "bigint",
+    "float8": "double precision",
+    "bool": "boolean",
+}
 # ────────────────────────────────────────────────────────────────────────────────
 
 
@@ -75,8 +83,75 @@ def _sqlite_type_to_pg(sqlite_type: str) -> str:
     return "TEXT"
 
 
+def _normalize_pg_type(pg_type: str) -> str:
+    normalized = (pg_type or "").lower().strip()
+    return PG_TYPE_ALIASES.get(normalized, normalized)
+
+
+def _get_existing_pg_schema(pg_cur, table: str) -> list[dict]:
+    pg_cur.execute(
+        """
+        SELECT column_name, data_type, is_nullable
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = %s
+        ORDER BY ordinal_position
+        """,
+        (table,),
+    )
+    rows = pg_cur.fetchall()
+    return [
+        {
+            "name": row[0],
+            "type": _normalize_pg_type(row[1]),
+            "notnull": row[2] == "NO",
+        }
+        for row in rows
+    ]
+
+
+def _schema_mismatches(existing: list[dict], expected: list[dict]) -> list[str]:
+    if not existing:
+        return []
+
+    mismatches: list[str] = []
+    existing_names = [col["name"] for col in existing]
+    expected_names = [col["name"] for col in expected]
+    if existing_names != expected_names:
+        mismatches.append(f"columns existing={existing_names} expected={expected_names}")
+
+    for idx, expected_col in enumerate(expected):
+        if idx >= len(existing):
+            break
+        existing_col = existing[idx]
+        expected_type = _normalize_pg_type(_sqlite_type_to_pg(expected_col["type"]))
+        if existing_col["type"] != expected_type:
+            mismatches.append(
+                f"{expected_col['name']}.type existing={existing_col['type']} expected={expected_type}"
+            )
+        expected_notnull = bool(expected_col["notnull"])
+        if existing_col["notnull"] != expected_notnull:
+            mismatches.append(
+                f"{expected_col['name']}.notnull existing={existing_col['notnull']} expected={expected_notnull}"
+            )
+    return mismatches
+
+
+def _validate_existing_table_schema(pg_cur, table: str, schema: list[dict]) -> None:
+    existing = _get_existing_pg_schema(pg_cur, table)
+    mismatches = _schema_mismatches(existing, schema)
+    if mismatches:
+        details = "; ".join(mismatches)
+        raise RuntimeError(
+            f"既存テーブル {table} のスキーマが SQLite と一致しません。"
+            f"投入を中止します: {details}"
+        )
+
+
 def _ensure_table(pg_cur, table: str, schema: list[dict]) -> None:
     from psycopg2 import sql
+
+    _validate_existing_table_schema(pg_cur, table, schema)
 
     col_defs = []
     for col in schema:

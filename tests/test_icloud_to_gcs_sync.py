@@ -25,7 +25,7 @@ def _setup_gcs_mock():
 
 _setup_gcs_mock()
 
-from scripts.icloud_to_gcs_sync import collect_md_files, main, upload_file  # noqa: E402
+from scripts.icloud_to_gcs_sync import LOCAL_VAULT_DIR, collect_md_files, main, upload_file  # noqa: E402
 
 
 # ------------------------------------------------------------------
@@ -149,3 +149,7 @@ class TestHandlesEmptyVault:
         with patch("scripts.icloud_to_gcs_sync.LOCAL_VAULT_DIR", str(tmp_path)):
             with patch("scripts.icloud_to_gcs_sync.storage.Client"):
                 main()
+
+
+def test_default_local_vault_dir_points_to_icloud_vault():
+    assert "Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault" in LOCAL_VAULT_DIR

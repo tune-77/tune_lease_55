@@ -18,6 +18,33 @@ GCS_VAULT_PREFIX = os.environ.get("GCS_VAULT_PREFIX", "vault/")
 _DEFAULT_LOCAL_DIR = Path("/tmp/gcs_vault")
 
 
+def _safe_relative_path(blob_name: str, prefix: str) -> Path | None:
+    """GCS blob 名を dest_dir 配下の安全な相対パスへ変換する。"""
+    rel = blob_name[len(prefix):]
+    if not rel:
+        return None
+    path = Path(rel)
+    if path.is_absolute() or ".." in path.parts:
+        logger.warning("[gcs_vault_loader] skipped unsafe blob path: %s", blob_name)
+        return None
+    return path
+
+
+def _prune_stale_markdown(dest: Path, expected_paths: set[Path]) -> int:
+    """GCS に存在しないローカル .md を削除する。"""
+    removed = 0
+    for local_md in sorted(dest.rglob("*.md")):
+        try:
+            rel = local_md.relative_to(dest)
+        except ValueError:
+            continue
+        if rel in expected_paths:
+            continue
+        local_md.unlink()
+        removed += 1
+    return removed
+
+
 def download_vault(
     *,
     dest_dir: Path | None = None,
@@ -38,19 +65,32 @@ def download_vault(
 
     client = storage.Client()
     blobs = list(client.list_blobs(bkt, prefix=pfx))
-    downloaded = 0
+    md_blobs: list[tuple[object, Path]] = []
     for blob in blobs:
         if not blob.name.endswith(".md"):
             continue
-        rel = blob.name[len(pfx):]
-        if not rel:
+        rel = _safe_relative_path(blob.name, pfx)
+        if rel is None:
             continue
+        md_blobs.append((blob, rel))
+
+    pruned = _prune_stale_markdown(dest, {rel for _, rel in md_blobs})
+
+    downloaded = 0
+    for blob, rel in md_blobs:
         local = dest / rel
         local.parent.mkdir(parents=True, exist_ok=True)
         blob.download_to_filename(str(local))
         downloaded += 1
 
-    logger.info("[gcs_vault_loader] downloaded %d .md files from gs://%s/%s to %s", downloaded, bkt, pfx, dest)
+    logger.info(
+        "[gcs_vault_loader] downloaded %d .md files, pruned %d stale files from gs://%s/%s to %s",
+        downloaded,
+        pruned,
+        bkt,
+        pfx,
+        dest,
+    )
     return dest
 
 

@@ -18,7 +18,7 @@ GCS_BUCKET = os.environ.get("GCS_BUCKET", "tune-lease-55-data")
 GCS_VAULT_PREFIX = os.environ.get("GCS_VAULT_PREFIX", "vault/")
 LOCAL_VAULT_DIR = os.environ.get(
     "LOCAL_VAULT_DIR",
-    "/Users/kobayashiisaoryou/Documents/Obsidian Vault/",
+    "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault",
 )
 
 

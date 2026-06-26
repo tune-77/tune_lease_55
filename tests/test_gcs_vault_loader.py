@@ -126,6 +126,40 @@ class TestDownloadVault:
 
         assert (tmp_path / "deep" / "nested" / "dir" / "note.md").read_bytes() == b"deep"
 
+    def test_prunes_local_md_missing_from_gcs(self, tmp_path: Path) -> None:
+        stale = tmp_path / "old.md"
+        stale.write_text("# stale")
+        keep = tmp_path / "keep.md"
+        keep.write_text("# old keep")
+
+        blobs = [_make_blob("vault/keep.md", b"# fresh keep")]
+        client_mock = MagicMock()
+        client_mock.list_blobs.return_value = blobs
+        _gcs_mock.Client.return_value = client_mock
+
+        download_vault(dest_dir=tmp_path, prefix="vault/")
+
+        assert not stale.exists()
+        assert keep.read_text() == "# fresh keep"
+
+    def test_skips_unsafe_relative_paths(self, tmp_path: Path) -> None:
+        outside = tmp_path.parent / "evil.md"
+        if outside.exists():
+            outside.unlink()
+
+        blobs = [
+            _make_blob("vault/../evil.md", b"bad"),
+            _make_blob("vault/safe.md", b"safe"),
+        ]
+        client_mock = MagicMock()
+        client_mock.list_blobs.return_value = blobs
+        _gcs_mock.Client.return_value = client_mock
+
+        download_vault(dest_dir=tmp_path, prefix="vault/")
+
+        assert not outside.exists()
+        assert (tmp_path / "safe.md").read_text() == "safe"
+
 
 class TestLoadVaultTexts:
     def test_returns_list_of_texts(self, tmp_path: Path) -> None:

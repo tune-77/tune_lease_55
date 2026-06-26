@@ -17,7 +17,7 @@
 注意:
 - 既存コード（``sqlite3.connect()`` を直接呼んでいる箇所）は今回変更しない。
   新規エンドポイントや以降の PR で段階的に置き換えていく。
-- ``get_connection()`` はコンテキストマネージャとして使う。commit/rollback は呼び出し側が管理。
+- ``get_connection()`` はコンテキストマネージャとして使う。正常終了時 commit、例外時 rollback。
 - PostgreSQL 接続時はプールを使わずシンプルに 1 コネクション生成（Cloud Run 1 インスタンス想定）。
 """
 
@@ -83,6 +83,10 @@ def _sqlite_connection() -> Generator[sqlite3.Connection, None, None]:
     conn.row_factory = sqlite3.Row
     try:
         yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -107,7 +111,9 @@ def _postgres_connection() -> Generator["psycopg2.extensions.connection", None, 
         ) from e
 
     database_url = os.environ["DATABASE_URL"]
-    conn = psycopg2.connect(database_url, cursor_factory=psycopg2.extras.RealDictCursor)
+    # DictCursor は row["col"] / row[0] / dict(row) を両立する。
+    # SQLite の sqlite3.Row に近い振る舞いにして、既存APIのタプル前提も壊しにくくする。
+    conn = psycopg2.connect(database_url, cursor_factory=psycopg2.extras.DictCursor)
     try:
         yield conn
         conn.commit()

@@ -46,7 +46,7 @@ while _REPO_ROOT in sys.path:
 sys.path.insert(0, _REPO_ROOT)
 
 from api.llm_json_guard import extract_candidate_text, parse_or_recover_json, with_retry_tokens
-from api.db_connection import get_connection, placeholder
+from api.db_connection import current_backend, get_connection, placeholder
 
 # data_cases / base_rate_master を正しいパスから強制ロード（clawd/ 直下の同名モジュールより優先）
 import importlib.util as _ilu
@@ -63,6 +63,21 @@ _brm_spec.loader.exec_module(_brm_mod)
 _LEASE_DB_PATH = get_db_path()
 _DATA_GIT_DIR = os.environ.get("DATA_GIT_DIR", "/app/data-git")
 _git_lock = asyncio.Lock()
+
+
+def _db_available() -> bool:
+    """Cloud SQL ではローカル SQLite ファイルがなくても DB 利用可能とみなす。"""
+    return current_backend() == "postgresql" or os.path.exists(_LEASE_DB_PATH)
+
+
+def _table_exists(cur, table_name: str) -> bool:
+    """現在のDBバックエンドでテーブル存在確認を行う。"""
+    if current_backend() == "postgresql":
+        cur.execute("SELECT to_regclass(%s)", (f"public.{table_name}",))
+        row = cur.fetchone()
+        return bool(row and row[0])
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+    return bool(cur.fetchone())
 
 def _load_timesfm_engine():
     """timesfm_engine を遅延ロード（初回呼び出し時のみ）。PyTorchのMPS初期化をstartupから除外する。"""
@@ -177,31 +192,43 @@ def _get_obsidian_collection():
 
 def _init_sync_log_table() -> None:
     """sync_log テーブルを冪等に作成する（Cloud Run git push 結果記録用）。"""
-    if not os.path.exists(_LEASE_DB_PATH):
+    if not _db_available():
         return
     try:
         with get_connection() as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS sync_log (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    pushed_at TEXT NOT NULL,
-                    success INTEGER NOT NULL,
-                    error TEXT
-                )
-            """)
+            cur = conn.cursor()
+            if current_backend() == "postgresql":
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS sync_log (
+                        id SERIAL PRIMARY KEY,
+                        pushed_at TEXT NOT NULL,
+                        success INTEGER NOT NULL,
+                        error TEXT
+                    )
+                """)
+            else:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS sync_log (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        pushed_at TEXT NOT NULL,
+                        success INTEGER NOT NULL,
+                        error TEXT
+                    )
+                """)
     except Exception as e:
         print(f"[sync_log] テーブル作成失敗（非致命的）: {e}")
 
 
 def _record_sync_log(success: bool, error: str = "") -> None:
     """sync_log テーブルに git push 結果を記録する。"""
-    if not os.path.exists(_LEASE_DB_PATH):
+    if not _db_available():
         return
     import datetime
     _ph = placeholder()
     try:
         with get_connection() as conn:
-            conn.execute(
+            cur = conn.cursor()
+            cur.execute(
                 f"INSERT INTO sync_log (pushed_at, success, error) VALUES ({_ph}, {_ph}, {_ph})",
                 (datetime.datetime.utcnow().isoformat(), 1 if success else 0, error),
             )
@@ -425,6 +452,65 @@ app.include_router(demo_router, prefix="/api")
 @app.get("/healthz")
 def healthz():
     return {"status": "ok"}
+
+
+def _cloud_db_status() -> dict:
+    backend = current_backend()
+    status = {
+        "backend": backend,
+        "available": False,
+        "database_url_configured": bool(os.environ.get("DATABASE_URL", "").strip()),
+        "local_db_exists": os.path.exists(_LEASE_DB_PATH),
+        "error": "",
+    }
+    if not _db_available():
+        status["error"] = "DB is not configured or local SQLite file is missing"
+        return status
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            cur.fetchone()
+        status["available"] = True
+    except Exception as exc:
+        status["error"] = str(exc)
+    return status
+
+
+def _cloud_gcs_vault_status() -> dict:
+    vault_dir = Path(os.environ.get("GCS_VAULT_LOCAL_DIR", "/tmp/gcs_vault"))
+    md_files = sorted(vault_dir.rglob("*.md")) if vault_dir.exists() else []
+    latest_mtime = max((p.stat().st_mtime for p in md_files), default=None)
+    return {
+        "enabled": os.environ.get("USE_GCS_VAULT", "").lower() in ("1", "true"),
+        "bucket": os.environ.get("GCS_BUCKET", "tune-lease-55-data"),
+        "prefix": os.environ.get("GCS_VAULT_PREFIX", "vault/"),
+        "local_dir": str(vault_dir),
+        "local_dir_exists": vault_dir.exists(),
+        "markdown_count": len(md_files),
+        "latest_local_mtime": latest_mtime,
+    }
+
+
+@app.get("/api/system/cloud-status")
+def get_cloud_status():
+    db = _cloud_db_status()
+    gcs_vault = _cloud_gcs_vault_status()
+    ready = db["available"] and (
+        not gcs_vault["enabled"] or gcs_vault["markdown_count"] > 0
+    )
+    return {
+        "status": "ok" if ready else "degraded",
+        "ready": ready,
+        "db": db,
+        "gcs_vault": gcs_vault,
+        "cloud_run": {
+            "service": os.environ.get("K_SERVICE", ""),
+            "revision": os.environ.get("K_REVISION", ""),
+            "configuration": os.environ.get("K_CONFIGURATION", ""),
+        },
+    }
+
 
 @app.get("/")
 def read_root():
@@ -2320,7 +2406,7 @@ def _load_useful_life_table() -> list[dict]:
 @app.get("/api/cases/industry-winrate")
 def get_industry_winrate():
     """業種別成約率を past_cases から集計して返す（REV-055/117~119）。"""
-    if not os.path.exists(_LEASE_DB_PATH):
+    if not _db_available():
         return []
     with get_connection() as conn:
         cur = conn.cursor()
@@ -2367,7 +2453,7 @@ def get_industry_winrate():
 @app.get("/api/cases/sales-dept-winrate")
 def get_sales_dept_winrate():
     """営業部別成約率を集計して返す（REV-112）。"""
-    if not os.path.exists(_LEASE_DB_PATH):
+    if not _db_available():
         return {"items": [], "overall_rate": 0.0, "total_won": 0, "total_lost": 0}
     with get_connection() as conn:
         cur = conn.cursor()
@@ -2405,13 +2491,11 @@ def get_sales_dept_winrate():
 @app.get("/api/payment/alerts")
 def get_payment_alerts():
     """延滞・デフォルト案件を検出してアラートリストを返す（REV-070）。"""
-    if not os.path.exists(_LEASE_DB_PATH):
+    if not _db_available():
         return {"alerts": [], "summary": {"normal": 0, "overdue": 0, "default": 0, "completed": 0}}
     with get_connection() as conn:
         cur = conn.cursor()
-        # payment_historyが存在するか確認
-        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='payment_history'")
-        if not cur.fetchone():
+        if not _table_exists(cur, "payment_history"):
             return {"alerts": [], "summary": {"normal": 0, "overdue": 0, "default": 0, "completed": 0}}
         cur.execute("""
             SELECT ph.id, ph.contract_id, ph.check_date, ph.payment_status,
@@ -2794,7 +2878,7 @@ def get_improvement_pipeline_summary():
 @app.get("/api/subsidies")
 def get_subsidies(q: str = ""):
     """補助金マスタ一覧を返す。q で asset_keywords/name を部分一致フィルタ（REV-022/047）。"""
-    if not os.path.exists(_LEASE_DB_PATH):
+    if not _db_available():
         return []
     with get_connection() as conn:
         cur = conn.cursor()
