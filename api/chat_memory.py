@@ -266,11 +266,13 @@ def call_gemini_with_tools(
     tool_declarations: list[dict],
     tool_executor: "Callable[[str, dict], Any]",
     max_tool_rounds: int = 3,
+    extra_user_parts: "list[dict] | None" = None,
 ) -> str:
     """
     Gemini API を function calling 対応の multi-turn 形式で呼び出す。
     tool_declarations: Gemini function_declarations スキーマのリスト
     tool_executor: (tool_name, args_dict) -> result_any を実行する関数
+    extra_user_parts: 画像等を渡す際に text 部分の前に追加する parts (inline_data 等)
     """
     from typing import Callable, Any as _Any  # noqa: F401
 
@@ -282,7 +284,8 @@ def call_gemini_with_tools(
     for msg in history:
         gemini_role = "user" if msg["role"] == "user" else "model"
         contents.append({"role": gemini_role, "parts": [{"text": msg["content"]}]})
-    contents.append({"role": "user", "parts": [{"text": user_message}]})
+    user_parts: list[dict] = (list(extra_user_parts) if extra_user_parts else []) + [{"text": user_message}]
+    contents.append({"role": "user", "parts": user_parts})
 
     base_payload: dict = {
         "system_instruction": {"parts": [{"text": system_prompt}]},
