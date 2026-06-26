@@ -422,6 +422,10 @@ app.include_router(knowledge_router, prefix="/api")
 from api.routers.demo import router as demo_router
 app.include_router(demo_router, prefix="/api")
 
+@app.get("/healthz")
+def healthz():
+    return {"status": "ok"}
+
 @app.get("/")
 def read_root():
     return {"message": "Lease Scoring API is running."}
