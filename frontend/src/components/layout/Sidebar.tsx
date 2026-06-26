@@ -5,12 +5,11 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Home, MessageSquare, ClipboardCheck, FileText, Zap, Factory,
-  PenTool, Users, Wrench, PencilRuler, History, ScrollText,
-  LineChart, Target, Settings, Calendar, Share2, Network,
-  Eye, BarChart3, ChevronDown, ChevronRight, ChevronLeft, Building,
+  PenTool, Users, Calendar, Share2, Network,
+  Eye, ChevronDown, ChevronRight, ChevronLeft,
   X, Menu, Table2, Swords, MessageCircle,
   BarChart2, BookOpen, Gift, HelpCircle, Megaphone, Calculator,
-  Receipt, LifeBuoy, ClipboardList, CreditCard, Activity, GitMerge, Briefcase, Brain,
+  LifeBuoy, ClipboardList, GitMerge, Brain,
   Orbit, Sparkles
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
@@ -23,40 +22,37 @@ export default function Sidebar() {
 
   const menuGroups = [
     {
-      title: '審査メイン',
+      title: '審査ワークフロー',
+      defaultOpen: true,
       items: [
         { name: 'ホーム', href: '/home', icon: Home, color: 'text-blue-400' },
-        { name: '🚀 ハッカソンデモ', href: '/demo', icon: Sparkles, color: 'text-yellow-300' },
-        { name: '知識ループ可視化', href: '/demo/knowledge-loop', icon: GitMerge, color: 'text-emerald-300' },
-        { name: 'システム概要', href: '/system-overview', icon: Orbit, color: 'text-fuchsia-400' },
-        { name: 'リース知性体との対話', href: '/lease-intelligence', icon: Brain, color: 'text-violet-400' },
-        { name: '複数紫苑デモ', href: '/multi-shion-demo', icon: Network, color: 'text-cyan-300' },
-        { name: '💬 AIチャット', href: '/chat', icon: MessageCircle, color: 'text-cyan-400' },
-        { name: 'リースくん (スマホUI)', href: '/lease-kun', icon: MessageSquare, color: 'text-amber-400' },
         { name: '審査・分析', href: '/', icon: ClipboardCheck, color: 'text-emerald-400' },
+        { name: '💬 AIチャット', href: '/chat', icon: MessageCircle, color: 'text-cyan-400' },
         { name: '審査レポート', href: '/report', icon: FileText, color: 'text-indigo-400' },
         { name: 'バッチ審査', href: '/batch', icon: Zap, color: 'text-yellow-400' },
-      ]
-    },
-    {
-      title: '業務書類',
-      items: [
         { name: '稟議書・見積依頼書', href: '/ringi', icon: FileText, color: 'text-indigo-400' },
-      ]
-    },
-    {
-      title: '管理・エージェント',
-      items: [
-        { name: 'マルチエージェント討論審査', href: '/debate', icon: Swords, color: 'text-violet-500' },
         { name: '結果登録 (成約/失注)', href: '/register', icon: PenTool, color: 'text-rose-400' },
         { name: '過去案件一覧', href: '/cases', icon: Table2, color: 'text-cyan-400' },
       ]
     },
     {
-      title: '高度分析・グラフ',
+      title: '🌸 紫苑 AI',
+      defaultOpen: false,
+      items: [
+        { name: '🚀 ハッカソンデモ', href: '/demo', icon: Sparkles, color: 'text-yellow-300' },
+        { name: 'リース知性体との対話', href: '/lease-intelligence', icon: Brain, color: 'text-violet-400' },
+        { name: '複数紫苑デモ', href: '/multi-shion-demo', icon: Network, color: 'text-cyan-300' },
+        { name: 'リースくん (スマホUI)', href: '/lease-kun', icon: MessageSquare, color: 'text-amber-400' },
+        { name: 'マルチエージェント討論', href: '/debate', icon: Swords, color: 'text-violet-500' },
+        { name: '知識ループ可視化', href: '/demo/knowledge-loop', icon: GitMerge, color: 'text-emerald-300' },
+        { name: 'システム概要', href: '/system-overview', icon: Orbit, color: 'text-fuchsia-400' },
+      ]
+    },
+    {
+      title: '分析・グラフ',
+      defaultOpen: false,
       items: [
         { name: '営業部別分析', href: '/department', icon: Users, color: 'text-emerald-400' },
-        { name: '業種別成約率分析', href: '/industry-stats', icon: Briefcase, color: 'text-sky-500' },
         { name: '業種別成約率', href: '/industry-winrate', icon: BarChart2, color: 'text-blue-400' },
         { name: '競合関係グラフ', href: '/competitor', icon: Share2, color: 'text-orange-400' },
         { name: '知識宇宙マップ', href: '/knowledge-space', icon: Network, color: 'text-cyan-300' },
@@ -65,41 +61,31 @@ export default function Sidebar() {
     },
     {
       title: '参照・ナレッジ',
+      defaultOpen: false,
       items: [
         { name: '法定耐用年数一覧', href: '/useful-life', icon: BookOpen, color: 'text-blue-400' },
         { name: '業種別リース物件例', href: '/industry-assets', icon: Factory, color: 'text-slate-500' },
         { name: '残価設定ガイドライン', href: '/residual-guide', icon: Calculator, color: 'text-purple-400' },
         { name: '営業向け説明ガイド', href: '/sales-guide', icon: Megaphone, color: 'text-blue-500' },
         { name: 'リース/融資/現金 比較', href: '/simulator', icon: Calculator, color: 'text-blue-400' },
-        { name: 'リース知識 FAQ', href: '/faq', icon: HelpCircle, color: 'text-slate-400' },
+        { name: 'FAQ', href: '/faq', icon: HelpCircle, color: 'text-slate-400' },
         { name: 'システム機能一覧', href: '/help', icon: LifeBuoy, color: 'text-blue-300' },
         { name: '改善ログ', href: '/improvement-log', icon: ClipboardList, color: 'text-slate-400' },
       ]
     },
     {
-      title: '係数分析・ログ',
-      items: [
-        { name: '改善ログ', href: '/improvement-log', icon: ScrollText, color: 'text-amber-400' },
-      ]
-    },
-    {
       title: '設定・マスタ',
+      defaultOpen: false,
       items: [
         { name: '基準金利マスタ', href: '/interest', icon: Calendar, color: 'text-slate-300' },
-        { name: 'ナレッジ・FAQ', href: '/faq', icon: HelpCircle, color: 'text-indigo-300' },
         { name: '補助金情報', href: '/subsidy', icon: Gift, color: 'text-emerald-300' },
       ]
     }
   ];
 
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    '審査メイン': true,
-    '業務書類': true,
-    '管理・エージェント': false,
-    '高度分析・グラフ': true,
-    '係数分析・ログ': false,
-    '設定・マスタ': false,
-  });
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(
+    Object.fromEntries(menuGroups.map(g => [g.title, g.defaultOpen]))
+  );
 
   const toggleGroup = (title: string) => {
     if (isCollapsed) return;
