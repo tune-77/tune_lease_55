@@ -94,22 +94,16 @@ def clone_or_pull_repo() -> bool:
 
 
 def sync_data_files() -> None:
-    """git clone から demo.db / mind.json を DATA_DIR にコピーする。"""
+    """git clone から mind.json を DATA_DIR にコピーする。"""
     src_dir = Path(DATA_GIT_DIR) / "data"
     dst_dir = Path(DATA_DIR)
     dst_dir.mkdir(parents=True, exist_ok=True)
-    for filename in ("demo.db", "mind.json"):
+    for filename in ("mind.json",):
         src = src_dir / filename
         dst = dst_dir / filename
         if src.exists():
             shutil.copy2(str(src), str(dst))
             print(f"[cloud_init] {filename} → {dst}")
-    # data_cases.py は lease_data.db をハードコードで参照するため demo.db を複製する
-    demo_src = src_dir / "demo.db"
-    lease_dst = dst_dir / "lease_data.db"
-    if demo_src.exists() and not lease_dst.exists():
-        shutil.copy2(str(demo_src), str(lease_dst))
-        print(f"[cloud_init] demo.db → lease_data.db (alias)")
 
 
 def sync_chromadb() -> None:
