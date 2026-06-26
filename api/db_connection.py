@@ -81,6 +81,9 @@ def _sqlite_connection() -> Generator[sqlite3.Connection, None, None]:
     db_path = get_db_path()
     conn = sqlite3.connect(db_path, timeout=10)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA synchronous=NORMAL")
     try:
         yield conn
         conn.commit()
@@ -129,3 +132,162 @@ def _postgres_connection() -> Generator["psycopg2.extensions.connection", None, 
 def current_backend() -> str:
     """現在の接続バックエンド名を返す（ログ・デバッグ用）。"""
     return "postgresql" if _is_postgres() else "sqlite"
+
+
+def ensure_schema() -> None:
+    """全コアテーブルを冪等に作成する（Cloud SQL 初回起動時のスキーマ自動初期化）。
+
+    既存テーブルには一切影響しない（CREATE TABLE IF NOT EXISTS）。
+    SQLite と PostgreSQL の両方で動作する。
+    """
+    is_pg = _is_postgres()
+    auto_pk = "SERIAL PRIMARY KEY" if is_pg else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    real_t = "DOUBLE PRECISION" if is_pg else "REAL"
+    bool_false = "FALSE" if is_pg else "0"
+
+    _DDL = [
+        # past_cases ─────────────────────────────────────────────────────────────
+        f"""CREATE TABLE IF NOT EXISTS past_cases (
+            id TEXT PRIMARY KEY,
+            timestamp TEXT,
+            industry_sub TEXT,
+            score {real_t},
+            user_eq {real_t},
+            final_status TEXT,
+            data TEXT,
+            sales_dept TEXT DEFAULT '未設定',
+            registration_date TEXT,
+            estimate_sent_date TEXT,
+            customer_response_date TEXT,
+            final_result_date TEXT
+        )""",
+        # excluded_grade_cases ───────────────────────────────────────────────────
+        f"""CREATE TABLE IF NOT EXISTS excluded_grade_cases (
+            id TEXT PRIMARY KEY,
+            timestamp TEXT,
+            industry_sub TEXT,
+            score {real_t},
+            user_eq {real_t},
+            final_status TEXT,
+            data TEXT,
+            sales_dept TEXT,
+            registration_date TEXT,
+            estimate_sent_date TEXT,
+            customer_response_date TEXT,
+            final_result_date TEXT,
+            original_grade TEXT,
+            excluded_reason TEXT,
+            extracted_at TEXT
+        )""",
+        # screening_records ──────────────────────────────────────────────────────
+        f"""CREATE TABLE IF NOT EXISTS screening_records (
+            id {auto_pk},
+            case_id TEXT NOT NULL,
+            screened_at TEXT NOT NULL,
+            total_score {real_t} NOT NULL,
+            asset_score {real_t} NOT NULL,
+            tenant_score {real_t},
+            q_risk_score {real_t},
+            competitor_pressure_score {real_t},
+            outcome TEXT,
+            input_snapshot TEXT,
+            source TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL DEFAULT ''
+        )""",
+        # payment_history ────────────────────────────────────────────────────────
+        f"""CREATE TABLE IF NOT EXISTS payment_history (
+            id {auto_pk},
+            contract_id TEXT NOT NULL,
+            check_date TEXT NOT NULL,
+            payment_status TEXT NOT NULL,
+            overdue_amount INTEGER DEFAULT 0,
+            model_version TEXT DEFAULT '',
+            screening_score {real_t},
+            notes TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT ''
+        )""",
+        # subsidy_master ─────────────────────────────────────────────────────────
+        f"""CREATE TABLE IF NOT EXISTS subsidy_master (
+            id {auto_pk},
+            name TEXT NOT NULL,
+            max_amount INTEGER NOT NULL DEFAULT 0,
+            industry_codes TEXT NOT NULL DEFAULT '',
+            asset_keywords TEXT NOT NULL DEFAULT '',
+            deadline TEXT NOT NULL DEFAULT '随時',
+            url TEXT NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT '',
+            active INTEGER NOT NULL DEFAULT 1
+        )""",
+        # conversation_history ───────────────────────────────────────────────────
+        f"""CREATE TABLE IF NOT EXISTS conversation_history (
+            id {auto_pk},
+            session_id TEXT NOT NULL,
+            company_name TEXT,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
+        # emotion_feedback ───────────────────────────────────────────────────────
+        f"""CREATE TABLE IF NOT EXISTS emotion_feedback (
+            id {auto_pk},
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            rating TEXT NOT NULL,
+            comment TEXT,
+            emotion_category TEXT,
+            resolved BOOLEAN DEFAULT {bool_false}
+        )""",
+        # emotion_history ────────────────────────────────────────────────────────
+        f"""CREATE TABLE IF NOT EXISTS emotion_history (
+            id {auto_pk},
+            recorded_at TEXT NOT NULL,
+            hopeful_anxiety {real_t},
+            careful_attachment {real_t},
+            intellectual_excitement {real_t},
+            unrewarded_effort {real_t},
+            quiet_loneliness {real_t},
+            earned_confidence {real_t},
+            protective_frustration {real_t},
+            dominant_raw_emotion TEXT,
+            notes TEXT
+        )""",
+        # chat_messages ──────────────────────────────────────────────────────────
+        f"""CREATE TABLE IF NOT EXISTS chat_messages (
+            id {auto_pk},
+            user_id TEXT NOT NULL DEFAULT 'default',
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
+        # sync_log ───────────────────────────────────────────────────────────────
+        f"""CREATE TABLE IF NOT EXISTS sync_log (
+            id {auto_pk},
+            pushed_at TEXT NOT NULL,
+            success INTEGER NOT NULL,
+            error TEXT
+        )""",
+    ]
+    _IDX = [
+        "CREATE INDEX IF NOT EXISTS idx_conv_company ON conversation_history(company_name)",
+        "CREATE INDEX IF NOT EXISTS idx_conv_session ON conversation_history(session_id)",
+        "CREATE INDEX IF NOT EXISTS idx_emofb_resolved ON emotion_feedback(resolved)",
+        "CREATE INDEX IF NOT EXISTS idx_emotion_history_date ON emotion_history(recorded_at)",
+        "CREATE INDEX IF NOT EXISTS idx_chat_user ON chat_messages(user_id, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_screening_records_case_id ON screening_records(case_id)",
+        "CREATE INDEX IF NOT EXISTS idx_screening_records_screened_at ON screening_records(screened_at)",
+        "CREATE INDEX IF NOT EXISTS idx_screening_records_outcome ON screening_records(outcome)",
+        "CREATE INDEX IF NOT EXISTS idx_ph_contract_id ON payment_history(contract_id)",
+        "CREATE INDEX IF NOT EXISTS idx_ph_check_date ON payment_history(check_date)",
+        "CREATE INDEX IF NOT EXISTS idx_ph_payment_status ON payment_history(payment_status)",
+    ]
+
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            for stmt in _DDL + _IDX:
+                cur.execute(stmt)
+            if not is_pg:
+                conn.commit()
+        print(f"[ensure_schema] スキーマ初期化完了 ({current_backend()})")
+    except Exception as e:
+        print(f"[ensure_schema] テーブル作成失敗（非致命的）: {e}")
