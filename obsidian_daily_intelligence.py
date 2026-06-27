@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -494,10 +495,16 @@ def record_obsidian_daily_intelligence_event(
 
 
 def load_latest_obsidian_daily_intelligence() -> dict[str, Any]:
-    if not LATEST_JSON.exists():
+    candidates = [LATEST_JSON]
+    bundle_dir = Path(os.environ.get("CLOUDRUN_BUNDLE_DIR", "") or "")
+    if bundle_dir:
+        candidates.append(bundle_dir / LATEST_JSON.name)
+        candidates.append(bundle_dir / "reports" / LATEST_JSON.name)
+    source = next((path for path in candidates if path.exists()), None)
+    if source is None:
         return {}
     try:
-        data = json.loads(LATEST_JSON.read_text(encoding="utf-8"))
+        data = json.loads(source.read_text(encoding="utf-8"))
     except Exception:
         return {}
     return data if isinstance(data, dict) else {}

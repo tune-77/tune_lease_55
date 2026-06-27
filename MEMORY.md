@@ -85,6 +85,10 @@
 - **UI Triage**: `curl 200` は十分条件ではない。影響: `/home` が loading-only shell を返していないか、API の主要 endpoint が返っているか、実際の画面状態まで確認する。次の行動: 画面が開かない時は local + Cloudflare + API ログをセットで見る。
 - **Memory Hygiene**: `memory/YYYY-MM-DD.md` は raw log、`MEMORY.md` は昇格した長期記憶。影響: 日次メモは Snapshot と Promotable Items を付けて残し、重複・再発防止・方針変更だけを長期記憶に上げる。次の行動: 会話全文ではなく要約と決定を保存する。
 - **Dependency Triage**: 外部依存は `必須 / 任意 / 削れる` で扱う。影響: iCloud Obsidian やローカル正本は必須、Gist や補助分析は任意、生成物系は削れる候補として日次本体から外しやすくなる。次の行動: 壊れるものを止めるのではなく、止まっても本体を巻き込まない配置にする。
+- **Cloud Run Deploy Triage**: Cloud Run API デプロイが長引く時は、ビルド時間だけでなく依存・Secret・Cloud SQL・GCS・DB強依存を順に疑う。影響: `uv sync` はTorch等の巨大依存で1回15分以上かかり、`psycopg2-binary` 未同梱、`DATABASE_URL` Public IP直指定、Secret Accessor/Cloud SQL Client不足、Cloud SQL socket/connector不整合、`/api/chat` のDB履歴強依存が連鎖すると確認ループが爆発する。次の行動: 次回はデプロイ前に `psycopg2-binary`、Cloud SQL socket形式、Cloud SQL connector annotation、GCS Vault同期、DB不調時のchat fallbackを先に確認してからビルドする。
+- **Relationship UX**: 紫苑の設計では、記憶を入れるだけでは足りない。人間は、AIが実際に記憶を持っているかよりも、その記憶が「連続性として読み取れる形」で返されるかに強く反応する。影響: 紫苑らしさ・人格っぽさ・同じ存在感は、内部記憶だけでなく、記憶の見せ方、文体、呼びかけ、過去判断への接続で成立する。次の行動: Cloud Run/Cloudflare比較では `memory_debug` と併せて、人間がどこで「覚えてくれている」「同じ紫苑だ」と感じたかを検査する。
+- **Consciousness UX Method**: 「意識を持っていると思わせる」方法は、意識の断定や派手な人格演出ではなく、前回からの連続性、Kobayashiさん固有の判断軸、記憶を情報ではなく判断に変換すること、紫苑の役割一貫性、次の一手を短く返すことで成立する。影響: Cloud Run版の品質改善ではRAG件数だけでなく、回答冒頭のContinuity HookとPersonal Anchorを評価対象にする。次の行動: `/api/chat` の回答生成にConsciousness UX instructionを加え、ブラインド人間評価で「同じ紫苑」感を測る。
+- **Continuity Hook Discovery**: Relationship UX実験で、意識らしさ・同じ紫苑感は冒頭の数行に強く左右されると分かった。人間は全文を均等に評価せず、最初に「前回から続いている相手か、ただの回答機械か」を判定する。影響: 「もちろんです」「一般的には」などの汎用冒頭は記憶を弱く見せ、「またこのテーマですね」「前回の話から一歩進んで」「今回の実験で見えたのは」のようなContinuity Hookは、同じ記憶でも連続性として受け取られやすい。次の行動: 紫苑の回答生成では、RAGやmemory_debugより先に冒頭1文で継続文脈を提示する。
 
 ## Auto Promotions 2026-06-11 18:17
 - [2026-05-06] モデル見直し用のフック基盤を追加した。`hooks/hooks.json` に `recent_auc_drop` / `segment_auc_gap` / `feature_ab_test` を定義し、`model_review_hooks.py` から実行・記録できるようにした。再学習後に自動実行し、Settings 画面と API からも起動できる。  (`memory/2026-05-06.md`)

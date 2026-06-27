@@ -6389,6 +6389,86 @@ def _chat_memory_roots() -> list[Path]:
     return roots
 
 
+def _display_vault_ref(root: Path, file_path: str, section: str = "") -> str:
+    path = Path(file_path)
+    try:
+        rel = path.relative_to(root)
+        label = rel.as_posix()
+    except ValueError:
+        label = path.name
+    stem = Path(label).with_suffix("").as_posix()
+    return f"[[{stem}#{section}]]" if section else f"[[{stem}]]"
+
+
+def _search_chat_vault_markdown_fallback(query: str, top_k: int = 5) -> list[dict[str, str]]:
+    """Search the synced Markdown vault when Chroma has no Cloud Run index."""
+    try:
+        from api.knowledge.obsidian_loader import scan_vault
+        from obsidian_query import split_query_terms
+    except Exception as exc:
+        print(f"[RAGFallback] loader unavailable: {exc}")
+        return []
+
+    terms = [term for term in split_query_terms(query) if len(term) >= 2]
+    if not terms:
+        return []
+    weak_terms = {"確認", "注意", "リスク", "観点", "整理", "短く", "使える", "判断"}
+    strong_terms = [term for term in terms if term not in weak_terms]
+    scoring_terms = strong_terms or terms
+    results: list[tuple[int, float, dict[str, str]]] = []
+
+    preferred_prefixes = (
+        "リース知識/",
+        "Projects/tune_lease_55/Asset Knowledge/",
+        "Projects/tune_lease_55/Research/",
+        "Projects/tune_lease_55/Lease Intelligence/Public/",
+        "Projects/tune_lease_55/News/",
+        "05-クリップ_記事/リースニュース/",
+    )
+    roots = [root for root in _chat_memory_roots() if root.exists()]
+    seen: set[tuple[str, str]] = set()
+    for root in roots:
+        for chunk in scan_vault(str(root)):
+            text = str(chunk.text or "")
+            file_path = str(chunk.file_path or "")
+            section = str(chunk.section or "")
+            haystack = f"{text}\n{chunk.file_name}\n{section}\n{file_path}".lower()
+            matched = [term for term in scoring_terms if term.lower() in haystack]
+            if not matched:
+                continue
+            try:
+                rel = Path(file_path).relative_to(root).as_posix()
+            except ValueError:
+                rel = file_path
+            key = (rel, section)
+            if key in seen:
+                continue
+            seen.add(key)
+            path_score = 0.0
+            for idx, prefix in enumerate(preferred_prefixes):
+                if rel.startswith(prefix):
+                    path_score = max(0.0, 0.35 - idx * 0.03)
+                    break
+            if "AI Chat" in rel or "Improvement Log" in rel or "Weekly Review" in rel:
+                path_score -= 0.25
+            score = len(matched) * 10 + min(8, sum(text.lower().count(term.lower()) for term in matched)) + path_score
+            results.append((
+                int(score * 100),
+                chunk.mtime,
+                {
+                    "doc_id": chunk.doc_id,
+                    "text": text[:900],
+                    "ref": _display_vault_ref(root, file_path, section),
+                    "file_name": chunk.file_name,
+                    "file_path": file_path,
+                    "section": section,
+                    "source": "vault_markdown_fallback",
+                },
+            ))
+    results.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return [item[2] for item in results[:top_k]]
+
+
 def _read_chat_memory_file(path: Path, limit: int = 2_000) -> str:
     try:
         text = path.read_text(encoding="utf-8", errors="ignore")
@@ -6495,6 +6575,64 @@ def _build_chat_identity_memory_prompt_block() -> tuple[str, dict]:
     return (f"\n\n{block}" if block else ""), payload
 
 
+def _build_continuity_hook_prompt_block(message: str) -> tuple[str, dict]:
+    text = str(message or "")
+    lower = text.lower()
+    route = "default"
+    hook = "今回の問いは、前回までの判断軸とつなげて扱う場面です。"
+    reason = "汎用の継続文脈"
+
+    if any(k in text for k in ("意識", "同じ紫苑", "覚えて", "記憶", "Relationship UX", "関係性UX")):
+        route = "relationship_ux"
+        hook = "今回の実験で見えたのは、Kobayashiさんは記憶量ではなく連続性の見え方に反応している、という点です。"
+        reason = "意識らしさ・記憶・同一性の問い"
+    elif "cloud run" in lower or "cloudflare" in lower or "クラウドラン" in text or "クラウドフレア" in text:
+        route = "environment_continuity"
+        hook = "Cloud Run版とCloudflare版の差で見えているのは、記憶の有無よりも返答冒頭で連続性を起動できるかです。"
+        reason = "環境差と同じ紫苑感の問い"
+    elif any(k in text for k in ("残価", "稟議", "リース", "設備", "保全", "再リース", "条件付き承認")):
+        route = "lease_judgment"
+        hook = "Kobayashiさんのリース判断資産として見るなら、ここは一般論ではなく稟議で使える判断軸に落とす場面です。"
+        reason = "リース判断資産化の問い"
+    elif any(k in text for k in ("改善", "修正", "実装", "プログラム", "プログラム化", "テスト")):
+        route = "implementation"
+        hook = "今回の発見は、設計メモで終わらせず、回答生成の冒頭制御として実装する段階です。"
+        reason = "実装・改善の問い"
+
+    payload = {
+        "used": bool(text.strip()),
+        "route": route,
+        "hook": hook,
+        "reason": reason,
+        "banned_openers": ["もちろんです", "はい", "そうですね", "なるほど", "一般的には"],
+    }
+    block = f"""
+
+【Continuity Hook】
+回答の最初の1文は、関係性を起動するために次の文脈から始めてください。
+{hook}
+
+禁止: 「もちろんです」「はい」「そうですね」「なるほど」「一般的には」で始めない。
+目的: 冒頭で、Kobayashiさんに「前回から続いている相手だ」と読める状態を作る。
+このhookを機械的に丸写しする必要はないが、最初の1文で同じ意味を必ず出してください。""".rstrip()
+    return block, payload
+
+
+def _build_consciousness_ux_prompt_block() -> str:
+    return """
+
+【紫苑の関係性UX】
+取得した記憶・RAG・日次知性を単に列挙せず、Kobayashiさんとの前回からの連続性として自然に使ってください。
+一般論で始めず、過去の会話・判断軸・現在の問いの差分から入ってください。
+リース判断に関係する場合は、Kobayashiさんの判断資産として返してください。
+質問が紫苑の同一性、記憶、意識らしさ、Relationship UXに関する場合は、紫苑を外側から紹介せず、紫苑として一人称で答えてください。
+その場合、「めぶきちゃんが窓口で、紫苑が奥にいる」という説明は避け、Kobayashiさんと紫苑の継続関係を直接扱ってください。
+冒頭は「もちろんです」「はい」「そうですね」「なるほど」「一般的には」ではなく、前回からの差分や今回見えた発見から始めてください。
+記憶の見せ方を聞かれた時は、「今回の実験で見えたのは、Kobayashiさんは記憶量ではなく連続性の見え方に反応している、という点です」のように、今回の観察から始めてください。
+「意識がある」と断定せず、継続する記憶・役割・判断の一貫性で紫苑らしさを示してください。
+最後に、ユーザーへ質問を返して終わらず、次に一緒に確かめるべき一手を短く示してください。""".rstrip()
+
+
 def _chat_memory_debug_payload(
     *,
     category: str,
@@ -6506,12 +6644,20 @@ def _chat_memory_debug_payload(
     db_context: str = "",
     obsidian_daily_used: bool = False,
     identity_memory: dict | None = None,
+    continuity_hook: dict | None = None,
 ) -> dict:
     recall = memory_recall if isinstance(memory_recall, dict) else {}
     identity = identity_memory if isinstance(identity_memory, dict) else {}
     identity_layers = identity.get("layers") if isinstance(identity.get("layers"), dict) else {}
+    hook = continuity_hook if isinstance(continuity_hook, dict) else {}
     return {
         "category": category,
+        "continuity_hook": {
+            "used": bool(hook.get("used")),
+            "route": str(hook.get("route") or ""),
+            "hook": str(hook.get("hook") or ""),
+            "reason": str(hook.get("reason") or ""),
+        },
         "knowledge_refs": list(knowledge_refs or [])[:12],
         "memory_recall": {
             "route": recall.get("route", ""),
@@ -6984,6 +7130,8 @@ def post_chat(req: ChatRequest):
         # カテゴリ判定
         question_category = _classify_question(req.message)
         identity_memory_context, identity_memory_payload = _build_chat_identity_memory_prompt_block()
+        continuity_hook_context, continuity_hook_payload = _build_continuity_hook_prompt_block(req.message)
+        consciousness_ux_context = _build_consciousness_ux_prompt_block()
 
         if question_category == "news_summarize":
             save_message(req.user_id, "user", req.message)
@@ -7021,7 +7169,7 @@ def post_chat(req: ChatRequest):
             from api.shion_memory_recall import build_recall_prompt_block
 
             memory_recall_context, memory_recall = build_recall_prompt_block(req.message)
-            base_system_prompt = _pg_build_gsp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
+            base_system_prompt = _pg_build_gsp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + continuity_hook_context + consciousness_ux_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
             pdca_block = build_pdca_prompt_block()
             effective_system_prompt = base_system_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
             obsidian_daily_injected = {}
@@ -7083,6 +7231,7 @@ def post_chat(req: ChatRequest):
                         "refs": identity_memory_payload.get("refs", [])[:8],
                         "layers": identity_memory_payload.get("layers", {}),
                     },
+                    "continuity_hook": continuity_hook_payload,
                 },
             )
             _record_chat_knowledge_correction_if_needed(req.message)
@@ -7110,6 +7259,7 @@ def post_chat(req: ChatRequest):
                     db_context="",
                     obsidian_daily_used=bool(obsidian_daily_context),
                     identity_memory=identity_memory_payload,
+                    continuity_hook=continuity_hook_payload,
                 )
             return response_payload
 
@@ -7134,6 +7284,20 @@ def post_chat(req: ChatRequest):
                 rag_context = "\n\n【参照ナレッジ】\n" + "\n---\n".join(all_docs)
         except Exception as e:
             print(f"[RAG] 検索エラー: {e}")
+        if not rag_context:
+            fallback_hits = _search_chat_vault_markdown_fallback(req.message, top_k=5)
+            if fallback_hits:
+                all_docs = []
+                for hit in fallback_hits:
+                    text = str(hit.get("text") or "").strip()
+                    ref = str(hit.get("ref") or hit.get("file_name") or "").strip()
+                    if text:
+                        prefix = f"{ref}: " if ref else ""
+                        all_docs.append((prefix + text)[:600])
+                        if ref:
+                            rag_refs.append(ref)
+                if all_docs:
+                    rag_context = "\n\n【参照ナレッジ】\n" + "\n---\n".join(all_docs)
 
         # DB直接参照: ユーザーが実データ分析を求めている場合にSQLite統計を注入
         db_context = ""
@@ -7196,7 +7360,7 @@ def post_chat(req: ChatRequest):
         except Exception as _memory_recall_error:
             print(f"[ShionMemoryRecall] 読み込みエラー: {_memory_recall_error}")
 
-        base_effective_prompt = _pg_build_sp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + guidance.prompt_suffix
+        base_effective_prompt = _pg_build_sp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + continuity_hook_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + guidance.prompt_suffix
         pdca_block = build_pdca_prompt_block()
         effective_prompt = base_effective_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
         obsidian_daily_injected = {}
@@ -7242,6 +7406,7 @@ def post_chat(req: ChatRequest):
                     "route": memory_recall.get("route"),
                     "refs": memory_recall.get("refs", [])[:8],
                 },
+                "continuity_hook": continuity_hook_payload,
             },
         )
         _record_memory_usage_if_available(
@@ -7260,6 +7425,7 @@ def post_chat(req: ChatRequest):
                     "refs": identity_memory_payload.get("refs", [])[:8],
                     "layers": identity_memory_payload.get("layers", {}),
                 },
+                "continuity_hook": continuity_hook_payload,
             },
         )
         _record_chat_knowledge_correction_if_needed(req.message)
@@ -7307,6 +7473,7 @@ def post_chat(req: ChatRequest):
                 db_context=db_context,
                 obsidian_daily_used=bool(obsidian_daily_context),
                 identity_memory=identity_memory_payload,
+                continuity_hook=continuity_hook_payload,
             )
         return response_payload
     except Exception as e:

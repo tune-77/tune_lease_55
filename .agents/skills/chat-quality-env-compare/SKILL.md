@@ -75,6 +75,7 @@ python scripts/compare_chat_quality_between_envs.py \
 スコアだけで結論にしないでください。次の3軸を必ず見る。
 
 - `Obsidian/RAGの記憶`: `memory_debug.knowledge_refs`、`memory_debug.memory_recall.refs`、`rag_context_used` があるか
+- `紫苑同一性メモリ`: `memory_debug.identity_memory.used` と `identity_memory.layers.identity/judgment/recent` が立っているか
 - `紫苑らしい連続性`: 以前の判断軸、PDCA、審査軍師らしい言い回しや連続した問題意識が出ているか
 - `判断資産化`: 一般論で終わらず、条件付き承認、残価、保守、回収、業種リスク、再利用可能な審査観点に落ちているか
 
@@ -99,7 +100,7 @@ reports/chat_quality_memory_feel_review_YYYYMMDD.md
 - 比較日時
 - Cloudflare URL / Cloud Run URL
 - 定量結果の要約
-- `knowledge_refs` / `memory_recall.refs` の有無
+- `knowledge_refs` / `memory_recall.refs` / `identity_memory` の有無
 - Cloudflare版が強いケース、Cloud Run版が強いケース
 - 「Obsidian/RAGの記憶」「紫苑らしい連続性」「判断資産化」の結論
 - 次の実装アクション

@@ -30,6 +30,7 @@ copy_if_exists() {
 copy_if_exists "$ROOT_DIR/data/lease_data.db" "$DATA_OUT/"
 copy_if_exists "$ROOT_DIR/data/screening_db.sqlite" "$DATA_OUT/"
 copy_if_exists "$ROOT_DIR/data/demo.db" "$DATA_OUT/"
+copy_if_exists "$ROOT_DIR/reports/obsidian_daily_intelligence_latest.json" "$BUNDLE_DIR/"
 
 validate_past_cases() {
   local db_path="$1"
