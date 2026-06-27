@@ -134,6 +134,49 @@ def sync_chromadb() -> None:
         print(f"[cloud_init] ChromaDB 同期失敗（非致命的）: {e}")
 
 
+_MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
+_MODEL_LOCAL = f"/app/models/sentence-transformers/{_MODEL_NAME}"
+_MODEL_GCS_PREFIX = f"models/sentence-transformers/{_MODEL_NAME}"
+
+
+def sync_model() -> bool:
+    """GCS から sentence-transformers モデルをダウンロードする。"""
+    if not GCS_BUCKET:
+        print("[cloud_init] GCS_BUCKET 未設定、モデル同期をスキップ")
+        return False
+    model_dir = Path(_MODEL_LOCAL)
+    if model_dir.is_dir() and any(model_dir.iterdir()):
+        print(f"[cloud_init] モデルキャッシュ済み: {model_dir}")
+        return True
+    print(f"[cloud_init] モデルダウンロード中: {_MODEL_GCS_PREFIX} → {model_dir}")
+    model_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        from google.cloud import storage
+        bucket_name = GCS_BUCKET.replace("gs://", "").split("/")[0]
+        prefix = _MODEL_GCS_PREFIX + "/"
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blobs = list(bucket.list_blobs(prefix=prefix))
+        if not blobs:
+            print(f"[cloud_init] GCS にモデルが見つからない: gs://{bucket_name}/{prefix}")
+            return False
+        for blob in blobs:
+            rel = blob.name[len(prefix):]
+            if not rel or rel.endswith("/"):
+                continue
+            dest = model_dir / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            blob.download_to_filename(str(dest))
+        print(f"[cloud_init] モデルダウンロード完了 ({len(blobs)} ファイル) → {model_dir}")
+        return True
+    except ImportError:
+        print("[cloud_init] google-cloud-storage が未インストール、モデル同期をスキップ")
+        return False
+    except Exception as e:
+        print(f"[cloud_init] モデル同期失敗（非致命的）: {e}")
+        return False
+
+
 def main() -> None:
     if GITHUB_REPO:
         ssh_ok = setup_ssh_key()
@@ -145,6 +188,7 @@ def main() -> None:
         print("[cloud_init] GITHUB_REPO 未設定、git 同期をスキップ")
 
     sync_chromadb()
+    sync_model()
     print("[cloud_init] 初期化完了")
 
 
