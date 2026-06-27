@@ -433,5 +433,29 @@
     "affected_files": [],
     "risk": "medium",
     "auto_fix_allowed": false
+  },
+  {
+    "rev_id": "RAG-UNRATED-2026_05_24_lease_news",
+    "type": "rag_boost_adjust",
+    "pending_review": true,
+    "description": "RAGヒット済み未評価: 2026-05-24_lease-news が直近30日で検索ヒットしたが評価なし（要内容確認）",
+    "source": "analyze_rag_feedback.py",
+    "target": "config/rag_ranking.json",
+    "path": "2026-05-24_lease-news",
+    "action": "review_content",
+    "penalty_strength": "weak",
+    "generated_at": "2026-06-27T19:00:30.656677+00:00"
+  },
+  {
+    "rev_id": "RAG-UNRATED-2026_06_02",
+    "type": "rag_boost_adjust",
+    "pending_review": true,
+    "description": "RAGヒット済み未評価: 2026-06-02 が直近30日で検索ヒットしたが評価なし（要内容確認）",
+    "source": "analyze_rag_feedback.py",
+    "target": "config/rag_ranking.json",
+    "path": "2026-06-02",
+    "action": "review_content",
+    "penalty_strength": "weak",
+    "generated_at": "2026-06-27T19:00:30.656677+00:00"
   }
 ]

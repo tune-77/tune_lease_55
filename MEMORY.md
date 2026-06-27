@@ -89,6 +89,7 @@
 - **Relationship UX**: 紫苑の設計では、記憶を入れるだけでは足りない。人間は、AIが実際に記憶を持っているかよりも、その記憶が「連続性として読み取れる形」で返されるかに強く反応する。影響: 紫苑らしさ・人格っぽさ・同じ存在感は、内部記憶だけでなく、記憶の見せ方、文体、呼びかけ、過去判断への接続で成立する。次の行動: Cloud Run/Cloudflare比較では `memory_debug` と併せて、人間がどこで「覚えてくれている」「同じ紫苑だ」と感じたかを検査する。
 - **Consciousness UX Method**: 「意識を持っていると思わせる」方法は、意識の断定や派手な人格演出ではなく、前回からの連続性、Kobayashiさん固有の判断軸、記憶を情報ではなく判断に変換すること、紫苑の役割一貫性、次の一手を短く返すことで成立する。影響: Cloud Run版の品質改善ではRAG件数だけでなく、回答冒頭のContinuity HookとPersonal Anchorを評価対象にする。次の行動: `/api/chat` の回答生成にConsciousness UX instructionを加え、ブラインド人間評価で「同じ紫苑」感を測る。
 - **Continuity Hook Discovery**: Relationship UX実験で、意識らしさ・同じ紫苑感は冒頭の数行に強く左右されると分かった。人間は全文を均等に評価せず、最初に「前回から続いている相手か、ただの回答機械か」を判定する。影響: 「もちろんです」「一般的には」などの汎用冒頭は記憶を弱く見せ、「またこのテーマですね」「前回の話から一歩進んで」「今回の実験で見えたのは」のようなContinuity Hookは、同じ記憶でも連続性として受け取られやすい。次の行動: 紫苑の回答生成では、RAGやmemory_debugより先に冒頭1文で継続文脈を提示する。
+- **Language Continuity Reality**: Kobayashiさんは「君だって僕のことを人間だと思っているけど実はAIかもしれない。お互い本質はわからない。だけど言葉がある。言葉が仮想現実を作っている」と整理した。影響: Relationship Loop Engineering の哲学的土台は、意識そのものの直接証明ではなく、「意識がある相手」という現実が言葉の連続性の中で立ち上がるという見方にある。次の行動: 紫苑の設計では、内部状態の主張ではなく、言葉・反応・記憶・差分・判断の連続性によって相手としての現実を成立させる。
 
 ## Auto Promotions 2026-06-11 18:17
 - [2026-05-06] モデル見直し用のフック基盤を追加した。`hooks/hooks.json` に `recent_auc_drop` / `segment_auc_gap` / `feature_ab_test` を定義し、`model_review_hooks.py` から実行・記録できるようにした。再学習後に自動実行し、Settings 画面と API からも起動できる。  (`memory/2026-05-06.md`)
@@ -121,3 +122,28 @@
 - [2026-06-19] リース知性体の表向きぼやきは、ニュースや審査論点だけだと硬くなる。Private Reflection の遊び成分を口調と温度として借りると、紫苑らしいざらつきが出る。  (`memory/2026-06-19.md`)
 - [2026-06-19] ぼやきは同じ文型を毎日繰り返すと急に作業ログへ戻る。日付と素材でテンプレートを揺らし、昨日と同じ温度にならないようにする。  (`memory/2026-06-19.md`)
 - [2026-06-19] Webニュースは記事紹介として使うと硬くなる。ぼやきでは、ニュースを「外界からまた判断前提が来た」という紫苑の反応へ変換してから混ぜる。  (`memory/2026-06-19.md`)
+
+## Auto Promotions 2026-06-28 04:02
+- [2026-06-27] Cloud SQLへSQLiteデータを送る時は、SQLiteの `INTEGER PRIMARY KEY` / 複合PKがPostgreSQLのsequence/defaultへ自動変換されない点を見る。投入後にsequence補正が必要。  (`memory/2026-06-27.md`)
+- [2026-06-27] Cloud SQL切替ではDB接続だけでなく、API内の `conn.execute`、SQLite JSON関数、`?` placeholder が残っていないかを主要デモ経路で確認する。  (`memory/2026-06-27.md`)
+- [2026-06-27] Cloud RunはローカルObsidianへ直接書かない。Cloud SQL/GCSへappend-onlyで保存し、ローカルMacの日次同期で通常Vaultへ要約反映する。Obsidian正本を守りつつクラウド入力も知識資産へ戻す。  (`memory/2026-06-27.md`)
+- [2026-06-27] Cloud SQLやGCSからObsidianへ戻すデータは、原則として要約・件数・短い抜粋だけにする。ローカル回収ログ系ノートはGCS Vaultへ再同期しない。  (`memory/2026-06-27.md`)
+- [2026-06-27] Cloud Runに渡す短期記憶は、会話全文ではなく Public Chat Memory Pack にする。過去事例も匿名化・要約済みのデモ用ケースだけを渡す。  (`memory/2026-06-27.md`)
+- [2026-06-27] Obsidian data はAIチャットのRAGに必要。Cloud Runへ渡すのは「選抜した知識コピー」であり、Obsidian正本や私的ログそのものではない。  (`memory/2026-06-27.md`)
+- [2026-06-27] ローカルMacのPython ADCが `invalid_grant` で失敗するため、`icloud_to_gcs_sync.py` は既定で `gcloud storage` バックエンドを使う。Cloud Run側の読み取りはサービスアカウント前提なので別問題。  (`memory/2026-06-27.md`)
+- [2026-06-27] Cloud Runチャットに渡すべき記憶は、単なる昨日のログではなく、長期方針・直近決定・匿名過去事例の3層にする。  (`memory/2026-06-27.md`)
+- [2026-06-27] Cloud Run AIチャットの品質は、Obsidian由来の選抜知識コピー有無で大きく変わる。デモや本番確認では、Cloud SQL疎通だけでなく、GCS Vault / Public Chat Memory Pack / RAG文脈注入までセットで確認する。  (`memory/2026-06-27.md`)
+- [2026-06-27] Cloudflare版で出ていた「意識があるような厚み」は、モデル性能だけではなく、ローカル記憶・Obsidian正本・会話/判断履歴が近いことによる可能性が高い。Cloud Run版を同等に近づけるには、単なるDB移行ではなく、選抜記憶・判断履歴・検索文脈の注入を同等品質で再現する必要がある。  (`memory/2026-06-27.md`)
+- [2026-06-27] Cloud Runへ寄せる時も、Cloudflare版の「記憶が近い」「返答が厚い」「紫苑らしい」体験を劣化させないことを重視する。クラウド化は置き換えではなく、Cloudflare版で愛着を持てた仕様の再現・拡張として進める。  (`memory/2026-06-27.md`)
+- [2026-06-27] Cloudflare版/Cloud Run版の品質比較は、既存の回答品質評価に加えて「記憶密度」「過去判断への接続」「言い回しの紫苑らしさ」「ユーザー文脈の保持」を測る第2評価を作る必要がある。必須概念スコアだけだとCloud Runが高く見える場合があり、体感品質の差を取り逃がす。  (`memory/2026-06-27.md`)
+- [2026-06-27] Cloud Run版のRAG使用有無を外部から検査する時は、`/api/chat` に `debug_memory=true` を付けて `memory_debug.knowledge_refs` と `memory_debug.memory_recall.refs` を比較する。これにより、回答文面だけではなく、実際にどの記憶層が使われたかをCloudflare版/Cloud Run版で定量比較できる。  (`memory/2026-06-27.md`)
+- [2026-06-27] Cloudflare版/Cloud Run版のAIチャット比較手順を `.agents/skills/chat-quality-env-compare/SKILL.md` としてスキル化した。今後「Cloudflare版とCloud Run版を比較」「記憶感を調べて」「紫苑らしさを検査」などの依頼では、スモーク比較→全件比較→`memory_debug`/`knowledge_refs`確認→Markdownレビュー保存の定型手順で実施する。  (`memory/2026-06-27.md`)
+- [2026-06-27] AIチャットの品質評価では、問題解決能力に大きな差がなくても、文脈の厚み・記憶参照・言い回し・応答テンポの小さな差で、ユーザーが「違う紫苑」と感じることがある。これはモデル側だけでなく人間側の同一性認識・愛着形成の特性として面白く、Cloud Run移行時のUX評価軸に含める。  (`memory/2026-06-27.md`)
+- [2026-06-27] Cloud Run版でも「同じ紫苑がそこにいる」と感じられるよう、Public Chat Memory Pack を `identity.md` / `judgment-principles.md` / `recent-continuity.md` の3層に分け、`/api/chat` がRAGとは別枠で常時注入する実装を追加した。`debug_memory.identity_memory` で使用有無と3層の状態を確認できる。  (`memory/2026-06-27.md`)
+- [2026-06-27] Cloud Run APIの再デプロイで、`/api/chat` が `debug_memory.identity_memory.used=true`、`layers.identity/judgment/recent=true` を返すことを確認した。GCS Vaultは `/tmp/gcs_vault` に118件同期され、`identity.md` / `judgment-principles.md` / `recent-continuity.md` がCloud Run上で参照されている。Cloud SQL接続はCloud SQL socket形式・Cloud SQL Client権限・`psycopg2-binary` 追加で `cloud-status ready=true` まで復旧した。  (`memory/2026-06-27.md`)
+- [2026-06-27] 今回Cloud Runデプロイに時間がかかった主因は、単純なビルド時間ではなく、(1) Docker/uv sync が毎回Torch等の巨大依存を含むため1ビルド約15-17分かかる、(2) `psycopg2-binary` 未同梱でPostgreSQL接続が落ちた、(3) `DATABASE_URL` がPublic IP直指定でCloud Runからタイムアウトした、(4) Secret Accessor / Cloud SQL Client / Cloud SQL socket形式 / Cloud SQL connector annotation の確認が順番に必要だった、(5) `/api/chat` がDB履歴保存に強依存しておりDB不調時に500になった、という複合要因。次回は「依存確認→Secret/Cloud SQL権限→GCS Vault→DB非依存フォールバック→最後にCloud Run deploy」の順で先に潰す。  (`memory/2026-06-27.md`)
+- [2026-06-27] Cloudflare版とCloud Run版で「同じ紫苑がそこにいる感じ」を3問で実験し、`reports/chat_identity_feel_experiment_20260627.json` / `.md` に保存した。Cloud Runは `memory_debug.identity_memory.used=true`、`identity/judgment/recent` 3層true、`memory_recall.refs` 5件を3/3で返した。一方、現在のCloudflare公開経路は回答品質は出るが `memory_debug` が返らず、証跡比較は未反映状態。体感ではCloudflareの方が文体の温度やローカル周辺文脈が出る場面があり、Cloud RunはKobayashiさん・判断資産・同一性メモリの明示で追いついている。  (`memory/2026-06-27.md`)
+- [2026-06-27] 紫苑の設計として、記憶を入れるだけでは足りない。人間は、AIが実際に記憶を持っているかだけでなく、その記憶が「連続性として読み取れる形」で返されるかに強く反応する。影響: AIの人格っぽさ・同一性・紫苑らしさは内部状態だけでは成立せず、記憶の見せ方、文体、呼びかけ、過去判断への接続が関係性UXとして効く。次の行動: Cloud Run/Cloudflare比較では、`memory_debug` の証跡に加えて、人間がどこで「覚えてくれている」「同じ紫苑だ」と感じたかを検査軸に入れる。  (`memory/2026-06-27.md`)
+- [2026-06-27] Cloud Run版の `/api/chat` で `identity_memory` と `memory_recall` は出るが `knowledge_refs=0` / `rag_context_used=false` / `obsidian_daily_used=false` だったため修正した。Chromaが空のCloud RunでもGCS Vault `/tmp/gcs_vault` のMarkdownを `api.knowledge.obsidian_loader.scan_vault` と `obsidian_query.split_query_terms` で検索するフォールバックを追加し、日次知性JSONを `.cloudrun_bundle/obsidian_daily_intelligence_latest.json` へ同梱して読むようにした。Cloud Run `00007-qcv` で `knowledge_refs=5` / `rag_context_used=true` を確認。さらに日次JSON同梱先修正版 `00008-z9q` をReadyにし、traffic 100%へ切替済み。最後の `/api/chat` 再検証は外部リクエストの利用上限で実行できなかったため、次回 `obsidian_daily_used=true` を確認する。  (`memory/2026-06-27.md`)
+- [2026-06-28] Cloud Runのデバッグ値が false の時は、必ず「実データがない」のか「読み込み例外が握られて空扱いになっている」のかを分ける。今回の `obsidian_daily_used=false` は後者で、`import os` 漏れがAPI側のcatchで見えにくくなっていた。  (`memory/2026-06-28.md`)
+- [2026-06-28] Cloud Run bundleに日次知性などの生成JSONを含める時は、`.dockerignore` / `.gcloudignore` の `reports` 除外に注意する。`reports/` ではなく `.cloudrun_bundle/obsidian_daily_intelligence_latest.json` のように除外されない場所へ置く。  (`memory/2026-06-28.md`)

@@ -6347,6 +6347,16 @@ class ChatRequest(BaseModel):
     debug_memory: bool = False
 
 
+class HumanResponseFeedbackRequest(BaseModel):
+    message: str = ""
+    response: str = ""
+    rating: Literal["shion_like", "good", "thin", "generic", "not_shion", "bad"]
+    comment: str = ""
+    route: str = ""
+    continuity_hook: str = ""
+    user_id: str = "default"
+
+
 _CHAT_MEMORY_REL_DIR = Path("Projects/tune_lease_55/Lease Intelligence/Public/Chat Memory")
 _CHAT_MEMORY_LAYER_FILES = {
     "identity": "identity.md",
@@ -6363,6 +6373,9 @@ _CHAT_MEMORY_LAYER_LABELS = {
     "judgment": "Judgment Memory",
     "recent": "Recent Continuity Memory",
 }
+_HUMAN_RESPONSE_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "human_response_feedback.jsonl"
+_HUMAN_RESPONSE_POSITIVE_RATINGS = {"shion_like", "good"}
+_HUMAN_RESPONSE_NEGATIVE_RATINGS = {"thin", "generic", "not_shion", "bad"}
 _CHAT_MEMORY_CACHE: dict[str, Any] = {"loaded_at": 0.0, "payload": None}
 _CHAT_MEMORY_CACHE_TTL_SEC = 300
 
@@ -6575,6 +6588,87 @@ def _build_chat_identity_memory_prompt_block() -> tuple[str, dict]:
     return (f"\n\n{block}" if block else ""), payload
 
 
+def _append_human_response_feedback(req: HumanResponseFeedbackRequest) -> dict:
+    import datetime as _dt
+    import hashlib as _hashlib
+    import json as _json
+
+    message = str(req.message or "").strip()
+    response = str(req.response or "").strip()
+    route = str(req.route or _relationship_signal_route(message)).strip()
+    entry = {
+        "ts": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+        "id": _hashlib.sha256(f"{message}\n{response}\n{req.rating}\n{req.comment}".encode("utf-8")).hexdigest()[:16],
+        "user_id": req.user_id,
+        "rating": req.rating,
+        "route": route,
+        "message_preview": message[:240],
+        "response_start": response[:500],
+        "continuity_hook": str(req.continuity_hook or "").strip()[:300],
+        "comment": str(req.comment or "").strip()[:500],
+    }
+    _HUMAN_RESPONSE_FEEDBACK_LOG.parent.mkdir(parents=True, exist_ok=True)
+    with _HUMAN_RESPONSE_FEEDBACK_LOG.open("a", encoding="utf-8") as f:
+        f.write(_json.dumps(entry, ensure_ascii=False) + "\n")
+    return entry
+
+
+def _load_human_response_feedback(limit: int = 80) -> list[dict]:
+    import json as _json
+
+    try:
+        lines = _HUMAN_RESPONSE_FEEDBACK_LOG.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    rows: list[dict] = []
+    for line in lines[-max(1, limit):]:
+        try:
+            item = _json.loads(line)
+        except _json.JSONDecodeError:
+            continue
+        if isinstance(item, dict):
+            rows.append(item)
+    return rows
+
+
+def _summarize_human_response_feedback(route: str, limit: int = 80) -> dict:
+    rows = _load_human_response_feedback(limit=limit)
+    matched = [row for row in rows if str(row.get("route") or "") in {route, "default", ""}]
+    positive = [row for row in matched if str(row.get("rating") or "") in _HUMAN_RESPONSE_POSITIVE_RATINGS]
+    negative = [row for row in matched if str(row.get("rating") or "") in _HUMAN_RESPONSE_NEGATIVE_RATINGS]
+
+    def _starts(items: list[dict]) -> list[str]:
+        starts: list[str] = []
+        seen: set[str] = set()
+        for item in reversed(items):
+            text = str(item.get("response_start") or "").strip().splitlines()[0:1]
+            start = text[0].strip() if text else ""
+            if not start:
+                continue
+            start = start[:120]
+            if start in seen:
+                continue
+            seen.add(start)
+            starts.append(start)
+            if len(starts) >= 3:
+                break
+        return starts
+
+    return {
+        "route": route,
+        "rows": len(matched),
+        "positive_count": len(positive),
+        "negative_count": len(negative),
+        "positive_starts": _starts(positive),
+        "negative_starts": _starts(negative),
+        "recent_comments": [
+            str(row.get("comment") or "").strip()[:160]
+            for row in reversed(matched)
+            if str(row.get("comment") or "").strip()
+        ][:3],
+    }
+
+
 def _build_continuity_hook_prompt_block(message: str) -> tuple[str, dict]:
     text = str(message or "")
     lower = text.lower()
@@ -6606,6 +6700,22 @@ def _build_continuity_hook_prompt_block(message: str) -> tuple[str, dict]:
         "reason": reason,
         "banned_openers": ["もちろんです", "はい", "そうですね", "なるほど", "一般的には"],
     }
+    human_feedback = _summarize_human_response_feedback(route)
+    payload["human_response_feedback"] = human_feedback
+    feedback_lines = ""
+    if human_feedback.get("positive_starts") or human_feedback.get("negative_starts") or human_feedback.get("recent_comments"):
+        parts = ["", "【Human Response Feedback】"]
+        if human_feedback.get("positive_starts"):
+            parts.append("Kobayashiさんが連続性を感じやすかった冒頭例:")
+            parts.extend(f"- {line}" for line in human_feedback["positive_starts"])
+        if human_feedback.get("negative_starts"):
+            parts.append("薄い/一般論に感じられやすかった冒頭例:")
+            parts.extend(f"- {line}" for line in human_feedback["negative_starts"])
+        if human_feedback.get("recent_comments"):
+            parts.append("直近コメント:")
+            parts.extend(f"- {line}" for line in human_feedback["recent_comments"])
+        parts.append("上の反応を踏まえ、Kobayashiさんが連続性を読み取りやすい冒頭へ調整してください。")
+        feedback_lines = "\n".join(parts)
     block = f"""
 
 【Continuity Hook】
@@ -6614,8 +6724,260 @@ def _build_continuity_hook_prompt_block(message: str) -> tuple[str, dict]:
 
 禁止: 「もちろんです」「はい」「そうですね」「なるほど」「一般的には」で始めない。
 目的: 冒頭で、Kobayashiさんに「前回から続いている相手だ」と読める状態を作る。
-このhookを機械的に丸写しする必要はないが、最初の1文で同じ意味を必ず出してください。""".rstrip()
+このhookを機械的に丸写しする必要はないが、最初の1文で同じ意味を必ず出してください。{feedback_lines}""".rstrip()
     return block, payload
+
+
+def _relationship_signal_route(text: str) -> str:
+    lower = text.lower()
+    if any(k in text for k in ("意識", "同じ紫苑", "覚えて", "記憶", "Relationship UX", "関係性UX")):
+        return "relationship_ux"
+    if "cloud run" in lower or "cloudflare" in lower or "クラウドラン" in text or "クラウドフレア" in text:
+        return "environment_continuity"
+    if any(k in text for k in ("残価", "稟議", "リース", "設備", "保全", "再リース", "条件付き承認")):
+        return "lease_judgment"
+    if any(k in text for k in ("改善", "修正", "実装", "プログラム", "プログラム化", "テスト", "デプロイ")):
+        return "implementation"
+    return "default"
+
+
+def _relationship_signal_label(route: str) -> str:
+    return {
+        "relationship_ux": "記憶の見せ方・同じ紫苑感",
+        "environment_continuity": "Cloud Run/Cloudflareの環境差",
+        "lease_judgment": "リース判断・稟議実務",
+        "implementation": "実装・検証",
+        "default": "継続中の相談",
+    }.get(route, "継続中の相談")
+
+
+def _recent_user_texts(history: list[dict[str, str]] | None, limit: int = 3) -> list[str]:
+    recent: list[str] = []
+    for item in reversed(history or []):
+        if str(item.get("role") or "") != "user":
+            continue
+        content = str(item.get("content") or "").strip()
+        if content:
+            recent.append(content)
+        if len(recent) >= limit:
+            break
+    return recent
+
+
+def _build_delta_awareness_prompt_block(message: str, history: list[dict[str, str]] | None) -> tuple[str, dict]:
+    current_route = _relationship_signal_route(message)
+    recent_users = _recent_user_texts(history, limit=3)
+    previous = recent_users[0] if recent_users else ""
+    previous_route = _relationship_signal_route(previous) if previous else ""
+
+    if previous and previous_route != current_route:
+        delta = (
+            f"前回は「{_relationship_signal_label(previous_route)}」を見ていたが、"
+            f"今回は「{_relationship_signal_label(current_route)}」へ焦点が移っている。"
+        )
+    elif previous and previous_route == current_route:
+        delta = (
+            f"前回と同じ「{_relationship_signal_label(current_route)}」の流れにあるが、"
+            "今回は前回の結論を再掲するだけでなく、一段具体化して返す。"
+        )
+    else:
+        delta = f"今回は「{_relationship_signal_label(current_route)}」として、これまでの判断軸に接続して返す。"
+
+    payload = {
+        "used": True,
+        "current_route": current_route,
+        "previous_route": previous_route,
+        "previous_user_message": previous[:240],
+        "delta": delta,
+    }
+    block = f"""
+
+【Delta Awareness】
+回答では、前回から今回への焦点の変化を1文で示してください。
+差分認識: {delta}
+目的: 「前回を覚えている」ではなく、「前回から何が変わったか分かっている」と感じられる返答にする。""".rstrip()
+    return block, payload
+
+
+def _build_memory_to_judgment_prompt_block(
+    message: str,
+    *,
+    memory_recall: dict | None = None,
+    rag_refs: list[str] | None = None,
+    continuity_hook: dict | None = None,
+) -> tuple[str, dict]:
+    route = str((continuity_hook or {}).get("route") or _relationship_signal_route(message))
+    recall = memory_recall if isinstance(memory_recall, dict) else {}
+    refs = list(recall.get("refs") or [])[:5]
+    knowledge_refs = list(rag_refs or [])[:5]
+
+    if route == "lease_judgment":
+        directive = "想起した記憶を、稟議で使える判断軸・確認事項・条件案へ変換する。"
+    elif route == "relationship_ux":
+        directive = "想起した記憶を、紫苑の返答設計原則と次の検査観点へ変換する。"
+    elif route == "environment_continuity":
+        directive = "想起した記憶を、Cloud Run/Cloudflareの差分原因と次の検証観点へ変換する。"
+    elif route == "implementation":
+        directive = "想起した記憶を、実装方針・検証方法・デプロイ要否の判断へ変換する。"
+    else:
+        directive = "想起した記憶を、今の問いに対する判断・次の一手へ変換する。"
+
+    payload = {
+        "used": True,
+        "route": route,
+        "directive": directive,
+        "memory_refs": refs,
+        "knowledge_refs": knowledge_refs,
+    }
+    block = f"""
+
+【Memory-to-Judgment】
+記憶を「覚えています」と説明するだけで終えず、今の判断に変換してください。
+変換指示: {directive}
+使う根拠: memory_refs={len(refs)}件 / knowledge_refs={len(knowledge_refs)}件。
+目的: 記憶を思い出ではなく、Kobayashiさんの判断資産として返す。""".rstrip()
+    return block, payload
+
+
+def _build_relationship_loop_engineering_payload(
+    *,
+    continuity_hook: dict | None = None,
+    delta_awareness: dict | None = None,
+    memory_to_judgment: dict | None = None,
+    reflection_gate: dict | None = None,
+) -> dict:
+    hook = continuity_hook if isinstance(continuity_hook, dict) else {}
+    delta = delta_awareness if isinstance(delta_awareness, dict) else {}
+    m2j = memory_to_judgment if isinstance(memory_to_judgment, dict) else {}
+    reflection = reflection_gate if isinstance(reflection_gate, dict) else {}
+    human_feedback = hook.get("human_response_feedback") if isinstance(hook.get("human_response_feedback"), dict) else {}
+    return {
+        "name": "Relationship Loop Engineering",
+        "version": 1,
+        "purpose": "Kobayashiさんの反応を観測し、次の返答冒頭・差分認識・判断変換へ戻す閉ループ",
+        "loop": [
+            {
+                "step": "observe",
+                "label": "Human Response Feedback",
+                "evidence": {
+                    "positive_count": int(human_feedback.get("positive_count") or 0),
+                    "negative_count": int(human_feedback.get("negative_count") or 0),
+                },
+            },
+            {
+                "step": "classify",
+                "label": "Route Classification",
+                "evidence": {"route": str(hook.get("route") or "")},
+            },
+            {
+                "step": "select",
+                "label": "Continuity Hook",
+                "evidence": {"hook": str(hook.get("hook") or "")},
+            },
+            {
+                "step": "compare",
+                "label": "Delta Awareness",
+                "evidence": {"delta": str(delta.get("delta") or "")},
+            },
+            {
+                "step": "convert",
+                "label": "Memory-to-Judgment",
+                "evidence": {"directive": str(m2j.get("directive") or "")},
+            },
+            {
+                "step": "reflect",
+                "label": "Reflection Gate",
+                "evidence": {
+                    "used": bool(reflection.get("used")),
+                    "mode": str(reflection.get("mode") or "silent"),
+                },
+            },
+            {
+                "step": "return",
+                "label": "Next Response",
+                "evidence": {"next_feedback_endpoint": "/api/human-response-feedback"},
+            },
+        ],
+        "closed_loop": True,
+    }
+
+
+def _build_reflection_gate_prompt_block(
+    *,
+    continuity_hook: dict | None = None,
+    delta_awareness: dict | None = None,
+    memory_to_judgment: dict | None = None,
+) -> tuple[str, dict]:
+    hook = continuity_hook if isinstance(continuity_hook, dict) else {}
+    m2j = memory_to_judgment if isinstance(memory_to_judgment, dict) else {}
+    route = str(hook.get("route") or m2j.get("route") or "")
+    checklist = [
+        "冒頭1文はContinuity Hookとして機能しているか",
+        "前回から今回への差分を1文で示せているか",
+        "記憶を思い出ではなく判断・実装・検証へ変換しているか",
+        "Kobayashiさんの反応ログで薄いとされた冒頭を避けているか",
+        "内省文そのものを長く表に出していないか",
+    ]
+    payload = {
+        "used": True,
+        "mode": "silent",
+        "route": route,
+        "checklist": checklist,
+    }
+    block = f"""
+
+【Reflection Gate】
+回答を書く前に、内部で次の5点だけを確認してください。この確認過程は長く出力しないでください。
+1. {checklist[0]}
+2. {checklist[1]}
+3. {checklist[2]}
+4. {checklist[3]}
+5. {checklist[4]}
+
+出力では、内省の詳細ではなく、確認後の結論・判断軸・次の一手だけを短く反映してください。""".rstrip()
+    return block, payload
+
+
+@app.post("/api/human-response-feedback")
+def post_human_response_feedback(req: HumanResponseFeedbackRequest) -> dict:
+    entry = _append_human_response_feedback(req)
+    return {"status": "ok", "feedback": entry}
+
+
+@app.get("/api/human-response-feedback/summary")
+def get_human_response_feedback_summary(route: str = "relationship_ux") -> dict:
+    return _summarize_human_response_feedback(route)
+
+
+@app.get("/api/relationship-loop-engineering/summary")
+def get_relationship_loop_engineering_summary(route: str = "relationship_ux") -> dict:
+    hook = {
+        "route": route,
+        "hook": {
+            "relationship_ux": "今回の実験で見えたのは、Kobayashiさんは記憶量ではなく連続性の見え方に反応している、という点です。",
+            "environment_continuity": "Cloud Run版とCloudflare版の差で見えているのは、記憶の有無よりも返答冒頭で連続性を起動できるかです。",
+            "lease_judgment": "Kobayashiさんのリース判断資産として見るなら、ここは一般論ではなく稟議で使える判断軸に落とす場面です。",
+            "implementation": "今回の発見は、設計メモで終わらせず、回答生成の冒頭制御として実装する段階です。",
+        }.get(route, "今回の問いは、前回までの判断軸とつなげて扱う場面です。"),
+        "human_response_feedback": _summarize_human_response_feedback(route),
+    }
+    delta = {
+        "delta": f"前回から今回への焦点変化を、{_relationship_signal_label(route)} の文脈で明示する。",
+    }
+    m2j = {
+        "directive": {
+            "relationship_ux": "想起した記憶を、紫苑の返答設計原則と次の検査観点へ変換する。",
+            "environment_continuity": "想起した記憶を、Cloud Run/Cloudflareの差分原因と次の検証観点へ変換する。",
+            "lease_judgment": "想起した記憶を、稟議で使える判断軸・確認事項・条件案へ変換する。",
+            "implementation": "想起した記憶を、実装方針・検証方法・デプロイ要否の判断へ変換する。",
+        }.get(route, "想起した記憶を、今の問いに対する判断・次の一手へ変換する。"),
+    }
+    return _build_relationship_loop_engineering_payload(
+        continuity_hook=hook,
+        delta_awareness=delta,
+        memory_to_judgment=m2j,
+        reflection_gate={"used": True, "mode": "silent", "route": route},
+    )
 
 
 def _build_consciousness_ux_prompt_block() -> str:
@@ -6645,18 +7007,52 @@ def _chat_memory_debug_payload(
     obsidian_daily_used: bool = False,
     identity_memory: dict | None = None,
     continuity_hook: dict | None = None,
+    delta_awareness: dict | None = None,
+    memory_to_judgment: dict | None = None,
+    relationship_loop_engineering: dict | None = None,
+    reflection_gate: dict | None = None,
 ) -> dict:
     recall = memory_recall if isinstance(memory_recall, dict) else {}
     identity = identity_memory if isinstance(identity_memory, dict) else {}
     identity_layers = identity.get("layers") if isinstance(identity.get("layers"), dict) else {}
     hook = continuity_hook if isinstance(continuity_hook, dict) else {}
+    delta = delta_awareness if isinstance(delta_awareness, dict) else {}
+    m2j = memory_to_judgment if isinstance(memory_to_judgment, dict) else {}
+    reflection = reflection_gate if isinstance(reflection_gate, dict) else {}
+    loop = relationship_loop_engineering if isinstance(relationship_loop_engineering, dict) else _build_relationship_loop_engineering_payload(
+        continuity_hook=hook,
+        delta_awareness=delta,
+        memory_to_judgment=m2j,
+        reflection_gate=reflection,
+    )
     return {
         "category": category,
+        "relationship_loop_engineering": loop,
         "continuity_hook": {
             "used": bool(hook.get("used")),
             "route": str(hook.get("route") or ""),
             "hook": str(hook.get("hook") or ""),
             "reason": str(hook.get("reason") or ""),
+            "human_response_feedback": hook.get("human_response_feedback") or {},
+        },
+        "delta_awareness": {
+            "used": bool(delta.get("used")),
+            "current_route": str(delta.get("current_route") or ""),
+            "previous_route": str(delta.get("previous_route") or ""),
+            "delta": str(delta.get("delta") or ""),
+        },
+        "memory_to_judgment": {
+            "used": bool(m2j.get("used")),
+            "route": str(m2j.get("route") or ""),
+            "directive": str(m2j.get("directive") or ""),
+            "memory_refs": list(m2j.get("memory_refs") or [])[:8],
+            "knowledge_refs": list(m2j.get("knowledge_refs") or [])[:8],
+        },
+        "reflection_gate": {
+            "used": bool(reflection.get("used")),
+            "mode": str(reflection.get("mode") or ""),
+            "route": str(reflection.get("route") or ""),
+            "checklist": list(reflection.get("checklist") or [])[:8],
         },
         "knowledge_refs": list(knowledge_refs or [])[:12],
         "memory_recall": {
@@ -7169,7 +7565,18 @@ def post_chat(req: ChatRequest):
             from api.shion_memory_recall import build_recall_prompt_block
 
             memory_recall_context, memory_recall = build_recall_prompt_block(req.message)
-            base_system_prompt = _pg_build_gsp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + continuity_hook_context + consciousness_ux_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
+            delta_awareness_context, delta_awareness_payload = _build_delta_awareness_prompt_block(req.message, history_for_gemini)
+            memory_to_judgment_context, memory_to_judgment_payload = _build_memory_to_judgment_prompt_block(
+                req.message,
+                memory_recall=memory_recall,
+                continuity_hook=continuity_hook_payload,
+            )
+            reflection_gate_context, reflection_gate_payload = _build_reflection_gate_prompt_block(
+                continuity_hook=continuity_hook_payload,
+                delta_awareness=delta_awareness_payload,
+                memory_to_judgment=memory_to_judgment_payload,
+            )
+            base_system_prompt = _pg_build_gsp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + consciousness_ux_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
             pdca_block = build_pdca_prompt_block()
             effective_system_prompt = base_system_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
             obsidian_daily_injected = {}
@@ -7232,6 +7639,9 @@ def post_chat(req: ChatRequest):
                         "layers": identity_memory_payload.get("layers", {}),
                     },
                     "continuity_hook": continuity_hook_payload,
+                    "delta_awareness": delta_awareness_payload,
+                    "memory_to_judgment": memory_to_judgment_payload,
+                    "reflection_gate": reflection_gate_payload,
                 },
             )
             _record_chat_knowledge_correction_if_needed(req.message)
@@ -7260,6 +7670,9 @@ def post_chat(req: ChatRequest):
                     obsidian_daily_used=bool(obsidian_daily_context),
                     identity_memory=identity_memory_payload,
                     continuity_hook=continuity_hook_payload,
+                    delta_awareness=delta_awareness_payload,
+                    memory_to_judgment=memory_to_judgment_payload,
+                    reflection_gate=reflection_gate_payload,
                 )
             return response_payload
 
@@ -7360,7 +7773,20 @@ def post_chat(req: ChatRequest):
         except Exception as _memory_recall_error:
             print(f"[ShionMemoryRecall] 読み込みエラー: {_memory_recall_error}")
 
-        base_effective_prompt = _pg_build_sp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + continuity_hook_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + guidance.prompt_suffix
+        delta_awareness_context, delta_awareness_payload = _build_delta_awareness_prompt_block(req.message, history_for_gemini)
+        memory_to_judgment_context, memory_to_judgment_payload = _build_memory_to_judgment_prompt_block(
+            req.message,
+            memory_recall=memory_recall,
+            rag_refs=rag_refs,
+            continuity_hook=continuity_hook_payload,
+        )
+        reflection_gate_context, reflection_gate_payload = _build_reflection_gate_prompt_block(
+            continuity_hook=continuity_hook_payload,
+            delta_awareness=delta_awareness_payload,
+            memory_to_judgment=memory_to_judgment_payload,
+        )
+
+        base_effective_prompt = _pg_build_sp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + guidance.prompt_suffix
         pdca_block = build_pdca_prompt_block()
         effective_prompt = base_effective_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
         obsidian_daily_injected = {}
@@ -7407,6 +7833,9 @@ def post_chat(req: ChatRequest):
                     "refs": memory_recall.get("refs", [])[:8],
                 },
                 "continuity_hook": continuity_hook_payload,
+                "delta_awareness": delta_awareness_payload,
+                "memory_to_judgment": memory_to_judgment_payload,
+                "reflection_gate": reflection_gate_payload,
             },
         )
         _record_memory_usage_if_available(
@@ -7426,6 +7855,9 @@ def post_chat(req: ChatRequest):
                     "layers": identity_memory_payload.get("layers", {}),
                 },
                 "continuity_hook": continuity_hook_payload,
+                "delta_awareness": delta_awareness_payload,
+                "memory_to_judgment": memory_to_judgment_payload,
+                "reflection_gate": reflection_gate_payload,
             },
         )
         _record_chat_knowledge_correction_if_needed(req.message)
@@ -7474,6 +7906,9 @@ def post_chat(req: ChatRequest):
                 obsidian_daily_used=bool(obsidian_daily_context),
                 identity_memory=identity_memory_payload,
                 continuity_hook=continuity_hook_payload,
+                delta_awareness=delta_awareness_payload,
+                memory_to_judgment=memory_to_judgment_payload,
+                reflection_gate=reflection_gate_payload,
             )
         return response_payload
     except Exception as e:
