@@ -483,11 +483,12 @@ def build_strategy_cards(params: dict, phrases: list[str], prior: float, posteri
 async def stream_gunshi_gemini(params: dict, api_key: str):
     """AsyncGenerator: SSEチャンクを yield する。
 
+    bayes / phrases / strategy_cards は呼び出し元の event_generator が送信済みのため、
+    このジェネレータは LLM テキストストリームのみを担当する。
+
     送信順序:
-      1. {"type": "bayes", "prior": float, "posterior": float}
-      2. {"type": "phrases", "items": list[str]}
-      3. {"type": "stream", "delta": str}  (複数回)
-      4. {"type": "done"}
+      1. {"type": "stream", "delta": str}  (複数回)
+      2. {"type": "done"}
     """
     score = params.get("score", 0)
     pd_pct = params.get("pd_pct", 0)
@@ -566,18 +567,6 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
             )
         except Exception:
             pass
-
-    yield {
-        "type": "bayes",
-        "prior": round(prior, 4),
-        "posterior": round(posterior, 4),
-        "factors": build_bayes_factors(params, prior, posterior),
-    }
-    yield {"type": "phrases", "items": phrases}
-    yield {
-        "type": "strategy_cards",
-        "cards": build_strategy_cards(params, phrases, prior, posterior),
-    }
 
     if not api_key:
         fallback_text = build_fallback_strategy_text(params, phrases, "GEMINI_API_KEY未設定", dissonance_block=dissonance_block)
