@@ -278,6 +278,13 @@ async def _git_push_db() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # startup: Cloud Run用の選抜Obsidian MarkdownをGCSから取得
+    try:
+        gcs_sync = _sync_gcs_vault_if_enabled()
+        if gcs_sync.get("enabled"):
+            print(f"[GCSVault] startup sync: {gcs_sync}")
+    except Exception as e:
+        print(f"[GCSVault] startup sync failed (non-fatal): {e}")
     # startup: DB スキーマ自動初期化（REV-167 — Cloud SQL 冷起動時のテーブル不在対策）
     try:
         from api.db_connection import ensure_schema
@@ -499,6 +506,28 @@ def _cloud_gcs_vault_status() -> dict:
         "markdown_count": len(md_files),
         "latest_local_mtime": latest_mtime,
     }
+
+
+def _sync_gcs_vault_if_enabled() -> dict:
+    """Download the selected Obsidian Markdown copy for Cloud Run RAG/memory use."""
+    if os.environ.get("USE_GCS_VAULT", "").lower() not in ("1", "true"):
+        return {"enabled": False, "status": "skipped"}
+    try:
+        import sys as _sys
+
+        scripts_dir = str(Path(__file__).resolve().parent.parent / "scripts")
+        if scripts_dir not in _sys.path:
+            _sys.path.insert(0, scripts_dir)
+        from gcs_vault_loader import download_vault  # type: ignore[import-not-found]
+
+        vault_dir = download_vault(dest_dir=Path(os.environ.get("GCS_VAULT_LOCAL_DIR", "/tmp/gcs_vault")))
+        os.environ["OBSIDIAN_VAULT"] = str(vault_dir)
+        os.environ["OBSIDIAN_VAULT_PATH"] = str(vault_dir)
+        md_count = len(list(vault_dir.rglob("*.md"))) if vault_dir.exists() else 0
+        return {"enabled": True, "status": "synced", "local_dir": str(vault_dir), "markdown_count": md_count}
+    except Exception as exc:
+        print(f"[GCSVault] sync failed (non-fatal): {exc}")
+        return {"enabled": True, "status": "error", "error": str(exc)}
 
 
 @app.get("/api/system/cloud-status")
