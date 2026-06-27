@@ -94,3 +94,5 @@ mobile_app/.vector_index/
 mobile_app/.sync_state.json
 scoring_output_bridge.json
 .cloudrun_bundle/
+# Cloud SQL 同期スクリプトの状態ファイル
+scripts/.sync_state_cloudsql.json

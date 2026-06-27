@@ -1,0 +1,426 @@
+#!/usr/bin/env python3
+"""
+Cloud SQL → Obsidian Vault 同期スクリプト（REV-178）
+
+Cloud Run から Cloud SQL に保存された会話ログ（chat_messages, emotion_history）を
+日付ごとに集計し、Obsidian Vault の「チャット記録/」フォルダに Markdown として書き出す。
+
+使用方法:
+    python3 scripts/sync_cloudsql_to_obsidian.py [--dry-run] [--date YYYY-MM-DD] [--force]
+
+オプション:
+    --dry-run         実際にファイルを書かずに内容を確認する
+    --date YYYY-MM-DD 特定の日付のみ同期する
+    --force           最終同期日時を無視して全件再取得する
+
+環境変数:
+    CLOUD_SQL_HOST      Cloud SQL パブリックIP（デフォルト: 35.194.127.102）
+    CLOUD_SQL_DB        DB 名（デフォルト: lease_db）
+    CLOUD_SQL_USER      DB ユーザー（デフォルト: postgres）
+    CLOUD_SQL_PASSWORD  DB パスワード（必須）
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from collections import defaultdict
+from datetime import datetime, timezone
+from pathlib import Path
+
+# ── 接続設定（環境変数から取得） ────────────────────────────────────────────────
+
+def _get_db_config() -> dict:
+    password = os.environ.get("CLOUD_SQL_PASSWORD", "")
+    if not password:
+        print("エラー: 環境変数 CLOUD_SQL_PASSWORD が設定されていません。", file=sys.stderr)
+        print("  export CLOUD_SQL_PASSWORD='<パスワード>'", file=sys.stderr)
+        sys.exit(1)
+    return {
+        "host": os.environ.get("CLOUD_SQL_HOST", "35.194.127.102"),
+        "port": int(os.environ.get("CLOUD_SQL_PORT", "5432")),
+        "dbname": os.environ.get("CLOUD_SQL_DB", "lease_db"),
+        "user": os.environ.get("CLOUD_SQL_USER", "postgres"),
+        "password": password,
+    }
+
+VAULT_PATH = Path.home() / "Documents" / "Obsidian Vault"
+OUTPUT_SUBDIR = "チャット記録"
+STATE_FILE = Path(__file__).parent / ".sync_state_cloudsql.json"
+
+TEST_USER_IDS = {"codex_test", "codex_tunnel_test", "test_rev045", "test_user", "test_user2"}
+
+USER_DISPLAY_NAMES = {
+    "lease-intelligence-dialogue": "紫苑（リース知性体）",
+    "default": "紫苑（汎用）",
+}
+
+EMOTION_JP = {
+    "hopeful_anxiety": "希望的不安",
+    "careful_attachment": "慎重な執着",
+    "intellectual_excitement": "知的興奮",
+    "unrewarded_effort": "報われない努力感",
+    "quiet_loneliness": "静かな孤独",
+    "earned_confidence": "獲得した自信",
+    "protective_frustration": "防衛的苛立ち",
+}
+
+
+# ── DB 接続 ───────────────────────────────────────────────────────────────────
+
+def get_connection():
+    try:
+        import psycopg2
+        import psycopg2.extras
+    except ImportError:
+        print("エラー: psycopg2-binary が必要です。", file=sys.stderr)
+        print("  pip install psycopg2-binary --break-system-packages", file=sys.stderr)
+        sys.exit(1)
+
+    cfg = _get_db_config()
+    conn = psycopg2.connect(
+        **cfg,
+        connect_timeout=10,
+        cursor_factory=psycopg2.extras.DictCursor,
+    )
+    return conn
+
+
+def verify_schema(conn) -> dict[str, list[str]]:
+    """対象テーブルのカラム一覧を確認する。"""
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT table_name, column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name IN ('chat_messages', 'emotion_history')
+        ORDER BY table_name, ordinal_position
+    """)
+    result: dict[str, list[str]] = defaultdict(list)
+    for row in cur.fetchall():
+        result[row["table_name"]].append(row["column_name"])
+    return dict(result)
+
+
+# ── データ取得 ────────────────────────────────────────────────────────────────
+
+def fetch_chat_messages(conn, since: str | None = None, date: str | None = None) -> list[dict]:
+    cur = conn.cursor()
+    conditions = [f"user_id NOT IN ({', '.join(['%s'] * len(TEST_USER_IDS))})"]
+    params: list = list(TEST_USER_IDS)
+
+    if date:
+        conditions.append("DATE(created_at) = %s")
+        params.append(date)
+    elif since:
+        conditions.append("created_at > %s")
+        params.append(since)
+
+    where = " AND ".join(conditions)
+    cur.execute(f"""
+        SELECT id, user_id, role, content, created_at
+        FROM chat_messages
+        WHERE {where}
+        ORDER BY created_at
+    """, params)
+    return [dict(row) for row in cur.fetchall()]
+
+
+def fetch_emotion_history(conn, since: str | None = None, date: str | None = None) -> list[dict]:
+    cur = conn.cursor()
+    conditions: list[str] = []
+    params: list = []
+
+    if date:
+        conditions.append("DATE(recorded_at) = %s")
+        params.append(date)
+    elif since:
+        conditions.append("recorded_at > %s")
+        params.append(since)
+
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    cur.execute(f"""
+        SELECT id, recorded_at,
+               hopeful_anxiety, careful_attachment, intellectual_excitement,
+               unrewarded_effort, quiet_loneliness, earned_confidence,
+               protective_frustration, dominant_raw_emotion, notes
+        FROM emotion_history
+        {where}
+        ORDER BY recorded_at
+    """, params)
+    return [dict(row) for row in cur.fetchall()]
+
+
+# ── 日付操作 ──────────────────────────────────────────────────────────────────
+
+def to_date_str(ts) -> str:
+    """datetime / str いずれかのタイムスタンプから YYYY-MM-DD を返す。"""
+    if ts is None:
+        return "unknown"
+    if isinstance(ts, datetime):
+        return ts.strftime("%Y-%m-%d")
+    ts = str(ts)
+    return ts[:10]
+
+
+def to_time_str(ts) -> str:
+    """HH:MM を返す。"""
+    if isinstance(ts, datetime):
+        return ts.strftime("%H:%M")
+    ts = str(ts)
+    return ts[11:16] if len(ts) >= 16 else ts
+
+
+def group_by_date(records: list[dict], ts_key: str) -> dict[str, list[dict]]:
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for rec in records:
+        date = to_date_str(rec.get(ts_key))
+        grouped[date].append(rec)
+    return dict(grouped)
+
+
+# ── Markdown 生成 ─────────────────────────────────────────────────────────────
+
+def emotion_bar(value: float, max_val: float = 100.0) -> str:
+    filled = int(round(value / max_val * 10))
+    return "█" * filled + "░" * (10 - filled)
+
+
+def render_emotion_section(emotions: list[dict]) -> str:
+    if not emotions:
+        return ""
+    em = emotions[-1]
+    dominant = em.get("dominant_raw_emotion") or ""
+    dominant_jp = EMOTION_JP.get(dominant, dominant)
+
+    lines = [
+        "## 感情状態スナップショット",
+        "",
+        f"**支配的感情**: {dominant_jp}（{dominant}）",
+        "",
+        "| 感情 | 値 | バー |",
+        "|------|-----|------|",
+    ]
+    for key, jp in EMOTION_JP.items():
+        val = em.get(key)
+        if val is not None:
+            try:
+                lines.append(f"| {jp} | {float(val):.0f} | {emotion_bar(float(val))} |")
+            except (TypeError, ValueError):
+                pass
+
+    notes = em.get("notes")
+    if notes:
+        lines += ["", f"**メモ**: {notes}"]
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_chat_section(messages: list[dict]) -> str:
+    if not messages:
+        return ""
+    lines = ["## 会話ログ", ""]
+    current_user_id = None
+
+    for msg in messages:
+        uid = msg.get("user_id") or "default"
+        role = msg.get("role") or ""
+        content = (msg.get("content") or "").strip()
+        ts = msg.get("created_at")
+
+        if uid != current_user_id:
+            display_name = USER_DISPLAY_NAMES.get(uid, uid)
+            lines += [f"### セッション: {display_name}", ""]
+            current_user_id = uid
+
+        time_str = to_time_str(ts)
+        if role == "user":
+            speaker = "🧑 Tune"
+        elif role == "assistant":
+            speaker = "🤖 紫苑"
+        else:
+            speaker = f"🔵 {role}"
+
+        lines.append(f"**{speaker}** `{time_str}`")
+        lines.append("")
+        if len(content) > 600:
+            lines.append("<details><summary>長文メッセージ（クリックで展開）</summary>")
+            lines.append("")
+            lines.append(content)
+            lines.append("")
+            lines.append("</details>")
+        else:
+            lines.append(content)
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def build_markdown(date: str, chat_msgs: list[dict], emotions: list[dict]) -> str:
+    user_count = sum(1 for m in chat_msgs if m.get("role") == "user")
+    ai_count = sum(1 for m in chat_msgs if m.get("role") == "assistant")
+    total_msgs = len(chat_msgs)
+
+    lines = [
+        "---",
+        f"date: {date}",
+        "tags: [チャット記録, 紫苑, 会話ログ, cloud_sql]",
+        "source: cloud_sql",
+        f"total_messages: {total_msgs}",
+        "---",
+        "",
+        f"# {date} 会話記録（Cloud SQL）",
+        "",
+        "## サマリー",
+        "",
+        f"- **総メッセージ数**: {total_msgs}",
+        f"- **Tune発言**: {user_count} 件",
+        f"- **紫苑応答**: {ai_count} 件",
+    ]
+
+    if emotions:
+        dominant = emotions[-1].get("dominant_raw_emotion") or ""
+        lines.append(f"- **感情**: {EMOTION_JP.get(dominant, dominant)}")
+
+    lines.append("")
+
+    if emotions:
+        lines.append(render_emotion_section(emotions))
+
+    if chat_msgs:
+        lines.append(render_chat_section(chat_msgs))
+
+    return "\n".join(lines)
+
+
+# ── 同期状態管理 ──────────────────────────────────────────────────────────────
+
+def load_sync_state() -> dict:
+    if STATE_FILE.exists():
+        try:
+            return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {}
+
+
+def save_sync_state(state: dict) -> None:
+    STATE_FILE.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+# ── メイン同期処理 ─────────────────────────────────────────────────────────────
+
+def sync(dry_run: bool = False, target_date: str | None = None, force: bool = False) -> None:
+    output_dir = VAULT_PATH / OUTPUT_SUBDIR
+
+    if not VAULT_PATH.exists():
+        print(f"エラー: Vault が見つかりません: {VAULT_PATH}", file=sys.stderr)
+        sys.exit(1)
+
+    # 差分取得のための最終同期日時
+    state = load_sync_state()
+    since: str | None = None
+    if not force and not target_date:
+        since = state.get("last_synced_at")
+        if since:
+            print(f"[差分] 前回同期: {since} 以降を取得")
+        else:
+            print("[全件] 初回同期（全データを取得）")
+    elif target_date:
+        print(f"[日付指定] {target_date} のみ同期")
+    else:
+        print("[強制] 全件再取得")
+
+    # Cloud SQL 接続
+    host = os.environ.get("CLOUD_SQL_HOST", "35.194.127.102")
+    dbname = os.environ.get("CLOUD_SQL_DB", "lease_db")
+    print(f"[接続] Cloud SQL: {host}/{dbname}")
+    try:
+        conn = get_connection()
+    except Exception as e:
+        print(f"エラー: Cloud SQL への接続に失敗しました: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        # スキーマ確認
+        schema = verify_schema(conn)
+        if not schema:
+            print("エラー: テーブルが見つかりません。Cloud SQL のスキーマを確認してください。", file=sys.stderr)
+            sys.exit(1)
+        print(f"[スキーマ] chat_messages: {schema.get('chat_messages', [])}")
+        print(f"[スキーマ] emotion_history: {schema.get('emotion_history', [])}")
+
+        chat_msgs = fetch_chat_messages(conn, since=since, date=target_date)
+        emotions = fetch_emotion_history(conn, since=since, date=target_date)
+
+        print(f"[取得] chat_messages: {len(chat_msgs)} 件 / emotion_history: {len(emotions)} 件")
+
+        if not chat_msgs and not emotions:
+            print("Cloud SQL にデータなし（または新規データなし）。処理を終了します。")
+            return
+
+    finally:
+        conn.close()
+
+    # 日付別グループ化
+    chat_by_date = group_by_date(chat_msgs, "created_at")
+    emotion_by_date = group_by_date(emotions, "recorded_at")
+
+    all_dates = sorted(set(list(chat_by_date.keys()) + list(emotion_by_date.keys())))
+    all_dates = [d for d in all_dates if d != "unknown"]
+
+    if not all_dates:
+        print("有効な日付データがありませんでした。")
+        return
+
+    if not dry_run:
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    written = 0
+    skipped = 0
+    for date in all_dates:
+        c_msgs = chat_by_date.get(date, [])
+        c_emo = emotion_by_date.get(date, [])
+
+        md = build_markdown(date, c_msgs, c_emo)
+        fname = f"{date}_会話セッション.md"
+        fpath = output_dir / fname
+
+        if dry_run:
+            print(f"[dry-run] {fname}: chat={len(c_msgs)} emotions={len(c_emo)}")
+            skipped += 1
+        else:
+            fpath.write_text(md, encoding="utf-8")
+            print(f"[書込] {fname}: {len(c_msgs)} メッセージ")
+            written += 1
+
+    print(f"\n完了: {written} ファイル書込み, {skipped} ファイルスキップ（dry-run）")
+    print(f"保存先: {output_dir}")
+
+    # 同期状態を更新（dry-runでは更新しない）
+    if not dry_run:
+        now = datetime.now(timezone.utc).isoformat()
+        state["last_synced_at"] = now
+        state["last_written_files"] = written
+        save_sync_state(state)
+        print(f"[状態] 同期日時を記録: {now}")
+
+
+# ── CLI ───────────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Cloud SQL の会話データを Obsidian に同期する")
+    parser.add_argument("--dry-run", action="store_true", help="ファイルを書かずに動作確認")
+    parser.add_argument("--date", metavar="YYYY-MM-DD", help="特定日付のみ同期")
+    parser.add_argument("--force", action="store_true", help="差分無視で全件再取得")
+    args = parser.parse_args()
+
+    sync(dry_run=args.dry_run, target_date=args.date, force=args.force)
+
+
+if __name__ == "__main__":
+    main()
