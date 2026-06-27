@@ -241,7 +241,7 @@ def _record_sync_log(success: bool, error: str = "") -> None:
 
 async def _git_push_db() -> None:
     """demo.db + mind.json を data-git にコピーして git push する（BackgroundTask 用）。"""
-    if not os.path.isdir(_DATA_GIT_DIR):
+    if not os.path.isdir(os.path.join(_DATA_GIT_DIR, ".git")):
         return
     db_dst = os.path.join(_DATA_GIT_DIR, "data", "demo.db")
     mind_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "mind.json")
@@ -383,7 +383,7 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
     # shutdown: 最終 git push（コンテナ停止前にデータを永続化）
-    if os.path.isdir(_DATA_GIT_DIR):
+    if os.path.isdir(os.path.join(_DATA_GIT_DIR, ".git")):
         try:
             db_dst = os.path.join(_DATA_GIT_DIR, "data", "demo.db")
             mind_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "mind.json")
