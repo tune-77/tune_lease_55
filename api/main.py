@@ -6315,6 +6315,34 @@ class ChatRequest(BaseModel):
     intent: Optional[str] = None
     prefecture: str = ""
     industry: str = ""
+    debug_memory: bool = False
+
+
+def _chat_memory_debug_payload(
+    *,
+    category: str,
+    knowledge_refs: list[str] | None = None,
+    memory_recall: dict | None = None,
+    pdca_block: str = "",
+    judgment_learning_used: bool = False,
+    rag_context: str = "",
+    db_context: str = "",
+    obsidian_daily_used: bool = False,
+) -> dict:
+    recall = memory_recall if isinstance(memory_recall, dict) else {}
+    return {
+        "category": category,
+        "knowledge_refs": list(knowledge_refs or [])[:12],
+        "memory_recall": {
+            "route": recall.get("route", ""),
+            "refs": list(recall.get("refs") or [])[:12],
+        },
+        "pdca_applied": bool(str(pdca_block or "").strip()),
+        "judgment_learning_used": bool(judgment_learning_used),
+        "rag_context_used": bool(str(rag_context or "").strip()),
+        "db_context_used": bool(str(db_context or "").strip()),
+        "obsidian_daily_used": bool(obsidian_daily_used),
+    }
 
 
 class LeaseIntelligenceDialogueRequest(BaseModel):
@@ -6864,7 +6892,7 @@ def post_chat(req: ChatRequest):
             )
             _record_chat_knowledge_correction_if_needed(req.message)
             total = get_message_count(req.user_id)
-            return {
+            response_payload = {
                 "reply": reply,
                 "total_messages": total,
                 "lease_news_focus": news_focus,
@@ -6876,6 +6904,18 @@ def post_chat(req: ChatRequest):
                     "effect": obsidian_daily_effect,
                 },
             }
+            if req.debug_memory:
+                response_payload["memory_debug"] = _chat_memory_debug_payload(
+                    category="general",
+                    knowledge_refs=[],
+                    memory_recall=memory_recall,
+                    pdca_block=pdca_block,
+                    judgment_learning_used=False,
+                    rag_context="",
+                    db_context="",
+                    obsidian_daily_used=bool(obsidian_daily_context),
+                )
+            return response_payload
 
         # RAG: 共通ストアから関連ナレッジを取得。ローカル埋め込みモデルが
         # 未キャッシュでもキーワード検索へフォールバックする。
@@ -7043,7 +7083,7 @@ def post_chat(req: ChatRequest):
                 daemon=True,
             ).start()
 
-        return {
+        response_payload = {
             "reply": reply,
             "total_messages": total,
             "lease_news_focus": news_focus,
@@ -7055,6 +7095,18 @@ def post_chat(req: ChatRequest):
                 "effect": obsidian_daily_effect,
             },
         }
+        if req.debug_memory:
+            response_payload["memory_debug"] = _chat_memory_debug_payload(
+                category="rag",
+                knowledge_refs=rag_refs,
+                memory_recall=memory_recall,
+                pdca_block=pdca_block,
+                judgment_learning_used=bool(judgment_learning_context),
+                rag_context=rag_context,
+                db_context=db_context,
+                obsidian_daily_used=bool(obsidian_daily_context),
+            )
+        return response_payload
     except Exception as e:
         import traceback
         traceback.print_exc()

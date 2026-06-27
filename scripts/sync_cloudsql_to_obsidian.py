@@ -3,7 +3,7 @@
 Cloud SQL → Obsidian Vault 同期スクリプト（REV-178）
 
 Cloud Run から Cloud SQL に保存された会話ログ（chat_messages, emotion_history）を
-日付ごとに集計し、Obsidian Vault の「チャット記録/」フォルダに Markdown として書き出す。
+日付ごとに要約し、Obsidian Vault に Markdown として書き出す。
 
 使用方法:
     python3 scripts/sync_cloudsql_to_obsidian.py [--dry-run] [--date YYYY-MM-DD] [--force]
@@ -14,8 +14,10 @@ Cloud Run から Cloud SQL に保存された会話ログ（chat_messages, emoti
     --force           最終同期日時を無視して全件再取得する
 
 環境変数:
+    DATABASE_URL        PostgreSQL 接続URL。未指定なら DATABASE_URL_SECRET_NAME を読む
+    DATABASE_URL_SECRET_NAME Secret Manager の secret 名（デフォルト未指定）
     CLOUD_SQL_HOST      Cloud SQL パブリックIP（デフォルト: 35.194.127.102）
-    CLOUD_SQL_DB        DB 名（デフォルト: lease_db）
+    CLOUD_SQL_DB        DB 名（デフォルト: lease-db-demo）
     CLOUD_SQL_USER      DB ユーザー（デフォルト: postgres）
     CLOUD_SQL_PASSWORD  DB パスワード（必須）
 """
@@ -25,14 +27,19 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import subprocess
 import sys
-from collections import defaultdict
-from datetime import datetime, timezone
+from collections import Counter, defaultdict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # ── 接続設定（環境変数から取得） ────────────────────────────────────────────────
 
 def _get_db_config() -> dict:
+    database_url = _database_url()
+    if database_url:
+        return {"dsn": database_url}
     password = os.environ.get("CLOUD_SQL_PASSWORD", "")
     if not password:
         print("エラー: 環境変数 CLOUD_SQL_PASSWORD が設定されていません。", file=sys.stderr)
@@ -41,13 +48,49 @@ def _get_db_config() -> dict:
     return {
         "host": os.environ.get("CLOUD_SQL_HOST", "35.194.127.102"),
         "port": int(os.environ.get("CLOUD_SQL_PORT", "5432")),
-        "dbname": os.environ.get("CLOUD_SQL_DB", "lease_db"),
+        "dbname": os.environ.get("CLOUD_SQL_DB", "lease-db-demo"),
         "user": os.environ.get("CLOUD_SQL_USER", "postgres"),
         "password": password,
     }
 
-VAULT_PATH = Path.home() / "Documents" / "Obsidian Vault"
-OUTPUT_SUBDIR = "チャット記録"
+def _database_url_from_secret() -> str:
+    secret_name = os.environ.get("DATABASE_URL_SECRET_NAME", "").strip()
+    if not secret_name:
+        return ""
+    try:
+        result = subprocess.run(
+            ["gcloud", "secrets", "versions", "access", "latest", f"--secret={secret_name}"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except Exception as exc:
+        print(f"警告: Secret Manager から DATABASE_URL を読めませんでした: {type(exc).__name__}", file=sys.stderr)
+        return ""
+    return result.stdout.strip()
+
+
+def _database_url() -> str:
+    current = os.environ.get("DATABASE_URL", "").strip()
+    if current:
+        return current
+    loaded = _database_url_from_secret()
+    if loaded:
+        os.environ["DATABASE_URL"] = loaded
+    return loaded
+
+
+DEFAULT_VAULT = (
+    Path.home()
+    / "Library"
+    / "Mobile Documents"
+    / "iCloud~md~obsidian"
+    / "Documents"
+    / "Obsidian Vault"
+)
+VAULT_PATH = Path(os.environ.get("OBSIDIAN_VAULT", os.environ.get("OBSIDIAN_VAULT_PATH", str(DEFAULT_VAULT)))).expanduser()
+OUTPUT_SUBDIR = "Projects/tune_lease_55/Cloud SQL Summaries"
 STATE_FILE = Path(__file__).parent / ".sync_state_cloudsql.json"
 
 TEST_USER_IDS = {"codex_test", "codex_tunnel_test", "test_rev045", "test_user", "test_user2"}
@@ -80,11 +123,18 @@ def get_connection():
         sys.exit(1)
 
     cfg = _get_db_config()
-    conn = psycopg2.connect(
-        **cfg,
-        connect_timeout=10,
-        cursor_factory=psycopg2.extras.DictCursor,
-    )
+    if "dsn" in cfg:
+        conn = psycopg2.connect(
+            cfg["dsn"],
+            connect_timeout=10,
+            cursor_factory=psycopg2.extras.DictCursor,
+        )
+    else:
+        conn = psycopg2.connect(
+            **cfg,
+            connect_timeout=10,
+            cursor_factory=psycopg2.extras.DictCursor,
+        )
     return conn
 
 
@@ -218,44 +268,34 @@ def render_emotion_section(emotions: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _redact_content(content: str, limit: int = 160) -> str:
+    text = re.sub(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", "[email]", content or "")
+    text = re.sub(r"\b0\d{1,4}[-\s]?\d{1,4}[-\s]?\d{3,4}\b", "[phone]", text)
+    text = re.sub(r"\b\d{6,}\b", "[number]", text)
+    text = " ".join(text.replace("\n", " ").split())
+    if len(text) > limit:
+        return text[: limit - 1] + "..."
+    return text
+
+
 def render_chat_section(messages: list[dict]) -> str:
     if not messages:
         return ""
-    lines = ["## 会話ログ", ""]
-    current_user_id = None
+    lines = ["## 会話サンプル（短い抜粋のみ）", ""]
 
-    for msg in messages:
+    for msg in messages[:12]:
         uid = msg.get("user_id") or "default"
         role = msg.get("role") or ""
         content = (msg.get("content") or "").strip()
         ts = msg.get("created_at")
 
-        if uid != current_user_id:
-            display_name = USER_DISPLAY_NAMES.get(uid, uid)
-            lines += [f"### セッション: {display_name}", ""]
-            current_user_id = uid
-
         time_str = to_time_str(ts)
-        if role == "user":
-            speaker = "🧑 Tune"
-        elif role == "assistant":
-            speaker = "🤖 紫苑"
-        else:
-            speaker = f"🔵 {role}"
+        display_name = USER_DISPLAY_NAMES.get(uid, "demo_user" if uid else "unknown")
+        lines.append(f"- `{time_str}` {display_name} / {role}: {_redact_content(content)}")
 
-        lines.append(f"**{speaker}** `{time_str}`")
-        lines.append("")
-        if len(content) > 600:
-            lines.append("<details><summary>長文メッセージ（クリックで展開）</summary>")
-            lines.append("")
-            lines.append(content)
-            lines.append("")
-            lines.append("</details>")
-        else:
-            lines.append(content)
-        lines.append("")
-        lines.append("---")
-        lines.append("")
+    if len(messages) > 12:
+        lines.append(f"- ほか {len(messages) - 12} 件")
+    lines.append("")
 
     return "\n".join(lines)
 
@@ -268,12 +308,13 @@ def build_markdown(date: str, chat_msgs: list[dict], emotions: list[dict]) -> st
     lines = [
         "---",
         f"date: {date}",
-        "tags: [チャット記録, 紫苑, 会話ログ, cloud_sql]",
+        "tags: [紫苑, cloud_sql, chat_summary]",
         "source: cloud_sql",
+        "summary_only: true",
         f"total_messages: {total_msgs}",
         "---",
         "",
-        f"# {date} 会話記録（Cloud SQL）",
+        f"# {date} Cloud SQL 会話要約",
         "",
         "## サマリー",
         "",
@@ -281,6 +322,11 @@ def build_markdown(date: str, chat_msgs: list[dict], emotions: list[dict]) -> st
         f"- **Tune発言**: {user_count} 件",
         f"- **紫苑応答**: {ai_count} 件",
     ]
+    if chat_msgs:
+        role_counts = Counter(str(m.get("role") or "unknown") for m in chat_msgs)
+        session_counts = Counter(str(m.get("user_id") or "unknown") for m in chat_msgs)
+        lines.append(f"- **役割別**: {', '.join(f'{k} {v}件' for k, v in role_counts.most_common())}")
+        lines.append(f"- **セッション数**: {len(session_counts)}")
 
     if emotions:
         dominant = emotions[-1].get("dominant_raw_emotion") or ""
@@ -293,6 +339,15 @@ def build_markdown(date: str, chat_msgs: list[dict], emotions: list[dict]) -> st
 
     if chat_msgs:
         lines.append(render_chat_section(chat_msgs))
+
+    lines += [
+        "## 運用メモ",
+        "",
+        "- このノートは Cloud Run / Cloud SQL の会話をローカルObsidianへ戻すための要約です。",
+        "- 生チャット全文、顧客名、連絡先、Private Reflection は保存しません。",
+        "- GCS Vault 同期ではこのフォルダを除外し、Cloud Runへ再配布しません。",
+        "",
+    ]
 
     return "\n".join(lines)
 
@@ -329,7 +384,9 @@ def sync(dry_run: bool = False, target_date: str | None = None, force: bool = Fa
         if since:
             print(f"[差分] 前回同期: {since} 以降を取得")
         else:
-            print("[全件] 初回同期（全データを取得）")
+            since_dt = datetime.now(timezone.utc) - timedelta(days=2)
+            since = since_dt.isoformat()
+            print(f"[初回] 直近2日だけ取得: {since} 以降")
     elif target_date:
         print(f"[日付指定] {target_date} のみ同期")
     else:
@@ -337,8 +394,11 @@ def sync(dry_run: bool = False, target_date: str | None = None, force: bool = Fa
 
     # Cloud SQL 接続
     host = os.environ.get("CLOUD_SQL_HOST", "35.194.127.102")
-    dbname = os.environ.get("CLOUD_SQL_DB", "lease_db")
-    print(f"[接続] Cloud SQL: {host}/{dbname}")
+    dbname = os.environ.get("CLOUD_SQL_DB", "lease-db-demo")
+    if _database_url():
+        print("[接続] Cloud SQL: DATABASE_URL")
+    else:
+        print(f"[接続] Cloud SQL: {host}/{dbname}")
     try:
         conn = get_connection()
     except Exception as e:
@@ -387,7 +447,7 @@ def sync(dry_run: bool = False, target_date: str | None = None, force: bool = Fa
         c_emo = emotion_by_date.get(date, [])
 
         md = build_markdown(date, c_msgs, c_emo)
-        fname = f"{date}_会話セッション.md"
+        fname = f"{date}_cloudsql_summary.md"
         fpath = output_dir / fname
 
         if dry_run:
@@ -398,7 +458,8 @@ def sync(dry_run: bool = False, target_date: str | None = None, force: bool = Fa
             print(f"[書込] {fname}: {len(c_msgs)} メッセージ")
             written += 1
 
-    print(f"\n完了: {written} ファイル書込み, {skipped} ファイルスキップ（dry-run）")
+    skipped_label = "dry-run スキップ" if dry_run else "スキップ"
+    print(f"\n完了: {written} ファイル書込み, {skipped} ファイル{skipped_label}")
     print(f"保存先: {output_dir}")
 
     # 同期状態を更新（dry-runでは更新しない）

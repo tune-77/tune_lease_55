@@ -21,7 +21,41 @@ log_step() {
 
 echo ""
 echo "[入力・同期] Cloud Run入力イベントを GCS から取り込み中..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/sync_cloudrun_inputs_from_gcs.py" || true
+"${PYTHON}" "${PROJECT_ROOT}/scripts/sync_cloudrun_inputs_from_gcs.py"
+SYNC_GCS_EXIT=$?
+log_step "sync_cloudrun_inputs_from_gcs" ${SYNC_GCS_EXIT}
+if [ ${SYNC_GCS_EXIT} -ne 0 ]; then
+    echo "警告: Cloud Run入力イベントのGCS取り込みに失敗しました（終了コード ${SYNC_GCS_EXIT}）"
+fi
+
+echo ""
+echo "[入力・同期] Cloud Run入力イベントを Obsidian 要約へ反映中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/sync_cloudrun_inputs_to_obsidian.py"
+SYNC_INPUT_OBSIDIAN_EXIT=$?
+log_step "sync_cloudrun_inputs_to_obsidian" ${SYNC_INPUT_OBSIDIAN_EXIT}
+if [ ${SYNC_INPUT_OBSIDIAN_EXIT} -ne 0 ]; then
+    echo "警告: Cloud Run入力イベントのObsidian反映に失敗しました（終了コード ${SYNC_INPUT_OBSIDIAN_EXIT}）"
+fi
+
+echo ""
+echo "[入力・同期] Cloud SQL 会話ログを Obsidian 要約へ反映中..."
+DATABASE_URL_SECRET_NAME="${DATABASE_URL_SECRET_NAME:-DATABASE_URL}" \
+    "${PYTHON}" "${PROJECT_ROOT}/scripts/sync_cloudsql_to_obsidian.py"
+SYNC_CLOUDSQL_OBSIDIAN_EXIT=$?
+log_step "sync_cloudsql_to_obsidian" ${SYNC_CLOUDSQL_OBSIDIAN_EXIT}
+if [ ${SYNC_CLOUDSQL_OBSIDIAN_EXIT} -ne 0 ]; then
+    echo "警告: Cloud SQL会話ログのObsidian反映に失敗しました（終了コード ${SYNC_CLOUDSQL_OBSIDIAN_EXIT}）"
+fi
+
+echo ""
+echo "[入力・同期] Cloud Runチャット用 Public Memory Pack を生成中..."
+DATABASE_URL_SECRET_NAME="${DATABASE_URL_SECRET_NAME:-DATABASE_URL}" \
+    "${PYTHON}" "${PROJECT_ROOT}/scripts/build_cloud_chat_memory_pack.py"
+MEMORY_PACK_EXIT=$?
+log_step "build_cloud_chat_memory_pack" ${MEMORY_PACK_EXIT}
+if [ ${MEMORY_PACK_EXIT} -ne 0 ]; then
+    echo "警告: Public Memory Pack 生成に失敗しました（終了コード ${MEMORY_PACK_EXIT}）"
+fi
 
 echo ""
 echo "[入力・同期] 実装済み改善を Obsidian インデックスに自動同期中..."

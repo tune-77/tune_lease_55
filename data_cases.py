@@ -37,7 +37,7 @@ DEPARTMENT_STATS_CACHE_FILE = os.path.join(_DATA_DIR, "department_stats_cache.js
 import hashlib
 import base64
 import sqlite3
-from contextlib import closing
+from contextlib import closing, contextmanager
 
 
 def _open_db(path: str = DB_PATH):
@@ -47,6 +47,29 @@ def _open_db(path: str = DB_PATH):
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA synchronous=NORMAL")
     return conn
+
+
+def _cloud_db_enabled() -> bool:
+    """Cloud Run/Cloud SQL mode when DATABASE_URL is configured."""
+    return bool(os.environ.get("DATABASE_URL", "").strip())
+
+
+def _db_placeholder() -> str:
+    return "%s" if _cloud_db_enabled() else "?"
+
+
+@contextmanager
+def _case_db_connection():
+    """Open the case DB against Cloud SQL when configured, otherwise SQLite."""
+    if _cloud_db_enabled():
+        from api.db_connection import ensure_schema, get_connection
+
+        ensure_schema()
+        with get_connection() as conn:
+            yield conn
+    else:
+        with closing(_open_db()) as conn:
+            yield conn
 
 
 def hash_company_no(co_no: str) -> str:
@@ -157,26 +180,26 @@ def load_all_cases():
     統計用の screening_records は集計バッチ（aggregate_stats_from_past_cases.py）で別途管理。
     """
     import sqlite3
-    from contextlib import closing
 
     cases = []
-    if os.path.exists(DB_PATH):
-        try:
-            with closing(_open_db()) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT data FROM past_cases ORDER BY timestamp ASC")
-                for row in cursor.fetchall():
-                    try:
-                        d = json.loads(row[0])
-                        if d.get("id"):
-                            # ── 「検収」または「検収完了」は分析上「成約」として集計する ──
-                            if d.get("final_status") in ("検収", "検収完了"):
-                                d["final_status"] = "成約"
-                            cases.append(d)
-                    except json.JSONDecodeError:
-                        continue
-        except Exception as e:
-            print(f"[Error in load_all_cases]: {e}", file=sys.stderr)
+    if not _cloud_db_enabled() and not os.path.exists(DB_PATH):
+        return cases
+    try:
+        with _case_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT data FROM past_cases ORDER BY timestamp ASC")
+            for row in cursor.fetchall():
+                try:
+                    d = json.loads(row[0])
+                    if d.get("id"):
+                        # ── 「検収」または「検収完了」は分析上「成約」として集計する ──
+                        if d.get("final_status") in ("検収", "検収完了"):
+                            d["final_status"] = "成約"
+                        cases.append(d)
+                except json.JSONDecodeError:
+                    continue
+    except Exception as e:
+        print(f"[Error in load_all_cases]: {e}", file=sys.stderr)
     return cases
 
 
@@ -753,11 +776,13 @@ def analyze_lost_cases(industry_sub=None):
 
 def delete_case(case_id: str) -> bool:
     """指定IDの案件を1件削除する。全件置き換えを使わない安全な単体削除。"""
-    if not os.path.exists(DB_PATH):
+    if not _cloud_db_enabled() and not os.path.exists(DB_PATH):
         return False
     try:
-        with closing(_open_db()) as conn:
-            conn.execute("DELETE FROM past_cases WHERE id = ?", (case_id,))
+        ph = _db_placeholder()
+        with _case_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"DELETE FROM past_cases WHERE id = {ph}", (case_id,))
             conn.commit()
         refresh_stats_caches()
         return True
@@ -767,21 +792,24 @@ def delete_case(case_id: str) -> bool:
 
 def update_case(case_id: str, updates: dict) -> bool:
     """指定IDの案件の data フィールドを更新する。全件置き換えを使わない安全な単体更新。"""
-    if not os.path.exists(DB_PATH):
+    if not _cloud_db_enabled() and not os.path.exists(DB_PATH):
         return False
     try:
-        with closing(_open_db()) as conn:
-            row = conn.execute(
-                "SELECT data FROM past_cases WHERE id = ?", (case_id,)
-            ).fetchone()
+        ph = _db_placeholder()
+        with _case_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"SELECT data FROM past_cases WHERE id = {ph}", (case_id,)
+            )
+            row = cursor.fetchone()
             if row is None:
                 return False
             data = json.loads(row[0])
             data.update(updates)
             final_status = data.get("final_status", "")
             json_str = json.dumps(data, ensure_ascii=False, cls=CustomJSONEncoder)
-            conn.execute(
-                "UPDATE past_cases SET data = ?, final_status = ? WHERE id = ?",
+            cursor.execute(
+                f"UPDATE past_cases SET data = {ph}, final_status = {ph} WHERE id = {ph}",
                 (json_str, final_status, case_id),
             )
             conn.commit()
@@ -1097,8 +1125,7 @@ class CustomJSONEncoder(json.JSONEncoder):
             return str(obj)
 
 def save_case_log(data):
-    """審査1件分のログをSQLiteに追記し、生成した案件IDを返す。失敗時は None。"""
-    import sqlite3
+    """審査1件分のログをDBに追記し、生成した案件IDを返す。失敗時は None。"""
     import uuid
     # マイクロ秒 + UUID4の先頭8桁でバッチ一括保存時のPRIMARY KEY衝突を防止
     case_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S%f") + "_" + uuid.uuid4().hex[:8]
@@ -1130,14 +1157,16 @@ def save_case_log(data):
         user_eq_val = None
         
     try:
-        if not os.path.exists(DB_PATH):
+        if not _cloud_db_enabled() and not os.path.exists(DB_PATH):
             from migrate_to_sqlite import init_db
             init_db()
             
         json_str = json.dumps(data, ensure_ascii=False, cls=CustomJSONEncoder)
-        with closing(_open_db()) as conn:
+        ph = _db_placeholder()
+        with _case_db_connection() as conn:
+            cursor = conn.cursor()
             # テーブルが存在しない場合は作成（DBファイルが存在してもテーブルが欠けているケースに対応）
-            conn.execute("""
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS past_cases (
                     id TEXT PRIMARY KEY,
                     timestamp TEXT,
@@ -1155,25 +1184,28 @@ def save_case_log(data):
             """)
             # sales_dept カラムが存在しない古いDBへの対応
             try:
-                conn.execute("ALTER TABLE past_cases ADD COLUMN sales_dept TEXT DEFAULT '未設定'")
+                cursor.execute("ALTER TABLE past_cases ADD COLUMN sales_dept TEXT DEFAULT '未設定'")
             except Exception:
+                if _cloud_db_enabled():
+                    conn.rollback()
                 pass
             for col in ("registration_date", "estimate_sent_date", "customer_response_date", "final_result_date"):
                 try:
-                    conn.execute(f"ALTER TABLE past_cases ADD COLUMN {col} TEXT")
+                    cursor.execute(f"ALTER TABLE past_cases ADD COLUMN {col} TEXT")
                 except Exception:
+                    if _cloud_db_enabled():
+                        conn.rollback()
                     pass
             sales_dept_val = data.get("sales_dept", "未設定") or "未設定"
             registration_date = data.get("registration_date")
             estimate_sent_date = data.get("estimate_sent_date")
             customer_response_date = data.get("customer_response_date")
             final_result_date = data.get("final_result_date")
-            cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(f"""
                 INSERT INTO past_cases
                 (id, timestamp, industry_sub, score, user_eq, final_status, data, sales_dept,
                  registration_date, estimate_sent_date, customer_response_date, final_result_date)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
             """, (
                 case_id,
                 data["timestamp"],
@@ -1189,19 +1221,19 @@ def save_case_log(data):
                 final_result_date,
             ))
             conn.commit()
-        _trigger_ml_features_update(case_id)
+        if not _cloud_db_enabled():
+            _trigger_ml_features_update(case_id)
         refresh_stats_caches()
         return case_id
     except Exception as e:
         import traceback
-        print(f"[Error in save_case_log (SQLite)]: {e}", file=sys.stderr)
+        print(f"[Error in save_case_log]: {e}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
         return None
 
 
 def save_excluded_grade_case(data):
     """信用リスク群（格付8-3/9/10）を専用テーブルに保存する。失敗時は None。"""
-    import sqlite3
     import uuid
 
     case_id = data.get("id") or datetime.datetime.now().strftime("%Y%m%d%H%M%S%f") + "_" + uuid.uuid4().hex[:8]
@@ -1228,8 +1260,10 @@ def save_excluded_grade_case(data):
 
     try:
         json_str = json.dumps(data, ensure_ascii=False, cls=CustomJSONEncoder)
-        with closing(_open_db()) as conn:
-            conn.execute("""
+        ph = _db_placeholder()
+        with _case_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS excluded_grade_cases (
                     id TEXT PRIMARY KEY,
                     timestamp TEXT,
@@ -1248,13 +1282,38 @@ def save_excluded_grade_case(data):
                     extracted_at TEXT
                 )
             """)
-            conn.execute("""
+            if _cloud_db_enabled():
+                upsert_sql = f"""
+                INSERT INTO excluded_grade_cases
+                (id, timestamp, industry_sub, score, user_eq, final_status, data, sales_dept,
+                 registration_date, estimate_sent_date, customer_response_date, final_result_date,
+                 original_grade, excluded_reason, extracted_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                ON CONFLICT (id) DO UPDATE SET
+                    timestamp = EXCLUDED.timestamp,
+                    industry_sub = EXCLUDED.industry_sub,
+                    score = EXCLUDED.score,
+                    user_eq = EXCLUDED.user_eq,
+                    final_status = EXCLUDED.final_status,
+                    data = EXCLUDED.data,
+                    sales_dept = EXCLUDED.sales_dept,
+                    registration_date = EXCLUDED.registration_date,
+                    estimate_sent_date = EXCLUDED.estimate_sent_date,
+                    customer_response_date = EXCLUDED.customer_response_date,
+                    final_result_date = EXCLUDED.final_result_date,
+                    original_grade = EXCLUDED.original_grade,
+                    excluded_reason = EXCLUDED.excluded_reason,
+                    extracted_at = EXCLUDED.extracted_at
+                """
+            else:
+                upsert_sql = f"""
                 INSERT OR REPLACE INTO excluded_grade_cases
                 (id, timestamp, industry_sub, score, user_eq, final_status, data, sales_dept,
                  registration_date, estimate_sent_date, customer_response_date, final_result_date,
                  original_grade, excluded_reason, extracted_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                """
+            cursor.execute(upsert_sql, (
                 case_id,
                 data["timestamp"],
                 data.get("industry_sub", ""),
@@ -1275,7 +1334,7 @@ def save_excluded_grade_case(data):
         return case_id
     except Exception as e:
         import traceback
-        print(f"[Error in save_excluded_grade_case (SQLite)]: {e}", file=sys.stderr)
+        print(f"[Error in save_excluded_grade_case]: {e}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
         return None
 
@@ -1296,15 +1355,16 @@ def _trigger_ml_features_update(case_id: str) -> None:
 
 
 def update_case_field(case_id: str, key: str, value: object) -> bool:
-    """指定された case_id のレコードに対して、[key] = value を追加・更新する（SQLite版）。"""
-    if not case_id or not os.path.exists(DB_PATH):
+    """指定された case_id のレコードに対して、[key] = value を追加・更新する。"""
+    if not case_id or (not _cloud_db_enabled() and not os.path.exists(DB_PATH)):
         return False
 
     try:
-        with closing(_open_db()) as conn:
+        ph = _db_placeholder()
+        with _case_db_connection() as conn:
             cursor = conn.cursor()
             # 該当レコードのdata(JSON文字列)を取得
-            cursor.execute("SELECT data FROM past_cases WHERE id = ?", (case_id,))
+            cursor.execute(f"SELECT data FROM past_cases WHERE id = {ph}", (case_id,))
             row = cursor.fetchone()
             if not row:
                 return False
@@ -1320,21 +1380,22 @@ def update_case_field(case_id: str, key: str, value: object) -> bool:
             new_json_str = json.dumps(case_data, ensure_ascii=False, cls=CustomJSONEncoder)
 
             # もし特定のキー（ステータス等）が単独カラムにもあれば一緒に更新する
-            update_cols = "data = ?"
+            update_cols = f"data = {ph}"
             update_args = [new_json_str]
 
             if key == "final_status":
-                update_cols += ", final_status = ?"
+                update_cols += f", final_status = {ph}"
                 update_args.append(str(value))
             elif key == "industry_sub":
-                update_cols += ", industry_sub = ?"
+                update_cols += f", industry_sub = {ph}"
                 update_args.append(str(value))
 
             update_args.append(case_id)
 
-            cursor.execute(f"UPDATE past_cases SET {update_cols} WHERE id = ?", tuple(update_args))
+            cursor.execute(f"UPDATE past_cases SET {update_cols} WHERE id = {ph}", tuple(update_args))
             conn.commit()
-        _trigger_ml_features_update(case_id)
+        if not _cloud_db_enabled():
+            _trigger_ml_features_update(case_id)
         if key in {
             "final_status",
             "industry_sub",
@@ -1354,5 +1415,5 @@ def update_case_field(case_id: str, key: str, value: object) -> bool:
         return True
     except Exception as e:
         import traceback
-        print(f"[Error in update_case_field (SQLite)]: {e}", file=sys.stderr)
+        print(f"[Error in update_case_field]: {e}", file=sys.stderr)
         return False

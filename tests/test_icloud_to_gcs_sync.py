@@ -116,7 +116,9 @@ class TestExcludesObsidianDir:
         (obsidian_dir / "config").write_text("{}")
         (obsidian_dir / "workspace.md").write_text("# workspace")
 
-        normal_md = tmp_path / "note.md"
+        knowledge_dir = tmp_path / "リース知識"
+        knowledge_dir.mkdir()
+        normal_md = knowledge_dir / "note.md"
         normal_md.write_text("# keep")
 
         files = collect_md_files(tmp_path)
@@ -149,6 +151,35 @@ class TestHandlesEmptyVault:
         with patch("scripts.icloud_to_gcs_sync.LOCAL_VAULT_DIR", str(tmp_path)):
             with patch("scripts.icloud_to_gcs_sync.storage.Client"):
                 main()
+
+
+def test_collect_md_files_uses_chat_knowledge_allowlist(tmp_path):
+    public_dir = tmp_path / "Projects" / "tune_lease_55" / "Lease Intelligence" / "Public" / "Chat Memory"
+    public_dir.mkdir(parents=True)
+    public_note = public_dir / "latest_cloud_chat_memory_pack.md"
+    public_note.write_text("# public memory")
+
+    research_dir = tmp_path / "Projects" / "tune_lease_55" / "Research"
+    research_dir.mkdir(parents=True)
+    research_note = research_dir / "lease-research.md"
+    research_note.write_text("# research")
+
+    private_dir = tmp_path / "Private Reflection"
+    private_dir.mkdir()
+    private_note = private_dir / "2026-06-27.md"
+    private_note.write_text("# private")
+
+    daily_dir = tmp_path / "Daily"
+    daily_dir.mkdir()
+    daily_note = daily_dir / "2026-06-27.md"
+    daily_note.write_text("# daily")
+
+    files = collect_md_files(tmp_path)
+
+    assert public_note in files
+    assert research_note in files
+    assert private_note not in files
+    assert daily_note not in files
 
 
 def test_default_local_vault_dir_points_to_icloud_vault():

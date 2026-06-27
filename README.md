@@ -178,7 +178,7 @@ graph LR
     SHION -->|内省・Private Reflection| Vault
     SHION -->|改善ルール学習| Vault
 
-    Vault <-->|icloud_to_gcs_sync.py\n差分アップロード| GCS["☁️ GCS Vault\ntune-lease-55-data/vault/"]
+    Vault -->|icloud_to_gcs_sync.py\nAIチャット向け知識だけ差分アップロード| GCS["☁️ GCS Vault\ntune-lease-55-data/vault/"]
     GCS -->|gcs_vault_loader.py\nダウンロード| CloudRun["Cloud Run\n上の Bridge"]
 
     Vault -->|auto_wikilink.py\nwikiリンク自動挿入| Vault
@@ -220,6 +220,8 @@ URL は毎回変わります。最新の URL は起動ログか `logs/next/tunne
 - 承認、却下、保留、AI ルール登録を改善ログへ残す
 - 自動改善候補、再帰的自己改善、AI 応答品質の状態を見る
 - 紫苑との専用対話を保存し、日次内省と記憶へ接続する
+
+Cloud Run 上のAIチャットにも Obsidian data は必要です。ただしローカルVault全体を送るのではなく、`リース知識`、`Projects/tune_lease_55/Research`、`News`、`Lease Intelligence/Public` などの公開可能な知識だけをGCS Vaultへ同期します。`Daily`、`Private Reflection`、生チャット、Cloud SQL/Cloud Runの回収ログはCloud Runへ再配布しません。
 
 このシステムの強みは「判定」よりも「次の一手」です。点数の横に、違和感、反対意見、通す条件、稟議コメントの方向性を並べます。
 
