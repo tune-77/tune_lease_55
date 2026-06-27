@@ -116,7 +116,7 @@ def _postgres_connection() -> Generator["psycopg2.extensions.connection", None, 
     database_url = os.environ["DATABASE_URL"]
     # DictCursor は row["col"] / row[0] / dict(row) を両立する。
     # SQLite の sqlite3.Row に近い振る舞いにして、既存APIのタプル前提も壊しにくくする。
-    conn = psycopg2.connect(database_url, cursor_factory=psycopg2.extras.DictCursor)
+    conn = psycopg2.connect(database_url, cursor_factory=psycopg2.extras.DictCursor, connect_timeout=5)
     try:
         yield conn
         conn.commit()

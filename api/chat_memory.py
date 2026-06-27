@@ -29,33 +29,40 @@ def init_chat_messages_table() -> None:
 
 def get_recent_messages(user_id: str = "default", limit: int = 20) -> list[dict]:
     """直近 limit 件のメッセージを古い順で返す。"""
-    init_chat_messages_table()
-    ph = placeholder()
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"""
-            SELECT id, user_id, role, content, created_at
-            FROM chat_messages
-            WHERE user_id = {ph}
-            ORDER BY created_at DESC
-            LIMIT {ph}
-            """,
-            (user_id, limit),
-        )
-        rows = cur.fetchall()
-    return [dict(r) for r in reversed(rows)]
+    try:
+        init_chat_messages_table()
+        ph = placeholder()
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                f"""
+                SELECT id, user_id, role, content, created_at
+                FROM chat_messages
+                WHERE user_id = {ph}
+                ORDER BY created_at DESC
+                LIMIT {ph}
+                """,
+                (user_id, limit),
+            )
+            rows = cur.fetchall()
+        return [dict(r) for r in reversed(rows)]
+    except Exception as exc:
+        print(f"[chat_memory] get_recent_messages skipped: {exc}")
+        return []
 
 
 def save_message(user_id: str, role: str, content: str) -> None:
-    init_chat_messages_table()
-    ph = placeholder()
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"INSERT INTO chat_messages (user_id, role, content) VALUES ({ph}, {ph}, {ph})",
-            (user_id, role, content),
-        )
+    try:
+        init_chat_messages_table()
+        ph = placeholder()
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                f"INSERT INTO chat_messages (user_id, role, content) VALUES ({ph}, {ph}, {ph})",
+                (user_id, role, content),
+            )
+    except Exception as exc:
+        print(f"[chat_memory] save_message skipped: {exc}")
 
 
 def normalize_chat_text(content: str) -> str:
