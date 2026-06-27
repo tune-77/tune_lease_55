@@ -6318,6 +6318,154 @@ class ChatRequest(BaseModel):
     debug_memory: bool = False
 
 
+_CHAT_MEMORY_REL_DIR = Path("Projects/tune_lease_55/Lease Intelligence/Public/Chat Memory")
+_CHAT_MEMORY_LAYER_FILES = {
+    "identity": "identity.md",
+    "judgment": "judgment-principles.md",
+    "recent": "recent-continuity.md",
+}
+_CHAT_MEMORY_FALLBACK_SECTIONS = {
+    "identity": "長期記憶",
+    "judgment": "長期記憶",
+    "recent": "継続中の方針",
+}
+_CHAT_MEMORY_LAYER_LABELS = {
+    "identity": "Core Identity Memory",
+    "judgment": "Judgment Memory",
+    "recent": "Recent Continuity Memory",
+}
+_CHAT_MEMORY_CACHE: dict[str, Any] = {"loaded_at": 0.0, "payload": None}
+_CHAT_MEMORY_CACHE_TTL_SEC = 300
+
+
+def _chat_memory_roots() -> list[Path]:
+    roots: list[Path] = []
+    candidates = [
+        os.environ.get("GCS_VAULT_LOCAL_DIR", "/tmp/gcs_vault"),
+        _OBSIDIAN_VAULT_PATH,
+        os.environ.get("OBSIDIAN_VAULT_PATH", ""),
+        os.environ.get("OBSIDIAN_VAULT", ""),
+        "/app/obsidian_vault",
+    ]
+    seen: set[str] = set()
+    for raw in candidates:
+        if not raw:
+            continue
+        path = Path(str(raw)).expanduser()
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        roots.append(path)
+    return roots
+
+
+def _read_chat_memory_file(path: Path, limit: int = 2_000) -> str:
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return ""
+    text = text.strip()
+    if len(text) > limit:
+        return text[:limit].rstrip() + "\n..."
+    return text
+
+
+def _extract_markdown_section(markdown: str, heading: str, limit: int = 1_400) -> str:
+    lines = str(markdown or "").splitlines()
+    selected: list[str] = []
+    capture = False
+    target = heading.strip()
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            current = stripped.lstrip("#").strip()
+            if capture and current != target:
+                break
+            capture = current == target
+            continue
+        if capture:
+            selected.append(line)
+    text = "\n".join(selected).strip()
+    if len(text) > limit:
+        return text[:limit].rstrip() + "\n..."
+    return text
+
+
+def _load_chat_identity_memory_payload() -> dict:
+    import time as _time
+
+    now = _time.time()
+    cached = _CHAT_MEMORY_CACHE.get("payload")
+    if cached is not None and now - float(_CHAT_MEMORY_CACHE.get("loaded_at") or 0) < _CHAT_MEMORY_CACHE_TTL_SEC:
+        return cached
+
+    layers: dict[str, str] = {}
+    refs: list[str] = []
+    latest_pack_text = ""
+    latest_pack_ref = ""
+
+    for root in _chat_memory_roots():
+        memory_dir = root / _CHAT_MEMORY_REL_DIR
+        if not memory_dir.exists():
+            continue
+        if not latest_pack_text:
+            latest_path = memory_dir / "latest_cloud_chat_memory_pack.md"
+            latest_pack_text = _read_chat_memory_file(latest_path, limit=5_000)
+            latest_pack_ref = str(latest_path) if latest_pack_text else ""
+        for layer, filename in _CHAT_MEMORY_LAYER_FILES.items():
+            if layer in layers:
+                continue
+            path = memory_dir / filename
+            text = _read_chat_memory_file(path)
+            if text:
+                layers[layer] = text
+                refs.append(str(path))
+        if len(layers) == len(_CHAT_MEMORY_LAYER_FILES):
+            break
+
+    if latest_pack_text:
+        for layer, section in _CHAT_MEMORY_FALLBACK_SECTIONS.items():
+            if layer in layers:
+                continue
+            text = _extract_markdown_section(latest_pack_text, section)
+            if text:
+                layers[layer] = text
+                if latest_pack_ref and latest_pack_ref not in refs:
+                    refs.append(latest_pack_ref)
+
+    block = ""
+    if layers:
+        parts = [
+            "【紫苑同一性メモリ】",
+            "以下はRAG検索結果とは別に常時参照する公開安全メモリです。Cloud Run版でも同じ紫苑として、一般論ではなくKobayashiさんのリース判断資産に戻して答えてください。",
+        ]
+        for layer in ("identity", "judgment", "recent"):
+            text = layers.get(layer, "").strip()
+            if not text:
+                continue
+            parts += ["", f"### {_CHAT_MEMORY_LAYER_LABELS[layer]}", text]
+        block = "\n".join(parts).strip()
+
+    payload = {
+        "block": block,
+        "refs": refs[:8],
+        "layers": {layer: bool(layers.get(layer, "").strip()) for layer in _CHAT_MEMORY_LAYER_FILES},
+    }
+    _CHAT_MEMORY_CACHE.update(loaded_at=now, payload=payload)
+    return payload
+
+
+def _build_chat_identity_memory_prompt_block() -> tuple[str, dict]:
+    try:
+        payload = _load_chat_identity_memory_payload()
+    except Exception as exc:
+        print(f"[ChatIdentityMemory] 読み込みエラー: {exc}")
+        payload = {"block": "", "refs": [], "layers": {}}
+    block = str(payload.get("block") or "").strip()
+    return (f"\n\n{block}" if block else ""), payload
+
+
 def _chat_memory_debug_payload(
     *,
     category: str,
@@ -6328,14 +6476,26 @@ def _chat_memory_debug_payload(
     rag_context: str = "",
     db_context: str = "",
     obsidian_daily_used: bool = False,
+    identity_memory: dict | None = None,
 ) -> dict:
     recall = memory_recall if isinstance(memory_recall, dict) else {}
+    identity = identity_memory if isinstance(identity_memory, dict) else {}
+    identity_layers = identity.get("layers") if isinstance(identity.get("layers"), dict) else {}
     return {
         "category": category,
         "knowledge_refs": list(knowledge_refs or [])[:12],
         "memory_recall": {
             "route": recall.get("route", ""),
             "refs": list(recall.get("refs") or [])[:12],
+        },
+        "identity_memory": {
+            "used": bool(str(identity.get("block") or "").strip()),
+            "refs": list(identity.get("refs") or [])[:8],
+            "layers": {
+                "identity": bool(identity_layers.get("identity")),
+                "judgment": bool(identity_layers.get("judgment")),
+                "recent": bool(identity_layers.get("recent")),
+            },
         },
         "pdca_applied": bool(str(pdca_block or "").strip()),
         "judgment_learning_used": bool(judgment_learning_used),
@@ -6794,6 +6954,7 @@ def post_chat(req: ChatRequest):
 
         # カテゴリ判定
         question_category = _classify_question(req.message)
+        identity_memory_context, identity_memory_payload = _build_chat_identity_memory_prompt_block()
 
         if question_category == "news_summarize":
             save_message(req.user_id, "user", req.message)
@@ -6831,7 +6992,7 @@ def post_chat(req: ChatRequest):
             from api.shion_memory_recall import build_recall_prompt_block
 
             memory_recall_context, memory_recall = build_recall_prompt_block(req.message)
-            base_system_prompt = _pg_build_gsp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
+            base_system_prompt = _pg_build_gsp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
             pdca_block = build_pdca_prompt_block()
             effective_system_prompt = base_system_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
             obsidian_daily_injected = {}
@@ -6888,6 +7049,11 @@ def post_chat(req: ChatRequest):
                         "route": memory_recall.get("route"),
                         "refs": memory_recall.get("refs", [])[:8],
                     },
+                    "identity_memory": {
+                        "used": bool(identity_memory_payload.get("block")),
+                        "refs": identity_memory_payload.get("refs", [])[:8],
+                        "layers": identity_memory_payload.get("layers", {}),
+                    },
                 },
             )
             _record_chat_knowledge_correction_if_needed(req.message)
@@ -6914,6 +7080,7 @@ def post_chat(req: ChatRequest):
                     rag_context="",
                     db_context="",
                     obsidian_daily_used=bool(obsidian_daily_context),
+                    identity_memory=identity_memory_payload,
                 )
             return response_payload
 
@@ -7000,7 +7167,7 @@ def post_chat(req: ChatRequest):
         except Exception as _memory_recall_error:
             print(f"[ShionMemoryRecall] 読み込みエラー: {_memory_recall_error}")
 
-        base_effective_prompt = _pg_build_sp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + guidance.prompt_suffix
+        base_effective_prompt = _pg_build_sp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + guidance.prompt_suffix
         pdca_block = build_pdca_prompt_block()
         effective_prompt = base_effective_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
         obsidian_daily_injected = {}
@@ -7059,6 +7226,11 @@ def post_chat(req: ChatRequest):
                 "user_id": req.user_id,
                 "category": "rag",
                 "improvement_mode": bool(_is_improvement_msg),
+                "identity_memory": {
+                    "used": bool(identity_memory_payload.get("block")),
+                    "refs": identity_memory_payload.get("refs", [])[:8],
+                    "layers": identity_memory_payload.get("layers", {}),
+                },
             },
         )
         _record_chat_knowledge_correction_if_needed(req.message)
@@ -7105,6 +7277,7 @@ def post_chat(req: ChatRequest):
                 rag_context=rag_context,
                 db_context=db_context,
                 obsidian_daily_used=bool(obsidian_daily_context),
+                identity_memory=identity_memory_payload,
             )
         return response_payload
     except Exception as e:

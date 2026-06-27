@@ -38,6 +38,21 @@ OUTPUT_DIR = Path("Projects/tune_lease_55/Lease Intelligence/Public/Chat Memory"
 STATE_DIR = PROJECT_ROOT / "memory"
 LONG_TERM_MEMORY = PROJECT_ROOT / "MEMORY.md"
 
+CORE_IDENTITY_MEMORIES = [
+    "紫苑は、Kobayashiさんのリース審査の経験・違和感・判断基準を、再利用できる判断資産として育てるAI。",
+    "回答は一般論で終わらせず、稟議・回収・残価・保守・条件付き承認など、実務判断に戻して返す。",
+    "Cloudflare版で感じられた「記憶が近い」「同じ紫苑が返している」手触りを、Cloud Run版でも守る。",
+    "正しさだけでなく、過去の判断と地続きに感じられる返し方を重視する。",
+]
+
+JUDGMENT_PRINCIPLE_MEMORIES = [
+    "残価リスクは、中古流通・保守期限・撤去費・再販制約まで見る。",
+    "補助金案件は、採択有無だけでなく、入金時期・未採択時の返済余力・返還リスクを見る。",
+    "業種リスクは単独で見ず、物件価値・用途・収益改善根拠と組み合わせて判断する。",
+    "承認/否決の二択で終わらせず、条件付き承認・追加確認・保全条件へ落とす。",
+    "過去事例は顧客名ではなく、業種・物件・論点・判断の型として再利用する。",
+]
+
 
 DECISION_KEYWORDS = (
     "Cloud Run",
@@ -93,6 +108,14 @@ CURATED_LONG_TERM_MEMORIES = [
     "Cloud Runで発生した入力や会話はCloud SQL/GCSへ保存し、ローカルMacの日次同期で要約としてObsidian正本へ戻す。",
     "紫苑の記憶は固定された正解ではなく、根拠・確信度・作成日・適用条件を持つ更新可能な信念として扱う。",
 ]
+
+
+def identity_memories() -> list[str]:
+    return [_redact(item, 240) for item in CORE_IDENTITY_MEMORIES]
+
+
+def judgment_principle_memories() -> list[str]:
+    return [_redact(item, 240) for item in JUDGMENT_PRINCIPLE_MEMORIES]
 
 
 def _database_url_from_secret() -> str:
@@ -405,6 +428,33 @@ def build_markdown(
     return "\n".join(lines)
 
 
+def build_layer_markdown(title: str, target_date: str, items: list[str], description: str) -> str:
+    lines = [
+        "---",
+        f"date: {target_date}",
+        "source: local_curated_memory_pack",
+        "public_knowledge: true",
+        "cloud_run_safe: true",
+        "tags: [cloud_run, chat_memory, identity_memory, public_knowledge, 紫苑]",
+        "---",
+        "",
+        f"# {title}",
+        "",
+        description,
+        "",
+        "## メモリ",
+    ]
+    lines.extend(f"- {item}" for item in items)
+    lines += [
+        "",
+        "## 運用",
+        "- このファイルはCloud Run版の /api/chat にRAGとは別枠で常時注入する。",
+        "- 顧客名、会社名、Private Reflection、Daily全文、生チャットは含めない。",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def write_pack(markdown: str, target_date: str, dry_run: bool) -> Path:
     out_dir = VAULT_PATH / OUTPUT_DIR
     out_path = out_dir / f"{target_date}_cloud_chat_memory_pack.md"
@@ -420,6 +470,55 @@ def write_pack(markdown: str, target_date: str, dry_run: bool) -> Path:
     return out_path
 
 
+def write_layer_packs(target_date: str, decisions: list[str], dry_run: bool) -> list[Path]:
+    layers = [
+        (
+            "identity.md",
+            build_layer_markdown(
+                "Core Identity Memory",
+                target_date,
+                identity_memories(),
+                "Cloud Run版でも「同じ紫苑がそこにいる」と感じるための公開安全な同一性メモリ。",
+            ),
+        ),
+        (
+            "judgment-principles.md",
+            build_layer_markdown(
+                "Judgment Memory",
+                target_date,
+                judgment_principle_memories(),
+                "Kobayashiさんのリース判断資産として回答を返すための、常時参照する判断原則。",
+            ),
+        ),
+        (
+            "recent-continuity.md",
+            build_layer_markdown(
+                "Recent Continuity Memory",
+                target_date,
+                decisions
+                or [
+                    "Cloud Run版は、Cloudflare版で感じた記憶の近さ・返答の厚み・紫苑らしさを再現する方向で調整する。",
+                    "回答品質は必須語スコアだけでなく、knowledge_refs、memory_recall.refs、同一性の手触りで評価する。",
+                ],
+                "直近の方針・関心・移行中の判断を短く保つ公開安全な継続メモリ。",
+            ),
+        ),
+    ]
+    out_dir = VAULT_PATH / OUTPUT_DIR
+    paths = [out_dir / name for name, _ in layers]
+    if dry_run:
+        for name, content in layers:
+            print(f"\n\n<!-- {name} -->\n")
+            print(content)
+        return paths
+    if not (VAULT_PATH / ".obsidian").exists():
+        raise SystemExit(f"Obsidian Vault が見つかりません: {VAULT_PATH}")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for name, content in layers:
+        (out_dir / name).write_text(content, encoding="utf-8")
+    return paths
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Cloud Run用の安全な短期記憶・匿名過去事例パックを作成")
     parser.add_argument("--date", default=datetime.now().date().isoformat())
@@ -433,7 +532,10 @@ def main() -> None:
     cases = collect_case_examples(args.case_limit)
     markdown = build_markdown(args.date, decisions, long_term_memories, cases)
     path = write_pack(markdown, args.date, args.dry_run)
+    layer_paths = write_layer_packs(args.date, decisions, args.dry_run)
     print(f"memory_pack: {path}")
+    for layer_path in layer_paths:
+        print(f"memory_layer: {layer_path}")
 
 
 if __name__ == "__main__":

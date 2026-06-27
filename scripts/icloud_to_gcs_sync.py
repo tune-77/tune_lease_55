@@ -13,8 +13,6 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from google.cloud import storage
-
 GCS_BUCKET = os.environ.get("GCS_BUCKET", "tune-lease-55-data")
 GCS_VAULT_PREFIX = os.environ.get("GCS_VAULT_PREFIX", "vault/")
 GCS_UPLOAD_BACKEND = os.environ.get("GCS_UPLOAD_BACKEND", "gcloud").lower()
@@ -64,14 +62,14 @@ def _local_mtime_str(path: Path) -> str:
     return str(path.stat().st_mtime)
 
 
-def _gcs_local_mtime(blob: storage.Blob) -> Optional[str]:
+def _gcs_local_mtime(blob) -> Optional[str]:
     """GCS オブジェクトのカスタムメタデータ `local_mtime` を返す。なければ None。"""
     meta = blob.metadata or {}
     return meta.get("local_mtime")
 
 
 def upload_file(
-    bucket: storage.Bucket,
+    bucket,
     local_path: Path,
     vault_dir: Path,
     gcs_prefix: str,
@@ -157,6 +155,8 @@ def main() -> None:
 
     bucket = None
     if GCS_UPLOAD_BACKEND != "gcloud":
+        from google.cloud import storage
+
         client = storage.Client()
         bucket = client.bucket(GCS_BUCKET)
 
