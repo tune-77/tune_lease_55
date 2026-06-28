@@ -3,8 +3,8 @@
 
 同一の紫苑中核から分岐した3つのペルソナが討論し、審査判断を統合する。
 
-スコア60超 or 40未満 → 紫苑（統合派）単独高速処理
-スコア40〜60（境界） → 紫苑（懐疑派）・紫苑（楽観派）が2ラウンド討論 → 紫苑（統合派）裁定
+スコア70以上 or 40以下 → 紫苑（統合派）単独高速処理
+スコア40超〜70未満（境界・要審議） → 紫苑（懐疑派）・紫苑（楽観派）が2ラウンド討論 → 紫苑（統合派）裁定
 
 なれ合い防止策:
   - Temperature差（懐疑派=0.3、楽観派=0.9）
@@ -36,7 +36,7 @@ def _gemini_url() -> str:
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 _DEBATE_LOW  = 40  # これ以下 → 否決ファストパス
-_DEBATE_HIGH = 60  # これ以上 → 承認ファストパス
+_DEBATE_HIGH = 70  # これ以上 → 承認ファストパス
 
 # ── ケースコンテキストテンプレート ──────────────────────────────────────────────
 _CASE_CTX_TMPL = """## 審査案件
@@ -1134,7 +1134,7 @@ def run_debate_screening(params: dict) -> dict:
 
         return result
 
-    # ── 討論モード（40 < score < 60） ────────────────────────────────────────
+    # ── 討論モード（40 < score < 70） ────────────────────────────────────────
     # Round 1: 並列実行（懐疑派 temperature=0.3、楽観派 temperature=0.9、革新派 temperature=0.7）
     # 懐疑派はナレッジの否定的証拠を、楽観派は肯定的証拠を検索する
     _r1_workers = 3 if innovator_key else 2

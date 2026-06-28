@@ -60,7 +60,7 @@ def should_consult_mana(
             final == "否決",
             not reasoning,
             same_opinion_r1 and mode == "debate",
-            40 < score < 60 and final in {"承認", "否決"},
+            40 < score < 70 and final in {"承認", "否決"},
             pd_pct >= 8.0,
         ]
     )

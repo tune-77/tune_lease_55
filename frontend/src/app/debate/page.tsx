@@ -122,6 +122,21 @@ interface DebateResult {
   core_candidates?: CoreCandidateItem[];
 }
 
+interface DebateHandoffContext {
+  score?: number;
+  hantei?: string;
+  company_name?: string;
+  industry_major?: string;
+  nenshu?: number;
+  op_margin_pct?: number;
+  equity_ratio?: number;
+  bank_credit?: number;
+  lease_credit?: number;
+  asset_name?: string;
+  lease_amount?: number;
+  reason?: string;
+}
+
 
 interface CentralSynthesis {
   confirmed_beliefs?: Array<string | { belief?: string; theme?: string; count?: number }>
@@ -464,6 +479,30 @@ export default function DebatePage() {
   const historyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    const raw = window.localStorage.getItem("lease-debate-context");
+    if (raw) {
+      try {
+        const data = JSON.parse(raw) as DebateHandoffContext;
+        setForm(prev => ({
+          ...prev,
+          score: Number(data.score ?? prev.score),
+          company_name: data.company_name ?? prev.company_name,
+          industry_major: data.industry_major ?? prev.industry_major,
+          nenshu: Number(data.nenshu ?? prev.nenshu),
+          op_margin_pct: Number(data.op_margin_pct ?? prev.op_margin_pct),
+          equity_ratio: Number(data.equity_ratio ?? prev.equity_ratio),
+          bank_credit: Number(data.bank_credit ?? prev.bank_credit),
+          lease_credit: Number(data.lease_credit ?? prev.lease_credit),
+          asset_name: data.asset_name ?? prev.asset_name,
+          lease_amount: Number(data.lease_amount ?? prev.lease_amount),
+        }));
+        setAutoFilled(true);
+        window.localStorage.removeItem("lease-debate-context");
+        return;
+      } catch {
+        window.localStorage.removeItem("lease-debate-context");
+      }
+    }
     apiClient.get("/api/latest-screening")
       .then(({ data }) => {
         setForm(prev => ({ ...prev, ...data }));
@@ -875,7 +914,7 @@ export default function DebatePage() {
               className={`w-full border rounded-xl px-3 py-2 text-lg font-black ${scoreColor(form.score)} focus:outline-none focus:ring-2 focus:ring-violet-400`}
             />
             <p className="text-xs text-slate-400 mt-1">
-              {form.score >= 60 ? "✓ 承認圏 → 軍師単独" : form.score <= 40 ? "✗ 否決圏 → 軍師単独" : "⚡ 境界域 → 討論モード"}
+              {form.score >= 70 ? "✓ 承認圏 → 統合派単独" : form.score <= 40 ? "✗ 否決圏 → 統合派単独" : "⚡ 境界・要審議 → マルチ紫苑討論"}
             </p>
           </div>
           <div>
@@ -974,7 +1013,7 @@ export default function DebatePage() {
                 <Brain className="w-6 h-6 text-slate-500" />
                 <div>
                   <p className="font-black text-slate-700">高速処理モード</p>
-                  <p className="text-xs text-slate-500">スコア {result.score}点 — 境界外のため{agentLabel("arbiter", submittedParticipants, "統合派")}が単独処理</p>
+                  <p className="text-xs text-slate-500">スコア {result.score}点 — 討論帯外のため{agentLabel("arbiter", submittedParticipants, "統合派")}が単独処理</p>
                 </div>
               </>
             )}

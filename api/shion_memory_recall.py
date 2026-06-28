@@ -204,7 +204,7 @@ def _extract_score_band(text: str) -> str:
     if not scores:
         return ""
     score = scores[0]
-    if 40 < score < 60:
+    if 40 < score < 70:
         return "boundary"
     if score <= 40:
         return "low"

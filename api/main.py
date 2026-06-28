@@ -6381,7 +6381,7 @@ def multi_agent_screening(req: MultiAgentRequest):
     """
     マルチエージェント討論審査。
 
-    スコア60超/40未満は軍師単独高速処理、40〜60は石橋・風林火山が2ラウンド討論後に軍師裁定。
+    スコア70以上/40以下は統合派単独高速処理、40超〜70未満は懐疑派・楽観派が2ラウンド討論後に統合派が裁定。
     """
     from api.multi_agent_screening import run_debate_screening
     try:

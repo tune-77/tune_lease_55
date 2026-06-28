@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { apiClient } from "@/lib/api";
-import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, FileOutput, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus } from "lucide-react";
+import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, FileOutput, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus, Swords } from "lucide-react";
 import ScoreDAG from "../../components/ScoreDAG";
 import { ScoringFormData, defaultFormData } from "../../types";
 import FormGeneral from "../../components/form/FormGeneral";
@@ -388,6 +388,27 @@ export default function Dashboard() {
     router.push("/chat");
   };
 
+  const handoffToShionDebate = () => {
+    if (!result) return;
+    const score = Number(result.score_base ?? result.score ?? 0);
+    const debateContext = {
+      score,
+      hantei: result.hantei,
+      company_name: formData.company_name,
+      industry_major: result.industry_major || formData.industry_major,
+      nenshu: formData.nenshu,
+      op_margin_pct: result.user_op_margin ?? (formData.nenshu ? (formData.op_profit / formData.nenshu) * 100 : 0),
+      equity_ratio: result.user_equity_ratio ?? (formData.total_assets ? (formData.net_assets / formData.total_assets) * 100 : 0),
+      bank_credit: formData.bank_credit,
+      lease_credit: formData.lease_credit,
+      asset_name: formData.asset_name,
+      lease_amount: formData.acquisition_cost,
+      reason: "screening_handoff",
+    };
+    window.localStorage.setItem("lease-debate-context", JSON.stringify(debateContext));
+    router.push("/debate");
+  };
+
   return (
     <div className="min-h-[calc(100vh-2rem)]">
       {/* タイトル領域 */}
@@ -587,24 +608,34 @@ export default function Dashboard() {
                     <IndicatorCards data={result} />
 
                     <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 shadow-sm">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                         <div>
                           <h3 className="flex items-center gap-2 text-sm font-black text-violet-900">
                             <MessageSquare className="h-4 w-4" />
-                            この審査結果を紫苑チャットへ渡す
+                            この審査結果を紫苑へ渡す
                           </h3>
                           <p className="mt-1 text-xs font-bold leading-relaxed text-violet-700">
-                            スコア、判定、物件、業種、営業部、Q_riskを引き継いで、紫苑に稟議判断として相談します。
+                            通常相談は紫苑チャットへ。要審議・境界案件は、懐疑派・楽観派・統合派のマルチ紫苑討論に回します。
                           </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={handoffToShionChat}
-                          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-black text-white transition hover:bg-violet-700"
-                        >
-                          紫苑へ相談
-                          <ArrowRight className="h-4 w-4" />
-                        </button>
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <button
+                            type="button"
+                            onClick={handoffToShionChat}
+                            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-black text-white transition hover:bg-violet-700"
+                          >
+                            紫苑へ相談
+                            <ArrowRight className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handoffToShionDebate}
+                            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-black text-white transition hover:bg-slate-800"
+                          >
+                            マルチ紫苑で討論
+                            <Swords className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
 
