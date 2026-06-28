@@ -167,6 +167,81 @@ function RateProposalCard({ proposal }: { proposal?: any }) {
   );
 }
 
+function AurionCoreCard({ core }: { core?: any }) {
+  if (!core) return null;
+  const severity = core.severity || "clear";
+  const tone = core.emotion_synapse?.tone || "落ち着いた確認";
+  const line = core.emotion_synapse?.shion_line || core.shion_ux_message || "";
+  const flags = Array.isArray(core.discipline_flags) ? core.discipline_flags : [];
+  const actions = Array.isArray(core.next_actions) ? core.next_actions : [];
+  const styles: Record<string, string> = {
+    clear: "border-emerald-200 bg-emerald-50 text-emerald-900",
+    watch: "border-sky-200 bg-sky-50 text-sky-900",
+    caution: "border-amber-200 bg-amber-50 text-amber-900",
+    stop: "border-rose-200 bg-rose-50 text-rose-900",
+  };
+  return (
+    <section className={`rounded-2xl border p-4 shadow-sm ${styles[severity] || styles.clear}`}>
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="flex items-start gap-3">
+          <ShieldCheck className="mt-0.5 h-5 w-5 flex-shrink-0" />
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-black">AURION CORE 規律シナプス</h3>
+              <span className="rounded-full border border-current/20 px-2 py-0.5 text-[10px] font-black uppercase">
+                {severity}
+              </span>
+              <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-bold">
+                {tone}
+              </span>
+            </div>
+            <p className="mt-1 text-xs font-bold leading-relaxed">{core.shion_ux_message || line}</p>
+            <p className="mt-1 text-[10px] font-bold opacity-70">
+              Q_riskは自動減点ではなく、信用・価格・物件・銀行支援・営業プロセスを分けるための発見信号です。
+            </p>
+          </div>
+        </div>
+        {core.signals && (
+          <div className="grid min-w-[220px] grid-cols-2 gap-2">
+            {[
+              ["Q_risk", core.signals.q_risk],
+              ["警戒", core.emotion_synapse?.vigilance],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="rounded-xl bg-white/70 px-3 py-2 text-center">
+                <div className="text-[10px] font-black opacity-60">{String(label)}</div>
+                <div className="text-lg font-black">{value != null ? Number(value).toFixed(1) : "-"}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {flags.length > 0 && (
+        <div className="mt-3 grid gap-2 md:grid-cols-2">
+          {flags.slice(0, 4).map((flag: any) => (
+            <div key={flag.key || flag.title} className="rounded-xl border border-current/10 bg-white/70 px-3 py-2">
+              <div className="text-xs font-black">{flag.title}</div>
+              <div className="mt-1 text-[11px] font-medium leading-relaxed opacity-75">{flag.detail}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {actions.length > 0 && (
+        <div className="mt-3 rounded-xl bg-white/70 px-3 py-2">
+          <div className="text-[10px] font-black uppercase opacity-60">Next Actions</div>
+          <ul className="mt-1 space-y-1">
+            {actions.slice(0, 4).map((action: string, index: number) => (
+              <li key={index} className="flex gap-2 text-[11px] font-bold leading-relaxed">
+                <span className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-current opacity-50" />
+                <span>{action}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function DataSourceSummaryCard({ summary }: { summary?: any }) {
   if (!summary) return null;
   const assetClarity = summary.asset_clarity;
@@ -508,6 +583,8 @@ export default function Dashboard() {
                         <p className="text-[10px] text-rose-400 mt-2">財務パターンを学習済みLightGBMモデルで判定。審査スコアとは独立した補助指標です。</p>
                       </div>
                     )}
+
+                    <AurionCoreCard core={result.aurion_core} />
 
                     <RateProposalCard proposal={result.rate_proposal} />
 

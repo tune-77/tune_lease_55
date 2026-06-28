@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from api.shion_practical_knowledge import infer_practical_scene
 from api.shion_memory_taxonomy import MemoryType, RECALL_ROUTES
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -30,7 +31,6 @@ _ASSET_TERMS = (
     "医療機器", "CT", "MRI", "設備", "太陽光", "コンテナ", "厨房", "印刷機",
 )
 _DECISION_TERMS = ("承認", "否決", "条件付き", "条件付", "警戒", "保留", "稟議")
-
 
 def load_memory_index(path: Path = _INDEX_PATH) -> dict[str, Any]:
     try:
@@ -80,10 +80,12 @@ def recall_memories(question: str, *, limit: int = 5, index_path: Path = _INDEX_
 
     scored.sort(key=lambda item: item[0], reverse=True)
     selected = _select_records(scored, route=route, limit=max(0, limit))
+    practical_scene = infer_practical_scene(question)
     return {
         "route": route,
         "preferred_types": list(preferred_types),
         "case_profile": case_profile,
+        "practical_scene": practical_scene,
         "memories": selected,
         "refs": [str(r.get("id") or "") for r in selected if r.get("id")],
     }
@@ -92,19 +94,44 @@ def recall_memories(question: str, *, limit: int = 5, index_path: Path = _INDEX_
 def build_recall_prompt_block(question: str, *, limit: int = 5) -> tuple[str, dict[str, Any]]:
     recalled = recall_memories(question, limit=limit)
     memories = recalled.get("memories") or []
-    if not memories:
+    practical_scene = recalled.get("practical_scene") or {}
+    if not memories and not practical_scene:
         return "", recalled
     lines = [
         "【紫苑の想起メモ】",
         f"想起ルート: {recalled.get('route')}",
         "以下は今回の質問に関連しそうな記憶です。回答では必要なものだけ自然に使い、無関係なら無理に触れないでください。",
     ]
+    if practical_scene:
+        lines.extend(_format_practical_scene_block(practical_scene))
     for idx, record in enumerate(memories, start=1):
         mtype = str(record.get("memory_type") or "memory")
         status = str(record.get("status") or "active")
         content = str(record.get("content") or "").strip()
         lines.append(f"{idx}. [{mtype}/{status}] {content[:260]}")
     return "\n".join(lines), recalled
+
+
+def _format_practical_scene_block(scene: dict[str, Any]) -> list[str]:
+    lines = [
+        "",
+        "【実践知マップ】",
+        f"場面: {scene.get('label')}",
+        "この場面では、手順だけでなく「なぜそうするか」と「例外時にどう判断するか」まで使ってください。",
+    ]
+    learned_count = int(scene.get("learned_entry_count") or 0)
+    if learned_count:
+        lines.append(f"学習候補: Obsidian/過去判断由来の三層候補 {learned_count}件を含む。")
+    layer_labels = (
+        ("第一層 手順層", "procedure_layer"),
+        ("第二層 意味層", "meaning_layer"),
+        ("第三層 判断層", "judgment_layer"),
+    )
+    for label, key in layer_labels:
+        values = [str(item).strip() for item in scene.get(key) or [] if str(item).strip()]
+        if values:
+            lines.append(f"{label}: " + " / ".join(values[:2]))
+    return lines
 
 
 def _select_records(scored: list[tuple[float, dict[str, Any]]], *, route: str, limit: int) -> list[dict[str, Any]]:

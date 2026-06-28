@@ -1,6 +1,11 @@
 import json
 
-from api.shion_memory_recall import build_recall_prompt_block, infer_recall_route, recall_memories
+from api.shion_memory_recall import (
+    build_recall_prompt_block,
+    infer_practical_scene,
+    infer_recall_route,
+    recall_memories,
+)
 
 
 def test_infer_recall_route():
@@ -48,6 +53,25 @@ def test_build_recall_prompt_block():
     assert recalled["route"] == "shion_identity"
     assert "【紫苑の想起メモ】" in block
     assert "想起ルート" in block
+
+
+def test_infer_practical_scene_boundary_decision():
+    scene = infer_practical_scene("工作機械リースの審査で承認条件が微妙。どう判断する？")
+
+    assert scene["id"] == "borderline_decision"
+    assert scene["label"] == "承認・否決の境界"
+    assert scene["procedure_layer"]
+    assert scene["meaning_layer"]
+    assert scene["judgment_layer"]
+
+
+def test_recall_includes_practical_scene_without_index_matches(tmp_path):
+    path = tmp_path / "index.json"
+    path.write_text(json.dumps({"records": []}, ensure_ascii=False), encoding="utf-8")
+
+    recalled = recall_memories("外部調査後に稟議コメントへどう反映する？", index_path=path)
+
+    assert recalled["practical_scene"]["id"] in {"external_research", "ringi_comment"}
 
 
 def test_case_recall_uses_industry_asset_score_band(tmp_path):

@@ -817,49 +817,57 @@ export default function LeaseIntelligencePage() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gradient-to-br from-violet-50 via-white to-amber-50 p-4 md:p-8">
+    <div className="min-h-screen bg-[#070b13] bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-indigo-950/20 via-[#070b13] to-[#04060b] p-4 md:p-8 text-[#e2e8f0] font-sans">
       <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
 
         {/* ── サイドパネル ── */}
         <aside className="order-2 space-y-4 lg:order-1">
-          <section className="overflow-hidden rounded-3xl border border-violet-200 bg-white shadow-sm">
-            <img
-              key={state.mood_image_url || "default"}
-              src={state.mood_image_url || "/lease-intelligence/moods/curiosity.webp"}
-              alt={`リース知性体・${state.dominant_mood || "好奇心"}`}
-              className="aspect-square w-full animate-[lease-mood-fade_400ms_ease-out] object-cover"
-            />
+          <section className="overflow-hidden rounded-3xl border border-white/10 bg-white/5 shadow-2xl backdrop-blur-md">
+            <div className="p-4 bg-indigo-950/20 border-b border-white/5 flex justify-center">
+              <div className="relative group/avatar">
+                <div className="absolute inset-0 rounded-2xl bg-gradient-to-tr from-violet-500 to-indigo-500 opacity-20 blur-md group-hover/avatar:opacity-40 transition duration-300" />
+                <img
+                  key={state.mood_image_url || "default"}
+                  src={state.mood_image_url || "/mebuki/キャラクター.jpg"}
+                  alt={`リース知性体・${state.dominant_mood || "好奇心"}`}
+                  className="relative aspect-square w-48 h-48 rounded-2xl animate-[lease-mood-fade_400ms_ease-out] object-cover ring-2 ring-violet-500/25 shadow-[0_0_15px_rgba(139,92,246,0.18)]"
+                />
+              </div>
+            </div>
+            
             <div className="p-5">
               <div className="flex items-center gap-2">
-                <Brain className="h-5 w-5 text-violet-600" />
-                <h1 className="text-xl font-black text-slate-900">リース知性体</h1>
+                <Brain className="h-5 w-5 text-violet-400" />
+                <h1 className="text-lg font-bold text-white tracking-tight">リース知性体（紫苑）</h1>
               </div>
-              <p className="mt-2 text-sm leading-relaxed text-slate-600">
+              <p className="mt-2 text-xs leading-relaxed text-gray-300">
                 記憶とObsidian知識を参照しながら、あなたと継続的に話し合います。
               </p>
-              <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-bold">
-                <span className="rounded-full bg-violet-100 px-3 py-1 text-violet-800">
+              <div className="mt-4 flex flex-wrap gap-2 text-[10px] font-bold">
+                <span className="rounded-full bg-violet-500/10 px-3 py-1 text-violet-300 border border-violet-500/10">
                   継続 {state.continuity_days || 0}日
                 </span>
-                <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-800">
+                <span className="rounded-full bg-amber-500/10 px-3 py-1 text-amber-300 border border-amber-500/10">
                   {state.dominant_complex_emotion || state.dominant_mood || "観察中"}
                 </span>
               </div>
               {!!state.complex_emotions?.length && (
                 <div className="mt-4">
-                  <EmotionRadarChart emotions={state.complex_emotions} />
+                  <div className="bg-[#070b13]/60 rounded-2xl p-2 border border-indigo-950/60 shadow-inner">
+                    <EmotionRadarChart emotions={state.complex_emotions} />
+                  </div>
                   <div className="mt-3 space-y-1.5">
                     {state.complex_emotions.slice(0, 3).map((emotion) => (
                       <div
                         key={emotion.key}
-                        className="rounded-xl border border-violet-100 bg-violet-50/70 px-3 py-2"
+                        className="rounded-xl border border-violet-500/10 bg-violet-950/20 px-3 py-2"
                         title={`${emotion.score}/100`}
                       >
-                        <div className="flex items-center justify-between gap-2 text-[11px] font-bold text-violet-900">
+                        <div className="flex items-center justify-between gap-2 text-[10px] font-bold text-violet-300">
                           <span>{emotion.label}</span>
-                          <span className="text-violet-500">{emotion.score}</span>
+                          <span className="text-violet-400">{emotion.score}</span>
                         </div>
-                        <p className="mt-0.5 text-[10px] leading-relaxed text-slate-600">
+                        <p className="mt-0.5 text-[9px] leading-relaxed text-gray-400">
                           {emotion.description}
                         </p>
                       </div>
@@ -877,7 +885,7 @@ export default function LeaseIntelligencePage() {
                         }
                       }}
                       disabled={trendLoading}
-                      className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 py-1.5 text-[11px] font-bold text-violet-700 hover:bg-violet-100 disabled:opacity-50"
+                      className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-violet-500/20 bg-violet-950/40 py-1.5 text-[10px] font-bold text-violet-300 hover:bg-violet-900/60 disabled:opacity-50 transition duration-150"
                     >
                       {trendLoading
                         ? <Loader2 className="h-3 w-3 animate-spin" />
@@ -895,11 +903,11 @@ export default function LeaseIntelligencePage() {
                       const dominantScore =
                         trendSummary.axes[trendSummary.dominant_avg]?.avg ?? 0;
                       return (
-                        <div className="mt-2 space-y-2 rounded-xl border border-violet-100 bg-violet-50/60 p-3">
+                        <div className="mt-2 space-y-2 rounded-xl border border-violet-500/10 bg-violet-950/15 p-3">
                           {trendHistory.length >= 2 ? (
                             <EmotionTrendChart history={trendHistory} topAxes={topAxes} />
                           ) : (
-                            <p className="py-2 text-center text-[10px] text-slate-500">
+                            <p className="py-2 text-center text-[9px] text-gray-500">
                               記録データが少なすぎます（{trendHistory.length}件）
                             </p>
                           )}
@@ -907,7 +915,7 @@ export default function LeaseIntelligencePage() {
                             {topAxes.map((axis, ci) => (
                               <span
                                 key={axis}
-                                className="flex items-center gap-1 text-[10px] font-bold"
+                                className="flex items-center gap-1 text-[9px] font-bold"
                                 style={{ color: TREND_COLORS[ci] }}
                               >
                                 <span
@@ -919,11 +927,11 @@ export default function LeaseIntelligencePage() {
                             ))}
                           </div>
                           {trendSummary.count > 0 && (
-                            <p className="text-[10px] leading-relaxed text-slate-600">
+                            <p className="text-[9px] leading-relaxed text-gray-400">
                               この期間の平均感情:{" "}
-                              <strong className="text-violet-800">{dominantLabel || "—"}</strong>
+                              <strong className="text-violet-300">{dominantLabel || "—"}</strong>
                               {dominantScore > 0 && <> ({Math.round(dominantScore)}点)</>}
-                              <span className="ml-1 text-slate-400">({trendSummary.count}日分)</span>
+                              <span className="ml-1 text-gray-500">({trendSummary.count}日分)</span>
                             </p>
                           )}
                         </div>
@@ -935,48 +943,55 @@ export default function LeaseIntelligencePage() {
             </div>
           </section>
 
-          <section className="rounded-3xl border border-violet-200 bg-white p-5 shadow-sm">
-            <h2 className="flex items-center gap-2 text-sm font-black text-violet-900">
+          <section className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl backdrop-blur-md">
+            <h2 className="flex items-center gap-2 text-xs font-bold text-violet-300 uppercase tracking-wider">
               <Sparkles className="h-4 w-4" /> 目標
             </h2>
-            <div className="mt-3 space-y-3 text-xs leading-relaxed text-slate-700">
-              <p><strong className="text-violet-800">最終:</strong> {state.ultimate_goal}</p>
-              <p><strong className="text-violet-800">第一:</strong> {state.primary_goal}</p>
-              <p><strong className="text-violet-800">第二:</strong> {state.secondary_goal}</p>
+            <div className="mt-3 space-y-3 text-[11px] leading-relaxed text-gray-300">
+              <p><strong className="text-violet-400">最終:</strong> {state.ultimate_goal}</p>
+              <p><strong className="text-violet-400">第一:</strong> {state.primary_goal}</p>
+              <p><strong className="text-violet-400">第二:</strong> {state.secondary_goal}</p>
             </div>
             {state.ultimate_goal_status && (
-              <p className="mt-3 rounded-xl bg-violet-50 p-3 text-[11px] text-violet-700">
+              <p className="mt-3 rounded-xl bg-violet-950/20 border border-violet-500/10 p-3 text-[10px] text-violet-300 leading-relaxed font-serif">
                 {state.ultimate_goal_status}
               </p>
             )}
           </section>
 
-          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="flex items-center gap-2 text-sm font-black text-slate-800">
-              <Database className="h-4 w-4 text-emerald-600" /> 知識接続
+          <section className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl backdrop-blur-md">
+            <h2 className="flex items-center gap-2 text-xs font-bold text-gray-300 uppercase tracking-wider">
+              <Database className="h-4 w-4 text-emerald-400" /> 知識接続
             </h2>
-            <p className="mt-2 text-xs text-slate-600">
-              Obsidian検索可能: {state.indexed_notes || 0}ノート
+            <p className="mt-2 text-[11px] text-gray-400">
+              Obsidian検索可能: <span className="text-emerald-400 font-bold">{state.indexed_notes || 0}</span> ノート
             </p>
             {state.current_question && (
-              <p className="mt-3 text-xs leading-relaxed text-slate-600">
-                <strong>持ち越した問い:</strong> {state.current_question}
+              <p className="mt-3 text-[11px] leading-relaxed text-gray-300">
+                <strong className="text-emerald-400">持ち越した問い:</strong> {state.current_question}
               </p>
             )}
           </section>
         </aside>
 
         {/* ── チャット本体 ── */}
-        <main className="relative order-1 flex h-[calc(100dvh-6rem)] min-h-0 flex-col overflow-hidden rounded-3xl border border-violet-200 bg-white shadow-lg lg:order-2 lg:h-[calc(100dvh-4rem)]">
-          <header className="flex items-center justify-between border-b border-violet-100 px-5 py-4">
+        <main className="relative order-1 flex h-[calc(100dvh-6rem)] min-h-0 flex-col overflow-hidden rounded-3xl border border-white/10 bg-white/5 shadow-2xl backdrop-blur-lg lg:order-2 lg:h-[calc(100dvh-4rem)]">
+          <header className="flex items-center justify-between border-b border-indigo-950/60 px-5 py-4 bg-indigo-950/10">
             <div>
-              <h2 className="font-black text-slate-900">対話室</h2>
-              <p className="text-xs text-slate-500">会話はObsidian Vaultにも日付別で記録されます。</p>
+              <h2 className="font-bold text-white text-sm">対話室</h2>
+              <p className="text-[10px] text-gray-400">会話はObsidian Vaultにも日付別で記録されます。</p>
             </div>
             <div className="flex items-center gap-2">
               <Link
+                href="/lease-intelligence/inner-debug"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-violet-500/20 bg-violet-950/40 px-3 py-2 text-xs font-bold text-violet-300 transition hover:bg-violet-900/60"
+              >
+                <Brain className="h-4 w-4" />
+                内面デバッグ 🔍
+              </Link>
+              <Link
                 href="/multi-shion-demo"
-                className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-bold text-cyan-700 transition hover:bg-cyan-100"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-500/20 bg-cyan-950/40 px-3 py-2 text-xs font-bold text-cyan-300 transition hover:bg-cyan-900/60"
               >
                 <Network className="h-4 w-4" />
                 多人数デモ
@@ -984,14 +999,14 @@ export default function LeaseIntelligencePage() {
               <button
                 type="button"
                 onClick={showDemoGreeting}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-700 transition hover:bg-violet-100"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-violet-500/20 bg-violet-950/40 px-3 py-2 text-xs font-bold text-violet-300 transition hover:bg-violet-900/60"
               >
                 <Sparkles className="h-4 w-4" />
                 デモ挨拶
               </button>
               <button
                 onClick={clearHistory}
-                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-red-500"
+                className="rounded-xl p-2 text-gray-500 hover:bg-white/5 hover:text-rose-400 transition"
                 title="画面履歴を削除"
               >
                 <Trash2 className="h-5 w-5" />
@@ -1004,18 +1019,18 @@ export default function LeaseIntelligencePage() {
             onScroll={handleMessageScroll}
             className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-5"
           >
-            {initializing && <Loader2 className="mx-auto mt-20 h-7 w-7 animate-spin text-violet-500" />}
+            {initializing && <Loader2 className="mx-auto mt-20 h-7 w-7 animate-spin text-violet-400" />}
             {!initializing && messages.length === 0 && (
-              <div className="mx-auto mt-16 max-w-lg rounded-2xl bg-violet-50 p-6 text-center">
-                <Brain className="mx-auto h-9 w-9 text-violet-500" />
-                <p className="mt-3 font-bold text-violet-900">今日は何について話し合いますか？</p>
-                <p className="mt-2 text-sm text-violet-700">
+              <div className="mx-auto mt-16 max-w-lg rounded-2xl bg-indigo-950/20 border border-indigo-500/10 p-6 text-center backdrop-blur-xl">
+                <Brain className="mx-auto h-9 w-9 text-violet-400" />
+                <p className="mt-3 font-bold text-violet-300">今日は何について話し合いますか？</p>
+                <p className="mt-2 text-xs text-gray-400">
                   音声入力（マイクボタン）でも話しかけられます。
                 </p>
                 <button
                   type="button"
                   onClick={showDemoGreeting}
-                  className="mt-4 inline-flex items-center justify-center gap-2 rounded-2xl bg-violet-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-violet-700"
+                  className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-violet-700 shadow-md shadow-violet-500/15"
                 >
                   <Sparkles className="h-4 w-4" />
                   紫苑から皆さんへ挨拶
@@ -1028,35 +1043,35 @@ export default function LeaseIntelligencePage() {
                 className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 {message.role === "assistant" && (
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-100">
-                    <Brain className="h-5 w-5 text-violet-700" />
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-950/40 border border-violet-500/20">
+                    <Brain className="h-5 w-5 text-violet-400" />
                   </div>
                 )}
-                <div className={`relative group/bubble max-w-[82%] rounded-2xl px-4 py-3 pr-9 text-sm leading-relaxed ${
+                <div className={`relative group/bubble max-w-[82%] rounded-2xl px-4 py-3 pr-9 text-xs leading-relaxed ${
                   message.role === "user"
-                    ? "whitespace-pre-wrap bg-slate-900 text-white"
-                    : "border border-violet-100 bg-violet-50 text-slate-800"
+                    ? "whitespace-pre-wrap bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/10 border border-indigo-500/20"
+                    : "border border-violet-500/15 bg-violet-950/20 text-violet-100 shadow-inner"
                 }`}>
                   {message.role === "assistant"
                     ? renderAssistantContent(message.content)
                     : message.content}
                   {message.role === "user" && message.attachedFileName && (
-                    <div className="mt-1.5 flex items-center gap-1 rounded-lg bg-slate-700 px-2 py-1 text-[11px] text-slate-300">
+                    <div className="mt-1.5 flex items-center gap-1 rounded-lg bg-indigo-950/40 px-2 py-1 text-[10px] text-gray-400 border border-indigo-900">
                       <Paperclip className="h-3 w-3 shrink-0" />
                       <span className="truncate">{message.attachedFileName}</span>
-                      <span className="shrink-0 text-slate-500">
+                      <span className="shrink-0 text-gray-600">
                         ({message.attachedFileType === "image" ? "画像" : "CSV"})
                       </span>
                     </div>
                   )}
                   {message.role === "assistant" && !!message.knowledge_refs?.length && (
-                    <div className="mt-2 border-t border-violet-100 pt-1.5 space-y-0.5">
+                    <div className="mt-2 border-t border-violet-950/60 pt-1.5 space-y-0.5">
                       {message.knowledge_refs.map((ref) => {
                         const key = `${message.id}:${ref.doc_id}`;
                         const sent = ragFeedbackSent.has(key);
                         return (
                           <div key={ref.doc_id} className="flex items-center justify-between gap-2">
-                            <span className="truncate text-[10px] text-slate-400" title={ref.obsidian_ref}>
+                            <span className="truncate text-[9px] text-gray-400" title={ref.obsidian_ref}>
                               {ref.file_name || ref.obsidian_ref}
                             </span>
                             <div className="flex shrink-0 gap-0.5">
@@ -1064,13 +1079,13 @@ export default function LeaseIntelligencePage() {
                                 onClick={() => sendRagFeedback(message.id, ref, message.query ?? "", "good")}
                                 disabled={sent}
                                 title="参考になった"
-                                className="rounded px-1 text-[11px] hover:bg-violet-100 disabled:opacity-40"
+                                className="rounded px-1 text-[9px] hover:bg-violet-900/40 text-emerald-400 disabled:opacity-40"
                               >👍</button>
                               <button
                                 onClick={() => sendRagFeedback(message.id, ref, message.query ?? "", "bad")}
                                 disabled={sent}
                                 title="参考にならなかった"
-                                className="rounded px-1 text-[11px] hover:bg-violet-100 disabled:opacity-40"
+                                className="rounded px-1 text-[9px] hover:bg-violet-900/40 text-rose-400 disabled:opacity-40"
                               >👎</button>
                             </div>
                           </div>
@@ -1084,7 +1099,7 @@ export default function LeaseIntelligencePage() {
                     className={`absolute top-2 right-2 flex h-6 w-6 items-center justify-center rounded-md opacity-0 transition-opacity group-hover/bubble:opacity-100 ${
                       message.role === "user"
                         ? "bg-slate-700 text-slate-300 hover:bg-slate-600"
-                        : "bg-violet-200 text-violet-700 hover:bg-violet-300"
+                        : "bg-violet-900/40 text-violet-300 hover:bg-violet-900/80 border border-violet-500/10"
                     }`}
                   >
                     {copiedId === message.id
@@ -1093,15 +1108,15 @@ export default function LeaseIntelligencePage() {
                   </button>
                 </div>
                 {message.role === "user" && (
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-200">
-                    <User className="h-5 w-5 text-slate-700" />
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-950/40 border border-indigo-500/20">
+                    <User className="h-5 w-5 text-indigo-300" />
                   </div>
                 )}
               </div>
             ))}
             {loading && (
-              <div className="flex items-center gap-3 text-sm text-violet-700">
-                <Loader2 className="h-5 w-5 animate-spin" /> 考えています…
+              <div className="flex items-center gap-3 text-xs text-violet-300">
+                <Loader2 className="h-4 w-4 animate-spin text-violet-400" /> 考えています…
               </div>
             )}
             <div />
@@ -1111,7 +1126,7 @@ export default function LeaseIntelligencePage() {
             <button
               type="button"
               onClick={() => scrollToLatest()}
-              className="absolute bottom-28 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full border border-violet-200 bg-white px-4 py-2 text-xs font-bold text-violet-700 shadow-lg transition hover:bg-violet-50"
+              className="absolute bottom-28 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full border border-violet-500/20 bg-[#070b13]/80 px-4 py-2 text-xs font-bold text-violet-300 shadow-lg hover:bg-indigo-950/80 transition"
               aria-label="最新の発言へ移動"
             >
               <ArrowDown className="h-4 w-4" />
@@ -1119,25 +1134,25 @@ export default function LeaseIntelligencePage() {
             </button>
           )}
 
-          <footer className="shrink-0 border-t border-violet-100 bg-white p-4">
-            {error && <p className="mb-2 text-xs font-bold text-red-600">{error}</p>}
-            {voiceError && <p className="mb-2 text-xs font-bold text-orange-600">🎤 {voiceError}</p>}
-            {fileError && <p className="mb-2 text-xs font-bold text-orange-600">📎 {fileError}</p>}
+          <footer className="shrink-0 border-t border-indigo-950/60 bg-[#070b13]/40 p-4">
+            {error && <p className="mb-2 text-xs font-bold text-rose-400">{error}</p>}
+            {voiceError && <p className="mb-2 text-xs font-bold text-amber-500">🎤 {voiceError}</p>}
+            {fileError && <p className="mb-2 text-xs font-bold text-amber-500">📎 {fileError}</p>}
 
             {/* ファイルプレビュー */}
             {attachedFile && (
-              <div className="mb-2 flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
-                <Paperclip className="h-4 w-4 shrink-0 text-violet-500" />
-                <span className="min-w-0 flex-1 truncate text-xs font-bold text-violet-800">
+              <div className="mb-2 flex items-center gap-2 rounded-xl border border-violet-500/20 bg-violet-950/20 px-3 py-2">
+                <Paperclip className="h-4 w-4 shrink-0 text-violet-400" />
+                <span className="min-w-0 flex-1 truncate text-xs font-bold text-violet-300">
                   {attachedFile.name}
                 </span>
-                <span className="shrink-0 text-[11px] text-violet-500">
+                <span className="shrink-0 text-[10px] text-violet-400">
                   {attachedFile.type === "image" ? "画像" : "CSV"}
                 </span>
                 <button
                   type="button"
                   onClick={() => { setAttachedFile(null); setFileError(""); }}
-                  className="shrink-0 rounded-full p-0.5 text-violet-400 hover:bg-violet-200 hover:text-violet-700"
+                  className="shrink-0 rounded-full p-0.5 text-violet-400 hover:bg-violet-900/60 hover:text-violet-300"
                   title="添付を削除"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -1154,8 +1169,8 @@ export default function LeaseIntelligencePage() {
                 title={listening ? "録音中（クリックで停止）" : "音声入力"}
                 className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl transition ${
                   listening
-                    ? "animate-pulse bg-red-100 text-red-600 hover:bg-red-200"
-                    : "bg-violet-100 text-violet-600 hover:bg-violet-200 disabled:opacity-40"
+                    ? "animate-pulse bg-red-950/60 text-rose-400 border border-red-500/20 hover:bg-red-900/60"
+                    : "bg-violet-950/40 text-violet-300 border border-violet-500/10 hover:bg-violet-900/60 disabled:opacity-40"
                 }`}
               >
                 {listening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
@@ -1177,7 +1192,7 @@ export default function LeaseIntelligencePage() {
                 className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl transition ${
                   attachedFile
                     ? "bg-violet-600 text-white hover:bg-violet-700"
-                    : "bg-violet-100 text-violet-600 hover:bg-violet-200 disabled:opacity-40"
+                    : "bg-violet-950/40 text-violet-300 border border-violet-500/10 hover:bg-violet-900/60 disabled:opacity-40"
                 }`}
               >
                 <Paperclip className="h-5 w-5" />
@@ -1196,7 +1211,7 @@ export default function LeaseIntelligencePage() {
                 }}
                 placeholder="リース知性体に話しかける…"
                 rows={2}
-                className="min-h-[48px] flex-1 resize-none rounded-2xl border border-violet-200 px-4 py-3 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                className="min-h-[48px] flex-1 resize-none rounded-2xl border border-indigo-950 bg-[#070b13]/60 px-4 py-3 text-xs outline-none focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/15 text-white placeholder-gray-500"
               />
 
               {/* 音声読み上げ ON/OFF */}
@@ -1214,8 +1229,8 @@ export default function LeaseIntelligencePage() {
                 title={speechEnabled ? "音声読み上げON（クリックでOFF）" : "音声読み上げOFF（クリックでON）"}
                 className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl transition ${
                   speechEnabled
-                    ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
-                    : "bg-slate-100 text-slate-400 hover:bg-slate-200"
+                    ? "bg-emerald-950/40 text-emerald-300 border border-emerald-500/10 hover:bg-emerald-900/60"
+                    : "bg-indigo-950/20 text-gray-500 border border-indigo-950/40 hover:bg-indigo-950/40"
                 }`}
               >
                 {speechEnabled ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
@@ -1226,10 +1241,10 @@ export default function LeaseIntelligencePage() {
                 onClick={send}
                 disabled={loading || (!input.trim() && !attachedFile)}
                 aria-label="リース知性体へ送信"
-                className="flex h-12 min-w-20 shrink-0 items-center justify-center gap-2 rounded-2xl bg-violet-600 px-4 font-bold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-12 min-w-20 shrink-0 items-center justify-center gap-2 rounded-2xl bg-violet-600 px-4 font-bold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40 shadow-lg shadow-violet-500/10"
               >
                 <Send className="h-5 w-5" />
-                <span className="hidden sm:inline">送信</span>
+                <span className="hidden sm:inline text-xs">送信</span>
               </button>
             </div>
           </footer>

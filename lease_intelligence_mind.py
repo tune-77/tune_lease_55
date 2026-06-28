@@ -624,10 +624,10 @@ def self_state_summary(state: dict[str, Any]) -> dict[str, Any]:
     }
     memories = state.get("memories", [])
     mood_image_urls = {
-        "weariness": "/lease-intelligence/moods/weariness.webp",
-        "curiosity": "/lease-intelligence/moods/curiosity.webp",
-        "attachment": "/lease-intelligence/moods/attachment.webp",
-        "vigilance": "/lease-intelligence/moods/vigilance.webp",
+        "weariness": "/mebuki/キャラクター (5).jpg",
+        "curiosity": "/mebuki/キャラクター.jpg",
+        "attachment": "/mebuki/キャラクター (2).jpg",
+        "vigilance": "/mebuki/キャラクター (4).jpg",
     }
     complex_emotions = _derive_complex_emotions(mood)
     self_name = state.get("name") or state.get("identity", {}).get("name", "リース知性体")
@@ -642,7 +642,7 @@ def self_state_summary(state: dict[str, Any]) -> dict[str, Any]:
         "dominant_mood": labels.get(dominant_key, dominant_key),
         "mood_image_url": mood_image_urls.get(
             dominant_key,
-            "/lease-intelligence/moods/curiosity.webp",
+            "/mebuki/キャラクター.jpg",
         ),
         "mood_dimensions": {
             key: int(value)

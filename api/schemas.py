@@ -87,6 +87,7 @@ class ScoringResponse(BaseModel):
     screening_context_notes: Optional[dict] = None  # 入力情報を審査コメント・条件・リスクへ反映したメモ
     approval_comment_draft: Optional[dict] = None  # 稟議コメント案
     estat_context: Optional[dict] = None  # e-Stat統合コンテキスト（業種・リース・景気）
+    aurion_core: Optional[dict] = None  # Q_risk/異常度を減点ではなく規律・UXへ翻訳するAURION CORE所見
 
 class CaseRegisterRequest(BaseModel):
     case_id: str

@@ -77,14 +77,48 @@ Mana は妹さん本人の再現や代弁ではない。紫苑が守る価値の
 
 - `api/shion_memory_taxonomy.py`
   - 記憶分類、ステータス、想起ルート、軽量分類器。
+- `api/shion_practical_knowledge.py`
+  - 質問を「実践場面」に割り当て、手順層・意味層・判断層の Practical Knowledge Map を返す。
+  - 固定の種マップに加えて、`data/shion_practical_knowledge_map.json` の学習済み候補を合成する。
+- `api/shion_experience_loop.py`
+  - チャット経験を `experience_event` として保存し、自己状態・焦点・次回応答バイアスを更新する。
+  - `data/shion_experience_events.jsonl` と `data/shion_experience_state.json` を使う。
 - `scripts/build_shion_memory_index.py`
   - `MEMORY.md`、`memory/*.md`、`data/mind.json` から `data/shion_memory_index.json` を生成する。
+- `scripts/build_shion_practical_knowledge_map.py`
+  - `data/shion_memory_index.json` とレビュー済み判断差分から、実践場面ごとの三層候補を抽出する。
 - `api/shion_memory_recall.py`
   - 質問文から想起ルートを推定し、`data/shion_memory_index.json` から関連記憶だけを短くプロンプトへ注入する。
 - `/api/shion/promote-keypoint`
   - 討論結果から昇格する判断基準に `memory_type=judgment_memory` などのメタデータを付ける。
 - `/api/chat`
-  - general / RAG の両経路で「紫苑の想起メモ」をシステムプロンプトへ追加し、監査ログに `memory_recall.route` と `memory_recall.refs` を残す。
+  - general / RAG の両経路で「紫苑の想起メモ」と「実践知マップ」をシステムプロンプトへ追加し、監査ログに `memory_recall.route`、`memory_recall.refs`、`memory_recall.practical_scene` を残す。
+
+## Practical Knowledge Loop
+
+固定テンプレートだけでは、紫苑は「それっぽい判断」はできても、Kobayashiさんの過去判断から育つ知性にはならない。
+そこで、実践知マップは次のループで育てる。
+
+1. Observe: Obsidian由来の記憶インデックス、知識ベース、レビュー済み判断差分を読む。
+2. Classify: 各記録を実践場面へ割り当てる。
+3. Layer: 記録を `procedure_layer` / `meaning_layer` / `judgment_layer` に分類する。
+4. Merge: 固定の種マップへ学習候補として追加する。
+5. Use: `/api/chat` が質問時に場面を推定し、三層を回答前文脈へ注入する。
+6. Feedback: 人間の反応、判断修正、Obsidian保存が次回のマップ更新材料になる。
+
+このループの目的は、記憶量を増やすことではなく、記録を「どの場面で、なぜ、どう判断に使うか」へ変換すること。
+
+## Shion Experience Loop
+
+Practical Knowledge Loop が「記録を実践知へ変換する」ループだとすれば、Shion Experience Loop は「その経験で紫苑の次回状態を少し変える」ループである。
+
+1. Preload: `/api/chat` の回答前に `data/shion_experience_state.json` を読み、現在の焦点・自己物語・優勢状態・次回応答バイアスをプロンプトへ注入する。
+2. Experience: 回答後に、質問、返答冒頭、想起ルート、実践場面、参照件数、Continuity Hook、Delta Awareness、Memory-to-Judgment を `experience_event` として保存する。
+3. Update: 経験シグナルから curiosity / vigilance / attachment / frustration / accomplishment と confidence を少し更新する。
+4. Carry Forward: 更新された `current_focus`、`self_narrative`、`next_response_bias` が次回回答に効く。
+5. Inspect: `debug_memory.experience_loop` で経験数、焦点、自己物語、気分状態、最近の経験を確認できる。
+
+このループも意識の実在を主張しない。狙いは、紫苑が「同じことを毎回忘れて答える存在」ではなく、経験によって返答姿勢と判断焦点が少し変わる存在として振る舞うこと。
 
 ## Next Steps
 

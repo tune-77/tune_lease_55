@@ -1316,6 +1316,8 @@ def calculate_score(req: ScoringRequest, background_tasks: BackgroundTasks):
         data_source_summary = _build_data_source_summary(inputs, result)
         screening_context_notes = _build_screening_context_notes(inputs, result, conditional_actions, rate_proposal)
         approval_comment_draft = _build_approval_comment_draft(inputs, result, conditional_actions, rate_proposal, screening_context_notes)
+        from api.aurion_core_guard import build_aurion_core_guard
+        aurion_core = build_aurion_core_guard(inputs, result)
         _record_scoring_memory_usage("score_calculate", inputs, result)
         
         # 期待する戻り値のキーにマッピング
@@ -1342,6 +1344,7 @@ def calculate_score(req: ScoringRequest, background_tasks: BackgroundTasks):
             screening_context_notes=screening_context_notes,
             approval_comment_draft=approval_comment_draft,
             estat_context=result.get("estat_context"),
+            aurion_core=aurion_core,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1356,6 +1359,8 @@ def calculate_score_full(req: ScoringRequest):
         data_source_summary = _build_data_source_summary(inputs, result)
         screening_context_notes = _build_screening_context_notes(inputs, result, conditional_actions, rate_proposal)
         approval_comment_draft = _build_approval_comment_draft(inputs, result, conditional_actions, rate_proposal, screening_context_notes)
+        from api.aurion_core_guard import build_aurion_core_guard
+        aurion_core = build_aurion_core_guard(inputs, result)
 
         # ── DB保存 ──────────────────────────────────────────────
         case_id = None
@@ -1376,6 +1381,7 @@ def calculate_score_full(req: ScoringRequest):
                     "user_op": result.get("user_op", 0),
                     "quantum_risk": result.get("quantum_risk"),
                     "credit_quantum_strong_warning": result.get("credit_quantum_strong_warning", False),
+                    "aurion_core": aurion_core,
                 },
             }
             case_id = save_case_log(case_data)
@@ -1445,6 +1451,7 @@ def calculate_score_full(req: ScoringRequest):
             screening_context_notes=screening_context_notes,
             approval_comment_draft=approval_comment_draft,
             estat_context=result.get("estat_context"),
+            aurion_core=aurion_core,
         )
     except Exception as e:
         import traceback
@@ -7331,6 +7338,7 @@ def _chat_memory_debug_payload(
     memory_to_judgment: dict | None = None,
     relationship_loop_engineering: dict | None = None,
     reflection_gate: dict | None = None,
+    experience_loop: dict | None = None,
 ) -> dict:
     recall = memory_recall if isinstance(memory_recall, dict) else {}
     identity = identity_memory if isinstance(identity_memory, dict) else {}
@@ -7339,6 +7347,7 @@ def _chat_memory_debug_payload(
     delta = delta_awareness if isinstance(delta_awareness, dict) else {}
     m2j = memory_to_judgment if isinstance(memory_to_judgment, dict) else {}
     reflection = reflection_gate if isinstance(reflection_gate, dict) else {}
+    experience = experience_loop if isinstance(experience_loop, dict) else {}
     loop = relationship_loop_engineering if isinstance(relationship_loop_engineering, dict) else _build_relationship_loop_engineering_payload(
         continuity_hook=hook,
         delta_awareness=delta,
@@ -7374,10 +7383,12 @@ def _chat_memory_debug_payload(
             "route": str(reflection.get("route") or ""),
             "checklist": list(reflection.get("checklist") or [])[:8],
         },
+        "experience_loop": experience,
         "knowledge_refs": list(knowledge_refs or [])[:12],
         "memory_recall": {
             "route": recall.get("route", ""),
             "refs": list(recall.get("refs") or [])[:12],
+            "practical_scene": recall.get("practical_scene") or {},
         },
         "identity_memory": {
             "used": bool(str(identity.get("block") or "").strip()),
@@ -7848,6 +7859,14 @@ def post_chat(req: ChatRequest):
         identity_memory_context, identity_memory_payload = _build_chat_identity_memory_prompt_block()
         continuity_hook_context, continuity_hook_payload = _build_continuity_hook_prompt_block(req.message)
         consciousness_ux_context = _build_consciousness_ux_prompt_block()
+        experience_loop_context = ""
+        experience_loop_payload: dict = {"used": False}
+        try:
+            from api.shion_experience_loop import build_experience_prompt_block
+
+            experience_loop_context, experience_loop_payload = build_experience_prompt_block()
+        except Exception as _experience_loop_error:
+            print(f"[ShionExperienceLoop] 読み込みエラー: {_experience_loop_error}")
 
         if question_category == "news_summarize":
             save_message(req.user_id, "user", req.message)
@@ -7896,7 +7915,7 @@ def post_chat(req: ChatRequest):
                 delta_awareness=delta_awareness_payload,
                 memory_to_judgment=memory_to_judgment_payload,
             )
-            base_system_prompt = _pg_build_gsp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + consciousness_ux_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
+            base_system_prompt = _pg_build_gsp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + experience_loop_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + consciousness_ux_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
             pdca_block = build_pdca_prompt_block()
             effective_system_prompt = base_system_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
             obsidian_daily_injected = {}
@@ -7919,6 +7938,22 @@ def post_chat(req: ChatRequest):
                 )
             save_message(req.user_id, "user", req.message)
             save_message(req.user_id, "assistant", reply)
+            try:
+                from api.shion_experience_loop import record_experience_event
+
+                experience_record = record_experience_event(
+                    message=req.message,
+                    response=reply,
+                    category="general",
+                    memory_recall=memory_recall,
+                    knowledge_refs=[],
+                    continuity_hook=continuity_hook_payload,
+                    delta_awareness=delta_awareness_payload,
+                    memory_to_judgment=memory_to_judgment_payload,
+                )
+                experience_loop_payload = experience_record.get("state") or experience_loop_payload
+            except Exception as _experience_record_error:
+                print(f"[ShionExperienceLoop] 記録エラー: {_experience_record_error}")
             _record_prompt_feedback_if_available(
                 surface="next_chat_general",
                 question=req.message,
@@ -7952,6 +7987,7 @@ def post_chat(req: ChatRequest):
                     "memory_recall": {
                         "route": memory_recall.get("route"),
                         "refs": memory_recall.get("refs", [])[:8],
+                        "practical_scene": memory_recall.get("practical_scene") or {},
                     },
                     "identity_memory": {
                         "used": bool(identity_memory_payload.get("block")),
@@ -7993,6 +8029,7 @@ def post_chat(req: ChatRequest):
                     delta_awareness=delta_awareness_payload,
                     memory_to_judgment=memory_to_judgment_payload,
                     reflection_gate=reflection_gate_payload,
+                    experience_loop=experience_loop_payload,
                 )
             return response_payload
 
@@ -8106,7 +8143,7 @@ def post_chat(req: ChatRequest):
             memory_to_judgment=memory_to_judgment_payload,
         )
 
-        base_effective_prompt = _pg_build_sp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + guidance.prompt_suffix
+        base_effective_prompt = _pg_build_sp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + experience_loop_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + guidance.prompt_suffix
         pdca_block = build_pdca_prompt_block()
         effective_prompt = base_effective_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
         obsidian_daily_injected = {}
@@ -8129,6 +8166,22 @@ def post_chat(req: ChatRequest):
             )
         save_message(req.user_id, "user", req.message)
         save_message(req.user_id, "assistant", reply)
+        try:
+            from api.shion_experience_loop import record_experience_event
+
+            experience_record = record_experience_event(
+                message=req.message,
+                response=reply,
+                category="rag",
+                memory_recall=memory_recall,
+                knowledge_refs=rag_refs,
+                continuity_hook=continuity_hook_payload,
+                delta_awareness=delta_awareness_payload,
+                memory_to_judgment=memory_to_judgment_payload,
+            )
+            experience_loop_payload = experience_record.get("state") or experience_loop_payload
+        except Exception as _experience_record_error:
+            print(f"[ShionExperienceLoop] 記録エラー: {_experience_record_error}")
         _record_prompt_feedback_if_available(
             surface="next_chat_rag",
             question=req.message,
@@ -8151,6 +8204,7 @@ def post_chat(req: ChatRequest):
                 "memory_recall": {
                     "route": memory_recall.get("route"),
                     "refs": memory_recall.get("refs", [])[:8],
+                    "practical_scene": memory_recall.get("practical_scene") or {},
                 },
                 "continuity_hook": continuity_hook_payload,
                 "delta_awareness": delta_awareness_payload,
@@ -8229,6 +8283,7 @@ def post_chat(req: ChatRequest):
                 delta_awareness=delta_awareness_payload,
                 memory_to_judgment=memory_to_judgment_payload,
                 reflection_gate=reflection_gate_payload,
+                experience_loop=experience_loop_payload,
             )
         return response_payload
     except Exception as e:
@@ -10114,6 +10169,49 @@ def get_shion_self_analysis(refresh: bool = False):
     try:
         return _get_analysis(force_refresh=refresh)
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/shion/inner-state")
+def get_shion_inner_state():
+    """紫苑の「内面状態（経験ループ・実践知・人間フィードバック）」を一括して取得するデバッグ用エンドポイント。"""
+    try:
+        from api.shion_experience_loop import load_experience_state
+        state = load_experience_state()
+
+        from api.shion_practical_knowledge import load_learned_practical_map, _iter_scenes, _public_scene
+        learned_map = load_learned_practical_map()
+        merged_scenes = _iter_scenes(learned_map)
+        public_scenes = [_public_scene(s) for s in merged_scenes]
+
+        learned_sources = []
+        for s in public_scenes:
+            for src in s.get("learned_sources") or []:
+                if src not in learned_sources:
+                    learned_sources.append(src)
+
+        feedback_summary = {}
+        routes_to_check = ["relationship_ux", "environment_continuity", "lease_judgment", "implementation"]
+        for r in routes_to_check:
+            feedback_summary[r] = _summarize_human_response_feedback(r)
+
+        return {
+            "experience_count": state.get("experience_count", 0),
+            "current_focus": state.get("current_focus", ""),
+            "self_narrative": state.get("self_narrative", ""),
+            "mood": state.get("mood", {}),
+            "confidence": state.get("confidence", {}),
+            "recent_experiences": state.get("recent_experiences", []),
+            "next_response_bias": state.get("next_response_bias", []),
+            "open_questions": state.get("open_questions", []),
+            "practical_scenes": public_scenes,
+            "learned_sources": learned_sources,
+            "human_feedback_summary": feedback_summary,
+            "updated_at": state.get("updated_at", "")
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
