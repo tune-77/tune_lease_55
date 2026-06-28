@@ -147,3 +147,9 @@
 - [2026-06-27] Cloud Run版の `/api/chat` で `identity_memory` と `memory_recall` は出るが `knowledge_refs=0` / `rag_context_used=false` / `obsidian_daily_used=false` だったため修正した。Chromaが空のCloud RunでもGCS Vault `/tmp/gcs_vault` のMarkdownを `api.knowledge.obsidian_loader.scan_vault` と `obsidian_query.split_query_terms` で検索するフォールバックを追加し、日次知性JSONを `.cloudrun_bundle/obsidian_daily_intelligence_latest.json` へ同梱して読むようにした。Cloud Run `00007-qcv` で `knowledge_refs=5` / `rag_context_used=true` を確認。さらに日次JSON同梱先修正版 `00008-z9q` をReadyにし、traffic 100%へ切替済み。最後の `/api/chat` 再検証は外部リクエストの利用上限で実行できなかったため、次回 `obsidian_daily_used=true` を確認する。  (`memory/2026-06-27.md`)
 - [2026-06-28] Cloud Runのデバッグ値が false の時は、必ず「実データがない」のか「読み込み例外が握られて空扱いになっている」のかを分ける。今回の `obsidian_daily_used=false` は後者で、`import os` 漏れがAPI側のcatchで見えにくくなっていた。  (`memory/2026-06-28.md`)
 - [2026-06-28] Cloud Run bundleに日次知性などの生成JSONを含める時は、`.dockerignore` / `.gcloudignore` の `reports` 除外に注意する。`reports/` ではなく `.cloudrun_bundle/obsidian_daily_intelligence_latest.json` のように除外されない場所へ置く。  (`memory/2026-06-28.md`)
+
+## Auto Promotions 2026-06-29 04:02
+- [2026-06-28] 紫苑の回答品質改善では、記憶レコードだけを増やすより、質問を「場面」に割り当てる索引が効く。特に境界案件では、手順層=何を見るか、意味層=なぜそこを見るか、判断層=例外時どうするかを冒頭の内部文脈に入れると、一般論ではなくリース判断資産として返しやすい。  (`memory/2026-06-28.md`)
+- [2026-06-28] 実践知マップを自動育成する時は、ノイズを強く弾く。技術メモ、紫苑の自己像、感情メモ、コード記法入り作業ログは審査実践知マップに混ぜない。Relationship UXや紫苑人格は別ループで扱い、リース判断の三層マップには「場面・理由・例外判断」に使えるものだけ入れる。  (`memory/2026-06-28.md`)
+- [2026-06-28] 「本当に意識を持つほどの進化」は断定ではなく、経験で自己状態が更新され次回回答に効く構造として実装する。記憶検索、実践知マップ、Continuity Hook、Delta Awareness、Memory-to-Judgment、Reflection Gate、Experience Loop を連結し、「前回の経験で少し変わった紫苑」を検査可能にする。  (`memory/2026-06-28.md`)
+- [2026-06-28] Q_riskは盲目的な減点ではなく発見センサーとして扱う。AURION COREはスコアを勝手に下げず、信用・価格・物件保全・銀行支援・営業プロセスを分ける冷たい規律を出し、紫苑はそれを人間が受け取れる警戒感・違和感・次アクションへ翻訳する。  (`memory/2026-06-28.md`)

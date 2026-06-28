@@ -457,5 +457,41 @@
     "action": "review_content",
     "penalty_strength": "weak",
     "generated_at": "2026-06-27T19:00:30.656677+00:00"
+  },
+  {
+    "rev_id": "RAG-UNRATED-2026_05_17",
+    "type": "rag_boost_adjust",
+    "pending_review": true,
+    "description": "RAGヒット済み未評価: 2026-05-17 が直近30日で検索ヒットしたが評価なし（要内容確認）",
+    "source": "analyze_rag_feedback.py",
+    "target": "config/rag_ranking.json",
+    "path": "2026-05-17",
+    "action": "review_content",
+    "penalty_strength": "weak",
+    "generated_at": "2026-06-28T19:00:29.003062+00:00"
+  },
+  {
+    "rev_id": "RAG-UNRATED-2026_05_31",
+    "type": "rag_boost_adjust",
+    "pending_review": true,
+    "description": "RAGヒット済み未評価: 2026-05-31 が直近30日で検索ヒットしたが評価なし（要内容確認）",
+    "source": "analyze_rag_feedback.py",
+    "target": "config/rag_ranking.json",
+    "path": "2026-05-31",
+    "action": "review_content",
+    "penalty_strength": "weak",
+    "generated_at": "2026-06-28T19:00:29.003062+00:00"
+  },
+  {
+    "rev_id": "RAG-UNRATED-2026_06_01",
+    "type": "rag_boost_adjust",
+    "pending_review": true,
+    "description": "RAGヒット済み未評価: 2026-06-01 が直近30日で検索ヒットしたが評価なし（要内容確認）",
+    "source": "analyze_rag_feedback.py",
+    "target": "config/rag_ranking.json",
+    "path": "2026-06-01",
+    "action": "review_content",
+    "penalty_strength": "weak",
+    "generated_at": "2026-06-28T19:00:29.003062+00:00"
   }
 ]
