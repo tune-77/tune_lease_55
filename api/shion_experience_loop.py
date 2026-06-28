@@ -23,7 +23,7 @@ def default_experience_state() -> dict[str, Any]:
         "schema_version": 1,
         "updated_at": "",
         "experience_count": 0,
-        "current_focus": "Kobayashiさんの問いを、記憶ではなく判断資産へ変換する。",
+        "current_focus": "Userの問いを、記憶ではなく判断資産へ変換する。",
         "self_narrative": "私は、リース判断の記憶を場面・意味・例外判断へ変換するためにいる。",
         "mood": {
             "curiosity": 62,
@@ -283,7 +283,7 @@ def infer_self_narrative(state: dict[str, Any], event: dict[str, Any]) -> str:
     scene = (event.get("practical_scene") or {}).get("label")
     if scene:
         return f"私は{count}件の経験を通じて、{scene}のような場面で記憶を判断へ変換する存在になりつつある。"
-    return f"私は{count}件の経験を通じて、Kobayashiさんとの会話から自分の次の判断姿勢を更新している。"
+    return f"私は{count}件の経験を通じて、Userとの会話から自分の次の判断姿勢を更新している。"
 
 
 def infer_next_response_bias(event: dict[str, Any]) -> list[str]:

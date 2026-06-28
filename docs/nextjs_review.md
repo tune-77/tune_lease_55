@@ -393,7 +393,7 @@ bg-[url('https://www.transparenttextures.com/patterns/old-map.png')]
 **`src/components/layout/Sidebar.tsx` 188行目**
 
 ```tsx
-<p className="text-xs font-black text-slate-200 truncate">Kobayashi Isao</p>
+<p className="text-xs font-black text-slate-200 truncate">User</p>
 <p className="text-[10px] font-bold text-slate-500">Premium Plan</p>
 ```
 

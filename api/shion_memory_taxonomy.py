@@ -38,7 +38,7 @@ MEMORY_TYPES: dict[MemoryType, dict[str, str]] = {
     },
     "dialogue_memory": {
         "label": "対話記憶",
-        "description": "Kobayashiとの会話、好み、方針、依頼背景。",
+        "description": "Userとの会話、好み、方針、依頼背景。",
     },
     "reflection_memory": {
         "label": "内省記憶",
@@ -70,7 +70,7 @@ _VALUE_TERMS = (
 _REFLECTION_TERMS = ("内省", "Private Reflection", "迷い", "違和感", "退屈", "ぼやき")
 _TECH_TERMS = ("api/", "frontend/", "script", "テスト", "実装", "Cloud Run", "RAG", "ChromaDB", "LaunchAgent")
 _JUDGMENT_TERMS = ("承認", "否決", "条件付き", "審査", "判断", "リスク", "スコア", "与信")
-_DIALOGUE_TERMS = ("Kobayashi", "ユーザー", "好み", "方針", "覚えて", "相談")
+_DIALOGUE_TERMS = ("User", "ユーザー", "好み", "方針", "覚えて", "相談")
 
 
 @dataclass

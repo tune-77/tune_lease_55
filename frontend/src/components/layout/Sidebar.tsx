@@ -200,7 +200,7 @@ export default function Sidebar() {
               </div>
               {!isCollapsed && (
                 <div className="overflow-hidden">
-                  <p className="text-xs font-black text-slate-200 truncate">Kobayashi Isao</p>
+                  <p className="text-xs font-black text-slate-200 truncate">User</p>
                   <p className="text-[10px] font-bold text-slate-500">Premium Plan</p>
                 </div>
               )}

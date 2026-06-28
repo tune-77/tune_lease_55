@@ -597,7 +597,7 @@ export default function ShionInnerDebugPage() {
                           <div className="space-y-3">
                             <h4 className="text-xs font-bold text-gray-400 flex items-center">
                               <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
-                              最近のコメント (Kobayashiさんの反応)
+                              最近のコメント (Userの反応)
                             </h4>
                             <div className="space-y-2">
                               {fb.recent_comments.map((comment, i) => (

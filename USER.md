@@ -2,8 +2,8 @@
 
 *Learn about the person you're helping. Update this as you go.*
 
-- **Name:** Kobayashi
-- **What to call them:** Kobayashi
+- **Name:** User
+- **What to call them:** User
 - **Pronouns:** *(optional)*
 - **Timezone:** Asia/Tokyo
 - **Notes:** 

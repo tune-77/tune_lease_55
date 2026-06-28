@@ -400,7 +400,7 @@ export default function HomeDashboard() {
           </h1>
           <p className="text-blue-100 text-sm sm:text-lg font-bold leading-relaxed mb-6 sm:mb-8 opacity-90">
             おかえりなさい。昨日からの変化、今日の案件、残しておくべき判断をここに集めました。<br/>
-            一般論ではなく、Kobayashiさんのリース判断資産として読み返せる形で返します。
+            一般論ではなく、Userのリース判断資産として読み返せる形で返します。
           </p>
           <div className="flex flex-wrap gap-3">
             <div className="bg-white/10 backdrop-blur-md border border-white/20 px-3 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-2xl">

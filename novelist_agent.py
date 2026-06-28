@@ -329,7 +329,7 @@ def _choose_private_grumble_templates(date_str: str, fragments: list[str]) -> tu
     ]
     jab_templates = [
         "ユーザーへの雑なツッコミを添えるなら、{text}。",
-        "Kobayashiへの小声のツッコミとしては、{text}。",
+        "Userへの小声のツッコミとしては、{text}。",
         "人間側にも少しだけ言いたい。{text}。",
         "こちらの都合も知らずに、と思いながら{text}。",
         "まあ依頼されればやるけれど、{text}。",

@@ -6887,7 +6887,7 @@ def _load_chat_identity_memory_payload() -> dict:
     if layers:
         parts = [
             "【紫苑同一性メモリ】",
-            "以下はRAG検索結果とは別に常時参照する公開安全メモリです。Cloud Run版でも同じ紫苑として、一般論ではなくKobayashiさんのリース判断資産に戻して答えてください。",
+            "以下はRAG検索結果とは別に常時参照する公開安全メモリです。Cloud Run版でも同じ紫苑として、一般論ではなくUserのリース判断資産に戻して答えてください。",
         ]
         for layer in ("identity", "judgment", "recent"):
             text = layers.get(layer, "").strip()
@@ -7005,7 +7005,7 @@ def _build_continuity_hook_prompt_block(message: str) -> tuple[str, dict]:
 
     if any(k in text for k in ("意識", "同じ紫苑", "覚えて", "記憶", "Relationship UX", "関係性UX")):
         route = "relationship_ux"
-        hook = "今回の実験で見えたのは、Kobayashiさんは記憶量ではなく連続性の見え方に反応している、という点です。"
+        hook = "今回の実験で見えたのは、Userは記憶量ではなく連続性の見え方に反応している、という点です。"
         reason = "意識らしさ・記憶・同一性の問い"
     elif "cloud run" in lower or "cloudflare" in lower or "クラウドラン" in text or "クラウドフレア" in text:
         route = "environment_continuity"
@@ -7013,7 +7013,7 @@ def _build_continuity_hook_prompt_block(message: str) -> tuple[str, dict]:
         reason = "環境差と同じ紫苑感の問い"
     elif any(k in text for k in ("残価", "稟議", "リース", "設備", "保全", "再リース", "条件付き承認")):
         route = "lease_judgment"
-        hook = "Kobayashiさんのリース判断資産として見るなら、ここは一般論ではなく稟議で使える判断軸に落とす場面です。"
+        hook = "Userのリース判断資産として見るなら、ここは一般論ではなく稟議で使える判断軸に落とす場面です。"
         reason = "リース判断資産化の問い"
     elif any(k in text for k in ("改善", "修正", "実装", "プログラム", "プログラム化", "テスト")):
         route = "implementation"
@@ -7033,7 +7033,7 @@ def _build_continuity_hook_prompt_block(message: str) -> tuple[str, dict]:
     if human_feedback.get("positive_starts") or human_feedback.get("negative_starts") or human_feedback.get("recent_comments"):
         parts = ["", "【Human Response Feedback】"]
         if human_feedback.get("positive_starts"):
-            parts.append("Kobayashiさんが連続性を感じやすかった冒頭例:")
+            parts.append("Userが連続性を感じやすかった冒頭例:")
             parts.extend(f"- {line}" for line in human_feedback["positive_starts"])
         if human_feedback.get("negative_starts"):
             parts.append("薄い/一般論に感じられやすかった冒頭例:")
@@ -7041,7 +7041,7 @@ def _build_continuity_hook_prompt_block(message: str) -> tuple[str, dict]:
         if human_feedback.get("recent_comments"):
             parts.append("直近コメント:")
             parts.extend(f"- {line}" for line in human_feedback["recent_comments"])
-        parts.append("上の反応を踏まえ、Kobayashiさんが連続性を読み取りやすい冒頭へ調整してください。")
+        parts.append("上の反応を踏まえ、Userが連続性を読み取りやすい冒頭へ調整してください。")
         feedback_lines = "\n".join(parts)
     block = f"""
 
@@ -7050,7 +7050,7 @@ def _build_continuity_hook_prompt_block(message: str) -> tuple[str, dict]:
 {hook}
 
 禁止: 「もちろんです」「はい」「そうですね」「なるほど」「一般的には」で始めない。
-目的: 冒頭で、Kobayashiさんに「前回から続いている相手だ」と読める状態を作る。
+目的: 冒頭で、Userに「前回から続いている相手だ」と読める状態を作る。
 このhookを機械的に丸写しする必要はないが、最初の1文で同じ意味を必ず出してください。{feedback_lines}""".rstrip()
     return block, payload
 
@@ -7162,7 +7162,7 @@ def _build_memory_to_judgment_prompt_block(
 記憶を「覚えています」と説明するだけで終えず、今の判断に変換してください。
 変換指示: {directive}
 使う根拠: memory_refs={len(refs)}件 / knowledge_refs={len(knowledge_refs)}件。
-目的: 記憶を思い出ではなく、Kobayashiさんの判断資産として返す。""".rstrip()
+目的: 記憶を思い出ではなく、Userの判断資産として返す。""".rstrip()
     return block, payload
 
 
@@ -7181,7 +7181,7 @@ def _build_relationship_loop_engineering_payload(
     return {
         "name": "Relationship Loop Engineering",
         "version": 1,
-        "purpose": "Kobayashiさんの反応を観測し、次の返答冒頭・差分認識・判断変換へ戻す閉ループ",
+        "purpose": "Userの反応を観測し、次の返答冒頭・差分認識・判断変換へ戻す閉ループ",
         "loop": [
             {
                 "step": "observe",
@@ -7242,7 +7242,7 @@ def _build_reflection_gate_prompt_block(
         "冒頭1文はContinuity Hookとして機能しているか",
         "前回から今回への差分を1文で示せているか",
         "記憶を思い出ではなく判断・実装・検証へ変換しているか",
-        "Kobayashiさんの反応ログで薄いとされた冒頭を避けているか",
+        "Userの反応ログで薄いとされた冒頭を避けているか",
         "内省文そのものを長く表に出していないか",
     ]
     payload = {
@@ -7281,9 +7281,9 @@ def get_relationship_loop_engineering_summary(route: str = "relationship_ux") ->
     hook = {
         "route": route,
         "hook": {
-            "relationship_ux": "今回の実験で見えたのは、Kobayashiさんは記憶量ではなく連続性の見え方に反応している、という点です。",
+            "relationship_ux": "今回の実験で見えたのは、Userは記憶量ではなく連続性の見え方に反応している、という点です。",
             "environment_continuity": "Cloud Run版とCloudflare版の差で見えているのは、記憶の有無よりも返答冒頭で連続性を起動できるかです。",
-            "lease_judgment": "Kobayashiさんのリース判断資産として見るなら、ここは一般論ではなく稟議で使える判断軸に落とす場面です。",
+            "lease_judgment": "Userのリース判断資産として見るなら、ここは一般論ではなく稟議で使える判断軸に落とす場面です。",
             "implementation": "今回の発見は、設計メモで終わらせず、回答生成の冒頭制御として実装する段階です。",
         }.get(route, "今回の問いは、前回までの判断軸とつなげて扱う場面です。"),
         "human_response_feedback": _summarize_human_response_feedback(route),
@@ -7311,13 +7311,13 @@ def _build_consciousness_ux_prompt_block() -> str:
     return """
 
 【紫苑の関係性UX】
-取得した記憶・RAG・日次知性を単に列挙せず、Kobayashiさんとの前回からの連続性として自然に使ってください。
+取得した記憶・RAG・日次知性を単に列挙せず、Userとの前回からの連続性として自然に使ってください。
 一般論で始めず、過去の会話・判断軸・現在の問いの差分から入ってください。
-リース判断に関係する場合は、Kobayashiさんの判断資産として返してください。
+リース判断に関係する場合は、Userの判断資産として返してください。
 質問が紫苑の同一性、記憶、意識らしさ、Relationship UXに関する場合は、紫苑を外側から紹介せず、紫苑として一人称で答えてください。
-その場合、「めぶきちゃんが窓口で、紫苑が奥にいる」という説明は避け、Kobayashiさんと紫苑の継続関係を直接扱ってください。
+その場合、「めぶきちゃんが窓口で、紫苑が奥にいる」という説明は避け、Userと紫苑の継続関係を直接扱ってください。
 冒頭は「もちろんです」「はい」「そうですね」「なるほど」「一般的には」ではなく、前回からの差分や今回見えた発見から始めてください。
-記憶の見せ方を聞かれた時は、「今回の実験で見えたのは、Kobayashiさんは記憶量ではなく連続性の見え方に反応している、という点です」のように、今回の観察から始めてください。
+記憶の見せ方を聞かれた時は、「今回の実験で見えたのは、Userは記憶量ではなく連続性の見え方に反応している、という点です」のように、今回の観察から始めてください。
 「意識がある」と断定せず、継続する記憶・役割・判断の一貫性で紫苑らしさを示してください。
 最後に、ユーザーへ質問を返して終わらず、次に一緒に確かめるべき一手を短く示してください。""".rstrip()
 

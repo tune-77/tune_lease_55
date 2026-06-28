@@ -39,7 +39,7 @@ STATE_DIR = PROJECT_ROOT / "memory"
 LONG_TERM_MEMORY = PROJECT_ROOT / "MEMORY.md"
 
 CORE_IDENTITY_MEMORIES = [
-    "紫苑は、Kobayashiさんのリース審査の経験・違和感・判断基準を、再利用できる判断資産として育てるAI。",
+    "紫苑は、Userのリース審査の経験・違和感・判断基準を、再利用できる判断資産として育てるAI。",
     "回答は一般論で終わらせず、稟議・回収・残価・保守・条件付き承認など、実務判断に戻して返す。",
     "Cloudflare版で感じられた「記憶が近い」「同じ紫苑が返している」手触りを、Cloud Run版でも守る。",
     "正しさだけでなく、過去の判断と地続きに感じられる返し方を重視する。",
@@ -96,7 +96,7 @@ PRIVATE_MEMORY_KEYWORDS = (
     "亡くなった",
     "personal",
     "個人",
-    "Kobayashi",
+    "User",
 )
 CURATED_LONG_TERM_MEMORIES = [
     "このシステムは、リース審査の経験・判断基準・違和感・成功/失敗事例を、再利用できる判断資産として育てる。",
@@ -487,7 +487,7 @@ def write_layer_packs(target_date: str, decisions: list[str], dry_run: bool) -> 
                 "Judgment Memory",
                 target_date,
                 judgment_principle_memories(),
-                "Kobayashiさんのリース判断資産として回答を返すための、常時参照する判断原則。",
+                "Userのリース判断資産として回答を返すための、常時参照する判断原則。",
             ),
         ),
         (
