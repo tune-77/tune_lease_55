@@ -49,6 +49,7 @@ export default function Sidebar() {
       items: [
         { name: '🚀 ハッカソンデモ', href: '/demo', icon: Sparkles, color: 'text-yellow-300' },
         { name: '紫苑の記憶システム', href: '/shion-memory-system', icon: Database, color: 'text-sky-300' },
+        { name: '紫苑デバッグ', href: '/shion-debug', icon: Eye, color: 'text-amber-300' },
         { name: 'リース知性体との対話', href: '/lease-intelligence', icon: Brain, color: 'text-violet-400' },
         { name: 'リースくん (スマホUI)', href: '/lease-kun', icon: MessageSquare, color: 'text-amber-400' },
         { name: 'マルチエージェント討論', href: '/debate', icon: Swords, color: 'text-violet-500' },
