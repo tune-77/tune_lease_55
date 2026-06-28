@@ -21,6 +21,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/research-organ": "外部調査器官",
   "/voice-chat": "リアルタイム会話",
   "/cases": "過去案件",
+  "/shion-memory-system": "紫苑の記憶システム",
   "/system-overview": "System Overview",
   "/report": "審査レポート",
   "/batch": "バッチ審査",
