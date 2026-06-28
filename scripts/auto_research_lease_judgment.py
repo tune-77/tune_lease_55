@@ -258,6 +258,52 @@ def _required_headings_present(body: str) -> bool:
     return all(f"## {title}" in body for title in _REQUIRED_SECTION_TITLES)
 
 
+def _fallback_decision_body(topic: ResearchTopic, raw_research: str, sources: list[dict[str, str]]) -> str:
+    excerpt = raw_research.strip()
+    if len(excerpt) > 2400:
+        excerpt = excerpt[:2400].rstrip() + "..."
+    source_summary = "\n".join(
+        f"- {item.get('title') or item.get('url')} ({item.get('quality', 'supplementary')})"
+        for item in sources[:6]
+    ) or "- 参照URLなし"
+    return f"""## 結論
+- Geminiの整形出力が必須見出しを満たさなかったため、このノートは自動フォールバックで保存しています。
+- テーマ「{topic.title}」はリース審査の補助知識として扱い、個別案件へ使う前に担当者確認を必須にします。
+
+## 根拠品質
+- 参照URLは取得済みですが、本文の再構成品質は要確認です。
+- 参照元の一次情報・専門機関・補助情報の区別は、下部の情報源とあわせて担当者が確認してください。
+{source_summary}
+
+## 判断に使える確認済み事実
+- 以下はGemini検索の調査原文からの抜粋です。事実として採用する前に参照元で再確認してください。
+
+```text
+{excerpt or "要確認"}
+```
+
+## リース審査への適用
+- 審査では、自動否決・自動承認ではなく、確認質問、承認条件、保全条件の検討材料として使います。
+- 財務数値、契約条件、物件稼働、保全可能性に影響する点だけを案件判断へ変換します。
+
+## 担当者が確認する質問
+- この情報は対象業種・対象設備・対象時期に本当に該当するか。
+- 顧客の資金繰り、物件稼働、契約条件、銀行支援のどれに影響するか。
+- 参照元が一次情報か、専門機関か、補助情報か。
+
+## 承認条件を変える兆候
+- 返済原資、物件価値、稼働率、制度変更、補助金入金時期に直接影響する事実が確認できた場合。
+- 補助情報だけでなく、一次情報または専門機関の根拠で裏取りできた場合。
+
+## 反証・過信してはいけない点
+- Geminiの要約は誤読や過剰一般化を含む可能性があります。
+- ニュースや民間記事だけを根拠に、スコアや承認可否を直接変更しないでください。
+
+## 更新が必要になる条件
+- 制度改正、金利環境、業界統計、倒産動向、補助金要件が更新された場合。
+- 参照元URLが古くなった、またはより一次情報に近い資料が見つかった場合。"""
+
+
 def research_topic(topic: ResearchTopic) -> tuple[str, list[dict[str, str]], str]:
     api_key = _get_gemini_key()
     if not api_key:
@@ -381,7 +427,7 @@ def research_topic(topic: ResearchTopic) -> tuple[str, list[dict[str, str]], str
         )
         body = _normalize_required_headings(str(getattr(repair_response, "text", "") or ""))
     if not body or not _required_headings_present(body):
-        raise RuntimeError("Gemini synthesis did not return the required decision sections after retry")
+        body = _fallback_decision_body(topic, raw_research, source_catalog)
     return body, source_catalog, model
 
 
