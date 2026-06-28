@@ -8,6 +8,7 @@ RUN npm ci
 
 COPY frontend/ ./
 ENV FASTAPI_URL=http://127.0.0.1:8000
+ENV NEXT_PUBLIC_HIDE_RESEARCH_ORGAN=1
 RUN npm run build
 
 

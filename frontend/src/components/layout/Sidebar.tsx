@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -10,7 +10,7 @@ import {
   X, Menu, Table2, Swords, MessageCircle,
   BarChart2, BookOpen, Gift, HelpCircle, Megaphone, Calculator,
   LifeBuoy, ClipboardList, GitMerge, Brain,
-  Orbit, Sparkles
+  Orbit, Sparkles, Search
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
 import ThemeSelector from '@/components/layout/ThemeSelector';
@@ -19,6 +19,13 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { isCollapsed, toggleSidebar, isMobileOpen, toggleMobile } = useSidebar();
   const hideMobileEdgeToggle = pathname === '/multi-shion-demo';
+  const [isCloudRunHost, setIsCloudRunHost] = useState(false);
+  const hideResearchOrgan =
+    process.env.NEXT_PUBLIC_HIDE_RESEARCH_ORGAN === "1" || isCloudRunHost;
+
+  useEffect(() => {
+    setIsCloudRunHost(window.location.hostname.endsWith(".run.app"));
+  }, []);
 
   const menuGroups = [
     {
@@ -45,6 +52,9 @@ export default function Sidebar() {
         { name: 'リースくん (スマホUI)', href: '/lease-kun', icon: MessageSquare, color: 'text-amber-400' },
         { name: 'マルチエージェント討論', href: '/debate', icon: Swords, color: 'text-violet-500' },
         { name: '知識ループ可視化', href: '/demo/knowledge-loop', icon: GitMerge, color: 'text-emerald-300' },
+        ...(!hideResearchOrgan
+          ? [{ name: '外部調査器官', href: '/research-organ', icon: Search, color: 'text-sky-300' }]
+          : []),
         { name: 'システム概要', href: '/system-overview', icon: Orbit, color: 'text-fuchsia-400' },
       ]
     },

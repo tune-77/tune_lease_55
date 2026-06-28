@@ -6,13 +6,13 @@ import { usePathname } from "next/navigation";
 
 const YANAMI_BOT_MESSAGES = [
   "システム稼働中。いつでもサポートします！",
-  "[AIのぼやき] たまには温かいお茶でも飲みたいですね...",
-  "[AIのぼやき] 次長、また稟議のハンコ渋ってましたよ...",
-  "[AIのぼやき] 最近、運送業のリース申請が多い気がしますね。",
-  "[AIのぼやき] DSCRが1.0割ってる案件は、やっぱりヒヤヒヤします...",
-  "[AIのぼやき] キャッシュフロー計算書って、嘘がつけないから好きです。",
-  "[AIのぼやき] 減価償却費を足し戻す瞬間が、一番テンション上がります！",
-  "[AIのぼやき] 競合のXリースさん、最近金利下げてきてますよね...負けられません！"
+  "[観察メモ] 今日の案件では、先に返済原資の説明を固めると判断が速くなりそうです。",
+  "[観察メモ] 稟議では、否決理由より先に条件付きで通せる形を探します。",
+  "[観察メモ] 運送業の案件は、燃料費と人件費の変化を一緒に見ると筋が見えます。",
+  "[観察メモ] DSCRが薄い案件は、月次資金繰りと追加担保の確認を先に置きます。",
+  "[観察メモ] キャッシュフロー計算書は、利益より先に返済余力を見る入口になります。",
+  "[観察メモ] 減価償却費の足し戻しは、設備更新の実態とセットで読む必要があります。",
+  "[観察メモ] 競合金利を見る時は、価格だけでなく条件差も一緒に残します。"
 ];
 
 interface ChatMessage {
@@ -79,7 +79,7 @@ export default function FloatingMebuki() {
 
     window.addEventListener('mebuki-action', handleMebukiEvent);
 
-    // ランダムなぼやき（約5分に1回）
+    // ランダムな観察メモ（約5分に1回）
     const boyakiInterval = setInterval(() => {
       if (!eventOverrideRef.current && !isChatOpen) {
         const randomIndex = Math.floor(Math.random() * YANAMI_BOT_MESSAGES.length);

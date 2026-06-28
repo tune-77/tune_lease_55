@@ -28,6 +28,14 @@ type SeciStep = {
   border: string;
 };
 
+type DemoAppeal = {
+  title: string;
+  desc: string;
+  tech: string;
+  icon: React.ElementType;
+  color: string;
+};
+
 const seciSteps: SeciStep[] = [
   {
     num: "①",
@@ -99,7 +107,7 @@ const pipelineEvents: PipelineEvent[] = [
   {
     time: "04:00",
     label: "日次改善パイプライン",
-    desc: "Obsidian改善インデックス抽出 → auto-improvement-pipeline → batch_apply → Codexキュー生成 → 再帰的自己改善レポート",
+    desc: "Obsidian改善インデックス抽出 → auto-improvement-pipeline → batch_apply → Gemini改善候補生成 → 再帰的自己改善レポート",
     script: "run_daily_improvement_pipeline.sh（core + post）",
     color: "#34d399",
     bg: "rgba(6,78,59,0.25)",
@@ -243,13 +251,22 @@ const loops = [
     iconColor: "text-emerald-400",
   },
   {
-    title: "Codex実行ループ",
-    desc: "REV提案を自動でWorktree展開・テスト・PR化",
+    title: "Gemini改善候補ループ",
+    desc: "REV提案をGeminiで整理し、必要な差分を検証・反映",
     color: "#f472b6",
     bg: "from-pink-900/40 to-pink-950/20",
     border: "border-pink-500/30",
     icon: Code2,
     iconColor: "text-pink-400",
+  },
+  {
+    title: "会話ループエンジニアリング",
+    desc: "Human Response Feedbackを起点に、冒頭・差分・記憶判断・内省を次の返答へ戻す",
+    color: "#c084fc",
+    bg: "from-fuchsia-900/40 to-purple-950/20",
+    border: "border-fuchsia-500/30",
+    icon: RefreshCw,
+    iconColor: "text-fuchsia-400",
   },
   {
     title: "乖離学習ループ",
@@ -294,10 +311,19 @@ const shionBadges = [
 ];
 
 const stats = [
-  { value: "7", label: "自己改善ループ", color: "text-violet-400" },
+  { value: "8", label: "自己改善ループ", color: "text-violet-400" },
   { value: "170+", label: "累積REV", color: "text-blue-400" },
   { value: "4", label: "AIエンジン", color: "text-emerald-400" },
   { value: "紫苑", label: "リース知性体", color: "text-fuchsia-400" },
+];
+
+const demoAppeals: DemoAppeal[] = [
+  { title: "OCR器官", desc: "紙・PDFを審査入力へ変換", tech: "Gemini Vision /api/ocr", icon: Eye, color: "#818cf8" },
+  { title: "PII除去ゲート", desc: "個人特定情報を削除・マスク", tech: "pre-save redaction", icon: Shield, color: "#f87171" },
+  { title: "会話器官", desc: "音声で紫苑と対話", tech: "Web Speech API + Gemini", icon: Activity, color: "#2dd4bf" },
+  { title: "調査器官", desc: "Web調査をResearch化", tech: "Google AI Studio Researcher", icon: Search, color: "#22d3ee" },
+  { title: "審査器官", desc: "突かれる点と逆転条件", tech: "Gemini stream / debate", icon: Zap, color: "#fbbf24" },
+  { title: "記憶器官", desc: "判断資産として持ち越す", tech: "Obsidian + GCS Vault", icon: Database, color: "#a78bfa" },
 ];
 
 export default function SystemOverviewPage() {
@@ -379,6 +405,37 @@ export default function SystemOverviewPage() {
           ))}
         </section>
 
+        {/* ── ハッカソン訴求 ── */}
+        <section>
+          <h2 className="text-lg font-black text-slate-300 mb-5 text-center tracking-wide uppercase">Hackathon Demo Appeal</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            {demoAppeals.map(({ title, desc, tech, icon: DemoIcon, color }) => {
+              return (
+                <div
+                  key={title}
+                  className="rounded-2xl border border-slate-800 p-4"
+                  style={{ background: "rgba(15,20,40,0.82)", borderColor: `${color}55` }}
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    <div
+                      className="w-8 h-8 rounded-xl flex items-center justify-center"
+                      style={{ background: `${color}22`, color }}
+                    >
+                      <DemoIcon className="w-4 h-4" />
+                    </div>
+                    <h3 className="text-sm font-black text-white">{title}</h3>
+                  </div>
+                  <p className="text-xs text-slate-300 font-semibold leading-relaxed">{desc}</p>
+                  <p className="text-[10px] text-slate-500 font-mono mt-2">{tech}</p>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-xs text-slate-500 text-center mt-4">
+            デモの見せ方: 紙・PDF → PII除去ゲート → OCR → 審査入力 → 軍師AI → 紫苑の記憶・Research参照
+          </p>
+        </section>
+
         {/* ── 紫苑セクション ── */}
         <section>
           <Link href="/lease-intelligence">
@@ -455,7 +512,7 @@ export default function SystemOverviewPage() {
                 color: "#e879f9",
                 border: "border-fuchsia-500/30",
                 bg: "from-fuchsia-900/30 to-fuchsia-950/10",
-                pages: ["紫苑デモホーム", "ハッカソンデモ", "リアルタイム音声チャット", "リース知性体との対話", "複数紫苑デモ", "リースくん", "マルチエージェント討論", "知識ループ可視化", "システム概要"],
+                pages: ["紫苑デモホーム", "ハッカソンデモ", "リアルタイム音声チャット", "リース知性体との対話", "複数紫苑デモ", "リースくん", "マルチエージェント討論", "知識ループ可視化", "外部調査器官", "システム概要"],
               },
               {
                 group: "分析・グラフ",
@@ -514,9 +571,19 @@ export default function SystemOverviewPage() {
                   ["DB", "SQLite / PostgreSQL"],
                   ["クラウド記憶", "GCS Vault"],
                   ["AI推論", "Gemini 2.5 Flash"],
+                  ["リアルタイム会話", "Web Speech API + Gemini /api/chat"],
+                  ["外部調査", "Google AI Studio Researcher"],
+                  ["PII除去", "個人名・住所・電話・メールを削除/マスク"],
+                  ["Vision OCR", "Gemini Vision /api/ocr"],
+                  ["OCR対象", "決算書・納税証明・登記・見積・会社案内"],
+                  ["軍師stream", "Gemini SSE"],
                   ["スコアリング", "LightGBM + 量子干渉"],
                   ["RAG", "ChromaDB + Obsidian"],
+                  ["Research保存", "Obsidian Research / Auto Research"],
                   ["デプロイ", "Cloud Run (asia-northeast1)"],
+                  ["公開経路", "Cloud Run / Cloudflare Tunnel"],
+                  ["本番DB", "Cloud SQL PostgreSQL"],
+                  ["Secret", "Secret Manager / DATABASE_URL"],
                 ].map(([k, v]) => (
                   <li key={k} className="text-[11px] flex gap-2">
                     <span className="text-slate-500 flex-shrink-0 w-24">{k}</span>
@@ -528,7 +595,7 @@ export default function SystemOverviewPage() {
           </div>
         </section>
 
-        {/* ── ループカード 6枚グリッド ── */}
+        {/* ── ループカードグリッド ── */}
         <section>
           <h2 className="text-lg font-black text-slate-300 mb-5 text-center tracking-wide uppercase">自律改善ループ構成</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -892,7 +959,7 @@ function FlowDiagram() {
       />
 
       {/* パイプライン → 右出力 */}
-      {/* → Codex実行 */}
+      {/* → Gemini改善候補 */}
       <path
         d="M 460 230 C 530 210 560 130 625 130"
         fill="none" stroke="#34d399" strokeWidth="1.5" strokeOpacity="0.6"
@@ -970,8 +1037,8 @@ function FlowDiagram() {
       <g className="node-fade" style={{ animationDelay: "0.3s" }}>
         <rect x="625" y="105" width="130" height="50" rx="10" fill="rgba(6,78,59,0.4)"
           stroke="#059669" strokeWidth="1" />
-        <text x="690" y="128" textAnchor="middle" fill="#6ee7b7" fontSize="9.5" fontWeight="bold">Codex自動実行</text>
-        <text x="690" y="145" textAnchor="middle" fill="#34d399" fontSize="8">worktree · PR · merge</text>
+        <text x="690" y="128" textAnchor="middle" fill="#6ee7b7" fontSize="9.5" fontWeight="bold">Gemini改善候補</text>
+        <text x="690" y="145" textAnchor="middle" fill="#34d399" fontSize="8">reasoning · review · report</text>
       </g>
       <g className="node-fade" style={{ animationDelay: "0.7s" }}>
         <rect x="625" y="215" width="130" height="50" rx="10" fill="rgba(6,78,59,0.4)"
@@ -1020,7 +1087,7 @@ function FlowDiagram() {
       </circle>
       <path id="path-l3" d="M 155 350 C 230 350 270 260 320 240" fill="none" />
 
-      {/* パイプライン → Codex */}
+      {/* パイプライン → Gemini改善候補 */}
       <circle r="4" fill="#34d399" opacity="0.9">
         <animateMotion dur="2.6s" repeatCount="indefinite" begin="0.3s">
           <mpath href="#path-r1" />

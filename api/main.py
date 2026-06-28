@@ -5521,6 +5521,11 @@ class ObsidianReadRequest(BaseModel):
     paths: List[str]
 
 
+class ResearchOrganRunRequest(BaseModel):
+    topic: str = Field("", description="Research topic key or free-form theme")
+    dry_run: bool = False
+
+
 def _get_vault_path() -> str:
     """OBSIDIAN_VAULT_PATH 環境変数からvaultパスを取得する。"""
     return os.environ.get("OBSIDIAN_VAULT_PATH", "")
@@ -5608,6 +5613,121 @@ def read_obsidian_notes(req: ObsidianReadRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="内部エラーが発生しました")
+
+
+def _research_organ_vault_path() -> Path:
+    vault_root = _OBSIDIAN_VAULT_PATH or _get_vault_path()
+    if not vault_root:
+        try:
+            from scripts.auto_research_lease_judgment import DEFAULT_VAULT
+
+            vault_root = str(DEFAULT_VAULT)
+        except Exception:
+            vault_root = ""
+    if not vault_root or not os.path.isdir(vault_root):
+        raise HTTPException(
+            status_code=503,
+            detail="iCloud 上の Obsidian Vault が見つかりません。OBSIDIAN_VAULT_PATH を設定してください。",
+        )
+    return Path(vault_root)
+
+
+@app.get("/api/research-organ/topics")
+def list_research_organ_topics():
+    """紫苑の外部調査器官で使える定型Researchテーマを返す。"""
+    try:
+        from scripts.auto_research_lease_judgment import DEFAULT_OUTPUT_DIR, TOPICS
+
+        return {
+            "adapter": "gemini-google-search",
+            "label": "Google AI Studio Researcher",
+            "default_output_dir": DEFAULT_OUTPUT_DIR,
+            "topics": [
+                {
+                    "key": topic.key,
+                    "title": topic.title,
+                    "query": topic.query,
+                    "validity_days": topic.validity_days,
+                    "tags": list(topic.tags),
+                }
+                for topic in TOPICS
+            ],
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Researcher設定の読み込みに失敗しました: {exc}")
+
+
+@app.get("/api/research-organ/notes")
+def list_research_organ_notes(limit: int = 20):
+    """通常VaultのResearch配下に保存された外部調査ノートを新しい順に返す。"""
+    vault = _research_organ_vault_path()
+    research_root = vault / "Projects" / "tune_lease_55" / "Research"
+    if not research_root.exists():
+        return {"notes": [], "vault": str(vault), "research_root": str(research_root)}
+
+    notes = []
+    try:
+        for path in research_root.rglob("*.md"):
+            if ".obsidian" in path.parts:
+                continue
+            try:
+                rel = path.relative_to(vault).as_posix()
+                stat = path.stat()
+                head = path.read_text(encoding="utf-8", errors="ignore")[:2000]
+                title_match = re.search(r"^#\s+(.+)$", head, re.MULTILINE)
+                title = title_match.group(1).strip() if title_match else path.stem
+                notes.append(
+                    {
+                        "path": rel,
+                        "title": title,
+                        "modified": stat.st_mtime,
+                        "size": stat.st_size,
+                    }
+                )
+            except Exception:
+                continue
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Researchノート一覧の取得に失敗しました: {exc}")
+
+    notes.sort(key=lambda item: item["modified"], reverse=True)
+    return {
+        "notes": notes[: max(1, min(limit, 100))],
+        "vault": str(vault),
+        "research_root": str(research_root),
+    }
+
+
+@app.post("/api/research-organ/run")
+async def run_research_organ(req: ResearchOrganRunRequest):
+    """Gemini Google Search researcherで調査し、Obsidian Researchへ保存する。"""
+    topic = (req.topic or "").strip()
+    if len(topic) > 160:
+        raise HTTPException(status_code=400, detail="調査テーマは160文字以内にしてください。")
+
+    vault = _research_organ_vault_path()
+    try:
+        from scripts.auto_research_lease_judgment import DEFAULT_OUTPUT_DIR, run as run_auto_research
+
+        result = await asyncio.to_thread(
+            run_auto_research,
+            vault,
+            DEFAULT_OUTPUT_DIR,
+            topic,
+            req.dry_run,
+        )
+        return {
+            "ok": True,
+            "adapter": "gemini-google-search",
+            "label": "Google AI Studio Researcher",
+            "dry_run": req.dry_run,
+            **result,
+        }
+    except RuntimeError as exc:
+        message = str(exc)
+        status = 503 if "GEMINI_API_KEY" in message or "Gemini" in message else 500
+        raise HTTPException(status_code=status, detail=message)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"外部調査器官の実行に失敗しました: {exc}")
 
 
 # =============================================================================

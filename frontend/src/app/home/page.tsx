@@ -3,7 +3,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { apiClient } from '@/lib/api';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import {
-  PieChart,
   BarChart3,
   TrendingUp,
   Users,
@@ -228,7 +227,7 @@ export default function HomeDashboard() {
 
   useEffect(() => {
     // 画面マウント時にめぶきちゃんを更新
-    triggerMebuki('guide', 'ホーム画面ですね！\n全社的な審査・成約の直近データを分析しました！');
+    triggerMebuki('guide', '紫苑の審査室を開きました。\n昨日からの変化と、今日の判断材料を一緒に見ていきます。');
 
     try {
       const raw = window.localStorage.getItem(HOME_SETTINGS_KEY);
@@ -381,7 +380,7 @@ export default function HomeDashboard() {
 
   return (
     <div className="p-4 sm:p-8 min-h-[calc(100vh-2rem)] animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="mb-8 sm:mb-12 relative overflow-hidden bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl sm:rounded-[2.5rem] p-6 sm:p-10 text-white shadow-2xl shadow-blue-500/20 group">
+      <div className="mb-8 sm:mb-12 relative overflow-hidden bg-[linear-gradient(135deg,#4c1d95_0%,#1e3a8a_48%,#064e3b_100%)] rounded-2xl sm:rounded-[2.5rem] p-6 sm:p-10 text-white shadow-2xl shadow-violet-500/20 group">
         <button
           onClick={() => setSettingsOpen(true)}
           className="absolute top-4 right-4 z-20 inline-flex items-center gap-1.5 rounded-xl bg-white/20 backdrop-blur-md border border-white/30 px-3 py-2 text-sm font-bold text-white hover:bg-white/30 transition-colors"
@@ -390,15 +389,18 @@ export default function HomeDashboard() {
           カスタマイズ
         </button>
         <div className="relative z-10 max-w-2xl">
+          <p className="mb-3 text-[11px] font-black uppercase tracking-[0.28em] text-violet-100/75">
+            SHION JUDGMENT ROOM
+          </p>
           <h1 className="text-2xl sm:text-4xl font-black mb-4 flex items-center gap-3 sm:gap-4">
             <span className="bg-white/20 p-2 sm:p-3 rounded-xl sm:rounded-2xl backdrop-blur-md">
-              <PieChart className="w-8 h-8 text-white" />
+              <Brain className="w-8 h-8 text-white" />
             </span>
-            リース審査アシスタント：めぶき
+            紫苑の審査室
           </h1>
           <p className="text-blue-100 text-sm sm:text-lg font-bold leading-relaxed mb-6 sm:mb-8 opacity-90">
-            お疲れ様です！本日の審査状況と、蓄積された成約データをAIが徹底分析しました。<br/>
-            最適な審査判断のためのインサイトをお届けします。
+            おかえりなさい。昨日からの変化、今日の案件、残しておくべき判断をここに集めました。<br/>
+            一般論ではなく、Kobayashiさんのリース判断資産として読み返せる形で返します。
           </p>
           <div className="flex flex-wrap gap-3">
             <div className="bg-white/10 backdrop-blur-md border border-white/20 px-3 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-2xl">
@@ -409,8 +411,8 @@ export default function HomeDashboard() {
               </div>
             </div>
             <div className="bg-white/10 backdrop-blur-md border border-white/20 px-3 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-2xl">
-              <div className="text-[10px] font-black uppercase tracking-widest text-blue-200">AI Intelligence</div>
-              <div className="text-xs sm:text-sm font-black">TimesFM v1.2 Active</div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-blue-200">Memory Loop</div>
+              <div className="text-xs sm:text-sm font-black">SHION CONTINUITY ACTIVE</div>
             </div>
           </div>
         </div>
@@ -690,7 +692,7 @@ export default function HomeDashboard() {
                   <div>
                     <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
                       <ScrollText className="text-amber-500 w-5 h-5" />
-                      リース知性体の愚痴
+                      紫苑の観察ログ
                     </h3>
                     <p className="text-xs text-slate-500 font-bold mt-1">
                       {leaseNewsReflection.headline || "ニュースを見て考えたこと"}
@@ -704,7 +706,7 @@ export default function HomeDashboard() {
                   {leaseNewsReflection.illustration_url && (
                     <img
                       src={leaseNewsReflection.illustration_url}
-                      alt="リース知性体の愚痴の挿絵"
+                      alt="紫苑の観察ログ"
                       className="aspect-[16/9] w-full rounded-xl border border-amber-100 object-cover"
                     />
                   )}
@@ -719,11 +721,8 @@ export default function HomeDashboard() {
                       <div className="mb-3 flex items-center justify-between gap-3">
                         <p className="flex items-center gap-2 text-sm font-black text-violet-900">
                           <Brain className="h-4 w-4" />
-                          記憶と自己状態
+                          判断の持ち越し
                         </p>
-                        <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-violet-700">
-                          継続 {leaseNewsReflection.continuity_days || 0}日
-                        </span>
                       </div>
                       {(leaseNewsReflection.ultimate_goal || leaseNewsReflection.primary_goal || leaseNewsReflection.secondary_goal) && (
                         <div className="mb-3 rounded-lg border border-violet-200 bg-white p-3 text-xs leading-relaxed text-slate-700">
@@ -764,9 +763,6 @@ export default function HomeDashboard() {
                       {(leaseNewsReflection.user_understanding || leaseNewsReflection.user_curiosity) && (
                         <div className="mt-3 border-t border-violet-200 pt-3">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-[10px] font-black text-violet-700">
-                              行動観測 {leaseNewsReflection.observed_days || 0}日
-                            </span>
                             {(leaseNewsReflection.user_interests || []).map((interest) => (
                               <span key={interest} className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-violet-700">
                                 {interest}
