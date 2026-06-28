@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { apiClient } from "@/lib/api";
 import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, FileOutput, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus } from "lucide-react";
@@ -314,6 +315,7 @@ function DataSourceSummaryCard({ summary }: { summary?: any }) {
 }
 
 export default function Dashboard() {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [result, setResult] = useState<any>(null);
@@ -364,6 +366,26 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handoffToShionChat = () => {
+    if (!result) return;
+    const chatContext = {
+      score: result.score_base,
+      hantei: result.hantei,
+      score_borrower: result.score_borrower,
+      company_name: formData.company_name,
+      asset_name: formData.asset_name,
+      asset_location: formData.asset_location,
+      prefecture: result.prefecture || "",
+      industry_sub: result.industry_sub || formData.industry_sub,
+      industry_major: result.industry_major || formData.industry_major,
+      sales_dept: formData.sales_dept,
+      quantum_risk: result.quantum_risk,
+      case_id: result.case_id,
+    };
+    window.localStorage.setItem("lease-gunshi-context", JSON.stringify(chatContext));
+    router.push("/chat");
   };
 
   return (
@@ -563,6 +585,28 @@ export default function Dashboard() {
                   <>
                     {/* 初期表示は判断に必要な結論だけに絞る */}
                     <IndicatorCards data={result} />
+
+                    <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 shadow-sm">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <h3 className="flex items-center gap-2 text-sm font-black text-violet-900">
+                            <MessageSquare className="h-4 w-4" />
+                            この審査結果を紫苑チャットへ渡す
+                          </h3>
+                          <p className="mt-1 text-xs font-bold leading-relaxed text-violet-700">
+                            スコア、判定、物件、業種、営業部、Q_riskを引き継いで、紫苑に稟議判断として相談します。
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handoffToShionChat}
+                          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-black text-white transition hover:bg-violet-700"
+                        >
+                          紫苑へ相談
+                          <ArrowRight className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
 
                     {/* REV-004: デフォルト率モデル警告パネル */}
                     {result.default_warnings?.length > 0 && (
