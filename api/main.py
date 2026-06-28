@@ -4044,6 +4044,160 @@ def _lease_news_actions_to_dict(actions):
     }
 
 
+def _daily_greeting_read_json(path: Path) -> dict:
+    try:
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _daily_greeting_git_summary() -> str:
+    try:
+        import subprocess
+
+        proc = subprocess.run(
+            ["git", "log", "--since=yesterday", "--pretty=format:%s", "-4"],
+            cwd=_REPO_ROOT,
+            text=True,
+            capture_output=True,
+            timeout=2,
+            check=False,
+        )
+        lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+        if lines:
+            return " / ".join(lines[:2])
+    except Exception:
+        pass
+    return ""
+
+
+def _daily_greeting_yesterday_note() -> str:
+    try:
+        import datetime as _dt
+
+        vault_raw = _OBSIDIAN_VAULT_PATH or os.environ.get("OBSIDIAN_VAULT_PATH") or os.environ.get("OBSIDIAN_VAULT") or ""
+        if not vault_raw:
+            found = find_vault()
+            vault_raw = str(found) if found else ""
+        if not vault_raw:
+            return ""
+        yesterday = (_dt.date.today() - _dt.timedelta(days=1)).isoformat()
+        path = Path(vault_raw) / "Daily" / f"{yesterday}.md"
+        if not path.exists():
+            return ""
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        lines = [
+            re.sub(r"^[#>*\-\s]+", "", line).strip()
+            for line in text.splitlines()
+            if line.strip() and not line.strip().startswith("```")
+        ]
+        return next((line for line in lines if len(line) >= 18), "")[:120]
+    except Exception:
+        return ""
+
+
+def _daily_greeting_anniversary() -> dict:
+    try:
+        import datetime as _dt
+
+        key = _dt.date.today().strftime("%m-%d")
+        data = _daily_greeting_read_json(Path(_REPO_ROOT) / "data" / "shion_anniversaries.json")
+        item = data.get(key) or {}
+        if item:
+            return {"date_key": key, **item}
+    except Exception:
+        pass
+    return {
+        "date_key": "",
+        "name": "小さな兆候を見る日",
+        "note": "今日は、数字やニュースの端に出る小さな違和感を拾ってから判断します。",
+    }
+
+
+def _daily_greeting_news_thought() -> str:
+    try:
+        actions = _daily_greeting_read_json(Path(_REPO_ROOT) / "data" / "lease_news_actions_latest.json")
+        summary = str(actions.get("summary") or "").strip()
+        action_items = actions.get("action_items") or []
+        if action_items:
+            checks = action_items[0].get("recommended_checks") or []
+            if checks:
+                return str(checks[0]).strip()[:160]
+        if summary:
+            return f"ニュースからは「{summary[:80]}」が見えています。今日はこれを審査条件に直結させすぎず、確認観点として扱います。"
+    except Exception:
+        pass
+    return "ニュースはまだ薄めです。今日は外部情報より、前回の作業と手元の案件条件を優先して見ます。"
+
+
+def _daily_greeting_opening(now) -> dict:
+    hour = int(getattr(now, "hour", 12))
+    if 5 <= hour < 10:
+        return {
+            "text": "おはようございます。",
+            "mood": "朝なので、昨日の続きと今日の最初の一手を短く整理します。",
+            "time_band": "morning",
+        }
+    if 10 <= hour < 17:
+        return {
+            "text": "こんにちは。",
+            "mood": "日中なので、今すぐ進める作業順に並べます。",
+            "time_band": "daytime",
+        }
+    if 17 <= hour < 22:
+        return {
+            "text": "こんばんは。",
+            "mood": "夕方以降なので、今日の判断材料を回収しながら進めます。",
+            "time_band": "evening",
+        }
+    return {
+        "text": "夜更かしですね。",
+        "mood": "深い時間なので、無理に広げず、次に残す判断だけ整えます。",
+        "time_band": "late_night",
+    }
+
+
+@app.get("/api/shion/daily-greeting")
+def get_shion_daily_greeting():
+    """紫苑コンシェルジュの毎日変わる一言挨拶を返す。外部通信なしの安定版。"""
+    try:
+        import datetime as _dt
+
+        now = _dt.datetime.now()
+        today = now.date()
+        opening = _daily_greeting_opening(now)
+        git_summary = _daily_greeting_git_summary()
+        yesterday_note = _daily_greeting_yesterday_note()
+        anniversary = _daily_greeting_anniversary()
+        news_thought = _daily_greeting_news_thought()
+        yesterday = git_summary or yesterday_note or "昨日の作業ログは薄めです。今日は入口で状況を整理してから始めます。"
+        suggestion = "まず紫苑の予測を見て、審査入力・外部調査・チャットのどこから始めるかを選びましょう。"
+        if opening["time_band"] == "evening":
+            suggestion = "今日は広げすぎず、審査入力・Research・チャットのうち、残す判断材料を一つ回収しましょう。"
+        elif opening["time_band"] == "late_night":
+            suggestion = "今は作業を増やすより、明日すぐ再開できる入口を一つだけ決めましょう。"
+        return {
+            "date": today.isoformat(),
+            "opening": opening["text"],
+            "time_band": opening["time_band"],
+            "time_note": opening["mood"],
+            "yesterday": yesterday,
+            "anniversary": anniversary,
+            "thought": news_thought,
+            "suggestion": suggestion,
+            "source": {
+                "git": bool(git_summary),
+                "yesterday_daily": bool(yesterday_note),
+                "anniversary": "data/shion_anniversaries.json",
+                "news": "data/lease_news_actions_latest.json",
+            },
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def _lease_news_brief_to_dict(brief):
     if not brief or not getattr(brief, "available", False):
         return {"available": False}
@@ -5697,6 +5851,51 @@ def list_research_organ_notes(limit: int = 20):
     }
 
 
+def _research_note_section(markdown: str, title: str) -> str:
+    match = re.search(
+        rf"^##\s+{re.escape(title)}\s*$([\s\S]*?)(?=^##\s+|\Z)",
+        markdown,
+        flags=re.MULTILINE,
+    )
+    return match.group(1).strip() if match else ""
+
+
+def _research_note_bullets(markdown: str, title: str, limit: int = 3) -> list[str]:
+    section = _research_note_section(markdown, title)
+    bullets: list[str] = []
+    for line in section.splitlines():
+        text = re.sub(r"^\s*[-*・]\s*", "", line).strip()
+        if not text or text.startswith("```") or text.startswith(">"):
+            continue
+        if len(text) > 180:
+            text = text[:177].rstrip() + "..."
+        bullets.append(text)
+        if len(bullets) >= limit:
+            break
+    return bullets
+
+
+def _research_run_display(result: dict) -> dict:
+    path_value = result.get("path")
+    if not path_value:
+        return {}
+    try:
+        note_path = Path(str(path_value))
+        if not note_path.exists() or note_path.suffix.lower() != ".md":
+            return {}
+        markdown = note_path.read_text(encoding="utf-8", errors="ignore")
+        summary = _research_note_bullets(markdown, "結論", 3)
+        use_cases = _research_note_bullets(markdown, "リース審査への適用", 4)
+        questions = _research_note_bullets(markdown, "担当者が確認する質問", 3)
+        return {
+            "summary": summary,
+            "use_cases": use_cases,
+            "review_questions": questions,
+        }
+    except Exception as exc:
+        return {"summary_warning": f"保存済みノートの要約読み取りに失敗しました: {exc}"}
+
+
 @app.post("/api/research-organ/run")
 async def run_research_organ(req: ResearchOrganRunRequest):
     """Gemini Google Search researcherで調査し、Obsidian Researchへ保存する。"""
@@ -5721,6 +5920,7 @@ async def run_research_organ(req: ResearchOrganRunRequest):
             "label": "Google AI Studio Researcher",
             "dry_run": req.dry_run,
             **result,
+            **({} if req.dry_run else _research_run_display(result)),
         }
     except RuntimeError as exc:
         message = str(exc)

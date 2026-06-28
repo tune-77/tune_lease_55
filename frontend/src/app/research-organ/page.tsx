@@ -49,6 +49,10 @@ type ResearchRunResult = {
   path?: string;
   source_count?: number;
   model?: string;
+  summary?: string[];
+  use_cases?: string[];
+  review_questions?: string[];
+  summary_warning?: string;
 };
 
 const EXAMPLES = [
@@ -79,6 +83,7 @@ export default function ResearchOrganPage() {
   const [running, setRunning] = useState<"dry" | "save" | null>(null);
   const [result, setResult] = useState<ResearchRunResult | null>(null);
   const [error, setError] = useState("");
+  const [warning, setWarning] = useState("");
 
   const selected = useMemo(
     () => topics.find((topic) => topic.key === selectedTopic) || null,
@@ -92,7 +97,7 @@ export default function ResearchOrganPage() {
     try {
       const [topicRes, notesRes] = await Promise.all([
         apiClient.get<ResearchTopicsResponse>("/api/research-organ/topics"),
-        apiClient.get<{ notes: ResearchNote[]; research_root: string }>("/api/research-organ/notes?limit=12"),
+        apiClient.get<{ notes: ResearchNote[]; research_root: string }>("/api/research-organ/notes?limit=5"),
       ]);
       setTopics(topicRes.data.topics || []);
       setAdapterLabel(topicRes.data.label || "Google AI Studio Researcher");
@@ -114,17 +119,22 @@ export default function ResearchOrganPage() {
   const runResearch = async (dryRun: boolean) => {
     setRunning(dryRun ? "dry" : "save");
     setError("");
+    setWarning("");
     setResult(null);
     try {
       const res = await apiClient.post<ResearchRunResult>("/api/research-organ/run", {
         topic: effectiveTopic,
         dry_run: dryRun,
-      });
+      }, { timeout: 180000 });
       setResult(res.data);
       if (!dryRun) {
-        const notesRes = await apiClient.get<{ notes: ResearchNote[]; research_root: string }>("/api/research-organ/notes?limit=12");
-        setNotes(notesRes.data.notes || []);
-        setResearchRoot(notesRes.data.research_root || "");
+        try {
+          const notesRes = await apiClient.get<{ notes: ResearchNote[]; research_root: string }>("/api/research-organ/notes?limit=5");
+          setNotes(notesRes.data.notes || []);
+          setResearchRoot(notesRes.data.research_root || "");
+        } catch (notesErr: any) {
+          setWarning(notesErr?.response?.data?.detail || notesErr?.message || "保存は完了しましたが、Researchノート一覧の再取得に失敗しました。更新ボタンで再読み込みできます。");
+        }
       }
     } catch (err: any) {
       setError(err?.response?.data?.detail || err?.message || "調査実行に失敗しました。Gemini APIキー、利用枠、safety filterを確認してください。");
@@ -177,7 +187,7 @@ export default function ResearchOrganPage() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              {topics.map((topic) => (
+              {topics.slice(0, 5).map((topic) => (
                 <button
                   key={topic.key}
                   type="button"
@@ -299,18 +309,69 @@ export default function ResearchOrganPage() {
           </section>
         )}
 
+        {warning && (
+          <section className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-300" />
+              <p className="text-sm font-bold leading-relaxed text-amber-100">{warning}</p>
+            </div>
+          </section>
+        )}
+
         {result && (
           <section className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5">
             <div className="flex items-start gap-3">
               <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-300" />
               <div>
-                <h2 className="text-sm font-black text-emerald-100">{result.dry_run ? "接続確認OK" : "Researchノートを保存しました"}</h2>
+                <h2 className="text-sm font-black text-emerald-100">{result.dry_run ? "接続確認OK" : "保存完了しました"}</h2>
                 <p className="mt-1 text-sm font-bold text-white">{result.title}</p>
                 <p className="mt-2 break-all text-xs font-bold text-emerald-100/80">{result.path || result.target_dir}</p>
                 {!result.dry_run && (
                   <p className="mt-2 text-xs font-bold text-emerald-100/80">
                     source_count: {result.source_count ?? 0} / model: {result.model || "-"}
                   </p>
+                )}
+                {result.summary_warning && (
+                  <p className="mt-3 text-xs font-bold text-amber-100">{result.summary_warning}</p>
+                )}
+                {!!result.summary?.length && (
+                  <div className="mt-4 rounded-xl border border-emerald-300/20 bg-slate-950/35 p-3">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-emerald-100/60">調査要約</div>
+                    <ul className="mt-2 space-y-1.5 text-xs font-bold leading-relaxed text-emerald-50/90">
+                      {result.summary.map((item) => (
+                        <li key={item} className="flex gap-2">
+                          <span className="text-emerald-300">・</span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {!!result.use_cases?.length && (
+                  <div className="mt-3 rounded-xl border border-cyan-300/20 bg-cyan-500/10 p-3">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-cyan-100/60">今後どう役立つか</div>
+                    <ul className="mt-2 space-y-1.5 text-xs font-bold leading-relaxed text-cyan-50/90">
+                      {result.use_cases.map((item) => (
+                        <li key={item} className="flex gap-2">
+                          <span className="text-cyan-300">・</span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {!!result.review_questions?.length && (
+                  <div className="mt-3 rounded-xl border border-violet-300/20 bg-violet-500/10 p-3">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-violet-100/60">次に確認すること</div>
+                    <ul className="mt-2 space-y-1.5 text-xs font-bold leading-relaxed text-violet-50/90">
+                      {result.review_questions.map((item) => (
+                        <li key={item} className="flex gap-2">
+                          <span className="text-violet-300">・</span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </div>
             </div>
@@ -333,7 +394,7 @@ export default function ResearchOrganPage() {
                 まだResearchノートが見つかりません。
               </div>
             )}
-            {notes.map((note) => (
+            {notes.slice(0, 5).map((note) => (
               <div key={note.path} className="rounded-xl border border-slate-800 bg-slate-950/70 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">

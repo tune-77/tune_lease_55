@@ -321,6 +321,7 @@ const demoAppeals: DemoAppeal[] = [
   { title: "OCR器官", desc: "紙・PDFを審査入力へ変換", tech: "Gemini Vision /api/ocr", icon: Eye, color: "#818cf8" },
   { title: "PII除去ゲート", desc: "個人特定情報を削除・マスク", tech: "pre-save redaction", icon: Shield, color: "#f87171" },
   { title: "会話器官", desc: "音声で紫苑と対話", tech: "Web Speech API + Gemini", icon: Activity, color: "#2dd4bf" },
+  { title: "複数紫苑", desc: "担当紫苑が導線を仕切る", tech: "Google Banana assets", icon: Brain, color: "#c084fc" },
   { title: "調査器官", desc: "Web調査をResearch化", tech: "Google AI Studio Researcher", icon: Search, color: "#22d3ee" },
   { title: "審査器官", desc: "突かれる点と逆転条件", tech: "Gemini stream / debate", icon: Zap, color: "#fbbf24" },
   { title: "記憶器官", desc: "判断資産として持ち越す", tech: "Obsidian + GCS Vault", icon: Database, color: "#a78bfa" },
@@ -408,7 +409,7 @@ export default function SystemOverviewPage() {
         {/* ── ハッカソン訴求 ── */}
         <section>
           <h2 className="text-lg font-black text-slate-300 mb-5 text-center tracking-wide uppercase">Hackathon Demo Appeal</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-7 gap-3">
             {demoAppeals.map(({ title, desc, tech, icon: DemoIcon, color }) => {
               return (
                 <div

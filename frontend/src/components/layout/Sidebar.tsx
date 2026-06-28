@@ -9,7 +9,7 @@ import {
   Eye, ChevronDown, ChevronRight, ChevronLeft,
   X, Menu, Table2, Swords, MessageCircle,
   BarChart2, BookOpen, Gift, HelpCircle, Megaphone, Calculator,
-  LifeBuoy, ClipboardList, GitMerge, Brain,
+  LifeBuoy, ClipboardList, Brain,
   Orbit, Sparkles, Search
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
@@ -32,8 +32,9 @@ export default function Sidebar() {
       title: '審査ワークフロー',
       defaultOpen: true,
       items: [
-        { name: 'ホーム', href: '/home', icon: Home, color: 'text-blue-400' },
-        { name: '審査・分析', href: '/', icon: ClipboardCheck, color: 'text-emerald-400' },
+        { name: '紫苑コンシェルジュ', href: '/', icon: Home, color: 'text-violet-400' },
+        { name: '審査・分析', href: '/screening', icon: ClipboardCheck, color: 'text-emerald-400' },
+        { name: 'ダッシュボード', href: '/home', icon: BarChart2, color: 'text-blue-400' },
         { name: '💬 AIチャット', href: '/chat', icon: MessageCircle, color: 'text-cyan-400' },
         { name: '審査レポート', href: '/report', icon: FileText, color: 'text-indigo-400' },
         { name: 'バッチ審査', href: '/batch', icon: Zap, color: 'text-yellow-400' },
@@ -48,10 +49,8 @@ export default function Sidebar() {
       items: [
         { name: '🚀 ハッカソンデモ', href: '/demo', icon: Sparkles, color: 'text-yellow-300' },
         { name: 'リース知性体との対話', href: '/lease-intelligence', icon: Brain, color: 'text-violet-400' },
-        { name: '複数紫苑デモ', href: '/multi-shion-demo', icon: Network, color: 'text-cyan-300' },
         { name: 'リースくん (スマホUI)', href: '/lease-kun', icon: MessageSquare, color: 'text-amber-400' },
         { name: 'マルチエージェント討論', href: '/debate', icon: Swords, color: 'text-violet-500' },
-        { name: '知識ループ可視化', href: '/demo/knowledge-loop', icon: GitMerge, color: 'text-emerald-300' },
         ...(!hideResearchOrgan
           ? [{ name: '外部調査器官', href: '/research-organ', icon: Search, color: 'text-sky-300' }]
           : []),
