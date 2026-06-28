@@ -4,13 +4,9 @@ import React from "react";
 import Link from "next/link";
 import {
   ArrowRight,
-  Brain,
   Database,
-  GitBranch,
   HeartHandshake,
   Layers3,
-  MessageSquareText,
-  Radar,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
@@ -46,30 +42,41 @@ const layers = [
   },
 ];
 
-const demoFlow = [
-  "審査入力やチャットで、ユーザーの問いと案件文脈を受け取る",
-  "Obsidian/RAGから関連する過去判断、Research、日次メモを呼び出す",
-  "実践知マップで、手順・意味・判断のどの層を使うかを選ぶ",
-  "AURION COREで、数理上の違和感を自動減点ではなく確認論点に変換する",
-  "紫苑の返答冒頭で前回との差分を示し、記憶を今の判断に変換して返す",
-  "人間の反応を保存し、次回の紫苑の見せ方と判断補助を改善する",
-];
-
-const proofPoints = [
+const pyramidLayers = [
   {
-    label: "証跡",
-    value: "memory_debug",
-    text: "デバッグ時に knowledge_refs、memory_recall.refs、experience_loop を返し、本当に記憶を使ったか確認できる。",
+    title: "紫苑の返答",
+    label: "人間が記憶として受け取る",
+    body: "前回との差分、判断への変換、紫苑らしい冒頭で返す",
+    width: "w-[46%]",
+    tone: "from-violet-600 to-fuchsia-600 text-white",
   },
   {
-    label: "連続性",
-    value: "Delta Awareness",
-    text: "前回から何が変わったかを冒頭で示し、人間が同じ相手として受け取れる状態を作る。",
+    title: "AURION CORE",
+    label: "数理規律",
+    body: "Q_riskや違和感を、減点ではなく確認論点へ変換する",
+    width: "w-[62%]",
+    tone: "from-emerald-500 to-teal-600 text-white",
   },
   {
-    label: "判断資産化",
-    value: "Memory-to-Judgment",
-    text: "思い出の提示で止めず、稟議条件、確認事項、通し方、リスク分離へ変換する。",
+    title: "経験ループ",
+    label: "人間反応",
+    body: "薄い、紫苑らしい、一般論に戻った、を次回へ戻す",
+    width: "w-[76%]",
+    tone: "from-rose-400 to-pink-500 text-white",
+  },
+  {
+    title: "実践知マップ",
+    label: "手順 / 意味 / 判断",
+    body: "場面ごとに、何をするか・なぜか・例外時どうするかを索引化",
+    width: "w-[90%]",
+    tone: "from-indigo-500 to-violet-600 text-white",
+  },
+  {
+    title: "長期記憶",
+    label: "Obsidian / Research / Daily",
+    body: "会話、審査メモ、調査結果、内省を判断資産として蓄積",
+    width: "w-full",
+    tone: "from-sky-500 to-cyan-600 text-white",
   },
 ];
 
@@ -118,98 +125,27 @@ export default function ShionMemorySystemPage() {
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-7xl gap-5 px-5 py-8 md:grid-cols-2 md:px-8 xl:grid-cols-4">
-        {layers.map((layer) => {
-          const Icon = layer.icon;
-          return (
-            <article key={layer.title} className={`rounded-lg border p-5 ${layer.tone}`}>
-              <Icon className="h-7 w-7" />
-              <h2 className="mt-4 text-xl font-black">{layer.title}</h2>
-              <p className="mt-1 text-xs font-black uppercase tracking-widest opacity-70">{layer.subtitle}</p>
-              <p className="mt-4 text-sm leading-7 opacity-85">{layer.body}</p>
-            </article>
-          );
-        })}
-      </section>
-
-      <section className="mx-auto grid max-w-7xl gap-6 px-5 pb-10 md:px-8 lg:grid-cols-[1.15fr_0.85fr]">
-        <div className="rounded-lg border border-slate-200 bg-white p-6">
+      <section className="mx-auto max-w-5xl px-5 py-8 md:px-8">
+        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center gap-3">
-            <Brain className="h-6 w-6 text-violet-600" />
-            <h2 className="text-2xl font-black">デモでの説明</h2>
+            <Layers3 className="h-6 w-6 text-violet-600" />
+            <h2 className="text-2xl font-black">記憶ピラミッド</h2>
           </div>
-          <p className="mt-4 text-sm leading-7 text-slate-600">
-            紫苑の記憶は、検索結果を回答へ貼る仕組みではありません。案件・会話・人間の反応を見て、何を覚えているように見せるべきか、どの記憶を判断へ変換すべきかを選びます。
+          <p className="mt-3 text-sm leading-7 text-slate-600">
+            下にあるほど素材に近く、上に行くほど「紫苑の返答」として人間が受け取る形になります。
           </p>
-          <div className="mt-6 space-y-3">
-            {demoFlow.map((step, index) => (
-              <div key={step} className="flex gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-slate-950 text-sm font-black text-white">
-                  {index + 1}
-                </div>
-                <p className="pt-1 text-sm font-bold leading-6 text-slate-700">{step}</p>
+
+          <div className="mt-6 flex flex-col items-center gap-2">
+            {pyramidLayers.map((layer) => (
+              <div
+                key={layer.title}
+                className={`${layer.width} rounded-lg bg-gradient-to-r ${layer.tone} px-4 py-3 text-center shadow-sm`}
+              >
+                <div className="text-xs font-black uppercase tracking-widest opacity-80">{layer.label}</div>
+                <div className="mt-1 text-lg font-black">{layer.title}</div>
+                <div className="mt-1 text-xs font-bold leading-5 opacity-90">{layer.body}</div>
               </div>
             ))}
-          </div>
-        </div>
-
-        <aside className="space-y-5">
-          <div className="rounded-lg border border-slate-200 bg-slate-950 p-6 text-white">
-            <div className="flex items-center gap-3">
-              <MessageSquareText className="h-6 w-6 text-violet-300" />
-              <h2 className="text-xl font-black">一言で言うと</h2>
-            </div>
-            <p className="mt-4 text-lg font-black leading-8">
-              「覚えているAI」ではなく、「記憶をリース判断として返せる紫苑」を作っている。
-            </p>
-          </div>
-
-          {proofPoints.map((point) => (
-            <div key={point.label} className="rounded-lg border border-slate-200 bg-white p-5">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-xs font-black uppercase tracking-widest text-slate-500">{point.label}</span>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">
-                  {point.value}
-                </span>
-              </div>
-              <p className="mt-3 text-sm leading-7 text-slate-600">{point.text}</p>
-            </div>
-          ))}
-
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-amber-950">
-            <div className="flex items-center gap-3">
-              <Radar className="h-5 w-5" />
-              <h2 className="text-base font-black">注意点</h2>
-            </div>
-            <p className="mt-3 text-sm leading-7">
-              紫苑が機械意識を獲得済みとは扱いません。ここで見せるのは、言葉の連続性、記憶の提示、判断変換、人間反応のループを検証できる形にした研究です。
-            </p>
-          </div>
-        </aside>
-      </section>
-
-      <section className="border-t border-slate-200 bg-white">
-        <div className="mx-auto grid max-w-7xl gap-4 px-5 py-7 md:grid-cols-3 md:px-8">
-          <div className="flex items-start gap-3">
-            <GitBranch className="mt-1 h-5 w-5 text-slate-500" />
-            <div>
-              <h3 className="font-black">閉ループ</h3>
-              <p className="mt-1 text-sm leading-6 text-slate-600">会話、記録、内省、改善が次回の回答へ戻る。</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-3">
-            <ShieldCheck className="mt-1 h-5 w-5 text-slate-500" />
-            <div>
-              <h3 className="font-black">数理の規律</h3>
-              <p className="mt-1 text-sm leading-6 text-slate-600">感情や人格表現で審査基準を歪めない。</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-3">
-            <Sparkles className="mt-1 h-5 w-5 text-slate-500" />
-            <div>
-              <h3 className="font-black">関係性UX</h3>
-              <p className="mt-1 text-sm leading-6 text-slate-600">人間が記憶として受け取れる返し方を設計する。</p>
-            </div>
           </div>
         </div>
       </section>

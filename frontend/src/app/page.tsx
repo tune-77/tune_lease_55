@@ -460,19 +460,29 @@ export default function ShionConciergeHome() {
   };
 
   return (
-    <main className="min-h-[calc(100vh-2rem)] bg-[radial-gradient(circle_at_top_left,rgba(124,58,237,0.18),transparent_34%),linear-gradient(135deg,#07111f_0%,#0f172a_52%,#052e2b_100%)] px-4 py-6 text-slate-100 sm:px-8">
+    <main className="min-h-[calc(100vh-2rem)] bg-gradient-to-br from-violet-50 via-white to-amber-50 px-4 py-6 text-slate-950 sm:px-8">
       <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-        <section className="rounded-3xl border border-violet-400/25 bg-slate-950/70 p-5 shadow-2xl shadow-violet-950/30 backdrop-blur sm:p-7">
-          <div className="mb-6">
+        <section className="rounded-3xl border border-violet-200 bg-white/90 p-5 shadow-xl shadow-violet-100/70 backdrop-blur sm:p-7">
+          <div className="mb-6 grid gap-5 md:grid-cols-[160px_1fr] md:items-center">
+            <div className="mx-auto w-36 overflow-hidden rounded-3xl border border-violet-200 bg-violet-50 shadow-lg shadow-violet-100 md:mx-0 md:w-40">
+              <img
+                src={SHION_AVATAR_IMAGE}
+                alt="リース知性体 紫苑システム"
+                className="aspect-square w-full object-cover"
+              />
+            </div>
             <div>
-              <p className="text-[11px] font-black tracking-[0.28em] text-violet-200/75">- リース知性体 -</p>
-              <h1 className="mt-3 text-3xl font-black tracking-tight text-white sm:text-5xl">
-                SHIONシステム
+              <p className="text-[11px] font-black tracking-[0.28em] text-violet-600">- リース知性体 -</p>
+              <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950 sm:text-5xl">
+                紫苑システム
               </h1>
+              <p className="mt-3 max-w-2xl text-sm font-bold leading-7 text-slate-600">
+                おかえりなさい。紫苑が今日の入口を整理して、審査、調査、記憶、デモのどこへ進むかを案内します。
+              </p>
             </div>
           </div>
 
-          <div className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
+          <div className="space-y-3 rounded-2xl border border-violet-100 bg-violet-50/60 p-4">
             {(messages.length > 0 || loading) && (
               <div className="max-h-[360px] space-y-3 overflow-y-auto pr-1">
                 {messages.map((message, index) => (
@@ -483,33 +493,33 @@ export default function ShionConciergeHome() {
                     <div
                       className={`max-w-[86%] rounded-2xl px-4 py-3 text-sm font-bold leading-relaxed ${
                         message.role === "user"
-                          ? "bg-cyan-500 text-white"
-                          : "border border-violet-400/20 bg-violet-500/12 text-slate-100"
+                          ? "bg-slate-900 text-white"
+                          : "border border-violet-100 bg-white text-slate-800"
                       }`}
                     >
                       <p>{message.text}</p>
                       {message.guidance && (
-                        <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/55 p-4">
-                          <div className="text-[10px] font-black uppercase tracking-widest text-violet-200/70">Shion Routing</div>
-                          <div className="mt-2 flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3">
+                        <div className="mt-4 rounded-2xl border border-violet-100 bg-violet-50 p-4">
+                          <div className="text-[10px] font-black uppercase tracking-widest text-violet-500">Shion Routing</div>
+                          <div className="mt-2 flex items-center gap-3 rounded-xl border border-violet-100 bg-white p-3">
                             <img
                               src={message.guidance.persona.image}
                               alt={message.guidance.persona.name}
-                              className="h-12 w-12 rounded-xl bg-white object-contain p-0.5"
+                              className="h-12 w-12 rounded-xl bg-white object-cover"
                             />
                             <div>
-                              <div className="text-sm font-black text-white">
+                              <div className="text-sm font-black text-slate-950">
                                 {message.guidance.persona.name} / {message.guidance.persona.title}
                               </div>
-                              <p className="mt-1 text-[11px] font-bold leading-relaxed text-slate-400">
+                              <p className="mt-1 text-[11px] font-bold leading-relaxed text-slate-500">
                                 {message.guidance.persona.catchphrase}
                               </p>
                             </div>
                           </div>
                           <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div>
-                              <div className="text-base font-black text-white">{message.guidance.primary.label}</div>
-                              <p className="mt-1 text-xs font-bold leading-relaxed text-slate-300">{message.guidance.reason}</p>
+                              <div className="text-base font-black text-slate-950">{message.guidance.primary.label}</div>
+                              <p className="mt-1 text-xs font-bold leading-relaxed text-slate-600">{message.guidance.reason}</p>
                             </div>
                             <Link
                               href={message.guidance.primary.href}
@@ -519,10 +529,10 @@ export default function ShionConciergeHome() {
                               <ArrowRight className="h-4 w-4" />
                             </Link>
                           </div>
-                          <ol className="mt-3 space-y-1.5 border-t border-white/10 pt-3 text-xs font-bold leading-relaxed text-slate-300">
+                          <ol className="mt-3 space-y-1.5 border-t border-violet-100 pt-3 text-xs font-bold leading-relaxed text-slate-600">
                             {message.guidance.primary.nextSteps.map((step, stepIndex) => (
                               <li key={step} className="flex gap-2">
-                                <span className="text-violet-300">{stepIndex + 1}.</span>
+                                <span className="text-violet-600">{stepIndex + 1}.</span>
                                 <span>{step}</span>
                               </li>
                             ))}
@@ -533,7 +543,7 @@ export default function ShionConciergeHome() {
                                 <Link
                                   key={route.href}
                                   href={route.href}
-                                  className="rounded-full border border-slate-700 px-3 py-1.5 text-[11px] font-black text-slate-300 hover:border-violet-300 hover:text-violet-100"
+                                  className="rounded-full border border-violet-200 bg-white px-3 py-1.5 text-[11px] font-black text-slate-600 hover:border-violet-400 hover:text-violet-700"
                                 >
                                   {route.label}
                                 </Link>
@@ -548,7 +558,7 @@ export default function ShionConciergeHome() {
                 ))}
                 {loading && (
                   <div className="flex justify-start">
-                    <div className="inline-flex items-center gap-2 rounded-2xl border border-violet-400/20 bg-violet-500/12 px-4 py-3 text-sm font-bold text-violet-100">
+                    <div className="inline-flex items-center gap-2 rounded-2xl border border-violet-100 bg-white px-4 py-3 text-sm font-bold text-violet-700">
                       <Loader2 className="h-4 w-4 animate-spin" />
                       案内先を選んでいます
                     </div>
@@ -557,7 +567,7 @@ export default function ShionConciergeHome() {
               </div>
             )}
 
-            <div className={`flex flex-col gap-3 sm:flex-row ${(messages.length > 0 || loading) ? "border-t border-slate-800 pt-4" : ""}`}>
+            <div className={`flex flex-col gap-3 sm:flex-row ${(messages.length > 0 || loading) ? "border-t border-violet-100 pt-4" : ""}`}>
               <input
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
@@ -565,13 +575,13 @@ export default function ShionConciergeHome() {
                   if (event.key === "Enter") submit();
                 }}
                 placeholder="例: 決算書を読んで審査したい / 調査してから判断したい / デモを見せたい"
-                className="min-h-12 flex-1 rounded-xl border border-slate-700 bg-slate-950 px-4 text-sm font-bold text-white outline-none placeholder:text-slate-600 focus:border-violet-400"
+                className="min-h-12 flex-1 rounded-xl border border-violet-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none placeholder:text-slate-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
               />
               <button
                 type="button"
                 onClick={submit}
                 disabled={!input.trim() || loading}
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-violet-500 px-5 text-sm font-black text-white hover:bg-violet-400 disabled:opacity-50"
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-violet-600 px-5 text-sm font-black text-white hover:bg-violet-700 disabled:opacity-50"
               >
                 <Send className="h-4 w-4" />
                 紫苑に案内させる
@@ -586,16 +596,16 @@ export default function ShionConciergeHome() {
                 <Link
                   key={route.href}
                   href={route.href}
-                  className="group rounded-2xl border border-slate-800 bg-slate-900/75 p-4 transition hover:-translate-y-0.5 hover:border-violet-400/45 hover:bg-slate-900"
+                  className="group rounded-2xl border border-slate-200 bg-white/85 p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-300 hover:bg-white hover:shadow-md"
                 >
                   <div className={`mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br ${route.tone} text-white shadow-lg`}>
                     <Icon className="h-5 w-5" />
                   </div>
                   <div className="flex items-center justify-between gap-3">
-                    <h2 className="text-sm font-black text-white">{route.label}</h2>
-                    <ArrowRight className="h-4 w-4 text-slate-500 transition group-hover:text-violet-200" />
+                    <h2 className="text-sm font-black text-slate-950">{route.label}</h2>
+                    <ArrowRight className="h-4 w-4 text-slate-400 transition group-hover:text-violet-600" />
                   </div>
-                  <p className="mt-2 text-xs font-bold leading-relaxed text-slate-400">{route.description}</p>
+                  <p className="mt-2 text-xs font-bold leading-relaxed text-slate-500">{route.description}</p>
                 </Link>
               );
             })}
@@ -603,42 +613,42 @@ export default function ShionConciergeHome() {
         </section>
 
         <aside className="space-y-5">
-          <section className="rounded-3xl border border-cyan-300/25 bg-cyan-500/10 p-5 shadow-xl">
+          <section className="rounded-3xl border border-cyan-100 bg-white/90 p-5 shadow-xl shadow-cyan-100/60">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="flex items-center gap-2 text-lg font-black text-white">
-                  <Brain className="h-5 w-5 text-cyan-200" />
+                <h2 className="flex items-center gap-2 text-lg font-black text-slate-950">
+                  <Brain className="h-5 w-5 text-cyan-600" />
                   紫苑の作業キュー
                 </h2>
-                <p className="mt-2 text-xs font-bold leading-relaxed text-cyan-50/75">
+                <p className="mt-2 text-xs font-bold leading-relaxed text-slate-500">
                   今日は私ならこの順で進めます。迷ったら主提案から入ってください。
                 </p>
               </div>
-              <span className="rounded-full border border-cyan-200/25 px-2.5 py-1 text-[10px] font-black text-cyan-100">
+              <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[10px] font-black text-cyan-700">
                 {workQueue.filter((item) => queueState[item.id] === "done").length}/{workQueue.length}
               </span>
             </div>
 
-            <div className="mt-4 rounded-2xl border border-cyan-200/20 bg-slate-950/55 p-4">
+            <div className="mt-4 rounded-2xl border border-cyan-100 bg-cyan-50/70 p-4">
               <div className="flex gap-3">
-                <img src={activeQueueItem.persona.image} alt={activeQueueItem.persona.name} className="h-12 w-12 rounded-xl bg-white object-contain p-0.5" />
+                <img src={activeQueueItem.persona.image} alt={activeQueueItem.persona.name} className="h-12 w-12 rounded-xl bg-white object-cover shadow-sm" />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-cyan-100/60">主提案</span>
-                    <span className="inline-flex items-center gap-1 rounded-full border border-slate-700 px-2 py-0.5 text-[10px] font-black text-slate-300">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-cyan-700">主提案</span>
+                    <span className="inline-flex items-center gap-1 rounded-full border border-cyan-200 bg-white px-2 py-0.5 text-[10px] font-black text-slate-600">
                       <Clock className="h-3 w-3" />
                       {activeQueueItem.eta}
                     </span>
                   </div>
-                  <div className="mt-1 text-sm font-black text-white">{activeQueueItem.title}</div>
-                  <p className="mt-1 text-[11px] font-bold leading-relaxed text-slate-400">{activeQueueItem.reason}</p>
-                  <p className="mt-2 text-[11px] font-black text-cyan-100">{activeQueueItem.persona.name}: {activeQueueItem.persona.catchphrase}</p>
+                  <div className="mt-1 text-sm font-black text-slate-950">{activeQueueItem.title}</div>
+                  <p className="mt-1 text-[11px] font-bold leading-relaxed text-slate-600">{activeQueueItem.reason}</p>
+                  <p className="mt-2 text-[11px] font-black text-cyan-700">{activeQueueItem.persona.name}: {activeQueueItem.persona.catchphrase}</p>
                 </div>
               </div>
               <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
                 <Link
                   href={activeQueueItem.href}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-3 py-2.5 text-xs font-black text-slate-950 hover:bg-cyan-300"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-3 py-2.5 text-xs font-black text-white hover:bg-cyan-600"
                 >
                   紫苑の指示どおり進む
                   <ArrowRight className="h-4 w-4" />
@@ -646,14 +656,14 @@ export default function ShionConciergeHome() {
                 <button
                   type="button"
                   onClick={() => updateQueueStatus(activeQueueItem.id, "later")}
-                  className="rounded-xl border border-slate-700 px-3 py-2.5 text-xs font-black text-slate-300 hover:border-cyan-300 hover:text-cyan-100"
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-black text-slate-600 hover:border-cyan-300 hover:text-cyan-700"
                 >
                   後で
                 </button>
                 <button
                   type="button"
                   onClick={() => updateQueueStatus(activeQueueItem.id, "done")}
-                  className="rounded-xl border border-emerald-400/35 px-3 py-2.5 text-xs font-black text-emerald-100 hover:bg-emerald-400/10"
+                  className="rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-xs font-black text-emerald-700 hover:bg-emerald-50"
                 >
                   完了
                 </button>
@@ -665,14 +675,14 @@ export default function ShionConciergeHome() {
                 const status = queueState[item.id] || "open";
                 const Icon = status === "done" ? CheckCircle2 : item.route.icon;
                 return (
-                  <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/35 px-3 py-2">
+                  <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/80 px-3 py-2">
                     <div className="flex min-w-0 items-center gap-2">
-                      <Icon className={`h-4 w-4 shrink-0 ${status === "done" ? "text-emerald-300" : status === "later" ? "text-slate-500" : "text-cyan-200"}`} />
-                      <span className={`truncate text-[11px] font-black ${status === "done" ? "text-emerald-100" : status === "later" ? "text-slate-500" : "text-slate-200"}`}>
+                      <Icon className={`h-4 w-4 shrink-0 ${status === "done" ? "text-emerald-600" : status === "later" ? "text-slate-400" : "text-cyan-600"}`} />
+                      <span className={`truncate text-[11px] font-black ${status === "done" ? "text-emerald-700" : status === "later" ? "text-slate-400" : "text-slate-700"}`}>
                         {item.title}
                       </span>
                     </div>
-                    <span className="shrink-0 text-[10px] font-black text-slate-500">
+                    <span className="shrink-0 text-[10px] font-black text-slate-400">
                       {status === "done" ? "完了" : status === "later" ? "後で" : item.eta}
                     </span>
                   </div>

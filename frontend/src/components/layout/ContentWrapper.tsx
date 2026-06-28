@@ -14,7 +14,7 @@ type ActivityItem = {
 };
 
 const PAGE_TITLES: Record<string, string> = {
-  "/": "紫苑コンシェルジュ",
+  "/": "リース知性体 紫苑システム",
   "/screening": "審査・分析",
   "/home": "ダッシュボード",
   "/chat": "紫苑チャット",
@@ -29,7 +29,7 @@ const PAGE_TITLES: Record<string, string> = {
 };
 
 function pageTitle(path: string) {
-  return PAGE_TITLES[path] || path.replace(/^\//, "") || "紫苑コンシェルジュ";
+  return PAGE_TITLES[path] || path.replace(/^\//, "") || "リース知性体 紫苑システム";
 }
 
 export default function ContentWrapper({ children }: { children: React.ReactNode }) {

@@ -32,7 +32,7 @@ export default function Sidebar() {
       title: '審査ワークフロー',
       defaultOpen: true,
       items: [
-        { name: '紫苑コンシェルジュ', href: '/', icon: Home, color: 'text-violet-400' },
+        { name: 'リース知性体 紫苑システム', href: '/', icon: Home, color: 'text-violet-400' },
         { name: '審査・分析', href: '/screening', icon: ClipboardCheck, color: 'text-emerald-400' },
         { name: 'ダッシュボード', href: '/home', icon: BarChart2, color: 'text-blue-400' },
         { name: '💬 AIチャット', href: '/chat', icon: MessageCircle, color: 'text-cyan-400' },
