@@ -4,7 +4,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Activity,
-  ArrowRight,
   BookOpenCheck,
   Brain,
   CheckCircle2,
@@ -161,18 +160,8 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
   );
 }
 
-function Metric({ label, value, detail }: { label: string; value: string; detail: string }) {
-  return (
-    <div className="border-l border-slate-200 px-4 py-3 first:border-l-0">
-      <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">{label}</p>
-      <p className="mt-1 text-2xl font-black text-slate-950">{value}</p>
-      <p className="mt-1 text-xs leading-relaxed text-slate-500">{detail}</p>
-    </div>
-  );
-}
-
 const stageBase =
-  "min-h-[190px] border border-slate-200 bg-white p-4 shadow-sm transition-colors";
+  "min-h-[168px] border border-slate-200 bg-white p-4 shadow-sm transition-colors";
 
 const boundaryLanes = [
   {
@@ -245,6 +234,10 @@ export default function KnowledgeLoopDemoPage() {
   const markdownCount = view.cloud.gcs_vault?.markdown_count ?? reflection?.indexed_notes ?? 0;
   const sourceCount = reflection?.knowledge_source_count ?? 0;
   const feedbackTotal = (view.judgment.total ?? 0) + (view.prompt.summary?.total ?? 0);
+  const loopHealth = cloudReady && gcsEnabled ? "正常" : cloudReady ? "一部確認中" : "確認中";
+  const loopHealthDetail = cloudReady && gcsEnabled
+    ? "Cloud Runと選抜知識コピーが接続されています"
+    : "ローカル表示または一部APIの状態を確認しています";
 
   const stages = [
     {
@@ -309,10 +302,11 @@ export default function KnowledgeLoopDemoPage() {
                 <StatusPill ok={gcsEnabled} label={gcsEnabled ? "GCS知識接続" : "ローカル知識表示"} />
               </div>
               <h1 className="mt-5 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
-                知識ループ可視化
+                知識ループ確認
               </h1>
               <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
-                リース審査AIが、案件入力を過去の判断資産へ照会し、根拠つき判断を返し、人のfeedbackを次回改善へ戻す流れを1画面で表示します。
+                紫苑が「案件入力 → 判断資産の参照 → 審査判断 → 人の修正 → 次回反映」を回せているかを見る画面です。
+                まず上の状態を見て、次に5段階のどこで止まっているかを確認します。
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -336,86 +330,116 @@ export default function KnowledgeLoopDemoPage() {
       </section>
 
       <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-2 border border-slate-200 bg-white md:grid-cols-4">
-          <Metric
-            label="Knowledge"
-            value={`${numberText(markdownCount)}件`}
-            detail="Cloud Runが参照できるMarkdown知識"
-          />
-          <Metric
-            label="Referenced"
-            value={`${numberText(sourceCount)}件`}
-            detail="直近の回答・内省で使われた知識"
-          />
-          <Metric
-            label="Feedback"
-            value={`${numberText(feedbackTotal)}件`}
-            detail="判断修正とprompt改善の信号"
-          />
-          <Metric
-            label="DB"
-            value={view.cloud.db?.backend ?? "unknown"}
-            detail={view.cloud.db?.available ? "接続確認済み" : "接続状態を確認中"}
-          />
+        <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+          <div className="border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">
+                  Current Loop Status
+                </p>
+                <h2 className="mt-2 text-2xl font-black text-slate-950">
+                  {loopHealth}
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-slate-600">{loopHealthDetail}</p>
+              </div>
+              {loading && (
+                <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  live data loading
+                </span>
+              )}
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <div className="border-l-4 border-emerald-400 bg-emerald-50 px-4 py-3">
+                <p className="text-xs font-black text-emerald-900">1. 知識はあるか</p>
+                <p className="mt-1 text-2xl font-black text-slate-950">{numberText(markdownCount)}件</p>
+                <p className="mt-1 text-xs text-slate-600">参照可能なMarkdown</p>
+              </div>
+              <div className="border-l-4 border-indigo-400 bg-indigo-50 px-4 py-3">
+                <p className="text-xs font-black text-indigo-900">2. 使われたか</p>
+                <p className="mt-1 text-2xl font-black text-slate-950">{numberText(sourceCount)}件</p>
+                <p className="mt-1 text-xs text-slate-600">直近回答の参照数</p>
+              </div>
+              <div className="border-l-4 border-amber-400 bg-amber-50 px-4 py-3">
+                <p className="text-xs font-black text-amber-900">3. 戻せるか</p>
+                <p className="mt-1 text-2xl font-black text-slate-950">{numberText(feedbackTotal)}件</p>
+                <p className="mt-1 text-xs text-slate-600">feedback信号</p>
+              </div>
+            </div>
+          </div>
+          <div className="border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">
+              Data Connection
+            </p>
+            <div className="mt-4 grid gap-3 text-sm">
+              <div className="flex items-center justify-between gap-4 border-b border-slate-100 pb-3">
+                <span className="font-bold text-slate-600">DB</span>
+                <span className="font-black text-slate-950">{view.cloud.db?.backend ?? "unknown"}</span>
+              </div>
+              <div className="flex items-center justify-between gap-4 border-b border-slate-100 pb-3">
+                <span className="font-bold text-slate-600">Cloud Run</span>
+                <span className="font-black text-slate-950">{cloudReady ? "ready" : "checking"}</span>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <span className="font-bold text-slate-600">GCS Vault</span>
+                <span className="font-black text-slate-950">{gcsEnabled ? "connected" : "local"}</span>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
       <section className="mx-auto max-w-7xl px-4 pb-8 sm:px-6 lg:px-8">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5 2xl:grid-cols-[1.1fr_auto_1.1fr_auto_1.1fr_auto_1.1fr_auto_1.1fr]">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Loop Flow</p>
+            <h2 className="mt-1 text-xl font-black text-slate-950">どこで止まっているかを見る</h2>
+          </div>
+          <p className="hidden text-xs font-bold text-slate-500 md:block">クリックすると下に根拠が出ます</p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           {stages.map((stage, index) => {
             const Icon = stage.Icon;
             const active = selectedStage === index;
             return (
-              <React.Fragment key={stage.title}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedStage(index)}
-                  className={`${stageBase} ${stage.tone} text-left ${
-                    active ? "ring-2 ring-slate-950" : "hover:border-slate-400"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">
-                        Step {index + 1}
-                      </p>
-                      <h2 className="mt-2 text-lg font-black text-slate-950">{stage.title}</h2>
-                      <p className="mt-1 text-xs font-bold text-slate-500">{stage.subtitle}</p>
-                    </div>
-                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-white text-slate-800 shadow-sm">
-                      <Icon className="h-5 w-5" />
-                    </span>
+              <button
+                key={stage.title}
+                type="button"
+                onClick={() => setSelectedStage(index)}
+                className={`${stageBase} ${stage.tone} text-left ${
+                  active ? "ring-2 ring-slate-950" : "hover:border-slate-400"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">
+                      Step {index + 1}
+                    </p>
+                    <h2 className="mt-2 text-lg font-black text-slate-950">{stage.title}</h2>
+                    <p className="mt-1 text-xs font-bold text-slate-500">{stage.subtitle}</p>
                   </div>
-                  <p className="mt-5 text-sm font-bold leading-6 text-slate-900">{stage.body}</p>
-                  <p className="mt-2 text-xs leading-5 text-slate-600">{stage.detail}</p>
-                </button>
-                {index < stages.length - 1 && (
-                  <div className="hidden items-center justify-center text-slate-400 2xl:flex">
-                    <ArrowRight className="h-5 w-5" />
-                  </div>
-                )}
-              </React.Fragment>
+                  <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-white text-slate-800 shadow-sm">
+                    <Icon className="h-5 w-5" />
+                  </span>
+                </div>
+                <p className="mt-5 text-sm font-bold leading-6 text-slate-900">{stage.body}</p>
+                <p className="mt-2 text-xs leading-5 text-slate-600">{stage.detail}</p>
+              </button>
             );
           })}
         </div>
       </section>
 
       <section className="mx-auto grid max-w-7xl gap-6 px-4 pb-10 sm:px-6 lg:grid-cols-[1.2fr_0.8fr] lg:px-8">
-        <div className="border border-slate-200 bg-white p-5">
+        <div className="border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
               <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">
-                Selected Loop Detail
+                Selected Step
               </p>
               <h2 className="mt-2 text-2xl font-black text-slate-950">{selected.title}</h2>
               <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600">{selected.detail}</p>
             </div>
-            {loading && (
-              <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                live data loading
-              </span>
-            )}
           </div>
 
           <div className="mt-6 grid gap-4 md:grid-cols-3">
@@ -477,13 +501,13 @@ export default function KnowledgeLoopDemoPage() {
           </div>
         </div>
 
-        <aside className="border border-slate-200 bg-white p-5">
+        <aside className="border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">
-                Evidence Panel
+                Evidence
               </p>
-              <h2 className="mt-2 text-xl font-black text-slate-950">画面に見える根拠</h2>
+              <h2 className="mt-2 text-xl font-black text-slate-950">確認すべき根拠</h2>
             </div>
             <Activity className="h-6 w-6 text-slate-500" />
           </div>
@@ -531,7 +555,7 @@ export default function KnowledgeLoopDemoPage() {
             <div className="border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center gap-2">
                 <Brain className="h-4 w-4 text-indigo-700" />
-                <p className="text-sm font-black text-slate-900">紫苑の内省から見える改善点</p>
+                <p className="text-sm font-black text-slate-900">紫苑の内省</p>
               </div>
               <div className="mt-3 space-y-2">
                 {(thoughtLines.length

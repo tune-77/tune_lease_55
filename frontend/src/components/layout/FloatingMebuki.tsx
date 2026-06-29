@@ -36,9 +36,10 @@ const cleanMebukiText = (text: string) => (
 
 export default function FloatingMebuki() {
   const pathname = usePathname();
+  const suppressPassiveBubble = pathname === "/demo/knowledge-loop";
   const [mebukiState, setMebukiState] = useState<'guide' | 'approve' | 'challenge' | 'reject'>('guide');
   const [bubbleMessage, setBubbleMessage] = useState("システム稼働中。いつでもサポートします！");
-  const [isBubbleVisible, setIsBubbleVisible] = useState(true);
+  const [isBubbleVisible, setIsBubbleVisible] = useState(!suppressPassiveBubble);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const eventOverrideRef = useRef<boolean>(false);
   const worldViewAckedRef = useRef<boolean>(false);
@@ -53,6 +54,12 @@ export default function FloatingMebuki() {
   const [saveToast, setSaveToast] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (suppressPassiveBubble && !eventOverrideRef.current) {
+      setIsBubbleVisible(false);
+    }
+  }, [suppressPassiveBubble]);
 
   // 吹き出しが表示されたら5秒後に自動非表示
   useEffect(() => {
@@ -81,7 +88,7 @@ export default function FloatingMebuki() {
 
     // ランダムな観察メモ（約5分に1回）
     const boyakiInterval = setInterval(() => {
-      if (!eventOverrideRef.current && !isChatOpen) {
+      if (!suppressPassiveBubble && !eventOverrideRef.current && !isChatOpen) {
         const randomIndex = Math.floor(Math.random() * YANAMI_BOT_MESSAGES.length);
         setBubbleMessage(cleanMebukiText(YANAMI_BOT_MESSAGES[randomIndex]));
         setMebukiState('guide');
@@ -93,11 +100,12 @@ export default function FloatingMebuki() {
       window.removeEventListener('mebuki-action', handleMebukiEvent);
       clearInterval(boyakiInterval);
     };
-  }, [isChatOpen]);
+  }, [isChatOpen, suppressPassiveBubble]);
 
   // world_view 更新チェック（マウント時と10分ごと）
   useEffect(() => {
     const checkWorldView = async () => {
+      if (suppressPassiveBubble) return;
       if (worldViewAckedRef.current) return;
       try {
         const res = await apiClient.get("/api/world-view-status");
@@ -118,7 +126,7 @@ export default function FloatingMebuki() {
     checkWorldView();
     const interval = setInterval(checkWorldView, 10 * 60 * 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [suppressPassiveBubble]);
 
   // チャットパネル開閉
   const handleMebukiClick = () => {
@@ -408,7 +416,7 @@ export default function FloatingMebuki() {
 
       {/* ── 従来の吹き出し（チャットが閉じているときのみ） ── */}
       <div className="flex items-end justify-end pointer-events-none">
-        {!isChatOpen && (
+        {!suppressPassiveBubble && !isChatOpen && (
           <div
             className={`max-h-[42dvh] w-[min(18rem,calc(100vw-6rem))] overflow-y-auto bg-white text-slate-800 p-3 sm:p-4 rounded-2xl rounded-br-none shadow-2xl border-2 border-amber-200 text-xs sm:text-sm font-bold leading-relaxed mb-4 mr-1 sm:mb-6 sm:mr-2 pointer-events-auto transition-all duration-300 transform origin-bottom-right whitespace-pre-wrap break-words ${isBubbleVisible ? 'scale-100 opacity-100' : 'scale-75 opacity-0'}`}
           >
@@ -418,7 +426,9 @@ export default function FloatingMebuki() {
 
         {/* めぶきちゃん画像 */}
         <div
-          className="relative w-20 h-20 sm:w-32 sm:h-32 pointer-events-auto cursor-pointer hover:scale-105 transition-transform drop-shadow-2xl"
+          className={`relative pointer-events-auto cursor-pointer hover:scale-105 transition-transform drop-shadow-2xl ${
+            suppressPassiveBubble ? "w-16 h-16 sm:w-20 sm:h-20" : "w-20 h-20 sm:w-32 sm:h-32"
+          }`}
           onClick={handleMebukiClick}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
