@@ -267,7 +267,7 @@ const sections: FaqSection[] = [
         a: (
           <div className="space-y-2">
             <p><strong>PD（Probability of Default）</strong>とは、借手企業が将来一定期間内に<strong>債務不履行（デフォルト）を起こす確率</strong>を統計モデルで推定した指標です。</p>
-            <p>当システムでは過去の審査データを学習したMLモデル（LightGBM）が、財務指標・格付・業種等から各案件のPDを計算します。</p>
+            <p>当システムでは過去の審査データを学習したMLモデル（既存先RandomForest・新規先ロジスティック回帰を軸に、分析ではLGBMも参照）が、財務指標・格付・業種等から各案件のPDを計算します。</p>
           </div>
         ),
       },

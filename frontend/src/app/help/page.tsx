@@ -275,7 +275,7 @@ export default function HelpPage() {
         <div className="flex flex-col sm:flex-row gap-2">
           {[
             { step: '1', label: '情報入力', desc: 'リースくんウィザードまたは定量審査で基本情報を入力', href: '/lease-kun' },
-            { step: '2', label: 'スコアリング', desc: 'LightGBMモデルによる自動スコア算出・PD評価', href: '/' },
+            { step: '2', label: 'スコアリング', desc: '既存先RF・新規先ロジスティック回帰を軸にスコア算出・PD評価', href: '/' },
             { step: '3', label: 'レポート確認', desc: '審査レポート・業種比較・営業ガイドを確認', href: '/report' },
             { step: '4', label: 'AI相談', desc: '疑問点をAIチャットまたはエージェント議論で深掘り', href: '/chat' },
           ].map(s => (
@@ -295,8 +295,8 @@ export default function HelpPage() {
         <h2 className="text-sm font-bold text-slate-700 border-b border-slate-200 pb-2">🧠 AIモデル構成</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
           {[
-            { name: 'スコアリングモデル', model: 'LightGBM（spread_predictor_v2）', role: '審査スコア（0〜100pt）を算出。売上・利益率・自己資本・業種等から総合評価。', color: 'border-indigo-200 bg-indigo-50' },
-            { name: 'デフォルト率モデル', model: 'LightGBM（lgbm_model）', role: 'デフォルト確率（PD）を算出。スコアとは独立した補助指標として警告表示。', color: 'border-rose-200 bg-rose-50' },
+            { name: 'スコアリングモデル', model: 'RandomForest / LogisticRegression', role: '既存先はRandomForest、新規先はロジスティック回帰を軸に審査スコア（0〜100pt）を算出。', color: 'border-indigo-200 bg-indigo-50' },
+            { name: '比較分析モデル', model: 'LGBM / RF / LR', role: '定量分析では3モデルを比較し、特徴量重要度と係数から判断材料を補強。', color: 'border-rose-200 bg-rose-50' },
             { name: '量子干渉リスク（Q_risk）', model: 'quantum_analysis_module', role: '複数リスク要因の非線形相互作用を検出。35以上で要注意、60以上で強警戒。', color: 'border-violet-200 bg-violet-50' },
           ].map(m => (
             <div key={m.name} className={`rounded-xl border p-3 ${m.color}`}>

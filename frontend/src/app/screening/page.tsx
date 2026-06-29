@@ -1004,7 +1004,7 @@ export default function Dashboard() {
                             </li>
                           ))}
                         </ul>
-                        <p className="text-[10px] text-rose-400 mt-2">財務パターンを学習済みLightGBMモデルで判定。審査スコアとは独立した補助指標です。</p>
+                        <p className="text-[10px] text-rose-400 mt-2">財務パターンを学習済みMLモデルで判定。審査スコアとは独立した補助指標です。</p>
                       </div>
                     )}
 

@@ -225,7 +225,7 @@ const pipelineEvents: PipelineEvent[] = [
 const loops = [
   {
     title: "スコアリングループ",
-    desc: "LightGBM + 量子干渉モデルの継続的係数最適化",
+    desc: "既存先RandomForest・新規先ロジスティック回帰を本流に、LGBMも比較分析へ加える",
     color: "#a78bfa",
     bg: "from-violet-900/40 to-violet-950/20",
     border: "border-violet-500/30",
@@ -320,7 +320,7 @@ const shionBadges = [
 ];
 
 const stats = [
-  { value: "8", label: "自己改善ループ", color: "text-violet-400" },
+  { value: "9", label: "自己改善ループ", color: "text-violet-400" },
   { value: "170+", label: "累積REV", color: "text-blue-400" },
   { value: "4", label: "AIエンジン", color: "text-emerald-400" },
   { value: "紫苑", label: "リース知性体", color: "text-fuchsia-400" },
@@ -588,7 +588,7 @@ export default function SystemOverviewPage() {
                   ["Vision OCR", "Gemini Vision /api/ocr"],
                   ["OCR対象", "決算書・納税証明・登記・見積・会社案内"],
                   ["軍師stream", "Gemini SSE"],
-                  ["スコアリング", "LightGBM + 量子干渉"],
+                  ["スコアリング", "RandomForest / LogisticRegression / LGBM"],
                   ["RAG", "ChromaDB + Obsidian"],
                   ["Research保存", "Obsidian Research / Auto Research"],
                   ["デプロイ", "Cloud Run (asia-northeast1)"],

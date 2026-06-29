@@ -30,7 +30,7 @@ const POEMS = [
 const ORBIT_NODES = [
   {
     label: "与信スコアリング",
-    sublabel: "RandomForest × 量子干渉",
+    sublabel: "RF / LR / LGBM",
     angle: -90,
     color: "#a78bfa",
     href: "/",
@@ -89,7 +89,7 @@ const CTAS = [
   },
   {
     label: "システム全体図",
-    sublabel: "6つの自己改善ループを俯瞰",
+    sublabel: "9つの自己改善ループを俯瞰",
     href: "/system-overview",
     primary: false,
     Icon: Activity,
@@ -500,7 +500,7 @@ export default function DemoPage() {
             { label: "Gemini 2.5 Flash", cls: "text-blue-300 border-blue-500/30 bg-blue-900/20" },
             { label: "Cloud Run", cls: "text-teal-300 border-teal-500/30 bg-teal-900/20" },
             { label: "ChromaDB", cls: "text-violet-300 border-violet-500/30 bg-violet-900/20" },
-            { label: "LightGBM", cls: "text-emerald-300 border-emerald-500/30 bg-emerald-900/20" },
+            { label: "RF / LR / LGBM", cls: "text-emerald-300 border-emerald-500/30 bg-emerald-900/20" },
             { label: "Next.js 16", cls: "text-slate-300 border-slate-600/50 bg-slate-800/40" },
             { label: "FastAPI", cls: "text-green-300 border-green-500/30 bg-green-900/20" },
           ].map((b) => (
