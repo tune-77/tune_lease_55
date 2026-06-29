@@ -209,6 +209,26 @@ def check_packaging_script(checks: CheckRun) -> None:
     checks.info("package_cloud_run_bundle.sh contains demo-mode bundle safeguards")
 
 
+def check_deploy_scripts(checks: CheckRun) -> None:
+    for rel in ("scripts/deploy_cloud_run.sh", "scripts/deploy_cloud_run_api.sh"):
+        path = ROOT / rel
+        if not path.exists():
+            checks.warn(f"{rel} missing")
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        required = (
+            "check_cloudrun_demo_readiness.py",
+            "CLOUDRUN_DATA_MODE",
+            "DATABASE_URL/Cloud SQL is intentionally not attached",
+            "DB_PATH=data/demo.db",
+        )
+        missing = [needle for needle in required if needle not in text]
+        if missing:
+            checks.fail(f"{rel} is missing predeploy safeguards: {', '.join(missing)}")
+        else:
+            checks.info(f"{rel} runs predeploy checks and protects demo mode from Cloud SQL")
+
+
 def http_json(base_url: str, path: str, timeout: float) -> Any:
     url = base_url.rstrip("/") + path
     with urllib.request.urlopen(url, timeout=timeout) as response:
@@ -245,6 +265,7 @@ def main() -> int:
     checks = CheckRun()
     check_ignore_files(checks)
     check_packaging_script(checks)
+    check_deploy_scripts(checks)
     check_db(LOCAL_DEMO_DB, "local data/demo.db", checks)
     check_db(BUNDLE_DEMO_DB, "bundle data/demo.db", checks)
     check_db(BUNDLE_LEASE_DB, "bundle data/lease_data.db", checks)

@@ -172,6 +172,7 @@ export default function ChatPage() {
   const [recentCases, setRecentCases] = useState<{ id: string; company_name: string; score: number | null; final_status: string }[]>([]);
   const [showCasesPanel, setShowCasesPanel] = useState(false);
   const [improvementMode, setImprovementMode] = useState(false);
+  const [answerMode, setAnswerMode] = useState<"shio" | "general">("shio");
   const [leaseNewsFocus, setLeaseNewsFocus] = useState<LeaseNewsFocus | null>(null);
   const [leaseNewsBrief, setLeaseNewsBrief] = useState<LeaseNewsBrief | null>(null);
   const [chatContext, setChatContext] = useState<ChatContext>({});
@@ -340,6 +341,7 @@ export default function ChatPage() {
         user_id: userId,
         prefecture: normalizePrefecture(newsPrefecture),
         industry: chatContext.industry_sub || chatContext.industry_major || "",
+        response_mode: answerMode,
       });
       if (res.data?.lease_news_focus) {
         setLeaseNewsFocus(res.data.lease_news_focus);
@@ -397,6 +399,7 @@ export default function ChatPage() {
         intent: improvementMode ? "improvement" : undefined,
         prefecture: normalizePrefecture(newsPrefecture),
         industry: chatContext.industry_sub || chatContext.industry_major || "",
+        response_mode: answerMode,
       });
       if (res.data?.lease_news_focus) {
         setLeaseNewsFocus(res.data.lease_news_focus);
@@ -851,6 +854,25 @@ export default function ChatPage() {
                 送信すると Improvement Log に保存
               </span>
             )}
+          </div>
+          <div className="flex shrink-0 rounded-lg border border-slate-200 bg-slate-100 p-0.5">
+            {[
+              { key: "shio", label: "塩" },
+              { key: "general", label: "一般" },
+            ].map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setAnswerMode(item.key as "shio" | "general")}
+                className={`rounded-md px-2.5 py-1 text-[11px] font-black transition-colors ${
+                  answerMode === item.key
+                    ? "bg-slate-900 text-white shadow-sm"
+                    : "text-slate-500 hover:bg-white"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
           </div>
         </div>
         <div className="flex gap-2 items-end">

@@ -5,7 +5,7 @@ import { apiClient } from "@/lib/api";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { FlyControls } from "three/examples/jsm/controls/FlyControls.js";
-import { RefreshCw, Search, Sparkles, Network, FileText, SlidersHorizontal, X, Rocket } from "lucide-react";
+import { ArrowLeft, RefreshCw, Search, Sparkles, Network, FileText, SlidersHorizontal, X, Rocket } from "lucide-react";
 
 type GraphNode = {
   id: string;
@@ -1040,6 +1040,19 @@ export default function KnowledgeSpacePage() {
 
           <div className="flex items-center gap-2 md:hidden">
             <button
+              onClick={() => {
+                if (window.history.length > 1) {
+                  window.history.back();
+                } else {
+                  window.location.href = "/chat";
+                }
+              }}
+              aria-label="戻る"
+              className="flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-white/5 text-slate-100"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+            <button
               onClick={() => setShowControls((prev) => !prev)}
               aria-label="操作を開く"
               className="flex h-9 w-9 items-center justify-center rounded-md border border-cyan-200/20 bg-cyan-300/10 text-cyan-100"
@@ -1056,6 +1069,19 @@ export default function KnowledgeSpacePage() {
           </div>
 
           <div className="hidden items-center gap-2 md:flex">
+            <button
+              onClick={() => {
+                if (window.history.length > 1) {
+                  window.history.back();
+                } else {
+                  window.location.href = "/chat";
+                }
+              }}
+              className="flex h-10 items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-3 text-xs font-black text-slate-200 transition hover:bg-white/10"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              戻る
+            </button>
             <label className="flex h-10 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 text-xs font-bold text-slate-300">
               <Search className="h-4 w-4 text-cyan-200" />
               <input

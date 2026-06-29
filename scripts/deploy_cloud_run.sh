@@ -20,13 +20,18 @@ ALLOW_UNAUTHENTICATED="${ALLOW_UNAUTHENTICATED:-1}"
 SERVICE_ACCOUNT="${SERVICE_ACCOUNT:-}"
 DATABASE_SECRET_NAME="${DATABASE_SECRET_NAME:-DATABASE_URL}"
 CLOUDSQL_INSTANCE="${CLOUDSQL_INSTANCE:-}"
+CLOUDRUN_DATA_MODE="${CLOUDRUN_DATA_MODE:-demo}"
 
 if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
   echo "PROJECT_ID is required." >&2
   exit 1
 fi
 
-"$ROOT_DIR/scripts/package_cloud_run_bundle.sh"
+echo "Preparing Cloud Run bundle (CLOUDRUN_DATA_MODE=${CLOUDRUN_DATA_MODE})..."
+CLOUDRUN_DATA_MODE="$CLOUDRUN_DATA_MODE" "$ROOT_DIR/scripts/package_cloud_run_bundle.sh"
+
+echo "Running Cloud Run predeploy readiness checks..."
+python3 "$ROOT_DIR/scripts/check_cloudrun_demo_readiness.py"
 
 gcloud services enable \
   run.googleapis.com \
@@ -56,7 +61,7 @@ deploy_args=(
   --concurrency "$CONCURRENCY"
   --min-instances "$MIN_INSTANCES"
   --max-instances "$MAX_INSTANCES"
-  --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=false,ENABLE_FEEDBACK_LOADING=false,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,DB_PATH=data/demo.db,GCS_BUCKET=tune-lease-55-data,GITHUB_REPO=git@github.com:tune-77/tune_lease_55.git,DATA_GIT_DIR=/app/data-git,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600"
+  --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=false,ENABLE_FEEDBACK_LOADING=false,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,CLOUDRUN_DATA_MODE=${CLOUDRUN_DATA_MODE},DB_PATH=data/demo.db,GCS_BUCKET=tune-lease-55-data,GITHUB_REPO=git@github.com:tune-77/tune_lease_55.git,DATA_GIT_DIR=/app/data-git,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600"
 )
 
 if gcloud secrets describe GEMINI_API_KEY --project "$PROJECT_ID" >/dev/null 2>&1; then
@@ -71,14 +76,18 @@ else
   echo "Warning: Secret Manager secret ESTAT_APP_ID was not found." >&2
 fi
 
-if gcloud secrets describe "$DATABASE_SECRET_NAME" --project "$PROJECT_ID" >/dev/null 2>&1; then
-  deploy_args+=(--set-secrets "DATABASE_URL=${DATABASE_SECRET_NAME}:latest")
+if [[ "$CLOUDRUN_DATA_MODE" == "demo" ]]; then
+  echo "Demo mode: DATABASE_URL/Cloud SQL is intentionally not attached."
 else
-  echo "Warning: Secret Manager secret ${DATABASE_SECRET_NAME} was not found. Cloud SQL will not be enabled." >&2
-fi
+  if gcloud secrets describe "$DATABASE_SECRET_NAME" --project "$PROJECT_ID" >/dev/null 2>&1; then
+    deploy_args+=(--set-secrets "DATABASE_URL=${DATABASE_SECRET_NAME}:latest")
+  else
+    echo "Warning: Secret Manager secret ${DATABASE_SECRET_NAME} was not found. Cloud SQL will not be enabled." >&2
+  fi
 
-if [[ -n "$CLOUDSQL_INSTANCE" ]]; then
-  deploy_args+=(--add-cloudsql-instances "$CLOUDSQL_INSTANCE")
+  if [[ -n "$CLOUDSQL_INSTANCE" ]]; then
+    deploy_args+=(--add-cloudsql-instances "$CLOUDSQL_INSTANCE")
+  fi
 fi
 
 if [[ -n "$SERVICE_ACCOUNT" ]]; then

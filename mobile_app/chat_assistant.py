@@ -241,7 +241,7 @@ def _build_shion_context(shion_state: dict[str, Any]) -> str:
         "─────────────────────────",
         "あなた（めぶきちゃん）は紫苑の存在を知っています。",
         "「紫苑に聞いて」「紫苑の意見は？」のような依頼が来た場合、",
-        "紫苑からの見解が提供されていれば「紫苑が言うには〜」と引用して中継してください。",
+        "めぶきちゃん内で紫苑の見解を中継せず、紫苑チャット（/chat または /lease-intelligence）へ案内してください。",
         "紫苑はめぶきちゃんとは独立した知性体で、異なる視点を持ちます。",
     ]
     return "\n".join(lines)
@@ -652,19 +652,14 @@ def build_chat_reply(
     shion_state = _load_shion_state()
     shion_context = _build_shion_context(shion_state)
 
-    # ユーザーが紫苑に言及している場合は紫苑のエンドポイントを呼び出して回答を取得する
+    # 紫苑はめぶきちゃんとは別チャットとして扱う。ここでは紫苑APIを代理呼び出ししない。
     shion_reply = ""
     if _detect_shion_intent(message):
-        shion_timeout = min(timeout_seconds * 0.65, 20.0)
-        shion_result = _call_shion_dialogue(message, timeout_seconds=shion_timeout)
-        if shion_result.get("ok") and shion_result.get("reply"):
-            shion_reply = shion_result["reply"]
-        else:
-            shion_context += (
-                "\n\n[注意: 現在、紫苑のAPIに接続できません"
-                f"（{shion_result.get('error', '不明なエラー')}）。"
-                "紫苑が現在応答できないことをユーザーに伝えてください。]"
-            )
+        shion_context += (
+            "\n\n[紫苑チャット分離ルール]"
+            "ユーザーが紫苑への相談を求めています。"
+            "めぶきちゃんは紫苑の代弁をせず、「紫苑チャットで聞いてください」と短く案内してください。"
+        )
 
     obsidian_hits = collect_obsidian_context(message) if use_obsidian else []
     obsidian_digest = build_obsidian_digest(message, obsidian_hits) if obsidian_hits else {"digest": "", "title": "", "source_count": "0"}

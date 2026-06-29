@@ -245,7 +245,12 @@ export default function FloatingMebuki() {
     }
   }, [messages, isChatOpen]);
 
-  if (pathname === "/lease-intelligence" || pathname === "/multi-shion-demo") {
+  if (
+    pathname === "/chat" ||
+    pathname === "/lease-intelligence" ||
+    pathname === "/multi-shion-demo" ||
+    pathname === "/voice-chat"
+  ) {
     return null;
   }
 

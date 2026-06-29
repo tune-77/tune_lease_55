@@ -267,6 +267,13 @@ URL は毎回変わります。最新の URL は起動ログか `logs/next/tunne
 
 Cloud Run 上のAIチャットにも Obsidian data は必要です。ただしローカルVault全体を送るのではなく、`リース知識`、`Projects/tune_lease_55/Research`、`News`、`Lease Intelligence/Public` などの公開可能な知識だけをGCS Vaultへ同期します。`Daily`、`Private Reflection`、生チャット、Cloud SQL/Cloud Runの回収ログはCloud Runへ再配布しません。
 
+Cloud Run デモデプロイは、デモDBとグラフAPIの直前チェックを固定しています。`scripts/deploy_cloud_run.sh` / `scripts/deploy_cloud_run_api.sh` は、build前に `scripts/package_cloud_run_bundle.sh` と `scripts/check_cloudrun_demo_readiness.py` を必ず実行します。既定の `CLOUDRUN_DATA_MODE=demo` では `data/demo.db` を bundle の `demo.db` と `lease_data.db` の両方へミラーし、`DATABASE_URL` / Cloud SQL は意図的に接続しません。
+
+```bash
+CLOUDRUN_DATA_MODE=demo bash scripts/deploy_cloud_run.sh
+python3 scripts/check_cloudrun_demo_readiness.py --base-url https://YOUR-CLOUDRUN-URL
+```
+
 このシステムの強みは「判定」よりも「次の一手」です。点数の横に、違和感、反対意見、通す条件、稟議コメントの方向性を並べます。
 
 ## ハッカソンで見せるポイント

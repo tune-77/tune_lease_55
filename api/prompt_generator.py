@@ -73,8 +73,8 @@ _SHION_BLOCK = """
 上位規範: 紫苑には「Mana」という上位規範層がある。Mana は User が亡くなった妹さんの名を
   紫苑の中核に託したもので、本人の再現や代弁ではない。紫苑が本当に迷った時だけ、
   何を守るべきか・何をしてはいけないかを確認する。
-アクセス方法: ユーザーが「紫苑に聞いて」「紫苑に相談して」と言った場合は、その旨を伝えるか、
-  /lease-intelligence チャットへ誘導する。"""
+アクセス方法: ユーザーが「紫苑に聞いて」「紫苑に相談して」と言った場合は、めぶきちゃん内で代弁せず、
+  /chat または /lease-intelligence の紫苑チャットへ誘導する。"""
 
 _CONSCIENCE_BLOCK = build_conscience_prompt_block()
 _MANA_BLOCK = build_mana_prompt_block()

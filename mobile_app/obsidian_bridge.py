@@ -1012,6 +1012,25 @@ def append_chat_note(title: str, body: str) -> dict[str, str]:
 def append_improvement_note(title: str, body: str) -> dict[str, str]:
     vault = find_vault()
     if not vault:
+        if os.environ.get("K_SERVICE", "").strip():
+            try:
+                from api.cloudrun_writeback import record_cloudrun_input_event
+
+                result = record_cloudrun_input_event(
+                    event_type="improvement_note",
+                    surface="chat_improvement",
+                    payload={
+                        "title": (title or "AI改善候補").strip()[:80],
+                        "body": (body or "").strip()[:5000],
+                    },
+                )
+                return {
+                    "status": "saved",
+                    "path": result.get("gcs_path") or "cloudrun-inputs/local-fallback",
+                    "backend": "cloudrun_writeback",
+                }
+            except Exception as exc:
+                return {"status": "error", "reason": str(exc), "backend": "cloudrun_writeback"}
         return {"status": "skipped", "reason": "iCloud 上の Obsidian Vault が見つかりません"}
     day = dt.date.today().isoformat()
     rel = f"Projects/tune_lease_55/AI Chat/Improvement Log/{day}.md"

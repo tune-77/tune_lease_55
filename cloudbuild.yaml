@@ -1,15 +1,5 @@
 substitutions:
   _IMAGE_URI: ""
-  # REV-158: Cloud SQL 接続先。Secret Manager のシークレット名を指定する。
-  # 実際のシークレット作成手順:
-  #   gcloud secrets create DATABASE_URL --replication-policy="automatic"
-  #   echo -n "postgresql://USER:PASS@/DBNAME?host=/cloudsql/PROJECT:REGION:INSTANCE" \
-  #     | gcloud secrets versions add DATABASE_URL --data-file=-
-  # Cloud Run デプロイ時に Secret Manager へのアクセス権を付与:
-  #   gcloud projects add-iam-policy-binding PROJECT_ID \
-  #     --member="serviceAccount:SERVICE_ACCOUNT_EMAIL" \
-  #     --role="roles/secretmanager.secretAccessor"
-  _SECRET_DATABASE_URL: "DATABASE_URL"  # Secret Manager のシークレット名
 
 steps:
   - name: gcr.io/cloud-builders/docker
@@ -22,6 +12,7 @@ steps:
       - .
 
   # REV-158: Cloud Run へのデプロイ時に DATABASE_URL を Secret Manager から渡す（コメントアウト）
+  # 現在は scripts/deploy_cloud_run.sh 側で DATABASE_URL / Cloud SQL 接続を制御する。
   # 有効化するには以下のコメントを外し、_CLOUD_RUN_SERVICE と _REGION を substitutions に追加すること。
   #
   # - name: gcr.io/google.com/cloudsdktool/cloud-sdk

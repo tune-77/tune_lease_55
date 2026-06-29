@@ -6797,6 +6797,7 @@ class ChatRequest(BaseModel):
     prefecture: str = ""
     industry: str = ""
     debug_memory: bool = False
+    response_mode: Literal["shio", "general"] = "shio"
 
 
 class HumanResponseFeedbackRequest(BaseModel):
@@ -6844,6 +6845,26 @@ _HUMAN_RESPONSE_POSITIVE_RATINGS = {"shion_like", "good"}
 _HUMAN_RESPONSE_NEGATIVE_RATINGS = {"thin", "generic", "not_shion", "bad"}
 _CHAT_MEMORY_CACHE: dict[str, Any] = {"loaded_at": 0.0, "payload": None}
 _CHAT_MEMORY_CACHE_TTL_SEC = 300
+_USER_PERSONAL_MEMORY_CACHE: dict[str, Any] = {"loaded_at": 0.0, "payload": None}
+_USER_PERSONAL_MEMORY_CACHE_TTL_SEC = 300
+
+_USER_PERSONAL_MEMORY_KEYWORDS = (
+    "What to call",
+    "Timezone",
+    "Notes",
+    "好み",
+    "方針",
+    "覚えて",
+    "犬",
+    "愛犬",
+    "dog",
+    "名前",
+    "Mana",
+    "Shion",
+    "紫苑",
+    "Relationship UX",
+    "Core Motivation",
+)
 
 
 def _chat_memory_roots() -> list[Path]:
@@ -7052,6 +7073,95 @@ def _build_chat_identity_memory_prompt_block() -> tuple[str, dict]:
         payload = {"block": "", "refs": [], "layers": {}}
     block = str(payload.get("block") or "").strip()
     return (f"\n\n{block}" if block else ""), payload
+
+
+def _read_personal_memory_lines(path: Path, *, limit: int = 24) -> tuple[list[str], str]:
+    if not path.exists() or not path.is_file():
+        return [], ""
+    try:
+        raw_lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except Exception:
+        return [], ""
+    selected: list[str] = []
+    for raw in raw_lines:
+        line = raw.strip()
+        if not line or len(line) > 900:
+            continue
+        if any(keyword in line for keyword in _USER_PERSONAL_MEMORY_KEYWORDS):
+            selected.append(line)
+        if len(selected) >= limit:
+            break
+    return selected, str(path)
+
+
+def _load_user_personal_memory_payload() -> dict:
+    import time as _time
+
+    now = _time.time()
+    cached = _USER_PERSONAL_MEMORY_CACHE.get("payload")
+    if cached is not None and now - float(_USER_PERSONAL_MEMORY_CACHE.get("loaded_at") or 0) < _USER_PERSONAL_MEMORY_CACHE_TTL_SEC:
+        return cached
+
+    refs: list[str] = []
+    lines: list[str] = []
+    for path in (
+        Path(_REPO_ROOT) / "USER.md",
+        Path(_REPO_ROOT) / "MEMORY.md",
+        Path(get_data_path("user_personal_memory.md")),
+    ):
+        found, ref = _read_personal_memory_lines(path)
+        if found:
+            refs.append(ref)
+            lines.extend(found)
+        if len(lines) >= 32:
+            break
+
+    clean_lines: list[str] = []
+    seen: set[str] = set()
+    for line in lines:
+        if line in seen:
+            continue
+        seen.add(line)
+        clean_lines.append(line)
+        if len(clean_lines) >= 32:
+            break
+
+    block = ""
+    if clean_lines:
+        block = "\n".join([
+            "【ユーザー個人記憶】",
+            "以下はUser本人との会話でのみ使う短い個人文脈です。外部向け説明や一般論には広げず、質問に関係する時だけ自然に反映してください。",
+            *[f"- {line}" for line in clean_lines],
+        ])
+
+    payload = {"block": block, "refs": refs[:6], "line_count": len(clean_lines)}
+    _USER_PERSONAL_MEMORY_CACHE.update(loaded_at=now, payload=payload)
+    return payload
+
+
+def _build_user_personal_memory_prompt_block() -> tuple[str, dict]:
+    try:
+        payload = _load_user_personal_memory_payload()
+    except Exception as exc:
+        print(f"[UserPersonalMemory] 読み込みエラー: {exc}")
+        payload = {"block": "", "refs": [], "line_count": 0}
+    block = str(payload.get("block") or "").strip()
+    return (f"\n\n{block}" if block else ""), payload
+
+
+def _chat_response_mode_instruction(response_mode: str) -> str:
+    mode = (response_mode or "shio").strip().lower()
+    if mode == "general":
+        return (
+            "\n\n【回答モード: 一般】"
+            "\n紫苑らしい人格表現は控えめにし、中立で分かりやすい一般AI回答として返す。"
+            "\nただし、リース審査の実務観点や根拠は省略しない。"
+        )
+    return (
+        "\n\n【回答モード: 塩】"
+        "\n紫苑として、短く率直に答える。甘やかさず、曖昧な点は曖昧と言う。"
+        "\nただし攻撃的・冷笑的にはせず、最後に次の一手を置く。"
+    )
 
 
 def _append_human_response_feedback(req: HumanResponseFeedbackRequest) -> dict:
@@ -8284,6 +8394,8 @@ def post_chat(req: ChatRequest):
         if not context_budget.get("use_obsidian_daily"):
             obsidian_daily_context = ""
         identity_memory_context, identity_memory_payload = _build_chat_identity_memory_prompt_block()
+        user_personal_memory_context, user_personal_memory_payload = _build_user_personal_memory_prompt_block()
+        response_mode_context = _chat_response_mode_instruction(req.response_mode)
         continuity_hook_context, continuity_hook_payload = _build_continuity_hook_prompt_block(req.message)
         consciousness_ux_context = _build_consciousness_ux_prompt_block()
         experience_loop_context = ""
@@ -8353,7 +8465,7 @@ def post_chat(req: ChatRequest):
                 delta_awareness=delta_awareness_payload,
                 memory_to_judgment=memory_to_judgment_payload,
             )
-            base_system_prompt = _pg_build_gsp(_chat_mind, _chat_now) + mode_instruction + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + experience_loop_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + consciousness_ux_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
+            base_system_prompt = _pg_build_gsp(_chat_mind, _chat_now) + mode_instruction + response_mode_context + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + consciousness_ux_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
             pdca_block = build_pdca_prompt_block() if context_budget.get("use_pdca") else ""
             effective_system_prompt = base_system_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
             obsidian_daily_injected = {}
@@ -8448,6 +8560,7 @@ def post_chat(req: ChatRequest):
                 "lease_news_actions": news_actions,
                 "long_input_mode": chat_long_input,
                 "context_mode": context_mode,
+                "response_mode": req.response_mode,
                 "obsidian_daily_intelligence": {
                     "used": bool(obsidian_daily_context),
                     "injected": obsidian_daily_injected,
@@ -8472,6 +8585,11 @@ def post_chat(req: ChatRequest):
                     reflection_gate=reflection_gate_payload,
                     experience_loop=experience_loop_payload,
                 )
+                response_payload["memory_debug"]["user_personal_memory"] = {
+                    "used": bool(user_personal_memory_payload.get("block")),
+                    "refs": user_personal_memory_payload.get("refs", [])[:6],
+                    "line_count": user_personal_memory_payload.get("line_count", 0),
+                }
             return response_payload
 
         # RAG: 共通ストアから関連ナレッジを取得。ローカル埋め込みモデルが
@@ -8597,7 +8715,7 @@ def post_chat(req: ChatRequest):
             memory_to_judgment=memory_to_judgment_payload,
         )
 
-        base_effective_prompt = _pg_build_sp(_chat_mind, _chat_now) + mode_instruction + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + experience_loop_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + guidance.prompt_suffix
+        base_effective_prompt = _pg_build_sp(_chat_mind, _chat_now) + mode_instruction + response_mode_context + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + guidance.prompt_suffix
         pdca_block = build_pdca_prompt_block() if context_budget.get("use_pdca") else ""
         effective_prompt = base_effective_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
         obsidian_daily_injected = {}
@@ -8718,6 +8836,7 @@ def post_chat(req: ChatRequest):
             "lease_news_actions": news_actions,
             "long_input_mode": chat_long_input,
             "context_mode": context_mode,
+            "response_mode": req.response_mode,
             "obsidian_daily_intelligence": {
                 "used": bool(obsidian_daily_context),
                 "injected": obsidian_daily_injected,
@@ -8742,6 +8861,11 @@ def post_chat(req: ChatRequest):
                 reflection_gate=reflection_gate_payload,
                 experience_loop=experience_loop_payload,
             )
+            response_payload["memory_debug"]["user_personal_memory"] = {
+                "used": bool(user_personal_memory_payload.get("block")),
+                "refs": user_personal_memory_payload.get("refs", [])[:6],
+                "line_count": user_personal_memory_payload.get("line_count", 0),
+            }
         return response_payload
     except Exception as e:
         import traceback
