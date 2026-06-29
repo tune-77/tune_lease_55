@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUNDLE_DIR="$ROOT_DIR/.cloudrun_bundle"
 DATA_OUT="$BUNDLE_DIR/data"
 VAULT_OUT="$BUNDLE_DIR/obsidian_vault"
+CLOUDRUN_DATA_MODE="${CLOUDRUN_DATA_MODE:-demo}"
 
 SOURCE_VAULT="${OBSIDIAN_VAULT_PATH:-}"
 if [[ -z "$SOURCE_VAULT" ]]; then
@@ -27,9 +28,20 @@ copy_if_exists() {
   fi
 }
 
-copy_if_exists "$ROOT_DIR/data/lease_data.db" "$DATA_OUT/"
+if [[ "$CLOUDRUN_DATA_MODE" == "demo" ]]; then
+  if [[ ! -f "$ROOT_DIR/data/demo.db" ]]; then
+    echo "Demo mode requires data/demo.db. Run scripts/anonymize_db.py first." >&2
+    exit 1
+  fi
+  cp "$ROOT_DIR/data/demo.db" "$DATA_OUT/demo.db"
+  # Some graph/stat modules still read DATA_DIR/lease_data.db directly.
+  # In demo mode, make that legacy path point at the anonymized demo DB.
+  cp "$ROOT_DIR/data/demo.db" "$DATA_OUT/lease_data.db"
+else
+  copy_if_exists "$ROOT_DIR/data/lease_data.db" "$DATA_OUT/"
+  copy_if_exists "$ROOT_DIR/data/demo.db" "$DATA_OUT/"
+fi
 copy_if_exists "$ROOT_DIR/data/screening_db.sqlite" "$DATA_OUT/"
-copy_if_exists "$ROOT_DIR/data/demo.db" "$DATA_OUT/"
 copy_if_exists "$ROOT_DIR/reports/obsidian_daily_intelligence_latest.json" "$BUNDLE_DIR/"
 
 validate_past_cases() {
@@ -54,6 +66,9 @@ PY
 }
 
 validate_past_cases "$DATA_OUT/lease_data.db"
+if [[ -f "$DATA_OUT/demo.db" ]]; then
+  validate_past_cases "$DATA_OUT/demo.db"
+fi
 
 if [[ -z "$SOURCE_VAULT" ]]; then
   echo "iCloud 上の Obsidian Vault が見つかりません。OBSIDIAN_VAULT_PATH を設定してください。" >&2
