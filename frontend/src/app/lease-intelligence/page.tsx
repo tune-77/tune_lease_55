@@ -55,6 +55,14 @@ type MindState = {
   indexed_notes?: number;
   knowledge_source_count?: number;
   knowledge_sources?: string[];
+  knowledge_connection?: {
+    label?: string;
+    source?: string;
+    is_cloud_run?: boolean;
+    vector_chunks?: number;
+    markdown_notes?: number;
+    case_count?: number;
+  };
 };
 
 type EmotionHistoryEntry = {
@@ -973,8 +981,13 @@ export default function LeaseIntelligencePage() {
               <Database className="h-4 w-4 text-emerald-600" /> 知識接続
             </h2>
             <p className="mt-2 text-xs text-slate-600">
-              Obsidian検索可能: {state.indexed_notes || 0}ノート
+              {state.knowledge_connection?.label || `知識検索可能: ${state.indexed_notes || 0}ノート`}
             </p>
+            {state.knowledge_connection && (
+              <p className="mt-1 text-[11px] text-slate-400">
+                {state.knowledge_connection.is_cloud_run ? "Cloud Run内の知識DB/デモDBを参照" : "ローカルVault/知識DBを参照"}
+              </p>
+            )}
             {state.current_question && (
               <p className="mt-3 text-xs leading-relaxed text-slate-600">
                 <strong>持ち越した問い:</strong> {state.current_question}

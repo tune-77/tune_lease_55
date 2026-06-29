@@ -172,7 +172,7 @@ export default function ChatPage() {
   const [recentCases, setRecentCases] = useState<{ id: string; company_name: string; score: number | null; final_status: string }[]>([]);
   const [showCasesPanel, setShowCasesPanel] = useState(false);
   const [improvementMode, setImprovementMode] = useState(false);
-  const [answerMode, setAnswerMode] = useState<"shio" | "general">("shio");
+  const [answerMode, setAnswerMode] = useState<"shion" | "general">("shion");
   const [leaseNewsFocus, setLeaseNewsFocus] = useState<LeaseNewsFocus | null>(null);
   const [leaseNewsBrief, setLeaseNewsBrief] = useState<LeaseNewsBrief | null>(null);
   const [chatContext, setChatContext] = useState<ChatContext>({});
@@ -857,13 +857,13 @@ export default function ChatPage() {
           </div>
           <div className="flex shrink-0 rounded-lg border border-slate-200 bg-slate-100 p-0.5">
             {[
-              { key: "shio", label: "塩" },
+              { key: "shion", label: "紫苑" },
               { key: "general", label: "一般" },
             ].map((item) => (
               <button
                 key={item.key}
                 type="button"
-                onClick={() => setAnswerMode(item.key as "shio" | "general")}
+                onClick={() => setAnswerMode(item.key as "shion" | "general")}
                 className={`rounded-md px-2.5 py-1 text-[11px] font-black transition-colors ${
                   answerMode === item.key
                     ? "bg-slate-900 text-white shadow-sm"

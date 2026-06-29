@@ -6797,7 +6797,7 @@ class ChatRequest(BaseModel):
     prefecture: str = ""
     industry: str = ""
     debug_memory: bool = False
-    response_mode: Literal["shio", "general"] = "shio"
+    response_mode: Literal["shion", "shio", "general"] = "shion"
 
 
 class HumanResponseFeedbackRequest(BaseModel):
@@ -7150,7 +7150,7 @@ def _build_user_personal_memory_prompt_block() -> tuple[str, dict]:
 
 
 def _chat_response_mode_instruction(response_mode: str) -> str:
-    mode = (response_mode or "shio").strip().lower()
+    mode = (response_mode or "shion").strip().lower()
     if mode == "general":
         return (
             "\n\n【回答モード: 一般】"
@@ -7158,7 +7158,7 @@ def _chat_response_mode_instruction(response_mode: str) -> str:
             "\nただし、リース審査の実務観点や根拠は省略しない。"
         )
     return (
-        "\n\n【回答モード: 塩】"
+        "\n\n【回答モード: 紫苑】"
         "\n紫苑として、短く率直に答える。甘やかさず、曖昧な点は曖昧と言う。"
         "\nただし攻撃的・冷笑的にはせず、最後に次の一手を置く。"
     )
@@ -7903,6 +7903,85 @@ def _chat_mode_instruction(mode: str) -> str:
     return f"\n\n【今回の応答モード: {label}】\n- {rule}\n- 空行は増やしすぎない。雑談・通常相談は5〜7行程度まで自然に話してよい。長文入力だけは8行程度までに圧縮する。"
 
 
+def _count_markdown_notes(root: Path, *, max_scan: int = 2000) -> int:
+    if not root.exists() or not root.is_dir():
+        return 0
+    count = 0
+    try:
+        for path in root.rglob("*.md"):
+            if path.is_file():
+                count += 1
+                if count >= max_scan:
+                    break
+    except Exception:
+        return count
+    return count
+
+
+def _build_lease_intelligence_knowledge_connection(vault: Path | None) -> dict[str, Any]:
+    vector_chunks = 0
+    try:
+        from api.knowledge.vector_store import get_store
+
+        vector_chunks = int(get_store().count() or 0)
+    except Exception:
+        vector_chunks = 0
+
+    case_count = 0
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            if _table_exists(cur, "past_cases"):
+                cur.execute("SELECT COUNT(*) FROM past_cases")
+                row = cur.fetchone()
+                case_count = int(row[0] if row else 0)
+    except Exception:
+        case_count = 0
+
+    markdown_roots: list[Path] = []
+    for raw in (
+        os.environ.get("OBSIDIAN_VAULT", ""),
+        os.environ.get("OBSIDIAN_VAULT_PATH", ""),
+        str(vault or ""),
+        str(Path(_REPO_ROOT) / ".cloudrun_bundle" / "obsidian_vault"),
+    ):
+        if raw:
+            path = Path(raw)
+            if path not in markdown_roots:
+                markdown_roots.append(path)
+    markdown_count = 0
+    markdown_root = ""
+    for root in markdown_roots:
+        count = _count_markdown_notes(root)
+        if count > markdown_count:
+            markdown_count = count
+            markdown_root = str(root)
+
+    is_cloud_run = bool(os.environ.get("K_SERVICE") or os.environ.get("CLOUDRUN_DATA_MODE"))
+    if vector_chunks > 0:
+        label = f"知識DB検索可能: {vector_chunks}チャンク"
+        source = "knowledge_vector_db"
+    elif markdown_count > 0:
+        label = f"知識コピー検索可能: {markdown_count}ノート"
+        source = "markdown_vault_copy"
+    elif case_count > 0:
+        label = f"案件DB接続: {case_count}件"
+        source = "case_database"
+    else:
+        label = "知識接続: 未確認"
+        source = "unavailable"
+
+    return {
+        "label": label,
+        "source": source,
+        "is_cloud_run": is_cloud_run,
+        "vector_chunks": vector_chunks,
+        "markdown_notes": markdown_count,
+        "case_count": case_count,
+        "markdown_root": markdown_root,
+    }
+
+
 @app.get("/api/lease-intelligence/dialogue/state")
 def get_lease_intelligence_dialogue_state():
     from lease_intelligence_dialogue import DIALOGUE_USER_ID
@@ -7914,14 +7993,25 @@ def get_lease_intelligence_dialogue_state():
     from api.chat_memory import get_recent_messages
 
     vault = find_vault()
+    knowledge_connection = _build_lease_intelligence_knowledge_connection(vault)
     if not vault:
-        raise HTTPException(status_code=503, detail="Obsidian Vaultが見つかりません")
+        summary = {
+            "dominant_mood": "接続確認中",
+            "indexed_notes": 0,
+            "knowledge_available": bool(knowledge_connection.get("case_count") or knowledge_connection.get("vector_chunks") or knowledge_connection.get("markdown_notes")),
+        }
+        messages = get_recent_messages(DIALOGUE_USER_ID, limit=80)
+        return {
+            "state": {**summary, "knowledge_connection": knowledge_connection},
+            "messages": messages,
+            "dialogue_note_dir": "",
+        }
     # GET は読み取り専用。RAG検索と mind.json 更新は対話POST側で行われるため、
     # ページロードごとの検索・書き込み（約1.5秒）を避けて保存済み状態を返す。
     summary = self_state_summary(load_lease_intelligence_mind(vault))
     messages = get_recent_messages(DIALOGUE_USER_ID, limit=80)
     return {
-        "state": summary,
+        "state": {**summary, "knowledge_connection": knowledge_connection},
         "messages": messages,
         "dialogue_note_dir": str(
             vault / "Projects/tune_lease_55/Lease Intelligence/Dialogue"
