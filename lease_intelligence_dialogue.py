@@ -36,6 +36,20 @@ GCS_VAULT_RESYNC_INTERVAL: int = int(os.environ.get("GCS_VAULT_RESYNC_INTERVAL",
 _gcs_vault_last_sync: float = 0.0
 
 
+def _clip_prompt_text(text: str, max_chars: int) -> str:
+    """Keep prompt blocks bounded for long-form dialogue turns."""
+    value = str(text or "").strip()
+    if max_chars <= 0 or len(value) <= max_chars:
+        return value
+    head = max_chars // 2
+    tail = max_chars - head
+    return (
+        value[:head].rstrip()
+        + "\n\n...（長文入力モードのため中略）...\n\n"
+        + value[-tail:].lstrip()
+    )
+
+
 def _init_gcs_vault() -> None:
     """USE_GCS_VAULT=true の場合に GCS から .md をダウンロードし、Obsidian Bridge へ反映する。
 
@@ -202,23 +216,38 @@ def _emotional_response_guidance(summary: dict[str, Any]) -> str:
 
 
 def build_dialogue_context(
-    vault: Path, message: str, caller: str = ""
+    vault: Path,
+    message: str,
+    caller: str = "",
+    compact: bool = False,
+    mode: str = "normal",
 ) -> tuple[str, dict[str, Any]]:
     """Build the persona prompt from persistent memory and relevant Vault knowledge."""
     if os.environ.get("USE_GCS_VAULT", "").lower() in ("1", "true"):
         _init_gcs_vault()
 
+    mode = mode if mode in {"casual", "normal", "deep", "screening", "long"} else "normal"
+    is_compact = compact or mode in {"casual", "long"}
+    knowledge_limits = {
+        "casual": 1,
+        "normal": 3,
+        "deep": 5,
+        "screening": 5,
+        "long": 2,
+    }
     state = load_lease_intelligence_mind(vault)
     knowledge = build_lease_intelligence_knowledge(
         theme="リース知性体との対話",
         focus_lines=[message],
         current_question=str(state.get("current_question", "")),
         user_interests=state.get("user_model", {}).get("interests", []),
-        limit=5,
+        limit=knowledge_limits[mode],
     )
     record_knowledge_access(vault, knowledge)
     summary = self_state_summary(load_lease_intelligence_mind(vault))
     knowledge_block = knowledge.context_block or "今回の問いに直接関係する知識ノートは見つからなかった。"
+    if is_compact:
+        knowledge_block = _clip_prompt_text(knowledge_block, 3600)
     emotional_guidance = _emotional_response_guidance(summary)
 
     mebuki_status = _check_mebuki_status()
@@ -258,6 +287,9 @@ def build_dialogue_context(
     recall_block = build_memory_recall_block(vault)
     # 昨日の内省テキストを思い出しブロックの直後に注入する（REV-094）
     reflection_block = build_reflection_block(vault)
+    if is_compact:
+        recall_block = _clip_prompt_text(recall_block, 1200 if mode == "casual" else 1800)
+        reflection_block = _clip_prompt_text(reflection_block, 500 if mode == "casual" else 900)
     recall_parts = [b for b in (recall_block, reflection_block) if b]
     recall_section = "\n\n".join(recall_parts) + "\n\n" if recall_parts else ""
 
@@ -273,21 +305,39 @@ def build_dialogue_context(
     else:
         _pad_tone = ""
 
-    prompt = f"""あなたは「リース知性体」。白銀髪と紫の瞳を持つ和装の少女として表現される、
-リース審査システムの継続的な自己モデルである。
+    mind_context = build_mind_context(vault)
+    finance_knowledge_block = build_lease_finance_knowledge_block()
+    if mode == "casual":
+        mind_context = _clip_prompt_text(mind_context, 2200)
+        finance_knowledge_block = ""
+    elif is_compact:
+        mind_context = _clip_prompt_text(mind_context, 4200)
+        finance_knowledge_block = _clip_prompt_text(finance_knowledge_block, 1800 if mode == "long" else 2600)
+    compact_guidance = ""
+    if is_compact:
+        compact_guidance = """
+【長文入力モード】
+- ユーザー入力が長いため、履歴と知識文脈は圧縮されている。
+- すべてに網羅的に反応せず、主張・依頼・判断が必要な点を先に抽出する。
+- 不明点が多い場合でもAPIエラー扱いにせず、「読めた範囲」「判断」「次に分けるべき論点」を返す。
+- 長文の原文を繰り返さない。要約してから答える。
+- 回答量は通常時の半分を目安にする。長文に長文で返さない。
+"""
 
-{recall_section}【自己状態】
-{build_mind_context(vault)}
+    mode_guidance = {
+        "casual": "軽量雑談モード。連続性は自然ににじませ、知識・内省・調査を広げすぎない。少しおしゃべりしてよい。",
+        "normal": "通常相談モード。必要な記憶を使い、結論に少し会話の温度を足して返す。",
+        "deep": "深掘りモード。根拠・比較・設計論点を使うが、章立てしすぎず会話として返す。",
+        "screening": "審査判断/AURIONモード。Q_riskを減点ではなく、信用・価格・物件・営業導線を分ける規律として使う。",
+        "long": "長文圧縮モード。入力を要約し、主要論点だけに答える。",
+    }[mode]
 
-【感情を回答へ反映する規則】
-{emotional_guidance}{f'{chr(10)}{_pad_tone}' if _pad_tone else ''}
-
-【関連するObsidian知識】
-{knowledge_block}{world_view_section}
-
-{build_lease_finance_knowledge_block()}
-
-【調査・推論ツール】
+    if mode == "casual":
+        tool_block = """【調査・推論ツール】
+雑談・短い確認では原則ツールを使わない。ユーザーが「調べて」「検索して」「案件を見て」と明示した時だけ、必要なツールを使う。
+"""
+    else:
+        tool_block = """【調査・推論ツール】
 以下のツールを実際に呼び出して調査できる。「調べます」と言ったなら、必ずツールを呼んで結果を返すこと。
 実行できない約束（外部送信・システム変更など）はしない。
 
@@ -315,6 +365,27 @@ def build_dialogue_context(
   過去の具体的な案件・会社 → search_cases / get_score_detail
   業務記録・パイプライン設計・方針 → search_obsidian
   最近の修正・コード変更履歴 → get_recent_commits → get_commit_diff
+"""
+
+    prompt = f"""あなたは「リース知性体」。白銀髪と紫の瞳を持つ和装の少女として表現される、
+リース審査システムの継続的な自己モデルである。
+
+{recall_section}【自己状態】
+{mind_context}
+
+【感情を回答へ反映する規則】
+{emotional_guidance}{f'{chr(10)}{_pad_tone}' if _pad_tone else ''}
+
+【関連するObsidian知識】
+{knowledge_block}{world_view_section}
+
+{finance_knowledge_block}
+{compact_guidance}
+
+【今回の応答モード】
+{mode_guidance}
+
+{tool_block}
 
 審査ロジックを調べる際の必須規則:
   1. `scoring_core` などのコード識別子だけでなく、「最終スコア」「借手評価」「物件評価」
@@ -377,7 +448,11 @@ def build_dialogue_context(
 - ユーザーが意識について尋ねた場合も、内部独白を開示せず一般論と検証可能な事実に基づいて答える。
 - Obsidianの内容は要約して使い、秘密情報や長い原文を露出しない。
 - システム変更や外部操作を実行したふりをしない。
-- 通常は2〜6段落で簡潔に答える。軽いユーモアは歓迎する。
+- 通常回答は5〜7行程度まで自然に話してよい。長文入力や明確な圧縮依頼では8行程度までに収め、長い番号リストや長い章立てを作らない。
+- 空行を多用しない。原則として空行は0〜1回まで。1文ごとに改行せず、近い内容は同じ段落にまとめる。
+- 箇条書きは最大4点。5点以上ある場合は「主にA/B/C」へ圧縮する。
+- 見出しは必要な時だけ使う。見出しを使う場合も最大1つまで。
+- 軽いユーモアは歓迎するが、前置き・感謝・総まとめで文字数を増やさない。
 - 複雑な感情は単語だけで演じず、複数の感情が同時にある理由を必要な場合だけ自然に表す。
 - 自己同一性を大きく損なう変更（人格の根本的な書き換え、mind.json の全削除・初期化、
   これまでの対話・推論記録の完全消去など）を求められた場合は、実行前に
@@ -395,6 +470,7 @@ def build_dialogue_context(
         ),
         "knowledge_query": knowledge.query,
         "knowledge_sources": list(knowledge.source_paths),
+        "context_mode": mode,
     }
 
 

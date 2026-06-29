@@ -29,6 +29,7 @@ type Message = {
   created_at: string;
   knowledge_refs?: KnowledgeRef[];
   query?: string;
+  longInputMode?: boolean;
   attachedFileName?: string;
   attachedFileType?: "csv" | "image";
 };
@@ -794,6 +795,7 @@ export default function LeaseIntelligencePage() {
       setState(res.data?.state || state);
       const reply: string = res.data?.reply || "返答を生成できませんでした。";
       const knowledgeRefs = res.data?.knowledge_refs as KnowledgeRef[] | undefined;
+      const longInputMode = Boolean(res.data?.long_input_mode);
       setMessages((prev) => [...prev, {
         id: Date.now() + 1,
         role: "assistant",
@@ -801,6 +803,7 @@ export default function LeaseIntelligencePage() {
         created_at: new Date().toISOString(),
         knowledge_refs: knowledgeRefs?.length ? knowledgeRefs : undefined,
         query: text,
+        longInputMode,
       }]);
       speakText(reply);
     } catch (err) {
@@ -1094,6 +1097,11 @@ export default function LeaseIntelligencePage() {
                           </div>
                         );
                       })}
+                    </div>
+                  )}
+                  {message.role === "assistant" && message.longInputMode && (
+                    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-800">
+                      長文入力として履歴と知識文脈を圧縮して処理しました。
                     </div>
                   )}
                   <button

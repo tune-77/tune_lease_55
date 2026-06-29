@@ -243,6 +243,98 @@ function AurionCoreCard({ core }: { core?: any }) {
   );
 }
 
+function BayesReverseStrategyCard({ strategy }: { strategy?: any }) {
+  if (!strategy?.available) return null;
+  const prior = Number(strategy.prior_percent ?? 0);
+  const posterior = Number(strategy.posterior_percent ?? 0);
+  const lift = Number(strategy.lift_percent ?? 0);
+  const factors = Array.isArray(strategy.factors) ? strategy.factors : [];
+  const moves = Array.isArray(strategy.moves) ? strategy.moves : [];
+  const phrases = Array.isArray(strategy.phrases) ? strategy.phrases : [];
+  const barWidth = Math.max(2, Math.min(100, posterior));
+  const liftClass = lift >= 0 ? "text-emerald-700 bg-emerald-100 border-emerald-200" : "text-rose-700 bg-rose-100 border-rose-200";
+
+  return (
+    <section className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 shadow-sm">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex items-start gap-3">
+          <Network className="mt-0.5 h-5 w-5 flex-shrink-0 text-indigo-700" />
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-black text-indigo-950">BN逆転・軍師提案</h3>
+              <span className="rounded-full border border-indigo-300 bg-white px-2 py-0.5 text-[10px] font-black text-indigo-700">
+                {strategy.stance || "Bayes"}
+              </span>
+              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${liftClass}`}>
+                {lift >= 0 ? "+" : ""}{lift.toFixed(1)}pt
+              </span>
+            </div>
+            <p className="mt-1 text-xs font-bold leading-relaxed text-indigo-800">
+              {strategy.headline || "証拠を足した時の承認余地をベイズ更新で見ます。"}
+            </p>
+          </div>
+        </div>
+        <div className="min-w-[240px] rounded-xl border border-indigo-100 bg-white px-4 py-3">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-black text-slate-400">事前確率</div>
+              <div className="text-lg font-black text-slate-700">{prior.toFixed(1)}%</div>
+            </div>
+            <ArrowRight className="mb-1 h-4 w-4 text-indigo-400" />
+            <div className="text-right">
+              <div className="text-[10px] font-black text-indigo-500">更新後</div>
+              <div className="text-3xl font-black text-indigo-800">{posterior.toFixed(1)}%</div>
+            </div>
+          </div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full rounded-full bg-indigo-600" style={{ width: `${barWidth}%` }} />
+          </div>
+        </div>
+      </div>
+
+      {factors.length > 0 && (
+        <div className="mt-3 grid gap-2 md:grid-cols-3">
+          {factors.slice(1, 4).map((factor: any) => (
+            <div key={factor.label} className="rounded-xl border border-indigo-100 bg-white px-3 py-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] font-black text-slate-700">{factor.label}</div>
+                <div className={`text-[11px] font-black ${Number(factor.delta_pct) >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                  {Number(factor.delta_pct) >= 0 ? "+" : ""}{Number(factor.delta_pct || 0).toFixed(1)}pt
+                </div>
+              </div>
+              <div className="mt-1 text-[10px] font-medium leading-relaxed text-slate-500">{factor.detail}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {moves.length > 0 && (
+        <div className="mt-3 rounded-xl border border-indigo-100 bg-white px-3 py-2">
+          <div className="text-[10px] font-black uppercase text-indigo-500">逆転の打ち手</div>
+          <ul className="mt-1 space-y-1">
+            {moves.slice(0, 4).map((move: string, index: number) => (
+              <li key={index} className="flex gap-2 text-[11px] font-bold leading-relaxed text-slate-700">
+                <span className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-indigo-400" />
+                <span>{move}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {phrases.length > 0 && (
+        <div className="mt-3 rounded-xl bg-indigo-900 px-3 py-2 text-white">
+          <div className="text-[10px] font-black uppercase text-indigo-200">軍師フレーズ</div>
+          <div className="mt-1 text-xs font-bold leading-relaxed">{phrases[0]}</div>
+        </div>
+      )}
+      {strategy.disclaimer && (
+        <p className="mt-2 text-[10px] font-bold leading-relaxed text-indigo-500">{strategy.disclaimer}</p>
+      )}
+    </section>
+  );
+}
+
 function DataSourceSummaryCard({ summary }: { summary?: any }) {
   if (!summary) return null;
   const assetClarity = summary.asset_clarity;
@@ -660,6 +752,8 @@ export default function Dashboard() {
                     )}
 
                     <AurionCoreCard core={result.aurion_core} />
+
+                    <BayesReverseStrategyCard strategy={result.bayes_reverse_strategy} />
 
                     <RateProposalCard proposal={result.rate_proposal} />
 

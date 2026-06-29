@@ -1246,6 +1246,125 @@ def _build_rate_proposal(inputs: dict, result: dict) -> dict:
     }
 
 
+def _build_bayes_reverse_strategy(inputs: dict, result: dict) -> dict:
+    """Streamlit版のBN逆転提案を、審査結果カード用の軽量JSONにする。"""
+    try:
+        from api.gunshi_gemini import build_bayes_factors
+        from shinsa_gunshi_logic import compute_prior, compute_posterior, select_top_phrases
+
+        score = max(0.0, min(100.0, _score_float(result.get("score_base", result.get("score")), 0.0)))
+        pd_pct = 0.0
+        asset_score = _score_float(result.get("asset_score", inputs.get("asset_score")), 50.0)
+        if asset_score >= 70:
+            resale_eval = "高"
+        elif asset_score < 40:
+            resale_eval = "低"
+        else:
+            resale_eval = "中"
+
+        subsidy_text = " ".join(
+            str(inputs.get(key) or "")
+            for key in ("industry_detail", "passion_text", "asset_name", "asset_purpose")
+        )
+        subsidy_flag = bool(re.search(r"補助金|助成金|ものづくり|省力化|it導入|省エネ", subsidy_text, re.IGNORECASE))
+        bank_support = (
+            str(inputs.get("deal_source") or "") == "銀行紹介"
+            or str(inputs.get("main_bank") or "") == "メイン先"
+        )
+        repeat_count = max(0, int(_score_float(inputs.get("contracts"), 0)))
+        raw_intuition = _score_float(inputs.get("intuition"), 3.0)
+        intuition_level = int(max(1, min(5, round(raw_intuition if raw_intuition <= 5 else raw_intuition / 20))))
+
+        prior = compute_prior(score, pd_pct)
+        posterior = compute_posterior(
+            prior=prior,
+            resale=resale_eval,
+            repeat_cnt=repeat_count,
+            subsidy=subsidy_flag,
+            bank=bank_support,
+            intuition=intuition_level,
+        )
+        params = {
+            **inputs,
+            "score": score,
+            "pd_pct": pd_pct,
+            "resale_eval": resale_eval,
+            "repeat_count": repeat_count,
+            "subsidy_flag": subsidy_flag,
+            "bank_support": bank_support,
+            "intuition_score": intuition_level * 20,
+            "industry_cat": result.get("industry_major") or inputs.get("industry_major") or "",
+            "industry_sub": result.get("industry_sub") or inputs.get("industry_sub") or "",
+            "asset_name": inputs.get("asset_name") or "対象物件",
+        }
+        phrase_dicts = select_top_phrases(
+            industry_cat=str(params.get("industry_cat") or ""),
+            score=score,
+            pd_pct=pd_pct,
+            resale=resale_eval,
+            repeat_cnt=repeat_count,
+            subsidy=subsidy_flag,
+            bank=bank_support,
+            posterior=posterior,
+            asset_name=str(params.get("asset_name") or ""),
+            n=3,
+        )
+        phrases = [
+            str(item.get("text") if isinstance(item, dict) else item)
+            for item in phrase_dicts
+            if str(item.get("text") if isinstance(item, dict) else item).strip()
+        ]
+        lift = posterior - prior
+        if posterior >= 0.75:
+            stance = "押し切り提案"
+            headline = "承認確率は高い。条件を増やしすぎず、返済原資と物件保全を短く押す。"
+        elif posterior >= 0.60:
+            stance = "条件付き逆転"
+            headline = "境界だが逆転余地あり。否決理由を先に潰して条件付き承認へ寄せる。"
+        else:
+            stance = "再設計提案"
+            headline = "現状のまま押すより、金額・期間・保証・保全を組み替える局面。"
+
+        proposed_moves = []
+        if asset_score < 50:
+            proposed_moves.append("物件の中古相場・撤去搬出費・再販先を確認し、保全弱点を先に潰す。")
+        else:
+            proposed_moves.append("物件の必要性と換金性を稟議の押し材料にする。")
+        if not bank_support:
+            proposed_moves.append("主取引銀行の温度感を取り、銀行支援の有無を確認する。")
+        if repeat_count <= 0:
+            proposed_moves.append("完全新規なら、少額化・前受金・保証・期間短縮のどれかを差し出す。")
+        if subsidy_flag:
+            proposed_moves.append("補助金は採択時期と入金時期を確認し、資金繰り前提にしすぎない。")
+        if not proposed_moves:
+            proposed_moves.append("返済原資、物件保全、取引継続性の三点で稟議を組み立てる。")
+
+        return {
+            "available": True,
+            "label": "BN逆転",
+            "stance": stance,
+            "headline": headline,
+            "prior": round(prior, 4),
+            "posterior": round(posterior, 4),
+            "prior_percent": round(prior * 100, 1),
+            "posterior_percent": round(posterior * 100, 1),
+            "lift_percent": round(lift * 100, 1),
+            "evidence": {
+                "resale": resale_eval,
+                "repeat_count": repeat_count,
+                "subsidy": subsidy_flag,
+                "bank_support": bank_support,
+                "intuition_level": intuition_level,
+            },
+            "factors": build_bayes_factors(params, prior, posterior),
+            "moves": proposed_moves[:4],
+            "phrases": phrases[:3],
+            "disclaimer": "BN逆転は承認を保証せず、条件変更で承認余地がどれだけ上がるかを見る補助指標です。",
+        }
+    except Exception as exc:
+        return {"available": False, "reason": str(exc)[:180]}
+
+
 _WIZARD_INPUT_LOG = Path(__file__).parent.parent / "data" / "wizard_input_log.jsonl"
 _wizard_log_lock = __import__("threading").Lock()
 _WIZARD_TRACKED_FIELDS = [
@@ -1318,6 +1437,7 @@ def calculate_score(req: ScoringRequest, background_tasks: BackgroundTasks):
         approval_comment_draft = _build_approval_comment_draft(inputs, result, conditional_actions, rate_proposal, screening_context_notes)
         from api.aurion_core_guard import build_aurion_core_guard
         aurion_core = build_aurion_core_guard(inputs, result)
+        bayes_reverse_strategy = _build_bayes_reverse_strategy(inputs, result)
         _record_scoring_memory_usage("score_calculate", inputs, result)
         
         # 期待する戻り値のキーにマッピング
@@ -1345,6 +1465,7 @@ def calculate_score(req: ScoringRequest, background_tasks: BackgroundTasks):
             approval_comment_draft=approval_comment_draft,
             estat_context=result.get("estat_context"),
             aurion_core=aurion_core,
+            bayes_reverse_strategy=bayes_reverse_strategy,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1361,6 +1482,7 @@ def calculate_score_full(req: ScoringRequest):
         approval_comment_draft = _build_approval_comment_draft(inputs, result, conditional_actions, rate_proposal, screening_context_notes)
         from api.aurion_core_guard import build_aurion_core_guard
         aurion_core = build_aurion_core_guard(inputs, result)
+        bayes_reverse_strategy = _build_bayes_reverse_strategy(inputs, result)
 
         # ── DB保存 ──────────────────────────────────────────────
         case_id = None
@@ -1382,6 +1504,7 @@ def calculate_score_full(req: ScoringRequest):
                     "quantum_risk": result.get("quantum_risk"),
                     "credit_quantum_strong_warning": result.get("credit_quantum_strong_warning", False),
                     "aurion_core": aurion_core,
+                    "bayes_reverse_strategy": bayes_reverse_strategy,
                 },
             }
             case_id = save_case_log(case_data)
@@ -1452,6 +1575,7 @@ def calculate_score_full(req: ScoringRequest):
             approval_comment_draft=approval_comment_draft,
             estat_context=result.get("estat_context"),
             aurion_core=aurion_core,
+            bayes_reverse_strategy=bayes_reverse_strategy,
         )
     except Exception as e:
         import traceback
@@ -6433,6 +6557,7 @@ _CHAT_SYSTEM_PROMPT = """あなたはtuneリース審査システムの専属AI�
 ## 回答スタイル
 - 原則300字以内。簡単な質問は1〜2文で答える
 - 基本形は「結論1行 + 箇条書き最大3点」。4点以上は出さない
+- 空行を増やしすぎない。原則として空行は0〜1回まで。1文ごとに改行せず、近い内容は同じ段落にまとめる
 - 専門用語は必要な時だけ使い、説明も最小限にする
 - 「この案件どう思う？」のような相談は、審査担当者目線で見るべき点を最大3点に絞る
 - 詳細な根拠、長い解説、表、参照ノート一覧は、ユーザーが「詳しく」「根拠も」「表で」と頼んだ時だけ出す
@@ -7325,6 +7450,7 @@ def _build_consciousness_ux_prompt_block() -> str:
 def _chat_memory_debug_payload(
     *,
     category: str,
+    context_mode: str = "",
     knowledge_refs: list[str] | None = None,
     memory_recall: dict | None = None,
     pdca_block: str = "",
@@ -7356,6 +7482,7 @@ def _chat_memory_debug_payload(
     )
     return {
         "category": category,
+        "context_mode": context_mode,
         "relationship_loop_engineering": loop,
         "continuity_hook": {
             "used": bool(hook.get("used")),
@@ -7414,6 +7541,186 @@ class LeaseIntelligenceDialogueRequest(BaseModel):
     file_type: Optional[str] = None
     file_name: Optional[str] = None
     file_mime_type: Optional[str] = None
+
+
+def _is_long_dialogue_input(message: str, file_type: str | None = None) -> bool:
+    text = str(message or "")
+    return len(text) >= 1800 or text.count("\n") >= 18 or bool(file_type)
+
+
+def _clip_dialogue_history_text(text: str, max_chars: int) -> str:
+    value = str(text or "").strip()
+    if len(value) <= max_chars:
+        return value
+    head = max_chars // 2
+    tail = max_chars - head
+    return (
+        value[:head].rstrip()
+        + "\n\n...（長文対話のため過去発言を中略）...\n\n"
+        + value[-tail:].lstrip()
+    )
+
+
+def _compact_dialogue_history(
+    history: list[dict],
+    *,
+    max_messages: int = 24,
+    max_chars_per_message: int = 1200,
+    total_budget: int = 16000,
+) -> list[dict]:
+    """Bound dialogue history before sending it to Gemini.
+
+    The persistent memory system keeps long-term continuity; the live Gemini turn
+    only needs recent, bounded context. This prevents long user inputs from
+    combining with a large history into API errors.
+    """
+    selected = list(history or [])[-max_messages:]
+    compacted: list[dict] = []
+    remaining = total_budget
+    for msg in reversed(selected):
+        if remaining <= 0:
+            break
+        role = str(msg.get("role") or "")
+        content = _clip_dialogue_history_text(str(msg.get("content") or ""), min(max_chars_per_message, remaining))
+        if not content:
+            continue
+        compacted.append({**msg, "role": role, "content": content})
+        remaining -= len(content)
+    return list(reversed(compacted))
+
+
+_CHAT_CONTEXT_BUDGETS: dict[str, dict[str, Any]] = {
+    "casual": {
+        "history_limit": 16,
+        "history_messages": 8,
+        "history_chars_per_message": 700,
+        "history_total_budget": 5000,
+        "rag_top_k": 0,
+        "recall_limit": 1,
+        "use_news": False,
+        "use_obsidian_daily": False,
+        "use_db": False,
+        "use_judgment_learning": False,
+        "use_pdca": False,
+        "use_experience_loop": True,
+    },
+    "normal": {
+        "history_limit": 32,
+        "history_messages": 16,
+        "history_chars_per_message": 900,
+        "history_total_budget": 9000,
+        "rag_top_k": 3,
+        "recall_limit": 3,
+        "use_news": True,
+        "use_obsidian_daily": True,
+        "use_db": False,
+        "use_judgment_learning": False,
+        "use_pdca": True,
+        "use_experience_loop": True,
+    },
+    "deep": {
+        "history_limit": 60,
+        "history_messages": 24,
+        "history_chars_per_message": 1000,
+        "history_total_budget": 14000,
+        "rag_top_k": 5,
+        "recall_limit": 5,
+        "use_news": True,
+        "use_obsidian_daily": True,
+        "use_db": True,
+        "use_judgment_learning": True,
+        "use_pdca": True,
+        "use_experience_loop": True,
+    },
+    "screening": {
+        "history_limit": 48,
+        "history_messages": 22,
+        "history_chars_per_message": 1000,
+        "history_total_budget": 13000,
+        "rag_top_k": 5,
+        "recall_limit": 5,
+        "use_news": True,
+        "use_obsidian_daily": True,
+        "use_db": True,
+        "use_judgment_learning": True,
+        "use_pdca": True,
+        "use_experience_loop": True,
+    },
+    "long": {
+        "history_limit": 24,
+        "history_messages": 16,
+        "history_chars_per_message": 700,
+        "history_total_budget": 8000,
+        "rag_top_k": 2,
+        "recall_limit": 2,
+        "use_news": False,
+        "use_obsidian_daily": False,
+        "use_db": False,
+        "use_judgment_learning": False,
+        "use_pdca": True,
+        "use_experience_loop": True,
+    },
+}
+
+
+def _chat_context_mode(
+    message: str,
+    category: str = "",
+    *,
+    long_input: bool = False,
+    file_type: str | None = None,
+) -> str:
+    """Select how much memory/RAG context to attach to a chat turn."""
+    text = str(message or "")
+    lower = text.lower()
+    if long_input or file_type:
+        return "long"
+
+    screening_terms = (
+        "審査", "案件", "スコア", "承認", "否決", "稟議", "財務", "物件", "金利",
+        "補助金", "過去案件", "成約", "失注", "q_risk", "aurion", "銀行支援",
+        "競合", "新規先", "既存先", "与信", "与信判断",
+    )
+    deep_terms = (
+        "詳しく", "根拠", "深掘り", "詳細", "表で", "全部", "比較", "分析して",
+        "なぜ", "理由", "調べて", "検証", "設計", "実装", "プラン", "計画",
+    )
+    casual_terms = (
+        "そうか", "なるほど", "面白い", "どう思う", "すごい", "ありがとう",
+        "雑談", "ふむ", "かな", "だね", "だよね", "哲学", "意識",
+    )
+
+    if category == "lease_screening" or any(term in lower or term in text for term in screening_terms):
+        return "screening"
+    if any(term in text or term in lower for term in deep_terms):
+        return "deep"
+    if category == "general" or len(text) <= 80 or any(term in text or term in lower for term in casual_terms):
+        return "casual"
+    return "normal"
+
+
+def _chat_context_budget(mode: str) -> dict[str, Any]:
+    return dict(_CHAT_CONTEXT_BUDGETS.get(mode) or _CHAT_CONTEXT_BUDGETS["normal"])
+
+
+def _chat_mode_instruction(mode: str) -> str:
+    labels = {
+        "casual": "軽量雑談モード",
+        "normal": "通常相談モード",
+        "deep": "深掘りモード",
+        "screening": "審査判断/AURIONモード",
+        "long": "長文圧縮モード",
+    }
+    rules = {
+        "casual": "少しおしゃべりしてよい。記憶は連続性として自然ににじませ、RAGや判断資産を無理に展開しない。",
+        "normal": "必要な記憶を使い、結論に少し会話の温度を足して返す。",
+        "deep": "根拠・比較・設計論点を厚めに使うが、章立てしすぎず会話として返す。",
+        "screening": "Q_risk/AURION COREを、減点ではなく論点分解と判断規律として使う。",
+        "long": "入力を要約してから、必要な論点だけに答える。長文に長文で返さない。",
+    }
+    label = labels.get(mode, labels["normal"])
+    rule = rules.get(mode, rules["normal"])
+    return f"\n\n【今回の応答モード: {label}】\n- {rule}\n- 空行は増やしすぎない。雑談・通常相談は5〜7行程度まで自然に話してよい。長文入力だけは8行程度までに圧縮する。"
 
 
 @app.get("/api/lease-intelligence/dialogue/state")
@@ -7482,7 +7789,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     extra_user_parts: list[dict] = []
     if req.file_type == "csv" and req.file_content:
         _fname = req.file_name or "添付ファイル"
-        _csv_preview = req.file_content[:8000]  # 100KB制限内の安全な切り詰め
+        _csv_preview = req.file_content[:5000]  # 長文対話ではCSVもプロンプト肥大化を避ける
         full_message = (
             f"[添付CSVファイル: {_fname}]\n```csv\n{_csv_preview}\n```\n\n{full_message}"
         )
@@ -7490,8 +7797,29 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
         _mime = req.file_mime_type or "image/jpeg"
         extra_user_parts = [{"inline_data": {"mime_type": _mime, "data": req.file_content}}]
 
-    history = get_recent_messages(DIALOGUE_USER_ID, limit=100)
-    system_prompt, state = build_dialogue_context(vault, full_message, caller=req.caller)
+    compact_dialogue = _is_long_dialogue_input(full_message, req.file_type)
+    dialogue_mode = _chat_context_mode(
+        full_message,
+        "lease_knowledge",
+        long_input=compact_dialogue,
+        file_type=req.file_type,
+    )
+    dialogue_budget = _chat_context_budget(dialogue_mode)
+    history = get_recent_messages(DIALOGUE_USER_ID, limit=int(dialogue_budget["history_limit"]))
+    if compact_dialogue or dialogue_mode in ("casual", "long"):
+        history = _compact_dialogue_history(
+            history,
+            max_messages=int(dialogue_budget["history_messages"]),
+            max_chars_per_message=int(dialogue_budget["history_chars_per_message"]),
+            total_budget=int(dialogue_budget["history_total_budget"]),
+        )
+    system_prompt, state = build_dialogue_context(
+        vault,
+        full_message,
+        caller=req.caller,
+        compact=compact_dialogue,
+        mode=dialogue_mode,
+    )
     consultation_ids: list[str] = []
 
     def _tool_executor(name: str, args: dict) -> object:
@@ -7512,7 +7840,14 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
             extra_user_parts=extra_user_parts or None,
         ).strip()
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"対話AIへ接続できません: {exc}")
+        detail = str(exc)
+        if compact_dialogue:
+            detail = (
+                "長文入力として履歴と知識文脈を圧縮しましたが、対話AIへの接続に失敗しました。"
+                "文章を2〜3個の論点に分けるか、少し時間を置いて再送してください。"
+                f" 原因: {detail[:220]}"
+            )
+        raise HTTPException(status_code=503, detail=f"対話AIへ接続できません: {detail}")
 
     save_message(DIALOGUE_USER_ID, "user", message)
     save_message(DIALOGUE_USER_ID, "assistant", reply)
@@ -7613,7 +7948,15 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     except Exception as _rag_exc:
         print(f"[DialogueRAGRefs] 取得に失敗: {_rag_exc}")
 
-    return {"reply": reply, "state": state, "note_path": note_path, "knowledge_refs": rag_knowledge_refs}
+    return {
+        "reply": reply,
+        "state": state,
+        "note_path": note_path,
+        "knowledge_refs": rag_knowledge_refs,
+        "long_input_mode": compact_dialogue,
+        "context_mode": dialogue_mode,
+        "history_messages_sent": len(history),
+    }
 
 
 @app.delete("/api/lease-intelligence/dialogue/history")
@@ -7730,6 +8073,7 @@ def post_chat(req: ChatRequest):
             asset_name="",
             surface="chat",
         )
+        chat_long_input = _is_long_dialogue_input(req.message)
         news_actions_context = f"\n\n{news_actions_text}" if news_actions_text else ""
         try:
             obsidian_daily_text = obsidian_daily_intelligence_as_text(route="chat")
@@ -7856,17 +8200,31 @@ def post_chat(req: ChatRequest):
 
         # カテゴリ判定
         question_category = _classify_question(req.message)
+        context_mode = _chat_context_mode(
+            req.message,
+            question_category,
+            long_input=chat_long_input,
+        )
+        context_budget = _chat_context_budget(context_mode)
+        mode_instruction = _chat_mode_instruction(context_mode)
+        if not context_budget.get("use_news"):
+            news_focus_context = ""
+            news_brief_context = ""
+            news_actions_context = ""
+        if not context_budget.get("use_obsidian_daily"):
+            obsidian_daily_context = ""
         identity_memory_context, identity_memory_payload = _build_chat_identity_memory_prompt_block()
         continuity_hook_context, continuity_hook_payload = _build_continuity_hook_prompt_block(req.message)
         consciousness_ux_context = _build_consciousness_ux_prompt_block()
         experience_loop_context = ""
         experience_loop_payload: dict = {"used": False}
-        try:
-            from api.shion_experience_loop import build_experience_prompt_block
+        if context_budget.get("use_experience_loop"):
+            try:
+                from api.shion_experience_loop import build_experience_prompt_block
 
-            experience_loop_context, experience_loop_payload = build_experience_prompt_block()
-        except Exception as _experience_loop_error:
-            print(f"[ShionExperienceLoop] 読み込みエラー: {_experience_loop_error}")
+                experience_loop_context, experience_loop_payload = build_experience_prompt_block()
+            except Exception as _experience_loop_error:
+                print(f"[ShionExperienceLoop] 読み込みエラー: {_experience_loop_error}")
 
         if question_category == "news_summarize":
             save_message(req.user_id, "user", req.message)
@@ -7898,12 +8256,22 @@ def post_chat(req: ChatRequest):
 
         # general なら RAG をスキップして直接回答
         if question_category == "general":
-            history = get_recent_messages(req.user_id, limit=60)
+            history = get_recent_messages(req.user_id, limit=int(context_budget["history_limit"]))
+            if chat_long_input or context_mode in ("casual", "long"):
+                history = _compact_dialogue_history(
+                    history,
+                    max_messages=int(context_budget["history_messages"]),
+                    max_chars_per_message=int(context_budget["history_chars_per_message"]),
+                    total_budget=int(context_budget["history_total_budget"]),
+                )
             history_for_gemini = [{"role": m["role"], "content": m["content"]} for m in history]
             from prompt_feedback import build_pdca_prompt_block
             from api.shion_memory_recall import build_recall_prompt_block
 
-            memory_recall_context, memory_recall = build_recall_prompt_block(req.message)
+            memory_recall_context, memory_recall = build_recall_prompt_block(
+                req.message,
+                limit=int(context_budget["recall_limit"]),
+            )
             delta_awareness_context, delta_awareness_payload = _build_delta_awareness_prompt_block(req.message, history_for_gemini)
             memory_to_judgment_context, memory_to_judgment_payload = _build_memory_to_judgment_prompt_block(
                 req.message,
@@ -7915,8 +8283,8 @@ def post_chat(req: ChatRequest):
                 delta_awareness=delta_awareness_payload,
                 memory_to_judgment=memory_to_judgment_payload,
             )
-            base_system_prompt = _pg_build_gsp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + experience_loop_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + consciousness_ux_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
-            pdca_block = build_pdca_prompt_block()
+            base_system_prompt = _pg_build_gsp(_chat_mind, _chat_now) + mode_instruction + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + experience_loop_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + consciousness_ux_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
+            pdca_block = build_pdca_prompt_block() if context_budget.get("use_pdca") else ""
             effective_system_prompt = base_system_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
             obsidian_daily_injected = {}
             if obsidian_daily_context:
@@ -8008,6 +8376,8 @@ def post_chat(req: ChatRequest):
                 "lease_news_focus": news_focus,
                 "lease_news_brief": news_brief,
                 "lease_news_actions": news_actions,
+                "long_input_mode": chat_long_input,
+                "context_mode": context_mode,
                 "obsidian_daily_intelligence": {
                     "used": bool(obsidian_daily_context),
                     "injected": obsidian_daily_injected,
@@ -8017,6 +8387,7 @@ def post_chat(req: ChatRequest):
             if req.debug_memory:
                 response_payload["memory_debug"] = _chat_memory_debug_payload(
                     category="general",
+                    context_mode=context_mode,
                     knowledge_refs=[],
                     memory_recall=memory_recall,
                     pdca_block=pdca_block,
@@ -8037,25 +8408,27 @@ def post_chat(req: ChatRequest):
         # 未キャッシュでもキーワード検索へフォールバックする。
         rag_context = ""
         rag_refs: list[str] = []
-        try:
-            from api.knowledge.vector_store import get_store
+        rag_top_k = int(context_budget["rag_top_k"])
+        if rag_top_k > 0:
+            try:
+                from api.knowledge.vector_store import get_store
 
-            hits = get_store().search(req.message, top_k=5)
-            all_docs = []
-            for hit in hits:
-                text = str(hit.get("text") or "").strip()
-                ref = str(hit.get("ref") or hit.get("file_name") or "").strip()
-                if text:
-                    prefix = f"{ref}: " if ref else ""
-                    all_docs.append((prefix + text)[:600])
-                    if ref:
-                        rag_refs.append(ref)
-            if all_docs:
-                rag_context = "\n\n【参照ナレッジ】\n" + "\n---\n".join(all_docs)
-        except Exception as e:
-            print(f"[RAG] 検索エラー: {e}")
-        if not rag_context:
-            fallback_hits = _search_chat_vault_markdown_fallback(req.message, top_k=5)
+                hits = get_store().search(req.message, top_k=rag_top_k)
+                all_docs = []
+                for hit in hits:
+                    text = str(hit.get("text") or "").strip()
+                    ref = str(hit.get("ref") or hit.get("file_name") or "").strip()
+                    if text:
+                        prefix = f"{ref}: " if ref else ""
+                        all_docs.append((prefix + text)[:600])
+                        if ref:
+                            rag_refs.append(ref)
+                if all_docs:
+                    rag_context = "\n\n【参照ナレッジ】\n" + "\n---\n".join(all_docs)
+            except Exception as e:
+                print(f"[RAG] 検索エラー: {e}")
+        if rag_top_k > 0 and not rag_context:
+            fallback_hits = _search_chat_vault_markdown_fallback(req.message, top_k=rag_top_k)
             if fallback_hits:
                 all_docs = []
                 for hit in fallback_hits:
@@ -8071,11 +8444,12 @@ def post_chat(req: ChatRequest):
 
         # DB直接参照: ユーザーが実データ分析を求めている場合にSQLite統計を注入
         db_context = ""
-        try:
-            from api.db_query import build_db_context
-            db_context = build_db_context(req.message)
-        except Exception as e:
-            print(f"[DB Query] 統計取得エラー: {e}")
+        if context_budget.get("use_db"):
+            try:
+                from api.db_query import build_db_context
+                db_context = build_db_context(req.message)
+            except Exception as e:
+                print(f"[DB Query] 統計取得エラー: {e}")
 
         # 改善提案キーワード検知 → 既存パイプライン候補と照合してコンテキスト注入
         _IMPROVEMENT_KEYWORDS = (
@@ -8105,7 +8479,14 @@ def post_chat(req: ChatRequest):
 
         _is_improvement_msg = any(k in req.message for k in _IMPROVEMENT_KEYWORDS)
 
-        history = get_recent_messages(req.user_id, limit=60)
+        history = get_recent_messages(req.user_id, limit=int(context_budget["history_limit"]))
+        if chat_long_input or context_mode in ("casual", "long"):
+            history = _compact_dialogue_history(
+                history,
+                max_messages=int(context_budget["history_messages"]),
+                max_chars_per_message=int(context_budget["history_chars_per_message"]),
+                total_budget=int(context_budget["history_total_budget"]),
+            )
         history_for_gemini = [{"role": m["role"], "content": m["content"]} for m in history]
         guidance = build_chat_guidance(req.message, history_for_gemini)
         # システムプロンプトにRAGコンテキスト・DB統計・改善照合・会話ガイダンスを追記
@@ -8115,7 +8496,7 @@ def post_chat(req: ChatRequest):
         try:
             from judgment_feedback import build_judgment_learning_prompt_block
 
-            learned = build_judgment_learning_prompt_block()
+            learned = build_judgment_learning_prompt_block() if context_budget.get("use_judgment_learning") else ""
             if learned:
                 judgment_learning_context = f"\n\n{learned}"
         except Exception as _judgment_learning_error:
@@ -8126,7 +8507,10 @@ def post_chat(req: ChatRequest):
         try:
             from api.shion_memory_recall import build_recall_prompt_block
 
-            memory_recall_context, memory_recall = build_recall_prompt_block(req.message)
+            memory_recall_context, memory_recall = build_recall_prompt_block(
+                req.message,
+                limit=int(context_budget["recall_limit"]),
+            )
         except Exception as _memory_recall_error:
             print(f"[ShionMemoryRecall] 読み込みエラー: {_memory_recall_error}")
 
@@ -8143,8 +8527,8 @@ def post_chat(req: ChatRequest):
             memory_to_judgment=memory_to_judgment_payload,
         )
 
-        base_effective_prompt = _pg_build_sp(_chat_mind, _chat_now) + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + experience_loop_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + guidance.prompt_suffix
-        pdca_block = build_pdca_prompt_block()
+        base_effective_prompt = _pg_build_sp(_chat_mind, _chat_now) + mode_instruction + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + experience_loop_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + guidance.prompt_suffix
+        pdca_block = build_pdca_prompt_block() if context_budget.get("use_pdca") else ""
         effective_prompt = base_effective_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
         obsidian_daily_injected = {}
         if obsidian_daily_context:
@@ -8262,6 +8646,8 @@ def post_chat(req: ChatRequest):
             "lease_news_focus": news_focus,
             "lease_news_brief": news_brief,
             "lease_news_actions": news_actions,
+            "long_input_mode": chat_long_input,
+            "context_mode": context_mode,
             "obsidian_daily_intelligence": {
                 "used": bool(obsidian_daily_context),
                 "injected": obsidian_daily_injected,
@@ -8271,6 +8657,7 @@ def post_chat(req: ChatRequest):
         if req.debug_memory:
             response_payload["memory_debug"] = _chat_memory_debug_payload(
                 category="rag",
+                context_mode=context_mode,
                 knowledge_refs=rag_refs,
                 memory_recall=memory_recall,
                 pdca_block=pdca_block,

@@ -88,6 +88,7 @@ class ScoringResponse(BaseModel):
     approval_comment_draft: Optional[dict] = None  # 稟議コメント案
     estat_context: Optional[dict] = None  # e-Stat統合コンテキスト（業種・リース・景気）
     aurion_core: Optional[dict] = None  # Q_risk/異常度を減点ではなく規律・UXへ翻訳するAURION CORE所見
+    bayes_reverse_strategy: Optional[dict] = None  # BN逆転: ベイズ更新後の承認確率と軍師提案
 
 class CaseRegisterRequest(BaseModel):
     case_id: str
