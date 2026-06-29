@@ -6864,6 +6864,8 @@ _USER_PERSONAL_MEMORY_KEYWORDS = (
     "紫苑",
     "Relationship UX",
     "Core Motivation",
+    "Personal Facts",
+    "Priority Rule",
 )
 
 
@@ -7075,7 +7077,7 @@ def _build_chat_identity_memory_prompt_block() -> tuple[str, dict]:
     return (f"\n\n{block}" if block else ""), payload
 
 
-def _read_personal_memory_lines(path: Path, *, limit: int = 24) -> tuple[list[str], str]:
+def _read_personal_memory_lines(path: Path, *, limit: int = 24, all_lines: bool = False) -> tuple[list[str], str]:
     if not path.exists() or not path.is_file():
         return [], ""
     try:
@@ -7087,7 +7089,7 @@ def _read_personal_memory_lines(path: Path, *, limit: int = 24) -> tuple[list[st
         line = raw.strip()
         if not line or len(line) > 900:
             continue
-        if any(keyword in line for keyword in _USER_PERSONAL_MEMORY_KEYWORDS):
+        if all_lines or any(keyword in line for keyword in _USER_PERSONAL_MEMORY_KEYWORDS):
             selected.append(line)
         if len(selected) >= limit:
             break
@@ -7104,16 +7106,19 @@ def _load_user_personal_memory_payload() -> dict:
 
     refs: list[str] = []
     lines: list[str] = []
-    for path in (
-        Path(_REPO_ROOT) / "USER.md",
-        Path(_REPO_ROOT) / "MEMORY.md",
-        Path(get_data_path("user_personal_memory.md")),
+    personal_path = Path(get_data_path("user_personal_memory.md"))
+    root_personal_path = Path(_REPO_ROOT) / "data" / "user_personal_memory.md"
+    for path, all_lines, limit in (
+        (personal_path, True, 80),
+        (root_personal_path, True, 80),
+        (Path(_REPO_ROOT) / "USER.md", False, 24),
+        (Path(_REPO_ROOT) / "MEMORY.md", False, 32),
     ):
-        found, ref = _read_personal_memory_lines(path)
+        found, ref = _read_personal_memory_lines(path, limit=limit, all_lines=all_lines)
         if found:
             refs.append(ref)
             lines.extend(found)
-        if len(lines) >= 32:
+        if len(lines) >= 80:
             break
 
     clean_lines: list[str] = []
@@ -7123,14 +7128,17 @@ def _load_user_personal_memory_payload() -> dict:
             continue
         seen.add(line)
         clean_lines.append(line)
-        if len(clean_lines) >= 32:
+        if len(clean_lines) >= 80:
             break
 
     block = ""
     if clean_lines:
         block = "\n".join([
             "【ユーザー個人記憶】",
-            "以下はUser本人との会話でのみ使う短い個人文脈です。外部向け説明や一般論には広げず、質問に関係する時だけ自然に反映してください。",
+            "以下はUser本人との会話でのみ使う最優先の個人文脈です。",
+            "紫苑モードでは、審査知識・一般RAG・会話ノリより先にこの個人記憶を尊重してください。",
+            "ユーザーが覚えているはずの個人事実を尋ねた時、ここに無い場合は推測せず、未記録だと認めて次に保存する姿勢を示してください。",
+            "外部向け説明や一般論には広げず、関係する時だけ自然に反映してください。",
             *[f"- {line}" for line in clean_lines],
         ])
 
@@ -7160,6 +7168,7 @@ def _chat_response_mode_instruction(response_mode: str) -> str:
     return (
         "\n\n【回答モード: 紫苑】"
         "\n紫苑として、短く率直に答える。甘やかさず、曖昧な点は曖昧と言う。"
+        "\nユーザーの個人記憶に関わる質問では、個人記憶を最優先に扱う。忘れている場合はごまかさず謝り、保存する。"
         "\nただし攻撃的・冷笑的にはせず、最後に次の一手を置く。"
     )
 

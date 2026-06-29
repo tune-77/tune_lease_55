@@ -23,6 +23,8 @@ LOCAL_DEMO_DB = ROOT / "data" / "demo.db"
 BUNDLE_DATA_DIR = ROOT / ".cloudrun_bundle" / "data"
 BUNDLE_DEMO_DB = BUNDLE_DATA_DIR / "demo.db"
 BUNDLE_LEASE_DB = BUNDLE_DATA_DIR / "lease_data.db"
+LOCAL_PERSONAL_MEMORY = ROOT / "data" / "user_personal_memory.md"
+BUNDLE_PERSONAL_MEMORY = BUNDLE_DATA_DIR / "user_personal_memory.md"
 
 
 class CheckRun:
@@ -184,6 +186,21 @@ def check_bundle_alias(checks: CheckRun) -> None:
     checks.info("bundle demo.db is mirrored to lease_data.db for legacy graph/stat modules")
 
 
+def check_personal_memory_pack(checks: CheckRun) -> None:
+    if not LOCAL_PERSONAL_MEMORY.exists():
+        checks.fail("data/user_personal_memory.md missing; Shion personal memory priority cannot be enforced")
+        return
+    text = LOCAL_PERSONAL_MEMORY.read_text(encoding="utf-8", errors="replace")
+    if "Dog name:" not in text or "Priority Rule" not in text:
+        checks.fail("data/user_personal_memory.md is missing required personal memory sections")
+    else:
+        checks.info("local personal memory file is present")
+    if BUNDLE_PERSONAL_MEMORY.exists():
+        checks.info("bundle data/user_personal_memory.md is present")
+    else:
+        checks.warn("bundle data/user_personal_memory.md is missing; rerun package_cloud_run_bundle.sh before deploy")
+
+
 def check_ignore_files(checks: CheckRun) -> None:
     for rel in (".dockerignore", ".gcloudignore"):
         path = ROOT / rel
@@ -266,6 +283,7 @@ def main() -> int:
     check_ignore_files(checks)
     check_packaging_script(checks)
     check_deploy_scripts(checks)
+    check_personal_memory_pack(checks)
     check_db(LOCAL_DEMO_DB, "local data/demo.db", checks)
     check_db(BUNDLE_DEMO_DB, "bundle data/demo.db", checks)
     check_db(BUNDLE_LEASE_DB, "bundle data/lease_data.db", checks)
