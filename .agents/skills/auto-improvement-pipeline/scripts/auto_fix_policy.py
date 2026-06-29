@@ -10,7 +10,7 @@ from typing import Any
 _ALLOWED_KEYWORDS = [
     "文言", "ラベル", "説明文", "placeholder", "tooltip", "表示名",
     "faq", "ヘルプ", "ボタン文言", "max_tokens", "timeout", "表示件数",
-    "誤字", "タイポ",
+    "誤字", "タイポ", "表示",
 ]
 
 _DENY_KEYWORDS = [
@@ -20,12 +20,21 @@ _DENY_KEYWORDS = [
     "セキュリティ", "権限", "外部api", "edinet", "帝国データバンク",
     "ocr", "kubernetes", "docker", "インフラ", "データ移行", "削除",
     "複数ファイル", "横断", "ポートフォリオ", "公平性", "バイアス",
+    "動いていない", "機能がない", "接続エラー", "通信エラー", "500",
+    "登録ボタンがない", "リース期間",
 ]
 
 _SAFE_FILE_SUFFIXES = {".py", ".ts", ".tsx", ".js", ".jsx", ".md", ".json"}
 _DANGEROUS_PATH_PARTS = {
     "models", "data", "migrations", "alembic", ".github", "launchd",
 }
+
+_TARGET_INFERENCE_RULES: list[tuple[tuple[str, ...], str]] = [
+    (("自律改善フロー",), "frontend/src/app/system-overview/page.tsx"),
+    (("紫苑の記憶システム",), "frontend/src/app/shion-memory-system/page.tsx"),
+    (("ホーム画面",), "frontend/src/app/home/page.tsx"),
+    (("リースニュースの注目論点",), "frontend/src/app/home/page.tsx"),
+]
 
 
 def _text(improvement: dict[str, Any]) -> str:
@@ -49,6 +58,25 @@ def _referenced_files(text: str) -> list[str]:
     return re.findall(r"[\w./-]+\.(?:py|tsx|ts|jsx|js|md|json|yaml|yml|toml|plist)", text)
 
 
+def infer_target_module(
+    improvement: dict[str, Any],
+    workspace_root: str | Path | None = None,
+) -> str | None:
+    """自然文の改善案から、低リスク候補の対象ファイルだけを控えめに推定する."""
+    if improvement.get("target_module"):
+        return str(improvement.get("target_module"))
+
+    text = _text(improvement)
+    root = Path(workspace_root) if workspace_root else None
+    for keywords, target in _TARGET_INFERENCE_RULES:
+        if not all(keyword.lower() in text for keyword in keywords):
+            continue
+        if root is not None and not (root / target).is_file():
+            continue
+        return target
+    return None
+
+
 def evaluate_auto_fix_policy(
     improvement: dict[str, Any],
     workspace_root: str | Path | None = None,
@@ -60,6 +88,9 @@ def evaluate_auto_fix_policy(
     """
     text = _text(improvement)
     target_module = str(improvement.get("target_module") or "")
+    inferred_target_module = infer_target_module(improvement, workspace_root)
+    if not target_module and inferred_target_module:
+        target_module = inferred_target_module
     files = set(_referenced_files(_body_text(improvement)))
     if target_module:
         files.add(target_module)
@@ -131,13 +162,16 @@ def evaluate_auto_fix_policy(
         }
 
     reasons.append("小規模・低リスク変更")
-    return {
+    result = {
         "auto_fix_allowed": True,
         "reason": "; ".join(reasons),
         "risk": "low",
         "max_files": 1,
         "required_checks": required_checks,
     }
+    if inferred_target_module and not improvement.get("target_module"):
+        result["inferred_target_module"] = inferred_target_module
+    return result
 
 
 if __name__ == "__main__":

@@ -220,8 +220,8 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   PARKED: { label: "保留", className: "bg-slate-50 text-slate-500 border-slate-200" },
   REJECTED: { label: "拒否", className: "bg-rose-50 text-rose-700 border-rose-200" },
   APPLIED: { label: "適用済", className: "bg-slate-100 text-slate-700 border-slate-300" },
-  RULE_REGISTERED: { label: "AIルール登録", className: "bg-indigo-50 text-indigo-700 border-indigo-200" },
-  RULE_REVIEW: { label: "AIルール要確認", className: "bg-violet-50 text-violet-700 border-violet-200" },
+  RULE_REGISTERED: { label: "今後ルール化済", className: "bg-indigo-50 text-indigo-700 border-indigo-200" },
+  RULE_REVIEW: { label: "今後ルール要確認", className: "bg-violet-50 text-violet-700 border-violet-200" },
   SKIPPED: { label: "スキップ", className: "bg-slate-50 text-slate-500 border-slate-200" },
 };
 
@@ -264,7 +264,7 @@ export default function ImprovementLogPage() {
       const res = await apiClient.get<{ rules: LedgerRule[] }>("/api/rule-engine/rules");
       setLedgerRules(res.data.rules ?? []);
     } catch {
-      setLedgerError("台帳ルールの取得に失敗しました");
+      setLedgerError("今後の自動修正ルールの取得に失敗しました");
     } finally {
       setLedgerLoading(false);
     }
@@ -301,7 +301,7 @@ export default function ImprovementLogPage() {
     } catch (error) {
       setPendingRecipes([]);
       setRecipeStatus(null);
-      setRecipeError("自動修正案の状態を取得できませんでした");
+      setRecipeError("今回の修正案の状態を取得できませんでした");
     } finally {
       setRecipesLoading(false);
     }
@@ -315,7 +315,7 @@ export default function ImprovementLogPage() {
         setDismissedRecipes((prev) => new Set(prev).add(recipe.id));
         await fetchRecipes();
       } catch (error) {
-        setRecipeError(action === "approve" ? "自動修正案の承認に失敗しました" : "自動修正案の却下に失敗しました");
+        setRecipeError(action === "approve" ? "今回の修正案を適用待ちへ送れませんでした" : "今回の修正案の破棄に失敗しました");
       }
     },
     [fetchRecipes]
@@ -476,7 +476,7 @@ export default function ImprovementLogPage() {
                 : "text-slate-600 hover:bg-slate-100"
             }`}
           >
-            自動修正案
+            今回の修正案
             {visibleRecipes.length > 0 && (
               <span className="ml-2 inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 text-xs font-bold text-white">
                 {visibleRecipes.length}
@@ -491,7 +491,7 @@ export default function ImprovementLogPage() {
                 : "text-slate-600 hover:bg-slate-100"
             }`}
           >
-            台帳ルール
+            今後の自動修正ルール
             {ledgerRules.filter((r) => r.pending_review).length > 0 && (
               <span className="ml-2 inline-flex items-center justify-center rounded-full bg-indigo-500 px-1.5 text-xs font-bold text-white">
                 {ledgerRules.filter((r) => r.pending_review).length}
@@ -500,7 +500,7 @@ export default function ImprovementLogPage() {
           </button>
         </div>
 
-        {/* 自動修正案タブ */}
+        {/* 今回の修正案タブ */}
         {activeTab === "recipes" && (
           <section className="space-y-3">
             <div className="rounded-lg border border-slate-200 bg-white p-4">
@@ -524,7 +524,7 @@ export default function ImprovementLogPage() {
                 </p>
               )}
               <p className="mt-2 text-xs text-slate-500">
-                承認は自動修正案を「適用待ち」へ移す操作です。実適用は適用待ちの修正案を別処理で実行します。
+                今回の修正案は、この実行で作られた1回限りの修正パッチです。「適用待ちへ送る」と承認済みフォルダへ移り、実適用は別処理で実行します。
               </p>
               {recipeError && (
                 <p className="mt-2 text-xs font-semibold text-rose-600">{recipeError}</p>
@@ -536,7 +536,7 @@ export default function ImprovementLogPage() {
               </div>
             ) : visibleRecipes.length === 0 ? (
               <div className="rounded-lg border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
-                承認待ちの自動修正案はありません。安全な自動修正候補が生成された時だけここに表示されます。
+                承認待ちの今回の修正案はありません。安全な自動修正候補が生成された時だけここに表示されます。
               </div>
             ) : (
               visibleRecipes.map((recipe) => (
@@ -551,7 +551,7 @@ export default function ImprovementLogPage() {
           </section>
         )}
 
-        {/* 台帳ルールタブ */}
+        {/* 今後の自動修正ルールタブ */}
         {activeTab === "ledger" && (
           <section className="space-y-3">
             <div className="rounded-lg border border-slate-200 bg-white p-4">
@@ -567,7 +567,7 @@ export default function ImprovementLogPage() {
                 </span>
               </div>
               <p className="mt-2 text-xs text-slate-500">
-                承認すると batch_apply の自動適用対象になります。pending_review が true のルールはスキップされます。
+                今後の自動修正ルールは、次回以降も同じ種類の修正に使う継続ルールです。「自動適用を許可」すると batch_apply の対象になります。
               </p>
               {ledgerError && (
                 <p className="mt-2 text-xs font-semibold text-rose-600">{ledgerError}</p>
@@ -579,7 +579,7 @@ export default function ImprovementLogPage() {
               </div>
             ) : ledgerRules.length === 0 ? (
               <div className="rounded-lg border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
-                台帳ルールがありません
+                今後の自動修正ルールがありません
               </div>
             ) : (
               <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
@@ -643,7 +643,7 @@ export default function ImprovementLogPage() {
                                   disabled={isApproving}
                                   className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-40"
                                 >
-                                  {isApproving ? "処理中..." : "承認する"}
+                                  {isApproving ? "処理中..." : "自動適用を許可"}
                                 </button>
                               ) : (
                                 <span className="text-xs text-slate-300">—</span>
@@ -1009,25 +1009,25 @@ export default function ImprovementLogPage() {
                           {isNeedsReview ? (
                             <div className="flex gap-1.5">
                               <ActionButton
-                                label="承認"
+                                label="レビュー承認"
                                 onClick={() => handleReview(item, "approved")}
                                 disabled={isActing}
                                 variant="approve"
                               />
                               <ActionButton
-                                label="却下"
+                                label="今回は却下"
                                 onClick={() => handleReview(item, "rejected")}
                                 disabled={isActing}
                                 variant="reject"
                               />
                               <ActionButton
-                                label="保留"
+                                label="後で見る"
                                 onClick={() => handleReview(item, "deferred")}
                                 disabled={isActing}
                                 variant="defer"
                               />
                               <ActionButton
-                                label="AIルール登録"
+                                label="今後ルール化"
                                 onClick={() => handleRegisterPromptRule(item)}
                                 disabled={isActing}
                                 variant="learn"
@@ -1113,7 +1113,7 @@ function RecipeCard({
           disabled={acting}
           className="rounded border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-40"
         >
-          承認して適用待ちへ
+          適用待ちへ送る
         </button>
         <button
           onClick={() => handle(onReject)}

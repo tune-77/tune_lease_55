@@ -236,6 +236,8 @@ class Step3AutoApplier:
             return _result("skipped", reason)
 
         policy = evaluate_auto_fix_policy(improvement, self.workspace_root)
+        inferred_target_module = policy.get("inferred_target_module")
+        effective_target_module = improvement.get("target_module") or inferred_target_module
         if not policy.get("auto_fix_allowed"):
             reason = f"auto_fix_policy: {policy.get('reason', '自動修正対象外')}"
             self._needs_review.append({
@@ -243,6 +245,7 @@ class Step3AutoApplier:
                 "title": title,
                 "reason": reason,
                 "detail": improvement.get("description", "")[:300],
+                "target_module": effective_target_module,
                 "auto_fix_policy": policy,
             })
             if _LEDGER_AVAILABLE and _ledger_key:
@@ -275,7 +278,7 @@ class Step3AutoApplier:
             return _result("needs_review", review_reason)
 
         # 対象ファイル特定
-        target_file = self._find_target_file(improvement.get("target_module"))
+        target_file = self._find_target_file(effective_target_module)
         if not target_file:
             patch_file = self._save_patch_markdown(improvement, validation_result)
             self._needs_review.append({
@@ -283,6 +286,7 @@ class Step3AutoApplier:
                 "title": title,
                 "reason": "対象ファイルが特定できないため手動実装が必要",
                 "detail": str(patch_file),
+                "target_module": effective_target_module,
             })
             if _LEDGER_AVAILABLE and _ledger_key:
                 _ledger.record(

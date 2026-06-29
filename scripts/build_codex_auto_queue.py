@@ -7,11 +7,20 @@ import argparse
 import datetime as dt
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
 
 LEDGER_RULES_PATH = "api/rule_engine/ledger_rules.json"
+PIPELINE_SCRIPTS_DIR = Path(__file__).resolve().parents[1] / ".agents" / "skills" / "auto-improvement-pipeline" / "scripts"
+if str(PIPELINE_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(PIPELINE_SCRIPTS_DIR))
+
+try:
+    from auto_fix_policy import evaluate_auto_fix_policy  # type: ignore[import]
+except ImportError:
+    evaluate_auto_fix_policy = None  # type: ignore[assignment]
 
 BLOCKED_KEYWORDS = [
     "db",
@@ -208,6 +217,20 @@ def is_codex_safe(item: dict[str, Any]) -> bool:
     return any(keyword in title for keyword in SAFE_TITLE_KEYWORDS)
 
 
+def refresh_auto_fix_policy(item: dict[str, Any], root: Path) -> dict[str, Any]:
+    """古いレポートでも、現在の auto_fix_policy で安全候補を再判定する."""
+    if evaluate_auto_fix_policy is None:
+        return item
+
+    refreshed = dict(item)
+    policy = evaluate_auto_fix_policy(refreshed, root)
+    refreshed["auto_fix_policy"] = policy
+    inferred_target = policy.get("inferred_target_module")
+    if inferred_target and not refreshed.get("target_module"):
+        refreshed["target_module"] = inferred_target
+    return refreshed
+
+
 def queue_sort_key(item: dict[str, Any]) -> tuple[int, str]:
     order = item.get("recommended_order")
     if not isinstance(order, int):
@@ -220,16 +243,18 @@ def queue_sort_key(item: dict[str, Any]) -> tuple[int, str]:
 def queue_item(item: dict[str, Any]) -> dict[str, Any]:
     policy = item.get("auto_fix_policy") or {}
     title = str(item.get("title") or "")
+    target_module = item.get("target_module") or policy.get("inferred_target_module") or ""
     return {
         "id": item.get("id"),
         "title": title,
         "reason": item.get("reason") or policy.get("reason") or "",
         "detail": item.get("detail") or item.get("description") or "",
+        "target_module": target_module,
         "risk": policy.get("risk") or "",
         "max_files": policy.get("max_files"),
         "required_checks": policy.get("required_checks") or ["py_compile", "targeted_test"],
         "mode": "codex_dry_run_first",
-        "prompt": f"{item.get('id')} {title} を小さく実装し、テスト後に差分を報告してください。data/models/.claude/state は触らないでください。",
+        "prompt": f"{item.get('id')} {title} を {target_module or '対象ファイル推定'} に小さく実装し、テスト後に差分を報告してください。data/models/.claude/state は触らないでください。",
     }
 
 
@@ -249,6 +274,7 @@ def build_queue(
     batch_apply_blocked: list[dict[str, Any]] = []
 
     for index, item in enumerate(needs_review):
+        item = refresh_auto_fix_policy(item, repo_root())
         item["_source_index"] = index
         rev_id = str(item.get("id") or "")
         if rev_id in quota_blocked:

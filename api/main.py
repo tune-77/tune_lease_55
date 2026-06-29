@@ -10021,7 +10021,7 @@ def get_recipes_status():
             "maybe_count": codex_queue.get("maybe_count", 0),
             "manual_or_blocked_count": codex_queue.get("manual_or_blocked_count", 0),
         },
-        "note": "自動修正案の承認は適用待ちへの移動です。実適用は scripts/apply_recipe.py が適用待ちを処理します。",
+        "note": "今回の修正案を適用待ちへ送る操作です。実適用は scripts/apply_recipe.py が適用待ちを処理します。",
     }
 
 
