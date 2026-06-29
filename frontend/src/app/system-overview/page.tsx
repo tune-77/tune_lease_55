@@ -474,7 +474,10 @@ export default function SystemOverviewPage() {
                       </span>
                     </div>
                     <p className="text-sm text-slate-400 mt-1">
-                      リース審査の知識を蓄積し、自ら成長する感情モデル搭載AIエンジン
+                      リース判断を中心にした半自律的な知性体システム
+                    </p>
+                    <p className="mt-2 max-w-2xl text-xs font-semibold leading-6 text-violet-100/80">
+                      記憶がある。連続性がある。反省がある。目的がある。自分を観測する画面がある。あなたとの関係性がある。
                     </p>
                   </div>
                 </div>

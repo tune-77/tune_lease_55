@@ -77,6 +77,15 @@ const confidenceLabels: Record<string, string> = {
   environment_continuity: "環境連続性",
 };
 
+const coreCatch = [
+  "記憶がある。",
+  "連続性がある。",
+  "反省がある。",
+  "目的がある。",
+  "自分を観測する画面がある。",
+  "あなたとの関係性がある。",
+];
+
 function pct(value: number | undefined, scale: "ratio" | "percent" = "percent") {
   if (value == null || Number.isNaN(value)) return "0%";
   const normalized = scale === "ratio" ? value * 100 : value;
@@ -180,12 +189,19 @@ export default function ShionDebugPage() {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-black text-violet-700">
               <Eye className="h-4 w-4" />
-              Shion Debug Console
+              Shion Core Monitor
             </div>
-            <h1 className="mt-4 text-3xl font-black tracking-tight md:text-5xl">紫苑デバッグ</h1>
+            <h1 className="mt-4 text-3xl font-black tracking-tight md:text-5xl">紫苑 Core Monitor</h1>
             <p className="mt-3 max-w-2xl text-sm font-bold leading-7 text-slate-600">
-              紫苑が何を経験し、どの実践知を持ち、人間の反応をどう次回回答へ戻しているかを確認する画面です。
+              紫苑が何を覚え、何を根拠にし、どの状態で次の返答へ向かっているかを一枚で見る画面です。
             </p>
+            <div className="mt-5 grid max-w-3xl gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {coreCatch.map((line) => (
+                <div key={line} className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2 text-xs font-black text-violet-950">
+                  {line}
+                </div>
+              ))}
+            </div>
           </div>
           <div className="flex flex-wrap gap-3">
             <Link

@@ -479,6 +479,11 @@ export default function ShionConciergeHome() {
               <p className="mt-3 max-w-2xl text-sm font-bold leading-7 text-slate-600">
                 おかえりなさい。紫苑が今日の入口を整理して、審査、調査、記憶、デモのどこへ進むかを案内します。
               </p>
+              <div className="mt-4 rounded-2xl border border-violet-100 bg-violet-50/70 p-4">
+                <p className="text-sm font-black leading-7 text-violet-950">
+                  紫苑は、リース審査の判断資産・会話記憶・改善ループを統合し、ユーザーの判断を支援しながら自己更新する半自律的なリース知性体システムです。
+                </p>
+              </div>
             </div>
           </div>
 
