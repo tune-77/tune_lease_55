@@ -6809,6 +6809,19 @@ class HumanResponseFeedbackRequest(BaseModel):
     user_id: str = "default"
 
 
+class ScreeningLoopFeedbackRequest(BaseModel):
+    surface: str = "screening"
+    target: Literal["issue", "ringi_policy"]
+    rating: str
+    issue_text: str = ""
+    ringi_policy_text: str = ""
+    comment: str = ""
+    score: Optional[float] = None
+    hantei: str = ""
+    context: dict = Field(default_factory=dict)
+    user_id: str = "default"
+
+
 _CHAT_MEMORY_REL_DIR = Path("Projects/tune_lease_55/Lease Intelligence/Public/Chat Memory")
 _CHAT_MEMORY_LAYER_FILES = {
     "identity": "identity.md",
@@ -6826,6 +6839,7 @@ _CHAT_MEMORY_LAYER_LABELS = {
     "recent": "Recent Continuity Memory",
 }
 _HUMAN_RESPONSE_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "human_response_feedback.jsonl"
+_SCREENING_LOOP_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "screening_loop_feedback.jsonl"
 _HUMAN_RESPONSE_POSITIVE_RATINGS = {"shion_like", "good"}
 _HUMAN_RESPONSE_NEGATIVE_RATINGS = {"thin", "generic", "not_shion", "bad"}
 _CHAT_MEMORY_CACHE: dict[str, Any] = {"loaded_at": 0.0, "payload": None}
@@ -7061,6 +7075,46 @@ def _append_human_response_feedback(req: HumanResponseFeedbackRequest) -> dict:
     }
     _HUMAN_RESPONSE_FEEDBACK_LOG.parent.mkdir(parents=True, exist_ok=True)
     with _HUMAN_RESPONSE_FEEDBACK_LOG.open("a", encoding="utf-8") as f:
+        f.write(_json.dumps(entry, ensure_ascii=False) + "\n")
+    return entry
+
+
+def _append_screening_loop_feedback(req: ScreeningLoopFeedbackRequest) -> dict:
+    import datetime as _dt
+    import hashlib as _hashlib
+    import json as _json
+
+    target = str(req.target or "").strip()
+    rating = str(req.rating or "").strip()
+    issue_text = str(req.issue_text or "").strip()[:500]
+    ringi_policy_text = str(req.ringi_policy_text or "").strip()[:500]
+    comment = str(req.comment or "").strip()[:500]
+    safe_context = {
+        "customer_type": str((req.context or {}).get("customer_type") or "")[:40],
+        "main_bank": str((req.context or {}).get("main_bank") or "")[:40],
+        "competitor": str((req.context or {}).get("competitor") or "")[:40],
+        "has_lease_history": bool((req.context or {}).get("has_lease_history")),
+        "has_asset_context": bool((req.context or {}).get("has_asset_context")),
+    }
+    entry = {
+        "ts": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+        "id": _hashlib.sha256(
+            f"{target}\n{rating}\n{issue_text}\n{ringi_policy_text}\n{comment}".encode("utf-8")
+        ).hexdigest()[:16],
+        "surface": str(req.surface or "screening").strip()[:80],
+        "target": target,
+        "rating": rating,
+        "issue_text": issue_text,
+        "ringi_policy_text": ringi_policy_text,
+        "comment": comment,
+        "score": req.score,
+        "hantei": str(req.hantei or "").strip()[:80],
+        "context": safe_context,
+        "user_id": str(req.user_id or "default").strip()[:80],
+        "loop": "screening_judgment_ux",
+    }
+    _SCREENING_LOOP_FEEDBACK_LOG.parent.mkdir(parents=True, exist_ok=True)
+    with _SCREENING_LOOP_FEEDBACK_LOG.open("a", encoding="utf-8") as f:
         f.write(_json.dumps(entry, ensure_ascii=False) + "\n")
     return entry
 
@@ -7393,6 +7447,22 @@ def _build_reflection_gate_prompt_block(
 @app.post("/api/human-response-feedback")
 def post_human_response_feedback(req: HumanResponseFeedbackRequest) -> dict:
     entry = _append_human_response_feedback(req)
+    return {"status": "ok", "feedback": entry}
+
+
+@app.post("/api/screening-loop-feedback")
+def post_screening_loop_feedback(req: ScreeningLoopFeedbackRequest, background_tasks: BackgroundTasks) -> dict:
+    if req.target not in ("issue", "ringi_policy"):
+        raise HTTPException(status_code=422, detail="target must be issue or ringi_policy")
+    if not str(req.rating or "").strip():
+        raise HTTPException(status_code=422, detail="rating is required")
+    entry = _append_screening_loop_feedback(req)
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="screening_loop_feedback",
+        surface="screening",
+        payload=entry,
+    )
     return {"status": "ok", "feedback": entry}
 
 

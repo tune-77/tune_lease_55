@@ -128,6 +128,259 @@ function AiHeroCard({ result }: { result?: Record<string, any> }) {
   );
 }
 
+function JudgmentFlowStrip() {
+  const steps = [
+    { label: "数理で見る", icon: Calculator, tone: "border-sky-100 bg-sky-50 text-sky-800" },
+    { label: "違和感を拾う", icon: Eye, tone: "border-amber-100 bg-amber-50 text-amber-800" },
+    { label: "条件で逆転余地を見る", icon: Network, tone: "border-indigo-100 bg-indigo-50 text-indigo-800" },
+    { label: "軍師が稟議の作戦に変える", icon: Swords, tone: "border-slate-200 bg-slate-50 text-slate-800" },
+  ];
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="grid gap-2 md:grid-cols-4">
+        {steps.map((step, index) => {
+          const Icon = step.icon;
+          return (
+            <div
+              key={step.label}
+              className={`flex min-h-14 items-center gap-2 rounded-xl border px-3 py-2 ${step.tone}`}
+            >
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white text-[11px] font-black shadow-sm">
+                {index + 1}
+              </span>
+              <Icon className="h-4 w-4 shrink-0" />
+              <span className="text-xs font-black leading-tight">{step.label}</span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildCurrentIssue(result: Record<string, any>, data: ScoringFormData) {
+  const score = Number(result.score_base ?? result.score ?? 0);
+  const isNewCustomer = String(data.customer_type || "").includes("新規");
+  const hasNoLeaseHistory = Number(data.lease_credit || 0) <= 0 && Number(data.contracts || 0) <= 0;
+  const hasCompetitor = data.competitor === "競合あり";
+  const hasMainBank = data.main_bank === "メイン先";
+  const aurionSeverity = String(result.aurion_core?.severity || "");
+  const aurionFlags = Array.isArray(result.aurion_core?.discipline_flags)
+    ? result.aurion_core.discipline_flags
+    : [];
+
+  if (score < 60) {
+    if (isNewCustomer || hasNoLeaseHistory) {
+      return "新規・実績薄めの案件を、保全条件と銀行支援で再設計できるか";
+    }
+    return "否決域のリスクを、条件変更で審議可能な形へ戻せるか";
+  }
+
+  if (score < 71) {
+    if (hasCompetitor) {
+      return "境界スコアで、競合条件に寄せすぎず承認条件を組めるか";
+    }
+    if (hasMainBank) {
+      return "境界スコアだが、銀行支援と物件保全で条件付き承認に寄せられるか";
+    }
+    if (isNewCustomer) {
+      return "新規先の不確実性を、確認条件でどこまで吸収できるか";
+    }
+    return "境界スコアを、追加確認と条件設定で承認側へ寄せられるか";
+  }
+
+  if (aurionFlags.includes("pricing_competition") || hasCompetitor) {
+    return "承認域だが、競合条件に引っ張られず採算と稟議説明を守れるか";
+  }
+  if (["caution", "stop"].includes(aurionSeverity)) {
+    return "点数は届くが、AURIONの違和感を稟議で説明できるか";
+  }
+  if (isNewCustomer || hasNoLeaseHistory) {
+    return "承認域だが、新規先としての確認材料をどこまで揃えるか";
+  }
+  return "承認域の案件を、条件・採算・稟議説明まで崩さず通せるか";
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function CurrentIssueCard({ result, data }: { result: Record<string, any>; data: ScoringFormData }) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-700">
+          <BadgeInfo className="h-4 w-4" />
+        </div>
+        <div>
+          <div className="text-[11px] font-black uppercase tracking-wider text-slate-400">今回の争点</div>
+          <div className="mt-1 text-sm font-black leading-relaxed text-slate-900">
+            {buildCurrentIssue(result, data)}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildRingiPolicy(result: Record<string, any>, data: ScoringFormData) {
+  const score = Number(result.score_base ?? result.score ?? 0);
+  const isNewCustomer = String(data.customer_type || "").includes("新規");
+  const hasNoLeaseHistory = Number(data.lease_credit || 0) <= 0 && Number(data.contracts || 0) <= 0;
+  const hasCompetitor = data.competitor === "競合あり";
+  const hasMainBank = data.main_bank === "メイン先";
+  const hasAsset = Boolean(data.asset_name || data.asset_purpose || data.asset_evidence_level);
+  const aurionSeverity = String(result.aurion_core?.severity || "");
+
+  if (score < 60) {
+    if (hasMainBank || hasAsset) {
+      return "稟議方針: 現状は否決域。銀行支援・物件保全・返済原資を追加確認し、条件再設計案として上申する。";
+    }
+    return "稟議方針: 現状条件では否決寄り。追加担保・保証・契約条件変更の余地を確認してから再審議する。";
+  }
+
+  if (score < 71) {
+    const conditions = [
+      hasAsset ? "物件保全" : "対象物件・用途確認",
+      hasMainBank ? "銀行支援確認" : "返済原資確認",
+      hasCompetitor ? "競合条件比較" : "",
+    ].filter(Boolean);
+    return `稟議方針: スコアは境界。${conditions.join("と")}を条件に、限定承認で組む。`;
+  }
+
+  if (hasCompetitor) {
+    return "稟議方針: 承認域。競合条件との差分を整理し、採算を崩さない条件で上申する。";
+  }
+  if (["caution", "stop"].includes(aurionSeverity)) {
+    return "稟議方針: 承認域だが、AURIONの警戒点を補足し、確認条件付きで上申する。";
+  }
+  if (isNewCustomer || hasNoLeaseHistory) {
+    return "稟議方針: 承認域。新規先として取引背景・返済原資・物件保全を補足して上申する。";
+  }
+  return "稟議方針: 承認域。通常確認事項を押さえ、採算と取引継続性を根拠に上申する。";
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function RingiPolicyCard({ result, data }: { result: Record<string, any>; data: ScoringFormData }) {
+  return (
+    <section className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white text-violet-700 shadow-sm">
+          <FileOutput className="h-4 w-4" />
+        </div>
+        <div>
+          <div className="text-[11px] font-black uppercase tracking-wider text-violet-500">稟議に書くなら</div>
+          <div className="mt-1 text-sm font-black leading-relaxed text-violet-950">
+            {buildRingiPolicy(result, data)}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function ScreeningLoopFeedbackPanel({ result, data }: { result: Record<string, any>; data: ScoringFormData }) {
+  const [comment, setComment] = useState("");
+  const [savingKey, setSavingKey] = useState("");
+  const [savedKey, setSavedKey] = useState("");
+  const [error, setError] = useState("");
+  const issueText = buildCurrentIssue(result, data);
+  const ringiPolicyText = buildRingiPolicy(result, data);
+
+  const sendFeedback = async (target: "issue" | "ringi_policy", rating: string) => {
+    const key = `${target}:${rating}`;
+    setSavingKey(key);
+    setSavedKey("");
+    setError("");
+    try {
+      await apiClient.post("/api/screening-loop-feedback", {
+        surface: "screening",
+        target,
+        rating,
+        issue_text: issueText,
+        ringi_policy_text: ringiPolicyText,
+        comment,
+        score: Number(result.score_base ?? result.score ?? 0),
+        hantei: result.hantei ?? "",
+        context: {
+          customer_type: data.customer_type,
+          main_bank: data.main_bank,
+          competitor: data.competitor,
+          has_lease_history: Number(data.lease_credit || 0) > 0 || Number(data.contracts || 0) > 0,
+          has_asset_context: Boolean(data.asset_name || data.asset_purpose || data.asset_evidence_level),
+        },
+      });
+      setSavedKey(key);
+    } catch {
+      setError("保存できませんでした");
+    } finally {
+      setSavingKey("");
+    }
+  };
+
+  const buttonClass = "rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black text-slate-700 shadow-sm transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-800 disabled:opacity-50";
+  const activeClass = "border-emerald-200 bg-emerald-50 text-emerald-800";
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div className="text-[11px] font-black uppercase tracking-wider text-slate-400">判断ループ</div>
+          <div className="mt-1 text-sm font-black text-slate-900">紫苑の読みを、人間の判断で育てる</div>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-[11px] font-black text-slate-400">争点</span>
+            {["合っている", "少し違う", "違う"].map((rating) => {
+              const key = `issue:${rating}`;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => sendFeedback("issue", rating)}
+                  disabled={Boolean(savingKey)}
+                  className={`${buttonClass} ${savedKey === key ? activeClass : ""}`}
+                >
+                  {savingKey === key ? "保存中" : savedKey === key ? "保存済" : rating}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-[11px] font-black text-slate-400">稟議</span>
+            {["使える", "修正して使う", "使えない"].map((rating) => {
+              const key = `ringi_policy:${rating}`;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => sendFeedback("ringi_policy", rating)}
+                  disabled={Boolean(savingKey)}
+                  className={`${buttonClass} ${savedKey === key ? activeClass : ""}`}
+                >
+                  {savingKey === key ? "保存中" : savedKey === key ? "保存済" : rating}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+        <input
+          value={comment}
+          onChange={(event) => setComment(event.target.value)}
+          placeholder="人間メモ: 実際の争点・修正理由を一言"
+          className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:border-violet-300 focus:bg-white"
+        />
+        <div className="min-h-8 text-xs font-bold text-slate-400 sm:w-28 sm:py-2">
+          {error || (savedKey ? "ループ保存済み" : "")}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function RateProposalCard({ proposal }: { proposal?: any }) {
   if (!proposal?.proposed_rate) return null;
   const breakdown = proposal.breakdown || {};
@@ -697,6 +950,10 @@ export default function Dashboard() {
                 ) : (
                   <>
                     {/* 初期表示は判断に必要な結論だけに絞る */}
+                    <JudgmentFlowStrip />
+                    <CurrentIssueCard result={result} data={formData} />
+                    <RingiPolicyCard result={result} data={formData} />
+                    <ScreeningLoopFeedbackPanel result={result} data={formData} />
                     <IndicatorCards data={result} />
 
                     <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 shadow-sm">

@@ -269,6 +269,15 @@ const loops = [
     iconColor: "text-fuchsia-400",
   },
   {
+    title: "審査判断ループエンジニアリング",
+    desc: "争点・稟議方針への人間反応を保存し、次回の判断資産へ戻す",
+    color: "#fb7185",
+    bg: "from-rose-900/40 to-violet-950/20",
+    border: "border-rose-500/30",
+    icon: FileText,
+    iconColor: "text-rose-400",
+  },
+  {
     title: "乖離学習ループ",
     desc: "AI判断と実審査結果の差分から係数を再校正",
     color: "#fbbf24",
@@ -325,6 +334,7 @@ const demoAppeals: DemoAppeal[] = [
   { title: "調査器官", desc: "Web調査をResearch化", tech: "Google AI Studio Researcher", icon: Search, color: "#22d3ee" },
   { title: "審査器官", desc: "突かれる点と逆転条件", tech: "Gemini stream / debate", icon: Zap, color: "#fbbf24" },
   { title: "記憶器官", desc: "判断資産として持ち越す", tech: "Obsidian + GCS Vault", icon: Database, color: "#a78bfa" },
+  { title: "判断ループ", desc: "争点と稟議方針を人間feedbackで育てる", tech: "/api/screening-loop-feedback", icon: FileText, color: "#fb7185" },
 ];
 
 export default function SystemOverviewPage() {

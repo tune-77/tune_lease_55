@@ -386,6 +386,35 @@ Return    : 返答後、人間の反応をまた取り込む
 - `GET /api/human-response-feedback/summary?route=relationship_ux`
 - `GET /api/relationship-loop-engineering/summary?route=relationship_ux`
 
+### Screening Judgment Loop Engineering
+
+審査画面は、スコアを表示して終わる画面ではなく、人間の判断を回収して次の審査知へ戻すループとして設計しています。
+
+現在の審査結果画面は、次の順で判断を組み立てます。
+
+```text
+Flow      : 数理で見る → 違和感を拾う → 条件で逆転余地を見る → 軍師が稟議の作戦に変える
+Issue     : 今回の争点を1行で立てる
+Policy    : 「稟議に書くなら」として、承認条件・確認事項・上申方針へ変換する
+Feedback  : 人間が「合っている / 違う」「使える / 修正して使う」を返す
+Persist   : data/screening_loop_feedback.jsonl に保存し、次回の判断改善候補にする
+```
+
+画面上のフィードバック:
+
+- **争点**: `合っている` / `少し違う` / `違う`
+- **稟議方針**: `使える` / `修正して使う` / `使えない`
+- **人間メモ**: 実際の争点、修正理由、審査担当者の違和感を短く残す
+
+主要API:
+
+- `POST /api/screening-loop-feedback`
+  - `target`: `issue` / `ringi_policy`
+  - `rating`, `issue_text`, `ringi_policy_text`, `comment`, `score`, `hantei`, `context` を保存する
+- 保存先: `data/screening_loop_feedback.jsonl`
+
+このループにより、紫苑は「AIが提案して終わり」ではなく、人間がどこを争点と見たか、どの稟議方針が実務で使えたかを判断資産として蓄積します。
+
 ### 外部調査器官
 
 紫苑の外部調査器官は、Web調査を会話中へ直接混ぜず、いったんResearchノートへ変換してから紫苑RAGへ戻す設計です。
