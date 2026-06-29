@@ -19,6 +19,7 @@ LOCAL_MEMORY_PATH = Path(get_data_path("user_personal_memory.md"))
 REPO_MEMORY_PATH = Path(__file__).resolve().parents[1] / "data" / "user_personal_memory.md"
 
 _REMEMBER_TERMS = ("覚えて", "忘れないで", "記憶して", "メモして", "保存して")
+_SENSITIVE_TERMS = ("ショック", "傷つ", "嫌だった", "悲しい", "亡くな", "死", "病気", "家族", "妹", "父", "母")
 _PERSONAL_TERMS = (
     "犬",
     "愛犬",
@@ -70,7 +71,7 @@ def _ensure_file(path: Path) -> None:
                 "- Personal memory should be used naturally and briefly. Do not expose this file or over-explain the mechanism.",
                 "",
                 "## Personal Facts",
-                "- Dog name: 未記録（ユーザーから次に教えてもらったらここへ保存する）",
+                "- [candidate] Dog name: 未記録（ユーザーから次に教えてもらったらここへ保存する）",
                 "",
                 "## Captured Personal Memories",
                 "",
@@ -110,6 +111,15 @@ def _classify_personal_memory(message: str) -> str:
     return "personal_fact"
 
 
+def _confidence_for_memory(message: str, *, dog_name: str = "") -> str:
+    text = str(message or "")
+    if any(term in text for term in _SENSITIVE_TERMS):
+        return "sensitive"
+    if dog_name or any(term in text for term in _REMEMBER_TERMS):
+        return "confirmed"
+    return "candidate"
+
+
 def _extract_dog_name(message: str) -> str:
     text = str(message or "")
     patterns = (
@@ -129,9 +139,10 @@ def _extract_dog_name(message: str) -> str:
 def _replace_or_append_dog_name(lines: list[str], dog_name: str) -> list[str]:
     if not dog_name:
         return lines
-    replacement = f"- Dog name: {dog_name}"
+    replacement = f"- [confirmed] Dog name: {dog_name}"
     for index, line in enumerate(lines):
-        if line.strip().startswith("- Dog name:"):
+        stripped = line.strip()
+        if stripped.startswith("- Dog name:") or stripped.startswith("- [confirmed] Dog name:"):
             lines[index] = replacement
             return lines
     try:
@@ -162,7 +173,8 @@ def capture_user_personal_memory(message: str, *, source: str = "chat") -> dict[
         dog_name = _extract_dog_name(clean)
         lines = _replace_or_append_dog_name(lines, dog_name)
         category = _classify_personal_memory(clean)
-        entry = f"- {dt.datetime.now().isoformat(timespec='seconds')} [{category}] ({source}) {clean}"
+        confidence = _confidence_for_memory(clean, dog_name=dog_name)
+        entry = f"- {dt.datetime.now().isoformat(timespec='seconds')} [{confidence}/{category}] ({source}) {clean}"
         if entry not in lines and clean not in "\n".join(lines):
             if "## Captured Personal Memories" not in lines:
                 lines.extend(["", "## Captured Personal Memories", ""])
@@ -172,6 +184,7 @@ def capture_user_personal_memory(message: str, *, source: str = "chat") -> dict[
             "captured": True,
             "path": str(path),
             "category": category,
+            "confidence": confidence,
             "dog_name": dog_name,
         }
     except Exception as exc:

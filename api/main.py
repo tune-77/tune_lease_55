@@ -7131,12 +7131,24 @@ def _load_user_personal_memory_payload() -> dict:
         if len(clean_lines) >= 80:
             break
 
+    def _priority(line: str) -> int:
+        if "[confirmed" in line or "[confirmed]" in line:
+            return 0
+        if "[sensitive" in line:
+            return 1
+        if "Priority Rule" in line or "Personal Facts" in line:
+            return 2
+        return 3
+
+    clean_lines.sort(key=_priority)
+
     block = ""
     if clean_lines:
         block = "\n".join([
             "【ユーザー個人記憶】",
             "以下はUser本人との会話でのみ使う最優先の個人文脈です。",
-            "紫苑モードでは、審査知識・一般RAG・会話ノリより先にこの個人記憶を尊重してください。",
+            "紫苑モードでは、[confirmed] の個人記憶を審査知識・一般RAG・会話ノリより先に尊重してください。",
+            "[candidate] は断定せず、必要なら確認してください。[sensitive] はむやみに持ち出さず、関係する時だけ慎重に扱ってください。",
             "ユーザーが覚えているはずの個人事実を尋ねた時、ここに無い場合は推測せず、未記録だと認めて次に保存する姿勢を示してください。",
             "外部向け説明や一般論には広げず、関係する時だけ自然に反映してください。",
             *[f"- {line}" for line in clean_lines],
