@@ -7173,6 +7173,19 @@ def _chat_response_mode_instruction(response_mode: str) -> str:
     )
 
 
+def _capture_user_personal_memory_if_needed(message: str, *, source: str = "chat") -> dict[str, Any]:
+    try:
+        from api.user_personal_memory import capture_user_personal_memory
+
+        result = capture_user_personal_memory(message, source=source)
+        if result.get("captured"):
+            _USER_PERSONAL_MEMORY_CACHE.update(loaded_at=0.0, payload=None)
+        return result
+    except Exception as exc:
+        print(f"[UserPersonalMemory] 保存エラー: {exc}")
+        return {"captured": False, "reason": str(exc)}
+
+
 def _append_human_response_feedback(req: HumanResponseFeedbackRequest) -> dict:
     import datetime as _dt
     import hashlib as _hashlib
@@ -8033,6 +8046,10 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     message = req.message.strip()
     if not message:
         raise HTTPException(status_code=422, detail="message は空にできません")
+    personal_memory_capture = _capture_user_personal_memory_if_needed(
+        message,
+        source="lease_intelligence_dialogue",
+    )
 
     from api.chat_memory import call_gemini_with_tools, get_recent_messages, save_message
     from lease_intelligence_dialogue import (
@@ -8232,6 +8249,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
         "state": state,
         "note_path": note_path,
         "knowledge_refs": rag_knowledge_refs,
+        "personal_memory_capture": personal_memory_capture,
         "long_input_mode": compact_dialogue,
         "context_mode": dialogue_mode,
         "history_messages_sent": len(history),
@@ -8394,6 +8412,10 @@ def post_chat(req: ChatRequest):
         )
         _chat_now = _pg_dt.datetime.now().strftime("%Y-%m-%d %H:%M")
         _chat_mind = _pg_load_mind()
+        personal_memory_capture = _capture_user_personal_memory_if_needed(
+            req.message,
+            source="next_chat",
+        )
 
         if (req.intent or "").strip().lower() == "improvement":
             save_message(req.user_id, "user", req.message)
@@ -8472,6 +8494,7 @@ def post_chat(req: ChatRequest):
                 "total_messages": total,
                 "improvement_saved": note_result.get("status") == "saved",
                 "improvement_result": note_result,
+                "personal_memory_capture": personal_memory_capture,
                 "lease_news_focus": news_focus,
                 "lease_news_brief": news_brief,
                 "lease_news_actions": news_actions,
@@ -8659,6 +8682,7 @@ def post_chat(req: ChatRequest):
                 "lease_news_actions": news_actions,
                 "long_input_mode": chat_long_input,
                 "context_mode": context_mode,
+                "personal_memory_capture": personal_memory_capture,
                 "response_mode": req.response_mode,
                 "obsidian_daily_intelligence": {
                     "used": bool(obsidian_daily_context),
@@ -8935,6 +8959,7 @@ def post_chat(req: ChatRequest):
             "lease_news_actions": news_actions,
             "long_input_mode": chat_long_input,
             "context_mode": context_mode,
+            "personal_memory_capture": personal_memory_capture,
             "response_mode": req.response_mode,
             "obsidian_daily_intelligence": {
                 "used": bool(obsidian_daily_context),
