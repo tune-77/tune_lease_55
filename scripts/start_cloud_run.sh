@@ -30,6 +30,14 @@ seed_dir() {
 }
 
 seed_dir "$BUNDLE_ROOT/data" "$DATA_DIR"
+if [[ "${CLOUDRUN_DATA_MODE:-}" == "demo" ]]; then
+  for db_name in demo.db lease_data.db; do
+    if [[ -f "$BUNDLE_ROOT/data/$db_name" ]]; then
+      cp -f "$BUNDLE_ROOT/data/$db_name" "$DATA_DIR/$db_name"
+      echo "[start_cloud_run] demo DB restored from bundle: $DATA_DIR/$db_name"
+    fi
+  done
+fi
 if [[ -n "$OBSIDIAN_VAULT_PATH" ]]; then
   seed_dir "$BUNDLE_ROOT/obsidian_vault" "$OBSIDIAN_VAULT_PATH"
   # vault はシステムプロンプト更新等で書き込みが発生するため権限を回復する

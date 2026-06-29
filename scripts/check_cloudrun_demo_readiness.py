@@ -237,9 +237,10 @@ def check_deploy_scripts(checks: CheckRun) -> None:
             "check_cloudrun_demo_readiness.py",
             "CLOUDRUN_DATA_MODE",
             "DATABASE_URL/Cloud SQL is intentionally not attached",
-            "DB_PATH=data/demo.db",
         )
         missing = [needle for needle in required if needle not in text]
+        if "DB_PATH=data/demo.db" not in text and "DB_PATH=/app/data/demo.db" not in text:
+            missing.append("DB_PATH=/app/data/demo.db")
         if missing:
             checks.fail(f"{rel} is missing predeploy safeguards: {', '.join(missing)}")
         else:
