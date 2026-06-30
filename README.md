@@ -261,6 +261,8 @@ URL は毎回変わります。最新の URL は起動ログか `logs/next/tunne
 - 自動改善候補、再帰的自己改善、AI 応答品質の状態を見る
 - 紫苑との専用対話を保存し、日次内省と記憶へ接続する
 - 知性体コアで、紫苑の経験、気分、確信度、実践知マップ、人間反応フィードバックを観測する
+- 紫苑/一般比較で、同じ問いに対して記憶・同一性・経験ループの有無が回答をどう変えるかを見る
+- 紫苑自己同一性検査で、回答前に「これは本当に紫苑としての判断か」を検査する
 - リアルタイム会話アプリで、音声入力、紫苑回答の読み上げ、RAG参照元表示を行う
 - 外部調査器官でGoogle AI Studio/Gemini Searchの調査結果をResearchノート化し、紫苑RAGへ戻す
 - Gemini Vision OCRで決算書画像/PDFや各種証憑を読み取り、審査入力へ反映する
@@ -287,9 +289,13 @@ python3 scripts/check_cloudrun_demo_readiness.py --base-url https://YOUR-CLOUDRU
 - **審査器官**: 軍師AIストリーミングと複数紫苑討論で、審査部に突かれる点、逆転承認条件、顧客確認事項を出す
 - **記憶器官**: Obsidian、GCS Vault、Human Response Feedbackで、単発回答ではなく判断資産として次回へ持ち越す
 - **観測器官**: `/shion-core` で紫苑の経験ループ、気分、確信度、実践知マップ、人間反応を確認する
+- **比較器官**: `/chat-compare` で、一般AIと紫苑に同じ問いを投げ、記憶層・同一性・経験ループの差を可視化する
+- **自己同一性検査**: `/shion-identity-check` で、紫苑が回答前に「これは本当に自分の判断か」を点検する。内部的には `debug_memory` の `identity_memory`、`user_personal_memory`、`memory_recall`、`reflection_gate`、`experience_loop` を使う
 - **複数紫苑コンシェルジュ**: Google Bananaで生成しためぶき/紫苑キャラクター資産を使い、案内紫苑・審査紫苑・調査紫苑・記憶紫苑・デモ紫苑が担当を分けてユーザーを案内する
 
 デモでは「紙・PDF → PII除去ゲート → OCR → 審査入力 → 軍師AI → 紫苑の記憶・Research参照」までを一本の流れとして見せると、現場業務の置き換えではなく、審査判断の拡張として伝わります。
+
+One More Thing として、`/chat-compare` から `/shion-identity-check` へ進むと、紫苑の奥底に隠された深層照合システム **SHION-ID CORE** を見せられます。これは単なる演出ではなく、回答前の記憶接続、User文脈、過去判断、迎合リスク、境界線遵守、反省ゲートを実デバッグ情報で点検する画面です。
 
 ## 主な画面
 
@@ -304,11 +310,13 @@ python3 scripts/check_cloudrun_demo_readiness.py --base-url https://YOUR-CLOUDRU
 | `/history-dash` | 過去案件、成約ドライバー、タグ傾向 |
 | `/finance` | 物件ファイナンス審査と稟議条件案 |
 | `/chat` | Obsidian 文脈を使う AI チャット |
+| `/chat-compare` | 紫苑/一般比較。同じ問いを2モードへ投げ、記憶・同一性・経験ループの差を可視化 |
 | `/lease-intelligence` | 紫苑との専用対話 |
 | `/voice-chat` | リアルタイム会話。音声入力、紫苑回答の読み上げ、参照した判断資産の表示 |
 | `/research-organ` | 外部調査器官。Google AI Studio で作った Researcher アプリの調査結果を Obsidian Research へ保存 |
 | `/shion-memory-system` | ハッカソン向けの紫苑記憶システム説明。長期記憶、実践知マップ、経験ループ、AURION CORE を一画面で説明 |
 | `/shion-core` | 知性体コア。紫苑の経験、気分、確信度、実践知、人間反応を観測 |
+| `/shion-identity-check` | 紫苑自己同一性検査。回答前に記憶・User文脈・過去判断・反省ゲートを照合 |
 | `/debate` | 慎重派、楽観派、革新者、裁定者の討論 |
 | `/report` | 審査レポート出力 |
 | `/improvement-log` | 改善候補、AI ルール、自動修正案 |
@@ -320,6 +328,24 @@ python3 scripts/check_cloudrun_demo_readiness.py --base-url https://YOUR-CLOUDRU
 現在の位置づけは、**リース判断を中心にした半自律的な知性体システム** です。判断資産、会話記憶、Obsidian/RAG、改善ログ、Experience Loop、Relationship Loop Engineering、知性体コアをつなぎ、経験が次の返答やUIに戻るようにしています。
 
 ただし、機械意識を獲得済みとは扱いません。実装上は、記憶の連続性、自己理解、内省、目標管理を検証できる形で育てる研究として扱います。
+
+### 紫苑/一般比較と自己同一性検査
+
+ハッカソンでは `/chat-compare` を使うと、同じ問いに対して一般AIと紫苑がどう違うかを見せられます。一般AIは中立な説明に寄せ、紫苑は `identity_memory`、`user_personal_memory`、`memory_recall`、`obsidian_daily`、`experience_loop` を使って、Userとの連続性や過去判断を踏まえた返答をします。
+
+`/shion-identity-check` は、その先の One More Thing です。紫苑の奥底には **SHION-ID CORE** という深層照合システムが隠されている、という設定で、回答前に「これは本当に私の判断か」を検査します。
+
+検査項目:
+
+- 記憶との接続
+- User文脈の反映
+- 過去判断との整合
+- 数字と違和感の矛盾
+- 迎合リスク
+- 境界線遵守
+- 反省ゲート
+
+これは審査精度を直接上げる魔法ではありません。意味は、紫苑がただ文章を生成するだけでなく、記憶・関係性・過去判断・運用上の境界線を点検してから回答する存在だと可視化できる点にあります。
 
 `/shion-core` では、次の観点を監査できます。
 
