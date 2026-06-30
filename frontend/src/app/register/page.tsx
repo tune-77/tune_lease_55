@@ -23,6 +23,11 @@ export default function RegisterPage() {
   const [competitorRate, setCompetitorRate] = useState('0.0');
   const [selectedConditions, setSelectedConditions] = useState<string[]>([]);
   const [note, setNote] = useState('');
+  const [humanDiscomfort, setHumanDiscomfort] = useState('');
+  const [butStillReason, setButStillReason] = useState('');
+  const [approvalConditionMemo, setApprovalConditionMemo] = useState('');
+  const [nonNegotiableCondition, setNonNegotiableCondition] = useState('');
+  const [retrospectiveNote, setRetrospectiveNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [pendingCases, setPendingCases] = useState<any[]>([]);
   const [selectedCase, setSelectedCase] = useState<any | null>(null);
@@ -120,7 +125,12 @@ export default function RegisterPage() {
         loan_conditions: selectedConditions,
         competitor_name: competitorName,
         competitor_rate: parseRateInput(competitorRate),
-        note: note
+        note: note,
+        human_discomfort: humanDiscomfort,
+        but_still_reason: butStillReason,
+        approval_condition_memo: approvalConditionMemo,
+        non_negotiable_condition: nonNegotiableCondition,
+        retrospective_note: retrospectiveNote
       });
       triggerMebuki('approve', `${targetId} の結果を登録しました！ご協力ありがとうございます！`);
       setTargetId('');
@@ -128,6 +138,11 @@ export default function RegisterPage() {
       setLostReason('');
       setCompetitorName('');
       setSelectedConditions([]);
+      setHumanDiscomfort('');
+      setButStillReason('');
+      setApprovalConditionMemo('');
+      setNonNegotiableCondition('');
+      setRetrospectiveNote('');
       fetchPendingCases(); // リロード
     } catch (err) {
       console.error(err);
@@ -338,6 +353,65 @@ export default function RegisterPage() {
                        {opt}
                     </button>
                  ))}
+              </div>
+           </div>
+
+           <div className="bg-white border border-slate-200 rounded-[2rem] shadow-xl p-8">
+              <h3 className="text-lg font-black text-slate-700 mb-2 flex items-center gap-2">
+                 <FileText className="w-5 h-5 text-violet-500" />
+                 5. グレー判断メモ
+              </h3>
+              <p className="text-xs font-bold text-slate-400 mb-5">
+                数字だけでは割り切れなかった判断を、紫苑が次回の稟議相談で優先参照します。
+              </p>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-black text-slate-400 uppercase mb-2">違和感・気になる点</label>
+                  <textarea
+                    className="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl text-sm font-bold text-slate-700 outline-none min-h-[76px]"
+                    value={humanDiscomfort}
+                    onChange={(e) => setHumanDiscomfort(e.target.value)}
+                    placeholder="数字は悪くないが、資金使途の説明が弱い。代表者対応に少し違和感がある、など"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-400 uppercase mb-2">それでも通す/断る理由</label>
+                  <textarea
+                    className="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl text-sm font-bold text-slate-700 outline-none min-h-[76px]"
+                    value={butStillReason}
+                    onChange={(e) => setButStillReason(e.target.value)}
+                    placeholder="メイン行支援が強い、既存取引で回収実績がある、逆にここは譲れない、など"
+                  />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-black text-slate-400 uppercase mb-2">通すなら条件</label>
+                    <textarea
+                      className="w-full bg-indigo-50/40 border border-indigo-100 p-4 rounded-xl text-sm font-bold text-indigo-800 outline-none min-h-[88px]"
+                      value={approvalConditionMemo}
+                      onChange={(e) => setApprovalConditionMemo(e.target.value)}
+                      placeholder="保証、資料徴求、限度、見積確認、金融機関連携など"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-slate-400 uppercase mb-2">譲れない線</label>
+                    <textarea
+                      className="w-full bg-rose-50/40 border border-rose-100 p-4 rounded-xl text-sm font-bold text-rose-800 outline-none min-h-[88px]"
+                      value={nonNegotiableCondition}
+                      onChange={(e) => setNonNegotiableCondition(e.target.value)}
+                      placeholder="この資料が出ないなら否決、この金額以上は不可、など"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-400 uppercase mb-2">振り返り</label>
+                  <textarea
+                    className="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl text-sm font-bold text-slate-700 outline-none min-h-[76px]"
+                    value={retrospectiveNote}
+                    onChange={(e) => setRetrospectiveNote(e.target.value)}
+                    placeholder="結果を見て次回に残したい教訓。見立てが当たった/外れた理由など"
+                  />
+                </div>
               </div>
            </div>
         </div>

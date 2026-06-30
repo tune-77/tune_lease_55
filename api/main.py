@@ -5149,6 +5149,11 @@ class CaseRegistration(BaseModel):
     competitor_name: str = ""
     competitor_rate: Optional[float] = 0.0
     note: str = ""
+    human_discomfort: str = ""
+    but_still_reason: str = ""
+    approval_condition_memo: str = ""
+    non_negotiable_condition: str = ""
+    retrospective_note: str = ""
 
 
 class CaseProgressStampRequest(BaseModel):
@@ -5255,6 +5260,30 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
         "final_result_date": now_date,
         "final_result_timestamp": now_iso,
     }
+    grey_judgment = {
+        "registered_at": now_iso,
+        "status": req.status,
+        "human_discomfort": (req.human_discomfort or "").strip(),
+        "but_still_reason": (req.but_still_reason or "").strip(),
+        "approval_condition_memo": (req.approval_condition_memo or "").strip(),
+        "non_negotiable_condition": (req.non_negotiable_condition or "").strip(),
+        "retrospective_note": (req.retrospective_note or "").strip(),
+        "ai_score": c.get("score") or c.get("score_base") or (c.get("result") or {}).get("score"),
+        "ai_decision": c.get("hantei") or (c.get("result") or {}).get("hantei"),
+    }
+    if any(str(grey_judgment.get(k) or "").strip() for k in (
+        "human_discomfort",
+        "but_still_reason",
+        "approval_condition_memo",
+        "non_negotiable_condition",
+        "retrospective_note",
+    )):
+        patches["grey_judgment"] = grey_judgment
+        patches["human_discomfort"] = grey_judgment["human_discomfort"]
+        patches["but_still_reason"] = grey_judgment["but_still_reason"]
+        patches["approval_condition_memo"] = grey_judgment["approval_condition_memo"]
+        patches["non_negotiable_condition"] = grey_judgment["non_negotiable_condition"]
+        patches["retrospective_note"] = grey_judgment["retrospective_note"]
     if req.status == "成約" and final_rate > 0:
         patches["winning_spread"] = final_rate - base_rate_at_time
     if req.status == "失注":
@@ -5274,6 +5303,7 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
             "competitor_rate": competitor_rate,
             "lost_reason": req.lost_reason,
             "note": req.note,
+            "grey_judgment": grey_judgment if "grey_judgment" in patches else {},
         },
     )
 
@@ -5309,11 +5339,18 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
             _ai_score = float(c.get("score") or c.get("score_base") or 0)
             _ai_decision = "承認" if _ai_score >= 70 else "条件付き" if _ai_score >= 60 else "否決"
             _human_decision = "承認" if req.status == "成約" else "否決"
+            _reason_bits = [f"案件登録トリガー: {req.status}（AIスコア {_ai_score:.1f}）"]
+            if grey_judgment.get("human_discomfort"):
+                _reason_bits.append(f"違和感: {grey_judgment['human_discomfort']}")
+            if grey_judgment.get("but_still_reason"):
+                _reason_bits.append(f"それでも判断した理由: {grey_judgment['but_still_reason']}")
+            if grey_judgment.get("approval_condition_memo"):
+                _reason_bits.append(f"条件: {grey_judgment['approval_condition_memo']}")
             _fb = record_judgment_feedback(
                 case_id=target_case_id,
                 model_decision=_ai_decision,
                 human_decision=_human_decision,
-                reason=f"案件登録トリガー: {req.status}（AIスコア {_ai_score:.1f}）",
+                reason=" / ".join(_reason_bits),
                 source="register_trigger",
                 score=_ai_score if _ai_score > 0 else None,
             )
@@ -7489,6 +7526,197 @@ def _build_memory_to_judgment_prompt_block(
     return block, payload
 
 
+_GREY_JUDGMENT_QUERY_TERMS = (
+    "グレー", "迷う", "違和感", "そうは言っても", "それでも", "条件付き",
+    "通すなら", "否決寄り", "承認寄り", "人間的", "数字だけ", "稟議",
+    "審査", "与信", "判断", "温度感", "例外", "境界", "定性", "現場感",
+    "軍師", "落としどころ",
+)
+
+_QUALITATIVE_FIELD_LABELS = {
+    "qual_corr_company_history": "業歴",
+    "qual_corr_customer_stability": "顧客安定性",
+    "qual_corr_repayment_history": "返済履歴",
+    "qual_corr_business_future": "事業将来性",
+    "qual_corr_equipment_purpose": "設備目的",
+    "qual_corr_main_bank": "メイン行",
+}
+
+
+def _case_qualitative_summary(case: dict) -> str:
+    inputs = case.get("inputs") if isinstance(case.get("inputs"), dict) else {}
+    parts: list[str] = []
+    passion = str(inputs.get("passion_text") or case.get("passion_text") or "").strip()
+    if passion:
+        parts.append(f"現場メモ={passion[:180]}")
+    for key, label in _QUALITATIVE_FIELD_LABELS.items():
+        value = str(inputs.get(key) or case.get(key) or "").strip()
+        if value and value != "未選択":
+            parts.append(f"{label}={value[:80]}")
+    intuition = inputs.get("intuition", case.get("intuition"))
+    if intuition not in (None, "", 0):
+        parts.append(f"直感スコア={intuition}")
+    return " / ".join(parts)
+
+
+def _load_gunshi_judgment_memory(limit: int = 5) -> list[dict]:
+    try:
+        from judgment_feedback import load_judgment_training_candidates
+
+        rows = load_judgment_training_candidates(approved_only=False)
+    except Exception:
+        return []
+
+    preferred_sources = {"gunshi_chat", "debate", "lease_news_debate", "register_trigger"}
+    picked: list[dict] = []
+    for row in reversed(rows):
+        source = str(row.get("source") or "")
+        reason = str(row.get("reason") or "").strip()
+        if not reason:
+            continue
+        if source not in preferred_sources and not any(term in reason for term in _GREY_JUDGMENT_QUERY_TERMS):
+            continue
+        picked.append({
+            "source": source or "judgment_feedback",
+            "case_id": row.get("case_id") or "",
+            "score": row.get("score"),
+            "model_decision": row.get("model_decision") or "",
+            "human_decision": row.get("human_decision") or "",
+            "reason": reason[:240],
+            "review_status": row.get("review_status") or "",
+            "evidence_snapshot": row.get("evidence_snapshot") or {},
+        })
+        if len(picked) >= limit:
+            break
+    return picked
+
+
+def _build_grey_judgment_prompt_block(message: str, limit: int = 5) -> tuple[str, dict]:
+    text = str(message or "")
+    route = _relationship_signal_route(text)
+    should_use = route == "lease_judgment" or any(term in text for term in _GREY_JUDGMENT_QUERY_TERMS)
+    if not should_use:
+        return "", {"used": False, "reason": "not_lease_judgment", "refs": []}
+
+    try:
+        from data_cases import load_all_cases
+
+        cases = load_all_cases()
+    except Exception as _grey_load_error:
+        return "", {"used": False, "reason": f"load_error: {_grey_load_error}", "refs": []}
+
+    query_terms = [term for term in _GREY_JUDGMENT_QUERY_TERMS if term in text]
+    scored: list[tuple[int, dict]] = []
+    for case in reversed(cases):
+        grey = case.get("grey_judgment") if isinstance(case.get("grey_judgment"), dict) else {}
+        fields = {
+            "human_discomfort": str(grey.get("human_discomfort") or case.get("human_discomfort") or "").strip(),
+            "but_still_reason": str(grey.get("but_still_reason") or case.get("but_still_reason") or "").strip(),
+            "approval_condition_memo": str(grey.get("approval_condition_memo") or case.get("approval_condition_memo") or "").strip(),
+            "non_negotiable_condition": str(grey.get("non_negotiable_condition") or case.get("non_negotiable_condition") or "").strip(),
+            "retrospective_note": str(grey.get("retrospective_note") or case.get("retrospective_note") or "").strip(),
+        }
+        qualitative_summary = _case_qualitative_summary(case)
+        if not any(fields.values()):
+            if not qualitative_summary:
+                continue
+        haystack = " ".join([
+            str(case.get("company_name") or ""),
+            str(case.get("industry_major") or ""),
+            str(case.get("industry_sub") or ""),
+            str(case.get("final_status") or ""),
+            str(case.get("lost_reason") or ""),
+            str(case.get("final_note") or ""),
+            " ".join(str(v) for v in fields.values()),
+            qualitative_summary,
+        ])
+        score = 1 + sum(1 for term in query_terms if term and term in haystack)
+        if case.get("final_status") == "成約" and fields["but_still_reason"]:
+            score += 1
+        if fields["approval_condition_memo"] or fields["non_negotiable_condition"]:
+            score += 1
+        if qualitative_summary:
+            score += 1
+        scored.append((score, {**fields, "qualitative_summary": qualitative_summary, "case": case}))
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    selected = [item[1] for item in scored[:limit]]
+    refs: list[dict] = []
+    lines: list[str] = []
+    for item in selected:
+        case = item["case"]
+        result = case.get("result") if isinstance(case.get("result"), dict) else {}
+        score = case.get("score") or case.get("score_base") or result.get("score")
+        decision = case.get("hantei") or result.get("hantei") or ""
+        ref = {
+            "case_id": case.get("id") or "",
+            "company_name": case.get("company_name") or "",
+            "status": case.get("final_status") or "",
+            "score": score,
+            "decision": decision,
+            "human_discomfort": item["human_discomfort"][:180],
+            "but_still_reason": item["but_still_reason"][:180],
+            "approval_condition_memo": item["approval_condition_memo"][:180],
+            "non_negotiable_condition": item["non_negotiable_condition"][:180],
+            "retrospective_note": item["retrospective_note"][:180],
+            "qualitative_summary": item["qualitative_summary"][:240],
+            "source": "past_cases",
+        }
+        refs.append(ref)
+        parts = [
+            f"- source=past_cases / 案件ID={ref['case_id'] or '-'}",
+            f"結果={ref['status'] or '-'}",
+            f"AI={score if score not in (None, '') else '-'}点/{decision or '-'}",
+        ]
+        if item["human_discomfort"]:
+            parts.append(f"違和感={item['human_discomfort'][:120]}")
+        if item["but_still_reason"]:
+            parts.append(f"それでも={item['but_still_reason'][:120]}")
+        if item["approval_condition_memo"]:
+            parts.append(f"条件={item['approval_condition_memo'][:120]}")
+        if item["non_negotiable_condition"]:
+            parts.append(f"譲れない線={item['non_negotiable_condition'][:120]}")
+        if item["retrospective_note"]:
+            parts.append(f"振り返り={item['retrospective_note'][:120]}")
+        if item["qualitative_summary"]:
+            parts.append(f"定性={item['qualitative_summary'][:160]}")
+        lines.append(" / ".join(parts))
+
+    for item in _load_gunshi_judgment_memory(limit=limit):
+        refs.append({
+            "source": item["source"],
+            "case_id": item["case_id"],
+            "status": item["review_status"],
+            "score": item["score"],
+            "decision": f"{item['model_decision']}→{item['human_decision']}",
+            "reason": item["reason"],
+        })
+        score_text = f"{float(item['score']):.1f}点" if item.get("score") is not None else "-"
+        lines.append(
+            f"- source={item['source']} / 案件ID={item['case_id'] or '-'} / "
+            f"AI={score_text}/{item['model_decision'] or '-'}→担当者={item['human_decision'] or '-'} / "
+            f"理由={item['reason']}"
+        )
+
+    payload = {
+        "used": bool(lines),
+        "reason": "matched_grey_judgment_cases" if lines else "no_registered_grey_judgment",
+        "query_terms": query_terms,
+        "refs": refs,
+    }
+    if not lines:
+        return "", payload
+
+    block = """
+
+【グレー判断の過去記憶】
+これは通常のスコアや一般論より優先して見る、人間が迷ったリース判断の経験です。
+数字だけで採否を決めず、軍師AIで記録された判断変更・定性項目・現場メモ・違和感・それでも通した理由・通すなら条件・譲れない線を稟議判断へ変換してください。
+過去登録:
+""".rstrip() + "\n" + "\n".join(lines)
+    return block, payload
+
+
 def _build_relationship_loop_engineering_payload(
     *,
     continuity_hook: dict | None = None,
@@ -7679,6 +7907,7 @@ def _chat_memory_debug_payload(
     relationship_loop_engineering: dict | None = None,
     reflection_gate: dict | None = None,
     experience_loop: dict | None = None,
+    grey_judgment_memory: dict | None = None,
 ) -> dict:
     recall = memory_recall if isinstance(memory_recall, dict) else {}
     identity = identity_memory if isinstance(identity_memory, dict) else {}
@@ -7688,6 +7917,7 @@ def _chat_memory_debug_payload(
     m2j = memory_to_judgment if isinstance(memory_to_judgment, dict) else {}
     reflection = reflection_gate if isinstance(reflection_gate, dict) else {}
     experience = experience_loop if isinstance(experience_loop, dict) else {}
+    grey_memory = grey_judgment_memory if isinstance(grey_judgment_memory, dict) else {}
     loop = relationship_loop_engineering if isinstance(relationship_loop_engineering, dict) else _build_relationship_loop_engineering_payload(
         continuity_hook=hook,
         delta_awareness=delta,
@@ -7725,6 +7955,12 @@ def _chat_memory_debug_payload(
             "checklist": list(reflection.get("checklist") or [])[:8],
         },
         "experience_loop": experience,
+        "grey_judgment_memory": {
+            "used": bool(grey_memory.get("used")),
+            "reason": str(grey_memory.get("reason") or ""),
+            "query_terms": list(grey_memory.get("query_terms") or [])[:12],
+            "refs": list(grey_memory.get("refs") or [])[:8],
+        },
         "knowledge_refs": list(knowledge_refs or [])[:12],
         "memory_recall": {
             "route": recall.get("route", ""),
@@ -8536,6 +8772,8 @@ def post_chat(req: ChatRequest):
         consciousness_ux_context = _build_consciousness_ux_prompt_block()
         experience_loop_context = ""
         experience_loop_payload: dict = {"used": False}
+        grey_judgment_context = ""
+        grey_judgment_payload: dict = {"used": False}
         if is_general_response_mode:
             obsidian_daily_context = ""
             identity_memory_context = ""
@@ -8562,6 +8800,10 @@ def post_chat(req: ChatRequest):
                 "used": False,
                 "suppressed_by_response_mode": "general",
             }
+            grey_judgment_payload = {
+                "used": False,
+                "suppressed_by_response_mode": "general",
+            }
         if not is_general_response_mode and context_budget.get("use_experience_loop"):
             try:
                 from api.shion_experience_loop import build_experience_prompt_block
@@ -8569,6 +8811,8 @@ def post_chat(req: ChatRequest):
                 experience_loop_context, experience_loop_payload = build_experience_prompt_block()
             except Exception as _experience_loop_error:
                 print(f"[ShionExperienceLoop] 読み込みエラー: {_experience_loop_error}")
+        if not is_general_response_mode:
+            grey_judgment_context, grey_judgment_payload = _build_grey_judgment_prompt_block(req.message)
         neutral_general_system_prompt = (
             "あなたはリース審査にも詳しい一般AIアシスタントです。"
             "中立で分かりやすく、日本語で簡潔に答えてください。"
@@ -8662,7 +8906,7 @@ def post_chat(req: ChatRequest):
                     memory_to_judgment=memory_to_judgment_payload,
                 )
             base_system_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_gsp(_chat_mind, _chat_now)
-            base_system_prompt = base_system_root + mode_instruction + response_mode_context + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + consciousness_ux_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
+            base_system_prompt = base_system_root + mode_instruction + response_mode_context + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + consciousness_ux_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
             pdca_block = build_pdca_prompt_block() if context_budget.get("use_pdca") else ""
             effective_system_prompt = base_system_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
             obsidian_daily_injected = {}
@@ -8746,6 +8990,7 @@ def post_chat(req: ChatRequest):
                     "delta_awareness": delta_awareness_payload,
                     "memory_to_judgment": memory_to_judgment_payload,
                     "reflection_gate": reflection_gate_payload,
+                    "grey_judgment_memory": grey_judgment_payload,
                 },
             )
             _record_chat_knowledge_correction_if_needed(req.message)
@@ -8783,6 +9028,7 @@ def post_chat(req: ChatRequest):
                     memory_to_judgment=memory_to_judgment_payload,
                     reflection_gate=reflection_gate_payload,
                     experience_loop=experience_loop_payload,
+                    grey_judgment_memory=grey_judgment_payload,
                 )
                 response_payload["memory_debug"]["user_personal_memory"] = {
                     "used": bool(user_personal_memory_payload.get("block")),
@@ -8940,7 +9186,7 @@ def post_chat(req: ChatRequest):
             )
 
         base_prompt_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_sp(_chat_mind, _chat_now)
-        base_effective_prompt = base_prompt_root + mode_instruction + response_mode_context + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + guidance.prompt_suffix
+        base_effective_prompt = base_prompt_root + mode_instruction + response_mode_context + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + guidance.prompt_suffix
         pdca_block = build_pdca_prompt_block() if context_budget.get("use_pdca") else ""
         effective_prompt = base_effective_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
         obsidian_daily_injected = {}
@@ -9008,6 +9254,7 @@ def post_chat(req: ChatRequest):
                 "delta_awareness": delta_awareness_payload,
                 "memory_to_judgment": memory_to_judgment_payload,
                 "reflection_gate": reflection_gate_payload,
+                "grey_judgment_memory": grey_judgment_payload,
             },
         )
         _record_memory_usage_if_available(
@@ -9087,6 +9334,7 @@ def post_chat(req: ChatRequest):
                 memory_to_judgment=memory_to_judgment_payload,
                 reflection_gate=reflection_gate_payload,
                 experience_loop=experience_loop_payload,
+                grey_judgment_memory=grey_judgment_payload,
             )
             response_payload["memory_debug"]["user_personal_memory"] = {
                 "used": bool(user_personal_memory_payload.get("block")),
