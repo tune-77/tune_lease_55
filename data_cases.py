@@ -12,7 +12,7 @@ import datetime
 from typing import Optional
 import numpy as np
 import pandas as pd
-from runtime_paths import get_data_dir
+from runtime_paths import ensure_cloudrun_demo_db_seeded, get_data_dir
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
@@ -42,6 +42,7 @@ from contextlib import closing, contextmanager
 
 def _open_db(path: str = DB_PATH):
     """WAL + busy_timeout を設定した SQLite 接続を返す共通ヘルパ。"""
+    ensure_cloudrun_demo_db_seeded()
     conn = sqlite3.connect(path, timeout=10)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")
