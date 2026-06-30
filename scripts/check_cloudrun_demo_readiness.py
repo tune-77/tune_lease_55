@@ -212,6 +212,9 @@ def check_ignore_files(checks: CheckRun) -> None:
             checks.info(f"{rel} excludes data/*.db; .cloudrun_bundle seeding is required")
         else:
             checks.warn(f"{rel} does not exclude data/*.db; confirm private DBs are not deployed")
+        for needle in ("!.cloudrun_bundle/**", "!.cloudrun_bundle/data/*.db"):
+            if needle not in text:
+                checks.fail(f"{rel} does not re-include packaged Cloud Run demo DBs: {needle}")
 
 
 def check_packaging_script(checks: CheckRun) -> None:

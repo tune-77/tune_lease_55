@@ -33,6 +33,12 @@ data/.fuse_hidden*
 data/dashboard_stats_cache.json
 data/department_stats_cache.json
 
+!.cloudrun_bundle/
+!.cloudrun_bundle/**
+!.cloudrun_bundle/data/
+!.cloudrun_bundle/data/*.db
+!.cloudrun_bundle/data/user_personal_memory.md
+
 reports
 dashboard_images
 easyocr_models
