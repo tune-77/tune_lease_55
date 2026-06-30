@@ -5,7 +5,10 @@ import Link from "next/link";
 import {
   ArrowLeft,
   Bot,
+  Brain,
   Clock,
+  Database,
+  GitCompare,
   Loader2,
   MessageCircle,
   Network,
@@ -24,6 +27,9 @@ type CompareResult = {
   memoryRefs: number;
   knowledgeRefs: number;
   identityUsed: boolean;
+  personalUsed: boolean;
+  obsidianDailyUsed: boolean;
+  experienceUsed: boolean;
 };
 
 const EXAMPLES = [
@@ -69,6 +75,10 @@ function metricLabel(result: CompareResult | null, key: "memory" | "knowledge" |
   return result.identityUsed ? "使用" : "未使用";
 }
 
+function signalLabel(value: boolean) {
+  return value ? "ON" : "OFF";
+}
+
 export default function ChatComparePage() {
   const [input, setInput] = useState(EXAMPLES[0]);
   const [results, setResults] = useState<Record<ModeKey, CompareResult | null>>({
@@ -83,15 +93,60 @@ export default function ChatComparePage() {
     const shion = results.shion;
     const general = results.general;
     if (!shion || !general || shion.error || general.error) return null;
-    const shionSignals = shion.memoryRefs + shion.knowledgeRefs + (shion.identityUsed ? 1 : 0);
-    const generalSignals = general.memoryRefs + general.knowledgeRefs + (general.identityUsed ? 1 : 0);
+    const shionSignals =
+      shion.memoryRefs +
+      shion.knowledgeRefs +
+      (shion.identityUsed ? 1 : 0) +
+      (shion.personalUsed ? 1 : 0) +
+      (shion.obsidianDailyUsed ? 1 : 0) +
+      (shion.experienceUsed ? 1 : 0);
+    const generalSignals =
+      general.memoryRefs +
+      general.knowledgeRefs +
+      (general.identityUsed ? 1 : 0) +
+      (general.personalUsed ? 1 : 0) +
+      (general.obsidianDailyUsed ? 1 : 0) +
+      (general.experienceUsed ? 1 : 0);
     if (shionSignals > generalSignals) {
-      return "紫苑側は記憶・知識接続をより多く使っています。";
+      return "同じ問いでも、紫苑側だけが個人記憶・同一性・経験ループを使って回答しています。";
     }
     if (generalSignals > shionSignals) {
       return "一般側の方が参照件数は多いですが、文体と判断軸は中立寄りです。";
     }
     return "参照量は近いので、文体・冒頭・判断への変換の差を見てください。";
+  }, [results]);
+
+  const demoSignals = useMemo(() => {
+    const shion = results.shion;
+    const general = results.general;
+    if (!shion || !general || shion.error || general.error) return null;
+    return [
+      {
+        label: "個人記憶",
+        shion: signalLabel(shion.personalUsed),
+        general: signalLabel(general.personalUsed),
+      },
+      {
+        label: "同一性",
+        shion: signalLabel(shion.identityUsed),
+        general: signalLabel(general.identityUsed),
+      },
+      {
+        label: "記憶検索",
+        shion: `${shion.memoryRefs}件`,
+        general: `${general.memoryRefs}件`,
+      },
+      {
+        label: "日次知性",
+        shion: signalLabel(shion.obsidianDailyUsed),
+        general: signalLabel(general.obsidianDailyUsed),
+      },
+      {
+        label: "経験ループ",
+        shion: signalLabel(shion.experienceUsed),
+        general: signalLabel(general.experienceUsed),
+      },
+    ];
   }, [results]);
 
   const runCompare = async () => {
@@ -112,6 +167,8 @@ export default function ChatComparePage() {
         const memoryDebug = res.data?.memory_debug || {};
         const memoryRecall = memoryDebug.memory_recall || {};
         const identityMemory = memoryDebug.identity_memory || {};
+        const personalMemory = memoryDebug.user_personal_memory || {};
+        const experienceLoop = memoryDebug.experience_loop || {};
         const knowledgeRefs = Array.isArray(memoryDebug.knowledge_refs)
           ? memoryDebug.knowledge_refs.length
           : 0;
@@ -125,6 +182,9 @@ export default function ChatComparePage() {
           memoryRefs,
           knowledgeRefs,
           identityUsed: Boolean(identityMemory.used),
+          personalUsed: Boolean(personalMemory.used),
+          obsidianDailyUsed: Boolean(memoryDebug.obsidian_daily_used),
+          experienceUsed: Boolean(experienceLoop.used),
         };
       } catch (error) {
         return {
@@ -135,6 +195,9 @@ export default function ChatComparePage() {
           memoryRefs: 0,
           knowledgeRefs: 0,
           identityUsed: false,
+          personalUsed: false,
+          obsidianDailyUsed: false,
+          experienceUsed: false,
         };
       }
     };
@@ -158,14 +221,50 @@ export default function ChatComparePage() {
             </Link>
             <h1 className="mt-2 text-2xl font-black text-slate-950 md:text-3xl">紫苑 / 一般 チャット比較</h1>
             <p className="mt-1 text-sm font-bold text-slate-500">
-              同じ問いを2つの回答モードへ投げ、記憶感・判断軸・一般論化の差を見ます。
+              同じ問いを2つの回答モードへ投げ、記憶・連続性・判断軸の差を見ます。
             </p>
           </div>
-          <div className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-xs font-black text-indigo-700 shadow-sm">
-            <Sparkles className="h-4 w-4" />
-            debug_memory 有効
+          <div className="flex flex-wrap gap-2">
+            <div className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-xs font-black text-indigo-700 shadow-sm">
+              <Sparkles className="h-4 w-4" />
+              debug_memory 有効
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-black text-emerald-700 shadow-sm">
+              <GitCompare className="h-4 w-4" />
+              Hackathon Demo
+            </div>
           </div>
         </div>
+
+        <section className="grid gap-3 md:grid-cols-3">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-xs font-black text-slate-500">
+              <Brain className="h-4 w-4 text-indigo-600" />
+              デモの見どころ
+            </div>
+            <p className="mt-2 text-sm font-black leading-6 text-slate-900">
+              一般AIではなく、記憶と経験を判断に変えるAIとして見せる。
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-xs font-black text-slate-500">
+              <Database className="h-4 w-4 text-emerald-600" />
+              比較するもの
+            </div>
+            <p className="mt-2 text-sm font-black leading-6 text-slate-900">
+              文章の違いだけでなく、裏で使った記憶層の差を表示する。
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-xs font-black text-slate-500">
+              <Sparkles className="h-4 w-4 text-amber-600" />
+              伝える一言
+            </div>
+            <p className="mt-2 text-sm font-black leading-6 text-slate-900">
+              「記憶があるAI」と「ただ答えるAI」は、同じ問いでも返し方が変わる。
+            </p>
+          </div>
+        </section>
 
         <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
@@ -203,8 +302,21 @@ export default function ChatComparePage() {
         </section>
 
         {diffSummary && (
-          <section className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-900">
-            {diffSummary}
+          <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-black text-emerald-900">
+            <div>{diffSummary}</div>
+            {demoSignals && (
+              <div className="mt-3 grid gap-2 sm:grid-cols-5">
+                {demoSignals.map((signal) => (
+                  <div key={signal.label} className="rounded-lg border border-emerald-100 bg-white/80 p-2">
+                    <div className="text-[10px] text-emerald-700">{signal.label}</div>
+                    <div className="mt-1 flex items-center justify-between gap-2 text-xs">
+                      <span className="text-indigo-700">紫苑 {signal.shion}</span>
+                      <span className="text-slate-500">一般 {signal.general}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         )}
 
@@ -245,6 +357,27 @@ export default function ChatComparePage() {
                   <div className="rounded-lg border border-white/70 bg-white/80 p-2">
                     <div className="text-[10px] font-black text-slate-400">同一性</div>
                     <div className="mt-1 text-sm font-black text-slate-800">{metricLabel(result, "identity")}</div>
+                  </div>
+                </div>
+
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  <div className="rounded-lg border border-white/70 bg-white/70 p-2">
+                    <div className="text-[10px] font-black text-slate-400">個人記憶</div>
+                    <div className="mt-1 text-sm font-black text-slate-800">
+                      {result ? signalLabel(result.personalUsed) : "-"}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-white/70 bg-white/70 p-2">
+                    <div className="text-[10px] font-black text-slate-400">日次知性</div>
+                    <div className="mt-1 text-sm font-black text-slate-800">
+                      {result ? signalLabel(result.obsidianDailyUsed) : "-"}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-white/70 bg-white/70 p-2">
+                    <div className="text-[10px] font-black text-slate-400">経験ループ</div>
+                    <div className="mt-1 text-sm font-black text-slate-800">
+                      {result ? signalLabel(result.experienceUsed) : "-"}
+                    </div>
                   </div>
                 </div>
 
