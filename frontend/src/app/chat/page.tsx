@@ -857,19 +857,33 @@ export default function ChatPage() {
           </div>
           <div className="flex shrink-0 rounded-lg border border-slate-200 bg-slate-100 p-0.5">
             {[
-              { key: "shion", label: "紫苑" },
-              { key: "general", label: "一般" },
+              {
+                key: "shion",
+                label: "紫苑",
+                icon: Bot,
+                activeClass: "bg-indigo-600 text-white shadow-sm",
+                inactiveClass: "text-indigo-500 hover:bg-white",
+              },
+              {
+                key: "general",
+                label: "一般",
+                icon: MessageCircle,
+                activeClass: "bg-slate-800 text-white shadow-sm",
+                inactiveClass: "text-slate-500 hover:bg-white",
+              },
             ].map((item) => (
               <button
                 key={item.key}
                 type="button"
                 onClick={() => setAnswerMode(item.key as "shion" | "general")}
-                className={`rounded-md px-2.5 py-1 text-[11px] font-black transition-colors ${
+                title={item.key === "shion" ? "紫苑モード: 記憶と関係性を優先" : "一般モード: 通常コメント"}
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-black transition-colors ${
                   answerMode === item.key
-                    ? "bg-slate-900 text-white shadow-sm"
-                    : "text-slate-500 hover:bg-white"
+                    ? item.activeClass
+                    : item.inactiveClass
                 }`}
               >
+                <item.icon className="h-3.5 w-3.5" />
                 {item.label}
               </button>
             ))}
