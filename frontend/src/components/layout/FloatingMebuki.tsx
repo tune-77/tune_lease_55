@@ -247,6 +247,7 @@ export default function FloatingMebuki() {
 
   if (
     pathname === "/chat" ||
+    pathname === "/chat-compare" ||
     pathname === "/lease-intelligence" ||
     pathname === "/multi-shion-demo" ||
     pathname === "/voice-chat"

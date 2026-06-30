@@ -51,6 +51,7 @@ export default function Sidebar() {
         { name: '紫苑の記憶システム', href: '/shion-memory-system', icon: Database, color: 'text-sky-300' },
         { name: '知性体コア', href: '/shion-core', icon: Brain, color: 'text-violet-300' },
         { name: 'リース知性体との対話', href: '/lease-intelligence', icon: Brain, color: 'text-violet-400' },
+        { name: '紫苑/一般 比較', href: '/chat-compare', icon: MessageSquare, color: 'text-indigo-300' },
         { name: 'リースくん (スマホUI)', href: '/lease-kun', icon: MessageSquare, color: 'text-amber-400' },
         { name: 'マルチエージェント討論', href: '/debate', icon: Swords, color: 'text-violet-500' },
         ...(!hideResearchOrgan
