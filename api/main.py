@@ -7174,7 +7174,7 @@ def _chat_response_mode_instruction(response_mode: str) -> str:
     if mode == "general":
         return (
             "\n\n【回答モード: 一般】"
-            "\n紫苑らしい人格表現は控えめにし、中立で分かりやすい一般AI回答として返す。"
+            "\n特定人格としての表現は控えめにし、中立で分かりやすい一般AI回答として返す。"
             "\nただし、リース審査の実務観点や根拠は省略しない。"
         )
     return (
@@ -8530,17 +8530,51 @@ def post_chat(req: ChatRequest):
         identity_memory_context, identity_memory_payload = _build_chat_identity_memory_prompt_block()
         user_personal_memory_context, user_personal_memory_payload = _build_user_personal_memory_prompt_block()
         response_mode_context = _chat_response_mode_instruction(req.response_mode)
+        response_mode_key = (req.response_mode or "shion").strip().lower()
+        is_general_response_mode = response_mode_key == "general"
         continuity_hook_context, continuity_hook_payload = _build_continuity_hook_prompt_block(req.message)
         consciousness_ux_context = _build_consciousness_ux_prompt_block()
         experience_loop_context = ""
         experience_loop_payload: dict = {"used": False}
-        if context_budget.get("use_experience_loop"):
+        if is_general_response_mode:
+            obsidian_daily_context = ""
+            identity_memory_context = ""
+            identity_memory_payload = {
+                "block": "",
+                "refs": [],
+                "layers": {},
+                "suppressed_by_response_mode": "general",
+            }
+            user_personal_memory_context = ""
+            user_personal_memory_payload = {
+                "block": "",
+                "refs": [],
+                "line_count": 0,
+                "suppressed_by_response_mode": "general",
+            }
+            continuity_hook_context = ""
+            continuity_hook_payload = {
+                "used": False,
+                "suppressed_by_response_mode": "general",
+            }
+            consciousness_ux_context = ""
+            experience_loop_payload = {
+                "used": False,
+                "suppressed_by_response_mode": "general",
+            }
+        if not is_general_response_mode and context_budget.get("use_experience_loop"):
             try:
                 from api.shion_experience_loop import build_experience_prompt_block
 
                 experience_loop_context, experience_loop_payload = build_experience_prompt_block()
             except Exception as _experience_loop_error:
                 print(f"[ShionExperienceLoop] 読み込みエラー: {_experience_loop_error}")
+        neutral_general_system_prompt = (
+            "あなたはリース審査にも詳しい一般AIアシスタントです。"
+            "中立で分かりやすく、日本語で簡潔に答えてください。"
+            "提供された参照ナレッジやDB統計がある場合は、必要な範囲で実務的に反映してください。"
+            "個人記憶、特定人格、継続的な関係性、自己観測、反省ループには触れないでください。"
+        )
 
         if question_category == "news_summarize":
             save_message(req.user_id, "user", req.message)
@@ -8582,24 +8616,53 @@ def post_chat(req: ChatRequest):
                 )
             history_for_gemini = [{"role": m["role"], "content": m["content"]} for m in history]
             from prompt_feedback import build_pdca_prompt_block
-            from api.shion_memory_recall import build_recall_prompt_block
 
-            memory_recall_context, memory_recall = build_recall_prompt_block(
-                req.message,
-                limit=int(context_budget["recall_limit"]),
-            )
-            delta_awareness_context, delta_awareness_payload = _build_delta_awareness_prompt_block(req.message, history_for_gemini)
-            memory_to_judgment_context, memory_to_judgment_payload = _build_memory_to_judgment_prompt_block(
-                req.message,
-                memory_recall=memory_recall,
-                continuity_hook=continuity_hook_payload,
-            )
-            reflection_gate_context, reflection_gate_payload = _build_reflection_gate_prompt_block(
-                continuity_hook=continuity_hook_payload,
-                delta_awareness=delta_awareness_payload,
-                memory_to_judgment=memory_to_judgment_payload,
-            )
-            base_system_prompt = _pg_build_gsp(_chat_mind, _chat_now) + mode_instruction + response_mode_context + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + consciousness_ux_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
+            memory_recall_context = ""
+            memory_recall = {"route": "", "refs": []}
+            delta_awareness_context = ""
+            delta_awareness_payload = {"used": False}
+            memory_to_judgment_context = ""
+            memory_to_judgment_payload = {"used": False}
+            reflection_gate_context = ""
+            reflection_gate_payload = {"triggered": False}
+            if is_general_response_mode:
+                memory_recall = {
+                    "route": "",
+                    "refs": [],
+                    "suppressed_by_response_mode": "general",
+                }
+                delta_awareness_payload = {
+                    "used": False,
+                    "suppressed_by_response_mode": "general",
+                }
+                memory_to_judgment_payload = {
+                    "used": False,
+                    "suppressed_by_response_mode": "general",
+                }
+                reflection_gate_payload = {
+                    "triggered": False,
+                    "suppressed_by_response_mode": "general",
+                }
+            else:
+                from api.shion_memory_recall import build_recall_prompt_block
+
+                memory_recall_context, memory_recall = build_recall_prompt_block(
+                    req.message,
+                    limit=int(context_budget["recall_limit"]),
+                )
+                delta_awareness_context, delta_awareness_payload = _build_delta_awareness_prompt_block(req.message, history_for_gemini)
+                memory_to_judgment_context, memory_to_judgment_payload = _build_memory_to_judgment_prompt_block(
+                    req.message,
+                    memory_recall=memory_recall,
+                    continuity_hook=continuity_hook_payload,
+                )
+                reflection_gate_context, reflection_gate_payload = _build_reflection_gate_prompt_block(
+                    continuity_hook=continuity_hook_payload,
+                    delta_awareness=delta_awareness_payload,
+                    memory_to_judgment=memory_to_judgment_payload,
+                )
+            base_system_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_gsp(_chat_mind, _chat_now)
+            base_system_prompt = base_system_root + mode_instruction + response_mode_context + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + consciousness_ux_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
             pdca_block = build_pdca_prompt_block() if context_budget.get("use_pdca") else ""
             effective_system_prompt = base_system_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
             obsidian_daily_injected = {}
@@ -8622,22 +8685,23 @@ def post_chat(req: ChatRequest):
                 )
             save_message(req.user_id, "user", req.message)
             save_message(req.user_id, "assistant", reply)
-            try:
-                from api.shion_experience_loop import record_experience_event
+            if not is_general_response_mode:
+                try:
+                    from api.shion_experience_loop import record_experience_event
 
-                experience_record = record_experience_event(
-                    message=req.message,
-                    response=reply,
-                    category="general",
-                    memory_recall=memory_recall,
-                    knowledge_refs=[],
-                    continuity_hook=continuity_hook_payload,
-                    delta_awareness=delta_awareness_payload,
-                    memory_to_judgment=memory_to_judgment_payload,
-                )
-                experience_loop_payload = experience_record.get("state") or experience_loop_payload
-            except Exception as _experience_record_error:
-                print(f"[ShionExperienceLoop] 記録エラー: {_experience_record_error}")
+                    experience_record = record_experience_event(
+                        message=req.message,
+                        response=reply,
+                        category="general",
+                        memory_recall=memory_recall,
+                        knowledge_refs=[],
+                        continuity_hook=continuity_hook_payload,
+                        delta_awareness=delta_awareness_payload,
+                        memory_to_judgment=memory_to_judgment_payload,
+                    )
+                    experience_loop_payload = experience_record.get("state") or experience_loop_payload
+                except Exception as _experience_record_error:
+                    print(f"[ShionExperienceLoop] 記録エラー: {_experience_record_error}")
             _record_prompt_feedback_if_available(
                 surface="next_chat_general",
                 question=req.message,
@@ -8827,30 +8891,56 @@ def post_chat(req: ChatRequest):
 
         memory_recall_context = ""
         memory_recall = {"route": "", "refs": []}
-        try:
-            from api.shion_memory_recall import build_recall_prompt_block
+        delta_awareness_context = ""
+        delta_awareness_payload = {"used": False}
+        memory_to_judgment_context = ""
+        memory_to_judgment_payload = {"used": False}
+        reflection_gate_context = ""
+        reflection_gate_payload = {"triggered": False}
+        if is_general_response_mode:
+            memory_recall = {
+                "route": "",
+                "refs": [],
+                "suppressed_by_response_mode": "general",
+            }
+            delta_awareness_payload = {
+                "used": False,
+                "suppressed_by_response_mode": "general",
+            }
+            memory_to_judgment_payload = {
+                "used": False,
+                "suppressed_by_response_mode": "general",
+            }
+            reflection_gate_payload = {
+                "triggered": False,
+                "suppressed_by_response_mode": "general",
+            }
+        else:
+            try:
+                from api.shion_memory_recall import build_recall_prompt_block
 
-            memory_recall_context, memory_recall = build_recall_prompt_block(
+                memory_recall_context, memory_recall = build_recall_prompt_block(
+                    req.message,
+                    limit=int(context_budget["recall_limit"]),
+                )
+            except Exception as _memory_recall_error:
+                print(f"[ShionMemoryRecall] 読み込みエラー: {_memory_recall_error}")
+
+            delta_awareness_context, delta_awareness_payload = _build_delta_awareness_prompt_block(req.message, history_for_gemini)
+            memory_to_judgment_context, memory_to_judgment_payload = _build_memory_to_judgment_prompt_block(
                 req.message,
-                limit=int(context_budget["recall_limit"]),
+                memory_recall=memory_recall,
+                rag_refs=rag_refs,
+                continuity_hook=continuity_hook_payload,
             )
-        except Exception as _memory_recall_error:
-            print(f"[ShionMemoryRecall] 読み込みエラー: {_memory_recall_error}")
+            reflection_gate_context, reflection_gate_payload = _build_reflection_gate_prompt_block(
+                continuity_hook=continuity_hook_payload,
+                delta_awareness=delta_awareness_payload,
+                memory_to_judgment=memory_to_judgment_payload,
+            )
 
-        delta_awareness_context, delta_awareness_payload = _build_delta_awareness_prompt_block(req.message, history_for_gemini)
-        memory_to_judgment_context, memory_to_judgment_payload = _build_memory_to_judgment_prompt_block(
-            req.message,
-            memory_recall=memory_recall,
-            rag_refs=rag_refs,
-            continuity_hook=continuity_hook_payload,
-        )
-        reflection_gate_context, reflection_gate_payload = _build_reflection_gate_prompt_block(
-            continuity_hook=continuity_hook_payload,
-            delta_awareness=delta_awareness_payload,
-            memory_to_judgment=memory_to_judgment_payload,
-        )
-
-        base_effective_prompt = _pg_build_sp(_chat_mind, _chat_now) + mode_instruction + response_mode_context + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + guidance.prompt_suffix
+        base_prompt_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_sp(_chat_mind, _chat_now)
+        base_effective_prompt = base_prompt_root + mode_instruction + response_mode_context + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + guidance.prompt_suffix
         pdca_block = build_pdca_prompt_block() if context_budget.get("use_pdca") else ""
         effective_prompt = base_effective_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
         obsidian_daily_injected = {}
@@ -8873,22 +8963,23 @@ def post_chat(req: ChatRequest):
             )
         save_message(req.user_id, "user", req.message)
         save_message(req.user_id, "assistant", reply)
-        try:
-            from api.shion_experience_loop import record_experience_event
+        if not is_general_response_mode:
+            try:
+                from api.shion_experience_loop import record_experience_event
 
-            experience_record = record_experience_event(
-                message=req.message,
-                response=reply,
-                category="rag",
-                memory_recall=memory_recall,
-                knowledge_refs=rag_refs,
-                continuity_hook=continuity_hook_payload,
-                delta_awareness=delta_awareness_payload,
-                memory_to_judgment=memory_to_judgment_payload,
-            )
-            experience_loop_payload = experience_record.get("state") or experience_loop_payload
-        except Exception as _experience_record_error:
-            print(f"[ShionExperienceLoop] 記録エラー: {_experience_record_error}")
+                experience_record = record_experience_event(
+                    message=req.message,
+                    response=reply,
+                    category="rag",
+                    memory_recall=memory_recall,
+                    knowledge_refs=rag_refs,
+                    continuity_hook=continuity_hook_payload,
+                    delta_awareness=delta_awareness_payload,
+                    memory_to_judgment=memory_to_judgment_payload,
+                )
+                experience_loop_payload = experience_record.get("state") or experience_loop_payload
+            except Exception as _experience_record_error:
+                print(f"[ShionExperienceLoop] 記録エラー: {_experience_record_error}")
         _record_prompt_feedback_if_available(
             surface="next_chat_rag",
             question=req.message,
