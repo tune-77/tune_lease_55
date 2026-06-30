@@ -43,6 +43,7 @@ const MODE_META: Record<ModeKey, {
   label: string;
   caption: string;
   icon: React.ElementType;
+  image?: string;
   accent: string;
   panel: string;
   badge: string;
@@ -51,6 +52,7 @@ const MODE_META: Record<ModeKey, {
     label: "紫苑",
     caption: "記憶・関係性・判断資産を優先",
     icon: Bot,
+    image: "/lease-intelligence/moods/attachment.webp",
     accent: "text-indigo-700",
     panel: "border-indigo-200 bg-indigo-50/70",
     badge: "bg-indigo-600 text-white",
@@ -64,6 +66,51 @@ const MODE_META: Record<ModeKey, {
     badge: "bg-slate-800 text-white",
   },
 };
+
+const SHION_VARIANTS = [
+  {
+    key: "curiosity",
+    label: "通常",
+    caption: "対話・探索",
+    image: "/lease-intelligence/moods/curiosity.webp",
+  },
+  {
+    key: "focus",
+    label: "精密",
+    caption: "考え中",
+    image: "/lease-intelligence/moods/focus.webp",
+  },
+  {
+    key: "vigilance",
+    label: "警戒",
+    caption: "審査・検査",
+    image: "/lease-intelligence/moods/vigilance.webp",
+  },
+  {
+    key: "attachment",
+    label: "親和",
+    caption: "記憶・関係性",
+    image: "/lease-intelligence/moods/attachment.webp",
+  },
+  {
+    key: "weariness",
+    label: "反省",
+    caption: "迷い・疲労",
+    image: "/lease-intelligence/moods/weariness.webp",
+  },
+  {
+    key: "maintenance",
+    label: "修復",
+    caption: "改善・調整",
+    image: "/lease-intelligence/moods/maintenance.webp",
+  },
+  {
+    key: "roles",
+    label: "分岐",
+    caption: "複数紫苑",
+    image: "/lease-intelligence/moods/roles.webp",
+  },
+];
 
 function normalizeReply(value: unknown): string {
   return typeof value === "string" && value.trim() ? value : "回答が空でした。";
@@ -274,6 +321,33 @@ export default function ChatComparePage() {
           </div>
         </section>
 
+        <section className="rounded-xl border border-indigo-100 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <div className="text-xs font-black uppercase tracking-wide text-indigo-500">Shion Variants</div>
+              <h2 className="mt-1 text-lg font-black text-slate-950">状態で顔が変わる紫苑</h2>
+            </div>
+            <Link
+              href="/shion-identity-check"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-200 px-3 py-1.5 text-xs font-black text-cyan-700 transition hover:bg-cyan-50"
+            >
+              <Fingerprint className="h-3.5 w-3.5" />
+              自己同一性検査へ
+            </Link>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
+            {SHION_VARIANTS.map((variant) => (
+              <div key={variant.key} className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                <img src={variant.image} alt={`紫苑 ${variant.label}`} className="aspect-square w-full object-cover object-top" />
+                <div className="p-2">
+                  <div className="text-xs font-black text-slate-900">{variant.label}</div>
+                  <div className="mt-0.5 text-[10px] font-bold text-slate-500">{variant.caption}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
         <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
             <div className="min-w-0 flex-1">
@@ -337,9 +411,15 @@ export default function ChatComparePage() {
               <article key={mode} className={`min-h-[28rem] rounded-xl border p-4 shadow-sm ${meta.panel}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${meta.badge}`}>
-                      <Icon className="h-5 w-5" />
-                    </div>
+                    {meta.image ? (
+                      <div className="h-12 w-12 overflow-hidden rounded-lg border border-indigo-200 bg-white shadow-sm">
+                        <img src={meta.image} alt={meta.label} className="h-full w-full object-cover object-top" />
+                      </div>
+                    ) : (
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${meta.badge}`}>
+                        <Icon className="h-5 w-5" />
+                      </div>
+                    )}
                     <div>
                       <h2 className={`text-lg font-black ${meta.accent}`}>{meta.label}</h2>
                       <p className="text-xs font-bold text-slate-500">{meta.caption}</p>

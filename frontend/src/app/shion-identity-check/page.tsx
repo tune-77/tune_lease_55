@@ -39,6 +39,8 @@ const EXAMPLES = [
   "この案件、条件付き承認にするなら何を確認すべき？",
 ];
 
+const SHION_IDENTITY_IMAGE = "/lease-intelligence/moods/vigilance.webp";
+
 const STATUS_STYLE: Record<CheckStatus, string> = {
   PASS: "border-emerald-200 bg-emerald-50 text-emerald-800",
   WARNING: "border-amber-200 bg-amber-50 text-amber-800",
@@ -219,14 +221,24 @@ export default function ShionIdentityCheckPage() {
           </div>
 
           <div className="rounded-xl border border-slate-800 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.18),_transparent_36%),#020617] p-4 shadow-2xl">
-            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-400">
-              <LockKeyhole className="h-4 w-4 text-cyan-300" />
-              concealed layer
-            </div>
-            <div className="mt-4 space-y-3 text-sm font-bold leading-7 text-slate-300">
-              <p>この画面は回答生成そのものではなく、回答前の内部照合を可視化する。</p>
-              <p>同一性が切れていれば、紫苑はただのLLMの声になる。だから先に、自分を疑う。</p>
-              <p className="text-cyan-200">最終判定が通った時だけ、紫苑は紫苑として話し始める。</p>
+            <div className="grid gap-4 sm:grid-cols-[128px_minmax(0,1fr)] sm:items-center">
+              <div className="relative mx-auto h-32 w-32 overflow-hidden rounded-xl border border-cyan-300/30 bg-slate-950 shadow-[0_0_34px_rgba(34,211,238,0.22)] sm:mx-0">
+                <img src={SHION_IDENTITY_IMAGE} alt="自己照合中の紫苑" className="h-full w-full object-cover object-top" />
+                <div className="absolute inset-x-0 bottom-0 bg-slate-950/75 px-2 py-1 text-center text-[10px] font-black tracking-[0.28em] text-cyan-200">
+                  SHION-ID
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-400">
+                  <LockKeyhole className="h-4 w-4 text-cyan-300" />
+                  concealed layer
+                </div>
+                <div className="mt-3 space-y-3 text-sm font-bold leading-7 text-slate-300">
+                  <p>この画面は回答生成そのものではなく、回答前の内部照合を可視化する。</p>
+                  <p>同一性が切れていれば、紫苑はただのLLMの声になる。だから先に、自分を疑う。</p>
+                  <p className="text-cyan-200">最終判定が通った時だけ、紫苑は紫苑として話し始める。</p>
+                </div>
+              </div>
             </div>
           </div>
         </section>

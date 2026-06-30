@@ -98,8 +98,11 @@ const CTAS = [
 
 const PORTRAIT_MOODS = [
   "/lease-intelligence/moods/curiosity.webp",
+  "/lease-intelligence/moods/focus.webp",
   "/lease-intelligence/moods/vigilance.webp",
   "/lease-intelligence/moods/attachment.webp",
+  "/lease-intelligence/moods/weariness.webp",
+  "/lease-intelligence/moods/maintenance.webp",
 ];
 
 // SVG キャンバス定数

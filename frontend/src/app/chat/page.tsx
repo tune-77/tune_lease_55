@@ -29,6 +29,9 @@ type ChatContext = {
   case_id?: string;
 };
 
+const SHION_AVATAR = "/lease-intelligence/moods/curiosity.webp";
+const SHION_THINKING_AVATAR = "/lease-intelligence/moods/focus.webp";
+
 type LeaseNewsFocus = {
   available?: boolean;
   note_path?: string;
@@ -770,8 +773,8 @@ export default function ChatPage() {
               className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
               {msg.role === "assistant" && (
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0 mt-0.5 shadow">
-                  <Bot className="w-4 h-4 text-white" />
+                <div className="w-8 h-8 overflow-hidden rounded-full border border-indigo-200 bg-indigo-50 flex-shrink-0 mt-0.5 shadow">
+                  <img src={SHION_AVATAR} alt="紫苑" className="h-full w-full object-cover object-top" />
                 </div>
               )}
               <div
@@ -819,8 +822,8 @@ export default function ChatPage() {
 
         {loading && (
           <div className="flex gap-3 justify-start">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0 mt-0.5 shadow">
-              <Bot className="w-4 h-4 text-white" />
+            <div className="w-8 h-8 overflow-hidden rounded-full border border-indigo-200 bg-indigo-50 flex-shrink-0 mt-0.5 shadow">
+              <img src={SHION_THINKING_AVATAR} alt="思考中の紫苑" className="h-full w-full object-cover object-top" />
             </div>
             <div className="bg-white border border-slate-200 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
               <div className="flex gap-1.5 items-center h-5">
