@@ -9,6 +9,7 @@ import {
   Clock,
   Database,
   GitCompare,
+  Fingerprint,
   Loader2,
   MessageCircle,
   Network,
@@ -233,6 +234,13 @@ export default function ChatComparePage() {
               <GitCompare className="h-4 w-4" />
               Hackathon Demo
             </div>
+            <Link
+              href="/shion-identity-check"
+              className="inline-flex items-center gap-2 rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs font-black text-cyan-700 shadow-sm transition hover:border-cyan-300 hover:bg-cyan-50"
+            >
+              <Fingerprint className="h-4 w-4" />
+              One More Thing
+            </Link>
           </div>
         </div>
 
