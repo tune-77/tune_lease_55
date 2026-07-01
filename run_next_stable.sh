@@ -22,8 +22,16 @@ NEXT_PORT="${NEXT_PORT:-3000}"
 API_HOST="${API_HOST:-127.0.0.1}"
 NEXT_HOST="${NEXT_HOST:-127.0.0.1}"
 PUBLIC_TUNNEL="${PUBLIC_TUNNEL:-0}"
+# Named Tunnel（固定URL・認証あり）を使う場合はこの2つを設定する。
+# 未設定なら従来どおり quick tunnel（認証不要・URL変動・本番非推奨）にフォールバックする。
+CLOUDFLARE_TUNNEL_CONFIG="${CLOUDFLARE_TUNNEL_CONFIG:-}"
+CLOUDFLARE_TUNNEL_HOSTNAME="${CLOUDFLARE_TUNNEL_HOSTNAME:-}"
 LOG_DIR="logs/next"
 mkdir -p "$LOG_DIR"
+
+named_tunnel_active() {
+  [ -n "$CLOUDFLARE_TUNNEL_CONFIG" ] && [ -f "$CLOUDFLARE_TUNNEL_CONFIG" ]
+}
 
 pid_file_alive() {
   local file="$1"
@@ -36,6 +44,10 @@ pid_file_alive() {
 }
 
 latest_tunnel_url() {
+  if named_tunnel_active && [ -n "$CLOUDFLARE_TUNNEL_HOSTNAME" ]; then
+    echo "https://${CLOUDFLARE_TUNNEL_HOSTNAME}"
+    return
+  fi
   local latest_log
   latest_log="$(ls -t "$LOG_DIR"/tunnel_*.log 2>/dev/null | head -1 || true)"
   if [ -n "$latest_log" ]; then
@@ -106,7 +118,11 @@ if [ "$RESTART_SCOPE" = "next" ]; then
 fi
 
 if [ "$RESTART_SCOPE" = "tunnel" ]; then
-  tunnel_pids="$(ps -eo pid=,command= 2>/dev/null | awk -v url="http://${NEXT_HOST}:${NEXT_PORT}" '$0 ~ /[c]loudflared tunnel --url/ && index($0, url) {print $1}' | tr '\n' ' ')"
+  if named_tunnel_active; then
+    tunnel_pids="$(pgrep -f "cloudflared tunnel --config ${CLOUDFLARE_TUNNEL_CONFIG} run" | tr '\n' ' ')"
+  else
+    tunnel_pids="$(ps -eo pid=,command= 2>/dev/null | awk -v url="http://${NEXT_HOST}:${NEXT_PORT}" '$0 ~ /[c]loudflared tunnel --url/ && index($0, url) {print $1}' | tr '\n' ' ')"
+  fi
   if [ -n "$tunnel_pids" ]; then
     echo "Tunnel-only restart requested; nudging Cloudflare Tunnel:${tunnel_pids}"
     kill $tunnel_pids 2>/dev/null || true
@@ -411,12 +427,20 @@ NEXT_SUPERVISOR_PID=$!
 echo "$NEXT_SUPERVISOR_PID" > "$NEXT_SUPERVISOR_PID_FILE"
 
 running_tunnel_pid() {
-  ps -eo pid=,command= 2>/dev/null \
-    | awk -v url="http://${NEXT_HOST}:${NEXT_PORT}" '$0 ~ /[c]loudflared tunnel --url/ && index($0, url) {print $1; exit}'
+  if named_tunnel_active; then
+    pgrep -f "cloudflared tunnel --config ${CLOUDFLARE_TUNNEL_CONFIG} run" | head -1
+  else
+    ps -eo pid=,command= 2>/dev/null \
+      | awk -v url="http://${NEXT_HOST}:${NEXT_PORT}" '$0 ~ /[c]loudflared tunnel --url/ && index($0, url) {print $1; exit}'
+  fi
 }
 
 if [ "$PUBLIC_TUNNEL" = "1" ]; then
-  echo "Starting Cloudflare Tunnel for http://${NEXT_HOST}:${NEXT_PORT}"
+  if named_tunnel_active; then
+    echo "Starting Cloudflare Named Tunnel (config: ${CLOUDFLARE_TUNNEL_CONFIG})"
+  else
+    echo "Starting Cloudflare Tunnel for http://${NEXT_HOST}:${NEXT_PORT}"
+  fi
   while true; do
     existing_tunnel_pid="$(running_tunnel_pid)"
     if [ -n "$existing_tunnel_pid" ]; then
@@ -427,7 +451,11 @@ if [ "$PUBLIC_TUNNEL" = "1" ]; then
       echo "$(date '+%F %T') Reused Cloudflare Tunnel exited; starting a new one" | tee -a "$TUNNEL_LOG"
       continue
     fi
-    cloudflared tunnel --url "http://${NEXT_HOST}:${NEXT_PORT}" >>"$TUNNEL_LOG" 2>&1 &
+    if named_tunnel_active; then
+      cloudflared tunnel --config "$CLOUDFLARE_TUNNEL_CONFIG" run >>"$TUNNEL_LOG" 2>&1 &
+    else
+      cloudflared tunnel --url "http://${NEXT_HOST}:${NEXT_PORT}" >>"$TUNNEL_LOG" 2>&1 &
+    fi
     tunnel_pid=$!
     echo "$tunnel_pid" > "$TUNNEL_PID_FILE"
     wait "$tunnel_pid" || true

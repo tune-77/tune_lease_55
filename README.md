@@ -252,6 +252,39 @@ PUBLIC_TUNNEL=1 bash run_next_stable.sh
 
 URL は毎回変わります。最新の URL は起動ログか `logs/next/tunnel_*.log` を見てください。
 
+quick tunnel は認証不要・接続断が起きやすく Cloudflare 公式にも本番非推奨です。固定URL・認証ありの
+Named Tunnel を使いたい場合は、事前に以下を1回だけセットアップしてください（Cloudflareアカウントでの
+作業が必要なため、この場では実行できません）。
+
+```bash
+# 1. Cloudflareアカウントにログイン（ブラウザが開く）
+cloudflared tunnel login
+
+# 2. 名前付きトンネルを作成（credentials-file が ~/.cloudflared/ に生成される）
+cloudflared tunnel create tune-lease-55
+
+# 3. 使いたいホスト名にDNSルートを張る（Cloudflareで管理しているドメインが必要）
+cloudflared tunnel route dns tune-lease-55 lease-ai.example.com
+
+# 4. config.yml を作成（tunnel: の値と credentials-file のパスは手順2の出力を使う）
+cat > ~/.cloudflared/config.yml <<'YAML'
+tunnel: tune-lease-55
+credentials-file: /Users/<you>/.cloudflared/<tunnel-id>.json
+ingress:
+  - hostname: lease-ai.example.com
+    service: http://127.0.0.1:3000
+  - service: http_status:404
+YAML
+```
+
+セットアップ後、環境変数を指定して起動すると自動的にNamed Tunnelへ切り替わります（未指定なら従来どおり quick tunnel）:
+
+```bash
+CLOUDFLARE_TUNNEL_CONFIG=~/.cloudflared/config.yml \
+CLOUDFLARE_TUNNEL_HOSTNAME=lease-ai.example.com \
+PUBLIC_TUNNEL=1 bash run_next_stable.sh
+```
+
 ## 何ができるか
 
 - 企業・物件・条件を入力し、審査スコア、金利余地、Q_risk、類似案件、承認条件を見る
