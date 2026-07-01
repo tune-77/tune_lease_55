@@ -190,7 +190,7 @@ const HOME_SETTINGS_KEY = "home-dashboard-panel-settings";
 const DEFAULT_PANEL_SETTINGS: HomePanelSettings = {
   showKpis: true,
   showHighlights: true,
-  showNews: true,
+  showNews: false,
   showRecentCases: true,
   showNewsDigest: true,
   showGaps: true,
@@ -403,6 +403,22 @@ export default function HomeDashboard() {
             一般論ではなく、Userのリース判断資産として読み返せる形で返します。
           </p>
           <div className="flex flex-wrap gap-3">
+            {[
+              { label: "審査分析", href: "/screening" },
+              { label: "紫苑チャット", href: "/chat" },
+              { label: "帰還データ検疫", href: "/cloudrun-return-review" },
+            ].map((item) => (
+              <button
+                key={item.href}
+                type="button"
+                onClick={() => window.location.href = item.href}
+                className="rounded-xl border border-white/25 bg-white/15 px-4 py-2 text-xs font-black text-white backdrop-blur-md transition-colors hover:bg-white/25"
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <div className="mt-4 flex flex-wrap gap-3">
             <div className="bg-white/10 backdrop-blur-md border border-white/20 px-3 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-2xl">
               <div className="text-[10px] font-black uppercase tracking-widest text-blue-200">System Status</div>
               <div className="text-xs sm:text-sm font-black flex items-center gap-2">
@@ -1191,7 +1207,7 @@ export default function HomeDashboard() {
               { key: "showKpis", label: "KPI", desc: "総成約数と平均指標" },
               { key: "showHighlights", label: "改善項目", desc: "最新の改善候補" },
               { key: "showGaps", label: "不足項目", desc: "改善診断の上位3件" },
-              { key: "showNews", label: "リースニュース", desc: "最新の論点" },
+              { key: "showNews", label: "リースニュース", desc: "必要な時だけ表示する論点" },
               { key: "showNewsDigest", label: "ニュースダイジェスト", desc: "AI要約ニュース" },
               { key: "showRecentCases", label: "案件履歴", desc: "最近の成約・失注" },
             ].map((item) => {

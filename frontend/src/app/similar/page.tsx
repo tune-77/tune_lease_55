@@ -75,7 +75,7 @@ function initGraph() {
 
     // シミュレーション
     const sim = d3.forceSimulation(GRAPH_DATA.nodes)
-    .force("link", d3.forceLink(GRAPH_DATA.edges).distance(d => Math.max(35, linkBaseDistance - d.similarity * 60)).strength(0.8))
+    .force("link", d3.forceLink(GRAPH_DATA.edges).id(d => d.id).distance(d => Math.max(35, linkBaseDistance - d.similarity * 60)).strength(0.8))
     .force("charge", d3.forceManyBody().strength(chargeStrength))
     .force("center", d3.forceCenter(W / 2, H / 2))
     .force("collide", d3.forceCollide(d => d.radius + collisionPadding));
@@ -201,7 +201,18 @@ type SimilarGraphSettings = {
 };
 
 type SimilarGraphData = {
-  nodes?: Array<{ id?: string; radius?: number; x?: number; y?: number }>;
+  nodes?: Array<{
+    id?: string;
+    radius?: number;
+    x?: number;
+    y?: number;
+    industry_sub?: string;
+    score?: number;
+    status?: string;
+    final_rate?: number;
+    competitor_name?: string;
+    timestamp?: string;
+  }>;
   edges?: Array<{ source: number | string; target: number | string; similarity?: number }>;
   summary?: {
     total?: number;
@@ -265,6 +276,44 @@ const getRecommendedSettings = (data?: SimilarGraphData | null): SimilarGraphSet
   };
 };
 
+const normalizeGraphData = (data: SimilarGraphData | null | undefined): SimilarGraphData | null => {
+  if (!data || !Array.isArray(data.nodes)) return data ?? null;
+  const nodes = data.nodes
+    .filter((node) => node && node.id !== undefined && node.id !== null)
+    .map((node, index) => ({
+      ...node,
+      id: String(node.id || `case-${index + 1}`),
+      score: typeof node.score === "number" ? node.score : 0,
+      final_rate: typeof node.final_rate === "number" ? node.final_rate : 0,
+      radius: typeof node.radius === "number" ? node.radius : 10,
+    }));
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const edges = (Array.isArray(data.edges) ? data.edges : [])
+    .map((edge) => {
+      const source =
+        typeof edge.source === "number" ? nodes[edge.source]?.id : String(edge.source ?? "");
+      const target =
+        typeof edge.target === "number" ? nodes[edge.target]?.id : String(edge.target ?? "");
+      return {
+        ...edge,
+        source,
+        target,
+        similarity: typeof edge.similarity === "number" ? edge.similarity : 0,
+      };
+    })
+    .filter((edge) => nodeIds.has(String(edge.source)) && nodeIds.has(String(edge.target)));
+  return {
+    ...data,
+    nodes,
+    edges,
+    summary: {
+      total: data.summary?.total ?? nodes.length,
+      won: data.summary?.won ?? nodes.filter((node) => node.status === "成約").length,
+      lost: data.summary?.lost ?? nodes.filter((node) => node.status === "失注").length,
+    },
+  };
+};
+
 export default function SimilarPage() {
   const [graphData, setGraphData] = useState<SimilarGraphData | null>(null);
   const [summary, setSummary] = useState<SimilarGraphData["summary"] | null>(null);
@@ -320,11 +369,12 @@ export default function SimilarPage() {
     const fetchData = async () => {
       try {
         const res = await apiClient.get<SimilarGraphData>(`/api/similar/data`);
-        setGraphData(res.data);
-        setSummary(res.data.summary || null);
+        const normalized = normalizeGraphData(res.data);
+        setGraphData(normalized);
+        setSummary(normalized?.summary || null);
         setLoadError(null);
         if (!loadedFromStorage) {
-          applySettings(getRecommendedSettings(res.data), false);
+          applySettings(getRecommendedSettings(normalized), false);
         }
       } catch (err) {
         console.error("Failed to load similar network data", err);
