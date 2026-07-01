@@ -6352,7 +6352,7 @@ def run_agent_api(req: AgentRunRequest):
 
 def _compute_approval_rates_standalone(cases: list):
     """civilization_chronicle.py の _compute_approval_rates をインライン化（streamlit非依存）。"""
-    _APPROVAL_LINE = 60.0  # scoring_core.APPROVAL_LINE と同じ値
+    from scoring_core import APPROVAL_LINE as _APPROVAL_LINE
     scored = [
         c for c in cases
         if c.get("result") and c["result"].get("score") is not None
