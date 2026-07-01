@@ -415,9 +415,9 @@ export default function SystemOverviewPage() {
             <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
               <div className="max-w-2xl">
                 <p className="text-xs font-black tracking-[0.25em] uppercase text-teal-300">Cloud Run Experience Return</p>
-                <h2 className="mt-2 text-2xl font-black text-white">外で積んだ経験は、検疫されて本体紫苑へ帰還する</h2>
+                <h2 className="mt-2 text-2xl font-black text-white">外で積んだ経験は、検疫されてデモ紫苑へ帰還する</h2>
                 <p className="mt-3 text-sm font-semibold leading-relaxed text-slate-300">
-                  ハッカソン用Cloud RunはデモDBで動き、本体DBへ直接書きません。紫苑レビュー、人間評価、審査ループ入力はGCSへ追記され、ローカル同期時はいったん隔離DBへ戻ります。確認した経験だけを本体の長期記憶へ統合します。
+                  ハッカソン用Cloud RunはデモDBで動き、本体DBへ直接書きません。紫苑レビュー、人間評価、審査ループ入力はGCSへ追記され、ローカル同期時はいったん隔離DBへ戻ります。確認した経験だけを demo.db へ統合します。
                 </p>
               </div>
               <div className="rounded-2xl border border-emerald-400/20 bg-emerald-950/20 px-4 py-3 text-xs font-bold text-emerald-200">
@@ -438,7 +438,7 @@ export default function SystemOverviewPage() {
                 { title: "Cloud Run", desc: "デモ会場で紫苑が審査レビューと評価を受け取る", icon: Activity, color: "#2dd4bf" },
                 { title: "GCS Event Log", desc: "cloudrun-inputs/YYYY-MM-DD/events.jsonl に追記", icon: Database, color: "#60a5fa" },
                 { title: "検疫DB", desc: "ローカル同期はまず cloudrun_experience_return.db へ隔離", icon: Shield, color: "#fbbf24" },
-                { title: "本体統合", desc: "人間が確認した経験だけ lease_data.db へ昇格", icon: RefreshCw, color: "#c084fc" },
+                { title: "デモDB統合", desc: "人間が確認した経験だけ demo.db へ昇格", icon: RefreshCw, color: "#c084fc" },
               ].map(({ title, desc, icon: FlowIcon, color }) => (
                 <div key={title} className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
                   <div className="mb-3 flex items-center gap-2">

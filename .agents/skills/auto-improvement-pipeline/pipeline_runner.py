@@ -19,9 +19,76 @@ try:
     from implementation_ranker import rank_improvements
     from obsidian_compliance_checker import check_obsidian_compliance
     from auto_fix_policy import evaluate_auto_fix_policy
+    from improvement_identity import normalize_title
 except ImportError as e:
     print(f"❌ スクリプトインポートエラー: {e}")
     sys.exit(1)
+
+
+def _item_title_signature(item: dict[str, Any]) -> str:
+    """REV番号が変わっても同一テーマを判定するためのタイトル署名."""
+    title = str(item.get("title") or item.get("merged_title") or "").strip()
+    return normalize_title(title)
+
+
+def _load_applied_title_signatures(workspace_root: Path) -> dict[str, dict[str, Any]]:
+    """過去レポート全体から applied 済みタイトルを集める."""
+    reports_dir = workspace_root / "reports"
+    signatures: dict[str, dict[str, Any]] = {}
+    if not reports_dir.exists():
+        return signatures
+
+    for report_path in sorted(reports_dir.glob("improvement_report_*.json")):
+        try:
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        applied_items = list(report.get("applied") or []) + list(report.get("applied_improvements") or [])
+        for item in applied_items:
+            if not isinstance(item, dict):
+                continue
+            signature = _item_title_signature(item)
+            if not signature:
+                continue
+            signatures.setdefault(signature, {
+                "id": item.get("id"),
+                "title": item.get("title"),
+                "source_report": str(report_path),
+            })
+    return signatures
+
+
+def suppress_previously_applied_improvements(
+    improvements: list[dict[str, Any]],
+    workspace_root: Path,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """過去に applied 済みの同一タイトル改善を除外する.
+
+    日次レポートは毎回 REV 番号を振り直すため、IDだけで判定すると同じ修正済み
+    テーマが needs_review に復活する。タイトル署名で既適用を抑止する。
+    """
+    applied_signatures = _load_applied_title_signatures(workspace_root)
+    if not applied_signatures:
+        return improvements, []
+
+    kept: list[dict[str, Any]] = []
+    suppressed: list[dict[str, Any]] = []
+    for item in improvements:
+        signature = _item_title_signature(item)
+        applied = applied_signatures.get(signature)
+        if applied:
+            suppressed.append({
+                "id": item.get("id"),
+                "title": item.get("title"),
+                "canonical_key": item.get("canonical_key"),
+                "matched_applied_id": applied.get("id"),
+                "matched_applied_title": applied.get("title"),
+                "source_report": applied.get("source_report"),
+                "reason": "過去レポートで同一タイトルがapplied済み",
+            })
+            continue
+        kept.append(item)
+    return kept, suppressed
 
 
 class ImprovementPipeline:
@@ -114,6 +181,51 @@ class ImprovementPipeline:
             }
 
         # ====================
+        # Step 1.55: 既適用テーマの抑止
+        # ====================
+        print("【Step 1.55】過去に適用済みの改善テーマを除外中...")
+
+        try:
+            improvements, suppressed_applied_duplicates = suppress_previously_applied_improvements(
+                improvements,
+                self.workspace_root,
+            )
+            if suppressed_applied_duplicates:
+                print(f"✅ 既適用テーマを {len(suppressed_applied_duplicates)}件 除外しました")
+                for item in suppressed_applied_duplicates[:5]:
+                    print(
+                        f"  - [{item.get('id')}] {item.get('title')} "
+                        f"→ applied済み {item.get('matched_applied_id')}"
+                    )
+                if len(suppressed_applied_duplicates) > 5:
+                    print(f"  ... 他 {len(suppressed_applied_duplicates) - 5}件")
+            else:
+                print("✅ 既適用テーマの再掲はありませんでした")
+            print()
+        except Exception as e:
+            print(f"❌ Step 1.55 失敗: {e}")
+            return {
+                "status": "FAILED",
+                "step": 1.55,
+                "error": str(e),
+                "improvements": improvements,
+                "grouped_improvements": grouped_improvements,
+                "suppressed_applied_duplicates": suppressed_applied_duplicates,
+            }
+
+        if not improvements:
+            print("⚠️ 新規の改善点はありませんでした（既適用テーマのみ）。")
+            return {
+                "status": "NO_NEW_IMPROVEMENTS",
+                "original_improvements": original_improvements,
+                "improvements": [],
+                "validations": [],
+                "applied": [],
+                "suppressed_applied_duplicates": suppressed_applied_duplicates,
+                "grouped_improvements": grouped_improvements,
+            }
+
+        # ====================
         # Step 1.6: 実装可能性ランク付け
         # ====================
         print("【Step 1.6】実装可能性と改善順を判定中...")
@@ -191,6 +303,7 @@ class ImprovementPipeline:
                 "improvements": improvements,
                 "validations": validation_results,
                 "grouped_improvements": grouped_improvements,
+                "suppressed_applied_duplicates": suppressed_applied_duplicates,
                 "recommended_order": recommended_order,
             }
         
@@ -233,6 +346,7 @@ class ImprovementPipeline:
                     "auto_fix_candidates": auto_fix_candidates,
                     "policy_needs_review": policy_needs_review,
                     "grouped_improvements": grouped_improvements,
+                    "suppressed_applied_duplicates": suppressed_applied_duplicates,
                     "recommended_order": recommended_order,
                     "obsidian_compliance": obsidian_compliance,
                     "applied_count": 0,
@@ -257,6 +371,7 @@ class ImprovementPipeline:
                 result["improvements"] = improvements
                 result["validations"] = validation_results
                 result["grouped_improvements"] = grouped_improvements
+                result["suppressed_applied_duplicates"] = suppressed_applied_duplicates
                 result["recommended_order"] = recommended_order
                 result["obsidian_compliance"] = obsidian_compliance
                 result["status"] = "COMPLETED" if result["applied_count"] > 0 else "NO_APPLIED"
@@ -275,6 +390,7 @@ class ImprovementPipeline:
                 "improvements": improvements,
                 "validations": validation_results,
                 "grouped_improvements": grouped_improvements,
+                "suppressed_applied_duplicates": suppressed_applied_duplicates,
                 "recommended_order": recommended_order,
                 "obsidian_compliance": obsidian_compliance,
             }

@@ -112,10 +112,10 @@ export default function CloudRunReturnReviewPage() {
             review_status: nextStatus,
             note:
               nextStatus === "approved"
-                ? "本体DB昇格候補として承認"
+                ? "demo.db昇格候補として承認"
                 : nextStatus === "held"
                   ? "内容確認のため保留"
-                  : "本体DBへ昇格しない",
+                  : "demo.dbへ昇格しない",
           },
         );
         const updated = response.data.item;
@@ -148,7 +148,7 @@ export default function CloudRunReturnReviewPage() {
                   Cloud Run 帰還データ検疫
                 </h1>
                 <p className="mt-1 text-sm leading-6 text-slate-600">
-                  デモ環境で積んだ審査入力・OCR・紫苑レビューを隔離DBで確認し、本体DBへ戻す候補だけを承認します。
+                  デモ環境で積んだ審査入力・OCR・紫苑レビューを隔離DBで確認し、demo.dbへ戻す候補だけを承認します。
                 </p>
               </div>
             </div>
@@ -189,7 +189,7 @@ export default function CloudRunReturnReviewPage() {
               <p className="mt-1 text-sm leading-6 text-teal-800">
                 この画面の承認は隔離DB内の印付けです。ここでは
                 <span className="font-black"> data/lease_data.db へ直接書き込みません</span>。
-                承認済みだけを後で人間確認付きの昇格対象にします。
+                承認済みだけを後で data/demo.db への昇格対象にします。
               </p>
               {dbPath && (
                 <p className="mt-2 break-all font-mono text-xs text-teal-700">

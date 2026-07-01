@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Promote approved Cloud Run return data from quarantine DB to the local main DB.
+"""Promote approved Cloud Run return data from quarantine DB to the local demo DB.
 
 Default mode is dry-run. Use --apply only after reviewing /cloudrun-return-review.
 This script intentionally does not infer full case records from demo data.
@@ -18,7 +18,8 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_RETURN_DB = PROJECT_ROOT / "data" / "cloudrun_experience_return.db"
-DEFAULT_MAIN_DB = PROJECT_ROOT / "data" / "lease_data.db"
+MAIN_LEASE_DB = PROJECT_ROOT / "data" / "lease_data.db"
+DEFAULT_TARGET_DB = PROJECT_ROOT / "data" / "demo.db"
 DEFAULT_BACKUP_DIR = PROJECT_ROOT / "data" / "backups"
 SUPPORTED_KINDS = ("shion_review", "score_input", "ocr_result")
 
@@ -59,7 +60,7 @@ def _ensure_quarantine_review_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def _ensure_main_schema(conn: sqlite3.Connection) -> None:
+def _ensure_target_schema(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS shion_screening_reviews (
@@ -112,11 +113,11 @@ def _ensure_main_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def _backup_main_db(main_db: Path, backup_dir: Path) -> Path:
+def _backup_target_db(target_db: Path, backup_dir: Path) -> Path:
     backup_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = backup_dir / f"{main_db.stem}_before_cloudrun_return_{stamp}{main_db.suffix}"
-    shutil.copy2(main_db, backup_path)
+    backup_path = backup_dir / f"{target_db.stem}_before_cloudrun_return_{stamp}{target_db.suffix}"
+    shutil.copy2(target_db, backup_path)
     return backup_path
 
 
@@ -128,8 +129,8 @@ def _json_payload(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
-def _promotion_exists(main: sqlite3.Connection, kind: str, source_id: int) -> bool:
-    row = main.execute(
+def _promotion_exists(target: sqlite3.Connection, kind: str, source_id: int) -> bool:
+    row = target.execute(
         """
         SELECT id FROM cloudrun_return_promotions
          WHERE source_kind = ? AND source_local_id = ?
@@ -154,7 +155,7 @@ def _approved_rows(conn: sqlite3.Connection, table: str) -> list[sqlite3.Row]:
 
 
 def _insert_promotion_log(
-    main: sqlite3.Connection,
+    target: sqlite3.Connection,
     *,
     kind: str,
     source_id: int,
@@ -164,7 +165,7 @@ def _insert_promotion_log(
     payload: dict[str, Any],
     note: str,
 ) -> int:
-    cur = main.execute(
+    cur = target.execute(
         """
         INSERT OR IGNORE INTO cloudrun_return_promotions
             (source_kind, source_local_id, source_event_id, target_table, target_id, promoted_at, payload_json, note)
@@ -183,7 +184,7 @@ def _insert_promotion_log(
     )
     if cur.lastrowid:
         return int(cur.lastrowid)
-    row = main.execute(
+    row = target.execute(
         "SELECT id FROM cloudrun_return_promotions WHERE source_kind = ? AND source_local_id = ?",
         (kind, source_id),
     ).fetchone()
@@ -210,13 +211,13 @@ def _mark_promoted(
 
 def _promote_shion_review(
     quarantine: sqlite3.Connection,
-    main: sqlite3.Connection,
+    target: sqlite3.Connection,
     row: sqlite3.Row,
     *,
     apply: bool,
 ) -> dict[str, Any]:
     source_id = int(row["id"])
-    if _promotion_exists(main, "shion_review", source_id):
+    if _promotion_exists(target, "shion_review", source_id):
         return {"kind": "shion_review", "id": source_id, "action": "skipped_existing"}
     payload = _row_payload(row)
     if not apply:
@@ -241,7 +242,7 @@ def _promote_shion_review(
         row["result_snapshot"] or "{}",
         row["user_feedback"] or "",
     )
-    cur = main.execute(
+    cur = target.execute(
         """
         INSERT INTO shion_screening_reviews (
             case_id, company_name, industry_major, industry_sub, sales_dept, score, hantei,
@@ -254,7 +255,7 @@ def _promote_shion_review(
     )
     target_id = str(cur.lastrowid)
     promotion_id = _insert_promotion_log(
-        main,
+        target,
         kind="shion_review",
         source_id=source_id,
         source_event_id=str(row["cloud_event_id"] or row["cloud_review_id"] or ""),
@@ -274,7 +275,7 @@ def _promote_shion_review(
 
 def _promote_as_log_only(
     quarantine: sqlite3.Connection,
-    main: sqlite3.Connection,
+    target: sqlite3.Connection,
     row: sqlite3.Row,
     *,
     kind: str,
@@ -282,13 +283,13 @@ def _promote_as_log_only(
     apply: bool,
 ) -> dict[str, Any]:
     source_id = int(row["id"])
-    if _promotion_exists(main, kind, source_id):
+    if _promotion_exists(target, kind, source_id):
         return {"kind": kind, "id": source_id, "action": "skipped_existing"}
     if not apply:
         return {"kind": kind, "id": source_id, "action": "would_log_only"}
     payload = _row_payload(row)
     promotion_id = _insert_promotion_log(
-        main,
+        target,
         kind=kind,
         source_id=source_id,
         source_event_id=str(row["event_id"] or ""),
@@ -304,38 +305,44 @@ def _promote_as_log_only(
 def promote_approved_return_data(
     *,
     return_db: Path = DEFAULT_RETURN_DB,
-    main_db: Path = DEFAULT_MAIN_DB,
+    target_db: Path = DEFAULT_TARGET_DB,
     backup_dir: Path = DEFAULT_BACKUP_DIR,
     apply: bool = False,
     backup: bool = True,
     kinds: tuple[str, ...] = SUPPORTED_KINDS,
+    allow_main_db: bool = False,
 ) -> dict[str, Any]:
     if not return_db.exists():
         raise FileNotFoundError(f"return db not found: {return_db}")
-    if apply and not main_db.exists():
-        raise FileNotFoundError(f"main db not found: {main_db}")
+    if target_db.resolve() == MAIN_LEASE_DB.resolve() and not allow_main_db:
+        raise RuntimeError(
+            "Refusing to promote Cloud Run demo return data into data/lease_data.db. "
+            "Use the default data/demo.db target, or pass allow_main_db=True / --allow-main-db explicitly."
+        )
+    if apply and not target_db.exists():
+        raise FileNotFoundError(f"target db not found: {target_db}")
     unknown = sorted(set(kinds) - set(SUPPORTED_KINDS))
     if unknown:
         raise ValueError(f"unsupported kind: {', '.join(unknown)}")
 
     backup_path = ""
     if apply and backup:
-        backup_path = str(_backup_main_db(main_db, backup_dir))
+        backup_path = str(_backup_target_db(target_db, backup_dir))
 
     results: list[dict[str, Any]] = []
-    with _connect(return_db) as quarantine, _connect(main_db) as main:
+    with _connect(return_db) as quarantine, _connect(target_db) as target:
         _ensure_quarantine_review_schema(quarantine)
-        _ensure_main_schema(main)
+        _ensure_target_schema(target)
 
         if "shion_review" in kinds:
             for row in _approved_rows(quarantine, "shion_screening_reviews"):
-                results.append(_promote_shion_review(quarantine, main, row, apply=apply))
+                results.append(_promote_shion_review(quarantine, target, row, apply=apply))
         if "score_input" in kinds:
             for row in _approved_rows(quarantine, "cloudrun_score_inputs"):
                 results.append(
                     _promote_as_log_only(
                         quarantine,
-                        main,
+                        target,
                         row,
                         kind="score_input",
                         table="cloudrun_score_inputs",
@@ -347,7 +354,7 @@ def promote_approved_return_data(
                 results.append(
                     _promote_as_log_only(
                         quarantine,
-                        main,
+                        target,
                         row,
                         kind="ocr_result",
                         table="cloudrun_ocr_results",
@@ -356,10 +363,10 @@ def promote_approved_return_data(
                 )
 
         if apply:
-            main.commit()
+            target.commit()
             quarantine.commit()
         else:
-            main.rollback()
+            target.rollback()
             quarantine.rollback()
 
     summary: dict[str, int] = {}
@@ -369,7 +376,7 @@ def promote_approved_return_data(
     return {
         "apply": apply,
         "return_db": str(return_db),
-        "main_db": str(main_db),
+        "target_db": str(target_db),
         "backup_path": backup_path,
         "summary": summary,
         "items": results,
@@ -378,14 +385,16 @@ def promote_approved_return_data(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Promote approved Cloud Run return data from quarantine DB to local main DB."
+        description="Promote approved Cloud Run return data from quarantine DB to the local demo DB."
     )
     parser.add_argument("--return-db", type=Path, default=DEFAULT_RETURN_DB)
-    parser.add_argument("--main-db", type=Path, default=DEFAULT_MAIN_DB)
+    parser.add_argument("--target-db", type=Path, default=DEFAULT_TARGET_DB)
+    parser.add_argument("--main-db", dest="target_db", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--backup-dir", type=Path, default=DEFAULT_BACKUP_DIR)
     parser.add_argument("--kind", choices=SUPPORTED_KINDS + ("all",), default="all")
-    parser.add_argument("--apply", action="store_true", help="Actually write to the main DB. Default is dry-run.")
-    parser.add_argument("--no-backup", action="store_true", help="Skip main DB backup when --apply is used.")
+    parser.add_argument("--apply", action="store_true", help="Actually write to the target demo DB. Default is dry-run.")
+    parser.add_argument("--allow-main-db", action="store_true", help="Allow data/lease_data.db as an explicit target.")
+    parser.add_argument("--no-backup", action="store_true", help="Skip target DB backup when --apply is used.")
     return parser.parse_args()
 
 
@@ -394,11 +403,12 @@ def main() -> int:
     kinds = SUPPORTED_KINDS if args.kind == "all" else (args.kind,)
     result = promote_approved_return_data(
         return_db=args.return_db,
-        main_db=args.main_db,
+        target_db=args.target_db,
         backup_dir=args.backup_dir,
         apply=args.apply,
         backup=not args.no_backup,
         kinds=kinds,
+        allow_main_db=args.allow_main_db,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
     if not args.apply:

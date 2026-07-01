@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sqlite3
 
+import pytest
+
 from scripts.promote_cloudrun_return_data import promote_approved_return_data
 
 
@@ -70,7 +72,7 @@ def _seed_return_db(path):
                 "101",
                 "evt-review-1",
                 "approved",
-                "本体DB昇格候補として承認",
+                "demo.db昇格候補として承認",
             ),
         )
         conn.execute(
@@ -121,12 +123,12 @@ def _seed_return_db(path):
 
 def test_promote_cloudrun_return_data_dry_run_does_not_write(tmp_path) -> None:
     return_db = tmp_path / "return.db"
-    main_db = tmp_path / "main.db"
+    target_db = tmp_path / "demo.db"
     _seed_return_db(return_db)
 
     result = promote_approved_return_data(
         return_db=return_db,
-        main_db=main_db,
+        target_db=target_db,
         backup_dir=tmp_path / "backups",
         apply=False,
         backup=False,
@@ -136,20 +138,20 @@ def test_promote_cloudrun_return_data_dry_run_does_not_write(tmp_path) -> None:
         "shion_review:would_insert": 1,
         "score_input:would_log_only": 1,
     }
-    with sqlite3.connect(main_db) as conn:
+    with sqlite3.connect(target_db) as conn:
         assert conn.execute("SELECT COUNT(*) FROM shion_screening_reviews").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM cloudrun_return_promotions").fetchone()[0] == 0
 
 
 def test_promote_cloudrun_return_data_apply_writes_review_and_log(tmp_path) -> None:
     return_db = tmp_path / "return.db"
-    main_db = tmp_path / "main.db"
+    target_db = tmp_path / "demo.db"
     _seed_return_db(return_db)
-    sqlite3.connect(main_db).close()
+    sqlite3.connect(target_db).close()
 
     result = promote_approved_return_data(
         return_db=return_db,
-        main_db=main_db,
+        target_db=target_db,
         backup_dir=tmp_path / "backups",
         apply=True,
         backup=True,
@@ -160,7 +162,7 @@ def test_promote_cloudrun_return_data_apply_writes_review_and_log(tmp_path) -> N
         "shion_review:inserted": 1,
         "score_input:logged_only": 1,
     }
-    with sqlite3.connect(main_db) as conn:
+    with sqlite3.connect(target_db) as conn:
         conn.row_factory = sqlite3.Row
         review = conn.execute("SELECT * FROM shion_screening_reviews").fetchone()
         assert review["hantei"] == "条件付き承認"
@@ -180,20 +182,20 @@ def test_promote_cloudrun_return_data_apply_writes_review_and_log(tmp_path) -> N
 
 def test_promote_cloudrun_return_data_apply_is_idempotent(tmp_path) -> None:
     return_db = tmp_path / "return.db"
-    main_db = tmp_path / "main.db"
+    target_db = tmp_path / "demo.db"
     _seed_return_db(return_db)
-    sqlite3.connect(main_db).close()
+    sqlite3.connect(target_db).close()
 
     first = promote_approved_return_data(
         return_db=return_db,
-        main_db=main_db,
+        target_db=target_db,
         backup_dir=tmp_path / "backups",
         apply=True,
         backup=False,
     )
     second = promote_approved_return_data(
         return_db=return_db,
-        main_db=main_db,
+        target_db=target_db,
         backup_dir=tmp_path / "backups",
         apply=True,
         backup=False,
@@ -204,6 +206,23 @@ def test_promote_cloudrun_return_data_apply_is_idempotent(tmp_path) -> None:
         "score_input:logged_only": 1,
     }
     assert second["summary"] == {}
-    with sqlite3.connect(main_db) as conn:
+    with sqlite3.connect(target_db) as conn:
         assert conn.execute("SELECT COUNT(*) FROM shion_screening_reviews").fetchone()[0] == 1
         assert conn.execute("SELECT COUNT(*) FROM cloudrun_return_promotions").fetchone()[0] == 2
+
+
+def test_promote_cloudrun_return_data_refuses_main_lease_db_by_default(tmp_path, monkeypatch) -> None:
+    return_db = tmp_path / "return.db"
+    lease_data_db = tmp_path / "lease_data.db"
+    _seed_return_db(return_db)
+    sqlite3.connect(lease_data_db).close()
+    monkeypatch.setattr("scripts.promote_cloudrun_return_data.MAIN_LEASE_DB", lease_data_db)
+
+    with pytest.raises(RuntimeError, match="Refusing to promote"):
+        promote_approved_return_data(
+            return_db=return_db,
+            target_db=lease_data_db,
+            backup_dir=tmp_path / "backups",
+            apply=True,
+            backup=False,
+        )
