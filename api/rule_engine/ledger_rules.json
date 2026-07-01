@@ -493,5 +493,37 @@
     "action": "review_content",
     "penalty_strength": "weak",
     "generated_at": "2026-06-28T19:00:29.003062+00:00"
+  },
+  {
+    "rev_id": "REV-025w",
+    "type": "manual",
+    "pending_review": true,
+    "category": "wizard_field_empty",
+    "description": "[ウィザード入力] フィールド 'industry_detail' の空欄率が100%（15/15件, 直近14日）",
+    "status": "pending_review",
+    "source": "analyze_wizard_inputs",
+    "detected_at": "2026-06-29T19:00:29.831724+00:00",
+    "field_name": "industry_detail",
+    "empty_count": 15,
+    "sample_count": 15,
+    "empty_rate": 1.0,
+    "affected_files": [
+      "frontend/src/app/"
+    ],
+    "risk": "low",
+    "auto_fix_allowed": false
+  },
+  {
+    "rev_id": "REV-026a",
+    "type": "manual",
+    "pending_review": true,
+    "category": "pipeline_fix",
+    "description": "[パイプライン自動検出] sync_cloudsql_to_obsidian が過去7日で失敗率100%（3/3件, 3日失敗）",
+    "status": "pending_review",
+    "source": "analyze_pipeline_health",
+    "detected_at": "2026-06-29T19:00:30Z",
+    "affected_files": [],
+    "risk": "medium",
+    "auto_fix_allowed": false
   }
 ]

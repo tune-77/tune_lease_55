@@ -1,8 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import React, { useState, useEffect, useRef } from "react";
 import { apiClient } from "@/lib/api";
-import { Send, Trash2, Loader2, MessageCircle, Bot, User, NotebookPen, Mic, Network, Database, ChevronDown, ChevronUp, Lightbulb, Volume2, VolumeX } from "lucide-react";
+import { Send, Trash2, Loader2, MessageCircle, Bot, User, NotebookPen, Mic, Network, Database, ChevronDown, ChevronUp, Lightbulb, Volume2, VolumeX, ArrowLeft } from "lucide-react";
 import { extractPrefectureFromText, normalizePrefecture } from "@/lib/prefecture";
 import { formatLocalDateKey } from "@/lib/date";
 
@@ -31,6 +32,7 @@ type ChatContext = {
 
 const SHION_AVATAR = "/lease-intelligence/moods/curiosity.webp";
 const SHION_THINKING_AVATAR = "/lease-intelligence/moods/focus.webp";
+const SCREENING_RETURN_STATE_KEY = "lease-screening-return-state";
 
 type LeaseNewsFocus = {
   available?: boolean;
@@ -179,6 +181,7 @@ export default function ChatPage() {
   const [leaseNewsFocus, setLeaseNewsFocus] = useState<LeaseNewsFocus | null>(null);
   const [leaseNewsBrief, setLeaseNewsBrief] = useState<LeaseNewsBrief | null>(null);
   const [chatContext, setChatContext] = useState<ChatContext>({});
+  const [hasScreeningReturn, setHasScreeningReturn] = useState(false);
   const [newsPrefecture, setNewsPrefecture] = useState("");
   const [showDailyNewsBrief, setShowDailyNewsBrief] = useState(false);
   const [newsPrefectureReady, setNewsPrefectureReady] = useState(false);
@@ -207,6 +210,7 @@ export default function ChatPage() {
   useEffect(() => {
     loadHistory().then(() => {
       const raw = window.localStorage.getItem("lease-gunshi-context");
+      setHasScreeningReturn(Boolean(raw || window.localStorage.getItem(SCREENING_RETURN_STATE_KEY)));
       if (raw) {
         window.localStorage.removeItem("lease-gunshi-context");
         try {
@@ -555,6 +559,15 @@ export default function ChatPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {hasScreeningReturn && (
+            <Link
+              href="/screening"
+              className="flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-black text-indigo-700 transition-colors hover:bg-indigo-100"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>審査分析へ戻る</span>
+            </Link>
+          )}
           {saveToast && (
             <span className="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1 whitespace-nowrap">
               {saveToast}

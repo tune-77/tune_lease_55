@@ -260,6 +260,28 @@ def ensure_schema() -> None:
             content TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""",
+        # shion_screening_reviews ─────────────────────────────────────────────────
+        f"""CREATE TABLE IF NOT EXISTS shion_screening_reviews (
+            id {auto_pk},
+            case_id TEXT,
+            company_name TEXT,
+            industry_major TEXT,
+            industry_sub TEXT,
+            sales_dept TEXT,
+            score {real_t},
+            hantei TEXT,
+            q_risk {real_t},
+            umap_anomaly_score {real_t},
+            memory_refs INTEGER DEFAULT 0,
+            knowledge_refs INTEGER DEFAULT 0,
+            identity_used BOOLEAN DEFAULT {bool_false},
+            review_text TEXT NOT NULL,
+            prompt_text TEXT,
+            form_snapshot TEXT,
+            result_snapshot TEXT,
+            user_feedback TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
         # sync_log ───────────────────────────────────────────────────────────────
         f"""CREATE TABLE IF NOT EXISTS sync_log (
             id {auto_pk},
@@ -274,6 +296,9 @@ def ensure_schema() -> None:
         "CREATE INDEX IF NOT EXISTS idx_emofb_resolved ON emotion_feedback(resolved)",
         "CREATE INDEX IF NOT EXISTS idx_emotion_history_date ON emotion_history(recorded_at)",
         "CREATE INDEX IF NOT EXISTS idx_chat_user ON chat_messages(user_id, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_shion_screening_reviews_case_id ON shion_screening_reviews(case_id)",
+        "CREATE INDEX IF NOT EXISTS idx_shion_screening_reviews_created ON shion_screening_reviews(created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_shion_screening_reviews_industry ON shion_screening_reviews(industry_sub)",
         "CREATE INDEX IF NOT EXISTS idx_screening_records_case_id ON screening_records(case_id)",
         "CREATE INDEX IF NOT EXISTS idx_screening_records_screened_at ON screening_records(screened_at)",
         "CREATE INDEX IF NOT EXISTS idx_screening_records_outcome ON screening_records(outcome)",

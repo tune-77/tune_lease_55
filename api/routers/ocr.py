@@ -5,9 +5,10 @@ import re
 from typing import Optional
 
 import requests
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
+from api.cloudrun_writeback import record_cloudrun_input_event
 from api.llm_json_guard import extract_candidate_text, parse_or_recover_json, with_retry_tokens
 
 router = APIRouter()
@@ -315,7 +316,11 @@ def _normalize_ocr_result(result: dict, doc_type: Optional[str]) -> dict:
 
 
 @router.post("/ocr")
-async def ocr_financial(file: UploadFile = File(...), doc_type: Optional[str] = None) -> JSONResponse:
+async def ocr_financial(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    doc_type: Optional[str] = None,
+) -> JSONResponse:
     if file.content_type not in _OCR_SUPPORTED_TYPES:
         raise HTTPException(
             status_code=400,
@@ -386,7 +391,19 @@ async def ocr_financial(file: UploadFile = File(...), doc_type: Optional[str] = 
                 break
         if finish_reason == "MAX_TOKENS":
             result["_finish_reason"] = finish_reason
-        return JSONResponse(content=_normalize_ocr_result(result, doc_type))
+        normalized = _normalize_ocr_result(result, doc_type)
+        background_tasks.add_task(
+            record_cloudrun_input_event,
+            event_type="ocr_extracted",
+            surface="ocr",
+            payload={
+                "schema_version": 1,
+                "doc_type": doc_type or "financial",
+                "content_type": file.content_type or "",
+                "result": normalized,
+            },
+        )
+        return JSONResponse(content=normalized)
     except requests.HTTPError as exc:
         return JSONResponse(status_code=502, content={"error": f"Gemini API エラー: {exc}"})
     except (KeyError, json.JSONDecodeError, ValueError) as exc:

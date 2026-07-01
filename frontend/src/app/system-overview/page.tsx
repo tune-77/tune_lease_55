@@ -402,6 +402,58 @@ export default function SystemOverviewPage() {
           </div>
         </section>
 
+        {/* ── Cloud Run とローカル紫苑のデータ連携 ── */}
+        <section>
+          <div
+            className="rounded-3xl border p-6"
+            style={{
+              background: "linear-gradient(135deg, rgba(15,23,42,0.92) 0%, rgba(20,83,45,0.18) 100%)",
+              borderColor: "rgba(45,212,191,0.28)",
+              boxShadow: "0 0 32px rgba(45,212,191,0.08)",
+            }}
+          >
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div className="max-w-2xl">
+                <p className="text-xs font-black tracking-[0.25em] uppercase text-teal-300">Cloud Run Experience Return</p>
+                <h2 className="mt-2 text-2xl font-black text-white">外で積んだ経験は、検疫されて本体紫苑へ帰還する</h2>
+                <p className="mt-3 text-sm font-semibold leading-relaxed text-slate-300">
+                  ハッカソン用Cloud RunはデモDBで動き、本体DBへ直接書きません。紫苑レビュー、人間評価、審査ループ入力はGCSへ追記され、ローカル同期時はいったん隔離DBへ戻ります。確認した経験だけを本体の長期記憶へ統合します。
+                </p>
+              </div>
+              <div className="rounded-2xl border border-emerald-400/20 bg-emerald-950/20 px-4 py-3 text-xs font-bold text-emerald-200">
+                本体DB保護: demo.db → GCS → cloudrun_experience_return.db
+              </div>
+            </div>
+            <div className="mt-4">
+              <Link
+                href="/cloudrun-return-review"
+                className="inline-flex items-center gap-2 rounded-xl border border-teal-400/30 bg-teal-400/10 px-4 py-2 text-sm font-black text-teal-200 transition-colors hover:bg-teal-400/20"
+              >
+                <Shield className="h-4 w-4" />
+                帰還データ検疫を開く
+              </Link>
+            </div>
+            <div className="mt-6 grid gap-3 md:grid-cols-4">
+              {[
+                { title: "Cloud Run", desc: "デモ会場で紫苑が審査レビューと評価を受け取る", icon: Activity, color: "#2dd4bf" },
+                { title: "GCS Event Log", desc: "cloudrun-inputs/YYYY-MM-DD/events.jsonl に追記", icon: Database, color: "#60a5fa" },
+                { title: "検疫DB", desc: "ローカル同期はまず cloudrun_experience_return.db へ隔離", icon: Shield, color: "#fbbf24" },
+                { title: "本体統合", desc: "人間が確認した経験だけ lease_data.db へ昇格", icon: RefreshCw, color: "#c084fc" },
+              ].map(({ title, desc, icon: FlowIcon, color }) => (
+                <div key={title} className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ background: `${color}22`, color }}>
+                      <FlowIcon className="h-4 w-4" />
+                    </div>
+                    <h3 className="text-sm font-black text-white">{title}</h3>
+                  </div>
+                  <p className="text-xs font-semibold leading-relaxed text-slate-400">{desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* ── 統計バー ── */}
         <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {stats.map((s) => (

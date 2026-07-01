@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiClient } from "@/lib/api";
-import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, FileOutput, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus, Swords } from "lucide-react";
+import { Activity, ArrowRight, Bot, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, FileOutput, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus, Swords } from "lucide-react";
 import ScoreDAG from "../../components/ScoreDAG";
 import { ScoringFormData, defaultFormData } from "../../types";
 import FormGeneral from "../../components/form/FormGeneral";
@@ -54,6 +54,103 @@ const DATA_SOURCE_FIELD_LABELS: Record<string, string> = {
   asset_evidence_level: "確認資料",
   passion_text: "営業メモ",
   intuition: "直感スコア",
+};
+
+type ShionScreeningReview = {
+  reply: string;
+  memoryRefs: number;
+  knowledgeRefs: number;
+  identityUsed: boolean;
+  savedId?: number;
+  userFeedback?: ShionReviewFeedback;
+};
+
+type ShionReviewFeedback = "useful" | "needs_fix" | "wrong";
+
+type PastShionScreeningReview = {
+  company_name?: string;
+  industry_sub?: string;
+  score?: number;
+  hantei?: string;
+  review_text?: string;
+  created_at?: string;
+  user_feedback?: ShionReviewFeedback | "";
+};
+
+const SHION_REVIEW_IMAGE = "/lease-intelligence/moods/focus.webp";
+const SCREENING_RETURN_STATE_KEY = "lease-screening-return-state";
+
+const normalizeReviewText = (text: string) =>
+  (text || "")
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .trim();
+
+const buildPastReviewBlock = (reviews: PastShionScreeningReview[]) => {
+  if (!reviews.length) return "";
+  const lines = reviews.slice(0, 3).map((review, index) => {
+    const preview = normalizeReviewText(review.review_text || "").slice(0, 260);
+    const feedbackLabel = review.user_feedback === "useful"
+      ? "人間評価: 使えた"
+      : review.user_feedback === "needs_fix"
+        ? "人間評価: 修正して使う"
+        : review.user_feedback === "wrong"
+          ? "人間評価: 違った"
+          : "人間評価: 未評価";
+    return [
+      `過去${index + 1}: ${review.company_name || "名称不明"} / ${review.industry_sub || "業種不明"} / ${review.score != null ? Number(review.score).toFixed(1) + "点" : "点数不明"} / ${review.hantei || "判定不明"}`,
+      feedbackLabel,
+      `紫苑の過去レビュー: ${preview || "本文なし"}`,
+    ].join("\n");
+  });
+  return [
+    "【過去の紫苑審査レビュー記憶】",
+    "次の過去レビューは、今回の判断に似た経験として参照してください。人間評価が「使えた」は重めに、「違った」は反面教師として扱い、丸写しではなく今回との差分を見てください。",
+    ...lines,
+  ].join("\n");
+};
+
+const buildShionReviewPrompt = (result: Record<string, any>, data: ScoringFormData, pastReviews: PastShionScreeningReview[] = []) => {
+  const score = Number(result.score_base ?? result.score ?? 0);
+  const lines = [
+    "【審査分析画面からの紫苑レビュー依頼】",
+    "この案件を、審査担当者の横にいる紫苑としてレビューしてください。",
+    "",
+    "出力は短く、次の4項目でお願いします。",
+    "1. 紫苑の第一印象",
+    "2. 数字だけでは見落としそうな違和感",
+    "3. 条件付き承認にするなら必要な確認",
+    "4. 稟議で残すべき一文",
+    "",
+    "前提:",
+    `・企業名: ${data.company_name || "未入力"}`,
+    `・業種: ${result.industry_sub || data.industry_sub || result.industry_major || data.industry_major || "未入力"}`,
+    `・営業部: ${data.sales_dept || "未入力"}`,
+    `・判定: ${result.hantei || "未判定"}`,
+    `・総合スコア: ${Number.isFinite(score) ? score.toFixed(1) : "未算出"}`,
+    `・借手スコア: ${result.score_borrower != null ? Number(result.score_borrower).toFixed(1) : "未算出"}`,
+    `・Q_risk: ${result.quantum_risk != null ? Number(result.quantum_risk).toFixed(1) : "未算出"}`,
+    `・UMAP異常度: ${result.umap_anomaly_score != null ? Number(result.umap_anomaly_score).toFixed(1) : "未算出"}`,
+    `・物件: ${data.asset_name || "未入力"}`,
+    `・取得価額: ${data.acquisition_cost || 0}百万円`,
+    `・リース期間: ${data.lease_term || 0}`,
+    `・導入目的: ${data.asset_purpose || "未入力"}`,
+    `・営業メモ: ${data.passion_text || "未入力"}`,
+    `・直感スコア: ${data.intuition || "未入力"}`,
+  ];
+  const flags = result.aurion_core?.discipline_flags;
+  if (Array.isArray(flags) && flags.length) {
+    lines.push(`・AURION警戒: ${flags.slice(0, 5).join(" / ")}`);
+  }
+  if (Array.isArray(result.default_warnings) && result.default_warnings.length) {
+    lines.push(`・デフォルト率警告: ${result.default_warnings.slice(0, 3).join(" / ")}`);
+  }
+  const pastReviewBlock = buildPastReviewBlock(pastReviews);
+  if (pastReviewBlock) {
+    lines.push("", pastReviewBlock);
+  }
+  lines.push("", "注意: 点数の再説明ではなく、審査判断として何を残すかに寄せてください。");
+  return lines.join("\n");
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -154,6 +251,115 @@ function JudgmentFlowStrip() {
             </div>
           );
         })}
+      </div>
+    </section>
+  );
+}
+
+function ShionScreeningReviewCard({
+  review,
+  loading,
+  error,
+  onReview,
+  onFeedback,
+  feedbackSaving,
+}: {
+  review: ShionScreeningReview | null;
+  loading: boolean;
+  error: string;
+  onReview: () => void;
+  onFeedback: (feedback: ShionReviewFeedback) => void;
+  feedbackSaving: boolean;
+}) {
+  const feedbackOptions: { key: ShionReviewFeedback; label: string }[] = [
+    { key: "useful", label: "使えた" },
+    { key: "needs_fix", label: "修正して使う" },
+    { key: "wrong", label: "違った" },
+  ];
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-violet-200 bg-white shadow-sm">
+      <div className="grid gap-0 lg:grid-cols-[150px_minmax(0,1fr)]">
+        <div className="relative min-h-36 bg-violet-950">
+          <img src={SHION_REVIEW_IMAGE} alt="審査レビュー中の紫苑" className="h-full w-full object-cover object-top opacity-95" />
+          <div className="absolute inset-x-0 bottom-0 bg-violet-950/80 px-3 py-2 text-center text-[10px] font-black tracking-[0.25em] text-violet-100">
+            SHION REVIEW
+          </div>
+        </div>
+        <div className="p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h3 className="flex items-center gap-2 text-sm font-black text-violet-950">
+                <Bot className="h-4 w-4 text-violet-600" />
+                紫苑レビュー
+              </h3>
+              <p className="mt-1 text-xs font-bold leading-relaxed text-violet-700">
+                点数の説明ではなく、違和感・承認条件・稟議に残す一文へ変換します。
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onReview}
+              disabled={loading}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-black text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-violet-300"
+            >
+              {loading ? <Activity className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
+              {review ? "再レビュー" : "紫苑にレビューさせる"}
+            </button>
+          </div>
+
+          <div className="mt-4 rounded-xl border border-violet-100 bg-violet-50/70 p-4">
+            {loading ? (
+              <div className="flex min-h-28 items-center justify-center gap-2 text-sm font-black text-violet-700">
+                <Activity className="h-5 w-5 animate-spin" />
+                紫苑が審査結果を読み直しています
+              </div>
+            ) : error ? (
+              <p className="text-sm font-bold leading-7 text-rose-700">{error}</p>
+            ) : review ? (
+              <>
+                <div className="space-y-2 text-sm font-medium leading-7 text-slate-800">
+                  {normalizeReviewText(review.reply).split(/\n{2,}/).map((block, index) => (
+                    <p key={index} className="whitespace-pre-wrap">
+                      {block}
+                    </p>
+                  ))}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black text-violet-700">
+                  <span className="rounded-full bg-white px-2.5 py-1">記憶 {review.memoryRefs}件</span>
+                  <span className="rounded-full bg-white px-2.5 py-1">知識 {review.knowledgeRefs}件</span>
+                  <span className="rounded-full bg-white px-2.5 py-1">同一性 {review.identityUsed ? "ON" : "OFF"}</span>
+                  {review.savedId && <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700">経験保存済 #{review.savedId}</span>}
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-violet-100 pt-3">
+                  <span className="text-[11px] font-black text-violet-500">人間評価</span>
+                  {feedbackOptions.map((option) => (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => onFeedback(option.key)}
+                      disabled={!review.savedId || feedbackSaving}
+                      className={`rounded-lg border px-3 py-1.5 text-[11px] font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                        review.userFeedback === option.key
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                          : "border-violet-100 bg-white text-violet-700 hover:bg-violet-100"
+                      }`}
+                    >
+                      {feedbackSaving && review.userFeedback === option.key ? "保存中" : option.label}
+                    </button>
+                  ))}
+                  {!review.savedId && (
+                    <span className="text-[11px] font-bold text-slate-400">経験保存後に評価できます</span>
+                  )}
+                </div>
+              </>
+            ) : (
+              <p className="min-h-20 text-sm font-bold leading-7 text-violet-700">
+                審査実行後に、紫苑がこの案件をレビューします。境界案件では、点数よりも「何を条件に残すか」を優先して見ます。
+              </p>
+            )}
+          </div>
+        </div>
       </div>
     </section>
   );
@@ -666,6 +872,11 @@ export default function Dashboard() {
   const [result, setResult] = useState<any>(null);
   const [formData, setFormData] = useState<ScoringFormData>(defaultFormData);
   const [gunshiText, setGunshiText] = useState<string>("");
+  const [shionReview, setShionReview] = useState<ShionScreeningReview | null>(null);
+  const [shionReviewLoading, setShionReviewLoading] = useState(false);
+  const [shionReviewError, setShionReviewError] = useState("");
+  const [shionFeedbackSaving, setShionFeedbackSaving] = useState(false);
+  const shionReviewRequestSeq = useRef(0);
 
   // タブ管理
   const [activeTab, setActiveTab] = useState<"input" | "analysis">("input");
@@ -680,6 +891,27 @@ export default function Dashboard() {
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  useEffect(() => {
+    const raw = window.localStorage.getItem(SCREENING_RETURN_STATE_KEY);
+    if (!raw) return;
+    try {
+      const saved = JSON.parse(raw) as {
+        formData?: ScoringFormData;
+        result?: any;
+        gunshiText?: string;
+        shionReview?: ShionScreeningReview | null;
+        activeTab?: "input" | "analysis";
+      };
+      if (saved.formData) setFormData(saved.formData);
+      if (saved.result) setResult(saved.result);
+      if (typeof saved.gunshiText === "string") setGunshiText(saved.gunshiText);
+      if (saved.shionReview) setShionReview(saved.shionReview);
+      setActiveTab(saved.activeTab || (saved.result ? "analysis" : "input"));
+    } catch {
+      window.localStorage.removeItem(SCREENING_RETURN_STATE_KEY);
+    }
+  }, []);
+
   // フィールドの変更ハンドラー
   const handleFieldChange = (name: string, value: string | number | string[]) => {
     setFormData(prev => ({
@@ -688,12 +920,141 @@ export default function Dashboard() {
     }));
   };
 
+  const buildShionReviewUserId = (targetResult: any, targetFormData: ScoringFormData) => {
+    const rawId = String(targetResult?.case_id || targetFormData.company_no || targetFormData.company_name || "draft");
+    const safeId = rawId.replace(/[^\w\-ぁ-んァ-ヶ一-龠ー]/g, "_").slice(0, 64);
+    return `screening-shion-review:${safeId || "draft"}`;
+  };
+
+  const fetchPastShionReviews = async (targetResult: any, targetFormData: ScoringFormData) => {
+    try {
+      const industrySub = targetResult?.industry_sub || targetFormData.industry_sub || "";
+      const res = await apiClient.get("/api/shion-screening-reviews", {
+        params: {
+          industry_sub: industrySub,
+          limit: 3,
+        },
+      });
+      return Array.isArray(res.data?.reviews) ? res.data.reviews as PastShionScreeningReview[] : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const saveShionScreeningReview = async (
+    targetResult: any,
+    targetFormData: ScoringFormData,
+    promptText: string,
+    review: ShionScreeningReview,
+  ) => {
+    const res = await apiClient.post("/api/shion-screening-reviews", {
+      case_id: targetResult?.case_id || targetFormData.company_no || "",
+      company_name: targetFormData.company_name || "",
+      industry_major: targetResult?.industry_major || targetFormData.industry_major || "",
+      industry_sub: targetResult?.industry_sub || targetFormData.industry_sub || "",
+      sales_dept: targetFormData.sales_dept || "",
+      score: Number(targetResult?.score_base ?? targetResult?.score ?? 0),
+      hantei: targetResult?.hantei || "",
+      q_risk: targetResult?.quantum_risk ?? null,
+      umap_anomaly_score: targetResult?.umap_anomaly_score ?? null,
+      memory_refs: review.memoryRefs,
+      knowledge_refs: review.knowledgeRefs,
+      identity_used: review.identityUsed,
+      review_text: review.reply,
+      prompt_text: promptText,
+      form_snapshot: targetFormData,
+      result_snapshot: targetResult,
+    });
+    return Number(res.data?.review?.id || 0) || undefined;
+  };
+
+  const submitShionReviewFeedback = async (feedback: ShionReviewFeedback) => {
+    if (!shionReview?.savedId || shionFeedbackSaving) return;
+    const previous = shionReview.userFeedback;
+    setShionReview((current) => current ? { ...current, userFeedback: feedback } : current);
+    setShionFeedbackSaving(true);
+    try {
+      await apiClient.patch(`/api/shion-screening-reviews/${shionReview.savedId}/feedback`, {
+        user_feedback: feedback,
+      });
+    } catch (error) {
+      console.error("Shion review feedback save failed", error);
+      setShionReview((current) => current ? { ...current, userFeedback: previous } : current);
+      setShionReviewError("紫苑レビュー評価を保存できませんでした。");
+    } finally {
+      setShionFeedbackSaving(false);
+    }
+  };
+
+  const requestShionReview = async (targetResult = result, targetFormData = formData) => {
+    if (!targetResult) return;
+    const seq = ++shionReviewRequestSeq.current;
+    setShionReviewLoading(true);
+    setShionReviewError("");
+    try {
+      const pastReviews = await fetchPastShionReviews(targetResult, targetFormData);
+      if (seq !== shionReviewRequestSeq.current) return;
+      const promptText = buildShionReviewPrompt(targetResult, targetFormData, pastReviews);
+      const res = await apiClient.post("/api/chat", {
+        message: promptText,
+        user_id: buildShionReviewUserId(targetResult, targetFormData),
+        response_mode: "shion",
+        debug_memory: true,
+      });
+      if (seq !== shionReviewRequestSeq.current) return;
+      const memoryDebug = res.data?.memory_debug || {};
+      const memoryRecall = memoryDebug.memory_recall || {};
+      const identityMemory = memoryDebug.identity_memory || {};
+      const knowledgeRefs = Array.isArray(memoryDebug.knowledge_refs) ? memoryDebug.knowledge_refs.length : 0;
+      const memoryRefs = Array.isArray(memoryRecall.refs) ? memoryRecall.refs.length : 0;
+      const nextReview: ShionScreeningReview = {
+        reply: String(res.data?.reply || "紫苑レビューが空でした。"),
+        memoryRefs,
+        knowledgeRefs,
+        identityUsed: Boolean(identityMemory.used),
+      };
+      setShionReview(nextReview);
+      saveShionScreeningReview(targetResult, targetFormData, promptText, nextReview)
+        .then((savedId) => {
+          if (!savedId || seq !== shionReviewRequestSeq.current) return;
+          setShionReview((current) => current ? { ...current, savedId } : current);
+        })
+        .catch((error) => {
+          console.warn("Shion screening review save failed", error);
+        });
+    } catch (error) {
+      if (seq !== shionReviewRequestSeq.current) return;
+      console.error("Shion review error", error);
+      setShionReviewError("紫苑レビューを取得できませんでした。APIサーバーまたはAIチャットの状態を確認してください。");
+    } finally {
+      if (seq === shionReviewRequestSeq.current) {
+        setShionReviewLoading(false);
+      }
+    }
+  };
+
+  const resetScreening = () => {
+    shionReviewRequestSeq.current += 1;
+    setFormData(defaultFormData);
+    setResult(null);
+    setGunshiText("");
+    setShionReview(null);
+    setShionReviewLoading(false);
+    setShionReviewError("");
+    setShionFeedbackSaving(false);
+    setActiveTab("input");
+    window.localStorage.removeItem(SCREENING_RETURN_STATE_KEY);
+  };
+
   const handleSubmit = async () => {
     setLoading(true);
+    setShionReview(null);
+    setShionReviewError("");
     try {
       const res = await apiClient.post(`/api/score/full`, toThousandYenPayload(formData));
       setResult(res.data);
       setActiveTab("analysis");
+      void requestShionReview(res.data, formData);
 
       // めぶきちゃんの表情をスコアに応じて切り替え
       const score = res.data.score_base;
@@ -729,6 +1090,13 @@ export default function Dashboard() {
       quantum_risk: result.quantum_risk,
       case_id: result.case_id,
     };
+    window.localStorage.setItem(SCREENING_RETURN_STATE_KEY, JSON.stringify({
+      formData,
+      result,
+      gunshiText,
+      shionReview,
+      activeTab: "analysis",
+    }));
     window.localStorage.setItem("lease-gunshi-context", JSON.stringify(chatContext));
     router.push("/chat");
   };
@@ -763,7 +1131,7 @@ export default function Dashboard() {
           審査・分析ダッシュボード
         </h2>
         <button 
-          onClick={() => setFormData(defaultFormData)}
+          onClick={resetScreening}
           className="px-4 py-2 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors border border-slate-200 shadow-sm"
         >
           リセット
@@ -955,6 +1323,14 @@ export default function Dashboard() {
                     <RingiPolicyCard result={result} data={formData} />
                     <ScreeningLoopFeedbackPanel result={result} data={formData} />
                     <IndicatorCards data={result} />
+                    <ShionScreeningReviewCard
+                      review={shionReview}
+                      loading={shionReviewLoading}
+                      error={shionReviewError}
+                      onReview={() => requestShionReview()}
+                      onFeedback={submitShionReviewFeedback}
+                      feedbackSaving={shionFeedbackSaving}
+                    />
 
                     <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 shadow-sm">
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import sys
 from datetime import date
 from types import ModuleType
@@ -62,12 +63,18 @@ def test_sync_day_downloads_and_merges_jsonl(tmp_path) -> None:
 
 
 def test_materialize_events_writes_existing_pipeline_logs(tmp_path, monkeypatch) -> None:
+    archive_log = tmp_path / "archive.jsonl"
     wizard_log = tmp_path / "wizard.jsonl"
     rag_feedback_log = tmp_path / "rag_feedback.jsonl"
     rag_hit_log = tmp_path / "rag_hit.jsonl"
+    screening_loop_log = tmp_path / "screening_loop.jsonl"
+    local_db = tmp_path / "lease_data.db"
+    monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", archive_log)
     monkeypatch.setattr(syncer, "WIZARD_INPUT_LOG", wizard_log)
     monkeypatch.setattr(syncer, "RAG_FEEDBACK_LOG", rag_feedback_log)
     monkeypatch.setattr(syncer, "RAG_HIT_LOG", rag_hit_log)
+    monkeypatch.setattr(syncer, "SCREENING_LOOP_FEEDBACK_LOG", screening_loop_log)
+    monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", local_db)
 
     events = [
         {
@@ -104,8 +111,163 @@ def test_materialize_events_writes_existing_pipeline_logs(tmp_path, monkeypatch)
     wizard_rows = [json.loads(line) for line in wizard_log.read_text(encoding="utf-8").splitlines()]
     rag_rows = [json.loads(line) for line in rag_feedback_log.read_text(encoding="utf-8").splitlines()]
     hit_rows = [json.loads(line) for line in rag_hit_log.read_text(encoding="utf-8").splitlines()]
-    assert result == {"wizard_new": 1, "rag_feedback_new": 1, "rag_hit_new": 1}
+    assert result == {
+        "all_events_new": 2,
+        "wizard_new": 1,
+        "rag_feedback_new": 1,
+        "rag_hit_new": 1,
+        "screening_loop_feedback_new": 0,
+        "score_inputs_new": 1,
+        "ocr_results_new": 0,
+        "shion_reviews_new": 0,
+        "shion_review_feedback_updated": 0,
+    }
     assert wizard_rows[0]["surface"] == "cloudrun_score_calculate"
     assert "asset_name" in wizard_rows[0]["empty_fields"]
     assert rag_rows[0]["event_id"] == "rag-1"
     assert hit_rows[0]["hit_type"] == "feedback_confirmed"
+
+
+def test_materialize_events_restores_shion_review_and_feedback_to_local_db(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
+    monkeypatch.setattr(syncer, "WIZARD_INPUT_LOG", tmp_path / "wizard.jsonl")
+    monkeypatch.setattr(syncer, "RAG_FEEDBACK_LOG", tmp_path / "rag_feedback.jsonl")
+    monkeypatch.setattr(syncer, "RAG_HIT_LOG", tmp_path / "rag_hit.jsonl")
+    monkeypatch.setattr(syncer, "SCREENING_LOOP_FEEDBACK_LOG", tmp_path / "screening_loop.jsonl")
+    local_db = tmp_path / "lease_data.db"
+    monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", local_db)
+
+    events = [
+        {
+            "event_id": "review-evt-1",
+            "ts": "2026-07-01T00:00:00Z",
+            "event_type": "shion_screening_review",
+            "surface": "screening",
+            "payload": {
+                "id": 42,
+                "cloud_review_id": 42,
+                "case_id": "C-001",
+                "company_name": "[REDACTED]",
+                "industry_major": "D 建設業",
+                "industry_sub": "06 総合工事業",
+                "sales_dept": "東京",
+                "score": 68.5,
+                "hantei": "条件付き承認",
+                "q_risk": 41.2,
+                "umap_anomaly_score": 12.3,
+                "memory_refs": 2,
+                "knowledge_refs": 1,
+                "identity_used": True,
+                "review_text": "条件付きなら銀行支援と物件保全を確認。",
+                "form_snapshot": {"company_name": "[REDACTED]", "asset_name": "建機"},
+                "result_snapshot": {"score_base": 68.5},
+            },
+        },
+        {
+            "event_id": "feedback-evt-1",
+            "ts": "2026-07-01T00:01:00Z",
+            "event_type": "shion_screening_review_feedback",
+            "surface": "screening",
+            "payload": {
+                "id": 42,
+                "cloud_review_id": 42,
+                "user_feedback": "useful",
+            },
+        },
+    ]
+
+    result = syncer.materialize_events(events)
+
+    assert result["shion_reviews_new"] == 1
+    assert result["shion_review_feedback_updated"] == 1
+    with sqlite3.connect(local_db) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM shion_screening_reviews").fetchone()
+        assert row["cloud_review_id"] == "42"
+        assert row["cloud_event_id"] == "review-evt-1"
+        assert row["industry_sub"] == "06 総合工事業"
+        assert row["user_feedback"] == "useful"
+        assert "銀行支援" in row["review_text"]
+
+
+def test_materialize_events_appends_screening_loop_feedback(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
+    monkeypatch.setattr(syncer, "WIZARD_INPUT_LOG", tmp_path / "wizard.jsonl")
+    monkeypatch.setattr(syncer, "RAG_FEEDBACK_LOG", tmp_path / "rag_feedback.jsonl")
+    monkeypatch.setattr(syncer, "RAG_HIT_LOG", tmp_path / "rag_hit.jsonl")
+    screening_loop_log = tmp_path / "screening_loop.jsonl"
+    monkeypatch.setattr(syncer, "SCREENING_LOOP_FEEDBACK_LOG", screening_loop_log)
+    monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", tmp_path / "lease_data.db")
+
+    result = syncer.materialize_events([
+        {
+            "event_id": "loop-1",
+            "ts": "2026-07-01T00:02:00Z",
+            "event_type": "screening_loop_feedback",
+            "surface": "screening",
+            "payload": {
+                "target": "issue",
+                "rating": "合っている",
+                "score": 70,
+            },
+        }
+    ])
+
+    rows = [json.loads(line) for line in screening_loop_log.read_text(encoding="utf-8").splitlines()]
+    assert result["screening_loop_feedback_new"] == 1
+    assert rows[0]["event_id"] == "loop-1"
+    assert rows[0]["source"] == "cloudrun_input_writeback"
+
+
+def test_materialize_events_restores_score_full_and_ocr_to_quarantine_db(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
+    monkeypatch.setattr(syncer, "WIZARD_INPUT_LOG", tmp_path / "wizard.jsonl")
+    monkeypatch.setattr(syncer, "RAG_FEEDBACK_LOG", tmp_path / "rag_feedback.jsonl")
+    monkeypatch.setattr(syncer, "RAG_HIT_LOG", tmp_path / "rag_hit.jsonl")
+    monkeypatch.setattr(syncer, "SCREENING_LOOP_FEEDBACK_LOG", tmp_path / "screening_loop.jsonl")
+    local_db = tmp_path / "return.db"
+    monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", local_db)
+
+    result = syncer.materialize_events([
+        {
+            "event_id": "score-full-1",
+            "ts": "2026-07-01T00:03:00Z",
+            "event_type": "score_full_calculated",
+            "surface": "screening",
+            "payload": {
+                "case_id": "case-1",
+                "inputs": {"industry_sub": "06 総合工事業", "nenshu": 200, "op_profit": 15},
+                "result": {"score_base": 71.2, "hantei": "承認", "industry_sub": "06 総合工事業"},
+            },
+        },
+        {
+            "event_id": "ocr-1",
+            "ts": "2026-07-01T00:04:00Z",
+            "event_type": "ocr_extracted",
+            "surface": "ocr",
+            "payload": {
+                "doc_type": "financial",
+                "content_type": "application/pdf",
+                "result": {
+                    "nenshu": 200,
+                    "op_profit": 15,
+                    "detected_fields": ["nenshu", "op_profit"],
+                    "missing_fields": ["net_assets"],
+                    "confidence": 0.86,
+                },
+            },
+        },
+    ])
+
+    assert result["score_inputs_new"] == 1
+    assert result["ocr_results_new"] == 1
+    with sqlite3.connect(local_db) as conn:
+        conn.row_factory = sqlite3.Row
+        score_row = conn.execute("SELECT * FROM cloudrun_score_inputs").fetchone()
+        ocr_row = conn.execute("SELECT * FROM cloudrun_ocr_results").fetchone()
+        assert score_row["event_type"] == "score_full_calculated"
+        assert score_row["score"] == 71.2
+        assert json.loads(score_row["inputs_json"])["nenshu"] == 200
+        assert ocr_row["doc_type"] == "financial"
+        assert ocr_row["confidence"] == 0.86
+        assert "op_profit" in json.loads(ocr_row["detected_fields"])

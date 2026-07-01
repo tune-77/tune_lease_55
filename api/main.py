@@ -1471,7 +1471,7 @@ def calculate_score(req: ScoringRequest, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/score/full", response_model=ScoringResponse)
-def calculate_score_full(req: ScoringRequest):
+def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks):
     try:
         inputs = req.model_dump()
         result = run_full_scoring_api(inputs)
@@ -1512,6 +1512,27 @@ def calculate_score_full(req: ScoringRequest):
             print(f"[WARNING] DB save failed: {_save_err}")
         data_source_summary["case_id"] = case_id
         result["case_id"] = case_id
+        background_tasks.add_task(
+            record_cloudrun_input_event,
+            event_type="score_full_calculated",
+            surface="screening",
+            payload={
+                "schema_version": 1,
+                "case_id": case_id,
+                "inputs": inputs,
+                "result": {
+                    "score": result.get("score"),
+                    "score_base": result.get("score_base", result.get("score")),
+                    "hantei": result.get("hantei"),
+                    "industry_sub": result.get("industry_sub"),
+                    "industry_major": result.get("industry_major"),
+                    "asset_score": result.get("asset_score"),
+                    "score_borrower": result.get("score_borrower"),
+                    "quantum_risk": result.get("quantum_risk"),
+                    "umap_anomaly_score": result.get("umap_anomaly_score"),
+                },
+            },
+        )
         _record_scoring_memory_usage("score_full", inputs, result)
 
         # リース知性体の着火: サブエージェント間の不整合を検知したら内省を起動する。
@@ -6860,6 +6881,35 @@ class ScreeningLoopFeedbackRequest(BaseModel):
     user_id: str = "default"
 
 
+class ShionScreeningReviewSaveRequest(BaseModel):
+    case_id: str = ""
+    company_name: str = ""
+    industry_major: str = ""
+    industry_sub: str = ""
+    sales_dept: str = ""
+    score: Optional[float] = None
+    hantei: str = ""
+    q_risk: Optional[float] = None
+    umap_anomaly_score: Optional[float] = None
+    memory_refs: int = 0
+    knowledge_refs: int = 0
+    identity_used: bool = False
+    review_text: str
+    prompt_text: str = ""
+    form_snapshot: dict = Field(default_factory=dict)
+    result_snapshot: dict = Field(default_factory=dict)
+    user_feedback: str = ""
+
+
+class ShionScreeningReviewFeedbackRequest(BaseModel):
+    user_feedback: Literal["useful", "needs_fix", "wrong"]
+
+
+class CloudRunReturnReviewRequest(BaseModel):
+    review_status: Literal["approved", "held", "rejected"]
+    note: str = ""
+
+
 _CHAT_MEMORY_REL_DIR = Path("Projects/tune_lease_55/Lease Intelligence/Public/Chat Memory")
 _CHAT_MEMORY_LAYER_FILES = {
     "identity": "identity.md",
@@ -7298,6 +7348,353 @@ def _append_screening_loop_feedback(req: ScreeningLoopFeedbackRequest) -> dict:
     with _SCREENING_LOOP_FEEDBACK_LOG.open("a", encoding="utf-8") as f:
         f.write(_json.dumps(entry, ensure_ascii=False) + "\n")
     return entry
+
+
+def _ensure_shion_screening_reviews_table() -> None:
+    from api.db_connection import ensure_schema
+
+    ensure_schema()
+
+
+def _save_shion_screening_review(req: ShionScreeningReviewSaveRequest) -> dict:
+    import json as _json
+
+    _ensure_shion_screening_reviews_table()
+    ph = placeholder()
+    review_text = str(req.review_text or "").strip()
+    if not review_text:
+        raise HTTPException(status_code=422, detail="review_text is required")
+
+    form_snapshot = _json.dumps(req.form_snapshot or {}, ensure_ascii=False)
+    result_snapshot = _json.dumps(req.result_snapshot or {}, ensure_ascii=False)
+    values = (
+        str(req.case_id or "")[:120],
+        str(req.company_name or "")[:160],
+        str(req.industry_major or "")[:160],
+        str(req.industry_sub or "")[:160],
+        str(req.sales_dept or "")[:120],
+        req.score,
+        str(req.hantei or "")[:120],
+        req.q_risk,
+        req.umap_anomaly_score,
+        int(req.memory_refs or 0),
+        int(req.knowledge_refs or 0),
+        bool(req.identity_used),
+        review_text[:8000],
+        str(req.prompt_text or "")[:8000],
+        form_snapshot[:20000],
+        result_snapshot[:20000],
+        str(req.user_feedback or "")[:80],
+    )
+    columns = (
+        "case_id, company_name, industry_major, industry_sub, sales_dept, score, hantei, "
+        "q_risk, umap_anomaly_score, memory_refs, knowledge_refs, identity_used, review_text, "
+        "prompt_text, form_snapshot, result_snapshot, user_feedback"
+    )
+    placeholders = ", ".join([ph] * len(values))
+    with get_connection() as conn:
+        cur = conn.cursor()
+        if current_backend() == "postgresql":
+            cur.execute(
+                f"INSERT INTO shion_screening_reviews ({columns}) VALUES ({placeholders}) RETURNING id, created_at",
+                values,
+            )
+            row = cur.fetchone()
+            new_id = int(row[0])
+            created_at = str(row[1])
+        else:
+            cur.execute(
+                f"INSERT INTO shion_screening_reviews ({columns}) VALUES ({placeholders})",
+                values,
+            )
+            new_id = int(cur.lastrowid)
+            created_at = ""
+    return {
+        "id": new_id,
+        "case_id": values[0],
+        "company_name": values[1],
+        "score": values[5],
+        "hantei": values[6],
+        "created_at": created_at,
+    }
+
+
+def _list_shion_screening_reviews(
+    industry_sub: str = "",
+    company_name: str = "",
+    case_id: str = "",
+    limit: int = 5,
+) -> list[dict]:
+    _ensure_shion_screening_reviews_table()
+    ph = placeholder()
+    where: list[str] = []
+    params: list[Any] = []
+    if case_id.strip():
+        where.append(f"case_id = {ph}")
+        params.append(case_id.strip())
+    if industry_sub.strip():
+        where.append(f"industry_sub = {ph}")
+        params.append(industry_sub.strip())
+    if company_name.strip():
+        where.append(f"company_name LIKE {ph}")
+        params.append(f"%{company_name.strip()}%")
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+    capped_limit = max(1, min(int(limit or 5), 20))
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""
+            SELECT id, case_id, company_name, industry_major, industry_sub, sales_dept,
+                   score, hantei, q_risk, umap_anomaly_score, review_text,
+                   memory_refs, knowledge_refs, identity_used, user_feedback, created_at
+              FROM shion_screening_reviews
+              {where_sql}
+             ORDER BY created_at DESC, id DESC
+             LIMIT {capped_limit}
+            """,
+            tuple(params),
+        )
+        rows = cur.fetchall()
+    return [dict(row) for row in rows]
+
+
+def _update_shion_screening_review_feedback(review_id: int, user_feedback: str) -> dict:
+    _ensure_shion_screening_reviews_table()
+    ph = placeholder()
+    normalized = str(user_feedback or "").strip()
+    if normalized not in {"useful", "needs_fix", "wrong"}:
+        raise HTTPException(status_code=422, detail="user_feedback must be useful, needs_fix, or wrong")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        if current_backend() == "postgresql":
+            cur.execute(
+                f"""
+                UPDATE shion_screening_reviews
+                   SET user_feedback = {ph}
+                 WHERE id = {ph}
+                 RETURNING id, user_feedback
+                """,
+                (normalized, review_id),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="review not found")
+            return {"id": int(row[0]), "user_feedback": str(row[1])}
+        cur.execute(
+            f"UPDATE shion_screening_reviews SET user_feedback = {ph} WHERE id = {ph}",
+            (normalized, review_id),
+        )
+        if cur.rowcount <= 0:
+            raise HTTPException(status_code=404, detail="review not found")
+    return {"id": review_id, "user_feedback": normalized}
+
+
+_CLOUDRUN_RETURN_DB = Path(_REPO_ROOT) / "data" / "cloudrun_experience_return.db"
+_CLOUDRUN_RETURN_REVIEW_TABLES = {
+    "score_input": "cloudrun_score_inputs",
+    "ocr_result": "cloudrun_ocr_results",
+    "shion_review": "shion_screening_reviews",
+}
+_CLOUDRUN_RETURN_STATUSES = {"candidate", "approved", "held", "rejected"}
+
+
+def _connect_cloudrun_return_db():
+    import sqlite3
+
+    conn = sqlite3.connect(str(_CLOUDRUN_RETURN_DB), timeout=10)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _cloudrun_return_table_exists(conn, table_name: str) -> bool:
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        (table_name,),
+    ).fetchone()
+    return bool(row)
+
+
+def _ensure_cloudrun_return_review_schema(conn) -> None:
+    for table_name in _CLOUDRUN_RETURN_REVIEW_TABLES.values():
+        if not _cloudrun_return_table_exists(conn, table_name):
+            continue
+        cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()}
+        additions = {
+            "return_review_status": "TEXT DEFAULT 'candidate'",
+            "return_review_note": "TEXT DEFAULT ''",
+            "return_reviewed_at": "TEXT DEFAULT ''",
+        }
+        for col, ddl in additions.items():
+            if col not in cols:
+                conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {col} {ddl}")
+        conn.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{table_name}_return_review_status "
+            f"ON {table_name}(return_review_status)"
+        )
+    conn.commit()
+
+
+def _json_preview(raw: Any, max_chars: int = 900) -> str:
+    if raw in (None, ""):
+        return ""
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            return raw[:max_chars]
+    else:
+        parsed = raw
+    try:
+        return json.dumps(parsed, ensure_ascii=False, indent=2)[:max_chars]
+    except Exception:
+        return str(raw)[:max_chars]
+
+
+def _cloudrun_return_item(kind: str, row: Any) -> dict:
+    row_dict = dict(row)
+    status = str(row_dict.get("return_review_status") or "candidate")
+    if status not in _CLOUDRUN_RETURN_STATUSES:
+        status = "candidate"
+
+    if kind == "score_input":
+        score = row_dict.get("score")
+        hantei = row_dict.get("hantei") or "-"
+        industry = row_dict.get("industry_sub") or row_dict.get("industry_major") or "業種未設定"
+        title = f"{hantei} / {industry}"
+        if score not in (None, ""):
+            title = f"{title} / {score}点"
+        preview = _json_preview({
+            "inputs": row_dict.get("inputs_json"),
+            "result": row_dict.get("result_json"),
+        })
+        source_id = row_dict.get("event_id") or ""
+        created_at = row_dict.get("created_at") or ""
+    elif kind == "ocr_result":
+        doc_type = row_dict.get("doc_type") or "document"
+        confidence = row_dict.get("confidence")
+        title = f"OCR / {doc_type}"
+        if confidence not in (None, ""):
+            title = f"{title} / confidence {confidence}"
+        preview = _json_preview(row_dict.get("result_json"))
+        source_id = row_dict.get("event_id") or ""
+        created_at = row_dict.get("created_at") or ""
+    else:
+        company = row_dict.get("company_name") or "会社名未設定"
+        industry = row_dict.get("industry_sub") or row_dict.get("industry_major") or "業種未設定"
+        hantei = row_dict.get("hantei") or "-"
+        title = f"{company} / {industry} / {hantei}"
+        preview = str(row_dict.get("review_text") or "")[:900]
+        source_id = row_dict.get("cloud_event_id") or row_dict.get("cloud_review_id") or ""
+        created_at = row_dict.get("created_at") or ""
+
+    return {
+        "id": int(row_dict.get("id") or 0),
+        "kind": kind,
+        "title": title,
+        "source_id": str(source_id),
+        "created_at": str(created_at),
+        "review_status": status,
+        "review_note": str(row_dict.get("return_review_note") or ""),
+        "reviewed_at": str(row_dict.get("return_reviewed_at") or ""),
+        "preview": preview,
+    }
+
+
+def _list_cloudrun_return_review_items(
+    kind: str = "all",
+    status: str = "candidate",
+    limit: int = 100,
+) -> dict:
+    if not _CLOUDRUN_RETURN_DB.exists():
+        return {
+            "db_path": str(_CLOUDRUN_RETURN_DB),
+            "items": [],
+            "summary": {"candidate": 0, "approved": 0, "held": 0, "rejected": 0, "total": 0},
+        }
+
+    requested_kinds = list(_CLOUDRUN_RETURN_REVIEW_TABLES.keys()) if kind == "all" else [kind]
+    if any(item_kind not in _CLOUDRUN_RETURN_REVIEW_TABLES for item_kind in requested_kinds):
+        raise HTTPException(status_code=422, detail="kind must be all, score_input, ocr_result, or shion_review")
+    normalized_status = str(status or "candidate").strip()
+    if normalized_status not in _CLOUDRUN_RETURN_STATUSES and normalized_status != "all":
+        raise HTTPException(status_code=422, detail="status must be candidate, approved, held, rejected, or all")
+
+    capped_limit = max(1, min(int(limit or 100), 300))
+    items: list[dict] = []
+    summary = {"candidate": 0, "approved": 0, "held": 0, "rejected": 0, "total": 0}
+
+    with _connect_cloudrun_return_db() as conn:
+        _ensure_cloudrun_return_review_schema(conn)
+        for item_kind in requested_kinds:
+            table_name = _CLOUDRUN_RETURN_REVIEW_TABLES[item_kind]
+            if not _cloudrun_return_table_exists(conn, table_name):
+                continue
+            status_rows = conn.execute(
+                f"""
+                SELECT COALESCE(NULLIF(return_review_status, ''), 'candidate') AS status,
+                       COUNT(*) AS count
+                  FROM {table_name}
+                 GROUP BY COALESCE(NULLIF(return_review_status, ''), 'candidate')
+                """
+            ).fetchall()
+            for row in status_rows:
+                row_status = str(row["status"] or "candidate")
+                if row_status not in summary:
+                    row_status = "candidate"
+                summary[row_status] += int(row["count"] or 0)
+                summary["total"] += int(row["count"] or 0)
+
+            where = ""
+            params: tuple[Any, ...] = ()
+            if normalized_status != "all":
+                where = "WHERE COALESCE(NULLIF(return_review_status, ''), 'candidate') = ?"
+                params = (normalized_status,)
+            rows = conn.execute(
+                f"""
+                SELECT *
+                  FROM {table_name}
+                  {where}
+                 ORDER BY COALESCE(NULLIF(created_at, ''), '1970-01-01') DESC, id DESC
+                 LIMIT ?
+                """,
+                (*params, capped_limit),
+            ).fetchall()
+            items.extend(_cloudrun_return_item(item_kind, row) for row in rows)
+
+    items.sort(key=lambda item: (item.get("created_at") or "", item.get("id") or 0), reverse=True)
+    return {"db_path": str(_CLOUDRUN_RETURN_DB), "items": items[:capped_limit], "summary": summary}
+
+
+def _update_cloudrun_return_review_item(
+    kind: str,
+    item_id: int,
+    req: CloudRunReturnReviewRequest,
+) -> dict:
+    if kind not in _CLOUDRUN_RETURN_REVIEW_TABLES:
+        raise HTTPException(status_code=422, detail="kind must be score_input, ocr_result, or shion_review")
+    if not _CLOUDRUN_RETURN_DB.exists():
+        raise HTTPException(status_code=404, detail="cloudrun return db not found")
+    table_name = _CLOUDRUN_RETURN_REVIEW_TABLES[kind]
+    note = str(req.note or "")[:1000]
+    with _connect_cloudrun_return_db() as conn:
+        _ensure_cloudrun_return_review_schema(conn)
+        if not _cloudrun_return_table_exists(conn, table_name):
+            raise HTTPException(status_code=404, detail="return table not found")
+        cur = conn.execute(
+            f"""
+            UPDATE {table_name}
+               SET return_review_status = ?,
+                   return_review_note = ?,
+                   return_reviewed_at = CURRENT_TIMESTAMP
+             WHERE id = ?
+            """,
+            (req.review_status, note, item_id),
+        )
+        if cur.rowcount <= 0:
+            raise HTTPException(status_code=404, detail="return item not found")
+        row = conn.execute(f"SELECT * FROM {table_name} WHERE id = ?", (item_id,)).fetchone()
+        conn.commit()
+    return _cloudrun_return_item(kind, row)
 
 
 def _load_human_response_feedback(limit: int = 80) -> list[dict]:
@@ -7836,6 +8233,86 @@ def post_screening_loop_feedback(req: ScreeningLoopFeedbackRequest, background_t
         payload=entry,
     )
     return {"status": "ok", "feedback": entry}
+
+
+@app.post("/api/shion-screening-reviews")
+def post_shion_screening_review(req: ShionScreeningReviewSaveRequest, background_tasks: BackgroundTasks) -> dict:
+    entry = _save_shion_screening_review(req)
+    writeback_payload = {
+        **entry,
+        "schema_version": 1,
+        "cloud_review_id": entry.get("id"),
+        "industry_major": req.industry_major,
+        "industry_sub": req.industry_sub,
+        "sales_dept": req.sales_dept,
+        "q_risk": req.q_risk,
+        "umap_anomaly_score": req.umap_anomaly_score,
+        "memory_refs": req.memory_refs,
+        "knowledge_refs": req.knowledge_refs,
+        "identity_used": req.identity_used,
+        "review_text": req.review_text,
+        "form_snapshot": req.form_snapshot,
+        "result_snapshot": req.result_snapshot,
+        "user_feedback": req.user_feedback,
+    }
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="shion_screening_review",
+        surface="screening",
+        payload=writeback_payload,
+    )
+    return {"status": "ok", "review": entry}
+
+
+@app.get("/api/shion-screening-reviews")
+def get_shion_screening_reviews(
+    industry_sub: str = "",
+    company_name: str = "",
+    case_id: str = "",
+    limit: int = 5,
+) -> dict:
+    rows = _list_shion_screening_reviews(
+        industry_sub=industry_sub,
+        company_name=company_name,
+        case_id=case_id,
+        limit=limit,
+    )
+    return {"count": len(rows), "reviews": rows}
+
+
+@app.patch("/api/shion-screening-reviews/{review_id}/feedback")
+def patch_shion_screening_review_feedback(
+    review_id: int,
+    req: ShionScreeningReviewFeedbackRequest,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    entry = _update_shion_screening_review_feedback(review_id, req.user_feedback)
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="shion_screening_review_feedback",
+        surface="screening",
+        payload={**entry, "schema_version": 1, "cloud_review_id": review_id},
+    )
+    return {"status": "ok", "review": entry}
+
+
+@app.get("/api/cloudrun-return-review")
+def get_cloudrun_return_review(
+    kind: str = "all",
+    status: str = "candidate",
+    limit: int = 100,
+) -> dict:
+    return _list_cloudrun_return_review_items(kind=kind, status=status, limit=limit)
+
+
+@app.patch("/api/cloudrun-return-review/{kind}/{item_id}")
+def patch_cloudrun_return_review(
+    kind: str,
+    item_id: int,
+    req: CloudRunReturnReviewRequest,
+) -> dict:
+    item = _update_cloudrun_return_review_item(kind, item_id, req)
+    return {"status": "ok", "item": item}
 
 
 @app.get("/api/human-response-feedback/summary")
