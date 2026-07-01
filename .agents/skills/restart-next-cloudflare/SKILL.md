@@ -84,3 +84,4 @@ curl --max-time 10 -sS http://127.0.0.1:3000/ >/dev/null
 - Local sandbox `curl` can occasionally fail even while `next-server` is listening. Check `lsof -nP -iTCP:3000 -sTCP:LISTEN` or use an approved external `curl --max-time` before forcing a full restart.
 - If `cloudflared` is missing, say so and install only after user approval.
 - Do not kill unrelated processes. Only rely on `run_next_stable.sh` cleanup or ask before destructive cleanup.
+- Default mode is Cloudflare's "quick tunnel" (`cloudflared tunnel --url ...`): no auth, ephemeral URL, not officially supported for production, and prone to dropping. If `CLOUDFLARE_TUNNEL_CONFIG` (path to a named-tunnel config.yml) and `CLOUDFLARE_TUNNEL_HOSTNAME` are set, the launcher switches to a Named Tunnel with a stable, authenticated hostname instead — see `CLOUD_RUN.md` / the top of `run_next_stable.sh` for setup.

@@ -72,7 +72,7 @@ def download_vault(
     dest.mkdir(parents=True, exist_ok=True)
 
     client = storage.Client()
-    blobs = list(client.list_blobs(bkt, prefix=pfx))
+    blobs = list(client.list_blobs(bkt, prefix=pfx, timeout=30))
     md_blobs: list[tuple[object, Path]] = []
     for blob in blobs:
         if not blob.name.endswith(".md"):
@@ -88,7 +88,7 @@ def download_vault(
     for blob, rel in md_blobs:
         local = dest / rel
         local.parent.mkdir(parents=True, exist_ok=True)
-        blob.download_to_filename(str(local))
+        blob.download_to_filename(str(local), timeout=30)
         downloaded += 1
 
     logger.info(

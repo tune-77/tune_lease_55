@@ -50,27 +50,35 @@ python -m uvicorn api.main:app \
   --workers 1 &
 api_pid=$!
 
+shutdown_requested=0
+
 cleanup() {
   kill -TERM "$api_pid" "${next_pid:-}" 2>/dev/null || true
   wait "$api_pid" "${next_pid:-}" 2>/dev/null || true
 }
-trap cleanup TERM INT EXIT
+on_signal() {
+  shutdown_requested=1
+  cleanup
+}
+trap on_signal TERM INT
+trap cleanup EXIT
 
-python - "$FASTAPI_HOST" "$FASTAPI_PORT" <<'PY'
+READY_TIMEOUT_SECONDS="${READY_TIMEOUT_SECONDS:-240}"
+python - "$FASTAPI_HOST" "$FASTAPI_PORT" "$READY_TIMEOUT_SECONDS" <<'PY'
 import sys
 import time
 import urllib.request
 
-host, port = sys.argv[1], sys.argv[2]
+host, port, timeout_seconds = sys.argv[1], sys.argv[2], int(sys.argv[3])
 url = f"http://{host}:{port}/docs"
-for _ in range(120):
+for _ in range(timeout_seconds):
     try:
         with urllib.request.urlopen(url, timeout=1) as response:
             if response.status == 200:
                 raise SystemExit(0)
     except Exception:
         time.sleep(1)
-raise SystemExit("FastAPI did not become ready within 120 seconds")
+raise SystemExit(f"FastAPI did not become ready within {timeout_seconds} seconds")
 PY
 
 HOSTNAME=0.0.0.0 PORT="$PORT" node "$NEXT_SERVER" &
@@ -80,4 +88,10 @@ while kill -0 "$api_pid" 2>/dev/null && kill -0 "$next_pid" 2>/dev/null; do
   sleep 1
 done
 
+if [[ "$shutdown_requested" == "1" ]]; then
+  echo "[start_cloud_run] shutdown signal received; exiting cleanly"
+  exit 0
+fi
+
+echo "[start_cloud_run] a child process exited unexpectedly" >&2
 exit 1
