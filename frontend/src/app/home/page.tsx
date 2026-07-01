@@ -21,6 +21,7 @@ import {
   Tag,
   AlertTriangle,
   Brain,
+  MessageCircle,
 } from 'lucide-react';
 import { normalizePrefecture } from '@/lib/prefecture';
 import { formatLocalDateKey } from '@/lib/date';
@@ -159,6 +160,8 @@ type DashboardStats = {
   };
 };
 
+const HOME_SHION_CHAT_DRAFT_KEY = "home-shion-chat-draft";
+
 type NewsSummaryItem = {
   date: string;
   title: string;
@@ -214,6 +217,7 @@ export default function HomeDashboard() {
   const [newsUrl, setNewsUrl] = useState("");
   const [newsBody, setNewsBody] = useState("");
   const [newsSubmitting, setNewsSubmitting] = useState(false);
+  const [homeShionMessage, setHomeShionMessage] = useState("");
   const [newsResult, setNewsResult] = useState<{
     title: string;
     summary_lines: string[];
@@ -378,6 +382,12 @@ export default function HomeDashboard() {
     }
   };
 
+  const openShionChatFromHome = () => {
+    const message = homeShionMessage.trim() || "こんにちは。今日は何から始める？";
+    window.localStorage.setItem(HOME_SHION_CHAT_DRAFT_KEY, message);
+    window.location.href = "/chat";
+  };
+
   return (
     <div className="p-4 sm:p-8 min-h-[calc(100vh-2rem)] animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="mb-8 sm:mb-12 relative overflow-hidden bg-[linear-gradient(135deg,#4c1d95_0%,#1e3a8a_48%,#064e3b_100%)] rounded-2xl sm:rounded-[2.5rem] p-6 sm:p-10 text-white shadow-2xl shadow-violet-500/20 group">
@@ -417,6 +427,34 @@ export default function HomeDashboard() {
                 {item.label}
               </button>
             ))}
+          </div>
+          <div className="mt-4 max-w-xl rounded-2xl border border-white/25 bg-white/15 p-2 backdrop-blur-md">
+            <div className="mb-1.5 flex items-center gap-2 px-2 text-[11px] font-black uppercase tracking-wide text-blue-100">
+              <MessageCircle className="h-3.5 w-3.5" />
+              Shion Quick Chat
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={homeShionMessage}
+                onChange={(e) => setHomeShionMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
+                  e.preventDefault();
+                  openShionChatFromHome();
+                }}
+                placeholder="こんにちは。今日は何がしたいですか？"
+                className="min-w-0 flex-1 rounded-xl border border-white/20 bg-white/90 px-3 py-2 text-sm font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-white/70"
+              />
+              <button
+                type="button"
+                onClick={openShionChatFromHome}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-xs font-black text-indigo-700 shadow-sm transition-colors hover:bg-blue-50"
+              >
+                <Send className="h-4 w-4" />
+                聞く
+              </button>
+            </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-3">
             <div className="bg-white/10 backdrop-blur-md border border-white/20 px-3 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-2xl">

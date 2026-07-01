@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { apiClient } from "@/lib/api";
-import { Activity, ArrowRight, Bot, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, FileOutput, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus, Swords } from "lucide-react";
+import { Activity, ArrowRight, Bot, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, FileOutput, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus, Swords, Save, Trash2 } from "lucide-react";
 import ScoreDAG from "../../components/ScoreDAG";
 import { ScoringFormData, defaultFormData } from "../../types";
 import FormGeneral from "../../components/form/FormGeneral";
@@ -79,6 +79,194 @@ type PastShionScreeningReview = {
 
 const SHION_REVIEW_IMAGE = "/lease-intelligence/moods/focus.webp";
 const SCREENING_RETURN_STATE_KEY = "lease-screening-return-state";
+const SCREENING_DRAFT_VERSION = 1;
+const SCREENING_DRAFT_SAVE_DELAY_MS = 300;
+
+type DemoScreeningCase = {
+  id: string;
+  title: string;
+  tone: string;
+  summary: string;
+  learningPoint: string;
+  reviewFocus: string[];
+  data: Partial<ScoringFormData>;
+};
+
+const demoScreeningCases: DemoScreeningCase[] = [
+  {
+    id: "stable-manufacturing",
+    title: "既存先・製造業",
+    tone: "通しやすい案件",
+    summary: "メイン先、黒字、自己資本あり。工作機械更新の標準的なリース案件。",
+    learningPoint: "標準的に通る案件では、紫苑が何を安心材料として拾うかを見ます。",
+    reviewFocus: ["返済原資と自己資本", "物件用途の明確さ", "稟議に残す承認理由"],
+    data: {
+      company_no: "900101",
+      company_name: "デモ精密工業",
+      industry_major: "E 製造業",
+      industry_sub: "24 金属製品製造業",
+      industry_detail: "精密部品加工 工作機械更新",
+      grade: "② 4-6先",
+      customer_type: "既存先",
+      main_bank: "メイン先",
+      competitor: "競合なし",
+      num_competitors: "0",
+      deal_occurrence: "更改・増設",
+      deal_source: "銀行紹介",
+      sales_dept: "宇都宮営業部",
+      nenshu: 850,
+      gross_profit: 210,
+      op_profit: 48,
+      ord_profit: 45,
+      net_income: 28,
+      depreciation: 35,
+      dep_expense: 35,
+      rent: 8,
+      rent_expense: 8,
+      machines: 180,
+      other_assets: 120,
+      net_assets: 260,
+      total_assets: 720,
+      bank_credit: 180,
+      lease_credit: 45,
+      contracts: 4,
+      contract_type: "一般",
+      lease_term: 60,
+      acceptance_year: new Date().getFullYear(),
+      acquisition_cost: 55,
+      asset_name: "製造設備・工作機械",
+      asset_detail: "マシニングセンタ更新 2台",
+      asset_purpose: "既存受注の増加に伴う加工能力増強",
+      asset_location: "本社工場 第2ライン",
+      asset_evidence_level: "見積・型式確認済",
+      asset_score: 78,
+      qual_corr_company_history: "良好",
+      qual_corr_customer_stability: "良好",
+      qual_corr_repayment_history: "良好",
+      qual_corr_business_future: "良好",
+      qual_corr_equipment_purpose: "良好",
+      qual_corr_main_bank: "良好",
+      passion_text: "既存メイン先。受注増に伴う更新投資で、返済原資と物件用途の説明がしやすい。",
+      intuition: 4,
+    },
+  },
+  {
+    id: "borderline-transport",
+    title: "境界・運送業",
+    tone: "条件付き承認向き",
+    summary: "売上はあるが利益薄め。車両増車で、燃料費と運転手確保を確認したい案件。",
+    learningPoint: "境界案件では、点数よりも条件付きで残す確認事項が主役です。",
+    reviewFocus: ["燃料費・人件費の上昇耐性", "競合条件との差分", "追加確認すべき承認条件"],
+    data: {
+      company_no: "900202",
+      company_name: "デモ北関東物流",
+      industry_major: "H 運輸業・郵便業",
+      industry_sub: "44 道路貨物運送業",
+      industry_detail: "一般貨物 運送業 車両増車",
+      grade: "② 4-6先",
+      customer_type: "既存先",
+      main_bank: "非メイン先",
+      competitor: "競合あり",
+      competitor_rate: 2.1,
+      num_competitors: "2",
+      deal_occurrence: "競合切替",
+      deal_source: "その他",
+      sales_dept: "小山営業部",
+      nenshu: 620,
+      gross_profit: 92,
+      op_profit: 9,
+      ord_profit: 6,
+      net_income: 3,
+      depreciation: 18,
+      dep_expense: 18,
+      rent: 12,
+      rent_expense: 12,
+      machines: 95,
+      other_assets: 70,
+      net_assets: 42,
+      total_assets: 430,
+      bank_credit: 210,
+      lease_credit: 68,
+      contracts: 3,
+      contract_type: "一般",
+      lease_term: 60,
+      acceptance_year: new Date().getFullYear(),
+      acquisition_cost: 38,
+      asset_name: "車両・運搬車",
+      asset_detail: "大型トラック 2台",
+      asset_purpose: "新規配送ルート対応の増車",
+      asset_location: "栃木県小山市 営業所",
+      asset_evidence_level: "見積あり",
+      asset_score: 62,
+      qual_corr_company_history: "普通",
+      qual_corr_customer_stability: "普通",
+      qual_corr_repayment_history: "良好",
+      qual_corr_business_future: "普通",
+      qual_corr_equipment_purpose: "良好",
+      qual_corr_main_bank: "普通",
+      passion_text: "増車理由はあるが、利益率が薄く燃料費・人件費上昇の影響確認が必要。競合条件との差分も確認したい。",
+      intuition: 3,
+    },
+  },
+  {
+    id: "watch-service-new",
+    title: "新規先・サービス業",
+    tone: "慎重審査",
+    summary: "新規先、薄い自己資本、出店設備。事業計画と撤退時物件価値を確認したい案件。",
+    learningPoint: "厳しめの案件では、否決だけでなく何を確認すれば検討余地が残るかを見ます。",
+    reviewFocus: ["新規先・赤字の重さ", "出店計画の根拠", "撤退時の物件価値"],
+    data: {
+      company_no: "900303",
+      company_name: "デモフードサービス",
+      industry_major: "M 宿泊業・飲食サービス業",
+      industry_sub: "76 飲食店",
+      industry_detail: "新店舗 厨房設備 出店",
+      grade: "② 7-9先",
+      customer_type: "新規先",
+      main_bank: "非メイン先",
+      competitor: "競合あり",
+      competitor_rate: 2.8,
+      num_competitors: "1",
+      deal_occurrence: "新規開拓",
+      deal_source: "その他",
+      sales_dept: "埼玉営業部",
+      nenshu: 180,
+      gross_profit: 58,
+      op_profit: -6,
+      ord_profit: -8,
+      net_income: -7,
+      depreciation: 4,
+      dep_expense: 4,
+      rent: 18,
+      rent_expense: 18,
+      machines: 12,
+      other_assets: 35,
+      net_assets: 8,
+      total_assets: 95,
+      bank_credit: 65,
+      lease_credit: 0,
+      contracts: 0,
+      contract_type: "一般",
+      lease_term: 48,
+      acceptance_year: new Date().getFullYear(),
+      acquisition_cost: 24,
+      asset_name: "飲食店設備",
+      asset_detail: "厨房機器・内装設備一式",
+      asset_purpose: "新店舗開業に伴う初期設備",
+      asset_location: "埼玉県さいたま市 新店舗",
+      asset_evidence_level: "見積あり",
+      asset_score: 45,
+      qual_corr_company_history: "懸念あり",
+      qual_corr_customer_stability: "懸念あり",
+      qual_corr_repayment_history: "未選択",
+      qual_corr_business_future: "普通",
+      qual_corr_equipment_purpose: "普通",
+      qual_corr_main_bank: "懸念あり",
+      passion_text: "新規先かつ赤字。出店計画の根拠、自己資金、撤退時の物件処分可能性を確認しないと通しにくい。",
+      intuition: 2,
+    },
+  },
+];
 
 const normalizeReviewText = (text: string) =>
   (text || "")
@@ -876,7 +1064,10 @@ export default function Dashboard() {
   const [shionReviewLoading, setShionReviewLoading] = useState(false);
   const [shionReviewError, setShionReviewError] = useState("");
   const [shionFeedbackSaving, setShionFeedbackSaving] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [lastDraftSavedAt, setLastDraftSavedAt] = useState<Date | null>(null);
   const shionReviewRequestSeq = useRef(0);
+  const suppressNextDraftSave = useRef(false);
 
   // タブ管理
   const [activeTab, setActiveTab] = useState<"input" | "analysis">("input");
@@ -893,24 +1084,61 @@ export default function Dashboard() {
 
   useEffect(() => {
     const raw = window.localStorage.getItem(SCREENING_RETURN_STATE_KEY);
-    if (!raw) return;
+    if (!raw) {
+      setDraftRestored(true);
+      return;
+    }
     try {
       const saved = JSON.parse(raw) as {
+        version?: number;
         formData?: ScoringFormData;
         result?: any;
         gunshiText?: string;
         shionReview?: ShionScreeningReview | null;
         activeTab?: "input" | "analysis";
+        savedAt?: string;
       };
       if (saved.formData) setFormData(saved.formData);
       if (saved.result) setResult(saved.result);
       if (typeof saved.gunshiText === "string") setGunshiText(saved.gunshiText);
       if (saved.shionReview) setShionReview(saved.shionReview);
       setActiveTab(saved.activeTab || (saved.result ? "analysis" : "input"));
+      if (saved.savedAt) {
+        const savedDate = new Date(saved.savedAt);
+        if (!Number.isNaN(savedDate.getTime())) setLastDraftSavedAt(savedDate);
+      }
     } catch {
       window.localStorage.removeItem(SCREENING_RETURN_STATE_KEY);
+    } finally {
+      setDraftRestored(true);
     }
   }, []);
+
+  useEffect(() => {
+    if (!draftRestored) return;
+    if (suppressNextDraftSave.current) {
+      suppressNextDraftSave.current = false;
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      try {
+        const savedAt = new Date();
+        window.localStorage.setItem(SCREENING_RETURN_STATE_KEY, JSON.stringify({
+          version: SCREENING_DRAFT_VERSION,
+          formData,
+          result,
+          gunshiText,
+          shionReview,
+          activeTab,
+          savedAt: savedAt.toISOString(),
+        }));
+        setLastDraftSavedAt(savedAt);
+      } catch (error) {
+        console.warn("Screening draft save failed", error);
+      }
+    }, SCREENING_DRAFT_SAVE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [draftRestored, formData, result, gunshiText, shionReview, activeTab]);
 
   // フィールドの変更ハンドラー
   const handleFieldChange = (name: string, value: string | number | string[]) => {
@@ -1034,6 +1262,8 @@ export default function Dashboard() {
   };
 
   const resetScreening = () => {
+    if (!window.confirm("審査分析の入力・分析結果・紫苑レビューをすべて消去します。よろしいですか？")) return;
+    suppressNextDraftSave.current = true;
     shionReviewRequestSeq.current += 1;
     setFormData(defaultFormData);
     setResult(null);
@@ -1044,17 +1274,18 @@ export default function Dashboard() {
     setShionFeedbackSaving(false);
     setActiveTab("input");
     window.localStorage.removeItem(SCREENING_RETURN_STATE_KEY);
+    setLastDraftSavedAt(null);
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (targetFormData: ScoringFormData = formData) => {
     setLoading(true);
     setShionReview(null);
     setShionReviewError("");
     try {
-      const res = await apiClient.post(`/api/score/full`, toThousandYenPayload(formData));
+      const res = await apiClient.post(`/api/score/full`, toThousandYenPayload(targetFormData));
       setResult(res.data);
       setActiveTab("analysis");
-      void requestShionReview(res.data, formData);
+      void requestShionReview(res.data, targetFormData);
 
       // めぶきちゃんの表情をスコアに応じて切り替え
       const score = res.data.score_base;
@@ -1071,6 +1302,25 @@ export default function Dashboard() {
       alert("審査エンジンの呼び出しに失敗しました。FastAPIサーバーが起動しているか確認してください。");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadDemoCase = (demoCase: DemoScreeningCase, runImmediately = false) => {
+    shionReviewRequestSeq.current += 1;
+    const nextFormData = {
+      ...defaultFormData,
+      ...demoCase.data,
+      strength_tags: demoCase.data.strength_tags || [],
+    } as ScoringFormData;
+    setFormData(nextFormData);
+    setResult(null);
+    setGunshiText("");
+    setShionReview(null);
+    setShionReviewError("");
+    setShionFeedbackSaving(false);
+    setActiveTab("input");
+    if (runImmediately) {
+      void handleSubmit(nextFormData);
     }
   };
 
@@ -1091,11 +1341,13 @@ export default function Dashboard() {
       case_id: result.case_id,
     };
     window.localStorage.setItem(SCREENING_RETURN_STATE_KEY, JSON.stringify({
+      version: SCREENING_DRAFT_VERSION,
       formData,
       result,
       gunshiText,
       shionReview,
       activeTab: "analysis",
+      savedAt: new Date().toISOString(),
     }));
     window.localStorage.setItem("lease-gunshi-context", JSON.stringify(chatContext));
     router.push("/chat");
@@ -1130,12 +1382,20 @@ export default function Dashboard() {
           <Calculator className="text-blue-500 w-6 h-6" />
           審査・分析ダッシュボード
         </h2>
-        <button 
-          onClick={resetScreening}
-          className="px-4 py-2 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors border border-slate-200 shadow-sm"
-        >
-          リセット
-        </button>
+        <div className="flex items-center gap-3">
+          <div className="hidden sm:flex items-center gap-1.5 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">
+            <Save className="h-3.5 w-3.5" />
+            {lastDraftSavedAt ? `自動保存 ${lastDraftSavedAt.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}` : "自動保存"}
+          </div>
+          <button
+            type="button"
+            onClick={resetScreening}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors border border-rose-100 shadow-sm"
+          >
+            <Trash2 className="h-4 w-4" />
+            全消去
+          </button>
+        </div>
       </div>
 
       <div className="px-4 md:px-6 lg:px-8 max-w-[1600px] mx-auto pb-20">
@@ -1214,6 +1474,65 @@ export default function Dashboard() {
             {/* コンテンツエリア */}
             {activeTab === "input" && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 relative z-0">
+                <section className="rounded-2xl border border-indigo-100 bg-white p-4 shadow-sm">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Sample Cases</div>
+                      <h3 className="mt-1 text-base font-black text-slate-800">サンプル案件で動きを見る</h3>
+                      <p className="mt-1 text-xs font-bold text-slate-500">
+                        初めて使う人は、まず3件で「通る・境界・慎重」の違いを見てください。数字入力なしで審査結果と紫苑レビューまで進めます。
+                      </p>
+                    </div>
+                    <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-black text-slate-500">
+                      入力例 + 見どころ付き
+                    </div>
+                  </div>
+                  <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                    {demoScreeningCases.map((demoCase) => (
+                      <div key={demoCase.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <h4 className="text-sm font-black text-slate-800">{demoCase.title}</h4>
+                            <p className="mt-1 text-[11px] font-black text-indigo-600">{demoCase.tone}</p>
+                          </div>
+                          <span className="rounded-full bg-white px-2 py-1 text-[10px] font-black text-slate-500">
+                            {demoCase.data.acquisition_cost}百万円
+                          </span>
+                        </div>
+                        <p className="mt-2 min-h-10 text-xs font-bold leading-relaxed text-slate-500">{demoCase.summary}</p>
+                        <div className="mt-3 rounded-lg border border-white bg-white p-2">
+                          <p className="text-[11px] font-black text-slate-700">この案件の見どころ</p>
+                          <p className="mt-1 text-[11px] font-bold leading-relaxed text-slate-500">{demoCase.learningPoint}</p>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {demoCase.reviewFocus.map((focus) => (
+                              <span key={focus} className="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-black text-indigo-700">
+                                {focus}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => loadDemoCase(demoCase, false)}
+                            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+                          >
+                            読み込み
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => loadDemoCase(demoCase, true)}
+                            disabled={loading}
+                            className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-black text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:bg-slate-300"
+                          >
+                            読み込んで審査
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
                 <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div className="flex items-start gap-3">
@@ -1279,7 +1598,7 @@ export default function Dashboard() {
                   </div>
                   <button
                     type="button"
-                    onClick={handleSubmit}
+                    onClick={() => handleSubmit()}
                     disabled={loading}
                     className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-3.5 rounded-xl font-bold shadow-lg shadow-blue-200 hover:shadow-xl hover:translate-y-[-2px] transition-all disabled:opacity-50 text-lg"
                   >

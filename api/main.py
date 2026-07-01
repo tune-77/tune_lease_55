@@ -6854,6 +6854,7 @@ class ChatRequest(BaseModel):
     intent: Optional[str] = None
     prefecture: str = ""
     industry: str = ""
+    caller: str = ""
     debug_memory: bool = False
     response_mode: Literal["shion", "shio", "general"] = "shion"
 
@@ -8630,6 +8631,20 @@ def _chat_context_budget(mode: str) -> dict[str, Any]:
     return dict(_CHAT_CONTEXT_BUDGETS.get(mode) or _CHAT_CONTEXT_BUDGETS["normal"])
 
 
+def _should_apply_chat_pdca(
+    *,
+    context_budget: dict[str, Any],
+    question_category: str,
+    response_mode: str,
+) -> bool:
+    """Keep screening PDCA rules out of personal/general continuity chat."""
+    if not context_budget.get("use_pdca"):
+        return False
+    if (response_mode or "shion").strip().lower() == "general":
+        return False
+    return question_category in {"lease_screening", "lease_knowledge"}
+
+
 def _chat_mode_instruction(mode: str) -> str:
     labels = {
         "casual": "軽量雑談モード",
@@ -9384,7 +9399,15 @@ def post_chat(req: ChatRequest):
                 )
             base_system_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_gsp(_chat_mind, _chat_now)
             base_system_prompt = base_system_root + mode_instruction + response_mode_context + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + consciousness_ux_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
-            pdca_block = build_pdca_prompt_block() if context_budget.get("use_pdca") else ""
+            pdca_block = (
+                build_pdca_prompt_block()
+                if _should_apply_chat_pdca(
+                    context_budget=context_budget,
+                    question_category=question_category,
+                    response_mode=req.response_mode,
+                )
+                else ""
+            )
             effective_system_prompt = base_system_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
             obsidian_daily_injected = {}
             if obsidian_daily_context:
@@ -9664,7 +9687,15 @@ def post_chat(req: ChatRequest):
 
         base_prompt_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_sp(_chat_mind, _chat_now)
         base_effective_prompt = base_prompt_root + mode_instruction + response_mode_context + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + guidance.prompt_suffix
-        pdca_block = build_pdca_prompt_block() if context_budget.get("use_pdca") else ""
+        pdca_block = (
+            build_pdca_prompt_block()
+            if _should_apply_chat_pdca(
+                context_budget=context_budget,
+                question_category=question_category,
+                response_mode=req.response_mode,
+            )
+            else ""
+        )
         effective_prompt = base_effective_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
         obsidian_daily_injected = {}
         if obsidian_daily_context:

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { focusNextScreeningNumber, isDraftNumericText, parseHumanNumberInput } from '../lib/numberInput';
 
 interface SliderInputProps {
   label: string;
@@ -9,6 +10,7 @@ interface SliderInputProps {
   step: number;
   unit?: string;
   hint?: string;
+  quickValues?: Array<{ label: string; value: number }>;
   onChange: (name: string, value: number) => void;
 }
 
@@ -21,6 +23,7 @@ export default function SliderInput({
   step,
   unit = "百万円",
   hint,
+  quickValues,
   onChange
 }: SliderInputProps) {
   // ローカル文字列state: 入力中の中間状態（"-", "1.", "-0." など）を保持
@@ -43,22 +46,27 @@ export default function SliderInput({
     setInputStr(str);
 
     // "-" や "." や "-." など入力途中の状態は親に伝えない
-    if (str === '' || str === '-' || str === '.' || str === '-.') return;
+    if (isDraftNumericText(str)) return;
 
-    const parsed = parseFloat(str);
-    if (!isNaN(parsed)) {
+    const parsed = parseHumanNumberInput(str);
+    if (parsed !== null) {
       onChange(name, parsed);
     }
   };
 
-  const handleFocus = () => {
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
     setIsFocused(true);
+    if (inputStr === '0') {
+      setInputStr('');
+      return;
+    }
+    e.currentTarget.select();
   };
 
   const handleBlur = () => {
     setIsFocused(false);
-    const parsed = parseFloat(inputStr);
-    if (isNaN(parsed)) {
+    const parsed = parseHumanNumberInput(inputStr);
+    if (parsed === null) {
       // 不完全な入力はリセット
       setInputStr(value.toString());
     } else {
@@ -81,6 +89,28 @@ export default function SliderInput({
           採用値: <span className="text-blue-600 text-sm">{formattedValue}</span> {unit}
         </span>
       </div>
+      {quickValues?.length ? (
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          {quickValues.map((item) => (
+            <button
+              key={`${name}-${item.label}-${item.value}`}
+              type="button"
+              onClick={() => {
+                const clamped = Math.min(Math.max(item.value, min), max);
+                onChange(name, clamped);
+                setInputStr(String(clamped));
+              }}
+              className={`rounded-lg border px-2.5 py-1 text-[11px] font-black transition-colors ${
+                value === item.value
+                  ? 'border-blue-300 bg-blue-50 text-blue-700'
+                  : 'border-slate-200 bg-white text-slate-500 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div className="flex flex-col sm:flex-row gap-4 items-center">
         {/* Slider 領域 */}
@@ -103,10 +133,18 @@ export default function SliderInput({
             type="text"
             inputMode="decimal"
             name={`${name}_number`}
+            data-screening-number="true"
             value={inputStr}
             onChange={handleNumberChange}
             onFocus={handleFocus}
             onBlur={handleBlur}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return;
+              e.preventDefault();
+              const current = e.currentTarget;
+              current.blur();
+              window.setTimeout(() => focusNextScreeningNumber(current), 0);
+            }}
             className="flex-1 min-w-0 text-right px-3 py-2 bg-white border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm font-semibold text-slate-800"
           />
           <span className="text-slate-500 sm:text-sm font-medium whitespace-nowrap">{unit}</span>

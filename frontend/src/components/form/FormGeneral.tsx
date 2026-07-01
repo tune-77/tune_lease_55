@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ScoringFormData } from '../../types';
 import { API_BASE } from '../../lib/api';
+import { focusNextScreeningNumber, parseHumanNumberInput } from '../../lib/numberInput';
 
 interface FormGeneralProps {
   data: ScoringFormData;
@@ -36,12 +37,6 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
   const [majors, setMajors] = useState<string[]>([]);
   const [subs, setSubs] = useState<string[]>([]);
   const [industrySuggestions, setIndustrySuggestions] = useState<IndustrySuggestion[]>([]);
-  const numericFieldOrder = ['contracts', 'bank_credit', 'lease_credit'] as const;
-  const numericFieldRefs = useRef<Record<(typeof numericFieldOrder)[number], HTMLInputElement | null>>({
-    contracts: null,
-    bank_credit: null,
-    lease_credit: null,
-  });
 
   // マスターデータの取得
   useEffect(() => {
@@ -113,13 +108,28 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
     onChange(name, type === 'number' ? Number(value) : value);
   };
 
-  const focusNextNumericField = (field: (typeof numericFieldOrder)[number]) => {
-    const currentIndex = numericFieldOrder.indexOf(field);
-    const nextField = numericFieldOrder[currentIndex + 1];
-    if (!nextField) return;
-    numericFieldRefs.current[nextField]?.focus();
-    numericFieldRefs.current[nextField]?.select();
+  const handleNumericTextChange = (name: string, value: string) => {
+    if (value.trim() === "") {
+      onChange(name, 0);
+      return;
+    }
+    const parsed = parseHumanNumberInput(value);
+    if (parsed !== null) onChange(name, parsed);
   };
+
+  const handleNumericFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.currentTarget.select();
+  };
+
+  const handleNumericEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    focusNextScreeningNumber(e.currentTarget);
+  };
+
+  const displayNumber = (value: number | undefined | null): number | "" => (
+    Number(value || 0) === 0 ? "" : Number(value)
+  );
 
   return (
     <div className="space-y-6">
@@ -347,16 +357,14 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">既存の契約数 (件)</label>
             <input
-              ref={(el) => { numericFieldRefs.current.contracts = el; }}
-              type="number"
+              type="text"
+              inputMode="decimal"
               name="contracts"
-              value={data.contracts}
-              onChange={handleChange}
-              onKeyDown={(e) => {
-                if (e.key !== 'Enter') return;
-                e.preventDefault();
-                focusNextNumericField('contracts');
-              }}
+              data-screening-number="true"
+              value={displayNumber(data.contracts)}
+              onChange={(e) => handleNumericTextChange("contracts", e.target.value)}
+              onFocus={handleNumericFocus}
+              onKeyDown={handleNumericEnter}
               className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]"
             />
           </div>
@@ -364,17 +372,15 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">銀行与信残高 (百万円)</label>
             <input
-              ref={(el) => { numericFieldRefs.current.bank_credit = el; }}
-              type="number"
+              type="text"
+              inputMode="decimal"
               name="bank_credit"
-              value={data.bank_credit}
+              data-screening-number="true"
+              value={displayNumber(data.bank_credit)}
               step="0.1"
-              onChange={handleChange}
-              onKeyDown={(e) => {
-                if (e.key !== 'Enter') return;
-                e.preventDefault();
-                focusNextNumericField('bank_credit');
-              }}
+              onChange={(e) => handleNumericTextChange("bank_credit", e.target.value)}
+              onFocus={handleNumericFocus}
+              onKeyDown={handleNumericEnter}
               className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]"
             />
             <p className="text-[10px] text-slate-400 mt-0.5">現在の銀行借入残高（百万円単位）</p>
@@ -383,17 +389,15 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">リース与信残高 (百万円)</label>
             <input
-              ref={(el) => { numericFieldRefs.current.lease_credit = el; }}
-              type="number"
+              type="text"
+              inputMode="decimal"
               name="lease_credit"
-              value={data.lease_credit}
+              data-screening-number="true"
+              value={displayNumber(data.lease_credit)}
               step="0.1"
-              onChange={handleChange}
-              onKeyDown={(e) => {
-                if (e.key !== 'Enter') return;
-                e.preventDefault();
-                focusNextNumericField('lease_credit');
-              }}
+              onChange={(e) => handleNumericTextChange("lease_credit", e.target.value)}
+              onFocus={handleNumericFocus}
+              onKeyDown={handleNumericEnter}
               className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]"
             />
             <p className="text-[10px] text-slate-400 mt-0.5">他社含む現在のリース残高（百万円単位）</p>

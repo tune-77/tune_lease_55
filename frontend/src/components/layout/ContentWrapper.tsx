@@ -5,12 +5,13 @@ import { usePathname } from "next/navigation";
 import { useSidebar } from "@/context/SidebarContext";
 
 const ACTIVITY_KEY = "shion-concierge-activity-v1";
-const MAX_ACTIVITY_ITEMS = 12;
+const MAX_ACTIVITY_ITEMS = 30;
 
 type ActivityItem = {
   path: string;
   title: string;
   ts: number;
+  count?: number;
 };
 
 const PAGE_TITLES: Record<string, string> = {
@@ -45,7 +46,13 @@ export default function ContentWrapper({ children }: { children: React.ReactNode
     try {
       const raw = window.localStorage.getItem(ACTIVITY_KEY);
       const existing = raw ? (JSON.parse(raw) as ActivityItem[]) : [];
-      const nextItem = { path: pathname, title: pageTitle(pathname), ts: Date.now() };
+      const previous = existing.find((item) => item.path === pathname);
+      const nextItem = {
+        path: pathname,
+        title: pageTitle(pathname),
+        ts: Date.now(),
+        count: Math.max(1, Number(previous?.count || 0) + 1),
+      };
       const deduped = existing.filter((item) => item.path !== pathname);
       window.localStorage.setItem(
         ACTIVITY_KEY,

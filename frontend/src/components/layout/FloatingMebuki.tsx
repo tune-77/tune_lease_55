@@ -23,7 +23,7 @@ interface ChatMessage {
   created_at: string;
 }
 
-const USER_ID = "default";
+const MEBUKI_USER_ID = "mebuki-default";
 
 const cleanMebukiText = (text: string) => (
   String(text || "")
@@ -145,7 +145,7 @@ export default function FloatingMebuki() {
     setHistoryLoading(true);
     try {
       const res = await apiClient.get("/api/chat/history", {
-        params: { user_id: USER_ID, limit: 50 },
+        params: { user_id: MEBUKI_USER_ID, limit: 50 },
       });
       setMessages(res.data.messages || []);
     } catch {
@@ -162,7 +162,7 @@ export default function FloatingMebuki() {
 
     const optimisticUser: ChatMessage = {
       id: Date.now(),
-      user_id: USER_ID,
+      user_id: MEBUKI_USER_ID,
       role: "user",
       content: text,
       created_at: new Date().toISOString(),
@@ -174,12 +174,14 @@ export default function FloatingMebuki() {
     try {
       const res = await apiClient.post("/api/chat", {
         message: text,
-        user_id: USER_ID,
+        user_id: MEBUKI_USER_ID,
         intent: improvementMode ? "improvement" : undefined,
+        response_mode: "general",
+        caller: "mebuki",
       });
       const assistantMsg: ChatMessage = {
         id: Date.now() + 1,
-        user_id: USER_ID,
+        user_id: MEBUKI_USER_ID,
         role: "assistant",
         content: res.data.reply,
         created_at: new Date().toISOString(),
@@ -194,7 +196,7 @@ export default function FloatingMebuki() {
         ...prev,
         {
           id: Date.now() + 1,
-          user_id: USER_ID,
+          user_id: MEBUKI_USER_ID,
           role: "assistant",
           content: "エラーが発生しました。もう一度お試しください。",
           created_at: new Date().toISOString(),
@@ -209,7 +211,7 @@ export default function FloatingMebuki() {
     if (savingObsidian) return;
     setSavingObsidian(true);
     try {
-      await apiClient.post("/api/chat/save-to-obsidian", { user_id: USER_ID });
+      await apiClient.post("/api/chat/save-to-obsidian", { user_id: MEBUKI_USER_ID });
       setSaveToast("Obsidianに保存しました ✅");
       setTimeout(() => setSaveToast(null), 2000);
     } catch {

@@ -33,6 +33,8 @@ type ChatContext = {
 const SHION_AVATAR = "/lease-intelligence/moods/curiosity.webp";
 const SHION_THINKING_AVATAR = "/lease-intelligence/moods/focus.webp";
 const SCREENING_RETURN_STATE_KEY = "lease-screening-return-state";
+const SHION_CHAT_USER_ID = "shion-default";
+const HOME_SHION_CHAT_DRAFT_KEY = "home-shion-chat-draft";
 
 type LeaseNewsFocus = {
   available?: boolean;
@@ -191,7 +193,7 @@ export default function ChatPage() {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const briefRequestSeqRef = useRef(0);
 
-  const userId = "default";
+  const userId = SHION_CHAT_USER_ID;
 
   const speakText = (text: string) => {
     if (!speechEnabled || typeof window === "undefined" || !window.speechSynthesis) return;
@@ -209,6 +211,12 @@ export default function ChatPage() {
 
   useEffect(() => {
     loadHistory().then(() => {
+      const homeDraft = window.localStorage.getItem(HOME_SHION_CHAT_DRAFT_KEY);
+      if (homeDraft) {
+        window.localStorage.removeItem(HOME_SHION_CHAT_DRAFT_KEY);
+        setInput(homeDraft);
+        window.setTimeout(resizeTextarea, 0);
+      }
       const raw = window.localStorage.getItem("lease-gunshi-context");
       setHasScreeningReturn(Boolean(raw || window.localStorage.getItem(SCREENING_RETURN_STATE_KEY)));
       if (raw) {
@@ -548,7 +556,7 @@ export default function ChatPage() {
             <MessageCircle className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-black text-slate-800">AIアドバイザー</h1>
+            <h1 className="text-lg font-black text-slate-800">紫苑チャット</h1>
             <p
               className={`text-xs text-slate-500 transition-all duration-700 overflow-hidden ${
                 showSubtitle ? "opacity-100 max-h-10" : "opacity-0 max-h-0"

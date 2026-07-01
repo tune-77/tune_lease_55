@@ -46,11 +46,11 @@ export default function FormFinancial({ data, onChange }: FormFinancialProps) {
         <h3 className="text-lg font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
           <span className="text-blue-500">📁</span> 損益計算書 (P/L)
         </h3>
-        <SliderInput label="売上高" name="nenshu" value={data.nenshu} min={0} max={10000} step={1} onChange={onChange} hint="直近決算期の年商（百万円）。スコアの基準値になります" />
-        <SliderInput label="売上総利益 (粗利)" name="gross_profit" value={data.gross_profit} min={-5000} max={5000} step={1} onChange={onChange} hint="売上高 - 売上原価。マイナスは原価割れを示します" />
-        <SliderInput label="営業利益" name="op_profit" value={data.op_profit} min={-1000} max={1000} step={1} onChange={onChange} hint="本業の儲け。販管費控除後の利益" />
-        <SliderInput label="経常利益" name="ord_profit" value={data.ord_profit} min={-1000} max={1000} step={1} onChange={onChange} hint="特別損益・税金を除いた実力値。スコアリングで重視されます" />
-        <SliderInput label="当期純利益" name="net_income" value={data.net_income} min={-1000} max={1000} step={1} onChange={onChange} hint="税引後の最終利益。マイナスは赤字（内部留保が減少）" />
+        <SliderInput label="売上高" name="nenshu" value={data.nenshu} min={0} max={10000} step={1} onChange={onChange} quickValues={[{ label: "1億", value: 100 }, { label: "3億", value: 300 }, { label: "5億", value: 500 }, { label: "10億", value: 1000 }]} hint="直近決算期の年商（百万円）。スコアの基準値になります" />
+        <SliderInput label="売上総利益 (粗利)" name="gross_profit" value={data.gross_profit} min={-5000} max={5000} step={1} onChange={onChange} quickValues={[{ label: "10", value: 10 }, { label: "30", value: 30 }, { label: "50", value: 50 }, { label: "100", value: 100 }]} hint="売上高 - 売上原価。マイナスは原価割れを示します" />
+        <SliderInput label="営業利益" name="op_profit" value={data.op_profit} min={-1000} max={1000} step={1} onChange={onChange} quickValues={[{ label: "-10", value: -10 }, { label: "0", value: 0 }, { label: "10", value: 10 }, { label: "30", value: 30 }]} hint="本業の儲け。販管費控除後の利益" />
+        <SliderInput label="経常利益" name="ord_profit" value={data.ord_profit} min={-1000} max={1000} step={1} onChange={onChange} quickValues={[{ label: "-10", value: -10 }, { label: "0", value: 0 }, { label: "10", value: 10 }, { label: "30", value: 30 }]} hint="特別損益・税金を除いた実力値。スコアリングで重視されます" />
+        <SliderInput label="当期純利益" name="net_income" value={data.net_income} min={-1000} max={1000} step={1} onChange={onChange} quickValues={[{ label: "-10", value: -10 }, { label: "0", value: 0 }, { label: "5", value: 5 }, { label: "20", value: 20 }]} hint="税引後の最終利益。マイナスは赤字（内部留保が減少）" />
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
@@ -71,8 +71,8 @@ export default function FormFinancial({ data, onChange }: FormFinancialProps) {
         <h3 className="text-lg font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
           <span className="text-purple-500">📁</span> 貸借対照表 (B/S)
         </h3>
-        <SliderInput label="総資産" name="total_assets" value={data.total_assets} min={1} max={10000} step={1} onChange={onChange} hint="B/S合計値（百万円）。資産規模の基準になります" />
-        <SliderInput label="純資産 (自己資本)" name="net_assets" value={data.net_assets} min={-5000} max={5000} step={1} onChange={onChange} hint="自己資本。マイナス値は債務超過を示し、スコアに大きく影響します" />
+        <SliderInput label="総資産" name="total_assets" value={data.total_assets} min={1} max={10000} step={1} onChange={onChange} quickValues={[{ label: "1億", value: 100 }, { label: "3億", value: 300 }, { label: "5億", value: 500 }, { label: "10億", value: 1000 }]} hint="B/S合計値（百万円）。資産規模の基準になります" />
+        <SliderInput label="純資産 (自己資本)" name="net_assets" value={data.net_assets} min={-5000} max={5000} step={1} onChange={onChange} quickValues={[{ label: "-10", value: -10 }, { label: "0", value: 0 }, { label: "50", value: 50 }, { label: "100", value: 100 }]} hint="自己資本。マイナス値は債務超過を示し、スコアに大きく影響します" />
 
         <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 mt-4">
           <h4 className="text-sm font-bold text-slate-600 mb-3 block">資産の内訳</h4>

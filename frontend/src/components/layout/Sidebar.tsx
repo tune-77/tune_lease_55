@@ -15,11 +15,28 @@ import {
 import { useSidebar } from '@/context/SidebarContext';
 import ThemeSelector from '@/components/layout/ThemeSelector';
 
+const ACTIVITY_KEY = "shion-concierge-activity-v1";
+
+type ActivityItem = {
+  path: string;
+  title?: string;
+  ts?: number;
+  count?: number;
+};
+
+type SidebarItem = {
+  name: string;
+  href: string;
+  icon: React.ElementType;
+  color: string;
+};
+
 export default function Sidebar() {
   const pathname = usePathname();
   const { isCollapsed, toggleSidebar, isMobileOpen, toggleMobile } = useSidebar();
   const hideMobileEdgeToggle = pathname === '/multi-shion-demo';
   const [isCloudRunHost, setIsCloudRunHost] = useState(false);
+  const [frequentItems, setFrequentItems] = useState<Array<SidebarItem & { count: number }>>([]);
   const hideResearchOrgan =
     process.env.NEXT_PUBLIC_HIDE_RESEARCH_ORGAN === "1" || isCloudRunHost;
 
@@ -27,7 +44,7 @@ export default function Sidebar() {
     setIsCloudRunHost(window.location.hostname.endsWith(".run.app"));
   }, []);
 
-  const menuGroups = [
+  const menuGroups: Array<{ title: string; defaultOpen: boolean; items: SidebarItem[] }> = [
     {
       title: '審査ワークフロー',
       defaultOpen: true,
@@ -96,6 +113,37 @@ export default function Sidebar() {
     }
   ];
 
+  const flatMenuItems = menuGroups.flatMap((group) => group.items);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const timer = window.setTimeout(() => {
+      try {
+        const raw = window.localStorage.getItem(ACTIVITY_KEY);
+        const activity = raw ? (JSON.parse(raw) as ActivityItem[]) : [];
+        const itemByHref = new Map(flatMenuItems.map((item) => [item.href, item]));
+        const next = activity
+          .map((entry) => {
+            const item = itemByHref.get(entry.path);
+            if (!item) return null;
+            return {
+              ...item,
+              count: Math.max(1, Number(entry.count || 1)),
+              lastUsedAt: Number(entry.ts || 0),
+            };
+          })
+          .filter((item): item is SidebarItem & { count: number; lastUsedAt: number } => Boolean(item))
+          .sort((a, b) => (b.count - a.count) || (b.lastUsedAt - a.lastUsedAt))
+          .slice(0, 3)
+          .map(({ lastUsedAt, ...item }) => item);
+        setFrequentItems(next);
+      } catch {
+        setFrequentItems([]);
+      }
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [pathname, hideResearchOrgan]);
+
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(
     Object.fromEntries(menuGroups.map(g => [g.title, g.defaultOpen]))
   );
@@ -146,6 +194,52 @@ export default function Sidebar() {
 
         {/* メニューリスト */}
         <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-5 scrollbar-hide">
+          {frequentItems.length > 0 && (
+            <div className="mb-2">
+              {!isCollapsed && (
+                <div className="px-3 mb-3">
+                  <div className="flex items-center gap-1.5 text-[11px] font-black text-emerald-300 uppercase tracking-widest">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    紫苑がよく使う
+                  </div>
+                  <p className="mt-1 text-[10px] font-bold text-slate-500">利用履歴で自動更新</p>
+                </div>
+              )}
+              {isCollapsed && (
+                <div className="h-px bg-emerald-900/60 w-full mb-4 mx-auto" />
+              )}
+              <div className={`space-y-1 ${isCollapsed ? 'flex flex-col items-center' : ''}`}>
+                {frequentItems.map((item) => {
+                  const isActive = pathname === item.href;
+                  return (
+                    <Link
+                      key={`frequent-${item.href}`}
+                      href={item.href}
+                      onClick={() => { if (isMobileOpen) toggleMobile(); }}
+                      className={`
+                        flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 group relative
+                        ${isActive
+                          ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-400/30 shadow-inner'
+                          : 'bg-slate-800/60 hover:bg-slate-800 hover:text-white text-slate-300 border border-slate-700/60'}
+                        ${isCollapsed ? 'justify-center w-12 h-12' : 'w-full'}
+                      `}
+                      title={isCollapsed ? `${item.name} (${item.count})` : undefined}
+                    >
+                      <item.icon className={`w-5 h-5 flex-shrink-0 transition-transform group-hover:scale-110 ${isActive ? 'text-emerald-300' : item.color}`} />
+                      {!isCollapsed && (
+                        <>
+                          <span className="min-w-0 flex-1 truncate tracking-tight">{item.name}</span>
+                          <span className="rounded-full bg-slate-950/70 px-2 py-0.5 text-[10px] font-black text-slate-400">
+                            {item.count}
+                          </span>
+                        </>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {menuGroups.map((group) => (
             <div key={group.title} className="mb-2">
               {!isCollapsed && (

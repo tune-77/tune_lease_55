@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Mic, MicOff, Lightbulb, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { ScoringFormData } from '../../types';
 import SliderInput from '../SliderInput';
+import { focusNextScreeningNumber, parseHumanNumberInput } from '../../lib/numberInput';
 
 // REV-064: 物件ごとの法定耐用年数 / REV-068: 推奨業種
 const ASSET_INFO: Record<string, { usefulLifeYears: number; industryMajor: string }> = {
@@ -55,6 +56,23 @@ type SpeechRecognitionWindow = Window & {
   SpeechRecognition?: SpeechRecognitionConstructor;
   webkitSpeechRecognition?: SpeechRecognitionConstructor;
 };
+
+const acquisitionQuickValues = [
+  { label: '10', value: 10 },
+  { label: '30', value: 30 },
+  { label: '50', value: 50 },
+  { label: '1億', value: 100 },
+];
+
+const leaseTermQuickValues = [
+  { label: '36ヶ月', value: 36 },
+  { label: '48ヶ月', value: 48 },
+  { label: '60ヶ月', value: 60 },
+  { label: '72ヶ月', value: 72 },
+];
+
+const currentYear = new Date().getFullYear();
+const acceptanceYearQuickValues = [currentYear - 1, currentYear, currentYear + 1];
 
 const isSpeechSupported = () => {
   if (typeof window === 'undefined') return false;
@@ -122,8 +140,36 @@ export default function FormQualitative({ data, onChange }: FormQualitativeProps
   };
   
   const handleNumber = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onChange(e.target.name, parseFloat(e.target.value) || 0);
+    const value = e.target.value;
+    if (value.trim() === '') {
+      onChange(e.target.name, 0);
+      return;
+    }
+    const parsed = parseHumanNumberInput(value);
+    if (parsed !== null) onChange(e.target.name, parsed);
   };
+
+  const displayNumber = (value: number | undefined | null): number | "" => (
+    Number(value || 0) === 0 ? "" : Number(value)
+  );
+
+  const handleNumberFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.currentTarget.select();
+  };
+
+  const handleNumberKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    focusNextScreeningNumber(e.currentTarget);
+  };
+
+  const quickButtonClass = (active: boolean) => (
+    `rounded-lg border px-2.5 py-1 text-[11px] font-black transition-colors ${
+      active
+        ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+        : 'border-slate-200 bg-white text-slate-500 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700'
+    }`
+  );
   
   const handleSlider = (name: string, value: number) => {
     onChange(name, value);
@@ -212,20 +258,48 @@ export default function FormQualitative({ data, onChange }: FormQualitativeProps
           </div>
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">物件取得価額 (百万円)</label>
-            <input type="number" name="acquisition_cost" value={data.acquisition_cost} step="0.1" onChange={handleNumber} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
+            <input type="text" inputMode="decimal" data-screening-number="true" name="acquisition_cost" value={displayNumber(data.acquisition_cost)} step="0.1" onChange={handleNumber} onFocus={handleNumberFocus} onKeyDown={handleNumberKeyDown} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
+            <div className="flex flex-wrap gap-1.5">
+              {acquisitionQuickValues.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => onChange('acquisition_cost', item.value)}
+                  className={quickButtonClass(Number(data.acquisition_cost || 0) === item.value)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
             <p className="text-[10px] text-slate-400 mt-0.5">購入価格または見積額（百万円単位）</p>
           </div>
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">リース期間 (月)</label>
             <input
-              type="number"
+              type="text"
+              inputMode="decimal"
+              data-screening-number="true"
               name="lease_term"
-              value={data.lease_term}
+              value={displayNumber(data.lease_term)}
               onChange={handleNumber}
+              onFocus={handleNumberFocus}
+              onKeyDown={handleNumberKeyDown}
               className={`w-full bg-slate-50 border rounded-lg p-2.5 outline-none focus:ring-2 text-right h-[46px] ${
                 leaseWarning ? 'border-amber-400 focus:ring-amber-300' : 'border-slate-300 focus:ring-blue-500'
               }`}
             />
+            <div className="flex flex-wrap gap-1.5">
+              {leaseTermQuickValues.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => onChange('lease_term', item.value)}
+                  className={quickButtonClass(Number(data.lease_term || 0) === item.value)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
             {/* REV-050: リース期間バリデーション警告 */}
             {leaseWarning && (
               <p className="flex items-center gap-1 text-[10px] font-bold text-amber-600 mt-0.5">
@@ -236,7 +310,19 @@ export default function FormQualitative({ data, onChange }: FormQualitativeProps
           </div>
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">検収年 (西暦)</label>
-            <input type="number" name="acceptance_year" value={data.acceptance_year} onChange={handleNumber} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
+            <input type="text" inputMode="numeric" data-screening-number="true" name="acceptance_year" value={displayNumber(data.acceptance_year)} onChange={handleNumber} onFocus={handleNumberFocus} onKeyDown={handleNumberKeyDown} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
+            <div className="flex flex-wrap gap-1.5">
+              {acceptanceYearQuickValues.map((year) => (
+                <button
+                  key={year}
+                  type="button"
+                  onClick={() => onChange('acceptance_year', year)}
+                  className={quickButtonClass(Number(data.acceptance_year || 0) === year)}
+                >
+                  {year}
+                </button>
+              ))}
+            </div>
             <p className="text-[10px] text-slate-400 mt-0.5">物件を受け取った年または予定年（西暦4桁）</p>
           </div>
         </div>
