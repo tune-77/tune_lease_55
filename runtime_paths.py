@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import shutil
 import sqlite3
+import threading
 from pathlib import Path
 
 
@@ -45,8 +46,29 @@ def _sqlite_has_past_cases(path: Path) -> bool:
         return False
 
 
+_demo_db_seed_lock = threading.Lock()
+_demo_db_seed_done = False
+
+
 def ensure_cloudrun_demo_db_seeded() -> None:
-    """Restore packaged demo DBs if Cloud Run created empty SQLite files first."""
+    """Restore packaged demo DBs if Cloud Run created empty SQLite files first.
+
+    This is called from every SQLite connection open, but the restore itself must
+    run at most once per process: repeating the file-swap while other connections
+    are live can corrupt the DB (WAL/SHM removed mid-transaction), so a module-level
+    guard short-circuits all calls after the first one.
+    """
+    global _demo_db_seed_done
+    if _demo_db_seed_done:
+        return
+    with _demo_db_seed_lock:
+        if _demo_db_seed_done:
+            return
+        _do_ensure_cloudrun_demo_db_seeded()
+        _demo_db_seed_done = True
+
+
+def _do_ensure_cloudrun_demo_db_seeded() -> None:
     if os.environ.get("CLOUDRUN_DATA_MODE") != "demo":
         return
 

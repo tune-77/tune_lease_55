@@ -279,12 +279,17 @@ async def _git_push_db() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # startup: Cloud Run用の選抜Obsidian MarkdownをGCSから取得
-    try:
-        gcs_sync = _sync_gcs_vault_if_enabled()
-        if gcs_sync.get("enabled"):
-            print(f"[GCSVault] startup sync: {gcs_sync}")
-    except Exception as e:
-        print(f"[GCSVault] startup sync failed (non-fatal): {e}")
+    # ダウンロードはネットワークI/Oでタイムアウトが効かず起動を長時間ブロックしうるため、
+    # readiness確認（/docs）を先に通すためバックグラウンドスレッドで実行する。
+    def _run_gcs_vault_sync():
+        try:
+            gcs_sync = _sync_gcs_vault_if_enabled()
+            if gcs_sync.get("enabled"):
+                print(f"[GCSVault] startup sync: {gcs_sync}")
+        except Exception as e:
+            print(f"[GCSVault] startup sync failed (non-fatal): {e}")
+    import threading as _gcs_th
+    _gcs_th.Thread(target=_run_gcs_vault_sync, daemon=True, name="gcs-vault-sync").start()
     # startup: DB スキーマ自動初期化（REV-167 — Cloud SQL 冷起動時のテーブル不在対策）
     try:
         from api.db_connection import ensure_schema

@@ -56,21 +56,22 @@ cleanup() {
 }
 trap cleanup TERM INT EXIT
 
-python - "$FASTAPI_HOST" "$FASTAPI_PORT" <<'PY'
+READY_TIMEOUT_SECONDS="${READY_TIMEOUT_SECONDS:-240}"
+python - "$FASTAPI_HOST" "$FASTAPI_PORT" "$READY_TIMEOUT_SECONDS" <<'PY'
 import sys
 import time
 import urllib.request
 
-host, port = sys.argv[1], sys.argv[2]
+host, port, timeout_seconds = sys.argv[1], sys.argv[2], int(sys.argv[3])
 url = f"http://{host}:{port}/docs"
-for _ in range(120):
+for _ in range(timeout_seconds):
     try:
         with urllib.request.urlopen(url, timeout=1) as response:
             if response.status == 200:
                 raise SystemExit(0)
     except Exception:
         time.sleep(1)
-raise SystemExit("FastAPI did not become ready within 120 seconds")
+raise SystemExit(f"FastAPI did not become ready within {timeout_seconds} seconds")
 PY
 
 HOSTNAME=0.0.0.0 PORT="$PORT" node "$NEXT_SERVER" &

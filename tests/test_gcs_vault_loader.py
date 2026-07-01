@@ -31,7 +31,7 @@ from scripts.gcs_vault_loader import GCS_BUCKET, GCS_VAULT_PREFIX, download_vaul
 def _make_blob(name: str, content: bytes = b"# test") -> MagicMock:
     blob = MagicMock()
     blob.name = name
-    def _download(filename: str) -> None:
+    def _download(filename: str, **_kwargs: object) -> None:
         Path(filename).write_bytes(content)
     blob.download_to_filename.side_effect = _download
     return blob
@@ -103,7 +103,7 @@ class TestDownloadVault:
 
         download_vault(dest_dir=tmp_path)
 
-        client_mock.list_blobs.assert_called_once_with(GCS_BUCKET, prefix=GCS_VAULT_PREFIX)
+        client_mock.list_blobs.assert_called_once_with(GCS_BUCKET, prefix=GCS_VAULT_PREFIX, timeout=30)
 
     def test_uses_custom_bucket_and_prefix(self, tmp_path: Path) -> None:
         client_mock = MagicMock()
@@ -112,7 +112,7 @@ class TestDownloadVault:
 
         download_vault(dest_dir=tmp_path, bucket="my-bucket", prefix="custom/")
 
-        client_mock.list_blobs.assert_called_once_with("my-bucket", prefix="custom/")
+        client_mock.list_blobs.assert_called_once_with("my-bucket", prefix="custom/", timeout=30)
 
     def test_normalizes_gs_url_bucket(self, tmp_path: Path) -> None:
         client_mock = MagicMock()
@@ -121,7 +121,7 @@ class TestDownloadVault:
 
         download_vault(dest_dir=tmp_path, bucket="gs://my-bucket/some-prefix", prefix="custom/")
 
-        client_mock.list_blobs.assert_called_once_with("my-bucket", prefix="custom/")
+        client_mock.list_blobs.assert_called_once_with("my-bucket", prefix="custom/", timeout=30)
 
     def test_creates_nested_directories(self, tmp_path: Path) -> None:
         blobs = [

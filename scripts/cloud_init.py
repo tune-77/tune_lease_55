@@ -119,14 +119,14 @@ def sync_chromadb() -> None:
         prefix = "chromadb/"
         client = storage.Client()
         bucket = client.bucket(bucket_name)
-        blobs = list(bucket.list_blobs(prefix=prefix))
+        blobs = list(bucket.list_blobs(prefix=prefix, timeout=30))
         for blob in blobs:
             rel = blob.name[len(prefix):]
             if not rel or rel.endswith("/"):
                 continue
             dest = local_dir / rel
             dest.parent.mkdir(parents=True, exist_ok=True)
-            blob.download_to_filename(str(dest))
+            blob.download_to_filename(str(dest), timeout=30)
         print(f"[cloud_init] ChromaDB 同期完了 ({len(blobs)} オブジェクト) → {local_dir}")
     except ImportError:
         print("[cloud_init] google-cloud-storage が未インストール、ChromaDB 同期をスキップ")
@@ -156,7 +156,7 @@ def sync_model() -> bool:
         prefix = _MODEL_GCS_PREFIX + "/"
         client = storage.Client()
         bucket = client.bucket(bucket_name)
-        blobs = list(bucket.list_blobs(prefix=prefix))
+        blobs = list(bucket.list_blobs(prefix=prefix, timeout=30))
         if not blobs:
             print(f"[cloud_init] GCS にモデルが見つからない: gs://{bucket_name}/{prefix}")
             return False
@@ -166,7 +166,7 @@ def sync_model() -> bool:
                 continue
             dest = model_dir / rel
             dest.parent.mkdir(parents=True, exist_ok=True)
-            blob.download_to_filename(str(dest))
+            blob.download_to_filename(str(dest), timeout=30)
         print(f"[cloud_init] モデルダウンロード完了 ({len(blobs)} ファイル) → {model_dir}")
         return True
     except ImportError:
