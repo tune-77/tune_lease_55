@@ -51,6 +51,18 @@ from api.db_connection import current_backend, get_connection, placeholder
 from api.cloudrun_writeback import record_cloudrun_input_event
 logger = logging.getLogger(__name__)
 
+# fire-and-forget なバックグラウンド処理（チャット後の記憶保存・ログ記録等）用の共有プール。
+# 生の threading.Thread を都度spawnすると高負荷時にOSスレッドが際限なく積み上がり、
+# ファイル冒頭のOMP/MPS対策コメントが警告するネイティブライブラリ競合・SIGSEGVの
+# リスクが再燃するため、ワーカー数を固定して総スレッド数に上限を設ける。
+from concurrent.futures import ThreadPoolExecutor
+_background_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="bg-task")
+
+# PDCA反省バッチはGemini呼び出しを含む重い処理で、デバウンスなしだと未処理フィードバックが
+# 5件以上残る間は案件登録のたびに多重起動しうる。実行中は新規起動をスキップする。
+import threading
+_pdca_reflection_lock = threading.Lock()
+
 # data_cases / base_rate_master を正しいパスから強制ロード（clawd/ 直下の同名モジュールより優先）
 import importlib.util as _ilu
 _dc_spec = _ilu.spec_from_file_location("data_cases", os.path.join(_REPO_ROOT, "data_cases.py"))
@@ -5385,13 +5397,16 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
                 if _pending >= 5:
                     try:
                         from llm_pdca_reflection import run_monthly_pdca_reflection
-                        import threading
-                        threading.Thread(
-                            target=run_monthly_pdca_reflection,
-                            kwargs={"force": True, "max_cases": 20},
-                            daemon=True,
-                        ).start()
-                        print(f"[MiniPDCA] triggered (pending={_pending})")
+                        if _pdca_reflection_lock.acquire(blocking=False):
+                            def _run_pdca_reflection():
+                                try:
+                                    run_monthly_pdca_reflection(force=True, max_cases=20)
+                                finally:
+                                    _pdca_reflection_lock.release()
+                            _background_executor.submit(_run_pdca_reflection)
+                            print(f"[MiniPDCA] triggered (pending={_pending})")
+                        else:
+                            print(f"[MiniPDCA] skipped: already running (pending={_pending})")
                     except Exception as _pdca_err:
                         print(f"[MiniPDCA] reflection skipped: {_pdca_err}")
         except Exception as _mini_err:
@@ -8919,7 +8934,6 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     # 記憶・キーポイント・Knowledge昇格を1本のバックグラウンド処理で直列化する。
     try:
         import datetime as _dt
-        import threading as _threading
 
         def _update_dialogue_memory_pipeline() -> None:
             try:
@@ -8967,7 +8981,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
             except Exception as _mem_exc:
                 print(f"[DialogueMemoryPipeline] 更新に失敗: {_mem_exc}")
 
-        _threading.Thread(target=_update_dialogue_memory_pipeline, daemon=True).start()
+        _background_executor.submit(_update_dialogue_memory_pipeline)
     except Exception as _dlg_exc:
         print(f"[DialogueMemoryPipeline] 起動に失敗: {_dlg_exc}")
 
@@ -9056,7 +9070,6 @@ def get_knowledge_gaps():
 def _log_shion_query_class(message: str) -> None:
     """shion_classify の結果を data/chat_logs.jsonl に非同期で記録する（レスポンス遅延なし）。"""
     import json as _json
-    import threading as _threading
     from datetime import datetime, timezone
 
     def _run() -> None:
@@ -9086,7 +9099,7 @@ def _log_shion_query_class(message: str) -> None:
         except Exception as exc:
             print(f"[ShionQueryClass] chat_logs.jsonl への書き込みに失敗: {exc}")
 
-    _threading.Thread(target=_run, daemon=True).start()
+    _background_executor.submit(_run)
 
 
 @app.post("/api/chat")
@@ -9807,12 +9820,7 @@ def post_chat(req: ChatRequest):
         # 重要な知見をObsidianへ自動保存（AIが取捨選択・バックグラウンド実行でレスポンス遅延なし）
         # 改善キーワードを含むメッセージはImprovementLogで既に処理済みのためスキップ
         if not _is_improvement_msg:
-            import threading as _threading
-            _threading.Thread(
-                target=_auto_save_chat_to_obsidian,
-                args=(req.message, reply),
-                daemon=True,
-            ).start()
+            _background_executor.submit(_auto_save_chat_to_obsidian, req.message, reply)
 
         response_payload = {
             "reply": reply,
@@ -11324,7 +11332,6 @@ importance: {summary.get("importance", "中")}
         pass
 
     try:
-        import threading
         from api.knowledge.obsidian_loader import _chunk_by_h2, _parse_frontmatter
         from api.knowledge.vector_store import get_store
 
@@ -11332,16 +11339,11 @@ importance: {summary.get("importance", "中")}
         meta, body = _parse_frontmatter(raw)
         chunks = _chunk_by_h2(body, str(fpath), fpath.name, meta, fpath.stat().st_mtime)
         if chunks:
-            threading.Thread(
-                target=lambda: get_store().upsert_chunks(chunks),
-                name="news-rag-index",
-                daemon=True,
-            ).start()
+            _background_executor.submit(lambda: get_store().upsert_chunks(chunks))
     except Exception:
         pass
 
     try:
-        import threading
         import sys as _sys
         _scripts_dir = str(Path(__file__).resolve().parent.parent / "scripts")
 
@@ -11354,7 +11356,7 @@ importance: {summary.get("importance", "中")}
             except Exception:
                 pass
 
-        threading.Thread(target=_run_wikilink, name="news-wikilink", daemon=True).start()
+        _background_executor.submit(_run_wikilink)
     except Exception:
         pass
 

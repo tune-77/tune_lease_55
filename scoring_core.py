@@ -14,6 +14,12 @@ _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
 _umap_model_cache = None
 _umap_model_path_cache: str | None = None
 
+# UMAP.transform() 実行用の固定サイズプール。リクエスト毎に生スレッドを作って
+# timeoutで見捨てると、見捨てられたスレッドは裏で動き続け高負荷時にOSスレッドが
+# 際限なく積み上がるため、ワーカー数を固定して再利用する。
+from concurrent.futures import ThreadPoolExecutor as _ThreadPoolExecutor
+_umap_executor = _ThreadPoolExecutor(max_workers=2, thread_name_prefix="umap-score")
+
 # パスを追加してからインポート
 import sys
 if _REPO_ROOT not in sys.path:
@@ -1020,7 +1026,6 @@ def run_quick_scoring(inputs: dict) -> dict:
     umap_similar: list | None = None
     try:
         import pandas as _pd
-        import threading as _umap_threading
         from umap_anomaly_engine import UMAPAnomalyScorer
         from train_mahalanobis import FEATURES as _UMAP_FEATURES, _extract_val as _umap_extract
         _umap_path = os.path.join(_SCRIPT_DIR, "data", "umap_anomaly_model.joblib")
@@ -1034,20 +1039,18 @@ def run_quick_scoring(inputs: dict) -> dict:
             _umap_row = {f: _umap_extract({"inputs": inputs}, f) for f in _UMAP_FEATURES}
             _umap_df = _pd.DataFrame([_umap_row])
             # UMAP.transform() はデータポイントごとに勾配降下法を実行するため非常に遅い。
-            # 5秒タイムアウト付きスレッドで実行し、超過した場合はスキップする。
-            _umap_result: list = []
+            # 固定サイズプールに投げ、5秒以内に終わらなければスキップする（結果は無視、
+            # ワーカースレッド自体はプールに残り再利用される）。
             def _run_umap():
-                try:
-                    _s, _x, _y = _umap.score(_umap_df)
-                    _sim = _umap.find_similar(_umap_df, top_k=3)
-                    _umap_result.extend([_s, _x, _y, _sim])
-                except Exception:
-                    pass
-            _umap_thread = _umap_threading.Thread(target=_run_umap, daemon=True)
-            _umap_thread.start()
-            _umap_thread.join(timeout=5.0)
-            if len(_umap_result) == 4:
-                umap_anomaly_score, umap_x, umap_y, umap_similar = _umap_result
+                _s, _x, _y = _umap.score(_umap_df)
+                _sim = _umap.find_similar(_umap_df, top_k=3)
+                return _s, _x, _y, _sim
+            try:
+                umap_anomaly_score, umap_x, umap_y, umap_similar = (
+                    _umap_executor.submit(_run_umap).result(timeout=5.0)
+                )
+            except Exception:
+                pass
     except Exception:
         pass
 
