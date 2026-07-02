@@ -17,6 +17,7 @@ from google.genai.types import Content, Part
 
 from api.shion_conscience import build_conscience_prompt_block
 from api.shion_mana import build_mana_prompt_block
+from scoring_core import APPROVAL_LINE
 
 # ── ベンチマークデータ（起動時に一度だけ読む） ─────────────────────────────
 _BENCHMARKS_PATH = Path(__file__).parent.parent / "static_data" / "industry_benchmarks.json"
@@ -61,7 +62,7 @@ def assess_risk_level(score: float, pd_pct: float, warnings: list[str]) -> dict:
     Returns:
         risk_level, hantei, risk_notes を含む辞書
     """
-    if score >= 70:
+    if score >= APPROVAL_LINE:
         hantei = "承認"
         risk_level = "低"
     elif score >= 60:

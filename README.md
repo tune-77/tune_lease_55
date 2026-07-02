@@ -321,6 +321,15 @@ python scripts/promote_cloudrun_return_data.py --apply  # 承認済みだけ dem
 
 ## ハッカソンで見せるポイント
 
+**対象: Findy「DevOps × AI Agent Hackathon」（協賛: Google Cloud Japan）**
+
+必須技術の充足状況:
+
+| 必須枠 | 選択技術 | 実装箇所 |
+|---|---|---|
+| Google Cloud アプリケーション実行 | Cloud Run（API/Web分離） | `cloudbuild.yaml` / `cloudbuild.api.yaml` / `cloudbuild.web.yaml`, `scripts/deploy_cloud_run*.sh` |
+| Google Cloud AI 技術 | Gemini API + **ADK (Agent Development Kit)** | Gemini: OCR/ストリーミング/討論/Research。ADK: `api/shion_agent.py`（`LlmAgent` + `Runner` + ツール自律呼び出し、`/api/gunshi/stream` から実行） |
+
 このプロジェクトは、Geminiを「チャットAI」としてだけ使うのではなく、リース審査の複数の器官として分けて使う構成です。
 
 - **OCR器官**: Gemini Vision OCRで決算書画像/PDF、納税証明書、登記簿謄本、見積書/注文書、会社案内を読み取り、審査入力へ変換する
@@ -337,6 +346,36 @@ python scripts/promote_cloudrun_return_data.py --apply  # 承認済みだけ dem
 デモでは「紙・PDF → PII除去ゲート → OCR → 審査入力 → 軍師AI → 紫苑の記憶・Research参照」までを一本の流れとして見せると、現場業務の置き換えではなく、審査判断の拡張として伝わります。
 
 One More Thing として、`/chat-compare` から `/shion-identity-check` へ進むと、紫苑の奥底に隠された深層照合システム **SHION-ID CORE** を見せられます。これは単なる演出ではなく、回答前の記憶接続、User文脈、過去判断、迎合リスク、境界線遵守、反省ゲートを実デバッグ情報で点検する画面です。
+
+### DevOpsサイクルとしての紫苑
+
+「プロトタイプは作れるが実運用まで持っていけない」という課題に対し、このプロジェクトは本体データを守ったまま Cloud Run 上で実際に動かし続けるためのループを持っています。
+
+```mermaid
+graph LR
+    Dev["企画・開発\nローカル run_next_stable.sh"] -->|"Cloud Build"| Build["ビルド\ncloudbuild.yaml / .api / .web"]
+    Build -->|"deploy_cloud_run*.sh"| Deploy["デプロイ\nCloud Run (API/Web分離)"]
+    Deploy -->|"CLOUDRUN_DATA_MODE=demo"| DemoDB["demo.db 分離運用\n本体DB非接続"]
+    Deploy -->|"事前チェック"| Ready["check_cloudrun_demo_readiness.py"]
+    DemoDB -->|"審査入力・紫苑レビュー"| Events["GCSイベント\ncloudrun-inputs/*.jsonl"]
+    Events -->|"sync_cloudrun_inputs_from_gcs.py"| Quarantine["隔離DB\ncloudrun_experience_return.db"]
+    Quarantine -->|"/cloudrun-return-review で人間承認"| Promote["promote_cloudrun_return_data.py --apply"]
+    Promote -->|"承認済みのみ昇格"| DemoDB
+    Promote -.->|"明示指定時のみ"| ProdDB["本体 lease_data.db"]
+    DemoDB -.->|"次回リリースの改善材料"| Dev
+
+    style Dev fill:#1d4ed8,color:#fff
+    style Build fill:#b45309,color:#fff
+    style Deploy fill:#15803d,color:#fff
+    style DemoDB fill:#166534,color:#fff
+    style Ready fill:#0e7490,color:#fff
+    style Events fill:#1a56db,color:#fff
+    style Quarantine fill:#7c2d12,color:#fff
+    style Promote fill:#6b46c1,color:#fff
+    style ProdDB fill:#7f1d1d,color:#fff
+```
+
+ポイントは、Cloud Run 上で生まれたデータを**無条件に本体DBへ書き戻さない**ことです。デモ/本番を分離し、隔離DBでの人間承認を経てから初めて昇格するため、ハッカソン期間中の入力で審査データベースが壊れる事故を防ぎます。これは「作って終わり」ではなく、実運用を見据えた DevOps サイクルの一例として提示できます。
 
 ## 主な画面
 
