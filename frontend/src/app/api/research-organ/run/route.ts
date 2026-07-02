@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { internalApiAuthHeaders } from "@/lib/apiAuth";
 
 const FASTAPI_URL = process.env.FASTAPI_URL || "http://127.0.0.1:8000";
 const RESEARCH_TIMEOUT_MS = 180_000;
@@ -22,6 +23,7 @@ export async function POST(request: NextRequest) {
       method: "POST",
       headers: {
         "content-type": request.headers.get("content-type") || "application/json",
+        ...internalApiAuthHeaders(),
       },
       body,
       signal: controller.signal,

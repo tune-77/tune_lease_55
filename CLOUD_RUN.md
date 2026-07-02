@@ -99,19 +99,47 @@ ALLOW_UNAUTHENTICATED=1 ./scripts/deploy_cloud_run_web.sh
 
 ### 2. 共有シークレット（多層防御 / IAM が難しい場合）
 
-環境変数 `API_ACCESS_KEY` を API サービスに設定すると、FastAPI の
-`ApiKeyAuthMiddleware` が有効化され、`/api/*` へのリクエストに一致する
-`X-API-Key`（または `Authorization: Bearer <key>`）を要求します
-（`/`, `/healthz`, `/docs` は免除）。未設定時は無効なので、ローカル開発・テスト・
-既存の `rewrites` 構成は一切壊れません。
+同じ値の `API_ACCESS_KEY` を **API サービスと Web サービスの両方**に設定します。
 
-**注意**: 有効化した場合、Web からの `/api/*` 呼び出しにもキー付与が必要です。
-`rewrites` はヘッダを追加できないため、Route Handler プロキシで `X-API-Key` を
-server-side（`process.env.API_ACCESS_KEY`）から注入してください。キーをブラウザ
-バンドルへ露出させないこと（`NEXT_PUBLIC_` を付けない）。
+- **API 側**: FastAPI の `ApiKeyAuthMiddleware`（`api/api_key_auth.py`）が有効化され、
+  `/api/*` へのリクエストに一致する `X-API-Key`（または `Authorization: Bearer <key>`）を
+  要求します（`/`, `/healthz`, `/docs` は免除）。未設定時は無効なので、ローカル開発・
+  テスト・既存構成は一切壊れません。
+- **Web 側**: `frontend/src/proxy.ts`（Next.js 16 の proxy 規約）が `/api/*` に
+  `X-API-Key` を server-side で自動注入し、`next.config.ts` の `rewrites` が
+  FastAPI へ転送します（`rewrites` はヘッダを付与できないため proxy で足す。
+  proxy が設定した request header は rewrite destination へ届く）。SSE
+  ストリーミング・OCR の multipart アップロードは従来どおり `rewrites` が透過
+  処理するため影響しません。個別 Route Handler
+  （`api/lease-intelligence/dialogue`, `api/research-organ/run`）は自前 fetch のため
+  `internalApiAuthHeaders()`（`frontend/src/lib/apiAuth.ts`）でキーを注入します。
+
+**キーはブラウザへ露出させないこと**: `API_ACCESS_KEY` は server-only 環境変数として
+設定し、`NEXT_PUBLIC_` を付けないでください（付けるとバンドルに焼き込まれ意味を失う）。
+
+```bash
+# 例: API と Web の両サービスに同じキーを設定して公開する場合
+API_KEY="$(openssl rand -hex 32)"
+API_ACCESS_KEY="$API_KEY" ALLOW_UNAUTHENTICATED=1 ./scripts/deploy_cloud_run_api.sh
+API_ACCESS_KEY="$API_KEY" ALLOW_UNAUTHENTICATED=1 ./scripts/deploy_cloud_run_web.sh
+```
 
 いずれの手段も未適用のまま `ALLOW_UNAUTHENTICATED=1` で公開すると、上記の
 無防備な状態に戻ります。公開が本当に必要な場合のみ明示的に指定してください。
+
+### 残課題: Web フロントエンド自体の保護（別タスク）
+
+上記はいずれも「API の直叩き」を塞ぐものです。Web サービスを
+`ALLOW_UNAUTHENTICATED=1` で公開している限り、**公開 URL を知る第三者は Web UI を
+開いて proxy 経由で API を操作できます**（キーは server-side 注入されるため UI からは
+操作可能）。1 ユーザー運用でフロント自体も秘匿するには、次のいずれかを別途導入します:
+
+- Next.js にログイン（認証必須ページ）を追加する
+- Web サービスも `--no-allow-unauthenticated` にし、`gcloud run services proxy` や
+  IAP 経由でアクセスする
+
+この対応は本 PR のスコープ外です（`WHY_USER_COUNT_MATTERS.md` /
+`IMPLEMENTATION_DECISION_FOR_1USER.md` の方針と併せて別途計画）。
 
 Update rule:
 

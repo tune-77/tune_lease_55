@@ -1,3 +1,5 @@
+import { internalApiAuthHeaders } from "@/lib/apiAuth";
+
 const FASTAPI_URL = process.env.FASTAPI_URL || "http://127.0.0.1:8000";
 const DIALOGUE_TIMEOUT_MS = 180_000;
 
@@ -9,7 +11,10 @@ async function proxyToFastApi(request: Request, method: "POST" | "DELETE") {
     const body = method === "POST" ? await request.text() : undefined;
     const upstream = await fetch(`${FASTAPI_URL}/api/lease-intelligence/dialogue`, {
       method,
-      headers: method === "POST" ? { "Content-Type": "application/json" } : undefined,
+      headers: {
+        ...(method === "POST" ? { "Content-Type": "application/json" } : {}),
+        ...internalApiAuthHeaders(),
+      },
       body,
       signal: controller.signal,
       cache: "no-store",
