@@ -85,12 +85,22 @@ def _normalize_line(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip()
 
 
+MEMORY_INSTRUCTION_WORDS = {"覚えておいて", "記憶して", "知っておいて", "記録して", "覚えて"}
+QUESTION_ENDINGS = {"?", "？", "かい", "だっけ", "かな", "のかい", "なの"}
+
+
 def _is_likely_personal_memory(message: str) -> bool:
     text = str(message or "").strip()
     if not text or len(text) > 1200:
         return False
     if any(term in text for term in _REMEMBER_TERMS):
         return True
+
+    # 疑問文フィルタ（明示的記憶指示がある場合は除外）
+    if not any(w in text for w in MEMORY_INSTRUCTION_WORDS):
+        if text.rstrip().endswith(tuple(QUESTION_ENDINGS)) or "だっけ" in text or "かい？" in text:
+            return False
+
     return any(term in text for term in _PERSONAL_TERMS) and (
         "僕" in text or "私" in text or "俺" in text or "ユーザー" in text or "名前" in text
     )
@@ -142,7 +152,9 @@ def _replace_or_append_dog_name(lines: list[str], dog_name: str) -> list[str]:
     replacement = f"- [confirmed] Dog name: {dog_name}"
     for index, line in enumerate(lines):
         stripped = line.strip()
-        if stripped.startswith("- Dog name:") or stripped.startswith("- [confirmed] Dog name:"):
+        if (stripped.startswith("- Dog name:") or
+                stripped.startswith("- [confirmed] Dog name:") or
+                stripped.startswith("- [candidate] Dog name:")):
             lines[index] = replacement
             return lines
     try:
@@ -175,7 +187,8 @@ def capture_user_personal_memory(message: str, *, source: str = "chat") -> dict[
         category = _classify_personal_memory(clean)
         confidence = _confidence_for_memory(clean, dog_name=dog_name)
         entry = f"- {dt.datetime.now().isoformat(timespec='seconds')} [{confidence}/{category}] ({source}) {clean}"
-        if entry not in lines and clean not in "\n".join(lines):
+        # clean が既存行のいずれかに完全一致する場合のみスキップ
+        if not any(clean == existing_line.strip() for existing_line in lines):
             if "## Captured Personal Memories" not in lines:
                 lines.extend(["", "## Captured Personal Memories", ""])
             lines.append(entry)
