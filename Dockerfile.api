@@ -21,7 +21,7 @@ COPY --from=python-deps /opt/venv /opt/venv
 COPY . .
 COPY .cloudrun_bundle/ /app/.cloudrun_bundle/
 
-RUN chmod +x scripts/start_cloud_run.sh \
+RUN chmod +x scripts/start_cloud_run.sh scripts/start_api_cloud_run.sh \
     && mkdir -p /app/data /app/obsidian_vault /tmp/tune-lease \
     && chmod -R a-w /app/.cloudrun_bundle \
     && useradd --create-home --uid 10001 appuser \
@@ -44,4 +44,4 @@ ENV PATH=/opt/venv/bin:$PATH \
 
 EXPOSE 8080
 
-CMD ["python", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
+CMD ["./scripts/start_api_cloud_run.sh"]
