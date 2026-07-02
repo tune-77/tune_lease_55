@@ -6,7 +6,6 @@ import MobileHeader from '@/components/layout/MobileHeader';
 import { SidebarProvider } from '@/context/SidebarContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import ContentWrapper from '@/components/layout/ContentWrapper';
-import ShionProactiveWhisper from '@/components/layout/ShionProactiveWhisper';
 
 export const metadata: Metadata = {
   title: 'Tune式 リース審査アシスタント',
@@ -52,7 +51,6 @@ export default function RootLayout({
               </div>
 
               {/* 全画面共通フローティングBOT (めぶきちゃん) */}
-              <ShionProactiveWhisper />
               <FloatingMebuki />
 
             </div>
