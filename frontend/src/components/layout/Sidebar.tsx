@@ -10,7 +10,7 @@ import {
   X, Menu, Table2, Swords, MessageCircle,
   BarChart2, BookOpen, Gift, HelpCircle, Megaphone, Calculator,
   LifeBuoy, ClipboardList, Brain, Database,
-  Orbit, ShieldCheck, Sparkles, Search
+  Orbit, ShieldCheck, Sparkles, Search, GitBranch
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
 import ThemeSelector from '@/components/layout/ThemeSelector';
@@ -70,6 +70,7 @@ export default function Sidebar() {
         { name: '知性体コア', href: '/shion-core', icon: Brain, color: 'text-violet-300' },
         { name: '紫苑/一般 比較', href: '/chat-compare', icon: MessageSquare, color: 'text-indigo-300' },
         { name: '自己同一性検査', href: '/shion-identity-check', icon: ShieldCheck, color: 'text-cyan-300' },
+        { name: 'DevOpsサイクル', href: '/devops', icon: GitBranch, color: 'text-emerald-300' },
         { name: 'システム概要', href: '/system-overview', icon: Orbit, color: 'text-fuchsia-400' },
       ]
     },
