@@ -58,7 +58,15 @@ deploy_args=(
   --concurrency "$CONCURRENCY"
   --min-instances "$MIN_INSTANCES"
   --max-instances "$MAX_INSTANCES"
-  --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=false,ENABLE_FEEDBACK_LOADING=false,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,CLOUDRUN_DATA_MODE=${CLOUDRUN_DATA_MODE},DB_PATH=/app/data/demo.db,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600"
+  # ENABLE_OBSIDIAN_INDEXING/ENABLE_FEEDBACK_LOADING は30秒遅延のバックグラウンド
+  # スレッドで動く（api/main.py起動処理参照）。ワーカーゾンビ化の既知リスクは
+  # ローカル --reload 開発時に限られ、Cloud Runは--workers 1・--reloadなしの
+  # 単一プロセスなので該当しない。ここを有効化しないとGCS Vault同期後も
+  # ChromaDBが空のままになり、/api/chatのセマンティックRAGが常時キーワード
+  # フォールバックに落ちる（根幹の知識ベースが機能しない状態が続く）。
+  # ENABLE_GUNSHI_RAG は別経路（リクエスト同期でembeddingモデルを読む）で
+  # 過去に共有プロセスの不安定化を招いた実績があるため、意図的に false のまま。
+  --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,CLOUDRUN_DATA_MODE=${CLOUDRUN_DATA_MODE},DB_PATH=/app/data/demo.db,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600"
 )
 
 if gcloud secrets describe GEMINI_API_KEY --project "$PROJECT_ID" >/dev/null 2>&1; then
