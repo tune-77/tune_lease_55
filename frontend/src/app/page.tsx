@@ -97,6 +97,7 @@ type WorkQueueItem = {
 const ACTIVITY_KEY = "shion-concierge-activity-v1";
 const QUEUE_STATE_KEY = "shion-concierge-work-queue-state-v1";
 const SHION_AVATAR_IMAGE = "/lease-grumble/characters/lease-intelligence-girl.jpg";
+const SHION_INTRO_VIDEO = "/lease-grumble/characters/shion-intro-loop.mp4";
 
 const SHION_PERSONAS: ShionPersona[] = [
   {
@@ -465,11 +466,19 @@ export default function ShionConciergeHome() {
         <section className="rounded-3xl border border-violet-200 bg-white/90 p-5 shadow-xl shadow-violet-100/70 backdrop-blur sm:p-7">
           <div className="mb-6 grid gap-5 md:grid-cols-[160px_1fr] md:items-center">
             <div className="mx-auto w-36 overflow-hidden rounded-3xl border border-violet-200 bg-violet-50 shadow-lg shadow-violet-100 md:mx-0 md:w-40">
-              <img
-                src={SHION_AVATAR_IMAGE}
-                alt="リース知性体 紫苑システム"
+              {/* 控えめな紫苑の動画（音無し・自動ループ）。読み込み失敗時は静止画にフォールバック */}
+              <video
+                src={SHION_INTRO_VIDEO}
+                poster={SHION_AVATAR_IMAGE}
+                autoPlay
+                muted
+                loop
+                playsInline
                 className="aspect-square w-full object-cover"
-              />
+                aria-label="リース知性体 紫苑システム"
+              >
+                <img src={SHION_AVATAR_IMAGE} alt="リース知性体 紫苑システム" className="aspect-square w-full object-cover" />
+              </video>
             </div>
             <div>
               <p className="text-[11px] font-black tracking-[0.28em] text-violet-600">- リース知性体 -</p>

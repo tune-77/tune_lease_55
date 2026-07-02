@@ -3,6 +3,7 @@
 import React, { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { useSidebar } from "@/context/SidebarContext";
+import { apiClient } from "@/lib/api";
 
 const ACTIVITY_KEY = "shion-concierge-activity-v1";
 const MAX_ACTIVITY_ITEMS = 30;
@@ -61,6 +62,9 @@ export default function ContentWrapper({ children }: { children: React.ReactNode
     } catch {
       // localStorage is advisory only.
     }
+    // 画面利用ループエンジニアリング(Observe): サーバー側にも訪問イベントを送る。
+    // 失敗しても画面表示には影響させない。
+    apiClient.post("/api/usage-loop/visit", { path: pathname }).catch(() => {});
   }, [pathname]);
 
   return (
