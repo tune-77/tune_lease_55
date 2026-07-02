@@ -5,16 +5,21 @@ import Link from "next/link";
 import {
   ArrowLeft,
   Bot,
+  BookOpen,
   Brain,
+  Calendar,
   Clock,
   Database,
   GitCompare,
   Fingerprint,
   Loader2,
   MessageCircle,
+  MessagesSquare,
   Network,
+  RefreshCw,
   Send,
   Sparkles,
+  User,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
 
@@ -112,15 +117,32 @@ const SHION_VARIANTS = [
   },
 ];
 
-function normalizeReply(value: unknown): string {
-  return typeof value === "string" && value.trim() ? value : "回答が空でした。";
-}
+const METRICS: Array<{
+  key: "memory" | "knowledge" | "identity" | "personal" | "daily" | "experience";
+  label: string;
+  icon: React.ElementType;
+  hint: string;
+}> = [
+  { key: "memory", label: "記憶参照", icon: Database, hint: "紫苑の記憶検索でヒットした件数" },
+  { key: "knowledge", label: "知識参照", icon: BookOpen, hint: "Obsidianナレッジの参照件数" },
+  { key: "identity", label: "同一性", icon: Fingerprint, hint: "過去の自分の判断を意識したか" },
+  { key: "personal", label: "個人記憶", icon: User, hint: "ユーザー固有の記憶を使ったか" },
+  { key: "daily", label: "日次知性", icon: Calendar, hint: "その日の日次内省を使ったか" },
+  { key: "experience", label: "経験ループ", icon: RefreshCw, hint: "人間の反応フィードバックを次回へ反映したか" },
+];
 
-function metricLabel(result: CompareResult | null, key: "memory" | "knowledge" | "identity") {
+function metricValue(result: CompareResult | null, key: (typeof METRICS)[number]["key"]): string {
   if (!result) return "-";
   if (key === "memory") return `${result.memoryRefs}件`;
   if (key === "knowledge") return `${result.knowledgeRefs}件`;
-  return result.identityUsed ? "使用" : "未使用";
+  if (key === "identity") return result.identityUsed ? "使用" : "未使用";
+  if (key === "personal") return result.personalUsed ? "ON" : "OFF";
+  if (key === "daily") return result.obsidianDailyUsed ? "ON" : "OFF";
+  return result.experienceUsed ? "ON" : "OFF";
+}
+
+function normalizeReply(value: unknown): string {
+  return typeof value === "string" && value.trim() ? value : "回答が空でした。";
 }
 
 function signalLabel(value: boolean) {
@@ -321,6 +343,24 @@ export default function ChatComparePage() {
           </div>
         </section>
 
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center gap-2 text-xs font-black text-slate-500">
+            <Fingerprint className="h-4 w-4 text-indigo-600" />
+            指標の見方（下の比較カードで使う6項目）
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {METRICS.map((metric) => (
+              <div key={metric.key} className="flex items-start gap-2 rounded-lg border border-slate-100 bg-slate-50 p-2.5">
+                <metric.icon className="mt-0.5 h-4 w-4 flex-shrink-0 text-indigo-500" />
+                <div>
+                  <div className="text-xs font-black text-slate-800">{metric.label}</div>
+                  <div className="mt-0.5 text-[11px] font-bold leading-4 text-slate-500">{metric.hint}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
         <section className="rounded-xl border border-indigo-100 bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-end justify-between gap-2">
             <div>
@@ -434,39 +474,15 @@ export default function ChatComparePage() {
                 </div>
 
                 <div className="mt-4 grid grid-cols-3 gap-2">
-                  <div className="rounded-lg border border-white/70 bg-white/80 p-2">
-                    <div className="text-[10px] font-black text-slate-400">記憶参照</div>
-                    <div className="mt-1 text-sm font-black text-slate-800">{metricLabel(result, "memory")}</div>
-                  </div>
-                  <div className="rounded-lg border border-white/70 bg-white/80 p-2">
-                    <div className="text-[10px] font-black text-slate-400">知識参照</div>
-                    <div className="mt-1 text-sm font-black text-slate-800">{metricLabel(result, "knowledge")}</div>
-                  </div>
-                  <div className="rounded-lg border border-white/70 bg-white/80 p-2">
-                    <div className="text-[10px] font-black text-slate-400">同一性</div>
-                    <div className="mt-1 text-sm font-black text-slate-800">{metricLabel(result, "identity")}</div>
-                  </div>
-                </div>
-
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  <div className="rounded-lg border border-white/70 bg-white/70 p-2">
-                    <div className="text-[10px] font-black text-slate-400">個人記憶</div>
-                    <div className="mt-1 text-sm font-black text-slate-800">
-                      {result ? signalLabel(result.personalUsed) : "-"}
+                  {METRICS.map((metric) => (
+                    <div key={metric.key} className="rounded-lg border border-white/70 bg-white/80 p-2">
+                      <div className="flex items-center gap-1 text-[10px] font-black text-slate-400">
+                        <metric.icon className="h-3 w-3" />
+                        {metric.label}
+                      </div>
+                      <div className="mt-1 text-sm font-black text-slate-800">{metricValue(result, metric.key)}</div>
                     </div>
-                  </div>
-                  <div className="rounded-lg border border-white/70 bg-white/70 p-2">
-                    <div className="text-[10px] font-black text-slate-400">日次知性</div>
-                    <div className="mt-1 text-sm font-black text-slate-800">
-                      {result ? signalLabel(result.obsidianDailyUsed) : "-"}
-                    </div>
-                  </div>
-                  <div className="rounded-lg border border-white/70 bg-white/70 p-2">
-                    <div className="text-[10px] font-black text-slate-400">経験ループ</div>
-                    <div className="mt-1 text-sm font-black text-slate-800">
-                      {result ? signalLabel(result.experienceUsed) : "-"}
-                    </div>
-                  </div>
+                  ))}
                 </div>
 
                 <div className="mt-4 rounded-lg border border-white/70 bg-white/90 p-4">
@@ -478,7 +494,13 @@ export default function ChatComparePage() {
                   ) : result?.error ? (
                     <p className="text-sm font-bold leading-relaxed text-rose-700">{result.error}</p>
                   ) : result?.reply ? (
-                    <p className="whitespace-pre-wrap text-sm font-medium leading-7 text-slate-800">{result.reply}</p>
+                    <>
+                      <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest text-slate-400">
+                        <MessagesSquare className="h-3.5 w-3.5" />
+                        回答
+                      </div>
+                      <p className="mt-2 whitespace-pre-wrap text-sm font-medium leading-7 text-slate-800">{result.reply}</p>
+                    </>
                   ) : (
                     <div className="flex h-48 flex-col items-center justify-center text-center text-slate-400">
                       <Network className="mb-3 h-8 w-8" />
