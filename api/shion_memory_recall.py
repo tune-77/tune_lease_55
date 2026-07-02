@@ -13,6 +13,7 @@ from typing import Any
 
 from api.shion_practical_knowledge import infer_practical_scene
 from api.shion_memory_taxonomy import MemoryType, RECALL_ROUTES
+from scoring_core import APPROVAL_LINE, REVIEW_LINE
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _INDEX_PATH = _REPO_ROOT / "data" / "shion_memory_index.json"
@@ -91,8 +92,10 @@ def recall_memories(question: str, *, limit: int = 5, index_path: Path = _INDEX_
     }
 
 
-def build_recall_prompt_block(question: str, *, limit: int = 5) -> tuple[str, dict[str, Any]]:
-    recalled = recall_memories(question, limit=limit)
+def build_recall_prompt_block(
+    question: str, *, limit: int = 5, index_path: Path = _INDEX_PATH
+) -> tuple[str, dict[str, Any]]:
+    recalled = recall_memories(question, limit=limit, index_path=index_path)
     memories = recalled.get("memories") or []
     practical_scene = recalled.get("practical_scene") or {}
     if not memories and not practical_scene:
@@ -204,11 +207,11 @@ def _extract_score_band(text: str) -> str:
     if not scores:
         return ""
     score = scores[0]
-    if 40 < score < 70:
+    if REVIEW_LINE < score < APPROVAL_LINE:
         return "boundary"
-    if score <= 40:
+    if score <= REVIEW_LINE:
         return "low"
-    if score >= 70:
+    if score >= APPROVAL_LINE:
         return "high"
     return "middle"
 

@@ -1260,7 +1260,7 @@ def run_debate_screening(params: dict) -> dict:
             case_summary = (
                 f"{params.get('industry_major') or params.get('industry_sub') or '業種不明'} "
                 f"{params.get('asset_name', '')} "
-                f"{params.get('lease_amount') or params.get('lease_total') or 0}万円 "
+                f"{params.get('lease_amount') or params.get('lease_total') or 0}百万円 "
                 f"{params.get('lease_months', '')}回払い"
             ).strip()
             _personas_data: dict[str, dict] = {}
@@ -1312,7 +1312,7 @@ def _extract_core_candidate(
     )
     prompt = (
         f"以下のリース審査結論から、汎用的な判断基準を1〜2文で抽出してください。\n\n"
-        f"【案件概要】業種: {industry} / 物件: {asset_name} / リース額: {lease_amount}万円\n"
+        f"【案件概要】業種: {industry} / 物件: {asset_name} / リース額: {lease_amount}百万円\n"
         f"【最終判断】{final}\n"
         f"【根拠】{reasoning}\n"
         f"【条件】{conditions_text}\n\n"
@@ -1387,7 +1387,7 @@ def _extract_core_candidate_for_role(
     )
     prompt = (
         f"以下のリース審査結論（{role_desc}の視点）から、汎用的な判断基準を1〜2文で抽出してください。\n\n"
-        f"【案件概要】業種: {industry} / 物件: {asset_name} / リース額: {lease_amount}万円\n"
+        f"【案件概要】業種: {industry} / 物件: {asset_name} / リース額: {lease_amount}百万円\n"
         f"【{role_desc}の判断】{stance}\n\n"
         f"抽出例: 「医療機器は陳腐化リスクが高いため、残存価値評価では保守的な係数を適用すべき」\n"
         f"1〜2文のテキストのみ出力してください。"

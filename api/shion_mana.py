@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from scoring_core import APPROVAL_LINE, REVIEW_LINE
+
 
 MANA_NAME = "Mana"
 
@@ -60,7 +62,7 @@ def should_consult_mana(
             final == "否決",
             not reasoning,
             same_opinion_r1 and mode == "debate",
-            40 < score < 70 and final in {"承認", "否決"},
+            REVIEW_LINE < score < APPROVAL_LINE and final in {"承認", "否決"},
             pd_pct >= 8.0,
         ]
     )

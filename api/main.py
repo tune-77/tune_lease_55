@@ -132,7 +132,7 @@ def _gemini_generate_url() -> str:
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
-from scoring_core import run_quick_scoring
+from scoring_core import run_quick_scoring, APPROVAL_LINE, CONDITIONAL_LINE
 from api.scoring_full import run_full_scoring_api
 from api.gunshi_gemini import stream_gunshi_gemini
 from lease_news_digest import (
@@ -738,7 +738,7 @@ def _score_float(value: Any, default: float = 0.0) -> float:
 def _build_conditional_approval_actions(inputs: dict, result: dict) -> list[dict]:
     """条件付き承認に近い案件で、審査担当者が次に取る条件を標準化する。"""
     score = _score_float(result.get("score", result.get("hantei_score")), 0.0)
-    if score >= 71:
+    if score >= APPROVAL_LINE:
         return []
 
     actions: list[dict] = []
@@ -763,7 +763,7 @@ def _build_conditional_approval_actions(inputs: dict, result: dict) -> list[dict
     asset_evidence = str(inputs.get("asset_evidence_level") or "").strip()
     lease_term = int(_score_float(inputs.get("lease_term"), 60))
 
-    if score < 60:
+    if score < CONDITIONAL_LINE:
         add("must", "取得額の圧縮または対象物件の分割を再提案", "現条件では承認ラインまで距離があるため、エクスポージャーを先に下げる。", "構造変更")
         add("must", "代表者保証・追加担保・前受金のいずれかを条件化", "信用補完なしで押すより、損失限定条件を先に置く。", "信用補完")
     else:
@@ -1066,9 +1066,9 @@ def _build_approval_comment_draft(
             asset_sentence += " 見積・型式等の確認資料は未確認。"
 
     judgment_line = "条件付きで前向きに検討。"
-    if score >= 70:
+    if score >= APPROVAL_LINE:
         judgment_line = "現時点では承認方向で検討可能。"
-    elif score < 60:
+    elif score < CONDITIONAL_LINE:
         judgment_line = "現条件のままでは慎重判断とし、条件補強または案件条件の見直しを要する。"
 
     summary = (
@@ -5375,7 +5375,7 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
         try:
             from judgment_feedback import record_judgment_feedback, count_unprocessed_feedback
             _ai_score = float(c.get("score") or c.get("score_base") or 0)
-            _ai_decision = "承認" if _ai_score >= 70 else "条件付き" if _ai_score >= 60 else "否決"
+            _ai_decision = "承認" if _ai_score >= APPROVAL_LINE else "条件付き" if _ai_score >= CONDITIONAL_LINE else "否決"
             _human_decision = "承認" if req.status == "成約" else "否決"
             _reason_bits = [f"案件登録トリガー: {req.status}（AIスコア {_ai_score:.1f}）"]
             if grey_judgment.get("human_discomfort"):

@@ -10,10 +10,12 @@ def load_business_rules() -> dict:
     ファイルが存在しない場合はデフォルトの辞書を返す。
     """
     if not os.path.exists(RULES_FILE_PATH):
+        from scoring_core import APPROVAL_LINE  # 承認ライン定義の単一ソース（値の複製を避ける）
+
         # デフォルトのルール構造
         return {
             "thresholds": {
-                "approval": 0.71,  # scoring_core.APPROVAL_LINE=71 と統一
+                "approval": APPROVAL_LINE / 100,
                 "review": 0.40
             },
             "score_modifiers": {

@@ -2,11 +2,16 @@
 
 This is not a consciousness claim. It is a small, inspectable state loop:
 conversation experience -> self-state update -> next prompt context.
+
+【設計決定 2026-07-02】ここで扱う mood は「対話感情」であり、審査イベント駆動の
+「審査感情」（api/emotion_trigger.py → mind.json の dialogue_mood）とは意図的に
+別系統で運用する（統合しない）。キー語彙・保存先が異なるのは仕様。
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -14,6 +19,11 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_STATE_PATH = REPO_ROOT / "data" / "shion_experience_state.json"
 DEFAULT_EVENT_LOG = REPO_ROOT / "data" / "shion_experience_events.jsonl"
+
+# /api/chat の複数経路が FastAPI スレッドプール上で同時に記録すると
+# load→update→write の間で経験が消える（last-writer-wins）ため、
+# 同一プロセス内の read-modify-write を直列化する。
+_STATE_LOCK = threading.Lock()
 
 _MOOD_KEYS = ("curiosity", "vigilance", "attachment", "frustration", "accomplishment")
 
@@ -118,7 +128,6 @@ def record_experience_event(
     state_path: Path = DEFAULT_STATE_PATH,
     event_log: Path = DEFAULT_EVENT_LOG,
 ) -> dict[str, Any]:
-    state = load_experience_state(state_path)
     event = build_experience_event(
         message=message,
         response=response,
@@ -129,9 +138,11 @@ def record_experience_event(
         delta_awareness=delta_awareness or {},
         memory_to_judgment=memory_to_judgment or {},
     )
-    updated = update_experience_state(state, event)
-    _append_jsonl(event_log, event)
-    _atomic_write_json(state_path, updated)
+    with _STATE_LOCK:
+        state = load_experience_state(state_path)
+        updated = update_experience_state(state, event)
+        _append_jsonl(event_log, event)
+        _atomic_write_json(state_path, updated)
     return {"event": event, "state": public_experience_state(updated)}
 
 

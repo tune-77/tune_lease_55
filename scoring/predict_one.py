@@ -572,7 +572,7 @@ def predict_one(
                 "feature": X_scaled.columns.tolist(),
                 "importance": unified_ai.model.feature_importances_,
             }).sort_values("importance", ascending=False)
-        rf_approval_prob = float(unified_ai.predict_proba(X_scaled)[0])
+        unified_default_prob = float(unified_ai.predict_proba(X_scaled)[0])
         if unified_ai.feature_importance is not None and len(unified_ai.feature_importance) > 0:
             for f in unified_ai.feature_importance.head(5)["feature"].tolist():
                 if f in features.columns:
@@ -580,12 +580,18 @@ def predict_one(
                     if pd.notna(v):
                         top5_reasons.append(f"{f}: {v:.2f}")
 
-        # 旧 bundle は「失注確率」を返していたので、そのまま risk に変換
-        ai_prob = float(rf_approval_prob)
-        hybrid_prob = 0.3 * (legacy_prob or 0.0) + 0.7 * ai_prob
+        # 意味論の統一（2026-04 監査指摘の判定逆転修正）:
+        #   legacy_prob（業種別線形モデル）は「承認確率」（健全なほど高い）、
+        #   unified_ai.predict_proba は「デフォルト確率」（scoring/model.py 参照）。
+        #   返却インターフェースの ai_prob / hybrid_prob は「リスク（否決方向）確率」なので、
+        #   legacy 側を反転してから合成する。従来は承認確率のまま合成しており、
+        #   健全企業ほど hybrid_prob が上がって否決される逆転が起きていた。
+        ai_prob = unified_default_prob
+        legacy_risk = 1.0 - float(legacy_prob or 0.0)
+        hybrid_prob = 0.3 * legacy_risk + 0.7 * ai_prob
         decision = "承認" if hybrid_prob < 0.5 else "否決"
         return {
-            "legacy_prob": round(legacy_prob or 0.0, 4),
+            "legacy_prob": round(legacy_risk, 4),
             "ai_prob": round(ai_prob, 4),
             "hybrid_prob": round(hybrid_prob, 4),
             "decision": decision,

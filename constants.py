@@ -242,7 +242,10 @@ RECOMMENDED_FIELDS = [
 ]
 
 # === 判定用定数 ===
-APPROVAL_LINE = 71                      # 社内承認ライン（過去実績ベース）
+# 承認ライン定義の単一ソース。参照側は scoring_core.APPROVAL_LINE を import すること（CLAUDE.md 参照）。
+# 環境変数 APPROVAL_LINE / CONDITIONAL_LINE で上書き可能。
+APPROVAL_LINE = int(os.environ.get("APPROVAL_LINE", "71"))       # 社内承認ライン（過去実績ベース）
+CONDITIONAL_LINE = int(os.environ.get("CONDITIONAL_LINE", "60"))  # これ以上〜承認ライン未満 = 条件付き承認
 REVIEW_LINE = 40                        # これ未満は即否決圏
 SCORE_PENALTY_IF_LEARNING_REJECT = 0.5  # AIモデル否決時の乗算ペナルティ
 ALERT_BORDERLINE_MIN = 68               # 承認ライン直下の要確認ゾーン下限

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from scoring_core import CONDITIONAL_LINE
+
 
 CONSCIENCE_NAME = "良心の紫苑"
 
@@ -63,7 +65,8 @@ def evaluate_conscience(params: dict[str, Any], arbiter: dict[str, Any]) -> dict
     cautions: list[str] = []
     action = "記録のみ"
 
-    high_impact = final in {"否決", "条件付き承認"} or score <= 60 or pd_pct >= 5.0 or lease_amount >= 50
+    # lease_amount は百万円単位（debate 画面の入力ラベル・_CASE_CTX_TMPL 参照）。50 = 5,000万円以上を高影響とみなす
+    high_impact = final in {"否決", "条件付き承認"} or score <= CONDITIONAL_LINE or pd_pct >= 5.0 or lease_amount >= 50
     triggered = high_impact
 
     if final == "否決":

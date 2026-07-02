@@ -53,9 +53,17 @@ def _get_gemini_api_key() -> str:
 
 
 def _load_local_mind() -> dict:
-    """data/mind.json（プロジェクトローカル）を読む。"""
-    with open(_MIND_PATH, encoding="utf-8") as f:
-        return json.load(f)
+    """data/mind.json（プロジェクトローカル）を読む。
+
+    mind.json は gitignore 対象で Cloud Run 等の新環境には存在しないため、
+    不在・破損時は空辞書を返して分析を継続する。
+    """
+    try:
+        with open(_MIND_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
 
 
 def _load_vault_keypoints() -> list[str]:
@@ -256,7 +264,17 @@ def get_shion_self_analysis(force_refresh: bool = False) -> dict:
     local_mind = _load_local_mind()
     keypoints = _load_vault_keypoints()
     prompt = _build_analysis_prompt(local_mind, keypoints)
-    result = _call_gemini(prompt)
+    try:
+        result = _call_gemini(prompt)
+    except Exception:
+        # APIキー未設定・通信失敗時は既定ペルソナで応答を継続する。
+        # 復旧後すぐ再分析できるよう、フォールバック結果はキャッシュしない。
+        return {
+            **_ANALYSIS_DEFAULTS,
+            "generated_at": datetime.now(tz=timezone.utc).isoformat(),
+            "keypoints_used": len(keypoints),
+            "fallback": True,
+        }
 
     now = datetime.now(tz=timezone.utc).isoformat()
     cache = {
