@@ -5,6 +5,10 @@ import { apiClient } from "@/lib/api";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { FlyControls } from "three/examples/jsm/controls/FlyControls.js";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { ArrowLeft, RefreshCw, Search, Sparkles, Network, FileText, SlidersHorizontal, X, Rocket } from "lucide-react";
 
 type GraphNode = {
@@ -358,7 +362,22 @@ function KnowledgeSpaceScene({
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(mount.clientWidth, mount.clientHeight);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = isGalaxy ? 1.15 : 1.05;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
     mount.appendChild(renderer.domElement);
+
+    // 発光ノード・コアに映画的なブルームをかけ、単色フラットな見た目から実写に近い光の滲みを出す
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(mount.clientWidth, mount.clientHeight),
+      isGalaxy ? 0.85 : 0.55,
+      0.5,
+      isGalaxy ? 0.18 : 0.32,
+    );
+    composer.addPass(bloomPass);
+    composer.addPass(new OutputPass());
 
     let orbitControls: OrbitControls | null = null;
     let flyControls: FlyControls | null = null;
@@ -681,7 +700,7 @@ function KnowledgeSpaceScene({
             ? 0.35
             : 0.45 + power * 0.9;
         const nodeColor = new THREE.Color(node.color || "#7dd3fc");
-        const geo = new THREE.SphereGeometry(r * emphasis, 14, 10);
+        const geo = new THREE.SphereGeometry(r * emphasis, 22, 16);
         const mat = new THREE.MeshPhongMaterial({
           color: nodeColor,
           emissive: nodeColor.clone().multiplyScalar(0.28 + power * 0.22),
@@ -828,6 +847,7 @@ function KnowledgeSpaceScene({
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height);
+      composer.setSize(width, height);
     };
     window.addEventListener("resize", resize);
 
@@ -857,7 +877,7 @@ function KnowledgeSpaceScene({
       if (halo.visible) {
         halo.quaternion.copy(camera.quaternion);
       }
-      renderer.render(scene, camera);
+      composer.render();
     };
     animate();
 
@@ -896,6 +916,8 @@ function KnowledgeSpaceScene({
       deepSpaceMaterials.forEach((material) => material.dispose());
       deepSpaceTextures.forEach((texture) => texture.dispose());
       starTexture?.dispose();
+      bloomPass.dispose();
+      composer.dispose();
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
