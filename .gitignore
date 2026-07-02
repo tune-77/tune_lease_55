@@ -29,8 +29,13 @@ screening_report_test.pdf
 # データベース・審査データ（個人情報・機密情報を含む可能性）
 data/*.db
 !data/demo.db
+# DBバックアップ・リストア前スナップショット（*.db.bak_… 等は data/*.db に一致しないため明示）
+data/*.db.*
 data/*.sqlite
 data/*.jsonl
+# 実験・セッションログ（.claude/rules/security.md のコミット禁止リスト対象）
+data/identity_experiment/
+data/aurion_daily/state_*.json
 data/backups/
 data/.fuse_hidden*
 data/dashboard_stats_cache.json

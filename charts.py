@@ -3,6 +3,8 @@
 plot_gauge_plotly, plot_waterfall_plotly 等の Plotly/Matplotlib グラフを提供。
 """
 import numpy as np
+# scoring_core は data_cases 経由で charts を import するため（循環回避）、定義元の constants から取る
+from constants import APPROVAL_LINE
 import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
@@ -59,7 +61,7 @@ def plot_gauge(score, title="承認スコア"):
     fig, ax = plt.subplots(figsize=(3.2, 3.2))
     fig.patch.set_facecolor(CHART_STYLE["bg"])
     ax.set_facecolor("white")
-    if score >= 71:
+    if score >= APPROVAL_LINE:
         color = CHART_STYLE["good"]
     elif score >= 41:
         color = CHART_STYLE["warning"]
@@ -78,7 +80,7 @@ def plot_gauge(score, title="承認スコア"):
 
 def plot_gauge_plotly(score, title="承認スコア"):
     """Plotly版：ホバー・ズーム可能なゲージ"""
-    if score >= 71:
+    if score >= APPROVAL_LINE:
         color = CHART_STYLE["good"]
     elif score >= 41:
         color = CHART_STYLE["warning"]
@@ -414,7 +416,7 @@ def plot_positioning_scatter(current_sales, current_op_margin, past_cases):
             fin = c["result"]["financials"]
             s = fin.get("nenshu", 0) / 1000
             p = (fin.get("rieki", 0) / fin.get("nenshu", 1)) * 100 if fin.get("nenshu", 0) > 0 else 0
-            res = "承認" if c["result"]["score"] >= 70 else "否決"
+            res = "承認" if c["result"]["score"] >= APPROVAL_LINE else "否決"
             data.append({"売上高(百万円)": s, "営業利益率(%)": p, "Type": res})
     data.append({"売上高(百万円)": current_sales/1000, "営業利益率(%)": current_op_margin, "Type": "★今回"})
     df = pd.DataFrame(data)
@@ -457,7 +459,7 @@ def plot_3d_analysis(current_data, past_cases):
             op_margin = clamp(raw_op, OP_MIN, OP_MAX)
             eq_raw = _equity_ratio_display(res.get("user_eq", 0)) or 0
             equity_ratio = clamp(eq_raw, EQ_MIN, EQ_MAX)
-            status = "承認済" if res.get("score", 0) >= 70 else "否決"
+            status = "承認済" if res.get("score", 0) >= APPROVAL_LINE else "否決"
             plot_data.append({
                 "売上(M)": sales, "利益率(%)": op_margin,
                 "自己資本比率(%)": equity_ratio, "判定": status, "size": 8
@@ -534,7 +536,7 @@ def _build_3d_extended_df(current_data: dict, past_cases: list) -> pd.DataFrame:
         total_credit = (lc + bc) or 0
         ecov_lease = clamp(ebitda / lc if lc > 0 else 0, 0, ECOV_MAX)
         ecov_total = clamp(ebitda / total_credit if total_credit > 0 else 0, 0, ECOV_MAX)
-        status = "承認済" if score >= 70 else "否決"
+        status = "承認済" if score >= APPROVAL_LINE else "否決"
         rows.append({
             "売上(M)": nenshu / 1000,
             "利益率(%)": op_m,

@@ -32,7 +32,16 @@ from app_logger import log_warning
 from estat_context import build_estat_context
 from useful_life_lookup import get_legal_useful_life
 
-APPROVAL_LINE = int(os.environ.get("APPROVAL_LINE", "71"))  # 承認ライン（デフォルト71点）
+# 承認ライン（デフォルト71点）・条件付き承認ライン（デフォルト60点）。
+# 定義の単一ソースは constants.py（環境変数で上書き可）。参照側は本モジュール経由で import する。
+from constants import APPROVAL_LINE, CONDITIONAL_LINE
+
+# リース信用枠 log 項のロジット寄与上限。
+# 2026-04 スコアリング監査（.claude/reports/scoring-audit/latest.md）で、
+# lease_credit_log=1.14 × log1p(10,000千円) ≈ 10.5 がシグモイドを単独で飽和させ、
+# 財務内容に関わらずスコアが90点超に張り付く構造問題が指摘されたため上限を設ける。
+# 既定値 3.0 は sigmoid(3.0)≈0.95 相当で「強い正の信号」としては残る水準（暫定値・要再推定）。
+LEASE_CREDIT_LOGIT_CAP = float(os.environ.get("LEASE_CREDIT_LOGIT_CAP", "3.0"))
 
 # 担当者直感スコア（1-5）の最大補正幅（点）
 INTUITION_MAX_ADJ = 3.0
@@ -463,7 +472,8 @@ def _calculate_z(data, coeff_set):
         z += np.log1p(bc) * coeff_set.get("bank_credit_log", 0)
     lc = data.get("lease_credit") or 0
     if lc > 0:
-        z += np.log1p(lc) * coeff_set.get("lease_credit_log", 0)
+        # リース信用枠の寄与はシグモイドを単独で飽和させないよう上限を設ける
+        z += min(np.log1p(lc) * coeff_set.get("lease_credit_log", 0), LEASE_CREDIT_LOGIT_CAP)
 
     z += (data.get("op_profit") or 0) * coeff_set.get("op_profit", 0)
     z += (data.get("ord_profit") or 0) * coeff_set.get("ord_profit", 0)
@@ -539,6 +549,9 @@ def compute_score_contributions(data: dict, coeff_set: dict) -> list[dict]:
                                   ("bank_credit", "bank_credit_log"),
                                   ("lease_credit", "lease_credit_log")]:
         c = _log_contrib(data_key, coeff_key)
+        if coeff_key == "lease_credit_log":
+            # _calculate_z と同じ上限を適用（表示される寄与度と実スコアを一致させる）
+            c = min(c, LEASE_CREDIT_LOGIT_CAP)
         if c != 0:
             contributions.append({
                 "feature": coeff_key,

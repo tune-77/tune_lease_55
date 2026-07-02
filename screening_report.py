@@ -18,6 +18,8 @@ from typing import Optional
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase import pdfmetrics
 
+from scoring_core import APPROVAL_LINE, CONDITIONAL_LINE
+
 _JP  = "HeiseiKakuGo-W5"
 pdfmetrics.registerFont(UnicodeCIDFont(_JP))
 
@@ -36,15 +38,15 @@ _GRAY   = (0.55,     0.55,     0.55)
 
 def _score_rgb(score: float):
     if score >= 80: return _ACCENT
-    if score >= 70: return _GREEN
-    if score >= 60: return _WARN
+    if score >= APPROVAL_LINE: return _GREEN
+    if score >= CONDITIONAL_LINE: return _WARN
     return _DANGER
 
 
 def _judge_label(score: float) -> str:
     if score >= 80: return "承認推奨"
-    if score >= 70: return "承認圏内"
-    if score >= 60: return "条件付承認"
+    if score >= APPROVAL_LINE: return "承認圏内"
+    if score >= CONDITIONAL_LINE: return "条件付承認"
     return "否決圏内"
 
 
@@ -70,13 +72,13 @@ def _auto_comment(
             "リース契約の遂行能力に問題はないと判断されます。"
             "優先的な審査承認が推奨されます。"
         )
-    elif score >= 70:
+    elif score >= APPROVAL_LINE:
         lines.append(
             f"■ 総合評価：スコア {score:.1f}点（{judge_lbl}）。財務指標は概ね良好で、"
             "標準的な審査条件のもとで承認圏内と評価します。"
             "下記の個別指標も参考にしながら最終判断を行ってください。"
         )
-    elif score >= 60:
+    elif score >= CONDITIONAL_LINE:
         lines.append(
             f"■ 総合評価：スコア {score:.1f}点（{judge_lbl}）。一部財務指標に懸念があり、"
             "保証条件・担保設定・契約期間の短縮など、リスク軽減措置を検討のうえ"
