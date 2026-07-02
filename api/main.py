@@ -444,6 +444,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+# 共有シークレットによる API アクセス制御（api/api_key_auth.py に実装。多層防御）。
+from api.api_key_auth import ApiKeyAuthMiddleware, get_api_access_key
+
+
 _ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -460,6 +464,15 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(SecurityHeadersMiddleware)
+# API キー認証（API_ACCESS_KEY 設定時のみ有効。CORS より内側で動くよう先に登録）
+app.add_middleware(ApiKeyAuthMiddleware)
+if get_api_access_key():
+    logger.info("ApiKeyAuthMiddleware 有効: /api/* は X-API-Key 必須")
+else:
+    logger.warning(
+        "API_ACCESS_KEY 未設定: API 認証は無効です。"
+        "外部公開時は Cloud Run IAM(--no-allow-unauthenticated) か API_ACCESS_KEY を設定してください"
+    )
 
 # Next.js ローカルサーバーからのアクセスのみ許可（ワイルドカード廃止）
 app.add_middleware(

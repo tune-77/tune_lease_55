@@ -58,18 +58,60 @@ Obsidian notes into `.cloudrun_bundle/` and bakes that bundle into the API
 container image.
 
 ```bash
-ALLOW_UNAUTHENTICATED=1 ./scripts/deploy_cloud_run_api.sh
-ALLOW_UNAUTHENTICATED=1 ./scripts/deploy_cloud_run_web.sh
+./scripts/deploy_cloud_run_api.sh
+./scripts/deploy_cloud_run_web.sh
 ```
 
 The legacy wrapper still exists:
 
 ```bash
-ALLOW_UNAUTHENTICATED=1 ./scripts/deploy_cloud_run.sh
+./scripts/deploy_cloud_run.sh
 ```
 
 Use the API script when only backend logic changed. Use the Web script when
 only frontend/Next.js changed. Run the wrapper only when both changed.
+
+## セキュリティ: アクセス制御（重要）
+
+**デプロイの既定値は認証必須（`ALLOW_UNAUTHENTICATED=0`）です。** これは安全側の
+デフォルトで、`--no-allow-unauthenticated` としてデプロイされます。以前の手順は
+既定で無認証公開であり、FastAPI 側に認証が無いため、**API の URL を知る誰でも
+`DELETE /api/cases/operation/clear-all`（全案件削除）や審査データ・会話履歴の
+読み取り、サーバー側 Gemini キーでの LLM 実行が可能な状態でした。**
+
+FastAPI は175の `/api/*` エンドポイントを持ち、それ自体はアプリ層の認証を持ちません。
+以下のいずれか（できれば両方）で保護してください。
+
+### 1. Cloud Run IAM（推奨・主防御）
+
+API サービスを非公開のまま維持し、Web サービスのサービスアカウントにのみ
+`roles/run.invoker` を付与する。Web → API 呼び出しには ID トークンが必要になるため、
+**Next.js の `rewrites` プロキシ（`next.config.ts`）を Route Handler 化して
+`Authorization: Bearer <ID token>` を server-side で付与する必要があります**
+（`rewrites` はヘッダを追加できません）。
+
+```bash
+# API は非公開（既定）
+./scripts/deploy_cloud_run_api.sh
+# Web だけ公開する場合
+ALLOW_UNAUTHENTICATED=1 ./scripts/deploy_cloud_run_web.sh
+```
+
+### 2. 共有シークレット（多層防御 / IAM が難しい場合）
+
+環境変数 `API_ACCESS_KEY` を API サービスに設定すると、FastAPI の
+`ApiKeyAuthMiddleware` が有効化され、`/api/*` へのリクエストに一致する
+`X-API-Key`（または `Authorization: Bearer <key>`）を要求します
+（`/`, `/healthz`, `/docs` は免除）。未設定時は無効なので、ローカル開発・テスト・
+既存の `rewrites` 構成は一切壊れません。
+
+**注意**: 有効化した場合、Web からの `/api/*` 呼び出しにもキー付与が必要です。
+`rewrites` はヘッダを追加できないため、Route Handler プロキシで `X-API-Key` を
+server-side（`process.env.API_ACCESS_KEY`）から注入してください。キーをブラウザ
+バンドルへ露出させないこと（`NEXT_PUBLIC_` を付けない）。
+
+いずれの手段も未適用のまま `ALLOW_UNAUTHENTICATED=1` で公開すると、上記の
+無防備な状態に戻ります。公開が本当に必要な場合のみ明示的に指定してください。
 
 Update rule:
 
