@@ -120,10 +120,13 @@ def _confidence_for_memory(message: str, *, dog_name: str = "") -> str:
     return "candidate"
 
 
+_QUESTION_WORDS = {"何だっけ", "なんだっけ", "わかるかい", "なに", "なんて", "なんだろう", "なんだ", "何", "なん"}
+
+
 def _extract_dog_name(message: str) -> str:
     text = str(message or "")
     patterns = (
-        r"(?:犬|愛犬|ペット)(?:の)?名前(?:は|が|を)?[「『\"]?([ぁ-んァ-ヶ一-龥A-Za-z0-9_-]{1,24})",
+        r"(?:犬|愛犬|ペット)(?:の)?名前(?:は|が|を)?\s*[「『\"]?([ぁ-んァ-ヶ一-龥A-Za-z0-9_-]{1,24})",
         r"([ぁ-んァ-ヶ一-龥A-Za-z0-9_-]{1,24})(?:は|が)(?:犬|愛犬|ペット)(?:の)?名前",
     )
     for pattern in patterns:
@@ -131,7 +134,7 @@ def _extract_dog_name(message: str) -> str:
         if m:
             name = m.group(1).strip(" 　。、『』「」\"'")
             name = re.sub(r"(です|だよ|だ|ちゃん|くん)$", "", name).strip()
-            if name and name not in {"犬", "愛犬", "ペット", "名前"}:
+            if name and name not in {"犬", "愛犬", "ペット", "名前"} and name not in _QUESTION_WORDS:
                 return name
     return ""
 
