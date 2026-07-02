@@ -34,9 +34,10 @@ Work Logs: `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vau
 
 ## 数値単位（バグの温床）
 
-フロント入力: **千円** → `toThousandYenPayload()` → スコアリングモジュール内: **円**
+フロント入力: **百万円**（UI表示ラベル参照）→ `toThousandYenPayload()`（×1000）→ スコアリングモジュール内: **千円**（`scoring_core.py` 内コメント参照）
 
-スコア判定: ≥70=承認 / 60-69=条件付き / <60=否決 | Q_risk: ≥35=要注意 / ≥60=強警戒
+スコア判定: `scoring_core.APPROVAL_LINE`（既定71点）以上=承認 / 60-69=条件付き / <60=否決 | Q_risk: ≥35=要注意 / ≥60=強警戒
+→ 承認ラインを参照・複製する箇所は必ず `scoring_core.APPROVAL_LINE` を import すること。ハードコードした別定数を置くと審査結果がモジュールごとに食い違う（2026-07 レビューで `api/main.py` に71と60の二重定義が見つかった実例あり）
 
 ---
 
