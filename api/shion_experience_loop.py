@@ -2,6 +2,10 @@
 
 This is not a consciousness claim. It is a small, inspectable state loop:
 conversation experience -> self-state update -> next prompt context.
+
+【設計決定 2026-07-02】ここで扱う mood は「対話感情」であり、審査イベント駆動の
+「審査感情」（api/emotion_trigger.py → mind.json の dialogue_mood）とは意図的に
+別系統で運用する（統合しない）。キー語彙・保存先が異なるのは仕様。
 """
 from __future__ import annotations
 

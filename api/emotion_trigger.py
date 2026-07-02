@@ -8,6 +8,14 @@
   通常審査完了  → accomplishment わずか↑
 
 dialogue_mood の仕組みを使い、日次更新のたびに半減して定常へ戻る。
+
+【設計決定 2026-07-02】紫苑の感情は意図的に2系統で運用する（統合しない）:
+  - 審査感情（本モジュール）: 成約/失注等の審査イベント駆動 → mind.json の dialogue_mood
+    （hope / loneliness / weariness 等）。めぶきちゃん等の口調生成が参照する。
+  - 対話感情（api/shion_experience_loop.py）: チャット経験駆動 →
+    data/shion_experience_state.json の mood（curiosity / attachment 等）。
+    /api/chat のプロンプト注入と inner-state 表示が参照する。
+両者はキー語彙も保存先も別であり、UI間で値が一致しないのは仕様。
 """
 
 from __future__ import annotations
