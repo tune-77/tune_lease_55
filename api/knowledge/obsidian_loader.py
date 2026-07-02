@@ -24,6 +24,10 @@ _REQUIRED_SUBDIRS: tuple[str, ...] = (
     "Projects/tune_lease_55",
 )
 
+# ユーザーは読めるが、あらゆるAI検索経路（ChromaDB埋め込みを含む）から除外するディレクトリ。
+# mobile_app/obsidian_bridge.py の _PRIVATE_NOTE_DIRS と揃える。
+_PRIVATE_NOTE_DIRS: tuple[str, ...] = ("Private Reflection",)
+
 # YAML frontmatter パターン
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 # H2 見出し（## ）
@@ -138,6 +142,9 @@ def scan_vault(vault_path: str = _VAULT_PATH) -> Iterator[Chunk]:
             if not fname.endswith(".md"):
                 continue
             fpath = os.path.join(root, fname)
+            rel_parts = os.path.relpath(fpath, vault_path).split(os.sep)
+            if any(part in _PRIVATE_NOTE_DIRS for part in rel_parts):
+                continue
             try:
                 mtime = os.path.getmtime(fpath)
                 with open(fpath, "r", encoding="utf-8", errors="replace") as f:

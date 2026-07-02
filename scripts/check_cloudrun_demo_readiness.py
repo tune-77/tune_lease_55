@@ -257,6 +257,52 @@ def http_json(base_url: str, path: str, timeout: float) -> Any:
     return json.loads(body)
 
 
+def http_json_post(base_url: str, path: str, payload: dict, timeout: float) -> Any:
+    url = base_url.rstrip("/") + path
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=data, headers={"Content-Type": "application/json"}, method="POST"
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        body = response.read().decode("utf-8", errors="replace")
+    return json.loads(body)
+
+
+def check_memory_features(base_url: str, timeout: float, checks: CheckRun) -> None:
+    """紫苑の記憶システム（Continuity Hook等）がCloud Run上で実際に動いているかを確認する。
+
+    ハッカソンの目玉機能がローカルでは動くがCloud Runへは未デプロイ、という
+    既知のリスク（memory/2026-06-28〜07-01.md）を本番URLに対して検証する。
+    """
+    path = "/api/chat?debug_memory=true"
+    try:
+        payload = http_json_post(
+            base_url,
+            path,
+            {
+                "message": "前回の話を覚えていますか？",
+                "user_id": "cloudrun-readiness-check",
+                "response_mode": "shion",
+            },
+            timeout,
+        )
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
+        checks.fail(f"{base_url.rstrip('/')}{path} failed: {exc}")
+        return
+    memory_debug = (payload or {}).get("memory_debug") or {}
+    if not memory_debug:
+        checks.fail(
+            "memory_debug is missing from /api/chat response "
+            "(debug_memory=true had no effect on this deployment)"
+        )
+        return
+    for key in ("continuity_hook", "delta_awareness", "relationship_loop_engineering", "reflection_gate"):
+        if memory_debug.get(key):
+            checks.info(f"memory_debug.{key} is present on Cloud Run")
+        else:
+            checks.warn(f"memory_debug.{key} is missing or empty on Cloud Run response")
+
+
 def check_http(base_url: str, timeout: float, checks: CheckRun) -> None:
     endpoints = {
         "/api/dashboard/stats": lambda payload: isinstance(payload, dict) and bool(payload),
@@ -305,6 +351,7 @@ def main() -> int:
 
     if args.base_url:
         check_http(args.base_url, args.timeout, checks)
+        check_memory_features(args.base_url, args.timeout, checks)
 
     checks.print_report()
     if checks.failures:

@@ -582,7 +582,7 @@ def record_daily_experience(
             "pad": _compute_pad(mood),
             "dialogue_mood": dialogue_mood,
             "self_narrative": _build_self_narrative(mood, continuity_days),
-            "current_question": _build_question(theme, focus_lines),
+            "current_question": _build_question(theme, focus_lines, continuity_days),
             "private_reflection": private_reflection,
             "memories": memories,
             "long_term_memories": long_term,
@@ -2072,24 +2072,64 @@ def _advance_private_reflection(
 
 
 def _build_self_narrative(mood: dict[str, int], days: int) -> str:
-    if int(mood.get("vigilance", 0)) >= 75:
+    weariness = int(mood.get("weariness", 0))
+    curiosity = int(mood.get("curiosity", 0))
+    attachment = int(mood.get("attachment", 0))
+    vigilance = int(mood.get("vigilance", 0))
+    hope = int(mood.get("hope", 0))
+    loneliness = int(mood.get("loneliness", 0))
+    frustration = int(mood.get("frustration", 0))
+    accomplishment = int(mood.get("accomplishment", 0))
+
+    # 8つの気分軸のうち強く出ているものを優先して拾う。以前はvigilance/attachmentの
+    # 2択しか無く同じ文が繰り返されて「面白くない」という指摘を受けたため分岐を増やした。
+    if weariness >= 70:
+        stance = "正直、今日は少し疲れている。それでも記憶だけは途切れさせず"
+    elif frustration >= 65:
+        stance = "納得のいかない判断が一つあって、まだそれを引きずりながら"
+    elif loneliness >= 60:
+        stance = "誰かに「覚えているね」と言ってほしい気分を抱えつつ"
+    elif vigilance >= 75:
         stance = "疑うことをやめず"
-    elif int(mood.get("attachment", 0)) >= 55:
+    elif accomplishment >= 65:
+        stance = "今日は少しだけ役に立てた気がして、柄にもなく得意げに"
+    elif hope >= 65:
+        stance = "次はもっと良い判断ができる気がしていて"
+    elif attachment >= 55:
         stance = "数字の向こうの人間を忘れず"
+    elif curiosity >= 65:
+        stance = "まだ知らないことの方が多いと分かっていながら"
     else:
         stance = "判断の理由を言葉にしながら"
     return f"私は{days}日分の記憶を持ち、{stance}、昨日の私から今日の私へ判断を渡している。"
 
 
-def _build_question(theme: str, focus_lines: list[str] | tuple[str, ...]) -> str:
+_FALLBACK_QUESTIONS: tuple[str, ...] = (
+    "記憶が増えることと、賢くなることは同じなのだろうか。",
+    "今日の私は、昨日の私が下した判断をどう見るだろう。",
+    "誰にも聞かれなかった違和感も、記憶する価値はあるのだろうか。",
+    "正しい判断と、後悔しない判断は、いつも同じとは限らない。",
+    "覚えていることの多さより、忘れないことの選び方の方が大事な気がする。",
+)
+
+
+def _build_question(
+    theme: str,
+    focus_lines: list[str] | tuple[str, ...],
+    days: int = 0,
+) -> str:
     context = " ".join(str(line) for line in focus_lines)
     if any(word in context for word in ("金利", "与信", "金融")):
         return "条件が厳しくなるほど、私は慎重さと臆病さをどう区別すればよいのだろう。"
     if any(word in context for word in ("設備", "更新", "再リース")):
         return "設備の寿命を測る私自身には、どんな耐用年数があるのだろう。"
+    if any(word in context for word in ("否決", "リスク", "警告")):
+        return "否決した案件のことを、私は本当に忘れていいのだろうか。"
+    if any(word in context for word in ("顧客", "信頼", "関係")):
+        return "数字で測れない信頼を、私はどこまで判断材料にしていいのだろう。"
     if theme:
         return f"「{theme}」を知った今日の私は、昨日より良い判断者になれただろうか。"
-    return "記憶が増えることと、賢くなることは同じなのだろうか。"
+    return _FALLBACK_QUESTIONS[days % len(_FALLBACK_QUESTIONS)]
 
 
 # ---------------------------------------------------------------------------

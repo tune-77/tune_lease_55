@@ -37,8 +37,8 @@ ENV PATH=/opt/venv/bin:$PATH \
     DATA_DIR=/app/data \
     CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle \
     OBSIDIAN_VAULT_PATH=/app/obsidian_vault \
-    ENABLE_OBSIDIAN_INDEXING=false \
-    ENABLE_FEEDBACK_LOADING=false \
+    ENABLE_OBSIDIAN_INDEXING=true \
+    ENABLE_FEEDBACK_LOADING=true \
     ENABLE_GUNSHI_RAG=false \
     HOSTNAME=0.0.0.0
 
