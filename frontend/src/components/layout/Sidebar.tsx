@@ -47,8 +47,9 @@ export default function Sidebar() {
   const menuGroups: Array<{ title: string; defaultOpen: boolean; items: SidebarItem[] }> = [
     {
       title: '審査ワークフロー',
-      defaultOpen: true,
+      defaultOpen: false,
       items: [
+        { name: 'リース知性体との対話', href: '/lease-intelligence', icon: Brain, color: 'text-violet-400' },
         { name: 'リース知性体 紫苑システム', href: '/', icon: Home, color: 'text-violet-400' },
         { name: '審査・分析', href: '/screening', icon: ClipboardCheck, color: 'text-emerald-400' },
         { name: 'ダッシュボード', href: '/home', icon: BarChart2, color: 'text-blue-400' },
@@ -62,7 +63,7 @@ export default function Sidebar() {
     },
     {
       title: '🚀 ハッカソン ショーケース',
-      defaultOpen: false,
+      defaultOpen: true,
       items: [
         { name: '🚀 ハッカソンデモ', href: '/demo', icon: Sparkles, color: 'text-yellow-300' },
         { name: 'マルチ紫苑デモ', href: '/multi-shion-demo', icon: Users, color: 'text-pink-300' },
@@ -78,7 +79,6 @@ export default function Sidebar() {
       title: '🌸 紫苑 AI（実務機能）',
       defaultOpen: false,
       items: [
-        { name: 'リース知性体との対話', href: '/lease-intelligence', icon: Brain, color: 'text-violet-400' },
         { name: 'リースくん (スマホUI)', href: '/lease-kun', icon: MessageSquare, color: 'text-amber-400' },
         { name: 'マルチエージェント討論', href: '/debate', icon: Swords, color: 'text-violet-500' },
         ...(!hideResearchOrgan
