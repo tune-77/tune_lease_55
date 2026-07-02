@@ -8372,6 +8372,39 @@ def get_relationship_loop_engineering_summary(route: str = "relationship_ux") ->
     )
 
 
+class UsageLoopVisitRequest(BaseModel):
+    path: str
+    user_id: str = "default"
+
+
+@app.post("/api/usage-loop/visit")
+def post_usage_loop_visit(req: UsageLoopVisitRequest) -> dict:
+    """画面利用ループエンジニアリング: Observe。画面訪問イベントを記録する。"""
+    from api.usage_loop_engineering import record_visit
+
+    try:
+        record_visit(req.path, req.user_id)
+        return {"recorded": True}
+    except Exception as e:
+        return {"recorded": False, "error": str(e)}
+
+
+@app.post("/api/usage-loop/propose")
+def post_usage_loop_propose(days: int = 30) -> dict:
+    """画面利用ループエンジニアリング: Aggregate→Propose。利用状況からGeminiで改善案を生成・保存する。"""
+    from api.usage_loop_engineering import generate_proposals
+
+    return generate_proposals(days=days)
+
+
+@app.get("/api/usage-loop/proposals")
+def get_usage_loop_proposals(limit: int = 20) -> dict:
+    """画面利用ループエンジニアリング: Persist。保存済みの改善案を返す。"""
+    from api.usage_loop_engineering import load_proposals
+
+    return {"proposals": load_proposals(limit=limit)}
+
+
 def _build_consciousness_ux_prompt_block() -> str:
     return """
 

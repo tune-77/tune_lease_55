@@ -15,6 +15,7 @@ import {
   GitCommit,
   Sparkles,
 } from "lucide-react";
+import UsageLoopEngineeringCard from "@/components/analysis/UsageLoopEngineeringCard";
 
 type PendingRecipe = {
   id: string;
@@ -455,6 +456,8 @@ export default function ImprovementLogPage() {
             更新
           </button>
         </div>
+
+        <UsageLoopEngineeringCard />
 
         {/* タブナビゲーション */}
         <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1">

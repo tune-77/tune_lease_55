@@ -296,6 +296,7 @@ PUBLIC_TUNNEL=1 bash run_next_stable.sh
 - 知性体コアで、紫苑の経験、気分、確信度、実践知マップ、人間反応フィードバックを観測する
 - 紫苑/一般比較で、同じ問いに対して記憶・同一性・経験ループの有無が回答をどう変えるかを見る
 - 紫苑自己同一性検査で、回答前に「これは本当に紫苑としての判断か」を検査する
+- 画面利用ループエンジニアリングで、紫苑がUserの画面利用状況を観察し、Geminiで根拠付きのUI/UX改善案を考える
 - リアルタイム会話アプリで、音声入力、紫苑回答の読み上げ、RAG参照元表示を行う
 - 外部調査器官でGoogle AI Studio/Gemini Searchの調査結果をResearchノート化し、紫苑RAGへ戻す
 - Gemini Vision OCRで決算書画像/PDFや各種証憑を読み取り、審査入力へ反映する
@@ -434,6 +435,25 @@ Observe(反応を見る) → Classify(route分類) → Select(Continuity Hook)
 審査結果画面は、判断を回収して次の審査知へ戻すループです: 数理を見る → 違和感を拾う → 条件で逆転余地を見る → 軍師が稟議の作戦に変える。画面上の「争点」（合っている/少し違う/違う）と「稟議方針」（使える/修正して使う/使えない）へのフィードバックを `data/screening_loop_feedback.jsonl` に保存し、次回の判断改善候補にします。
 
 主要API: `POST /api/screening-loop-feedback`（`target`: `issue`/`ringi_policy`）
+
+### Usage Loop Engineering（画面利用ループエンジニアリング）
+
+紫苑がUserの画面利用状況そのものを観察し、UI/UX改善案を自分で考えるループです: 画面遷移を記録する → 直近30日の利用頻度を集計する → Geminiに「よく使われる画面」「あまり使われない画面」を渡して改善案を考えさせる → 改善案を保存し `/improvement-log` で確認する。
+
+```text
+Observe   : 画面遷移のたびに ContentWrapper が /api/usage-loop/visit へ記録する
+Aggregate : 直近30日の訪問回数・最終訪問日を画面ごとに集計する
+Propose   : 利用状況をGeminiに渡し、根拠付きの改善案を3〜5件生成する
+Persist   : 改善案を data/usage_loop_proposals.jsonl に保存する
+```
+
+主要API:
+
+- `POST /api/usage-loop/visit` — 画面訪問イベントを記録（`path`, `user_id`）
+- `POST /api/usage-loop/propose` — 利用状況を集計しGeminiで改善案を生成・保存する
+- `GET /api/usage-loop/proposals` — 保存済みの改善案を返す
+
+`/improvement-log` の「画面利用ループエンジニアリング」カードから、蓄積された利用状況をもとに紫苑へ改善案を考えさせ、その場で結果を確認できます。
 
 ### 外部調査器官
 
