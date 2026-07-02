@@ -27,6 +27,18 @@ _STATE_LOCK = threading.Lock()
 
 _MOOD_KEYS = ("curiosity", "vigilance", "attachment", "frustration", "accomplishment")
 
+# 想起ルート（api/shion_memory_taxonomy.RECALL_ROUTES の語彙）→ confidence キーの対応。
+# 従来は `route in confidence` で判定しており、ルート名（case_screening 等）と
+# confidence の語彙（lease_judgment 等）が一致せず implementation 以外は更新されない
+# デッドコードだったため、明示的に対応付ける。
+_ROUTE_TO_CONFIDENCE = {
+    "case_screening": "lease_judgment",
+    "policy_review": "lease_judgment",
+    "shion_identity": "relationship_ux",
+    "user_preference": "relationship_ux",
+    "implementation": "implementation",
+}
+
 
 def default_experience_state() -> dict[str, Any]:
     return {
@@ -222,8 +234,9 @@ def update_experience_state(state: dict[str, Any], event: dict[str, Any]) -> dic
 
     confidence = dict(updated.get("confidence") or {})
     route = str(event.get("route") or "")
-    if route in confidence and event.get("practical_scene", {}).get("learned_entry_count", 0):
-        confidence[route] = min(0.95, float(confidence.get(route) or 0.6) + 0.01)
+    conf_key = _ROUTE_TO_CONFIDENCE.get(route)
+    if conf_key and event.get("practical_scene", {}).get("learned_entry_count", 0):
+        confidence[conf_key] = min(0.95, float(confidence.get(conf_key) or 0.6) + 0.01)
     if "implementation" in route or signals.get("implementation_pressure", 0) >= 2:
         confidence["implementation"] = min(0.95, float(confidence.get("implementation") or 0.6) + 0.005)
     updated["confidence"] = confidence

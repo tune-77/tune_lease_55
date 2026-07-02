@@ -32,24 +32,10 @@ def _gemini_url() -> str:
 
 
 def _get_gemini_api_key() -> str:
-    key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if key:
-        return key
-    _here = os.path.dirname(os.path.abspath(__file__))
-    cur = os.path.dirname(_here)
-    for _ in range(5):
-        sec_path = os.path.join(cur, ".streamlit", "secrets.toml")
-        if os.path.exists(sec_path):
-            try:
-                with open(sec_path, encoding="utf-8") as f:
-                    for line in f:
-                        m = re.match(r'^GEMINI_API_KEY\s*=\s*["\'](.+)["\']', line.strip())
-                        if m:
-                            return m.group(1)
-            except Exception:
-                pass
-        cur = os.path.dirname(cur)
-    return ""
+    # 共通実装へ委譲（api/secret_access.py、4重複の集約）
+    from api.secret_access import get_gemini_api_key
+
+    return get_gemini_api_key()
 
 
 def _load_local_mind() -> dict:
