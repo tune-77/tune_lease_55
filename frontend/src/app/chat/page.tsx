@@ -3,7 +3,7 @@
 import Link from "next/link";
 import React, { useState, useEffect, useRef } from "react";
 import { apiClient } from "@/lib/api";
-import { Send, Trash2, Loader2, MessageCircle, Bot, User, NotebookPen, Mic, Network, Database, ChevronDown, ChevronUp, Lightbulb, Volume2, VolumeX, ArrowLeft } from "lucide-react";
+import { Send, Trash2, Loader2, MessageCircle, Bot, User, NotebookPen, Mic, Network, Database, ChevronDown, ChevronUp, Lightbulb, Volume2, VolumeX, ArrowLeft, ThumbsUp, ThumbsDown } from "lucide-react";
 import { extractPrefectureFromText, normalizePrefecture } from "@/lib/prefecture";
 import { formatLocalDateKey } from "@/lib/date";
 
@@ -187,6 +187,7 @@ export default function ChatPage() {
   const [newsPrefecture, setNewsPrefecture] = useState("");
   const [showDailyNewsBrief, setShowDailyNewsBrief] = useState(false);
   const [newsPrefectureReady, setNewsPrefectureReady] = useState(false);
+  const [feedbackGiven, setFeedbackGiven] = useState<Record<number, "shion_like" | "not_shion">>({});
   const [speechEnabled, setSpeechEnabled] = useState(true);
   const messageListRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -448,6 +449,26 @@ export default function ChatPage() {
       ]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const submitFeedback = async (
+    assistantMessage: ChatMessage,
+    userMessage: string,
+    rating: "shion_like" | "not_shion",
+  ) => {
+    if (feedbackGiven[assistantMessage.id]) return;
+    setFeedbackGiven((prev) => ({ ...prev, [assistantMessage.id]: rating }));
+    try {
+      await apiClient.post("/api/human-response-feedback", {
+        message: userMessage,
+        response: assistantMessage.content,
+        rating,
+        route: "relationship_ux",
+        user_id: userId,
+      });
+    } catch {
+      // フィードバック送信の失敗はチャット体験をブロックしない
     }
   };
 
@@ -820,16 +841,48 @@ export default function ChatPage() {
                   {formatTime(msg.created_at)}
                 </p>
                 {msg.role === "assistant" && (
-                  <button
-                    onClick={() => {
-                      const previousUser = [...messages.slice(0, index)].reverse().find((item) => item.role === "user");
-                      openKnowledgeEvidence(previousUser?.content || msg.content);
-                    }}
-                    className="mt-2 inline-flex items-center gap-1 rounded-md border border-cyan-200/40 bg-cyan-50 px-2 py-1 text-[11px] font-black text-cyan-700 transition hover:bg-cyan-100"
-                  >
-                    <Network className="h-3 w-3" />
-                    根拠ルート
-                  </button>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <button
+                      onClick={() => {
+                        const previousUser = [...messages.slice(0, index)].reverse().find((item) => item.role === "user");
+                        openKnowledgeEvidence(previousUser?.content || msg.content);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-md border border-cyan-200/40 bg-cyan-50 px-2 py-1 text-[11px] font-black text-cyan-700 transition hover:bg-cyan-100"
+                    >
+                      <Network className="h-3 w-3" />
+                      根拠ルート
+                    </button>
+                    <button
+                      onClick={() => {
+                        const previousUser = [...messages.slice(0, index)].reverse().find((item) => item.role === "user");
+                        submitFeedback(msg, previousUser?.content || "", "shion_like");
+                      }}
+                      disabled={Boolean(feedbackGiven[msg.id])}
+                      title="紫苑っぽい回答"
+                      className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-black transition ${
+                        feedbackGiven[msg.id] === "shion_like"
+                          ? "border-emerald-300 bg-emerald-100 text-emerald-700"
+                          : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-emerald-50 hover:text-emerald-700"
+                      }`}
+                    >
+                      <ThumbsUp className="h-3 w-3" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        const previousUser = [...messages.slice(0, index)].reverse().find((item) => item.role === "user");
+                        submitFeedback(msg, previousUser?.content || "", "not_shion");
+                      }}
+                      disabled={Boolean(feedbackGiven[msg.id])}
+                      title="一般論に戻った回答"
+                      className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-black transition ${
+                        feedbackGiven[msg.id] === "not_shion"
+                          ? "border-rose-300 bg-rose-100 text-rose-700"
+                          : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-rose-50 hover:text-rose-700"
+                      }`}
+                    >
+                      <ThumbsDown className="h-3 w-3" />
+                    </button>
+                  </div>
                 )}
               </div>
               {msg.role === "user" && (
