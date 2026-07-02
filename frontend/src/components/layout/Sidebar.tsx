@@ -47,7 +47,7 @@ export default function Sidebar() {
   const menuGroups: Array<{ title: string; defaultOpen: boolean; items: SidebarItem[] }> = [
     {
       title: '審査ワークフロー',
-      defaultOpen: true,
+      defaultOpen: false,
       items: [
         { name: 'リース知性体との対話', href: '/lease-intelligence', icon: Brain, color: 'text-violet-400' },
         { name: 'リース知性体 紫苑システム', href: '/', icon: Home, color: 'text-violet-400' },
