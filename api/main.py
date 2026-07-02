@@ -11918,71 +11918,89 @@ class PromoteKeypointRequest(BaseModel):
 
 @app.post("/api/shion/promote-keypoint")
 def promote_keypoint(req: PromoteKeypointRequest):
-    """討論結果から抽出した判断基準を Obsidian vault の mind.json に追記する。"""
+    """討論結果から抽出した判断基準を Obsidian vault の mind.json に追記する。
+
+    vault が無い環境（Cloud Run 等）では 503 で捨てずにローカルの保留キュー
+    （data/shion_promoted_keypoints_pending.jsonl、gitignore対象）へ退避し、
+    vault 環境での同期を待つ。
+    """
     import json as _json
     from pathlib import Path
-    from datetime import date
+    from datetime import date, datetime, timezone
     from api.shion_memory_taxonomy import infer_applies_when
 
     text = req.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="text が空です")
 
+    new_entry: dict = {
+        "fact": text,
+        "source": "debate",
+        "case": req.case_summary,
+        "date": date.today().isoformat(),
+        "memory_type": "judgment_memory",
+        "status": "active",
+        "confidence": 0.78,
+        "applies_when": infer_applies_when(text),
+    }
+    if req.role:
+        new_entry["role"] = req.role
+
+    vault_mind = None
     try:
         from lease_news_digest import find_vault
         vault = find_vault()
-        if not vault:
-            raise HTTPException(status_code=503, detail="Obsidian vault が見つかりません")
+        if vault:
+            candidate = (
+                Path(vault)
+                / "Projects"
+                / "tune_lease_55"
+                / "Lease Intelligence"
+                / "mind.json"
+            )
+            if candidate.exists():
+                vault_mind = candidate
+    except Exception:
+        vault_mind = None
 
-        vault_mind = (
-            Path(vault)
-            / "Projects"
-            / "tune_lease_55"
-            / "Lease Intelligence"
-            / "mind.json"
-        )
-        if not vault_mind.exists():
-            raise HTTPException(status_code=503, detail=f"mind.json が見つかりません: {vault_mind}")
+    if vault_mind is not None:
+        try:
+            with vault_mind.open(encoding="utf-8") as f:
+                data = _json.load(f)
 
-        # 読み込み
-        with vault_mind.open(encoding="utf-8") as f:
-            data = _json.load(f)
+            keypoints: list = data.get("conversation_keypoints") or []
+            keypoints.append(new_entry)
 
-        keypoints: list = data.get("conversation_keypoints") or []
+            # 120件上限（古いものから削除）
+            _LIMIT = 120
+            if len(keypoints) > _LIMIT:
+                keypoints = keypoints[-_LIMIT:]
 
-        # 追記
-        new_entry: dict = {
-            "fact": text,
-            "source": "debate",
-            "case": req.case_summary,
-            "date": date.today().isoformat(),
-            "memory_type": "judgment_memory",
-            "status": "active",
-            "confidence": 0.78,
-            "applies_when": infer_applies_when(text),
+            data["conversation_keypoints"] = keypoints
+
+            # 書き戻し（一時ファイル経由でアトミックに）
+            tmp = vault_mind.with_suffix(".json.tmp")
+            tmp.write_text(_json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            tmp.replace(vault_mind)
+
+            return {"success": True, "storage": "vault", "total_keypoints": len(keypoints)}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"mind.json 書き込みエラー: {e}")
+
+    # vault 不在（Cloud Run 等）: 保留キューへ退避してキーポイントの消失を防ぐ
+    try:
+        pending_path = Path(__file__).parent.parent / "data" / "shion_promoted_keypoints_pending.jsonl"
+        pending_path.parent.mkdir(parents=True, exist_ok=True)
+        queued_entry = {**new_entry, "queued_at": datetime.now(timezone.utc).isoformat()}
+        with pending_path.open("a", encoding="utf-8") as f:
+            f.write(_json.dumps(queued_entry, ensure_ascii=False) + "\n")
+        return {
+            "success": True,
+            "storage": "local_pending",
+            "note": "Obsidian vault 不在のため保留キューへ保存しました。vault 環境で mind.json へ同期してください。",
         }
-        if req.role:
-            new_entry["role"] = req.role
-        keypoints.append(new_entry)
-
-        # 120件上限（古いものから削除）
-        _LIMIT = 120
-        if len(keypoints) > _LIMIT:
-            keypoints = keypoints[-_LIMIT:]
-
-        data["conversation_keypoints"] = keypoints
-
-        # 書き戻し（一時ファイル経由でアトミックに）
-        tmp = vault_mind.with_suffix(".json.tmp")
-        tmp.write_text(_json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(vault_mind)
-
-        return {"success": True, "total_keypoints": len(keypoints)}
-
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"mind.json 書き込みエラー: {e}")
+        raise HTTPException(status_code=500, detail=f"保留キュー書き込みエラー: {e}")
 
 
 @app.get("/api/shion/central-synthesis")
