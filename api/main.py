@@ -8405,6 +8405,66 @@ def get_usage_loop_proposals(limit: int = 20) -> dict:
     return {"proposals": load_proposals(limit=limit)}
 
 
+@app.post("/api/judgment-divergence/analyze")
+def post_judgment_divergence_analyze() -> dict:
+    """審査判断乖離学習ループ: 争点/稟議方針フィードバックからレビュー観点を生成する。"""
+    from api.judgment_divergence_loop import generate_proposals
+
+    return generate_proposals()
+
+
+@app.get("/api/judgment-divergence/proposals")
+def get_judgment_divergence_proposals(limit: int = 20) -> dict:
+    from api.judgment_divergence_loop import load_proposals
+
+    return {"proposals": load_proposals(limit=limit)}
+
+
+@app.post("/api/feedback-pattern/analyze")
+def post_feedback_pattern_analyze() -> dict:
+    """人間反応フィードバック傾向分析ループ: 否定的評価の傾向から応答改善観点を生成する。"""
+    from api.feedback_pattern_loop import generate_proposals
+
+    return generate_proposals()
+
+
+@app.get("/api/feedback-pattern/proposals")
+def get_feedback_pattern_proposals(limit: int = 20) -> dict:
+    from api.feedback_pattern_loop import load_proposals
+
+    return {"proposals": load_proposals(limit=limit)}
+
+
+@app.post("/api/outcome-drift/analyze")
+def post_outcome_drift_analyze() -> dict:
+    """審査実績ドリフト監視ループ: 支払い実績とスコア帯の乖離から確認観点を生成する。"""
+    from api.outcome_drift_loop import generate_proposals
+
+    return generate_proposals()
+
+
+@app.get("/api/outcome-drift/proposals")
+def get_outcome_drift_proposals(limit: int = 20) -> dict:
+    from api.outcome_drift_loop import load_proposals
+
+    return {"proposals": load_proposals(limit=limit)}
+
+
+@app.post("/api/knowledge-gap/analyze")
+def post_knowledge_gap_analyze() -> dict:
+    """ナレッジ穴探しループ: 知識参照0件の質問から調査トピックを生成する。"""
+    from api.knowledge_gap_loop import generate_proposals
+
+    return generate_proposals()
+
+
+@app.get("/api/knowledge-gap/proposals")
+def get_knowledge_gap_proposals(limit: int = 20) -> dict:
+    from api.knowledge_gap_loop import load_proposals
+
+    return {"proposals": load_proposals(limit=limit)}
+
+
 def _build_consciousness_ux_prompt_block() -> str:
     return """
 

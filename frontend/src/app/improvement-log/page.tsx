@@ -14,8 +14,13 @@ import {
   Clock,
   GitCommit,
   Sparkles,
+  Eye,
+  Scale,
+  MessageCircleHeart,
+  TrendingDown,
+  BookOpenCheck,
 } from "lucide-react";
-import UsageLoopEngineeringCard from "@/components/analysis/UsageLoopEngineeringCard";
+import LoopEngineeringCard from "@/components/analysis/LoopEngineeringCard";
 
 type PendingRecipe = {
   id: string;
@@ -457,7 +462,68 @@ export default function ImprovementLogPage() {
           </button>
         </div>
 
-        <UsageLoopEngineeringCard />
+        <div className="space-y-3">
+          <LoopEngineeringCard
+            icon={Eye}
+            title="画面利用ループエンジニアリング"
+            description="紫苑がUserの画面利用状況を観察し、Geminiで改善案を考える"
+            analyzeEndpoint="/api/usage-loop/propose"
+            proposalsEndpoint="/api/usage-loop/proposals"
+            buttonLabel="利用状況から改善案を考える"
+            fields={[
+              { key: "target_page", label: "対象" },
+              { key: "reason", label: "理由" },
+            ]}
+          />
+          <LoopEngineeringCard
+            icon={Scale}
+            title="審査判断乖離学習ループ"
+            description="争点・稟議方針への否定的フィードバックから審査ロジックの着眼点を考える"
+            analyzeEndpoint="/api/judgment-divergence/analyze"
+            proposalsEndpoint="/api/judgment-divergence/proposals"
+            buttonLabel="フィードバックから着眼点を考える"
+            fields={[
+              { key: "observation", label: "観察" },
+              { key: "review_point", label: "確認観点" },
+            ]}
+          />
+          <LoopEngineeringCard
+            icon={MessageCircleHeart}
+            title="人間反応フィードバック傾向分析ループ"
+            description="紫苑の応答への否定的評価（薄い/一般論/紫苑らしくない）の傾向から改善観点を考える"
+            analyzeEndpoint="/api/feedback-pattern/analyze"
+            proposalsEndpoint="/api/feedback-pattern/proposals"
+            buttonLabel="評価傾向から改善観点を考える"
+            fields={[
+              { key: "pattern", label: "傾向" },
+              { key: "suggestion", label: "提案" },
+            ]}
+          />
+          <LoopEngineeringCard
+            icon={TrendingDown}
+            title="審査実績ドリフト監視ループ"
+            description="支払い実績（正常/延滞/デフォルト）とスコア帯の乖離から審査精度の確認観点を考える"
+            analyzeEndpoint="/api/outcome-drift/analyze"
+            proposalsEndpoint="/api/outcome-drift/proposals"
+            buttonLabel="実績データから乖離を確認する"
+            fields={[
+              { key: "observation", label: "観察" },
+              { key: "review_point", label: "確認観点" },
+            ]}
+          />
+          <LoopEngineeringCard
+            icon={BookOpenCheck}
+            title="ナレッジ穴探しループ"
+            description="知識参照0件だった質問の傾向から、Obsidianに補うべき調査トピックを考える"
+            analyzeEndpoint="/api/knowledge-gap/analyze"
+            proposalsEndpoint="/api/knowledge-gap/proposals"
+            buttonLabel="質問傾向から調査トピックを考える"
+            fields={[
+              { key: "reason", label: "理由" },
+              { key: "search_hint", label: "検索キーワード案" },
+            ]}
+          />
+        </div>
 
         {/* タブナビゲーション */}
         <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1">

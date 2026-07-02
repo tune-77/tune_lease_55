@@ -455,6 +455,19 @@ Persist   : 改善案を data/usage_loop_proposals.jsonl に保存する
 
 `/improvement-log` の「画面利用ループエンジニアリング」カードから、蓄積された利用状況をもとに紫苑へ改善案を考えさせ、その場で結果を確認できます。
 
+### 自己改善ループ群（Judgment Divergence / Feedback Pattern / Outcome Drift / Knowledge Gap）
+
+Usage Loop Engineeringと同じ「Observe → Aggregate → Propose → Persist」の形で、紫苑の別の観察対象を扱う4つのループを `/improvement-log` に追加しています。いずれも**scoring_core.pyやプロンプトを自動で書き換えることはせず**、Geminiが返すのは「人間が確認すべき観点」であり、実際の変更判断は人間が行います。
+
+| ループ | Observe対象 | Propose内容 | 主要API |
+|---|---|---|---|
+| 審査判断乖離学習 | `data/screening_loop_feedback.jsonl`（争点・稟議方針への評価） | 否定的評価に共通する審査ロジックのレビュー観点 | `POST /api/judgment-divergence/analyze`, `GET /api/judgment-divergence/proposals` |
+| 人間反応フィードバック傾向分析 | `data/human_response_feedback.jsonl`（紫苑の応答への評価） | 「薄い/一般論/紫苑らしくない」評価が起きやすい状況と改善観点 | `POST /api/feedback-pattern/analyze`, `GET /api/feedback-pattern/proposals` |
+| 審査実績ドリフト監視 | `payment_history`テーブル（正常/延滞/デフォルト/完済） | `scoring_core.APPROVAL_LINE`基準のスコア帯ごとの延滞・デフォルト率の乖離 | `POST /api/outcome-drift/analyze`, `GET /api/outcome-drift/proposals` |
+| ナレッジ穴探し | `data/case_memory_usage_log.jsonl`（質問ごとの知識参照件数） | 知識参照0件だった質問の傾向と、外部調査器官へ回すべき調査トピック | `POST /api/knowledge-gap/analyze`, `GET /api/knowledge-gap/proposals` |
+
+共通のGemini呼び出し・JSONL入出力は `api/loop_engineering_common.py` にまとめ、集計ロジックとプロンプトは各ループ（`api/judgment_divergence_loop.py` 等）に持たせています。
+
 ### 外部調査器官
 
 Web調査を会話に直接混ぜず、`scripts/auto_research_lease_judgment.py`（Gemini Google Search経由）でResearchノートに変換してから紫苑RAGへ戻します。参照URLが取れない場合は保存せず、`needs_human_review`として保存するため自動承認・自動否決には使いません。保存先: `Projects/tune_lease_55/Research/Auto Research/`
