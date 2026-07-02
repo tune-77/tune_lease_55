@@ -39,6 +39,37 @@ def test_record_experience_event_updates_self_state(tmp_path):
     assert json.loads(event_log.read_text(encoding="utf-8").splitlines()[0])["route"] == "policy_review"
 
 
+def test_confidence_updates_via_route_mapping(tmp_path):
+    """想起ルート（case_screening 等）が confidence キー（lease_judgment 等）へ
+    正しくマップされて更新されること（旧実装では語彙不一致で更新されなかった）。"""
+    state_path = tmp_path / "state.json"
+    default_conf = load_experience_state(state_path)["confidence"]
+
+    result = record_experience_event(
+        message="医療機器の案件、境界スコア。条件付き承認でいい？",
+        response="物件保全と保守契約を条件化して条件付き承認に寄せます。",
+        category="rag",
+        memory_recall={
+            "route": "case_screening",
+            "refs": ["mem_b"],
+            "practical_scene": {
+                "id": "borderline_decision",
+                "label": "承認・否決の境界",
+                "learned_entry_count": 2,
+            },
+        },
+        knowledge_refs=[],
+        continuity_hook={},
+        delta_awareness={},
+        memory_to_judgment={},
+        state_path=state_path,
+        event_log=tmp_path / "events.jsonl",
+    )
+
+    conf = result["state"]["confidence"]
+    assert conf["lease_judgment"] > default_conf["lease_judgment"]
+
+
 def test_build_experience_prompt_block_uses_existing_state(tmp_path):
     state_path = tmp_path / "state.json"
     record_experience_event(

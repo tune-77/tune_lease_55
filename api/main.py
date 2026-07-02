@@ -4972,16 +4972,10 @@ def api_contract_drivers():
 
 # ── 定量要因分析
 def _get_gemini_api_key() -> str:
-    try:
-        from secret_manager import get_gemini_api_key
+    # 共通実装へ委譲（環境変数 → secrets.toml 直接パース、Streamlit非依存）
+    from api.secret_access import get_gemini_api_key
 
-        value = get_gemini_api_key()
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-    except Exception:
-        pass
-    value = os.environ.get("GEMINI_API_KEY")
-    return value.strip() if isinstance(value, str) else ""
+    return get_gemini_api_key()
 
 
 def _metric_line(name: str, result: Dict[str, Any]) -> str:
@@ -9163,6 +9157,34 @@ def get_knowledge_gaps():
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+def _cap_system_prompt(prompt: str, *, surface: str) -> str:
+    """/api/chat のシステムプロンプト合計量に上限を設ける。
+
+    チャット経路は10数個の文脈ブロック（想起・経験ループ・ニュース・RAG等）を連結して
+    合成するため、全ブロックが同時に太るとコンテキスト暴発・応答劣化の温床になる
+    （個別ブロックは context_budget で制御されるが合計は無検査だった）。
+    上限超過時は、後から連結された低優先ブロック側（末尾）から段落単位で削り、
+    どれだけ削ったかを warning ログに残す。ベース人格・モード指示は先頭にあるため残る。
+    """
+    max_chars = int(os.environ.get("CHAT_SYSTEM_PROMPT_MAX_CHARS", "24000"))
+    if max_chars <= 0 or len(prompt) <= max_chars:
+        return prompt
+    parts = prompt.split("\n\n")
+    dropped = 0
+    while len(parts) > 1 and sum(len(p) + 2 for p in parts) - 2 > max_chars:
+        parts.pop()
+        dropped += 1
+    result = "\n\n".join(parts)
+    if len(result) > max_chars:
+        # 単一の巨大段落が残った場合のみ強制切り詰め
+        result = result[:max_chars]
+    logger.warning(
+        "[ChatPromptBudget] system prompt %d chars > %d; dropped %d trailing block(s) (surface=%s, after=%d chars)",
+        len(prompt), max_chars, dropped, surface, len(result),
+    )
+    return result
+
+
 def _log_shion_query_class(message: str) -> None:
     """shion_classify の結果を data/chat_logs.jsonl に非同期で記録する（レスポンス遅延なし）。"""
     import json as _json
@@ -9522,7 +9544,10 @@ def post_chat(req: ChatRequest):
                 )
                 else ""
             )
-            effective_system_prompt = base_system_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
+            effective_system_prompt = _cap_system_prompt(
+                base_system_prompt + (f"\n\n{pdca_block}" if pdca_block else ""),
+                surface="next_chat_general",
+            )
             obsidian_daily_injected = {}
             if obsidian_daily_context:
                 obsidian_daily_injected = record_obsidian_daily_intelligence_event(
@@ -9810,7 +9835,10 @@ def post_chat(req: ChatRequest):
             )
             else ""
         )
-        effective_prompt = base_effective_prompt + (f"\n\n{pdca_block}" if pdca_block else "")
+        effective_prompt = _cap_system_prompt(
+            base_effective_prompt + (f"\n\n{pdca_block}" if pdca_block else ""),
+            surface="next_chat_rag",
+        )
         obsidian_daily_injected = {}
         if obsidian_daily_context:
             obsidian_daily_injected = record_obsidian_daily_intelligence_event(

@@ -285,34 +285,10 @@ def _get_recent_news_digest_block(limit: int = 3) -> str:
 
 
 def _get_gemini_api_key() -> str:
-    """Gemini APIキーを取得する。
-    優先順位: 環境変数 → secrets.toml（直接パース、Streamlit非依存）
-    """
-    key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if key:
-        return key
-    # secrets.toml を直接パース（Streamlit非依存）
-    # worktree / 本体リポジトリ の両方を探索する
-    import re as _re
-    _here = os.path.dirname(os.path.abspath(__file__))
-    _candidates = []
-    # worktreeルート → 本体リポジトリ方向へ最大4階層まで探す
-    cur = os.path.dirname(_here)
-    for _ in range(5):
-        _candidates.append(os.path.join(cur, ".streamlit", "secrets.toml"))
-        cur = os.path.dirname(cur)
-    for sec_path in _candidates:
-        if not os.path.exists(sec_path):
-            continue
-        try:
-            with open(sec_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    m = _re.match(r'^GEMINI_API_KEY\s*=\s*["\'](.+)["\']', line.strip())
-                    if m:
-                        return m.group(1)
-        except Exception:
-            pass
-    return ""
+    # 共通実装へ委譲（api/secret_access.py、4重複の集約）
+    from api.secret_access import get_gemini_api_key
+
+    return get_gemini_api_key()
 
 
 def _llm_call(system: str, prompt: str, temperature: float, max_tokens: int = 1024) -> dict:
