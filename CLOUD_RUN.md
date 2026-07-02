@@ -127,7 +127,32 @@ API_ACCESS_KEY="$API_KEY" ALLOW_UNAUTHENTICATED=1 ./scripts/deploy_cloud_run_web
 いずれの手段も未適用のまま `ALLOW_UNAUTHENTICATED=1` で公開すると、上記の
 無防備な状態に戻ります。公開が本当に必要な場合のみ明示的に指定してください。
 
-### 残課題: Web フロントエンド自体の保護（別タスク）
+### 公開デモの削除保護（DEMO_READONLY）
+
+ハッカソン等で URL を不特定多数に見せる場合、来場者が
+`DELETE /api/cases/operation/clear-all`（全案件削除）等でデモデータを破壊できないよう、
+環境変数 `DEMO_READONLY=1` で `/api/*` への **DELETE を 403 で拒否**します
+（`api/demo_guard.py`）。スコアリング・チャット・討論・案件登録などの試用は許可し、
+削除操作のみ塞ぎます。
+
+**API デプロイでは `CLOUDRUN_DATA_MODE=demo`（既定）のとき `DEMO_READONLY=1` が
+自動で有効**になります。本番データや削除を許可したい場合は `DEMO_READONLY=0` を明示。
+
+```bash
+# 公開デモ（既定で削除保護ON）
+./scripts/deploy_cloud_run_api.sh
+# 削除も許可する場合
+DEMO_READONLY=0 ./scripts/deploy_cloud_run_api.sh
+```
+
+UI 側の削除ボタンは押下時に 403 となりエラー表示されます（データは保全）。デモ体験を
+更に磨くならボタン自体の非表示は任意の追加対応です。
+
+### 残課題: Web フロントエンド自体の保護（ハッカソンでは不要）
+
+> ハッカソン公開デモでは審査員・来場者に見せるため、Web はログイン等で囲わず
+> **公開のまま**にします。以下は「限定公開の内部ツールとして運用する」場合の選択肢です。
+
 
 上記はいずれも「API の直叩き」を塞ぐものです。Web サービスを
 `ALLOW_UNAUTHENTICATED=1` で公開している限り、**公開 URL を知る第三者は Web UI を

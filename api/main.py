@@ -446,6 +446,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 # 共有シークレットによる API アクセス制御（api/api_key_auth.py に実装。多層防御）。
 from api.api_key_auth import ApiKeyAuthMiddleware, get_api_access_key
+# 公開デモ用の削除保護（api/demo_guard.py に実装）。
+from api.demo_guard import DemoReadonlyMiddleware, is_demo_readonly
 
 
 _ALLOWED_ORIGINS = [
@@ -464,6 +466,10 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(SecurityHeadersMiddleware)
+# 公開デモの削除保護（DEMO_READONLY 設定時のみ有効）
+app.add_middleware(DemoReadonlyMiddleware)
+if is_demo_readonly():
+    logger.info("DemoReadonlyMiddleware 有効: /api/* への DELETE を 403 で拒否")
 # API キー認証（API_ACCESS_KEY 設定時のみ有効。CORS より内側で動くよう先に登録）
 app.add_middleware(ApiKeyAuthMiddleware)
 if get_api_access_key():
