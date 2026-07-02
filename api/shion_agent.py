@@ -17,7 +17,7 @@ from google.genai.types import Content, Part
 
 from api.shion_conscience import build_conscience_prompt_block
 from api.shion_mana import build_mana_prompt_block
-from scoring_core import APPROVAL_LINE
+from scoring_core import APPROVAL_LINE, CONDITIONAL_LINE
 
 # ── ベンチマークデータ（起動時に一度だけ読む） ─────────────────────────────
 _BENCHMARKS_PATH = Path(__file__).parent.parent / "static_data" / "industry_benchmarks.json"
@@ -65,7 +65,7 @@ def assess_risk_level(score: float, pd_pct: float, warnings: list[str]) -> dict:
     if score >= APPROVAL_LINE:
         hantei = "承認"
         risk_level = "低"
-    elif score >= 60:
+    elif score >= CONDITIONAL_LINE:
         hantei = "条件付き承認"
         risk_level = "中"
     else:
@@ -146,32 +146,44 @@ async def stream_shion_screening(params: dict) -> AsyncGenerator[dict, None]:
     user_text = _build_user_text(params)
     new_message = Content(role="user", parts=[Part(text=user_text)])
 
-    async for event in _runner.run_async(
-        user_id="demo",
-        session_id=session_id,
-        new_message=new_message,
-        run_config=_RUN_CONFIG,
-    ):
-        # ツール呼び出し
-        func_calls = event.get_function_calls()
-        if func_calls:
-            for fc in func_calls:
-                yield {"type": "tool_call", "tool": fc.name}
+    try:
+        async for event in _runner.run_async(
+            user_id="demo",
+            session_id=session_id,
+            new_message=new_message,
+            run_config=_RUN_CONFIG,
+        ):
+            # ツール呼び出し
+            func_calls = event.get_function_calls()
+            if func_calls:
+                for fc in func_calls:
+                    yield {"type": "tool_call", "tool": fc.name}
 
-        # ツール結果
-        func_responses = event.get_function_responses()
-        if func_responses:
-            for fr in func_responses:
-                yield {"type": "tool_result", "tool": fr.name}
+            # ツール結果
+            func_responses = event.get_function_responses()
+            if func_responses:
+                for fr in func_responses:
+                    yield {"type": "tool_result", "tool": fr.name}
 
-        # テキストストリーム
-        if event.content and event.content.parts:
-            for part in event.content.parts:
-                text = getattr(part, "text", None)
-                if text:
-                    yield {"type": "stream", "delta": text}
+            # テキストストリーム
+            if event.content and event.content.parts:
+                for part in event.content.parts:
+                    text = getattr(part, "text", None)
+                    if text:
+                        yield {"type": "stream", "delta": text}
 
-    yield {"type": "done"}
+        yield {"type": "done"}
+    finally:
+        # InMemorySessionService はリクエスト毎のセッションを保持し続けるため、
+        # クライアント切断時も含め必ず破棄する（放置するとメモリが単調増加する）
+        try:
+            await _session_service.delete_session(
+                app_name="tune_lease",
+                user_id="demo",
+                session_id=session_id,
+            )
+        except Exception:
+            pass
 
 
 def _build_user_text(params: dict) -> str:

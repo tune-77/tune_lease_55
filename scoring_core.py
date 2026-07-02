@@ -32,9 +32,9 @@ from app_logger import log_warning
 from estat_context import build_estat_context
 from useful_life_lookup import get_legal_useful_life
 
-# 承認ライン（デフォルト71点）・条件付き承認ライン（デフォルト60点）。
+# 承認ライン（デフォルト71点）・条件付き承認ライン（デフォルト60点）・即否決圏ライン（40点）。
 # 定義の単一ソースは constants.py（環境変数で上書き可）。参照側は本モジュール経由で import する。
-from constants import APPROVAL_LINE, CONDITIONAL_LINE
+from constants import APPROVAL_LINE, CONDITIONAL_LINE, REVIEW_LINE
 
 # リース信用枠 log 項のロジット寄与上限。
 # 2026-04 スコアリング監査（.claude/reports/scoring-audit/latest.md）で、

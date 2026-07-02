@@ -47,8 +47,22 @@ def test_recall_prefers_route_types(tmp_path):
     assert "mem_private" not in recalled["refs"]
 
 
-def test_build_recall_prompt_block():
-    block, recalled = build_recall_prompt_block("紫苑の記憶システム")
+def test_build_recall_prompt_block(tmp_path):
+    # 開発機ローカルの data/shion_memory_index.json に依存しないよう、一時 index を使う
+    index = {
+        "records": [
+            {
+                "id": "mem_identity",
+                "content": "紫苑の記憶システムは分類と想起ルートで構成される。",
+                "memory_type": "value_memory",
+                "status": "active",
+            }
+        ]
+    }
+    path = tmp_path / "index.json"
+    path.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
+
+    block, recalled = build_recall_prompt_block("紫苑の記憶システム", index_path=path)
 
     assert recalled["route"] == "shion_identity"
     assert "【紫苑の想起メモ】" in block
