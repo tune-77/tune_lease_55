@@ -99,25 +99,57 @@ def _group_by_role(keypoints: list[dict[str, Any]]) -> dict[str, list[dict[str, 
 
 
 def _fallback_patterns_from_keypoints(keypoints: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Return small local observations when Gemini JSON is unusable."""
-    patterns: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for kp in keypoints[:8]:
+    """Return grouped local observations when Gemini JSON is unusable.
+
+    Groups keypoints by a normalized theme key so repeated topics across
+    roles/turns are counted instead of every keypoint being treated as a
+    unique one-off. This lets `status` follow the same confirmed_belief/
+    emerging_pattern/observation thresholds documented in _detect_patterns
+    (3+ distinct roles or 3+ occurrences = confirmed_belief; 2+ = emerging),
+    instead of being stuck at "observation" forever (which previously left
+    world_view.commentary.confirmed_beliefs/emerging_patterns permanently
+    empty whenever ENABLE_CENTRAL_GEMINI was unset).
+    conflicting_roles is intentionally left empty here: detecting genuine
+    disagreement (as opposed to mere co-occurrence) needs semantic judgment
+    that only the Gemini path can provide, so known_tradeoffs stays empty
+    in fallback mode rather than guessing.
+    """
+    groups: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for kp in keypoints:
         content = str(kp.get("content") or "").strip()
         if not content:
             continue
-        theme = re.sub(r"\s+", " ", content).strip("。 \n\t")[:50]
-        if not theme or theme in seen:
+        theme = re.sub(r"\s+", " ", content).strip("。 \n\t")
+        key = theme[:24]
+        if not key:
             continue
-        seen.add(theme)
         role = str(kp.get("role") or "legacy")
+        if key not in groups:
+            groups[key] = {"theme": theme[:50], "count": 0, "roles": []}
+            order.append(key)
+        group = groups[key]
+        group["count"] += 1
+        if role not in group["roles"]:
+            group["roles"].append(role)
+
+    patterns: list[dict[str, Any]] = []
+    for key in order[:8]:
+        group = groups[key]
+        role_count = len(group["roles"])
+        if role_count >= 3 or group["count"] >= 3:
+            status = "confirmed_belief"
+        elif role_count >= 2 or group["count"] >= 2:
+            status = "emerging_pattern"
+        else:
+            status = "observation"
         patterns.append(
             {
-                "theme": theme,
-                "count": 1,
-                "supporting_roles": [role],
+                "theme": group["theme"],
+                "count": group["count"],
+                "supporting_roles": group["roles"],
                 "conflicting_roles": [],
-                "status": "observation",
+                "status": status,
             }
         )
     return patterns
