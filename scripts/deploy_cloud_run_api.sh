@@ -13,11 +13,19 @@ TIMEOUT="${TIMEOUT:-900}"
 CONCURRENCY="${CONCURRENCY:-1}"
 MIN_INSTANCES="${MIN_INSTANCES:-1}"
 MAX_INSTANCES="${MAX_INSTANCES:-1}"
-ALLOW_UNAUTHENTICATED="${ALLOW_UNAUTHENTICATED:-1}"
+# 既定は認証必須（安全側）。無認証公開が必要な場合のみ ALLOW_UNAUTHENTICATED=1 を明示する
+ALLOW_UNAUTHENTICATED="${ALLOW_UNAUTHENTICATED:-0}"
 SERVICE_ACCOUNT="${SERVICE_ACCOUNT:-}"
 DATABASE_SECRET_NAME="${DATABASE_SECRET_NAME:-DATABASE_URL}"
 CLOUDSQL_INSTANCE="${CLOUDSQL_INSTANCE:-}"
 CLOUDRUN_DATA_MODE="${CLOUDRUN_DATA_MODE:-demo}"
+# 公開デモ（CLOUDRUN_DATA_MODE=demo）では既定で削除操作を無効化する（来場者による
+# デモデータ破壊を防止）。本番データモードや明示指定で上書き可能。
+if [[ "$CLOUDRUN_DATA_MODE" == "demo" ]]; then
+  DEMO_READONLY="${DEMO_READONLY:-1}"
+else
+  DEMO_READONLY="${DEMO_READONLY:-0}"
+fi
 
 if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
   echo "PROJECT_ID is required." >&2
@@ -66,7 +74,7 @@ deploy_args=(
   # フォールバックに落ちる（根幹の知識ベースが機能しない状態が続く）。
   # ENABLE_GUNSHI_RAG は別経路（リクエスト同期でembeddingモデルを読む）で
   # 過去に共有プロセスの不安定化を招いた実績があるため、意図的に false のまま。
-  --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,CLOUDRUN_DATA_MODE=${CLOUDRUN_DATA_MODE},DB_PATH=/app/data/demo.db,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600"
+  --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,CLOUDRUN_DATA_MODE=${CLOUDRUN_DATA_MODE},DEMO_READONLY=${DEMO_READONLY},DB_PATH=/app/data/demo.db,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600"
 )
 
 if gcloud secrets describe GEMINI_API_KEY --project "$PROJECT_ID" >/dev/null 2>&1; then

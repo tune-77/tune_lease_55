@@ -112,8 +112,11 @@ def _load_cache() -> dict:
 
 
 def _save_cache(data: dict) -> None:
-    with open(_CACHE_PATH, "w", encoding="utf-8") as f:
+    # 読み手（_cache_valid / _load_cache）と競合しないよう一時ファイル経由でアトミックに書く
+    tmp_path = _CACHE_PATH + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, _CACHE_PATH)
 
 
 def _build_analysis_prompt(local_mind: dict, keypoints: list[str]) -> str:
@@ -227,8 +230,8 @@ def _call_gemini(prompt: str) -> dict:
             array_fields={"optimist_traits", "skeptic_traits"},
             number_fields={"keypoints_used"},
         )
-        if not recovered and finish_reason != "MAX_TOKENS":
-            return result
+        # 正常にパースできたら即返す。recovered=True（JSON復元にフォールバック使用）の
+        # 場合のみ、トークン増量ペイロードでもう1周だけ再試行する
         if not recovered:
             return result
     result, _ = parse_or_recover_json(
