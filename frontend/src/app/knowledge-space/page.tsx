@@ -934,8 +934,8 @@ export default function KnowledgeSpacePage() {
   const [limit, setLimit] = useState(180);
   const [searchTerm, setSearchTerm] = useState("");
   const [timePercent, setTimePercent] = useState(100);
-  const [mode, setMode] = useState<SceneMode>("all");
-  const [visualMode, setVisualMode] = useState<VisualMode>("practical");
+  const [mode, setMode] = useState<SceneMode>("search");
+  const [visualMode, setVisualMode] = useState<VisualMode>("galaxy");
   const [flightMode, setFlightMode] = useState(false);
   const toggleFlightMode = useCallback(() => {
     setFlightMode((prev) => {
@@ -957,7 +957,7 @@ export default function KnowledgeSpacePage() {
     if (node) setHoverPos({ x, y });
   }, []);
   const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
-  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string | null>("wiki");
 
   const fetchGraph = async (nextLimit = limit) => {
     setLoading(true);
