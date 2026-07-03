@@ -13,8 +13,6 @@ TIMEOUT="${TIMEOUT:-900}"
 CONCURRENCY="${CONCURRENCY:-1}"
 MIN_INSTANCES="${MIN_INSTANCES:-1}"
 MAX_INSTANCES="${MAX_INSTANCES:-1}"
-# 既定は認証必須（安全側）。無認証公開が必要な場合のみ ALLOW_UNAUTHENTICATED=1 を明示する
-ALLOW_UNAUTHENTICATED="${ALLOW_UNAUTHENTICATED:-0}"
 SERVICE_ACCOUNT="${SERVICE_ACCOUNT:-}"
 DATABASE_SECRET_NAME="${DATABASE_SECRET_NAME:-DATABASE_URL}"
 CLOUDSQL_INSTANCE="${CLOUDSQL_INSTANCE:-}"
@@ -107,10 +105,6 @@ if [[ -n "$SERVICE_ACCOUNT" ]]; then
   deploy_args+=(--service-account "$SERVICE_ACCOUNT")
 fi
 
-if [[ "$ALLOW_UNAUTHENTICATED" == "1" ]]; then
-  deploy_args+=(--allow-unauthenticated)
-else
-  deploy_args+=(--no-allow-unauthenticated)
-fi
+deploy_args+=(--allow-unauthenticated)
 
 gcloud "${deploy_args[@]}"

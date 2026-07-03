@@ -14,8 +14,6 @@ TIMEOUT="${TIMEOUT:-900}"
 CONCURRENCY="${CONCURRENCY:-80}"
 MIN_INSTANCES="${MIN_INSTANCES:-0}"
 MAX_INSTANCES="${MAX_INSTANCES:-1}"
-# 既定は認証必須（安全側）。無認証公開が必要な場合のみ ALLOW_UNAUTHENTICATED=1 を明示する
-ALLOW_UNAUTHENTICATED="${ALLOW_UNAUTHENTICATED:-0}"
 
 if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
   echo "PROJECT_ID is required." >&2
@@ -57,10 +55,6 @@ deploy_args=(
   --max-instances "$MAX_INSTANCES"
 )
 
-if [[ "$ALLOW_UNAUTHENTICATED" == "1" ]]; then
-  deploy_args+=(--allow-unauthenticated)
-else
-  deploy_args+=(--no-allow-unauthenticated)
-fi
+deploy_args+=(--allow-unauthenticated)
 
 gcloud "${deploy_args[@]}"
