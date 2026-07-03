@@ -293,6 +293,11 @@ async def lifespan(app: FastAPI):
     # startup: Cloud Run用の選抜Obsidian MarkdownをGCSから取得
     # ダウンロードはネットワークI/Oでタイムアウトが効かず起動を長時間ブロックしうるため、
     # readiness確認（/docs）を先に通すためバックグラウンドスレッドで実行する。
+    import threading as _gcs_th
+    # ChromaDB インデクサが GCS Vault 同期後の OBSIDIAN_VAULT_PATH を参照できるよう、
+    # 同期完了を通知する（失敗時も set してインデクサを永久待機させない）
+    _gcs_vault_sync_done = _gcs_th.Event()
+
     def _run_gcs_vault_sync():
         try:
             gcs_sync = _sync_gcs_vault_if_enabled()
@@ -300,7 +305,8 @@ async def lifespan(app: FastAPI):
                 print(f"[GCSVault] startup sync: {gcs_sync}")
         except Exception as e:
             print(f"[GCSVault] startup sync failed (non-fatal): {e}")
-    import threading as _gcs_th
+        finally:
+            _gcs_vault_sync_done.set()
     _gcs_th.Thread(target=_run_gcs_vault_sync, daemon=True, name="gcs-vault-sync").start()
     # startup: DB スキーマ自動初期化（REV-167 — Cloud SQL 冷起動時のテーブル不在対策）
     try:
@@ -330,9 +336,16 @@ async def lifespan(app: FastAPI):
     if os.environ.get("ENABLE_OBSIDIAN_INDEXING", "false").lower() == "true":
         def _delayed_indexing():
             import time as _t; _t.sleep(30)
+            # Cloud Run では GCS Vault 同期の完了時に OBSIDIAN_VAULT_PATH が
+            # /tmp/gcs_vault へ書き換わる。indexer 側の既定パスは import 時に
+            # 固定されるため、同期完了を待ってから実行時のパスを明示して渡す
+            # （待たないと空の /app/obsidian_vault を索引して ChromaDB が空のままになる）
+            if os.environ.get("USE_GCS_VAULT", "").lower() in ("1", "true"):
+                _gcs_vault_sync_done.wait(timeout=600)
             try:
                 from api.knowledge.indexer import start_background_indexing
-                start_background_indexing()
+                from runtime_paths import get_obsidian_vault_path
+                start_background_indexing(get_obsidian_vault_path())
             except Exception as e:
                 print(f"[API] knowledge indexing start failed (non-fatal): {e}")
         _th.Thread(target=_delayed_indexing, daemon=True, name="delayed-indexer").start()
@@ -343,9 +356,13 @@ async def lifespan(app: FastAPI):
     if os.environ.get("ENABLE_FEEDBACK_LOADING", "false").lower() == "true":
         def _delayed_feedback():
             import time as _t; _t.sleep(30)
+            # インデクサと同様、GCS Vault 同期後の実行時パスを明示して渡す
+            if os.environ.get("USE_GCS_VAULT", "").lower() in ("1", "true"):
+                _gcs_vault_sync_done.wait(timeout=600)
             try:
                 from api.knowledge.feedback_watcher import start_background_feedback_loading
-                start_background_feedback_loading()
+                from runtime_paths import get_obsidian_vault_path
+                start_background_feedback_loading(get_obsidian_vault_path())
             except Exception as e:
                 print(f"[API] feedback loading start failed (non-fatal): {e}")
         _th.Thread(target=_delayed_feedback, daemon=True, name="delayed-feedback").start()
@@ -548,6 +565,34 @@ def _cloud_gcs_vault_status() -> dict:
     }
 
 
+def _cloud_chroma_status() -> dict:
+    """ChromaDB（obsidian_knowledge コレクション）の接続状態を返す。
+
+    encoder はここではロードしない（cloud-status 呼び出しで ~500MB のモデル
+    読み込みを誘発しないため、現在の状態だけを覗く）。
+    """
+    status: dict = {
+        "indexing_enabled": os.environ.get("ENABLE_OBSIDIAN_INDEXING", "false").lower() == "true",
+        "connected": False,
+        "document_count": 0,
+        "chroma_dir": "",
+        "encoder_loaded": False,
+        "encoder_model_local": False,
+    }
+    try:
+        from api.knowledge.vector_store import get_store
+
+        store = get_store()
+        status["chroma_dir"] = store._chroma_dir
+        status["document_count"] = store.count()
+        status["connected"] = status["document_count"] > 0
+        status["encoder_loaded"] = store._encoder is not None
+        status["encoder_model_local"] = os.path.isdir(store._model_name)
+    except Exception as exc:
+        status["error"] = str(exc)
+    return status
+
+
 def _sync_gcs_vault_if_enabled() -> dict:
     """Download the selected Obsidian Markdown copy for Cloud Run RAG/memory use."""
     if os.environ.get("USE_GCS_VAULT", "").lower() not in ("1", "true"):
@@ -574,6 +619,7 @@ def _sync_gcs_vault_if_enabled() -> dict:
 def get_cloud_status():
     db = _cloud_db_status()
     gcs_vault = _cloud_gcs_vault_status()
+    chroma = _cloud_chroma_status()
     ready = db["available"] and (
         not gcs_vault["enabled"] or gcs_vault["markdown_count"] > 0
     )
@@ -582,6 +628,7 @@ def get_cloud_status():
         "ready": ready,
         "db": db,
         "gcs_vault": gcs_vault,
+        "chroma": chroma,
         "cloud_run": {
             "service": os.environ.get("K_SERVICE", ""),
             "revision": os.environ.get("K_REVISION", ""),
