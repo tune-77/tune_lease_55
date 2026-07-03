@@ -525,5 +525,17 @@
     "affected_files": [],
     "risk": "medium",
     "auto_fix_allowed": false
+  },
+  {
+    "rev_id": "RAG-UNRATED-2026_05_13____________",
+    "type": "rag_boost_adjust",
+    "pending_review": true,
+    "description": "RAGヒット済み未評価: 2026-05-13_自動車タイプ別自動車税 が直近30日で検索ヒットしたが評価なし（要内容確認）",
+    "source": "analyze_rag_feedback.py",
+    "target": "config/rag_ranking.json",
+    "path": "2026-05-13_自動車タイプ別自動車税",
+    "action": "review_content",
+    "penalty_strength": "weak",
+    "generated_at": "2026-07-01T19:00:33.273177+00:00"
   }
 ]

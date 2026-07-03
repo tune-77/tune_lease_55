@@ -111,7 +111,7 @@ def _call_gemini(prompt: str) -> str:
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {
             "temperature": 0.4,
-            "maxOutputTokens": 2000,
+            "maxOutputTokens": 8192,
             "responseMimeType": "application/json",
         },
     }

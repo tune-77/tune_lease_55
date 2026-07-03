@@ -55,6 +55,47 @@ latest_tunnel_url() {
   fi
 }
 
+sync_standalone_assets() {
+  if [ ! -d "frontend/.next/standalone" ]; then
+    return 0
+  fi
+  if [ ! -d "frontend/.next/static" ]; then
+    echo "Standalone output exists, but frontend/.next/static is missing; static assets were not synced." >&2
+    return 1
+  fi
+
+  mkdir -p frontend/.next/standalone/.next/static frontend/.next/standalone/public
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete frontend/.next/static/ frontend/.next/standalone/.next/static/
+    rsync -a --delete frontend/public/ frontend/.next/standalone/public/
+  elif command -v ditto >/dev/null 2>&1; then
+    rm -rf frontend/.next/standalone/.next/static frontend/.next/standalone/public
+    mkdir -p frontend/.next/standalone/.next/static frontend/.next/standalone/public
+    ditto frontend/.next/static frontend/.next/standalone/.next/static
+    ditto frontend/public frontend/.next/standalone/public
+  else
+    rm -rf frontend/.next/standalone/.next/static frontend/.next/standalone/public
+    mkdir -p frontend/.next/standalone/.next frontend/.next/standalone
+    cp -R frontend/.next/static frontend/.next/standalone/.next/static
+    cp -R frontend/public frontend/.next/standalone/public
+  fi
+  echo "Synced standalone static/public assets."
+}
+
+wait_for_http_ok() {
+  local url="$1"
+  local attempts="${2:-60}"
+  local i
+  for i in $(seq 1 "$attempts"); do
+    if curl -fsS --max-time 2 "$url" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "Timed out waiting for ${url}" >&2
+  return 1
+}
+
 print_status() {
   local api_state="DOWN"
   local next_state="DOWN"
@@ -86,7 +127,7 @@ if [ "$RESTART_SCOPE" = "status" ]; then
 fi
 
 if [ "$RESTART_SCOPE" = "api" ]; then
-  api_pids="$(lsof -ti :"$API_PORT" 2>/dev/null || true)"
+  api_pids="$(lsof -tiTCP:"$API_PORT" -sTCP:LISTEN 2>/dev/null || true)"
   if [ -n "$api_pids" ]; then
     echo "API-only restart requested; nudging FastAPI on port ${API_PORT}: ${api_pids}"
     kill $api_pids 2>/dev/null || true
@@ -102,11 +143,13 @@ if [ "$RESTART_SCOPE" = "api" ]; then
 fi
 
 if [ "$RESTART_SCOPE" = "next" ]; then
-  next_pids="$(lsof -ti :"$NEXT_PORT" 2>/dev/null || true)"
+  sync_standalone_assets
+  next_pids="$(lsof -tiTCP:"$NEXT_PORT" -sTCP:LISTEN 2>/dev/null || true)"
   if [ -n "$next_pids" ]; then
     echo "Next-only restart requested; nudging Next.js on port ${NEXT_PORT}: ${next_pids}"
     kill $next_pids 2>/dev/null || true
     if pid_file_alive "$LOG_DIR/next_${NEXT_PORT}.supervisor.pid"; then
+      wait_for_http_ok "http://${NEXT_HOST}:${NEXT_PORT}/" 60
       exit 0
     fi
     echo "Next.js supervisor is not alive; continuing with full launch."
@@ -189,13 +232,13 @@ stop_port_process() {
   local port="$1"
   local label="$2"
   local pids
-  pids="$(lsof -ti :"$port" 2>/dev/null || true)"
+  pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
   if [ -n "$pids" ]; then
     echo "Stopping existing ${label} on port ${port}: ${pids}"
     kill_pids "$pids"
     sleep 1
   fi
-  pids="$(lsof -ti :"$port" 2>/dev/null || true)"
+  pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
   if [ -n "$pids" ]; then
     echo "Force stopping remaining ${label} on port ${port}: ${pids}"
     kill -9 $pids 2>/dev/null || true
@@ -249,7 +292,7 @@ stop_existing_launchers() {
 
 port_is_listening() {
   local port="$1"
-  lsof -ti :"$port" >/dev/null 2>&1
+  lsof -tiTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
 }
 
 http_ok() {
@@ -313,6 +356,7 @@ cleanup() {
 trap cleanup INT TERM
 
 if [ "$FORCE_RESTART" != "1" ] && [ "$REUSE_RUNNING" = "1" ]; then
+  sync_standalone_assets
   if port_is_listening "$API_PORT" && port_is_listening "$NEXT_PORT" \
       && http_ok "http://${API_HOST}:${API_PORT}/docs" \
       && http_ok "http://${NEXT_HOST}:${NEXT_PORT}/"; then
@@ -342,8 +386,8 @@ if [ "$FORCE_RESTART" = "1" ]; then
 else
   if port_is_listening "$API_PORT" || port_is_listening "$NEXT_PORT"; then
     echo "Target ports are already occupied. Reusing existing processes; no restart/build performed."
-    echo "  API port ${API_PORT}:  $(lsof -ti :"$API_PORT" 2>/dev/null || echo free)"
-    echo "  Next port ${NEXT_PORT}: $(lsof -ti :"$NEXT_PORT" 2>/dev/null || echo free)"
+    echo "  API port ${API_PORT}:  $(lsof -tiTCP:"$API_PORT" -sTCP:LISTEN 2>/dev/null || echo free)"
+    echo "  Next port ${NEXT_PORT}: $(lsof -tiTCP:"$NEXT_PORT" -sTCP:LISTEN 2>/dev/null || echo free)"
     echo "To replace them: FORCE_RESTART=1 bash run_next_stable.sh"
     exit 0
   fi
@@ -354,17 +398,11 @@ if frontend_build_needed; then
   (cd frontend && npm run build) >>"$BUILD_LOG" 2>&1
   touch "$BUILD_STAMP"
   echo "Build log: $BUILD_LOG"
-  # standalone モード用: static と public を standalone/ 以下にコピー
-  if [ -d "frontend/.next/standalone" ]; then
-    mkdir -p frontend/.next/standalone/.next/static frontend/.next/standalone/public
-    rsync -a --delete frontend/.next/static/ frontend/.next/standalone/.next/static/ 2>/dev/null || true
-    rsync -a --delete frontend/public/ frontend/.next/standalone/public/ 2>/dev/null || true
-    echo "Copied static assets to standalone directory."
-  fi
 else
   echo "Skipping frontend build; no frontend source changes since last successful build."
   echo "Build log: not created"
 fi
+sync_standalone_assets
 echo ""
 
 echo "Starting FastAPI on http://${API_HOST}:${API_PORT}"

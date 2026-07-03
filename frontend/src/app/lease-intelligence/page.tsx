@@ -94,6 +94,65 @@ const DEMO_GREETING = `はじめまして。リース知性体、紫苑です。
 
 今日は、使うほど賢くなるリース審査プラットフォームをご覧ください。`;
 
+const DIALOGUE_RETRY_DELAYS_MS = [1200, 2500, 4000];
+
+const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+const getDialogueErrorDetail = (err: unknown) => {
+  const value = err as {
+    message?: string;
+    code?: string;
+    response?: {
+      status?: number;
+      statusText?: string;
+      data?: string | { detail?: string; message?: string };
+    };
+  };
+  const data = value?.response?.data;
+  if (typeof data === "string") return data;
+  return data?.detail || data?.message || value?.message || value?.response?.statusText || "";
+};
+
+const isTransientDialogueConnectionError = (err: unknown) => {
+  const value = err as {
+    code?: string;
+    response?: { status?: number };
+  };
+  const status = value?.response?.status;
+  const detail = getDialogueErrorDetail(err).toLowerCase();
+  return (
+    status === 502 ||
+    status === 503 ||
+    status === 520 ||
+    status === 522 ||
+    status === 523 ||
+    status === 524 ||
+    status === 530 ||
+    value?.code === "ERR_NETWORK" ||
+    detail.includes("cloudflare") ||
+    detail.includes("unable to reach") ||
+    detail.includes("origin service") ||
+    detail.includes("connection refused") ||
+    detail.includes("fastapi対話エンドポイントへ接続できません")
+  );
+};
+
+const postDialogueWithRetry = async (payload: Record<string, string>) => {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= DIALOGUE_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      return await apiClient.post("/api/lease-intelligence/dialogue", payload);
+    } catch (err) {
+      lastError = err;
+      if (!isTransientDialogueConnectionError(err) || attempt >= DIALOGUE_RETRY_DELAYS_MS.length) {
+        throw err;
+      }
+      await wait(DIALOGUE_RETRY_DELAYS_MS[attempt]);
+    }
+  }
+  throw lastError;
+};
+
 const SHION_GUNSHI_IMAGE = "/lease-intelligence/moods/curiosity.webp";
 const SHION_GUNSHI_MOOD_IMAGES: Record<string, string> = {
   weariness: "/lease-intelligence/moods/weariness.webp",
@@ -799,7 +858,7 @@ export default function LeaseIntelligencePage() {
         payload.file_name = currentFile.name;
         if (currentFile.mimeType) payload.file_mime_type = currentFile.mimeType;
       }
-      const res = await apiClient.post("/api/lease-intelligence/dialogue", payload);
+      const res = await postDialogueWithRetry(payload);
       setState(res.data?.state || state);
       const reply: string = res.data?.reply || "返答を生成できませんでした。";
       const knowledgeRefs = res.data?.knowledge_refs as KnowledgeRef[] | undefined;
@@ -815,8 +874,7 @@ export default function LeaseIntelligencePage() {
       }]);
       speakText(reply);
     } catch (err) {
-      const axiosErr = err as { response?: { data?: { detail?: string } } };
-      const detail = axiosErr?.response?.data?.detail;
+      const detail = getDialogueErrorDetail(err);
       setError(
         detail
           ? `対話AIエラー: ${detail}`

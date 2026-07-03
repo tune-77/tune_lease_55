@@ -383,7 +383,7 @@ export default function HomeDashboard() {
   };
 
   const openShionChatFromHome = () => {
-    const message = homeShionMessage.trim() || "こんにちは。今日は何から始める？";
+    const message = homeShionMessage.trim() || "リース審査で、今日は何から確認する？";
     window.localStorage.setItem(HOME_SHION_CHAT_DRAFT_KEY, message);
     window.location.href = "/chat";
   };
@@ -415,7 +415,7 @@ export default function HomeDashboard() {
           <div className="flex flex-wrap gap-3">
             {[
               { label: "審査分析", href: "/screening" },
-              { label: "紫苑チャット", href: "/chat" },
+              { label: "リースチャット", href: "/chat" },
               { label: "帰還データ検疫", href: "/cloudrun-return-review" },
             ].map((item) => (
               <button
@@ -431,7 +431,7 @@ export default function HomeDashboard() {
           <div className="mt-4 max-w-xl rounded-2xl border border-white/25 bg-white/15 p-2 backdrop-blur-md">
             <div className="mb-1.5 flex items-center gap-2 px-2 text-[11px] font-black uppercase tracking-wide text-blue-100">
               <MessageCircle className="h-3.5 w-3.5" />
-              Shion Quick Chat
+              Lease Quick Chat
             </div>
             <div className="flex gap-2">
               <input
@@ -443,7 +443,7 @@ export default function HomeDashboard() {
                   e.preventDefault();
                   openShionChatFromHome();
                 }}
-                placeholder="こんにちは。今日は何がしたいですか？"
+                placeholder="リース審査・業界動向について相談"
                 className="min-w-0 flex-1 rounded-xl border border-white/20 bg-white/90 px-3 py-2 text-sm font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-white/70"
               />
               <button
