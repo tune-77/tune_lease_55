@@ -54,6 +54,55 @@ def test_memory_record_has_stable_metadata():
     assert "否決・警戒判断" in record.applies_when
 
 
+def test_build_index_carries_over_created_at(tmp_path, monkeypatch):
+    """再生成で created_at（初出日）と last_used_at がリセットされない。"""
+    repo = tmp_path
+    (repo / "data").mkdir()
+    (repo / "MEMORY.md").write_text("- 境界案件では条件付き承認を検討する。\n", encoding="utf-8")
+    monkeypatch.setattr(builder, "REPO_ROOT", repo)
+
+    first = builder.build_index()
+    rid = first["records"][0]["id"]
+    first["records"][0]["created_at"] = "2026-01-01"
+    first["records"][0]["last_used_at"] = "2026-06-01"
+    previous_path = repo / "data" / "shion_memory_index.json"
+    previous_path.write_text(json.dumps(first, ensure_ascii=False), encoding="utf-8")
+
+    second = builder.build_index(previous_index_path=previous_path)
+
+    record = next(r for r in second["records"] if r["id"] == rid)
+    assert record["created_at"] == "2026-01-01"
+    assert record["last_used_at"] == "2026-06-01"
+
+
+def test_build_index_demo_safe_excludes_dialogue_and_private(tmp_path, monkeypatch):
+    """--demo-safe では対話・内省・private の記憶が公開バンドルに載らない。"""
+    repo = tmp_path
+    (repo / "data").mkdir()
+    (repo / "MEMORY.md").write_text(
+        "\n".join(
+            [
+                "- 境界案件では条件付き承認を検討する。",
+                "- ユーザーの好みは機能追加より知識基盤の優先。",
+                "- Private Reflection: 同じ文型への違和感を覚えた。",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(builder, "REPO_ROOT", repo)
+
+    full = builder.build_index()
+    safe = builder.build_index(demo_safe=True)
+
+    full_types = {r["memory_type"] for r in full["records"]}
+    assert "dialogue_memory" in full_types or "reflection_memory" in full_types
+    for record in safe["records"]:
+        assert record["memory_type"] not in {"dialogue_memory", "reflection_memory"}
+        assert record["status"] != "private"
+        assert not record.get("private")
+
+
 def test_build_index_reads_memory_and_mind(tmp_path, monkeypatch):
     repo = tmp_path
     (repo / "memory").mkdir()

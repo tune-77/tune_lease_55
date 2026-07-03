@@ -68,6 +68,13 @@ def test_vector_module_degrades_gracefully_without_chromadb():
     assert shion_memory_vector.is_available() is False
 
 
+def test_shared_encoder_returns_none_without_local_model():
+    """ローカルモデル未配置の環境では共有エンコーダーは None（フォールバック前提）。"""
+    from api.knowledge.vector_store import get_shared_encoder
+
+    assert get_shared_encoder() is None
+
+
 def test_background_sync_not_started_without_chromadb():
     """chromadb が無い環境では自動構築スレッドを起動しない（クライアント不在で早期return）。"""
     from api import shion_memory_vector

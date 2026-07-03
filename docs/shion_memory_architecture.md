@@ -93,8 +93,10 @@ Mana は妹さん本人の再現や代弁ではない。紫苑が守る価値の
   - 想起精度の評価セット（質問 → 期待ルート・期待出典）と評価ハーネス。`tests/test_shion_recall_eval.py` が全件パスをゲートし、スコアリング変更時の再現率低下を検出する。
 - `data/shion_memory_usage_log.jsonl` / `scripts/update_shion_memory_freshness.py`
   - `build_recall_prompt_block` が想起された記憶IDを使用ログへ追記し、鮮度更新スクリプトが `last_used_at` 反映と stale 昇降格を行う。使用ログが真実の源なので索引再生成後も再実行で状態を再現できる。stale 記憶は想起スコアを0.8倍に下げる（除外はしない）。
-  - Cloud Run では使用ログを `api/cloudrun_writeback.py` 経由で GCS（cloudrun-inputs/）へミラーし、`scripts/sync_cloudrun_inputs_from_gcs.py` で取り込んだイベントを鮮度更新が `--cloudrun-events-dir` から合流させる。想起の内訳は `/api/chat` の `debug_memory=true` で `memory_debug.memory_recall`（route / refs）として確認できる。
+  - Cloud Run では使用ログを `api/cloudrun_writeback.py` 経由で GCS（cloudrun-inputs/）へミラーし、`scripts/sync_cloudrun_inputs_from_gcs.py` で取り込んだイベントを鮮度更新が `--cloudrun-events-dir` から合流させる。GCSミラーはチャット応答を塞がないよう必ずバックグラウンドスレッドで行う。想起の内訳は `/api/chat` の `debug_memory=true` で `memory_debug.memory_recall`（route / refs）として確認できる。
+  - 索引ビルダーは前回索引から `created_at`（初出日）と `last_used_at` を引き継ぐ。引き継がないと再生成のたびに全レコードが「今日作成」になり、stale 降格が永久に発火しない。
   - 記憶索引は `scripts/package_cloud_run_bundle.sh` がデプロイごとに再ビルドしてバンドルへ同梱し、`scripts/check_cloudrun_demo_readiness.py` が同梱漏れ・0件をデプロイ前に検出する。実行時は `resolve_index_path()` が DATA_DIR → リポジトリ data/ → 読み取り専用バンドル（CLOUDRUN_BUNDLE_DIR/data/）の順で解決する。
+  - 公開デモ（CLOUDRUN_DATA_MODE=demo）のバンドルは `--demo-safe` でビルドし、`dialogue_memory` / `reflection_memory` / private の記憶を索引から除外する（来場者への回答に個人的対話・内省が混ざらないようにする）。
 - `api/shion_memory_vector.py` / `scripts/build_shion_memory_vector_index.py`
   - 記憶索引のChromaDBベクトル層（Obsidian RAGと同じ埋め込みモデルを再利用）。`SHION_MEMORY_HYBRID=1` でキーワード＋埋め込みのハイブリッド想起になり、語彙一致0件の言い換え質問（ユンボ→油圧ショベル等）も救える。依存が無い環境では自動でキーワードのみへフォールバックする。
   - Cloud Run API デプロイ（`scripts/deploy_cloud_run_api.sh`）では既定で有効。イメージに `api/chroma_db` は含まれない（.dockerignore）ため、コレクションが空の初回は想起時にバックグラウンドで索引から自動構築し、構築完了までキーワードのみで動く。

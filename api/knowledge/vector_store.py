@@ -702,3 +702,15 @@ def get_store() -> KnowledgeVectorStore:
     if _store is None:
         _store = KnowledgeVectorStore()
     return _store
+
+
+def get_shared_encoder():
+    """初期化済み SentenceTransformer を他モジュールと共有する。
+
+    紫苑記憶ベクトル層（api/shion_memory_vector.py）が同一モデルを使うため、
+    共有すれば ~500MB の二重ロードを避けられる。ロードできない環境では None。
+    """
+    store = get_store()
+    if store._ensure_encoder():
+        return store._encoder
+    return None

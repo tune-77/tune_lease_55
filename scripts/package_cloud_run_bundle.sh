@@ -51,7 +51,15 @@ copy_if_exists "$ROOT_DIR/reports/obsidian_daily_intelligence_latest.json" "$BUN
 echo "Building Shion memory index for bundle..."
 python3 "$ROOT_DIR/scripts/build_shion_memory_index.py"
 python3 "$ROOT_DIR/scripts/update_shion_memory_freshness.py" || true
-cp "$ROOT_DIR/data/shion_memory_index.json" "$DATA_OUT/"
+if [[ "$CLOUDRUN_DATA_MODE" == "demo" ]]; then
+  # 公開デモには対話・内省・private の記憶を載せない（--demo-safe で除外）
+  python3 "$ROOT_DIR/scripts/build_shion_memory_index.py" \
+    --output "$DATA_OUT/shion_memory_index.json" --demo-safe
+  python3 "$ROOT_DIR/scripts/update_shion_memory_freshness.py" \
+    --index "$DATA_OUT/shion_memory_index.json" || true
+else
+  cp "$ROOT_DIR/data/shion_memory_index.json" "$DATA_OUT/"
+fi
 
 validate_past_cases() {
   local db_path="$1"
