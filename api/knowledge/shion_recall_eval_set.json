@@ -67,6 +67,14 @@
     "forbidden_path_any": []
   },
   {
+    "id": "recall_q_risk_threshold",
+    "category": "q_risk",
+    "query": "Q_riskが60を超えた案件はどう扱えばいい？",
+    "expected_route": "case_screening",
+    "expected_path_any": ["knowledge_base/okf_lease_concepts/rules/q_risk_interpretation.md"],
+    "forbidden_path_any": []
+  },
+  {
     "id": "recall_q_risk_high_not_reject",
     "category": "q_risk",
     "query": "Q_riskが高い案件を否決方向に寄せていい？",

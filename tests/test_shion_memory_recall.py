@@ -81,11 +81,80 @@ def test_build_recall_prompt_block(tmp_path):
     path = tmp_path / "index.json"
     path.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
 
-    block, recalled = build_recall_prompt_block("紫苑の記憶システム", index_path=path)
+    usage_log = tmp_path / "usage.jsonl"
+    block, recalled = build_recall_prompt_block(
+        "紫苑の記憶システム", index_path=path, usage_log_path=usage_log
+    )
 
     assert recalled["route"] == "shion_identity"
     assert "【紫苑の想起メモ】" in block
     assert "想起ルート" in block
+    # 想起された記憶IDが使用ログへ追記される（last_used_at 更新の材料）
+    logged = json.loads(usage_log.read_text(encoding="utf-8").splitlines()[0])
+    assert logged["refs"] == ["mem_identity"]
+    assert logged["route"] == "shion_identity"
+
+
+def test_build_recall_prompt_block_can_skip_usage_log(tmp_path):
+    index = {"records": [{"id": "mem_x", "content": "紫苑の記憶と価値観の中核。", "memory_type": "value_memory", "status": "active"}]}
+    path = tmp_path / "index.json"
+    path.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
+    usage_log = tmp_path / "usage.jsonl"
+
+    build_recall_prompt_block("紫苑の記憶は？", index_path=path, log_usage=False, usage_log_path=usage_log)
+
+    assert not usage_log.exists()
+
+
+def test_recall_downweights_stale_records(tmp_path):
+    index = {
+        "records": [
+            {
+                "id": "mem_stale",
+                "content": "境界案件では追加資料を確認して条件付き承認を検討する。",
+                "memory_type": "judgment_memory",
+                "status": "stale",
+            },
+            {
+                "id": "mem_active",
+                "content": "境界案件では追加資料を確認して条件付き承認を検討する。",
+                "memory_type": "judgment_memory",
+                "status": "active",
+            },
+        ]
+    }
+    path = tmp_path / "index.json"
+    path.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
+
+    recalled = recall_memories("境界案件の条件付き承認はどうする？", index_path=path, limit=2)
+
+    assert recalled["refs"][0] == "mem_active"
+
+
+def test_signal_term_boost_prefers_q_risk_note(tmp_path):
+    index = {
+        "records": [
+            {
+                "id": "mem_q_risk",
+                "content": "Q_riskが高いだけで否決方向に寄せない。",
+                "memory_type": "judgment_memory",
+                "status": "active",
+            },
+            {
+                "id": "mem_boundary",
+                "content": "境界案件では条件を確認して60点前後の判断を整理する。",
+                "memory_type": "judgment_memory",
+                "status": "active",
+            },
+        ]
+    }
+    path = tmp_path / "index.json"
+    path.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
+
+    recalled = recall_memories("Q_riskが60を超えた案件はどう扱えばいい？", index_path=path, limit=2)
+
+    # 英字入り固有語（Q_risk）の一致が境界ボーナスより優先される
+    assert recalled["refs"][0] == "mem_q_risk"
 
 
 def test_infer_practical_scene_boundary_decision():

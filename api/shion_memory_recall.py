@@ -2,12 +2,15 @@
 Question-time recall for Shion memory index.
 
 Reads data/shion_memory_index.json and selects a small set of memory records
-based on the taxonomy recall routes. No network calls and no writes.
+based on the taxonomy recall routes. No network calls. The only write is an
+optional usage log append (data/shion_memory_usage_log.jsonl) so that
+scripts/update_shion_memory_freshness.py can maintain last_used_at / stale.
 """
 from __future__ import annotations
 
 import json
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +20,7 @@ from scoring_core import APPROVAL_LINE, REVIEW_LINE
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _INDEX_PATH = _REPO_ROOT / "data" / "shion_memory_index.json"
+_USAGE_LOG_PATH = _REPO_ROOT / "data" / "shion_memory_usage_log.jsonl"
 
 _CASE_TERMS = ("審査", "案件", "承認", "否決", "条件", "スコア", "与信", "リスク", "リース", "物件", "担保", "借手", "残価", "耐用年数")
 # 「価値」は「担保価値」「換金価値」等の案件語と衝突するため「価値観」に限定する
@@ -34,6 +38,9 @@ _ROUTE_TERMS: tuple[tuple[str, tuple[str, ...]], ...] = (
 
 # 「1400万円」の 40 等、金額・件数の一部にマッチしないよう数値は語境界で切る
 _BOUNDARY_SCORE_RE = re.compile(r"(?<![\d.])(?:40|50|60)(?![\d.])")
+
+# 数値・記号のみのクエリ語（60、40-60、3.5 等）の判定
+_NUMERIC_TERM_RE = re.compile(r"^[\d.,%/-]+$")
 
 _INDUSTRY_TERMS = (
     "製造業", "建設業", "医療", "介護", "運送", "運輸", "物流", "小売", "卸売",
@@ -92,6 +99,9 @@ def recall_memories(question: str, *, limit: int = 5, index_path: Path = _INDEX_
             continue
         memory_type = str(record.get("memory_type") or "")
         score = _score_record(content, memory_type, preferred_types, query_terms, case_profile, record)
+        if status == "stale":
+            # 鮮度確認が必要な記憶は残しつつ、activeな同等記憶より後ろに回す
+            score *= 0.8
         if score > 0:
             scored.append((score, record))
 
@@ -109,9 +119,16 @@ def recall_memories(question: str, *, limit: int = 5, index_path: Path = _INDEX_
 
 
 def build_recall_prompt_block(
-    question: str, *, limit: int = 5, index_path: Path = _INDEX_PATH
+    question: str,
+    *,
+    limit: int = 5,
+    index_path: Path = _INDEX_PATH,
+    log_usage: bool = True,
+    usage_log_path: Path = _USAGE_LOG_PATH,
 ) -> tuple[str, dict[str, Any]]:
     recalled = recall_memories(question, limit=limit, index_path=index_path)
+    if log_usage:
+        _append_usage_log(recalled, usage_log_path)
     memories = recalled.get("memories") or []
     practical_scene = recalled.get("practical_scene") or {}
     if not memories and not practical_scene:
@@ -129,6 +146,24 @@ def build_recall_prompt_block(
         content = str(record.get("content") or "").strip()
         lines.append(f"{idx}. [{mtype}/{status}] {content[:260]}")
     return "\n".join(lines), recalled
+
+
+def _append_usage_log(recalled: dict[str, Any], path: Path = _USAGE_LOG_PATH) -> None:
+    """想起された記憶IDを使用ログへ追記する。失敗してもチャット応答は止めない。"""
+    refs = [str(r) for r in recalled.get("refs") or [] if r]
+    if not refs:
+        return
+    entry = {
+        "ts": datetime.now().isoformat(timespec="seconds"),
+        "route": str(recalled.get("route") or ""),
+        "refs": refs,
+    }
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
 
 
 def _format_practical_scene_block(scene: dict[str, Any]) -> list[str]:
@@ -183,12 +218,26 @@ def _score_record(
     if memory_type in preferred_types:
         score += 3.0 - (preferred_types.index(memory_type) * 0.4)
     content_lower = content.lower()
-    overlap = sum(1 for term in query_terms if term.lower() in content_lower)
-    score += min(overlap, 5) * 0.7
+    # 数値だけのトークン（60、40-60 等）はどの文脈にも現れるため語彙一致の証拠として弱い
+    numeric_overlap = sum(
+        1 for term in query_terms if _NUMERIC_TERM_RE.match(term) and term.lower() in content_lower
+    )
+    word_overlap = sum(
+        1 for term in query_terms if not _NUMERIC_TERM_RE.match(term) and term.lower() in content_lower
+    )
+    overlap = numeric_overlap + word_overlap
+    score += min(word_overlap, 5) * 0.7 + min(numeric_overlap, 2) * 0.3
     if query_terms and overlap == 0 and memory_type not in preferred_types:
         return 0.0
     if query_terms and overlap == 0 and memory_type in {"factual_memory", "technical_memory"}:
         score *= 0.25
+    # Q_risk / ChromaDB のような英字入り固有語は日本語の一般語より判別力が高いので、
+    # 一致したら本文または出典パスに対して追加ボーナスを与える
+    signal_terms = [t for t in query_terms if len(t) >= 3 and re.search(r"[A-Za-z]", t)]
+    if signal_terms:
+        signal_hay = f"{content_lower} {str((record or {}).get('source_path') or '').lower()}"
+        signal_hits = sum(1 for t in signal_terms if t.lower() in signal_hay)
+        score += min(signal_hits, 2) * 3.0
     if case_profile:
         score += _case_profile_bonus(content, case_profile, record or {})
     if "Mana" in content or "良心" in content:
