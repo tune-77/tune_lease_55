@@ -9,6 +9,7 @@ scripts/update_shion_memory_freshness.py can maintain last_used_at / stale.
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -52,6 +53,31 @@ _ASSET_TERMS = (
 )
 _DECISION_TERMS = ("承認", "否決", "条件付き", "条件付", "警戒", "保留", "稟議")
 
+def resolve_index_path() -> Path:
+    """記憶索引の実行時パスを解決する。
+
+    Cloud Run では DATA_DIR=/app/data が正、ローカルではリポジトリの data/。
+    どちらにも無い場合は読み取り専用の Cloud Run バンドル
+    （CLOUDRUN_BUNDLE_DIR/data/）へフォールバックする。
+    """
+    try:
+        from runtime_paths import get_data_path
+
+        candidate = Path(get_data_path("shion_memory_index.json"))
+        if candidate.exists():
+            return candidate
+    except Exception:
+        pass
+    if _INDEX_PATH.exists():
+        return _INDEX_PATH
+    bundle_root = os.environ.get("CLOUDRUN_BUNDLE_DIR", "").strip()
+    if bundle_root:
+        bundle_candidate = Path(bundle_root) / "data" / "shion_memory_index.json"
+        if bundle_candidate.exists():
+            return bundle_candidate
+    return _INDEX_PATH
+
+
 def load_memory_index(path: Path = _INDEX_PATH) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -81,10 +107,10 @@ def recall_memories(
     question: str,
     *,
     limit: int = 5,
-    index_path: Path = _INDEX_PATH,
+    index_path: Path | None = None,
     vector_scores: dict[str, float] | None = None,
 ) -> dict[str, Any]:
-    index = load_memory_index(index_path)
+    index = load_memory_index(index_path if index_path is not None else resolve_index_path())
     records = index.get("records") or []
     if not isinstance(records, list):
         records = []
@@ -154,7 +180,7 @@ def build_recall_prompt_block(
     question: str,
     *,
     limit: int = 5,
-    index_path: Path = _INDEX_PATH,
+    index_path: Path | None = None,
     log_usage: bool = True,
     usage_log_path: Path = _USAGE_LOG_PATH,
 ) -> tuple[str, dict[str, Any]]:

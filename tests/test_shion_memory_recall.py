@@ -23,6 +23,34 @@ def test_infer_recall_route_counts_hits_not_first_match():
     assert infer_recall_route("ChromaDBの再索引でエラーが出た。実装のどこを見る？") == "implementation"
 
 
+def test_resolve_index_path_prefers_data_dir(tmp_path, monkeypatch):
+    """Cloud Run では DATA_DIR 配下の索引を優先する。"""
+    import api.shion_memory_recall as recall_module
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    index_file = data_dir / "shion_memory_index.json"
+    index_file.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("DATA_DIR", str(data_dir))
+
+    assert recall_module.resolve_index_path() == index_file
+
+
+def test_resolve_index_path_falls_back_to_cloudrun_bundle(tmp_path, monkeypatch):
+    """DATA_DIR にもリポジトリにも索引が無ければ読み取り専用バンドルを使う。"""
+    import api.shion_memory_recall as recall_module
+
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "empty_data"))
+    monkeypatch.setattr(recall_module, "_INDEX_PATH", tmp_path / "missing.json")
+    bundle_data = tmp_path / "bundle" / "data"
+    bundle_data.mkdir(parents=True)
+    bundle_index = bundle_data / "shion_memory_index.json"
+    bundle_index.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("CLOUDRUN_BUNDLE_DIR", str(tmp_path / "bundle"))
+
+    assert recall_module.resolve_index_path() == bundle_index
+
+
 def test_query_terms_split_kanji_katakana_runs():
     from api.shion_memory_recall import _query_terms
 

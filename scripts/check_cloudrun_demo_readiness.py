@@ -25,6 +25,8 @@ BUNDLE_DEMO_DB = BUNDLE_DATA_DIR / "demo.db"
 BUNDLE_LEASE_DB = BUNDLE_DATA_DIR / "lease_data.db"
 LOCAL_PERSONAL_MEMORY = ROOT / "data" / "user_personal_memory.md"
 BUNDLE_PERSONAL_MEMORY = BUNDLE_DATA_DIR / "user_personal_memory.md"
+LOCAL_SHION_MEMORY_INDEX = ROOT / "data" / "shion_memory_index.json"
+BUNDLE_SHION_MEMORY_INDEX = BUNDLE_DATA_DIR / "shion_memory_index.json"
 
 
 class CheckRun:
@@ -201,6 +203,35 @@ def check_personal_memory_pack(checks: CheckRun) -> None:
         checks.warn("bundle data/user_personal_memory.md is missing; rerun package_cloud_run_bundle.sh before deploy")
 
 
+def _shion_index_record_count(path: Path) -> int:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    records = data.get("records") if isinstance(data, dict) else None
+    return len(records) if isinstance(records, list) else 0
+
+
+def check_shion_memory_index(checks: CheckRun) -> None:
+    """紫苑の記憶索引がバンドルへ同梱されているか（無いと想起メモが空になる）。"""
+    if not BUNDLE_SHION_MEMORY_INDEX.exists():
+        checks.fail(
+            "bundle data/shion_memory_index.json is missing; "
+            "Shion memory recall will be empty on Cloud Run. Rerun package_cloud_run_bundle.sh"
+        )
+        return
+    try:
+        count = _shion_index_record_count(BUNDLE_SHION_MEMORY_INDEX)
+    except (OSError, json.JSONDecodeError) as exc:
+        checks.fail(f"bundle shion_memory_index.json is unreadable: {exc}")
+        return
+    if count == 0:
+        checks.fail("bundle shion_memory_index.json has 0 records; memory recall would be empty")
+    elif count < 100:
+        checks.warn(f"bundle shion_memory_index.json has only {count} records (expected 100+)")
+    else:
+        checks.info(f"bundle shion_memory_index.json is present ({count} records)")
+    if not LOCAL_SHION_MEMORY_INDEX.exists():
+        checks.warn("local data/shion_memory_index.json missing; run scripts/build_shion_memory_index.py")
+
+
 def check_ignore_files(checks: CheckRun) -> None:
     for rel in (".dockerignore", ".gcloudignore"):
         path = ROOT / rel
@@ -334,6 +365,7 @@ def main() -> int:
     check_packaging_script(checks)
     check_deploy_scripts(checks)
     check_personal_memory_pack(checks)
+    check_shion_memory_index(checks)
     check_db(LOCAL_DEMO_DB, "local data/demo.db", checks)
     check_db(BUNDLE_DEMO_DB, "bundle data/demo.db", checks)
     check_db(BUNDLE_LEASE_DB, "bundle data/lease_data.db", checks)

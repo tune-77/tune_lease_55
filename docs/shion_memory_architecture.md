@@ -94,6 +94,7 @@ Mana は妹さん本人の再現や代弁ではない。紫苑が守る価値の
 - `data/shion_memory_usage_log.jsonl` / `scripts/update_shion_memory_freshness.py`
   - `build_recall_prompt_block` が想起された記憶IDを使用ログへ追記し、鮮度更新スクリプトが `last_used_at` 反映と stale 昇降格を行う。使用ログが真実の源なので索引再生成後も再実行で状態を再現できる。stale 記憶は想起スコアを0.8倍に下げる（除外はしない）。
   - Cloud Run では使用ログを `api/cloudrun_writeback.py` 経由で GCS（cloudrun-inputs/）へミラーし、`scripts/sync_cloudrun_inputs_from_gcs.py` で取り込んだイベントを鮮度更新が `--cloudrun-events-dir` から合流させる。想起の内訳は `/api/chat` の `debug_memory=true` で `memory_debug.memory_recall`（route / refs）として確認できる。
+  - 記憶索引は `scripts/package_cloud_run_bundle.sh` がデプロイごとに再ビルドしてバンドルへ同梱し、`scripts/check_cloudrun_demo_readiness.py` が同梱漏れ・0件をデプロイ前に検出する。実行時は `resolve_index_path()` が DATA_DIR → リポジトリ data/ → 読み取り専用バンドル（CLOUDRUN_BUNDLE_DIR/data/）の順で解決する。
 - `api/shion_memory_vector.py` / `scripts/build_shion_memory_vector_index.py`
   - 記憶索引のChromaDBベクトル層（Obsidian RAGと同じ埋め込みモデルを再利用）。`SHION_MEMORY_HYBRID=1` でキーワード＋埋め込みのハイブリッド想起になり、語彙一致0件の言い換え質問（ユンボ→油圧ショベル等）も救える。依存が無い環境では自動でキーワードのみへフォールバックする（ローカル環境向け）。
 - `scripts/revise_shion_memory.py` / `data/shion_memory_revisions.jsonl`
