@@ -40,7 +40,8 @@ ENV PATH=/opt/venv/bin:$PATH \
     ENABLE_OBSIDIAN_INDEXING=true \
     ENABLE_FEEDBACK_LOADING=true \
     ENABLE_GUNSHI_RAG=false \
-    HOSTNAME=0.0.0.0
+    HOSTNAME=0.0.0.0 \
+    TZ=Asia/Tokyo
 
 EXPOSE 8080
 
