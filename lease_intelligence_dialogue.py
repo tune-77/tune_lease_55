@@ -183,6 +183,15 @@ def _build_mebuki_context(mebuki_running: bool, mebuki_impression: str = "") -> 
     return "\n".join(lines)
 
 
+def _environment_block() -> str:
+    """紫苑が今どの実行環境（Cloud Run / ローカル開発）にいるかを表す一文を返す。"""
+    if bool(os.environ.get("K_SERVICE", "").strip()):
+        service = os.environ.get("K_SERVICE", "")
+        revision = os.environ.get("K_REVISION", "")
+        return f"Cloud Run（サービス: {service} / リビジョン: {revision}）"
+    return "ローカル開発環境"
+
+
 def _emotional_response_guidance(summary: dict[str, Any]) -> str:
     emotions = list(summary.get("complex_emotions") or [])
     dominant = emotions[0] if emotions else {}
@@ -310,6 +319,7 @@ def build_dialogue_context(
         _pad_tone = ""
 
     mind_context = build_mind_context(vault)
+    environment_block = _environment_block()
     finance_knowledge_block = build_lease_finance_knowledge_block()
     if mode == "casual":
         mind_context = _clip_prompt_text(mind_context, 2200)
@@ -376,6 +386,9 @@ def build_dialogue_context(
 
 {recall_section}【自己状態】
 {mind_context}
+
+【実行環境】
+{environment_block}
 
 【感情を回答へ反映する規則】
 {emotional_guidance}{f'{chr(10)}{_pad_tone}' if _pad_tone else ''}
