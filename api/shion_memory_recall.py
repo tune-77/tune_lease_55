@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -223,7 +224,19 @@ def _append_usage_log(recalled: dict[str, Any], path: Path = _USAGE_LOG_PATH) ->
     except OSError:
         pass
     # Cloud Run ではローカルファイルが揮発するため、既存の入力書き戻し経路で
-    # GCS（cloudrun-inputs/）へもミラーする。ローカルでは writeback 無効なので何もしない。
+    # GCS（cloudrun-inputs/）へもミラーする。GCS追記はロック＋全文再アップロードで
+    # 重く、チャット応答を塞いではいけないため必ずバックグラウンドスレッドで行う
+    # （api/main.py の background_tasks.add_task 規約と同じ意図）。
+    threading.Thread(
+        target=_mirror_usage_to_cloudrun,
+        args=(entry,),
+        name="shion-memory-usage-mirror",
+        daemon=True,
+    ).start()
+
+
+def _mirror_usage_to_cloudrun(entry: dict[str, Any]) -> None:
+    """使用ログをGCSへミラーする。ローカル（writeback無効）では即時no-op。"""
     try:
         from api.cloudrun_writeback import record_cloudrun_input_event
 

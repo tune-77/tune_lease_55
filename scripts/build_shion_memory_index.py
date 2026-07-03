@@ -186,7 +186,28 @@ def _markdown_snippets(text: str) -> list[str]:
     return snippets[:24]
 
 
-def build_index() -> dict[str, Any]:
+def _load_previous_fields(path: Path) -> dict[str, dict[str, str]]:
+    """前回索引から、引き継ぐべきフィールド（初出日・最終使用日）をIDごとに読む。"""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    previous: dict[str, dict[str, str]] = {}
+    for record in data.get("records") or []:
+        if not isinstance(record, dict):
+            continue
+        rid = str(record.get("id") or "")
+        if rid:
+            previous[rid] = {
+                "created_at": str(record.get("created_at") or ""),
+                "last_used_at": str(record.get("last_used_at") or ""),
+            }
+    return previous
+
+
+def build_index(
+    previous_index_path: Path | None = None, *, demo_safe: bool = False
+) -> dict[str, Any]:
     records: list[dict[str, Any]] = []
 
     memory_path = REPO_ROOT / "MEMORY.md"
@@ -213,6 +234,21 @@ def build_index() -> dict[str, Any]:
 
     final_records = list(deduped.values())
 
+    # 再生成のたびに created_at（初出日）が今日へリセットされると、鮮度更新の
+    # 「作成から45日超かつ未使用 → stale」が永久に発火しないため、前回索引から
+    # 初出日と最終使用日を引き継ぐ。
+    previous = _load_previous_fields(
+        previous_index_path or (REPO_ROOT / "data" / "shion_memory_index.json")
+    )
+    for record in final_records:
+        prev = previous.get(str(record.get("id") or ""))
+        if not prev:
+            continue
+        if prev.get("created_at"):
+            record["created_at"] = prev["created_at"]
+        if prev.get("last_used_at") and not record.get("last_used_at"):
+            record["last_used_at"] = prev["last_used_at"]
+
     # 改訂宣言（data/shion_memory_revisions.jsonl）を再適用する。
     # 宣言ファイルが真実の源なので、索引を再生成しても revised / supersedes が消えない。
     from scripts.revise_shion_memory import apply_revisions, load_revisions
@@ -222,6 +258,10 @@ def build_index() -> dict[str, Any]:
         holder: dict[str, Any] = {"records": final_records}
         apply_revisions(holder, revisions)
         final_records = holder["records"]
+
+    if demo_safe:
+        # 公開デモ環境には対話・内省・private の記憶を載せない
+        final_records = [r for r in final_records if not _is_demo_unsafe(r)]
 
     counts = Counter(str(r.get("memory_type") or "unknown") for r in final_records)
     status_counts = Counter(str(r.get("status") or "active") for r in final_records)
@@ -240,13 +280,29 @@ def build_index() -> dict[str, Any]:
     }
 
 
+def _is_demo_unsafe(record: dict[str, Any]) -> bool:
+    """公開デモバンドルへ載せてはいけない記憶か（対話・内省・private）。"""
+    if record.get("private"):
+        return True
+    if str(record.get("status") or "") == "private":
+        return True
+    return str(record.get("memory_type") or "") in {"dialogue_memory", "reflection_memory"}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build Shion memory taxonomy index.")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--demo-safe",
+        action="store_true",
+        help="公開デモ向けに dialogue_memory / reflection_memory / private を除外する",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    index = build_index()
+    # 引き継ぎ元は出力先の既存索引。初回出力先（デモ用の別パス等）はローカル既定索引から引き継ぐ
+    previous = args.output if args.output.exists() else None
+    index = build_index(previous_index_path=previous, demo_safe=args.demo_safe)
     text = json.dumps(index, ensure_ascii=False, indent=2)
     if args.dry_run:
         print(text)

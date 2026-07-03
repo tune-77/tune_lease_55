@@ -123,6 +123,32 @@ def test_build_recall_prompt_block(tmp_path):
     assert logged["route"] == "shion_identity"
 
 
+def test_usage_log_gcs_mirror_runs_in_background_thread(tmp_path, monkeypatch):
+    """GCSミラーはチャット応答を塞がないよう別スレッドで実行される。"""
+    import threading
+
+    import api.cloudrun_writeback as writeback
+    from api.shion_memory_recall import _append_usage_log
+
+    called = threading.Event()
+    caller_thread_name: list[str] = []
+
+    def fake_record(**kwargs):
+        caller_thread_name.append(threading.current_thread().name)
+        called.set()
+        return {"ok": True}
+
+    monkeypatch.setattr(writeback, "record_cloudrun_input_event", fake_record)
+
+    _append_usage_log(
+        {"refs": ["mem_x"], "route": "case_screening"},
+        tmp_path / "usage.jsonl",
+    )
+
+    assert called.wait(timeout=5), "GCSミラーが呼ばれていない"
+    assert caller_thread_name[0] != threading.main_thread().name
+
+
 def test_build_recall_prompt_block_can_skip_usage_log(tmp_path):
     index = {"records": [{"id": "mem_x", "content": "紫苑の記憶と価値観の中核。", "memory_type": "value_memory", "status": "active"}]}
     path = tmp_path / "index.json"

@@ -61,6 +61,17 @@ def _get_encoder() -> Any:
     with _lock:
         if _encoder is not None or _import_failed:
             return _encoder
+        # まず Obsidian RAG 側の初期化済みエンコーダーを共有する（同一モデルの
+        # 二重ロードで ~500MB を余分に食わないため）。
+        try:
+            from api.knowledge.vector_store import get_shared_encoder
+
+            shared = get_shared_encoder()
+            if shared is not None:
+                _encoder = shared
+                return _encoder
+        except Exception:
+            pass
         try:
             from sentence_transformers import SentenceTransformer
 
@@ -124,14 +135,17 @@ def sync_from_index(index_path: Path = _INDEX_PATH, *, batch_size: int = 64) -> 
             continue
         targets.append(record)
 
-    # 全量再構築: 索引から消えたレコードを残さない
+    # 全量再構築: コレクションごと作り直す。get(include=[]) は chromadb の
+    # バージョンによって挙動が違うため、delete_collection の方が版差に強い。
+    client = _get_client()
     try:
-        existing = collection.get(include=[])
-        stale_ids = list(existing.get("ids") or [])
-        if stale_ids:
-            collection.delete(ids=stale_ids)
-    except Exception as exc:
-        logger.warning("[ShionMemoryVector] reset failed: %s", exc)
+        if client is not None:
+            client.delete_collection(_COLLECTION_NAME)
+    except Exception:
+        pass  # 初回は存在しないだけなので無視してよい
+    collection = _get_collection()
+    if collection is None:
+        return {"synced": 0, "skipped": skipped, "available": len(targets)}
 
     synced = 0
     for start in range(0, len(targets), batch_size):

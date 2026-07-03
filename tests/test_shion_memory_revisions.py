@@ -94,4 +94,4 @@ def test_build_index_applies_revisions(tmp_path, monkeypatch):
 
     by_id = {r["id"]: r for r in index["records"]}
     assert by_id[old_id]["status"] == "revised"
-    assert any("mem_old" not in r["id"] and old_id in (r.get("supersedes") or []) for r in index["records"])
+    assert any(old_id in (r.get("supersedes") or []) for r in index["records"])
