@@ -158,7 +158,16 @@ def _knowledge_markdown_records() -> list[dict[str, Any]]:
 def _markdown_snippets(text: str) -> list[str]:
     snippets: list[str] = []
     current_heading = ""
-    for raw_line in text.splitlines():
+    lines = text.splitlines()
+    start = 0
+    # YAML frontmatter はノートのメタデータであり記憶ではないため索引に入れない
+    # （"tags: [...]" や "confidence: medium" が記憶レコード化して想起枠を奪っていた）
+    if lines and lines[0].strip() == "---":
+        for j in range(1, len(lines)):
+            if lines[j].strip() == "---":
+                start = j + 1
+                break
+    for raw_line in lines[start:]:
         line = raw_line.strip()
         if not line or line == "---" or line.startswith("<!--"):
             continue
@@ -203,6 +212,17 @@ def build_index() -> dict[str, Any]:
             deduped[rid] = record
 
     final_records = list(deduped.values())
+
+    # 改訂宣言（data/shion_memory_revisions.jsonl）を再適用する。
+    # 宣言ファイルが真実の源なので、索引を再生成しても revised / supersedes が消えない。
+    from scripts.revise_shion_memory import apply_revisions, load_revisions
+
+    revisions = load_revisions(REPO_ROOT / "data" / "shion_memory_revisions.jsonl")
+    if revisions:
+        holder: dict[str, Any] = {"records": final_records}
+        apply_revisions(holder, revisions)
+        final_records = holder["records"]
+
     counts = Counter(str(r.get("memory_type") or "unknown") for r in final_records)
     status_counts = Counter(str(r.get("status") or "active") for r in final_records)
 
