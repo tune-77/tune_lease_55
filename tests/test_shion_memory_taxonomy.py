@@ -15,6 +15,36 @@ def test_classifies_judgment_and_technical_memory():
     assert classify_memory_text("api/main.py のRAG共通経路を使う") == "technical_memory"
 
 
+def test_judgment_memory_not_hijacked_by_single_tech_word():
+    # 「テスト」1語で判断記憶が技術記憶に化けない（ヒット数比較）
+    assert classify_memory_text("境界案件の審査判断はテスト前に承認条件を確認する") == "judgment_memory"
+
+
+def test_applies_when_ignores_numbers_inside_amounts():
+    from api.shion_memory_taxonomy import infer_applies_when
+
+    # 「1400万円」の 40 が境界案件タグを誤発火させない
+    assert "境界案件" not in infer_applies_when("リース料は1400万円で契約した")
+    assert "境界案件" in infer_applies_when("スコア60前後の境界案件")
+
+
+def test_markdown_snippets_skip_yaml_frontmatter():
+    text = "\n".join(
+        [
+            "---",
+            "type: lease_rule",
+            "tags: [条件付き承認, 追加資料, 前受金]",
+            "confidence: medium",
+            "---",
+            "# 条件付き承認",
+            "- 条件付き承認は審査部の不安を先回りして解く設計として扱う。",
+        ]
+    )
+    snippets = builder._markdown_snippets(text)
+    assert any("条件付き承認は審査部の不安" in s for s in snippets)
+    assert not any("tags:" in s or "confidence:" in s for s in snippets)
+
+
 def test_memory_record_has_stable_metadata():
     record = make_memory_record("否決判断では説明責任を残す", source="test")
 

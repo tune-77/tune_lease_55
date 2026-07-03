@@ -98,26 +98,39 @@ def stable_memory_id(content: str, source: str = "") -> str:
 
 
 def classify_memory_text(text: str, source: str = "") -> MemoryType:
-    """短いテキストを紫苑記憶分類へ寄せる。LLMなしの保守的な分類。"""
+    """短いテキストを紫苑記憶分類へ寄せる。LLMなしの保守的な分類。
+
+    価値・内省は上位規範として先勝ちのまま残す（docs/shion_memory_architecture.md）。
+    技術・判断・対話は先勝ちだと「テスト」1語で判断記憶が技術記憶に化けるため、
+    ヒット数で比較する（同数なら技術 > 判断 > 対話の従来順）。
+    """
     hay = f"{source}\n{text}"
     if _contains_any(hay, _VALUE_TERMS):
         return "value_memory"
     if _contains_any(hay, _REFLECTION_TERMS):
         return "reflection_memory"
-    if _contains_any(hay, _TECH_TERMS):
-        return "technical_memory"
-    if _contains_any(hay, _JUDGMENT_TERMS):
-        return "judgment_memory"
-    if _contains_any(hay, _DIALOGUE_TERMS):
-        return "dialogue_memory"
-    return "factual_memory"
+    hay_lower = hay.lower()
+    candidates: tuple[tuple[MemoryType, tuple[str, ...]], ...] = (
+        ("technical_memory", _TECH_TERMS),
+        ("judgment_memory", _JUDGMENT_TERMS),
+        ("dialogue_memory", _DIALOGUE_TERMS),
+    )
+    best: MemoryType = "factual_memory"
+    best_hits = 0
+    for mtype, terms in candidates:
+        hits = sum(1 for term in terms if term.lower() in hay_lower)
+        if hits > best_hits:
+            best = mtype
+            best_hits = hits
+    return best
 
 
 def infer_applies_when(text: str) -> list[str]:
     """検索・想起時の粗い適用条件を抽出する。"""
     tags: list[str] = []
     patterns = [
-        ("境界案件", r"境界|40|50|60"),
+        # 数値は「1400万円」等の一部にマッチしないよう語境界で切る
+        ("境界案件", r"境界|(?<![\d.])(?:40|50|60)(?![\d.])"),
         ("否決・警戒判断", r"否決|警戒|高リスク|review"),
         ("条件付き承認", r"条件付き|条件付|条件"),
         ("価値判断", r"Mana|良心|説明責任|迎合|人を道具"),

@@ -18,10 +18,22 @@ from scoring_core import APPROVAL_LINE, REVIEW_LINE
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _INDEX_PATH = _REPO_ROOT / "data" / "shion_memory_index.json"
 
-_CASE_TERMS = ("審査", "案件", "承認", "否決", "条件", "スコア", "与信", "リスク", "リース")
-_IDENTITY_TERMS = ("紫苑", "Mana", "良心", "人格", "価値", "迷", "中核", "記憶", "内省")
+_CASE_TERMS = ("審査", "案件", "承認", "否決", "条件", "スコア", "与信", "リスク", "リース", "物件", "担保", "借手", "残価", "耐用年数")
+# 「価値」は「担保価値」「換金価値」等の案件語と衝突するため「価値観」に限定する
+_IDENTITY_TERMS = ("紫苑", "Mana", "良心", "人格", "価値観", "迷", "中核", "記憶", "内省")
 _IMPLEMENTATION_TERMS = ("実装", "コード", "api", "frontend", "テスト", "エラー", "Cloud Run", "RAG", "ChromaDB")
 _USER_PREF_TERMS = ("好み", "方針", "覚えて", "嫌", "どう思う", "やって", "優先")
+
+# 同点時は先頭のルートを優先する（従来の先勝ち順を維持）
+_ROUTE_TERMS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("implementation", _IMPLEMENTATION_TERMS),
+    ("shion_identity", _IDENTITY_TERMS),
+    ("case_screening", _CASE_TERMS),
+    ("user_preference", _USER_PREF_TERMS),
+)
+
+# 「1400万円」の 40 等、金額・件数の一部にマッチしないよう数値は語境界で切る
+_BOUNDARY_SCORE_RE = re.compile(r"(?<![\d.])(?:40|50|60)(?![\d.])")
 
 _INDUSTRY_TERMS = (
     "製造業", "建設業", "医療", "介護", "運送", "運輸", "物流", "小売", "卸売",
@@ -42,16 +54,20 @@ def load_memory_index(path: Path = _INDEX_PATH) -> dict[str, Any]:
 
 
 def infer_recall_route(question: str) -> str:
-    text = question or ""
-    if _contains_any(text, _IMPLEMENTATION_TERMS):
-        return "implementation"
-    if _contains_any(text, _IDENTITY_TERMS):
-        return "shion_identity"
-    if _contains_any(text, _CASE_TERMS):
-        return "case_screening"
-    if _contains_any(text, _USER_PREF_TERMS):
-        return "user_preference"
-    return "policy_review"
+    """カテゴリ別のヒット数で想起ルートを決める。
+
+    先勝ち判定だと単語1つ（例: 案件文中の「テスト」）で誤ルートに流れるため、
+    ヒット数の多いカテゴリを採用する。全カテゴリ0件なら policy_review。
+    """
+    hay = (question or "").lower()
+    best_route = "policy_review"
+    best_hits = 0
+    for route, terms in _ROUTE_TERMS:
+        hits = sum(1 for term in terms if term.lower() in hay)
+        if hits > best_hits:
+            best_route = route
+            best_hits = hits
+    return best_route
 
 
 def recall_memories(question: str, *, limit: int = 5, index_path: Path = _INDEX_PATH) -> dict[str, Any]:
@@ -237,7 +253,7 @@ def _case_profile_bonus(content: str, profile: dict[str, Any], record: dict[str,
             bonus += 1.0
 
     band = profile.get("score_band")
-    if band == "boundary" and ("境界" in combined or "条件" in combined or "40" in combined or "60" in combined):
+    if band == "boundary" and ("境界" in combined or "条件" in combined or _BOUNDARY_SCORE_RE.search(combined)):
         bonus += 1.2
     elif band == "low" and ("否決" in combined or "警戒" in combined or "低スコア" in combined):
         bonus += 1.2
@@ -255,8 +271,13 @@ def _case_profile_bonus(content: str, profile: dict[str, Any], record: dict[str,
 
 def _query_terms(text: str) -> set[str]:
     raw = re.findall(r"[A-Za-z0-9_./-]{2,}|[一-龥ぁ-んァ-ヶー]{2,}", text or "")
-    stop = {"これ", "それ", "どう", "して", "です", "ます", "ある", "いる", "やって", "かな"}
-    return {t for t in raw if t not in stop}
+    terms: set[str] = set(raw)
+    # 「コンテナの法定耐用年数とリース期間」のように助詞で繋がった和文は
+    # 1トークンになり部分一致しないため、漢字連・カタカナ連も分割して加える
+    for token in raw:
+        terms.update(re.findall(r"[一-龥]{2,}|[ァ-ヶー]{2,}", token))
+    stop = {"これ", "それ", "どう", "して", "です", "ます", "ある", "いる", "やって", "かな", "関係", "場合"}
+    return {t for t in terms if t not in stop}
 
 
 def _contains_any(text: str, terms: tuple[str, ...]) -> bool:

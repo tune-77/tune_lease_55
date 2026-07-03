@@ -89,6 +89,8 @@ Mana は妹さん本人の再現や代弁ではない。紫苑が守る価値の
   - `data/shion_memory_index.json` とレビュー済み判断差分から、実践場面ごとの三層候補を抽出する。
 - `api/shion_memory_recall.py`
   - 質問文から想起ルートを推定し、`data/shion_memory_index.json` から関連記憶だけを短くプロンプトへ注入する。
+- `api/knowledge/shion_recall_eval_set.json` / `scripts/eval_shion_memory_recall.py`
+  - 想起精度の評価セット（質問 → 期待ルート・期待出典）と評価ハーネス。`tests/test_shion_recall_eval.py` が全件パスをゲートし、スコアリング変更時の再現率低下を検出する。
 - `/api/shion/promote-keypoint`
   - 討論結果から昇格する判断基準に `memory_type=judgment_memory` などのメタデータを付ける。
 - `/api/chat`

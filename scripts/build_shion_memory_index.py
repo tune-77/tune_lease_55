@@ -158,7 +158,16 @@ def _knowledge_markdown_records() -> list[dict[str, Any]]:
 def _markdown_snippets(text: str) -> list[str]:
     snippets: list[str] = []
     current_heading = ""
-    for raw_line in text.splitlines():
+    lines = text.splitlines()
+    start = 0
+    # YAML frontmatter はノートのメタデータであり記憶ではないため索引に入れない
+    # （"tags: [...]" や "confidence: medium" が記憶レコード化して想起枠を奪っていた）
+    if lines and lines[0].strip() == "---":
+        for j in range(1, len(lines)):
+            if lines[j].strip() == "---":
+                start = j + 1
+                break
+    for raw_line in lines[start:]:
         line = raw_line.strip()
         if not line or line == "---" or line.startswith("<!--"):
             continue

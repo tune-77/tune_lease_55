@@ -14,6 +14,25 @@ def test_infer_recall_route():
     assert infer_recall_route("この案件は否決かな") == "case_screening"
 
 
+def test_infer_recall_route_counts_hits_not_first_match():
+    # 「担保価値」の「価値」が人格ルートに吸われない（価値観のみ人格語）
+    assert infer_recall_route("物件の担保価値は？スコア68点の案件") == "case_screening"
+    # 案件語が多ければ「テスト」1語で実装ルートに流れない
+    assert infer_recall_route("この案件の審査でテストデータを使いたい") == "case_screening"
+    # 実装語が優勢なら従来どおり実装ルート
+    assert infer_recall_route("ChromaDBの再索引でエラーが出た。実装のどこを見る？") == "implementation"
+
+
+def test_query_terms_split_kanji_katakana_runs():
+    from api.shion_memory_recall import _query_terms
+
+    # 助詞で繋がった和文が1トークンに潰れず、漢字連・カタカナ連が個別に取れる
+    terms = _query_terms("コンテナの法定耐用年数とリース期間の関係は？")
+    assert "コンテナ" in terms
+    assert "法定耐用年数" in terms
+    assert "リース" in terms
+
+
 def test_recall_prefers_route_types(tmp_path):
     index = {
         "records": [
