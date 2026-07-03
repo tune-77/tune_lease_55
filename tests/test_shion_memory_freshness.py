@@ -1,7 +1,12 @@
 import json
 from datetime import date
 
-from scripts.update_shion_memory_freshness import apply_freshness, load_usage_dates
+from scripts.update_shion_memory_freshness import (
+    apply_freshness,
+    load_usage_dates,
+    load_usage_dates_from_cloudrun_events,
+    merge_usage_dates,
+)
 
 
 def test_load_usage_dates_returns_latest_per_ref(tmp_path):
@@ -25,6 +30,43 @@ def test_load_usage_dates_returns_latest_per_ref(tmp_path):
 
 def test_load_usage_dates_missing_file(tmp_path):
     assert load_usage_dates(tmp_path / "none.jsonl") == {}
+
+
+def test_load_usage_dates_from_cloudrun_events(tmp_path):
+    events_dir = tmp_path / "cloudrun_inputs"
+    events_dir.mkdir()
+    (events_dir / "events.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "event_type": "shion_memory_usage",
+                        "ts": "2026-07-02T01:00:00+00:00",
+                        "payload": {"ts": "2026-07-02T10:00:00", "route": "case_screening", "refs": ["mem_cloud"]},
+                    }
+                ),
+                # 別種イベントは無視される
+                json.dumps({"event_type": "wizard_input", "ts": "2026-07-02T01:00:00+00:00", "payload": {}}),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    usage = load_usage_dates_from_cloudrun_events(events_dir)
+
+    assert usage == {"mem_cloud": "2026-07-02"}
+
+
+def test_load_usage_dates_from_cloudrun_events_missing_dir(tmp_path):
+    assert load_usage_dates_from_cloudrun_events(tmp_path / "none") == {}
+
+
+def test_merge_usage_dates_keeps_latest():
+    merged = merge_usage_dates(
+        {"mem_a": "2026-06-01", "mem_b": "2026-06-10"},
+        {"mem_a": "2026-06-20"},
+    )
+    assert merged == {"mem_a": "2026-06-20", "mem_b": "2026-06-10"}
 
 
 def _record(rid, *, memory_type="judgment_memory", status="active", created_at="2026-01-01", last_used_at=""):

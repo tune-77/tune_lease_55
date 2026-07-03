@@ -29,6 +29,8 @@ sys.path.insert(0, str(REPO_ROOT))
 
 DEFAULT_INDEX = REPO_ROOT / "data" / "shion_memory_index.json"
 DEFAULT_USAGE_LOG = REPO_ROOT / "data" / "shion_memory_usage_log.jsonl"
+# scripts/sync_cloudrun_inputs_from_gcs.py が GCS から取り込むイベントの置き場
+DEFAULT_CLOUDRUN_EVENTS_DIR = REPO_ROOT / "data" / "cloudrun_inputs"
 DEFAULT_STALE_DAYS = 45
 
 # 上位規範は経年で鮮度切れ扱いにしない
@@ -60,6 +62,53 @@ def load_usage_dates(path: Path) -> dict[str, str]:
             if rid and used_on > latest.get(rid, ""):
                 latest[rid] = used_on
     return latest
+
+
+def load_usage_dates_from_cloudrun_events(dir_path: Path = DEFAULT_CLOUDRUN_EVENTS_DIR) -> dict[str, str]:
+    """GCSから同期したCloud Runイベントのうち shion_memory_usage を使用日として取り込む。
+
+    Cloud Run 上の想起は `record_cloudrun_input_event` 経由で
+    cloudrun-inputs/ へミラーされるため、ローカルの使用ログと合流させる。
+    """
+    latest: dict[str, str] = {}
+    if not dir_path.is_dir():
+        return {}
+    for path in sorted(dir_path.rglob("*.jsonl")):
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(entry, dict) or entry.get("event_type") != "shion_memory_usage":
+                continue
+            payload = entry.get("payload") or {}
+            if not isinstance(payload, dict):
+                continue
+            used_on = str(payload.get("ts") or entry.get("ts") or "")[:10]
+            if not used_on:
+                continue
+            for ref in payload.get("refs") or []:
+                rid = str(ref)
+                if rid and used_on > latest.get(rid, ""):
+                    latest[rid] = used_on
+    return latest
+
+
+def merge_usage_dates(*sources: dict[str, str]) -> dict[str, str]:
+    """複数の使用日ソースを、記憶IDごとに最新日を採用して統合する。"""
+    merged: dict[str, str] = {}
+    for source in sources:
+        for rid, used_on in source.items():
+            if used_on > merged.get(rid, ""):
+                merged[rid] = used_on
+    return merged
 
 
 def _parse_date(value: str) -> date | None:
@@ -120,6 +169,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="紫苑記憶索引の last_used_at 更新と stale 降格")
     parser.add_argument("--index", type=Path, default=DEFAULT_INDEX)
     parser.add_argument("--usage-log", type=Path, default=DEFAULT_USAGE_LOG)
+    parser.add_argument("--cloudrun-events-dir", type=Path, default=DEFAULT_CLOUDRUN_EVENTS_DIR)
     parser.add_argument("--stale-days", type=int, default=DEFAULT_STALE_DAYS)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -130,7 +180,10 @@ def main() -> int:
         print(f"索引を読めません: {args.index} ({exc})")
         return 1
 
-    usage_dates = load_usage_dates(args.usage_log)
+    usage_dates = merge_usage_dates(
+        load_usage_dates(args.usage_log),
+        load_usage_dates_from_cloudrun_events(args.cloudrun_events_dir),
+    )
     summary = apply_freshness(index, usage_dates, stale_days=args.stale_days)
 
     print(f"usage_log_refs={len(usage_dates)}")

@@ -77,7 +77,13 @@ def infer_recall_route(question: str) -> str:
     return best_route
 
 
-def recall_memories(question: str, *, limit: int = 5, index_path: Path = _INDEX_PATH) -> dict[str, Any]:
+def recall_memories(
+    question: str,
+    *,
+    limit: int = 5,
+    index_path: Path = _INDEX_PATH,
+    vector_scores: dict[str, float] | None = None,
+) -> dict[str, Any]:
     index = load_memory_index(index_path)
     records = index.get("records") or []
     if not isinstance(records, list):
@@ -86,6 +92,7 @@ def recall_memories(question: str, *, limit: int = 5, index_path: Path = _INDEX_
     preferred_types = RECALL_ROUTES.get(route, RECALL_ROUTES["policy_review"])
     query_terms = _query_terms(question)
     case_profile = _extract_case_profile(question) if route == "case_screening" else {}
+    vector_similarity = _resolve_vector_scores(question, vector_scores)
 
     scored: list[tuple[float, dict[str, Any]]] = []
     for record in records:
@@ -99,9 +106,17 @@ def recall_memories(question: str, *, limit: int = 5, index_path: Path = _INDEX_
             continue
         memory_type = str(record.get("memory_type") or "")
         score = _score_record(content, memory_type, preferred_types, query_terms, case_profile, record)
+        if vector_similarity:
+            # 埋め込み類似はキーワード0件（同義語・言い換え）の記憶も救えるよう加算
+            sim = float(vector_similarity.get(str(record.get("id") or ""), 0.0))
+            if sim > 0.3:
+                score += (sim - 0.3) * 5.0
         if status == "stale":
             # 鮮度確認が必要な記憶は残しつつ、activeな同等記憶より後ろに回す
             score *= 0.8
+        elif status == "revised":
+            # 改訂済みの旧結論は参照可能だが、後継記憶より優先しない
+            score *= 0.6
         if score > 0:
             scored.append((score, record))
 
@@ -113,9 +128,26 @@ def recall_memories(question: str, *, limit: int = 5, index_path: Path = _INDEX_
         "preferred_types": list(preferred_types),
         "case_profile": case_profile,
         "practical_scene": practical_scene,
+        "vector_used": bool(vector_similarity),
         "memories": selected,
         "refs": [str(r.get("id") or "") for r in selected if r.get("id")],
     }
+
+
+def _resolve_vector_scores(
+    question: str, vector_scores: dict[str, float] | None
+) -> dict[str, float]:
+    """埋め込み類似度を解決する。明示指定 > 環境変数opt-in > なし。"""
+    if vector_scores is not None:
+        return vector_scores
+    try:
+        from api.shion_memory_vector import hybrid_enabled, similarity_scores
+
+        if hybrid_enabled():
+            return similarity_scores(question)
+    except Exception:
+        pass
+    return {}
 
 
 def build_recall_prompt_block(
@@ -163,6 +195,18 @@ def _append_usage_log(recalled: dict[str, Any], path: Path = _USAGE_LOG_PATH) ->
         with path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except OSError:
+        pass
+    # Cloud Run ではローカルファイルが揮発するため、既存の入力書き戻し経路で
+    # GCS（cloudrun-inputs/）へもミラーする。ローカルでは writeback 無効なので何もしない。
+    try:
+        from api.cloudrun_writeback import record_cloudrun_input_event
+
+        record_cloudrun_input_event(
+            event_type="shion_memory_usage",
+            surface="api_chat",
+            payload=entry,
+        )
+    except Exception:
         pass
 
 

@@ -131,6 +131,33 @@ def test_recall_downweights_stale_records(tmp_path):
     assert recalled["refs"][0] == "mem_active"
 
 
+def test_recall_downweights_revised_records(tmp_path):
+    index = {
+        "records": [
+            {
+                "id": "mem_revised_old",
+                "content": "コンテナのリース案件では法定耐用年数は6年で審査する。",
+                "memory_type": "factual_memory",
+                "status": "revised",
+            },
+            {
+                "id": "mem_successor",
+                "content": "コンテナのリース案件では法定耐用年数は7年で審査する。",
+                "memory_type": "factual_memory",
+                "status": "active",
+                "supersedes": ["mem_revised_old"],
+            },
+        ]
+    }
+    path = tmp_path / "index.json"
+    path.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
+
+    recalled = recall_memories("コンテナの法定耐用年数は？", index_path=path, limit=2)
+
+    # 改訂済みの旧結論は後継記憶より下位（参照は可能）
+    assert recalled["refs"][0] == "mem_successor"
+
+
 def test_signal_term_boost_prefers_q_risk_note(tmp_path):
     index = {
         "records": [

@@ -212,6 +212,17 @@ def build_index() -> dict[str, Any]:
             deduped[rid] = record
 
     final_records = list(deduped.values())
+
+    # 改訂宣言（data/shion_memory_revisions.jsonl）を再適用する。
+    # 宣言ファイルが真実の源なので、索引を再生成しても revised / supersedes が消えない。
+    from scripts.revise_shion_memory import apply_revisions, load_revisions
+
+    revisions = load_revisions(REPO_ROOT / "data" / "shion_memory_revisions.jsonl")
+    if revisions:
+        holder: dict[str, Any] = {"records": final_records}
+        apply_revisions(holder, revisions)
+        final_records = holder["records"]
+
     counts = Counter(str(r.get("memory_type") or "unknown") for r in final_records)
     status_counts = Counter(str(r.get("status") or "active") for r in final_records)
 
