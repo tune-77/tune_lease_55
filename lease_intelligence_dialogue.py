@@ -258,7 +258,12 @@ def build_dialogue_context(
     )
     record_knowledge_access(vault, knowledge)
     summary = self_state_summary(load_lease_intelligence_mind(vault))
-    knowledge_block = knowledge.context_block or "今回の問いに直接関係する知識ノートは見つからなかった。"
+    knowledge_block = (
+        knowledge.context_block
+        or "今回の問いに直接関係する知識ノートは見つからなかった。"
+           "Vaultに情報がない場合は学習済みの一般知識・専門知識で補完して答えてよい。"
+           "推測や不確実な内容は「〜と記憶している」「要確認」と明示すること。"
+    )
     if is_compact:
         knowledge_block = _clip_prompt_text(knowledge_block, 3600)
     emotional_guidance = _emotional_response_guidance(summary)
