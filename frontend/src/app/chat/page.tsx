@@ -577,13 +577,13 @@ export default function ChatPage() {
             <MessageCircle className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-black text-slate-800">紫苑チャット</h1>
+            <h1 className="text-lg font-black text-slate-800">リースチャット</h1>
             <p
               className={`text-xs text-slate-500 transition-all duration-700 overflow-hidden ${
                 showSubtitle ? "opacity-100 max-h-10" : "opacity-0 max-h-0"
               }`}
             >
-              リース審査の相棒・毎日相談できます
+              リース審査・業界動向を毎日相談できます
             </p>
           </div>
         </div>

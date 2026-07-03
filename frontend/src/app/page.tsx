@@ -97,7 +97,17 @@ type WorkQueueItem = {
 const ACTIVITY_KEY = "shion-concierge-activity-v1";
 const QUEUE_STATE_KEY = "shion-concierge-work-queue-state-v1";
 const SHION_AVATAR_IMAGE = "/lease-grumble/characters/lease-intelligence-girl.jpg";
-const SHION_INTRO_VIDEO = "/lease-grumble/characters/shion-intro-loop.mp4";
+// 8種の紫苑動画からページ表示ごとにランダムで1本を選ぶ
+const SHION_INTRO_VIDEOS = [
+  "/lease-grumble/characters/shion-loop-01.mp4",
+  "/lease-grumble/characters/shion-loop-02.mp4",
+  "/lease-grumble/characters/shion-loop-03.mp4",
+  "/lease-grumble/characters/shion-loop-04.mp4",
+  "/lease-grumble/characters/shion-loop-05.mp4",
+  "/lease-grumble/characters/shion-loop-06.mp4",
+  "/lease-grumble/characters/shion-loop-07.mp4",
+  "/lease-grumble/characters/shion-loop-08.mp4",
+];
 
 const SHION_PERSONAS: ShionPersona[] = [
   {
@@ -383,6 +393,11 @@ function buildWorkQueue(
 }
 
 export default function ShionConciergeHome() {
+  // SSRとの不一致を避けるため、初期値は固定しマウント後にランダム化する
+  const [introVideo, setIntroVideo] = useState(SHION_INTRO_VIDEOS[0]);
+  useEffect(() => {
+    setIntroVideo(SHION_INTRO_VIDEOS[Math.floor(Math.random() * SHION_INTRO_VIDEOS.length)]);
+  }, []);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
@@ -468,7 +483,8 @@ export default function ShionConciergeHome() {
             <div className="mx-auto w-36 overflow-hidden rounded-3xl border border-violet-200 bg-violet-50 shadow-lg shadow-violet-100 md:mx-0 md:w-40">
               {/* 控えめな紫苑の動画（音無し・自動ループ）。読み込み失敗時は静止画にフォールバック */}
               <video
-                src={SHION_INTRO_VIDEO}
+                key={introVideo}
+                src={introVideo}
                 poster={SHION_AVATAR_IMAGE}
                 autoPlay
                 muted

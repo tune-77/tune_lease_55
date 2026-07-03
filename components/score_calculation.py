@@ -133,6 +133,7 @@ def _build_learning_pd_result(
 
 
 def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankruptcy_data, jsic_data, avg_data, _rules, _SCRIPT_DIR, RECOMMENDED_FIELDS=None, capex_lease_data=None):
+    global _API_LAST_RESULT
     # Unpack form_result
     submitted_apply = form_result.get("submitted_apply")
     submitted_judge = form_result.get("submitted_judge")
@@ -1015,6 +1016,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     print(f"[CORE_ERROR] Failed to write result file: {e}")
                 
                 st.session_state['last_result'] = res_dict
+                _API_LAST_RESULT = res_dict
         
                 # [削除] AIアドバイス (1回目: 入力タブ側)
                 # ここにあった ai_question 生成と messages 追加ロジックは削除し、
@@ -1340,6 +1342,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     },
                     "estat_context": estat_context,
                 }
+                _API_LAST_RESULT = st.session_state["last_result"]
 
                 try:
                     _bridge_file = str(Path(__file__).resolve().parent.parent / "scoring_output_bridge.json")
@@ -1402,6 +1405,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                             st.session_state["last_result"]["quantum_ood_flags"] = {}
                             st.session_state["last_result"]["evaluator_used"] = _used
                             st.session_state["last_result"]["evaluator_version"] = f"{_res.name}:{_res.version}"
+                            _API_LAST_RESULT = st.session_state["last_result"]
 
                             _qt_eff = _QT if _hantei_score >= _QS_HIGH else _QT_MID
                             if _res.risk >= _qt_eff:
@@ -1419,6 +1423,7 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                                     st.session_state["last_result"]["hantei"] = (
                                         "承認圏内" if _hantei_score >= _eff_approval else "要審議"
                                     )
+                                _API_LAST_RESULT = st.session_state["last_result"]
                     except Exception as _qe:
                         import logging as _log
                         _log.getLogger(__name__).warning("quantum selector skipped: %s", _qe)
@@ -1435,9 +1440,11 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 if forced_custom_status:
                     st.session_state['last_result']["hantei"] = forced_custom_status
                     st.session_state['current_image'] = "challenge" if forced_custom_status in ["要審議", "否決"] else "approve"
+                    _API_LAST_RESULT = st.session_state["last_result"]
                 elif _hantei_score < _eff_review:
                     st.session_state['last_result']["hantei"] = "否決"
                     st.session_state['current_image'] = "challenge"
+                    _API_LAST_RESULT = st.session_state["last_result"]
                 
                 # 審査委員会カードバトル用データ（分析タブで表示）
                 hp_card = int(min(999, max(1, net_assets / 1000))) if net_assets else int(min(999, max(1, user_equity_ratio * 5)))

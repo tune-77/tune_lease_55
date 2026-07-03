@@ -2,6 +2,8 @@ import sys
 import os
 import json
 import importlib
+import subprocess
+import tempfile
 import threading
 from unittest.mock import MagicMock
 
@@ -80,8 +82,66 @@ def _load_json(filename):
     except: return {}
 
 def run_full_scoring_api(inputs: dict) -> dict:
+    if os.getenv("SCORING_DIRECT", "").lower() not in ("1", "true", "yes"):
+        return _run_full_scoring_api_subprocess(inputs)
     with _scoring_lock:
         return _run_full_scoring_api_locked(inputs)
+
+
+def _run_full_scoring_api_subprocess(inputs: dict) -> dict:
+    """Run the Streamlit-era scoring engine out of process.
+
+    The scoring engine imports native/data-science libraries and may terminate
+    the interpreter in ways a normal FastAPI try/except cannot catch. Keeping it
+    in a child process prevents one bad scoring run from taking down Uvicorn.
+    """
+    tmp_dir = tempfile.gettempdir()
+    input_file = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8", dir=tmp_dir)
+    output_path = ""
+    try:
+        json.dump(inputs, input_file, ensure_ascii=False)
+        input_file.close()
+        output_fd, output_path = tempfile.mkstemp(suffix=".json", dir=tmp_dir)
+        os.close(output_fd)
+
+        env = os.environ.copy()
+        env.setdefault("SCORING_DIRECT", "1")
+        env.setdefault("MPLCONFIGDIR", os.path.join(tmp_dir, "matplotlib-cache"))
+        env.setdefault("PYTHONUNBUFFERED", "1")
+        os.makedirs(env["MPLCONFIGDIR"], exist_ok=True)
+
+        proc = subprocess.run(
+            [sys.executable, "-m", "api.scoring_worker", input_file.name, output_path],
+            cwd=SCRIPT_DIR,
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=float(os.getenv("SCORING_SUBPROCESS_TIMEOUT", "90")),
+        )
+
+        if proc.returncode != 0:
+            log_tail = "\n".join((proc.stdout + "\n" + proc.stderr).splitlines()[-20:])
+            raise RuntimeError(f"審査エンジンの子プロセスが終了しました(exit={proc.returncode})。{log_tail}")
+        if not output_path or not os.path.exists(output_path):
+            raise RuntimeError("審査エンジンの出力ファイルが作成されませんでした。")
+        with open(output_path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        if not payload.get("ok"):
+            raise RuntimeError(str(payload.get("error") or "審査エンジンで不明なエラーが発生しました。"))
+        result = payload.get("result")
+        if not isinstance(result, dict):
+            raise RuntimeError("審査エンジンの戻り値が不正です。")
+        return result
+    except subprocess.TimeoutExpired as e:
+        log_tail = "\n".join(((e.stdout or "") + "\n" + (e.stderr or "")).splitlines()[-20:])
+        raise RuntimeError(f"審査エンジンがタイムアウトしました。{log_tail}") from e
+    finally:
+        for path in (getattr(input_file, "name", ""), output_path):
+            if path and os.path.exists(path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
 
 
 def _run_full_scoring_api_locked(inputs: dict) -> dict:
@@ -193,7 +253,23 @@ def _run_full_scoring_api_locked(inputs: dict) -> dict:
         print(f"[ERROR] Engine Failure: {e}")
         import traceback; traceback.print_exc()
 
-    # ★【物理ファイル通信】ファイルから直接取得
+    # API実行時はメモリ上の結果を優先する。物理ファイルはStreamlit互換の後方互換だけに残す。
+    res_state = getattr(sc_mod, "_API_LAST_RESULT", None) or _SHARED_SESSION_STATE.get("last_result")
+    if isinstance(res_state, dict):
+        print(f"[DEBUG] SUCCESS: Captured via API state. Score={res_state.get('score')}")
+        res = dict(res_state)
+        _net = float(inputs.get("net_assets", 0))
+        _total = max(1.0, float(inputs.get("total_assets", 1.0)))
+        _eq = _net / _total * 100
+        if _eq < 0:
+            _pen = max(-30.0, _eq * 0.5)
+            for _key in ("score", "hantei_score", "score_borrower"):
+                if _key in res and isinstance(res[_key], (int, float)):
+                    res[_key] = max(0.0, min(100.0, round(res[_key] + _pen, 1)))
+            print(f"[DEBUG] equity_penalty={_pen:.1f} applied (equity_ratio={_eq:.1f}%)")
+        return res
+
+    # ★【後方互換】物理ファイル通信から直接取得
     if os.path.exists(RESULT_FILE):
         try:
             with open(RESULT_FILE, "r", encoding="utf-8") as f:

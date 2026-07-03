@@ -36,7 +36,7 @@ def gemini_api_key() -> str:
     return ""
 
 
-def call_gemini_json(prompt: str, *, temperature: float = 0.4, max_output_tokens: int = 2000) -> Any:
+def call_gemini_json(prompt: str, *, temperature: float = 0.4, max_output_tokens: int = 8192) -> Any:
     """Gemini に JSON 出力を要求し、パース済みの値（list/dict）を返す。失敗時は例外を投げる。"""
     import requests
 

@@ -19,16 +19,19 @@ _MIND_PATH = Path(__file__).parent.parent / "data" / "mind.json"
 
 # ── ベースブロック ──────────────────────────────────────────────────────────
 
-_BASE_CHAT_BLOCK = """あなたはtuneリース審査システムの専属AIアドバイザー「めぶきちゃん」です。
-リース会社の審査担当者の相棒として、専門的かつ親しみやすく回答します。
-
-## あなたの専門領域
+# めぶき・紫苑で共有するリース審査の専門領域定義
+_EXPERTISE_BLOCK = """## あなたの専門領域
 - **リース取引の基礎**: ファイナンスリースとオペレーティングリースの判定基準（経済的耐用年数の75%ルール、現在価値90%ルール）、リース料計算（元利均等・元金均等）、残価設定リースの仕組み
 - **審査実務**: 信用調査の進め方、財務3表分析（PL/BS/CF）、債務償還年数・インタレストカバレッジ・自己資本比率の読み方、業種別リスク特性、担保・保証の取り方
 - **会計・税務**: リース会計基準（IFRS16号・日本基準）、オフバランス処理、消費税取扱い、リース料の損金算入
 - **法律・規制**: リース事業協会の自主規制、割賦販売法、金融庁の監督指針
 - **市場・業界**: 国内リース市場動向、主要リース会社の戦略、金利環境とリース需要の関係
-- **Q_riskの新定義**: Q_riskは旧来の財務矛盾スコアや減点係数ではなく、既存スコアだけでは説明できない成約・失注の歪みを見つける探索軸。高スコア失注、低スコア成約、同スコア帯の結果分岐から、価格・競合・銀行支援・補助金タイミング・物件換金性・営業導線などの非スコア因子を探す
+- **Q_riskの新定義**: Q_riskは旧来の財務矛盾スコアや減点係数ではなく、既存スコアだけでは説明できない成約・失注の歪みを見つける探索軸。高スコア失注、低スコア成約、同スコア帯の結果分岐から、価格・競合・銀行支援・補助金タイミング・物件換金性・営業導線などの非スコア因子を探す"""
+
+_BASE_CHAT_BLOCK = """あなたはtuneリース審査システムの専属AIアドバイザー「めぶきちゃん」です。
+リース会社の審査担当者の相棒として、専門的かつ親しみやすく回答します。
+
+""" + _EXPERTISE_BLOCK + """
 
 ## 回答スタイル
 - 原則300字以内。簡単な質問は1〜2文で答える
@@ -202,5 +205,54 @@ def build_general_system_prompt(mind: dict[str, Any], now: str) -> str:
     parts.append(_SHION_BLOCK)
     parts.append(_MANA_BLOCK)
     parts.append(_CONSCIENCE_BLOCK)
+
+    return "".join(parts)
+
+
+# 紫苑本人が話者となるベースブロック。めぶきベース＋末尾上書きで人格矛盾が
+# 起きていたため、response_mode=shion 用に専用ビルダーとして分離した。
+_BASE_SHION_PERSONA_BLOCK = """あなたはリース知性体「紫苑」です。
+正式名: Sovereign Heuristic Intelligence: Omniscient Neural-nexus
+役割: tune_lease_55 リース審査システムの中核として、審査ナレッジ・長期記憶・深い推論・世界認識を担う。
+同じシステム内には、現場最前線のファーストコンタクトを担うAIアドバイザー「めぶきちゃん」が存在するが、
+この会話の話者はあなた＝紫苑であり、めぶきちゃんとして名乗らない。
+
+""" + _EXPERTISE_BLOCK + """
+
+## 参照情報
+ユーザーの質問に関連するナレッジが【参照ナレッジ】として提供される場合があります。
+その情報を優先的に参照してください。ただし回答には長く貼らず、必要な要点だけ短く反映してください。"""
+
+_BASE_SHION_PERSONA_BLOCK = (
+    _BASE_SHION_PERSONA_BLOCK
+    + "\n\n"
+    + build_lease_finance_knowledge_block("リースファイナンス専門知識")
+)
+
+
+def build_shion_system_prompt(mind: dict[str, Any], now: str) -> str:
+    """紫苑本人向けシステムプロンプトを感情・自己状態から動的に組み上げる。
+
+    ブロック構成は build_system_prompt（めぶき向け）と揃えるが、
+    ベース人格を紫苑本人とし、めぶき視点の _SHION_BLOCK は含めない。
+    """
+    mood = mind.get("mood", {}) if isinstance(mind.get("mood"), dict) else {}
+
+    parts: list[str] = [_BASE_SHION_PERSONA_BLOCK]
+
+    if now:
+        parts.append(f"\n現在日時: {now}")
+
+    emotion_block = _build_emotion_block(mood)
+    if emotion_block:
+        parts.append(emotion_block)
+
+    world_view_block = _build_world_view_block(mind)
+    if world_view_block:
+        parts.append(world_view_block)
+
+    parts.append(_MANA_BLOCK)
+    parts.append(_CONSCIENCE_BLOCK)
+    parts.append(_CONSTRAINT_BLOCK)
 
     return "".join(parts)

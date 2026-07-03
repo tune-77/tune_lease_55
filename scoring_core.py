@@ -1015,57 +1015,59 @@ def run_quick_scoring(inputs: dict) -> dict:
 
     mahalanobis_score: float | None = None
     mahalanobis_advice: list | None = None
-    try:
-        import pandas as _pd
-        from mahalanobis_engine import MahalanobisScorer
-        from train_mahalanobis import FEATURES as _MAHA_FEATURES, _extract_val as _maha_extract
-        _maha_path = os.path.join(_SCRIPT_DIR, "data", "mahalanobis_model.joblib")
-        if os.path.exists(_maha_path):
-            _maha = MahalanobisScorer.load(_maha_path)
-            _maha_row = {f: _maha_extract({"inputs": inputs}, f) for f in _MAHA_FEATURES}
-            _maha_df = _pd.DataFrame([_maha_row])
-            _ms, _, _, _ = _maha.get_analysis(_maha_df)
-            mahalanobis_score = round(float(_ms), 1)
-            mahalanobis_advice = [
-                {"feat": a["feat"], "direction": a["direction"], "delta": round(float(a["delta"]), 0)}
-                for a in _maha.advise_improvement(_maha_df, top_k=3)
-            ]
-    except Exception:
-        pass
-
     umap_anomaly_score: float | None = None
     umap_x: float | None = None
     umap_y: float | None = None
     umap_similar: list | None = None
-    try:
-        import pandas as _pd
-        from umap_anomaly_engine import UMAPAnomalyScorer
-        from train_mahalanobis import FEATURES as _UMAP_FEATURES, _extract_val as _umap_extract
-        _umap_path = os.path.join(_SCRIPT_DIR, "data", "umap_anomaly_model.joblib")
-        if os.path.exists(_umap_path):
-            # モジュールレベルでキャッシュ済みモデルを再利用してロードコストを削減
-            global _umap_model_cache, _umap_model_path_cache
-            if _umap_model_cache is None or _umap_model_path_cache != _umap_path:
-                _umap_model_cache = UMAPAnomalyScorer.load(_umap_path)
-                _umap_model_path_cache = _umap_path
-            _umap = _umap_model_cache
-            _umap_row = {f: _umap_extract({"inputs": inputs}, f) for f in _UMAP_FEATURES}
-            _umap_df = _pd.DataFrame([_umap_row])
-            # UMAP.transform() はデータポイントごとに勾配降下法を実行するため非常に遅い。
-            # 固定サイズプールに投げ、5秒以内に終わらなければスキップする（結果は無視、
-            # ワーカースレッド自体はプールに残り再利用される）。
-            def _run_umap():
-                _s, _x, _y = _umap.score(_umap_df)
-                _sim = _umap.find_similar(_umap_df, top_k=3)
-                return _s, _x, _y, _sim
-            try:
-                umap_anomaly_score, umap_x, umap_y, umap_similar = (
-                    _umap_executor.submit(_run_umap).result(timeout=5.0)
-                )
-            except Exception:
-                pass
-    except Exception:
-        pass
+    run_sync_diagnostics = os.getenv("ENABLE_SYNC_SCORING_DIAGNOSTICS", "").lower() in {"1", "true", "yes", "on"}
+    if run_sync_diagnostics:
+        try:
+            import pandas as _pd
+            from mahalanobis_engine import MahalanobisScorer
+            from train_mahalanobis import FEATURES as _MAHA_FEATURES, _extract_val as _maha_extract
+            _maha_path = os.path.join(_SCRIPT_DIR, "data", "mahalanobis_model.joblib")
+            if os.path.exists(_maha_path):
+                _maha = MahalanobisScorer.load(_maha_path)
+                _maha_row = {f: _maha_extract({"inputs": inputs}, f) for f in _MAHA_FEATURES}
+                _maha_df = _pd.DataFrame([_maha_row])
+                _ms, _, _, _ = _maha.get_analysis(_maha_df)
+                mahalanobis_score = round(float(_ms), 1)
+                mahalanobis_advice = [
+                    {"feat": a["feat"], "direction": a["direction"], "delta": round(float(a["delta"]), 0)}
+                    for a in _maha.advise_improvement(_maha_df, top_k=3)
+                ]
+        except Exception:
+            pass
+
+        try:
+            import pandas as _pd
+            from umap_anomaly_engine import UMAPAnomalyScorer
+            from train_mahalanobis import FEATURES as _UMAP_FEATURES, _extract_val as _umap_extract
+            _umap_path = os.path.join(_SCRIPT_DIR, "data", "umap_anomaly_model.joblib")
+            if os.path.exists(_umap_path):
+                # モジュールレベルでキャッシュ済みモデルを再利用してロードコストを削減
+                global _umap_model_cache, _umap_model_path_cache
+                if _umap_model_cache is None or _umap_model_path_cache != _umap_path:
+                    _umap_model_cache = UMAPAnomalyScorer.load(_umap_path)
+                    _umap_model_path_cache = _umap_path
+                _umap = _umap_model_cache
+                _umap_row = {f: _umap_extract({"inputs": inputs}, f) for f in _UMAP_FEATURES}
+                _umap_df = _pd.DataFrame([_umap_row])
+                # UMAP.transform() はデータポイントごとに勾配降下法を実行するため非常に遅い。
+                # 固定サイズプールに投げ、5秒以内に終わらなければスキップする（結果は無視、
+                # ワーカースレッド自体はプールに残り再利用される）。
+                def _run_umap():
+                    _s, _x, _y = _umap.score(_umap_df)
+                    _sim = _umap.find_similar(_umap_df, top_k=3)
+                    return _s, _x, _y, _sim
+                try:
+                    umap_anomaly_score, umap_x, umap_y, umap_similar = (
+                        _umap_executor.submit(_run_umap).result(timeout=5.0)
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     credit_quantum_strong_warning = (
         credit_risk_group.get("score", 0.0) >= 70.0
@@ -1130,6 +1132,17 @@ def run_quick_scoring(inputs: dict) -> dict:
         "default_warnings": default_warnings,
         "estat_context": estat_context,
     }
+
+
+def run_full_api_scoring(inputs: dict) -> dict:
+    """Streamlit 非依存のFull審査APIエンジン。
+
+    旧名 `run_quick_scoring` は互換のため残す。Full APIではこの名前を使い、
+    Streamlit UI用の `components.score_calculation.run_scoring` と明確に分離する。
+    """
+    result = run_quick_scoring(inputs)
+    result["engine_source"] = "pure_api"
+    return result
 
 
 def compute_optimal_approval_line(past_cases: list) -> dict:

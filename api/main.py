@@ -132,7 +132,7 @@ def _gemini_generate_url() -> str:
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
-from scoring_core import run_quick_scoring, APPROVAL_LINE, CONDITIONAL_LINE
+from scoring_core import run_full_api_scoring, run_quick_scoring, APPROVAL_LINE, CONDITIONAL_LINE
 from api.scoring_full import run_full_scoring_api
 from api.gunshi_gemini import stream_gunshi_gemini
 from lease_news_digest import (
@@ -454,6 +454,10 @@ _ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]
+_extra_cors_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "")
+for _origin in [o.strip() for o in _extra_cors_origins.split(",") if o.strip()]:
+    if _origin not in _ALLOWED_ORIGINS:
+        _ALLOWED_ORIGINS.append(_origin)
 
 app = FastAPI(
     title="Lease Scoring API",
@@ -1510,7 +1514,11 @@ def calculate_score(req: ScoringRequest, background_tasks: BackgroundTasks):
 def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks):
     try:
         inputs = req.model_dump()
-        result = run_full_scoring_api(inputs)
+        if os.environ.get("USE_LEGACY_STREAMLIT_FULL_SCORE", "").lower() in {"1", "true", "yes", "on"}:
+            result = run_full_scoring_api(inputs)
+            result["engine_source"] = "legacy_streamlit"
+        else:
+            result = run_full_api_scoring(inputs)
         conditional_actions = _build_conditional_approval_actions(inputs, result)
         rate_proposal = _build_rate_proposal(inputs, result)
         data_source_summary = _build_data_source_summary(inputs, result)
@@ -1535,8 +1543,8 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
                     "score": result.get("score", 0),
                     "score_base": result.get("score_base", result.get("score", 0)),
                     "hantei": result.get("hantei", ""),
-                    "user_eq": result.get("user_eq", 0),
-                    "user_op": result.get("user_op", 0),
+                    "user_eq": result.get("user_equity_ratio", result.get("user_eq", 0)),
+                    "user_op": result.get("user_op_margin", result.get("user_op", 0)),
                     "quantum_risk": result.get("quantum_risk"),
                     "credit_quantum_strong_warning": result.get("credit_quantum_strong_warning", False),
                     "aurion_core": aurion_core,
@@ -1560,6 +1568,7 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
                     "score": result.get("score"),
                     "score_base": result.get("score_base", result.get("score")),
                     "hantei": result.get("hantei"),
+                    "engine_source": result.get("engine_source"),
                     "industry_sub": result.get("industry_sub"),
                     "industry_major": result.get("industry_major"),
                     "asset_score": result.get("asset_score"),
@@ -1603,8 +1612,8 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
             comparison=result.get("comparison", ""),
             user_op_margin=result.get("user_op_margin", result.get("user_op", 0.0)),
             user_equity_ratio=result.get("user_equity_ratio", result.get("user_eq", 0.0)),
-            bench_op_margin=result.get("bench_op", 0.0),
-            bench_equity_ratio=result.get("bench_eq", 0.0),
+            bench_op_margin=result.get("bench_op_margin", result.get("bench_op", 0.0)),
+            bench_equity_ratio=result.get("bench_equity_ratio", result.get("bench_eq", 0.0)),
             score_borrower=result.get("score_borrower", 0.0),
             score_base=result.get("score_base", result.get("score", 0.0)),
             industry_sub=result.get("industry_sub", req.industry_sub),
@@ -9302,8 +9311,7 @@ def post_chat(req: ChatRequest):
         import datetime as _pg_dt
         from api.prompt_generator import (
             load_mind as _pg_load_mind,
-            build_system_prompt as _pg_build_sp,
-            build_general_system_prompt as _pg_build_gsp,
+            build_shion_system_prompt as _pg_build_ssp,
         )
         _chat_now = _pg_dt.datetime.now().strftime("%Y-%m-%d %H:%M")
         _chat_mind = _pg_load_mind()
@@ -9552,7 +9560,7 @@ def post_chat(req: ChatRequest):
                     delta_awareness=delta_awareness_payload,
                     memory_to_judgment=memory_to_judgment_payload,
                 )
-            base_system_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_gsp(_chat_mind, _chat_now)
+            base_system_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
             base_system_prompt = base_system_root + mode_instruction + response_mode_context + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + consciousness_ux_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
             pdca_block = (
                 build_pdca_prompt_block()
@@ -9843,7 +9851,7 @@ def post_chat(req: ChatRequest):
                 memory_to_judgment=memory_to_judgment_payload,
             )
 
-        base_prompt_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_sp(_chat_mind, _chat_now)
+        base_prompt_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
         base_effective_prompt = base_prompt_root + mode_instruction + response_mode_context + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + guidance.prompt_suffix
         pdca_block = (
             build_pdca_prompt_block()

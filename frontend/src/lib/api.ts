@@ -1,6 +1,8 @@
 import axios from "axios";
 
-// Next.js rewrites が /api/* → FastAPI へプロキシするため、同一オリジンへ向ける
-export const API_BASE = "";
+// 既定は同一オリジン（Next.js rewrites 経由）。
+// NEXT_PUBLIC_FASTAPI_BASE_URL にブラウザから到達可能な FastAPI URL を設定した場合だけ、
+// Next の proxy を介さず FastAPI を直接呼ぶ。
+export const API_BASE = (process.env.NEXT_PUBLIC_FASTAPI_BASE_URL || "").replace(/\/$/, "");
 
 export const apiClient = axios.create({ baseURL: API_BASE });

@@ -304,6 +304,51 @@ const loops = [
     icon: Brain,
     iconColor: "text-cyan-400",
   },
+  {
+    title: "画面利用ループエンジニアリング",
+    desc: "画面訪問ログを集計し、UI/UX改善案をGeminiで生成（Observe→Aggregate→Propose→Persist）",
+    color: "#38bdf8",
+    bg: "from-sky-900/40 to-sky-950/20",
+    border: "border-sky-500/30",
+    icon: BarChart2,
+    iconColor: "text-sky-400",
+  },
+  {
+    title: "審査判断乖離学習ループ",
+    desc: "争点・稟議方針への人間フィードバックの否定的評価から、審査ロジックのレビュー観点を提案",
+    color: "#fb923c",
+    bg: "from-orange-900/40 to-orange-950/20",
+    border: "border-orange-500/30",
+    icon: Search,
+    iconColor: "text-orange-400",
+  },
+  {
+    title: "フィードバック傾向分析ループ",
+    desc: "紫苑応答への人間評価（thin/generic/not_shion等）から応答スタンス・プロンプト調整観点を提案",
+    color: "#a3e635",
+    bg: "from-lime-900/40 to-lime-950/20",
+    border: "border-lime-500/30",
+    icon: RefreshCw,
+    iconColor: "text-lime-400",
+  },
+  {
+    title: "審査実績ドリフト監視ループ",
+    desc: "成約後の支払い実績（延滞・デフォルト）とスコア帯の乖離を監視し、再校正候補を提案",
+    color: "#2dd4bf",
+    bg: "from-teal-900/40 to-teal-950/20",
+    border: "border-teal-500/30",
+    icon: Shield,
+    iconColor: "text-teal-400",
+  },
+  {
+    title: "ナレッジ穴探しループ",
+    desc: "知識参照ゼロで答えた質問を集め、外部調査器官へ渡すべき調査トピックを提案",
+    color: "#818cf8",
+    bg: "from-indigo-900/40 to-indigo-950/20",
+    border: "border-indigo-500/30",
+    icon: Database,
+    iconColor: "text-indigo-400",
+  },
 ];
 
 const shionBadges = [
@@ -317,11 +362,13 @@ const shionBadges = [
   "PR審査権限",
   "セントラル統合",
   "world_view",
+  "Private Reflection",
+  "Experience Loop",
 ];
 
 const stats = [
-  { value: "9", label: "自己改善ループ", color: "text-violet-400" },
-  { value: "170+", label: "累積REV", color: "text-blue-400" },
+  { value: "14", label: "自己改善ループ", color: "text-violet-400" },
+  { value: "190+", label: "累積REV", color: "text-blue-400" },
   { value: "4", label: "AIエンジン", color: "text-emerald-400" },
   { value: "紫苑", label: "リース知性体", color: "text-fuchsia-400" },
 ];

@@ -3,6 +3,8 @@ import type { NextConfig } from "next";
 import withPWAInit from "next-pwa";
 
 const API_URL = process.env.FASTAPI_URL || "http://127.0.0.1:8000";
+const BROWSER_FASTAPI_URL = process.env.NEXT_PUBLIC_FASTAPI_BASE_URL || "";
+const connectSrc = ["'self'", BROWSER_FASTAPI_URL].filter(Boolean).join(" ");
 
 const securityHeaders = [
   { key: "X-DNS-Prefetch-Control", value: "on" },
@@ -22,7 +24,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
       "font-src 'self'",
-      "connect-src 'self'",
+      `connect-src ${connectSrc}`,
       "frame-ancestors 'none'",
     ].join("; "),
   },

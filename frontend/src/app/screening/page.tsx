@@ -82,6 +82,30 @@ const SCREENING_RETURN_STATE_KEY = "lease-screening-return-state";
 const SCREENING_DRAFT_VERSION = 1;
 const SCREENING_DRAFT_SAVE_DELAY_MS = 300;
 
+const getScreeningErrorMessage = (error: unknown) => {
+  const err = error as {
+    response?: { status?: number; data?: { detail?: unknown } };
+    code?: string;
+    message?: string;
+  };
+  const status = err.response?.status;
+  const detail = err.response?.data?.detail;
+  const detailText = typeof detail === "string" ? detail : "";
+
+  if (!err.response || err.code === "ERR_NETWORK") {
+    return "審査サーバーに一時的に接続できませんでした。数秒後にもう一度実行してください。";
+  }
+  if (status === 502 || status === 503 || status === 504 || status === 530) {
+    return "審査サーバーが再起動または混雑中です。数秒後にもう一度実行してください。";
+  }
+  if (status && status >= 500) {
+    return detailText
+      ? `審査エンジンの実行に失敗しました。${detailText.slice(0, 180)}`
+      : "審査エンジンの実行に失敗しました。入力内容を確認して、もう一度実行してください。";
+  }
+  return detailText || "審査を実行できませんでした。入力内容を確認してください。";
+};
+
 type DemoScreeningCase = {
   id: string;
   title: string;
@@ -317,7 +341,7 @@ const buildShionReviewPrompt = (result: Record<string, any>, data: ScoringFormDa
     `・判定: ${result.hantei || "未判定"}`,
     `・総合スコア: ${Number.isFinite(score) ? score.toFixed(1) : "未算出"}`,
     `・借手スコア: ${result.score_borrower != null ? Number(result.score_borrower).toFixed(1) : "未算出"}`,
-    `・Q_risk: ${result.quantum_risk != null ? Number(result.quantum_risk).toFixed(1) : "未算出"}`,
+    `・Q_risk: ${result.quantum_risk != null ? `${Number(result.quantum_risk).toFixed(1)}（0-100スケール、35以上で要注意・60以上で強警戒）` : "未算出"}`,
     `・UMAP異常度: ${result.umap_anomaly_score != null ? Number(result.umap_anomaly_score).toFixed(1) : "未算出"}`,
     `・物件: ${data.asset_name || "未入力"}`,
     `・取得価額: ${data.acquisition_cost || 0}百万円`,
@@ -328,7 +352,13 @@ const buildShionReviewPrompt = (result: Record<string, any>, data: ScoringFormDa
   ];
   const flags = result.aurion_core?.discipline_flags;
   if (Array.isArray(flags) && flags.length) {
-    lines.push(`・AURION警戒: ${flags.slice(0, 5).join(" / ")}`);
+    const flagTitles = flags
+      .slice(0, 5)
+      .map((f) => (typeof f === "string" ? f : (f as { title?: string })?.title ?? ""))
+      .filter(Boolean);
+    if (flagTitles.length) {
+      lines.push(`・AURION警戒: ${flagTitles.join(" / ")}`);
+    }
   }
   if (Array.isArray(result.default_warnings) && result.default_warnings.length) {
     lines.push(`・デフォルト率警告: ${result.default_warnings.slice(0, 3).join(" / ")}`);
@@ -1299,7 +1329,7 @@ export default function Dashboard() {
 
     } catch (error) {
       console.error("API Error", error);
-      alert("審査エンジンの呼び出しに失敗しました。FastAPIサーバーが起動しているか確認してください。");
+      alert(getScreeningErrorMessage(error));
     } finally {
       setLoading(false);
     }

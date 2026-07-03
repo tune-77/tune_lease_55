@@ -146,6 +146,7 @@ async def stream_shion_screening(params: dict) -> AsyncGenerator[dict, None]:
     user_text = _build_user_text(params)
     new_message = Content(role="user", parts=[Part(text=user_text)])
 
+    streamed_any_partial = False
     try:
         async for event in _runner.run_async(
             user_id="demo",
@@ -166,11 +167,19 @@ async def stream_shion_screening(params: dict) -> AsyncGenerator[dict, None]:
                     yield {"type": "tool_result", "tool": fr.name}
 
             # テキストストリーム
+            # SSEモードでは partial=True の差分イベントの後、全文を集約した
+            # 完了イベント（partial でない）がもう一度流れてくる。両方を yield
+            # すると同じ文章が二重に表示されるため、差分のみを流し、完了イベント
+            # の全文は「差分を一度も受け取れなかった場合」のフォールバックに限る。
             if event.content and event.content.parts:
-                for part in event.content.parts:
-                    text = getattr(part, "text", None)
-                    if text:
-                        yield {"type": "stream", "delta": text}
+                is_partial = bool(getattr(event, "partial", False))
+                if is_partial or not streamed_any_partial:
+                    for part in event.content.parts:
+                        text = getattr(part, "text", None)
+                        if text:
+                            if is_partial:
+                                streamed_any_partial = True
+                            yield {"type": "stream", "delta": text}
 
         yield {"type": "done"}
     finally:
