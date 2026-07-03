@@ -28,6 +28,7 @@ _lock = threading.Lock()
 _client: Any = None
 _encoder: Any = None
 _import_failed = False
+_background_sync_started = False
 
 
 def hybrid_enabled() -> bool:
@@ -157,18 +158,51 @@ def sync_from_index(index_path: Path = _INDEX_PATH, *, batch_size: int = 64) -> 
     return {"synced": synced, "skipped": skipped, "available": len(targets)}
 
 
+def _ensure_background_sync() -> None:
+    """コレクションが空のとき、初回だけバックグラウンドで索引から構築する。
+
+    Cloud Run のイメージには api/chroma_db が含まれない（.dockerignore）ため、
+    SHION_MEMORY_HYBRID=1 を設定するだけで初回起動時に自動構築される必要がある。
+    構築完了まで想起はキーワードのみで動き、完了後の質問からハイブリッドになる。
+    """
+    global _background_sync_started
+    if _background_sync_started:
+        return
+    with _lock:
+        if _background_sync_started:
+            return
+        _background_sync_started = True
+    thread = threading.Thread(
+        target=_background_sync_worker, name="shion-memory-vector-sync", daemon=True
+    )
+    thread.start()
+
+
+def _background_sync_worker() -> None:
+    try:
+        from api.shion_memory_recall import resolve_index_path
+
+        summary = sync_from_index(resolve_index_path())
+        logger.info("[ShionMemoryVector] background sync done: %s", summary)
+    except Exception as exc:
+        logger.warning("[ShionMemoryVector] background sync failed: %s", exc)
+
+
 def similarity_scores(question: str, *, top_k: int = 24) -> dict[str, float]:
     """質問に近い記憶ID → 類似度(0..1) を返す。失敗時は空 dict。"""
     text = (question or "").strip()
     if not text:
         return {}
     collection = _get_collection()
-    encoder = _get_encoder()
-    if collection is None or encoder is None:
+    if collection is None:
         return {}
     try:
         count = collection.count()
         if count == 0:
+            _ensure_background_sync()
+            return {}
+        encoder = _get_encoder()
+        if encoder is None:
             return {}
         embedding = encoder.encode([text], show_progress_bar=False).tolist()[0]
         results = collection.query(

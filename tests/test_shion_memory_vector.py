@@ -68,6 +68,15 @@ def test_vector_module_degrades_gracefully_without_chromadb():
     assert shion_memory_vector.is_available() is False
 
 
+def test_background_sync_not_started_without_chromadb():
+    """chromadb が無い環境では自動構築スレッドを起動しない（クライアント不在で早期return）。"""
+    from api import shion_memory_vector
+
+    shion_memory_vector.similarity_scores("テスト質問")
+
+    assert shion_memory_vector._background_sync_started is False
+
+
 def test_hybrid_disabled_by_default(monkeypatch):
     from api import shion_memory_vector
 
