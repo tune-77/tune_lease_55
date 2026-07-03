@@ -17,6 +17,10 @@ SERVICE_ACCOUNT="${SERVICE_ACCOUNT:-}"
 DATABASE_SECRET_NAME="${DATABASE_SECRET_NAME:-DATABASE_URL}"
 CLOUDSQL_INSTANCE="${CLOUDSQL_INSTANCE:-}"
 CLOUDRUN_DATA_MODE="${CLOUDRUN_DATA_MODE:-demo}"
+# 紫苑記憶のハイブリッド想起（キーワード＋埋め込み）。埋め込みモデルは
+# ENABLE_OBSIDIAN_INDEXING の経路で既にロードされるため追加コストは小さい。
+# コレクションは初回起動時にバックグラウンド自動構築される（api/shion_memory_vector.py）。
+SHION_MEMORY_HYBRID="${SHION_MEMORY_HYBRID:-1}"
 # 公開デモ（CLOUDRUN_DATA_MODE=demo）では既定で削除操作を無効化する（来場者による
 # デモデータ破壊を防止）。本番データモードや明示指定で上書き可能。
 if [[ "$CLOUDRUN_DATA_MODE" == "demo" ]]; then
@@ -72,7 +76,7 @@ deploy_args=(
   # フォールバックに落ちる（根幹の知識ベースが機能しない状態が続く）。
   # ENABLE_GUNSHI_RAG は別経路（リクエスト同期でembeddingモデルを読む）で
   # 過去に共有プロセスの不安定化を招いた実績があるため、意図的に false のまま。
-  --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,CLOUDRUN_DATA_MODE=${CLOUDRUN_DATA_MODE},DEMO_READONLY=${DEMO_READONLY},DB_PATH=/app/data/demo.db,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600,TZ=Asia/Tokyo"
+  --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,CLOUDRUN_DATA_MODE=${CLOUDRUN_DATA_MODE},DEMO_READONLY=${DEMO_READONLY},DB_PATH=/app/data/demo.db,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600,SHION_MEMORY_HYBRID=${SHION_MEMORY_HYBRID},TZ=Asia/Tokyo"
 )
 
 if gcloud secrets describe GEMINI_API_KEY --project "$PROJECT_ID" >/dev/null 2>&1; then

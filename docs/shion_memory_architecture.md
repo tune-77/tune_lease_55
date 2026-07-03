@@ -96,7 +96,8 @@ Mana は妹さん本人の再現や代弁ではない。紫苑が守る価値の
   - Cloud Run では使用ログを `api/cloudrun_writeback.py` 経由で GCS（cloudrun-inputs/）へミラーし、`scripts/sync_cloudrun_inputs_from_gcs.py` で取り込んだイベントを鮮度更新が `--cloudrun-events-dir` から合流させる。想起の内訳は `/api/chat` の `debug_memory=true` で `memory_debug.memory_recall`（route / refs）として確認できる。
   - 記憶索引は `scripts/package_cloud_run_bundle.sh` がデプロイごとに再ビルドしてバンドルへ同梱し、`scripts/check_cloudrun_demo_readiness.py` が同梱漏れ・0件をデプロイ前に検出する。実行時は `resolve_index_path()` が DATA_DIR → リポジトリ data/ → 読み取り専用バンドル（CLOUDRUN_BUNDLE_DIR/data/）の順で解決する。
 - `api/shion_memory_vector.py` / `scripts/build_shion_memory_vector_index.py`
-  - 記憶索引のChromaDBベクトル層（Obsidian RAGと同じ埋め込みモデルを再利用）。`SHION_MEMORY_HYBRID=1` でキーワード＋埋め込みのハイブリッド想起になり、語彙一致0件の言い換え質問（ユンボ→油圧ショベル等）も救える。依存が無い環境では自動でキーワードのみへフォールバックする（ローカル環境向け）。
+  - 記憶索引のChromaDBベクトル層（Obsidian RAGと同じ埋め込みモデルを再利用）。`SHION_MEMORY_HYBRID=1` でキーワード＋埋め込みのハイブリッド想起になり、語彙一致0件の言い換え質問（ユンボ→油圧ショベル等）も救える。依存が無い環境では自動でキーワードのみへフォールバックする。
+  - Cloud Run API デプロイ（`scripts/deploy_cloud_run_api.sh`）では既定で有効。イメージに `api/chroma_db` は含まれない（.dockerignore）ため、コレクションが空の初回は想起時にバックグラウンドで索引から自動構築し、構築完了までキーワードのみで動く。
 - `scripts/revise_shion_memory.py` / `data/shion_memory_revisions.jsonl`
   - 改訂履歴CLI。旧記憶を `status=revised` に落とし、後継記憶へ `supersedes` を紐付ける。改訂宣言ファイルが真実の源で、索引ビルダーが再生成時に再適用する。revised 記憶は想起スコアを0.6倍に下げる（旧結論として参照は可能）。
 - `/api/shion/promote-keypoint`
