@@ -948,7 +948,10 @@ export default function LeaseIntelligencePage() {
     });
     setLoading(true);
     try {
-      const payload: Record<string, string> = { message: text || "添付ファイルの内容を分析してください。" };
+      const payload: Record<string, string> = {
+        message: text || "添付ファイルの内容を分析してください。",
+        since: dialogueDisplaySinceIso(),
+      };
       if (currentFile) {
         payload.file_content = currentFile.content;
         payload.file_type = currentFile.type;

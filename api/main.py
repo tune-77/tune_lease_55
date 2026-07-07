@@ -9094,6 +9094,7 @@ def _chat_memory_debug_payload(
 class LeaseIntelligenceDialogueRequest(BaseModel):
     message: str
     caller: str = ""
+    since: Optional[str] = None
     file_content: Optional[str] = None
     file_type: Optional[str] = None
     file_name: Optional[str] = None
@@ -9483,7 +9484,11 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
         file_type=req.file_type,
     )
     dialogue_budget = _chat_context_budget(dialogue_mode)
-    history = get_recent_messages(DIALOGUE_USER_ID, limit=int(dialogue_budget["history_limit"]))
+    history = get_recent_messages(
+        DIALOGUE_USER_ID,
+        limit=int(dialogue_budget["history_limit"]),
+        since=req.since,
+    )
     if compact_dialogue or dialogue_mode in ("casual", "long"):
         history = _compact_dialogue_history(
             history,
