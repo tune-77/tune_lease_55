@@ -7865,11 +7865,17 @@ _SCREENING_EXPERIENCE_DEMO_SEEDS: list[dict[str, Any]] = [
 
 
 def _ensure_screening_experience_cases_table(seed_demo: bool = True) -> None:
+    import sqlite3 as _sqlite3
+
     from api.db_connection import ensure_schema
 
     ensure_schema()
     if seed_demo:
-        _seed_screening_experience_demo_cases()
+        try:
+            _seed_screening_experience_demo_cases()
+        except _sqlite3.OperationalError as exc:
+            if "readonly" not in str(exc).lower():
+                raise
 
 
 def _seed_screening_experience_demo_cases() -> None:
