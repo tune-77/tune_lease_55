@@ -53,6 +53,7 @@ deploy_args=(
   --concurrency "$CONCURRENCY"
   --min-instances "$MIN_INSTANCES"
   --max-instances "$MAX_INSTANCES"
+  --set-env-vars "FASTAPI_URL=$API_URL"
 )
 
 deploy_args+=(--allow-unauthenticated)

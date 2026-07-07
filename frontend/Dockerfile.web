@@ -14,12 +14,15 @@ RUN npm run build
 FROM node:20-bookworm-slim AS runtime
 WORKDIR /app
 
+ARG FASTAPI_URL=http://127.0.0.1:8000
+
 COPY --from=frontend-builder /build/.next/standalone/ ./
 COPY --from=frontend-builder /build/.next/static/ ./.next/static/
 COPY --from=frontend-builder /build/public/ ./public/
 
 ENV HOSTNAME=0.0.0.0 \
-    PORT=8080
+    PORT=8080 \
+    FASTAPI_URL=$FASTAPI_URL
 
 EXPOSE 8080
 
