@@ -117,12 +117,15 @@ def test_materialize_events_writes_existing_pipeline_logs(tmp_path, monkeypatch)
         "rag_feedback_new": 1,
         "rag_hit_new": 1,
         "screening_loop_feedback_new": 0,
+        "improvement_new": 0,
+        "chat_new": 0,
+        "shion_memory_usage_new": 0,
         "score_inputs_new": 1,
         "ocr_results_new": 0,
         "shion_reviews_new": 0,
         "shion_review_feedback_updated": 0,
     }
-    assert wizard_rows[0]["surface"] == "cloudrun_score_calculate"
+    assert wizard_rows[0]["surface"] == "cloudrun_score_calculated"
     assert "asset_name" in wizard_rows[0]["empty_fields"]
     assert rag_rows[0]["event_id"] == "rag-1"
     assert hit_rows[0]["hit_type"] == "feedback_confirmed"
@@ -217,6 +220,68 @@ def test_materialize_events_appends_screening_loop_feedback(tmp_path, monkeypatc
     assert result["screening_loop_feedback_new"] == 1
     assert rows[0]["event_id"] == "loop-1"
     assert rows[0]["source"] == "cloudrun_input_writeback"
+
+
+def test_materialize_events_appends_improvement_chat_and_memory_usage(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
+    monkeypatch.setattr(syncer, "WIZARD_INPUT_LOG", tmp_path / "wizard.jsonl")
+    monkeypatch.setattr(syncer, "RAG_FEEDBACK_LOG", tmp_path / "rag_feedback.jsonl")
+    monkeypatch.setattr(syncer, "RAG_HIT_LOG", tmp_path / "rag_hit.jsonl")
+    monkeypatch.setattr(syncer, "SCREENING_LOOP_FEEDBACK_LOG", tmp_path / "screening_loop.jsonl")
+    improvement_log = tmp_path / "cloudrun_improvement.jsonl"
+    chat_log = tmp_path / "cloudrun_chat.jsonl"
+    memory_usage_log = tmp_path / "shion_memory_usage.jsonl"
+    monkeypatch.setattr(syncer, "CLOUDRUN_IMPROVEMENT_LOG", improvement_log)
+    monkeypatch.setattr(syncer, "CLOUDRUN_CHAT_LOG", chat_log)
+    monkeypatch.setattr(syncer, "SHION_MEMORY_USAGE_LOG", memory_usage_log)
+    monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", tmp_path / "lease_data.db")
+
+    result = syncer.materialize_events([
+        {
+            "event_id": "improve-1",
+            "ts": "2026-07-01T00:02:00Z",
+            "event_type": "improvement_note",
+            "surface": "chat_improvement",
+            "payload": {"title": "改善ログ", "body": "Cloud Run入力を改善ログに流す"},
+        },
+        {
+            "event_id": "chat-1",
+            "ts": "2026-07-01T00:03:00Z",
+            "event_type": "chat_exchange",
+            "surface": "next_chat_rag",
+            "payload": {
+                "user_id": "default",
+                "category": "lease",
+                "response_mode": "shion",
+                "user_message": "補助金について教えて",
+                "assistant_reply": "対象設備と公募要領を確認します。",
+                "metadata": {"knowledge_refs": 2},
+            },
+        },
+        {
+            "event_id": "memory-1",
+            "ts": "2026-07-01T00:04:00Z",
+            "event_type": "shion_memory_usage",
+            "surface": "api_chat",
+            "payload": {
+                "ts": "2026-07-01T00:04:00Z",
+                "route": "next_chat",
+                "refs": ["memory/a.md", "memory/b.md"],
+            },
+        },
+    ])
+
+    improvement_rows = [json.loads(line) for line in improvement_log.read_text(encoding="utf-8").splitlines()]
+    chat_rows = [json.loads(line) for line in chat_log.read_text(encoding="utf-8").splitlines()]
+    memory_rows = [json.loads(line) for line in memory_usage_log.read_text(encoding="utf-8").splitlines()]
+    assert result["improvement_new"] == 1
+    assert result["chat_new"] == 1
+    assert result["shion_memory_usage_new"] == 1
+    assert improvement_rows[0]["source"] == "cloudrun_input_writeback"
+    assert "Cloud Run入力" in improvement_rows[0]["body"]
+    assert chat_rows[0]["category"] == "lease"
+    assert chat_rows[0]["metadata"]["knowledge_refs"] == 2
+    assert memory_rows[0]["ref_count"] == 2
 
 
 def test_materialize_events_restores_score_full_and_ocr_to_quarantine_db(tmp_path, monkeypatch) -> None:

@@ -33,6 +33,7 @@ data/*.db
 data/*.db.*
 data/*.sqlite
 data/*.jsonl
+data/**/*.jsonl
 # 実験・セッションログ（.claude/rules/security.md のコミット禁止リスト対象）
 data/identity_experiment/
 data/aurion_daily/state_*.json
@@ -43,6 +44,11 @@ data/department_stats_cache.json
 data/shion_self_analysis_cache.json
 data/lease_news_metrics.json
 data/model_review_state.json
+data/lease_news_actions_*.json
+data/shion_anniversaries.json
+data/shion_experience_state.json
+data/shion_memory_index.json
+data/shion_practical_knowledge_map.json
 data/tunnel_optimizer.joblib
 data/*.backup_*
 data/excluded_grade_cases_*.csv

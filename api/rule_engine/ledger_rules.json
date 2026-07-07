@@ -537,5 +537,17 @@
     "action": "review_content",
     "penalty_strength": "weak",
     "generated_at": "2026-07-01T19:00:33.273177+00:00"
+  },
+  {
+    "rev_id": "RAG-UNRATED-2026_05_13_all_file_ingest_index",
+    "type": "rag_boost_adjust",
+    "pending_review": true,
+    "description": "RAGヒット済み未評価: 2026-05-13_all_file_ingest_index が直近30日で検索ヒットしたが評価なし（要内容確認）",
+    "source": "analyze_rag_feedback.py",
+    "target": "config/rag_ranking.json",
+    "path": "2026-05-13_all_file_ingest_index",
+    "action": "review_content",
+    "penalty_strength": "weak",
+    "generated_at": "2026-07-04T19:00:37.792920+00:00"
   }
 ]

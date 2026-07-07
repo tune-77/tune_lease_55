@@ -34,16 +34,27 @@ DEFAULT_VAULT = (
 )
 OBSIDIAN_VAULT = Path(os.environ.get("OBSIDIAN_VAULT", str(DEFAULT_VAULT))).expanduser()
 OUTPUT_SUBDIR = Path("Projects") / "tune_lease_55" / "Cloud Run Inputs"
+IMPROVEMENT_LOG_SUBDIR = Path("Projects") / "tune_lease_55" / "AI Chat" / "Improvement Log"
+CHAT_LOG_SUBDIR = Path("Projects") / "tune_lease_55" / "AI Chat" / "Cloud Run Conversation Log"
 DAILY_SUBDIR = Path("Daily")
 DAILY_SECTION_START = "<!-- cloudrun-input-sync:start -->"
 DAILY_SECTION_END = "<!-- cloudrun-input-sync:end -->"
+IMPROVEMENT_EVENT_MARKER_PREFIX = "cloudrun-improvement-event:"
+CHAT_EVENT_MARKER_PREFIX = "cloudrun-chat-event:"
 JST = timezone(timedelta(hours=9))
 
 
 EVENT_LABELS = {
     "score_calculated": "スコア計算",
+    "score_full_calculated": "フルスコア計算",
     "case_result_registered": "案件結果登録",
     "rag_feedback": "RAGフィードバック",
+    "improvement_note": "改善メモ",
+    "chat_exchange": "会話ログ",
+    "shion_memory_usage": "紫苑メモリ利用",
+    "shion_screening_review": "紫苑審査レビュー",
+    "shion_screening_review_feedback": "紫苑審査レビューFB",
+    "screening_loop_feedback": "審査ループFB",
     "lease_news_judgment_change": "ニュース起点の判断変更",
     "judgment_feedback_created": "判断フィードバック",
 }
@@ -97,6 +108,13 @@ def _event_jst_date(event: dict[str, Any], fallback: date) -> date:
     return parsed.astimezone(JST).date()
 
 
+def _event_jst_datetime(event: dict[str, Any], fallback: date) -> datetime:
+    parsed = _parse_event_ts(event.get("ts"))
+    if not parsed:
+        return datetime.combine(fallback, datetime.min.time(), JST)
+    return parsed.astimezone(JST)
+
+
 def _load_events_by_jst_day(scan_days: Iterable[date]) -> dict[date, list[dict[str, Any]]]:
     grouped: dict[date, list[dict[str, Any]]] = defaultdict(list)
     seen: set[str] = set()
@@ -135,6 +153,17 @@ def _payload_summary(event: dict[str, Any]) -> str:
         rating = payload.get("rating") or ""
         return f"rating={_safe_text(rating, 40)} / ref={_safe_text(ref, 80)}"
 
+    if event_type == "improvement_note":
+        title = payload.get("title") or "改善メモ"
+        body = str(payload.get("body") or "")
+        first_line = next((line.strip() for line in body.splitlines() if line.strip()), "")
+        return f"{_safe_text(title, 60)} / {_safe_text(first_line, 120)}"
+
+    if event_type == "chat_exchange":
+        user_msg = payload.get("user_message") or ""
+        category = payload.get("category") or event.get("surface") or ""
+        return f"{_safe_text(category, 40)} / {_safe_text(user_msg, 120)}"
+
     if event_type == "case_result_registered":
         case_id = payload.get("case_id") or payload.get("id") or ""
         status = payload.get("status") or payload.get("result") or ""
@@ -150,6 +179,166 @@ def _payload_summary(event: dict[str, Any]) -> str:
 
     keys = [str(k) for k in payload.keys()][:5]
     return "payload keys: " + ", ".join(keys) if keys else "payloadなし"
+
+
+def _normalize_improvement_body(body: str) -> str:
+    clean = (body or "").strip()
+    if not clean:
+        return ""
+    if "## 原文" in clean or "## 抽出された改善候補" in clean:
+        return clean
+    return "\n".join(
+        [
+            "## 原文",
+            clean,
+            "",
+            "## AI整理",
+            "- 課題: 未整理。Cloud Run入力イベントの原文をレビューしてください。",
+            "- 改善案: 原文を確認して改善候補に分解する。",
+            "- 優先度: medium",
+            "- 次の行動: 改善抽出パイプラインでレビューする。",
+        ]
+    )
+
+
+def _build_improvement_section(event: dict[str, Any], fallback_day: date) -> str | None:
+    if event.get("event_type") != "improvement_note":
+        return None
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    title = _safe_text(payload.get("title") or "Cloud Run改善メモ", 80)
+    body = _normalize_improvement_body(str(payload.get("body") or ""))
+    if not body:
+        return None
+    event_id = _safe_text(event.get("event_id"), 80)
+    surface = _safe_text(event.get("surface") or "chat_improvement", 80)
+    event_time = _event_jst_datetime(event, fallback_day)
+    marker = f"<!-- {IMPROVEMENT_EVENT_MARKER_PREFIX}{event_id} -->"
+    lines = [
+        marker,
+        f"## {event_time.strftime('%H:%M')} {title}",
+        "",
+        "### 要点",
+        body,
+        "",
+        "## 受付",
+        "- Cloud Run入力同期から登録",
+        f"- event_id: `{event_id}`",
+        f"- surface: `{surface}`",
+        f"- source_ts: `{_safe_text(event.get('ts'), 48)}`",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def _write_improvement_logs(vault: Path, day: date, events: list[dict[str, Any]], dry_run: bool) -> int:
+    improvement_events = [event for event in events if event.get("event_type") == "improvement_note"]
+    if not improvement_events:
+        return 0
+
+    rel = IMPROVEMENT_LOG_SUBDIR / f"{day.isoformat()}.md"
+    path = vault / rel
+    current = path.read_text(encoding="utf-8") if path.exists() else ""
+    sections: list[str] = []
+    for event in improvement_events:
+        event_id = str(event.get("event_id") or "")
+        if event_id and f"{IMPROVEMENT_EVENT_MARKER_PREFIX}{event_id}" in current:
+            continue
+        section = _build_improvement_section(event, day)
+        if section:
+            sections.append(section)
+
+    if not sections:
+        return 0
+    if dry_run:
+        print(f"[dry-run] {path} improvement-events={len(sections)}")
+        return len(sections)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not current.strip():
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        current = f"---\ndate: {timestamp}\ntags: [チャット, 改善メモ, cloudrun]\n---\n"
+    path.write_text(current.rstrip() + "\n\n" + "\n\n".join(sections).rstrip() + "\n", encoding="utf-8")
+    return len(sections)
+
+
+def _chat_text(value: Any, limit: int = 1200) -> str:
+    text = str(value or "").strip()
+    if len(text) > limit:
+        return text[: limit - 1] + "…"
+    return text
+
+
+def _build_chat_section(event: dict[str, Any], fallback_day: date) -> str | None:
+    if event.get("event_type") != "chat_exchange":
+        return None
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    user_message = _chat_text(payload.get("user_message"), 1200)
+    assistant_reply = _chat_text(payload.get("assistant_reply"), 1800)
+    if not user_message and not assistant_reply:
+        return None
+    event_id = _safe_text(event.get("event_id"), 80)
+    surface = _safe_text(event.get("surface"), 80)
+    category = _safe_text(payload.get("category"), 80)
+    response_mode = _safe_text(payload.get("response_mode"), 40)
+    user_id = _safe_text(payload.get("user_id"), 80)
+    event_time = _event_jst_datetime(event, fallback_day)
+    marker = f"<!-- {CHAT_EVENT_MARKER_PREFIX}{event_id} -->"
+    lines = [
+        marker,
+        f"## {event_time.strftime('%H:%M')} {surface or 'Cloud Run会話'}",
+        "",
+        f"- user_id: `{user_id}`",
+        f"- category: `{category}`",
+        f"- response_mode: `{response_mode}`",
+        f"- source_ts: `{_safe_text(event.get('ts'), 48)}`",
+        "",
+        "### User",
+        user_message or "（空）",
+        "",
+        "### Assistant",
+        assistant_reply or "（空）",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def _write_chat_logs(vault: Path, day: date, events: list[dict[str, Any]], dry_run: bool) -> int:
+    chat_events = [event for event in events if event.get("event_type") == "chat_exchange"]
+    if not chat_events:
+        return 0
+
+    rel = CHAT_LOG_SUBDIR / f"{day.isoformat()}.md"
+    path = vault / rel
+    current = path.read_text(encoding="utf-8") if path.exists() else ""
+    sections: list[str] = []
+    for event in chat_events:
+        event_id = str(event.get("event_id") or "")
+        if event_id and f"{CHAT_EVENT_MARKER_PREFIX}{event_id}" in current:
+            continue
+        section = _build_chat_section(event, day)
+        if section:
+            sections.append(section)
+
+    if not sections:
+        return 0
+    if dry_run:
+        print(f"[dry-run] {path} chat-events={len(sections)}")
+        return len(sections)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not current.strip():
+        current = "\n".join(
+            [
+                "---",
+                f"date: {day.isoformat()}",
+                "tags: [チャット, cloudrun, 会話ログ]",
+                "source: cloudrun_input_writeback",
+                "summary_only: true",
+                "---",
+            ]
+        )
+    path.write_text(current.rstrip() + "\n\n" + "\n\n".join(sections).rstrip() + "\n", encoding="utf-8")
+    return len(sections)
 
 
 def _build_markdown(day: str, events: list[dict[str, Any]]) -> str:
@@ -275,11 +464,16 @@ def sync(days: int, target_date: str | None = None, dry_run: bool = False) -> di
         if dry_run:
             print(f"[dry-run] {path} events={len(events)}")
             _write_daily_section(OBSIDIAN_VAULT, day.isoformat(), events, rel_path, dry_run=True)
+            _write_improvement_logs(OBSIDIAN_VAULT, day, events, dry_run=True)
+            _write_chat_logs(OBSIDIAN_VAULT, day, events, dry_run=True)
             skipped += 1
             continue
         path.write_text(md, encoding="utf-8")
         _write_daily_section(OBSIDIAN_VAULT, day.isoformat(), events, rel_path, dry_run=False)
-        print(f"[write] {path} events={len(events)}")
+        improvements = _write_improvement_logs(OBSIDIAN_VAULT, day, events, dry_run=False)
+        chat_logs = _write_chat_logs(OBSIDIAN_VAULT, day, events, dry_run=False)
+        suffix = (f" improvements={improvements}" if improvements else "") + (f" chats={chat_logs}" if chat_logs else "")
+        print(f"[write] {path} events={len(events)}{suffix}")
         written += 1
 
     return {"written": written, "skipped": skipped}

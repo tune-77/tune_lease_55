@@ -376,6 +376,17 @@ def sync(dry_run: bool = False, target_date: str | None = None, force: bool = Fa
         print(f"エラー: Vault が見つかりません: {VAULT_PATH}", file=sys.stderr)
         sys.exit(1)
 
+    if (
+        not os.environ.get("DATABASE_URL", "").strip()
+        and not os.environ.get("DATABASE_URL_SECRET_NAME", "").strip()
+        and not os.environ.get("CLOUD_SQL_PASSWORD", "").strip()
+    ):
+        print(
+            "警告: Cloud SQL 接続情報が未設定のため会話ログ同期をスキップします。"
+            " Cloud Run会話は GCS input の chat_exchange 同期経路を使用してください。"
+        )
+        return
+
     # 差分取得のための最終同期日時
     state = load_sync_state()
     since: str | None = None

@@ -1,7 +1,14 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
 import { apiClient } from "@/lib/api";
-import { Send, X, Loader2, NotebookPen, Lightbulb } from "lucide-react";
+import { Send, X, Loader2, NotebookPen, Lightbulb, Trash2 } from "lucide-react";
+import {
+  clearVisibleChatHistory,
+  getChatHistorySinceIso,
+  loadLocalChatHistory,
+  mergeChatHistories,
+  saveLocalChatHistory,
+} from "@/lib/chatLocalHistory";
 import { usePathname } from "next/navigation";
 
 const YANAMI_BOT_MESSAGES = [
@@ -145,13 +152,27 @@ export default function FloatingMebuki() {
     setHistoryLoading(true);
     try {
       const res = await apiClient.get("/api/chat/history", {
-        params: { user_id: MEBUKI_USER_ID, limit: 50 },
+        params: { user_id: MEBUKI_USER_ID, limit: 50, since: getChatHistorySinceIso(MEBUKI_USER_ID) },
       });
-      setMessages(res.data.messages || []);
+      const nextMessages = mergeChatHistories(res.data.messages || [], loadLocalChatHistory(MEBUKI_USER_ID), MEBUKI_USER_ID);
+      setMessages(nextMessages);
+      saveLocalChatHistory(MEBUKI_USER_ID, nextMessages);
     } catch {
-      // 失敗は無視して空スタート
+      setMessages(loadLocalChatHistory(MEBUKI_USER_ID));
     } finally {
       setHistoryLoading(false);
+    }
+  };
+
+  const clearHistory = async () => {
+    if (!confirm("画面の会話履歴を消しますか？")) return;
+    clearVisibleChatHistory(MEBUKI_USER_ID);
+    setMessages([]);
+    try {
+      await apiClient.delete("/api/chat/history", { params: { user_id: MEBUKI_USER_ID } });
+    } catch {
+      setSaveToast("画面履歴を消しました");
+      setTimeout(() => setSaveToast(null), 2000);
     }
   };
 
@@ -167,7 +188,11 @@ export default function FloatingMebuki() {
       content: text,
       created_at: new Date().toISOString(),
     };
-    setMessages((prev) => [...prev, optimisticUser]);
+    setMessages((prev) => {
+      const next = [...prev, optimisticUser];
+      saveLocalChatHistory(MEBUKI_USER_ID, next);
+      return next;
+    });
     setInput("");
     setLoading(true);
 
@@ -186,22 +211,28 @@ export default function FloatingMebuki() {
         content: res.data.reply,
         created_at: new Date().toISOString(),
       };
-      setMessages((prev) => [...prev, assistantMsg]);
+      setMessages((prev) => {
+        const next = [...prev, assistantMsg];
+        saveLocalChatHistory(MEBUKI_USER_ID, next);
+        return next;
+      });
       if (improvementMode && res.data.improvement_saved) {
         setSaveToast("改善メモに登録しました");
         setTimeout(() => setSaveToast(null), 2000);
       }
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now() + 1,
-          user_id: MEBUKI_USER_ID,
-          role: "assistant",
-          content: "エラーが発生しました。もう一度お試しください。",
-          created_at: new Date().toISOString(),
-        },
-      ]);
+      const assistantMsg: ChatMessage = {
+        id: Date.now() + 1,
+        user_id: MEBUKI_USER_ID,
+        role: "assistant",
+        content: "エラーが発生しました。もう一度お試しください。",
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => {
+        const next = [...prev, assistantMsg];
+        saveLocalChatHistory(MEBUKI_USER_ID, next);
+        return next;
+      });
     } finally {
       setLoading(false);
     }
@@ -292,6 +323,14 @@ export default function FloatingMebuki() {
                 ) : (
                   <NotebookPen className="w-4 h-4" />
                 )}
+              </button>
+              <button
+                onClick={clearHistory}
+                className="text-white/80 hover:text-white transition-colors"
+                aria-label="画面履歴を削除"
+                title="画面履歴を削除"
+              >
+                <Trash2 className="w-4 h-4" />
               </button>
               <button
                 onClick={closeChat}

@@ -10,7 +10,7 @@ from typing import Optional
 import requests
 import re
 
-from api.db_connection import get_connection, placeholder, ensure_schema
+from api.db_connection import current_backend, get_connection, placeholder, ensure_schema
 
 _GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
@@ -27,23 +27,49 @@ def init_chat_messages_table() -> None:
     ensure_schema()
 
 
-def get_recent_messages(user_id: str = "default", limit: int = 20) -> list[dict]:
+def get_recent_messages(user_id: str = "default", limit: int = 20, since: str | None = None) -> list[dict]:
     """直近 limit 件のメッセージを古い順で返す。"""
     try:
         init_chat_messages_table()
         ph = placeholder()
         with get_connection() as conn:
             cur = conn.cursor()
-            cur.execute(
-                f"""
-                SELECT id, user_id, role, content, created_at
-                FROM chat_messages
-                WHERE user_id = {ph}
-                ORDER BY created_at DESC
-                LIMIT {ph}
-                """,
-                (user_id, limit),
-            )
+            if since:
+                if current_backend() == "postgresql":
+                    cur.execute(
+                        f"""
+                        SELECT id, user_id, role, content, created_at
+                        FROM chat_messages
+                        WHERE user_id = {ph}
+                          AND created_at >= {ph}
+                        ORDER BY created_at DESC
+                        LIMIT {ph}
+                        """,
+                        (user_id, since, limit),
+                    )
+                else:
+                    cur.execute(
+                        f"""
+                        SELECT id, user_id, role, content, created_at
+                        FROM chat_messages
+                        WHERE user_id = {ph}
+                          AND datetime(created_at) >= datetime({ph})
+                        ORDER BY created_at DESC
+                        LIMIT {ph}
+                        """,
+                        (user_id, since, limit),
+                    )
+            else:
+                cur.execute(
+                    f"""
+                    SELECT id, user_id, role, content, created_at
+                    FROM chat_messages
+                    WHERE user_id = {ph}
+                    ORDER BY created_at DESC
+                    LIMIT {ph}
+                    """,
+                    (user_id, limit),
+                )
             rows = cur.fetchall()
         return [dict(r) for r in reversed(rows)]
     except Exception as exc:

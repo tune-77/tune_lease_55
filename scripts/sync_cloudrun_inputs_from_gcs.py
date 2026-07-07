@@ -24,6 +24,9 @@ WIZARD_INPUT_LOG = PROJECT_ROOT / "data" / "wizard_input_log.jsonl"
 RAG_FEEDBACK_LOG = PROJECT_ROOT / "data" / "rag_feedback_log.jsonl"
 RAG_HIT_LOG = PROJECT_ROOT / "data" / "rag_hit_log.jsonl"
 SCREENING_LOOP_FEEDBACK_LOG = PROJECT_ROOT / "data" / "screening_loop_feedback.jsonl"
+CLOUDRUN_IMPROVEMENT_LOG = PROJECT_ROOT / "data" / "cloudrun_improvement_log.jsonl"
+CLOUDRUN_CHAT_LOG = PROJECT_ROOT / "data" / "cloudrun_chat_log.jsonl"
+SHION_MEMORY_USAGE_LOG = PROJECT_ROOT / "data" / "shion_memory_usage_log.jsonl"
 WIZARD_TRACKED_FIELDS = [
     "company_name",
     "nenshu",
@@ -124,7 +127,7 @@ def _merge_events(existing: list[dict], incoming: list[dict]) -> list[dict]:
 
 
 def _wizard_entry_from_event(event: dict) -> dict | None:
-    if event.get("event_type") != "score_calculated":
+    if event.get("event_type") not in {"score_calculated", "score_full_calculated"}:
         return None
     payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
     inputs = payload.get("inputs") if isinstance(payload.get("inputs"), dict) else {}
@@ -135,7 +138,7 @@ def _wizard_entry_from_event(event: dict) -> dict | None:
         "total_fields": len(WIZARD_TRACKED_FIELDS),
         "empty_count": len(empty),
         "empty_fields": empty,
-        "surface": "cloudrun_score_calculate",
+        "surface": f"cloudrun_{event.get('event_type')}",
         "source": "cloudrun_input_writeback",
     }
 
@@ -497,6 +500,62 @@ def _screening_loop_feedback_from_event(event: dict) -> dict | None:
     }
 
 
+def _improvement_entry_from_event(event: dict) -> dict | None:
+    if event.get("event_type") != "improvement_note":
+        return None
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    title = str(payload.get("title") or "Cloud Run改善メモ").strip()
+    body = str(payload.get("body") or "").strip()
+    if not body:
+        return None
+    return {
+        "event_id": event.get("event_id"),
+        "ts": event.get("ts"),
+        "title": title[:120],
+        "body": body[:12000],
+        "surface": event.get("surface") or "chat_improvement",
+        "source": "cloudrun_input_writeback",
+    }
+
+
+def _chat_entry_from_event(event: dict) -> dict | None:
+    if event.get("event_type") != "chat_exchange":
+        return None
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    user_message = str(payload.get("user_message") or "").strip()
+    assistant_reply = str(payload.get("assistant_reply") or "").strip()
+    if not user_message and not assistant_reply:
+        return None
+    return {
+        "event_id": event.get("event_id"),
+        "ts": event.get("ts"),
+        "surface": event.get("surface") or "unknown",
+        "user_id": str(payload.get("user_id") or "default")[:80],
+        "category": str(payload.get("category") or "")[:80],
+        "response_mode": str(payload.get("response_mode") or "")[:40],
+        "user_message": user_message[:1200],
+        "assistant_reply": assistant_reply[:1800],
+        "metadata": payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {},
+        "source": "cloudrun_input_writeback",
+    }
+
+
+def _shion_memory_usage_from_event(event: dict) -> dict | None:
+    if event.get("event_type") != "shion_memory_usage":
+        return None
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    refs = payload.get("refs") if isinstance(payload.get("refs"), list) else []
+    return {
+        "event_id": event.get("event_id"),
+        "ts": payload.get("ts") or event.get("ts"),
+        "route": str(payload.get("route") or ""),
+        "refs": [str(ref) for ref in refs[:20]],
+        "ref_count": len(refs),
+        "surface": event.get("surface") or "api_chat",
+        "source": "cloudrun_input_writeback",
+    }
+
+
 def _materialize_local_db(events: list[dict]) -> dict[str, int]:
     with _open_local_db() as conn:
         _ensure_local_sync_schema(conn)
@@ -523,6 +582,9 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
     all_events_new = _append_jsonl_dedup(CLOUDRUN_EVENT_ARCHIVE_LOG, events) if events else 0
     wizard_rows = [row for event in events if (row := _wizard_entry_from_event(event))]
     screening_loop_rows = [row for event in events if (row := _screening_loop_feedback_from_event(event))]
+    improvement_rows = [row for event in events if (row := _improvement_entry_from_event(event))]
+    chat_rows = [row for event in events if (row := _chat_entry_from_event(event))]
+    shion_memory_usage_rows = [row for event in events if (row := _shion_memory_usage_from_event(event))]
     rag_feedback_rows: list[dict] = []
     rag_hit_rows: list[dict] = []
     for event in events:
@@ -538,6 +600,9 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
         "rag_feedback_new": _append_jsonl_dedup(RAG_FEEDBACK_LOG, rag_feedback_rows) if rag_feedback_rows else 0,
         "rag_hit_new": _append_jsonl_dedup(RAG_HIT_LOG, rag_hit_rows) if rag_hit_rows else 0,
         "screening_loop_feedback_new": _append_jsonl_dedup(SCREENING_LOOP_FEEDBACK_LOG, screening_loop_rows) if screening_loop_rows else 0,
+        "improvement_new": _append_jsonl_dedup(CLOUDRUN_IMPROVEMENT_LOG, improvement_rows) if improvement_rows else 0,
+        "chat_new": _append_jsonl_dedup(CLOUDRUN_CHAT_LOG, chat_rows) if chat_rows else 0,
+        "shion_memory_usage_new": _append_jsonl_dedup(SHION_MEMORY_USAGE_LOG, shion_memory_usage_rows) if shion_memory_usage_rows else 0,
         **db_result,
     }
 

@@ -12,7 +12,7 @@ steps:
       - "FASTAPI_URL=${_FASTAPI_URL}"
       - -t
       - "${_IMAGE_URI}"
-      - frontend
+      - .
 
 images:
   - "${_IMAGE_URI}"

@@ -207,8 +207,13 @@ export default function RegisterPage() {
                       <tbody>
                         {pendingCases.map((c) => (
                           <tr key={`row-${c.id}`} className={`border-t border-slate-100 hover:bg-slate-50 ${selectedCase?.id === c.id ? 'bg-indigo-50/50' : ''}`}>
-                            <td className="px-3 py-2 font-bold text-slate-700">#{c.company_no} {c.company_name}</td>
-                            <td className="px-3 py-2 font-mono text-slate-500">{c.id}</td>
+                            <td className="px-3 py-2 font-bold text-slate-700">
+                              <div>#{c.company_no || '-'} {c.company_name}</div>
+                              {c._source && c._source !== 'past_cases' && (
+                                <div className="mt-1 text-[10px] font-black text-teal-600">{c._source}</div>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 font-mono text-slate-500 break-all">{c.id}</td>
                             <td className="px-3 py-2">
                               <div className="flex flex-wrap gap-2">
                                 <button onClick={() => { selectCase(c); stampProgress('estimate_sent', c.id); }} disabled={progressStampingCaseId === c.id} className="px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 font-bold border border-blue-100 disabled:opacity-50">見積提示</button>

@@ -36,6 +36,18 @@ def _dialogue_dir(vault: Path) -> Path:
     return vault / "Projects" / "tune_lease_55" / "Lease Intelligence" / "Dialogue"
 
 
+def _cloudrun_conversation_dir(vault: Path) -> Path:
+    return vault / "Projects" / "tune_lease_55" / "AI Chat" / "Cloud Run Conversation Log"
+
+
+def _cloudsql_summary_dir(vault: Path) -> Path:
+    return vault / "Projects" / "tune_lease_55" / "Cloud SQL Summaries"
+
+
+def _ai_chat_dir(vault: Path) -> Path:
+    return vault / "Projects" / "tune_lease_55" / "AI Chat"
+
+
 def _read_file_safe(path: Path, max_chars: int = 3000) -> str:
     try:
         text = path.read_text(encoding="utf-8", errors="ignore")
@@ -72,8 +84,24 @@ def _load_reflection_section(vault: Path, date_str: str) -> str:
 
 
 def _load_dialogue(vault: Path, date_str: str) -> str:
-    path = _dialogue_dir(vault) / f"{date_str}.md"
-    return _read_file_safe(path, max_chars=4000)
+    """Load reflection material for a day.
+
+    Cloud Run is now the primary UI, so Lease Intelligence/Dialogue may be
+    empty even when useful conversations happened. Prefer explicit dialogue,
+    then fold in Cloud Run conversation logs and summaries as reflection input.
+    """
+    sources = [
+        ("リース知性体対話室", _dialogue_dir(vault) / f"{date_str}.md", 4000),
+        ("Cloud Run会話ログ", _cloudrun_conversation_dir(vault) / f"{date_str}.md", 5000),
+        ("Cloud SQL会話要約", _cloudsql_summary_dir(vault) / f"{date_str}_cloudsql_summary.md", 3000),
+        ("AI Chatメモ", _ai_chat_dir(vault) / f"{date_str}.md", 3000),
+    ]
+    parts: list[str] = []
+    for label, path, limit in sources:
+        text = _read_file_safe(path, max_chars=limit)
+        if text:
+            parts.append(f"【{label}】\n{text}")
+    return "\n\n".join(parts)[:9000]
 
 
 def _gemini_api_key() -> str:
@@ -240,6 +268,33 @@ def _load_report_signal_items(date_str: str) -> list[str]:
                 break
 
     return items[:8]
+
+
+def _load_cloudrun_input_signal_items(date_str: str) -> list[str]:
+    path = REPO_ROOT / "data" / "cloudrun_inputs" / f"{date_str}.jsonl"
+    if not path.exists():
+        return []
+    counts: dict[str, int] = {}
+    surfaces: dict[str, int] = {}
+    for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        event_type = str(event.get("event_type") or "unknown")
+        surface = str(event.get("surface") or "unknown")
+        counts[event_type] = counts.get(event_type, 0) + 1
+        surfaces[surface] = surfaces.get(surface, 0) + 1
+    if not counts:
+        return []
+    type_summary = ", ".join(f"{key} {value}件" for key, value in sorted(counts.items()))
+    surface_summary = ", ".join(f"{key} {value}件" for key, value in sorted(surfaces.items()))
+    return [
+        f"Cloud Run入力: {type_summary}",
+        f"Cloud Run入力元: {surface_summary}",
+    ]
 
 
 def _bullet_lines(items: list[str], limit: int = 3) -> str:
@@ -490,6 +545,7 @@ def _build_fallback_reflection(
     introspection = _load_json_safe(REPO_ROOT / "reports" / "introspection_latest.json")
     loop_report = _load_json_safe(REPO_ROOT / "reports" / "loop_engineering_latest.json")
     report_signals = _load_report_signal_items(date_str)
+    cloudrun_signals = _load_cloudrun_input_signal_items(date_str)
 
     findings = [
         str(item.get("title", "")).strip()
@@ -503,8 +559,10 @@ def _build_fallback_reflection(
     ]
     promotable_items = _extract_section_items(daily_text, "Promotable Items")
     work_items = _extract_section_items(daily_text, "Work Log")
-    if not work_items and report_signals:
-        work_items = report_signals[:3]
+    if not work_items:
+        work_items = (cloudrun_signals + report_signals)[:4]
+    elif cloudrun_signals:
+        work_items = (cloudrun_signals + work_items)[:6]
 
     status = str(introspection.get("status") or "unknown")
     loop_status = str(loop_report.get("status") or "unknown")
@@ -560,7 +618,7 @@ def _build_fallback_reflection(
             "それがいちばん退屈で、いちばん紫苑らしくない。"
         ),
     ]
-    if recent_reflections:
+    if recent_reflections and dialogue_text:
         _snippet_lines = [
             ln.strip()
             for ln in recent_reflections.splitlines()

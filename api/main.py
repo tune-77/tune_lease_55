@@ -3583,7 +3583,7 @@ def patch_case_result(case_id: str, req: CaseResultPatch, background_tasks: Back
 
 @app.get("/api/cases/pending")
 def get_pending_cases():
-    """全DB(lease_data.db, screening_db.sqlite)から未登録案件を統合して取得する"""
+    """past_cases と Cloud Run帰還スコア入力から未登録案件を統合して取得する。"""
     import json
 
     rows = []
@@ -3592,20 +3592,24 @@ def get_pending_cases():
         with get_connection() as conn:
             res = conn.execute(
                 "SELECT id, timestamp, industry_sub, score, data "
-                "FROM past_cases WHERE final_status='未登録' ORDER BY timestamp DESC LIMIT 50"
+                "FROM past_cases "
+                "WHERE COALESCE(NULLIF(final_status, ''), '未登録') IN ('未登録', '稟議中', 'スコアリングのみ') "
+                "ORDER BY timestamp DESC LIMIT 50"
             ).fetchall()
             for r in res:
                 try:
                     d = json.loads(r["data"] or "{}")
                 except Exception:
                     d = {}
+                inputs = d.get("inputs") if isinstance(d.get("inputs"), dict) else {}
+                result = d.get("result") if isinstance(d.get("result"), dict) else {}
                 rows.append({
                     "id": str(r["id"]),
-                    "company_no": d.get("company_no", ""),
-                    "company_name": d.get("company_name", ""),
+                    "company_no": d.get("company_no") or inputs.get("company_no") or "",
+                    "company_name": d.get("company_name") or inputs.get("company_name") or "名称未設定",
                     "timestamp": r["timestamp"],
-                    "score": r["score"],
-                    "industry": r["industry_sub"] or d.get("industry_major", ""),
+                    "score": r["score"] if r["score"] not in (None, "") else result.get("score_base", result.get("score")),
+                    "industry": r["industry_sub"] or d.get("industry_sub") or inputs.get("industry_sub") or d.get("industry_major") or inputs.get("industry_major") or "",
                     "registration_date": d.get("registration_date") or (r["timestamp"] or "")[:10],
                     "estimate_sent_date": d.get("estimate_sent_date") or (r["timestamp"] or "")[:10],
                     "final_result_date": d.get("final_result_date"),
@@ -3614,7 +3618,10 @@ def get_pending_cases():
     except Exception as e:
         logger.error("get_pending_cases DB error: %s", e)
 
-    return rows
+    cloudrun_rows = _list_cloudrun_score_pending_cases(limit=50)
+    rows.extend(cloudrun_rows)
+    rows.sort(key=lambda item: str(item.get("timestamp") or ""), reverse=True)
+    return rows[:80]
 
 @app.get("/api/cases/{case_id}")
 def get_case_detail(case_id: str):
@@ -3644,8 +3651,18 @@ def clear_all_pending_cases(background_tasks: BackgroundTasks):
     from data_cases import refresh_stats_caches
     try:
         with get_connection() as conn:
-            conn.execute("DELETE FROM past_cases WHERE final_status='未登録'")
+            conn.execute(
+                "DELETE FROM past_cases "
+                "WHERE COALESCE(NULLIF(final_status, ''), '未登録') IN ('未登録', '稟議中', 'スコアリングのみ')"
+            )
         refresh_stats_caches()
+        try:
+            for item in _list_cloudrun_score_pending_cases(limit=200):
+                item_id = str(item.get("id") or "")
+                if not _reject_cloudrun_score_pending_case(item_id):
+                    _reject_cloudrun_event_pending_case(item_id)
+        except Exception as exc:
+            logger.warning("clear cloudrun pending score inputs skipped: %s", exc)
         background_tasks.add_task(_git_push_db)
         return {"message": "Cleared all pending cases"}
     except Exception as e:
@@ -3657,7 +3674,8 @@ def delete_case(case_id: str, background_tasks: BackgroundTasks):
     """案件を past_cases から削除する"""
     from data_cases import delete_case as delete_case_from_db
     try:
-        delete_case_from_db(str(case_id))
+        if not _reject_cloudrun_score_pending_case(str(case_id)) and not _reject_cloudrun_event_pending_case(str(case_id)):
+            delete_case_from_db(str(case_id))
     except Exception:
         pass
     background_tasks.add_task(_git_push_db)
@@ -5334,6 +5352,7 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
     competitor_rate = float(req.competitor_rate or 0.0)
     
     target_case_id = None
+    target_case = None
     for c in cases:
         # ID, 企業番号, または企業名でマッチング（大文字小文字無視など不要なほど厳密に）
         if (c.get("id") == req.case_id or 
@@ -5343,16 +5362,58 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
             c.get("inputs", {}).get("company_no") == req.case_id or
             c.get("inputs", {}).get("company_name") == req.case_id):
             target_case_id = c.get("id")
+            target_case = c
             break
             
     if not target_case_id:
-        raise HTTPException(status_code=404, detail="Case not found")
+        cloudrun_event_id = _parse_cloudrun_event_case_id(req.case_id)
+        if cloudrun_event_id:
+            final_result = record_cloudrun_input_event(
+                event_type="case_result_registered",
+                surface="cases_register",
+                payload={
+                    "case_id": req.case_id,
+                    "source_event_id": cloudrun_event_id,
+                    "status": req.status,
+                    "final_rate": final_rate,
+                    "base_rate_at_time": base_rate_at_time,
+                    "competitor_rate": competitor_rate,
+                    "lost_reason": req.lost_reason,
+                    "note": req.note,
+                    "grey_judgment": {
+                        "status": req.status,
+                        "human_discomfort": (req.human_discomfort or "").strip(),
+                        "but_still_reason": (req.but_still_reason or "").strip(),
+                        "approval_condition_memo": (req.approval_condition_memo or "").strip(),
+                        "non_negotiable_condition": (req.non_negotiable_condition or "").strip(),
+                        "retrospective_note": (req.retrospective_note or "").strip(),
+                    },
+                },
+            )
+            if final_result.get("ok") is True:
+                _invalidate_cloudrun_input_events_cache()
+                return {
+                    "status": "success",
+                    "message": f"Cloud Run result registered for {cloudrun_event_id}",
+                    "case_id": req.case_id,
+                    "cloudrun_writeback": final_result,
+                }
+            raise HTTPException(status_code=500, detail=f"Cloud Run result writeback failed: {final_result.get('reason')}")
+
+        score_input_id = _parse_cloudrun_score_case_id(req.case_id)
+        if score_input_id is not None:
+            target_case_id = _promote_cloudrun_score_input_to_pending_case(score_input_id)
+            if target_case_id:
+                cases = load_all_cases()
+                target_case = next((case for case in cases if case.get("id") == target_case_id), None)
+        if not target_case_id or not target_case:
+            raise HTTPException(status_code=404, detail="Case not found")
         
     import datetime
     now_iso = datetime.datetime.now().isoformat()
     now_date = now_iso[:10]
-    registration_date = c.get("registration_date") or c.get("timestamp", "")[:10] or now_date
-    estimate_sent_date = c.get("estimate_sent_date") or registration_date
+    registration_date = target_case.get("registration_date") or target_case.get("timestamp", "")[:10] or now_date
+    estimate_sent_date = target_case.get("estimate_sent_date") or registration_date
 
     patches = {
         "final_status": req.status,
@@ -5375,8 +5436,8 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
         "approval_condition_memo": (req.approval_condition_memo or "").strip(),
         "non_negotiable_condition": (req.non_negotiable_condition or "").strip(),
         "retrospective_note": (req.retrospective_note or "").strip(),
-        "ai_score": c.get("score") or c.get("score_base") or (c.get("result") or {}).get("score"),
-        "ai_decision": c.get("hantei") or (c.get("result") or {}).get("hantei"),
+        "ai_score": target_case.get("score") or target_case.get("score_base") or (target_case.get("result") or {}).get("score"),
+        "ai_decision": target_case.get("hantei") or (target_case.get("result") or {}).get("hantei"),
     }
     if any(str(grey_judgment.get(k) or "").strip() for k in (
         "human_discomfort",
@@ -5443,7 +5504,7 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
     if req.status in ("成約", "失注"):
         try:
             from judgment_feedback import record_judgment_feedback, count_unprocessed_feedback
-            _ai_score = float(c.get("score") or c.get("score_base") or 0)
+            _ai_score = float(target_case.get("score") or target_case.get("score_base") or (target_case.get("result") or {}).get("score") or 0)
             _ai_decision = "承認" if _ai_score >= APPROVAL_LINE else "条件付き" if _ai_score >= CONDITIONAL_LINE else "否決"
             _human_decision = "承認" if req.status == "成約" else "否決"
             _reason_bits = [f"案件登録トリガー: {req.status}（AIスコア {_ai_score:.1f}）"]
@@ -6824,6 +6885,47 @@ def _auto_save_chat_to_obsidian(user_message: str, reply: str) -> None:
         print(f"[Obsidian自動保存] エラー: {_e}")
 
 
+def _redact_chat_log_text(value: str, limit: int = 1200) -> str:
+    text = str(value or "")
+    text = re.sub(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", "[email]", text)
+    text = re.sub(r"\b0\d{1,4}[-\s]?\d{1,4}[-\s]?\d{3,4}\b", "[phone]", text)
+    text = re.sub(r"\b\d{6,}\b", "[number]", text)
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    if len(text) > limit:
+        return text[: limit - 1] + "…"
+    return text
+
+
+def _record_cloudrun_chat_exchange(
+    *,
+    surface: str,
+    user_id: str,
+    user_message: str,
+    assistant_reply: str,
+    category: str = "",
+    response_mode: str = "",
+    metadata: dict | None = None,
+) -> None:
+    """Cloud RunのDB保存がreadonlyでも会話1往復をGCS inputへ退避する。"""
+    if not (os.environ.get("K_SERVICE") or os.environ.get("CLOUDRUN_DATA_MODE")):
+        return
+    try:
+        record_cloudrun_input_event(
+            event_type="chat_exchange",
+            surface=surface,
+            payload={
+                "user_id": str(user_id or "default")[:80],
+                "category": str(category or "")[:80],
+                "response_mode": str(response_mode or "")[:40],
+                "user_message": _redact_chat_log_text(user_message, limit=1200),
+                "assistant_reply": _redact_chat_log_text(assistant_reply, limit=1800),
+                "metadata": metadata or {},
+            },
+        )
+    except Exception as exc:
+        print(f"[CloudRunChatWriteback] 記録スキップ: {exc}")
+
+
 def _record_prompt_feedback_if_available(
     *,
     surface: str,
@@ -7616,6 +7718,7 @@ def _ensure_cloudrun_return_review_schema(conn) -> None:
             "return_review_status": "TEXT DEFAULT 'candidate'",
             "return_review_note": "TEXT DEFAULT ''",
             "return_reviewed_at": "TEXT DEFAULT ''",
+            "return_registered_case_id": "TEXT DEFAULT ''",
         }
         for col, ddl in additions.items():
             if col not in cols:
@@ -7788,6 +7891,347 @@ def _update_cloudrun_return_review_item(
         row = conn.execute(f"SELECT * FROM {table_name} WHERE id = ?", (item_id,)).fetchone()
         conn.commit()
     return _cloudrun_return_item(kind, row)
+
+
+_CLOUDRUN_SCORE_CASE_PREFIX = "cloudrun_score:"
+_CLOUDRUN_EVENT_CASE_PREFIX = "cloudrun_event:"
+_CLOUDRUN_INPUT_EVENTS_CACHE: dict[str, Any] = {"key": "", "expires_at": 0.0, "events": []}
+
+
+def _invalidate_cloudrun_input_events_cache() -> None:
+    _CLOUDRUN_INPUT_EVENTS_CACHE["expires_at"] = 0.0
+    _CLOUDRUN_INPUT_EVENTS_CACHE["events"] = []
+
+
+def _parse_cloudrun_score_case_id(case_id: str) -> int | None:
+    raw = str(case_id or "").strip()
+    if not raw.startswith(_CLOUDRUN_SCORE_CASE_PREFIX):
+        return None
+    try:
+        score_id = int(raw.removeprefix(_CLOUDRUN_SCORE_CASE_PREFIX))
+    except ValueError:
+        return None
+    return score_id if score_id > 0 else None
+
+
+def _parse_cloudrun_event_case_id(case_id: str) -> str:
+    raw = str(case_id or "").strip()
+    if not raw.startswith(_CLOUDRUN_EVENT_CASE_PREFIX):
+        return ""
+    event_id = raw.removeprefix(_CLOUDRUN_EVENT_CASE_PREFIX).strip()
+    return event_id[:120]
+
+
+def _loads_dict(raw: Any) -> dict:
+    if isinstance(raw, dict):
+        return raw
+    if raw in (None, ""):
+        return {}
+    try:
+        parsed = json.loads(str(raw))
+    except Exception:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _load_cloudrun_score_input(score_input_id: int) -> dict | None:
+    if not _CLOUDRUN_RETURN_DB.exists():
+        return None
+    with _connect_cloudrun_return_db() as conn:
+        _ensure_cloudrun_return_review_schema(conn)
+        if not _cloudrun_return_table_exists(conn, "cloudrun_score_inputs"):
+            return None
+        row = conn.execute("SELECT * FROM cloudrun_score_inputs WHERE id = ?", (score_input_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def _cloudrun_score_pending_item(row: dict) -> dict:
+    inputs = _loads_dict(row.get("inputs_json"))
+    result = _loads_dict(row.get("result_json"))
+    created_at = str(row.get("created_at") or "")
+    company_no = str(inputs.get("company_no") or inputs.get("customer_no") or "").strip()
+    company_name = str(inputs.get("company_name") or inputs.get("customer_name") or "").strip()
+    industry = str(
+        row.get("industry_sub")
+        or result.get("industry_sub")
+        or inputs.get("industry_sub")
+        or row.get("industry_major")
+        or result.get("industry_major")
+        or inputs.get("industry_major")
+        or ""
+    ).strip()
+    score = row.get("score")
+    if score in (None, ""):
+        score = result.get("score_base", result.get("score"))
+    return {
+        "id": f"{_CLOUDRUN_SCORE_CASE_PREFIX}{int(row.get('id') or 0)}",
+        "company_no": company_no,
+        "company_name": company_name or "Cloud Run審査入力",
+        "timestamp": created_at,
+        "score": score,
+        "industry": industry,
+        "registration_date": created_at[:10] if len(created_at) >= 10 else "",
+        "estimate_sent_date": created_at[:10] if len(created_at) >= 10 else "",
+        "final_result_date": "",
+        "_source": "cloudrun_score_inputs",
+        "cloudrun_return_id": int(row.get("id") or 0),
+        "cloudrun_event_id": str(row.get("event_id") or ""),
+        "review_status": str(row.get("return_review_status") or "candidate"),
+    }
+
+
+def _cloudrun_score_pending_item_from_event(event: dict) -> dict | None:
+    if event.get("event_type") not in {"score_calculated", "score_full_calculated"}:
+        return None
+    event_id = str(event.get("event_id") or "").strip()
+    if not event_id:
+        return None
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    inputs = payload.get("inputs") if isinstance(payload.get("inputs"), dict) else {}
+    result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
+    if not inputs and not result:
+        return None
+    created_at = str(event.get("ts") or "")
+    company_no = str(inputs.get("company_no") or inputs.get("customer_no") or "").strip()
+    company_name = str(inputs.get("company_name") or inputs.get("customer_name") or "").strip()
+    industry = str(
+        result.get("industry_sub")
+        or inputs.get("industry_sub")
+        or result.get("industry_major")
+        or inputs.get("industry_major")
+        or ""
+    ).strip()
+    return {
+        "id": f"{_CLOUDRUN_EVENT_CASE_PREFIX}{event_id}",
+        "company_no": company_no,
+        "company_name": company_name or "Cloud Run審査入力",
+        "timestamp": created_at,
+        "score": result.get("score_base", result.get("score")),
+        "industry": industry,
+        "registration_date": created_at[:10] if len(created_at) >= 10 else "",
+        "estimate_sent_date": created_at[:10] if len(created_at) >= 10 else "",
+        "final_result_date": "",
+        "_source": "cloudrun_gcs_input",
+        "cloudrun_event_id": event_id,
+        "review_status": "gcs_input",
+    }
+
+
+def _read_recent_cloudrun_input_events_from_gcs(days: int = 14) -> list[dict]:
+    if not (os.environ.get("K_SERVICE") or os.environ.get("CLOUDRUN_PENDING_GCS_ENABLED") == "1"):
+        return []
+    try:
+        from datetime import datetime as _dt, timezone as _timezone, timedelta as _timedelta
+        from google.api_core.exceptions import NotFound  # type: ignore[import-untyped]
+        from google.cloud import storage  # type: ignore[import-untyped]
+        from api import cloudrun_writeback as _cw
+        import time as _time
+
+        bucket_name = _cw._bucket_name()
+        if not bucket_name:
+            return []
+        prefix = os.environ.get("GCS_INPUT_PREFIX", "cloudrun-inputs/").strip("/") or "cloudrun-inputs"
+        today = _dt.now(_timezone.utc).date()
+        cache_key = f"{bucket_name}:{prefix}:{today.isoformat()}:{days}"
+        now_monotonic = _time.monotonic()
+        if (
+            _CLOUDRUN_INPUT_EVENTS_CACHE.get("key") == cache_key
+            and float(_CLOUDRUN_INPUT_EVENTS_CACHE.get("expires_at") or 0.0) > now_monotonic
+        ):
+            return list(_CLOUDRUN_INPUT_EVENTS_CACHE.get("events") or [])
+
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        events: list[dict] = []
+        for offset in range(max(1, min(int(days or 14), 45))):
+            day = today - _timedelta(days=offset)
+            blob = bucket.blob(f"{prefix}/{day.isoformat()}/events.jsonl")
+            try:
+                text = blob.download_as_text()
+            except NotFound:
+                continue
+            except Exception:
+                continue
+            for line in text.splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    event = json.loads(line)
+                except Exception:
+                    continue
+                if isinstance(event, dict):
+                    events.append(event)
+        _CLOUDRUN_INPUT_EVENTS_CACHE.update({
+            "key": cache_key,
+            "expires_at": now_monotonic + float(os.environ.get("CLOUDRUN_PENDING_GCS_CACHE_SECONDS", "30") or 30),
+            "events": events,
+        })
+        return list(events)
+    except Exception as exc:
+        logger.warning("cloudrun input gcs read skipped: %s", exc)
+        return []
+
+
+def _list_cloudrun_score_pending_cases_from_gcs(limit: int = 50) -> list[dict]:
+    events = _read_recent_cloudrun_input_events_from_gcs(days=int(os.environ.get("CLOUDRUN_PENDING_INPUT_DAYS", "14") or 14))
+    if not events:
+        return []
+    registered_event_ids: set[str] = set()
+    for event in events:
+        if event.get("event_type") not in {"case_result_registered", "cloudrun_pending_case_rejected"}:
+            continue
+        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+        for key in ("source_event_id", "cloudrun_event_id"):
+            value = str(payload.get(key) or "").strip()
+            if value:
+                registered_event_ids.add(value)
+        case_id = str(payload.get("case_id") or "").strip()
+        if case_id.startswith(_CLOUDRUN_EVENT_CASE_PREFIX):
+            registered_event_ids.add(case_id.removeprefix(_CLOUDRUN_EVENT_CASE_PREFIX))
+
+    rows: list[dict] = []
+    seen: set[str] = set()
+    for event in reversed(events):
+        event_id = str(event.get("event_id") or "").strip()
+        if not event_id or event_id in seen or event_id in registered_event_ids:
+            continue
+        item = _cloudrun_score_pending_item_from_event(event)
+        if not item:
+            continue
+        seen.add(event_id)
+        rows.append(item)
+        if len(rows) >= limit:
+            break
+    rows.sort(key=lambda item: str(item.get("timestamp") or ""), reverse=True)
+    return rows[:limit]
+
+
+def _list_cloudrun_score_pending_cases(limit: int = 50) -> list[dict]:
+    combined: list[dict] = []
+    seen_event_ids: set[str] = set()
+    if not _CLOUDRUN_RETURN_DB.exists():
+        return _list_cloudrun_score_pending_cases_from_gcs(limit=limit)
+    try:
+        with _connect_cloudrun_return_db() as conn:
+            _ensure_cloudrun_return_review_schema(conn)
+            if not _cloudrun_return_table_exists(conn, "cloudrun_score_inputs"):
+                return _list_cloudrun_score_pending_cases_from_gcs(limit=limit)
+            rows = conn.execute(
+                """
+                SELECT *
+                  FROM cloudrun_score_inputs
+                 WHERE COALESCE(NULLIF(return_review_status, ''), 'candidate') != 'rejected'
+                   AND COALESCE(return_registered_case_id, '') = ''
+                 ORDER BY COALESCE(NULLIF(created_at, ''), '1970-01-01') DESC, id DESC
+                 LIMIT ?
+                """,
+                (max(1, min(int(limit or 50), 200)),),
+            ).fetchall()
+        combined = [_cloudrun_score_pending_item(dict(row)) for row in rows]
+        seen_event_ids = {str(item.get("cloudrun_event_id") or "") for item in combined if item.get("cloudrun_event_id")}
+    except Exception as exc:
+        logger.warning("cloudrun score pending list skipped: %s", exc)
+    for item in _list_cloudrun_score_pending_cases_from_gcs(limit=limit):
+        event_id = str(item.get("cloudrun_event_id") or "")
+        if event_id and event_id in seen_event_ids:
+            continue
+        combined.append(item)
+    combined.sort(key=lambda item: str(item.get("timestamp") or ""), reverse=True)
+    return combined[: max(1, min(int(limit or 50), 200))]
+
+
+def _promote_cloudrun_score_input_to_pending_case(score_input_id: int) -> str | None:
+    row = _load_cloudrun_score_input(score_input_id)
+    if not row:
+        return None
+    if str(row.get("return_review_status") or "candidate") == "rejected":
+        return None
+
+    import datetime as _dt
+    from data_cases import save_case_log
+
+    inputs = _loads_dict(row.get("inputs_json"))
+    result = _loads_dict(row.get("result_json"))
+    created_at = str(row.get("created_at") or "")
+    case_payload = {
+        **inputs,
+        "timestamp": created_at or _dt.datetime.now().isoformat(),
+        "registration_date": created_at[:10] if len(created_at) >= 10 else _dt.datetime.now().strftime("%Y-%m-%d"),
+        "company_no": inputs.get("company_no") or inputs.get("customer_no") or "",
+        "company_name": inputs.get("company_name") or inputs.get("customer_name") or "Cloud Run審査入力",
+        "industry_major": row.get("industry_major") or result.get("industry_major") or inputs.get("industry_major") or "",
+        "industry_sub": row.get("industry_sub") or result.get("industry_sub") or inputs.get("industry_sub") or "",
+        "sales_dept": inputs.get("sales_dept") or "未設定",
+        "inputs": inputs,
+        "result": result,
+        "final_status": "未登録",
+        "_source": "cloudrun_score_inputs",
+        "cloudrun_return_id": score_input_id,
+        "cloudrun_event_id": row.get("event_id") or "",
+        "cloudrun_source_case_id": row.get("case_id") or "",
+    }
+    new_case_id = save_case_log(case_payload)
+    if not new_case_id:
+        return None
+
+    try:
+        with _connect_cloudrun_return_db() as conn:
+            _ensure_cloudrun_return_review_schema(conn)
+            conn.execute(
+                """
+                UPDATE cloudrun_score_inputs
+                   SET return_review_status = 'approved',
+                       return_review_note = TRIM(COALESCE(return_review_note, '') || ' result_registered_case_id=' || ?),
+                       return_reviewed_at = CURRENT_TIMESTAMP,
+                       return_registered_case_id = ?
+                 WHERE id = ?
+                """,
+                (new_case_id, new_case_id, score_input_id),
+            )
+            conn.commit()
+    except Exception as exc:
+        logger.warning("cloudrun score registered marker skipped: %s", exc)
+    return str(new_case_id)
+
+
+def _reject_cloudrun_score_pending_case(case_id: str) -> bool:
+    score_id = _parse_cloudrun_score_case_id(case_id)
+    if score_id is None or not _CLOUDRUN_RETURN_DB.exists():
+        return False
+    try:
+        with _connect_cloudrun_return_db() as conn:
+            _ensure_cloudrun_return_review_schema(conn)
+            cur = conn.execute(
+                """
+                UPDATE cloudrun_score_inputs
+                   SET return_review_status = 'rejected',
+                       return_review_note = TRIM(COALESCE(return_review_note, '') || ' rejected_from_result_register'),
+                       return_reviewed_at = CURRENT_TIMESTAMP
+                 WHERE id = ?
+                   AND COALESCE(return_registered_case_id, '') = ''
+                """,
+                (score_id,),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+    except Exception as exc:
+        logger.warning("cloudrun score pending reject skipped: %s", exc)
+        return False
+
+
+def _reject_cloudrun_event_pending_case(case_id: str) -> bool:
+    event_id = _parse_cloudrun_event_case_id(case_id)
+    if not event_id:
+        return False
+    result = record_cloudrun_input_event(
+        event_type="cloudrun_pending_case_rejected",
+        surface="cases_register",
+        payload={"case_id": case_id, "source_event_id": event_id},
+    )
+    if result.get("ok") is True:
+        _invalidate_cloudrun_input_events_cache()
+        return True
+    return False
 
 
 def _load_human_response_feedback(limit: int = 80) -> list[dict]:
@@ -8930,7 +9374,7 @@ def _build_lease_intelligence_knowledge_connection(vault: Path | None) -> dict[s
 
 
 @app.get("/api/lease-intelligence/dialogue/state")
-def get_lease_intelligence_dialogue_state():
+def get_lease_intelligence_dialogue_state(since: Optional[str] = None):
     from lease_intelligence_dialogue import DIALOGUE_USER_ID
     from lease_intelligence_mind import (
         load_lease_intelligence_mind,
@@ -8947,7 +9391,7 @@ def get_lease_intelligence_dialogue_state():
             "indexed_notes": 0,
             "knowledge_available": bool(knowledge_connection.get("case_count") or knowledge_connection.get("vector_chunks") or knowledge_connection.get("markdown_notes")),
         }
-        messages = get_recent_messages(DIALOGUE_USER_ID, limit=80)
+        messages = get_recent_messages(DIALOGUE_USER_ID, limit=80, since=since)
         return {
             "state": {**summary, "knowledge_connection": knowledge_connection},
             "messages": messages,
@@ -8956,7 +9400,7 @@ def get_lease_intelligence_dialogue_state():
     # GET は読み取り専用。RAG検索と mind.json 更新は対話POST側で行われるため、
     # ページロードごとの検索・書き込み（約1.5秒）を避けて保存済み状態を返す。
     summary = self_state_summary(load_lease_intelligence_mind(vault))
-    messages = get_recent_messages(DIALOGUE_USER_ID, limit=80)
+    messages = get_recent_messages(DIALOGUE_USER_ID, limit=80, since=since)
     return {
         "state": {**summary, "knowledge_connection": knowledge_connection},
         "messages": messages,
@@ -8976,7 +9420,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
         source="lease_intelligence_dialogue",
     )
 
-    from api.chat_memory import call_gemini_with_tools, get_recent_messages, save_message
+    from api.chat_memory import call_gemini_chat, call_gemini_with_tools, get_recent_messages, save_message
     from lease_intelligence_dialogue import (
         DIALOGUE_USER_ID,
         append_dialogue_note,
@@ -8993,8 +9437,6 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     from lease_news_digest import find_vault
 
     vault = find_vault()
-    if not vault:
-        raise HTTPException(status_code=503, detail="Obsidian Vaultが見つかりません")
 
     # 前回約束した調査タスクがあれば冒頭に報告する
     pending = get_pending_tasks()
@@ -9034,6 +9476,67 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
             max_chars_per_message=int(dialogue_budget["history_chars_per_message"]),
             total_budget=int(dialogue_budget["history_total_budget"]),
         )
+    user_personal_memory_context, user_personal_memory_payload = _build_user_personal_memory_prompt_block()
+
+    if not vault:
+        from lease_finance_knowledge import build_lease_finance_knowledge_block
+
+        if req.file_type == "image" and req.file_content:
+            full_message = (
+                "[画像添付あり。ただしObsidian/Vault未接続フォールバック中のため、画像解析は使わず、"
+                "ユーザー本文から答える。]\n\n"
+                + full_message
+            )
+        fallback_prompt = f"""あなたはリース知性体「紫苑」です。
+現在 Obsidian Vault に接続できないため、保存済みノート・過去メモ・専用ツールは使えません。
+ただし、リース審査・補助金・税制・会計・資金繰りについて、学習済みの一般知識と以下の基礎知識で答えてください。
+
+回答方針:
+- 「Obsidianが見つからないので答えられない」で終えない。
+- 最新の公募要領・公式情報で変わる制度名、要件、補助率、期限は断定せず「要確認」と明記する。
+- 補助金の質問では、制度名だけでなく、対象設備、契約/発注時期、採択前提の資金繰り、未採択時の代替策まで見る。
+- Vault未接続で根拠ノートを確認できない場合は、その制約を短く述べたうえで実務上の確認順を返す。
+- 5〜7行程度で、結論から短く答える。
+
+{build_lease_finance_knowledge_block()}
+{user_personal_memory_context}
+"""
+        try:
+            reply = call_gemini_chat(fallback_prompt, history, full_message).strip()
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"対話AIへ接続できません: {str(exc)[:300]}")
+        save_message(DIALOGUE_USER_ID, "user", message)
+        save_message(DIALOGUE_USER_ID, "assistant", reply)
+        _record_cloudrun_chat_exchange(
+            surface="lease_intelligence_dialogue",
+            user_id=DIALOGUE_USER_ID,
+            user_message=message,
+            assistant_reply=reply,
+            category="no_vault_fallback",
+            response_mode="shion",
+            metadata={"obsidian_available": False, "context_mode": dialogue_mode},
+        )
+        return {
+            "reply": reply,
+            "state": {
+                "dominant_mood": "Vault未接続",
+                "knowledge_available": False,
+                "knowledge_connection": {"source": "no_vault_fallback"},
+            },
+            "note_path": "",
+            "knowledge_refs": [],
+            "personal_memory_capture": personal_memory_capture,
+            "user_personal_memory": {
+                "used": bool(user_personal_memory_payload.get("block")),
+                "refs": user_personal_memory_payload.get("refs", [])[:6],
+                "line_count": user_personal_memory_payload.get("line_count", 0),
+            },
+            "long_input_mode": compact_dialogue,
+            "context_mode": dialogue_mode,
+            "history_messages_sent": len(history),
+            "obsidian_available": False,
+        }
+
     system_prompt, state = build_dialogue_context(
         vault,
         full_message,
@@ -9041,6 +9544,8 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
         compact=compact_dialogue,
         mode=dialogue_mode,
     )
+    if user_personal_memory_context:
+        system_prompt += user_personal_memory_context
     consultation_ids: list[str] = []
 
     def _tool_executor(name: str, args: dict) -> object:
@@ -9072,6 +9577,15 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
 
     save_message(DIALOGUE_USER_ID, "user", message)
     save_message(DIALOGUE_USER_ID, "assistant", reply)
+    _record_cloudrun_chat_exchange(
+        surface="lease_intelligence_dialogue",
+        user_id=DIALOGUE_USER_ID,
+        user_message=message,
+        assistant_reply=reply,
+        category="dialogue",
+        response_mode="shion",
+        metadata={"obsidian_available": True, "context_mode": dialogue_mode},
+    )
     note_path = append_dialogue_note(vault, message, reply)
     if req.caller == "mebuki":
         try:
@@ -9174,6 +9688,11 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
         "note_path": note_path,
         "knowledge_refs": rag_knowledge_refs,
         "personal_memory_capture": personal_memory_capture,
+        "user_personal_memory": {
+            "used": bool(user_personal_memory_payload.get("block")),
+            "refs": user_personal_memory_payload.get("refs", [])[:6],
+            "line_count": user_personal_memory_payload.get("line_count", 0),
+        },
         "long_input_mode": compact_dialogue,
         "context_mode": dialogue_mode,
         "history_messages_sent": len(history),
@@ -9438,6 +9957,15 @@ def post_chat(req: ChatRequest):
                     f"つん子さん: {yanami_comment or '保存先が詰まると、改善以前に私の胃が詰まります。'}"
                 )
             save_message(req.user_id, "assistant", reply)
+            _record_cloudrun_chat_exchange(
+                surface="next_chat_improvement",
+                user_id=req.user_id,
+                user_message=req.message,
+                assistant_reply=reply,
+                category="improvement",
+                response_mode=req.response_mode,
+                metadata={"improvement_saved": note_result.get("status") == "saved"},
+            )
             total = get_message_count(req.user_id)
             return {
                 "reply": reply,
@@ -9547,6 +10075,15 @@ def post_chat(req: ChatRequest):
             except Exception as _news_e:
                 reply = f"ニュースの要約に失敗しました: {_news_e}"
             save_message(req.user_id, "assistant", reply)
+            _record_cloudrun_chat_exchange(
+                surface="next_chat_news",
+                user_id=req.user_id,
+                user_message=req.message,
+                assistant_reply=reply,
+                category="news_summarize",
+                response_mode=req.response_mode,
+                metadata={"prefecture": req.prefecture or "", "industry": req.industry or ""},
+            )
             total = get_message_count(req.user_id)
             return {"reply": reply, "total_messages": total, "lease_news_focus": news_focus, "lease_news_brief": news_brief, "lease_news_actions": news_actions}
 
@@ -9642,6 +10179,15 @@ def post_chat(req: ChatRequest):
                 )
             save_message(req.user_id, "user", req.message)
             save_message(req.user_id, "assistant", reply)
+            _record_cloudrun_chat_exchange(
+                surface="next_chat_general",
+                user_id=req.user_id,
+                user_message=req.message,
+                assistant_reply=reply,
+                category="general",
+                response_mode=req.response_mode,
+                metadata={"context_mode": context_mode},
+            )
             if not is_general_response_mode:
                 try:
                     from api.shion_experience_loop import record_experience_event
@@ -9933,6 +10479,19 @@ def post_chat(req: ChatRequest):
             )
         save_message(req.user_id, "user", req.message)
         save_message(req.user_id, "assistant", reply)
+        _record_cloudrun_chat_exchange(
+            surface="next_chat_rag",
+            user_id=req.user_id,
+            user_message=req.message,
+            assistant_reply=reply,
+            category=question_category,
+            response_mode=req.response_mode,
+            metadata={
+                "context_mode": context_mode,
+                "knowledge_refs": len(rag_refs),
+                "improvement_mode": bool(_is_improvement_msg),
+            },
+        )
         if not is_general_response_mode:
             try:
                 from api.shion_experience_loop import record_experience_event
@@ -10068,11 +10627,11 @@ def post_chat(req: ChatRequest):
 
 
 @app.get("/api/chat/history")
-def get_chat_history(user_id: str = "default", limit: int = 50):
+def get_chat_history(user_id: str = "default", limit: int = 50, since: Optional[str] = None):
     """汎用チャット履歴を取得する。"""
     try:
         from api.chat_memory import get_recent_messages
-        messages = get_recent_messages(user_id, limit=min(limit, 200))
+        messages = get_recent_messages(user_id, limit=min(limit, 200), since=since)
         return {"user_id": user_id, "count": len(messages), "messages": messages}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

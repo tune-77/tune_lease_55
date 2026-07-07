@@ -93,7 +93,11 @@ def _is_likely_personal_memory(message: str) -> bool:
     text = str(message or "").strip()
     if not text or len(text) > 1200:
         return False
+    if re.fullmatch(r"(?:僕の|私の|俺の|うちの)?(?:犬|愛犬|ペット)(?:の)?名前(?:は|が|を)?\s*", text):
+        return False
     if any(term in text for term in _REMEMBER_TERMS):
+        return True
+    if _extract_dog_name(text):
         return True
 
     # 疑問文フィルタ（明示的記憶指示がある場合は除外）
@@ -131,6 +135,22 @@ def _confidence_for_memory(message: str, *, dog_name: str = "") -> str:
 
 
 _QUESTION_WORDS = {"何だっけ", "なんだっけ", "わかるかい", "なに", "なんて", "なんだろう", "なんだ", "何", "なん"}
+_INVALID_DOG_NAME_TOKENS = {
+    "",
+    "は",
+    "が",
+    "を",
+    "の",
+    "です",
+    "だ",
+    "だっけ",
+    "かな",
+    "何",
+    "なに",
+    "なん",
+    "何だっけ",
+    "なんだっけ",
+}
 
 
 def _extract_dog_name(message: str) -> str:
@@ -144,7 +164,12 @@ def _extract_dog_name(message: str) -> str:
         if m:
             name = m.group(1).strip(" 　。、『』「」\"'")
             name = re.sub(r"(です|だよ|だ|ちゃん|くん)$", "", name).strip()
-            if name and name not in {"犬", "愛犬", "ペット", "名前"} and name not in _QUESTION_WORDS:
+            if (
+                name
+                and name not in {"犬", "愛犬", "ペット", "名前"}
+                and name not in _QUESTION_WORDS
+                and name not in _INVALID_DOG_NAME_TOKENS
+            ):
                 return name
     return ""
 

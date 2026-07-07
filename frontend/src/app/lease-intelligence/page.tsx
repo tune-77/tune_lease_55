@@ -95,6 +95,78 @@ const DEMO_GREETING = `はじめまして。リース知性体、紫苑です。
 今日は、使うほど賢くなるリース審査プラットフォームをご覧ください。`;
 
 const DIALOGUE_RETRY_DELAYS_MS = [1200, 2500, 4000];
+const DIALOGUE_LOCAL_HISTORY_KEY = "lease-intelligence-dialogue-local-history";
+const DIALOGUE_CLEARED_AT_KEY = "lease-intelligence-dialogue-cleared-at";
+const DIALOGUE_MAX_DISPLAY_MESSAGES = 80;
+
+const storageAvailable = () => typeof window !== "undefined" && Boolean(window.localStorage);
+
+const messageTime = (message: Pick<Message, "created_at">) => {
+  const parsed = Date.parse(message.created_at || "");
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const todayStartTime = () => {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  return start.getTime();
+};
+
+const getDialogueClearedAt = () => {
+  if (!storageAvailable()) return 0;
+  const parsed = Number(window.localStorage.getItem(DIALOGUE_CLEARED_AT_KEY) || "0");
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const dialogueDisplaySince = () => Math.max(todayStartTime(), getDialogueClearedAt());
+const dialogueDisplaySinceIso = () => new Date(dialogueDisplaySince()).toISOString();
+
+const loadLocalDialogueMessages = (): Message[] => {
+  if (!storageAvailable()) return [];
+  try {
+    const raw = window.localStorage.getItem(DIALOGUE_LOCAL_HISTORY_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.role && item?.content) : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveLocalDialogueMessages = (messages: Message[]) => {
+  if (!storageAvailable()) return;
+  const since = dialogueDisplaySince();
+  const filtered = messages
+    .filter((message) => messageTime(message) >= since)
+    .slice(-DIALOGUE_MAX_DISPLAY_MESSAGES);
+  window.localStorage.setItem(DIALOGUE_LOCAL_HISTORY_KEY, JSON.stringify(filtered));
+};
+
+const dialogueSignature = (message: Message) =>
+  `${message.role}:${String(message.content || "").replace(/\s+/g, " ").trim().slice(0, 500)}`;
+
+const mergeDialogueMessages = (serverMessages: Message[], localMessages: Message[]) => {
+  const since = dialogueDisplaySince();
+  const merged: Message[] = [];
+  const seen = new Map<string, number[]>();
+  for (const message of [...serverMessages, ...localMessages]) {
+    const time = messageTime(message);
+    if (!message || time < since) continue;
+    const signature = dialogueSignature(message);
+    const duplicateTimes = seen.get(signature) || [];
+    if (duplicateTimes.some((previous) => Math.abs(previous - time) < 120_000)) continue;
+    seen.set(signature, [...duplicateTimes, time]);
+    merged.push(message);
+  }
+  return merged
+    .sort((a, b) => messageTime(a) - messageTime(b))
+    .slice(-DIALOGUE_MAX_DISPLAY_MESSAGES);
+};
+
+const clearVisibleDialogueMessages = () => {
+  if (!storageAvailable()) return;
+  window.localStorage.setItem(DIALOGUE_CLEARED_AT_KEY, String(Date.now()));
+  window.localStorage.removeItem(DIALOGUE_LOCAL_HISTORY_KEY);
+};
 
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
@@ -777,10 +849,14 @@ export default function LeaseIntelligencePage() {
 
   // ── Init ─────────────────────────────────────────────────────────────────
   useEffect(() => {
-    apiClient.get("/api/lease-intelligence/dialogue/state")
+    apiClient.get("/api/lease-intelligence/dialogue/state", {
+      params: { since: dialogueDisplaySinceIso() },
+    })
       .then((res) => {
         setState(res.data?.state || {});
-        setMessages(res.data?.messages || []);
+        const nextMessages = mergeDialogueMessages(res.data?.messages || [], loadLocalDialogueMessages());
+        setMessages(nextMessages);
+        saveLocalDialogueMessages(nextMessages);
       })
       .catch(() => setError("リース知性体の状態を読み込めませんでした。"))
       .finally(() => setInitializing(false));
@@ -818,16 +894,18 @@ export default function LeaseIntelligencePage() {
 
   const showDemoGreeting = () => {
     const now = Date.now();
+    const demoMessage: Message = {
+      id: now,
+      role: "assistant",
+      content: DEMO_GREETING,
+      created_at: new Date().toISOString(),
+    };
     setError("");
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: now,
-        role: "assistant",
-        content: DEMO_GREETING,
-        created_at: new Date().toISOString(),
-      },
-    ]);
+    setMessages((prev) => {
+      const next = [...prev, demoMessage];
+      saveLocalDialogueMessages(next);
+      return next;
+    });
     speakText(DEMO_GREETING);
     window.setTimeout(() => scrollToLatest("smooth"), 50);
   };
@@ -841,14 +919,19 @@ export default function LeaseIntelligencePage() {
     setFileError("");
     const currentFile = attachedFile;
     setAttachedFile(null);
-    setMessages((prev) => [...prev, {
+    const userMessage: Message = {
       id: Date.now(),
       role: "user",
       content: text || "（ファイルを添付しました）",
       created_at: new Date().toISOString(),
       attachedFileName: currentFile?.name,
       attachedFileType: currentFile?.type,
-    }]);
+    };
+    setMessages((prev) => {
+      const next = [...prev, userMessage];
+      saveLocalDialogueMessages(next);
+      return next;
+    });
     setLoading(true);
     try {
       const payload: Record<string, string> = { message: text || "添付ファイルの内容を分析してください。" };
@@ -863,7 +946,7 @@ export default function LeaseIntelligencePage() {
       const reply: string = res.data?.reply || "返答を生成できませんでした。";
       const knowledgeRefs = res.data?.knowledge_refs as KnowledgeRef[] | undefined;
       const longInputMode = Boolean(res.data?.long_input_mode);
-      setMessages((prev) => [...prev, {
+      const assistantMessage: Message = {
         id: Date.now() + 1,
         role: "assistant",
         content: reply,
@@ -871,7 +954,12 @@ export default function LeaseIntelligencePage() {
         knowledge_refs: knowledgeRefs?.length ? knowledgeRefs : undefined,
         query: text,
         longInputMode,
-      }]);
+      };
+      setMessages((prev) => {
+        const next = [...prev, assistantMessage];
+        saveLocalDialogueMessages(next);
+        return next;
+      });
       speakText(reply);
     } catch (err) {
       const detail = getDialogueErrorDetail(err);
@@ -890,11 +978,12 @@ export default function LeaseIntelligencePage() {
   // ── Clear ─────────────────────────────────────────────────────────────────
   const clearHistory = async () => {
     if (!window.confirm("画面の対話履歴を削除しますか？ Obsidianの対話記録は保持されます。")) return;
+    clearVisibleDialogueMessages();
+    setMessages([]);
     try {
       await apiClient.delete("/api/lease-intelligence/dialogue/history");
-      setMessages([]);
     } catch {
-      setError("履歴を削除できませんでした。APIの状態を確認してください。");
+      setError("画面履歴は削除しました。サーバー側の履歴削除は後で再試行してください。");
     }
   };
 

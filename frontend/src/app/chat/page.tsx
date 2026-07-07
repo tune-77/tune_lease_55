@@ -3,6 +3,13 @@
 import Link from "next/link";
 import React, { useState, useEffect, useRef } from "react";
 import { apiClient } from "@/lib/api";
+import {
+  clearVisibleChatHistory,
+  getChatHistorySinceIso,
+  loadLocalChatHistory,
+  mergeChatHistories,
+  saveLocalChatHistory,
+} from "@/lib/chatLocalHistory";
 import { Send, Trash2, Loader2, MessageCircle, Bot, User, NotebookPen, Mic, Network, Database, ChevronDown, ChevronUp, Lightbulb, Volume2, VolumeX, ArrowLeft, ThumbsUp, ThumbsDown } from "lucide-react";
 import { extractPrefectureFromText, normalizePrefecture } from "@/lib/prefecture";
 import { formatLocalDateKey } from "@/lib/date";
@@ -304,11 +311,13 @@ export default function ChatPage() {
     setHistoryLoading(true);
     try {
       const res = await apiClient.get("/api/chat/history", {
-        params: { user_id: userId, limit: 50 },
+        params: { user_id: userId, limit: 50, since: getChatHistorySinceIso(userId) },
       });
-      setMessages(res.data.messages || []);
+      const nextMessages = mergeChatHistories(res.data.messages || [], loadLocalChatHistory(userId), userId);
+      setMessages(nextMessages);
+      saveLocalChatHistory(userId, nextMessages);
     } catch {
-      // 履歴取得失敗は無視して空スタートにする
+      setMessages(loadLocalChatHistory(userId));
     } finally {
       setHistoryLoading(false);
     }
@@ -349,7 +358,11 @@ export default function ChatPage() {
       content: text,
       created_at: new Date().toISOString(),
     };
-    setMessages((prev) => [...prev, optimisticUser]);
+    setMessages((prev) => {
+      const next = [...prev, optimisticUser];
+      saveLocalChatHistory(userId, next);
+      return next;
+    });
     setLoading(true);
     try {
       const res = await apiClient.post("/api/chat", {
@@ -366,28 +379,32 @@ export default function ChatPage() {
         setLeaseNewsBrief(res.data.lease_news_brief);
       }
       const reply = res.data.reply as string;
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now() + 1,
-          user_id: userId,
-          role: "assistant",
-          content: reply,
-          created_at: new Date().toISOString(),
-        },
-      ]);
+      const assistantMessage: ChatMessage = {
+        id: Date.now() + 1,
+        user_id: userId,
+        role: "assistant",
+        content: reply,
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => {
+        const next = [...prev, assistantMessage];
+        saveLocalChatHistory(userId, next);
+        return next;
+      });
       speakText(reply);
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now() + 1,
-          user_id: userId,
-          role: "assistant",
-          content: "エラーが発生しました。もう一度お試しください。",
-          created_at: new Date().toISOString(),
-        },
-      ]);
+      const assistantMessage: ChatMessage = {
+        id: Date.now() + 1,
+        user_id: userId,
+        role: "assistant",
+        content: "エラーが発生しました。もう一度お試しください。",
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => {
+        const next = [...prev, assistantMessage];
+        saveLocalChatHistory(userId, next);
+        return next;
+      });
     } finally {
       setLoading(false);
     }
@@ -404,7 +421,11 @@ export default function ChatPage() {
       content: text,
       created_at: new Date().toISOString(),
     };
-    setMessages((prev) => [...prev, optimisticUser]);
+    setMessages((prev) => {
+      const next = [...prev, optimisticUser];
+      saveLocalChatHistory(userId, next);
+      return next;
+    });
     setInput("");
     setLoading(true);
 
@@ -430,23 +451,29 @@ export default function ChatPage() {
         content: res.data.reply,
         created_at: new Date().toISOString(),
       };
-      setMessages((prev) => [...prev, assistantMsg]);
+      setMessages((prev) => {
+        const next = [...prev, assistantMsg];
+        saveLocalChatHistory(userId, next);
+        return next;
+      });
       speakText(res.data.reply as string);
       if (improvementMode && res.data.improvement_saved) {
         setSaveToast("改善メモに登録しました");
         setTimeout(() => setSaveToast(null), 2000);
       }
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now() + 1,
-          user_id: userId,
-          role: "assistant",
-          content: "エラーが発生しました。もう一度お試しください。",
-          created_at: new Date().toISOString(),
-        },
-      ]);
+      const assistantMsg: ChatMessage = {
+        id: Date.now() + 1,
+        user_id: userId,
+        role: "assistant",
+        content: "エラーが発生しました。もう一度お試しください。",
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => {
+        const next = [...prev, assistantMsg];
+        saveLocalChatHistory(userId, next);
+        return next;
+      });
     } finally {
       setLoading(false);
     }
@@ -533,12 +560,14 @@ export default function ChatPage() {
   };
 
   const clearHistory = async () => {
-    if (!confirm("会話履歴を全て削除しますか？")) return;
+    if (!confirm("画面の会話履歴を消しますか？")) return;
+    clearVisibleChatHistory(userId);
+    setMessages([]);
     try {
       await apiClient.delete("/api/chat/history", { params: { user_id: userId } });
-      setMessages([]);
     } catch {
-      alert("削除に失敗しました");
+      setSaveToast("画面履歴を消しました");
+      setTimeout(() => setSaveToast(null), 2000);
     }
   };
 
