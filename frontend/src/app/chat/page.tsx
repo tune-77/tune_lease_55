@@ -196,6 +196,7 @@ export default function ChatPage() {
   const [newsPrefectureReady, setNewsPrefectureReady] = useState(false);
   const [feedbackGiven, setFeedbackGiven] = useState<Record<number, "shion_like" | "not_shion">>({});
   const [speechEnabled, setSpeechEnabled] = useState(true);
+  const [speaking, setSpeaking] = useState(false);
   const messageListRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
@@ -207,9 +208,33 @@ export default function ChatPage() {
     if (!speechEnabled || typeof window === "undefined" || !window.speechSynthesis) return;
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = "ja-JP";
+    utter.onstart = () => setSpeaking(true);
+    utter.onend = () => setSpeaking(false);
+    utter.onerror = () => setSpeaking(false);
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utter);
   };
+
+  const stopSpeech = () => {
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    setSpeaking(false);
+  };
+
+  const toggleSpeech = () => {
+    if (speaking) {
+      stopSpeech();
+      return;
+    }
+    setSpeechEnabled((enabled) => {
+      const next = !enabled;
+      if (!next) stopSpeech();
+      return next;
+    });
+  };
+
+  useEffect(() => () => stopSpeech(), []);
 
   const scrollToBottom = () => {
     const el = messageListRef.current;
@@ -1023,15 +1048,17 @@ export default function ChatPage() {
           </button>
           <button
             type="button"
-            onClick={() => setSpeechEnabled((v) => !v)}
-            title={speechEnabled ? "音声読み上げON（クリックでOFF）" : "音声読み上げOFF（クリックでON）"}
+            onClick={toggleSpeech}
+            title={speaking ? "読み上げ停止" : speechEnabled ? "音声読み上げON（クリックでOFF）" : "音声読み上げOFF（クリックでON）"}
             className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors flex-shrink-0 ${
-              speechEnabled
+              speaking
+                ? "bg-rose-600 text-white animate-pulse"
+                : speechEnabled
                 ? "bg-blue-500 text-white shadow-sm"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
           >
-            {speechEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            {speaking ? <VolumeX className="w-4 h-4" /> : speechEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
           </button>
           <button
             onClick={sendMessage}
