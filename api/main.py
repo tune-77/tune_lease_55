@@ -7097,6 +7097,26 @@ class ShionScreeningReviewFeedbackRequest(BaseModel):
     user_feedback: Literal["useful", "needs_fix", "wrong"]
 
 
+class ScreeningExperienceCaseRequest(BaseModel):
+    demo_case_id: str = ""
+    source_case_id: str = ""
+    company_name: str
+    period: str = ""
+    industry_major: str = ""
+    industry_sub: str = ""
+    sales_dept: str = ""
+    score: Optional[float] = None
+    decision: str = ""
+    outcome: str = ""
+    similarity: str = ""
+    action_taken: str = ""
+    lesson: str = ""
+    difference: str = ""
+    source: str = "manual"
+    form_snapshot: dict = Field(default_factory=dict)
+    result_snapshot: dict = Field(default_factory=dict)
+
+
 class CloudRunReturnReviewRequest(BaseModel):
     review_status: Literal["approved", "held", "rejected"]
     note: str = ""
@@ -7682,6 +7702,224 @@ def _update_shion_screening_review_feedback(review_id: int, user_feedback: str) 
         if cur.rowcount <= 0:
             raise HTTPException(status_code=404, detail="review not found")
     return {"id": review_id, "user_feedback": normalized}
+
+
+_SCREENING_EXPERIENCE_DEMO_SEEDS: list[dict[str, Any]] = [
+    {
+        "demo_case_id": "stable-manufacturing",
+        "company_name": "柴犬精密工業",
+        "period": "2025年上期",
+        "industry_major": "E 製造業",
+        "industry_sub": "24 金属製品製造業",
+        "score": 82.4,
+        "decision": "承認",
+        "outcome": "成約・延滞なし",
+        "similarity": "既存メイン先、工作機械更新、黒字基調、自己資本厚め",
+        "action_taken": "受注増加の根拠資料と既存機の稼働状況を添付し、通常承認で稟議化。",
+        "lesson": "標準承認でも、返済原資と設備用途を一文で残すと審査説明が安定した。",
+        "difference": "過去事例は受注先が固定的。今回デモは受注増の説明を営業メモで補う必要がある。",
+        "source": "demo_seed",
+    },
+    {
+        "demo_case_id": "stable-manufacturing",
+        "company_name": "ビーグル加工",
+        "period": "2024年下期",
+        "industry_major": "E 製造業",
+        "industry_sub": "24 金属製品製造業",
+        "score": 76.8,
+        "decision": "条件付き承認",
+        "outcome": "成約・初回検収完了",
+        "similarity": "加工設備の更改、既存取引あり、物件保全が見やすい",
+        "action_taken": "見積・型式・設置場所の確認を条件に、設備更新目的を承認理由へ明記。",
+        "lesson": "物件が強い案件は、財務だけでなく回収可能性を押さえると通しやすい。",
+        "difference": "過去事例は非メイン先。今回デモはメイン先なので銀行接点を安心材料にできる。",
+        "source": "demo_seed",
+    },
+    {
+        "demo_case_id": "borderline-transport",
+        "company_name": "ハスキー運輸",
+        "period": "2025年夏",
+        "industry_major": "H 運輸業・郵便業",
+        "industry_sub": "44 道路貨物運送業",
+        "score": 63.2,
+        "decision": "条件付き承認",
+        "outcome": "成約・採算は維持",
+        "similarity": "利益率薄め、増車、競合あり、非メイン先",
+        "action_taken": "燃料サーチャージ契約、主要荷主との配送継続確認、競合金利との差分説明を条件化。",
+        "lesson": "運送業の境界案件は、車両価値よりも運賃改定・荷主継続・人員確保を先に確認する。",
+        "difference": "過去事例は既存荷主比率が高かった。今回デモは新規ルート分の採算確認が重い。",
+        "source": "demo_seed",
+    },
+    {
+        "demo_case_id": "borderline-transport",
+        "company_name": "ダックス物流",
+        "period": "2024年秋",
+        "industry_major": "H 運輸業・郵便業",
+        "industry_sub": "44 道路貨物運送業",
+        "score": 58.7,
+        "decision": "見送り",
+        "outcome": "競合へ流出",
+        "similarity": "増車理由あり、競合金利あり、銀行支援が弱い",
+        "action_taken": "燃料費上昇時の資金繰り表と運転手確保計画を依頼したが、資料不足で見送り。",
+        "lesson": "競合に急かされる案件ほど、資料不足のまま金利で追うと説明責任が残らない。",
+        "difference": "今回デモは返済履歴が良好なので、資料が揃えば条件付き承認の余地がある。",
+        "source": "demo_seed",
+    },
+    {
+        "demo_case_id": "watch-service-new",
+        "company_name": "プードルフード",
+        "period": "2025年春",
+        "industry_major": "M 宿泊業・飲食サービス業",
+        "industry_sub": "76 飲食店",
+        "score": 46.5,
+        "decision": "条件再設計",
+        "outcome": "保証追加後に小口で成約",
+        "similarity": "新規先、出店設備、自己資本薄め、厨房機器",
+        "action_taken": "初期投資を圧縮し、保証人追加・自己資金投入・厨房機器のみの小口化で再審議。",
+        "lesson": "飲食新規は一括で通すより、投資範囲を絞って撤退時損失を小さくする方が現実的。",
+        "difference": "過去事例は既存店の売上実績があった。今回デモは新店舗計画の根拠確認がより重要。",
+        "source": "demo_seed",
+    },
+    {
+        "demo_case_id": "watch-service-new",
+        "company_name": "コーギーカフェ",
+        "period": "2024年冬",
+        "industry_major": "M 宿泊業・飲食サービス業",
+        "industry_sub": "76 飲食店",
+        "score": 39.8,
+        "decision": "否決",
+        "outcome": "自己資金不足で出店延期",
+        "similarity": "新規開拓、赤字、銀行支援弱め、内装設備比率が高い",
+        "action_taken": "撤退時の物件処分価値が弱く、売上計画も未検証だったため否決。",
+        "lesson": "内装・造作比率が高い飲食案件は、設備の再販価値だけでは保全になりにくい。",
+        "difference": "今回デモは厨房機器も含むため、リース対象を再販可能な設備に絞れば再検討できる。",
+        "source": "demo_seed",
+    },
+]
+
+
+def _ensure_screening_experience_cases_table(seed_demo: bool = True) -> None:
+    from api.db_connection import ensure_schema
+
+    ensure_schema()
+    if seed_demo:
+        _seed_screening_experience_demo_cases()
+
+
+def _seed_screening_experience_demo_cases() -> None:
+    ph = placeholder()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        for seed in _SCREENING_EXPERIENCE_DEMO_SEEDS:
+            cur.execute(
+                f"""
+                SELECT id FROM screening_experience_cases
+                 WHERE demo_case_id = {ph}
+                   AND company_name = {ph}
+                   AND source = {ph}
+                 LIMIT 1
+                """,
+                (seed["demo_case_id"], seed["company_name"], "demo_seed"),
+            )
+            if cur.fetchone():
+                continue
+            _insert_screening_experience_case(cur, seed)
+
+
+def _insert_screening_experience_case(cur: Any, payload: dict[str, Any]) -> int:
+    import json as _json
+
+    ph = placeholder()
+    values = (
+        str(payload.get("demo_case_id") or "")[:120],
+        str(payload.get("source_case_id") or "")[:160],
+        str(payload.get("company_name") or "")[:180],
+        str(payload.get("period") or "")[:80],
+        str(payload.get("industry_major") or "")[:160],
+        str(payload.get("industry_sub") or "")[:160],
+        str(payload.get("sales_dept") or "")[:120],
+        payload.get("score"),
+        str(payload.get("decision") or "")[:120],
+        str(payload.get("outcome") or "")[:180],
+        str(payload.get("similarity") or "")[:1200],
+        str(payload.get("action_taken") or "")[:1200],
+        str(payload.get("lesson") or "")[:1200],
+        str(payload.get("difference") or "")[:1200],
+        str(payload.get("source") or "manual")[:80],
+        _json.dumps(payload.get("form_snapshot") or {}, ensure_ascii=False)[:20000],
+        _json.dumps(payload.get("result_snapshot") or {}, ensure_ascii=False)[:20000],
+    )
+    columns = (
+        "demo_case_id, source_case_id, company_name, period, industry_major, industry_sub, sales_dept, "
+        "score, decision, outcome, similarity, action_taken, lesson, difference, source, form_snapshot, result_snapshot"
+    )
+    placeholders = ", ".join([ph] * len(values))
+    if current_backend() == "postgresql":
+        cur.execute(
+            f"INSERT INTO screening_experience_cases ({columns}) VALUES ({placeholders}) RETURNING id",
+            values,
+        )
+        row = cur.fetchone()
+        return int(row[0])
+    cur.execute(
+        f"INSERT INTO screening_experience_cases ({columns}) VALUES ({placeholders})",
+        values,
+    )
+    return int(cur.lastrowid)
+
+
+def _save_screening_experience_case(req: ScreeningExperienceCaseRequest) -> dict:
+    company = str(req.company_name or "").strip()
+    if not company:
+        raise HTTPException(status_code=422, detail="company_name is required")
+    _ensure_screening_experience_cases_table(seed_demo=True)
+    payload = req.model_dump()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        new_id = _insert_screening_experience_case(cur, payload)
+    return {"id": new_id, **{k: v for k, v in payload.items() if k not in {"form_snapshot", "result_snapshot"}}}
+
+
+def _list_screening_experience_cases(
+    demo_case_id: str = "",
+    industry_sub: str = "",
+    company_name: str = "",
+    limit: int = 6,
+) -> list[dict]:
+    _ensure_screening_experience_cases_table(seed_demo=True)
+    ph = placeholder()
+    where: list[str] = []
+    params: list[Any] = []
+    if demo_case_id.strip():
+        where.append(f"demo_case_id = {ph}")
+        params.append(demo_case_id.strip())
+    if industry_sub.strip():
+        where.append(f"industry_sub = {ph}")
+        params.append(industry_sub.strip())
+    if company_name.strip():
+        where.append(f"company_name LIKE {ph}")
+        params.append(f"%{company_name.strip()}%")
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+    capped_limit = max(1, min(int(limit or 6), 30))
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""
+            SELECT id, demo_case_id, source_case_id, company_name, period, industry_major,
+                   industry_sub, sales_dept, score, decision, outcome, similarity,
+                   action_taken, lesson, difference, source, created_at, updated_at
+              FROM screening_experience_cases
+              {where_sql}
+             ORDER BY
+                   CASE WHEN source = 'demo_seed' THEN 0 ELSE 1 END,
+                   created_at DESC,
+                   id DESC
+             LIMIT {capped_limit}
+            """,
+            tuple(params),
+        )
+        rows = cur.fetchall()
+    return [dict(row) for row in rows]
 
 
 _CLOUDRUN_RETURN_DB = Path(_REPO_ROOT) / "data" / "cloudrun_experience_return.db"
@@ -8831,6 +9069,34 @@ def patch_shion_screening_review_feedback(
         payload={**entry, "schema_version": 1, "cloud_review_id": review_id},
     )
     return {"status": "ok", "review": entry}
+
+
+@app.get("/api/screening-experience-cases")
+def get_screening_experience_cases(
+    demo_case_id: str = "",
+    industry_sub: str = "",
+    company_name: str = "",
+    limit: int = 6,
+) -> dict:
+    rows = _list_screening_experience_cases(
+        demo_case_id=demo_case_id,
+        industry_sub=industry_sub,
+        company_name=company_name,
+        limit=limit,
+    )
+    return {"count": len(rows), "cases": rows}
+
+
+@app.post("/api/screening-experience-cases")
+def post_screening_experience_case(req: ScreeningExperienceCaseRequest, background_tasks: BackgroundTasks) -> dict:
+    entry = _save_screening_experience_case(req)
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="screening_experience_case",
+        surface="screening",
+        payload={**entry, "schema_version": 1},
+    )
+    return {"status": "ok", "case": entry}
 
 
 @app.get("/api/cloudrun-return-review")

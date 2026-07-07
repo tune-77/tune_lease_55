@@ -78,9 +78,15 @@ type PastShionScreeningReview = {
 };
 
 type DemoSimilarPastCase = {
+  id?: number;
+  demoCaseId?: string;
+  sourceCaseId?: string;
   companyName: string;
   period: string;
   industry: string;
+  industryMajor?: string;
+  industrySub?: string;
+  salesDept?: string;
   score: number;
   decision: string;
   outcome: string;
@@ -88,6 +94,7 @@ type DemoSimilarPastCase = {
   actionTaken: string;
   lesson: string;
   difference: string;
+  source?: string;
 };
 
 const SHION_REVIEW_IMAGE = "/lease-intelligence/moods/focus.webp";
@@ -126,7 +133,7 @@ type DemoScreeningCase = {
   summary: string;
   learningPoint: string;
   reviewFocus: string[];
-  similarPastCases: DemoSimilarPastCase[];
+  similarPastCases?: DemoSimilarPastCase[];
   data: Partial<ScoringFormData>;
 };
 
@@ -393,6 +400,29 @@ const findDemoScreeningCase = (data: Partial<ScoringFormData>) => {
   ) || null;
 };
 
+const normalizeExperienceCase = (raw: any): DemoSimilarPastCase => ({
+  id: Number(raw?.id || 0) || undefined,
+  demoCaseId: String(raw?.demo_case_id || raw?.demoCaseId || ""),
+  sourceCaseId: String(raw?.source_case_id || raw?.sourceCaseId || ""),
+  companyName: String(raw?.company_name || raw?.companyName || "名称未設定"),
+  period: String(raw?.period || ""),
+  industry: String(raw?.industry_sub || raw?.industry || raw?.industry_major || ""),
+  industryMajor: String(raw?.industry_major || raw?.industryMajor || ""),
+  industrySub: String(raw?.industry_sub || raw?.industrySub || ""),
+  salesDept: String(raw?.sales_dept || raw?.salesDept || ""),
+  score: Number(raw?.score || 0),
+  decision: String(raw?.decision || ""),
+  outcome: String(raw?.outcome || ""),
+  similarity: String(raw?.similarity || ""),
+  actionTaken: String(raw?.action_taken || raw?.actionTaken || ""),
+  lesson: String(raw?.lesson || ""),
+  difference: String(raw?.difference || ""),
+  source: String(raw?.source || ""),
+});
+
+const fallbackExperienceCasesForDemo = (demoCaseId: string) =>
+  demoScreeningCases.find((demoCase) => demoCase.id === demoCaseId)?.similarPastCases || [];
+
 const normalizeReviewText = (text: string) =>
   (text || "")
     .replace(/\\r\\n/g, "\n")
@@ -439,7 +469,12 @@ const buildPastReviewBlock = (reviews: PastShionScreeningReview[]) => {
   ].join("\n");
 };
 
-const buildShionReviewPrompt = (result: Record<string, any>, data: ScoringFormData, pastReviews: PastShionScreeningReview[] = []) => {
+const buildShionReviewPrompt = (
+  result: Record<string, any>,
+  data: ScoringFormData,
+  pastReviews: PastShionScreeningReview[] = [],
+  experienceCases: DemoSimilarPastCase[] = [],
+) => {
   const score = Number(result.score_base ?? result.score ?? 0);
   const lines = [
     "【審査分析画面からの紫苑レビュー依頼】",
@@ -480,8 +515,7 @@ const buildShionReviewPrompt = (result: Record<string, any>, data: ScoringFormDa
   if (Array.isArray(result.default_warnings) && result.default_warnings.length) {
     lines.push(`・デフォルト率警告: ${result.default_warnings.slice(0, 3).join(" / ")}`);
   }
-  const demoCase = findDemoScreeningCase(data);
-  const demoPastCaseBlock = buildDemoSimilarPastCaseBlock(demoCase?.similarPastCases || []);
+  const demoPastCaseBlock = buildDemoSimilarPastCaseBlock(experienceCases);
   if (demoPastCaseBlock) {
     lines.push("", demoPastCaseBlock);
   }
@@ -825,9 +859,19 @@ function RingiPolicyCard({ result, data }: { result: Record<string, any>; data: 
   );
 }
 
-function DemoSimilarPastCasesCard({ data }: { data: ScoringFormData }) {
+function DemoSimilarPastCasesCard({
+  data,
+  experienceCases,
+  onSaveExperience,
+  saving,
+}: {
+  data: ScoringFormData;
+  experienceCases: DemoSimilarPastCase[];
+  onSaveExperience: () => void;
+  saving: boolean;
+}) {
   const demoCase = findDemoScreeningCase(data);
-  if (!demoCase?.similarPastCases.length) return null;
+  if (!demoCase && !experienceCases.length) return null;
 
   return (
     <section className="rounded-2xl border border-sky-200 bg-white p-4 shadow-sm">
@@ -838,17 +882,28 @@ function DemoSimilarPastCasesCard({ data }: { data: ScoringFormData }) {
             過去の類似デモ事例
           </div>
           <p className="mt-1 text-xs font-bold leading-relaxed text-sky-700">
-            {demoCase.title} と同じ論点で、過去にどう扱ったかを表示します。
+            {demoCase?.title || data.industry_sub || "この案件"} と同じ論点で、保存済み経験を表示します。
           </p>
         </div>
-        <span className="inline-flex w-fit rounded-full border border-sky-100 bg-sky-50 px-3 py-1 text-[10px] font-black text-sky-700">
-          {demoCase.similarPastCases.length}件
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex w-fit rounded-full border border-sky-100 bg-sky-50 px-3 py-1 text-[10px] font-black text-sky-700">
+            {experienceCases.length}件
+          </span>
+          <button
+            type="button"
+            onClick={onSaveExperience}
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-[11px] font-black text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Save className="h-3.5 w-3.5" />
+            {saving ? "保存中" : "今回を経験化"}
+          </button>
+        </div>
       </div>
 
       <div className="mt-3 grid gap-3 lg:grid-cols-2">
-        {demoCase.similarPastCases.map((item) => (
-          <article key={`${demoCase.id}-${item.companyName}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        {experienceCases.map((item) => (
+          <article key={`${item.id || item.demoCaseId || demoCase?.id}-${item.companyName}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h4 className="text-sm font-black text-slate-900">{item.companyName}</h4>
@@ -1288,6 +1343,8 @@ export default function Dashboard() {
   const [shionFeedbackSaving, setShionFeedbackSaving] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
   const [lastDraftSavedAt, setLastDraftSavedAt] = useState<Date | null>(null);
+  const [experienceCasesByDemo, setExperienceCasesByDemo] = useState<Record<string, DemoSimilarPastCase[]>>({});
+  const [experienceSaving, setExperienceSaving] = useState(false);
   const shionReviewRequestSeq = useRef(0);
   const suppressNextDraftSave = useRef(false);
 
@@ -1361,6 +1418,31 @@ export default function Dashboard() {
     }, SCREENING_DRAFT_SAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [draftRestored, formData, result, gunshiText, shionReview, activeTab]);
+
+  const fetchExperienceCasesForDemo = async (demoCaseId: string) => {
+    if (!demoCaseId) return [];
+    try {
+      const res = await apiClient.get("/api/screening-experience-cases", {
+        params: { demo_case_id: demoCaseId, limit: 8 },
+      });
+      const cases = Array.isArray(res.data?.cases)
+        ? res.data.cases.map(normalizeExperienceCase)
+        : [];
+      const nextCases = cases.length ? cases : fallbackExperienceCasesForDemo(demoCaseId);
+      setExperienceCasesByDemo((prev) => ({ ...prev, [demoCaseId]: nextCases }));
+      return nextCases;
+    } catch {
+      const fallback = fallbackExperienceCasesForDemo(demoCaseId);
+      setExperienceCasesByDemo((prev) => ({ ...prev, [demoCaseId]: fallback }));
+      return fallback;
+    }
+  };
+
+  useEffect(() => {
+    demoScreeningCases.forEach((demoCase) => {
+      void fetchExperienceCasesForDemo(demoCase.id);
+    });
+  }, []);
 
   // フィールドの変更ハンドラー
   const handleFieldChange = (name: string, value: string | number | string[]) => {
@@ -1443,8 +1525,10 @@ export default function Dashboard() {
     setShionReviewError("");
     try {
       const pastReviews = await fetchPastShionReviews(targetResult, targetFormData);
+      const demoCase = findDemoScreeningCase(targetFormData);
+      const experienceCases = demoCase ? await fetchExperienceCasesForDemo(demoCase.id) : [];
       if (seq !== shionReviewRequestSeq.current) return;
-      const promptText = buildShionReviewPrompt(targetResult, targetFormData, pastReviews);
+      const promptText = buildShionReviewPrompt(targetResult, targetFormData, pastReviews, experienceCases);
       const res = await apiClient.post("/api/chat", {
         message: promptText,
         user_id: buildShionReviewUserId(targetResult, targetFormData),
@@ -1543,6 +1627,42 @@ export default function Dashboard() {
     setActiveTab("input");
     if (runImmediately) {
       void handleSubmit(nextFormData);
+    }
+  };
+
+  const saveCurrentExperienceCase = async () => {
+    if (!result || experienceSaving) return;
+    const demoCase = findDemoScreeningCase(formData);
+    const score = Number(result.score_base ?? result.score ?? 0);
+    setExperienceSaving(true);
+    try {
+      await apiClient.post("/api/screening-experience-cases", {
+        demo_case_id: demoCase?.id || "",
+        source_case_id: result.case_id || formData.company_no || "",
+        company_name: formData.company_name || "名称未設定",
+        period: "今回の審査",
+        industry_major: result.industry_major || formData.industry_major || "",
+        industry_sub: result.industry_sub || formData.industry_sub || "",
+        sales_dept: formData.sales_dept || "",
+        score,
+        decision: result.hantei || "",
+        outcome: "審査経験として保存",
+        similarity: buildCurrentIssue(result, formData),
+        action_taken: buildRingiPolicy(result, formData),
+        lesson: "今回の判断・条件・違和感を、次回の類似案件で再利用する。",
+        difference: "実案件化する場合は、成約/失注/条件変更の最終結果でこの経験を更新する。",
+        source: "screening_result",
+        form_snapshot: formData,
+        result_snapshot: result,
+      });
+      if (demoCase) {
+        await fetchExperienceCasesForDemo(demoCase.id);
+      }
+    } catch (error) {
+      console.error("Screening experience save failed", error);
+      alert("経験データを保存できませんでした。");
+    } finally {
+      setExperienceSaving(false);
     }
   };
 
@@ -1736,7 +1856,7 @@ export default function Dashboard() {
                         <div className="mt-2 rounded-lg border border-sky-100 bg-sky-50 p-2">
                           <p className="text-[11px] font-black text-sky-800">過去類似デモ</p>
                           <div className="mt-1 space-y-1">
-                            {demoCase.similarPastCases.map((item) => (
+                            {(experienceCasesByDemo[demoCase.id] || fallbackExperienceCasesForDemo(demoCase.id)).map((item) => (
                               <div key={item.companyName} className="text-[11px] font-bold leading-relaxed text-sky-700">
                                 {item.companyName}: {item.decision} / {item.outcome}
                               </div>
@@ -1872,7 +1992,17 @@ export default function Dashboard() {
                     <JudgmentFlowStrip />
                     <CurrentIssueCard result={result} data={formData} />
                     <RingiPolicyCard result={result} data={formData} />
-                    <DemoSimilarPastCasesCard data={formData} />
+                    <DemoSimilarPastCasesCard
+                      data={formData}
+                      experienceCases={(() => {
+                        const demoCase = findDemoScreeningCase(formData);
+                        return demoCase
+                          ? (experienceCasesByDemo[demoCase.id] || fallbackExperienceCasesForDemo(demoCase.id))
+                          : [];
+                      })()}
+                      onSaveExperience={saveCurrentExperienceCase}
+                      saving={experienceSaving}
+                    />
                     <ScreeningLoopFeedbackPanel result={result} data={formData} />
                     <IndicatorCards data={result} />
                     <ShionScreeningReviewCard

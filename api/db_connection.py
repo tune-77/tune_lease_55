@@ -282,6 +282,29 @@ def ensure_schema() -> None:
             user_feedback TEXT DEFAULT '',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""",
+        # screening_experience_cases ─────────────────────────────────────────────
+        f"""CREATE TABLE IF NOT EXISTS screening_experience_cases (
+            id {auto_pk},
+            demo_case_id TEXT DEFAULT '',
+            source_case_id TEXT DEFAULT '',
+            company_name TEXT NOT NULL,
+            period TEXT DEFAULT '',
+            industry_major TEXT DEFAULT '',
+            industry_sub TEXT DEFAULT '',
+            sales_dept TEXT DEFAULT '',
+            score {real_t},
+            decision TEXT DEFAULT '',
+            outcome TEXT DEFAULT '',
+            similarity TEXT DEFAULT '',
+            action_taken TEXT DEFAULT '',
+            lesson TEXT DEFAULT '',
+            difference TEXT DEFAULT '',
+            source TEXT DEFAULT 'manual',
+            form_snapshot TEXT DEFAULT '',
+            result_snapshot TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
         # sync_log ───────────────────────────────────────────────────────────────
         f"""CREATE TABLE IF NOT EXISTS sync_log (
             id {auto_pk},
@@ -299,6 +322,9 @@ def ensure_schema() -> None:
         "CREATE INDEX IF NOT EXISTS idx_shion_screening_reviews_case_id ON shion_screening_reviews(case_id)",
         "CREATE INDEX IF NOT EXISTS idx_shion_screening_reviews_created ON shion_screening_reviews(created_at)",
         "CREATE INDEX IF NOT EXISTS idx_shion_screening_reviews_industry ON shion_screening_reviews(industry_sub)",
+        "CREATE INDEX IF NOT EXISTS idx_screening_experience_demo ON screening_experience_cases(demo_case_id)",
+        "CREATE INDEX IF NOT EXISTS idx_screening_experience_industry ON screening_experience_cases(industry_sub)",
+        "CREATE INDEX IF NOT EXISTS idx_screening_experience_created ON screening_experience_cases(created_at)",
         "CREATE INDEX IF NOT EXISTS idx_screening_records_case_id ON screening_records(case_id)",
         "CREATE INDEX IF NOT EXISTS idx_screening_records_screened_at ON screening_records(screened_at)",
         "CREATE INDEX IF NOT EXISTS idx_screening_records_outcome ON screening_records(outcome)",
