@@ -77,6 +77,19 @@ type PastShionScreeningReview = {
   user_feedback?: ShionReviewFeedback | "";
 };
 
+type DemoSimilarPastCase = {
+  companyName: string;
+  period: string;
+  industry: string;
+  score: number;
+  decision: string;
+  outcome: string;
+  similarity: string;
+  actionTaken: string;
+  lesson: string;
+  difference: string;
+};
+
 const SHION_REVIEW_IMAGE = "/lease-intelligence/moods/focus.webp";
 const SCREENING_RETURN_STATE_KEY = "lease-screening-return-state";
 const SCREENING_DRAFT_VERSION = 1;
@@ -113,6 +126,7 @@ type DemoScreeningCase = {
   summary: string;
   learningPoint: string;
   reviewFocus: string[];
+  similarPastCases: DemoSimilarPastCase[];
   data: Partial<ScoringFormData>;
 };
 
@@ -124,6 +138,32 @@ const demoScreeningCases: DemoScreeningCase[] = [
     summary: "メイン先、黒字、自己資本あり。工作機械更新の標準的なリース案件。",
     learningPoint: "標準的に通る案件では、紫苑が何を安心材料として拾うかを見ます。",
     reviewFocus: ["返済原資と自己資本", "物件用途の明確さ", "稟議に残す承認理由"],
+    similarPastCases: [
+      {
+        companyName: "柴犬精密工業",
+        period: "2025年上期",
+        industry: "金属製品製造業",
+        score: 82.4,
+        decision: "承認",
+        outcome: "成約・延滞なし",
+        similarity: "既存メイン先、工作機械更新、黒字基調、自己資本厚め",
+        actionTaken: "受注増加の根拠資料と既存機の稼働状況を添付し、通常承認で稟議化。",
+        lesson: "標準承認でも、返済原資と設備用途を一文で残すと審査説明が安定した。",
+        difference: "過去事例は受注先が固定的。今回デモは受注増の説明を営業メモで補う必要がある。",
+      },
+      {
+        companyName: "ビーグル加工",
+        period: "2024年下期",
+        industry: "金属加工業",
+        score: 76.8,
+        decision: "条件付き承認",
+        outcome: "成約・初回検収完了",
+        similarity: "加工設備の更改、既存取引あり、物件保全が見やすい",
+        actionTaken: "見積・型式・設置場所の確認を条件に、設備更新目的を承認理由へ明記。",
+        lesson: "物件が強い案件は、財務だけでなく回収可能性を押さえると通しやすい。",
+        difference: "過去事例は非メイン先。今回デモはメイン先なので銀行接点を安心材料にできる。",
+      },
+    ],
     data: {
       company_no: "900101",
       company_name: "デモ精密工業",
@@ -181,6 +221,32 @@ const demoScreeningCases: DemoScreeningCase[] = [
     summary: "売上はあるが利益薄め。車両増車で、燃料費と運転手確保を確認したい案件。",
     learningPoint: "境界案件では、点数よりも条件付きで残す確認事項が主役です。",
     reviewFocus: ["燃料費・人件費の上昇耐性", "競合条件との差分", "追加確認すべき承認条件"],
+    similarPastCases: [
+      {
+        companyName: "ハスキー運輸",
+        period: "2025年夏",
+        industry: "道路貨物運送業",
+        score: 63.2,
+        decision: "条件付き承認",
+        outcome: "成約・採算は維持",
+        similarity: "利益率薄め、増車、競合あり、非メイン先",
+        actionTaken: "燃料サーチャージ契約、主要荷主との配送継続確認、競合金利との差分説明を条件化。",
+        lesson: "運送業の境界案件は、車両価値よりも運賃改定・荷主継続・人員確保を先に確認する。",
+        difference: "過去事例は既存荷主比率が高かった。今回デモは新規ルート分の採算確認が重い。",
+      },
+      {
+        companyName: "ダックス物流",
+        period: "2024年秋",
+        industry: "一般貨物運送業",
+        score: 58.7,
+        decision: "見送り",
+        outcome: "競合へ流出",
+        similarity: "増車理由あり、競合金利あり、銀行支援が弱い",
+        actionTaken: "燃料費上昇時の資金繰り表と運転手確保計画を依頼したが、資料不足で見送り。",
+        lesson: "競合に急かされる案件ほど、資料不足のまま金利で追うと説明責任が残らない。",
+        difference: "今回デモは返済履歴が良好なので、資料が揃えば条件付き承認の余地がある。",
+      },
+    ],
     data: {
       company_no: "900202",
       company_name: "デモ北関東物流",
@@ -239,6 +305,32 @@ const demoScreeningCases: DemoScreeningCase[] = [
     summary: "新規先、薄い自己資本、出店設備。事業計画と撤退時物件価値を確認したい案件。",
     learningPoint: "厳しめの案件では、否決だけでなく何を確認すれば検討余地が残るかを見ます。",
     reviewFocus: ["新規先・赤字の重さ", "出店計画の根拠", "撤退時の物件価値"],
+    similarPastCases: [
+      {
+        companyName: "プードルフード",
+        period: "2025年春",
+        industry: "飲食店",
+        score: 46.5,
+        decision: "条件再設計",
+        outcome: "保証追加後に小口で成約",
+        similarity: "新規先、出店設備、自己資本薄め、厨房機器",
+        actionTaken: "初期投資を圧縮し、保証人追加・自己資金投入・厨房機器のみの小口化で再審議。",
+        lesson: "飲食新規は一括で通すより、投資範囲を絞って撤退時損失を小さくする方が現実的。",
+        difference: "過去事例は既存店の売上実績があった。今回デモは新店舗計画の根拠確認がより重要。",
+      },
+      {
+        companyName: "コーギーカフェ",
+        period: "2024年冬",
+        industry: "飲食サービス業",
+        score: 39.8,
+        decision: "否決",
+        outcome: "自己資金不足で出店延期",
+        similarity: "新規開拓、赤字、銀行支援弱め、内装設備比率が高い",
+        actionTaken: "撤退時の物件処分価値が弱く、売上計画も未検証だったため否決。",
+        lesson: "内装・造作比率が高い飲食案件は、設備の再販価値だけでは保全になりにくい。",
+        difference: "今回デモは厨房機器も含むため、リース対象を再販可能な設備に絞れば再検討できる。",
+      },
+    ],
     data: {
       company_no: "900303",
       company_name: "デモフードサービス",
@@ -292,11 +384,36 @@ const demoScreeningCases: DemoScreeningCase[] = [
   },
 ];
 
+const findDemoScreeningCase = (data: Partial<ScoringFormData>) => {
+  const companyNo = String(data.company_no || "");
+  const companyName = String(data.company_name || "");
+  return demoScreeningCases.find((demoCase) =>
+    demoCase.data.company_no === companyNo ||
+    (companyName && demoCase.data.company_name === companyName)
+  ) || null;
+};
+
 const normalizeReviewText = (text: string) =>
   (text || "")
     .replace(/\\r\\n/g, "\n")
     .replace(/\\n/g, "\n")
     .trim();
+
+const buildDemoSimilarPastCaseBlock = (cases: DemoSimilarPastCase[]) => {
+  if (!cases.length) return "";
+  return [
+    "【デモ用の過去類似事例】",
+    "次の事例は、このデモ案件を説明するための類似ケースです。今回と同じ扱いにせず、共通点・違い・今回なら何を確認するかを明示してください。",
+    ...cases.slice(0, 3).map((item, index) => [
+      `事例${index + 1}: ${item.companyName} / ${item.period} / ${item.industry}`,
+      `スコア・判断: ${item.score.toFixed(1)}点 / ${item.decision} / ${item.outcome}`,
+      `似ている点: ${item.similarity}`,
+      `当時の対応: ${item.actionTaken}`,
+      `得た教訓: ${item.lesson}`,
+      `今回との差分: ${item.difference}`,
+    ].join("\n")),
+  ].join("\n");
+};
 
 const buildPastReviewBlock = (reviews: PastShionScreeningReview[]) => {
   if (!reviews.length) return "";
@@ -362,6 +479,11 @@ const buildShionReviewPrompt = (result: Record<string, any>, data: ScoringFormDa
   }
   if (Array.isArray(result.default_warnings) && result.default_warnings.length) {
     lines.push(`・デフォルト率警告: ${result.default_warnings.slice(0, 3).join(" / ")}`);
+  }
+  const demoCase = findDemoScreeningCase(data);
+  const demoPastCaseBlock = buildDemoSimilarPastCaseBlock(demoCase?.similarPastCases || []);
+  if (demoPastCaseBlock) {
+    lines.push("", demoPastCaseBlock);
   }
   const pastReviewBlock = buildPastReviewBlock(pastReviews);
   if (pastReviewBlock) {
@@ -698,6 +820,76 @@ function RingiPolicyCard({ result, data }: { result: Record<string, any>; data: 
             {buildRingiPolicy(result, data)}
           </div>
         </div>
+      </div>
+    </section>
+  );
+}
+
+function DemoSimilarPastCasesCard({ data }: { data: ScoringFormData }) {
+  const demoCase = findDemoScreeningCase(data);
+  if (!demoCase?.similarPastCases.length) return null;
+
+  return (
+    <section className="rounded-2xl border border-sky-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-black text-sky-950">
+            <Database className="h-4 w-4 text-sky-600" />
+            過去の類似デモ事例
+          </div>
+          <p className="mt-1 text-xs font-bold leading-relaxed text-sky-700">
+            {demoCase.title} と同じ論点で、過去にどう扱ったかを表示します。
+          </p>
+        </div>
+        <span className="inline-flex w-fit rounded-full border border-sky-100 bg-sky-50 px-3 py-1 text-[10px] font-black text-sky-700">
+          {demoCase.similarPastCases.length}件
+        </span>
+      </div>
+
+      <div className="mt-3 grid gap-3 lg:grid-cols-2">
+        {demoCase.similarPastCases.map((item) => (
+          <article key={`${demoCase.id}-${item.companyName}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-black text-slate-900">{item.companyName}</h4>
+                <p className="mt-0.5 text-[11px] font-bold text-slate-500">
+                  {item.period} / {item.industry}
+                </p>
+              </div>
+              <div className="shrink-0 rounded-lg bg-white px-2.5 py-1 text-right shadow-sm">
+                <div className="text-[10px] font-black text-slate-400">当時</div>
+                <div className="text-xs font-black text-slate-800">{item.score.toFixed(1)}点</div>
+              </div>
+            </div>
+
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <div className="rounded-lg border border-white bg-white p-2">
+                <div className="text-[10px] font-black text-slate-400">判断</div>
+                <div className="mt-1 text-xs font-black text-slate-800">{item.decision}</div>
+                <div className="mt-1 text-[11px] font-bold leading-relaxed text-slate-500">{item.outcome}</div>
+              </div>
+              <div className="rounded-lg border border-white bg-white p-2">
+                <div className="text-[10px] font-black text-slate-400">似ている点</div>
+                <div className="mt-1 text-[11px] font-bold leading-relaxed text-slate-600">{item.similarity}</div>
+              </div>
+            </div>
+
+            <div className="mt-2 rounded-lg border border-emerald-100 bg-emerald-50 p-2">
+              <div className="text-[10px] font-black text-emerald-700">当時こうした</div>
+              <div className="mt-1 text-[11px] font-bold leading-relaxed text-emerald-950">{item.actionTaken}</div>
+            </div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <div className="rounded-lg border border-amber-100 bg-amber-50 p-2">
+                <div className="text-[10px] font-black text-amber-700">教訓</div>
+                <div className="mt-1 text-[11px] font-bold leading-relaxed text-amber-950">{item.lesson}</div>
+              </div>
+              <div className="rounded-lg border border-blue-100 bg-blue-50 p-2">
+                <div className="text-[10px] font-black text-blue-700">今回との違い</div>
+                <div className="mt-1 text-[11px] font-bold leading-relaxed text-blue-950">{item.difference}</div>
+              </div>
+            </div>
+          </article>
+        ))}
       </div>
     </section>
   );
@@ -1541,6 +1733,16 @@ export default function Dashboard() {
                             ))}
                           </div>
                         </div>
+                        <div className="mt-2 rounded-lg border border-sky-100 bg-sky-50 p-2">
+                          <p className="text-[11px] font-black text-sky-800">過去類似デモ</p>
+                          <div className="mt-1 space-y-1">
+                            {demoCase.similarPastCases.map((item) => (
+                              <div key={item.companyName} className="text-[11px] font-bold leading-relaxed text-sky-700">
+                                {item.companyName}: {item.decision} / {item.outcome}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                         <div className="mt-3 grid grid-cols-2 gap-2">
                           <button
                             type="button"
@@ -1670,6 +1872,7 @@ export default function Dashboard() {
                     <JudgmentFlowStrip />
                     <CurrentIssueCard result={result} data={formData} />
                     <RingiPolicyCard result={result} data={formData} />
+                    <DemoSimilarPastCasesCard data={formData} />
                     <ScreeningLoopFeedbackPanel result={result} data={formData} />
                     <IndicatorCards data={result} />
                     <ShionScreeningReviewCard
