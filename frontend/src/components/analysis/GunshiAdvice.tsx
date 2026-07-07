@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import DOMPurify from 'dompurify';
-import { Activity, AlertTriangle, CheckCircle2, FileText, HelpCircle, Loader2, MessageSquare, PenLine, Target, Users } from 'lucide-react';
+import { Activity, AlertTriangle, Bot, CheckCircle2, FileText, HelpCircle, Loader2, PenLine, Target, Users } from 'lucide-react';
 import type { ScoringFormData } from '@/types';
 
 interface GunshiAdviceProps {
@@ -33,21 +33,6 @@ type StrategyCards = {
   ringi_lines?: string[];
   badges?: string[];
   disclaimer?: string;
-};
-
-type WebHit = {
-  domain?: string;
-  title?: string;
-};
-
-type GunshiChatResponse = {
-  reply?: string;
-  chat_text?: string;
-  saved?: boolean;
-  save_reason?: string;
-  web_hits?: WebHit[];
-  wiki_saved?: boolean;
-  weekly_saved?: boolean;
 };
 
 type GunshiStreamChunk = {
@@ -147,11 +132,8 @@ const getYukikazeStatus = (score: number): YukikazeStatus => {
 export default function GunshiAdvice({ score, modelDecision, industry_major, formData, estatContext, onChatLoaded }: GunshiAdviceProps) {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
-  const [question, setQuestion] = useState("");
   const [humorMode, setHumorMode] = useState<HumorMode>(getInitialHumorMode);
   const [yukikazeBooting, setYukikazeBooting] = useState(false);
-  const [useWeb, setUseWeb] = useState(true);
-  const [advisorMode, setAdvisorMode] = useState<'gunshi' | 'chat'>('gunshi');
   const [statusText, setStatusText] = useState('');
   const [streamingText, setStreamingText] = useState('');
   const [toolSteps, setToolSteps] = useState<{tool: string; done: boolean}[]>([]);
@@ -230,55 +212,6 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
       bank_credit: Number(formData.bank_credit) || 0,
       lease_credit: Number(formData.lease_credit) || 0,
     };
-  };
-
-  const buildPayload = (message = "", history: ChatMessage[] = chatHistory) => {
-    const subsidyText = [
-      formData.industry_detail,
-      formData.passion_text,
-      formData.asset_name,
-    ].join(" ");
-    return {
-      score,
-      industry_major,
-      asset_name: formData.asset_name || "",
-      resale: "標準",
-      repeat_cnt: 1,
-      subsidy: /補助金|助成金|ものづくり|省力化/.test(subsidyText),
-      bank: formData.deal_source === "銀行紹介" || formData.main_bank === "メイン先",
-      intuition: formData.intuition || 50,
-      posterior: score > 0 ? score / 100 : 0.5,
-      message,
-      history,
-      humor_style: humorMode,
-      use_web: useWeb,
-      use_obsidian: true,
-      mode: advisorMode,
-      estat_context: estatContext || null,
-    };
-  };
-
-  const buildResponseMeta = (data: GunshiChatResponse) => {
-    const metaParts: string[] = [];
-    if (data.saved) metaParts.push('Obsidianへ自動保存しました');
-    else if (data.save_reason) metaParts.push(`保存なし: ${data.save_reason}`);
-    if (Array.isArray(data.web_hits) && data.web_hits.length > 0) {
-      const sources = data.web_hits
-        .slice(0, 2)
-        .map((h) => h.domain || h.title || 'web')
-        .filter(Boolean)
-        .join(' / ');
-      metaParts.push(`Web参照: ${data.web_hits.length}件${sources ? ' (' + sources + ')' : ''}`);
-    }
-    if (data.wiki_saved) metaParts.push('Wikiへ自動保存しました');
-    if (data.weekly_saved) metaParts.push('週次レビューへ保存しました');
-    return metaParts.join(' | ');
-  };
-
-  const updateStatus = (data: GunshiChatResponse) => {
-    if (data.web_hits?.length) setStatusText('回答しました。Web参照あり。');
-    else if (data.saved) setStatusText('必要なメモだけObsidianへ保存しました。');
-    else setStatusText('回答しました。');
   };
 
   // 初期フェッチ専用: SSEストリーミング (/api/gunshi/stream)
@@ -362,36 +295,6 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
     }
   };
 
-  // 追加質問: ノンストリーミング（history/message/mode対応）
-  const fetchChat = async (
-    message = "",
-    displayHistory: ChatMessage[] = chatHistory,
-    requestHistory: ChatMessage[] = displayHistory
-  ) => {
-    setLoading(true);
-    setStatusText('AIが考えています...');
-    try {
-      const payload = buildPayload(message, requestHistory);
-      const res = await axios.post(`/api/gunshi/chat`, payload);
-      const data = res.data;
-      const fetchedText = data.reply || data.chat_text || '';
-      const meta = buildResponseMeta(data);
-      setChatHistory([...displayHistory, { role: 'assistant', text: fetchedText, meta }]);
-      updateStatus(data);
-      if (onChatLoaded) {
-        onChatLoaded(fetchedText);
-      }
-    } catch (err) {
-      console.error("Failed to fetch gunshi chat", err);
-      const errText = "【通信エラー】軍師からの戦略を受信できませんでした。";
-      setChatHistory([...displayHistory, { role: 'assistant', text: errText }]);
-      setStatusText('通信エラーが発生しました。');
-      if (onChatLoaded) onChatLoaded(errText);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
     if (score === 0) return;
     const fetchKey = [
@@ -423,14 +326,20 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
     fetchStreamChat(nextHistory);
   }, [score, industry_major, formData, estatContext, initialStrategyQuestion]);
 
-  const handleSubmit = async () => {
-    const trimmedQuestion = question.trim();
-    if (!trimmedQuestion || loading) return;
-
-    const nextHistory: ChatMessage[] = [...chatHistory, { role: 'user', text: trimmedQuestion }];
-    setQuestion("");
-    setChatHistory(nextHistory);
-    await fetchChat(trimmedQuestion, nextHistory, chatHistory);
+  const handleOpenShionChat = () => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('lease-gunshi-context', JSON.stringify({
+      score,
+      hantei: normalizedModelDecision,
+      company_name: formData.company_name || '',
+      asset_name: formData.asset_name || '',
+      asset_location: formData.asset_location || '',
+      industry_sub: formData.industry_sub || '',
+      industry_major,
+      sales_dept: formData.sales_dept || '',
+      case_id: formData.company_no || formData.company_name || '',
+    }));
+    window.location.href = '/chat';
   };
 
   const handleRecordJudgmentChange = async () => {
@@ -595,6 +504,30 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
     );
   };
 
+  const tsunkoNotes = [
+    score >= 80
+      ? 'スコアは悪くないけど、通る案件ほど説明が雑になる。物件回収性と返済原資は短く添えておくこと。'
+      : score >= 50
+        ? 'ここは楽観で押し切る案件じゃない。条件、確認資料、撤退ラインを先に決めてから稟議に出すこと。'
+        : 'この点数で通したいなら、普通のお願いでは弱い。銀行支援、担保的価値、入金根拠のどれで守るのかを出して。',
+    formData.competitor
+      ? `競合あり。金利勝負だけに寄せると危ない。${formData.competitor_rate ? `競合金利 ${formData.competitor_rate}%` : '競合条件'} と、こちらが取るリスクの差を見せて。`
+      : '競合情報が薄い。競合なしでも、なぜこの条件で今決めるのかは聞かれる。',
+    formData.main_bank === 'メイン先' || formData.deal_source === '銀行紹介'
+      ? '銀行接点は使える。ただし「銀行紹介だから大丈夫」は根拠にならない。支援姿勢の実体を確認。'
+      : '銀行支援の見え方が弱い。否決寄りなら、ここを補強しないと審査部は逃げ道を作りにくい。',
+  ];
+
+  const yukikazeNotes = [
+    `SCORE VECTOR: ${score > 0 ? score.toFixed(1) : 'NO DATA'} / DECISION: ${normalizedModelDecision || 'UNKNOWN'}`,
+    score >= 80
+      ? 'RISK SIGNATURE: LOW. Maintain approval vector; verify asset and cash-flow evidence.'
+      : score >= 50
+        ? 'RISK SIGNATURE: UNSTABLE. Conditional approval route requires additional evidence lock.'
+        : 'RISK SIGNATURE: HOSTILE. Rejection vector dominates unless external support is confirmed.',
+    `NEXT CHECK: ${formData.asset_name || 'asset'} / ${industry_major || 'industry'} / ${formData.customer_type || 'customer type'}`,
+  ];
+
   const isYukikaze = humorMode === 'yukikaze';
   const yukikazeStatus = getYukikazeStatus(score);
   const isDifficultYukikazeCase = isYukikaze && ['WARNING', 'ALERT', 'CRITICAL'].includes(yukikazeStatus.level);
@@ -627,10 +560,10 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
           </div>
           <div>
             <h3 className={`font-bold text-sm tracking-wide ${isYukikaze ? 'font-mono text-amber-100' : ''}`}>
-              {isYukikaze ? 'YUKIKAZE // FFR-41MR' : '軍師AI 戦略相談'}
+              {isYukikaze ? 'YUKIKAZE // FFR-41MR' : '審査補助コメント'}
             </h3>
             <p className={`text-[10px] font-medium ${isYukikaze ? 'text-red-300 font-mono tracking-widest' : 'text-blue-200'}`}>
-              {isYukikaze ? 'TACTICAL LEASE SCORING AI' : '数値分析をもとに次の行動と稟議表現を提案'}
+              {isYukikaze ? 'TACTICAL LEASE SCORING AI' : 'つん子/yukikazeは短評、深掘りは紫苑へ'}
             </p>
           </div>
         </div>
@@ -654,33 +587,6 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
             </div>
           </div>
         )}
-        <div className="flex flex-wrap items-center gap-2 mb-2">
-          <span className={`text-[11px] font-bold mr-1 ${isYukikaze ? 'text-red-300 tracking-widest' : 'text-slate-500'}`}>モード</span>
-          <button
-            type="button"
-            onClick={() => setAdvisorMode('gunshi')}
-            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
-              advisorMode === 'gunshi'
-                ? isYukikaze ? 'bg-red-900 text-amber-100 border-red-500 shadow-sm' : 'bg-amber-500 text-white border-amber-500 shadow-sm'
-                : isYukikaze ? 'bg-black text-slate-400 border-red-950 hover:border-red-700' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-            }`}
-            title={isYukikaze ? 'Mission assessment from YUKIKAZE' : '案件向け戦略アドバイス（軍師ロジック）'}
-          >
-            {isYukikaze ? 'MISSION' : '🏯 戦略'}
-          </button>
-          <button
-            type="button"
-            onClick={() => setAdvisorMode('chat')}
-            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
-              advisorMode === 'chat'
-                ? isYukikaze ? 'bg-red-900 text-amber-100 border-red-500 shadow-sm' : 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                : isYukikaze ? 'bg-black text-slate-400 border-red-950 hover:border-red-700' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-            }`}
-            title={isYukikaze ? 'Tactical datalink with YUKIKAZE' : 'Flask版AIチャット相当の自由相談（Web/Obsidian連動）'}
-          >
-            {isYukikaze ? 'DATALINK' : '💬 相談'}
-          </button>
-        </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className={`text-[11px] font-bold mr-1 ${isYukikaze ? 'text-red-300 tracking-widest' : 'text-slate-500'}`}>口調</span>
           <button
@@ -717,15 +623,6 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
           >
             ⚡ ENGAGE YUKIKAZE
           </button>
-          <label className={`ml-auto inline-flex items-center gap-2 text-[12px] font-bold cursor-pointer ${isYukikaze ? 'text-amber-200' : 'text-slate-600'}`}>
-            <input
-              type="checkbox"
-              checked={useWeb}
-              onChange={(e) => setUseWeb(e.target.checked)}
-              className={`h-4 w-4 rounded ${isYukikaze ? 'border-red-700 bg-black text-red-600 focus:ring-red-500' : 'border-slate-300 text-blue-600 focus:ring-blue-500'}`}
-            />
-            ネット参照
-          </label>
         </div>
 
       </div>
@@ -748,6 +645,49 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
             </div>
           </div>
         )}
+
+        <div className={`rounded-xl border shadow-sm overflow-hidden ${isYukikaze ? `bg-black/85 ${yukikazeStatus.frameClass} text-amber-50 font-mono` : 'bg-white border-slate-200'}`}>
+          <div className={`px-4 py-3 border-b ${isYukikaze ? 'border-red-900 bg-black' : 'border-slate-100 bg-slate-50'}`}>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className={`text-xs font-black ${isYukikaze ? 'text-amber-100 tracking-widest' : 'text-slate-800'}`}>
+                  {isYukikaze ? 'YUKIKAZE 分析短評' : 'つん子の辛口チェック'}
+                </div>
+                <div className={`mt-0.5 text-[10px] font-bold ${isYukikaze ? 'text-red-300' : 'text-slate-500'}`}>
+                  {isYukikaze ? '数値・異常・次確認だけを返す' : '甘い稟議になりそうな点だけ先に潰す'}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleOpenShionChat}
+                className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-black transition ${
+                  isYukikaze
+                    ? 'border-red-700 bg-red-950 text-amber-100 hover:bg-red-900'
+                    : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                }`}
+              >
+                <Bot className="h-3.5 w-3.5" />
+                紫苑に相談
+              </button>
+            </div>
+          </div>
+          <div className="p-3 space-y-2">
+            {(isYukikaze ? yukikazeNotes : tsunkoNotes).map((note, index) => (
+              <div
+                key={index}
+                className={`rounded-lg border px-3 py-2 text-[12px] leading-5 font-bold ${
+                  isYukikaze
+                    ? `${index === 0 ? yukikazeStatus.levelClass : 'border-red-950 bg-black/70 text-amber-100'}`
+                    : index === 0
+                      ? 'border-orange-200 bg-orange-50 text-orange-900'
+                      : 'border-slate-200 bg-slate-50 text-slate-700'
+                }`}
+              >
+                {note}
+              </div>
+            ))}
+          </div>
+        </div>
 
         {strategyCards && (
           <div className={`rounded-xl border shadow-sm overflow-hidden ${isYukikaze ? `bg-black/85 ${yukikazeStatus.frameClass} text-amber-50 font-mono` : 'bg-white border-amber-200'}`}>
@@ -1028,21 +968,6 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
               {isYukikaze ? `SYSTEM: ${statusText}` : statusText}
             </div>
           )}
-          <textarea
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                if (!loading && question.trim()) {
-                  handleSubmit();
-                }
-              }
-            }}
-            placeholder={isYukikaze ? (advisorMode === 'chat' ? 'Pilot datalink: send short command, risk query, or field report...' : 'Pilot input: request mission assessment, JAM signature, or approval vector...') : advisorMode === 'gunshi' ? '軍師にこの案件の戦略・条件・落としどころを問う' : '業界動向・他社事例・自由な相談もOK（Flask AIチャット相当）'}
-            rows={2}
-            className={`w-full border rounded-xl py-3 px-4 text-sm outline-none resize-none ${isYukikaze ? 'bg-[#050505] border-red-900 text-amber-100 placeholder:text-red-900 focus:border-red-500 font-mono' : 'bg-slate-50 border-slate-200 text-slate-700 placeholder:text-slate-400'}`}
-          />
           <div className="flex items-center justify-between gap-3">
             <div className={`text-[11px] ${isYukikaze ? 'text-red-300' : 'text-slate-500'}`}>
               {isYukikaze ? (
@@ -1052,17 +977,16 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
                     : 'I identify the enemy. You decide whether to engage.'}
                 </span>
               ) : (
-                'Enter で送信、Shift+Enter で改行'
+                '深掘りや記憶参照は紫苑チャットへ渡します'
               )}
             </div>
             <button
               type="button"
-              onClick={handleSubmit}
-              disabled={loading || !question.trim()}
+              onClick={handleOpenShionChat}
               className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold disabled:cursor-not-allowed ${isYukikaze ? 'bg-red-800 text-amber-100 border border-red-500 hover:bg-red-700 disabled:bg-red-950 disabled:text-red-900' : 'bg-blue-600 text-white disabled:bg-slate-300'}`}
             >
-              <MessageSquare className="w-4 h-4" />
-              {isYukikaze ? 'TRANSMIT' : '問う'}
+              <Bot className="w-4 h-4" />
+              {isYukikaze ? 'OPEN SHION LINK' : '紫苑に相談'}
             </button>
           </div>
         </div>
