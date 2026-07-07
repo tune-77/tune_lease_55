@@ -7948,8 +7948,15 @@ def _save_screening_experience_case(req: ScreeningExperienceCaseRequest) -> dict
 
 def _list_screening_experience_cases(
     demo_case_id: str = "",
+    industry_major: str = "",
     industry_sub: str = "",
     company_name: str = "",
+    asset_name: str = "",
+    customer_type: str = "",
+    main_bank: str = "",
+    competitor: str = "",
+    outcome_status: str = "",
+    score: Optional[float] = None,
     limit: int = 6,
 ) -> list[dict]:
     _ensure_screening_experience_cases_table(seed_demo=True)
@@ -7959,14 +7966,18 @@ def _list_screening_experience_cases(
     if demo_case_id.strip():
         where.append(f"demo_case_id = {ph}")
         params.append(demo_case_id.strip())
-    if industry_sub.strip():
+    elif industry_sub.strip():
         where.append(f"industry_sub = {ph}")
         params.append(industry_sub.strip())
-    if company_name.strip():
+    elif industry_major.strip():
+        where.append(f"industry_major = {ph}")
+        params.append(industry_major.strip())
+    elif company_name.strip():
         where.append(f"company_name LIKE {ph}")
         params.append(f"%{company_name.strip()}%")
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
     capped_limit = max(1, min(int(limit or 6), 30))
+    fetch_limit = max(capped_limit, 120 if not demo_case_id.strip() else capped_limit)
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -7980,12 +7991,90 @@ def _list_screening_experience_cases(
                    CASE WHEN source = 'demo_seed' THEN 0 ELSE 1 END,
                    created_at DESC,
                    id DESC
-             LIMIT {capped_limit}
+             LIMIT {fetch_limit}
             """,
             tuple(params),
         )
         rows = cur.fetchall()
-    return [dict(row) for row in rows]
+    context = {
+        "demo_case_id": demo_case_id,
+        "industry_major": industry_major,
+        "industry_sub": industry_sub,
+        "asset_name": asset_name,
+        "customer_type": customer_type,
+        "main_bank": main_bank,
+        "competitor": competitor,
+        "outcome_status": outcome_status,
+        "score": score,
+    }
+    scored = [_score_screening_experience_case(dict(row), context) for row in rows]
+    scored.sort(key=lambda row: (row.get("similarity_score") or 0, row.get("created_at") or "", row.get("id") or 0), reverse=True)
+    return scored[:capped_limit]
+
+
+def _score_screening_experience_case(row: dict, context: dict) -> dict:
+    score = 0.0
+    reasons: list[str] = []
+    haystack = " ".join(
+        str(row.get(key) or "")
+        for key in (
+            "company_name", "industry_major", "industry_sub", "decision", "outcome",
+            "similarity", "action_taken", "lesson", "difference",
+        )
+    )
+
+    def add(points: float, reason: str) -> None:
+        nonlocal score
+        score += points
+        reasons.append(reason)
+
+    demo_case_id = str(context.get("demo_case_id") or "").strip()
+    if demo_case_id and str(row.get("demo_case_id") or "") == demo_case_id:
+        add(40, "同じデモケース")
+
+    industry_sub = str(context.get("industry_sub") or "").strip()
+    industry_major = str(context.get("industry_major") or "").strip()
+    if industry_sub and str(row.get("industry_sub") or "") == industry_sub:
+        add(32, "同じ小分類業種")
+    elif industry_major and str(row.get("industry_major") or "") == industry_major:
+        add(14, "同じ大分類業種")
+
+    for label, value, points in (
+        ("物件", context.get("asset_name"), 14),
+        ("取引区分", context.get("customer_type"), 10),
+        ("銀行支援", context.get("main_bank"), 8),
+        ("競合状況", context.get("competitor"), 8),
+    ):
+        text = str(value or "").strip()
+        if text and text in haystack:
+            add(points, f"{label}が近い")
+
+    outcome_status = str(context.get("outcome_status") or "").strip()
+    if outcome_status:
+        if outcome_status in str(row.get("outcome") or "") or outcome_status in str(row.get("decision") or ""):
+            add(8, "成約/失注の結果が近い")
+
+    try:
+        current_score = float(context.get("score")) if context.get("score") not in (None, "") else None
+        past_score = float(row.get("score")) if row.get("score") not in (None, "") else None
+    except Exception:
+        current_score = None
+        past_score = None
+    if current_score is not None and past_score is not None:
+        diff = abs(current_score - past_score)
+        if diff <= 5:
+            add(12, "スコア帯がほぼ同じ")
+        elif diff <= 15:
+            add(6, "スコア帯が近い")
+
+    if str(row.get("source") or "") == "case_result_auto":
+        add(6, "実結果から昇格した経験")
+    elif str(row.get("source") or "") == "demo_seed":
+        add(2, "デモ初期経験")
+
+    row["similarity_score"] = round(score, 1)
+    row["similarity_reasons"] = reasons[:5]
+    return row
 
 
 def _experience_case_exists(source_case_id: str, source: str) -> bool:
@@ -9278,14 +9367,28 @@ def patch_shion_screening_review_feedback(
 @app.get("/api/screening-experience-cases")
 def get_screening_experience_cases(
     demo_case_id: str = "",
+    industry_major: str = "",
     industry_sub: str = "",
     company_name: str = "",
+    asset_name: str = "",
+    customer_type: str = "",
+    main_bank: str = "",
+    competitor: str = "",
+    outcome_status: str = "",
+    score: Optional[float] = None,
     limit: int = 6,
 ) -> dict:
     rows = _list_screening_experience_cases(
         demo_case_id=demo_case_id,
+        industry_major=industry_major,
         industry_sub=industry_sub,
         company_name=company_name,
+        asset_name=asset_name,
+        customer_type=customer_type,
+        main_bank=main_bank,
+        competitor=competitor,
+        outcome_status=outcome_status,
+        score=score,
         limit=limit,
     )
     return {"count": len(rows), "cases": rows}

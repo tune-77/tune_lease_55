@@ -95,6 +95,8 @@ type DemoSimilarPastCase = {
   lesson: string;
   difference: string;
   source?: string;
+  similarityScore?: number;
+  similarityReasons?: string[];
 };
 
 const SHION_REVIEW_IMAGE = "/lease-intelligence/moods/focus.webp";
@@ -418,6 +420,10 @@ const normalizeExperienceCase = (raw: any): DemoSimilarPastCase => ({
   lesson: String(raw?.lesson || ""),
   difference: String(raw?.difference || ""),
   source: String(raw?.source || ""),
+  similarityScore: Number(raw?.similarity_score ?? raw?.similarityScore ?? 0),
+  similarityReasons: Array.isArray(raw?.similarity_reasons)
+    ? raw.similarity_reasons.map((reason: unknown) => String(reason)).filter(Boolean)
+    : [],
 });
 
 const fallbackExperienceCasesForDemo = (demoCaseId: string) =>
@@ -432,16 +438,17 @@ const normalizeReviewText = (text: string) =>
 const buildDemoSimilarPastCaseBlock = (cases: DemoSimilarPastCase[]) => {
   if (!cases.length) return "";
   return [
-    "【デモ用の過去類似事例】",
-    "次の事例は、このデモ案件を説明するための類似ケースです。今回と同じ扱いにせず、共通点・違い・今回なら何を確認するかを明示してください。",
+    "【保存済み経験ケース】",
+    "次の事例は、DBに保存された類似経験ケースです。今回と同じ扱いにせず、共通点・違い・今回なら何を確認するかを明示してください。",
     ...cases.slice(0, 3).map((item, index) => [
       `事例${index + 1}: ${item.companyName} / ${item.period} / ${item.industry}`,
+      item.similarityScore ? `類似度: ${Math.round(item.similarityScore)} / 理由: ${(item.similarityReasons || []).join("・") || "未計算"}` : "",
       `スコア・判断: ${item.score.toFixed(1)}点 / ${item.decision} / ${item.outcome}`,
       `似ている点: ${item.similarity}`,
       `当時の対応: ${item.actionTaken}`,
       `得た教訓: ${item.lesson}`,
       `今回との差分: ${item.difference}`,
-    ].join("\n")),
+    ].filter(Boolean).join("\n")),
   ].join("\n");
 };
 
@@ -879,10 +886,10 @@ function DemoSimilarPastCasesCard({
         <div>
           <div className="flex items-center gap-2 text-sm font-black text-sky-950">
             <Database className="h-4 w-4 text-sky-600" />
-            過去の類似デモ事例
+            保存済み経験ケース
           </div>
           <p className="mt-1 text-xs font-bold leading-relaxed text-sky-700">
-            {demoCase?.title || data.industry_sub || "この案件"} と同じ論点で、保存済み経験を表示します。
+            {demoCase?.title || data.industry_sub || "この案件"} と同じ論点で、後から再利用できる経験データを表示します。
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -910,10 +917,22 @@ function DemoSimilarPastCasesCard({
                 <p className="mt-0.5 text-[11px] font-bold text-slate-500">
                   {item.period} / {item.industry}
                 </p>
+                {!!item.similarityReasons?.length && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {item.similarityReasons.slice(0, 4).map((reason) => (
+                      <span key={reason} className="rounded-full border border-sky-100 bg-sky-50 px-2 py-0.5 text-[10px] font-black text-sky-700">
+                        {reason}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="shrink-0 rounded-lg bg-white px-2.5 py-1 text-right shadow-sm">
                 <div className="text-[10px] font-black text-slate-400">当時</div>
                 <div className="text-xs font-black text-slate-800">{item.score.toFixed(1)}点</div>
+                {!!item.similarityScore && (
+                  <div className="mt-0.5 text-[10px] font-black text-sky-700">類似度 {Math.round(item.similarityScore)}</div>
+                )}
               </div>
             </div>
 
@@ -1344,6 +1363,7 @@ export default function Dashboard() {
   const [draftRestored, setDraftRestored] = useState(false);
   const [lastDraftSavedAt, setLastDraftSavedAt] = useState<Date | null>(null);
   const [experienceCasesByDemo, setExperienceCasesByDemo] = useState<Record<string, DemoSimilarPastCase[]>>({});
+  const [currentExperienceCases, setCurrentExperienceCases] = useState<DemoSimilarPastCase[]>([]);
   const [experienceSaving, setExperienceSaving] = useState(false);
   const shionReviewRequestSeq = useRef(0);
   const suppressNextDraftSave = useRef(false);
@@ -1419,23 +1439,72 @@ export default function Dashboard() {
     return () => window.clearTimeout(timer);
   }, [draftRestored, formData, result, gunshiText, shionReview, activeTab]);
 
-  const fetchExperienceCasesForDemo = async (demoCaseId: string) => {
-    if (!demoCaseId) return [];
+  const buildExperienceCaseQuery = (
+    demoCaseId: string,
+    targetFormData: Partial<ScoringFormData>,
+    targetResult: any = null,
+  ) => ({
+    demo_case_id: demoCaseId,
+    industry_major: targetResult?.industry_major || targetFormData.industry_major || "",
+    industry_sub: targetResult?.industry_sub || targetFormData.industry_sub || "",
+    company_name: targetFormData.company_name || "",
+    asset_name: targetFormData.asset_name || targetFormData.asset_detail || "",
+    customer_type: targetFormData.customer_type || "",
+    main_bank: targetFormData.main_bank || "",
+    competitor: targetFormData.competitor || "",
+    outcome_status: targetResult?.final_status || targetResult?.result_status || targetResult?.hantei || "",
+    score: targetResult?.score_base ?? targetResult?.score ?? "",
+    limit: 8,
+  });
+
+  const hasExperienceSearchContext = (targetFormData: Partial<ScoringFormData>, targetResult: any = null) =>
+    Boolean(
+      targetFormData.industry_sub ||
+      targetFormData.industry_major ||
+      targetFormData.asset_name ||
+      targetFormData.customer_type ||
+      targetFormData.main_bank ||
+      targetFormData.competitor ||
+      targetResult?.hantei ||
+      targetResult?.score_base ||
+      targetResult?.score,
+    );
+
+  const fetchExperienceCasesForContext = async (
+    demoCaseId: string,
+    targetFormData: Partial<ScoringFormData> = {},
+    targetResult: any = null,
+  ) => {
+    if (!demoCaseId && !hasExperienceSearchContext(targetFormData, targetResult)) return [];
     try {
       const res = await apiClient.get("/api/screening-experience-cases", {
-        params: { demo_case_id: demoCaseId, limit: 8 },
+        params: buildExperienceCaseQuery(demoCaseId, targetFormData, targetResult),
       });
       const cases = Array.isArray(res.data?.cases)
         ? res.data.cases.map(normalizeExperienceCase)
         : [];
-      const nextCases = cases.length ? cases : fallbackExperienceCasesForDemo(demoCaseId);
-      setExperienceCasesByDemo((prev) => ({ ...prev, [demoCaseId]: nextCases }));
+      const nextCases = cases.length || !demoCaseId ? cases : fallbackExperienceCasesForDemo(demoCaseId);
+      if (demoCaseId) {
+        setExperienceCasesByDemo((prev) => ({ ...prev, [demoCaseId]: nextCases }));
+      } else {
+        setCurrentExperienceCases(nextCases);
+      }
       return nextCases;
     } catch {
-      const fallback = fallbackExperienceCasesForDemo(demoCaseId);
-      setExperienceCasesByDemo((prev) => ({ ...prev, [demoCaseId]: fallback }));
+      const fallback = demoCaseId ? fallbackExperienceCasesForDemo(demoCaseId) : [];
+      if (demoCaseId) {
+        setExperienceCasesByDemo((prev) => ({ ...prev, [demoCaseId]: fallback }));
+      } else {
+        setCurrentExperienceCases([]);
+      }
       return fallback;
     }
+  };
+
+  const fetchExperienceCasesForDemo = (demoCaseId: string) => {
+    const demoCase = demoScreeningCases.find((item) => item.id === demoCaseId);
+    if (!demoCase) return Promise.resolve([]);
+    return fetchExperienceCasesForContext(demoCaseId, demoCase.data, null);
   };
 
   useEffect(() => {
@@ -1526,7 +1595,7 @@ export default function Dashboard() {
     try {
       const pastReviews = await fetchPastShionReviews(targetResult, targetFormData);
       const demoCase = findDemoScreeningCase(targetFormData);
-      const experienceCases = demoCase ? await fetchExperienceCasesForDemo(demoCase.id) : [];
+      const experienceCases = await fetchExperienceCasesForContext(demoCase?.id || "", targetFormData, targetResult);
       if (seq !== shionReviewRequestSeq.current) return;
       const promptText = buildShionReviewPrompt(targetResult, targetFormData, pastReviews, experienceCases);
       const res = await apiClient.post("/api/chat", {
@@ -1578,6 +1647,7 @@ export default function Dashboard() {
     setShionReviewLoading(false);
     setShionReviewError("");
     setShionFeedbackSaving(false);
+    setCurrentExperienceCases([]);
     setActiveTab("input");
     window.localStorage.removeItem(SCREENING_RETURN_STATE_KEY);
     setLastDraftSavedAt(null);
@@ -1591,6 +1661,7 @@ export default function Dashboard() {
       const res = await apiClient.post(`/api/score/full`, toThousandYenPayload(targetFormData));
       setResult(res.data);
       setActiveTab("analysis");
+      void fetchExperienceCasesForContext(findDemoScreeningCase(targetFormData)?.id || "", targetFormData, res.data);
       void requestShionReview(res.data, targetFormData);
 
       // めぶきちゃんの表情をスコアに応じて切り替え
@@ -1624,6 +1695,7 @@ export default function Dashboard() {
     setShionReview(null);
     setShionReviewError("");
     setShionFeedbackSaving(false);
+    setCurrentExperienceCases([]);
     setActiveTab("input");
     if (runImmediately) {
       void handleSubmit(nextFormData);
@@ -1655,9 +1727,7 @@ export default function Dashboard() {
         form_snapshot: formData,
         result_snapshot: result,
       });
-      if (demoCase) {
-        await fetchExperienceCasesForDemo(demoCase.id);
-      }
+      await fetchExperienceCasesForContext(demoCase?.id || "", formData, result);
     } catch (error) {
       console.error("Screening experience save failed", error);
       alert("経験データを保存できませんでした。");
@@ -1998,7 +2068,7 @@ export default function Dashboard() {
                         const demoCase = findDemoScreeningCase(formData);
                         return demoCase
                           ? (experienceCasesByDemo[demoCase.id] || fallbackExperienceCasesForDemo(demoCase.id))
-                          : [];
+                          : currentExperienceCases;
                       })()}
                       onSaveExperience={saveCurrentExperienceCase}
                       saving={experienceSaving}
