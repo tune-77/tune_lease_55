@@ -116,7 +116,7 @@ export default function RegisterPage() {
     }
     setSubmitting(true);
     try {
-      await apiClient.post(`/api/cases/register`, {
+      const res = await apiClient.post(`/api/cases/register`, {
         case_id: targetId,
         status: status,
         final_rate: parseRateInput(finalRate),
@@ -132,7 +132,11 @@ export default function RegisterPage() {
         non_negotiable_condition: nonNegotiableCondition,
         retrospective_note: retrospectiveNote
       });
-      triggerMebuki('approve', `${targetId} の結果を登録しました！ご協力ありがとうございます！`);
+      const promoted = res.data?.experience_promotion?.status === 'promoted';
+      triggerMebuki(
+        'approve',
+        `${targetId} の結果を登録しました！${promoted ? '\n経験ケースにも自動昇格しました。' : ''}`
+      );
       setTargetId('');
       setNote('');
       setLostReason('');
