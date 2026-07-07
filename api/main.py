@@ -7994,7 +7994,8 @@ def _list_screening_experience_cases(
                 f"""
                 SELECT id, demo_case_id, source_case_id, company_name, period, industry_major,
                        industry_sub, sales_dept, score, decision, outcome, similarity,
-                       action_taken, lesson, difference, source, created_at, updated_at
+                       action_taken, lesson, difference, source, form_snapshot, result_snapshot,
+                       created_at, updated_at
                   FROM screening_experience_cases
                   {where_sql}
                  ORDER BY

@@ -97,6 +97,8 @@ type DemoSimilarPastCase = {
   source?: string;
   similarityScore?: number;
   similarityReasons?: string[];
+  formSnapshot?: Record<string, any>;
+  resultSnapshot?: Record<string, any>;
 };
 
 const SHION_REVIEW_IMAGE = "/lease-intelligence/moods/focus.webp";
@@ -402,6 +404,20 @@ const findDemoScreeningCase = (data: Partial<ScoringFormData>) => {
   ) || null;
 };
 
+const parseExperienceSnapshot = (value: unknown): Record<string, any> | undefined => {
+  if (!value) return undefined;
+  if (typeof value === "object" && !Array.isArray(value)) return value as Record<string, any>;
+  if (typeof value !== "string") return undefined;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, any>
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 const normalizeExperienceCase = (raw: any): DemoSimilarPastCase => ({
   id: Number(raw?.id || 0) || undefined,
   demoCaseId: String(raw?.demo_case_id || raw?.demoCaseId || ""),
@@ -424,6 +440,8 @@ const normalizeExperienceCase = (raw: any): DemoSimilarPastCase => ({
   similarityReasons: Array.isArray(raw?.similarity_reasons)
     ? raw.similarity_reasons.map((reason: unknown) => String(reason)).filter(Boolean)
     : [],
+  formSnapshot: parseExperienceSnapshot(raw?.form_snapshot ?? raw?.formSnapshot),
+  resultSnapshot: parseExperienceSnapshot(raw?.result_snapshot ?? raw?.resultSnapshot),
 });
 
 const fallbackExperienceCasesForDemo = (demoCaseId: string) =>
@@ -866,6 +884,185 @@ function RingiPolicyCard({ result, data }: { result: Record<string, any>; data: 
   );
 }
 
+const formatExperienceValue = (value: unknown) => {
+  if (value === null || value === undefined || value === "") return "未記録";
+  if (typeof value === "number") return Number.isFinite(value) ? value.toLocaleString("ja-JP") : "未記録";
+  if (Array.isArray(value)) return value.length ? value.join(" / ") : "未記録";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+};
+
+const pickExperienceValue = (
+  primary: Record<string, any> | undefined,
+  fallback: Record<string, any>,
+  keys: string[],
+) => {
+  for (const key of keys) {
+    const value = primary?.[key] ?? fallback[key];
+    if (value !== null && value !== undefined && value !== "") return value;
+  }
+  return "";
+};
+
+function ExperienceCaseDetailModal({
+  item,
+  data,
+  onClose,
+}: {
+  item: DemoSimilarPastCase;
+  data: ScoringFormData;
+  onClose: () => void;
+}) {
+  const currentData = data as unknown as Record<string, any>;
+  const formRows = [
+    ["企業番号", pickExperienceValue(item.formSnapshot, currentData, ["company_no"])],
+    ["営業部", pickExperienceValue(item.formSnapshot, currentData, ["sales_dept"])],
+    ["取引区分", pickExperienceValue(item.formSnapshot, currentData, ["customer_type"])],
+    ["メイン先", pickExperienceValue(item.formSnapshot, currentData, ["main_bank"])],
+    ["競合", pickExperienceValue(item.formSnapshot, currentData, ["competitor"])],
+    ["物件", pickExperienceValue(item.formSnapshot, currentData, ["asset_name", "asset_detail"])],
+    ["取得価額", pickExperienceValue(item.formSnapshot, currentData, ["acquisition_cost"])],
+    ["リース期間", pickExperienceValue(item.formSnapshot, currentData, ["lease_term", "lease_term_months"])],
+  ];
+  const resultRows = [
+    ["総合スコア", item.resultSnapshot?.score_base ?? item.resultSnapshot?.score ?? item.score],
+    ["判定", item.resultSnapshot?.hantei ?? item.decision],
+    ["Q_risk", item.resultSnapshot?.quantum_risk],
+    ["UMAP異常度", item.resultSnapshot?.umap_anomaly_score],
+  ];
+  const hasSnapshot = Boolean(item.formSnapshot || item.resultSnapshot);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-3 py-6 backdrop-blur-md" onClick={onClose}>
+      <div
+        className="relative max-h-[88vh] w-full max-w-5xl overflow-hidden rounded-xl border border-cyan-300/40 bg-slate-950 text-cyan-50 shadow-2xl shadow-cyan-950/60"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${item.companyName} の経験ケース詳細`}
+      >
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(34,211,238,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.06)_1px,transparent_1px)] bg-[size:22px_22px]" />
+        <div className="pointer-events-none absolute left-0 right-0 top-0 h-px bg-cyan-200/80 shadow-[0_0_20px_rgba(34,211,238,0.9)]" />
+
+        <div className="relative flex items-start justify-between gap-4 border-b border-cyan-300/25 bg-slate-900/90 px-4 py-3">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-300">CASE MEMORY TRACE</div>
+            <h3 className="mt-1 text-xl font-black text-white">{item.companyName}</h3>
+            <p className="mt-1 text-xs font-bold text-cyan-100/80">{item.period || "時期未記録"} / {item.industry || "業種未記録"}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-cyan-300/30 bg-cyan-300/10 p-2 text-cyan-100 transition hover:bg-cyan-300/20"
+            aria-label="閉じる"
+          >
+            <XCircle className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="relative max-h-[calc(88vh-76px)] overflow-y-auto p-4">
+          <div className="grid gap-3 lg:grid-cols-[1fr_0.85fr]">
+            <div className="rounded-lg border border-cyan-300/25 bg-slate-900/75 p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-md border border-cyan-300/30 bg-cyan-300/10 px-2 py-1 text-[10px] font-black text-cyan-100">当時 {item.score.toFixed(1)}点</span>
+                {!!item.similarityScore && (
+                  <span className="rounded-md border border-emerald-300/30 bg-emerald-300/10 px-2 py-1 text-[10px] font-black text-emerald-100">
+                    類似度 {Math.round(item.similarityScore)}
+                  </span>
+                )}
+                <span className="rounded-md border border-violet-300/30 bg-violet-300/10 px-2 py-1 text-[10px] font-black text-violet-100">
+                  {item.source || "experience"}
+                </span>
+              </div>
+              {!!item.similarityReasons?.length && (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {item.similarityReasons.map((reason) => (
+                    <span key={reason} className="rounded-full border border-cyan-300/25 px-2 py-0.5 text-[10px] font-bold text-cyan-100/90">
+                      {reason}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <div className="text-[10px] font-black text-cyan-300/80">判断</div>
+                  <div className="mt-1 text-sm font-black text-white">{item.decision || "未記録"}</div>
+                  <div className="mt-1 text-xs font-bold leading-relaxed text-cyan-100/70">{item.outcome || "結果未記録"}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-black text-cyan-300/80">似ている点</div>
+                  <div className="mt-1 text-xs font-bold leading-relaxed text-cyan-50">{item.similarity || "未記録"}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-cyan-300/25 bg-slate-900/75 p-3">
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">DATA LAYER</div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {resultRows.map(([label, value]) => (
+                  <div key={label} className="border border-cyan-300/15 bg-slate-950/70 px-2 py-2">
+                    <div className="text-[10px] font-black text-cyan-300/70">{label}</div>
+                    <div className="mt-1 break-words text-xs font-black text-white">{formatExperienceValue(value)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3 grid gap-3 lg:grid-cols-3">
+            <div className="rounded-lg border border-emerald-300/25 bg-emerald-950/30 p-3">
+              <div className="text-[10px] font-black text-emerald-200">当時こうした</div>
+              <div className="mt-2 text-xs font-bold leading-relaxed text-emerald-50">{item.actionTaken || "未記録"}</div>
+            </div>
+            <div className="rounded-lg border border-amber-300/25 bg-amber-950/25 p-3">
+              <div className="text-[10px] font-black text-amber-200">得た教訓</div>
+              <div className="mt-2 text-xs font-bold leading-relaxed text-amber-50">{item.lesson || "未記録"}</div>
+            </div>
+            <div className="rounded-lg border border-blue-300/25 bg-blue-950/25 p-3">
+              <div className="text-[10px] font-black text-blue-200">今回との違い</div>
+              <div className="mt-2 text-xs font-bold leading-relaxed text-blue-50">{item.difference || "未記録"}</div>
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-lg border border-cyan-300/25 bg-slate-900/75 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">INPUT SNAPSHOT</div>
+                <div className="mt-1 text-[11px] font-bold text-cyan-100/60">
+                  {hasSnapshot ? "保存時の主要入力を復元" : "詳細スナップショット未保存のため、現在入力と経験ケース概要から表示"}
+                </div>
+              </div>
+              <Eye className="h-4 w-4 text-cyan-300" />
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {formRows.map(([label, value]) => (
+                <div key={label} className="border border-cyan-300/15 bg-slate-950/60 px-2 py-2">
+                  <div className="text-[10px] font-black text-cyan-300/70">{label}</div>
+                  <div className="mt-1 break-words text-xs font-bold text-cyan-50">{formatExperienceValue(value)}</div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              <div className="border border-cyan-300/15 bg-slate-950/60 p-2">
+                <div className="text-[10px] font-black text-cyan-300/70">導入目的</div>
+                <div className="mt-1 text-xs font-bold leading-relaxed text-cyan-50">
+                  {formatExperienceValue(pickExperienceValue(item.formSnapshot, currentData, ["asset_purpose"]))}
+                </div>
+              </div>
+              <div className="border border-cyan-300/15 bg-slate-950/60 p-2">
+                <div className="text-[10px] font-black text-cyan-300/70">営業メモ</div>
+                <div className="mt-1 text-xs font-bold leading-relaxed text-cyan-50">
+                  {formatExperienceValue(pickExperienceValue(item.formSnapshot, currentData, ["passion_text"]))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DemoSimilarPastCasesCard({
   data,
   experienceCases,
@@ -878,6 +1075,7 @@ function DemoSimilarPastCasesCard({
   saving: boolean;
 }) {
   const demoCase = findDemoScreeningCase(data);
+  const [selectedCase, setSelectedCase] = useState<DemoSimilarPastCase | null>(null);
   if (!demoCase && !experienceCases.length) return null;
 
   return (
@@ -910,10 +1108,22 @@ function DemoSimilarPastCasesCard({
 
       <div className="mt-3 grid gap-3 lg:grid-cols-2">
         {experienceCases.map((item) => (
-          <article key={`${item.id || item.demoCaseId || demoCase?.id}-${item.companyName}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <article
+            key={`${item.id || item.demoCaseId || demoCase?.id}-${item.companyName}`}
+            role="button"
+            tabIndex={0}
+            onClick={() => setSelectedCase(item)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                setSelectedCase(item);
+              }
+            }}
+            className="group cursor-pointer rounded-xl border border-slate-200 bg-slate-50 p-3 transition hover:border-cyan-300 hover:bg-cyan-50/40 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-cyan-300"
+          >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h4 className="text-sm font-black text-slate-900">{item.companyName}</h4>
+                <h4 className="text-sm font-black text-slate-900 group-hover:text-cyan-950">{item.companyName}</h4>
                 <p className="mt-0.5 text-[11px] font-bold text-slate-500">
                   {item.period} / {item.industry}
                 </p>
@@ -934,6 +1144,10 @@ function DemoSimilarPastCasesCard({
                   <div className="mt-0.5 text-[10px] font-black text-sky-700">類似度 {Math.round(item.similarityScore)}</div>
                 )}
               </div>
+            </div>
+            <div className="mt-2 flex items-center justify-end text-[10px] font-black text-cyan-700 opacity-80 transition group-hover:opacity-100">
+              <Eye className="mr-1 h-3 w-3" />
+              記録層を開く
             </div>
 
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -965,6 +1179,13 @@ function DemoSimilarPastCasesCard({
           </article>
         ))}
       </div>
+      {selectedCase && (
+        <ExperienceCaseDetailModal
+          item={selectedCase}
+          data={data}
+          onClose={() => setSelectedCase(null)}
+        />
+      )}
     </section>
   );
 }
