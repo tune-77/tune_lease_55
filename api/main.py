@@ -7874,7 +7874,8 @@ def _ensure_screening_experience_cases_table(seed_demo: bool = True) -> None:
         try:
             _seed_screening_experience_demo_cases()
         except _sqlite3.OperationalError as exc:
-            if "readonly" not in str(exc).lower():
+            msg = str(exc).lower()
+            if "readonly" not in msg and "no such table" not in msg:
                 raise
 
 
@@ -7965,6 +7966,8 @@ def _list_screening_experience_cases(
     score: Optional[float] = None,
     limit: int = 6,
 ) -> list[dict]:
+    import sqlite3 as _sqlite3
+
     _ensure_screening_experience_cases_table(seed_demo=True)
     ph = placeholder()
     where: list[str] = []
@@ -7984,24 +7987,34 @@ def _list_screening_experience_cases(
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
     capped_limit = max(1, min(int(limit or 6), 30))
     fetch_limit = max(capped_limit, 120 if not demo_case_id.strip() else capped_limit)
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"""
-            SELECT id, demo_case_id, source_case_id, company_name, period, industry_major,
-                   industry_sub, sales_dept, score, decision, outcome, similarity,
-                   action_taken, lesson, difference, source, created_at, updated_at
-              FROM screening_experience_cases
-              {where_sql}
-             ORDER BY
-                   CASE WHEN source = 'demo_seed' THEN 0 ELSE 1 END,
-                   created_at DESC,
-                   id DESC
-             LIMIT {fetch_limit}
-            """,
-            tuple(params),
-        )
-        rows = cur.fetchall()
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                f"""
+                SELECT id, demo_case_id, source_case_id, company_name, period, industry_major,
+                       industry_sub, sales_dept, score, decision, outcome, similarity,
+                       action_taken, lesson, difference, source, created_at, updated_at
+                  FROM screening_experience_cases
+                  {where_sql}
+                 ORDER BY
+                       CASE WHEN source = 'demo_seed' THEN 0 ELSE 1 END,
+                       created_at DESC,
+                       id DESC
+                 LIMIT {fetch_limit}
+                """,
+                tuple(params),
+            )
+            rows = cur.fetchall()
+    except _sqlite3.OperationalError as exc:
+        if "no such table" not in str(exc).lower():
+            raise
+        rows = _fallback_screening_experience_rows(
+            demo_case_id=demo_case_id,
+            industry_major=industry_major,
+            industry_sub=industry_sub,
+            company_name=company_name,
+        )[:fetch_limit]
     context = {
         "demo_case_id": demo_case_id,
         "industry_major": industry_major,
@@ -8016,6 +8029,27 @@ def _list_screening_experience_cases(
     scored = [_score_screening_experience_case(dict(row), context) for row in rows]
     scored.sort(key=lambda row: (row.get("similarity_score") or 0, row.get("created_at") or "", row.get("id") or 0), reverse=True)
     return scored[:capped_limit]
+
+
+def _fallback_screening_experience_rows(
+    demo_case_id: str = "",
+    industry_major: str = "",
+    industry_sub: str = "",
+    company_name: str = "",
+) -> list[dict]:
+    rows: list[dict] = []
+    for index, seed in enumerate(_SCREENING_EXPERIENCE_DEMO_SEEDS, start=1):
+        if demo_case_id.strip() and seed.get("demo_case_id") != demo_case_id.strip():
+            continue
+        if not demo_case_id.strip() and industry_sub.strip() and seed.get("industry_sub") != industry_sub.strip():
+            continue
+        if not demo_case_id.strip() and not industry_sub.strip() and industry_major.strip() and seed.get("industry_major") != industry_major.strip():
+            continue
+        if not demo_case_id.strip() and not industry_sub.strip() and not industry_major.strip() and company_name.strip():
+            if company_name.strip() not in str(seed.get("company_name") or ""):
+                continue
+        rows.append({"id": index, "created_at": "", "updated_at": "", **seed})
+    return rows
 
 
 def _score_screening_experience_case(row: dict, context: dict) -> dict:
