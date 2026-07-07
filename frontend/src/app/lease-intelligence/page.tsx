@@ -168,6 +168,20 @@ const clearVisibleDialogueMessages = () => {
   window.localStorage.removeItem(DIALOGUE_LOCAL_HISTORY_KEY);
 };
 
+const knowledgeConnectionLabel = (state: MindState) => {
+  const connection = state.knowledge_connection;
+  if (connection?.label && !/0\s*ノート/.test(connection.label)) return connection.label;
+  const vectorChunks = Number(connection?.vector_chunks || 0);
+  if (vectorChunks > 0) return `知識DB検索可能: ${vectorChunks}チャンク`;
+  const markdownNotes = Number(connection?.markdown_notes || 0);
+  if (markdownNotes > 0) return `知識コピー検索可能: ${markdownNotes}ノート`;
+  const caseCount = Number(connection?.case_count || 0);
+  if (caseCount > 0) return `案件DB接続: ${caseCount}件`;
+  const indexedNotes = Number(state.indexed_notes || 0);
+  if (indexedNotes > 0) return `知識検索可能: ${indexedNotes}件`;
+  return "知識接続: 確認中";
+};
+
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 const getDialogueErrorDetail = (err: unknown) => {
@@ -1128,7 +1142,7 @@ export default function LeaseIntelligencePage() {
               <Database className="h-4 w-4 text-emerald-600" /> 知識接続
             </h2>
             <p className="mt-2 text-xs text-slate-600">
-              {state.knowledge_connection?.label || `知識検索可能: ${state.indexed_notes || 0}ノート`}
+              {knowledgeConnectionLabel(state)}
             </p>
             {state.knowledge_connection && (
               <p className="mt-1 text-[11px] text-slate-400">

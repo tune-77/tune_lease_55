@@ -9373,6 +9373,18 @@ def _build_lease_intelligence_knowledge_connection(vault: Path | None) -> dict[s
     }
 
 
+def _lease_intelligence_indexed_notes_for_compat(connection: dict[str, Any]) -> int:
+    """旧UI向けの indexed_notes にも接続済み件数を入れる。"""
+    for key in ("markdown_notes", "vector_chunks", "case_count"):
+        try:
+            count = int(connection.get(key) or 0)
+        except Exception:
+            count = 0
+        if count > 0:
+            return count
+    return 0
+
+
 @app.get("/api/lease-intelligence/dialogue/state")
 def get_lease_intelligence_dialogue_state(since: Optional[str] = None):
     from lease_intelligence_dialogue import DIALOGUE_USER_ID
@@ -9385,10 +9397,11 @@ def get_lease_intelligence_dialogue_state(since: Optional[str] = None):
 
     vault = find_vault()
     knowledge_connection = _build_lease_intelligence_knowledge_connection(vault)
+    indexed_notes = _lease_intelligence_indexed_notes_for_compat(knowledge_connection)
     if not vault:
         summary = {
             "dominant_mood": "接続確認中",
-            "indexed_notes": 0,
+            "indexed_notes": indexed_notes,
             "knowledge_available": bool(knowledge_connection.get("case_count") or knowledge_connection.get("vector_chunks") or knowledge_connection.get("markdown_notes")),
         }
         messages = get_recent_messages(DIALOGUE_USER_ID, limit=80, since=since)
@@ -9400,6 +9413,8 @@ def get_lease_intelligence_dialogue_state(since: Optional[str] = None):
     # GET は読み取り専用。RAG検索と mind.json 更新は対話POST側で行われるため、
     # ページロードごとの検索・書き込み（約1.5秒）を避けて保存済み状態を返す。
     summary = self_state_summary(load_lease_intelligence_mind(vault))
+    summary["indexed_notes"] = max(int(summary.get("indexed_notes") or 0), indexed_notes)
+    summary["knowledge_available"] = bool(summary.get("knowledge_available") or indexed_notes)
     messages = get_recent_messages(DIALOGUE_USER_ID, limit=80, since=since)
     return {
         "state": {**summary, "knowledge_connection": knowledge_connection},
