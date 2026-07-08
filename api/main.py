@@ -1170,14 +1170,14 @@ def _build_approval_comment_draft(
         reason = str(action.get("reason") or "").strip()
         if action_text:
             condition_lines.append(f"{action_text}" + (f"（{reason}）" if reason else ""))
-    if not condition_lines and score >= 70:
+    if not condition_lines and score >= APPROVAL_LINE:
         condition_lines.append("通常の見積・契約条件確認を前提に進める。")
     if missing:
         condition_lines.append("不足資料: " + "、".join(str(item) for item in missing[:5]) + "。")
 
     final_opinion = (
         "上記より、物件・用途・取引背景を確認したうえで、条件を付して稟議上申する。"
-        if score < 70 else
+        if score < APPROVAL_LINE else
         "上記より、通常確認事項を充足することを前提に稟議上申する。"
     )
 

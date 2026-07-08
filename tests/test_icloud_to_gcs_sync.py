@@ -187,3 +187,81 @@ def test_collect_md_files_uses_chat_knowledge_allowlist(tmp_path):
 
 def test_default_local_vault_dir_points_to_icloud_vault():
     assert "Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault" in LOCAL_VAULT_DIR
+
+
+# ------------------------------------------------------------------
+# gcloud バックエンドの mtime 差分スキップ（状態ファイルベース）
+# ------------------------------------------------------------------
+
+class TestGcloudBackendSkipsUnchangedFiles:
+    def _make_vault(self, tmp_path):
+        note_dir = tmp_path / "Projects" / "tune_lease_55" / "Research"
+        note_dir.mkdir(parents=True)
+        note = note_dir / "note.md"
+        note.write_text("# research note")
+        return note
+
+    def test_second_run_skips_unchanged_files(self, tmp_path, monkeypatch):
+        """未変更ファイルは2回目の実行で gcloud を呼ばずにスキップされること。"""
+        from scripts import icloud_to_gcs_sync as mod
+
+        self._make_vault(tmp_path)
+        state_file = tmp_path / ".state.json"
+        calls = []
+        monkeypatch.setattr(mod, "LOCAL_VAULT_DIR", str(tmp_path))
+        monkeypatch.setattr(mod, "GCS_UPLOAD_BACKEND", "gcloud")
+        monkeypatch.setattr(mod, "STATE_FILE", state_file)
+        monkeypatch.setattr(
+            mod, "_upload_with_gcloud",
+            lambda path, bucket, gcs_path, mtime: calls.append(str(gcs_path)) or True,
+        )
+
+        mod.main()
+        assert len(calls) == 1
+        assert state_file.exists()
+
+        mod.main()
+        assert len(calls) == 1  # 2回目はアップロードなし
+
+    def test_modified_file_is_reuploaded(self, tmp_path, monkeypatch):
+        """mtime が変わったファイルは再アップロードされること。"""
+        import os as _os
+
+        from scripts import icloud_to_gcs_sync as mod
+
+        note = self._make_vault(tmp_path)
+        state_file = tmp_path / ".state.json"
+        calls = []
+        monkeypatch.setattr(mod, "LOCAL_VAULT_DIR", str(tmp_path))
+        monkeypatch.setattr(mod, "GCS_UPLOAD_BACKEND", "gcloud")
+        monkeypatch.setattr(mod, "STATE_FILE", state_file)
+        monkeypatch.setattr(
+            mod, "_upload_with_gcloud",
+            lambda path, bucket, gcs_path, mtime: calls.append(str(gcs_path)) or True,
+        )
+
+        mod.main()
+        _os.utime(note, (note.stat().st_atime, note.stat().st_mtime + 10))
+        mod.main()
+
+        assert len(calls) == 2
+
+    def test_failed_upload_is_not_recorded(self, tmp_path, monkeypatch):
+        """アップロード失敗時は状態に記録されず、次回リトライされること。"""
+        import pytest
+
+        from scripts import icloud_to_gcs_sync as mod
+
+        self._make_vault(tmp_path)
+        state_file = tmp_path / ".state.json"
+        monkeypatch.setattr(mod, "LOCAL_VAULT_DIR", str(tmp_path))
+        monkeypatch.setattr(mod, "GCS_UPLOAD_BACKEND", "gcloud")
+        monkeypatch.setattr(mod, "STATE_FILE", state_file)
+        monkeypatch.setattr(mod, "_upload_with_gcloud", lambda *args: False)
+
+        with pytest.raises(RuntimeError):
+            mod.main()
+
+        import json as _json
+        state = _json.loads(state_file.read_text(encoding="utf-8")) if state_file.exists() else {}
+        assert state == {}

@@ -107,3 +107,5 @@ scoring_output_bridge.json
 .cloudrun_bundle/
 # Cloud SQL 同期スクリプトの状態ファイル
 scripts/.sync_state_cloudsql.json
+# iCloud→GCS 差分アップロードの状態ファイル
+scripts/.sync_state_icloud_gcs.json
