@@ -32,3 +32,7 @@ echo "[補助] 週次セルフマネジメントサマリ（月曜のみ）..."
 echo ""
 echo "[内省] 紫苑の日次私的内省を生成（当日対話/内省材料 → Private Reflection）..."
 "${PYTHON}" "${PROJECT_ROOT}/lease_intelligence_reflection.py" || true
+
+echo ""
+echo "[配布] 公開ノート（Memory Pack等）を GCS Vault へアップロード..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/icloud_to_gcs_sync.py" || true
