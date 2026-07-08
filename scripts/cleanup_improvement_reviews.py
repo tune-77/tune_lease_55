@@ -89,6 +89,15 @@ KNOWN_CODE_APPLIED: list[tuple[str, str, str]] = [
     ("misc_4f0e7b380ae2",
      "ブルドーザー、ショベル・油圧ショベルのリース期間5年→6年修正",
      "修正済み（static_data/industry_benchmarks.json にてリース期間を6年に修正確認）"),
+    # 2026-07-08 ユーザー確認済み（needs_review クールダウン中の実装済み項目）
+    ("misc_fa848c8b7b88", "担当者の最終判断を記録する登録ボタンがない。",
+     "実装済み: cases/page.tsx 結果登録フォーム（成約/失注の final_status 登録）"),
+    ("misc_e3902655c2dd", "AIチャット履歴の表示を制御する機能がない。",
+     "実装済み: chat/page.tsx clearHistory・履歴削除ボタン"),
+    ("misc_208f46fae136", "企業登録後、結果登録画面に直前に登録した企業が表示されない。",
+     "実装済み: cases/page.tsx 案件一覧から選択して結果登録できるUI"),
+    ("misc_2d8a190dc89c", "ホーム画面のUIデザインについて、ユーザーからの変更要望がある。",
+     "実装済み: home/page.tsx ホーム画面刷新（2026-07-08 ユーザー確認）"),
 ]
 
 KNOWN_PR_OVERRIDES: dict[str, tuple[int, str]] = {
