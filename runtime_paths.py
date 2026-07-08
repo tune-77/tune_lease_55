@@ -92,6 +92,10 @@ def _do_ensure_cloudrun_demo_db_seeded() -> None:
                 except OSError:
                     pass
         shutil.copy2(src, dst)
+        try:
+            dst.chmod(dst.stat().st_mode | 0o600)
+        except OSError:
+            pass
         print(f"[runtime_paths] restored demo DB from bundle: {dst}")
 
 

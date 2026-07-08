@@ -19,6 +19,7 @@ ARG FASTAPI_URL=http://127.0.0.1:8000
 COPY --from=frontend-builder /build/.next/standalone/ ./
 COPY --from=frontend-builder /build/.next/static/ ./.next/static/
 COPY --from=frontend-builder /build/public/ ./public/
+COPY sw-unregister.js ./public/sw.js
 
 ENV HOSTNAME=0.0.0.0 \
     PORT=8080 \

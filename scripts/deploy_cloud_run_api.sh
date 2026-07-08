@@ -21,10 +21,11 @@ CLOUDRUN_DATA_MODE="${CLOUDRUN_DATA_MODE:-demo}"
 # ENABLE_OBSIDIAN_INDEXING の経路で既にロードされるため追加コストは小さい。
 # コレクションは初回起動時にバックグラウンド自動構築される（api/shion_memory_vector.py）。
 SHION_MEMORY_HYBRID="${SHION_MEMORY_HYBRID:-1}"
-# 公開デモ（CLOUDRUN_DATA_MODE=demo）では既定で削除操作を無効化する（来場者による
-# デモデータ破壊を防止）。本番データモードや明示指定で上書き可能。
+# Cloud Run demo でも登録・削除を通常操作として試せるよう、既定では
+# DEMO_READONLY を解除する。公開審査などで削除を塞ぎたい時だけ
+# DEMO_READONLY=1 を明示して上書きする。
 if [[ "$CLOUDRUN_DATA_MODE" == "demo" ]]; then
-  DEMO_READONLY="${DEMO_READONLY:-1}"
+  DEMO_READONLY="${DEMO_READONLY:-0}"
 else
   DEMO_READONLY="${DEMO_READONLY:-0}"
 fi

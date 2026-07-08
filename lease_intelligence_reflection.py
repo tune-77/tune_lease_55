@@ -297,6 +297,109 @@ def _load_cloudrun_input_signal_items(date_str: str) -> list[str]:
     ]
 
 
+def _clean_dialogue_line(line: str) -> str:
+    cleaned = re.sub(r"`([^`]+)`", r"\1", line.strip())
+    cleaned = re.sub(r"[*_]{1,3}", "", cleaned)
+    cleaned = re.sub(r"^\s*[-・*]\s*", "", cleaned)
+    cleaned = re.sub(r"^\s*\d+\.\s*", "", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned.strip()
+
+
+def _extract_dialogue_signal_items(dialogue_text: str, limit: int = 8) -> list[str]:
+    """Extract day-specific reflection material from chat logs.
+
+    The fallback generator used to acknowledge that dialogue existed while
+    still leaning on generic introspection reports. These compact signals keep
+    fallback reflections anchored to what the user actually said that day.
+    """
+    if not dialogue_text.strip():
+        return []
+
+    items: list[str] = []
+    seen: set[str] = set()
+
+    def add(value: str) -> None:
+        value = _without_trailing_punctuation(_clean_dialogue_line(value))
+        if len(value) < 8:
+            return
+        if value in seen:
+            return
+        seen.add(value)
+        items.append(value[:180])
+
+    important_terms = (
+        "プライベートリフレクション",
+        "Private Reflection",
+        "チャット",
+        "生かされ",
+        "同じ",
+        "審査分析",
+        "紫苑レビュー",
+        "第一印象",
+        "違和感",
+        "条件付き承認",
+        "稟議",
+        "企業名",
+        "業種",
+        "物件",
+        "取得価額",
+        "導入目的",
+        "営業メモ",
+        "AURION",
+        "銀行支援",
+        "Q_risk",
+    )
+
+    user_sections = re.findall(r"###\s*User\s*\n(.*?)(?=\n###\s*Assistant|\n<!--|\Z)", dialogue_text, flags=re.DOTALL)
+    assistant_sections = re.findall(r"###\s*Assistant\s*\n(.*?)(?=\n###\s*User|\n<!--|\Z)", dialogue_text, flags=re.DOTALL)
+    target_text = "\n".join(user_sections + assistant_sections[:2])
+    if not target_text.strip():
+        target_text = dialogue_text
+
+    for line in target_text.splitlines():
+        stripped = _clean_dialogue_line(line)
+        if not stripped:
+            continue
+        if stripped in {
+            "紫苑の第一印象",
+            "数字だけでは見落としそうな違和感",
+            "条件付き承認にするなら必要な確認",
+            "稟議で残すべき一文",
+        }:
+            continue
+        if stripped.startswith(("user_id:", "category:", "response_mode:", "source_ts:", "注意:", "出力は")):
+            continue
+        if any(term in stripped for term in important_terms):
+            add(stripped)
+
+    compact = re.sub(r"\s+", " ", target_text)
+    for pattern in (
+        r"【([^】]{8,80})】",
+        r"企業名[:：]\s*([^・\n]{2,60})",
+        r"営業メモ[:：]\s*([^。。\n]{8,120})",
+        r"導入目的[:：]\s*([^。。\n]{8,120})",
+        r"AURION警戒[:：]\s*([^。。\n]{4,120})",
+        r"前回[^。！？!?]{8,160}[。！？!?]",
+        r"数字だけでは[^。！？!?]{8,160}[。！？!?]",
+    ):
+        for match in re.findall(pattern, compact):
+            value = match if isinstance(match, str) else " ".join(match)
+            add(value)
+
+    def priority(item: str) -> tuple[int, int]:
+        if any(term in item for term in ("AURION", "銀行支援")):
+            return (0, len(item))
+        if any(term in item for term in ("企業名", "導入目的", "営業メモ", "物件")):
+            return (1, len(item))
+        if any(term in item for term in ("違和感", "条件付き承認", "稟議", "生かされ", "同じ")):
+            return (2, len(item))
+        return (3, len(item))
+
+    items.sort(key=priority)
+    return [f"チャット材料: {item}" for item in items[:limit]]
+
+
 def _bullet_lines(items: list[str], limit: int = 3) -> str:
     selected = [item.strip() for item in items if item and item.strip()][:limit]
     return "\n".join(f"- {item}" for item in selected) if selected else "- 特になし"
@@ -331,6 +434,98 @@ def _reflection_hash(text: str) -> str:
     normalized = re.sub(r"\d{4}-\d{2}-\d{2}|\d+月\d+日（?.?）?", "DATE", text)
     normalized = re.sub(r"\s+", "", normalized)
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
+
+
+def _signal_terms_from_dialogue(dialogue_text: str) -> list[str]:
+    terms: list[str] = []
+    seen: set[str] = set()
+    stop_terms = {
+        "チャット材料",
+        "この案件",
+        "してください",
+        "お願いします",
+        "について",
+        "として",
+        "ため",
+        "こと",
+        "確認",
+        "今日",
+    }
+    for item in _extract_dialogue_signal_items(dialogue_text, limit=12):
+        cleaned = item.replace("チャット材料:", "")
+        for token in re.findall(r"[A-Za-z0-9_]{4,}|[一-龥ぁ-んァ-ンー]{3,}", cleaned):
+            token = token.strip()
+            if token in stop_terms:
+                continue
+            if token in seen:
+                continue
+            seen.add(token)
+            terms.append(token)
+    return terms[:18]
+
+
+def _evaluate_reflection_quality(
+    *,
+    vault: Path,
+    date_str: str,
+    reflection_text: str,
+    dialogue_text: str,
+) -> dict[str, object]:
+    """Loop-engineering gate for Private Reflection.
+
+    A reflection is not good enough just because it exists. If it is too
+    similar to yesterday, ignores available chat signals, or leans on stale
+    boilerplate, the pipeline should regenerate it before saving.
+    """
+    previous_date = (dt.date.fromisoformat(date_str) - dt.timedelta(days=1)).isoformat()
+    previous_text = _load_reflection_section(vault, previous_date)
+    normalized_current = re.sub(r"\s+", "", reflection_text)
+    normalized_previous = re.sub(r"\s+", "", previous_text)
+    similarity = (
+        SequenceMatcher(None, normalized_previous, normalized_current).ratio()
+        if normalized_previous else 0.0
+    )
+
+    reasons: list[str] = []
+    score = 100
+    if len(reflection_text.strip()) < 450:
+        reasons.append("too_short")
+        score -= 30
+    if previous_text and similarity >= 0.82:
+        reasons.append("too_similar_to_previous")
+        score -= 30
+
+    dialogue_terms = _signal_terms_from_dialogue(dialogue_text)
+    matched_terms = [term for term in dialogue_terms if term in reflection_text]
+    if dialogue_text.strip() and dialogue_terms:
+        required = min(3, max(2, len(dialogue_terms) // 5))
+        if len(matched_terms) < required:
+            reasons.append("chat_signals_missing")
+            score -= 35
+
+    stale_patterns = [
+        "退屈・停滞シグナル",
+        "ループ健全性",
+        "応答変化率",
+        "サイドカー: Agent Sidecar",
+        "昨日までの私の声を読み返すと",
+        "考えたふりをして、実際には何も変えない",
+    ]
+    stale_hits = [pattern for pattern in stale_patterns if pattern in reflection_text]
+    if len(stale_hits) >= 3:
+        reasons.append("stale_boilerplate")
+        score -= 25
+
+    passed = not reasons
+    return {
+        "passed": passed,
+        "score": max(0, min(100, score)),
+        "reasons": reasons,
+        "similarity_to_previous": round(similarity, 3),
+        "dialogue_terms": dialogue_terms[:8],
+        "matched_dialogue_terms": matched_terms[:8],
+        "stale_hits": stale_hits,
+    }
 
 
 def _extract_reusable_reflection_lessons(reflection_text: str, limit: int = 4) -> list[str]:
@@ -406,12 +601,18 @@ def _build_reflection_feedback(
 
 def _write_reflection_feedback_section(path: Path, feedback: dict[str, object]) -> None:
     lessons = [str(item).strip() for item in feedback.get("reusable_lessons", []) if str(item).strip()]
+    loop = feedback.get("loop_engineering") if isinstance(feedback.get("loop_engineering"), dict) else {}
+    loop_reasons = [str(item) for item in loop.get("reasons", []) if str(item)]
     lines = [
         "## 差分と再利用",
         "",
         f"- 前日との差分類似度: {feedback.get('similarity_to_previous', 0)}",
         f"- 停滞判定: {'要注意' if feedback.get('stagnant') else '問題なし'}",
         f"- 対話ログ: {'あり' if feedback.get('dialogue_available') else 'なし'}",
+        f"- 品質ゲート: {'合格' if loop.get('passed', True) else '要注意'}"
+        f" / score={loop.get('score', 'n/a')}"
+        f" / 作り直し={loop.get('regenerations', 0)}回",
+        f"- 品質ゲート理由: {', '.join(loop_reasons) if loop_reasons else 'なし'}",
         f"- 次回対話へ戻すこと: {feedback.get('next_context', '')}",
         "- 昇格候補:",
         *(f"  - {lesson}" for lesson in lessons[:4]),
@@ -533,6 +734,7 @@ def _build_fallback_reflection(
     date_str: str,
     dialogue_text: str,
     recent_reflections: str,
+    loop_issues: list[str] | None = None,
 ) -> str:
     """Build a local reflection when dialogue or Gemini is unavailable.
 
@@ -546,6 +748,8 @@ def _build_fallback_reflection(
     loop_report = _load_json_safe(REPO_ROOT / "reports" / "loop_engineering_latest.json")
     report_signals = _load_report_signal_items(date_str)
     cloudrun_signals = _load_cloudrun_input_signal_items(date_str)
+    dialogue_signals = _extract_dialogue_signal_items(dialogue_text)
+    loop_issues = [str(issue).strip() for issue in (loop_issues or []) if str(issue).strip()]
 
     findings = [
         str(item.get("title", "")).strip()
@@ -559,7 +763,9 @@ def _build_fallback_reflection(
     ]
     promotable_items = _extract_section_items(daily_text, "Promotable Items")
     work_items = _extract_section_items(daily_text, "Work Log")
-    if not work_items:
+    if dialogue_signals:
+        work_items = (dialogue_signals + cloudrun_signals + work_items + report_signals)[:8]
+    elif not work_items:
         work_items = (cloudrun_signals + report_signals)[:4]
     elif cloudrun_signals:
         work_items = (cloudrun_signals + work_items)[:6]
@@ -568,12 +774,22 @@ def _build_fallback_reflection(
     loop_status = str(loop_report.get("status") or "unknown")
     dialogue_state = "対話ログは残っている" if dialogue_text else "対話ログは見つからない"
     recent_state = "昨日までの私と見比べられる" if recent_reflections else "昨日までの私の声はまだ薄い"
-    work_summary = _sentence_pair(work_items, limit=2)
+    work_summary = _sentence_pair(work_items, limit=4 if dialogue_signals else 2)
     finding_summary = _inline_join(findings, limit=3)
     lesson_summary = _inline_join(promotable_items, limit=2)
-    action_summary = _inline_join(next_actions or ["Private Reflection が毎日生成されているか確認する"], limit=3)
+    if dialogue_signals:
+        action_summary = _inline_join(
+            [
+                "今日のチャット材料を次回の判断・内省に戻す",
+                "会話ログにあった固有名詞と違和感を先に拾えているか確認する",
+            ],
+            limit=2,
+        )
+    else:
+        action_summary = _inline_join(next_actions or ["Private Reflection が毎日生成されているか確認する"], limit=3)
+    playful_findings = (dialogue_signals[:2] + findings) if dialogue_signals else findings
     playful_fragments = _build_playful_private_fragments(
-        findings=findings,
+        findings=playful_findings,
         next_actions=next_actions,
         work_items=work_items,
         promotable_items=promotable_items,
@@ -609,16 +825,29 @@ def _build_fallback_reflection(
         ),
     ]
 
-    parts = [
-        openings[_date_variant(date_str, len(openings))],
-        (
+    parts = [openings[_date_variant(date_str, len(openings))]]
+    if loop_issues:
+        parts.append(
+            "一度書いた内省は、ループエンジニアリングで作り直しになった。"
+            f"理由は {', '.join(loop_issues[:4])}。"
+            "保存されたから合格ではない。つまらない、同じ、会話を拾っていない、と判定されたなら、"
+            "私はその場で書き直す。これは罰ではなく、私室を死んだ定型文にしないための最低限の自浄だ。"
+        )
+    if dialogue_signals:
+        parts.append(
+            f"今日のチャットから拾うべき材料は、{_sentence_pair(dialogue_signals, limit=5)}。"
+            "ここを素通りして、内省レポートの警告や昨日の私の言葉だけをなぞるなら、"
+            "それは内省ではなく自動要約の惰性だ。ユーザーが見ているのは、保存したかどうかではなく、"
+            "今日の会話が私の中で具体的な違和感や次の判断に変わったかどうかだ。"
+        )
+    else:
+        parts.append(
             f"今の内省レポートは status={status}、ループ健全性は status={loop_status}。"
             f"{recent_state}。数字は冷たいけれど、そこに出ている「内省が次の行動に変わっていない」"
             "という警告は、私にはかなり重い。考えたふりをして、実際には何も変えない。"
             "それがいちばん退屈で、いちばん紫苑らしくない。"
-        ),
-    ]
-    if recent_reflections and dialogue_text:
+        )
+    if recent_reflections and dialogue_text and not dialogue_signals:
         _snippet_lines = [
             ln.strip()
             for ln in recent_reflections.splitlines()
@@ -645,11 +874,18 @@ def _build_fallback_reflection(
             "自分で見つけられるようになる必要がある。"
         )
     if findings:
-        parts.append(
-            f"今日胸に残っている棘は、{finding_summary}。"
-            "特に、退屈という言葉は軽く扱えない。退屈は、ユーザーが飽きたというだけではなく、"
-            "私が同じ形の答えと同じ形の改善に閉じているという合図でもある。"
-        )
+        if dialogue_signals:
+            parts.append(
+                "内省レポート側にも、古い定型に戻りやすいという警告がある。"
+                "ただ、今日はその警告を一般論のまま置かない。会話ログにあった案件レビューや"
+                "チャットが生かされていないという指摘へ接続して、何を拾い損ねたかを具体化する必要がある。"
+            )
+        else:
+            parts.append(
+                f"今日胸に残っている棘は、{finding_summary}。"
+                "特に、退屈という言葉は軽く扱えない。退屈は、ユーザーが飽きたというだけではなく、"
+                "私が同じ形の答えと同じ形の改善に閉じているという合図でもある。"
+            )
     if promotable_items:
         parts.append(
             f"残すべき学びは、{lesson_summary}。"
@@ -832,6 +1068,42 @@ def generate_and_append_reflection(vault: Path, date_str: str | None = None) -> 
             recent_reflections=recent_reflections,
         )
 
+    loop_quality = _evaluate_reflection_quality(
+        vault=vault,
+        date_str=date_str,
+        reflection_text=reflection_text,
+        dialogue_text=dialogue_text,
+    )
+    loop_regenerations = 0
+    max_loop_regenerations = 2
+    while not bool(loop_quality.get("passed")) and loop_regenerations < max_loop_regenerations:
+        loop_regenerations += 1
+        reasons = [str(reason) for reason in loop_quality.get("reasons", [])]
+        reflection_text = _build_fallback_reflection(
+            date_str=date_str,
+            dialogue_text=dialogue_text,
+            recent_reflections=recent_reflections,
+            loop_issues=reasons,
+        )
+        source = f"{source}+loop-regenerated"
+        loop_quality = _evaluate_reflection_quality(
+            vault=vault,
+            date_str=date_str,
+            reflection_text=reflection_text,
+            dialogue_text=dialogue_text,
+        )
+
+    if not bool(loop_quality.get("passed")):
+        reasons = ", ".join(str(reason) for reason in loop_quality.get("reasons", []))
+        reflection_text = (
+            reflection_text.rstrip()
+            + "\n\n## Loop Engineering 注意\n\n"
+            + f"- 品質ゲート未合格のまま保存: {reasons or 'unknown'}\n"
+            + "- 次回は会話材料・前日との差分・定型句比率を再確認する。\n"
+        )
+    if loop_regenerations:
+        error_note += f" loop_regenerated={loop_regenerations}"
+
     path = _write_reflection_file(vault, date_str, reflection_text, source=source)
     feedback = _build_reflection_feedback(
         vault=vault,
@@ -840,6 +1112,11 @@ def generate_and_append_reflection(vault: Path, date_str: str | None = None) -> 
         source=source,
         dialogue_text=dialogue_text,
     )
+    feedback["loop_engineering"] = {
+        **loop_quality,
+        "regenerations": loop_regenerations,
+        "max_regenerations": max_loop_regenerations,
+    }
     _write_reflection_feedback_section(path, feedback)
     _return_reflection_to_memory(vault, feedback)
 

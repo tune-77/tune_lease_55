@@ -44,9 +44,17 @@ def _open_db(path: str = DB_PATH):
     """WAL + busy_timeout を設定した SQLite 接続を返す共通ヘルパ。"""
     ensure_cloudrun_demo_db_seeded()
     conn = sqlite3.connect(path, timeout=10)
-    conn.execute("PRAGMA journal_mode=WAL")
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.OperationalError as exc:
+        if "readonly" not in str(exc).lower():
+            raise
     conn.execute("PRAGMA busy_timeout=5000")
-    conn.execute("PRAGMA synchronous=NORMAL")
+    try:
+        conn.execute("PRAGMA synchronous=NORMAL")
+    except sqlite3.OperationalError as exc:
+        if "readonly" not in str(exc).lower():
+            raise
     return conn
 
 

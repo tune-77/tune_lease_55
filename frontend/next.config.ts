@@ -42,6 +42,13 @@ const nextConfig: NextConfig = {
           { key: "Cache-Control", value: "no-store, max-age=0" },
         ],
       },
+      {
+        source: "/screening",
+        headers: [
+          ...securityHeaders,
+          { key: "Cache-Control", value: "no-store, max-age=0, must-revalidate" },
+        ],
+      },
       { source: "/(.*)", headers: securityHeaders },
     ];
   },
@@ -57,8 +64,8 @@ const nextConfig: NextConfig = {
 
 const withPWA = withPWAInit({
   dest: "public",
-  disable: process.env.NODE_ENV === "development",
-  register: true,
+  disable: true,
+  register: false,
   skipWaiting: true,
 });
 

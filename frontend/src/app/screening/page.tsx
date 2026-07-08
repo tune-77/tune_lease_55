@@ -67,6 +67,11 @@ type ShionScreeningReview = {
 
 type ShionReviewFeedback = "useful" | "needs_fix" | "wrong";
 
+type PastCompanyHighlight = {
+  name: string;
+  label: "類似案件" | "過去レビュー" | "反面教師";
+};
+
 type PastShionScreeningReview = {
   company_name?: string;
   industry_sub?: string;
@@ -453,6 +458,49 @@ const normalizeReviewText = (text: string) =>
     .replace(/\\n/g, "\n")
     .trim();
 
+const validPastCompanyName = (name: string) =>
+  name.length >= 2 && name !== "名称不明" && name !== "名称未設定";
+
+const uniquePastCompanyHighlights = (
+  reviews: PastShionScreeningReview[],
+  experienceCases: DemoSimilarPastCase[],
+): PastCompanyHighlight[] => {
+  const byName = new Map<string, PastCompanyHighlight>();
+  experienceCases.forEach((item) => {
+    const name = String(item.companyName || "").trim();
+    if (validPastCompanyName(name) && !byName.has(name)) {
+      byName.set(name, { name, label: "類似案件" });
+    }
+  });
+  reviews.forEach((review) => {
+    const name = String(review.company_name || "").trim();
+    if (!validPastCompanyName(name)) return;
+    const label: PastCompanyHighlight["label"] = review.user_feedback === "wrong" ? "反面教師" : "過去レビュー";
+    byName.set(name, { name, label });
+  });
+  return Array.from(byName.values());
+};
+
+const highlightTextByCompanies = (text: string, companies: PastCompanyHighlight[]) => {
+  const highlights = Array.from(new Map(companies.map((item) => [item.name.trim(), item])).values())
+    .filter((item) => validPastCompanyName(item.name))
+    .sort((a, b) => b.name.length - a.name.length);
+  if (!highlights.length) return text;
+  const names = highlights.map((item) => item.name);
+  const labelByName = new Map(highlights.map((item) => [item.name, item.label]));
+  const pattern = new RegExp(`(${names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "g");
+  return text.split(pattern).map((part, index) => (
+    names.includes(part) ? (
+      <span key={`${part}-${index}`} className="inline-flex items-center gap-1 rounded bg-cyan-50 px-1.5 py-0.5 font-black text-cyan-800 ring-1 ring-cyan-200">
+        {part}
+        <span className="rounded bg-white px-1 text-[10px] font-black text-cyan-600">
+          {labelByName.get(part)}
+        </span>
+      </span>
+    ) : part
+  ));
+};
+
 const buildDemoSimilarPastCaseBlock = (cases: DemoSimilarPastCase[]) => {
   if (!cases.length) return "";
   return [
@@ -662,6 +710,7 @@ function ShionScreeningReviewCard({
   onReview,
   onFeedback,
   feedbackSaving,
+  pastCompanies,
 }: {
   review: ShionScreeningReview | null;
   loading: boolean;
@@ -669,6 +718,7 @@ function ShionScreeningReviewCard({
   onReview: () => void;
   onFeedback: (feedback: ShionReviewFeedback) => void;
   feedbackSaving: boolean;
+  pastCompanies: PastCompanyHighlight[];
 }) {
   const feedbackOptions: { key: ShionReviewFeedback; label: string }[] = [
     { key: "useful", label: "使えた" },
@@ -693,7 +743,7 @@ function ShionScreeningReviewCard({
                 紫苑レビュー
               </h3>
               <p className="mt-1 text-xs font-bold leading-relaxed text-violet-700">
-                点数の説明ではなく、違和感・承認条件・稟議に残す一文へ変換します。
+                点数の説明ではなく、違和感・承認条件・稟議に残す一文へ変換します。過去案件名は色付きで表示します。
               </p>
             </div>
             <button
@@ -703,7 +753,7 @@ function ShionScreeningReviewCard({
               className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-black text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-violet-300"
             >
               {loading ? <Activity className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
-              {review ? "再レビュー" : "紫苑にレビューさせる"}
+              {review ? "再レビュー" : "紫苑レビュー生成"}
             </button>
           </div>
 
@@ -720,7 +770,7 @@ function ShionScreeningReviewCard({
                 <div className="space-y-2 text-sm font-medium leading-7 text-slate-800">
                   {normalizeReviewText(review.reply).split(/\n{2,}/).map((block, index) => (
                     <p key={index} className="whitespace-pre-wrap">
-                      {block}
+                      {highlightTextByCompanies(block, pastCompanies)}
                     </p>
                   ))}
                 </div>
@@ -1581,6 +1631,7 @@ export default function Dashboard() {
   const [shionReviewLoading, setShionReviewLoading] = useState(false);
   const [shionReviewError, setShionReviewError] = useState("");
   const [shionFeedbackSaving, setShionFeedbackSaving] = useState(false);
+  const [shionPastCompanies, setShionPastCompanies] = useState<PastCompanyHighlight[]>([]);
   const [draftRestored, setDraftRestored] = useState(false);
   const [lastDraftSavedAt, setLastDraftSavedAt] = useState<Date | null>(null);
   const [experienceCasesByDemo, setExperienceCasesByDemo] = useState<Record<string, DemoSimilarPastCase[]>>({});
@@ -1817,6 +1868,11 @@ export default function Dashboard() {
       const pastReviews = await fetchPastShionReviews(targetResult, targetFormData);
       const demoCase = findDemoScreeningCase(targetFormData);
       const experienceCases = await fetchExperienceCasesForContext(demoCase?.id || "", targetFormData, targetResult);
+      const pastCompanies = uniquePastCompanyHighlights(
+        pastReviews,
+        experienceCases as DemoSimilarPastCase[],
+      );
+      setShionPastCompanies(pastCompanies);
       if (seq !== shionReviewRequestSeq.current) return;
       const promptText = buildShionReviewPrompt(targetResult, targetFormData, pastReviews, experienceCases);
       const res = await apiClient.post("/api/chat", {
@@ -1869,6 +1925,7 @@ export default function Dashboard() {
     setShionReviewError("");
     setShionFeedbackSaving(false);
     setCurrentExperienceCases([]);
+    setShionPastCompanies([]);
     setActiveTab("input");
     window.localStorage.removeItem(SCREENING_RETURN_STATE_KEY);
     setLastDraftSavedAt(null);
@@ -1878,6 +1935,7 @@ export default function Dashboard() {
     setLoading(true);
     setShionReview(null);
     setShionReviewError("");
+    setShionPastCompanies([]);
     try {
       const res = await apiClient.post(`/api/score/full`, toThousandYenPayload(targetFormData));
       setResult(res.data);
@@ -2281,6 +2339,15 @@ export default function Dashboard() {
                   <>
                     {/* 初期表示は判断に必要な結論だけに絞る */}
                     <JudgmentFlowStrip />
+                    <ShionScreeningReviewCard
+                      review={shionReview}
+                      loading={shionReviewLoading}
+                      error={shionReviewError}
+                      onReview={() => requestShionReview()}
+                      onFeedback={submitShionReviewFeedback}
+                      feedbackSaving={shionFeedbackSaving}
+                      pastCompanies={shionPastCompanies}
+                    />
                     <CurrentIssueCard result={result} data={formData} />
                     <RingiPolicyCard result={result} data={formData} />
                     <DemoSimilarPastCasesCard
@@ -2296,14 +2363,6 @@ export default function Dashboard() {
                     />
                     <ScreeningLoopFeedbackPanel result={result} data={formData} />
                     <IndicatorCards data={result} />
-                    <ShionScreeningReviewCard
-                      review={shionReview}
-                      loading={shionReviewLoading}
-                      error={shionReviewError}
-                      onReview={() => requestShionReview()}
-                      onFeedback={submitShionReviewFeedback}
-                      feedbackSaving={shionFeedbackSaving}
-                    />
 
                     <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 shadow-sm">
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -2448,6 +2507,7 @@ export default function Dashboard() {
               formData={formData}
               estatContext={result?.estat_context || null}
               onChatLoaded={setGunshiText}
+              highlightCompanies={shionPastCompanies}
             />
           </div>
           

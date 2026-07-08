@@ -30,10 +30,12 @@ seed_dir() {
 }
 
 seed_dir "$BUNDLE_ROOT/data" "$DATA_DIR"
+chmod -R u+w "$DATA_DIR" 2>/dev/null || true
 if [[ "${CLOUDRUN_DATA_MODE:-}" == "demo" ]]; then
   for db_name in demo.db lease_data.db; do
     if [[ -f "$BUNDLE_ROOT/data/$db_name" ]]; then
       cp -f "$BUNDLE_ROOT/data/$db_name" "$DATA_DIR/$db_name"
+      chmod u+rw "$DATA_DIR/$db_name" 2>/dev/null || true
       echo "[start_cloud_run] demo DB restored from bundle: $DATA_DIR/$db_name"
     fi
   done

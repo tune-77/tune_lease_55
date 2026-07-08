@@ -45,6 +45,19 @@ copy_if_exists "$ROOT_DIR/data/screening_db.sqlite" "$DATA_OUT/"
 copy_if_exists "$ROOT_DIR/data/user_personal_memory.md" "$DATA_OUT/"
 copy_if_exists "$ROOT_DIR/reports/obsidian_daily_intelligence_latest.json" "$BUNDLE_DIR/"
 
+REPORTS_OUT="$BUNDLE_DIR/reports"
+mkdir -p "$REPORTS_OUT"
+copy_if_exists "$ROOT_DIR/reports/latest.json" "$REPORTS_OUT/"
+latest_improvement="$(find "$ROOT_DIR/reports" -maxdepth 1 -name 'improvement_report_*.json' -type f | sort | tail -n 1 || true)"
+if [[ -n "$latest_improvement" ]]; then
+  cp "$latest_improvement" "$REPORTS_OUT/"
+fi
+copy_if_exists "$ROOT_DIR/reports/recursive_self_improvement_latest.json" "$REPORTS_OUT/"
+latest_recursive="$(find "$ROOT_DIR/reports" -maxdepth 1 -name 'recursive_self_improvement_*.json' -type f | sort | tail -n 1 || true)"
+if [[ -n "$latest_recursive" ]]; then
+  cp "$latest_recursive" "$REPORTS_OUT/"
+fi
+
 # 紫苑の記憶索引を毎回ビルドして同梱する（無いと Cloud Run で想起メモが空になる）。
 # 改訂宣言（data/shion_memory_revisions.jsonl）はビルド内で再適用される。
 # 鮮度（last_used_at / stale）は使用ログがあれば反映する（無くても致命ではないので || true）。

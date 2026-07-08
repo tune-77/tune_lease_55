@@ -3044,7 +3044,12 @@ def dismiss_improvement(req: DismissImprovementRequest):
     with open(ledger_path, "a", encoding="utf-8") as f:
         f.write(_json.dumps(entry, ensure_ascii=False) + "\n")
     obsidian_result = _save_improvement_log_to_obsidian(entry)
-    return {"ok": True, "key": req.key, "title": req.title, "obsidian": obsidian_result}
+    writeback = record_cloudrun_input_event(
+        event_type="improvement_dismiss",
+        surface="improvement_log",
+        payload={**entry, "obsidian": obsidian_result},
+    )
+    return {"ok": True, "key": req.key, "title": req.title, "obsidian": obsidian_result, "writeback": writeback}
 
 
 @app.post("/api/improvement-log/review")
@@ -3066,7 +3071,12 @@ def review_improvement(req: ReviewImprovementRequest):
     with open(ledger_path, "a", encoding="utf-8") as f:
         f.write(_json.dumps(entry, ensure_ascii=False) + "\n")
     obsidian_result = _save_improvement_log_to_obsidian(entry)
-    return {"ok": True, "key": req.key, "action": req.action, "obsidian": obsidian_result}
+    writeback = record_cloudrun_input_event(
+        event_type="improvement_review",
+        surface="improvement_log",
+        payload={**entry, "obsidian": obsidian_result},
+    )
+    return {"ok": True, "key": req.key, "action": req.action, "obsidian": obsidian_result, "writeback": writeback}
 
 
 @app.post("/api/prompt-feedback/rules/register")
@@ -4525,21 +4535,40 @@ def get_lease_news_actions_api():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _candidate_report_dirs() -> list[Path]:
+    bundle_root = Path(os.environ.get("CLOUDRUN_BUNDLE_DIR") or (Path(_REPO_ROOT) / ".cloudrun_bundle"))
+    dirs = [Path(_REPO_ROOT) / "reports", bundle_root / "reports"]
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for directory in dirs:
+        key = str(directory)
+        if key not in seen:
+            seen.add(key)
+            unique.append(directory)
+    return unique
+
+
 def _latest_improvement_report_path() -> Path | None:
-    reports_dir = Path(_REPO_ROOT) / "reports"
-    latest = reports_dir / "latest.json"
-    if latest.exists():
-        return latest
-    candidates = sorted(reports_dir.glob("improvement_report_*.json"))
+    for reports_dir in _candidate_report_dirs():
+        latest = reports_dir / "latest.json"
+        if latest.exists():
+            return latest
+    candidates: list[Path] = []
+    for reports_dir in _candidate_report_dirs():
+        candidates.extend(reports_dir.glob("improvement_report_*.json"))
+    candidates = sorted(candidates)
     return candidates[-1] if candidates else None
 
 
 def _latest_recursive_self_improvement_path() -> Path | None:
-    reports_dir = Path(_REPO_ROOT) / "reports"
-    latest = reports_dir / "recursive_self_improvement_latest.json"
-    if latest.exists():
-        return latest
-    candidates = sorted(reports_dir.glob("recursive_self_improvement_*.json"))
+    for reports_dir in _candidate_report_dirs():
+        latest = reports_dir / "recursive_self_improvement_latest.json"
+        if latest.exists():
+            return latest
+    candidates: list[Path] = []
+    for reports_dir in _candidate_report_dirs():
+        candidates.extend(reports_dir.glob("recursive_self_improvement_*.json"))
+    candidates = sorted(candidates)
     return candidates[-1] if candidates else None
 
 
@@ -5712,11 +5741,14 @@ def get_app_logs(lines: int = 100):
 
 
 def _latest_improvement_report_path() -> Path | None:
-    reports_dir = Path(_REPO_ROOT) / "reports"
-    latest = reports_dir / "latest.json"
-    if latest.exists():
-        return latest
-    candidates = sorted(reports_dir.glob("improvement_report_*.json"))
+    for reports_dir in _candidate_report_dirs():
+        latest = reports_dir / "latest.json"
+        if latest.exists():
+            return latest
+    candidates: list[Path] = []
+    for reports_dir in _candidate_report_dirs():
+        candidates.extend(reports_dir.glob("improvement_report_*.json"))
+    candidates = sorted(candidates)
     return candidates[-1] if candidates else None
 
 
@@ -5982,12 +6014,88 @@ def _normalize_improvement_report(report: dict) -> dict:
     }
 
 
+def _cloudrun_improvement_items_from_gcs(limit: int = 30) -> list[dict]:
+    try:
+        events = _read_recent_cloudrun_input_events_from_gcs(
+            days=int(os.environ.get("CLOUDRUN_IMPROVEMENT_GCS_DAYS", "45") or 45)
+        )
+    except Exception:
+        return []
+
+    items: list[dict] = []
+    seen: set[str] = set()
+    for event in reversed(events):
+        event_type = str(event.get("event_type") or "")
+        surface = str(event.get("surface") or "")
+        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+        is_improvement = event_type in {"improvement_note", "improvement_review", "improvement_dismiss"}
+        if event_type == "chat_exchange":
+            category = str(payload.get("category") or "")
+            is_improvement = category == "improvement" or "improvement" in surface
+        if not is_improvement:
+            continue
+
+        event_id = str(event.get("event_id") or "")
+        if not event_id or event_id in seen:
+            continue
+        seen.add(event_id)
+        text = str(payload.get("original_text") or payload.get("message") or payload.get("user_message") or payload.get("title") or "").strip()
+        title = str(payload.get("title") or "").strip() or (text[:60] if text else "Cloud Run改善メモ")
+        status = "NEEDS_REVIEW"
+        if event_type == "improvement_dismiss":
+            status = "APPLIED"
+        elif event_type == "improvement_review":
+            action = str(payload.get("action") or payload.get("status") or "").lower()
+            status = _ledger_status_to_improvement_status(action) or "NEEDS_REVIEW"
+        items.append({
+            "id": f"cloudrun-{event_id[:12]}",
+            "title": title,
+            "status": status,
+            "priority": str(payload.get("priority") or "medium"),
+            "category": "cloudrun_input",
+            "canonical_key": _improvement_canonical_key(title, text),
+            "reason": str(payload.get("reason") or "Cloud Runから登録された改善入力"),
+            "detail": text,
+            "source": "cloudrun_gcs_input",
+            "event_id": event_id,
+            "recorded_at": event.get("ts") or "",
+        })
+        if len(items) >= limit:
+            break
+    return items
+
+
+def _attach_cloudrun_improvement_items(normalized: dict) -> dict:
+    cloud_items = _cloudrun_improvement_items_from_gcs()
+    normalized["cloudrun_input_count"] = len(cloud_items)
+    normalized["cloudrun_input_items"] = cloud_items[:10]
+    if not cloud_items:
+        return normalized
+
+    existing_keys = {str(item.get("canonical_key") or item.get("id") or "") for item in normalized.get("items") or []}
+    merged = list(normalized.get("items") or [])
+    for item in cloud_items:
+        key = str(item.get("canonical_key") or item.get("id") or "")
+        if key in existing_keys:
+            continue
+        existing_keys.add(key)
+        merged.insert(0, item)
+    normalized["items"] = merged
+    normalized["needs_review"] = sum(1 for item in merged if item.get("status") == "NEEDS_REVIEW")
+    normalized["auto_fix_candidates"] = sum(1 for item in merged if item.get("status") == "AUTO_FIX_CANDIDATE")
+    normalized["approved"] = sum(1 for item in merged if item.get("status") in {"APPROVED", "AUTO_FIX_CANDIDATE"})
+    normalized["parked"] = sum(1 for item in merged if item.get("status") == "PARKED")
+    normalized["rejected"] = sum(1 for item in merged if item.get("status") == "REJECTED")
+    normalized["applied"] = sum(1 for item in merged if item.get("status") == "APPLIED")
+    return normalized
+
+
 @app.get("/api/improvement-log")
 def get_improvement_log():
     report_path = _latest_improvement_report_path()
     recursive_path = _latest_recursive_self_improvement_path()
     if not report_path:
-        return {
+        return _attach_cloudrun_improvement_items({
             "date": "",
             "generated_at": "",
             "status": "NO_REPORT",
@@ -6001,7 +6109,7 @@ def get_improvement_log():
             "obsidian_compliance": {},
             "recursive_self_improvement": {},
             "source": "",
-        }
+        })
     try:
         report = json.loads(report_path.read_text(encoding="utf-8"))
         normalized = _normalize_improvement_report(report)
@@ -6020,7 +6128,7 @@ def get_improvement_log():
             "suppressed_count": recursive_report.get("suppressed_count", 0),
             "measurement_summary": recursive_report.get("measurement_summary") or {},
         }
-        return normalized
+        return _attach_cloudrun_improvement_items(normalized)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"改善ログ読み込み失敗: {e}")
 
@@ -7461,6 +7569,47 @@ def _read_personal_memory_lines(path: Path, *, limit: int = 24, all_lines: bool 
     return selected, str(path)
 
 
+def _read_cloudrun_personal_memory_lines(*, limit: int = 24) -> tuple[list[str], str]:
+    if not (os.environ.get("K_SERVICE") or os.environ.get("CLOUDRUN_PENDING_GCS_ENABLED") == "1"):
+        return [], ""
+    try:
+        from api.user_personal_memory import derive_personal_memory_entries
+
+        events = _read_recent_cloudrun_input_events_from_gcs(
+            days=int(os.environ.get("CLOUDRUN_PERSONAL_MEMORY_GCS_DAYS", "45") or 45)
+        )
+    except Exception:
+        return [], ""
+
+    lines: list[str] = []
+    seen: set[str] = set()
+    for event in reversed(events):
+        event_type = str(event.get("event_type") or "")
+        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+        candidate_lines: list[str] = []
+        if event_type == "personal_memory":
+            candidate_lines = [str(line).strip() for line in payload.get("derived_lines") or [] if str(line).strip()]
+            dog_name = str(payload.get("dog_name") or "").strip()
+            if dog_name:
+                candidate_lines.insert(0, f"- [confirmed] Dog name: {dog_name}")
+        elif event_type == "chat_exchange":
+            message = str(payload.get("user_message") or "").strip()
+            derived = derive_personal_memory_entries(
+                message,
+                source=f"cloudrun:{event.get('surface') or 'chat'}",
+                timestamp=str(event.get("ts") or ""),
+            )
+            candidate_lines = [str(line).strip() for line in derived.get("lines") or [] if str(line).strip()]
+        for line in candidate_lines:
+            if line in seen:
+                continue
+            seen.add(line)
+            lines.append(line)
+            if len(lines) >= limit:
+                return lines, "gcs://cloudrun-inputs/personal-memory"
+    return lines, "gcs://cloudrun-inputs/personal-memory" if lines else ""
+
+
 def _load_user_personal_memory_payload() -> dict:
     import time as _time
 
@@ -7485,6 +7634,11 @@ def _load_user_personal_memory_payload() -> dict:
             lines.extend(found)
         if len(lines) >= 80:
             break
+
+    cloudrun_lines, cloudrun_ref = _read_cloudrun_personal_memory_lines(limit=32)
+    if cloudrun_lines:
+        refs.append(cloudrun_ref)
+        lines.extend(cloudrun_lines)
 
     clean_lines: list[str] = []
     seen: set[str] = set()
@@ -9705,6 +9859,167 @@ def _chat_memory_debug_payload(
     }
 
 
+def _build_shared_shion_dialogue_memory_context(
+    message: str,
+    history_for_gemini: list[dict[str, str]] | None,
+    context_budget: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    """通常AIチャットで育つ紫苑の記憶層を、対話室にも接続する。
+
+    対話室の専用persona/mind/toolsは残しつつ、同一性メモリ・想起メモ・
+    experience loop などの「通常チャットで教えたこと」を回答生成時に使える
+    形で追加する。
+    """
+    parts: list[str] = []
+
+    identity_context, identity_payload = _build_chat_identity_memory_prompt_block()
+    if identity_context:
+        parts.append(identity_context.strip())
+
+    experience_context = ""
+    experience_payload: dict[str, Any] = {"used": False}
+    if context_budget.get("use_experience_loop"):
+        try:
+            from api.shion_experience_loop import build_experience_prompt_block
+
+            experience_context, experience_payload = build_experience_prompt_block()
+            if experience_context:
+                parts.append(experience_context.strip())
+        except Exception as exc:
+            print(f"[DialogueSharedMemory] experience loop 読み込みエラー: {exc}")
+            experience_payload = {"used": False, "error": str(exc)[:160]}
+
+    continuity_context, continuity_payload = _build_continuity_hook_prompt_block(message)
+    if continuity_context:
+        parts.append(continuity_context.strip())
+
+    memory_recall_context = ""
+    memory_recall_payload: dict[str, Any] = {"route": "", "refs": []}
+    try:
+        from api.shion_memory_recall import build_recall_prompt_block
+
+        memory_recall_context, memory_recall_payload = build_recall_prompt_block(
+            message,
+            limit=int(context_budget.get("recall_limit") or 3),
+        )
+        if memory_recall_context:
+            parts.append(memory_recall_context.strip())
+    except Exception as exc:
+        print(f"[DialogueSharedMemory] shion memory recall 読み込みエラー: {exc}")
+        memory_recall_payload = {"route": "", "refs": [], "error": str(exc)[:160]}
+
+    delta_context, delta_payload = _build_delta_awareness_prompt_block(message, history_for_gemini)
+    memory_to_judgment_context, memory_to_judgment_payload = _build_memory_to_judgment_prompt_block(
+        message,
+        memory_recall=memory_recall_payload,
+        continuity_hook=continuity_payload,
+    )
+    reflection_gate_context, reflection_gate_payload = _build_reflection_gate_prompt_block(
+        continuity_hook=continuity_payload,
+        delta_awareness=delta_payload,
+        memory_to_judgment=memory_to_judgment_payload,
+    )
+    for block in (delta_context, memory_to_judgment_context, reflection_gate_context):
+        if block:
+            parts.append(block.strip())
+
+    grey_context, grey_payload = _build_grey_judgment_prompt_block(message)
+    if grey_context:
+        parts.append(grey_context.strip())
+
+    consciousness_context = _build_consciousness_ux_prompt_block()
+    if consciousness_context:
+        parts.append(consciousness_context.strip())
+
+    payload = {
+        "identity_memory": identity_payload,
+        "experience_loop": experience_payload,
+        "continuity_hook": continuity_payload,
+        "memory_recall": memory_recall_payload,
+        "delta_awareness": delta_payload,
+        "memory_to_judgment": memory_to_judgment_payload,
+        "reflection_gate": reflection_gate_payload,
+        "grey_judgment_memory": grey_payload,
+    }
+    return ("\n\n".join(parts), payload)
+
+
+def _dialogue_shared_memory_public_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    identity = payload.get("identity_memory") if isinstance(payload.get("identity_memory"), dict) else {}
+    experience = payload.get("experience_loop") if isinstance(payload.get("experience_loop"), dict) else {}
+    recall = payload.get("memory_recall") if isinstance(payload.get("memory_recall"), dict) else {}
+    hook = payload.get("continuity_hook") if isinstance(payload.get("continuity_hook"), dict) else {}
+    delta = payload.get("delta_awareness") if isinstance(payload.get("delta_awareness"), dict) else {}
+    m2j = payload.get("memory_to_judgment") if isinstance(payload.get("memory_to_judgment"), dict) else {}
+    reflection = payload.get("reflection_gate") if isinstance(payload.get("reflection_gate"), dict) else {}
+    grey = payload.get("grey_judgment_memory") if isinstance(payload.get("grey_judgment_memory"), dict) else {}
+    layers = identity.get("layers") if isinstance(identity.get("layers"), dict) else {}
+    return {
+        "identity_memory": {
+            "used": bool(str(identity.get("block") or "").strip()),
+            "refs": list(identity.get("refs") or [])[:8],
+            "layers": {
+                "identity": bool(layers.get("identity")),
+                "judgment": bool(layers.get("judgment")),
+                "recent": bool(layers.get("recent")),
+            },
+        },
+        "experience_loop": experience,
+        "memory_recall": {
+            "route": str(recall.get("route") or ""),
+            "refs": list(recall.get("refs") or [])[:8],
+            "practical_scene": recall.get("practical_scene") or {},
+        },
+        "continuity_hook": {
+            "used": bool(hook.get("used")),
+            "route": str(hook.get("route") or ""),
+            "reason": str(hook.get("reason") or ""),
+        },
+        "delta_awareness": {
+            "used": bool(delta.get("used")),
+            "delta": str(delta.get("delta") or ""),
+        },
+        "memory_to_judgment": {
+            "used": bool(m2j.get("used")),
+            "route": str(m2j.get("route") or ""),
+            "directive": str(m2j.get("directive") or ""),
+        },
+        "reflection_gate": {
+            "used": bool(reflection.get("used")),
+            "mode": str(reflection.get("mode") or ""),
+        },
+        "grey_judgment_memory": {
+            "used": bool(grey.get("used")),
+            "refs": list(grey.get("refs") or [])[:8],
+        },
+    }
+
+
+def _record_dialogue_shared_experience(
+    *,
+    message: str,
+    response: str,
+    shared_memory_payload: dict[str, Any],
+    knowledge_refs: list[str] | None = None,
+) -> None:
+    """対話室の経験も通常AIチャット側の experience loop へ戻す。"""
+    try:
+        from api.shion_experience_loop import record_experience_event
+
+        record_experience_event(
+            message=message,
+            response=response,
+            category="lease_intelligence_dialogue",
+            memory_recall=shared_memory_payload.get("memory_recall") or {},
+            knowledge_refs=knowledge_refs or [],
+            continuity_hook=shared_memory_payload.get("continuity_hook") or {},
+            delta_awareness=shared_memory_payload.get("delta_awareness") or {},
+            memory_to_judgment=shared_memory_payload.get("memory_to_judgment") or {},
+        )
+    except Exception as exc:
+        print(f"[DialogueSharedMemory] experience loop 記録エラー: {exc}")
+
+
 class LeaseIntelligenceDialogueRequest(BaseModel):
     message: str
     caller: str = ""
@@ -10110,7 +10425,13 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
             max_chars_per_message=int(dialogue_budget["history_chars_per_message"]),
             total_budget=int(dialogue_budget["history_total_budget"]),
         )
+    history_for_gemini = [{"role": str(m.get("role") or ""), "content": str(m.get("content") or "")} for m in history]
     user_personal_memory_context, user_personal_memory_payload = _build_user_personal_memory_prompt_block()
+    shared_shion_memory_context, shared_shion_memory_payload = _build_shared_shion_dialogue_memory_context(
+        full_message,
+        history_for_gemini,
+        dialogue_budget,
+    )
 
     if not vault:
         from lease_finance_knowledge import build_lease_finance_knowledge_block
@@ -10134,6 +10455,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
 
 {build_lease_finance_knowledge_block()}
 {user_personal_memory_context}
+{shared_shion_memory_context}
 """
         try:
             reply = call_gemini_chat(fallback_prompt, history, full_message).strip()
@@ -10150,6 +10472,12 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
             response_mode="shion",
             metadata={"obsidian_available": False, "context_mode": dialogue_mode},
         )
+        _record_dialogue_shared_experience(
+            message=message,
+            response=reply,
+            shared_memory_payload=shared_shion_memory_payload,
+            knowledge_refs=[],
+        )
         return {
             "reply": reply,
             "state": {
@@ -10165,6 +10493,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
                 "refs": user_personal_memory_payload.get("refs", [])[:6],
                 "line_count": user_personal_memory_payload.get("line_count", 0),
             },
+            "shared_shion_memory": _dialogue_shared_memory_public_payload(shared_shion_memory_payload),
             "long_input_mode": compact_dialogue,
             "context_mode": dialogue_mode,
             "history_messages_sent": len(history),
@@ -10180,6 +10509,8 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     )
     if user_personal_memory_context:
         system_prompt += user_personal_memory_context
+    if shared_shion_memory_context:
+        system_prompt += f"\n\n{shared_shion_memory_context}"
     consultation_ids: list[str] = []
 
     def _tool_executor(name: str, args: dict) -> object:
@@ -10315,6 +10646,16 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
         ]
     except Exception as _rag_exc:
         print(f"[DialogueRAGRefs] 取得に失敗: {_rag_exc}")
+    _record_dialogue_shared_experience(
+        message=message,
+        response=reply,
+        shared_memory_payload=shared_shion_memory_payload,
+        knowledge_refs=[
+            str(ref.get("obsidian_ref") or ref.get("file_name") or ref.get("doc_id") or "")
+            for ref in rag_knowledge_refs
+            if ref
+        ],
+    )
 
     return {
         "reply": reply,
@@ -10327,6 +10668,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
             "refs": user_personal_memory_payload.get("refs", [])[:6],
             "line_count": user_personal_memory_payload.get("line_count", 0),
         },
+        "shared_shion_memory": _dialogue_shared_memory_public_payload(shared_shion_memory_payload),
         "long_input_mode": compact_dialogue,
         "context_mode": dialogue_mode,
         "history_messages_sent": len(history),
@@ -10600,12 +10942,25 @@ def post_chat(req: ChatRequest):
                 response_mode=req.response_mode,
                 metadata={"improvement_saved": note_result.get("status") == "saved"},
             )
+            improvement_writeback = record_cloudrun_input_event(
+                event_type="improvement_note",
+                surface="next_chat_improvement",
+                payload={
+                    "user_id": req.user_id,
+                    "original_text": original_text,
+                    "organized_text": organized_text,
+                    "yanami_comment": yanami_comment,
+                    "note_result": note_result,
+                    "response_mode": req.response_mode,
+                },
+            )
             total = get_message_count(req.user_id)
             return {
                 "reply": reply,
                 "total_messages": total,
                 "improvement_saved": note_result.get("status") == "saved",
                 "improvement_result": note_result,
+                "improvement_writeback": improvement_writeback,
                 "personal_memory_capture": personal_memory_capture,
                 "lease_news_focus": news_focus,
                 "lease_news_brief": news_brief,
@@ -11207,6 +11562,17 @@ def post_chat(req: ChatRequest):
                 append_improvement_note("AIチャット改善候補", body)
             except Exception as _obs_e:
                 print(f"[Obsidian改善保存] エラー: {_obs_e}")
+            record_cloudrun_input_event(
+                event_type="improvement_note",
+                surface="next_chat_rag",
+                payload={
+                    "user_id": req.user_id,
+                    "original_text": req.message,
+                    "assistant_reply": reply,
+                    "response_mode": req.response_mode,
+                    "similar_existing_count": len(similar_existing),
+                },
+            )
 
         # 重要な知見をObsidianへ自動保存（AIが取捨選択・バックグラウンド実行でレスポンス遅延なし）
         # 改善キーワードを含むメッセージはImprovementLogで既に処理済みのためスキップ

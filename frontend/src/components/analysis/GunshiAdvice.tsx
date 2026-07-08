@@ -11,9 +11,15 @@ interface GunshiAdviceProps {
   formData: GunshiFormData;
   estatContext?: Record<string, unknown> | null;
   onChatLoaded?: (text: string) => void;
+  highlightCompanies?: PastCompanyHighlight[];
 }
 
 type GunshiFormData = ScoringFormData;
+
+type PastCompanyHighlight = {
+  name: string;
+  label: '類似案件' | '過去レビュー' | '反面教師';
+};
 
 type ChatMessage = {
   role: 'user' | 'assistant';
@@ -60,6 +66,25 @@ type YukikazeStatus = {
 
 const HUMOR_MODE_STORAGE_KEY = 'lease-gunshi-humor-mode';
 const YUKIKAZE_DIFFICULT_CASE_LINE = 'GOOD LUCK, FUKAI LT.';
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const highlightCompaniesInHtml = (html: string, companies: PastCompanyHighlight[] = [], yukikaze = false) => {
+  const highlights = Array.from(new Map(companies.map((item) => [item.name.trim(), item])).values())
+    .filter((item) => item.name.length >= 2)
+    .sort((a, b) => b.name.length - a.name.length);
+  if (!highlights.length) return html;
+  const names = highlights.map((item) => item.name);
+  const labelByName = new Map(highlights.map((item) => [item.name, item.label]));
+  const className = yukikaze
+    ? 'inline-flex items-center gap-1 rounded bg-red-950 px-1.5 py-0.5 font-black text-amber-100 ring-1 ring-red-500'
+    : 'inline-flex items-center gap-1 rounded bg-cyan-50 px-1.5 py-0.5 font-black text-cyan-800 ring-1 ring-cyan-200';
+  const labelClass = yukikaze
+    ? 'rounded bg-black px-1 text-[10px] font-black text-red-200'
+    : 'rounded bg-white px-1 text-[10px] font-black text-cyan-600';
+  const pattern = new RegExp(`(${names.map(escapeRegExp).join('|')})`, 'g');
+  return html.replace(pattern, (match) => `<span class="${className}">${match}<span class="${labelClass}">${labelByName.get(match) || ''}</span></span>`);
+};
 
 const normalizeDecision = (value: string, score: number) => {
   const text = String(value || '').replace('条件付き', '条件付');
@@ -129,7 +154,7 @@ const getYukikazeStatus = (score: number): YukikazeStatus => {
   };
 };
 
-export default function GunshiAdvice({ score, modelDecision, industry_major, formData, estatContext, onChatLoaded }: GunshiAdviceProps) {
+export default function GunshiAdvice({ score, modelDecision, industry_major, formData, estatContext, onChatLoaded, highlightCompanies = [] }: GunshiAdviceProps) {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [humorMode, setHumorMode] = useState<HumorMode>(getInitialHumorMode);
@@ -560,10 +585,10 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
           </div>
           <div>
             <h3 className={`font-bold text-sm tracking-wide ${isYukikaze ? 'font-mono text-amber-100' : ''}`}>
-              {isYukikaze ? 'YUKIKAZE // FFR-41MR' : '審査補助コメント'}
+              {isYukikaze ? 'YUKIKAZE // FFR-41MR' : '案件作戦盤'}
             </h3>
             <p className={`text-[10px] font-medium ${isYukikaze ? 'text-red-300 font-mono tracking-widest' : 'text-blue-200'}`}>
-              {isYukikaze ? 'TACTICAL LEASE SCORING AI' : 'つん子/yukikazeは短評、深掘りは紫苑へ'}
+              {isYukikaze ? 'TACTICAL LEASE SCORING AI' : '紫苑レビューを補助する短評・質問・稟議作戦'}
             </p>
           </div>
         </div>
@@ -806,7 +831,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
               <div className="w-full">
                 <div
                   className={`max-w-none min-h-[360px] p-6 rounded-2xl rounded-tl-none shadow border leading-8 font-medium whitespace-pre-wrap text-sm sm:text-[15px] w-full prose ${isYukikaze ? 'bg-black/90 border-red-900 text-amber-50 prose-invert font-mono' : 'bg-white border-amber-200 text-slate-700 prose-slate'}`}
-                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderAssistantText(chat.text, isYukikaze)) }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(highlightCompaniesInHtml(renderAssistantText(chat.text, isYukikaze), highlightCompanies, isYukikaze)) }}
                 />
                 {chat.meta && (
                   <div className={`mt-1.5 text-[11px] leading-4 px-1 ${isYukikaze ? 'text-red-300 font-mono' : 'text-slate-500'}`}>
@@ -848,7 +873,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
             <div className="w-full">
               <div
                 className={`max-w-none min-h-[360px] p-6 rounded-2xl rounded-tl-none shadow border leading-8 font-medium whitespace-pre-wrap text-sm sm:text-[15px] w-full prose ${isYukikaze ? 'bg-black/90 border-red-900 text-amber-50 prose-invert font-mono' : 'bg-white border-amber-200 text-slate-700 prose-slate'}`}
-                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderAssistantText(streamingText, isYukikaze)) }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(highlightCompaniesInHtml(renderAssistantText(streamingText, isYukikaze), highlightCompanies, isYukikaze)) }}
               />
               <span className={`inline-block w-0.5 h-4 ml-1 animate-pulse ${isYukikaze ? 'bg-red-500' : 'bg-amber-500'}`} />
             </div>

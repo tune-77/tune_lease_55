@@ -40,6 +40,8 @@ data/department_stats_cache.json
 !.cloudrun_bundle/data/user_personal_memory.md
 
 reports
+!.cloudrun_bundle/reports/
+!.cloudrun_bundle/reports/**
 dashboard_images
 easyocr_models
 _archive

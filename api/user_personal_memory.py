@@ -49,6 +49,12 @@ _PERSONAL_TERMS = (
 )
 
 
+def _has_explicit_remember_intent(text: str) -> bool:
+    if re.search(r"覚えて(?:いる|る)?か", text):
+        return False
+    return any(term in text for term in _REMEMBER_TERMS)
+
+
 def _memory_path() -> Path:
     return LOCAL_MEMORY_PATH
 
@@ -93,9 +99,11 @@ def _is_likely_personal_memory(message: str) -> bool:
     text = str(message or "").strip()
     if not text or len(text) > 1200:
         return False
+    if re.search(r"覚えて(?:いる|る)?か", text):
+        return False
     if re.fullmatch(r"(?:僕の|私の|俺の|うちの)?(?:犬|愛犬|ペット)(?:の)?名前(?:は|が|を)?\s*", text):
         return False
-    if any(term in text for term in _REMEMBER_TERMS):
+    if _has_explicit_remember_intent(text):
         return True
     if _extract_dog_name(text):
         return True
@@ -120,7 +128,7 @@ def _classify_personal_memory(message: str) -> str:
         return "wound"
     if any(term in text for term in ("大事", "大切", "価値観", "守りたい")):
         return "value"
-    if any(term in text for term in _REMEMBER_TERMS):
+    if _has_explicit_remember_intent(text):
         return "explicit_remember"
     return "personal_fact"
 
@@ -129,7 +137,7 @@ def _confidence_for_memory(message: str, *, dog_name: str = "") -> str:
     text = str(message or "")
     if any(term in text for term in _SENSITIVE_TERMS):
         return "sensitive"
-    if dog_name or any(term in text for term in _REMEMBER_TERMS):
+    if dog_name or _has_explicit_remember_intent(text):
         return "confirmed"
     return "candidate"
 
@@ -150,12 +158,25 @@ _INVALID_DOG_NAME_TOKENS = {
     "なん",
     "何だっけ",
     "なんだっけ",
+    "覚えているかが",
+    "覚えてるかが",
 }
+_INVALID_DOG_NAME_FRAGMENTS = (
+    "覚えて",
+    "記憶",
+    "信頼",
+    "関係",
+    "なぜ",
+    "どう",
+    "教えて",
+    "知って",
+)
 
 
 def _extract_dog_name(message: str) -> str:
     text = str(message or "")
     patterns = (
+        r"(?:犬|愛犬|ペット)(?:の)?名前(?:は|が|を)?\s*[「『\"]?([ぁ-んァ-ヶ一-龥A-Za-z0-9_-]{1,24})(?:で|として)覚えて",
         r"(?:犬|愛犬|ペット)(?:の)?名前(?:は|が|を)?\s*[「『\"]?([ぁ-んァ-ヶ一-龥A-Za-z0-9_-]{1,24})",
         r"([ぁ-んァ-ヶ一-龥A-Za-z0-9_-]{1,24})(?:は|が)(?:犬|愛犬|ペット)(?:の)?名前",
     )
@@ -169,6 +190,7 @@ def _extract_dog_name(message: str) -> str:
                 and name not in {"犬", "愛犬", "ペット", "名前"}
                 and name not in _QUESTION_WORDS
                 and name not in _INVALID_DOG_NAME_TOKENS
+                and not any(fragment in name for fragment in _INVALID_DOG_NAME_FRAGMENTS)
             ):
                 return name
     return ""
@@ -193,6 +215,34 @@ def _replace_or_append_dog_name(lines: list[str], dog_name: str) -> list[str]:
     return lines
 
 
+def derive_personal_memory_entries(
+    message: str,
+    *,
+    source: str = "chat",
+    timestamp: str = "",
+) -> dict[str, Any]:
+    """Derive structured personal-memory lines from a message without writing."""
+    clean = _normalize_line(message)
+    if not clean or not _is_likely_personal_memory(clean):
+        return {"captured": False, "reason": "not_personal_memory", "lines": [], "dog_name": ""}
+
+    dog_name = _extract_dog_name(clean)
+    category = _classify_personal_memory(clean)
+    confidence = _confidence_for_memory(clean, dog_name=dog_name)
+    ts = timestamp or dt.datetime.now().isoformat(timespec="seconds")
+    lines: list[str] = []
+    if dog_name:
+        lines.append(f"- [confirmed] Dog name: {dog_name}")
+    lines.append(f"- {ts} [{confidence}/{category}] ({source}) {clean}")
+    return {
+        "captured": True,
+        "lines": lines,
+        "category": category,
+        "confidence": confidence,
+        "dog_name": dog_name,
+    }
+
+
 def capture_user_personal_memory(message: str, *, source: str = "chat") -> dict[str, Any]:
     """Capture a user personal-memory candidate.
 
@@ -210,10 +260,11 @@ def capture_user_personal_memory(message: str, *, source: str = "chat") -> dict[
     try:
         _ensure_file(path)
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-        dog_name = _extract_dog_name(clean)
+        derived = derive_personal_memory_entries(clean, source=source)
+        dog_name = str(derived.get("dog_name") or "")
         lines = _replace_or_append_dog_name(lines, dog_name)
-        category = _classify_personal_memory(clean)
-        confidence = _confidence_for_memory(clean, dog_name=dog_name)
+        category = str(derived.get("category") or _classify_personal_memory(clean))
+        confidence = str(derived.get("confidence") or _confidence_for_memory(clean, dog_name=dog_name))
         entry = f"- {dt.datetime.now().isoformat(timespec='seconds')} [{confidence}/{category}] ({source}) {clean}"
         # clean が既存行のいずれかに完全一致する場合のみスキップ
         if not any(clean == existing_line.strip() for existing_line in lines):
@@ -221,12 +272,30 @@ def capture_user_personal_memory(message: str, *, source: str = "chat") -> dict[
                 lines.extend(["", "## Captured Personal Memories", ""])
             lines.append(entry)
         path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+        writeback = {"ok": False, "skipped": True, "reason": "not_attempted"}
+        try:
+            from api.cloudrun_writeback import record_cloudrun_input_event
+
+            writeback = record_cloudrun_input_event(
+                event_type="personal_memory",
+                surface=source,
+                payload={
+                    "message": clean,
+                    "category": category,
+                    "confidence": confidence,
+                    "dog_name": dog_name,
+                    "derived_lines": derived.get("lines") or [],
+                },
+            )
+        except Exception as writeback_exc:
+            writeback = {"ok": False, "skipped": False, "reason": str(writeback_exc)}
         return {
             "captured": True,
             "path": str(path),
             "category": category,
             "confidence": confidence,
             "dog_name": dog_name,
+            "writeback": writeback,
         }
     except Exception as exc:
         return {"captured": False, "reason": str(exc)}
