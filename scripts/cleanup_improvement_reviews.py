@@ -98,6 +98,12 @@ KNOWN_CODE_APPLIED: list[tuple[str, str, str]] = [
      "実装済み: cases/page.tsx 案件一覧から選択して結果登録できるUI"),
     ("misc_2d8a190dc89c", "ホーム画面のUIデザインについて、ユーザーからの変更要望がある。",
      "実装済み: home/page.tsx ホーム画面刷新（2026-07-08 ユーザー確認）"),
+    ("misc_ca792a852663",
+     "ブルドーザー、ショベル・油圧ショベルのリース期間が「5年」と表示されているが、正しくは「6年」の可能",
+     "修正済み: useful_life_lookup.py 建機を別表第二30号・総合工事業用設備6年に統一（2026-07-08 ユーザー確認）"),
+    ("misc_a9d36a1c56c3",
+     "自律改善フローの自動実行元表示が「codex」のままで、実態と異なる可能性がある。",
+     "修正済み: improvement-log/page.tsx 表示を「自動改善キュー（claude実行・gemini予備）」に変更"),
 ]
 
 KNOWN_PR_OVERRIDES: dict[str, tuple[int, str]] = {
