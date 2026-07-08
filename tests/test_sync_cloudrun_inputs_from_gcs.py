@@ -336,3 +336,100 @@ def test_materialize_events_restores_score_full_and_ocr_to_quarantine_db(tmp_pat
         assert ocr_row["doc_type"] == "financial"
         assert ocr_row["confidence"] == 0.86
         assert "op_profit" in json.loads(ocr_row["detected_fields"])
+
+
+def test_download_event_text_treats_missing_object_as_not_found() -> None:
+    blob = MagicMock()
+    blob.download_as_text.side_effect = Exception(
+        "404 GET https://storage.googleapis.com/... No such object: bucket/x"
+    )
+    bucket = MagicMock()
+    bucket.blob.return_value = blob
+
+    text, reason = syncer._download_event_text(bucket, "bucket", "x")
+
+    assert text is None
+    assert reason == syncer.NOT_FOUND_REASON
+
+
+def test_download_event_text_gcloud_not_found(monkeypatch) -> None:
+    import subprocess
+
+    def fake_run(*args, **kwargs):
+        raise subprocess.CalledProcessError(
+            1, ["gcloud"], stderr="ERROR: The following URLs matched no objects or files"
+        )
+
+    monkeypatch.setattr(syncer.subprocess, "run", fake_run)
+
+    text, reason = syncer._download_event_text(None, "bucket", "x")
+
+    assert text is None
+    assert reason == syncer.NOT_FOUND_REASON
+
+
+def test_download_event_text_reports_real_errors(monkeypatch) -> None:
+    import subprocess
+
+    def fake_run(*args, **kwargs):
+        raise subprocess.CalledProcessError(
+            1, ["gcloud"], stderr="ERROR: (gcloud.storage.cat) HTTPError 403: アクセス権がありません"
+        )
+
+    monkeypatch.setattr(syncer.subprocess, "run", fake_run)
+
+    text, reason = syncer._download_event_text(None, "bucket", "x")
+
+    assert text is None
+    assert reason.startswith("error:")
+    assert "403" in reason
+
+
+def test_download_event_text_reports_missing_gcloud(monkeypatch) -> None:
+    def fake_run(*args, **kwargs):
+        raise FileNotFoundError("No such file or directory: 'gcloud'")
+
+    monkeypatch.setattr(syncer.subprocess, "run", fake_run)
+
+    text, reason = syncer._download_event_text(None, "bucket", "x")
+
+    assert text is None
+    assert reason.startswith("error:")
+    assert "gcloud" in reason
+
+
+def test_main_exits_nonzero_when_download_errors(monkeypatch) -> None:
+    import pytest
+
+    monkeypatch.setattr(
+        syncer,
+        "sync_day",
+        lambda *args, **kwargs: {
+            "date": "2026-07-08",
+            "downloaded": False,
+            "events": 0,
+            "path": "p",
+            "reason": "error: gcloud コマンドが見つかりません",
+        },
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        syncer.main()
+
+    assert excinfo.value.code == 1
+
+
+def test_main_exits_zero_when_days_have_no_events(monkeypatch) -> None:
+    monkeypatch.setattr(
+        syncer,
+        "sync_day",
+        lambda *args, **kwargs: {
+            "date": "2026-07-08",
+            "downloaded": False,
+            "events": 0,
+            "path": "p",
+            "reason": syncer.NOT_FOUND_REASON,
+        },
+    )
+
+    syncer.main()

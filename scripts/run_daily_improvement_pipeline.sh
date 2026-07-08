@@ -25,6 +25,13 @@ if [ ! -x "${PYTHON}" ]; then
     exit 1
 fi
 
+# launchd/cron は .zshrc を読まないため、gcloud が見つからない場合は標準的な
+# インストール先を PATH に補完する（GCS取り込み・Secret Manager・GCSアップロードで使用）
+if ! command -v gcloud >/dev/null 2>&1; then
+    export PATH="${PATH}:/opt/homebrew/bin:/usr/local/bin:${HOME}/google-cloud-sdk/bin"
+fi
+echo "gcloud: $(command -v gcloud || echo '見つかりません（クラウド連携ステップは失敗します）')"
+
 echo ""
 echo "[core] 改善コア処理を実行中..."
 bash "${PROJECT_ROOT}/scripts/run_daily_improvement_core.sh"

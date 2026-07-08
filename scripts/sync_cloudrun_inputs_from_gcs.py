@@ -7,6 +7,7 @@ import json
 import os
 import sqlite3
 import subprocess
+import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, Any
@@ -71,16 +72,42 @@ def _download_text_with_gcloud(bucket_name: str, blob_name: str) -> str:
     return proc.stdout
 
 
+# その日の events.jsonl がまだ無いのは正常（イベントゼロ）。認証切れ・gcloud不在などの
+# 実エラーと区別し、実エラーは終了コードで検知できるようにする
+NOT_FOUND_REASON = "not_found"
+_NOT_FOUND_MARKERS = (
+    "404",
+    "no such object",
+    "does not exist",
+    "matched no objects",
+    "no urls matched",
+    "notfound",
+)
+
+
+def _is_not_found_reason(reason: str) -> bool:
+    lowered = (reason or "").lower()
+    return any(marker in lowered for marker in _NOT_FOUND_MARKERS)
+
+
 def _download_event_text(bucket: Any | None, bucket_name: str, blob_name: str) -> tuple[str | None, str]:
     if bucket is not None:
         try:
             return bucket.blob(blob_name).download_as_text(), "storage-client"
-        except Exception:
-            pass
+        except Exception as exc:
+            if _is_not_found_reason(str(exc)):
+                return None, NOT_FOUND_REASON
     try:
         return _download_text_with_gcloud(bucket_name, blob_name), "gcloud"
+    except FileNotFoundError:
+        return None, "error: gcloud コマンドが見つかりません（PATH未設定の可能性）"
+    except subprocess.CalledProcessError as exc:
+        stderr = (exc.stderr or "").strip()
+        if _is_not_found_reason(stderr):
+            return None, NOT_FOUND_REASON
+        return None, f"error: {stderr[:200] or exc}"
     except Exception as exc:
-        return None, str(exc)
+        return None, f"error: {exc}"
 
 
 def _load_jsonl(path: Path) -> list[dict]:
@@ -654,12 +681,20 @@ def main() -> None:
         bucket = None
 
     print(f"Cloud Run入力同期開始: gs://{bucket_name}/{GCS_INPUT_PREFIX} → {LOCAL_INPUT_DIR}")
+    error_days = 0
     for day in _date_range(days):
         result = sync_day(bucket, day, LOCAL_INPUT_DIR, bucket_name=bucket_name)
-        status = "DL" if result["downloaded"] else "SKIP"
-        detail = result.get("source") or result.get("reason") or ""
+        reason = str(result.get("reason") or "")
+        is_error = not result["downloaded"] and reason != NOT_FOUND_REASON
+        if is_error:
+            error_days += 1
+        status = "DL" if result["downloaded"] else ("ERR" if is_error else "SKIP")
+        detail = result.get("source") or reason
         suffix = f" source={detail}" if detail else ""
         print(f"[{status}] {result['date']} events={result['events']} path={result['path']}{suffix}")
+    if error_days:
+        print(f"エラー: {error_days} 日分の取得に失敗しました（イベント未取得の可能性）", file=sys.stderr)
+        sys.exit(1)
     print("同期完了")
 
 

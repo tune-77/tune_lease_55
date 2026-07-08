@@ -147,10 +147,13 @@ class TestHandlesEmptyVault:
         assert files == []
 
     def test_main_handles_empty_vault(self, tmp_path):
-        """Vault が空でも main() がエラーにならないこと（正常終了）。"""
+        """Vault が空でも main() がエラーにならないこと（正常終了）。
+
+        対象ファイルゼロなら GCS クライアント生成前に return するため、
+        storage のモックは不要（storage は main() 内の遅延 import に変更済み）。
+        """
         with patch("scripts.icloud_to_gcs_sync.LOCAL_VAULT_DIR", str(tmp_path)):
-            with patch("scripts.icloud_to_gcs_sync.storage.Client"):
-                main()
+            main()
 
 
 def test_collect_md_files_uses_chat_knowledge_allowlist(tmp_path):
