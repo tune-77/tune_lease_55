@@ -7,6 +7,7 @@ Obsidian Vault の *.md ファイルを GCS に差分アップロードする。
 Usage:
     python scripts/icloud_to_gcs_sync.py
 """
+import json
 import os
 import subprocess
 import sys
@@ -55,6 +56,28 @@ EXCLUDED_REL_PREFIXES = tuple(
     ).split(",")
     if item.strip()
 )
+
+
+# gcloud バックエンドは GCS メタデータの事前照会ができず全件再アップロードになるため、
+# 前回アップロード時の mtime をローカル状態ファイルに覚えて未変更ファイルをスキップする
+STATE_FILE = Path(__file__).parent / ".sync_state_icloud_gcs.json"
+
+
+def _load_upload_state() -> dict:
+    try:
+        state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return state if isinstance(state, dict) else {}
+
+
+def _save_upload_state(state: dict) -> None:
+    try:
+        STATE_FILE.write_text(
+            json.dumps(state, indent=2, ensure_ascii=False, sort_keys=True), encoding="utf-8"
+        )
+    except OSError as exc:
+        print(f"警告: アップロード状態ファイルを書けませんでした: {exc}", file=sys.stderr)
 
 
 def _local_mtime_str(path: Path) -> str:
@@ -160,23 +183,34 @@ def main() -> None:
         client = storage.Client()
         bucket = client.bucket(GCS_BUCKET)
 
+    upload_state = _load_upload_state() if GCS_UPLOAD_BACKEND == "gcloud" else {}
     uploaded = 0
     skipped = 0
-    for path in md_files:
+    try:
+        for path in md_files:
+            if GCS_UPLOAD_BACKEND == "gcloud":
+                rel = path.relative_to(vault_dir)
+                local_mtime = _local_mtime_str(path)
+                if upload_state.get(rel.as_posix()) == local_mtime:
+                    result = f"[SKIP]  {rel}"
+                else:
+                    gcs_path = GCS_VAULT_PREFIX + rel.as_posix()
+                    if not _upload_with_gcloud(path, GCS_BUCKET, gcs_path, local_mtime):
+                        raise RuntimeError(f"gcloud upload failed: {rel}")
+                    upload_state[rel.as_posix()] = local_mtime
+                    result = f"[UP]    {rel} → gs://{GCS_BUCKET}/{gcs_path}"
+            else:
+                assert bucket is not None
+                result = upload_file(bucket, path, vault_dir, GCS_VAULT_PREFIX)
+            print(result)
+            if result.startswith("[UP]"):
+                uploaded += 1
+            else:
+                skipped += 1
+    finally:
+        # 途中失敗でも成功済み分は記録し、次回は残りだけ再アップロードする
         if GCS_UPLOAD_BACKEND == "gcloud":
-            rel = path.relative_to(vault_dir)
-            gcs_path = GCS_VAULT_PREFIX + rel.as_posix()
-            if not _upload_with_gcloud(path, GCS_BUCKET, gcs_path, _local_mtime_str(path)):
-                raise RuntimeError(f"gcloud upload failed: {rel}")
-            result = f"[UP]    {rel} → gs://{GCS_BUCKET}/{gcs_path}"
-        else:
-            assert bucket is not None
-            result = upload_file(bucket, path, vault_dir, GCS_VAULT_PREFIX)
-        print(result)
-        if result.startswith("[UP]"):
-            uploaded += 1
-        else:
-            skipped += 1
+            _save_upload_state(upload_state)
 
     print(f"完了: アップロード {uploaded} 件 / スキップ {skipped} 件")
 

@@ -589,7 +589,7 @@ export default function ImprovementLogPage() {
               </div>
               {recipeStatus?.codex_auto_queue && (
                 <p className="mt-2 text-xs text-slate-500">
-                  Codex自動キュー: {recipeStatus.codex_auto_queue.status || "-"} / safe {recipeStatus.codex_auto_queue.safe_count ?? 0} / maybe {recipeStatus.codex_auto_queue.maybe_count ?? 0} / manual {recipeStatus.codex_auto_queue.manual_or_blocked_count ?? 0}
+                  自動改善キュー（claude実行・gemini予備）: {recipeStatus.codex_auto_queue.status || "-"} / safe {recipeStatus.codex_auto_queue.safe_count ?? 0} / maybe {recipeStatus.codex_auto_queue.maybe_count ?? 0} / manual {recipeStatus.codex_auto_queue.manual_or_blocked_count ?? 0}
                 </p>
               )}
               <p className="mt-2 text-xs text-slate-500">
