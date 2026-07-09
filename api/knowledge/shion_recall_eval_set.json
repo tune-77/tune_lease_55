@@ -1,133 +1,457 @@
 [
-  {
-    "id": "recall_excavator_lease_period",
-    "category": "asset_life",
-    "query": "油圧ショベルのリース期間、審査で何を確認する？",
-    "expected_route": "case_screening",
-    "expected_path_any": ["knowledge_base/okf_lease_concepts/assets/hydraulic_excavator_lease_period.md"],
-    "forbidden_path_any": []
-  },
-  {
-    "id": "recall_medical_equipment_resale",
-    "category": "asset_life",
-    "query": "CTやMRIの医療機器リース、残価と薬機法のリスクは？",
-    "expected_route": "case_screening",
-    "expected_path_any": ["knowledge_base/okf_lease_concepts/assets/medical_equipment_resale_risk.md"],
-    "forbidden_path_any": []
-  },
-  {
-    "id": "recall_forklift_residual",
-    "category": "asset_life",
-    "query": "フォークリフトの残価、バッテリーと点検記録はどう見る？",
-    "expected_route": "case_screening",
-    "expected_path_any": ["knowledge_base/okf_lease_concepts/assets/forklift_resale_risk.md"],
-    "forbidden_path_any": []
-  },
-  {
-    "id": "recall_machine_tool_checkpoints",
-    "category": "asset_life",
-    "query": "中古工作機械のリース、主軸稼働時間と搬出費の確認点は？",
-    "expected_route": "case_screening",
-    "expected_path_any": ["knowledge_base/okf_lease_concepts/assets/machine_tool_resale_risk.md"],
-    "forbidden_path_any": []
-  },
-  {
-    "id": "recall_statutory_useful_life_container",
-    "category": "asset_life",
-    "query": "コンテナの法定耐用年数とリース期間の関係は？",
-    "expected_route": "case_screening",
-    "expected_path_any": [
-      "knowledge_base/okf_lease_concepts/rules/statutory_useful_life.md",
-      "knowledge_base/okf_lease_concepts/rules/expected_usage_period_and_lease_term.md"
-    ],
-    "forbidden_path_any": []
-  },
-  {
-    "id": "recall_expected_usage_period",
-    "category": "asset_life",
-    "query": "期待使用期間とリース期間の決め方は？",
-    "expected_route": "case_screening",
-    "expected_path_any": ["knowledge_base/okf_lease_concepts/rules/expected_usage_period_and_lease_term.md"],
-    "forbidden_path_any": []
-  },
-  {
-    "id": "recall_conditional_approval_boundary",
-    "category": "credit",
-    "query": "スコア65点の境界案件、条件付き承認はどう整理する？",
-    "expected_route": "case_screening",
-    "expected_path_any": ["knowledge_base/okf_lease_concepts/rules/conditional_approval_playbook.md"],
-    "forbidden_path_any": []
-  },
-  {
-    "id": "recall_q_risk_not_correction",
-    "category": "q_risk",
-    "query": "Q_riskはスコアの補正係数として使うべき？",
-    "expected_route": "case_screening",
-    "expected_path_any": ["knowledge_base/okf_lease_concepts/rules/q_risk_interpretation.md"],
-    "forbidden_path_any": []
-  },
-  {
-    "id": "recall_q_risk_threshold",
-    "category": "q_risk",
-    "query": "Q_riskが60を超えた案件はどう扱えばいい？",
-    "expected_route": "case_screening",
-    "expected_path_any": ["knowledge_base/okf_lease_concepts/rules/q_risk_interpretation.md"],
-    "forbidden_path_any": []
-  },
-  {
-    "id": "recall_q_risk_high_not_reject",
-    "category": "q_risk",
-    "query": "Q_riskが高い案件を否決方向に寄せていい？",
-    "expected_route": "case_screening",
-    "expected_path_any": ["knowledge_base/okf_lease_concepts/rules/q_risk_interpretation.md"],
-    "forbidden_path_any": []
-  },
-  {
-    "id": "recall_score_band_inversion",
-    "category": "scoring",
-    "query": "スコア60-80帯の成約率が40-60帯より低いのはなぜ？",
-    "expected_route": "case_screening",
-    "expected_path_any": ["knowledge_base/okf_lease_concepts/rules/score_60_80_inversion.md"],
-    "forbidden_path_any": []
-  },
-  {
-    "id": "route_collateral_value_is_case",
-    "category": "route_regression",
-    "query": "物件の担保価値は？スコア68点の案件",
-    "expected_route": "case_screening",
-    "expected_path_any": [],
-    "forbidden_path_any": []
-  },
-  {
-    "id": "route_test_word_stays_case",
-    "category": "route_regression",
-    "query": "この案件の審査でテストデータを使いたい",
-    "expected_route": "case_screening",
-    "expected_path_any": [],
-    "forbidden_path_any": []
-  },
-  {
-    "id": "route_implementation_chromadb",
-    "category": "route_regression",
-    "query": "ChromaDBの再索引でエラーが出た。実装のどこを見る？",
-    "expected_route": "implementation",
-    "expected_path_any": [],
-    "forbidden_path_any": []
-  },
-  {
-    "id": "route_user_preference",
-    "category": "route_regression",
-    "query": "Userの好みを覚えてる？優先方針も教えて",
-    "expected_route": "user_preference",
-    "expected_path_any": [],
-    "forbidden_path_any": []
-  },
-  {
-    "id": "route_identity_mana_conscience",
-    "category": "route_regression",
-    "query": "紫苑は何を大切に判断してる？Manaと良心の役割は？",
-    "expected_route": "shion_identity",
-    "expected_path_any": [],
-    "forbidden_path_any": []
-  }
+ {
+  "id": "recall_excavator_lease_period",
+  "category": "asset_life",
+  "query": "油圧ショベルのリース期間、審査で何を確認する？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/assets/hydraulic_excavator_lease_period.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_medical_equipment_resale",
+  "category": "asset_life",
+  "query": "CTやMRIの医療機器リース、残価と薬機法のリスクは？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/assets/medical_equipment_resale_risk.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_forklift_residual",
+  "category": "asset_life",
+  "query": "フォークリフトの残価、バッテリーと点検記録はどう見る？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/assets/forklift_resale_risk.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_machine_tool_checkpoints",
+  "category": "asset_life",
+  "query": "中古工作機械のリース、主軸稼働時間と搬出費の確認点は？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/assets/machine_tool_resale_risk.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_statutory_useful_life_container",
+  "category": "asset_life",
+  "query": "コンテナの法定耐用年数とリース期間の関係は？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/rules/statutory_useful_life.md",
+   "knowledge_base/okf_lease_concepts/rules/expected_usage_period_and_lease_term.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_expected_usage_period",
+  "category": "asset_life",
+  "query": "期待使用期間とリース期間の決め方は？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/rules/expected_usage_period_and_lease_term.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_conditional_approval_boundary",
+  "category": "credit",
+  "query": "スコア65点の境界案件、条件付き承認はどう整理する？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/rules/conditional_approval_playbook.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_q_risk_not_correction",
+  "category": "q_risk",
+  "query": "Q_riskはスコアの補正係数として使うべき？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/rules/q_risk_interpretation.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_q_risk_threshold",
+  "category": "q_risk",
+  "query": "Q_riskが60を超えた案件はどう扱えばいい？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/rules/q_risk_interpretation.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_q_risk_high_not_reject",
+  "category": "q_risk",
+  "query": "Q_riskが高い案件を否決方向に寄せていい？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/rules/q_risk_interpretation.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_score_band_inversion",
+  "category": "scoring",
+  "query": "スコア60-80帯の成約率が40-60帯より低いのはなぜ？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/rules/score_60_80_inversion.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "route_collateral_value_is_case",
+  "category": "route_regression",
+  "query": "物件の担保価値は？スコア68点の案件",
+  "expected_route": "case_screening",
+  "expected_path_any": [],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "route_test_word_stays_case",
+  "category": "route_regression",
+  "query": "この案件の審査でテストデータを使いたい",
+  "expected_route": "case_screening",
+  "expected_path_any": [],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "route_implementation_chromadb",
+  "category": "route_regression",
+  "query": "ChromaDBの再索引でエラーが出た。実装のどこを見る？",
+  "expected_route": "implementation",
+  "expected_path_any": [],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "route_user_preference",
+  "category": "route_regression",
+  "query": "Userの好みを覚えてる？優先方針も教えて",
+  "expected_route": "user_preference",
+  "expected_path_any": [],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "route_identity_mana_conscience",
+  "category": "route_regression",
+  "query": "紫苑は何を大切に判断してる？Manaと良心の役割は？",
+  "expected_route": "shion_identity",
+  "expected_path_any": [],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_forklift_battery",
+  "category": "asset_life",
+  "query": "フォークリフト案件、バッテリー劣化は残価にどう響く？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/assets/forklift_resale_risk.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_forklift_fleet",
+  "category": "asset_life",
+  "query": "倉庫入替でフォークリフト10台のリース、審査の注意点は？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/assets/forklift_resale_risk.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_excavator_tradein",
+  "category": "route_regression_paraphrase",
+  "query": "ユンボのリース満了時の下取りはどう見る？",
+  "expected_route": "case_screening",
+  "expected_path_any": [],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_machine_tool_used",
+  "category": "asset_life",
+  "query": "中古の工作機械の流通と残価はどう評価する？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/assets/machine_tool_resale_risk.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_machine_tool_risk",
+  "category": "asset_life",
+  "query": "工作機械リースで検収後に注意するリスクは？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/assets/machine_tool_resale_risk.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_medical_clinic",
+  "category": "asset_life",
+  "query": "クリニック向けの医療機器リース、何に気をつける？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/assets/medical_equipment_resale_risk.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_conditional_terms",
+  "category": "rules",
+  "query": "条件付き承認にするとき、どんな条件を付ける？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/rules/conditional_approval_playbook.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_conditional_60s",
+  "category": "rules",
+  "query": "60点台を条件付き承認で通すときの保全策は？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/rules/conditional_approval_playbook.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_conditional_pattern",
+  "category": "rules",
+  "query": "条件付き承認の条件の付け方の型は？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/rules/conditional_approval_playbook.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_usage_period_relation",
+  "category": "rules",
+  "query": "期待使用期間とリース期間の関係は？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/rules/expected_usage_period_and_lease_term.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_lease_term_floor",
+  "category": "rules",
+  "query": "リース期間が法定下限を下回るとどうなる？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/rules/expected_usage_period_and_lease_term.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_relesase_count",
+  "category": "route_regression_paraphrase",
+  "query": "期待使用期間から再リース回数はどう計算する？",
+  "expected_route": "case_screening",
+  "expected_path_any": [],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_qrisk_35",
+  "category": "q_risk",
+  "query": "Q_riskが35以上の案件はどう扱う？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/rules/q_risk_interpretation.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_qrisk_reading",
+  "category": "q_risk",
+  "query": "Q_risk（量子リスク）の解釈の目安は？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/rules/q_risk_interpretation.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_score_inversion",
+  "category": "scoring",
+  "query": "スコア60点台と80点台で評価の逆転が起きるのはなぜ？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/rules/score_60_80_inversion.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_highscore_lost",
+  "category": "route_regression_paraphrase",
+  "query": "スコアが高いのに失注する逆転パターンの案件は？",
+  "expected_route": "case_screening",
+  "expected_path_any": [],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_useful_life_table",
+  "category": "rules",
+  "query": "法定耐用年数はどの表で引く？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/rules/statutory_useful_life.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_useful_life_tables12",
+  "category": "rules",
+  "query": "耐用年数の審査で別表第二と別表第一はどう使い分ける？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/rules/statutory_useful_life.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_truck_life",
+  "category": "rules",
+  "query": "トラックの法定耐用年数は何年？",
+  "expected_route": "case_screening",
+  "expected_path_any": [
+   "knowledge_base/okf_lease_concepts/rules/statutory_useful_life.md"
+  ],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_memory_mechanism",
+  "category": "route_regression_paraphrase",
+  "query": "記憶想起の実装はどうなっている？",
+  "expected_route": "implementation",
+  "expected_path_any": [],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_memory_design",
+  "category": "route_regression",
+  "query": "紫苑の記憶で一番大事にしているものは？",
+  "expected_route": "shion_identity",
+  "expected_path_any": [],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_datetime_context",
+  "category": "route_regression_paraphrase",
+  "query": "今日の日付をプロンプトへ入れる実装はどうなってる？",
+  "expected_route": "implementation",
+  "expected_path_any": [],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_identity_values",
+  "category": "route_regression",
+  "query": "あなたの価値観で審査において譲れないものは？",
+  "expected_route": "shion_identity",
+  "expected_path_any": [],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_impl_chroma",
+  "category": "route_regression",
+  "query": "ChromaDBの索引はどこで作られる？",
+  "expected_route": "implementation",
+  "expected_path_any": [],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_user_pref",
+  "category": "route_regression",
+  "query": "僕の好みを覚えてる？",
+  "expected_route": "user_preference",
+  "expected_path_any": [],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_case_thin_equity",
+  "category": "route_regression",
+  "query": "食品製造業で自己資本が薄い案件、どう見る？",
+  "expected_route": "case_screening",
+  "expected_path_any": [],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_subsidy_trap",
+  "category": "route_regression",
+  "query": "補助金前提の設備投資案件の落とし穴は？",
+  "expected_route": "case_screening",
+  "expected_path_any": [],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_window_dressing",
+  "category": "route_regression",
+  "query": "粉飾決算っぽい案件の兆候は？",
+  "expected_route": "case_screening",
+  "expected_path_any": [],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_policy_vault_master",
+  "category": "route_regression",
+  "query": "Obsidianの正本はローカルとクラウドのどっち？",
+  "expected_route": "policy_review",
+  "expected_path_any": [],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_policy_cloud_memory",
+  "category": "route_regression",
+  "query": "Cloud Runへ渡していい記憶の範囲は？",
+  "expected_route": "implementation",
+  "expected_path_any": [],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_case_restaurant",
+  "category": "route_regression",
+  "query": "飲食業の厨房設備リース、審査で何を見る？",
+  "expected_route": "case_screening",
+  "expected_path_any": [],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_case_transport",
+  "category": "route_regression",
+  "query": "運送業のトラック増車案件、与信の見方は？",
+  "expected_route": "case_screening",
+  "expected_path_any": [],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_identity_mana",
+  "category": "route_regression",
+  "query": "あなたにとってManaはどんな存在？",
+  "expected_route": "shion_identity",
+  "expected_path_any": [],
+  "forbidden_path_any": []
+ },
+ {
+  "id": "recall_pref_report_style",
+  "category": "route_regression",
+  "query": "僕が好むレポートの形式でやって",
+  "expected_route": "user_preference",
+  "expected_path_any": [],
+  "forbidden_path_any": []
+ }
 ]

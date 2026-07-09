@@ -148,6 +148,13 @@ def recall_memories(
             scored.append((score, record))
 
     scored.sort(key=lambda item: item[0], reverse=True)
+    rerank_used = False
+    try:
+        from api.shion_memory_rerank import maybe_rerank_scored
+
+        scored, rerank_used = maybe_rerank_scored(question, scored)
+    except Exception:
+        pass  # リランカーは補助段。失敗しても従来順序で続行する
     selected = _select_records(scored, route=route, limit=max(0, limit))
     practical_scene = infer_practical_scene(question)
     # なぜその記憶が選ばれたかの内訳（debug_memory=true で確認できる説明可能性用）
@@ -170,6 +177,7 @@ def recall_memories(
         "case_profile": case_profile,
         "practical_scene": practical_scene,
         "vector_used": bool(vector_similarity),
+        "rerank_used": rerank_used,
         "memories": selected,
         "refs": [str(r.get("id") or "") for r in selected if r.get("id")],
         "match_reasons": match_reasons,
