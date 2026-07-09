@@ -117,4 +117,15 @@ for rel in \
   fi
 done
 
+# lease-wiki-vault を追加
+LEASE_WIKI_SRC="${HOME}/Library/Mobile Documents/iCloud~md~obsidian/Documents/lease-wiki-vault/"
+if [ -d "$LEASE_WIKI_SRC" ]; then
+  echo "📚 lease-wiki-vault をバンドルに追加..."
+  rsync -av --include="*/" --include="*.md" --exclude="*" \
+    "$LEASE_WIKI_SRC" \
+    ".cloudrun_bundle/obsidian_vault/lease-wiki-vault/"
+else
+  echo "⚠️  lease-wiki-vault が見つかりません（ローカルにない場合は正常）"
+fi
+
 echo "Cloud Run bundle prepared at $BUNDLE_DIR"

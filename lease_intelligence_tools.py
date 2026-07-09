@@ -432,6 +432,16 @@ def search_lease_wiki(query: str, limit: int = 3) -> dict[str, Any]:
     benchmarks, LightGBM model specs, field definitions, design decisions.
     Falls back to keyword search if the embedding API is unavailable.
     """
+    # Cloud Run 環境では ChromaDB（obsidian_knowledge）を検索
+    if os.environ.get("K_SERVICE"):
+        try:
+            from api.knowledge.vector_store import get_store
+            store = get_store()
+            results = store.search(query, limit=limit)
+            return {"results": results, "count": len(results), "source": "chromadb_obsidian_knowledge"}
+        except Exception as e:
+            return {"error": f"ChromaDB検索エラー: {e}", "results": []}
+
     if not _LEASE_WIKI_VAULT.exists():
         return {"error": "lease-wiki-vault が見つかりません", "results": []}
 
