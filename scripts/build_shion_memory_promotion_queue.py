@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
 from collections import Counter
@@ -157,6 +158,80 @@ def collect_candidates(
     return ordered[:limit]
 
 
+def llm_extract_candidates(
+    chat_rows: list[dict],
+    applied_ids: set[str],
+    known_ids: set[str],
+    *,
+    limit: int = 8,
+    max_exchanges: int = 30,
+) -> list[dict]:
+    """LLMで会話から長期記憶候補を抽出する（ルールベースと並走・比較用）。
+
+    - SHION_MEMORY_LLM_EXTRACT=0 で無効化。APIキー無し・失敗時は空を返す
+    - kind="llm_extracted" で出すので、キューのMD上でルールベース抽出と
+      拾い方の違いを比較できる。承認フローは同一（自動昇格しない）
+    """
+    if os.environ.get("SHION_MEMORY_LLM_EXTRACT", "1").strip().lower() in {"0", "false", "off"}:
+        return []
+    exchanges = [
+        (str(row.get("user_message") or "").strip(), str(row.get("assistant_reply") or "").strip())
+        for row in chat_rows[-max_exchanges:]
+        if str(row.get("user_message") or "").strip()
+    ]
+    if not exchanges:
+        return []
+    lines = [
+        "あなたはリース審査AI「紫苑」の長期記憶の編集者です。",
+        "以下の会話から、今後の審査判断・ユーザー理解に長期的に役立つ事実や方針だけを抽出してください。",
+        "雑談・一時的な話題・質問文そのものは含めない。顧客名・会社名・連絡先は含めない。",
+        "",
+        "会話:",
+    ]
+    for user_msg, reply in exchanges:
+        lines.append(f"User: {_redact(user_msg, 200)}")
+        if reply:
+            lines.append(f"紫苑: {_redact(reply, 200)}")
+    lines += [
+        "",
+        f"出力はJSON配列のみ（最大{limit}件）: ",
+        '[{"content": "記憶として保存する1文（80〜200字）", "reason": "なぜ長期記憶に値するか"}]',
+        "該当がなければ [] を返す。",
+    ]
+    try:
+        from api.loop_engineering_common import call_gemini_json
+
+        result = call_gemini_json("\n".join(lines), temperature=0.2, max_output_tokens=2048)
+    except Exception:
+        return []
+    if not isinstance(result, list):
+        return []
+    extracted: list[dict] = []
+    for item in result[: limit * 2]:
+        if not isinstance(item, dict):
+            continue
+        content = _redact(str(item.get("content") or ""), 220)
+        if len(content) < 20:
+            continue
+        cid = _candidate_id(content)
+        if cid in applied_ids or cid in known_ids:
+            continue
+        known_ids.add(cid)
+        extracted.append(
+            {
+                "candidate_id": cid,
+                "kind": "llm_extracted",
+                "proposed_content": content,
+                "source_event_ids": [],
+                "ts": datetime.now().isoformat(timespec="seconds"),
+                "reason": f"LLM抽出: {_redact(str(item.get('reason') or ''), 120)}",
+            }
+        )
+        if len(extracted) >= limit:
+            break
+    return extracted
+
+
 def _render_markdown(candidates: list[dict]) -> str:
     lines = [
         "# 紫苑記憶 昇格候補キュー",
@@ -191,11 +266,17 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=15)
     args = parser.parse_args()
 
+    chat_rows = _load_jsonl(args.chat_log)
+    applied_ids = _applied_ids(args.applied_log)
     candidates = collect_candidates(
-        _load_jsonl(args.chat_log),
-        _applied_ids(args.applied_log),
+        chat_rows,
+        applied_ids,
         min_topic_repeat=args.min_topic_repeat,
         limit=args.limit,
+    )
+    known_ids = {c["candidate_id"] for c in candidates}
+    candidates.extend(
+        llm_extract_candidates(chat_rows, applied_ids, known_ids, limit=max(1, args.limit // 2))
     )
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
     args.output_json.write_text(

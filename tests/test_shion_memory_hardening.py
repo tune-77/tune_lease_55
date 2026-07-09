@@ -226,3 +226,85 @@ class TestFeedbackFreshness:
         negative, positive = load_feedback_signals(log)
         assert negative == {"b.md"}  # 高低両方付いた a.md は降格させない
         assert positive == {"a.md"}
+
+
+# ── LLMリランカー（②） ──────────────────────────────────────────────────────
+
+
+class TestRerank:
+    def _scored(self):
+        return [
+            (5.0, {"id": "m1", "content": "記憶1"}),
+            (4.0, {"id": "m2", "content": "記憶2"}),
+            (3.0, {"id": "m3", "content": "記憶3"}),
+        ]
+
+    def test_disabled_by_default(self, monkeypatch):
+        from api.shion_memory_rerank import maybe_rerank_scored
+
+        monkeypatch.delenv("SHION_MEMORY_RERANK", raising=False)
+        scored = self._scored()
+        result, used = maybe_rerank_scored("質問", scored)
+        assert result == scored and not used
+
+    def test_reorders_by_llm_and_keeps_unmentioned(self, monkeypatch):
+        import api.shion_memory_rerank as rr
+        import api.loop_engineering_common as common
+
+        monkeypatch.setenv("SHION_MEMORY_RERANK", "1")
+        monkeypatch.setattr(common, "call_gemini_json", lambda *a, **k: ["m3", "m1"])
+        result, used = rr.maybe_rerank_scored("質問", self._scored())
+        assert used
+        assert [r[1]["id"] for r in result] == ["m3", "m1", "m2"]  # 未言及m2は後ろに残る
+
+    def test_fail_open_on_llm_error(self, monkeypatch):
+        import api.shion_memory_rerank as rr
+        import api.loop_engineering_common as common
+
+        monkeypatch.setenv("SHION_MEMORY_RERANK", "1")
+
+        def boom(*a, **k):
+            raise RuntimeError("GEMINI_API_KEY が見つかりません")
+
+        monkeypatch.setattr(common, "call_gemini_json", boom)
+        scored = self._scored()
+        result, used = rr.maybe_rerank_scored("質問", scored)
+        assert result == scored and not used
+
+
+# ── LLM記憶抽出（③） ────────────────────────────────────────────────────────
+
+
+class TestLlmExtraction:
+    def _rows(self):
+        return [{"user_message": "補助金案件は入金時期まで見る方針で頼む", "assistant_reply": "承知しました"}]
+
+    def test_extracts_and_tags_kind(self, monkeypatch):
+        import api.loop_engineering_common as common
+        from scripts.build_shion_memory_promotion_queue import llm_extract_candidates
+
+        monkeypatch.setattr(
+            common,
+            "call_gemini_json",
+            lambda *a, **k: [{"content": "補助金案件は採択可否だけでなく入金時期・未採択時の返済余力まで確認する方針", "reason": "審査方針"}],
+        )
+        out = llm_extract_candidates(self._rows(), set(), set())
+        assert len(out) == 1
+        assert out[0]["kind"] == "llm_extracted"
+        assert "入金時期" in out[0]["proposed_content"]
+
+    def test_fail_open_without_api(self, monkeypatch):
+        import api.loop_engineering_common as common
+        from scripts.build_shion_memory_promotion_queue import llm_extract_candidates
+
+        def boom(*a, **k):
+            raise RuntimeError("no key")
+
+        monkeypatch.setattr(common, "call_gemini_json", boom)
+        assert llm_extract_candidates(self._rows(), set(), set()) == []
+
+    def test_disabled_by_env(self, monkeypatch):
+        from scripts.build_shion_memory_promotion_queue import llm_extract_candidates
+
+        monkeypatch.setenv("SHION_MEMORY_LLM_EXTRACT", "0")
+        assert llm_extract_candidates(self._rows(), set(), set()) == []
