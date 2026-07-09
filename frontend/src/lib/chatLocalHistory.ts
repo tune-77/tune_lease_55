@@ -1,9 +1,12 @@
+import type { RagKnowledgeRef } from "@/components/chat/RagConfidenceBadge";
+
 export type LocalChatMessage = {
   id: number;
   user_id: string;
   role: "user" | "assistant";
   content: string;
   created_at: string;
+  knowledge_refs?: RagKnowledgeRef[];
 };
 
 const HISTORY_PREFIX = "lease-chat-local-history:";

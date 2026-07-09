@@ -13,6 +13,7 @@ import {
 import { Send, Trash2, Loader2, MessageCircle, Bot, User, NotebookPen, Mic, Network, Database, ChevronDown, ChevronUp, Lightbulb, Volume2, VolumeX, ArrowLeft, ThumbsUp, ThumbsDown } from "lucide-react";
 import { extractPrefectureFromText, normalizePrefecture } from "@/lib/prefecture";
 import { formatLocalDateKey } from "@/lib/date";
+import RagConfidenceBadge, { type RagKnowledgeRef } from "@/components/chat/RagConfidenceBadge";
 
 interface ChatMessage {
   id: number;
@@ -20,6 +21,7 @@ interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   created_at: string;
+  knowledge_refs?: RagKnowledgeRef[];
 }
 
 type ChatContext = {
@@ -105,6 +107,9 @@ const getSpeechRecognition = (): SpeechRecognitionConstructor | null => {
   const speechWindow = window as SpeechWindow;
   return speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition || null;
 };
+
+const parseKnowledgeRefs = (value: unknown): RagKnowledgeRef[] | undefined =>
+  Array.isArray(value) && value.length ? (value as RagKnowledgeRef[]) : undefined;
 
 const normalizeMessageContent = (content: string) =>
   (content || "")
@@ -410,6 +415,7 @@ export default function ChatPage() {
         role: "assistant",
         content: reply,
         created_at: new Date().toISOString(),
+        knowledge_refs: parseKnowledgeRefs(res.data?.knowledge_refs),
       };
       setMessages((prev) => {
         const next = [...prev, assistantMessage];
@@ -475,6 +481,7 @@ export default function ChatPage() {
         role: "assistant",
         content: res.data.reply,
         created_at: new Date().toISOString(),
+        knowledge_refs: parseKnowledgeRefs(res.data?.knowledge_refs),
       };
       setMessages((prev) => {
         const next = [...prev, assistantMsg];
@@ -894,6 +901,22 @@ export default function ChatPage() {
                 >
                   {formatTime(msg.created_at)}
                 </p>
+                {msg.role === "assistant" && !!msg.knowledge_refs?.length && (
+                  <div className="mt-2 space-y-0.5 border-t border-slate-100 pt-1.5">
+                    <p className="text-[10px] font-bold text-slate-400">📚 参考ノート</p>
+                    {msg.knowledge_refs.slice(0, 5).map((ref) => (
+                      <div
+                        key={`${msg.id}-${ref.doc_id || ref.obsidian_ref}`}
+                        className="flex min-w-0 items-center gap-1"
+                      >
+                        <RagConfidenceBadge confidence={ref.confidence} level={ref.confidence_level} />
+                        <span className="truncate text-[10px] text-slate-400" title={ref.obsidian_ref}>
+                          {ref.file_name || ref.obsidian_ref}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {msg.role === "assistant" && (
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
                     <button
