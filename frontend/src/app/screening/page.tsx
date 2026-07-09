@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { apiClient } from "@/lib/api";
 import { Activity, ArrowRight, Bot, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, FileOutput, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus, Swords, Save, Trash2 } from "lucide-react";
 import ScoreDAG from "../../components/ScoreDAG";
@@ -70,6 +70,8 @@ type ShionReviewFeedback = "useful" | "needs_fix" | "wrong";
 type PastCompanyHighlight = {
   name: string;
   label: "類似案件" | "過去レビュー" | "反面教師";
+  experienceCase?: DemoSimilarPastCase;
+  pastReview?: PastShionScreeningReview;
 };
 
 type PastShionScreeningReview = {
@@ -469,17 +471,121 @@ const uniquePastCompanyHighlights = (
   experienceCases.forEach((item) => {
     const name = String(item.companyName || "").trim();
     if (validPastCompanyName(name) && !byName.has(name)) {
-      byName.set(name, { name, label: "類似案件" });
+      byName.set(name, { name, label: "類似案件", experienceCase: item });
     }
   });
   reviews.forEach((review) => {
     const name = String(review.company_name || "").trim();
     if (!validPastCompanyName(name)) return;
     const label: PastCompanyHighlight["label"] = review.user_feedback === "wrong" ? "反面教師" : "過去レビュー";
-    byName.set(name, { name, label });
+    byName.set(name, { name, label, pastReview: review, experienceCase: byName.get(name)?.experienceCase });
   });
   return Array.from(byName.values());
 };
+
+const FEEDBACK_LABELS: Record<ShionReviewFeedback, string> = {
+  useful: "使えた",
+  needs_fix: "修正して使う",
+  wrong: "違った",
+};
+
+const POPUP_WIDTH_PX = 320;
+const POPUP_MAX_HEIGHT_PX = 340;
+
+function PastCompanyPopupRow({ label, value }: { label: string; value?: string }) {
+  if (!value) return null;
+  return (
+    <span className="block">
+      <span className="mr-1.5 inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-black text-slate-500">{label}</span>
+      <span className="text-[11px] font-bold leading-5 text-slate-700">{value}</span>
+    </span>
+  );
+}
+
+function PastCompanyHighlightBadge({ highlight }: { highlight: PastCompanyHighlight }) {
+  const [popupPos, setPopupPos] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
+  const experienceCase = highlight.experienceCase;
+  const pastReview = highlight.pastReview;
+  const hasDetail = Boolean(experienceCase || pastReview);
+
+  const handleMouseEnter = (event: ReactMouseEvent<HTMLSpanElement>) => {
+    if (!hasDetail) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - POPUP_WIDTH_PX - 8));
+    const showAbove = rect.bottom + POPUP_MAX_HEIGHT_PX + 12 > window.innerHeight && rect.top > POPUP_MAX_HEIGHT_PX + 12;
+    setPopupPos(
+      showAbove
+        ? { left, bottom: window.innerHeight - rect.top + 6 }
+        : { left, top: rect.bottom + 6 },
+    );
+  };
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded bg-cyan-50 px-1.5 py-0.5 font-black text-cyan-800 ring-1 ring-cyan-200 ${hasDetail ? "cursor-help" : ""}`}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={() => setPopupPos(null)}
+    >
+      {highlight.name}
+      <span className="rounded bg-white px-1 text-[10px] font-black text-cyan-600">
+        {highlight.label}
+      </span>
+      {popupPos && hasDetail && (
+        <span
+          className="fixed z-[120] block overflow-y-auto rounded-xl border border-cyan-200 bg-white p-3 text-left font-medium shadow-xl"
+          style={{ left: popupPos.left, top: popupPos.top, bottom: popupPos.bottom, width: POPUP_WIDTH_PX, maxHeight: POPUP_MAX_HEIGHT_PX }}
+        >
+          <span className="block border-b border-slate-100 pb-1.5 text-xs font-black text-cyan-900">
+            {highlight.name}
+            <span className="ml-1.5 rounded bg-cyan-50 px-1.5 py-0.5 text-[10px] text-cyan-600 ring-1 ring-cyan-200">{highlight.label}</span>
+          </span>
+          {experienceCase && (
+            <span className="mt-2 block space-y-1.5">
+              <PastCompanyPopupRow label="期間・業種" value={[experienceCase.period, experienceCase.industry].filter(Boolean).join(" / ")} />
+              <PastCompanyPopupRow
+                label="スコア・判断"
+                value={[`${experienceCase.score.toFixed(1)}点`, experienceCase.decision, experienceCase.outcome].filter(Boolean).join(" / ")}
+              />
+              <PastCompanyPopupRow
+                label="類似度"
+                value={experienceCase.similarityScore
+                  ? `${Math.round(experienceCase.similarityScore)}（${(experienceCase.similarityReasons || []).join("・") || "理由未計算"}）`
+                  : ""}
+              />
+              <PastCompanyPopupRow label="似ている点" value={experienceCase.similarity} />
+              <PastCompanyPopupRow label="当時の対応" value={experienceCase.actionTaken} />
+              <PastCompanyPopupRow label="得た教訓" value={experienceCase.lesson} />
+              <PastCompanyPopupRow label="今回との差分" value={experienceCase.difference} />
+            </span>
+          )}
+          {pastReview && (
+            <span className="mt-2 block space-y-1.5">
+              <PastCompanyPopupRow label="業種" value={pastReview.industry_sub} />
+              <PastCompanyPopupRow
+                label="スコア・判定"
+                value={[
+                  pastReview.score != null ? `${Number(pastReview.score).toFixed(1)}点` : "",
+                  pastReview.hantei || "",
+                ].filter(Boolean).join(" / ")}
+              />
+              <PastCompanyPopupRow
+                label="人間評価"
+                value={pastReview.user_feedback ? FEEDBACK_LABELS[pastReview.user_feedback] : "未評価"}
+              />
+              <PastCompanyPopupRow
+                label="過去レビュー"
+                value={(() => {
+                  const preview = normalizeReviewText(pastReview.review_text || "");
+                  return preview ? `${preview.slice(0, 220)}${preview.length > 220 ? "…" : ""}` : "";
+                })()}
+              />
+            </span>
+          )}
+        </span>
+      )}
+    </span>
+  );
+}
 
 const highlightTextByCompanies = (text: string, companies: PastCompanyHighlight[]) => {
   const highlights = Array.from(new Map(companies.map((item) => [item.name.trim(), item])).values())
@@ -487,18 +593,14 @@ const highlightTextByCompanies = (text: string, companies: PastCompanyHighlight[
     .sort((a, b) => b.name.length - a.name.length);
   if (!highlights.length) return text;
   const names = highlights.map((item) => item.name);
-  const labelByName = new Map(highlights.map((item) => [item.name, item.label]));
+  const highlightByName = new Map(highlights.map((item) => [item.name, item]));
   const pattern = new RegExp(`(${names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "g");
-  return text.split(pattern).map((part, index) => (
-    names.includes(part) ? (
-      <span key={`${part}-${index}`} className="inline-flex items-center gap-1 rounded bg-cyan-50 px-1.5 py-0.5 font-black text-cyan-800 ring-1 ring-cyan-200">
-        {part}
-        <span className="rounded bg-white px-1 text-[10px] font-black text-cyan-600">
-          {labelByName.get(part)}
-        </span>
-      </span>
-    ) : part
-  ));
+  return text.split(pattern).map((part, index) => {
+    const highlight = highlightByName.get(part);
+    return highlight && names.includes(part) ? (
+      <PastCompanyHighlightBadge key={`${part}-${index}`} highlight={highlight} />
+    ) : part;
+  });
 };
 
 const buildDemoSimilarPastCaseBlock = (cases: DemoSimilarPastCase[]) => {
@@ -2090,7 +2192,7 @@ export default function Dashboard() {
       </div>
 
       <div className="px-4 md:px-6 lg:px-8 max-w-[1600px] mx-auto pb-20">
-        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           <Link href="/lease-kun" className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow flex items-center justify-between gap-3">
             <div>
               <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Primary</div>
@@ -2112,14 +2214,6 @@ export default function Dashboard() {
               <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Insight</div>
               <div className="font-black text-slate-800 mt-1 flex items-center gap-2"><Share2 className="w-4 h-4 text-orange-500" />競合関係グラフ</div>
               <div className="text-xs text-slate-500 mt-1">競合の勢力図を確認。</div>
-            </div>
-            <ArrowRight className="w-4 h-4 text-slate-400" />
-          </Link>
-          <Link href="/similar" className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow flex items-center justify-between gap-3">
-            <div>
-              <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Insight</div>
-              <div className="font-black text-slate-800 mt-1 flex items-center gap-2"><Network className="w-4 h-4 text-teal-500" />案件類似ネットワーク</div>
-              <div className="text-xs text-slate-500 mt-1">似た案件の関係を追う。</div>
             </div>
             <ArrowRight className="w-4 h-4 text-slate-400" />
           </Link>

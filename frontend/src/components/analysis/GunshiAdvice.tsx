@@ -529,30 +529,6 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
     );
   };
 
-  const tsunkoNotes = [
-    score >= 80
-      ? 'スコアは悪くないけど、通る案件ほど説明が雑になる。物件回収性と返済原資は短く添えておくこと。'
-      : score >= 50
-        ? 'ここは楽観で押し切る案件じゃない。条件、確認資料、撤退ラインを先に決めてから稟議に出すこと。'
-        : 'この点数で通したいなら、普通のお願いでは弱い。銀行支援、担保的価値、入金根拠のどれで守るのかを出して。',
-    formData.competitor
-      ? `競合あり。金利勝負だけに寄せると危ない。${formData.competitor_rate ? `競合金利 ${formData.competitor_rate}%` : '競合条件'} と、こちらが取るリスクの差を見せて。`
-      : '競合情報が薄い。競合なしでも、なぜこの条件で今決めるのかは聞かれる。',
-    formData.main_bank === 'メイン先' || formData.deal_source === '銀行紹介'
-      ? '銀行接点は使える。ただし「銀行紹介だから大丈夫」は根拠にならない。支援姿勢の実体を確認。'
-      : '銀行支援の見え方が弱い。否決寄りなら、ここを補強しないと審査部は逃げ道を作りにくい。',
-  ];
-
-  const yukikazeNotes = [
-    `SCORE VECTOR: ${score > 0 ? score.toFixed(1) : 'NO DATA'} / DECISION: ${normalizedModelDecision || 'UNKNOWN'}`,
-    score >= 80
-      ? 'RISK SIGNATURE: LOW. Maintain approval vector; verify asset and cash-flow evidence.'
-      : score >= 50
-        ? 'RISK SIGNATURE: UNSTABLE. Conditional approval route requires additional evidence lock.'
-        : 'RISK SIGNATURE: HOSTILE. Rejection vector dominates unless external support is confirmed.',
-    `NEXT CHECK: ${formData.asset_name || 'asset'} / ${industry_major || 'industry'} / ${formData.customer_type || 'customer type'}`,
-  ];
-
   const isYukikaze = humorMode === 'yukikaze';
   const yukikazeStatus = getYukikazeStatus(score);
   const isDifficultYukikazeCase = isYukikaze && ['WARNING', 'ALERT', 'CRITICAL'].includes(yukikazeStatus.level);
@@ -588,7 +564,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
               {isYukikaze ? 'YUKIKAZE // FFR-41MR' : '案件作戦盤'}
             </h3>
             <p className={`text-[10px] font-medium ${isYukikaze ? 'text-red-300 font-mono tracking-widest' : 'text-blue-200'}`}>
-              {isYukikaze ? 'TACTICAL LEASE SCORING AI' : '紫苑レビューを補助する短評・質問・稟議作戦'}
+              {isYukikaze ? 'TACTICAL LEASE SCORING AI' : '紫苑レビューを補助する質問・稟議作戦'}
             </p>
           </div>
         </div>
@@ -670,49 +646,6 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
             </div>
           </div>
         )}
-
-        <div className={`rounded-xl border shadow-sm overflow-hidden ${isYukikaze ? `bg-black/85 ${yukikazeStatus.frameClass} text-amber-50 font-mono` : 'bg-white border-slate-200'}`}>
-          <div className={`px-4 py-3 border-b ${isYukikaze ? 'border-red-900 bg-black' : 'border-slate-100 bg-slate-50'}`}>
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className={`text-xs font-black ${isYukikaze ? 'text-amber-100 tracking-widest' : 'text-slate-800'}`}>
-                  {isYukikaze ? 'YUKIKAZE 分析短評' : 'つん子の辛口チェック'}
-                </div>
-                <div className={`mt-0.5 text-[10px] font-bold ${isYukikaze ? 'text-red-300' : 'text-slate-500'}`}>
-                  {isYukikaze ? '数値・異常・次確認だけを返す' : '甘い稟議になりそうな点だけ先に潰す'}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={handleOpenShionChat}
-                className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-black transition ${
-                  isYukikaze
-                    ? 'border-red-700 bg-red-950 text-amber-100 hover:bg-red-900'
-                    : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                }`}
-              >
-                <Bot className="h-3.5 w-3.5" />
-                紫苑に相談
-              </button>
-            </div>
-          </div>
-          <div className="p-3 space-y-2">
-            {(isYukikaze ? yukikazeNotes : tsunkoNotes).map((note, index) => (
-              <div
-                key={index}
-                className={`rounded-lg border px-3 py-2 text-[12px] leading-5 font-bold ${
-                  isYukikaze
-                    ? `${index === 0 ? yukikazeStatus.levelClass : 'border-red-950 bg-black/70 text-amber-100'}`
-                    : index === 0
-                      ? 'border-orange-200 bg-orange-50 text-orange-900'
-                      : 'border-slate-200 bg-slate-50 text-slate-700'
-                }`}
-              >
-                {note}
-              </div>
-            ))}
-          </div>
-        </div>
 
         {strategyCards && (
           <div className={`rounded-xl border shadow-sm overflow-hidden ${isYukikaze ? `bg-black/85 ${yukikazeStatus.frameClass} text-amber-50 font-mono` : 'bg-white border-amber-200'}`}>
