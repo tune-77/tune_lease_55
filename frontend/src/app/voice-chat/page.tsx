@@ -20,6 +20,7 @@ import {
   Waves,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
+import RagConfidenceBadge, { type RagConfidenceLevel } from "@/components/chat/RagConfidenceBadge";
 
 type SpeechRecognitionInstance = {
   lang: string;
@@ -40,6 +41,8 @@ type KnowledgeRef = {
   obsidian_ref: string;
   file_name: string;
   rank_score?: number;
+  confidence?: number;
+  confidence_level?: RagConfidenceLevel;
 };
 
 type VoiceMessage = {
@@ -583,7 +586,10 @@ export default function VoiceChatPage() {
               {lastAssistantRefs.length > 0 ? (
                 lastAssistantRefs.slice(0, 5).map((ref) => (
                   <div key={`${ref.doc_id}-${ref.obsidian_ref}`} className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
-                    <p className="truncate text-sm font-black text-emerald-900">{ref.file_name || ref.doc_id}</p>
+                    <div className="flex items-center gap-1.5">
+                      <RagConfidenceBadge confidence={ref.confidence} level={ref.confidence_level} />
+                      <p className="truncate text-sm font-black text-emerald-900">{ref.file_name || ref.doc_id}</p>
+                    </div>
                     <p className="mt-1 truncate text-xs text-emerald-700">{ref.obsidian_ref}</p>
                   </div>
                 ))

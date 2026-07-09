@@ -7,12 +7,15 @@ import {
   Network, Paperclip, Send, Sparkles, Trash2, TrendingUp, User, Volume2, VolumeX, X,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
+import RagConfidenceBadge, { type RagConfidenceLevel } from "@/components/chat/RagConfidenceBadge";
 
 type KnowledgeRef = {
   doc_id: string;
   obsidian_ref: string;
   file_name: string;
   rank_score?: number;
+  confidence?: number;
+  confidence_level?: RagConfidenceLevel;
 };
 
 type AttachedFile = {
@@ -1254,8 +1257,11 @@ export default function LeaseIntelligencePage() {
                         const sent = ragFeedbackSent.has(key);
                         return (
                           <div key={ref.doc_id} className="flex items-center justify-between gap-2">
-                            <span className="truncate text-[10px] text-slate-400" title={ref.obsidian_ref}>
-                              {ref.file_name || ref.obsidian_ref}
+                            <span className="flex min-w-0 items-center gap-1">
+                              <RagConfidenceBadge confidence={ref.confidence} level={ref.confidence_level} />
+                              <span className="truncate text-[10px] text-slate-400" title={ref.obsidian_ref}>
+                                {ref.file_name || ref.obsidian_ref}
+                              </span>
                             </span>
                             <div className="flex shrink-0 gap-0.5">
                               <button

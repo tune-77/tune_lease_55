@@ -12,6 +12,7 @@ import logging
 import math
 import re
 import threading
+import time
 from typing import Literal
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,63 @@ _DEFAULT_RANKING_CONFIG = {
 
 _SEARCH_LOG_PATH = os.path.join(_REPO_ROOT, "data", "rag_search_log.jsonl")
 _search_log_lock = threading.Lock()
+
+# RAG 信頼度スコア（REV-179）。閾値を参照する側は必ずここから import する
+# （承認ライン二重定義事故と同型のズレを防ぐため、複製定数を置かない）。
+CONFIDENCE_HIGH_THRESHOLD = 0.8
+CONFIDENCE_MEDIUM_THRESHOLD = 0.5
+_CONFIDENCE_RANK_WEIGHT = 0.7
+_CONFIDENCE_RECENCY_WEIGHT = 0.3
+_RECENCY_TIERS = (
+    (30.0, 1.0),
+    (90.0, 0.8),
+    (180.0, 0.6),
+    (365.0, 0.4),
+)
+_RECENCY_FLOOR = 0.2
+_RECENCY_UNKNOWN = 0.5
+
+
+def confidence_for_hit(hit: dict, *, now: float | None = None) -> tuple[float, str]:
+    """RAG 検索ヒット1件の信頼度（0-1）とレベル（high/medium/low）を返す。
+
+    rank_score は関連度・語句カバレッジ・ソース優先度を含むため「関連度+ソース信頼度」、
+    mtime からの経過日数を「新鮮度」として 70:30 で合成する
+    （AI_CHAT_RAG_IMPROVEMENTS_PLAN.md 4️⃣ の配分に対応）。
+    """
+    rank_raw = hit.get("rank_score")
+    if rank_raw is not None:
+        rank = max(0.0, min(1.0, float(rank_raw)))
+    elif hit.get("distance") is not None:
+        rank = max(0.0, min(1.0, 1.0 - float(hit.get("distance") or 0.0)))
+    else:
+        # キーワード検索の生スコア（_rerank_hits と同じ 20 点満点換算）
+        rank = max(0.0, min(1.0, float(hit.get("score") or 0.0) / 20.0))
+
+    mtime_raw = hit.get("mtime")
+    if mtime_raw is None:
+        mtime_raw = (hit.get("metadata") or {}).get("mtime")
+    recency = _RECENCY_UNKNOWN
+    try:
+        mtime = float(mtime_raw)
+        if mtime > 0:
+            age_days = max(0.0, ((now if now is not None else time.time()) - mtime) / 86_400.0)
+            recency = _RECENCY_FLOOR
+            for max_days, tier_value in _RECENCY_TIERS:
+                if age_days <= max_days:
+                    recency = tier_value
+                    break
+    except (TypeError, ValueError):
+        pass
+
+    confidence = round(_CONFIDENCE_RANK_WEIGHT * rank + _CONFIDENCE_RECENCY_WEIGHT * recency, 3)
+    if confidence >= CONFIDENCE_HIGH_THRESHOLD:
+        level = "high"
+    elif confidence >= CONFIDENCE_MEDIUM_THRESHOLD:
+        level = "medium"
+    else:
+        level = "low"
+    return confidence, level
 
 
 def _write_search_log(query: str, surface: str, results: list[dict]) -> None:

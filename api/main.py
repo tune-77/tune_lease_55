@@ -7375,7 +7375,7 @@ def _display_vault_ref(root: Path, file_path: str, section: str = "") -> str:
     return f"[[{stem}#{section}]]" if section else f"[[{stem}]]"
 
 
-def _search_chat_vault_markdown_fallback(query: str, top_k: int = 5) -> list[dict[str, str]]:
+def _search_chat_vault_markdown_fallback(query: str, top_k: int = 5) -> list[dict]:
     """Search the synced Markdown vault when Chroma has no Cloud Run index."""
     try:
         from api.knowledge.obsidian_loader import scan_vault
@@ -7437,6 +7437,8 @@ def _search_chat_vault_markdown_fallback(query: str, top_k: int = 5) -> list[dic
                     "file_name": chunk.file_name,
                     "file_path": file_path,
                     "section": section,
+                    "mtime": chunk.mtime,
+                    "score": score,
                     "source": "vault_markdown_fallback",
                 },
             ))
@@ -10632,18 +10634,21 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     # RAG 参照文書を取得してフロントエンドにフィードバックボタン用に返す
     rag_knowledge_refs: list[dict] = []
     try:
-        from api.knowledge.vector_store import get_store
+        from api.knowledge.vector_store import confidence_for_hit, get_store
         _rag_hits = get_store().search(message, top_k=5, surface="next_chat_rag")
-        rag_knowledge_refs = [
-            {
+        rag_knowledge_refs = []
+        for h in _rag_hits:
+            if not (h.get("doc_id") or h.get("ref") or h.get("file_name")):
+                continue
+            _conf, _conf_level = confidence_for_hit(h)
+            rag_knowledge_refs.append({
                 "doc_id": h.get("doc_id", ""),
                 "obsidian_ref": str(h.get("ref") or h.get("file_name") or ""),
                 "file_name": str(h.get("file_name") or ""),
                 "rank_score": h.get("rank_score"),
-            }
-            for h in _rag_hits
-            if h.get("doc_id") or h.get("ref") or h.get("file_name")
-        ]
+                "confidence": _conf,
+                "confidence_level": _conf_level,
+            })
     except Exception as _rag_exc:
         print(f"[DialogueRAGRefs] 取得に失敗: {_rag_exc}")
     _record_dialogue_shared_experience(
@@ -11289,39 +11294,48 @@ def post_chat(req: ChatRequest):
         # 未キャッシュでもキーワード検索へフォールバックする。
         rag_context = ""
         rag_refs: list[str] = []
+        rag_knowledge_refs: list[dict] = []
         rag_top_k = int(context_budget["rag_top_k"])
+
+        def _collect_rag_hits(hits: list[dict]) -> str:
+            from api.knowledge.vector_store import confidence_for_hit
+
+            all_docs = []
+            for hit in hits:
+                text = str(hit.get("text") or "").strip()
+                ref = str(hit.get("ref") or hit.get("file_name") or "").strip()
+                if not text:
+                    continue
+                prefix = f"{ref}: " if ref else ""
+                all_docs.append((prefix + text)[:600])
+                if ref:
+                    rag_refs.append(ref)
+                if hit.get("doc_id") or ref:
+                    _conf, _conf_level = confidence_for_hit(hit)
+                    rag_knowledge_refs.append({
+                        "doc_id": hit.get("doc_id", ""),
+                        "obsidian_ref": ref,
+                        "file_name": str(hit.get("file_name") or ""),
+                        "rank_score": hit.get("rank_score"),
+                        "confidence": _conf,
+                        "confidence_level": _conf_level,
+                    })
+            if not all_docs:
+                return ""
+            return "\n\n【参照ナレッジ】\n" + "\n---\n".join(all_docs)
+
         if rag_top_k > 0:
             try:
                 from api.knowledge.vector_store import get_store
 
                 hits = get_store().search(req.message, top_k=rag_top_k)
-                all_docs = []
-                for hit in hits:
-                    text = str(hit.get("text") or "").strip()
-                    ref = str(hit.get("ref") or hit.get("file_name") or "").strip()
-                    if text:
-                        prefix = f"{ref}: " if ref else ""
-                        all_docs.append((prefix + text)[:600])
-                        if ref:
-                            rag_refs.append(ref)
-                if all_docs:
-                    rag_context = "\n\n【参照ナレッジ】\n" + "\n---\n".join(all_docs)
+                rag_context = _collect_rag_hits(hits)
             except Exception as e:
                 print(f"[RAG] 検索エラー: {e}")
         if rag_top_k > 0 and not rag_context:
             fallback_hits = _search_chat_vault_markdown_fallback(req.message, top_k=rag_top_k)
             if fallback_hits:
-                all_docs = []
-                for hit in fallback_hits:
-                    text = str(hit.get("text") or "").strip()
-                    ref = str(hit.get("ref") or hit.get("file_name") or "").strip()
-                    if text:
-                        prefix = f"{ref}: " if ref else ""
-                        all_docs.append((prefix + text)[:600])
-                        if ref:
-                            rag_refs.append(ref)
-                if all_docs:
-                    rag_context = "\n\n【参照ナレッジ】\n" + "\n---\n".join(all_docs)
+                rag_context = _collect_rag_hits(fallback_hits)
 
         # DB直接参照: ユーザーが実データ分析を求めている場合にSQLite統計を注入
         db_context = ""
@@ -11582,6 +11596,7 @@ def post_chat(req: ChatRequest):
         response_payload = {
             "reply": reply,
             "total_messages": total,
+            "knowledge_refs": rag_knowledge_refs,
             "lease_news_focus": news_focus,
             "lease_news_brief": news_brief,
             "lease_news_actions": news_actions,
