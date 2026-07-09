@@ -578,6 +578,7 @@ def _shion_memory_usage_from_event(event: dict) -> dict | None:
         "route": str(payload.get("route") or ""),
         "refs": [str(ref) for ref in refs[:20]],
         "ref_count": len(refs),
+        "question": str(payload.get("question") or "")[:120],
         "surface": event.get("surface") or "api_chat",
         "source": "cloudrun_input_writeback",
     }

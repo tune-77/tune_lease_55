@@ -150,6 +150,20 @@ def recall_memories(
     scored.sort(key=lambda item: item[0], reverse=True)
     selected = _select_records(scored, route=route, limit=max(0, limit))
     practical_scene = infer_practical_scene(question)
+    # なぜその記憶が選ばれたかの内訳（debug_memory=true で確認できる説明可能性用）
+    match_reasons = []
+    for r in selected:
+        rid = str(r.get("id") or "")
+        content = str(r.get("content") or "")
+        match_reasons.append(
+            {
+                "id": rid,
+                "matched_terms": [t for t in query_terms if t and t in content][:5],
+                "memory_type": str(r.get("memory_type") or ""),
+                "status": str(r.get("status") or "active"),
+                "vector_similarity": round(float(vector_similarity.get(rid, 0.0)), 3),
+            }
+        )
     return {
         "route": route,
         "preferred_types": list(preferred_types),
@@ -158,6 +172,7 @@ def recall_memories(
         "vector_used": bool(vector_similarity),
         "memories": selected,
         "refs": [str(r.get("id") or "") for r in selected if r.get("id")],
+        "match_reasons": match_reasons,
     }
 
 
@@ -187,7 +202,7 @@ def build_recall_prompt_block(
 ) -> tuple[str, dict[str, Any]]:
     recalled = recall_memories(question, limit=limit, index_path=index_path)
     if log_usage:
-        _append_usage_log(recalled, usage_log_path)
+        _append_usage_log(recalled, usage_log_path, question=question)
     memories = recalled.get("memories") or []
     practical_scene = recalled.get("practical_scene") or {}
     if not memories and not practical_scene:
@@ -199,6 +214,12 @@ def build_recall_prompt_block(
     ]
     if practical_scene:
         lines.extend(_format_practical_scene_block(practical_scene))
+    if str(recalled.get("route") or "") == "case_screening":
+        case_lines = _experience_case_lines(recalled.get("case_profile") or {})
+        if case_lines:
+            lines.append("")
+            lines.append("【経験事例（匿名）】過去の類似案件の判断と教訓:")
+            lines.extend(case_lines)
     for idx, record in enumerate(memories, start=1):
         mtype = str(record.get("memory_type") or "memory")
         status = str(record.get("status") or "active")
@@ -207,7 +228,9 @@ def build_recall_prompt_block(
     return "\n".join(lines), recalled
 
 
-def _append_usage_log(recalled: dict[str, Any], path: Path = _USAGE_LOG_PATH) -> None:
+def _append_usage_log(
+    recalled: dict[str, Any], path: Path = _USAGE_LOG_PATH, *, question: str = ""
+) -> None:
     """想起された記憶IDを使用ログへ追記する。失敗してもチャット応答は止めない。"""
     refs = [str(r) for r in recalled.get("refs") or [] if r]
     if not refs:
@@ -216,6 +239,9 @@ def _append_usage_log(recalled: dict[str, Any], path: Path = _USAGE_LOG_PATH) ->
         "ts": datetime.now().isoformat(timespec="seconds"),
         "route": str(recalled.get("route") or ""),
         "refs": refs,
+        # 評価セット候補化（build_shion_eval_candidates.py）に使う。
+        # 会話全文は chat_exchange 経路で既に記録されるため短く切り詰めるだけにする
+        "question": str(question or "")[:120],
     }
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -247,6 +273,63 @@ def _mirror_usage_to_cloudrun(entry: dict[str, Any]) -> None:
         )
     except Exception:
         pass
+
+
+def _experience_case_lines(case_profile: dict[str, Any], limit: int = 2) -> list[str]:
+    """審査経験事例（screening_experience_cases）を匿名の形で想起する。
+
+    会社名は使わず、業種・判断・教訓だけを返す。DB未接続・テーブル不在時は
+    空を返してチャットを止めない。SHION_CASE_MEMORY=0 で無効化できる。
+    """
+    if os.environ.get("SHION_CASE_MEMORY", "1").strip().lower() in {"0", "false", "off"}:
+        return []
+    industries = [str(t) for t in case_profile.get("industries") or [] if str(t)]
+    assets = [str(t) for t in case_profile.get("assets") or [] if str(t)]
+    if not industries and not assets:
+        return []
+    try:
+        from api.db_connection import get_connection, placeholder
+
+        ph = placeholder()
+        conditions = []
+        params: list[Any] = []
+        for term in industries[:2]:
+            conditions.append(f"(industry_sub LIKE {ph} OR industry_major LIKE {ph})")
+            params.extend([f"%{term}%", f"%{term}%"])
+        for term in assets[:2]:
+            conditions.append(f"lesson LIKE {ph}")
+            params.append(f"%{term}%")
+        cond_sql = " OR ".join(conditions)
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                f"""
+                SELECT industry_sub, industry_major, decision, outcome, lesson
+                FROM screening_experience_cases
+                WHERE ({cond_sql}) AND lesson <> ''
+                ORDER BY created_at DESC
+                LIMIT {max(1, int(limit)) * 3}
+                """,
+                params,
+            )
+            rows = cur.fetchall()
+    except Exception:
+        return []
+    lines: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        industry = str(row[0] or row[1] or "業種不明")
+        decision = str(row[2] or "")
+        outcome = str(row[3] or "")
+        lesson = " ".join(str(row[4] or "").split())[:160]
+        if not lesson or lesson in seen:
+            continue
+        seen.add(lesson)
+        outcome_part = f" → {outcome}" if outcome else ""
+        lines.append(f"・{industry} / 判断: {decision or '記録なし'}{outcome_part} / 教訓: {lesson}")
+        if len(lines) >= limit:
+            break
+    return lines
 
 
 def _format_practical_scene_block(scene: dict[str, Any]) -> list[str]:

@@ -34,5 +34,13 @@ echo "[内省] 紫苑の日次私的内省を生成（当日対話/内省材料 
 "${PYTHON}" "${PROJECT_ROOT}/lease_intelligence_reflection.py" || true
 
 echo ""
+echo "[記憶] 会話ログから記憶昇格候補キューを生成（承認待ち・自動昇格なし）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_memory_promotion_queue.py" || true
+
+echo ""
+echo "[記憶] 評価セット候補を実クエリから生成（毎月1日のみ実行）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_eval_candidates.py" || true
+
+echo ""
 echo "[配布] 公開ノート（Memory Pack等）を GCS Vault へアップロード..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/icloud_to_gcs_sync.py" || true

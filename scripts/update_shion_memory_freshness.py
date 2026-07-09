@@ -32,9 +32,45 @@ DEFAULT_USAGE_LOG = REPO_ROOT / "data" / "shion_memory_usage_log.jsonl"
 # scripts/sync_cloudrun_inputs_from_gcs.py が GCS から取り込むイベントの置き場
 DEFAULT_CLOUDRUN_EVENTS_DIR = REPO_ROOT / "data" / "cloudrun_inputs"
 DEFAULT_STALE_DAYS = 45
+DEFAULT_RAG_FEEDBACK = REPO_ROOT / "data" / "rag_feedback_log.jsonl"
 
 # 上位規範は経年で鮮度切れ扱いにしない
 _NEVER_STALE_TYPES = {"value_memory"}
+
+# フィードバック評価の分類（api/main.py の human_response 系と同じ語彙）
+_NEGATIVE_RATINGS = {"bad", "wrong", "needs_fix", "thin", "not_shion"}
+_POSITIVE_RATINGS = {"good", "useful", "shion_like"}
+
+
+def load_feedback_signals(path: Path) -> tuple[set[str], set[str]]:
+    """rag_feedback_log から (低評価ノート名, 高評価ノート名) の集合を返す。
+
+    記憶レコードとは出典ノートのファイル名で突き合わせる。同じノートに
+    高評価と低評価の両方が付いている場合は降格させない（保守的に扱う）。
+    """
+    negative: set[str] = set()
+    positive: set[str] = set()
+    if not path.exists():
+        return negative, positive
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(row, dict):
+            continue
+        rating = str(row.get("rating") or "").strip().lower()
+        name = Path(str(row.get("obsidian_ref") or row.get("doc_id") or "")).name
+        if not name:
+            continue
+        if rating in _NEGATIVE_RATINGS:
+            negative.add(name)
+        elif rating in _POSITIVE_RATINGS:
+            positive.add(name)
+    return negative - positive, positive
 
 
 def load_usage_dates(path: Path) -> dict[str, str]:
@@ -124,11 +160,25 @@ def apply_freshness(
     *,
     stale_days: int = DEFAULT_STALE_DAYS,
     today: date | None = None,
+    negative_files: set[str] | None = None,
+    positive_files: set[str] | None = None,
 ) -> dict[str, int]:
-    """索引レコードへ last_used_at 反映と stale 昇降格を行い、変更件数を返す。"""
+    """索引レコードへ last_used_at 反映と stale 昇降格を行い、変更件数を返す。
+
+    時間ベース（stale_days）に加えてフィードバック連動の忘却を行う:
+    - 出典ノートに低評価が付いた記憶は経過日数を待たず stale へ即降格
+    - 高評価が付いた記憶は「鮮度確認済み」として経年降格から保護
+    """
     today = today or date.today()
     cutoff = today - timedelta(days=stale_days)
-    summary = {"last_used_updated": 0, "demoted_to_stale": 0, "revived_to_active": 0}
+    negative_files = negative_files or set()
+    positive_files = positive_files or set()
+    summary = {
+        "last_used_updated": 0,
+        "demoted_to_stale": 0,
+        "revived_to_active": 0,
+        "demoted_by_feedback": 0,
+    }
 
     for record in index.get("records") or []:
         if not isinstance(record, dict):
@@ -136,6 +186,7 @@ def apply_freshness(
         rid = str(record.get("id") or "")
         status = str(record.get("status") or "active")
         memory_type = str(record.get("memory_type") or "")
+        source_name = Path(str(record.get("source_path") or "")).name
 
         used_on = usage_dates.get(rid, "")
         if used_on and used_on != str(record.get("last_used_at") or ""):
@@ -145,9 +196,21 @@ def apply_freshness(
         if status not in {"active", "stale"}:
             continue  # revised / deprecated / private は鮮度で動かさない
 
+        if (
+            status == "active"
+            and memory_type not in _NEVER_STALE_TYPES
+            and source_name
+            and source_name in negative_files
+        ):
+            record["status"] = "stale"
+            summary["demoted_by_feedback"] += 1
+            continue
+
         last_used = _parse_date(str(record.get("last_used_at") or ""))
         created = _parse_date(str(record.get("created_at") or ""))
-        recently_used = last_used is not None and last_used >= cutoff
+        recently_used = (last_used is not None and last_used >= cutoff) or (
+            bool(source_name) and source_name in positive_files
+        )
 
         if status == "stale" and recently_used:
             record["status"] = "active"
@@ -171,6 +234,7 @@ def main() -> int:
     parser.add_argument("--usage-log", type=Path, default=DEFAULT_USAGE_LOG)
     parser.add_argument("--cloudrun-events-dir", type=Path, default=DEFAULT_CLOUDRUN_EVENTS_DIR)
     parser.add_argument("--stale-days", type=int, default=DEFAULT_STALE_DAYS)
+    parser.add_argument("--rag-feedback", type=Path, default=DEFAULT_RAG_FEEDBACK)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -184,9 +248,17 @@ def main() -> int:
         load_usage_dates(args.usage_log),
         load_usage_dates_from_cloudrun_events(args.cloudrun_events_dir),
     )
-    summary = apply_freshness(index, usage_dates, stale_days=args.stale_days)
+    negative_files, positive_files = load_feedback_signals(args.rag_feedback)
+    summary = apply_freshness(
+        index,
+        usage_dates,
+        stale_days=args.stale_days,
+        negative_files=negative_files,
+        positive_files=positive_files,
+    )
 
     print(f"usage_log_refs={len(usage_dates)}")
+    print(f"feedback_negative_files={len(negative_files)} feedback_positive_files={len(positive_files)}")
     for key, count in summary.items():
         print(f"{key}={count}")
 

@@ -137,6 +137,29 @@ def _summarize(results: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _memory_refs_overlap(cf_score: dict[str, Any], cr_score: dict[str, Any]) -> dict[str, Any] | None:
+    """両環境の想起記憶ID（memory_debug.refs）の一致率を返す。debug情報が無ければ None。"""
+
+    def _refs(scored: dict[str, Any]) -> set[str]:
+        debug = scored.get("memory_debug")
+        if not isinstance(debug, dict):
+            return set()
+        refs = debug.get("refs")
+        return {str(r) for r in refs if r} if isinstance(refs, list) else set()
+
+    cf_refs, cr_refs = _refs(cf_score), _refs(cr_score)
+    if not cf_refs and not cr_refs:
+        return None
+    union = cf_refs | cr_refs
+    shared = cf_refs & cr_refs
+    return {
+        "shared": len(shared),
+        "cloudflare_only": len(cf_refs - cr_refs),
+        "cloud_run_only": len(cr_refs - cf_refs),
+        "jaccard": round(len(shared) / len(union), 3) if union else 0.0,
+    }
+
+
 def compare_environments(
     *,
     cloudflare_url: str,
@@ -194,6 +217,8 @@ def compare_environments(
                 "char_delta_cloudflare_minus_cloud_run": (
                     int(cf_score["answer_stats"]["chars"]) - int(cr_score["answer_stats"]["chars"])
                 ),
+                # 両環境の紫苑が「同じ記憶を思い出しているか」（同一人物感の定点観測）
+                "memory_refs_overlap": _memory_refs_overlap(cf_score, cr_score),
                 "cloudflare": cf_score,
                 "cloud_run": cr_score,
             }
