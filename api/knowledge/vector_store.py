@@ -65,6 +65,10 @@ _DEFAULT_RANKING_CONFIG = {
     "sync_copy_penalty": 0.35,
     "keyword_pool_multiplier": 4,
     "keyword_pool_min": 12,
+    # ドメイン辞書によるクエリ拡張（P7-002）
+    "query_expansion_enabled": True,
+    "query_expansion_max_variants": 4,
+    "query_expansion_decay": 0.4,
 }
 
 _SEARCH_LOG_PATH = os.path.join(_REPO_ROOT, "data", "rag_search_log.jsonl")
@@ -144,6 +148,7 @@ def _write_search_log(query: str, surface: str, results: list[dict]) -> None:
                     "obsidian_ref": r.get("ref", ""),
                     "final_score": r.get("rank_score"),
                     "score_breakdown": r.get("score_breakdown"),
+                    "expanded_from": r.get("expanded_from", ""),
                 }
                 for i, r in enumerate(results[:5])
             ],
@@ -163,6 +168,9 @@ def load_ranking_config(path: str = _RANKING_CONFIG_PATH) -> dict:
         "sync_copy_penalty": _DEFAULT_RANKING_CONFIG["sync_copy_penalty"],
         "keyword_pool_multiplier": _DEFAULT_RANKING_CONFIG["keyword_pool_multiplier"],
         "keyword_pool_min": _DEFAULT_RANKING_CONFIG["keyword_pool_min"],
+        "query_expansion_enabled": _DEFAULT_RANKING_CONFIG["query_expansion_enabled"],
+        "query_expansion_max_variants": _DEFAULT_RANKING_CONFIG["query_expansion_max_variants"],
+        "query_expansion_decay": _DEFAULT_RANKING_CONFIG["query_expansion_decay"],
     }
     try:
         with open(path, encoding="utf-8") as config_file:
@@ -184,11 +192,18 @@ def load_ranking_config(path: str = _RANKING_CONFIG_PATH) -> dict:
             config[key] = float(raw.get(key, config[key]))
         except (TypeError, ValueError):
             pass
-    for key in ("keyword_pool_multiplier", "keyword_pool_min"):
+    for key in ("keyword_pool_multiplier", "keyword_pool_min", "query_expansion_max_variants"):
         try:
             config[key] = int(raw.get(key, config[key]))
         except (TypeError, ValueError):
             pass
+    for key in ("query_expansion_decay",):
+        try:
+            config[key] = float(raw.get(key, config[key]))
+        except (TypeError, ValueError):
+            pass
+    if "query_expansion_enabled" in raw:
+        config["query_expansion_enabled"] = bool(raw.get("query_expansion_enabled"))
     return config
 
 
@@ -647,6 +662,37 @@ class KnowledgeVectorStore:
                 break
         return selected
 
+    def _merge_expanded_hits(self, query: str, merged: dict) -> None:
+        """ドメイン辞書のクエリ拡張ヒットを減衰スコアで補完する（P7-002）。
+
+        既出ヒットは元クエリのスコアを維持し、上書き・加算しない（BR-711）。
+        辞書不在・例外時は何もしない（BR-712）。
+        """
+        if not bool(self._ranking_config.get("query_expansion_enabled", True)):
+            return
+        try:
+            from api.knowledge.query_expansion import expand_query
+
+            max_variants = int(self._ranking_config.get("query_expansion_max_variants", 4))
+            decay = float(self._ranking_config.get("query_expansion_decay", 0.4))
+            for variant in expand_query(query, max_variants=max_variants, decay=decay)[1:]:
+                try:
+                    expanded_hits = self._keyword_search(variant["query"], top_k=3)
+                except Exception as exc:
+                    logger.warning("[KnowledgeVectorStore] expanded search failed (%s): %s", variant["query"], exc)
+                    continue
+                for hit in expanded_hits:
+                    key = (self._display_path(hit), str(hit.get("section") or ""))
+                    if key in merged:
+                        continue
+                    item = dict(hit)
+                    item["score"] = float(item.get("score") or 0.0) * float(variant["weight"])
+                    item["expanded_from"] = variant["replaced"]
+                    item["source"] = "keyword_expanded"
+                    merged[key] = item
+        except Exception as exc:
+            logger.warning("[KnowledgeVectorStore] query expansion skipped: %s", exc)
+
     def search(
         self,
         query: str,
@@ -738,6 +784,7 @@ class KnowledgeVectorStore:
             elif hit.get("score") is not None:
                 existing["score"] = max(float(existing.get("score") or 0.0), float(hit.get("score") or 0.0))
                 existing["source"] = "vector+keyword"
+        self._merge_expanded_hits(query, merged)
         final = self._rerank_hits(query, list(merged.values()), top_k=top_k)
         _write_search_log(query, surface, final)
         return final

@@ -2,9 +2,9 @@
 spec_id: P7-002
 phase: 7
 title: RAG クエリ拡張（ドメイン辞書によるシノニム展開）
-status: draft
+status: implemented
 author: Claude Fable
-reviewer: ""
+reviewer: "tune-77"
 version: "1.0"
 created: 2026-07-09
 updated: 2026-07-09

@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "updated": "2026-07-09",
+  "description": "リース業界ドメイン辞書（P7-001）。RAG検索のクエリ拡張専用。スコアリング・審査判定からは参照しない。語の追加時は source に出典を必ず記録する。",
+  "synonym_groups": [
+    {
+      "canonical": "赤字企業",
+      "synonyms": ["赤字", "営業赤字", "当期赤字", "経常赤字", "繰越赤字", "損失", "欠損"],
+      "weight": 1.0,
+      "source": "代替案実装計画_精度改善Ver2.md"
+    },
+    {
+      "canonical": "自己資本比率",
+      "synonyms": ["自己資本", "純資産", "株主資本", "資本構成", "財務体質"],
+      "weight": 1.0,
+      "source": "代替案実装計画_精度改善Ver2.md / static_data/industry_averages.json"
+    },
+    {
+      "canonical": "リース物件",
+      "synonyms": ["リース対象", "物件", "設備", "機械", "機器"],
+      "weight": 0.9,
+      "source": "代替案実装計画_精度改善Ver2.md / static_data/lease_assets.json"
+    },
+    {
+      "canonical": "審査基準",
+      "synonyms": ["審査項目", "判定基準", "リスク基準", "与信基準", "融資基準"],
+      "weight": 1.0,
+      "source": "代替案実装計画_精度改善Ver2.md"
+    },
+    {
+      "canonical": "飲食業",
+      "synonyms": ["飲食店", "レストラン", "カフェ", "居酒屋", "食堂", "飲食サービス"],
+      "weight": 0.95,
+      "source": "代替案実装計画_精度改善Ver2.md / static_data/industry_hints.json"
+    },
+    {
+      "canonical": "建設機械",
+      "synonyms": ["建機", "重機", "工事機械", "油圧ショベル", "ユンボ", "パワーショベル"],
+      "weight": 0.95,
+      "source": "代替案実装計画_精度改善Ver2.md / static_data/lease_assets.json"
+    },
+    {
+      "canonical": "残価",
+      "synonyms": ["残価率", "残存価値", "スクラップ価値", "終了時価値", "回収価値"],
+      "weight": 1.0,
+      "source": "代替案実装計画_精度改善Ver2.md / static_data/lease_classification.json"
+    },
+    {
+      "canonical": "デフォルト",
+      "synonyms": ["債務不履行", "滞納", "不払い", "延滞"],
+      "weight": 1.0,
+      "source": "代替案実装計画_精度改善Ver2.md"
+    },
+    {
+      "canonical": "法定耐用年数",
+      "synonyms": ["耐用年数", "償却年数", "減価償却年数"],
+      "weight": 1.0,
+      "source": "static_data/useful_life_equipment.json"
+    },
+    {
+      "canonical": "ファイナンスリース",
+      "synonyms": ["所有権移転リース", "フルペイアウトリース"],
+      "weight": 0.9,
+      "source": "static_data/lease_classification.json"
+    },
+    {
+      "canonical": "オペレーティングリース",
+      "synonyms": ["オペリース"],
+      "weight": 0.9,
+      "source": "static_data/lease_classification.json"
+    },
+    {
+      "canonical": "電子計算機",
+      "synonyms": ["サーバ", "サーバー", "パソコン", "PC"],
+      "weight": 0.85,
+      "source": "期待使用期間.json（機種分類 0104 の examples）"
+    },
+    {
+      "canonical": "IT・OA機器",
+      "synonyms": ["OA機器", "IT機器", "事務機器", "複合機"],
+      "weight": 0.9,
+      "source": "static_data/lease_assets.json"
+    },
+    {
+      "canonical": "総合工事業",
+      "synonyms": ["建設業", "工事業"],
+      "weight": 0.8,
+      "source": "static_data/industry_hints.json（JSIC業種名）"
+    }
+  ],
+  "industry_terms": [
+    {
+      "term": "Q-Risk",
+      "meaning": "財務矛盾検知に基づく定量リスク評価（35以上=要注意 / 60以上=強警戒）",
+      "context": "審査基準",
+      "aliases": ["Qリスク", "q_risk", "q-risk"]
+    },
+    {
+      "term": "LTV",
+      "meaning": "ローンツーバリュー。資産価値に対する融資比率",
+      "context": "リース物件評価",
+      "aliases": ["ローントゥバリュー"]
+    },
+    {
+      "term": "EBITDA",
+      "meaning": "利息・税金・減価償却前利益",
+      "context": "財務分析",
+      "aliases": []
+    },
+    {
+      "term": "資産流動化",
+      "meaning": "リース物件の回収可能性を高める仕組み",
+      "context": "リスク管理",
+      "aliases": []
+    },
+    {
+      "term": "テナント",
+      "meaning": "リース契約者（借主）",
+      "context": "契約",
+      "aliases": ["借主", "レッシー"]
+    },
+    {
+      "term": "JSIC",
+      "meaning": "日本標準産業分類。業種コードの基準",
+      "context": "業種分析",
+      "aliases": ["日本標準産業分類"]
+    }
+  ]
+}
