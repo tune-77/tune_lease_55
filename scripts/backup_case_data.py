@@ -40,6 +40,13 @@ DEFAULT_TARGETS = [
     "data/coeff_overrides.json",
     "data/ensemble_config.json",
     "data/weekly_plot.json",
+    # 紫苑記憶システムの派生物。特に revisions（改訂宣言の真実の源）と
+    # usage_log（鮮度更新の材料）は失うと再構築できない
+    "data/shion_memory_index.json",
+    "data/shion_memory_usage_log.jsonl",
+    "data/shion_memory_revisions.jsonl",
+    "data/shion_memory_health_state.json",
+    "data/shion_memory_promotions.jsonl",
 ]
 
 

@@ -61,6 +61,59 @@ echo ""
 echo "[入力・同期] 実装済み改善を Obsidian インデックスに自動同期中..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/sync_implemented_to_obsidian.py" || true
 
+# 紫苑記憶のメンテナンス。従来はデプロイ時（package_cloud_run_bundle.sh）のみで
+# 記憶と鮮度が「最後にデプロイした日」で止まっていたため、夜間に毎日回す
+echo ""
+echo "[記憶] 紫苑記憶インデックスを再構築中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_memory_index.py"
+MEMORY_INDEX_EXIT=$?
+log_step "build_shion_memory_index" ${MEMORY_INDEX_EXIT}
+if [ ${MEMORY_INDEX_EXIT} -ne 0 ]; then
+    echo "警告: 記憶インデックス再構築に失敗しました（終了コード ${MEMORY_INDEX_EXIT}）"
+fi
+
+echo ""
+echo "[記憶] 記憶の鮮度（last_used_at / stale降格）を更新中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/update_shion_memory_freshness.py"
+MEMORY_FRESHNESS_EXIT=$?
+log_step "update_shion_memory_freshness" ${MEMORY_FRESHNESS_EXIT}
+if [ ${MEMORY_FRESHNESS_EXIT} -ne 0 ]; then
+    echo "警告: 記憶鮮度更新に失敗しました（終了コード ${MEMORY_FRESHNESS_EXIT}）"
+fi
+
+echo ""
+echo "[記憶] 記憶ベクトル索引（ハイブリッド想起用）を再構築中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_memory_vector_index.py"
+MEMORY_VECTOR_EXIT=$?
+log_step "build_shion_memory_vector_index" ${MEMORY_VECTOR_EXIT}
+if [ ${MEMORY_VECTOR_EXIT} -ne 0 ]; then
+    echo "警告: 記憶ベクトル索引の再構築に失敗しました（終了コード ${MEMORY_VECTOR_EXIT}）"
+fi
+
+echo ""
+echo "[記憶] 記憶インデックスのヘルスチェック（件数急減の検知）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/check_shion_memory_health.py"
+MEMORY_HEALTH_EXIT=$?
+log_step "check_shion_memory_health" ${MEMORY_HEALTH_EXIT}
+if [ ${MEMORY_HEALTH_EXIT} -ne 0 ]; then
+    echo "警告: 記憶インデックスのヘルスチェックが異常を検知しました（終了コード ${MEMORY_HEALTH_EXIT}）"
+fi
+
+echo ""
+echo "[記憶] 記憶想起の回帰評価（評価セット）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/eval_shion_memory_recall.py" \
+    --index "${PROJECT_ROOT}/data/shion_memory_index.json" \
+    --min-pass-rate 0.9
+MEMORY_EVAL_EXIT=$?
+log_step "eval_shion_memory_recall" ${MEMORY_EVAL_EXIT}
+if [ ${MEMORY_EVAL_EXIT} -ne 0 ]; then
+    echo "警告: 記憶想起の回帰評価が基準を下回りました（終了コード ${MEMORY_EVAL_EXIT}）"
+fi
+
+echo ""
+echo "[記憶] 記憶の矛盾候補を検出中（レポートのみ・自動修正なし）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/detect_shion_memory_contradictions.py" || true
+
 echo ""
 echo "[診断] マクロデータ更新..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/fetch_fincept_data.py" || true

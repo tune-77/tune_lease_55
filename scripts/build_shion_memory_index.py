@@ -223,6 +223,11 @@ def build_index(
     if mind_path.exists():
         records.extend(_mind_records(mind_path))
 
+    # 会話から承認を経て昇格した長期記憶（apply_shion_memory_promotions.py が追記）
+    promoted_path = REPO_ROOT / "knowledge_base" / "shion_promoted_memories.md"
+    if promoted_path.exists():
+        records.extend(_memory_bullets_from_markdown(promoted_path, "promoted_memory"))
+
     records.extend(_knowledge_markdown_records())
 
     # Deduplicate by stable id, keeping the first occurrence.
