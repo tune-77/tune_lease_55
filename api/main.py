@@ -6887,7 +6887,8 @@ def multi_agent_screening(req: MultiAgentRequest):
     """
     マルチエージェント討論審査。
 
-    スコア70以上/40以下は統合派単独高速処理、40超〜70未満は懐疑派・楽観派が2ラウンド討論後に統合派が裁定。
+    スコアが承認ライン（scoring_core.APPROVAL_LINE、既定71）以上/40以下は統合派単独高速処理、
+    その間の境界帯は懐疑派・楽観派が2ラウンド討論後に統合派が裁定。
     """
     from api.multi_agent_screening import run_debate_screening
     try:
@@ -6897,6 +6898,34 @@ def multi_agent_screening(req: MultiAgentRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/multi-agent-screening/stream")
+def multi_agent_screening_stream(req: MultiAgentRequest):
+    """
+    マルチエージェント討論審査（SSE ストリーミング版）。
+
+    ラウンドごとの途中経過を配信する。イベントは
+    {"type": "start" | "round1" | "round2" | "result" | "core_candidates" | "error", ...payload}。
+    result まで受信すれば審査は完了。core_candidates は結果表示後に遅延配信される。
+    """
+    from api.multi_agent_screening import iter_debate_screening
+    params = req.model_dump()
+
+    def event_generator():
+        try:
+            for stage, payload in iter_debate_screening(params):
+                yield f"data: {json.dumps({'type': stage, **payload}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            yield f"data: {json.dumps({'type': 'error', 'detail': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/api/conversation-history")

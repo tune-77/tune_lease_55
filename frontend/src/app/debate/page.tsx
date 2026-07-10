@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { apiClient } from "@/lib/api";
+import { apiClient, API_BASE } from "@/lib/api";
 import {
   Brain, Orbit, Crown, ChevronDown, ChevronUp,
   Loader2, CheckCircle2, XCircle, AlertTriangle, Info, Clock, BookMarked, PenLine, Users, Zap, ShieldCheck, Sparkles,
@@ -119,6 +119,7 @@ interface DebateResult {
   mana_consultation?: ManaConsultation;
   debate_log?: string;
   same_opinion_r1?: boolean;
+  same_opinion_r2?: boolean;
   core_candidates?: CoreCandidateItem[];
 }
 
@@ -334,7 +335,22 @@ function ManaPanel({ mana }: { mana: ManaConsultation }) {
   );
 }
 
-function DebateLog({ log, sameR1 }: { log: string; sameR1?: boolean }) {
+function LiveMiniCard({ label, opinion, reason }: { label: string; opinion: string; reason?: string }) {
+  return (
+    <div className="rounded-xl border border-violet-100 bg-white/70 px-3 py-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-black text-slate-600">紫苑（{label}）第1R</span>
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${opinionBadge(opinion)}`}>
+          {opinionIcon(opinion)}
+          {opinion}
+        </span>
+      </div>
+      {reason && <p className="mt-1 text-xs text-slate-500">{reason}</p>}
+    </div>
+  );
+}
+
+function DebateLog({ log, sameR1, sameR2 }: { log: string; sameR1?: boolean; sameR2?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="rounded-xl border border-slate-200 overflow-hidden">
@@ -348,6 +364,11 @@ function DebateLog({ log, sameR1 }: { log: string; sameR1?: boolean }) {
           {sameR1 && (
             <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
               意見一致→再討論
+            </span>
+          )}
+          {sameR2 && (
+            <span className="text-xs bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">
+              反論後も一致
             </span>
           )}
         </span>
@@ -451,6 +472,13 @@ export default function DebatePage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DebateResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // SSE ストリーミングの途中経過表示
+  const [liveStatus, setLiveStatus] = useState("");
+  const [liveRound1, setLiveRound1] = useState<{
+    cautious?: CautiousResult;
+    aggressive?: AggressiveResult;
+    innovator?: InnovatorResult;
+  } | null>(null);
   const [obsidianSaving, setObsidianSaving] = useState(false);
   const [obsidianToast, setObsidianToast] = useState<"success" | "error" | null>(null);
   type CandidateStatus = "idle" | "saving" | "success" | "skipped";
@@ -552,11 +580,116 @@ export default function DebatePage() {
     setForm(prev => ({ ...prev, [name]: isNaN(Number(value)) || value === "" ? value : Number(value) }));
   };
 
+  const applyCoreCandidates = (cands: CoreCandidateItem[]) => {
+    const _texts: Record<number, string> = {};
+    const _statuses: Record<number, CandidateStatus> = {};
+    const _editings: Record<number, boolean> = {};
+    cands.forEach((c, i) => {
+      _texts[i] = c.text;
+      _statuses[i] = "idle";
+      _editings[i] = false;
+    });
+    setCandidateTexts(_texts);
+    setCandidateStatuses(_statuses);
+    setCandidateEditings(_editings);
+    setCoreTotalKeypoints(null);
+  };
+
+  const applyResult = (data: DebateResult, capturedParticipants: Participants) => {
+    setSubmittedParticipants(capturedParticipants);
+    setResult(data);
+    setHumanDecision(data.arbiter.final);
+    setJudgmentChangeReason("");
+    applyCoreCandidates(data.core_candidates ?? []);
+    // 討論完了後に履歴を再取得
+    if (form.company_name?.trim()) {
+      apiClient.get(`/api/conversation-history?company_name=${encodeURIComponent(form.company_name.trim())}&limit=5`)
+        .then(({ data: h }) => { if (h.count > 0) setHistory(h); })
+        .catch(() => {});
+    }
+  };
+
+  // SSE ストリーミングで討論を実行し、途中経過を表示する。
+  // ストリームを開始できなかった場合は false を返し、呼び出し側が従来の同期エンドポイントへフォールバックする。
+  const runStreaming = async (
+    payload: Record<string, unknown>,
+    capturedParticipants: Participants,
+  ): Promise<boolean> => {
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}/api/multi-agent-screening/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch {
+      return false;
+    }
+    if (!res.ok || !res.body) return false;
+
+    let gotEvent = false;
+    let gotResult = false;
+
+    const handleEvent = (evt: Record<string, unknown>) => {
+      const { type, ...rest } = evt;
+      if (type === "start") {
+        setLiveStatus(
+          rest.mode === "solo"
+            ? "討論帯外のため統合派が単独裁定中…"
+            : "第1ラウンド：懐疑派・楽観派が初期見解を作成中…"
+        );
+      } else if (type === "round1") {
+        setLiveRound1(rest as {
+          cautious?: CautiousResult;
+          aggressive?: AggressiveResult;
+          innovator?: InnovatorResult;
+        });
+        setLiveStatus("第2ラウンド：強制反論中…");
+      } else if (type === "round2") {
+        setLiveStatus("統合派が最終裁定中…");
+      } else if (type === "result") {
+        gotResult = true;
+        setLiveStatus("");
+        setLiveRound1(null);
+        setLoading(false);
+        applyResult(rest as unknown as DebateResult, capturedParticipants);
+      } else if (type === "core_candidates") {
+        const cands = (rest as { core_candidates?: CoreCandidateItem[] }).core_candidates ?? [];
+        setResult(prev => (prev ? { ...prev, core_candidates: cands } : prev));
+        applyCoreCandidates(cands);
+      } else if (type === "error") {
+        throw new Error(String((rest as { detail?: string }).detail || "討論に失敗しました"));
+      }
+    };
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf("\n\n")) >= 0) {
+        const chunk = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        const dataLine = chunk.split("\n").find(l => l.startsWith("data: "));
+        if (!dataLine) continue;
+        gotEvent = true;
+        handleEvent(JSON.parse(dataLine.slice(6)));
+      }
+    }
+    if (gotEvent && !gotResult) throw new Error("討論ストリームが途中で終了しました");
+    return gotEvent;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setResult(null);
+    setLiveStatus("");
+    setLiveRound1(null);
     // 毎回新しい session_id を発行
     sessionIdRef.current = typeof crypto !== "undefined"
       ? crypto.randomUUID()
@@ -571,33 +704,18 @@ export default function DebatePage() {
         session_id: sessionIdRef.current,
         participants: Object.keys(participantsPayload).length > 0 ? participantsPayload : undefined,
       };
-      const { data } = await apiClient.post("/api/multi-agent-screening", payload);
-      setSubmittedParticipants(capturedParticipants);
-      setResult(data);
-      setHumanDecision(data.arbiter.final);
-      setJudgmentChangeReason("");
-      const _texts: Record<number, string> = {};
-      const _statuses: Record<number, CandidateStatus> = {};
-      const _editings: Record<number, boolean> = {};
-      (data.core_candidates ?? []).forEach((c: CoreCandidateItem, i: number) => {
-        _texts[i] = c.text;
-        _statuses[i] = "idle";
-        _editings[i] = false;
-      });
-      setCandidateTexts(_texts);
-      setCandidateStatuses(_statuses);
-      setCandidateEditings(_editings);
-      setCoreTotalKeypoints(null);
-      // 討論完了後に履歴を再取得
-      if (form.company_name?.trim()) {
-        apiClient.get(`/api/conversation-history?company_name=${encodeURIComponent(form.company_name.trim())}&limit=5`)
-          .then(({ data: h }) => { if (h.count > 0) setHistory(h); })
-          .catch(() => {});
+      // ストリーミングを試し、開始できなければ従来エンドポイントへフォールバック
+      const streamed = await runStreaming(payload, capturedParticipants);
+      if (!streamed) {
+        const { data } = await apiClient.post("/api/multi-agent-screening", payload);
+        applyResult(data, capturedParticipants);
       }
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || "エラーが発生しました");
     } finally {
       setLoading(false);
+      setLiveStatus("");
+      setLiveRound1(null);
     }
   };
 
@@ -914,7 +1032,8 @@ export default function DebatePage() {
               className={`w-full border rounded-xl px-3 py-2 text-lg font-black ${scoreColor(form.score)} focus:outline-none focus:ring-2 focus:ring-violet-400`}
             />
             <p className="text-xs text-slate-400 mt-1">
-              {form.score >= 70 ? "✓ 承認圏 → 統合派単独" : form.score <= 40 ? "✗ 否決圏 → 統合派単独" : "⚡ 境界・要審議 → マルチ紫苑討論"}
+              {/* 閾値はバックエンドの scoring_core.APPROVAL_LINE（既定71）/ _DEBATE_LOW（40）と同期 */}
+              {form.score >= 71 ? "✓ 承認圏 → 統合派単独" : form.score <= 40 ? "✗ 否決圏 → 統合派単独" : "⚡ 境界・要審議 → マルチ紫苑討論"}
             </p>
           </div>
           <div>
@@ -981,6 +1100,29 @@ export default function DebatePage() {
           )}
         </button>
       </form>
+
+      {/* 討論進行状況（ストリーミング中間表示） */}
+      {loading && liveStatus && (
+        <div className="mb-6 rounded-2xl border border-violet-200 bg-violet-50/60 p-4 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-bold text-violet-700">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            {liveStatus}
+          </div>
+          {liveRound1 && (
+            <div className="grid md:grid-cols-3 gap-2">
+              {liveRound1.cautious && (
+                <LiveMiniCard label="懐疑派" opinion={liveRound1.cautious.opinion} reason={liveRound1.cautious.reasons?.[0]} />
+              )}
+              {liveRound1.aggressive && (
+                <LiveMiniCard label="楽観派" opinion={liveRound1.aggressive.opinion} reason={liveRound1.aggressive.reasons?.[0]} />
+              )}
+              {liveRound1.innovator && (
+                <LiveMiniCard label="革新派" opinion={liveRound1.innovator.opinion} reason={liveRound1.innovator.reasons?.[0]} />
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* エラー */}
       {error && (
@@ -1079,7 +1221,7 @@ export default function DebatePage() {
 
           {/* 討論ログ */}
           {result.debate_log && (
-            <DebateLog log={result.debate_log} sameR1={result.same_opinion_r1} />
+            <DebateLog log={result.debate_log} sameR1={result.same_opinion_r1} sameR2={result.same_opinion_r2} />
           )}
 
           {/* コアに昇格（各ペルソナの視点ごとに個別カード） */}

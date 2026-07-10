@@ -3,22 +3,37 @@
 
 同一の紫苑中核から分岐した3つのペルソナが討論し、審査判断を統合する。
 
-スコア70以上 or 40以下 → 紫苑（統合派）単独高速処理
-スコア40超〜70未満（境界・要審議） → 紫苑（懐疑派）・紫苑（楽観派）が2ラウンド討論 → 紫苑（統合派）裁定
+スコアが承認ライン（scoring_core.APPROVAL_LINE、既定71）以上 or 40以下 → 紫苑（統合派）単独高速処理
+スコア40超〜承認ライン未満（境界・要審議） → 紫苑（懐疑派）・紫苑（楽観派）が2ラウンド討論 → 紫苑（統合派）裁定
 
 なれ合い防止策:
   - Temperature差（懐疑派=0.3、楽観派=0.9）
-  - 強制反論ラウンド（相手の主論点に必ず反論）
-  - 意見乖離度チェック（同一意見なら逆張り指示を追加）
+  - 強制反論ラウンド（相手の主論点に必ず反論。賛同のみの回答は不可）
+  - 第2ラウンドには自分の第1ラウンド意見も渡し、立場の維持/変更を明示させる
+  - 意見乖離度チェック（第1ラウンドで同一意見ならスチールマン指示
+    =相手の結論への最強の反対論拠を挙げさせる。無理な逆張りは強制しない。
+    第2ラウンド後も一致していれば裁定役へ「討論による対立は限定的」と明示）
+  - アンカリング防止: 懐疑派・楽観派・革新派には審査スコアを見せない
+    （生の財務指標だけで討論させ、スコアは裁定役のみ参照）
+
+実行制御:
+  - 討論全体に時間バジェット（DEBATE_TIME_BUDGET_SEC、既定240秒）
+  - ナレッジ・フィードバック検索は討論冒頭に1回だけ実行し全員に配布
+  - Gemini 429/5xx は指数バックオフでリトライ
+  - iter_debate_screening() でラウンドごとの途中経過をストリーミング可能
+  - 討論メトリクスを data/multi_agent_debate_metrics.jsonl に追記（効果測定用）
 """
 from __future__ import annotations
 
 import json
 import os
 import re
+import time
 import requests
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from pathlib import Path
+from typing import Iterator
 
 from api.context.context_bundle import build_context_bundle
 from api.knowledge.vector_store import get_store as _get_knowledge_store
@@ -27,6 +42,7 @@ from api.knowledge.feedback_watcher import search_feedback, feedback_count
 from api.shion_conscience import build_conscience_prompt_block, evaluate_conscience
 from api.shion_mana import build_mana_prompt_block, evaluate_mana_consultation
 from lease_news_digest import find_vault, lease_news_actions_as_text, lease_news_focus_as_text
+from scoring_core import APPROVAL_LINE
 
 # ── モデル・エンドポイント ───────────────────────────────────────────────────
 # 紫苑（懐疑派）・紫苑（楽観派）: Gemini Flash（temperature差で視点を分離）
@@ -36,14 +52,22 @@ def _gemini_url() -> str:
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 _DEBATE_LOW  = 40  # これ以下 → 否決ファストパス
-_DEBATE_HIGH = 70  # これ以上 → 承認ファストパス
+# 承認ファストパスは scoring_core.APPROVAL_LINE（既定71）を単一ソースとして参照する。
+# ハードコードすると審査結果がモジュールごとに食い違う（CLAUDE.md 参照）
+_DEBATE_HIGH = APPROVAL_LINE
+
+# 討論全体の時間バジェット（秒）。フロントの proxyTimeout（300秒）より短くし、
+# 途中失敗時はフォールバック意見で必ず応答を返す。
+_TOTAL_BUDGET_SEC = float(os.environ.get("DEBATE_TIME_BUDGET_SEC", "240"))
+
+# 討論の効果測定用メトリクスログ（data/ 配下なのでコミット対象外）
+_METRICS_PATH = Path(__file__).parent.parent / "data" / "multi_agent_debate_metrics.jsonl"
 
 # ── ケースコンテキストテンプレート ──────────────────────────────────────────────
 _CASE_CTX_TMPL = """## 審査案件
 - 企業名: {company_name}
 - 業種: {industry}
-- 審査スコア: {score}点
-- 売上高: {revenue}百万円
+{score_line}- 売上高: {revenue}百万円
 - 営業利益率: {op_margin}%
 - 自己資本比率: {equity_ratio}%
 - 銀行借入残高: {bank_credit}百万円
@@ -178,19 +202,27 @@ def _load_shion_self_profile(role: str = "arbiter") -> dict | None:
     }
 
 
-def _build_case_ctx(params: dict) -> str:
-    base = _CASE_CTX_TMPL.format(
-        company_name=params.get("company_name", "（未設定）"),
-        industry=params.get("industry_major") or params.get("industry_sub") or "未設定",
-        score=params.get("score", 0),
-        revenue=params.get("nenshu", 0),
-        op_margin=params.get("op_margin_pct") or params.get("op_profit_pct") or 0,
-        equity_ratio=params.get("equity_ratio") or params.get("equity_pct") or 0,
-        bank_credit=params.get("bank_credit", 0),
-        lease_credit=params.get("lease_credit", 0),
-        asset_name=params.get("asset_name", ""),
-        lease_amount=params.get("lease_amount") or params.get("lease_total") or 0,
-    )
+def _build_case_ctxs(params: dict) -> tuple[str, str]:
+    """(裁定役用ctx, 討論者用ctx) を返す。
+
+    討論者用には審査スコアを含めない。スコアを見せると討論がスコアの追認に
+    寄りやすい（アンカリング）ため、懐疑派・楽観派・革新派は生の財務指標
+    だけで論じ、スコアは裁定役のみが参照する。
+    """
+    def _base(include_score: bool) -> str:
+        return _CASE_CTX_TMPL.format(
+            company_name=params.get("company_name", "（未設定）"),
+            industry=params.get("industry_major") or params.get("industry_sub") or "未設定",
+            score_line=f"- 審査スコア: {params.get('score', 0)}点\n" if include_score else "",
+            revenue=params.get("nenshu", 0),
+            op_margin=params.get("op_margin_pct") or params.get("op_profit_pct") or 0,
+            equity_ratio=params.get("equity_ratio") or params.get("equity_pct") or 0,
+            bank_credit=params.get("bank_credit", 0),
+            lease_credit=params.get("lease_credit", 0),
+            asset_name=params.get("asset_name", ""),
+            lease_amount=params.get("lease_amount") or params.get("lease_total") or 0,
+        )
+
     news_lines = params.get("news_focus") or []
     news_summary = params.get("news_focus_summary") or ""
     news_tag_summary = params.get("news_focus_tag_summary") or ""
@@ -234,7 +266,7 @@ def _build_case_ctx(params: dict) -> str:
         news_actions_text = ""
     if news_actions_text:
         suffix += "\n\n" + news_actions_text
-    return base + suffix if suffix else base
+    return _base(include_score=True) + suffix, _base(include_score=False) + suffix
 
 
 def _get_recent_news_digest_block(limit: int = 3) -> str:
@@ -291,12 +323,63 @@ def _get_gemini_api_key() -> str:
     return get_gemini_api_key()
 
 
-def _llm_call(system: str, prompt: str, temperature: float, max_tokens: int = 1024) -> dict:
-    """Gemini generateContent REST API を呼び出してJSONを返す。"""
+def _remaining(deadline: float | None, cap: float = 60.0, floor: float = 5.0) -> float:
+    """時間バジェットの残りを返す。残りが floor 未満なら TimeoutError。
+
+    deadline が None の場合はバジェット管理なし（cap をそのまま返す）。
+    """
+    if deadline is None:
+        return cap
+    rem = deadline - time.monotonic()
+    if rem < floor:
+        raise TimeoutError("討論の時間バジェットを使い切りました")
+    return min(cap, rem)
+
+
+_RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+
+
+def _post_gemini(payload: dict, timeout: float, deadline: float | None = None) -> requests.Response:
+    """Gemini REST API を呼ぶ。429/5xx・接続エラーは指数バックオフで最大2回リトライ。"""
     api_key = _get_gemini_api_key()
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY が設定されていません")
 
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        try:
+            resp = requests.post(
+                _gemini_url(),
+                json=payload,
+                headers={"x-goog-api-key": api_key},
+                timeout=timeout,
+            )
+            resp.raise_for_status()
+            return resp
+        except (requests.ConnectionError, requests.Timeout, requests.HTTPError) as exc:
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            retryable = isinstance(exc, (requests.ConnectionError, requests.Timeout)) or (
+                status in _RETRYABLE_STATUS
+            )
+            if not retryable or attempt >= 2:
+                raise
+            last_exc = exc
+            backoff = 2 ** attempt  # 1秒 → 2秒
+            # バジェット残りが少ないときはリトライせず即座に諦める
+            if deadline is not None and time.monotonic() + backoff + 10 > deadline:
+                raise
+            time.sleep(backoff)
+    raise last_exc  # 到達しない（防御）
+
+
+def _llm_call(
+    system: str,
+    prompt: str,
+    temperature: float,
+    max_tokens: int = 1024,
+    deadline: float | None = None,
+) -> dict:
+    """Gemini generateContent REST API を呼び出してJSONを返す。"""
     payload = {
         "system_instruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
@@ -306,42 +389,35 @@ def _llm_call(system: str, prompt: str, temperature: float, max_tokens: int = 10
             "responseMimeType": "application/json",
         },
     }
-    resp = requests.post(
-        _gemini_url(),
-        json=payload,
-        headers={"x-goog-api-key": api_key},
-        timeout=60,
-    )
-    resp.raise_for_status()
+    resp = _post_gemini(payload, timeout=_remaining(deadline, cap=60.0), deadline=deadline)
     data = resp.json()
     candidate = (data.get("candidates") or [{}])[0]
     raw = ((candidate.get("content") or {}).get("parts") or [{}])[0].get("text", "").strip()
     finish_reason = str(candidate.get("finishReason") or "").upper()
     if finish_reason == "MAX_TOKENS" and max_tokens < 4096:
-        retry_payload = {
-            **payload,
-            "generationConfig": {
-                **payload["generationConfig"],
-                "temperature": min(temperature, 0.2),
-                "maxOutputTokens": max(max_tokens * 4, 2048),
-            },
-        }
-        retry_resp = requests.post(
-            _gemini_url(),
-            json=retry_payload,
-            headers={"x-goog-api-key": api_key},
-            timeout=90,
-        )
-        retry_resp.raise_for_status()
-        retry_data = retry_resp.json()
-        retry_candidate = (retry_data.get("candidates") or [{}])[0]
-        retry_raw = (
-            ((retry_candidate.get("content") or {}).get("parts") or [{}])[0]
-            .get("text", "")
-            .strip()
-        )
-        if retry_raw:
-            raw = retry_raw
+        try:
+            retry_timeout = _remaining(deadline, cap=90.0, floor=15.0)
+        except TimeoutError:
+            retry_timeout = 0.0
+        if retry_timeout:
+            retry_payload = {
+                **payload,
+                "generationConfig": {
+                    **payload["generationConfig"],
+                    "temperature": min(temperature, 0.2),
+                    "maxOutputTokens": max(max_tokens * 4, 2048),
+                },
+            }
+            retry_resp = _post_gemini(retry_payload, timeout=retry_timeout, deadline=deadline)
+            retry_data = retry_resp.json()
+            retry_candidate = (retry_data.get("candidates") or [{}])[0]
+            retry_raw = (
+                ((retry_candidate.get("content") or {}).get("parts") or [{}])[0]
+                .get("text", "")
+                .strip()
+            )
+            if retry_raw:
+                raw = retry_raw
 
     # コードブロック除去
     if "```" in raw:
@@ -458,204 +534,111 @@ def _recover_structured_codes(raw: str, system: str) -> dict | None:
     return recovered
 
 
-# ── Gemini Function Calling: search_knowledge ────────────────────────────────
+# ── 共有ナレッジ検索（討論冒頭に1回だけ実行して全員に配布） ────────────────────
 
-_SEARCH_TOOL_DECL = [{
-    "name": "search_knowledge",
-    "description": (
-        "Obsidianナレッジベースから関連する審査事例・業界知識・リスク情報を検索する。"
-        "審査の根拠とする引用を探すときに使え。"
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "query": {
-                "type": "string",
-                "description": "検索クエリ（業種・リスク要因・審査ポイントなど自然言語で）",
-            },
-        },
-        "required": ["query"],
-    },
-}]
+def _kb_entry(hits: list[dict]) -> dict:
+    """検索ヒットをプロンプト注入用ブロックと引用refリストに変換する。"""
+    if not hits:
+        return {"block": "", "refs": []}
+    lines = [f"  - {h['ref']}: {h['text'][:120]}…" for h in hits]
+    block = (
+        "【ナレッジ検索結果】\n" + "\n".join(lines)
+        + "\n引用する場合は notes に [[ファイル名#セクション]] 形式で最大2件含めよ。"
+    )
+    return {"block": block, "refs": [h["ref"] for h in hits if h.get("ref")]}
 
 
-def _llm_call_with_knowledge(
-    system: str,
-    prompt: str,
-    temperature: float,
-    search_mode: str = "both",
-    max_tokens: int = 1024,
-) -> dict:
+def _prepare_shared_knowledge(params: dict) -> dict:
+    """ナレッジ・フィードバック検索を討論全体で1回だけ実行する。
+
+    以前は各ペルソナ×各ラウンドで Gemini Function Calling 経由の検索を
+    行っていた（最大7回のFCラウンドトリップ）。案件コンテキストは全員同じ
+    なので、冒頭に support/refute の2モードで検索して配布する方が
+    レイテンシ・API代ともに大幅に小さい。
+
+    Returns:
+        {"support": {"block", "refs"}, "refute": {...}, "both": {...},
+         "feedback_block": str}
     """
-    Gemini Function Calling で search_knowledge ツールを使い、
-    ナレッジ引用付きの審査 JSON を返す。
+    empty = {"block": "", "refs": []}
+    kb: dict = {"support": empty, "refute": empty, "both": empty, "feedback_block": ""}
 
-    ChromaDB が空の場合は通常の _llm_call にフォールバック。
-    フィードバックコレクションも検索し、過去の訂正事例をシステムプロンプトに追加する。
-    """
-    # フィードバック検索: 過去の訂正事例をシステムプロンプトに注入
-    system_with_feedback = system
+    query = " ".join(filter(None, [
+        params.get("industry_major") or params.get("industry_sub") or "",
+        params.get("asset_name", ""),
+        "リース審査 リスク 判断ポイント",
+    ]))
+
+    # 過去の訂正フィードバック（全ペルソナのシステムプロンプトに注入）
     try:
         if feedback_count() > 0:
-            fb_hits = search_feedback(prompt, top_k=3)
+            fb_hits = search_feedback(query, top_k=3)
             if fb_hits:
-                lines = []
+                fb_lines = []
                 for h in fb_hits:
                     agent_tag = f"[{h['agent']}] " if h.get("agent") else ""
                     case_tag = f"({h['case_id']}) " if h.get("case_id") else ""
-                    lines.append(f"  - {agent_tag}{case_tag}{h['correction'] or h['text'][:100]}")
-                fb_block = "【過去の訂正事例】\n" + "\n".join(lines)
-                system_with_feedback = system + "\n\n" + fb_block
+                    fb_lines.append(f"  - {agent_tag}{case_tag}{h['correction'] or h['text'][:100]}")
+                kb["feedback_block"] = "【過去の訂正事例】\n" + "\n".join(fb_lines)
     except Exception:
         pass
 
     try:
         store = _get_knowledge_store()
         if store.count() == 0:
-            return _llm_call(system_with_feedback, prompt, temperature, max_tokens)
+            return kb
+        support_hits = store.search(query, mode="support", top_k=3, surface="multi_agent_screening")
+        refute_hits = store.search(query, mode="refute", top_k=3, surface="multi_agent_screening")
+        kb["support"] = _kb_entry(support_hits)
+        kb["refute"] = _kb_entry(refute_hits)
+        # both: 両モードをrefで重複排除して結合（裁定役用）
+        seen: set[str] = set()
+        both_hits = []
+        for h in (refute_hits or []) + (support_hits or []):
+            ref = h.get("ref", "")
+            if ref and ref in seen:
+                continue
+            seen.add(ref)
+            both_hits.append(h)
+        kb["both"] = _kb_entry(both_hits[:4])
     except Exception:
-        return _llm_call(system_with_feedback, prompt, temperature, max_tokens)
+        pass
+    return kb
 
-    api_key = _get_gemini_api_key()
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEY が設定されていません")
 
-    # ── Turn 1: Function Calling 有効リクエスト ───────────────────────────
-    payload_t1 = {
-        "system_instruction": {"parts": [{"text": system_with_feedback}]},
-        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "tools": [{"function_declarations": _SEARCH_TOOL_DECL}],
-        "generationConfig": {
-            "temperature": temperature,
-            "maxOutputTokens": max_tokens,
-        },
-    }
-    resp1 = requests.post(
-        _gemini_url(),
-        json=payload_t1,
-        headers={"x-goog-api-key": api_key},
-        timeout=60,
-    )
-    resp1.raise_for_status()
-    candidate1 = resp1.json()["candidates"][0]["content"]
-
-    # Function Call が含まれるかチェック
-    fc_part = next(
-        (p for p in candidate1.get("parts", []) if "functionCall" in p), None
-    )
-
-    knowledge_refs: list[dict] = []
-    knowledge_block = ""
-
-    if fc_part:
-        fc = fc_part["functionCall"]
-        query = fc.get("args", {}).get("query", "")
-        try:
-            hits = store.search(query, mode=search_mode, top_k=3)
-            knowledge_refs = hits
-            if hits:
-                lines = [f"  - {h['ref']}: {h['text'][:120]}…" for h in hits]
-                knowledge_block = "【ナレッジ検索結果】\n" + "\n".join(lines)
-        except Exception:
-            hits = []
-
-        # ── Turn 2: Function Result を送って最終 JSON を取得 ──────────────
-        # functionResponse と最終指示を同一 user ターンにまとめ、
-        # 連続 user ロールを避ける（Gemini API 仕様準拠）
-        fn_result_content = {"results": knowledge_refs}
-        conversation = [
-            {"role": "user", "parts": [{"text": prompt}]},
-            candidate1,
-            {
-                "role": "user",
-                "parts": [
-                    {
-                        "functionResponse": {
-                            "name": "search_knowledge",
-                            "response": fn_result_content,
-                        }
-                    },
-                    {"text": (
-                        "上記の検索結果を参考に、指示された短い JSON 形式のみで回答せよ。"
-                        "長文説明は禁止。引用がある場合は notes に [[ファイル名#セクション]] 形式で最大2件だけ含めよ。"
-                    )},
-                ],
-            },
-        ]
-        payload_t2 = {
-            "system_instruction": {"parts": [{"text": system_with_feedback}]},
-            "contents": conversation,
-            "generationConfig": {
-                "temperature": temperature,
-                "maxOutputTokens": max_tokens,
-                "responseMimeType": "application/json",
-            },
-        }
-        resp2 = requests.post(
-            _gemini_url(),
-            json=payload_t2,
-            headers={"x-goog-api-key": api_key},
-            timeout=60,
-        )
-        resp2.raise_for_status()
-        data2 = resp2.json()
-        candidate2 = (data2.get("candidates") or [{}])[0]
-        raw2 = ((candidate2.get("content") or {}).get("parts") or [{}])[0].get("text", "").strip()
-        finish_reason2 = str(candidate2.get("finishReason") or "").upper()
-        if finish_reason2 == "MAX_TOKENS" and max_tokens < 4096:
-            retry_payload_t2 = {
-                **payload_t2,
-                "generationConfig": {
-                    **payload_t2["generationConfig"],
-                    "temperature": min(temperature, 0.2),
-                    "maxOutputTokens": max(max_tokens * 4, 2048),
-                },
-            }
-            retry_resp2 = requests.post(
-                _gemini_url(),
-                json=retry_payload_t2,
-                headers={"x-goog-api-key": api_key},
-                timeout=90,
-            )
-            retry_resp2.raise_for_status()
-            retry_data2 = retry_resp2.json()
-            retry_candidate2 = (retry_data2.get("candidates") or [{}])[0]
-            retry_raw2 = (
-                ((retry_candidate2.get("content") or {}).get("parts") or [{}])[0]
-                .get("text", "")
-                .strip()
-            )
-            if retry_raw2:
-                raw2 = retry_raw2
-    else:
-        # Function Call なし → Turn 1 のテキスト応答をそのまま使う
-        raw2 = (candidate1.get("parts") or [{}])[0].get("text", "{}").strip()
-
-    # JSON 抽出
-    if "```" in raw2:
-        for part in raw2.split("```")[1::2]:
-            cleaned = part.lstrip("json\n").strip()
-            if cleaned.startswith("{"):
-                raw2 = cleaned
-                break
-    if not raw2.startswith("{"):
-        m = re.search(r"\{.*\}", raw2, re.DOTALL)
-        if m:
-            raw2 = m.group()
-
-    try:
-        result = json.loads(raw2)
-    except json.JSONDecodeError as exc:
-        _record_invalid_llm_json(raw2, exc, locals().get("finish_reason2", ""))
-        result = _recover_structured_codes(raw2, system) or _fallback_llm_json(system, str(exc))
-    if knowledge_refs:
-        result["_knowledge_refs"] = [r["ref"] for r in knowledge_refs if r.get("ref")]
+def _persona_call(
+    system: str,
+    prompt: str,
+    temperature: float,
+    kb: dict,
+    kb_mode: str,
+    deadline: float | None = None,
+    max_tokens: int = 1024,
+) -> dict:
+    """共有ナレッジ・フィードバックを注入してペルソナ1体のLLM呼び出しを行う。"""
+    if kb.get("feedback_block"):
+        system = system + "\n\n" + kb["feedback_block"]
+    entry = kb.get(kb_mode) or {}
+    if entry.get("block"):
+        prompt = prompt + "\n\n" + entry["block"]
+    result = _llm_call(system, prompt, temperature, max_tokens=max_tokens, deadline=deadline)
+    if entry.get("refs") and "_knowledge_refs" not in result:
+        result["_knowledge_refs"] = entry["refs"]
     return result
+
 
 
 # ── エージェント別プロンプトビルダー ────────────────────────────────────────────
 
-def _cautious_prompt(ctx: str, counter_json: str = "", extra: str = "") -> str:
+def _own_opinion_block(own_json: str) -> str:
+    return (
+        "\n\n【あなたの第1ラウンド意見】\n" + own_json
+        + "\n上記の自分の意見を踏まえ、結論を維持するか変更するか判断せよ。"
+        "変更する場合はその理由を notes に書け。"
+    )
+
+
+def _cautious_prompt(ctx: str, counter_json: str = "", extra: str = "", own_json: str = "") -> str:
     base = f"""{ctx}
 
 【紫苑（懐疑派）の立場】この案件を審査し、短いJSONのみで回答せよ。
@@ -667,14 +650,20 @@ def _cautious_prompt(ctx: str, counter_json: str = "", extra: str = "") -> str:
   "risk_codes": ["low_profit", "leverage", "thin_equity", "liquidity", "asset_value", "industry_downturn", "document_gap"],
   "notes": ["10〜20字の補足を最大2個"]
 }}"""
+    if own_json:
+        base += _own_opinion_block(own_json)
     if counter_json:
-        base += f"\n\n【必須】楽観派の以下の意見に反論する場合は reason_codes に counter を含めよ:\n{counter_json}"
+        base += (
+            "\n\n【強制反論ラウンド】以下は楽観派の意見である。最も重要な論点を1つ選んで必ず反論し、"
+            "reason_codes に counter を含め、反論の要点を notes に書け。賛同のみの回答は不可:\n"
+            + counter_json
+        )
     if extra:
         base += f"\n\n{extra}"
     return base
 
 
-def _aggressive_prompt(ctx: str, counter_json: str = "", extra: str = "") -> str:
+def _aggressive_prompt(ctx: str, counter_json: str = "", extra: str = "", own_json: str = "") -> str:
     base = f"""{ctx}
 
 【紫苑（楽観派）の立場】この案件を審査し、短いJSONのみで回答せよ。
@@ -686,14 +675,20 @@ def _aggressive_prompt(ctx: str, counter_json: str = "", extra: str = "") -> str
   "opportunity_codes": ["growth", "asset_value", "relationship", "productivity", "refinance", "strategic_need", "market_timing"],
   "notes": ["10〜20字の補足を最大2個"]
 }}"""
+    if own_json:
+        base += _own_opinion_block(own_json)
     if counter_json:
-        base += f"\n\n【必須】懐疑派の以下の意見に反論する場合は reason_codes に counter を含めよ:\n{counter_json}"
+        base += (
+            "\n\n【強制反論ラウンド】以下は懐疑派の意見である。最も重要な論点を1つ選んで必ず反論し、"
+            "reason_codes に counter を含め、反論の要点を notes に書け。賛同のみの回答は不可:\n"
+            + counter_json
+        )
     if extra:
         base += f"\n\n{extra}"
     return base
 
 
-def _innovator_prompt(ctx: str, counter_jsons: list[str] | None = None, extra: str = "") -> str:
+def _innovator_prompt(ctx: str, counter_jsons: list[str] | None = None, extra: str = "", own_json: str = "") -> str:
     base = f"""{ctx}
 
 【紫苑（革新派）の立場】この案件を審査し、短いJSONのみで回答せよ。
@@ -705,8 +700,14 @@ def _innovator_prompt(ctx: str, counter_jsons: list[str] | None = None, extra: s
   "innovation_codes": ["alternative_structure", "usage_data", "green_lease", "subscription", "dynamic_residual", "monitoring", "staged_approval"],
   "notes": ["10〜20字の補足を最大2個"]
 }}"""
+    if own_json:
+        base += _own_opinion_block(own_json)
     if counter_jsons:
-        base += f"\n\n【参考】他の参加者の意見を踏まえ、革新的な視点で回答すること:\n" + "\n".join(counter_jsons)
+        base += (
+            "\n\n【必須】以下は他の参加者の意見である。両者のどちらも挙げていない評価軸・条件設計を"
+            " innovation_codes から最低1つ提示せよ。両者と同じ結論に安易に合流しないこと:\n"
+            + "\n".join(counter_jsons)
+        )
     if extra:
         base += f"\n\n{extra}"
     return base
@@ -718,7 +719,8 @@ def _arbiter_debate_prompt(ctx: str, log: str) -> str:
 【討論ログ】
 {log}
 
-上記の討論を踏まえ、軍師として最終裁定を短いJSONで示せ。
+上記の討論を踏まえ、統合派として最終裁定を短いJSONで示せ。
+討論ログに「結論が一致」の注記がある場合、debate_balance を根拠にせず案件事実と条件設定で判断せよ。
 長文説明は禁止。日本語の長い文章は書かず、下のコードと短い語句だけを返す。
 
 {{
@@ -748,10 +750,13 @@ def _arbiter_solo_prompt(ctx: str, direction: str) -> str:
 
 # ── ユーティリティ ───────────────────────────────────────────────────────────────
 
-def _safe_future(future, fallback: dict) -> dict:
+def _safe_future(future, fallback: dict | None, deadline: float | None = None) -> dict | None:
     try:
-        return future.result(timeout=90)
+        timeout = max(1.0, deadline - time.monotonic()) if deadline is not None else 90
+        return future.result(timeout=timeout)
     except Exception as e:
+        if fallback is None:
+            return None
         return {**fallback, "_error": str(e)}
 
 
@@ -963,28 +968,47 @@ def _build_past_scores_block(company_name: str) -> str:
 
 def run_debate_screening(params: dict) -> dict:
     """
-    マルチエージェント審査を実行する。
+    マルチエージェント審査を実行する（同期版）。
+
+    iter_debate_screening() を最後まで消費して最終結果を返す。
+    引数・返却フィールドは iter_debate_screening() の docstring を参照
+    （core_candidates は同期版では結果 dict にマージされる）。
+    """
+    result: dict = {}
+    for stage, payload in iter_debate_screening(params):
+        if stage == "result":
+            result = payload
+        elif stage == "core_candidates":
+            result["core_candidates"] = payload.get("core_candidates", [])
+    return result
+
+
+def iter_debate_screening(params: dict) -> Iterator[tuple[str, dict]]:
+    """
+    マルチエージェント審査をステージごとに実行し、(stage, payload) を yield する。
+
+    SSE（/api/multi-agent-screening/stream）で途中経過を配信するための
+    ジェネレータ。UI は第1ラウンドの意見が出た時点で中間表示できる。
+
+    ステージ:
+      ("start",  {"score", "mode"})
+      ("round1", {"cautious", "aggressive", "innovator"?})  # debate のみ
+      ("round2", {"cautious", "aggressive", "innovator"?})  # debate のみ
+      ("result", 最終結果dict)   # core_candidates を除く全フィールド
+      ("core_candidates", {"core_candidates": [...]})       # debate のみ・空なら省略
 
     Args:
         params: スコアリングAPIと同形式のdict。"score" キー必須。
         params["session_id"]: セッションID（会話履歴保存用、任意）
         params["company_name"]: 企業名（過去履歴注入・保存用、任意）
-
-    Returns:
-        {
-            "score": float,
-            "mode": "solo" | "debate",
-            "cautious"?: {...},    # debate モードのみ
-            "aggressive"?: {...},  # debate モードのみ
-            "arbiter": {...},
-            "debate_log"?: str,    # debate モードのみ
-            "context_bundle"?: {...},
-        }
     """
+    t0 = time.monotonic()
+    deadline = t0 + _TOTAL_BUDGET_SEC
     score = float(params.get("score", 0))
     company_name = params.get("company_name", "") or ""
     session_id = params.get("session_id", "") or ""
-    ctx = _build_case_ctx(params)
+    # 討論者用 ctx には審査スコアを含めない（アンカリング防止）。裁定役のみスコアを見る
+    ctx_arbiter, ctx_debater = _build_case_ctxs(params)
 
     # ── セントラル共有認識の注入 (REV-155) ────────────────────────────────────
     central_block = ""
@@ -1081,12 +1105,17 @@ def run_debate_screening(params: dict) -> dict:
 
     # ── ファストパス（境界外スコア） ──────────────────────────────────────────
     if score >= _DEBATE_HIGH or score <= _DEBATE_LOW:
+        yield ("start", {"score": score, "mode": "solo"})
         direction = "承認" if score >= _DEBATE_HIGH else "否決"
-        arbiter_raw = _llm_call(
-            arbiter_sys,
-            _arbiter_solo_prompt(ctx, direction),
-            temperature=0.3, max_tokens=512,
-        )
+        try:
+            arbiter_raw = _llm_call(
+                arbiter_sys,
+                _arbiter_solo_prompt(ctx_arbiter, direction),
+                temperature=0.3, max_tokens=512, deadline=deadline,
+            )
+        except Exception as e:
+            # LLM不通でも安全側の暫定裁定で必ず応答を返す
+            arbiter_raw = _fallback_llm_json(_ARBITER_SYS, str(e))
         arbiter_normed = _norm_arbiter(arbiter_raw)
         conscience_check = evaluate_conscience(params, arbiter_normed)
         result = {
@@ -1108,94 +1137,157 @@ def run_debate_screening(params: dict) -> dict:
         if session_id and company_name:
             _save_screening_history(session_id, company_name, arbiter_normed, mode="solo")
 
-        return result
+        _log_debate_metrics(result, t0)
+        yield ("result", result)
+        return
 
-    # ── 討論モード（40 < score < 70） ────────────────────────────────────────
-    # Round 1: 並列実行（懐疑派 temperature=0.3、楽観派 temperature=0.9、革新派 temperature=0.7）
-    # 懐疑派はナレッジの否定的証拠を、楽観派は肯定的証拠を検索する
-    _r1_workers = 3 if innovator_key else 2
-    with ThreadPoolExecutor(max_workers=_r1_workers) as pool:
-        fc = pool.submit(
-            _llm_call_with_knowledge, cautious_sys, _cautious_prompt(ctx), 0.3, "refute"
-        )
-        fa = pool.submit(
-            _llm_call_with_knowledge, aggressive_sys, _aggressive_prompt(ctx), 0.9, "support"
-        )
-        fi = pool.submit(
-            _llm_call_with_knowledge, innovator_sys, _innovator_prompt(ctx), 0.7, "both"
-        ) if innovator_key else None
-        r1c = _safe_future(fc, {"opinion": "否決", "reasons": [], "key_risks": []})
-        r1a = _safe_future(fa, {"opinion": "条件付承認", "reasons": [], "opportunities": []})
-        r1i = _safe_future(fi, {"opinion": "条件付承認", "reasons": [], "innovations": []}) if fi else {}
+    # ── 討論モード（_DEBATE_LOW < score < _DEBATE_HIGH） ─────────────────────
+    yield ("start", {"score": score, "mode": "debate"})
 
-    # 乖離度チェック: 同意見なら逆張り指示を追加
-    same_opinion = r1c.get("opinion") == r1a.get("opinion")
-    extra_c = "【警告】楽観派と同じ意見になっている。懐疑派として必ず異なる立場で主張せよ。" if same_opinion else ""
-    extra_a = "【警告】懐疑派と同じ意見になっている。楽観派として必ず異なる立場で主張せよ。" if same_opinion else ""
-
-    r1c_json = json.dumps(_norm_cautious(r1c), ensure_ascii=False)
-    r1a_json = json.dumps(_norm_aggressive(r1a), ensure_ascii=False)
-    r1i_json = json.dumps(_norm_innovator(r1i), ensure_ascii=False) if innovator_key and r1i else ""
-
-    # Round 2: 強制反論ラウンド（相手の意見を受けて必ず反論）
-    _r2_workers = 3 if innovator_key else 2
-    with ThreadPoolExecutor(max_workers=_r2_workers) as pool:
-        fc2 = pool.submit(
-            _llm_call_with_knowledge, cautious_sys,
-            _cautious_prompt(ctx, r1a_json, extra_c), 0.3, "refute"
-        )
-        fa2 = pool.submit(
-            _llm_call_with_knowledge, aggressive_sys,
-            _aggressive_prompt(ctx, r1c_json, extra_a), 0.9, "support"
-        )
-        fi2 = pool.submit(
-            _llm_call_with_knowledge, innovator_sys,
-            _innovator_prompt(ctx, [r1c_json, r1a_json] if r1c_json and r1a_json else None), 0.7, "both"
-        ) if innovator_key else None
-        r2c = _safe_future(fc2, r1c)
-        r2a = _safe_future(fa2, r1a)
-        r2i = _safe_future(fi2, r1i) if fi2 else {}
+    # ナレッジ・フィードバック検索は討論全体で1回だけ実行して全員に配布
+    kb = _prepare_shared_knowledge(params)
 
     def _with_refs(normed: dict, raw: dict) -> dict:
         refs = raw.get("_knowledge_refs", [])
         return {**normed, "_knowledge_refs": refs} if refs else normed
 
+    # Round 1: 並列実行（懐疑派 temperature=0.3、楽観派 temperature=0.9、革新派 temperature=0.7）
+    # 懐疑派にはナレッジの否定的証拠を、楽観派には肯定的証拠を配布する
+    _r1_workers = 3 if innovator_key else 2
+    pool = ThreadPoolExecutor(max_workers=_r1_workers)
+    try:
+        fc = pool.submit(
+            _persona_call, cautious_sys, _cautious_prompt(ctx_debater), 0.3, kb, "refute", deadline
+        )
+        fa = pool.submit(
+            _persona_call, aggressive_sys, _aggressive_prompt(ctx_debater), 0.9, kb, "support", deadline
+        )
+        fi = pool.submit(
+            _persona_call, innovator_sys, _innovator_prompt(ctx_debater), 0.7, kb, "both", deadline
+        ) if innovator_key else None
+        r1c = _safe_future(fc, {"opinion": "否決", "reasons": [], "key_risks": []}, deadline)
+        r1a = _safe_future(fa, {"opinion": "条件付承認", "reasons": [], "opportunities": []}, deadline)
+        r1i = _safe_future(fi, {"opinion": "条件付承認", "reasons": [], "innovations": []}, deadline) if fi else {}
+    finally:
+        # タイムアウト済みスレッドの完了を待たない（時間バジェット厳守）
+        pool.shutdown(wait=False, cancel_futures=True)
+
     r1c_norm = _with_refs(_norm_cautious(r1c), r1c)
     r1a_norm = _with_refs(_norm_aggressive(r1a), r1a)
     r1i_norm = _with_refs(_norm_innovator(r1i), r1i) if innovator_key and r1i else {}
+
+    round1_payload: dict = {"cautious": r1c_norm, "aggressive": r1a_norm}
+    if innovator_key and r1i_norm:
+        round1_payload["innovator"] = r1i_norm
+    yield ("round1", round1_payload)
+
+    # 乖離度チェック: 同意見ならスチールマン指示
+    # （無理な逆張りで偽の対立を作らせず、相手の結論への最強の反対論拠を挙げさせる）
+    same_opinion = r1c.get("opinion") == r1a.get("opinion")
+    extra_c = (
+        "【注意】第1ラウンドで楽観派と同じ結論だった。結論を無理に変える必要はないが、"
+        "懐疑派として楽観派の結論に対する最強の反対論拠を1つ挙げ、notes に含めよ。"
+    ) if same_opinion else ""
+    extra_a = (
+        "【注意】第1ラウンドで懐疑派と同じ結論だった。結論を無理に変える必要はないが、"
+        "楽観派として懐疑派の結論に対する最強の反対論拠を1つ挙げ、notes に含めよ。"
+    ) if same_opinion else ""
+
+    r1c_json = json.dumps(_norm_cautious(r1c), ensure_ascii=False)
+    r1a_json = json.dumps(_norm_aggressive(r1a), ensure_ascii=False)
+    r1i_json = json.dumps(_norm_innovator(r1i), ensure_ascii=False) if innovator_key and r1i else ""
+
+    # Round 2: 強制反論ラウンド（自分のR1意見＋相手の意見を受けて必ず反論）
+    _r2_workers = 3 if innovator_key else 2
+    pool = ThreadPoolExecutor(max_workers=_r2_workers)
+    try:
+        fc2 = pool.submit(
+            _persona_call, cautious_sys,
+            _cautious_prompt(ctx_debater, r1a_json, extra_c, own_json=r1c_json),
+            0.3, kb, "refute", deadline
+        )
+        fa2 = pool.submit(
+            _persona_call, aggressive_sys,
+            _aggressive_prompt(ctx_debater, r1c_json, extra_a, own_json=r1a_json),
+            0.9, kb, "support", deadline
+        )
+        fi2 = pool.submit(
+            _persona_call, innovator_sys,
+            _innovator_prompt(
+                ctx_debater,
+                [r1c_json, r1a_json] if r1c_json and r1a_json else None,
+                own_json=r1i_json,
+            ),
+            0.7, kb, "both", deadline
+        ) if innovator_key else None
+        r2c = _safe_future(fc2, r1c, deadline)
+        r2a = _safe_future(fa2, r1a, deadline)
+        r2i = _safe_future(fi2, r1i, deadline) if fi2 else {}
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+
     r2c_norm = _with_refs(_norm_cautious(r2c), r2c)
     r2a_norm = _with_refs(_norm_aggressive(r2a), r2a)
     r2i_norm = _with_refs(_norm_innovator(r2i), r2i) if innovator_key and r2i else {}
 
+    round2_payload: dict = {"cautious": r2c_norm, "aggressive": r2a_norm}
+    if innovator_key and r2i_norm:
+        round2_payload["innovator"] = r2i_norm
+    yield ("round2", round2_payload)
+
     # 討論ログ構築（ナレッジ引用があれば記録）
+    # 裁定役が判断材料にできるよう、理由に加えてリスク/機会/新視点も含める
     def _fmt_refs(d: dict) -> str:
         refs = d.get("_knowledge_refs", [])
         return f" 引用: {', '.join(refs)}" if refs else ""
 
+    def _fmt_line(label: str, d: dict, second_key: str, second_label: str) -> str:
+        line = f"紫苑（{label}）: {d.get('opinion', '？')} — {_excerpt(d, 'reasons')}"
+        second = _excerpt(d, second_key)
+        if second != "（なし）":
+            line += f" / {second_label}: {second}"
+        return line + _fmt_refs(d)
+
     _r1_lines = (
         "【第1ラウンド：初期見解】\n"
-        f"紫苑（懐疑）: {r1c_norm.get('opinion', '？')} — {_excerpt(r1c_norm, 'reasons')}{_fmt_refs(r1c_norm)}\n"
-        f"紫苑（楽観）: {r1a_norm.get('opinion', '？')} — {_excerpt(r1a_norm, 'reasons')}{_fmt_refs(r1a_norm)}"
+        + _fmt_line("懐疑", r1c_norm, "key_risks", "リスク") + "\n"
+        + _fmt_line("楽観", r1a_norm, "opportunities", "機会")
     )
     if innovator_key and r1i_norm:
-        _r1_lines += f"\n紫苑（革新）: {r1i_norm.get('opinion', '？')} — {_excerpt(r1i_norm, 'reasons')}{_fmt_refs(r1i_norm)}"
+        _r1_lines += "\n" + _fmt_line("革新", r1i_norm, "innovations", "新視点")
     _r2_lines = (
         "\n\n【第2ラウンド：強制反論】\n"
-        f"紫苑（懐疑）: {r2c_norm.get('opinion', '？')} — {_excerpt(r2c_norm, 'reasons')}{_fmt_refs(r2c_norm)}\n"
-        f"紫苑（楽観）: {r2a_norm.get('opinion', '？')} — {_excerpt(r2a_norm, 'reasons')}{_fmt_refs(r2a_norm)}"
+        + _fmt_line("懐疑", r2c_norm, "key_risks", "リスク") + "\n"
+        + _fmt_line("楽観", r2a_norm, "opportunities", "機会")
     )
     if innovator_key and r2i_norm:
-        _r2_lines += f"\n紫苑（革新）: {r2i_norm.get('opinion', '？')} — {_excerpt(r2i_norm, 'reasons')}{_fmt_refs(r2i_norm)}"
+        _r2_lines += "\n" + _fmt_line("革新", r2i_norm, "innovations", "新視点")
     debate_log = _r1_lines + _r2_lines
     if same_opinion:
-        debate_log = "[注: 第1ラウンドで両者の意見が一致したため、逆張り再討論を実施]\n\n" + debate_log
+        debate_log = (
+            "[注: 第1ラウンドで両者の意見が一致したため、スチールマン再討論"
+            "（相手の結論への最強の反対論拠の提示）を実施]\n\n"
+        ) + debate_log
 
-    # 軍師裁定（temperature=0.3 で中立・冷静、両方向のナレッジを参照）
-    arbiter_raw = _llm_call_with_knowledge(
-        arbiter_sys,
-        _arbiter_debate_prompt(ctx, debate_log),
-        temperature=0.3, search_mode="both", max_tokens=1024,
-    )
+    # 強制反論後も懐疑派・楽観派の結論が一致したままなら、裁定役に明示する
+    # （見かけの「討論バランス」を根拠にした裁定を防ぐ）
+    same_opinion_r2 = r2c_norm.get("opinion") == r2a_norm.get("opinion")
+    if same_opinion_r2:
+        debate_log += (
+            f"\n\n[注: 強制反論後も懐疑派・楽観派の結論が「{r2c_norm.get('opinion', '？')}」で一致。"
+            "討論による対立は限定的のため、裁定は討論バランスではなく案件事実と条件設定を根拠にすること]"
+        )
+
+    # 統合派裁定（temperature=0.3 で中立・冷静、両方向のナレッジを参照）
+    try:
+        arbiter_raw = _persona_call(
+            arbiter_sys,
+            _arbiter_debate_prompt(ctx_arbiter, debate_log),
+            0.3, kb, "both", deadline, max_tokens=1024,
+        )
+    except Exception as e:
+        # 討論結果まで出ているのに裁定LLMの不通で全体を失敗させない
+        arbiter_raw = _fallback_llm_json(_ARBITER_SYS, str(e))
 
     arbiter_normed = _norm_arbiter(arbiter_raw)
     conscience_check = evaluate_conscience(params, arbiter_normed)
@@ -1215,6 +1307,7 @@ def run_debate_screening(params: dict) -> dict:
         ),
         "debate_log": debate_log,
         "same_opinion_r1": same_opinion,
+        "same_opinion_r2": same_opinion_r2,
     }
     if innovator_key and r2i_norm:
         result["innovator"] = r2i_norm
@@ -1230,95 +1323,74 @@ def run_debate_screening(params: dict) -> dict:
             innovator=r2i_norm if innovator_key and r2i_norm else None,
         )
 
-    # core_candidates: 討論モードのみ、各ペルソナの結論から汎用的な判断基準を個別に抽出
-    if result["mode"] == "debate":
-        try:
-            case_summary = (
-                f"{params.get('industry_major') or params.get('industry_sub') or '業種不明'} "
-                f"{params.get('asset_name', '')} "
-                f"{params.get('lease_amount') or params.get('lease_total') or 0}百万円 "
-                f"{params.get('lease_months', '')}回払い"
-            ).strip()
-            _personas_data: dict[str, dict] = {}
-            if result.get("cautious"):
-                _personas_data["skeptic"] = result["cautious"]
-            if result.get("aggressive"):
-                _personas_data["optimist"] = result["aggressive"]
-            _personas_data["arbiter"] = arbiter_normed
-            if innovator_key and result.get("innovator"):
-                _personas_data["innovator"] = result["innovator"]
-            candidates = _extract_core_candidates(
-                personas_data=_personas_data,
-                industry=params.get("industry_major") or params.get("industry_sub") or "",
-                asset_name=params.get("asset_name", ""),
-                lease_amount=params.get("lease_amount") or params.get("lease_total") or 0,
-            )
-            if candidates:
-                result["core_candidates"] = [
-                    {**c, "case_summary": case_summary, "source": "debate"}
-                    for c in candidates
-                ]
-        except Exception:
-            pass
+    _log_debate_metrics(result, t0)
 
-    return result
+    # 最終結果を先に届け、core_candidates は後続イベントとして配信する
+    # （UIの任意機能のために全ユーザーの応答を10〜20秒ブロックしない）
+    yield ("result", result)
+
+    # core_candidates: 各ペルソナの結論から汎用的な判断基準を個別に抽出
+    try:
+        case_summary = (
+            f"{params.get('industry_major') or params.get('industry_sub') or '業種不明'} "
+            f"{params.get('asset_name', '')} "
+            f"{params.get('lease_amount') or params.get('lease_total') or 0}百万円 "
+            f"{params.get('lease_months', '')}回払い"
+        ).strip()
+        _personas_data: dict[str, dict] = {}
+        if result.get("cautious"):
+            _personas_data["skeptic"] = result["cautious"]
+        if result.get("aggressive"):
+            _personas_data["optimist"] = result["aggressive"]
+        _personas_data["arbiter"] = arbiter_normed
+        if innovator_key and result.get("innovator"):
+            _personas_data["innovator"] = result["innovator"]
+        candidates = _extract_core_candidates(
+            personas_data=_personas_data,
+            industry=params.get("industry_major") or params.get("industry_sub") or "",
+            asset_name=params.get("asset_name", ""),
+            lease_amount=params.get("lease_amount") or params.get("lease_total") or 0,
+        )
+        if candidates:
+            yield ("core_candidates", {"core_candidates": [
+                {**c, "case_summary": case_summary, "source": "debate"}
+                for c in candidates
+            ]})
+    except Exception:
+        pass
+
+
+def _log_debate_metrics(result: dict, t0: float) -> None:
+    """討論の効果測定用メトリクスを JSONL に追記する（失敗しても審査は継続）。
+
+    「討論モードが単独裁定と違う結論を出す割合」「一致率と最終判断の関係」を
+    後から監査できるようにする。judgment-feedback（人間の判断変更）と
+    突き合わせれば討論の価値を検証できる。
+    """
+    try:
+        opinions = {}
+        for key, role in (("cautious", "skeptic"), ("aggressive", "optimist"), ("innovator", "innovator")):
+            persona = result.get(key)
+            if isinstance(persona, dict) and persona:
+                opinions[role] = persona.get("opinion", "")
+        entry = {
+            "ts": datetime.now().isoformat(timespec="seconds"),
+            "score": result.get("score"),
+            "mode": result.get("mode"),
+            "final": (result.get("arbiter") or {}).get("final", ""),
+            "opinions": opinions,
+            "same_opinion_r1": result.get("same_opinion_r1"),
+            "same_opinion_r2": result.get("same_opinion_r2"),
+            "duration_sec": round(time.monotonic() - t0, 1),
+        }
+        _METRICS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with _METRICS_PATH.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
 
 
 # ── コア候補抽出 ────────────────────────────────────────────────────────────────
-
-def _extract_core_candidate(
-    arbiter: dict,
-    ctx: str,
-    company_name: str = "",
-    asset_name: str = "",
-    industry: str = "",
-    lease_amount: float = 0,
-) -> str:
-    """arbiter の最終結論から汎用的な判断基準を1〜2文で抽出して返す。失敗時は空文字。"""
-    final = arbiter.get("final", "")
-    reasoning = arbiter.get("reasoning", "")
-    conditions = arbiter.get("conditions", [])
-    conditions_text = "、".join(conditions) if conditions else "なし"
-
-    system = (
-        "あなたはリース審査の知識を体系化する専門家です。"
-        "個別案件の審査結論から、将来の審査にも転用できる汎用的な判断基準を抽出してください。"
-        "企業名・担当者名などの固有情報は含めず、業種・物件タイプ・財務特性などの一般的な条件で表現してください。"
-        "1〜2文の日本語で回答してください。JSONではなく、テキストのみ出力してください。"
-    )
-    prompt = (
-        f"以下のリース審査結論から、汎用的な判断基準を1〜2文で抽出してください。\n\n"
-        f"【案件概要】業種: {industry} / 物件: {asset_name} / リース額: {lease_amount}百万円\n"
-        f"【最終判断】{final}\n"
-        f"【根拠】{reasoning}\n"
-        f"【条件】{conditions_text}\n\n"
-        f"抽出例: 「医療機器は陳腐化リスクが高いため、残存価値評価では保守的な係数を適用すべき」\n"
-        f"1〜2文のテキストのみ出力してください。"
-    )
-
-    api_key = _get_gemini_api_key()
-    if not api_key:
-        return ""
-
-    payload = {
-        "system_instruction": {"parts": [{"text": system}]},
-        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0.3,
-            "maxOutputTokens": 256,
-        },
-    }
-    resp = requests.post(
-        _gemini_url(),
-        json=payload,
-        headers={"x-goog-api-key": api_key},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-    # 最初の1〜2文のみを抽出（250文字上限）
-    return text[:250]
-
 
 def _extract_core_candidate_for_role(
     role: str,
@@ -1369,8 +1441,7 @@ def _extract_core_candidate_for_role(
         f"1〜2文のテキストのみ出力してください。"
     )
 
-    api_key = _get_gemini_api_key()
-    if not api_key:
+    if not _get_gemini_api_key():
         return ""
 
     payload = {
@@ -1378,13 +1449,7 @@ def _extract_core_candidate_for_role(
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": 0.3, "maxOutputTokens": 256},
     }
-    resp = requests.post(
-        _gemini_url(),
-        json=payload,
-        headers={"x-goog-api-key": api_key},
-        timeout=30,
-    )
-    resp.raise_for_status()
+    resp = _post_gemini(payload, timeout=30)
     text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
     return text[:250]
 
