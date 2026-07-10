@@ -173,3 +173,17 @@ class WorkLogRequest(BaseModel):
 class WorkLogResponse(BaseModel):
     memory_path: str
     obsidian: dict
+
+
+class BusinessPlanCheckRequest(BaseModel):
+    """事業計画チェック（簡易版）のリクエスト。金額は百万円単位。"""
+    company_name: str = Field(default="", description="企業名（任意）")
+    industry_major: str = Field(default="", description="大分類業種")
+    nenshu: float = Field(default=0.0, description="直近売上高（百万円）")
+    op_margin_pct: float = Field(default=0.0, description="直近営業利益率（%）")
+    plan_nenshu: float = Field(default=0.0, description="計画売上高（百万円）")
+    plan_op_margin_pct: float = Field(default=0.0, description="計画営業利益率（%）")
+    lease_amount: float = Field(default=0.0, description="リース金額（百万円）")
+    lease_months: int = Field(default=0, description="リース期間（回）")
+    has_conservative_scenario: bool = Field(default=False, description="保守シナリオの提示有無")
+    plan_basis: str = Field(default="", description="計画の根拠（担当者メモ・任意）")
