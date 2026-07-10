@@ -51,6 +51,82 @@ def _is_protected(target: str) -> bool:
     return False
 
 
+def _candidate_paths(rule: dict) -> list[Path]:
+    """ルール適用で変更されうるファイルの一覧（検証・ロールバック対象）。"""
+    paths: list[Path] = []
+    target = rule.get("target", "")
+    if target:
+        paths.append(_PROJECT_ROOT / target)
+    rule_type = rule.get("type", "")
+    if rule_type == "scoring_weight":
+        paths.append(_PROJECT_ROOT / "api" / "scoring_weights.json")
+    elif rule_type == "ui_text":
+        paths.append(_PROJECT_ROOT / "frontend" / "src" / "lib" / "ui_labels.json")
+    return paths
+
+
+def _snapshot_paths(paths: list[Path]) -> dict[Path, bytes | None]:
+    """適用前のファイル内容を保存する（None = ファイルが存在しなかった）。"""
+    snapshot: dict[Path, bytes | None] = {}
+    for path in paths:
+        try:
+            snapshot[path] = path.read_bytes() if path.exists() else None
+        except OSError:
+            snapshot[path] = None
+    return snapshot
+
+
+def _restore_snapshot(snapshot: dict[Path, bytes | None]) -> None:
+    """スナップショットの状態へ戻す。適用前に無かったファイルは削除する。"""
+    for path, content in snapshot.items():
+        try:
+            if content is None:
+                if path.exists():
+                    path.unlink()
+            else:
+                path.write_bytes(content)
+        except OSError as exc:
+            print(f"  ⚠️  ロールバック失敗: {path} ({exc})", file=sys.stderr)
+
+
+def _verify_file(path: Path) -> tuple[bool, str]:
+    """適用後のファイルが壊れていないか検証する（JSONパース / Python構文）。"""
+    if not path.exists():
+        return True, "対象なし"
+    if path.suffix == ".json":
+        try:
+            json.loads(path.read_text(encoding="utf-8"))
+            return True, "JSON OK"
+        except (json.JSONDecodeError, OSError) as exc:
+            return False, f"JSON検証エラー ({path.name}): {exc}"
+    if path.suffix == ".py":
+        import py_compile
+        import tempfile
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".pyc", delete=True) as tmp:
+                py_compile.compile(str(path), cfile=tmp.name, doraise=True)
+            return True, "py_compile OK"
+        except py_compile.PyCompileError as exc:
+            return False, f"Python構文エラー ({path.name}): {exc}"
+        except OSError as exc:
+            return False, f"検証I/Oエラー ({path.name}): {exc}"
+    return True, "検証対象外の拡張子"
+
+
+def _verify_after_apply(rule: dict, changed_file: str | None) -> tuple[bool, str]:
+    """変更されたファイルと候補ファイルすべてを検証する。"""
+    paths = list(_candidate_paths(rule))
+    if changed_file:
+        changed_path = _PROJECT_ROOT / changed_file
+        if changed_path not in paths:
+            paths.append(changed_path)
+    for path in paths:
+        ok, msg = _verify_file(path)
+        if not ok:
+            return False, msg
+    return True, "OK"
+
+
 def load_rules() -> list[dict]:
     if not _LEDGER_PATH.exists():
         print(f"❌ 台帳ファイルが見つかりません: {_LEDGER_PATH}", file=sys.stderr)
@@ -138,12 +214,14 @@ def run_batch(rules: list[dict], dry_run: bool, rev_filter: str | None) -> None:
             print(f"  🔍 {rev_id} [{rule_type}] 適用予定: {description[:70]}")
             continue
 
-        # 実際に適用
+        # 実際に適用（適用前スナップショット → 適用 → 検証 → 失敗ならロールバック）
+        snapshot = _snapshot_paths(_candidate_paths(rule))
         try:
             result = apply_rule(rule)
         except Exception as exc:
+            _restore_snapshot(snapshot)
             res.failed.append((rev_id, str(exc)))
-            print(f"  ❌ {rev_id} 例外: {exc}")
+            print(f"  ❌ {rev_id} 例外（ロールバック済み）: {exc}")
             continue
 
         if result.success:
@@ -151,9 +229,15 @@ def run_batch(rules: list[dict], dry_run: bool, rev_filter: str | None) -> None:
                 res.idempotent.append((rev_id, result.message))
                 print(f"  ⏭️  {rev_id} 冪等スキップ: {result.message}")
             else:
+                verify_ok, verify_msg = _verify_after_apply(rule, result.changed_file)
+                if not verify_ok:
+                    _restore_snapshot(snapshot)
+                    res.failed.append((rev_id, f"適用後検証に失敗したためロールバック: {verify_msg}"))
+                    print(f"  ↩️  {rev_id} 検証失敗→ロールバック: {verify_msg}")
+                    continue
                 res.success.append((rev_id, result.message))
                 applied_rev_ids.add(rev_id)
-                print(f"  ✅ {rev_id} 成功: {result.message}")
+                print(f"  ✅ {rev_id} 成功（検証OK）: {result.message}")
                 if result.diff_summary:
                     for line in result.diff_summary.splitlines():
                         print(f"       {line}")
