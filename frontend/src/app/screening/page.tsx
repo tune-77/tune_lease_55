@@ -707,8 +707,9 @@ function AiHeroCard({ result }: { result?: Record<string, any> }) {
   if (!result) return null;
   const score: number = result.score_base ?? 0;
   const hantei: string = result.hantei ?? "";
-  const isApproved = score >= 71;
-  const isConditional = score >= 60 && score < 71;
+  const approvalLine: number = typeof result.approval_line === "number" ? result.approval_line : 71;
+  const isApproved = score >= approvalLine;
+  const isConditional = score >= 60 && score < approvalLine;
 
   let gradientClass = "from-rose-500 to-rose-600";
   let shadowClass = "shadow-rose-200";
@@ -749,7 +750,7 @@ function AiHeroCard({ result }: { result?: Record<string, any> }) {
             <span className="text-2xl font-black">{badge}</span>
           </div>
           <div className="text-[11px] font-bold text-white/60">
-            承認ライン: 71点以上
+            承認ライン: {approvalLine}点以上
           </div>
         </div>
       </div>
@@ -1817,19 +1818,26 @@ export default function Dashboard() {
     demoCaseId: string,
     targetFormData: Partial<ScoringFormData>,
     targetResult: any = null,
-  ) => ({
-    demo_case_id: demoCaseId,
-    industry_major: targetResult?.industry_major || targetFormData.industry_major || "",
-    industry_sub: targetResult?.industry_sub || targetFormData.industry_sub || "",
-    company_name: targetFormData.company_name || "",
-    asset_name: targetFormData.asset_name || targetFormData.asset_detail || "",
-    customer_type: targetFormData.customer_type || "",
-    main_bank: targetFormData.main_bank || "",
-    competitor: targetFormData.competitor || "",
-    outcome_status: targetResult?.final_status || targetResult?.result_status || targetResult?.hantei || "",
-    score: targetResult?.score_base ?? targetResult?.score ?? "",
-    limit: 8,
-  });
+  ) => {
+    const query: Record<string, string | number> = {
+      demo_case_id: demoCaseId,
+      industry_major: targetResult?.industry_major || targetFormData.industry_major || "",
+      industry_sub: targetResult?.industry_sub || targetFormData.industry_sub || "",
+      company_name: targetFormData.company_name || "",
+      asset_name: targetFormData.asset_name || targetFormData.asset_detail || "",
+      customer_type: targetFormData.customer_type || "",
+      main_bank: targetFormData.main_bank || "",
+      competitor: targetFormData.competitor || "",
+      outcome_status: targetResult?.final_status || targetResult?.result_status || targetResult?.hantei || "",
+      limit: 8,
+    };
+    // score は数値のときだけ送る。空文字を送ると FastAPI の Optional[float] が 422 を返す
+    const scoreValue = targetResult?.score_base ?? targetResult?.score;
+    if (typeof scoreValue === "number" && Number.isFinite(scoreValue)) {
+      query.score = scoreValue;
+    }
+    return query;
+  };
 
   const hasExperienceSearchContext = (targetFormData: Partial<ScoringFormData>, targetResult: any = null) =>
     Boolean(
@@ -2045,12 +2053,15 @@ export default function Dashboard() {
       void fetchExperienceCasesForContext(findDemoScreeningCase(targetFormData)?.id || "", targetFormData, res.data);
       void requestShionReview(res.data, targetFormData);
 
-      // めぶきちゃんの表情をスコアに応じて切り替え
-      const score = res.data.score_base;
-      if (score >= 80) {
+      // めぶきちゃんの表情を判定バッジ（AiHeroCard）と同じ基準で切り替える
+      // approval_line は /api/score/full には現状含まれないため 71 にフォールバックする
+      //（バッジ側も同じフォールバックなので文言と表示が食い違わない）
+      const score = res.data.score_base ?? 0;
+      const approvalLine = typeof res.data.approval_line === "number" ? res.data.approval_line : 71;
+      if (score >= approvalLine) {
         triggerMebuki('approve', `スコア ${score.toFixed(1)} 点！\n素晴らしい内容です。\nこのまま稟議に掛けましょう！`);
-      } else if (score >= 50) {
-        triggerMebuki('challenge', `スコア ${score.toFixed(1)} 点。\n少し工夫が必要です。\n軍師のアドバイスを確認してください。`);
+      } else if (score >= 60) {
+        triggerMebuki('challenge', `スコア ${score.toFixed(1)} 点。\n条件付き承認圏です。\n軍師のアドバイスを確認してください。`);
       } else {
         triggerMebuki('reject', `スコア ${score.toFixed(1)} 点。\nかなり厳しい状況です。\n抜本的な条件見直しが必要です！`);
       }
