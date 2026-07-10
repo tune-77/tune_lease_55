@@ -6887,7 +6887,8 @@ def multi_agent_screening(req: MultiAgentRequest):
     """
     マルチエージェント討論審査。
 
-    スコア70以上/40以下は統合派単独高速処理、40超〜70未満は懐疑派・楽観派が2ラウンド討論後に統合派が裁定。
+    スコアが承認ライン（scoring_core.APPROVAL_LINE、既定71）以上/40以下は統合派単独高速処理、
+    その間の境界帯は懐疑派・楽観派が2ラウンド討論後に統合派が裁定。
     """
     from api.multi_agent_screening import run_debate_screening
     try:

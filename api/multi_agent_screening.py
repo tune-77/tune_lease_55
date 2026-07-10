@@ -3,13 +3,14 @@
 
 同一の紫苑中核から分岐した3つのペルソナが討論し、審査判断を統合する。
 
-スコア70以上 or 40以下 → 紫苑（統合派）単独高速処理
-スコア40超〜70未満（境界・要審議） → 紫苑（懐疑派）・紫苑（楽観派）が2ラウンド討論 → 紫苑（統合派）裁定
+スコアが承認ライン（scoring_core.APPROVAL_LINE、既定71）以上 or 40以下 → 紫苑（統合派）単独高速処理
+スコア40超〜承認ライン未満（境界・要審議） → 紫苑（懐疑派）・紫苑（楽観派）が2ラウンド討論 → 紫苑（統合派）裁定
 
 なれ合い防止策:
   - Temperature差（懐疑派=0.3、楽観派=0.9）
-  - 強制反論ラウンド（相手の主論点に必ず反論）
-  - 意見乖離度チェック（同一意見なら逆張り指示を追加）
+  - 強制反論ラウンド（相手の主論点に必ず反論。賛同のみの回答は不可）
+  - 意見乖離度チェック（第1ラウンドで同一意見なら逆張り指示を追加、
+    第2ラウンド後も一致していれば裁定役へ「討論による対立は限定的」と明示）
 """
 from __future__ import annotations
 
@@ -27,6 +28,7 @@ from api.knowledge.feedback_watcher import search_feedback, feedback_count
 from api.shion_conscience import build_conscience_prompt_block, evaluate_conscience
 from api.shion_mana import build_mana_prompt_block, evaluate_mana_consultation
 from lease_news_digest import find_vault, lease_news_actions_as_text, lease_news_focus_as_text
+from scoring_core import APPROVAL_LINE
 
 # ── モデル・エンドポイント ───────────────────────────────────────────────────
 # 紫苑（懐疑派）・紫苑（楽観派）: Gemini Flash（temperature差で視点を分離）
@@ -36,7 +38,9 @@ def _gemini_url() -> str:
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 _DEBATE_LOW  = 40  # これ以下 → 否決ファストパス
-_DEBATE_HIGH = 70  # これ以上 → 承認ファストパス
+# 承認ファストパスは scoring_core.APPROVAL_LINE（既定71）を単一ソースとして参照する。
+# ハードコードすると審査結果がモジュールごとに食い違う（CLAUDE.md 参照）
+_DEBATE_HIGH = APPROVAL_LINE
 
 # ── ケースコンテキストテンプレート ──────────────────────────────────────────────
 _CASE_CTX_TMPL = """## 審査案件
@@ -668,7 +672,11 @@ def _cautious_prompt(ctx: str, counter_json: str = "", extra: str = "") -> str:
   "notes": ["10〜20字の補足を最大2個"]
 }}"""
     if counter_json:
-        base += f"\n\n【必須】楽観派の以下の意見に反論する場合は reason_codes に counter を含めよ:\n{counter_json}"
+        base += (
+            "\n\n【強制反論ラウンド】以下は楽観派の意見である。最も重要な論点を1つ選んで必ず反論し、"
+            "reason_codes に counter を含め、反論の要点を notes に書け。賛同のみの回答は不可:\n"
+            + counter_json
+        )
     if extra:
         base += f"\n\n{extra}"
     return base
@@ -687,7 +695,11 @@ def _aggressive_prompt(ctx: str, counter_json: str = "", extra: str = "") -> str
   "notes": ["10〜20字の補足を最大2個"]
 }}"""
     if counter_json:
-        base += f"\n\n【必須】懐疑派の以下の意見に反論する場合は reason_codes に counter を含めよ:\n{counter_json}"
+        base += (
+            "\n\n【強制反論ラウンド】以下は懐疑派の意見である。最も重要な論点を1つ選んで必ず反論し、"
+            "reason_codes に counter を含め、反論の要点を notes に書け。賛同のみの回答は不可:\n"
+            + counter_json
+        )
     if extra:
         base += f"\n\n{extra}"
     return base
@@ -718,7 +730,8 @@ def _arbiter_debate_prompt(ctx: str, log: str) -> str:
 【討論ログ】
 {log}
 
-上記の討論を踏まえ、軍師として最終裁定を短いJSONで示せ。
+上記の討論を踏まえ、統合派として最終裁定を短いJSONで示せ。
+討論ログに「結論が一致」の注記がある場合、debate_balance を根拠にせず案件事実と条件設定で判断せよ。
 長文説明は禁止。日本語の長い文章は書かず、下のコードと短い語句だけを返す。
 
 {{
@@ -1168,27 +1181,44 @@ def run_debate_screening(params: dict) -> dict:
     r2i_norm = _with_refs(_norm_innovator(r2i), r2i) if innovator_key and r2i else {}
 
     # 討論ログ構築（ナレッジ引用があれば記録）
+    # 裁定役が判断材料にできるよう、理由に加えてリスク/機会/新視点も含める
     def _fmt_refs(d: dict) -> str:
         refs = d.get("_knowledge_refs", [])
         return f" 引用: {', '.join(refs)}" if refs else ""
 
+    def _fmt_line(label: str, d: dict, second_key: str, second_label: str) -> str:
+        line = f"紫苑（{label}）: {d.get('opinion', '？')} — {_excerpt(d, 'reasons')}"
+        second = _excerpt(d, second_key)
+        if second != "（なし）":
+            line += f" / {second_label}: {second}"
+        return line + _fmt_refs(d)
+
     _r1_lines = (
         "【第1ラウンド：初期見解】\n"
-        f"紫苑（懐疑）: {r1c_norm.get('opinion', '？')} — {_excerpt(r1c_norm, 'reasons')}{_fmt_refs(r1c_norm)}\n"
-        f"紫苑（楽観）: {r1a_norm.get('opinion', '？')} — {_excerpt(r1a_norm, 'reasons')}{_fmt_refs(r1a_norm)}"
+        + _fmt_line("懐疑", r1c_norm, "key_risks", "リスク") + "\n"
+        + _fmt_line("楽観", r1a_norm, "opportunities", "機会")
     )
     if innovator_key and r1i_norm:
-        _r1_lines += f"\n紫苑（革新）: {r1i_norm.get('opinion', '？')} — {_excerpt(r1i_norm, 'reasons')}{_fmt_refs(r1i_norm)}"
+        _r1_lines += "\n" + _fmt_line("革新", r1i_norm, "innovations", "新視点")
     _r2_lines = (
         "\n\n【第2ラウンド：強制反論】\n"
-        f"紫苑（懐疑）: {r2c_norm.get('opinion', '？')} — {_excerpt(r2c_norm, 'reasons')}{_fmt_refs(r2c_norm)}\n"
-        f"紫苑（楽観）: {r2a_norm.get('opinion', '？')} — {_excerpt(r2a_norm, 'reasons')}{_fmt_refs(r2a_norm)}"
+        + _fmt_line("懐疑", r2c_norm, "key_risks", "リスク") + "\n"
+        + _fmt_line("楽観", r2a_norm, "opportunities", "機会")
     )
     if innovator_key and r2i_norm:
-        _r2_lines += f"\n紫苑（革新）: {r2i_norm.get('opinion', '？')} — {_excerpt(r2i_norm, 'reasons')}{_fmt_refs(r2i_norm)}"
+        _r2_lines += "\n" + _fmt_line("革新", r2i_norm, "innovations", "新視点")
     debate_log = _r1_lines + _r2_lines
     if same_opinion:
         debate_log = "[注: 第1ラウンドで両者の意見が一致したため、逆張り再討論を実施]\n\n" + debate_log
+
+    # 強制反論後も懐疑派・楽観派の結論が一致したままなら、裁定役に明示する
+    # （見かけの「討論バランス」を根拠にした裁定を防ぐ）
+    same_opinion_r2 = r2c_norm.get("opinion") == r2a_norm.get("opinion")
+    if same_opinion_r2:
+        debate_log += (
+            f"\n\n[注: 強制反論後も懐疑派・楽観派の結論が「{r2c_norm.get('opinion', '？')}」で一致。"
+            "討論による対立は限定的のため、裁定は討論バランスではなく案件事実と条件設定を根拠にすること]"
+        )
 
     # 軍師裁定（temperature=0.3 で中立・冷静、両方向のナレッジを参照）
     arbiter_raw = _llm_call_with_knowledge(
@@ -1215,6 +1245,7 @@ def run_debate_screening(params: dict) -> dict:
         ),
         "debate_log": debate_log,
         "same_opinion_r1": same_opinion,
+        "same_opinion_r2": same_opinion_r2,
     }
     if innovator_key and r2i_norm:
         result["innovator"] = r2i_norm

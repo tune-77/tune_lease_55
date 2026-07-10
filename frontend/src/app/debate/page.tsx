@@ -119,6 +119,7 @@ interface DebateResult {
   mana_consultation?: ManaConsultation;
   debate_log?: string;
   same_opinion_r1?: boolean;
+  same_opinion_r2?: boolean;
   core_candidates?: CoreCandidateItem[];
 }
 
@@ -334,7 +335,7 @@ function ManaPanel({ mana }: { mana: ManaConsultation }) {
   );
 }
 
-function DebateLog({ log, sameR1 }: { log: string; sameR1?: boolean }) {
+function DebateLog({ log, sameR1, sameR2 }: { log: string; sameR1?: boolean; sameR2?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="rounded-xl border border-slate-200 overflow-hidden">
@@ -348,6 +349,11 @@ function DebateLog({ log, sameR1 }: { log: string; sameR1?: boolean }) {
           {sameR1 && (
             <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
               意見一致→再討論
+            </span>
+          )}
+          {sameR2 && (
+            <span className="text-xs bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">
+              反論後も一致
             </span>
           )}
         </span>
@@ -914,7 +920,8 @@ export default function DebatePage() {
               className={`w-full border rounded-xl px-3 py-2 text-lg font-black ${scoreColor(form.score)} focus:outline-none focus:ring-2 focus:ring-violet-400`}
             />
             <p className="text-xs text-slate-400 mt-1">
-              {form.score >= 70 ? "✓ 承認圏 → 統合派単独" : form.score <= 40 ? "✗ 否決圏 → 統合派単独" : "⚡ 境界・要審議 → マルチ紫苑討論"}
+              {/* 閾値はバックエンドの scoring_core.APPROVAL_LINE（既定71）/ _DEBATE_LOW（40）と同期 */}
+              {form.score >= 71 ? "✓ 承認圏 → 統合派単独" : form.score <= 40 ? "✗ 否決圏 → 統合派単独" : "⚡ 境界・要審議 → マルチ紫苑討論"}
             </p>
           </div>
           <div>
@@ -1079,7 +1086,7 @@ export default function DebatePage() {
 
           {/* 討論ログ */}
           {result.debate_log && (
-            <DebateLog log={result.debate_log} sameR1={result.same_opinion_r1} />
+            <DebateLog log={result.debate_log} sameR1={result.same_opinion_r1} sameR2={result.same_opinion_r2} />
           )}
 
           {/* コアに昇格（各ペルソナの視点ごとに個別カード） */}

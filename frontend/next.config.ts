@@ -33,6 +33,11 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   output: "standalone",
   allowedDevOrigins: ["*.trycloudflare.com"],
+  experimental: {
+    // rewrites 経由の FastAPI 呼び出しはデフォルト30秒（30000ms）で切断される。
+    // マルチエージェント討論審査（/api/multi-agent-screening）は30〜90秒かかるため延長する。
+    proxyTimeout: 300_000,
+  },
   async headers() {
     return [
       {
