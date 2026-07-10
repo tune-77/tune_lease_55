@@ -10,7 +10,7 @@ import {
   X, Menu, Table2, Swords, MessageCircle,
   BarChart2, BookOpen, Gift, HelpCircle, Megaphone, Calculator,
   LifeBuoy, ClipboardList, Brain, Database,
-  Orbit, ShieldCheck, Sparkles, Search, GitBranch
+  Orbit, ShieldCheck, Sparkles, Search, GitBranch, FileCheck2
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
 import ThemeSelector from '@/components/layout/ThemeSelector';
@@ -52,6 +52,7 @@ export default function Sidebar() {
         { name: 'リース知性体との対話', href: '/lease-intelligence', icon: Brain, color: 'text-violet-400' },
         { name: 'リース知性体 紫苑システム', href: '/', icon: Home, color: 'text-violet-400' },
         { name: '審査・分析', href: '/screening', icon: ClipboardCheck, color: 'text-emerald-400' },
+        { name: '事業計画チェック（簡易版）', href: '/business-plan-check', icon: FileCheck2, color: 'text-teal-400' },
         { name: 'ダッシュボード', href: '/home', icon: BarChart2, color: 'text-blue-400' },
         { name: '💬 AIチャット', href: '/chat', icon: MessageCircle, color: 'text-cyan-400' },
         { name: '審査レポート', href: '/report', icon: FileText, color: 'text-indigo-400' },

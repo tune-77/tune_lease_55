@@ -163,6 +163,7 @@ from api.schemas import (
     PromptRuleRegisterRequest,
     WorkLogRequest,
     WorkLogResponse,
+    BusinessPlanCheckRequest,
 )
 from pydantic import BaseModel, Field
 from typing import List, Any, Dict, Literal, Optional
@@ -6926,6 +6927,23 @@ def multi_agent_screening_stream(req: MultiAgentRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
     )
+
+
+@app.post("/api/business-plan/validate")
+def validate_business_plan_endpoint(req: BusinessPlanCheckRequest):
+    """
+    事業計画チェック（簡易版）。
+
+    直近実績と計画値の整合性を機械チェックし、Gemini が利用可能なら
+    講評・顧客への確認質問を付ける。LLM 不通でも機械チェックだけで応答する。
+    """
+    from api.business_plan_check import validate_business_plan
+    try:
+        return validate_business_plan(req.model_dump())
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/conversation-history")
