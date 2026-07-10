@@ -437,7 +437,7 @@ def search_lease_wiki(query: str, limit: int = 3) -> dict[str, Any]:
         try:
             from api.knowledge.vector_store import get_store
             store = get_store()
-            results = store.search(query, limit=limit)
+            results = store.search(query, top_k=limit)
             return {"results": results, "count": len(results), "source": "chromadb_obsidian_knowledge"}
         except Exception as e:
             return {"error": f"ChromaDB検索エラー: {e}", "results": []}
