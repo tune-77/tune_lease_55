@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { apiClient } from "@/lib/api";
 import {
   AlertCircle,
+  AlertTriangle,
   CheckCircle2,
   ClipboardList,
   RefreshCw,
@@ -124,6 +125,8 @@ type LedgerRule = {
   rev_id: string;
   type: string;
   pending_review: boolean;
+  pending_llm?: boolean;
+  category?: string;
   description: string;
   source?: string;
   target?: string;
@@ -242,6 +245,28 @@ const CATEGORY_LABELS: Record<string, string> = {
   planning: "仕様整理",
 };
 
+const LEDGER_TYPE_LABELS: Record<string, string> = {
+  patch_json: "JSONパッチ",
+  llm_diff: "LLM差分",
+  manual: "手動対応",
+  rag_boost_adjust: "RAG調整",
+};
+
+// batch_apply.py のスキップ条件と同じ判定。
+// 「承認済み」でも manual / pending_llm は自動適用されないことを画面上で区別する
+type LedgerEffectiveStatus = "applied" | "pending_review" | "manual_only" | "awaiting_apply";
+
+function isAutoApplyExempt(rule: LedgerRule): boolean {
+  return rule.type === "manual" || (rule.type === "llm_diff" && !!rule.pending_llm);
+}
+
+function ledgerEffectiveStatus(rule: LedgerRule): LedgerEffectiveStatus {
+  if (rule.applied_at) return "applied";
+  if (rule.pending_review) return "pending_review";
+  if (isAutoApplyExempt(rule)) return "manual_only";
+  return "awaiting_apply";
+}
+
 export default function ImprovementLogPage() {
   const [activeTab, setActiveTab] = useState<"improvements" | "recipes" | "ledger">("improvements");
   const [data, setData] = useState<ImprovementLog | null>(null);
@@ -261,6 +286,7 @@ export default function ImprovementLogPage() {
   const [ledgerRules, setLedgerRules] = useState<LedgerRule[]>([]);
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [ledgerError, setLedgerError] = useState("");
+  const [ledgerTypeFilter, setLedgerTypeFilter] = useState("ALL");
   const [approvingRuleIds, setApprovingRuleIds] = useState<Set<string>>(new Set());
 
   const fetchLedgerRules = useCallback(async () => {
@@ -438,6 +464,22 @@ export default function ImprovementLogPage() {
 
   const visibleRecipes = pendingRecipes.filter((r) => !dismissedRecipes.has(r.id));
 
+  const ledgerTypes = useMemo(() => {
+    const types = new Set(ledgerRules.map((r) => r.type || "unknown"));
+    return ["ALL", ...Array.from(types).sort()];
+  }, [ledgerRules]);
+
+  const filteredLedgerRules = useMemo(
+    () => ledgerRules.filter((r) => ledgerTypeFilter === "ALL" || (r.type || "unknown") === ledgerTypeFilter),
+    [ledgerRules, ledgerTypeFilter]
+  );
+
+  // パイプライン自体の障害検出（batch_apply・朝報告が止まっている可能性）
+  const pipelineAlerts = useMemo(
+    () => ledgerRules.filter((r) => r.category === "pipeline_fix" && r.pending_review),
+    [ledgerRules]
+  );
+
   return (
     <main className="min-h-screen bg-slate-50 p-4 md:p-6">
       <div className="mx-auto max-w-6xl space-y-5">
@@ -461,6 +503,25 @@ export default function ImprovementLogPage() {
             更新
           </button>
         </div>
+
+        {pipelineAlerts.length > 0 && (
+          <div className="rounded-lg border border-rose-300 bg-rose-50 p-4">
+            <div className="flex items-center gap-2 text-sm font-bold text-rose-800">
+              <AlertTriangle className="h-4 w-4" />
+              改善パイプライン自体に障害が検出されています
+            </div>
+            <ul className="mt-2 space-y-1 text-xs text-rose-700">
+              {pipelineAlerts.map((r) => (
+                <li key={r.rev_id}>
+                  <span className="font-mono font-bold">{r.rev_id}</span>: {r.description}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs text-rose-600">
+              パイプラインが失敗している間は、承認済みルールの自動適用や朝の改善レポート生成が止まっている可能性があります。先にこちらの復旧を確認してください。
+            </p>
+          </div>
+        )}
 
         <div className="space-y-3">
           <LoopEngineeringCard
@@ -626,18 +687,41 @@ export default function ImprovementLogPage() {
             <div className="rounded-lg border border-slate-200 bg-white p-4">
               <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
                 <span className="rounded-full bg-indigo-50 px-2 py-1 font-semibold text-indigo-700">
-                  承認待ち {ledgerRules.filter((r) => r.pending_review).length}
+                  承認待ち {ledgerRules.filter((r) => ledgerEffectiveStatus(r) === "pending_review").length}
+                </span>
+                <span className="rounded-full bg-blue-50 px-2 py-1 font-semibold text-blue-700">
+                  適用待ち {ledgerRules.filter((r) => ledgerEffectiveStatus(r) === "awaiting_apply").length}
                 </span>
                 <span className="rounded-full bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">
-                  承認済み {ledgerRules.filter((r) => !r.pending_review).length}
+                  適用済み {ledgerRules.filter((r) => ledgerEffectiveStatus(r) === "applied").length}
+                </span>
+                <span className="rounded-full bg-amber-50 px-2 py-1 font-semibold text-amber-700">
+                  自動適用対象外 {ledgerRules.filter((r) => ledgerEffectiveStatus(r) === "manual_only").length}
                 </span>
                 <span className="rounded-full bg-slate-100 px-2 py-1 font-semibold text-slate-600">
                   合計 {ledgerRules.length}
                 </span>
               </div>
               <p className="mt-2 text-xs text-slate-500">
-                今後の自動修正ルールは、次回以降も同じ種類の修正に使う継続ルールです。「自動適用を許可」すると batch_apply の対象になります。
+                今後の自動修正ルールは、次回以降も同じ種類の修正に使う継続ルールです。「自動適用を許可」すると次回の朝パイプライン（batch_apply）で1回だけ自動適用され、「適用済み」になります。種別が「手動対応」のルールは承認しても自動適用されず、人の実装が必要です。
               </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {ledgerTypes.map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setLedgerTypeFilter(type)}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                      ledgerTypeFilter === type
+                        ? "bg-slate-900 text-white"
+                        : "border border-slate-300 bg-white text-slate-600"
+                    }`}
+                  >
+                    {type === "ALL"
+                      ? `すべて ${ledgerRules.length}`
+                      : `${LEDGER_TYPE_LABELS[type] || type} ${ledgerRules.filter((r) => (r.type || "unknown") === type).length}`}
+                  </button>
+                ))}
+              </div>
               {ledgerError && (
                 <p className="mt-2 text-xs font-semibold text-rose-600">{ledgerError}</p>
               )}
@@ -646,9 +730,9 @@ export default function ImprovementLogPage() {
               <div className="rounded-lg border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
                 読み込み中...
               </div>
-            ) : ledgerRules.length === 0 ? (
+            ) : filteredLedgerRules.length === 0 ? (
               <div className="rounded-lg border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
-                今後の自動修正ルールがありません
+                {ledgerTypeFilter === "ALL" ? "今後の自動修正ルールがありません" : "この種別のルールはありません"}
               </div>
             ) : (
               <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
@@ -665,8 +749,10 @@ export default function ImprovementLogPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {ledgerRules.map((rule) => {
+                      {filteredLedgerRules.map((rule) => {
                         const isApproving = approvingRuleIds.has(rule.rev_id);
+                        const effectiveStatus = ledgerEffectiveStatus(rule);
+                        const exempt = isAutoApplyExempt(rule);
                         const riskClass =
                           rule.risk === "high"
                             ? "bg-rose-100 text-rose-700"
@@ -678,12 +764,14 @@ export default function ImprovementLogPage() {
                             <td className="px-4 py-3 font-mono text-xs font-bold text-slate-600">
                               {rule.rev_id}
                             </td>
-                            <td className="px-4 py-3 text-xs text-slate-500">{rule.type}</td>
+                            <td className="px-4 py-3 text-xs text-slate-500">
+                              {LEDGER_TYPE_LABELS[rule.type] || rule.type}
+                            </td>
                             <td className="px-4 py-3">
                               <div className="text-sm text-slate-800">{rule.description}</div>
-                              {rule.applied_at && (
+                              {exempt && rule.manual_reason && (
                                 <div className="mt-0.5 text-[11px] text-slate-400">
-                                  適用済: {rule.applied_at}
+                                  手動対応の理由: {rule.manual_reason}
                                 </div>
                               )}
                             </td>
@@ -695,13 +783,37 @@ export default function ImprovementLogPage() {
                               )}
                             </td>
                             <td className="px-4 py-3">
-                              {rule.pending_review ? (
-                                <span className="inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700">
-                                  承認待ち
+                              {effectiveStatus === "applied" ? (
+                                <div>
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
+                                    ✅ 適用済み
+                                  </span>
+                                  <div className="mt-0.5 text-[11px] text-slate-400">{rule.applied_at}</div>
+                                </div>
+                              ) : effectiveStatus === "pending_review" ? (
+                                <div className="flex flex-col items-start gap-1">
+                                  <span className="inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700">
+                                    承認待ち
+                                  </span>
+                                  {exempt && (
+                                    <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                                      自動適用対象外
+                                    </span>
+                                  )}
+                                </div>
+                              ) : effectiveStatus === "manual_only" ? (
+                                <span
+                                  className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700"
+                                  title="承認済みですが、このルールは自動適用の対象外です。人が実装するまで改善は反映されません"
+                                >
+                                  自動適用対象外
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
-                                  ✅ 承認済み
+                                <span
+                                  className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700"
+                                  title="承認済みで、次回の朝パイプライン（batch_apply）で自動適用される予定です"
+                                >
+                                  適用待ち（次回自動適用）
                                 </span>
                               )}
                             </td>
@@ -710,9 +822,14 @@ export default function ImprovementLogPage() {
                                 <button
                                   onClick={() => handleApproveRule(rule.rev_id)}
                                   disabled={isApproving}
+                                  title={
+                                    exempt
+                                      ? "承認しても自動適用はされません（手動対応が必要な項目）。確認済みとして承認待ちから外します"
+                                      : "次回の朝パイプライン（batch_apply）で1回だけ自動適用されます"
+                                  }
                                   className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-40"
                                 >
-                                  {isApproving ? "処理中..." : "自動適用を許可"}
+                                  {isApproving ? "処理中..." : exempt ? "確認済みにする" : "自動適用を許可"}
                                 </button>
                               ) : (
                                 <span className="text-xs text-slate-300">—</span>
@@ -1022,6 +1139,10 @@ export default function ImprovementLogPage() {
             {data?.source && <span className="rounded-full bg-slate-100 px-2 py-1">{data.source}</span>}
             <span className="rounded-full bg-slate-100 px-2 py-1">{filteredItems.length}件表示</span>
           </div>
+
+          <p className="mt-3 text-xs text-slate-500">
+            操作ボタンは状態が「要確認」の項目にだけ表示されます。各ボタンにカーソルを合わせると動作の説明が表示されます。
+          </p>
         </section>
 
         <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
@@ -1082,18 +1203,21 @@ export default function ImprovementLogPage() {
                                 onClick={() => handleReview(item, "approved")}
                                 disabled={isActing}
                                 variant="approve"
+                                title="この改善案を実装対象として承認します（ledger と Obsidian に記録されます）"
                               />
                               <ActionButton
                                 label="今回は却下"
                                 onClick={() => handleReview(item, "rejected")}
                                 disabled={isActing}
                                 variant="reject"
+                                title="今回の提案としては不採用にします。永久拒否ではなく、却下の記録が残ります"
                               />
                               <ActionButton
                                 label="後で見る"
                                 onClick={() => handleReview(item, "deferred")}
                                 disabled={isActing}
                                 variant="defer"
+                                title="判断を保留します。項目は要確認のままリストに残ります"
                               />
                               <ActionButton
                                 label="今後ルール化"
@@ -1101,6 +1225,7 @@ export default function ImprovementLogPage() {
                                 disabled={isActing}
                                 variant="learn"
                                 icon={<Sparkles className="h-3.5 w-3.5" />}
+                                title="同種の問題を防ぐPDCAルールとして登録し、AIのプロンプトに注入されます（有効期限つき）"
                               />
                             </div>
                           ) : (
@@ -1180,6 +1305,7 @@ function RecipeCard({
         <button
           onClick={() => handle(onApprove)}
           disabled={acting}
+          title="この修正パッチを承認済みフォルダへ移動します。この時点ではコードは変わらず、実適用は別処理が実行します"
           className="rounded border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-40"
         >
           適用待ちへ送る
@@ -1187,6 +1313,7 @@ function RecipeCard({
         <button
           onClick={() => handle(onReject)}
           disabled={acting}
+          title="この修正パッチを破棄します（却下フォルダへ移動し、適用されません）"
           className="rounded border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-40"
         >
           ❌ 却下
@@ -1297,17 +1424,20 @@ function ActionButton({
   disabled,
   variant,
   icon,
+  title,
 }: {
   label: string;
   onClick: () => void;
   disabled: boolean;
   variant: "approve" | "reject" | "defer" | "learn";
   icon?: React.ReactNode;
+  title?: string;
 }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
+      title={title}
       className={`rounded border px-2 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${ACTION_STYLES[variant]}`}
     >
       {icon ? <span className="mr-1 inline-flex align-middle">{icon}</span> : null}
