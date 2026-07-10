@@ -24,6 +24,18 @@ except ImportError as e:
     print(f"❌ スクリプトインポートエラー: {e}")
     sys.exit(1)
 
+# 正常終了とみなすステータス。
+# NO_APPLIED / NO_IMPROVEMENTS / NO_NEW_IMPROVEMENTS は「適用するものが
+# なかった」だけで障害ではない（失敗扱いにすると analyze_pipeline_health が
+# 誤検出する。REV-024a の原因）。FAILED のみが exit 1 になる。
+SUCCESS_STATUSES = frozenset({
+    "COMPLETED",
+    "NO_APPLIED",
+    "DRY_RUN_COMPLETE",
+    "NO_IMPROVEMENTS",
+    "NO_NEW_IMPROVEMENTS",
+})
+
 
 def _item_title_signature(item: dict[str, Any]) -> str:
     """REV番号が変わっても同一テーマを判定するためのタイトル署名."""
@@ -490,9 +502,8 @@ def run_pipeline_from_cli():
         output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"\n✅ 結果を保存しました: {output_path}")
     
-    # 終了コード
-    # NO_APPLIED = auto-apply が 0 件だが正常終了（手動レビュー待ちは想定内）
-    sys.exit(0 if result["status"] in ["COMPLETED", "NO_APPLIED", "DRY_RUN_COMPLETE"] else 1)
+    # 終了コード（正常ステータスの定義は SUCCESS_STATUSES を参照）
+    sys.exit(0 if result["status"] in SUCCESS_STATUSES else 1)
 
 
 if __name__ == "__main__":
