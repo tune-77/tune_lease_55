@@ -6900,6 +6900,34 @@ def multi_agent_screening(req: MultiAgentRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/multi-agent-screening/stream")
+def multi_agent_screening_stream(req: MultiAgentRequest):
+    """
+    マルチエージェント討論審査（SSE ストリーミング版）。
+
+    ラウンドごとの途中経過を配信する。イベントは
+    {"type": "start" | "round1" | "round2" | "result" | "core_candidates" | "error", ...payload}。
+    result まで受信すれば審査は完了。core_candidates は結果表示後に遅延配信される。
+    """
+    from api.multi_agent_screening import iter_debate_screening
+    params = req.model_dump()
+
+    def event_generator():
+        try:
+            for stage, payload in iter_debate_screening(params):
+                yield f"data: {json.dumps({'type': stage, **payload}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            yield f"data: {json.dumps({'type': 'error', 'detail': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+    )
+
+
 @app.get("/api/conversation-history")
 def get_conversation_history(company_name: str, limit: int = 5):
     """企業名で過去の討論履歴を取得する。"""
