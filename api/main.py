@@ -163,7 +163,6 @@ from api.schemas import (
     PromptRuleRegisterRequest,
     WorkLogRequest,
     WorkLogResponse,
-    BusinessPlanCheckRequest,
 )
 from pydantic import BaseModel, Field
 from typing import List, Any, Dict, Literal, Optional
@@ -6929,23 +6928,6 @@ def multi_agent_screening_stream(req: MultiAgentRequest):
     )
 
 
-@app.post("/api/business-plan/validate")
-def validate_business_plan_endpoint(req: BusinessPlanCheckRequest):
-    """
-    事業計画チェック（簡易版）。
-
-    直近実績と計画値の整合性を機械チェックし、Gemini が利用可能なら
-    講評・顧客への確認質問を付ける。LLM 不通でも機械チェックだけで応答する。
-    """
-    from api.business_plan_check import validate_business_plan
-    try:
-        return validate_business_plan(req.model_dump())
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @app.get("/api/conversation-history")
 def get_conversation_history(company_name: str, limit: int = 5):
     """企業名で過去の討論履歴を取得する。"""
@@ -11084,6 +11066,14 @@ def post_chat(req: ChatRequest):
                 print(f"[ShionExperienceLoop] 読み込みエラー: {_experience_loop_error}")
         if not is_general_response_mode:
             grey_judgment_context, grey_judgment_payload = _build_grey_judgment_prompt_block(req.message)
+        # 事業計画相談モード（例:「ラーメン屋をやりたい」）: intent 分岐には触れず
+        # 追加プロンプトブロックとしてのみ作用する
+        business_plan_consult_context = ""
+        try:
+            from api.business_plan_check import build_business_plan_chat_block
+            business_plan_consult_context = build_business_plan_chat_block(req.message)
+        except Exception as _bplan_error:
+            print(f"[BusinessPlanConsult] ブロック生成エラー: {_bplan_error}")
         neutral_general_system_prompt = (
             "あなたはリース審査にも詳しい一般AIアシスタントです。"
             "中立で分かりやすく、日本語で簡潔に答えてください。"
@@ -11186,7 +11176,7 @@ def post_chat(req: ChatRequest):
                     memory_to_judgment=memory_to_judgment_payload,
                 )
             base_system_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
-            base_system_prompt = base_system_root + mode_instruction + response_mode_context + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + consciousness_ux_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
+            base_system_prompt = base_system_root + mode_instruction + response_mode_context + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + consciousness_ux_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
             pdca_block = (
                 build_pdca_prompt_block()
                 if _should_apply_chat_pdca(
@@ -11495,7 +11485,7 @@ def post_chat(req: ChatRequest):
             )
 
         base_prompt_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
-        base_effective_prompt = base_prompt_root + mode_instruction + response_mode_context + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + guidance.prompt_suffix
+        base_effective_prompt = base_prompt_root + mode_instruction + response_mode_context + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + guidance.prompt_suffix
         pdca_block = (
             build_pdca_prompt_block()
             if _should_apply_chat_pdca(
