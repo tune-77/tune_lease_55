@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect daily lease-related news and write a digest into iCloud 上の Obsidian Vault.
+"""Collect daily industry-risk news and write a digest into iCloud 上の Obsidian Vault.
 
 The collector uses Google News RSS search queries by default, deduplicates
 articles, summarizes them into a compact Markdown note, and optionally appends
@@ -50,42 +50,42 @@ DEFAULT_VAULT_CANDIDATES = [
 
 QUERY_SETS: dict[str, tuple[str, ...]] = {
     "lease_core": (
-        "リース",
-        "オペレーティングリース",
-        "設備投資 リース",
+        "設備投資 動向",
+        "中小企業 設備投資",
+        "企業倒産 動向",
     ),
     "finance_policy": (
-        "リース 金利",
-        "リース 審査",
-        "リース 税制",
-        "補助金 設備投資 リース",
+        "日銀 金利 中小企業",
+        "補助金 設備投資 中小企業",
+        "税制 設備投資 中小企業",
+        "資金繰り 中小企業",
     ),
     "industry_transport": (
-        "物流 リース",
-        "車両 リース",
-        "トラック リース",
-        "EV リース",
+        "物流 2024年問題",
+        "トラック 運賃 燃料費",
+        "運送業 倒産",
+        "商用車 価格 動向",
     ),
     "industry_construction": (
-        "建設 リース",
-        "建機 リース",
-        "不動産 設備投資",
-        "工場 建設 リース",
+        "建設業 倒産",
+        "公共工事 動向",
+        "建設資材 価格",
+        "建設機械 中古 価格",
     ),
     "industry_manufacturing": (
-        "製造 リース",
-        "省力化投資 リース",
-        "工場 自動化 リース",
-        "ロボット リース",
+        "工作機械 受注",
+        "製造業 設備投資",
+        "工場 自動化 省力化",
+        "半導体投資 国内",
     ),
 }
 
 QUERY_SET_LABELS: dict[str, str] = {
-    "lease_core": "基礎",
+    "lease_core": "設備投資・倒産",
     "finance_policy": "金融・政策",
-    "industry_transport": "物流・車両",
-    "industry_construction": "建設・不動産",
-    "industry_manufacturing": "製造・DX",
+    "industry_transport": "運送・車両",
+    "industry_construction": "建設・建機",
+    "industry_manufacturing": "製造・設備",
 }
 
 RSS_FEEDS: dict[str, tuple[tuple[str, str], ...]] = {
@@ -123,7 +123,7 @@ PROFILE_DEFINITIONS: dict[str, dict[str, tuple[str, ...]]] = {
     },
 }
 
-DEFAULT_NEWS_DIR = "05-クリップ_記事/リースニュース"
+DEFAULT_NEWS_DIR = "05-クリップ_記事/業界リスクニュース"
 DEFAULT_DAILY_DIR = "Daily"
 DEFAULT_PROFILE = "industry-watch"
 
@@ -137,6 +137,8 @@ THEME_KEYWORDS: dict[str, tuple[str, ...]] = {
     "製造・DX": ("製造", "工場", "DX", "AI", "自動化", "ロボット", "半導体"),
     "金融・与信": ("与信", "融資", "審査", "貸出", "クレジット", "リース"),
     "法令・制度": ("法改正", "制度", "省庁", "税制", "補助金", "助成金"),
+    "倒産・資金繰り": ("倒産", "破産", "資金繰り", "返済", "延滞", "赤字", "減益"),
+    "中古・残価": ("中古", "残価", "中古価格", "再販", "オークション"),
 }
 
 
@@ -486,7 +488,8 @@ def classify_articles(articles: list[Article], use_ai: bool = True) -> None:
             for index, article in enumerate(articles)
         ]
         prompt = (
-            "以下のリース関連ニュースを、リース審査で後から検索・再利用できるよう分類してください。"
+            "以下の顧客業界・物件・市況ニュースを、リース審査で後から検索・再利用できるよう分類してください。"
+            "リース会社そのもののニュースではなく、借手の返済力、設備稼働、物件価値、投資判断に効く論点を優先してください。"
             "記事にない事実は推測せず、不明な対象物件は「対象物件未特定」としてください。"
             "impact_directionはpositive/negative/neutral/mixed、source_reliabilityはhigh/medium/low、"
             "valid_untilはYYYY-MM-DDです。法令は原則1年、市況は60日、企業ニュースは180日、"
@@ -593,6 +596,10 @@ def _review_line(tags: tuple[str, ...], theme: str) -> str:
         return "工期・更新投資・移設可能性・現場稼働への影響を確認する。"
     if "製造/DX" in tags:
         return "更新投資の回収期間と生産性改善効果を確認する。"
+    if theme == "倒産・資金繰り":
+        return "同業の倒産・資金繰り悪化が、対象企業の受注・回収・返済余力に波及していないか確認する。"
+    if theme == "中古・残価":
+        return "中古価格・残価・処分ルートの変化が、物件保全とリース期間に合うか確認する。"
     return f"{theme}の変化を踏まえ、提示条件と審査コメントを更新する。"
 
 
@@ -916,7 +923,7 @@ def _save_articles_to_obsidian(
             if _merge_related_report(duplicate, art):
                 saved.append(Path(duplicate["path"]))
             continue
-        fname = f"{date_str}_リースニュース_{_safe_filename(art.title)}.md"
+        fname = f"{date_str}_業界リスクニュース_{_safe_filename(art.title)}.md"
         fpath = _safe_note_path(vault, f"{news_dir}/{fname}")
         content = _build_article_content(art, date_str, week, month, profile)
         fpath.write_text(content, encoding="utf-8")
@@ -973,24 +980,24 @@ def _append_daily_digest(vault: Path, daily_dir: str, news_dir: str, date_str: s
     counts = _theme_counts(articles)
     theme_summary = ", ".join(f"{k} {v}件" for k, v in counts[:3]) if counts else "なし"
     body = "\n".join([
-        f"## {dt.datetime.now().strftime('%H:%M')} Lease News",
+        f"## {dt.datetime.now().strftime('%H:%M')} Industry Risk News",
         f"- 収集件数: {len(articles)}",
         f"- 主なテーマ: {theme_summary}",
-        f"- 保存先: [[{news_dir}/|リースニュース/]]",
+        f"- 保存先: [[{news_dir}/|業界リスクニュース/]]",
     ])
     _append_text(path, body)
     return path
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Collect daily lease-related news into iCloud 上の Obsidian Vault.")
+    parser = argparse.ArgumentParser(description="Collect daily industry-risk news into iCloud 上の Obsidian Vault.")
     parser.add_argument("--vault", default=None, help="iCloud 上の Obsidian Vault パス（省略時は自動検出）")
     parser.add_argument("--news-dir", default=DEFAULT_NEWS_DIR, help="Obsidian note directory for news digests.")
     parser.add_argument("--daily-dir", default=DEFAULT_DAILY_DIR, help="Daily note directory to append a short digest.")
     parser.add_argument(
         "--profile",
         default=os.environ.get("LEASE_NEWS_PROFILE", DEFAULT_PROFILE),
-        help="Built-in profile name. Defaults to LEASE_NEWS_PROFILE or lease-core.",
+        help="Built-in profile name. Defaults to LEASE_NEWS_PROFILE or industry-watch.",
     )
     parser.add_argument(
         "--queries",
@@ -1044,7 +1051,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"DRY-RUN: {len(articles)} articles")
         print(f"target_dir={vault / news_dir}")
         for art in articles[:3]:
-            fname = f"{date_str}_リースニュース_{_safe_filename(art.title)}.md"
+            fname = f"{date_str}_業界リスクニュース_{_safe_filename(art.title)}.md"
             print(f"  {fname}")
         return 0
 

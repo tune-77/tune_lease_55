@@ -20,6 +20,7 @@ slack-sdk==3.35.0
 timesfm
 fastapi>=0.115.0
 uvicorn>=0.32.0
+slowapi==0.1.9
 python-multipart>=0.0.20  # api/routers/ocr.py の UploadFile に必要
 httpx>=0.27.0
 google-genai>=1.0.0

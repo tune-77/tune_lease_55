@@ -25,10 +25,10 @@ def test_write_lease_news_focus_note_creates_project_note_and_daily_digest(tmp_p
         ],
     )
     vault = tmp_path / "vault"
-    news_dir = vault / "05-クリップ_記事" / "リースニュース"
+    news_dir = vault / "05-クリップ_記事" / "業界リスクニュース"
     news_dir.mkdir(parents=True)
 
-    note = news_dir / "2026-06-11_リースニュース_建設_AI導入.md"
+    note = news_dir / "2026-06-11_業界リスクニュース_建設_AI導入.md"
     note.write_text(
         """---
 date: 2026-06-11
@@ -61,7 +61,7 @@ importance: 中
     assert result is not None
     assert Path(result.note_path).exists()
 
-    focus_note = vault / "Projects" / "tune_lease_55" / "News" / "2026-06-11_lease-news-focus.md"
+    focus_note = vault / "Projects" / "tune_lease_55" / "News" / "2026-06-11_industry-risk-news-focus.md"
     assert focus_note.exists()
     focus_text = focus_note.read_text(encoding="utf-8")
     assert "## 注目論点" in focus_text
@@ -71,11 +71,11 @@ importance: 中
     assert daily_note.exists()
     daily_text = daily_note.read_text(encoding="utf-8")
     assert "##" in daily_text
-    assert "リースニュースの注目論点" in daily_text
+    assert "業界リスクニュースの注目論点" in daily_text
 
     reflection = digest.write_lease_news_reflection_note(date_str="2026-06-11", vault=vault, focus=focus)
     assert reflection is not None
-    reflection_note = vault / "Projects" / "tune_lease_55" / "News" / "2026-06-11_lease-news-reflection.md"
+    reflection_note = vault / "Projects" / "tune_lease_55" / "News" / "2026-06-11_industry-risk-news-reflection.md"
     assert reflection_note.exists()
     reflection_text = reflection_note.read_text(encoding="utf-8")
     assert "## 今日の外界へのぼやき" in reflection_text
@@ -86,7 +86,7 @@ importance: 中
     parsed = digest.get_latest_lease_news_reflection(vault)
     assert parsed.available
     assert parsed.note_date == "2026-06-11"
-    assert parsed.note_path == "Projects/tune_lease_55/News/2026-06-11_lease-news-reflection.md"
+    assert parsed.note_path == "Projects/tune_lease_55/News/2026-06-11_industry-risk-news-reflection.md"
     assert parsed.thought_lines
     assert 3 <= len(parsed.thought_lines) <= 4
     assert parsed.tomorrow_lines

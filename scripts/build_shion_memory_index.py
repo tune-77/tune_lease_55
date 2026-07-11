@@ -142,17 +142,38 @@ def _knowledge_markdown_records() -> list[dict[str, Any]]:
             text = _read_text(path)
             snippets = _markdown_snippets(text)
             mtype = "judgment_memory" if "/rules/" in rel else "factual_memory"
+            # ノートタイトル（主題語）。content には含めない（id が変わり
+            # created_at / last_used_at の引き継ぎが壊れるため）。ベクトル索引側が
+            # 埋め込みテキストの前置に使う。
+            title = _note_title(text)
             for snippet in snippets:
-                records.append(
-                    make_memory_record(
-                        snippet,
-                        source="knowledge_base",
-                        source_path=rel,
-                        memory_type=mtype,  # type: ignore[arg-type]
-                        confidence=0.82,
-                    ).to_dict()
-                )
+                record = make_memory_record(
+                    snippet,
+                    source="knowledge_base",
+                    source_path=rel,
+                    memory_type=mtype,  # type: ignore[arg-type]
+                    confidence=0.82,
+                ).to_dict()
+                if title:
+                    record["topic"] = title
+                records.append(record)
     return records
+
+
+def _note_title(text: str) -> str:
+    """frontmatter の title:、なければ最初の H1 見出しを返す。"""
+    lines = text.splitlines()
+    if lines and lines[0].strip() == "---":
+        for line in lines[1:]:
+            stripped = line.strip()
+            if stripped == "---":
+                break
+            if stripped.startswith("title:"):
+                return stripped[len("title:"):].strip().strip("\"'")
+    for line in lines:
+        if line.startswith("# "):
+            return line[2:].strip()
+    return ""
 
 
 def _markdown_snippets(text: str) -> list[str]:

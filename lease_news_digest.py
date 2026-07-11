@@ -1,4 +1,4 @@
-"""Helpers for reading the latest lease-news digest from Obsidian."""
+"""Helpers for reading the latest industry-risk news digest from Obsidian."""
 
 from __future__ import annotations
 
@@ -11,6 +11,8 @@ from pathlib import Path
 
 
 DEFAULT_NEWS_REL_DIRS = (
+    Path("05-クリップ_記事") / "業界リスクニュース",
+    Path("業界リスクニュース"),
     Path("05-クリップ_記事") / "リースニュース",
     Path("リースニュース"),
 )
@@ -37,7 +39,7 @@ class LeaseNewsFocus:
             return ""
         if self.theme_summary:
             return f"最新テーマ: {self.theme_summary}"
-        return "最新ニュースの論点あり"
+        return "最新の業界リスク論点あり"
 
 
 @dataclass(frozen=True)
@@ -368,7 +370,9 @@ def _latest_news_note(vault: Path) -> Path | None:
         news_dir = vault / rel_dir
         if not news_dir.exists():
             continue
+        notes.extend(news_dir.glob("*_業界リスクニュース_*.md"))
         notes.extend(news_dir.glob("*_リースニュース_*.md"))
+        notes.extend(news_dir.glob("*_industry-risk-news.md"))
         notes.extend(news_dir.glob("*_lease-news.md"))
     if not notes:
         return None
@@ -382,6 +386,7 @@ def _latest_reflection_note(vault: Path) -> Path | None:
     for news_dir in news_dirs:
         if not news_dir.exists():
             continue
+        notes.extend(news_dir.glob("*_industry-risk-news-reflection.md"))
         notes.extend(news_dir.glob("*_lease-news-reflection.md"))
     if not notes:
         return None
@@ -782,7 +787,7 @@ def write_lease_news_actions_note(
 
     news_dir = vault / "Projects" / "tune_lease_55" / "News"
     news_dir.mkdir(parents=True, exist_ok=True)
-    note_path = news_dir / f"{action_date}_lease-news-actions.md"
+    note_path = news_dir / f"{action_date}_industry-risk-news-actions.md"
     json_path = _actions_json_path(action_date)
     latest_path = _actions_latest_path()
 
@@ -793,7 +798,7 @@ def write_lease_news_actions_note(
         f"action_count: {len(actions.action_items)}",
         f"ignored_count: {len(actions.ignored_titles)}",
         "---",
-        f"# リースニュース審査アクション — {action_date}",
+        f"# 業界リスクニュース審査アクション — {action_date}",
         "",
         "## 今日の使いどころ",
     ]
@@ -1021,7 +1026,7 @@ def record_lease_news_focus(
     if vault:
         now_label = dt.datetime.now().strftime("%H:%M")
         lines = [
-            f"## {now_label} リースニュースの注目論点",
+            f"## {now_label} 業界リスクニュースの注目論点",
             "",
             f"- テーマ: {theme_summary or '不明'}",
             f"- 収集セット: {bucket_summary or '不明'}",
@@ -1068,7 +1073,7 @@ def write_lease_news_focus_note(
     focus_date = date_str or dt.date.today().isoformat()
     news_dir = vault / "Projects" / "tune_lease_55" / "News"
     news_dir.mkdir(parents=True, exist_ok=True)
-    note_path = news_dir / f"{focus_date}_lease-news-focus.md"
+    note_path = news_dir / f"{focus_date}_industry-risk-news-focus.md"
 
     focus_lines = list(focus.focus_lines[:4]) or ["直近のニュースを踏まえ、提示条件と審査コメントを更新する。"]
     memo_lines = list(focus.memo_lines[:3])
@@ -1085,7 +1090,7 @@ def write_lease_news_focus_note(
         f"bucket_summary: {focus.bucket_summary}",
         f"tag_summary: {focus.tag_summary}",
         "---",
-        f"# リースニュースの注目論点 — {focus_date}",
+        f"# 業界リスクニュースの注目論点 — {focus_date}",
         "",
         "## 概要",
         f"- テーマ: {focus.theme_summary or '不明'}",
@@ -1185,13 +1190,13 @@ def write_lease_news_reflection_note(
     reflection_date = date_str or dt.date.today().isoformat()
     news_dir = vault / "Projects" / "tune_lease_55" / "News"
     news_dir.mkdir(parents=True, exist_ok=True)
-    note_path = news_dir / f"{reflection_date}_lease-news-reflection.md"
+    note_path = news_dir / f"{reflection_date}_industry-risk-news-reflection.md"
 
     theme = focus.theme_summary or "不明"
     tag_summary = focus.tag_summary or "なし"
     focus_lines = list(focus.focus_lines[:3]) or ["直近のニュースを見て、判断の前提を更新する。"]
     external_grumble_lines = _build_external_grumble_lines(focus)
-    headline = focus.headline or "最新ニュースの論点あり"
+    headline = focus.headline or "最新の業界リスク論点あり"
     try:
         from lease_intelligence_activity import observe_user_behavior
         from lease_intelligence_mind import update_user_model

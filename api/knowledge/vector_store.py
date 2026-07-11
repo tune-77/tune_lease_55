@@ -46,6 +46,8 @@ _PREFERRED_PATH_BOOSTS = (
     ("tuneLease55/知見・分析/", 0.05),
 )
 _LOW_PRIORITY_PATH_PENALTIES = (
+    ("05-クリップ_記事/業界リスクニュース/", 0.20),
+    ("業界リスクニュース/", 0.20),
     ("05-クリップ_記事/リースニュース/", 0.25),
     ("リースニュース/", 0.25),
     ("07-アーカイブ/", 0.16),
@@ -595,7 +597,12 @@ class KnowledgeVectorStore:
                 penalty += 0.18
         if any(
             path.startswith(prefix)
-            for prefix in ("05-クリップ_記事/リースニュース/", "リースニュース/")
+            for prefix in (
+                "05-クリップ_記事/業界リスクニュース/",
+                "業界リスクニュース/",
+                "05-クリップ_記事/リースニュース/",
+                "リースニュース/",
+            )
         ) and "ニュース" not in low_query:
             penalty += 0.45
         if path.startswith("07-アーカイブ/"):

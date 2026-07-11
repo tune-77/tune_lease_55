@@ -19,6 +19,7 @@ _VAULT_PATH = get_obsidian_vault_path()
 
 # scan_vault が必ず対象に含めるべき Vault 直下サブディレクトリ（明示ドキュメント）
 _REQUIRED_SUBDIRS: tuple[str, ...] = (
+    "業界リスクニュース",
     "リースニュース",
     "リース知識",
     "Projects/tune_lease_55",

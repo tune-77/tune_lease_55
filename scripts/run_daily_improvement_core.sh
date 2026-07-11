@@ -178,7 +178,8 @@ if [ -f "${RESULT_FILE}" ]; then
     "${PYTHON}" "${PROJECT_ROOT}/.agents/skills/improvement-report-sync/scripts/sync_improvement_reports.py" \
         --report "${RESULT_FILE}" \
         --latest "${LATEST_FILE}" \
-        --from-report
+        --from-report \
+        --include-known-cleanup
     SYNC_EXIT=$?
     log_step "sync_improvement_reports" ${SYNC_EXIT}
     if [ ${SYNC_EXIT} -ne 0 ]; then

@@ -180,6 +180,24 @@ def _database_url() -> str:
     return loaded
 
 
+def _unreachable_cloudsql_socket(dsn: str) -> str:
+    """DSN が Cloud SQL Unix ソケット形式で、この環境にソケットが無ければそのパスを返す。
+
+    ソケット `/cloudsql/...` は Cloud Run 内にしか存在しないため、ローカル実行では
+    接続を試みる前にスキップ判定に使う（tune-lease-db インスタンスは 2026-07-01 削除済み）。
+    """
+    from urllib.parse import parse_qs, unquote, urlsplit
+
+    try:
+        query = urlsplit(dsn).query
+        host = unquote(parse_qs(query).get("host", [""])[0])
+    except ValueError:
+        return ""
+    if host.startswith("/cloudsql/") and not Path(host).exists():
+        return host
+    return ""
+
+
 DEFAULT_VAULT = (
     Path.home()
     / "Library"

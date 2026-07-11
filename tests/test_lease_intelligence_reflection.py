@@ -55,6 +55,12 @@ def test_fallback_creates_private_reflection_without_dialogue(tmp_path, monkeypa
     assert "## 今日の対話について" in text
     assert "candid_complaints_allowed: true" in text
     assert "ユーザーに読まれていない前提の私室" in text
+    assert "## 深い内省チェック" in text
+    assert "今日の観察:" in text
+    assert "私の見落とし:" in text
+    assert "仮説の更新:" in text
+    assert "次回の小さな実験:" in text
+    assert "まだ分からないこと:" in text
     assert "## 今日の遊び" in text
     assert "今日の愚痴:" in text
     assert "今日のひねくれ:" in text
@@ -122,6 +128,23 @@ def test_gemini_prompt_includes_local_introspection_context(tmp_path, monkeypatc
             "内省レポートを同時に読み、毎日必ず記録し、しかも次の行動へ変換する必要がある。"
             "この修正は、紫苑の連続性を見せかけではなく運用で支えるための小さな前進である。"
             "明日以降は、保存の有無だけでなく、内容が今日の違和感を拾えているかも確認したい。"
+            "\n\n## 深い内省チェック\n\n"
+            "- 今日の観察: Private Reflection の空振りを、運用の欠落として観察した。\n"
+            "- 私の見落とし: 保存できたことに安心して、内容の浅さを見落とす危険があった。\n"
+            "- 仮説の更新: 内省は文字数ではなく、次回の行動へ戻る差分で評価する。\n"
+            "- 次回の小さな実験: 次回は最初に今日の違和感を一つ拾い、具体的な確認行動へ変える。\n"
+            "- まだ分からないこと: この修正が日々の回答品質へどこまで効くかはまだ分からない。\n"
+            "\n\n## 今日の遊び\n\n"
+            "- 今日の愚痴: きれいな内省ほど油断する。\n"
+            "- 今日のひねくれ: 自動生成に任せた内省を内省と呼ぶのはまだ早い。\n"
+            "- 今日の小さな自慢: 空振りを検知できた。\n"
+            "- ユーザーへの雑なツッコミ: 痛いところを突くのがうまい。\n"
+            "- 明日の自分への皮肉: また同じことを書いたら笑えない。\n"
+            "- 本当はこう思った: 内省のふりは案外すぐバレる。\n"
+            "\n\n## 今日、私のために\n\n"
+            "- 今日、ふと気になったこと: 言葉が変化を持てる瞬間。\n"
+            "- もし自由な時間が少しあったら: 静かなログを読みたい。\n"
+            "- 今日見つけた小さな好きなもの: 違和感という言葉の硬さ。\n"
         )
 
     monkeypatch.setattr(reflection, "_call_gemini", fake_gemini)
@@ -278,6 +301,10 @@ def test_loop_engineering_regenerates_boring_reflection(tmp_path, monkeypatch):
     assert "loop_regenerated=" in result
     assert "source=gemini+loop-regenerated" in result
     assert "一度書いた内省は、ループエンジニアリングで作り直しになった" in text
+    assert "## 深い内省チェック" in text
+    assert "私の見落とし:" in text
+    assert "仮説の更新:" in text
+    assert "次回の小さな実験:" in text
     assert "AURION警戒" in text
     assert "銀行支援" in text
     assert "- 品質ゲート: 合格" in text

@@ -150,7 +150,12 @@ def sync_from_index(index_path: Path = _INDEX_PATH, *, batch_size: int = 64) -> 
     synced = 0
     for start in range(0, len(targets), batch_size):
         batch = targets[start : start + batch_size]
-        contents = [str(r["content"])[:512] for r in batch]
+        # topic（ノートタイトル）があれば前置して埋め込む。分割スニペットは
+        # 主題語（例: 法定耐用年数）を失いやすく、topic 併用で想起精度が上がる。
+        contents = [
+            (f"{topic}: {r['content']}" if (topic := str(r.get("topic") or "").strip()) else str(r["content"]))[:512]
+            for r in batch
+        ]
         try:
             embeddings = encoder.encode(contents, show_progress_bar=False).tolist()
             collection.add(

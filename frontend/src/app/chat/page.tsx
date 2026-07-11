@@ -779,9 +779,9 @@ export default function ChatPage() {
         <section className="flex-shrink-0 mb-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div className="text-xs font-black uppercase tracking-wide text-amber-700">最新リースニュース</div>
+              <div className="text-xs font-black uppercase tracking-wide text-amber-700">最新業界リスクニュース</div>
               <h2 className="mt-1 text-sm font-black text-amber-950">
-                {leaseNewsFocus.headline || leaseNewsFocus.theme_summary || "最新ニュースの注目論点"}
+                {leaseNewsFocus.headline || leaseNewsFocus.theme_summary || "最新の業界リスク論点"}
               </h2>
               {leaseNewsFocus.note_date && (
                 <p className="mt-1 text-[11px] text-amber-700">更新: {leaseNewsFocus.note_date}</p>
@@ -819,7 +819,7 @@ export default function ChatPage() {
               ))}
             </div>
           ) : (
-            <p className="mt-3 text-xs text-amber-800">ニュースの注目論点を取得しました。</p>
+            <p className="mt-3 text-xs text-amber-800">業界リスクニュースの注目論点を取得しました。</p>
           )}
         </section>
       )}

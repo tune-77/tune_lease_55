@@ -131,9 +131,13 @@ def check_news_note(vault: Path, max_age_hours: int) -> CheckResult:
     if not news_dir.exists():
         return CheckResult("lease_news", False, f"missing news directory: {news_dir}")
 
-    notes = sorted(news_dir.glob("*_lease-news.md"), key=lambda path: path.stat().st_mtime, reverse=True)
+    notes = sorted(
+        list(news_dir.glob("*_industry-risk-news-focus.md")) + list(news_dir.glob("*_lease-news.md")),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
     if not notes:
-        return CheckResult("lease_news", False, f"no lease news notes under {news_dir}")
+        return CheckResult("lease_news", False, f"no industry risk news notes under {news_dir}")
 
     latest = notes[0]
     age = _age_hours(latest)

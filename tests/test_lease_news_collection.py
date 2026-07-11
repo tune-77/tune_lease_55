@@ -21,7 +21,7 @@ def _article(**overrides):
         "source": "Example News",
         "published": dt.datetime(2026, 6, 6, tzinfo=dt.timezone.utc),
         "summary": "建設会社がAIを導入し、事務作業の削減を進める。",
-        "query": "建設 リース",
+        "query": "建設業 倒産",
         "theme": "製造・DX",
         "tags": ("建設/不動産", "製造/DX"),
         "score": 2,
@@ -65,7 +65,7 @@ def test_article_content_contains_ai_screening_classification():
 
 def test_duplicate_article_is_merged_into_related_reports(tmp_path):
     vault = tmp_path / "vault"
-    news_dir = "05-クリップ_記事/リースニュース"
+    news_dir = "05-クリップ_記事/業界リスクニュース"
     first = _article()
     second = _article(
         link="https://another.example.com/story/99",
@@ -100,7 +100,7 @@ def test_duplicate_article_is_merged_into_related_reports(tmp_path):
 
 def test_exact_duplicate_does_not_append_twice(tmp_path):
     vault = tmp_path / "vault"
-    news_dir = "05-クリップ_記事/リースニュース"
+    news_dir = "05-クリップ_記事/業界リスクニュース"
     article = _article()
     news.classify_articles([article], use_ai=False)
 

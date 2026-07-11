@@ -668,10 +668,10 @@ export default function HomeDashboard() {
                   <div>
                     <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
                       <Newspaper className="text-sky-500 w-5 h-5" />
-                      リースニュースの注目論点
+                      業界リスクニュースの注目論点
                     </h3>
                     <p className="text-xs text-slate-500 font-bold mt-1">
-                      {newsFocus?.headline || "最新ニュースの論点を表示"}
+                      {newsFocus?.headline || "最新の業界リスク論点を表示"}
                     </p>
                   </div>
                   {newsFocus?.note_date && (
@@ -1018,7 +1018,7 @@ export default function HomeDashboard() {
           <div className="flex items-center justify-between mb-6">
             <h3 className="font-black text-2xl text-slate-800 border-l-4 border-sky-600 pl-3 flex items-center gap-2">
               <Newspaper className="w-6 h-6 text-sky-500" />
-              最新リースニュース
+              最新業界リスクニュース
             </h3>
             <button
               onClick={() => setNewsFormOpen((prev) => !prev)}
@@ -1245,8 +1245,8 @@ export default function HomeDashboard() {
               { key: "showKpis", label: "KPI", desc: "総成約数と平均指標" },
               { key: "showHighlights", label: "改善項目", desc: "最新の改善候補" },
               { key: "showGaps", label: "不足項目", desc: "改善診断の上位3件" },
-              { key: "showNews", label: "リースニュース", desc: "必要な時だけ表示する論点" },
-              { key: "showNewsDigest", label: "ニュースダイジェスト", desc: "AI要約ニュース" },
+              { key: "showNews", label: "業界リスクニュース", desc: "審査に効く市況・業界論点" },
+              { key: "showNewsDigest", label: "ニュースダイジェスト", desc: "AI要約した業界リスク" },
               { key: "showRecentCases", label: "案件履歴", desc: "最近の成約・失注" },
             ].map((item) => {
               const checked = panelSettings[item.key as keyof HomePanelSettings];

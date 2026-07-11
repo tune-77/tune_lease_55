@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import axios from 'axios';
 import DOMPurify from 'dompurify';
-import { API_BASE } from '../../lib/api';
+import { apiClient } from '../../lib/api';
 import { FileText, Download, Loader2, Printer, ShieldCheck } from 'lucide-react';
 import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, Radar, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
 import { toThousandYenPayload } from '../../lib/scoringUnits';
@@ -24,7 +23,7 @@ export default function ReportGenerator({ apiResult, formData, gunshiText }: Rep
     
     setLoading(true);
     try {
-      const res = await axios.post(`/api/report/generate`, {
+      const res = await apiClient.post(`/api/report/generate`, {
         result_data: apiResult,
         inputs: toThousandYenPayload(formData)
       });

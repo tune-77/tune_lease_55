@@ -32,6 +32,13 @@ def _normalize_rate(value: object) -> float:
         return 0.0
 
 
+def _anonymize_competitor_name(value: object) -> str:
+    name = str(value or "").strip()
+    if name in {"\u7fa4\u9280\u30ea\u30fc\u30b9"}:
+        return "地銀系リース"
+    return name
+
+
 # 業種カラーパレット（成約率に応じてグラデーション）
 def _win_rate_color(win_rate: float) -> str:
     """成約率0〜1 → 色コード（赤→黄→緑）"""
@@ -57,7 +64,7 @@ def build_graph_data() -> dict:
         status = c.get("final_status", "")
         if status in ("検収完了", "検収"):
             status = "成約"
-        competitor = c.get("competitor_name", "") or ""
+        competitor = _anonymize_competitor_name(c.get("competitor_name", ""))
         has_competitor = c.get("competitor", "") == "競合あり"
         score = float(c.get("score") or (c.get("result") or {}).get("score") or 0)
         final_rate = _normalize_rate(c.get("final_rate"))

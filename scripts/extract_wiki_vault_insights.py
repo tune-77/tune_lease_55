@@ -1,5 +1,5 @@
 """
-lease-wiki-vault の @AI_Insight_Evolved_*.md から「## 3. 結論」セクションを読み込み、
+Obsidian knowledge vault の @AI_Insight_Evolved_*.md から「## 3. 結論」セクションを読み込み、
 改善候補を [改善] タグ付きテキストとして stdout に出力する。
 
 前回処理済みの日付を /tmp/wiki_vault_last_processed.txt で管理し、
@@ -36,6 +36,19 @@ _ACTION_PATTERNS: list[tuple[str, str]] = [
     (r"^(.+?)を追加(?:する|すべき)。?$", r"\1の追加"),
 ]
 
+# 戦略・研究メモは重要だが、毎日の「修正すべきUI/APIバグ」として出すと
+# needs_review を汚す。別途 planning/ の研究テーマとして扱う。
+_STRATEGIC_RESEARCH_PATTERNS: list[str] = [
+    "Q_risk",
+    "モデルドリフト",
+    "キャリブレーション",
+    "スコアリング外",
+    "60-80帯",
+    "40-60帯",
+    "同期とDB監査",
+    "PSI/CSI",
+]
+
 
 def _get_last_processed() -> date | None:
     if not _LAST_PROCESSED_FILE.exists():
@@ -68,6 +81,8 @@ def _convert_to_improvement(bullet: str, source: str) -> str | None:
     text = re.sub(r"^[-・\s]+", "", bullet).strip()
     if len(text) < 10:
         return None
+    if any(pattern.lower() in text.lower() for pattern in _STRATEGIC_RESEARCH_PATTERNS):
+        return None
 
     for pattern, repl in _ACTION_PATTERNS:
         if re.match(pattern, text):
@@ -79,7 +94,7 @@ def _convert_to_improvement(bullet: str, source: str) -> str | None:
             if len(title) >= 8:
                 return (
                     f"[改善] {title}\n"
-                    f"理由：lease-wiki-vault/{source} の横断推論結論から自動抽出\n"
+                    f"理由：Obsidian knowledge vault/{source} の横断推論結論から自動抽出\n"
                 )
     return None
 
@@ -113,7 +128,7 @@ def process_insight_file(md_file: Path) -> list[str]:
 
 def main() -> None:
     if not _WIKI_VAULT.exists():
-        print(f"警告: lease-wiki-vault が見つかりません: {_WIKI_VAULT}", file=sys.stderr)
+        print(f"警告: Obsidian knowledge vault が見つかりません: {_WIKI_VAULT}", file=sys.stderr)
         return
 
     last_processed = _get_last_processed()
@@ -151,7 +166,7 @@ def main() -> None:
             file=sys.stderr,
         )
     else:
-        header = f"# lease-wiki-vault @AI_Insight_Evolved 自動抽出（{today}）\n\n"
+        header = f"# Obsidian knowledge vault @AI_Insight_Evolved 自動抽出（{today}）\n\n"
         print(header + "\n".join(output_parts))
         print(
             f"extract_wiki_vault_insights: {len(output_parts)}件の改善案を出力"
