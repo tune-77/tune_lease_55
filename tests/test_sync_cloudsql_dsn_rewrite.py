@@ -55,3 +55,21 @@ def test_maybe_rewrite_respects_proxy_env(monkeypatch):
     dsn = f"postgresql://postgres:secret@/lease-db-demo?host={SOCKET}"
     result = sync_mod._maybe_rewrite_socket_dsn(dsn)
     assert "127.0.0.1:25432" in result
+
+
+def test_unreachable_socket_dsn_when_proxy_down(monkeypatch):
+    """ソケットDSN + プロキシ未起動 → 到達不能（スキップ対象）と判定される。"""
+    monkeypatch.setattr(sync_mod, "_local_proxy_reachable", lambda host, port, timeout=1.0: False)
+    dsn = f"postgresql://postgres:secret@/lease-db-demo?host={SOCKET}"
+    assert sync_mod._is_unreachable_socket_dsn(dsn) is True
+
+
+def test_socket_dsn_reachable_when_proxy_up(monkeypatch):
+    monkeypatch.setattr(sync_mod, "_local_proxy_reachable", lambda host, port, timeout=1.0: True)
+    dsn = f"postgresql://postgres:secret@/lease-db-demo?host={SOCKET}"
+    assert sync_mod._is_unreachable_socket_dsn(dsn) is False
+
+
+def test_tcp_dsn_is_never_unreachable_socket():
+    dsn = "postgresql://postgres:secret@35.194.127.102:5432/lease-db-demo"
+    assert sync_mod._is_unreachable_socket_dsn(dsn) is False

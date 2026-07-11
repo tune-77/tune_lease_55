@@ -26,9 +26,12 @@ Cloud Run から Cloud SQL に保存された会話ログ（chat_messages, emoti
 ローカル実行時の注意（REV-026a）:
     Secret Manager の DATABASE_URL が Cloud Run 用の Unix ソケット形式
     （host=/cloudsql/<project>:<region>:<instance>）の場合、Mac 上では
-    そのソケットが存在しないため接続できない。本スクリプトはソケット形式を
-    検出すると自動でローカルプロキシ向け TCP DSN に書き換える。事前に
-    cloud-sql-proxy を起動しておくこと:
+    そのソケットが存在しないため接続できない。本スクリプトの動作:
+      - ローカルで cloud-sql-proxy が起動していれば、プロキシ向け TCP DSN に
+        自動で書き換えて同期する
+      - プロキシが起動していなければ、エラーではなく同期をスキップして正常終了する
+        （Cloud SQL 未使用の運用が前提。パイプラインヘルスの誤検出を防ぐ）
+    同期を有効にする場合:
         brew install cloud-sql-proxy
         cloud-sql-proxy --port 15432 <project>:<region>:<instance>
 """
@@ -86,6 +89,32 @@ def rewrite_cloudsql_socket_dsn(dsn: str, host: str, port: int) -> str:
     if replaced and not has_port:
         tokens.append(f"port={port}")
     return " ".join(tokens)
+
+
+def _local_proxy_reachable(host: str, port: int, timeout: float = 1.0) -> bool:
+    """ローカルの cloud-sql-proxy が起動しているか（TCP接続可否で判定）。"""
+    import socket
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _is_unreachable_socket_dsn(dsn: str) -> bool:
+    """ソケット形式 DSN だが、この環境から到達手段がないか判定する。
+
+    True の場合は接続を試みても必ず失敗する（Cloud Run 外 かつ プロキシ未起動）。
+    Cloud SQL を使っていない運用ではこれが常態なので、呼び出し側は
+    エラーではなくスキップとして扱う。
+    """
+    if "/cloudsql/" not in dsn:
+        return False
+    if Path("/cloudsql").exists():
+        return False  # Cloud Run 上ではソケットが使える
+    host = os.environ.get("CLOUD_SQL_PROXY_HOST", "127.0.0.1")
+    port = int(os.environ.get("CLOUD_SQL_PROXY_PORT", "15432"))
+    return not _local_proxy_reachable(host, port)
 
 
 def _maybe_rewrite_socket_dsn(dsn: str) -> str:
@@ -476,7 +505,15 @@ def sync(dry_run: bool = False, target_date: str | None = None, force: bool = Fa
     # Cloud SQL 接続
     host = os.environ.get("CLOUD_SQL_HOST", "35.194.127.102")
     dbname = os.environ.get("CLOUD_SQL_DB", "lease-db-demo")
-    if _database_url():
+    database_url = _database_url()
+    if database_url and _is_unreachable_socket_dsn(database_url):
+        print(
+            "警告: DATABASE_URL が Cloud Run 用 Unix ソケット形式で、ローカルの cloud-sql-proxy も"
+            " 起動していないため、会話ログ同期をスキップします（Cloud SQL 未使用の運用では正常）。"
+            " 同期を有効にする場合: brew install cloud-sql-proxy → cloud-sql-proxy --port 15432 <project>:<region>:<instance>"
+        )
+        return
+    if database_url:
         print("[接続] Cloud SQL: DATABASE_URL")
     else:
         print(f"[接続] Cloud SQL: {host}/{dbname}")
