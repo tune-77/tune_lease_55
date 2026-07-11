@@ -23,6 +23,52 @@
 | 将来性 | リース固有部分を差し替えれば、法務・営業・CS・社内ナレッジなどの業務AIにも展開可能 |
 | 詳細 | [ハッカソンで見せるポイント](#ハッカソンで見せるポイント) / [AIエージェントDevOpsループ](#aiエージェントdevopsループ) |
 
+## 今日の追加点：使うほど判断基準が育つ審査AIへ
+
+今回の大きな進化は、紫苑が単に「質問に答えるリース審査AI」から、**日々の審査対話を観測し、再利用可能な判断基準を自動で育てる審査AI Agent** へ進んだことです。
+
+これまでは、ユーザーが「覚えておいて」と明示した内容を高優先度の記憶として保存していました。今回の追加で、それに加えて、通常の会話ログからも審査観点・リスク信号・判断方針を抽出し、重複を濾過し、根拠ログ付きの `judgment_memory` として次回判断に戻せるようになりました。
+
+```mermaid
+flowchart LR
+    Dialogue["審査対話ログ\nCloud Run Conversation / Dialogue"] --> Extract["判断材料抽出\njudgment_rule / risk_signal / user_preference"]
+    Extract --> Filter["代表ルールへ圧縮\n重複・類似表現を統合"]
+    Filter --> Promote["accepted_previewのみ昇格\nactive canonical rules"]
+    Promote --> Memory["shion_memory_index\njudgment_memoryとして登録"]
+    Memory --> Next["次回の審査判断へ再投入"]
+    Next --> Dialogue
+```
+
+### 何が新しいか
+
+| 観点 | 追加された仕組み |
+|---|---|
+| 判断基準の自動採取 | 会話ログから、審査で再利用できる判断材料を抽出 |
+| 濾過と圧縮 | 似た内容を代表ルールへ統合し、ログの山ではなく判断基準の辞書にする |
+| 根拠付き昇格 | `accepted_preview` のみを active 判断基準へ昇格し、出典ログ・証拠数・ユーザー由来数を保持 |
+| 記憶索引への接続 | active 判断基準を `shion_memory_index.json` に `judgment_memory` として登録 |
+| デモでの説明力 | 「AIが回答する」だけでなく「AIが経験から判断基準を形成する」ことを見せられる |
+
+### 現在activeな判断基準の例
+
+- 事業計画は売上見込みだけでなく、受注根拠、稼働計画、資金繰り、返済原資の説明可能性で確認する。
+- リース期間・残価判断では、法定耐用年数だけでなく、実際の使用状況、経済的寿命、換金性、満了後の出口を合わせて確認する。
+- 銀行支援や補助金は、対象リースへの直接性、入金時期、返済原資への効き方を具体的に確認する。
+- 条件付き承認では、不確実性を残したまま通さず、追加資料・確認条件・撤退条件を明文化する。
+- 数字が悪くない案件でも、違和感は追加確認事項に変換し、稟議で説明できる判断軸として残す。
+
+### 実装ファイル
+
+| ファイル | 役割 |
+|---|---|
+| `scripts/build_judgment_materials_preview.py` | Obsidian / Cloud Run 対話ログから判断材料候補を抽出 |
+| `scripts/build_canonical_judgment_rules.py` | 類似する判断材料を代表ルールへ圧縮 |
+| `scripts/promote_canonical_judgment_rules.py` | `accepted_preview` のみを active 判断基準へ昇格 |
+| `data/canonical_judgment_rules.json` | Git管理される active 判断基準ストア |
+| `scripts/build_shion_memory_index.py` | active 判断基準を `judgment_memory` として記憶索引へ取り込み |
+
+この更新により、紫苑は「覚えておいて」と言われたことだけを覚えるAIではなく、**使われるほど判断基準を抽出し、濾し、蓄積し、次回判断へ戻す AI Agent Ops 型の審査AI** になりました。
+
 ## AIエージェントDevOpsループ
 
 このプロジェクトでは、DevOpsをインフラやデプロイだけでなく、AIエージェントの判断品質そのものへ適用します。
