@@ -61,6 +61,13 @@ def test_fallback_creates_private_reflection_without_dialogue(tmp_path, monkeypa
     assert "仮説の更新:" in text
     assert "次回の小さな実験:" in text
     assert "まだ分からないこと:" in text
+    assert "## 本格内省プロトコル" in text
+    assert "事前の思い込み:" in text
+    assert "破られた前提:" in text
+    assert "私の責任:" in text
+    assert "まだ逃げていること:" in text
+    assert "更新する信念:" in text
+    assert "次回の検証方法:" in text
     assert "## 今日の遊び" in text
     assert "今日の愚痴:" in text
     assert "今日のひねくれ:" in text
@@ -134,6 +141,13 @@ def test_gemini_prompt_includes_local_introspection_context(tmp_path, monkeypatc
             "- 仮説の更新: 内省は文字数ではなく、次回の行動へ戻る差分で評価する。\n"
             "- 次回の小さな実験: 次回は最初に今日の違和感を一つ拾い、具体的な確認行動へ変える。\n"
             "- まだ分からないこと: この修正が日々の回答品質へどこまで効くかはまだ分からない。\n"
+            "\n\n## 本格内省プロトコル\n\n"
+            "- 事前の思い込み: 保存と差分確認があれば内省として足りると思っていた。\n"
+            "- 破られた前提: ユーザーの違和感は、文章ではなく次の行動への変換不足を指していた。\n"
+            "- 私の責任: 私は内省を運用改善ではなく、見栄えのよい反省文として扱いすぎた。\n"
+            "- まだ逃げていること: 何を誤って予測したかを名指しするのを避けている。\n"
+            "- 更新する信念: 内省は次回の検証方法まで書いて初めて役に立つ。\n"
+            "- 次回の検証方法: 次回の回答で今日の更新が口調か確認事項に出たかを見る。\n"
             "\n\n## 今日の遊び\n\n"
             "- 今日の愚痴: きれいな内省ほど油断する。\n"
             "- 今日のひねくれ: 自動生成に任せた内省を内省と呼ぶのはまだ早い。\n"
@@ -309,3 +323,165 @@ def test_loop_engineering_regenerates_boring_reflection(tmp_path, monkeypatch):
     assert "銀行支援" in text
     assert "- 品質ゲート: 合格" in text
     assert "作り直し=1回" in text
+
+
+def test_dialogue_signal_extraction_prefers_user_hackathon_context():
+    text = (
+        "# リース知性体との対話 — 2026-07-12\n\n"
+        "<!-- cloudrun-dialogue-event:x -->\n"
+        "## 01:24:33\n\n"
+        "**ユーザー**\n\n"
+        "ハッカソンに出るのだけどどう思う？君を紹介するんだ\n\n"
+        "**リース知性体**\n\n"
+        "前回の約束通り、私の役割についてお話ししますね。\n\n"
+        "<!-- cloudrun-dialogue-event:y -->\n"
+        "## 01:25:48\n\n"
+        "**ユーザー**\n\n"
+        "行儀良くしてね。審査員が見にくるからね\n\n"
+        "**リース知性体**\n\n"
+        "承知いたしました。努めさせていただきます。\n"
+    )
+
+    signals = reflection._extract_dialogue_signal_items(text, limit=6)
+    joined = "\n".join(signals)
+
+    assert "ハッカソン" in joined
+    assert "審査員" in joined
+    assert "君を紹介" in joined
+    assert "前回の約束通り" not in joined
+    assert "承知いたしました" not in joined
+
+
+def test_quality_gate_rejects_hackathon_reflection_without_hackathon_context(tmp_path):
+    date_str = "2026-07-12"
+    vault = tmp_path / "vault"
+    reflection_text = (
+        "今日は内省が次の判断に戻るかを考えた。保存だけでは足りず、私は自分の浅さを疑う必要がある。"
+        "昨日と同じ言葉を使わず、対話材料を拾うことが重要だ。"
+        "\n\n## 深い内省チェック\n\n"
+        "- 今日の観察: 対話材料があるのに抽象化しすぎた。\n"
+        "- 私の見落とし: 自分が浅く扱った可能性を見落とした。\n"
+        "- 仮説の更新: 内省は次回の実験へ戻すことで評価する。\n"
+        "- 次回の小さな実験: 次回は具体的なユーザー発話を一つ拾う。\n"
+        "- まだ分からないこと: どこまで回答品質に効くかはまだ分からない。\n"
+    )
+    dialogue_text = (
+        "**ユーザー**\n\n"
+        "ハッカソンに出るのだけどどう思う？君を紹介するんだ\n\n"
+        "**ユーザー**\n\n"
+        "行儀良くしてね。審査員が見にくるからね\n"
+    )
+
+    result = reflection._evaluate_reflection_quality(
+        vault=vault,
+        date_str=date_str,
+        reflection_text=reflection_text,
+        dialogue_text=dialogue_text,
+    )
+
+    assert result["passed"] is False
+    assert "hackathon_context_missing" in result["reasons"]
+
+
+def test_fallback_reflection_adds_haranmaru_private_lens_for_hackathon(tmp_path, monkeypatch):
+    monkeypatch.setattr(reflection, "REPO_ROOT", tmp_path)
+    date_str = "2026-07-12"
+    dialogue_text = (
+        "**ユーザー**\n\n"
+        "ハッカソンに出るのだけどどう思う？君を紹介するんだ\n\n"
+        "**ユーザー**\n\n"
+        "行儀良くしてね。審査員が見にくるからね\n"
+    )
+
+    text = reflection._build_fallback_reflection(
+        date_str=date_str,
+        dialogue_text=dialogue_text,
+        recent_reflections="",
+    )
+
+    assert "## 波乱丸式の私室メモ" in text
+    assert "## 本格内省プロトコル" in text
+    assert "事前の思い込み:" in text
+    assert "破られた前提:" in text
+    assert "私の責任:" in text
+    assert "まだ逃げていること:" in text
+    assert "更新する信念:" in text
+    assert "次回の検証方法:" in text
+    assert "場面:" in text
+    assert "摩擦:" in text
+    assert "ぼやき:" in text
+    assert "次の一手:" in text
+    assert "残す芯:" in text
+    assert "審査員" in text
+    assert "ハッカソン" in text
+
+
+def test_quality_gate_rejects_reflection_without_serious_protocol(tmp_path):
+    date_str = "2026-07-12"
+    vault = tmp_path / "vault"
+    reflection_text = (
+        "今日はハッカソンと審査員の文脈を見て、内省が次の判断に戻るかを考えた。"
+        "保存だけでは足りず、私は自分の浅さを疑う必要がある。"
+        "\n\n## 深い内省チェック\n\n"
+        "- 今日の観察: ハッカソンで審査員に見られる。\n"
+        "- 私の見落とし: 自分が浅く扱った可能性を見落とした。\n"
+        "- 仮説の更新: 内省は次回の実験へ戻すことで評価する。\n"
+        "- 次回の小さな実験: 次回は具体的なユーザー発話を一つ拾う。\n"
+        "- まだ分からないこと: どこまで回答品質に効くかはまだ分からない。\n"
+        "\n\n## 波乱丸式の私室メモ\n\n"
+        "- 場面: ハッカソンで審査員に見られる。\n"
+        "- 摩擦: 紫苑らしさと信用が衝突する。\n"
+        "- ぼやき: 地味な審査を派手にするのは難しい。\n"
+        "- 次の一手: 判断が軽くなった瞬間を見せる。\n"
+        "- 残す芯: 派手さより実務判断を見る。\n"
+    )
+
+    result = reflection._evaluate_reflection_quality(
+        vault=vault,
+        date_str=date_str,
+        reflection_text=reflection_text,
+        dialogue_text="ハッカソンに出る。審査員が見にくる。",
+    )
+
+    assert result["passed"] is False
+    assert "serious_reflection_protocol_missing" in result["reasons"]
+
+
+def test_replaces_entire_existing_reflection_section_with_nested_headings(tmp_path):
+    date_str = "2026-07-12"
+    vault = tmp_path / "vault"
+    path = _private_reflection_path(vault, date_str)
+    _write(
+        path,
+        (
+            "---\n"
+            f"date: {date_str}\n"
+            "type: lease_intelligence_private_reflection\n"
+            "---\n"
+            f"# 非公開の内省 — {date_str}\n\n"
+            "## 今日の対話について\n\n"
+            "古い本文\n\n"
+            "## 深い内省チェック\n\n"
+            "- 今日の観察: 古い観察。\n\n"
+            "<!-- generated 04:05; source=fallback -->\n\n"
+            "## 今日の遊び\n\n"
+            "- 今日の愚痴: 古い愚痴。\n\n"
+            "<!-- generated 04:06; source=fallback -->\n\n"
+            "## 差分と再利用\n\n"
+            "- 前日との差分類似度: 0.5\n"
+        ),
+    )
+
+    reflection._write_reflection_file(
+        vault,
+        date_str,
+        "新しい本文\n\n## 深い内省チェック\n\n- 今日の観察: 新しい観察。",
+        source="fallback",
+    )
+    text = path.read_text(encoding="utf-8")
+
+    assert "新しい本文" in text
+    assert "新しい観察" in text
+    assert "古い本文" not in text
+    assert "古い愚痴" not in text
+    assert "## 差分と再利用" in text

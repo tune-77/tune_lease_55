@@ -160,6 +160,36 @@ def _knowledge_markdown_records() -> list[dict[str, Any]]:
     return records
 
 
+def _canonical_judgment_rule_records(path: Path) -> list[dict[str, Any]]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    rules = payload.get("rules") if isinstance(payload, dict) else []
+    records: list[dict[str, Any]] = []
+    for rule in rules or []:
+        if not isinstance(rule, dict):
+            continue
+        if rule.get("private") is True or str(rule.get("status") or "") != "active":
+            continue
+        statement = str(rule.get("canonical_statement") or "").strip()
+        if len(statement) < 12:
+            continue
+        record = make_memory_record(
+            statement,
+            source="canonical_judgment_rules",
+            source_path=str(path.relative_to(REPO_ROOT)),
+            memory_type="judgment_memory",
+            confidence=float(rule.get("confidence") or 0.82),
+        ).to_dict()
+        record["topic"] = str(rule.get("concept") or "")
+        record["evidence_count"] = int(rule.get("evidence_count") or 0)
+        record["user_evidence_count"] = int(rule.get("user_evidence_count") or 0)
+        record["evidence_paths"] = list(rule.get("evidence_paths") or [])[:6]
+        records.append(record)
+    return records
+
+
 def _note_title(text: str) -> str:
     """frontmatter の title:、なければ最初の H1 見出しを返す。"""
     lines = text.splitlines()
@@ -250,6 +280,10 @@ def build_index(
         records.extend(_memory_bullets_from_markdown(promoted_path, "promoted_memory"))
 
     records.extend(_knowledge_markdown_records())
+
+    canonical_rules_path = REPO_ROOT / "data" / "canonical_judgment_rules.json"
+    if canonical_rules_path.exists():
+        records.extend(_canonical_judgment_rule_records(canonical_rules_path))
 
     # Deduplicate by stable id, keeping the first occurrence.
     deduped: dict[str, dict[str, Any]] = {}
