@@ -20,6 +20,17 @@ Cloud Run から Cloud SQL に保存された会話ログ（chat_messages, emoti
     CLOUD_SQL_DB        DB 名（デフォルト: lease-db-demo）
     CLOUD_SQL_USER      DB ユーザー（デフォルト: postgres）
     CLOUD_SQL_PASSWORD  DB パスワード（必須）
+    CLOUD_SQL_PROXY_HOST ローカル cloud-sql-proxy のホスト（デフォルト: 127.0.0.1）
+    CLOUD_SQL_PROXY_PORT ローカル cloud-sql-proxy のポート（デフォルト: 15432）
+
+ローカル実行時の注意（REV-026a）:
+    Secret Manager の DATABASE_URL が Cloud Run 用の Unix ソケット形式
+    （host=/cloudsql/<project>:<region>:<instance>）の場合、Mac 上では
+    そのソケットが存在しないため接続できない。本スクリプトはソケット形式を
+    検出すると自動でローカルプロキシ向け TCP DSN に書き換える。事前に
+    cloud-sql-proxy を起動しておくこと:
+        brew install cloud-sql-proxy
+        cloud-sql-proxy --port 15432 <project>:<region>:<instance>
 """
 
 from __future__ import annotations
@@ -36,10 +47,69 @@ from pathlib import Path
 
 # ── 接続設定（環境変数から取得） ────────────────────────────────────────────────
 
+def rewrite_cloudsql_socket_dsn(dsn: str, host: str, port: int) -> str:
+    """Cloud Run 用 Unix ソケット DSN をローカルプロキシ向け TCP DSN に書き換える。
+
+    対応形式:
+      - URL形式:      postgresql://user:pass@/dbname?host=/cloudsql/proj:region:inst
+      - キーワード形式: host=/cloudsql/proj:region:inst dbname=... user=...
+    ソケット指定を含まない DSN はそのまま返す。
+    """
+    if "/cloudsql/" not in dsn:
+        return dsn
+
+    if "://" in dsn:
+        from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+        parts = urlsplit(dsn)
+        query = [
+            (k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
+            if not (k == "host" and v.startswith("/cloudsql/"))
+        ]
+        userinfo = ""
+        if "@" in parts.netloc:
+            userinfo = parts.netloc.rsplit("@", 1)[0] + "@"
+        netloc = f"{userinfo}{host}:{port}"
+        return urlunsplit((parts.scheme, netloc, parts.path, urlencode(query), parts.fragment))
+
+    # キーワード形式
+    tokens = []
+    replaced = has_port = False
+    for token in dsn.split():
+        if token.startswith("host=") and "/cloudsql/" in token:
+            tokens.append(f"host={host}")
+            replaced = True
+        elif token.startswith("port="):
+            tokens.append(f"port={port}")
+            has_port = True
+        else:
+            tokens.append(token)
+    if replaced and not has_port:
+        tokens.append(f"port={port}")
+    return " ".join(tokens)
+
+
+def _maybe_rewrite_socket_dsn(dsn: str) -> str:
+    """ソケット DSN をローカル実行時のみプロキシ TCP へ書き換える（REV-026a）。"""
+    if "/cloudsql/" not in dsn:
+        return dsn
+    if Path("/cloudsql").exists():
+        return dsn  # Cloud Run 上ではソケットがそのまま使える
+    host = os.environ.get("CLOUD_SQL_PROXY_HOST", "127.0.0.1")
+    port = int(os.environ.get("CLOUD_SQL_PROXY_PORT", "15432"))
+    print(
+        f"[接続] DSN が Cloud Run 用 Unix ソケット形式のため、ローカルプロキシ {host}:{port} 向けに書き換えます"
+    )
+    print(
+        "        cloud-sql-proxy が未起動だと接続に失敗します。"
+        "導入: brew install cloud-sql-proxy → cloud-sql-proxy --port 15432 <project>:<region>:<instance>"
+    )
+    return rewrite_cloudsql_socket_dsn(dsn, host, port)
+
+
 def _get_db_config() -> dict:
     database_url = _database_url()
     if database_url:
-        return {"dsn": database_url}
+        return {"dsn": _maybe_rewrite_socket_dsn(database_url)}
     password = os.environ.get("CLOUD_SQL_PASSWORD", "")
     if not password:
         print("エラー: 環境変数 CLOUD_SQL_PASSWORD が設定されていません。", file=sys.stderr)
