@@ -36,11 +36,13 @@ OBSIDIAN_VAULT = Path(os.environ.get("OBSIDIAN_VAULT", str(DEFAULT_VAULT))).expa
 OUTPUT_SUBDIR = Path("Projects") / "tune_lease_55" / "Cloud Run Inputs"
 IMPROVEMENT_LOG_SUBDIR = Path("Projects") / "tune_lease_55" / "AI Chat" / "Improvement Log"
 CHAT_LOG_SUBDIR = Path("Projects") / "tune_lease_55" / "AI Chat" / "Cloud Run Conversation Log"
+DIALOGUE_LOG_SUBDIR = Path("Projects") / "tune_lease_55" / "Lease Intelligence" / "Dialogue"
 DAILY_SUBDIR = Path("Daily")
 DAILY_SECTION_START = "<!-- cloudrun-input-sync:start -->"
 DAILY_SECTION_END = "<!-- cloudrun-input-sync:end -->"
 IMPROVEMENT_EVENT_MARKER_PREFIX = "cloudrun-improvement-event:"
 CHAT_EVENT_MARKER_PREFIX = "cloudrun-chat-event:"
+DIALOGUE_EVENT_MARKER_PREFIX = "cloudrun-dialogue-event:"
 JST = timezone(timedelta(hours=9))
 
 
@@ -341,6 +343,83 @@ def _write_chat_logs(vault: Path, day: date, events: list[dict[str, Any]], dry_r
     return len(sections)
 
 
+def _build_dialogue_section(event: dict[str, Any], fallback_day: date) -> str | None:
+    if event.get("event_type") != "chat_exchange":
+        return None
+    if str(event.get("surface") or "") != "lease_intelligence_dialogue":
+        return None
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    user_message = _chat_text(payload.get("user_message"), 1200)
+    assistant_reply = _chat_text(payload.get("assistant_reply"), 1800)
+    if not user_message and not assistant_reply:
+        return None
+    event_id = _safe_text(event.get("event_id"), 80)
+    event_time = _event_jst_datetime(event, fallback_day)
+    marker = f"<!-- {DIALOGUE_EVENT_MARKER_PREFIX}{event_id} -->"
+    return "\n".join(
+        [
+            marker,
+            f"## {event_time.strftime('%H:%M:%S')}",
+            "",
+            "**ユーザー**",
+            "",
+            user_message or "（空）",
+            "",
+            "**リース知性体**",
+            "",
+            assistant_reply or "（空）",
+            "",
+            f"source_ts: `{_safe_text(event.get('ts'), 48)}`",
+            "",
+        ]
+    )
+
+
+def _write_dialogue_logs(vault: Path, day: date, events: list[dict[str, Any]], dry_run: bool) -> int:
+    dialogue_events = [
+        event
+        for event in events
+        if event.get("event_type") == "chat_exchange"
+        and str(event.get("surface") or "") == "lease_intelligence_dialogue"
+    ]
+    if not dialogue_events:
+        return 0
+
+    rel = DIALOGUE_LOG_SUBDIR / f"{day.isoformat()}.md"
+    path = vault / rel
+    current = path.read_text(encoding="utf-8") if path.exists() else ""
+    sections: list[str] = []
+    for event in dialogue_events:
+        event_id = str(event.get("event_id") or "")
+        if event_id and f"{DIALOGUE_EVENT_MARKER_PREFIX}{event_id}" in current:
+            continue
+        section = _build_dialogue_section(event, day)
+        if section:
+            sections.append(section)
+
+    if not sections:
+        return 0
+    if dry_run:
+        print(f"[dry-run] {path} dialogue-events={len(sections)}")
+        return len(sections)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not current.strip():
+        current = "\n".join(
+            [
+                "---",
+                f"date: {day.isoformat()}",
+                "type: lease_intelligence_dialogue",
+                "source: cloudrun_input_writeback",
+                "---",
+                "",
+                f"# リース知性体との対話 — {day.isoformat()}",
+            ]
+        )
+    path.write_text(current.rstrip() + "\n\n" + "\n\n".join(sections).rstrip() + "\n", encoding="utf-8")
+    return len(sections)
+
+
 def _build_markdown(day: str, events: list[dict[str, Any]]) -> str:
     counts = Counter(str(event.get("event_type") or "unknown") for event in events)
     surfaces = Counter(str(event.get("surface") or "unknown") for event in events)
@@ -466,13 +545,19 @@ def sync(days: int, target_date: str | None = None, dry_run: bool = False) -> di
             _write_daily_section(OBSIDIAN_VAULT, day.isoformat(), events, rel_path, dry_run=True)
             _write_improvement_logs(OBSIDIAN_VAULT, day, events, dry_run=True)
             _write_chat_logs(OBSIDIAN_VAULT, day, events, dry_run=True)
+            _write_dialogue_logs(OBSIDIAN_VAULT, day, events, dry_run=True)
             skipped += 1
             continue
         path.write_text(md, encoding="utf-8")
         _write_daily_section(OBSIDIAN_VAULT, day.isoformat(), events, rel_path, dry_run=False)
         improvements = _write_improvement_logs(OBSIDIAN_VAULT, day, events, dry_run=False)
         chat_logs = _write_chat_logs(OBSIDIAN_VAULT, day, events, dry_run=False)
-        suffix = (f" improvements={improvements}" if improvements else "") + (f" chats={chat_logs}" if chat_logs else "")
+        dialogue_logs = _write_dialogue_logs(OBSIDIAN_VAULT, day, events, dry_run=False)
+        suffix = (
+            (f" improvements={improvements}" if improvements else "")
+            + (f" chats={chat_logs}" if chat_logs else "")
+            + (f" dialogues={dialogue_logs}" if dialogue_logs else "")
+        )
         print(f"[write] {path} events={len(events)}{suffix}")
         written += 1
 
