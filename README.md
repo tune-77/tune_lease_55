@@ -23,6 +23,8 @@
 | 将来性 | リース固有部分を差し替えれば、法務・営業・CS・社内ナレッジなどの業務AIにも展開可能 |
 | 詳細 | [ハッカソンで見せるポイント](#ハッカソンで見せるポイント) / [AIエージェントDevOpsループ](#aiエージェントdevopsループ) |
 
+Agent Platform 連携方針: 本体は **Cloud Run / FastAPI** のまま維持し、`api/shion_agent.py` の ADK 入口を **Gemini Enterprise Agent Platform** へ接続できる形で育てます。Agent Platform は評価・監視・ガバナンス・ツール統制の外側レイヤー、審査ロジックと判断基準の source of truth は既存のGit管理データとCloud Runに残します。詳細は [Gemini Enterprise Agent Platform / ADK Adapter Plan](docs/agent_platform_adapter.md)。
+
 ## 今日の追加点：使うほど判断基準が育つ審査AIへ
 
 今回の大きな進化は、紫苑が単に「質問に答えるリース審査AI」から、**日々の審査対話を観測し、再利用可能な判断基準を自動で育てる審査AI Agent** へ進んだことです。
