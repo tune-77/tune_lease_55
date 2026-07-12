@@ -1,6 +1,7 @@
 "use client";
 
 import React, { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { renderInline } from "@/lib/renderMarkdown";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -511,7 +512,7 @@ export default function VoiceChatPage() {
                       : "rounded-tl-sm border border-stone-200 bg-white text-stone-800"
                   }`}
                 >
-                  <p className="whitespace-pre-wrap text-sm leading-7">{message.text}</p>
+                  <p className="whitespace-pre-wrap text-sm leading-7">{renderInline(message.text)}</p>
                   <div className={`mt-2 flex items-center gap-2 text-[10px] ${
                     message.role === "user" ? "text-white/55" : "text-stone-400"
                   }`}>
