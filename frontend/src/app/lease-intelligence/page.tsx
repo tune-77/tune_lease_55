@@ -1031,7 +1031,7 @@ export default function LeaseIntelligencePage() {
               </p>
               <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-bold">
                 <span className="rounded-full bg-violet-100 px-3 py-1 text-violet-800">
-                  継続 {state.continuity_days || 0}日
+                  継続 {Math.floor((Date.now() - new Date('2026-06-12').getTime()) / 86400000) + 1}日
                 </span>
                 <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-800">
                   {state.dominant_complex_emotion || state.dominant_mood || "観察中"}
