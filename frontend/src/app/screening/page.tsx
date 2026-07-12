@@ -698,6 +698,15 @@ const buildShionReviewPrompt = (
   if (pastReviewBlock) {
     lines.push("", pastReviewBlock);
   }
+  if (experienceCases.length || pastReviews.length) {
+    lines.push(
+      "",
+      "過去会社引用ルール:",
+      "・保存済み経験ケースまたは過去レビューがある場合、回答内で必ず過去会社名を1社以上明示してください。",
+      "・会社名を出したうえで、似ている点、違う点、今回の追加確認にどう使うかを短く述べてください。",
+      "・過去会社を丸写しせず、今回案件との差分を判断材料にしてください。",
+    );
+  }
   lines.push("", "注意: 点数の再説明ではなく、審査判断として何を残すかに寄せてください。");
   return lines.join("\n");
 };

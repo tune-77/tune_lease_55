@@ -8179,13 +8179,10 @@ def _list_screening_experience_cases(
     if demo_case_id.strip():
         where.append(f"demo_case_id = {ph}")
         params.append(demo_case_id.strip())
-    elif industry_sub.strip():
-        where.append(f"industry_sub = {ph}")
-        params.append(industry_sub.strip())
-    elif industry_major.strip():
-        where.append(f"industry_major = {ph}")
-        params.append(industry_major.strip())
-    elif company_name.strip():
+    elif company_name.strip() and not any(
+        str(value or "").strip()
+        for value in (industry_sub, industry_major, asset_name, customer_type, main_bank, competitor, outcome_status, score)
+    ):
         where.append(f"company_name LIKE {ph}")
         params.append(f"%{company_name.strip()}%")
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
@@ -8273,15 +8270,22 @@ def _score_screening_experience_case(row: dict, context: dict) -> dict:
         score += points
         reasons.append(reason)
 
+    def related(left: Any, right: Any) -> bool:
+        a = str(left or "").strip()
+        b = str(right or "").strip()
+        if not a or not b:
+            return False
+        return a == b or a in b or b in a
+
     demo_case_id = str(context.get("demo_case_id") or "").strip()
     if demo_case_id and str(row.get("demo_case_id") or "") == demo_case_id:
         add(40, "同じデモケース")
 
     industry_sub = str(context.get("industry_sub") or "").strip()
     industry_major = str(context.get("industry_major") or "").strip()
-    if industry_sub and str(row.get("industry_sub") or "") == industry_sub:
+    if industry_sub and related(row.get("industry_sub"), industry_sub):
         add(32, "同じ小分類業種")
-    elif industry_major and str(row.get("industry_major") or "") == industry_major:
+    elif industry_major and related(row.get("industry_major"), industry_major):
         add(14, "同じ大分類業種")
 
     for label, value, points in (
