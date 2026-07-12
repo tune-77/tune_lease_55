@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { renderInline } from "@/lib/renderMarkdown";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -499,7 +500,7 @@ export default function ChatComparePage() {
                         <MessagesSquare className="h-3.5 w-3.5" />
                         回答
                       </div>
-                      <p className="mt-2 whitespace-pre-wrap text-sm font-medium leading-7 text-slate-800">{result.reply}</p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm font-medium leading-7 text-slate-800">{renderInline(result.reply)}</p>
                     </>
                   ) : (
                     <div className="flex h-48 flex-col items-center justify-center text-center text-slate-400">

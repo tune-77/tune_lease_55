@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
 import { apiClient } from "@/lib/api";
+import { renderInline } from "@/lib/renderMarkdown";
 import { Send, X, Loader2, NotebookPen, Lightbulb, Trash2 } from "lucide-react";
 import {
   clearVisibleChatHistory,
@@ -40,6 +41,18 @@ const cleanMebukiText = (text: string) => (
     .replace(/`([^`]+)`/g, "$1")
     .trim()
 );
+
+/**
+ * チャット表示用: 見出し・コード記号は除去しつつ **bold** を <strong> にレンダリング。
+ * 単体 *italic* の * はそのまま残す（AI応答では稀なため許容）。
+ */
+const renderMebukiContent = (text: string): React.ReactNode[] => {
+  const preprocessed = String(text || "")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/`([^`]+)`/g, "$1")
+    .trim();
+  return renderInline(preprocessed);
+};
 
 export default function FloatingMebuki() {
   const pathname = usePathname();
@@ -378,7 +391,7 @@ export default function FloatingMebuki() {
                         : "bg-white text-slate-800 border border-slate-200 rounded-tl-sm"
                     }`}
                   >
-                    <p className="whitespace-pre-wrap break-words">{cleanMebukiText(msg.content)}</p>
+                    <p className="whitespace-pre-wrap break-words">{renderMebukiContent(msg.content)}</p>
                     <p className={`text-[9px] mt-1 ${msg.role === "user" ? "text-blue-200 text-right" : "text-slate-400"}`}>
                       {formatTime(msg.created_at)}
                     </p>
