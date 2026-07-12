@@ -67,6 +67,15 @@ flowchart LR
 | `data/canonical_judgment_rules.json` | Git管理される active 判断基準ストア |
 | `scripts/build_shion_memory_index.py` | active 判断基準を `judgment_memory` として記憶索引へ取り込み |
 
+### 日次運用ルール
+
+毎朝4:00のローカル日次パイプラインでは、Cloud Runから戻った対話ログをObsidianへ反映したあと、判断材料previewとcanonical rules previewだけを自動生成します。**active判断基準への昇格は自動では行いません。**
+
+- 自動: `judgment_materials_preview_latest.md` と `canonical_judgment_rules_preview_latest.md` を生成
+- 手動レビュー: previewの代表ルール・出典・証拠数を確認
+- 承認後: `scripts/promote_canonical_judgment_rules.py` を実行して `data/canonical_judgment_rules.json` へ昇格
+- Cloud Run反映: 必要なタイミングで再デプロイし、確認済み判断基準だけを本番へ載せる
+
 この更新により、紫苑は「覚えておいて」と言われたことだけを覚えるAIではなく、**使われるほど判断基準を抽出し、濾し、蓄積し、次回判断へ戻す AI Agent Ops 型の審査AI** になりました。
 
 ## AIエージェントDevOpsループ

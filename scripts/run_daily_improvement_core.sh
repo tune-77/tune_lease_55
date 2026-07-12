@@ -61,6 +61,29 @@ echo ""
 echo "[入力・同期] 実装済み改善を Obsidian インデックスに自動同期中..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/sync_implemented_to_obsidian.py" || true
 
+JUDGMENT_PREVIEW_DATE="${JUDGMENT_PREVIEW_DATE:-$(date +%F)}"
+JUDGMENT_PREVIEW_DAYS="${JUDGMENT_PREVIEW_DAYS:-3}"
+
+echo ""
+echo "[判断記憶] 判断材料 preview を生成中（昇格なし・人間レビュー前）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_judgment_materials_preview.py" \
+    --date "${JUDGMENT_PREVIEW_DATE}" --days "${JUDGMENT_PREVIEW_DAYS}"
+JUDGMENT_MATERIALS_EXIT=$?
+log_step "build_judgment_materials_preview" ${JUDGMENT_MATERIALS_EXIT}
+if [ ${JUDGMENT_MATERIALS_EXIT} -ne 0 ]; then
+    echo "警告: 判断材料 preview 生成に失敗しました（終了コード ${JUDGMENT_MATERIALS_EXIT}）"
+fi
+
+echo ""
+echo "[判断記憶] canonical rules preview を生成中（active判断基準へは未昇格）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_canonical_judgment_rules.py" \
+    --date "${JUDGMENT_PREVIEW_DATE}"
+CANONICAL_PREVIEW_EXIT=$?
+log_step "build_canonical_judgment_rules_preview" ${CANONICAL_PREVIEW_EXIT}
+if [ ${CANONICAL_PREVIEW_EXIT} -ne 0 ]; then
+    echo "警告: canonical rules preview 生成に失敗しました（終了コード ${CANONICAL_PREVIEW_EXIT}）"
+fi
+
 # 紫苑記憶のメンテナンス。従来はデプロイ時（package_cloud_run_bundle.sh）のみで
 # 記憶と鮮度が「最後にデプロイした日」で止まっていたため、夜間に毎日回す
 echo ""
