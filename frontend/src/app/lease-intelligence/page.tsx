@@ -590,17 +590,72 @@ const splitSpeechText = (text: string, maxLength = 180): string[] => {
   return chunks;
 };
 
-// ── Markdown-lite renderer ─────────────────────────────────────────────────
-const renderInline = (text: string) => {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return parts.map((part, i) =>
-    part.startsWith("**") && part.endsWith("**")
-      ? <strong key={i}>{part.slice(2, -2)}</strong>
-      : <React.Fragment key={i}>{part}</React.Fragment>
-  );
+// ── Markdown-lite renderer (REV-211: Shion review highlight) ──────────────
+// キーワードカテゴリ（審査判断強調表示）
+const SHION_VERDICT_GREEN = ["承認", "可決"] as const;
+const SHION_VERDICT_YELLOW = ["要検討", "条件付き承認", "保留"] as const;
+const SHION_VERDICT_RED = ["否決", "不承認", "却下"] as const;
+const SHION_KW_GREEN = ["問題なし", "良好", "適切", "支障なし", "正常"] as const;
+const SHION_KW_YELLOW = ["懸念", "リスク", "注意", "要確認", "警告", "慎重", "留意"] as const;
+const SHION_KW_RED = ["危険", "延滞", "デフォルト", "不可", "拒否"] as const;
+
+type ShionSegmentKind =
+  | "text" | "bold" | "score"
+  | "verdict-green" | "verdict-yellow" | "verdict-red"
+  | "kw-green" | "kw-yellow" | "kw-red";
+
+const SHION_INLINE_RE = new RegExp(
+  `(\\*\\*[^*]+\\*\\*|${[
+    ...SHION_VERDICT_GREEN, ...SHION_VERDICT_YELLOW, ...SHION_VERDICT_RED,
+    ...SHION_KW_GREEN, ...SHION_KW_YELLOW, ...SHION_KW_RED,
+  ].join("|")}|\\d+(?:\\.\\d+)?(?:点|%|\\/100))`,
+  "g",
+);
+
+const shionSegmentKind = (token: string): ShionSegmentKind => {
+  if (token.startsWith("**") && token.endsWith("**")) return "bold";
+  if (/^\d+(?:\.\d+)?(?:点|%|\/100)$/.test(token)) return "score";
+  if ((SHION_VERDICT_GREEN as readonly string[]).includes(token)) return "verdict-green";
+  if ((SHION_VERDICT_YELLOW as readonly string[]).includes(token)) return "verdict-yellow";
+  if ((SHION_VERDICT_RED as readonly string[]).includes(token)) return "verdict-red";
+  if ((SHION_KW_GREEN as readonly string[]).includes(token)) return "kw-green";
+  if ((SHION_KW_YELLOW as readonly string[]).includes(token)) return "kw-yellow";
+  if ((SHION_KW_RED as readonly string[]).includes(token)) return "kw-red";
+  return "text";
 };
 
-const renderAssistantContent = (content: string) => {
+const SHION_VERDICT_BADGE: Record<"green" | "yellow" | "red", string> = {
+  green:
+    "mx-0.5 inline-flex items-center rounded-md bg-green-50 px-2 py-0.5 text-sm font-bold text-green-700 ring-1 ring-inset ring-green-600/20",
+  yellow:
+    "mx-0.5 inline-flex items-center rounded-md bg-yellow-50 px-2 py-0.5 text-sm font-bold text-yellow-700 ring-1 ring-inset ring-yellow-600/20",
+  red:
+    "mx-0.5 inline-flex items-center rounded-md bg-red-50 px-2 py-0.5 text-sm font-bold text-red-700 ring-1 ring-inset ring-red-600/20",
+};
+
+const SHION_KW_CLASS: Record<"green" | "yellow" | "red", string> = {
+  green:  "font-semibold text-green-600",
+  yellow: "font-semibold text-yellow-600",
+  red:    "font-semibold text-red-600",
+};
+
+const renderInline = (text: string): React.ReactNode[] => {
+  const parts = text.split(SHION_INLINE_RE).filter((p): p is string => Boolean(p));
+  return parts.map((part, i) => {
+    const kind = shionSegmentKind(part);
+    if (kind === "bold") return <strong key={i}>{part.slice(2, -2)}</strong>;
+    if (kind === "verdict-green") return <span key={i} className={SHION_VERDICT_BADGE.green}>{part}</span>;
+    if (kind === "verdict-yellow") return <span key={i} className={SHION_VERDICT_BADGE.yellow}>{part}</span>;
+    if (kind === "verdict-red") return <span key={i} className={SHION_VERDICT_BADGE.red}>{part}</span>;
+    if (kind === "kw-green") return <span key={i} className={SHION_KW_CLASS.green}>{part}</span>;
+    if (kind === "kw-yellow") return <span key={i} className={SHION_KW_CLASS.yellow}>{part}</span>;
+    if (kind === "kw-red") return <span key={i} className={SHION_KW_CLASS.red}>{part}</span>;
+    if (kind === "score") return <strong key={i} className="font-bold tabular-nums text-slate-900">{part}</strong>;
+    return <React.Fragment key={i}>{part}</React.Fragment>;
+  });
+};
+
+const renderAssistantContent = (content: string): React.ReactNode => {
   const lines = (content || "").replace(/\\n/g, "\n").trim().split("\n");
   const blocks: React.ReactNode[] = [];
   let listItems: string[] = [];
@@ -619,7 +674,7 @@ const renderAssistantContent = (content: string) => {
     if (!listItems.length) return;
     blocks.push(
       <ul key={`ul-${blocks.length}`} className="mb-2 list-disc pl-5 space-y-1 last:mb-0">
-        {listItems.map((item, i) => <li key={i}>{renderInline(item)}</li>)}
+        {listItems.map((item, idx) => <li key={idx}>{renderInline(item)}</li>)}
       </ul>
     );
     listItems = [];
@@ -628,11 +683,36 @@ const renderAssistantContent = (content: string) => {
   for (const raw of lines) {
     const line = raw.trim();
     if (!line) { flushParagraph(); flushList(); continue; }
+
+    // 見出し（#, ##, ###）
+    const h1m = line.match(/^#\s+(.+)$/);
+    const h2m = line.match(/^##\s+(.+)$/);
+    const h3m = line.match(/^###\s+(.+)$/);
+    if (h1m ?? h2m ?? h3m) {
+      flushParagraph(); flushList();
+      const headText = (h1m?.[1] ?? h2m?.[1] ?? h3m?.[1] ?? "").trim();
+      if (h1m) {
+        blocks.push(<h3 key={`h-${blocks.length}`} className="mb-1 mt-3 text-base font-black text-slate-900">{renderInline(headText)}</h3>);
+      } else if (h2m) {
+        blocks.push(<h4 key={`h-${blocks.length}`} className="mb-1 mt-2 text-sm font-black text-slate-800">{renderInline(headText)}</h4>);
+      } else {
+        blocks.push(<h5 key={`h-${blocks.length}`} className="mb-0.5 mt-2 text-xs font-bold uppercase tracking-wide text-slate-700">{renderInline(headText)}</h5>);
+      }
+      continue;
+    }
+
+    // 水平線（---）
+    if (/^-{3,}$/.test(line)) {
+      flushParagraph(); flushList();
+      blocks.push(<hr key={`hr-${blocks.length}`} className="my-2 border-violet-100" />);
+      continue;
+    }
+
     const bullet = line.match(/^[-*•]\s+(.+)$/);
     const numbered = line.match(/^\d+[.)]\s+(.+)$/);
-    if (bullet || numbered) {
+    if (bullet ?? numbered) {
       flushParagraph();
-      listItems.push((bullet?.[1] || numbered?.[1] || "").trim());
+      listItems.push((bullet?.[1] ?? numbered?.[1] ?? "").trim());
       continue;
     }
     flushList();
