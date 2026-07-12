@@ -286,12 +286,10 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
               setStrategyCards(chunk.cards || null);
               setStrategyOpen(Boolean(chunk.cards));
             } else if (chunk.type === 'stream' && chunk.delta) {
+              // 初回自動フェッチの回答本文は非表示にする（案件作戦盤カードのみ表示）。
               fullText += chunk.delta;
-              setStreamingText(fullText);
             } else if (chunk.type === 'done') {
               finished = true;
-              setChatHistory([...displayHistory, { role: 'assistant', text: fullText }]);
-              setStreamingText('');
               setStatusText('回答しました。');
               if (onChatLoaded) onChatLoaded(fullText);
             }
@@ -301,10 +299,8 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
         }
       }
 
-      // done イベントなしで終了した場合もhistoryに追加
+      // done イベントなしで終了した場合も同様に本文は表示しない
       if (!finished && fullText) {
-        setChatHistory([...displayHistory, { role: 'assistant', text: fullText }]);
-        setStreamingText('');
         setStatusText('回答しました。');
         if (onChatLoaded) onChatLoaded(fullText);
       }
