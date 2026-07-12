@@ -18,5 +18,5 @@ def test_blank_reason_only_becomes_missing_for_lost_case():
 
 def test_normalize_competitor_from_reason_and_name():
     assert normalize_competitor_fields("0", "", "他社競合（レート）") == ("競合あり", "")
-    assert normalize_competitor_fields("0", "セディアオートリース", "") == ("競合あり", "セディアオートリース")
+    assert normalize_competitor_fields("0", "他リース会社", "") == ("競合あり", "他リース会社")
     assert normalize_competitor_fields("0", "現金", "調達方法変更") == ("競合なし", "")

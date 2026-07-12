@@ -77,7 +77,7 @@ export default function SimulatorPage() {
   const [loanRate, setLoanRate] = useState(2.5);
   const [taxRate, setTaxRate] = useState(30);
 
-  const price = priceMillion * 1_000_000;
+  const price = Math.max(0.1, priceMillion) * 1_000_000;
 
   const lease = useMemo(() => calcLease(price, years, taxRate), [price, years, taxRate]);
   const loan = useMemo(() => calcLoan(price, years, loanRate, taxRate), [price, years, loanRate, taxRate]);
@@ -117,9 +117,12 @@ export default function SimulatorPage() {
             <input
               type="number"
               value={priceMillion}
-              onChange={(e) => setPriceMillion(Math.max(0.1, Number(e.target.value)))}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                setPriceMillion(isNaN(v) ? 0 : v);
+              }}
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400"
-              step={1}
+              step={0.1}
               min={0.1}
             />
             <p className="text-xs text-slate-400 mt-1">{price.toLocaleString()} 円</p>
