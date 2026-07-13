@@ -28,6 +28,13 @@ SCREENING_LOOP_FEEDBACK_LOG = PROJECT_ROOT / "data" / "screening_loop_feedback.j
 CLOUDRUN_IMPROVEMENT_LOG = PROJECT_ROOT / "data" / "cloudrun_improvement_log.jsonl"
 CLOUDRUN_CHAT_LOG = PROJECT_ROOT / "data" / "cloudrun_chat_log.jsonl"
 SHION_MEMORY_USAGE_LOG = PROJECT_ROOT / "data" / "shion_memory_usage_log.jsonl"
+JUDGMENT_ASSET_EVENT_TYPES = {
+    "human_response_feedback",
+    "screening_loop_feedback",
+    "shion_screening_review_feedback",
+    "judgment_feedback_created",
+    "lease_news_judgment_change",
+}
 WIZARD_TRACKED_FIELDS = [
     "company_name",
     "nenshu",
@@ -288,10 +295,32 @@ def _ensure_local_sync_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS cloudrun_judgment_asset_candidates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT UNIQUE,
+            event_type TEXT NOT NULL,
+            surface TEXT DEFAULT '',
+            asset_type TEXT DEFAULT '',
+            title TEXT DEFAULT '',
+            signal TEXT DEFAULT '',
+            case_id TEXT DEFAULT '',
+            score REAL,
+            q_risk REAL,
+            summary_text TEXT DEFAULT '',
+            lesson_text TEXT DEFAULT '',
+            evidence_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_shion_screening_reviews_cloud_review_id ON shion_screening_reviews(cloud_review_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_shion_screening_reviews_cloud_event_id ON shion_screening_reviews(cloud_event_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cloudrun_score_inputs_created ON cloudrun_score_inputs(created_at)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cloudrun_ocr_results_created ON cloudrun_ocr_results(created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cloudrun_judgment_asset_event ON cloudrun_judgment_asset_candidates(event_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cloudrun_judgment_asset_created ON cloudrun_judgment_asset_candidates(created_at)")
 
 
 def _sync_event_seen(conn: sqlite3.Connection, event_id: str) -> bool:
@@ -527,6 +556,123 @@ def _screening_loop_feedback_from_event(event: dict) -> dict | None:
     }
 
 
+def _first_text(*values: Any, limit: int = 900) -> str:
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            return text[:limit]
+    return ""
+
+
+def _judgment_asset_candidate_from_event(event: dict) -> dict | None:
+    event_type = str(event.get("event_type") or "")
+    if event_type not in JUDGMENT_ASSET_EVENT_TYPES:
+        return None
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    if not payload:
+        return None
+
+    surface = str(event.get("surface") or payload.get("surface") or "")
+    created_at = str(event.get("ts") or payload.get("ts") or datetime.now(timezone.utc).isoformat())
+    event_id = str(event.get("event_id") or "")
+    case_id = str(payload.get("case_id") or "")
+    score = payload.get("score")
+    q_risk = payload.get("q_risk") or payload.get("quantum_risk")
+    asset_type = "judgment_reaction"
+    signal = ""
+    title = f"判断資産候補 / {event_type}"
+    summary = ""
+    lesson = ""
+
+    if event_type == "human_response_feedback":
+        rating = str(payload.get("rating") or "")
+        route = str(payload.get("route") or surface or "chat")
+        asset_type = "response_feedback"
+        signal = rating
+        title = f"応答feedback / {route} / {rating}".strip(" /")
+        summary = _first_text(payload.get("comment"), payload.get("message_preview"), payload.get("response_start"))
+        lesson = "人間の良い/悪い反応を、次回応答の冒頭・根拠・具体性の調整材料として残す。"
+    elif event_type == "screening_loop_feedback":
+        target = str(payload.get("target") or "")
+        rating = str(payload.get("rating") or "")
+        asset_type = "screening_loop_feedback"
+        signal = rating
+        title = f"審査ループfeedback / {target} / {rating}".strip(" /")
+        summary = _first_text(payload.get("comment"), payload.get("issue_text"), payload.get("ringi_policy_text"))
+        lesson = "人間が反応した争点・稟議方針を、次回類似案件の確認観点として残す。"
+    elif event_type == "shion_screening_review_feedback":
+        feedback = str(payload.get("user_feedback") or "")
+        asset_type = "shion_review_feedback"
+        signal = feedback
+        title = f"紫苑レビュー評価 / {feedback}".strip(" /")
+        summary = _first_text(payload.get("review_text"), payload.get("comment"), payload.get("cloud_review_id"), payload.get("id"))
+        lesson = "紫苑レビューへの評価を、次回レビューの粒度・観点・表現の調整材料として残す。"
+    elif event_type == "judgment_feedback_created":
+        model_decision = str(payload.get("model_decision") or "")
+        human_decision = str(payload.get("human_decision") or "")
+        asset_type = "judgment_difference"
+        signal = "decision_changed" if model_decision and human_decision and model_decision != human_decision else "judgment_feedback"
+        title = f"判断差分 / {model_decision} -> {human_decision}".strip(" /")
+        summary = _first_text(payload.get("reason"), human_decision, model_decision)
+        lesson = "モデル判断と人間判断の差分を、レビュー後に判断ルール候補として再利用する。"
+    elif event_type == "lease_news_judgment_change":
+        final_decision = str(payload.get("final_decision") or "")
+        asset_type = "news_judgment_change"
+        signal = "news_changed_judgment"
+        title = f"ニュース参照後の判断変更 / {final_decision}".strip(" /")
+        summary = _first_text(payload.get("reason"), payload.get("news_focus_summary"), payload.get("news_focus_tag_summary"))
+        lesson = "外部ニュースで判断が変わった理由を、次回の同種論点確認に使う。"
+
+    if not summary:
+        summary = _first_text(title, signal)
+
+    return {
+        "event_id": event_id,
+        "event_type": event_type,
+        "surface": surface,
+        "asset_type": asset_type,
+        "title": title[:180],
+        "signal": signal[:120],
+        "case_id": case_id[:160],
+        "score": score,
+        "q_risk": q_risk,
+        "summary_text": summary[:1200],
+        "lesson_text": lesson[:1200],
+        "evidence_json": json.dumps({"event": event, "payload": payload}, ensure_ascii=False, sort_keys=True),
+        "created_at": created_at,
+    }
+
+
+def _insert_judgment_asset_candidate_from_event(conn: sqlite3.Connection, event: dict) -> int:
+    candidate = _judgment_asset_candidate_from_event(event)
+    if not candidate:
+        return 0
+    cur = conn.execute(
+        """
+        INSERT OR IGNORE INTO cloudrun_judgment_asset_candidates (
+            event_id, event_type, surface, asset_type, title, signal,
+            case_id, score, q_risk, summary_text, lesson_text, evidence_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            candidate["event_id"],
+            candidate["event_type"],
+            candidate["surface"],
+            candidate["asset_type"],
+            candidate["title"],
+            candidate["signal"],
+            candidate["case_id"],
+            candidate["score"],
+            candidate["q_risk"],
+            candidate["summary_text"],
+            candidate["lesson_text"],
+            candidate["evidence_json"],
+            candidate["created_at"],
+        ),
+    )
+    return 1 if cur.rowcount else 0
+
+
 def _improvement_entry_from_event(event: dict) -> dict | None:
     if event.get("event_type") != "improvement_note":
         return None
@@ -591,10 +737,12 @@ def _materialize_local_db(events: list[dict]) -> dict[str, int]:
         shion_feedback_updated = 0
         score_inputs_new = 0
         ocr_results_new = 0
+        judgment_assets_new = 0
         for event in events:
             score_inputs_new += _insert_score_input_from_event(conn, event)
             ocr_results_new += _insert_ocr_result_from_event(conn, event)
             shion_new += _insert_shion_review_from_event(conn, event)
+            judgment_assets_new += _insert_judgment_asset_candidate_from_event(conn, event)
         for event in events:
             shion_feedback_updated += _apply_shion_review_feedback_from_event(conn, event)
         conn.commit()
@@ -603,6 +751,7 @@ def _materialize_local_db(events: list[dict]) -> dict[str, int]:
         "ocr_results_new": ocr_results_new,
         "shion_reviews_new": shion_new,
         "shion_review_feedback_updated": shion_feedback_updated,
+        "judgment_asset_candidates_new": judgment_assets_new,
     }
 
 
@@ -621,7 +770,13 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
             rag_feedback_rows.append(feedback)
         if hit:
             rag_hit_rows.append(hit)
-    db_result = _materialize_local_db(events) if events else {"score_inputs_new": 0, "ocr_results_new": 0, "shion_reviews_new": 0, "shion_review_feedback_updated": 0}
+    db_result = _materialize_local_db(events) if events else {
+        "score_inputs_new": 0,
+        "ocr_results_new": 0,
+        "shion_reviews_new": 0,
+        "shion_review_feedback_updated": 0,
+        "judgment_asset_candidates_new": 0,
+    }
     return {
         "all_events_new": all_events_new,
         "wizard_new": _append_jsonl_dedup(WIZARD_INPUT_LOG, wizard_rows) if wizard_rows else 0,

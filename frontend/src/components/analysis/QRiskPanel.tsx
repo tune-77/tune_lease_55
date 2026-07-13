@@ -1,9 +1,23 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Activity, ChevronDown, ChevronUp, AlertTriangle, ShieldAlert, CheckCircle2, Info } from 'lucide-react';
+import { Activity, ChevronDown, ChevronUp, AlertTriangle, ShieldAlert, CheckCircle2, Info, Loader2 } from 'lucide-react';
+import { apiClient } from '../../lib/api';
 
 type QRiskLevel = 'normal' | 'caution' | 'critical';
+
+type FinancialConsistencyRisk = {
+  score?: number;
+  level?: string;
+  patterns?: string[];
+  pattern_details?: Array<{
+    code?: string;
+    severity?: string;
+    message?: string;
+    values?: Record<string, unknown>;
+  }>;
+  role?: string;
+};
 
 function getLevel(q: number): QRiskLevel {
   if (q >= 60) return 'critical';
@@ -55,15 +69,78 @@ type Props = {
   quantumRisk: number;
   creditQuantumStrongWarning?: boolean;
   compact?: boolean;
+  caseId?: string;
+  score?: number | null;
+  hantei?: string;
+  context?: Record<string, unknown>;
+  financialConsistencyRisk?: FinancialConsistencyRisk | null;
 };
 
-export default function QRiskPanel({ quantumRisk, creditQuantumStrongWarning = false, compact = false }: Props) {
+export default function QRiskPanel({
+  quantumRisk,
+  creditQuantumStrongWarning = false,
+  compact = false,
+  caseId = '',
+  score = null,
+  hantei = '',
+  context = {},
+  financialConsistencyRisk = null,
+}: Props) {
   const [expanded, setExpanded] = useState(!compact);
+  const [savingKey, setSavingKey] = useState('');
+  const [savedKey, setSavedKey] = useState('');
+  const [saveError, setSaveError] = useState('');
   const level = getLevel(quantumRisk);
   const cfg = LEVEL_CONFIG[level];
   const pct = Math.min(100, Math.max(0, quantumRisk));
   const impacts = level === 'critical' ? CRITICAL_IMPACTS : CAUTION_IMPACTS;
   const showImpacts = level !== 'normal';
+  const oldRiskScore = Number(financialConsistencyRisk?.score ?? 0);
+  const oldRiskPatterns = financialConsistencyRisk?.pattern_details ?? [];
+  const oldRiskLevelLabel =
+    financialConsistencyRisk?.level === 'high_risk' ? '強警戒' :
+    financialConsistencyRisk?.level === 'caution' ? '要確認' :
+    '低位';
+
+  const saveInterpretation = async (kind: 'sales_competition' | 'credit_warning') => {
+    const isSales = kind === 'sales_competition';
+    const rating = isSales ? '信用ではなく成約/競合リスク' : '信用リスクとして警戒';
+    const issue = isSales
+      ? '業績や信用力そのものではなく、競合条件・金利・営業導線・銀行支援の弱さで成約しにくい案件として扱う。'
+      : 'Q_riskを信用面の警戒信号として扱い、財務整合性・返済原資・資料確認を優先する。';
+    const policy = isSales
+      ? 'スコアが低くても直ちに信用否定せず、競合金利・銀行支援・提案速度・条件変更余地を確認する。'
+      : '成約外因子だけで押さず、財務・物件・支援内容を確認条件に置く。';
+    setSavingKey(kind);
+    setSavedKey('');
+    setSaveError('');
+    try {
+      await apiClient.post('/api/screening-loop-feedback', {
+        surface: 'q_risk_panel',
+        target: 'issue',
+        rating,
+        issue_text: issue,
+        ringi_policy_text: policy,
+        comment: `Q_risk ${quantumRisk.toFixed(1)}: ${rating}`,
+        score: typeof score === 'number' ? score : null,
+        hantei,
+        context: {
+          ...context,
+          case_id: caseId,
+          q_risk: quantumRisk,
+          financial_consistency_score: oldRiskScore,
+          financial_consistency_patterns: financialConsistencyRisk?.patterns ?? [],
+          q_risk_feedback_kind: kind,
+          judgment_asset_intent: 'separate_credit_risk_from_sales_competition_risk',
+        },
+      });
+      setSavedKey(kind);
+    } catch {
+      setSaveError('保存できませんでした');
+    } finally {
+      setSavingKey('');
+    }
+  };
 
   return (
     <div className={`rounded-xl border p-4 ${cfg.wrap}`}>
@@ -98,6 +175,71 @@ export default function QRiskPanel({ quantumRisk, creditQuantumStrongWarning = f
               <strong>Q_riskとは：</strong>既存スコアだけでは説明できない成約・失注の歪みを見つける探索シグナルです。
               今までの計算式や財務矛盾スコアには固定せず、高スコア失注、低スコア成約、同スコア帯の結果分岐から、価格・競合・銀行支援・補助金・物件換金性・営業導線などの非スコア因子を探します。
             </p>
+          </div>
+
+          {financialConsistencyRisk && (
+            <div className="mt-3 rounded-lg border border-slate-200 bg-white/80 p-2.5">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="h-3.5 w-3.5 text-slate-400" />
+                <p className="text-[11px] font-black text-slate-700">財務整合性チェック（旧Q_risk）</p>
+                <span className={`ml-auto rounded-full border px-2 py-0.5 text-[10px] font-black ${
+                  oldRiskScore >= 50
+                    ? 'border-rose-200 bg-rose-50 text-rose-700'
+                    : oldRiskScore >= 20
+                      ? 'border-amber-200 bg-amber-50 text-amber-700'
+                      : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                }`}>
+                  {oldRiskLevelLabel} {oldRiskScore.toFixed(0)}
+                </span>
+              </div>
+              <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                入力された財務項目同士のつじつまを確認します。成約外因子ではなく、粗利率・債務/年商・設備と償却などの数字の整合性を見る補助指標です。
+              </p>
+              {oldRiskPatterns.length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {oldRiskPatterns.slice(0, 3).map((item, index) => (
+                    <li key={`${item.code || 'old-q'}-${index}`} className="rounded-md bg-slate-50 px-2 py-1 text-[11px] text-slate-600">
+                      <span className="font-black text-slate-700">{item.code || 'FIN-CHECK'}:</span> {item.message || '財務整合性の確認が必要です'}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          <div className="mt-3 rounded-lg border border-slate-200 bg-white/80 p-2.5">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+              人間の判断として保存
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => saveInterpretation('sales_competition')}
+                disabled={Boolean(savingKey)}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-black transition ${
+                  savedKey === 'sales_competition'
+                    ? 'border-blue-200 bg-blue-50 text-blue-800'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-800'
+                } disabled:opacity-50`}
+              >
+                {savingKey === 'sales_competition' && <Loader2 className="h-3 w-3 animate-spin" />}
+                {savedKey === 'sales_competition' ? '保存済' : '信用ではなく競合/成約リスク'}
+              </button>
+              <button
+                type="button"
+                onClick={() => saveInterpretation('credit_warning')}
+                disabled={Boolean(savingKey)}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-black transition ${
+                  savedKey === 'credit_warning'
+                    ? 'border-rose-200 bg-rose-50 text-rose-800'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-800'
+                } disabled:opacity-50`}
+              >
+                {savingKey === 'credit_warning' && <Loader2 className="h-3 w-3 animate-spin" />}
+                {savedKey === 'credit_warning' ? '保存済' : '信用リスクとして警戒'}
+              </button>
+            </div>
+            {saveError && <p className="mt-2 text-[11px] font-bold text-rose-600">{saveError}</p>}
           </div>
 
           {/* ゲージバー */}

@@ -119,6 +119,55 @@ def _seed_return_db(path):
                 "入力はログだけ昇格",
             ),
         )
+        conn.execute(
+            """
+            CREATE TABLE cloudrun_judgment_asset_candidates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id TEXT,
+                event_type TEXT NOT NULL,
+                surface TEXT,
+                asset_type TEXT,
+                title TEXT,
+                signal TEXT,
+                case_id TEXT,
+                score REAL,
+                q_risk REAL,
+                summary_text TEXT,
+                lesson_text TEXT,
+                evidence_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                return_review_status TEXT,
+                return_review_note TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO cloudrun_judgment_asset_candidates (
+                event_id, event_type, surface, asset_type, title, signal, case_id,
+                score, q_risk, summary_text, lesson_text, evidence_json, created_at,
+                return_review_status, return_review_note
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "evt-asset-1",
+                "screening_loop_feedback",
+                "screening",
+                "screening_loop_feedback",
+                "審査ループfeedback / issue / 合っている",
+                "合っている",
+                "case-1",
+                72.5,
+                41.0,
+                "銀行支援と物件保全を見る方針に反応があった。",
+                "次回類似案件の確認観点として残す。",
+                '{"event_id":"evt-asset-1"}',
+                "2026-07-01T00:02:00Z",
+                "approved",
+                "判断資産として承認",
+            ),
+        )
 
 
 def test_promote_cloudrun_return_data_dry_run_does_not_write(tmp_path) -> None:
@@ -137,6 +186,7 @@ def test_promote_cloudrun_return_data_dry_run_does_not_write(tmp_path) -> None:
     assert result["summary"] == {
         "shion_review:would_insert": 1,
         "score_input:would_log_only": 1,
+        "judgment_asset:would_insert": 1,
     }
     with sqlite3.connect(target_db) as conn:
         assert conn.execute("SELECT COUNT(*) FROM shion_screening_reviews").fetchone()[0] == 0
@@ -161,6 +211,7 @@ def test_promote_cloudrun_return_data_apply_writes_review_and_log(tmp_path) -> N
     assert result["summary"] == {
         "shion_review:inserted": 1,
         "score_input:logged_only": 1,
+        "judgment_asset:inserted": 1,
     }
     with sqlite3.connect(target_db) as conn:
         conn.row_factory = sqlite3.Row
@@ -168,16 +219,23 @@ def test_promote_cloudrun_return_data_apply_writes_review_and_log(tmp_path) -> N
         assert review["hantei"] == "条件付き承認"
         assert "銀行支援" in review["review_text"]
         logs = conn.execute("SELECT * FROM cloudrun_return_promotions ORDER BY id").fetchall()
-        assert len(logs) == 2
-        assert {row["source_kind"] for row in logs} == {"shion_review", "score_input"}
+        asset = conn.execute("SELECT * FROM judgment_asset_candidates").fetchone()
+        assert "銀行支援" in asset["summary_text"]
+        assert asset["signal"] == "合っている"
+        logs = conn.execute("SELECT * FROM cloudrun_return_promotions ORDER BY id").fetchall()
+        assert len(logs) == 3
+        assert {row["source_kind"] for row in logs} == {"shion_review", "score_input", "judgment_asset"}
     with sqlite3.connect(return_db) as conn:
         conn.row_factory = sqlite3.Row
         review = conn.execute("SELECT return_promoted_at, return_promotion_id FROM shion_screening_reviews").fetchone()
         score = conn.execute("SELECT return_promoted_at, return_promotion_id FROM cloudrun_score_inputs").fetchone()
+        asset = conn.execute("SELECT return_promoted_at, return_promotion_id FROM cloudrun_judgment_asset_candidates").fetchone()
         assert review["return_promoted_at"]
         assert review["return_promotion_id"]
         assert score["return_promoted_at"]
         assert score["return_promotion_id"]
+        assert asset["return_promoted_at"]
+        assert asset["return_promotion_id"]
 
 
 def test_promote_cloudrun_return_data_apply_is_idempotent(tmp_path) -> None:
@@ -204,11 +262,13 @@ def test_promote_cloudrun_return_data_apply_is_idempotent(tmp_path) -> None:
     assert first["summary"] == {
         "shion_review:inserted": 1,
         "score_input:logged_only": 1,
+        "judgment_asset:inserted": 1,
     }
     assert second["summary"] == {}
     with sqlite3.connect(target_db) as conn:
         assert conn.execute("SELECT COUNT(*) FROM shion_screening_reviews").fetchone()[0] == 1
-        assert conn.execute("SELECT COUNT(*) FROM cloudrun_return_promotions").fetchone()[0] == 2
+        assert conn.execute("SELECT COUNT(*) FROM judgment_asset_candidates").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM cloudrun_return_promotions").fetchone()[0] == 3
 
 
 def test_promote_cloudrun_return_data_refuses_main_lease_db_by_default(tmp_path, monkeypatch) -> None:

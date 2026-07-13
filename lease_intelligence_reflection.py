@@ -59,6 +59,67 @@ def _read_file_safe(path: Path, max_chars: int = 3000) -> str:
         return ""
 
 
+def _event_jst_date(ts: str) -> str:
+    try:
+        value = str(ts or "").strip()
+        if not value:
+            return ""
+        parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=dt.timezone.utc)
+        return parsed.astimezone(dt.timezone(dt.timedelta(hours=9))).date().isoformat()
+    except Exception:
+        return ""
+
+
+def _load_cloudrun_chat_jsonl(date_str: str, max_items: int = 20, max_chars: int = 5000) -> str:
+    """Load local Cloud Run chat material for Private Reflection.
+
+    Obsidian conversion can lag behind GCS/local sync. Private Reflection should
+    still see the actual Cloud Run exchanges already materialized in
+    data/cloudrun_chat_log.jsonl.
+    """
+    path = REPO_ROOT / "data" / "cloudrun_chat_log.jsonl"
+    if not path.exists():
+        return ""
+
+    rows: list[dict] = []
+    for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        if not line.strip():
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(item, dict):
+            continue
+        if _event_jst_date(str(item.get("ts") or "")) == date_str:
+            rows.append(item)
+
+    if not rows:
+        return ""
+
+    rows = rows[-max_items:]
+    parts: list[str] = []
+    for row in rows:
+        ts = str(row.get("ts") or "")
+        surface = str(row.get("surface") or "unknown")
+        category = str(row.get("category") or "unknown")
+        user_message = str(row.get("user_message") or "").strip()
+        assistant_reply = str(row.get("assistant_reply") or "").strip()
+        if not user_message and not assistant_reply:
+            continue
+        parts.append(f"<!-- local-cloudrun-chat-event:{row.get('event_id', '')} -->")
+        parts.append(f"## {ts} {surface} / {category}")
+        if user_message:
+            parts.append("\n### User\n" + user_message[:900])
+        if assistant_reply:
+            parts.append("\n### Assistant\n" + assistant_reply[:900])
+        parts.append("")
+
+    return "\n".join(parts).strip()[:max_chars]
+
+
 def _load_recent_reflections(vault: Path, days: int = 3, base_date: dt.date | None = None) -> str:
     """Load the '## 今日の対話について' sections from the last N reflection files."""
     rdir = _reflection_dir(vault)
@@ -102,6 +163,9 @@ def _load_dialogue(vault: Path, date_str: str) -> str:
         text = _read_file_safe(path, max_chars=limit)
         if text:
             parts.append(f"【{label}】\n{text}")
+    local_cloudrun_chat = _load_cloudrun_chat_jsonl(date_str)
+    if local_cloudrun_chat:
+        parts.append(f"【Cloud Runローカル会話ログ】\n{local_cloudrun_chat}")
     return "\n\n".join(parts)[:9000]
 
 
@@ -413,6 +477,8 @@ def _extract_dialogue_signal_items(dialogue_text: str, limit: int = 8) -> list[s
         "ハッカソン",
         "審査員",
         "紹介",
+        "UI",
+        "ユーアイ",
         "行儀",
         "役割",
         "二人",
@@ -477,15 +543,17 @@ def _extract_dialogue_signal_items(dialogue_text: str, limit: int = 8) -> list[s
             add(value)
 
     def priority(item: str) -> tuple[int, int]:
-        if any(term in item for term in ("ハッカソン", "審査員", "行儀", "紹介")):
+        if any(term in item for term in ("企業名", "デモフードサービス", "判断資産", "Qrisk", "Q_risk")):
             return (0, len(item))
-        if any(term in item for term in ("AURION", "銀行支援")):
+        if any(term in item for term in ("ハッカソン", "審査員", "行儀", "紹介", "UI", "ユーアイ")):
             return (1, len(item))
-        if any(term in item for term in ("企業名", "導入目的", "営業メモ", "物件")):
+        if any(term in item for term in ("AURION", "銀行支援")):
             return (2, len(item))
-        if any(term in item for term in ("違和感", "条件付き承認", "稟議", "生かされ", "同じ")):
+        if any(term in item for term in ("導入目的", "営業メモ", "物件")):
             return (3, len(item))
-        return (4, len(item))
+        if any(term in item for term in ("違和感", "条件付き承認", "稟議", "生かされ", "同じ")):
+            return (4, len(item))
+        return (5, len(item))
 
     items.sort(key=priority)
     return [f"チャット材料: {item}" for item in items[:limit]]

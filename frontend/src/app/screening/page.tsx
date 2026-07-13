@@ -2551,7 +2551,22 @@ export default function Dashboard() {
                             <QRiskPanel
                               quantumRisk={result.quantum_risk}
                               creditQuantumStrongWarning={result.credit_quantum_strong_warning ?? false}
+                              financialConsistencyRisk={result.financial_consistency_risk ?? null}
                               compact={false}
+                              caseId={String(result.case_id || "")}
+                              score={Number(result.score_base ?? result.score ?? 0)}
+                              hantei={String(result.hantei || "")}
+                              context={{
+                                industry_major: formData.industry_major,
+                                industry_sub: formData.industry_sub,
+                                customer_type: formData.customer_type,
+                                main_bank: formData.main_bank,
+                                competitor: formData.competitor,
+                                competitor_rate: formData.competitor_rate,
+                                deal_source: formData.deal_source,
+                                asset_name: formData.asset_name,
+                                financial_consistency_score: result.financial_consistency_score ?? null,
+                              }}
                             />
                           )}
 

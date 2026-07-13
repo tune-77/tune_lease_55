@@ -279,6 +279,52 @@ def test_fallback_reflection_uses_cloudrun_chat_material(tmp_path, monkeypatch):
     assert "昨日までの私の声を読み返すと" not in text
 
 
+def test_fallback_reflection_reads_local_cloudrun_chat_jsonl(tmp_path, monkeypatch):
+    monkeypatch.setattr(reflection, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(reflection, "_call_gemini", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("network")))
+    date_str = "2026-07-13"
+    vault = tmp_path / "vault"
+
+    _write(
+        tmp_path / "data" / "cloudrun_chat_log.jsonl",
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "ts": "2026-07-12T14:50:00+00:00",
+                        "event_id": "previous-day",
+                        "surface": "next_chat_general",
+                        "category": "general",
+                        "user_message": "これは前日の会話",
+                        "assistant_reply": "前日の返答",
+                    },
+                    ensure_ascii=False,
+                ),
+                json.dumps(
+                    {
+                        "ts": "2026-07-12T15:30:00+00:00",
+                        "event_id": "jst-target",
+                        "surface": "next_chat_general",
+                        "category": "general",
+                        "user_message": "Private Reflection が会話ログを見て反省していない。Cloud Runのログはもう見れるはず。",
+                        "assistant_reply": "Cloud Runログを確認して内省材料に戻す必要があります。",
+                    },
+                    ensure_ascii=False,
+                ),
+            ]
+        ),
+    )
+
+    result = reflection.generate_and_append_reflection(vault, date_str=date_str)
+    text = _private_reflection_path(vault, date_str).read_text(encoding="utf-8")
+
+    assert "source=fallback" in result
+    assert "Cloud Runローカル会話ログ" in reflection._load_dialogue(vault, date_str)
+    assert "Private Reflection が会話ログを見て反省していない" in text
+    assert "Cloud Runのログはもう見れるはず" in text
+    assert "これは前日の会話" not in text
+
+
 def test_loop_engineering_regenerates_boring_reflection(tmp_path, monkeypatch):
     monkeypatch.setattr(reflection, "REPO_ROOT", tmp_path)
     date_str = "2026-07-08"

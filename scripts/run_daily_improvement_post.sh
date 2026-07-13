@@ -22,6 +22,14 @@ echo "[記録] DAILY-BRIEF.md を Obsidian Vault に書き出し..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/write_daily_brief.py" || true
 
 echo ""
+echo "[記録] Cloud Run入力ログを取得（GCS → ローカル）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/sync_cloudrun_inputs_from_gcs.py" || true
+
+echo ""
+echo "[記録] Cloud Run会話ログをObsidianへ同期..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/sync_cloudrun_inputs_to_obsidian.py" || true
+
+echo ""
 echo "[記録] memory/ から MEMORY.md へ長期記憶を自動昇格..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/sync_memory_from_daily.py" || true
 

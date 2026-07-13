@@ -124,6 +124,7 @@ def test_materialize_events_writes_existing_pipeline_logs(tmp_path, monkeypatch)
         "ocr_results_new": 0,
         "shion_reviews_new": 0,
         "shion_review_feedback_updated": 0,
+        "judgment_asset_candidates_new": 0,
     }
     assert wizard_rows[0]["surface"] == "cloudrun_score_calculated"
     assert "asset_name" in wizard_rows[0]["empty_fields"]
@@ -183,6 +184,7 @@ def test_materialize_events_restores_shion_review_and_feedback_to_local_db(tmp_p
 
     assert result["shion_reviews_new"] == 1
     assert result["shion_review_feedback_updated"] == 1
+    assert result["judgment_asset_candidates_new"] == 1
     with sqlite3.connect(local_db) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT * FROM shion_screening_reviews").fetchone()
@@ -191,6 +193,9 @@ def test_materialize_events_restores_shion_review_and_feedback_to_local_db(tmp_p
         assert row["industry_sub"] == "06 総合工事業"
         assert row["user_feedback"] == "useful"
         assert "銀行支援" in row["review_text"]
+        asset = conn.execute("SELECT * FROM cloudrun_judgment_asset_candidates").fetchone()
+        assert asset["event_type"] == "shion_screening_review_feedback"
+        assert asset["signal"] == "useful"
 
 
 def test_materialize_events_appends_screening_loop_feedback(tmp_path, monkeypatch) -> None:
@@ -218,8 +223,14 @@ def test_materialize_events_appends_screening_loop_feedback(tmp_path, monkeypatc
 
     rows = [json.loads(line) for line in screening_loop_log.read_text(encoding="utf-8").splitlines()]
     assert result["screening_loop_feedback_new"] == 1
+    assert result["judgment_asset_candidates_new"] == 1
     assert rows[0]["event_id"] == "loop-1"
     assert rows[0]["source"] == "cloudrun_input_writeback"
+    with sqlite3.connect(tmp_path / "lease_data.db") as conn:
+        conn.row_factory = sqlite3.Row
+        asset = conn.execute("SELECT * FROM cloudrun_judgment_asset_candidates").fetchone()
+        assert asset["asset_type"] == "screening_loop_feedback"
+        assert asset["signal"] == "合っている"
 
 
 def test_materialize_events_appends_improvement_chat_and_memory_usage(tmp_path, monkeypatch) -> None:
@@ -326,6 +337,7 @@ def test_materialize_events_restores_score_full_and_ocr_to_quarantine_db(tmp_pat
 
     assert result["score_inputs_new"] == 1
     assert result["ocr_results_new"] == 1
+    assert result["judgment_asset_candidates_new"] == 0
     with sqlite3.connect(local_db) as conn:
         conn.row_factory = sqlite3.Row
         score_row = conn.execute("SELECT * FROM cloudrun_score_inputs").fetchone()

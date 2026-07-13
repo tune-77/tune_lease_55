@@ -16,7 +16,7 @@ import {
 import { apiClient } from "@/lib/api";
 
 type ReturnStatus = "candidate" | "approved" | "held" | "rejected";
-type ReturnKind = "score_input" | "ocr_result" | "shion_review";
+type ReturnKind = "score_input" | "ocr_result" | "shion_review" | "judgment_asset";
 type FilterStatus = ReturnStatus | "all";
 type FilterKind = ReturnKind | "all";
 
@@ -56,6 +56,7 @@ const KIND_LABEL: Record<ReturnKind, string> = {
   score_input: "審査入力",
   ocr_result: "決算書OCR",
   shion_review: "紫苑レビュー",
+  judgment_asset: "判断資産",
 };
 
 export default function CloudRunReturnReviewPage() {
@@ -148,7 +149,7 @@ export default function CloudRunReturnReviewPage() {
                   Cloud Run 帰還データ検疫
                 </h1>
                 <p className="mt-1 text-sm leading-6 text-slate-600">
-                  デモ環境で積んだ審査入力・OCR・紫苑レビューを隔離DBで確認し、demo.dbへ戻す候補だけを承認します。
+                  デモ環境で積んだ審査入力・OCR・紫苑レビュー・人間の反応を隔離DBで確認し、demo.dbへ戻す候補だけを承認します。
                 </p>
               </div>
             </div>
@@ -221,6 +222,7 @@ export default function CloudRunReturnReviewPage() {
               ["score_input", "審査入力"],
               ["ocr_result", "OCR"],
               ["shion_review", "紫苑レビュー"],
+              ["judgment_asset", "判断資産"],
             ]}
             onChange={(value) => setKind(value as FilterKind)}
           />
@@ -244,7 +246,7 @@ export default function CloudRunReturnReviewPage() {
               該当する帰還データはありません
             </p>
             <p className="mt-1 text-sm text-slate-500">
-              GCS同期後に審査入力・OCR・紫苑レビューがここへ表示されます。
+              GCS同期後に審査入力・OCR・紫苑レビュー・判断資産候補がここへ表示されます。
             </p>
           </div>
         ) : (

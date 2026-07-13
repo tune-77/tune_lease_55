@@ -5,9 +5,16 @@ class ScoringRequest(BaseModel):
     company_no: Optional[str] = Field(default="", description="企業番号")
     company_name: Optional[str] = Field(default="", description="企業名")
     nenshu: float = Field(default=0.0, description="売上高（千円）")
+    gross_profit: float = Field(default=0.0, description="売上総利益（千円）")
     op_profit: float = Field(default=0.0, description="営業利益（千円）")
     ord_profit: float = Field(default=0.0, description="経常利益（千円）")
     net_income: float = Field(default=0.0, description="純利益（千円）")
+    depreciation: float = Field(default=0.0, description="減価償却費（BS/千円）")
+    dep_expense: float = Field(default=0.0, description="減価償却費（PL/千円）")
+    rent: float = Field(default=0.0, description="賃借料（千円）")
+    rent_expense: float = Field(default=0.0, description="支払リース料（千円）")
+    machines: float = Field(default=0.0, description="機械装置・運搬具（千円）")
+    other_assets: float = Field(default=0.0, description="その他固定資産（千円）")
     net_assets: float = Field(default=0.0, description="純資産（千円）")
     total_assets: float = Field(default=1.0, description="総資産（千円）※0不可")
     
@@ -74,6 +81,8 @@ class ScoringResponse(BaseModel):
     asset_bonuses: Optional[list] = None       # 物件プラス評価（換金性・残存価値優位）
     default_warnings: list = []                # デフォルト率モデルによる高リスク警告（スコア非影響）
     quantum_risk: Optional[float] = None       # 量子干渉リスクスコア 0-100（財務矛盾検出）
+    financial_consistency_score: Optional[float] = None  # 旧Q_risk: 財務・入力整合性チェック 0-100
+    financial_consistency_risk: Optional[dict] = None  # 旧Q_risk詳細 {score, level, patterns, pattern_details}
     credit_quantum_strong_warning: bool = False  # 信用リスク群×Q_risk の強警戒フラグ
     mahalanobis_score: Optional[float] = None  # 財務プロファイル類似度スコア 0-100
     mahalanobis_advice: Optional[list] = None  # 改善アドバイス [{feat, direction, delta}]

@@ -21,7 +21,7 @@ DEFAULT_RETURN_DB = PROJECT_ROOT / "data" / "cloudrun_experience_return.db"
 MAIN_LEASE_DB = PROJECT_ROOT / "data" / "lease_data.db"
 DEFAULT_TARGET_DB = PROJECT_ROOT / "data" / "demo.db"
 DEFAULT_BACKUP_DIR = PROJECT_ROOT / "data" / "backups"
-SUPPORTED_KINDS = ("shion_review", "score_input", "ocr_result")
+SUPPORTED_KINDS = ("shion_review", "score_input", "ocr_result", "judgment_asset")
 
 
 def _connect(path: Path) -> sqlite3.Connection:
@@ -42,7 +42,12 @@ def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
 
 
 def _ensure_quarantine_review_schema(conn: sqlite3.Connection) -> None:
-    tables = ("shion_screening_reviews", "cloudrun_score_inputs", "cloudrun_ocr_results")
+    tables = (
+        "shion_screening_reviews",
+        "cloudrun_score_inputs",
+        "cloudrun_ocr_results",
+        "cloudrun_judgment_asset_candidates",
+    )
     for table in tables:
         if not _table_exists(conn, table):
             continue
@@ -103,12 +108,38 @@ def _ensure_target_schema(conn: sqlite3.Connection) -> None:
         """
     )
     conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS judgment_asset_candidates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_event_id TEXT UNIQUE,
+            source_kind TEXT NOT NULL,
+            event_type TEXT DEFAULT '',
+            surface TEXT DEFAULT '',
+            asset_type TEXT DEFAULT '',
+            title TEXT DEFAULT '',
+            signal TEXT DEFAULT '',
+            case_id TEXT DEFAULT '',
+            score REAL,
+            q_risk REAL,
+            summary_text TEXT DEFAULT '',
+            lesson_text TEXT DEFAULT '',
+            evidence_json TEXT NOT NULL,
+            review_note TEXT DEFAULT '',
+            promoted_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_cloudrun_return_promotions_kind "
         "ON cloudrun_return_promotions(source_kind, source_local_id)"
     )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_shion_screening_reviews_created "
         "ON shion_screening_reviews(created_at)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_judgment_asset_candidates_event "
+        "ON judgment_asset_candidates(source_event_id)"
     )
     conn.commit()
 
@@ -302,6 +333,67 @@ def _promote_as_log_only(
     return {"kind": kind, "id": source_id, "action": "logged_only"}
 
 
+def _promote_judgment_asset(
+    quarantine: sqlite3.Connection,
+    target: sqlite3.Connection,
+    row: sqlite3.Row,
+    *,
+    apply: bool,
+) -> dict[str, Any]:
+    source_id = int(row["id"])
+    if _promotion_exists(target, "judgment_asset", source_id):
+        return {"kind": "judgment_asset", "id": source_id, "action": "skipped_existing"}
+    if not apply:
+        return {"kind": "judgment_asset", "id": source_id, "action": "would_insert"}
+
+    payload = _row_payload(row)
+    source_event_id = str(row["event_id"] or "")
+    cur = target.execute(
+        """
+        INSERT OR IGNORE INTO judgment_asset_candidates (
+            source_event_id, source_kind, event_type, surface, asset_type, title,
+            signal, case_id, score, q_risk, summary_text, lesson_text,
+            evidence_json, review_note, promoted_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            source_event_id,
+            "cloudrun_return",
+            str(row["event_type"] or ""),
+            str(row["surface"] or ""),
+            str(row["asset_type"] or ""),
+            str(row["title"] or ""),
+            str(row["signal"] or ""),
+            str(row["case_id"] or ""),
+            row["score"],
+            row["q_risk"],
+            str(row["summary_text"] or ""),
+            str(row["lesson_text"] or ""),
+            str(row["evidence_json"] or "{}"),
+            str(row["return_review_note"] or ""),
+            datetime.now(timezone.utc).isoformat(),
+        ),
+    )
+    target_id = str(cur.lastrowid or "")
+    promotion_id = _insert_promotion_log(
+        target,
+        kind="judgment_asset",
+        source_id=source_id,
+        source_event_id=source_event_id,
+        target_table="judgment_asset_candidates",
+        target_id=target_id,
+        payload=payload,
+        note=str(row["return_review_note"] or ""),
+    )
+    _mark_promoted(
+        quarantine,
+        table="cloudrun_judgment_asset_candidates",
+        source_id=source_id,
+        promotion_id=promotion_id,
+    )
+    return {"kind": "judgment_asset", "id": source_id, "action": "inserted", "target_id": target_id}
+
+
 def promote_approved_return_data(
     *,
     return_db: Path = DEFAULT_RETURN_DB,
@@ -361,6 +453,9 @@ def promote_approved_return_data(
                         apply=apply,
                     )
                 )
+        if "judgment_asset" in kinds:
+            for row in _approved_rows(quarantine, "cloudrun_judgment_asset_candidates"):
+                results.append(_promote_judgment_asset(quarantine, target, row, apply=apply))
 
         if apply:
             target.commit()

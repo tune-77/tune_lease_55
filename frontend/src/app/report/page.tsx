@@ -691,7 +691,22 @@ export default function ReportPage() {
                     <QRiskPanel
                       quantumRisk={caseDetail.result.quantum_risk}
                       creditQuantumStrongWarning={caseDetail.result.credit_quantum_strong_warning === true}
+                      financialConsistencyRisk={caseDetail.result.financial_consistency_risk ?? null}
                       compact={true}
+                      caseId={selectedCase?.id || ""}
+                      score={score}
+                      hantei={String(caseDetail.result.hantei || selectedCase?.final_status || "")}
+                      context={{
+                        industry_major: caseDetail.inputs.industry_major,
+                        industry_sub: caseDetail.inputs.industry_sub,
+                        customer_type: caseDetail.inputs.customer_type,
+                        main_bank: caseDetail.inputs.main_bank,
+                        competitor: caseDetail.inputs.competitor,
+                        competitor_rate: caseDetail.inputs.competitor_rate,
+                        deal_source: caseDetail.inputs.deal_source,
+                        asset_name: caseDetail.inputs.asset_name,
+                        financial_consistency_score: caseDetail.result.financial_consistency_score ?? null,
+                      }}
                     />
                   </div>
                 )}

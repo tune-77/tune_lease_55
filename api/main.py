@@ -806,6 +806,53 @@ def _score_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def _build_financial_consistency_risk(inputs: dict[str, Any]) -> dict[str, Any]:
+    """
+    旧Q_risk: 財務・入力整合性チェック。
+    ScoringRequestの金額は千円単位、aurion.q_riskは百万円単位前提なので変換する。
+    """
+    fallback = {"score": 0, "level": "ok", "patterns": [], "pattern_details": [], "role": "financial_consistency"}
+
+    def _million(key: str, default: float = 0.0) -> float:
+        raw = inputs.get(key, default)
+        try:
+            return float(raw or 0.0) / 1000.0
+        except (TypeError, ValueError):
+            return default
+
+    try:
+        from mobile_app.aurion.q_risk import detect_q_risk
+
+        op_profit = _million("op_profit")
+        gross_profit = _million("gross_profit", op_profit)
+        # 粗利未入力時に「営業利益 > 粗利」を誤検知しないため、営業利益を代替する。
+        if not inputs.get("gross_profit"):
+            gross_profit = op_profit
+
+        result = detect_q_risk(
+            gross_profit=gross_profit,
+            op_profit=op_profit,
+            net_income=_million("net_income"),
+            nenshu=_million("nenshu"),
+            dep_expense=_million("dep_expense"),
+            depreciation=_million("depreciation"),
+            machines=_million("machines"),
+            bank_credit=_million("bank_credit"),
+            lease_credit=_million("lease_credit"),
+            acquisition_cost=_million("acquisition_cost"),
+        )
+        return {
+            "score": result.get("score", 0),
+            "level": result.get("level", "ok"),
+            "patterns": result.get("patterns", []),
+            "pattern_details": result.get("pattern_details", []),
+            "role": "financial_consistency",
+        }
+    except Exception as exc:
+        fallback["error"] = str(exc)
+        return fallback
+
+
 def _build_conditional_approval_actions(inputs: dict, result: dict) -> list[dict]:
     """条件付き承認に近い案件で、審査担当者が次に取る条件を標準化する。"""
     score = _score_float(result.get("score", result.get("hantei_score")), 0.0)
@@ -1523,6 +1570,9 @@ def calculate_score(req: ScoringRequest, background_tasks: BackgroundTasks):
         data_source_summary = _build_data_source_summary(inputs, result)
         screening_context_notes = _build_screening_context_notes(inputs, result, conditional_actions, rate_proposal)
         approval_comment_draft = _build_approval_comment_draft(inputs, result, conditional_actions, rate_proposal, screening_context_notes)
+        financial_consistency_risk = _build_financial_consistency_risk(inputs)
+        result["financial_consistency_risk"] = financial_consistency_risk
+        result["financial_consistency_score"] = financial_consistency_risk.get("score", 0)
         from api.aurion_core_guard import build_aurion_core_guard
         aurion_core = build_aurion_core_guard(inputs, result)
         bayes_reverse_strategy = _build_bayes_reverse_strategy(inputs, result)
@@ -1546,6 +1596,8 @@ def calculate_score(req: ScoringRequest, background_tasks: BackgroundTasks):
             asset_warnings=result.get("asset_warnings", []),
             asset_bonuses=result.get("asset_bonuses", []),
             default_warnings=result.get("default_warnings", []),
+            financial_consistency_score=result.get("financial_consistency_score"),
+            financial_consistency_risk=result.get("financial_consistency_risk"),
             conditional_approval_actions=conditional_actions,
             rate_proposal=rate_proposal,
             data_source_summary=data_source_summary,
@@ -1572,6 +1624,9 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
         data_source_summary = _build_data_source_summary(inputs, result)
         screening_context_notes = _build_screening_context_notes(inputs, result, conditional_actions, rate_proposal)
         approval_comment_draft = _build_approval_comment_draft(inputs, result, conditional_actions, rate_proposal, screening_context_notes)
+        financial_consistency_risk = _build_financial_consistency_risk(inputs)
+        result["financial_consistency_risk"] = financial_consistency_risk
+        result["financial_consistency_score"] = financial_consistency_risk.get("score", 0)
         from api.aurion_core_guard import build_aurion_core_guard
         aurion_core = build_aurion_core_guard(inputs, result)
         bayes_reverse_strategy = _build_bayes_reverse_strategy(inputs, result)
@@ -1594,6 +1649,8 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
                     "user_eq": result.get("user_equity_ratio", result.get("user_eq", 0)),
                     "user_op": result.get("user_op_margin", result.get("user_op", 0)),
                     "quantum_risk": result.get("quantum_risk"),
+                    "financial_consistency_score": result.get("financial_consistency_score"),
+                    "financial_consistency_risk": result.get("financial_consistency_risk"),
                     "credit_quantum_strong_warning": result.get("credit_quantum_strong_warning", False),
                     "aurion_core": aurion_core,
                     "bayes_reverse_strategy": bayes_reverse_strategy,
@@ -1622,6 +1679,7 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
                     "asset_score": result.get("asset_score"),
                     "score_borrower": result.get("score_borrower"),
                     "quantum_risk": result.get("quantum_risk"),
+                    "financial_consistency_score": result.get("financial_consistency_score"),
                     "umap_anomaly_score": result.get("umap_anomaly_score"),
                 },
             },
@@ -1675,6 +1733,8 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
             asset_bonuses=result.get("asset_bonuses", []),
             default_warnings=result.get("default_warnings", []),
             quantum_risk=result.get("quantum_risk"),
+            financial_consistency_score=result.get("financial_consistency_score"),
+            financial_consistency_risk=result.get("financial_consistency_risk"),
             credit_quantum_strong_warning=result.get("credit_quantum_strong_warning", False),
             mahalanobis_score=result.get("mahalanobis_score"),
             mahalanobis_advice=result.get("mahalanobis_advice"),
@@ -8469,6 +8529,7 @@ _CLOUDRUN_RETURN_REVIEW_TABLES = {
     "score_input": "cloudrun_score_inputs",
     "ocr_result": "cloudrun_ocr_results",
     "shion_review": "shion_screening_reviews",
+    "judgment_asset": "cloudrun_judgment_asset_candidates",
 }
 _CLOUDRUN_RETURN_STATUSES = {"candidate", "approved", "held", "rejected"}
 
@@ -8555,13 +8616,28 @@ def _cloudrun_return_item(kind: str, row: Any) -> dict:
         source_id = row_dict.get("event_id") or ""
         created_at = row_dict.get("created_at") or ""
     else:
-        company = row_dict.get("company_name") or "会社名未設定"
-        industry = row_dict.get("industry_sub") or row_dict.get("industry_major") or "業種未設定"
-        hantei = row_dict.get("hantei") or "-"
-        title = f"{company} / {industry} / {hantei}"
-        preview = str(row_dict.get("review_text") or "")[:900]
-        source_id = row_dict.get("cloud_event_id") or row_dict.get("cloud_review_id") or ""
-        created_at = row_dict.get("created_at") or ""
+        if kind == "judgment_asset":
+            title = row_dict.get("title") or row_dict.get("asset_type") or "判断資産候補"
+            preview = _json_preview(
+                {
+                    "signal": row_dict.get("signal") or "",
+                    "summary": row_dict.get("summary_text") or "",
+                    "lesson": row_dict.get("lesson_text") or "",
+                    "event_type": row_dict.get("event_type") or "",
+                    "evidence": row_dict.get("evidence_json") or "",
+                },
+                max_chars=1400,
+            )
+            source_id = row_dict.get("event_id") or ""
+            created_at = row_dict.get("created_at") or ""
+        else:
+            company = row_dict.get("company_name") or "会社名未設定"
+            industry = row_dict.get("industry_sub") or row_dict.get("industry_major") or "業種未設定"
+            hantei = row_dict.get("hantei") or "-"
+            title = f"{company} / {industry} / {hantei}"
+            preview = str(row_dict.get("review_text") or "")[:900]
+            source_id = row_dict.get("cloud_event_id") or row_dict.get("cloud_review_id") or ""
+            created_at = row_dict.get("created_at") or ""
 
     return {
         "id": int(row_dict.get("id") or 0),
@@ -8590,7 +8666,7 @@ def _list_cloudrun_return_review_items(
 
     requested_kinds = list(_CLOUDRUN_RETURN_REVIEW_TABLES.keys()) if kind == "all" else [kind]
     if any(item_kind not in _CLOUDRUN_RETURN_REVIEW_TABLES for item_kind in requested_kinds):
-        raise HTTPException(status_code=422, detail="kind must be all, score_input, ocr_result, or shion_review")
+        raise HTTPException(status_code=422, detail="kind must be all, score_input, ocr_result, shion_review, or judgment_asset")
     normalized_status = str(status or "candidate").strip()
     if normalized_status not in _CLOUDRUN_RETURN_STATUSES and normalized_status != "all":
         raise HTTPException(status_code=422, detail="status must be candidate, approved, held, rejected, or all")
@@ -8647,7 +8723,7 @@ def _update_cloudrun_return_review_item(
     req: CloudRunReturnReviewRequest,
 ) -> dict:
     if kind not in _CLOUDRUN_RETURN_REVIEW_TABLES:
-        raise HTTPException(status_code=422, detail="kind must be score_input, ocr_result, or shion_review")
+        raise HTTPException(status_code=422, detail="kind must be score_input, ocr_result, shion_review, or judgment_asset")
     if not _CLOUDRUN_RETURN_DB.exists():
         raise HTTPException(status_code=404, detail="cloudrun return db not found")
     table_name = _CLOUDRUN_RETURN_REVIEW_TABLES[kind]
@@ -9531,8 +9607,14 @@ def _build_reflection_gate_prompt_block(
 
 
 @app.post("/api/human-response-feedback")
-def post_human_response_feedback(req: HumanResponseFeedbackRequest) -> dict:
+def post_human_response_feedback(req: HumanResponseFeedbackRequest, background_tasks: BackgroundTasks) -> dict:
     entry = _append_human_response_feedback(req)
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="human_response_feedback",
+        surface=str(req.route or "human_response_feedback")[:120],
+        payload={**entry, "schema_version": 1},
+    )
     return {"status": "ok", "feedback": entry}
 
 
