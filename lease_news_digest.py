@@ -111,6 +111,8 @@ class LeaseNewsReflection:
 @dataclass(frozen=True)
 class LeaseNewsAction:
     signal: str
+    felt_signal: str = ""
+    judgment_tension: str = ""
     affected_industries: tuple[str, ...] = ()
     affected_assets: tuple[str, ...] = ()
     risk_flags: tuple[str, ...] = ()
@@ -242,8 +244,9 @@ def _news_noise_score(item: dict) -> float:
 def _infer_news_action(item: dict) -> LeaseNewsAction:
     title = str(item.get("title") or "")
     memo = str(item.get("usage_memo") or "")
+    summary_lines = tuple(str(line) for line in (item.get("summary_lines") or []) if str(line).strip())
     tags = tuple(str(tag) for tag in (item.get("tags") or []) if str(tag).strip())
-    joined = " ".join([title, memo, " ".join(tags)])
+    joined = " ".join([title, memo, " ".join(summary_lines), " ".join(tags)])
     industries: list[str] = []
     assets: list[str] = []
     risk_flags: list[str] = []
@@ -293,8 +296,16 @@ def _infer_news_action(item: dict) -> LeaseNewsAction:
     signal = title
     if tags:
         signal = f"{title}（{', '.join(tags[:3])}）"
+    felt_signal, judgment_tension = _news_felt_signal(
+        title=title,
+        memo=memo,
+        summary_lines=summary_lines,
+        risk_flags=tuple(risk_flags),
+    )
     return LeaseNewsAction(
         signal=signal[:120],
+        felt_signal=felt_signal,
+        judgment_tension=judgment_tension,
         affected_industries=tuple(industries[:3]),
         affected_assets=tuple(assets[:3]),
         risk_flags=tuple(risk_flags[:4]),
@@ -308,9 +319,87 @@ def _infer_news_action(item: dict) -> LeaseNewsAction:
     )
 
 
+def _news_felt_signal(
+    *,
+    title: str,
+    memo: str,
+    summary_lines: tuple[str, ...],
+    risk_flags: tuple[str, ...],
+) -> tuple[str, str]:
+    """Return Shion-like subjective hooks from the article content.
+
+    This is not sentiment analysis. It is a compact "what feels off for lease
+    judgment" line so news actions do not become a bland checklist.
+    """
+    joined = " ".join([title, memo, " ".join(summary_lines)])
+    first_summary = summary_lines[0] if summary_lines else ""
+
+    if _has_any(joined, ("倒産", "物価高", "過去最多", "資金繰り悪化")):
+        return (
+            "倒産件数や物価高のニュースは、景気の話ではなく小口先の資金繰りが先に細る合図に見える。",
+            "売上が残っていても、粗利・外注費・支払サイトのどこで詰まるかを確認しないと危ない。",
+        )
+    if _has_any(joined, ("資材価格", "実勢乖離", "公共投資", "工事費", "建設費")):
+        return (
+            "資材価格のズレは、受注があっても採算と工期が後から崩れる嫌なタイプのニュースに見える。",
+            "契約済み工事の価格転嫁、追加原価、入金時期を見ないと設備投資の返済原資を読み違える。",
+        )
+    if _has_any(joined, ("金利", "利上げ", "資金調達", "月額")):
+        return (
+            "金利の話は派手ではないが、月額負担と競合条件を静かに削っていく感じがある。",
+            "金利上昇を一般論で済ませず、返済余力と提示条件の両方に落とす必要がある。",
+        )
+    if _has_any(joined, ("物流", "トラック", "燃料", "人件費", "2024年問題", "配送")):
+        return (
+            "売上が動いていても、燃料費・人件費・稼働率で薄利が削られる匂いがある。",
+            "増車理由だけでなく、ルート別採算と運転手確保まで見ないと安心できない。",
+        )
+    if _has_any(joined, ("AI", "ロボット", "DX", "省力化", "効率化")):
+        return (
+            "省力化の期待はあるが、効果測定が曖昧なまま設備だけ先に動く怖さがある。",
+            "導入目的を美談で終わらせず、人件費・処理量・粗利改善に接続する必要がある。",
+        )
+    if _has_any(joined, ("補助金", "助成金", "採択")):
+        return (
+            "前向きな投資ニュースに見えるが、補助金を現金同然に扱うと資金繰りを読み違える感じがある。",
+            "採択前・交付決定前・入金前を分けないと、承認条件が甘くなる。",
+        )
+    if _has_any(joined, ("半導体", "先端ロジック", "メモリー", "装置市場", "市場")):
+        return (
+            "市場拡大の明るさはあるが、波に乗った投資ほど需要反転時の残価と稼働率が怖い。",
+            "業界成長を承認理由にせず、対象企業の受注確度・設備汎用性・中古価値へ落とす必要がある。",
+        )
+    if _has_any(joined, ("工場", "増築", "改修", "新棟", "生産能力", "投資")):
+        return (
+            "大きな設備投資ニュースは前向きだが、稼働開始までの空白と投資回収の遅れが気になる。",
+            "投資額の大きさより、受注裏付け・稼働時期・既存設備との差分を見たい。",
+        )
+    if _has_any(joined, ("会計基準", "リース会計", "制度", "規制", "税制")):
+        return (
+            "制度変更は顧客の現場感より先に契約の見え方を変えるので、説明のズレが出やすい。",
+            "営業説明、会計処理、契約分類が同じ前提で話せているかを確認する必要がある。",
+        )
+    if risk_flags:
+        return (
+            f"ニュースの表面より、{', '.join(risk_flags[:2])}が案件条件へ波及するかが気になる。",
+            "ニュースを承認可否へ直結させず、資金繰り・稼働・物件価値のどこに効くかを分ける。",
+        )
+    if first_summary:
+        return (
+            f"記事の要点は「{first_summary[:70]}」。審査では、この変化が対象企業の数字に出るかを見たい。",
+            "話題性だけなら条件に入れず、業種・物件・投資時期に接続できる時だけ使う。",
+        )
+    return (
+        "ニュースとしては拾えるが、審査条件へ直結するにはまだ距離がある。",
+        "対象企業の業種・物件・投資時期に接続できるかを先に確認する。",
+    )
+
+
 def _action_to_dict(action: LeaseNewsAction) -> dict:
     return {
         "signal": action.signal,
+        "felt_signal": action.felt_signal,
+        "judgment_tension": action.judgment_tension,
         "affected_industries": list(action.affected_industries),
         "affected_assets": list(action.affected_assets),
         "risk_flags": list(action.risk_flags),
@@ -327,6 +416,8 @@ def _action_to_dict(action: LeaseNewsAction) -> dict:
 def _action_from_dict(data: dict) -> LeaseNewsAction:
     return LeaseNewsAction(
         signal=str(data.get("signal") or ""),
+        felt_signal=str(data.get("felt_signal") or ""),
+        judgment_tension=str(data.get("judgment_tension") or ""),
         affected_industries=tuple(str(x) for x in data.get("affected_industries", []) if str(x).strip()),
         affected_assets=tuple(str(x) for x in data.get("affected_assets", []) if str(x).strip()),
         risk_flags=tuple(str(x) for x in data.get("risk_flags", []) if str(x).strip()),
@@ -810,6 +901,10 @@ def write_lease_news_actions_note(
             f"- noise_score: {action.noise_score}",
             f"- valid_until: {action.valid_until}",
         ])
+        if action.felt_signal:
+            content_lines.append(f"- 紫苑が引っかかったこと: {action.felt_signal}")
+        if action.judgment_tension:
+            content_lines.append(f"- 審査で気持ち悪い点: {action.judgment_tension}")
         if action.affected_industries:
             content_lines.append(f"- 影響業種: {', '.join(action.affected_industries)}")
         if action.affected_assets:
@@ -914,6 +1009,10 @@ def lease_news_actions_as_text(
     lines = ["【この案件に効くニュース影響】"]
     for action in ranked:
         lines.append(f"- 該当: {action.signal}")
+        if action.felt_signal:
+            lines.append(f"  引っかかり: {action.felt_signal}")
+        if action.judgment_tension:
+            lines.append(f"  気持ち悪い点: {action.judgment_tension}")
         if action.risk_flags:
             lines.append(f"  リスク旗: {', '.join(action.risk_flags)}")
         if action.recommended_checks:

@@ -94,3 +94,21 @@ importance: 中
     assert parsed.continuity_days == 0
     assert "機械意識" not in parsed.self_narrative
     assert parsed.observed_days == 0
+
+    actions = digest.write_lease_news_actions_note(date_str="2026-06-11", vault=vault)
+    assert actions is not None
+    assert actions.action_items
+    action = actions.action_items[0]
+    assert action.felt_signal
+    assert action.judgment_tension
+    assert "補助金" in action.felt_signal or "省力化" in action.felt_signal
+
+    actions_note = vault / "Projects" / "tune_lease_55" / "News" / "2026-06-11_industry-risk-news-actions.md"
+    assert actions_note.exists()
+    actions_text = actions_note.read_text(encoding="utf-8")
+    assert "紫苑が引っかかったこと" in actions_text
+    assert "審査で気持ち悪い点" in actions_text
+
+    prompt_text = digest.lease_news_actions_as_text(vault=vault, industry="建設", asset_name="AI設備")
+    assert "引っかかり:" in prompt_text
+    assert "気持ち悪い点:" in prompt_text

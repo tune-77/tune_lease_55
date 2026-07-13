@@ -258,6 +258,52 @@ def _required_headings_present(body: str) -> bool:
     return all(f"## {title}" in body for title in _REQUIRED_SECTION_TITLES)
 
 
+_LOW_VALUE_SECTION_MARKERS = (
+    "要確認",
+    "不明",
+    "未確認",
+    "情報なし",
+    "該当なし",
+    "記載なし",
+    "N/A",
+    "なし",
+)
+
+_MIN_SECTION_CHARS = 18
+
+
+def _section_content(body: str, title: str) -> str:
+    pattern = rf"^##\s*{re.escape(title)}\s*$\n(.*?)(?=^##\s+|\Z)"
+    match = re.search(pattern, body, flags=re.MULTILINE | re.DOTALL)
+    return match.group(1).strip() if match else ""
+
+
+def _has_substantive_section_content(content: str) -> bool:
+    cleaned = re.sub(r"```.*?```", "", content, flags=re.DOTALL)
+    cleaned = re.sub(r"^\s*[-*]\s*", "", cleaned, flags=re.MULTILINE)
+    cleaned = " ".join(cleaned.split())
+    if len(cleaned) < _MIN_SECTION_CHARS:
+        return False
+    if cleaned in _LOW_VALUE_SECTION_MARKERS:
+        return False
+    marker_count = sum(1 for marker in _LOW_VALUE_SECTION_MARKERS if marker in cleaned)
+    # A section that is mostly "要確認" should not pass merely because it has a heading.
+    if marker_count and len(cleaned) <= 32:
+        return False
+    if marker_count >= 2 and len(cleaned) <= 80:
+        return False
+    return True
+
+
+def _substantive_sections_present(body: str) -> bool:
+    if not _required_headings_present(body):
+        return False
+    return all(
+        _has_substantive_section_content(_section_content(body, title))
+        for title in _REQUIRED_SECTION_TITLES
+    )
+
+
 def _fallback_decision_body(topic: ResearchTopic, raw_research: str, sources: list[dict[str, str]]) -> str:
     excerpt = raw_research.strip()
     if len(excerpt) > 2400:
@@ -404,11 +450,12 @@ def research_topic(topic: ResearchTopic) -> tuple[str, list[dict[str, str]], str
         ),
     )
     body = _normalize_required_headings(str(getattr(synthesis_response, "text", "") or ""))
-    if not body or not _required_headings_present(body):
+    if not body or not _substantive_sections_present(body):
         repair_prompt = f"""
 次の文章を内容を増やさず、8つの見出しへ再配置してください。
 各見出しを一度だけ、完全に `## 見出し名` の形式で出してください。
-不足情報は「要確認」と書き、見出しを省略しないでください。
+不足情報は「要確認」とだけ書かず、調査原文から確認できた事実・審査への使い方・担当者が再確認する点を最低1つずつ書いてください。
+調査原文から判断できない節は、なぜ判断できないかと、どの一次情報で再確認するかを書いてください。
 
 見出し:
 {chr(10).join(f"## {title}" for title in _REQUIRED_SECTION_TITLES)}
@@ -426,7 +473,7 @@ def research_topic(topic: ResearchTopic) -> tuple[str, list[dict[str, str]], str
             ),
         )
         body = _normalize_required_headings(str(getattr(repair_response, "text", "") or ""))
-    if not body or not _required_headings_present(body):
+    if not body or not _substantive_sections_present(body):
         body = _fallback_decision_body(topic, raw_research, source_catalog)
     return body, source_catalog, model
 
@@ -489,6 +536,39 @@ def _index_note(path: Path) -> None:
         print(f"[rag] index skipped: {exc}", file=sys.stderr)
 
 
+def _refresh_judgment_asset_candidates(vault: Path, output_dir: str) -> dict[str, Any]:
+    from scripts.build_autoresearch_judgment_asset_candidates import (
+        DEFAULT_OUTPUT_JSONL,
+        DEFAULT_STATE_JSON,
+        extract_candidates,
+        load_state,
+        write_jsonl,
+        write_report,
+        write_state,
+    )
+
+    today = dt.date.today()
+    days = max(1, int(os.environ.get("AUTORESEARCH_CANDIDATE_DAYS", "14")))
+    state = load_state(DEFAULT_STATE_JSON)
+    candidates = extract_candidates(
+        vault=vault,
+        output_dir=output_dir,
+        end_date=today,
+        days=days,
+        state_path=DEFAULT_STATE_JSON,
+    )
+    write_state(DEFAULT_STATE_JSON, candidates, state)
+    write_jsonl(DEFAULT_OUTPUT_JSONL, candidates)
+    paths = write_report(candidates, end_date=today, days=days, output_jsonl=DEFAULT_OUTPUT_JSONL)
+    return {
+        "candidates": len(candidates),
+        "days": days,
+        "output_jsonl": str(DEFAULT_OUTPUT_JSONL),
+        "state": str(DEFAULT_STATE_JSON),
+        "paths": paths,
+    }
+
+
 def run(vault: Path, output_dir: str, requested_topic: str = "", dry_run: bool = False) -> dict[str, Any]:
     target_dir = _safe_path(vault, output_dir)
     topic = choose_topic(target_dir, requested_topic)
@@ -508,6 +588,11 @@ def run(vault: Path, output_dir: str, requested_topic: str = "", dry_run: bool =
     path.write_text(build_note(topic, body, sources, model), encoding="utf-8")
     _index_note(path)
     result.update({"path": str(path), "source_count": len(sources), "model": model})
+    try:
+        result["judgment_asset_candidates"] = _refresh_judgment_asset_candidates(vault, output_dir)
+    except Exception as exc:
+        result["judgment_asset_candidates"] = {"error": str(exc)}
+        print(f"[judgment-assets] refresh skipped: {exc}", file=sys.stderr)
     return result
 
 

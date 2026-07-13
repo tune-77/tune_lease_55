@@ -7378,6 +7378,22 @@ class ShionScreeningReviewFeedbackRequest(BaseModel):
     user_feedback: Literal["useful", "needs_fix", "wrong"]
 
 
+class JudgmentAssetCandidateFeedbackRequest(BaseModel):
+    feedback: Literal["useful", "neutral", "rejected"]
+    case_id: str = ""
+    review_id: Optional[int] = None
+    comment: str = ""
+    edited_claim: str = ""
+
+
+class JudgmentAssetCandidateManualRequest(BaseModel):
+    claim: str
+    candidate_type: Literal["confirmation_question", "condition_signal", "application_rule", "caution"] = "confirmation_question"
+    research_topic: str = "manual"
+    case_id: str = ""
+    review_id: Optional[int] = None
+
+
 class ScreeningExperienceCaseRequest(BaseModel):
     demo_case_id: str = ""
     source_case_id: str = ""
@@ -7421,6 +7437,8 @@ _CHAT_MEMORY_LAYER_LABELS = {
 }
 _HUMAN_RESPONSE_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "human_response_feedback.jsonl"
 _SCREENING_LOOP_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "screening_loop_feedback.jsonl"
+_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL = Path(_REPO_ROOT) / "data" / "autoresearch_judgment_asset_candidates.jsonl"
+_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON = Path(_REPO_ROOT) / "data" / "autoresearch_judgment_asset_candidate_state.json"
 _HUMAN_RESPONSE_POSITIVE_RATINGS = {"shion_like", "good"}
 _HUMAN_RESPONSE_NEGATIVE_RATINGS = {"thin", "generic", "not_shion", "bad"}
 _CHAT_MEMORY_CACHE: dict[str, Any] = {"loaded_at": 0.0, "payload": None}
@@ -8032,6 +8050,299 @@ def _update_shion_screening_review_feedback(review_id: int, user_feedback: str) 
         if cur.rowcount <= 0:
             raise HTTPException(status_code=404, detail="review not found")
     return {"id": review_id, "user_feedback": normalized}
+
+
+def _screening_candidate_terms(*values: str) -> set[str]:
+    text = " ".join(str(value or "") for value in values)
+    terms = set(re.findall(r"[A-Za-z0-9_]{3,}|[一-龥ぁ-んァ-ンー]{2,}", text))
+    weak = {"リース", "審査", "確認", "判断", "対象", "企業", "物件", "場合", "する", "ます"}
+    expanded = {term.lower() for term in terms if term not in weak}
+    if any(key in text for key in ("トラック", "車両", "運送", "物流", "配送")):
+        expanded.update({"車両", "中古", "残価", "流動性", "稼働", "燃料", "人件費"})
+    if any(key in text for key in ("工作機械", "機械", "製造", "工場", "加工")):
+        expanded.update({"機械", "設備", "保守", "稼働", "更新", "残価", "流動性"})
+    if any(key in text for key in ("厨房", "飲食", "店舗", "新店舗")):
+        expanded.update({"設備", "保守", "稼働", "残価", "撤退", "中古"})
+    return expanded
+
+
+def _load_autoresearch_judgment_asset_candidates(limit: int = 500) -> list[dict[str, Any]]:
+    if not _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL.exists():
+        return []
+    state: dict[str, Any] = {}
+    if _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON.exists():
+        try:
+            raw_state = json.loads(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON.read_text(encoding="utf-8", errors="ignore"))
+            if isinstance(raw_state, dict):
+                state = raw_state
+        except (json.JSONDecodeError, OSError):
+            state = {}
+    rows: list[dict[str, Any]] = []
+    try:
+        for line in _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL.read_text(encoding="utf-8", errors="ignore").splitlines():
+            if not line.strip():
+                continue
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(item, dict):
+                candidate_state = state.get(str(item.get("id") or ""))
+                if isinstance(candidate_state, dict):
+                    item = {**item, **candidate_state}
+                rows.append(item)
+                if len(rows) >= limit:
+                    break
+    except OSError:
+        return []
+    return rows
+
+
+def _rank_screening_judgment_asset_candidate(item: dict[str, Any], context_terms: set[str]) -> tuple[float, int, int, str]:
+    claim = str(item.get("claim") or "")
+    haystack = " ".join([
+        claim,
+        str(item.get("research_topic") or ""),
+        str(item.get("research_title") or ""),
+        str(item.get("source_section") or ""),
+    ])
+    item_terms = _screening_candidate_terms(haystack)
+    overlap = len(context_terms & item_terms)
+    candidate_type = str(item.get("candidate_type") or "")
+    type_bonus = {
+        "confirmation_question": 4.0,
+        "condition_signal": 3.0,
+        "caution": 2.0,
+        "application_rule": 1.0,
+    }.get(candidate_type, 0.0)
+    usage_bonus = min(3.0, float(item.get("useful_count") or 0) * 1.5 + float(item.get("use_count") or 0) * 0.2)
+    edit_bonus = min(3.0, float(item.get("edit_count") or 0) * 1.5)
+    penalty = float(item.get("rejected_count") or 0) * 2.0
+    generic_penalty = 2.5 if any(term in claim for term in ("Gemini", "自動否決", "自動承認", "一次情報か", "検討材料として使")) else 0.0
+    score = overlap * 3.0 + type_bonus + usage_bonus + edit_bonus - penalty - generic_penalty
+    return (score, overlap, -len(claim), claim)
+
+
+def _is_generic_autoresearch_candidate(item: dict[str, Any]) -> bool:
+    claim = str(item.get("claim") or "")
+    if str(item.get("asset_quality") or "actionable") == "textbook_general":
+        return True
+    generic_markers = (
+        "この情報は対象業種",
+        "参照元が一次情報",
+        "補助情報だけでなく",
+        "Geminiの要約",
+        "自動否決・自動承認",
+        "検討材料として使",
+        "一次情報または専門機関",
+        "民間記事だけを根拠",
+        "財務内容を確認",
+        "返済原資を確認",
+        "業界動向を確認",
+        "担保価値を確認",
+        "資金使途を確認",
+        "総合的に判断",
+        "慎重に判断",
+    )
+    return any(marker in claim for marker in generic_markers)
+
+
+def _select_screening_judgment_asset_candidates(
+    *,
+    industry_major: str = "",
+    industry_sub: str = "",
+    asset_name: str = "",
+    asset_purpose: str = "",
+    hantei: str = "",
+    score: Optional[float] = None,
+    limit: int = 3,
+) -> list[dict[str, Any]]:
+    context_terms = _screening_candidate_terms(industry_major, industry_sub, asset_name, asset_purpose, hantei)
+    rows = _load_autoresearch_judgment_asset_candidates()
+    if not rows:
+        return []
+    ranked: list[tuple[tuple[float, int, int, str], dict[str, Any]]] = []
+    for item in rows:
+        if str(item.get("promotion_status") or "") == "rejected_or_deprioritized":
+            continue
+        if _is_generic_autoresearch_candidate(item):
+            continue
+        rank = _rank_screening_judgment_asset_candidate(item, context_terms)
+        if context_terms and rank[1] <= 0 and int(item.get("useful_count") or 0) <= 0 and int(item.get("edit_count") or 0) <= 0:
+            continue
+        if rank[0] <= 0 and context_terms:
+            continue
+        ranked.append((rank, item))
+    ranked.sort(key=lambda pair: pair[0], reverse=True)
+    selected: list[dict[str, Any]] = []
+    seen_types: set[str] = set()
+    for _, item in ranked:
+        candidate_type = str(item.get("candidate_type") or "")
+        if len(selected) < max(1, limit) and (candidate_type not in seen_types or len(selected) >= 2):
+            seen_types.add(candidate_type)
+            claim = str(item.get("claim") or "")
+            effective_claim = str(item.get("edited_claim") or claim)
+            selected.append({
+                "id": str(item.get("id") or ""),
+                "candidate_type": candidate_type,
+                "research_topic": str(item.get("research_topic") or ""),
+                "claim": claim,
+                "effective_claim": effective_claim,
+                "edited_claim": str(item.get("edited_claim") or ""),
+                "edit_count": int(item.get("edit_count") or 0),
+                "evidence_path": str(item.get("evidence_path") or ""),
+                "promotion_status": str(item.get("promotion_status") or "not_promoted"),
+                "use_count": int(item.get("use_count") or 0),
+                "useful_count": int(item.get("useful_count") or 0),
+                "rejected_count": int(item.get("rejected_count") or 0),
+                "verified_status": str(item.get("verified_status") or "unverified"),
+            })
+        if len(selected) >= max(1, min(int(limit or 3), 5)):
+            break
+    return selected
+
+
+def _update_autoresearch_judgment_asset_candidate_feedback(
+    candidate_id: str,
+    req: JudgmentAssetCandidateFeedbackRequest,
+) -> dict[str, Any]:
+    import datetime as _dt
+
+    candidate_id = str(candidate_id or "").strip()
+    if not candidate_id:
+        raise HTTPException(status_code=422, detail="candidate_id is required")
+    candidates = _load_autoresearch_judgment_asset_candidates()
+    if candidates and not any(str(item.get("id") or "") == candidate_id for item in candidates):
+        raise HTTPException(status_code=404, detail="candidate not found")
+    try:
+        from scripts.build_autoresearch_judgment_asset_candidates import load_state, write_state
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"candidate state tools unavailable: {exc}")
+
+    state = load_state(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON)
+    current = dict(state.get(candidate_id) or {})
+    for key, default in {
+        "use_count": 0,
+        "useful_count": 0,
+        "rejected_count": 0,
+        "neutral_count": 0,
+        "last_used_at": "",
+        "last_feedback_at": "",
+        "verified_status": "unverified",
+        "verification_note": "",
+        "edited_claim": "",
+        "edit_count": 0,
+        "last_edited_at": "",
+    }.items():
+        current.setdefault(key, default)
+    current["use_count"] = int(current.get("use_count") or 0) + 1
+    if req.feedback == "useful":
+        current["useful_count"] = int(current.get("useful_count") or 0) + 1
+    elif req.feedback == "rejected":
+        current["rejected_count"] = int(current.get("rejected_count") or 0) + 1
+    else:
+        current["neutral_count"] = int(current.get("neutral_count") or 0) + 1
+    now = _dt.datetime.now(_dt.timezone.utc).isoformat()
+    current["last_used_at"] = now
+    current["last_feedback_at"] = now
+    note_bits = [
+        f"feedback={req.feedback}",
+        f"case_id={str(req.case_id or '')[:80]}",
+    ]
+    if req.review_id:
+        note_bits.append(f"review_id={req.review_id}")
+    if req.comment:
+        note_bits.append(f"comment={str(req.comment)[:160]}")
+    edited_claim = str(req.edited_claim or "").strip()
+    if edited_claim:
+        original_claim = ""
+        for item in candidates:
+            if str(item.get("id") or "") == candidate_id:
+                original_claim = str(item.get("claim") or "")
+                break
+        if edited_claim != original_claim and edited_claim != str(current.get("edited_claim") or ""):
+            current["edited_claim"] = edited_claim[:500]
+            current["edit_count"] = int(current.get("edit_count") or 0) + 1
+            current["last_edited_at"] = now
+            note_bits.append("edited_claim=updated")
+    current["verification_note"] = " / ".join(note_bits)
+    state[candidate_id] = current
+    write_state(
+        _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON,
+        [{"id": candidate_id, **current}],
+        state,
+    )
+    return {"id": candidate_id, **current}
+
+
+def _create_manual_judgment_asset_candidate(req: JudgmentAssetCandidateManualRequest) -> dict[str, Any]:
+    import datetime as _dt
+    import hashlib as _hashlib
+
+    claim = str(req.claim or "").strip()
+    if len(claim) < 8:
+        raise HTTPException(status_code=422, detail="claim must be at least 8 characters")
+    now = _dt.datetime.now(_dt.timezone.utc)
+    now_iso = now.isoformat()
+    topic = str(req.research_topic or "manual").strip() or "manual"
+    candidate_type = str(req.candidate_type or "confirmation_question")
+    seed = "|".join(["manual", now_iso, candidate_type, topic, claim, str(req.case_id or ""), str(req.review_id or "")])
+    candidate_id = _hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
+    row = {
+        "id": candidate_id,
+        "candidate_type": candidate_type,
+        "research_topic": topic,
+        "research_title": "Manual Judgment Asset",
+        "research_date": now.date().isoformat(),
+        "claim": claim,
+        "effective_claim": claim,
+        "edited_claim": claim,
+        "edit_count": 1,
+        "last_edited_at": now_iso,
+        "source_section": "manual_input",
+        "evidence_path": f"manual://screening/{str(req.case_id or '')[:80]}",
+        "review_status": "candidate",
+        "asset_quality": "actionable",
+        "quality_reasons": [],
+        "promotion_status": "not_promoted",
+        "use_count": 0,
+        "useful_count": 0,
+        "rejected_count": 0,
+        "neutral_count": 0,
+        "last_used_at": "",
+        "last_feedback_at": "",
+        "verified_status": "unverified",
+        "verification_note": "manual_candidate_created",
+        "requires_human_use_feedback": True,
+        "requires_result_verification": True,
+        "manual_created_at": now_iso,
+        "manual_case_id": str(req.case_id or "")[:120],
+        "manual_review_id": int(req.review_id or 0) if req.review_id else 0,
+        "use_policy": "人間が追加した判断資産候補。案件レビューで使い、効いた/外したと結果検証で育てる。",
+    }
+    _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL.parent.mkdir(parents=True, exist_ok=True)
+    with _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+    try:
+        from scripts.build_autoresearch_judgment_asset_candidates import load_state, write_state
+        state = load_state(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON)
+        state[candidate_id] = {
+            "use_count": 0,
+            "useful_count": 0,
+            "rejected_count": 0,
+            "neutral_count": 0,
+            "last_used_at": "",
+            "last_feedback_at": "",
+            "verified_status": "unverified",
+            "verification_note": "manual_candidate_created",
+            "edited_claim": claim,
+            "edit_count": 1,
+            "last_edited_at": now_iso,
+        }
+        write_state(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON, [{"id": candidate_id, **state[candidate_id]}], state)
+    except Exception:
+        pass
+    return row
 
 
 _SCREENING_EXPERIENCE_DEMO_SEEDS: list[dict[str, Any]] = [
@@ -9694,6 +10005,59 @@ def patch_shion_screening_review_feedback(
         payload={**entry, "schema_version": 1, "cloud_review_id": review_id},
     )
     return {"status": "ok", "review": entry}
+
+
+@app.get("/api/judgment-asset-candidates/screening")
+def get_screening_judgment_asset_candidates(
+    industry_major: str = "",
+    industry_sub: str = "",
+    asset_name: str = "",
+    asset_purpose: str = "",
+    hantei: str = "",
+    score: Optional[float] = None,
+    limit: int = 3,
+) -> dict:
+    candidates = _select_screening_judgment_asset_candidates(
+        industry_major=industry_major,
+        industry_sub=industry_sub,
+        asset_name=asset_name,
+        asset_purpose=asset_purpose,
+        hantei=hantei,
+        score=score,
+        limit=limit,
+    )
+    return {"count": len(candidates), "candidates": candidates}
+
+
+@app.post("/api/judgment-asset-candidates/manual")
+def post_manual_judgment_asset_candidate(
+    req: JudgmentAssetCandidateManualRequest,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    entry = _create_manual_judgment_asset_candidate(req)
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="judgment_asset_candidate_manual_create",
+        surface="screening",
+        payload={**entry, "schema_version": 1, "case_id": req.case_id, "review_id": req.review_id},
+    )
+    return {"status": "ok", "candidate": entry}
+
+
+@app.post("/api/judgment-asset-candidates/{candidate_id}/feedback")
+def post_judgment_asset_candidate_feedback(
+    candidate_id: str,
+    req: JudgmentAssetCandidateFeedbackRequest,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    entry = _update_autoresearch_judgment_asset_candidate_feedback(candidate_id, req)
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="judgment_asset_candidate_feedback",
+        surface="screening",
+        payload={**entry, "schema_version": 1, "feedback": req.feedback, "case_id": req.case_id, "review_id": req.review_id},
+    )
+    return {"status": "ok", "candidate": entry}
 
 
 @app.get("/api/screening-experience-cases")

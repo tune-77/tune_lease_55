@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { apiClient } from "@/lib/api";
-import { Activity, ArrowRight, Bot, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, FileOutput, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus, Swords, Save, Trash2 } from "lucide-react";
+import { Activity, ArrowRight, Bot, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, FileOutput, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus, Swords, Save, Trash2, Sparkles } from "lucide-react";
 import ScoreDAG from "../../components/ScoreDAG";
 import { ScoringFormData, defaultFormData } from "../../types";
 import FormGeneral from "../../components/form/FormGeneral";
@@ -66,6 +66,25 @@ type ShionScreeningReview = {
 };
 
 type ShionReviewFeedback = "useful" | "needs_fix" | "wrong";
+type JudgmentAssetCandidateFeedback = "useful" | "neutral" | "rejected";
+type JudgmentAssetAdaptationMode = "conservative" | "standard" | "exploratory" | "aggressive";
+
+type JudgmentAssetCandidate = {
+  id: string;
+  candidate_type: string;
+  research_topic: string;
+  claim: string;
+  effective_claim?: string;
+  edited_claim?: string;
+  edit_count?: number;
+  evidence_path: string;
+  promotion_status: string;
+  use_count: number;
+  useful_count: number;
+  rejected_count: number;
+  verified_status: string;
+  userFeedback?: JudgmentAssetCandidateFeedback;
+};
 
 type PastCompanyHighlight = {
   name: string;
@@ -649,6 +668,8 @@ const buildShionReviewPrompt = (
   data: ScoringFormData,
   pastReviews: PastShionScreeningReview[] = [],
   experienceCases: DemoSimilarPastCase[] = [],
+  judgmentAssetCandidates: JudgmentAssetCandidate[] = [],
+  judgmentAssetAdaptationMode: JudgmentAssetAdaptationMode = "standard",
 ) => {
   const score = Number(result.score_base ?? result.score ?? 0);
   const lines = [
@@ -697,6 +718,30 @@ const buildShionReviewPrompt = (
   const pastReviewBlock = buildPastReviewBlock(pastReviews);
   if (pastReviewBlock) {
     lines.push("", pastReviewBlock);
+  }
+  if (judgmentAssetCandidates.length) {
+    const adaptationPolicies: Record<JudgmentAssetAdaptationMode, string> = {
+      conservative: "発展度: 保守的。教えた判断を大きく変形せず、今回案件に明確に合う範囲だけで使ってください。新しい仮説は最小限にしてください。",
+      standard: "発展度: 標準。教えた判断を今回案件に合わせて少し変形し、確認観点・承認条件・反証へ落としてください。",
+      exploratory: "発展度: 探索的。教えた判断から関連する新しい確認観点や承認条件を1つまで提案してよいです。ただし判断仮説として扱ってください。",
+      aggressive: "発展度: 攻め。教えた判断を起点に、人間がまだ明示していない派生仮説も提案してよいです。ただし必ず『判断仮説』として明記し、断定しないでください。",
+    };
+    lines.push(
+      "",
+      "【今回試す判断資産候補】",
+      "次の候補はまだ昇格済みではありません。丸写しせず、今回の業種・物件・導入目的・財務状態に合わせて応用生成してください。",
+      adaptationPolicies[judgmentAssetAdaptationMode],
+      "使った判断資産は、回答末尾に「判断資産出典: JA-<候補ID短縮> / <research_topic>」として明記してください。",
+      "元判断と応用後の判断を混同しないでください。応用後の確認観点・承認条件・反証を本文に出し、出典は根拠トレースとして残してください。",
+      ...judgmentAssetCandidates.slice(0, 3).map((item, index) => (
+        [
+          `候補${index + 1}: JA-${item.id.slice(0, 8)} / ${item.candidate_type} / ${item.research_topic}`,
+          `元判断: ${item.claim}`,
+          `使う文面: ${item.edited_claim || item.effective_claim || item.claim}`,
+          `出典: ${item.evidence_path || "manual"}`,
+        ].join("\n")
+      )),
+    );
   }
   if (experienceCases.length || pastReviews.length) {
     lines.push(
@@ -921,6 +966,219 @@ function ShionScreeningReviewCard({
             )}
           </div>
         </div>
+      </div>
+    </section>
+  );
+}
+
+function JudgmentAssetCandidateCard({
+  candidates,
+  loading,
+  feedbackSavingId,
+  adaptationMode,
+  onAdaptationModeChange,
+  onFeedback,
+  onCreate,
+}: {
+  candidates: JudgmentAssetCandidate[];
+  loading: boolean;
+  feedbackSavingId: string;
+  adaptationMode: JudgmentAssetAdaptationMode;
+  onAdaptationModeChange: (mode: JudgmentAssetAdaptationMode) => void;
+  onFeedback: (candidate: JudgmentAssetCandidate, feedback: JudgmentAssetCandidateFeedback, editedClaim?: string) => void;
+  onCreate: (claim: string, candidateType: string) => void;
+}) {
+  const [editingId, setEditingId] = useState("");
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [newClaim, setNewClaim] = useState("");
+  const [newType, setNewType] = useState("confirmation_question");
+  const labels: Record<JudgmentAssetCandidateFeedback, string> = {
+    useful: "効いた",
+    neutral: "微妙",
+    rejected: "外した",
+  };
+  const typeLabels: Record<string, string> = {
+    confirmation_question: "確認質問",
+    condition_signal: "条件兆候",
+    application_rule: "適用ルール",
+    caution: "反証",
+  };
+  const adaptationLabels: Record<JudgmentAssetAdaptationMode, string> = {
+    conservative: "保守的",
+    standard: "標準",
+    exploratory: "探索的",
+    aggressive: "攻め",
+  };
+  const adaptationHints: Record<JudgmentAssetAdaptationMode, string> = {
+    conservative: "教えた判断に近い範囲だけで使う",
+    standard: "今回案件に合わせて少し変形する",
+    exploratory: "関連する判断仮説を1つまで広げる",
+    aggressive: "派生仮説も出すが断定しない",
+  };
+
+  return (
+    <section className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="flex items-center gap-2 text-sm font-black text-amber-950">
+            <Sparkles className="h-4 w-4 text-amber-600" />
+            今回試す判断資産候補
+          </h3>
+          <p className="mt-1 text-xs font-bold leading-relaxed text-amber-800">
+            紫苑レビューへ最大3件だけ渡します。効いた候補だけが後で昇格対象になります。
+          </p>
+          <p className="mt-1 text-[11px] font-bold leading-relaxed text-amber-700">
+            修正済み・手入力の判断を優先し、今回案件に合わせて紫苑が応用します。
+          </p>
+        </div>
+        {loading && <Activity className="h-4 w-4 animate-spin text-amber-700" />}
+      </div>
+      <div className="mt-3 rounded-xl border border-amber-100 bg-white p-3">
+        <div className="mb-3">
+          <p className="text-xs font-black text-amber-900">判断資産の発展度</p>
+          <div className="mt-2 grid grid-cols-2 gap-1 md:grid-cols-4">
+            {(Object.keys(adaptationLabels) as JudgmentAssetAdaptationMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => onAdaptationModeChange(mode)}
+                className={`rounded-lg border px-2 py-2 text-left transition ${
+                  adaptationMode === mode
+                    ? "border-amber-400 bg-amber-100 text-amber-950"
+                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                <span className="block text-[11px] font-black">{adaptationLabels[mode]}</span>
+                <span className="mt-0.5 block text-[10px] font-bold leading-snug">{adaptationHints[mode]}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-black text-amber-900">新しい判断を追加</p>
+          <select
+            value={newType}
+            onChange={(event) => setNewType(event.target.value)}
+            className="rounded-lg border border-amber-100 bg-amber-50 px-2 py-1 text-xs font-bold text-amber-900 outline-none"
+          >
+            <option value="confirmation_question">確認質問</option>
+            <option value="condition_signal">条件兆候</option>
+            <option value="application_rule">適用ルール</option>
+            <option value="caution">反証</option>
+          </select>
+        </div>
+        <textarea
+          value={newClaim}
+          onChange={(event) => setNewClaim(event.target.value)}
+          rows={3}
+          placeholder="例: 運送業の増車なら、荷主契約の期間とドライバー確保をセットで確認する。"
+          className="mt-2 w-full rounded-lg border border-amber-200 bg-amber-50/40 p-2 text-sm font-bold leading-6 text-slate-800 outline-none focus:border-amber-400 focus:bg-white"
+        />
+        <button
+          type="button"
+          onClick={() => {
+            const value = newClaim.trim();
+            if (!value) return;
+            onCreate(value, newType);
+            setNewClaim("");
+          }}
+          disabled={feedbackSavingId === "manual-create" || newClaim.trim().length < 8}
+          className="mt-2 inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-black text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Save className="h-3.5 w-3.5" />
+          判断を追加
+        </button>
+      </div>
+      <div className="mt-3 grid gap-2">
+        {candidates.length ? candidates.map((candidate) => (
+          <div key={candidate.id} className="rounded-xl border border-amber-100 bg-white p-3">
+            {(() => {
+              const displayClaim = candidate.edited_claim || candidate.effective_claim || candidate.claim;
+              const draft = drafts[candidate.id] ?? displayClaim;
+              const isEditing = editingId === candidate.id;
+              const isChanged = draft.trim() && draft.trim() !== displayClaim.trim();
+              return (
+                <>
+            <div className="flex flex-wrap items-center gap-2 text-[10px] font-black text-amber-700">
+              <span className="rounded-full bg-slate-900 px-2 py-1 text-white">JA-{candidate.id.slice(0, 8)}</span>
+              <span className="rounded-full bg-amber-100 px-2 py-1">{typeLabels[candidate.candidate_type] || candidate.candidate_type}</span>
+              <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-600">{candidate.research_topic}</span>
+              <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-600">use {candidate.use_count}</span>
+              <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-600">useful {candidate.useful_count}</span>
+              {candidate.edit_count ? <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">修正 {candidate.edit_count}</span> : null}
+            </div>
+            {isEditing ? (
+              <div className="mt-2">
+                <textarea
+                  value={draft}
+                  onChange={(event) => setDrafts((current) => ({ ...current, [candidate.id]: event.target.value }))}
+                  rows={4}
+                  className="w-full rounded-lg border border-amber-200 bg-amber-50/40 p-2 text-sm font-bold leading-6 text-slate-800 outline-none focus:border-amber-400 focus:bg-white"
+                />
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onFeedback(candidate, "neutral", draft.trim())}
+                    disabled={feedbackSavingId === candidate.id || !isChanged}
+                    className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-black text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    修正を保存
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDrafts((current) => ({ ...current, [candidate.id]: displayClaim }));
+                      setEditingId("");
+                    }}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black text-slate-600 transition hover:bg-slate-50"
+                  >
+                    閉じる
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-2 text-sm font-bold leading-6 text-slate-800">{displayClaim}</p>
+            )}
+            <p className="mt-2 break-all text-[10px] font-bold text-slate-500">
+              出典: {candidate.evidence_path || "manual"} / 元ID: {candidate.id}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingId(candidate.id);
+                  setDrafts((current) => ({ ...current, [candidate.id]: current[candidate.id] ?? displayClaim }));
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black text-slate-700 transition hover:bg-slate-50"
+              >
+                文面修正
+              </button>
+              {(Object.keys(labels) as JudgmentAssetCandidateFeedback[]).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => onFeedback(candidate, key)}
+                  disabled={feedbackSavingId === candidate.id}
+                  className={`rounded-lg border px-3 py-1.5 text-[11px] font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    candidate.userFeedback === key
+                      ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                      : "border-amber-100 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                  }`}
+                >
+                  {feedbackSavingId === candidate.id && candidate.userFeedback === key ? "保存中" : labels[key]}
+                </button>
+              ))}
+            </div>
+                </>
+              );
+            })()}
+          </div>
+        )) : (
+          <p className="rounded-xl border border-amber-100 bg-white p-3 text-sm font-bold text-amber-800">
+            この案件に合う候補はまだありません。紫苑レビューは通常の記憶・知識だけで生成します。
+          </p>
+        )}
       </div>
     </section>
   );
@@ -1744,6 +2002,10 @@ export default function Dashboard() {
   const [shionReviewError, setShionReviewError] = useState("");
   const [shionFeedbackSaving, setShionFeedbackSaving] = useState(false);
   const [shionPastCompanies, setShionPastCompanies] = useState<PastCompanyHighlight[]>([]);
+  const [judgmentAssetCandidates, setJudgmentAssetCandidates] = useState<JudgmentAssetCandidate[]>([]);
+  const [judgmentAssetCandidatesLoading, setJudgmentAssetCandidatesLoading] = useState(false);
+  const [judgmentAssetFeedbackSavingId, setJudgmentAssetFeedbackSavingId] = useState("");
+  const [judgmentAssetAdaptationMode, setJudgmentAssetAdaptationMode] = useState<JudgmentAssetAdaptationMode>("standard");
   const [draftRestored, setDraftRestored] = useState(false);
   const [lastDraftSavedAt, setLastDraftSavedAt] = useState<Date | null>(null);
   const [experienceCasesByDemo, setExperienceCasesByDemo] = useState<Record<string, DemoSimilarPastCase[]>>({});
@@ -1778,6 +2040,8 @@ export default function Dashboard() {
         result?: any;
         gunshiText?: string;
         shionReview?: ShionScreeningReview | null;
+        judgmentAssetCandidates?: JudgmentAssetCandidate[];
+        judgmentAssetAdaptationMode?: JudgmentAssetAdaptationMode;
         activeTab?: "input" | "analysis";
         savedAt?: string;
       };
@@ -1785,6 +2049,8 @@ export default function Dashboard() {
       if (saved.result) setResult(saved.result);
       if (typeof saved.gunshiText === "string") setGunshiText(saved.gunshiText);
       if (saved.shionReview) setShionReview(saved.shionReview);
+      if (Array.isArray(saved.judgmentAssetCandidates)) setJudgmentAssetCandidates(saved.judgmentAssetCandidates);
+      if (saved.judgmentAssetAdaptationMode) setJudgmentAssetAdaptationMode(saved.judgmentAssetAdaptationMode);
       setActiveTab(saved.activeTab || (saved.result ? "analysis" : "input"));
       if (saved.savedAt) {
         const savedDate = new Date(saved.savedAt);
@@ -1812,6 +2078,8 @@ export default function Dashboard() {
           result,
           gunshiText,
           shionReview,
+          judgmentAssetCandidates,
+          judgmentAssetAdaptationMode,
           activeTab,
           savedAt: savedAt.toISOString(),
         }));
@@ -1821,7 +2089,7 @@ export default function Dashboard() {
       }
     }, SCREENING_DRAFT_SAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [draftRestored, formData, result, gunshiText, shionReview, activeTab]);
+  }, [draftRestored, formData, result, gunshiText, shionReview, judgmentAssetCandidates, judgmentAssetAdaptationMode, activeTab]);
 
   const buildExperienceCaseQuery = (
     demoCaseId: string,
@@ -1933,6 +2201,32 @@ export default function Dashboard() {
     }
   };
 
+  const fetchJudgmentAssetCandidatesForScreening = async (targetResult: any, targetFormData: ScoringFormData) => {
+    setJudgmentAssetCandidatesLoading(true);
+    try {
+      const res = await apiClient.get("/api/judgment-asset-candidates/screening", {
+        params: {
+          industry_major: targetResult?.industry_major || targetFormData.industry_major || "",
+          industry_sub: targetResult?.industry_sub || targetFormData.industry_sub || "",
+          asset_name: targetFormData.asset_name || "",
+          asset_purpose: targetFormData.asset_purpose || "",
+          hantei: targetResult?.hantei || "",
+          score: Number(targetResult?.score_base ?? targetResult?.score ?? 0),
+          limit: 3,
+        },
+      });
+      const candidates = Array.isArray(res.data?.candidates) ? res.data.candidates as JudgmentAssetCandidate[] : [];
+      setJudgmentAssetCandidates(candidates);
+      return candidates;
+    } catch (error) {
+      console.warn("Judgment asset candidates fetch failed", error);
+      setJudgmentAssetCandidates([]);
+      return [];
+    } finally {
+      setJudgmentAssetCandidatesLoading(false);
+    }
+  };
+
   const saveShionScreeningReview = async (
     targetResult: any,
     targetFormData: ScoringFormData,
@@ -1978,6 +2272,91 @@ export default function Dashboard() {
     }
   };
 
+  const submitJudgmentAssetCandidateFeedback = async (
+    candidate: JudgmentAssetCandidate,
+    feedback: JudgmentAssetCandidateFeedback,
+    editedClaim?: string,
+  ) => {
+    if (!candidate.id || judgmentAssetFeedbackSavingId) return;
+    const previous = judgmentAssetCandidates;
+    const normalizedEditedClaim = String(editedClaim || "").trim();
+    setJudgmentAssetCandidates((current) => current.map((item) => (
+      item.id === candidate.id
+        ? {
+            ...item,
+            userFeedback: feedback,
+            ...(normalizedEditedClaim ? { edited_claim: normalizedEditedClaim, effective_claim: normalizedEditedClaim } : {}),
+          }
+        : item
+    )));
+    setJudgmentAssetFeedbackSavingId(candidate.id);
+    try {
+      const res = await apiClient.post(`/api/judgment-asset-candidates/${candidate.id}/feedback`, {
+        feedback,
+        case_id: result?.case_id || formData.company_no || formData.company_name || "",
+        review_id: shionReview?.savedId || null,
+        edited_claim: normalizedEditedClaim,
+      });
+      const updated = res.data?.candidate || {};
+      setJudgmentAssetCandidates((current) => current.map((item) => (
+        item.id === candidate.id
+          ? {
+              ...item,
+              userFeedback: feedback,
+              use_count: Number(updated.use_count ?? item.use_count ?? 0),
+              useful_count: Number(updated.useful_count ?? item.useful_count ?? 0),
+              rejected_count: Number(updated.rejected_count ?? item.rejected_count ?? 0),
+              verified_status: String(updated.verified_status || item.verified_status || "unverified"),
+              edited_claim: String(updated.edited_claim || item.edited_claim || ""),
+              effective_claim: String(updated.edited_claim || item.effective_claim || item.claim || ""),
+              edit_count: Number(updated.edit_count ?? item.edit_count ?? 0),
+            }
+          : item
+      )));
+    } catch (error) {
+      console.error("Judgment asset candidate feedback save failed", error);
+      setJudgmentAssetCandidates(previous);
+      setShionReviewError("判断資産候補の評価を保存できませんでした。");
+    } finally {
+      setJudgmentAssetFeedbackSavingId("");
+    }
+  };
+
+  const createManualJudgmentAssetCandidate = async (claim: string, candidateType: string) => {
+    const normalizedClaim = claim.trim();
+    if (!normalizedClaim || judgmentAssetFeedbackSavingId) return;
+    setJudgmentAssetFeedbackSavingId("manual-create");
+    try {
+      const res = await apiClient.post("/api/judgment-asset-candidates/manual", {
+        claim: normalizedClaim,
+        candidate_type: candidateType,
+        research_topic: "manual-screening",
+        case_id: result?.case_id || formData.company_no || formData.company_name || "",
+        review_id: shionReview?.savedId || null,
+      });
+      const candidate = res.data?.candidate as JudgmentAssetCandidate | undefined;
+      if (candidate?.id) {
+        setJudgmentAssetCandidates((current) => [
+          {
+            ...candidate,
+            effective_claim: candidate.effective_claim || candidate.edited_claim || candidate.claim,
+            edit_count: Number(candidate.edit_count ?? 1),
+            use_count: Number(candidate.use_count ?? 0),
+            useful_count: Number(candidate.useful_count ?? 0),
+            rejected_count: Number(candidate.rejected_count ?? 0),
+            verified_status: String(candidate.verified_status || "unverified"),
+          },
+          ...current.filter((item) => item.id !== candidate.id),
+        ].slice(0, 5));
+      }
+    } catch (error) {
+      console.error("Manual judgment asset candidate create failed", error);
+      setShionReviewError("判断資産候補を追加できませんでした。");
+    } finally {
+      setJudgmentAssetFeedbackSavingId("");
+    }
+  };
+
   const requestShionReview = async (targetResult = result, targetFormData = formData) => {
     if (!targetResult) return;
     const seq = ++shionReviewRequestSeq.current;
@@ -1987,13 +2366,21 @@ export default function Dashboard() {
       const pastReviews = await fetchPastShionReviews(targetResult, targetFormData);
       const demoCase = findDemoScreeningCase(targetFormData);
       const experienceCases = await fetchExperienceCasesForContext(demoCase?.id || "", targetFormData, targetResult);
+      const candidates = await fetchJudgmentAssetCandidatesForScreening(targetResult, targetFormData);
       const pastCompanies = uniquePastCompanyHighlights(
         pastReviews,
         experienceCases as DemoSimilarPastCase[],
       );
       setShionPastCompanies(pastCompanies);
       if (seq !== shionReviewRequestSeq.current) return;
-      const promptText = buildShionReviewPrompt(targetResult, targetFormData, pastReviews, experienceCases);
+      const promptText = buildShionReviewPrompt(
+        targetResult,
+        targetFormData,
+        pastReviews,
+        experienceCases,
+        candidates,
+        judgmentAssetAdaptationMode,
+      );
       const res = await apiClient.post("/api/chat", {
         message: promptText,
         user_id: buildShionReviewUserId(targetResult, targetFormData),
@@ -2045,6 +2432,8 @@ export default function Dashboard() {
     setShionFeedbackSaving(false);
     setCurrentExperienceCases([]);
     setShionPastCompanies([]);
+    setJudgmentAssetCandidates([]);
+    setJudgmentAssetFeedbackSavingId("");
     setActiveTab("input");
     window.localStorage.removeItem(SCREENING_RETURN_STATE_KEY);
     setLastDraftSavedAt(null);
@@ -2055,6 +2444,8 @@ export default function Dashboard() {
     setShionReview(null);
     setShionReviewError("");
     setShionPastCompanies([]);
+    setJudgmentAssetCandidates([]);
+    setJudgmentAssetFeedbackSavingId("");
     try {
       const res = await apiClient.post(`/api/score/full`, toThousandYenPayload(targetFormData));
       setResult(res.data);
@@ -2097,6 +2488,8 @@ export default function Dashboard() {
     setShionReviewError("");
     setShionFeedbackSaving(false);
     setCurrentExperienceCases([]);
+    setJudgmentAssetCandidates([]);
+    setJudgmentAssetFeedbackSavingId("");
     setActiveTab("input");
     if (runImmediately) {
       void handleSubmit(nextFormData);
@@ -2159,6 +2552,8 @@ export default function Dashboard() {
       result,
       gunshiText,
       shionReview,
+      judgmentAssetCandidates,
+      judgmentAssetAdaptationMode,
       activeTab: "analysis",
       savedAt: new Date().toISOString(),
     }));
@@ -2461,6 +2856,15 @@ export default function Dashboard() {
                       onFeedback={submitShionReviewFeedback}
                       feedbackSaving={shionFeedbackSaving}
                       pastCompanies={shionPastCompanies}
+                    />
+                    <JudgmentAssetCandidateCard
+                      candidates={judgmentAssetCandidates}
+                      loading={judgmentAssetCandidatesLoading}
+                      feedbackSavingId={judgmentAssetFeedbackSavingId}
+                      adaptationMode={judgmentAssetAdaptationMode}
+                      onAdaptationModeChange={setJudgmentAssetAdaptationMode}
+                      onFeedback={submitJudgmentAssetCandidateFeedback}
+                      onCreate={createManualJudgmentAssetCandidate}
                     />
                     <CurrentIssueCard result={result} data={formData} />
                     <RingiPolicyCard result={result} data={formData} />

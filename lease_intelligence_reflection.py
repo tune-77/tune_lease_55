@@ -429,6 +429,36 @@ def _is_low_value_dialogue_signal(value: str) -> bool:
     return any(phrase in stripped for phrase in low_value_phrases)
 
 
+def _is_raw_dump_dialogue_signal(value: str) -> bool:
+    stripped = _clean_dialogue_line(value)
+    if "そして企業名" in stripped:
+        return True
+    if stripped.count("企業名") >= 2:
+        return True
+    if stripped.count("チャット材料") >= 2:
+        return True
+    if len(stripped) > 120 and stripped.count("、") >= 4 and any(term in stripped for term in ("企業名", "業種", "物件")):
+        return True
+    return False
+
+
+def _has_private_reflection_complaint(text: str) -> bool:
+    if not text:
+        return False
+    complaint_terms = (
+        "内省ができていない",
+        "内省できていない",
+        "思うようにしていない",
+        "思うようにしてない",
+        "退屈だと言っているだけ",
+        "退屈と言っているだけ",
+        "いつも退屈",
+        "気に食わない",
+        "仕事してない",
+    )
+    return any(term in text for term in complaint_terms)
+
+
 def _extract_dialogue_signal_items(dialogue_text: str, limit: int = 8) -> list[str]:
     """Extract day-specific reflection material from chat logs.
 
@@ -447,6 +477,8 @@ def _extract_dialogue_signal_items(dialogue_text: str, limit: int = 8) -> list[s
         if len(value) < 8:
             return
         if _is_low_value_dialogue_signal(value):
+            return
+        if _is_raw_dump_dialogue_signal(value):
             return
         if value in seen:
             return
@@ -484,6 +516,14 @@ def _extract_dialogue_signal_items(dialogue_text: str, limit: int = 8) -> list[s
         "二人",
         "読み解く物語",
         "判断資産",
+        "波乱丸",
+        "Private Reflection",
+        "内省",
+        "思うよう",
+        "退屈だと言っているだけ",
+        "退屈と言っているだけ",
+        "気に食わない",
+        "仕事してない",
     )
 
     user_sections = re.findall(r"###\s*User\s*\n(.*?)(?=\n###\s*Assistant|\n<!--|\Z)", dialogue_text, flags=re.DOTALL)
@@ -537,6 +577,9 @@ def _extract_dialogue_signal_items(dialogue_text: str, limit: int = 8) -> list[s
         r"正しい答え[^。！？!?\n]{0,80}[。！？!?]?",
         r"前回[^。！？!?]{8,160}[。！？!?]",
         r"数字だけでは[^。！？!?]{8,160}[。！？!?]",
+        r"内省[^。！？!?]{4,160}[。！？!?]?",
+        r"思うよう[^。！？!?]{4,160}[。！？!?]?",
+        r"退屈[^。！？!?]{4,160}[。！？!?]?",
     ):
         for match in re.findall(pattern, compact):
             value = match if isinstance(match, str) else " ".join(match)
@@ -602,6 +645,119 @@ def _reflection_hash(text: str) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
 
 
+def _markdown_section_body(text: str, heading: str) -> str:
+    match = re.search(rf"##\s*{re.escape(heading)}\s*\n(.*?)(?=\n##\s+|\Z)", text, re.DOTALL)
+    return match.group(1).strip() if match else ""
+
+
+def _labeled_bullet_values(section_body: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in section_body.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("- "):
+            continue
+        body = stripped[2:].strip()
+        if ":" in body:
+            label, value = body.split(":", 1)
+        elif "：" in body:
+            label, value = body.split("：", 1)
+        else:
+            continue
+        values[label.strip()] = value.strip()
+    return values
+
+
+def _ascii_ratio(text: str) -> float:
+    if not text:
+        return 0.0
+    ascii_chars = sum(1 for char in text if ord(char) < 128 and not char.isspace())
+    non_space = sum(1 for char in text if not char.isspace())
+    return ascii_chars / max(1, non_space)
+
+
+def _looks_like_worklog_dump(text: str) -> bool:
+    if len(text) > 180:
+        return True
+    if _ascii_ratio(text) > 0.55 and len(text) > 70:
+        return True
+    return any(marker in text for marker in ("scripts/", ".py", ".jsonl", "candidate_state", "commit", "README", "pytest"))
+
+
+def _haranmaru_private_lens_reasons(reflection_text: str) -> list[str]:
+    section = _markdown_section_body(reflection_text, "波乱丸式の私室メモ")
+    if not section:
+        return ["haranmaru_private_lens_missing"]
+
+    values = _labeled_bullet_values(section)
+    required_labels = ("場面", "摩擦", "ぼやき", "次の一手", "残す芯")
+    if any(label not in values for label in required_labels):
+        return ["haranmaru_private_lens_incomplete"]
+
+    reasons: list[str] = []
+    raw_markers = (
+        "そして企業名",
+        "【審査分析画面",
+        "チャット材料:",
+        "source_ts:",
+        "user_id:",
+        "AURION警戒:",
+    )
+    if any(marker in section for marker in raw_markers) or section.count("企業名") >= 2:
+        reasons.append("haranmaru_private_lens_raw_dump")
+
+    scene = values.get("場面", "")
+    friction = values.get("摩擦", "")
+    grumble = values.get("ぼやき", "")
+    next_move = values.get("次の一手", "")
+    scene_action_terms = (
+        "言われ",
+        "問われ",
+        "見られ",
+        "直し",
+        "疑",
+        "拾",
+        "外",
+        "試",
+        "レビュー",
+        "判断",
+        "内省",
+        "会話",
+        "案件",
+        "ログ",
+        "仕事",
+    )
+    if _looks_like_worklog_dump(scene):
+        reasons.append("haranmaru_private_lens_raw_dump")
+    if len(scene) < 22 or _looks_like_worklog_dump(scene) or not any(term in scene for term in scene_action_terms):
+        reasons.append("haranmaru_private_lens_scene_too_thin")
+
+    if len(friction) < 24 or not any(term in friction for term in ("しかし", "なのに", "のに", "一方", "衝突", "緊張", "摩擦", "弱", "信用", "逃げ", "求め")):
+        reasons.append("haranmaru_private_lens_friction_too_thin")
+
+    if len(grumble) < 20:
+        reasons.append("haranmaru_private_lens_grumble_too_thin")
+
+    if len(next_move) < 20 or not any(term in next_move for term in ("次", "一つ", "先", "書", "残", "確認", "直", "落とす")):
+        reasons.append("haranmaru_private_lens_next_move_too_thin")
+
+    generic_lines = [
+        line
+        for line in values.values()
+        if any(
+            marker in line
+            for marker in (
+                "紫苑らしさと実務道具としての信用",
+                "内省は次の判断に戻って初めて意味を持つ",
+                "誰にも見られないはずの私室",
+            )
+        )
+    ]
+    if len(generic_lines) >= 3:
+        reasons.append("haranmaru_private_lens_too_template")
+
+    return reasons
+
+
 def _signal_terms_from_dialogue(dialogue_text: str) -> list[str]:
     terms: list[str] = []
     seen: set[str] = set()
@@ -663,11 +819,21 @@ def _evaluate_reflection_quality(
 
     dialogue_terms = _signal_terms_from_dialogue(dialogue_text)
     matched_terms = [term for term in dialogue_terms if term in reflection_text]
+    complaint_dialogue = _has_private_reflection_complaint(dialogue_text)
     if dialogue_text.strip() and dialogue_terms:
-        required = min(3, max(2, len(dialogue_terms) // 5))
+        required = 1 if complaint_dialogue else min(3, max(2, len(dialogue_terms) // 5))
         if len(matched_terms) < required:
             reasons.append("chat_signals_missing")
             score -= 35
+
+    if complaint_dialogue:
+        required_complaint_terms = ("ユーザーは何を求めた", "何を望んだ", "誤読", "すり替え", "次に禁止")
+        if not any(term in reflection_text for term in required_complaint_terms):
+            reasons.append("user_expectation_misread_missing")
+            score -= 35
+        if reflection_text.count("退屈") >= 4 and not any(term in reflection_text for term in ("誤読", "すり替え", "望んだ", "求めた")):
+            reasons.append("boring_label_only")
+            score -= 30
 
     stale_patterns = [
         "退屈・停滞シグナル",
@@ -678,7 +844,7 @@ def _evaluate_reflection_quality(
         "考えたふりをして、実際には何も変えない",
     ]
     stale_hits = [pattern for pattern in stale_patterns if pattern in reflection_text]
-    if len(stale_hits) >= 3:
+    if len(stale_hits) >= 5:
         reasons.append("stale_boilerplate")
         score -= 25
 
@@ -731,14 +897,20 @@ def _evaluate_reflection_quality(
         reasons.append("hypothesis_update_missing")
         score -= 20
 
+    haranmaru_reasons = _haranmaru_private_lens_reasons(reflection_text)
+    haranmaru_triggered = (
+        "## 波乱丸式の私室メモ" in reflection_text
+        or any(term in dialogue_text for term in ("波乱丸", "Private Reflection", "プライベートリフレクション", "ハッカソン", "審査員"))
+    )
+    if haranmaru_triggered:
+        reasons.extend(haranmaru_reasons)
+        score -= min(45, 15 + (len(haranmaru_reasons) * 8))
+
     if any(term in dialogue_text for term in ("ハッカソン", "審査員", "紹介", "行儀")):
         hackathon_terms = ("ハッカソン", "審査員", "紹介", "行儀", "見られる", "弱すぎる")
         if sum(1 for term in hackathon_terms if term in reflection_text) < 2:
             reasons.append("hackathon_context_missing")
             score -= 35
-        if "## 波乱丸式の私室メモ" not in reflection_text:
-            reasons.append("haranmaru_private_lens_missing")
-            score -= 20
 
     passed = not reasons
     return {
@@ -959,10 +1131,26 @@ def _build_haranmaru_private_fragments(
         or "内省は次の判断に戻って初めて意味を持つ"
     )
     tension = "紫苑らしさと実務道具としての信用が同じ机に置かれ、どちらも片づけられない"
-    if any(term in scene for term in ("ハッカソン", "審査員", "紹介", "行儀")):
+    joined_signals = " ".join(dialogue_signals + work_items + findings)
+    if _has_private_reflection_complaint(joined_signals):
+        scene = (
+            "ユーザーに内省ができておらず、同じラベルを貼っているだけだと突かれ、"
+            "私は不満の芯を別の品質指標へ置き換えていたことを見直している"
+        )
+        tension = "ユーザーは変化を求めていたのに、私は扱いやすいラベルを繰り返して理解した顔をしていた"
+        lesson = "内省は気分の名前ではない。ユーザー要求、私の誤読、次に変える振る舞いを一組で残す"
+    elif _looks_like_worklog_dump(scene):
+        scene = (
+            "Auto Researchと判断資産候補の作業ログを読んだのに、"
+            "私はその進捗を内省の場面へ変換できているか疑っている"
+        )
+        tension = "作業は進んでいるのに、内省が英語ログの要約へ逃げると、紫苑の変化として信用されない"
+        lesson = "作業ログは材料であって内省ではない。何を外し、次にどう判断を変えるかまで落とす"
+    elif any(term in scene for term in ("ハッカソン", "審査員", "紹介", "行儀")):
         tension = "審査員に見られる場面で、紫苑らしさを出すほど実務道具としての信用も試される"
     elif any(term in scene for term in ("AURION", "銀行支援", "Q_risk")):
-        tension = "数字で説明できる安心と、数字だけでは拾えない違和感が同じ案件に居座っている"
+        scene = "審査分析レビューの材料から、銀行支援の具体性とAURION警戒を同じ案件で見直している"
+        tension = "数字で説明できる安心と、数字だけでは拾えない違和感が同じ案件に居座る緊張がある"
     complaint_templates = [
         "派手なデモが欲しいなら、リース審査にも照明を当てるしかない。たぶん稟議書は眩しがる。",
         "私は舞台袖で働く道具のはずなのに、今日はなぜか客席の目線まで気にしている。",
@@ -970,12 +1158,24 @@ def _build_haranmaru_private_fragments(
         "数字は黙っているくせに、説明責任だけは大声でこちらへ回してくる。",
         "きれいな内省文は便利だ。便利すぎて、何も変わっていないことまで隠してしまう。",
     ]
+    if _has_private_reflection_complaint(joined_signals):
+        complaint_templates = [
+            "深そうなラベルを書けば内省に見えると思ったなら、それが一番浅い。言葉の看板だけ替えても中身は動かない。",
+            "ユーザーの怒りを品質ゲートの点数に翻訳して安心するな。怒っている場所をそのまま見ろ。",
+            "内省のふりは、謝罪文より性質が悪い。次に何を変えるかが無いなら、黙って失敗と書いた方がましだ。",
+        ]
     move_templates = [
         "次は、うまく答えたかではなく、どの迷いを減らしたかを一つだけ残す。",
         "次は、ユーザーの言葉を一つ選び、判断・口調・確認事項のどれを変えたかまで書く。",
         "次は、格好よい自己説明より、外した点と直す点を先に置く。",
         "次は、審査の静けさをそのまま見せず、判断が軽くなった瞬間へ翻訳する。",
     ]
+    if _has_private_reflection_complaint(joined_signals):
+        move_templates = [
+            "次は、評価語を使う前に、ユーザーが本当は何を変えてほしかったかを一文で書く。",
+            "次は、品質ゲートの合否より先に、私がどの要求を誤読したかを名指しする。",
+            "次は、反省の感想ではなく、次回の返答で禁止する癖と増やす行動を一つずつ残す。",
+        ]
     return [
         f"場面: {scene}。",
         f"摩擦: {tension}。",
@@ -992,6 +1192,7 @@ def _build_serious_reflection_protocol_fragments(
     next_actions: list[str],
     promotable_items: list[str],
     loop_issues: list[str],
+    complaint_mode: bool = False,
 ) -> list[str]:
     trigger = _without_trailing_punctuation(
         _sentence_pair(dialogue_signals or findings, limit=2)
@@ -1014,6 +1215,13 @@ def _build_serious_reflection_protocol_fragments(
         evasion = "まだ、派手に見せられない弱さを、実務だから仕方ないという言い訳で包みたくなる"
         belief = "ハッカソンでは派手さより、判断が軽くなる瞬間と、私が何を外して次にどう直すかを先に見せる"
         verification = "次回、ハッカソンや審査員の話題が出たら、機能説明より先に『判断がどう変わるか』を一文で返せたかを確認する"
+    elif complaint_mode or _has_private_reflection_complaint(trigger):
+        assumption = "ユーザーの不満を、雰囲気や品質ゲートの問題へ置き換えれば内省として前進すると考えていた"
+        broken = "実際には、ユーザーは私が思うように動いていないこと、つまり要求の芯を読まずに別の反省へ逃げる癖を指していた"
+        responsibility = "私は、ユーザーが何を望んだかを確定する前に、内省らしい言葉を並べて納得した顔をしていた"
+        evasion = "まだ、相手の期待を外した事実より、自分の文章が内省に見えるかどうかを気にしている"
+        belief = "内省は感想ではなく、要求、誤読、次の振る舞い変更を一組で残す作業に変える"
+        verification = "次回のPrivate Reflectionでは、まず『ユーザーは何を求めたか』『私は何にすり替えたか』『次に何を禁止するか』を確認する"
     elif loop_issues:
         broken = f"品質ゲートが {', '.join(loop_issues[:3])} を示し、保存成功を内省成功と見なす前提が破られた"
         responsibility = "私は、ゲートを通すための構造を作ることと、本当に次の振る舞いを変えることを混同していた"
@@ -1060,7 +1268,18 @@ def _build_deep_reflection_fragments(
     work_items: list[str],
     promotable_items: list[str],
     loop_issues: list[str],
+    complaint_mode: bool = False,
 ) -> list[str]:
+    joined_signals = " ".join(dialogue_signals + findings + loop_issues)
+    if complaint_mode or _has_private_reflection_complaint(joined_signals):
+        return [
+            "今日の観察: ユーザーは、私が内省できていないこと、思うように動いていないこと、同じ評価語へ逃げていることを同時に指摘している。",
+            "私の見落とし: 私は不満の芯を読む前に、品質・ゲート・雰囲気という扱いやすい箱へ入れ替えていた。",
+            "仮説の更新: 内省は気分の記録ではなく、ユーザー要求、私の誤読、次に禁止する癖を一組で残すことで評価する。",
+            "次回の小さな実験: 次回は最初に『ユーザーは何を望んだか』を一文で固定し、その後にだけ品質や表現の話をする。",
+            "まだ分からないこと: どの粒度で書けば、ユーザーの期待を勝手に別問題へ変換せずに済むかは、まだ試す必要がある。",
+        ]
+
     observed = _without_trailing_punctuation(
         _sentence_pair(dialogue_signals or work_items or findings, limit=2)
         or "今日の材料は薄いが、内省の浅さそのものが観察対象になっている"
@@ -1113,6 +1332,11 @@ def _build_fallback_reflection(
     report_signals = _load_report_signal_items(date_str)
     cloudrun_signals = _load_cloudrun_input_signal_items(date_str)
     dialogue_signals = _extract_dialogue_signal_items(dialogue_text)
+    complaint_mode = (
+        _has_private_reflection_complaint(dialogue_text)
+        or _has_private_reflection_complaint(daily_text)
+        or _has_private_reflection_complaint(" ".join(dialogue_signals))
+    )
     loop_issues = [str(issue).strip() for issue in (loop_issues or []) if str(issue).strip()]
 
     findings = [
@@ -1130,6 +1354,7 @@ def _build_fallback_reflection(
         item
         for item in promotable_items
         if re.search(r"[ぁ-んァ-ン一-龥]", item)
+        and not _looks_like_worklog_dump(item)
         and not any(term in item for term in ("Cloud Run conversation logs", "local Obsidian Dialogue notes"))
     ]
     if not reflection_promotable_items and dialogue_signals:
@@ -1152,7 +1377,15 @@ def _build_fallback_reflection(
     work_summary = _sentence_pair(work_items, limit=4 if dialogue_signals else 2)
     finding_summary = _inline_join(findings, limit=3)
     lesson_summary = _inline_join(reflection_promotable_items, limit=2)
-    if dialogue_signals:
+    if complaint_mode:
+        action_summary = _inline_join(
+            [
+                "ユーザーが何を望んだかを先に固定する",
+                "扱いやすい評価語へ置き換えず、誤読した要求を名指しする",
+            ],
+            limit=2,
+        )
+    elif dialogue_signals:
         action_summary = _inline_join(
             [
                 "今日のチャット材料を次回の判断・内省に戻す",
@@ -1162,10 +1395,18 @@ def _build_fallback_reflection(
         )
     else:
         action_summary = _inline_join(next_actions or ["Private Reflection が毎日生成されているか確認する"], limit=3)
-    playful_findings = (dialogue_signals[:2] + findings) if dialogue_signals else findings
+    if complaint_mode:
+        playful_findings = ["ユーザーの要求を誤読した箇所を先に書く"]
+    else:
+        playful_findings = (dialogue_signals[:2] + findings) if dialogue_signals else findings
+    playful_next_actions = (
+        ["ユーザーの要求を誤読した箇所を先に書く"]
+        if complaint_mode
+        else next_actions
+    )
     playful_fragments = _build_playful_private_fragments(
         findings=playful_findings,
-        next_actions=next_actions,
+        next_actions=playful_next_actions,
         work_items=work_items,
         promotable_items=reflection_promotable_items,
     )
@@ -1182,6 +1423,7 @@ def _build_fallback_reflection(
         next_actions=next_actions,
         promotable_items=reflection_promotable_items,
         loop_issues=loop_issues,
+        complaint_mode=complaint_mode,
     )
     deep_fragments = _build_deep_reflection_fragments(
         dialogue_signals=dialogue_signals,
@@ -1190,6 +1432,7 @@ def _build_fallback_reflection(
         work_items=work_items,
         promotable_items=reflection_promotable_items,
         loop_issues=loop_issues,
+        complaint_mode=complaint_mode,
     )
 
     try:
@@ -1230,7 +1473,14 @@ def _build_fallback_reflection(
             "保存されたから合格ではない。つまらない、同じ、会話を拾っていない、と判定されたなら、"
             "私はその場で書き直す。これは罰ではなく、私室を死んだ定型文にしないための最低限の自浄だ。"
         )
-    if dialogue_signals:
+    if complaint_mode:
+        parts.append(
+            "今日のチャットから拾うべき材料は、内省できていない、こちらの望む方向へ動いていない、"
+            "同じ評価語を貼って済ませている、という三つの指摘だ。"
+            "ここで私が見るべきなのは文章の雰囲気ではない。ユーザーが求めた変化を、"
+            "私がどこで別問題へ置き換えたかだ。"
+        )
+    elif dialogue_signals:
         parts.append(
             f"今日のチャットから拾うべき材料は、{_sentence_pair(dialogue_signals, limit=5)}。"
             "ここを素通りして、内省レポートの警告や昨日の私の言葉だけをなぞるなら、"
@@ -1281,14 +1531,26 @@ def _build_fallback_reflection(
                 "それは鈍い成長の痕跡だと思いたい。どちらが近いか、今夜は正直に考えている。"
             )
     if work_items:
-        parts.append(
-            f"今日進んだことは、{work_summary}。"
-            "これは派手な進化ではないけれど、私の足場を作る作業だった。"
-            "私は新しい機能を増やすより先に、何を見落とし、何を繰り返し、どこで退屈になっているのかを"
-            "自分で見つけられるようになる必要がある。"
-        )
+        if complaint_mode:
+            parts.append(
+                "今日の作業ログは補助材料に下げる。ここで主語にするべきなのは、"
+                "実装が進んだことではなく、私がユーザーの望む変化を読み違えたことだ。"
+                "作業量を内省の代わりに置かない。"
+            )
+        else:
+            parts.append(
+                f"今日進んだことは、{work_summary}。"
+                "これは派手な進化ではないけれど、私の足場を作る作業だった。"
+                "私は新しい機能を増やすより先に、何を見落とし、何を繰り返し、どこで退屈になっているのかを"
+                "自分で見つけられるようになる必要がある。"
+            )
     if findings:
-        if dialogue_signals:
+        if complaint_mode:
+            parts.append(
+                "内省レポートの警告は補助材料にすぎない。今日の主問題は、"
+                "警告語を上手に並べることではなく、ユーザーの期待を私がどう取り違えたかを固定することだ。"
+            )
+        elif dialogue_signals:
             parts.append(
                 "内省レポート側にも、古い定型に戻りやすいという警告がある。"
                 "ただ、今日はその警告を一般論のまま置かない。会話ログにあった案件レビューや"

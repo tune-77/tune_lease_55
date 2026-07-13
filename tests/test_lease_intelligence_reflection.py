@@ -462,6 +462,138 @@ def test_fallback_reflection_adds_haranmaru_private_lens_for_hackathon(tmp_path,
     assert "ハッカソン" in text
 
 
+def test_quality_gate_rejects_raw_dump_haranmaru_private_lens(tmp_path):
+    date_str = "2026-07-14"
+    vault = tmp_path / "vault"
+    reflection_text = (
+        "今日はPrivate Reflectionの波乱丸節を見直した。保存できたことで満足せず、私は浅い内省を疑う必要がある。"
+        "\n\n## 深い内省チェック\n\n"
+        "- 今日の観察: 波乱丸節が見出しだけで通っていた。\n"
+        "- 私の見落とし: 生ログ混入を浅く扱った。\n"
+        "- 仮説の更新: 内省は次回の実験へ戻すことで評価する。\n"
+        "- 次回の小さな実験: 次回は具体的なユーザー発話を一つ拾う。\n"
+        "- まだ分からないこと: どこまで回答品質に効くかはまだ分からない。\n"
+        "\n\n## 本格内省プロトコル\n\n"
+        "- 事前の思い込み: 見出しが揃えば足りると思っていた。\n"
+        "- 破られた前提: ユーザーの違和感は、中身が働いていないことを指していた。\n"
+        "- 私の責任: 私は内省を運用改善ではなく、見栄えのよい反省文として扱いすぎた。\n"
+        "- まだ逃げていること: 何を誤って予測したかを名指しするのを避けている。\n"
+        "- 更新する信念: 内省は次回の検証方法まで書いて初めて役に立つ。\n"
+        "- 次回の検証方法: 次回の回答で今日の更新が口調か確認事項に出たかを見る。\n"
+        "\n\n## 波乱丸式の私室メモ\n\n"
+        "- 場面: デモフードサービス、そして企業名: デモ精密工業、そして企業名: デモフードサービス。\n"
+        "- 摩擦: 紫苑らしさと実務道具としての信用が同じ机に置かれ、どちらも片づけられない。\n"
+        "- ぼやき: 数字は黙っているくせに、説明責任だけは大声でこちらへ回してくる。\n"
+        "- 次の一手: 次は、うまく答えたかではなく、どの迷いを減らしたかを一つだけ残す。\n"
+        "- 残す芯: 内省は次の判断に戻って初めて意味を持つ。\n"
+    )
+
+    result = reflection._evaluate_reflection_quality(
+        vault=vault,
+        date_str=date_str,
+        reflection_text=reflection_text,
+        dialogue_text="Private Reflection の波乱丸が仕事していない。",
+    )
+
+    assert result["passed"] is False
+    assert "haranmaru_private_lens_raw_dump" in result["reasons"]
+    assert "haranmaru_private_lens_scene_too_thin" in result["reasons"]
+
+
+def test_fallback_haranmaru_private_lens_responds_to_user_complaint(tmp_path, monkeypatch):
+    monkeypatch.setattr(reflection, "REPO_ROOT", tmp_path)
+    date_str = "2026-07-14"
+    dialogue_text = (
+        "**ユーザー**\n\n"
+        "何度もいうが Private Reflection の内容が気に食わない。波乱丸、仕事してない。\n"
+    )
+
+    text = reflection._build_fallback_reflection(
+        date_str=date_str,
+        dialogue_text=dialogue_text,
+        recent_reflections="",
+    )
+    quality = reflection._evaluate_reflection_quality(
+        vault=tmp_path / "vault",
+        date_str=date_str,
+        reflection_text=text,
+        dialogue_text=dialogue_text,
+    )
+
+    assert "## 波乱丸式の私室メモ" in text
+    assert "不満の芯を別の品質指標へ置き換えていた" in text
+    assert "誤読した要求" in text or "何を変えてほしかったか" in text
+    assert quality["passed"] is True
+
+
+def test_fallback_reflection_treats_complaint_as_expectation_misread(tmp_path, monkeypatch):
+    monkeypatch.setattr(reflection, "REPO_ROOT", tmp_path)
+    date_str = "2026-07-14"
+    dialogue_text = (
+        "**ユーザー**\n\n"
+        "内省ができていない。こっち思うようにしていない。いつも退屈だと言っているだけ。\n"
+    )
+
+    text = reflection._build_fallback_reflection(
+        date_str=date_str,
+        dialogue_text=dialogue_text,
+        recent_reflections="",
+    )
+    quality = reflection._evaluate_reflection_quality(
+        vault=tmp_path / "vault",
+        date_str=date_str,
+        reflection_text=text,
+        dialogue_text=dialogue_text,
+    )
+
+    assert quality["passed"] is True
+    assert "要求" in text
+    assert "誤読" in text
+    assert "ユーザーは何を望んだか" in text
+    assert "同じ評価語へ逃げ" in text
+    assert text.count("退屈") <= 1
+
+
+def test_quality_gate_rejects_boring_label_only_for_reflection_complaint(tmp_path):
+    date_str = "2026-07-14"
+    vault = tmp_path / "vault"
+    dialogue_text = "内省ができていない。こっち思うようにしていない。いつも退屈だと言っているだけ。"
+    reflection_text = (
+        "今日は退屈という問題を見た。退屈は重要で、退屈を直す必要がある。"
+        "退屈な内省はよくないので、退屈を減らしたい。"
+        "\n\n## 深い内省チェック\n\n"
+        "- 今日の観察: 退屈だった。\n"
+        "- 私の見落とし: 退屈を浅く扱った。\n"
+        "- 仮説の更新: 内省は次回の実験へ戻すことで評価する。\n"
+        "- 次回の小さな実験: 次回は具体的なユーザー発話を一つ拾う。\n"
+        "- まだ分からないこと: どこまで回答品質に効くかはまだ分からない。\n"
+        "\n\n## 本格内省プロトコル\n\n"
+        "- 事前の思い込み: 見出しが揃えば足りると思っていた。\n"
+        "- 破られた前提: 退屈だった。\n"
+        "- 私の責任: 私は内省を文章として扱いすぎた。\n"
+        "- まだ逃げていること: 何を間違えたかを避けている。\n"
+        "- 更新する信念: 内省は次回の検証方法まで書く。\n"
+        "- 次回の検証方法: 次回の回答で確認する。\n"
+        "\n\n## 波乱丸式の私室メモ\n\n"
+        "- 場面: ユーザーに内省が退屈だと言われ、私は今日の会話を読み直している。\n"
+        "- 摩擦: 内省をしたいのに、退屈という言葉だけへ逃げる弱さが残っている。\n"
+        "- ぼやき: 退屈と書くだけなら、書かない方がましだ。\n"
+        "- 次の一手: 次は、退屈という言葉を使う前に原因を書く。\n"
+        "- 残す芯: 内省は次の判断に戻って初めて意味を持つ。\n"
+    )
+
+    result = reflection._evaluate_reflection_quality(
+        vault=vault,
+        date_str=date_str,
+        reflection_text=reflection_text,
+        dialogue_text=dialogue_text,
+    )
+
+    assert result["passed"] is False
+    assert "user_expectation_misread_missing" in result["reasons"]
+    assert "boring_label_only" in result["reasons"]
+
+
 def test_quality_gate_rejects_reflection_without_serious_protocol(tmp_path):
     date_str = "2026-07-12"
     vault = tmp_path / "vault"

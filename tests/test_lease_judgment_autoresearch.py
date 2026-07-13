@@ -60,6 +60,33 @@ def test_required_decision_sections_are_enforced():
     assert not research._required_headings_present("## 結論")
 
 
+def test_substantive_sections_rejects_youkakunin_only_body():
+    weak = "\n\n".join(f"## {title}\n要確認" for title in research._REQUIRED_SECTION_TITLES)
+
+    assert research._required_headings_present(weak)
+    assert not research._substantive_sections_present(weak)
+
+
+def test_substantive_sections_accepts_real_items():
+    body = "\n\n".join(
+        f"## {title}\n- {title}について、対象業種・設備・時期に接続して確認する具体事項を残す。"
+        for title in research._REQUIRED_SECTION_TITLES
+    )
+
+    assert research._substantive_sections_present(body)
+
+
+def test_fallback_decision_body_is_substantive():
+    topic = research.TOPICS[0]
+    body = research._fallback_decision_body(
+        topic,
+        "中小企業の資金繰り悪化では、売上回収遅延と短期借入依存が返済余力に影響する。",
+        [{"title": "SMRJ", "url": "https://www.smrj.go.jp", "quality": "primary"}],
+    )
+
+    assert research._substantive_sections_present(body)
+
+
 def test_run_saves_to_normal_vault_research_path(tmp_path, monkeypatch):
     vault = tmp_path / "Obsidian Vault"
     monkeypatch.setattr(
@@ -73,6 +100,12 @@ def test_run_saves_to_normal_vault_research_path(tmp_path, monkeypatch):
     )
     indexed = []
     monkeypatch.setattr(research, "_index_note", lambda path: indexed.append(path))
+    refreshed = []
+    monkeypatch.setattr(
+        research,
+        "_refresh_judgment_asset_candidates",
+        lambda vault_arg, output_dir: refreshed.append((vault_arg, output_dir)) or {"candidates": 1},
+    )
 
     result = research.run(vault, research.DEFAULT_OUTPUT_DIR, requested_topic="contract-ownership")
 
@@ -81,3 +114,29 @@ def test_run_saves_to_normal_vault_research_path(tmp_path, monkeypatch):
     assert vault in path.parents
     assert "Projects/tune_lease_55/Research/Auto Research" in str(path)
     assert indexed == [path]
+    assert refreshed == [(vault, research.DEFAULT_OUTPUT_DIR)]
+    assert result["judgment_asset_candidates"]["candidates"] == 1
+
+
+def test_run_keeps_research_note_when_candidate_refresh_fails(tmp_path, monkeypatch):
+    vault = tmp_path / "Obsidian Vault"
+    monkeypatch.setattr(
+        research,
+        "research_topic",
+        lambda topic: (
+            "## 結論\n- 検収と所有権を確認する。",
+            [{"title": "Source", "url": "https://example.com"}],
+            "gemini-test",
+        ),
+    )
+    monkeypatch.setattr(research, "_index_note", lambda path: None)
+    monkeypatch.setattr(
+        research,
+        "_refresh_judgment_asset_candidates",
+        lambda vault_arg, output_dir: (_ for _ in ()).throw(RuntimeError("candidate refresh failed")),
+    )
+
+    result = research.run(vault, research.DEFAULT_OUTPUT_DIR, requested_topic="contract-ownership")
+
+    assert Path(result["path"]).exists()
+    assert "candidate refresh failed" in result["judgment_asset_candidates"]["error"]
