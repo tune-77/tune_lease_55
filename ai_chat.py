@@ -1315,6 +1315,7 @@ def get_ai_consultation_prompt(
     from knowledge import build_knowledge_context
     from data_cases import load_consultation_memory
     from obsidian_ai_context import build_obsidian_ai_context_block
+    from lease_finance_knowledge import build_basic_lease_question_block
     from lease_news_digest import lease_news_focus_as_text
 
     res = res or {}
@@ -1327,6 +1328,7 @@ def get_ai_consultation_prompt(
         if item
     )
     obsidian_block = build_obsidian_ai_context_block(obsidian_query, heading="Obsidian知識ノート・過去メモ")
+    basic_lease_block = build_basic_lease_question_block(q)
 
     # 業界情報（Web検索キャッシュ）
     advice_extras = get_advice_context_extras(selected_sub, selected_major) or ""
@@ -1410,6 +1412,7 @@ def get_ai_consultation_prompt(
             system_instruction,
             pdca_block,
             anything_block,          # ← 最優先・先頭配置
+            basic_lease_block,
             obsidian_block,
             result_block,
             trend_block,
@@ -1424,6 +1427,7 @@ def get_ai_consultation_prompt(
         parts = [
             "あなたはリース審査のAI審査オフィサーです。以下の情報を参照して、審査担当者の質問に答えてください。Obsidian知識ノートがある場合は、そこを優先して根拠にしてください。",
             pdca_block,
+            basic_lease_block,
             obsidian_block,
             result_block,
             trend_block,

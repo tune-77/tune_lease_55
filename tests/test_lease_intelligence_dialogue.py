@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from lease_intelligence_dialogue import (
+    _build_useful_life_lookup_block,
     _emotional_response_guidance,
     append_dialogue_note,
     build_dialogue_context,
@@ -66,6 +67,73 @@ def test_dialogue_is_appended_to_daily_obsidian_note(tmp_path):
     assert "**ユーザー**" in text
     assert "何を考えている？" in text
     assert "維持について考えています。" in text
+
+
+def test_useful_life_lookup_block_answers_truck_directly():
+    block = _build_useful_life_lookup_block("トラックの法定耐用年数は何年？")
+
+    assert "ローカル法定耐用年数マスタ" in block
+    assert "トラック一般" in block
+    assert "5年" in block
+    assert "中型トラック" in block
+    assert "4年" in block
+    assert "RAGやObsidian検索で直接ノートが0件でも" in block
+
+
+def test_dialogue_context_injects_useful_life_lookup_for_casual_question(tmp_path, monkeypatch):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    monkeypatch.setattr(
+        "lease_intelligence_dialogue.build_lease_intelligence_knowledge",
+        lambda **kwargs: type(
+            "Knowledge",
+            (),
+            {
+                "available": False,
+                "context_block": "",
+                "query": "トラック 法定耐用年数",
+                "source_paths": (),
+                "indexed_notes": 0,
+                "knowledge_notes": 0,
+                "chat_log_notes": 0,
+            },
+        )(),
+    )
+
+    prompt, _state = build_dialogue_context(vault, "トラックの法定耐用年数は何年？", mode="casual")
+
+    assert "基本リースQA" in prompt
+    assert "トラック一般" in prompt
+    assert "5年" in prompt
+    assert "答えてよい" in prompt
+
+
+def test_dialogue_context_keeps_basic_lease_qa_in_casual_mode(tmp_path, monkeypatch):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    monkeypatch.setattr(
+        "lease_intelligence_dialogue.build_lease_intelligence_knowledge",
+        lambda **kwargs: type(
+            "Knowledge",
+            (),
+            {
+                "available": False,
+                "context_block": "",
+                "query": "ファイナンスリース",
+                "source_paths": (),
+                "indexed_notes": 0,
+                "knowledge_notes": 0,
+                "chat_log_notes": 0,
+            },
+        )(),
+    )
+
+    prompt, _state = build_dialogue_context(vault, "ファイナンスリースとは？", mode="casual")
+
+    assert "基本リースQA" in prompt
+    assert "ファイナンス・リース" in prompt
+    assert "原則中途解約不可" in prompt
+    assert "検索で直接ノートが0件でも" in prompt
 
 
 def test_emotion_changes_tone_without_allowing_work_abandonment():

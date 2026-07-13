@@ -10,7 +10,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from lease_finance_knowledge import build_lease_finance_knowledge_block
+from lease_finance_knowledge import build_basic_lease_question_block, build_lease_finance_knowledge_block
 from lease_intelligence_knowledge import build_lease_intelligence_knowledge
 from lease_intelligence_mind import (
     build_memory_recall_block,
@@ -192,6 +192,11 @@ def _environment_block() -> str:
     return "ローカル開発環境"
 
 
+def _build_useful_life_lookup_block(message: str) -> str:
+    """Inject local useful-life master facts for direct statutory-useful-life questions."""
+    return build_basic_lease_question_block(message, heading="ローカル法定耐用年数マスタ")
+
+
 def _emotional_response_guidance(summary: dict[str, Any]) -> str:
     emotions = list(summary.get("complex_emotions") or [])
     dominant = emotions[0] if emotions else {}
@@ -326,12 +331,15 @@ def build_dialogue_context(
     mind_context = build_mind_context(vault)
     environment_block = _environment_block()
     finance_knowledge_block = build_lease_finance_knowledge_block()
+    basic_lease_question_block = build_basic_lease_question_block(message)
     if mode == "casual":
         mind_context = _clip_prompt_text(mind_context, 2200)
-        finance_knowledge_block = ""
+        finance_knowledge_block = basic_lease_question_block
     elif is_compact:
         mind_context = _clip_prompt_text(mind_context, 4200)
         finance_knowledge_block = _clip_prompt_text(finance_knowledge_block, 1800 if mode == "long" else 2600)
+    if basic_lease_question_block and basic_lease_question_block not in finance_knowledge_block:
+        finance_knowledge_block = f"{basic_lease_question_block}\n\n{finance_knowledge_block}".strip()
     compact_guidance = ""
     if is_compact:
         compact_guidance = """

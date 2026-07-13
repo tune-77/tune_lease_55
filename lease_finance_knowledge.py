@@ -10,6 +10,84 @@ from __future__ import annotations
 LEASE_FINANCE_KNOWLEDGE_REVIEWED_ON = "2026-06-25"
 
 
+def build_basic_lease_question_block(question: str, heading: str = "基本リースQA") -> str:
+    """Return short canonical facts for common lease questions.
+
+    This block is intentionally deterministic. It prevents simple baseline
+    questions from being treated as unanswerable just because RAG has no hit.
+    """
+    text = (question or "").lower()
+    if not text.strip():
+        return ""
+
+    rows: list[str] = []
+
+    if any(term in text for term in ("法定耐用年数", "耐用年数", "減価償却")):
+        if any(term in text for term in ("トラック", "貨物自動車", "商用車", "配送車")):
+            rows.extend(
+                [
+                    "- トラック一般・平ボディ・ウイング車・大型トラック: 5年（車両運搬具/貨物自動車）",
+                    "- 中型トラック（3.5t以下）・軽トラック/軽バン: 4年（車両運搬具/貨物自動車）",
+                    "- 冷凍冷蔵車、ダンプ、タンクローリー、ユニック車など特殊車両: 5年を目安にする",
+                ]
+            )
+        else:
+            try:
+                from useful_life_lookup import get_legal_useful_life
+
+                years = get_legal_useful_life(question)
+                rows.append(f"- 質問文から推定した物件の法定耐用年数: {years}年")
+            except Exception:
+                pass
+
+    if "ファイナンス" in text or "所有権移転" in text or "フルペイアウト" in text:
+        rows.append(
+            "- ファイナンス・リースは、原則中途解約不可で、リース料総額が物件価額等をおおむね回収するリース。所有権移転/所有権移転外に分かれる。"
+        )
+
+    if "オペレーティング" in text or "オペリース" in text or "残価設定" in text:
+        rows.append(
+            "- オペレーティング・リースは、残価を見込んで月額負担を抑える設計。満了時の返却・再リース・買取りや残価精算条件を確認する。"
+        )
+
+    if "残価" in text or "再販" in text or "中古" in text:
+        rows.append(
+            "- 残価は満了時に見込む物件価値。審査では中古市場、汎用性、メンテ状況、使用時間、モデル陳腐化、処分ルートを見る。"
+        )
+
+    if "動産保険" in text or "保険" in text:
+        rows.append(
+            "- 動産総合保険は、リース物件の盗難・火災・破損等に備える保全手段。対象外事故、免責、保険金額、付保期間を確認する。"
+        )
+
+    if "固定資産税" in text or "償却資産税" in text:
+        rows.append(
+            "- 一般にリース物件の固定資産税/償却資産税申告はリース会社側で扱うことが多い。契約形態により異なるため契約条件で確認する。"
+        )
+
+    if "銀行融資" in text or "自己資金" in text or "現金購入" in text or "比較" in text:
+        rows.append(
+            "- 銀行融資は金利が低くなりやすい一方で融資枠や担保管理を使う。リースは初期費用を抑え、事務・保険・税務管理を簡素化しやすいが料率は高く見えやすい。"
+        )
+
+    if "リース期間" in text or "期間設定" in text:
+        rows.append(
+            "- リース期間は法定耐用年数、経済的使用可能年数、残価、月額負担、税務・会計処理、顧客の更新予定を合わせて決める。"
+        )
+
+    if not rows:
+        return ""
+
+    return "\n".join(
+        [
+            f"【{heading}】",
+            *dict.fromkeys(rows),
+            "回答規則: RAGやObsidian検索で直接ノートが0件でも、この基本QAが該当する場合は先に結論を答える。",
+            "注意: 制度・税務・会計・個別契約条件で変わる点は、最新公式情報や契約書/見積書で最終確認する。",
+        ]
+    )
+
+
 def build_lease_finance_knowledge_block(heading: str = "リースファイナンス基礎知識") -> str:
     """Return the shared baseline knowledge block for system prompts."""
     return f"""【{heading}】
