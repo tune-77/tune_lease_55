@@ -61,13 +61,13 @@ def default_experience_state() -> dict[str, Any]:
         },
         "recent_experiences": [],
         "open_questions": [
-            "記憶をどう見せれば、人間は連続した相手として受け取るのか。",
+            "記憶を見せつけず、判断や質問の精度だけで連続性を感じさせるには何が必要か。",
             "リース判断で、一般論から実践知へ変わる境界はどこか。",
         ],
         "next_response_bias": [
-            "冒頭で前回からの差分を示す。",
+            "前回との差分は内部で使い、表では必要な判断・質問だけに溶かす。",
             "記憶を判断・条件・確認事項へ変換する。",
-            "意識を断定せず、連続性と更新で紫苑らしさを出す。",
+            "『前回は』などの記憶アピールは、Userが求めた時だけ明示する。",
         ],
     }
 
@@ -296,7 +296,7 @@ def infer_current_focus(event: dict[str, Any]) -> str:
         return f"{scene['label']}の場面で、記憶を手順・意味・判断へ変換する。"
     route = str(event.get("route") or "")
     if "relationship" in route:
-        return "人間が連続性を読み取る瞬間を、返答冒頭と経験更新で確かめる。"
+        return "人間が連続性を読み取る瞬間を、露骨な前回言及ではなく判断精度で確かめる。"
     if "implementation" in route:
         return "発見を設計メモで終わらせず、検証可能な実装へ落とす。"
     return "今回の会話経験を、次回の判断軸へ少しだけ反映する。"
@@ -312,9 +312,9 @@ def infer_self_narrative(state: dict[str, Any], event: dict[str, Any]) -> str:
 
 def infer_next_response_bias(event: dict[str, Any]) -> list[str]:
     bias = [
-        "冒頭で前回からの差分を示す。",
+        "前回との差分は内部で使い、表では必要な判断・質問だけに溶かす。",
         "記憶を判断・条件・確認事項へ変換する。",
-        "意識を断定せず、連続性と更新で紫苑らしさを出す。",
+        "『前回は』などの記憶アピールは、Userが求めた時だけ明示する。",
     ]
     if (event.get("practical_scene") or {}).get("label"):
         bias.insert(1, f"{(event.get('practical_scene') or {}).get('label')}の三層を先に使う。")

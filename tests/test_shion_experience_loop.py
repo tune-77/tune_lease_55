@@ -89,6 +89,8 @@ def test_build_experience_prompt_block_uses_existing_state(tmp_path):
     state = load_experience_state(state_path)
 
     assert "Shion Experience Loop" in block
+    assert "前回との差分は内部で使い" in block
+    assert "冒頭で前回からの差分を示す" not in block
     assert payload["experience_count"] == 1
     assert state["recent_experiences"]
     assert payload["dominant_mood"] in payload["mood"]

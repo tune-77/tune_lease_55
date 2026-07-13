@@ -46,7 +46,7 @@ const pyramidLayers = [
   {
     title: "紫苑の返答",
     label: "人間が記憶として受け取る",
-    body: "前回との差分、判断への変換、紫苑らしい冒頭で返す",
+    body: "差分は内部で使い、判断・確認質問・言い切りの精度として返す",
     width: "w-[46%]",
     tone: "from-violet-600 to-fuchsia-600 text-white",
   },
