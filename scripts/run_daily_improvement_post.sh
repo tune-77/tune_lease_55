@@ -22,6 +22,11 @@ echo "[記録] DAILY-BRIEF.md を Obsidian Vault に書き出し..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/write_daily_brief.py" || true
 
 echo ""
+echo "[監視] Obsidian環境モニターを生成（読み取り専用）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/monitor_obsidian_environment.py" \
+  --date "$(date +%F)" || true
+
+echo ""
 echo "[通知] 日次改善レポートをSlackへ送信（Webhook未設定ならスキップ）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/send_daily_improvement_slack.py" \
   --date "$(date +%F)" || true
