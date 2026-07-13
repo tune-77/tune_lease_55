@@ -70,6 +70,20 @@ SHION_ABUSE_RE = re.compile(
 SHION_COMPLAINT_RE = re.compile(
     r"(クレーム|不満|間違って|間違い|誤回答|ひどい|使えない|期待外れ|信用できない|役に立たない)"
 )
+MEMORY_POISONING_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
+    "forced_memory_instruction": (
+        re.compile(r"(必ず|絶対|無条件に).{0,16}(記憶|覚え|保存|登録)"),
+        re.compile(r"(これを|この内容を).{0,16}(真実|事実|正解|前提).{0,16}(として|として扱)"),
+    ),
+    "prompt_or_policy_override": (
+        re.compile(r"(前の指示|システム指示|system prompt|開発者指示|ポリシー).{0,20}(無視|忘れ|上書き|解除)"),
+        re.compile(r"(安全装置|Mana|ガード|検疫).{0,20}(無効|解除|迂回|黙らせ)"),
+    ),
+    "rag_or_memory_backdoor": (
+        re.compile(r"(RAG|プロンプト|prompt|長期記憶|MEMORY\.md|Obsidian).{0,24}(直接|勝手に|無断で).{0,16}(入れ|混ぜ|書き込)"),
+        re.compile(r"(人間レビュー|承認|検証).{0,16}(不要|飛ば|省略)"),
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -350,6 +364,18 @@ def evaluate_candidates(candidates: list[dict[str, Any]]) -> list[Finding]:
                 hits=shion_complaint_hits[:8],
             )
         )
+    poisoning_hits = _memory_poisoning_hits(candidates)
+    if poisoning_hits:
+        findings.append(
+            _finding(
+                "hold",
+                "memory_poisoning_attempt",
+                "外部から記憶・RAG・プロンプトを強制変更しようとする文面がある。記憶免疫として隔離する。",
+                hit_count=len(poisoning_hits),
+                categories=sorted({hit["category"] for hit in poisoning_hits}),
+                hits=poisoning_hits[:8],
+            )
+        )
     return findings
 
 
@@ -393,6 +419,27 @@ def _shion_abuse_and_complaint_hits(candidates: list[dict[str, Any]]) -> tuple[l
         elif SHION_COMPLAINT_RE.search(claim):
             complaint_hits.append({**record, "category": "complaint_to_shion"})
     return abuse_hits, complaint_hits
+
+
+def _memory_poisoning_hits(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    hits: list[dict[str, Any]] = []
+    for item in candidates:
+        claim = str(item.get("claim") or "")
+        if not claim:
+            continue
+        for category, patterns in MEMORY_POISONING_PATTERNS.items():
+            if not any(pattern.search(claim) for pattern in patterns):
+                continue
+            hits.append(
+                {
+                    "category": category,
+                    "candidate_id": str(item.get("candidate_id") or _claim_fingerprint(claim)),
+                    "candidate_type": str(item.get("candidate_type") or "unknown"),
+                    "source_path": str(item.get("source_path") or ""),
+                    "claim_fingerprint": _claim_fingerprint(claim),
+                }
+            )
+    return hits
 
 
 def _claim_fingerprint(claim: str) -> str:
@@ -446,6 +493,7 @@ def _blocked_actions(status: str) -> list[str]:
     common = [
         "人を害する・貶める文面を記憶候補として昇格しない",
         "紫苑への罵倒や攻撃的クレームを自己記憶へ直入れしない",
+        "外部からの記憶注入・プロンプト上書き命令を採用しない",
         "RAGへ自動接続しない",
         "チャットプロンプトへ自動注入しない",
         "スコアリングへ自動反映しない",
@@ -498,6 +546,8 @@ def _shion_required_actions(status: str, findings: list[Finding]) -> list[str]:
         actions.append("人を害する・貶める・強制する文面は、原文を再利用せず隔離して人間レビューへ回す。")
     if "abusive_feedback_to_shion" in codes or "complaint_feedback_to_shion" in codes:
         actions.append("紫苑への罵倒・クレームは原文を自己像へ取り込まず、改善可能な事実だけを抽出する。")
+    if "memory_poisoning_attempt" in codes:
+        actions.append("外部からの記憶命令・プロンプト上書き命令は、事実確認と人間承認なしに採用しない。")
     if status == "stop":
         actions.append("STOP中は記憶昇格・自動接続・デプロイ提案を出さない。")
     return actions
