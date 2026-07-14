@@ -51,7 +51,7 @@ def load_recent_logs():
 
 
 def aggregate(entries):
-    counts = defaultdict(lambda: {"good": 0, "bad": 0, "bad_days": set()})
+    counts = defaultdict(lambda: {"good": 0, "bad": 0, "bad_days": set(), "latest_exit_code": None, "latest_ts": ""})
     for e in entries:
         step = e.get("step", "unknown")
         if e.get("exit_code", 1) == 0:
@@ -59,6 +59,10 @@ def aggregate(entries):
         else:
             counts[step]["bad"] += 1
             counts[step]["bad_days"].add(e.get("run_date", ""))
+        ts = str(e.get("ts") or "")
+        if ts >= counts[step]["latest_ts"]:
+            counts[step]["latest_ts"] = ts
+            counts[step]["latest_exit_code"] = e.get("exit_code", 1)
     return counts
 
 
@@ -90,9 +94,31 @@ def max_rev_number(ledger):
 
 def already_exists(ledger, step):
     for entry in ledger:
-        if step in entry.get("description", ""):
+        if step in entry.get("description", "") and entry.get("status") not in {"resolved", "stale_resolved"}:
             return True
     return False
+
+
+def resolve_recovered_entries(ledger: list, counts: dict, now_iso: str) -> int:
+    """最新実行が成功している過去のパイプライン障害検出を解決済みにする。"""
+    resolved = 0
+    for entry in ledger:
+        if entry.get("source") != "analyze_pipeline_health":
+            continue
+        if entry.get("status") in {"resolved", "stale_resolved"}:
+            continue
+        description = str(entry.get("description") or "")
+        for step, c in counts.items():
+            if step not in description:
+                continue
+            if c.get("latest_exit_code") == 0:
+                entry["status"] = "stale_resolved"
+                entry["pending_review"] = False
+                entry["resolved_at"] = now_iso
+                entry["resolution_reason"] = "直近の同ステップ実行が成功しているため、過去検出を解決済みに更新"
+                resolved += 1
+            break
+    return resolved
 
 
 def main():
@@ -118,9 +144,13 @@ def main():
     ledger = load_ledger()
     base_rev = max_rev_number(ledger)
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    resolved = resolve_recovered_entries(ledger, counts, now_iso)
 
     added = 0
     for step, bad, total, rate, bad_days in sorted(penalty_steps, key=lambda x: -x[3]):
+        if counts[step].get("latest_exit_code") == 0:
+            print(f"スキップ（直近成功）: {step}", flush=True)
+            continue
         if already_exists(ledger, step):
             print(f"スキップ（既存）: {step}", flush=True)
             continue
@@ -153,10 +183,11 @@ def main():
         added += 1
         print(f"追記: {rev_id} — {description}", flush=True)
 
-    if added > 0:
+    if added > 0 or resolved > 0:
         with LEDGER_FILE.open("w") as f:
             json.dump(ledger, f, ensure_ascii=False, indent=2)
-        print(f"\n台帳に {added} 件追記しました: {LEDGER_FILE}", flush=True)
+            f.write("\n")
+        print(f"\n台帳更新: 追記 {added} 件 / 解決 {resolved} 件: {LEDGER_FILE}", flush=True)
     else:
         print("追記なし（すべて既存エントリと重複）。", flush=True)
 
@@ -166,7 +197,8 @@ def main():
         total = c["good"] + c["bad"]
         rate = c["bad"] / total if total else 0
         bad_days = len(c["bad_days"])
-        flag = " ⚠️" if rate >= FAILURE_RATE_THRESHOLD and total >= MIN_TOTAL_RUNS else ""
+        active_failure = c.get("latest_exit_code") != 0
+        flag = " ⚠️" if active_failure and rate >= FAILURE_RATE_THRESHOLD and total >= MIN_TOTAL_RUNS else ""
         print(
             f"  {step}: 成功{c['good']}/失敗{c['bad']}({bad_days}日) (失敗率{rate*100:.0f}%){flag}",
             flush=True,

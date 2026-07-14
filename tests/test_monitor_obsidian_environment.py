@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from scripts.monitor_obsidian_environment import render_markdown, run_monitor
 
@@ -119,3 +119,117 @@ def test_monitor_warns_when_daily_notes_missing(tmp_path):
 
     assert checks["daily_notes"]["status"] == "warn"
     assert "missing daily notes" in checks["daily_notes"]["message"]
+
+
+def test_monitor_accepts_integrated_maintenance_reindex_log(tmp_path, monkeypatch):
+    import scripts.monitor_obsidian_environment as monitor
+
+    monkeypatch.setattr(monitor, "REPO_ROOT", tmp_path)
+    fake_home = tmp_path / "home"
+    log_dir = fake_home / "Library" / "Logs"
+    log_dir.mkdir(parents=True)
+    now_text = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    _write(
+        log_dir / "tune_lease_55_obsidian_reindex.out.log",
+        (
+            "================================================================================\n"
+            "✅ 統合メンテナンス完了\n"
+            f"   実行時刻: {now_text}\n"
+            "   ChromaDB: success\n"
+            "   LocalVectorDB: 1027 件\n"
+            "   ステータス: SUCCESS\n"
+        ),
+    )
+    chroma = tmp_path / "api" / "chroma_db" / "chroma.sqlite3"
+    _write(chroma, "sqlite")
+    monkeypatch.setattr(monitor.Path, "home", lambda: fake_home)
+
+    check = monitor.check_reindex_and_chroma(max_age_hours=36)
+
+    assert check.status == "ok"
+    assert check.details["completion_source"] == "rag_daily_maintenance"
+    assert check.details["total_in_db"] == 1027
+
+
+def test_monitor_uses_latest_reindex_completion_across_log_formats(tmp_path, monkeypatch):
+    import scripts.monitor_obsidian_environment as monitor
+
+    monkeypatch.setattr(monitor, "REPO_ROOT", tmp_path)
+    fake_home = tmp_path / "home"
+    log_dir = fake_home / "Library" / "Logs"
+    log_dir.mkdir(parents=True)
+    old_text = (datetime.now() - timedelta(days=40)).strftime("%Y-%m-%dT%H:%M:%S")
+    new_text = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    _write(
+        log_dir / "tune_lease_55_obsidian_reindex.out.log",
+        (
+            f"{old_text} [INFO] [reindex] 完了  added=1 skipped=2 total_in_db=1178 elapsed=1.0s\n"
+            "✅ 統合メンテナンス完了\n"
+            f"   実行時刻: {new_text}\n"
+            "   ChromaDB: success\n"
+            "   LocalVectorDB: 1027 件\n"
+        ),
+    )
+    chroma = tmp_path / "api" / "chroma_db" / "chroma.sqlite3"
+    _write(chroma, "sqlite")
+    monkeypatch.setattr(monitor.Path, "home", lambda: fake_home)
+
+    check = monitor.check_reindex_and_chroma(max_age_hours=36)
+
+    assert check.status == "ok"
+    assert check.details["completion_source"] == "rag_daily_maintenance"
+
+
+def test_monitor_resolves_path_directory_and_asset_wikilinks(tmp_path):
+    import scripts.monitor_obsidian_environment as monitor
+
+    vault = tmp_path / "Obsidian Vault"
+    (vault / ".obsidian").mkdir(parents=True)
+    _write(vault / "Daily" / "2026-07-14.md", "\n".join([
+        "[[05-クリップ_記事/業界リスクニュース/]]",
+        "[[Projects/tune_lease_55/Cloud Run Inputs/2026-07-14_cloudrun_inputs]]",
+        "[[Images/2026/06/2026-06-12.webp]]",
+        "[[Projects/tune_lease_55/News/2026-07-14_industry-risk-news-focus.md]]",
+    ]))
+    (vault / "05-クリップ_記事" / "業界リスクニュース").mkdir(parents=True)
+    _write(vault / "Projects" / "tune_lease_55" / "Cloud Run Inputs" / "2026-07-14_cloudrun_inputs.md", "inputs")
+    _write(vault / "Images" / "2026" / "06" / "2026-06-12.webp", "image")
+    _write(vault / "Projects" / "tune_lease_55" / "News" / "2026-07-14_industry-risk-news-focus.md", "news")
+
+    check = monitor.check_wikilinks(vault)
+
+    assert check.status == "ok"
+    assert check.details["unresolved_sample"] == []
+
+
+def test_monitor_ignores_generated_index_wikilink_sources(tmp_path):
+    import scripts.monitor_obsidian_environment as monitor
+
+    vault = tmp_path / "Obsidian Vault"
+    (vault / ".obsidian").mkdir(parents=True)
+    _write(
+        vault / "Projects" / "tune_lease_55" / "検索語インデックス.md",
+        "\n".join(f"[[Missing/Generated-{i}]]" for i in range(30)),
+    )
+    _write(vault / "Daily" / "2026-07-14.md", "[[Existing Note]]")
+    _write(vault / "Existing Note.md", "exists")
+
+    check = monitor.check_wikilinks(vault)
+
+    assert check.status == "ok"
+    assert check.details["unresolved_sample"] == []
+
+
+def test_monitor_extracts_wikilink_targets_with_brackets_in_filename(tmp_path):
+    import scripts.monitor_obsidian_environment as monitor
+
+    vault = tmp_path / "Obsidian Vault"
+    (vault / ".obsidian").mkdir(parents=True)
+    target = "05-クリップ_記事/リースニュース/2026-07-11_リースニュース_芙蓉総合リース[8424]_静岡市.md"
+    _write(vault / "Projects" / "tune_lease_55" / "News" / "source.md", f"[[{target}]]")
+    _write(vault / target, "news")
+
+    check = monitor.check_wikilinks(vault)
+
+    assert check.status == "ok"
+    assert check.details["unresolved_sample"] == []

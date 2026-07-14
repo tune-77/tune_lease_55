@@ -3,7 +3,7 @@
 ## Summary
 
 - Candidates: 109
-- Deduped similar candidates: 9
+- Deduped similar candidates: 18
 - application_rule: 27
 - confirmation_question: 28
 - condition_signal: 27
@@ -695,7 +695,7 @@
 - Status: candidate / not_promoted
 - Asset quality: actionable / reasons=none
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 1
+- Deduped similar: 2
 
 ### 2026-07-03 / application_rule / industry-risk
 
@@ -706,7 +706,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 1
+- Deduped similar: 2
 
 ### 2026-07-03 / caution / industry-risk
 
@@ -717,7 +717,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 1
+- Deduped similar: 2
 
 ### 2026-07-03 / caution / industry-risk
 
@@ -728,7 +728,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 1
+- Deduped similar: 2
 
 ### 2026-07-03 / condition_signal / industry-risk
 
@@ -739,7 +739,7 @@
 - Status: candidate / not_promoted
 - Asset quality: actionable / reasons=none
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 1
+- Deduped similar: 2
 
 ### 2026-07-03 / condition_signal / industry-risk
 
@@ -750,7 +750,7 @@
 - Status: candidate / not_promoted
 - Asset quality: actionable / reasons=none
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 1
+- Deduped similar: 2
 
 ### 2026-07-03 / confirmation_question / industry-risk
 
@@ -761,7 +761,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 1
+- Deduped similar: 2
 
 ### 2026-07-03 / confirmation_question / industry-risk
 
@@ -772,7 +772,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 1
+- Deduped similar: 2
 
 ### 2026-07-03 / confirmation_question / industry-risk
 
@@ -783,7 +783,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 1
+- Deduped similar: 2
 
 ### 2026-07-04 / application_rule / asset-operation
 

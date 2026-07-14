@@ -99,3 +99,58 @@ def test_normalize_improvement_report_reflects_review_ledger_statuses(monkeypatc
     assert result["approved"] == 1
     assert result["rejected"] == 1
     assert result["parked"] == 1
+
+
+def test_cloudrun_improvement_items_include_raw_preview(monkeypatch):
+    import api.main as main
+
+    monkeypatch.setattr(
+        main,
+        "_read_recent_cloudrun_input_events_from_gcs",
+        lambda days=45: [
+            {
+                "event_id": "event-123456789",
+                "event_type": "improvement_note",
+                "surface": "chat_improvement",
+                "ts": "2026-07-15T00:00:00Z",
+                "payload": {
+                    "title": "AIチャット改善候補",
+                    "body": "**ユーザー要望**\n回答が途中で切れている\n\n**めぶき返答**\n途中まで",
+                },
+            }
+        ],
+    )
+
+    items = main._cloudrun_improvement_items_from_gcs()
+
+    assert items[0]["source_event_id"] == "event-123456789"
+    assert "回答が途中で切れている" in items[0]["raw_preview"]
+    assert items[0]["detail"].startswith("**ユーザー要望**")
+
+
+def test_cloudrun_improvement_items_fall_back_to_local_log(tmp_path, monkeypatch):
+    import api.main as main
+
+    monkeypatch.setattr(main, "_REPO_ROOT", tmp_path)
+    monkeypatch.setattr(main, "_read_recent_cloudrun_input_events_from_gcs", lambda days=45: [])
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "cloudrun_improvement_log.jsonl").write_text(
+        json.dumps(
+            {
+                "event_id": "local-1",
+                "ts": "2026-07-15T01:00:00Z",
+                "title": "Cloud Run改善メモ",
+                "body": "ローカル同期済みの改善本文",
+                "surface": "chat_improvement",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    items = main._cloudrun_improvement_items_from_gcs()
+
+    assert items[0]["source_event_id"] == "local-1"
+    assert items[0]["raw_preview"] == "ローカル同期済みの改善本文"

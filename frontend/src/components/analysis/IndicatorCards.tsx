@@ -2,6 +2,7 @@ import React from 'react';
 import { Database, ShieldCheck, Target, TrendingUp } from 'lucide-react';
 
 type IndicatorData = {
+  score?: number;
   score_base?: number;
   user_op_margin?: number;
   bench_op_margin?: number;
@@ -39,7 +40,9 @@ export default function IndicatorCards({ data }: IndicatorCardsProps) {
   const benchOpMargin = data.bench_op_margin ?? 0;
   const equityRatio = data.user_equity_ratio ?? 0;
   const benchEquityRatio = data.bench_equity_ratio ?? 0;
-  const isApproved = (data.score_base ?? 0) >= 71;
+  const finalScore = data.score ?? data.score_base ?? 0;
+  const baseScore = data.score_base;
+  const isApproved = finalScore >= 71;
 
   // 判定用のバッジカラー関数
   const isNegativeRisk = (label: string, userVal: number) => {
@@ -141,7 +144,7 @@ export default function IndicatorCards({ data }: IndicatorCardsProps) {
         </div>
       </div>
 
-      {/* ベーススコア */}
+      {/* 総合スコア */}
       <div className={`border-2 rounded-3xl p-6 shadow-lg transition transform hover:-translate-y-1 ${
         isApproved 
           ? 'bg-gradient-to-br from-emerald-500 to-teal-600 border-emerald-400 shadow-emerald-200' 
@@ -152,21 +155,24 @@ export default function IndicatorCards({ data }: IndicatorCardsProps) {
             <div className="p-2 bg-white/20 text-white rounded-lg">
               <Target className="w-4 h-4" />
             </div>
-            <span className="font-bold text-white/90">ベーススコア</span>
+            <span className="font-bold text-white/90">総合スコア</span>
           </div>
           <span className="text-[10px] font-bold px-2 py-1 rounded-md bg-white/20 text-white shadow-inner">
-            補正前
+            最終
           </span>
         </div>
         
         <div className="flex items-end gap-2 mb-1">
           <span className="text-5xl font-black text-white drop-shadow-md">
-            {(data.score_base ?? 0).toFixed(1)}
+            {finalScore.toFixed(1)}
           </span>
           <span className="text-lg font-bold text-white/70 mb-1">点</span>
         </div>
         <div className="text-xs font-medium text-white/80 mt-2">
-          {isApproved ? '承認ラインをクリアしています🎉' : '承認ライン(71点)に達していません⚠️'}
+          {isApproved ? '承認ラインをクリアしています' : '承認ライン(71点)に達していません'}
+          {typeof baseScore === 'number' && Math.abs(baseScore - finalScore) >= 0.1 && (
+            <span className="mt-1 block text-white/70">補正前 {baseScore.toFixed(1)}点</span>
+          )}
         </div>
       </div>
 

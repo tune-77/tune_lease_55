@@ -18,6 +18,7 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REPORT = REPO_ROOT / "reports" / "latest.json"
+DEFAULT_MANA_REPORT = REPO_ROOT / "reports" / "mana_obsidian_curator_latest.json"
 DEFAULT_STATE = REPO_ROOT / "data" / "slack_daily_improvement_state.json"
 DEFAULT_TIMEOUT = 15
 
@@ -52,6 +53,11 @@ def _report_hash(report: dict[str, Any]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
+def _combined_hash(*values: dict[str, Any]) -> str:
+    canonical = json.dumps(values, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+
+
 def _load_webhook(explicit: str | None = None) -> str:
     if explicit:
         return explicit.strip()
@@ -83,7 +89,48 @@ def _items(report: dict[str, Any], key: str) -> list[dict[str, Any]]:
     return [item for item in value if isinstance(item, dict)]
 
 
-def build_message(report: dict[str, Any], *, report_date: str) -> dict[str, Any]:
+def _read_optional_json(path: Path) -> dict[str, Any] | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _mana_lines(mana_report: dict[str, Any] | None) -> list[str]:
+    if not mana_report:
+        return ["• status: `missing` / Manaレポート未生成"]
+
+    status = _clean_text(mana_report.get("status") or "unknown", 24)
+    inputs = mana_report.get("inputs") if isinstance(mana_report.get("inputs"), dict) else {}
+    candidate_count = inputs.get("candidate_count", "-")
+    useful_count = inputs.get("useful_candidate_count", "-")
+    lines = [
+        f"• status: `{status}` / candidates: `{candidate_count}` / useful: `{useful_count}`"
+    ]
+
+    findings = [item for item in mana_report.get("findings") or [] if isinstance(item, dict)]
+    if not findings:
+        lines.append("• findings: なし")
+        return lines
+
+    for finding in findings[:3]:
+        code = _clean_text(finding.get("code") or "", 42)
+        level = _clean_text(finding.get("level") or "", 12)
+        message = _clean_text(finding.get("message") or "", 100)
+        prefix = f"{code}: " if code else ""
+        lines.append(f"• `{level}` {prefix}{message}")
+    if len(findings) > 3:
+        lines.append(f"• 他 {len(findings) - 3} 件")
+    return lines
+
+
+def build_message(
+    report: dict[str, Any],
+    *,
+    report_date: str,
+    mana_report: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     applied = _items(report, "applied_improvements")
     needs_review = _items(report, "needs_review")
     failed = _items(report, "failed_improvements")
@@ -117,6 +164,9 @@ def build_message(report: dict[str, Any], *, report_date: str) -> dict[str, Any]
             "",
             "*要レビュー上位*",
             *review_lines,
+            "",
+            "*Mana判定*",
+            *_mana_lines(mana_report),
             "",
             "_自動投稿: run_daily_improvement_pipeline / Slack通知のみ。改善状態は変更していません。_",
         ]
@@ -152,6 +202,7 @@ def should_skip(state: dict[str, Any], *, report_date: str, digest: str, force: 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Send daily improvement report summary to Slack.")
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
+    parser.add_argument("--mana-report", type=Path, default=DEFAULT_MANA_REPORT)
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE)
     parser.add_argument("--date", default=date.today().isoformat())
     parser.add_argument("--webhook", default=None)
@@ -160,8 +211,9 @@ def main() -> int:
     args = parser.parse_args()
 
     report = _read_json(args.report)
-    digest = _report_hash(report)
-    payload = build_message(report, report_date=args.date)
+    mana_report = _read_optional_json(args.mana_report)
+    digest = _combined_hash(report, mana_report or {})
+    payload = build_message(report, report_date=args.date, mana_report=mana_report)
 
     if args.dry_run:
         print(json.dumps(payload, ensure_ascii=False, indent=2))

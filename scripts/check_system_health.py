@@ -62,20 +62,33 @@ def _age_hours(path: Path) -> float:
     return (_now() - modified).total_seconds() / 3600
 
 
+REINDEX_DONE_RE = re.compile(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}).*\[reindex\] 完了.*total_in_db=(\d+)")
+MAINTENANCE_DONE_RE = re.compile(
+    r"実行時刻:\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*?ChromaDB:\s*success",
+    re.DOTALL,
+)
+MAINTENANCE_DB_COUNT_RE = re.compile(r"LocalVectorDB:\s*(\d+)\s*件")
+
+
 def check_reindex_log(max_age_hours: int) -> CheckResult:
     log_path = Path.home() / "Library" / "Logs" / "tune_lease_55_obsidian_reindex.out.log"
     if not log_path.exists():
         return CheckResult("obsidian_reindex", False, f"missing log: {log_path}")
 
     text = log_path.read_text(encoding="utf-8", errors="replace")
-    completions = re.findall(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}).*\[reindex\] 完了.*total_in_db=(\d+)", text)
-    if not completions:
+    parsed: list[tuple[dt.datetime, int | None]] = []
+    for ts_text, total_text in REINDEX_DONE_RE.findall(text):
+        parsed.append((dt.datetime.fromisoformat(ts_text).replace(tzinfo=_now().tzinfo), int(total_text)))
+    db_counts = MAINTENANCE_DB_COUNT_RE.findall(text)
+    maintenance_total = int(db_counts[-1]) if db_counts else None
+    for ts_text in MAINTENANCE_DONE_RE.findall(text):
+        parsed.append((dt.datetime.strptime(ts_text, "%Y-%m-%d %H:%M:%S").replace(tzinfo=_now().tzinfo), maintenance_total))
+    if not parsed:
         return CheckResult("obsidian_reindex", False, "no successful completion line found")
 
-    ts_text, total_text = completions[-1]
-    completed_at = dt.datetime.fromisoformat(ts_text).replace(tzinfo=_now().tzinfo)
+    completed_at, total_raw = max(parsed, key=lambda item: item[0])
+    total = total_raw if total_raw is not None else 1
     age = (_now() - completed_at).total_seconds() / 3600
-    total = int(total_text)
     if age > max_age_hours:
         return CheckResult("obsidian_reindex", False, f"last success is stale: {age:.1f}h ago, total_in_db={total}")
     if total <= 0:

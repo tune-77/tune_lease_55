@@ -73,3 +73,16 @@ def test_socket_dsn_reachable_when_proxy_up(monkeypatch):
 def test_tcp_dsn_is_never_unreachable_socket():
     dsn = "postgresql://postgres:secret@35.194.127.102:5432/lease-db-demo"
     assert sync_mod._is_unreachable_socket_dsn(dsn) is False
+
+
+def test_secret_unavailable_without_password_skips_cleanly(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(sync_mod, "VAULT_PATH", tmp_path)
+    monkeypatch.setattr(sync_mod, "_database_url", lambda: "")
+    monkeypatch.setenv("DATABASE_URL_SECRET_NAME", "DATABASE_URL")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("CLOUD_SQL_PASSWORD", raising=False)
+
+    sync_mod.sync(dry_run=True)
+
+    captured = capsys.readouterr()
+    assert "Cloud SQL会話ログ同期をスキップ" in captured.out

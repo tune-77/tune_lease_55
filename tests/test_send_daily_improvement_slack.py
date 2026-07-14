@@ -24,7 +24,37 @@ def test_build_message_summarizes_improvement_report():
     assert "needs_review: `2`" in payload["text"]
     assert "REV-001" in payload["text"]
     assert "金額表示を百万単位に統一する" in payload["text"]
+    assert "*Mana判定*" in payload["text"]
+    assert "status: `missing`" in payload["text"]
     assert "改善状態は変更していません" in payload["text"]
+
+
+def test_build_message_includes_mana_report_summary_without_raw_evidence():
+    report = {
+        "applied_count": 0,
+        "needs_review_count": 0,
+        "failed_count": 0,
+        "needs_review": [],
+    }
+    mana_report = {
+        "status": "hold",
+        "inputs": {"candidate_count": 12, "useful_candidate_count": 7},
+        "findings": [
+            {
+                "level": "hold",
+                "code": "private_reflection_not_meaningful",
+                "message": "Private Reflectionの意味更新が弱い。",
+                "evidence": {"raw": "Slackに出してはいけない長い原文"},
+            }
+        ],
+    }
+
+    payload = build_message(report, report_date="2026-07-14", mana_report=mana_report)
+
+    assert "status: `hold`" in payload["text"]
+    assert "candidates: `12`" in payload["text"]
+    assert "private_reflection_not_meaningful" in payload["text"]
+    assert "Slackに出してはいけない長い原文" not in payload["text"]
 
 
 def test_should_skip_same_date_and_hash_unless_forced():

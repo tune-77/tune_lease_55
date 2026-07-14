@@ -444,6 +444,12 @@ const parseExperienceSnapshot = (value: unknown): Record<string, any> | undefine
   }
 };
 
+const getScreeningScore = (result?: Record<string, any> | null) =>
+  Number(result?.score ?? result?.score_base ?? 0);
+
+const getResultSnapshotScore = (snapshot?: Record<string, any>, fallback = 0) =>
+  Number(snapshot?.score ?? snapshot?.score_base ?? fallback);
+
 const normalizeExperienceCase = (raw: any): DemoSimilarPastCase => ({
   id: Number(raw?.id || 0) || undefined,
   demoCaseId: String(raw?.demo_case_id || raw?.demoCaseId || ""),
@@ -671,7 +677,8 @@ const buildShionReviewPrompt = (
   judgmentAssetCandidates: JudgmentAssetCandidate[] = [],
   judgmentAssetAdaptationMode: JudgmentAssetAdaptationMode = "standard",
 ) => {
-  const score = Number(result.score_base ?? result.score ?? 0);
+  const score = getScreeningScore(result);
+  const baseScore = Number(result.score_base);
   const lines = [
     "【審査分析画面からの紫苑レビュー依頼】",
     "この案件を、審査担当者の横にいる紫苑としてレビューしてください。",
@@ -688,6 +695,9 @@ const buildShionReviewPrompt = (
     `・営業部: ${data.sales_dept || "未入力"}`,
     `・判定: ${result.hantei || "未判定"}`,
     `・総合スコア: ${Number.isFinite(score) ? score.toFixed(1) : "未算出"}`,
+    ...(Number.isFinite(baseScore) && Math.abs(baseScore - score) >= 0.1
+      ? [`・補正前スコア: ${baseScore.toFixed(1)}（表示・判断は総合スコアを優先）`]
+      : []),
     `・借手スコア: ${result.score_borrower != null ? Number(result.score_borrower).toFixed(1) : "未算出"}`,
     `・Q_risk: ${result.quantum_risk != null ? `${Number(result.quantum_risk).toFixed(1)}（0-100スケール、35以上で要注意・60以上で強警戒）` : "未算出"}`,
     `・UMAP異常度: ${result.umap_anomaly_score != null ? Number(result.umap_anomaly_score).toFixed(1) : "未算出"}`,
@@ -759,7 +769,7 @@ const buildShionReviewPrompt = (
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function AiHeroCard({ result }: { result?: Record<string, any> }) {
   if (!result) return null;
-  const score: number = result.score_base ?? 0;
+  const score = getScreeningScore(result);
   const hantei: string = result.hantei ?? "";
   const approvalLine: number = typeof result.approval_line === "number" ? result.approval_line : 71;
   const isApproved = score >= approvalLine;
@@ -1186,7 +1196,7 @@ function JudgmentAssetCandidateCard({
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function buildCurrentIssue(result: Record<string, any>, data: ScoringFormData) {
-  const score = Number(result.score_base ?? result.score ?? 0);
+  const score = getScreeningScore(result);
   const isNewCustomer = String(data.customer_type || "").includes("新規");
   const hasNoLeaseHistory = Number(data.lease_credit || 0) <= 0 && Number(data.contracts || 0) <= 0;
   const hasCompetitor = data.competitor === "競合あり";
@@ -1249,7 +1259,7 @@ function CurrentIssueCard({ result, data }: { result: Record<string, any>; data:
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function buildRingiPolicy(result: Record<string, any>, data: ScoringFormData) {
-  const score = Number(result.score_base ?? result.score ?? 0);
+  const score = getScreeningScore(result);
   const isNewCustomer = String(data.customer_type || "").includes("新規");
   const hasNoLeaseHistory = Number(data.lease_credit || 0) <= 0 && Number(data.contracts || 0) <= 0;
   const hasCompetitor = data.competitor === "競合あり";
@@ -1345,7 +1355,7 @@ function ExperienceCaseDetailModal({
     ["リース期間", pickExperienceValue(item.formSnapshot, currentData, ["lease_term", "lease_term_months"])],
   ];
   const resultRows = [
-    ["総合スコア", item.resultSnapshot?.score_base ?? item.resultSnapshot?.score ?? item.score],
+    ["総合スコア", getResultSnapshotScore(item.resultSnapshot, item.score)],
     ["判定", item.resultSnapshot?.hantei ?? item.decision],
     ["Q_risk", item.resultSnapshot?.quantum_risk],
     ["UMAP異常度", item.resultSnapshot?.umap_anomaly_score],
@@ -1632,7 +1642,7 @@ function ScreeningLoopFeedbackPanel({ result, data }: { result: Record<string, a
         issue_text: issueText,
         ringi_policy_text: ringiPolicyText,
         comment,
-        score: Number(result.score_base ?? result.score ?? 0),
+        score: getScreeningScore(result),
         hantei: result.hantei ?? "",
         context: {
           customer_type: data.customer_type,
@@ -2109,7 +2119,7 @@ export default function Dashboard() {
       limit: 8,
     };
     // score は数値のときだけ送る。空文字を送ると FastAPI の Optional[float] が 422 を返す
-    const scoreValue = targetResult?.score_base ?? targetResult?.score;
+    const scoreValue = targetResult?.score ?? targetResult?.score_base;
     if (typeof scoreValue === "number" && Number.isFinite(scoreValue)) {
       query.score = scoreValue;
     }
@@ -2211,7 +2221,7 @@ export default function Dashboard() {
           asset_name: targetFormData.asset_name || "",
           asset_purpose: targetFormData.asset_purpose || "",
           hantei: targetResult?.hantei || "",
-          score: Number(targetResult?.score_base ?? targetResult?.score ?? 0),
+          score: getScreeningScore(targetResult),
           limit: 3,
         },
       });
@@ -2239,7 +2249,7 @@ export default function Dashboard() {
       industry_major: targetResult?.industry_major || targetFormData.industry_major || "",
       industry_sub: targetResult?.industry_sub || targetFormData.industry_sub || "",
       sales_dept: targetFormData.sales_dept || "",
-      score: Number(targetResult?.score_base ?? targetResult?.score ?? 0),
+      score: getScreeningScore(targetResult),
       hantei: targetResult?.hantei || "",
       q_risk: targetResult?.quantum_risk ?? null,
       umap_anomaly_score: targetResult?.umap_anomaly_score ?? null,
@@ -2456,7 +2466,7 @@ export default function Dashboard() {
       // めぶきちゃんの表情を判定バッジ（AiHeroCard）と同じ基準で切り替える
       // approval_line は /api/score/full には現状含まれないため 71 にフォールバックする
       //（バッジ側も同じフォールバックなので文言と表示が食い違わない）
-      const score = res.data.score_base ?? 0;
+      const score = getScreeningScore(res.data);
       const approvalLine = typeof res.data.approval_line === "number" ? res.data.approval_line : 71;
       if (score >= approvalLine) {
         triggerMebuki('approve', `スコア ${score.toFixed(1)} 点！\n素晴らしい内容です。\nこのまま稟議に掛けましょう！`);
@@ -2499,7 +2509,7 @@ export default function Dashboard() {
   const saveCurrentExperienceCase = async () => {
     if (!result || experienceSaving) return;
     const demoCase = findDemoScreeningCase(formData);
-    const score = Number(result.score_base ?? result.score ?? 0);
+    const score = getScreeningScore(result);
     setExperienceSaving(true);
     try {
       await apiClient.post("/api/screening-experience-cases", {
@@ -2533,7 +2543,7 @@ export default function Dashboard() {
   const handoffToShionChat = () => {
     if (!result) return;
     const chatContext = {
-      score: result.score_base,
+      score: getScreeningScore(result),
       hantei: result.hantei,
       score_borrower: result.score_borrower,
       company_name: formData.company_name,
@@ -2563,7 +2573,7 @@ export default function Dashboard() {
 
   const handoffToShionDebate = () => {
     if (!result) return;
-    const score = Number(result.score_base ?? result.score ?? 0);
+    const score = getScreeningScore(result);
     const debateContext = {
       score,
       hantei: result.hantei,
@@ -2958,7 +2968,7 @@ export default function Dashboard() {
                               financialConsistencyRisk={result.financial_consistency_risk ?? null}
                               compact={false}
                               caseId={String(result.case_id || "")}
-                              score={Number(result.score_base ?? result.score ?? 0)}
+                              score={getScreeningScore(result)}
                               hantei={String(result.hantei || "")}
                               context={{
                                 industry_major: formData.industry_major,
@@ -3008,7 +3018,7 @@ export default function Dashboard() {
                             opMarginPct={result?.user_op_margin || 0}
                             equityRatio={result?.user_equity_ratio || 0}
                             scoreBorrower={result?.score_borrower || 50}
-                            scoreBase={result?.score_base || 50}
+                            scoreBase={getScreeningScore(result) || 50}
                           />
                           <DataSourceSummaryCard summary={result.data_source_summary} />
                         </div>
@@ -3034,7 +3044,7 @@ export default function Dashboard() {
           {/* 右カラム: 数値の再掲ではなく、戦略・質問・稟議表現を担当 */}
           <div className="w-full 2xl:w-[42%] mt-8 2xl:mt-0 relative z-10">
             <GunshiAdvice
-              score={result?.score_base || 0}
+              score={getScreeningScore(result)}
               modelDecision={result?.hantei || ""}
               industry_major={result?.industry_major || formData.industry_major || ""}
               formData={formData}

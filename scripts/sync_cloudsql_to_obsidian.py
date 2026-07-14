@@ -504,6 +504,18 @@ def sync(dry_run: bool = False, target_date: str | None = None, force: bool = Fa
         )
         return
 
+    database_url = _database_url()
+    if (
+        not database_url
+        and os.environ.get("DATABASE_URL_SECRET_NAME", "").strip()
+        and not os.environ.get("CLOUD_SQL_PASSWORD", "").strip()
+    ):
+        print(
+            "警告: Secret Manager から DATABASE_URL を読めず、CLOUD_SQL_PASSWORD も未設定のため"
+            " Cloud SQL会話ログ同期をスキップします（GCS input の chat_exchange 経路を使用）。"
+        )
+        return
+
     # 差分取得のための最終同期日時
     state = load_sync_state()
     since: str | None = None
@@ -523,7 +535,6 @@ def sync(dry_run: bool = False, target_date: str | None = None, force: bool = Fa
     # Cloud SQL 接続
     host = os.environ.get("CLOUD_SQL_HOST", "35.194.127.102")
     dbname = os.environ.get("CLOUD_SQL_DB", "lease-db-demo")
-    database_url = _database_url()
     if database_url and _is_unreachable_socket_dsn(database_url):
         print(
             "警告: DATABASE_URL が Cloud Run 用 Unix ソケット形式で、ローカルの cloud-sql-proxy も"

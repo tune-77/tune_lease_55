@@ -481,6 +481,7 @@ export default function DebatePage() {
   } | null>(null);
   const [obsidianSaving, setObsidianSaving] = useState(false);
   const [obsidianToast, setObsidianToast] = useState<"success" | "error" | null>(null);
+  const [obsidianError, setObsidianError] = useState("");
   type CandidateStatus = "idle" | "saving" | "success" | "skipped";
   const [candidateTexts, setCandidateTexts] = useState<Record<number, string>>({});
   const [candidateEditings, setCandidateEditings] = useState<Record<number, boolean>>({});
@@ -731,6 +732,7 @@ export default function DebatePage() {
     if (!result) return;
     setObsidianSaving(true);
     setObsidianToast(null);
+    setObsidianError("");
     try {
       await apiClient.post("/api/debate/save-to-obsidian", {
         company_name: form.company_name,
@@ -745,11 +747,13 @@ export default function DebatePage() {
         screened_at: new Date().toISOString(),
       });
       setObsidianToast("success");
-    } catch {
+    } catch (err: any) {
+      const detail = err.response?.data?.detail;
+      setObsidianError(Array.isArray(detail) ? JSON.stringify(detail) : detail || err.message || "保存に失敗しました");
       setObsidianToast("error");
     } finally {
       setObsidianSaving(false);
-      setTimeout(() => setObsidianToast(null), 2000);
+      setTimeout(() => setObsidianToast(null), 5000);
     }
   };
 
@@ -1402,7 +1406,7 @@ export default function DebatePage() {
             {obsidianToast === "error" && (
               <span className="flex items-center gap-1.5 text-sm font-bold text-rose-600 animate-in fade-in duration-200">
                 <XCircle className="w-4 h-4" />
-                保存に失敗しました
+                {obsidianError || "保存に失敗しました"}
               </span>
             )}
           </div>

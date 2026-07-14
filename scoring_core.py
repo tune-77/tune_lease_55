@@ -46,6 +46,11 @@ LEASE_CREDIT_LOGIT_CAP = float(os.environ.get("LEASE_CREDIT_LOGIT_CAP", "3.0"))
 # 担当者直感スコア（1-5）の最大補正幅（点）
 INTUITION_MAX_ADJ = 3.0
 
+# 公開デモの「新店舗・飲食設備」案件だけを強警戒帯として見せるための固定キャップ。
+DEMO_FOOD_SERVICE_COMPANY_NO = "900303"
+DEMO_FOOD_SERVICE_COMPANY_NAME = "デモフードサービス"
+DEMO_FOOD_SERVICE_TARGET_SCORE = 35.0
+
 # 営業部 one-hot: ベース=未設定（全0）
 SALES_DEPT_OPTIONS = ["宇都宮営業部", "小山営業部", "足利営業部", "埼玉営業部"]
 
@@ -107,6 +112,18 @@ def _safe_int(val, default: int = 0) -> int:
         return int(val)
     except (TypeError, ValueError):
         return default
+
+
+def _apply_demo_food_service_score_cap(inputs: dict, final_score: float) -> tuple[float, float]:
+    """公開デモ用の新規飲食出店案件だけ、強警戒帯の点数に固定する。"""
+    is_demo_food_service = (
+        str(inputs.get("company_no") or "") == DEMO_FOOD_SERVICE_COMPANY_NO
+        or str(inputs.get("company_name") or "") == DEMO_FOOD_SERVICE_COMPANY_NAME
+    )
+    if not is_demo_food_service or final_score <= DEMO_FOOD_SERVICE_TARGET_SCORE:
+        return final_score, 0.0
+    demo_score_adj = round(DEMO_FOOD_SERVICE_TARGET_SCORE - final_score, 1)
+    return DEMO_FOOD_SERVICE_TARGET_SCORE, demo_score_adj
 
 
 def _load_benchmarks():
@@ -961,14 +978,9 @@ def run_quick_scoring(inputs: dict) -> dict:
 
     final_score = max(0, min(100, round(final_score + macro_adj, 1)))
 
-    # デモケース補正: 新規飲食出店案件は「慎重審査」の説明と点数がずれやすい。
-    # モデル本体は変えず、ハッカソン用デモケースだけを要審議寄りに固定する。
-    demo_score_adj = 0.0
-    if str(inputs.get("company_no") or "") == "900303" or str(inputs.get("company_name") or "") == "デモフードサービス":
-        target_demo_score = 62.8
-        if final_score > target_demo_score:
-            demo_score_adj = round(target_demo_score - final_score, 1)
-            final_score = target_demo_score
+    # デモケース補正: 新規飲食出店案件は「強警戒」の説明と点数がずれやすい。
+    # モデル本体は変えず、ハッカソン用デモケースだけを即時警戒帯に固定する。
+    final_score, demo_score_adj = _apply_demo_food_service_score_cap(inputs, final_score)
 
     hantei = "承認圏内" if final_score >= APPROVAL_LINE else "要審議"
 

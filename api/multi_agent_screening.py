@@ -59,6 +59,7 @@ _DEBATE_HIGH = APPROVAL_LINE
 # 討論全体の時間バジェット（秒）。フロントの proxyTimeout（300秒）より短くし、
 # 途中失敗時はフォールバック意見で必ず応答を返す。
 _TOTAL_BUDGET_SEC = float(os.environ.get("DEBATE_TIME_BUDGET_SEC", "240"))
+_ARBITER_MAX_TOKENS = int(os.environ.get("DEBATE_ARBITER_MAX_TOKENS", "2048"))
 
 # 討論の効果測定用メトリクスログ（data/ 配下なのでコミット対象外）
 _METRICS_PATH = Path(__file__).parent.parent / "data" / "multi_agent_debate_metrics.jsonl"
@@ -411,6 +412,7 @@ def _llm_call(
             retry_resp = _post_gemini(retry_payload, timeout=retry_timeout, deadline=deadline)
             retry_data = retry_resp.json()
             retry_candidate = (retry_data.get("candidates") or [{}])[0]
+            finish_reason = str(retry_candidate.get("finishReason") or finish_reason).upper()
             retry_raw = (
                 ((retry_candidate.get("content") or {}).get("parts") or [{}])[0]
                 .get("text", "")
@@ -818,8 +820,8 @@ def _render_arbiter_explanation(d: dict) -> tuple[str, list[str]]:
     condition_codes = _as_text_list(d.get("condition_codes"))
     notes = _as_text_list(d.get("notes"), limit=2)
 
-    reasons = [_REASON_TEXTS.get(code, code) for code in reason_codes]
-    conditions = [_CONDITION_TEXTS.get(code, code) for code in condition_codes]
+    reasons = [_REASON_TEXTS[code] for code in reason_codes if code in _REASON_TEXTS]
+    conditions = [_CONDITION_TEXTS[code] for code in condition_codes if code in _CONDITION_TEXTS]
 
     if not reasons:
         reasons = ["AI裁定の構造化根拠が不足しているため、安全側に確認を残す"]
@@ -885,7 +887,7 @@ _INNOVATION_TEXTS = {
 def _render_persona_explanation(d: dict, role: str) -> tuple[list[str], list[str]]:
     reason_codes = _as_text_list(d.get("reason_codes"))
     notes = _as_text_list(d.get("notes"), limit=2)
-    reasons = [_PERSONA_REASON_TEXTS.get(code, code) for code in reason_codes]
+    reasons = [_PERSONA_REASON_TEXTS[code] for code in reason_codes if code in _PERSONA_REASON_TEXTS]
     if notes:
         reasons.append("補足: " + " / ".join(notes))
     if not reasons:
@@ -893,17 +895,17 @@ def _render_persona_explanation(d: dict, role: str) -> tuple[list[str], list[str
 
     if role == "skeptic":
         second_codes = _as_text_list(d.get("risk_codes"))
-        second = [_RISK_TEXTS.get(code, code) for code in second_codes]
+        second = [_RISK_TEXTS[code] for code in second_codes if code in _RISK_TEXTS]
         if not second:
             second = ["リスク根拠が不足しているため、追加確認が必要"]
     elif role == "innovator":
         second_codes = _as_text_list(d.get("innovation_codes"))
-        second = [_INNOVATION_TEXTS.get(code, code) for code in second_codes]
+        second = [_INNOVATION_TEXTS[code] for code in second_codes if code in _INNOVATION_TEXTS]
         if not second:
             second = ["通常条件だけでなく代替条件の余地を確認する"]
     else:
         second_codes = _as_text_list(d.get("opportunity_codes"))
-        second = [_OPPORTUNITY_TEXTS.get(code, code) for code in second_codes]
+        second = [_OPPORTUNITY_TEXTS[code] for code in second_codes if code in _OPPORTUNITY_TEXTS]
         if not second:
             second = ["条件設定により案件化できる余地を確認する"]
     return reasons[:4], second[:4]
@@ -1111,7 +1113,7 @@ def iter_debate_screening(params: dict) -> Iterator[tuple[str, dict]]:
             arbiter_raw = _llm_call(
                 arbiter_sys,
                 _arbiter_solo_prompt(ctx_arbiter, direction),
-                temperature=0.3, max_tokens=512, deadline=deadline,
+                temperature=0.3, max_tokens=_ARBITER_MAX_TOKENS, deadline=deadline,
             )
         except Exception as e:
             # LLM不通でも安全側の暫定裁定で必ず応答を返す
@@ -1283,7 +1285,7 @@ def iter_debate_screening(params: dict) -> Iterator[tuple[str, dict]]:
         arbiter_raw = _persona_call(
             arbiter_sys,
             _arbiter_debate_prompt(ctx_arbiter, debate_log),
-            0.3, kb, "both", deadline, max_tokens=1024,
+            0.3, kb, "both", deadline, max_tokens=_ARBITER_MAX_TOKENS,
         )
     except Exception as e:
         # 討論結果まで出ているのに裁定LLMの不通で全体を失敗させない
@@ -1392,6 +1394,23 @@ def _log_debate_metrics(result: dict, t0: float) -> None:
 
 # ── コア候補抽出 ────────────────────────────────────────────────────────────────
 
+def _trim_generated_sentence(text: str, limit: int = 250) -> str:
+    """Generated UI text should not end mid-token or mid-sentence."""
+    cleaned = " ".join(str(text or "").split())
+    if len(cleaned) <= limit:
+        return cleaned
+    head = cleaned[:limit]
+    cut_points = [head.rfind(mark) for mark in ("。", "！", "？")]
+    cut = max(cut_points)
+    if cut >= max(20, limit // 3):
+        return head[: cut + 1]
+    soft_points = [head.rfind(mark) for mark in ("、", "；", "・", " ")]
+    soft_cut = max(soft_points)
+    if soft_cut >= max(20, limit // 3):
+        return head[:soft_cut].rstrip("、；・ ") + "。"
+    return head.rstrip("、；・ ") + "。"
+
+
 def _extract_core_candidate_for_role(
     role: str,
     data: dict,
@@ -1447,11 +1466,11 @@ def _extract_core_candidate_for_role(
     payload = {
         "system_instruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 256},
+        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 512},
     }
     resp = _post_gemini(payload, timeout=30)
     text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-    return text[:250]
+    return _trim_generated_sentence(text)
 
 
 _ROLE_LABELS: dict[str, str] = {

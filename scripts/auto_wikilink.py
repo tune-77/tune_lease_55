@@ -101,7 +101,18 @@ def split_frontmatter(text: str) -> tuple[str, str]:
 
 def _existing_wikilink_spans(text: str) -> list[tuple[int, int]]:
     """既存の [[...]] の (start, end) スパンリストを返す。"""
-    return [(m.start(), m.end()) for m in _WIKILINK_RE.finditer(text)]
+    spans: list[tuple[int, int]] = []
+    pos = 0
+    while True:
+        start = text.find("[[", pos)
+        if start < 0:
+            break
+        end = text.find("]]", start + 2)
+        if end < 0:
+            break
+        spans.append((start, end + 2))
+        pos = end + 2
+    return spans
 
 
 def _in_span(pos: int, spans: list[tuple[int, int]]) -> bool:

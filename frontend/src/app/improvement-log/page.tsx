@@ -62,6 +62,14 @@ type ImprovementItem = {
   group_id?: string;
   duplicate_count?: number;
   reason?: string;
+  detail?: string;
+  raw_preview?: string;
+  source?: string;
+  source_event_id?: string;
+  source_ts?: string;
+  source_surface?: string;
+  event_id?: string;
+  recorded_at?: string;
   auto_fix_policy?: { reason?: string; risk?: string };
 };
 
@@ -404,10 +412,16 @@ export default function ImprovementLogPage() {
       const itemKey = item.canonical_key || item.id || item.title;
       setActionLoading((prev) => ({ ...prev, [itemKey]: true }));
       try {
+        const rawContext = item.raw_preview || item.detail || "";
         await apiClient.post("/api/improvement-log/review", {
           key: item.canonical_key || item.id || "",
           title: item.title,
           action,
+          reason: [
+            item.reason || item.auto_fix_policy?.reason || `UI経由で${action}`,
+            item.source_event_id ? `source_event_id: ${item.source_event_id}` : "",
+            rawContext ? `原文: ${rawContext}` : "",
+          ].filter(Boolean).join("\n"),
         });
         await fetchLog();
       } catch {
@@ -1183,6 +1197,13 @@ export default function ImprovementLogPage() {
                             {item.canonical_key || "-"}
                             {item.duplicate_count ? ` / duplicates ${item.duplicate_count}` : ""}
                           </div>
+                          {item.source === "cloudrun_gcs_input" && (
+                            <div className="mt-1 text-xs text-sky-700">
+                              Cloud Run入力
+                              {item.source_event_id ? ` / event ${item.source_event_id.slice(0, 8)}` : ""}
+                              {item.source_ts || item.recorded_at ? ` / ${item.source_ts || item.recorded_at}` : ""}
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-xs text-slate-600">
                           {CATEGORY_LABELS[item.category || ""] || item.category || "-"}
@@ -1193,7 +1214,15 @@ export default function ImprovementLogPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-xs leading-relaxed text-slate-600">
-                          {item.auto_fix_policy?.reason || item.reason || "-"}
+                          <div>{item.auto_fix_policy?.reason || item.reason || "-"}</div>
+                          {(item.raw_preview || item.detail) && (
+                            <details className="mt-2 rounded-lg border border-slate-200 bg-white p-2">
+                              <summary className="cursor-pointer font-bold text-sky-700">原文を見る</summary>
+                              <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-slate-700">
+                                {item.raw_preview || item.detail}
+                              </pre>
+                            </details>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           {isNeedsReview ? (

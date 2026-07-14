@@ -528,6 +528,47 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
   const isYukikaze = humorMode === 'yukikaze';
   const yukikazeStatus = getYukikazeStatus(score);
   const isDifficultYukikazeCase = isYukikaze && ['WARNING', 'ALERT', 'CRITICAL'].includes(yukikazeStatus.level);
+  const boardCopy = isYukikaze
+    ? {
+        headerTitle: 'YUKIKAZE // FFR-41MR',
+        headerSubtitle: 'TACTICAL LEASE SCORING AI',
+        queryLabel: 'PILOT QUERY',
+        boardTitle: 'MISSION BOARD',
+        stanceFallback: 'TACTICAL PLAN',
+        headlineFallback: 'Immediate action vector for this case',
+        todayMoves: 'PILOT TASKS',
+        riskCards: 'THREAT FORECAST',
+        competitorMoves: 'COUNTER-MOVE VECTOR',
+        questionsToAsk: 'INTERROGATION POINTS',
+        ringiLines: 'TRANSMISSION / RINGI LOG',
+      }
+    : humorMode === 'yanami'
+      ? {
+          headerTitle: 'つん子の作戦掲示板',
+          headerSubtitle: '稟議を通すための今日の動き、まとめといたで',
+          queryLabel: 'つん子へのお題',
+          boardTitle: 'つん子の作戦掲示板',
+          stanceFallback: '作戦まとめ',
+          headlineFallback: 'この案件、今日どこから崩すか',
+          todayMoves: 'まず今日やる3手',
+          riskCards: '審査部に突っ込まれそうな所',
+          competitorMoves: '競合に持っていかれない動き',
+          questionsToAsk: 'お客さんに聞いとくこと',
+          ringiLines: '顧客向け一言・稟議に残す文',
+        }
+      : {
+          headerTitle: '案件作戦盤',
+          headerSubtitle: '紫苑レビューを補助する質問・稟議作戦',
+          queryLabel: '今回の問い',
+          boardTitle: '案件作戦盤',
+          stanceFallback: '作戦整理',
+          headlineFallback: 'この案件の今日やること',
+          todayMoves: '今日やる3手',
+          riskCards: '審査部のツッコミ予測',
+          competitorMoves: '競合に負けない動き',
+          questionsToAsk: '顧客に聞くこと',
+          ringiLines: '顧客向け一言・稟議メモ',
+        };
   const panelClass = isYukikaze
     ? `2xl:sticky 2xl:top-16 h-[calc(100vh-3rem)] min-h-[900px] bg-[#050505] rounded-2xl shadow-2xl shadow-red-950/40 border ${yukikazeStatus.frameClass} flex flex-col overflow-hidden text-amber-50`
     : '2xl:sticky 2xl:top-16 h-[calc(100vh-3rem)] min-h-[900px] bg-[#f8fafc] rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-200 flex flex-col overflow-hidden';
@@ -557,10 +598,10 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
           </div>
           <div>
             <h3 className={`font-bold text-sm tracking-wide ${isYukikaze ? 'font-mono text-amber-100' : ''}`}>
-              {isYukikaze ? 'YUKIKAZE // FFR-41MR' : '案件作戦盤'}
+              {boardCopy.headerTitle}
             </h3>
             <p className={`text-[10px] font-medium ${isYukikaze ? 'text-red-300 font-mono tracking-widest' : 'text-blue-200'}`}>
-              {isYukikaze ? 'TACTICAL LEASE SCORING AI' : '紫苑レビューを補助する質問・稟議作戦'}
+              {boardCopy.headerSubtitle}
             </p>
           </div>
         </div>
@@ -635,7 +676,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
         {initialStrategyQuestion && (
           <div className={`rounded-xl border shadow-sm px-4 py-3 ${isYukikaze ? 'bg-black/85 border-red-900 text-amber-50 font-mono' : 'bg-blue-50 border-blue-200'}`}>
             <div className={`text-[10px] font-black mb-1 ${isYukikaze ? 'text-red-300 tracking-widest' : 'text-blue-700'}`}>
-              {isYukikaze ? 'PILOT QUERY' : '今回の問い'}
+              {boardCopy.queryLabel}
             </div>
             <div className={`text-sm font-bold leading-6 ${isYukikaze ? 'text-amber-100' : 'text-slate-800'}`}>
               {initialStrategyQuestion}
@@ -653,13 +694,13 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
               <div>
                 <div className="flex items-center gap-2">
                   <Target className={`w-4 h-4 ${isYukikaze ? 'text-red-300' : 'text-amber-600'}`} />
-                  <span className={`text-xs font-black ${isYukikaze ? 'text-amber-100 tracking-widest' : 'text-slate-800'}`}>{isYukikaze ? 'MISSION BOARD' : '案件作戦盤'}</span>
+                  <span className={`text-xs font-black ${isYukikaze ? 'text-amber-100 tracking-widest' : 'text-slate-800'}`}>{boardCopy.boardTitle}</span>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isYukikaze ? `border ${yukikazeStatus.levelClass} ${yukikazeStatus.blinkClass}` : 'bg-amber-500 text-white'}`}>
-                    {strategyCards.stance || '作戦整理'}
+                    {strategyCards.stance || boardCopy.stanceFallback}
                   </span>
                 </div>
                 <div className={`mt-1 text-[11px] font-bold line-clamp-1 ${isYukikaze ? 'text-red-300' : 'text-slate-500'}`}>
-                  {strategyCards.headline || 'この案件の今日やること'}
+                  {strategyCards.headline || boardCopy.headlineFallback}
                 </div>
               </div>
               <span className={`text-xs ${isYukikaze ? 'text-red-300' : 'text-slate-400'}`}>{strategyOpen ? '▲' : '▼'}</span>
@@ -691,7 +732,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
                   <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
                     <div className="flex items-center gap-2 mb-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      <h4 className="text-xs font-black text-emerald-900">今日やる3手</h4>
+                      <h4 className="text-xs font-black text-emerald-900">{boardCopy.todayMoves}</h4>
                     </div>
                     {renderActionList(strategyCards.today_moves, 'emerald')}
                   </div>
@@ -699,7 +740,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
                   <div className="rounded-xl border border-red-200 bg-red-50/60 p-3">
                     <div className="flex items-center gap-2 mb-2">
                       <AlertTriangle className="w-4 h-4 text-red-600" />
-                      <h4 className="text-xs font-black text-red-900">審査部のツッコミ予測</h4>
+                      <h4 className="text-xs font-black text-red-900">{boardCopy.riskCards}</h4>
                     </div>
                     {renderActionList(strategyCards.risk_cards, 'red')}
                   </div>
@@ -707,7 +748,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
                   <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3">
                     <div className="flex items-center gap-2 mb-2">
                       <Users className="w-4 h-4 text-blue-600" />
-                      <h4 className="text-xs font-black text-blue-900">競合に負けない動き</h4>
+                      <h4 className="text-xs font-black text-blue-900">{boardCopy.competitorMoves}</h4>
                     </div>
                     {renderActionList(strategyCards.competitor_moves, 'blue')}
                   </div>
@@ -715,7 +756,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
                   <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
                     <div className="flex items-center gap-2 mb-2">
                       <HelpCircle className="w-4 h-4 text-slate-600" />
-                      <h4 className="text-xs font-black text-slate-800">顧客に聞くこと</h4>
+                      <h4 className="text-xs font-black text-slate-800">{boardCopy.questionsToAsk}</h4>
                     </div>
                     {renderActionList(strategyCards.questions_to_ask, 'slate')}
                   </div>
@@ -723,7 +764,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
                   <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
                     <div className="flex items-center gap-2 mb-2">
                       <FileText className="w-4 h-4 text-amber-600" />
-                      <h4 className="text-xs font-black text-amber-900">顧客向け一言・稟議メモ</h4>
+                      <h4 className="text-xs font-black text-amber-900">{boardCopy.ringiLines}</h4>
                     </div>
                     {renderActionList([
                       ...(strategyCards.customer_one_liners || []).slice(0, 2),
@@ -742,8 +783,11 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
           </div>
         )}
 
-        {chatHistory.map((chat, index) => (
-          chat.role === 'user' ? (
+        {chatHistory.map((chat, index) => {
+          if (chat.role === 'user' && chat.text === initialStrategyQuestion) {
+            return null;
+          }
+          return chat.role === 'user' ? (
             <div key={`${chat.role}-${index}`} className="flex gap-3 flex-row-reverse animate-in fade-in slide-in-from-right-4 duration-300">
               <div className={`w-8 h-8 rounded-full flex justify-center items-center font-bold text-xs shadow-sm shrink-0 ${isYukikaze ? 'bg-amber-900 text-amber-100 border border-amber-500 font-mono' : 'bg-blue-600 text-white'}`}>
                 You
@@ -769,8 +813,8 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
                 )}
               </div>
             </div>
-          )
-        ))}
+          );
+        })}
 
         {/* 紫苑 ADK ツールステップ表示 */}
         {toolSteps.length > 0 && (

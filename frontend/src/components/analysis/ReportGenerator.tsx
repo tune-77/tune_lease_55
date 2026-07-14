@@ -14,6 +14,8 @@ interface ReportProps {
 export default function ReportGenerator({ apiResult, formData, gunshiText }: ReportProps) {
   const [report, setReport] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const finalScore = Number(apiResult?.score ?? apiResult?.score_base ?? 0);
+  const baseScore = Number(apiResult?.score_base);
 
   const handleGenerate = async () => {
     if (!apiResult || !apiResult.hantei) {
@@ -42,11 +44,11 @@ export default function ReportGenerator({ apiResult, formData, gunshiText }: Rep
 
   // レーダーチャート用のデータ作成
   const radarData = [
-    { subject: "財務スコア", A: Math.min(100, Math.max(0, apiResult?.score_base || 0)) },
+    { subject: "総合スコア", A: Math.min(100, Math.max(0, finalScore)) },
     { subject: "業績推移", A: Math.min(100, Math.max(0, 50 + (apiResult?.user_op_margin || 0)*2)) },
     { subject: "安定性", A: Math.min(100, Math.max(0, 50 + (apiResult?.user_equity_ratio || 0)*2)) },
     { subject: "業界平均比", A: Math.min(100, Math.max(0, 50 + ((apiResult?.user_op_margin || 0) - (apiResult?.bench_op_margin || 0))*2)) },
-    { subject: "定性評価", A: Math.min(100, Math.max(0, (apiResult?.score_base || 0) + 10)) },
+    { subject: "補正前", A: Math.min(100, Math.max(0, Number.isFinite(baseScore) ? baseScore : finalScore)) },
   ];
 
   return (
@@ -123,8 +125,14 @@ export default function ReportGenerator({ apiResult, formData, gunshiText }: Rep
                 <div className="space-y-4">
                    <div className="flex justify-between items-center bg-white p-3 border rounded-lg shadow-sm">
                      <span className="text-xs font-bold text-slate-500">成約可能性スコア</span>
-                     <span className="text-xl font-black text-indigo-700">{apiResult?.score_base?.toFixed(1) || 0} 点</span>
+                     <span className="text-xl font-black text-indigo-700">{finalScore.toFixed(1)} 点</span>
                    </div>
+                   {Number.isFinite(baseScore) && Math.abs(baseScore - finalScore) >= 0.1 && (
+                     <div className="flex justify-between items-center bg-white p-3 border rounded-lg shadow-sm">
+                       <span className="text-xs font-bold text-slate-500">補正前スコア</span>
+                       <span className="text-sm font-black text-slate-600">{baseScore.toFixed(1)} 点</span>
+                     </div>
+                   )}
                    <div className="flex justify-between items-center bg-white p-3 border rounded-lg shadow-sm">
                      <span className="text-xs font-bold text-slate-500">審査申請物件</span>
                      <span className="text-sm font-black text-slate-800">{formData.asset_name || "未設定"}</span>

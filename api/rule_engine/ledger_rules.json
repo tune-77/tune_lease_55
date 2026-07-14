@@ -424,15 +424,17 @@
   {
     "rev_id": "REV-024a",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "pipeline_fix",
     "description": "[パイプライン自動検出] auto_improvement_pipeline が過去7日で失敗率100%（4/4件, 4日失敗）",
-    "status": "pending_review",
+    "status": "stale_resolved",
     "source": "analyze_pipeline_health",
     "detected_at": "2026-06-23T19:00:24Z",
     "affected_files": [],
     "risk": "medium",
-    "auto_fix_allowed": false
+    "auto_fix_allowed": false,
+    "resolved_at": "2026-07-14T21:51:07Z",
+    "resolution_reason": "直近の同ステップ実行が成功しているため、過去検出を解決済みに更新"
   },
   {
     "rev_id": "RAG-UNRATED-2026_05_24_lease_news",
@@ -516,15 +518,17 @@
   {
     "rev_id": "REV-026a",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "pipeline_fix",
     "description": "[パイプライン自動検出] sync_cloudsql_to_obsidian が過去7日で失敗率100%（3/3件, 3日失敗）",
-    "status": "pending_review",
+    "status": "stale_resolved",
     "source": "analyze_pipeline_health",
     "detected_at": "2026-06-29T19:00:30Z",
     "affected_files": [],
     "risk": "medium",
-    "auto_fix_allowed": false
+    "auto_fix_allowed": false,
+    "resolved_at": "2026-07-14T21:51:07Z",
+    "resolution_reason": "直近の同ステップ実行が成功しているため、過去検出を解決済みに更新"
   },
   {
     "rev_id": "RAG-UNRATED-2026_05_13____________",

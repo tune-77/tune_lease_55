@@ -1387,7 +1387,7 @@ def _build_bayes_reverse_strategy(inputs: dict, result: dict) -> dict:
         from api.gunshi_gemini import build_bayes_factors
         from shinsa_gunshi_logic import compute_prior, compute_posterior, select_top_phrases
 
-        score = max(0.0, min(100.0, _score_float(result.get("score_base", result.get("score")), 0.0)))
+        score = max(0.0, min(100.0, _score_float(result.get("score", result.get("score_base")), 0.0)))
         pd_pct = 0.0
         asset_score = _score_float(result.get("asset_score", inputs.get("asset_score")), 50.0)
         if asset_score >= 70:
@@ -3694,7 +3694,7 @@ def get_pending_cases():
                     "company_no": d.get("company_no") or inputs.get("company_no") or "",
                     "company_name": d.get("company_name") or inputs.get("company_name") or "名称未設定",
                     "timestamp": r["timestamp"],
-                    "score": r["score"] if r["score"] not in (None, "") else result.get("score_base", result.get("score")),
+                    "score": r["score"] if r["score"] not in (None, "") else result.get("score", result.get("score_base")),
                     "industry": r["industry_sub"] or d.get("industry_sub") or inputs.get("industry_sub") or d.get("industry_major") or inputs.get("industry_major") or "",
                     "registration_date": d.get("registration_date") or (r["timestamp"] or "")[:10],
                     "estimate_sent_date": d.get("estimate_sent_date") or (r["timestamp"] or "")[:10],
@@ -5885,6 +5885,37 @@ def _ledger_status_reason(status: str) -> str:
     return ""
 
 
+def _compact_improvement_text(value: object, limit: int = 1200) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
+
+
+def _cloudrun_improvement_body_from_payload(payload: dict) -> str:
+    for key in ("body", "original_text", "message", "user_message", "reason", "detail"):
+        value = str(payload.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _load_local_jsonl(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    rows: list[dict] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(item, dict):
+            rows.append(item)
+    return rows
+
+
 def _applied_improvement_keys() -> set[str]:
     latest_by_key = _latest_improvement_statuses()
     return {key for key, status in latest_by_key.items() if status == "applied"}
@@ -6081,7 +6112,25 @@ def _cloudrun_improvement_items_from_gcs(limit: int = 30) -> list[dict]:
             days=int(os.environ.get("CLOUDRUN_IMPROVEMENT_GCS_DAYS", "45") or 45)
         )
     except Exception:
-        return []
+        events = []
+    if not events:
+        local_log = Path(_REPO_ROOT) / "data" / "cloudrun_improvement_log.jsonl"
+        try:
+            events = [
+                {
+                    "event_id": row.get("event_id"),
+                    "event_type": "improvement_note",
+                    "surface": row.get("surface") or "chat_improvement",
+                    "ts": row.get("ts"),
+                    "payload": {
+                        "title": row.get("title") or "Cloud Run改善メモ",
+                        "body": row.get("body") or "",
+                    },
+                }
+                for row in _load_local_jsonl(local_log)
+            ]
+        except Exception:
+            events = []
 
     items: list[dict] = []
     seen: set[str] = set()
@@ -6100,8 +6149,9 @@ def _cloudrun_improvement_items_from_gcs(limit: int = 30) -> list[dict]:
         if not event_id or event_id in seen:
             continue
         seen.add(event_id)
-        text = str(payload.get("original_text") or payload.get("message") or payload.get("user_message") or payload.get("title") or "").strip()
-        title = str(payload.get("title") or "").strip() or (text[:60] if text else "Cloud Run改善メモ")
+        body = _cloudrun_improvement_body_from_payload(payload)
+        text = body or str(payload.get("title") or "").strip()
+        title = str(payload.get("title") or "").strip() or (_compact_improvement_text(text, 60) if text else "Cloud Run改善メモ")
         status = "NEEDS_REVIEW"
         if event_type == "improvement_dismiss":
             status = "APPLIED"
@@ -6117,6 +6167,10 @@ def _cloudrun_improvement_items_from_gcs(limit: int = 30) -> list[dict]:
             "canonical_key": _improvement_canonical_key(title, text),
             "reason": str(payload.get("reason") or "Cloud Runから登録された改善入力"),
             "detail": text,
+            "source_event_id": event_id,
+            "source_ts": event.get("ts") or "",
+            "source_surface": surface,
+            "raw_preview": _compact_improvement_text(body or text, 1200),
             "source": "cloudrun_gcs_input",
             "event_id": event_id,
             "recorded_at": event.get("ts") or "",
@@ -8746,7 +8800,7 @@ def _promote_case_result_to_screening_experience(
     main_bank = str(inputs.get("main_bank") or case_data.get("main_bank") or "").strip()
     competitor = str(inputs.get("competitor") or case_data.get("competitor") or "").strip()
     deal_source = str(inputs.get("deal_source") or case_data.get("deal_source") or "").strip()
-    score_raw = result.get("score_base", result.get("score", case_data.get("score_base", case_data.get("score"))))
+    score_raw = result.get("score", result.get("score_base", case_data.get("score", case_data.get("score_base"))))
     try:
         score = float(score_raw) if score_raw not in (None, "") else None
     except Exception:
@@ -9129,7 +9183,7 @@ def _cloudrun_score_pending_item(row: dict) -> dict:
     ).strip()
     score = row.get("score")
     if score in (None, ""):
-        score = result.get("score_base", result.get("score"))
+        score = result.get("score", result.get("score_base"))
     return {
         "id": f"{_CLOUDRUN_SCORE_CASE_PREFIX}{int(row.get('id') or 0)}",
         "company_no": company_no,
@@ -9173,7 +9227,7 @@ def _cloudrun_score_pending_item_from_event(event: dict) -> dict | None:
         "company_no": company_no,
         "company_name": company_name or "Cloud Run審査入力",
         "timestamp": created_at,
-        "score": result.get("score_base", result.get("score")),
+        "score": result.get("score", result.get("score_base")),
         "industry": industry,
         "registration_date": created_at[:10] if len(created_at) >= 10 else "",
         "estimate_sent_date": created_at[:10] if len(created_at) >= 10 else "",
@@ -12257,7 +12311,7 @@ class DebateAggressiveData(BaseModel):
 
 class SaveDebateToObsidianRequest(BaseModel):
     company_name: str = ""
-    score: int = 0
+    score: float = 0.0
     grade: str = ""
     cautious: Optional[DebateCautiousData] = None
     aggressive: Optional[DebateAggressiveData] = None

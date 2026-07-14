@@ -41,6 +41,11 @@ TECH_NOISE_RE = re.compile(
 )
 WIKILINK_RE = re.compile(r"\[\[([^\]#|]+)(?:[#|][^\]]*)?\]\]")
 REINDEX_DONE_RE = re.compile(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}).*\[reindex\] 完了.*total_in_db=(\d+)")
+MAINTENANCE_DONE_RE = re.compile(
+    r"実行時刻:\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*?ChromaDB:\s*success",
+    re.DOTALL,
+)
+MAINTENANCE_DB_COUNT_RE = re.compile(r"LocalVectorDB:\s*(\d+)\s*件")
 PRIVATE_REFLECTION_REQUIRED_TERMS = {
     "user_expectation": ("ユーザーが何を望", "ユーザーは何を求め", "User", "望んだ", "求めた"),
     "misread": ("すり替え", "誤読", "読み違え", "逃げ", "見落とし"),
@@ -69,6 +74,13 @@ SELF_REFERENCE_META_TERMS = (
     "report=",
     "内省差分",
     "Obsidian Memory Insight",
+)
+WIKILINK_MONITOR_SOURCE_EXCLUDE = (
+    "Projects/tune_lease_55/Asset Knowledge/Promoted Knowledge.md",
+    "Projects/tune_lease_55/検索語インデックス.md",
+    "Projects/tune_lease_55/tune_lease_55 Wiki.md",
+    "Projects/tune_lease_55/2026-05-13_all_file_ingest_index.md",
+    "Projects/tune_lease_55/2026-05-13_リース審査AI_知識分解.md",
 )
 
 
@@ -241,15 +253,30 @@ def check_reindex_and_chroma(max_age_hours: int) -> MonitorCheck:
         problems.append("missing reindex log")
     else:
         text = _read_text(log_path, 500_000)
-        matches = REINDEX_DONE_RE.findall(text)
-        if not matches:
+        completions: list[tuple[datetime, str, int | None]] = []
+        for ts_text, total_text in REINDEX_DONE_RE.findall(text):
+            completions.append((
+                datetime.fromisoformat(ts_text).replace(tzinfo=_now().tzinfo),
+                "reindex_log",
+                int(total_text),
+            ))
+        db_counts = MAINTENANCE_DB_COUNT_RE.findall(text)
+        maintenance_total = int(db_counts[-1]) if db_counts else None
+        for ts_text in MAINTENANCE_DONE_RE.findall(text):
+            completions.append((
+                datetime.strptime(ts_text, "%Y-%m-%d %H:%M:%S").replace(tzinfo=_now().tzinfo),
+                "rag_daily_maintenance",
+                maintenance_total,
+            ))
+        if not completions:
             problems.append("no successful reindex completion")
         else:
-            ts_text, total_text = matches[-1]
-            completed = datetime.fromisoformat(ts_text).replace(tzinfo=_now().tzinfo)
+            completed, source, total = max(completions, key=lambda item: item[0])
+            details["completion_source"] = source
+            if total is not None:
+                details["total_in_db"] = total
             age = round((_now() - completed).total_seconds() / 3600, 1)
             details["last_reindex_age_hours"] = age
-            details["total_in_db"] = int(total_text)
             if age > max_age_hours:
                 problems.append(f"reindex stale: {age}h")
     if not chroma.exists():
@@ -407,24 +434,100 @@ def check_recent_note_noise(vault: Path) -> MonitorCheck:
     return MonitorCheck("recent_note_noise", "warn" if warn else "ok", msg, {"ratio": ratio, "noisy_files": noisy_files[:12]})
 
 
+def _normalize_link_target(value: str) -> str:
+    cleaned = value.strip().replace("\\", "/").strip("/")
+    return re.sub(r"/+", "/", cleaned)
+
+
+def _link_candidates(value: str) -> set[str]:
+    cleaned = _normalize_link_target(value)
+    if not cleaned:
+        return {""}
+    candidates = {cleaned}
+    if cleaned.lower().endswith(".md"):
+        candidates.add(cleaned[:-3])
+    else:
+        candidates.add(f"{cleaned}.md")
+    return candidates
+
+
+def _existing_wikilink_targets(vault: Path) -> set[str]:
+    targets: set[str] = set()
+    for path in vault.rglob("*"):
+        try:
+            rel = path.relative_to(vault)
+        except ValueError:
+            continue
+        rel_text = _normalize_link_target(str(rel))
+        if not rel_text:
+            continue
+        targets.add(rel_text)
+        targets.add(path.name)
+        if path.is_dir():
+            targets.add(f"{rel_text}/")
+            continue
+        targets.add(path.stem)
+        if path.suffix.lower() == ".md":
+            targets.add(_normalize_link_target(str(rel.with_suffix(""))))
+    return targets
+
+
+def _iter_wikilink_targets(text: str) -> list[str]:
+    """Extract wikilink targets using bracket delimiters instead of a fragile regex."""
+    targets: list[str] = []
+    pos = 0
+    while True:
+        start = text.find("[[", pos)
+        if start < 0:
+            break
+        end = text.find("]]", start + 2)
+        if end < 0:
+            break
+        raw = text[start + 2:end]
+        target = re.split(r"[#|]", raw, maxsplit=1)[0].strip()
+        if target:
+            targets.append(target)
+        pos = end + 2
+    return targets
+
+
+def _wikilink_exists(vault: Path, source_path: Path, target: str, existing_targets: set[str]) -> bool:
+    cleaned = _normalize_link_target(target)
+    if not cleaned:
+        return True
+    candidates = _link_candidates(cleaned)
+    try:
+        source_rel_parent = source_path.relative_to(vault).parent
+        for value in list(candidates):
+            candidates.update(_link_candidates(str(source_rel_parent / value)))
+    except ValueError:
+        pass
+    for candidate in candidates:
+        if candidate in existing_targets:
+            return True
+    return False
+
+
 def check_wikilinks(vault: Path) -> MonitorCheck:
     notes = recent_notes(vault, 7 * 24)
-    stems = {path.stem for path in vault.rglob("*.md")}
+    existing_targets = _existing_wikilink_targets(vault)
     unresolved: list[dict[str, str]] = []
     link_count = 0
     for path in notes:
+        try:
+            source_rel = str(path.relative_to(vault))
+        except ValueError:
+            source_rel = str(path)
+        if source_rel in WIKILINK_MONITOR_SOURCE_EXCLUDE:
+            continue
         text = _read_text(path, 80_000)
-        for target in WIKILINK_RE.findall(text):
+        for target in _iter_wikilink_targets(text):
             cleaned = target.strip()
             if not cleaned:
                 continue
             link_count += 1
-            if cleaned not in stems:
-                try:
-                    rel = str(path.relative_to(vault))
-                except ValueError:
-                    rel = str(path)
-                unresolved.append({"source": rel, "target": cleaned})
+            if not _wikilink_exists(vault, path, cleaned, existing_targets):
+                unresolved.append({"source": source_rel, "target": cleaned})
                 if len(unresolved) >= 20:
                     break
         if len(unresolved) >= 20:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import datetime as dt
 import hashlib
 import json
 import re
@@ -47,6 +48,24 @@ MAX_WIKI_DEPTH: int = 2
 ENABLE_FALLBACK: bool = False
 # BFS展開するノートの上限（循環・爆発防止）
 _MAX_WIKI_NODES: int = 50
+
+# 古い「障害が発生した」系の raw チャット改善メモは、修復済みでも
+# 毎朝の改善ログへ現役障害として復活しやすい。直近に再発メモが
+# ない限り、古い障害報告は active 候補ではなく過去ログとして扱う。
+_STALE_FAILURE_DAYS: int = 7
+_FAILURE_WORDS = (
+    "障害",
+    "通信エラー",
+    "接続エラー",
+    "保存失敗",
+    "動いていない",
+    "動作していない",
+    "機能していない",
+    "停止している",
+    "消えている",
+    "表示されない",
+)
+_RECURRENCE_WORDS = ("再発", "まだ", "相変わらず", "今日も")
 
 # 改善インデックスのファイル名パターン（優先順）
 _INDEX_PATTERNS = [
@@ -303,6 +322,32 @@ def _has_done_marker(text: str) -> bool:
     return any(marker in text for marker in _DONE_MARKERS)
 
 
+def _date_from_log_stem(stem: str) -> dt.date | None:
+    """AI Chat 改善ログのファイル名から日付を読む."""
+    match = re.search(r"20\d{2}-\d{2}-\d{2}", stem)
+    if not match:
+        return None
+    try:
+        return dt.date.fromisoformat(match.group(0))
+    except ValueError:
+        return None
+
+
+def _is_stale_raw_failure(issue: str, stem: str, *, today: dt.date | None = None) -> bool:
+    """古い障害報告を active 改善候補から外すか判定する."""
+    text = str(issue or "")
+    if not any(word in text for word in _FAILURE_WORDS):
+        return False
+    if any(word in text for word in _RECURRENCE_WORDS):
+        return False
+
+    log_date = _date_from_log_stem(stem)
+    if log_date is None:
+        return False
+    current = today or dt.date.today()
+    return (current - log_date).days > _STALE_FAILURE_DAYS
+
+
 def _load_inactive_ledger_keys() -> set[str]:
     """auto-improvement 台帳から active 抽出しない canonical_key を取得する."""
     if not _LEDGER_PATH.exists():
@@ -390,6 +435,8 @@ def _extract_raw_chat_improvements(
                 continue
 
         if _has_done_marker(issue):
+            continue
+        if _is_stale_raw_failure(issue, stem):
             continue
         if _title_key(issue) in inactive_keys or canonical_key(issue) in inactive_keys:
             continue
