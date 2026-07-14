@@ -126,6 +126,10 @@ while true; do
 done
 
 echo ""
+echo "[司書] Obsidian Curator レポートを生成（読み取り専用・未連携）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_curator_report.py" || true
+
+echo ""
 echo "[通知] 日次改善レポートをSlackへ送信（Mana判定込み・Webhook未設定ならスキップ）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/send_daily_improvement_slack.py" \
   --date "${PIPELINE_DATE}" \
