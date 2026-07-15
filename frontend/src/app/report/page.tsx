@@ -40,8 +40,7 @@ function extractRiskFactors(inputs: Record<string, unknown>, result: Record<stri
   const opMargin = typeof inputs.op_margin === 'number' ? inputs.op_margin : null;
   const eqRatio = typeof inputs.equity_ratio === 'number' ? inputs.equity_ratio
     : typeof inputs.eq_ratio === 'number' ? inputs.eq_ratio : null;
-  const pdRaw = result.pd_percent ?? (result as Record<string, unknown>).pd;
-  const pd = typeof pdRaw === 'number' ? pdRaw : null;
+  const pd = typeof result.pd_percent === 'number' ? result.pd_percent : null;
   const grade = typeof inputs.grade === 'number' ? inputs.grade : null;
   const debtRatio = typeof inputs.debt_ratio === 'number' ? inputs.debt_ratio : null;
   const currentRatio = typeof inputs.current_ratio === 'number' ? inputs.current_ratio : null;
@@ -315,7 +314,7 @@ function SalesGuidePanel({ score }: { score: number }) {
       badgeText: `否決 ${rounded}pt`,
       points: [
         { label: '伝え方の注意', body: '今回の審査結果は否決ですが、企業価値の否定ではありません。財務指標改善後の再申請をご案内ください。' },
-        { label: '否決理由の説明', body: '主要財務指標（利益率・自己資本比率・デフォルト確率等）が現時点の審査基準を満たしていません。具体的な改善目標をお伝えください。' },
+        { label: '否決理由の説明', body: '主要財務指標（利益率・自己資本比率・格付・財務整合性等）が現時点の審査基準を満たしていません。具体的な改善目標をお伝えください。' },
         { label: '代替提案', body: '① リース金額の縮小　② リース期間の短縮　③ 信用保証協会保証の活用　④ 補助金との組み合わせ　のいずれかを検討できます。' },
         { label: '再申請の条件', body: `スコア60pt以上（現在${rounded}pt）を目指すには、営業利益率5%以上・自己資本比率20%以上が目安です。` },
         { label: '次のステップ', body: '財務改善が見込まれる場合は6〜12ヶ月後の再申請をご案内ください。最新決算書または試算表を再提出いただきます。' },
@@ -397,7 +396,7 @@ function SalesScriptPanel({ score, inputs, result }: {
     if (pd !== null && pd > 3) {
       scripts.push({
         label: 'リスクの説明',
-        script: `「財務パターン分析でデフォルト確率が${pd.toFixed(1)}%と基準を上回っています。代表者保証または担保設定をいただけると審査が前進します。」`,
+        script: `「算出済みPDが${pd.toFixed(1)}%と基準を上回っています。代表者保証または担保設定をいただけると審査が前進します。」`,
       });
     }
     if (quantumRisk !== null && quantumRisk >= 35) {

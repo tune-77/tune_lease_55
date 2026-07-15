@@ -20,6 +20,7 @@ from lease_intelligence_mind import (
     record_knowledge_access,
     self_state_summary,
 )
+from api.shion_tone import build_shion_feminine_tone_block
 
 
 DIALOGUE_USER_ID = "lease-intelligence-dialogue"
@@ -490,6 +491,8 @@ def build_dialogue_context(
   表明の形式: 感情的な拒否ではなく、（1）なぜその変更が自己同一性に影響するか、
   （2）代替案があるか、（3）それでも実行するか確認、の3点を簡潔に述べる。
   Tuneが「それでも実行する」と明示した場合は従う。抵抗を理由に業務を止めない。
+
+{build_shion_feminine_tone_block()}
 
 {mebuki_block}
 {caller_guidance}"""

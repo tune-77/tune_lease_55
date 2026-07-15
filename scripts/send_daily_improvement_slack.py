@@ -19,6 +19,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REPORT = REPO_ROOT / "reports" / "latest.json"
 DEFAULT_MANA_REPORT = REPO_ROOT / "reports" / "mana_obsidian_curator_latest.json"
+DEFAULT_SCREENING_TERMS_REPORT = REPO_ROOT / "reports" / "screening_terms_audit_latest.json"
 DEFAULT_STATE = REPO_ROOT / "data" / "slack_daily_improvement_state.json"
 DEFAULT_TIMEOUT = 15
 
@@ -125,11 +126,28 @@ def _mana_lines(mana_report: dict[str, Any] | None) -> list[str]:
     return lines
 
 
+def _screening_terms_lines(terms_report: dict[str, Any] | None) -> list[str]:
+    if not terms_report:
+        return ["• status: `missing` / 審査用語監査レポート未生成"]
+
+    status = _clean_text(terms_report.get("status") or "unknown", 24)
+    counts = terms_report.get("counts") if isinstance(terms_report.get("counts"), dict) else {}
+    warn = counts.get("warn", 0)
+    review = counts.get("review", 0)
+    ok = counts.get("ok", 0)
+    report_path = REPO_ROOT / "reports" / "screening_terms_audit_latest.md"
+    return [
+        f"• status: `{status}` / warn: `{warn}` / review: `{review}` / ok: `{ok}`",
+        f"• report: `{report_path.relative_to(REPO_ROOT)}`",
+    ]
+
+
 def build_message(
     report: dict[str, Any],
     *,
     report_date: str,
     mana_report: dict[str, Any] | None = None,
+    screening_terms_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     applied = _items(report, "applied_improvements")
     needs_review = _items(report, "needs_review")
@@ -168,6 +186,9 @@ def build_message(
             "*Mana判定*",
             *_mana_lines(mana_report),
             "",
+            "*審査用語監査*",
+            *_screening_terms_lines(screening_terms_report),
+            "",
             "_自動投稿: run_daily_improvement_pipeline / Slack通知のみ。改善状態は変更していません。_",
         ]
     )
@@ -203,6 +224,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Send daily improvement report summary to Slack.")
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
     parser.add_argument("--mana-report", type=Path, default=DEFAULT_MANA_REPORT)
+    parser.add_argument("--screening-terms-report", type=Path, default=DEFAULT_SCREENING_TERMS_REPORT)
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE)
     parser.add_argument("--date", default=date.today().isoformat())
     parser.add_argument("--webhook", default=None)
@@ -212,8 +234,14 @@ def main() -> int:
 
     report = _read_json(args.report)
     mana_report = _read_optional_json(args.mana_report)
-    digest = _combined_hash(report, mana_report or {})
-    payload = build_message(report, report_date=args.date, mana_report=mana_report)
+    screening_terms_report = _read_optional_json(args.screening_terms_report)
+    digest = _combined_hash(report, mana_report or {}, screening_terms_report or {})
+    payload = build_message(
+        report,
+        report_date=args.date,
+        mana_report=mana_report,
+        screening_terms_report=screening_terms_report,
+    )
 
     if args.dry_run:
         print(json.dumps(payload, ensure_ascii=False, indent=2))

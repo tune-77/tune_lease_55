@@ -3113,6 +3113,32 @@ def dismiss_improvement(req: DismissImprovementRequest):
     return {"ok": True, "key": req.key, "title": req.title, "obsidian": obsidian_result, "writeback": writeback}
 
 
+@app.post("/api/improvement-log/delete")
+def delete_improvement(req: DismissImprovementRequest):
+    """改善案を一覧から削除する。監査できるよう ledger/GCS には deleted として残す。"""
+    import json as _json
+    from datetime import datetime as _dt
+    ledger_path = os.path.expanduser("~/Library/Logs/tunelease/ledger.jsonl")
+    os.makedirs(os.path.dirname(ledger_path), exist_ok=True)
+    entry = {
+        "key": req.key,
+        "canonical_key": req.key,
+        "status": "deleted",
+        "title": req.title,
+        "pr_url": "",
+        "reason": "UI経由で改善ログから削除",
+        "recorded_at": _dt.now().isoformat(),
+    }
+    with open(ledger_path, "a", encoding="utf-8") as f:
+        f.write(_json.dumps(entry, ensure_ascii=False) + "\n")
+    writeback = record_cloudrun_input_event(
+        event_type="improvement_delete",
+        surface="improvement_log",
+        payload=entry,
+    )
+    return {"ok": True, "key": req.key, "title": req.title, "writeback": writeback}
+
+
 @app.post("/api/improvement-log/review")
 def review_improvement(req: ReviewImprovementRequest):
     """改善案の承認・却下・deferredをledgerとObsidianに書き込む（REV-039）。"""
@@ -3809,6 +3835,7 @@ def get_gunshi_advise(req: AdviseRequest):
 class GunshiStreamRequest(BaseModel):
     industry_cat: str
     industry_sub: str = ""
+    humor_style: str = "standard"
     score: float
     pd_pct: float = 0.0
     resale_eval: str = "B"
@@ -3872,7 +3899,7 @@ async def gunshi_stream(req: GunshiStreamRequest):
 
         yield f"data: {json.dumps({'type': 'bayes', 'prior': prior, 'posterior': posterior}, ensure_ascii=False)}\n\n"
         yield f"data: {json.dumps({'type': 'phrases', 'items': phrases}, ensure_ascii=False)}\n\n"
-        cards = build_strategy_cards(params, phrases, prior, posterior)
+        cards = build_strategy_cards(params, phrases, prior, posterior, humor_style=params.get("humor_style", "standard"))
         yield f"data: {json.dumps({'type': 'strategy_cards', 'cards': cards}, ensure_ascii=False)}\n\n"
 
         # 紫苑ADKエージェントがツールを自律実行しながらコメントをストリーム
@@ -5851,6 +5878,8 @@ def _latest_improvement_statuses() -> dict[str, str]:
 
 def _ledger_status_to_improvement_status(status: str) -> str | None:
     normalized = str(status or "").lower()
+    if normalized == "deleted":
+        return "DELETED"
     if normalized == "applied":
         return "APPLIED"
     if normalized == "approved":
@@ -5868,6 +5897,8 @@ def _ledger_status_to_improvement_status(status: str) -> str | None:
 
 def _ledger_status_reason(status: str) -> str:
     normalized = str(status or "").lower()
+    if normalized == "deleted":
+        return "削除済み"
     if normalized == "applied":
         return "改善済み登録済み"
     if normalized == "approved":
@@ -6082,7 +6113,7 @@ def _normalize_improvement_report(report: dict) -> dict:
                 item["reason"] = park_reason
 
     items = sorted(
-        items_by_id.values(),
+        [item for item in items_by_id.values() if item.get("status") != "DELETED"],
         key=lambda item: (
             item.get("recommended_order") is None,
             item.get("recommended_order") or 9999,
@@ -6132,13 +6163,36 @@ def _cloudrun_improvement_items_from_gcs(limit: int = 30) -> list[dict]:
         except Exception:
             events = []
 
+    control_event_types = {"improvement_review", "improvement_dismiss", "improvement_delete"}
+    latest_control_by_key: dict[str, str] = {}
+    for event in events:
+        event_type = str(event.get("event_type") or "")
+        if event_type not in control_event_types:
+            continue
+        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+        title = str(payload.get("title") or "").strip()
+        body = _cloudrun_improvement_body_from_payload(payload)
+        control_key = str(payload.get("canonical_key") or payload.get("key") or "").strip()
+        if not control_key:
+            control_key = _improvement_canonical_key(title, body)
+        if not control_key:
+            continue
+        if event_type == "improvement_delete":
+            latest_control_by_key[control_key] = "deleted"
+        elif event_type == "improvement_dismiss":
+            latest_control_by_key[control_key] = "applied"
+        else:
+            latest_control_by_key[control_key] = str(payload.get("action") or payload.get("status") or "").lower()
+
     items: list[dict] = []
     seen: set[str] = set()
     for event in reversed(events):
         event_type = str(event.get("event_type") or "")
         surface = str(event.get("surface") or "")
         payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
-        is_improvement = event_type in {"improvement_note", "improvement_review", "improvement_dismiss"}
+        if event_type in control_event_types:
+            continue
+        is_improvement = event_type == "improvement_note"
         if event_type == "chat_exchange":
             category = str(payload.get("category") or "")
             is_improvement = category == "improvement" or "improvement" in surface
@@ -6152,19 +6206,18 @@ def _cloudrun_improvement_items_from_gcs(limit: int = 30) -> list[dict]:
         body = _cloudrun_improvement_body_from_payload(payload)
         text = body or str(payload.get("title") or "").strip()
         title = str(payload.get("title") or "").strip() or (_compact_improvement_text(text, 60) if text else "Cloud Run改善メモ")
-        status = "NEEDS_REVIEW"
-        if event_type == "improvement_dismiss":
-            status = "APPLIED"
-        elif event_type == "improvement_review":
-            action = str(payload.get("action") or payload.get("status") or "").lower()
-            status = _ledger_status_to_improvement_status(action) or "NEEDS_REVIEW"
+        canonical_key = str(payload.get("canonical_key") or payload.get("key") or "").strip() or _improvement_canonical_key(title, text)
+        control_status = latest_control_by_key.get(canonical_key)
+        if control_status == "deleted":
+            continue
+        status = _ledger_status_to_improvement_status(control_status or "") or "NEEDS_REVIEW"
         items.append({
             "id": f"cloudrun-{event_id[:12]}",
             "title": title,
             "status": status,
             "priority": str(payload.get("priority") or "medium"),
             "category": "cloudrun_input",
-            "canonical_key": _improvement_canonical_key(title, text),
+            "canonical_key": canonical_key,
             "reason": str(payload.get("reason") or "Cloud Runから登録された改善入力"),
             "detail": text,
             "source_event_id": event_id,
@@ -10991,6 +11044,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
 
     if not vault:
         from lease_finance_knowledge import build_lease_finance_knowledge_block
+        from api.shion_tone import build_shion_feminine_tone_block
 
         if req.file_type == "image" and req.file_content:
             full_message = (
@@ -11012,6 +11066,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
 {build_lease_finance_knowledge_block()}
 {user_personal_memory_context}
 {shared_shion_memory_context}
+{build_shion_feminine_tone_block()}
 """
         try:
             reply = call_gemini_chat(fallback_prompt, history, full_message).strip()

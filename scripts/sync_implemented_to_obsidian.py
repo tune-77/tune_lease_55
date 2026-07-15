@@ -42,7 +42,7 @@ _COMMIT_TO_TITLE_HINTS: dict[str, list[str]] = {
     "counterfactual":      ["Counterfactual Explanation"],
     "マルチエージェント":   ["軍師AIマルチエージェント化"],
     "AUC.*リーケージ":     ["AUC=1.00 データリーケージ疑義"],
-    "デフォルト率.*警告":  ["デフォルト率モデル", "PD警告"],
+    "デフォルト率.*警告":  ["高リスク財務パターン警告", "算出済みPD警告"],
 }
 
 

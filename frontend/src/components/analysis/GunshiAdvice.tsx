@@ -214,6 +214,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
     return {
       industry_cat: industry_major || "",
       industry_sub: formData.industry_sub || "",
+      humor_style: humorMode,
       score,
       resale_eval: "B",
       repeat_count: Number(formData.contracts) || 0,
@@ -337,6 +338,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
       formData.total_assets || 0,
       formData.bank_credit || 0,
       formData.lease_credit || 0,
+      humorMode,
       JSON.stringify(estatContext || null),
     ].join(":");
     if (initialFetchKeyRef.current === fetchKey) return;
@@ -345,7 +347,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
     const nextHistory: ChatMessage[] = [{ role: 'user', text: initialStrategyQuestion }];
     setChatHistory(nextHistory);
     fetchStreamChat(nextHistory);
-  }, [score, industry_major, formData, estatContext, initialStrategyQuestion]);
+  }, [score, industry_major, formData, estatContext, initialStrategyQuestion, humorMode]);
 
   const handleOpenShionChat = () => {
     if (typeof window === 'undefined') return;
@@ -533,28 +535,28 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
         headerTitle: 'YUKIKAZE // FFR-41MR',
         headerSubtitle: 'TACTICAL LEASE SCORING AI',
         queryLabel: 'PILOT QUERY',
-        boardTitle: 'MISSION BOARD',
-        stanceFallback: 'TACTICAL PLAN',
-        headlineFallback: 'Immediate action vector for this case',
-        todayMoves: 'PILOT TASKS',
-        riskCards: 'THREAT FORECAST',
-        competitorMoves: 'COUNTER-MOVE VECTOR',
-        questionsToAsk: 'INTERROGATION POINTS',
-        ringiLines: 'TRANSMISSION / RINGI LOG',
+        boardTitle: 'TACTICAL BOARD',
+        stanceFallback: 'SORTIE PLAN',
+        headlineFallback: 'VECTOR: immediate action route locked',
+        todayMoves: 'SORTIE TASKS // NEXT 3',
+        riskCards: 'REVIEW INTERCEPT POINTS',
+        competitorMoves: 'HOSTILE BID COUNTER-VECTOR',
+        questionsToAsk: 'PILOT QUERY CHECKPOINTS',
+        ringiLines: 'RINGI TRANSMISSION LOG',
       }
     : humorMode === 'yanami'
       ? {
           headerTitle: 'つん子の作戦掲示板',
-          headerSubtitle: '稟議を通すための今日の動き、まとめといたで',
+          headerSubtitle: '稟議を通すための面倒ごと、先に並べといたで',
           queryLabel: 'つん子へのお題',
           boardTitle: 'つん子の作戦掲示板',
-          stanceFallback: '作戦まとめ',
-          headlineFallback: 'この案件、今日どこから崩すか',
-          todayMoves: 'まず今日やる3手',
-          riskCards: '審査部に突っ込まれそうな所',
-          competitorMoves: '競合に持っていかれない動き',
-          questionsToAsk: 'お客さんに聞いとくこと',
-          ringiLines: '顧客向け一言・稟議に残す文',
+          stanceFallback: '通すための段取り',
+          headlineFallback: 'この案件、今日どこから片づけるか',
+          todayMoves: '今日まず片づける3手',
+          riskCards: '審査部に刺されそうな穴',
+          competitorMoves: '競合に持ってかれる前の一手',
+          questionsToAsk: 'お客さんに今聞いとくこと',
+          ringiLines: '稟議に残す一言、あとで泣かない用',
         }
       : {
           headerTitle: '案件作戦盤',

@@ -20,6 +20,7 @@ import {
   MessageCircleHeart,
   TrendingDown,
   BookOpenCheck,
+  Trash2,
 } from "lucide-react";
 import LoopEngineeringCard from "@/components/analysis/LoopEngineeringCard";
 
@@ -296,6 +297,7 @@ export default function ImprovementLogPage() {
   const [ledgerError, setLedgerError] = useState("");
   const [ledgerTypeFilter, setLedgerTypeFilter] = useState("ALL");
   const [approvingRuleIds, setApprovingRuleIds] = useState<Set<string>>(new Set());
+  const [hiddenImprovementKeys, setHiddenImprovementKeys] = useState<Set<string>>(new Set());
 
   const fetchLedgerRules = useCallback(async () => {
     setLedgerLoading(true);
@@ -423,6 +425,7 @@ export default function ImprovementLogPage() {
             rawContext ? `原文: ${rawContext}` : "",
           ].filter(Boolean).join("\n"),
         });
+        setHiddenImprovementKeys((prev) => new Set(prev).add(itemKey));
         await fetchLog();
       } catch {
         // 失敗時は何もしない（再fetchで状態は保持される）
@@ -449,6 +452,7 @@ export default function ImprovementLogPage() {
           surface: item.category || "",
           reason,
         });
+        setHiddenImprovementKeys((prev) => new Set(prev).add(itemKey));
         await fetchLog();
       } catch {
         // 失敗時は何もしない（再fetchで状態は保持される）
@@ -459,9 +463,31 @@ export default function ImprovementLogPage() {
     [fetchLog]
   );
 
+  const handleDeleteImprovement = useCallback(
+    async (item: ImprovementItem) => {
+      const itemKey = item.canonical_key || item.id || item.title;
+      setActionLoading((prev) => ({ ...prev, [itemKey]: true }));
+      try {
+        await apiClient.post("/api/improvement-log/delete", {
+          key: item.canonical_key || item.id || item.title || "",
+          title: item.title || item.id || "改善項目",
+        });
+        setHiddenImprovementKeys((prev) => new Set(prev).add(itemKey));
+        await fetchLog();
+      } catch {
+        // 失敗時は一覧に残す
+      } finally {
+        setActionLoading((prev) => ({ ...prev, [itemKey]: false }));
+      }
+    },
+    [fetchLog]
+  );
+
   const filteredItems = useMemo(() => {
     const items = data?.items ?? [];
     return items.filter((item) => {
+      const itemKey = item.canonical_key || item.id || item.title;
+      if (hiddenImprovementKeys.has(itemKey)) return false;
       const matchesStatus = status === "ALL" || item.status === status || (status === "NEEDS_REVIEW" && item.status === "needs_review");
       const needle = query.trim().toLowerCase();
       const matchesQuery =
@@ -471,7 +497,7 @@ export default function ImprovementLogPage() {
         (item.canonical_key || "").toLowerCase().includes(needle);
       return matchesStatus && matchesQuery;
     });
-  }, [data?.items, query, status]);
+  }, [data?.items, hiddenImprovementKeys, query, status]);
 
   const obsidianStatus = data?.obsidian_compliance?.status || "unknown";
   const obsidianViolations = data?.obsidian_compliance?.violations?.length || 0;
@@ -1155,7 +1181,7 @@ export default function ImprovementLogPage() {
           </div>
 
           <p className="mt-3 text-xs text-slate-500">
-            操作ボタンは状態が「要確認」の項目にだけ表示されます。各ボタンにカーソルを合わせると動作の説明が表示されます。
+            承認・却下・保留・ルール化は「要確認」の項目に表示されます。削除は表示中の項目を一覧から隠します。
           </p>
         </section>
 
@@ -1226,7 +1252,7 @@ export default function ImprovementLogPage() {
                         </td>
                         <td className="px-4 py-3">
                           {isNeedsReview ? (
-                            <div className="flex gap-1.5">
+                            <div className="flex flex-wrap gap-1.5">
                               <ActionButton
                                 label="レビュー承認"
                                 onClick={() => handleReview(item, "approved")}
@@ -1256,9 +1282,24 @@ export default function ImprovementLogPage() {
                                 icon={<Sparkles className="h-3.5 w-3.5" />}
                                 title="同種の問題を防ぐPDCAルールとして登録し、AIのプロンプトに注入されます（有効期限つき）"
                               />
+                              <ActionButton
+                                label="削除"
+                                onClick={() => handleDeleteImprovement(item)}
+                                disabled={isActing}
+                                variant="delete"
+                                icon={<Trash2 className="h-3.5 w-3.5" />}
+                                title="この改善候補を一覧から削除します（監査ログには deleted として残ります）"
+                              />
                             </div>
                           ) : (
-                            <span className="text-xs text-slate-300">—</span>
+                            <ActionButton
+                              label="削除"
+                              onClick={() => handleDeleteImprovement(item)}
+                              disabled={isActing}
+                              variant="delete"
+                              icon={<Trash2 className="h-3.5 w-3.5" />}
+                              title="この改善候補を一覧から削除します（監査ログには deleted として残ります）"
+                            />
                           )}
                         </td>
                       </tr>
@@ -1437,6 +1478,7 @@ const ACTION_STYLES = {
   reject: "border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100",
   defer: "border-slate-300 bg-slate-50 text-slate-600 hover:bg-slate-100",
   learn: "border-cyan-300 bg-cyan-50 text-cyan-700 hover:bg-cyan-100",
+  delete: "border-slate-300 bg-white text-slate-500 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700",
 };
 
 function gapPriorityClass(priority: string) {
@@ -1458,7 +1500,7 @@ function ActionButton({
   label: string;
   onClick: () => void;
   disabled: boolean;
-  variant: "approve" | "reject" | "defer" | "learn";
+  variant: "approve" | "reject" | "defer" | "learn" | "delete";
   icon?: React.ReactNode;
   title?: string;
 }) {
