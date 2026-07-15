@@ -111,3 +111,10 @@ scripts/.sync_state_cloudsql.json
 scripts/.sync_state_icloud_gcs.json
 # 紫苑記憶ヘルスチェックの基準ファイル
 data/shion_memory_health_state.json
+# Generated judgment/memory analysis artifacts
+data/autoresearch_judgment_asset_candidate_state.json
+data/canonical_judgment_rules_preview.json
+data/shion_reflection_delta.json
+data/shion_timeline_delta.json
+data/embedding_compare_cache/
+data/memory/
