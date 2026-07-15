@@ -47,7 +47,16 @@ MAINTENANCE_DONE_RE = re.compile(
 )
 MAINTENANCE_DB_COUNT_RE = re.compile(r"LocalVectorDB:\s*(\d+)\s*件")
 PRIVATE_REFLECTION_REQUIRED_TERMS = {
-    "user_expectation": ("ユーザーが何を望", "ユーザーは何を求め", "User", "望んだ", "求めた"),
+    "user_expectation": (
+        "ユーザーが何を望",
+        "ユーザーは何を求め",
+        "User",
+        "望んだ",
+        "求めた",
+        "人間の修正:",
+        "ユーザーの指摘",
+        "ユーザーは、",
+    ),
     "misread": ("すり替え", "誤読", "読み違え", "逃げ", "見落とし"),
     "self_responsibility": ("私の責任", "私の見落とし", "自分", "浅かった", "足りない"),
     "next_behavior": ("次回", "次に", "禁止", "検証", "変える", "更新する信念"),
@@ -208,6 +217,13 @@ def check_private_reflection_meaning(vault: Path, target: date) -> MonitorCheck:
         "私の見落とし:",
         "仮説の更新:",
         "次回の小さな実験:",
+        "前回の入力:",
+        "前回の判断:",
+        "人間の修正:",
+        "紫苑が外した点:",
+        "次回から変える確認事項:",
+        "判断資産候補:",
+        "まだ確信できない点:",
         "私の責任:",
         "更新する信念:",
         "次回の検証方法:",

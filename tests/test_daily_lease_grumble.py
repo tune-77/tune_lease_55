@@ -19,7 +19,7 @@ def test_daily_grumble_fallback_is_three_or_four_lines(monkeypatch):
     )
 
     assert 3 <= len(lines) <= 4
-    assert any(word in " ".join(lines) for word in ("プリン", "昼食", "コーヒー", "つん子"))
+    assert any(word in " ".join(lines) for word in ("プリン", "昼食", "コーヒー", "ツンコ"))
 
 
 def test_daily_grumble_uses_private_reflection_play_fragments(tmp_path, monkeypatch):

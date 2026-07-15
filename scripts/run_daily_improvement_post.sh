@@ -99,6 +99,11 @@ echo "[内省] 紫苑の日次私的内省を生成（当日対話/内省材料 
 "${PYTHON}" "${PROJECT_ROOT}/lease_intelligence_reflection.py" || true
 
 echo ""
+echo "[監視] Private Reflection 生成後に Obsidian環境モニターを再生成（Mana判定用）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/monitor_obsidian_environment.py" \
+  --date "${PIPELINE_DATE}" || true
+
+echo ""
 echo "[内省] 内省差分レポートを生成（読み取り専用・未連携）..."
 build_reflection_delta
 
@@ -120,6 +125,8 @@ while true; do
     MANA_REPAIR_ATTEMPT=$((MANA_REPAIR_ATTEMPT + 1))
     echo "[番人] Private Reflection が弱いため、再生成して Mana に再判定させます（${MANA_REPAIR_ATTEMPT}/${MANA_MAX_REFLECTION_REPAIRS}）..."
     "${PYTHON}" "${PROJECT_ROOT}/lease_intelligence_reflection.py" || true
+    "${PYTHON}" "${PROJECT_ROOT}/scripts/monitor_obsidian_environment.py" \
+      --date "${PIPELINE_DATE}" || true
     build_reflection_delta
     continue
   fi

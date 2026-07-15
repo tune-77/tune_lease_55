@@ -3,6 +3,11 @@
 The timeline delta script measures memory drift. This script measures whether
 reflection is returning to operations: what User should verify, and what Shion
 must change next. It intentionally does not alter prompts, scoring, or memory.
+
+The core reflection is not a literary confession. It is a judgment change log:
+previous judgment -> human correction -> missed point -> next check -> judgment
+asset candidate. Narrative writing can be generated after that, but the source
+of truth stays operational.
 """
 from __future__ import annotations
 
@@ -81,6 +86,28 @@ SHION_ACTION_TERMS = (
     "減らす",
     "出す",
     "反映",
+)
+JUDGMENT_CHANGE_TERMS = (
+    "前回",
+    "判断",
+    "修正",
+    "外した",
+    "見落とし",
+    "確認事項",
+    "判断資産",
+    "次回",
+    "条件",
+    "稟議",
+    "違和感",
+)
+JUDGMENT_LOG_LABELS = (
+    "前回の入力",
+    "前回の判断",
+    "人間の修正",
+    "紫苑が外した点",
+    "次回から変える確認事項",
+    "判断資産候補",
+    "まだ確信できない点",
 )
 
 
@@ -227,6 +254,7 @@ def build_reflection_delta(
     hypothesis_updates = _select(current_material, HYPOTHESIS_TERMS)
     user_requests = _extract_user_requests(current_material)
     shion_next_actions = _select(current_material, SHION_ACTION_TERMS)
+    judgment_change_log = _build_judgment_change_log(current_material)
     if not user_requests:
         user_requests = _derive_user_requests(current_material)
     if not shion_next_actions:
@@ -240,6 +268,7 @@ def build_reflection_delta(
         hypothesis_updates=hypothesis_updates,
         user_requests=user_requests,
         shion_next_actions=shion_next_actions,
+        judgment_change_log=judgment_change_log,
         current_material=current_material,
     )
     score = _score(quality_flags)
@@ -270,6 +299,13 @@ def build_reflection_delta(
         "operational_handoff": {
             "user_requests": user_requests,
             "shion_next_actions": shion_next_actions,
+        },
+        "judgment_change_log": judgment_change_log,
+        "narrative_layer": {
+            "status": "derived_only",
+            "protagonists": ["ツンコ", "ユウケイ"],
+            "rule": "判断変更ログを先に作り、ツンコとユウケイの小説化は後段の表現レイヤーで行う。",
+            "source_of_truth": "judgment_change_log",
         },
         "quality": {
             "score": score,
@@ -347,6 +383,44 @@ def _derive_shion_actions(material: list[str]) -> list[str]:
     return _dedupe(actions)[:4]
 
 
+def _build_judgment_change_log(material: list[str]) -> dict[str, str]:
+    """Extract the operational core before any narrative rendering."""
+    source = _dedupe(_select(material, JUDGMENT_CHANGE_TERMS, limit=20))
+    joined = "\n".join(source)
+    direct = _extract_labeled_values(joined, JUDGMENT_LOG_LABELS)
+
+    def pick(label: str, terms: tuple[str, ...], fallback: str = "") -> str:
+        if direct.get(label):
+            return direct[label]
+        for item in source:
+            if any(term in item for term in terms):
+                return item[:180]
+        return fallback
+
+    log = {
+        "前回の入力": pick("前回の入力", ("企業名", "案件", "入力", "営業メモ")),
+        "前回の判断": pick("前回の判断", ("前回", "判断", "承認", "否認", "条件")),
+        "人間の修正": pick("人間の修正", ("User", "ユーザー", "人間", "修正", "指摘")),
+        "紫苑が外した点": pick("紫苑が外した点", ("外した", "見落とし", "誤読", "浅い", "逃げ")),
+        "次回から変える確認事項": pick("次回から変える確認事項", ("次回", "確認事項", "確認", "変える")),
+        "判断資産候補": pick("判断資産候補", ("判断資産", "稟議", "条件", "違和感")),
+        "まだ確信できない点": pick("まだ確信できない点", ("不確", "確信", "検証", "仮説")),
+    }
+    return {key: value for key, value in log.items() if value}
+
+
+def _extract_labeled_values(text: str, labels: tuple[str, ...]) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        cleaned = _clean_item(line)
+        for label in labels:
+            pattern = rf"^{re.escape(label)}\s*[:：]\s*(.+)$"
+            match = re.match(pattern, cleaned)
+            if match:
+                values[label] = match.group(1).strip()[:220]
+    return values
+
+
 def _quality_flags(
     *,
     similarity: float,
@@ -356,12 +430,15 @@ def _quality_flags(
     hypothesis_updates: list[str],
     user_requests: list[str],
     shion_next_actions: list[str],
+    judgment_change_log: dict[str, str],
     current_material: list[str],
 ) -> list[str]:
     flags: list[str] = []
     if similarity >= 0.82:
         flags.append("too_similar_to_yesterday")
-    if not user_expectation_shift:
+    has_human_correction = bool(judgment_change_log.get("人間の修正"))
+    has_next_check = bool(judgment_change_log.get("次回から変える確認事項"))
+    if not user_expectation_shift and not has_human_correction:
         flags.append("user_expectation_shift_missing")
     if not misread_patterns:
         flags.append("misread_pattern_missing")
@@ -374,7 +451,11 @@ def _quality_flags(
     if not shion_next_actions:
         flags.append("shion_next_action_missing")
     joined = "\n".join(current_material)
-    if joined.count("退屈") >= 3 and not any(term in joined for term in ("すり替え", "誤読", "求め", "望")):
+    if (
+        joined.count("退屈") >= 3
+        and not has_next_check
+        and not any(term in joined for term in ("すり替え", "誤読", "求め", "望", "人間の修正"))
+    ):
         flags.append("boring_label_dominates")
     return flags
 
@@ -438,6 +519,8 @@ def _dedupe(items: list[str]) -> list[str]:
 def render_markdown(payload: dict[str, Any]) -> str:
     delta = payload["delta"]
     handoff = payload["operational_handoff"]
+    judgment_change_log = payload.get("judgment_change_log", {})
+    narrative_layer = payload.get("narrative_layer", {})
     quality = payload["quality"]
     metrics = payload["metrics"]
     lines = [
@@ -469,9 +552,18 @@ def render_markdown(payload: dict[str, Any]) -> str:
         "### 紫苑の次回変更",
         *_markdown_items(handoff["shion_next_actions"]),
         "",
+        "## 判断変更ログ",
+        *_markdown_key_values(judgment_change_log),
+        "",
+        "## 小説化レイヤー",
+        f"- status: {narrative_layer.get('status', 'derived_only')}",
+        f"- protagonists: {', '.join(narrative_layer.get('protagonists', []))}",
+        f"- rule: {narrative_layer.get('rule', '')}",
+        "",
         "## 読み方",
         "- これは読み取り専用の検査レポート。チャット、RAG、スコアリングには自動反映しない。",
-        "- 合格条件は文章の深さではなく、User確認依頼と紫苑の次回変更が具体化されていること。",
+        "- 合格条件は文章の深さではなく、判断変更ログ、User確認依頼、紫苑の次回変更が具体化されていること。",
+        "- 小説化は後段の表現であり、判断変更ログを内省の正本として扱う。",
         "",
     ]
     return "\n".join(lines)
@@ -481,6 +573,12 @@ def _markdown_items(items: list[str]) -> list[str]:
     if not items:
         return ["- なし"]
     return [f"- {item}" for item in items]
+
+
+def _markdown_key_values(items: dict[str, str]) -> list[str]:
+    if not items:
+        return ["- なし"]
+    return [f"- {key}: {value}" for key, value in items.items()]
 
 
 def _join(items: list[str]) -> str:

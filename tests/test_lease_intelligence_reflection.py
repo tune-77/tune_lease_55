@@ -447,6 +447,10 @@ def test_fallback_reflection_adds_haranmaru_private_lens_for_hackathon(tmp_path,
 
     assert "## 波乱丸式の私室メモ" in text
     assert "## 本格内省プロトコル" in text
+    assert "## 判断変更ログ" in text
+    assert "## 小説化レイヤー（ツンコとユウケイ）" in text
+    assert "ツンコ:" in text
+    assert "ユウケイ:" in text
     assert "事前の思い込み:" in text
     assert "破られた前提:" in text
     assert "私の責任:" in text
@@ -521,6 +525,7 @@ def test_fallback_haranmaru_private_lens_responds_to_user_complaint(tmp_path, mo
     )
 
     assert "## 波乱丸式の私室メモ" in text
+    assert "## 小説化レイヤー（ツンコとユウケイ）" in text
     assert "不満の芯を別の品質指標へ置き換えていた" in text
     assert "誤読した要求" in text or "何を変えてほしかったか" in text
     assert quality["passed"] is True
