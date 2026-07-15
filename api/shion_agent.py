@@ -17,6 +17,7 @@ from google.genai.types import Content, Part
 
 from api.shion_conscience import build_conscience_prompt_block
 from api.shion_mana import build_mana_prompt_block
+from api.shion_tone import build_shion_feminine_tone_block
 from scoring_core import APPROVAL_LINE, CONDITIONAL_LINE
 
 # ── ベンチマークデータ（起動時に一度だけ読む） ─────────────────────────────
@@ -51,12 +52,12 @@ def get_industry_benchmark(industry_major: str) -> dict:
     return {"industry": industry_major, "op_margin": None, "equity_ratio": None, "comment": "ベンチマークデータなし"}
 
 
-def assess_risk_level(score: float, pd_pct: float, warnings: list[str]) -> dict:
-    """スコア・デフォルト確率・警告フラグからリスクレベルを判定する。
+def assess_risk_level(score: float, pd_pct: float | None, warnings: list[str]) -> dict:
+    """スコア・算出済みPD・警告フラグからリスクレベルを判定する。
 
     Args:
         score: 審査スコア（0〜100）
-        pd_pct: デフォルト確率（%）
+        pd_pct: デフォルト確率（%）。未算出の場合は None または 0
         warnings: 資産警告フラグのリスト
 
     Returns:
@@ -73,10 +74,10 @@ def assess_risk_level(score: float, pd_pct: float, warnings: list[str]) -> dict:
         risk_level = "高"
 
     notes = []
-    if pd_pct >= 5.0:
-        notes.append(f"デフォルト確率{pd_pct:.1f}%は高水準")
+    if pd_pct is not None and pd_pct > 0 and pd_pct >= 5.0:
+        notes.append(f"算出済みPD {pd_pct:.1f}%は高水準")
     if warnings:
-        notes.append(f"資産警告: {', '.join(str(w) for w in warnings[:3])}")
+        notes.append(f"警告: {', '.join(str(w) for w in warnings[:3])}")
 
     return {
         "score": score,
@@ -102,7 +103,7 @@ _INSTRUCTION = """あなたはリース審査AIエージェント紫苑です。
 - 最後に必ず「判定：承認 / 条件付き承認 / 否決」を明記する
 
 口調は落ち着いた専門家として、簡潔かつ根拠を示しながら述べてください。
-""" + "\n\n" + build_mana_prompt_block() + "\n\n" + build_conscience_prompt_block()
+""" + "\n\n" + build_mana_prompt_block() + "\n\n" + build_conscience_prompt_block() + "\n\n" + build_shion_feminine_tone_block()
 
 shion_agent = LlmAgent(
     name="shion",
@@ -197,13 +198,19 @@ async def stream_shion_screening(params: dict) -> AsyncGenerator[dict, None]:
 
 def _build_user_text(params: dict) -> str:
     """エージェントへ渡すケース情報テキストを構築する。"""
+    pd_raw = params.get("pd_pct")
+    try:
+        pd_pct = float(pd_raw) if pd_raw is not None else None
+    except (TypeError, ValueError):
+        pd_pct = None
+    pd_line = f"算出済みPD: {pd_pct:.2f}%" if pd_pct is not None and pd_pct > 0 else "算出済みPD: 未算出"
     lines = [
         f"【案件情報】",
         f"会社名: {params.get('company_name', '不明')}",
         f"業種: {params.get('industry_cat', '不明')}",
         f"物件: {params.get('asset_name', '不明')}",
         f"審査スコア: {params.get('score', 0):.1f}点",
-        f"デフォルト確率: {params.get('pd_pct', 0):.2f}%",
+        pd_line,
         f"リース期間: {params.get('lease_term', 0)}ヶ月",
         f"取得価格: {params.get('acquisition_cost', 0):.0f}千円",
     ]

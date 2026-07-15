@@ -267,7 +267,7 @@ const sections: FaqSection[] = [
         a: (
           <div className="space-y-2">
             <p><strong>PD（Probability of Default）</strong>とは、借手企業が将来一定期間内に<strong>債務不履行（デフォルト）を起こす確率</strong>を統計モデルで推定した指標です。</p>
-            <p>当システムでは過去の審査データを学習したMLモデル（既存先RandomForest・新規先ロジスティック回帰を軸に、分析ではLGBMも参照）が、財務指標・格付・業種等から各案件のPDを計算します。</p>
+            <p>当システムでは、算出済みの <code>pd_percent</code> がある場合だけPDとして表示します。高リスク財務パターン警告は、実PDではなく高リスク格付先との財務類似度を示す補助指標です。</p>
           </div>
         ),
       },
@@ -297,12 +297,12 @@ const sections: FaqSection[] = [
         q: 'PDとAIスコアの関係は？',
         a: (
           <div className="space-y-2">
-            <p>AIスコア（100点満点）はPDを含む複数指標の総合評価です。概ね以下の関係があります：</p>
+            <p>AIスコア（100点満点）は、財務指標・格付・物件条件などを合わせた総合評価です。PDが算出されている場合は補助指標として併記されます：</p>
             <div className="text-xs space-y-1">
               {[
-                ['70pt以上', '承認推奨', 'PD概ね3%以下'],
-                ['60〜69pt', '条件付き承認', 'PD 3〜8%程度'],
-                ['60pt未満', '否決推奨', 'PD 8%超の場合多い'],
+                ['70pt以上', '承認推奨', 'PD算出時は低水準が望ましい'],
+                ['60〜69pt', '条件付き承認', 'PD算出時は要確認'],
+                ['60pt未満', '否決推奨', 'PD以外の財務・格付要因も確認'],
               ].map(([score, status, pd]) => (
                 <div key={score} className="flex gap-3">
                   <span className="font-black text-indigo-700 w-20 flex-shrink-0">{score}</span>
@@ -311,14 +311,14 @@ const sections: FaqSection[] = [
                 </div>
               ))}
             </div>
-            <p className="text-[11px] text-slate-500">PDはスコアの重要構成要素ですが、営業利益率・自己資本比率・格付なども同様に加味されます。</p>
+            <p className="text-[11px] text-slate-500">PDが未算出の場合、スコアからPDを逆算して表示しません。営業利益率・自己資本比率・格付などを確認してください。</p>
           </div>
         ),
       },
       {
         q: 'スプレッドとPDの関係は？',
         a: (
-          <p>リース金利のリスクスプレッド部分はPDと正の相関があります。PD1%の増加で、概ね<strong>金利0.1〜0.3%程度の上昇</strong>が生じます（モデル係数による）。担保・保証でPDリスクをカバーすることで、金利低減交渉が可能な場合があります。</p>
+          <p>算出済みPDがある場合、リース金利のリスクスプレッド部分と相関します。ただしPD未算出案件では、スコア・格付・財務指標・物件条件を使って条件を調整します。</p>
         ),
       },
     ],

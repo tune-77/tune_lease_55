@@ -79,7 +79,7 @@ class ScoringResponse(BaseModel):
     asset_score: Optional[float] = None        # 経路依存: Full審査では加重合成、quickでは警告・表示用
     asset_warnings: Optional[list] = None      # 物件リスク警告フラグ（BEP・換金性・残存価値）
     asset_bonuses: Optional[list] = None       # 物件プラス評価（換金性・残存価値優位）
-    default_warnings: list = []                # デフォルト率モデルによる高リスク警告（スコア非影響）
+    default_warnings: list = []                # 高リスク財務パターン警告（実PDではない・スコア非影響）
     quantum_risk: Optional[float] = None       # 量子干渉リスクスコア 0-100（財務矛盾検出）
     financial_consistency_score: Optional[float] = None  # 旧Q_risk: 財務・入力整合性チェック 0-100
     financial_consistency_risk: Optional[dict] = None  # 旧Q_risk詳細 {score, level, patterns, pattern_details}

@@ -10,6 +10,7 @@ DEFAULT_OBSIDIAN_VAULT="/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud
 REFLECTION_VAULT="${OBSIDIAN_VAULT:-${OBSIDIAN_VAULT_PATH:-${DEFAULT_OBSIDIAN_VAULT}}}"
 REFLECTION_DIR="${REFLECTION_VAULT}/Projects/tune_lease_55/Lease Intelligence/Private Reflection"
 MANA_REPORT_JSON="${PROJECT_ROOT}/reports/mana_obsidian_curator_latest.json"
+SCREENING_TERMS_REPORT_JSON="${PROJECT_ROOT}/reports/screening_terms_audit_latest.json"
 
 build_reflection_delta() {
   "${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_reflection_delta.py" \
@@ -130,10 +131,20 @@ echo "[司書] Obsidian Curator レポートを生成（読み取り専用・未
 "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_curator_report.py" || true
 
 echo ""
+echo "[成長] Judgment Asset Growth Score を記録（ローカル履歴・未連携）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/judgment_asset_growth_report.py" \
+  --date "${PIPELINE_DATE}" || true
+
+echo ""
+echo "[監査] 審査用語監査を生成（読み取り専用・未連携）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/screening_terms_audit.py" || true
+
+echo ""
 echo "[通知] 日次改善レポートをSlackへ送信（Mana判定込み・Webhook未設定ならスキップ）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/send_daily_improvement_slack.py" \
   --date "${PIPELINE_DATE}" \
-  --mana-report "${MANA_REPORT_JSON}" || true
+  --mana-report "${MANA_REPORT_JSON}" \
+  --screening-terms-report "${SCREENING_TERMS_REPORT_JSON}" || true
 
 if [ "${MANA_STATUS}" != "allow" ]; then
   echo "[番人] Mana が allow ではないため、評価候補生成と GCS Vault 配布を停止します。"

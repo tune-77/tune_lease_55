@@ -73,6 +73,7 @@ def test_normalize_improvement_report_reflects_review_ledger_statuses(monkeypatc
         "key-deferred": "deferred",
         "key-rule": "rule_registered",
         "key-rule-review": "rule_review",
+        "key-deleted": "deleted",
     }
     monkeypatch.setattr(main, "_latest_improvement_statuses", lambda: statuses)
 
@@ -85,6 +86,7 @@ def test_normalize_improvement_report_reflects_review_ledger_statuses(monkeypatc
             {"id": "REV-003", "title": "保留対象", "canonical_key": "key-deferred"},
             {"id": "REV-004", "title": "ルール登録対象", "canonical_key": "key-rule"},
             {"id": "REV-005", "title": "ルール要確認対象", "canonical_key": "key-rule-review"},
+            {"id": "REV-006", "title": "削除対象", "canonical_key": "key-deleted"},
         ],
     }
 
@@ -96,6 +98,7 @@ def test_normalize_improvement_report_reflects_review_ledger_statuses(monkeypatc
     assert by_id["REV-003"]["status"] == "PARKED"
     assert by_id["REV-004"]["status"] == "RULE_REGISTERED"
     assert by_id["REV-005"]["status"] == "RULE_REVIEW"
+    assert "REV-006" not in by_id
     assert result["approved"] == 1
     assert result["rejected"] == 1
     assert result["parked"] == 1
@@ -154,3 +157,77 @@ def test_cloudrun_improvement_items_fall_back_to_local_log(tmp_path, monkeypatch
 
     assert items[0]["source_event_id"] == "local-1"
     assert items[0]["raw_preview"] == "ローカル同期済みの改善本文"
+
+
+def test_cloudrun_improvement_items_apply_review_control(monkeypatch):
+    import api.main as main
+
+    monkeypatch.setattr(
+        main,
+        "_read_recent_cloudrun_input_events_from_gcs",
+        lambda days=45: [
+            {
+                "event_id": "event-note-123456",
+                "event_type": "improvement_note",
+                "surface": "chat_improvement",
+                "ts": "2026-07-15T00:00:00Z",
+                "payload": {
+                    "canonical_key": "cloudrun-key-1",
+                    "title": "改善ログ操作",
+                    "body": "承認ボタン後も消えない",
+                },
+            },
+            {
+                "event_id": "event-review-123456",
+                "event_type": "improvement_review",
+                "surface": "improvement_log",
+                "ts": "2026-07-15T00:01:00Z",
+                "payload": {
+                    "canonical_key": "cloudrun-key-1",
+                    "title": "改善ログ操作",
+                    "action": "approved",
+                },
+            },
+        ],
+    )
+
+    items = main._cloudrun_improvement_items_from_gcs()
+
+    assert len(items) == 1
+    assert items[0]["canonical_key"] == "cloudrun-key-1"
+    assert items[0]["status"] == "APPROVED"
+
+
+def test_cloudrun_improvement_items_skip_deleted_control(monkeypatch):
+    import api.main as main
+
+    monkeypatch.setattr(
+        main,
+        "_read_recent_cloudrun_input_events_from_gcs",
+        lambda days=45: [
+            {
+                "event_id": "event-note-abcdef",
+                "event_type": "improvement_note",
+                "surface": "chat_improvement",
+                "ts": "2026-07-15T00:00:00Z",
+                "payload": {
+                    "canonical_key": "cloudrun-key-delete",
+                    "title": "削除対象の改善",
+                    "body": "一覧から消したい",
+                },
+            },
+            {
+                "event_id": "event-delete-abcdef",
+                "event_type": "improvement_delete",
+                "surface": "improvement_log",
+                "ts": "2026-07-15T00:01:00Z",
+                "payload": {
+                    "canonical_key": "cloudrun-key-delete",
+                    "title": "削除対象の改善",
+                    "status": "deleted",
+                },
+            },
+        ],
+    )
+
+    assert main._cloudrun_improvement_items_from_gcs() == []

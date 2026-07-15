@@ -320,8 +320,9 @@ DEFAULT_PROB_THRESHOLD = 0.3
 
 
 def generate_default_warnings(financial_inputs: dict) -> list[str]:
-    """デフォルト率モデルで高リスク判定した場合に警告フラグを返す。
-    閾値: default_prob >= 0.3 → 警告あり
+    """高リスク財務パターンモデルで警告フラグを返す。
+    閾値: high_risk_similarity >= 0.3 → 警告あり
+    これは実PDではなく、高リスク格付先との財務類似度を示す補助指標。
     モデルが存在しない・特徴量不足・予測失敗の場合は [] を返す。
     """
     model = _load_lgbm_default_model()
@@ -336,7 +337,7 @@ def generate_default_warnings(financial_inputs: dict) -> list[str]:
         prob = float(model.predict_proba(X)[0][1])
         if prob >= DEFAULT_PROB_THRESHOLD:
             return [
-                f"財務パターンが高リスク格付先（格付9相当）と類似（確率{prob:.0%}）"
+                f"財務パターンが高リスク格付先（格付9相当）と類似（類似度{prob:.0%}、実PDではありません）"
             ]
         return []
     except Exception:
@@ -1006,7 +1007,7 @@ def run_quick_scoring(inputs: dict) -> dict:
     _industry_sub = str(inputs.get("industry_sub") or "")
     asset_warnings, asset_bonuses = generate_asset_warnings(_asset_name, _term_months, _industry_sub)
 
-    # デフォルト率モデルによる高リスク警告フラグ（スコアには影響しない）
+    # 高リスク財務パターンモデルによる警告フラグ（実PDではなく、スコアには影響しない）
     default_warnings = generate_default_warnings(inputs)
 
     credit_risk_group = {
@@ -1151,7 +1152,7 @@ def run_quick_scoring(inputs: dict) -> dict:
         "asset_bonuses": asset_bonuses,
         # 物件スコア（表示用のみ）
         "asset_score": asset_score,
-        # デフォルト率モデルによる高リスク警告フラグ— スコアには影響しない
+        # 高リスク財務パターンモデルによる警告フラグ— 実PDではなく、スコアには影響しない
         "default_warnings": default_warnings,
         "estat_context": estat_context,
     }

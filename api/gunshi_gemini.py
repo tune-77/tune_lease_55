@@ -51,12 +51,21 @@ def build_bayes_factors(params: dict, prior: float, posterior: float) -> list[di
     """Return human-readable factors behind the posterior probability."""
     inputs = _bayes_inputs(params)
     score = float(params.get("score", 0) or 0)
-    pd_pct = float(params.get("pd_pct", 0) or 0)
+    pd_raw = params.get("pd_pct")
+    try:
+        pd_pct = float(pd_raw) if pd_raw is not None else None
+    except (TypeError, ValueError):
+        pd_pct = None
+    base_detail = (
+        f"スコア {score:.1f} 点 × (1 - 算出済みPD {pd_pct:.1f}%) を初期値に使用"
+        if pd_pct is not None and pd_pct > 0
+        else f"スコア {score:.1f} 点を初期値に使用（PDは未算出扱い）"
+    )
 
     factors = [
         {
             "label": "事前確率",
-            "detail": f"スコア {score:.1f} 点 × (1 - PD {pd_pct:.1f}%) を初期値に使用",
+            "detail": base_detail,
             "delta_pct": 0.0,
             "direction": "base",
         }
@@ -346,7 +355,78 @@ def build_fallback_strategy_text(
     )
 
 
-def build_strategy_cards(params: dict, phrases: list[str], prior: float, posterior: float) -> dict:
+def _style_strategy_cards(cards: dict, *, humor_style: str) -> dict:
+    style = (humor_style or "standard").lower()
+    if style == "yanami":
+        cards["headline"] = cards["headline"].replace("勝ち筋は見えている", "勝ち筋はあります。ありますけど、油断すると私の残業が増えます")
+        cards["headline"] = cards["headline"].replace("正面突破ではなく", "正面突破で行くと刺されます。なので")
+        cards["headline"] = cards["headline"].replace("無理に押すな", "無理に押すと燃えます")
+        cards["risk_cards"] = [
+            item.replace("【負け筋】", "【ここで刺される】")
+                .replace("ここを放置すると", "ここを放置すると、まあ普通に")
+                .replace("戦えない", "戦えません。つらいけど事実です")
+            for item in cards.get("risk_cards", [])
+        ]
+        cards["today_moves"] = [
+            item.replace("初手:", "初手:")
+                .replace("二手:", "二手:")
+                .replace("三手:", "三手:")
+                .replace("を聞き、", "を聞いてください。ここ曖昧だと私が泣くので、")
+                .replace("で固める", "で固めます。ここサボると審査部が元気になります")
+                .replace("交渉材料へ変える", "交渉材料へ変えます。否決理由に育てないでください")
+                .replace("勝てない戦は形を変える", "勝てない戦は形を変えます。根性論は稟議に添付できません")
+            for item in cards.get("today_moves", [])
+        ]
+        cards["competitor_moves"] = [
+            item.replace("金利だけで戦わない", "金利だけで殴り合わない")
+                .replace("土俵をずらす", "土俵をずらします。まともに殴ると疲れます")
+                .replace("先に作る", "先に作ります。見えない相手と戦うの、ほんと嫌です")
+                .replace("はっきりさせる", "はっきりさせます。曖昧な支援ほど胃に悪いものはありません")
+            for item in cards.get("competitor_moves", [])
+        ]
+        cards["questions_to_ask"] = [
+            item.replace("どうなるか", "どうなるか。ここを聞かないと話が進みません")
+                .replace("問題はないか", "問題はないか。ここが信用の旗です")
+            for item in cards.get("questions_to_ask", [])
+        ]
+        cards["customer_one_liners"] = [
+            "審査で見られるのは設備愛ではなく返済原資です。ここ、きれいに一枚で見せましょう。",
+            "金利だけの勝負にすると疲れます。導入後の手間、保守、出口まで含めて勝ち筋を作ります。",
+        ]
+        cards["ringi_lines"] = [
+            line.replace("承認余地を作れる", "承認余地を作れる。ここまで書けば、少なくとも雑には止められない")
+            for line in cards.get("ringi_lines", [])
+        ]
+        cards["disclaimer"] = "つん子は判定を上書きしません。最後は審査ルールと担当者確認です。そこは逃げられません。"
+    elif style == "yukikaze":
+        cards["headline"] = "VECTOR LOCKED: approval route requires evidence, collateral logic, and pilot confirmation"
+        cards["stance"] = f"SORTIE // {cards.get('stance', 'TACTICAL PLAN')}"
+        cards["risk_cards"] = [
+            f"JAM SIGNATURE: {item.replace('【負け筋】', '').strip()}"
+            for item in cards.get("risk_cards", [])
+        ]
+        cards["today_moves"] = [
+            f"PILOT TASK {idx}: {item.replace('初手:', '').replace('二手:', '').replace('三手:', '').strip()}"
+            for idx, item in enumerate(cards.get("today_moves", []), start=1)
+        ]
+        cards["competitor_moves"] = [
+            f"COUNTER-VECTOR: {item}" for item in cards.get("competitor_moves", [])
+        ]
+        cards["questions_to_ask"] = [
+            f"QUERY CHECKPOINT: {item}" for item in cards.get("questions_to_ask", [])
+        ]
+        cards["customer_one_liners"] = [
+            "TRANSMIT: 審査対象は設備ではない。返済原資の増加またはコスト削減の証跡である。",
+            "TRANSMIT: 金利比較だけでは不十分。保守、満了時出口、審査速度を比較軸に追加する。",
+        ]
+        cards["ringi_lines"] = [
+            f"RINGI LOG: {line}" for line in cards.get("ringi_lines", [])
+        ]
+        cards["disclaimer"] = "YUKIKAZE does not override approval authority. Pilot confirms evidence, rule fit, and final judgment."
+    return cards
+
+
+def build_strategy_cards(params: dict, phrases: list[str], prior: float, posterior: float, humor_style: str = "standard") -> dict:
     """Build deterministic strategy cards consumed by the Next.js Gunshi panel."""
     score = float(params.get("score", 0) or 0)
     industry_cat = str(params.get("industry_cat") or "業種未設定")
@@ -457,7 +537,7 @@ def build_strategy_cards(params: dict, phrases: list[str], prior: float, posteri
     if estat_summary:
         badges.append("e-Stat")
 
-    return {
+    cards = {
         "headline": headline,
         "stance": stance,
         "case_facts": facts[:7],
@@ -478,6 +558,7 @@ def build_strategy_cards(params: dict, phrases: list[str], prior: float, posteri
         } if estat_summary else None,
         "disclaimer": "軍師AIは判定を上書きしません。最終判断は審査ルール、スコア、担当者確認に従ってください。",
     }
+    return _style_strategy_cards(cards, humor_style=humor_style)
 
 
 async def stream_gunshi_gemini(params: dict, api_key: str):

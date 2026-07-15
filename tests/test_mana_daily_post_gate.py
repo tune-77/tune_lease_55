@@ -11,10 +11,15 @@ def test_daily_post_pipeline_stops_distribution_when_mana_is_not_allow():
     gcs_pos = script.index("scripts/icloud_to_gcs_sync.py")
     slack_pos = script.index("scripts/send_daily_improvement_slack.py")
     curator_pos = script.index("scripts/obsidian_curator_report.py")
+    growth_pos = script.index("scripts/judgment_asset_growth_report.py")
+    terms_pos = script.index("scripts/screening_terms_audit.py")
 
-    assert mana_pos < status_pos < curator_pos < slack_pos < gate_pos < eval_pos < gcs_pos
+    assert mana_pos < status_pos < curator_pos < growth_pos < terms_pos < slack_pos < gate_pos < eval_pos < gcs_pos
     assert '--mana-report "${MANA_REPORT_JSON}"' in script
+    assert '--screening-terms-report "${SCREENING_TERMS_REPORT_JSON}"' in script
     assert "読み取り専用・未連携" in script
+    assert "ローカル履歴・未連携" in script
+    assert "審査用語監査を生成" in script
     assert "評価候補生成と GCS Vault 配布を停止" in script
     assert "exit 0" in script[gate_pos:eval_pos]
 

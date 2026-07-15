@@ -36,6 +36,8 @@ def test_dialogue_context_includes_goals_and_knowledge(tmp_path, monkeypatch):
     assert "業務継続の絶対条件" in prompt
     assert "回答拒否、作業放棄" in prompt
     assert "内部内省は通常回答へ表現せず" in prompt
+    assert "紫苑の口調固定" in prompt
+    assert "一人称は原則「私」" in prompt
     assert "常に「読んでいない前提」" in prompt
     assert "閲覧した、知っている、気づいたとは推測しない" in prompt
     assert "独自の視点と理由を持つ別の知性体" in prompt

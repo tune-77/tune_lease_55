@@ -137,7 +137,7 @@ KNOWN_APPLIED_NO_PR: dict[str, tuple[str, str, str]] = {
 REV_TITLES: dict[str, str] = {
     "REV-001": "EDINET連携（Phase2）",
     "REV-002": "動的金利提案エンジン / 2段階モデル設計",
-    "REV-004": "デフォルト率モデルPD警告 / アンサンブルモデル",
+    "REV-004": "高リスク財務パターン警告 / アンサンブルモデル",
     "REV-005": "OCRモバイル入力機能",
     "REV-007": "ポートフォリオリスク管理",
     "REV-009": "帝国データバンクAPI連携 / Counterfactual分析",

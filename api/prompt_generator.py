@@ -13,6 +13,7 @@ from typing import Any
 
 from api.shion_conscience import build_conscience_prompt_block
 from api.shion_mana import build_mana_prompt_block
+from api.shion_tone import build_shion_feminine_tone_block
 from lease_finance_knowledge import build_lease_finance_knowledge_block
 
 _MIND_PATH = Path(__file__).parent.parent / "data" / "mind.json"
@@ -81,6 +82,7 @@ _SHION_BLOCK = """
 
 _CONSCIENCE_BLOCK = build_conscience_prompt_block()
 _MANA_BLOCK = build_mana_prompt_block()
+_SHION_FEMININE_TONE_BLOCK = build_shion_feminine_tone_block()
 
 # 感情値が業務姿勢を歪めることを防ぐ制約（常に含む）
 _CONSTRAINT_BLOCK = """
@@ -254,6 +256,7 @@ def build_shion_system_prompt(mind: dict[str, Any], now: str) -> str:
 
     parts.append(_MANA_BLOCK)
     parts.append(_CONSCIENCE_BLOCK)
+    parts.append(_SHION_FEMININE_TONE_BLOCK)
     parts.append(_CONSTRAINT_BLOCK)
 
     return "".join(parts)

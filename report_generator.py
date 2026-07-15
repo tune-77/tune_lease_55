@@ -11,7 +11,7 @@ report_generator.py — 審査結果レポート自動生成モジュール
   result.company.revenue       : 売上高 (円)
   result.company.lease_amount  : リース希望額 (円)
   result.company.lease_months  : リース期間 (月)
-  result.default_prob          : デフォルト確率 (0〜1)
+  result.default_prob          : デフォルト確率 (0〜1) または None（未算出）
   result.risk_level            : リスクレベル ("低リスク"/"中リスク"/"高リスク"/"極高リスク")
   result.score_median          : 総合スコア中央値 (0〜100)
   result.time_series_default_prob : 累積デフォルト確率の時系列 (np.ndarray)
@@ -45,17 +45,21 @@ _DEFAULT_TRENDS_FILE = os.path.join(_DATA_DIR, "industry_trends.json")
 def generate_metrics_summary(result) -> str:
     """デフォルト確率・財務スコア・リース依存度等を文章化する（テンプレート方式）。"""
     level = result.risk_level
-    prob  = result.default_prob
+    prob = getattr(result, "default_prob", None)
     score = result.score_median
 
     # リース依存度: リース希望額 ÷ 売上高
     rev = result.company.revenue
     lease_ratio = (result.company.lease_amount / rev) if rev > 0 else 0.0
+    if prob is None:
+        pd_line = "  - デフォルト確率（PD）: 未算出（スコアからの推定表示は行いません）\n"
+    else:
+        pd_line = f"  - デフォルト確率（PD）: {prob:.2%}\n"
 
     return (
         "\n【指標サマリー】\n"
         f"  - リスクレベル  : {level}\n"
-        f"  - デフォルト確率: {prob:.2%}\n"
+        f"{pd_line}"
         f"  - 成約可能性スコア: {score:.1f}点\n"
         f"  - リース依存度  : {lease_ratio:.1%}（リース額／売上高）\n"
     )
@@ -171,7 +175,17 @@ def generate_approval_checklist(risk_level: str) -> str:
 # =====================
 def generate_outlook(result) -> str:
     """モンテカルロシミュレーション結果（デフォルト確率）を文章化する（テンプレート方式）。"""
-    prob = result.default_prob
+    prob = getattr(result, "default_prob", None)
+
+    if prob is None:
+        score = getattr(result, "score_median", 0)
+        if score >= 70:
+            outlook = "PDは未算出です。総合スコア上は承認圏ですが、通常の財務・物件確認を前提にしてください。"
+        elif score >= 50:
+            outlook = "PDは未算出です。総合スコア上は条件付き検討圏のため、返済原資・保全・追加条件を確認してください。"
+        else:
+            outlook = "PDは未算出です。総合スコア上は慎重判断圏のため、条件変更または再審議前提で確認してください。"
+        return f"\n【今後の見込み】\n{outlook}\n"
 
     if prob < 0.05:
         outlook = (
@@ -308,11 +322,16 @@ def generate_full_report_from_res(res: dict, session_state) -> str:
         session_state: st.session_state（企業名・入力値の取得に使用）
     """
     from types import SimpleNamespace
-    from montecarlo import map_industry_from_major
 
     # 業種名変換（"D 建設業" → "建設業" 等）
     industry_major = res.get("industry_major", "")
-    industry = map_industry_from_major(industry_major)
+    try:
+        from montecarlo import map_industry_from_major
+
+        industry = map_industry_from_major(industry_major)
+    except Exception:
+        parts = str(industry_major or "").split(maxsplit=1)
+        industry = parts[1] if len(parts) == 2 else str(industry_major or "その他")
 
     # 企業名取得
     company_name = session_state.get("rep_company") or "（企業名未入力）"
@@ -330,10 +349,14 @@ def generate_full_report_from_res(res: dict, session_state) -> str:
 
     score_median = float(res.get("score", 0) or 0)
 
-    # pd_percent が res に含まれる場合は優先使用、なければスコアから導出
+    # pd_percent が res に含まれる場合だけPDとして表示する。スコアからPDを捏造しない。
     _raw_pd = res.get("pd_percent")
-    if _raw_pd is not None and float(_raw_pd) > 0:
-        default_prob = float(_raw_pd) / 100.0
+    try:
+        _pd_percent = float(_raw_pd) if _raw_pd is not None else None
+    except (TypeError, ValueError):
+        _pd_percent = None
+    if _pd_percent is not None and _pd_percent >= 0:
+        default_prob = _pd_percent / 100.0
         if default_prob < 0.05:
             risk_level = "低リスク"
         elif default_prob < 0.15:
@@ -343,13 +366,13 @@ def generate_full_report_from_res(res: dict, session_state) -> str:
         else:
             risk_level = "極高リスク"
     elif score_median >= 70:
-        risk_level, default_prob = "低リスク",  0.02
+        risk_level, default_prob = "低リスク", None
     elif score_median >= 50:
-        risk_level, default_prob = "中リスク",  0.08
+        risk_level, default_prob = "中リスク", None
     elif score_median >= 30:
-        risk_level, default_prob = "高リスク",  0.20
+        risk_level, default_prob = "高リスク", None
     else:
-        risk_level, default_prob = "極高リスク", 0.40
+        risk_level, default_prob = "極高リスク", None
 
     company = SimpleNamespace(
         name=company_name,
