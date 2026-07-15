@@ -15,7 +15,6 @@ import { toThousandYenPayload } from "../../lib/scoringUnits";
 import IndicatorCards from "../../components/analysis/IndicatorCards";
 import RealGraphs from "../../components/analysis/RealGraphs";
 import GunshiAdvice from "../../components/analysis/GunshiAdvice";
-import ReportGenerator from "../../components/analysis/ReportGenerator";
 import QRiskPanel from "../../components/analysis/QRiskPanel";
 import MahalanobisPanel from "../../components/analysis/MahalanobisPanel";
 import UMAPPanel from "../../components/analysis/UMAPPanel";
@@ -3024,16 +3023,6 @@ export default function Dashboard() {
                         </div>
                       </details>
 
-                      <details className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                        <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
-                          <FileOutput className="h-4 w-4 text-slate-700" />
-                          <span className="text-sm font-black text-slate-800">稟議書・レポート出力</span>
-                          <ChevronDown className="ml-auto h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
-                        </summary>
-                        <div className="border-t border-slate-100 p-4 [&>div]:mt-0">
-                          <ReportGenerator apiResult={result} formData={formData} gunshiText={gunshiText} />
-                        </div>
-                      </details>
                     </div>
                   </>
                 )}

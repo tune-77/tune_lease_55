@@ -7438,6 +7438,17 @@ class ChatRequest(BaseModel):
     response_mode: Literal["shion", "shio", "general"] = "shion"
 
 
+def _build_chat_basic_lease_question_context(message: str) -> str:
+    """Return the shared deterministic lease-basics block for /api/chat.
+
+    Keep this aligned with lease-intelligence dialogue so short lease-basics
+    questions do not drift by surface.
+    """
+    from lease_finance_knowledge import build_basic_lease_question_block
+
+    return build_basic_lease_question_block(message)
+
+
 class HumanResponseFeedbackRequest(BaseModel):
     message: str = ""
     response: str = ""
@@ -7524,6 +7535,10 @@ class ScreeningExperienceCaseRequest(BaseModel):
 class CloudRunReturnReviewRequest(BaseModel):
     review_status: Literal["approved", "held", "rejected"]
     note: str = ""
+
+
+class CloudRunReturnPromotionRequest(BaseModel):
+    kind: Literal["judgment_asset"] = "judgment_asset"
 
 
 _CHAT_MEMORY_REL_DIR = Path("Projects/tune_lease_55/Lease Intelligence/Public/Chat Memory")
@@ -9289,6 +9304,29 @@ def _update_cloudrun_return_review_item(
     return _cloudrun_return_item(kind, row)
 
 
+def _promote_cloudrun_return_review_items(req: CloudRunReturnPromotionRequest) -> dict:
+    if os.environ.get("K_SERVICE"):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "判断資産のObsidian昇格はローカルiCloud Vaultへ書き戻す処理のため、"
+                "Cloud Run上では実行できません。ローカル環境の帰還データ検疫画面で実行してください。"
+            ),
+        )
+    try:
+        from scripts.promote_cloudrun_return_data import promote_approved_return_data
+
+        result = promote_approved_return_data(
+            apply=True,
+            kinds=(req.kind,),
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return result
+
+
 _CLOUDRUN_SCORE_CASE_PREFIX = "cloudrun_score:"
 _CLOUDRUN_EVENT_CASE_PREFIX = "cloudrun_event:"
 _CLOUDRUN_INPUT_EVENTS_CACHE: dict[str, Any] = {"key": "", "expires_at": 0.0, "events": []}
@@ -10350,6 +10388,12 @@ def patch_cloudrun_return_review(
     return {"status": "ok", "item": item}
 
 
+@app.post("/api/cloudrun-return-review/promote")
+def post_cloudrun_return_review_promote(req: CloudRunReturnPromotionRequest) -> dict:
+    result = _promote_cloudrun_return_review_items(req)
+    return {"status": "ok", "promotion": result}
+
+
 @app.get("/api/human-response-feedback/summary")
 def get_human_response_feedback_summary(route: str = "relationship_ux") -> dict:
     return _summarize_human_response_feedback(route)
@@ -11165,7 +11209,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     )
 
     if not vault:
-        from lease_finance_knowledge import build_lease_finance_knowledge_block
+        from lease_finance_knowledge import build_basic_lease_question_block, build_lease_finance_knowledge_block
         from api.shion_tone import build_shion_feminine_tone_block
 
         if req.file_type == "image" and req.file_content:
@@ -11184,6 +11228,8 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
 - 補助金の質問では、制度名だけでなく、対象設備、契約/発注時期、採択前提の資金繰り、未採択時の代替策まで見る。
 - Vault未接続で根拠ノートを確認できない場合は、その制約を短く述べたうえで実務上の確認順を返す。
 - 5〜7行程度で、結論から短く答える。
+
+{build_basic_lease_question_block(full_message)}
 
 {build_lease_finance_knowledge_block()}
 {user_personal_memory_context}
@@ -11705,6 +11751,9 @@ def post_chat(req: ChatRequest):
 
         # カテゴリ判定
         question_category = _classify_question(req.message)
+        basic_lease_question_context = _build_chat_basic_lease_question_context(req.message)
+        if basic_lease_question_context and question_category == "general":
+            question_category = "lease_knowledge"
         context_mode = _chat_context_mode(
             req.message,
             question_category,
@@ -11878,7 +11927,8 @@ def post_chat(req: ChatRequest):
                     memory_to_judgment=memory_to_judgment_payload,
                 )
             base_system_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
-            base_system_prompt = base_system_root + mode_instruction + response_mode_context + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + consciousness_ux_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
+            basic_lease_question_prompt = f"\n\n{basic_lease_question_context}" if basic_lease_question_context else ""
+            base_system_prompt = base_system_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + consciousness_ux_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
             pdca_block = (
                 build_pdca_prompt_block()
                 if _should_apply_chat_pdca(
@@ -12194,7 +12244,8 @@ def post_chat(req: ChatRequest):
             )
 
         base_prompt_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
-        base_effective_prompt = base_prompt_root + mode_instruction + response_mode_context + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + guidance.prompt_suffix
+        basic_lease_question_prompt = f"\n\n{basic_lease_question_context}" if basic_lease_question_context else ""
+        base_effective_prompt = base_prompt_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + guidance.prompt_suffix
         pdca_block = (
             build_pdca_prompt_block()
             if _should_apply_chat_pdca(
@@ -14156,6 +14207,37 @@ def approve_recipe(recipe_id: str):
     dst_dir.mkdir(parents=True, exist_ok=True)
     src.rename(dst_dir / f"{recipe_id}.json")
     return {"status": "approved", "id": recipe_id}
+
+
+@app.post("/api/recipes/{recipe_id}/approve-and-apply")
+def approve_and_apply_recipe(recipe_id: str):
+    if os.environ.get("K_SERVICE"):
+        raise HTTPException(
+            status_code=409,
+            detail="レシピの自動適用はローカルの作業ツリーへ修正を入れる処理のため、Cloud Run上では実行できません。",
+        )
+    src = _RECIPES_ROOT / "pending" / f"{recipe_id}.json"
+    if not src.exists():
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    try:
+        from datetime import datetime as _dt, timezone as _timezone
+        from scripts.apply_recipe import _check_git_clean, _process_recipe
+
+        # Dirty tree のまま pending -> approved だけ進めると復旧が面倒なので、移動前に止める。
+        _check_git_clean()
+        recipe = json.loads(src.read_text(encoding="utf-8"))
+        recipe["approved_at"] = _dt.now(_timezone.utc).isoformat()
+        dst_dir = _RECIPES_ROOT / "approved"
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        dst = dst_dir / f"{recipe_id}.json"
+        dst.write_text(json.dumps(recipe, ensure_ascii=False, indent=2), encoding="utf-8")
+        src.unlink()
+        status, message = _process_recipe(dst)
+        return {"status": status, "id": recipe_id, "message": message}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.post("/api/recipes/{recipe_id}/reject")

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 import shutil
 import sqlite3
 from datetime import datetime, timezone
@@ -21,6 +23,10 @@ DEFAULT_RETURN_DB = PROJECT_ROOT / "data" / "cloudrun_experience_return.db"
 MAIN_LEASE_DB = PROJECT_ROOT / "data" / "lease_data.db"
 DEFAULT_TARGET_DB = PROJECT_ROOT / "data" / "demo.db"
 DEFAULT_BACKUP_DIR = PROJECT_ROOT / "data" / "backups"
+DEFAULT_OBSIDIAN_VAULT = Path(
+    "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
+)
+JUDGMENT_ASSET_OBSIDIAN_REL_DIR = Path("Projects") / "tune_lease_55" / "Judgment Assets" / "Cloud Run Return"
 SUPPORTED_KINDS = ("shion_review", "score_input", "ocr_result", "judgment_asset")
 
 
@@ -158,6 +164,85 @@ def _row_payload(row: sqlite3.Row) -> dict[str, Any]:
 
 def _json_payload(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def _obsidian_vault() -> Path | None:
+    raw = os.environ.get("OBSIDIAN_VAULT") or os.environ.get("OBSIDIAN_VAULT_PATH") or str(DEFAULT_OBSIDIAN_VAULT)
+    vault = Path(raw).expanduser()
+    if vault.exists() and (vault / ".obsidian").exists():
+        return vault
+    return None
+
+
+def _safe_filename(value: str, fallback: str) -> str:
+    text = re.sub(r"[\\/:*?\"<>|\n\r\t]+", "_", (value or "").strip())
+    text = re.sub(r"\s+", " ", text).strip(" ._")
+    return (text or fallback)[:80]
+
+
+def _write_judgment_asset_to_obsidian(row: sqlite3.Row, target_id: str, promoted_at: str) -> dict[str, Any]:
+    vault = _obsidian_vault()
+    if vault is None:
+        return {"status": "skipped", "reason": "obsidian_vault_not_found"}
+
+    out_dir = vault / JUDGMENT_ASSET_OBSIDIAN_REL_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    source_id = str(row["event_id"] or f"local-{row['id']}")
+    title = str(row["title"] or "判断資産候補")
+    fname = f"{promoted_at[:10]}_{_safe_filename(title, 'judgment_asset')}_{_safe_filename(source_id, str(row['id']))}.md"
+    path = out_dir / fname
+
+    evidence = str(row["evidence_json"] or "{}")
+    try:
+        evidence = json.dumps(json.loads(evidence), ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+    body = "\n".join(
+        [
+            "---",
+            "tags: [判断資産, cloudrun, 紫苑, 帰還データ]",
+            "source: cloudrun_return_review",
+            f"source_event_id: {json.dumps(source_id, ensure_ascii=False)}",
+            f"target_id: {json.dumps(str(target_id), ensure_ascii=False)}",
+            f"promoted_at: {json.dumps(promoted_at, ensure_ascii=False)}",
+            f"asset_type: {json.dumps(str(row['asset_type'] or ''), ensure_ascii=False)}",
+            f"review_status: {json.dumps(str(row['return_review_status'] or ''), ensure_ascii=False)}",
+            "---",
+            "",
+            f"# {title}",
+            "",
+            "## 判断資産",
+            str(row["summary_text"] or "").strip() or "未記録",
+            "",
+            "## 次回に戻す判断",
+            str(row["lesson_text"] or "").strip() or "未記録",
+            "",
+            "## シグナル",
+            f"- 種類: {row['asset_type'] or ''}",
+            f"- 発生面: {row['surface'] or ''}",
+            f"- event_type: {row['event_type'] or ''}",
+            f"- signal: {row['signal'] or ''}",
+            f"- case_id: {row['case_id'] or ''}",
+            f"- score: {row['score'] if row['score'] is not None else ''}",
+            f"- q_risk: {row['q_risk'] if row['q_risk'] is not None else ''}",
+            "",
+            "## 人間レビュー",
+            str(row["return_review_note"] or "").strip() or "承認済み",
+            "",
+            "## 根拠イベント",
+            "```json",
+            evidence,
+            "```",
+            "",
+        ]
+    )
+    path.write_text(body, encoding="utf-8")
+    return {
+        "status": "written",
+        "path": str(path),
+        "rel_path": str(path.relative_to(vault)),
+    }
 
 
 def _promotion_exists(target: sqlite3.Connection, kind: str, source_id: int) -> bool:
@@ -348,6 +433,7 @@ def _promote_judgment_asset(
 
     payload = _row_payload(row)
     source_event_id = str(row["event_id"] or "")
+    promoted_at = datetime.now(timezone.utc).isoformat()
     cur = target.execute(
         """
         INSERT OR IGNORE INTO judgment_asset_candidates (
@@ -371,10 +457,11 @@ def _promote_judgment_asset(
             str(row["lesson_text"] or ""),
             str(row["evidence_json"] or "{}"),
             str(row["return_review_note"] or ""),
-            datetime.now(timezone.utc).isoformat(),
+            promoted_at,
         ),
     )
     target_id = str(cur.lastrowid or "")
+    obsidian = _write_judgment_asset_to_obsidian(row, target_id, promoted_at)
     promotion_id = _insert_promotion_log(
         target,
         kind="judgment_asset",
@@ -391,7 +478,13 @@ def _promote_judgment_asset(
         source_id=source_id,
         promotion_id=promotion_id,
     )
-    return {"kind": "judgment_asset", "id": source_id, "action": "inserted", "target_id": target_id}
+    return {
+        "kind": "judgment_asset",
+        "id": source_id,
+        "action": "inserted",
+        "target_id": target_id,
+        "obsidian": obsidian,
+    }
 
 
 def promote_approved_return_data(

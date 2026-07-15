@@ -298,6 +298,7 @@ export default function ImprovementLogPage() {
   const [ledgerTypeFilter, setLedgerTypeFilter] = useState("ALL");
   const [approvingRuleIds, setApprovingRuleIds] = useState<Set<string>>(new Set());
   const [hiddenImprovementKeys, setHiddenImprovementKeys] = useState<Set<string>>(new Set());
+  const [isCloudRunHost, setIsCloudRunHost] = useState(false);
 
   const fetchLedgerRules = useCallback(async () => {
     setLedgerLoading(true);
@@ -363,6 +364,28 @@ export default function ImprovementLogPage() {
     [fetchRecipes]
   );
 
+  const handleRecipeApproveAndApply = useCallback(
+    async (recipe: PendingRecipe) => {
+      setRecipeError("");
+      try {
+        const res = await apiClient.post<{ status: string; message?: string }>(
+          `/api/recipes/${recipe.id}/approve-and-apply`,
+        );
+        setDismissedRecipes((prev) => new Set(prev).add(recipe.id));
+        const status = res.data?.status || "";
+        const message = res.data?.message || "";
+        if (status !== "applied") {
+          setRecipeError(`自動適用は完了しませんでした: ${status}${message ? ` / ${message}` : ""}`);
+        }
+        await fetchRecipes();
+      } catch (err: any) {
+        const detail = err?.response?.data?.detail || "承認後の自動適用に失敗しました。";
+        setRecipeError(String(detail));
+      }
+    },
+    [fetchRecipes]
+  );
+
   const fetchLog = useCallback(async () => {
     setLoading(true);
     try {
@@ -383,6 +406,10 @@ export default function ImprovementLogPage() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    setIsCloudRunHost(window.location.hostname.endsWith(".run.app"));
   }, []);
 
   useEffect(() => {
@@ -694,7 +721,7 @@ export default function ImprovementLogPage() {
                 </p>
               )}
               <p className="mt-2 text-xs text-slate-500">
-                今回の修正案は、この実行で作られた1回限りの修正パッチです。「適用待ちへ送る」と承認済みフォルダへ移り、実適用は別処理で実行します。
+                今回の修正案は、この実行で作られた1回限りの修正パッチです。「承認して自動適用」はローカル作業ツリーへ即時適用し、「適用待ちへ送る」は承認済みフォルダへ移して後で処理します。
               </p>
               {recipeError && (
                 <p className="mt-2 text-xs font-semibold text-rose-600">{recipeError}</p>
@@ -713,7 +740,9 @@ export default function ImprovementLogPage() {
                 <RecipeCard
                   key={recipe.id}
                   recipe={recipe}
+                  isCloudRunHost={isCloudRunHost}
                   onApprove={() => handleRecipeAction(recipe, "approve")}
+                  onApproveAndApply={() => handleRecipeApproveAndApply(recipe)}
                   onReject={() => handleRecipeAction(recipe, "reject")}
                 />
               ))
@@ -1319,11 +1348,15 @@ export default function ImprovementLogPage() {
 
 function RecipeCard({
   recipe,
+  isCloudRunHost,
   onApprove,
+  onApproveAndApply,
   onReject,
 }: {
   recipe: PendingRecipe;
+  isCloudRunHost: boolean;
   onApprove: () => void;
+  onApproveAndApply: () => void;
   onReject: () => void;
 }) {
   const [acting, setActing] = useState(false);
@@ -1372,6 +1405,14 @@ function RecipeCard({
         </div>
       )}
       <div className="mt-3 flex gap-2">
+        <button
+          onClick={() => handle(onApproveAndApply)}
+          disabled={acting || isCloudRunHost}
+          title="この修正パッチを承認し、ローカル作業ツリーへ即時適用します。gitがcleanでない場合や安全チェック失敗時は止まります"
+          className="rounded border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-40"
+        >
+          {isCloudRunHost ? "自動適用はローカルのみ" : "承認して自動適用"}
+        </button>
         <button
           onClick={() => handle(onApprove)}
           disabled={acting}

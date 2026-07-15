@@ -618,7 +618,7 @@ export default function SystemOverviewPage() {
                 color: "#60a5fa",
                 border: "border-blue-500/30",
                 bg: "from-blue-900/30 to-blue-950/10",
-                pages: ["ホーム", "審査・分析", "AIチャット", "審査レポート", "バッチ審査", "稟議書・見積依頼書", "結果登録（成約/失注）", "過去案件一覧"],
+                pages: ["ホーム", "審査・分析", "AIチャット", "バッチ審査", "結果登録（成約/失注）", "過去案件一覧"],
               },
               {
                 group: "🌸 紫苑 AI",
@@ -639,7 +639,7 @@ export default function SystemOverviewPage() {
                 color: "#fbbf24",
                 border: "border-amber-500/30",
                 bg: "from-amber-900/30 to-amber-950/10",
-                pages: ["法定耐用年数一覧", "業種別リース物件例", "残価設定ガイドライン", "営業向け説明ガイド", "リース/融資/現金比較", "FAQ", "システム機能一覧", "改善ログ"],
+                pages: ["法定耐用年数一覧", "業種別リース物件例", "残価設定ガイドライン", "営業向け説明ガイド", "リース/融資/現金比較", "FAQ", "改善ログ"],
               },
               {
                 group: "設定・マスタ",

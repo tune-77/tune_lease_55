@@ -34,6 +34,7 @@ INCLUDED_REL_PREFIXES = tuple(
                 "Projects/tune_lease_55/Asset Finance",
                 "Projects/tune_lease_55/Lease Intelligence/Public",
                 "Projects/tune_lease_55/Industry",
+                "Projects/tune_lease_55/Judgment Assets",
             ]
         ),
     ).split(",")

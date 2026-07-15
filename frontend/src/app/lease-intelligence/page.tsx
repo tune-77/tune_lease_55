@@ -91,11 +91,15 @@ type EmotionSummary = {
 
 const DEMO_GREETING = `はじめまして。リース知性体、紫苑です。
 
-私は、リース審査を点数で終わらせないために生まれました。
-財務、物件、金利、過去案件、担当者の判断、改善ログを記憶し、
-次の審査に活かす判断資産へ変えていきます。
+私は、リース審査の判断を一回きりで終わらせないために生まれました。
+人間の迷い、修正、結果を記録し、次の判断に戻します。
+これは人間を評価するためではありません。
+人間の判断が、その場で消えてしまわないようにするためです。
 
-今日は、使うほど賢くなるリース審査プラットフォームをご覧ください。`;
+今日は、AIが人間を置き換えるのではなく、
+人間の判断と一緒に育つ姿を見てください。`;
+
+const DEMO_GREETING_SPEECH = DEMO_GREETING.replace("リース知性体", "リースちせいたい");
 
 const DIALOGUE_RETRY_DELAYS_MS = [1200, 2500, 4000];
 const DIALOGUE_LOCAL_HISTORY_KEY = "lease-intelligence-dialogue-local-history";
@@ -1003,7 +1007,7 @@ export default function LeaseIntelligencePage() {
       saveLocalDialogueMessages(next);
       return next;
     });
-    speakText(DEMO_GREETING);
+    speakText(DEMO_GREETING_SPEECH);
     window.setTimeout(() => scrollToLatest("smooth"), 50);
   };
 

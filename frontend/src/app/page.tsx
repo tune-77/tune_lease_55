@@ -132,7 +132,7 @@ const SHION_PERSONAS: ShionPersona[] = [
     role: "決算書、OCR、財務数値、スコア、軍師AIへの接続を担当します。",
     catchphrase: "まず数字へ落として、判断できる形にします。",
     keywords: ["審査", "決算", "財務", "OCR", "ocr", "スコア", "入力", "稟議"],
-    routeHrefs: ["/screening", "/report", "/batch", "/ringi"],
+    routeHrefs: ["/screening", "/batch"],
   },
   {
     id: "research",
@@ -173,6 +173,15 @@ const SHION_PERSONAS: ShionPersona[] = [
 ];
 
 const ROUTES: RouteSuggestion[] = [
+  {
+    label: "デモ本番入口",
+    href: "/demo-home",
+    description: "ハッカソンで最初に見せる入口。紫苑の価値、1分デモ、見せ場へ進む",
+    icon: Sparkles,
+    tone: "from-yellow-400 to-pink-500",
+    keywords: ["デモ", "ハッカソン", "発表", "優勝", "見せる", "本番"],
+    nextSteps: ["デモホームを開く", "1分デモで全体像を掴ませる", "審査入力やSystem Overviewへつなぐ"],
+  },
   {
     label: "審査入力",
     href: "/screening",
@@ -227,7 +236,7 @@ function pickSuggestions(input: string): RouteSuggestion[] {
 function shionReply(input: string, suggestions: RouteSuggestion[]) {
   const first = suggestions[0];
   if (!input.trim()) {
-    return "今日は入口から整理します。審査入力、外部調査、紫苑チャット、デモ確認のどれに進むか、ここで私が案内します。";
+    return "今日は入口から整理します。デモ本番、審査入力、外部調査、紫苑チャットのどこへ進むか、ここで私が案内します。";
   }
   return `了解。今の文脈なら、まず「${first.label}」に進むのが自然です。必要なら、その後に判断材料を紫苑チャットやResearchへ戻して、単発作業ではなく次の判断資産にします。`;
 }
@@ -245,8 +254,8 @@ function buildGuidance(input: string, suggestions: RouteSuggestion[]): Concierge
     reason = "外部情報を先に固める文脈なので、Researchノート化してから判断へ戻すのが安全です。";
     handoff = "保存後は紫苑RAGの判断資産として、次のチャットや審査で参照できます。";
   } else if (input.includes("デモ") || input.includes("ハッカソン") || lower.includes("system")) {
-    reason = "見せ方の文脈なので、System Overviewで構成と訴求を先に確認するのが自然です。";
-    handoff = "説明後に、OCR、外部調査、審査入力の順で実演すると伝わります。";
+    reason = "見せ方の文脈なので、まずデモ本番入口から入り、審査入力とSystem Overviewへつなぐのが自然です。";
+    handoff = "デモホームで価値を掴ませたあと、OCR、審査入力、軍師AI、記憶の順で実演すると伝わります。";
   }
   return { primary, alternatives: suggestions.slice(1, 3), reason, handoff, persona };
 }
@@ -289,12 +298,12 @@ function predictFromActivity(activity: ActivityItem[]): PredictedAction {
       icon: ShieldCheck,
     };
   }
-  if (last.path === "/system-overview" || last.path === "/demo") {
+  if (last.path === "/system-overview" || last.path === "/demo" || last.path === "/demo-home") {
     return {
-      label: "デモ本線を始める",
+      label: "審査実演へ進む",
       href: "/screening",
-      reason: "前回は見せ方の確認でした。次はOCRから審査、軍師AI、記憶への流れを実演できます。",
-      icon: Sparkles,
+      reason: "前回はデモ導線を見ています。次はOCRから審査、軍師AI、記憶への流れを実演できます。",
+      icon: ShieldCheck,
     };
   }
   if (last.path === "/cases" || last.path === "/history-dash") {
@@ -342,7 +351,7 @@ function formatActivityTime(ts: number) {
 }
 
 function etaForHref(href: string) {
-  if (href === "/chat" || href === "/system-overview") return "2分";
+  if (href === "/chat" || href === "/system-overview" || href === "/demo-home") return "2分";
   if (href === "/screening") return "5分";
   return "3分";
 }
@@ -355,10 +364,21 @@ function buildWorkQueue(
   const predictedRoute = routeByHref(predicted.href);
   const predictedPersona = personaForPrediction(predicted, activity);
   const last = activity.find((item) => item.path !== "/");
+  const firstRoute = routeByHref("/demo-home");
+  const firstPersona = selectPersona(firstRoute.label, firstRoute.href);
   const thirdRoute = last?.path === "/research-organ" ? routeByHref("/screening") : routeByHref("/research-organ");
   const thirdPersona = selectPersona(thirdRoute.label, thirdRoute.href);
 
   return [
+    {
+      id: "hackathon:demo-home",
+      title: "デモ本番の入口を開く",
+      href: firstRoute.href,
+      reason: "審査AIではなく、判断資産として育つ紫苑を最初に見せます。",
+      eta: etaForHref(firstRoute.href),
+      persona: firstPersona,
+      route: firstRoute,
+    },
     {
       id: `predicted:${predicted.href}`,
       title: predicted.label,
@@ -367,15 +387,6 @@ function buildWorkQueue(
       eta: etaForHref(predicted.href),
       persona: predictedPersona,
       route: predictedRoute,
-    },
-    {
-      id: "daily:memory",
-      title: "今日の判断メモを回収する",
-      href: "/chat",
-      reason: dailyGreeting?.suggestion || "今日の挨拶、ニュース、前回行動を短く相談に変換します。",
-      eta: "2分",
-      persona: selectPersona("記憶 前回 チャット", "/chat"),
-      route: routeByHref("/chat"),
     },
     {
       id: `handoff:${thirdRoute.href}`,
@@ -388,6 +399,15 @@ function buildWorkQueue(
       eta: etaForHref(thirdRoute.href),
       persona: thirdPersona,
       route: thirdRoute,
+    },
+    {
+      id: "daily:memory",
+      title: "紫苑に判断メモを回収させる",
+      href: "/chat",
+      reason: dailyGreeting?.suggestion || "今日の挨拶、ニュース、前回行動を短く相談に変換します。",
+      eta: "2分",
+      persona: selectPersona("記憶 前回 チャット", "/chat"),
+      route: routeByHref("/chat"),
     },
   ];
 }

@@ -250,3 +250,7 @@
 - [2026-07-14] Shion-HyDE RAG はハッカソン後の改善テーマにする。現代語の曖昧な相談を仮想審査メモへ変換して検索し、Parent-Child chunking と CRAG で根拠取得を安定させる。ただし本番導入前は offline eval / debug API / shadow mode に限定し、現行チャット・審査RAGは触らない。  (`memory/2026-07-14.md`)
 - [2026-07-14] Shion-HyDE RAG を今すぐ進める場合でも、最初は本番導線に接続しない。決定的な仮想審査メモ生成と offline eval だけを入れ、効果が見えた後に debug API / shadow mode / 限定導入へ進める。  (`memory/2026-07-14.md`)
 - [2026-07-14] Obsidian環境監視の警告は、実障害と監視ノイズを分ける。統合RAGメンテナンスの成功ログをreindex成功として扱い、生成索引ノートの古いリンク棚卸しは日次運用障害にしない。`auto_wikilink` は既存wikilink内の文字列を二重リンク化しない。  (`memory/2026-07-14.md`)
+
+## Manual Promotions 2026-07-15
+- [2026-07-15] Hackathon framing: Shion should be pitched as Human-in-the-loop DevOps for lease judgment, not only AI Agent DevOps for code or infrastructure. Humans are inside the improvement loop: hesitation, corrections, outcome registration, and feedback become logs, evaluation signals, and reusable judgment assets.  (`memory/2026-07-15.md`)
+- [2026-07-15] Hackathon tagline candidate: "人間の判断が消えないDevOps" and "ハードディスクの奥底に保存して腐らせない知識". Use this to explain that Shion's value is not merely storing knowledge, but keeping human judgment alive by returning it to future lease-screening decisions.  (`memory/2026-07-15.md`)

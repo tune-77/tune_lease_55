@@ -38,6 +38,25 @@ type ReturnResponse = {
   summary: Record<ReturnStatus | "total", number>;
 };
 
+type PromotionResponse = {
+  status: string;
+  promotion: {
+    apply: boolean;
+    target_db: string;
+    backup_path: string;
+    summary: Record<string, number>;
+    items?: Array<{
+      kind: string;
+      action: string;
+      obsidian?: {
+        status?: string;
+        rel_path?: string;
+        reason?: string;
+      };
+    }>;
+  };
+};
+
 const STATUS_LABEL: Record<ReturnStatus, string> = {
   candidate: "検疫待ち",
   approved: "承認済み",
@@ -68,6 +87,13 @@ export default function CloudRunReturnReviewPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
+  const [promoting, setPromoting] = useState(false);
+  const [promotionMessage, setPromotionMessage] = useState("");
+  const [isCloudRunHost, setIsCloudRunHost] = useState(false);
+
+  useEffect(() => {
+    setIsCloudRunHost(window.location.hostname.endsWith(".run.app"));
+  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -135,6 +161,34 @@ export default function CloudRunReturnReviewPage() {
     [fetchData],
   );
 
+  const handlePromoteJudgmentAssets = useCallback(async () => {
+    setPromoting(true);
+    setError("");
+    setPromotionMessage("");
+    try {
+      const response = await apiClient.post<PromotionResponse>("/api/cloudrun-return-review/promote", {
+        kind: "judgment_asset",
+      });
+      const summary = response.data.promotion?.summary ?? {};
+      const inserted = summary["judgment_asset:inserted"] ?? 0;
+      const skipped = summary["judgment_asset:skipped_existing"] ?? 0;
+      const backup = response.data.promotion?.backup_path;
+      const obsidianWritten = (response.data.promotion?.items ?? []).filter(
+        (item) => item.kind === "judgment_asset" && item.obsidian?.status === "written",
+      ).length;
+      setPromotionMessage(
+        `判断資産へ昇格しました。新規 ${inserted}件 / Obsidian ${obsidianWritten}件 / 既存スキップ ${skipped}件${backup ? ` / backup ${backup}` : ""}`,
+      );
+      setKind("judgment_asset");
+      setStatus("approved");
+      await fetchData();
+    } catch {
+      setError("承認済み判断資産の昇格に失敗しました。隔離DBとdemo.dbの状態を確認してください。");
+    } finally {
+      setPromoting(false);
+    }
+  }, [fetchData]);
+
   return (
     <main className="min-h-screen bg-slate-50 p-4 md:p-6">
       <div className="mx-auto max-w-6xl space-y-5">
@@ -154,6 +208,15 @@ export default function CloudRunReturnReviewPage() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2 lg:ml-auto">
+              <button
+                type="button"
+                onClick={handlePromoteJudgmentAssets}
+                disabled={isCloudRunHost || promoting || totals.approved <= 0}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-teal-700 px-3 py-2 text-sm font-black text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                {isCloudRunHost ? "昇格はローカルで実行" : "承認済みを判断資産へ昇格"}
+              </button>
               <Link
                 href="/system-overview"
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100"
@@ -181,6 +244,18 @@ export default function CloudRunReturnReviewPage() {
             <SummaryCard label="総件数" value={totals.total} color="slate" />
           </div>
         </header>
+
+        {promotionMessage && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800">
+            {promotionMessage}
+          </div>
+        )}
+
+        {isCloudRunHost && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800">
+            Obsidianへの判断資産昇格は、Mac上のiCloud Vaultへ書き戻すためローカル環境で実行します。Cloud Run上では検疫状況の確認までです。
+          </div>
+        )}
 
         <section className="rounded-2xl border border-teal-200 bg-teal-50 p-4">
           <div className="flex gap-3">

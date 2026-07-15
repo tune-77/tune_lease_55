@@ -65,7 +65,7 @@ type YukikazeStatus = {
 };
 
 const HUMOR_MODE_STORAGE_KEY = 'lease-gunshi-humor-mode';
-const YUKIKAZE_DIFFICULT_CASE_LINE = 'GOOD LUCK, FUKAI LT.';
+const TACTICAL_DIFFICULT_CASE_LINE = 'GOOD LUCK.';
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -108,7 +108,7 @@ const getYukikazeStatus = (score: number): YukikazeStatus => {
     return {
       level: 'STANDBY',
       tag: '[DATA LINK: STANDBY]',
-      line: 'AURION CORE ONLINE. FFR-41MR awaiting pilot vector input.',
+      line: 'AURION CORE ONLINE. Tactical console awaiting pilot vector input.',
       levelClass: 'text-slate-300 border-slate-600 bg-slate-900',
       frameClass: 'border-slate-700',
       blinkClass: '',
@@ -118,7 +118,7 @@ const getYukikazeStatus = (score: number): YukikazeStatus => {
     return {
       level: 'CLEAR',
       tag: '[TACTICAL STATUS: CLEAR]',
-      line: 'No JAM signature detected. Financial waveform is stable. Maintain current approval vector.',
+      line: 'No anomaly signature detected. Financial waveform is stable. Maintain current approval vector.',
       levelClass: 'text-emerald-300 border-emerald-500/60 bg-emerald-950/50',
       frameClass: 'border-emerald-500/40',
       blinkClass: '',
@@ -128,7 +128,7 @@ const getYukikazeStatus = (score: number): YukikazeStatus => {
     return {
       level: 'WARNING',
       tag: '[TACTICAL WARNING: SIGNAL DEFLECTION]',
-      line: `Minor distortion detected. Approval route remains open. Pilot visual confirmation is recommended. ${YUKIKAZE_DIFFICULT_CASE_LINE}`,
+      line: `Minor distortion detected. Approval route remains open. Pilot visual confirmation is recommended. ${TACTICAL_DIFFICULT_CASE_LINE}`,
       levelClass: 'text-amber-200 border-amber-400 bg-amber-950/60',
       frameClass: 'border-amber-400/70',
       blinkClass: 'animate-[pulse_1.8s_ease-in-out_infinite]',
@@ -137,8 +137,8 @@ const getYukikazeStatus = (score: number): YukikazeStatus => {
   if (score >= 40) {
     return {
       level: 'ALERT',
-      tag: '[ALERT: JAM CONTACT]',
-      line: `Hostile inconsistency detected in financial telemetry. Autopilot judgment restricted. Handing control to pilot. ${YUKIKAZE_DIFFICULT_CASE_LINE}`,
+      tag: '[ALERT: ANOMALY CONTACT]',
+      line: `Hostile inconsistency detected in financial telemetry. Autopilot judgment restricted. Handing control to pilot. ${TACTICAL_DIFFICULT_CASE_LINE}`,
       levelClass: 'text-red-200 border-red-500 bg-red-950/70',
       frameClass: 'border-red-500/80',
       blinkClass: 'animate-[pulse_1.1s_ease-in-out_infinite]',
@@ -147,7 +147,7 @@ const getYukikazeStatus = (score: number): YukikazeStatus => {
   return {
     level: 'CRITICAL',
     tag: '[CRITICAL: MANUAL OVERRIDE REQUIRED]',
-    line: `I identify the enemy. You decide whether to engage. Rejection logic dominates. Manual override required. ${YUKIKAZE_DIFFICULT_CASE_LINE}`,
+    line: `I identify the enemy. You decide whether to engage. Rejection logic dominates. Manual override required. ${TACTICAL_DIFFICULT_CASE_LINE}`,
     levelClass: 'text-red-100 border-red-400 bg-red-900/80',
     frameClass: 'border-red-400',
     blinkClass: 'animate-[pulse_0.65s_ease-in-out_infinite]',
@@ -532,7 +532,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
   const isDifficultYukikazeCase = isYukikaze && ['WARNING', 'ALERT', 'CRITICAL'].includes(yukikazeStatus.level);
   const boardCopy = isYukikaze
     ? {
-        headerTitle: 'YUKIKAZE // FFR-41MR',
+        headerTitle: 'YK // TACTICAL MODE',
         headerSubtitle: 'TACTICAL LEASE SCORING AI',
         queryLabel: 'PILOT QUERY',
         boardTitle: 'TACTICAL BOARD',
@@ -615,7 +615,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-[9px] font-black tracking-[0.24em] text-red-400">SYSTEM MODE</div>
-                <div className="mt-0.5 text-[11px] font-black tracking-[0.18em] text-amber-100">YUKIKAZE // FFR-41MR</div>
+                <div className="mt-0.5 text-[11px] font-black tracking-[0.18em] text-amber-100">YK // TACTICAL MODE</div>
               </div>
               <div className={`rounded-md border px-2 py-1 text-[10px] font-black tracking-widest ${yukikazeStatus.levelClass} ${yukikazeStatus.blinkClass}`}>
                 {yukikazeStatus.level}
@@ -623,7 +623,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
             </div>
             <div className={`mt-2 rounded-md border px-2.5 py-1.5 ${yukikazeStatus.levelClass} ${yukikazeStatus.blinkClass}`}>
               <div className="text-[9px] font-black tracking-widest">{yukikazeStatus.tag}</div>
-              <div className="mt-0.5 line-clamp-2 text-[11px] leading-4 font-bold">{yukikazeBooting ? 'LINKING AURION CORE... PILOT AUTHENTICATION: CONFIRMED. JAM DETECTION PROTOCOL: ACTIVE.' : yukikazeStatus.line}</div>
+              <div className="mt-0.5 line-clamp-2 text-[11px] leading-4 font-bold">{yukikazeBooting ? 'LINKING AURION CORE... PILOT AUTHENTICATION: CONFIRMED. ANOMALY DETECTION PROTOCOL: ACTIVE.' : yukikazeStatus.line}</div>
             </div>
           </div>
         )}
@@ -659,9 +659,9 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
                 ? 'bg-red-700 text-amber-100 border-red-400 shadow-lg shadow-red-900/40'
                 : 'bg-slate-950 text-red-300 border-red-800 hover:border-red-500 hover:text-amber-100'
             }`}
-            title="FFR-41MR tactical console"
+            title="YK tactical console"
           >
-            ⚡ ENGAGE YUKIKAZE
+            ⚡ ENGAGE YK
           </button>
         </div>
 
@@ -863,7 +863,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
              </div>
              <div className={`p-4 rounded-2xl rounded-tl-none shadow border flex flex-col gap-3 min-w-[200px] ${isYukikaze ? 'bg-black border-red-900 font-mono' : 'bg-white border-slate-200'}`}>
                <Activity className={`w-5 h-5 animate-spin ${isYukikaze ? 'text-red-400' : 'text-amber-500'}`} />
-               <span className={`text-xs font-bold ${isYukikaze ? 'text-red-300' : 'text-slate-400'}`}>{isYukikaze ? <>YUKIKAZE is reading telemetry...<br/>JAM signature analysis running...</> : <>軍師が直近のデータを分析し、<br/>戦略を練り上げています...<br/>（Gemini API 通信中）</>}</span>
+               <span className={`text-xs font-bold ${isYukikaze ? 'text-red-300' : 'text-slate-400'}`}>{isYukikaze ? <>YK is reading telemetry...<br/>Anomaly signature analysis running...</> : <>軍師が直近のデータを分析し、<br/>戦略を練り上げています...<br/>（Gemini API 通信中）</>}</span>
              </div>
           </div>
         )}
@@ -973,7 +973,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
               {isYukikaze ? (
                 <span className={yukikazeStatus.level === 'CRITICAL' ? yukikazeStatus.blinkClass : ''}>
                   {isDifficultYukikazeCase
-                    ? `${YUKIKAZE_DIFFICULT_CASE_LINE} I identify the enemy. You decide whether to engage.`
+                    ? `${TACTICAL_DIFFICULT_CASE_LINE} I identify the enemy. You decide whether to engage.`
                     : 'I identify the enemy. You decide whether to engage.'}
                 </span>
               ) : (

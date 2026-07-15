@@ -823,7 +823,13 @@ DBはSQLite（ローカル）とPostgreSQL（Cloud Run、`DATABASE_URL`で切替
 
 Cloud Run demo DBはコンテナ同梱の読み取り中心データです。`screening_experience_cases` のような新しいテーブルは、デプロイ前にローカルの `data/demo.db` へ作成してからbundleへ含めます。テーブルが未同梱でもAPIは初期デモ経験ケースへフォールバックしますが、Cloud Run上で増えた経験ケースを本当に永続化する場合は、GCS writebackまたはCloud SQLへ保存し、ローカル同期・人間承認を経て次回bundleへ昇格します。
 
+普段の反映は `scripts/smart_deploy.sh` を使います。現在のGit HEADとCloud Runで稼働中のイメージタグを比較し、API/Webに効く差分がある場合だけ既存の `deploy_cloud_run_api.sh` / `deploy_cloud_run_web.sh` を呼びます。README、レポート、Obsidian整理だけの変更ならCloud Run更新をスキップできます。
+
 ```bash
+scripts/smart_deploy.sh                  # 必要なサービスだけデプロイして疎通確認
+scripts/smart_deploy.sh --dry-run        # 判定だけ確認
+scripts/smart_deploy.sh --api            # APIだけ強制デプロイ
+scripts/smart_deploy.sh --web            # Webだけ強制デプロイ
 CLOUDRUN_DATA_MODE=demo bash scripts/deploy_cloud_run.sh
 python3 scripts/check_cloudrun_demo_readiness.py --base-url https://YOUR-CLOUDRUN-URL
 python scripts/sync_cloudrun_inputs_from_gcs.py          # Cloud Run経験を隔離DBへ帰還

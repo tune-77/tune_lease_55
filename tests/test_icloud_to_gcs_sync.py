@@ -167,6 +167,11 @@ def test_collect_md_files_uses_chat_knowledge_allowlist(tmp_path):
     research_note = research_dir / "lease-research.md"
     research_note.write_text("# research")
 
+    judgment_asset_dir = tmp_path / "Projects" / "tune_lease_55" / "Judgment Assets" / "Cloud Run Return"
+    judgment_asset_dir.mkdir(parents=True)
+    judgment_asset_note = judgment_asset_dir / "approved-asset.md"
+    judgment_asset_note.write_text("# approved judgment asset")
+
     private_dir = tmp_path / "Private Reflection"
     private_dir.mkdir()
     private_note = private_dir / "2026-06-27.md"
@@ -181,6 +186,7 @@ def test_collect_md_files_uses_chat_knowledge_allowlist(tmp_path):
 
     assert public_note in files
     assert research_note in files
+    assert judgment_asset_note in files
     assert private_note not in files
     assert daily_note not in files
 
