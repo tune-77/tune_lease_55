@@ -265,6 +265,13 @@ export default function DemoHomePage() {
                   1分デモを始める
                 </button>
                 <Link
+                  href="/demo/judgment-evolution"
+                  className="inline-flex items-center gap-2 rounded-md border border-[#f7d78b]/60 bg-[#f7d78b]/20 px-5 py-3 text-sm font-black text-white backdrop-blur transition hover:bg-[#f7d78b]/30"
+                >
+                  1000件早送り
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+                <Link
                   href="/voice-chat"
                   className="inline-flex items-center gap-2 rounded-md border border-white/30 bg-white/10 px-5 py-3 text-sm font-black text-white backdrop-blur transition hover:bg-white/20"
                 >

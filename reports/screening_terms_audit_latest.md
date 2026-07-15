@@ -1,15 +1,15 @@
 # Screening Terms Audit
 
-- generated_at: `2026-07-15T11:02:14`
+- generated_at: `2026-07-16T04:07:11`
 - status: `ok`
-- scanned_files: `364`
+- scanned_files: `369`
 - guardrail: `read_only_terms_audit_no_scoring_or_db_change`
 
 ## Counts
 
 - warn: `0`
 - review: `62`
-- ok: `1830`
+- ok: `1842`
 
 ## Glossary
 
@@ -20,15 +20,15 @@
 
 ## Warn / Review Findings
 
-- `review` `actual_pd` `api/main.py:8142` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:8157` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE shion_screening_reviews`
-- `review` `actual_pd` `api/main.py:8154` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:8169` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `f"UPDATE shion_screening_reviews SET user_feedback = {ph} WHERE id = {ph}",`
-- `review` `actual_pd` `api/main.py:9155` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:9292` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE {table_name}`
-- `review` `actual_pd` `api/main.py:9456` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:9616` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE cloudrun_score_inputs`
-- `review` `actual_pd` `api/main.py:9480` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:9640` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE cloudrun_score_inputs`
 - `review` `actual_pd` `api/outcome_drift_loop.py:7` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `帯ごとの延滞・デフォルト率を集計する`
@@ -122,7 +122,7 @@
   - `conn.executemany("UPDATE past_cases SET data = ? WHERE id = ?", updates)`
 - `review` `actual_pd` `scripts/normalize_lost_reasons.py:167` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `mode = "DRY RUN" if args.dry_run else "UPDATED"`
-- `review` `actual_pd` `scripts/promote_cloudrun_return_data.py:234` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `scripts/promote_cloudrun_return_data.py:319` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE {table}`
 - `review` `actual_pd` `scripts/sync_chromadb_to_gcs.sh:43` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `log "Cloud Run 新リビジョン起動: $CLOUD_RUN_SERVICE (CHROMADB_UPDATED_AT=$TIMESTAMP)"`

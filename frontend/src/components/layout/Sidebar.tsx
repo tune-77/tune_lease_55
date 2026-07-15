@@ -51,6 +51,7 @@ export default function Sidebar() {
       items: [
         { name: 'デモホーム', href: '/demo-home', icon: Sparkles, color: 'text-yellow-300' },
         { name: 'ハッカソンデモ', href: '/demo', icon: Sparkles, color: 'text-yellow-300' },
+        { name: '1000件早送りデモ', href: '/demo/judgment-evolution', icon: GitBranch, color: 'text-amber-300' },
         { name: 'システム概要', href: '/system-overview', icon: Orbit, color: 'text-fuchsia-400' },
         { name: 'DevOpsサイクル', href: '/devops', icon: GitBranch, color: 'text-emerald-300' },
         { name: '紫苑の記憶システム', href: '/shion-memory-system', icon: Database, color: 'text-sky-300' },

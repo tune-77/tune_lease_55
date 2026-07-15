@@ -85,6 +85,73 @@ type JudgmentAssetCandidate = {
   userFeedback?: JudgmentAssetCandidateFeedback;
 };
 
+const JUDGMENT_ASSET_TYPE_TONES: Record<string, {
+  label: string;
+  card: string;
+  badge: string;
+  accent: string;
+}> = {
+  confirmation_question: {
+    label: "確認質問",
+    card: "border-sky-200 bg-sky-50/80",
+    badge: "bg-sky-600 text-white",
+    accent: "bg-sky-500",
+  },
+  condition_signal: {
+    label: "条件兆候",
+    card: "border-amber-200 bg-amber-50/80",
+    badge: "bg-amber-600 text-white",
+    accent: "bg-amber-500",
+  },
+  application_rule: {
+    label: "適用ルール",
+    card: "border-emerald-200 bg-emerald-50/80",
+    badge: "bg-emerald-600 text-white",
+    accent: "bg-emerald-500",
+  },
+  caution: {
+    label: "反証",
+    card: "border-rose-200 bg-rose-50/80",
+    badge: "bg-rose-600 text-white",
+    accent: "bg-rose-500",
+  },
+};
+
+const JUDGMENT_ASSET_FEEDBACK_TONES: Record<JudgmentAssetCandidateFeedback | "none", {
+  label: string;
+  badge: string;
+  ring: string;
+}> = {
+  useful: {
+    label: "採用候補",
+    badge: "bg-emerald-100 text-emerald-800",
+    ring: "ring-2 ring-emerald-300",
+  },
+  neutral: {
+    label: "修正中",
+    badge: "bg-indigo-100 text-indigo-800",
+    ring: "ring-2 ring-indigo-200",
+  },
+  rejected: {
+    label: "見送り",
+    badge: "bg-slate-200 text-slate-700",
+    ring: "ring-1 ring-slate-200",
+  },
+  none: {
+    label: "未評価",
+    badge: "bg-white text-slate-600",
+    ring: "ring-1 ring-white/70",
+  },
+};
+
+const getJudgmentAssetTypeTone = (type: string) =>
+  JUDGMENT_ASSET_TYPE_TONES[type] || {
+    label: type || "候補",
+    card: "border-violet-200 bg-violet-50/80",
+    badge: "bg-violet-600 text-white",
+    accent: "bg-violet-500",
+  };
+
 type PastCompanyHighlight = {
   name: string;
   label: "類似案件" | "過去レビュー" | "反面教師";
@@ -1006,12 +1073,6 @@ function JudgmentAssetCandidateCard({
     neutral: "微妙",
     rejected: "外した",
   };
-  const typeLabels: Record<string, string> = {
-    confirmation_question: "確認質問",
-    condition_signal: "条件兆候",
-    application_rule: "適用ルール",
-    caution: "反証",
-  };
   const adaptationLabels: Record<JudgmentAssetAdaptationMode, string> = {
     conservative: "保守的",
     standard: "標準",
@@ -1100,24 +1161,33 @@ function JudgmentAssetCandidateCard({
       </div>
       <div className="mt-3 grid gap-2">
         {candidates.length ? candidates.map((candidate) => (
-          <div key={candidate.id} className="rounded-xl border border-amber-100 bg-white p-3">
+          <div
+            key={candidate.id}
+            className={`relative overflow-hidden rounded-xl border p-3 shadow-sm ${getJudgmentAssetTypeTone(candidate.candidate_type).card} ${
+              JUDGMENT_ASSET_FEEDBACK_TONES[candidate.userFeedback || "none"].ring
+            }`}
+          >
             {(() => {
+              const typeTone = getJudgmentAssetTypeTone(candidate.candidate_type);
+              const feedbackTone = JUDGMENT_ASSET_FEEDBACK_TONES[candidate.userFeedback || "none"];
               const displayClaim = candidate.edited_claim || candidate.effective_claim || candidate.claim;
               const draft = drafts[candidate.id] ?? displayClaim;
               const isEditing = editingId === candidate.id;
               const isChanged = draft.trim() && draft.trim() !== displayClaim.trim();
               return (
                 <>
-            <div className="flex flex-wrap items-center gap-2 text-[10px] font-black text-amber-700">
+            <div className={`absolute inset-y-0 left-0 w-1.5 ${typeTone.accent}`} />
+            <div className="flex flex-wrap items-center gap-2 pl-1 text-[10px] font-black">
               <span className="rounded-full bg-slate-900 px-2 py-1 text-white">JA-{candidate.id.slice(0, 8)}</span>
-              <span className="rounded-full bg-amber-100 px-2 py-1">{typeLabels[candidate.candidate_type] || candidate.candidate_type}</span>
-              <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-600">{candidate.research_topic}</span>
+              <span className={`rounded-full px-2 py-1 ${typeTone.badge}`}>{typeTone.label}</span>
+              <span className={`rounded-full px-2 py-1 ${feedbackTone.badge}`}>{feedbackTone.label}</span>
+              <span className="rounded-full bg-white/80 px-2 py-1 text-slate-700">{candidate.research_topic}</span>
               <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-600">use {candidate.use_count}</span>
               <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-600">useful {candidate.useful_count}</span>
               {candidate.edit_count ? <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">修正 {candidate.edit_count}</span> : null}
             </div>
             {isEditing ? (
-              <div className="mt-2">
+              <div className="mt-2 pl-1">
                 <textarea
                   value={draft}
                   onChange={(event) => setDrafts((current) => ({ ...current, [candidate.id]: event.target.value }))}
@@ -1147,12 +1217,12 @@ function JudgmentAssetCandidateCard({
                 </div>
               </div>
             ) : (
-              <p className="mt-2 text-sm font-bold leading-6 text-slate-800">{displayClaim}</p>
+              <p className="mt-2 pl-1 text-sm font-bold leading-6 text-slate-900">{displayClaim}</p>
             )}
-            <p className="mt-2 break-all text-[10px] font-bold text-slate-500">
+            <p className="mt-2 break-all pl-1 text-[10px] font-bold text-slate-600">
               出典: {candidate.evidence_path || "manual"} / 元ID: {candidate.id}
             </p>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-3 flex flex-wrap gap-2 pl-1">
               <button
                 type="button"
                 onClick={() => {
@@ -1172,7 +1242,7 @@ function JudgmentAssetCandidateCard({
                   className={`rounded-lg border px-3 py-1.5 text-[11px] font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${
                     candidate.userFeedback === key
                       ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                      : "border-amber-100 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                      : "border-white/80 bg-white/80 text-slate-700 hover:bg-white"
                   }`}
                 >
                   {feedbackSavingId === candidate.id && candidate.userFeedback === key ? "保存中" : labels[key]}

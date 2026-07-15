@@ -4,7 +4,9 @@ import withPWAInit from "next-pwa";
 
 const API_URL = process.env.FASTAPI_URL || "http://127.0.0.1:8000";
 const BROWSER_FASTAPI_URL = process.env.NEXT_PUBLIC_FASTAPI_BASE_URL || "";
-const connectSrc = ["'self'", BROWSER_FASTAPI_URL].filter(Boolean).join(" ");
+const connectSrc = ["'self'", "http://127.0.0.1:8000", "http://localhost:8000", BROWSER_FASTAPI_URL]
+  .filter(Boolean)
+  .join(" ");
 
 const securityHeaders = [
   { key: "X-DNS-Prefetch-Control", value: "on" },

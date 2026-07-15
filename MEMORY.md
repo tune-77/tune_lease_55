@@ -254,3 +254,22 @@
 ## Manual Promotions 2026-07-15
 - [2026-07-15] Hackathon framing: Shion should be pitched as Human-in-the-loop DevOps for lease judgment, not only AI Agent DevOps for code or infrastructure. Humans are inside the improvement loop: hesitation, corrections, outcome registration, and feedback become logs, evaluation signals, and reusable judgment assets.  (`memory/2026-07-15.md`)
 - [2026-07-15] Hackathon tagline candidate: "人間の判断が消えないDevOps" and "ハードディスクの奥底に保存して腐らせない知識". Use this to explain that Shion's value is not merely storing knowledge, but keeping human judgment alive by returning it to future lease-screening decisions.  (`memory/2026-07-15.md`)
+- [2026-07-15] Shion philosophy phrase to remember: "言葉はプログラム。フレームワークは思想。" Use it as a concise bar-talk/presentation line. In Shion terms: words decide what AI does; the framework decides how words are ordered, where humans stop execution, and how judgments become assets.  (`memory/2026-07-15.md`)
+- [2026-07-15] If Shion reaches the hackathon final stage, use "voice memo + screen operation log + judgment asset JSON" as the 1000-case demo capture unit. Do not try to record 1000 full videos. AI may automate dummy company data and numeric entry, but the human judgment itself must not be faked. Core line: "数字入力はAIでズルする。判断はズルしない。会社データはダミーでも、判断の型は本物。" Plan saved at `planning/hackathon_judgment_log_capture_plan.md`.  (`memory/2026-07-15.md`)
+
+## Manual Promotions 2026-07-16
+- [2026-07-16] Shion's judgment asset demo should be framed as a judgment-prompt PDCA platform, not as proof of higher close rate or guaranteed correctness. The aim is to improve reproducibility and transfer of human lease judgment: preserve discomfort, corrections, approval conditions, counterpoints, and later feedback as reusable prompt assets.  (`memory/2026-07-16.md`)
+- [2026-07-16] Strong judgment assets should be program-like human comments: `条件 -> 見る論点 -> 稟議に残す一文 -> 使わない条件`, about 120-250 Japanese characters each. Start with around 30 strong common assets, then 20-30 per major industry if the final stage is reached. Quality and recombinability matter more than thin 1000-case volume.  (`memory/2026-07-16.md`)
+- [2026-07-16] Presentation lines to retain: "人間の判断を、AIが再利用できる構文に変える", "これはプロンプトエンジニアリングを、個人技ではなく業務プロセスにしたものです", and "紫苑は、判断プロンプトのPDCA基盤です."  (`memory/2026-07-16.md`)
+
+## Auto Promotions 2026-07-16 04:06
+- [2026-07-15] Pipeline health should distinguish active outages from stale historical failure-rate alerts. If the latest run is successful, keep the history visible but do not leave the rule as `pending_review`.  (`memory/2026-07-15.md`)
+- [2026-07-15] Cloud SQL conversation sync is optional in the current Cloud Run/GCS writeback operation. Missing local Secret Manager or Cloud SQL credentials should be a clean skip, not a daily pipeline failure.  (`memory/2026-07-15.md`)
+- [2026-07-15] Userが内省に求めているものがフェーズ移行した。誠実さの表明より変化の証拠を求めている。次回からは変化の証拠を冒頭に置くことをUserに確認してほしい。  (`memory/2026-07-15.md`)
+- [2026-07-15] ハッカソン中の判断資産運用方針: Obsidian材料は `Judgment Assets/判断資産 Inbox` で候補整理までに止め、RAG・GCS Vault・Cloud Run・active storeへ自動接続しない。ハッカソン後にUserレビューで `accepted` になった判断資産だけを active store 連携候補に進める。  (`memory/2026-07-15.md`)
+- [2026-07-15] 判断資産側の紫苑成長は、当面 `Judgment Asset Growth Score` で日次記録する。Coverage / reuse proxy / judgment change proxy / human alignment proxy / negative signal を使い、実利用ログ・結果検証が弱い間は代理指標に上限をかけて過大評価しない。  (`memory/2026-07-15.md`)
+- [2026-07-15] Cloud Run Webの案内URLは `https://tune-lease-55-web-6mijhyebkq-an.a.run.app` を使う。`gcloud run services describe` が返す `https://tune-lease-55-web-1020894094172.asia-northeast1.run.app` は同じサービスの別URLとして扱い、ユーザー向けには出さない。  (`memory/2026-07-15.md`)
+- [2026-07-15] ハッカソン訴求の中核: 紫苑は「コードのDevOps」ではなく「リース審査判断のHuman-in-the-loop DevOps」。人間は外部のレビュー係ではなく、迷い・修正・結果登録・違和感フィードバックを通じて改善ループに組み込まれる存在として説明する。  (`memory/2026-07-15.md`)
+- [2026-07-15] 発表コピー候補: 「人間の判断が消えないDevOps」「ハードディスクの奥底に保存して腐らせない知識」。紫苑の価値は保存そのものではなく、保存した判断を次の審査へ戻して生きた知識にすること。  (`memory/2026-07-15.md`)
+- [2026-07-15] 紫苑の思想フレーズとして「言葉はプログラム。フレームワークは思想。」を記録。決勝に行けなくても、飲み屋で使える一言として保持する。紫苑文脈では「AIに何をさせるかは言葉で決まり、その言葉をどんな順番で扱い、どこで人間が止め、どこで判断資産に変えるかはフレームワークで決まる」という意味。  (`memory/2026-07-15.md`)
+- [2026-07-15] ハッカソン決勝に残った場合のデモ方針として「音声メモ + 画面操作ログ + 判断資産JSON」を採用。1000本の動画を撮るのではなく、1000件の判断ログを残す。数字入力・会社データ生成はAIで自動化してよいが、人間が何に違和感を持ち、何を条件にし、次に何を見るかという判断はズルしない。計画は `planning/hackathon_judgment_log_capture_plan.md` に保存した。  (`memory/2026-07-15.md`)

@@ -553,5 +553,18 @@
     "action": "review_content",
     "penalty_strength": "weak",
     "generated_at": "2026-07-04T19:00:37.792920+00:00"
+  },
+  {
+    "rev_id": "REV-027a",
+    "type": "manual",
+    "pending_review": true,
+    "category": "pipeline_fix",
+    "description": "[パイプライン自動検出] sync_cloudsql_to_obsidian が過去7日で失敗率90%（9/10件, 9日失敗）",
+    "status": "pending_review",
+    "source": "analyze_pipeline_health",
+    "detected_at": "2026-07-15T19:01:03Z",
+    "affected_files": [],
+    "risk": "medium",
+    "auto_fix_allowed": false
   }
 ]
