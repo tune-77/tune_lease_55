@@ -8452,6 +8452,128 @@ def _create_manual_judgment_asset_candidate(req: JudgmentAssetCandidateManualReq
     return row
 
 
+_CHAT_JUDGMENT_ASSET_TRIGGERS = (
+    "判断方法",
+    "判断基準",
+    "判断軸",
+    "判断資産",
+    "審査では",
+    "稟議では",
+    "稟議上",
+    "案件を見るとき",
+    "案件を見る時",
+)
+
+_CHAT_JUDGMENT_ASSET_ACTIONS = (
+    "見る",
+    "確認",
+    "重視",
+    "条件",
+    "分ける",
+    "残す",
+    "疑う",
+    "警戒",
+    "説明",
+    "通す",
+    "止める",
+    "評価",
+    "判断",
+)
+
+
+def _extract_chat_judgment_asset_claim(message: str) -> str:
+    text = " ".join(str(message or "").strip().split())
+    if len(text) < 12 or len(text) > 600:
+        return ""
+    if text.endswith("?") or text.endswith("？"):
+        return ""
+    if not any(trigger in text for trigger in _CHAT_JUDGMENT_ASSET_TRIGGERS):
+        return ""
+    if not any(action in text for action in _CHAT_JUDGMENT_ASSET_ACTIONS):
+        return ""
+    weak_markers = (
+        "どう思う",
+        "教えて",
+        "とは",
+        "なに",
+        "何",
+        "わからない",
+        "分からない",
+    )
+    if any(marker in text for marker in weak_markers) and not any(marker in text for marker in ("判断資産に登録", "判断資産として")):
+        return ""
+    return text[:500]
+
+
+def _chat_judgment_asset_candidate_type(claim: str) -> str:
+    if any(marker in claim for marker in ("注意", "警戒", "疑う", "止める", "危険")):
+        return "caution"
+    if any(marker in claim for marker in ("条件", "兆候", "サイン", "なら")):
+        return "condition_signal"
+    if any(marker in claim for marker in ("確認", "質問", "聞く")):
+        return "confirmation_question"
+    return "application_rule"
+
+
+def _capture_chat_judgment_asset_if_needed(
+    message: str,
+    *,
+    user_id: str,
+    surface: str,
+    response_mode: str = "",
+) -> dict[str, Any]:
+    claim = _extract_chat_judgment_asset_claim(message)
+    if not claim:
+        return {"captured": False, "reason": "not_judgment_asset_teaching"}
+    try:
+        normalized_claim = " ".join(claim.split())
+        for item in _load_autoresearch_judgment_asset_candidates(limit=1000):
+            existing_claim = " ".join(str(item.get("edited_claim") or item.get("claim") or "").split())
+            if existing_claim == normalized_claim:
+                return {
+                    "captured": True,
+                    "duplicate": True,
+                    "candidate": {
+                        "id": item.get("id"),
+                        "claim": item.get("claim"),
+                        "candidate_type": item.get("candidate_type"),
+                        "research_topic": item.get("research_topic"),
+                    },
+                }
+        entry = _create_manual_judgment_asset_candidate(
+            JudgmentAssetCandidateManualRequest(
+                claim=claim,
+                candidate_type=_chat_judgment_asset_candidate_type(claim),
+                research_topic="chat_judgment_teaching",
+                case_id=f"chat:{user_id}",
+            )
+        )
+        writeback = record_cloudrun_input_event(
+            event_type="judgment_asset_candidate_chat_capture",
+            surface=surface,
+            payload={
+                **entry,
+                "schema_version": 1,
+                "user_id": user_id,
+                "response_mode": response_mode,
+                "source_message": claim,
+            },
+        )
+        return {
+            "captured": True,
+            "candidate": {
+                "id": entry.get("id"),
+                "claim": entry.get("claim"),
+                "candidate_type": entry.get("candidate_type"),
+                "research_topic": entry.get("research_topic"),
+            },
+            "writeback": writeback,
+        }
+    except Exception as exc:
+        print(f"[判断資産チャット登録] エラー: {exc}")
+        return {"captured": False, "reason": str(exc)[:200], "claim": claim}
+
+
 _SCREENING_EXPERIENCE_DEMO_SEEDS: list[dict[str, Any]] = [
     {
         "demo_case_id": "stable-manufacturing",
@@ -11799,6 +11921,12 @@ def post_chat(req: ChatRequest):
                 response_mode=req.response_mode,
                 metadata={"context_mode": context_mode},
             )
+            judgment_asset_capture = _capture_chat_judgment_asset_if_needed(
+                req.message,
+                user_id=req.user_id,
+                surface="next_chat_general",
+                response_mode=req.response_mode,
+            )
             if not is_general_response_mode:
                 try:
                     from api.shion_experience_loop import record_experience_event
@@ -11874,6 +12002,7 @@ def post_chat(req: ChatRequest):
                 "long_input_mode": chat_long_input,
                 "context_mode": context_mode,
                 "personal_memory_capture": personal_memory_capture,
+                "judgment_asset_capture": judgment_asset_capture,
                 "response_mode": req.response_mode,
                 "obsidian_daily_intelligence": {
                     "used": bool(obsidian_daily_context),
@@ -12112,6 +12241,12 @@ def post_chat(req: ChatRequest):
                 "improvement_mode": bool(_is_improvement_msg),
             },
         )
+        judgment_asset_capture = _capture_chat_judgment_asset_if_needed(
+            req.message,
+            user_id=req.user_id,
+            surface="next_chat_rag",
+            response_mode=req.response_mode,
+        )
         if not is_general_response_mode:
             try:
                 from api.shion_experience_loop import record_experience_event
@@ -12220,6 +12355,7 @@ def post_chat(req: ChatRequest):
             "long_input_mode": chat_long_input,
             "context_mode": context_mode,
             "personal_memory_capture": personal_memory_capture,
+            "judgment_asset_capture": judgment_asset_capture,
             "response_mode": req.response_mode,
             "obsidian_daily_intelligence": {
                 "used": bool(obsidian_daily_context),

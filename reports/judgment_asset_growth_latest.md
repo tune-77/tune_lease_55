@@ -13,6 +13,7 @@
 - Reuse proxy: `████████████░░░░░░░░` 60.0
 - Judgment change proxy: `█████████████░░░░░░░` 67.0
 - Human alignment proxy: `██████████████░░░░░░` 70.0
+- Field validation: `░░░░░░░░░░░░░░░░░░░░` 0.0
 - Negative signal: `░░░░░░░░░░░░░░░░░░░░` 0.0
 
 ## Counts
@@ -24,6 +25,14 @@
 - Concepts: 8
 - User evidence: 13
 
+## Field Validation
+
+- Used: 0
+- Helped: 0
+- Challenged: 0
+- Rejected: 0
+- Unused active rules: 8
+
 ## Trend
 
 - 2026-07-15: `█████████████░░░░░░░` 64.4
@@ -31,5 +40,5 @@
 ## Notes
 
 - reuse_proxy, judgment_change_proxy, human_alignment_proxy は現時点の保存証跡からの代理指標。
-- 実利用ログ・結果登録での的中検証がまだ弱い間は、代理指標の上限を抑えて過大評価しない。
+- 実利用ログ・結果登録で helped / challenged を付け、使われない判断資産は成長スコアで伸びにくくする。
 - ハッカソン中は測定とローカル可視化のみ。RAG・プロンプト・スコアリング・GCS・Cloud Runへ自動接続しない。

@@ -39,6 +39,13 @@ def test_build_growth_snapshot_uses_current_judgment_asset_signals():
         curator=curator,
         mana=mana,
         canonical=canonical,
+        feedback_rows=[
+            {
+                "rule_id": "business-plan",
+                "outcome": "helped",
+                "case_id": "case-001",
+            }
+        ],
     )
 
     assert snapshot["score_name"] == "Judgment Asset Growth Score"
@@ -47,6 +54,7 @@ def test_build_growth_snapshot_uses_current_judgment_asset_signals():
     assert snapshot["counts"]["user_evidence"] == 1
     assert snapshot["components"]["negative_signal"] == 0
     assert "reuse_proxy" in snapshot["components"]
+    assert "field_validation" in snapshot["components"]
 
 
 def test_history_update_is_idempotent_per_date(tmp_path):
@@ -73,6 +81,7 @@ def test_markdown_contains_component_and_trend_graph():
             "reuse_proxy": 50.0,
             "judgment_change_proxy": 70.0,
             "human_alignment_proxy": 40.0,
+            "field_validation": 24.0,
             "negative_signal": 0.0,
         },
         "counts": {
@@ -84,6 +93,19 @@ def test_markdown_contains_component_and_trend_graph():
             "user_evidence": 10,
         },
         "notes": ["測定のみ"],
+        "field_feedback": {
+            "totals": {"used": 1, "helped": 1, "challenged": 0, "rejected": 0},
+            "unused_active_rules": 2,
+            "rules": [
+                {
+                    "rule_id": "rule-1",
+                    "used_count": 1,
+                    "helped_count": 1,
+                    "challenged_count": 0,
+                    "last_used_case": "case-001",
+                }
+            ],
+        },
     }
     payload = {
         "mode": "local_measurement_only",
@@ -96,8 +118,38 @@ def test_markdown_contains_component_and_trend_graph():
 
     assert "# Judgment Asset Growth Score" in markdown
     assert "Reuse proxy" in markdown
+    assert "Field validation" in markdown
+    assert "Top used rules" in markdown
     assert "2026-07-15" in markdown
     assert "█" in markdown
+
+
+def test_field_feedback_rewards_helped_and_penalizes_challenges():
+    rules = [
+        {"id": "rule-a", "status": "active"},
+        {"id": "rule-b", "status": "active"},
+    ]
+
+    helped = growth.summarize_field_feedback(
+        [
+            {"rule_id": "rule-a", "outcome": "used"},
+            {"rule_id": "rule-a", "outcome": "helped", "case_id": "case-001"},
+        ],
+        rules,
+    )
+    challenged = growth.summarize_field_feedback(
+        [
+            {"rule_id": "rule-a", "outcome": "challenged"},
+            {"rule_id": "rule-b", "outcome": "rejected"},
+        ],
+        rules,
+    )
+
+    assert helped["score"] > challenged["score"]
+    assert helped["totals"]["helped"] == 1
+    assert challenged["totals"]["challenged"] == 1
+    assert challenged["totals"]["rejected"] == 1
+    assert helped["rules"][0]["last_used_case"] == "case-001"
 
 
 def test_main_writes_latest_json_markdown_and_history(tmp_path):

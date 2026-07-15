@@ -115,6 +115,58 @@ flowchart LR
 
 このため、紫苑は「AIが知識を覚える」だけではなく、**ベテランが教えた審査判断を材料に、新しい確認観点・承認条件・反証を提案するAI**へ育つことを目指します。
 
+### ルールブック化を防ぐ実戦検証
+
+判断資産は、保存しただけでは資産ではありません。良さそうな審査ルールを増やすだけでは、単なるルールブックやプロンプト集になり、実務で効いているか分からなくなります。
+
+紫苑では、判断資産を「使われたか」「役に立ったか」「外れたか」で検証する **Field Validation** を追加しています。
+
+```mermaid
+flowchart LR
+    Rule["active判断資産\nJA / canonical rule"] --> Use["案件レビューで使用"]
+    Use --> Output["稟議コメント\n確認条件\n逆転戦略"]
+    Output --> Feedback["used / helped / challenged / rejected"]
+    Feedback --> Score["Field validation\n実戦検証スコア"]
+    Score --> Review["未使用・外れた資産を見直し"]
+    Review --> Rule
+```
+
+実績ログは `data/judgment_asset_usage_feedback.jsonl` にローカル記録します。記録は手動でも可能です。
+
+```bash
+python scripts/record_judgment_asset_feedback.py cf61a9701fc8cc42 helped \
+  --case-id demo-001 \
+  --note "残価説明に使えた"
+```
+
+また、通常チャットでユーザーが「判断方法として」「判断基準として」「審査では」「稟議では」のように判断の型をつぶやいた場合は、`chat_judgment_teaching` として判断資産候補へ直接登録します。たとえば次のような発話は、通常の会話ログに埋もれさせず候補化します。
+
+> 判断基準として、工作機械更新は受注根拠と既存機の稼働状況をセットで見る。
+
+この自動登録も、すぐにactive判断基準へ昇格するわけではありません。候補として保存し、案件レビューで使い、`helped / challenged / rejected` の実戦検証を通して育てます。
+
+既存のObsidian Knowledgeノートからも、使えるノウハウを判断資産候補へ取り込めます。
+
+```bash
+python scripts/import_obsidian_knowledge_to_judgment_assets.py --replace-existing-import
+```
+
+このインポートは `Projects/tune_lease_55/Asset Knowledge` と `Projects/tune_lease_55/Lease Intelligence/Knowledge` を読み、稟議根拠・確認項目・残価/再販リスクなどの実務で使える文だけを `obsidian_knowledge` 由来の候補として保存します。`Promoted Knowledge.md` のメタ情報やテンプレート文面は除外します。
+
+`scripts/judgment_asset_growth_report.py` はこのログを読み、次を集計します。
+
+| 指標 | 意味 |
+|---|---|
+| `used` | 判断資産が案件レビューで使われた |
+| `helped` | 稟議コメント、確認条件、判断整理に役立った |
+| `challenged` | 案件に合わない、説明が弱い、ズレた |
+| `rejected` | 判断資産として採用すべきでない |
+| `unused_active_rules` | activeだが実戦で使われていない判断資産 |
+
+毎朝の改善レポートにも「判断資産 実戦検証」として `used / helped / challenged / rejected / unused_active` を出します。これにより、判断資産が増えても、実戦で使われないものや外れたものを早期に見つけられます。
+
+重要なのは、`Field validation` が低い間は判断資産を過信しないことです。保存証跡・証拠数・ユーザー由来数は代理指標にすぎません。紫苑は、判断資産を増やすだけでなく、役に立たない判断資産を疑い、降格・修正する前提で運用します。
+
 ### Mana：記憶を育てるAIの停止装置
 
 紫苑には、上位規範層 **Mana** があります。Mana は新しい別エージェントではなく、紫苑が迷った時に「人を道具として扱わない」「説明責任を残す」「迎合しない」へ立ち返るための同じ価値記憶です。
