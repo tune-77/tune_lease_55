@@ -4859,7 +4859,7 @@
     "base_rate_at_time": 2.5,
     "winning_spread": 0.7000000000000002,
     "loan_conditions": [],
-    "competitor_name": "セディアオートリース",
+    "competitor_name": "他のリース会社",
     "sales_dept": "足利営業部",
     "dscr_approx": -0.72,
     "interest_coverage": 10.0
@@ -5219,7 +5219,7 @@
     "base_rate_at_time": 2.5,
     "winning_spread": 0.7000000000000002,
     "loan_conditions": [],
-    "competitor_name": "セディアオートリース",
+    "competitor_name": "他のリース会社",
     "sales_dept": "足利営業部",
     "dscr_approx": 0.129,
     "interest_coverage": 10.0

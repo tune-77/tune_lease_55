@@ -20,3 +20,4 @@ Use it only in direct conversations with the user.
 - 2026-07-04T04:05:01 [confirmed/family_pet] (next_chat) 犬の名前を覚えているかが、なぜAIへの信頼に関係するの？
 - 2026-07-04T05:48:59 [confirmed/family_pet] (next_chat) 犬の名前は
 - 2026-07-04T05:49:20 [candidate/personal_fact] (next_chat) 猫の名前は
+- 2026-07-16T20:45:50 [confirmed/explicit_remember] (lease_intelligence_dialogue) 覚えておいて

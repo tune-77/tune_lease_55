@@ -90,6 +90,7 @@ class ScoringResponse(BaseModel):
     umap_x: Optional[float] = None              # UMAP 2D x座標
     umap_y: Optional[float] = None              # UMAP 2D y座標
     umap_similar: Optional[list] = None         # 近傍成約案件 [{x,y,status}]
+    diagnostic_recommendations: Optional[list] = None  # UMAP/Mahalanobisなど重い補助診断の人間実行推奨
     conditional_approval_actions: Optional[list] = None  # 条件付き承認時の推奨アクション
     rate_proposal: Optional[dict] = None        # 動的金利提案サマリ
     data_source_summary: Optional[dict] = None  # 入力値・判定根拠の情報源サマリ

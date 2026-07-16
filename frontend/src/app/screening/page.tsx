@@ -767,6 +767,7 @@ const buildShionReviewPrompt = (
     `・借手スコア: ${result.score_borrower != null ? Number(result.score_borrower).toFixed(1) : "未算出"}`,
     `・Q_risk: ${result.quantum_risk != null ? `${Number(result.quantum_risk).toFixed(1)}（0-100スケール、35以上で要注意・60以上で強警戒）` : "未算出"}`,
     `・UMAP異常度: ${result.umap_anomaly_score != null ? Number(result.umap_anomaly_score).toFixed(1) : "未算出"}`,
+    `・マハラノビス: ${result.mahalanobis_score != null ? Number(result.mahalanobis_score).toFixed(1) : "未算出"}`,
     `・物件: ${data.asset_name || "未入力"}`,
     `・取得価額: ${data.acquisition_cost || 0}百万円`,
     `・リース期間: ${data.lease_term || 0}`,
@@ -786,6 +787,15 @@ const buildShionReviewPrompt = (
   }
   if (Array.isArray(result.default_warnings) && result.default_warnings.length) {
     lines.push(`・高リスク財務パターン警告: ${result.default_warnings.slice(0, 3).join(" / ")}`);
+  }
+  if (Array.isArray(result.diagnostic_recommendations) && result.diagnostic_recommendations.length) {
+    lines.push("・補助診断の扱い: UMAP/Mahalanobisは常時使用ではなく、必要時に人間が実行する補助診断。自動減点ではなく確認論点・稟議補足に使う。");
+    for (const rec of result.diagnostic_recommendations.slice(0, 3)) {
+      const label = String(rec?.label || rec?.diagnostic || "補助診断");
+      const status = rec?.status === "calculated" ? "算出済み" : "推奨";
+      const reason = String(rec?.reason || "");
+      lines.push(`  - ${label}: ${status}${reason ? `（理由: ${reason}）` : ""}`);
+    }
   }
   const demoPastCaseBlock = buildDemoSimilarPastCaseBlock(experienceCases);
   if (demoPastCaseBlock) {
@@ -3069,6 +3079,32 @@ export default function Dashboard() {
                               advice={result.mahalanobis_advice}
                               compact={false}
                             />
+                          )}
+
+                          {Array.isArray(result.diagnostic_recommendations) && result.diagnostic_recommendations.length > 0 && (
+                            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                              <div className="mb-2 flex items-center gap-2 text-sm font-black text-amber-900">
+                                <BadgeInfo className="h-4 w-4" />
+                                補助診断の推奨
+                              </div>
+                              <p className="mb-3 text-xs leading-relaxed text-amber-800">
+                                UMAP / マハラノビスは常時使用ではありません。紫苑が必要性を示し、人間が実行判断します。結果は自動減点ではなく、確認論点・稟議補足に使います。
+                              </p>
+                              <div className="space-y-2">
+                                {result.diagnostic_recommendations.map((rec: any, index: number) => (
+                                  <div key={`${rec?.diagnostic || "diagnostic"}-${index}`} className="rounded-lg border border-amber-200 bg-white/70 p-3">
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div className="text-sm font-black text-slate-900">{rec?.label || rec?.diagnostic || "補助診断"}</div>
+                                      <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-black text-amber-800">
+                                        {rec?.status === "calculated" ? "算出済み" : "推奨"}
+                                      </span>
+                                    </div>
+                                    {rec?.reason && <div className="mt-1 text-xs leading-relaxed text-slate-700">{rec.reason}</div>}
+                                    {rec?.use_as && <div className="mt-1 text-[11px] leading-relaxed text-slate-500">{rec.use_as}</div>}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
                           )}
                         </div>
                       </details>

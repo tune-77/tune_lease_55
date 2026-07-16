@@ -1102,6 +1102,51 @@ def run_quick_scoring(inputs: dict) -> dict:
             f"強警戒: 信用リスク群スコア {credit_risk_group.get('score', 0.0):.1f} かつ Q_risk {quantum_risk_score:.1f}"
         )
 
+    diagnostic_recommendations: list[dict] = []
+    amount_m = _safe_float(inputs.get("acquisition_cost", inputs.get("amount", 0)))
+    high_amount = amount_m >= 50
+    q_risk_value = quantum_risk_score if quantum_risk_score is not None else 0.0
+    score_gap = abs(float(final_score) - float(score_borrower))
+    warning_count = len(default_warnings) + len(credit_risk_warnings)
+
+    mahalanobis_reasons: list[str] = []
+    if warning_count:
+        mahalanobis_reasons.append("財務・信用警戒フラグが出ている")
+    if q_risk_value >= 35:
+        mahalanobis_reasons.append(f"Q_risk {q_risk_value:.1f}で財務構造の追加確認余地がある")
+    if score_gap >= 20:
+        mahalanobis_reasons.append(f"総合スコアと借手スコアの差が大きい（差 {score_gap:.1f}）")
+    if final_score >= APPROVAL_LINE and (q_risk_value >= 35 or warning_count):
+        mahalanobis_reasons.append("承認圏だが警戒信号があり、過去成約分布との距離確認が有効")
+
+    umap_reasons: list[str] = []
+    if final_score >= APPROVAL_LINE and (q_risk_value >= 35 or warning_count):
+        umap_reasons.append("高スコア案件だが違和感信号があり、非線形な外れ方を確認したい")
+    if high_amount and (q_risk_value >= 25 or warning_count):
+        umap_reasons.append(f"取得価額 {amount_m:.0f}百万円で説明責任が重い")
+    if credit_quantum_strong_warning:
+        umap_reasons.append("信用リスク群とQ_riskが同時に強い")
+
+    if mahalanobis_reasons:
+        diagnostic_recommendations.append({
+            "diagnostic": "mahalanobis",
+            "label": "マハラノビス診断",
+            "status": "calculated" if mahalanobis_score is not None else "recommended",
+            "execution": "manual_or_env_flag",
+            "reason": " / ".join(mahalanobis_reasons[:3]),
+            "use_as": "自動減点ではなく、財務構造の外れ値確認・確認論点・稟議補足に使う",
+        })
+
+    if umap_reasons:
+        diagnostic_recommendations.append({
+            "diagnostic": "umap",
+            "label": "UMAP診断",
+            "status": "calculated" if umap_anomaly_score is not None else "recommended",
+            "execution": "manual_or_env_flag",
+            "reason": " / ".join(umap_reasons[:3]),
+            "use_as": "自動減点ではなく、非線形な類似/外れ方の確認・確認論点・稟議補足に使う",
+        })
+
     # ── DSCR / インタレスト・カバレッジ（次回再学習の特徴量候補）──
     dscr_approx = compute_dscr_approx(inputs)
     interest_coverage = compute_interest_coverage(inputs)
@@ -1131,10 +1176,13 @@ def run_quick_scoring(inputs: dict) -> dict:
         "credit_risk_warnings": credit_risk_warnings,
         "quantum_risk": quantum_risk_score,
         "credit_quantum_strong_warning": credit_quantum_strong_warning,
+        "mahalanobis_score": mahalanobis_score,
+        "mahalanobis_advice": mahalanobis_advice,
         "umap_anomaly_score": umap_anomaly_score,
         "umap_x": umap_x,
         "umap_y": umap_y,
         "umap_similar": umap_similar,
+        "diagnostic_recommendations": diagnostic_recommendations,
         # 直感スコア関連
         "intuition_score": intuition_score,
         "intuition_adj": intuition_adj,

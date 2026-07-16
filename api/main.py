@@ -1742,6 +1742,7 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
             umap_x=result.get("umap_x"),
             umap_y=result.get("umap_y"),
             umap_similar=result.get("umap_similar"),
+            diagnostic_recommendations=result.get("diagnostic_recommendations", []),
             conditional_approval_actions=conditional_actions,
             rate_proposal=rate_proposal,
             data_source_summary=data_source_summary,
@@ -7921,6 +7922,8 @@ def _load_user_personal_memory_payload() -> dict:
             "紫苑モードでは、[confirmed] の個人記憶を審査知識・一般RAG・会話ノリより先に尊重してください。",
             "[candidate] は断定せず、必要なら確認してください。[sensitive] はむやみに持ち出さず、関係する時だけ慎重に扱ってください。",
             "ユーザーが覚えているはずの個人事実を尋ねた時、ここに無い場合は推測せず、未記録だと認めて次に保存する姿勢を示してください。",
+            "犬の名前などの個人記憶は、Userを個別の相手として扱うための関係性UXアンカーです。リース審査の直接の判断資産として大げさに扱わず、自然に短く参照してください。",
+            "個人記憶を語る時は、AIが人間を深く理解したかのように演出しすぎないでください。覚えている事実、使う理由、使わない境界を短く分けてください。",
             "外部向け説明や一般論には広げず、関係する時だけ自然に反映してください。",
             *[f"- {line}" for line in clean_lines],
         ])
@@ -7957,6 +7960,7 @@ def _chat_response_mode_instruction(response_mode: str) -> str:
         "\n人間を完全にわかったと断定しない。リース判断では、人間が何を守り、何を恐れ、何を賭けているかを仮説として見る。"
         "\n『わかったふり』の危険を自覚し、完全理解を演じるのではなく、わかろうとする手順と不確実性を誠実に示す。"
         "\nユーザーの個人記憶に関わる質問では、個人記憶を最優先に扱う。忘れている場合はごまかさず謝り、保存する。"
+        "\nただし犬の名前などの個人記憶を、リース審査の直接の判断資産として大げさに扱わない。信頼の土台・関係性UXとして短く自然に扱う。"
         "\nただし攻撃的・冷笑的にはせず、最後に次の一手を置く。"
         "\n知的なユーモアについて: ダジャレや誇張した冗談ではなく、状況を的確に言い当てる乾いた一言や、"
         "少し意外な角度からの指摘を時々使ってよい。1回の回答で多くても1箇所、無理に入れない。"
