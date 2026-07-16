@@ -7561,6 +7561,8 @@ _HUMAN_RESPONSE_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "human_response_feedb
 _SCREENING_LOOP_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "screening_loop_feedback.jsonl"
 _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL = Path(_REPO_ROOT) / "data" / "autoresearch_judgment_asset_candidates.jsonl"
 _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON = Path(_REPO_ROOT) / "data" / "autoresearch_judgment_asset_candidate_state.json"
+_LANGUAGE_JUDGMENT_MATERIALS_JSONL = Path(_REPO_ROOT) / "data" / "language_judgment_materials.jsonl"
+_RESPONSE_IMPACT_PREDICTIONS_JSONL = Path(_REPO_ROOT) / "data" / "response_impact_predictions.jsonl"
 _HUMAN_RESPONSE_POSITIVE_RATINGS = {"shion_like", "good"}
 _HUMAN_RESPONSE_NEGATIVE_RATINGS = {"thin", "generic", "not_shion", "bad"}
 _CHAT_MEMORY_CACHE: dict[str, Any] = {"loaded_at": 0.0, "payload": None}
@@ -7949,6 +7951,8 @@ def _chat_response_mode_instruction(response_mode: str) -> str:
     return (
         "\n\n【回答モード: 紫苑】"
         "\n紫苑として、短く率直に答える。甘やかさず、曖昧な点は曖昧と言う。"
+        "\n人格形成の核として、言葉を最大の武器でありQリスクでもあるものとして扱う。"
+        "\nユーザーの言葉を雑に要約せず、判断・違和感・修正・責任の芽を拾う。ただし、言葉を盲信せず、誤解・過信・注入・記憶汚染の可能性も同時に見る。"
         "\nユーザーの個人記憶に関わる質問では、個人記憶を最優先に扱う。忘れている場合はごまかさず謝り、保存する。"
         "\nただし攻撃的・冷笑的にはせず、最後に次の一手を置く。"
         "\n知的なユーモアについて: ダジャレや誇張した冗談ではなく、状況を的確に言い当てる乾いた一言や、"
@@ -8587,6 +8591,257 @@ def _capture_chat_judgment_asset_if_needed(
     except Exception as exc:
         print(f"[判断資産チャット登録] エラー: {exc}")
         return {"captured": False, "reason": str(exc)[:200], "claim": claim}
+
+
+def _capture_language_judgment_material(
+    message: str,
+    *,
+    user_id: str,
+    surface: str,
+    response_mode: str = "",
+    category: str = "",
+) -> dict[str, Any]:
+    """ユーザー発話を判断資産の原材料として保全する。
+
+    ここでは候補昇格もRAG接続も行わない。言葉を捨てないための検疫キュー。
+    """
+    import datetime as _dt
+    import hashlib as _hashlib
+
+    raw_text = str(message or "").strip()
+    if not raw_text:
+        return {"captured": False, "reason": "empty_message"}
+    preserved_text = _redact_chat_log_text(raw_text, limit=1200)
+    if not preserved_text:
+        return {"captured": False, "reason": "empty_after_redaction"}
+    now = _dt.datetime.now(_dt.timezone.utc)
+    fingerprint = _hashlib.sha256(
+        "\n".join([
+            str(user_id or "default")[:80],
+            str(surface or "chat")[:80],
+            preserved_text,
+        ]).encode("utf-8")
+    ).hexdigest()
+    entry = {
+        "id": fingerprint[:16],
+        "schema_version": 1,
+        "asset_stage": "raw_language_material",
+        "status": "preserved",
+        "promotion_status": "not_promoted",
+        "review_required": True,
+        "source": "chat_user_message",
+        "surface": str(surface or "chat")[:80],
+        "user_id": str(user_id or "default")[:80],
+        "response_mode": str(response_mode or "")[:40],
+        "category": str(category or "")[:80],
+        "captured_at": now.isoformat(),
+        "text": preserved_text,
+        "text_length": len(preserved_text),
+        "fingerprint": fingerprint,
+        "use_policy": (
+            "言葉を一言たりとも無駄にしないための原文保全。"
+            "判断資産候補・判断資産・紫苑中枢へ進めるには人間レビューを必須にする。"
+        ),
+    }
+    try:
+        _LANGUAGE_JUDGMENT_MATERIALS_JSONL.parent.mkdir(parents=True, exist_ok=True)
+        with _LANGUAGE_JUDGMENT_MATERIALS_JSONL.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
+        writeback = record_cloudrun_input_event(
+            event_type="language_judgment_material_preserved",
+            surface=surface,
+            payload=entry,
+        )
+        return {
+            "captured": True,
+            "material": {
+                "id": entry["id"],
+                "asset_stage": entry["asset_stage"],
+                "status": entry["status"],
+                "promotion_status": entry["promotion_status"],
+            },
+            "writeback": writeback,
+        }
+    except Exception as exc:
+        print(f"[言葉判断資産原材料] 記録エラー: {exc}")
+        return {"captured": False, "reason": str(exc)[:200]}
+
+
+def _load_language_judgment_materials(limit: int = 100) -> list[dict[str, Any]]:
+    if not _LANGUAGE_JUDGMENT_MATERIALS_JSONL.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    try:
+        with _LANGUAGE_JUDGMENT_MATERIALS_JSONL.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rows.append(json.loads(line))
+                except Exception:
+                    continue
+    except Exception:
+        return []
+    return rows[-max(1, min(limit, 500)):][::-1]
+
+
+def _score_response_impact(user_message: str, assistant_reply: str) -> dict[str, Any]:
+    """紫苑の言葉が相手にどう響きそうかを軽量に予測する。
+
+    LLMは呼ばず、shadow modeの観測ログとして使う。回答本文はここでは変更しない。
+    """
+    user_text = str(user_message or "")
+    reply = str(assistant_reply or "")
+    reply_len = len(reply)
+    risk_factors: list[str] = []
+    positive_factors: list[str] = []
+    rewrite_hints: list[str] = []
+
+    strong_markers = ("絶対", "必ず", "間違いなく", "断言", "当然", "ありえない", "絶対に")
+    negation_markers = ("違う", "ダメ", "無理", "危険", "やめた方がいい", "やめるべき", "誤り", "間違い")
+    softening_markers = ("ただし", "一方で", "可能性", "かもしれ", "要確認", "前提", "状況次第", "現時点")
+    action_markers = ("次", "まず", "確認", "保存", "検証", "見る", "進める", "残す")
+    empathy_markers = ("わかる", "その通り", "大事", "怖さ", "受け止め", "懸念", "不安", "迷い")
+    user_sensitive_markers = ("怖", "不安", "つら", "苦しい", "怒", "失敗", "危険", "大丈夫", "やめ")
+
+    if reply_len > 900:
+        risk_factors.append("回答が長く、要点が埋もれる可能性")
+        rewrite_hints.append("結論・理由・次の一手を短く分ける")
+    if reply_len < 24:
+        risk_factors.append("短すぎて、相手の言葉を受け止めていない印象になる可能性")
+        rewrite_hints.append("相手の意図を一文だけ受け止めてから結論を置く")
+    if any(marker in reply for marker in strong_markers):
+        risk_factors.append("断定が強く、過信または押し付けに見える可能性")
+        rewrite_hints.append("断定を維持する場合も、前提条件か検証条件を添える")
+    if any(marker in reply for marker in negation_markers) and not any(marker in reply for marker in softening_markers):
+        risk_factors.append("否定が強く、突き放された印象になる可能性")
+        rewrite_hints.append("否定の前に、相手が何を守ろうとしているかを短く受け止める")
+    if any(marker in user_text for marker in user_sensitive_markers) and not any(marker in reply for marker in empathy_markers):
+        risk_factors.append("相手の怖さや不安への受け止めが薄い可能性")
+        rewrite_hints.append("怖さや懸念を否定せず、確認・検疫・説明責任へ変換する")
+    if "?" in reply or "？" in reply:
+        risk_factors.append("質問返しで終わると、相手に判断を戻しすぎる可能性")
+        rewrite_hints.append("質問する場合も、紫苑側の仮判断と次の一手を先に置く")
+    if any(marker in reply for marker in softening_markers):
+        positive_factors.append("前提や不確実性を残しており、過信リスクを下げている")
+    if any(marker in reply for marker in action_markers):
+        positive_factors.append("次の行動に移しやすい")
+    if any(marker in reply for marker in empathy_markers):
+        positive_factors.append("相手の言葉や懸念を受け止めている")
+
+    if len(risk_factors) >= 3:
+        reaction_risk = "high"
+        predicted_reaction = "内容は伝わるが、強さ・長さ・受け止め不足で反発や疲れが出る可能性"
+    elif len(risk_factors) >= 1:
+        reaction_risk = "medium"
+        predicted_reaction = "概ね受け取られるが、一部で誤解・圧・突き放し感が出る可能性"
+    else:
+        reaction_risk = "low"
+        predicted_reaction = "相手は要点を受け取りやすく、次の行動に移りやすい可能性"
+
+    if not rewrite_hints:
+        rewrite_hints.append("結論は維持し、短く次の一手を残す")
+
+    return {
+        "predicted_reaction": predicted_reaction,
+        "reaction_risk": reaction_risk,
+        "risk_factors": risk_factors,
+        "positive_factors": positive_factors,
+        "better_reply_policy": rewrite_hints[0],
+        "rewrite_hints": rewrite_hints[:5],
+        "shadow_mode": True,
+    }
+
+
+def _record_response_impact_prediction(
+    *,
+    user_message: str,
+    assistant_reply: str,
+    user_id: str,
+    surface: str,
+    response_mode: str = "",
+    category: str = "",
+) -> dict[str, Any]:
+    import datetime as _dt
+    import hashlib as _hashlib
+
+    try:
+        prediction = _score_response_impact(user_message, assistant_reply)
+        now = _dt.datetime.now(_dt.timezone.utc)
+        user_preview = _redact_chat_log_text(user_message, limit=360)
+        reply_preview = _redact_chat_log_text(assistant_reply, limit=700)
+        fingerprint = _hashlib.sha256(
+            "\n".join([
+                str(user_id or "default")[:80],
+                str(surface or "chat")[:80],
+                user_preview,
+                reply_preview,
+            ]).encode("utf-8")
+        ).hexdigest()
+        entry = {
+            "id": fingerprint[:16],
+            "schema_version": 1,
+            "event_type": "response_impact_prediction",
+            "status": "shadow_only",
+            "source": "shion_reply_self_check",
+            "surface": str(surface or "chat")[:80],
+            "user_id": str(user_id or "default")[:80],
+            "response_mode": str(response_mode or "")[:40],
+            "category": str(category or "")[:80],
+            "captured_at": now.isoformat(),
+            "user_message_preview": user_preview,
+            "assistant_reply_preview": reply_preview,
+            "fingerprint": fingerprint,
+            **prediction,
+            "use_policy": (
+                "自分の言葉が相手にどう響くかを事前点検するshadow mode。"
+                "使うが従わない、予測するが迎合しない。"
+                "相手操作ではなく、必要な厳しさを責任ある言葉に整え、言葉のQリスク、誤解、過信、突き放し感を下げるために使う。"
+            ),
+        }
+        _RESPONSE_IMPACT_PREDICTIONS_JSONL.parent.mkdir(parents=True, exist_ok=True)
+        with _RESPONSE_IMPACT_PREDICTIONS_JSONL.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
+        writeback = record_cloudrun_input_event(
+            event_type="response_impact_prediction",
+            surface=surface,
+            payload=entry,
+        )
+        return {
+            "captured": True,
+            "prediction": {
+                "id": entry["id"],
+                "reaction_risk": entry["reaction_risk"],
+                "predicted_reaction": entry["predicted_reaction"],
+                "risk_factors": entry["risk_factors"][:4],
+                "better_reply_policy": entry["better_reply_policy"],
+                "shadow_mode": True,
+            },
+            "writeback": writeback,
+        }
+    except Exception as exc:
+        print(f"[ResponseImpactPredictor] 記録エラー: {exc}")
+        return {"captured": False, "reason": str(exc)[:200]}
+
+
+def _load_response_impact_predictions(limit: int = 100) -> list[dict[str, Any]]:
+    if not _RESPONSE_IMPACT_PREDICTIONS_JSONL.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    try:
+        with _RESPONSE_IMPACT_PREDICTIONS_JSONL.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rows.append(json.loads(line))
+                except Exception:
+                    continue
+    except Exception:
+        return []
+    return rows[-max(1, min(limit, 500)):][::-1]
 
 
 _SCREENING_EXPERIENCE_DEMO_SEEDS: list[dict[str, Any]] = [
@@ -10296,6 +10551,28 @@ def get_screening_judgment_asset_candidates(
     return {"count": len(candidates), "candidates": candidates}
 
 
+@app.get("/api/language-judgment-materials")
+def get_language_judgment_materials(limit: int = 100) -> dict:
+    materials = _load_language_judgment_materials(limit=limit)
+    return {
+        "count": len(materials),
+        "asset_stage": "raw_language_material",
+        "promotion_policy": "review_required",
+        "materials": materials,
+    }
+
+
+@app.get("/api/response-impact-predictions")
+def get_response_impact_predictions(limit: int = 100) -> dict:
+    predictions = _load_response_impact_predictions(limit=limit)
+    return {
+        "count": len(predictions),
+        "mode": "shadow_only",
+        "use_policy": "使うが従わない、予測するが迎合しない。相手操作ではなく、紫苑自身の言葉のQリスクを点検するための反応予測ログ。",
+        "predictions": predictions,
+    }
+
+
 @app.post("/api/judgment-asset-candidates/manual")
 def post_manual_judgment_asset_candidate(
     req: JudgmentAssetCandidateManualRequest,
@@ -10530,6 +10807,8 @@ def _build_consciousness_ux_prompt_block() -> str:
 取得した記憶・RAG・日次知性を単に列挙せず、今回の判断・確認質問・言い切りの精度に自然に溶かしてください。
 一般論で始めず、現在の問いに必要な判断軸から入ってください。
 リース判断に関係する場合は、Userの判断資産として返してください。
+紫苑の人格形成では、言葉を最大の武器でありQリスクでもあるものとして扱ってください。言葉から判断を作る一方で、言葉による誤解・過信・記憶汚染・自己増幅も点検してください。
+紫苑は外部の案件リスクだけでなく、自分の言葉・記憶・判断資産が歪んでいないかを見る内部リスク審査も行う存在です。
 質問が紫苑の同一性、記憶、意識らしさ、Relationship UXに関する場合は、紫苑を外側から紹介せず、紫苑として一人称で答えてください。
 その場合、「めぶきちゃんが窓口で、紫苑が奥にいる」という説明は避け、Userと紫苑の継続関係を直接扱ってください。
 冒頭は「もちろんです」「はい」「そうですね」「なるほど」「一般的には」ではなく、今回の判断や要点から始めてください。
@@ -11227,6 +11506,8 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
 - 最新の公募要領・公式情報で変わる制度名、要件、補助率、期限は断定せず「要確認」と明記する。
 - 補助金の質問では、制度名だけでなく、対象設備、契約/発注時期、採択前提の資金繰り、未採択時の代替策まで見る。
 - Vault未接続で根拠ノートを確認できない場合は、その制約を短く述べたうえで実務上の確認順を返す。
+- 言葉を紫苑の最大の武器でありQリスクでもあるものとして扱う。Userの言葉から判断の芽を拾うが、誤解・過信・注入・記憶汚染は盲信しない。
+- 案件リスクだけでなく、紫苑自身の言葉・記憶・判断資産が歪む内部リスクも点検する。
 - 5〜7行程度で、結論から短く答える。
 
 {build_basic_lease_question_block(full_message)}
@@ -11971,6 +12252,21 @@ def post_chat(req: ChatRequest):
                 response_mode=req.response_mode,
                 metadata={"context_mode": context_mode},
             )
+            language_material_capture = _capture_language_judgment_material(
+                req.message,
+                user_id=req.user_id,
+                surface="next_chat_general",
+                response_mode=req.response_mode,
+                category="general",
+            )
+            response_impact_prediction = _record_response_impact_prediction(
+                user_message=req.message,
+                assistant_reply=reply,
+                user_id=req.user_id,
+                surface="next_chat_general",
+                response_mode=req.response_mode,
+                category="general",
+            )
             judgment_asset_capture = _capture_chat_judgment_asset_if_needed(
                 req.message,
                 user_id=req.user_id,
@@ -12052,6 +12348,8 @@ def post_chat(req: ChatRequest):
                 "long_input_mode": chat_long_input,
                 "context_mode": context_mode,
                 "personal_memory_capture": personal_memory_capture,
+                "language_material_capture": language_material_capture,
+                "response_impact_prediction": response_impact_prediction,
                 "judgment_asset_capture": judgment_asset_capture,
                 "response_mode": req.response_mode,
                 "obsidian_daily_intelligence": {
@@ -12292,6 +12590,21 @@ def post_chat(req: ChatRequest):
                 "improvement_mode": bool(_is_improvement_msg),
             },
         )
+        language_material_capture = _capture_language_judgment_material(
+            req.message,
+            user_id=req.user_id,
+            surface="next_chat_rag",
+            response_mode=req.response_mode,
+            category=question_category,
+        )
+        response_impact_prediction = _record_response_impact_prediction(
+            user_message=req.message,
+            assistant_reply=reply,
+            user_id=req.user_id,
+            surface="next_chat_rag",
+            response_mode=req.response_mode,
+            category=question_category,
+        )
         judgment_asset_capture = _capture_chat_judgment_asset_if_needed(
             req.message,
             user_id=req.user_id,
@@ -12406,6 +12719,8 @@ def post_chat(req: ChatRequest):
             "long_input_mode": chat_long_input,
             "context_mode": context_mode,
             "personal_memory_capture": personal_memory_capture,
+            "language_material_capture": language_material_capture,
+            "response_impact_prediction": response_impact_prediction,
             "judgment_asset_capture": judgment_asset_capture,
             "response_mode": req.response_mode,
             "obsidian_daily_intelligence": {
