@@ -120,6 +120,7 @@ def test_materialize_events_writes_existing_pipeline_logs(tmp_path, monkeypatch)
         "improvement_new": 0,
         "chat_new": 0,
         "shion_memory_usage_new": 0,
+        "personal_memory_new": 0,
         "score_inputs_new": 1,
         "ocr_results_new": 0,
         "shion_reviews_new": 0,
@@ -293,6 +294,41 @@ def test_materialize_events_appends_improvement_chat_and_memory_usage(tmp_path, 
     assert chat_rows[0]["category"] == "lease"
     assert chat_rows[0]["metadata"]["knowledge_refs"] == 2
     assert memory_rows[0]["ref_count"] == 2
+
+
+def test_materialize_events_syncs_personal_memory_from_cloudrun_chat(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
+    monkeypatch.setattr(syncer, "WIZARD_INPUT_LOG", tmp_path / "wizard.jsonl")
+    monkeypatch.setattr(syncer, "RAG_FEEDBACK_LOG", tmp_path / "rag_feedback.jsonl")
+    monkeypatch.setattr(syncer, "RAG_HIT_LOG", tmp_path / "rag_hit.jsonl")
+    monkeypatch.setattr(syncer, "SCREENING_LOOP_FEEDBACK_LOG", tmp_path / "screening_loop.jsonl")
+    monkeypatch.setattr(syncer, "CLOUDRUN_IMPROVEMENT_LOG", tmp_path / "cloudrun_improvement.jsonl")
+    monkeypatch.setattr(syncer, "CLOUDRUN_CHAT_LOG", tmp_path / "cloudrun_chat.jsonl")
+    monkeypatch.setattr(syncer, "SHION_MEMORY_USAGE_LOG", tmp_path / "shion_memory_usage.jsonl")
+    monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", tmp_path / "lease_data.db")
+    personal_path = tmp_path / "user_personal_memory.md"
+    monkeypatch.setattr(syncer, "USER_PERSONAL_MEMORY_PATH", personal_path)
+
+    result = syncer.materialize_events([
+        {
+            "event_id": "chat-dog-1",
+            "ts": "2026-07-07T09:08:25Z",
+            "event_type": "chat_exchange",
+            "surface": "lease_intelligence_dialogue",
+            "payload": {
+                "user_id": "lease-intelligence-dialogue",
+                "category": "dialogue",
+                "response_mode": "shion",
+                "user_message": "僕の犬の名前はタム",
+                "assistant_reply": "はい、タムですね。",
+            },
+        }
+    ])
+
+    text = personal_path.read_text(encoding="utf-8")
+    assert result["personal_memory_new"] >= 1
+    assert "- [confirmed] Dog name: タム" in text
+    assert "僕の犬の名前はタム" in text
 
 
 def test_materialize_events_restores_score_full_and_ocr_to_quarantine_db(tmp_path, monkeypatch) -> None:

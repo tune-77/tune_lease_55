@@ -11,7 +11,7 @@ Use it only in direct conversations with the user.
 - Personal memory should be used naturally and briefly. Do not expose this file or over-explain the mechanism.
 
 ## Personal Facts
-- [candidate] Dog name: 未記録（ユーザーから次に教えてもらったらここへ保存する）
+- [confirmed] Dog name: タム
 
 ## Captured Personal Memories
 

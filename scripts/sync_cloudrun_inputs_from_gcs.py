@@ -28,6 +28,7 @@ SCREENING_LOOP_FEEDBACK_LOG = PROJECT_ROOT / "data" / "screening_loop_feedback.j
 CLOUDRUN_IMPROVEMENT_LOG = PROJECT_ROOT / "data" / "cloudrun_improvement_log.jsonl"
 CLOUDRUN_CHAT_LOG = PROJECT_ROOT / "data" / "cloudrun_chat_log.jsonl"
 SHION_MEMORY_USAGE_LOG = PROJECT_ROOT / "data" / "shion_memory_usage_log.jsonl"
+USER_PERSONAL_MEMORY_PATH = PROJECT_ROOT / "data" / "user_personal_memory.md"
 JUDGMENT_ASSET_EVENT_TYPES = {
     "human_response_feedback",
     "screening_loop_feedback",
@@ -730,6 +731,93 @@ def _shion_memory_usage_from_event(event: dict) -> dict | None:
     }
 
 
+def _personal_memory_lines_from_event(event: dict) -> tuple[list[str], str]:
+    """Return local personal-memory lines and confirmed dog name from an event."""
+    event_type = str(event.get("event_type") or "")
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    message = ""
+    lines: list[str] = []
+    dog_name = ""
+
+    if event_type == "personal_memory":
+        message = str(payload.get("message") or "").strip()
+        dog_name = str(payload.get("dog_name") or "").strip()
+        lines = [str(line).strip() for line in payload.get("derived_lines") or [] if str(line).strip()]
+    elif event_type == "chat_exchange":
+        message = str(payload.get("user_message") or "").strip()
+    else:
+        return [], ""
+
+    try:
+        from api.user_personal_memory import derive_personal_memory_entries
+
+        derived = derive_personal_memory_entries(
+            message,
+            source=f"cloudrun:{event.get('surface') or 'unknown'}",
+            timestamp=str(event.get("ts") or ""),
+        )
+    except Exception:
+        derived = {"captured": False, "lines": [], "dog_name": ""}
+
+    if not dog_name:
+        dog_name = str(derived.get("dog_name") or "").strip()
+    if not lines:
+        lines = [str(line).strip() for line in derived.get("lines") or [] if str(line).strip()]
+    if dog_name and not any("Dog name:" in line for line in lines):
+        lines.insert(0, f"- [confirmed] Dog name: {dog_name}")
+    return lines, dog_name
+
+
+def _sync_personal_memory_from_events(events: list[dict], path: Path | None = None) -> int:
+    if not events:
+        return 0
+    target_path = path or USER_PERSONAL_MEMORY_PATH
+
+    try:
+        from api import user_personal_memory as upm
+    except Exception:
+        return 0
+
+    extracted: list[tuple[list[str], str]] = []
+    for event in sorted(events, key=lambda row: str(row.get("ts") or "")):
+        lines, dog_name = _personal_memory_lines_from_event(event)
+        if lines or dog_name:
+            extracted.append((lines, dog_name))
+    if not extracted:
+        return 0
+
+    upm._ensure_file(target_path)
+    original_text = target_path.read_text(encoding="utf-8", errors="replace")
+    file_lines = original_text.splitlines()
+    existing = {line.strip() for line in file_lines}
+    new_count = 0
+
+    for lines, dog_name in extracted:
+        if dog_name:
+            before = "\n".join(file_lines)
+            file_lines = upm._replace_or_append_dog_name(file_lines, dog_name)
+            if "\n".join(file_lines) != before:
+                new_count += 1
+                existing = {line.strip() for line in file_lines}
+
+        capture_lines = [line for line in lines if line and "Dog name:" not in line]
+        if capture_lines and "## Captured Personal Memories" not in file_lines:
+            file_lines.extend(["", "## Captured Personal Memories", ""])
+            existing = {line.strip() for line in file_lines}
+        for line in capture_lines:
+            stripped = line.strip()
+            if not stripped or stripped in existing:
+                continue
+            file_lines.append(stripped)
+            existing.add(stripped)
+            new_count += 1
+
+    next_text = "\n".join(file_lines).rstrip() + "\n"
+    if next_text != original_text:
+        target_path.write_text(next_text, encoding="utf-8")
+    return new_count
+
+
 def _materialize_local_db(events: list[dict]) -> dict[str, int]:
     with _open_local_db() as conn:
         _ensure_local_sync_schema(conn)
@@ -762,6 +850,7 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
     improvement_rows = [row for event in events if (row := _improvement_entry_from_event(event))]
     chat_rows = [row for event in events if (row := _chat_entry_from_event(event))]
     shion_memory_usage_rows = [row for event in events if (row := _shion_memory_usage_from_event(event))]
+    personal_memory_new = _sync_personal_memory_from_events(events) if events else 0
     rag_feedback_rows: list[dict] = []
     rag_hit_rows: list[dict] = []
     for event in events:
@@ -786,6 +875,7 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
         "improvement_new": _append_jsonl_dedup(CLOUDRUN_IMPROVEMENT_LOG, improvement_rows) if improvement_rows else 0,
         "chat_new": _append_jsonl_dedup(CLOUDRUN_CHAT_LOG, chat_rows) if chat_rows else 0,
         "shion_memory_usage_new": _append_jsonl_dedup(SHION_MEMORY_USAGE_LOG, shion_memory_usage_rows) if shion_memory_usage_rows else 0,
+        "personal_memory_new": personal_memory_new,
         **db_result,
     }
 
