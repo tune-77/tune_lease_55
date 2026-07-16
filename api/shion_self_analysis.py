@@ -77,6 +77,9 @@ def _load_vault_keypoints() -> list[str]:
         contents = []
         for entry in raw:
             if isinstance(entry, dict):
+                status = str(entry.get("status") or "active").strip().lower()
+                if status in {"needs_review", "rejected", "deprecated"}:
+                    continue
                 content = str(
                     entry.get("content")
                     or entry.get("fact")

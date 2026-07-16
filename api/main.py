@@ -14410,11 +14410,16 @@ class PromoteKeypointRequest(BaseModel):
 
 @app.post("/api/shion/promote-keypoint")
 def promote_keypoint(req: PromoteKeypointRequest):
-    """討論結果から抽出した判断基準を Obsidian vault の mind.json に追記する。
+    """討論結果から抽出した判断基準を Obsidian vault の mind.json に候補として追記する。
 
     vault が無い環境（Cloud Run 等）では 503 で捨てずにローカルの保留キュー
     （data/shion_promoted_keypoints_pending.jsonl、gitignore対象）へ退避し、
     vault 環境での同期を待つ。
+
+    注意:
+    マルチエージェント討論の出力は、その場の仮説・視点であって紫苑中核の
+    確定信念ではない。ここでは active 直入れせず、needs_review の
+    judgment_asset_candidate として保存する。
     """
     import json as _json
     from pathlib import Path
@@ -14428,11 +14433,14 @@ def promote_keypoint(req: PromoteKeypointRequest):
     new_entry: dict = {
         "fact": text,
         "source": "debate",
+        "source_detail": "multi_agent_screening",
         "case": req.case_summary,
         "date": date.today().isoformat(),
         "memory_type": "judgment_memory",
-        "status": "active",
-        "confidence": 0.78,
+        "asset_stage": "judgment_asset_candidate",
+        "status": "needs_review",
+        "review_required": True,
+        "confidence": 0.62,
         "applies_when": infer_applies_when(text),
     }
     if req.role:

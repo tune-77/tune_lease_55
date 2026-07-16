@@ -389,13 +389,13 @@ function HistoryBanner({ history }: { history: ConversationHistory }) {
   const [open, setOpen] = useState(false);
 
   const roleLabel: Record<string, string> = {
-    shion_skeptic: "Bさんの紫苑（懐疑派）",
-    shion_optimist: "Aさんの紫苑（楽観派）",
-    shion_arbiter: "Cさんの紫苑（統合派）",
+    shion_skeptic: "紫苑の懐疑モード",
+    shion_optimist: "紫苑の楽観モード",
+    shion_arbiter: "紫苑の統合モード",
     // 旧ロール名との後方互換
-    agent_ishibashi: "Bさんの紫苑（懐疑派）",
-    agent_furinka: "Aさんの紫苑（楽観派）",
-    agent_gunshi: "Cさんの紫苑（統合派）",
+    agent_ishibashi: "紫苑の懐疑モード",
+    agent_furinka: "紫苑の楽観モード",
+    agent_gunshi: "紫苑の統合モード",
     user: "ユーザー",
   };
 
@@ -420,7 +420,7 @@ function HistoryBanner({ history }: { history: ConversationHistory }) {
                 <p className="text-xs text-slate-400 mb-2">{(session.created_at || "").slice(0, 16).replace("T", " ")}</p>
                 {arbiter && (
                   <p className="text-sm text-slate-700">
-                    <span className="font-bold text-violet-700">Cさんの紫苑（統合派）:</span> {arbiter.content}
+                    <span className="font-bold text-violet-700">紫苑の統合モード:</span> {arbiter.content}
                   </p>
                 )}
                 <details className="mt-2">
@@ -820,14 +820,14 @@ export default function DebatePage() {
       <div className="mb-8">
         <h1 className="text-3xl font-black text-slate-800 flex items-center gap-3">
           <Orbit className="w-8 h-8 text-violet-600" />
-          紫苑マルチペルソナ討論審査
+          紫苑マルチ視点討論審査
         </h1>
         <p className="text-slate-500 font-medium mt-2">
-          紫苑（懐疑派）vs 紫苑（楽観派）の討論を紫苑（統合派）が裁定。同一の紫苑中核から分岐した異なる視点が境界案件を深掘りする。
+          同一の紫苑中枢から懐疑・楽観・革新の検討モードを一時分岐し、統合モードが最終判断として一つに戻す。
         </p>
       </div>
 
-      {/* 従来の討論との違い（折りたたみ） */}
+      {/* 紫苑マルチ視点討論の紹介（折りたたみ） */}
       <div className="mb-6 rounded-2xl border border-violet-200 overflow-hidden">
         <button
           onClick={() => setExplanationOpen(!explanationOpen)}
@@ -835,7 +835,7 @@ export default function DebatePage() {
         >
           <span className="flex items-center gap-2">
             <Brain className="w-4 h-4" />
-            このページについて — 従来のマルチエージェント討論との違い
+            このページについて — 複数視点を紫苑中枢へ戻す討論
           </span>
           {explanationOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </button>
@@ -847,27 +847,31 @@ export default function DebatePage() {
               それぞれは最初から異なるシステムとして設計されており、「役割を演じる」ことが目的です。
             </p>
             <p>
-              このページでは、<span className="font-bold text-violet-700">同一の紫苑が「それぞれの担当者の経験・記憶・視点」を持った分身として討論</span>します。
-              AさんはAさんの案件経験から、BさんはBさんの審査感覚から——
-              同じ知性体が異なる文脈で育った「自分」として意見を交わすことで、
-              単なる役割演技を超えた多角的な審査視点が生まれます。
+              このページでは、<span className="font-bold text-violet-700">同一の紫苑中枢が案件ごとに検討モードを一時分岐</span>します。
+              別人格を作るのではなく、審査で必要になる懐疑・楽観・革新・統合の視点を切り替え、
+              最後は統合モードが紫苑として一つの判断に戻します。
+            </p>
+            <p>
+              討論から出た汎用論点は、紫苑コアへ直接入れません。
+              まず<span className="font-bold text-violet-700">判断資産候補</span>としてレビュー待ちに保存し、
+              後で採用されたものだけを判断資産や中枢の材料にします。
             </p>
             <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3 pt-1">
               <div className="rounded-xl border border-violet-200 bg-violet-50 p-3">
-                <div className="text-xs font-black text-violet-700 mb-1">Bさんの紫苑（懐疑派）</div>
-                <p className="text-xs text-violet-900">審査部での経験から育った視点。返済原資・格付・資金繰りのリスクを徹底的に問い詰める。</p>
+                <div className="text-xs font-black text-violet-700 mb-1">紫苑の懐疑モード</div>
+                <p className="text-xs text-violet-900">返済原資・格付・資金繰りの弱点を先に洗い出し、通してはいけない理由を確認する。</p>
               </div>
               <div className="rounded-xl border border-teal-200 bg-teal-50 p-3">
-                <div className="text-xs font-black text-teal-700 mb-1">Aさんの紫苑（楽観派）</div>
-                <p className="text-xs text-teal-900">営業現場での経験から育った視点。顧客の投資意図・成長余地・機会損失の可能性を重視する。</p>
+                <div className="text-xs font-black text-teal-700 mb-1">紫苑の楽観モード</div>
+                <p className="text-xs text-teal-900">顧客の投資意図・成長余地・機会損失を見て、条件付きで支えられる理由を探る。</p>
               </div>
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-                <div className="text-xs font-black text-amber-700 mb-1">Cさんの紫苑（統合派）</div>
-                <p className="text-xs text-amber-900">承認履歴・説明責任の経験から育った視点。両面を統合し、組織として再現できる最終判断を下す。</p>
+                <div className="text-xs font-black text-amber-700 mb-1">紫苑の統合モード</div>
+                <p className="text-xs text-amber-900">賛否を統合し、承認条件・否決理由・説明責任まで含めた再現可能な判断に戻す。</p>
               </div>
               <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
-                <div className="text-xs font-black text-sky-700 mb-1">紫苑（革新派）任意</div>
-                <p className="text-xs text-sky-900">慣行にとらわれない評価軸を探る視点。デジタル資産・グリーンリースなど新興分野に前向き。</p>
+                <div className="text-xs font-black text-sky-700 mb-1">紫苑の革新モード（任意）</div>
+                <p className="text-xs text-sky-900">慣行だけでは評価しにくい領域で、代替指標や新しい担保性の見方を探る。</p>
               </div>
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
                 <div className="text-xs font-black text-emerald-700 mb-1">良心の紫苑</div>
@@ -1228,13 +1232,13 @@ export default function DebatePage() {
             <DebateLog log={result.debate_log} sameR1={result.same_opinion_r1} sameR2={result.same_opinion_r2} />
           )}
 
-          {/* コアに昇格（各ペルソナの視点ごとに個別カード） */}
+          {/* 判断資産候補（各ペルソナの視点ごとに個別カード） */}
           {result.core_candidates && result.core_candidates.length > 0 && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <span className="text-lg">✨</span>
-                <h3 className="font-black text-violet-800">紫苑のコアに昇格しますか？</h3>
-                <span className="text-xs text-slate-500 font-medium">各視点を個別に保存・スキップできます</span>
+                <h3 className="font-black text-violet-800">判断資産候補として保存しますか？</h3>
+                <span className="text-xs text-slate-500 font-medium">紫苑コア直入れではなく、レビュー待ち候補として保存します</span>
               </div>
               {result.core_candidates.map((candidate, idx) => {
                 const status = candidateStatuses[idx] ?? "idle";
@@ -1247,7 +1251,7 @@ export default function DebatePage() {
                     {status === "success" ? (
                       <p className="text-sm font-bold text-emerald-700 flex items-center gap-1.5">
                         <CheckCircle2 className="w-4 h-4" />
-                        keypoints に保存しました{coreTotalKeypoints != null ? `（合計${coreTotalKeypoints}件）` : ""}
+                        判断資産候補として保存しました{coreTotalKeypoints != null ? `（候補含む合計${coreTotalKeypoints}件）` : ""}
                       </p>
                     ) : editing ? (
                       <div className="space-y-3">
@@ -1265,7 +1269,7 @@ export default function DebatePage() {
                             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-violet-600 text-white text-sm font-bold hover:bg-violet-700 disabled:opacity-50 transition-colors"
                           >
                             {status === "saving" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                            保存してコアに昇格
+                            候補として保存
                           </button>
                           <button
                             type="button"
@@ -1296,7 +1300,7 @@ export default function DebatePage() {
                             className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-violet-600 text-white text-sm font-bold hover:bg-violet-700 disabled:opacity-50 transition-colors"
                           >
                             {status === "saving" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                            保存してコアに昇格
+                            候補として保存
                           </button>
                           <button
                             type="button"
