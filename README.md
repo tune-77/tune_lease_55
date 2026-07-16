@@ -89,6 +89,39 @@ flowchart LR
 
 リース審査は、このループを検証するための最初の実業務ドメインです。差し替えが必要なのは主にドメイン知識、評価観点、RAGソース、UI、プロンプト上の役割であり、観測・検知・改善・検証・運用の骨格は他の業務AIにも再利用できます。
 
+## Obsidian 判断資産 DevOps
+
+紫苑の記憶基盤である Obsidian は、単なるメモ置き場ではなく、**判断資産を継続運用する DevOps レイヤー**として設計します。
+
+会話、審査入力、改善ログ、Cloud Run から戻る利用イベント、日次メモ、Codex 作業ログをまず原文・要約として捕捉し、そこから再利用できる判断だけを昇格します。昇格した判断資産は、適用条件、失敗条件、根拠ノート、次に聞くべき質問を持ち、AIチャットや審査コメントに反映する前に検証されます。
+
+```mermaid
+flowchart LR
+    Capture["Capture\n会話・審査・改善・作業ログ"] --> Triage["Triage\n分類・重複整理・仮説化"]
+    Triage --> Promote["Promote\n判断資産へ昇格"]
+    Promote --> Test["Test\n回答品質・過信・根拠確認"]
+    Test --> Deploy["Deploy\nAIチャット・審査コメントへ限定反映"]
+    Deploy --> Observe["Observe\nRAG feedback・prompt feedback・ユーザー修正"]
+    Observe --> Rollback["Rollback\n降格・deprecated・再レビュー"]
+    Rollback --> Triage
+```
+
+DevOpsとして扱うことで、判断資産にはライフサイクルが生まれます。
+
+| DevOps概念 | 判断資産での意味 |
+|---|---|
+| Source control | Obsidianノート、source link、event_id、status |
+| Pull request | inbox / hypothesis から active への手動昇格レビュー |
+| CI | source / applies_when / fails_when / next action の品質ゲート |
+| Test suite | 想起評価、回答品質比較、通常ケース・境界ケースでの検証 |
+| Deploy | active 判断資産だけを生成回答へ反映 |
+| Observability | RAG feedback、prompt feedback、改善ログ、ユーザー修正 |
+| Rollback | 悪い判断資産を削除せず deprecated / needs_review へ降格 |
+
+この仕組みが稼働すると、紫苑は「過去の知識を検索して答えるAI」ではなく、**使われるたびに判断基準を観測し、検証し、昇格・降格しながら賢くなる業務AI**になります。リース審査で発生する違和感、条件付き承認、残価・保守・回収リスク、説明責任の観点が、単発の会話で消えず、次の判断へ戻る運用資産になります。
+
+ハッカソン期間中は安全のため、この構想は `Projects/tune_lease_55/Judgment Assets/OS/` の設計ノートに留め、Cloud Run / API / frontend / RAG ranking / daily pipeline には接続しません。実装接続は、read-only監査、手動昇格、テスト、限定反映の順で段階的に行います。
+
 ## システム概要
 
 ### 図1：紫苑を中心としたシステム全体図
