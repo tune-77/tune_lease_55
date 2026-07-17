@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowDown, Brain, Check, Copy, Database, Loader2, Mic, MicOff,
+  ArrowDown, Brain, Check, ClipboardList, Copy, Database, Loader2, Mic, MicOff,
   Network, Paperclip, Send, Sparkles, Trash2, TrendingUp, User, Volume2, VolumeX, X,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
@@ -78,7 +78,20 @@ type DialogueImprovementItem = {
   park_reason?: string;
   raw_preview?: string;
   source_surface?: string;
+  canonical_key?: string;
+  source_event_id?: string;
   recommended_order?: number | null;
+};
+
+type TriageDecision = "today" | "later" | "discard";
+
+type TriageRecord = {
+  canonical_key: string;
+  decision: TriageDecision | string;
+  title?: string;
+  rule_decision?: string;
+  classified_by?: string;
+  decided_at?: string;
 };
 
 type DialogueImprovementLog = {
@@ -984,11 +997,66 @@ export default function LeaseIntelligencePage() {
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [ragFeedbackSent, setRagFeedbackSent] = useState<Set<string>>(new Set());
 
+  // 改善トリアージ state（Phase 1: planning/shion_improvement_loop_plan.md）
+  const [improvementLog, setImprovementLog] = useState<DialogueImprovementLog | null>(null);
+  const [triageByKey, setTriageByKey] = useState<Record<string, TriageRecord>>({});
+  const [triageOpen, setTriageOpen] = useState(false);
+  const [triageSavingKey, setTriageSavingKey] = useState("");
+
   // Emotion trend state
   const [showTrend, setShowTrend] = useState(false);
   const [trendHistory, setTrendHistory] = useState<EmotionHistoryEntry[]>([]);
   const [trendSummary, setTrendSummary] = useState<EmotionSummary | null>(null);
   const [trendLoading, setTrendLoading] = useState(false);
+
+  // ── 改善トリアージ（Phase 1）────────────────────────────────────────────
+  // ルール分類（classifyPmImprovementItems）を初期値とし、User が確定する。
+  const triageCandidates = useMemo(() => {
+    const items = (improvementLog?.items || []).filter((item) => item?.title || item?.id);
+    if (!items.length) return [] as { item: DialogueImprovementItem; rule: TriageDecision }[];
+    const pm = classifyPmImprovementItems(items);
+    const seen = new Set<string>();
+    const rows: { item: DialogueImprovementItem; rule: TriageDecision }[] = [];
+    ([
+      ["today", pm.today],
+      ["later", pm.later],
+      ["discard", pm.discard],
+    ] as const).forEach(([rule, list]) => {
+      list.forEach((item) => {
+        const key = String(item.canonical_key || item.id || "");
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        rows.push({ item, rule });
+      });
+    });
+    return rows;
+  }, [improvementLog]);
+
+  const sendTriage = async (
+    row: { item: DialogueImprovementItem; rule: TriageDecision },
+    decision: TriageDecision,
+  ) => {
+    const key = String(row.item.canonical_key || row.item.id || "");
+    if (!key || triageSavingKey) return;
+    setTriageSavingKey(key);
+    try {
+      const res = await apiClient.post<{ record?: TriageRecord }>("/api/improvement/triage", {
+        canonical_key: key,
+        source_event_id: row.item.source_event_id || "",
+        title: readableImprovementTitle(row.item),
+        decision,
+        rule_decision: row.rule,
+        classified_by: "user",
+        reason: "",
+      });
+      const record = res.data?.record || { canonical_key: key, decision };
+      setTriageByKey((prev) => ({ ...prev, [key]: record }));
+    } catch {
+      setError("トリアージの保存に失敗しました。API接続を確認してください。");
+    } finally {
+      setTriageSavingKey("");
+    }
+  };
 
   const loadTrend = async () => {
     if (trendLoading) return;
@@ -1195,13 +1263,24 @@ export default function LeaseIntelligencePage() {
       apiClient.get<DialogueImprovementLog>("/api/improvement-log"),
       apiClient.get<DialoguePipelineSummary>("/api/improvement-pipeline/summary"),
       apiClient.get<DialogueGapAnalysis>("/api/lease-system-gaps"),
+      apiClient.get<{ records?: TriageRecord[] }>("/api/improvement/triage"),
     ])
-      .then(([stateResult, improvementResult, pipelineResult, gapsResult]) => {
+      .then(([stateResult, improvementResult, pipelineResult, gapsResult, triageResult]) => {
         if (stateResult.status !== "fulfilled") {
           setError("リース知性体の状態を読み込めませんでした。");
           return;
         }
         setState(stateResult.value.data?.state || {});
+        if (improvementResult.status === "fulfilled") {
+          setImprovementLog(improvementResult.value.data || null);
+        }
+        if (triageResult.status === "fulfilled") {
+          const map: Record<string, TriageRecord> = {};
+          (triageResult.value.data?.records || []).forEach((record) => {
+            if (record?.canonical_key) map[record.canonical_key] = record;
+          });
+          setTriageByKey(map);
+        }
         const serverMessages = stateResult.value.data?.messages || [];
         const localMessages = loadLocalDialogueMessages();
         let nextMessages = mergeDialogueMessages(serverMessages, localMessages);
@@ -1545,6 +1624,74 @@ export default function LeaseIntelligencePage() {
               </button>
             </div>
           </header>
+
+          {triageCandidates.length > 0 && (
+            <div className="border-b border-violet-100 bg-white px-5 py-2">
+              <button
+                type="button"
+                onClick={() => setTriageOpen((prev) => !prev)}
+                className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] font-bold text-violet-700 transition hover:bg-violet-50"
+              >
+                <ClipboardList className="h-4 w-4" />
+                改善トリアージ（確定 {triageCandidates.filter((row) => triageByKey[String(row.item.canonical_key || row.item.id || "")]).length} / {triageCandidates.length} 件）
+                <span className="text-slate-400">{triageOpen ? "▲" : "▼"}</span>
+              </button>
+              {triageOpen && (
+                <div className="mt-2 space-y-1.5 pb-1">
+                  <p className="text-[11px] text-slate-400">
+                    破線がルール分類の初期値です。ボタンで確定すると記録されます（未確定分は持ち越し・自動昇格なし）。
+                  </p>
+                  {triageCandidates.map((row) => {
+                    const key = String(row.item.canonical_key || row.item.id || "");
+                    const confirmed = triageByKey[key]?.decision;
+                    return (
+                      <div key={key} className="flex items-center justify-between gap-2 rounded-xl border border-slate-100 px-2.5 py-1.5">
+                        <span className="min-w-0 truncate text-[12px] text-slate-700" title={readableImprovementTitle(row.item)}>
+                          {readableImprovementTitle(row.item)}
+                        </span>
+                        <div className="flex shrink-0 gap-1">
+                          {(["today", "later", "discard"] as TriageDecision[]).map((decision) => {
+                            const isConfirmed = confirmed === decision;
+                            const isRuleDefault = !confirmed && row.rule === decision;
+                            const palette =
+                              decision === "today"
+                                ? isConfirmed
+                                  ? "bg-emerald-600 text-white"
+                                  : isRuleDefault
+                                    ? "border border-dashed border-emerald-400 bg-emerald-50 text-emerald-700"
+                                    : "border border-slate-200 text-slate-500 hover:bg-emerald-50"
+                                : decision === "later"
+                                  ? isConfirmed
+                                    ? "bg-amber-500 text-white"
+                                    : isRuleDefault
+                                      ? "border border-dashed border-amber-400 bg-amber-50 text-amber-700"
+                                      : "border border-slate-200 text-slate-500 hover:bg-amber-50"
+                                  : isConfirmed
+                                    ? "bg-slate-600 text-white"
+                                    : isRuleDefault
+                                      ? "border border-dashed border-slate-400 bg-slate-100 text-slate-600"
+                                      : "border border-slate-200 text-slate-500 hover:bg-slate-100";
+                            const label = decision === "today" ? "今日やる" : decision === "later" ? "後回し" : "捨てる";
+                            return (
+                              <button
+                                key={decision}
+                                type="button"
+                                disabled={triageSavingKey === key}
+                                onClick={() => sendTriage(row, decision)}
+                                className={`rounded-lg px-2 py-1 text-[11px] font-bold transition disabled:opacity-40 ${palette}`}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           <div
             ref={messageListRef}
