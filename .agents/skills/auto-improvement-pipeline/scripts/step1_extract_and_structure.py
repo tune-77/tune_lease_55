@@ -80,12 +80,22 @@ _TARGET_MODULE_KEYWORD_MAP: list[tuple[tuple[str, ...], str]] = [
 ]
 
 
-def _infer_target_module_from_keywords(text: str) -> str | None:
+def _infer_target_module_from_keywords(text: str) -> tuple[str, list[str]] | None:
     """テキストにファイル名が明示されていない場合、頻出テーマのキーワードから
-    対象モジュールを推定するフォールバック。"""
+    対象モジュールを推定するフォールバック。
+
+    Returns:
+        (最有力候補, 候補全件のリスト) のタプル、またはNone。
+        辞書の値がカンマ区切りの場合、先頭を最有力候補として扱う
+        （downstream の auto_fix_policy / step3_auto_apply は単一パスしか
+        解決できないため、target_module 自体は必ず1件に絞る）。
+    """
     for keywords, module in _TARGET_MODULE_KEYWORD_MAP:
         if any(kw in text for kw in keywords):
-            return module
+            candidates = [m.strip() for m in module.split(",") if m.strip()]
+            if not candidates:
+                continue
+            return candidates[0], candidates
     return None
 
 
@@ -133,10 +143,12 @@ def _extract_search_keywords(text: str) -> list[str]:
     return unique[:_MAX_KEYWORDS_FOR_SEARCH]
 
 
-def _infer_target_module_from_repo_search(text: str) -> str | None:
+def _infer_target_module_from_repo_search(text: str) -> tuple[str, list[str]] | None:
     """キーワード辞書でも解決できない場合の最終フォールバック。
-    リポジトリ全文検索でヒット数の多いファイルを対象モジュール候補として返す
-    （複数候補はカンマ区切り。あくまで推定であり要確認扱いは変わらない）。"""
+    リポジトリ全文検索でヒット数の多いファイルを対象モジュール候補として返す。
+    Returns:
+        (最有力候補, 候補全件のリスト) のタプル、またはNone。
+        あくまで推定であり要確認扱いは変わらない。"""
     repo_root = _find_repo_root()
     if repo_root is None:
         return None
@@ -179,7 +191,9 @@ def _infer_target_module_from_repo_search(text: str) -> str | None:
 
     ranked = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
     top = [f for f, _ in ranked[:_MAX_CANDIDATE_MODULES]]
-    return ", ".join(top)
+    if not top:
+        return None
+    return top[0], top
 
 
 def _parse_improvement_text(text: str, rev_id: str) -> dict[str, Any] | None:
@@ -199,14 +213,21 @@ def _parse_improvement_text(text: str, rev_id: str) -> dict[str, Any] | None:
         return None
     
     # モジュール名抽出（.py/.tsx/.ts/.js/.jsx/.json や「～モジュール」「～関数」など）
+    # target_module は必ず単一パスにする（auto_fix_policy / step3_auto_apply が
+    # Path(target_module) をそのまま解決するため、カンマ区切り等は不可）。
+    # 複数候補が得られた場合、2番目以降は target_module_candidates に温存し、
+    # 人間のレビュー時の当たりつけに使う（自動適用の判定には使わない）。
     module_match = re.search(r'([a-zA-Z0-9_./-]+\.(?:py|tsx|ts|jsx|js|json)|[a-zA-Z0-9_]+(?:モジュール|関数|クラス))', text)
+    target_module: str | None
+    target_module_candidates: list[str] = []
     if module_match:
         target_module = module_match.group(1)
     else:
-        target_module = (
-            _infer_target_module_from_keywords(text)
-            or _infer_target_module_from_repo_search(text)
-        )
+        inferred = _infer_target_module_from_keywords(text) or _infer_target_module_from_repo_search(text)
+        if inferred:
+            target_module, target_module_candidates = inferred
+        else:
+            target_module = None
     
     # タイトル抽出：最初の50文字
     title = text.split('\n')[0][:50].strip()
@@ -220,7 +241,7 @@ def _parse_improvement_text(text: str, rev_id: str) -> dict[str, Any] | None:
     elif any(kw in text for kw in ['後でいい', 'いずれ', 'オプション', '将来']):
         priority = "LOW"
     
-    return {
+    result: dict[str, Any] = {
         "id": rev_id,
         "target_module": target_module,
         "title": title,
@@ -228,6 +249,9 @@ def _parse_improvement_text(text: str, rev_id: str) -> dict[str, Any] | None:
         "reason": _extract_reason(text),
         "priority": priority,
     }
+    if len(target_module_candidates) > 1:
+        result["target_module_candidates"] = target_module_candidates
+    return result
 
 
 def _extract_reason(text: str) -> str:
