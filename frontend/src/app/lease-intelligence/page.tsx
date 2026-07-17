@@ -68,6 +68,30 @@ type MindState = {
   };
 };
 
+type DialogueImprovementItem = {
+  id?: string;
+  title?: string;
+  status?: string;
+  reason?: string;
+  recommended_order?: number | null;
+};
+
+type DialogueImprovementLog = {
+  date?: string;
+  generated_at?: string;
+  status?: string;
+  applied?: number;
+  auto_fix_candidates?: number;
+  needs_review?: number;
+  parked?: number;
+  rejected?: number;
+  items?: DialogueImprovementItem[];
+  recursive_self_improvement?: {
+    ranked_queue_count?: number;
+    suppressed_count?: number;
+  };
+};
+
 type EmotionHistoryEntry = {
   id: number;
   recorded_at: string;
@@ -104,6 +128,7 @@ const DEMO_GREETING_SPEECH = DEMO_GREETING.replace("リース知性体", "リー
 const DIALOGUE_RETRY_DELAYS_MS = [1200, 2500, 4000];
 const DIALOGUE_LOCAL_HISTORY_KEY = "lease-intelligence-dialogue-local-history";
 const DIALOGUE_CLEARED_AT_KEY = "lease-intelligence-dialogue-cleared-at";
+const DIALOGUE_DAILY_IMPROVEMENT_KEY_PREFIX = "lease-intelligence-daily-improvement-report";
 const DIALOGUE_MAX_DISPLAY_MESSAGES = 80;
 
 const storageAvailable = () => typeof window !== "undefined" && Boolean(window.localStorage);
@@ -167,6 +192,47 @@ const mergeDialogueMessages = (serverMessages: Message[], localMessages: Message
   return merged
     .sort((a, b) => messageTime(a) - messageTime(b))
     .slice(-DIALOGUE_MAX_DISPLAY_MESSAGES);
+};
+
+const dailyImprovementStorageKey = () =>
+  `${DIALOGUE_DAILY_IMPROVEMENT_KEY_PREFIX}:${new Date().toLocaleDateString("sv-SE")}`;
+
+const shouldShowDailyImprovementReport = () => {
+  if (!storageAvailable()) return false;
+  return window.localStorage.getItem(dailyImprovementStorageKey()) !== "1";
+};
+
+const markDailyImprovementReportShown = () => {
+  if (!storageAvailable()) return;
+  window.localStorage.setItem(dailyImprovementStorageKey(), "1");
+};
+
+const buildDailyImprovementReport = (log: DialogueImprovementLog | null | undefined) => {
+  if (!log || log.status === "NO_REPORT") return "";
+  const candidateItems = (log.items || [])
+    .filter((item) => item?.title && !["APPLIED", "REJECTED", "PARKED"].includes(String(item.status || "").toUpperCase()))
+    .slice(0, 3);
+  const generatedAt = log.date || String(log.generated_at || "").slice(0, 10);
+  const lines = [
+    generatedAt ? `今日の改善レポートです。対象日は ${generatedAt} です。` : "今日の改善レポートです。",
+    `適用済み ${log.applied ?? 0} 件、自動候補 ${log.auto_fix_candidates ?? 0} 件、要レビュー ${log.needs_review ?? 0} 件、保留 ${log.parked ?? 0} 件です。`,
+  ];
+  if (candidateItems.length) {
+    lines.push("相談するなら、まずこのあたりです。");
+    candidateItems.forEach((item, index) => {
+      const reason = item.reason ? ` — ${item.reason}` : "";
+      lines.push(`${index + 1}. ${item.title}${reason}`);
+    });
+  } else {
+    lines.push("今すぐ触るべき軽い候補は多くありません。今日は安定運用を優先してよさそうです。");
+  }
+  const rankedQueue = log.recursive_self_improvement?.ranked_queue_count ?? 0;
+  const suppressed = log.recursive_self_improvement?.suppressed_count ?? 0;
+  if (rankedQueue || suppressed) {
+    lines.push(`再帰的自己改善キューは ${rankedQueue} 件、抑制 ${suppressed} 件です。`);
+  }
+  lines.push("気になる項目があれば、そのまま相談してください。実装判断はUser側で止めます。");
+  return lines.join("\n");
 };
 
 const clearVisibleDialogueMessages = () => {
@@ -950,16 +1016,38 @@ export default function LeaseIntelligencePage() {
 
   // ── Init ─────────────────────────────────────────────────────────────────
   useEffect(() => {
-    apiClient.get("/api/lease-intelligence/dialogue/state", {
-      params: { since: dialogueDisplaySinceIso() },
-    })
-      .then((res) => {
-        setState(res.data?.state || {});
-        const nextMessages = mergeDialogueMessages(res.data?.messages || [], loadLocalDialogueMessages());
+    Promise.allSettled([
+      apiClient.get("/api/lease-intelligence/dialogue/state", {
+        params: { since: dialogueDisplaySinceIso() },
+      }),
+      apiClient.get<DialogueImprovementLog>("/api/improvement-log"),
+    ])
+      .then(([stateResult, improvementResult]) => {
+        if (stateResult.status !== "fulfilled") {
+          setError("リース知性体の状態を読み込めませんでした。");
+          return;
+        }
+        setState(stateResult.value.data?.state || {});
+        const serverMessages = stateResult.value.data?.messages || [];
+        const localMessages = loadLocalDialogueMessages();
+        let nextMessages = mergeDialogueMessages(serverMessages, localMessages);
+        if (improvementResult.status === "fulfilled" && shouldShowDailyImprovementReport()) {
+          const report = buildDailyImprovementReport(improvementResult.value.data);
+          if (report) {
+            const reportMessage: Message = {
+              id: Date.now() + 17,
+              role: "assistant",
+              content: report,
+              created_at: new Date().toISOString(),
+            };
+            nextMessages = [...nextMessages, reportMessage].slice(-DIALOGUE_MAX_DISPLAY_MESSAGES);
+            markDailyImprovementReportShown();
+            speakText(report);
+          }
+        }
         setMessages(nextMessages);
         saveLocalDialogueMessages(nextMessages);
       })
-      .catch(() => setError("リース知性体の状態を読み込めませんでした。"))
       .finally(() => setInitializing(false));
 
     setVoiceSupported(Boolean(getSpeechRecognition()));
