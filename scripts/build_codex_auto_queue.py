@@ -253,7 +253,7 @@ def queue_item(item: dict[str, Any]) -> dict[str, Any]:
         "risk": policy.get("risk") or "",
         "max_files": policy.get("max_files"),
         "required_checks": policy.get("required_checks") or ["py_compile", "targeted_test"],
-        "mode": "codex_dry_run_first",
+        "mode": "claude_dry_run_first",
         "prompt": f"{item.get('id')} {title} を {target_module or '対象ファイル推定'} に小さく実装し、テスト後に差分を報告してください。data/models/.claude/state は触らないでください。",
     }
 

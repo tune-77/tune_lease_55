@@ -1,6 +1,6 @@
 {
   "mode": "midnight",
-  "started_at": "2026-07-07T03:30:00",
+  "started_at": "2026-07-18T03:30:04",
   "errors": [],
   "sync": {
     "status": "completed"
@@ -9,11 +9,11 @@
     "status": "completed",
     "returncode": 0,
     "vault": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/lease-wiki-vault",
-    "started_at": "2026-07-07T03:30:00",
-    "finished_at": "2026-07-07T03:30:16",
-    "duration_seconds": 16.24,
-    "stdout_tail": "2026-07-07T03:30:00 [INFO] ============================================================\n2026-07-07T03:30:00 [INFO] [reindex] 開始  vault=/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/lease-wiki-vault  full=False\n2026-07-07T03:30:00 [INFO] [reindex] 差分更新モード\n2026-07-07T03:30:00 [INFO] [Indexer] start scanning: /Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/lease-wiki-vault\n2026-07-07T03:30:02 [INFO] [KnowledgeVectorStore] collection initialized: /Users/kobayashiisaoryou/clawd/tune_lease_55/api/chroma_db\n2026-07-07T03:30:09 [INFO] Load pretrained SentenceTransformer: /Users/kobayashiisaoryou/clawd/tune_lease_55/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2\n2026-07-07T03:30:11 [INFO] [KnowledgeVectorStore] encoder initialized in offline mode: /Users/kobayashiisaoryou/clawd/tune_lease_55/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2\n2026-07-07T03:30:15 [INFO] [Indexer] done: added=46, skipped=284, pruned=0, total=330\n2026-07-07T03:30:15 [INFO] [reindex] 完了  added=46  skipped=284  total_in_db=5098  elapsed=15.2s\n2026-07-07T03:30:15 [INFO] ============================================================\n",
-    "stderr_tail": "The tokenizer you are loading from '/Users/kobayashiisaoryou/clawd/tune_lease_55/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2' with an incorrect regex pattern: https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Instruct-2503/discussions/84#69121093e8b480e709447d5e. This will lead to incorrect tokenization. You should set the `fix_mistral_regex=True` flag when loading this tokenizer to fix this issue.\n\nBatches:   0%|          | 0/2 [00:00<?, ?it/s]\nBatches:  50%|█████     | 1/2 [00:01<00:01,  1.62s/it]\nBatches: 100%|██████████| 2/2 [00:02<00:00,  1.04it/s]\nBatches: 100%|██████████| 2/2 [00:02<00:00,  1.06s/it]\n"
+    "started_at": "2026-07-18T03:30:04",
+    "finished_at": "2026-07-18T03:30:29",
+    "duration_seconds": 24.73,
+    "stdout_tail": "2026-07-18T03:30:04 [INFO] ============================================================\n2026-07-18T03:30:04 [INFO] [reindex] 開始  vault=/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/lease-wiki-vault  full=False\n2026-07-18T03:30:04 [INFO] [reindex] 差分更新モード\n2026-07-18T03:30:04 [INFO] [Indexer] start scanning: /Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/lease-wiki-vault\n2026-07-18T03:30:08 [INFO] [KnowledgeVectorStore] collection initialized: /Users/kobayashiisaoryou/clawd/tune_lease_55/api/chroma_db\n2026-07-18T03:30:15 [INFO] Load pretrained SentenceTransformer: /Users/kobayashiisaoryou/clawd/tune_lease_55/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2\n2026-07-18T03:30:17 [INFO] [KnowledgeVectorStore] encoder initialized in offline mode: /Users/kobayashiisaoryou/clawd/tune_lease_55/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2\n2026-07-18T03:30:28 [INFO] [Indexer] done: added=123, skipped=936, pruned=0, total=1059\n2026-07-18T03:30:28 [INFO] [reindex] 完了  added=123  skipped=936  total_in_db=7571  elapsed=23.4s\n2026-07-18T03:30:28 [INFO] ============================================================\n",
+    "stderr_tail": "The tokenizer you are loading from '/Users/kobayashiisaoryou/clawd/tune_lease_55/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2' with an incorrect regex pattern: https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Instruct-2503/discussions/84#69121093e8b480e709447d5e. This will lead to incorrect tokenization. You should set the `fix_mistral_regex=True` flag when loading this tokenizer to fix this issue.\n\nBatches:   0%|          | 0/2 [00:00<?, ?it/s]\nBatches:  50%|█████     | 1/2 [00:02<00:02,  2.03s/it]\nBatches: 100%|██████████| 2/2 [00:02<00:00,  1.32s/it]\nBatches: 100%|██████████| 2/2 [00:02<00:00,  1.42s/it]\n\nBatches:   0%|          | 0/2 [00:00<?, ?it/s]\nBatches:  50%|█████     | 1/2 [00:01<00:01,  1.44s/it]\nBatches: 100%|██████████| 2/2 [00:02<00:00,  1.50s/it]\nBatches: 100%|██████████| 2/2 [00:02<00:00,  1.49s/it]\n\nBatches:   0%|          | 0/1 [00:00<?, ?it/s]\nBatches: 100%|██████████| 1/1 [00:01<00:00,  1.14s/it]\nBatches: 100%|██████████| 1/1 [00:01<00:00,  1.14s/it]\n"
   },
   "db": {
     "status": "completed",
@@ -21,7 +21,7 @@
     "counts": [
       {
         "table_name": "past_cases",
-        "n": 2159
+        "n": 2165
       },
       {
         "table_name": "ml_features",
@@ -64,15 +64,15 @@
       },
       {
         "industry_sub": "44 道路貨物運送業",
-        "n": 216,
-        "avg_score": 62.9,
+        "n": 221,
+        "avg_score": 63.4,
         "min_score": 0.0,
         "max_score": 100.0
       },
       {
         "industry_sub": "24 金属製品製造業",
-        "n": 213,
-        "avg_score": 44.3,
+        "n": 214,
+        "avg_score": 44.4,
         "min_score": 0.0,
         "max_score": 99.8
       },
@@ -125,8 +125,8 @@
       },
       {
         "final_status": "未登録",
-        "n": 233,
-        "avg_score": 44.8
+        "n": 239,
+        "avg_score": 45.7
       },
       {
         "final_status": "検収完了",
@@ -157,8 +157,8 @@
       },
       {
         "band": "40-60",
-        "n": 972,
-        "win_pct": 63.2
+        "n": 973,
+        "win_pct": 63.1
       },
       {
         "band": "60-80",
@@ -167,8 +167,8 @@
       },
       {
         "band": "80-100",
-        "n": 375,
-        "win_pct": 49.1
+        "n": 380,
+        "win_pct": 48.4
       }
     ],
     "q_risk": {
@@ -213,23 +213,23 @@
         "error": "HTTP Error 403: Forbidden"
       }
     ],
-    "completed_at": "2026-07-07T03:30:17"
+    "completed_at": "2026-07-18T03:30:31"
   },
   "reasoning": {
     "status": "completed",
-    "started_at": "2026-07-07T03:30:17",
-    "finished_at": "2026-07-07T03:31:17",
+    "started_at": "2026-07-18T03:30:31",
+    "finished_at": "2026-07-18T03:31:31",
     "steps": [
       {
         "step": "triad_fusion_chat_web_db",
-        "started_at": "2026-07-07T03:30:17",
-        "finished_at": "2026-07-07T03:30:47",
-        "hold_seconds": 30.06
+        "started_at": "2026-07-18T03:30:31",
+        "finished_at": "2026-07-18T03:31:01",
+        "hold_seconds": 30.0
       },
       {
         "step": "contradiction_and_edge_case_detection",
-        "started_at": "2026-07-07T03:30:47",
-        "finished_at": "2026-07-07T03:31:17",
+        "started_at": "2026-07-18T03:31:01",
+        "finished_at": "2026-07-18T03:31:31",
         "hold_seconds": 30.0
       }
     ],
@@ -243,5 +243,5 @@
       "外部知識はモデルドリフト監視を支持する。PSI/CSI/較正状態をスコア横に出す設計へ進める。"
     ]
   },
-  "finished_at": "2026-07-07T03:31:17"
+  "finished_at": "2026-07-18T03:31:31"
 }

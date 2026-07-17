@@ -1257,21 +1257,16 @@ export default function LeaseIntelligencePage() {
 
   // ── Init ─────────────────────────────────────────────────────────────────
   useEffect(() => {
-    Promise.allSettled([
-      apiClient.get("/api/lease-intelligence/dialogue/state", {
-        params: { since: dialogueDisplaySinceIso() },
-      }),
-      apiClient.get<DialogueImprovementLog>("/api/improvement-log"),
-      apiClient.get<DialoguePipelineSummary>("/api/improvement-pipeline/summary"),
-      apiClient.get<DialogueGapAnalysis>("/api/lease-system-gaps"),
-      apiClient.get<{ records?: TriageRecord[] }>("/api/improvement/triage"),
-    ])
-      .then(([stateResult, improvementResult, pipelineResult, gapsResult, triageResult]) => {
-        if (stateResult.status !== "fulfilled") {
-          setError("リース知性体の状態を読み込めませんでした。");
-          return;
-        }
-        setState(stateResult.value.data?.state || {});
+    let cancelled = false;
+
+    const loadImprovementContext = () => {
+      Promise.allSettled([
+        apiClient.get<DialogueImprovementLog>("/api/improvement-log"),
+        apiClient.get<DialoguePipelineSummary>("/api/improvement-pipeline/summary"),
+        apiClient.get<DialogueGapAnalysis>("/api/lease-system-gaps"),
+        apiClient.get<{ records?: TriageRecord[] }>("/api/improvement/triage"),
+      ]).then(([improvementResult, pipelineResult, gapsResult, triageResult]) => {
+        if (cancelled) return;
         if (improvementResult.status === "fulfilled") {
           setImprovementLog(improvementResult.value.data || null);
         }
@@ -1282,9 +1277,6 @@ export default function LeaseIntelligencePage() {
           });
           setTriageByKey(map);
         }
-        const serverMessages = stateResult.value.data?.messages || [];
-        const localMessages = loadLocalDialogueMessages();
-        let nextMessages = mergeDialogueMessages(serverMessages, localMessages);
         if (improvementResult.status === "fulfilled" && shouldShowDailyImprovementReport()) {
           const report = buildDailyImprovementReport(
             improvementResult.value.data,
@@ -1298,15 +1290,37 @@ export default function LeaseIntelligencePage() {
               content: report,
               created_at: new Date().toISOString(),
             };
-            nextMessages = [...nextMessages, reportMessage].slice(-DIALOGUE_MAX_DISPLAY_MESSAGES);
+            setMessages((prev) => {
+              const next = [...prev, reportMessage].slice(-DIALOGUE_MAX_DISPLAY_MESSAGES);
+              saveLocalDialogueMessages(next);
+              return next;
+            });
             markDailyImprovementReportShown();
             speakText(report);
           }
         }
+      });
+    };
+
+    apiClient.get("/api/lease-intelligence/dialogue/state", {
+      params: { since: dialogueDisplaySinceIso() },
+    })
+      .then((stateResult) => {
+        if (cancelled) return;
+        setState(stateResult.data?.state || {});
+        const serverMessages = stateResult.data?.messages || [];
+        const localMessages = loadLocalDialogueMessages();
+        const nextMessages = mergeDialogueMessages(serverMessages, localMessages);
         setMessages(nextMessages);
         saveLocalDialogueMessages(nextMessages);
+        loadImprovementContext();
       })
-      .finally(() => setInitializing(false));
+      .catch(() => {
+        if (!cancelled) setError("リース知性体の状態を読み込めませんでした。");
+      })
+      .finally(() => {
+        if (!cancelled) setInitializing(false);
+      });
 
     setVoiceSupported(Boolean(getSpeechRecognition()));
 
@@ -1318,6 +1332,10 @@ export default function LeaseIntelligencePage() {
         event_id: key,
       }).then(() => window.sessionStorage.setItem(key, "1")).catch(() => {});
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // ── Scroll ───────────────────────────────────────────────────────────────

@@ -104,6 +104,47 @@ def test_normalize_improvement_report_reflects_review_ledger_statuses(monkeypatc
     assert result["parked"] == 1
 
 
+def test_normalize_improvement_report_skips_status_echo_entries(monkeypatch):
+    import api.main as main
+
+    monkeypatch.setattr(main, "_latest_improvement_statuses", lambda: {})
+
+    report = {
+        "date": "2026-07-17",
+        "needs_review": [
+            {
+                "id": "REV-043",
+                "title": "- status: rejected",
+                "detail": "- status: rejected\n理由：AI Chat 改善ログ (2026-07-08) のチャット改善メモ",
+            },
+            {
+                "id": "REV-046",
+                "title": "- status: deferred",
+                "detail": "- status: deferred\n理由：AI Chat 改善ログ (2026-07-09) のチャット改善メモ",
+            },
+            {
+                "id": "REV-100",
+                "title": "複数のAIモデルを同時に動かす機能がない",
+                "detail": "実体のある改善候補",
+            },
+        ],
+        "rejected": [
+            {
+                "id": "REV-200",
+                "title": "改善ログ: rejected",
+                "detail": "- status: rejected\n- canonical_key: misc_noise\n- source: improvement-log API",
+            }
+        ],
+    }
+
+    result = main._normalize_improvement_report(report)
+    titles = [item["title"] for item in result["items"]]
+
+    assert titles == ["複数のAIモデルを同時に動かす機能がない"]
+    assert result["needs_review"] == 1
+    assert result["rejected"] == 0
+
+
 def test_cloudrun_improvement_items_include_raw_preview(monkeypatch):
     import api.main as main
 
@@ -290,3 +331,163 @@ def test_cloudrun_improvement_items_skip_deleted_control(monkeypatch):
     )
 
     assert main._cloudrun_improvement_items_from_gcs() == []
+
+
+def test_cloudrun_improvement_items_skip_shion_review_prompt_noise(monkeypatch):
+    import api.main as main
+
+    monkeypatch.setattr(
+        main,
+        "_read_recent_cloudrun_input_events_from_gcs",
+        lambda days=45: [
+            {
+                "event_id": "event-shion-review-prompt",
+                "event_type": "improvement_note",
+                "surface": "screening",
+                "ts": "2026-07-17T00:00:00Z",
+                "payload": {
+                    "title": "AIチャット改善候補",
+                    "body": (
+                        "【審査分析画面からの紫苑レビュー依頼】\n"
+                        "この案件を、審査担当者の横にいる紫苑としてレビューしてください。\n"
+                        "出力は短く、次の4項目でお願いします。\n"
+                        "1. 紫苑の第一印象\n"
+                        "2. 数字だけでは見落としそうな違和感\n"
+                        "3. 条件付き承認にするなら必要な確認\n"
+                        "4. 稟議で残すべき一文\n"
+                        "前提:\n"
+                        "・企業名: デモフードサービス\n"
+                        "・判定: 承認圏内"
+                    ),
+                },
+            },
+            {
+                "event_id": "event-real-improvement",
+                "event_type": "improvement_note",
+                "surface": "chat_improvement",
+                "ts": "2026-07-17T00:01:00Z",
+                "payload": {
+                    "title": "チャット改善メモ",
+                    "body": "課題: テスト専用の未処理改善が一覧に表示されない。\n次の行動: 原因調査する。",
+                },
+            },
+        ],
+    )
+
+    items = main._cloudrun_improvement_items_from_gcs()
+
+    assert len(items) == 1
+    assert items[0]["source_event_id"] == "event-real-improvement"
+    assert "テスト専用の未処理改善" in items[0]["title"]
+
+
+def test_cloudrun_improvement_items_skip_improvement_log_status_echo(monkeypatch):
+    import api.main as main
+
+    monkeypatch.setattr(
+        main,
+        "_read_recent_cloudrun_input_events_from_gcs",
+        lambda days=45: [
+            {
+                "event_id": "event-rejected-echo",
+                "event_type": "improvement_note",
+                "surface": "improvement_log",
+                "ts": "2026-07-17T00:00:00Z",
+                "payload": {
+                    "title": "改善ログ: rejected",
+                    "body": (
+                        "- status: rejected\n"
+                        "- title: - status: rejected\n"
+                        "- canonical_key: cloudrun-rejected-key\n"
+                        "- source: improvement-log API"
+                    ),
+                },
+            },
+            {
+                "event_id": "event-deferred-echo",
+                "event_type": "improvement_note",
+                "surface": "improvement_log",
+                "ts": "2026-07-17T00:01:00Z",
+                "payload": {
+                    "title": "改善ログ: deferred",
+                    "body": (
+                        "- status: deferred\n"
+                        "- title: - status: deferred\n"
+                        "- canonical_key: cloudrun-deferred-key\n"
+                        "- source: improvement-log API"
+                    ),
+                },
+            },
+            {
+                "event_id": "event-real-improvement",
+                "event_type": "improvement_note",
+                "surface": "chat_improvement",
+                "ts": "2026-07-17T00:02:00Z",
+                "payload": {
+                    "title": "チャット改善メモ",
+                    "body": "課題: まだ残すべき改善が一覧に表示されない。\n次の行動: 原因調査する。",
+                },
+            },
+        ],
+    )
+
+    items = main._cloudrun_improvement_items_from_gcs()
+
+    assert len(items) == 1
+    assert items[0]["source_event_id"] == "event-real-improvement"
+    assert "まだ残すべき改善" in items[0]["title"]
+
+
+def test_cloudrun_improvement_items_skip_historically_applied_title(tmp_path, monkeypatch):
+    import api.main as main
+
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    (reports / "improvement_report_20260711.json").write_text(
+        json.dumps(
+            {
+                "date": "2026-07-11",
+                "applied": [
+                    {
+                        "id": "REV-050",
+                        "title": "企業登録後、結果登録画面に直前に登録した企業が表示されない。",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(main, "_REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        main,
+        "_read_recent_cloudrun_input_events_from_gcs",
+        lambda days=45: [
+            {
+                "event_id": "event-applied-cloudrun-note",
+                "event_type": "improvement_note",
+                "surface": "chat_improvement",
+                "ts": "2026-07-17T00:00:00Z",
+                "payload": {
+                    "title": "チャット改善メモ",
+                    "body": "課題: 企業登録後、結果登録画面に直前に登録した企業が表示されない。\n次の行動: 原因調査する。",
+                },
+            },
+            {
+                "event_id": "event-open-cloudrun-note",
+                "event_type": "improvement_note",
+                "surface": "chat_improvement",
+                "ts": "2026-07-17T00:01:00Z",
+                "payload": {
+                    "title": "チャット改善メモ",
+                    "body": "課題: まだ修正していないテスト改善。\n次の行動: 原因調査する。",
+                },
+            },
+        ],
+    )
+
+    items = main._cloudrun_improvement_items_from_gcs()
+
+    assert len(items) == 1
+    assert items[0]["source_event_id"] == "event-open-cloudrun-note"
+    assert "まだ修正していないテスト改善" in items[0]["title"]
