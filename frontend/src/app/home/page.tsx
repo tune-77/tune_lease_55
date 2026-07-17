@@ -218,6 +218,7 @@ export default function HomeDashboard() {
   const [newsBody, setNewsBody] = useState("");
   const [newsSubmitting, setNewsSubmitting] = useState(false);
   const [homeShionMessage, setHomeShionMessage] = useState("");
+  const [isCloudRunHost, setIsCloudRunHost] = useState(true);
   const [newsResult, setNewsResult] = useState<{
     title: string;
     summary_lines: string[];
@@ -232,6 +233,7 @@ export default function HomeDashboard() {
   useEffect(() => {
     // 画面マウント時にめぶきちゃんを更新
     triggerMebuki('guide', '紫苑の審査室を開きました。\n昨日からの変化と、今日の判断材料を一緒に見ていきます。');
+    setIsCloudRunHost(window.location.hostname.endsWith(".run.app"));
 
     try {
       const raw = window.localStorage.getItem(HOME_SETTINGS_KEY);
@@ -416,7 +418,7 @@ export default function HomeDashboard() {
             {[
               { label: "審査分析", href: "/screening" },
               { label: "リースチャット", href: "/chat" },
-              { label: "帰還データ検疫", href: "/cloudrun-return-review" },
+              ...(!isCloudRunHost ? [{ label: "帰還データ検疫", href: "/cloudrun-return-review" }] : []),
             ].map((item) => (
               <button
                 key={item.href}

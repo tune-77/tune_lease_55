@@ -35,7 +35,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { isCollapsed, toggleSidebar, isMobileOpen, toggleMobile } = useSidebar();
   const hideMobileEdgeToggle = pathname === '/multi-shion-demo';
-  const [isCloudRunHost, setIsCloudRunHost] = useState(false);
+  const [isCloudRunHost, setIsCloudRunHost] = useState(true);
   const [frequentItems, setFrequentItems] = useState<Array<SidebarItem & { count: number }>>([]);
   const hideResearchOrgan =
     process.env.NEXT_PUBLIC_HIDE_RESEARCH_ORGAN === "1" || isCloudRunHost;
@@ -55,7 +55,9 @@ export default function Sidebar() {
         { name: 'システム概要', href: '/system-overview', icon: Orbit, color: 'text-fuchsia-400' },
         { name: 'DevOpsサイクル', href: '/devops', icon: GitBranch, color: 'text-emerald-300' },
         { name: '紫苑の記憶システム', href: '/shion-memory-system', icon: Database, color: 'text-sky-300' },
-        { name: '帰還データ検疫', href: '/cloudrun-return-review', icon: ShieldCheck, color: 'text-teal-300' },
+        ...(!isCloudRunHost
+          ? [{ name: '帰還データ検疫', href: '/cloudrun-return-review', icon: ShieldCheck, color: 'text-teal-300' }]
+          : []),
         { name: '紫苑/一般 比較', href: '/chat-compare', icon: MessageSquare, color: 'text-indigo-300' },
         { name: '自己同一性検査', href: '/shion-identity-check', icon: ShieldCheck, color: 'text-cyan-300' },
         { name: 'マルチ紫苑デモ', href: '/multi-shion-demo', icon: Users, color: 'text-pink-300' },

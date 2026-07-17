@@ -89,13 +89,20 @@ export default function CloudRunReturnReviewPage() {
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
   const [promoting, setPromoting] = useState(false);
   const [promotionMessage, setPromotionMessage] = useState("");
-  const [isCloudRunHost, setIsCloudRunHost] = useState(false);
+  const [isCloudRunHost, setIsCloudRunHost] = useState(true);
 
   useEffect(() => {
     setIsCloudRunHost(window.location.hostname.endsWith(".run.app"));
   }, []);
 
   const fetchData = useCallback(async () => {
+    if (typeof window !== "undefined" && window.location.hostname.endsWith(".run.app")) {
+      setLoading(false);
+      setItems([]);
+      setSummary(null);
+      setDbPath("");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -188,6 +195,33 @@ export default function CloudRunReturnReviewPage() {
       setPromoting(false);
     }
   }, [fetchData]);
+
+  if (isCloudRunHost) {
+    return (
+      <main className="min-h-screen bg-slate-50 p-4 md:p-6">
+        <div className="mx-auto max-w-3xl rounded-2xl border border-amber-200 bg-white p-6 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white">
+              <ShieldCheck className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-xl font-black text-slate-900">帰還データ検疫はローカル専用です</h1>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Cloud Run版ではこの機能は使いません。GCSから同期した帰還データをローカルの隔離DBで確認し、必要なものだけ昇格します。
+              </p>
+              <Link
+                href="/system-overview"
+                className="mt-4 inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100"
+              >
+                <Database className="h-4 w-4" />
+                仕組みを見る
+              </Link>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-slate-50 p-4 md:p-6">

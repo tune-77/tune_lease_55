@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -79,6 +79,16 @@ const cycleSteps = [
 ];
 
 export default function DevOpsPage() {
+  const [isCloudRunHost, setIsCloudRunHost] = useState(true);
+
+  useEffect(() => {
+    setIsCloudRunHost(window.location.hostname.endsWith(".run.app"));
+  }, []);
+
+  const visibleCycleSteps = isCloudRunHost
+    ? cycleSteps.filter((step) => !["検疫", "人間承認", "昇格 → 次サイクルへ"].includes(step.title))
+    : cycleSteps;
+
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950">
       <section className="border-b border-slate-200 bg-white">
@@ -105,13 +115,15 @@ export default function DevOpsPage() {
                 ハッカソンデモ
                 <ArrowRight className="h-4 w-4" />
               </Link>
-              <Link
-                href="/cloudrun-return-review"
-                className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 hover:bg-white"
-              >
-                帰還データ検疫
-                <ArrowRight className="h-4 w-4" />
-              </Link>
+              {!isCloudRunHost && (
+                <Link
+                  href="/cloudrun-return-review"
+                  className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 hover:bg-white"
+                >
+                  帰還データ検疫
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              )}
               <Link
                 href="/shion-memory-system"
                 className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 hover:bg-white"
@@ -143,14 +155,18 @@ export default function DevOpsPage() {
         <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center gap-3">
             <GitBranch className="h-6 w-6 text-emerald-600" />
-            <h2 className="text-2xl font-black">開発 → デプロイ → 検疫 → 昇格</h2>
+            <h2 className="text-2xl font-black">
+              {isCloudRunHost ? "開発 → デプロイ → 安全分離" : "開発 → デプロイ → 検疫 → 昇格"}
+            </h2>
           </div>
           <p className="mt-3 text-sm leading-7 text-slate-600">
-            Cloud Run 上で生まれたデータは、無条件に本体DBへ書き戻しません。デモ/本番を分離し、隔離DBでの人間承認を経てから初めて昇格します。
+            {isCloudRunHost
+              ? "Cloud Run版はデモDBだけで動き、本体DBには接続しません。公開デモでは使える機能だけを表示します。"
+              : "Cloud Run 上で生まれたデータは、無条件に本体DBへ書き戻しません。デモ/本番を分離し、隔離DBでの人間承認を経てから初めて昇格します。"}
           </p>
 
           <div className="mt-6 space-y-3">
-            {cycleSteps.map((step, index) => (
+            {visibleCycleSteps.map((step, index) => (
               <div key={step.title} className="flex items-start gap-4">
                 <div
                   className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${step.tone} text-white shadow-sm`}
