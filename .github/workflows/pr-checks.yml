@@ -2,8 +2,14 @@ name: PR Checks
 
 # PR前チェックリスト（tsc --noEmit / npm run lint）の自動化。
 # eslint は必ずチェックのみ（--fix 禁止: .claude/rules/frontend.md 参照）
+#
+# Phase 0.5（planning/shion_improvement_loop_plan.md）:
+# master への直接push（Codex経由の直コミット等）はPRを経由せずCI未実行のまま
+# 本番コードに入っていたため、push トリガーでも同じチェックを実行する。
 on:
   pull_request:
+    branches: [master]
+  push:
     branches: [master]
 
 jobs:

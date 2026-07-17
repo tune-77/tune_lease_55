@@ -1042,6 +1042,7 @@ export default function LeaseIntelligencePage() {
     try {
       const res = await apiClient.post<{ record?: TriageRecord }>("/api/improvement/triage", {
         canonical_key: key,
+        item_id: row.item.id || "",
         source_event_id: row.item.source_event_id || "",
         title: readableImprovementTitle(row.item),
         decision,
