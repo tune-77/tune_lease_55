@@ -34,12 +34,28 @@ if str(REPO_ROOT) not in sys.path:
 
 from api.rule_engine.batch_apply import _is_protected  # noqa: E402
 
+SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+from shion_triage import (  # noqa: E402
+    is_user_discarded,
+    load_triage_latest,
+    resolve_triage_mode,
+    triage_record_for_item,
+)
+
 RECIPES_ROOT = REPO_ROOT / "data" / "recipes"
 AUDIT_LOG = RECIPES_ROOT / "auto_approved_log.jsonl"
 
 
-def is_auto_approvable(recipe: dict) -> tuple[bool, str]:
+def is_auto_approvable(recipe: dict, triage: dict[str, dict] | None = None) -> tuple[bool, str]:
     """自動承認できるか判定し、(可否, 理由) を返す。"""
+    # Phase 2 (P2-2): User がトリアージで「捨てる」と確定した候補は自動承認しない。
+    # 明示的な人間の判断を自動処理が上書きしないための抑制条件
+    record = triage_record_for_item(triage or {}, recipe)
+    if is_user_discarded(record):
+        return False, "トリアージで「捨てる」確定済み（User判断を優先）"
     if recipe.get("shion_recommendation") != "auto":
         return False, f"紫苑判定が auto ではない: {recipe.get('shion_recommendation') or '未設定'}"
     risk = recipe.get("risk_level")
@@ -70,6 +86,12 @@ def main() -> int:
     label = "DRY-RUN" if args.dry_run else "APPLY"
     print(f"🤖 auto_approve_safe_recipes — {label}")
 
+    # トリアージ抑制はモード off のときだけ無効化（P2-4 の切り戻しと連動）
+    triage_mode = resolve_triage_mode()
+    triage = load_triage_latest(REPO_ROOT) if triage_mode != "off" else {}
+    if triage:
+        print(f"   トリアージ参照: mode={triage_mode}, {len(triage)}件の判断を読み込み")
+
     approved_count = skipped_count = 0
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     for recipe_file in sorted(pending_dir.glob("*.json")):
@@ -80,7 +102,7 @@ def main() -> int:
             skipped_count += 1
             continue
 
-        ok, reason = is_auto_approvable(recipe)
+        ok, reason = is_auto_approvable(recipe, triage)
         rev = recipe.get("rev") or recipe.get("id") or recipe_file.stem
         if not ok:
             print(f"   ⏭️  {rev} 人間レビューへ: {reason}")

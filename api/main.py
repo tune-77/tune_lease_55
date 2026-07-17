@@ -3267,6 +3267,41 @@ def get_improvement_triage():
     return {"records": records[:100], "counts": counts}
 
 
+class ImprovementTriageApproveRequest(BaseModel):
+    canonical_key: str
+
+
+@app.post("/api/improvement/triage/approve")
+def approve_improvement_triage(req: ImprovementTriageApproveRequest):
+    """「今日やる」確定済みの候補に実装承認を記録する（P2-3）。
+
+    承認レコード（approved_at）がある候補だけが Codex 依頼文生成・
+    ライブモードのキュー最優先の対象になる。記録は同じ triage jsonl への
+    追記で行い、最後のエントリが有効。
+    """
+    from datetime import datetime as _dt
+
+    canonical_key = str(req.canonical_key or "").strip()
+    if not canonical_key:
+        raise HTTPException(status_code=422, detail="canonical_key は空にできません")
+    latest = _load_improvement_triage_latest()
+    current = latest.get(canonical_key)
+    if not current:
+        raise HTTPException(status_code=404, detail=f"トリアージ記録が見つかりません: {canonical_key}")
+    if str(current.get("decision") or "") != "today":
+        raise HTTPException(
+            status_code=422,
+            detail="実装承認は「今日やる」確定済みの候補にのみ記録できます",
+        )
+    record = dict(current)
+    record["approved_at"] = _dt.now().isoformat(timespec="seconds")
+    path = _improvement_triage_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    return {"ok": True, "record": record}
+
+
 @app.post("/api/prompt-feedback/rules/register")
 def register_prompt_rule(req: PromptRuleRegisterRequest):
     """UIから1クリックで修正ルールを登録する。
@@ -5182,10 +5217,13 @@ def _build_dialogue_triage_context(limit: int = 4) -> str:
     for row in records[:limit]:
         decision = str(row.get("decision") or "")
         label = _TRIAGE_DECISION_LABELS.get(decision, decision)
+        if decision == "today" and str(row.get("approved_at") or "").strip():
+            label = f"{label}・実装承認済み"
         title = str(row.get("title") or row.get("canonical_key") or "")[:50]
         decided_at = str(row.get("decided_at") or "")[:10]
         classified_by = str(row.get("classified_by") or "user")
         lines.append(f"- {decided_at} [{label}] {title}（判断主体: {classified_by}）")
+    lines.append("Codex依頼文は「今日やる・実装承認済み」の候補についてのみ作成する。承認前の候補には作らない。")
     return "\n".join(lines)
 
 

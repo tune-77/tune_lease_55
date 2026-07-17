@@ -147,6 +147,49 @@ def test_triage_context_excludes_ledger_resolved(main_module, monkeypatch):
     assert "後回し1件" in context
 
 
+def test_approve_requires_today_decision(main_module):
+    """P2-3: 実装承認は「今日やる」確定済みの候補のみ。承認で approved_at が付く。"""
+    main = main_module
+    main.record_improvement_triage(
+        main.ImprovementTriageRequest(canonical_key="misc_ap1", decision="today", title="承認対象")
+    )
+    main.record_improvement_triage(
+        main.ImprovementTriageRequest(canonical_key="misc_ap2", decision="later", title="後回し候補")
+    )
+
+    result = main.approve_improvement_triage(
+        main.ImprovementTriageApproveRequest(canonical_key="misc_ap1")
+    )
+    assert result["ok"] is True
+    assert result["record"]["approved_at"]
+
+    current = main.get_improvement_triage()
+    by_key = {r["canonical_key"]: r for r in current["records"]}
+    assert by_key["misc_ap1"]["approved_at"]
+    assert "approved_at" not in by_key["misc_ap2"] or not by_key["misc_ap2"].get("approved_at")
+
+    with pytest.raises(HTTPException) as exc:
+        main.approve_improvement_triage(main.ImprovementTriageApproveRequest(canonical_key="misc_ap2"))
+    assert exc.value.status_code == 422
+
+    with pytest.raises(HTTPException) as exc:
+        main.approve_improvement_triage(main.ImprovementTriageApproveRequest(canonical_key="misc_none"))
+    assert exc.value.status_code == 404
+
+
+def test_triage_context_marks_approved(main_module):
+    main = main_module
+    main.record_improvement_triage(
+        main.ImprovementTriageRequest(canonical_key="misc_apx", decision="today", title="承認済み候補")
+    )
+    main.approve_improvement_triage(main.ImprovementTriageApproveRequest(canonical_key="misc_apx"))
+
+    context = main._build_dialogue_triage_context()
+
+    assert "今日やる・実装承認済み" in context
+    assert "Codex依頼文は「今日やる・実装承認済み」の候補についてのみ作成する" in context
+
+
 def test_triage_file_corruption_tolerated(tmp_path, main_module):
     main = main_module
     data_dir = tmp_path / "data"
