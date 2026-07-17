@@ -304,6 +304,7 @@ const buildDailyImprovementReport = (
   const generatedAt = log.date || String(log.generated_at || "").slice(0, 10);
   const lines = [
     generatedAt ? `改善PMレポートです。対象日は ${generatedAt} です。` : "改善PMレポートです。",
+    "ハッカソン安全運用: 読む・報告する・相談する・Codex依頼文を作るところまで。実装、git、deployは自動では行いません。",
     `適用済み ${log.applied ?? 0} 件、自動候補 ${log.auto_fix_candidates ?? 0} 件、要レビュー ${log.needs_review ?? 0} 件、保留 ${log.parked ?? 0} 件です。`,
     ...buildSystemWatchLines(pipeline, gaps),
   ];
