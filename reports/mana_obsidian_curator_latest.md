@@ -5,9 +5,9 @@
 - role: `obsidian_curator_and_shion_runaway_guard`
 - identity: `same_as_shion_upper_authority_mana_value_memory`
 - identity_note: Mana Curator is not a separate agent; it is the existing Mana upper authority applied to Obsidian memory operations.
-- generated_at: `2026-07-16T08:05:03+09:00`
-- target_date: `2026-07-16`
-- status: `watch`
+- generated_at: `2026-07-17T04:06:58+09:00`
+- target_date: `2026-07-17`
+- status: `allow`
 - guardrail: `read_only_no_obsidian_write_no_rag_no_prompt_no_scoring_no_cloudrun_no_deploy`
 
 ## Inputs
@@ -18,11 +18,7 @@
 - useful_candidate_count: `120`
 
 ## Findings
-### memory_insight_reports_warning
-- level: `watch`
-- message: memory_insight_reports に警告。自動接続せず、該当箇所だけ確認する。
-- evidence: `{"check_message": "stale or missing sidecars: memory_insight", "status": "warn"}`
-
+- なし
 ## Blocked Actions
 - 人を害する・貶める文面を記憶候補として昇格しない
 - 紫苑への罵倒や攻撃的クレームを自己記憶へ直入れしない
@@ -34,12 +30,10 @@
 
 ## Allowed Actions
 - 読み取り専用の観察継続
-- 3日分の傾向比較
-- 明示承認された候補だけ手動レビュー
+- 人間レビュー済み候補の整理
 
 ## Userにしてほしいこと
-- Mana判定がALLOWではありません。以下を採用・修正・却下で短く確認してください。
-- memory_insight_reports_warning: memory_insight_reports に警告。自動接続せず、該当箇所だけ確認する。
+- 今日のMana判定はALLOW。まだ自動接続せず、必要なら有用候補だけ採用・修正・却下で確認してください。
 
 ## 紫苑がするべきこと
 - Userの制約を優先し、Mana判定をRAG・プロンプト・本番へ接続しない。

@@ -1,6 +1,6 @@
 # Screening Terms Audit
 
-- generated_at: `2026-07-16T04:07:11`
+- generated_at: `2026-07-17T04:06:59`
 - status: `ok`
 - scanned_files: `369`
 - guardrail: `read_only_terms_audit_no_scoring_or_db_change`
@@ -20,15 +20,15 @@
 
 ## Warn / Review Findings
 
-- `review` `actual_pd` `api/main.py:8157` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:8167` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE shion_screening_reviews`
-- `review` `actual_pd` `api/main.py:8169` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:8179` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `f"UPDATE shion_screening_reviews SET user_feedback = {ph} WHERE id = {ph}",`
-- `review` `actual_pd` `api/main.py:9292` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:9553` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE {table_name}`
-- `review` `actual_pd` `api/main.py:9616` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:9877` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE cloudrun_score_inputs`
-- `review` `actual_pd` `api/main.py:9640` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:9901` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE cloudrun_score_inputs`
 - `review` `actual_pd` `api/outcome_drift_loop.py:7` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `帯ごとの延滞・デフォルト率を集計する`
@@ -128,7 +128,7 @@
   - `log "Cloud Run 新リビジョン起動: $CLOUD_RUN_SERVICE (CHROMADB_UPDATED_AT=$TIMESTAMP)"`
 - `review` `actual_pd` `scripts/sync_chromadb_to_gcs.sh:46` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `--update-env-vars "CHROMADB_UPDATED_AT=$TIMESTAMP" 2>&1 | tee -a "$LOG_FILE"; then`
-- `review` `actual_pd` `scripts/sync_cloudrun_inputs_from_gcs.py:532` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `scripts/sync_cloudrun_inputs_from_gcs.py:533` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `"UPDATE shion_screening_reviews SET user_feedback = ? WHERE id = ?",`
 - `review` `actual_pd` `scripts/sync_implemented_to_obsidian.py:31` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `"REV-041":             ["PD表示箇所の明確化"],`

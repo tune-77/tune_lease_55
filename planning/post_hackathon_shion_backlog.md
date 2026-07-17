@@ -202,3 +202,65 @@ Opus設計メモ:
 - 権限は機能ではなくリスクで分ける。
 - 「AIができる」ではなく「AIに任せても壊れにくい」順に広げる。
 - 紫苑は管理者らしく振る舞ってよいが、実行権限を持っているように装わない。
+
+### 9.2 Agent Action Ledger / 紫苑行動管理ログ
+
+紫苑が改善PMから自律DevOpsへ近づくほど、何を見て、何を判断し、何をUserへ提案し、何をCodexへ渡したかを追跡できる必要がある。完全自律化の前提として、紫苑の行動管理ログを実装する。
+
+最初は JSONL で十分。目的は、紫苑の行動を監査できるようにすること。
+
+記録する行動:
+
+- daily_report: 日次改善PMレポートを出した
+- system_watch: システム監視で異常/正常を報告した
+- improvement_classified: 改善候補を今日やる/後回し/捨てるに分類した
+- codex_request_drafted: Codex依頼文を作成した
+- user_approval_requested: User承認を求めた
+- user_decision_recorded: Userが承認/却下/保留した
+- implementation_observed: Codex実装やgitship結果を観測した
+- followup_reported: 翌日報告へ戻した
+
+最小スキーマ:
+
+```json
+{
+  "timestamp": "2026-07-17T09:00:00+09:00",
+  "agent": "shion",
+  "mode": "improvement_pm",
+  "action": "daily_report",
+  "observed_sources": [
+    "/api/improvement-log",
+    "/api/improvement-pipeline/summary",
+    "/api/lease-system-gaps"
+  ],
+  "summary": "重大異常なし。今日やる候補3件。",
+  "risk_level": "low",
+  "requires_user_approval": false,
+  "user_approved": null,
+  "target": null,
+  "result": "reported"
+}
+```
+
+Codex依頼文作成時:
+
+```json
+{
+  "timestamp": "2026-07-17T09:10:00+09:00",
+  "agent": "shion",
+  "mode": "improvement_pm",
+  "action": "codex_request_drafted",
+  "target": "frontend/src/app/lease-intelligence/page.tsx",
+  "risk_level": "low",
+  "requires_user_approval": true,
+  "user_approved": false,
+  "result": "drafted"
+}
+```
+
+原則:
+
+- ログは実行権限の代替ではない。監査と翌日報告の材料。
+- 個人情報、顧客情報、長い依頼文全文は保存しない。要約と参照IDを保存する。
+- User承認なしに実行したかどうかを必ず追えるようにする。
+- 自律化するほど、このLedgerを必須にする。

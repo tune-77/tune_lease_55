@@ -4162,6 +4162,12 @@ def generate_gunshi_chat(req: GunshiChatRequest):
     from shinsa_gunshi import PHRASES_100, build_gunshi_prompt
     try:
         _mode = (req.mode or "gunshi").lower()
+        if (req.message or "").strip():
+            _log_information_weighting_shadow(
+                req.message,
+                source="gunshi_chat_user_message",
+                surface="gunshi_chat",
+            )
         is_yukikaze = (req.humor_style or "").lower() == "yukikaze"
         if _mode == "chat" and (req.message or "").strip() and not is_yukikaze:
             try:
@@ -11937,6 +11943,12 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     message = req.message.strip()
     if not message:
         raise HTTPException(status_code=422, detail="message は空にできません")
+    _log_information_weighting_shadow(
+        message,
+        source="lease_intelligence_dialogue_user_message",
+        user_id="lease_intelligence_dialogue",
+        surface="lease_intelligence_dialogue",
+    )
     personal_memory_capture = _capture_user_personal_memory_if_needed(
         message,
         source="lease_intelligence_dialogue",
@@ -12391,12 +12403,45 @@ def _log_shion_query_class(message: str) -> None:
     _background_executor.submit(_run)
 
 
+def _log_information_weighting_shadow(
+    message: str,
+    *,
+    source: str,
+    user_id: str = "",
+    surface: str = "",
+    prior_context: str = "",
+) -> None:
+    """情報重み付け評価を shadow log に残す。応答・RAG・記憶昇格には影響させない。"""
+
+    def _run() -> None:
+        try:
+            from api.shion_information_weighting import record_information_weighting_shadow_log
+
+            record_information_weighting_shadow_log(
+                message,
+                source=source,
+                user_id=user_id,
+                surface=surface,
+                prior_context=prior_context,
+            )
+        except Exception as exc:
+            print(f"[InformationWeightingShadow] 記録失敗（非致命）: {exc}")
+
+    _background_executor.submit(_run)
+
+
 @app.post("/api/chat")
 def post_chat(req: ChatRequest):
     """汎用チャット：メッセージを受け取り、会話履歴付きでGeminiへ送信して返答する。"""
     if not req.message.strip():
         raise HTTPException(status_code=422, detail="message は空にできません")
     _log_shion_query_class(req.message)
+    _log_information_weighting_shadow(
+        req.message,
+        source="api_chat_user_message",
+        user_id=req.user_id,
+        surface="next_chat",
+    )
     try:
         from api.chat_memory import (
             get_recent_messages,
