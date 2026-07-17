@@ -262,6 +262,7 @@ const readableImprovementTitle = (item: DialogueImprovementItem) => {
     extractReportSection(sourceText, "原文") ||
     extractReportSection(sourceText, "ユーザー要望") ||
     title ||
+    compactReportText(sourceText, 60) ||
     item.id ||
     "改善候補"
   );

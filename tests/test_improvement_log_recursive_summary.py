@@ -198,6 +198,65 @@ def test_cloudrun_improvement_items_apply_review_control(monkeypatch):
     assert items[0]["status"] == "APPROVED"
 
 
+def test_cloudrun_improvement_canonical_key_stable_against_readable_title(monkeypatch):
+    """表示タイトルの整形ロジックが変わっても canonical_key は従来のタイトル式のまま。
+
+    整形前に記録された削除イベント（旧キー）と照合できなくなると、
+    削除済みメモが改善リストへ復活してしまう回帰の防止。
+    """
+    import api.main as main
+
+    body = "課題: スコア理由の表示が分かりにくい\n次の行動: 表示ラベルを見直す"
+    # 整形導入前のキー: payloadタイトルそのまま（generic）で計算されたもの
+    legacy_key = main._improvement_canonical_key("チャット改善メモ", body)
+
+    monkeypatch.setattr(
+        main,
+        "_read_recent_cloudrun_input_events_from_gcs",
+        lambda days=45: [
+            {
+                "event_id": "event-note-legacy",
+                "event_type": "improvement_note",
+                "surface": "chat_improvement",
+                "ts": "2026-07-15T00:00:00Z",
+                "payload": {"title": "チャット改善メモ", "body": body},
+            },
+            {
+                "event_id": "event-delete-legacy",
+                "event_type": "improvement_delete",
+                "surface": "improvement_log",
+                "ts": "2026-07-16T00:00:00Z",
+                "payload": {"canonical_key": legacy_key, "status": "deleted"},
+            },
+        ],
+    )
+
+    assert main._cloudrun_improvement_items_from_gcs() == []
+
+
+def test_cloudrun_improvement_title_falls_back_to_body_excerpt(monkeypatch):
+    """タイトルなし・マーカーなしのメモは総称ではなく本文抜粋をタイトルにする。"""
+    import api.main as main
+
+    monkeypatch.setattr(
+        main,
+        "_read_recent_cloudrun_input_events_from_gcs",
+        lambda days=45: [
+            {
+                "event_id": "event-note-plain",
+                "event_type": "improvement_note",
+                "surface": "next_chat_rag",
+                "ts": "2026-07-15T00:00:00Z",
+                "payload": {"original_text": "審査画面の入力欄が多すぎて迷う"},
+            }
+        ],
+    )
+
+    items = main._cloudrun_improvement_items_from_gcs()
+
+    assert items[0]["title"] == "審査画面の入力欄が多すぎて迷う"
+
+
 def test_cloudrun_improvement_items_skip_deleted_control(monkeypatch):
     import api.main as main
 
