@@ -5107,6 +5107,7 @@ def _load_shion_pm_quality_summary() -> dict:
         "hit_rates": kpis.get("hit_rates_by_classifier") or {},
         "overrule": kpis.get("overrule") or {},
         "lead_time_days_avg": kpis.get("lead_time_days_avg"),
+        "coverage": kpis.get("coverage") or {},
     }
 
 
@@ -5190,9 +5191,17 @@ def _build_dialogue_improvement_observability_context(message: str) -> str:
         overrule = pm_quality.get("overrule") or {}
         overrule_rate = overrule.get("rate")
         lead = pm_quality.get("lead_time_days_avg")
+        coverage = pm_quality.get("coverage") or {}
+        coverage_rate = coverage.get("rate")
         lines.append(
             "- トリアージ事後検証: "
             f"累計{pm_quality.get('triage_total', 0)}件 / "
+            + (
+                f"網羅率 {coverage.get('triaged', 0)}/{coverage.get('candidates', 0)} ({coverage_rate * 100:.0f}%)"
+                if isinstance(coverage_rate, (int, float))
+                else "網羅率は計測前"
+            )
+            + " / "
             + ("的中率 " + "、".join(hit_parts) if hit_parts else "的中率は計測前")
             + (
                 f" / Overrule率 {overrule_rate * 100:.0f}%"

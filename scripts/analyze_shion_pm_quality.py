@@ -26,7 +26,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from shion_triage import TRIAGE_FILE_RELPATH, load_triage_latest  # noqa: E402
+from shion_triage import TRIAGE_FILE_RELPATH, load_triage_latest, triage_record_for_item  # noqa: E402
 
 RESOLVED_STATUSES = {"applied", "rejected", "deleted"}
 OUTCOME_LABELS = {"applied": "効いた(マージ済み)", "rejected": "外した(却下)", "deleted": "外した(削除)"}
@@ -129,6 +129,30 @@ def _avg_days(pairs: list[tuple[str, str]]) -> float | None:
     return round(sum(deltas) / len(deltas), 1)
 
 
+def load_report_candidates(root: Path) -> list[dict]:
+    """網羅率の分母: 最新改善レポートのレビュー対象候補（needs_review）を返す。"""
+    path = root / "reports" / "latest.json"
+    if not path.exists():
+        return []
+    try:
+        report = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    return [item for item in report.get("needs_review") or [] if isinstance(item, dict)]
+
+
+def compute_coverage(triage_latest: dict[str, dict], candidates: list[dict]) -> dict[str, Any]:
+    """トリアージ網羅率: 改善候補のうち判断が確定した割合（「中心」の実態確認）。"""
+    if not candidates:
+        return {"candidates": 0, "triaged": 0, "rate": None}
+    triaged = sum(1 for item in candidates if triage_record_for_item(triage_latest, item))
+    return {
+        "candidates": len(candidates),
+        "triaged": triaged,
+        "rate": round(triaged / len(candidates), 3),
+    }
+
+
 def compute_kpis(triage_latest: dict[str, dict]) -> dict[str, Any]:
     """P3-3: 的中率（classified_by 別）・Overrule率・リードタイムを集計する。"""
     records = list(triage_latest.values())
@@ -202,6 +226,16 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"（今日やる {counts.get('today', 0)} / 後回し {counts.get('later', 0)} / 捨てる {counts.get('discard', 0)}）",
         f"- outcome 書き戻し: 今回 {payload.get('outcomes_synced', 0)} 件",
         "",
+        "## トリアージ網羅率（最新レポートの候補のうち判断確定済み）",
+    ]
+    coverage = kpis.get("coverage") or {}
+    coverage_rate = coverage.get("rate")
+    lines.append(
+        f"- {coverage.get('triaged', 0)}/{coverage.get('candidates', 0)}"
+        + (f" = {coverage_rate * 100:.0f}%" if isinstance(coverage_rate, (int, float)) else "（候補なし・計測前）")
+    )
+    lines += [
+        "",
         "## 的中率（「今日やる」→ applied）",
     ]
     hit_rates = kpis.get("hit_rates_by_classifier") or {}
@@ -222,6 +256,9 @@ def render_markdown(payload: dict[str, Any]) -> str:
         "",
         "## リードタイム",
         f"- 判断→マージ 平均: {kpis.get('lead_time_days_avg') if kpis.get('lead_time_days_avg') is not None else '計測前'} 日",
+        "",
+        "## 監視先行率",
+        "- 未計測（紫苑の失敗報告時刻の記録機構が未実装のため。記録設計後に追加）",
     ]
     quality = payload.get("improvement_quality") or {}
     if quality:
@@ -256,11 +293,16 @@ def main() -> int:
         **triage_latest,
         **{str(u.get("canonical_key")): u for u in updates},
     }
+    kpis = compute_kpis(triage_after)
+    kpis["coverage"] = compute_coverage(triage_after, load_report_candidates(root))
+    # 監視先行率は「紫苑がSlack通知より先に失敗を報告した」時刻の記録機構が
+    # 未実装のため計測不能。記録の設計ができるまで未計測と明示する
+    kpis["monitoring_lead"] = {"status": "not_instrumented"}
     payload = {
         "date": args.date,
         "generated_at": dt.datetime.now().isoformat(timespec="seconds"),
         "outcomes_synced": len(updates),
-        "kpis": compute_kpis(triage_after),
+        "kpis": kpis,
         "improvement_quality": latest_improvement_quality(root),
     }
 
