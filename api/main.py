@@ -3167,6 +3167,104 @@ def review_improvement(req: ReviewImprovementRequest):
     return {"ok": True, "key": req.key, "action": req.action, "obsidian": obsidian_result, "writeback": writeback}
 
 
+# ── Phase 1: トリアージの構造化記録（planning/shion_improvement_loop_plan.md）──
+# 判断は data/shion_improvement_triage.jsonl へ追記形式で記録し、最後のエントリが有効。
+# 同定は canonical_key 単独に頼らず source_event_id とタイトルスナップショットも冗長に持つ。
+
+_TRIAGE_DECISIONS = {"today", "later", "discard"}
+_TRIAGE_CLASSIFIERS = {"rule", "llm", "user"}
+_TRIAGE_DECISION_LABELS = {"today": "今日やる", "later": "後回し", "discard": "捨てる"}
+
+
+class ImprovementTriageRequest(BaseModel):
+    canonical_key: str
+    decision: str  # today / later / discard
+    title: str = ""
+    source_event_id: str = ""
+    reason: str = ""
+    rule_decision: str = ""  # ルール分類（classifyPmImprovementItems）の初期値
+    classified_by: str = "user"  # rule / llm / user
+
+
+def _improvement_triage_path() -> Path:
+    return Path(_REPO_ROOT) / "data" / "shion_improvement_triage.jsonl"
+
+
+def _load_improvement_triage_latest() -> dict[str, dict]:
+    """トリアージ記録を canonical_key ごとに解決する（最後のエントリが有効）。"""
+    path = _improvement_triage_path()
+    if not path.exists():
+        return {}
+    latest: dict[str, dict] = {}
+    try:
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            key = str(row.get("canonical_key") or "")
+            if key:
+                latest[key] = row
+    except OSError:
+        return {}
+    return latest
+
+
+@app.post("/api/improvement/triage")
+def record_improvement_triage(req: ImprovementTriageRequest):
+    """改善候補のトリアージ判断（今日やる/後回し/捨てる）を構造化記録する（P1-1）。
+
+    記録のみで、パイプラインの実行順序には影響しない（接続は Phase 2・シャドーモード経由）。
+    """
+    from datetime import datetime as _dt
+
+    decision = str(req.decision or "").strip().lower()
+    if decision not in _TRIAGE_DECISIONS:
+        raise HTTPException(status_code=422, detail=f"decision は {sorted(_TRIAGE_DECISIONS)} のいずれかにしてください")
+    classified_by = str(req.classified_by or "user").strip().lower()
+    if classified_by not in _TRIAGE_CLASSIFIERS:
+        raise HTTPException(status_code=422, detail=f"classified_by は {sorted(_TRIAGE_CLASSIFIERS)} のいずれかにしてください")
+    canonical_key = str(req.canonical_key or "").strip()
+    if not canonical_key:
+        raise HTTPException(status_code=422, detail="canonical_key は空にできません")
+    rule_decision = str(req.rule_decision or "").strip().lower()
+    if rule_decision and rule_decision not in _TRIAGE_DECISIONS:
+        rule_decision = ""
+    record = {
+        "canonical_key": canonical_key,
+        "source_event_id": str(req.source_event_id or "").strip(),
+        "title": str(req.title or "").strip()[:120],
+        "decision": decision,
+        "rule_decision": rule_decision,
+        "classified_by": classified_by,
+        "reason": str(req.reason or "").strip()[:200],
+        "decided_at": _dt.now().isoformat(timespec="seconds"),
+    }
+    path = _improvement_triage_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    return {"ok": True, "record": record}
+
+
+@app.get("/api/improvement/triage")
+def get_improvement_triage():
+    """トリアージの現在状態（キーごとに最後の判断）を返す。"""
+    latest = _load_improvement_triage_latest()
+    records = sorted(
+        latest.values(),
+        key=lambda row: str(row.get("decided_at") or ""),
+        reverse=True,
+    )
+    counts: dict[str, int] = {}
+    for row in records:
+        decision = str(row.get("decision") or "")
+        counts[decision] = counts.get(decision, 0) + 1
+    return {"records": records[:100], "counts": counts}
+
+
 @app.post("/api/prompt-feedback/rules/register")
 def register_prompt_rule(req: PromptRuleRegisterRequest):
     """UIから1クリックで修正ルールを登録する。
@@ -5022,6 +5120,42 @@ def _build_dialogue_improvement_observability_context(message: str) -> str:
     anomaly = _build_pipeline_anomaly_summary_line()
     if anomaly:
         lines.insert(1, anomaly)
+    return "\n".join(lines)
+
+
+def _build_dialogue_triage_context(limit: int = 4) -> str:
+    """Phase 1 (P1-3): 昨日までのトリアージ結果と未確定分を対話文脈へ短く反映する。
+
+    記録が無ければ空を返し、通常会話の注入量を増やさない。
+    """
+    latest = _load_improvement_triage_latest()
+    if not latest:
+        return ""
+    records = sorted(
+        latest.values(),
+        key=lambda row: str(row.get("decided_at") or ""),
+        reverse=True,
+    )
+    counts: dict[str, int] = {}
+    for row in records:
+        decision = str(row.get("decision") or "")
+        counts[decision] = counts.get(decision, 0) + 1
+    lines = [
+        "【改善トリアージ状況】",
+        (
+            f"確定済みの判断: 今日やる{counts.get('today', 0)}件 / "
+            f"後回し{counts.get('later', 0)}件 / 捨てる{counts.get('discard', 0)}件"
+            "（同一候補は最後の判断が有効）。"
+        ),
+        "未確定の候補は持ち越しのみとし、日数経過による自動昇格・自動破棄はしない。",
+    ]
+    for row in records[:limit]:
+        decision = str(row.get("decision") or "")
+        label = _TRIAGE_DECISION_LABELS.get(decision, decision)
+        title = str(row.get("title") or row.get("canonical_key") or "")[:50]
+        decided_at = str(row.get("decided_at") or "")[:10]
+        classified_by = str(row.get("classified_by") or "user")
+        lines.append(f"- {decided_at} [{label}] {title}（判断主体: {classified_by}）")
     return "\n".join(lines)
 
 
@@ -11853,6 +11987,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     )
     improvement_report_context = _build_dialogue_improvement_report_context(limit=4)
     improvement_observability_context = _build_dialogue_improvement_observability_context(full_message)
+    improvement_triage_context = _build_dialogue_triage_context(limit=4)
 
     if not vault:
         from lease_finance_knowledge import build_basic_lease_question_block, build_lease_finance_knowledge_block
@@ -11887,6 +12022,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
 {shared_shion_memory_context}
 {improvement_report_context}
 {improvement_observability_context}
+{improvement_triage_context}
 {build_shion_feminine_tone_block()}
 """
         try:
@@ -11947,6 +12083,8 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
         system_prompt += f"\n\n{improvement_report_context}"
     if improvement_observability_context:
         system_prompt += f"\n\n{improvement_observability_context}"
+    if improvement_triage_context:
+        system_prompt += f"\n\n{improvement_triage_context}"
     consultation_ids: list[str] = []
 
     def _tool_executor(name: str, args: dict) -> object:
