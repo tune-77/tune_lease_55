@@ -5988,7 +5988,7 @@ def _extract_improvement_section(text: str, heading: str, limit: int = 120) -> s
 def _extract_improvement_line(text: str, label: str, limit: int = 120) -> str:
     if not text:
         return ""
-    match = re.search(rf"{re.escape(label)}\s*[:：]\s*([^\n]+)", text)
+    match = re.search(rf"(?:^|\n)\s*-?\s*{re.escape(label)}\s*[:：]\s*([^\n]+)", text)
     if not match:
         return ""
     return _compact_improvement_text(match.group(1), limit)
@@ -5996,10 +5996,12 @@ def _extract_improvement_line(text: str, label: str, limit: int = 120) -> str:
 
 def _cloudrun_improvement_readable_title(payload: dict, body: str) -> str:
     title = str(payload.get("title") or "").strip()
-    if title and title not in {"AIチャット改善候補", "チャット改善メモ", "Cloud Run改善メモ"}:
+    generic_titles = {"AIチャット改善候補", "チャット改善メモ", "Cloud Run改善メモ"}
+    if title and title not in generic_titles and not title.startswith("改善ログ:"):
         return _compact_improvement_text(title, 80)
     return (
-        _extract_improvement_line(body, "課題", 80)
+        _extract_improvement_line(body, "title", 80)
+        or _extract_improvement_line(body, "課題", 80)
         or _extract_improvement_section(body, "原文", 80)
         or _extract_improvement_section(body, "ユーザー要望", 80)
         or _compact_improvement_text(title, 80)
@@ -6011,6 +6013,11 @@ def _cloudrun_improvement_readable_reason(payload: dict, body: str) -> str:
     explicit = str(payload.get("reason") or "").strip()
     if explicit and explicit != "Cloud Runから登録された改善入力":
         return _compact_improvement_text(explicit, 140)
+    embedded_status = _extract_improvement_line(body, "status", 40).lower()
+    embedded_reason = _extract_improvement_line(body, "reason", 100)
+    if embedded_status in {"rejected", "deleted", "applied", "approved", "parked", "deferred"}:
+        status_label = _ledger_status_reason(embedded_status) or embedded_status
+        return f"{status_label}{f': {embedded_reason}' if embedded_reason else ''}"
     issue = _extract_improvement_line(body, "課題", 100)
     action = _extract_improvement_line(body, "次の行動", 100)
     if issue and action:
@@ -6302,7 +6309,8 @@ def _cloudrun_improvement_items_from_gcs(limit: int = 30) -> list[dict]:
         control_status = latest_control_by_key.get(canonical_key)
         if control_status == "deleted":
             continue
-        status = _ledger_status_to_improvement_status(control_status or "") or "NEEDS_REVIEW"
+        embedded_status = _extract_improvement_line(body, "status", 40).lower()
+        status = _ledger_status_to_improvement_status(control_status or embedded_status or "") or "NEEDS_REVIEW"
         items.append({
             "id": f"cloudrun-{event_id[:12]}",
             "title": title,
