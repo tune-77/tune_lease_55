@@ -76,6 +76,8 @@ type DialogueImprovementItem = {
   category?: string;
   detail?: string;
   park_reason?: string;
+  raw_preview?: string;
+  source_surface?: string;
   recommended_order?: number | null;
 };
 
@@ -232,9 +234,57 @@ const markDailyImprovementReportShown = () => {
   window.localStorage.setItem(dailyImprovementStorageKey(), "1");
 };
 
-const improvementItemText = (item: DialogueImprovementItem) => {
-  const reason = item.reason || item.park_reason || item.detail || "";
-  return `${item.title || item.id || "改善候補"}${reason ? ` — ${reason}` : ""}`;
+const compactReportText = (value: unknown, limit = 90) => {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  return text.length > limit ? `${text.slice(0, limit - 1).trim()}…` : text;
+};
+
+const extractMarkedReportLine = (text: string, label: string) => {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = text.match(new RegExp(`${escaped}\\s*[:：]\\s*([^\\n]+)`));
+  return compactReportText(match?.[1] || "", 100);
+};
+
+const extractReportSection = (text: string, heading: string) => {
+  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = text.match(new RegExp(`(?:##\\s*${escaped}|\\*\\*${escaped}\\*\\*)\\s*\\n([\\s\\S]*?)(?:\\n(?:##\\s|\\*\\*[^\\n]+\\*\\*)|$)`));
+  return compactReportText(match?.[1] || "", 100);
+};
+
+const readableImprovementTitle = (item: DialogueImprovementItem) => {
+  const title = compactReportText(item.title || "", 72);
+  const generic = ["AIチャット改善候補", "チャット改善メモ", "Cloud Run改善メモ"].includes(title);
+  const sourceText = String(item.detail || item.raw_preview || "");
+  if (!generic) return title || item.id || "改善候補";
+  return (
+    extractMarkedReportLine(sourceText, "課題") ||
+    extractReportSection(sourceText, "原文") ||
+    extractReportSection(sourceText, "ユーザー要望") ||
+    title ||
+    item.id ||
+    "改善候補"
+  );
+};
+
+const readableImprovementReason = (item: DialogueImprovementItem) => {
+  const detail = String(item.detail || item.raw_preview || "");
+  const issue = extractMarkedReportLine(detail, "課題");
+  const action = extractMarkedReportLine(detail, "次の行動");
+  if (issue && action) return `課題: ${issue} / 次: ${action}`;
+  if (issue) return `課題: ${issue}`;
+  const reason = compactReportText(item.reason || item.park_reason || "", 110);
+  if (reason && reason !== "Cloud Runから登録された改善入力") return reason;
+  const original = extractReportSection(detail, "原文") || extractReportSection(detail, "ユーザー要望");
+  return original ? `原文: ${original}` : "";
+};
+
+const pushImprovementItemLines = (lines: string[], item: DialogueImprovementItem, index: number) => {
+  lines.push(`### ${index + 1}. ${readableImprovementTitle(item)}`);
+  const reason = readableImprovementReason(item);
+  if (reason) lines.push(`- 見えている課題: ${reason}`);
+  if (item.category) lines.push(`- 種別: ${item.category}`);
+  if (item.status) lines.push(`- 状態: ${item.status}`);
 };
 
 const classifyPmImprovementItems = (items: DialogueImprovementItem[]) => {
@@ -287,7 +337,14 @@ const buildSystemWatchLines = (
   }
   lines.push("システム監視:");
   if (failedCount) lines.push(`- 改善パイプライン失敗 ${failedCount} 件。先に原因確認が必要です。`);
-  if (commitFailed) lines.push(`- commit結果に失敗があります。${pipeline?.commit_result?.message || "git反映状況を確認してください。"}`);
+  if (commitFailed) {
+    const commitMessage = pipeline?.commit_result?.message || "";
+    if (commitMessage.includes("pending_patches") || commitMessage.includes("コミット対象なし")) {
+      lines.push("- 自動コミット: 差分なしでスキップされました。今すぐ直す自動パッチが無いだけなので、重大異常ではありません。");
+    } else {
+      lines.push(`- commit結果に失敗があります。${commitMessage || "git反映状況を確認してください。"}`);
+    }
+  }
   gapItems.slice(0, 3).forEach((item) => {
     lines.push(`- ${String(item.priority || "high").toUpperCase()}: ${item.title || item.id || "システムギャップ"}${item.impact ? ` — ${item.impact}` : ""}`);
   });
@@ -309,16 +366,27 @@ const buildDailyImprovementReport = (
     ...buildSystemWatchLines(pipeline, gaps),
   ];
   if (pmItems.today.length) {
-    lines.push("今日やる候補:");
-    pmItems.today.forEach((item, index) => lines.push(`${index + 1}. ${improvementItemText(item)}`));
+    lines.push("");
+    lines.push("## 今日やる候補");
+    pmItems.today.forEach((item, index) => pushImprovementItemLines(lines, item, index));
   } else {
-    lines.push("今日やる候補: 今すぐ触るべき軽い候補は多くありません。安定運用を優先でよさそうです。");
+    lines.push("");
+    lines.push("## 今日やる候補");
+    lines.push("今すぐ触るべき軽い候補は多くありません。安定運用を優先でよさそうです。");
   }
   if (pmItems.later.length) {
-    lines.push(`後回し候補: ${pmItems.later.map((item) => item.title || item.id).join(" / ")}`);
+    lines.push("");
+    lines.push("## 後回し候補");
+    pmItems.later.forEach((item, index) => {
+      lines.push(`- ${index + 1}. ${readableImprovementTitle(item)}`);
+    });
   }
   if (pmItems.discard.length) {
-    lines.push(`捨てる/削除候補: ${pmItems.discard.map((item) => item.title || item.id).join(" / ")}`);
+    lines.push("");
+    lines.push("## 捨てる/削除候補");
+    pmItems.discard.forEach((item, index) => {
+      lines.push(`- ${index + 1}. ${readableImprovementTitle(item)}`);
+    });
   }
   const rankedQueue = log.recursive_self_improvement?.ranked_queue_count ?? 0;
   const suppressed = log.recursive_self_improvement?.suppressed_count ?? 0;
