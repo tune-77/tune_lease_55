@@ -147,6 +147,11 @@ echo "[監査] 審査用語監査を生成（読み取り専用・未連携）..
 "${PYTHON}" "${PROJECT_ROOT}/scripts/screening_terms_audit.py" || true
 
 echo ""
+echo "[検証] 紫苑トリアージの事後検証（outcome同期＋的中率レポート）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_shion_pm_quality.py" \
+  --date "${PIPELINE_DATE}" || true
+
+echo ""
 echo "[通知] 日次改善レポートをSlackへ送信（Mana判定込み・Webhook未設定ならスキップ）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/send_daily_improvement_slack.py" \
   --date "${PIPELINE_DATE}" \

@@ -5090,6 +5090,26 @@ def _load_codex_queue_summary(limit_items: int = 3) -> dict:
     }
 
 
+def _load_shion_pm_quality_summary() -> dict:
+    """Phase 3 (P3-2): 事後検証レポート（的中率・Overrule率）の要約を読む。"""
+    path = Path(_REPO_ROOT) / "reports" / "shion_pm_quality_latest.json"
+    if not path.exists():
+        return {"available": False}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"available": False}
+    kpis = payload.get("kpis") or {}
+    return {
+        "available": True,
+        "generated_at": str(payload.get("generated_at") or ""),
+        "triage_total": int(kpis.get("triage_total") or 0),
+        "hit_rates": kpis.get("hit_rates_by_classifier") or {},
+        "overrule": kpis.get("overrule") or {},
+        "lead_time_days_avg": kpis.get("lead_time_days_avg"),
+    }
+
+
 def _load_recursive_self_improvement_digest(max_chars: int = 700) -> str:
     """reports/recursive_self_improvement_latest.md の要点を抜粋する（P0-3）。"""
     path = Path(_REPO_ROOT) / "reports" / "recursive_self_improvement_latest.md"
@@ -5159,6 +5179,29 @@ def _build_dialogue_improvement_observability_context(message: str) -> str:
         lines.append("- 再帰的自己改善レポート要点:")
         for line in digest.splitlines()[:10]:
             lines.append(f"  {line}")
+
+    pm_quality = _load_shion_pm_quality_summary()
+    if pm_quality.get("available"):
+        hit_parts = []
+        for classifier, bucket in sorted((pm_quality.get("hit_rates") or {}).items()):
+            rate = bucket.get("hit_rate")
+            if isinstance(rate, (int, float)):
+                hit_parts.append(f"{classifier} {bucket.get('applied', 0)}/{bucket.get('resolved', 0)} ({rate * 100:.0f}%)")
+        overrule = pm_quality.get("overrule") or {}
+        overrule_rate = overrule.get("rate")
+        lead = pm_quality.get("lead_time_days_avg")
+        lines.append(
+            "- トリアージ事後検証: "
+            f"累計{pm_quality.get('triage_total', 0)}件 / "
+            + ("的中率 " + "、".join(hit_parts) if hit_parts else "的中率は計測前")
+            + (
+                f" / Overrule率 {overrule_rate * 100:.0f}%"
+                if isinstance(overrule_rate, (int, float))
+                else ""
+            )
+            + (f" / 判断→マージ平均 {lead}日" if lead is not None else "")
+        )
+        lines.append("  「効いた/微妙/外した」の振り返りは、この数字を根拠に報告する。数字が無い項目は計測前と言う。")
 
     anomaly = _build_pipeline_anomaly_summary_line()
     if anomaly:
