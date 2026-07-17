@@ -16,11 +16,22 @@ LEDGER_RULES_PATH = "api/rule_engine/ledger_rules.json"
 PIPELINE_SCRIPTS_DIR = Path(__file__).resolve().parents[1] / ".agents" / "skills" / "auto-improvement-pipeline" / "scripts"
 if str(PIPELINE_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(PIPELINE_SCRIPTS_DIR))
+SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
 try:
     from auto_fix_policy import evaluate_auto_fix_policy  # type: ignore[import]
 except ImportError:
     evaluate_auto_fix_policy = None  # type: ignore[assignment]
+
+from shion_triage import (  # noqa: E402
+    TRIAGE_MODES,
+    is_approved_today,
+    load_triage_latest,
+    resolve_triage_mode,
+    triage_record_for_item,
+)
 
 BLOCKED_KEYWORDS = [
     "db",
@@ -255,7 +266,56 @@ def queue_item(item: dict[str, Any]) -> dict[str, Any]:
         "required_checks": policy.get("required_checks") or ["py_compile", "targeted_test"],
         "mode": "codex_dry_run_first",
         "prompt": f"{item.get('id')} {title} を {target_module or '対象ファイル推定'} に小さく実装し、テスト後に差分を報告してください。data/models/.claude/state は触らないでください。",
+        "triage_decision": str(item.get("triage_decision") or ""),
+        "user_approved": bool(item.get("user_approved")),
     }
+
+
+def _triage_sort_key(item: dict[str, Any], record: dict | None) -> tuple[int, int, str]:
+    """トリアージ反映後の並び順（P2-1）。今日やる(承認済み) > 今日やる > その他。"""
+    if is_approved_today(record):
+        rank = 0
+    elif record and str(record.get("decision") or "") == "today":
+        rank = 1
+    else:
+        rank = 2
+    base = queue_sort_key(item)
+    return (rank, base[0], base[1])
+
+
+def _apply_triage_to_safe(
+    safe_sorted: list[dict[str, Any]],
+    triage: dict[str, dict],
+    limit: int,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
+    """トリアージを適用した (queued, excluded_by_discard, promoted_ids) を返す。"""
+    kept: list[tuple[dict[str, Any], dict | None]] = []
+    excluded: list[dict[str, Any]] = []
+    for item in safe_sorted:
+        record = triage_record_for_item(triage, item)
+        if record and str(record.get("decision") or "") == "discard":
+            excluded.append(
+                {
+                    "id": item.get("id"),
+                    "title": item.get("title"),
+                    "reason": "triage_discard",
+                    "classified_by": record.get("classified_by") or "",
+                }
+            )
+            continue
+        kept.append((item, record))
+    kept.sort(key=lambda pair: _triage_sort_key(pair[0], pair[1]))
+    queued: list[dict[str, Any]] = []
+    promoted_ids: list[str] = []
+    for item, record in kept[:limit]:
+        annotated = dict(item)
+        if record:
+            annotated["triage_decision"] = record.get("decision") or ""
+            annotated["user_approved"] = is_approved_today(record)
+            if str(record.get("decision") or "") == "today":
+                promoted_ids.append(str(item.get("id") or ""))
+        queued.append(annotated)
+    return queued, excluded, promoted_ids
 
 
 def build_queue(
@@ -264,6 +324,8 @@ def build_queue(
     execution_status: dict[str, Any] | None = None,
     batch_applied_targets: frozenset[str] = frozenset(),
     dynamic_blocked_keywords: list[str] | None = None,
+    triage: dict[str, dict] | None = None,
+    triage_mode: str = "shadow",
 ) -> dict[str, Any]:
     needs_review = [item for item in report.get("needs_review") or [] if isinstance(item, dict)]
     quota_blocked = quota_blocked_items(execution_status or {})
@@ -304,7 +366,33 @@ def build_queue(
             maybe.append(item)
 
     safe_sorted = sorted(safe, key=queue_sort_key)
-    queued = safe_sorted[:limit]
+    baseline_queued = safe_sorted[:limit]
+
+    # ── Phase 2: トリアージ反映（P2-0 シャドー / P2-1 ライブ / P2-4 オフ）──────
+    if triage_mode not in TRIAGE_MODES:
+        triage_mode = "shadow"
+    triage = triage or {}
+    triage_info: dict[str, Any] = {"mode": triage_mode, "decisions_loaded": len(triage), "applied": False}
+    queued = baseline_queued
+    if triage_mode != "off" and triage:
+        triage_queued, excluded_by_discard, promoted_ids = _apply_triage_to_safe(safe_sorted, triage, limit)
+        baseline_ids = [str(item.get("id") or "") for item in baseline_queued]
+        with_triage_ids = [str(item.get("id") or "") for item in triage_queued]
+        triage_info.update(
+            {
+                "excluded_by_discard": excluded_by_discard,
+                "promoted_today_ids": promoted_ids,
+                "baseline_ids": baseline_ids,
+                "with_triage_ids": with_triage_ids,
+                "diverges": baseline_ids != with_triage_ids,
+            }
+        )
+        if triage_mode == "live":
+            # 実キューをトリアージ反映後の並びに切り替える。切り戻しは
+            # SHION_TRIAGE_QUEUE_MODE=shadow / off で即時（P2-4）
+            triage_info["applied"] = True
+            queued = triage_queued
+
     return {
         "generated_at": dt.datetime.now().isoformat(timespec="seconds"),
         "source_date": report.get("date"),
@@ -323,6 +411,7 @@ def build_queue(
         "blocked_by_quota": quota_hold,
         "manual_or_blocked": blocked,
         "batch_apply_blocked": batch_apply_blocked,
+        "triage": triage_info,
     }
 
 
@@ -357,6 +446,12 @@ def main() -> None:
     parser.add_argument("--status-file", type=Path, default=root / "reports" / EXECUTION_STATUS_FILE)
     parser.add_argument("--limit", type=int, default=3)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--triage-mode",
+        choices=list(TRIAGE_MODES),
+        default=None,
+        help="トリアージ反映モード。省略時は環境変数 SHION_TRIAGE_QUEUE_MODE → 既定 shadow",
+    )
     args = parser.parse_args()
 
     report_path = args.report or latest_report_path(root)
@@ -379,9 +474,31 @@ def main() -> None:
             + ", ".join(dynamic_keywords[:5])
         )
 
-    queue = build_queue(report, max(0, args.limit), execution_status, batch_applied_targets, dynamic_keywords)
+    triage_mode = resolve_triage_mode(args.triage_mode)
+    triage = load_triage_latest(root) if triage_mode != "off" else {}
+    print(f"[build_codex_auto_queue] triage mode={triage_mode}, decisions={len(triage)}")
+
+    queue = build_queue(
+        report,
+        max(0, args.limit),
+        execution_status,
+        batch_applied_targets,
+        dynamic_keywords,
+        triage=triage,
+        triage_mode=triage_mode,
+    )
     queue["source_report"] = str(report_path)
     queue["execution_status_file"] = str(args.status_file)
+
+    triage_info = queue.get("triage") or {}
+    if triage_info.get("diverges"):
+        print(
+            "[build_codex_auto_queue] triage比較: baseline="
+            + ",".join(triage_info.get("baseline_ids") or [])
+            + " / with_triage="
+            + ",".join(triage_info.get("with_triage_ids") or [])
+            + (" (適用済み)" if triage_info.get("applied") else " (シャドー・実キューは従来のまま)")
+        )
 
     if args.dry_run:
         print(json.dumps(queue, ensure_ascii=False, indent=2))

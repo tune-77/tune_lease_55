@@ -92,6 +92,7 @@ type TriageRecord = {
   rule_decision?: string;
   classified_by?: string;
   decided_at?: string;
+  approved_at?: string;
 };
 
 type DialogueImprovementLog = {
@@ -1059,6 +1060,22 @@ export default function LeaseIntelligencePage() {
     }
   };
 
+  const sendTriageApprove = async (canonicalKey: string) => {
+    if (!canonicalKey || triageSavingKey) return;
+    setTriageSavingKey(canonicalKey);
+    try {
+      const res = await apiClient.post<{ record?: TriageRecord }>("/api/improvement/triage/approve", {
+        canonical_key: canonicalKey,
+      });
+      const record = res.data?.record;
+      if (record) setTriageByKey((prev) => ({ ...prev, [canonicalKey]: record }));
+    } catch {
+      setError("実装承認の記録に失敗しました。API接続を確認してください。");
+    } finally {
+      setTriageSavingKey("");
+    }
+  };
+
   const loadTrend = async () => {
     if (trendLoading) return;
     setTrendLoading(true);
@@ -1644,7 +1661,9 @@ export default function LeaseIntelligencePage() {
                   </p>
                   {triageCandidates.map((row) => {
                     const key = String(row.item.canonical_key || row.item.id || "");
-                    const confirmed = triageByKey[key]?.decision;
+                    const triageRecord = triageByKey[key];
+                    const confirmed = triageRecord?.decision;
+                    const approved = Boolean(triageRecord?.approved_at);
                     return (
                       <div key={key} className="flex items-center justify-between gap-2 rounded-xl border border-slate-100 px-2.5 py-1.5">
                         <span className="min-w-0 truncate text-[12px] text-slate-700" title={readableImprovementTitle(row.item)}>
@@ -1685,6 +1704,24 @@ export default function LeaseIntelligencePage() {
                               </button>
                             );
                           })}
+                          {confirmed === "today" && (
+                            approved ? (
+                              <span className="inline-flex items-center gap-0.5 rounded-lg bg-violet-100 px-2 py-1 text-[11px] font-bold text-violet-700">
+                                <Check className="h-3 w-3" />
+                                承認済み
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={triageSavingKey === key}
+                                onClick={() => sendTriageApprove(key)}
+                                title="Codex依頼文の作成対象にする実装承認"
+                                className="rounded-lg border border-violet-300 bg-violet-50 px-2 py-1 text-[11px] font-bold text-violet-700 transition hover:bg-violet-100 disabled:opacity-40"
+                              >
+                                実装承認
+                              </button>
+                            )
+                          )}
                         </div>
                       </div>
                     );
