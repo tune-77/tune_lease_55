@@ -5975,6 +5975,54 @@ def _cloudrun_improvement_body_from_payload(payload: dict) -> str:
     return ""
 
 
+def _extract_improvement_section(text: str, heading: str, limit: int = 120) -> str:
+    if not text:
+        return ""
+    pattern = rf"(?:##\s*{re.escape(heading)}|\*\*{re.escape(heading)}\*\*)\s*\n([\s\S]*?)(?:\n(?:##\s|\*\*[^*\n]+\*\*)|$)"
+    match = re.search(pattern, text)
+    if not match:
+        return ""
+    return _compact_improvement_text(match.group(1), limit)
+
+
+def _extract_improvement_line(text: str, label: str, limit: int = 120) -> str:
+    if not text:
+        return ""
+    match = re.search(rf"{re.escape(label)}\s*[:：]\s*([^\n]+)", text)
+    if not match:
+        return ""
+    return _compact_improvement_text(match.group(1), limit)
+
+
+def _cloudrun_improvement_readable_title(payload: dict, body: str) -> str:
+    title = str(payload.get("title") or "").strip()
+    if title and title not in {"AIチャット改善候補", "チャット改善メモ", "Cloud Run改善メモ"}:
+        return _compact_improvement_text(title, 80)
+    return (
+        _extract_improvement_line(body, "課題", 80)
+        or _extract_improvement_section(body, "原文", 80)
+        or _extract_improvement_section(body, "ユーザー要望", 80)
+        or _compact_improvement_text(title, 80)
+        or "Cloud Run改善メモ"
+    )
+
+
+def _cloudrun_improvement_readable_reason(payload: dict, body: str) -> str:
+    explicit = str(payload.get("reason") or "").strip()
+    if explicit and explicit != "Cloud Runから登録された改善入力":
+        return _compact_improvement_text(explicit, 140)
+    issue = _extract_improvement_line(body, "課題", 100)
+    action = _extract_improvement_line(body, "次の行動", 100)
+    if issue and action:
+        return f"課題: {issue} / 次: {action}"
+    if issue:
+        return f"課題: {issue}"
+    original = _extract_improvement_section(body, "原文", 120) or _extract_improvement_section(body, "ユーザー要望", 120)
+    if original:
+        return f"原文: {original}"
+    return "Cloud Runで登録された改善メモ。本文確認が必要です。"
+
+
 def _load_local_jsonl(path: Path) -> list[dict]:
     if not path.exists():
         return []
@@ -6249,7 +6297,7 @@ def _cloudrun_improvement_items_from_gcs(limit: int = 30) -> list[dict]:
         seen.add(event_id)
         body = _cloudrun_improvement_body_from_payload(payload)
         text = body or str(payload.get("title") or "").strip()
-        title = str(payload.get("title") or "").strip() or (_compact_improvement_text(text, 60) if text else "Cloud Run改善メモ")
+        title = _cloudrun_improvement_readable_title(payload, body)
         canonical_key = str(payload.get("canonical_key") or payload.get("key") or "").strip() or _improvement_canonical_key(title, text)
         control_status = latest_control_by_key.get(canonical_key)
         if control_status == "deleted":
@@ -6262,7 +6310,7 @@ def _cloudrun_improvement_items_from_gcs(limit: int = 30) -> list[dict]:
             "priority": str(payload.get("priority") or "medium"),
             "category": "cloudrun_input",
             "canonical_key": canonical_key,
-            "reason": str(payload.get("reason") or "Cloud Runから登録された改善入力"),
+            "reason": _cloudrun_improvement_readable_reason(payload, body),
             "detail": text,
             "source_event_id": event_id,
             "source_ts": event.get("ts") or "",
