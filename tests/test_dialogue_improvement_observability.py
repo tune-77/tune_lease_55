@@ -162,6 +162,7 @@ def test_pm_quality_summary_in_detail(tmp_path, main_module):
                 "generated_at": "2026-07-18T04:10:00",
                 "kpis": {
                     "triage_total": 6,
+                    "coverage": {"candidates": 8, "triaged": 6, "rate": 0.75},
                     "hit_rates_by_classifier": {
                         "user": {"resolved": 4, "applied": 3, "hit_rate": 0.75},
                     },
@@ -177,6 +178,7 @@ def test_pm_quality_summary_in_detail(tmp_path, main_module):
     context = main_module._build_dialogue_improvement_observability_context("トリアージの的中率は？")
 
     assert "トリアージ事後検証" in context
+    assert "網羅率 6/8 (75%)" in context
     assert "user 3/4 (75%)" in context
     assert "Overrule率 20%" in context
     assert "判断→マージ平均 2.5日" in context

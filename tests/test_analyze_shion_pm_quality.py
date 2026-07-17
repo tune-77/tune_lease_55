@@ -95,6 +95,24 @@ def test_compute_kpis_hit_overrule_leadtime(root):
     assert kpis["lead_time_days_avg"] == 3.0
 
 
+def test_compute_coverage_matches_by_key_and_item_id(root):
+    triage = {
+        "misc_a": {"canonical_key": "misc_a", "decision": "today"},
+        "misc_drift": {"canonical_key": "misc_drift", "item_id": "REV-302", "decision": "later"},
+    }
+    candidates = [
+        {"id": "REV-301", "canonical_key": "misc_a"},          # key一致
+        {"id": "REV-302", "canonical_key": "misc_new_key"},    # item_id で照合（キードリフト）
+        {"id": "REV-303", "canonical_key": "misc_untouched"},  # 未トリアージ
+        {"id": "REV-304"},                                       # 未トリアージ
+    ]
+
+    coverage = pm.compute_coverage(triage, candidates)
+
+    assert coverage == {"candidates": 4, "triaged": 2, "rate": 0.5}
+    assert pm.compute_coverage(triage, []) == {"candidates": 0, "triaged": 0, "rate": None}
+
+
 def test_main_writes_reports(root, monkeypatch, capsys):
     _seed(
         root,
@@ -107,6 +125,20 @@ def test_main_writes_reports(root, monkeypatch, capsys):
              "recorded_at": "2026-07-17T01:00:00"},
         ],
     )
+    reports_dir = root / "reports"
+    reports_dir.mkdir()
+    (reports_dir / "latest.json").write_text(
+        json.dumps(
+            {
+                "needs_review": [
+                    {"id": "REV-301", "canonical_key": "misc_a"},
+                    {"id": "REV-999", "canonical_key": "misc_untouched"},
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
     monkeypatch.setattr(pm, "repo_root", lambda: root)
     monkeypatch.setattr("sys.argv", ["analyze_shion_pm_quality.py", "--date", "2026-07-18"])
 
@@ -115,9 +147,13 @@ def test_main_writes_reports(root, monkeypatch, capsys):
     latest = json.loads((root / "reports" / "shion_pm_quality_latest.json").read_text(encoding="utf-8"))
     assert latest["outcomes_synced"] == 1
     assert latest["kpis"]["hit_rates_by_classifier"]["user"]["hit_rate"] == 1.0
+    assert latest["kpis"]["coverage"] == {"candidates": 2, "triaged": 1, "rate": 0.5}
+    assert latest["kpis"]["monitoring_lead"] == {"status": "not_instrumented"}
     assert (root / "reports" / "shion_pm_quality_20260718.json").exists()
     md = (root / "reports" / "shion_pm_quality_latest.md").read_text(encoding="utf-8")
     assert "的中率" in md
+    assert "網羅率" in md
+    assert "監視先行率" in md
 
 
 def test_main_skips_without_triage(root, monkeypatch, capsys):
