@@ -6426,6 +6426,64 @@ def _cloudrun_improvement_body_from_payload(payload: dict) -> str:
     return ""
 
 
+def _is_cloudrun_improvement_noise(body: str, payload: dict) -> bool:
+    title = str(payload.get("title") or "").strip()
+    text = _compact_improvement_text("\n".join([body, title, str(payload.get("surface") or "")]), 2000)
+    if not text:
+        return True
+    prompt_markers = (
+        "【審査分析画面からの紫苑レビュー依頼】",
+        "この案件を、審査担当者の横にいる紫苑としてレビューしてください。",
+        "【過去の紫苑審査レビュー記憶】",
+        "次の過去レビューは、今回の判断に似た経験として参照してください。",
+    )
+    if any(marker in text for marker in prompt_markers):
+        return True
+    if "**ユーザー要望**" in body and "**めぶき返答**" in body:
+        return True
+    if title.endswith(("？", "?")) and not any(marker in body for marker in ("課題:", "課題：", "改善案", "次の行動")):
+        return True
+    non_improvement_markers = (
+        "リースして欲しい",
+        "リースしてほしい",
+        "リース案件審査メモ",
+        "条件付き承認を営業担当へ説明",
+    )
+    if any(marker in text for marker in non_improvement_markers):
+        return True
+    embedded_status = _extract_improvement_line(body, "status", 40).lower()
+    status_echoes = {"rejected", "deleted", "applied", "approved", "parked", "deferred", "rule_review", "rule_registered"}
+    if embedded_status in status_echoes and (
+        title.startswith("改善ログ:")
+        or "source: improvement-log API" in body
+        or "canonical_key:" in body
+    ):
+        return True
+    return False
+
+
+def _is_improvement_status_echo_entry(entry: dict) -> bool:
+    title = str(entry.get("title") or "").strip()
+    detail = str(entry.get("detail") or entry.get("description") or "").strip()
+    reason = str(entry.get("reason") or "").strip()
+    text = "\n".join([title, detail, reason])
+    status_echoes = {"rejected", "deleted", "applied", "approved", "parked", "deferred", "rule_review", "rule_registered"}
+    title_status = _extract_improvement_line(title, "status", 40).lower()
+    detail_status = _extract_improvement_line(detail, "status", 40).lower()
+    if title.startswith("改善ログ:") and any(status in title.lower() for status in status_echoes):
+        return True
+    if title_status in status_echoes:
+        return True
+    return bool(
+        detail_status in status_echoes
+        and (
+            "source: improvement-log API" in detail
+            or "canonical_key:" in detail
+            or "AI Chat 改善ログ" in text
+        )
+    )
+
+
 def _extract_improvement_section(text: str, heading: str, limit: int = 120) -> str:
     if not text:
         return ""
@@ -6501,6 +6559,84 @@ def _load_local_jsonl(path: Path) -> list[dict]:
 def _applied_improvement_keys() -> set[str]:
     latest_by_key = _latest_improvement_statuses()
     return {key for key, status in latest_by_key.items() if status == "applied"}
+
+
+def _historical_applied_improvements() -> tuple[set[str], set[str]]:
+    applied_keys: set[str] = set()
+    applied_titles: set[str] = set()
+    resolved_ledger_statuses = {"applied", "suppressed", "rejected", "deferred", "deleted", "approved", "parked"}
+    ledger_path = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
+    if ledger_path.exists():
+        try:
+            for line in ledger_path.read_text(encoding="utf-8", errors="replace").splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                status = str(entry.get("status") or entry.get("action") or "").lower()
+                if status not in resolved_ledger_statuses:
+                    continue
+                title = str(entry.get("title") or "").strip()
+                key = str(entry.get("canonical_key") or entry.get("key") or "").strip()
+                if title:
+                    applied_titles.add(title)
+                if key:
+                    applied_keys.add(key)
+        except OSError:
+            pass
+
+    candidates: list[Path] = []
+    for reports_dir in _candidate_report_dirs():
+        candidates.extend(reports_dir.glob("improvement_report_*.json"))
+        latest = reports_dir / "latest.json"
+        if latest.exists():
+            candidates.append(latest)
+
+    for path in sorted(set(candidates), reverse=True)[:80]:
+        try:
+            report = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+        except Exception:
+            continue
+        entries: list = []
+        for key in ("applied", "applied_improvements", "suppressed_applied_duplicates"):
+            value = report.get(key)
+            if isinstance(value, list):
+                entries.extend(value)
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            title = str(entry.get("title") or "").strip()
+            matched_title = str(entry.get("matched_applied_title") or "").strip()
+            detail = str(entry.get("detail") or entry.get("description") or "").strip()
+            key = str(entry.get("canonical_key") or entry.get("key") or "").strip()
+            for candidate_title in (title, matched_title):
+                if candidate_title:
+                    applied_titles.add(candidate_title)
+            if key:
+                applied_keys.add(key)
+            elif title:
+                applied_keys.add(_improvement_canonical_key(title, detail))
+    return applied_keys, applied_titles
+
+
+def _is_historically_applied_improvement(
+    title: str,
+    body: str,
+    canonical_key: str,
+    applied_keys: set[str],
+    applied_titles: set[str],
+) -> bool:
+    if canonical_key and canonical_key in applied_keys:
+        return True
+    if title and _is_implemented(title, applied_titles, threshold=0.70):
+        return True
+    issue = _extract_improvement_line(body, "課題", 140)
+    if issue and _is_implemented(issue, applied_titles, threshold=0.70):
+        return True
+    original = _extract_improvement_section(body, "原文", 140) or _extract_improvement_section(body, "ユーザー要望", 140)
+    return bool(original and _is_implemented(original, applied_titles, threshold=0.78))
 
 
 _PARK_AFTER_DAYS = 7
@@ -6606,6 +6742,8 @@ def _normalize_improvement_report(report: dict) -> dict:
         for entry in entries or []:
             if not isinstance(entry, dict):
                 continue
+            if _is_improvement_status_echo_entry(entry):
+                continue
             imp_id = str(entry.get("id") or "")
             if not imp_id:
                 continue
@@ -6646,6 +6784,9 @@ def _normalize_improvement_report(report: dict) -> dict:
             })
 
     for item in items_by_id.values():
+        if _is_improvement_status_echo_entry(item):
+            item["status"] = "DELETED"
+            continue
         canonical = item.get("canonical_key") or _improvement_canonical_key(str(item.get("title") or ""))
         item["canonical_key"] = canonical
         ledger_status = latest_statuses.get(canonical)
@@ -6737,6 +6878,7 @@ def _cloudrun_improvement_items_from_gcs(limit: int = 30) -> list[dict]:
 
     items: list[dict] = []
     seen: set[str] = set()
+    historical_applied_keys, historical_applied_titles = _historical_applied_improvements()
     for event in reversed(events):
         event_type = str(event.get("event_type") or "")
         surface = str(event.get("surface") or "")
@@ -6755,6 +6897,8 @@ def _cloudrun_improvement_items_from_gcs(limit: int = 30) -> list[dict]:
             continue
         seen.add(event_id)
         body = _cloudrun_improvement_body_from_payload(payload)
+        if _is_cloudrun_improvement_noise(body, payload):
+            continue
         text = body or str(payload.get("title") or "").strip()
         title = _cloudrun_improvement_readable_title(payload, body)
         # キーは整形前のタイトル式で計算する。表示用タイトル(readable)からキーを導出すると、
@@ -6766,6 +6910,14 @@ def _cloudrun_improvement_items_from_gcs(limit: int = 30) -> list[dict]:
             continue
         embedded_status = _extract_improvement_line(body, "status", 40).lower()
         status = _ledger_status_to_improvement_status(control_status or embedded_status or "") or "NEEDS_REVIEW"
+        if status == "NEEDS_REVIEW" and _is_historically_applied_improvement(
+            title,
+            body,
+            canonical_key,
+            historical_applied_keys,
+            historical_applied_titles,
+        ):
+            continue
         items.append({
             "id": f"cloudrun-{event_id[:12]}",
             "title": title,

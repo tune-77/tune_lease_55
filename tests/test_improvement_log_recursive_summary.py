@@ -107,6 +107,7 @@ def test_normalize_improvement_report_reflects_review_ledger_statuses(monkeypatc
 def test_cloudrun_improvement_items_include_raw_preview(monkeypatch):
     import api.main as main
 
+    monkeypatch.setattr(main, "_historical_applied_improvements", lambda: (set(), set()))
     monkeypatch.setattr(
         main,
         "_read_recent_cloudrun_input_events_from_gcs",
@@ -118,7 +119,7 @@ def test_cloudrun_improvement_items_include_raw_preview(monkeypatch):
                 "ts": "2026-07-15T00:00:00Z",
                 "payload": {
                     "title": "AIチャット改善候補",
-                    "body": "**ユーザー要望**\n回答が途中で切れている\n\n**めぶき返答**\n途中まで",
+                    "body": "## AI整理\n- 課題: 回答が途中で切れている\n- 改善案: 回答生成の完了判定を見直す",
                 },
             }
         ],
@@ -128,12 +129,13 @@ def test_cloudrun_improvement_items_include_raw_preview(monkeypatch):
 
     assert items[0]["source_event_id"] == "event-123456789"
     assert "回答が途中で切れている" in items[0]["raw_preview"]
-    assert items[0]["detail"].startswith("**ユーザー要望**")
+    assert items[0]["detail"].startswith("## AI整理")
 
 
 def test_cloudrun_improvement_items_fall_back_to_local_log(tmp_path, monkeypatch):
     import api.main as main
 
+    monkeypatch.setattr(main, "_historical_applied_improvements", lambda: (set(), set()))
     monkeypatch.setattr(main, "_REPO_ROOT", tmp_path)
     monkeypatch.setattr(main, "_read_recent_cloudrun_input_events_from_gcs", lambda days=45: [])
     data_dir = tmp_path / "data"
@@ -162,6 +164,7 @@ def test_cloudrun_improvement_items_fall_back_to_local_log(tmp_path, monkeypatch
 def test_cloudrun_improvement_items_apply_review_control(monkeypatch):
     import api.main as main
 
+    monkeypatch.setattr(main, "_historical_applied_improvements", lambda: (set(), set()))
     monkeypatch.setattr(
         main,
         "_read_recent_cloudrun_input_events_from_gcs",
@@ -206,6 +209,7 @@ def test_cloudrun_improvement_canonical_key_stable_against_readable_title(monkey
     """
     import api.main as main
 
+    monkeypatch.setattr(main, "_historical_applied_improvements", lambda: (set(), set()))
     body = "課題: スコア理由の表示が分かりにくい\n次の行動: 表示ラベルを見直す"
     # 整形導入前のキー: payloadタイトルそのまま（generic）で計算されたもの
     legacy_key = main._improvement_canonical_key("チャット改善メモ", body)
@@ -238,6 +242,7 @@ def test_cloudrun_improvement_title_falls_back_to_body_excerpt(monkeypatch):
     """タイトルなし・マーカーなしのメモは総称ではなく本文抜粋をタイトルにする。"""
     import api.main as main
 
+    monkeypatch.setattr(main, "_historical_applied_improvements", lambda: (set(), set()))
     monkeypatch.setattr(
         main,
         "_read_recent_cloudrun_input_events_from_gcs",
@@ -260,6 +265,7 @@ def test_cloudrun_improvement_title_falls_back_to_body_excerpt(monkeypatch):
 def test_cloudrun_improvement_items_skip_deleted_control(monkeypatch):
     import api.main as main
 
+    monkeypatch.setattr(main, "_historical_applied_improvements", lambda: (set(), set()))
     monkeypatch.setattr(
         main,
         "_read_recent_cloudrun_input_events_from_gcs",
@@ -290,3 +296,60 @@ def test_cloudrun_improvement_items_skip_deleted_control(monkeypatch):
     )
 
     assert main._cloudrun_improvement_items_from_gcs() == []
+
+
+def test_cloudrun_improvement_items_skip_regular_lease_chat_noise(monkeypatch):
+    import api.main as main
+
+    monkeypatch.setattr(main, "_historical_applied_improvements", lambda: (set(), set()))
+    monkeypatch.setattr(
+        main,
+        "_read_recent_cloudrun_input_events_from_gcs",
+        lambda days=45: [
+            {
+                "event_id": "event-lease-chat",
+                "event_type": "improvement_note",
+                "surface": "chat_improvement",
+                "ts": "2026-07-17T00:00:00Z",
+                "payload": {
+                    "title": "トラック２０台リースして欲しい",
+                    "body": "**ユーザー要望**\nトラック２０台リースして欲しい\n\n**めぶき返答**\n審査論点を整理します。",
+                },
+            },
+            {
+                "event_id": "event-case-memo",
+                "event_type": "improvement_note",
+                "surface": "chat_improvement",
+                "ts": "2026-07-17T00:01:00Z",
+                "payload": {
+                    "title": "運輸業・郵便業 リース案件審査メモ",
+                    "body": "## 抽出された改善候補\n- AIスコアとQ_riskの乖離に関する審査ロジックの改善",
+                },
+            },
+            {
+                "event_id": "event-business-question",
+                "event_type": "improvement_note",
+                "surface": "chat_improvement",
+                "ts": "2026-07-17T00:02:00Z",
+                "payload": {
+                    "title": "条件付き承認を営業担当へ説明するときの追加資料と承認条件は？",
+                    "body": "条件付き承認を営業担当へ説明するときの追加資料と承認条件は？",
+                },
+            },
+            {
+                "event_id": "event-real-improvement",
+                "event_type": "improvement_note",
+                "surface": "chat_improvement",
+                "ts": "2026-07-17T00:03:00Z",
+                "payload": {
+                    "title": "チャット改善メモ",
+                    "body": "課題: 本物の改善だけ残す。\n次の行動: フィルタを検証する。",
+                },
+            },
+        ],
+    )
+
+    items = main._cloudrun_improvement_items_from_gcs()
+
+    assert len(items) == 1
+    assert items[0]["source_event_id"] == "event-real-improvement"

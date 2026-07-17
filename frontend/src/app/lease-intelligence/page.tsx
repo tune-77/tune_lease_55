@@ -170,6 +170,8 @@ const DIALOGUE_RETRY_DELAYS_MS = [1200, 2500, 4000];
 const DIALOGUE_LOCAL_HISTORY_KEY = "lease-intelligence-dialogue-local-history";
 const DIALOGUE_CLEARED_AT_KEY = "lease-intelligence-dialogue-cleared-at";
 const DIALOGUE_DAILY_IMPROVEMENT_KEY_PREFIX = "lease-intelligence-daily-improvement-report";
+const DIALOGUE_DAILY_IMPROVEMENT_VERSION = "v4";
+const DIALOGUE_IMPROVEMENT_REPORT_MARKER = "表示対象: 未解決候補のみ";
 const DIALOGUE_MAX_DISPLAY_MESSAGES = 80;
 
 const storageAvailable = () => typeof window !== "undefined" && Boolean(window.localStorage);
@@ -194,12 +196,25 @@ const getDialogueClearedAt = () => {
 const dialogueDisplaySince = () => Math.max(todayStartTime(), getDialogueClearedAt());
 const dialogueDisplaySinceIso = () => new Date(dialogueDisplaySince()).toISOString();
 
+const isStaleImprovementReportMessage = (message: Message) => {
+  const content = String(message?.content || "");
+  if (!content.includes("改善PMレポート")) return false;
+  if (!content.includes(DIALOGUE_IMPROVEMENT_REPORT_MARKER)) return true;
+  return (
+    /(?:^|\n)\s*(?:-\s*)?\d+\.\s*改善ログ:\s*(?:rejected|deferred|approved|applied|parked|deleted)/i.test(content)
+    || /(?:^|\n)\s*(?:-\s*)?\d+\.\s*-\s*status:\s*(?:rejected|deferred|approved|applied|parked|deleted|rule_review|rule_registered)/i.test(content)
+  );
+};
+
+const sanitizeDialogueMessages = (messages: Message[]) =>
+  messages.filter((message) => message?.role && message?.content && !isStaleImprovementReportMessage(message));
+
 const loadLocalDialogueMessages = (): Message[] => {
   if (!storageAvailable()) return [];
   try {
     const raw = window.localStorage.getItem(DIALOGUE_LOCAL_HISTORY_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((item) => item?.role && item?.content) : [];
+    return Array.isArray(parsed) ? sanitizeDialogueMessages(parsed) : [];
   } catch {
     return [];
   }
@@ -208,7 +223,7 @@ const loadLocalDialogueMessages = (): Message[] => {
 const saveLocalDialogueMessages = (messages: Message[]) => {
   if (!storageAvailable()) return;
   const since = dialogueDisplaySince();
-  const filtered = messages
+  const filtered = sanitizeDialogueMessages(messages)
     .filter((message) => messageTime(message) >= since)
     .slice(-DIALOGUE_MAX_DISPLAY_MESSAGES);
   window.localStorage.setItem(DIALOGUE_LOCAL_HISTORY_KEY, JSON.stringify(filtered));
@@ -221,7 +236,7 @@ const mergeDialogueMessages = (serverMessages: Message[], localMessages: Message
   const since = dialogueDisplaySince();
   const merged: Message[] = [];
   const seen = new Map<string, number[]>();
-  for (const message of [...serverMessages, ...localMessages]) {
+  for (const message of sanitizeDialogueMessages([...serverMessages, ...localMessages])) {
     const time = messageTime(message);
     if (!message || time < since) continue;
     const signature = dialogueSignature(message);
@@ -236,7 +251,7 @@ const mergeDialogueMessages = (serverMessages: Message[], localMessages: Message
 };
 
 const dailyImprovementStorageKey = () =>
-  `${DIALOGUE_DAILY_IMPROVEMENT_KEY_PREFIX}:${new Date().toLocaleDateString("sv-SE")}`;
+  `${DIALOGUE_DAILY_IMPROVEMENT_KEY_PREFIX}:${DIALOGUE_DAILY_IMPROVEMENT_VERSION}:${new Date().toLocaleDateString("sv-SE")}`;
 
 const shouldShowDailyImprovementReport = () => {
   if (!storageAvailable()) return false;
@@ -305,12 +320,10 @@ const pushImprovementItemLines = (lines: string[], item: DialogueImprovementItem
 const classifyPmImprovementItems = (items: DialogueImprovementItem[]) => {
   const actionable: DialogueImprovementItem[] = [];
   const later: DialogueImprovementItem[] = [];
-  const discard: DialogueImprovementItem[] = [];
   for (const item of items) {
     const status = String(item.status || "").toUpperCase();
     const text = `${item.title || ""} ${item.reason || ""} ${item.detail || ""} ${item.category || ""}`.toLowerCase();
-    if (["APPLIED", "DELETED", "REJECTED", "PARKED"].includes(status)) {
-      discard.push(item);
+    if (!["NEEDS_REVIEW", "AUTO_FIX_CANDIDATE", "RULE_REVIEW"].includes(status)) {
       continue;
     }
     const risky =
@@ -334,7 +347,7 @@ const classifyPmImprovementItems = (items: DialogueImprovementItem[]) => {
   return {
     today: actionable.slice(0, 3),
     later: later.slice(0, 3),
-    discard: discard.slice(0, 2),
+    discard: [],
   };
 };
 
@@ -376,6 +389,7 @@ const buildDailyImprovementReport = (
   const generatedAt = log.date || String(log.generated_at || "").slice(0, 10);
   const lines = [
     generatedAt ? `改善PMレポートです。対象日は ${generatedAt} です。` : "改善PMレポートです。",
+    DIALOGUE_IMPROVEMENT_REPORT_MARKER,
     "ハッカソン安全運用: 読む・報告する・相談する・Codex依頼文を作るところまで。実装、git、deployは自動では行いません。",
     `適用済み ${log.applied ?? 0} 件、自動候補 ${log.auto_fix_candidates ?? 0} 件、要レビュー ${log.needs_review ?? 0} 件、保留 ${log.parked ?? 0} 件です。`,
     ...buildSystemWatchLines(pipeline, gaps),
