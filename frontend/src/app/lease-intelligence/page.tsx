@@ -235,6 +235,15 @@ const buildDailyImprovementReport = (log: DialogueImprovementLog | null | undefi
   return lines.join("\n");
 };
 
+const extractCodexRequest = (text: string) => {
+  const markerMatch = text.match(/Codex依頼文[:：]/);
+  if (!markerMatch || markerMatch.index === undefined) return "";
+  const afterMarker = text.slice(markerMatch.index + markerMatch[0].length).trim();
+  const fenced = afterMarker.match(/```(?:text|markdown|md)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) return fenced[1].trim();
+  return afterMarker.split(/\n{3,}/)[0]?.trim() || "";
+};
+
 const clearVisibleDialogueMessages = () => {
   if (!storageAvailable()) return;
   window.localStorage.setItem(DIALOGUE_CLEARED_AT_KEY, String(Date.now()));
@@ -1391,11 +1400,13 @@ export default function LeaseIntelligencePage() {
                 </button>
               </div>
             )}
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}
-              >
+            {messages.map((message) => {
+              const codexRequest = message.role === "assistant" ? extractCodexRequest(message.content) : "";
+              return (
+                <div
+                  key={message.id}
+                  className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                >
                 {message.role === "assistant" && (
                   <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full border border-violet-200 bg-violet-100 shadow-sm">
                     <img
@@ -1459,6 +1470,18 @@ export default function LeaseIntelligencePage() {
                       長文入力として履歴と知識文脈を圧縮して処理しました。
                     </div>
                   )}
+                  {codexRequest && (
+                    <button
+                      type="button"
+                      onClick={() => copyMessage(message.id + 900000, codexRequest)}
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-cyan-200 bg-cyan-50 px-2.5 py-1.5 text-[11px] font-bold text-cyan-700 transition hover:bg-cyan-100"
+                    >
+                      {copiedId === message.id + 900000
+                        ? <Check className="h-3.5 w-3.5" />
+                        : <Copy className="h-3.5 w-3.5" />}
+                      Codex依頼文をコピー
+                    </button>
+                  )}
                   <button
                     onClick={() => copyMessage(message.id, message.content)}
                     title="コピー"
@@ -1479,7 +1502,8 @@ export default function LeaseIntelligencePage() {
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
             {loading && (
               <div className="flex items-center gap-3 text-sm text-violet-700">
                 <Loader2 className="h-5 w-5 animate-spin" /> 考えています…
