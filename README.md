@@ -13,7 +13,7 @@
 | 一言で | リース審査の判断コメントを、次回以降に使える判断資産へ変換するAI |
 | 解く課題 | ベテランの違和感・確認観点・承認条件が、案件ごとに消えてしまう |
 | 何が新しいか | AIの回答だけでなく、人間の修正・判断・結果を検疫し、再利用可能な形へ昇格する |
-| デモで見る所 | 案件入力 → 紫苑の確認観点 → 人間フィードバック → 判断資産候補 → 次回案件への再利用 |
+| デモで見る所 | 案件入力 → 紫苑の確認観点 → 人間フィードバック → 判断資産候補 → 次回案件への再利用 / 対話室の改善PMレポート |
 | 技術の芯 | Next.js / FastAPI / Gemini / ADK / Cloud Run / Obsidian-RAG / 検疫DB / 判断資産DevOps |
 
 紫苑は「AIが正解を出す」ための単発チャットではありません。人間が現場で感じた違和感、修正、承認条件、反証を **判断パーツ** として保存し、次の案件で組み直し、人間がまた評価するための運用基盤です。つまり、プロンプトエンジニアリングを個人技ではなく、業務判断のPDCAプロセスにします。
@@ -73,6 +73,7 @@ AIにとって自然な学習の形を、人間の業務判断に移植する。
 | Q_risk と人間判断フィードバック | `frontend/src/components/analysis/QRiskPanel.tsx` |
 | Cloud Run入力の帰還・検疫 | `scripts/sync_cloudrun_inputs_from_gcs.py`, `scripts/promote_cloudrun_return_data.py` |
 | 判断材料の抽出・代表ルール化 | `scripts/build_judgment_materials_preview.py`, `scripts/build_canonical_judgment_rules.py` |
+| 紫苑の改善PM・システム監視 | `frontend/src/app/lease-intelligence/page.tsx`, `/api/improvement-log`, `/api/improvement-pipeline/summary`, `/api/lease-system-gaps` |
 | 記憶・内省・判断資産の接続 | `lease_intelligence_dialogue.py`, `lease_intelligence_reflection.py`, `scripts/build_shion_memory_index.py` |
 | 回帰テスト | `tests/` |
 
@@ -746,6 +747,12 @@ One More Thing として、`/chat-compare` から `/shion-identity-check` へ進
 「プロトタイプは作れるが実運用まで持っていけない」という課題に対し、このプロジェクトは本体データを守ったまま Cloud Run 上で実際に動かし続けるためのループを持っています。
 
 ここでのDevOps対象は、単なるデプロイ先やコンテナではありません。AIが何を参照し、何を見落とし、どの記憶を使い、次回どう改善されるかまでを運用対象にします。
+
+対話室の紫苑は、このDevOpsループの **改善PM** として振る舞います。日次の改善レポート、改善パイプラインの失敗、commit結果、critical/high のシステムギャップを読み、朝の初回ログイン時に「システム監視」「今日やる候補」「後回し候補」「捨てる/削除候補」として短く報告します。Userが候補を選んだ場合だけ、紫苑は Codex へ貼れる依頼文を作ります。紫苑自身は Codex 起動、git操作、デプロイ、課金発生を開始しません。実行判断はUserが握り、Codexは承認された変更だけを実装します。
+
+ハッカソン期間中は安全運用として、紫苑の役割を「読む・報告する・相談する・Codex依頼文を作る」までに限定します。自動実装、自動gitship、自動Cloud Run deploy、外部接続追加はハッカソン後の検証対象です。
+
+つまり運用ループは、`観測 → 報告 → 相談 → User承認 → Codex依頼文 → 実装 → gitship → 翌日報告` です。紫苑は実装者ではなく、改善候補とシステム状態を管理するPMとして、判断資産システムを壊さず育てる役割を持ちます。
 
 ```mermaid
 graph LR
