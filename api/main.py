@@ -3180,6 +3180,7 @@ class ImprovementTriageRequest(BaseModel):
     canonical_key: str
     decision: str  # today / later / discard
     title: str = ""
+    item_id: str = ""  # 改善レポート上のID（REV-XXX等）。Codexキューとの突き合わせ用
     source_event_id: str = ""
     reason: str = ""
     rule_decision: str = ""  # ルール分類（classifyPmImprovementItems）の初期値
@@ -3234,6 +3235,7 @@ def record_improvement_triage(req: ImprovementTriageRequest):
         rule_decision = ""
     record = {
         "canonical_key": canonical_key,
+        "item_id": str(req.item_id or "").strip(),
         "source_event_id": str(req.source_event_id or "").strip(),
         "title": str(req.title or "").strip()[:120],
         "decision": decision,
@@ -5123,16 +5125,36 @@ def _build_dialogue_improvement_observability_context(message: str) -> str:
     return "\n".join(lines)
 
 
+_TRIAGE_RESOLVED_LEDGER_STATUSES = {"applied", "deleted", "rejected"}
+
+
 def _build_dialogue_triage_context(limit: int = 4) -> str:
     """Phase 1 (P1-3): 昨日までのトリアージ結果と未確定分を対話文脈へ短く反映する。
 
     記録が無ければ空を返し、通常会話の注入量を増やさない。
+    台帳（ledger）で applied/deleted/rejected へ解決済みの候補は持ち越しから外す。
+    改善ログとトリアージ記録が食い違ったまま古い判断を語らないための突き合わせ。
     """
     latest = _load_improvement_triage_latest()
     if not latest:
         return ""
+    try:
+        ledger_statuses = _latest_improvement_statuses()
+    except Exception:
+        ledger_statuses = {}
+    active: list[dict] = []
+    resolved_count = 0
+    for row in latest.values():
+        key = str(row.get("canonical_key") or "")
+        ledger_status = str(ledger_statuses.get(key) or "").lower()
+        if ledger_status in _TRIAGE_RESOLVED_LEDGER_STATUSES:
+            resolved_count += 1
+            continue
+        active.append(row)
+    if not active and not resolved_count:
+        return ""
     records = sorted(
-        latest.values(),
+        active,
         key=lambda row: str(row.get("decided_at") or ""),
         reverse=True,
     )
@@ -5149,6 +5171,8 @@ def _build_dialogue_triage_context(limit: int = 4) -> str:
         ),
         "未確定の候補は持ち越しのみとし、日数経過による自動昇格・自動破棄はしない。",
     ]
+    if resolved_count:
+        lines.append(f"台帳で解決済み（applied/deleted/rejected）になった判断 {resolved_count} 件は持ち越しから除外した。")
     for row in records[:limit]:
         decision = str(row.get("decision") or "")
         label = _TRIAGE_DECISION_LABELS.get(decision, decision)

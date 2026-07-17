@@ -16,6 +16,8 @@ def main_module(tmp_path, monkeypatch):
     import api.main as main
 
     monkeypatch.setattr(main, "_REPO_ROOT", str(tmp_path))
+    # 実行環境の実台帳（~/Library/Logs/tunelease/ledger.jsonl）に依存しないよう固定
+    monkeypatch.setattr(main, "_latest_improvement_statuses", lambda: {})
     return main
 
 
@@ -26,6 +28,7 @@ def test_record_and_get_last_entry_wins(tmp_path, main_module):
             canonical_key="misc_abc123",
             decision="later",
             title="対話室の表示改善",
+            item_id="REV-220",
             source_event_id="event-1",
             rule_decision="today",
             classified_by="user",
@@ -37,6 +40,7 @@ def test_record_and_get_last_entry_wins(tmp_path, main_module):
             canonical_key="misc_abc123",
             decision="today",
             title="対話室の表示改善",
+            item_id="REV-220",
             source_event_id="event-1",
             rule_decision="today",
             classified_by="user",
@@ -49,6 +53,8 @@ def test_record_and_get_last_entry_wins(tmp_path, main_module):
     assert result["records"][0]["decision"] == "today"
     assert result["records"][0]["source_event_id"] == "event-1"
     assert result["records"][0]["title"] == "対話室の表示改善"
+    # Codexキュー（idキー）との突き合わせ用にレポートIDも冗長記録される
+    assert result["records"][0]["item_id"] == "REV-220"
     assert result["counts"] == {"today": 1}
 
     # 追記形式でファイルに2行残っている（監査可能）
@@ -111,6 +117,34 @@ def test_triage_context_reflects_records(main_module):
 
 def test_triage_context_empty_without_records(main_module):
     assert main_module._build_dialogue_triage_context() == ""
+
+
+def test_triage_context_excludes_ledger_resolved(main_module, monkeypatch):
+    """改善ログ（台帳）との整合性: 台帳で解決済みの候補は持ち越しから外す。
+
+    例: トリアージで「今日やる」とした候補が、既存の改善ログページで
+    実装済み(applied)や削除(deleted)になった場合、古い判断を語り続けない。
+    """
+    main = main_module
+    main.record_improvement_triage(
+        main.ImprovementTriageRequest(
+            canonical_key="misc_done", decision="today", title="もう実装済みの候補"
+        )
+    )
+    main.record_improvement_triage(
+        main.ImprovementTriageRequest(
+            canonical_key="misc_alive", decision="later", title="まだ生きている候補"
+        )
+    )
+    monkeypatch.setattr(main, "_latest_improvement_statuses", lambda: {"misc_done": "applied"})
+
+    context = main._build_dialogue_triage_context()
+
+    assert "もう実装済みの候補" not in context
+    assert "まだ生きている候補" in context
+    assert "解決済み（applied/deleted/rejected）になった判断 1 件は持ち越しから除外" in context
+    assert "今日やる0件" in context
+    assert "後回し1件" in context
 
 
 def test_triage_file_corruption_tolerated(tmp_path, main_module):
