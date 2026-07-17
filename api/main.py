@@ -6005,6 +6005,7 @@ def _cloudrun_improvement_readable_title(payload: dict, body: str) -> str:
         or _extract_improvement_section(body, "原文", 80)
         or _extract_improvement_section(body, "ユーザー要望", 80)
         or _compact_improvement_text(title, 80)
+        or _compact_improvement_text(body, 60)
         or "Cloud Run改善メモ"
     )
 
@@ -6305,7 +6306,10 @@ def _cloudrun_improvement_items_from_gcs(limit: int = 30) -> list[dict]:
         body = _cloudrun_improvement_body_from_payload(payload)
         text = body or str(payload.get("title") or "").strip()
         title = _cloudrun_improvement_readable_title(payload, body)
-        canonical_key = str(payload.get("canonical_key") or payload.get("key") or "").strip() or _improvement_canonical_key(title, text)
+        # キーは整形前のタイトル式で計算する。表示用タイトル(readable)からキーを導出すると、
+        # 整形ロジック変更のたびにキーが変わり、過去の削除/棚卸しイベントと照合できなくなる
+        legacy_title = str(payload.get("title") or "").strip() or (_compact_improvement_text(text, 60) if text else "Cloud Run改善メモ")
+        canonical_key = str(payload.get("canonical_key") or payload.get("key") or "").strip() or _improvement_canonical_key(legacy_title, text)
         control_status = latest_control_by_key.get(canonical_key)
         if control_status == "deleted":
             continue
