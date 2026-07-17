@@ -86,10 +86,10 @@ export default function FinancialPage() {
                   <ResponsiveContainer width="100%" height="100%">
                       <ComposedChart data={chartData} margin={{ top: 10, right: 30, left: 20, bottom: 0 }}>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                          <XAxis dataKey="label" scale="point" padding={{ left: 10, right: 10 }} tick={{fontSize: 10}} minTickGap={30} />
-                          <YAxis tickFormatter={(val) => Math.round(val / 1000) + 'm'} width={60} />
-                          <Tooltip 
-                            formatter={(value: any) => new Intl.NumberFormat('ja-JP').format(value) + ' 千円'}
+                          <XAxis dataKey="label" scale="point" padding={{ left: 10, right: 10 }} tick={{ fontSize: 10 }} minTickGap={30} />
+                          <YAxis tickFormatter={(val) => Math.round(val / 1000) + ' 百万円'} width={60} />
+                          <Tooltip
+                            formatter={(value: any) => new Intl.NumberFormat('ja-JP').format(value / 1000) + ' 百万円'}
                             contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                           />
                           <Legend />
