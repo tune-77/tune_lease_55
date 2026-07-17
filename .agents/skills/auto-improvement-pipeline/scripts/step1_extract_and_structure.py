@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+from pathlib import Path
 from typing import Any
 
 
@@ -57,6 +59,129 @@ def extract_improvements_from_chat_log(chat_log: str) -> list[dict[str, Any]]:
     return improvements
 
 
+# ── target_module 推定用キーワード辞書（フォールバック） ──────────────────
+# 改善テキストにファイル名が明示されていない場合（実際のチャットログ由来の
+# 改善案はほぼ常にこちら）でも、頻出テーマのキーワードから対象モジュールを
+# 推定する。複数候補がある場合はカンマ区切りで列挙する。
+# 具体的なキーワードを先頭に、汎用的なキーワード（「紫苑」等）を末尾に置くこと
+# （リスト順で最初にマッチしたものが採用されるため）。
+_TARGET_MODULE_KEYWORD_MAP: list[tuple[tuple[str, ...], str]] = [
+    (("音声入力", "音声応答", "音声で", "音声回答", "voice"), "frontend/src/app/voice-chat/page.tsx"),
+    (("千円単位", "千円", "金額の表示単位", "金額入力", "百万単位"), "frontend/src/app/financial/page.tsx, scoring_core.py"),
+    (("スコアリング", "AIスコア", "Q_risk", "ドリフト", "キャリブレーション"), "scoring_core.py, total_scorer.py"),
+    (("リース負担", "判定ロジック"), "scoring_core.py, rule_manager.py"),
+    (("記憶参照", "記憶精度", "過去の会話", "chromaDB", "chroma"), "scripts/build_shion_memory_vector_index.py, mobile_app/rag_daily_maintenance.py"),
+    (("マルチエージェント討論", "議論停滞", "意思疎通"), "lease_intelligence_dialogue.py, frontend/src/app/debate/page.tsx"),
+    (("lease-wiki-vault", "obsidian-vault", "Vault名"), "mobile_app/obsidian_bridge.py, lease_intelligence_tools.py"),
+    (("法定対応年数", "法定耐用年数"), "static_data/useful_life_equipment.json, useful_life_lookup.py"),
+    (("画像やファイルを添付", "ファイル添付"), "frontend/src/app/chat/page.tsx"),
+    (("自律改善フロー", "自動実行元", "codex"), "scripts/build_codex_auto_queue.py, scripts/execute_codex_queue.py"),
+    (("紫苑", "めぶきちゃん", "八奈見さん"), "lease_intelligence_dialogue.py, mobile_app/chat_assistant.py"),
+]
+
+
+def _infer_target_module_from_keywords(text: str) -> str | None:
+    """テキストにファイル名が明示されていない場合、頻出テーマのキーワードから
+    対象モジュールを推定するフォールバック。"""
+    for keywords, module in _TARGET_MODULE_KEYWORD_MAP:
+        if any(kw in text for kw in keywords):
+            return module
+    return None
+
+
+# ── target_module 推定用リポジトリ全文検索（フォールバック2） ────────────
+# キーワード辞書でもカバーできないテーマについて、改善テキストから
+# キーワード候補（漢字・カタカナの連続、英数字トークン）を抽出し、リポジトリを
+# grepしてヒット数の多いファイルを対象モジュール候補として推定する。
+# ひらがなの助詞・活用語尾で自然に区切られるため、簡易的な名詞抽出として機能する。
+_KEYWORD_TOKEN_RE = re.compile(r'[一-龠ァ-ヶー]{2,}|[A-Za-z0-9_]{3,}')
+
+_SEARCH_EXTENSIONS = (".py", ".tsx", ".ts", ".jsx", ".js", ".json")
+_SEARCH_EXCLUDE_DIRS = (
+    ".venv", "node_modules", "__pycache__", ".git", ".next",
+    "tests", "test", ".agents", "reports", "knowledge_base",
+    ".vector_index", ".cloudrun_bundle", "dist", "build", "static_data",
+)
+# 改善パイプライン自身のメタ管理スクリプト（REV/改善案テキストを大量に扱うため
+# キーワード検索で誤ヒットしやすい）はターゲット候補から除外する
+_EXCLUDE_PATH_SUBSTRINGS = (
+    "improvement", "codex_queue", "pipeline_ledger", "dispatch_notifier",
+)
+_MAX_KEYWORDS_FOR_SEARCH = 5
+_MAX_CANDIDATE_MODULES = 2
+_MAX_FILES_PER_KEYWORD = 30
+_GREP_TIMEOUT_SEC = 10
+
+
+def _find_repo_root() -> Path | None:
+    """CLAUDE.md を目印にリポジトリルートを探索する."""
+    root = Path(__file__).resolve().parent
+    while root != root.parent:
+        if (root / "CLAUDE.md").exists():
+            return root
+        root = root.parent
+    return None
+
+
+def _extract_search_keywords(text: str) -> list[str]:
+    """漢字/カタカナの連続・英数字トークンをキーワード候補として抽出する。
+    長いトークンほど固有性が高いとみなし、長い順に上位N件を返す。"""
+    tokens = _KEYWORD_TOKEN_RE.findall(text)
+    seen: set[str] = set()
+    unique = [t for t in tokens if not (t in seen or seen.add(t))]
+    unique.sort(key=len, reverse=True)
+    return unique[:_MAX_KEYWORDS_FOR_SEARCH]
+
+
+def _infer_target_module_from_repo_search(text: str) -> str | None:
+    """キーワード辞書でも解決できない場合の最終フォールバック。
+    リポジトリ全文検索でヒット数の多いファイルを対象モジュール候補として返す
+    （複数候補はカンマ区切り。あくまで推定であり要確認扱いは変わらない）。"""
+    repo_root = _find_repo_root()
+    if repo_root is None:
+        return None
+
+    keywords = _extract_search_keywords(text)
+    if not keywords:
+        return None
+
+    scores: dict[str, int] = {}
+    for keyword in keywords:
+        cmd = ["grep", "-rlF"]
+        for ext in _SEARCH_EXTENSIONS:
+            cmd.append(f"--include=*{ext}")
+        for exclude_dir in _SEARCH_EXCLUDE_DIRS:
+            cmd.append(f"--exclude-dir={exclude_dir}")
+        cmd.append(keyword)
+        cmd.append(str(repo_root))
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=_GREP_TIMEOUT_SEC,
+            )
+        except Exception:
+            continue
+
+        files = [
+            f for f in result.stdout.splitlines()
+            if f and not any(sub in f.lower() for sub in _EXCLUDE_PATH_SUBSTRINGS)
+        ][:_MAX_FILES_PER_KEYWORD]
+
+        weight = len(keyword)  # 長い（＝固有性の高い）キーワードほど重く加点
+        for f in files:
+            try:
+                rel = str(Path(f).relative_to(repo_root))
+            except ValueError:
+                rel = f
+            scores[rel] = scores.get(rel, 0) + weight
+
+    if not scores:
+        return None
+
+    ranked = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
+    top = [f for f, _ in ranked[:_MAX_CANDIDATE_MODULES]]
+    return ", ".join(top)
+
+
 def _parse_improvement_text(text: str, rev_id: str) -> dict[str, Any] | None:
     """
     単一の改善テキストをパースしてJSON構造化する。
@@ -75,7 +200,13 @@ def _parse_improvement_text(text: str, rev_id: str) -> dict[str, Any] | None:
     
     # モジュール名抽出（.py/.tsx/.ts/.js/.jsx/.json や「～モジュール」「～関数」など）
     module_match = re.search(r'([a-zA-Z0-9_./-]+\.(?:py|tsx|ts|jsx|js|json)|[a-zA-Z0-9_]+(?:モジュール|関数|クラス))', text)
-    target_module = module_match.group(1) if module_match else None
+    if module_match:
+        target_module = module_match.group(1)
+    else:
+        target_module = (
+            _infer_target_module_from_keywords(text)
+            or _infer_target_module_from_repo_search(text)
+        )
     
     # タイトル抽出：最初の50文字
     title = text.split('\n')[0][:50].strip()
