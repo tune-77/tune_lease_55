@@ -152,6 +152,37 @@ def test_codex_queue_and_recursive_digest_in_detail(tmp_path, main_module):
     assert "Ranked queue: 0" in context
 
 
+def test_pm_quality_summary_in_detail(tmp_path, main_module):
+    """P3-2: 事後検証レポートの的中率・Overrule率が改善相談の詳細に載る。"""
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    (reports_dir / "shion_pm_quality_latest.json").write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-07-18T04:10:00",
+                "kpis": {
+                    "triage_total": 6,
+                    "hit_rates_by_classifier": {
+                        "user": {"resolved": 4, "applied": 3, "hit_rate": 0.75},
+                    },
+                    "overrule": {"with_rule_decision": 5, "overruled": 1, "rate": 0.2},
+                    "lead_time_days_avg": 2.5,
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    context = main_module._build_dialogue_improvement_observability_context("トリアージの的中率は？")
+
+    assert "トリアージ事後検証" in context
+    assert "user 3/4 (75%)" in context
+    assert "Overrule率 20%" in context
+    assert "判断→マージ平均 2.5日" in context
+    assert "数字が無い項目は計測前と言う" in context
+
+
 def test_detail_survives_missing_files(tmp_path, main_module):
     # data/ も scripts/ も reports/ も無い環境（本セッションのチェックアウトと同じ）でも例外を出さない
     context = main_module._build_dialogue_improvement_observability_context("改善候補の相談をしたい")
