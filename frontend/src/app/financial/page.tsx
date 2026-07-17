@@ -10,9 +10,9 @@ const INDUSTRY_OPTIONS = [
 ];
 
 export default function FinancialPage() {
-  const [sales, setSales] = useState(['500000', '520000', '550000']);
-  const [profit, setProfit] = useState(['30000', '35000', '38000']);
-  const [netAssets, setNetAssets] = useState(['120000', '145000', '170000']);
+  const [sales, setSales] = useState(['500', '520', '550']);
+  const [profit, setProfit] = useState(['30', '35', '38']);
+  const [netAssets, setNetAssets] = useState(['120', '145', '170']);
   const [industry, setIndustry] = useState("サービス業");
   
   const [loading, setLoading] = useState(false);
@@ -87,7 +87,7 @@ export default function FinancialPage() {
                       <ComposedChart data={chartData} margin={{ top: 10, right: 30, left: 20, bottom: 0 }}>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} />
                           <XAxis dataKey="label" scale="point" padding={{ left: 10, right: 10 }} tick={{fontSize: 10}} minTickGap={30} />
-                          <YAxis tickFormatter={(val) => Math.round(val / 1000) + 'm'} width={60} />
+                          <YAxis tickFormatter={(val) => new Intl.NumberFormat('ja-JP').format(Math.round(val)) + '千円'} width={80} />
                           <Tooltip 
                             formatter={(value: any) => new Intl.NumberFormat('ja-JP').format(value) + ' 千円'}
                             contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
