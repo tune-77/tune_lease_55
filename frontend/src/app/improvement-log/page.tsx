@@ -96,6 +96,11 @@ type ImprovementLog = {
     canonical_candidate_count?: number;
     ranked_queue_count?: number;
     suppressed_count?: number;
+    shion_review_loop?: {
+      status?: string;
+      label?: string;
+      steps?: string[];
+    };
     measurement_summary?: {
       pdca_rate?: number;
       response_changed_rate?: number;
@@ -1097,6 +1102,30 @@ export default function ImprovementLogPage() {
               <span className="rounded-full bg-white px-2 py-1">
                 抑制 {data.recursive_self_improvement.suppressed_count ?? 0}
               </span>
+            </div>
+            <div className="mt-3 rounded-lg border border-indigo-200 bg-white p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-black text-emerald-700">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  {data.recursive_self_improvement.shion_review_loop?.label || "紫苑チェックで閉ループ化済み"}
+                </span>
+                <span className="text-xs font-semibold text-slate-600">
+                  改善候補を紫苑で見て、人間の評価を戻し、次の改善PMレポートへ返せます。
+                </span>
+              </div>
+              <div className="mt-2 grid gap-2 md:grid-cols-4">
+                {(data.recursive_self_improvement.shion_review_loop?.steps || [
+                  "審査分析画面で紫苑レビュー",
+                  "役に立った/要修正/違うを記録",
+                  "判断資産候補と改善ログへ戻す",
+                  "次回の改善PMレポートで再確認",
+                ]).map((step, index) => (
+                  <div key={`${index}-${step}`} className="rounded-md bg-indigo-50 px-2.5 py-2 text-[11px] font-semibold text-indigo-900">
+                    <span className="mr-1 text-indigo-500">{index + 1}.</span>
+                    {step}
+                  </div>
+                ))}
+              </div>
             </div>
             {data.recursive_self_improvement.source && (
               <p className="mt-3 break-all text-[11px] text-indigo-500">

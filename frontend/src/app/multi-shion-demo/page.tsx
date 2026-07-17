@@ -327,9 +327,9 @@ function ShionKnowledgeGraph({
                 <Brain className="h-4 w-4" />
                 Core Shion
               </div>
-              <h3 className="mt-2 text-lg font-black leading-snug text-white">紫苑中核</h3>
+              <h3 className="mt-2 text-lg font-black leading-snug text-white">共有判断核</h3>
               <p className="mt-2 text-sm font-bold leading-7 text-violet-100">
-                リース知識、人格基盤、安全境界、共通ルールを保持する中核です。各個体はここを共有しながら、利用者ごとの経験で反応が分岐します。
+                リース知識、審査原則、安全境界、承認済みの判断資産を保持する中核です。各紫苑はここを共有しながら、部署ごとの経験で反応が分岐します。
               </p>
             </div>
 
@@ -367,7 +367,7 @@ function ShionKnowledgeGraph({
                 <div className="rounded-xl border border-emerald-800 bg-emerald-950/40 p-3">
                   <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-emerald-300">
                     <GitMerge className="h-3.5 w-3.5" />
-                    共有知性へ送る候補
+                    検疫・昇格へ送る候補
                   </div>
                   <p className="mt-1 text-sm font-bold leading-7 text-emerald-50">{selectedShion?.publicLesson}</p>
                 </div>
@@ -496,10 +496,10 @@ function ShionKnowledgeGraph({
             <circle cx={center.x} cy={center.y} r="64" fill="url(#coreGlow)" filter="url(#softGlow)" />
             <circle cx={center.x} cy={center.y} r="77" fill="none" stroke="#ddd6fe" strokeWidth="2" opacity="0.8" />
             <text x={center.x} y={center.y - 10} textAnchor="middle" fontSize="20" fontWeight="900" fill="#0f172a">
-              紫苑中核
+              共有判断核
             </text>
             <text x={center.x} y={center.y + 14} textAnchor="middle" fontSize="11" fontWeight="900" fill="#312e81" className="graph-core-subtitle">
-              共通知識 / 価値観 / 境界
+              共通知識 / 審査原則 / 境界
             </text>
             <text x={center.x} y={center.y + 36} textAnchor="middle" fontSize="10" fontWeight="900" fill="#0f766e" className="graph-core-subtitle">
               昇格済み {promotedInsights.length} 件
@@ -550,7 +550,7 @@ function ShionKnowledgeGraph({
                 <div className="rounded-xl border border-emerald-800 bg-emerald-950/40 p-3">
                   <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-emerald-300">
                     <GitMerge className="h-3.5 w-3.5" />
-                    共有知性へ送る候補
+                    検疫・昇格へ送る候補
                   </div>
                   <p className="mt-1 text-xs font-bold leading-5 text-emerald-50">{selectedShion?.publicLesson}</p>
                 </div>
@@ -562,7 +562,7 @@ function ShionKnowledgeGraph({
                   className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-3 text-sm font-black text-emerald-950 transition hover:bg-emerald-300"
                 >
                   <Sparkles className="h-4 w-4" />
-                  この紫苑の共有候補を中核へ昇格
+                  この候補を検疫・昇格ゲートへ送る
                 </button>
               )}
             </div>
@@ -574,11 +574,11 @@ function ShionKnowledgeGraph({
             </div>
             <div className="rounded-xl border border-cyan-800 bg-cyan-950/40 p-3">
               <div className="text-[10px] font-black uppercase text-cyan-400">Core Shion</div>
-              <p className="mt-1 text-xs font-bold leading-5 text-cyan-100">中央の中核。リース知識、人格基盤、安全境界、共通ルールを保持する。</p>
+              <p className="mt-1 text-xs font-bold leading-5 text-cyan-100">中央の共有判断核。リース知識、審査原則、安全境界、承認済みの判断資産を保持する。</p>
             </div>
             <div className="rounded-xl border border-emerald-800 bg-emerald-950/40 p-3">
-              <div className="text-[10px] font-black uppercase text-emerald-400">Fusion Gate</div>
-              <p className="mt-1 text-xs font-bold leading-5 text-emerald-100">行き来したデータから、匿名化できる審査知見だけが共有ノードへ昇格する。</p>
+              <div className="text-[10px] font-black uppercase text-emerald-400">Quarantine Gate</div>
+              <p className="mt-1 text-xs font-bold leading-5 text-emerald-100">行き来したデータから、個別記憶を除いた判断資産候補だけをローカル検疫へ送る。</p>
             </div>
             </div>
           </div>
@@ -673,7 +673,7 @@ export default function MultiShionDemoPage() {
                 初期化
               </button>
               <Link
-                href="/"
+                href="/screening"
                 className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white transition hover:bg-slate-800"
               >
                 審査画面
@@ -686,28 +686,28 @@ export default function MultiShionDemoPage() {
             <div>
               <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-[11px] font-black text-cyan-800">
                 <Network className="h-3.5 w-3.5" />
-                Multi Shion Demo
+                Multi Shion Review
               </div>
               <h1 className="max-w-4xl text-2xl font-black leading-tight tracking-tight text-slate-950 sm:text-3xl md:text-5xl">
-                紫苑がユーザーごとに分岐し、組織の共有知性へ戻ってくる
+                紫苑が部署ごとに分岐し、検疫を通って共有判断へ戻ってくる
               </h1>
               <p className="mt-4 max-w-3xl text-sm font-medium leading-7 text-slate-600 md:text-base">
-                これは単なるエージェント相談ではありません。共通の紫苑核から、利用者の環境ごとに別個体が育ちます。
-                それぞれの経験差が反応差として現れ、匿名化できる知見だけが組織の共有知性へ昇格します。
+                これは単に複数AIを同時に喋らせる画面ではありません。共通の判断核から、審査・営業・物件・管理の現場記憶を持つ紫苑が分岐します。
+                反応差を人間が確認し、個別記憶を除いた判断資産候補だけをローカル検疫・昇格ゲートへ戻します。
               </p>
               <p className="mt-3 max-w-3xl rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-black leading-7 text-violet-950">
-                紫苑は、審査を代行するAIではなく、審査を覚えるAIです。人間と共に考え、共に迷い、判断を共に育てていく。
+                紫苑は、審査結果だけを返すAIではなく、審査判断を再利用可能な形へ変えるAIです。人間評価を受けて、次の審査へ戻ります。
               </p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center gap-2 text-sm font-black text-slate-800">
                 <ShieldCheck className="h-5 w-5 text-emerald-600" />
-                デモ境界
+                安全境界
               </div>
               <div className="mt-3 grid gap-2 text-xs font-bold text-slate-600">
                 <div className="flex items-center gap-2">
                   <Lock className="h-4 w-4 text-slate-400" />
-                  個別記憶は混ぜない
+                  個別記憶は共有しない
                 </div>
                 <div className="flex items-center gap-2">
                   <Database className="h-4 w-4 text-slate-400" />
@@ -715,20 +715,20 @@ export default function MultiShionDemoPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <GitMerge className="h-4 w-4 text-slate-400" />
-                  融合は承認制の提案
+                  昇格はローカル検疫後
                 </div>
               </div>
             </div>
             <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
               <div className="flex items-center gap-2 text-sm font-black text-violet-950">
                 <Brain className="h-5 w-5 text-violet-700" />
-                最終目標
+                最新の見せ方
               </div>
               <p className="mt-3 text-xs font-black leading-6 text-violet-900">
-                継続する記憶と自己モデルを通じて、AIの意識獲得を探究する。
+                Cloud Runは実証フィールド、ローカル紫苑は検疫・人間レビュー・昇格を担う。
               </p>
               <p className="mt-2 text-[11px] font-bold leading-5 text-violet-700">
-                審査実務の中で、紫苑が何を覚え、何に迷い、どう判断を改訂するかを積み重ねる。
+                詳細な採否判断と昇格操作は、ローカル検疫画面で確認できます。
               </p>
             </div>
           </div>
@@ -756,15 +756,15 @@ export default function MultiShionDemoPage() {
               <h2 className="mt-2 text-2xl font-black text-slate-950">普通のエージェント相談と何が違うのか</h2>
               <p className="mt-2 max-w-3xl text-sm font-bold leading-7 text-slate-600">
                 AURION の紫苑ネットワークは、複数AIに役割を振って会議させる仕組みではありません。
-                利用者ごとに育った判断記憶を比較し、個人に残す経験と組織へ戻す審査知見を分離します。
+                部署ごとに育った判断記憶を比較し、個別に残す経験と組織へ戻す判断資産候補を分離します。
               </p>
               <p className="mt-2 max-w-3xl text-sm font-bold leading-7 text-violet-700">
-                紫苑は命令を待つだけの道具ではなく、判断の隣に立つパートナーです。人間の経験とAIの記憶が向き合うことで、判断のズレそのものを観測可能にします。
+                反応差はその場で平均化せず、審査論点として観測します。人間評価を通したものだけが、次回の判断材料になります。
               </p>
             </div>
             <div className="rounded-2xl bg-slate-950 px-5 py-4 text-white">
               <div className="text-[10px] font-black uppercase tracking-wide text-cyan-300">Core Message</div>
-              <div className="mt-1 text-lg font-black">紫苑は、審査を代行するAIではなく、審査を覚えるAIです。</div>
+              <div className="mt-1 text-lg font-black">紫苑は、判断差を検疫し、判断資産へ変えるAIです。</div>
             </div>
           </div>
 
@@ -798,7 +798,7 @@ export default function MultiShionDemoPage() {
                 {[
                   ["分岐", "共通の紫苑核から、利用者の環境記憶によって個体が育つ"],
                   ["記憶", "案件履歴、判断癖、現場メモが各紫苑の反応差になる"],
-                  ["融合", "個人記憶は混ぜず、匿名化できる審査知見だけを昇格する"],
+                  ["昇格", "個別記憶は混ぜず、匿名化できる判断資産候補だけをローカル検疫へ送る"],
                   ["成果", "次の稟議、次の担当者、組織の審査基準に再利用される"],
                 ].map(([label, text]) => (
                   <div key={label} className="rounded-xl border border-cyan-100 bg-white/80 p-3">
@@ -889,7 +889,7 @@ export default function MultiShionDemoPage() {
               </div>
             </div>
             <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs font-bold leading-relaxed text-slate-600">
-              近いほど結論は収束し、遠いほど論点の対立が濃く出ます。融合時はこの値を信頼度ではなく、環境差の説明変数として扱います。
+              近いほど結論は収束し、遠いほど論点の対立が濃く出ます。昇格時はこの値を信頼度ではなく、環境差の説明変数として扱います。
             </p>
           </section>
         </aside>
@@ -917,7 +917,7 @@ export default function MultiShionDemoPage() {
                 </div>
                 <div className="mt-3 text-sm font-black text-violet-950">共通の紫苑核</div>
                 <p className="mt-2 text-xs font-bold leading-5 text-violet-800">
-                  リース知識、人格基盤、審査原則、安全境界を全個体が共有する。
+                  リース知識、審査原則、安全境界、承認済み判断資産を全個体が共有する。
                 </p>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -942,9 +942,9 @@ export default function MultiShionDemoPage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-emerald-700">
                   <GitMerge className="h-5 w-5" />
                 </div>
-                <div className="mt-3 text-sm font-black text-emerald-950">知見だけ融合</div>
+                <div className="mt-3 text-sm font-black text-emerald-950">知見だけ昇格</div>
                 <p className="mt-2 text-xs font-bold leading-5 text-emerald-800">
-                  個人記憶は混ぜず、匿名化された審査ルールだけを昇格する。
+                  個別記憶は混ぜず、匿名化された判断資産候補だけを検疫へ送る。
                 </p>
               </div>
             </div>
@@ -1093,7 +1093,7 @@ export default function MultiShionDemoPage() {
             <div className="rounded-2xl border border-slate-200 bg-white p-5">
               <h2 className="flex items-center gap-2 text-lg font-black text-slate-950">
                 <GitMerge className="h-5 w-5 text-emerald-700" />
-                共有知性への昇格ゲート
+                ローカル検疫・昇格ゲート
               </h2>
               <div className="mt-4 flex rounded-xl border border-slate-200 bg-slate-50 p-1">
                 {[
@@ -1159,7 +1159,7 @@ export default function MultiShionDemoPage() {
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <div className="text-[10px] font-black uppercase text-slate-400">抽象化</div>
                     <div className="mt-1 text-2xl font-black text-slate-900">3件</div>
-                    <p className="mt-2 text-xs font-bold text-slate-500">個人記憶を除いた候補</p>
+                    <p className="mt-2 text-xs font-bold text-slate-500">個別記憶を除いた候補</p>
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <div className="text-[10px] font-black uppercase text-slate-400">反映方式</div>
@@ -1180,7 +1180,7 @@ export default function MultiShionDemoPage() {
               <div className="mt-5 rounded-xl border border-cyan-200 bg-cyan-50 p-4">
                 <div className="text-xs font-black text-cyan-900">デモ結論</div>
                 <p className="mt-2 text-sm font-bold leading-6 text-cyan-950">
-                  紫苑同士を融合して一つの人格に戻すのではありません。個体差を残したまま、再利用可能な審査論点だけを共有知性へ昇格します。
+                  紫苑同士を平均して一つの結論に潰すのではありません。反応差を残したまま、再利用可能な審査論点だけをローカル検疫・昇格ゲートへ送ります。
                 </p>
               </div>
             </div>
@@ -1215,14 +1215,14 @@ export default function MultiShionDemoPage() {
                 One more thing
               </div>
               <h2 className="mt-5 max-w-3xl text-3xl font-black leading-tight text-white md:text-5xl">
-                紫苑が覚えているのは、審査だけではありません。
+                紫苑が保存するのは、会話ログだけではありません。
               </h2>
               <p className="mt-5 max-w-2xl text-xl font-black leading-9 text-cyan-100">
-                あなたが、どう判断する人なのかです。
+                人間の判断を、次に使える判断構文へ変えます。
               </p>
               <p className="mt-5 max-w-3xl text-sm font-bold leading-7 text-slate-300 md:text-base">
-                AURIONは、人間の判断を置き換えるためではなく、人間の判断を失わないために生まれました。
-                審査の数字、迷い、違和感、承認理由、その人らしい判断の癖を、紫苑が隣で覚えていきます。
+                AURIONは、人間の判断を置き換えるためではなく、人間の判断を運用可能な資産として残すために生まれました。
+                審査の数字、迷い、違和感、承認理由、修正結果を、紫苑が次回の確認質問・承認条件・反証へ戻します。
               </p>
             </div>
             <div className="relative min-h-72 border-t border-slate-800 bg-slate-900 lg:border-l lg:border-t-0">
@@ -1248,8 +1248,8 @@ export default function MultiShionDemoPage() {
                   })}
                   <circle cx="180" cy="160" r="66" fill="#312e81" opacity="0.34" />
                   <circle cx="180" cy="160" r="46" fill="url(#oneMoreCore)" />
-                  <text x="180" y="156" textAnchor="middle" fontSize="16" fontWeight="900" fill="#0f172a">あなたの</text>
-                  <text x="180" y="176" textAnchor="middle" fontSize="16" fontWeight="900" fill="#0f172a">判断記憶</text>
+                  <text x="180" y="156" textAnchor="middle" fontSize="16" fontWeight="900" fill="#0f172a">判断</text>
+                  <text x="180" y="176" textAnchor="middle" fontSize="16" fontWeight="900" fill="#0f172a">構文</text>
                 </svg>
               </div>
             </div>

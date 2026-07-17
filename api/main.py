@@ -6478,18 +6478,35 @@ def _cloudrun_improvement_body_from_payload(payload: dict) -> str:
     return ""
 
 
+_IMPROVEMENT_PROMPT_NOISE_MARKERS = (
+    "【審査分析画面からの紫苑レビュー依頼】",
+    "この案件を、審査担当者の横にいる紫苑としてレビューしてください。",
+    "【過去の紫苑審査レビュー記憶】",
+    "次の過去レビューは、今回の判断に似た経験として参照してください。",
+)
+
+
+def _is_improvement_prompt_noise_text(*values: object) -> bool:
+    text = _compact_improvement_text("\n".join(str(value or "") for value in values), 2000)
+    return bool(text and any(marker in text for marker in _IMPROVEMENT_PROMPT_NOISE_MARKERS))
+
+
+def _is_improvement_prompt_noise_entry(entry: dict) -> bool:
+    return _is_improvement_prompt_noise_text(
+        entry.get("title"),
+        entry.get("detail"),
+        entry.get("description"),
+        entry.get("reason"),
+        entry.get("raw_preview"),
+    )
+
+
 def _is_cloudrun_improvement_noise(body: str, payload: dict) -> bool:
     title = str(payload.get("title") or "").strip()
     text = _compact_improvement_text("\n".join([body, title, str(payload.get("surface") or "")]), 2000)
     if not text:
         return True
-    prompt_markers = (
-        "【審査分析画面からの紫苑レビュー依頼】",
-        "この案件を、審査担当者の横にいる紫苑としてレビューしてください。",
-        "【過去の紫苑審査レビュー記憶】",
-        "次の過去レビューは、今回の判断に似た経験として参照してください。",
-    )
-    if any(marker in text for marker in prompt_markers):
+    if _is_improvement_prompt_noise_text(text):
         return True
     if "**ユーザー要望**" in body and "**めぶき返答**" in body:
         return True
@@ -6794,7 +6811,7 @@ def _normalize_improvement_report(report: dict) -> dict:
         for entry in entries or []:
             if not isinstance(entry, dict):
                 continue
-            if _is_improvement_status_echo_entry(entry):
+            if _is_improvement_status_echo_entry(entry) or _is_improvement_prompt_noise_entry(entry):
                 continue
             imp_id = str(entry.get("id") or "")
             if not imp_id:
@@ -6836,7 +6853,7 @@ def _normalize_improvement_report(report: dict) -> dict:
             })
 
     for item in items_by_id.values():
-        if _is_improvement_status_echo_entry(item):
+        if _is_improvement_status_echo_entry(item) or _is_improvement_prompt_noise_entry(item):
             item["status"] = "DELETED"
             continue
         canonical = item.get("canonical_key") or _improvement_canonical_key(str(item.get("title") or ""))
@@ -7054,6 +7071,16 @@ def get_improvement_log():
             "ranked_queue_count": recursive_report.get("ranked_queue_count", 0),
             "suppressed_count": recursive_report.get("suppressed_count", 0),
             "measurement_summary": recursive_report.get("measurement_summary") or {},
+            "shion_review_loop": {
+                "status": "ready",
+                "label": "紫苑チェックで閉ループ化済み",
+                "steps": [
+                    "審査分析画面で紫苑レビュー",
+                    "役に立った/要修正/違うを記録",
+                    "判断資産候補と改善ログへ戻す",
+                    "次回の改善PMレポートで再確認",
+                ],
+            },
         }
         return _attach_cloudrun_improvement_items(normalized)
     except Exception as e:

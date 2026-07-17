@@ -7,7 +7,6 @@ import {
   BookOpenCheck,
   Brain,
   Check,
-  CircleDot,
   Cloud,
   Database,
   FileText,
@@ -15,7 +14,6 @@ import {
   HeartHandshake,
   Home,
   MessageSquareText,
-  Play,
   RefreshCw,
   ShieldCheck,
   Sparkles,
@@ -60,14 +58,6 @@ type LiveData = {
   judgment?: JudgmentFeedbackSummary;
 };
 
-const demoCase = {
-  company: "東海精密加工",
-  segment: "地域製造業 / 新規先",
-  asset: "CNC工作機械",
-  amount: "3,800万円",
-  memo: "補助金採択前。更新設備で粗利改善を狙うが、既存借入の余力確認が必要。",
-};
-
 const fallback: Required<LiveData> = {
   cloud: {
     ready: false,
@@ -96,17 +86,42 @@ const fallback: Required<LiveData> = {
 };
 
 const loopSteps = [
-  { key: "input", label: "案件", icon: MessageSquareText },
-  { key: "recall", label: "想起", icon: BookOpenCheck },
-  { key: "judge", label: "判断", icon: Brain },
-  { key: "feedback", label: "修正", icon: ThumbsUp },
-  { key: "learn", label: "次回", icon: GitBranch },
+  {
+    key: "input",
+    label: "審査入力",
+    body: "企業情報・物件・営業メモを入れる",
+    icon: MessageSquareText,
+  },
+  {
+    key: "recall",
+    label: "記憶照会",
+    body: "過去判断・Research・判断資産を呼び戻す",
+    icon: BookOpenCheck,
+  },
+  {
+    key: "judge",
+    label: "紫苑レビュー",
+    body: "確認質問・承認条件・反証を出す",
+    icon: Brain,
+  },
+  {
+    key: "feedback",
+    label: "人間評価",
+    body: "役に立った / 要修正 / 違うを返す",
+    icon: ThumbsUp,
+  },
+  {
+    key: "learn",
+    label: "検疫・昇格",
+    body: "承認済みだけ次回判断へ戻す",
+    icon: GitBranch,
+  },
 ];
 
 const decisionLines = [
-  "条件付き承認。補助金未採択時でも返済できる資金繰り表を確認する。",
-  "工作機械は更新投資として評価。ただし受注先偏りと稼働率を条件に残す。",
-  "営業メモは前向きだが、粗利改善の根拠を月次実績で補強したい。",
+  "Cloud Run版は入力受付とデモ実行に限定し、本体DBへ直接昇格しない。",
+  "ローカル紫苑側で検疫・人間レビュー・昇格処理を行う。",
+  "承認済みの判断だけを、次の紫苑レビューと審査判断へ戻す。",
 ];
 
 function n(value?: number | null) {
@@ -139,9 +154,6 @@ function WarmPill({ children }: { children: React.ReactNode }) {
 
 export default function DemoHomePage() {
   const [data, setData] = useState<LiveData>({});
-  const [active, setActive] = useState(0);
-  const [played, setPlayed] = useState(false);
-  const [demoKey, setDemoKey] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -166,15 +178,6 @@ export default function DemoHomePage() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!played) return;
-    setActive(0);
-    const timer = window.setInterval(() => {
-      setActive((current) => (current >= loopSteps.length - 1 ? current : current + 1));
-    }, 900);
-    return () => window.clearInterval(timer);
-  }, [played, demoKey]);
-
   const live = useMemo(
     () => ({
       cloud: data.cloud ?? fallback.cloud,
@@ -191,14 +194,6 @@ export default function DemoHomePage() {
   const referenced = reflection?.knowledge_source_count || 0;
   const feedback = (live.prompt.summary?.total || 0) + (live.judgment.total || 0);
   const sources = (reflection?.knowledge_sources || []).slice(0, 3);
-
-  const startLoop = () => {
-    if (played) {
-      setDemoKey((k) => k + 1);
-    } else {
-      setPlayed(true);
-    }
-  };
 
   return (
     <main className="min-h-screen bg-[#f7f4ee] text-stone-950">
@@ -250,32 +245,38 @@ export default function DemoHomePage() {
                 紫苑
               </h1>
               <p className="mt-4 max-w-xl text-2xl font-black leading-tight text-white sm:text-3xl">
-                判断を記憶する、リース審査AI。
+                判断を記憶し、検疫して、次の審査へ戻すAI。
               </p>
               <p className="mt-5 max-w-2xl text-base leading-8 text-stone-100">
-                案件、過去メモ、ニュース、feedbackが、次の稟議コメントに戻ってくる。高機能だけど、机の隣で一緒に考える温度を残した入口です。
+                案件、過去メモ、ニュース、人間評価を判断資産へ変換します。Cloud Runは実証フィールド、ローカル紫苑は検疫・昇格・本体保護を担う運用基盤です。
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={startLoop}
+                <Link
+                  href="/screening"
                   className="inline-flex items-center gap-2 rounded-md bg-white px-5 py-3 text-sm font-black text-stone-950 shadow-xl shadow-black/20 transition hover:bg-[#fff7e6]"
                 >
-                  <Play className="h-4 w-4" />
-                  1分デモを始める
-                </button>
+                  <FileText className="h-4 w-4" />
+                  審査・分析を開く
+                </Link>
                 <Link
-                  href="/demo/judgment-evolution"
+                  href="/shion-memory-system"
                   className="inline-flex items-center gap-2 rounded-md border border-[#f7d78b]/60 bg-[#f7d78b]/20 px-5 py-3 text-sm font-black text-white backdrop-blur transition hover:bg-[#f7d78b]/30"
                 >
-                  1000件早送り
+                  記憶システムを見る
                   <ArrowRight className="h-4 w-4" />
                 </Link>
                 <Link
-                  href="/voice-chat"
+                  href="/system-overview"
                   className="inline-flex items-center gap-2 rounded-md border border-white/30 bg-white/10 px-5 py-3 text-sm font-black text-white backdrop-blur transition hover:bg-white/20"
                 >
-                  声で紫苑と話す
+                  検疫・昇格を見る
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+                <Link
+                  href="/improvement-log"
+                  className="inline-flex items-center gap-2 rounded-md border border-orange-200/60 bg-orange-300/20 px-5 py-3 text-sm font-black text-white backdrop-blur transition hover:bg-orange-300/30"
+                >
+                  改善PMレポート
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </div>
@@ -285,21 +286,21 @@ export default function DemoHomePage() {
               <div className="rounded-[20px] border border-stone-200 bg-[#fffdf8] p-5">
                 <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                   <div>
-                    <p className="text-[11px] font-black uppercase tracking-widest text-stone-500">Today&apos;s desk</p>
-                    <h2 className="mt-2 text-2xl font-black text-stone-950">{demoCase.company}</h2>
-                    <p className="mt-1 text-sm font-bold text-stone-500">{demoCase.segment}</p>
+                    <p className="text-[11px] font-black uppercase tracking-widest text-stone-500">Main Demo Route</p>
+                    <h2 className="mt-2 text-2xl font-black text-stone-950">審査から判断資産化まで</h2>
+                    <p className="mt-1 text-sm font-bold text-stone-500">Cloud Run実証フィールド + ローカル検疫昇格</p>
                   </div>
-                  <span className="inline-flex items-center gap-2 rounded-full bg-teal-50 px-3 py-1.5 text-xs font-black text-teal-800">
-                    <CircleDot className="h-3.5 w-3.5" />
-                    demo case
+                  <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-800">
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    本体DB保護
                   </span>
                 </div>
 
                 <div className="mt-5 grid gap-3 sm:grid-cols-3">
                   {[
-                    ["物件", demoCase.asset],
-                    ["金額", demoCase.amount],
-                    ["論点", "補助金採択前"],
+                    ["Cloud Run", "入力受付"],
+                    ["ローカル", "検疫・昇格"],
+                    ["記憶", "次回判断へ戻す"],
                   ].map(([label, value]) => (
                     <div key={label} className="rounded-lg border border-stone-200 bg-white px-3 py-3">
                       <p className="text-[11px] font-black text-stone-500">{label}</p>
@@ -309,33 +310,21 @@ export default function DemoHomePage() {
                 </div>
 
                 <p className="mt-4 rounded-lg bg-[#f6efe3] px-4 py-3 text-sm leading-7 text-stone-700">
-                  {demoCase.memo}
+                  審査入力で紫苑レビューを作り、人間評価を残し、ローカル側で検疫してから承認済みの判断だけを次の案件へ戻します。
                 </p>
 
-                <div className="mt-5 grid grid-cols-5 gap-2">
+                <div className="mt-5 grid gap-2 sm:grid-cols-5">
                   {loopSteps.map((step, index) => {
                     const Icon = step.icon;
-                    const done = index < active || active === loopSteps.length - 1;
-                    const current = index === active;
                     return (
-                      <button
+                      <div
                         key={step.key}
-                        type="button"
-                        onClick={() => {
-                          setActive(index);
-                          setPlayed(false);
-                        }}
-                        className={`min-h-20 rounded-lg border px-2 py-3 text-center transition ${
-                          current
-                            ? "border-stone-950 bg-stone-950 text-white"
-                            : done
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                              : "border-stone-200 bg-white text-stone-500"
-                        }`}
+                        className="min-h-28 rounded-lg border border-stone-200 bg-white px-2 py-3 text-center text-stone-800"
                       >
-                        <Icon className="mx-auto h-5 w-5" />
-                        <span className="mt-2 block text-xs font-black">{step.label}</span>
-                      </button>
+                        <Icon className="mx-auto h-5 w-5 text-teal-700" />
+                        <span className="mt-2 block text-xs font-black">{index + 1}. {step.label}</span>
+                        <span className="mt-2 block text-[11px] font-bold leading-5 text-stone-500">{step.body}</span>
+                      </div>
                     );
                   })}
                 </div>
@@ -346,7 +335,7 @@ export default function DemoHomePage() {
                     <p className="text-sm font-black text-stone-950">紫苑の判断メモ</p>
                   </div>
                   <div className="mt-3 space-y-2">
-                    {decisionLines.slice(0, active >= 2 ? 3 : 1).map((line) => (
+                    {decisionLines.map((line) => (
                       <p key={line} className="flex gap-2 text-sm leading-7 text-stone-700">
                         <Check className="mt-1 h-4 w-4 shrink-0 text-emerald-700" />
                         {line}
@@ -445,13 +434,17 @@ export default function DemoHomePage() {
             <h2 className="mt-2 text-2xl font-black">デモ本番は、この入口から始める。</h2>
           </div>
           <div className="flex flex-wrap gap-3">
-            <Link href="/" className="inline-flex items-center gap-2 rounded-md bg-white px-4 py-3 text-sm font-black text-stone-950">
+            <Link href="/screening" className="inline-flex items-center gap-2 rounded-md bg-white px-4 py-3 text-sm font-black text-stone-950">
               <FileText className="h-4 w-4" />
               実案件を審査
             </Link>
             <Link href="/system-overview" className="inline-flex items-center gap-2 rounded-md border border-white/20 px-4 py-3 text-sm font-black text-white">
               <ArrowRight className="h-4 w-4" />
               システム全体
+            </Link>
+            <Link href="/improvement-log" className="inline-flex items-center gap-2 rounded-md border border-orange-200/40 px-4 py-3 text-sm font-black text-white">
+              <ArrowRight className="h-4 w-4" />
+              改善PMレポート
             </Link>
           </div>
         </div>

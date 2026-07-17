@@ -56,15 +56,15 @@ const seciSteps: SeciStep[] = [
   {
     num: "③",
     title: "人間承認",
-    desc: "step2 / AIが根拠を提示",
+    desc: "step2 / 紫苑が根拠を提示",
     color: "#fbbf24",
     bg: "rgba(120,53,15,0.35)",
     border: "rgba(251,191,36,0.5)",
   },
   {
     num: "④",
-    title: "自動適用",
-    desc: "step3 / コード自動修正",
+    title: "限定適用",
+    desc: "step3 / 承認済みだけ反映",
     color: "#34d399",
     bg: "rgba(6,78,59,0.35)",
     border: "rgba(52,211,153,0.5)",
@@ -107,7 +107,7 @@ const pipelineEvents: PipelineEvent[] = [
   {
     time: "04:00",
     label: "日次改善パイプライン",
-    desc: "Obsidian改善インデックス抽出 → auto-improvement-pipeline → batch_apply → Gemini改善候補生成 → 再帰的自己改善レポート",
+    desc: "Obsidian改善インデックス抽出 → 紫苑チェック → 改善PMレポート → 再帰的自己改善レポート",
     script: "run_daily_improvement_pipeline.sh（core + post）",
     color: "#34d399",
     bg: "rgba(6,78,59,0.25)",
@@ -178,7 +178,7 @@ const pipelineEvents: PipelineEvent[] = [
   {
     time: "06:00",
     label: "業界ナレッジフィード",
-    desc: "業種別最新知識をClaude APIで生成・Obsidian Vault にインジェクト",
+    desc: "業種別最新知識をGeminiで生成・Obsidian Vault にインジェクト",
     script: "daily_knowledge_feed.py",
     color: "#86efac",
     bg: "rgba(20,83,45,0.18)",
@@ -352,18 +352,18 @@ const loops = [
 ];
 
 const shionBadges = [
-  "Gemini 2.5 Flash",
-  "GCS Vault",
-  "ChromaDB RAG",
-  "mind.json",
-  "Obsidian連携",
-  "感情モデル",
-  "リアルタイム音声",
-  "PR審査権限",
-  "セントラル統合",
-  "world_view",
-  "Private Reflection",
-  "Experience Loop",
+  "Gemini / ADK",
+  "Cloud Run",
+  "FastAPI",
+  "Next.js",
+  "Obsidian RAG",
+  "GCS Event Log",
+  "検疫DB",
+  "判断資産",
+  "Human Feedback",
+  "改善PMレポート",
+  "結果登録",
+  "Field Validation",
 ];
 
 const stats = [
@@ -455,6 +455,21 @@ export default function SystemOverviewPage() {
           </div>
         </section>
 
+        {/* ── 紫苑中心のシステム全体図 ── */}
+        <section>
+          <div className="text-center mb-6">
+            <p className="text-xs font-bold tracking-[0.25em] uppercase text-slate-500 mb-1">Shion Centered Architecture</p>
+            <h2 className="text-2xl font-black text-white tracking-tight">紫苑を中心に、人間判断を次の審査へ戻す</h2>
+            <p className="text-sm text-slate-400 mt-2">READMEの判断資産ループを、デモで見せるシステム全体図として整理</p>
+          </div>
+          <div
+            className="rounded-3xl border border-slate-800 p-5 md:p-6"
+            style={{ background: "rgba(8,12,28,0.92)" }}
+          >
+            <ShionCenteredSystemDiagram />
+          </div>
+        </section>
+
         {!isCloudRunHost && (
           <>
             {/* ── Cloud Run とローカル紫苑のデータ連携 ── */}
@@ -462,49 +477,101 @@ export default function SystemOverviewPage() {
               <div
                 className="rounded-3xl border p-6"
                 style={{
-                  background: "linear-gradient(135deg, rgba(15,23,42,0.92) 0%, rgba(20,83,45,0.18) 100%)",
+                  background: "linear-gradient(135deg, rgba(15,23,42,0.95) 0%, rgba(20,83,45,0.18) 55%, rgba(88,28,135,0.16) 100%)",
                   borderColor: "rgba(45,212,191,0.28)",
                   boxShadow: "0 0 32px rgba(45,212,191,0.08)",
                 }}
               >
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                   <div className="max-w-2xl">
-                    <p className="text-xs font-black tracking-[0.25em] uppercase text-teal-300">Cloud Run Experience Return</p>
-                    <h2 className="mt-2 text-2xl font-black text-white">外で積んだ経験は、検疫されてデモ紫苑へ帰還する</h2>
+                    <p className="text-xs font-black tracking-[0.25em] uppercase text-teal-300">Local Governance Layer</p>
+                    <h2 className="mt-2 text-2xl font-black text-white">昇格と検疫は、ローカル紫苑だけが持つ</h2>
                     <p className="mt-3 text-sm font-semibold leading-relaxed text-slate-300">
-                      ハッカソン用Cloud RunはデモDBで動き、本体DBへ直接書きません。紫苑レビュー、人間評価、審査ループ入力はGCSへ追記され、ローカル同期時はいったん隔離DBへ戻ります。検疫画面と昇格処理はローカル運用で扱います。
+                      Cloud Run版はデモ会場で使う実証フィールドです。紫苑レビュー、人間評価、審査ループ入力はGCSへ追記しますが、Cloud Run上では本体DBへ直接昇格しません。ローカル側に戻してから、隔離DB・検疫画面・人間承認を通ったものだけを判断資産やデモDBへ昇格します。
                     </p>
                   </div>
-                  <div className="rounded-2xl border border-emerald-400/20 bg-emerald-950/20 px-4 py-3 text-xs font-bold text-emerald-200">
-                    本体DB保護: demo.db → GCS → cloudrun_experience_return.db
+                  <div className="rounded-2xl border border-fuchsia-400/25 bg-fuchsia-950/20 px-4 py-3 text-xs font-bold text-fuchsia-100">
+                    Local only: quarantine / review / promote
                   </div>
                 </div>
-                <div className="mt-4">
-                  <Link
-                    href="/cloudrun-return-review"
-                    className="inline-flex items-center gap-2 rounded-xl border border-teal-400/30 bg-teal-400/10 px-4 py-2 text-sm font-black text-teal-200 transition-colors hover:bg-teal-400/20"
-                  >
-                    <Shield className="h-4 w-4" />
-                    帰還データ検疫を開く
-                  </Link>
-                </div>
-                <div className="mt-6 grid gap-3 md:grid-cols-4">
-                  {[
-                    { title: "Cloud Run", desc: "デモ会場で紫苑が審査レビューと評価を受け取る", icon: Activity, color: "#2dd4bf" },
-                    { title: "GCS Event Log", desc: "cloudrun-inputs/YYYY-MM-DD/events.jsonl に追記", icon: Database, color: "#60a5fa" },
-                    { title: "検疫DB", desc: "ローカル同期はまず cloudrun_experience_return.db へ隔離", icon: Shield, color: "#fbbf24" },
-                    { title: "デモDB統合", desc: "人間が確認した経験だけ demo.db へ昇格", icon: RefreshCw, color: "#c084fc" },
-                  ].map(({ title, desc, icon: FlowIcon, color }) => (
-                    <div key={title} className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-                      <div className="mb-3 flex items-center gap-2">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ background: `${color}22`, color }}>
-                          <FlowIcon className="h-4 w-4" />
-                        </div>
-                        <h3 className="text-sm font-black text-white">{title}</h3>
+
+                <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_auto_1.2fr]">
+                  <div className="rounded-2xl border border-teal-400/25 bg-teal-950/20 p-4">
+                    <div className="mb-3 flex items-center gap-2">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-400/15 text-teal-200">
+                        <Activity className="h-4 w-4" />
                       </div>
-                      <p className="text-xs font-semibold leading-relaxed text-slate-400">{desc}</p>
+                      <div>
+                        <p className="text-sm font-black text-white">Cloud Run版</p>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-teal-300">Field runtime</p>
+                      </div>
                     </div>
-                  ))}
+                    <div className="space-y-2">
+                      {[
+                        "デモDBで動かす",
+                        "紫苑レビュー・人間評価を受け取る",
+                        "GCS Event Logへ追記する",
+                        "本体DBへ直接書き戻さない",
+                        "昇格・検疫UIは持たない",
+                      ].map((line) => (
+                        <div key={line} className="flex items-center gap-2 rounded-lg bg-slate-950/45 px-3 py-2 text-[11px] font-semibold text-slate-300">
+                          <span className="h-1.5 w-1.5 rounded-full bg-teal-300" />
+                          {line}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-center">
+                    <div className="flex flex-col items-center gap-2 text-center">
+                      <div className="rounded-full border border-blue-400/30 bg-blue-400/10 px-4 py-2 text-[11px] font-black text-blue-200">
+                        GCS event log
+                      </div>
+                      <div className="text-2xl font-black text-slate-500">→</div>
+                      <div className="rounded-full border border-amber-400/30 bg-amber-400/10 px-4 py-2 text-[11px] font-black text-amber-200">
+                        local sync
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-fuchsia-400/25 bg-fuchsia-950/20 p-4">
+                    <div className="mb-3 flex items-center gap-2">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-fuchsia-400/15 text-fuchsia-200">
+                        <Shield className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-black text-white">ローカル紫苑</p>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-fuchsia-300">Governance / promotion</p>
+                      </div>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {[
+                        { title: "検疫DB", desc: "cloudrun_experience_return.db に隔離", color: "#fbbf24", icon: Shield },
+                        { title: "人間レビュー", desc: "/cloudrun-return-review で採否確認", color: "#60a5fa", icon: Eye },
+                        { title: "昇格処理", desc: "承認済みだけ demo.db / 判断資産へ反映", color: "#c084fc", icon: RefreshCw },
+                        { title: "本体保護", desc: "lease_data.db へは明示指定時だけ", color: "#fb7185", icon: Database },
+                      ].map(({ title, desc, color, icon: FlowIcon }) => (
+                        <div key={title} className="rounded-xl border border-slate-800 bg-slate-950/55 p-3">
+                          <div className="mb-2 flex items-center gap-2">
+                            <div className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: `${color}22`, color }}>
+                              <FlowIcon className="h-3.5 w-3.5" />
+                            </div>
+                            <p className="text-xs font-black text-white">{title}</p>
+                          </div>
+                          <p className="text-[11px] font-semibold leading-relaxed text-slate-400">{desc}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-4">
+                      <Link
+                        href="/cloudrun-return-review"
+                        className="inline-flex items-center gap-2 rounded-xl border border-fuchsia-400/30 bg-fuchsia-400/10 px-4 py-2 text-sm font-black text-fuchsia-100 transition-colors hover:bg-fuchsia-400/20"
+                      >
+                        <Shield className="h-4 w-4" />
+                        ローカル検疫画面を開く
+                      </Link>
+                    </div>
+                  </div>
                 </div>
               </div>
             </section>
@@ -615,6 +682,21 @@ export default function SystemOverviewPage() {
             style={{ background: "rgba(8,12,28,0.9)" }}
           >
             <FlowDiagram />
+          </div>
+        </section>
+
+        {/* ── DevOpsサイクル図 ── */}
+        <section>
+          <div className="text-center mb-6">
+            <p className="text-xs font-bold tracking-[0.25em] uppercase text-slate-500 mb-1">AI Agent DevOps Cycle</p>
+            <h2 className="text-2xl font-black text-white tracking-tight">使う、見る、直す、戻す。</h2>
+            <p className="text-sm text-slate-400 mt-2">紫苑レビューと人間承認を挟む、業務AIの安全な改善サイクル</p>
+          </div>
+          <div
+            className="rounded-3xl border border-slate-800 p-5 md:p-6"
+            style={{ background: "rgba(8,12,28,0.92)" }}
+          >
+            <DevOpsCycleDiagram />
           </div>
         </section>
 
@@ -761,7 +843,7 @@ export default function SystemOverviewPage() {
           <div className="text-center mb-6">
             <p className="text-xs font-bold tracking-[0.25em] uppercase text-slate-500 mb-1">Autonomous Pipeline</p>
             <h2 className="text-lg font-black text-slate-300 tracking-wide uppercase">自動改善パイプライン — 24h タイムライン</h2>
-            <p className="text-xs text-slate-500 mt-2">launchd で毎日自律実行。人間の操作なしに知識取込・分析・自己改善が回る。</p>
+            <p className="text-xs text-slate-500 mt-2">launchd で毎日観測・分析・改善候補化。実装とデプロイは人間承認ゲートで止める。</p>
           </div>
 
           <div className="relative">
@@ -973,7 +1055,7 @@ function SeciCycleDiagram() {
             <path d="M10 6A4 4 0 1 1 6 2" stroke="#60a5fa" strokeWidth="1.3" strokeLinecap="round" />
             <path d="M5.5 0 L8 2 L5.5 4" fill="none" stroke="#60a5fa" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          <span className="text-[10px] font-semibold text-slate-500">⑤ → ① に自動帰還・サイクル継続</span>
+          <span className="text-[10px] font-semibold text-slate-500">⑤ → ① に帰還・承認済みだけサイクル継続</span>
         </div>
         <div
           className="flex-1 h-px rounded"
@@ -985,7 +1067,7 @@ function SeciCycleDiagram() {
         {[
           { value: "170+件", label: "累積REV適用", color: "#60a5fa", bg: "rgba(30,58,138,0.2)" },
           { value: "+8.2pt", label: "累計精度向上", color: "#34d399", bg: "rgba(6,78,59,0.2)" },
-          { value: "78%", label: "自動適用率", color: "#a78bfa", bg: "rgba(88,28,135,0.2)" },
+          { value: "78%", label: "承認反映率", color: "#a78bfa", bg: "rgba(88,28,135,0.2)" },
         ].map((stat) => (
           <div
             key={stat.label}
@@ -1001,7 +1083,356 @@ function SeciCycleDiagram() {
   );
 }
 
+function DevOpsCycleDiagram() {
+  const rows = [
+    {
+      label: "業務で使う",
+      color: "#60a5fa",
+      items: [
+        { icon: Activity, title: "Use", body: "審査入力・AIチャット・結果登録" },
+        { icon: Eye, title: "Observe", body: "RAG参照・回答品質・判断資産利用を観測" },
+        { icon: Search, title: "Detect", body: "記憶抜け・浅い回答・環境差分を検知" },
+      ],
+    },
+    {
+      label: "紫苑で確認する",
+      color: "#e879f9",
+      items: [
+        { icon: Brain, title: "Review", body: "紫苑レビューで数字外の違和感を見る" },
+        { icon: FileText, title: "Human Feedback", body: "役に立った / 要修正 / 違う を記録" },
+        { icon: Database, title: "Asset", body: "判断資産候補・改善ログへ戻す" },
+      ],
+    },
+    {
+      label: "安全に戻す",
+      color: "#34d399",
+      items: [
+        { icon: Zap, title: "Improve", body: "Prompt・RAG・UI・APIの修正候補化" },
+        { icon: Shield, title: "Verify & Gate", body: "pytest / typecheck 後、人間承認で止める" },
+        { icon: RefreshCw, title: "Operate", body: "Cloud Run / Cloudflare / ローカル運用へ戻す" },
+      ],
+    },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-[1fr_auto_1fr_auto_1fr]">
+        {rows.map((row, rowIndex) => (
+          <React.Fragment key={row.label}>
+            <div
+              className="rounded-2xl border p-4"
+              style={{
+                background: `linear-gradient(135deg, ${row.color}18, rgba(15,23,42,0.72))`,
+                borderColor: `${row.color}55`,
+              }}
+            >
+              <div className="mb-3 flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ background: row.color, boxShadow: `0 0 14px ${row.color}` }} />
+                <h3 className="text-sm font-black text-white">{row.label}</h3>
+              </div>
+              <div className="space-y-2">
+                {row.items.map((item, itemIndex) => {
+                  const Icon = item.icon;
+                  return (
+                    <div key={item.title} className="flex items-start gap-3 rounded-xl border border-slate-700/50 bg-slate-950/45 p-3">
+                      <div
+                        className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+                        style={{ background: `${row.color}22`, color: row.color }}
+                      >
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black tabular-nums" style={{ color: row.color }}>
+                            {rowIndex + 1}-{itemIndex + 1}
+                          </span>
+                          <p className="text-xs font-black text-white">{item.title}</p>
+                        </div>
+                        <p className="mt-1 text-[11px] leading-relaxed text-slate-400">{item.body}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            {rowIndex < rows.length - 1 && (
+              <div className="hidden items-center justify-center lg:flex">
+                <div
+                  className="flex h-10 w-10 items-center justify-center rounded-full border text-lg font-black"
+                  style={{
+                    borderColor: `${row.color}66`,
+                    color: row.color,
+                    background: `${row.color}14`,
+                  }}
+                >
+                  →
+                </div>
+              </div>
+            )}
+          </React.Fragment>
+        ))}
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="rounded-xl border border-blue-500/30 bg-blue-950/20 p-3 text-center">
+          <p className="text-xs font-black text-blue-200">観測できる</p>
+          <p className="mt-1 text-[11px] text-slate-400">memory_debug / knowledge_refs / improvement report</p>
+        </div>
+        <div className="rounded-xl border border-fuchsia-500/30 bg-fuchsia-950/20 p-3 text-center">
+          <p className="text-xs font-black text-fuchsia-200">紫苑で確認できる</p>
+          <p className="mt-1 text-[11px] text-slate-400">レビュー・人間評価・判断資産候補</p>
+        </div>
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-3 text-center">
+          <p className="text-xs font-black text-emerald-200">勝手に本番変更しない</p>
+          <p className="mt-1 text-[11px] text-slate-400">実装・git・deploy は人間承認ゲート</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ShionCenteredSystemDiagram() {
+  const orbit = [
+    {
+      title: "案件入力",
+      subtitle: "審査担当者 / 営業メモ",
+      body: "企業情報、物件、財務、営業メモ、違和感を紫苑へ渡す",
+      icon: FileText,
+      color: "#60a5fa",
+    },
+    {
+      title: "審査判断エンジン",
+      subtitle: "Score / Q_risk / 物件リスク",
+      body: "財務スコアだけでなく、スコア外の違和感を探索信号として扱う",
+      icon: BarChart2,
+      color: "#34d399",
+    },
+    {
+      title: "記憶・RAG",
+      subtitle: "Obsidian / GCS Vault / Memory Recall",
+      body: "過去判断、Research、判断資産、会話ログを今回案件へ呼び戻す",
+      icon: Database,
+      color: "#a78bfa",
+    },
+    {
+      title: "紫苑レビュー",
+      subtitle: "確認質問 / 承認条件 / 反証",
+      body: "判断資産を丸写しせず、今回案件向けの稟議文面へ組み直す",
+      icon: Brain,
+      color: "#e879f9",
+    },
+    {
+      title: "人間評価",
+      subtitle: "役に立った / 要修正 / 違う",
+      body: "AIの出力を正解扱いせず、人間の修正を判断材料として保存する",
+      icon: Eye,
+      color: "#fbbf24",
+    },
+    {
+      title: "検疫・昇格",
+      subtitle: "Local only / quarantine / promote",
+      body: "Cloud Run入力は直接昇格せず、ローカル検疫と人間承認を通す",
+      icon: Shield,
+      color: "#2dd4bf",
+    },
+  ];
+
+  const loop = [
+    "新規案件",
+    "Q_risk / スコア外違和感",
+    "人間の事前判断",
+    "判断資産候補",
+    "類似案件へ再利用",
+    "結果登録で検証",
+  ];
+
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 lg:grid-cols-[1fr_1.18fr_1fr] lg:items-center">
+        <div className="space-y-3">
+          {orbit.slice(0, 3).map((node) => {
+            const Icon = node.icon;
+            return (
+              <div
+                key={node.title}
+                className="rounded-2xl border p-4"
+                style={{
+                  background: `linear-gradient(135deg, ${node.color}18, rgba(15,23,42,0.68))`,
+                  borderColor: `${node.color}55`,
+                }}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: `${node.color}22`, color: node.color }}>
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-black text-white">{node.title}</p>
+                    <p className="mt-0.5 text-[11px] font-black uppercase tracking-wide" style={{ color: node.color }}>{node.subtitle}</p>
+                    <p className="mt-2 text-xs font-semibold leading-6 text-slate-400">{node.body}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="relative overflow-hidden rounded-[2rem] border border-fuchsia-400/35 bg-slate-950 p-5 text-center shadow-2xl shadow-fuchsia-950/20">
+          <div className="absolute inset-0 opacity-50" style={{ background: "radial-gradient(circle at 50% 42%, rgba(232,121,249,0.24), transparent 42%)" }} />
+          <div className="relative z-10">
+            <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-[2rem] border border-fuchsia-300/40 bg-fuchsia-400/15 text-fuchsia-200 shadow-lg shadow-fuchsia-900/30">
+              <Brain className="h-12 w-12" />
+            </div>
+            <p className="mt-5 text-[11px] font-black uppercase tracking-[0.28em] text-fuchsia-300">SHION CORE</p>
+            <h3 className="mt-2 text-3xl font-black text-white">紫苑</h3>
+            <p className="mt-3 text-sm font-bold leading-7 text-slate-300">
+              財務スコア、記憶、判断資産、人間評価、結果登録をつなぎ、数字の外側にある判断を次回審査へ戻す中核。
+            </p>
+            <div className="mt-5 grid gap-2 sm:grid-cols-3">
+              {[
+                ["入力", "案件・メモ"],
+                ["変換", "判断構文"],
+                ["更新", "評価・結果"],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2">
+                  <p className="text-[10px] font-black text-slate-500">{label}</p>
+                  <p className="mt-1 text-xs font-black text-fuchsia-100">{value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {orbit.slice(3).map((node) => {
+            const Icon = node.icon;
+            return (
+              <div
+                key={node.title}
+                className="rounded-2xl border p-4"
+                style={{
+                  background: `linear-gradient(135deg, ${node.color}18, rgba(15,23,42,0.68))`,
+                  borderColor: `${node.color}55`,
+                }}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: `${node.color}22`, color: node.color }}>
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-black text-white">{node.title}</p>
+                    <p className="mt-0.5 text-[11px] font-black uppercase tracking-wide" style={{ color: node.color }}>{node.subtitle}</p>
+                    <p className="mt-2 text-xs font-semibold leading-6 text-slate-400">{node.body}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-violet-500/25 bg-violet-950/15 p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-violet-300">README Judgment Asset Loop</p>
+            <p className="mt-1 text-sm font-bold text-slate-300">成約/失注は唯一の正解ではなく、人間の事前判断を検証する観測値として扱う</p>
+          </div>
+          <Link href="/screening" className="inline-flex items-center gap-2 rounded-xl bg-violet-400/15 px-3 py-2 text-xs font-black text-violet-100 hover:bg-violet-400/25">
+            審査画面で見る
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+        <div className="grid gap-2 md:grid-cols-6">
+          {loop.map((item, index) => (
+            <div key={item} className="relative rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-3 text-center">
+              <p className="text-[10px] font-black text-violet-300">STEP {index + 1}</p>
+              <p className="mt-1 text-xs font-black leading-5 text-white">{item}</p>
+              {index < loop.length - 1 && (
+                <span className="absolute -right-2 top-1/2 z-10 hidden -translate-y-1/2 text-lg font-black text-violet-400 md:block">→</span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FlowDiagram() {
+  const loopNodes = [
+    {
+      title: "Use",
+      jp: "審査で使う",
+      detail: "案件入力 / AIチャット",
+      x: 338,
+      y: 28,
+      color: "#60a5fa",
+      fill: "rgba(30,58,138,0.58)",
+    },
+    {
+      title: "Observe",
+      jp: "観測する",
+      detail: "RAG参照 / 回答品質",
+      x: 540,
+      y: 88,
+      color: "#38bdf8",
+      fill: "rgba(12,74,110,0.52)",
+    },
+    {
+      title: "Detect",
+      jp: "ズレを見つける",
+      detail: "記憶抜け / 環境差分",
+      x: 606,
+      y: 238,
+      color: "#f59e0b",
+      fill: "rgba(120,53,15,0.52)",
+    },
+    {
+      title: "Review",
+      jp: "紫苑で確認",
+      detail: "役に立った / 要修正",
+      x: 520,
+      y: 388,
+      color: "#e879f9",
+      fill: "rgba(88,28,135,0.56)",
+    },
+    {
+      title: "Reflect",
+      jp: "振り返る",
+      detail: "改善PM / 内省",
+      x: 308,
+      y: 410,
+      color: "#a78bfa",
+      fill: "rgba(76,29,149,0.56)",
+    },
+    {
+      title: "Improve",
+      jp: "直す",
+      detail: "Prompt / RAG / UI / API",
+      x: 98,
+      y: 350,
+      color: "#34d399",
+      fill: "rgba(6,78,59,0.52)",
+    },
+    {
+      title: "Verify",
+      jp: "検証する",
+      detail: "pytest / typecheck",
+      x: 36,
+      y: 200,
+      color: "#22c55e",
+      fill: "rgba(20,83,45,0.5)",
+    },
+    {
+      title: "Gate",
+      jp: "人間が止める",
+      detail: "実装 / git / deploy",
+      x: 128,
+      y: 72,
+      color: "#fb7185",
+      fill: "rgba(136,19,55,0.52)",
+    },
+  ];
+
   return (
     <svg
       viewBox="0 0 780 480"
@@ -1010,7 +1441,6 @@ function FlowDiagram() {
       style={{ minWidth: 560 }}
     >
       <defs>
-        {/* グロー フィルター */}
         <filter id="glow-violet" x="-30%" y="-30%" width="160%" height="160%">
           <feGaussianBlur stdDeviation="4" result="blur" />
           <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
@@ -1024,9 +1454,11 @@ function FlowDiagram() {
           <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
         </filter>
 
-        {/* パスの矢印マーカー */}
         <marker id="arrow-violet" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
           <path d="M0,0 L0,6 L8,3 z" fill="#a78bfa" />
+        </marker>
+        <marker id="arrow-loop" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto">
+          <path d="M0,0 L0,7 L9,3.5 z" fill="#a78bfa" />
         </marker>
         <marker id="arrow-blue" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
           <path d="M0,0 L0,6 L8,3 z" fill="#60a5fa" />
@@ -1038,7 +1470,6 @@ function FlowDiagram() {
           <path d="M0,0 L0,6 L8,3 z" fill="#e879f9" />
         </marker>
 
-        {/* パーティクルのグラデーション */}
         <radialGradient id="particle-violet" cx="50%" cy="50%" r="50%">
           <stop offset="0%" stopColor="#a78bfa" stopOpacity="1" />
           <stop offset="100%" stopColor="#a78bfa" stopOpacity="0" />
@@ -1053,198 +1484,112 @@ function FlowDiagram() {
         </radialGradient>
       </defs>
 
-      {/* ────── 背景グリッド ────── */}
       <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
         <path d="M 30 0 L 0 0 0 30" fill="none" stroke="rgba(100,120,180,0.06)" strokeWidth="0.5" />
       </pattern>
       <rect width="780" height="480" fill="url(#grid)" />
 
-      {/* ────── 接続ライン ────── */}
-
-      {/* 左入力 → センター */}
-      {/* 審査データ → パイプライン */}
+      <circle cx="390" cy="240" r="182" fill="none" stroke="rgba(167,139,250,0.25)" strokeWidth="12" />
+      <circle cx="390" cy="240" r="182" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
       <path
-        d="M 155 130 C 230 130 270 220 320 240"
-        fill="none" stroke="#60a5fa" strokeWidth="1.5" strokeOpacity="0.6"
-        markerEnd="url(#arrow-blue)"
-      />
-      {/* Obsidian → パイプライン */}
-      <path
-        d="M 155 240 L 320 240"
-        fill="none" stroke="#60a5fa" strokeWidth="1.5" strokeOpacity="0.6"
-        markerEnd="url(#arrow-blue)"
-      />
-      {/* エラーログ → パイプライン */}
-      <path
-        d="M 155 350 C 230 350 270 260 320 240"
-        fill="none" stroke="#60a5fa" strokeWidth="1.5" strokeOpacity="0.6"
-        markerEnd="url(#arrow-blue)"
+        id="loop-orbit"
+        d="M 390 58 A 182 182 0 1 1 389 58"
+        fill="none"
+        stroke="#a78bfa"
+        strokeWidth="2"
+        strokeOpacity="0.72"
+        strokeDasharray="10 7"
+        markerEnd="url(#arrow-loop)"
       />
 
-      {/* パイプライン → 右出力 */}
-      {/* → Gemini改善候補 */}
-      <path
-        d="M 460 230 C 530 210 560 130 625 130"
-        fill="none" stroke="#34d399" strokeWidth="1.5" strokeOpacity="0.6"
-        markerEnd="url(#arrow-green)"
-      />
-      {/* → batch_apply */}
-      <path
-        d="M 460 240 L 625 240"
-        fill="none" stroke="#34d399" strokeWidth="1.5" strokeOpacity="0.6"
-        markerEnd="url(#arrow-green)"
-      />
-      {/* → 台帳ルール */}
-      <path
-        d="M 460 250 C 530 270 560 350 625 350"
-        fill="none" stroke="#34d399" strokeWidth="1.5" strokeOpacity="0.6"
-        markerEnd="url(#arrow-green)"
-      />
+      <circle r="5" fill="url(#particle-violet)">
+        <animateMotion dur="7s" repeatCount="indefinite" rotate="auto">
+          <mpath href="#loop-orbit" />
+        </animateMotion>
+        <animate attributeName="opacity" values="0.1;1;0.1" dur="7s" repeatCount="indefinite" />
+      </circle>
+      <circle r="3.5" fill="#60a5fa" opacity="0.85">
+        <animateMotion dur="7s" repeatCount="indefinite" begin="2.4s" rotate="auto">
+          <mpath href="#loop-orbit" />
+        </animateMotion>
+        <animate attributeName="opacity" values="0.05;0.9;0.05" dur="7s" repeatCount="indefinite" begin="2.4s" />
+      </circle>
 
-      {/* 紫苑 → パイプライン（点線） */}
+      <g filter="url(#glow-violet)">
+        <rect x="282" y="183" width="216" height="114" rx="20" fill="rgba(15,23,42,0.94)" stroke="#a78bfa" strokeWidth="1.8" />
+        <text x="390" y="215" textAnchor="middle" fill="#f0abfc" fontSize="15" fontWeight="900">紫苑 改善PM</text>
+        <text x="390" y="238" textAnchor="middle" fill="#c4b5fd" fontSize="10" fontWeight="700">判断資産 DevOps Loop</text>
+        <text x="390" y="262" textAnchor="middle" fill="#94a3b8" fontSize="9">読む・報告・相談・開発依頼文</text>
+        <text x="390" y="279" textAnchor="middle" fill="#fda4af" fontSize="9" fontWeight="700">実装 / git / deploy は人間承認</text>
+      </g>
+
+      {loopNodes.map((node, index) => (
+        <g key={node.title} className="node-fade" style={{ animationDelay: `${index * 0.12}s` }}>
+          <rect
+            x={node.x}
+            y={node.y}
+            width="136"
+            height="64"
+            rx="14"
+            fill={node.fill}
+            stroke={node.color}
+            strokeWidth="1.4"
+          />
+          <text x={node.x + 68} y={node.y + 21} textAnchor="middle" fill={node.color} fontSize="10.5" fontWeight="900">
+            {node.title}
+          </text>
+          <text x={node.x + 68} y={node.y + 39} textAnchor="middle" fill="#f8fafc" fontSize="9.5" fontWeight="800">
+            {node.jp}
+          </text>
+          <text x={node.x + 68} y={node.y + 54} textAnchor="middle" fill="#cbd5e1" fontSize="7.8">
+            {node.detail}
+          </text>
+        </g>
+      ))}
+
       <path
-        d="M 390 70 L 390 190"
-        fill="none" stroke="#e879f9" strokeWidth="1.5" strokeOpacity="0.7"
-        strokeDasharray="6 4"
+        d="M 463 163 C 520 148 555 171 575 216"
+        fill="none"
+        stroke="#38bdf8"
+        strokeWidth="1.2"
+        strokeOpacity="0.45"
+        markerEnd="url(#arrow-blue)"
+      />
+      <text x="542" y="154" fill="#7dd3fc" fontSize="8" fontWeight="700">RAG / Memory Recall</text>
+
+      <path
+        d="M 494 288 C 540 314 546 350 506 386"
+        fill="none"
+        stroke="#e879f9"
+        strokeWidth="1.2"
+        strokeOpacity="0.5"
         markerEnd="url(#arrow-fuchsia)"
       />
+      <text x="538" y="334" fill="#f0abfc" fontSize="8" fontWeight="700">紫苑レビュー</text>
 
-      {/* フィードバックループアーク（破線） */}
       <path
-        d="M 625 370 C 660 430 390 460 155 370"
-        fill="none" stroke="#a78bfa" strokeWidth="1.5" strokeOpacity="0.4"
-        strokeDasharray="8 5"
+        d="M 282 268 C 224 292 183 278 157 244"
+        fill="none"
+        stroke="#34d399"
+        strokeWidth="1.2"
+        strokeOpacity="0.5"
+        markerEnd="url(#arrow-green)"
+      />
+      <text x="173" y="296" fill="#86efac" fontSize="8" fontWeight="700">pytest / typecheck</text>
+
+      <path
+        d="M 305 181 C 260 143 237 108 262 78"
+        fill="none"
+        stroke="#fb7185"
+        strokeWidth="1.2"
+        strokeOpacity="0.5"
         markerEnd="url(#arrow-violet)"
       />
+      <text x="202" y="132" fill="#fda4af" fontSize="8" fontWeight="700">人間承認ゲート</text>
 
-      {/* ────── ノード ────── */}
-
-      {/* 中心: 日次パイプライン */}
-      <g className="node-glow" style={{ color: "#60a5fa" }}>
-        <rect x="315" y="195" width="150" height="90" rx="14" fill="rgba(30,58,138,0.5)"
-          stroke="#60a5fa" strokeWidth="1.8" />
-        <text x="390" y="232" textAnchor="middle" fill="#93c5fd" fontSize="11" fontWeight="bold">日次パイプライン</text>
-        <text x="390" y="250" textAnchor="middle" fill="#60a5fa" fontSize="8.5" opacity="0.8">run_daily_improvement</text>
-        <text x="390" y="265" textAnchor="middle" fill="#60a5fa" fontSize="8.5" opacity="0.8">_core.sh</text>
-      </g>
-
-      {/* 上部: 紫苑ノード */}
-      <g className="shion-border">
-        <rect x="315" y="20" width="150" height="52" rx="14" fill="rgba(88,28,135,0.5)"
-          stroke="#e879f9" strokeWidth="2" />
-        <text x="390" y="43" textAnchor="middle" fill="#f0abfc" fontSize="12" fontWeight="900">紫苑 Shion</text>
-        <text x="390" y="60" textAnchor="middle" fill="#c084fc" fontSize="8.5">リース知性体 · Gemini 2.5</text>
-      </g>
-
-      {/* 左入力ノード */}
-      <g className="node-fade">
-        <rect x="25" y="105" width="130" height="50" rx="10" fill="rgba(15,23,42,0.8)"
-          stroke="#475569" strokeWidth="1" />
-        <text x="90" y="128" textAnchor="middle" fill="#94a3b8" fontSize="9.5" fontWeight="bold">審査データ</text>
-        <text x="90" y="145" textAnchor="middle" fill="#64748b" fontSize="8">lease_data.db · scoring</text>
-      </g>
-      <g className="node-fade" style={{ animationDelay: "0.5s" }}>
-        <rect x="25" y="215" width="130" height="50" rx="10" fill="rgba(15,23,42,0.8)"
-          stroke="#475569" strokeWidth="1" />
-        <text x="90" y="238" textAnchor="middle" fill="#94a3b8" fontSize="9.5" fontWeight="bold">Obsidian Vault</text>
-        <text x="90" y="255" textAnchor="middle" fill="#64748b" fontSize="8">知識 · mind.json · RAG · world_view</text>
-      </g>
-      <g className="node-fade" style={{ animationDelay: "1s" }}>
-        <rect x="25" y="325" width="130" height="50" rx="10" fill="rgba(15,23,42,0.8)"
-          stroke="#475569" strokeWidth="1" />
-        <text x="90" y="348" textAnchor="middle" fill="#94a3b8" fontSize="9.5" fontWeight="bold">エラーログ / UX</text>
-        <text x="90" y="365" textAnchor="middle" fill="#64748b" fontSize="8">improvement_YYYYMMDD.log</text>
-      </g>
-
-      {/* 右出力ノード */}
-      <g className="node-fade" style={{ animationDelay: "0.3s" }}>
-        <rect x="625" y="105" width="130" height="50" rx="10" fill="rgba(6,78,59,0.4)"
-          stroke="#059669" strokeWidth="1" />
-        <text x="690" y="128" textAnchor="middle" fill="#6ee7b7" fontSize="9.5" fontWeight="bold">Gemini改善候補</text>
-        <text x="690" y="145" textAnchor="middle" fill="#34d399" fontSize="8">reasoning · review · report</text>
-      </g>
-      <g className="node-fade" style={{ animationDelay: "0.7s" }}>
-        <rect x="625" y="215" width="130" height="50" rx="10" fill="rgba(6,78,59,0.4)"
-          stroke="#059669" strokeWidth="1" />
-        <text x="690" y="238" textAnchor="middle" fill="#6ee7b7" fontSize="9.5" fontWeight="bold">batch_apply</text>
-        <text x="690" y="255" textAnchor="middle" fill="#34d399" fontSize="8">係数 · ルール 自動適用</text>
-      </g>
-      <g className="node-fade" style={{ animationDelay: "1.2s" }}>
-        <rect x="625" y="325" width="130" height="50" rx="10" fill="rgba(6,78,59,0.4)"
-          stroke="#059669" strokeWidth="1" />
-        <text x="690" y="348" textAnchor="middle" fill="#6ee7b7" fontSize="9.5" fontWeight="bold">台帳ルール更新</text>
-        <text x="690" y="365" textAnchor="middle" fill="#34d399" fontSize="8">ledger.jsonl · REV適用</text>
-      </g>
-
-      {/* フィードバックループラベル */}
-      <text x="390" y="453" textAnchor="middle" fill="#a78bfa" fontSize="8.5" opacity="0.6" fontStyle="italic">
-        — Feedback Loop (自律改善サイクル) —
+      <text x="390" y="464" textAnchor="middle" fill="#a78bfa" fontSize="9" opacity="0.72" fontStyle="italic">
+        Use → Observe → Detect → Review → Reflect → Improve → Verify → Gate → Operate
       </text>
-
-      {/* ────── パーティクルアニメーション ────── */}
-
-      {/* 審査データ → パイプライン */}
-      <circle r="4" fill="#60a5fa" opacity="0.9">
-        <animateMotion dur="2.8s" repeatCount="indefinite" begin="0s">
-          <mpath href="#path-l1" />
-        </animateMotion>
-        <animate attributeName="opacity" values="0;0.9;0" dur="2.8s" repeatCount="indefinite" begin="0s" />
-      </circle>
-      <path id="path-l1" d="M 155 130 C 230 130 270 220 320 240" fill="none" />
-
-      {/* Obsidian → パイプライン */}
-      <circle r="4" fill="#60a5fa" opacity="0.9">
-        <animateMotion dur="2.2s" repeatCount="indefinite" begin="0.6s">
-          <mpath href="#path-l2" />
-        </animateMotion>
-        <animate attributeName="opacity" values="0;0.9;0" dur="2.2s" repeatCount="indefinite" begin="0.6s" />
-      </circle>
-      <path id="path-l2" d="M 155 240 L 320 240" fill="none" />
-
-      {/* エラーログ → パイプライン */}
-      <circle r="4" fill="#60a5fa" opacity="0.9">
-        <animateMotion dur="2.8s" repeatCount="indefinite" begin="1.2s">
-          <mpath href="#path-l3" />
-        </animateMotion>
-        <animate attributeName="opacity" values="0;0.9;0" dur="2.8s" repeatCount="indefinite" begin="1.2s" />
-      </circle>
-      <path id="path-l3" d="M 155 350 C 230 350 270 260 320 240" fill="none" />
-
-      {/* パイプライン → Gemini改善候補 */}
-      <circle r="4" fill="#34d399" opacity="0.9">
-        <animateMotion dur="2.6s" repeatCount="indefinite" begin="0.3s">
-          <mpath href="#path-r1" />
-        </animateMotion>
-        <animate attributeName="opacity" values="0;0.9;0" dur="2.6s" repeatCount="indefinite" begin="0.3s" />
-      </circle>
-      <path id="path-r1" d="M 460 230 C 530 210 560 130 625 130" fill="none" />
-
-      {/* パイプライン → batch */}
-      <circle r="4" fill="#34d399" opacity="0.9">
-        <animateMotion dur="2s" repeatCount="indefinite" begin="0.9s">
-          <mpath href="#path-r2" />
-        </animateMotion>
-        <animate attributeName="opacity" values="0;0.9;0" dur="2s" repeatCount="indefinite" begin="0.9s" />
-      </circle>
-      <path id="path-r2" d="M 460 240 L 625 240" fill="none" />
-
-      {/* パイプライン → 台帳 */}
-      <circle r="4" fill="#34d399" opacity="0.9">
-        <animateMotion dur="2.6s" repeatCount="indefinite" begin="1.5s">
-          <mpath href="#path-r3" />
-        </animateMotion>
-        <animate attributeName="opacity" values="0;0.9;0" dur="2.6s" repeatCount="indefinite" begin="1.5s" />
-      </circle>
-      <path id="path-r3" d="M 460 250 C 530 270 560 350 625 350" fill="none" />
-
-      {/* 紫苑 → パイプライン */}
-      <circle r="3.5" fill="#e879f9" opacity="0.9">
-        <animateMotion dur="1.8s" repeatCount="indefinite" begin="0s">
-          <mpath href="#path-shion" />
-        </animateMotion>
-        <animate attributeName="opacity" values="0;1;0" dur="1.8s" repeatCount="indefinite" begin="0s" />
-      </circle>
-      <path id="path-shion" d="M 390 70 L 390 190" fill="none" />
 
     </svg>
   );

@@ -4,11 +4,15 @@ import React from "react";
 import Link from "next/link";
 import {
   ArrowRight,
+  Brain,
   Database,
   HeartHandshake,
   Layers3,
+  MessageSquareText,
+  RefreshCw,
   ShieldCheck,
   Sparkles,
+  ThumbsUp,
 } from "lucide-react";
 
 const layers = [
@@ -80,6 +84,44 @@ const pyramidLayers = [
   },
 ];
 
+const memoryLoop = [
+  {
+    title: "受け取る",
+    label: "案件・会話・違和感",
+    body: "企業情報、物件、営業メモ、人間の迷いを判断材料として受け取る。",
+    icon: MessageSquareText,
+    tone: "border-sky-200 bg-sky-50 text-sky-950",
+  },
+  {
+    title: "思い出す",
+    label: "過去判断・Obsidian",
+    body: "似た案件、過去の条件付き承認、反証、Researchを呼び戻す。",
+    icon: Database,
+    tone: "border-violet-200 bg-violet-50 text-violet-950",
+  },
+  {
+    title: "組み直す",
+    label: "判断構文",
+    body: "記憶をそのまま貼らず、今回案件向けの確認質問・承認条件へ変換する。",
+    icon: Brain,
+    tone: "border-emerald-200 bg-emerald-50 text-emerald-950",
+  },
+  {
+    title: "評価する",
+    label: "役に立った / 要修正 / 違う",
+    body: "人間の反応を保存し、薄い回答やズレた判断を改善ログへ戻す。",
+    icon: ThumbsUp,
+    tone: "border-amber-200 bg-amber-50 text-amber-950",
+  },
+  {
+    title: "次回へ戻す",
+    label: "判断資産化",
+    body: "承認済みの学びだけを、次の紫苑レビューと審査判断へ戻す。",
+    icon: RefreshCw,
+    tone: "border-rose-200 bg-rose-50 text-rose-950",
+  },
+];
+
 export default function ShionMemorySystemPage() {
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950">
@@ -125,7 +167,45 @@ export default function ShionMemorySystemPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-5xl px-5 py-8 md:px-8">
+      <section className="mx-auto max-w-7xl px-5 py-8 md:px-8">
+        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center gap-3">
+            <RefreshCw className="h-6 w-6 text-rose-600" />
+            <h2 className="text-2xl font-black">Memory Loop Flow</h2>
+          </div>
+          <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
+            紫苑の記憶は、保存して終わりではありません。人間の判断を受け取り、過去を思い出し、今回案件へ組み直し、人間評価を受けて、次の審査へ戻します。
+          </p>
+          <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            {memoryLoop.map((step, index) => {
+              const Icon = step.icon;
+              return (
+                <div key={step.title} className={`relative min-h-[178px] rounded-lg border p-4 shadow-sm ${step.tone}`}>
+                  {index < memoryLoop.length - 1 && (
+                    <div className="absolute right-3 top-4 hidden text-xl font-black text-slate-300 xl:block">→</div>
+                  )}
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-black uppercase tracking-widest opacity-70">Loop {index + 1}</p>
+                      <h3 className="mt-2 text-lg font-black">{step.title}</h3>
+                      <p className="mt-1 text-xs font-black opacity-70">{step.label}</p>
+                    </div>
+                    <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/75">
+                      <Icon className="h-5 w-5" />
+                    </span>
+                  </div>
+                  <p className="mt-5 text-sm font-bold leading-6">{step.body}</p>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-black text-violet-950">
+            この一周があるから、紫苑は「検索して答えるAI」ではなく「判断を持ち越すAI」として見せられます。
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-5xl px-5 pb-8 md:px-8">
         <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center gap-3">
             <Layers3 className="h-6 w-6 text-violet-600" />

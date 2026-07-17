@@ -46,45 +46,46 @@ export default function Sidebar() {
 
   const menuGroups: Array<{ title: string; defaultOpen: boolean; items: SidebarItem[] }> = [
     {
-      title: '🏆 ハッカソン本番導線',
+      title: '🏆 本番デモ導線',
       defaultOpen: true,
       items: [
         { name: 'デモホーム', href: '/demo-home', icon: Sparkles, color: 'text-yellow-300' },
-        { name: 'ハッカソンデモ', href: '/demo', icon: Sparkles, color: 'text-yellow-300' },
-        { name: '1000件早送りデモ', href: '/demo/judgment-evolution', icon: GitBranch, color: 'text-amber-300' },
+        { name: '審査・分析', href: '/screening', icon: ClipboardCheck, color: 'text-emerald-400' },
+        { name: 'リース知性体との対話', href: '/lease-intelligence', icon: Brain, color: 'text-violet-400' },
+        { name: '結果登録', href: '/register', icon: PenTool, color: 'text-rose-400' },
+        { name: '改善PMレポート', href: '/improvement-log', icon: ClipboardList, color: 'text-orange-300' },
         { name: 'システム概要', href: '/system-overview', icon: Orbit, color: 'text-fuchsia-400' },
         { name: 'DevOpsサイクル', href: '/devops', icon: GitBranch, color: 'text-emerald-300' },
         { name: '紫苑の記憶システム', href: '/shion-memory-system', icon: Database, color: 'text-sky-300' },
         ...(!isCloudRunHost
           ? [{ name: '帰還データ検疫', href: '/cloudrun-return-review', icon: ShieldCheck, color: 'text-teal-300' }]
           : []),
-        { name: '紫苑/一般 比較', href: '/chat-compare', icon: MessageSquare, color: 'text-indigo-300' },
-        { name: '自己同一性検査', href: '/shion-identity-check', icon: ShieldCheck, color: 'text-cyan-300' },
         { name: 'マルチ紫苑デモ', href: '/multi-shion-demo', icon: Users, color: 'text-pink-300' },
       ]
     },
     {
-      title: '実演する業務フロー',
-      defaultOpen: true,
+      title: '業務画面',
+      defaultOpen: false,
       items: [
         { name: 'リース知性体 紫苑システム', href: '/', icon: Home, color: 'text-violet-400' },
-        { name: '審査・分析', href: '/screening', icon: ClipboardCheck, color: 'text-emerald-400' },
-        { name: 'リース知性体との対話', href: '/lease-intelligence', icon: Brain, color: 'text-violet-400' },
         { name: '💬 AIチャット', href: '/chat', icon: MessageCircle, color: 'text-cyan-400' },
         ...(!hideResearchOrgan
           ? [{ name: '外部調査器官', href: '/research-organ', icon: Search, color: 'text-sky-300' }]
           : []),
-        { name: '結果登録 (成約/失注)', href: '/register', icon: PenTool, color: 'text-rose-400' },
         { name: '過去案件一覧', href: '/cases', icon: Table2, color: 'text-cyan-400' },
-        { name: 'ダッシュボード', href: '/home', icon: BarChart2, color: 'text-blue-400' },
         { name: 'バッチ審査', href: '/batch', icon: Zap, color: 'text-yellow-400' },
         { name: '事業計画チェック（簡易版）', href: '/business-plan-check', icon: FileCheck2, color: 'text-teal-400' },
       ]
     },
     {
-      title: '🌸 紫苑 AI（実務機能）',
+      title: 'デモ補助',
       defaultOpen: false,
       items: [
+        { name: 'ハッカソン演出デモ', href: '/demo', icon: Sparkles, color: 'text-yellow-300' },
+        { name: '1000件早送りデモ', href: '/demo/judgment-evolution', icon: GitBranch, color: 'text-amber-300' },
+        { name: '知識ループ確認', href: '/demo/knowledge-loop', icon: Network, color: 'text-cyan-300' },
+        { name: '紫苑/一般 比較', href: '/chat-compare', icon: MessageSquare, color: 'text-indigo-300' },
+        { name: '自己同一性検査', href: '/shion-identity-check', icon: ShieldCheck, color: 'text-cyan-300' },
         { name: 'リースくん (スマホUI)', href: '/lease-kun', icon: MessageSquare, color: 'text-amber-400' },
         { name: 'マルチエージェント討論', href: '/debate', icon: Swords, color: 'text-violet-500' },
         { name: '知性体コア', href: '/shion-core', icon: Brain, color: 'text-violet-300' },
@@ -111,7 +112,6 @@ export default function Sidebar() {
         { name: '営業向け説明ガイド', href: '/sales-guide', icon: Megaphone, color: 'text-blue-500' },
         { name: 'リース/融資/現金 比較', href: '/simulator', icon: Calculator, color: 'text-blue-400' },
         { name: 'FAQ', href: '/faq', icon: HelpCircle, color: 'text-slate-400' },
-        { name: '改善ログ', href: '/improvement-log', icon: ClipboardList, color: 'text-slate-400' },
       ]
     },
     {

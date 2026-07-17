@@ -62,6 +62,8 @@ def test_get_improvement_log_includes_recursive_summary(tmp_path, monkeypatch):
     assert result["status"] == "COMPLETED"
     assert result["recursive_self_improvement"]["canonical_candidate_count"] == 3
     assert result["recursive_self_improvement"]["measurement_summary"]["noise_rate"] == 33.3
+    assert result["recursive_self_improvement"]["shion_review_loop"]["status"] == "ready"
+    assert "紫苑チェック" in result["recursive_self_improvement"]["shion_review_loop"]["label"]
 
 
 def test_normalize_improvement_report_reflects_review_ledger_statuses(monkeypatch):
@@ -353,3 +355,67 @@ def test_cloudrun_improvement_items_skip_regular_lease_chat_noise(monkeypatch):
 
     assert len(items) == 1
     assert items[0]["source_event_id"] == "event-real-improvement"
+
+
+def test_cloudrun_improvement_items_skip_shion_review_prompt_noise(monkeypatch):
+    import api.main as main
+
+    monkeypatch.setattr(main, "_historical_applied_improvements", lambda: (set(), set()))
+    monkeypatch.setattr(
+        main,
+        "_read_recent_cloudrun_input_events_from_gcs",
+        lambda days=45: [
+            {
+                "event_id": "event-shion-review-prompt",
+                "event_type": "improvement_note",
+                "surface": "screening_analysis",
+                "ts": "2026-07-17T00:00:00Z",
+                "payload": {
+                    "title": "【審査分析画面からの紫苑レビュー依頼】",
+                    "body": "この案件を、審査担当者の横にいる紫苑としてレビューしてください。",
+                },
+            },
+            {
+                "event_id": "event-real-improvement",
+                "event_type": "improvement_note",
+                "surface": "chat_improvement",
+                "ts": "2026-07-17T00:01:00Z",
+                "payload": {
+                    "title": "審査分析画面の改善",
+                    "body": "課題: 評価理由が短い。\n次の行動: 表示項目を増やす。",
+                },
+            },
+        ],
+    )
+
+    items = main._cloudrun_improvement_items_from_gcs()
+
+    assert len(items) == 1
+    assert items[0]["source_event_id"] == "event-real-improvement"
+
+
+def test_normalize_improvement_report_skips_shion_review_prompt_noise(monkeypatch):
+    import api.main as main
+
+    monkeypatch.setattr(main, "_latest_improvement_statuses", lambda: {})
+
+    report = {
+        "needs_review": [
+            {
+                "id": "REV-SHION-PROMPT",
+                "title": "【審査分析画面からの紫苑レビュー依頼】",
+                "detail": "この案件を、審査担当者の横にいる紫苑としてレビューしてください。",
+            },
+            {
+                "id": "REV-REAL",
+                "title": "改善ログの表示を整理",
+                "detail": "課題: 改善済みの候補が残る。\n次: 表示条件を見直す。",
+            },
+        ]
+    }
+
+    result = main._normalize_improvement_report(report)
+    by_id = {item["id"]: item for item in result["items"]}
+
+    assert "REV-SHION-PROMPT" not in by_id
+    assert by_id["REV-REAL"]["status"] == "NEEDS_REVIEW"

@@ -3,11 +3,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  Activity,
   BookOpenCheck,
   Brain,
   CheckCircle2,
-  Cloud,
   Database,
   FileSearch,
   GitBranch,
@@ -128,13 +126,6 @@ const fallback: Required<LoadState> = {
   judgment: { total: 0, approved: 0, needs_review: 0, by_source: {} },
 };
 
-const demoCase = {
-  company: "地域製造業の設備更新案件",
-  asset: "CNC工作機械",
-  amount: "3,800万円",
-  concern: "新規先、粗利改善途上、補助金採択前",
-};
-
 function pct(value?: number | null) {
   if (value == null || Number.isNaN(value)) return "0%";
   const normalized = value <= 1 ? value * 100 : value;
@@ -161,7 +152,7 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
 }
 
 const stageBase =
-  "min-h-[168px] border border-slate-200 bg-white p-4 shadow-sm transition-colors";
+  "min-h-[176px] border border-slate-200 bg-white p-4 shadow-sm";
 
 const boundaryLanes = [
   {
@@ -190,7 +181,6 @@ const boundaryLanes = [
 export default function KnowledgeLoopDemoPage() {
   const [data, setData] = useState<LoadState>({});
   const [loading, setLoading] = useState(true);
-  const [selectedStage, setSelectedStage] = useState(1);
 
   useEffect(() => {
     let alive = true;
@@ -245,8 +235,8 @@ export default function KnowledgeLoopDemoPage() {
       subtitle: "人の判断材料",
       Icon: MessageSquareText,
       tone: "border-sky-200 bg-sky-50",
-      body: `${demoCase.company} / ${demoCase.asset} / ${demoCase.amount}`,
-      detail: demoCase.concern,
+      body: "企業情報・物件・営業メモ・違和感",
+      detail: "数字だけでなく、現場の迷いも判断材料として受け取る",
     },
     {
       title: "知識照会",
@@ -282,9 +272,7 @@ export default function KnowledgeLoopDemoPage() {
     },
   ];
 
-  const selected = stages[selectedStage];
-  const selectedSources = (reflection?.knowledge_sources ?? []).slice(0, 4);
-  const thoughtLines = (reflection?.thought_lines ?? []).slice(0, 3);
+  const thoughtLines = (reflection?.thought_lines ?? fallback.dashboard.lease_news_reflection?.thought_lines ?? []).slice(0, 3);
   const focusLines = (focus?.focus_lines ?? []).slice(0, 3);
 
   return (
@@ -306,7 +294,7 @@ export default function KnowledgeLoopDemoPage() {
               </h1>
               <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
                 紫苑が「案件入力 → 判断資産の参照 → 審査判断 → 人の修正 → 次回反映」を回せているかを見る画面です。
-                まず上の状態を見て、次に5段階のどこで止まっているかを確認します。
+                停止地点のデバッグではなく、記憶が判断へ戻る循環そのものを見せます。
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -335,7 +323,7 @@ export default function KnowledgeLoopDemoPage() {
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">
-                  Current Loop Status
+                  Memory Loop Signals
                 </p>
                 <h2 className="mt-2 text-2xl font-black text-slate-950">
                   {loopHealth}
@@ -393,27 +381,25 @@ export default function KnowledgeLoopDemoPage() {
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Loop Flow</p>
-            <h2 className="mt-1 text-xl font-black text-slate-950">どこで止まっているかを見る</h2>
+            <h2 className="mt-1 text-xl font-black text-slate-950">記憶が次の審査へ戻る流れ</h2>
           </div>
-          <p className="hidden text-xs font-bold text-slate-500 md:block">クリックすると下に根拠が出ます</p>
+          <p className="hidden text-xs font-bold text-slate-500 md:block">入力、記憶、判断、人間評価、再利用が一周する</p>
         </div>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           {stages.map((stage, index) => {
             const Icon = stage.Icon;
-            const active = selectedStage === index;
             return (
-              <button
+              <div
                 key={stage.title}
-                type="button"
-                onClick={() => setSelectedStage(index)}
-                className={`${stageBase} ${stage.tone} text-left ${
-                  active ? "ring-2 ring-slate-950" : "hover:border-slate-400"
-                }`}
+                className={`${stageBase} ${stage.tone} relative overflow-hidden`}
               >
+                {index < stages.length - 1 && (
+                  <div className="absolute right-3 top-4 hidden text-xl font-black text-slate-300 xl:block">→</div>
+                )}
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">
-                      Step {index + 1}
+                      Memory Step {index + 1}
                     </p>
                     <h2 className="mt-2 text-lg font-black text-slate-950">{stage.title}</h2>
                     <p className="mt-1 text-xs font-bold text-slate-500">{stage.subtitle}</p>
@@ -424,152 +410,68 @@ export default function KnowledgeLoopDemoPage() {
                 </div>
                 <p className="mt-5 text-sm font-bold leading-6 text-slate-900">{stage.body}</p>
                 <p className="mt-2 text-xs leading-5 text-slate-600">{stage.detail}</p>
-              </button>
+              </div>
             );
           })}
         </div>
+        <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-black text-violet-950">
+          次回の案件入力に戻ることで、紫苑は単なる検索ではなく「判断を持ち越すAI」として振る舞います。
+        </div>
       </section>
 
-      <section className="mx-auto grid max-w-7xl gap-6 px-4 pb-10 sm:px-6 lg:grid-cols-[1.2fr_0.8fr] lg:px-8">
-        <div className="border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div>
-              <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">
-                Selected Step
-              </p>
-              <h2 className="mt-2 text-2xl font-black text-slate-950">{selected.title}</h2>
-              <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600">{selected.detail}</p>
-            </div>
-          </div>
-
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            <div className="border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center gap-2 text-xs font-black text-slate-500">
-                <Cloud className="h-4 w-4 text-sky-600" />
-                Cloud Run
+      <section className="mx-auto max-w-7xl px-4 pb-10 sm:px-6 lg:px-8">
+        <div className="grid gap-4 lg:grid-cols-3">
+          {[
+            {
+              title: "記憶へ残す",
+              icon: Database,
+              body: "会話、審査メモ、人間の修正をそのまま正解扱いせず、判断材料として保存する。",
+            },
+            {
+              title: "判断へ変換する",
+              icon: Brain,
+              body: "保存された情報を、確認質問・承認条件・反証・稟議文面へ組み直す。",
+            },
+            {
+              title: "次回へ戻す",
+              icon: RefreshCw,
+              body: "役に立った / 要修正 / 違う の評価を受けて、次の紫苑レビューへ反映する。",
+            },
+          ].map(({ title, icon: Icon, body }) => (
+            <div key={title} className="border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-slate-950 text-white">
+                  <Icon className="h-5 w-5" />
+                </span>
+                <h2 className="text-lg font-black text-slate-950">{title}</h2>
               </div>
-              <p className="mt-3 text-sm font-bold text-slate-900">
-                {view.cloud.cloud_run?.service || "service未取得"}
-              </p>
-              <p className="mt-1 break-all text-xs leading-5 text-slate-500">
-                {view.cloud.cloud_run?.revision || "revisionは実環境で表示"}
+              <p className="mt-4 text-sm font-bold leading-7 text-slate-600">{body}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Memory Signals</p>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="border-l-4 border-cyan-400 bg-cyan-50 px-4 py-3">
+              <p className="text-xs font-black text-cyan-900">今日の論点</p>
+              <p className="mt-2 text-xs font-bold leading-6 text-slate-700">
+                {focus?.theme_summary || reflection?.current_question || "審査論点を読み込み中"}
               </p>
             </div>
-            <div className="border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center gap-2 text-xs font-black text-slate-500">
-                <Database className="h-4 w-4 text-emerald-600" />
-                Knowledge Store
-              </div>
-              <p className="mt-3 text-sm font-bold text-slate-900">
-                gs://{view.cloud.gcs_vault?.bucket || "tune-lease-55-data"}/{view.cloud.gcs_vault?.prefix || "vault/"}
-              </p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                {view.cloud.gcs_vault?.local_dir || "/tmp/gcs_vault"} に同期
+            <div className="border-l-4 border-indigo-400 bg-indigo-50 px-4 py-3">
+              <p className="text-xs font-black text-indigo-900">紫苑の内省</p>
+              <p className="mt-2 text-xs font-bold leading-6 text-slate-700">
+                {thoughtLines[0] || "判断資産を次回の回答へ戻す準備中"}
               </p>
             </div>
-            <div className="border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center gap-2 text-xs font-black text-slate-500">
-                <ShieldCheck className="h-4 w-4 text-rose-600" />
-                Writeback
-              </div>
-              <p className="mt-3 text-sm font-bold text-slate-900">
-                append-only event log
+            <div className="border-l-4 border-rose-400 bg-rose-50 px-4 py-3">
+              <p className="text-xs font-black text-rose-900">人間評価</p>
+              <p className="mt-2 text-xs font-bold leading-6 text-slate-700">
+                {focusLines[0] || `${numberText(feedbackTotal)}件のfeedbackを次回改善へ戻す`}
               </p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                Cloud Run入力はGCSへ追記し、ローカル夜間処理が正本へ反映
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-6 border-t border-slate-200 pt-5">
-            <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">
-              Demo Case
-            </p>
-            <div className="mt-3 grid gap-3 md:grid-cols-4">
-              {[
-                ["取引先", demoCase.company],
-                ["物件", demoCase.asset],
-                ["金額", demoCase.amount],
-                ["論点", demoCase.concern],
-              ].map(([label, value]) => (
-                <div key={label} className="border border-slate-200 bg-white p-3">
-                  <p className="text-[11px] font-black text-slate-500">{label}</p>
-                  <p className="mt-1 text-sm font-bold leading-6 text-slate-900">{value}</p>
-                </div>
-              ))}
             </div>
           </div>
         </div>
-
-        <aside className="border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">
-                Evidence
-              </p>
-              <h2 className="mt-2 text-xl font-black text-slate-950">確認すべき根拠</h2>
-            </div>
-            <Activity className="h-6 w-6 text-slate-500" />
-          </div>
-
-          <div className="mt-5 space-y-4">
-            <div className="border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center gap-2">
-                <RefreshCw className="h-4 w-4 text-cyan-700" />
-                <p className="text-sm font-black text-slate-900">今日の論点</p>
-              </div>
-              <p className="mt-2 text-xs leading-6 text-slate-600">
-                {focus?.theme_summary || reflection?.current_question || "審査論点を読み込み中"}
-              </p>
-              {focusLines.length > 0 && (
-                <div className="mt-3 space-y-2">
-                  {focusLines.map((line) => (
-                    <p key={line} className="border-l-2 border-cyan-400 pl-3 text-xs leading-5 text-slate-700">
-                      {line}
-                    </p>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center gap-2">
-                <BookOpenCheck className="h-4 w-4 text-emerald-700" />
-                <p className="text-sm font-black text-slate-900">参照された判断資産</p>
-              </div>
-              {selectedSources.length > 0 ? (
-                <div className="mt-3 space-y-2">
-                  {selectedSources.map((source) => (
-                    <p key={source} className="truncate text-xs font-bold text-emerald-800">
-                      {source}
-                    </p>
-                  ))}
-                </div>
-              ) : (
-                <p className="mt-2 text-xs leading-6 text-slate-600">
-                  GCS Vaultの件数は表示済み。回答単位の参照元は、紫苑チャット実行後にここへ出ます。
-                </p>
-              )}
-            </div>
-
-            <div className="border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center gap-2">
-                <Brain className="h-4 w-4 text-indigo-700" />
-                <p className="text-sm font-black text-slate-900">紫苑の内省</p>
-              </div>
-              <div className="mt-3 space-y-2">
-                {(thoughtLines.length
-                  ? thoughtLines
-                  : fallback.dashboard.lease_news_reflection?.thought_lines ?? []
-                ).map((line) => (
-                  <p key={line} className="text-xs leading-6 text-slate-700">
-                    {line}
-                  </p>
-                ))}
-              </div>
-            </div>
-          </div>
-        </aside>
       </section>
 
       <section className="border-y border-slate-200 bg-white">

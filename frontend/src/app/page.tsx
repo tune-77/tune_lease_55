@@ -120,7 +120,7 @@ const SHION_PERSONAS: ShionPersona[] = [
     role: "最初に話を聞き、作業順序を決める受付役です。",
     catchphrase: "迷ったら、私が入口を整えます。",
     keywords: ["何", "どこ", "始め", "案内", "入口", "ホーム"],
-    routeHrefs: ["/", "/home"],
+    routeHrefs: ["/"],
   },
   {
     id: "screening",
