@@ -73,6 +73,9 @@ type DialogueImprovementItem = {
   title?: string;
   status?: string;
   reason?: string;
+  category?: string;
+  detail?: string;
+  park_reason?: string;
   recommended_order?: number | null;
 };
 
@@ -90,6 +93,28 @@ type DialogueImprovementLog = {
     ranked_queue_count?: number;
     suppressed_count?: number;
   };
+};
+
+type DialoguePipelineSummary = {
+  run_date: string | null;
+  applied_count: number;
+  needs_review_count: number;
+  failed_count: number;
+  commit_result: { success: boolean; message?: string; pr_url?: string | null } | null;
+};
+
+type DialogueGapItem = {
+  id?: string;
+  title?: string;
+  priority?: "critical" | "high" | "medium" | "low" | string;
+  impact?: string;
+  recommended_action?: string;
+};
+
+type DialogueGapAnalysis = {
+  available: boolean;
+  counts?: Record<string, number>;
+  items?: DialogueGapItem[];
 };
 
 type EmotionHistoryEntry = {
@@ -207,31 +232,99 @@ const markDailyImprovementReportShown = () => {
   window.localStorage.setItem(dailyImprovementStorageKey(), "1");
 };
 
-const buildDailyImprovementReport = (log: DialogueImprovementLog | null | undefined) => {
+const improvementItemText = (item: DialogueImprovementItem) => {
+  const reason = item.reason || item.park_reason || item.detail || "";
+  return `${item.title || item.id || "改善候補"}${reason ? ` — ${reason}` : ""}`;
+};
+
+const classifyPmImprovementItems = (items: DialogueImprovementItem[]) => {
+  const actionable: DialogueImprovementItem[] = [];
+  const later: DialogueImprovementItem[] = [];
+  const discard: DialogueImprovementItem[] = [];
+  for (const item of items) {
+    const status = String(item.status || "").toUpperCase();
+    const text = `${item.title || ""} ${item.reason || ""} ${item.detail || ""} ${item.category || ""}`.toLowerCase();
+    if (["APPLIED", "DELETED", "REJECTED", "PARKED"].includes(status)) {
+      discard.push(item);
+      continue;
+    }
+    const risky =
+      text.includes("db") ||
+      text.includes("api") ||
+      text.includes("database") ||
+      text.includes("migration") ||
+      text.includes("scoring") ||
+      text.includes("認証") ||
+      text.includes("デプロイ") ||
+      text.includes("スコアリング") ||
+      text.includes("モデル");
+    if (risky) {
+      later.push(item);
+    } else if (actionable.length < 3) {
+      actionable.push(item);
+    } else {
+      later.push(item);
+    }
+  }
+  return {
+    today: actionable.slice(0, 3),
+    later: later.slice(0, 3),
+    discard: discard.slice(0, 2),
+  };
+};
+
+const buildSystemWatchLines = (
+  pipeline: DialoguePipelineSummary | null | undefined,
+  gaps: DialogueGapAnalysis | null | undefined,
+) => {
+  const lines: string[] = [];
+  const failedCount = pipeline?.failed_count ?? 0;
+  const commitFailed = pipeline?.commit_result && pipeline.commit_result.success === false;
+  const gapItems = (gaps?.items || []).filter((item) => ["critical", "high"].includes(String(item.priority || "").toLowerCase()));
+  if (!failedCount && !commitFailed && !gapItems.length) {
+    lines.push("システム監視: 重大な異常は見えていません。");
+    return lines;
+  }
+  lines.push("システム監視:");
+  if (failedCount) lines.push(`- 改善パイプライン失敗 ${failedCount} 件。先に原因確認が必要です。`);
+  if (commitFailed) lines.push(`- commit結果に失敗があります。${pipeline?.commit_result?.message || "git反映状況を確認してください。"}`);
+  gapItems.slice(0, 3).forEach((item) => {
+    lines.push(`- ${String(item.priority || "high").toUpperCase()}: ${item.title || item.id || "システムギャップ"}${item.impact ? ` — ${item.impact}` : ""}`);
+  });
+  return lines;
+};
+
+const buildDailyImprovementReport = (
+  log: DialogueImprovementLog | null | undefined,
+  pipeline?: DialoguePipelineSummary | null,
+  gaps?: DialogueGapAnalysis | null,
+) => {
   if (!log || log.status === "NO_REPORT") return "";
-  const candidateItems = (log.items || [])
-    .filter((item) => item?.title && !["APPLIED", "REJECTED", "PARKED"].includes(String(item.status || "").toUpperCase()))
-    .slice(0, 3);
+  const pmItems = classifyPmImprovementItems((log.items || []).filter((item) => item?.title || item?.id));
   const generatedAt = log.date || String(log.generated_at || "").slice(0, 10);
   const lines = [
-    generatedAt ? `今日の改善レポートです。対象日は ${generatedAt} です。` : "今日の改善レポートです。",
+    generatedAt ? `改善PMレポートです。対象日は ${generatedAt} です。` : "改善PMレポートです。",
     `適用済み ${log.applied ?? 0} 件、自動候補 ${log.auto_fix_candidates ?? 0} 件、要レビュー ${log.needs_review ?? 0} 件、保留 ${log.parked ?? 0} 件です。`,
+    ...buildSystemWatchLines(pipeline, gaps),
   ];
-  if (candidateItems.length) {
-    lines.push("相談するなら、まずこのあたりです。");
-    candidateItems.forEach((item, index) => {
-      const reason = item.reason ? ` — ${item.reason}` : "";
-      lines.push(`${index + 1}. ${item.title}${reason}`);
-    });
+  if (pmItems.today.length) {
+    lines.push("今日やる候補:");
+    pmItems.today.forEach((item, index) => lines.push(`${index + 1}. ${improvementItemText(item)}`));
   } else {
-    lines.push("今すぐ触るべき軽い候補は多くありません。今日は安定運用を優先してよさそうです。");
+    lines.push("今日やる候補: 今すぐ触るべき軽い候補は多くありません。安定運用を優先でよさそうです。");
+  }
+  if (pmItems.later.length) {
+    lines.push(`後回し候補: ${pmItems.later.map((item) => item.title || item.id).join(" / ")}`);
+  }
+  if (pmItems.discard.length) {
+    lines.push(`捨てる/削除候補: ${pmItems.discard.map((item) => item.title || item.id).join(" / ")}`);
   }
   const rankedQueue = log.recursive_self_improvement?.ranked_queue_count ?? 0;
   const suppressed = log.recursive_self_improvement?.suppressed_count ?? 0;
   if (rankedQueue || suppressed) {
     lines.push(`再帰的自己改善キューは ${rankedQueue} 件、抑制 ${suppressed} 件です。`);
   }
-  lines.push("気になる項目があれば、そのまま相談してください。実装判断はUser側で止めます。");
+  lines.push("やる候補を選んでくれれば、Codex依頼文まで私が整えます。実装判断はUser側で止めます。");
   return lines.join("\n");
 };
 
@@ -1030,8 +1123,10 @@ export default function LeaseIntelligencePage() {
         params: { since: dialogueDisplaySinceIso() },
       }),
       apiClient.get<DialogueImprovementLog>("/api/improvement-log"),
+      apiClient.get<DialoguePipelineSummary>("/api/improvement-pipeline/summary"),
+      apiClient.get<DialogueGapAnalysis>("/api/lease-system-gaps"),
     ])
-      .then(([stateResult, improvementResult]) => {
+      .then(([stateResult, improvementResult, pipelineResult, gapsResult]) => {
         if (stateResult.status !== "fulfilled") {
           setError("リース知性体の状態を読み込めませんでした。");
           return;
@@ -1041,7 +1136,11 @@ export default function LeaseIntelligencePage() {
         const localMessages = loadLocalDialogueMessages();
         let nextMessages = mergeDialogueMessages(serverMessages, localMessages);
         if (improvementResult.status === "fulfilled" && shouldShowDailyImprovementReport()) {
-          const report = buildDailyImprovementReport(improvementResult.value.data);
+          const report = buildDailyImprovementReport(
+            improvementResult.value.data,
+            pipelineResult.status === "fulfilled" ? pipelineResult.value.data : null,
+            gapsResult.status === "fulfilled" ? gapsResult.value.data : null,
+          );
           if (report) {
             const reportMessage: Message = {
               id: Date.now() + 17,
