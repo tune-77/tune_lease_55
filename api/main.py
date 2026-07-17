@@ -4776,6 +4776,255 @@ def _build_dialogue_improvement_report_context(limit: int = 4) -> str:
     return "\n".join(lines)
 
 
+# ── Phase 0: 改善ループ観測（planning/shion_improvement_loop_plan.md）─────────
+# 2層コンテキスト方式: 常時は異常サマリ1〜2行のみ、改善相談のときだけ詳細を遅延ロードする。
+# すべて read-only。ファイルは本番（Mac/launchd）にしか無いものがあるため欠損に耐えること。
+
+_IMPROVEMENT_CONSULTATION_KEYWORDS = (
+    "パイプライン",
+    "改善レポート",
+    "改善候補",
+    "改善ログ",
+    "改善pm",
+    "自己改善",
+    "台帳",
+    "codex",
+    "rev",
+    "マージ",
+    "トリアージ",
+    "システム監視",
+)
+
+
+def _is_improvement_consultation_message(message: str) -> bool:
+    text = str(message or "").lower()
+    if not text:
+        return False
+    return any(keyword in text for keyword in _IMPROVEMENT_CONSULTATION_KEYWORDS)
+
+
+def _load_pipeline_step_health(limit_failed: int = 8) -> dict:
+    """data/pipeline_step_log.jsonl の最新 run_date のステップ結果を要約する（P0-1）。"""
+    path = Path(_REPO_ROOT) / "data" / "pipeline_step_log.jsonl"
+    if not path.exists():
+        return {"available": False, "run_date": "", "total": 0, "failed": []}
+    latest_by_step: dict[str, dict] = {}
+    latest_run_date = ""
+    try:
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            run_date = str(row.get("run_date") or "")
+            if not run_date:
+                continue
+            if run_date > latest_run_date:
+                latest_run_date = run_date
+                latest_by_step = {}
+            if run_date == latest_run_date:
+                step = str(row.get("step") or "")
+                if step:
+                    latest_by_step[step] = row  # 同一ステップの再実行は最後の結果を採用
+    except OSError:
+        return {"available": False, "run_date": "", "total": 0, "failed": []}
+    if not latest_by_step:
+        return {"available": False, "run_date": "", "total": 0, "failed": []}
+    failed = [
+        {"step": step, "exit_code": int(row.get("exit_code") or 0)}
+        for step, row in latest_by_step.items()
+        if int(row.get("exit_code") or 0) != 0
+    ]
+    return {
+        "available": True,
+        "run_date": latest_run_date,
+        "total": len(latest_by_step),
+        "failed": failed[:limit_failed],
+    }
+
+
+def _build_pipeline_anomaly_summary_line() -> str:
+    """常時注入する異常サマリ。異常がなければ空文字（通常会話の注入量を増やさない）。"""
+    health = _load_pipeline_step_health()
+    if not health.get("available") or not health.get("failed"):
+        return ""
+    failed = health["failed"]
+    names = "、".join(str(item.get("step") or "") for item in failed[:3])
+    return (
+        f"【システム監視】直近の改善パイプライン（{health.get('run_date')}）で"
+        f"{len(failed)}ステップが失敗: {names}。詳細は改善相談で展開できる。"
+    )
+
+
+def _load_improvement_ledger_summary(limit: int = 8) -> dict:
+    """scripts/improvement_ledger.jsonl の直近エントリを要約する（P0-2）。
+
+    追記形式・同一キーは最後のエントリが有効（CLAUDE.md の台帳規約と同じ）。
+    """
+    path = Path(_REPO_ROOT) / "scripts" / "improvement_ledger.jsonl"
+    if not path.exists():
+        return {"available": False, "entries": [], "counts": {}}
+    latest_by_key: dict[str, dict] = {}
+    try:
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            key = str(row.get("canonical_key") or row.get("key") or "")
+            if key:
+                latest_by_key[key] = row
+    except OSError:
+        return {"available": False, "entries": [], "counts": {}}
+    if not latest_by_key:
+        return {"available": False, "entries": [], "counts": {}}
+    entries = sorted(
+        latest_by_key.values(),
+        key=lambda row: str(row.get("recorded_at") or ""),
+        reverse=True,
+    )
+    counts: dict[str, int] = {}
+    for row in entries:
+        status = str(row.get("status") or "unknown")
+        counts[status] = counts.get(status, 0) + 1
+    return {
+        "available": True,
+        "entries": [
+            {
+                "rev_id": str(row.get("rev_id") or ""),
+                "status": str(row.get("status") or ""),
+                "title": str(row.get("title") or ""),
+                "pr_url": str(row.get("pr_url") or ""),
+                "recorded_at": str(row.get("recorded_at") or "")[:10],
+            }
+            for row in entries[:limit]
+        ],
+        "counts": counts,
+    }
+
+
+def _load_codex_queue_summary(limit_items: int = 3) -> dict:
+    """最新の Codex 自動実行キューと実行ステータスを要約する（P0-2）。"""
+    reports_dir = Path(_REPO_ROOT) / "reports"
+    try:
+        candidates = sorted(reports_dir.glob("codex_auto_queue_*.json"))
+    except OSError:
+        candidates = []
+    if not candidates:
+        return {"available": False, "items": []}
+    try:
+        queue = json.loads(candidates[-1].read_text(encoding="utf-8"))
+    except Exception:
+        return {"available": False, "items": []}
+    status_by_id: dict[str, dict] = {}
+    status_path = reports_dir / "codex_auto_execution_status.json"
+    if status_path.exists():
+        try:
+            payload = json.loads(status_path.read_text(encoding="utf-8"))
+            if isinstance(payload.get("items"), dict):
+                status_by_id = payload["items"]
+        except Exception:
+            status_by_id = {}
+    items = []
+    for raw in (queue.get("items") or [])[:limit_items]:
+        if not isinstance(raw, dict):
+            continue
+        rev_id = str(raw.get("id") or "")
+        execution = status_by_id.get(rev_id.upper()) if rev_id else None
+        items.append({
+            "id": rev_id,
+            "title": str(raw.get("title") or "")[:60],
+            "execution_status": str((execution or {}).get("status") or "未実行"),
+        })
+    return {
+        "available": True,
+        "generated_at": str(queue.get("generated_at") or ""),
+        "status": str(queue.get("status") or ""),
+        "queued_count": int(queue.get("queued_count") or 0),
+        "items": items,
+    }
+
+
+def _load_recursive_self_improvement_digest(max_chars: int = 700) -> str:
+    """reports/recursive_self_improvement_latest.md の要点を抜粋する（P0-3）。"""
+    path = Path(_REPO_ROOT) / "reports" / "recursive_self_improvement_latest.md"
+    if not path.exists():
+        return ""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    digest: list[str] = []
+    used = 0
+    for line in lines:
+        if used + len(line) > max_chars:
+            break
+        digest.append(line)
+        used += len(line)
+    return "\n".join(digest)
+
+
+def _build_dialogue_improvement_observability_context(message: str) -> str:
+    """Phase 0 の2層コンテキスト。通常会話では異常サマリのみ、改善相談で詳細を展開する。"""
+    if not _is_improvement_consultation_message(message):
+        return _build_pipeline_anomaly_summary_line()
+
+    lines = [
+        "【改善ループ観測・詳細（read-only）】",
+        "以下は紫苑が読むための状態であり、紫苑が実行・変更した事実ではない。実行権限を持っているように装わない。",
+    ]
+
+    health = _load_pipeline_step_health()
+    if health.get("available"):
+        failed = health.get("failed") or []
+        if failed:
+            failed_text = "、".join(f"{item['step']}(exit {item['exit_code']})" for item in failed)
+            lines.append(
+                f"- パイプライン({health.get('run_date')}): 全{health.get('total')}ステップ中{len(failed)}件失敗 → {failed_text}"
+            )
+        else:
+            lines.append(f"- パイプライン({health.get('run_date')}): 全{health.get('total')}ステップ成功")
+    else:
+        lines.append("- パイプライン: ステップログ未取得（この環境では確認できない）")
+
+    ledger = _load_improvement_ledger_summary()
+    if ledger.get("available"):
+        counts = ledger.get("counts") or {}
+        count_text = " / ".join(f"{status}:{count}" for status, count in sorted(counts.items()))
+        lines.append(f"- 台帳累計: {count_text}")
+        for entry in (ledger.get("entries") or [])[:5]:
+            rev = entry.get("rev_id") or "(REVなし)"
+            title = entry.get("title") or ""
+            title_text = f" {title[:40]}" if title and title != rev else ""
+            lines.append(f"  - {entry.get('recorded_at')} {rev} [{entry.get('status')}]{title_text}")
+    else:
+        lines.append("- 台帳: 読み取れない（この環境では確認できない）")
+
+    codex = _load_codex_queue_summary()
+    if codex.get("available"):
+        lines.append(
+            f"- Codexキュー({codex.get('status')}): {codex.get('queued_count')}件 生成 {str(codex.get('generated_at'))[:16]}"
+        )
+        for item in codex.get("items") or []:
+            lines.append(f"  - {item.get('id')} {item.get('title')} → 実行状況: {item.get('execution_status')}")
+
+    digest = _load_recursive_self_improvement_digest()
+    if digest:
+        lines.append("- 再帰的自己改善レポート要点:")
+        for line in digest.splitlines()[:10]:
+            lines.append(f"  {line}")
+
+    anomaly = _build_pipeline_anomaly_summary_line()
+    if anomaly:
+        lines.insert(1, anomaly)
+    return "\n".join(lines)
+
+
 def _load_lease_system_gap_analysis(limit: int | None = None) -> dict:
     """Read-only system gap analysis summary generated by scripts/lease_system_gap_analyzer.py."""
     path = Path(_REPO_ROOT) / "reports" / "lease_system_gap_analysis.json"
@@ -11603,6 +11852,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
         dialogue_budget,
     )
     improvement_report_context = _build_dialogue_improvement_report_context(limit=4)
+    improvement_observability_context = _build_dialogue_improvement_observability_context(full_message)
 
     if not vault:
         from lease_finance_knowledge import build_basic_lease_question_block, build_lease_finance_knowledge_block
@@ -11636,6 +11886,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
 {user_personal_memory_context}
 {shared_shion_memory_context}
 {improvement_report_context}
+{improvement_observability_context}
 {build_shion_feminine_tone_block()}
 """
         try:
@@ -11694,6 +11945,8 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
         system_prompt += f"\n\n{shared_shion_memory_context}"
     if improvement_report_context:
         system_prompt += f"\n\n{improvement_report_context}"
+    if improvement_observability_context:
+        system_prompt += f"\n\n{improvement_observability_context}"
     consultation_ids: list[str] = []
 
     def _tool_executor(name: str, args: dict) -> object:
