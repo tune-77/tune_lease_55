@@ -47,3 +47,36 @@ jobs:
 
       - name: Syntax check (compileall)
         run: python -m compileall -q api scripts tests *.py
+
+  # 改善ループ＋ガードのコアテスト網。全テスト一括ではなく、クリーン環境で
+  # グリーンを確認済みのスイートから段階導入する（未検証テストの偽赤でCIを
+  # 止めないため）。スイートを増やすときはローカルの素の環境で通ることを確認してから追加する
+  pytest-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install test dependencies
+        run: >
+          pip install -q pytest fastapi uvicorn pydantic slowapi httpx python-multipart
+          requests numpy pandas matplotlib seaborn scipy scikit-learn joblib
+          python-dateutil pyyaml
+
+      - name: Run core test suite
+        run: >
+          python -m pytest -q
+          tests/test_no_duplicate_toplevel_defs.py
+          tests/test_improvement_log_recursive_summary.py
+          tests/test_improvement_triage.py
+          tests/test_dialogue_improvement_observability.py
+          tests/test_analyze_shion_pm_quality.py
+          tests/test_shion_triage_queue.py
+          tests/test_shion_llm_triage_proposal.py
+          tests/test_execute_codex_queue_guards.py
+          tests/test_sync_cloudrun_inputs_from_gcs.py
+          tests/test_lease_intelligence_dialogue.py
