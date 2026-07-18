@@ -470,11 +470,9 @@ export default function SystemOverviewPage() {
           </div>
         </section>
 
-        {!isCloudRunHost && (
-          <>
-            {/* ── Cloud Run とローカル紫苑のデータ連携 ── */}
-            <section>
-              <div
+        {/* ── 紫苑の頭脳と実行環境の分離 ── */}
+        <section>
+          <div
                 className="rounded-3xl border p-6"
                 style={{
                   background: "linear-gradient(135deg, rgba(15,23,42,0.95) 0%, rgba(20,83,45,0.18) 55%, rgba(88,28,135,0.16) 100%)",
@@ -484,14 +482,33 @@ export default function SystemOverviewPage() {
               >
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                   <div className="max-w-2xl">
-                    <p className="text-xs font-black tracking-[0.25em] uppercase text-teal-300">Local Governance Layer</p>
-                    <h2 className="mt-2 text-2xl font-black text-white">昇格と検疫は、ローカル紫苑だけが持つ</h2>
+                    <p className="text-xs font-black tracking-[0.25em] uppercase text-teal-300">Separated Brain / Runtime</p>
+                    <h2 className="mt-2 text-2xl font-black text-white">紫苑の頭脳は、審査AI本体とは別管理</h2>
                     <p className="mt-3 text-sm font-semibold leading-relaxed text-slate-300">
-                      Cloud Run版はデモ会場で使う実証フィールドです。紫苑レビュー、人間評価、審査ループ入力はGCSへ追記しますが、Cloud Run上では本体DBへ直接昇格しません。ローカル側に戻してから、隔離DB・検疫画面・人間承認を通ったものだけを判断資産やデモDBへ昇格します。
+                      Cloud Runは紫苑を動かす実行環境です。一方で、紫苑の頭脳となる判断資産、過去判断、違和感、条件付き承認理由、改善ログは、Obsidian / Markdown Vault 側で正本管理します。AIは回答に使えますが、正本を直接書き換えず、改善候補は検疫・人間承認・昇格を通します。
                     </p>
                   </div>
                   <div className="rounded-2xl border border-fuchsia-400/25 bg-fuchsia-950/20 px-4 py-3 text-xs font-bold text-fuchsia-100">
-                    Local only: quarantine / review / promote
+                    Brain is separate: review / quarantine / promote
+                  </div>
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-emerald-400/25 bg-emerald-950/15 p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <p className="text-xs font-black tracking-[0.2em] uppercase text-emerald-300">Replaceable Brain</p>
+                      <h3 className="mt-1 text-lg font-black text-white">身体は共通、頭脳は差し替えられる</h3>
+                      <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-300">
+                        Cloud Run上のUI/API/スコアリング/チャットを「身体」とし、Obsidian / Markdown Vault の判断資産を「頭脳」として分離します。頭脳をリース審査から法務レビュー、営業支援、CS品質監査へ差し替えれば、同じ実行環境を別業務の紫苑として展開できます。
+                      </p>
+                    </div>
+                    <div className="grid min-w-[220px] grid-cols-2 gap-2 text-center text-[11px] font-black">
+                      {["Lease", "Legal", "Sales", "CS"].map((label) => (
+                        <div key={label} className="rounded-xl border border-emerald-300/25 bg-slate-950/45 px-3 py-2 text-emerald-100">
+                          {label} Brain
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -512,7 +529,7 @@ export default function SystemOverviewPage() {
                         "紫苑レビュー・人間評価を受け取る",
                         "GCS Event Logへ追記する",
                         "本体DBへ直接書き戻さない",
-                        "昇格・検疫UIは持たない",
+                        "判断資産の正本を直接更新しない",
                       ].map((line) => (
                         <div key={line} className="flex items-center gap-2 rounded-lg bg-slate-950/45 px-3 py-2 text-[11px] font-semibold text-slate-300">
                           <span className="h-1.5 w-1.5 rounded-full bg-teal-300" />
@@ -540,16 +557,16 @@ export default function SystemOverviewPage() {
                         <Shield className="h-4 w-4" />
                       </div>
                       <div>
-                        <p className="text-sm font-black text-white">ローカル紫苑</p>
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-fuchsia-300">Governance / promotion</p>
+                        <p className="text-sm font-black text-white">紫苑の頭脳</p>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-fuchsia-300">Obsidian / governance</p>
                       </div>
                     </div>
                     <div className="grid gap-2 sm:grid-cols-2">
                       {[
-                        { title: "検疫DB", desc: "cloudrun_experience_return.db に隔離", color: "#fbbf24", icon: Shield },
-                        { title: "人間レビュー", desc: "/cloudrun-return-review で採否確認", color: "#60a5fa", icon: Eye },
-                        { title: "昇格処理", desc: "承認済みだけ demo.db / 判断資産へ反映", color: "#c084fc", icon: RefreshCw },
-                        { title: "本体保護", desc: "lease_data.db へは明示指定時だけ", color: "#fb7185", icon: Database },
+                        { title: "正本管理", desc: "Obsidian / Markdown Vault に判断資産を保持", color: "#fbbf24", icon: Database },
+                        { title: "人間レビュー", desc: "改善候補を採用・却下・保留に分ける", color: "#60a5fa", icon: Eye },
+                        { title: "検疫DB", desc: "未承認データを隔離して混入を防ぐ", color: "#2dd4bf", icon: Shield },
+                        { title: "昇格処理", desc: "承認済みだけ次回の記憶・判断資産へ戻す", color: "#c084fc", icon: RefreshCw },
                       ].map(({ title, desc, color, icon: FlowIcon }) => (
                         <div key={title} className="rounded-xl border border-slate-800 bg-slate-950/55 p-3">
                           <div className="mb-2 flex items-center gap-2">
@@ -573,10 +590,8 @@ export default function SystemOverviewPage() {
                     </div>
                   </div>
                 </div>
-              </div>
-            </section>
-          </>
-        )}
+          </div>
+        </section>
 
         {/* ── 統計バー ── */}
         <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1230,8 +1245,8 @@ function ShionCenteredSystemDiagram() {
     },
     {
       title: "検疫・昇格",
-      subtitle: "Local only / quarantine / promote",
-      body: "Cloud Run入力は直接昇格せず、ローカル検疫と人間承認を通す",
+      subtitle: "Separate brain / quarantine / promote",
+      body: "Cloud Run入力は正本を直接更新せず、検疫と人間承認を通す",
       icon: Shield,
       color: "#2dd4bf",
     },
