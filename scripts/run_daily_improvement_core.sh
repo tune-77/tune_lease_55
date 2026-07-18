@@ -376,7 +376,12 @@ if [ -f "${LATEST_FILE}" ]; then
     echo ""
     echo "[配布] Gist に最終結果を更新中..."
     if [ ${FINAL_EXIT} -eq 0 ]; then
-        if command -v gh >/dev/null 2>&1; then
+        # 公開前の機微情報チェック（Cloud Run由来の自由文が混ざるため）。
+        # 検出時はGist更新のみスキップし、パイプラインは失敗させない
+        if ! "${PYTHON}" "${PROJECT_ROOT}/scripts/check_gist_payload_safety.py" --file "${LATEST_FILE}"; then
+            echo "警告: 機微情報の疑いを検出したため Gist 更新をスキップします（ローカル結果は保存済み）"
+            log_step "gist_safety_block" 1
+        elif command -v gh >/dev/null 2>&1; then
             if gh gist edit "${GIST_ID}" "${LATEST_FILE}" 2>/dev/null; then
                 echo "Gist 更新完了: https://gist.github.com/tune-77/${GIST_ID}"
                 GIST_EXIT=0

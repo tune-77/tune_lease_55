@@ -31,7 +31,15 @@ def load_ledger_entries(since: datetime) -> list[dict]:
                 continue
             try:
                 entry = json.loads(line)
-                ts_str = entry.get("timestamp") or entry.get("updated_at") or entry.get("created_at") or ""
+                # ledger.jsonl の実フィールドは recorded_at。これを読んでいなかったため
+                # 全エントリが時刻なし扱いでスキップされ、Weekly Log が毎週0件になっていた
+                ts_str = (
+                    entry.get("recorded_at")
+                    or entry.get("timestamp")
+                    or entry.get("updated_at")
+                    or entry.get("created_at")
+                    or ""
+                )
                 if not ts_str:
                     continue
                 ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
