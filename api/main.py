@@ -9142,10 +9142,10 @@ def _load_autoresearch_judgment_asset_candidates(limit: int = 500) -> list[dict[
         },
     ]
     existing_ids = {str(item.get("id") or "") for item in rows}
-    for item in demo_candidates:
-        if str(item.get("id") or "") not in existing_ids and len(rows) < limit:
-            rows.append(item)
-    return rows
+    for item in reversed(demo_candidates):
+        if str(item.get("id") or "") not in existing_ids:
+            rows.insert(0, item)
+    return rows[:limit]
 
 
 def _load_canonical_judgment_asset_candidates(limit: int = 100) -> list[dict[str, Any]]:
