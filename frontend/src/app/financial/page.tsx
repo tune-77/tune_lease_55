@@ -9,10 +9,16 @@ const INDUSTRY_OPTIONS = [
   "建設業", "小売業", "製造業", "卸売業", "医療・福祉", "飲食・宿泊業", "サービス業", "不動産業", "情報通信業", "運輸・物流",
 ];
 
+// components/financial_analysis.py の _m2k と同じ変換（百万円→千円）。
+// /api/forecast は千円単位の年間値を受け取り、そのまま annual/12 で月次化する
+const MILLION_TO_THOUSAND_YEN = 1000;
+const toThousandYen = (value: number) => Math.round(value * MILLION_TO_THOUSAND_YEN);
+
 export default function FinancialPage() {
-  const [sales, setSales] = useState(['500000', '520000', '550000']);
-  const [profit, setProfit] = useState(['30000', '35000', '38000']);
-  const [netAssets, setNetAssets] = useState(['120000', '145000', '170000']);
+  // 入力欄は実務で使われる百万円単位（例: 500 = 5億円）。送信時に千円へ変換する
+  const [sales, setSales] = useState(['500', '520', '550']);
+  const [profit, setProfit] = useState(['30', '35', '38']);
+  const [netAssets, setNetAssets] = useState(['120', '145', '170']);
   const [industry, setIndustry] = useState("サービス業");
   
   const [loading, setLoading] = useState(false);
@@ -36,9 +42,10 @@ export default function FinancialPage() {
     setLoading(true);
     try {
       const res = await apiClient.post(`/api/forecast`, {
-        sales: sales.map(v => parseFloat(v) || 0),
-        profit: profit.map(v => parseFloat(v) || 0),
-        net_assets: netAssets.map(v => parseFloat(v) || 0),
+        // 入力（百万円）を /api/forecast が期待する千円単位へ変換してから送信する
+        sales: sales.map(v => toThousandYen(parseFloat(v) || 0)),
+        profit: profit.map(v => toThousandYen(parseFloat(v) || 0)),
+        net_assets: netAssets.map(v => toThousandYen(parseFloat(v) || 0)),
         industry
       });
       setForecastData(res.data);
@@ -110,7 +117,7 @@ export default function FinancialPage() {
           <Layout className="w-8 h-8 text-emerald-500" />
           3期財務AI予測
         </h1>
-        <p className="text-slate-500 font-bold mt-2">過去3期分のデータを元に、TimesFMを利用して月次の未来予測を生成します。（単位：千円）</p>
+        <p className="text-slate-500 font-bold mt-2">過去3期分のデータを元に、TimesFMを利用して月次の未来予測を生成します。（単位：百万円）</p>
       </div>
 
       <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 shadow-inner mb-8">

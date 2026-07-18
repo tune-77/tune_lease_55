@@ -6783,22 +6783,136 @@ def _historical_applied_improvements() -> tuple[set[str], set[str]]:
     return applied_keys, applied_titles
 
 
+def _historical_applied_timestamps() -> tuple[dict[str, str], dict[str, str]]:
+    """canonical_key / title → 適用（解決）が記録された時刻。
+
+    _historical_applied_improvements と同じソース（ランタイム台帳・改善レポート）を
+    走査するが、シグネチャは変えない（既存テストの monkeypatch 互換性のため別関数にする）。
+    """
+    key_ts: dict[str, str] = {}
+    title_ts: dict[str, str] = {}
+    resolved_ledger_statuses = {"applied", "suppressed", "rejected", "deferred", "deleted", "approved", "parked"}
+    ledger_path = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
+    if ledger_path.exists():
+        try:
+            for line in ledger_path.read_text(encoding="utf-8", errors="replace").splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                status = str(entry.get("status") or entry.get("action") or "").lower()
+                if status not in resolved_ledger_statuses:
+                    continue
+                ts = str(entry.get("recorded_at") or "").strip()
+                if not ts:
+                    continue
+                title = str(entry.get("title") or "").strip()
+                key = str(entry.get("canonical_key") or entry.get("key") or "").strip()
+                # 同一キー/タイトルは最後の記録（最新）を優先する
+                if title and (title not in title_ts or ts > title_ts[title]):
+                    title_ts[title] = ts
+                if key and (key not in key_ts or ts > key_ts[key]):
+                    key_ts[key] = ts
+        except OSError:
+            pass
+
+    candidates: list[Path] = []
+    for reports_dir in _candidate_report_dirs():
+        candidates.extend(reports_dir.glob("improvement_report_*.json"))
+        latest = reports_dir / "latest.json"
+        if latest.exists():
+            candidates.append(latest)
+
+    for path in sorted(set(candidates), reverse=True)[:80]:
+        try:
+            report = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+        except Exception:
+            continue
+        report_ts = str(report.get("generated_at") or "").strip()
+        entries: list = []
+        for key in ("applied", "applied_improvements", "suppressed_applied_duplicates"):
+            value = report.get(key)
+            if isinstance(value, list):
+                entries.extend(value)
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            ts = str(entry.get("recorded_at") or entry.get("applied_at") or entry.get("ts") or report_ts).strip()
+            if not ts:
+                continue
+            title = str(entry.get("title") or "").strip()
+            matched_title = str(entry.get("matched_applied_title") or "").strip()
+            key = str(entry.get("canonical_key") or entry.get("key") or "").strip()
+            for candidate_title in (title, matched_title):
+                if candidate_title and (candidate_title not in title_ts or ts > title_ts[candidate_title]):
+                    title_ts[candidate_title] = ts
+            if key and (key not in key_ts or ts > key_ts[key]):
+                key_ts[key] = ts
+    return key_ts, title_ts
+
+
+def _matched_applied_timestamp(text: str, impl_titles_ts: dict[str, str], threshold: float) -> str | None:
+    """_is_implemented と同じ照合ロジックで、一致した既知タイトルの適用時刻を返す。"""
+    tl = text.lower()
+    for impl, ts in impl_titles_ts.items():
+        il = impl.lower()
+        if tl == il or (len(text) >= 6 and (tl in il or il in tl)):
+            return ts
+        sa, sb = _log_bigrams(text), _log_bigrams(impl)
+        if sa and sb and len(sa & sb) / len(sa | sb) >= threshold:
+            return ts
+    return None
+
+
 def _is_historically_applied_improvement(
     title: str,
     body: str,
     canonical_key: str,
     applied_keys: set[str],
     applied_titles: set[str],
-) -> bool:
+    event_ts: str = "",
+    applied_key_ts: dict[str, str] | None = None,
+    applied_title_ts: dict[str, str] | None = None,
+) -> tuple[bool, bool]:
+    """(suppress, is_regression) を返す。
+
+    suppress=True かつ is_regression=True の場合は、旧イベントとしてではなく
+    「適用後に再発報告された」可能性があるため呼び出し側は抑制せず再入場させ、
+    再発として明示タグ付けする（P2: 過去に修正済みの不具合が再発した場合の再オープン経路）。
+    タイムスタンプ情報が無い場合は従来どおり常に抑制する（安全側のデフォルト）。
+    """
+    applied_key_ts = applied_key_ts or {}
+    applied_title_ts = applied_title_ts or {}
+
+    def _regression(matched_ts: str | None) -> bool:
+        if not event_ts or not matched_ts:
+            return False
+        import datetime as _dt_mod
+
+        try:
+            event_dt = _dt_mod.datetime.fromisoformat(event_ts.replace("Z", "+00:00"))
+            applied_dt = _dt_mod.datetime.fromisoformat(matched_ts.replace("Z", "+00:00"))
+        except ValueError:
+            return False
+        if event_dt.tzinfo is None:
+            event_dt = event_dt.replace(tzinfo=_dt_mod.timezone.utc)
+        if applied_dt.tzinfo is None:
+            applied_dt = applied_dt.replace(tzinfo=_dt_mod.timezone.utc)
+        return event_dt > applied_dt
+
     if canonical_key and canonical_key in applied_keys:
-        return True
+        return True, _regression(applied_key_ts.get(canonical_key))
     if title and _is_implemented(title, applied_titles, threshold=0.70):
-        return True
+        return True, _regression(_matched_applied_timestamp(title, applied_title_ts, 0.70))
     issue = _extract_improvement_line(body, "課題", 140)
     if issue and _is_implemented(issue, applied_titles, threshold=0.70):
-        return True
+        return True, _regression(_matched_applied_timestamp(issue, applied_title_ts, 0.70))
     original = _extract_improvement_section(body, "原文", 140) or _extract_improvement_section(body, "ユーザー要望", 140)
-    return bool(original and _is_implemented(original, applied_titles, threshold=0.78))
+    if original and _is_implemented(original, applied_titles, threshold=0.78):
+        return True, _regression(_matched_applied_timestamp(original, applied_title_ts, 0.78))
+    return False, False
 
 
 _PARK_AFTER_DAYS = 7
@@ -7041,6 +7155,7 @@ def _cloudrun_improvement_items_from_gcs(limit: int = 30) -> list[dict]:
     items: list[dict] = []
     seen: set[str] = set()
     historical_applied_keys, historical_applied_titles = _historical_applied_improvements()
+    historical_applied_key_ts, historical_applied_title_ts = _historical_applied_timestamps()
     for event in reversed(events):
         event_type = str(event.get("event_type") or "")
         surface = str(event.get("surface") or "")
@@ -7072,17 +7187,26 @@ def _cloudrun_improvement_items_from_gcs(limit: int = 30) -> list[dict]:
             continue
         embedded_status = _extract_improvement_line(body, "status", 40).lower()
         status = _ledger_status_to_improvement_status(control_status or embedded_status or "") or "NEEDS_REVIEW"
-        if status == "NEEDS_REVIEW" and _is_historically_applied_improvement(
-            title,
-            body,
-            canonical_key,
-            historical_applied_keys,
-            historical_applied_titles,
-        ):
-            continue
+        is_regression = False
+        if status == "NEEDS_REVIEW":
+            is_historically_applied, is_regression = _is_historically_applied_improvement(
+                title,
+                body,
+                canonical_key,
+                historical_applied_keys,
+                historical_applied_titles,
+                event_ts=str(event.get("ts") or ""),
+                applied_key_ts=historical_applied_key_ts,
+                applied_title_ts=historical_applied_title_ts,
+            )
+            # 過去に適用済みの候補と一致しても、イベントが適用後の再発報告と判定できる
+            # 場合は抑制せず triage へ再入場させる（P2: 再発の再オープン経路）。
+            # タイムスタンプ不明で判定できない場合は従来どおり安全側で抑制する
+            if is_historically_applied and not is_regression:
+                continue
         items.append({
             "id": f"cloudrun-{event_id[:12]}",
-            "title": title,
+            "title": f"🔁 再発報告の疑い: {title}" if is_regression else title,
             "status": status,
             "priority": str(payload.get("priority") or "medium"),
             "category": "cloudrun_input",
@@ -7096,6 +7220,7 @@ def _cloudrun_improvement_items_from_gcs(limit: int = 30) -> list[dict]:
             "source": "cloudrun_gcs_input",
             "event_id": event_id,
             "recorded_at": event.get("ts") or "",
+            "possible_regression": is_regression,
         })
         if len(items) >= limit:
             break
