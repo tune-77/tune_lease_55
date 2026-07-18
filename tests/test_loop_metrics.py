@@ -37,6 +37,7 @@ def test_loop_metrics_handles_missing_recursive_report(tmp_path):
         latest_report_path=latest,
         recursive_report_path=tmp_path / "missing_recursive.json",
         prompt_log_path=prompt_log,
+        model_paths=(),
     )
 
     assert report["status"] == "warn"
@@ -88,6 +89,7 @@ def test_loop_metrics_writes_json_and_markdown(tmp_path):
         latest_report_path=latest,
         recursive_report_path=recursive,
         prompt_log_path=prompt_log,
+        model_paths=(),
     )
     out_json = tmp_path / "loop.json"
     out_md = tmp_path / "loop.md"
@@ -95,5 +97,85 @@ def test_loop_metrics_writes_json_and_markdown(tmp_path):
 
     saved = json.loads(out_json.read_text(encoding="utf-8"))
     assert saved["recursive_loop"]["ranked_queue_count"] == 1
+    assert "scoring_coefficients" in saved
     assert "Loop Engineering Health" in out_md.read_text(encoding="utf-8")
 
+
+def test_loop_metrics_flags_prompt_rows_with_zero_pdca_rate(tmp_path):
+    from scripts.loop_metrics import build_loop_metrics
+
+    latest = tmp_path / "latest.json"
+    latest.write_text(json.dumps({"applied_count": 0, "needs_review_count": 0, "failed_count": 0}), encoding="utf-8")
+    recursive = tmp_path / "recursive.json"
+    recursive.write_text(json.dumps({"measurement_summary": {}}, ensure_ascii=False), encoding="utf-8")
+    prompt_log = tmp_path / "prompt.jsonl"
+    prompt_log.write_text(
+        json.dumps(
+            {
+                "surface": "consultation",
+                "pdca_applied": False,
+                "response_len": 100,
+                "response_diff_from_previous": "",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    report = build_loop_metrics(
+        latest_report_path=latest,
+        recursive_report_path=recursive,
+        prompt_log_path=prompt_log,
+        model_paths=(),
+    )
+
+    assert report["status"] == "attention"
+    assert report["prompt_feedback_loop"]["total"] == 1
+    assert report["prompt_feedback_loop"]["pdca_rate"] == 0.0
+    assert any("PDCA反映率が0%" in item for item in report["recommendations"])
+
+
+def test_scoring_coeff_health_flags_all_zero_required_coefficients(tmp_path):
+    from scripts.loop_metrics import build_scoring_coeff_health
+
+    overrides = tmp_path / "coeff_overrides.json"
+    auto = tmp_path / "coeff_auto.json"
+    model = tmp_path / "model.pkl"
+    required = {
+        "intercept": 0,
+        "sales_log": 0,
+        "op_profit": 0,
+        "ord_profit": 0,
+        "net_income": 0,
+        "bank_credit_log": 0,
+        "lease_credit_log": 0,
+    }
+    overrides.write_text(json.dumps({"全体_既存先": required}, ensure_ascii=False), encoding="utf-8")
+    auto.write_text(
+        json.dumps(
+            {
+                "_auto_weight_borrower": 0.5,
+                "_auto_weight_asset": 0.5,
+                "_auto_weight_quant": 0.5,
+                "_auto_weight_qual": 0.5,
+                "_auto_blend_w_main": 0.5,
+                "_auto_blend_w_bench": 0.3,
+                "_auto_blend_w_ind": 0.2,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    model.write_bytes(b"not a pickle")
+
+    health = build_scoring_coeff_health(
+        coeff_overrides_path=overrides,
+        coeff_auto_path=auto,
+        model_paths=(model,),
+    )
+
+    assert health["status"] == "attention"
+    codes = {issue["code"] for issue in health["issues"]}
+    assert "coeff_required_all_zero" in codes
+    assert "model_load_failed" in codes

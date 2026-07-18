@@ -9,8 +9,10 @@ from datetime import datetime, timedelta
 from hashlib import sha256
 from typing import Any
 
+from runtime_paths import get_data_path
+
 _REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_PDCA_RULES_FILE = os.path.join(_REPO_ROOT, "data", "pdca_ai_rules.json")
+DEFAULT_PDCA_RULES_FILE = get_data_path("pdca_ai_rules.json")
 
 
 def load_pdca_rules(path: str | None = None) -> dict[str, Any]:
@@ -249,7 +251,7 @@ def record_prompt_feedback(
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Persist a prompt/response snapshot and its diff for later comparison."""
-    target = log_path or os.path.join(_REPO_ROOT, "data", "prompt_feedback_log.jsonl")
+    target = log_path or get_data_path("prompt_feedback_log.jsonl")
     os.makedirs(os.path.dirname(target), exist_ok=True)
 
     question_hash = _digest(question)

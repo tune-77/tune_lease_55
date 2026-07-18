@@ -8,8 +8,10 @@ from pathlib import Path
 from statistics import mean
 from typing import Any
 
+from runtime_paths import get_data_dir
+
 REPO_ROOT = Path(__file__).resolve().parent
-DEFAULT_LOG_PATH = REPO_ROOT / "data" / "prompt_feedback_log.jsonl"
+DEFAULT_LOG_PATH = get_data_dir() / "prompt_feedback_log.jsonl"
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:

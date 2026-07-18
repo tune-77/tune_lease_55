@@ -86,6 +86,46 @@ def test_recursive_self_improvement_builds_queue_and_suppresses_duplicates(tmp_p
     assert bundle["ranked_queue"][0]["title"] == "送信ボタンの文言を「保存」に変更する"
 
 
+def test_recursive_self_improvement_suppresses_deleted_items(tmp_path, monkeypatch):
+    from scripts import recursive_self_improvement as rsi
+    import pipeline_ledger
+
+    ledger_path = tmp_path / "ledger.jsonl"
+    monkeypatch.setattr(pipeline_ledger, "LEDGER_PATH", ledger_path)
+
+    report = {
+        "date": "2026-07-19",
+        "needs_review": [
+            {
+                "id": "REV-101",
+                "title": "削除済み候補",
+                "description": "ユーザーが改善ログで削除した項目。",
+                "target_module": "frontend/src/app/page.tsx",
+            }
+        ],
+    }
+    deleted_key = rsi.canonical_key("削除済み候補", "ユーザーが改善ログで削除した項目。")
+    pipeline_ledger.record(
+        deleted_key,
+        "deleted",
+        "削除済み候補",
+        reason="UI経由で改善ログから削除",
+        canonical_key=deleted_key,
+    )
+
+    bundle = rsi.build_recursive_self_improvement(
+        report,
+        prompt_feedback_log=[],
+        workspace_root=tmp_path,
+    )
+
+    assert bundle["ranked_queue_count"] == 0
+    assert bundle["suppressed_count"] == 1
+    assert bundle["suppressions"][0]["canonical_key"] == deleted_key
+    assert bundle["suppressions"][0]["reason"].startswith("ledger=deleted")
+    assert bundle["canonical_candidates"][0]["state"] == "suppressed"
+
+
 def test_recursive_self_improvement_writes_outputs_and_augments_latest(tmp_path):
     from scripts import recursive_self_improvement as rsi
 

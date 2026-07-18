@@ -330,6 +330,11 @@ echo ""
 echo "[品質] スクリーニングレポート品質フィードバックを集計中..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_report_quality.py" || true
 
+# 改善ループ・係数・モデルの読み取りヘルスチェック
+echo ""
+echo "[品質] ループ/係数/モデルのヘルスチェックを生成中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/loop_metrics.py" || true
+
 # Wiki 昇格キュー
 echo ""
 echo "[反映] Wiki 昇格キューを生成中..."

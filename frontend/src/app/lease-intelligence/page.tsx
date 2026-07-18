@@ -404,7 +404,7 @@ const buildDailyImprovementReport = (
   const lines = [
     generatedAt ? `改善PMレポートです。対象日は ${generatedAt} です。` : "改善PMレポートです。",
     DIALOGUE_IMPROVEMENT_REPORT_MARKER,
-    "ハッカソン安全運用: 読む・報告する・相談する・Codex依頼文を作るところまで。実装、git、deployは自動では行いません。",
+    "ハッカソン安全運用: 読む・報告する・相談する・紫苑依頼文を作るところまで。実装、git、deployは自動では行いません。",
     `適用済み ${log.applied ?? 0} 件、自動候補 ${log.auto_fix_candidates ?? 0} 件、要レビュー ${log.needs_review ?? 0} 件、保留 ${log.parked ?? 0} 件です。`,
     ...buildSystemWatchLines(pipeline, gaps),
   ];
@@ -443,14 +443,14 @@ const buildDailyImprovementReport = (
     const excluded = shadow.excluded_count ? `、捨てる除外 ${shadow.excluded_count} 件` : "";
     const state = shadow.applied ? "実キューに反映済み（ライブ）" : "実キューは従来のまま（シャドー観測中）";
     lines.push("");
-    lines.push(`昨夜のCodexキュー比較: 従来 [${baseline}] → トリアージ反映なら [${withTriage}]${excluded}。${state}です。`);
+    lines.push(`昨夜の実装キュー比較: 従来 [${baseline}] → トリアージ反映なら [${withTriage}]${excluded}。${state}です。`);
   }
-  lines.push("やる候補を選んでくれれば、Codex依頼文まで私が整えます。実装判断はUser側で止めます。");
+  lines.push("やる候補を選んでくれれば、紫苑依頼文まで私が整えます。実装判断はUser側で止めます。");
   return lines.join("\n");
 };
 
 const extractCodexRequest = (text: string) => {
-  const markerMatch = text.match(/Codex依頼文[:：]/);
+  const markerMatch = text.match(/(?:紫苑|Codex)依頼文[:：]/);
   if (!markerMatch || markerMatch.index === undefined) return "";
   const afterMarker = text.slice(markerMatch.index + markerMatch[0].length).trim();
   const fenced = afterMarker.match(/```(?:text|markdown|md)?\s*([\s\S]*?)```/i);
@@ -1769,7 +1769,7 @@ export default function LeaseIntelligencePage() {
                                 type="button"
                                 disabled={triageSavingKey === key}
                                 onClick={() => sendTriageApprove(key)}
-                                title="Codex依頼文の作成対象にする実装承認"
+                                title="紫苑依頼文の作成対象にする実装承認"
                                 className="rounded-lg border border-violet-300 bg-violet-50 px-2 py-1 text-[11px] font-bold text-violet-700 transition hover:bg-violet-100 disabled:opacity-40"
                               >
                                 実装承認
@@ -1785,7 +1785,7 @@ export default function LeaseIntelligencePage() {
                                   window.setTimeout(() => setCopiedTriageKey(""), 1600);
                                 }).catch(() => {});
                               }}
-                              title="承認済み候補のCodex依頼文（下書き）をコピー"
+                              title="承認済み候補の紫苑依頼文（下書き）をコピー"
                               className="rounded-lg border border-cyan-200 bg-cyan-50 px-2 py-1 text-[11px] font-bold text-cyan-700 transition hover:bg-cyan-100"
                             >
                               {copiedTriageKey === key ? "コピー済み" : "依頼文コピー"}
@@ -1913,7 +1913,7 @@ export default function LeaseIntelligencePage() {
                       {copiedId === message.id + 900000
                         ? <Check className="h-3.5 w-3.5" />
                         : <Copy className="h-3.5 w-3.5" />}
-                      Codex依頼文をコピー
+                      紫苑依頼文をコピー
                     </button>
                   )}
                   <button

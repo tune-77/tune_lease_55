@@ -143,7 +143,7 @@ def main() -> None:
 | 失敗 | {failed_count} 件 |
 | 要レビュー待ち | {needs_review_count} 件 |
 | 新規REV候補 | {new_rev_count} 件 |
-| Codex 自動実行キュー | {codex_queue_count} 件（安全 {codex_safe_count} 件） |
+| 実装キュー | {codex_queue_count} 件（安全 {codex_safe_count} 件） |
 
 ## 適用された改善（直近）
 

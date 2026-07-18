@@ -180,8 +180,8 @@ def test_approve_requires_today_decision(main_module):
     )
     assert result["ok"] is True
     assert result["record"]["approved_at"]
-    # 承認時に Codex 依頼文の下書きが添付される（生成のみ・実行しない）
-    assert result["record"]["codex_request_draft"].startswith("Codex依頼文:")
+    # 承認時に紫苑依頼文の下書きが添付される（生成のみ・実行しない）
+    assert result["record"]["codex_request_draft"].startswith("紫苑依頼文:")
     assert "承認対象" in result["record"]["codex_request_draft"]
 
     current = main.get_improvement_triage()
@@ -208,7 +208,7 @@ def test_triage_context_marks_approved(main_module):
     context = main._build_dialogue_triage_context()
 
     assert "今日やる・実装承認済み" in context
-    assert "Codex依頼文は「今日やる・実装承認済み」の候補についてのみ作成する" in context
+    assert "紫苑依頼文は「今日やる・実装承認済み」の候補についてのみ作成する" in context
 
 
 def test_monitor_report_recorded(tmp_path, main_module):

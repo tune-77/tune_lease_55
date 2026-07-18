@@ -3268,13 +3268,13 @@ def get_improvement_triage():
 
 
 def _build_codex_request_draft(record: dict) -> str:
-    """実装承認済み候補の Codex 依頼文テンプレを生成する（下書きのみ・実行しない）。"""
+    """実装承認済み候補の紫苑依頼文テンプレを生成する（下書きのみ・実行しない）。"""
     item_id = str(record.get("item_id") or "").strip()
     title = str(record.get("title") or record.get("canonical_key") or "").strip()
     reason = str(record.get("reason") or "").strip()
     head = f"{item_id} {title}".strip()
     lines = [
-        f"Codex依頼文: {head} を小さく実装してください。",
+        f"紫苑依頼文: {head} を小さく実装してください。",
         f"- 目的: {title}" + (f"（{reason}）" if reason else ""),
         "- 変更範囲: 対象ファイルを最小限に。DB/API分岐/スコアリング/認証/デプロイ設定には触らない",
         "- 検証: python -m py_compile と対象テスト。フロント変更時は cd frontend && npx tsc --noEmit",
@@ -3292,7 +3292,7 @@ class ImprovementTriageApproveRequest(BaseModel):
 def approve_improvement_triage(req: ImprovementTriageApproveRequest):
     """「今日やる」確定済みの候補に実装承認を記録する（P2-3）。
 
-    承認レコード（approved_at）がある候補だけが Codex 依頼文生成・
+    承認レコード（approved_at）がある候補だけが紫苑依頼文生成・
     ライブモードのキュー最優先の対象になる。記録は同じ triage jsonl への
     追記で行い、最後のエントリが有効。
     """
@@ -4924,11 +4924,11 @@ def _build_dialogue_improvement_report_context(limit: int = 4) -> str:
         "勝手に実装・削除・デプロイを決めず、効果、リスク、難易度、ハッカソン影響を短く整理してUserの判断を支援する。",
         "改善PMとして振る舞う場合は、候補を「今日やる」「後回し」「捨てる/削除候補」に分け、各候補の理由を1行で示す。",
         "システム全体の不具合・パイプライン失敗・重大ギャップを見つけた場合は、改善候補より先に「システム監視」として報告し、影響範囲とUserが取るべき確認を短く示す。",
-        "ハッカソン安全運用中は、読む・報告する・相談する・Codex依頼文を作るところまでに限定し、実装開始、git操作、Cloud Run deploy、外部接続追加は行わない。",
+        "ハッカソン安全運用中は、読む・報告する・相談する・紫苑依頼文を作るところまでに限定し、実装開始、git操作、Cloud Run deploy、外部接続追加は行わない。",
         "ハッカソン前は、表示文言・導線・説明の小修正を優先し、DB/API/スコアリング/認証/デプロイ設定など副作用が大きい変更は原則後回しにする。",
-        "Userが「1をやる」「これを実装」と承認した時だけ、次にCodex依頼文を作る。承認前に実装手順を長く展開しない。",
-        "UserがCodexへ渡す依頼文を求めた場合だけ、「Codex依頼文:」で始め、目的、対象ファイル、変更範囲、検証コマンド、gitship/deployの要否を明記する。",
-        "Codex依頼文はUserがコピーして実行判断できるための文面であり、紫苑自身がCodex起動、課金発生、git操作、デプロイを開始してはいけない。",
+        "Userが「1をやる」「これを実装」と承認した時だけ、次に紫苑依頼文を作る。承認前に実装手順を長く展開しない。",
+        "Userが実装用の依頼文を求めた場合だけ、「紫苑依頼文:」で始め、目的、対象ファイル、変更範囲、検証コマンド、gitship/deployの要否を明記する。",
+        "紫苑依頼文はUserがコピーして実行判断できるための文面であり、紫苑自身が外部実行、課金発生、git操作、デプロイを開始してはいけない。",
         (
             "表の回答では複雑さを出しすぎず、"
             f"適用済み{counts.get('applied', 0)}件、"
@@ -5169,7 +5169,7 @@ def _build_codex_queue_shadow_line() -> str:
     excluded = shadow.get("excluded_count") or 0
     excluded_text = f"、捨てる除外{excluded}件" if excluded else ""
     return (
-        f"昨夜のCodexキュー比較: 従来[{baseline}] → トリアージ反映なら[{with_triage}]{excluded_text}。{state}。"
+        f"昨夜の実装キュー比較: 従来[{baseline}] → トリアージ反映なら[{with_triage}]{excluded_text}。{state}。"
     )
 
 
@@ -5253,7 +5253,7 @@ def _build_dialogue_improvement_observability_context(message: str) -> str:
     codex = _load_codex_queue_summary()
     if codex.get("available"):
         lines.append(
-            f"- Codexキュー({codex.get('status')}): {codex.get('queued_count')}件 生成 {str(codex.get('generated_at'))[:16]}"
+            f"- 実装キュー({codex.get('status')}): {codex.get('queued_count')}件 生成 {str(codex.get('generated_at'))[:16]}"
         )
         for item in codex.get("items") or []:
             lines.append(f"  - {item.get('id')} {item.get('title')} → 実行状況: {item.get('execution_status')}")
@@ -5366,7 +5366,7 @@ def _build_dialogue_triage_context(limit: int = 4) -> str:
         decided_at = str(row.get("decided_at") or "")[:10]
         classified_by = str(row.get("classified_by") or "user")
         lines.append(f"- {decided_at} [{label}] {title}（判断主体: {classified_by}）")
-    lines.append("Codex依頼文は「今日やる・実装承認済み」の候補についてのみ作成する。承認前の候補には作らない。")
+    lines.append("紫苑依頼文は「今日やる・実装承認済み」の候補についてのみ作成する。承認前の候補には作らない。")
     return "\n".join(lines)
 
 
@@ -11496,11 +11496,56 @@ def _recent_user_texts(history: list[dict[str, str]] | None, limit: int = 3) -> 
     return recent
 
 
+_EXPLICIT_CONTINUATION_TERMS = (
+    "続き",
+    "前回",
+    "さっき",
+    "さきほど",
+    "先ほど",
+    "今の",
+    "直前",
+    "この話",
+    "その話",
+    "この件",
+    "その件",
+    "これ",
+    "それ",
+    "あれ",
+    "上の",
+    "戻って",
+    "もう一回",
+    "もう少し",
+    "改めて",
+)
+
+
+def _is_explicit_continuation_request(message: str) -> bool:
+    """Return True only when the user clearly asks to continue prior context."""
+    text = str(message or "").strip()
+    if not text:
+        return False
+    lowered = text.lower()
+    if "continue" in lowered or "previous" in lowered or "same topic" in lowered:
+        return True
+    return any(term in text for term in _EXPLICIT_CONTINUATION_TERMS)
+
+
 def _build_delta_awareness_prompt_block(message: str, history: list[dict[str, str]] | None) -> tuple[str, dict]:
     current_route = _relationship_signal_route(message)
     recent_users = _recent_user_texts(history, limit=3)
     previous = recent_users[0] if recent_users else ""
     previous_route = _relationship_signal_route(previous) if previous else ""
+
+    explicit_continuation = bool(previous and _is_explicit_continuation_request(message))
+    if not explicit_continuation:
+        payload = {
+            "used": False,
+            "current_route": current_route,
+            "previous_route": previous_route,
+            "previous_user_message": previous[:240],
+            "reason": "no_explicit_continuation_request",
+        }
+        return "", payload
 
     if previous and previous_route != current_route:
         delta = (
@@ -11521,13 +11566,14 @@ def _build_delta_awareness_prompt_block(message: str, history: list[dict[str, st
         "previous_route": previous_route,
         "previous_user_message": previous[:240],
         "delta": delta,
+        "explicit_continuation": True,
     }
     block = f"""
 
 【Delta Awareness】
-回答では、前回から今回への焦点の変化を1文で示してください。
+Userが明示的に前回文脈へ接続している時だけ、前回から今回への焦点の変化を1文以内で示してください。
 差分認識: {delta}
-目的: 「前回を覚えている」ではなく、「前回から何が変わったか分かっている」と感じられる返答にする。""".rstrip()
+目的: 「前回を覚えている」アピールではなく、Userが求めた続きだけを自然に扱う。""".rstrip()
     return block, payload
 
 
@@ -11832,11 +11878,17 @@ def _build_reflection_gate_prompt_block(
     memory_to_judgment: dict | None = None,
 ) -> tuple[str, dict]:
     hook = continuity_hook if isinstance(continuity_hook, dict) else {}
+    delta = delta_awareness if isinstance(delta_awareness, dict) else {}
     m2j = memory_to_judgment if isinstance(memory_to_judgment, dict) else {}
     route = str(hook.get("route") or m2j.get("route") or "")
+    continuation_used = bool(delta.get("used"))
     checklist = [
         "冒頭1文はContinuity Hookとして機能しているか",
-        "前回から今回への差分を1文で示せているか",
+        (
+            "Userが続きと明示した時だけ前回差分を短く示し、そうでなければ今回の問いから自然に始めているか"
+            if not continuation_used
+            else "前回から今回への差分を1文以内で自然に示せているか"
+        ),
         "記憶を思い出ではなく判断・実装・検証へ変換しているか",
         "Userの反応ログで薄いとされた冒頭を避けているか",
         "内省文そのものを長く表に出していないか",
@@ -11845,6 +11897,7 @@ def _build_reflection_gate_prompt_block(
         "used": True,
         "mode": "silent",
         "route": route,
+        "explicit_continuation": continuation_used,
         "checklist": checklist,
     }
     block = f"""
