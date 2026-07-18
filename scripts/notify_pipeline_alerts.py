@@ -29,6 +29,25 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LEDGER_PATH = REPO_ROOT / "api" / "rule_engine" / "ledger_rules.json"
 STATE_PATH = REPO_ROOT / "data" / "pipeline_alert_notified.json"
+# 監視先行率KPI用: Slack通知の発報時刻を追記記録する（analyze_shion_pm_quality が読む）
+NOTIFY_LOG_PATH = REPO_ROOT / "data" / "pipeline_alert_notify_log.jsonl"
+
+
+def append_notify_log(rev_ids: list[str]) -> None:
+    import datetime as _dt
+
+    try:
+        NOTIFY_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(NOTIFY_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(
+                json.dumps(
+                    {"ts": _dt.datetime.now().isoformat(timespec="seconds"), "rev_ids": rev_ids},
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+    except OSError:
+        pass  # ログ失敗で通知本体を止めない
 
 
 def get_webhook_url() -> str:
@@ -121,6 +140,7 @@ def main() -> int:
     if send_slack(webhook_url, new_alerts):
         notified.update(str(a.get("rev_id")) for a in new_alerts)
         save_notified(notified)
+        append_notify_log([str(a.get("rev_id")) for a in new_alerts])
         print(f"   ✅ Slackに通知しました（{len(new_alerts)}件）")
         print(f"      通知済み記録: {STATE_PATH}")
     else:

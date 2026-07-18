@@ -142,14 +142,58 @@ def load_report_candidates(root: Path) -> list[dict]:
 
 
 def compute_coverage(triage_latest: dict[str, dict], candidates: list[dict]) -> dict[str, Any]:
-    """トリアージ網羅率: 改善候補のうち判断が確定した割合（「中心」の実態確認）。"""
+    """トリアージ網羅率: 改善候補のうち判断が「User確定」した割合（「中心」の実態確認）。
+
+    LLM/ルールの提案記録は未確定なので分子に数えない。
+    """
     if not candidates:
         return {"candidates": 0, "triaged": 0, "rate": None}
-    triaged = sum(1 for item in candidates if triage_record_for_item(triage_latest, item))
+    triaged = 0
+    for item in candidates:
+        record = triage_record_for_item(triage_latest, item)
+        if record and str(record.get("classified_by") or "") == "user":
+            triaged += 1
     return {
         "candidates": len(candidates),
         "triaged": triaged,
         "rate": round(triaged / len(candidates), 3),
+    }
+
+
+def compute_monitoring_lead(root: Path) -> dict[str, Any]:
+    """監視先行率: 紫苑の監視報告表示が Slack 通知より先だった日の割合。
+
+    - 紫苑側: data/shion_monitor_report_log.jsonl（/api/improvement/monitor-report が記録）
+    - Slack側: data/pipeline_alert_notify_log.jsonl（notify_pipeline_alerts.py が記録）
+    両方の記録がある日だけを比較対象にする。データが無ければ no_data。
+    """
+    shion_by_day: dict[str, str] = {}
+    for row in _iter_jsonl(root / "data" / "shion_monitor_report_log.jsonl") or []:
+        ts = str(row.get("ts") or "")
+        day = ts[:10]
+        if day and (day not in shion_by_day or ts < shion_by_day[day]):
+            shion_by_day[day] = ts
+    slack_by_day: dict[str, str] = {}
+    for row in _iter_jsonl(root / "data" / "pipeline_alert_notify_log.jsonl") or []:
+        ts = str(row.get("ts") or "")
+        day = ts[:10]
+        if day and (day not in slack_by_day or ts < slack_by_day[day]):
+            slack_by_day[day] = ts
+    paired_days = sorted(set(shion_by_day) & set(slack_by_day))
+    if not paired_days:
+        return {
+            "status": "no_data",
+            "shion_report_days": len(shion_by_day),
+            "slack_notify_days": len(slack_by_day),
+        }
+    lead_days = sum(1 for day in paired_days if shion_by_day[day] < slack_by_day[day])
+    return {
+        "status": "ok",
+        "paired_days": len(paired_days),
+        "shion_lead_days": lead_days,
+        "rate": round(lead_days / len(paired_days), 3),
+        "shion_report_days": len(shion_by_day),
+        "slack_notify_days": len(slack_by_day),
     }
 
 
@@ -257,9 +301,20 @@ def render_markdown(payload: dict[str, Any]) -> str:
         "## リードタイム",
         f"- 判断→マージ 平均: {kpis.get('lead_time_days_avg') if kpis.get('lead_time_days_avg') is not None else '計測前'} 日",
         "",
-        "## 監視先行率",
-        "- 未計測（紫苑の失敗報告時刻の記録機構が未実装のため。記録設計後に追加）",
+        "## 監視先行率（紫苑の監視報告がSlack通知より先だった日の割合）",
     ]
+    monitoring = kpis.get("monitoring_lead") or {}
+    if monitoring.get("status") == "ok":
+        m_rate = monitoring.get("rate")
+        lines.append(
+            f"- {monitoring.get('shion_lead_days', 0)}/{monitoring.get('paired_days', 0)} 日"
+            + (f" = {m_rate * 100:.0f}%" if isinstance(m_rate, (int, float)) else "")
+        )
+    else:
+        lines.append(
+            f"- 計測前（紫苑報告 {monitoring.get('shion_report_days', 0)} 日 / "
+            f"Slack通知 {monitoring.get('slack_notify_days', 0)} 日。両方が揃った日から算出）"
+        )
     quality = payload.get("improvement_quality") or {}
     if quality:
         lines += [
@@ -295,9 +350,7 @@ def main() -> int:
     }
     kpis = compute_kpis(triage_after)
     kpis["coverage"] = compute_coverage(triage_after, load_report_candidates(root))
-    # 監視先行率は「紫苑がSlack通知より先に失敗を報告した」時刻の記録機構が
-    # 未実装のため計測不能。記録の設計ができるまで未計測と明示する
-    kpis["monitoring_lead"] = {"status": "not_instrumented"}
+    kpis["monitoring_lead"] = compute_monitoring_lead(root)
     payload = {
         "date": args.date,
         "generated_at": dt.datetime.now().isoformat(timespec="seconds"),
