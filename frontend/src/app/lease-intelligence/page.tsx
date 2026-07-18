@@ -89,10 +89,23 @@ type TriageRecord = {
   canonical_key: string;
   decision: TriageDecision | string;
   title?: string;
+  item_id?: string;
   rule_decision?: string;
   classified_by?: string;
+  reason?: string;
   decided_at?: string;
   approved_at?: string;
+  codex_request_draft?: string;
+};
+
+type CodexQueueTriageShadow = {
+  available?: boolean;
+  mode?: string;
+  applied?: boolean;
+  diverges?: boolean;
+  baseline_ids?: string[];
+  with_triage_ids?: string[];
+  excluded_count?: number;
 };
 
 type DialogueImprovementLog = {
@@ -109,6 +122,7 @@ type DialogueImprovementLog = {
     ranked_queue_count?: number;
     suppressed_count?: number;
   };
+  codex_queue_triage?: CodexQueueTriageShadow;
 };
 
 type DialoguePipelineSummary = {
@@ -421,6 +435,15 @@ const buildDailyImprovementReport = (
   const suppressed = log.recursive_self_improvement?.suppressed_count ?? 0;
   if (rankedQueue || suppressed) {
     lines.push(`再帰的自己改善キューは ${rankedQueue} 件、抑制 ${suppressed} 件です。`);
+  }
+  const shadow = log.codex_queue_triage;
+  if (shadow?.available && shadow.diverges) {
+    const baseline = (shadow.baseline_ids || []).join("、") || "なし";
+    const withTriage = (shadow.with_triage_ids || []).join("、") || "なし";
+    const excluded = shadow.excluded_count ? `、捨てる除外 ${shadow.excluded_count} 件` : "";
+    const state = shadow.applied ? "実キューに反映済み（ライブ）" : "実キューは従来のまま（シャドー観測中）";
+    lines.push("");
+    lines.push(`昨夜のCodexキュー比較: 従来 [${baseline}] → トリアージ反映なら [${withTriage}]${excluded}。${state}です。`);
   }
   lines.push("やる候補を選んでくれれば、Codex依頼文まで私が整えます。実装判断はUser側で止めます。");
   return lines.join("\n");
@@ -1017,6 +1040,8 @@ export default function LeaseIntelligencePage() {
   const [triageByKey, setTriageByKey] = useState<Record<string, TriageRecord>>({});
   const [triageOpen, setTriageOpen] = useState(false);
   const [triageSavingKey, setTriageSavingKey] = useState("");
+  const [triageReasonByKey, setTriageReasonByKey] = useState<Record<string, string>>({});
+  const [copiedTriageKey, setCopiedTriageKey] = useState("");
 
   // Emotion trend state
   const [showTrend, setShowTrend] = useState(false);
@@ -1063,7 +1088,7 @@ export default function LeaseIntelligencePage() {
         decision,
         rule_decision: row.rule,
         classified_by: "user",
-        reason: "",
+        reason: (triageReasonByKey[key] || "").trim(),
       });
       const record = res.data?.record || { canonical_key: key, decision };
       setTriageByKey((prev) => ({ ...prev, [key]: record }));
@@ -1331,6 +1356,12 @@ export default function LeaseIntelligencePage() {
             };
             nextMessages = [...nextMessages, reportMessage].slice(-DIALOGUE_MAX_DISPLAY_MESSAGES);
             markDailyImprovementReportShown();
+            // 監視先行率KPI: 紫苑のシステム監視報告がUserに表示された時刻を記録
+            apiClient.post("/api/improvement/monitor-report", {
+              failed_count:
+                pipelineResult.status === "fulfilled" ? pipelineResult.value.data?.failed_count ?? 0 : 0,
+              source: "dialogue_daily_report",
+            }).catch(() => {});
             speakText(report);
           }
         }
@@ -1671,22 +1702,31 @@ export default function LeaseIntelligencePage() {
               {triageOpen && (
                 <div className="mt-2 space-y-1.5 pb-1">
                   <p className="text-[11px] text-slate-400">
-                    破線がルール分類の初期値です。ボタンで確定すると記録されます（未確定分は持ち越し・自動昇格なし）。
+                    破線が初期値（紫苑のLLM提案があればそれ、なければルール分類）。ボタンで確定すると記録されます（未確定分は持ち越し・自動昇格なし）。
                   </p>
                   {triageCandidates.map((row) => {
                     const key = String(row.item.canonical_key || row.item.id || "");
                     const triageRecord = triageByKey[key];
-                    const confirmed = triageRecord?.decision;
-                    const approved = Boolean(triageRecord?.approved_at);
+                    const isUserRecord = triageRecord?.classified_by === "user";
+                    const confirmed = isUserRecord ? triageRecord?.decision : undefined;
+                    const llmProposal =
+                      triageRecord && triageRecord.classified_by === "llm" ? String(triageRecord.decision) : "";
+                    const proposalDefault = llmProposal || row.rule;
+                    const approved = isUserRecord && Boolean(triageRecord?.approved_at);
+                    const draft = approved ? triageRecord?.codex_request_draft || "" : "";
                     return (
-                      <div key={key} className="flex items-center justify-between gap-2 rounded-xl border border-slate-100 px-2.5 py-1.5">
+                      <div key={key} className="space-y-1 rounded-xl border border-slate-100 px-2.5 py-1.5">
+                        <div className="flex items-center justify-between gap-2">
                         <span className="min-w-0 truncate text-[12px] text-slate-700" title={readableImprovementTitle(row.item)}>
+                          {llmProposal && !confirmed && (
+                            <span className="mr-1 rounded bg-violet-100 px-1 text-[10px] font-bold text-violet-700">紫苑提案</span>
+                          )}
                           {readableImprovementTitle(row.item)}
                         </span>
                         <div className="flex shrink-0 gap-1">
                           {(["today", "later", "discard"] as TriageDecision[]).map((decision) => {
                             const isConfirmed = confirmed === decision;
-                            const isRuleDefault = !confirmed && row.rule === decision;
+                            const isRuleDefault = !confirmed && proposalDefault === decision;
                             const palette =
                               decision === "today"
                                 ? isConfirmed
@@ -1736,7 +1776,33 @@ export default function LeaseIntelligencePage() {
                               </button>
                             )
                           )}
+                          {draft && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard?.writeText(draft).then(() => {
+                                  setCopiedTriageKey(key);
+                                  window.setTimeout(() => setCopiedTriageKey(""), 1600);
+                                }).catch(() => {});
+                              }}
+                              title="承認済み候補のCodex依頼文（下書き）をコピー"
+                              className="rounded-lg border border-cyan-200 bg-cyan-50 px-2 py-1 text-[11px] font-bold text-cyan-700 transition hover:bg-cyan-100"
+                            >
+                              {copiedTriageKey === key ? "コピー済み" : "依頼文コピー"}
+                            </button>
+                          )}
                         </div>
+                        </div>
+                        {!confirmed && (
+                          <input
+                            value={triageReasonByKey[key] || ""}
+                            onChange={(e) =>
+                              setTriageReasonByKey((prev) => ({ ...prev, [key]: e.target.value }))
+                            }
+                            placeholder="理由（任意・確定時に記録され判断資産の材料になります）"
+                            className="w-full rounded-lg border border-slate-200 px-2 py-1 text-[11px] text-slate-600 placeholder:text-slate-300 focus:border-violet-300 focus:outline-none"
+                          />
+                        )}
                       </div>
                     );
                   })}

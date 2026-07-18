@@ -3267,6 +3267,23 @@ def get_improvement_triage():
     return {"records": records[:100], "counts": counts}
 
 
+def _build_codex_request_draft(record: dict) -> str:
+    """実装承認済み候補の Codex 依頼文テンプレを生成する（下書きのみ・実行しない）。"""
+    item_id = str(record.get("item_id") or "").strip()
+    title = str(record.get("title") or record.get("canonical_key") or "").strip()
+    reason = str(record.get("reason") or "").strip()
+    head = f"{item_id} {title}".strip()
+    lines = [
+        f"Codex依頼文: {head} を小さく実装してください。",
+        f"- 目的: {title}" + (f"（{reason}）" if reason else ""),
+        "- 変更範囲: 対象ファイルを最小限に。DB/API分岐/スコアリング/認証/デプロイ設定には触らない",
+        "- 検証: python -m py_compile と対象テスト。フロント変更時は cd frontend && npx tsc --noEmit",
+        "- data/・models/・.claude/state・.streamlit/secrets.toml は変更禁止",
+        "- gitship/deploy の要否は User が判断する（自動実行しない）",
+    ]
+    return "\n".join(lines)
+
+
 class ImprovementTriageApproveRequest(BaseModel):
     canonical_key: str
 
@@ -3295,7 +3312,34 @@ def approve_improvement_triage(req: ImprovementTriageApproveRequest):
         )
     record = dict(current)
     record["approved_at"] = _dt.now().isoformat(timespec="seconds")
+    record["codex_request_draft"] = _build_codex_request_draft(record)
     path = _improvement_triage_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    return {"ok": True, "record": record}
+
+
+class MonitorReportRequest(BaseModel):
+    failed_count: int = 0
+    source: str = "dialogue_daily_report"
+
+
+@app.post("/api/improvement/monitor-report")
+def record_monitor_report(req: MonitorReportRequest):
+    """紫苑のシステム監視報告がUserに表示された時刻を記録する（監視先行率KPI用）。
+
+    notify_pipeline_alerts.py の Slack 通知時刻（data/pipeline_alert_notify_log.jsonl）
+    と突き合わせて analyze_shion_pm_quality.py が監視先行率を算出する。
+    """
+    from datetime import datetime as _dt
+
+    record = {
+        "ts": _dt.now().isoformat(timespec="seconds"),
+        "failed_count": max(0, int(req.failed_count or 0)),
+        "source": str(req.source or "dialogue_daily_report")[:40],
+    }
+    path = Path(_REPO_ROOT) / "data" / "shion_monitor_report_log.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -4903,6 +4947,9 @@ def _build_dialogue_improvement_report_context(limit: int = 4) -> str:
     date = str(highlights.get("date") or highlights.get("generated_at") or "").strip()
     if date:
         lines.append(f"対象日: {date}")
+    shadow_line = _build_codex_queue_shadow_line()
+    if shadow_line:
+        lines.append(shadow_line)
     items = highlights.get("items") or []
     if items:
         lines.append("主な相談候補:")
@@ -5090,6 +5137,49 @@ def _load_codex_queue_summary(limit_items: int = 3) -> dict:
     }
 
 
+def _load_codex_queue_triage_shadow() -> dict:
+    """最新 Codex キューのトリアージ比較（シャドー/ライブ）を要約する（P2-0の朝報告用）。"""
+    reports_dir = Path(_REPO_ROOT) / "reports"
+    try:
+        candidates = sorted(reports_dir.glob("codex_auto_queue_*.json"))
+    except OSError:
+        candidates = []
+    if not candidates:
+        return {"available": False}
+    try:
+        queue = json.loads(candidates[-1].read_text(encoding="utf-8"))
+    except Exception:
+        return {"available": False}
+    info = queue.get("triage") or {}
+    if not isinstance(info, dict) or not info:
+        return {"available": False}
+    return {
+        "available": True,
+        "generated_at": str(queue.get("generated_at") or ""),
+        "mode": str(info.get("mode") or ""),
+        "applied": bool(info.get("applied")),
+        "diverges": bool(info.get("diverges")),
+        "baseline_ids": [str(x) for x in info.get("baseline_ids") or []],
+        "with_triage_ids": [str(x) for x in info.get("with_triage_ids") or []],
+        "excluded_count": len(info.get("excluded_by_discard") or []),
+        "decisions_loaded": int(info.get("decisions_loaded") or 0),
+    }
+
+
+def _build_codex_queue_shadow_line() -> str:
+    shadow = _load_codex_queue_triage_shadow()
+    if not shadow.get("available") or not shadow.get("diverges"):
+        return ""
+    baseline = "、".join(shadow.get("baseline_ids") or []) or "なし"
+    with_triage = "、".join(shadow.get("with_triage_ids") or []) or "なし"
+    state = "実キューに反映済み（ライブ）" if shadow.get("applied") else "実キューは従来のまま（シャドー観測中）"
+    excluded = shadow.get("excluded_count") or 0
+    excluded_text = f"、捨てる除外{excluded}件" if excluded else ""
+    return (
+        f"昨夜のCodexキュー比較: 従来[{baseline}] → トリアージ反映なら[{with_triage}]{excluded_text}。{state}。"
+    )
+
+
 def _load_shion_pm_quality_summary() -> dict:
     """Phase 3 (P3-2): 事後検証レポート（的中率・Overrule率）の要約を読む。"""
     path = Path(_REPO_ROOT) / "reports" / "shion_pm_quality_latest.json"
@@ -5251,19 +5341,27 @@ def _build_dialogue_triage_context(limit: int = 4) -> str:
         key=lambda row: str(row.get("decided_at") or ""),
         reverse=True,
     )
+    # 確定（User）と提案（LLM/ルール）を区別する。実効判断はUser確定のみ
+    confirmed = [row for row in records if str(row.get("classified_by") or "") == "user"]
+    llm_proposals = [row for row in records if str(row.get("classified_by") or "") == "llm"]
     counts: dict[str, int] = {}
-    for row in records:
+    for row in confirmed:
         decision = str(row.get("decision") or "")
         counts[decision] = counts.get(decision, 0) + 1
     lines = [
         "【改善トリアージ状況】",
         (
-            f"確定済みの判断: 今日やる{counts.get('today', 0)}件 / "
+            f"User確定済みの判断: 今日やる{counts.get('today', 0)}件 / "
             f"後回し{counts.get('later', 0)}件 / 捨てる{counts.get('discard', 0)}件"
             "（同一候補は最後の判断が有効）。"
         ),
         "未確定の候補は持ち越しのみとし、日数経過による自動昇格・自動破棄はしない。",
     ]
+    if llm_proposals:
+        lines.append(
+            f"紫苑（LLM）の未確定提案が{len(llm_proposals)}件ある。提案はキュー・自動承認へ影響しない。"
+            "Userに確定を促してよいが、押し付けない。"
+        )
     if resolved_count:
         lines.append(f"台帳で解決済み（applied/deleted/rejected）になった判断 {resolved_count} 件は持ち越しから除外した。")
     for row in records[:limit]:
@@ -7053,6 +7151,7 @@ def get_improvement_log():
             "obsidian_compliance": {},
             "recursive_self_improvement": {},
             "source": "",
+            "codex_queue_triage": _load_codex_queue_triage_shadow(),
         })
     try:
         report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -7082,6 +7181,7 @@ def get_improvement_log():
                 ],
             },
         }
+        normalized["codex_queue_triage"] = _load_codex_queue_triage_shadow()
         return _attach_cloudrun_improvement_items(normalized)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"改善ログ読み込み失敗: {e}")

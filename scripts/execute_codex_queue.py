@@ -131,6 +131,41 @@ def run_item(item: dict[str, Any], gemini_api_key: str = "") -> dict[str, Any]:
     }
 
 
+# ── 自律実行ガード（planning/shion_autonomy_guards.md）────────────────────────
+# キルスイッチ・日次実行上限・連続失敗停止。Phase 4（低リスク自律実行）の前提条件
+
+def _guard_disabled() -> bool:
+    return str(os.environ.get("CODEX_QUEUE_DISABLED") or "").strip() in {"1", "true", "yes"}
+
+
+def _guard_daily_limit() -> int:
+    try:
+        return max(0, int(os.environ.get("CODEX_QUEUE_DAILY_LIMIT", "3")))
+    except ValueError:
+        return 3
+
+
+def _guard_max_consecutive_failures() -> int:
+    try:
+        return max(1, int(os.environ.get("CODEX_QUEUE_MAX_CONSECUTIVE_FAILURES", "2")))
+    except ValueError:
+        return 2
+
+
+def count_executed_today(root: Path, date_tag: str) -> int:
+    """今日すでに実行済みのアイテム数（dry-run除く）を結果ファイルから数える。"""
+    executed = 0
+    for path in (root / "reports").glob(f"codex_queue_result_{date_tag}*.json"):
+        try:
+            report = load_json(path)
+        except Exception:
+            continue
+        for entry in report.get("results") or []:
+            if isinstance(entry, dict) and not entry.get("dry_run"):
+                executed += 1
+    return executed
+
+
 def main() -> None:
     root = repo_root()
     parser = argparse.ArgumentParser(description=__doc__)
@@ -138,6 +173,10 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=None, help="Result JSON path (default: reports/codex_queue_result_YYYYMMDD.json)")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+
+    if _guard_disabled():
+        print("[guard] CODEX_QUEUE_DISABLED が設定されているため、キュー実行を停止します（キルスイッチ）")
+        return
 
     queue = load_json(args.queue)
     items: list[dict[str, Any]] = [i for i in (queue.get("items") or []) if isinstance(i, dict)]
@@ -148,6 +187,22 @@ def main() -> None:
     date_tag = dt.date.today().strftime("%Y%m%d")
     output_path = args.output or root / "reports" / f"codex_queue_result_{date_tag}.json"
 
+    # 日次実行上限（課金・実行回数の制御）
+    daily_limit = _guard_daily_limit()
+    already_executed = count_executed_today(root, date_tag) if not args.dry_run else 0
+    remaining = max(0, daily_limit - already_executed)
+    limited_out: list[dict[str, Any]] = []
+    if not args.dry_run and len(items) > remaining:
+        limited_out = items[remaining:]
+        items = items[:remaining]
+        print(
+            f"[guard] 日次実行上限 {daily_limit} 件（本日実行済み {already_executed} 件）のため、"
+            f"{len(limited_out)} 件を持ち越します"
+        )
+        if not items:
+            print("[guard] 本日の実行枠がありません。持ち越して終了します。")
+            return
+
     gemini_api_key = _get_gemini_api_key(root)
     if gemini_api_key:
         print("[execute_codex_queue] Gemini fallback: enabled (gemini-2.5-flash)")
@@ -156,8 +211,11 @@ def main() -> None:
 
     results: list[dict[str, Any]] = []
     any_failure = False
+    consecutive_failures = 0
+    max_consecutive = _guard_max_consecutive_failures()
+    aborted_by_failures = False
 
-    for item in items:
+    for index, item in enumerate(items):
         rev_id = str(item.get("id") or "")
         print(f"[execute_codex_queue] {rev_id}: {item.get('title')}")
 
@@ -173,10 +231,19 @@ def main() -> None:
         if entry["exit_code"] == 0:
             print(f"  -> OK (backend={entry['backend']})")
             record_status(root, rev_id, "completed_pending_review", detail=entry["stdout"][:200])
+            consecutive_failures = 0
         else:
             print(f"  -> FAILED (backend={entry['backend']}, exit={entry['exit_code']}): {entry['stderr'][:100]}")
             record_status(root, rev_id, "failed", detail=entry["stderr"][:200])
             any_failure = True
+            consecutive_failures += 1
+            if consecutive_failures >= max_consecutive and index + 1 < len(items):
+                aborted_by_failures = True
+                print(
+                    f"[guard] 連続 {consecutive_failures} 件失敗のため残り {len(items) - index - 1} 件の実行を停止します"
+                    "（環境要因の可能性。翌日再試行）"
+                )
+                break
 
     report: dict[str, Any] = {
         "executed_at": dt.datetime.now().isoformat(timespec="seconds"),
@@ -185,6 +252,13 @@ def main() -> None:
         "succeeded": sum(1 for r in results if r.get("exit_code") == 0),
         "failed": sum(1 for r in results if r.get("exit_code") != 0),
         "results": results,
+        "guards": {
+            "daily_limit": daily_limit,
+            "already_executed_today": already_executed,
+            "carried_over": [str(i.get("id") or "") for i in limited_out],
+            "aborted_by_consecutive_failures": aborted_by_failures,
+            "max_consecutive_failures": max_consecutive,
+        },
     }
 
     dump_json(output_path, report)

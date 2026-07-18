@@ -108,11 +108,29 @@ def test_triage_context_reflects_records(main_module):
 
     assert "改善トリアージ状況" in context
     assert "今日やる1件" in context
-    assert "捨てる1件" in context
+    # rule 分類の記録は「提案」であり User 確定の件数には数えない
+    assert "捨てる0件" in context
     assert "表示ラベルの見直し" in context
     assert "判断主体: rule" in context
     # P1-4: 未確定は持ち越しのみ・自動昇格なし
     assert "自動昇格・自動破棄はしない" in context
+
+
+def test_triage_context_separates_llm_proposals(main_module):
+    main = main_module
+    main.record_improvement_triage(
+        main.ImprovementTriageRequest(canonical_key="misc_u1", decision="today", title="確定済み", classified_by="user")
+    )
+    main.record_improvement_triage(
+        main.ImprovementTriageRequest(canonical_key="misc_l1", decision="discard", title="LLM提案", classified_by="llm")
+    )
+
+    context = main._build_dialogue_triage_context()
+
+    assert "User確定済みの判断: 今日やる1件" in context
+    assert "捨てる0件" in context  # llm 提案は確定件数に入らない
+    assert "紫苑（LLM）の未確定提案が1件ある" in context
+    assert "キュー・自動承認へ影響しない" in context
 
 
 def test_triage_context_empty_without_records(main_module):
@@ -162,6 +180,9 @@ def test_approve_requires_today_decision(main_module):
     )
     assert result["ok"] is True
     assert result["record"]["approved_at"]
+    # 承認時に Codex 依頼文の下書きが添付される（生成のみ・実行しない）
+    assert result["record"]["codex_request_draft"].startswith("Codex依頼文:")
+    assert "承認対象" in result["record"]["codex_request_draft"]
 
     current = main.get_improvement_triage()
     by_key = {r["canonical_key"]: r for r in current["records"]}
@@ -188,6 +209,19 @@ def test_triage_context_marks_approved(main_module):
 
     assert "今日やる・実装承認済み" in context
     assert "Codex依頼文は「今日やる・実装承認済み」の候補についてのみ作成する" in context
+
+
+def test_monitor_report_recorded(tmp_path, main_module):
+    """監視先行率KPI: 紫苑の監視報告表示時刻が記録される。"""
+    main = main_module
+    result = main.record_monitor_report(main.MonitorReportRequest(failed_count=2))
+
+    assert result["ok"] is True
+    raw = (tmp_path / "data" / "shion_monitor_report_log.jsonl").read_text(encoding="utf-8")
+    row = json.loads(raw.strip().splitlines()[-1])
+    assert row["failed_count"] == 2
+    assert row["source"] == "dialogue_daily_report"
+    assert row["ts"]
 
 
 def test_triage_file_corruption_tolerated(tmp_path, main_module):

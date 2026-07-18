@@ -72,14 +72,22 @@ def triage_record_for_item(latest: dict[str, dict], item: dict) -> dict | None:
     return None
 
 
+def is_user_confirmed(record: dict | None) -> bool:
+    """User が確定した記録か。
+
+    classified_by が llm / rule の記録は「提案」であり、キュー除外・優先・
+    自動承認抑制などの実効判断には使わない（実効はUser確定のみ）。
+    """
+    if not record:
+        return False
+    return str(record.get("classified_by") or "") == "user"
+
+
 def is_user_discarded(record: dict | None) -> bool:
     """User が確定した「捨てる」か（P2-2: 自動承認の抑制に使う）。"""
     if not record:
         return False
-    return (
-        str(record.get("decision") or "") == "discard"
-        and str(record.get("classified_by") or "") == "user"
-    )
+    return str(record.get("decision") or "") == "discard" and is_user_confirmed(record)
 
 
 def is_approved_today(record: dict | None) -> bool:
@@ -90,3 +98,33 @@ def is_approved_today(record: dict | None) -> bool:
         str(record.get("decision") or "") == "today"
         and bool(str(record.get("approved_at") or "").strip())
     )
+
+
+# frontend/src/app/lease-intelligence/page.tsx の classifyPmImprovementItems と
+# 同じ判定基準の Python 移植（1件単位）。TSX 版が持つ「今日やるは先頭3件まで」の
+# 枠制限は1件単位では表現できないため持たない — LLM提案との差分比較用
+_RULE_DISCARD_STATUSES = {"APPLIED", "DELETED", "REJECTED", "PARKED"}
+_RULE_RISKY_KEYWORDS = (
+    "db",
+    "api",
+    "database",
+    "migration",
+    "scoring",
+    "認証",
+    "デプロイ",
+    "スコアリング",
+    "モデル",
+)
+
+
+def rule_classify_item(item: dict) -> str:
+    """改善候補1件をルールで today / later / discard に分類する。"""
+    status = str(item.get("status") or "").upper()
+    if status in _RULE_DISCARD_STATUSES:
+        return "discard"
+    text = " ".join(
+        str(item.get(key) or "") for key in ("title", "reason", "detail", "category")
+    ).lower()
+    if any(keyword in text for keyword in _RULE_RISKY_KEYWORDS):
+        return "later"
+    return "today"

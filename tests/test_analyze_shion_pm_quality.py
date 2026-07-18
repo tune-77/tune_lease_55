@@ -97,13 +97,15 @@ def test_compute_kpis_hit_overrule_leadtime(root):
 
 def test_compute_coverage_matches_by_key_and_item_id(root):
     triage = {
-        "misc_a": {"canonical_key": "misc_a", "decision": "today"},
-        "misc_drift": {"canonical_key": "misc_drift", "item_id": "REV-302", "decision": "later"},
+        "misc_a": {"canonical_key": "misc_a", "decision": "today", "classified_by": "user"},
+        "misc_drift": {"canonical_key": "misc_drift", "item_id": "REV-302", "decision": "later",
+                       "classified_by": "user"},
+        "misc_llm": {"canonical_key": "misc_llm", "decision": "today", "classified_by": "llm"},
     }
     candidates = [
-        {"id": "REV-301", "canonical_key": "misc_a"},          # key一致
+        {"id": "REV-301", "canonical_key": "misc_a"},          # key一致（user確定）
         {"id": "REV-302", "canonical_key": "misc_new_key"},    # item_id で照合（キードリフト）
-        {"id": "REV-303", "canonical_key": "misc_untouched"},  # 未トリアージ
+        {"id": "REV-303", "canonical_key": "misc_llm"},        # LLM提案のみ → 未確定扱い
         {"id": "REV-304"},                                       # 未トリアージ
     ]
 
@@ -111,6 +113,35 @@ def test_compute_coverage_matches_by_key_and_item_id(root):
 
     assert coverage == {"candidates": 4, "triaged": 2, "rate": 0.5}
     assert pm.compute_coverage(triage, []) == {"candidates": 0, "triaged": 0, "rate": None}
+
+
+def test_monitoring_lead_rate(root):
+    _write_jsonl(
+        root / "data" / "shion_monitor_report_log.jsonl",
+        [
+            {"ts": "2026-07-18T08:30:00", "failed_count": 2},  # 紫苑が先（Slack 09:00）
+            {"ts": "2026-07-19T10:00:00", "failed_count": 1},  # Slack が先（04:00）
+        ],
+    )
+    _write_jsonl(
+        root / "data" / "pipeline_alert_notify_log.jsonl",
+        [
+            {"ts": "2026-07-18T09:00:00", "rev_ids": ["REV-1"]},
+            {"ts": "2026-07-19T04:00:00", "rev_ids": ["REV-2"]},
+            {"ts": "2026-07-20T04:00:00", "rev_ids": ["REV-3"]},  # 紫苑側の記録なし → 対象外
+        ],
+    )
+
+    lead = pm.compute_monitoring_lead(root)
+
+    assert lead["status"] == "ok"
+    assert lead["paired_days"] == 2
+    assert lead["shion_lead_days"] == 1
+    assert lead["rate"] == 0.5
+
+
+def test_monitoring_lead_no_data(root):
+    assert pm.compute_monitoring_lead(root)["status"] == "no_data"
 
 
 def test_main_writes_reports(root, monkeypatch, capsys):
@@ -148,7 +179,7 @@ def test_main_writes_reports(root, monkeypatch, capsys):
     assert latest["outcomes_synced"] == 1
     assert latest["kpis"]["hit_rates_by_classifier"]["user"]["hit_rate"] == 1.0
     assert latest["kpis"]["coverage"] == {"candidates": 2, "triaged": 1, "rate": 0.5}
-    assert latest["kpis"]["monitoring_lead"] == {"status": "not_instrumented"}
+    assert latest["kpis"]["monitoring_lead"]["status"] == "no_data"
     assert (root / "reports" / "shion_pm_quality_20260718.json").exists()
     md = (root / "reports" / "shion_pm_quality_latest.md").read_text(encoding="utf-8")
     assert "的中率" in md

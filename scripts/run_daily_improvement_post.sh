@@ -147,6 +147,10 @@ echo "[監査] 審査用語監査を生成（読み取り専用・未連携）..
 "${PYTHON}" "${PROJECT_ROOT}/scripts/screening_terms_audit.py" || true
 
 echo ""
+echo "[提案] 紫苑（LLM）のトリアージ上書き提案（差分のみ・User確定は上書きしない）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/shion_llm_triage_proposal.py" --apply || true
+
+echo ""
 echo "[検証] 紫苑トリアージの事後検証（outcome同期＋的中率レポート）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_shion_pm_quality.py" \
   --date "${PIPELINE_DATE}" || true

@@ -28,6 +28,7 @@ except ImportError:
 from shion_triage import (  # noqa: E402
     TRIAGE_MODES,
     is_approved_today,
+    is_user_confirmed,
     load_triage_latest,
     resolve_triage_mode,
     triage_record_for_item,
@@ -267,15 +268,20 @@ def queue_item(item: dict[str, Any]) -> dict[str, Any]:
         "mode": "codex_dry_run_first",
         "prompt": f"{item.get('id')} {title} を {target_module or '対象ファイル推定'} に小さく実装し、テスト後に差分を報告してください。data/models/.claude/state は触らないでください。",
         "triage_decision": str(item.get("triage_decision") or ""),
+        "triage_classified_by": str(item.get("triage_classified_by") or ""),
         "user_approved": bool(item.get("user_approved")),
     }
 
 
 def _triage_sort_key(item: dict[str, Any], record: dict | None) -> tuple[int, int, str]:
-    """トリアージ反映後の並び順（P2-1）。今日やる(承認済み) > 今日やる > その他。"""
+    """トリアージ反映後の並び順（P2-1）。今日やる(承認済み) > 今日やる > その他。
+
+    実効判断は User 確定（classified_by=user）のみ。LLM/ルールの提案記録は
+    並び順に影響させない。
+    """
     if is_approved_today(record):
         rank = 0
-    elif record and str(record.get("decision") or "") == "today":
+    elif is_user_confirmed(record) and str(record.get("decision") or "") == "today":
         rank = 1
     else:
         rank = 2
@@ -288,12 +294,16 @@ def _apply_triage_to_safe(
     triage: dict[str, dict],
     limit: int,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
-    """トリアージを適用した (queued, excluded_by_discard, promoted_ids) を返す。"""
+    """トリアージを適用した (queued, excluded_by_discard, promoted_ids) を返す。
+
+    除外もUser確定の「捨てる」のみ。LLM提案の discard は除外しない
+    （提案が実行へ直結すると P2-3 の「User承認を握る」原則が崩れるため）。
+    """
     kept: list[tuple[dict[str, Any], dict | None]] = []
     excluded: list[dict[str, Any]] = []
     for item in safe_sorted:
         record = triage_record_for_item(triage, item)
-        if record and str(record.get("decision") or "") == "discard":
+        if record and is_user_confirmed(record) and str(record.get("decision") or "") == "discard":
             excluded.append(
                 {
                     "id": item.get("id"),
@@ -311,8 +321,9 @@ def _apply_triage_to_safe(
         annotated = dict(item)
         if record:
             annotated["triage_decision"] = record.get("decision") or ""
+            annotated["triage_classified_by"] = record.get("classified_by") or ""
             annotated["user_approved"] = is_approved_today(record)
-            if str(record.get("decision") or "") == "today":
+            if is_user_confirmed(record) and str(record.get("decision") or "") == "today":
                 promoted_ids.append(str(item.get("id") or ""))
         queued.append(annotated)
     return queued, excluded, promoted_ids
