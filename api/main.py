@@ -4822,16 +4822,9 @@ def _candidate_report_dirs() -> list[Path]:
     return unique
 
 
-def _latest_improvement_report_path() -> Path | None:
-    for reports_dir in _candidate_report_dirs():
-        latest = reports_dir / "latest.json"
-        if latest.exists():
-            return latest
-    candidates: list[Path] = []
-    for reports_dir in _candidate_report_dirs():
-        candidates.extend(reports_dir.glob("improvement_report_*.json"))
-    candidates = sorted(candidates)
-    return candidates[-1] if candidates else None
+# NOTE: _latest_improvement_report_path は後方（改善ログAPI群の近く）で定義される。
+# かつて append 系スクリプトによる追記で同一実装が二重定義されていた（後勝ちで
+# 動作は同じだった）が、二重定義は削除済み。tests/test_no_duplicate_toplevel_defs.py が再発を防ぐ。
 
 
 def _latest_recursive_self_improvement_path() -> Path | None:
@@ -6373,8 +6366,10 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
     }
 
 # ── アプリログ
+# 同名の get_app_logs が /api/analysis/app_logs にも存在し名前が衝突していたため
+# リネーム（ルートURLは不変・両エンドポイントとも従来どおり動作する）
 @app.get("/api/logs/app")
-def get_app_logs():
+def get_app_log_lines():
     log_path = "streamlit.log"
     if not os.path.exists(log_path):
         return {"logs": []}
