@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-12T07:25:09",
-  "source": "canonical_judgment_rules_preview",
+  "generated_at": "2026-07-18T15:35:33",
+  "source": "canonical_judgment_rules",
   "summary": {
-    "active_rules": 8,
-    "promoted": 0,
-    "updated": 8,
-    "skipped": 7
+    "active_rules": 11,
+    "promoted": 1,
+    "updated": 0,
+    "skipped": 0
   },
   "rules": [
     {
@@ -173,6 +173,64 @@
       ]
     },
     {
+      "id": "64e054542be673e4",
+      "status": "active",
+      "source_status": "manual_promoted",
+      "material_type": "risk_signal",
+      "domain": "lease_screening",
+      "concept": "demo_renewal_asset",
+      "canonical_statement": "更新設備の増額申込は、既存設備の稼働率、粗利改善見込み、旧設備の処分予定が説明と整合する時だけ前向きに見る。",
+      "evidence_count": 3,
+      "user_evidence_count": 3,
+      "confidence": 0.8500000000000001,
+      "risk_axis": [],
+      "sample_claims": [
+        "更新設備の増額申込は、既存設備の稼働率、粗利改善見込み、旧設備の処分予定が説明と整合する時だけ前向きに見る。"
+      ],
+      "evidence_paths": [
+        "manual://screening/demo-judgment-asset"
+      ],
+      "created_at": "2026-07-18T14:41:04",
+      "updated_at": "2026-07-18T15:13:50",
+      "promotion_source": "judgment_asset_review_gate",
+      "private": false,
+      "material_types": [
+        "risk_signal"
+      ],
+      "domains": [
+        "lease_screening"
+      ]
+    },
+    {
+      "id": "0d0f11e77fba045d",
+      "status": "active",
+      "source_status": "manual_promoted",
+      "material_type": "judgment_rule",
+      "domain": "lease_screening",
+      "concept": "demo_subsidy_machinery",
+      "canonical_statement": "工作機械を補助金前提で導入する案件は、採択前の返済原資と未採択時の代替資金を分けて確認する。",
+      "evidence_count": 3,
+      "user_evidence_count": 2,
+      "confidence": 0.8200000000000001,
+      "risk_axis": [],
+      "sample_claims": [
+        "工作機械を補助金前提で導入する案件は、採択前の返済原資と未採択時の代替資金を分けて確認する。"
+      ],
+      "evidence_paths": [
+        "manual://screening/demo-judgment-asset"
+      ],
+      "created_at": "2026-07-18T14:04:25",
+      "updated_at": "2026-07-18T14:54:23",
+      "promotion_source": "judgment_asset_review_gate",
+      "private": false,
+      "material_types": [
+        "judgment_rule"
+      ],
+      "domains": [
+        "lease_screening"
+      ]
+    },
+    {
       "id": "7d5692520fad998c",
       "status": "active",
       "source_status": "accepted_preview",
@@ -293,6 +351,35 @@
       "private": false,
       "material_types": [
         "judgment_rule"
+      ],
+      "domains": [
+        "lease_screening"
+      ]
+    },
+    {
+      "id": "a34492fe19a18e3a",
+      "status": "active",
+      "source_status": "manual_promoted",
+      "material_type": "risk_signal",
+      "domain": "lease_screening",
+      "concept": "demo_renewal_asset",
+      "canonical_statement": "更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べ、増額後も返済原資が説明できるかを確認する。",
+      "evidence_count": 1,
+      "user_evidence_count": 1,
+      "confidence": 0.8200000000000001,
+      "risk_axis": [],
+      "sample_claims": [
+        "更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べ、増額後も返済原資が説明できるかを確認する。"
+      ],
+      "evidence_paths": [
+        "manual://screening/demo-renewal-asset-candidate"
+      ],
+      "created_at": "2026-07-18T15:35:33",
+      "updated_at": "2026-07-18T15:35:33",
+      "promotion_source": "judgment_asset_review_gate",
+      "private": false,
+      "material_types": [
+        "risk_signal"
       ],
       "domains": [
         "lease_screening"

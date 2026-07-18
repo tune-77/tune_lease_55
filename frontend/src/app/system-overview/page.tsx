@@ -1099,93 +1099,164 @@ function SeciCycleDiagram() {
 }
 
 function DevOpsCycleDiagram() {
-  const rows = [
+  const phases = [
     {
-      label: "業務で使う",
+      title: "Use",
+      jp: "審査で使う",
+      body: "案件入力・チャット・紫苑レビュー",
+      icon: Activity,
       color: "#60a5fa",
-      items: [
-        { icon: Activity, title: "Use", body: "審査入力・AIチャット・結果登録" },
-        { icon: Eye, title: "Observe", body: "RAG参照・回答品質・判断資産利用を観測" },
-        { icon: Search, title: "Detect", body: "記憶抜け・浅い回答・環境差分を検知" },
-      ],
     },
     {
-      label: "紫苑で確認する",
+      title: "Observe",
+      jp: "観測する",
+      body: "RAG参照・回答品質・判断資産利用",
+      icon: Eye,
+      color: "#38bdf8",
+    },
+    {
+      title: "Detect",
+      jp: "ズレを見つける",
+      body: "記憶抜け・浅い回答・環境差分",
+      icon: Search,
+      color: "#f59e0b",
+    },
+    {
+      title: "Review",
+      jp: "紫苑で確認",
+      body: "数字外の違和感・相談論点",
+      icon: Brain,
       color: "#e879f9",
-      items: [
-        { icon: Brain, title: "Review", body: "紫苑レビューで数字外の違和感を見る" },
-        { icon: FileText, title: "Human Feedback", body: "役に立った / 要修正 / 違う を記録" },
-        { icon: Database, title: "Asset", body: "判断資産候補・改善ログへ戻す" },
-      ],
     },
     {
-      label: "安全に戻す",
+      title: "Feedback",
+      jp: "人間評価",
+      body: "役に立った / 要修正 / 違う",
+      icon: FileText,
+      color: "#fbbf24",
+    },
+    {
+      title: "Reflect",
+      jp: "振り返る",
+      body: "改善PMレポート・内省",
+      icon: Database,
+      color: "#a78bfa",
+    },
+    {
+      title: "Improve",
+      jp: "改善候補化",
+      body: "Prompt・RAG・判断資産・UI・API",
+      icon: Zap,
       color: "#34d399",
-      items: [
-        { icon: Zap, title: "Improve", body: "Prompt・RAG・UI・APIの修正候補化" },
-        { icon: Shield, title: "Verify & Gate", body: "pytest / typecheck 後、人間承認で止める" },
-        { icon: RefreshCw, title: "Operate", body: "Cloud Run / Cloudflare / ローカル運用へ戻す" },
-      ],
+    },
+    {
+      title: "Verify",
+      jp: "検証する",
+      body: "pytest・typecheck・memory_debug",
+      icon: Shield,
+      color: "#22c55e",
+    },
+    {
+      title: "Gate / Operate",
+      jp: "人間承認で戻す",
+      body: "実装・git・deployは指示待ち",
+      icon: RefreshCw,
+      color: "#fb7185",
     },
   ];
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 lg:grid-cols-[1fr_auto_1fr_auto_1fr]">
-        {rows.map((row, rowIndex) => (
-          <React.Fragment key={row.label}>
-            <div
-              className="rounded-2xl border p-4"
-              style={{
-                background: `linear-gradient(135deg, ${row.color}18, rgba(15,23,42,0.72))`,
-                borderColor: `${row.color}55`,
-              }}
-            >
-              <div className="mb-3 flex items-center gap-2">
-                <span className="h-2.5 w-2.5 rounded-full" style={{ background: row.color, boxShadow: `0 0 14px ${row.color}` }} />
-                <h3 className="text-sm font-black text-white">{row.label}</h3>
-              </div>
-              <div className="space-y-2">
-                {row.items.map((item, itemIndex) => {
-                  const Icon = item.icon;
-                  return (
-                    <div key={item.title} className="flex items-start gap-3 rounded-xl border border-slate-700/50 bg-slate-950/45 p-3">
-                      <div
-                        className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
-                        style={{ background: `${row.color}22`, color: row.color }}
-                      >
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black tabular-nums" style={{ color: row.color }}>
-                            {rowIndex + 1}-{itemIndex + 1}
-                          </span>
-                          <p className="text-xs font-black text-white">{item.title}</p>
-                        </div>
-                        <p className="mt-1 text-[11px] leading-relaxed text-slate-400">{item.body}</p>
-                      </div>
+      <div className="grid gap-4 lg:grid-cols-[1fr_1.05fr_1fr] lg:items-center">
+        <div className="grid gap-3">
+          {phases.slice(0, 3).map((phase, index) => {
+            const Icon = phase.icon;
+            return (
+              <div key={phase.title} className="rounded-2xl border p-3" style={{ background: `${phase.color}14`, borderColor: `${phase.color}55` }}>
+                <div className="flex items-start gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style={{ background: `${phase.color}22`, color: phase.color }}>
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black tabular-nums" style={{ color: phase.color }}>0{index + 1}</span>
+                      <p className="text-xs font-black text-white">{phase.title}</p>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-            {rowIndex < rows.length - 1 && (
-              <div className="hidden items-center justify-center lg:flex">
-                <div
-                  className="flex h-10 w-10 items-center justify-center rounded-full border text-lg font-black"
-                  style={{
-                    borderColor: `${row.color}66`,
-                    color: row.color,
-                    background: `${row.color}14`,
-                  }}
-                >
-                  →
+                    <p className="mt-0.5 text-[11px] font-bold text-slate-200">{phase.jp}</p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-slate-400">{phase.body}</p>
+                  </div>
                 </div>
               </div>
-            )}
-          </React.Fragment>
-        ))}
+            );
+          })}
+        </div>
+
+        <div className="relative overflow-hidden rounded-[2rem] border border-fuchsia-400/35 bg-slate-950 p-5 text-center shadow-2xl shadow-fuchsia-950/20">
+          <div className="absolute inset-0 opacity-45" style={{ background: "radial-gradient(circle at 50% 42%, rgba(232,121,249,0.24), transparent 48%)" }} />
+          <div className="relative z-10">
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[1.6rem] border border-fuchsia-300/40 bg-fuchsia-400/15 text-fuchsia-200">
+              <Brain className="h-10 w-10" />
+            </div>
+            <p className="mt-4 text-[11px] font-black uppercase tracking-[0.25em] text-fuchsia-300">SHION PM</p>
+            <h3 className="mt-2 text-2xl font-black text-white">判断資産DevOps</h3>
+            <p className="mt-3 text-sm font-bold leading-7 text-slate-300">
+              使われた回答、記憶、レビュー、人間評価、結果を一つの改善ループとして管理する。
+            </p>
+            <div className="mt-4 grid gap-2 sm:grid-cols-3">
+              {[
+                ["観測", "Evidence"],
+                ["検疫", "Quarantine"],
+                ["昇格", "Promote"],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-xl border border-fuchsia-300/20 bg-fuchsia-950/20 px-3 py-2">
+                  <p className="text-[10px] font-black text-fuchsia-300">{label}</p>
+                  <p className="mt-1 text-xs font-black text-white">{value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-3">
+          {phases.slice(3).map((phase, index) => {
+            const Icon = phase.icon;
+            return (
+              <div key={phase.title} className="rounded-2xl border p-3" style={{ background: `${phase.color}14`, borderColor: `${phase.color}55` }}>
+                <div className="flex items-start gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style={{ background: `${phase.color}22`, color: phase.color }}>
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black tabular-nums" style={{ color: phase.color }}>0{index + 4}</span>
+                      <p className="text-xs font-black text-white">{phase.title}</p>
+                    </div>
+                    <p className="mt-0.5 text-[11px] font-bold text-slate-200">{phase.jp}</p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-slate-400">{phase.body}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-violet-500/25 bg-violet-950/15 p-4">
+        <div className="grid gap-2 md:grid-cols-9">
+          {["Use", "Observe", "Detect", "Review", "Feedback", "Reflect", "Improve", "Verify", "Gate"].map((step, index) => (
+            <div
+              key={step}
+              className="relative rounded-xl border border-slate-800 bg-slate-950/60 px-2 py-3 text-center"
+            >
+              <p className="text-[10px] font-black text-violet-300">STEP {index + 1}</p>
+              <p className="mt-1 text-[11px] font-black text-white">{step}</p>
+              {index < 8 && <span className="absolute -right-2 top-1/2 z-10 hidden -translate-y-1/2 text-lg font-black text-violet-400 md:block">→</span>}
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-center text-xs font-bold text-slate-400">
+          OperateでCloud Run / Cloudflare / ローカル運用へ戻し、次のUseへ接続する。実装・git・deployは人間承認ゲートで止める。
+        </p>
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">
@@ -1304,13 +1375,25 @@ function ShionCenteredSystemDiagram() {
             </p>
             <div className="mt-5 grid gap-2 sm:grid-cols-3">
               {[
-                ["入力", "案件・メモ"],
-                ["変換", "判断構文"],
-                ["更新", "評価・結果"],
+                ["身体", "Cloud Run"],
+                ["頭脳", "Vault"],
+                ["安全", "検疫・昇格"],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2">
                   <p className="text-[10px] font-black text-slate-500">{label}</p>
                   <p className="mt-1 text-xs font-black text-fuchsia-100">{value}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              {[
+                ["入力", "案件・メモ"],
+                ["変換", "判断構文"],
+                ["更新", "評価・結果"],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-xl border border-fuchsia-300/20 bg-fuchsia-950/20 px-3 py-2">
+                  <p className="text-[10px] font-black text-fuchsia-300">{label}</p>
+                  <p className="mt-1 text-xs font-black text-white">{value}</p>
                 </div>
               ))}
             </div>

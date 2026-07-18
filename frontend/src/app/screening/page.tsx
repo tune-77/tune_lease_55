@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { apiClient } from "@/lib/api";
 import { Activity, ArrowRight, Bot, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, FileOutput, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus, Swords, Save, Trash2, Sparkles } from "lucide-react";
 import ScoreDAG from "../../components/ScoreDAG";
@@ -78,12 +78,20 @@ type JudgmentAssetCandidate = {
   edit_count?: number;
   evidence_path: string;
   promotion_status: string;
+  source?: string;
   use_count: number;
   useful_count: number;
   rejected_count: number;
   verified_status: string;
   userFeedback?: JudgmentAssetCandidateFeedback;
 };
+
+const isCanonicalJudgmentAsset = (candidate: JudgmentAssetCandidate) => (
+  candidate.source === "canonical_judgment_rules" ||
+  candidate.promotion_status === "active" ||
+  candidate.verified_status === "canonical" ||
+  candidate.id.startsWith("cr-")
+);
 
 const JUDGMENT_ASSET_TYPE_TONES: Record<string, {
   label: string;
@@ -678,6 +686,50 @@ function PastCompanyHighlightBadge({ highlight }: { highlight: PastCompanyHighli
   );
 }
 
+function PastCompanyReferenceStrip({ companies }: { companies: PastCompanyHighlight[] }) {
+  const visibleCompanies = Array.from(new Map(companies.map((item) => [item.name.trim(), item])).values())
+    .filter((item) => validPastCompanyName(item.name))
+    .slice(0, 3);
+  if (!visibleCompanies.length) return null;
+  return (
+    <div className="mb-3 rounded-xl border border-cyan-200 bg-cyan-50/80 p-3">
+      <div className="mb-2 flex items-center gap-2 text-[11px] font-black text-cyan-900">
+        <Database className="h-3.5 w-3.5" />
+        参照した過去取引事例
+      </div>
+      <div className="grid gap-2 md:grid-cols-3">
+        {visibleCompanies.map((highlight) => {
+          const caseDetail = highlight.experienceCase;
+          const reviewDetail = highlight.pastReview;
+          const score = caseDetail?.score ?? reviewDetail?.score;
+          const decision = caseDetail?.decision || reviewDetail?.hantei || "";
+          const lesson = caseDetail?.lesson || reviewDetail?.review_text || "";
+          return (
+            <div key={highlight.name} className="rounded-lg border border-cyan-100 bg-white p-2 shadow-sm">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-black text-cyan-950">{highlight.name}</span>
+                <span className="rounded bg-cyan-100 px-1.5 py-0.5 text-[10px] font-black text-cyan-700">
+                  {highlight.label}
+                </span>
+              </div>
+              <p className="mt-1 text-[11px] font-bold leading-5 text-slate-700">
+                {[caseDetail?.industry || reviewDetail?.industry_sub, score != null ? `${Number(score).toFixed(1)}点` : "", decision]
+                  .filter(Boolean)
+                  .join(" / ")}
+              </p>
+              {lesson && (
+                <p className="mt-1 line-clamp-2 text-[11px] font-medium leading-5 text-slate-600">
+                  {String(lesson)}
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 const highlightTextByCompanies = (text: string, companies: PastCompanyHighlight[]) => {
   const highlights = Array.from(new Map(companies.map((item) => [item.name.trim(), item])).values())
     .filter((item) => validPastCompanyName(item.name))
@@ -692,6 +744,149 @@ const highlightTextByCompanies = (text: string, companies: PastCompanyHighlight[
       <PastCompanyHighlightBadge key={`${part}-${index}`} highlight={highlight} />
     ) : part;
   });
+};
+
+const judgmentAssetHighlightTerms = (candidates: JudgmentAssetCandidate[]) => {
+  const terms = candidates
+    .flatMap((candidate) => {
+      const assetText = candidate.edited_claim || candidate.effective_claim || candidate.claim || "";
+      return [
+        assetText.trim(),
+        candidate.claim?.trim() || "",
+      ].filter((term) => term.length >= 12).map((term) => ({
+        term,
+        candidate,
+        canonical: isCanonicalJudgmentAsset(candidate),
+      }));
+    })
+    .sort((a, b) => b.term.length - a.term.length);
+  const byTerm = new Map<string, (typeof terms)[number]>();
+  for (const item of terms) {
+    const existing = byTerm.get(item.term);
+    if (!existing || (existing.canonical && !item.canonical)) {
+      byTerm.set(item.term, item);
+    }
+  }
+  return Array.from(byTerm.values());
+};
+
+const renderPlainReviewTextWithHighlights = (
+  text: string,
+  companies: PastCompanyHighlight[],
+  candidates: JudgmentAssetCandidate[],
+  keyPrefix: string,
+) => {
+  const assetTerms = judgmentAssetHighlightTerms(candidates);
+  if (!assetTerms.length) return highlightTextByCompanies(text, companies);
+  const pattern = new RegExp(`(${assetTerms.map((item) => item.term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "g");
+  const byTerm = new Map(assetTerms.map((item) => [item.term, item]));
+  return text.split(pattern).map((part, index): ReactNode => {
+    const asset = byTerm.get(part);
+    if (!asset) {
+      return <span key={`${keyPrefix}-plain-${index}`}>{highlightTextByCompanies(part, companies)}</span>;
+    }
+    return (
+      <span
+        key={`${keyPrefix}-asset-${index}`}
+        className={`mx-0.5 inline rounded-md border px-1.5 py-0.5 font-black ${
+          asset.canonical
+            ? "border-emerald-200 bg-emerald-100 text-emerald-950"
+            : "border-amber-200 bg-amber-100 text-amber-950"
+        }`}
+      >
+        <span className={`mr-1 rounded px-1 py-0.5 text-[10px] text-white ${asset.canonical ? "bg-emerald-600" : "bg-amber-500"}`}>
+          {asset.canonical ? "正規判断資産" : "昇格候補"}
+        </span>
+        {part}
+      </span>
+    );
+  });
+};
+
+const renderReviewTextWithHighlights = (
+  text: string,
+  companies: PastCompanyHighlight[],
+  candidates: JudgmentAssetCandidate[] = [],
+) => {
+  const parts = text.split(/(判断資産出典\s*[:：][^\n]*|JA-[A-Za-z0-9_-]{6,})/g).filter((part) => part !== "");
+  if (!parts.length) return null;
+  return parts.map((part, index): ReactNode => {
+    if (/^判断資産出典\s*[:：]/.test(part)) {
+      const isCanonical = part.includes("正規") || part.includes("JA-cr-");
+      return (
+        <span
+          key={`asset-source-${index}`}
+          className={`my-1 block rounded-xl border px-3 py-2 text-xs font-black leading-6 shadow-sm ${
+            isCanonical
+              ? "border-emerald-200 bg-emerald-100 text-emerald-950"
+              : "border-amber-200 bg-amber-100 text-amber-950"
+          }`}
+        >
+          <span className={`mr-2 rounded-full px-2 py-0.5 text-[10px] text-white ${isCanonical ? "bg-emerald-600" : "bg-amber-500"}`}>
+            {isCanonical ? "正規判断資産" : "昇格候補"}
+          </span>
+          {part}
+        </span>
+      );
+    }
+    if (/^JA-[A-Za-z0-9_-]{6,}$/.test(part)) {
+      const isCanonical = part.startsWith("JA-cr-");
+      return (
+        <span
+          key={`asset-id-${index}`}
+          className={`mx-0.5 inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-black leading-none ${
+            isCanonical
+              ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+              : "border-amber-300 bg-amber-100 text-amber-900"
+          }`}
+        >
+          {part}
+        </span>
+      );
+    }
+    return (
+      <span key={`review-text-${index}`}>
+        {renderPlainReviewTextWithHighlights(part, companies, candidates, `review-text-${index}`)}
+      </span>
+    );
+  });
+};
+
+const ensurePastCompanyMentionInReview = (
+  reviewText: string,
+  pastCompanies: PastCompanyHighlight[],
+) => {
+  const company = pastCompanies.find((item) => validPastCompanyName(item.name));
+  if (!company || reviewText.includes(company.name)) return reviewText;
+  const detail = company.experienceCase;
+  const comparison = detail
+    ? `${company.name}（${detail.decision} / ${detail.outcome}）では「${detail.lesson}」が残っており、今回も似ている点より導入目的・返済原資・今回固有の差分を確認します。`
+    : `${company.name}の過去レビューを参照し、今回案件との共通点と差分を確認します。`;
+  const insertion = `過去取引事例: ${comparison}`;
+  if (/2\.\s*数字だけでは見落としそうな違和感/.test(reviewText)) {
+    return reviewText.replace(
+      /(2\.\s*数字だけでは見落としそうな違和感[^\n]*\n)/,
+      `$1${insertion}\n`,
+    );
+  }
+  return `${reviewText.trim()}\n\n${insertion}`;
+};
+
+const ensureCandidateJudgmentAssetMentionInReview = (
+  reviewText: string,
+  candidates: JudgmentAssetCandidate[],
+) => {
+  const candidate = candidates.find((item) => !isCanonicalJudgmentAsset(item));
+  const claim = (candidate?.edited_claim || candidate?.effective_claim || candidate?.claim || "").trim();
+  if (!candidate || !claim || reviewText.includes(claim)) return reviewText;
+  const insertion = `昇格候補: ${claim}`;
+  if (/3\.\s*条件付き承認にするなら必要な確認/.test(reviewText)) {
+    return reviewText.replace(
+      /(3\.\s*条件付き承認にするなら必要な確認[^\n]*\n)/,
+      `$1${insertion}\n`,
+    );
+  }
+  return `${reviewText.trim()}\n\n${insertion}`;
 };
 
 const buildDemoSimilarPastCaseBlock = (cases: DemoSimilarPastCase[]) => {
@@ -751,7 +946,7 @@ const buildShionReviewPrompt = (
     "",
     "出力は短く、次の4項目でお願いします。",
     "1. 紫苑の第一印象",
-    "2. 数字だけでは見落としそうな違和感",
+    "2. 数字だけでは見落としそうな違和感（過去取引事例を1社名つきで比較）",
     "3. 条件付き承認にするなら必要な確認",
     "4. 稟議で残すべき一文",
     "",
@@ -806,6 +1001,9 @@ const buildShionReviewPrompt = (
     lines.push("", pastReviewBlock);
   }
   if (judgmentAssetCandidates.length) {
+    const hasCanonicalAssets = judgmentAssetCandidates.some((item) => (
+      item.source === "canonical_judgment_rules" || item.promotion_status === "active" || item.verified_status === "canonical"
+    ));
     const adaptationPolicies: Record<JudgmentAssetAdaptationMode, string> = {
       conservative: "発展度: 保守的。教えた判断を大きく変形せず、今回案件に明確に合う範囲だけで使ってください。新しい仮説は最小限にしてください。",
       standard: "発展度: 標準。教えた判断を今回案件に合わせて少し変形し、確認観点・承認条件・反証へ落としてください。",
@@ -814,14 +1012,16 @@ const buildShionReviewPrompt = (
     };
     lines.push(
       "",
-      "【今回試す判断資産候補】",
-      "次の候補はまだ昇格済みではありません。丸写しせず、今回の業種・物件・導入目的・財務状態に合わせて応用生成してください。",
+      hasCanonicalAssets ? "【今回使う判断資産】" : "【今回試す判断資産候補】",
+      hasCanonicalAssets
+        ? "次の判断資産は、過去の会話・評価・結果から代表ルール化されたものです。丸写しせず、今回の業種・物件・導入目的・財務状態に合わせて応用生成してください。"
+        : "次の候補はまだ昇格済みではありません。丸写しせず、今回の業種・物件・導入目的・財務状態に合わせて応用生成してください。",
       adaptationPolicies[judgmentAssetAdaptationMode],
-      "使った判断資産は、回答末尾に「判断資産出典: JA-<候補ID短縮> / <research_topic>」として明記してください。",
+      "使った判断資産は、回答末尾に「判断資産出典: 正規 JA-<ID短縮> / <research_topic>」または「判断資産出典: 候補 JA-<ID短縮> / <research_topic>」として明記してください。",
       "元判断と応用後の判断を混同しないでください。応用後の確認観点・承認条件・反証を本文に出し、出典は根拠トレースとして残してください。",
       ...judgmentAssetCandidates.slice(0, 3).map((item, index) => (
         [
-          `候補${index + 1}: JA-${item.id.slice(0, 8)} / ${item.candidate_type} / ${item.research_topic}`,
+          `${isCanonicalJudgmentAsset(item) ? "正規判断資産" : "昇格候補"}${index + 1}: JA-${item.id.slice(0, 8)} / ${item.candidate_type} / ${item.research_topic}`,
           `元判断: ${item.claim}`,
           `使う文面: ${item.edited_claim || item.effective_claim || item.claim}`,
           `出典: ${item.evidence_path || "manual"}`,
@@ -833,13 +1033,60 @@ const buildShionReviewPrompt = (
     lines.push(
       "",
       "過去会社引用ルール:",
-      "・保存済み経験ケースまたは過去レビューがある場合、回答内で必ず過去会社名を1社以上明示してください。",
+      "・保存済み経験ケースまたは過去レビューがある場合、2番か3番の本文中で必ず過去会社名を1社以上明示してください。",
       "・会社名を出したうえで、似ている点、違う点、今回の追加確認にどう使うかを短く述べてください。",
       "・過去会社を丸写しせず、今回案件との差分を判断材料にしてください。",
     );
   }
   lines.push("", "注意: 点数の再説明ではなく、審査判断として何を残すかに寄せてください。");
   return lines.join("\n");
+};
+
+const buildShionReviewFallback = (
+  result: Record<string, any>,
+  data: ScoringFormData,
+  judgmentAssetCandidates: JudgmentAssetCandidate[] = [],
+  experienceCases: DemoSimilarPastCase[] = [],
+  pastReviews: PastShionScreeningReview[] = [],
+) => {
+  const score = getScreeningScore(result);
+  const hantei = String(result.hantei || "未判定");
+  const companyName = data.company_name || "この案件";
+  const industry = String(result.industry_sub || data.industry_sub || result.industry_major || data.industry_major || "業種未入力");
+  const assetName = data.asset_name || "対象物件";
+  const purpose = data.asset_purpose || "導入目的未入力";
+  const memo = data.passion_text || "営業メモ未入力";
+  const qRisk = result.quantum_risk != null ? Number(result.quantum_risk) : null;
+  const qRiskText = qRisk != null && Number.isFinite(qRisk)
+    ? `Q_risk ${qRisk.toFixed(1)}`
+    : "Q_risk 未算出";
+  const candidateAsset = judgmentAssetCandidates.find((item) => !isCanonicalJudgmentAsset(item));
+  const canonicalAsset = judgmentAssetCandidates.find((item) => isCanonicalJudgmentAsset(item));
+  const primaryAsset = candidateAsset || canonicalAsset || judgmentAssetCandidates[0];
+  const secondaryAsset = judgmentAssetCandidates.find((item) => item.id !== primaryAsset?.id);
+  const pastCompany = uniquePastCompanyHighlights(pastReviews, experienceCases).at(0);
+  const assetSources = judgmentAssetCandidates.slice(0, 3).map((item) => {
+    const label = isCanonicalJudgmentAsset(item) ? "正規" : "候補";
+    return `判断資産出典: ${label} JA-${item.id.slice(0, 8)} / ${item.research_topic || item.candidate_type || "screening"}`;
+  });
+  const primaryClaim = primaryAsset?.edited_claim || primaryAsset?.effective_claim || primaryAsset?.claim || "";
+  const secondaryClaim = secondaryAsset?.edited_claim || secondaryAsset?.effective_claim || secondaryAsset?.claim || "";
+  return [
+    "1. 紫苑の第一印象",
+    `${companyName}は${industry}の${assetName}案件です。総合スコアは${Number.isFinite(score) ? `${score.toFixed(1)}点` : "未算出"}、判定は${hantei}。点数だけで終わらせず、導入目的と返済原資の具体性を確認してから条件を組む案件です。`,
+    "",
+    "2. 数字だけでは見落としそうな違和感",
+    `${qRiskText}です。営業メモは「${memo}」で、導入目的は「${purpose}」。ここが抽象的なままだと、資金使途・稼働開始・売上寄与の説明が弱くなります。${pastCompany ? `過去の${pastCompany}と同じく、似ている点より今回固有の差分を見ます。` : ""}`,
+    "",
+    "3. 条件付き承認にするなら必要な確認",
+    primaryClaim
+      ? `判断資産を使うなら、まず「${primaryClaim}」を今回案件向けに確認質問へ落とします。${secondaryClaim ? `加えて「${secondaryClaim}」も条件文に使えるかを見ます。` : ""}`
+      : "資金繰り表、稼働開始時期、既存債務、競合条件、物件の換価性を確認し、条件付き承認に足る説明を作ります。",
+    "",
+    "4. 稟議で残すべき一文",
+    `本件は${assetName}導入による収益寄与と支払原資の具体性を確認し、未達時の代替返済原資または追加条件を明記したうえで判断する。`,
+    ...(assetSources.length ? ["", ...assetSources] : []),
+  ].join("\n");
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -954,6 +1201,7 @@ function ShionScreeningReviewCard({
   onFeedback,
   feedbackSaving,
   pastCompanies,
+  judgmentAssetCandidates,
 }: {
   review: ShionScreeningReview | null;
   loading: boolean;
@@ -962,6 +1210,7 @@ function ShionScreeningReviewCard({
   onFeedback: (feedback: ShionReviewFeedback) => void;
   feedbackSaving: boolean;
   pastCompanies: PastCompanyHighlight[];
+  judgmentAssetCandidates: JudgmentAssetCandidate[];
 }) {
   const feedbackOptions: { key: ShionReviewFeedback; label: string }[] = [
     { key: "useful", label: "使えた" },
@@ -986,7 +1235,7 @@ function ShionScreeningReviewCard({
                 紫苑レビュー
               </h3>
               <p className="mt-1 text-xs font-bold leading-relaxed text-violet-700">
-                点数の説明ではなく、違和感・承認条件・稟議に残す一文へ変換します。過去案件名は色付きで表示します。
+                点数の説明ではなく、違和感・承認条件・稟議に残す一文へ変換します。過去案件名と判断資産出典は色付きで表示します。
               </p>
             </div>
             <button
@@ -1010,10 +1259,11 @@ function ShionScreeningReviewCard({
               <p className="text-sm font-bold leading-7 text-rose-700">{error}</p>
             ) : review ? (
               <>
+                <PastCompanyReferenceStrip companies={pastCompanies} />
                 <div className="space-y-2 text-sm font-medium leading-7 text-slate-800">
                   {normalizeReviewText(review.reply).split(/\n{2,}/).map((block, index) => (
                     <p key={index} className="whitespace-pre-wrap">
-                      {highlightTextByCompanies(block, pastCompanies)}
+                      {renderReviewTextWithHighlights(block, pastCompanies, judgmentAssetCandidates)}
                     </p>
                   ))}
                 </div>
@@ -1102,13 +1352,13 @@ function JudgmentAssetCandidateCard({
         <div>
           <h3 className="flex items-center gap-2 text-sm font-black text-amber-950">
             <Sparkles className="h-4 w-4 text-amber-600" />
-            今回試す判断資産候補
+            今回レビューに渡す判断資産
           </h3>
           <p className="mt-1 text-xs font-bold leading-relaxed text-amber-800">
-            紫苑レビューへ最大3件だけ渡します。効いた候補だけが後で昇格対象になります。
+            紫苑レビューへ最大3件だけ渡します。昇格済み判断資産と候補を、今回案件に合わせて使い分けます。
           </p>
           <p className="mt-1 text-[11px] font-bold leading-relaxed text-amber-700">
-            修正済み・手入力の判断を優先し、今回案件に合わせて紫苑が応用します。
+            役に立った/修正/違うの評価が、次の判断資産更新へ戻ります。
           </p>
         </div>
         {loading && <Activity className="h-4 w-4 animate-spin text-amber-700" />}
@@ -1184,13 +1434,16 @@ function JudgmentAssetCandidateCard({
               const draft = drafts[candidate.id] ?? displayClaim;
               const isEditing = editingId === candidate.id;
               const isChanged = draft.trim() && draft.trim() !== displayClaim.trim();
+              const isCanonical = isCanonicalJudgmentAsset(candidate);
               return (
                 <>
             <div className={`absolute inset-y-0 left-0 w-1.5 ${typeTone.accent}`} />
             <div className="flex flex-wrap items-center gap-2 pl-1 text-[10px] font-black">
               <span className="rounded-full bg-slate-900 px-2 py-1 text-white">JA-{candidate.id.slice(0, 8)}</span>
+              {isCanonical && <span className="rounded-full bg-emerald-600 px-2 py-1 text-white">正規判断資産</span>}
+              {!isCanonical && <span className="rounded-full bg-amber-500 px-2 py-1 text-white">昇格候補</span>}
               <span className={`rounded-full px-2 py-1 ${typeTone.badge}`}>{typeTone.label}</span>
-              <span className={`rounded-full px-2 py-1 ${feedbackTone.badge}`}>{feedbackTone.label}</span>
+              {!isCanonical && <span className={`rounded-full px-2 py-1 ${feedbackTone.badge}`}>{feedbackTone.label}</span>}
               <span className="rounded-full bg-white/80 px-2 py-1 text-slate-700">{candidate.research_topic}</span>
               <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-600">use {candidate.use_count}</span>
               <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-600">useful {candidate.useful_count}</span>
@@ -1233,31 +1486,39 @@ function JudgmentAssetCandidateCard({
               出典: {candidate.evidence_path || "manual"} / 元ID: {candidate.id}
             </p>
             <div className="mt-3 flex flex-wrap gap-2 pl-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingId(candidate.id);
-                  setDrafts((current) => ({ ...current, [candidate.id]: current[candidate.id] ?? displayClaim }));
-                }}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black text-slate-700 transition hover:bg-slate-50"
-              >
-                文面修正
-              </button>
-              {(Object.keys(labels) as JudgmentAssetCandidateFeedback[]).map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => onFeedback(candidate, key)}
-                  disabled={feedbackSavingId === candidate.id}
-                  className={`rounded-lg border px-3 py-1.5 text-[11px] font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                    candidate.userFeedback === key
-                      ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                      : "border-white/80 bg-white/80 text-slate-700 hover:bg-white"
-                  }`}
-                >
-                  {feedbackSavingId === candidate.id && candidate.userFeedback === key ? "保存中" : labels[key]}
-                </button>
-              ))}
+              {isCanonical ? (
+                <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-black text-emerald-700">
+                  昇格済みのため昇格対象外
+                </span>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingId(candidate.id);
+                      setDrafts((current) => ({ ...current, [candidate.id]: current[candidate.id] ?? displayClaim }));
+                    }}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black text-slate-700 transition hover:bg-slate-50"
+                  >
+                    文面修正
+                  </button>
+                  {(Object.keys(labels) as JudgmentAssetCandidateFeedback[]).map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => onFeedback(candidate, key)}
+                      disabled={feedbackSavingId === candidate.id}
+                      className={`rounded-lg border px-3 py-1.5 text-[11px] font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                        candidate.userFeedback === key
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                          : "border-white/80 bg-white/80 text-slate-700 hover:bg-white"
+                      }`}
+                    >
+                      {feedbackSavingId === candidate.id && candidate.userFeedback === key ? "保存中" : labels[key]}
+                    </button>
+                  ))}
+                </>
+              )}
             </div>
                 </>
               );
@@ -2129,8 +2390,11 @@ export default function Dashboard() {
         result?: any;
         gunshiText?: string;
         shionReview?: ShionScreeningReview | null;
+        shionPastCompanies?: PastCompanyHighlight[];
         judgmentAssetCandidates?: JudgmentAssetCandidate[];
         judgmentAssetAdaptationMode?: JudgmentAssetAdaptationMode;
+        currentExperienceCases?: DemoSimilarPastCase[];
+        experienceCasesByDemo?: Record<string, DemoSimilarPastCase[]>;
         activeTab?: "input" | "analysis";
         savedAt?: string;
       };
@@ -2138,8 +2402,17 @@ export default function Dashboard() {
       if (saved.result) setResult(saved.result);
       if (typeof saved.gunshiText === "string") setGunshiText(saved.gunshiText);
       if (saved.shionReview) setShionReview(saved.shionReview);
+      if (Array.isArray(saved.shionPastCompanies) && saved.shionPastCompanies.length) {
+        setShionPastCompanies(saved.shionPastCompanies);
+      } else if (saved.formData) {
+        const demoCase = findDemoScreeningCase(saved.formData);
+        const fallbackCases = demoCase ? fallbackExperienceCasesForDemo(demoCase.id) : [];
+        setShionPastCompanies(uniquePastCompanyHighlights([], fallbackCases));
+      }
       if (Array.isArray(saved.judgmentAssetCandidates)) setJudgmentAssetCandidates(saved.judgmentAssetCandidates);
       if (saved.judgmentAssetAdaptationMode) setJudgmentAssetAdaptationMode(saved.judgmentAssetAdaptationMode);
+      if (Array.isArray(saved.currentExperienceCases)) setCurrentExperienceCases(saved.currentExperienceCases);
+      if (saved.experienceCasesByDemo && typeof saved.experienceCasesByDemo === "object") setExperienceCasesByDemo(saved.experienceCasesByDemo);
       setActiveTab(saved.activeTab || (saved.result ? "analysis" : "input"));
       if (saved.savedAt) {
         const savedDate = new Date(saved.savedAt);
@@ -2167,8 +2440,11 @@ export default function Dashboard() {
           result,
           gunshiText,
           shionReview,
+          shionPastCompanies,
           judgmentAssetCandidates,
           judgmentAssetAdaptationMode,
+          currentExperienceCases,
+          experienceCasesByDemo,
           activeTab,
           savedAt: savedAt.toISOString(),
         }));
@@ -2178,7 +2454,7 @@ export default function Dashboard() {
       }
     }, SCREENING_DRAFT_SAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [draftRestored, formData, result, gunshiText, shionReview, judgmentAssetCandidates, judgmentAssetAdaptationMode, activeTab]);
+  }, [draftRestored, formData, result, gunshiText, shionReview, shionPastCompanies, judgmentAssetCandidates, judgmentAssetAdaptationMode, currentExperienceCases, experienceCasesByDemo, activeTab]);
 
   const buildExperienceCaseQuery = (
     demoCaseId: string,
@@ -2449,6 +2725,10 @@ export default function Dashboard() {
   const requestShionReview = async (targetResult = result, targetFormData = formData) => {
     if (!targetResult) return;
     const seq = ++shionReviewRequestSeq.current;
+    let promptText = "";
+    let fallbackPastReviews: PastShionScreeningReview[] = [];
+    let fallbackExperienceCases: DemoSimilarPastCase[] = [];
+    let fallbackCandidates: JudgmentAssetCandidate[] = [];
     setShionReviewLoading(true);
     setShionReviewError("");
     try {
@@ -2456,13 +2736,16 @@ export default function Dashboard() {
       const demoCase = findDemoScreeningCase(targetFormData);
       const experienceCases = await fetchExperienceCasesForContext(demoCase?.id || "", targetFormData, targetResult);
       const candidates = await fetchJudgmentAssetCandidatesForScreening(targetResult, targetFormData);
+      fallbackPastReviews = pastReviews;
+      fallbackExperienceCases = experienceCases as DemoSimilarPastCase[];
+      fallbackCandidates = candidates;
       const pastCompanies = uniquePastCompanyHighlights(
         pastReviews,
         experienceCases as DemoSimilarPastCase[],
       );
       setShionPastCompanies(pastCompanies);
       if (seq !== shionReviewRequestSeq.current) return;
-      const promptText = buildShionReviewPrompt(
+      promptText = buildShionReviewPrompt(
         targetResult,
         targetFormData,
         pastReviews,
@@ -2475,6 +2758,8 @@ export default function Dashboard() {
         user_id: buildShionReviewUserId(targetResult, targetFormData),
         response_mode: "shion",
         debug_memory: true,
+      }, {
+        timeout: 18000,
       });
       if (seq !== shionReviewRequestSeq.current) return;
       const memoryDebug = res.data?.memory_debug || {};
@@ -2483,7 +2768,13 @@ export default function Dashboard() {
       const knowledgeRefs = Array.isArray(memoryDebug.knowledge_refs) ? memoryDebug.knowledge_refs.length : 0;
       const memoryRefs = Array.isArray(memoryRecall.refs) ? memoryRecall.refs.length : 0;
       const nextReview: ShionScreeningReview = {
-        reply: String(res.data?.reply || "紫苑レビューが空でした。"),
+        reply: ensureCandidateJudgmentAssetMentionInReview(
+          ensurePastCompanyMentionInReview(
+            String(res.data?.reply || "紫苑レビューが空でした。"),
+            pastCompanies,
+          ),
+          candidates,
+        ),
         memoryRefs,
         knowledgeRefs,
         identityUsed: Boolean(identityMemory.used),
@@ -2500,7 +2791,40 @@ export default function Dashboard() {
     } catch (error) {
       if (seq !== shionReviewRequestSeq.current) return;
       console.error("Shion review error", error);
-      setShionReviewError("紫苑レビューを取得できませんでした。APIサーバーまたはAIチャットの状態を確認してください。");
+      const fallbackPastCompanies = uniquePastCompanyHighlights(fallbackPastReviews, fallbackExperienceCases);
+      const fallbackReview: ShionScreeningReview = {
+        reply: ensureCandidateJudgmentAssetMentionInReview(
+          ensurePastCompanyMentionInReview(
+            buildShionReviewFallback(
+              targetResult,
+              targetFormData,
+              fallbackCandidates,
+              fallbackExperienceCases,
+              fallbackPastReviews,
+            ),
+            fallbackPastCompanies,
+          ),
+          fallbackCandidates,
+        ),
+        memoryRefs: fallbackPastReviews.length,
+        knowledgeRefs: fallbackCandidates.length,
+        identityUsed: false,
+      };
+      setShionReview(fallbackReview);
+      setShionReviewError("");
+      saveShionScreeningReview(
+        targetResult,
+        targetFormData,
+        promptText || "fallback: local screening review from case fields and judgment assets",
+        fallbackReview,
+      )
+        .then((savedId) => {
+          if (!savedId || seq !== shionReviewRequestSeq.current) return;
+          setShionReview((current) => current ? { ...current, savedId } : current);
+        })
+        .catch((saveError) => {
+          console.warn("Fallback Shion screening review save failed", saveError);
+        });
     } finally {
       if (seq === shionReviewRequestSeq.current) {
         setShionReviewLoading(false);
@@ -2641,8 +2965,11 @@ export default function Dashboard() {
       result,
       gunshiText,
       shionReview,
+      shionPastCompanies,
       judgmentAssetCandidates,
       judgmentAssetAdaptationMode,
+      currentExperienceCases,
+      experienceCasesByDemo,
       activeTab: "analysis",
       savedAt: new Date().toISOString(),
     }));
@@ -2945,6 +3272,7 @@ export default function Dashboard() {
                       onFeedback={submitShionReviewFeedback}
                       feedbackSaving={shionFeedbackSaving}
                       pastCompanies={shionPastCompanies}
+                      judgmentAssetCandidates={judgmentAssetCandidates}
                     />
                     <JudgmentAssetCandidateCard
                       candidates={judgmentAssetCandidates}

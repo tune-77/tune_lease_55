@@ -235,6 +235,33 @@ type OperationalTrustSummary = {
   };
 };
 
+type JudgmentAssetPromotionCandidate = {
+  id: string;
+  candidate_type: string;
+  research_topic: string;
+  claim: string;
+  effective_claim: string;
+  edited_claim?: string;
+  evidence_path?: string;
+  promotion_status: string;
+  verified_status: string;
+  use_count: number;
+  useful_count: number;
+  neutral_count: number;
+  rejected_count: number;
+  edit_count: number;
+  last_feedback_at?: string;
+  verification_note?: string;
+  score: number;
+};
+
+type JudgmentAssetPromotionSummary = {
+  count: number;
+  active_count: number;
+  promotion_policy: string;
+  candidates: JudgmentAssetPromotionCandidate[];
+};
+
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   APPROVED: { label: "承認", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   AUTO_FIX_CANDIDATE: { label: "自動修正候補", className: "bg-blue-50 text-blue-700 border-blue-200" },
@@ -304,6 +331,58 @@ export default function ImprovementLogPage() {
   const [approvingRuleIds, setApprovingRuleIds] = useState<Set<string>>(new Set());
   const [hiddenImprovementKeys, setHiddenImprovementKeys] = useState<Set<string>>(new Set());
   const [isCloudRunHost, setIsCloudRunHost] = useState(false);
+  const [judgmentAssetPromotion, setJudgmentAssetPromotion] = useState<JudgmentAssetPromotionSummary | null>(null);
+  const [judgmentAssetPromotionLoading, setJudgmentAssetPromotionLoading] = useState(false);
+  const [judgmentAssetPromotionError, setJudgmentAssetPromotionError] = useState("");
+  const [judgmentAssetPromotionMessage, setJudgmentAssetPromotionMessage] = useState("");
+  const [judgmentAssetActionLoading, setJudgmentAssetActionLoading] = useState<Record<string, boolean>>({});
+
+  const fetchJudgmentAssetPromotion = useCallback(async () => {
+    setJudgmentAssetPromotionLoading(true);
+    setJudgmentAssetPromotionError("");
+    try {
+      const res = await apiClient.get<JudgmentAssetPromotionSummary>("/api/judgment-assets/promotion-candidates", {
+        params: { limit: 6 },
+      });
+      setJudgmentAssetPromotion(res.data);
+    } catch {
+      setJudgmentAssetPromotion(null);
+      setJudgmentAssetPromotionError("判断資産の昇格候補を取得できませんでした");
+    } finally {
+      setJudgmentAssetPromotionLoading(false);
+    }
+  }, []);
+
+  const handleJudgmentAssetAction = useCallback(async (
+    candidate: JudgmentAssetPromotionCandidate,
+    action: "promote" | "hold" | "reject",
+  ) => {
+    setJudgmentAssetActionLoading((prev) => ({ ...prev, [candidate.id]: true }));
+    setJudgmentAssetPromotionError("");
+    setJudgmentAssetPromotionMessage("");
+    try {
+      if (action === "promote") {
+        const res = await apiClient.post(`/api/judgment-assets/promotion-candidates/${candidate.id}/promote`);
+        const status = res.data?.promotion?.status || "";
+        setJudgmentAssetPromotionMessage(
+          status === "queued_for_local_promotion"
+            ? "Cloud Run上では昇格申請として記録しました。正規判断資産への反映はローカル側で行います。"
+            : "正規判断資産へ昇格しました。次回の紫苑レビューで使われます。"
+        );
+      } else {
+        await apiClient.post(`/api/judgment-assets/promotion-candidates/${candidate.id}/review`, {
+          action,
+          comment: `improvement-log UI ${action}`,
+        });
+        setJudgmentAssetPromotionMessage(action === "hold" ? "判断資産候補を保留しました。" : "判断資産候補を捨てました。");
+      }
+      await fetchJudgmentAssetPromotion();
+    } catch {
+      setJudgmentAssetPromotionError(action === "promote" ? "判断資産への昇格に失敗しました" : "判断資産候補のレビュー更新に失敗しました");
+    } finally {
+      setJudgmentAssetActionLoading((prev) => ({ ...prev, [candidate.id]: false }));
+    }
+  }, [fetchJudgmentAssetPromotion]);
 
   const fetchLedgerRules = useCallback(async () => {
     setLedgerLoading(true);
@@ -432,6 +511,10 @@ export default function ImprovementLogPage() {
   useEffect(() => {
     fetchLog();
   }, [fetchLog]);
+
+  useEffect(() => {
+    fetchJudgmentAssetPromotion();
+  }, [fetchJudgmentAssetPromotion]);
 
   useEffect(() => {
     fetchRecipes();
@@ -568,7 +651,16 @@ export default function ImprovementLogPage() {
             </div>
           </div>
           <button
-            onClick={activeTab === "improvements" ? fetchLog : fetchRecipes}
+            onClick={() => {
+              if (activeTab === "improvements") {
+                fetchLog();
+                fetchJudgmentAssetPromotion();
+              } else if (activeTab === "recipes") {
+                fetchRecipes();
+              } else {
+                fetchLedgerRules();
+              }
+            }}
             className="ml-auto inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
           >
             <RefreshCw className="h-4 w-4" />
@@ -594,6 +686,119 @@ export default function ImprovementLogPage() {
             </p>
           </div>
         )}
+
+        <section className="overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-amber-100 bg-amber-50 p-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white">
+                <Sparkles className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-black text-amber-950">判断資産レビュー・昇格</h2>
+                <p className="mt-1 text-sm font-bold leading-6 text-amber-800">
+                  紫苑レビューで使われ、人間が評価した候補だけを、正規判断資産へ昇格します。Cloud Run検疫とは別の人間承認ゲートです。
+                </p>
+                <p className="mt-1 text-xs font-bold leading-5 text-amber-700">
+                  {isCloudRunHost
+                    ? "Cloud Run版では昇格申請を記録します。正本への反映はローカル版で行います。"
+                    : "ローカル/Cloudflareローカル版では、この画面から正本の判断資産へ昇格できます。"}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs font-black">
+              <span className="rounded-full bg-white px-3 py-1 text-amber-800">
+                正規判断資産 {judgmentAssetPromotion?.active_count ?? 0}件
+              </span>
+              <span className="rounded-full bg-white px-3 py-1 text-amber-800">
+                昇格候補 {judgmentAssetPromotion?.count ?? 0}件
+              </span>
+            </div>
+          </div>
+          <div className="p-4">
+            {judgmentAssetPromotionError && (
+              <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-700">
+                {judgmentAssetPromotionError}
+              </div>
+            )}
+            {judgmentAssetPromotionMessage && (
+              <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-700">
+                {judgmentAssetPromotionMessage}
+              </div>
+            )}
+            {judgmentAssetPromotionLoading ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-8 text-center text-sm font-bold text-slate-500">
+                判断資産の昇格候補を読み込み中...
+              </div>
+            ) : !judgmentAssetPromotion?.candidates?.length ? (
+              <div className="rounded-xl border border-dashed border-amber-200 bg-amber-50/40 p-6 text-center">
+                <BookOpenCheck className="mx-auto h-7 w-7 text-amber-500" />
+                <p className="mt-2 text-sm font-black text-amber-950">今すぐ昇格する候補はありません</p>
+                <p className="mt-1 text-xs font-bold text-amber-700">
+                  審査分析画面で判断資産候補に「効いた」または「修正」を返すと、ここに出ます。
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-3">
+                {judgmentAssetPromotion.candidates.map((candidate) => {
+                  const isBusy = !!judgmentAssetActionLoading[candidate.id];
+                  const displayClaim = candidate.edited_claim || candidate.effective_claim || candidate.claim;
+                  return (
+                    <article key={candidate.id} className="rounded-xl border border-amber-100 bg-amber-50/50 p-4">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2 text-[10px] font-black">
+                            <span className="rounded-full bg-slate-900 px-2 py-1 text-white">JA-{candidate.id.slice(0, 8)}</span>
+                            <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-800">{candidate.candidate_type}</span>
+                            <span className="rounded-full bg-white px-2 py-1 text-slate-600">{candidate.research_topic || "manual"}</span>
+                            <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">効いた {candidate.useful_count}</span>
+                            <span className="rounded-full bg-blue-50 px-2 py-1 text-blue-700">修正 {candidate.edit_count}</span>
+                            <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-600">使用 {candidate.use_count}</span>
+                            {candidate.rejected_count > 0 && (
+                              <span className="rounded-full bg-rose-50 px-2 py-1 text-rose-700">違う {candidate.rejected_count}</span>
+                            )}
+                          </div>
+                          <p className="mt-3 text-sm font-bold leading-7 text-slate-900">{displayClaim}</p>
+                          <p className="mt-2 break-all text-[11px] font-semibold text-slate-500">
+                            出典: {candidate.evidence_path || "manual"} / 状態: {candidate.verified_status}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleJudgmentAssetAction(candidate, "promote")}
+                            disabled={isBusy}
+                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <CheckCircle2 className="h-4 w-4" />
+                            {isCloudRunHost ? "昇格申請" : "昇格する"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleJudgmentAssetAction(candidate, "hold")}
+                            disabled={isBusy}
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Clock className="h-4 w-4" />
+                            保留
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleJudgmentAssetAction(candidate, "reject")}
+                            disabled={isBusy}
+                            className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-black text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            捨てる
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
 
         <div className="space-y-3">
           <LoopEngineeringCard

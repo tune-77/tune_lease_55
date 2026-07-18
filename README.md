@@ -164,17 +164,62 @@ CS Brain     -> 問い合わせ品質・再発防止・回答方針
 成約/失注には、信用力だけでなく、競合金利、営業タイミング、銀行支援、顧客都合、提案速度などが混ざります。そのため、失注データだけを教師にすると「競合に負けた良い会社」を信用リスクとして誤学習する可能性があります。紫苑はこの混線を避けるため、スコアリングとは別に、人間の判断を構造化して蓄積します。
 
 ```mermaid
-flowchart LR
-    Case["新規案件"] --> Qrisk["Q_risk\nスコア外違和感・探索信号"]
-    Case --> OldQrisk["旧Q_risk\n財務・入力整合性チェック"]
-    Qrisk --> Human["人間の事前判断\n信用リスク / 競合・成約リスク / 銀行支援 / 条件設計"]
-    OldQrisk --> Human
-    Human --> Asset["判断資産候補\nquarantine / review"]
-    Asset --> Reuse["類似案件へ再利用\n根拠・確認条件・稟議コメント"]
-    Case --> Result["結果登録\n成約 / 失注 / 条件変更 / 否決"]
-    Human --> Verify["判断精度の検証"]
-    Result --> Verify
-    Verify --> Asset
+flowchart TD
+    Shion["紫苑<br/>判断資産DevOps Core"]
+
+    subgraph Body["身体: Cloud Run 実行環境"]
+        FE["Next.js UI<br/>審査入力 / チャット / 紫苑レビュー"]
+        API["FastAPI API<br/>スコアリング / OCR / ADK / Gemini"]
+        Score["審査判断エンジン<br/>財務スコア / Q_risk / 物件リスク / 類似案件"]
+    end
+
+    subgraph Brain["頭脳: 判断資産の正本"]
+        Vault["Obsidian / Markdown Vault<br/>過去判断 / 違和感 / 条件 / 改善ログ"]
+        Memory["GCS Vault / memory index<br/>RAG / Memory Recall"]
+        Asset["判断資産<br/>判断構文 / 出典 / 適用条件 / 例外条件"]
+    end
+
+    subgraph HumanLoop["人間判断ループ"]
+        User["審査担当者"]
+        Judgment["人間判断<br/>修正 / 条件 / 反証 / 違和感"]
+        Feedback["人間評価<br/>役に立った / 要修正 / 違う"]
+    end
+
+    subgraph Governance["検疫・昇格・検証"]
+        Quarantine["検疫キュー<br/>未承認候補を隔離"]
+        Promote["人間承認ゲート<br/>承認済みだけ昇格"]
+        Result["結果登録<br/>成約 / 失注 / 条件変更 / 否決 / 延滞"]
+        Analysis["効果検証<br/>過剰警戒 / 見落とし / 判断仮説の支持率"]
+    end
+
+    User --> FE
+    FE --> API
+    API --> Shion
+    API --> Score
+    Score --> Shion
+
+    Vault --> Memory
+    Memory --> Shion
+    Asset --> Shion
+
+    Shion --> Review["紫苑レビュー<br/>第一印象 / 数字外の違和感 / 条件 / 相談論点"]
+    Review --> Feedback
+    User --> Judgment
+    Judgment --> Quarantine
+    Feedback --> Quarantine
+
+    Quarantine --> Promote
+    Promote --> Asset
+    Asset --> Vault
+
+    Shion --> Output["出力<br/>確認質問 / 承認条件 / 反証 / 稟議文面"]
+    Output --> User
+    Output --> Result
+    Result --> Analysis
+    Analysis --> Quarantine
+
+    Promote -. "正本を直接書き換えない" .-> Vault
+    Brain -. "頭脳差し替え" .-> Other["Legal / Sales / CS Brain"]
 ```
 
 現在のデモでは、Q_riskパネルで2種類の信号を分けて扱います。旧Q_riskは、粗利率、債務/年商、営業利益と粗利、設備と償却などの**財務・入力整合性チェック**です。現Q_riskは、既存スコアだけでは説明しにくい違和感を深掘りする**探索信号**です。
@@ -402,17 +447,33 @@ flowchart LR
 このプロジェクトでは、DevOpsをインフラやデプロイだけでなく、AIエージェントの判断品質そのものへ適用します。
 
 ```mermaid
-flowchart LR
-    Use["Use\n業務で使う"] --> Observe["Observe\n会話ログ・改善ログ・RAG参照・回答品質"]
-    Observe --> Detect["Detect\n記憶抜け・浅い内省・別人化・環境差分"]
-    Detect --> Reflect["Reflect\nPrivate Reflection・改善レポート・失敗の言語化"]
-    Reflect --> Improve["Improve\nプロンプト・RAG・記憶・UI・API"]
-    Improve --> Verify["Verify\npytest・typecheck・memory_debug・環境比較"]
-    Verify --> Deploy["Deploy\nCloud Run・Cloudflare・ローカル運用"]
-    Deploy --> Use
+flowchart TD
+    ShionPM["紫苑 改善PM\n判断資産DevOps Core"]
 
-    Observe -.-> Evidence["Evidence\nknowledge_refs / memory_recall.refs\nresponse quality / improvement reports"]
-    Verify -.-> Evidence
+    Use["Use\n審査で使う\n案件入力・チャット・紫苑レビュー"]
+    Observe["Observe\n観測する\nRAG参照・回答品質・判断資産利用"]
+    Detect["Detect\nズレを見つける\n記憶抜け・浅い回答・環境差分"]
+    Review["Review\n紫苑で確認\n数字外の違和感・相談論点"]
+    Feedback["Feedback\n人間評価\n役に立った / 要修正 / 違う"]
+    Reflect["Reflect\n振り返る\n改善PMレポート・内省・失敗の言語化"]
+    Improve["Improve\n改善候補化\nPrompt・RAG・判断資産・UI・API"]
+    Verify["Verify\n検証する\npytest・typecheck・memory_debug"]
+    Gate["Gate\n人間承認\n実装・git・deployは指示待ち"]
+    Operate["Operate\n運用へ戻す\nCloud Run / Cloudflare / ローカル"]
+
+    Use --> Observe --> Detect --> Review --> Feedback --> Reflect --> Improve --> Verify --> Gate --> Operate --> Use
+
+    Observe -. "evidence" .-> ShionPM
+    Review -. "紫苑レビュー" .-> ShionPM
+    Feedback -. "人間評価" .-> ShionPM
+    Reflect -. "改善候補" .-> ShionPM
+    ShionPM -. "判断資産候補" .-> Improve
+
+    Gate -->|承認| Promote["Promote\n判断資産へ昇格"]
+    Gate -->|保留/却下| Quarantine["Quarantine\n検疫キューに隔離"]
+    Promote --> Brain["頭脳\nObsidian / Markdown Vault"]
+    Quarantine --> Reflect
+    Brain --> Observe
 ```
 
 リース審査は、このループを検証するための最初の実業務ドメインです。差し替えが必要なのは主にドメイン知識、評価観点、RAGソース、UI、プロンプト上の役割であり、観測・検知・改善・検証・運用の骨格は他の業務AIにも再利用できます。

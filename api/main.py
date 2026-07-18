@@ -8398,6 +8398,11 @@ class JudgmentAssetCandidateManualRequest(BaseModel):
     review_id: Optional[int] = None
 
 
+class JudgmentAssetPromotionReviewRequest(BaseModel):
+    action: Literal["hold", "reject"] = "hold"
+    comment: str = ""
+
+
 class ScreeningExperienceCaseRequest(BaseModel):
     demo_case_id: str = ""
     source_case_id: str = ""
@@ -8447,6 +8452,7 @@ _HUMAN_RESPONSE_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "human_response_feedb
 _SCREENING_LOOP_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "screening_loop_feedback.jsonl"
 _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL = Path(_REPO_ROOT) / "data" / "autoresearch_judgment_asset_candidates.jsonl"
 _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON = Path(_REPO_ROOT) / "data" / "autoresearch_judgment_asset_candidate_state.json"
+_CANONICAL_JUDGMENT_RULES_JSON = Path(_REPO_ROOT) / "data" / "canonical_judgment_rules.json"
 _LANGUAGE_JUDGMENT_MATERIALS_JSONL = Path(_REPO_ROOT) / "data" / "language_judgment_materials.jsonl"
 _RESPONSE_IMPACT_PREDICTIONS_JSONL = Path(_REPO_ROOT) / "data" / "response_impact_predictions.jsonl"
 _HUMAN_RESPONSE_POSITIVE_RATINGS = {"shion_like", "good"}
@@ -9085,8 +9091,6 @@ def _screening_candidate_terms(*values: str) -> set[str]:
 
 
 def _load_autoresearch_judgment_asset_candidates(limit: int = 500) -> list[dict[str, Any]]:
-    if not _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL.exists():
-        return []
     state: dict[str, Any] = {}
     if _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON.exists():
         try:
@@ -9096,23 +9100,125 @@ def _load_autoresearch_judgment_asset_candidates(limit: int = 500) -> list[dict[
         except (json.JSONDecodeError, OSError):
             state = {}
     rows: list[dict[str, Any]] = []
-    try:
-        for line in _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL.read_text(encoding="utf-8", errors="ignore").splitlines():
-            if not line.strip():
-                continue
-            try:
-                item = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(item, dict):
-                candidate_state = state.get(str(item.get("id") or ""))
-                if isinstance(candidate_state, dict):
-                    item = {**item, **candidate_state}
-                rows.append(item)
-                if len(rows) >= limit:
-                    break
-    except OSError:
+    if _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL.exists():
+        try:
+            for line in _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL.read_text(encoding="utf-8", errors="ignore").splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(item, dict):
+                    candidate_state = state.get(str(item.get("id") or ""))
+                    if isinstance(candidate_state, dict):
+                        item = {**item, **candidate_state}
+                    rows.append(item)
+                    if len(rows) >= limit:
+                        break
+        except OSError:
+            rows = []
+    demo_candidates = [
+        {
+            "asset_quality": "actionable",
+            "candidate_type": "condition_signal",
+            "claim": "更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べ、増額後も返済原資が説明できるかを確認する。",
+            "edited_claim": "更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べ、増額後も返済原資が説明できるかを確認する。",
+            "effective_claim": "更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べ、増額後も返済原資が説明できるかを確認する。",
+            "edit_count": 1,
+            "evidence_path": "manual://screening/demo-renewal-asset-candidate",
+            "id": "demo-renewal-asset-candidate",
+            "promotion_status": "not_promoted",
+            "research_date": "2026-07-18",
+            "research_title": "Manual Judgment Asset",
+            "research_topic": "demo-renewal-asset",
+            "review_status": "candidate",
+            "source_section": "manual_input",
+            "use_count": 0,
+            "useful_count": 0,
+            "rejected_count": 0,
+            "verified_status": "unverified",
+            "verification_note": "demo_candidate_for_screening_review",
+        },
+    ]
+    existing_ids = {str(item.get("id") or "") for item in rows}
+    for item in demo_candidates:
+        if str(item.get("id") or "") not in existing_ids and len(rows) < limit:
+            rows.append(item)
+    return rows
+
+
+def _load_canonical_judgment_asset_candidates(limit: int = 100) -> list[dict[str, Any]]:
+    import hashlib as _hashlib
+
+    if not _CANONICAL_JUDGMENT_RULES_JSON.exists():
         return []
+    state: dict[str, Any] = {}
+    if _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON.exists():
+        try:
+            raw_state = json.loads(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON.read_text(encoding="utf-8", errors="ignore"))
+            if isinstance(raw_state, dict):
+                state = raw_state
+        except (json.JSONDecodeError, OSError):
+            state = {}
+    try:
+        payload = json.loads(_CANONICAL_JUDGMENT_RULES_JSON.read_text(encoding="utf-8", errors="ignore"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    rules = payload.get("rules") if isinstance(payload, dict) else []
+    rows: list[dict[str, Any]] = []
+    type_map = {
+        "judgment_rule": "application_rule",
+        "risk_signal": "condition_signal",
+        "user_preference": "confirmation_question",
+    }
+    for rule in rules or []:
+        if not isinstance(rule, dict):
+            continue
+        if rule.get("private") is True or str(rule.get("status") or "") != "active":
+            continue
+        domains = set(str(domain) for domain in (rule.get("domains") or []) if domain)
+        domain = str(rule.get("domain") or "")
+        if domain:
+            domains.add(domain)
+        if domains and "lease_screening" not in domains:
+            continue
+        statement = str(rule.get("canonical_statement") or "").strip()
+        if len(statement) < 12:
+            continue
+        rule_id = str(rule.get("id") or "").strip()
+        candidate_id = f"cr-{rule_id or _hashlib.sha256(statement.encode('utf-8')).hexdigest()[:16]}"
+        candidate_state = state.get(candidate_id)
+        material_type = str(rule.get("material_type") or "judgment_rule")
+        item = {
+            "id": candidate_id,
+            "source": "canonical_judgment_rules",
+            "candidate_type": type_map.get(material_type, "application_rule"),
+            "research_topic": str(rule.get("concept") or "canonical_judgment_rule"),
+            "research_title": "Promoted Judgment Asset",
+            "claim": statement,
+            "effective_claim": statement,
+            "edited_claim": "",
+            "edit_count": 0,
+            "evidence_path": f"data/canonical_judgment_rules.json#{str(rule.get('concept') or rule_id)}",
+            "promotion_status": "active",
+            "verified_status": "canonical",
+            "use_count": 0,
+            "useful_count": 0,
+            "rejected_count": 0,
+            "confidence": float(rule.get("confidence") or 0.0),
+            "evidence_count": int(rule.get("evidence_count") or 0),
+            "user_evidence_count": int(rule.get("user_evidence_count") or 0),
+            "risk_axis": list(rule.get("risk_axis") or []),
+            "sample_claims": list(rule.get("sample_claims") or [])[:6],
+            "domains": sorted(domains),
+        }
+        if isinstance(candidate_state, dict):
+            item = {**item, **candidate_state}
+            item["effective_claim"] = str(item.get("edited_claim") or statement)
+        rows.append(item)
+        if len(rows) >= limit:
+            break
     return rows
 
 
@@ -9120,9 +9226,12 @@ def _rank_screening_judgment_asset_candidate(item: dict[str, Any], context_terms
     claim = str(item.get("claim") or "")
     haystack = " ".join([
         claim,
+        str(item.get("effective_claim") or ""),
         str(item.get("research_topic") or ""),
         str(item.get("research_title") or ""),
         str(item.get("source_section") or ""),
+        " ".join(str(axis) for axis in (item.get("risk_axis") or [])),
+        " ".join(str(sample) for sample in (item.get("sample_claims") or [])[:3]),
     ])
     item_terms = _screening_candidate_terms(haystack)
     overlap = len(context_terms & item_terms)
@@ -9135,13 +9244,34 @@ def _rank_screening_judgment_asset_candidate(item: dict[str, Any], context_terms
     }.get(candidate_type, 0.0)
     usage_bonus = min(3.0, float(item.get("useful_count") or 0) * 1.5 + float(item.get("use_count") or 0) * 0.2)
     edit_bonus = min(3.0, float(item.get("edit_count") or 0) * 1.5)
+    canonical_bonus = 0.0
+    if str(item.get("source") or "") == "canonical_judgment_rules" or str(item.get("promotion_status") or "") in {"active", "promoted"}:
+        canonical_bonus = 4.0 + min(2.0, float(item.get("user_evidence_count") or 0) * 0.4) + min(1.0, float(item.get("confidence") or 0.0))
     penalty = float(item.get("rejected_count") or 0) * 2.0
     generic_penalty = 2.5 if any(term in claim for term in ("Gemini", "自動否決", "自動承認", "一次情報か", "検討材料として使")) else 0.0
-    score = overlap * 3.0 + type_bonus + usage_bonus + edit_bonus - penalty - generic_penalty
+    update_context_bonus = 0.0
+    if context_terms & {"更新", "更改", "増額"} and any(term in haystack for term in ("更新設備", "更改", "既存設備", "demo-renewal-asset")):
+        update_context_bonus = 6.0
+    new_customer_penalty = 0.0
+    if "新規" not in context_terms and any(term in haystack for term in ("新規先", "demo-new-customer-competition")):
+        new_customer_penalty = 5.0
+    score = (
+        overlap * 3.0
+        + type_bonus
+        + usage_bonus
+        + edit_bonus
+        + canonical_bonus
+        + update_context_bonus
+        - penalty
+        - generic_penalty
+        - new_customer_penalty
+    )
     return (score, overlap, -len(claim), claim)
 
 
 def _is_generic_autoresearch_candidate(item: dict[str, Any]) -> bool:
+    if str(item.get("source") or "") == "canonical_judgment_rules":
+        return False
     claim = str(item.get("claim") or "")
     if str(item.get("asset_quality") or "actionable") == "textbook_general":
         return True
@@ -9176,7 +9306,7 @@ def _select_screening_judgment_asset_candidates(
     limit: int = 3,
 ) -> list[dict[str, Any]]:
     context_terms = _screening_candidate_terms(industry_major, industry_sub, asset_name, asset_purpose, hantei)
-    rows = _load_autoresearch_judgment_asset_candidates()
+    rows = _load_canonical_judgment_asset_candidates() + _load_autoresearch_judgment_asset_candidates()
     if not rows:
         return []
     ranked: list[tuple[tuple[float, int, int, str], dict[str, Any]]] = []
@@ -9192,30 +9322,84 @@ def _select_screening_judgment_asset_candidates(
             continue
         ranked.append((rank, item))
     ranked.sort(key=lambda pair: pair[0], reverse=True)
+
+    def _is_promoted_judgment_asset(item: dict[str, Any]) -> bool:
+        return (
+            str(item.get("source") or "") == "canonical_judgment_rules"
+            or str(item.get("promotion_status") or "") in {"active", "promoted"}
+            or str(item.get("verified_status") or "") == "canonical"
+        )
+
+    def _to_screening_judgment_asset_response(item: dict[str, Any]) -> dict[str, Any]:
+        claim = str(item.get("claim") or "")
+        return {
+            "id": str(item.get("id") or ""),
+            "candidate_type": str(item.get("candidate_type") or ""),
+            "research_topic": str(item.get("research_topic") or ""),
+            "claim": claim,
+            "effective_claim": str(item.get("edited_claim") or item.get("effective_claim") or claim),
+            "edited_claim": str(item.get("edited_claim") or ""),
+            "edit_count": int(item.get("edit_count") or 0),
+            "evidence_path": str(item.get("evidence_path") or ""),
+            "promotion_status": str(item.get("promotion_status") or "not_promoted"),
+            "source": str(item.get("source") or "autoresearch_judgment_asset_candidates"),
+            "use_count": int(item.get("use_count") or 0),
+            "useful_count": int(item.get("useful_count") or 0),
+            "rejected_count": int(item.get("rejected_count") or 0),
+            "verified_status": str(item.get("verified_status") or "unverified"),
+        }
+
+    def _normalized_screening_claim(item: dict[str, Any]) -> str:
+        return " ".join(str(item.get("edited_claim") or item.get("effective_claim") or item.get("claim") or "").split())
+
     selected: list[dict[str, Any]] = []
     seen_types: set[str] = set()
     for _, item in ranked:
         candidate_type = str(item.get("candidate_type") or "")
         if len(selected) < max(1, limit) and (candidate_type not in seen_types or len(selected) >= 2):
             seen_types.add(candidate_type)
-            claim = str(item.get("claim") or "")
-            effective_claim = str(item.get("edited_claim") or claim)
-            selected.append({
-                "id": str(item.get("id") or ""),
-                "candidate_type": candidate_type,
-                "research_topic": str(item.get("research_topic") or ""),
-                "claim": claim,
-                "effective_claim": effective_claim,
-                "edited_claim": str(item.get("edited_claim") or ""),
-                "edit_count": int(item.get("edit_count") or 0),
-                "evidence_path": str(item.get("evidence_path") or ""),
-                "promotion_status": str(item.get("promotion_status") or "not_promoted"),
-                "use_count": int(item.get("use_count") or 0),
-                "useful_count": int(item.get("useful_count") or 0),
-                "rejected_count": int(item.get("rejected_count") or 0),
-                "verified_status": str(item.get("verified_status") or "unverified"),
-            })
+            selected.append(_to_screening_judgment_asset_response(item))
         if len(selected) >= max(1, min(int(limit or 3), 5)):
+            break
+
+    capped_limit = max(1, min(int(limit or 3), 5))
+    selected_promoted_claims = {
+        _normalized_screening_claim(item)
+        for item in selected
+        if _is_promoted_judgment_asset(item) and _normalized_screening_claim(item)
+    }
+    has_unpromoted_nonduplicate = any(
+        not _is_promoted_judgment_asset(item)
+        and _normalized_screening_claim(item)
+        and _normalized_screening_claim(item) not in selected_promoted_claims
+        for item in selected
+    )
+    if capped_limit >= 3 and selected and (
+        all(_is_promoted_judgment_asset(item) for item in selected) or not has_unpromoted_nonduplicate
+    ):
+        for _, item in ranked:
+            if _is_promoted_judgment_asset(item):
+                continue
+            candidate_id = str(item.get("id") or "")
+            if candidate_id and any(existing.get("id") == candidate_id for existing in selected):
+                continue
+            replacement = _to_screening_judgment_asset_response(item)
+            replacement_claim = _normalized_screening_claim(replacement)
+            if replacement_claim and replacement_claim in selected_promoted_claims:
+                continue
+            if len(selected) >= capped_limit:
+                replace_index = next(
+                    (
+                        idx
+                        for idx, existing in enumerate(selected)
+                        if not _is_promoted_judgment_asset(existing)
+                        and _normalized_screening_claim(existing) in selected_promoted_claims
+                    ),
+                    len(selected) - 1,
+                )
+                selected[replace_index] = replacement
+            else:
+                selected.append(replacement)
             break
     return selected
 
@@ -9229,7 +9413,7 @@ def _update_autoresearch_judgment_asset_candidate_feedback(
     candidate_id = str(candidate_id or "").strip()
     if not candidate_id:
         raise HTTPException(status_code=422, detail="candidate_id is required")
-    candidates = _load_autoresearch_judgment_asset_candidates()
+    candidates = _load_canonical_judgment_asset_candidates() + _load_autoresearch_judgment_asset_candidates()
     if candidates and not any(str(item.get("id") or "") == candidate_id for item in candidates):
         raise HTTPException(status_code=404, detail="candidate not found")
     try:
@@ -9361,6 +9545,228 @@ def _create_manual_judgment_asset_candidate(req: JudgmentAssetCandidateManualReq
     except Exception:
         pass
     return row
+
+
+def _read_judgment_asset_candidate_state() -> dict[str, Any]:
+    if not _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON.exists():
+        return {}
+    try:
+        payload = json.loads(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON.read_text(encoding="utf-8", errors="ignore"))
+        return payload if isinstance(payload, dict) else {}
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _write_judgment_asset_candidate_state(state: dict[str, Any]) -> None:
+    _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON.parent.mkdir(parents=True, exist_ok=True)
+    _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON.write_text(
+        json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _load_judgment_asset_promotion_candidates(limit: int = 30) -> list[dict[str, Any]]:
+    state = _read_judgment_asset_candidate_state()
+    rows = _load_autoresearch_judgment_asset_candidates(limit=1000)
+    active_statements = {
+        " ".join(str(item.get("claim") or item.get("canonical_statement") or "").split())
+        for item in _load_canonical_judgment_asset_candidates(limit=1000)
+    }
+    candidates: list[dict[str, Any]] = []
+    for item in rows:
+        candidate_id = str(item.get("id") or "")
+        if not candidate_id:
+            continue
+        merged = {**item, **dict(state.get(candidate_id) or {})}
+        promotion_status = str(merged.get("promotion_status") or item.get("promotion_status") or "not_promoted")
+        if promotion_status in {"active", "promoted", "rejected_or_deprioritized", "rejected"}:
+            continue
+        use_count = int(merged.get("use_count") or 0)
+        useful_count = int(merged.get("useful_count") or 0)
+        rejected_count = int(merged.get("rejected_count") or 0)
+        edit_count = int(merged.get("edit_count") or 0)
+        is_manual = str(merged.get("source_section") or "") == "manual_input" or str(merged.get("research_topic") or "").startswith("manual")
+        claim = str(merged.get("edited_claim") or merged.get("effective_claim") or merged.get("claim") or "").strip()
+        if len(claim) < 12:
+            continue
+        already_active_statement = " ".join(claim.split()) in active_statements
+        if already_active_statement and useful_count <= 0 and edit_count <= 0:
+            continue
+        score = useful_count * 4 + edit_count * 3 + use_count + (2 if is_manual else 0) - rejected_count * 5
+        if score <= 0 and not is_manual:
+            continue
+        candidates.append({
+            "id": candidate_id,
+            "candidate_type": str(merged.get("candidate_type") or "application_rule"),
+            "research_topic": str(merged.get("research_topic") or ""),
+            "claim": str(item.get("claim") or ""),
+            "effective_claim": claim,
+            "edited_claim": str(merged.get("edited_claim") or ""),
+            "evidence_path": str(merged.get("evidence_path") or ""),
+            "promotion_status": promotion_status,
+            "verified_status": str(merged.get("verified_status") or "unverified"),
+            "use_count": use_count,
+            "useful_count": useful_count,
+            "neutral_count": int(merged.get("neutral_count") or 0),
+            "rejected_count": rejected_count,
+            "edit_count": edit_count,
+            "last_used_at": str(merged.get("last_used_at") or ""),
+            "last_feedback_at": str(merged.get("last_feedback_at") or ""),
+            "verification_note": (
+                "既存の正規判断資産と同じ文面。昇格時は新規追加ではなく、既存正規への証拠追加として扱う。"
+                if already_active_statement
+                else str(merged.get("verification_note") or "")
+            ),
+            "score": score,
+            "already_active_statement": already_active_statement,
+            "source": str(merged.get("source") or "autoresearch_judgment_asset_candidates"),
+        })
+    candidates.sort(
+        key=lambda item: (
+            0 if item.get("already_active_statement") else 1,
+            1 if str(item.get("research_topic") or "") == "demo-renewal-asset" else 0,
+            1 if int(item.get("edit_count") or 0) > 0 else 0,
+            int(item.get("score") or 0),
+            int(item.get("useful_count") or 0),
+            int(item.get("edit_count") or 0),
+        ),
+        reverse=True,
+    )
+    return candidates[:max(1, min(int(limit or 30), 100))]
+
+
+def _promote_judgment_asset_candidate_to_canonical(candidate_id: str) -> dict[str, Any]:
+    import datetime as _dt
+    import hashlib as _hashlib
+
+    candidates = _load_judgment_asset_promotion_candidates(limit=1000)
+    candidate = next((item for item in candidates if str(item.get("id") or "") == candidate_id), None)
+    if not candidate:
+        raise HTTPException(status_code=404, detail="promotion candidate not found")
+    statement = str(candidate.get("edited_claim") or candidate.get("effective_claim") or candidate.get("claim") or "").strip()
+    if len(statement) < 12:
+        raise HTTPException(status_code=422, detail="candidate statement is too short")
+    now = _dt.datetime.now().isoformat(timespec="seconds")
+    material_type = {
+        "confirmation_question": "judgment_rule",
+        "condition_signal": "risk_signal",
+        "application_rule": "judgment_rule",
+        "caution": "risk_signal",
+    }.get(str(candidate.get("candidate_type") or ""), "judgment_rule")
+    concept_raw = str(candidate.get("research_topic") or "manual_screening").strip() or "manual_screening"
+    concept = re.sub(r"[^A-Za-z0-9_]+", "_", concept_raw).strip("_")[:60] or "manual_screening"
+    payload: dict[str, Any] = {}
+    try:
+        payload = json.loads(_CANONICAL_JUDGMENT_RULES_JSON.read_text(encoding="utf-8", errors="ignore"))
+    except (json.JSONDecodeError, OSError):
+        payload = {}
+    rules = payload.get("rules") if isinstance(payload, dict) else []
+    if not isinstance(rules, list):
+        rules = []
+    normalized_statement = " ".join(statement.split())
+    existing = next((rule for rule in rules if " ".join(str(rule.get("canonical_statement") or "").split()) == normalized_statement), None)
+    if existing:
+        existing["updated_at"] = now
+        existing["evidence_count"] = max(int(existing.get("evidence_count") or 0), int(candidate.get("use_count") or 0) + 1)
+        existing["user_evidence_count"] = max(int(existing.get("user_evidence_count") or 0), int(candidate.get("useful_count") or 0) + int(candidate.get("edit_count") or 0))
+        evidence_paths = list(existing.get("evidence_paths") or [])
+        evidence_path = str(candidate.get("evidence_path") or f"judgment_asset_candidate_state:{candidate_id}")
+        if evidence_path and evidence_path not in evidence_paths:
+            evidence_paths.append(evidence_path)
+        existing["evidence_paths"] = evidence_paths[:12]
+        promoted_rule = existing
+        promoted_status = "updated"
+    else:
+        promoted_rule = {
+            "id": _hashlib.sha256(f"manual_promotion|{material_type}|{concept}|{statement}".encode("utf-8")).hexdigest()[:16],
+            "status": "active",
+            "source_status": "manual_promoted",
+            "material_type": material_type,
+            "domain": "lease_screening",
+            "concept": concept,
+            "canonical_statement": statement,
+            "evidence_count": max(1, int(candidate.get("use_count") or 0)),
+            "user_evidence_count": max(1, int(candidate.get("useful_count") or 0) + int(candidate.get("edit_count") or 0)),
+            "confidence": 0.78 + min(0.16, float(candidate.get("useful_count") or 0) * 0.04 + float(candidate.get("edit_count") or 0) * 0.03),
+            "risk_axis": [],
+            "sample_claims": [str(candidate.get("claim") or statement)[:220]],
+            "evidence_paths": [str(candidate.get("evidence_path") or f"judgment_asset_candidate_state:{candidate_id}")],
+            "created_at": now,
+            "updated_at": now,
+            "promotion_source": "judgment_asset_review_gate",
+            "private": False,
+            "material_types": [material_type],
+            "domains": ["lease_screening"],
+        }
+        rules.append(promoted_rule)
+        promoted_status = "promoted"
+    rules = sorted(
+        [rule for rule in rules if isinstance(rule, dict)],
+        key=lambda item: (
+            -int(item.get("evidence_count") or 0),
+            -int(item.get("user_evidence_count") or 0),
+            str(item.get("concept") or ""),
+        ),
+    )
+    store = {
+        "schema_version": int(payload.get("schema_version") or 1) if isinstance(payload, dict) else 1,
+        "generated_at": now,
+        "source": "canonical_judgment_rules",
+        "summary": {
+            "active_rules": len(rules),
+            "promoted": 1 if promoted_status == "promoted" else 0,
+            "updated": 1 if promoted_status == "updated" else 0,
+            "skipped": 0,
+        },
+        "rules": rules,
+    }
+    _CANONICAL_JUDGMENT_RULES_JSON.write_text(json.dumps(store, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    state = _read_judgment_asset_candidate_state()
+    current = dict(state.get(candidate_id) or {})
+    current["promotion_status"] = "promoted"
+    current["promoted_at"] = now
+    current["promoted_rule_id"] = str(promoted_rule.get("id") or "")
+    current["verified_status"] = "canonical"
+    state[candidate_id] = current
+    _write_judgment_asset_candidate_state(state)
+    return {"status": promoted_status, "candidate_id": candidate_id, "rule": promoted_rule, "active_rules": len(rules)}
+
+
+def _review_judgment_asset_promotion_candidate(candidate_id: str, req: JudgmentAssetPromotionReviewRequest) -> dict[str, Any]:
+    import datetime as _dt
+
+    candidate_id = str(candidate_id or "").strip()
+    if not candidate_id:
+        raise HTTPException(status_code=422, detail="candidate_id is required")
+    candidates = _load_autoresearch_judgment_asset_candidates(limit=1000)
+    if not any(str(item.get("id") or "") == candidate_id for item in candidates):
+        raise HTTPException(status_code=404, detail="candidate not found")
+    state = _read_judgment_asset_candidate_state()
+    current = dict(state.get(candidate_id) or {})
+    now = _dt.datetime.now(_dt.timezone.utc).isoformat()
+    current["promotion_status"] = "held" if req.action == "hold" else "rejected"
+    current["promotion_reviewed_at"] = now
+    if req.comment:
+        current["promotion_review_comment"] = str(req.comment)[:300]
+    state[candidate_id] = current
+    _write_judgment_asset_candidate_state(state)
+    return {"status": "ok", "candidate": {"id": candidate_id, **current}}
+
+
+def _queue_judgment_asset_promotion_for_local(candidate_id: str) -> dict[str, Any]:
+    candidate_id = str(candidate_id or "").strip()
+    if not candidate_id:
+        raise HTTPException(status_code=422, detail="candidate_id is required")
+    candidates = _load_judgment_asset_promotion_candidates(limit=1000)
+    candidate = next((item for item in candidates if str(item.get("id") or "") == candidate_id), None)
+    if not candidate:
+        raise HTTPException(status_code=404, detail="promotion candidate not found")
+    return {
+        "status": "queued_for_local_promotion",
+        "candidate_id": candidate_id,
+        "candidate": candidate,
+        "reason": "Cloud Run runtime does not update the canonical judgment-asset store directly.",
+    }
 
 
 _CHAT_JUDGMENT_ASSET_TRIGGERS = (
@@ -11452,6 +11858,55 @@ def get_language_judgment_materials(limit: int = 100) -> dict:
         "promotion_policy": "review_required",
         "materials": materials,
     }
+
+
+@app.get("/api/judgment-assets/promotion-candidates")
+def get_judgment_asset_promotion_candidates(limit: int = 30) -> dict:
+    candidates = _load_judgment_asset_promotion_candidates(limit=limit)
+    active_count = len(_load_canonical_judgment_asset_candidates(limit=1000))
+    return {
+        "count": len(candidates),
+        "active_count": active_count,
+        "promotion_policy": "human_review_required",
+        "candidates": candidates,
+    }
+
+
+@app.post("/api/judgment-assets/promotion-candidates/{candidate_id}/promote")
+def post_judgment_asset_promotion_candidate(candidate_id: str, background_tasks: BackgroundTasks) -> dict:
+    if os.environ.get("K_SERVICE") and os.environ.get("ALLOW_CLOUDRUN_JUDGMENT_ASSET_PROMOTION") != "1":
+        result = _queue_judgment_asset_promotion_for_local(candidate_id)
+        background_tasks.add_task(
+            record_cloudrun_input_event,
+            event_type="judgment_asset_promotion_requested",
+            surface="improvement_log",
+            payload={**result, "schema_version": 1},
+        )
+        return {"status": "ok", "promotion": result}
+    result = _promote_judgment_asset_candidate_to_canonical(candidate_id)
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="judgment_asset_candidate_promoted",
+        surface="improvement_log",
+        payload={**result, "schema_version": 1},
+    )
+    return {"status": "ok", "promotion": result}
+
+
+@app.post("/api/judgment-assets/promotion-candidates/{candidate_id}/review")
+def post_judgment_asset_promotion_candidate_review(
+    candidate_id: str,
+    req: JudgmentAssetPromotionReviewRequest,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    result = _review_judgment_asset_promotion_candidate(candidate_id, req)
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="judgment_asset_candidate_promotion_reviewed",
+        surface="improvement_log",
+        payload={**result, "schema_version": 1, "action": req.action},
+    )
+    return result
 
 
 @app.get("/api/response-impact-predictions")
