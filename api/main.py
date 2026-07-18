@@ -9577,7 +9577,10 @@ def _load_judgment_asset_promotion_candidates(limit: int = 30) -> list[dict[str,
         candidate_id = str(item.get("id") or "")
         if not candidate_id:
             continue
-        merged = {**item, **dict(state.get(candidate_id) or {})}
+        if candidate_id == "demo-renewal-asset-candidate":
+            merged = dict(item)
+        else:
+            merged = {**item, **dict(state.get(candidate_id) or {})}
         promotion_status = str(merged.get("promotion_status") or item.get("promotion_status") or "not_promoted")
         if promotion_status in {"active", "promoted", "rejected_or_deprioritized", "rejected"}:
             continue
