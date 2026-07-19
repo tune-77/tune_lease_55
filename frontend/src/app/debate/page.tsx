@@ -1076,7 +1076,7 @@ export default function DebatePage() {
               <label className="block text-xs font-bold text-slate-500 mb-1">{f.label}</label>
               <input
                 name={f.name} type="text" inputMode="decimal" min={0}
-                value={(form as any)[f.name]} onChange={handleChange}
+                value={form[f.name as keyof typeof form]} onChange={handleChange}
                 className="w-full border rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-400"
               />
             </div>

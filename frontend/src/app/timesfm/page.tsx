@@ -293,8 +293,9 @@ function BaseRateAllChart({ data }: { data: any }) {
     r.months_history?.forEach((m: string) => allMonths.add(m));
     r.months_forecast?.forEach((m: string) => allMonths.add(m + '_f'));
   });
-  const histMonths = Object.values(forecasts)[0] ? (Object.values(forecasts)[0] as any).months_history : [];
-  const foreMonths = Object.values(forecasts)[0] ? (Object.values(forecasts)[0] as any).months_forecast : [];
+  const first = Object.values(forecasts)[0] as { months_history?: string[]; months_forecast?: string[] } | undefined;
+  const histMonths = first?.months_history ?? [];
+  const foreMonths = first?.months_forecast ?? [];
 
   const chartData: any[] = histMonths.map((m: string, i: number) => {
     const pt: any = { month: m };

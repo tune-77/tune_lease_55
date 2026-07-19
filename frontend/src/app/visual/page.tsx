@@ -336,7 +336,7 @@ export default function VisualPage() {
         ].map(tab => (
           <button 
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
+            onClick={() => setActiveTab(tab.id as typeof activeTab)}
             className={`flex items-center gap-2 px-6 py-3 rounded-xl font-black transition-all ${activeTab === tab.id ? 'bg-white text-indigo-600 shadow-md transform scale-[1.02]' : 'text-slate-500 hover:text-slate-700'}`}
           >
             <tab.icon className="w-5 h-5" /> {tab.label}

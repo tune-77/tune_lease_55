@@ -110,7 +110,7 @@ export default function InterestPage() {
         const original = rates.find(r => r.month === month);
         const payload: any = { month, note: original?.note ?? '' };
         for (const col of TERM_COLS) {
-          payload[col] = (patch as any)[col] !== undefined ? (patch as any)[col] : (original as any)?.[col] ?? null;
+          payload[col] = patch[col] !== undefined ? patch[col] : original?.[col] ?? null;
         }
         await apiClient.post(`/api/settings/interest`, payload);
       }
@@ -265,7 +265,7 @@ export default function InterestPage() {
         ].map(tab => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
+            onClick={() => setActiveTab(tab.id as typeof activeTab)}
             className={`px-5 py-2.5 rounded-xl font-black text-sm transition-all ${activeTab === tab.id ? 'bg-emerald-600 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-500 hover:text-slate-700'}`}
           >
             {tab.label}
