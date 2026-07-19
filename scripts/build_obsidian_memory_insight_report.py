@@ -121,6 +121,9 @@ NOISE_TERMS = (
     "http://",
     "https://",
     "node_modules",
+    "HTTP 200",
+    "/api/",
+    "API /",
     "以下の",
     "ご質問",
     "できます",
@@ -141,6 +144,42 @@ DEEP_REASONING_TERMS = (
     "User",
     "ユーザー",
     "望んだ",
+)
+DIRECT_USER_PREFERENCE_TERMS = (
+    "Userは",
+    "ユーザーは",
+    "ユーザーが",
+    "してほしい",
+    "しないで",
+    "やめて",
+    "壊さない",
+    "URLは変えるな",
+    "デプロイはなし",
+    "短く",
+    "長く",
+    "細かい微調整",
+)
+ASSISTANTISH_TERMS = (
+    "Tune、",
+    "ご依頼",
+    "お答え",
+    "前回の",
+    "ご質問",
+    "できます",
+    "してください",
+    "ご確認",
+    "お勧め",
+    "重要な情報です",
+    "お手伝い",
+    "ユーザーがAIに対して",
+    "ユーザーはAI",
+    "AIをより自然な対話相手",
+    "自分のことを理解してくれている",
+    "信頼しやすくなります",
+    "期待するようになります",
+    "可能性があります",
+    "感じます",
+    "適切だと考えます",
 )
 REDACTIONS = (
     (re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"), "[email]"),
@@ -219,6 +258,7 @@ def load_notes(vault: Path, *, end_date: date, days: int, max_files_per_surface:
 
 def _clean_text(value: str, limit: int = 260) -> str:
     text = str(value or "").strip()
+    text = re.sub(r"^\s*#{1,6}\s+", "", text)
     text = re.sub(r"^\s*[-*+]\s+", "", text)
     text = re.sub(r"^\s*\d+[.)]\s+", "", text)
     text = re.sub(r"`([^`]+)`", r"\1", text)
@@ -249,15 +289,27 @@ def _contains_any(text: str, terms: tuple[str, ...]) -> bool:
 def _candidate_type(sentence: str, surface: str) -> str:
     if _contains_any(sentence, NOISE_TERMS):
         return "noise"
-    if _contains_any(sentence, RESEARCH_TERMS) or surface == "research":
-        return "research_material"
-    if _contains_any(sentence, USER_PREFERENCE_TERMS):
-        return "user_preference"
     if _contains_any(sentence, REFLECTION_TERMS) or surface == "private_reflection":
         return "reflection_update"
+    if _contains_any(sentence, RESEARCH_TERMS) or surface == "research":
+        return "research_material"
+    if _is_direct_user_preference(sentence, surface):
+        return "user_preference"
     if _contains_any(sentence, JUDGMENT_TERMS):
         return "judgment_rule"
     return "noise"
+
+
+def _is_direct_user_preference(sentence: str, surface: str) -> bool:
+    if surface == "private_reflection":
+        return False
+    if _looks_vague_or_assistantish(sentence):
+        return False
+    if "優先" in sentence and not any(term in sentence for term in ("User", "ユーザー", "私", "壊さない")):
+        return False
+    if _contains_any(sentence, DIRECT_USER_PREFERENCE_TERMS):
+        return True
+    return False
 
 
 def _candidate_quality(sentence: str, ctype: str) -> tuple[str, list[str]]:
@@ -274,6 +326,24 @@ def _candidate_quality(sentence: str, ctype: str) -> tuple[str, list[str]]:
         reasons.append("next_behavior_missing")
     if ctype == "research_material" and "要確認" in sentence and not any(term in sentence for term in ("根拠", "出典", "条件", "警戒", "反証")):
         reasons.append("thin_research")
+    if ctype == "user_preference" and not any(
+        term in sentence
+        for term in (
+            "Userは",
+            "ユーザーは",
+            "ユーザーが",
+            "してほしい",
+            "しないで",
+            "やめて",
+            "壊さない",
+            "URLは変えるな",
+            "デプロイはなし",
+            "短く",
+            "長く",
+            "細かい微調整",
+        )
+    ):
+        reasons.append("direct_user_signal_missing")
     if reasons:
         return "review", reasons
     return "useful_candidate", ["has_operational_signal"]
@@ -287,16 +357,65 @@ def _looks_vague_or_assistantish(sentence: str) -> bool:
         "重要な",
         "具体的な論点",
         "少し偉い",
-        "できます",
-        "してください",
-        "ご確認",
-        "お勧め",
+        *ASSISTANTISH_TERMS,
     )
     if any(term in sentence for term in vague):
         return True
     if len(sentence) < 30 and not any(term in sentence for term in ("User", "ユーザー", "判断", "内省", "審査")):
         return True
     return False
+
+
+def _candidate_priority_score(item: dict[str, Any]) -> int:
+    claim = item.get("claim") or ""
+    ctype = item.get("candidate_type") or ""
+    quality = item.get("quality") or ""
+    surface = item.get("surface") or ""
+
+    score = 0
+    score += {"useful_candidate": 5, "review": 1, "noise": -10}.get(quality, 0)
+    score += {
+        "user_preference": 5,
+        "judgment_rule": 4,
+        "reflection_update": 3,
+        "research_material": 2,
+    }.get(ctype, 0)
+    if surface == "daily":
+        score += 5
+    elif surface in {"cloudrun_conversation", "dialogue"}:
+        score -= 1
+    elif surface == "ai_chat":
+        score -= 2
+    if ctype == "user_preference" and any(term in claim for term in ("Userは", "ユーザーは", "ユーザーが")):
+        score += 2
+    if any(term in claim for term in ("次回", "確認", "条件", "禁止", "変える", "優先", "壊さない", "反証")):
+        score += 2
+    if _looks_vague_or_assistantish(claim):
+        score -= 3
+    if len(claim) < 28:
+        score -= 1
+    if len(claim) > 180:
+        score -= 1
+    return score
+
+
+def build_top_candidates(candidates: list[dict[str, Any]], *, limit: int = 20) -> list[dict[str, Any]]:
+    ranked: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in candidates:
+        if item.get("candidate_type") == "noise":
+            continue
+        if item.get("quality") != "useful_candidate":
+            continue
+        key = _meaning_key(item.get("claim") or "")
+        if key in seen:
+            continue
+        seen.add(key)
+        enriched = dict(item)
+        enriched["priority_score"] = _candidate_priority_score(item)
+        ranked.append(enriched)
+    ranked.sort(key=lambda item: (item.get("priority_score", 0), item.get("date_hint") or ""), reverse=True)
+    return ranked[:limit]
 
 
 def _candidate_id(sentence: str, rel_path: str, ctype: str) -> str:
@@ -428,6 +547,7 @@ def build_report(vault: Path, notes: list[SourceNote], candidates: list[dict[str
     noise_samples = [item for item in candidates if item["candidate_type"] == "noise"][:8]
     useful = [item for item in candidates if item["quality"] == "useful_candidate"][:20]
     review = [item for item in candidates if item["quality"] == "review"][:20]
+    top_candidates = build_top_candidates(candidates)
     return {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "schema_version": 1,
@@ -436,6 +556,7 @@ def build_report(vault: Path, notes: list[SourceNote], candidates: list[dict[str
         "surface_counts": dict(surface_counts),
         "candidate_counts": dict(type_counts),
         "quality_counts": dict(quality_counts),
+        "top_candidates": top_candidates,
         "useful_candidates": useful,
         "review_candidates": review,
         "noise_samples": noise_samples,
@@ -467,6 +588,9 @@ def render_markdown(report: dict[str, Any]) -> str:
         "",
         "## Quality Counts",
         *_counter_lines(report.get("quality_counts") or {}),
+        "",
+        "## Top 20 Promotion Candidates (Inspection Only)",
+        *_candidate_lines(report.get("top_candidates") or [], limit=20),
         "",
         "## Useful Memory Candidates",
         *_candidate_lines(report.get("useful_candidates") or []),

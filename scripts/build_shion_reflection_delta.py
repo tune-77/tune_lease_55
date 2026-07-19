@@ -22,6 +22,7 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MEMORY_DIR = REPO_ROOT / "memory"
+DEFAULT_HYPOTHESIS_COLLISION_LOG = REPO_ROOT / "data" / "shion_hypothesis_collision_log.jsonl"
 DEFAULT_OUTPUT = REPO_ROOT / "data" / "shion_reflection_delta.json"
 DEFAULT_REPORT = REPO_ROOT / "reports" / "shion_reflection_delta_latest.md"
 
@@ -236,6 +237,7 @@ def build_reflection_delta(
     memory_dir: Path,
     target_date: date,
     reflection_dir: Path | None = None,
+    hypothesis_collision_log: Path = DEFAULT_HYPOTHESIS_COLLISION_LOG,
 ) -> dict[str, Any]:
     inputs = load_inputs(
         memory_dir=memory_dir,
@@ -244,7 +246,8 @@ def build_reflection_delta(
     )
     today_items = _daily_items(inputs.today_memory_text)
     previous_items = _daily_items(inputs.previous_memory_text)
-    current_material = today_items + _reflection_items(inputs.today_reflection_text)
+    collision_items = _hypothesis_collision_items(hypothesis_collision_log, target_date)
+    current_material = today_items + _reflection_items(inputs.today_reflection_text) + collision_items
     previous_material = previous_items + _reflection_items(inputs.previous_reflection_text)
 
     similarity = _similarity(inputs.today_reflection_text, inputs.previous_reflection_text)
@@ -289,6 +292,7 @@ def build_reflection_delta(
             "reflection_similarity_to_yesterday": similarity,
             "today_material_count": len(current_material),
             "previous_material_count": len(previous_material),
+            "hypothesis_collision_item_count": len(collision_items),
         },
         "delta": {
             "user_expectation_shift": user_expectation_shift,
@@ -326,6 +330,49 @@ def _reflection_items(text: str) -> list[str]:
     if items:
         return items
     return _sentences(text)
+
+
+def _hypothesis_collision_items(path: Path, target_date: date) -> list[str]:
+    if not path.exists():
+        return []
+    try:
+        lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except OSError:
+        return []
+    items: list[str] = []
+    for line in lines[-400:]:
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(row, dict):
+            continue
+        ts = str(row.get("ts") or "")
+        try:
+            row_date = datetime.fromisoformat(ts.replace("Z", "+00:00")).date() if ts else target_date
+        except ValueError:
+            row_date = target_date
+        if row_date != target_date:
+            continue
+        try:
+            from api.shion_hypothesis_collision import reflection_items_from_collision
+
+            items.extend(reflection_items_from_collision(row))
+        except Exception:
+            hypothesis = row.get("initial_hypothesis") if isinstance(row.get("initial_hypothesis"), dict) else {}
+            items.extend(
+                [
+                    f"前回の入力: {row.get('previous_user_message', '')}",
+                    f"前回の判断: {hypothesis.get('premise', '')}",
+                    f"人間の修正: {row.get('user_correction', '')}",
+                    f"紫苑が外した点: {row.get('missed_point', '')}",
+                    f"次回から変える確認事項: {row.get('next_behavior', '')}",
+                    f"判断資産候補: {row.get('judgment_asset_candidate', '')}",
+                ]
+            )
+    return _dedupe([item for item in items if item.strip()])
 
 
 def _expectation_shift(today_items: list[str], previous_items: list[str]) -> list[str]:
@@ -594,6 +641,7 @@ def main() -> int:
     parser.add_argument("--date", default=None, help="Target date in YYYY-MM-DD. Defaults to today.")
     parser.add_argument("--memory-dir", type=Path, default=DEFAULT_MEMORY_DIR)
     parser.add_argument("--reflection-dir", type=Path, default=None)
+    parser.add_argument("--hypothesis-collision-log", type=Path, default=DEFAULT_HYPOTHESIS_COLLISION_LOG)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
     parser.add_argument("--dry-run", action="store_true")
@@ -602,6 +650,7 @@ def main() -> int:
     payload = build_reflection_delta(
         memory_dir=args.memory_dir,
         reflection_dir=args.reflection_dir,
+        hypothesis_collision_log=args.hypothesis_collision_log,
         target_date=_parse_date(args.date),
     )
     if args.dry_run:

@@ -119,6 +119,7 @@ def test_materialize_events_writes_existing_pipeline_logs(tmp_path, monkeypatch)
         "screening_loop_feedback_new": 0,
         "improvement_new": 0,
         "chat_new": 0,
+        "hypothesis_collision_new": 0,
         "shion_memory_usage_new": 0,
         "personal_memory_new": 0,
         "score_inputs_new": 1,
@@ -243,9 +244,11 @@ def test_materialize_events_appends_improvement_chat_and_memory_usage(tmp_path, 
     improvement_log = tmp_path / "cloudrun_improvement.jsonl"
     chat_log = tmp_path / "cloudrun_chat.jsonl"
     memory_usage_log = tmp_path / "shion_memory_usage.jsonl"
+    hypothesis_collision_log = tmp_path / "hypothesis_collision.jsonl"
     monkeypatch.setattr(syncer, "CLOUDRUN_IMPROVEMENT_LOG", improvement_log)
     monkeypatch.setattr(syncer, "CLOUDRUN_CHAT_LOG", chat_log)
     monkeypatch.setattr(syncer, "SHION_MEMORY_USAGE_LOG", memory_usage_log)
+    monkeypatch.setattr(syncer, "SHION_HYPOTHESIS_COLLISION_LOG", hypothesis_collision_log)
     monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", tmp_path / "lease_data.db")
 
     result = syncer.materialize_events([
@@ -288,12 +291,69 @@ def test_materialize_events_appends_improvement_chat_and_memory_usage(tmp_path, 
     memory_rows = [json.loads(line) for line in memory_usage_log.read_text(encoding="utf-8").splitlines()]
     assert result["improvement_new"] == 1
     assert result["chat_new"] == 1
+    assert result["hypothesis_collision_new"] == 0
     assert result["shion_memory_usage_new"] == 1
     assert improvement_rows[0]["source"] == "cloudrun_input_writeback"
     assert "Cloud Run入力" in improvement_rows[0]["body"]
     assert chat_rows[0]["category"] == "lease"
     assert chat_rows[0]["metadata"]["knowledge_refs"] == 2
     assert memory_rows[0]["ref_count"] == 2
+
+
+def test_materialize_events_appends_hypothesis_collision_when_next_user_corrects(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
+    monkeypatch.setattr(syncer, "WIZARD_INPUT_LOG", tmp_path / "wizard.jsonl")
+    monkeypatch.setattr(syncer, "RAG_FEEDBACK_LOG", tmp_path / "rag_feedback.jsonl")
+    monkeypatch.setattr(syncer, "RAG_HIT_LOG", tmp_path / "rag_hit.jsonl")
+    monkeypatch.setattr(syncer, "SCREENING_LOOP_FEEDBACK_LOG", tmp_path / "screening_loop.jsonl")
+    monkeypatch.setattr(syncer, "CLOUDRUN_IMPROVEMENT_LOG", tmp_path / "cloudrun_improvement.jsonl")
+    monkeypatch.setattr(syncer, "CLOUDRUN_CHAT_LOG", tmp_path / "cloudrun_chat.jsonl")
+    monkeypatch.setattr(syncer, "SHION_MEMORY_USAGE_LOG", tmp_path / "shion_memory_usage.jsonl")
+    collision_log = tmp_path / "hypothesis_collision.jsonl"
+    monkeypatch.setattr(syncer, "SHION_HYPOTHESIS_COLLISION_LOG", collision_log)
+    monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", tmp_path / "lease_data.db")
+
+    result = syncer.materialize_events([
+        {
+            "event_id": "chat-hyp-1",
+            "ts": "2026-07-19T00:00:00Z",
+            "event_type": "chat_exchange",
+            "surface": "lease_intelligence_dialogue",
+            "payload": {
+                "user_id": "lease-intelligence-dialogue",
+                "category": "dialogue",
+                "response_mode": "shion",
+                "user_message": "内省システムが弱い",
+                "assistant_reply": "材料カードを作ります。",
+                "shion_hypothesis": {
+                    "route": "reflection_identity",
+                    "premise": "ユーザーは材料カードによる内省管理を求めている。",
+                    "confidence": 0.8,
+                    "next_check": "カード量産に流れていないか確認する。",
+                },
+            },
+        },
+        {
+            "event_id": "chat-hyp-2",
+            "ts": "2026-07-19T00:01:00Z",
+            "event_type": "chat_exchange",
+            "surface": "lease_intelligence_dialogue",
+            "payload": {
+                "user_id": "lease-intelligence-dialogue",
+                "category": "dialogue",
+                "response_mode": "shion",
+                "user_message": "あまり意味なさそう",
+                "assistant_reply": "戻します。",
+            },
+        },
+    ])
+
+    rows = [json.loads(line) for line in collision_log.read_text(encoding="utf-8").splitlines()]
+    assert result["hypothesis_collision_new"] == 1
+    assert rows[0]["previous_event_id"] == "chat-hyp-1"
+    assert rows[0]["current_event_id"] == "chat-hyp-2"
+    assert rows[0]["correction_signal"] == "意味なさそう"
+    assert "内省" in rows[0]["judgment_asset_candidate"]
 
 
 def test_materialize_events_syncs_personal_memory_from_cloudrun_chat(tmp_path, monkeypatch) -> None:

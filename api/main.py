@@ -4720,6 +4720,28 @@ def _daily_greeting_opening(now) -> dict:
     }
 
 
+class ShionTaskCreateRequest(BaseModel):
+    title: str
+    due_at: str = ""
+    note: str = ""
+    source: str = "chat"
+    reminder: bool = False
+    tags: list[str] = Field(default_factory=list)
+
+
+class ShionTaskUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    due_at: Optional[str] = None
+    note: Optional[str] = None
+    source: Optional[str] = None
+    reminder: Optional[bool] = None
+    tags: Optional[list[str]] = None
+
+
+class ShionTaskStatusRequest(BaseModel):
+    status: Literal["open", "done", "cancelled"]
+
+
 @app.get("/api/shion/daily-greeting")
 def get_shion_daily_greeting():
     """紫苑コンシェルジュの毎日変わる一言挨拶を返す。外部通信なしの安定版。"""
@@ -4757,6 +4779,111 @@ def get_shion_daily_greeting():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/shion/tasks")
+def get_shion_tasks(status: Literal["open", "done", "cancelled", "all"] = "open", limit: int = 50) -> dict:
+    """紫苑のタスク台帳を返す。記憶・判断資産とは分離した読み取り専用一覧。"""
+    from api.shion_tasks import list_tasks
+
+    tasks = list_tasks(status=status, limit=limit)
+    return {
+        "count": len(tasks),
+        "status_filter": status,
+        "ledger": "data/shion_tasks.jsonl",
+        "separation_policy": "tasks_are_not_memory_or_judgment_assets",
+        "tasks": tasks,
+    }
+
+
+@app.get("/api/shion/memory-lanes")
+def get_shion_memory_lanes(
+    include_private: bool = False,
+    include_sensitive_personal: bool = False,
+    sample_limit: int = 5,
+) -> dict:
+    """普通の記憶エージェントとしての記憶棚を分離して返す。
+
+    ここではプロンプト注入や判断資産昇格はしない。見える化だけ。
+    """
+    from api.shion_memory_lanes import build_memory_lanes
+
+    return build_memory_lanes(
+        include_private=include_private,
+        include_sensitive_personal=include_sensitive_personal,
+        sample_limit=max(1, min(int(sample_limit or 5), 20)),
+    )
+
+
+@app.post("/api/shion/tasks")
+def post_shion_task(req: ShionTaskCreateRequest, background_tasks: BackgroundTasks) -> dict:
+    """紫苑タスクを追記型台帳へ追加する。通知は別系統で、ここでは管理だけ行う。"""
+    from api.shion_tasks import create_task
+
+    try:
+        task = create_task(
+            title=req.title,
+            due_at=req.due_at,
+            note=req.note,
+            source=req.source,
+            reminder=req.reminder,
+            tags=req.tags,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="shion_task_created",
+        surface="shion_tasks",
+        payload={**task, "schema_version": 1},
+    )
+    return {"status": "ok", "task": task}
+
+
+@app.patch("/api/shion/tasks/{task_id}")
+def patch_shion_task(task_id: str, req: ShionTaskUpdateRequest, background_tasks: BackgroundTasks) -> dict:
+    from api.shion_tasks import update_task
+
+    try:
+        task = update_task(
+            task_id,
+            title=req.title,
+            due_at=req.due_at,
+            note=req.note,
+            source=req.source,
+            reminder=req.reminder,
+            tags=req.tags,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="task not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="shion_task_updated",
+        surface="shion_tasks",
+        payload={**task, "schema_version": 1},
+    )
+    return {"status": "ok", "task": task}
+
+
+@app.post("/api/shion/tasks/{task_id}/status")
+def post_shion_task_status(task_id: str, req: ShionTaskStatusRequest, background_tasks: BackgroundTasks) -> dict:
+    from api.shion_tasks import set_task_status
+
+    try:
+        task = set_task_status(task_id, req.status)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="task not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="shion_task_status_changed",
+        surface="shion_tasks",
+        payload={**task, "schema_version": 1},
+    )
+    return {"status": "ok", "task": task}
 
 
 def _lease_news_brief_to_dict(brief):
@@ -8304,6 +8431,20 @@ def _record_cloudrun_chat_exchange(
     if not (os.environ.get("K_SERVICE") or os.environ.get("CLOUDRUN_DATA_MODE")):
         return
     try:
+        hypothesis: dict = {}
+        if str(response_mode or "").strip().lower() != "general":
+            try:
+                from api.shion_hypothesis_collision import build_initial_hypothesis
+
+                hypothesis = build_initial_hypothesis(
+                    user_message=user_message,
+                    assistant_reply=assistant_reply,
+                    surface=surface,
+                    category=category,
+                    response_mode=response_mode,
+                )
+            except Exception as hypothesis_exc:
+                print(f"[ShionHypothesis] 生成スキップ: {hypothesis_exc}")
         record_cloudrun_input_event(
             event_type="chat_exchange",
             surface=surface,
@@ -8314,6 +8455,7 @@ def _record_cloudrun_chat_exchange(
                 "user_message": _redact_chat_log_text(user_message, limit=1200),
                 "assistant_reply": _redact_chat_log_text(assistant_reply, limit=1800),
                 "metadata": metadata or {},
+                "shion_hypothesis": hypothesis,
             },
         )
     except Exception as exc:

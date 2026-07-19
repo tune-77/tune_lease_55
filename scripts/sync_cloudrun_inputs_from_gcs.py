@@ -28,6 +28,7 @@ SCREENING_LOOP_FEEDBACK_LOG = PROJECT_ROOT / "data" / "screening_loop_feedback.j
 CLOUDRUN_IMPROVEMENT_LOG = PROJECT_ROOT / "data" / "cloudrun_improvement_log.jsonl"
 CLOUDRUN_CHAT_LOG = PROJECT_ROOT / "data" / "cloudrun_chat_log.jsonl"
 SHION_MEMORY_USAGE_LOG = PROJECT_ROOT / "data" / "shion_memory_usage_log.jsonl"
+SHION_HYPOTHESIS_COLLISION_LOG = PROJECT_ROOT / "data" / "shion_hypothesis_collision_log.jsonl"
 USER_PERSONAL_MEMORY_PATH = PROJECT_ROOT / "data" / "user_personal_memory.md"
 JUDGMENT_ASSET_EVENT_TYPES = {
     "human_response_feedback",
@@ -710,6 +711,7 @@ def _chat_entry_from_event(event: dict) -> dict | None:
         "user_message": user_message[:1200],
         "assistant_reply": assistant_reply[:1800],
         "metadata": payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {},
+        "shion_hypothesis": payload.get("shion_hypothesis") if isinstance(payload.get("shion_hypothesis"), dict) else {},
         "source": "cloudrun_input_writeback",
     }
 
@@ -729,6 +731,18 @@ def _shion_memory_usage_from_event(event: dict) -> dict | None:
         "surface": event.get("surface") or "api_chat",
         "source": "cloudrun_input_writeback",
     }
+
+
+def _build_hypothesis_collision_rows(chat_rows: list[dict]) -> list[dict]:
+    if not chat_rows:
+        return []
+    try:
+        from api.shion_hypothesis_collision import collision_entries_from_chat_rows
+
+        return collision_entries_from_chat_rows(chat_rows)
+    except Exception as exc:
+        print(f"[ShionHypothesisCollision] materialize skipped: {exc}")
+        return []
 
 
 def _personal_memory_lines_from_event(event: dict) -> tuple[list[str], str]:
@@ -849,6 +863,7 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
     screening_loop_rows = [row for event in events if (row := _screening_loop_feedback_from_event(event))]
     improvement_rows = [row for event in events if (row := _improvement_entry_from_event(event))]
     chat_rows = [row for event in events if (row := _chat_entry_from_event(event))]
+    hypothesis_collision_rows = _build_hypothesis_collision_rows(chat_rows)
     shion_memory_usage_rows = [row for event in events if (row := _shion_memory_usage_from_event(event))]
     personal_memory_new = _sync_personal_memory_from_events(events) if events else 0
     rag_feedback_rows: list[dict] = []
@@ -874,6 +889,7 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
         "screening_loop_feedback_new": _append_jsonl_dedup(SCREENING_LOOP_FEEDBACK_LOG, screening_loop_rows) if screening_loop_rows else 0,
         "improvement_new": _append_jsonl_dedup(CLOUDRUN_IMPROVEMENT_LOG, improvement_rows) if improvement_rows else 0,
         "chat_new": _append_jsonl_dedup(CLOUDRUN_CHAT_LOG, chat_rows) if chat_rows else 0,
+        "hypothesis_collision_new": _append_jsonl_dedup(SHION_HYPOTHESIS_COLLISION_LOG, hypothesis_collision_rows) if hypothesis_collision_rows else 0,
         "shion_memory_usage_new": _append_jsonl_dedup(SHION_MEMORY_USAGE_LOG, shion_memory_usage_rows) if shion_memory_usage_rows else 0,
         "personal_memory_new": personal_memory_new,
         **db_result,

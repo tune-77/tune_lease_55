@@ -1,4 +1,5 @@
 from datetime import date
+import json
 
 from scripts.build_shion_reflection_delta import build_reflection_delta, render_markdown
 
@@ -134,3 +135,41 @@ def test_judgment_change_log_satisfies_handoff_quality(tmp_path):
     assert "user_expectation_shift_missing" not in flags
     assert "boring_label_dominates" not in flags
     assert payload["judgment_change_log"]["人間の修正"] == "銀行支援を別軸で確認するよう指摘された。"
+
+
+def test_reflection_delta_reads_runtime_hypothesis_collision_log(tmp_path):
+    memory_dir = tmp_path / "memory"
+    memory_dir.mkdir()
+    _write_daily(memory_dir, "2026-07-18", ["前日の作業。"], [])
+    _write_daily(memory_dir, "2026-07-19", ["仮説衝突ログを確認する。"], [])
+    collision_log = tmp_path / "collision.jsonl"
+    collision_log.write_text(
+        json.dumps(
+            {
+                "ts": "2026-07-19T00:01:00Z",
+                "previous_user_message": "内省システムが弱い",
+                "user_correction": "あまり意味なさそう",
+                "missed_point": "内省の形式に寄りすぎた。",
+                "next_behavior": "仮説が壊れた時だけ記録する。",
+                "judgment_asset_candidate": "内省は初期仮説が人間の修正でどう変わったかで評価する。",
+                "initial_hypothesis": {
+                    "premise": "ユーザーは材料カードによる内省管理を求めている。",
+                    "next_check": "カード量産に流れていないか確認する。",
+                },
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    payload = build_reflection_delta(
+        memory_dir=memory_dir,
+        target_date=date(2026, 7, 19),
+        hypothesis_collision_log=collision_log,
+    )
+
+    assert payload["metrics"]["hypothesis_collision_item_count"] > 0
+    assert payload["judgment_change_log"]["前回の判断"] == "ユーザーは材料カードによる内省管理を求めている。"
+    assert payload["judgment_change_log"]["人間の修正"] == "あまり意味なさそう"
+    assert payload["judgment_change_log"]["紫苑が外した点"] == "内省の形式に寄りすぎた。"

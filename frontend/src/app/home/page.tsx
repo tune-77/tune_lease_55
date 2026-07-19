@@ -162,6 +162,16 @@ type DashboardStats = {
 
 const HOME_SHION_CHAT_DRAFT_KEY = "home-shion-chat-draft";
 
+type DailyGreeting = {
+  date: string;
+  opening: string;
+  time_band?: string;
+  time_note?: string;
+  yesterday?: string;
+  thought?: string;
+  suggestion?: string;
+};
+
 type NewsSummaryItem = {
   date: string;
   title: string;
@@ -205,6 +215,7 @@ export default function HomeDashboard() {
   const [panelSettings, setPanelSettings] = useState<HomePanelSettings>(DEFAULT_PANEL_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [leaseNewsFocus, setLeaseNewsFocus] = useState<DashboardStats["lease_news_focus"] | null>(null);
+  const [dailyGreeting, setDailyGreeting] = useState<DailyGreeting | null>(null);
   const leaseNewsReflection = stats?.lease_news_reflection;
   const [leaseNewsBrief, setLeaseNewsBrief] = useState<DashboardStats["lease_news_brief"] | null>(null);
   const [newsPrefecture, setNewsPrefecture] = useState("");
@@ -282,9 +293,23 @@ export default function HomeDashboard() {
         // ignore
       }
     };
+    const fetchDailyGreeting = async () => {
+      try {
+        const res = await apiClient.get(`/api/shion/daily-greeting`);
+        setDailyGreeting(res.data || null);
+      } catch {
+        setDailyGreeting({
+          date: formatLocalDateKey(new Date()),
+          opening: "おかえりなさい。",
+          time_band: "fallback",
+          time_note: "いまの状況を短く整理します。",
+        });
+      }
+    };
     fetchStats();
     fetchRecentNews();
     fetchLeaseNewsFocus();
+    fetchDailyGreeting();
     const activityKey = `lease-intelligence-activity:home:${formatLocalDateKey(new Date())}`;
     if (!window.sessionStorage.getItem(activityKey)) {
       apiClient.post("/api/lease-intelligence/activity", {
@@ -411,8 +436,8 @@ export default function HomeDashboard() {
             紫苑の審査室
           </h1>
           <p className="text-blue-100 text-sm sm:text-lg font-bold leading-relaxed mb-6 sm:mb-8 opacity-90">
-            おかえりなさい。昨日からの変化、今日の案件、残しておくべき判断をここに集めました。<br/>
-            一般論ではなく、Userのリース判断資産として読み返せる形で返します。
+            {dailyGreeting?.opening || "おかえりなさい。"}{dailyGreeting?.time_note || "昨日からの変化、今日の案件、残しておくべき判断をここに集めました。"}<br/>
+            {dailyGreeting?.suggestion || "一般論ではなく、Userのリース判断資産として読み返せる形で返します。"}
           </p>
           <div className="flex flex-wrap gap-3">
             {[

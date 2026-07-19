@@ -3,6 +3,7 @@ from datetime import date
 from scripts.build_obsidian_memory_insight_report import (
     build_report,
     build_thinking_cards,
+    build_top_candidates,
     collect_candidates,
     load_notes,
     render_markdown,
@@ -53,7 +54,14 @@ def test_obsidian_memory_insight_extracts_candidates_and_cards(tmp_path):
     assert "judgment_rule" in types
     assert "reflection_update" in types
     assert "research_material" in types
+    assert not any(
+        item["candidate_type"] == "user_preference" and item["surface"] == "private_reflection"
+        for item in candidates
+    )
+    assert build_top_candidates(candidates)
+    assert report["top_candidates"]
     assert cards
+    assert "Top 20 Promotion Candidates" in markdown
     assert "Deep Reasoning Cards" in markdown
     assert "inspection_only_no_rag_no_prompt_no_cloudrun_no_obsidian_write" in markdown
 
@@ -70,3 +78,17 @@ def test_obsidian_memory_insight_marks_technical_noise(tmp_path):
 
     assert candidates
     assert candidates[0]["candidate_type"] == "noise"
+
+
+def test_obsidian_memory_insight_does_not_promote_assistantish_text_as_user_preference(tmp_path):
+    vault = tmp_path / "Obsidian Vault"
+    _write(
+        vault / "Projects" / "tune_lease_55" / "AI Chat" / "Cloud Run Conversation Log" / "2026-07-14.md",
+        "Tune、リース審査における優先順位を整理できます。ご確認してください。\n",
+    )
+
+    notes = load_notes(vault, end_date=date(2026, 7, 14), days=1)
+    candidates = collect_candidates(notes)
+
+    assert candidates
+    assert all(item["candidate_type"] != "user_preference" for item in candidates)
