@@ -82,3 +82,4 @@ jobs:
           tests/test_lease_intelligence_dialogue.py
           tests/test_loop_hardening.py
           tests/test_codex_review_p1_p2_fixes.py
+          tests/test_build_loop_proof.py
