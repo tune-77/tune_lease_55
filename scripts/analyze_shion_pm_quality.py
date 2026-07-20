@@ -259,6 +259,31 @@ def latest_improvement_quality(root: Path) -> dict[str, Any]:
     return last
 
 
+def loop_proof_summary(root: Path) -> dict[str, Any]:
+    """「ループが閉じた証拠」（reports/loop_proof.html）の主要数値。
+
+    数値は build_loop_proof.collect() から取得し、改善PMレポートと loop_proof が
+    同じ出典（同じ実ログ）で乗らないようにする。失敗してもレポートを壊さない。
+    """
+    try:
+        import build_loop_proof  # scripts/ は sys.path 済み
+
+        m = build_loop_proof.collect()
+    except Exception:  # noqa: BLE001 — 集計失敗でPMレポートを止めない
+        return {}
+    keys = (
+        "proposals", "applied", "applied_pct", "pr_traced",
+        "feedback_total", "feedback_pct", "fb_diff_pct", "field",
+        "materials", "active_rules", "needs_review",
+        "period_start", "period_end",
+    )
+    return {k: m.get(k) for k in keys if m.get(k) is not None}
+
+
+def _as_int(value: Any) -> Any:
+    return round(value) if isinstance(value, (int, float)) else value
+
+
 def render_markdown(payload: dict[str, Any]) -> str:
     kpis = payload.get("kpis") or {}
     counts = kpis.get("decision_counts") or {}
@@ -270,8 +295,22 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"（今日やる {counts.get('today', 0)} / 後回し {counts.get('later', 0)} / 捨てる {counts.get('discard', 0)}）",
         f"- outcome 書き戻し: 今回 {payload.get('outcomes_synced', 0)} 件",
         "",
-        "## トリアージ網羅率（最新レポートの候補のうち判断確定済み）",
     ]
+    lp = payload.get("loop_proof") or {}
+    if lp.get("proposals") is not None:
+        lines += [
+            "## ループが閉じた証拠（サマリー）",
+            f"- 提案 {lp.get('proposals')} → 適用 {lp.get('applied')}"
+            f"（{lp.get('applied_pct')}%）/ PR紐づき {lp.get('pr_traced')}",
+            f"- 人間評価 {lp.get('feedback_total')} 件"
+            f"（PDCA {_as_int(lp.get('feedback_pct'))}%・応答変化 {lp.get('fb_diff_pct')}%）",
+            f"- 判断資産 Materials {lp.get('materials')} / Active rules {lp.get('active_rules')}"
+            f"・実戦検証 {_as_int(lp.get('field'))}（未点灯・次の点火点）",
+            "- 詳細1画面: `reports/loop_proof.html`"
+            "（`scripts/build_loop_proof.py` が実ログから自動生成）",
+            "",
+        ]
+    lines.append("## トリアージ網羅率（最新レポートの候補のうち判断確定済み）")
     coverage = kpis.get("coverage") or {}
     coverage_rate = coverage.get("rate")
     lines.append(
@@ -357,6 +396,7 @@ def main() -> int:
         "outcomes_synced": len(updates),
         "kpis": kpis,
         "improvement_quality": latest_improvement_quality(root),
+        "loop_proof": loop_proof_summary(root),
     }
 
     if args.dry_run:
