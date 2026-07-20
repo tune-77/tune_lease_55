@@ -15,6 +15,8 @@ from typing import Iterable, Any
 
 GCS_BUCKET = os.environ.get("GCS_BUCKET", "tune-lease-55-data")
 GCS_INPUT_PREFIX = os.environ.get("GCS_INPUT_PREFIX", "cloudrun-inputs/")
+GCS_SNAPSHOT_PREFIX = os.environ.get("GCS_SNAPSHOT_PREFIX", "cloudrun-snapshots/")
+PROMPT_FEEDBACK_SNAPSHOT_BLOB = f"{GCS_SNAPSHOT_PREFIX.strip('/') or 'cloudrun-snapshots'}/prompt_feedback_log.jsonl"
 LOCAL_INPUT_DIR = Path(os.environ.get("LOCAL_CLOUDRUN_INPUT_DIR", "data/cloudrun_inputs"))
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MAIN_LEASE_DB = PROJECT_ROOT / "data" / "lease_data.db"
@@ -946,6 +948,26 @@ def sync_day(bucket: Any | None, day: date, local_dir: Path = LOCAL_INPUT_DIR, b
     }
 
 
+def _upload_prompt_feedback_snapshot(bucket: Any | None) -> None:
+    """累積マージ済みの prompt_feedback_log.jsonl をGCSへ複製する。
+
+    Cloud Runコンテナのローカルディスクはコールドスタートのたびに空になるため、
+    起動時に scripts/restore_prompt_feedback_snapshot.py がこのスナップショットを
+    取得して累積値を復元する。失敗してもパイプライン全体は止めない。
+    """
+    if bucket is None:
+        return
+    if not PROMPT_FEEDBACK_LOG.exists() or PROMPT_FEEDBACK_LOG.stat().st_size == 0:
+        return
+    try:
+        text = PROMPT_FEEDBACK_LOG.read_text(encoding="utf-8")
+        blob = bucket.blob(PROMPT_FEEDBACK_SNAPSHOT_BLOB)
+        blob.upload_from_string(text, content_type="application/jsonl; charset=utf-8")
+        print(f"[SNAPSHOT] prompt_feedback_log.jsonl → gs://{bucket.name}/{PROMPT_FEEDBACK_SNAPSHOT_BLOB}")
+    except Exception as exc:
+        print(f"[SNAPSHOT] prompt_feedback_log.jsonl アップロード失敗（無視）: {exc}", file=sys.stderr)
+
+
 def main() -> None:
     days = int(os.environ.get("CLOUDRUN_INPUT_SYNC_DAYS", "3"))
     bucket_name = _bucket_name()
@@ -973,6 +995,7 @@ def main() -> None:
     if error_days:
         print(f"エラー: {error_days} 日分の取得に失敗しました（イベント未取得の可能性）", file=sys.stderr)
         sys.exit(1)
+    _upload_prompt_feedback_snapshot(bucket)
     print("同期完了")
 
 
