@@ -55,6 +55,7 @@ export default function Sidebar() {
         { name: 'リアルタイム音声会話', href: '/voice-chat', icon: Mic, color: 'text-amber-300' },
         { name: '結果登録', href: '/register', icon: PenTool, color: 'text-rose-400' },
         { name: '改善PMレポート', href: '/improvement-log', icon: ClipboardList, color: 'text-orange-300' },
+        { name: 'ループが閉じた証拠', href: '/loop-proof', icon: GitBranch, color: 'text-violet-300' },
         { name: 'システム概要', href: '/system-overview', icon: Orbit, color: 'text-fuchsia-400' },
         { name: 'DevOpsサイクル', href: '/devops', icon: GitBranch, color: 'text-emerald-300' },
         { name: '紫苑の記憶システム', href: '/shion-memory-system', icon: Database, color: 'text-sky-300' },
