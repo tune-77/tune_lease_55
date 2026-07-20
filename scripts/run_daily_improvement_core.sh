@@ -38,13 +38,22 @@ if [ ${SYNC_INPUT_OBSIDIAN_EXIT} -ne 0 ]; then
 fi
 
 echo ""
-echo "[入力・同期] Cloud SQL 会話ログを Obsidian 要約へ反映中..."
-DATABASE_URL_SECRET_NAME="${DATABASE_URL_SECRET_NAME:-DATABASE_URL}" \
-    "${PYTHON}" "${PROJECT_ROOT}/scripts/sync_cloudsql_to_obsidian.py"
-SYNC_CLOUDSQL_OBSIDIAN_EXIT=$?
-log_step "sync_cloudsql_to_obsidian" ${SYNC_CLOUDSQL_OBSIDIAN_EXIT}
-if [ ${SYNC_CLOUDSQL_OBSIDIAN_EXIT} -ne 0 ]; then
-    echo "警告: Cloud SQL会話ログのObsidian反映に失敗しました（終了コード ${SYNC_CLOUDSQL_OBSIDIAN_EXIT}）"
+# Cloud SQL（tune-lease-db）は 2026-07 に廃止済み。Cloud Run 会話は GCS chat_exchange
+# 経路で Obsidian に反映されるため、この同期ステップは既定で無効化している。
+# 有効なままだと廃止済みインスタンスへの接続を毎晩試みて exit 1 で落ち、
+# パイプラインヘルスを汚染していた（REV-027a）。将来 cloud-sql-proxy 経由などで
+# 再利用する場合のみ ENABLE_CLOUDSQL_SYNC=1 を指定して有効化する。
+if [ "${ENABLE_CLOUDSQL_SYNC:-0}" = "1" ]; then
+    echo "[入力・同期] Cloud SQL 会話ログを Obsidian 要約へ反映中..."
+    DATABASE_URL_SECRET_NAME="${DATABASE_URL_SECRET_NAME:-DATABASE_URL}" \
+        "${PYTHON}" "${PROJECT_ROOT}/scripts/sync_cloudsql_to_obsidian.py"
+    SYNC_CLOUDSQL_OBSIDIAN_EXIT=$?
+    log_step "sync_cloudsql_to_obsidian" ${SYNC_CLOUDSQL_OBSIDIAN_EXIT}
+    if [ ${SYNC_CLOUDSQL_OBSIDIAN_EXIT} -ne 0 ]; then
+        echo "警告: Cloud SQL会話ログのObsidian反映に失敗しました（終了コード ${SYNC_CLOUDSQL_OBSIDIAN_EXIT}）"
+    fi
+else
+    echo "[入力・同期] Cloud SQL 会話ログ同期は無効（Cloud SQL 廃止済み）。ENABLE_CLOUDSQL_SYNC=1 で有効化できます。スキップします。"
 fi
 
 echo ""
