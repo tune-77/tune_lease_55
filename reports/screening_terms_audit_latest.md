@@ -1,15 +1,15 @@
 # Screening Terms Audit
 
-- generated_at: `2026-07-18T04:09:53`
+- generated_at: `2026-07-20T04:08:08`
 - status: `ok`
-- scanned_files: `370`
+- scanned_files: `379`
 - guardrail: `read_only_terms_audit_no_scoring_or_db_change`
 
 ## Counts
 
 - warn: `0`
 - review: `62`
-- ok: `1857`
+- ok: `1914`
 
 ## Glossary
 
@@ -20,15 +20,15 @@
 
 ## Warn / Review Findings
 
-- `review` `actual_pd` `api/main.py:8684` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:9194` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE shion_screening_reviews`
-- `review` `actual_pd` `api/main.py:8696` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:9206` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `f"UPDATE shion_screening_reviews SET user_feedback = {ph} WHERE id = {ph}",`
-- `review` `actual_pd` `api/main.py:10070` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:10983` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE {table_name}`
-- `review` `actual_pd` `api/main.py:10394` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:11307` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE cloudrun_score_inputs`
-- `review` `actual_pd` `api/main.py:10418` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:11331` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE cloudrun_score_inputs`
 - `review` `actual_pd` `api/outcome_drift_loop.py:7` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `帯ごとの延滞・デフォルト率を集計する`
@@ -128,7 +128,7 @@
   - `log "Cloud Run 新リビジョン起動: $CLOUD_RUN_SERVICE (CHROMADB_UPDATED_AT=$TIMESTAMP)"`
 - `review` `actual_pd` `scripts/sync_chromadb_to_gcs.sh:46` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `--update-env-vars "CHROMADB_UPDATED_AT=$TIMESTAMP" 2>&1 | tee -a "$LOG_FILE"; then`
-- `review` `actual_pd` `scripts/sync_cloudrun_inputs_from_gcs.py:533` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `scripts/sync_cloudrun_inputs_from_gcs.py:534` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `"UPDATE shion_screening_reviews SET user_feedback = ? WHERE id = ?",`
 - `review` `actual_pd` `scripts/sync_implemented_to_obsidian.py:31` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `"REV-041":             ["PD表示箇所の明確化"],`

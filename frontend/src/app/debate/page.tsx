@@ -8,6 +8,9 @@ import {
 } from "lucide-react";
 import { INDUSTRIES } from "@/constants/industries";
 
+// 討論ストリームが無応答のまま停滞した場合に強制打ち切るまでの猶予（想定所要30〜90秒 + バッファ）
+const STREAM_IDLE_TIMEOUT_MS = 120000;
+
 // ── デモユーザー定義 ─────────────────────────────────────────────────────────
 const DEMO_USERS = [
   { key: "tanaka",     name: "田中",           dept: "審査部",           style: "厳格・数字重視" },
@@ -506,6 +509,7 @@ export default function DebatePage() {
     typeof crypto !== "undefined" ? crypto.randomUUID() : Math.random().toString(36).slice(2)
   );
   const historyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const streamAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const raw = window.localStorage.getItem("lease-debate-context");
@@ -616,17 +620,34 @@ export default function DebatePage() {
     payload: Record<string, unknown>,
     capturedParticipants: Participants,
   ): Promise<boolean> => {
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
+    const armIdleTimer = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => controller.abort(), STREAM_IDLE_TIMEOUT_MS);
+    };
+
     let res: Response;
     try {
+      armIdleTimer();
       res = await fetch(`${API_BASE}/api/multi-agent-screening/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        signal: controller.signal,
       });
-    } catch {
+    } catch (err: any) {
+      if (idleTimer) clearTimeout(idleTimer);
+      if (err?.name === "AbortError") {
+        throw new Error("討論が一定時間応答を返さなかったため打ち切りました。もう一度お試しください。");
+      }
       return false;
     }
-    if (!res.ok || !res.body) return false;
+    if (!res.ok || !res.body) {
+      if (idleTimer) clearTimeout(idleTimer);
+      return false;
+    }
 
     let gotEvent = false;
     let gotResult = false;
@@ -666,22 +687,45 @@ export default function DebatePage() {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      let idx;
-      while ((idx = buf.indexOf("\n\n")) >= 0) {
-        const chunk = buf.slice(0, idx);
-        buf = buf.slice(idx + 2);
-        const dataLine = chunk.split("\n").find(l => l.startsWith("data: "));
-        if (!dataLine) continue;
-        gotEvent = true;
-        handleEvent(JSON.parse(dataLine.slice(6)));
+    try {
+      while (true) {
+        armIdleTimer();
+        let readResult: ReadableStreamReadResult<Uint8Array>;
+        try {
+          readResult = await reader.read();
+        } catch (err: any) {
+          if (err?.name === "AbortError") {
+            throw new Error("討論が一定時間応答を返さなかったため打ち切りました。もう一度お試しください。");
+          }
+          throw err;
+        }
+        const { done, value } = readResult;
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let idx;
+        while ((idx = buf.indexOf("\n\n")) >= 0) {
+          const chunk = buf.slice(0, idx);
+          buf = buf.slice(idx + 2);
+          const dataLine = chunk.split("\n").find(l => l.startsWith("data: "));
+          if (!dataLine) continue;
+          gotEvent = true;
+          handleEvent(JSON.parse(dataLine.slice(6)));
+        }
       }
+    } finally {
+      if (idleTimer) clearTimeout(idleTimer);
+      if (streamAbortRef.current === controller) streamAbortRef.current = null;
     }
     if (gotEvent && !gotResult) throw new Error("討論ストリームが途中で終了しました");
     return gotEvent;
+  };
+
+  const cancelDebate = () => {
+    streamAbortRef.current?.abort();
+    setLoading(false);
+    setLiveStatus("");
+    setLiveRound1(null);
+    setError("討論をキャンセルしました。");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1091,22 +1135,33 @@ export default function DebatePage() {
           </div>
         </div>
 
-        <button
-          type="submit" disabled={loading}
-          className="w-full mt-2 py-3 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-black text-base flex items-center justify-center gap-2 transition-colors"
-        >
-          {loading ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              討論中... （30〜90秒）
-            </>
-          ) : (
-            <>
-              <Orbit className="w-5 h-5" />
-              討論審査を開始
-            </>
+        <div className="mt-2 flex gap-2">
+          <button
+            type="submit" disabled={loading}
+            className="flex-1 py-3 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-black text-base flex items-center justify-center gap-2 transition-colors"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                討論中... （30〜90秒）
+              </>
+            ) : (
+              <>
+                <Orbit className="w-5 h-5" />
+                討論審査を開始
+              </>
+            )}
+          </button>
+          {loading && (
+            <button
+              type="button"
+              onClick={cancelDebate}
+              className="py-3 px-4 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-600 font-bold text-sm transition-colors"
+            >
+              キャンセル
+            </button>
           )}
-        </button>
+        </div>
       </form>
 
       {/* 討論進行状況（ストリーミング中間表示） */}

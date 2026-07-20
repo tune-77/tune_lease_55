@@ -27,6 +27,7 @@ RAG_HIT_LOG = PROJECT_ROOT / "data" / "rag_hit_log.jsonl"
 SCREENING_LOOP_FEEDBACK_LOG = PROJECT_ROOT / "data" / "screening_loop_feedback.jsonl"
 CLOUDRUN_IMPROVEMENT_LOG = PROJECT_ROOT / "data" / "cloudrun_improvement_log.jsonl"
 CLOUDRUN_CHAT_LOG = PROJECT_ROOT / "data" / "cloudrun_chat_log.jsonl"
+PROMPT_FEEDBACK_LOG = PROJECT_ROOT / "data" / "prompt_feedback_log.jsonl"
 SHION_MEMORY_USAGE_LOG = PROJECT_ROOT / "data" / "shion_memory_usage_log.jsonl"
 SHION_HYPOTHESIS_COLLISION_LOG = PROJECT_ROOT / "data" / "shion_hypothesis_collision_log.jsonl"
 USER_PERSONAL_MEMORY_PATH = PROJECT_ROOT / "data" / "user_personal_memory.md"
@@ -716,6 +717,19 @@ def _chat_entry_from_event(event: dict) -> dict | None:
     }
 
 
+def _prompt_feedback_entry_from_event(event: dict) -> dict | None:
+    if event.get("event_type") != "prompt_feedback":
+        return None
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    if not payload:
+        return None
+    entry = dict(payload)
+    entry.setdefault("event_id", event.get("event_id"))
+    entry.setdefault("surface", event.get("surface") or payload.get("surface") or "unknown")
+    entry["source"] = "cloudrun_input_writeback"
+    return entry
+
+
 def _shion_memory_usage_from_event(event: dict) -> dict | None:
     if event.get("event_type") != "shion_memory_usage":
         return None
@@ -863,6 +877,7 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
     screening_loop_rows = [row for event in events if (row := _screening_loop_feedback_from_event(event))]
     improvement_rows = [row for event in events if (row := _improvement_entry_from_event(event))]
     chat_rows = [row for event in events if (row := _chat_entry_from_event(event))]
+    prompt_feedback_rows = [row for event in events if (row := _prompt_feedback_entry_from_event(event))]
     hypothesis_collision_rows = _build_hypothesis_collision_rows(chat_rows)
     shion_memory_usage_rows = [row for event in events if (row := _shion_memory_usage_from_event(event))]
     personal_memory_new = _sync_personal_memory_from_events(events) if events else 0
@@ -889,6 +904,7 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
         "screening_loop_feedback_new": _append_jsonl_dedup(SCREENING_LOOP_FEEDBACK_LOG, screening_loop_rows) if screening_loop_rows else 0,
         "improvement_new": _append_jsonl_dedup(CLOUDRUN_IMPROVEMENT_LOG, improvement_rows) if improvement_rows else 0,
         "chat_new": _append_jsonl_dedup(CLOUDRUN_CHAT_LOG, chat_rows) if chat_rows else 0,
+        "prompt_feedback_new": _append_jsonl_dedup(PROMPT_FEEDBACK_LOG, prompt_feedback_rows) if prompt_feedback_rows else 0,
         "hypothesis_collision_new": _append_jsonl_dedup(SHION_HYPOTHESIS_COLLISION_LOG, hypothesis_collision_rows) if hypothesis_collision_rows else 0,
         "shion_memory_usage_new": _append_jsonl_dedup(SHION_MEMORY_USAGE_LOG, shion_memory_usage_rows) if shion_memory_usage_rows else 0,
         "personal_memory_new": personal_memory_new,

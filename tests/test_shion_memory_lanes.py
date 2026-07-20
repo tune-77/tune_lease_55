@@ -49,6 +49,14 @@ def test_memory_lanes_keep_personal_tasks_and_judgment_separate(tmp_path: Path):
                         "source_path": "memory/private.md",
                         "private": True,
                     },
+                    {
+                        "id": "mem_claude",
+                        "memory_type": "technical_memory",
+                        "status": "active",
+                        "content": "Claudeレビューは参考意見であり、Userが選んだものだけ判断資産候補にする。",
+                        "source_path": "reports/agent_sidecar_brief.md",
+                        "private": False,
+                    },
                 ]
             },
             ensure_ascii=False,
@@ -70,8 +78,14 @@ def test_memory_lanes_keep_personal_tasks_and_judgment_separate(tmp_path: Path):
     assert lanes["lanes"]["task_memory"]["count"] == 1
     assert lanes["lanes"]["indexed_memory"]["by_type"] == {
         "judgment_memory": 1,
+        "technical_memory": 1,
         "value_memory": 1,
     }
+    assert lanes["lanes"]["indexed_memory"]["agent_review_context"]["count"] == 1
+    assert (
+        lanes["lanes"]["indexed_memory"]["agent_review_context"]["promotion_boundary"]
+        == "user_selected_parts_only_can_become_judgment_asset_candidates"
+    )
     assert "mem_private" not in json.dumps(lanes, ensure_ascii=False)
 
 

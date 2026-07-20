@@ -10,7 +10,7 @@ import {
   X, Menu, Table2, Swords, MessageCircle,
   BarChart2, BookOpen, Gift, HelpCircle, Megaphone, Calculator,
   ClipboardList, Brain, Database,
-  Orbit, ShieldCheck, Sparkles, Search, GitBranch, FileCheck2
+  Orbit, ShieldCheck, Sparkles, Search, GitBranch, FileCheck2, Mic
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
 import ThemeSelector from '@/components/layout/ThemeSelector';
@@ -52,6 +52,7 @@ export default function Sidebar() {
         { name: 'デモホーム', href: '/demo-home', icon: Sparkles, color: 'text-yellow-300' },
         { name: '審査・分析', href: '/screening', icon: ClipboardCheck, color: 'text-emerald-400' },
         { name: 'リース知性体との対話', href: '/lease-intelligence', icon: Brain, color: 'text-violet-400' },
+        { name: 'リアルタイム音声会話', href: '/voice-chat', icon: Mic, color: 'text-amber-300' },
         { name: '結果登録', href: '/register', icon: PenTool, color: 'text-rose-400' },
         { name: '改善PMレポート', href: '/improvement-log', icon: ClipboardList, color: 'text-orange-300' },
         { name: 'システム概要', href: '/system-overview', icon: Orbit, color: 'text-fuchsia-400' },

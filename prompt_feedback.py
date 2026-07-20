@@ -306,4 +306,24 @@ def record_prompt_feedback(
 
     with open(target, "a", encoding="utf-8") as f:
         f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+
+    # Cloud Run はコンテナのローカルディスクが再起動・再デプロイで消えるため、
+    # ローカル保存に加えて GCS にも複製する（夜間パイプラインが
+    # data/prompt_feedback_log.jsonl へ合流させる）。K_SERVICE/CLOUDRUN_DATA_MODE
+    # が無いローカル実行では record_cloudrun_input_event 内部で no-op になる。
+    _writeback_to_cloudrun_gcs(surface=surface, payload=payload)
+
     return payload
+
+
+def _writeback_to_cloudrun_gcs(*, surface: str, payload: dict[str, Any]) -> None:
+    try:
+        from api.cloudrun_writeback import record_cloudrun_input_event
+
+        record_cloudrun_input_event(
+            event_type="prompt_feedback",
+            surface=surface,
+            payload=payload,
+        )
+    except Exception as exc:
+        print(f"[PromptFeedback] GCS writeback skipped: {exc}")

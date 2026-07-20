@@ -127,11 +127,63 @@ def test_materialize_events_writes_existing_pipeline_logs(tmp_path, monkeypatch)
         "shion_reviews_new": 0,
         "shion_review_feedback_updated": 0,
         "judgment_asset_candidates_new": 0,
+        "prompt_feedback_new": 0,
     }
     assert wizard_rows[0]["surface"] == "cloudrun_score_calculated"
     assert "asset_name" in wizard_rows[0]["empty_fields"]
     assert rag_rows[0]["event_id"] == "rag-1"
     assert hit_rows[0]["hit_type"] == "feedback_confirmed"
+
+
+def test_materialize_events_writes_prompt_feedback_log(tmp_path, monkeypatch) -> None:
+    """Cloud Run由来のprompt_feedbackイベントがdata/prompt_feedback_log.jsonl相当へ合流すること。
+
+    (Cloud Runのコンテナローカルディスクは再起動で消えるため、GCS writeback経由で
+    受け取ったイベントを夜間パイプラインでローカルへ合流させる導線の回帰テスト)
+    """
+    prompt_feedback_log = tmp_path / "prompt_feedback_log.jsonl"
+    monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
+    monkeypatch.setattr(syncer, "WIZARD_INPUT_LOG", tmp_path / "wizard.jsonl")
+    monkeypatch.setattr(syncer, "RAG_FEEDBACK_LOG", tmp_path / "rag_feedback.jsonl")
+    monkeypatch.setattr(syncer, "RAG_HIT_LOG", tmp_path / "rag_hit.jsonl")
+    monkeypatch.setattr(syncer, "SCREENING_LOOP_FEEDBACK_LOG", tmp_path / "screening_loop.jsonl")
+    monkeypatch.setattr(syncer, "CLOUDRUN_IMPROVEMENT_LOG", tmp_path / "improvement.jsonl")
+    monkeypatch.setattr(syncer, "CLOUDRUN_CHAT_LOG", tmp_path / "chat.jsonl")
+    monkeypatch.setattr(syncer, "SHION_MEMORY_USAGE_LOG", tmp_path / "shion_memory_usage.jsonl")
+    monkeypatch.setattr(syncer, "PROMPT_FEEDBACK_LOG", prompt_feedback_log)
+    monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", tmp_path / "lease_data.db")
+
+    events = [
+        {
+            "event_id": "pf-1",
+            "ts": "2026-07-20T04:00:00Z",
+            "event_type": "prompt_feedback",
+            "surface": "lease_intelligence_dialogue",
+            "payload": {
+                "timestamp": "2026-07-20T04:00:00",
+                "surface": "lease_intelligence_dialogue",
+                "question": "テスト質問",
+                "question_hash": "abc123",
+                "response_text": "応答テキスト",
+                "response_len": 6,
+            },
+        },
+    ]
+
+    result = syncer.materialize_events(events)
+
+    assert result["prompt_feedback_new"] == 1
+    rows = [json.loads(line) for line in prompt_feedback_log.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1
+    assert rows[0]["event_id"] == "pf-1"
+    assert rows[0]["surface"] == "lease_intelligence_dialogue"
+    assert rows[0]["source"] == "cloudrun_input_writeback"
+
+    # 同じイベントを再度流しても重複追記されない（event_idでdedupe）
+    result2 = syncer.materialize_events(events)
+    assert result2["prompt_feedback_new"] == 0
+    rows_after = prompt_feedback_log.read_text(encoding="utf-8").splitlines()
+    assert len(rows_after) == 1
 
 
 def test_materialize_events_restores_shion_review_and_feedback_to_local_db(tmp_path, monkeypatch) -> None:

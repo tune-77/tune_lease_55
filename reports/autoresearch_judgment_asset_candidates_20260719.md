@@ -1,18 +1,18 @@
-# Auto Research Judgment Asset Candidates (2026-07-07 to 2026-07-20)
+# Auto Research Judgment Asset Candidates (2026-07-06 to 2026-07-19)
 
 ## Summary
 
-- Candidates: 78
-- Deduped similar candidates: 27
-- application_rule: 17
-- confirmation_question: 21
-- condition_signal: 20
-- caution: 20
+- Candidates: 65
+- Deduped similar candidates: 36
+- application_rule: 16
+- confirmation_question: 17
+- condition_signal: 16
+- caution: 16
 - used: 0
 - edited: 0
 - ready_for_promotion: 0
 - rejected_or_deprioritized: 0
-- textbook_general: 66
+- textbook_general: 59
 
 ## Promotion Policy
 
@@ -25,6 +25,105 @@
 - `ready_for_promotion` requires useful human feedback and `verified_status=supported`.
 
 ## Candidates
+
+### 2026-07-06 / application_rule / cash-flow
+
+- Claim: 審査では、自動否決・自動承認ではなく、確認質問、承認条件、保全条件の検討材料として使います。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-06_cash-flow.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 4
+
+### 2026-07-06 / application_rule / cash-flow
+
+- Claim: 財務数値、契約条件、物件稼働、保全可能性に影響する点だけを案件判断へ変換します。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-06_cash-flow.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 4
+
+### 2026-07-06 / caution / cash-flow
+
+- Claim: Geminiの要約は誤読や過剰一般化を含む可能性があります。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-06_cash-flow.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 4
+
+### 2026-07-06 / caution / cash-flow
+
+- Claim: ニュースや民間記事だけを根拠に、スコアや承認可否を直接変更しないでください。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-06_cash-flow.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 4
+
+### 2026-07-06 / condition_signal / cash-flow
+
+- Claim: 補助情報だけでなく、一次情報または専門機関の根拠で裏取りできた場合。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-06_cash-flow.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 4
+
+### 2026-07-06 / condition_signal / cash-flow
+
+- Claim: 返済原資、物件価値、稼働率、制度変更、補助金入金時期に直接影響する事実が確認できた場合。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-06_cash-flow.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 4
+
+### 2026-07-06 / confirmation_question / cash-flow
+
+- Claim: この情報は対象業種・対象設備・対象時期に本当に該当するか。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-06_cash-flow.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 4
+
+### 2026-07-06 / confirmation_question / cash-flow
+
+- Claim: 参照元が一次情報か、専門機関か、補助情報か。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-06_cash-flow.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 4
+
+### 2026-07-06 / confirmation_question / cash-flow
+
+- Claim: 顧客の資金繰り、物件稼働、契約条件、銀行支援のどれに影響するか。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-06_cash-flow.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 4
 
 ### 2026-07-12 / application_rule / contract-ownership
 
@@ -245,105 +344,6 @@
 - Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
 - Deduped similar: 0
-
-### 2026-07-14 / application_rule / asset-operation
-
-- Claim: 審査では、自動否決・自動承認ではなく、確認質問、承認条件、保全条件の検討材料として使います。
-- Edited claim: none
-- Source section: リース審査への適用
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-14_asset-operation.md`
-- Status: candidate / not_promoted
-- Asset quality: actionable / reasons=none
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 3
-
-### 2026-07-14 / application_rule / asset-operation
-
-- Claim: 財務数値、契約条件、物件稼働、保全可能性に影響する点だけを案件判断へ変換します。
-- Edited claim: none
-- Source section: リース審査への適用
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-14_asset-operation.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=no_case_action_or_condition
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 3
-
-### 2026-07-14 / caution / asset-operation
-
-- Claim: Geminiの要約は誤読や過剰一般化を含む可能性があります。
-- Edited claim: none
-- Source section: 反証・過信してはいけない点
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-14_asset-operation.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 3
-
-### 2026-07-14 / caution / asset-operation
-
-- Claim: ニュースや民間記事だけを根拠に、スコアや承認可否を直接変更しないでください。
-- Edited claim: none
-- Source section: 反証・過信してはいけない点
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-14_asset-operation.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 3
-
-### 2026-07-14 / condition_signal / asset-operation
-
-- Claim: 補助情報だけでなく、一次情報または専門機関の根拠で裏取りできた場合。
-- Edited claim: none
-- Source section: 承認条件を変える兆候
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-14_asset-operation.md`
-- Status: candidate / not_promoted
-- Asset quality: actionable / reasons=none
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 3
-
-### 2026-07-14 / condition_signal / asset-operation
-
-- Claim: 返済原資、物件価値、稼働率、制度変更、補助金入金時期に直接影響する事実が確認できた場合。
-- Edited claim: none
-- Source section: 承認条件を変える兆候
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-14_asset-operation.md`
-- Status: candidate / not_promoted
-- Asset quality: actionable / reasons=none
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 3
-
-### 2026-07-14 / confirmation_question / asset-operation
-
-- Claim: この情報は対象業種・対象設備・対象時期に本当に該当するか。
-- Edited claim: none
-- Source section: 担当者が確認する質問
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-14_asset-operation.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 3
-
-### 2026-07-14 / confirmation_question / asset-operation
-
-- Claim: 参照元が一次情報か、専門機関か、補助情報か。
-- Edited claim: none
-- Source section: 担当者が確認する質問
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-14_asset-operation.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 3
-
-### 2026-07-14 / confirmation_question / asset-operation
-
-- Claim: 顧客の資金繰り、物件稼働、契約条件、銀行支援のどれに影響するか。
-- Edited claim: none
-- Source section: 担当者が確認する質問
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-14_asset-operation.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 3
 
 ### 2026-07-17 / application_rule / pricing-rate
 
@@ -738,148 +738,5 @@
 - Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-19_collection-default.md`
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-20 / application_rule / residual-value
-
-- Claim: リース審査では、物件の残価、中古流動性、陳腐化リスクを評価することが不可欠である。これらの評価は、リース会社が将来の残価回収リスクを適切に見積もり、借手の財務状況を正確に把握するために直接的に利用される。特に、2027年4月1日以降に適用される新リース会計基準は、残価保証の取り扱いに大きな変更をもたらすため、この変更がリース契約の条件設定やリスク評価に与える影響を十分に考慮し、審査プロセスに組み込む必要がある。
-- Edited claim: none
-- Source section: リース審査への適用
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-20_residual-value.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=textbook_general_marker, no_specific_case_marker, no_case_action_or_condition
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-20 / caution / residual-value
-
-- Claim: **審査への使い方**: 補助情報は特定の解釈や視点に基づく可能性があるため、その内容を過信せず、必ず一次情報源である日本リース業協会 (leasing.or.jp) の情報と照合し、多角的な視点から判断する必要がある。
-- Edited claim: none
-- Source section: 反証・過信してはいけない点
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-20_residual-value.md`
-- Status: candidate / not_promoted
-- Asset quality: actionable / reasons=none
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-20 / caution / residual-value
-
-- Claim: **担当者が再確認する点**: 補助情報源が提供する情報の最新性、正確性、そして特定の利害関係に偏っていないかを確認する。また、一次情報源である日本リース業協会の最新の公式見解と、補助情報源の解釈との間に齟齬がないかを精査する。
-- Edited claim: none
-- Source section: 反証・過信してはいけない点
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-20_residual-value.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=not_a_caution
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-20 / caution / residual-value
-
-- Claim: **調査原文から確認できた事実**: 補助情報として会計事務所、税理士法人、コンサルティングからの情報に依存していること。
-- Edited claim: none
-- Source section: 反証・過信してはいけない点
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-20_residual-value.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-20 / caution / residual-value
-
-- Claim: この文章からは直接的な反証や過信してはいけない点は判断できません。なぜなら、提供された情報は事実の提示と情報源の開示に留まっており、その内容に対する批判的視点や限界については記述されていないためです。
-- Edited claim: none
-- Source section: 反証・過信してはいけない点
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-20_residual-value.md`
-- Status: candidate / not_promoted
-- Asset quality: actionable / reasons=none
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-20 / condition_signal / residual-value
-
-- Claim: **審査への使い方**: この会計基準の変更は、リース会社の残価回収リスク評価や借手の財務状況評価に影響を与えるため、現在の承認条件が新基準下でも適切であるかを見直す必要がある。
-- Edited claim: none
-- Source section: 承認条件を変える兆候
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-20_residual-value.md`
-- Status: candidate / not_promoted
-- Asset quality: actionable / reasons=none
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-20 / condition_signal / residual-value
-
-- Claim: **担当者が再確認する点**: 新リース会計基準の詳細な内容、特に残価保証に関する具体的な変更点が、現在のリース契約の承認条件（例：残価率、保証金、保証人要件など）にどのような影響を与えるかについて、日本リース業協会 (leasing.or.jp) のガイドラインや、会計基準設定主体の公式文書で確認し、業界内の先行事例や解釈も調査する。
-- Edited claim: none
-- Source section: 承認条件を変える兆候
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-20_residual-value.md`
-- Status: candidate / not_promoted
-- Asset quality: actionable / reasons=none
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-20 / condition_signal / residual-value
-
-- Claim: **調査原文から確認できた事実**: 2027年4月1日以降の新リース会計基準適用により、残価保証の取り扱いが大きく変更されること。
-- Edited claim: none
-- Source section: 承認条件を変える兆候
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-20_residual-value.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_condition_signal
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-20 / condition_signal / residual-value
-
-- Claim: この文章からは直接的な承認条件の変更兆候は判断できません。なぜなら、提供された情報は将来の会計基準変更の事実を述べているものの、それが具体的にどのような承認条件の変更に繋がるかまでは記述されていないためです。
-- Edited claim: none
-- Source section: 承認条件を変える兆候
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-20_residual-value.md`
-- Status: candidate / not_promoted
-- Asset quality: actionable / reasons=none
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-20 / confirmation_question / residual-value
-
-- Claim: **審査への使い方**: 新基準がリース会社の残価回収リスクと借手の財務状況にどう影響するかを評価し、審査基準を調整するために、具体的な変更点を把握する必要がある。
-- Edited claim: none
-- Source section: 担当者が確認する質問
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-20_residual-value.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=textbook_general_marker, no_specific_case_marker, no_case_action_or_condition, not_a_confirmation_action
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-20 / confirmation_question / residual-value
-
-- Claim: **担当者が再確認する点**: 新リース会計基準における残価保証の具体的な変更点、特にリース会社の残価回収リスク評価や借手の財務諸表への影響について、日本リース業協会 (leasing.or.jp) の最新情報や、企業会計基準委員会 (ASBJ) の公式発表で詳細を確認する。
-- Edited claim: none
-- Source section: 担当者が確認する質問
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-20_residual-value.md`
-- Status: candidate / not_promoted
-- Asset quality: actionable / reasons=none
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-20 / confirmation_question / residual-value
-
-- Claim: **調査原文から確認できた事実**: 2027年4月1日以降に新リース会計基準が適用され、残価保証の取り扱いに大きな変更があること。
-- Edited claim: none
-- Source section: 担当者が確認する質問
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-20_residual-value.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=no_case_action_or_condition
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-20 / confirmation_question / residual-value
-
-- Claim: この文章からは具体的な質問は判断できません。なぜなら、提供された情報は現状の重要性と将来の基準変更の概要に留まっており、具体的な審査プロセスにおける疑問点や確認事項までは記述されていないためです。
-- Edited claim: none
-- Source section: 担当者が確認する質問
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-20_residual-value.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=no_case_action_or_condition
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
 - Deduped similar: 0

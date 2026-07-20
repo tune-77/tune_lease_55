@@ -32,11 +32,15 @@ def _normalize_rate(value: object) -> float:
         return 0.0
 
 
+_COMPETITOR_CATEGORY_MAP = {
+    "\u7fa4\u9280\u30ea\u30fc\u30b9": "地銀系リース",
+    "セディアオートリース": "サプライヤー系リース会社",
+}
+
+
 def _anonymize_competitor_name(value: object) -> str:
     name = str(value or "").strip()
-    if name in {"\u7fa4\u9280\u30ea\u30fc\u30b9"}:
-        return "地銀系リース"
-    return name
+    return _COMPETITOR_CATEGORY_MAP.get(name, name)
 
 
 # 業種カラーパレット（成約率に応じてグラデーション）

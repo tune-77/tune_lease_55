@@ -336,6 +336,17 @@ python scripts/import_obsidian_knowledge_to_judgment_assets.py --replace-existin
 
 重要なのは、`Field validation` が低い間は判断資産を過信しないことです。保存証跡・証拠数・ユーザー由来数は代理指標にすぎません。紫苑は、判断資産を増やすだけでなく、役に立たない判断資産を疑い、降格・修正する前提で運用します。
 
+判断資産は、Obsidianのリンクグラフに近い形でも確認できます。
+
+```bash
+python scripts/evaluate_shion_growth.py --end-date 2026-07-19
+python scripts/build_judgment_asset_graph.py
+```
+
+`reports/judgment_asset_graph_latest.html` は、昇格済み判断資産、リスク軸、ドメイン、根拠ログ、案件フィードバックを1つのネットワークとして表示します。初期段階では判断資産とリスク軸・根拠ログの関係が中心です。実案件で `used / helped / challenged / rejected` が溜まると、案件ノードとフィードバック線が増え、どの判断が効き、どの判断が外れたかを視覚的に追えるようになります。
+
+このグラフはローカルHTMLとして生成され、CDNや外部APIに依存しません。決勝デモでは「判断資産の数」ではなく、「どの判断が何とつながり、どこで実戦検証されたか」を見せる画面として使えます。
+
 ### 記憶昇格の安全ゲート
 
 判断資産やObsidian記憶を育てるほど、外部から入った文面をそのまま経験として取り込む危険も増えます。そこで、記憶候補を本番RAG・プロンプト・スコアリングへ接続する前に、安全ゲートを通します。

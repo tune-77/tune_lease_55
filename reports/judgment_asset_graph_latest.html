@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Judgment Asset Graph</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --line: #cbd5e1;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+}
+.app {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  min-height: 100vh;
+}
+aside {
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  padding: 18px;
+  overflow: auto;
+}
+main { position: relative; min-width: 0; }
+h1 { font-size: 20px; margin: 0 0 8px; letter-spacing: 0; }
+h2 { font-size: 13px; margin: 20px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: 0; }
+.lead { margin: 0 0 16px; color: var(--muted); line-height: 1.5; }
+.verdict {
+  border: 1px solid var(--line);
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 12px;
+  margin: 12px 0;
+}
+.verdict strong { display: block; font-size: 18px; margin-bottom: 4px; }
+.stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.stat {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+}
+.stat b { display: block; font-size: 20px; }
+.stat span { color: var(--muted); font-size: 12px; }
+.filters { display: grid; gap: 8px; }
+label { display: flex; align-items: center; gap: 8px; color: #334155; font-size: 14px; }
+input[type="search"] {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 11px;
+  font-size: 14px;
+}
+button {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 9px 10px;
+  cursor: pointer;
+}
+button:hover { background: #f1f5f9; }
+#graph { width: 100%; height: 100vh; display: block; }
+.tooltip {
+  position: absolute;
+  pointer-events: none;
+  max-width: 360px;
+  background: rgba(15, 23, 42, 0.94);
+  color: #fff;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  opacity: 0;
+  transform: translate(12px, 12px);
+}
+.legend { display: grid; gap: 7px; }
+.legend-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #334155; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.note { color: var(--muted); font-size: 12px; line-height: 1.5; margin-top: 16px; }
+@media (max-width: 860px) {
+  .app { grid-template-columns: 1fr; }
+  aside { border-right: 0; border-bottom: 1px solid var(--line); }
+  #graph { height: 72vh; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <h1>Judgment Asset Graph</h1>
+    <p class="lead">判断資産、リスク軸、根拠ログ、実案件フィードバックのつながりを見るローカル図。</p>
+    <div class="verdict">
+      <strong>在庫は増えたが実戦検証不足</strong>
+      <span>Growth score: 56.8</span>
+    </div>
+    <div class="stats">
+      <div class="stat"><b id="stat-nodes">21</b><span>nodes</span></div>
+      <div class="stat"><b id="stat-edges">42</b><span>edges</span></div>
+      <div class="stat"><b>10</b><span>rules</span></div>
+      <div class="stat"><b>0</b><span>cases</span></div>
+    </div>
+    <h2>Search</h2>
+    <input id="search" type="search" placeholder="concept, risk axis, evidence...">
+    <h2>Show</h2>
+    <div class="filters">
+      <label><input type="checkbox" data-type="rule" checked> Judgment assets</label>
+      <label><input type="checkbox" data-type="risk_axis" checked> Risk axes</label>
+      <label><input type="checkbox" data-type="domain" checked> Domains</label>
+      <label><input type="checkbox" data-type="evidence" checked> Evidence logs</label>
+      <label><input type="checkbox" data-type="case" checked> Cases / feedback</label>
+    </div>
+    <h2>Legend</h2>
+    <div class="legend">
+      <div class="legend-row"><span class="dot" style="background:#2563eb"></span>判断資産</div>
+      <div class="legend-row"><span class="dot" style="background:#f59e0b"></span>リスク軸</div>
+      <div class="legend-row"><span class="dot" style="background:#10b981"></span>ドメイン</div>
+      <div class="legend-row"><span class="dot" style="background:#8b5cf6"></span>根拠ログ</div>
+      <div class="legend-row"><span class="dot" style="background:#ef4444"></span>案件フィードバック</div>
+    </div>
+    <h2>Actions</h2>
+    <button id="reset">Reset layout</button>
+    <p class="note">Generated: 2026-07-20T04:08:07<br>Offline HTML. No CDN. No external calls.</p>
+  </aside>
+  <main>
+    <svg id="graph" role="img" aria-label="Judgment asset network graph"></svg>
+    <div id="tooltip" class="tooltip"></div>
+  </main>
+</div>
+<script>
+const graph = {"generated_at": "2026-07-20T04:08:07", "schema_version": 1, "mode": "local_visualization_only", "guardrail": "no_rag_no_prompt_no_scoring_no_gcs_no_cloudrun_no_obsidian_write", "summary": {"nodes": 21, "edges": 42, "rules": 10, "risk_axes": 5, "domains": 2, "evidence": 4, "cases": 0, "feedback": {}, "growth_label": "在庫は増えたが実戦検証不足", "growth_score": 56.8, "growth_period": {"start_date": "2026-06-21", "end_date": "2026-07-20"}}, "nodes": [{"id": "domain:ai_agent_ops", "type": "domain", "label": "ai_agent_ops", "title": "Domain: ai_agent_ops", "weight": 8, "degree": 1, "color": "#10b981"}, {"id": "domain:lease_screening", "type": "domain", "label": "lease_screening", "title": "Domain: lease_screening", "weight": 8.0, "degree": 10, "color": "#10b981"}, {"id": "evidence:Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-10.md", "type": "evidence", "label": "2026-07-10.md", "title": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-10.md", "weight": 6.0, "degree": 5, "color": "#8b5cf6"}, {"id": "evidence:Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-11.md", "type": "evidence", "label": "2026-07-11.md", "title": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-11.md", "weight": 6.0, "degree": 7, "color": "#8b5cf6"}, {"id": "evidence:Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-12.md", "type": "evidence", "label": "2026-07-12.md", "title": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-12.md", "weight": 6.0, "degree": 5, "color": "#8b5cf6"}, {"id": "evidence:manual://screening/demo-judgment-asset", "type": "evidence", "label": "demo-judgment-asset", "title": "manual://screening/demo-judgment-asset", "weight": 6.0, "degree": 2, "color": "#8b5cf6"}, {"id": "risk:ai_ops", "type": "risk_axis", "label": "ai_ops", "title": "Risk axis: ai_ops", "weight": 10, "degree": 1, "color": "#f59e0b"}, {"id": "risk:asset_life", "type": "risk_axis", "label": "asset_life", "title": "Risk axis: asset_life", "weight": 10.0, "degree": 2, "color": "#f59e0b"}, {"id": "risk:cash_flow", "type": "risk_axis", "label": "cash_flow", "title": "Risk axis: cash_flow", "weight": 10.0, "degree": 4, "color": "#f59e0b"}, {"id": "risk:industry_risk", "type": "risk_axis", "label": "industry_risk", "title": "Risk axis: industry_risk", "weight": 10.0, "degree": 3, "color": "#f59e0b"}, {"id": "risk:support_specificity", "type": "risk_axis", "label": "support_specificity", "title": "Risk axis: support_specificity", "weight": 10.0, "degree": 2, "color": "#f59e0b"}, {"id": "rule:cf61a9701fc8cc42", "type": "rule", "label": "asset_life_and_residual", "title": "リース期間・残価判断では、法定耐用年数だけでなく、実際の使用状況、経済的寿命、換金性、満了後の出口を合わせて確認する。", "concept": "asset_life_and_residual", "statement": "リース期間・残価判断では、法定耐用年数だけでなく、実際の使用状況、経済的寿命、換金性、満了後の出口を合わせて確認する。", "confidence": 0.96, "evidence_count": 10, "user_evidence_count": 1, "feedback_used": 0, "feedback_helped": 0, "feedback_challenged": 0, "weight": 12, "degree": 8, "color": "#2563eb"}, {"id": "rule:b259411afb954d6d", "type": "rule", "label": "business_plan_specificity", "title": "事業計画は売上見込みだけでなく、受注根拠、稼働計画、資金繰り、返済原資の説明可能性で確認する。", "concept": "business_plan_specificity", "statement": "事業計画は売上見込みだけでなく、受注根拠、稼働計画、資金繰り、返済原資の説明可能性で確認する。", "confidence": 0.94, "evidence_count": 14, "user_evidence_count": 3, "feedback_used": 0, "feedback_helped": 0, "feedback_challenged": 0, "weight": 20, "degree": 6, "color": "#2563eb"}, {"id": "rule:a61f3a316a651126", "type": "rule", "label": "conditional_approval_checks", "title": "条件付き承認では、不確実性を残したまま通さず、追加資料・確認条件・撤退条件を明文化する。", "concept": "conditional_approval_checks", "statement": "条件付き承認では、不確実性を残したまま通さず、追加資料・確認条件・撤退条件を明文化する。", "confidence": 0.87, "evidence_count": 2, "user_evidence_count": 1, "feedback_used": 0, "feedback_helped": 0, "feedback_challenged": 0, "weight": 8, "degree": 4, "color": "#2563eb"}, {"id": "rule:3a2ea362a372091a", "type": "rule", "label": "demo_readiness", "title": "公開デモでは機能説明だけでなく、判断がどう更新され、次回どう使えるかを示す。", "concept": "demo_readiness", "statement": "公開デモでは機能説明だけでなく、判断がどう更新され、次回どう使えるかを示す。", "confidence": 0.84, "evidence_count": 8, "user_evidence_count": 4, "feedback_used": 0, "feedback_helped": 0, "feedback_challenged": 0, "weight": 16, "degree": 5, "color": "#2563eb"}, {"id": "rule:64e054542be673e4", "type": "rule", "label": "demo_renewal_asset", "title": "更新設備の増額申込は、既存設備の稼働率、粗利改善見込み、旧設備の処分予定が説明と整合する時だけ前向きに見る。", "concept": "demo_renewal_asset", "statement": "更新設備の増額申込は、既存設備の稼働率、粗利改善見込み、旧設備の処分予定が説明と整合する時だけ前向きに見る。", "confidence": 0.8500000000000001, "evidence_count": 3, "user_evidence_count": 3, "feedback_used": 0, "feedback_helped": 0, "feedback_challenged": 0, "weight": 9, "degree": 2, "color": "#2563eb"}, {"id": "rule:0d0f11e77fba045d", "type": "rule", "label": "demo_subsidy_machinery", "title": "工作機械を補助金前提で導入する案件は、採択前の返済原資と未採択時の代替資金を分けて確認する。", "concept": "demo_subsidy_machinery", "statement": "工作機械を補助金前提で導入する案件は、採択前の返済原資と未採択時の代替資金を分けて確認する。", "confidence": 0.8200000000000001, "evidence_count": 3, "user_evidence_count": 2, "feedback_used": 0, "feedback_helped": 0, "feedback_challenged": 0, "weight": 8, "degree": 2, "color": "#2563eb"}, {"id": "rule:ab0c516c139499b8", "type": "rule", "label": "intuition_gap", "title": "数字が悪くない案件でも、違和感は追加確認事項に変換し、稟議で説明できる判断軸として残す。", "concept": "intuition_gap", "statement": "数字が悪くない案件でも、違和感は追加確認事項に変換し、稟議で説明できる判断軸として残す。", "confidence": 0.87, "evidence_count": 2, "user_evidence_count": 1, "feedback_used": 0, "feedback_helped": 0, "feedback_challenged": 0, "weight": 8, "degree": 3, "color": "#2563eb"}, {"id": "rule:4252a50d3fd694df", "type": "rule", "label": "judgment_asset_ops", "title": "会話や案件対応から得た判断基準は、次回使える判断資産として代表ルールと出典に分けて残す。", "concept": "judgment_asset_ops", "statement": "会話や案件対応から得た判断基準は、次回使える判断資産として代表ルールと出典に分けて残す。", "confidence": 0.83, "evidence_count": 2, "user_evidence_count": 1, "feedback_used": 0, "feedback_helped": 0, "feedback_challenged": 0, "weight": 8, "degree": 3, "color": "#2563eb"}, {"id": "rule:766ad4e39e346f4f", "type": "rule", "label": "support_specificity", "title": "銀行支援や補助金は、対象リースへの直接性、入金時期、返済原資への効き方を具体的に確認する。", "concept": "support_specificity", "statement": "銀行支援や補助金は、対象リースへの直接性、入金時期、返済原資への効き方を具体的に確認する。", "confidence": 0.83, "evidence_count": 7, "user_evidence_count": 0, "feedback_used": 0, "feedback_helped": 0, "feedback_challenged": 0, "weight": 8, "degree": 6, "color": "#2563eb"}, {"id": "rule:7d5692520fad998c", "type": "rule", "label": "user_decision_preference", "title": "ユーザーが明示した判断基準や信頼条件は、一般論より優先して回答・審査支援に反映する。", "concept": "user_decision_preference", "statement": "ユーザーが明示した判断基準や信頼条件は、一般論より優先して回答・審査支援に反映する。", "confidence": 0.8, "evidence_count": 2, "user_evidence_count": 2, "feedback_used": 0, "feedback_helped": 0, "feedback_challenged": 0, "weight": 8, "degree": 3, "color": "#2563eb"}], "edges": [{"source": "rule:b259411afb954d6d", "target": "risk:cash_flow", "type": "risk_axis", "label": "risk axis", "weight": 1.4, "color": "#d97706"}, {"source": "rule:b259411afb954d6d", "target": "risk:industry_risk", "type": "risk_axis", "label": "risk axis", "weight": 1.4, "color": "#d97706"}, {"source": "rule:b259411afb954d6d", "target": "risk:asset_life", "type": "risk_axis", "label": "risk axis", "weight": 1.4, "color": "#d97706"}, {"source": "rule:b259411afb954d6d", "target": "domain:lease_screening", "type": "domain", "label": "domain", "weight": 0.9, "color": "#059669"}, {"source": "rule:b259411afb954d6d", "target": "evidence:Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-10.md", "type": "evidence", "label": "evidence", "weight": 0.6, "color": "#7c3aed"}, {"source": "rule:b259411afb954d6d", "target": "evidence:Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-11.md", "type": "evidence", "label": "evidence", "weight": 0.6, "color": "#7c3aed"}, {"source": "rule:cf61a9701fc8cc42", "target": "risk:asset_life", "type": "risk_axis", "label": "risk axis", "weight": 1.4, "color": "#d97706"}, {"source": "rule:cf61a9701fc8cc42", "target": "risk:support_specificity", "type": "risk_axis", "label": "risk axis", "weight": 1.4, "color": "#d97706"}, {"source": "rule:cf61a9701fc8cc42", "target": "risk:industry_risk", "type": "risk_axis", "label": "risk axis", "weight": 1.4, "color": "#d97706"}, {"source": "rule:cf61a9701fc8cc42", "target": "risk:cash_flow", "type": "risk_axis", "label": "risk axis", "weight": 1.4, "color": "#d97706"}, {"source": "rule:cf61a9701fc8cc42", "target": "domain:lease_screening", "type": "domain", "label": "domain", "weight": 0.9, "color": "#059669"}, {"source": "rule:cf61a9701fc8cc42", "target": "evidence:Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-10.md", "type": "evidence", "label": "evidence", "weight": 0.6, "color": "#7c3aed"}, {"source": "rule:cf61a9701fc8cc42", "target": "evidence:Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-11.md", "type": "evidence", "label": "evidence", "weight": 0.6, "color": "#7c3aed"}, {"source": "rule:cf61a9701fc8cc42", "target": "evidence:Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-12.md", "type": "evidence", "label": "evidence", "weight": 0.6, "color": "#7c3aed"}, {"source": "rule:3a2ea362a372091a", "target": "risk:ai_ops", "type": "risk_axis", "label": "risk axis", "weight": 1.4, "color": "#d97706"}, {"source": "rule:3a2ea362a372091a", "target": "domain:ai_agent_ops", "type": "domain", "label": "domain", "weight": 0.9, "color": "#059669"}, {"source": "rule:3a2ea362a372091a", "target": "domain:lease_screening", "type": "domain", "label": "domain", "weight": 0.9, "color": "#059669"}, {"source": "rule:3a2ea362a372091a", "target": "evidence:Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-11.md", "type": "evidence", "label": "evidence", "weight": 0.6, "color": "#7c3aed"}, {"source": "rule:3a2ea362a372091a", "target": "evidence:Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-12.md", "type": "evidence", "label": "evidence", "weight": 0.6, "color": "#7c3aed"}, {"source": "rule:766ad4e39e346f4f", "target": "risk:industry_risk", "type": "risk_axis", "label": "risk axis", "weight": 1.4, "color": "#d97706"}, {"source": "rule:766ad4e39e346f4f", "target": "risk:cash_flow", "type": "risk_axis", "label": "risk axis", "weight": 1.4, "color": "#d97706"}, {"source": "rule:766ad4e39e346f4f", "target": "risk:support_specificity", "type": "risk_axis", "label": "risk axis", "weight": 1.4, "color": "#d97706"}, {"source": "rule:766ad4e39e346f4f", "target": "domain:lease_screening", "type": "domain", "label": "domain", "weight": 0.9, "color": "#059669"}, {"source": "rule:766ad4e39e346f4f", "target": "evidence:Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-11.md", "type": "evidence", "label": "evidence", "weight": 0.6, "color": "#7c3aed"}, {"source": "rule:766ad4e39e346f4f", "target": "evidence:Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-12.md", "type": "evidence", "label": "evidence", "weight": 0.6, "color": "#7c3aed"}, {"source": "rule:64e054542be673e4", "target": "domain:lease_screening", "type": "domain", "label": "domain", "weight": 0.9, "color": "#059669"}, {"source": "rule:64e054542be673e4", "target": "evidence:manual://screening/demo-judgment-asset", "type": "evidence", "label": "evidence", "weight": 0.6, "color": "#7c3aed"}, {"source": "rule:0d0f11e77fba045d", "target": "domain:lease_screening", "type": "domain", "label": "domain", "weight": 0.9, "color": "#059669"}, {"source": "rule:0d0f11e77fba045d", "target": "evidence:manual://screening/demo-judgment-asset", "type": "evidence", "label": "evidence", "weight": 0.6, "color": "#7c3aed"}, {"source": "rule:7d5692520fad998c", "target": "domain:lease_screening", "type": "domain", "label": "domain", "weight": 0.9, "color": "#059669"}, {"source": "rule:7d5692520fad998c", "target": "evidence:Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-10.md", "type": "evidence", "label": "evidence", "weight": 0.6, "color": "#7c3aed"}, {"source": "rule:7d5692520fad998c", "target": "evidence:Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-11.md", "type": "evidence", "label": "evidence", "weight": 0.6, "color": "#7c3aed"}, {"source": "rule:a61f3a316a651126", "target": "risk:cash_flow", "type": "risk_axis", "label": "risk axis", "weight": 1.4, "color": "#d97706"}, {"source": "rule:a61f3a316a651126", "target": "domain:lease_screening", "type": "domain", "label": "domain", "weight": 0.9, "color": "#059669"}, {"source": "rule:a61f3a316a651126", "target": "evidence:Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-10.md", "type": "evidence", "label": "evidence", "weight": 0.6, "color": "#7c3aed"}, {"source": "rule:a61f3a316a651126", "target": "evidence:Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-11.md", "type": "evidence", "label": "evidence", "weight": 0.6, "color": "#7c3aed"}, {"source": "rule:ab0c516c139499b8", "target": "domain:lease_screening", "type": "domain", "label": "domain", "weight": 0.9, "color": "#059669"}, {"source": "rule:ab0c516c139499b8", "target": "evidence:Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-10.md", "type": "evidence", "label": "evidence", "weight": 0.6, "color": "#7c3aed"}, {"source": "rule:ab0c516c139499b8", "target": "evidence:Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-12.md", "type": "evidence", "label": "evidence", "weight": 0.6, "color": "#7c3aed"}, {"source": "rule:4252a50d3fd694df", "target": "domain:lease_screening", "type": "domain", "label": "domain", "weight": 0.9, "color": "#059669"}, {"source": "rule:4252a50d3fd694df", "target": "evidence:Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-11.md", "type": "evidence", "label": "evidence", "weight": 0.6, "color": "#7c3aed"}, {"source": "rule:4252a50d3fd694df", "target": "evidence:Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-12.md", "type": "evidence", "label": "evidence", "weight": 0.6, "color": "#7c3aed"}]};
+const svg = document.getElementById("graph");
+const tooltip = document.getElementById("tooltip");
+const search = document.getElementById("search");
+const filters = Array.from(document.querySelectorAll("input[data-type]"));
+let width = 0;
+let height = 0;
+let nodes = [];
+let edges = [];
+let frame = null;
+let tick = 0;
+
+function activeTypes() {
+  return new Set(filters.filter(input => input.checked).map(input => input.dataset.type));
+}
+
+function visibleData() {
+  const term = search.value.trim().toLowerCase();
+  const types = activeTypes();
+  const baseNodes = graph.nodes.filter(node => {
+    if (!types.has(node.type)) return false;
+    if (!term) return true;
+    return [node.label, node.title, node.concept, node.statement].join(" ").toLowerCase().includes(term);
+  });
+  const nodeIds = new Set(baseNodes.map(node => node.id));
+  const baseEdges = graph.edges.filter(edge => nodeIds.has(edge.source) && nodeIds.has(edge.target));
+  return { nodes: baseNodes.map(node => ({...node})), edges: baseEdges.map(edge => ({...edge})) };
+}
+
+function initPositions() {
+  width = svg.clientWidth || 900;
+  height = svg.clientHeight || 700;
+  nodes.forEach((node, index) => {
+    const angle = (index / Math.max(1, nodes.length)) * Math.PI * 2;
+    const radius = Math.min(width, height) * (node.type === "rule" ? 0.22 : 0.36);
+    node.x = width / 2 + Math.cos(angle) * radius;
+    node.y = height / 2 + Math.sin(angle) * radius;
+    node.vx = 0;
+    node.vy = 0;
+  });
+}
+
+function radius(node) {
+  const weight = Number(node.weight || 1);
+  const base = node.type === "rule" ? 9 : 6;
+  return Math.max(5, Math.min(22, base + Math.sqrt(weight) * 1.5));
+}
+
+function graphPadding() {
+  return Math.max(72, Math.min(132, Math.min(width, height) * 0.12));
+}
+
+function simulate() {
+  const byId = new Map(nodes.map(node => [node.id, node]));
+  const centerX = width / 2;
+  const centerY = height / 2;
+  for (let i = 0; i < nodes.length; i++) {
+    const a = nodes[i];
+    a.vx += (centerX - a.x) * 0.0008;
+    a.vy += (centerY - a.y) * 0.0008;
+    for (let j = i + 1; j < nodes.length; j++) {
+      const b = nodes[j];
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      const dist2 = Math.max(80, dx * dx + dy * dy);
+      const force = 150 / dist2;
+      a.vx += dx * force;
+      a.vy += dy * force;
+      b.vx -= dx * force;
+      b.vy -= dy * force;
+    }
+  }
+  edges.forEach(edge => {
+    const source = byId.get(edge.source);
+    const target = byId.get(edge.target);
+    if (!source || !target) return;
+    const dx = target.x - source.x;
+    const dy = target.y - source.y;
+    const dist = Math.max(1, Math.hypot(dx, dy));
+    const targetDist = edge.type === "evidence" ? 155 : edge.type === "domain" ? 125 : 105;
+    const force = (dist - targetDist) * 0.0025 * Number(edge.weight || 1);
+    const fx = dx / dist * force;
+    const fy = dy / dist * force;
+    source.vx += fx;
+    source.vy += fy;
+    target.vx -= fx;
+    target.vy -= fy;
+  });
+  nodes.forEach(node => {
+    node.vx *= 0.86;
+    node.vy *= 0.86;
+    const pad = graphPadding();
+    node.x = Math.max(pad, Math.min(width - pad, node.x + node.vx));
+    node.y = Math.max(pad, Math.min(height - pad, node.y + node.vy));
+  });
+}
+
+function render() {
+  const byId = new Map(nodes.map(node => [node.id, node]));
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  const edgeMarkup = edges.map(edge => {
+    const source = byId.get(edge.source);
+    const target = byId.get(edge.target);
+    if (!source || !target) return "";
+    const width = Math.max(1, Math.min(5, Number(edge.weight || 1)));
+    return `<line x1="${source.x.toFixed(1)}" y1="${source.y.toFixed(1)}" x2="${target.x.toFixed(1)}" y2="${target.y.toFixed(1)}" stroke="${edge.color}" stroke-width="${width}" stroke-opacity="0.42" />`;
+  }).join("");
+  const nodeMarkup = nodes.map(node => {
+    const r = radius(node);
+    const label = String(node.label || "");
+    const escaped = label.replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[char]));
+    const fontSize = node.type === "rule" ? 11 : 10;
+    const labelY = r + 13;
+    const showLabel = node.type !== "evidence";
+    const labelMarkup = showLabel
+      ? `<text y="${labelY}" text-anchor="middle" font-size="${fontSize}" fill="#0f172a">${escaped.slice(0, 20)}</text>`
+      : "";
+    return `<g class="node" data-id="${node.id}" transform="translate(${node.x.toFixed(1)},${node.y.toFixed(1)})">
+      <circle r="${r}" fill="${node.color}" stroke="#fff" stroke-width="2" />
+      ${labelMarkup}
+    </g>`;
+  }).join("");
+  svg.innerHTML = `<rect width="${width}" height="${height}" fill="#f8fafc"></rect>${edgeMarkup}${nodeMarkup}`;
+  svg.querySelectorAll(".node").forEach(element => {
+    const node = byId.get(element.dataset.id);
+    element.addEventListener("mousemove", event => showTooltip(event, node));
+    element.addEventListener("mouseleave", hideTooltip);
+  });
+}
+
+function showTooltip(event, node) {
+  if (!node) return;
+  const parts = [
+    `<strong>${node.label || node.id}</strong>`,
+    `type: ${node.type}`,
+  ];
+  if (node.statement) parts.push(node.statement);
+  if (node.evidence_count !== undefined) parts.push(`evidence: ${node.evidence_count} / user: ${node.user_evidence_count || 0}`);
+  if (node.feedback_used) parts.push(`feedback: used ${node.feedback_used}, helped ${node.feedback_helped || 0}, challenged ${node.feedback_challenged || 0}`);
+  if (node.title && !node.statement) parts.push(node.title);
+  tooltip.innerHTML = parts.join("<br>");
+  tooltip.style.opacity = "1";
+  tooltip.style.left = `${event.clientX}px`;
+  tooltip.style.top = `${event.clientY}px`;
+}
+
+function hideTooltip() {
+  tooltip.style.opacity = "0";
+}
+
+function step() {
+  if (tick < 520) {
+    simulate();
+    tick += 1;
+    render();
+    frame = requestAnimationFrame(step);
+  }
+}
+
+function rebuild() {
+  if (frame) cancelAnimationFrame(frame);
+  const data = visibleData();
+  nodes = data.nodes;
+  edges = data.edges;
+  document.getElementById("stat-nodes").textContent = nodes.length;
+  document.getElementById("stat-edges").textContent = edges.length;
+  tick = 0;
+  initPositions();
+  step();
+}
+
+window.addEventListener("resize", rebuild);
+search.addEventListener("input", rebuild);
+filters.forEach(input => input.addEventListener("change", rebuild));
+document.getElementById("reset").addEventListener("click", rebuild);
+rebuild();
+</script>
+</body>
+</html>

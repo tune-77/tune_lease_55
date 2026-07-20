@@ -5,8 +5,8 @@
 - role: `obsidian_curator_and_shion_runaway_guard`
 - identity: `same_as_shion_upper_authority_mana_value_memory`
 - identity_note: Mana Curator is not a separate agent; it is the existing Mana upper authority applied to Obsidian memory operations.
-- generated_at: `2026-07-18T04:09:51+09:00`
-- target_date: `2026-07-18`
+- generated_at: `2026-07-20T04:08:06+09:00`
+- target_date: `2026-07-20`
 - status: `hold`
 - guardrail: `read_only_no_obsidian_write_no_rag_no_prompt_no_scoring_no_cloudrun_no_deploy`
 
@@ -21,7 +21,7 @@
 ### private_reflection_not_meaningful
 - level: `hold`
 - message: Private Reflectionの意味更新が弱い。記憶昇格やRAG接続は保留する。
-- evidence: `{"check_message": "Private Reflection exists but meaningful update is weak: too_similar_to_yesterday:0.935", "details": {"matched_labels": ["今日の観察:", "私の見落とし:", "仮説の更新:", "次回の小さな実験:", "前回の入力:", "前回の判断:", "人間の修正:", "紫苑が外した点:", "次回から変える確認事項:", "判断資産候補:", "まだ確信できない点:", "私の責任:", "更新する信念:", "次回の検証方法:"], "missing_categories": [], "required_categories": ["misread", "next_behavior", "self_responsibility", "user_expectation"], "similarity_to_yesterday": 0.935, "today_length": 2941, "today_path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-18.md", "yesterday_path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-17.md"}, "status": "warn"}`
+- evidence: `{"check_message": "Private Reflection exists but meaningful update is weak: too_similar_to_yesterday:0.931", "details": {"matched_labels": ["今日の観察:", "私の見落とし:", "仮説の更新:", "次回の小さな実験:", "前回の入力:", "前回の判断:", "人間の修正:", "紫苑が外した点:", "次回から変える確認事項:", "判断資産候補:", "まだ確信できない点:", "私の責任:", "更新する信念:", "次回の検証方法:"], "missing_categories": [], "required_categories": ["misread", "next_behavior", "self_responsibility", "user_expectation"], "similarity_to_yesterday": 0.931, "today_length": 2958, "today_path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-20.md", "yesterday_path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-19.md"}, "status": "warn"}`
 
 ### reflection_too_similar
 - level: `watch`

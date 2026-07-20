@@ -95,18 +95,27 @@ class VaultChangeHandler(FileSystemEventHandler):
 
     @staticmethod
     def _log_event(event_type: str, status: str):
-        """イベントをログに記録。"""
+        """イベントをログに記録。
+
+        注意: 以前は ledger.jsonl（改善パイプラインの重複排除台帳と同名）に
+        read_text()+write_text() の read-modify-write で書き込んでいたため、
+        改善パイプライン側の pipeline_ledger.record()（追記のみ）と競合すると
+        vault_watcher が読んだ古いスナップショットで丸ごと上書きし、
+        その間に書き込まれた applied/suppressed/deleted 等の記録を
+        サイレントに消してしまうバグがあった。
+        vault_watcher 自身のイベントは別ファイルに分離し、書き込みも
+        追記(open("a"))のみに変更して衝突・データロスを防ぐ。
+        """
         LOGS_DIR.mkdir(parents=True, exist_ok=True)
-        ledger = LOGS_DIR / "ledger.jsonl"
+        ledger = LOGS_DIR / "vault_watcher_events.jsonl"
         entry = {
             "timestamp": datetime.now().isoformat(),
             "type": event_type,
             "status": status,
         }
         try:
-            ledger.write_text(
-                ledger.read_text() + json.dumps(entry, ensure_ascii=False) + "\n"
-            )
+            with ledger.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         except Exception as e:
             logger.error(f"ログ記録エラー: {e}")
 

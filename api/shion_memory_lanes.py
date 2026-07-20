@@ -22,6 +22,7 @@ SHION_MEMORY_INDEX_PATH = Path(get_data_path("shion_memory_index.json"))
 LANE_POLICY = {
     "personal_memory": "direct_conversation_continuity_only",
     "task_memory": "what_to_do_not_why_it_matters",
+    "agent_review_context": "codex_claude_outputs_are_supporting_context_not_judgment_assets",
     "dialogue_memory": "continuity_and_preferences_not_business_evidence",
     "judgment_memory": "business_decision_support_after_review",
     "value_memory": "safety_and_human_judgment_boundary",
@@ -116,7 +117,37 @@ def _summarize_memory_index(index_path: Path, *, include_private: bool = False, 
         "count": len(records),
         "by_type": dict(sorted(by_type.items())),
         "by_status": dict(sorted(by_status.items())),
+        "agent_review_context": _agent_review_context(records, limit=sample_limit),
         "samples_by_type": samples_by_type,
+    }
+
+
+def _agent_review_context(records: list[dict[str, Any]], *, limit: int = 5) -> dict[str, Any]:
+    markers = (
+        "Codex",
+        "Claude",
+        "クロード",
+        ".claude/",
+        "agent_sidecar",
+        "AIが言っただけ",
+        "参考意見",
+    )
+    items = [
+        {
+            "id": record.get("id"),
+            "memory_type": record.get("memory_type", "unknown"),
+            "status": record.get("status", "active"),
+            "content": _clean_text(record.get("content"), limit=180),
+            "source_path": record.get("source_path", ""),
+        }
+        for record in records
+        if record.get("content") and any(marker in str(record.get("content") or "") or marker in str(record.get("source_path") or "") for marker in markers)
+    ]
+    return {
+        "count": len(items),
+        "use": LANE_POLICY["agent_review_context"],
+        "promotion_boundary": "user_selected_parts_only_can_become_judgment_asset_candidates",
+        "items": items[:limit],
     }
 
 
