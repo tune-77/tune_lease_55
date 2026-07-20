@@ -1,0 +1,233 @@
+# .github/workflows/deploy.yml
+#
+# REV-215: api/ または frontend/ 変更を検知して Cloud Run に自動デプロイ
+#
+# ──────────────────────────────────────────────────────────────────────
+#  対象サービス
+#    api/**    → tune-lease-55       (FastAPI)
+#    frontend/** → tune-lease-55-web (Next.js)
+#
+#  認証: Workload Identity Federation (WIF) を使用
+#    必要な GitHub Secrets:
+#      WIF_PROVIDER         例) projects/XXXXXXXX/locations/global/workloadIdentityPools/github-pool/providers/github
+#      WIF_SERVICE_ACCOUNT  例) cloud-run-deployer@gen-lang-client-0420497423.iam.gserviceaccount.com
+#
+#    WIF が未設定の場合は下記 "Alternative: SA Key" コメントを参照。
+#
+#  WIF のセットアップ手順:
+#    https://cloud.google.com/blog/products/identity-security/enabling-keyless-authentication-from-github-actions
+#
+#  必要な IAM ロール（サービスアカウントに付与）:
+#    roles/run.admin
+#    roles/storage.admin
+#    roles/cloudbuild.builds.builder
+#    roles/artifactregistry.writer
+#    roles/iam.serviceAccountUser
+# ──────────────────────────────────────────────────────────────────────
+
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches: [master]
+
+env:
+  PROJECT_ID: gen-lang-client-0420497423
+  REGION: asia-northeast1
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────
+  # Job 1: どのパスが変更されたか検出
+  # ────────────────────────────────────────────────────────────────────
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api:
+              - 'api/**'
+              - 'scoring_core.py'
+              - 'scoring/**'
+              - 'Dockerfile.api'
+              - 'cloudbuild.api.yaml'
+              - 'requirements.txt'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            frontend:
+              - 'frontend/**'
+              - 'cloudbuild.web.yaml'
+
+  # ────────────────────────────────────────────────────────────────────
+  # Job 2a: API → tune-lease-55
+  # ────────────────────────────────────────────────────────────────────
+  deploy-api:
+    name: Deploy API (tune-lease-55)
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # WIF に必須
+
+    env:
+      SERVICE_NAME: tune-lease-55
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── GCP 認証 (WIF) ──────────────────────────────────────────────
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+          # Alternative: SA Key を使う場合は上2行を削除して下記を有効化
+          # credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      # ── Cloud Build でイメージをビルド ──────────────────────────────
+      - name: Build API image
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${SERVICE_NAME}/${SERVICE_NAME}:${SHORT_SHA}"
+          echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
+
+          gcloud builds submit \
+            --project "${PROJECT_ID}" \
+            --config cloudbuild.api.yaml \
+            --substitutions "_IMAGE_URI=${IMAGE_URI}" \
+            .
+
+      # ── Cloud Run にデプロイ ─────────────────────────────────────────
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy "${SERVICE_NAME}" \
+            --image "${IMAGE_URI}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --execution-environment gen2 \
+            --port 8080 \
+            --memory 4Gi \
+            --cpu 2 \
+            --timeout 900 \
+            --concurrency 1 \
+            --min-instances 0 \
+            --max-instances 1 \
+            --set-env-vars "DATA_DIR=/app/data,\
+ENABLE_OBSIDIAN_INDEXING=true,\
+ENABLE_FEEDBACK_LOADING=true,\
+ENABLE_GUNSHI_RAG=false,\
+OBSIDIAN_VAULT_PATH=/app/obsidian_vault,\
+CLOUDRUN_DATA_MODE=demo,\
+DEMO_READONLY=0,\
+DB_PATH=/app/data/demo.db,\
+USE_GCS_VAULT=true,\
+GCS_VAULT_RESYNC_INTERVAL=3600,\
+SHION_MEMORY_HYBRID=1,\
+TZ=Asia/Tokyo" \
+            --set-secrets "GEMINI_API_KEY=GEMINI_API_KEY:latest" \
+            --clear-cloudsql-instances \
+            --allow-unauthenticated
+
+      - name: Show deployed URL
+        run: |
+          gcloud run services describe "${SERVICE_NAME}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --format="value(status.url)"
+
+  # ────────────────────────────────────────────────────────────────────
+  # Job 2b: Frontend → tune-lease-55-web
+  # ────────────────────────────────────────────────────────────────────
+  deploy-web:
+    name: Deploy Frontend (tune-lease-55-web)
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      SERVICE_NAME: tune-lease-55-web
+      API_SERVICE_NAME: tune-lease-55
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── GCP 認証 (WIF) ──────────────────────────────────────────────
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+          # credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      # ── API URL を取得（Next.js ビルド時の FASTAPI_URL として渡す） ──
+      - name: Resolve API service URL
+        run: |
+          API_URL="$(gcloud run services describe "${API_SERVICE_NAME}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --format='value(status.url)')"
+
+          if [[ -z "${API_URL}" ]]; then
+            echo "ERROR: ${API_SERVICE_NAME} の URL が取得できません" >&2
+            exit 1
+          fi
+
+          echo "API_URL=${API_URL}" >> "$GITHUB_ENV"
+          echo "API_URL=${API_URL}"
+
+      # ── Cloud Build でイメージをビルド ──────────────────────────────
+      - name: Build frontend image
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${SERVICE_NAME}/${SERVICE_NAME}:${SHORT_SHA}"
+          echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
+
+          gcloud builds submit \
+            --project "${PROJECT_ID}" \
+            --config cloudbuild.web.yaml \
+            --substitutions "_IMAGE_URI=${IMAGE_URI},_FASTAPI_URL=${API_URL}" \
+            frontend/
+
+      # ── Cloud Run にデプロイ ─────────────────────────────────────────
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy "${SERVICE_NAME}" \
+            --image "${IMAGE_URI}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --execution-environment gen2 \
+            --port 8080 \
+            --memory 2Gi \
+            --cpu 1 \
+            --timeout 900 \
+            --concurrency 80 \
+            --min-instances 0 \
+            --max-instances 1 \
+            --set-env-vars "FASTAPI_URL=${API_URL}" \
+            --allow-unauthenticated
+
+      - name: Show deployed URL
+        run: |
+          gcloud run services describe "${SERVICE_NAME}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --format="value(status.url)"
