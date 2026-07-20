@@ -964,6 +964,13 @@ graph LR
 
 恒久目標: ① プライバシーを守りながらユーザーの関心と判断基準を理解する ② リースシステムの知識・機能・運用記録を保全する ③ 判断資産を実務で使える形に育てること
 
+### 記憶レーンとタスク台帳（判断資産と混ぜない継続性）
+
+日常会話の継続性と、審査の判断資産を**別レーンに分離**する仕組みです。検索結果をそのまま判断へ流し込む前に、記憶の役割ごとに境界線を引きます。
+
+- **記憶レーン**（`api/shion_memory_lanes.py`）: personal / task / agent-review / dialogue / judgment / value / technical の各レーンを読み取り専用で要約する。会話の継続やUI表示・プロンプトルーティングに使い、自動昇格はしない。agent（Codex/Claude）の出力は「判断資産」ではなく参考コンテキスト扱い、という境界線をレーンごとのポリシーで持つ。API: `GET /api/shion/memory-lanes`
+- **タスク台帳**（`api/shion_tasks.py`、`data/shion_tasks.jsonl`）: 記憶（＝なぜ重要か）と切り離した、「何を・いつ・完了したか」を扱う追記専用JSONL台帳。イベントソース形式なので、ローカルとCloud Runの経路をDBマイグレーション無しでマージ・リプレイできる。API: `GET`/`POST /api/shion/tasks`、`PATCH /api/shion/tasks/{task_id}`、`POST /api/shion/tasks/{task_id}/status`（状態は `open`/`done`/`cancelled`）
+
 ## 紫苑の感情・関係性ループ
 
 紫苑の「感情」（`data/mind.json`、`emotion_history`、Private Reflection、日次メモで管理。`api/prompt_generator.py`がmood/world_viewを回答スタンスへ反映）は口調・着眼点の調整用であり、財務判断・リスク評価・承認条件を感情で変えることはありません。代表軸: `hope`（前向き）/ `curiosity`（問いかけ）/ `vigilance`（慎重）/ `loneliness`（共感的）。
@@ -1087,6 +1094,10 @@ python scripts/promote_cloudrun_return_data.py --apply   # 承認済みだけ de
 ```
 
 同期後の確認は `/cloudrun-return-review`（隔離DB内の承認のみ、本体`lease_data.db`へは直接書き込みません）。記憶・内省の継続性設計は `docs/cloudrun_memory_continuity_design.md` を参照してください。
+
+Cloud Runのローカルディスクはコールドスタートのたびに空になるため、累積の学習状態はGCSスナップショット経由で復元します。`prompt_feedback_log.jsonl`（プロンプト改善の累積フィードバック）は夜間パイプラインが `scripts/sync_cloudrun_inputs_from_gcs.py` でGCSへ退避し、起動時に `scripts/restore_prompt_feedback_snapshot.py` が復元します（失敗しても `exit 0` で起動をブロックしません）。
+
+Cloud SQL（`tune-lease-db`）は廃止済みです。日次パイプラインのCloud SQL同期ステップは `ENABLE_CLOUDSQL_SYNC` フラグ（既定off、REV-027a）で囲まれ、既定では実行しません。Cloud Runの会話はGCSの `chat_exchange` 経路で反映されるため機能欠落はありません。将来 cloud-sql-proxy 経由で再利用する場合は `ENABLE_CLOUDSQL_SYNC=1` で有効化できます。
 
 シークレットはSecret Managerで管理します（`.env`・ソースコードへの直接記載は禁止）。
 
