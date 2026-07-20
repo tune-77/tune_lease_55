@@ -26,6 +26,9 @@ LEDGER = ROOT / "scripts" / "improvement_ledger.jsonl"
 GROWTH = ROOT / "reports" / "judgment_asset_growth_latest.md"
 LOOP = ROOT / "reports" / "loop_engineering_latest.md"
 OUT = ROOT / "reports" / "loop_proof.html"
+# reports/ は .dockerignore で Cloud Run イメージから除外されるため、API がバンドル内から
+# 読める static_data/ に集計値のスナップショットを残す（Cloud Run で数値が欠落しない保険）。
+SNAPSHOT = ROOT / "static_data" / "loop_proof_snapshot.json"
 
 JP_MONTH = {1: "1月", 2: "2月", 3: "3月", 4: "4月", 5: "5月", 6: "6月",
             7: "7月", 8: "8月", 9: "9月", 10: "10月", 11: "11月", 12: "12月"}
@@ -121,6 +124,45 @@ def collect() -> dict:
     m["fb_diff_pct"] = m.get("fb_diff_pct", 0.0)
     m["fb_other_pct"] = round(100 - m["fb_diff_pct"], 1)
     return m
+
+
+def load_snapshot() -> dict:
+    try:
+        return json.loads(SNAPSHOT.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 — スナップショット欠損でAPIを止めない
+        return {}
+
+
+def write_snapshot(m: dict) -> None:
+    SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
+    payload = {**m, "generated_at": dt.datetime.now().isoformat(timespec="seconds")}
+    SNAPSHOT.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _missing(value) -> bool:
+    if value in (None, "", {}, []):
+        return True
+    return isinstance(value, (int, float)) and value == 0
+
+
+def load_payload() -> dict:
+    """API向け：ライブ集計を優先し、欠けた項目はスナップショットで補う。
+
+    Cloud Run イメージは reports/ を含まない（.dockerignore）ため、ledger 由来の値
+    （提案・適用・PR・月別）はライブで取れるが、reports 由来（coverage・feedback 等）は
+    欠落する。その穴を、デプロイ時にバンドルされた static_data のスナップショットで埋める。
+    """
+    live = collect()
+    snap = load_snapshot()
+    merged = dict(snap)
+    for key, value in live.items():
+        if not _missing(value):
+            merged[key] = value
+    if not merged.get("per_month"):
+        merged["per_month"] = snap.get("per_month", {})
+    merged["source"] = "live+snapshot" if snap else "live"
+    return merged
 
 
 def _short(date_iso: str) -> str:
@@ -413,7 +455,8 @@ def main() -> int:
         print(json.dumps(m, ensure_ascii=False, indent=2))
         return 0
     OUT.write_text(render(m), encoding="utf-8")
-    print(f"wrote {OUT.relative_to(ROOT)}  "
+    write_snapshot(m)
+    print(f"wrote {OUT.relative_to(ROOT)} + {SNAPSHOT.relative_to(ROOT)}  "
           f"(proposals={m.get('proposals')}, applied={m.get('applied')}, "
           f"feedback={m.get('feedback_total')}, growth={m.get('growth_score')})")
     return 0

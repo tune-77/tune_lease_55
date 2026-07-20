@@ -116,6 +116,42 @@ def test_render_contains_live_numbers(tmp_path, monkeypatch):
     assert "Field validation はこれから" in html
 
 
+def test_load_payload_snapshot_fallback(tmp_path, monkeypatch):
+    """Cloud Run で reports/ が欠落しても、スナップショットで数値が埋まる。"""
+    # ledger だけ本物、reports/ は存在しないパスに向ける（= Cloud Run の状態）
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(LEDGER_FIXTURE, encoding="utf-8")
+    snap = tmp_path / "snapshot.json"
+    snap.write_text(json.dumps({
+        "proposals": 1, "applied": 1, "coverage": 94.0,
+        "feedback_total": 317, "fb_diff_pct": 36.9, "needs_review": 34,
+        "active_rules": 10, "per_month": {"2026-06": 2},
+    }), encoding="utf-8")
+    monkeypatch.setattr(mod, "LEDGER", ledger)
+    monkeypatch.setattr(mod, "GROWTH", tmp_path / "missing_growth.md")
+    monkeypatch.setattr(mod, "LOOP", tmp_path / "missing_loop.md")
+    monkeypatch.setattr(mod, "SNAPSHOT", snap)
+
+    pl = mod.load_payload()
+    # ledger 由来はライブ（本物）で上書き
+    assert pl["proposals"] == 4
+    assert pl["applied"] == 3
+    # reports 由来はスナップショットで補完
+    assert pl["coverage"] == 94.0
+    assert pl["feedback_total"] == 317
+    assert pl["needs_review"] == 34
+    assert pl["source"] == "live+snapshot"
+
+
+def test_write_snapshot_roundtrip(tmp_path, monkeypatch):
+    snap = tmp_path / "snap.json"
+    monkeypatch.setattr(mod, "SNAPSHOT", snap)
+    mod.write_snapshot({"proposals": 265, "coverage": 94.0})
+    loaded = mod.load_snapshot()
+    assert loaded["proposals"] == 265
+    assert "generated_at" in loaded
+
+
 def _via_tmp(fn, text):
     """Call a path-based parser with fixture text through a temp file."""
     import tempfile

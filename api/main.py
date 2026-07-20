@@ -638,6 +638,37 @@ def get_cloud_status():
     }
 
 
+_loop_proof_mod = None
+
+
+def _get_build_loop_proof():
+    """scripts/build_loop_proof.py を遅延ロード（初回のみ）。"""
+    global _loop_proof_mod
+    if _loop_proof_mod is None:
+        import importlib.util as _ilu2
+
+        _p = os.path.join(_REPO_ROOT, "scripts", "build_loop_proof.py")
+        _spec = _ilu2.spec_from_file_location("build_loop_proof", _p)
+        _mod = _ilu2.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        _loop_proof_mod = _mod
+    return _loop_proof_mod
+
+
+@app.get("/api/loop-proof")
+def get_loop_proof():
+    """審査員向け「ループが閉じた証拠」の集計値。
+
+    ledger 由来はライブ集計、reports 由来（Cloud Run では .dockerignore で欠落）は
+    バンドル済み static_data スナップショットで補完して返す。
+    """
+    try:
+        return _get_build_loop_proof().load_payload()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("loop-proof集計に失敗: %s", exc)
+        raise HTTPException(status_code=500, detail="loop-proof metrics unavailable")
+
+
 @app.get("/")
 def read_root():
     return {"message": "Lease Scoring API is running."}
