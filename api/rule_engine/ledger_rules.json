@@ -557,14 +557,16 @@
   {
     "rev_id": "REV-027a",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "pipeline_fix",
     "description": "[パイプライン自動検出] sync_cloudsql_to_obsidian が過去7日で失敗率90%（9/10件, 9日失敗）",
-    "status": "pending_review",
+    "status": "stale_resolved",
     "source": "analyze_pipeline_health",
     "detected_at": "2026-07-15T19:01:03Z",
     "affected_files": [],
     "risk": "medium",
-    "auto_fix_allowed": false
+    "auto_fix_allowed": false,
+    "resolved_at": "2026-07-20T11:39:32Z",
+    "resolution_reason": "Cloud SQL（tune-lease-db）廃止に伴い、日次パイプラインの sync_cloudsql_to_obsidian ステップを ENABLE_CLOUDSQL_SYNC フラグで既定無効化。廃止済みインスタンスへの接続失敗が根本原因のため恒久解決。"
   }
 ]
