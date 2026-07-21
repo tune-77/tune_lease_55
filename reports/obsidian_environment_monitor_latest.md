@@ -1,9 +1,9 @@
 # Obsidian Environment Monitor
 
 ## Summary
-- generated_at: `2026-07-20T04:08:06+09:00`
-- target_date: `2026-07-20`
-- status: `warn`
+- generated_at: `2026-07-21T04:08:11+09:00`
+- target_date: `2026-07-21`
+- status: `ok`
 - guardrail: `monitor_only_no_obsidian_write_no_rag_no_prompt_no_cloudrun`
 
 ## Viewpoints
@@ -20,8 +20,8 @@
 ## Checks
 ### vault
 - status: `ok`
-- message: Vault reachable, markdown files=1384
-- details: `{"md_count": 1384}`
+- message: Vault reachable, markdown files=1408
+- details: `{"md_count": 1408}`
 
 ### key_paths
 - status: `ok`
@@ -29,29 +29,29 @@
 - details: `{"missing": []}`
 
 ### daily_notes
-- status: `warn`
-- message: missing daily notes: 2026-07-20.md
-- details: `{"today": false, "yesterday": true}`
+- status: `ok`
+- message: today/yesterday daily notes exist
+- details: `{"today": true, "yesterday": true}`
 
 ### surface_freshness
 - status: `ok`
 - message: dialogue/reflection surfaces fresh
-- details: `{"cloudrun_conversation": {"age_hours": 0.1, "exists": true, "path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-19.md"}, "dialogue": {"age_hours": 0.1, "exists": true, "path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-19.md"}, "private_reflection": {"age_hours": 0.0, "exists": true, "path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-20.md"}}`
+- details: `{"cloudrun_conversation": {"age_hours": 0.1, "exists": true, "path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-21.md"}, "dialogue": {"age_hours": 0.1, "exists": true, "path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-21.md"}, "private_reflection": {"age_hours": 0.0, "exists": true, "path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-21.md"}}`
 
 ### private_reflection_meaning
-- status: `warn`
-- message: Private Reflection exists but meaningful update is weak: too_similar_to_yesterday:0.931
-- details: `{"matched_labels": ["今日の観察:", "私の見落とし:", "仮説の更新:", "次回の小さな実験:", "前回の入力:", "前回の判断:", "人間の修正:", "紫苑が外した点:", "次回から変える確認事項:", "判断資産候補:", "まだ確信できない点:", "私の責任:", "更新する信念:", "次回の検証方法:"], "missing_categories": [], "required_categories": ["misread", "next_behavior", "self_responsibility", "user_expectation"], "similarity_to_yesterday": 0.931, "today_length": 2958, "today_path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-20.md", "yesterday_path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-19.md"}`
+- status: `ok`
+- message: Private Reflection has meaningful update signals
+- details: `{"matched_labels": ["今日の観察:", "私の見落とし:", "仮説の更新:", "次回の小さな実験:", "前回の入力:", "前回の判断:", "人間の修正:", "紫苑が外した点:", "次回から変える確認事項:", "判断資産候補:", "まだ確信できない点:", "私の責任:", "更新する信念:", "次回の検証方法:"], "missing_categories": [], "required_categories": ["misread", "next_behavior", "self_responsibility", "user_expectation"], "similarity_to_yesterday": 0.778, "today_length": 3526, "today_path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-21.md", "yesterday_path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-20.md"}`
 
 ### rag_index
 - status: `ok`
 - message: RAG index fresh
-- details: `{"chroma_age_hours": 0.1, "chroma_db": "/Users/kobayashiisaoryou/clawd/tune_lease_55/api/chroma_db/chroma.sqlite3", "chroma_size": 84754432, "completion_source": "rag_daily_maintenance", "last_reindex_age_hours": 1.1, "reindex_log": "/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_obsidian_reindex.out.log", "total_in_db": 1180}`
+- details: `{"chroma_age_hours": 0.1, "chroma_db": "/Users/kobayashiisaoryou/clawd/tune_lease_55/api/chroma_db/chroma.sqlite3", "chroma_size": 84754432, "completion_source": "rag_daily_maintenance", "last_reindex_age_hours": 1.1, "reindex_log": "/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_obsidian_reindex.out.log", "total_in_db": 1196}`
 
 ### memory_insight_reports
 - status: `ok`
 - message: memory insight sidecars fresh
-- details: `{"memory_insight": {"age_hours": 18.9, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/obsidian_memory_insight_latest.md"}, "promotion_queue": {"age_hours": 0.0, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/shion_memory_promotion_queue_latest.md"}, "reflection_delta": {"age_hours": 0.0, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/shion_reflection_delta_latest.md"}}`
+- details: `{"memory_insight": {"age_hours": 21.3, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/obsidian_memory_insight_latest.md"}, "promotion_queue": {"age_hours": 21.3, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/shion_memory_promotion_queue_latest.md"}, "reflection_delta": {"age_hours": 21.3, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/shion_reflection_delta_latest.md"}}`
 
 ### self_reference_loop
 - status: `ok`
@@ -60,13 +60,13 @@
 
 ### recent_note_noise
 - status: `ok`
-- message: recent note technical-noise ratio=0.0054, noisy_files=3
-- details: `{"noisy_files": ["Daily/2026-07-18.md", "Daily/2026-07-17.md", "Daily/2026-07-16.md"], "ratio": 0.0054}`
+- message: recent note technical-noise ratio=0.0058, noisy_files=3
+- details: `{"noisy_files": ["Daily/2026-07-18.md", "Daily/2026-07-17.md", "Daily/2026-07-16.md"], "ratio": 0.0058}`
 
 ### wikilinks
 - status: `ok`
-- message: recent wikilinks=105, unresolved_sample=0
-- details: `{"link_count": 105, "unresolved_sample": []}`
+- message: recent wikilinks=103, unresolved_sample=0
+- details: `{"link_count": 103, "unresolved_sample": []}`
 
 ## Next Safe Action
 - `warn` が出た項目だけ手動で確認する。
