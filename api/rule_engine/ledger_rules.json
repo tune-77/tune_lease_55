@@ -572,14 +572,16 @@
   {
     "rev_id": "REV-028a",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "pipeline_fix",
     "description": "[パイプライン自動検出] sync_cloudsql_to_obsidian が過去7日で失敗率88%（8/9件, 8日失敗）",
-    "status": "pending_review",
+    "status": "stale_resolved",
     "source": "analyze_pipeline_health",
     "detected_at": "2026-07-20T19:01:56Z",
     "affected_files": [],
     "risk": "medium",
-    "auto_fix_allowed": false
+    "auto_fix_allowed": false,
+    "resolved_at": "2026-07-21T00:00:00Z",
+    "resolution_reason": "REV-027a と同一根本原因（Cloud SQL 廃止）の再検出。ステップは既に既定無効化済みで、失敗ログは廃止前のもの。無効時に log_step exit 0 を記録するよう run_daily_improvement_core.sh を修正し、以後 analyze_pipeline_health が直近成功を検知して自動解決できるようにした。"
   }
 ]
