@@ -164,6 +164,16 @@ echo "[可視化] 判断資産グラフを生成（末端: 生成HTML/JSONを読
 "${PYTHON}" "${PROJECT_ROOT}/scripts/build_judgment_asset_graph.py"; log_step "build_judgment_asset_graph" $?
 
 echo ""
+echo "[配線] 判断資産グラフを frontend/public へ同期（本番UI配信用）..."
+# reports/ は Cloud Run イメージ非同梱だが frontend/public は本番配信される。
+# 生成した最新グラフ(HTML/PNG)を public にコピーし、次回デプロイで /judgment-asset-graph に反映させる。
+GRAPH_PUBLIC_DIR="${PROJECT_ROOT}/frontend/public/judgment-asset-graph"
+mkdir -p "${GRAPH_PUBLIC_DIR}"
+cp -f "${PROJECT_ROOT}/reports/judgment_asset_graph_latest.html" "${GRAPH_PUBLIC_DIR}/index.html" \
+  && cp -f "${PROJECT_ROOT}/reports/judgment_asset_graph_latest.png" "${GRAPH_PUBLIC_DIR}/preview.png"
+log_step "sync_graph_to_public" $?
+
+echo ""
 echo "[可視化] 審査員向け「ループが閉じた証拠」1画面を最新値で再生成..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/build_loop_proof.py"; log_step "build_loop_proof" $?
 
