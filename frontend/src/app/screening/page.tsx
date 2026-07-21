@@ -19,6 +19,7 @@ import QRiskPanel from "../../components/analysis/QRiskPanel";
 import MahalanobisPanel from "../../components/analysis/MahalanobisPanel";
 import UMAPPanel from "../../components/analysis/UMAPPanel";
 import OcrUpload from "../../components/analysis/OcrUpload";
+import ShionGrowthBadge from "../../components/analysis/ShionGrowthBadge";
 import { triggerMebuki } from "../../components/layout/FloatingMebuki";
 
 const DATA_SOURCE_FIELD_LABELS: Record<string, string> = {
@@ -3263,6 +3264,7 @@ export default function Dashboard() {
                 ) : (
                   <>
                     {/* 初期表示は判断に必要な結論だけに絞る */}
+                    <ShionGrowthBadge />
                     <JudgmentFlowStrip />
                     <ShionScreeningReviewCard
                       review={shionReview}
