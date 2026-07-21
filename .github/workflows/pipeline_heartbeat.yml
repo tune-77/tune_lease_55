@@ -1,0 +1,48 @@
+# .github/workflows/pipeline_heartbeat.yml
+#
+# 夜間改善パイプラインの「独立ハートビート」。
+#
+# 監視器 analyze_pipeline_health.py はパイプライン内部で動くため、パイプライン
+# 自体（ローカル Mac の launchd ジョブ）が丸ごと止まると失敗を検知できない。
+# パイプラインは正常完了時に成果を公開 Gist へ日次更新するので、その Gist の
+# 更新鮮度を GitHub 側（Mac から独立）で毎日チェックし、一定時間更新が無ければ
+# ワークフローを失敗させて可視化する。Gist が古い = パイプライン停止 or gist 更新
+# 前段での失敗のシグナル。
+name: Pipeline Heartbeat
+
+on:
+  schedule:
+    - cron: "0 6 * * *"   # 毎日 06:00 UTC（JST 15:00）。夜間パイプライン(JST 早朝)の後に確認
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  # scripts/run_daily_improvement_core.sh が更新する公開 Gist
+  GIST_ID: "3980215df65cf75e972471f048b10d15"
+  MAX_AGE_HOURS: "36"
+
+jobs:
+  heartbeat:
+    name: 夜間改善パイプラインの鮮度チェック
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check daily Gist freshness
+        run: |
+          set -euo pipefail
+
+          UPDATED_AT="$(curl -sSf -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/gists/${GIST_ID}" \
+            | python3 -c 'import sys, json; print(json.load(sys.stdin)["updated_at"])')"
+          echo "Gist last updated: ${UPDATED_AT}"
+
+          AGE_H="$(python3 -c 'import sys, datetime; u = datetime.datetime.fromisoformat(sys.argv[1].replace("Z", "+00:00")); print(int((datetime.datetime.now(datetime.timezone.utc) - u).total_seconds() // 3600))' "${UPDATED_AT}")"
+          echo "経過時間: ${AGE_H}h / 閾値: ${MAX_AGE_HOURS}h"
+
+          if [ "${AGE_H}" -gt "${MAX_AGE_HOURS}" ]; then
+            echo "::error::夜間改善パイプラインの出力(Gist)が ${AGE_H}h 更新されていません（閾値 ${MAX_AGE_HOURS}h）。パイプライン停止、または gist 更新前段での失敗の可能性があります。ローカルの launchd ジョブと ~/Library/Logs/tunelease/improvement_*.log を確認してください。"
+            exit 1
+          fi
+
+          echo "OK: パイプラインは直近 ${AGE_H}h 以内に正常出力しています。"
