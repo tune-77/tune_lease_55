@@ -145,7 +145,7 @@
     <div class="tile"><p class="k">AIの改善提案</p><div class="v tnum">265</div><p class="sub">台帳に記録された改善候補（REV）</p></div>
     <div class="tile"><p class="k">実際に適用</p><div class="v tnum">240</div><span class="pct good">適用率 91%</span><p class="sub">提案 → コードへ反映まで到達</p></div>
     <div class="tile"><p class="k">PRに紐づく適用</p><div class="v tnum">194</div><p class="sub">191 の独立REVがPR経路で追跡可能</p></div>
-    <div class="tile"><p class="k">人間評価の反映</p><div class="v tnum">317<small>件</small></div><span class="pct good">PDCA 100%</span><p class="sub">全件が次のプロンプトへ反映</p></div>
+    <div class="tile"><p class="k">人間評価の反映</p><div class="v tnum">319<small>件</small></div><span class="pct good">PDCA 100%</span><p class="sub">全件が次のプロンプトへ反映</p></div>
   </div>
 
   <hr class="rule">
@@ -154,8 +154,8 @@
   <div class="loop">
     <div class="stage"><span class="flag live">稼働</span><span class="n">01 提案</span><span class="t">AIが改善を起票</span><span class="big tnum">265</span><span class="d">改善候補を台帳へ</span></div>
     <div class="stage"><span class="flag live">稼働</span><span class="n">02 適用</span><span class="t">PRで反映</span><span class="big tnum">240</span><span class="d">うち194がPR追跡可</span></div>
-    <div class="stage"><span class="flag live">稼働</span><span class="n">03 人間評価</span><span class="t">効いた／微妙／外した</span><span class="big tnum">317</span><span class="d">36.9%が次回応答を変えた</span></div>
-    <div class="stage"><span class="flag live">稼働</span><span class="n">04 資産化</span><span class="t">判断資産が育つ</span><span class="big tnum">21</span><span class="d">Materials／Active rules 10</span></div>
+    <div class="stage"><span class="flag live">稼働</span><span class="n">03 人間評価</span><span class="t">効いた／微妙／外した</span><span class="big tnum">319</span><span class="d">36.7%が次回応答を変えた</span></div>
+    <div class="stage"><span class="flag live">稼働</span><span class="n">04 資産化</span><span class="t">判断資産が育つ</span><span class="big tnum">25</span><span class="d">Materials／Active rules 10</span></div>
     <div class="stage next"><span class="flag soon">次の点火点</span><span class="n">05 実戦検証</span><span class="t">実案件で効いたか</span><span class="big tnum">0</span><span class="d">Field validation はこれから</span></div>
   </div>
 
@@ -163,16 +163,16 @@
 
   <div class="cols">
     <div class="card">
-      <h3>判断資産の成長スコア <span class="tnum" style="color:var(--accent);font-family:var(--serif);font-weight:600">62.6</span></h3>
-      <p class="note">2026-07-20 時点・日次トラッキング（local計測、RAG/プロンプト/スコアリングへ書き戻さないガードレール下）。人間判断から蒸留した構成要素の充足度。</p>
+      <h3>判断資産の成長スコア <span class="tnum" style="color:var(--accent);font-family:var(--serif);font-weight:600">67.5</span></h3>
+      <p class="note">2026-07-21 時点・日次トラッキング（local計測、RAG/プロンプト/スコアリングへ書き戻さないガードレール下）。人間判断から蒸留した構成要素の充足度。</p>
       <div class="meter"><span class="ml">網羅性 Coverage</span><span class="mt"><span class="mf" style="width:94%"></span></span><span class="mv tnum">94</span></div>
       <div class="meter"><span class="ml">判断変化 proxy</span><span class="mt"><span class="mf" style="width:75%"></span></span><span class="mv tnum">75</span></div>
       <div class="meter"><span class="ml">人間整合 proxy</span><span class="mt"><span class="mf" style="width:70%"></span></span><span class="mv tnum">70</span></div>
       <div class="meter"><span class="ml">再利用 proxy</span><span class="mt"><span class="mf" style="width:60%"></span></span><span class="mv tnum">60</span></div>
-      <div class="meter"><span class="ml">負のシグナル</span><span class="mt"><span class="mf" style="width:49%"></span></span><span class="mv tnum">49</span></div>
+      <div class="meter"><span class="ml">負のシグナル</span><span class="mt"><span class="mf dormant" style="width:2%"></span></span><span class="mv tnum zero">0</span></div>
       <div class="meter"><span class="ml">実戦検証 Field</span><span class="mt"><span class="mf dormant" style="width:2%"></span></span><span class="mv tnum zero">0</span></div>
       <div class="counts">
-        <div><div class="cn tnum">21</div><div class="cl">判断材料 Materials</div></div>
+        <div><div class="cn tnum">25</div><div class="cl">判断材料 Materials</div></div>
         <div><div class="cn tnum">10</div><div class="cl">現役ルール Active</div></div>
         <div><div class="cn tnum">18</div><div class="cl">ユーザー根拠</div></div>
         <div><div class="cn tnum">10</div><div class="cl">概念 Concepts</div></div>
@@ -182,15 +182,15 @@
     </div>
     <div class="card">
       <h3>人間評価 → 応答の変化</h3>
-      <p class="note">317件の人間フィードバック（効いた／微妙／外した／修正）が全件PDCAに反映。うち実際に前回応答からの差分を生んだ割合。</p>
+      <p class="note">319件の人間フィードバック（効いた／微妙／外した／修正）が全件PDCAに反映。うち実際に前回応答からの差分を生んだ割合。</p>
       <div class="prop">
-        <div class="propbar" role="img" aria-label="317件中117件（36.9%）が次回応答を変えた">
-          <div class="seg a" style="width:36.9%"></div>
-          <div class="seg b" style="width:63.1%"></div>
+        <div class="propbar" role="img" aria-label="319件中117件（36.7%）が次回応答を変えた">
+          <div class="seg a" style="width:36.7%"></div>
+          <div class="seg b" style="width:63.3%"></div>
         </div>
         <div class="leg">
-          <span><span class="sw a"></span>応答が変化 117件 <b class="tnum" style="margin-left:2px">36.9%</b></span>
-          <span><span class="sw b"></span>反映・現状維持 200件</span>
+          <span><span class="sw a"></span>応答が変化 117件 <b class="tnum" style="margin-left:2px">36.7%</b></span>
+          <span><span class="sw b"></span>反映・現状維持 202件</span>
         </div>
       </div>
       <h3 style="margin-top:22px">適用REVの推移</h3>
