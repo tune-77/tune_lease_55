@@ -36,6 +36,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/shion-debug": "紫苑デバッグ",
   "/system-overview": "System Overview",
   "/report": "審査レポート",
+  "/judgment-asset-graph": "判断資産グラフ（紫苑の成長）",
   "/batch": "バッチ審査",
   "/lease-intelligence": "リース知性体との対話",
   "/multi-shion-demo": "マルチ紫苑デモ",

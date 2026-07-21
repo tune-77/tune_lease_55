@@ -24,6 +24,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 LEDGER = ROOT / "scripts" / "improvement_ledger.jsonl"
 GROWTH = ROOT / "reports" / "judgment_asset_growth_latest.md"
+# evaluate_shion_growth.py が書く期間成長判定（育った/在庫は増えたが実戦検証不足 ほか）
+GROWTH_EVAL = ROOT / "reports" / "shion_growth_evaluation_latest.md"
 LOOP = ROOT / "reports" / "loop_engineering_latest.md"
 OUT = ROOT / "reports" / "loop_proof.html"
 # reports/ は .dockerignore で Cloud Run イメージから除外されるため、API がバンドル内から
@@ -96,6 +98,28 @@ def parse_growth(path: Path) -> dict:
     }
 
 
+def parse_growth_judgment(path: Path) -> dict:
+    """期間成長判定のラベル・スコア・要約を抽出して payload に載せる。
+
+    reports/ は Cloud Run イメージ非同梱のため、この値は static_data スナップショット
+    経由で本番へ届く（成長スコアと同じ経路）。UI（審査画面バッジ等）が参照する。
+    """
+    if not path.exists():
+        return {}
+    t = path.read_text(encoding="utf-8")
+    result_m = re.search(r"- Result:\s*(.+?)\s*\(([0-9.]+)\)", t)
+    summary_m = re.search(r"- Summary:\s*(.+)", t)
+    if not result_m:
+        return {}
+    return {
+        "growth_judgment": {
+            "label": result_m.group(1).strip(),
+            "score": float(result_m.group(2)),
+            "summary": summary_m.group(1).strip() if summary_m else "",
+        }
+    }
+
+
 def parse_loop(path: Path) -> dict:
     if not path.exists():
         return {}
@@ -115,6 +139,7 @@ def collect() -> dict:
     m = {}
     m.update(parse_ledger(LEDGER))
     m.update(parse_growth(GROWTH))
+    m.update(parse_growth_judgment(GROWTH_EVAL))
     m.update(parse_loop(LOOP))
     # derived
     proposals = m.get("proposals", 0) or 1

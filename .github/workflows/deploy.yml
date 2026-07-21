@@ -45,6 +45,7 @@ jobs:
     outputs:
       api: ${{ steps.filter.outputs.api }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      wif: ${{ steps.wif.outputs.configured }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -67,13 +68,28 @@ jobs:
               - 'frontend/**'
               - 'cloudbuild.web.yaml'
 
+      # WIF Secrets 未設定なら deploy ジョブをスキップ扱いにする（失敗表示を出さない）。
+      # secrets コンテキストは job レベルの if: では参照できないため、ここで存在確認して
+      # output に落とし、下流ジョブの if: で判定する。手動デプロイ運用時のノイズ防止。
+      - id: wif
+        env:
+          WIF_PROVIDER: ${{ secrets.WIF_PROVIDER }}
+          WIF_SERVICE_ACCOUNT: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+        run: |
+          if [ -n "${WIF_PROVIDER}" ] && [ -n "${WIF_SERVICE_ACCOUNT}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::WIF Secrets (WIF_PROVIDER / WIF_SERVICE_ACCOUNT) が未設定のため Cloud Run 自動デプロイをスキップします。手動デプロイ（scripts/deploy_cloud_run_api.sh 等）を使用してください。"
+          fi
+
   # ────────────────────────────────────────────────────────────────────
   # Job 2a: API → tune-lease-55
   # ────────────────────────────────────────────────────────────────────
   deploy-api:
     name: Deploy API (tune-lease-55)
     needs: changes
-    if: needs.changes.outputs.api == 'true'
+    if: needs.changes.outputs.api == 'true' && needs.changes.outputs.wif == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -143,7 +159,7 @@ jobs:
   deploy-web:
     name: Deploy Frontend (tune-lease-55-web)
     needs: changes
-    if: needs.changes.outputs.frontend == 'true'
+    if: needs.changes.outputs.frontend == 'true' && needs.changes.outputs.wif == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read

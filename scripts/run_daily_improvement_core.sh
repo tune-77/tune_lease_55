@@ -8,16 +8,8 @@ LOG_DATE="${LOG_DATE:-$(date +%Y%m%d)}"
 RESULT_FILE="${RESULT_FILE:-${HOME}/Library/Logs/tunelease/reports/improvement_report_${LOG_DATE}.json}"
 EXPORT_FILE="${EXPORT_FILE:-/tmp/obsidian_improvements_export.txt}"
 
-# ステップ結果を構造化ログに記録するヘルパー
-log_step() {
-    local step_name="$1"
-    local exit_code="$2"
-    local duration_s="${3:-0}"
-    local log_file="${PROJECT_ROOT}/data/pipeline_step_log.jsonl"
-    local ts
-    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    echo "{\"ts\":\"${ts}\",\"run_date\":\"${LOG_DATE}\",\"step\":\"${step_name}\",\"exit_code\":${exit_code},\"duration_s\":${duration_s}}" >> "${log_file}"
-}
+# ステップ結果を構造化ログに記録するヘルパー（core/post 共通・pipeline_log_step.sh）
+source "$(dirname "${BASH_SOURCE[0]}")/pipeline_log_step.sh"
 
 echo ""
 echo "[入力・同期] Cloud Run入力イベントを GCS から取り込み中..."
@@ -73,7 +65,7 @@ fi
 
 echo ""
 echo "[入力・同期] 実装済み改善を Obsidian インデックスに自動同期中..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/sync_implemented_to_obsidian.py" || true
+"${PYTHON}" "${PROJECT_ROOT}/scripts/sync_implemented_to_obsidian.py"; log_step "sync_implemented_to_obsidian" $?
 
 JUDGMENT_PREVIEW_DATE="${JUDGMENT_PREVIEW_DATE:-$(date +%F)}"
 JUDGMENT_PREVIEW_DAYS="${JUDGMENT_PREVIEW_DAYS:-3}"
@@ -149,16 +141,16 @@ fi
 
 echo ""
 echo "[記憶] 記憶の矛盾候補を検出中（レポートのみ・自動修正なし）..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/detect_shion_memory_contradictions.py" || true
+"${PYTHON}" "${PROJECT_ROOT}/scripts/detect_shion_memory_contradictions.py"; log_step "detect_shion_memory_contradictions" $?
 
 echo ""
 echo "[診断] マクロデータ更新..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/fetch_fincept_data.py" || true
+"${PYTHON}" "${PROJECT_ROOT}/scripts/fetch_fincept_data.py"; log_step "fetch_fincept_data" $?
 
 # aurion の異常は改善候補より先に拾う
 echo ""
 echo "[診断] aurion 自動診断ステータス確認..."
-EXPORT_FILE="${EXPORT_FILE}" "${PYTHON}" "${PROJECT_ROOT}/scripts/check_aurion_state.py" || true
+EXPORT_FILE="${EXPORT_FILE}" "${PYTHON}" "${PROJECT_ROOT}/scripts/check_aurion_state.py"; log_step "check_aurion_state" $?
 
 # 診断用の改善候補抽出
 echo ""
@@ -185,12 +177,12 @@ echo "抽出された改善案タグ数: ${IMPROVEMENT_COUNT}件"
 # 補助ソースを加算して改善候補を厚くする
 echo ""
 echo "[診断] lease-wiki-vault @AI_Insight_Evolved から改善案を差分抽出中..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/extract_wiki_vault_insights.py" >> "${EXPORT_FILE}" || true
+"${PYTHON}" "${PROJECT_ROOT}/scripts/extract_wiki_vault_insights.py" >> "${EXPORT_FILE}"; log_step "extract_wiki_vault_insights" $?
 
 # スコア指標のドリフトも追記
 echo ""
 echo "[診断] DB スコアリング指標の自動分析中..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_scoring_drift.py" >> "${EXPORT_FILE}" || true
+"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_scoring_drift.py" >> "${EXPORT_FILE}"; log_step "analyze_scoring_drift" $?
 
 echo ""
 echo "[改善] auto-improvement-pipeline 実行中..."
@@ -229,39 +221,39 @@ fi
 
 echo ""
 echo "[反映] ウィザード入力ログ分析 — 空欄率の高いフィールドを台帳に追記中..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_wizard_inputs.py" || true
+"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_wizard_inputs.py"; log_step "analyze_wizard_inputs" $?
 
 echo ""
 echo "[反映] RAG フィードバック分析 — ブースト/ペナルティ候補を台帳に追記中..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_rag_feedback.py" || true
+"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_rag_feedback.py"; log_step "analyze_rag_feedback" $?
 
 echo ""
 echo "[反映] RAG未評価通知の自動整理 — 古い/重複 RAG-UNRATED をアーカイブへ..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/cleanup_rag_unrated_rules.py" --apply || true
+"${PYTHON}" "${PROJECT_ROOT}/scripts/cleanup_rag_unrated_rules.py" --apply; log_step "cleanup_rag_unrated_rules" $?
 
 echo ""
 echo "[反映] RAG 鮮度分析 — 長期アクセスなしノードを台帳に追記中..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_rag_staleness.py" || true
+"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_rag_staleness.py"; log_step "analyze_rag_staleness" $?
 
 echo ""
 echo "[反映] パイプラインヘルス分析 — 失敗率の高いステップをルール台帳に追記中..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_pipeline_health.py" || true
+"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_pipeline_health.py"; log_step "analyze_pipeline_health" $?
 
 echo ""
 echo "[通知] パイプライン障害検出を Slack へ通知中..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/notify_pipeline_alerts.py" --apply || true
+"${PYTHON}" "${PROJECT_ROOT}/scripts/notify_pipeline_alerts.py" --apply; log_step "notify_pipeline_alerts" $?
 
 echo ""
 echo "[反映] エラーログ解析 — 頻発エラーをルール台帳に追記中..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_error_logs.py" || true
+"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_error_logs.py"; log_step "analyze_error_logs" $?
 
 echo ""
 echo "[反映] 安全な修正案（紫苑auto・低リスク）を自動で適用待ちへ..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/auto_approve_safe_recipes.py" --apply || true
+"${PYTHON}" "${PROJECT_ROOT}/scripts/auto_approve_safe_recipes.py" --apply; log_step "auto_approve_safe_recipes" $?
 
 echo ""
 echo "[反映] batch_apply — 台帳ルールを自動適用中..."
-"${PYTHON}" "${PROJECT_ROOT}/api/rule_engine/batch_apply.py" --apply || true
+"${PYTHON}" "${PROJECT_ROOT}/api/rule_engine/batch_apply.py" --apply; log_step "batch_apply" $?
 
 echo ""
 echo "[反映] 再帰的自己改善レポートを生成中..."
@@ -287,20 +279,24 @@ fi
 
 echo ""
 echo "[学習] PDCAルールのライフサイクル管理 — 効果のあるルールを自動延長中..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/pdca_rule_lifecycle.py" --apply || true
+"${PYTHON}" "${PROJECT_ROOT}/scripts/pdca_rule_lifecycle.py" --apply; log_step "pdca_rule_lifecycle" $?
 
 echo ""
 echo "[反映] Obsidian RAG評価・安全な自動修正を実行中..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/auto_fix_obsidian_rag.py" \
     --eval-set "${PROJECT_ROOT}/api/knowledge/rag_eval_set.json" \
     --config "${PROJECT_ROOT}/config/rag_ranking.json" \
-    --report "${PROJECT_ROOT}/reports/rag_auto_fix_latest.json" || \
+    --report "${PROJECT_ROOT}/reports/rag_auto_fix_latest.json"
+AUTO_FIX_RAG_EXIT=$?
+log_step "auto_fix_obsidian_rag" ${AUTO_FIX_RAG_EXIT}
+if [ ${AUTO_FIX_RAG_EXIT} -ne 0 ]; then
     echo "警告: RAG自動修正は完了しませんでした（改善パイプラインは継続します）"
+fi
 
 # Codex PR ステータス同期（merged / rejected を status ファイルに書き戻す）
 echo ""
 echo "[反映] Codex PR マージ/クローズ状態を execution_status に同期中..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/sync_codex_pr_status.py" || true
+"${PYTHON}" "${PROJECT_ROOT}/scripts/sync_codex_pr_status.py"; log_step "sync_codex_pr_status" $?
 
 # Codex キュー
 if [ -f "${RESULT_FILE}" ]; then
@@ -325,7 +321,7 @@ if [ -f "${RESULT_FILE}" ]; then
         echo ""
         echo "[反映] Codex 自動実行キューを実行中..."
         "${PYTHON}" "${PROJECT_ROOT}/scripts/execute_codex_queue.py" \
-            --queue "${CODEX_QUEUE_FILE}" || true
+            --queue "${CODEX_QUEUE_FILE}"
         EXECUTE_EXIT=$?
         log_step "execute_codex_queue" ${EXECUTE_EXIT}
         if [ ${EXECUTE_EXIT} -ne 0 ]; then
@@ -337,17 +333,17 @@ fi
 # 改善レポート品質評価
 echo ""
 echo "[品質] 改善レポート品質スコアを計算中..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_improvement_quality.py" || true
+"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_improvement_quality.py"; log_step "analyze_improvement_quality" $?
 
 # スクリーニングレポート品質フィードバック集計
 echo ""
 echo "[品質] スクリーニングレポート品質フィードバックを集計中..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_report_quality.py" || true
+"${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_report_quality.py"; log_step "analyze_report_quality" $?
 
 # 改善ループ・係数・モデルの読み取りヘルスチェック
 echo ""
 echo "[品質] ループ/係数/モデルのヘルスチェックを生成中..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/loop_metrics.py" || true
+"${PYTHON}" "${PROJECT_ROOT}/scripts/loop_metrics.py"; log_step "loop_metrics" $?
 
 # Wiki 昇格キュー
 echo ""
@@ -384,12 +380,12 @@ fi
 # スコアリング重み最適化の自動トリガー
 echo ""
 echo "[最適化] 30日以上前の未登録ケースを失注補完 → 重み最適化トリガー..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/auto_trigger_optimizer.py" || true
+"${PYTHON}" "${PROJECT_ROOT}/scripts/auto_trigger_optimizer.py"; log_step "auto_trigger_optimizer" $?
 
 # スコア乖離学習 — 高スコア失注/低スコア成約/高スコア延滞を台帳に追記
 echo ""
 echo "[学習] スコア乖離パターンを検出して台帳に追記中..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/learn_from_case_differences.py" || true
+"${PYTHON}" "${PROJECT_ROOT}/scripts/learn_from_case_differences.py"; log_step "learn_from_case_differences" $?
 
 if [ -f "${LATEST_FILE}" ]; then
     echo ""

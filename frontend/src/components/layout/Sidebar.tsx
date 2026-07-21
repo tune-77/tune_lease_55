@@ -100,6 +100,7 @@ export default function Sidebar() {
         { name: '営業部別分析', href: '/department', icon: Users, color: 'text-emerald-400' },
         { name: '業種別成約率', href: '/industry-winrate', icon: BarChart2, color: 'text-blue-400' },
         { name: '競合関係グラフ', href: '/competitor', icon: Share2, color: 'text-orange-400' },
+        { name: '判断資産グラフ（紫苑の成長）', href: '/judgment-asset-graph', icon: Network, color: 'text-emerald-400' },
         { name: '知識宇宙マップ', href: '/knowledge-space', icon: Network, color: 'text-cyan-300' },
         { name: 'ビジュアルインサイト', href: '/visual', icon: Eye, color: 'text-blue-300' },
       ]

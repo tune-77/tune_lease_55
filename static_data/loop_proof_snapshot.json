@@ -33,5 +33,10 @@
   "applied_pct": 91,
   "fb_other": 200,
   "fb_other_pct": 63.1,
-  "generated_at": "2026-07-20T22:11:53"
+  "generated_at": "2026-07-20T22:11:53",
+  "growth_judgment": {
+    "label": "在庫は増えたが実戦検証不足",
+    "score": 61.7,
+    "summary": "判断資産の在庫と整理は進んだが、実案件で効いた証跡が不足している。"
+  }
 }

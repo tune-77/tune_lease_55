@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { apiClient } from "@/lib/api";
 import { AlertTriangle, RefreshCw } from "lucide-react";
+import ShionGrowthBadge from "@/components/analysis/ShionGrowthBadge";
 
 type LoopProof = {
   proposals?: number;
@@ -163,6 +164,11 @@ export default function LoopProofPage() {
         </span>
         <span className="rounded-full border border-slate-200 px-3 py-1 dark:border-slate-700">必須技術 Cloud Run ／ Gemini API ／ ADK</span>
         <span className="rounded-full border border-slate-200 px-3 py-1 dark:border-slate-700">盛らず、実ログ集計のみ</span>
+      </div>
+
+      {/* 紫苑の成長判定 */}
+      <div className="mt-6">
+        <ShionGrowthBadge />
       </div>
 
       {/* tiles */}
