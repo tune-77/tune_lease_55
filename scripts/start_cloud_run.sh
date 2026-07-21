@@ -46,6 +46,10 @@ if [[ -n "$OBSIDIAN_VAULT_PATH" ]]; then
   chmod -R u+w "$OBSIDIAN_VAULT_PATH" 2>/dev/null || true
 fi
 
+# コールドスタートでローカルディスクが空になるため、GCS上の累積スナップショットから
+# prompt_feedback_log.jsonl を復元する（失敗しても起動をブロックしない）
+python "$(dirname "$0")/restore_prompt_feedback_snapshot.py" || true
+
 python -m uvicorn api.main:app \
   --host "$FASTAPI_HOST" \
   --port "$FASTAPI_PORT" \
