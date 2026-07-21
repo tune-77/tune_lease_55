@@ -117,20 +117,31 @@ def _push_proposals_to_improvement_log(
 def run_shion_feedback_loop() -> dict:
     """
     紫苑フィードバック傾向ループ（毎日 03:00）。
-    人間の応答評価を分析し、改善提案を生成して改善ログへ投入する。
+    人間の応答評価 + 経験イベントの弱シグナルを統合分析し、改善提案を生成して改善ログへ投入する。
+    その後、採用済み提案の before/after PDCA評価も実行する。
     """
     logger.info("[ShionFeedbackLoop] バッチ開始")
     try:
-        from api.feedback_pattern_loop import generate_proposals
+        from api.feedback_pattern_loop import evaluate_proposal_impact, generate_proposals
+
+        # 1. 提案生成（A: ソース拡充 — feedback + experience signals）
         result = generate_proposals()
         if not result.get("generated"):
             logger.info(f"[ShionFeedbackLoop] 提案なし: {result.get('reason', '')}")
-            return {"status": "no_proposals", "reason": result.get("reason", "")}
+        else:
+            proposals = result.get("proposals", [])
+            pushed = _push_proposals_to_improvement_log(proposals, source="feedback_pattern_loop")
+            logger.info(f"[ShionFeedbackLoop] 提案{len(proposals)}件 / 改善ログ投入{pushed}件")
 
-        proposals = result.get("proposals", [])
-        pushed = _push_proposals_to_improvement_log(proposals, source="feedback_pattern_loop")
-        logger.info(f"[ShionFeedbackLoop] 完了。提案{len(proposals)}件 / 改善ログ投入{pushed}件")
-        return {"status": "ok", "proposals_generated": len(proposals), "pushed_to_log": pushed}
+        # 2. PDCA評価（B: ループを閉じる — 採用済み提案の効果検証）
+        pdca = evaluate_proposal_impact()
+        logger.info(f"[ShionFeedbackLoop] PDCA評価: {pdca.get('evaluated', 0)}件")
+
+        return {
+            "status": "ok",
+            "proposals_generated": len(result.get("proposals", [])) if result.get("generated") else 0,
+            "pdca_evaluated": pdca.get("evaluated", 0),
+        }
 
     except Exception as e:
         logger.error(f"[ShionFeedbackLoop] エラー: {e}", exc_info=True)
