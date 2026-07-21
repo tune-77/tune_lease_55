@@ -54,6 +54,11 @@ if [ "${ENABLE_CLOUDSQL_SYNC:-0}" = "1" ]; then
     fi
 else
     echo "[入力・同期] Cloud SQL 会話ログ同期は無効（Cloud SQL 廃止済み）。ENABLE_CLOUDSQL_SYNC=1 で有効化できます。スキップします。"
+    # 意図的なスキップは「健全（exit 0）」として記録する。
+    # これを記録しないと、廃止前に残った失敗ログが7日ウィンドウに残り続け、
+    # analyze_pipeline_health が「直近成功なし＝障害継続」と誤検出して
+    # REV-028a のようなゾンビ検出を毎晩作り直してしまう（REV-027a 対応の残課題）。
+    log_step "sync_cloudsql_to_obsidian" 0
 fi
 
 echo ""
