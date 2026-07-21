@@ -125,18 +125,7 @@ jobs:
             --concurrency 1 \
             --min-instances 0 \
             --max-instances 1 \
-            --set-env-vars "DATA_DIR=/app/data,\
-ENABLE_OBSIDIAN_INDEXING=true,\
-ENABLE_FEEDBACK_LOADING=true,\
-ENABLE_GUNSHI_RAG=false,\
-OBSIDIAN_VAULT_PATH=/app/obsidian_vault,\
-CLOUDRUN_DATA_MODE=demo,\
-DEMO_READONLY=0,\
-DB_PATH=/app/data/demo.db,\
-USE_GCS_VAULT=true,\
-GCS_VAULT_RESYNC_INTERVAL=3600,\
-SHION_MEMORY_HYBRID=1,\
-TZ=Asia/Tokyo" \
+            --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_DATA_MODE=demo,DEMO_READONLY=0,DB_PATH=/app/data/demo.db,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600,SHION_MEMORY_HYBRID=1,TZ=Asia/Tokyo" \
             --set-secrets "GEMINI_API_KEY=GEMINI_API_KEY:latest" \
             --clear-cloudsql-instances \
             --allow-unauthenticated
