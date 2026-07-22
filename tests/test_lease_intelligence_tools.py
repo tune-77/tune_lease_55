@@ -215,6 +215,107 @@ def test_tool_declarations_include_scoring_coefficients():
     assert "get_scoring_coefficients" in names
 
 
+def test_get_pipeline_status_aggregates_ledger_report_and_tasks(tmp_path, monkeypatch):
+    import json
+
+    import lease_intelligence_tools as tools
+
+    # 疑似リポジトリ構造を用意
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "reports").mkdir()
+    ledger = tmp_path / "scripts" / "improvement_ledger.jsonl"
+    ledger.write_text(
+        "\n".join(
+            [
+                json.dumps({"canonical_key": "k1", "rev_id": "REV-001", "status": "needs_review", "title": "A"}),
+                # k1 は後で applied に更新（最後が有効）
+                json.dumps({"canonical_key": "k1", "rev_id": "REV-001", "status": "applied", "title": "A",
+                            "recorded_at": "2026-07-20T10:00:00", "pr_url": "http://pr/1"}),
+                json.dumps({"canonical_key": "k2", "rev_id": "REV-002", "status": "applied", "title": "B",
+                            "recorded_at": "2026-07-21T10:00:00", "pr_url": "http://pr/2"}),
+                json.dumps({"canonical_key": "k3", "rev_id": "REV-003", "status": "rejected", "title": "C"}),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    report = tmp_path / "reports" / "recursive_self_improvement_latest.md"
+    report.write_text(
+        "# Recursive Self-Improvement Report\n\n"
+        "- Generated at: `2026-07-21T04:01:58`\n"
+        "- Canonical candidates: 34\n"
+        "- Ranked queue: 0\n"
+        "- Suppressed: 34\n\n"
+        "## Measurement\n"
+        "- PDCA rate: 100.0%\n"
+        "- Noise rate: 12.5%\n",
+        encoding="utf-8",
+    )
+    tasks = tmp_path / "shion_pending_tasks.json"
+    tasks.write_text(
+        json.dumps([
+            {"id": "1", "topic": "残価テーブル調査", "status": "pending"},
+            {"id": "2", "topic": "済んだ調査", "status": "done"},
+        ]),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(tools, "_REPO_PATH", tmp_path)
+    monkeypatch.setattr(tools, "get_data_path", lambda name: str(tmp_path / name))
+
+    result = tools.get_pipeline_status()
+
+    ledger_summary = result["rev_ledger"]
+    assert ledger_summary["available"] is True
+    assert ledger_summary["total_revs"] == 3
+    assert ledger_summary["status_counts"] == {"applied": 2, "rejected": 1}
+    # 最新の applied が先頭（REV-002, 2026-07-21）
+    assert ledger_summary["recent_applied"][0]["rev_id"] == "REV-002"
+
+    report_summary = result["self_improvement_report"]
+    assert report_summary["available"] is True
+    assert report_summary["generated_at"] == "2026-07-21T04:01:58"
+    assert report_summary["suppressed"] == "34"
+    assert report_summary["metrics"]["pdca_rate"] == "100.0%"
+    assert report_summary["metrics"]["noise_rate"] == "12.5%"
+
+    tasks_summary = result["pending_investigations"]
+    assert tasks_summary["available"] is True
+    assert tasks_summary["open_count"] == 1
+    assert tasks_summary["total_count"] == 2
+    assert tasks_summary["open_topics"] == ["残価テーブル調査"]
+
+
+def test_get_pipeline_status_handles_missing_sources(tmp_path, monkeypatch):
+    import lease_intelligence_tools as tools
+
+    monkeypatch.setattr(tools, "_REPO_PATH", tmp_path)
+    monkeypatch.setattr(tools, "get_data_path", lambda name: str(tmp_path / name))
+
+    result = tools.get_pipeline_status()
+
+    assert result["rev_ledger"]["available"] is False
+    assert result["self_improvement_report"]["available"] is False
+    assert result["pending_investigations"]["available"] is False
+
+
+def test_execute_tool_dispatches_pipeline_status(tmp_path, monkeypatch):
+    import lease_intelligence_tools as tools
+
+    monkeypatch.setattr(tools, "_REPO_PATH", tmp_path)
+    monkeypatch.setattr(tools, "get_data_path", lambda name: str(tmp_path / name))
+
+    result = tools.execute_tool("get_pipeline_status", {"recent": 3})
+
+    assert "rev_ledger" in result
+
+
+def test_tool_declarations_include_pipeline_status():
+    from lease_intelligence_tools import TOOL_DECLARATIONS
+
+    names = {item["name"] for item in TOOL_DECLARATIONS}
+    assert "get_pipeline_status" in names
+
+
 def test_obsidian_query_expands_scoring_identifiers_to_business_terms():
     from mobile_app.obsidian_bridge import _expand_query_terms
 

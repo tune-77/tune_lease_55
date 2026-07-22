@@ -351,6 +351,123 @@ def get_screening_activity(period: str = "today", days: int = 0) -> dict[str, An
     }
 
 
+def get_pipeline_status(recent: int = 5) -> dict[str, Any]:
+    """日次改善パイプライン（REV自律改善フロー）の状況を返す。
+
+    「パイプラインの状況は？」「最近どんな改善が適用された？」「自己改善は回ってる？」
+    といった質問に答えるためのツール。以下の3ソースを集約する。
+    - REV台帳(scripts/improvement_ledger.jsonl): ステータス別件数と直近適用REV
+    - 自己改善レポート(reports/recursive_self_improvement_latest.md): 生成時刻・主要指標
+    - 紫苑の未完了調査タスク(shion_pending_tasks.json): 件数と topic
+    """
+    import datetime as _dt
+
+    recent = max(1, min(int(recent or 5), 20))
+    status: dict[str, Any] = {}
+
+    # ── REV改善台帳（追記形式・canonical_key ごとに最後のエントリが有効）──────
+    ledger_path = _REPO_PATH / "scripts" / "improvement_ledger.jsonl"
+    if ledger_path.exists():
+        try:
+            latest_by_key: dict[str, dict] = {}
+            for line in ledger_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except Exception:
+                    continue
+                key = entry.get("canonical_key") or entry.get("key") or entry.get("title")
+                if key:
+                    latest_by_key[key] = entry
+            counts: dict[str, int] = {}
+            for entry in latest_by_key.values():
+                st = str(entry.get("status", "unknown"))
+                counts[st] = counts.get(st, 0) + 1
+            applied = sorted(
+                (e for e in latest_by_key.values() if e.get("status") == "applied"),
+                key=lambda e: str(e.get("recorded_at", "")),
+                reverse=True,
+            )
+            status["rev_ledger"] = {
+                "available": True,
+                "total_revs": len(latest_by_key),
+                "status_counts": counts,
+                "recent_applied": [
+                    {
+                        "rev_id": e.get("rev_id"),
+                        "title": e.get("title"),
+                        "pr_url": e.get("pr_url"),
+                        "recorded_at": e.get("recorded_at"),
+                        "reason": e.get("reason"),
+                    }
+                    for e in applied[:recent]
+                ],
+            }
+        except Exception as exc:
+            status["rev_ledger"] = {"available": False, "error": str(exc)}
+    else:
+        status["rev_ledger"] = {"available": False}
+
+    # ── 自己改善レポート ───────────────────────────────────────────────────
+    report_path = _REPO_PATH / "reports" / "recursive_self_improvement_latest.md"
+    if report_path.exists():
+        try:
+            text = report_path.read_text(encoding="utf-8")
+
+            def _find(pattern: str) -> str | None:
+                m = re.search(pattern, text)
+                return m.group(1).strip() if m else None
+
+            status["self_improvement_report"] = {
+                "available": True,
+                "generated_at": _find(r"Generated at:\s*`([^`]+)`"),
+                "canonical_candidates": _find(r"Canonical candidates:\s*(\d+)"),
+                "ranked_queue": _find(r"Ranked queue:\s*(\d+)"),
+                "suppressed": _find(r"Suppressed:\s*(\d+)"),
+                "metrics": {
+                    "pdca_rate": _find(r"PDCA rate:\s*([\d.]+%)"),
+                    "response_changed_rate": _find(r"Response changed rate:\s*([\d.]+%)"),
+                    "repeat_issue_rate": _find(r"Repeat issue rate:\s*([\d.]+%)"),
+                    "reuse_rate": _find(r"Reuse rate:\s*([\d.]+%)"),
+                    "noise_rate": _find(r"Noise rate:\s*([\d.]+%)"),
+                },
+                "file_mtime": _dt.datetime.fromtimestamp(
+                    report_path.stat().st_mtime
+                ).isoformat(timespec="seconds"),
+            }
+        except Exception as exc:
+            status["self_improvement_report"] = {"available": False, "error": str(exc)}
+    else:
+        status["self_improvement_report"] = {"available": False}
+
+    # ── 紫苑の未完了調査タスク ─────────────────────────────────────────────
+    try:
+        tasks_path = Path(get_data_path("shion_pending_tasks.json"))
+        if tasks_path.exists():
+            data = json.loads(tasks_path.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                open_tasks = [
+                    t for t in data
+                    if isinstance(t, dict) and t.get("status") != "done"
+                ]
+                status["pending_investigations"] = {
+                    "available": True,
+                    "open_count": len(open_tasks),
+                    "total_count": len(data),
+                    "open_topics": [str(t.get("topic", ""))[:60] for t in open_tasks[:recent]],
+                }
+            else:
+                status["pending_investigations"] = {"available": False}
+        else:
+            status["pending_investigations"] = {"available": False}
+    except Exception as exc:
+        status["pending_investigations"] = {"available": False, "error": str(exc)}
+
+    return status
+
+
 def compare_similar_cases(industry: str, score_min: float = 0.0, score_max: float = 100.0) -> dict[str, Any]:
     """Compare cases in a similar industry and score range to find patterns."""
     like = f"%{industry}%" if industry else "%"
@@ -696,6 +813,8 @@ def execute_tool(name: str, args: dict, vault: Path | None = None) -> Any:
             args.get("model", ""),
             args.get("feature", ""),
         )
+    if name == "get_pipeline_status":
+        return get_pipeline_status(int(args.get("recent", 5) or 5))
     if name == "compare_similar_cases":
         return compare_similar_cases(
             args.get("industry", ""),
@@ -832,6 +951,26 @@ TOOL_DECLARATIONS: list[dict] = [
                         "特徴量名（例: sales_log / grade_watch / ratio_op_margin）。"
                         "指定すると全回帰モデル横断でその係数値を返す（model 未指定時）。"
                     ),
+                },
+            },
+        },
+    },
+    {
+        "name": "get_pipeline_status",
+        "description": (
+            "日次改善パイプライン（REV自律改善フロー）の状況を取得する。"
+            "REV台帳のステータス別件数（適用/却下/レビュー待ち等）と直近適用REV、"
+            "最新の自己改善レポートの生成時刻・主要指標（PDCA率・ノイズ率等）、"
+            "紫苑の未完了調査タスク件数を返す。"
+            "「パイプラインの状況は？」「最近どんな改善が入った？」「自己改善は回ってる？」"
+            "といった質問に使う。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "recent": {
+                    "type": "integer",
+                    "description": "直近適用REV・未完了タスクを何件返すか（デフォルト5、最大20）。",
                 },
             },
         },
