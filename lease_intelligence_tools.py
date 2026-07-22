@@ -34,6 +34,17 @@ def _open_db() -> sqlite3.Connection:
     return conn
 
 
+def _load_json_data(name: str) -> Any:
+    """data配下のJSONを安全に読み込む。存在しない・壊れている場合は None を返す。"""
+    try:
+        path = Path(get_data_path(name))
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return None
+
+
 def search_cases(query: str, limit: int = 5) -> dict[str, Any]:
     """Search recent screening cases by company name or any field in input_snapshot."""
     like = f"%{query}%"
@@ -139,6 +150,565 @@ def get_score_detail(company_name: str) -> dict[str, Any]:
         "verdict": verdict,
         "risk_flags": risk_flags,
         "input_summary": input_summary,
+    }
+
+
+def get_scoring_coefficients(model: str = "", feature: str = "") -> dict[str, Any]:
+    """スコアリングで使われる各種係数を照会する。
+
+    「○○業の係数は？」「sales_log の係数はいくつ？」「競合がいると何%下がる？」
+    「物件カテゴリごとの物件/借手重みは？」といった係数の質問に答えるためのツール。
+    対象: 業種別ロジスティック回帰係数(COEFFS)・ベイズ事前補正・定性強みタグ重み・
+    物件カテゴリ別の物件/借手重み(ASSET_WEIGHT)。
+    - 引数なし: 利用可能なモデル/係数グループの一覧を返す
+    - model: 特定モデル名（例: 運送業_既存先）、または 'bayesian' / 'strength_tags' / 'asset_weight'
+    - feature: 指定した特徴量（例: sales_log）の係数を全回帰モデル横断で返す
+    """
+    from category_config import ASSET_WEIGHT
+    from coeff_definitions import (
+        BAYESIAN_PRIOR_EXTRA,
+        COEFFS,
+        DEFAULT_STRENGTH_WEIGHT,
+        STRENGTH_TAG_WEIGHTS,
+    )
+
+    q = (model or "").strip()
+    q_low = q.lower()
+
+    # ── 特殊グループのエイリアス ───────────────────────────────────────────
+    if q:
+        if q_low in {"bayesian", "prior", "prior_extra"} or any(k in q for k in ("ベイズ", "事前")):
+            return {
+                "model": "bayesian_prior_extra",
+                "type": "bayesian_prior",
+                "coefficients": dict(BAYESIAN_PRIOR_EXTRA),
+                "note": "AI知見に基づく初期補正（%ポイント換算）。標準化zに係数をかけて加算する想定。",
+                "source": "coeff_definitions.py: BAYESIAN_PRIOR_EXTRA",
+            }
+        if q_low in {"strength", "strength_tags", "tags"} or any(k in q for k in ("定性", "タグ", "強み")):
+            return {
+                "model": "strength_tag_weights",
+                "type": "qualitative_tag_weights",
+                "coefficients": dict(STRENGTH_TAG_WEIGHTS),
+                "default_weight": DEFAULT_STRENGTH_WEIGHT,
+                "note": "強みタグ1つあたりの%ポイント寄与目安。未定義タグは default_weight を適用。",
+                "source": "coeff_definitions.py: STRENGTH_TAG_WEIGHTS",
+            }
+        if q_low in {"asset", "asset_weight", "category"} or any(k in q for k in ("カテゴリ", "物件", "担保")):
+            return {
+                "model": "asset_weight",
+                "type": "category_asset_obligor_weight",
+                "categories": {
+                    cat: {
+                        "asset_w": conf.get("asset_w"),
+                        "obligor_w": conf.get("obligor_w"),
+                        "rationale": conf.get("rationale", ""),
+                    }
+                    for cat, conf in ASSET_WEIGHT.items()
+                },
+                "note": "物件カテゴリごとの物件スコア重み(asset_w)と借手スコア重み(obligor_w)。合計1.0。",
+                "source": "category_config.py: ASSET_WEIGHT",
+            }
+
+    # ── 特徴量横断照会（model 未指定で feature 指定時）─────────────────────
+    if not q and feature:
+        feat = feature.strip()
+        by_model = {
+            name: coeffs[feat]
+            for name, coeffs in COEFFS.items()
+            if feat in coeffs
+        }
+        if not by_model:
+            all_features = sorted({f for coeffs in COEFFS.values() for f in coeffs})
+            return {
+                "found": False,
+                "feature": feat,
+                "available_features": all_features,
+            }
+        return {
+            "feature": feat,
+            "type": "feature_across_models",
+            "by_model": by_model,
+            "count": len(by_model),
+            "source": "coeff_definitions.py: COEFFS",
+        }
+
+    # ── 回帰モデル指定 ─────────────────────────────────────────────────────
+    if q:
+        if q in COEFFS:
+            matched = q
+        else:
+            candidates = [name for name in COEFFS if q_low in name.lower()]
+            if len(candidates) == 1:
+                matched = candidates[0]
+            else:
+                return {
+                    "found": False,
+                    "query": q,
+                    "candidates": candidates,
+                    "available_regression_models": list(COEFFS.keys()),
+                }
+        return {
+            "model": matched,
+            "type": "regression_coefficients",
+            "coefficients": dict(COEFFS[matched]),
+            "feature_count": len(COEFFS[matched]),
+            "source": "coeff_definitions.py: COEFFS",
+        }
+
+    # ── 引数なし: 一覧 ─────────────────────────────────────────────────────
+    return {
+        "available_regression_models": list(COEFFS.keys()),
+        "coefficient_groups": {
+            "bayesian": "ベイズ事前補正（competitor_present 等、%ポイント換算）",
+            "strength_tags": "定性強みタグの加点重み",
+            "asset_weight": "物件カテゴリ別の物件/借手スコア重み",
+        },
+        "usage": "model= に上記モデル名やグループ名を指定、または feature= で特徴量を全モデル横断照会",
+        "source": "coeff_definitions.py / category_config.py",
+    }
+
+
+def get_screening_activity(period: str = "today", days: int = 0) -> dict[str, Any]:
+    """審査活動サマリー：期間内に実施した審査（screening_records）の件数と判定内訳を返す。
+
+    「今日は審査を何件したか」「今週は何件審査したか」といった日付ベースの活動量に答えるためのツール。
+    過去案件を会社名・キーワードで探すのは search_cases を使うこと。
+    period: today / yesterday / this_week / this_month / last_7_days / last_30_days / all
+    days に1以上を指定した場合は「直近days日間」を優先する。
+    """
+    import datetime as _dt
+
+    from constants import APPROVAL_LINE, CONDITIONAL_LINE
+
+    today = _dt.date.today()
+    start: _dt.date | None
+    end: _dt.date | None
+
+    if days and days > 0:
+        start, end, label = today - _dt.timedelta(days=days - 1), today, f"直近{days}日間"
+        period = f"last_{days}_days"
+    elif period == "yesterday":
+        y = today - _dt.timedelta(days=1)
+        start, end, label = y, y, "昨日"
+    elif period == "this_week":  # 月曜始まり
+        start, end, label = today - _dt.timedelta(days=today.weekday()), today, "今週"
+    elif period == "this_month":
+        start, end, label = today.replace(day=1), today, "今月"
+    elif period == "last_7_days":
+        start, end, label = today - _dt.timedelta(days=6), today, "直近7日間"
+    elif period == "last_30_days":
+        start, end, label = today - _dt.timedelta(days=29), today, "直近30日間"
+    elif period == "all":
+        start, end, label = None, None, "全期間"
+    else:  # today（未知の値も今日にフォールバック）
+        period, start, end, label = "today", today, today, "今日"
+
+    where = ""
+    params: list[Any] = []
+    if start is not None and end is not None:
+        where = "WHERE date(screened_at) BETWEEN ? AND ?"
+        params = [start.isoformat(), end.isoformat()]
+
+    with closing(_open_db()) as conn:
+        rows = conn.execute(
+            f"""
+            SELECT case_id, screened_at, total_score, outcome, input_snapshot
+            FROM screening_records
+            {where}
+            ORDER BY screened_at DESC
+            """,
+            params,
+        ).fetchall()
+
+    def _verdict(score: float) -> str:
+        if score >= APPROVAL_LINE:
+            return "承認"
+        if score >= CONDITIONAL_LINE:
+            return "条件付き承認"
+        return "否決"
+
+    breakdown = {"承認": 0, "条件付き承認": 0, "否決": 0}
+    scores: list[float] = []
+    recent: list[dict] = []
+    for r in rows:
+        score = float(r["total_score"] or 0)
+        scores.append(score)
+        verdict = _verdict(score)
+        breakdown[verdict] += 1
+        if len(recent) < 10:
+            snap: dict = {}
+            try:
+                snap = json.loads(r["input_snapshot"] or "{}")
+            except Exception:
+                pass
+            recent.append({
+                "case_id": r["case_id"],
+                "company_name": snap.get("company_name", r["case_id"]),
+                "screened_at": r["screened_at"],
+                "total_score": round(score, 1),
+                "verdict": verdict,
+            })
+
+    return {
+        "period": period,
+        "period_label": label,
+        "start_date": start.isoformat() if start else None,
+        "end_date": end.isoformat() if end else None,
+        "count": len(rows),
+        "breakdown": breakdown,
+        "avg_score": round(sum(scores) / len(scores), 1) if scores else 0.0,
+        "cases": recent,
+    }
+
+
+def get_pipeline_status(recent: int = 5) -> dict[str, Any]:
+    """日次改善パイプライン（REV自律改善フロー）の状況を返す。
+
+    「パイプラインの状況は？」「最近どんな改善が適用された？」「自己改善は回ってる？」
+    といった質問に答えるためのツール。以下の3ソースを集約する。
+    - REV台帳(scripts/improvement_ledger.jsonl): ステータス別件数と直近適用REV
+    - 自己改善レポート(reports/recursive_self_improvement_latest.md): 生成時刻・主要指標
+    - 紫苑の未完了調査タスク(shion_pending_tasks.json): 件数と topic
+    """
+    import datetime as _dt
+
+    recent = max(1, min(int(recent or 5), 20))
+    status: dict[str, Any] = {}
+
+    # ── REV改善台帳（追記形式・canonical_key ごとに最後のエントリが有効）──────
+    ledger_path = _REPO_PATH / "scripts" / "improvement_ledger.jsonl"
+    if ledger_path.exists():
+        try:
+            latest_by_key: dict[str, dict] = {}
+            for line in ledger_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except Exception:
+                    continue
+                key = entry.get("canonical_key") or entry.get("key") or entry.get("title")
+                if key:
+                    latest_by_key[key] = entry
+            counts: dict[str, int] = {}
+            for entry in latest_by_key.values():
+                st = str(entry.get("status", "unknown"))
+                counts[st] = counts.get(st, 0) + 1
+            applied = sorted(
+                (e for e in latest_by_key.values() if e.get("status") == "applied"),
+                key=lambda e: str(e.get("recorded_at", "")),
+                reverse=True,
+            )
+            status["rev_ledger"] = {
+                "available": True,
+                "total_revs": len(latest_by_key),
+                "status_counts": counts,
+                "recent_applied": [
+                    {
+                        "rev_id": e.get("rev_id"),
+                        "title": e.get("title"),
+                        "pr_url": e.get("pr_url"),
+                        "recorded_at": e.get("recorded_at"),
+                        "reason": e.get("reason"),
+                    }
+                    for e in applied[:recent]
+                ],
+            }
+        except Exception as exc:
+            status["rev_ledger"] = {"available": False, "error": str(exc)}
+    else:
+        status["rev_ledger"] = {"available": False}
+
+    # ── 自己改善レポート ───────────────────────────────────────────────────
+    report_path = _REPO_PATH / "reports" / "recursive_self_improvement_latest.md"
+    if report_path.exists():
+        try:
+            text = report_path.read_text(encoding="utf-8")
+
+            def _find(pattern: str) -> str | None:
+                m = re.search(pattern, text)
+                return m.group(1).strip() if m else None
+
+            status["self_improvement_report"] = {
+                "available": True,
+                "generated_at": _find(r"Generated at:\s*`([^`]+)`"),
+                "canonical_candidates": _find(r"Canonical candidates:\s*(\d+)"),
+                "ranked_queue": _find(r"Ranked queue:\s*(\d+)"),
+                "suppressed": _find(r"Suppressed:\s*(\d+)"),
+                "metrics": {
+                    "pdca_rate": _find(r"PDCA rate:\s*([\d.]+%)"),
+                    "response_changed_rate": _find(r"Response changed rate:\s*([\d.]+%)"),
+                    "repeat_issue_rate": _find(r"Repeat issue rate:\s*([\d.]+%)"),
+                    "reuse_rate": _find(r"Reuse rate:\s*([\d.]+%)"),
+                    "noise_rate": _find(r"Noise rate:\s*([\d.]+%)"),
+                },
+                "file_mtime": _dt.datetime.fromtimestamp(
+                    report_path.stat().st_mtime
+                ).isoformat(timespec="seconds"),
+            }
+        except Exception as exc:
+            status["self_improvement_report"] = {"available": False, "error": str(exc)}
+    else:
+        status["self_improvement_report"] = {"available": False}
+
+    # ── 紫苑の未完了調査タスク ─────────────────────────────────────────────
+    try:
+        tasks_path = Path(get_data_path("shion_pending_tasks.json"))
+        if tasks_path.exists():
+            data = json.loads(tasks_path.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                open_tasks = [
+                    t for t in data
+                    if isinstance(t, dict) and t.get("status") != "done"
+                ]
+                status["pending_investigations"] = {
+                    "available": True,
+                    "open_count": len(open_tasks),
+                    "total_count": len(data),
+                    "open_topics": [str(t.get("topic", ""))[:60] for t in open_tasks[:recent]],
+                }
+            else:
+                status["pending_investigations"] = {"available": False}
+        else:
+            status["pending_investigations"] = {"available": False}
+    except Exception as exc:
+        status["pending_investigations"] = {"available": False, "error": str(exc)}
+
+    return status
+
+
+def get_system_overview() -> dict[str, Any]:
+    """リース審査システム全体のスナップショットを返す（モデル・閾値・データ規模）。
+
+    「今このシステムはどういう構成？」「モデルの精度は？」「閾値はどうなってる？」
+    「案件は何件ある？」といったシステム全体像の質問に1発で答えるためのツール。
+    """
+    from constants import APPROVAL_LINE, CONDITIONAL_LINE, REVIEW_LINE
+
+    overview: dict[str, Any] = {}
+
+    training = _load_json_data("training_meta.json") or {}
+    ensemble = _load_json_data("ensemble_config.json") or {}
+    overview["models"] = {
+        "last_trained_at": training.get("last_trained_at"),
+        "last_trained_count": training.get("last_trained_count"),
+        "last_auc": training.get("last_auc"),
+        "total_training_runs": training.get("total_runs"),
+        "ensemble_alpha": ensemble.get("ensemble_alpha"),
+        "ensemble_auc": ensemble.get("auc_ensemble"),
+    }
+
+    quantum = _load_json_data("quantum_config.json")
+    q_thr = quantum.get("thresholds", {}) if isinstance(quantum, dict) else {}
+    business = _load_json_data("business_rules.json")
+    biz_thr = business.get("thresholds", {}) if isinstance(business, dict) else {}
+    overview["thresholds"] = {
+        "score_approval_line": APPROVAL_LINE,
+        "score_conditional_line": CONDITIONAL_LINE,
+        "score_review_line": REVIEW_LINE,
+        "q_risk_secondary_review": q_thr.get("secondary_review"),
+        "q_risk_high_risk": q_thr.get("high_risk"),
+        "probability_approval": biz_thr.get("approval"),
+        "probability_review": biz_thr.get("review"),
+    }
+
+    try:
+        with closing(_open_db()) as conn:
+            def _count(table: str) -> int | None:
+                try:
+                    return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                except Exception:
+                    return None
+
+            overview["data"] = {
+                "db_available": True,
+                "screening_records": _count("screening_records"),
+                "past_cases": _count("past_cases"),
+            }
+    except Exception as exc:
+        overview["data"] = {"db_available": False, "error": str(exc)}
+
+    overview["sources"] = [
+        "training_meta.json", "ensemble_config.json", "quantum_config.json",
+        "business_rules.json", "constants.py: APPROVAL_LINE/CONDITIONAL_LINE/REVIEW_LINE",
+    ]
+    return overview
+
+
+def lookup_judgment_rules(query: str = "", category: str = "") -> dict[str, Any]:
+    """現行の審査ルールを照会する。
+
+    「どんな審査ルールがある？」「債務超過はどう扱う？」「二次確認項目は？」といった
+    ルール本体に関する質問に使う。3ソースを集約する。
+    - canonical_judgment_rules.json: 正準化された審査知見ルール（query で本文フィルタ）
+    - business_rules.json: 閾値・スコア補正・業種ルール・カスタムルール
+    - secondary_review_items.json: 二次確認チェック項目（category でフィルタ）
+    """
+    result: dict[str, Any] = {}
+
+    canonical = _load_json_data("canonical_judgment_rules.json")
+    rules = canonical.get("rules", []) if isinstance(canonical, dict) else []
+    q = (query or "").strip().lower()
+    picked = []
+    for r in rules:
+        if not isinstance(r, dict):
+            continue
+        stmt = str(r.get("canonical_statement", ""))
+        concept = str(r.get("concept", ""))
+        if q and q not in stmt.lower() and q not in concept.lower():
+            continue
+        picked.append({
+            "id": r.get("id"),
+            "concept": concept,
+            "statement": stmt,
+            "status": r.get("status"),
+            "confidence": r.get("confidence"),
+            "risk_axis": r.get("risk_axis"),
+            "material_type": r.get("material_type"),
+        })
+    result["canonical_rules"] = {
+        "total": len(rules),
+        "matched": len(picked),
+        "generated_at": canonical.get("generated_at") if isinstance(canonical, dict) else None,
+        "rules": picked[:15],
+    }
+
+    if isinstance(business := _load_json_data("business_rules.json"), dict):
+        result["business_rules"] = {
+            "thresholds": business.get("thresholds", {}),
+            "score_modifiers": business.get("score_modifiers", {}),
+            "industry_rules": business.get("industry_rules", {}),
+            "custom_rules": [
+                {
+                    "name": c.get("name"),
+                    "industry": c.get("industry"),
+                    "action": f"{c.get('action_type')}={c.get('action_value')}",
+                    "conditions": c.get("conditions"),
+                }
+                for c in business.get("custom_rules", []) if isinstance(c, dict)
+            ],
+        }
+
+    if isinstance(secondary := _load_json_data("secondary_review_items.json"), list):
+        cats: dict[str, int] = {}
+        for it in secondary:
+            if isinstance(it, dict):
+                cat = it.get("category", "その他")
+                cats[cat] = cats.get(cat, 0) + 1
+        cat_q = (category or "").strip()
+        items = [
+            {
+                "id": it.get("id"),
+                "category": it.get("category"),
+                "text": it.get("text"),
+                "required": it.get("required"),
+            }
+            for it in secondary
+            if isinstance(it, dict) and (not cat_q or cat_q in str(it.get("category", "")))
+        ]
+        result["secondary_review"] = {
+            "total": len(secondary),
+            "required": sum(1 for it in secondary if isinstance(it, dict) and it.get("required")),
+            "by_category": cats,
+            "items": items,
+        }
+
+    result["sources"] = [
+        "canonical_judgment_rules.json",
+        "business_rules.json",
+        "secondary_review_items.json",
+    ]
+    return result
+
+
+def get_industry_benchmark(industry: str = "") -> dict[str, Any]:
+    """業種別の財務ベンチマークと業界トレンドを照会する。
+
+    「建設業のベンチマークは？」「製造業の動向は？」「総合工事業の自己資本比率の平均は？」
+    といった業種データの質問に使う。
+    industry を省略すると利用可能な業種一覧を返す。
+    """
+    benchmarks = _load_json_data("industry_benchmarks.json")
+    trends = _load_json_data("industry_trends.json")
+    benchmarks = benchmarks if isinstance(benchmarks, dict) else {}
+    trends = trends if isinstance(trends, dict) else {}
+
+    ind = (industry or "").strip()
+    if not ind:
+        return {
+            "available_benchmarks": list(benchmarks.keys()),
+            "available_trend_sectors": [k for k in trends if k != "_comment"],
+            "usage": "industry= に業種名・業種コードを指定（例: 総合工事業 / 06 / 製造業）",
+            "sources": ["industry_benchmarks.json", "industry_trends.json"],
+        }
+
+    ind_low = ind.lower()
+    matched_bench = {k: v for k, v in benchmarks.items() if ind_low in str(k).lower()}
+    matched_trends = {
+        k: v for k, v in trends.items()
+        if k != "_comment" and (ind_low in k.lower() or k.lower() in ind_low)
+    }
+    return {
+        "query": ind,
+        "found": bool(matched_bench or matched_trends),
+        "benchmarks": dict(list(matched_bench.items())[:5]),
+        "benchmark_match_count": len(matched_bench),
+        "trends": matched_trends,
+        "sources": ["industry_benchmarks.json", "industry_trends.json"],
+    }
+
+
+def get_portfolio_stats() -> dict[str, Any]:
+    """審査DB全体のポートフォリオ統計を返す（成約率・スコア分布・業種構成）。
+
+    「全体で何件審査した？」「成約率は？」「どの業種が多い？」といった全体像の質問に使う。
+    期間別は get_screening_activity、業種別の比較は compare_similar_cases を使うこと。
+    """
+    try:
+        with closing(_open_db()) as conn:
+            total = conn.execute("SELECT COUNT(*) FROM past_cases").fetchone()[0]
+            outcome_rows = conn.execute(
+                "SELECT final_status, COUNT(*) FROM past_cases GROUP BY final_status ORDER BY 2 DESC"
+            ).fetchall()
+            outcome = {(r[0] or "未設定"): r[1] for r in outcome_rows}
+            score_row = conn.execute(
+                "SELECT AVG(score), MIN(score), MAX(score) FROM past_cases WHERE score IS NOT NULL"
+            ).fetchone()
+            industry_rows = conn.execute(
+                "SELECT industry_sub, COUNT(*) FROM past_cases "
+                "GROUP BY industry_sub ORDER BY 2 DESC LIMIT 8"
+            ).fetchall()
+            date_row = conn.execute(
+                "SELECT MIN(timestamp), MAX(timestamp) FROM past_cases"
+            ).fetchone()
+            try:
+                screening_total = conn.execute(
+                    "SELECT COUNT(*) FROM screening_records"
+                ).fetchone()[0]
+            except Exception:
+                screening_total = None
+    except Exception as exc:
+        return {"available": False, "error": str(exc)}
+
+    won = outcome.get("成約", 0)
+    lost = outcome.get("失注", 0)
+    return {
+        "past_cases_total": total,
+        "outcome_distribution": outcome,
+        "contract_rate_pct": round(won / (won + lost) * 100, 1) if (won + lost) else None,
+        "score": {
+            "avg": round(float(score_row[0]), 1) if score_row and score_row[0] is not None else None,
+            "min": score_row[1] if score_row else None,
+            "max": score_row[2] if score_row else None,
+        },
+        "top_industries": [{"industry": r[0], "count": r[1]} for r in industry_rows],
+        "date_range": {
+            "earliest": date_row[0] if date_row else None,
+            "latest": date_row[1] if date_row else None,
+        },
+        "screening_records_total": screening_total,
     }
 
 
@@ -477,6 +1047,26 @@ def execute_tool(name: str, args: dict, vault: Path | None = None) -> Any:
         return search_cases(args.get("query", ""), int(args.get("limit", 5)))
     if name == "get_score_detail":
         return get_score_detail(args.get("company_name", ""))
+    if name == "get_screening_activity":
+        return get_screening_activity(
+            args.get("period", "today"),
+            int(args.get("days", 0) or 0),
+        )
+    if name == "get_scoring_coefficients":
+        return get_scoring_coefficients(
+            args.get("model", ""),
+            args.get("feature", ""),
+        )
+    if name == "get_pipeline_status":
+        return get_pipeline_status(int(args.get("recent", 5) or 5))
+    if name == "get_system_overview":
+        return get_system_overview()
+    if name == "lookup_judgment_rules":
+        return lookup_judgment_rules(args.get("query", ""), args.get("category", ""))
+    if name == "get_industry_benchmark":
+        return get_industry_benchmark(args.get("industry", ""))
+    if name == "get_portfolio_stats":
+        return get_portfolio_stats()
     if name == "compare_similar_cases":
         return compare_similar_cases(
             args.get("industry", ""),
@@ -560,6 +1150,131 @@ TOOL_DECLARATIONS: list[dict] = [
             },
             "required": ["company_name"],
         },
+    },
+    {
+        "name": "get_screening_activity",
+        "description": (
+            "審査活動サマリーを取得する。指定期間に実施した審査の件数・判定内訳（承認/条件付き承認/否決）・"
+            "平均スコア・直近案件リストを返す。"
+            "「今日は審査を何件したか」「今週は何件審査したか」など日付ベースの活動量を答えるときに使う。"
+            "会社名やキーワードで過去案件を探すのは search_cases を使うこと。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "period": {
+                    "type": "string",
+                    "description": (
+                        "集計期間。today / yesterday / this_week / this_month / "
+                        "last_7_days / last_30_days / all のいずれか（デフォルト today）。"
+                    ),
+                },
+                "days": {
+                    "type": "integer",
+                    "description": "直近N日間で集計したい場合に指定（1以上のとき period より優先）。",
+                },
+            },
+        },
+    },
+    {
+        "name": "get_scoring_coefficients",
+        "description": (
+            "スコアリングで使われる各種係数を照会する。"
+            "業種別ロジスティック回帰係数(COEFFS)・ベイズ事前補正・定性強みタグ重み・"
+            "物件カテゴリ別の物件/借手重み(ASSET_WEIGHT)を返す。"
+            "「運送業の係数は？」「sales_logの係数はいくつ？」「競合がいると何%下がる？」"
+            "「車両の物件重みは？」など係数値そのものを聞かれたときに使う。"
+            "引数なしで利用可能なモデル・グループ一覧を取得できる。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "model": {
+                    "type": "string",
+                    "description": (
+                        "モデル名（例: 全体_既存先 / 運送業_既存先 / 製造業_指標）、"
+                        "またはグループ名 bayesian / strength_tags / asset_weight。"
+                        "省略時は一覧を返す。"
+                    ),
+                },
+                "feature": {
+                    "type": "string",
+                    "description": (
+                        "特徴量名（例: sales_log / grade_watch / ratio_op_margin）。"
+                        "指定すると全回帰モデル横断でその係数値を返す（model 未指定時）。"
+                    ),
+                },
+            },
+        },
+    },
+    {
+        "name": "get_pipeline_status",
+        "description": (
+            "日次改善パイプライン（REV自律改善フロー）の状況を取得する。"
+            "REV台帳のステータス別件数（適用/却下/レビュー待ち等）と直近適用REV、"
+            "最新の自己改善レポートの生成時刻・主要指標（PDCA率・ノイズ率等）、"
+            "紫苑の未完了調査タスク件数を返す。"
+            "「パイプラインの状況は？」「最近どんな改善が入った？」「自己改善は回ってる？」"
+            "といった質問に使う。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "recent": {
+                    "type": "integer",
+                    "description": "直近適用REV・未完了タスクを何件返すか（デフォルト5、最大20）。",
+                },
+            },
+        },
+    },
+    {
+        "name": "get_system_overview",
+        "description": (
+            "リース審査システム全体のスナップショットを取得する。"
+            "モデルのAUC・学習日・学習件数、アンサンブル設定、スコア閾値（承認/条件付き/否決ライン）、"
+            "Q_risk閾値、確率閾値、DBの案件件数を1発で返す。"
+            "「今このシステムはどういう構成？」「モデルの精度は？」「案件は何件？」に使う。"
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "lookup_judgment_rules",
+        "description": (
+            "現行の審査ルールを照会する。正準化された審査知見ルール(canonical)、"
+            "業務ルール(閾値・スコア補正・業種ルール・カスタムルール)、二次確認チェック項目を返す。"
+            "「どんな審査ルールがある？」「債務超過はどう扱う？」「二次確認項目は？」に使う。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "canonicalルール本文を絞り込むキーワード（任意）"},
+                "category": {"type": "string", "description": "二次確認項目のカテゴリで絞り込む（例: 財務確認・信用調査）"},
+            },
+        },
+    },
+    {
+        "name": "get_industry_benchmark",
+        "description": (
+            "業種別の財務ベンチマーク（営業利益率・自己資本比率・ROA等）と業界トレンドを照会する。"
+            "「建設業のベンチマークは？」「製造業の動向は？」に使う。"
+            "省略すると利用可能な業種一覧を返す。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "industry": {"type": "string", "description": "業種名・業種コード（例: 総合工事業 / 06 / 製造業）。省略で一覧。"},
+            },
+        },
+    },
+    {
+        "name": "get_portfolio_stats",
+        "description": (
+            "審査DB全体のポートフォリオ統計を取得する。総件数・成約率・失注率・"
+            "スコア分布・業種構成・データ期間を返す。"
+            "「全体で何件審査した？」「成約率は？」「どの業種が多い？」に使う。"
+            "期間別は get_screening_activity、業種別比較は compare_similar_cases を使うこと。"
+        ),
+        "parameters": {"type": "object", "properties": {}},
     },
     {
         "name": "compare_similar_cases",
