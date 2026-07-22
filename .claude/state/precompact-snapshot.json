@@ -13,10 +13,9 @@
       }
     },
     "recommended": true,
-    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 2265 session age (minutes) exceed threshold 120",
+    "summary": "Context reset recommended (auto): 1883 session age (minutes) exceed threshold 120",
     "reasons": [
-      "20 recent edit count exceed threshold 8",
-      "2265 session age (minutes) exceed threshold 120"
+      "1883 session age (minutes) exceed threshold 120"
     ],
     "candidates": [
       {
@@ -36,9 +35,9 @@
       {
         "key": "recent_edits",
         "label": "recent edit count",
-        "actual": 20,
+        "actual": 6,
         "threshold": 8,
-        "triggered": true
+        "triggered": false
       },
       {
         "key": "failed_checks",
@@ -50,7 +49,7 @@
       {
         "key": "session_age_minutes",
         "label": "session age (minutes)",
-        "actual": 2265,
+        "actual": 1883,
         "threshold": 120,
         "triggered": true
       }
@@ -58,9 +57,9 @@
     "counters": {
       "wipTasks": 0,
       "blockedTasks": 0,
-      "recentEdits": 20,
+      "recentEdits": 6,
       "failedChecks": 0,
-      "sessionAgeMinutes": 2265
+      "sessionAgeMinutes": 1883
     }
   },
   "continuity": {
@@ -72,29 +71,15 @@
   "legacy_version": "1.0.0",
   "metrics": null,
   "recentEdits": [
-    ".agents/skills/improvement-report-sync/scripts/sync_improvement_reports.py",
+    ".claude/memory/session-log.md",
     ".claude/state/handoff-artifact.json",
     ".claude/state/precompact-snapshot.json",
-    ".claude/state/worktree-info.json",
-    "MEMORY.md",
-    "README.md",
-    "api/main.py",
-    "api/shion_memory_vector.py",
-    "components/graph_view.py",
+    ".claude/state/session.events.jsonl",
     "data/aurion_daily/latest.json",
-    "data/cases_for_colab.json",
-    "data/user_personal_memory.md",
-    "frontend/.claude/state/instructions-loaded.jsonl",
-    "frontend/package.json",
-    "frontend/src/app/screening/page.tsx",
-    "frontend/src/components/analysis/ReportGenerator.tsx",
-    "lease_intelligence_reflection.py",
-    "reports/agent_sidecar_brief.md",
-    "reports/recursive_self_improvement_latest.md",
-    "reports/shion_memory_contradictions_latest.md"
+    "data/pdca_ai_rules.json"
   ],
   "sessionId": "",
-  "timestamp": "2026-07-11T03:27:03Z",
+  "timestamp": "2026-07-21T12:14:59Z",
   "version": "1.0.0",
   "wipTasks": null
 }

@@ -1,27 +1,27 @@
 # Loop Engineering Health
 
-- Generated at: `2026-07-21T04:07:37`
+- Generated at: `2026-07-22T04:08:00`
 - Status: `attention`
 - Source coverage: 100.0%
 
 ## Improvement Loop
 - Applied: 0
-- Needs review: 34
+- Needs review: 36
 - Failed: 0
 - Review pressure: 100.0%
 
 ## Recursive Loop
-- Canonical candidates: 34
+- Canonical candidates: 36
 - Ranked queue: 0
-- Suppressed: 34
+- Suppressed: 36
 - Repeat issue rate: 0.0%
 - Reuse rate: 100.0%
 - Noise rate: 100.0%
 
 ## Prompt Feedback Loop
-- Total: 319
-- PDCA applied: 319 (100.0%)
-- Previous response diffs: 117 (36.7%)
+- Total: 320
+- PDCA applied: 320 (100.0%)
+- Previous response diffs: 117 (36.6%)
 
 ## Scoring Coefficients
 - Status: `attention`

@@ -2,9 +2,9 @@
 
 ## Judgment
 
-- Period: 2026-06-22 to 2026-07-21
-- Days measured: 7
-- Result: 在庫は増えたが実戦検証不足 (61.7)
+- Period: 2026-06-23 to 2026-07-22
+- Days measured: 8
+- Result: 在庫は増えたが実戦検証不足 (59.3)
 - Summary: 判断資産の在庫と整理は進んだが、実案件で効いた証跡が不足している。
 - Mode: local_measurement_only
 - Guardrail: no_rag_no_prompt_no_scoring_no_gcs_no_cloudrun_no_obsidian_write
@@ -16,11 +16,11 @@
 - Judgment change: `████████████████░░░░` 81.0 / strong
 - Field validation: `░░░░░░░░░░░░░░░░░░░░` 0.0 / none
 - Human alignment: `█████████████████░░░` 85.0 / strong
-- Noise control: `████████████████████` 100.0 / strong
+- Noise control: `███████████████░░░░░` 76.0 / strong
 
 ## Evidence
 
-- Score delta: 3.1
+- Score delta: 0.7
 - Feedback used: 0
 - Feedback helped: 0
 - Feedback challenged: 0

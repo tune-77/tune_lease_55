@@ -549,6 +549,8 @@ Webメモ保存の判断:
     obsidian_digest = build_obsidian_digest(message, obsidian_hits) if obsidian_hits else {"digest": "", "title": "", "source_count": "0"}
 
     guidance = build_chat_guidance(message, history)
+    # AI Chat 改善ログ (2026-07-22) のチャット改善メモに基づき、next_gunshi_chat に関連するガイダンスを除外
+    filtered_guidance_suffix = "\n".join(line for line in guidance.prompt_suffix.splitlines() if "next_gunshi_chat" not in line.lower())
     datetime_context = current_datetime_prompt_block()
 
     shion_section = f"\n{shion_context}\n" if shion_context else ""
@@ -571,7 +573,7 @@ Obsidian自動保存の判断:
 {web_prompt}
 {web_save_prompt}
 {pdca_prompt}
-{guidance.prompt_suffix}
+{filtered_guidance_suffix}
 
 次のJSONだけ返してください:
 {{

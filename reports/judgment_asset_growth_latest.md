@@ -2,8 +2,8 @@
 
 ## Current
 
-- Date: 2026-07-21
-- Score: 67.5
+- Date: 2026-07-22
+- Score: 65.1
 - Mode: local_measurement_only
 - Guardrail: no_rag_no_prompt_no_scoring_no_gcs_no_cloudrun_no_obsidian_write
 
@@ -14,11 +14,11 @@
 - Judgment change proxy: `███████████████░░░░░` 75.0
 - Human alignment proxy: `██████████████░░░░░░` 70.0
 - Field validation: `░░░░░░░░░░░░░░░░░░░░` 0.0
-- Negative signal: `░░░░░░░░░░░░░░░░░░░░` 0.0
+- Negative signal: `█████░░░░░░░░░░░░░░░` 24.0
 
 ## Counts
 
-- Materials: 25
+- Materials: 32
 - Inbox candidates: 20
 - Active rules: 10
 - Risk axes: 5
@@ -42,6 +42,7 @@
 - 2026-07-19: `████████████░░░░░░░░` 62.1
 - 2026-07-20: `█████████████░░░░░░░` 62.6
 - 2026-07-21: `██████████████░░░░░░` 67.5
+- 2026-07-22: `█████████████░░░░░░░` 65.1
 
 ## Notes
 
