@@ -408,6 +408,43 @@ def _load_report(path: Path | None) -> dict[str, Any]:
     return report
 
 
+CHAT_INTAKE_PATH = _REPO_ROOT / "data" / "chat_quick_fix_intake.jsonl"
+
+
+def load_chat_quick_fix_intake(path: Path | None = None) -> list[dict[str, Any]]:
+    """チャットで紫苑が起票した quick_fix 提案を needs_review 候補として読み込む。
+
+    propose_quick_fix ツール（lease_intelligence_tools）が追記する JSONL を、
+    自律改善パイプラインの候補源へ取り込むための入口。欠損時は空リスト。
+    ledger のクールダウンで重複起票は自動的に抑制されるため、追記形式のまま扱う。
+    """
+    intake_path = path or CHAT_INTAKE_PATH
+    if not intake_path.exists():
+        return []
+    items: list[dict[str, Any]] = []
+    for line in intake_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except Exception:
+            continue
+        if not isinstance(record, dict):
+            continue
+        title = str(record.get("title") or "").strip()
+        if not title:
+            continue
+        items.append({
+            "id": str(record.get("id") or ""),
+            "title": title,
+            "description": str(record.get("description") or "").strip(),
+            "target_module": str(record.get("target_module") or "").strip(),
+            "source": "chat_quick_fix",
+        })
+    return items
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", type=Path, default=None, help="Improvement report JSON path.")
@@ -434,6 +471,10 @@ def main() -> int:
     args = parser.parse_args()
 
     report = _load_report(args.report)
+    chat_intake = load_chat_quick_fix_intake()
+    if chat_intake:
+        report.setdefault("needs_review", [])
+        report["needs_review"].extend(chat_intake)
     prompt_rows = load_jsonl(args.prompt_log.expanduser())
     obsidian_notes = _load_obsidian_notes([path.expanduser() for path in args.obsidian_note])
     bundle = build_recursive_self_improvement(

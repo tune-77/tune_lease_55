@@ -60,7 +60,7 @@ def _get_gemini_api_key(root: Path) -> str:
 
 
 def _try_gemini(prompt: str, api_key: str) -> tuple[int, str, str]:
-    """gemini-2.0-flash で prompt を実行し (exit_code, stdout, stderr) を返す."""
+    """gemini-2.5-flash で prompt を実行し (exit_code, stdout, stderr) を返す."""
     try:
         import google.generativeai as genai  # type: ignore[import-untyped]
     except ImportError:
@@ -103,10 +103,13 @@ def run_item(item: dict[str, Any], gemini_api_key: str = "") -> dict[str, Any]:
 
     backend = "claude"
 
-    # 2. claude 失敗時は Gemini にフォールバック
-    if exit_code != 0:
+    # 2. claude が失敗した場合は Gemini にフォールバック。
+    #    「異常終了」だけでなく「正常終了だが出力が空」というサイレント失敗も
+    #    失敗として扱い、Gemini に切り替える。
+    primary_failed = exit_code != 0 or not stdout.strip()
+    if primary_failed:
+        claude_stderr = stderr or ("claude returned empty output" if exit_code == 0 else stderr)
         if gemini_api_key:
-            claude_stderr = stderr
             gem_exit, gem_stdout, gem_stderr = _try_gemini(prompt, gemini_api_key)
             if gem_exit == 0:
                 exit_code = 0
@@ -114,9 +117,14 @@ def run_item(item: dict[str, Any], gemini_api_key: str = "") -> dict[str, Any]:
                 stderr = ""
                 backend = "gemini"
             else:
+                exit_code = exit_code if exit_code != 0 else -1
                 stderr = f"claude: {claude_stderr} | gemini: {gem_stderr}"
                 backend = "none"
         else:
+            # フォールバック不可。空出力を成功と誤認しないよう失敗として記録する。
+            if exit_code == 0:
+                exit_code = -1
+                stderr = "claude returned empty output; gemini fallback disabled (GEMINI_API_KEY not set)"
             backend = "none"
 
     return {
