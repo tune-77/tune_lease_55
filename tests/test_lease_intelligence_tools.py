@@ -316,6 +316,172 @@ def test_tool_declarations_include_pipeline_status():
     assert "get_pipeline_status" in names
 
 
+def _seed_portfolio_db(path):
+    import sqlite3
+
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE past_cases (id TEXT PRIMARY KEY, timestamp TEXT, industry_sub TEXT, "
+        "score REAL, user_eq REAL, final_status TEXT, data TEXT)"
+    )
+    conn.execute("CREATE TABLE screening_records (id INTEGER PRIMARY KEY, case_id TEXT)")
+    conn.executemany(
+        "INSERT INTO past_cases (id, timestamp, industry_sub, score, final_status) VALUES (?,?,?,?,?)",
+        [
+            ("1", "2026-01-01T00:00:00Z", "建設", 70.0, "成約"),
+            ("2", "2026-02-01T00:00:00Z", "建設", 60.0, "成約"),
+            ("3", "2026-03-01T00:00:00Z", "運輸", 50.0, "失注"),
+        ],
+    )
+    conn.executemany(
+        "INSERT INTO screening_records (case_id) VALUES (?)", [("1",), ("2",)]
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_get_system_overview_reports_models_thresholds_and_data(tmp_path, monkeypatch):
+    import json
+
+    import lease_intelligence_tools as tools
+
+    (tmp_path / "training_meta.json").write_text(
+        json.dumps({"last_trained_count": 1922, "last_trained_at": "2026-06-21", "last_auc": 0.68, "total_runs": 13}),
+        encoding="utf-8",
+    )
+    (tmp_path / "ensemble_config.json").write_text(
+        json.dumps({"ensemble_alpha": 0.4, "auc_ensemble": 0.82}), encoding="utf-8"
+    )
+    (tmp_path / "quantum_config.json").write_text(
+        json.dumps({"thresholds": {"secondary_review": 35.0, "high_risk": 60.0}}), encoding="utf-8"
+    )
+    (tmp_path / "business_rules.json").write_text(
+        json.dumps({"thresholds": {"approval": 0.77, "review": 0.4}}), encoding="utf-8"
+    )
+    db = tmp_path / "lease_data.db"
+    _seed_portfolio_db(db)
+
+    monkeypatch.setattr(tools, "get_data_path", lambda name: str(tmp_path / name))
+    monkeypatch.setattr(tools, "DB_PATH", str(db))
+
+    result = tools.get_system_overview()
+
+    assert result["models"]["last_auc"] == 0.68
+    assert result["thresholds"]["score_approval_line"] == 71
+    assert result["thresholds"]["q_risk_high_risk"] == 60.0
+    assert result["thresholds"]["probability_approval"] == 0.77
+    assert result["data"]["past_cases"] == 3
+    assert result["data"]["screening_records"] == 2
+
+
+def test_lookup_judgment_rules_aggregates_three_sources(tmp_path, monkeypatch):
+    import json
+
+    import lease_intelligence_tools as tools
+
+    (tmp_path / "canonical_judgment_rules.json").write_text(
+        json.dumps({
+            "generated_at": "2026-07-18",
+            "rules": [
+                {"id": "r1", "concept": "cash_flow", "canonical_statement": "返済原資を確認する", "status": "active", "confidence": 0.9},
+                {"id": "r2", "concept": "asset", "canonical_statement": "担保価値を評価する", "status": "active", "confidence": 0.8},
+            ],
+        }),
+        encoding="utf-8",
+    )
+    (tmp_path / "business_rules.json").write_text(
+        json.dumps({
+            "thresholds": {"approval": 0.77},
+            "custom_rules": [{"name": "債務超過は要審議", "industry": "ALL", "action_type": "force_status", "action_value": "要審議", "conditions": []}],
+        }),
+        encoding="utf-8",
+    )
+    (tmp_path / "secondary_review_items.json").write_text(
+        json.dumps([
+            {"id": "sr001", "category": "財務確認", "text": "決算書確認", "required": True},
+            {"id": "sr002", "category": "信用調査", "text": "信用照会", "required": False},
+        ]),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(tools, "get_data_path", lambda name: str(tmp_path / name))
+
+    result = tools.lookup_judgment_rules()
+    assert result["canonical_rules"]["total"] == 2
+    assert result["business_rules"]["custom_rules"][0]["name"] == "債務超過は要審議"
+    assert result["secondary_review"]["by_category"] == {"財務確認": 1, "信用調査": 1}
+    assert result["secondary_review"]["required"] == 1
+
+    # query で canonical 本文を絞り込める
+    filtered = tools.lookup_judgment_rules(query="返済原資")
+    assert filtered["canonical_rules"]["matched"] == 1
+    assert filtered["canonical_rules"]["rules"][0]["id"] == "r1"
+
+
+def test_get_industry_benchmark_lists_and_matches(tmp_path, monkeypatch):
+    import json
+
+    import lease_intelligence_tools as tools
+
+    (tmp_path / "industry_benchmarks.json").write_text(
+        json.dumps({"06 総合工事業": {"op_margin": 2.9, "equity_ratio": 47.4}}),
+        encoding="utf-8",
+    )
+    (tmp_path / "industry_trends.json").write_text(
+        json.dumps({"_comment": "x", "建設業": "建設業のトレンド本文"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(tools, "get_data_path", lambda name: str(tmp_path / name))
+
+    listing = tools.get_industry_benchmark()
+    assert "06 総合工事業" in listing["available_benchmarks"]
+    assert "建設業" in listing["available_trend_sectors"]
+
+    matched = tools.get_industry_benchmark("総合工事業")
+    assert matched["found"] is True
+    assert matched["benchmarks"]["06 総合工事業"]["equity_ratio"] == 47.4
+
+    trend = tools.get_industry_benchmark("建設業")
+    assert trend["trends"]["建設業"] == "建設業のトレンド本文"
+
+
+def test_get_portfolio_stats_computes_contract_rate(tmp_path, monkeypatch):
+    import lease_intelligence_tools as tools
+
+    db = tmp_path / "lease_data.db"
+    _seed_portfolio_db(db)
+    monkeypatch.setattr(tools, "DB_PATH", str(db))
+
+    result = tools.get_portfolio_stats()
+
+    assert result["past_cases_total"] == 3
+    assert result["outcome_distribution"] == {"成約": 2, "失注": 1}
+    assert result["contract_rate_pct"] == 66.7
+    assert result["top_industries"][0]["industry"] == "建設"
+    assert result["screening_records_total"] == 2
+
+
+def test_execute_tool_dispatches_new_overview_tools(tmp_path, monkeypatch):
+    import lease_intelligence_tools as tools
+
+    db = tmp_path / "lease_data.db"
+    _seed_portfolio_db(db)
+    monkeypatch.setattr(tools, "get_data_path", lambda name: str(tmp_path / name))
+    monkeypatch.setattr(tools, "DB_PATH", str(db))
+
+    assert "thresholds" in tools.execute_tool("get_system_overview", {})
+    assert "canonical_rules" in tools.execute_tool("lookup_judgment_rules", {})
+    assert "available_benchmarks" in tools.execute_tool("get_industry_benchmark", {})
+    assert tools.execute_tool("get_portfolio_stats", {})["past_cases_total"] == 3
+
+
+def test_tool_declarations_include_overview_tools():
+    from lease_intelligence_tools import TOOL_DECLARATIONS
+
+    names = {item["name"] for item in TOOL_DECLARATIONS}
+    assert {"get_system_overview", "lookup_judgment_rules",
+            "get_industry_benchmark", "get_portfolio_stats"} <= names
+
+
 def test_obsidian_query_expands_scoring_identifiers_to_business_terms():
     from mobile_app.obsidian_bridge import _expand_query_terms
 

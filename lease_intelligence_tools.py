@@ -34,6 +34,17 @@ def _open_db() -> sqlite3.Connection:
     return conn
 
 
+def _load_json_data(name: str) -> Any:
+    """data配下のJSONを安全に読み込む。存在しない・壊れている場合は None を返す。"""
+    try:
+        path = Path(get_data_path(name))
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return None
+
+
 def search_cases(query: str, limit: int = 5) -> dict[str, Any]:
     """Search recent screening cases by company name or any field in input_snapshot."""
     like = f"%{query}%"
@@ -468,6 +479,239 @@ def get_pipeline_status(recent: int = 5) -> dict[str, Any]:
     return status
 
 
+def get_system_overview() -> dict[str, Any]:
+    """リース審査システム全体のスナップショットを返す（モデル・閾値・データ規模）。
+
+    「今このシステムはどういう構成？」「モデルの精度は？」「閾値はどうなってる？」
+    「案件は何件ある？」といったシステム全体像の質問に1発で答えるためのツール。
+    """
+    from constants import APPROVAL_LINE, CONDITIONAL_LINE, REVIEW_LINE
+
+    overview: dict[str, Any] = {}
+
+    training = _load_json_data("training_meta.json") or {}
+    ensemble = _load_json_data("ensemble_config.json") or {}
+    overview["models"] = {
+        "last_trained_at": training.get("last_trained_at"),
+        "last_trained_count": training.get("last_trained_count"),
+        "last_auc": training.get("last_auc"),
+        "total_training_runs": training.get("total_runs"),
+        "ensemble_alpha": ensemble.get("ensemble_alpha"),
+        "ensemble_auc": ensemble.get("auc_ensemble"),
+    }
+
+    quantum = _load_json_data("quantum_config.json")
+    q_thr = quantum.get("thresholds", {}) if isinstance(quantum, dict) else {}
+    business = _load_json_data("business_rules.json")
+    biz_thr = business.get("thresholds", {}) if isinstance(business, dict) else {}
+    overview["thresholds"] = {
+        "score_approval_line": APPROVAL_LINE,
+        "score_conditional_line": CONDITIONAL_LINE,
+        "score_review_line": REVIEW_LINE,
+        "q_risk_secondary_review": q_thr.get("secondary_review"),
+        "q_risk_high_risk": q_thr.get("high_risk"),
+        "probability_approval": biz_thr.get("approval"),
+        "probability_review": biz_thr.get("review"),
+    }
+
+    try:
+        with closing(_open_db()) as conn:
+            def _count(table: str) -> int | None:
+                try:
+                    return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                except Exception:
+                    return None
+
+            overview["data"] = {
+                "db_available": True,
+                "screening_records": _count("screening_records"),
+                "past_cases": _count("past_cases"),
+            }
+    except Exception as exc:
+        overview["data"] = {"db_available": False, "error": str(exc)}
+
+    overview["sources"] = [
+        "training_meta.json", "ensemble_config.json", "quantum_config.json",
+        "business_rules.json", "constants.py: APPROVAL_LINE/CONDITIONAL_LINE/REVIEW_LINE",
+    ]
+    return overview
+
+
+def lookup_judgment_rules(query: str = "", category: str = "") -> dict[str, Any]:
+    """現行の審査ルールを照会する。
+
+    「どんな審査ルールがある？」「債務超過はどう扱う？」「二次確認項目は？」といった
+    ルール本体に関する質問に使う。3ソースを集約する。
+    - canonical_judgment_rules.json: 正準化された審査知見ルール（query で本文フィルタ）
+    - business_rules.json: 閾値・スコア補正・業種ルール・カスタムルール
+    - secondary_review_items.json: 二次確認チェック項目（category でフィルタ）
+    """
+    result: dict[str, Any] = {}
+
+    canonical = _load_json_data("canonical_judgment_rules.json")
+    rules = canonical.get("rules", []) if isinstance(canonical, dict) else []
+    q = (query or "").strip().lower()
+    picked = []
+    for r in rules:
+        if not isinstance(r, dict):
+            continue
+        stmt = str(r.get("canonical_statement", ""))
+        concept = str(r.get("concept", ""))
+        if q and q not in stmt.lower() and q not in concept.lower():
+            continue
+        picked.append({
+            "id": r.get("id"),
+            "concept": concept,
+            "statement": stmt,
+            "status": r.get("status"),
+            "confidence": r.get("confidence"),
+            "risk_axis": r.get("risk_axis"),
+            "material_type": r.get("material_type"),
+        })
+    result["canonical_rules"] = {
+        "total": len(rules),
+        "matched": len(picked),
+        "generated_at": canonical.get("generated_at") if isinstance(canonical, dict) else None,
+        "rules": picked[:15],
+    }
+
+    if isinstance(business := _load_json_data("business_rules.json"), dict):
+        result["business_rules"] = {
+            "thresholds": business.get("thresholds", {}),
+            "score_modifiers": business.get("score_modifiers", {}),
+            "industry_rules": business.get("industry_rules", {}),
+            "custom_rules": [
+                {
+                    "name": c.get("name"),
+                    "industry": c.get("industry"),
+                    "action": f"{c.get('action_type')}={c.get('action_value')}",
+                    "conditions": c.get("conditions"),
+                }
+                for c in business.get("custom_rules", []) if isinstance(c, dict)
+            ],
+        }
+
+    if isinstance(secondary := _load_json_data("secondary_review_items.json"), list):
+        cats: dict[str, int] = {}
+        for it in secondary:
+            if isinstance(it, dict):
+                cat = it.get("category", "その他")
+                cats[cat] = cats.get(cat, 0) + 1
+        cat_q = (category or "").strip()
+        items = [
+            {
+                "id": it.get("id"),
+                "category": it.get("category"),
+                "text": it.get("text"),
+                "required": it.get("required"),
+            }
+            for it in secondary
+            if isinstance(it, dict) and (not cat_q or cat_q in str(it.get("category", "")))
+        ]
+        result["secondary_review"] = {
+            "total": len(secondary),
+            "required": sum(1 for it in secondary if isinstance(it, dict) and it.get("required")),
+            "by_category": cats,
+            "items": items,
+        }
+
+    result["sources"] = [
+        "canonical_judgment_rules.json",
+        "business_rules.json",
+        "secondary_review_items.json",
+    ]
+    return result
+
+
+def get_industry_benchmark(industry: str = "") -> dict[str, Any]:
+    """業種別の財務ベンチマークと業界トレンドを照会する。
+
+    「建設業のベンチマークは？」「製造業の動向は？」「総合工事業の自己資本比率の平均は？」
+    といった業種データの質問に使う。
+    industry を省略すると利用可能な業種一覧を返す。
+    """
+    benchmarks = _load_json_data("industry_benchmarks.json")
+    trends = _load_json_data("industry_trends.json")
+    benchmarks = benchmarks if isinstance(benchmarks, dict) else {}
+    trends = trends if isinstance(trends, dict) else {}
+
+    ind = (industry or "").strip()
+    if not ind:
+        return {
+            "available_benchmarks": list(benchmarks.keys()),
+            "available_trend_sectors": [k for k in trends if k != "_comment"],
+            "usage": "industry= に業種名・業種コードを指定（例: 総合工事業 / 06 / 製造業）",
+            "sources": ["industry_benchmarks.json", "industry_trends.json"],
+        }
+
+    ind_low = ind.lower()
+    matched_bench = {k: v for k, v in benchmarks.items() if ind_low in str(k).lower()}
+    matched_trends = {
+        k: v for k, v in trends.items()
+        if k != "_comment" and (ind_low in k.lower() or k.lower() in ind_low)
+    }
+    return {
+        "query": ind,
+        "found": bool(matched_bench or matched_trends),
+        "benchmarks": dict(list(matched_bench.items())[:5]),
+        "benchmark_match_count": len(matched_bench),
+        "trends": matched_trends,
+        "sources": ["industry_benchmarks.json", "industry_trends.json"],
+    }
+
+
+def get_portfolio_stats() -> dict[str, Any]:
+    """審査DB全体のポートフォリオ統計を返す（成約率・スコア分布・業種構成）。
+
+    「全体で何件審査した？」「成約率は？」「どの業種が多い？」といった全体像の質問に使う。
+    期間別は get_screening_activity、業種別の比較は compare_similar_cases を使うこと。
+    """
+    try:
+        with closing(_open_db()) as conn:
+            total = conn.execute("SELECT COUNT(*) FROM past_cases").fetchone()[0]
+            outcome_rows = conn.execute(
+                "SELECT final_status, COUNT(*) FROM past_cases GROUP BY final_status ORDER BY 2 DESC"
+            ).fetchall()
+            outcome = {(r[0] or "未設定"): r[1] for r in outcome_rows}
+            score_row = conn.execute(
+                "SELECT AVG(score), MIN(score), MAX(score) FROM past_cases WHERE score IS NOT NULL"
+            ).fetchone()
+            industry_rows = conn.execute(
+                "SELECT industry_sub, COUNT(*) FROM past_cases "
+                "GROUP BY industry_sub ORDER BY 2 DESC LIMIT 8"
+            ).fetchall()
+            date_row = conn.execute(
+                "SELECT MIN(timestamp), MAX(timestamp) FROM past_cases"
+            ).fetchone()
+            try:
+                screening_total = conn.execute(
+                    "SELECT COUNT(*) FROM screening_records"
+                ).fetchone()[0]
+            except Exception:
+                screening_total = None
+    except Exception as exc:
+        return {"available": False, "error": str(exc)}
+
+    won = outcome.get("成約", 0)
+    lost = outcome.get("失注", 0)
+    return {
+        "past_cases_total": total,
+        "outcome_distribution": outcome,
+        "contract_rate_pct": round(won / (won + lost) * 100, 1) if (won + lost) else None,
+        "score": {
+            "avg": round(float(score_row[0]), 1) if score_row and score_row[0] is not None else None,
+            "min": score_row[1] if score_row else None,
+            "max": score_row[2] if score_row else None,
+        },
+        "top_industries": [{"industry": r[0], "count": r[1]} for r in industry_rows],
+        "date_range": {
+            "earliest": date_row[0] if date_row else None,
+            "latest": date_row[1] if date_row else None,
+        },
+        "screening_records_total": screening_total,
+    }
+
+
 def compare_similar_cases(industry: str, score_min: float = 0.0, score_max: float = 100.0) -> dict[str, Any]:
     """Compare cases in a similar industry and score range to find patterns."""
     like = f"%{industry}%" if industry else "%"
@@ -815,6 +1059,14 @@ def execute_tool(name: str, args: dict, vault: Path | None = None) -> Any:
         )
     if name == "get_pipeline_status":
         return get_pipeline_status(int(args.get("recent", 5) or 5))
+    if name == "get_system_overview":
+        return get_system_overview()
+    if name == "lookup_judgment_rules":
+        return lookup_judgment_rules(args.get("query", ""), args.get("category", ""))
+    if name == "get_industry_benchmark":
+        return get_industry_benchmark(args.get("industry", ""))
+    if name == "get_portfolio_stats":
+        return get_portfolio_stats()
     if name == "compare_similar_cases":
         return compare_similar_cases(
             args.get("industry", ""),
@@ -974,6 +1226,55 @@ TOOL_DECLARATIONS: list[dict] = [
                 },
             },
         },
+    },
+    {
+        "name": "get_system_overview",
+        "description": (
+            "リース審査システム全体のスナップショットを取得する。"
+            "モデルのAUC・学習日・学習件数、アンサンブル設定、スコア閾値（承認/条件付き/否決ライン）、"
+            "Q_risk閾値、確率閾値、DBの案件件数を1発で返す。"
+            "「今このシステムはどういう構成？」「モデルの精度は？」「案件は何件？」に使う。"
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "lookup_judgment_rules",
+        "description": (
+            "現行の審査ルールを照会する。正準化された審査知見ルール(canonical)、"
+            "業務ルール(閾値・スコア補正・業種ルール・カスタムルール)、二次確認チェック項目を返す。"
+            "「どんな審査ルールがある？」「債務超過はどう扱う？」「二次確認項目は？」に使う。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "canonicalルール本文を絞り込むキーワード（任意）"},
+                "category": {"type": "string", "description": "二次確認項目のカテゴリで絞り込む（例: 財務確認・信用調査）"},
+            },
+        },
+    },
+    {
+        "name": "get_industry_benchmark",
+        "description": (
+            "業種別の財務ベンチマーク（営業利益率・自己資本比率・ROA等）と業界トレンドを照会する。"
+            "「建設業のベンチマークは？」「製造業の動向は？」に使う。"
+            "省略すると利用可能な業種一覧を返す。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "industry": {"type": "string", "description": "業種名・業種コード（例: 総合工事業 / 06 / 製造業）。省略で一覧。"},
+            },
+        },
+    },
+    {
+        "name": "get_portfolio_stats",
+        "description": (
+            "審査DB全体のポートフォリオ統計を取得する。総件数・成約率・失注率・"
+            "スコア分布・業種構成・データ期間を返す。"
+            "「全体で何件審査した？」「成約率は？」「どの業種が多い？」に使う。"
+            "期間別は get_screening_activity、業種別比較は compare_similar_cases を使うこと。"
+        ),
+        "parameters": {"type": "object", "properties": {}},
     },
     {
         "name": "compare_similar_cases",
