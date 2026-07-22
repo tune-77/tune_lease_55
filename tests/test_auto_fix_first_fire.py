@@ -118,3 +118,31 @@ def test_quick_ui_candidate_reaches_ranked_queue(tmp_path, monkeypatch):
     queued = bundle["ranked_queue"][0]
     assert queued["auto_fix_policy"]["auto_fix_allowed"] is True
     assert queued["auto_fix_policy"]["risk"] == "low"
+
+
+def test_inferred_target_is_attached_to_ranked_queue(tmp_path, monkeypatch):
+    """対象ファイル未指定の自然文候補でも、推定された対象ファイルと quick_ui 分類が
+    ranked_queue エントリに載る（classify_quick_fix の配線）。"""
+    from scripts import recursive_self_improvement as rsi
+    import pipeline_ledger
+
+    monkeypatch.setattr(pipeline_ledger, "LEDGER_PATH", tmp_path / "ledger.jsonl")
+
+    report = {
+        "needs_review": [
+            {
+                "id": "REV-INFER",
+                "title": "FAQページのボタン文言のタイポを修正",
+                "description": "表示名の誤字を直す",
+                # target_module は与えない（推定に依存）
+            }
+        ],
+        "applied": [],
+    }
+    bundle = rsi.build_recursive_self_improvement(report, workspace_root=_REPO_ROOT)
+
+    assert bundle["ranked_queue_count"] == 1
+    queued = bundle["ranked_queue"][0]
+    assert queued["target_module"] == "frontend/src/app/faq/page.tsx"
+    assert queued["category"] == "quick_ui"
+    assert queued["auto_fix_policy"]["auto_fix_allowed"] is True

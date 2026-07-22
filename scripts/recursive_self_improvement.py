@@ -25,7 +25,7 @@ if _PIPELINE_SCRIPTS_DIR.exists():
     sys.path.insert(0, str(_PIPELINE_SCRIPTS_DIR))
 
 try:
-    from auto_fix_policy import evaluate_auto_fix_policy
+    from auto_fix_policy import classify_quick_fix, evaluate_auto_fix_policy
     from improvement_deduplicator import deduplicate_improvements
     from improvement_identity import canonical_key
     from implementation_ranker import rank_improvements
@@ -145,6 +145,7 @@ def _collect_raw_items(report: dict[str, Any], obsidian_items: list[dict[str, An
             if not isinstance(item, dict):
                 continue
             enriched = _candidate_source(item, key, state, index)
+            _attach_quick_fix_target(enriched, workspace_root)
             enriched["auto_fix_policy"] = evaluate_auto_fix_policy(enriched, workspace_root)
             raw.append(enriched)
 
@@ -152,10 +153,29 @@ def _collect_raw_items(report: dict[str, Any], obsidian_items: list[dict[str, An
         if not isinstance(item, dict):
             continue
         enriched = _candidate_source(item, "obsidian", "candidate", index)
+        _attach_quick_fix_target(enriched, workspace_root)
         enriched["auto_fix_policy"] = evaluate_auto_fix_policy(enriched, workspace_root)
         raw.append(enriched)
 
     return raw
+
+
+def _attach_quick_fix_target(enriched: dict[str, Any], workspace_root: Path) -> None:
+    """quick_fix と判定された候補に、推定された対象ファイルと quick_ui 分類を付与する。
+
+    classify_quick_fix（auto_fix_policy）を候補生成段に配線し、抽象的な要望から
+    推定した単一対象ファイルを候補へ明示的に載せる。これにより ranked_queue・
+    Codexキュー・レポートが具体的な対象ファイルを保持でき、自動修正が実行可能になる。
+    """
+    verdict = classify_quick_fix(enriched, workspace_root)
+    if not verdict.get("is_quick_fix"):
+        return
+    target = verdict.get("target_module")
+    if target and not enriched.get("target_module"):
+        enriched["target_module"] = target
+    implementation = dict(enriched.get("implementation") or {})
+    implementation.setdefault("category", "quick_ui")
+    enriched["implementation"] = implementation
 
 
 def _enrich_ranked_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -241,6 +261,9 @@ def build_recursive_self_improvement(
                     "id": item.get("id"),
                     "title": item.get("title"),
                     "canonical_key": key,
+                    "target_module": item.get("target_module")
+                    or policy.get("inferred_target_module")
+                    or "",
                     "category": item.get("implementation", {}).get("category", ""),
                     "effort": item.get("implementation", {}).get("effort", 0),
                     "risk": item.get("implementation", {}).get("risk", 0),
